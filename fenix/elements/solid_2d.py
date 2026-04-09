@@ -137,6 +137,32 @@ class Quad4(Element):
         K_e, _ = self.compute_element_state(np.zeros(8))
         return K_e
 
+    def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        """Utilidad para reportes de post-procesamiento."""
+        u_e = np.zeros(8)
+        for i, node in enumerate(self.nodes):
+            u_e[2*i] = U_global[node.dofs['ux']]
+            u_e[2*i+1] = U_global[node.dofs['uy']]
+            
+        points, weights = GaussQuadrature.get_points_2d_2x2()
+        coords = np.zeros((4, 2))
+        for i in range(4):
+            coords[i, 0] = self.nodes[i].coordinates[0]
+            coords[i, 1] = self.nodes[i].coordinates[1]
+            
+        avg_stress = np.zeros(3)
+        avg_strain = np.zeros(3)
+        for idx, p in enumerate(points):
+            xi, eta = p
+            B, _ = _compute_kinematics(xi, eta, coords)
+            strain = B @ u_e
+            sigma, _, _ = self.material.compute_state(strain, self.state_vars[idx])
+            avg_strain += strain
+            avg_stress += sigma
+            
+        return {'stress': avg_stress / 4.0, 'strain': avg_strain / 4.0}
+
+
 class Tri3(Element):
     def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0):
         super().__init__(element_id, nodes)
@@ -172,10 +198,27 @@ class Tri3(Element):
         self.state_vars_trial[0] = new_state
         self.stresses_trial[0] = sigma
         
-        # 1 punto de integración central con peso 0.5 (Área del triángulo)
+        # 1 punto de integración central con peso 0.5 (Área del triángulo en coord. naturales)
         K_e, F_int_e = _compute_integrands(B, C_tangent, sigma, detJ, 0.5, self.thickness)
         return K_e, F_int_e
 
     def compute_global_stiffness(self) -> np.ndarray:
         K_e, _ = self.compute_element_state(np.zeros(6))
         return K_e
+
+    def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        """Utilidad para reportes de post-procesamiento."""
+        u_e = np.zeros(6)
+        for i, node in enumerate(self.nodes):
+            u_e[2*i] = U_global[node.dofs['ux']]
+            u_e[2*i+1] = U_global[node.dofs['uy']]
+            
+        coords = np.zeros((3, 2))
+        for i in range(3):
+            coords[i, 0] = self.nodes[i].coordinates[0]
+            coords[i, 1] = self.nodes[i].coordinates[1]
+            
+        B, _ = _compute_kinematics_tri3(coords)
+        strain = B @ u_e
+        sigma, _, _ = self.material.compute_state(strain, self.state_vars[0])
+        return {'stress': sigma, 'strain': strain}
