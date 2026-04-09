@@ -1,0 +1,43 @@
+# Archivo de entrada Fenix FEM: Placa en Tracción (Plasticidad Von Mises 2D)
+
+nodes:
+  1: [0.0, 0.0]
+  2: [0.5, 0.0]
+  3: [1.0, 0.0]
+  4: [0.0, 0.5]
+  5: [0.5, 0.5]
+  6: [1.0, 0.5]
+  7: [0.0, 1.0]
+  8: [0.5, 1.0]
+  9: [1.0, 1.0]
+
+materials:
+  - id: 1
+    type: VonMises2D
+    E: 200.0e9
+    nu: 0.3
+    sigma_y: 250.0e6
+    H: 2.0e9
+
+elements:
+  # id: [Tipo, id_material, espesor, n1, n2, n3, n4]
+  1: [Quad4, 1, 0.1, 1, 2, 5, 4]
+  2: [Quad4, 1, 0.1, 2, 3, 6, 5]
+  3: [Quad4, 1, 0.1, 4, 5, 8, 7]
+  4: [Quad4, 1, 0.1, 5, 6, 9, 8]
+
+boundary_conditions:
+  1: {ux: 0.0, uy: 0.0}
+  4: {ux: 0.0, uy: 0.0}
+  7: {ux: 0.0, uy: 0.0}
+  # Imponemos desplazamiento para asegurar que supere el límite elástico
+  3: {ux: 0.003, uy: 0.0}
+  6: {ux: 0.003, uy: 0.0}
+  9: {ux: 0.003, uy: 0.0}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+  max_iter: 15
+  tol: 1.0e-5
+  adaptive: true

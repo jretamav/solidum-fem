@@ -1,0 +1,54 @@
+# fenix_fem/examples/placa_gmsh.yaml
+
+# En lugar de escribir nodos y elementos a mano, importamos el archivo de Gmsh
+mesh: placa.msh
+mesh_material: 1
+mesh_thickness: 0.01
+
+materials:
+  - id: 1
+    type: VonMises2D
+    E: 200.0e9
+    nu: 0.3
+    sigma_y: 250.0e6
+    H: 2.0e9
+
+# Método 1: Búsqueda por coordenadas extremas (Fallback si no hay grupos)
+# boundary_conditions_by_coord:
+#   x_min: {ux: 0.0, uy: 0.0, tol: 1.0e-6}
+#   x_max: {ux: 0.002, tol: 1.0e-6}
+
+# Método 2: Grupos Físicos (Physical Groups) exportados desde Gmsh (Recomendado)
+boundary_conditions_by_group:
+  "Apoyo_Izquierdo": {ux: 0.0, uy: 0.0}
+  "Carga_Derecha": {ux: 0.002}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+  max_iter: 15
+  tol: 1.0e-5
+  adaptive: true
+
+output:
+  file_name: "resultados_placa"
+  pre_process:
+    export: true
+  results:
+    frequency: "all_steps"
+    nodal_results:
+      - "Displacements"
+      - "External_Forces"
+    element_results:
+      - "Von_Mises"
+      - "Internal_State"
+  
+  text_export:
+    export: true
+    format: "txt"
+    nodes: "all"
+    nodal_results:
+      - "Displacements"
+    elements: "all"
+    element_results:
+      - "Von_Mises"

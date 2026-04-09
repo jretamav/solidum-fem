@@ -1,0 +1,27 @@
+# Archivo de entrada Fenix FEM: Ensayo de Plasticidad 1D
+
+nodes:
+  1: [0.0, 0.0]
+  2: [1.0, 0.0]
+
+materials:
+  - id: 1
+    type: Elastoplastic1D
+    E: 200.0e9
+    sigma_y: 250.0e6
+    H: 10.0e9
+
+elements:
+  # id: [Tipo, id_material, area, n1, n2]
+  1: [Truss2D, 1, 0.01, 1, 2]
+
+boundary_conditions:
+  1: {ux: 0.0, uy: 0.0}
+  2: {ux: 0.002, uy: 0.0}  # uy fijo, ux es el desplazamiento impuesto
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+  max_iter: 15
+  tol: 1.0e-5
+  adaptive: true

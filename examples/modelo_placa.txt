@@ -1,0 +1,33 @@
+! FENIX FEM - Archivo de Entrada
+! Modelo: Placa en voladizo bajo cortante puro
+! Unidades: m, N, Pa
+
+COORDINATES
+! id   x      y
+  1   0.0    0.0
+  2   1.0    0.0
+  3   2.0    0.0
+  4   0.0    0.5
+  5   1.0    0.5
+  6   2.0    0.5
+
+MATERIALS
+! id  TIPO         Propiedades...
+  1   ELASTIC_2D   E 200e9   NU 0.3   HYP plane_stress
+
+ELEMENTS
+! id  TIPO   MAT id   THICK/AREA val   NODES n1 n2 n3 n4
+  1   QUAD4  MAT 1    THICK 0.1        NODES 1 2 5 4
+  2   QUAD4  MAT 1    THICK 0.1        NODES 2 3 6 5
+
+BOUNDARY
+! Nodo  DoF   Valor (Empotramiento izquierdo)
+  1     ux    0.0
+  1     uy    0.0
+  4     ux    0.0
+  4     uy    0.0
+
+FORCES
+! Nodo  DoF   Valor (Cortante de -100 kN distribuido en cara derecha)
+  3     uy    -50000.0
+  6     uy    -50000.0
