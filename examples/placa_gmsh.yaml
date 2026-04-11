@@ -20,8 +20,8 @@ materials:
 
 # Método 2: Grupos Físicos (Physical Groups) exportados desde Gmsh (Recomendado)
 boundary_conditions_by_group:
-  "Apoyo_Izquierdo": {ux: 0.0, uy: 0.0}
-  "Carga_Derecha": {ux: 0.002}
+  - {group_name: "Apoyo_Izquierdo", ux: 0.0, uy: 0.0}
+  - {group_name: "Carga_Derecha", ux: 0.002}
 
 solver:
   type: NonlinearSolver

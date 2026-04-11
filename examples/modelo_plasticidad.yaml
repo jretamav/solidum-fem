@@ -15,8 +15,8 @@ elements:
   - {id: 1, type: Truss2D, material: 1, A: 0.01, nodes: [1, 2]}
 
 boundary_conditions:
-  1: {ux: 0.0, uy: 0.0}
-  2: {ux: 0.002, uy: 0.0}  # uy fijo, ux es el desplazamiento impuesto
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 2, ux: 0.002, uy: 0.0}  # uy fijo, ux es el desplazamiento impuesto
 
 solver:
   type: NonlinearSolver

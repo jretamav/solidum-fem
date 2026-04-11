@@ -26,13 +26,13 @@ elements:
   - {id: 4, type: Quad4, material: 1, thickness: 0.1, nodes: [5, 6, 9, 8]}
 
 boundary_conditions:
-  1: {ux: 0.0, uy: 0.0}
-  4: {ux: 0.0, uy: 0.0}
-  7: {ux: 0.0, uy: 0.0}
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 4, ux: 0.0, uy: 0.0}
+  - {node_id: 7, ux: 0.0, uy: 0.0}
   # Imponemos desplazamiento para asegurar que supere el límite elástico
-  3: {ux: 0.003, uy: 0.0}
-  6: {ux: 0.003, uy: 0.0}
-  9: {ux: 0.003, uy: 0.0}
+  - {node_id: 3, ux: 0.003, uy: 0.0}
+  - {node_id: 6, ux: 0.003, uy: 0.0}
+  - {node_id: 9, ux: 0.003, uy: 0.0}
 
 solver:
   type: NonlinearSolver

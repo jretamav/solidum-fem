@@ -159,20 +159,27 @@ class YamlParser:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios con formato moderno.")
 
         # 4. Aplicar Condiciones de Frontera (Desplazamientos)
-        for node_id, bcs in data.get('boundary_conditions', {}).items():
+        bcs_data = data.get('boundary_conditions', [])
+        if isinstance(bcs_data, dict) and bcs_data:
+            raise ValueError("El bloque 'boundary_conditions' debe ser una lista de diccionarios.")
+        bcs_by_node = data.get('boundary_conditions_by_node', [])
+        if isinstance(bcs_by_node, dict) and bcs_by_node:
+            raise ValueError("El bloque 'boundary_conditions_by_node' debe ser una lista de diccionarios.")
+        
+        for bc in bcs_data + bcs_by_node:
+            node_id = bc.get('node_id')
+            if node_id is None:
+                raise ValueError("Falta 'node_id' en una condición de frontera.")
             node = self.domain.get_node(node_id)
-            for dof, value in bcs.items():
-                node.fix_dof(dof, float(value))
-                
-        for bc in data.get('boundary_conditions_by_node', []):
-            node_id = bc['node_id']
-            node = self.domain.get_node(node_id)
+            if not node: continue
             for dof, value in bc.items():
                 if dof != 'node_id':
                     node.fix_dof(dof, float(value))
 
         # 5. Aplicar Condiciones de Frontera por Coordenadas (Para Gmsh)
-        bcs_coord = data.get('boundary_conditions_by_coord', {})
+        bcs_coord = data.get('boundary_conditions_by_coord', [])
+        if isinstance(bcs_coord, dict) and bcs_coord:
+            raise ValueError("El bloque 'boundary_conditions_by_coord' debe ser una lista de diccionarios.")
         if bcs_coord and self.domain.nodes:
             x_coords = [n.coordinates[0] for n in self.domain.nodes.values() if n.dofs]
             y_coords = [n.coordinates[1] for n in self.domain.nodes.values() if n.dofs]
@@ -184,8 +191,9 @@ class YamlParser:
                     if not node.dofs: continue
                     x, y = node.coordinates
                     
-                    for loc, bcs in bcs_coord.items():
+                    for bcs in bcs_coord:
                         tol = float(bcs.get('tol', 1e-6))
+                        loc = bcs.get('loc')
                         match = False
                         if loc == 'x_min' and abs(x - x_min) < tol: match = True
                         elif loc == 'x_max' and abs(x - x_max) < tol: match = True
@@ -196,24 +204,37 @@ class YamlParser:
                         
                         if match:
                             for dof, value in bcs.items():
-                                if dof not in ['tol', 'coord', 'val']: node.fix_dof(dof, float(value))
+                                if dof not in ['tol', 'coord', 'val', 'loc']: node.fix_dof(dof, float(value))
 
         # 5.5 Aplicar Condiciones de Frontera por Grupos Físicos (Gmsh)
-        bcs_group = data.get('boundary_conditions_by_group', {})
+        bcs_group = data.get('boundary_conditions_by_group', [])
+        if isinstance(bcs_group, dict) and bcs_group:
+            raise ValueError("El bloque 'boundary_conditions_by_group' debe ser una lista de diccionarios.")
         if bcs_group and hasattr(self.domain, 'physical_groups'):
-            for group_name, bcs in bcs_group.items():
-                if group_name in self.domain.physical_groups:
+            for bcs in bcs_group:
+                group_name = bcs.get('group_name')
+                if group_name and group_name in self.domain.physical_groups:
                     for node_id in self.domain.physical_groups[group_name]:
                         node = self.domain.get_node(node_id)
                         if node:
                             for dof, value in bcs.items():
-                                if dof not in ['tol', 'coord', 'val']: node.fix_dof(dof, float(value))
+                                if dof not in ['group_name']: node.fix_dof(dof, float(value))
 
         # 6. Guardar configuración de cargas para ensamblarlas después
-        self.point_loads = data.get('point_loads', {})
-        self.point_loads_by_coord = data.get('point_loads_by_coord', {})
-        self.point_loads_by_group = data.get('point_loads_by_group', {})
+        self.point_loads = data.get('point_loads', [])
+        if isinstance(self.point_loads, dict) and self.point_loads:
+            raise ValueError("El bloque 'point_loads' debe ser una lista de diccionarios.")
         self.point_loads_by_node = data.get('point_loads_by_node', [])
+        if isinstance(self.point_loads_by_node, dict) and self.point_loads_by_node:
+            raise ValueError("El bloque 'point_loads_by_node' debe ser una lista de diccionarios.")
+            
+        self.point_loads_by_coord = data.get('point_loads_by_coord', [])
+        if isinstance(self.point_loads_by_coord, dict) and self.point_loads_by_coord:
+            raise ValueError("El bloque 'point_loads_by_coord' debe ser una lista de diccionarios.")
+            
+        self.point_loads_by_group = data.get('point_loads_by_group', [])
+        if isinstance(self.point_loads_by_group, dict) and self.point_loads_by_group:
+            raise ValueError("El bloque 'point_loads_by_group' debe ser una lista de diccionarios.")
 
         self.output_config = data.get('output', {})
         self.solver_config = data.get('solver', {})
@@ -223,15 +244,11 @@ class YamlParser:
         """Construye el vector de fuerzas externas global F_ext."""
         F_ext = np.zeros(self.domain.total_dofs)
         
-        for node_id, loads in self.point_loads.items():
+        for load in self.point_loads + self.point_loads_by_node:
+            node_id = load.get('node_id')
+            if node_id is None: continue
             node = self.domain.get_node(node_id)
-            for dof, value in loads.items():
-                if dof in node.dofs:
-                    F_ext[node.dofs[dof]] += float(value)
-                    
-        for load in self.point_loads_by_node:
-            node_id = load['node_id']
-            node = self.domain.get_node(node_id)
+            if not node: continue
             for dof, value in load.items():
                 if dof != 'node_id' and dof in node.dofs:
                     F_ext[node.dofs[dof]] += float(value)
@@ -246,8 +263,9 @@ class YamlParser:
                 for node in self.domain.nodes.values():
                     if not node.dofs: continue
                     x, y = node.coordinates
-                    for loc, loads in self.point_loads_by_coord.items():
+                    for loads in self.point_loads_by_coord:
                         tol = float(loads.get('tol', 1e-6))
+                        loc = loads.get('loc')
                         match = False
                         if loc == 'x_min' and abs(x - x_min) < tol: match = True
                         elif loc == 'x_max' and abs(x - x_max) < tol: match = True
@@ -258,17 +276,18 @@ class YamlParser:
                         
                         if match:
                             for dof, value in loads.items():
-                                if dof not in ['tol', 'coord', 'val'] and dof in node.dofs:
+                                if dof not in ['tol', 'coord', 'val', 'loc'] and dof in node.dofs:
                                     F_ext[node.dofs[dof]] += float(value)
                                     
         if self.point_loads_by_group and hasattr(self.domain, 'physical_groups'):
-            for group_name, loads in self.point_loads_by_group.items():
-                if group_name in self.domain.physical_groups:
+            for loads in self.point_loads_by_group:
+                group_name = loads.get('group_name')
+                if group_name and group_name in self.domain.physical_groups:
                     for node_id in self.domain.physical_groups[group_name]:
                         node = self.domain.get_node(node_id)
                         if node:
                             for dof, value in loads.items():
-                                if dof not in ['tol', 'coord', 'val'] and dof in node.dofs:
+                                if dof not in ['group_name'] and dof in node.dofs:
                                     F_ext[node.dofs[dof]] += float(value)
                                     
         return F_ext
