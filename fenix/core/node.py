@@ -1,5 +1,9 @@
 # fenix_fem/fenix/core/node.py
 class Node:
+    # Al usar slots reducimos drásticamente la huella de memoria RAM 
+    # en mallas con cientos de miles de nodos.
+    __slots__ = ['id', 'coordinates', 'dofs', 'boundary_conditions']
+
     def __init__(self, node_id: int, coordinates: list[float]):
         self.id = node_id
         self.coordinates = coordinates

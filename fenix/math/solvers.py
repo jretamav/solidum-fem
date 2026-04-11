@@ -5,34 +5,31 @@ import scipy.sparse.linalg as spla
 
 class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
-    def __init__(self, assembler):
+    def __init__(self, assembler, penalty_value=1e15):
         self.assembler = assembler
+        self.penalty = penalty_value
 
     def solve(self, F_ext_global: np.ndarray) -> np.ndarray:
         print("\n--- INICIANDO SOLVER LINEAL ---")
         self.assembler.assemble_system()
         K_global = self.assembler.K_global.copy()
         R = F_ext_global.copy()
+
+        self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty)
         
-        penalty = 1e15
-        for node_id, node in self.assembler.domain.nodes.items():
-            for dof_name, prescribed_value in node.boundary_conditions.items():
-                idx = node.dofs[dof_name]
-                K_global[idx, idx] += penalty
-                R[idx] = penalty * prescribed_value
-                
         U = spla.spsolve(K_global.tocsr(), R)
         print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, tol=1e-5, max_iter=20, num_steps=10, adaptive=True):
+    def __init__(self, assembler, tol=1e-5, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
         self.num_steps = num_steps
         self.adaptive = adaptive
+        self.penalty = penalty_value
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -63,14 +60,8 @@ class NonlinearSolver:
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = F_ext_step - F_int_global
                 
-                penalty = 1e15
-                for node_id, node in domain.nodes.items():
-                    for dof_name, prescribed_value in node.boundary_conditions.items():
-                        idx = node.dofs[dof_name]
-                        K_global[idx, idx] += penalty
-                        current_prescribed = prescribed_value * next_load_factor
-                        R[idx] = penalty * (current_prescribed - U_iter[idx])
-                        
+                self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=next_load_factor, U_current=U_iter)
+                
                 try:
                     delta_U = spla.spsolve(K_global.tocsr(), R)
                 except RuntimeError:
@@ -118,13 +109,14 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
-    def __init__(self, assembler, tol=1e-5, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100):
+    def __init__(self, assembler, tol=1e-5, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
         self.max_lambda = max_lambda
         self.dl = initial_dl
         self.max_steps = max_steps
+        self.penalty = penalty_value
 
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -150,16 +142,11 @@ class ArcLengthSolver:
             # --- 1. PREDICTOR ---
             K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
             
-            penalty = 1e15
             K_t = K_global.copy()
             F_t = F_ext_ref.copy()
             
-            for node_id, node in domain.nodes.items():
-                for dof_name, prescribed in node.boundary_conditions.items():
-                    idx = node.dofs[dof_name]
-                    K_t[idx, idx] += penalty
-                    F_t[idx] = penalty * prescribed
-                    
+            self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
+            
             try:
                 du_t = spla.spsolve(K_t.tocsr(), F_t)
             except RuntimeError:
@@ -185,14 +172,9 @@ class ArcLengthSolver:
                 K_t = K_global.copy()
                 F_t = F_ext_ref.copy()
                 
-                for node_id, node in domain.nodes.items():
-                    for dof_name, prescribed in node.boundary_conditions.items():
-                        idx = node.dofs[dof_name]
-                        K_t[idx, idx] += penalty
-                        F_t[idx] = penalty * prescribed
-                        K_global[idx, idx] += penalty
-                        R[idx] = penalty * (lambda_iter * prescribed - U_iter[idx])
-                        
+                self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
+                self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=lambda_iter, U_current=U_iter)
+                
                 try:
                     du_R = spla.spsolve(K_global.tocsr(), R)
                     du_t = spla.spsolve(K_t.tocsr(), F_t)

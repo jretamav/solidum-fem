@@ -1,0 +1,49 @@
+# FENIX FEM - Archivo de Entrada YAML
+# Modelo: Viga en voladizo (Marco 2D) combinando Euler y Timoshenko
+# Unidades: m, N, Pa
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [2.0, 0.0]}
+  - {id: 3, coords: [4.0, 0.0]}
+
+materials:
+  - id: 1
+    type: Elastic2D
+    E: 200.0e9     # Acero (200 GPa)
+    nu: 0.3
+    hypothesis: plane_stress
+
+elements:
+  - id: 1
+    type: Frame2DEuler
+    material: 1
+    A: 0.01        # Área transversal (m2)
+    I: 8.33e-6     # Inercia (m4)
+    nodes: [1, 2]
+    
+  - id: 2
+    type: Frame2DTimoshenko
+    material: 1
+    A: 0.01
+    I: 8.33e-6
+    As: 0.00833    # Área de cortante (m2)
+    nodes: [2, 3]
+
+# Empotramiento perfecto en el nodo 1 (ux, uy y rotación rz fijas)
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, rz: 0.0}
+
+# Carga puntual en la punta libre
+point_loads_by_node:
+  - {node_id: 3, uy: -15000.0}
+
+solver:
+  type: LinearSolver
+
+output:
+  file_name: "viga_voladizo_marco"
+  pre_process: {export: true}
+  results:
+    frequency: "last_step"
+    nodal_results: ["Displacements"]

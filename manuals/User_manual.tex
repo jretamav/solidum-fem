@@ -1,0 +1,523 @@
+\documentclass[12pt,letterpaper,oneside]{report}
+
+% Paquetes de idioma y codificación
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+
+% Paquetes de diseño y formato
+\usepackage[margin=2.5cm, headheight=15pt]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{tcolorbox}
+\usepackage{makeidx}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{longtable}
+\makeindex
+
+% Configuración de enlaces
+\hypersetup{
+    colorlinks=true,
+    linkcolor=yamlkey,
+    filecolor=yamlval,      
+    urlcolor=yamlkey,
+    citecolor=yamlkey,
+    pdftitle={Manual de Usuario - Fenix FEM},
+    pdfauthor={Jaime Retama Velasco}
+}
+
+% Colores personalizados para el resaltado
+\definecolor{yamlkey}{RGB}{0, 102, 204}
+\definecolor{yamlval}{RGB}{204, 0, 0}
+\definecolor{yamlcomment}{RGB}{120, 120, 120}
+\definecolor{bglight}{RGB}{245, 245, 245}
+\definecolor{darkgray}{RGB}{50, 50, 50}
+\definecolor{pythonkw}{RGB}{0, 0, 150}
+\definecolor{pythonstr}{RGB}{0, 150, 0}
+\definecolor{notebackground}{RGB}{240, 248, 255}
+\definecolor{noteborder}{RGB}{0, 102, 204}
+\definecolor{warnbackground}{RGB}{255, 245, 230}
+\definecolor{warnborder}{RGB}{204, 102, 0}
+
+% Formato de títulos profesionales
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{yamlkey}}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}{\Large\bfseries\color{darkgray}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\large\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+% Configuración de encabezados y pies de página
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM}}
+\fancyhead[R]{\color{darkgray}\leftmark}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% Cajas de notas y advertencias
+\newtcolorbox{nota}[1][]{colback=notebackground,colframe=noteborder,title=\textbf{Nota},#1}
+\newtcolorbox{advertencia}[1][]{colback=warnbackground,colframe=warnborder,title=\textbf{Advertencia},#1}
+
+% Configuración del lenguaje YAML
+\lstdefinelanguage{yaml}{
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_coord, point_loads_by_group, solver, output, file_name, pre_process, export, results, frequency, nodal_results, element_results, text_export, format, id, type, E, nu, sigma_y, H, hypothesis, ux, uy, uz, tol, coord, val, num_steps, max_iter, adaptive, material, thickness, kappa_0, alpha},
+  keywordstyle=\color{yamlkey}\bfseries,
+  ndkeywords={true, false, null, all, plane_stress, plane_strain, LinearSolver, NonlinearSolver, Elastic2D, VonMises2D, IsotropicDamage2D, Quad4, Tri3},
+  ndkeywordstyle=\color{yamlval}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=false,
+  comment=[l]{\#},
+  commentstyle=\color{yamlcomment}\ttfamily,
+  stringstyle=\color{yamlval}\ttfamily,
+  morestring=[b]',
+  morestring=[b]"
+}
+
+% Configuración general de listings
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{bglight},
+  frame=single,
+  rulecolor=\color{lightgray},
+  breaklines=true,
+  showstringspaces=false,
+  extendedchars=true,
+  captionpos=b,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1 
+           {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1 {¿}{{?`}}1 {¡}{{!`}}1
+}
+
+\begin{document}
+
+% --- PORTADA PROFESIONAL ---
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    \vspace{1cm}
+    {\LARGE Plataforma de Análisis por Elementos Finitos en Python \par}
+    \vspace{0.5cm}
+    \rule{\linewidth}{0.5mm} \par
+    \vspace{2cm}
+    {\huge\bfseries Manual de Usuario y Guía de Referencia \par}
+    \vspace{2cm}
+    {\Large Documentación Oficial y Arquitectura del Sistema \par}
+    \vspace{0.5cm}
+    {\large Versión 1.0 \par}
+    \vspace{1.5cm}
+    {\Large \textbf{Autor:} Jaime Retama Velasco \par}
+    \vspace{0.5cm}
+    {\large Facultad de Estudios Superiores Aragón \\ Universidad Nacional Autónoma de México \par}
+    \vfill
+    {\large \today \par}
+\end{titlepage}
+
+% --- CONFIGURACIÓN FRONTMATTER ---
+\pagenumbering{roman}
+\setcounter{page}{1}
+
+\tableofcontents
+\newpage
+
+\chapter*{Resumen Ejecutivo}
+\addcontentsline{toc}{chapter}{Resumen Ejecutivo}
+\noindent \textbf{Fenix FEM} representa una solución computacional avanzada y altamente optimizada para el Análisis por Elementos Finitos (FEA), concebida para abordar los desafíos más exigentes de la mecánica de sólidos bidimensional, la evaluación continua del daño estructural y el comportamiento elastoplástico de los materiales modernos. Desarrollado con una arquitectura orientada a la eficiencia y la escalabilidad, Fenix FEM se posiciona como una herramienta vital tanto para la industria del diseño estructural como para la investigación aplicada.
+
+A diferencia de los paquetes comerciales cerrados, Fenix FEM ofrece total transparencia en sus formulaciones, implementando rigurosamente algoritmos de vanguardia como \textit{Return Mapping} para plasticidad, control adaptativo de pasos de carga, solucionadores robustos de Newton-Raphson y trazado de curvas de equilibrio inestables mediante el método de Longitud de Arco (\textit{Arc-Length} de Crisfield).
+
+El núcleo del sistema ha sido diseñado bajo una filosofía \textit{Data-Driven} (Impulsada por Datos), eliminando la curva de aprendizaje asociada a la programación o a las complejas interfaces gráficas (GUI) propietarias. Toda la orquestación de la simulación, desde la importación de discretizaciones topológicas complejas hasta la exportación de tensores de esfuerzos, se gobierna mediante un \textbf{archivo de entrada YAML}. 
+
+Este manual de usuario y guía de referencia técnica ha sido elaborado para documentar exhaustivamente todas las capacidades operativas del motor. A través de sus páginas, el ingeniero o analista encontrará:
+\begin{enumerate}
+    \item Los principios fundamentales para la configuración del entorno de simulación.
+    \item Un desglose riguroso de la sintaxis del archivo de entrada YAML soportada por el analizador semántico de Fenix FEM.
+    \item El catálogo completo de leyes constitutivas de materiales, abarcando desde la elasticidad lineal hasta la mecánica de fractura continua.
+    \item Procedimientos estandarizados para la post-visualización científica de alto rendimiento utilizando \textit{ParaView}.
+    \item Casos de estudio completos y guías de resolución de problemas (Troubleshooting) para el tratamiento de matrices singulares o problemas de convergencia no lineal.
+\end{enumerate}
+\newpage
+
+% --- INICIO DEL CONTENIDO ---
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ==========================================
+\chapter{Introducción y Configuración del Entorno}
+% ==========================================
+\section{Filosofía del Proyecto}
+El diseño estructural contemporáneo y la validación de componentes mecánicos demandan herramientas capaces de predecir con precisión no solo el comportamiento elástico lineal de los cuerpos, sino su ruta patológica de degradación, plastificación localizada y eventual colapso sistémico. Fenix FEM nace con el objetivo de cubrir esta brecha, proporcionando un entorno numérico estable y altamente paralelizable en rutinas críticas, apoyándose en las bibliotecas de alto rendimiento para el álgebra lineal tensorial. Al delegar la pre-configuración a archivos YAML legibles por humanos, Fenix FEM permite el versionado sencillo de los modelos estructurales en repositorios como Git, fomentando la colaboración entre equipos de ingeniería.
+
+\section{Requisitos del Sistema}\index{Instalación}
+Fenix FEM es multiplataforma y se ejecutará de forma nativa en Windows, distribuciones basadas en Linux y macOS. La arquitectura del motor no requiere de complejas compilaciones de código en C++ ni configuraciones de \texttt{Makefiles}, basándose enteramente en el ecosistema científico de Python.
+
+\subsection{Entorno Base}
+Deberá contar con \textbf{Python 3.8 o superior} instalado en su sistema. En sistemas operativos Windows, es estrictamente necesario marcar la casilla \textit{"Add Python to PATH"} durante el proceso de instalación.
+Se recomienda encarecidamente la utilización de entornos virtuales (\texttt{venv} o \texttt{Conda}) para aislar las dependencias del motor del resto de las bibliotecas del sistema operativo, garantizando así la reproducibilidad absoluta de los cálculos.
+
+\subsection{Instalación de Dependencias Core}
+El núcleo matemático y las rutinas de traducción de Fenix FEM requieren bibliotecas específicas altamente optimizadas. Abra su terminal o símbolo del sistema e instale el entorno ejecutando:
+\begin{lstlisting}[language=bash]
+pip install numpy scipy pyyaml meshio
+\end{lstlisting}
+\begin{itemize}
+    \item \textbf{\texttt{numpy} y \texttt{scipy}}: Constituyen el corazón del solucionador algebraico. Se encargan del ensamblaje masivo y la inversión de matrices dispersas (\textit{Sparse Matrices}) en formatos CSR/CSC para optimizar la memoria RAM.
+    \item \textbf{\texttt{pyyaml}}: Responsable del análisis semántico (\textit{parsing}) del archivo de entrada YAML de la interfaz principal.
+    \item \textbf{\texttt{meshio}}: Puente traductor bidireccional. Permite interpretar topologías complejas desde Gmsh y exportar los tensores a formato VTK.
+\end{itemize}
+
+\section{Herramientas Externas Recomendadas}
+Aunque Fenix FEM es computacionalmente autónomo, se apoya en software de terceros \textit{Open Source} para las fases de pre y post-procesamiento visual.
+\begin{itemize}
+    \item \textbf{Gmsh (Pre-procesador)}\index{Gmsh}: Generador de mallas por elementos finitos avanzado. Se recomienda utilizarlo para modelar geometrías 2D continuas (placas con perforaciones, muros de corte) y exportar la discretización en formato \texttt{.msh}.
+    \item \textbf{ParaView (Post-procesador)}\index{ParaView}: Aplicación de análisis de datos y visualización líder en la industria. Fenix FEM exporta nativamente los campos de resultados en formato \texttt{.vtu} (VTK XML) para su posterior renderizado y análisis interactivo.
+\end{itemize}
+
+% ==========================================
+\chapter{Archivo de Entrada YAML}
+% ==========================================
+\index{YAML}
+La interacción exclusiva y oficial con el motor de Fenix FEM se realiza a través del archivo de entrada \texttt{.yaml}. Este enfoque elimina drásticamente los errores de sintaxis asociados a la programación mediante \textit{scripts}, asegurando que el ingeniero se concentre puramente en la física del problema y no en la lógica del código subyacente.
+
+\section{Flujo de Trabajo y Ejecución}
+El flujo operativo estándar de Fenix FEM consta de tres fases claramente delimitadas:
+\begin{enumerate}
+    \item \textbf{Pre-procesamiento (Geometría):} Modelado del dominio físico continuo en el software externo Gmsh, asignando grupos físicos (\textit{Physical Groups}) a las superficies y fronteras críticas. Exportación de la malla en formato \texttt{.msh}.
+    \item \textbf{Configuración (YAML):} Redacción del manifiesto \texttt{.yaml} que vincula la malla con las propiedades constitutivas, las restricciones cinemáticas, las cargas y los parámetros del solucionador matemático.
+    \item \textbf{Análisis y Post-procesamiento:} Procesamiento del manifiesto por el motor analítico de Fenix FEM y subsecuente interpretación visual de los archivos VTU generados.
+\end{enumerate}
+
+Para iniciar el análisis computacional, diríjase a la raíz del proyecto mediante su consola de comandos y ejecute el analizador apuntando a su archivo de configuración:
+\begin{lstlisting}[language=bash]
+python fenix/utils/yaml_parser.py ruta/hacia/su_modelo.yaml
+\end{lstlisting}
+
+\section{Estructura del Documento YAML}
+Un archivo YAML válido para Fenix FEM está compuesto por bloques estrictamente definidos. A continuación, se presenta un desglose exhaustivo de la gramática requerida.
+
+\subsection{Importación de Mallas Externas (\texttt{mesh})}
+El bloque \texttt{mesh} es el punto de entrada de la geometría. Fenix FEM soporta la ingestión de mallas compuestas por elementos cuadriláteros bilineales (\texttt{Quad4}) y triángulos de deformación constante (\texttt{Tri3}).
+
+\begin{lstlisting}[language=yaml]
+mesh: "geometria_placa.msh"
+mesh_material: 1
+mesh_thickness: 0.1
+mesh_quadrature: "2x2"
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lp{10cm}@{}}
+\toprule
+\textbf{Parámetro} & \textbf{Descripción} \\ \midrule
+\texttt{mesh} & Ruta absoluta o relativa hacia el archivo de malla \texttt{.msh} exportado por Gmsh. \\
+\texttt{mesh\_material} & Número entero (ID) que enlaza a toda la malla con un material del catálogo de propiedades. \\
+\texttt{mesh\_thickness} & Espesor de la lámina bidimensional (en metros) para el cálculo de rigidez volumétrica. \\
+\texttt{mesh\_quadrature} & Regla de integración de Gauss. \texttt{"2x2"} (Completa) o \texttt{"1x1"} (Reducida). Se recomienda siempre \texttt{"2x2"} para evitar el efecto "Hourglassing". \\ \bottomrule
+\end{tabular}
+\caption{Parámetros globales del bloque de Malla.}
+\end{table}
+
+\subsubsection{Mapeo Avanzado de Grupos Físicos (\texttt{mesh\_physical\_groups})}
+En problemas de la vida real, una estructura rara vez es monolítica. Si su geometría en Gmsh posee zonas con diferentes composiciones (por ejemplo, un muro de hormigón armado con incrustaciones metálicas, o zonas de distinto espesor), Fenix FEM permite realizar un mapeo explícito de los nombres asignados en el CAD hacia las propiedades mecánicas internas.
+
+\begin{lstlisting}[language=yaml]
+mesh_physical_groups:
+  "Zona_Hormigon":
+    material: 1
+    thickness: 0.20
+    quadrature: "2x2"
+  "Zona_Acero":
+    material: 2
+    thickness: 0.05
+\end{lstlisting}
+
+\subsection{Catálogo de Materiales (\texttt{materials})}
+La definición de las propiedades mecánicas y leyes constitutivas es el núcleo físico de la simulación. Dada su vital importancia paramétrica, la documentación exhaustiva de este bloque, junto con los tipos de elementos geométricos soportados por el motor, se detalla a profundidad en el \textbf{Capítulo 3: Librería de Elementos y Modelos Constitutivos}.
+
+\subsection{Imposición de Condiciones Cinemáticas y Cargas}
+Fenix FEM emplea un buscador espacial robusto para inyectar condiciones de Dirichlet (restricciones de soporte) y de Neumann (fuerzas) sobre el dominio sin que el usuario deba conocer los \textit{IDs} numéricos de los nodos generados por Gmsh.
+
+\subsubsection{Búsqueda por Coordenadas (\texttt{\_by\_coord})}
+Escanea la topología completa. Si la coordenada de un nodo coincide con el valor indicado (dentro del radio de tolerancia \texttt{tol}), se aplica la restricción.
+\begin{lstlisting}[language=yaml]
+boundary_conditions_by_coord:
+  x_min: {ux: 0.0, uy: 0.0, tol: 1.0e-5} # Empotrar lado izquierdo
+  rodillos: {coord: 'y', val: 10.0, uy: 0.0, tol: 1.0e-4}
+
+point_loads_by_coord:
+  carga_central: {coord: 'x', val: 5.0, uy: -15000.0, tol: 1e-4}
+\end{lstlisting}
+
+\subsubsection{Búsqueda Topológica Inteligente (\texttt{\_by\_group})}
+Constituye la metodología de vinculación más rigurosa para geometrías complejas. Requiere la definición previa de entidades físicas (\textit{Physical Groups}) de tipo \textit{Curve} (Líneas 1D) o \textit{Point} (Nodos 0D) en las fronteras del dominio desde \textit{Gmsh}, asignándoles un identificador semántico.
+\begin{lstlisting}[language=yaml]
+boundary_conditions_by_group:
+  "Borde_Empotrado": {ux: 0.0, uy: 0.0}
+
+point_loads_by_group:
+  "Borde_Superior_Carga": {uy: -1500.0}
+\end{lstlisting}
+
+\subsection{Configuración del Motor Matemático (\texttt{solver})}
+La selección del algoritmo matricial dictamina la estabilidad de la simulación.
+\begin{lstlisting}[language=yaml]
+solver:
+  type: NonlinearSolver
+  num_steps: 20
+  max_iter: 15
+  tol: 1.0e-5
+  adaptive: true
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lp{11cm}@{}}
+\toprule
+\textbf{Comando} & \textbf{Efecto en el Ensamblador} \\ \midrule
+\texttt{LinearSolver} & Invierte la matriz en un solo paso matemático. Fallará o dará resultados inconsistentes si se asocia a materiales como \texttt{VonMises2D}. \\
+\texttt{NonlinearSolver} & Utiliza el método de Newton-Raphson. Particiona el vector de cargas externas por el número de pasos definidos en \texttt{num\_steps}. \\
+\texttt{adaptive: true} & Si la matriz tangente se vuelve singular o supera \texttt{max\_iter} sin converger (Tolerancia del residuo $>$ \texttt{tol}), el motor aborta, divide el paso de carga a la mitad (bisección), e intenta de nuevo. \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Directivas de Exportación Científica (\texttt{output})}
+Instruye al motor sobre cómo generar la telemetría \texttt{.vtu} compatible con el ecosistema de visualización de Kitware (ParaView).
+\begin{lstlisting}[language=yaml]
+output:
+  file_name: "resultados_placa"
+  pre_process: {export: true}     # Genera un archivo VTU del paso 0 (sin deformar)
+  results:
+    frequency: "all_steps"        # Solo valido para NonlinearSolver (Exporta cada paso)
+    nodal_results: ["Displacements"]
+    element_results: ["Von_Mises", "Internal_State", "Sigma_XX"]
+\end{lstlisting}
+
+% ==========================================
+\chapter{Librería de Elementos y Modelos Constitutivos}
+% ==========================================
+El motor de Fenix FEM posee una arquitectura modular que separa la formulación topológica espacial (el Elemento Finito) de la formulación física reológica (el Material). Esta sección detalla, desde un enfoque estrictamente práctico y orientado al usuario, los componentes disponibles para modelar sus estructuras y cómo parametrizarlos.
+
+\section{Elementos Finitos Unidimensionales}
+Aunque el enfoque principal de la importación de topologías radica en la mecánica de medios continuos 2D, el motor de Fenix FEM dispone de formulaciones reticulares unidimensionales de alto rendimiento, orientadas al modelado de celosías estructurales y sistemas de arriostramiento.
+
+\subsection{Barra Articulada (\texttt{Truss2D} / \texttt{Truss3D})}
+Elemento estructural formulado para soportar exclusivamente cargas axiales (tracción y compresión directas). Sus nodos están teóricamente articulados, por lo que el elemento no posee rigidez a la flexión, y por ende, no transmite momentos flectores ni fuerzas cortantes.
+\begin{itemize}
+    \item \textbf{Grados de Libertad (DOFs):} Cada nodo posee dos traslaciones ($u_x, u_y$) en el espacio bidimensional, o tres traslaciones ($u_x, u_y, u_z$) en el formulismo espacial 3D.
+    \item \textbf{Casos de Uso:} Modelado de armaduras de cubiertas, puentes reticulares, torres de transmisión, o para actuar como cables tensores y refuerzos embebidos dentro de matrices de hormigón continuas.
+    \item \textbf{Propiedades Geométricas Requeridas:} A diferencia de los elementos de área (\texttt{Quad4}) que requieren la definición de un espesor transversal (\textit{thickness}), los elementos \texttt{Truss} exigen la definición del Área de la sección transversal ($A$) para computar su rigidez axial fundamental $\left(K = \frac{EA}{L}\right)$.
+\end{itemize}
+\begin{nota}
+Para incorporar elementos de armadura en el archivo de entrada YAML, es preciso definir las geometrías lineales (\textit{Curves}) en el pre-procesador \textit{Gmsh}, agruparlas bajo un \textit{Physical Group} específico y adaptar la rutina de lectura en \texttt{yaml\_parser.py} para la asignación de la sección transversal respectiva ($A$).
+\end{nota}
+
+\subsection{Marco Rígido Bidimensional (\texttt{Frame2DEuler} / \texttt{Frame2DTimoshenko})}
+A diferencia de las armaduras, los elementos tipo \textit{Frame} (Viga/Columna) poseen rigidez a la flexión y son capaces de transmitir momentos flectores y fuerzas cortantes transversales. 
+\begin{itemize}
+    \item \textbf{Grados de Libertad (DOFs):} Incorporan un tercer grado de libertad por nodo correspondiente a la rotación en el plano: ($u_x, u_y, r_z$).
+    \item \textbf{Variantes Teóricas:} 
+    \begin{itemize}
+        \item \texttt{Frame2DEuler}: Basado en la teoría de vigas esbeltas de Euler-Bernoulli. Ignora las deformaciones por cortante.
+        \item \texttt{Frame2DTimoshenko}: Orientado a vigas peraltadas o gruesas. Relaja la asunción de perpendicularidad de las secciones planas e incorpora la deformación por cortante al cálculo de la rigidez.
+    \end{itemize}
+    \item \textbf{Propiedades Geométricas Requeridas:} En su configuración YAML, además del Área (\texttt{A}), el elemento \texttt{Frame2DEuler} requiere el Momento de Inercia (\texttt{I}). El elemento \texttt{Frame2DTimoshenko} requiere adicionalmente el Área Efectiva de Cortante (\texttt{As}).
+\end{itemize}
+\begin{lstlisting}[language=yaml]
+elements:
+  - id: 1
+    type: Frame2DTimoshenko
+    A: 0.015       # Area transversal
+    I: 1.25e-5     # Momento de Inercia
+    As: 0.012      # Area de Cortante
+\end{lstlisting}
+
+\section{Elementos Finitos Bidimensionales}
+La lectura e importación de archivos procedentes de \textit{Gmsh} instanciará automáticamente los elementos correspondientes de acuerdo a la discretización topológica detectada. Aunque la declaración manual no es requerida, el dominio analítico de su comportamiento es fundamental para garantizar la convergencia matemática del modelo.
+
+\subsection{Cuadrilátero Bilineal (\texttt{Quad4})}
+Es el elemento base tridimensional extruido y el más recomendado para cualquier simulación en el plano. Interpolado mediante funciones de forma bilineales, ofrece una excelente precisión en la captura de gradientes de esfuerzos en la flexión de cuerpos continuos.
+\begin{itemize}
+    \item \textbf{Integración Numérica:} Utiliza la Cuadratura de Gauss. En su archivo YAML (bloque \texttt{mesh\_quadrature}), se aconseja \textbf{siempre utilizar la regla completa \texttt{"2x2"}} (4 puntos de integración espaciales por elemento). 
+    \item \textbf{Advertencia de Modelado:} La adopción de una regla de integración reducida \texttt{"1x1"} disminuye la exigencia de memoria RAM en un 75\%; sin embargo, incrementa drásticamente la susceptibilidad de la estructura al fenómeno de \textit{Hourglassing} (modos de deformación espurios de energía nula), comprometiendo severamente la validez del campo de esfuerzos obtenido.
+\end{itemize}
+
+\subsection{Triángulo de Deformación Constante (\texttt{Tri3})}
+Elemento de 3 nodos generado automáticamente por \textit{Gmsh} en aquellas zonas donde la topología es demasiado compleja o angulosa para ser estructurada en cuadriláteros perfectos.
+\begin{itemize}
+    \item \textbf{Comportamiento Físico:} Al poseer un único punto de integración implícito, asume que el esfuerzo calculado en todo su interior es constante. Esto lo vuelve un elemento matemáticamente muy rígido. 
+    \item \textbf{Recomendación de Mallado:} Una discretización predominante con este tipo de elemento induce el fenómeno de \textit{Shear Locking} (bloqueo por cortante), derivando en una sobreestimación teórica de la rigidez global. En la fase de pre-procesamiento, se prescribe emplear el algoritmo \textbf{"Recombine All"} en \textit{Gmsh} para priorizar la generación de cuadriláteros.
+\end{itemize}
+
+\section{Leyes Constitutivas y Criterios de Falla}
+Los materiales se definen como una lista de diccionarios en el bloque \texttt{materials}. Cada material requiere un identificador numérico único (\texttt{id}) y un comportamiento dictado por la directiva \texttt{type}.
+
+\subsection{Elasticidad Lineal Isótropa (\texttt{Elastic2D})}
+Modelo regido estrictamente por la Ley de Hooke Generalizada. Asume comportamiento perfectamente proporcional, donde el material recupera instantáneamente su forma original al retirar las fuerzas externas.
+\begin{itemize}
+    \item \textbf{Casos de Uso:} Validación general de esfuerzos en régimen de pequeñas deformaciones, cálculo de rigideces elásticas iniciales, o modelado de acero/concreto trabajando de forma segura bajo su límite elástico de proporcionalidad.
+\end{itemize}
+\begin{lstlisting}[language=yaml]
+materials:
+  - id: 1
+    type: Elastic2D
+    E: 200.0e9             # Modulo de Young o de Elasticidad (Pa)
+    nu: 0.3                # Relacion de Poisson
+    hypothesis: plane_stress
+\end{lstlisting}
+*(Nota de parámetros: La propiedad \texttt{hypothesis} admite \texttt{plane\_stress} (Tensión Plana) para simular placas delgadas libres de confinamiento en el eje Z; o \texttt{plane\_strain} (Deformación Plana) para secciones transversales de presas o túneles infinitamente largos en el eje longitudinal).*
+
+\subsection{Elastoplasticidad de Von Mises (\texttt{VonMises2D})} \index{Materiales!VonMises2D}
+Este modelo computacional evalúa el criterio de fluencia invariante J2. Simula la deformación plástica permanente de los materiales mediante algoritmos de \textit{Return Mapping} cuando el estado de esfuerzos excede el parámetro $\sigma_y$.
+\begin{itemize}
+    \item \textbf{Casos de Uso:} Es el modelo por excelencia en la industria metalmecánica. Ideal para aleaciones dúctiles, acero estructural y aluminio trabajando en regímenes post-fluencia y de grandes disipaciones energéticas.
+\end{itemize}
+\begin{lstlisting}[language=yaml]
+materials:
+  - id: 2
+    type: VonMises2D
+    E: 210.0e9
+    nu: 0.3
+    sigma_y: 250.0e6       # Limite Elastico / Esfuerzo de Fluencia (Pa)
+    H: 2.0e9               # Modulo de endurecimiento plastico (Hardening)
+\end{lstlisting}
+
+\subsection{Daño Isótropo Continuo (\texttt{IsotropicDamage2D})} \index{Materiales!IsotropicDamage2D}
+A diferencia de la plasticidad (que conserva la rigidez del cuerpo pero genera un cambio de forma permanente), el modelo de Daño Mecánico simula la aparición interna de micro-fisuras estructurales. Estas anomalías degradan paulatina e irremediablemente el módulo de elasticidad del material ($E$), llevándolo eventualmente a un estado de fractura total (rigidez tendiendo a cero).
+\begin{itemize}
+    \item \textbf{Casos de Uso:} Modelado constitutivo de materiales frágiles y cuasi-frágiles, donde la nucleación y coalescencia de fisuras conforman el mecanismo de rotura predominante (ej. hormigón simple, mampostería, macizos rocosos y cerámicas).
+\end{itemize}
+\begin{lstlisting}[language=yaml]
+materials:
+  - id: 3
+    type: IsotropicDamage2D
+    E: 30.0e9              # Modulo original del material virgen
+    nu: 0.2
+    kappa_0: 0.00015       # Limite de deformacion (Inicio de fisuracion)
+    alpha: 800.0           # Tasa de ablandamiento (Softening de la curva)
+\end{lstlisting}
+*(Nota de ingeniería: El uso de este material requiere habilitar el modelo modificando previamente el módulo \texttt{yaml\_parser.py} como se indica en la documentación técnica interna).*
+
+% ==========================================
+\chapter{Post-Procesamiento y Visualización VTK}
+% ==========================================
+El volumen masivo de datos producidos en cada paso de cuadratura hace que la inspección en consola sea inviable. Fenix FEM integra un transpilador estandarizado orientado a \textbf{ParaView}, la suite líder mundial en análisis avanzado de dinámica de fluidos y elementos finitos.
+
+\section{El Formato XML de Kitware (VTU)}
+Mediante el uso de la biblioteca dependiente \texttt{meshio}, Fenix FEM compila toda la topología alterada del sistema y la información de los nodos/elementos inyectándola en archivos estructurados de extensión \texttt{.vtu}. 
+
+La estructura del exportador clasifica la información en dos diccionarios principales dictados por el estándar VTK:
+
+\subsection{Datos Nodales (\textit{Point Data})}
+Los atributos continuos mapeados espacialmente sobre los vértices:
+\begin{itemize}
+    \item \textbf{\texttt{Displacements}:} Campo vectorial tridimensional ($u_x, u_y, 0.0$) de los desplazamientos calculados en el paso de carga actual.
+    \item \textbf{\texttt{External\_Forces}:} Distribución nodal del vector de cargas ensamblado en el lado derecho de la ecuación.
+    \item \textbf{\texttt{Supports}:} Vector indicador booleano. Exhibe 1.0 en los grados de libertad que han sido coaccionados por empotramientos.
+\end{itemize}
+
+\subsection{Datos de Celda (\textit{Cell Data})}
+Mapea información promediada aritméticamente sobre el dominio interior de los elementos Finitos (sobre sus puntos de Gauss).
+\begin{itemize}
+    \item \textbf{\texttt{Von\_Mises}:} Cuantía escalar del criterio de fluencia invariante J2. 
+    \item \textbf{\texttt{Internal\_State}:} El campo principal para rastrear el progreso de falla. Para plasticidad, captura la deformación plástica equivalente acumulada ($\alpha$). Para daño continuo, muestra la severidad del agrietamiento escalar $d \in [0, 1]$.
+    \item \textbf{\texttt{Sigma\_XX}, \texttt{Sigma\_YY}, \texttt{Tau\_XY}:} Descomposición tensorial plana pura.
+\end{itemize}
+
+\section{Flujo Operativo en ParaView}
+Para una experiencia visual de alto nivel, siga estrictamente estos pasos:
+\begin{enumerate}
+    \item \textbf{Carga de la Colección:} Abra ParaView. Vaya a \texttt{File > Open} y seleccione el grupo de archivos colapsados (ej: \texttt{resultados\_placa\_..vtu}). Haga clic en \textit{Apply} en el panel izquierdo (\textit{Properties}).
+    \item \textbf{Animación Inicial:} Visualice los botones de reproducción de tiempo en la parte superior central. Al presionar "Play", ParaView iterará cronológicamente sobre todos los archivos de salida generados por el control de pasos.
+    \item \textbf{Deformación Realista (Warp By Vector):} Por defecto, ParaView renderiza la malla en su estado original $t=0$, coloreando los esfuerzos sobre ella. Para que la geometría se distorsione físicamente, aplique el filtro \textbf{Warp By Vector}. Seleccione \texttt{Displacements} como variable y ajuste el "Scale Factor" según lo requiera (por ejemplo, escalar por 10x para visibilizar micro-deformaciones).
+    \item \textbf{Mapeo de Esfuerzos:} Seleccione el nodo final en la cascada de su filtro (\textit{Pipeline Browser}). En la barra de herramientas, cambie \texttt{Solid Color} por \texttt{Von\_Mises}. Active la visualización de bordes (\textit{Surface With Edges}) para apreciar la distorsión de la matriz cuadrilátera de elementos \texttt{Quad4}.
+\end{enumerate}
+
+
+% ==========================================
+\chapter{Ejemplos Completos y Casos de Estudio}
+% ==========================================
+Para cimentar el flujo de trabajo guiado por datos, presentamos el modelado de un escenario clásico de concentración de tensiones.
+
+\section{Placa con Perforación Central a Tracción}
+Supongamos una placa de acero modelada en Gmsh (un cuadrado con un orificio circular en el medio). Hemos asignado el grupo físico "Superficie\_Placa" a los elementos 2D, el grupo "Borde\_Fijo" al lado izquierdo y "Borde\_Carga" al borde derecho. 
+
+El objetivo es superar el límite elástico del acero y observar el flujo de plasticidad alrededor del orificio.
+
+\begin{lstlisting}[language=yaml, caption=Archivo YAML: Placa perforada elastoplástica]
+mesh: "placa_agujero.msh"
+
+mesh_physical_groups:
+  "Superficie_Placa":
+    material: 1
+    thickness: 0.05
+    quadrature: "2x2"
+
+materials:
+  - id: 1
+    type: VonMises2D
+    E: 200.0e9        # Acero A36
+    nu: 0.3
+    sigma_y: 250.0e6  # Fluencia a 250 MPa
+    H: 1.5e9          # Endurecimiento cinematico
+
+boundary_conditions_by_group:
+  "Borde_Fijo": {ux: 0.0, uy: 0.0}
+
+point_loads_by_group:
+  "Borde_Carga": {ux: 1500000.0}  # Traccion extrema
+
+solver:
+  type: NonlinearSolver
+  num_steps: 30       # Requerimos granularidad alta en la transicion a plasticidad
+  max_iter: 10
+  tol: 1.0e-5
+  adaptive: true      # Fundamental habilitarlo
+
+output:
+  file_name: "estudio_placa"
+  pre_process: {export: true}
+  results:
+    frequency: "all_steps"
+    nodal_results: ["Displacements"]
+    element_results: ["Von_Mises", "Internal_State"]
+\end{lstlisting}
+
+\textbf{Interpretación de Resultados Esperados:} El solucionador dividirá la carga masiva en 30 incrementos. Durante los primeros 10 pasos (asumiendo comportamiento elástico lineal), el \textit{NonlinearSolver} convergerá casi instantáneamente en 1 a 2 iteraciones por paso. Cuando la concentración de esfuerzos de Von Mises en la periferia superior del orificio exceda los 250 MPa, el algoritmo calculará la matriz constitutiva elastoplástica de \textit{Return Mapping}. Observará un aumento en las iteraciones requeridas de Newton-Raphson. En ParaView, la variable \texttt{Internal\_State} exhibirá un mapa de calor donde el valor se aleja de cero, indicando las zonas de deformación permanente (plástica).
+
+% ==========================================
+\chapter{Diagnóstico y Resolución de Problemas (Troubleshooting)}
+% ==========================================
+El modelado estructural no lineal es matemáticamente complejo. A continuación se presentan las causas fundamentales de la interrupción en el orquestador de Fenix FEM y sus potenciales soluciones.
+
+\begin{itemize}
+    \item \textbf{Excepción: \textit{Matriz Singular Detectada en Predictor/Corrector}} \\
+    \textit{Diagnóstico:} El sistema no tiene la suficiente cantidad de restricciones cinemáticas impuestas. Se encuentra matemáticamente "flotando" en el espacio, permitiendo traslación de cuerpo rígido infinita. \\
+    \textit{Solución:} Verifique el bloque \texttt{boundary\_conditions\_by\_coord} o \texttt{\_by\_group}. Asegúrese de restringir al menos un nodo en $U_x$ y $U_y$ para anclar el dominio estáticamente.
+    
+    \item \textbf{Advertencia: \textit{Bisección: reduciendo incremento... / El solucionador no convergió.}} \\
+    \textit{Diagnóstico:} El salto de carga provisto a la matriz tangente no lineal causó que los esfuerzos internos superasen catastróficamente la capacidad portante, arrojando residuos infinitos en el bucle Newton-Raphson. \\
+    \textit{Solución:} Aumente \texttt{num\_steps} en el bloque \texttt{solver}. Verifique que el umbral del material $\sigma_y$ o $\kappa_0$ no esté mal tipeado (por ejemplo, escribir 250 en lugar de 250.0e6).
+    
+    \item \textbf{Error de Ingestión: \textit{No se importó ningún elemento (Solid2D).}} \\
+    \textit{Diagnóstico:} El analizador \textit{GmshParser} encontró el archivo, pero no localizó bloques de superficies (cuadriláteros o triángulos). \\
+    \textit{Solución:} En Gmsh, asegúrese de haber creado una superficie bidimensional (\textit{Plane Surface}) antes de generar la malla (\texttt{2D Mesh}). Fenix FEM filtra mallas espaciales para garantizar la consistencia topológica.
+\end{itemize}
+
+\newpage
+\phantomsection
+\addcontentsline{toc}{chapter}{Índice Alfabético}
+\renewcommand{\indexname}{Índice Alfabético}
+\printindex
+
+\end{document}

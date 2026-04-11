@@ -35,7 +35,7 @@ class VtkExporter:
             idx = node_map[nid]
             points[idx, 0] = node.coordinates[0]
             points[idx, 1] = node.coordinates[1]
-            # Z se queda en 0.0 para mallas 2D
+            points[idx, 2] = node.coordinates[2] if len(node.coordinates) > 2 else 0.0
             
             if len(U) > 0:
                 if 'ux' in node.dofs and node.dofs['ux'] < len(U): displacements[idx, 0] = U[node.dofs['ux']]
@@ -93,7 +93,7 @@ class VtkExporter:
                 else:
                     tri_stresses.append([0.0, 0.0, 0.0, 0.0])
                     
-            elif type(elem).__name__ == 'Truss2D': 
+            elif type(elem).__name__ in ['Truss2D', 'Truss3D']: 
                 line_conn.append(conn)
                 line_state.append(state_val)
             

@@ -1,0 +1,57 @@
+# FENIX FEM - Archivo de Entrada YAML
+# Modelo: Placa en voladizo bajo cortante puro
+# Unidades: m, N, Pa
+
+# El bloque 'nodes' y 'elements' se puede usar para definir geometrías
+# simples directamente en YAML sin necesidad de un archivo .msh externo.
+# Nota: El parser YAML actual necesitaría ser extendido para soportar
+# estos bloques, pero la estructura sería la siguiente.
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [2.0, 0.0]}
+  - {id: 4, coords: [0.0, 0.5]}
+  - {id: 5, coords: [1.0, 0.5]}
+  - {id: 6, coords: [2.0, 0.5]}
+
+materials:
+  - id: 1
+    type: Elastic2D
+    E: 200.0e9
+    nu: 0.3
+    hypothesis: plane_stress
+
+elements:
+  - id: 1
+    type: Quad4
+    material: 1
+    thickness: 0.1
+    nodes: [1, 2, 5, 4]
+  - id: 2
+    type: Quad4
+    material: 1
+    thickness: 0.1
+    nodes: [2, 3, 6, 5]
+
+# Las condiciones de borde y cargas se pueden aplicar por ID de nodo
+# si la malla se define directamente aquí.
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 4, ux: 0.0, uy: 0.0}
+
+point_loads_by_node:
+  # Cortante de -100 kN distribuido en cara derecha
+  - {node_id: 3, uy: -50000.0}
+  - {node_id: 6, uy: -50000.0}
+
+solver:
+  type: LinearSolver
+
+output:
+  file_name: "placa_voladizo"
+  pre_process: {export: true}
+  results:
+    frequency: "all_steps"
+    nodal_results: ["Displacements"]
+    element_results: ["Von_Mises", "Sigma_XX", "Sigma_YY", "Tau_XY"]

@@ -17,11 +17,10 @@ class GmshParser:
         self.filepath = filepath
         self.domain = Domain()
 
-    def parse(self, material: Material, thickness: float = 1.0) -> Domain:
+    def parse(self, default_material: Material, default_thickness: float = 1.0, physical_props: dict = None, default_quadrature: tuple = None) -> Domain:
         """
         Lee el archivo de malla y retorna un objeto Domain poblado.
-        Por simplicidad, en esta versión básica asignamos un solo material 
-        a todos los elementos cuadriláteros (Quad4) encontrados.
+        Permite mapear Physical Groups a diferentes materiales y espesores.
         """
         print(f"Leyendo malla Gmsh desde: {self.filepath} ...")
         mesh = meshio.read(self.filepath, file_format="gmsh")
@@ -56,27 +55,47 @@ class GmshParser:
             
         # 2. Extraer y crear los Elementos (Filtramos solo cuadriláteros)
         elem_id_counter = 1
-        for block in mesh.cells:
+        for i, block in enumerate(mesh.cells):
+            # Extraer tags fisicos del bloque actual si existen
+            tags = mesh.cell_data["gmsh:physical"][i] if ("gmsh:physical" in mesh.cell_data) else None
+            
             # Busramos el bloque de elementos tipo "quad" (cuadriláteros de 4 nodos)
             if block.type == "quad":
-                for connectivity in block.data:
+                for j, connectivity in enumerate(block.data):
                     # meshio devuelve índices base 0, por lo que sumamos 1
                     n1 = self.domain.get_node(connectivity[0] + 1)
                     n2 = self.domain.get_node(connectivity[1] + 1)
                     n3 = self.domain.get_node(connectivity[2] + 1)
                     n4 = self.domain.get_node(connectivity[3] + 1)
                     
-                    element = Quad4(elem_id_counter, [n1, n2, n3, n4], material, thickness)
+                    # Resolver propiedades a asignar
+                    mat, thick, quad = default_material, default_thickness, default_quadrature
+                    if tags is not None and physical_props is not None:
+                        tag = int(tags[j])
+                        if tag in tag_to_name:
+                            group_name = tag_to_name[tag]
+                            if group_name in physical_props:
+                                mat, thick, quad = physical_props[group_name]
+                                
+                    element = Quad4(elem_id_counter, [n1, n2, n3, n4], mat, thick, quadrature=quad)
                     self.domain.add_element(element)
                     elem_id_counter += 1
                     
             elif block.type == "triangle":
-                for connectivity in block.data:
+                for j, connectivity in enumerate(block.data):
                     n1 = self.domain.get_node(connectivity[0] + 1)
                     n2 = self.domain.get_node(connectivity[1] + 1)
                     n3 = self.domain.get_node(connectivity[2] + 1)
                     
-                    element = Tri3(elem_id_counter, [n1, n2, n3], material, thickness)
+                    mat, thick, quad = default_material, default_thickness, default_quadrature
+                    if tags is not None and physical_props is not None:
+                        tag = int(tags[j])
+                        if tag in tag_to_name:
+                            group_name = tag_to_name[tag]
+                            if group_name in physical_props:
+                                mat, thick, _ = physical_props[group_name]
+                                
+                    element = Tri3(elem_id_counter, [n1, n2, n3], mat, thick)
                     self.domain.add_element(element)
                     elem_id_counter += 1
                     

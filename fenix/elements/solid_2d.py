@@ -24,6 +24,9 @@ def _compute_kinematics(xi, eta, coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
     
+    if detJ <= 0.0:
+        raise ValueError("Jacobiano negativo o cero detectado en elemento Quad4. Revisa la conectividad o distorsion.")
+    
     # Inversa del Jacobiano segura
     invJ = np.zeros((2, 2), dtype=np.float64)
     invJ[0, 0] =  J[1, 1] / detJ
@@ -65,6 +68,9 @@ def _compute_kinematics_tri3(coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
     
+    if detJ <= 0.0:
+        raise ValueError("Jacobiano negativo o cero detectado en elemento Tri3.")
+    
     invJ = np.zeros((2, 2), dtype=np.float64)
     invJ[0, 0] =  J[1, 1] / detJ
     invJ[0, 1] = -J[0, 1] / detJ
@@ -83,16 +89,24 @@ def _compute_kinematics_tri3(coords):
     return B, detJ
 
 class Quad4(Element):
-    def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0):
+    def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0, quadrature: str = "2x2"):
         super().__init__(element_id, nodes)
         self.material = material
         self.thickness = thickness
+        self.quadrature = quadrature if quadrature else "2x2"
         
-        # Variables internas: Estado convergido y estado de prueba (trial)
-        self.state_vars = [None] * 4
-        self.state_vars_trial = [None] * 4
-        self.stresses = [np.zeros(3) for _ in range(4)]
-        self.stresses_trial = [np.zeros(3) for _ in range(4)]
+        # Puntos de integración
+        if self.quadrature == "2x2":
+            self.points, self.weights = GaussQuadrature.get_points_2d_2x2()
+        else:
+            self.points, self.weights = GaussQuadrature.get_points_2d_2x2() # Fallback por seguridad
+            
+        self.num_ip = len(self.points)
+        # Variables internas dependientes dinámicamente de la regla de integración
+        self.state_vars = [None] * self.num_ip
+        self.state_vars_trial = [None] * self.num_ip
+        self.stresses = [np.zeros(3) for _ in range(self.num_ip)]
+        self.stresses_trial = [np.zeros(3) for _ in range(self.num_ip)]
         
         for node in self.nodes:
             node.add_dof('ux')
@@ -110,14 +124,10 @@ class Quad4(Element):
         """Calcula K_tangente local y Fuerzas Internas dadas las deformaciones actuales."""
         K_e = np.zeros((8, 8))
         F_int_e = np.zeros(8)
-        points, weights = GaussQuadrature.get_points_2d_2x2()
         
-        coords = np.zeros((4, 2))
-        for i in range(4):
-            coords[i, 0] = self.nodes[i].coordinates[0]
-            coords[i, 1] = self.nodes[i].coordinates[1]
-            
-        for idx, (p, w) in enumerate(zip(points, weights)):
+        coords = self.get_coordinate_matrix(ndim=2)
+        
+        for idx, (p, w) in enumerate(zip(self.points, self.weights)):
             xi, eta = p
             B, detJ = _compute_kinematics(xi, eta, coords)
             strain = B @ u_e
@@ -144,15 +154,11 @@ class Quad4(Element):
             u_e[2*i] = U_global[node.dofs['ux']]
             u_e[2*i+1] = U_global[node.dofs['uy']]
             
-        points, weights = GaussQuadrature.get_points_2d_2x2()
-        coords = np.zeros((4, 2))
-        for i in range(4):
-            coords[i, 0] = self.nodes[i].coordinates[0]
-            coords[i, 1] = self.nodes[i].coordinates[1]
-            
+        coords = self.get_coordinate_matrix(ndim=2)
+        
         avg_stress = np.zeros(3)
         avg_strain = np.zeros(3)
-        for idx, p in enumerate(points):
+        for idx, p in enumerate(self.points):
             xi, eta = p
             B, _ = _compute_kinematics(xi, eta, coords)
             strain = B @ u_e
@@ -160,7 +166,8 @@ class Quad4(Element):
             avg_strain += strain
             avg_stress += sigma
             
-        return {'stress': avg_stress / 4.0, 'strain': avg_strain / 4.0}
+        if self.num_ip == 0: return {'stress': np.zeros(3), 'strain': np.zeros(3)}
+        return {'stress': avg_stress / self.num_ip, 'strain': avg_strain / self.num_ip}
 
 
 class Tri3(Element):
@@ -186,11 +193,8 @@ class Tri3(Element):
         self.stresses = self.stresses_trial.copy()
 
     def compute_element_state(self, u_e: np.ndarray):
-        coords = np.zeros((3, 2))
-        for i in range(3):
-            coords[i, 0] = self.nodes[i].coordinates[0]
-            coords[i, 1] = self.nodes[i].coordinates[1]
-            
+        coords = self.get_coordinate_matrix(ndim=2)
+        
         B, detJ = _compute_kinematics_tri3(coords)
         strain = B @ u_e
         
@@ -213,11 +217,8 @@ class Tri3(Element):
             u_e[2*i] = U_global[node.dofs['ux']]
             u_e[2*i+1] = U_global[node.dofs['uy']]
             
-        coords = np.zeros((3, 2))
-        for i in range(3):
-            coords[i, 0] = self.nodes[i].coordinates[0]
-            coords[i, 1] = self.nodes[i].coordinates[1]
-            
+        coords = self.get_coordinate_matrix(ndim=2)
+        
         B, _ = _compute_kinematics_tri3(coords)
         strain = B @ u_e
         sigma, _, _ = self.material.compute_state(strain, self.state_vars[0])
