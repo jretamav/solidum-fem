@@ -1,8 +1,8 @@
 # Archivo de entrada Fenix FEM: Ensayo de Plasticidad 1D
 
 nodes:
-  1: [0.0, 0.0]
-  2: [1.0, 0.0]
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
 
 materials:
   - id: 1
@@ -12,8 +12,7 @@ materials:
     H: 10.0e9
 
 elements:
-  # id: [Tipo, id_material, area, n1, n2]
-  1: [Truss2D, 1, 0.01, 1, 2]
+  - {id: 1, type: Truss2D, material: 1, A: 0.01, nodes: [1, 2]}
 
 boundary_conditions:
   1: {ux: 0.0, uy: 0.0}

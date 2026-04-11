@@ -42,13 +42,12 @@ class YamlParser:
             data = yaml.safe_load(f)
 
         # 1. Instanciar Nodos
-        nodes_data = data.get('nodes', {})
-        if isinstance(nodes_data, dict):
-            for node_id, coords in nodes_data.items():
-                self.domain.add_node(node_id, coords)
-        elif isinstance(nodes_data, list):
+        nodes_data = data.get('nodes', [])
+        if isinstance(nodes_data, list):
             for node_dict in nodes_data:
                 self.domain.add_node(node_dict['id'], node_dict['coords'])
+        else:
+            raise ValueError("El bloque 'nodes' debe ser una lista de diccionarios con formato moderno.")
 
         # 2. Instanciar Materiales
         for mat_data in data.get('materials', []):
@@ -122,26 +121,7 @@ class YamlParser:
             self.domain = gmsh_parser.parse(default_material, default_thickness, physical_props, default_quadrature)
         else:
             elements_data = data.get('elements', [])
-            if isinstance(elements_data, dict):
-                # Formato antiguo (Retrocompatibilidad)
-                for elem_id, elem_data in elements_data.items():
-                    e_type, mat_id, param3 = elem_data[0], elem_data[1], float(elem_data[2])
-                    node_ids = elem_data[3:]
-                    
-                    nodes = [self.domain.get_node(nid) for nid in node_ids]
-                    material = self.materials[mat_id]
-                    
-                    if e_type == 'Quad4':
-                        self.domain.add_element(Quad4(elem_id, nodes, material, thickness=param3))
-                    elif e_type == 'Tri3':
-                        self.domain.add_element(Tri3(elem_id, nodes, material, thickness=param3))
-                    elif e_type == 'Truss2D':
-                        self.domain.add_element(Truss2D(elem_id, nodes, material, A=param3))
-                    elif e_type == 'Truss3D':
-                        self.domain.add_element(Truss3D(elem_id, nodes, material, A=param3))
-                    else:
-                        raise ValueError(f"Tipo de elemento {e_type} no soportado.")
-            elif isinstance(elements_data, list):
+            if isinstance(elements_data, list):
                 # Formato moderno (Lista de diccionarios)
                 for elem_dict in elements_data:
                     elem_id = elem_dict['id']
@@ -175,6 +155,8 @@ class YamlParser:
                         self.domain.add_element(Truss3D(elem_id, nodes, material, A=A))
                     else:
                         raise ValueError(f"Tipo de elemento {e_type} no soportado.")
+            elif elements_data:
+                raise ValueError("El bloque 'elements' debe ser una lista de diccionarios con formato moderno.")
 
         # 4. Aplicar Condiciones de Frontera (Desplazamientos)
         for node_id, bcs in data.get('boundary_conditions', {}).items():
