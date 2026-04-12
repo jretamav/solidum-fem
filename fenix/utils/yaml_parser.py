@@ -159,11 +159,11 @@ class YamlParser:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios con formato moderno.")
 
         # 4. Aplicar Condiciones de Frontera (Desplazamientos)
-        bcs_data = data.get('boundary_conditions', [])
-        if isinstance(bcs_data, dict) and bcs_data:
+        bcs_data = data.get('boundary_conditions', []) or []
+        if not isinstance(bcs_data, list):
             raise ValueError("El bloque 'boundary_conditions' debe ser una lista de diccionarios.")
-        bcs_by_node = data.get('boundary_conditions_by_node', [])
-        if isinstance(bcs_by_node, dict) and bcs_by_node:
+        bcs_by_node = data.get('boundary_conditions_by_node', []) or []
+        if not isinstance(bcs_by_node, list):
             raise ValueError("El bloque 'boundary_conditions_by_node' debe ser una lista de diccionarios.")
         
         for bc in bcs_data + bcs_by_node:
