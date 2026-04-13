@@ -496,6 +496,61 @@ output:
 \textbf{Interpretación de Resultados Esperados:} El solucionador dividirá la carga masiva en 30 incrementos. Durante los primeros 10 pasos (asumiendo comportamiento elástico lineal), el \textit{NonlinearSolver} convergerá casi instantáneamente en 1 a 2 iteraciones por paso. Cuando la concentración de esfuerzos de Von Mises en la periferia superior del orificio exceda los 250 MPa, el algoritmo calculará la matriz constitutiva elastoplástica de \textit{Return Mapping}. Observará un aumento en las iteraciones requeridas de Newton-Raphson. En ParaView, la variable \texttt{Internal\_State} exhibirá un mapa de calor donde el valor se aleja de cero, indicando las zonas de deformación permanente (plástica).
 
 % ==========================================
+\chapter{Uso Avanzado: API Programática (Python)}
+% ==========================================
+Aunque Fenix FEM fomenta el modelado guiado por datos (\textit{Data-Driven}) mediante archivos YAML, su arquitectura subyacente de código limpio permite importarlo y utilizarlo directamente como una librería nativa de Python. 
+
+Esta metodología avanzada resulta indispensable para escenarios de ingeniería e investigación tales como:
+\begin{itemize}
+    \item \textbf{Optimización Paramétrica:} Creación de bucles \texttt{for} para ejecutar docenas de simulaciones variando un parámetro (ej. el espesor de una placa) y trazar curvas de comportamiento óptimo.
+    \item \textbf{Generación Procedural de Mallas:} Construcción de dominios geométricos complejos, fractales o repetitivos empleando funciones trigonométricas directamente en el código.
+    \item \textbf{Inteligencia Artificial:} Acoplamiento del motor matemático a modelos de \textit{Machine Learning} o algoritmos de evolución genética para encontrar formas topológicas óptimas.
+\end{itemize}
+
+\section{El Patrón Fachada (\textit{Facade})}
+Para facilitar la legibilidad del código de los \textit{scripts}, Fenix FEM expone todos sus componentes estructurales y físicos directamente desde la raíz del paquete. El usuario ya no requiere conocer la estructura interna de las carpetas.
+
+\begin{lstlisting}[language=Python, caption=Script estructural con la API programática de Fenix FEM]
+import numpy as np
+from fenix import Domain, VonMises2D, Quad4, Assembler, NonlinearSolver, VtkExporter
+
+# 1. Definir el Dominio Físico y sus Nodos
+domain = Domain()
+n1 = domain.add_node(1, [0.0, 0.0])
+n2 = domain.add_node(2, [1.0, 0.0])
+n3 = domain.add_node(3, [1.0, 1.0])
+n4 = domain.add_node(4, [0.0, 1.0])
+
+# 2. Instanciar Material y Conectividad del Elemento
+acero = VonMises2D(E=200e9, nu=0.3, sigma_y=250e6, H=2e9)
+placa = Quad4(element_id=1, nodes=[n1, n2, n3, n4], material=acero, thickness=0.1)
+domain.add_element(placa)
+
+# 3. Restricciones Cinemáticas (Condiciones de Dirichlet)
+n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0)
+n4.fix_dof('ux', 0.0); n4.fix_dof('uy', 0.0)
+
+# Indexar variables algebraicas
+domain.generate_equation_numbers()
+
+# 4. Cargas Externas (Condiciones de Neumann)
+F_ext = np.zeros(domain.total_dofs)
+F_ext[n2.dofs['ux']] = 150000.0  # Traccion nodal
+F_ext[n3.dofs['ux']] = 150000.0
+
+# 5. Orquestación y Solución del Sistema No Lineal
+assembler = Assembler(domain)
+solver = NonlinearSolver(assembler, num_steps=10, tol=1e-5, adaptive=True)
+
+# Vector global de desplazamientos
+U = solver.solve(F_ext)
+
+# 6. Telemetría y Exportación Científica
+exporter = VtkExporter(domain)
+exporter.export("resultados_script.vtu", U=U, F_ext=F_ext)
+\end{lstlisting}
+
+% ==========================================
 \chapter{Diagnóstico y Resolución de Problemas (Troubleshooting)}
 % ==========================================
 El modelado estructural no lineal es matemáticamente complejo. A continuación se presentan las causas fundamentales de la interrupción en el orquestador de Fenix FEM y sus potenciales soluciones.
