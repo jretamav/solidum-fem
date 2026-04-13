@@ -382,6 +382,9 @@ Este modelo computacional evalúa el criterio de fluencia invariante J2. Simula 
 \begin{itemize}
     \item \textbf{Casos de Uso:} Es el modelo por excelencia en la industria metalmecánica. Ideal para aleaciones dúctiles, acero estructural y aluminio trabajando en regímenes post-fluencia y de grandes disipaciones energéticas.
 \end{itemize}
+\begin{advertencia}
+\textbf{Restricción Cinemática:} El algoritmo de \textit{Return Mapping} implementado en este material asume \textbf{estrictamente un estado de Deformación Plana (\texttt{plane\_strain})}. Si se intenta asignar explícitamente la hipótesis \texttt{plane\_stress} en la configuración del YAML, el analizador abortará la ejecución por seguridad para prevenir resultados físicamente inválidos.
+\end{advertencia}
 \begin{lstlisting}[language=yaml]
 materials:
   - id: 2

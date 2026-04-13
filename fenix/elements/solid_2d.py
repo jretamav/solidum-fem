@@ -5,7 +5,7 @@ from fenix.core.element import Element
 from fenix.core.node import Node
 from fenix.core.material import Material
 from fenix.core.element_state import ElementState
-from fenix.math.integration import GaussQuadrature
+from fenix.registry import QuadratureRegistry
 from fenix.constants import ZERO_JACOBIAN_TOL
 from numba import njit
 
@@ -108,25 +108,24 @@ class Quad4(Element):
         Instancia de la ley constitutiva del material (e.g., `Elastic2D`, `VonMises2D`).
     thickness : float, optional
         Espesor del elemento para estado plano de tensiones. Por defecto es 1.0.
-    quadrature : str, optional
-        Regla de integración de Gauss a utilizar, por defecto "2x2". Opciones: "1x1", "2x2".
+    quadrature : tuple, optional
+        Tupla conteniendo (puntos, pesos) de la regla de integración. Si es None, usa 2x2 por defecto.
         
     Notes
     -----
     El uso de integración reducida ("1x1") acelera el cálculo pero es altamente propenso a 
     generar modos de energía nula (*hourglassing*). Se recomienda usar con precaución.
     """
-    def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0, quadrature: str = "2x2"):
+    def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0, quadrature: tuple = None):
         super().__init__(element_id, nodes)
         self.material = material
         self.thickness = thickness
-        self.quadrature = quadrature if quadrature else "2x2"
         
         # Puntos de integración
-        if self.quadrature == "2x2":
-            self.points, self.weights = GaussQuadrature.get_points_2d_2x2()
+        if quadrature is None:
+            self.points, self.weights = QuadratureRegistry.get("2x2")
         else:
-            self.points, self.weights = GaussQuadrature.get_points_2d_2x2() # Fallback por seguridad
+            self.points, self.weights = quadrature
             
         self.num_ip = len(self.points)
         self.state = ElementState(self.num_ip, init_stress=np.zeros(3))

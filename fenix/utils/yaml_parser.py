@@ -4,8 +4,8 @@ import os
 import numpy as np
 from fenix.core.domain import Domain
 import fenix.registry_initialization
-from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry
-from fenix.math.integration import GaussQuadrature
+from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
+import fenix.math.integration  # Asegura el registro de las cuadraturas
 
 class YamlParser:
     """Lector automatizado de modelos estructurales desde archivos YAML."""
@@ -25,9 +25,8 @@ class YamlParser:
         if rule == "1x1":
             print("  [!] ADVERTENCIA: Se ha seleccionado integración reducida (1x1).")
             print("      Tenga cuidado con posibles modos de energía nula (Hourglassing).")
-            return GaussQuadrature.get_points_2d_1x1()
-        # Por defecto 2x2
-        return GaussQuadrature.get_points_2d_2x2()
+        
+        return QuadratureRegistry.get(rule)
 
     def parse(self) -> Domain:
         print(f"Leyendo modelo desde: {self.filepath} ...")

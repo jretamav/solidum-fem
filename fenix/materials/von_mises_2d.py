@@ -68,10 +68,32 @@ def _compute_j2_plasticity(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e):
 
 class VonMises2D(Material):
     """
-    Modelo de plasticidad J2 (Von Mises) con endurecimiento isotrópico.
-    Formulación estricta para Deformación Plana usando Return Mapping.
+    Modelo de plasticidad J2 (Von Mises) con endurecimiento isotrópico lineal.
+
+    IMPORTANTE: Esta implementación es estrictamente para **DEFORMACIÓN PLANA**
+    (plane strain, ε_zz = 0). El return mapping asume esta cinemática en la
+    descomposición volumétrica-desviadora. Usar con elementos Quad4/Tri3 que
+    tengan hypothesis='plane_stress' produce resultados físicamente incorrectos.
+
+    Parameters
+    ----------
+    E : float
+        Módulo de Young.
+    nu : float
+        Coeficiente de Poisson.
+    sigma_y : float
+        Tensión de fluencia inicial.
+    H : float, optional
+        Módulo de endurecimiento isotrópico (pendiente σ_y vs α). Default 0 (perfecto).
     """
-    def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0):
+    def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0, hypothesis: str = 'plane_strain'):
+        if hypothesis != 'plane_strain':
+            raise NotImplementedError(
+                "El material 'VonMises2D' actualmente solo soporta la hipótesis de 'plane_strain' (Deformación Plana). "
+                "Utilizarlo con 'plane_stress' produciría resultados físicamente incorrectos. "
+                "Se requiere un algoritmo de 'Return Mapping' diferente para esfuerzo plano."
+            )
+
         self.E = E
         self.nu = nu
         self.sigma_y = sigma_y

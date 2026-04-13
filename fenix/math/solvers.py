@@ -70,9 +70,13 @@ class NonlinearSolver:
                     break
                 
                 U_iter += delta_U
-                
-                error = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + ZERO_TOL)
-                print(f"  Iteración {iteration+1:2d} | Error relativo dU: {error:.4e}")
+
+                # Criterio dual: norma de desplazamiento Y norma de residuo de fuerza.
+                # Ambos deben converger para garantizar equilibrio.
+                err_disp = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + ZERO_TOL)
+                err_force = np.linalg.norm(R) / (np.linalg.norm(F_ext_step) + ZERO_TOL)
+                error = max(err_disp, err_force)
+                print(f"  Iteración {iteration+1:2d} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
                 
                 if error < self.tol:
                     print("  -> CONVERGENCIA ALCANZADA.")
@@ -223,8 +227,10 @@ class ArcLengthSolver:
                     dU_iter = dU_iter + dU_update
                 U_iter = U_current + dU_iter
                 
-                error = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + ZERO_TOL)
-                print(f"  Iter. {iteration+1:2d} | Factor Lambda: {lambda_iter:.4f} | Error dU: {error:.4e}")
+                err_disp = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + ZERO_TOL)
+                err_force = np.linalg.norm(R) / (np.linalg.norm(F_ext_ref) * (abs(lambda_iter) + ZERO_TOL) + ZERO_TOL)
+                error = max(err_disp, err_force)
+                print(f"  Iter. {iteration+1:2d} | λ={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
                 
                 if error < self.tol:
                     print(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")

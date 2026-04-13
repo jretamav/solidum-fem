@@ -247,6 +247,15 @@ class Frame2DEuler(Element):
     I : float
         Momento de inercia de la sección transversal respecto al eje de flexión (Z).
     """
+    # ... (previous content) ...
+    """
+    Notes
+    -----
+    **Limitación de No-Linealidad:** La no-linealidad de este elemento se evalúa
+    únicamente a partir de la deformación axial. El módulo tangente resultante (E_t)
+    se usa para escalar tanto la rigidez axial como la de flexión. Esto no captura
+    la plastificación progresiva de la sección debida a momentos flectores (rótulas plásticas).
+    """
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float, I: float):
         super().__init__(element_id, nodes)
         if len(nodes) != 2:
@@ -387,6 +396,14 @@ class Frame2DTimoshenko(Element):
     -----
     Previene automáticamente el bloqueo por cortante (*shear locking*) mediante 
     su formulación analítica exacta con factores de forma.
+    """
+    # ... (previous content) ...
+    """
+    Notes
+    -----
+    **Limitación de No-Linealidad:** Al igual que el elemento de Euler, la no-linealidad
+    se evalúa a partir de la deformación axial. El módulo tangente (E_t) resultante
+    escala toda la matriz de rigidez, lo que es una simplificación del comportamiento real de flexión no-lineal.
     """
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float, I: float, As: float, nu: float = 0.3):
         super().__init__(element_id, nodes)

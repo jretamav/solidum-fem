@@ -1,13 +1,21 @@
 # fenix_fem/fenix/utils/gmsh_parser.py
 import numpy as np
 from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad4, Tri3
+from fenix.registry import ElementRegistry
 from fenix.core.material import Material
 
 try:
     import meshio
 except ImportError:
     raise ImportError("Falta la librería 'meshio'. Instálala con: pip install meshio")
+
+# Mapeo de tipos de elemento de Gmsh/meshio a los nombres registrados en Fenix FEM.
+# Esto permite extender el soporte a nuevos elementos (ej. 'triangle6': 'Tri6')
+# sin modificar la lógica del parser.
+GMSH_TYPE_MAP = {
+    "quad": ("Quad4", [0, 1, 2, 3]),
+    "triangle": ("Tri3", [0, 1, 2]),
+}
 
 class GmshParser:
     """
@@ -59,14 +67,12 @@ class GmshParser:
             # Extraer tags fisicos del bloque actual si existen
             tags = mesh.cell_data["gmsh:physical"][i] if ("gmsh:physical" in mesh.cell_data) else None
             
-            # Busramos el bloque de elementos tipo "quad" (cuadriláteros de 4 nodos)
-            if block.type == "quad":
+            if block.type in GMSH_TYPE_MAP:
+                fenix_name, node_map_indices = GMSH_TYPE_MAP[block.type]
+
                 for j, connectivity in enumerate(block.data):
-                    # meshio devuelve índices base 0, por lo que sumamos 1
-                    n1 = self.domain.get_node(connectivity[0] + 1)
-                    n2 = self.domain.get_node(connectivity[1] + 1)
-                    n3 = self.domain.get_node(connectivity[2] + 1)
-                    n4 = self.domain.get_node(connectivity[3] + 1)
+                    # Mapeo de nodos basado en GMSH_TYPE_MAP
+                    nodes = [self.domain.get_node(connectivity[k] + 1) for k in node_map_indices]
                     
                     # Resolver propiedades a asignar
                     mat, thick, quad = default_material, default_thickness, default_quadrature
@@ -75,27 +81,26 @@ class GmshParser:
                         if tag in tag_to_name:
                             group_name = tag_to_name[tag]
                             if group_name in physical_props:
-                                mat, thick, quad = physical_props[group_name]
-                                
-                    element = Quad4(elem_id_counter, [n1, n2, n3, n4], mat, thick, quadrature=quad)
-                    self.domain.add_element(element)
-                    elem_id_counter += 1
-                    
-            elif block.type == "triangle":
-                for j, connectivity in enumerate(block.data):
-                    n1 = self.domain.get_node(connectivity[0] + 1)
-                    n2 = self.domain.get_node(connectivity[1] + 1)
-                    n3 = self.domain.get_node(connectivity[2] + 1)
-                    
-                    mat, thick, quad = default_material, default_thickness, default_quadrature
-                    if tags is not None and physical_props is not None:
-                        tag = int(tags[j])
-                        if tag in tag_to_name:
-                            group_name = tag_to_name[tag]
-                            if group_name in physical_props:
-                                mat, thick, _ = physical_props[group_name]
-                                
-                    element = Tri3(elem_id_counter, [n1, n2, n3], mat, thick)
+                                # Tri3 no usa cuadratura, así que la ignoramos si no está
+                                mat_prop, thick_prop, quad_prop = physical_props[group_name]
+                                mat = mat_prop
+                                thick = thick_prop
+                                if fenix_name != 'Tri3':
+                                    quad = quad_prop
+
+                    # Argumentos para el constructor del elemento
+                    elem_args = {
+                        'element_id': elem_id_counter,
+                        'nodes': nodes,
+                        'material': mat,
+                        'thickness': thick,
+                    }
+                    if fenix_name != 'Tri3':
+                        elem_args['quadrature'] = quad
+
+                    element = ElementRegistry.create(
+                        fenix_name, **elem_args
+                    )
                     self.domain.add_element(element)
                     elem_id_counter += 1
                     

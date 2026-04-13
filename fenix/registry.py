@@ -41,3 +41,17 @@ class SolverRegistry:
         if name not in cls._solvers:
             raise ValueError(f"Solucionador '{name}' no registrado. Disponibles: {', '.join(cls._solvers.keys())}")
         return cls._solvers[name](**kwargs)
+
+class QuadratureRegistry:
+    """Registry para reglas de integración (puntos, pesos)."""
+    _rules: Dict[str, tuple] = {}
+    
+    @classmethod
+    def register(cls, name: str, points: list, weights: list) -> None:
+        cls._rules[name] = (points, weights)
+        
+    @classmethod
+    def get(cls, name: str) -> tuple:
+        if name not in cls._rules:
+            raise ValueError(f"Cuadratura '{name}' no registrada. Disponibles: {', '.join(cls._rules.keys())}")
+        return cls._rules[name]

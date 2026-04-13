@@ -62,31 +62,46 @@ class VtkExporter:
             conn = [node_map[n.id] for n in elem.nodes]
             
             # Extraer variable histórica (ej. 'alpha' para plasticidad o 'damage' para daño)
+            # Compatible tanto con la API ElementState (elem.state.vars) como
+            # con elementos que aún exponen elem.state_vars directamente.
             state_val = 0.0
-            if hasattr(elem, 'state_vars') and elem.state_vars[0] is not None:
-                vals = [sv.get('alpha', sv.get('damage', 0.0)) for sv in elem.state_vars if sv is not None]
+            state_vars_list = None
+            if hasattr(elem, 'state') and hasattr(elem.state, 'vars'):
+                state_vars_list = elem.state.vars
+            elif hasattr(elem, 'state_vars'):
+                state_vars_list = elem.state_vars
+            if state_vars_list is not None:
+                vals = [sv.get('alpha', sv.get('damage', 0.0))
+                        for sv in state_vars_list if sv is not None]
                 if vals:
-                    state_val = sum(vals) / len(vals)  # Promedio del elemento
-                    
-            if type(elem).__name__ == 'Quad4': 
+                    state_val = sum(vals) / len(vals)
+
+            # Extraer esfuerzos comprometidos (committed) desde ElementState
+            def _avg_stress_from_elem(el):
+                if hasattr(el, 'state') and hasattr(el.state, 'stresses'):
+                    committed = [s for s in el.state.stresses if s is not None]
+                    if committed:
+                        return np.mean(committed, axis=0)
+                elif hasattr(el, 'stresses'):
+                    return np.mean(el.stresses, axis=0)
+                return None
+
+            if type(elem).__name__ == 'Quad4':
                 quad_conn.append(conn)
                 quad_state.append(state_val)
-                
-                # Extraer esfuerzos (promedio del elemento)
-                if hasattr(elem, 'stresses'):
-                    s_avg = np.mean(elem.stresses, axis=0) # [sigma_x, sigma_y, tau_xy]
+                s_avg = _avg_stress_from_elem(elem)
+                if s_avg is not None:
                     sx, sy, txy = s_avg[0], s_avg[1], s_avg[2]
-                    # Cálculo de Von Mises 2D
                     vm = np.sqrt(sx**2 + sy**2 - sx*sy + 3.0*txy**2)
                     quad_stresses.append([sx, sy, txy, vm])
                 else:
                     quad_stresses.append([0.0, 0.0, 0.0, 0.0])
-                    
+
             elif type(elem).__name__ == 'Tri3':
                 tri_conn.append(conn)
                 tri_state.append(state_val)
-                if hasattr(elem, 'stresses'):
-                    s_avg = np.mean(elem.stresses, axis=0)
+                s_avg = _avg_stress_from_elem(elem)
+                if s_avg is not None:
                     sx, sy, txy = s_avg[0], s_avg[1], s_avg[2]
                     vm = np.sqrt(sx**2 + sy**2 - sx*sy + 3.0*txy**2)
                     tri_stresses.append([sx, sy, txy, vm])
