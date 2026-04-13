@@ -2,6 +2,7 @@
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
+from fenix.constants import CONVERGENCE_TOL, ZERO_TOL
 
 class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
@@ -23,7 +24,7 @@ class LinearSolver:
 
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, tol=1e-5, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15):
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
@@ -70,7 +71,7 @@ class NonlinearSolver:
                 
                 U_iter += delta_U
                 
-                error = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + 1e-12)
+                error = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + ZERO_TOL)
                 print(f"  Iteración {iteration+1:2d} | Error relativo dU: {error:.4e}")
                 
                 if error < self.tol:
@@ -109,7 +110,7 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
-    def __init__(self, assembler, tol=1e-5, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15):
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
@@ -158,56 +159,71 @@ class ArcLengthSolver:
             sign = 1.0
             if step > 1 and np.dot(delta_U_step, du_t) < 0:
                 sign = -1.0
-                    
-            dlambda = sign * dl / (np.linalg.norm(du_t) + 1e-12)
+
+            dlambda = sign * dl / (np.linalg.norm(du_t) + ZERO_TOL)
+
+            # Si el paso predictor sobrepasaría max_lambda, fijar lambda exactamente
+            final_step = (sign > 0 and lambda_curr + dlambda >= self.max_lambda - ZERO_TOL)
+            if final_step:
+                dlambda = self.max_lambda - lambda_curr
+
             lambda_iter += dlambda
             dU_iter = dlambda * du_t
             U_iter += dU_iter
-            
+
             # --- 2. CORRECTOR ITERATIVO ---
             for iteration in range(self.max_iter):
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = lambda_iter * F_ext_ref - F_int_global
-                
+
                 K_t = K_global.copy()
                 F_t = F_ext_ref.copy()
-                
+
                 self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
                 self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=lambda_iter, U_current=U_iter)
-                
+
                 try:
                     du_R = spla.spsolve(K_global.tocsr(), R)
                     du_t = spla.spsolve(K_t.tocsr(), F_t)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular en corrector.")
                     break
-                    
-                # Ecuación cuadrática de restricción de Crisfield
-                dU_new = dU_iter + du_R
-                a = np.dot(du_t, du_t)
-                b = 2.0 * np.dot(dU_new, du_t)
-                c = np.dot(dU_new, dU_new) - dl**2
-                
-                det = b**2 - 4.0 * a * c
-                if det < 0:
-                    print("  -> Raíces imaginarias. La solución diverge del arco.")
-                    break
-                    
-                ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
-                ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
-                
-                # Elegir la raíz que produzca el menor ángulo con el incremento previo (evitar snap-back espurio)
-                theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
-                theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
-                ddlambda = ddl1 if theta1 > theta2 else ddl2
-                
+
+                if final_step:
+                    # Último paso: lambda fijo, solo corrección de desplazamientos (Newton-Raphson puro)
+                    ddlambda = 0.0
+                    dU_update = du_R
+                else:
+                    # Ecuación cuadrática de restricción de Crisfield
+                    dU_new = dU_iter + du_R
+                    a = np.dot(du_t, du_t)
+                    b = 2.0 * np.dot(dU_new, du_t)
+                    c = np.dot(dU_new, dU_new) - dl**2
+
+                    det = b**2 - 4.0 * a * c
+                    if det < 0:
+                        print("  -> Raíces imaginarias. La solución diverge del arco.")
+                        break
+
+                    ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
+                    ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
+
+                    # Elegir la raíz que produzca el menor ángulo con el incremento previo
+                    theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
+                    theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
+                    ddlambda = ddl1 if theta1 > theta2 else ddl2
+                    dU_update = du_R + ddlambda * du_t
+                    dU_iter = dU_new + ddlambda * du_t
+
                 # Actualizar iteraciones
                 lambda_iter += ddlambda
-                dU_update = du_R + ddlambda * du_t
-                dU_iter = dU_new + ddlambda * du_t
+                if not final_step:
+                    dU_iter = dU_iter  # ya actualizado arriba
+                else:
+                    dU_iter = dU_iter + dU_update
                 U_iter = U_current + dU_iter
                 
-                error = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + 1e-12)
+                error = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + ZERO_TOL)
                 print(f"  Iter. {iteration+1:2d} | Factor Lambda: {lambda_iter:.4f} | Error dU: {error:.4e}")
                 
                 if error < self.tol:
