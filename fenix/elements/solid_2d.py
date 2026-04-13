@@ -4,7 +4,9 @@ from typing import List
 from fenix.core.element import Element
 from fenix.core.node import Node
 from fenix.core.material import Material
+from fenix.core.element_state import ElementState
 from fenix.math.integration import GaussQuadrature
+from fenix.constants import ZERO_JACOBIAN_TOL
 from numba import njit
 
 @njit
@@ -24,7 +26,7 @@ def _compute_kinematics(xi, eta, coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
     
-    if detJ <= 0.0:
+    if detJ <= ZERO_JACOBIAN_TOL:
         raise ValueError("Jacobiano negativo o cero detectado en elemento Quad4. Revisa la conectividad o distorsion.")
     
     # Inversa del Jacobiano segura
@@ -68,7 +70,7 @@ def _compute_kinematics_tri3(coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
     
-    if detJ <= 0.0:
+    if detJ <= ZERO_JACOBIAN_TOL:
         raise ValueError("Jacobiano negativo o cero detectado en elemento Tri3.")
     
     invJ = np.zeros((2, 2), dtype=np.float64)
@@ -89,6 +91,31 @@ def _compute_kinematics_tri3(coords):
     return B, detJ
 
 class Quad4(Element):
+    """
+    Elemento cuadrilátero bilineal 2D isoparamétrico con integración de Gauss.
+    
+    Implementa un elemento finito de 4 nodos para análisis en estado plano (tensión o 
+    deformación). Utiliza por defecto una cuadratura de Gauss completa (2x2) para evitar 
+    inestabilidades numéricas.
+    
+    Parameters
+    ----------
+    element_id : int
+        Identificador único numérico del elemento.
+    nodes : List[Node]
+        Lista de exactamente 4 objetos `Node`, definidos preferentemente en sentido antihorario.
+    material : Material
+        Instancia de la ley constitutiva del material (e.g., `Elastic2D`, `VonMises2D`).
+    thickness : float, optional
+        Espesor del elemento para estado plano de tensiones. Por defecto es 1.0.
+    quadrature : str, optional
+        Regla de integración de Gauss a utilizar, por defecto "2x2". Opciones: "1x1", "2x2".
+        
+    Notes
+    -----
+    El uso de integración reducida ("1x1") acelera el cálculo pero es altamente propenso a 
+    generar modos de energía nula (*hourglassing*). Se recomienda usar con precaución.
+    """
     def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0, quadrature: str = "2x2"):
         super().__init__(element_id, nodes)
         self.material = material
@@ -102,12 +129,8 @@ class Quad4(Element):
             self.points, self.weights = GaussQuadrature.get_points_2d_2x2() # Fallback por seguridad
             
         self.num_ip = len(self.points)
-        # Variables internas dependientes dinámicamente de la regla de integración
-        self.state_vars = [None] * self.num_ip
-        self.state_vars_trial = [None] * self.num_ip
-        self.stresses = [np.zeros(3) for _ in range(self.num_ip)]
-        self.stresses_trial = [np.zeros(3) for _ in range(self.num_ip)]
-        
+        self.state = ElementState(self.num_ip, init_stress=np.zeros(3))
+
         for node in self.nodes:
             node.add_dof('ux')
             node.add_dof('uy')
@@ -117,8 +140,7 @@ class Quad4(Element):
 
     def commit_state(self):
         """Guarda permanentemente las variables internas una vez que el paso de carga converge."""
-        self.state_vars = self.state_vars_trial.copy()
-        self.stresses = self.stresses_trial.copy()
+        self.state.commit()
 
     def compute_element_state(self, u_e: np.ndarray):
         """Calcula K_tangente local y Fuerzas Internas dadas las deformaciones actuales."""
@@ -132,10 +154,9 @@ class Quad4(Element):
             B, detJ = _compute_kinematics(xi, eta, coords)
             strain = B @ u_e
             
-            # Llamada constitutiva con memoria histórica
-            sigma, C_tangent, new_state = self.material.compute_state(strain, self.state_vars[idx])
-            self.state_vars_trial[idx] = new_state
-            self.stresses_trial[idx] = sigma
+            sigma, C_tangent, new_state = self.material.compute_state(strain, self.state.vars[idx])
+            self.state.vars_trial[idx] = new_state
+            self.state.stresses_trial[idx] = sigma
             
             K_contrib, F_contrib = _compute_integrands(B, C_tangent, sigma, detJ, w, self.thickness)
             K_e += K_contrib
@@ -162,7 +183,7 @@ class Quad4(Element):
             xi, eta = p
             B, _ = _compute_kinematics(xi, eta, coords)
             strain = B @ u_e
-            sigma, _, _ = self.material.compute_state(strain, self.state_vars[idx])
+            sigma, _, _ = self.material.compute_state(strain, self.state.vars[idx])
             avg_strain += strain
             avg_stress += sigma
             
@@ -171,26 +192,53 @@ class Quad4(Element):
 
 
 class Tri3(Element):
+    """
+    Elemento triangular lineal 2D de deformación constante (CST - Constant Strain Triangle).
+    
+    Implementa un elemento finito de 3 nodos con un único punto de integración central. 
+    Es computacionalmente eficiente pero matemáticamente rígido.
+    
+    Parameters
+    ----------
+    element_id : int
+        Identificador único numérico del elemento.
+    nodes : List[Node]
+        Lista de exactamente 3 objetos `Node`, definidos preferentemente en sentido antihorario.
+    material : Material
+        Instancia de la ley constitutiva del material.
+    thickness : float, optional
+        Espesor del elemento para estado plano de tensiones. Por defecto es 1.0.
+        
+    Notes
+    -----
+    Este elemento es propenso a sufrir de bloqueo por cortante (*shear locking*) bajo flexión.
+    Se recomienda priorizar mallas con elementos `Quad4` y usar `Tri3` únicamente 
+    para transiciones de malla en geometrías muy complejas.
+    """
     def __init__(self, element_id: int, nodes: List[Node], material: Material, thickness: float = 1.0):
         super().__init__(element_id, nodes)
         self.material = material
         self.thickness = thickness
         
-        self.state_vars = [None]
-        self.state_vars_trial = [None]
-        self.stresses = [np.zeros(3)]
-        self.stresses_trial = [np.zeros(3)]
+        self.state = ElementState(1, init_stress=np.zeros(3))
         
         for node in self.nodes:
             node.add_dof('ux')
             node.add_dof('uy')
 
+    @property
+    def state_vars(self):
+        return self.state.vars
+        
+    @property
+    def stresses(self):
+        return self.state.stresses
+
     def get_dofs(self) -> List[str]:
         return ['ux', 'uy', 'ux', 'uy', 'ux', 'uy']
 
     def commit_state(self):
-        self.state_vars = self.state_vars_trial.copy()
-        self.stresses = self.stresses_trial.copy()
+        self.state.commit()
 
     def compute_element_state(self, u_e: np.ndarray):
         coords = self.get_coordinate_matrix(ndim=2)
@@ -198,9 +246,9 @@ class Tri3(Element):
         B, detJ = _compute_kinematics_tri3(coords)
         strain = B @ u_e
         
-        sigma, C_tangent, new_state = self.material.compute_state(strain, self.state_vars[0])
-        self.state_vars_trial[0] = new_state
-        self.stresses_trial[0] = sigma
+        sigma, C_tangent, new_state = self.material.compute_state(strain, self.state.vars[0])
+        self.state.vars_trial[0] = new_state
+        self.state.stresses_trial[0] = sigma
         
         # 1 punto de integración central con peso 0.5 (Área del triángulo en coord. naturales)
         K_e, F_int_e = _compute_integrands(B, C_tangent, sigma, detJ, 0.5, self.thickness)
@@ -221,5 +269,5 @@ class Tri3(Element):
         
         B, _ = _compute_kinematics_tri3(coords)
         strain = B @ u_e
-        sigma, _, _ = self.material.compute_state(strain, self.state_vars[0])
+        sigma, _, _ = self.material.compute_state(strain, self.state.vars[0])
         return {'stress': sigma, 'strain': strain}

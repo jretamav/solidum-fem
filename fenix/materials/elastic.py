@@ -1,6 +1,7 @@
 # fenix_fem/fenix/materials/elastic.py
+from fenix.core.material import Material
 
-class Elastic1D:
+class Elastic1D(Material):
     def __init__(self, E):
         self.E = E
 

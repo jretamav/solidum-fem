@@ -3,15 +3,8 @@ import yaml
 import os
 import numpy as np
 from fenix.core.domain import Domain
-from fenix.materials.von_mises_2d import VonMises2D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.damage_1d import IsotropicDamage1D
-from fenix.elements.solid_2d import Quad4, Tri3
-from fenix.elements.structural import Frame2DEuler, Frame2DTimoshenko, Truss2D, Truss3D
-from fenix.math.solvers import LinearSolver, NonlinearSolver
+import fenix.registry_initialization
+from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry
 from fenix.math.integration import GaussQuadrature
 
 class YamlParser:
@@ -41,62 +34,39 @@ class YamlParser:
         with open(self.filepath, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
 
-        # 1. Instanciar Nodos
+        self._parse_nodes(data)
+        self._parse_materials(data)
+        self._parse_mesh_or_elements(data)
+        self._parse_boundary_conditions(data)
+        self._parse_point_loads_config(data)
+        
+        self.output_config = data.get('output', {})
+        self.solver_config = data.get('solver', {})
+        return self.domain
+
+    def _parse_nodes(self, data: dict):
         nodes_data = data.get('nodes', [])
+        if not nodes_data: return
         if isinstance(nodes_data, list):
             for node_dict in nodes_data:
                 self.domain.add_node(node_dict['id'], node_dict['coords'])
         else:
-            raise ValueError("El bloque 'nodes' debe ser una lista de diccionarios con formato moderno.")
+            raise ValueError("El bloque 'nodes' debe ser una lista de diccionarios.")
 
-        # 2. Instanciar Materiales
+    def _parse_materials(self, data: dict):
         for mat_data in data.get('materials', []):
             mat_id = mat_data['id']
             mat_type = mat_data['type']
-            if mat_type == 'VonMises2D':
-                self.materials[mat_id] = VonMises2D(
-                    E=float(mat_data['E']),
-                    nu=float(mat_data['nu']),
-                    sigma_y=float(mat_data['sigma_y']),
-                    H=float(mat_data.get('H', 0.0))
-                )
-            elif mat_type == 'Elastic2D':
-                self.materials[mat_id] = Elastic2D(
-                    E=float(mat_data['E']),
-                    nu=float(mat_data['nu']),
-                    hypothesis=mat_data.get('hypothesis', 'plane_stress')
-                )
-            elif mat_type == 'Elastic1D':
-                self.materials[mat_id] = Elastic1D(E=float(mat_data['E']))
-            elif mat_type == 'Elastoplastic1D':
-                self.materials[mat_id] = Elastoplastic1D(
-                    E=float(mat_data['E']),
-                    sigma_y=float(mat_data['sigma_y']),
-                    H=float(mat_data.get('H', 0.0))
-                )
-            elif mat_type == 'IsotropicDamage2D':
-                self.materials[mat_id] = IsotropicDamage2D(
-                    E=float(mat_data['E']),
-                    nu=float(mat_data['nu']),
-                    kappa_0=float(mat_data['kappa_0']),
-                    alpha=float(mat_data['alpha']),
-                    hypothesis=mat_data.get('hypothesis', 'plane_stress')
-                )
-            elif mat_type == 'IsotropicDamage1D':
-                self.materials[mat_id] = IsotropicDamage1D(
-                    E=float(mat_data['E']),
-                    kappa_0=float(mat_data['kappa_0']),
-                    alpha=float(mat_data['alpha'])
-                )
+            kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
+            self.materials[mat_id] = MaterialRegistry.create(mat_type, **kwargs)
 
-        # 3. Malla Externa (Gmsh) o Malla Manual
+    def _parse_mesh_or_elements(self, data: dict):
         mesh_file = data.get('mesh', None)
         if mesh_file:
             from fenix.utils.gmsh_parser import GmshParser
             base_dir = os.path.dirname(self.filepath)
             mesh_path = os.path.join(base_dir, mesh_file)
             
-            # Evitar error si el archivo se llama "placa" en lugar de "placa.msh"
             if not os.path.exists(mesh_path):
                 mesh_path_sin_ext = os.path.join(base_dir, mesh_file.replace('.msh', ''))
                 if os.path.exists(mesh_path_sin_ext):
@@ -109,7 +79,6 @@ class YamlParser:
             default_material = self.materials.get(default_mat_id)
             default_quadrature = self._get_quadrature(default_quad_str)
             
-            # Extraer mapeo explícito de materiales a grupos físicos si existe
             physical_props = {}
             for group_name, props in data.get('mesh_physical_groups', {}).items():
                 mat = self.materials.get(props.get('material', default_mat_id))
@@ -122,7 +91,6 @@ class YamlParser:
         else:
             elements_data = data.get('elements', [])
             if isinstance(elements_data, list):
-                # Formato moderno (Lista de diccionarios)
                 for elem_dict in elements_data:
                     elem_id = elem_dict['id']
                     e_type = elem_dict['type']
@@ -132,54 +100,34 @@ class YamlParser:
                     nodes = [self.domain.get_node(nid) for nid in node_ids]
                     material = self.materials[mat_id]
                     
-                    if e_type == 'Quad4':
-                        thickness = float(elem_dict.get('thickness', 1.0))
-                        self.domain.add_element(Quad4(elem_id, nodes, material, thickness))
-                    elif e_type == 'Tri3':
-                        thickness = float(elem_dict.get('thickness', 1.0))
-                        self.domain.add_element(Tri3(elem_id, nodes, material, thickness))
-                    elif e_type == 'Frame2DEuler':
-                        A = float(elem_dict.get('A', 0.0))
-                        I = float(elem_dict.get('I', 0.0))
-                        self.domain.add_element(Frame2DEuler(elem_id, nodes, material, A=A, I=I))
-                    elif e_type == 'Frame2DTimoshenko':
-                        A = float(elem_dict.get('A', 0.0))
-                        I = float(elem_dict.get('I', 0.0))
-                        As = float(elem_dict.get('As', 0.0))
-                        self.domain.add_element(Frame2DTimoshenko(elem_id, nodes, material, A=A, I=I, As=As))
-                    elif e_type == 'Truss2D':
-                        A = float(elem_dict.get('A', 0.0))
-                        self.domain.add_element(Truss2D(elem_id, nodes, material, A=A))
-                    elif e_type == 'Truss3D':
-                        A = float(elem_dict.get('A', 0.0))
-                        self.domain.add_element(Truss3D(elem_id, nodes, material, A=A))
-                    else:
-                        raise ValueError(f"Tipo de elemento {e_type} no soportado.")
+                    kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes')}
+                    self.domain.add_element(ElementRegistry.create(e_type, element_id=elem_id, nodes=nodes, material=material, **kwargs))
             elif elements_data:
-                raise ValueError("El bloque 'elements' debe ser una lista de diccionarios con formato moderno.")
+                raise ValueError("El bloque 'elements' debe ser una lista de diccionarios.")
 
-        # 4. Aplicar Condiciones de Frontera (Desplazamientos)
+    def _parse_boundary_conditions(self, data: dict):
         bcs_data = data.get('boundary_conditions', []) or []
-        if not isinstance(bcs_data, list):
-            raise ValueError("El bloque 'boundary_conditions' debe ser una lista de diccionarios.")
         bcs_by_node = data.get('boundary_conditions_by_node', []) or []
-        if not isinstance(bcs_by_node, list):
-            raise ValueError("El bloque 'boundary_conditions_by_node' debe ser una lista de diccionarios.")
         
         for bc in bcs_data + bcs_by_node:
             node_id = bc.get('node_id')
             if node_id is None:
                 raise ValueError("Falta 'node_id' en una condición de frontera.")
             node = self.domain.get_node(node_id)
-            if not node: continue
+            if not node: 
+                raise ValueError(f"Nodo {node_id} no existe en la malla para aplicar condición de frontera.")
             for dof, value in bc.items():
                 if dof != 'node_id':
                     node.fix_dof(dof, float(value))
 
-        # 5. Aplicar Condiciones de Frontera por Coordenadas (Para Gmsh)
         bcs_coord = data.get('boundary_conditions_by_coord', [])
-        if isinstance(bcs_coord, dict) and bcs_coord:
-            raise ValueError("El bloque 'boundary_conditions_by_coord' debe ser una lista de diccionarios.")
+        if isinstance(bcs_coord, dict):
+            parsed_bcs = []
+            for k, v in bcs_coord.items():
+                if k in ['x_min', 'x_max', 'y_min', 'y_max']: v['loc'] = k
+                parsed_bcs.append(v)
+            bcs_coord = parsed_bcs
+            
         if bcs_coord and self.domain.nodes:
             x_coords = [n.coordinates[0] for n in self.domain.nodes.values() if n.dofs]
             y_coords = [n.coordinates[1] for n in self.domain.nodes.values() if n.dofs]
@@ -206,10 +154,10 @@ class YamlParser:
                             for dof, value in bcs.items():
                                 if dof not in ['tol', 'coord', 'val', 'loc']: node.fix_dof(dof, float(value))
 
-        # 5.5 Aplicar Condiciones de Frontera por Grupos Físicos (Gmsh)
         bcs_group = data.get('boundary_conditions_by_group', [])
-        if isinstance(bcs_group, dict) and bcs_group:
-            raise ValueError("El bloque 'boundary_conditions_by_group' debe ser una lista de diccionarios.")
+        if isinstance(bcs_group, dict):
+            bcs_group = [{'group_name': k, **v} for k, v in bcs_group.items()]
+            
         if bcs_group and hasattr(self.domain, 'physical_groups'):
             for bcs in bcs_group:
                 group_name = bcs.get('group_name')
@@ -220,25 +168,18 @@ class YamlParser:
                             for dof, value in bcs.items():
                                 if dof not in ['group_name']: node.fix_dof(dof, float(value))
 
-        # 6. Guardar configuración de cargas para ensamblarlas después
+    def _parse_point_loads_config(self, data: dict):
         self.point_loads = data.get('point_loads', [])
-        if isinstance(self.point_loads, dict) and self.point_loads:
-            raise ValueError("El bloque 'point_loads' debe ser una lista de diccionarios.")
         self.point_loads_by_node = data.get('point_loads_by_node', [])
-        if isinstance(self.point_loads_by_node, dict) and self.point_loads_by_node:
-            raise ValueError("El bloque 'point_loads_by_node' debe ser una lista de diccionarios.")
+        
+        p_loads_coord = data.get('point_loads_by_coord', [])
+        self.point_loads_by_coord = list(p_loads_coord.values()) if isinstance(p_loads_coord, dict) else p_loads_coord
             
-        self.point_loads_by_coord = data.get('point_loads_by_coord', [])
-        if isinstance(self.point_loads_by_coord, dict) and self.point_loads_by_coord:
-            raise ValueError("El bloque 'point_loads_by_coord' debe ser una lista de diccionarios.")
-            
-        self.point_loads_by_group = data.get('point_loads_by_group', [])
-        if isinstance(self.point_loads_by_group, dict) and self.point_loads_by_group:
-            raise ValueError("El bloque 'point_loads_by_group' debe ser una lista de diccionarios.")
-
-        self.output_config = data.get('output', {})
-        self.solver_config = data.get('solver', {})
-        return self.domain
+        p_loads_group = data.get('point_loads_by_group', [])
+        if isinstance(p_loads_group, dict):
+            self.point_loads_by_group = [{'group_name': k, **v} for k, v in p_loads_group.items()]
+        else:
+            self.point_loads_by_group = p_loads_group
         
     def get_external_forces(self) -> np.ndarray:
         """Construye el vector de fuerzas externas global F_ext."""
@@ -295,12 +236,5 @@ class YamlParser:
     def get_solver(self, assembler):
         """Construye y retorna el solver dinámicamente según la configuración YAML."""
         s_type = self.solver_config.get('type', 'LinearSolver')
-        if s_type == 'NonlinearSolver':
-            return NonlinearSolver(
-                assembler,
-                tol=float(self.solver_config.get('tol', 1e-5)),
-                max_iter=int(self.solver_config.get('max_iter', 15)),
-                num_steps=int(self.solver_config.get('num_steps', 10)),
-                adaptive=self.solver_config.get('adaptive', True)
-            )
-        return LinearSolver(assembler)
+        kwargs = {k: v for k, v in self.solver_config.items() if k != 'type'}
+        return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

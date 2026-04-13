@@ -2,6 +2,7 @@
 import numpy as np
 import math
 from fenix.core.material import Material
+from fenix.constants import PLASTIC_YIELD_TOL
 from numba import njit
 
 @njit
@@ -24,7 +25,7 @@ def _compute_j2_plasticity(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e):
     yield_stress = sigma_y + H * alpha_old
     f_trial = norm_s_trial - math.sqrt(2.0 / 3.0) * yield_stress
     
-    if f_trial <= 1e-9:
+    if f_trial <= PLASTIC_YIELD_TOL:
         sigma = C_e @ strain
         return sigma, C_e.copy(), eps_p_old.copy(), alpha_old
         

@@ -1,6 +1,7 @@
 # fenix_fem/fenix/materials/plastic_1d.py
 import numpy as np
 from fenix.core.material import Material
+from fenix.constants import PLASTIC_YIELD_TOL
 
 class Elastoplastic1D(Material):
     """
@@ -26,7 +27,7 @@ class Elastoplastic1D(Material):
         yield_stress = self.sigma_y + self.H * alpha_old
         f = abs(sigma_trial) - yield_stress
 
-        if f <= 1e-9:
+        if f <= PLASTIC_YIELD_TOL:
             # Paso Elástico (Adentro de la superficie de fluencia)
             sigma = sigma_trial
             E_t = self.E

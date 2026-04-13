@@ -2,6 +2,7 @@
 import numpy as np
 from fenix.core.material import Material
 from fenix.materials.elastic_2d import Elastic2D
+from fenix.constants import DAMAGE_MAX
 
 class IsotropicDamage2D(Material):
     """
@@ -26,7 +27,7 @@ class IsotropicDamage2D(Material):
             d = 0.0
         else:
             d = 1.0 - (self.kappa_0 / kappa_new) * np.exp(-self.alpha * (kappa_new - self.kappa_0))
-            d = min(d, 0.999) # Evitar singularidad numérica
+            d = min(d, DAMAGE_MAX) # Evitar singularidad numérica
             
         # 4. Esfuerzo y tensor constitutivo secante
         _, Ce = self.elastic_base.compute_state(np.zeros(3))

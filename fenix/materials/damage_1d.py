@@ -1,6 +1,7 @@
 # fenix_fem/fenix/materials/damage_1d.py
 import math
 from fenix.core.material import Material
+from fenix.constants import DAMAGE_MAX
 
 class IsotropicDamage1D(Material):
     """
@@ -26,7 +27,7 @@ class IsotropicDamage1D(Material):
             d = 0.0
         else:
             d = 1.0 - (self.kappa_0 / kappa_new) * math.exp(-self.alpha * (kappa_new - self.kappa_0))
-            d = min(d, 0.999)  # Evitar singularidad numérica en la matriz de rigidez
+            d = min(d, DAMAGE_MAX)  # Evitar singularidad numérica en la matriz de rigidez
             
         # 4. Esfuerzo y módulo secante
         E_sec = (1.0 - d) * self.E
