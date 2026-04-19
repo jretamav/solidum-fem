@@ -16,4 +16,9 @@ __pycache__/
 *_text_export.txt
 
 # Configuración local del IDE / Claude Code
-.claude/
+# Excluye todo .claude/ excepto contenido que debe viajar con el repo
+# (skills, agents y commands son herramientas del proyecto, no config local).
+.claude/*
+!.claude/skills/
+!.claude/agents/
+!.claude/commands/

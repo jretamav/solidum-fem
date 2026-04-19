@@ -19,8 +19,12 @@ def _discover_package(package_name: str) -> None:
 
 
 def initialize() -> None:
-    """Carga todos los materiales, elementos, solvers y cuadraturas registrables."""
+    """Carga todos los materiales, elementos, solvers y cuadraturas registrables.
+
+    `fenix.math` se descubre como paquete completo: cubre `solvers.py`,
+    `integration.py`, `assembly.py` y cualquier `solver_*.py` futuro que el
+    usuario añada con su propio decorador.
+    """
     _discover_package("fenix.materials")
     _discover_package("fenix.elements")
-    importlib.import_module("fenix.math.solvers")
-    importlib.import_module("fenix.math.integration")
+    _discover_package("fenix.math")
