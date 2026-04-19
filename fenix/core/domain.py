@@ -23,11 +23,12 @@ class Domain:
             raise ValueError(f"El elemento {element.id} ya existe.")
         self.elements[element.id] = element
 
-    def generate_equation_numbers(self):
+    def generate_equation_numbers(self, verbose: bool = False):
         eq_number = 0
         for node_id, node in self.nodes.items():
             for dof_name in node.dofs.keys():
                 node.dofs[dof_name] = eq_number
                 eq_number += 1
         self.total_dofs = eq_number
-        print(f"Numeración completada. Grados de libertad totales: {self.total_dofs}")
+        if verbose:
+            print(f"Numeración completada. Grados de libertad totales: {self.total_dofs}")

@@ -7,6 +7,19 @@ import fenix.registry_initialization
 from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
 import fenix.math.integration  # Asegura el registro de las cuadraturas
 
+
+class YamlValidationError(Exception):
+    """Error de validación del archivo YAML de entrada.
+
+    Acumula todos los problemas encontrados y los presenta juntos
+    para que el usuario pueda corregirlos en una sola pasada.
+    """
+    def __init__(self, errors: list):
+        self.errors = errors
+        lines = [f"  [{i+1}] {e}" for i, e in enumerate(errors)]
+        super().__init__("\n\nEl archivo YAML contiene los siguientes errores:\n" + "\n".join(lines))
+
+
 class YamlParser:
     """Lector automatizado de modelos estructurales desde archivos YAML."""
     def __init__(self, filepath: str):
@@ -33,15 +46,152 @@ class YamlParser:
         with open(self.filepath, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
 
+        if not isinstance(data, dict) or not data:
+            raise YamlValidationError(["El archivo YAML está vacío o no tiene formato de mapa clave-valor."])
+
+        errors = self._validate(data)
+        if errors:
+            raise YamlValidationError(errors)
+
         self._parse_nodes(data)
         self._parse_materials(data)
         self._parse_mesh_or_elements(data)
         self._parse_boundary_conditions(data)
         self._parse_point_loads_config(data)
-        
+
         self.output_config = data.get('output', {})
         self.solver_config = data.get('solver', {})
         return self.domain
+
+    def _validate(self, data: dict) -> list:
+        """Valida la estructura del YAML y retorna una lista de errores encontrados.
+
+        No lanza excepción: acumula todos los problemas para reportarlos juntos.
+        """
+        errors = []
+
+        has_mesh = bool(data.get('mesh'))
+        has_nodes = bool(data.get('nodes'))
+        has_elements = bool(data.get('elements'))
+
+        # --- Estructura top-level ---
+        if not has_mesh and not has_nodes:
+            errors.append("Falta el bloque 'nodes' (o 'mesh'). El modelo no tiene geometría definida.")
+
+        if not has_mesh and has_elements and not data.get('materials'):
+            errors.append("Falta el bloque 'materials'. Se definieron elementos pero no hay materiales.")
+
+        # --- Nodos ---
+        known_node_ids = set()
+        nodes_data = data.get('nodes', [])
+        if isinstance(nodes_data, list):
+            for i, node in enumerate(nodes_data):
+                ctx = f"nodes[{i}]"
+                if not isinstance(node, dict):
+                    errors.append(f"{ctx}: cada nodo debe ser un diccionario, se encontró {type(node).__name__}.")
+                    continue
+                if 'id' not in node:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+                else:
+                    nid = node['id']
+                    if nid in known_node_ids:
+                        errors.append(f"{ctx}: id de nodo duplicado ({nid}).")
+                    known_node_ids.add(nid)
+                if 'coords' not in node:
+                    errors.append(f"{ctx} (id={node.get('id', '?')}): falta el campo obligatorio 'coords'.")
+                else:
+                    coords = node['coords']
+                    if not isinstance(coords, (list, tuple)) or len(coords) not in (2, 3):
+                        errors.append(f"{ctx} (id={node.get('id', '?')}): 'coords' debe ser una lista de 2 o 3 números, se encontró: {coords!r}.")
+        elif nodes_data:
+            errors.append("El bloque 'nodes' debe ser una lista de diccionarios.")
+
+        # --- Materiales ---
+        known_mat_ids = set()
+        registered_materials = set(MaterialRegistry._materials.keys())
+        for i, mat in enumerate(data.get('materials', [])):
+            ctx = f"materials[{i}]"
+            if not isinstance(mat, dict):
+                errors.append(f"{ctx}: cada material debe ser un diccionario.")
+                continue
+            if 'id' not in mat:
+                errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+            else:
+                known_mat_ids.add(mat['id'])
+            if 'type' not in mat:
+                errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
+            elif registered_materials and mat['type'] not in registered_materials:
+                errors.append(
+                    f"{ctx} (id={mat.get('id', '?')}): tipo de material desconocido '{mat['type']}'. "
+                    f"Disponibles: {sorted(registered_materials)}."
+                )
+
+        # --- Elementos (bloque inline, no mesh) ---
+        registered_elements = set(ElementRegistry._elements.keys())
+        elements_data = data.get('elements', [])
+        if isinstance(elements_data, list):
+            known_elem_ids = set()
+            for i, elem in enumerate(elements_data):
+                ctx = f"elements[{i}]"
+                if not isinstance(elem, dict):
+                    errors.append(f"{ctx}: cada elemento debe ser un diccionario.")
+                    continue
+                eid = elem.get('id')
+                if eid is None:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+                elif eid in known_elem_ids:
+                    errors.append(f"{ctx}: id de elemento duplicado ({eid}).")
+                else:
+                    known_elem_ids.add(eid)
+
+                ctx = f"elements[{i}] (id={eid or '?'})"
+                if 'type' not in elem:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'type'.")
+                elif registered_elements and elem['type'] not in registered_elements:
+                    errors.append(
+                        f"{ctx}: tipo de elemento desconocido '{elem['type']}'. "
+                        f"Disponibles: {sorted(registered_elements)}."
+                    )
+                if 'material' not in elem:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'material'.")
+                elif elem['material'] not in known_mat_ids:
+                    errors.append(f"{ctx}: referencia a material inexistente (id={elem['material']}).")
+                if 'nodes' not in elem:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'nodes'.")
+                else:
+                    node_refs = elem['nodes']
+                    if not isinstance(node_refs, list) or len(node_refs) < 2:
+                        errors.append(f"{ctx}: 'nodes' debe ser una lista con al menos 2 ids de nodo.")
+                    elif known_node_ids:
+                        for nref in node_refs:
+                            if nref not in known_node_ids:
+                                errors.append(f"{ctx}: referencia a nodo inexistente (id={nref}).")
+
+        # --- Boundary conditions (por nodo) ---
+        for bc in (data.get('boundary_conditions', []) or []) + (data.get('boundary_conditions_by_node', []) or []):
+            if not isinstance(bc, dict):
+                continue
+            nid = bc.get('node_id')
+            if nid is None:
+                errors.append("boundary_conditions: una entrada no tiene 'node_id'.")
+            elif known_node_ids and nid not in known_node_ids:
+                errors.append(f"boundary_conditions: 'node_id={nid}' no existe en el bloque 'nodes'.")
+
+        # --- Solver ---
+        solver_cfg = data.get('solver', {})
+        if solver_cfg:
+            s_type = solver_cfg.get('type')
+            if not s_type:
+                errors.append("solver: falta el campo 'type'.")
+            else:
+                registered_solvers = set(SolverRegistry._solvers.keys())
+                if registered_solvers and s_type not in registered_solvers:
+                    errors.append(
+                        f"solver: tipo desconocido '{s_type}'. "
+                        f"Disponibles: {sorted(registered_solvers)}."
+                    )
+
+        return errors
 
     def _parse_nodes(self, data: dict):
         nodes_data = data.get('nodes', [])
@@ -100,6 +250,8 @@ class YamlParser:
                     material = self.materials[mat_id]
                     
                     kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes')}
+                    if 'quadrature' in kwargs and isinstance(kwargs['quadrature'], str):
+                        kwargs['quadrature'] = self._get_quadrature(kwargs['quadrature'])
                     self.domain.add_element(ElementRegistry.create(e_type, element_id=elem_id, nodes=nodes, material=material, **kwargs))
             elif elements_data:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios.")

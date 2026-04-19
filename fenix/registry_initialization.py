@@ -27,7 +27,8 @@ ElementRegistry.register('Truss2D', Truss2D)
 ElementRegistry.register('Truss3D', Truss3D)
 
 # Solucionadores
-from fenix.math.solvers import LinearSolver, NonlinearSolver
+from fenix.math.solvers import LinearSolver, NonlinearSolver, ArcLengthSolver
 
 SolverRegistry.register('LinearSolver', LinearSolver)
 SolverRegistry.register('NonlinearSolver', NonlinearSolver)
+SolverRegistry.register('ArcLengthSolver', ArcLengthSolver)

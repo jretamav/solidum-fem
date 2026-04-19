@@ -33,7 +33,7 @@ class TestSolversIntegration(unittest.TestCase):
         self.n2.fix_dof('uy', 0.0)
         
         self.domain.add_element(self.element)
-        self.domain.generate_equation_numbers()
+        self.domain.generate_equation_numbers(verbose=False)
         
         self.assembler = Assembler(self.domain)
         

@@ -8,6 +8,8 @@ class IsotropicDamage1D(Material):
     Modelo de daño isotrópico continuo unidimensional con ley de ablandamiento exponencial.
     Ideal para ser utilizado con elementos de armadura (Truss2D o Truss3D).
     """
+    PRIMARY_STATE_VAR = 'damage'  # variable de daño en [0, 1]
+
     def __init__(self, E: float, kappa_0: float, alpha: float):
         self.E = E              # Módulo de Young intacto
         self.kappa_0 = kappa_0  # Umbral de deformación elástica inicial

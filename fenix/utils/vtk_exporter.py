@@ -1,11 +1,30 @@
 # fenix_fem/fenix/utils/vtk_exporter.py
 import numpy as np
 from fenix.core.domain import Domain
+from fenix.elements.solid_2d import Quad4, Tri3
+from fenix.elements.structural import Truss2D, Truss3D
 
 try:
     import meshio
 except ImportError:
     meshio = None
+
+def _extract_state_scalar(sv: dict, primary_key: str = None) -> float:
+    """Extrae un escalar del dict de variables de estado de un punto de integración.
+
+    Prioriza ``primary_key`` si está definido y presente en ``sv``.
+    Si no, devuelve el primer valor numérico escalar encontrado en el dict.
+    Retorna 0.0 si el dict está vacío o no contiene escalares numéricos.
+    """
+    if primary_key and primary_key in sv:
+        v = sv[primary_key]
+        if isinstance(v, (int, float, np.floating, np.integer)):
+            return float(v)
+    for v in sv.values():
+        if isinstance(v, (int, float, np.floating, np.integer)) and not isinstance(v, bool):
+            return float(v)
+    return 0.0
+
 
 class VtkExporter:
     """Exporta el dominio y los resultados a formato VTK para visualización en ParaView."""
@@ -71,7 +90,8 @@ class VtkExporter:
             elif hasattr(elem, 'state_vars'):
                 state_vars_list = elem.state_vars
             if state_vars_list is not None:
-                vals = [sv.get('alpha', sv.get('damage', 0.0))
+                primary_key = getattr(getattr(elem, 'material', None), 'PRIMARY_STATE_VAR', None)
+                vals = [_extract_state_scalar(sv, primary_key)
                         for sv in state_vars_list if sv is not None]
                 if vals:
                     state_val = sum(vals) / len(vals)
@@ -86,7 +106,7 @@ class VtkExporter:
                     return np.mean(el.stresses, axis=0)
                 return None
 
-            if type(elem).__name__ == 'Quad4':
+            if isinstance(elem, Quad4):
                 quad_conn.append(conn)
                 quad_state.append(state_val)
                 s_avg = _avg_stress_from_elem(elem)
@@ -97,7 +117,7 @@ class VtkExporter:
                 else:
                     quad_stresses.append([0.0, 0.0, 0.0, 0.0])
 
-            elif type(elem).__name__ == 'Tri3':
+            elif isinstance(elem, Tri3):
                 tri_conn.append(conn)
                 tri_state.append(state_val)
                 s_avg = _avg_stress_from_elem(elem)
@@ -107,8 +127,8 @@ class VtkExporter:
                     tri_stresses.append([sx, sy, txy, vm])
                 else:
                     tri_stresses.append([0.0, 0.0, 0.0, 0.0])
-                    
-            elif type(elem).__name__ in ['Truss2D', 'Truss3D']: 
+
+            elif isinstance(elem, (Truss2D, Truss3D)):
                 line_conn.append(conn)
                 line_state.append(state_val)
             

@@ -59,7 +59,7 @@ def _compute_j2_plasticity(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e):
     N_otimes_N = np.array([
         [N_voigt[0]*N_voigt[0], N_voigt[0]*N_voigt[1], N_voigt[0]*N_voigt[2]],
         [N_voigt[1]*N_voigt[0], N_voigt[1]*N_voigt[1], N_voigt[1]*N_voigt[2]],
-        [N_voigt[2]*N_voigt[0], N_voigt[2]*N_voigt[1], N_voigt[2]*N_voigt[2]*0.5]
+        [N_voigt[2]*N_voigt[0], N_voigt[2]*N_voigt[1], N_voigt[2]*N_voigt[2]]
     ])
     
     C_alg = K * np.outer(v, v) + 2.0 * G * (1.0 - beta) * I_dev - 2.0 * G * gamma_factor * N_otimes_N
@@ -86,6 +86,8 @@ class VonMises2D(Material):
     H : float, optional
         Módulo de endurecimiento isotrópico (pendiente σ_y vs α). Default 0 (perfecto).
     """
+    PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
+
     def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0, hypothesis: str = 'plane_strain'):
         if hypothesis != 'plane_strain':
             raise NotImplementedError(

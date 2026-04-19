@@ -9,11 +9,11 @@ from fenix.core.element_state import ElementState
 class Truss2D(Element):
     """
     Elemento estructural de armadura (biela/tensor) 2D para análisis no lineal.
-    
-    Formulación de elemento de barra articulada que solo soporta cargas axiales 
-    (tracción/compresión). Integra compatibilidad con deformaciones no lineales 
+
+    Formulación de elemento de barra articulada que solo soporta cargas axiales
+    (tracción/compresión). Integra compatibilidad con deformaciones no lineales
     evaluando la respuesta constitutiva en su punto central.
-    
+
     Parameters
     ----------
     element_id : int
@@ -24,14 +24,18 @@ class Truss2D(Element):
         Instancia de la ley constitutiva del material.
     A : float
         Área de la sección transversal de la barra.
+    large_strains : bool, optional
+        Si es True, activa la formulación corotacional (Updated Lagrangian) para soportar pandeo y grandes desplazamientos.
     """
-    def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float):
+    DOF_NAMES = ['ux', 'uy']
+    def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float, large_strains: bool = False):
         super().__init__(element_id, nodes)
         if len(nodes) != 2:
             raise ValueError("El elemento Truss2D requiere exactamente 2 nodos.")
         
         self.material = material
         self.A = A
+        self.large_strains = large_strains
         
         self.state = ElementState(1, init_stress=0.0)
         
@@ -56,14 +60,43 @@ class Truss2D(Element):
     def state_vars(self):
         return self.state.vars
 
-    def get_dofs(self) -> List[str]:
-        return ['ux', 'uy', 'ux', 'uy']
-
     def commit_state(self):
         self.state.commit()
 
     def compute_element_state(self, u_e: np.ndarray):
         """Calcula matriz tangente y fuerzas internas dadas las deformaciones."""
+        if self.large_strains:
+            # --- Formulación Corotacional / Updated Lagrangian ---
+            x1 = self.nodes[0].coordinates[0] + u_e[0]
+            y1 = self.nodes[0].coordinates[1] + u_e[1]
+            x2 = self.nodes[1].coordinates[0] + u_e[2]
+            y2 = self.nodes[1].coordinates[1] + u_e[3]
+            
+            dx, dy = x2 - x1, y2 - y1
+            L = math.sqrt(dx**2 + dy**2)
+            c, s = dx / L, dy / L
+            
+            epsilon = (L - self.L0) / self.L0
+            sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
+            self.state.vars_trial[0] = new_state
+            self.state.stresses_trial[0] = sigma
+            
+            N = sigma * self.A
+            B_dir = np.array([-c, -s, c, s])
+            
+            K_e = ((E_t * self.A) / self.L0) * np.outer(B_dir, B_dir)
+            
+            # Matriz de Rigidez Geométrica (Kg)
+            K_g = (N / L) * np.array([
+                [ s**2, -c*s, -s**2,  c*s],
+                [-c*s,  c**2,  c*s, -c**2],
+                [-s**2,  c*s,  s**2, -c*s],
+                [ c*s, -c**2, -c*s,  c**2]
+            ])
+            
+            return K_e + K_g, N * B_dir
+
+        # --- Formulación Lineal (Pequeñas Deformaciones Original) ---
         c, s, L = self.c, self.s, self.L0
         
         # Matriz cinemática B
@@ -91,11 +124,6 @@ class Truss2D(Element):
         
         return K_e, F_int_e
 
-    def compute_global_stiffness(self) -> np.ndarray:
-        """Retrocompatibilidad para análisis lineal puro."""
-        K_e, _ = self.compute_element_state(np.zeros(4))
-        return K_e
-
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         """Utilidad para reportes de post-procesamiento."""
         u_e = np.array([
@@ -105,6 +133,17 @@ class Truss2D(Element):
             U_global[self.nodes[1].dofs['uy']]
         ])
         
+        if self.large_strains:
+            x1 = self.nodes[0].coordinates[0] + u_e[0]
+            y1 = self.nodes[0].coordinates[1] + u_e[1]
+            x2 = self.nodes[1].coordinates[0] + u_e[2]
+            y2 = self.nodes[1].coordinates[1] + u_e[3]
+            L = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            epsilon = (L - self.L0) / self.L0
+            sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
+            N = self.A * sigma
+            return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
         c, s, L = self.c, self.s, self.L0
         B = np.array([-c, -s, c, s]) / L
         
@@ -116,10 +155,10 @@ class Truss2D(Element):
 class Truss3D(Element):
     """
     Elemento estructural de armadura (biela/tensor) espacial 3D para análisis no lineal.
-    
-    Extensión tridimensional del elemento `Truss2D`. Soporta componentes de 
+
+    Extensión tridimensional del elemento `Truss2D`. Soporta componentes de
     desplazamiento en los ejes X, Y y Z.
-    
+
     Parameters
     ----------
     element_id : int
@@ -131,6 +170,7 @@ class Truss3D(Element):
     A : float
         Área de la sección transversal de la barra.
     """
+    DOF_NAMES = ['ux', 'uy', 'uz']
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float):
         super().__init__(element_id, nodes)
         if len(nodes) != 2:
@@ -170,9 +210,6 @@ class Truss3D(Element):
     def state_vars(self):
         return self.state.vars
 
-    def get_dofs(self) -> List[str]:
-        return ['ux', 'uy', 'uz', 'ux', 'uy', 'uz']
-
     def commit_state(self):
         self.state.commit()
 
@@ -203,11 +240,6 @@ class Truss3D(Element):
         
         return K_e, F_int_e
 
-    def compute_global_stiffness(self) -> np.ndarray:
-        """Retrocompatibilidad para análisis lineal puro."""
-        K_e, _ = self.compute_element_state(np.zeros(6))
-        return K_e
-
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         """Utilidad para reportes de post-procesamiento."""
         u_e = np.array([
@@ -230,10 +262,10 @@ class Truss3D(Element):
 class Frame2DEuler(Element):
     """
     Elemento de pórtico/viga 2D basado en la teoría de Euler-Bernoulli.
-    
-    Formulado para vigas esbeltas donde la deformación por cortante transversal 
+
+    Formulado para vigas esbeltas donde la deformación por cortante transversal
     se considera despreciable. Transmite esfuerzos axiales, cortantes y momentos flectores.
-    
+
     Parameters
     ----------
     element_id : int
@@ -246,9 +278,7 @@ class Frame2DEuler(Element):
         Área de la sección transversal del pórtico.
     I : float
         Momento de inercia de la sección transversal respecto al eje de flexión (Z).
-    """
-    # ... (previous content) ...
-    """
+
     Notes
     -----
     **Limitación de No-Linealidad:** La no-linealidad de este elemento se evalúa
@@ -256,6 +286,7 @@ class Frame2DEuler(Element):
     se usa para escalar tanto la rigidez axial como la de flexión. Esto no captura
     la plastificación progresiva de la sección debida a momentos flectores (rótulas plásticas).
     """
+    DOF_NAMES = ['ux', 'uy', 'rz']
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float, I: float):
         super().__init__(element_id, nodes)
         if len(nodes) != 2:
@@ -302,26 +333,23 @@ class Frame2DEuler(Element):
     def commit_state(self):
         self.state.commit()
 
-    def get_dofs(self) -> List[str]:
-        return ['ux', 'uy', 'rz', 'ux', 'uy', 'rz']
-
     def compute_element_state(self, u_e: np.ndarray):
         L = self.L0
         u_local = self.T @ u_e
-        
+
         # Deformación axial
         epsilon = (u_local[3] - u_local[0]) / L
-        
+
         # Respuesta constitutiva (evaluada en el centroide)
         sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
         self.state.vars_trial[0] = new_state
         self.state.stresses_trial[0] = sigma
-        
+
         EA_L = E_t * self.A / L
         EI_L = E_t * self.I / L
         EI_L2 = EI_L / L
         EI_L3 = EI_L2 / L
-        
+
         # Matriz de Rigidez Local K'
         K_local = np.array([
             [ EA_L,        0,        0, -EA_L,        0,        0],
@@ -342,10 +370,6 @@ class Frame2DEuler(Element):
         
         return K_global, F_int_e
 
-    def compute_global_stiffness(self) -> np.ndarray:
-        K_e, _ = self.compute_element_state(np.zeros(6))
-        return K_e
-
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         u_e = np.array([
             U_global[self.nodes[0].dofs['ux']], U_global[self.nodes[0].dofs['uy']], U_global[self.nodes[0].dofs['rz']],
@@ -353,15 +377,15 @@ class Frame2DEuler(Element):
         ])
         K_global, F_int = self.compute_element_state(u_e)
         F_local = self.T @ F_int
-        
+
         u_local = self.T @ u_e
         epsilon = (u_local[3] - u_local[0]) / self.L0
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
-        
+
         return {
-            'axial_force': F_local[0], 
-            'shear_force': F_local[1], 
-            'moment_i': F_local[2], 
+            'axial_force': F_local[0],
+            'shear_force': F_local[1],
+            'moment_i': F_local[2],
             'moment_j': F_local[5],
             'stress': sigma,
             'strain': epsilon
@@ -370,10 +394,10 @@ class Frame2DEuler(Element):
 class Frame2DTimoshenko(Element):
     """
     Elemento de pórtico/viga 2D basado en la teoría de Timoshenko.
-    
-    Formulado para vigas gruesas, cortas o peraltadas. Incluye explícitamente 
+
+    Formulado para vigas gruesas, cortas o peraltadas. Incluye explícitamente
     la contribución de la deformación por cortante transversal en su matriz de rigidez.
-    
+
     Parameters
     ----------
     element_id : int
@@ -391,20 +415,17 @@ class Frame2DTimoshenko(Element):
     nu : float, optional
         Relación de Poisson utilizada para calcular el módulo de rigidez al cortante (G).
         Si no se provee, intenta extraerlo del `material`.
-        
+
     Notes
     -----
-    Previene automáticamente el bloqueo por cortante (*shear locking*) mediante 
+    Previene automáticamente el bloqueo por cortante (*shear locking*) mediante
     su formulación analítica exacta con factores de forma.
-    """
-    # ... (previous content) ...
-    """
-    Notes
-    -----
+
     **Limitación de No-Linealidad:** Al igual que el elemento de Euler, la no-linealidad
     se evalúa a partir de la deformación axial. El módulo tangente (E_t) resultante
     escala toda la matriz de rigidez, lo que es una simplificación del comportamiento real de flexión no-lineal.
     """
+    DOF_NAMES = ['ux', 'uy', 'rz']
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float, I: float, As: float, nu: float = 0.3):
         super().__init__(element_id, nodes)
         if len(nodes) != 2:
@@ -415,7 +436,13 @@ class Frame2DTimoshenko(Element):
         self.I = I
         self.As = As
         # Obtenemos Poisson del material o utilizamos el provisto por el usuario
-        self.nu = getattr(material, 'nu', nu)
+        if hasattr(material, 'nu'):
+            self.nu = material.nu
+        else:
+            if nu == 0.3:
+                print(f"  [!] ADVERTENCIA Frame2DTimoshenko (id={element_id}): el material no expone 'nu'. "
+                      f"Se usará nu={nu} (valor por defecto). Especifique 'nu' en el YAML del elemento si esto es incorrecto.")
+            self.nu = nu
         
         self.state = ElementState(1, init_stress=0.0)
         
@@ -453,16 +480,13 @@ class Frame2DTimoshenko(Element):
     def commit_state(self):
         self.state.commit()
 
-    def get_dofs(self) -> List[str]:
-        return ['ux', 'uy', 'rz', 'ux', 'uy', 'rz']
-
     def compute_element_state(self, u_e: np.ndarray):
         L = self.L0
         u_local = self.T @ u_e
-        
+
         # Deformación axial
         epsilon = (u_local[3] - u_local[0]) / L
-        
+
         # Respuesta constitutiva (evaluada en el centroide)
         sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
         self.state.vars_trial[0] = new_state
@@ -499,10 +523,6 @@ class Frame2DTimoshenko(Element):
         
         return K_global, F_int_e
 
-    def compute_global_stiffness(self) -> np.ndarray:
-        K_e, _ = self.compute_element_state(np.zeros(6))
-        return K_e
-
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         u_e = np.array([
             U_global[self.nodes[0].dofs['ux']], U_global[self.nodes[0].dofs['uy']], U_global[self.nodes[0].dofs['rz']],
@@ -510,15 +530,15 @@ class Frame2DTimoshenko(Element):
         ])
         K_global, F_int = self.compute_element_state(u_e)
         F_local = self.T @ F_int
-        
+
         u_local = self.T @ u_e
         epsilon = (u_local[3] - u_local[0]) / self.L0
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
-        
+
         return {
-            'axial_force': F_local[0], 
-            'shear_force': F_local[1], 
-            'moment_i': F_local[2], 
+            'axial_force': F_local[0],
+            'shear_force': F_local[1],
+            'moment_i': F_local[2],
             'moment_j': F_local[5],
             'stress': sigma,
             'strain': epsilon

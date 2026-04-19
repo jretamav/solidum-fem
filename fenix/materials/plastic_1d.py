@@ -8,6 +8,8 @@ class Elastoplastic1D(Material):
     Material elastoplástico 1D con endurecimiento isotrópico lineal.
     Implementa el algoritmo de retorno (Return Mapping) clásico.
     """
+    PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
+
     def __init__(self, E: float, sigma_y: float, H: float = 0.0):
         self.E = E              # Módulo de Young
         self.sigma_y = sigma_y  # Esfuerzo de fluencia inicial

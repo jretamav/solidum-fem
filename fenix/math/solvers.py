@@ -16,21 +16,22 @@ class LinearSolver:
         K_global = self.assembler.K_global.copy()
         R = F_ext_global.copy()
 
-        self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty)
+        K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty)
         
-        U = spla.spsolve(K_global.tocsr(), R)
+        U = spla.spsolve(K_global, R)
         print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15):
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15, min_delta_lambda=1e-5):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
         self.num_steps = num_steps
         self.adaptive = adaptive
         self.penalty = penalty_value
+        self.min_delta_lambda = min_delta_lambda
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -61,10 +62,10 @@ class NonlinearSolver:
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = F_ext_step - F_int_global
                 
-                self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=next_load_factor, U_current=U_iter)
+                K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=next_load_factor, U_current=U_iter)
                 
                 try:
-                    delta_U = spla.spsolve(K_global.tocsr(), R)
+                    delta_U = spla.spsolve(K_global, R)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular detectada.")
                     break
@@ -73,17 +74,18 @@ class NonlinearSolver:
 
                 # Criterio dual: norma de desplazamiento Y norma de residuo de fuerza.
                 # Ambos deben converger para garantizar equilibrio.
+                # En problemas controlados por desplazamientos F_ext_step ≈ 0; usamos
+                # max(|F_ext|, |F_int|) como referencia para no dividir por ~ZERO_TOL.
                 err_disp = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + ZERO_TOL)
-                err_force = np.linalg.norm(R) / (np.linalg.norm(F_ext_step) + ZERO_TOL)
+                ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global), ZERO_TOL)
+                err_force = np.linalg.norm(R) / ref_force
                 error = max(err_disp, err_force)
                 print(f"  Iteración {iteration+1:2d} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
                 
                 if error < self.tol:
                     print("  -> CONVERGENCIA ALCANZADA.")
-                    for elem in domain.elements.values():
-                        if hasattr(elem, 'commit_state'):
-                            elem.commit_state()
-                    
+                    self.assembler.commit_all_states()
+
                     U_current = U_iter
                     load_factor = next_load_factor
                     converged = True
@@ -101,8 +103,8 @@ class NonlinearSolver:
                 if self.adaptive:
                     delta_lambda /= 2.0
                     print(f"  -> NO CONVERGIÓ. Bisección: reduciendo incremento a {delta_lambda:.4f}")
-                    if delta_lambda < 1e-5:
-                        raise RuntimeError("El incremento de carga es demasiado pequeño. El solver ha divergido.")
+                    if delta_lambda < self.min_delta_lambda:
+                        raise RuntimeError(f"El incremento de carga ({delta_lambda:.2e}) cayó por debajo del mínimo ({self.min_delta_lambda:.2e}). El solver ha divergido.")
                 else:
                     raise RuntimeError(f"El solucionador no convergió en el paso {step}.")
             
@@ -114,7 +116,9 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15):
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15,
+                 dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
+                 dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
@@ -122,6 +126,14 @@ class ArcLengthSolver:
         self.dl = initial_dl
         self.max_steps = max_steps
         self.penalty = penalty_value
+        # Factores de auto-ajuste de la longitud de arco:
+        #   Si converge en < dl_grow_iter_threshold iter → ampliar dl × dl_grow_factor (max: initial_dl × dl_max_factor)
+        #   Si converge en > dl_shrink_iter_threshold iter → reducir dl × dl_shrink_factor
+        self.dl_grow_factor = dl_grow_factor
+        self.dl_max_factor = dl_max_factor
+        self.dl_shrink_factor = dl_shrink_factor
+        self.dl_grow_iter_threshold = dl_grow_iter_threshold
+        self.dl_shrink_iter_threshold = dl_shrink_iter_threshold
 
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -150,10 +162,10 @@ class ArcLengthSolver:
             K_t = K_global.copy()
             F_t = F_ext_ref.copy()
             
-            self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
+            K_t, F_t = self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
             
             try:
-                du_t = spla.spsolve(K_t.tocsr(), F_t)
+                du_t = spla.spsolve(K_t, F_t)
             except RuntimeError:
                 print("  -> Error: Matriz singular en predictor. Bisección de dl...")
                 dl /= 2.0
@@ -183,12 +195,12 @@ class ArcLengthSolver:
                 K_t = K_global.copy()
                 F_t = F_ext_ref.copy()
 
-                self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
-                self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=lambda_iter, U_current=U_iter)
+                K_t, F_t = self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
+                K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=lambda_iter, U_current=U_iter)
 
                 try:
-                    du_R = spla.spsolve(K_global.tocsr(), R)
-                    du_t = spla.spsolve(K_t.tocsr(), F_t)
+                    du_R = spla.spsolve(K_global, R)
+                    du_t = spla.spsolve(K_t, F_t)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular en corrector.")
                     break
@@ -228,20 +240,26 @@ class ArcLengthSolver:
                 U_iter = U_current + dU_iter
                 
                 err_disp = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + ZERO_TOL)
-                err_force = np.linalg.norm(R) / (np.linalg.norm(F_ext_ref) * (abs(lambda_iter) + ZERO_TOL) + ZERO_TOL)
+                ref_force = max(
+                    np.linalg.norm(F_ext_ref) * abs(lambda_iter),
+                    np.linalg.norm(F_int_global),
+                    ZERO_TOL,
+                )
+                err_force = np.linalg.norm(R) / ref_force
                 error = max(err_disp, err_force)
-                print(f"  Iter. {iteration+1:2d} | λ={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
+                print(f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
                 
                 if error < self.tol:
                     print(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
-                    for elem in domain.elements.values():
-                        if hasattr(elem, 'commit_state'): elem.commit_state()
-                    
+                    self.assembler.commit_all_states()
+
                     U_current = U_iter; lambda_curr = lambda_iter; delta_U_step = dU_iter
                     converged = True
                     # Auto-ajuste de longitud de arco
-                    if iteration < 4: dl = min(dl * 1.5, self.dl * 5.0)
-                    elif iteration > 8: dl *= 0.6
+                    if iteration < self.dl_grow_iter_threshold:
+                        dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
+                    elif iteration > self.dl_shrink_iter_threshold:
+                        dl *= self.dl_shrink_factor
                     
                     if step_callback:
                         step_callback(step, U_current, lambda_curr)
