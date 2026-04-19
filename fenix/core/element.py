@@ -1,97 +1,151 @@
 # fenix_fem/fenix/core/element.py
 from abc import ABC, abstractmethod
-from typing import ClassVar, List, Tuple
+from typing import ClassVar, List, Optional, Tuple
+
 import numpy as np
+
+from fenix.core.element_state import ElementState
+from fenix.core.material import Material
 from fenix.core.node import Node
 
+
 class Element(ABC):
-    """
-    Clase base abstracta para todos los elementos finitos de Fenix FEM.
+    """Clase base abstracta para todos los elementos finitos de Fenix FEM.
 
-    Contrato obligatorio para subclases
-    ------------------------------------
+    Contrato declarativo de subclases
+    ---------------------------------
     DOF_NAMES : ClassVar[List[str]]
-        Lista canónica de DOF por nodo (sin repetir). Ejemplo Quad4: ['ux', 'uy'].
-        El número de DOFs del elemento es len(DOF_NAMES) × len(nodes).
-    compute_element_state(u_e)  — rigidez tangente + fuerzas internas dado u_e.
-    commit_state()              — confirma variables internas tras convergencia del paso.
+        Lista canónica de DOFs por nodo (ej. Quad4: ['ux', 'uy']).
+    STRAIN_DIM : ClassVar[int]
+        Dimensión de strain que el elemento requiere del material:
+            1  → 1D (Truss, Frame; epsilon escalar)
+            3  → Voigt 2D plano
+            6  → Voigt 3D
+        Validado contra `material.STRAIN_DIM` al construir.
+    N_INTEGRATION_POINTS : ClassVar[int], default=1
+        Puntos de Gauss del elemento. Determina el tamaño del ElementState.
 
-    Implementación heredada (no sobreescribir salvo necesidad)
-    -----------------------------------------------------------
-    get_global_dof_indices()    — mapea DOF_NAMES × nodos a índices globales.
-    compute_global_stiffness()  — llama compute_element_state(zeros); usada en análisis lineal.
+    Métodos abstractos a implementar
+    --------------------------------
+    compute_element_state(u_e) → (K_e, F_int_e)
+
+    Métodos heredados (no sobreescribir salvo necesidad)
+    ----------------------------------------------------
+    commit_state(), state_vars, stresses, get_global_dof_indices,
+    get_local_displacements, compute_global_stiffness.
     """
 
-    # Cada subclase concreta DEBE declarar este atributo de clase.
-    # Ejemplo: DOF_NAMES = ['ux', 'uy']
     DOF_NAMES: ClassVar[List[str]]
+    STRAIN_DIM: ClassVar[int]
+    N_INTEGRATION_POINTS: ClassVar[int] = 1
 
-    def __init__(self, element_id: int, nodes: List[Node]):
+    def __init__(self, element_id: int, nodes: List[Node],
+                 material: Optional[Material] = None):
         self.id = element_id
         self.nodes = nodes
+        self.material = material
+
+        self._validate_material_compatibility()
+        self._register_dofs()
+        self._init_state()
 
     # ------------------------------------------------------------------
-    # Contrato abstracto — toda subclase DEBE implementar estos métodos
+    # Inicialización compartida
+    # ------------------------------------------------------------------
+
+    def _validate_material_compatibility(self) -> None:
+        """Atrapa al construir el mismatch material/elemento (1D vs 2D, etc).
+
+        Sin esto el error aparece como `matmul` críptico tras varias iteraciones
+        del solver. Con esto, falla inmediatamente con un mensaje claro.
+        """
+        if self.material is None:
+            return
+        mat_dim = getattr(self.material, "STRAIN_DIM", None)
+        if mat_dim is None:
+            return
+        if mat_dim != self.STRAIN_DIM:
+            raise ValueError(
+                f"{type(self).__name__}(id={self.id}): incompatibilidad dimensional. "
+                f"El elemento requiere STRAIN_DIM={self.STRAIN_DIM} pero el material "
+                f"{type(self.material).__name__} declara STRAIN_DIM={mat_dim}. "
+                f"Use un material 1D con elementos Truss/Frame, 2D con Quad/Tri, etc."
+            )
+
+    def _register_dofs(self) -> None:
+        for node in self.nodes:
+            for dof_name in self.DOF_NAMES:
+                node.add_dof(dof_name)
+
+    def _init_state(self) -> None:
+        init_stress = 0.0 if self.STRAIN_DIM == 1 else np.zeros(self.STRAIN_DIM)
+        self.state = ElementState(self.N_INTEGRATION_POINTS, init_stress=init_stress)
+
+    # ------------------------------------------------------------------
+    # Acceso al estado interno (heredado por todas las subclases)
+    # ------------------------------------------------------------------
+
+    @property
+    def state_vars(self):
+        return self.state.vars
+
+    @property
+    def stresses(self):
+        return self.state.stresses
+
+    def commit_state(self) -> None:
+        """Confirma las variables internas trial como estado convergido.
+
+        Se llama una vez por paso de carga, después de que el solver converja.
+        Para materiales puramente elásticos es esencialmente un no-op pero el
+        método debe existir.
+        """
+        self.state.commit()
+
+    # ------------------------------------------------------------------
+    # Contrato abstracto
     # ------------------------------------------------------------------
 
     @abstractmethod
     def compute_element_state(self, u_e: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Calcula la matriz de rigidez tangente local K_e y el vector de fuerzas
-        internas F_int_e dado el vector de desplazamientos locales u_e.
+        """Calcula la matriz tangente local K_e y el vector de fuerzas internas F_int_e.
 
-        Actualiza las variables internas en estado *trial* (sin commitear).
+        Actualiza variables internas en estado *trial* (sin commitear).
 
         Returns
         -------
-        K_e      : ndarray (ndof_e × ndof_e) — matriz de rigidez tangente local
-        F_int_e  : ndarray (ndof_e,)          — vector de fuerzas internas locales
-        """
-
-    @abstractmethod
-    def commit_state(self) -> None:
-        """
-        Confirma las variables internas del estado trial como estado convergido.
-        Debe llamarse una vez por paso de carga, después de que el solver converja.
-        Para materiales puramente elásticos puede ser un no-op, pero debe existir.
+        K_e      : ndarray (ndof_e × ndof_e)
+        F_int_e  : ndarray (ndof_e,)
         """
 
     # ------------------------------------------------------------------
-    # Implementación base — disponible para todas las subclases
+    # Utilidades heredadas
     # ------------------------------------------------------------------
 
     def get_global_dof_indices(self) -> List[int]:
-        """
-        Mapea DOF_NAMES × nodos a sus índices globales de ecuación.
-
-        Itera sobre cada nodo y para cada nombre en DOF_NAMES extrae el índice
-        del diccionario node.dofs. No asume DOFs uniformes: cada nodo puede
-        contener DOFs distintos siempre que incluya los de DOF_NAMES.
-
-        Returns
-        -------
-        indices : List[int] — longitud = len(DOF_NAMES) × len(nodes)
-        """
+        """Mapea DOF_NAMES × nodos a índices globales de ecuación."""
         indices = []
         for node in self.nodes:
             for dof_name in self.DOF_NAMES:
                 indices.append(node.dofs[dof_name])
         return indices
 
-    def compute_global_stiffness(self) -> np.ndarray:
-        """
-        Devuelve la matriz de rigidez global K_e evaluada en el estado no deformado
-        (u_e = 0). Usada por el LinearSolver y como punto de partida en análisis lineal.
+    def get_local_displacements(self, U_global: np.ndarray) -> np.ndarray:
+        """Extrae el vector u_e del campo de desplazamientos global."""
+        return U_global[self.get_global_dof_indices()]
 
-        No sobreescribir: la implementación base delega en compute_element_state(),
-        garantizando consistencia entre el análisis lineal y el no-lineal.
+    def compute_global_stiffness(self) -> np.ndarray:
+        """Matriz de rigidez K_e evaluada en el estado no deformado (u_e = 0).
+
+        Punto de partida del análisis lineal y delegación garantizada en la
+        misma `compute_element_state`, asegurando consistencia lineal/no-lineal.
         """
         ndof_e = len(self.DOF_NAMES) * len(self.nodes)
         K_e, _ = self.compute_element_state(np.zeros(ndof_e))
         return K_e
 
     def get_coordinate_matrix(self, ndim: int = 2) -> np.ndarray:
-        """Extrae las coordenadas de los nodos en una matriz NumPy (n_nodos × ndim)."""
+        """Coordenadas de los nodos en una matriz NumPy (n_nodos × ndim)."""
         coords = np.zeros((len(self.nodes), ndim))
         for i, node in enumerate(self.nodes):
             for j in range(min(ndim, len(node.coordinates))):

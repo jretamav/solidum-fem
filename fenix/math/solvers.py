@@ -3,7 +3,10 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from fenix.constants import CONVERGENCE_TOL, ZERO_TOL
+from fenix.registry import SolverRegistry
 
+
+@SolverRegistry.register
 class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
     def __init__(self, assembler, penalty_value=1e15):
@@ -22,6 +25,7 @@ class LinearSolver:
         print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
+@SolverRegistry.register
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
     def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15, min_delta_lambda=1e-5):
@@ -110,6 +114,7 @@ class NonlinearSolver:
             
         return U_current
 
+@SolverRegistry.register
 class ArcLengthSolver:
     """
     Solucionador no lineal con Método de Longitud de Arco Cilíndrico (Crisfield).

@@ -1,7 +1,12 @@
 # fenix_fem/fenix/materials/elastic.py
 from fenix.core.material import Material
+from fenix.registry import MaterialRegistry
 
+
+@MaterialRegistry.register
 class Elastic1D(Material):
+    STRAIN_DIM = 1
+
     def __init__(self, E):
         self.E = E
 

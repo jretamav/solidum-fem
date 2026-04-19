@@ -2,12 +2,16 @@
 import math
 from fenix.core.material import Material
 from fenix.constants import DAMAGE_MAX
+from fenix.registry import MaterialRegistry
 
+
+@MaterialRegistry.register
 class IsotropicDamage1D(Material):
     """
     Modelo de daño isotrópico continuo unidimensional con ley de ablandamiento exponencial.
     Ideal para ser utilizado con elementos de armadura (Truss2D o Truss3D).
     """
+    STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'damage'  # variable de daño en [0, 1]
 
     def __init__(self, E: float, kappa_0: float, alpha: float):

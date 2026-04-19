@@ -3,11 +3,15 @@ import numpy as np
 from fenix.core.material import Material
 from fenix.materials.elastic_2d import Elastic2D
 from fenix.constants import DAMAGE_MAX
+from fenix.registry import MaterialRegistry
 
+
+@MaterialRegistry.register
 class IsotropicDamage2D(Material):
     """
     Modelo de daño isotrópico continuo con ley de ablandamiento exponencial.
     """
+    STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'damage'  # variable de daño en [0, 1]
 
     def __init__(self, E: float, nu: float, kappa_0: float, alpha: float, hypothesis: str = 'plane_stress'):

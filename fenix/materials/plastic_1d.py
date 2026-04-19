@@ -2,12 +2,16 @@
 import numpy as np
 from fenix.core.material import Material
 from fenix.constants import PLASTIC_YIELD_TOL
+from fenix.registry import MaterialRegistry
 
+
+@MaterialRegistry.register
 class Elastoplastic1D(Material):
     """
     Material elastoplástico 1D con endurecimiento isotrópico lineal.
     Implementa el algoritmo de retorno (Return Mapping) clásico.
     """
+    STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
 
     def __init__(self, E: float, sigma_y: float, H: float = 0.0):

@@ -1,57 +1,98 @@
-from typing import Dict, Type, Any
+"""Registries de Fenix FEM (Material, Element, Solver, Quadrature).
 
-class MaterialRegistry:
-    """Registry para materiales. Mapea nombres a clases constructoras."""
-    _materials: Dict[str, Type] = {}
-    
+Soporta tres formas de registro:
+
+    @MaterialRegistry.register            # nombre = cls.__name__
+    class Foo(Material): ...
+
+    @MaterialRegistry.register("Alias")   # nombre explícito
+    class Foo(Material): ...
+
+    MaterialRegistry.register("Foo", Foo) # forma legacy explícita
+
+Las clases se descubren automáticamente al importar `fenix` gracias a
+`fenix.autodiscover.initialize()`, eliminando la necesidad de mantener
+listas de imports en `registry_initialization.py`.
+"""
+from typing import Dict, Type, Any, Optional, Callable, Union
+
+
+class _BaseRegistry:
+    """Base genérica para registries con decorador.
+
+    Cada subclase debe declarar su propio dict `_items` para no compartir
+    almacenamiento.  El método `register` admite tres formas (ver módulo).
+    """
+
+    _items: Dict[str, Type] = {}
+    _kind: str = "ítem"
+
     @classmethod
-    def register(cls, name: str, material_class: Type) -> None:
-        cls._materials[name] = material_class
-        
+    def register(cls, name_or_class: Optional[Union[str, Type]] = None,
+                 klass: Optional[Type] = None) -> Union[Type, Callable[[Type], Type]]:
+        # Forma legacy: register("Foo", FooClass)
+        if klass is not None:
+            cls._items[name_or_class] = klass
+            return klass
+
+        # Forma decorador-sin-paréntesis: @register
+        if isinstance(name_or_class, type):
+            cls._items[name_or_class.__name__] = name_or_class
+            return name_or_class
+
+        # Forma decorador-con-paréntesis: @register("Alias") o @register()
+        def decorator(target: Type) -> Type:
+            registered_name = name_or_class if isinstance(name_or_class, str) else target.__name__
+            cls._items[registered_name] = target
+            return target
+        return decorator
+
     @classmethod
     def create(cls, name: str, **kwargs) -> Any:
-        if name not in cls._materials:
-            raise ValueError(f"Material '{name}' no registrado. Disponibles: {', '.join(cls._materials.keys())}")
-        return cls._materials[name](**kwargs)
+        if name not in cls._items:
+            raise ValueError(
+                f"{cls._kind} '{name}' no registrado. "
+                f"Disponibles: {sorted(cls._items.keys())}"
+            )
+        return cls._items[name](**kwargs)
 
-class ElementRegistry:
-    """Registry para elementos. Mapea nombres a clases constructoras."""
-    _elements: Dict[str, Type] = {}
-    
     @classmethod
-    def register(cls, name: str, element_class: Type) -> None:
-        cls._elements[name] = element_class
-        
-    @classmethod
-    def create(cls, name: str, **kwargs) -> Any:
-        if name not in cls._elements:
-            raise ValueError(f"Elemento '{name}' no registrado. Disponibles: {', '.join(cls._elements.keys())}")
-        return cls._elements[name](**kwargs)
+    def names(cls) -> list:
+        return sorted(cls._items.keys())
 
-class SolverRegistry:
-    """Registry para solucionadores."""
-    _solvers: Dict[str, Type] = {}
-    
-    @classmethod
-    def register(cls, name: str, solver_class: Type) -> None:
-        cls._solvers[name] = solver_class
-        
-    @classmethod
-    def create(cls, name: str, **kwargs) -> Any:
-        if name not in cls._solvers:
-            raise ValueError(f"Solucionador '{name}' no registrado. Disponibles: {', '.join(cls._solvers.keys())}")
-        return cls._solvers[name](**kwargs)
+
+class MaterialRegistry(_BaseRegistry):
+    _items: Dict[str, Type] = {}
+    _kind = "Material"
+    # Alias compatible con código existente que accede ._materials
+    _materials = _items
+
+
+class ElementRegistry(_BaseRegistry):
+    _items: Dict[str, Type] = {}
+    _kind = "Elemento"
+    _elements = _items
+
+
+class SolverRegistry(_BaseRegistry):
+    _items: Dict[str, Type] = {}
+    _kind = "Solucionador"
+    _solvers = _items
+
 
 class QuadratureRegistry:
     """Registry para reglas de integración (puntos, pesos)."""
     _rules: Dict[str, tuple] = {}
-    
+
     @classmethod
     def register(cls, name: str, points: list, weights: list) -> None:
         cls._rules[name] = (points, weights)
-        
+
     @classmethod
     def get(cls, name: str) -> tuple:
         if name not in cls._rules:
-            raise ValueError(f"Cuadratura '{name}' no registrada. Disponibles: {', '.join(cls._rules.keys())}")
+            raise ValueError(
+                f"Cuadratura '{name}' no registrada. "
+                f"Disponibles: {sorted(cls._rules.keys())}"
+            )
         return cls._rules[name]

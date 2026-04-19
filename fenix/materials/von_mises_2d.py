@@ -3,6 +3,7 @@ import numpy as np
 import math
 from fenix.core.material import Material
 from fenix.constants import PLASTIC_YIELD_TOL
+from fenix.registry import MaterialRegistry
 from numba import njit
 
 @njit
@@ -66,6 +67,7 @@ def _compute_j2_plasticity(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e):
     
     return sigma, C_alg, eps_p_new, alpha_new
 
+@MaterialRegistry.register
 class VonMises2D(Material):
     """
     Modelo de plasticidad J2 (Von Mises) con endurecimiento isotrópico lineal.
@@ -86,6 +88,7 @@ class VonMises2D(Material):
     H : float, optional
         Módulo de endurecimiento isotrópico (pendiente σ_y vs α). Default 0 (perfecto).
     """
+    STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
 
     def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0, hypothesis: str = 'plane_strain'):

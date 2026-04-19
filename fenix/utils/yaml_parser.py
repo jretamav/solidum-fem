@@ -4,9 +4,12 @@ import yaml
 import os
 import numpy as np
 from fenix.core.domain import Domain
-import fenix.registry_initialization
+from fenix.autodiscover import initialize as _ensure_registries_initialized
 from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
-import fenix.math.integration  # Asegura el registro de las cuadraturas
+
+# Idempotente: garantiza que los registries estén poblados aunque se importe
+# este módulo sin pasar por `fenix/__init__.py` (p. ej., en tests aislados).
+_ensure_registries_initialized()
 
 
 # PyYAML usa la spec YAML 1.1, que exige signo explícito en el exponente
