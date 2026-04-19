@@ -205,3 +205,12 @@ Tras generar y validar el esqueleto, comunica al usuario:
 - Que el componente ya está **automáticamente registrado y disponible en YAML** sin tocar otros archivos.
 - Dónde está el `TODO: implementar la física`.
 - (Opcional) Snippet YAML mínimo de cómo invocar el nuevo tipo desde `examples/*.yaml`.
+
+## Actualizar el catálogo
+
+Una vez el usuario implemente la física y los tests pasen, **añadir una entrada** al catálogo correspondiente:
+- material → [docs/catalogo_materiales.md](../../../docs/catalogo_materiales.md)
+- element → [docs/catalogo_elementos.md](../../../docs/catalogo_elementos.md)
+- solver → [docs/catalogo_solvers.md](../../../docs/catalogo_solvers.md)
+
+Seguir el formato de las entradas existentes (terso: propósito, DOFs/STRAIN_DIM, integración, parámetros, hipótesis/limitaciones, referencia bibliográfica si aplica, link al archivo). Esto cierra el ciclo extensión → documentación y mantiene el catálogo como índice navegable de las primitivas físicas del programa.
