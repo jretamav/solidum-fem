@@ -9,10 +9,8 @@ nodes:
 
 materials:
   - id: 1
-    type: Elastic2D
+    type: Elastic1D
     E: 200.0e9     # Acero (200 GPa)
-    nu: 0.3
-    hypothesis: plane_stress
 
 elements:
   - id: 1

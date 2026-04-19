@@ -1,4 +1,5 @@
 # fenix_fem/fenix/utils/yaml_parser.py
+import re
 import yaml
 import os
 import numpy as np
@@ -6,6 +7,24 @@ from fenix.core.domain import Domain
 import fenix.registry_initialization
 from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
 import fenix.math.integration  # Asegura el registro de las cuadraturas
+
+
+# PyYAML usa la spec YAML 1.1, que exige signo explícito en el exponente
+# (`2.0e+9` sí, `2.0e9` no — se interpreta como string). Registramos el
+# regex de floats de YAML 1.2 sobre SafeLoader para aceptar ambos.
+_FLOAT_RESOLVER = re.compile(
+    r"""^(?:
+         [-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+        |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
+        |\.[0-9][0-9_]*(?:[eE][-+]?[0-9]+)?
+        |[-+]?\.(?:inf|Inf|INF)
+        |\.(?:nan|NaN|NAN)
+        )$""",
+    re.VERBOSE,
+)
+yaml.SafeLoader.add_implicit_resolver(
+    'tag:yaml.org,2002:float', _FLOAT_RESOLVER, list('-+0123456789.')
+)
 
 
 class YamlValidationError(Exception):

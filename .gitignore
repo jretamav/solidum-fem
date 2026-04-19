@@ -9,3 +9,11 @@ __pycache__/
 *.toc
 *.idx
 *.synctex.gz
+
+# Artefactos de salida de Fenix FEM (generados al ejecutar ejemplos)
+*.vtu
+*.pvd
+*_text_export.txt
+
+# Configuración local del IDE / Claude Code
+.claude/
