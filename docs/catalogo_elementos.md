@@ -148,6 +148,42 @@ F_int = N · d
 
 ---
 
+## Cable2DCorot — cable 2D corotacional
+
+Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite solo tracción. Cinemática corotacional; la unilateralidad la aporta el material (típicamente `CableMaterial1D`).
+
+### Cinemática
+- Idéntica a una barra corotacional: longitud y cosenos directores se recalculan en configuración corriente en cada evaluación.
+- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`.
+- La respuesta física de cable aparece **solo** si el material devuelve `σ = 0` en compresión.
+
+### Formulación
+```
+d = [−c_θ, −s_θ, c_θ, s_θ]
+n = [−s_θ,  c_θ, s_θ, −c_θ]
+
+K_M   = (E_t · A / L₀) · d·dᵀ        (0 si material destensado)
+K_G   = (N / l) · n·nᵀ                (0 si N = 0)
+K_T   = K_M + K_G
+F_int = N · d                         (0 si N = 0)
+```
+
+### Régimen de validez
+- `|ε| ≲ 10⁻²` en régimen tensado.
+- Grandes desplazamientos y rotaciones en el plano.
+- Cables completamente destensados aportan `K_T = 0` al sistema global: otros elementos deben garantizar la estabilidad numérica.
+
+### Independencia del diseño
+El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se implementa dentro de la clase para que futuras modificaciones de las armaduras no afecten a los cables, y viceversa.
+
+### Validación
+- Tests: [tests/test_cable_elements.py](tests/test_cable_elements.py) · `TestCable2DCorot` (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
+- Archivo fuente: [fenix/elements/cable.py](fenix/elements/cable.py) · clase `Cable2DCorot`.
+- Spec: [docs/specs/Cable2DCorot.md](specs/Cable2DCorot.md).
+- Referencias: Crisfield §3.3; Irvine §1.2.
+
+---
+
 ## Frame2DEuler — pórtico/viga 2D Euler-Bernoulli
 
 - **Propósito**: viga esbelta 2D que transmite axial + cortante + momento flector.
