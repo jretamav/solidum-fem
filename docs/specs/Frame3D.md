@@ -1,4 +1,4 @@
-# ELEMENTO PÓRTICO/VIGA 3D EULER-BERNOULLI
+# ELEMENTO MARCO/VIGA 3D EULER-BERNOULLI
 
 > Orden de trabajo. El usuario escribe **especificación física**, **formulación numérica** y **contrato**; la IA rellena **implementación** y responde en **diálogo**.
 

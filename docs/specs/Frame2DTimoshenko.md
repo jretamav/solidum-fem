@@ -1,4 +1,4 @@
-# ELEMENTO PÓRTICO/VIGA 2D TIMOSHENKO
+# ELEMENTO MARCO/VIGA 2D TIMOSHENKO
 
 > Orden de trabajo. El usuario escribe **especificación física**, **formulación numérica** y **contrato**; la IA rellena **implementación** y responde en **diálogo**.
 

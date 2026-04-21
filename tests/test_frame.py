@@ -1,4 +1,4 @@
-"""Tests de los elementos de pórtico/viga 2D.
+"""Tests de los elementos de marco/viga 2D.
 
 Materializan los criterios de `acceptance` declarados en
 docs/specs/Frame2DEuler.md y docs/specs/Frame2DTimoshenko.md.

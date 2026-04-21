@@ -1,5 +1,5 @@
 # fenix_fem/fenix/elements/frame3d.py
-"""Elemento de pórtico/viga 3D Euler-Bernoulli.
+"""Elemento de marco/viga 3D Euler-Bernoulli.
 
 Implementación **independiente** del resto de elementos. No hereda de
 ningún otro elemento ni comparte helpers: la construcción de ejes
@@ -19,7 +19,7 @@ from fenix.registry import ElementRegistry
 
 @ElementRegistry.register
 class Frame3D(Element):
-    """Pórtico/viga 3D basado en Euler-Bernoulli.
+    """Marco/viga 3D basado en Euler-Bernoulli.
 
     Dos nodos rígidamente conectados, 6 DOFs por nodo (ux, uy, uz, rx, ry, rz).
     Transmite axial + cortante y flexión en dos planos + torsión. Régimen de

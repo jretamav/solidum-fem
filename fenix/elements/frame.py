@@ -1,12 +1,12 @@
 # fenix_fem/fenix/elements/frame.py
-"""Elementos de pórtico/viga 2D.
+"""Elementos de marco/viga 2D.
 
 Agrupa `Frame2DEuler` (Euler-Bernoulli, vigas esbeltas) y
 `Frame2DTimoshenko` (Timoshenko, vigas peraltadas). Ambas clases son
 **independientes**: heredan directamente de `Element` y cada una replica
 internamente su propia construcción de la matriz de transformación — no
 se heredan entre sí ni comparten helpers. Conviven en este archivo por
-convención temática (familia "pórtico/viga 2D"), no por dependencia de
+convención temática (familia "marco/viga 2D"), no por dependencia de
 código.
 
 Ver docs/specs/Frame2DEuler.md y docs/specs/Frame2DTimoshenko.md.
@@ -24,7 +24,7 @@ from fenix.registry import ElementRegistry
 
 @ElementRegistry.register
 class Frame2DEuler(Element):
-    """Pórtico/viga 2D basado en Euler-Bernoulli.
+    """Marco/viga 2D basado en Euler-Bernoulli.
 
     Dos nodos rígidamente conectados, 3 DOFs por nodo (ux, uy, rz). Transmite
     esfuerzo axial, cortante y momento flector. Régimen de linealidad
@@ -134,7 +134,7 @@ class Frame2DEuler(Element):
 
 @ElementRegistry.register
 class Frame2DTimoshenko(Element):
-    """Pórtico/viga 2D basado en Timoshenko.
+    """Marco/viga 2D basado en Timoshenko.
 
     Dos nodos rígidamente conectados, 3 DOFs por nodo (ux, uy, rz). Incluye
     deformación por cortante transversal; apropiado para vigas peraltadas
@@ -266,7 +266,7 @@ class Frame2DTimoshenko(Element):
 
 @ElementRegistry.register
 class Frame2DEulerCorot(Element):
-    """Pórtico/viga 2D Euler-Bernoulli corotacional (Updated Lagrangian).
+    """Marco/viga 2D Euler-Bernoulli corotacional (Updated Lagrangian).
 
     Dos nodos, 3 DOFs por nodo (ux, uy, rz). Captura grandes desplazamientos
     y grandes rotaciones rígidas del elemento con pequeñas deformaciones

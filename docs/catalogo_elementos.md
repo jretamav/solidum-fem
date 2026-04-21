@@ -220,7 +220,7 @@ No hereda de `Cable2DCorot` ni de `Truss3DCorot`. La maquinaria cinemática 3D s
 
 ---
 
-## Frame2DEuler — pórtico/viga 2D Euler-Bernoulli
+## Frame2DEuler — marco/viga 2D Euler-Bernoulli
 
 Viga esbelta 2D con hipótesis de Euler-Bernoulli: secciones planas perpendiculares al eje neutro deformado. Dos nodos rígidamente conectados; transmite axial + cortante + momento flector.
 
@@ -258,7 +258,7 @@ Archivo propio. No hereda de ningún otro elemento y no comparte utilidades con 
 
 ---
 
-## Frame2DTimoshenko — pórtico/viga 2D Timoshenko
+## Frame2DTimoshenko — marco/viga 2D Timoshenko
 
 Viga 2D con deformación por cortante transversal explícita. Dos nodos rígidamente conectados; transmite axial + cortante + momento flector. Apropiado para vigas peraltadas o cortas (`L/h ≲ 10`).
 
@@ -349,7 +349,7 @@ Archivo compartido con `Frame2DEuler` y `Frame2DTimoshenko` por familia temátic
 
 ---
 
-## Frame3D — pórtico/viga 3D Euler-Bernoulli
+## Frame3D — marco/viga 3D Euler-Bernoulli
 
 Viga 3D esbelta con 6 DOFs por nodo (`ux, uy, uz, rx, ry, rz`). Transmite axial + cortante en dos planos + flexión en dos planos + torsión. Régimen geométricamente lineal.
 
