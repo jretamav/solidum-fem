@@ -11,7 +11,7 @@ import numpy as np
 import fenix  # dispara autodiscover
 from fenix.core.node import Node
 from fenix.elements.cable import Cable2DCorot, Cable3DCorot
-from fenix.elements.structural import Truss3DCorot
+from fenix.elements.truss import Truss3DCorot
 from fenix.materials.cable_1d import CableMaterial1D
 from fenix.materials.elastic import Elastic1D
 

@@ -2,7 +2,7 @@
 import numpy as np
 from fenix.core.domain import Domain
 from fenix.elements.solid_2d import Quad4, Tri3
-from fenix.elements.structural import Truss2D, Truss3D
+from fenix.elements.truss import Truss2D, Truss3D
 
 try:
     import meshio

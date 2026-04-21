@@ -121,9 +121,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/structural.py](../../fenix/elements/structural.py)
+- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
 - **Clase**: `Truss2DCorot` — hereda de `Truss2D` (reutiliza `__init__`, `ClassVar`s y metadatos de registro) y sobrescribe `compute_element_state` y `compute_internal_forces` para evaluar cosenos directores y longitud en configuración corriente.
-- **Tests**: [tests/test_structural.py](../../tests/test_structural.py) · `TestTruss2DCorot` — tres tests, uno por cada `acceptance`:
+- **Tests**: [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss2DCorot` — tres tests, uno por cada `acceptance`:
   - `test_acceptance_linear_limit_matches_truss2d` (criterio 1).
   - `test_acceptance_rigid_body_rotation` (criterio 2).
   - `test_acceptance_geometric_stiffness_under_traction` (criterio 3).

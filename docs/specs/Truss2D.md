@@ -104,10 +104,10 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/structural.py](../../fenix/elements/structural.py)
+- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
 - **Clase**: `Truss2D` (registrada vía `@ElementRegistry.register`)
 - **Tests**:
-  - [tests/test_structural.py](../../tests/test_structural.py) · `TestTruss2D` — verifica `L0`, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.
+  - [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss2D` — verifica `L0`, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.
   - [tests/test_integration.py](../../tests/test_integration.py) · `TestSolversIntegration` — resuelve end-to-end el caso de aceptación (barra empotrada en un extremo, carga axial en el otro) con `NonlinearSolver` y `ArcLengthSolver`; en régimen elástico precedente a la fluencia reproduce $u(L)=FL/(EA)$.
 - **Notas de traducción**:
   - `L0`, `c`, `s` se calculan una vez en `__init__` sobre la configuración inicial y no se actualizan — coherente con el régimen infinitesimal declarado.

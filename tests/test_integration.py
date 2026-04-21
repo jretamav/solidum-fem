@@ -10,7 +10,7 @@ from fenix.core.domain import Domain
 from fenix.math.assembly import Assembler
 from fenix.math.solvers import NonlinearSolver, ArcLengthSolver
 from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.elements.structural import Truss2D
+from fenix.elements.truss import Truss2D
 
 class TestSolversIntegration(unittest.TestCase):
     """

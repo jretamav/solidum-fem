@@ -113,9 +113,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/structural.py](../../fenix/elements/structural.py)
+- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
 - **Clase**: `Truss3D` — hereda directamente de `Element` (sin relación de herencia con `Truss2D` ni con `Truss2DCorot`).
-- **Tests**: [tests/test_structural.py](../../tests/test_structural.py) · `TestTruss3D` — verifica `L0`, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
+- **Tests**: [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss3D` — verifica `L0`, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
 - **Notas de traducción**:
   - `L0`, `cx`, `cy`, `cz` se calculan una vez en `__init__` sobre la configuración inicial y no se actualizan — coherente con el régimen geométricamente lineal declarado.
   - El constructor tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), para facilitar transición de problemas planos embebidos.

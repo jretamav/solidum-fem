@@ -120,9 +120,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/structural.py](../../fenix/elements/structural.py)
+- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
 - **Clase**: `Truss3DCorot` — hereda de `Truss3D` (reutiliza `__init__`, tolerancia a nodos 2D/3D, metadatos de registro) y sobrescribe `compute_element_state` y `compute_internal_forces` para evaluar longitud y cosenos directores en configuración corriente.
-- **Tests**: [tests/test_structural.py](../../tests/test_structural.py) · `TestTruss3DCorot` — tres tests, uno por cada `acceptance`:
+- **Tests**: [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss3DCorot` — tres tests, uno por cada `acceptance`:
   - `test_acceptance_linear_limit_matches_truss3d` (criterio 1).
   - `test_acceptance_rigid_body_rotation` (criterio 2 — dos rotaciones rígidas distintas, verifica σ=0 y F_int=0 en ambas).
   - `test_acceptance_geometric_stiffness_transverse_plane` (criterio 3 — aplica $\mathbf K_G$ a **dos** direcciones linealmente independientes del plano perpendicular al eje).

@@ -36,8 +36,8 @@ F_int = σ·A · d
 - Cargas exclusivamente axiales. Si la carga transversal sobre la barra no es despreciable → `Frame2DEuler` / `Frame2DTimoshenko`.
 
 ### Validación
-- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss2D`.
-- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss2D`.
+- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss2D`.
+- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss2D`.
 - Spec: [docs/specs/Truss2D.md](specs/Truss2D.md).
 - Referencia: Bathe, *Finite Element Procedures*, §4.2.1.
 
@@ -68,8 +68,8 @@ F_int = N · d
 - **Fuera de alcance**: pandeo por bifurcación (se capta ablandamiento precrítico pero no el punto crítico; para snap-through usar arc-length).
 
 ### Validación
-- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss2DCorot` (3 tests, uno por criterio de aceptación).
-- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss2DCorot`.
+- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss2DCorot` (3 tests, uno por criterio de aceptación).
+- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss2DCorot`.
 - Spec: [docs/specs/Truss2DCorot.md](specs/Truss2DCorot.md).
 - Referencias: Crisfield §3.3, Belytschko §4.5.
 
@@ -108,8 +108,8 @@ F_int = σ·A · d
 - Para grandes rotaciones en 3D → `Truss3DCorot`.
 
 ### Validación
-- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss3D`.
-- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss3D`.
+- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss3D`.
+- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss3D`.
 - Spec: [docs/specs/Truss3D.md](specs/Truss3D.md).
 - Referencias: Bathe §4.2.1; Cook §2.3.
 
@@ -141,8 +141,8 @@ F_int = N · d
 - Cargas exclusivamente axiales.
 
 ### Validación
-- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss3DCorot` (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
-- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss3DCorot`.
+- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss3DCorot` (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
+- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss3DCorot`.
 - Spec: [docs/specs/Truss3DCorot.md](specs/Truss3DCorot.md).
 - Referencias: Crisfield §3.3; Belytschko §4.5.
 

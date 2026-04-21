@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from fenix.core.node import Node
 from fenix.core.material import Material
-from fenix.elements.structural import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
+from fenix.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
 
 class DummyMaterial(Material):
     """Material elástico lineal simple para pruebas."""
