@@ -118,7 +118,7 @@ material_contract:
   nonlinearity_model: "E_tangent escala toda la matriz local — no hay distinción axial vs flexión en régimen no-elástico"
 
 conventions:
-  sign: "tracción positiva en el eje axial"
+  sign: "σ > 0 ⇔ ε > 0 (elongación) en el eje axial"
   rotation_sign: "r_z positivo antihorario (convención matemática estándar)"
   node_orientation: "el eje local va del nodo 1 al nodo 2; permutar nodos invierte el signo de las fuerzas internas"
   configuration: "inicial fija — L, c, s, T no se actualizan con los desplazamientos"

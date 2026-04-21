@@ -79,7 +79,7 @@ material_contract:
   strain_kind: axial escalar (deformación ingenieril corotacional)
 
 conventions:
-  sign: "tracción positiva (ε > 0 ⇔ σ > 0)"
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
   voigt: "N/A (escalar)"
   node_orientation: "libre"
   configuration: "Updated Lagrangian — l, c_x, c_y, c_z se recalculan en cada evaluación"
@@ -107,7 +107,7 @@ acceptance:
     tol_abs: 1.0e-10
 
   - name: rigidez geométrica transversa (plano perpendicular)
-    setup: "barra traccionada con N > 0; aplicar K_G sobre dos vectores perpendiculares al eje linealmente independientes"
+    setup: "barra en tensión con N > 0; aplicar K_G sobre dos vectores perpendiculares al eje linealmente independientes"
     expect: "K_G·v_perp = (N/l)·v_perp_struct, donde v_perp_struct es la extensión del vector transverso al espacio de 6 DOFs con signos opuestos en los dos nodos"
     tol_rel: 1.0e-10
 

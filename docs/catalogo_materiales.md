@@ -50,13 +50,13 @@
 ## IsotropicDamage2D — daño isotrópico 2D con softening exponencial
 
 - **Modelo**: extensión 2D de `IsotropicDamage1D`. Tensor constitutivo secante `C_sec = (1 − d) · C_e`.
-- **Deformación equivalente**: `ε_eq = √(ε_xx² + ε_yy² + ½·γ_xy²)` (norma simple sin distinguir tracción/compresión).
+- **Deformación equivalente**: `ε_eq = √(ε_xx² + ε_yy² + ½·γ_xy²)` (norma simple sin distinguir tensión/compresión).
 - **Evolución**: idéntica a 1D (κ máxima histórica + ley exponencial).
 - **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage'`.
 - **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (delegado a `Elastic2D` interno).
 - **Variables internas**: `kappa`, `damage`.
 - **Tangente**: secante.
-- **Limitación**: la `ε_eq` simétrica no distingue daño en tracción vs compresión; para hormigón usar modelo de Mazars o split tracción/compresión (no implementado).
+- **Limitación**: la `ε_eq` simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (no implementado).
 - **Compatible con**: `Quad4`, `Tri3`.
 - **Archivo**: [fenix/materials/damage_2d.py](fenix/materials/damage_2d.py)
 

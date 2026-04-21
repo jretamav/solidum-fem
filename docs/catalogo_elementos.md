@@ -24,7 +24,7 @@ F_int = σ·A · d
 ```
 
 ### Convenciones
-- Tracción positiva: `ε > 0 ⇔ elongación ⇔ σ > 0`.
+- Convención de signos: `σ > 0 ⇔ ε > 0 (elongación)`.
 - `STRAIN_DIM = 1`: la deformación que recibe el material es un escalar (no Voigt).
 - La orientación de los nodos no afecta el resultado (`K_e` y `F_int` son invariantes bajo su permutación).
 
@@ -94,7 +94,7 @@ F_int = σ·A · d
 ```
 
 ### Convenciones
-- Tracción positiva: `ε > 0 ⇔ elongación ⇔ σ > 0`.
+- Convención de signos: `σ > 0 ⇔ ε > 0 (elongación)`.
 - `STRAIN_DIM = 1`: la deformación que recibe el material es un escalar (no Voigt).
 - La orientación de los nodos no afecta el resultado (`K_e` y `F_int` son invariantes bajo su permutación).
 - Acepta nodos con 2 ó 3 coordenadas (completa con `z = 0` si la tercera falta).
@@ -150,7 +150,7 @@ F_int = N · d
 
 ## Cable2DCorot — cable 2D corotacional
 
-Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite solo tracción. Cinemática corotacional; la unilateralidad la aporta el material (típicamente `CableMaterial1D`).
+Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite solo tensión. Cinemática corotacional; la unilateralidad la aporta el material (típicamente `CableMaterial1D`).
 
 ### Cinemática
 - Idéntica a una barra corotacional: longitud y cosenos directores se recalculan en configuración corriente en cada evaluación.
@@ -186,7 +186,7 @@ El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se impl
 
 ## Cable3DCorot — cable 3D corotacional
 
-Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite solo tracción, puede rotar libremente en el espacio. Cinemática corotacional 3D; unilateralidad aportada por el material (típicamente `CableMaterial1D`).
+Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite solo tensión, puede rotar libremente en el espacio. Cinemática corotacional 3D; unilateralidad aportada por el material (típicamente `CableMaterial1D`).
 
 ### Cinemática
 - Idéntica en filosofía a una barra corotacional 3D: longitud y cosenos directores se recalculan en configuración corriente.

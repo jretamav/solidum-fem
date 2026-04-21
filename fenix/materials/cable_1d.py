@@ -9,7 +9,7 @@ from fenix.registry import MaterialRegistry
 
 @MaterialRegistry.register
 class CableMaterial1D(Material):
-    """Cable axial 1D: elástico lineal en tracción, nulo en compresión.
+    """Cable axial 1D: elástico lineal en tensión, nulo en compresión.
 
     Respuesta memoryless gobernada por:
 
@@ -20,12 +20,12 @@ class CableMaterial1D(Material):
                  0     si ε ≤ 0
 
     En ε = 0 la asignación al régimen compresivo evita introducir
-    rigidez espuria cuando el cable está exactamente sin tensión.
+    rigidez espuria cuando el cable está exactamente sin tensar.
 
     Parameters
     ----------
     E : float
-        Módulo de Young en tracción. Debe ser estrictamente positivo.
+        Módulo de Young en tensión. Debe ser estrictamente positivo.
     """
 
     STRAIN_DIM = 1

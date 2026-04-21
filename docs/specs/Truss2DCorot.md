@@ -80,7 +80,7 @@ material_contract:
   strain_kind: axial escalar (deformación ingenieril corotacional)
 
 conventions:
-  sign: "tracción positiva (ε > 0 ⇔ σ > 0)"
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
   voigt: "N/A (escalar)"
   node_orientation: "libre; K_T y F_int invariantes bajo permutación"
   configuration: "Updated Lagrangian — c_θ, s_θ, l se recalculan en cada evaluación"
@@ -107,8 +107,8 @@ acceptance:
     expect: "F_int = 0 y σ = 0"
     tol_abs: 1.0e-10
 
-  - name: rigidez geométrica bajo tracción
-    setup: "barra traccionada con N > 0; verificar autovalor transverso"
+  - name: rigidez geométrica bajo tensión
+    setup: "barra en tensión con N > 0; verificar autovalor transverso"
     expect: "autovalor de K_T en dirección n = N/l"
     tol_rel: 1.0e-10
 

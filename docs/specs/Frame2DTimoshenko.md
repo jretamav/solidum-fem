@@ -116,7 +116,7 @@ material_contract:
   poisson_source: "si material.nu existe, se usa; en su defecto el parámetro `nu` del elemento con default 0.3 y advertencia por consola"
 
 conventions:
-  sign: "tracción positiva en el eje axial"
+  sign: "σ > 0 ⇔ ε > 0 (elongación) en el eje axial"
   rotation_sign: "r_z positivo antihorario"
   node_orientation: "eje local del nodo 1 al nodo 2"
   configuration: "inicial fija — L, c, s, T, Φ (en forma funcional) se calculan sin actualizar"

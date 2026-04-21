@@ -121,7 +121,7 @@ material_contract:
   poisson_source: "material.nu si existe; en su defecto parámetro `nu` del elemento"
 
 conventions:
-  sign: "tracción positiva; momentos siguen regla de la mano derecha respecto a los ejes locales"
+  sign: "σ > 0 ⇔ ε > 0 (elongación); momentos siguen regla de la mano derecha respecto a los ejes locales"
   local_axes: "x_local = eje de la barra; y_local, z_local = ejes principales de inercia definidos por ref_vector"
   node_orientation: "eje local del nodo 1 al nodo 2"
   configuration: "inicial fija — L, T, ejes locales no se actualizan"

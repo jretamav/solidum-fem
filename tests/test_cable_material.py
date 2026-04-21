@@ -15,7 +15,7 @@ class TestCableMaterial1D(unittest.TestCase):
         self.E = 210e9
         self.mat = CableMaterial1D(E=self.E)
 
-    def test_acceptance_traccion_pura(self):
+    def test_acceptance_tension_pura(self):
         """ε > 0 ⇒ σ = E·ε, E_t = E."""
         eps = 1.0e-4
         sigma, Et, _ = self.mat.compute_state(eps)

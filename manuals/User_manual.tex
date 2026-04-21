@@ -312,7 +312,7 @@ El motor de Fenix FEM posee una arquitectura modular que separa la formulación 
 Aunque el enfoque principal de la importación de topologías radica en la mecánica de medios continuos 2D, el motor de Fenix FEM dispone de formulaciones reticulares unidimensionales de alto rendimiento, orientadas al modelado de armaduras estructurales y sistemas de arriostramiento.
 
 \subsection{Barra Articulada (\texttt{Truss2D} / \texttt{Truss3D})}
-Elemento estructural formulado para soportar exclusivamente cargas axiales (tracción y compresión directas). Sus nodos están teóricamente articulados, por lo que el elemento no posee rigidez a la flexión, y por ende, no transmite momentos flectores ni fuerzas cortantes.
+Elemento estructural formulado para soportar exclusivamente cargas axiales (tensión y compresión directas). Sus nodos están teóricamente articulados, por lo que el elemento no posee rigidez a la flexión, y por ende, no transmite momentos flectores ni fuerzas cortantes.
 \begin{itemize}
     \item \textbf{Grados de Libertad (DOFs):} Cada nodo posee dos traslaciones ($u_x, u_y$) en el espacio bidimensional, o tres traslaciones ($u_x, u_y, u_z$) en el formulismo espacial 3D.
     \item \textbf{Casos de Uso:} Modelado de armaduras de cubiertas, puentes reticulares, torres de transmisión, o para actuar como cables tensores y refuerzos embebidos dentro de matrices de hormigón continuas.
@@ -452,7 +452,7 @@ Para una experiencia visual de alto nivel, siga estrictamente estos pasos:
 % ==========================================
 Para cimentar el flujo de trabajo guiado por datos, presentamos el modelado de un escenario clásico de concentración de tensiones.
 
-\section{Placa con Perforación Central a Tracción}
+\section{Placa con Perforación Central en Tensión}
 Supongamos una placa de acero modelada en Gmsh (un cuadrado con un orificio circular en el medio). Hemos asignado el grupo físico "Superficie\_Placa" a los elementos 2D, el grupo "Borde\_Fijo" al lado izquierdo y "Borde\_Carga" al borde derecho. 
 
 El objetivo es superar el límite elástico del acero y observar el flujo de plasticidad alrededor del orificio.
@@ -478,7 +478,7 @@ boundary_conditions_by_group:
   "Borde_Fijo": {ux: 0.0, uy: 0.0}
 
 point_loads_by_group:
-  "Borde_Carga": {ux: 1500000.0}  # Traccion extrema
+  "Borde_Carga": {ux: 1500000.0}  # Carga axial extrema
 
 solver:
   type: NonlinearSolver
@@ -538,7 +538,7 @@ domain.generate_equation_numbers()
 
 # 4. Cargas Externas (Condiciones de Neumann)
 F_ext = np.zeros(domain.total_dofs)
-F_ext[n2.dofs['ux']] = 150000.0  # Traccion nodal
+F_ext[n2.dofs['ux']] = 150000.0  # Fuerza axial nodal
 F_ext[n3.dofs['ux']] = 150000.0
 
 # 5. Orquestación y Solución del Sistema No Lineal

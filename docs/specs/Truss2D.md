@@ -76,7 +76,7 @@ material_contract:
   strain_kind: axial escalar
 
 conventions:
-  sign: "tracción positiva (ε > 0 ⇔ σ > 0)"
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
   voigt: "N/A (escalar)"
   node_orientation: "libre; K_e y F_int invariantes bajo permutación"
 

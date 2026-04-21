@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Elemento 1D inmerso en el plano 2D que modela un **cable**: dos nodos articulados que solo transmiten **esfuerzo axial de tracción**. En compresión o estado sin tensión, el elemento no transmite nada — se destensa. Cinemática **corotacional** (Updated Lagrangian): el eje rota con el movimiento, la longitud se mide sobre la configuración corriente.
+Elemento 1D inmerso en el plano 2D que modela un **cable**: dos nodos articulados que solo transmiten **esfuerzo axial de tensión**. En compresión o estado sin tensar, el elemento no transmite nada — se destensa. Cinemática **corotacional** (Updated Lagrangian): el eje rota con el movimiento, la longitud se mide sobre la configuración corriente.
 
 La propiedad de unilateralidad vive en el **material**; el elemento es la maquinaria cinemática que aplica al material la deformación correcta. Para obtener el comportamiento propio de cable se empareja este elemento con un material unilateral como `CableMaterial1D`. Con un material elástico clásico, el elemento se comporta como una barra articulada corotacional (útil para pruebas, no para modelado realista de cables).
 
@@ -86,7 +86,7 @@ material_contract:
   expected_behaviour: "material unilateral (p. ej. CableMaterial1D) para obtener respuesta física de cable; cualquier material con STRAIN_DIM=1 es técnicamente aceptado pero producirá comportamiento de barra"
 
 conventions:
-  sign: "tracción positiva; la responsabilidad de anular σ en compresión es del material"
+  sign: "σ > 0 ⇔ ε > 0 (elongación); la responsabilidad de anular σ en compresión es del material"
   voigt: "N/A (escalar)"
   node_orientation: "libre; K_T y F_int invariantes bajo permutación"
   configuration: "Updated Lagrangian — l, c_θ, s_θ se recalculan en cada evaluación"

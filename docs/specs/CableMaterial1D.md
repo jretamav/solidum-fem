@@ -7,12 +7,12 @@
 ## Especificación física
 
 ### 0. Descripción general
-Material 1D memoryless que modela la respuesta axial de un cable: **elástico lineal en tracción y nulo en compresión**. No tiene variables internas ni historia — la respuesta depende exclusivamente de la deformación instantánea. Captura la propiedad esencial de un cable: que solo transmite esfuerzo cuando está tensado.
+Material 1D memoryless que modela la respuesta axial de un cable: **elástico lineal en tensión y nulo en compresión**. No tiene variables internas ni historia — la respuesta depende exclusivamente de la deformación instantánea. Captura la propiedad esencial de un cable: que solo transmite esfuerzo cuando está tensado.
 
 ### 1. Ecuación constitutiva
 $$\sigma(\varepsilon) \;=\; E\,\langle\varepsilon\rangle^+ \;=\; \begin{cases} E\,\varepsilon & \varepsilon > 0 \\ 0 & \varepsilon \leq 0 \end{cases}$$
 
-Rampa lineal de pendiente $E$ para tracción ($\varepsilon > 0$), cero para compresión o estado sin deformación ($\varepsilon \leq 0$). $\langle\cdot\rangle^+$ denota la parte positiva (operador de MacAuley).
+Rampa lineal de pendiente $E$ en tensión ($\varepsilon > 0$), cero en compresión o estado sin deformación ($\varepsilon \leq 0$). $\langle\cdot\rangle^+$ denota la parte positiva (operador de MacAuley).
 
 ### 2. Módulo tangente
 $$E_t(\varepsilon) \;=\; \frac{d\sigma}{d\varepsilon} \;=\; \begin{cases} E & \varepsilon > 0 \\ 0 & \varepsilon \leq 0 \end{cases}$$
@@ -43,14 +43,14 @@ interface:
   primary_state_var: null      # memoryless, no exporta variable principal
 
 parameters:
-  - { name: E, type: float, required: true, desc: "Módulo de Young (tracción)" }
+  - { name: E, type: float, required: true, desc: "Módulo de Young (en tensión)" }
 
 signature:
   compute_state: "(ε: float, state_vars=None) -> (σ: float, E_tangent: float, state_vars)"
   strain_kind: axial escalar
 
 conventions:
-  sign: "tracción positiva (ε > 0 ⇒ σ > 0); ε ≤ 0 ⇒ σ = 0"
+  sign: "σ > 0 ⇔ ε > 0 (elongación); ε ≤ 0 ⇒ σ = 0"
   state_passthrough: "state_vars se devuelve intacto (el material no almacena historia)"
 
 validity:
@@ -70,7 +70,7 @@ numerical_caveats:
   - "Un cable completamente destensado tiene K_M = 0 y K_G = 0 ⇒ matriz tangente singular en los DOFs del elemento. El usuario debe garantizar que otros elementos del modelo proporcionen rigidez suficiente, o pretensar el cable antes de aplicar cargas que puedan destensarlo."
 
 acceptance:
-  - name: respuesta en tracción pura
+  - name: respuesta en tensión pura
     setup: "ε = 1e-4"
     expect: "σ = E · 1e-4, E_tangent = E"
     tol_rel: 1.0e-12
@@ -101,7 +101,7 @@ references:
 - **Archivo**: [fenix/materials/cable_1d.py](../../fenix/materials/cable_1d.py) — archivo propio, sin dependencia de otros módulos de material salvo la clase base `Material`.
 - **Clase**: `CableMaterial1D` — hereda directamente de `Material` (no de `Elastic1D` ni de ningún otro material), registrada vía `@MaterialRegistry.register`.
 - **Tests**: [tests/test_cable_material.py](../../tests/test_cable_material.py) · `TestCableMaterial1D` — seis tests:
-  - `test_acceptance_traccion_pura` (criterio 1).
+  - `test_acceptance_tension_pura` (criterio 1).
   - `test_acceptance_compresion_pura` (criterio 2).
   - `test_acceptance_punto_de_corte` (criterio 3).
   - `test_acceptance_state_vars_passthrough` (criterio 4).
@@ -117,5 +117,5 @@ references:
 
 ## Diálogo
 
-- **2026-04-21** · Material creado como pieza independiente para la futura implementación de elementos de cable (`Cable2DCorot`, `Cable3DCorot`). Deliberadamente **no hereda** de `Elastic1D` aunque su rama en tracción sea idéntica: mantener el material autocontenido simplifica su lectura y evita acoplamientos futuros si la rama elástica cambia en otro archivo.
+- **2026-04-21** · Material creado como pieza independiente para la futura implementación de elementos de cable (`Cable2DCorot`, `Cable3DCorot`). Deliberadamente **no hereda** de `Elastic1D` aunque su rama en tensión sea idéntica: mantener el material autocontenido simplifica su lectura y evita acoplamientos futuros si la rama elástica cambia en otro archivo.
 - **2026-04-21** · Discontinuidad en $\varepsilon = 0$: documentada explícitamente en `out_of_scope: regularización numérica`. Si aparece un caso de uso con destensiones frecuentes donde Newton-Raphson oscile, se añadirá una variante `CableMaterial1DRegularized` con $E_c \ll E$ en compresión — **no** se modificará este material (contrato limpio).

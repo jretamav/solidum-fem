@@ -80,7 +80,7 @@ con vectores geométricos de 6 componentes:
 $$\mathbf r = [-c,\;-s,\;0,\; c,\; s,\;0]^\top \quad \text{(dirección axial)},$$
 $$\mathbf z = [-s,\; c,\;0,\; s,\;-c,\;0]^\top \quad \text{(perpendicular)}.$$
 
-La parte $(N/l)\mathbf z\mathbf z^\top$ es análoga al $\mathbf K_G$ de `Truss2DCorot`: captura la rigidización por tracción (y el ablandamiento precrítico por compresión, base del pandeo). La parte con momentos acopla rotaciones con traslaciones — crítica para problemas de flexión con desplazamientos significativos.
+La parte $(N/l)\mathbf z\mathbf z^\top$ es análoga al $\mathbf K_G$ de `Truss2DCorot`: captura la rigidización por tensión (y el ablandamiento precrítico por compresión, base del pandeo). La parte con momentos acopla rotaciones con traslaciones — crítica para problemas de flexión con desplazamientos significativos.
 
 ### 9. Cuadratura
 No aplica (forma cerrada con Hermite cúbicos).
@@ -110,7 +110,7 @@ material_contract:
   nonlinearity_model: "E_tangent escala K_material local; el K_σ geométrico depende solo de N, M₁, M₂ corrientes"
 
 conventions:
-  sign: "tracción positiva; r_z positivo antihorario"
+  sign: "σ > 0 ⇔ ε > 0 (elongación); r_z positivo antihorario"
   node_orientation: "eje local del nodo 1 al nodo 2"
   configuration: "Updated Lagrangian — l, c, s, α se recalculan en cada evaluación"
 
