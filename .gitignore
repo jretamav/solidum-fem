@@ -8,6 +8,8 @@ __pycache__/
 *.out
 *.toc
 *.idx
+*.ilg
+*.ind
 *.synctex.gz
 
 # Artefactos de salida de Fenix FEM (generados al ejecutar ejemplos)

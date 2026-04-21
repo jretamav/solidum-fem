@@ -1,0 +1,2196 @@
+\documentclass[11pt,letterpaper,oneside]{report}
+
+% Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
+\usepackage{fontspec}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[margin=2.5cm, headheight=15pt]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+
+\definecolor{yamlkey}{RGB}{0, 102, 204}
+\definecolor{yamlval}{RGB}{204, 0, 0}
+\definecolor{yamlcomment}{RGB}{120, 120, 120}
+\definecolor{bglight}{RGB}{245, 245, 245}
+\definecolor{darkgray}{RGB}{50, 50, 50}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=yamlkey,
+    urlcolor=yamlkey,
+    pdftitle={Manual de Referencia - Fenix FEM},
+    pdfauthor={Jaime Retama Velasco}
+}
+
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{yamlkey}}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}{\Large\bfseries\color{darkgray}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Referencia}}
+\fancyhead[R]{\color{darkgray}\leftmark}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\lstdefinelanguage{yaml}{
+  keywords={nodes, materials, elements, mesh, name, kind, status, interface, parameters, signature, conventions, validity, out_of_scope, acceptance, references, material_contract, dof_names, n_nodes, strain_dim, n_integration_points, type, required, desc, sign, voigt, node_orientation, configuration, expected_behaviour, strain_kind, primary_state_var, state_passthrough, numerical_caveats, setup, expect, tol_rel, tol_abs},
+  keywordstyle=\color{yamlkey}\bfseries,
+  ndkeywords={true, false, null},
+  ndkeywordstyle=\color{yamlval}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=false,
+  comment=[l]{\#},
+  commentstyle=\color{yamlcomment}\ttfamily,
+  stringstyle=\color{yamlval}\ttfamily,
+  morestring=[b]',
+  morestring=[b]"
+}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{bglight},
+  frame=single,
+  rulecolor=\color{lightgray},
+  breaklines=true,
+  showstringspaces=false,
+  extendedchars=true,
+  captionpos=b,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+           {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
+           {§}{{\S{}}}1
+           {ε}{{$\varepsilon$}}1 {σ}{{$\sigma$}}1 {α}{{$\alpha$}}1
+           {β}{{$\beta$}}1 {γ}{{$\gamma$}}1 {δ}{{$\delta$}}1
+           {θ}{{$\theta$}}1 {κ}{{$\kappa$}}1 {λ}{{$\lambda$}}1
+           {μ}{{$\mu$}}1 {ν}{{$\nu$}}1 {π}{{$\pi$}}1
+           {ρ}{{$\rho$}}1 {τ}{{$\tau$}}1 {φ}{{$\varphi$}}1
+           {ω}{{$\omega$}}1 {Δ}{{$\Delta$}}1 {Ω}{{$\Omega$}}1
+           {Φ}{{$\Phi$}}1
+           {⇔}{{$\Leftrightarrow$}}1 {⇒}{{$\Rightarrow$}}1 {⇐}{{$\Leftarrow$}}1
+           {→}{{$\to$}}1 {←}{{$\leftarrow$}}1 {↔}{{$\leftrightarrow$}}1
+           {≤}{{$\le$}}1 {≥}{{$\ge$}}1 {≠}{{$\neq$}}1
+           {≲}{{$\lesssim$}}1 {≳}{{$\gtrsim$}}1 {≈}{{$\approx$}}1
+           {·}{{$\cdot$}}1 {×}{{$\times$}}1 {±}{{$\pm$}}1
+           {°}{{$^{\circ}$}}1 {²}{{$^{2}$}}1 {³}{{$^{3}$}}1
+           {₀}{{$_{0}$}}1 {₁}{{$_{1}$}}1 {₂}{{$_{2}$}}1
+           {ᵀ}{{$^{\top}$}}1 {⁺}{{$^{+}$}}1 {⁻}{{$^{-}$}}1
+           {⟨}{{$\langle$}}1 {⟩}{{$\rangle$}}1 {‖}{{$\|$}}1
+           {—}{{---}}1 {–}{{--}}1 {−}{{-}}1
+           {“}{{``}}1 {”}{{''}}1
+           {ʹ}{{'}}1 {′}{{$'$}}1
+           {…}{{\ldots{}}}1
+           {ϕ}{{$\phi$}}1 {Σ}{{$\Sigma$}}1 {Λ}{{$\Lambda$}}1
+           {η}{{$\eta$}}1 {ζ}{{$\zeta$}}1 {ξ}{{$\xi$}}1 {Ξ}{{$\Xi$}}1
+           {ψ}{{$\psi$}}1 {Ψ}{{$\Psi$}}1 {Θ}{{$\Theta$}}1 {χ}{{$\chi$}}1
+           {ℝ}{{$\mathbb{R}$}}1
+           {∈}{{$\in$}}1 {∂}{{$\partial$}}1 {∇}{{$\nabla$}}1
+           {∞}{{$\infty$}}1 {∫}{{$\int$}}1 {√}{{$\surd$}}1
+           {₃}{{$_{3}$}}1 {ₙ}{{$_{n}$}}1 {ₜ}{{$_{t}$}}1
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    \vspace{1cm}
+    {\LARGE Manual de Referencia \par}
+    \vspace{0.5cm}
+    \rule{\linewidth}{0.5mm} \par
+    \vspace{2cm}
+    {\large Especificaciones físicas, formulaciones numéricas y contratos\\
+            de los componentes del programa\par}
+    \vspace{2cm}
+    {\large Generado automáticamente desde \texttt{docs/specs/}\par}
+    \vspace{1cm}
+    {\Large \textbf{Autor:} Jaime Retama Velasco \par}
+    \vspace{0.5cm}
+    {\large Facultad de Estudios Superiores Aragón \\ Universidad Nacional Autónoma de México \par}
+    \vfill
+    {\large \today \par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\setcounter{page}{1}
+\tableofcontents
+\newpage
+
+\chapter*{Sobre este Manual}
+\addcontentsline{toc}{chapter}{Sobre este Manual}
+\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Fenix FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
+
+El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
+\begin{center}\texttt{python manuals/build\_reference\_manual.py}\end{center}
+
+Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-procesamiento), consulte el \textbf{Manual de Usuario} en \texttt{manuals/User\_manual.pdf}.
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+
+\chapter{Elementos 1D — Armaduras}
+
+\section{Truss2D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe la \textbf{especificación física}, la \textbf{formulación numérica} y el \textbf{contrato}. La IA rellena \textbf{implementación} y responde en \textbf{diálogo} durante el trabajo.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos articulados; transmite únicamente esfuerzo axial. Aproximación $C^0$ del desplazamiento.
+
+\subsection{1. Cinemática de desplazamientos}
+Interpolación lineal del desplazamiento axial a lo largo del eje $s \in [0, L]$:
+\[
+u(s) = a_0 + a_1 s
+\]
+
+\subsection{2. Cinemática de deformaciones}
+Única componente (axial, en el sistema local de la barra):
+\[
+\varepsilon_{ss}(s) = \frac{du}{ds}
+\]
+
+\subsection{3. Ecuación constitutiva}
+\[
+\sigma_{ss} = E\, \varepsilon_{ss}
+\]
+
+\subsection{4. Equilibrio --- forma fuerte}
+\[
+-\frac{d}{ds}\!\left(EA\,\frac{du}{ds}\right) = b(s), \quad s \in (0, L),
+\]
+con condiciones de contorno Dirichlet o Neumann ($\sigma A = \bar F$) en los extremos.
+
+\subsection{5. Equilibrio --- forma débil}
+\[
+\int_0^L \frac{d\,\delta u}{ds}\, EA\, \frac{du}{ds}\, ds \;=\; \int_0^L \delta u\, b\, ds \;+\; \bigl[\delta u\, \bar F\bigr]_{\partial \Omega}, \quad \forall\, \delta u \in V_0.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos en $s = 0$ y $s = L$. Cosenos directores del eje en globales:
+\[
+c = \frac{x_2 - x_1}{L}, \qquad s_\theta = \frac{y_2 - y_1}{L}.
+\]
+
+\subsection{7. Funciones de forma}
+\[
+N_1(s) = 1 - \tfrac{s}{L}, \qquad N_2(s) = \tfrac{s}{L}.
+\]
+
+\subsection{8. Matriz deformación-desplazamiento}
+Local (1 DOF axial por nodo): $\mathbf B_{\text{loc}} = \tfrac{1}{L}[-1,\; 1]$.
+Global ($\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, u_x^{(2)}, u_y^{(2)}]^\top$):
+\[
+\mathbf B = \tfrac{1}{L}\,[\,-c,\; -s_\theta,\; c,\; s_\theta\,], \qquad \varepsilon = \mathbf B\, \mathbf u_e.
+\]
+
+\subsection{9. Rigidez elemental}
+Integración analítica exacta ($EA$ constante):
+\[
+\mathbf K_e = \int_0^L \mathbf B^\top EA\, \mathbf B\, ds = \frac{EA}{L}\, \mathbf d^\top \mathbf d, \qquad \mathbf d = [-c,\; -s_\theta,\; c,\; s_\theta].
+\]
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int}} = \sigma A\, \mathbf d.
+\]
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Truss2D
+kind: element
+status: validated        # draft → implemented → validated
+
+interface:
+  dof_names: [ux, uy]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: Área de la sección transversal }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: axial escalar
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
+  voigt: "N/A (escalar)"
+  node_orientation: "libre; K_e y F_int invariantes bajo permutación"
+
+validity:
+  - "|ε| ≲ 1e-2"
+  - pequeños desplazamientos y rotaciones
+  - cargas exclusivamente axiales
+
+out_of_scope:
+  - flexión, cortante, momentos en extremos
+  - grandes desplazamientos
+  - pandeo
+
+acceptance:
+  - name: barra axial bajo carga puntual
+    setup: "empotrada en s=0, carga F axial en s=L"
+    expect: "u(L) = F·L / (E·A)"
+    tol_rel: 1.0e-10
+
+references:
+  - "Bathe K.-J., Finite Element Procedures, §4.2.1"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Clase}: \texttt{Truss2D} (registrada vía \texttt{@ElementRegistry.register})
+  \item \textbf{Tests}:
+  \item tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2D} --- verifica \texttt{L0}, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.
+  \item tests/test\_integration.py \ensuremath{\cdot} \texttt{TestSolversIntegration} --- resuelve end-to-end el caso de aceptación (barra empotrada en un extremo, carga axial en el otro) con \texttt{NonlinearSolver} y \texttt{ArcLengthSolver}; en régimen elástico precedente a la fluencia reproduce $u(L)=FL/(EA)$.
+  \item \textbf{Notas de traducción}:
+  \item \texttt{L0}, \texttt{c}, \texttt{s} se calculan una vez en \texttt{\_\_init\_\_} sobre la configuración inicial y no se actualizan --- coherente con el régimen infinitesimal declarado.
+  \item El contrato con el material es el estándar del proyecto: \texttt{material.compute\_state(\ensuremath{\varepsilon}, state) \ensuremath{\to} (\ensuremath{\sigma}, E\ensuremath{_{t}}, state')}.
+  \item Para grandes desplazamientos/rotaciones usar \texttt{Truss2DCorot}, que hereda de esta clase.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Cierre de ciclo retroactivo. La clase \texttt{Truss2D} preexistía al flujo spec-first; la spec se creó documentando la formulación ya implementada. Los tests unitarios y de integración satisfacen el único criterio de \texttt{acceptance} declarado (analíticamente, vía los valores de $\mathbf K_e$ y end-to-end vía el solver). Promovido \texttt{status: validated}.
+\end{itemize}
+
+
+\newpage
+
+\section{Truss2DCorot}
+
+
+
+\textit{Orden de trabajo. Usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Barra articulada 2D equivalente a \texttt{Truss2D} pero en régimen de \textbf{grandes desplazamientos y rotaciones} con \textbf{pequeña deformación axial}. La cinemática se actualiza en configuración corriente (corotacional / Updated Lagrangian): el eje de la barra gira con el movimiento y la deformación se mide sobre la longitud actual. Rigidez tangente = rigidez material + rigidez geométrica debida al esfuerzo axial.
+
+\subsection{1. Cinemática}
+Configuraciones:
+\begin{itemize}
+  \item Referencia: nodos $\mathbf X_1, \mathbf X_2$, longitud $L_0 = \|\mathbf X_2 - \mathbf X_1\|$.
+  \item Corriente: $\mathbf x_i = \mathbf X_i + \mathbf u_i$, longitud $l = \|\mathbf x_2 - \mathbf x_1\|$.
+\end{itemize}
+
+Cosenos directores en configuración corriente:
+\[
+c_\theta = \frac{x_2 - x_1}{l}, \qquad s_\theta = \frac{y_2 - y_1}{l}.
+\]
+
+\subsection{2. Medida de deformación}
+Ingenieril corotacional (válida para pequeña deformación aunque la rotación sea grande):
+\[
+\varepsilon = \frac{l - L_0}{L_0}.
+\]
+
+\subsection{3. Ecuación constitutiva}
+Material 1D: $\sigma = E\,\varepsilon$ (elástico lineal); el contrato admite cualquier material con \texttt{STRAIN\_DIM = 1}.
+
+\subsection{4. Equilibrio --- forma débil incremental}
+Principio de trabajos virtuales completo:
+\[
+\underbrace{\int_V \delta\varepsilon\, \sigma\, dV}_{\delta W_{\text{int}}} \;=\; \underbrace{\int_V \delta\mathbf u^\top \mathbf b\, dV + \int_{\partial V_t} \delta\mathbf u^\top \bar{\mathbf t}\, dA}_{\delta W_{\text{ext}}}.
+\]
+
+El elemento calcula \textbf{solo el lado interno}:
+\[
+\delta W_{\text{int}} = \delta\mathbf u_e^\top \mathbf F_{\text{int}},
+\]
+con la rigidez tangente consistente separada en parte material y geométrica (ver §9). Las cargas externas (nodales y, si las hubiera, de cuerpo o tracción) las ensambla el solver a partir del input del usuario; este elemento \textbf{no} produce vector nodal equivalente de fuerzas de cuerpo distribuidas a lo largo del eje.
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos, 2 DOFs por nodo ($u_x, u_y$). Vector elemental $\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, u_x^{(2)}, u_y^{(2)}]^\top$.
+
+\subsection{7. Vector dirección actual}
+\[
+\mathbf d = [-c_\theta,\; -s_\theta,\; c_\theta,\; s_\theta]^\top, \qquad \mathbf n = [-s_\theta,\; c_\theta,\; s_\theta,\; -c_\theta]^\top,
+\]
+con $c_\theta, s_\theta$ evaluados en la configuración corriente.
+
+\subsection{8. Matriz B corotacional}
+\[
+\mathbf B = \frac{1}{L_0}\,\mathbf d^\top, \qquad \varepsilon = \mathbf B\, \mathbf u_e.
+\]
+
+\subsection{9. Rigidez tangente}
+\[
+\mathbf K_T = \mathbf K_M + \mathbf K_G,
+\]
+\[
+\mathbf K_M = \frac{E A}{L_0}\, \mathbf d\,\mathbf d^\top,
+\]
+\[
+\mathbf K_G = \frac{N}{l}\, \mathbf n\,\mathbf n^\top, \qquad N = \sigma A.
+\]
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int}} = N\, \mathbf d.
+\]
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada; un único punto conceptual en el eje).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Truss2DCorot
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: Área de la sección transversal }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: axial escalar (deformación ingenieril corotacional)
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
+  voigt: "N/A (escalar)"
+  node_orientation: "libre; K_T y F_int invariantes bajo permutación"
+  configuration: "Updated Lagrangian — c_θ, s_θ, l se recalculan en cada evaluación"
+
+validity:
+  - "|ε| ≲ 1e-2 (pequeña deformación axial)"
+  - rotaciones y desplazamientos de cualquier magnitud
+  - cargas exclusivamente axiales
+
+out_of_scope:
+  - flexión, cortante, momentos
+  - pandeo por bifurcación (captura de snap-through requiere arc-length)
+  - plasticidad con grandes deformaciones
+  - "fuerzas de cuerpo distribuidas (peso propio sobre la barra): el elemento no calcula vector nodal equivalente; el usuario reparte masa a los nodos en el input"
+
+acceptance:
+  - name: equivalencia con Truss2D en régimen lineal
+    setup: "barra axial empotrada, carga F pequeña (ε ~ 1e-6)"
+    expect: "u(L) = F·L/(E·A) con tol_rel 1e-8"
+    tol_rel: 1.0e-8
+
+  - name: invariancia bajo rotación de cuerpo rígido
+    setup: "aplicar rotación rígida de 45° a ambos nodos (sin deformar)"
+    expect: "F_int = 0 y σ = 0"
+    tol_abs: 1.0e-10
+
+  - name: rigidez geométrica bajo tensión
+    setup: "barra en tensión con N > 0; verificar autovalor transverso"
+    expect: "autovalor de K_T en dirección n = N/l"
+    tol_rel: 1.0e-10
+
+references:
+  - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §3.3"
+  - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.5"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Clase}: \texttt{Truss2DCorot} --- hereda de \texttt{Truss2D} (reutiliza \texttt{\_\_init\_\_}, \texttt{ClassVar}s y metadatos de registro) y sobrescribe \texttt{compute\_element\_state} y \texttt{compute\_internal\_forces} para evaluar cosenos directores y longitud en configuración corriente.
+  \item \textbf{Tests}: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2DCorot} --- tres tests, uno por cada \texttt{acceptance}:
+  \item \texttt{test\_acceptance\_linear\_limit\_matches\_truss2d} (criterio 1).
+  \item \texttt{test\_acceptance\_rigid\_body\_rotation} (criterio 2).
+  \item \texttt{test\_acceptance\_geometric\_stiffness\_under\_traction} (criterio 3).
+  \item \textbf{Notas de traducción}:
+  \item La longitud corriente $l$ y los cosenos $c_\theta, s_\theta$ se recalculan en cada evaluación (no se cachean entre llamadas del solver, como exige Updated Lagrangian).
+  \item El vector $\mathbf d$ de §7 se construye con signos $[-c_\theta, -s_\theta, c_\theta, s_\theta]$; el transverso $\mathbf n$ como $[-s_\theta, c_\theta, s_\theta, -c_\theta]$. Ambos con norma $\sqrt 2$ --- el factor se absorbe en los coeficientes $EA/L_0$ y $N/l$.
+  \item La rigidez tangente se devuelve ya sumada $\mathbf K_M + \mathbf K_G$; el solver no distingue las dos contribuciones.
+  \item El test 3 confronta $\mathbf K_T$ con la descomposición esperada y además verifica $\mathbf K_G \mathbf n = (2N/l)\mathbf n$ (autovalor sobre el vector sin normalizar, que es $N/l$ sobre el versor --- así queda la ambigüedad resuelta explícitamente).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación inicial tras validar el diseño spec-first. Se optó por herencia \texttt{Truss2DCorot(Truss2D)} para reutilizar el constructor (L0, cosenos iniciales) y los \texttt{ClassVar}s del registro; los métodos que dependen de configuración corriente se sobrescriben. La bandera \texttt{large\_strains} que tenía \texttt{Truss2D} previamente se elimina en el mismo commit --- el régimen corotacional vive ahora como elemento independiente.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Normalización del autovalor transverso (criterio 3): la fórmula del libro da $N/l$ sobre el \textbf{versor} $\hat{\mathbf n} = \mathbf n/\sqrt 2$; sobre el vector $\mathbf n$ directo (norma $\sqrt 2$) el autovalor es $2N/l$. El test verifica la segunda forma para evitar raíces cuadradas y la nota de traducción documenta la equivalencia.
+\end{itemize}
+
+
+\newpage
+
+\section{Truss3D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe la \textbf{especificación física}, la \textbf{formulación numérica} y el \textbf{contrato}. La IA rellena \textbf{implementación} y responde en \textbf{diálogo} durante el trabajo.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite únicamente esfuerzo axial. Aproximación $C^0$ del desplazamiento. Régimen estrictamente de \textbf{linealidad geométrica}: pequeños desplazamientos, pequeñas rotaciones, pequeñas deformaciones.
+
+\subsection{1. Cinemática de desplazamientos}
+Interpolación lineal del desplazamiento axial a lo largo del eje $s \in [0, L]$:
+\[
+u(s) = a_0 + a_1 s.
+\]
+
+\subsection{2. Cinemática de deformaciones}
+Única componente (axial, en el sistema local de la barra):
+\[
+\varepsilon_{ss}(s) = \frac{du}{ds}.
+\]
+
+\subsection{3. Ecuación constitutiva}
+\[
+\sigma_{ss} = E\,\varepsilon_{ss}.
+\]
+El elemento admite cualquier material 1D con \texttt{STRAIN\_DIM = 1} (elástico lineal, plástico 1D, daño 1D).
+
+\subsection{4. Equilibrio --- forma fuerte}
+\[
+-\frac{d}{ds}\!\left(EA\,\frac{du}{ds}\right) = b(s), \quad s \in (0, L),
+\]
+con condiciones de contorno Dirichlet o Neumann ($\sigma A = \bar F$) en los extremos.
+
+\subsection{5. Equilibrio --- forma débil}
+\[
+\int_0^L \frac{d\,\delta u}{ds}\,EA\,\frac{du}{ds}\,ds \;=\; \int_0^L \delta u\,b\,ds \;+\; \bigl[\delta u\,\bar F\bigr]_{\partial\Omega}, \quad \forall\,\delta u \in V_0.
+\]
+
+El elemento calcula \textbf{solo el lado interno}; las cargas externas las ensambla el solver a partir del input del usuario.
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos en $s = 0$ y $s = L$. Cosenos directores del eje en coordenadas globales:
+\[
+c_x = \frac{x_2 - x_1}{L}, \quad c_y = \frac{y_2 - y_1}{L}, \quad c_z = \frac{z_2 - z_1}{L},
+\]
+con $L = \|\mathbf X_2 - \mathbf X_1\|$ (configuración inicial, fija).
+
+\subsection{7. Funciones de forma}
+\[
+N_1(s) = 1 - \tfrac{s}{L}, \qquad N_2(s) = \tfrac{s}{L}.
+\]
+
+\subsection{8. Matriz deformación-desplazamiento}
+Local (1 DOF axial por nodo): $\mathbf B_{\text{loc}} = \tfrac{1}{L}[-1,\; 1]$.
+Global con $\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, u_z^{(1)}, u_x^{(2)}, u_y^{(2)}, u_z^{(2)}]^\top$:
+\[
+\mathbf B = \tfrac{1}{L}\,[-c_x,\; -c_y,\; -c_z,\; c_x,\; c_y,\; c_z], \qquad \varepsilon = \mathbf B\,\mathbf u_e.
+\]
+
+\subsection{9. Rigidez elemental}
+Integración analítica exacta ($EA$ constante, $\mathbf B$ constante):
+\[
+\mathbf K_e = \int_0^L \mathbf B^\top EA\,\mathbf B\,ds = \frac{EA}{L}\,\mathbf d\,\mathbf d^\top, \qquad \mathbf d = [-c_x,\; -c_y,\; -c_z,\; c_x,\; c_y,\; c_z]^\top.
+\]
+
+$\mathbf K_e$ es una matriz $6\times 6$ de rango 1.
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int}} = \sigma A\,\mathbf d = N\,\mathbf d.
+\]
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada, $\mathbf B$ y $\sigma$ uniformes por elemento). El campo \texttt{n\_integration\_points: 1} se refiere al número de estados materiales conceptuales (uno por elemento), no a puntos de Gauss.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Truss3D
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, uz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: Área de la sección transversal }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: axial escalar
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
+  voigt: "N/A (escalar)"
+  node_orientation: "libre; K_e y F_int invariantes bajo permutación"
+  configuration: "inicial fija — L, c_x, c_y, c_z no se actualizan con los desplazamientos"
+
+validity:
+  - "|ε| ≲ 1e-2"
+  - pequeños desplazamientos y rotaciones
+  - cargas exclusivamente axiales
+
+out_of_scope:
+  - flexión, cortante, momentos
+  - grandes desplazamientos o rotaciones (para ese régimen usar `Truss3DCorot`)
+  - pandeo
+  - "fuerzas de cuerpo distribuidas sobre el eje: el usuario reparte masa a los nodos"
+
+acceptance:
+  - name: barra axial bajo carga puntual (3D)
+    setup: "empotrada en s=0, carga F axial en s=L, orientación arbitraria en el espacio"
+    expect: "u(L) = F·L / (E·A) proyectado sobre el eje"
+    tol_rel: 1.0e-10
+
+references:
+  - "Bathe K.-J., Finite Element Procedures, §4.2.1"
+  - "Cook R.D., Concepts and Applications of FEA, §2.3"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Clase}: \texttt{Truss3D} --- hereda directamente de \texttt{Element} (sin relación de herencia con \texttt{Truss2D} ni con \texttt{Truss2DCorot}).
+  \item \textbf{Tests}: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3D} --- verifica \texttt{L0}, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
+  \item \textbf{Notas de traducción}:
+  \item \texttt{L0}, \texttt{cx}, \texttt{cy}, \texttt{cz} se calculan una vez en \texttt{\_\_init\_\_} sobre la configuración inicial y no se actualizan --- coherente con el régimen geométricamente lineal declarado.
+  \item El constructor tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), para facilitar transición de problemas planos embebidos.
+  \item El contrato con el material es el estándar del proyecto: \texttt{material.compute\_state(\ensuremath{\varepsilon}, state) \ensuremath{\to} (\ensuremath{\sigma}, E\ensuremath{_{t}}, state')}.
+  \item Para grandes desplazamientos/rotaciones en 3D usar \texttt{Truss3DCorot}, que hereda de esta clase.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Apertura de spec retroactiva. La clase \texttt{Truss3D} preexistía al flujo spec-first; la spec se crea documentando la formulación ya implementada y estableciendo explícitamente su alcance: régimen de linealidad geométrica, sin bandera ni variante corotacional. Los tests unitarios existentes cubren el criterio de \texttt{acceptance} (vía los valores de $\mathbf K_e = (EA/L)\mathbf d\mathbf d^\top$ que implican algebraicamente $u(L)=FL/(EA)$). Promovido \texttt{status: validated}.
+\end{itemize}
+
+
+\newpage
+
+\section{Truss3DCorot}
+
+
+
+\textit{Orden de trabajo. Usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Barra articulada 3D equivalente a \texttt{Truss3D} pero en régimen de \textbf{grandes desplazamientos y rotaciones} con \textbf{pequeña deformación axial}. Updated Lagrangian / corotacional: el eje de la barra se redefine en cada iteración sobre la configuración corriente y la deformación se mide sobre la longitud actual. La rigidez tangente suma material + geométrica.
+
+\subsection{1. Cinemática}
+Configuraciones:
+\begin{itemize}
+  \item Referencia: $\mathbf X_1, \mathbf X_2 \in \mathbb{R}^3$, longitud $L_0 = \|\mathbf X_2 - \mathbf X_1\|$.
+  \item Corriente: $\mathbf x_i = \mathbf X_i + \mathbf u_i$, longitud $l = \|\mathbf x_2 - \mathbf x_1\|$.
+\end{itemize}
+
+Vector unitario del eje corriente:
+\[
+\hat{\mathbf e} = \frac{\mathbf x_2 - \mathbf x_1}{l} = (c_x, c_y, c_z), \qquad c_x^2 + c_y^2 + c_z^2 = 1.
+\]
+
+\subsection{2. Medida de deformación}
+Ingenieril corotacional:
+\[
+\varepsilon = \frac{l - L_0}{L_0}.
+\]
+
+\subsection{3. Ecuación constitutiva}
+Material 1D con \texttt{STRAIN\_DIM = 1}: $\sigma = \sigma(\varepsilon)$ (el elemento no hardcodea la ley; la provee el material).
+
+\subsection{4. Equilibrio --- forma débil incremental}
+PTV estándar. El elemento calcula solo el lado interno:
+\[
+\delta W_{\text{int}} = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}, \qquad \mathbf K_T = \frac{\partial\mathbf F_{\text{int}}}{\partial\mathbf u_e} = \mathbf K_M + \mathbf K_G.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos, 3 DOFs por nodo ($u_x, u_y, u_z$). Vector elemental de 6 componentes:
+\[
+\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, u_z^{(1)}, u_x^{(2)}, u_y^{(2)}, u_z^{(2)}]^\top.
+\]
+
+\subsection{7. Vector dirección actual}
+\[
+\mathbf d = [-c_x,\; -c_y,\; -c_z,\; c_x,\; c_y,\; c_z]^\top,
+\]
+con los cosenos evaluados en configuración \textbf{corriente}. $\|\mathbf d\|^2 = 2$.
+
+\subsection{8. Matriz B corotacional}
+\[
+\mathbf B = \frac{1}{L_0}\,\mathbf d^\top, \qquad \varepsilon = \mathbf B\,\mathbf u_e.
+\]
+
+\subsection{9. Rigidez tangente}
+\textbf{Material}:
+\[
+\mathbf K_M = \frac{E_t\,A}{L_0}\,\mathbf d\,\mathbf d^\top \quad (6\times 6,\ \text{rango 1}).
+\]
+
+\textbf{Geométrica}: en 3D la dirección perpendicular al eje es un \textbf{plano} (no un vector único). Se usa el proyector perpendicular $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ (matriz $3\times 3$, rango 2). La rigidez geométrica en el elemento de 6 DOFs:
+\[
+\mathbf K_G = \frac{N}{l}\,\begin{bmatrix}\mathbf P_3 & -\mathbf P_3 \\ -\mathbf P_3 & \mathbf P_3\end{bmatrix} \quad (6\times 6,\ \text{rango 2}), \qquad N = \sigma A.
+\]
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int}} = N\,\mathbf d.
+\]
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Truss3DCorot
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, uz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: Área de la sección transversal }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: axial escalar (deformación ingenieril corotacional)
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación)"
+  voigt: "N/A (escalar)"
+  node_orientation: "libre"
+  configuration: "Updated Lagrangian — l, c_x, c_y, c_z se recalculan en cada evaluación"
+
+validity:
+  - "|ε| ≲ 1e-2"
+  - rotaciones y desplazamientos de cualquier magnitud en el espacio
+  - cargas exclusivamente axiales
+
+out_of_scope:
+  - flexión, cortante, momentos
+  - pandeo por bifurcación
+  - plasticidad con grandes deformaciones
+  - "fuerzas de cuerpo distribuidas: el usuario reparte masa a los nodos"
+
+acceptance:
+  - name: equivalencia con Truss3D en régimen lineal
+    setup: "barra 3D con orientación arbitraria, carga axial pequeña (ε ~ 1e-6)"
+    expect: "K_T y F_int coinciden con Truss3D lineal a tolerancia rtol=1e-4"
+    tol_rel: 1.0e-4
+
+  - name: invariancia bajo rotación rígida 3D
+    setup: "aplicar una rotación rígida arbitraria (p. ej. 30° sobre eje z, luego 45° sobre eje x)"
+    expect: "F_int = 0 y σ = 0"
+    tol_abs: 1.0e-10
+
+  - name: rigidez geométrica transversa (plano perpendicular)
+    setup: "barra en tensión con N > 0; aplicar K_G sobre dos vectores perpendiculares al eje linealmente independientes"
+    expect: "K_G·v_perp = (N/l)·v_perp_struct, donde v_perp_struct es la extensión del vector transverso al espacio de 6 DOFs con signos opuestos en los dos nodos"
+    tol_rel: 1.0e-10
+
+references:
+  - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §3.3"
+  - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.5"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Clase}: \texttt{Truss3DCorot} --- hereda de \texttt{Truss3D} (reutiliza \texttt{\_\_init\_\_}, tolerancia a nodos 2D/3D, metadatos de registro) y sobrescribe \texttt{compute\_element\_state} y \texttt{compute\_internal\_forces} para evaluar longitud y cosenos directores en configuración corriente.
+  \item \textbf{Tests}: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3DCorot} --- tres tests, uno por cada \texttt{acceptance}:
+  \item \texttt{test\_acceptance\_linear\_limit\_matches\_truss3d} (criterio 1).
+  \item \texttt{test\_acceptance\_rigid\_body\_rotation} (criterio 2 --- dos rotaciones rígidas distintas, verifica \ensuremath{\sigma}=0 y F\_int=0 en ambas).
+  \item \texttt{test\_acceptance\_geometric\_stiffness\_transverse\_plane} (criterio 3 --- aplica $\mathbf K_G$ a \textbf{dos} direcciones linealmente independientes del plano perpendicular al eje).
+  \item \textbf{Notas de traducción}:
+  \item La clave respecto a 2D es el proyector $\mathbf P_3 = \mathbf I - \hat{\mathbf e}\hat{\mathbf e}^\top$ (3\ensuremath{\times}3, rango 2): el plano perpendicular al eje es bidimensional. $\mathbf K_G$ resulta entonces de rango 2, no rango 1.
+  \item Método estático \texttt{\_perpendicular\_projector(cx, cy, cz)} extrae esta operación para legibilidad y posible reuso.
+  \item La longitud corriente $l$ y los cosenos $c_x, c_y, c_z$ se recalculan en cada evaluación (Updated Lagrangian); no se cachean entre llamadas del solver.
+  \item Autovalores de $\mathbf K_G$ sobre modos transversos (rotación de la barra alrededor de su centro): $2N/l$ sobre el vector sin normalizar --- igual que en 2D, el factor 2 viene de que el vector de 6 componentes tiene norma $\sqrt 2$. Sobre el versor el autovalor es $N/l$.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación tras validar el diseño spec-first. Se optó por herencia \texttt{Truss3DCorot(Truss3D)} por paralelismo con \texttt{Truss2DCorot(Truss2D)} y reutilización del constructor. La diferencia estructural con el caso 2D es el proyector $\mathbf P$: en 2D tenía rango 1 y generaba un $\mathbf K_G$ de rango 1 (vector $\mathbf n$ único); en 3D tiene rango 2 y $\mathbf K_G$ rango 2 (plano perpendicular al eje). Los tests del criterio 3 verifican explícitamente \textbf{dos} direcciones transversas linealmente independientes, capturando este cambio dimensional.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Test de invariancia bajo rotación rígida 3D: se verifican dos rotaciones distintas (plano x-y y plano x-z) para descartar coincidencias accidentales en ejes canónicos.
+\end{itemize}
+
+
+\newpage
+
+\chapter{Elementos 1D — Cables}
+
+\section{Cable2DCorot}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento 1D inmerso en el plano 2D que modela un \textbf{cable}: dos nodos articulados que solo transmiten \textbf{esfuerzo axial de tensión}. En compresión o estado sin tensar, el elemento no transmite nada --- se destensa. Cinemática \textbf{corotacional} (Updated Lagrangian): el eje rota con el movimiento, la longitud se mide sobre la configuración corriente.
+
+La propiedad de unilateralidad vive en el \textbf{material}; el elemento es la maquinaria cinemática que aplica al material la deformación correcta. Para obtener el comportamiento propio de cable se empareja este elemento con un material unilateral como \texttt{CableMaterial1D}. Con un material elástico clásico, el elemento se comporta como una barra articulada corotacional (útil para pruebas, no para modelado realista de cables).
+
+\subsection{1. Cinemática}
+Configuraciones:
+\begin{itemize}
+  \item Referencia: $\mathbf X_1, \mathbf X_2 \in \mathbb{R}^2$, longitud $L_0 = \|\mathbf X_2 - \mathbf X_1\|$.
+  \item Corriente: $\mathbf x_i = \mathbf X_i + \mathbf u_i$, longitud $l = \|\mathbf x_2 - \mathbf x_1\|$.
+\end{itemize}
+
+Cosenos directores del eje \textbf{corriente}:
+\[
+c_\theta = \frac{x_2 - x_1}{l}, \qquad s_\theta = \frac{y_2 - y_1}{l}.
+\]
+
+\subsection{2. Medida de deformación}
+Ingenieril corotacional:
+\[
+\varepsilon = \frac{l - L_0}{L_0}.
+\]
+
+\subsection{3. Ecuación constitutiva}
+Delegada al material con \texttt{STRAIN\_DIM = 1}. El elemento invoca \texttt{material.compute\_state(\ensuremath{\varepsilon}, state)} y recibe $(\sigma, E_t, \text{nuevo estado})$ sin inspeccionar su naturaleza. La unilateralidad (si la hay) es responsabilidad del material --- el elemento nunca filtra $\sigma$ ni $\varepsilon$ por signo.
+
+\subsection{4. Equilibrio --- forma débil incremental}
+Principio de trabajos virtuales, lado interno:
+\[
+\delta W_{\text{int}} = \int_V \delta\varepsilon\,\sigma\,dV = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}, \qquad \mathbf K_T = \frac{\partial\mathbf F_{\text{int}}}{\partial\mathbf u_e} = \mathbf K_M + \mathbf K_G.
+\]
+
+Las cargas externas las ensambla el solver. El elemento no calcula vector nodal equivalente de fuerzas de cuerpo.
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos, 2 DOFs por nodo ($u_x, u_y$). Vector elemental:
+\[
+\mathbf u_e = [u_x^{(1)},\; u_y^{(1)},\; u_x^{(2)},\; u_y^{(2)}]^\top.
+\]
+
+\subsection{7. Vectores de dirección (configuración corriente)}
+\[
+\mathbf d = [-c_\theta,\; -s_\theta,\; c_\theta,\; s_\theta]^\top, \qquad \mathbf n = [-s_\theta,\; c_\theta,\; s_\theta,\; -c_\theta]^\top.
+\]
+
+$\mathbf d$ apunta a lo largo del eje corriente (norma $\sqrt 2$); $\mathbf n$ al perpendicular (norma $\sqrt 2$). Son ortogonales: $\mathbf d^\top\mathbf n = 0$.
+
+\subsection{8. Matriz B corotacional}
+\[
+\mathbf B = \frac{1}{L_0}\,\mathbf d^\top, \qquad \varepsilon = \mathbf B\,\mathbf u_e.
+\]
+
+\subsection{9. Rigidez tangente}
+\[
+\mathbf K_T = \mathbf K_M + \mathbf K_G,
+\]
+\[
+\mathbf K_M = \frac{E_t\,A}{L_0}\,\mathbf d\,\mathbf d^\top, \qquad \mathbf K_G = \frac{N}{l}\,\mathbf n\,\mathbf n^\top, \qquad N = \sigma A.
+\]
+
+\textbf{Caso destensado} (material unilateral con $\varepsilon \leq 0$): el material devuelve $\sigma = 0$, $E_t = 0$, luego $N = 0$ y \textbf{ambas contribuciones se anulan} --- $\mathbf K_T = \mathbf 0$. El elemento aporta cero al sistema global, como físicamente corresponde a un cable flojo.
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int}} = N\,\mathbf d.
+\]
+
+Cuando el cable está destensado ($N = 0$), $\mathbf F_{\text{int}} = \mathbf 0$.
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Cable2DCorot
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: "Área de la sección transversal del cable" }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: axial escalar (deformación ingenieril corotacional)
+  expected_behaviour: "material unilateral (p. ej. CableMaterial1D) para obtener respuesta física de cable; cualquier material con STRAIN_DIM=1 es técnicamente aceptado pero producirá comportamiento de barra"
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación); la responsabilidad de anular σ en compresión es del material"
+  voigt: "N/A (escalar)"
+  node_orientation: "libre; K_T y F_int invariantes bajo permutación"
+  configuration: "Updated Lagrangian — l, c_θ, s_θ se recalculan en cada evaluación"
+
+validity:
+  - "|ε| ≲ 1e-2 en régimen tensado"
+  - rotaciones y desplazamientos de cualquier magnitud
+  - cargas axiales (las transversales se transmiten por el destensado-retensado del cable)
+
+out_of_scope:
+  - flexión, cortante, momentos
+  - dinámica con inercia distribuida (sin matriz de masa)
+  - pandeo (irrelevante: el cable no transmite compresión)
+  - "fuerzas de cuerpo distribuidas: el usuario reparte masa/peso a los nodos"
+  - pretensión mediante parámetro del elemento (modelar con longitud inicial ajustada)
+
+numerical_caveats:
+  - "Un cable completamente destensado aporta K_T = 0 al sistema global. Si otros elementos no garantizan rigidez suficiente en los DOFs compartidos, la matriz tangente global puede ser singular o mal condicionada."
+  - "En transiciones tensado ↔ destensado (ε cruza 0), Newton-Raphson puede oscilar por el salto discontinuo en E_t. Usar arc-length o pasos de carga finos si el problema atraviesa destensiones."
+
+acceptance:
+  - name: cable tensado coincide con barra corotacional
+    setup: "cable horizontal con material lineal (Elastic1D, E=1000), u_x nodo 2 = 1e-3 ⇒ ε = 1e-3 > 0"
+    expect: "σ = E·ε, E_t = E, K_T = K_M + K_G con valores de barra corotacional"
+    tol_rel: 1.0e-10
+
+  - name: cable destensado produce aportación nula
+    setup: "cable horizontal con CableMaterial1D, u_x nodo 2 = -1e-3 ⇒ ε < 0"
+    expect: "σ = 0, F_int = 0, K_T = matriz cero"
+    tol_abs: 1.0e-12
+
+  - name: invariancia bajo rotación rígida
+    setup: "cable inicialmente horizontal, rotación rígida de 45° de ambos nodos"
+    expect: "σ = 0 y F_int = 0 (independiente del material)"
+    tol_abs: 1.0e-10
+
+  - name: cruce por cero
+    setup: "u_e tal que ε = 0 exactamente, material unilateral"
+    expect: "σ = 0, E_t = 0, F_int = 0, K_T = 0"
+    tol_abs: 1.0e-12
+
+references:
+  - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §3.3"
+  - "Irvine H.M., Cable Structures, MIT Press, §1.2"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/cable.py --- archivo propio, no referencia a los módulos de armadura ni a ningún otro elemento.
+  \item \textbf{Clase}: \texttt{Cable2DCorot} --- hereda directamente de \texttt{Element} (no de \texttt{Truss2DCorot} ni de ningún elemento de armadura). La maquinaria cinemática corotacional se reimplementa íntegra dentro de la clase.
+  \item \textbf{Tests}: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable2DCorot} --- los cuatro criterios de \texttt{acceptance} más un test de registro:
+  \item \texttt{test\_acceptance\_cable\_tensado\_como\_barra\_corot} (criterio 1).
+  \item \texttt{test\_acceptance\_cable\_destensado\_aportacion\_nula} (criterio 2).
+  \item \texttt{test\_acceptance\_rotacion\_rigida} (criterio 3).
+  \item \texttt{test\_acceptance\_cruce\_por\_cero} (criterio 4).
+  \item \texttt{test\_registro\_en\_registry} --- autodiscover.
+  \item \textbf{Notas de traducción}:
+  \item La clase duplica deliberadamente la lógica de \texttt{Truss2DCorot}. No hay herencia. Es el precio de la independencia: si mañana se toca la armadura corotacional, este cable no se mueve.
+  \item \texttt{\_current\_geometry(u\_e)} devuelve \texttt{(l, c\_\ensuremath{\theta}, s\_\ensuremath{\theta})} --- método privado para aislar la única operación que depende de configuración corriente.
+  \item En estado destensado, $\mathbf K_M = \mathbf 0$ (porque $E_t = 0$ viene del material) y $\mathbf K_G = \mathbf 0$ (porque $N = 0$); el elemento aporta literalmente ceros al ensamblaje, como debe ser físicamente un cable flojo. Los tests lo verifican con tolerancia absoluta.
+  \item El elemento no valida que el material sea unilateral: es responsabilidad del usuario emparejar con \texttt{CableMaterial1D}. Emparejar con \texttt{Elastic1D} produce respuesta de barra corotacional y se usa internamente en el test del criterio 1 para comparar contra valores analíticos.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como componente totalmente independiente de \texttt{Truss2DCorot} por decisión explícita del usuario: la maquinaria cinemática se duplica dentro de la clase de cable para desacoplar su evolución futura del elemento de armadura. El coste es ~40 líneas duplicadas; la ganancia es que ninguna refactorización de las armaduras puede contaminar silenciosamente el comportamiento de los cables.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Validación de material unilateral: se optó por \textbf{no} imponerla en \texttt{\_\_init\_\_}. Motivo: el contrato elemento\ensuremath{\leftrightarrow}material del proyecto es genérico sobre \texttt{STRAIN\_DIM=1}; introducir una verificación específica crearía un acoplamiento entre la clase del elemento y la identidad del material. Se documenta en \texttt{material\_contract.expected\_behaviour} del YAML para orientar al usuario.
+\end{itemize}
+
+
+\newpage
+
+\section{Cable3DCorot}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento 1D inmerso en el espacio 3D que modela un \textbf{cable}: dos nodos articulados que solo transmiten \textbf{esfuerzo axial de tensión}. En compresión o estado sin tensar, el elemento no transmite nada. Cinemática \textbf{corotacional} (Updated Lagrangian): el eje rota libremente en el espacio, la longitud se mide sobre la configuración corriente.
+
+La unilateralidad vive en el \textbf{material}; el elemento es la maquinaria cinemática 3D. Para obtener respuesta física de cable, emparejar con \texttt{CableMaterial1D}. Con un material elástico clásico, el elemento se comporta como una barra corotacional 3D.
+
+\subsection{1. Cinemática}
+\begin{itemize}
+  \item Referencia: $\mathbf X_1, \mathbf X_2 \in \mathbb{R}^3$, longitud $L_0 = \|\mathbf X_2 - \mathbf X_1\|$.
+  \item Corriente: $\mathbf x_i = \mathbf X_i + \mathbf u_i$, longitud $l = \|\mathbf x_2 - \mathbf x_1\|$.
+\end{itemize}
+
+Vector unitario del eje corriente:
+\[
+\hat{\mathbf e} = \frac{\mathbf x_2 - \mathbf x_1}{l} = (c_x, c_y, c_z), \qquad c_x^2 + c_y^2 + c_z^2 = 1.
+\]
+
+\subsection{2. Medida de deformación}
+Ingenieril corotacional:
+\[
+\varepsilon = \frac{l - L_0}{L_0}.
+\]
+
+\subsection{3. Ecuación constitutiva}
+Delegada al material con \texttt{STRAIN\_DIM = 1}. El elemento llama \texttt{material.compute\_state(\ensuremath{\varepsilon}, state)} y recibe $(\sigma, E_t, \text{nuevo estado})$ sin inspeccionar su naturaleza. La unilateralidad (si la hay) es responsabilidad del material.
+
+\subsection{4. Equilibrio --- forma débil incremental}
+PTV estándar; el elemento calcula solo el lado interno:
+\[
+\delta W_{\text{int}} = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}, \qquad \mathbf K_T = \frac{\partial\mathbf F_{\text{int}}}{\partial\mathbf u_e} = \mathbf K_M + \mathbf K_G.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos, 3 DOFs por nodo ($u_x, u_y, u_z$). Vector elemental de 6 componentes:
+\[
+\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, u_z^{(1)}, u_x^{(2)}, u_y^{(2)}, u_z^{(2)}]^\top.
+\]
+
+\subsection{7. Vector dirección actual}
+\[
+\mathbf d = [-c_x,\; -c_y,\; -c_z,\; c_x,\; c_y,\; c_z]^\top, \qquad \|\mathbf d\|^2 = 2,
+\]
+con los cosenos evaluados en configuración \textbf{corriente}.
+
+\subsection{8. Matriz B corotacional}
+\[
+\mathbf B = \frac{1}{L_0}\,\mathbf d^\top, \qquad \varepsilon = \mathbf B\,\mathbf u_e.
+\]
+
+\subsection{9. Rigidez tangente}
+\textbf{Material}:
+\[
+\mathbf K_M = \frac{E_t\,A}{L_0}\,\mathbf d\,\mathbf d^\top \quad (6\times 6,\ \text{rango 1}).
+\]
+
+\textbf{Geométrica}: en 3D la dirección perpendicular al eje es un plano bidimensional. Se usa el proyector perpendicular $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ ($3\times 3$, rango 2):
+\[
+\mathbf K_G = \frac{N}{l}\,\begin{bmatrix}\mathbf P_3 & -\mathbf P_3 \\ -\mathbf P_3 & \mathbf P_3\end{bmatrix} \quad (6\times 6,\ \text{rango 2}), \qquad N = \sigma A.
+\]
+
+\textbf{Caso destensado} (material unilateral con $\varepsilon \leq 0$): el material devuelve $\sigma = 0$, $E_t = 0$, luego $N = 0$ y \textbf{ambas contribuciones se anulan} --- $\mathbf K_T = \mathbf 0$. El elemento aporta cero al sistema global.
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int}} = N\,\mathbf d.
+\]
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Cable3DCorot
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, uz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: "Área de la sección transversal del cable" }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: axial escalar (deformación ingenieril corotacional)
+  expected_behaviour: "material unilateral (p. ej. CableMaterial1D) para obtener respuesta física de cable; cualquier material con STRAIN_DIM=1 es técnicamente aceptado pero producirá comportamiento de barra"
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación); la responsabilidad de anular σ en compresión es del material"
+  voigt: "N/A (escalar)"
+  node_orientation: "libre; K_T y F_int invariantes bajo permutación"
+  configuration: "Updated Lagrangian — l, c_x, c_y, c_z se recalculan en cada evaluación"
+
+validity:
+  - "|ε| ≲ 1e-2 en régimen tensado"
+  - rotaciones y desplazamientos de cualquier magnitud en el espacio
+  - cargas axiales (las transversales se transmiten por destensado-retensado del cable)
+
+out_of_scope:
+  - flexión, cortante, momentos, torsión
+  - dinámica con inercia distribuida (sin matriz de masa)
+  - pandeo (irrelevante: el cable no transmite compresión)
+  - "fuerzas de cuerpo distribuidas: el usuario reparte masa/peso a los nodos"
+  - pretensión mediante parámetro del elemento
+
+numerical_caveats:
+  - "Cable destensado ⇒ K_T = 0 en los DOFs del elemento. Si otros elementos no garantizan rigidez en esos DOFs, la matriz tangente global puede ser singular."
+  - "En transiciones tensado ↔ destensado (ε cruza 0), Newton-Raphson puede oscilar. Usar arc-length o pasos finos si el problema atraviesa destensiones."
+
+acceptance:
+  - name: cable tensado coincide con barra corotacional 3D
+    setup: "cable con orientación arbitraria, material lineal (Elastic1D), desplazamiento axial pequeño (ε ~ 1e-6)"
+    expect: "K_T y F_int coinciden con Truss3DCorot a tolerancia rtol = 1e-4"
+    tol_rel: 1.0e-4
+
+  - name: cable destensado produce aportación nula
+    setup: "cable sobre eje x con CableMaterial1D, u_x nodo 2 = -1e-3 ⇒ ε < 0"
+    expect: "σ = 0, F_int = 0, K_T = matriz cero"
+    tol_abs: 1.0e-12
+
+  - name: invariancia bajo rotación rígida 3D
+    setup: "cable inicial sobre eje x, rotación rígida de 45° en plano x-z"
+    expect: "σ = 0 y F_int = 0 (independiente del material)"
+    tol_abs: 1.0e-10
+
+  - name: cruce por cero
+    setup: "u_e = 0 con material unilateral"
+    expect: "σ = 0, E_t = 0, F_int = 0, K_T = 0"
+    tol_abs: 1.0e-12
+
+references:
+  - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §3.3"
+  - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.5"
+  - "Irvine H.M., Cable Structures, MIT Press, §1.2"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/cable.py --- comparte archivo con \texttt{Cable2DCorot} por convención temática del proyecto; no comparte código.
+  \item \textbf{Clase}: \texttt{Cable3DCorot} --- hereda directamente de \texttt{Element} (no de \texttt{Cable2DCorot}, no de \texttt{Truss3DCorot}, no de ningún otro elemento). Maquinaria cinemática 3D autónoma.
+  \item \textbf{Tests}: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable3DCorot} --- los 4 criterios de \texttt{acceptance} más un test de registro:
+  \item \texttt{test\_acceptance\_cable\_tensado\_como\_barra\_corot\_3d} (criterio 1).
+  \item \texttt{test\_acceptance\_cable\_destensado\_aportacion\_nula} (criterio 2).
+  \item \texttt{test\_acceptance\_rotacion\_rigida\_3d} (criterio 3).
+  \item \texttt{test\_acceptance\_cruce\_por\_cero} (criterio 4).
+  \item \texttt{test\_registro\_en\_registry} --- autodiscover.
+  \item \textbf{Notas de traducción}:
+  \item La clase duplica la maquinaria corotacional 3D de \texttt{Truss3DCorot}. Duplicación deliberada por la misma razón que en 2D: desacoplar la evolución futura de armaduras y cables.
+  \item Método estático \texttt{\_perpendicular\_projector(cx, cy, cz)} extrae la construcción del proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ para legibilidad.
+  \item \texttt{\_current\_geometry} tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), heredando la flexibilidad de \texttt{Truss3D} para problemas embebidos.
+  \item En estado destensado, $\mathbf K_M = \mathbf 0$ y $\mathbf K_G = \mathbf 0$ simultáneamente; el elemento aporta literalmente ceros al ensamblaje.
+  \item El test del criterio 1 compara directamente contra \texttt{Truss3DCorot} con material \texttt{Elastic1D}: si ambos producen $\mathbf K$ y $\mathbf F_{\text{int}}$ iguales a tolerancia, la cinemática del cable y de la barra son consistentes entre sí en el régimen tensado.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como pieza totalmente autónoma por decisión del usuario: no hereda de \texttt{Cable2DCorot} ni de \texttt{Truss3DCorot}. Compartir archivo con \texttt{Cable2DCorot} (\texttt{fenix/elements/cable.py}) es convención temática del proyecto (elementos del mismo dominio conviven en un archivo, como las 4 armaduras y los 2 frames 2D en \texttt{structural.py}), no implica dependencia de código.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} La única diferencia estructural con \texttt{Cable2DCorot} es el proyector 3D: en 2D la perpendicular es un vector único ($\mathbf n$); en 3D es un plano (dimensión 2). Esto se refleja en el rango de $\mathbf K_G$: 1 en 2D, 2 en 3D.
+\end{itemize}
+
+
+\newpage
+
+\chapter{Elementos 1D — Marcos / Vigas}
+
+\section{Frame2DEuler}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento 1D inmerso en el plano 2D que modela una \textbf{viga esbelta} según la teoría de \textbf{Euler-Bernoulli}. Dos nodos rígidamente conectados (transmiten momento), 3 grados de libertad por nodo ($u_x, u_y, r_z$). Captura tres acciones internas: \textbf{esfuerzo axial}, \textbf{cortante transverso} y \textbf{momento flector}. Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones).
+
+\subsection{1. Hipótesis cinemática de Euler-Bernoulli}
+\begin{itemize}
+  \item Las secciones transversales se mantienen \textbf{planas} tras la deformación.
+  \item Las secciones permanecen \textbf{perpendiculares al eje neutro deformado} (cizalladura transversal nula: $\gamma_{xy} = 0$).
+\end{itemize}
+
+Consecuencia: la rotación de la sección es igual a la pendiente de la elástica:
+\[
+\theta(s) = \frac{dv}{ds}.
+\]
+
+Válido solo para vigas \textbf{esbeltas} ($L/h \gtrsim 10$). En vigas peraltadas la cizalladura no es despreciable \ensuremath{\to} \texttt{Frame2DTimoshenko}.
+
+\subsection{2. Campos de desplazamiento}
+\begin{itemize}
+  \item Axial: $u(s)$ a lo largo del eje local $s \in [0, L]$.
+  \item Transverso: $v(s)$ perpendicular al eje local.
+  \item Rotación de la sección: $\theta(s) = dv/ds$ (derivada de la flecha).
+\end{itemize}
+
+\subsection{3. Medidas de deformación}
+\begin{itemize}
+  \item Axial: $\varepsilon_{axial}(s) = du/ds$ (constante para interpolación lineal en $u$).
+  \item Curvatura: $\kappa(s) = d^2v/ds^2$.
+\end{itemize}
+
+La deformación axial en un punto genérico de la sección es $\varepsilon(s, y) = \varepsilon_{axial}(s) - y\,\kappa(s)$; al integrar sobre la sección se obtienen axial ($N$) y momento flector ($M$) desacoplados.
+
+\subsection{4. Ecuaciones constitutivas}
+\begin{itemize}
+  \item Axial: $N = EA\,\varepsilon_{axial}$ (o $N = A\,\sigma$ con $\sigma$ del material).
+  \item Flexión: $M = EI\,\kappa$.
+\end{itemize}
+
+El material delega la respuesta axial; la rigidez a flexión escala con el \textbf{módulo tangente} $E_t$ devuelto por el material (aproximación: toda la sección entra en régimen no-elástico simultáneamente --- no hay plasticidad distribuida).
+
+\subsection{5. Equilibrio --- forma débil}
+Principio de trabajos virtuales. El elemento calcula solo el lado interno:
+\[
+\delta W_{\text{int}} = \int_0^L (N\,\delta\varepsilon_{axial} + M\,\delta\kappa)\,ds = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{6. Discretización}
+Dos nodos ($s = 0$ y $s = L$), 3 DOFs por nodo en coordenadas globales:
+\[
+\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, r_z^{(1)}, u_x^{(2)}, u_y^{(2)}, r_z^{(2)}]^\top.
+\]
+
+\subsection{7. Sistema local y transformación}
+Cosenos directores del eje (configuración inicial, fija): $c = (x_2 - x_1)/L$, $s_\theta = (y_2 - y_1)/L$. Matriz de transformación ortogonal $6\times 6$:
+\[
+\mathbf T = \begin{bmatrix}
+ c & s_\theta & 0 & 0 & 0 & 0 \\
+-s_\theta & c & 0 & 0 & 0 & 0 \\
+ 0 & 0 & 1 & 0 & 0 & 0 \\
+ 0 & 0 & 0 & c & s_\theta & 0 \\
+ 0 & 0 & 0 & -s_\theta & c & 0 \\
+ 0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}.
+\]
+
+Las rotaciones $r_z$ son invariantes ante rotación del sistema (escalares en el plano). $\mathbf u_{\text{local}} = \mathbf T\,\mathbf u_e$.
+
+\subsection{8. Funciones de forma}
+\begin{itemize}
+  \item Axial: lineal, $N_1^u(s) = 1 - s/L$, $N_2^u(s) = s/L$.
+  \item Transverso (Hermite cúbicos, cuatro funciones que interpolan $v$ y $\theta$):
+\end{itemize}
+\[
+N_1^v = 1 - 3\xi^2 + 2\xi^3, \quad N_1^\theta = L(\xi - 2\xi^2 + \xi^3),
+\]
+\[
+N_2^v = 3\xi^2 - 2\xi^3, \quad N_2^\theta = L(-\xi^2 + \xi^3),
+\]
+con $\xi = s/L$.
+
+\subsection{9. Rigidez local}
+En el sistema local, la matriz $6\times 6$ tiene forma cerrada por integración analítica:
+
+\[
+\mathbf K_{\text{local}} = \begin{bmatrix}
+ \tfrac{EA}{L} & 0 & 0 & -\tfrac{EA}{L} & 0 & 0 \\
+ 0 & \tfrac{12EI}{L^3} & \tfrac{6EI}{L^2} & 0 & -\tfrac{12EI}{L^3} & \tfrac{6EI}{L^2} \\
+ 0 & \tfrac{6EI}{L^2} & \tfrac{4EI}{L} & 0 & -\tfrac{6EI}{L^2} & \tfrac{2EI}{L} \\
+-\tfrac{EA}{L} & 0 & 0 & \tfrac{EA}{L} & 0 & 0 \\
+ 0 & -\tfrac{12EI}{L^3} & -\tfrac{6EI}{L^2} & 0 & \tfrac{12EI}{L^3} & -\tfrac{6EI}{L^2} \\
+ 0 & \tfrac{6EI}{L^2} & \tfrac{2EI}{L} & 0 & -\tfrac{6EI}{L^2} & \tfrac{4EI}{L}
+\end{bmatrix}.
+\]
+
+En no-linealidad material, $E \to E_t(\varepsilon_{axial})$ devuelto por el material --- escala \textbf{todos} los términos de la matriz por igual. Esta es una aproximación: supone que la plasticidad/daño afecta uniformemente a la sección.
+
+\subsection{10. Fuerzas internas}
+En el sistema local:
+\[
+\mathbf F_{\text{int,local}} = \mathbf K_{\text{local}}\,\mathbf u_{\text{local}}.
+\]
+
+La componente axial se \textbf{corrige} con el esfuerzo axial verdadero del material: $F_1 = -\sigma A$, $F_4 = +\sigma A$. Esto permite que el material aporte $\sigma$ no-lineal sin que la formulación de flexión interfiera.
+
+\subsection{11. Ensamblaje global}
+\[
+\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf T, \qquad \mathbf F_{\text{int}} = \mathbf T^\top\,\mathbf F_{\text{int,local}}.
+\]
+
+\subsection{12. Cuadratura}
+No aplica (forma cerrada para la matriz; integración analítica de los polinomios de Hermite). El campo \texttt{n\_integration\_points: 1} se refiere al único estado material conceptual del elemento (la deformación axial media).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Frame2DEuler
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, rz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
+  - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano (z)" }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: "axial escalar (deformación media axial ε = (u_2 - u_1)/L en sistema local)"
+  nonlinearity_model: "E_tangent escala toda la matriz local — no hay distinción axial vs flexión en régimen no-elástico"
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación) en el eje axial"
+  rotation_sign: "r_z positivo antihorario (convención matemática estándar)"
+  node_orientation: "el eje local va del nodo 1 al nodo 2; permutar nodos invierte el signo de las fuerzas internas"
+  configuration: "inicial fija — L, c, s, T no se actualizan con los desplazamientos"
+
+validity:
+  - "vigas esbeltas: L/h ≳ 10 (h = canto de la sección)"
+  - pequeños desplazamientos y pequeñas rotaciones
+  - "|ε_axial| ≲ 1e-2"
+
+out_of_scope:
+  - vigas peraltadas con deformación por cortante significativa (usar Frame2DTimoshenko)
+  - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
+  - plasticidad distribuida en la sección (fibras); el modelo escala rigidez global por E_t
+  - pandeo (requiere rigidez geométrica, no implementada en esta viga lineal)
+  - "fuerzas de cuerpo distribuidas: el usuario reparte carga equivalente a los nodos"
+
+acceptance:
+  - name: respuesta axial pura
+    setup: "viga horizontal, empotrada en extremo izquierdo, carga axial F en extremo derecho"
+    expect: "u_x (extremo libre) = F·L/(E·A); momentos y cortantes nulos"
+    tol_rel: 1.0e-10
+
+  - name: voladizo con carga transversal (flecha analítica)
+    setup: "viga horizontal, empotrada en extremo izquierdo, carga vertical P en extremo derecho"
+    expect: "v (extremo libre) = P·L³/(3·E·I); rotación θ = P·L²/(2·E·I)"
+    tol_rel: 1.0e-10
+
+  - name: simetría de K
+    setup: "cualquier configuración"
+    expect: "K_global = K_globalᵀ (elemento conservativo en régimen elástico)"
+    tol_abs: 1.0e-12
+
+references:
+  - "Bathe K.-J., Finite Element Procedures, §4.2 (formulación isoparamétrica) y cap. 5 (vigas)"
+  - "Cook R.D., Concepts and Applications of FEA, §2.7 (elementos de viga)"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/frame.py --- archivo propio, no comparte utilidades con otros módulos de elementos.
+  \item \textbf{Clase}: \texttt{Frame2DEuler} --- hereda directamente de \texttt{Element}. La construcción de la matriz de transformación $\mathbf T$ se extrae a un método estático privado \texttt{\_build\_geometry} para que la clase sea autocontenida (anteriormente se usaba una función helper \texttt{\_frame\_geometry} compartida con \texttt{Frame2DTimoshenko} en \texttt{structural.py}; la duplicación es deliberada para garantizar independencia).
+  \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerAcceptance} --- los tres criterios físicos y el registro:
+  \item \texttt{test\_acceptance\_respuesta\_axial\_pura} (criterio 1) --- resuelve el voladizo con solver, verifica $u_x(L) = FL/(EA)$.
+  \item \texttt{test\_acceptance\_voladizo\_carga\_transversal} (criterio 2) --- carga transversal $P$, verifica flecha $v = PL^3/(3EI)$ y rotación $\theta = PL^2/(2EI)$.
+  \item \texttt{test\_acceptance\_simetria\_K} (criterio 3) --- viga oblicua (c=0.6, s=0.8) para evitar ejes canónicos, verifica $\mathbf K = \mathbf K^\top$.
+  \item \texttt{test\_registro\_en\_registry} --- autodiscover.
+  \item \textbf{Notas de traducción}:
+  \item La matriz $\mathbf T$ se calcula una sola vez en \texttt{\_\_init\_\_} sobre la configuración inicial y se guarda como atributo --- coherente con el régimen geométricamente lineal.
+  \item En \texttt{compute\_element\_state}, la componente axial de $\mathbf F_{\text{int,local}}$ se sobrescribe tras el producto $\mathbf K_{\text{local}}\mathbf u_{\text{local}}$ con el valor $\sigma A$ devuelto por el material. Esto permite usar materiales no-lineales en la rama axial sin que la parte lineal de flexión interfiera.
+  \item La aproximación del modelo no-lineal es que $E_t$ escala \textbf{toda} la matriz local: no hay distinción entre rigidez axial y de flexión en régimen no-elástico. Documentado en \texttt{material\_contract.nonlinearity\_model}.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{fenix/elements/frame.py} y desacoplado del helper compartido \texttt{\_frame\_geometry}. El método estático \texttt{\_build\_geometry} reimplementa la construcción de $\mathbf T$ dentro de la clase. \texttt{Frame2DTimoshenko} sigue en \texttt{structural.py} usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto --- validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
+\end{itemize}
+
+
+\newpage
+
+\section{Frame2DTimoshenko}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento 1D inmerso en el plano 2D que modela una \textbf{viga} según la teoría de \textbf{Timoshenko}. Dos nodos rígidamente conectados, 3 DOFs por nodo ($u_x, u_y, r_z$). Transmite \textbf{esfuerzo axial}, \textbf{cortante transverso} y \textbf{momento flector}. Incluye explícitamente la \textbf{deformación por cortante transversal}. Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones).
+
+\subsection{1. Hipótesis cinemática de Timoshenko}
+\begin{itemize}
+  \item Las secciones transversales se mantienen \textbf{planas} tras la deformación (igual que Euler-Bernoulli).
+  \item Las secciones \textbf{no} están obligadas a ser perpendiculares al eje neutro: se permite una \textbf{rotación adicional} respecto a la tangente.
+\end{itemize}
+
+Consecuencia: la rotación de la sección $\theta(s)$ y la pendiente de la elástica $dv/ds$ son \textbf{variables independientes}:
+\[
+\gamma(s) = \frac{dv}{ds} - \theta(s) \neq 0,
+\]
+donde $\gamma$ es la distorsión angular (deformación por cortante transverso). Euler-Bernoulli corresponde al caso $\gamma = 0$.
+
+Apropiado para vigas \textbf{gruesas, cortas o peraltadas} ($L/h \lesssim 10$) donde la deformación por cortante no es despreciable.
+
+\subsection{2. Campos de desplazamiento}
+\begin{itemize}
+  \item Axial: $u(s)$ a lo largo del eje local $s \in [0, L]$.
+  \item Transverso: $v(s)$ perpendicular al eje local.
+  \item Rotación de la sección: $\theta(s)$, \textbf{independiente} de $v$.
+\end{itemize}
+
+\subsection{3. Medidas de deformación}
+\begin{itemize}
+  \item Axial: $\varepsilon_{axial}(s) = du/ds$.
+  \item Curvatura (flexión): $\kappa(s) = d\theta/ds$.
+  \item Cortante: $\gamma(s) = dv/ds - \theta(s)$.
+\end{itemize}
+
+\subsection{4. Ecuaciones constitutivas}
+\begin{itemize}
+  \item Axial: $N = EA\,\varepsilon_{axial}$ (el material entrega $\sigma$ y $E_t$).
+  \item Flexión: $M = EI\,\kappa$.
+  \item Cortante: $V = G A_s\,\gamma$, con $G = E/[2(1+\nu)]$ (módulo de corte) y $A_s$ el \textbf{área efectiva de cortante} (menor que $A$ por la distribución no uniforme de la tensión tangencial en la sección).
+\end{itemize}
+
+\subsection{5. Factor de Phi (shear locking)}
+La formulación estándar con interpolaciones lineales de $v$ y $\theta$ sufre \textbf{shear locking} para vigas esbeltas (la rigidez por cortante domina numéricamente aunque $\gamma$ físicamente sea pequeño). La matriz local incorpora un factor correctivo:
+\[
+\Phi = \frac{12\,E\,I}{G\,A_s\,L^2}.
+\]
+Para $\Phi \to 0$ (viga esbelta) la matriz se reduce a la de Euler-Bernoulli.
+
+\subsection{6. Equilibrio --- forma débil}
+Principio de trabajos virtuales (PTV). El elemento calcula solo el lado interno:
+\[
+\delta W_{\text{int}} = \int_0^L (N\,\delta\varepsilon_{axial} + M\,\delta\kappa + V\,\delta\gamma)\,ds = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{7. Discretización}
+Dos nodos ($s = 0$ y $s = L$), 3 DOFs por nodo en coordenadas globales:
+\[
+\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, r_z^{(1)}, u_x^{(2)}, u_y^{(2)}, r_z^{(2)}]^\top.
+\]
+
+\subsection{8. Sistema local y transformación}
+Cosenos directores del eje (configuración inicial, fija): $c = (x_2 - x_1)/L$, $s_\theta = (y_2 - y_1)/L$. Matriz de transformación ortogonal $6\times 6$:
+\[
+\mathbf T = \begin{bmatrix}
+ c & s_\theta & 0 & 0 & 0 & 0 \\
+-s_\theta & c & 0 & 0 & 0 & 0 \\
+ 0 & 0 & 1 & 0 & 0 & 0 \\
+ 0 & 0 & 0 & c & s_\theta & 0 \\
+ 0 & 0 & 0 & -s_\theta & c & 0 \\
+ 0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}, \qquad \mathbf u_{\text{local}} = \mathbf T\,\mathbf u_e.
+\]
+
+\subsection{9. Rigidez local con corrección por shear locking}
+Coeficientes:
+\[
+a = \frac{12\,EI}{L^3(1+\Phi)}, \quad b = \frac{6\,EI}{L^2(1+\Phi)}, \quad c_m = \frac{(4+\Phi)\,EI}{L(1+\Phi)}, \quad d = \frac{(2-\Phi)\,EI}{L(1+\Phi)}.
+\]
+
+\[
+\mathbf K_{\text{local}} = \begin{bmatrix}
+ EA/L & 0 & 0 & -EA/L & 0 & 0 \\
+ 0 & a & b & 0 & -a & b \\
+ 0 & b & c_m & 0 & -b & d \\
+-EA/L & 0 & 0 & EA/L & 0 & 0 \\
+ 0 & -a & -b & 0 & a & -b \\
+ 0 & b & d & 0 & -b & c_m
+\end{bmatrix}.
+\]
+
+Para $\Phi \to 0$: $a \to 12EI/L^3$, $b \to 6EI/L^2$, $c_m \to 4EI/L$, $d \to 2EI/L$ --- se recupera Euler-Bernoulli.
+
+\subsection{10. Fuerzas internas}
+\[
+\mathbf F_{\text{int,local}} = \mathbf K_{\text{local}}\,\mathbf u_{\text{local}}.
+\]
+
+La componente axial se corrige con el esfuerzo axial del material: $F_1 = -\sigma A$, $F_4 = +\sigma A$ (permite materiales no-lineales en la rama axial).
+
+\subsection{11. Ensamblaje global}
+\[
+\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf T, \qquad \mathbf F_{\text{int}} = \mathbf T^\top\,\mathbf F_{\text{int,local}}.
+\]
+
+\subsection{12. Cuadratura}
+No aplica (forma cerrada).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Frame2DTimoshenko
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, rz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
+  - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano" }
+  - { name: As, type: float, required: true, desc: "Área efectiva de cortante" }
+  - { name: nu, type: float, required: false, default: 0.3, desc: "Coeficiente de Poisson (si el material no lo expone)" }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: "axial escalar (deformación media ε = (u_2 − u_1)/L en sistema local)"
+  nonlinearity_model: "E_tangent escala toda la matriz local (axial, flexión y cortante por igual)"
+  poisson_source: "si material.nu existe, se usa; en su defecto el parámetro `nu` del elemento con default 0.3 y advertencia por consola"
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación) en el eje axial"
+  rotation_sign: "r_z positivo antihorario"
+  node_orientation: "eje local del nodo 1 al nodo 2"
+  configuration: "inicial fija — L, c, s, T, Φ (en forma funcional) se calculan sin actualizar"
+
+validity:
+  - "vigas peraltadas o cortas (L/h ≲ 10) donde el cortante no es despreciable"
+  - pequeños desplazamientos y pequeñas rotaciones
+  - "|ε_axial| ≲ 1e-2"
+
+out_of_scope:
+  - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
+  - plasticidad distribuida en la sección
+  - pandeo
+  - "fuerzas de cuerpo distribuidas: el usuario reparte carga equivalente a los nodos"
+
+acceptance:
+  - name: convergencia a Euler-Bernoulli para viga esbelta
+    setup: "voladizo con carga transversal P, viga esbelta (L/h ≳ 100) ⇒ Φ → 0"
+    expect: "v(L) ≈ PL³/(3EI) (solución Euler-Bernoulli) con tolerancia relativa ≲ 1e-3"
+    tol_rel: 1.0e-3
+
+  - name: respuesta axial pura desacoplada
+    setup: "voladizo con carga axial F"
+    expect: "u_x(L) = F·L/(E·A); momentos y cortantes nulos"
+    tol_rel: 1.0e-10
+
+  - name: simetría de K
+    setup: "viga oblicua"
+    expect: "K_global = K_globalᵀ"
+    tol_abs: 1.0e-12
+
+references:
+  - "Reddy J.N., An Introduction to the Finite Element Method, cap. 5 (vigas de Timoshenko)"
+  - "Bathe K.-J., Finite Element Procedures, §5.4 (formulación con factor Φ)"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/frame.py --- archivo propio. La utilidad \texttt{\_frame\_geometry} que antes se compartía con \texttt{Frame2DEuler} en \texttt{structural.py} queda eliminada del repositorio: ambas vigas 2D la replican internamente como método estático \texttt{\_build\_geometry}.
+  \item \textbf{Clase}: \texttt{Frame2DTimoshenko} --- hereda directamente de \texttt{Element}. No comparte código con ningún otro elemento.
+  \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DTimoshenkoAcceptance}:
+  \item \texttt{test\_acceptance\_convergencia\_euler\_en\_viga\_esbelta} (criterio 1) --- viga con $L/h$ muy grande, verifica que la flecha tiende a $PL^3/(3EI)$ con tolerancia relativa $10^{-3}$.
+  \item \texttt{test\_acceptance\_respuesta\_axial\_pura} (criterio 2) --- carga axial pura, verifica $u_x = FL/(EA)$.
+  \item \texttt{test\_acceptance\_simetria\_K} (criterio 3) --- viga oblicua, verifica $\mathbf K = \mathbf K^\top$.
+  \item \texttt{test\_registro\_en\_registry} --- autodiscover.
+  \item \textbf{Notas de traducción}:
+  \item Para no colisionar con la variable cinemática $c$ (coseno director) dentro de \texttt{compute\_element\_state}, el coeficiente $c_m$ de la matriz local se llama \texttt{c\_coef} en el código y \texttt{d\_coef} su análogo (antes eran \texttt{c} y \texttt{d} inline, ambiguos).
+  \item El Poisson $\nu$ se toma de \texttt{material.nu} si el material lo expone; en su defecto, del parámetro \texttt{nu} del elemento con default 0.3 y una advertencia por consola la primera vez que se construye con ese default --- atajo a errores silenciosos de usuarios que olvidan especificarlo.
+  \item La matriz $\mathbf T$ se calcula una sola vez en \texttt{\_\_init\_\_} y se guarda como atributo (régimen geométricamente lineal).
+  \item El factor $\Phi$ se recalcula en cada llamada porque depende de $E_t$ devuelto por el material (en régimen no-lineal $\Phi$ cambia con el estado).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{fenix/elements/frame.py} y desacoplado del helper \texttt{\_frame\_geometry}. Con este movimiento, el helper compartido se elimina completamente del repositorio: \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} replican la construcción de $\mathbf T$ como método estático \texttt{\_build\_geometry}, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Test del criterio 1: se eligió $L/h$ grande en lugar de reproducir un caso específico de libro porque la convergencia Timoshenko \ensuremath{\to} Euler es el comportamiento \textbf{esperado por construcción} (factor $\Phi \to 0$). Verificarlo directamente con el solver completo valida simultáneamente la cinemática de Timoshenko, el tratamiento del shear locking y la integración con ensamblador + solver.
+\end{itemize}
+
+
+\newpage
+
+\section{Frame2DEulerCorot}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Viga 2D esbelta según Euler-Bernoulli en formulación \textbf{corotacional} (Updated Lagrangian). Dos nodos rígidamente conectados, 3 DOFs por nodo ($u_x, u_y, r_z$). Captura grandes desplazamientos y grandes rotaciones del elemento como un todo con \textbf{pequeñas deformaciones axiales} ($|\varepsilon_{axial}| \lesssim 1\%$) y rotaciones nodales deformacionales moderadas.
+
+Abre dominios que la viga lineal no captura: \textbf{pandeo por flexión}, \textbf{post-pandeo}, \textbf{snap-through} de arcos planos, brazos flexibles esbeltos.
+
+\subsection{1. Cinemática corotacional}
+Se separa el movimiento del elemento en:
+
+\begin{enumerate}
+  \item \textbf{Rotación rígida} $\alpha_e$: el ángulo que el eje de la barra ha girado desde la configuración inicial.
+  \item \textbf{Rotación deformacional de cada sección} $\bar\theta_i$: la rotación nodal menos la rotación rígida (es lo que genera momento flector).
+\end{enumerate}
+
+Sean:
+\[
+\alpha_0 = \arctan2(Y_2 - Y_1,\; X_2 - X_1) \quad \text{(ángulo del eje en config. inicial, fijo)},
+\]
+\[
+\alpha = \arctan2(y_2 - y_1,\; x_2 - x_1) \quad \text{(ángulo corriente)},
+\]
+\[
+\alpha_e = \alpha - \alpha_0 \quad \text{(rotación rígida del elemento)}.
+\]
+
+Rotaciones deformacionales:
+\[
+\bar\theta_1 = \theta_1 - \alpha_e, \qquad \bar\theta_2 = \theta_2 - \alpha_e,
+\]
+donde $\theta_i = r_z^{(i)}$ son las rotaciones totales de los nodos.
+
+\subsection{2. Medidas de deformación}
+\begin{itemize}
+  \item Axial: $\varepsilon_{axial} = (l - L_0)/L_0$ con $l$ longitud corriente.
+  \item Curvatura efectiva: $\kappa = (\bar\theta_2 - \bar\theta_1)/L_0$ (constante si se usa interpolación cúbica).
+\end{itemize}
+
+\subsection{3. Ecuaciones constitutivas}
+\begin{itemize}
+  \item Axial: delegado al material ($\sigma, E_t$).
+  \item Flexión: $M = E_t I\,\kappa$ (el mismo $E_t$ del material escala la rigidez de flexión, como en \texttt{Frame2DEuler}).
+\end{itemize}
+
+\subsection{4. Equilibrio --- forma débil}
+PTV en configuración corriente. El elemento calcula solo el lado interno:
+\[
+\delta W_{\text{int}} = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}, \qquad \mathbf K_T = \mathbf K_{\text{material}} + \mathbf K_{\sigma}.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{5. DOFs locales deformacionales}
+Se reduce la descripción del estado deformacional del elemento a \textbf{3 magnitudes escalares}:
+\[
+\mathbf q_l = [\,u_l,\; \bar\theta_1,\; \bar\theta_2\,]^\top, \qquad u_l = l - L_0.
+\]
+
+\subsection{6. Rigidez local}
+En el sistema de coordenadas corrotado (eje de la barra corriente), la rigidez local $3\times 3$:
+\[
+\mathbf K_{ll} = \begin{bmatrix}
+\tfrac{E_t A}{L_0} & 0 & 0 \\
+0 & \tfrac{4 E_t I}{L_0} & \tfrac{2 E_t I}{L_0} \\
+0 & \tfrac{2 E_t I}{L_0} & \tfrac{4 E_t I}{L_0}
+\end{bmatrix}.
+\]
+
+Fuerzas locales $\mathbf F_l = \mathbf K_{ll}\,\mathbf q_l = [N,\; M_1,\; M_2]^\top$, con $N$ sustituido por $\sigma A$ directamente del material para permitir respuestas no-lineales.
+
+\subsection{7. Matriz de transformación $\mathbf B$ (3\ensuremath{\times}6)}
+Relación entre variaciones de $\mathbf q_l$ y de los DOFs globales $\delta\mathbf u_e$:
+\[
+\mathbf B = \begin{bmatrix}
+-c & -s & 0 & c & s & 0 \\
+-s/l & c/l & 1 & s/l & -c/l & 0 \\
+-s/l & c/l & 0 & s/l & -c/l & 1
+\end{bmatrix}, \qquad c = \cos\alpha,\; s = \sin\alpha.
+\]
+
+$c, s$ y $l$ se evalúan en \textbf{configuración corriente} --- esta es la esencia corotacional.
+
+Fuerzas internas globales:
+\[
+\mathbf F_{\text{int}} = \mathbf B^\top\,\mathbf F_l.
+\]
+
+\subsection{8. Rigidez tangente}
+Se descompone en contribución material más geométrica:
+
+\[
+\mathbf K_T = \mathbf K_{\text{material}} + \mathbf K_\sigma,
+\]
+\[
+\mathbf K_{\text{material}} = \mathbf B^\top\,\mathbf K_{ll}\,\mathbf B,
+\]
+\[
+\mathbf K_\sigma = \frac{N}{l}\,\mathbf z\,\mathbf z^\top + \frac{M_1 + M_2}{l^2}\,\bigl(\mathbf r\,\mathbf z^\top + \mathbf z\,\mathbf r^\top\bigr),
+\]
+
+con vectores geométricos de 6 componentes:
+\[
+\mathbf r = [-c,\;-s,\;0,\; c,\; s,\;0]^\top \quad \text{(dirección axial)},
+\]
+\[
+\mathbf z = [-s,\; c,\;0,\; s,\;-c,\;0]^\top \quad \text{(perpendicular)}.
+\]
+
+La parte $(N/l)\mathbf z\mathbf z^\top$ es análoga al $\mathbf K_G$ de \texttt{Truss2DCorot}: captura la rigidización por tensión (y el ablandamiento precrítico por compresión, base del pandeo). La parte con momentos acopla rotaciones con traslaciones --- crítica para problemas de flexión con desplazamientos significativos.
+
+\subsection{9. Cuadratura}
+No aplica (forma cerrada con Hermite cúbicos).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Frame2DEulerCorot
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, rz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
+  - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano" }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: "axial escalar corotacional (ε = (l − L₀)/L₀)"
+  nonlinearity_model: "E_tangent escala K_material local; el K_σ geométrico depende solo de N, M₁, M₂ corrientes"
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación); r_z positivo antihorario"
+  node_orientation: "eje local del nodo 1 al nodo 2"
+  configuration: "Updated Lagrangian — l, c, s, α se recalculan en cada evaluación"
+
+validity:
+  - "|ε_axial| ≲ 1e-2 (pequeña deformación axial)"
+  - rotaciones rígidas del elemento de cualquier magnitud, pero acumuladas en |α_e| < π entre commits (rotaciones continuas > π requerirían tracking de vueltas — fuera de alcance)
+  - rotaciones deformacionales de las secciones moderadas (|θ̄_i| ≲ 30°); para valores mayores la interpolación Hermite cúbica pierde precisión
+  - vigas esbeltas (L/h ≳ 10)
+
+out_of_scope:
+  - rotaciones continuas del eje > π sin pasar por commit (pendulums; aliasing en atan2)
+  - deformaciones axiales grandes (requiere medida logarítmica)
+  - plasticidad distribuida en la sección (fibras)
+  - cortante transverso significativo (usar versión Timoshenko, pendiente)
+  - "fuerzas de cuerpo distribuidas: el usuario reparte carga a los nodos"
+
+numerical_caveats:
+  - "El ángulo α_e se unwrappea a (-π, π] por llamada. Si el problema tiene saltos de rotación > π entre iteraciones consecutivas del solver, la formulación produce resultados incorrectos. Usar pasos de carga finos."
+  - "En problemas con pandeo, la rigidez tangente se hace singular al cruzar el punto crítico. Usar `ArcLengthSolver` para seguir la rama post-crítica."
+
+acceptance:
+  - name: límite lineal coincide con Frame2DEuler
+    setup: "voladizo horizontal, cargas pequeñas (ε ~ 1e-8, v/L ~ 1e-6)"
+    expect: "K_T y F_int coinciden con Frame2DEuler lineal a tolerancia rtol=1e-4"
+    tol_rel: 1.0e-4
+
+  - name: invariancia bajo rotación rígida
+    setup: "viga inicialmente horizontal, rotada rígidamente 45° (ambos nodos)"
+    expect: "F_int = 0, σ = 0 (ningún esfuerzo interno bajo rotación rígida pura)"
+    tol_abs: 1.0e-10
+
+  - name: coherencia tangente/fuerza interna (chequeo por diferencias finitas)
+    setup: "configuración arbitraria no trivial; K_T analítica vs derivada numérica de F_int"
+    expect: "‖K_T_analítica − K_T_numérica‖ / ‖K_T_analítica‖ ≲ 1e-5"
+    tol_rel: 1.0e-5
+
+  - name: simetría de K
+    setup: "configuración arbitraria"
+    expect: "K_T = K_Tᵀ"
+    tol_abs: 1.0e-6
+
+references:
+  - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §7.3 (corotational beams)"
+  - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.11"
+  - "Wriggers P., Nonlinear Finite Element Methods, cap. 4"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/frame.py --- convive con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} por familia temática, sin heredar de ninguno.
+  \item \textbf{Clase}: \texttt{Frame2DEulerCorot} --- hereda directamente de \texttt{Element}. Métodos internos \texttt{\_current\_geometry} (longitud, cosenos, ángulo corriente y rigid-body $\alpha_e$) y \texttt{\_unwrap} (reducción a $(-\pi, \pi]$).
+  \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerCorotAcceptance} --- 4 criterios + registro:
+  \item \texttt{test\_acceptance\_limite\_lineal\_coincide\_con\_frame2deuler}
+  \item \texttt{test\_acceptance\_invariancia\_rotacion\_rigida}
+  \item \texttt{test\_acceptance\_coherencia\_tangente\_fuerza\_interna} --- \textbf{finite-difference check} de $\mathbf K_T$ contra derivada numérica de $\mathbf F_{\text{int}}$, red de seguridad clave en esta formulación.
+  \item \texttt{test\_acceptance\_simetria\_K}
+  \item \texttt{test\_registro\_en\_registry}
+  \item \textbf{Notas de traducción}:
+  \item La formulación se basa en 3 DOFs deformacionales $[u, \bar\theta_1, \bar\theta_2]$ y una matriz $\mathbf B$ $3\times 6$ que los relaciona con los DOFs globales. Evaluada en configuración corriente.
+  \item \textbf{Signo de la contribución de momentos en $\mathbf K_\sigma$}: tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ analíticamente se obtiene $-(1/l^2)(\mathbf r\mathbf z^\top + \mathbf z\mathbf r^\top)$. El signo es \textbf{negativo} --- un error común es ponerlo positivo. El test de diferencias finitas lo cazó en la primera implementación.
+  \item \texttt{compute\_internal\_forces} proyecta $\mathbf F_{\text{int}}$ al sistema local corriente para reportar axial/cortante separados, utilizando la submatriz $2\times 2$ de rotación del eje corriente.
+  \item \texttt{\_unwrap} lleva los ángulos al intervalo $(-\pi, \pi]$; la formulación es válida mientras la rotación acumulada por paso sea menor que $\pi$.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación siguiendo Crisfield §7.3. Convive en \texttt{frame.py} con las vigas lineales por familia temática (todas son vigas 2D), sin herencia ni helpers compartidos.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} La primera versión tenía el signo equivocado en la parte de momentos de $\mathbf K_\sigma$ ($+$ en lugar de $-$). El test de coherencia tangente/fuerza interna por diferencias finitas lo detectó inmediatamente: $\|\mathbf K_{T,\text{analítica}} - \mathbf K_{T,\text{FD}}\|_{\text{rel}}$ del orden de 1e-1 en lugar de 1e-5. Tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ cuidadosamente (ver notas) el signo correcto es negativo. Este episodio justifica retrospectivamente incluir un test FD como criterio de aceptación en toda formulación no-lineal geométrica futura.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} El test del límite lineal usa $P=10$ N para obtener $v/L \sim 10^{-4}$: suficientemente pequeño para estar en régimen lineal pero suficientemente grande para que el residuo del solver converja por debajo de \texttt{tol=1e-8} (cargas menores producen desplazamientos del orden del ruido numérico y el Newton oscila en la tolerancia relativa).
+\end{itemize}
+
+
+\newpage
+
+\section{Frame3D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Elemento 1D inmerso en el espacio tridimensional que modela una \textbf{viga esbelta 3D}. Dos nodos rígidamente conectados, 6 DOFs por nodo ($u_x, u_y, u_z, r_x, r_y, r_z$). Captura seis acciones internas:
+
+\begin{itemize}
+  \item \textbf{Axial} (esfuerzo normal $N$ a lo largo del eje local $x$).
+  \item \textbf{Cortante en dos planos} ($V_y$ en el plano $xy$, $V_z$ en el plano $xz$).
+  \item \textbf{Flexión en dos planos} ($M_z$ alrededor del eje local $z$, $M_y$ alrededor del eje local $y$).
+  \item \textbf{Torsión} ($M_x$ alrededor del eje longitudinal).
+\end{itemize}
+
+Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones). Hipótesis de Euler-Bernoulli: secciones planas perpendiculares al eje deformado (sin cizalladura transversal).
+
+\subsection{1. Hipótesis}
+\begin{itemize}
+  \item Secciones planas y perpendiculares al eje neutro deformado (igual que Frame2DEuler).
+  \item Flexiones en los dos planos \textbf{desacopladas} entre sí (ejes principales de inercia).
+  \item Torsión de Saint-Venant pura (sin alabeo). Válida para secciones macizas o cerradas; abiertas de pared delgada requerirían formulación con alabeo (fuera de alcance).
+  \item Material isótropo 1D; $G = E/[2(1+\nu)]$.
+\end{itemize}
+
+\subsection{2. Sistema de ejes locales}
+Tres ejes ortonormales en cada elemento:
+\begin{itemize}
+  \item \textbf{$\hat{\mathbf x}$ local}: dirección del eje de la barra ($\hat{\mathbf x} = (\mathbf x_2 - \mathbf x_1)/L$).
+  \item \textbf{$\hat{\mathbf y}$ local} y \textbf{$\hat{\mathbf z}$ local}: ejes principales de inercia de la sección, ortogonales al eje.
+\end{itemize}
+
+La orientación de $\hat{\mathbf y}, \hat{\mathbf z}$ no está determinada solo por la dirección del eje --- hace falta un \textbf{vector de referencia} proporcionado por el usuario (o un default). Es la diferencia estructural respecto al caso 2D, donde el plano era único.
+
+\subsection{3. Medidas de deformación / acciones internas}
+\begin{itemize}
+  \item Axial: $\varepsilon_{axial} = du/ds$, tensión $N = EA\,\varepsilon_{axial}$ (o $N = A\,\sigma$ con $\sigma$ del material).
+  \item Flexión en plano $xy$: curvatura $\kappa_z = d^2v/ds^2$, momento $M_z = EI_z\,\kappa_z$.
+  \item Flexión en plano $xz$: curvatura $\kappa_y = d^2w/ds^2$, momento $M_y = EI_y\,\kappa_y$.
+  \item Torsión: $d\theta_x/ds$, momento torsor $M_x = GJ\,d\theta_x/ds$.
+\end{itemize}
+
+\subsection{4. Equilibrio --- forma débil}
+PTV. El elemento calcula solo el lado interno:
+\[
+\delta W_{\text{int}} = \int_0^L \!\left(N\,\delta\varepsilon + M_z\,\delta\kappa_z + M_y\,\delta\kappa_y + M_x\,\delta\theta_x'\right)\,ds.
+\]
+
+
+\section{Formulación numérica (FEM)}
+
+\subsection{5. Discretización}
+Dos nodos, 6 DOFs por nodo:
+\[
+\mathbf u_e = [u_x^{(1)}, u_y^{(1)}, u_z^{(1)}, r_x^{(1)}, r_y^{(1)}, r_z^{(1)},\; u_x^{(2)}, u_y^{(2)}, u_z^{(2)}, r_x^{(2)}, r_y^{(2)}, r_z^{(2)}]^\top.
+\]
+
+Vector de 12 componentes \ensuremath{\to} matrices $12\times 12$.
+
+\subsection{6. Construcción de ejes locales}
+Dados $\mathbf X_1, \mathbf X_2$ y un vector de referencia $\mathbf v_{\text{ref}}$ proporcionado:
+
+\begin{enumerate}
+  \item $\hat{\mathbf x} = (\mathbf X_2 - \mathbf X_1)/L$.
+  \item Proyectar $\mathbf v_{\text{ref}}$ al plano perpendicular a $\hat{\mathbf x}$:
+\end{enumerate}
+   \[
+\tilde{\mathbf y} = \mathbf v_{\text{ref}} - (\mathbf v_{\text{ref}} \cdot \hat{\mathbf x})\,\hat{\mathbf x}.
+\]
+\begin{enumerate}
+  \item $\hat{\mathbf y} = \tilde{\mathbf y}/\|\tilde{\mathbf y}\|$ (falla si $\|\tilde{\mathbf y}\| \approx 0$: $\mathbf v_{\text{ref}}$ paralelo al eje).
+  \item $\hat{\mathbf z} = \hat{\mathbf x} \times \hat{\mathbf y}$.
+\end{enumerate}
+
+\textbf{Default de $\mathbf v_{\text{ref}}$} (cuando el usuario no lo proporciona): $[0, 0, 1]$ (eje $z$ global como "vertical"). Si el eje del elemento es cercanamente paralelo a $z$ global (viga vertical), se usa $[1, 0, 0]$ como fallback y se emite una advertencia.
+
+\subsection{7. Matriz de transformación global \ensuremath{\to} local}
+\[
+\boldsymbol{\lambda} = \begin{bmatrix} \hat{\mathbf x}^\top \\ \hat{\mathbf y}^\top \\ \hat{\mathbf z}^\top \end{bmatrix} \quad (3\times 3,\ \text{ortogonal}).
+\]
+
+\[
+\mathbf T = \text{bloques diag}(\boldsymbol{\lambda}, \boldsymbol{\lambda}, \boldsymbol{\lambda}, \boldsymbol{\lambda}) \quad (12\times 12).
+\]
+
+Aplicada a los 4 bloques de 3 DOFs: desplazamientos nodo 1, rotaciones nodo 1, desplazamientos nodo 2, rotaciones nodo 2. Las rotaciones infinitesimales en 3D transforman como vectores.
+
+\[
+\mathbf u_{\text{local}} = \mathbf T\,\mathbf u_e.
+\]
+
+\subsection{8. Matriz de rigidez local}
+Desacoplada en cuatro contribuciones: axial, torsión, flexión $xy$ (plano con $u_y$ y $r_z$, inercia $I_z$), flexión $xz$ (plano con $u_z$ y $r_y$, inercia $I_y$).
+
+Definiciones:
+\[
+a_z = \tfrac{12EI_z}{L^3},\ b_z = \tfrac{6EI_z}{L^2},\ c_z = \tfrac{4EI_z}{L},\ d_z = \tfrac{2EI_z}{L},
+\]
+\[
+a_y = \tfrac{12EI_y}{L^3},\ b_y = \tfrac{6EI_y}{L^2},\ c_y = \tfrac{4EI_y}{L},\ d_y = \tfrac{2EI_y}{L}.
+\]
+
+La rigidez $\mathbf K_{\text{local}}$ es simétrica, con los bloques desacoplados (0s fuera de su plano correspondiente). Los signos del bloque de flexión $xz$ se invierten respecto al $xy$ porque $u_z$ y $r_y$ forman una pareja dextrógira opuesta (consecuencia del producto vectorial $\hat{\mathbf x}\times\hat{\mathbf y}=\hat{\mathbf z}$).
+
+Forma concreta en términos de los 12 DOFs locales (la matriz completa vive en la implementación).
+
+\subsection{9. Fuerzas internas}
+\[
+\mathbf F_{\text{int,local}} = \mathbf K_{\text{local}}\,\mathbf u_{\text{local}},
+\]
+con la componente axial corregida por el $\sigma$ que devuelve el material: $F_1 = -\sigma A$, $F_7 = +\sigma A$. El resto de componentes viene del producto lineal (permite materiales no-lineales en la rama axial).
+
+\subsection{10. Ensamblaje global}
+\[
+\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf T, \qquad \mathbf F_{\text{int}} = \mathbf T^\top\,\mathbf F_{\text{int,local}}.
+\]
+
+\subsection{11. Cuadratura}
+No aplica (forma cerrada; integración analítica de los polinomios de Hermite).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Frame3D
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy, uz, rx, ry, rz]
+  n_nodes: 2
+  strain_dim: 1
+  n_integration_points: 1
+
+parameters:
+  - { name: A,  type: float, required: true, desc: "Área de la sección transversal" }
+  - { name: Iy, type: float, required: true, desc: "Momento de inercia alrededor del eje local y" }
+  - { name: Iz, type: float, required: true, desc: "Momento de inercia alrededor del eje local z" }
+  - { name: J,  type: float, required: true, desc: "Constante torsional de Saint-Venant" }
+  - { name: nu, type: float, required: false, default: 0.3, desc: "Coeficiente de Poisson (si el material no lo expone)" }
+  - { name: ref_vector, type: list, required: false, default: "[0, 0, 1]",
+      desc: "Vector 3D de referencia que fija la orientación de los ejes locales y, z de la sección. Default: eje z global." }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
+  strain_kind: "axial escalar (ε = (u_2 − u_1)/L en sistema local)"
+  nonlinearity_model: "E_tangent escala toda la matriz local; G se recalcula como E_t/[2(1+ν)]"
+  poisson_source: "material.nu si existe; en su defecto parámetro `nu` del elemento"
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación); momentos siguen regla de la mano derecha respecto a los ejes locales"
+  local_axes: "x_local = eje de la barra; y_local, z_local = ejes principales de inercia definidos por ref_vector"
+  node_orientation: "eje local del nodo 1 al nodo 2"
+  configuration: "inicial fija — L, T, ejes locales no se actualizan"
+
+validity:
+  - "vigas esbeltas (L/h ≳ 10 en ambos planos de flexión)"
+  - "pequeños desplazamientos y pequeñas rotaciones en el espacio"
+  - "|ε_axial| ≲ 1e-2"
+  - "sección con ejes principales de inercia bien definidos por ref_vector"
+
+out_of_scope:
+  - grandes rotaciones espaciales (requeriría Frame3DCorot; pendiente)
+  - torsión con alabeo restringido (secciones abiertas de pared delgada)
+  - plasticidad distribuida en la sección (fibras)
+  - pandeo por bifurcación
+  - deformación por cortante transversal significativa (Timoshenko 3D, fuera de alcance)
+  - "fuerzas de cuerpo distribuidas: el usuario reparte carga a los nodos"
+
+numerical_caveats:
+  - "Si ref_vector es paralelo al eje de la barra, la proyección al plano perpendicular se anula y el constructor aborta con mensaje claro — el usuario debe elegir otro vector."
+  - "Para barras verticales (eje casi paralelo a z global) con ref_vector default, el constructor usa [1, 0, 0] como fallback y emite advertencia por consola."
+
+acceptance:
+  - name: respuesta axial pura
+    setup: "voladizo alineado con eje x, carga F axial en extremo libre"
+    expect: "u_x = F·L/(E·A); demás componentes nulas"
+    tol_rel: 1.0e-10
+
+  - name: flexión en plano xy (coherencia con Frame2D)
+    setup: "voladizo alineado con eje x, carga P en dirección y, ref_vector = [0,0,1]"
+    expect: "v_y = P·L³/(3·E·Iz), θ_z = P·L²/(2·E·Iz)"
+    tol_rel: 1.0e-10
+
+  - name: flexión en plano xz
+    setup: "voladizo alineado con eje x, carga P en dirección z, ref_vector = [0,1,0]"
+    expect: "v_z = P·L³/(3·E·Iy), θ_y = -P·L²/(2·E·Iy) (signo por mano derecha)"
+    tol_rel: 1.0e-10
+
+  - name: torsión pura
+    setup: "voladizo con momento T aplicado alrededor del eje de la barra en el extremo libre"
+    expect: "θ_x = T·L/(G·J); demás componentes nulas"
+    tol_rel: 1.0e-10
+
+  - name: simetría de K
+    setup: "viga en orientación arbitraria con ref_vector genérico"
+    expect: "K_global = K_globalᵀ"
+    tol_abs: 1.0e-8
+
+references:
+  - "Przemieniecki J.S., Theory of Matrix Structural Analysis, Tabla 11.3"
+  - "Cook R.D., Concepts and Applications of FEA, §2.8"
+  - "Bathe K.-J., Finite Element Procedures, cap. 5"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/frame3d.py --- archivo propio, sin dependencia de ningún otro elemento.
+  \item \textbf{Clase}: \texttt{Frame3D} --- hereda directamente de \texttt{Element}. Métodos privados \texttt{\_build\_local\_frame} (longitud, matriz $\boldsymbol{\lambda}$ 3\ensuremath{\times}3 y $\mathbf T$ 12\ensuremath{\times}12) y \texttt{\_build\_local\_stiffness} (matriz $\mathbf K_{\text{local}}$ 12\ensuremath{\times}12 con bloques axial, torsión y flexión en ambos planos).
+  \item \textbf{Tests}: tests/test\_frame3d.py \ensuremath{\cdot} \texttt{TestFrame3DAcceptance} --- cubre los 5 criterios + validación de \texttt{ref\_vector} paralelo al eje + registro:
+  \item \texttt{test\_acceptance\_respuesta\_axial\_pura}
+  \item \texttt{test\_acceptance\_flexion\_xy\_coincide\_con\_frame2d}
+  \item \texttt{test\_acceptance\_flexion\_xz}
+  \item \texttt{test\_acceptance\_torsion\_pura}
+  \item \texttt{test\_acceptance\_simetria\_K}
+  \item \texttt{test\_rechazo\_ref\_vector\_paralelo}
+  \item \texttt{test\_registro\_en\_registry}
+  \item \textbf{Notas de traducción}:
+  \item La matriz $\boldsymbol{\lambda}$ 3\ensuremath{\times}3 se construye como $[\hat{\mathbf x}^\top; \hat{\mathbf y}^\top; \hat{\mathbf z}^\top]$ --- las filas son los ejes locales expresados en coordenadas globales. $\mathbf T$ 12\ensuremath{\times}12 es un \texttt{blkdiag} de cuatro copias de $\boldsymbol{\lambda}$ (traslaciones y rotaciones transforman como vectores en 3D infinitesimal).
+  \item El default de \texttt{ref\_vector} es \texttt{[0, 0, 1]}; el fallback \texttt{[1, 0, 0]} se activa cuando $|\hat{\mathbf x} \cdot \hat{\mathbf z}_{\text{global}}| > 0.99$ (barra cercanamente vertical). Ambas rutas emiten advertencia por consola la primera vez que se usan con default.
+  \item La matriz $\mathbf K_{\text{local}}$ se construye rellenando entradas no nulas en sus 4 bloques desacoplados (axial, torsión, flexión $xy$, flexión $xz$). Los signos de la flexión $xz$ están invertidos respecto a la flexión $xy$ porque la pareja $(u_z, r_y)$ tiene orientación dextrógira opuesta a $(u_y, r_z)$: este punto se verifica explícitamente en \texttt{test\_acceptance\_flexion\_xz}.
+  \item \texttt{compute\_internal\_forces} devuelve cortantes, torsión y momentos en ambos extremos separados --- útil para post-proceso estructural (diagramas de esfuerzos).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como componente totalmente autónomo: no hereda de \texttt{Frame2DEuler} ni de ninguna otra viga. La maquinaria cinemática 3D se implementa íntegra dentro de \texttt{frame3d.py}, coherente con la filosofía aplicada a cables.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Decisión sobre \texttt{ref\_vector} vs "tercer nodo de orientación". Se optó por \texttt{ref\_vector} (vector 3D proyectado al plano perpendicular al eje) por ser más compacto en YAML y no requerir nodos fantasma en la malla. El default \texttt{[0, 0, 1]} cubre la mayoría de casos de ingeniería estructural (estructuras terrestres con gravedad en $-z$); el fallback para barras verticales usa \texttt{[1, 0, 0]} con advertencia explícita.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Verificación cruzada con \texttt{Frame2DEuler}: el criterio 2 aplica una viga alineada con el eje $x$ global bajo carga en $y$; los desplazamientos resultantes deben coincidir con la solución 2D clásica $v = PL^3/(3EI_z)$, $\theta = PL^2/(2EI_z)$. El test lo verifica a 8 decimales. Esto blinda la coherencia dimensional: el 3D se reduce al 2D sin error acumulado cuando el problema es efectivamente plano.
+\end{itemize}
+
+
+\newpage
+
+\chapter{Modelos Constitutivos (Materiales)}
+
+\section{CableMaterial1D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Material 1D memoryless que modela la respuesta axial de un cable: \textbf{elástico lineal en tensión y nulo en compresión}. No tiene variables internas ni historia --- la respuesta depende exclusivamente de la deformación instantánea. Captura la propiedad esencial de un cable: que solo transmite esfuerzo cuando está tensado.
+
+\subsection{1. Ecuación constitutiva}
+\[
+\sigma(\varepsilon) \;=\; E\,\langle\varepsilon\rangle^+ \;=\; \begin{cases} E\,\varepsilon & \varepsilon > 0 \\ 0 & \varepsilon \leq 0 \end{cases}
+\]
+
+Rampa lineal de pendiente $E$ en tensión ($\varepsilon > 0$), cero en compresión o estado sin deformación ($\varepsilon \leq 0$). $\langle\cdot\rangle^+$ denota la parte positiva (operador de MacAuley).
+
+\subsection{2. Módulo tangente}
+\[
+E_t(\varepsilon) \;=\; \frac{d\sigma}{d\varepsilon} \;=\; \begin{cases} E & \varepsilon > 0 \\ 0 & \varepsilon \leq 0 \end{cases}
+\]
+
+\textbf{Discontinuo en $\varepsilon = 0$}. Por convención el valor en el punto de corte se asigna al régimen compresivo ($E_t = 0$), lo que evita generar rigidez espuria cuando el cable está exactamente sin tensión.
+
+\subsection{3. Variables internas}
+No hay. La respuesta es puramente función de $\varepsilon$ actual; el estado del material es el vacío.
+
+\subsection{4. Interpretación física}
+\begin{itemize}
+  \item $\varepsilon > 0$: cable tensado --- se comporta como barra elástica.
+  \item $\varepsilon < 0$: cable destensado --- no transmite nada, la carga pasa por otros caminos del modelo.
+  \item $\varepsilon = 0$: frontera neutra --- no hay tensión, no hay rigidez.
+\end{itemize}
+
+La no linealidad es \textbf{constitutiva} (en la respuesta del material), no geométrica. Un elemento con este material puede tener cualquier cinemática (lineal o corotacional); la unilateralidad solo vive aquí.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: CableMaterial1D
+kind: material
+status: validated
+
+interface:
+  strain_dim: 1
+  primary_state_var: null      # memoryless, no exporta variable principal
+
+parameters:
+  - { name: E, type: float, required: true, desc: "Módulo de Young (en tensión)" }
+
+signature:
+  compute_state: "(ε: float, state_vars=None) -> (σ: float, E_tangent: float, state_vars)"
+  strain_kind: axial escalar
+
+conventions:
+  sign: "σ > 0 ⇔ ε > 0 (elongación); ε ≤ 0 ⇒ σ = 0"
+  state_passthrough: "state_vars se devuelve intacto (el material no almacena historia)"
+
+validity:
+  - "E > 0"
+  - "|ε| ≲ 1e-2 en el régimen tensado (elasticidad lineal)"
+  - "compatible con cualquier elemento con STRAIN_DIM=1 (Truss2D, Truss3D y sus variantes corotacionales)"
+
+out_of_scope:
+  - plasticidad, fluencia, fatiga
+  - viscoelasticidad / dependencia temporal
+  - pretensión inicial (el usuario la modela con una longitud de referencia ajustada)
+  - regularización numérica en compresión (no hay rigidez residual en ε ≤ 0)
+  - anisotropía direccional; la respuesta es puramente axial escalar
+
+numerical_caveats:
+  - "En transiciones tensado ↔ destensado (ε cruza 0), E_tangent salta de E a 0 y Newton-Raphson puede oscilar. Mitigación: usar arc-length o pasos de carga finos si el problema tiene destensiones reales."
+  - "Un cable completamente destensado tiene K_M = 0 y K_G = 0 ⇒ matriz tangente singular en los DOFs del elemento. El usuario debe garantizar que otros elementos del modelo proporcionen rigidez suficiente, o pretensar el cable antes de aplicar cargas que puedan destensarlo."
+
+acceptance:
+  - name: respuesta en tensión pura
+    setup: "ε = 1e-4"
+    expect: "σ = E · 1e-4, E_tangent = E"
+    tol_rel: 1.0e-12
+
+  - name: respuesta en compresión pura
+    setup: "ε = -1e-4"
+    expect: "σ = 0, E_tangent = 0"
+    tol_abs: 1.0e-15
+
+  - name: punto de corte
+    setup: "ε = 0"
+    expect: "σ = 0, E_tangent = 0 (régimen compresivo por convención)"
+    tol_abs: 1.0e-15
+
+  - name: state_vars se devuelve intacto
+    setup: "state_vars = {'dummy': 42}, ε arbitrario"
+    expect: "el tercer retorno es idéntico al state_vars de entrada"
+
+references:
+  - "Irvine H.M., Cable Structures, MIT Press, §1.2 (modelo elástico del cable)"
+  - "MacAuley M.A., on the deflection of beams, 1919 (operador parte positiva)"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/materials/cable\_1d.py --- archivo propio, sin dependencia de otros módulos de material salvo la clase base \texttt{Material}.
+  \item \textbf{Clase}: \texttt{CableMaterial1D} --- hereda directamente de \texttt{Material} (no de \texttt{Elastic1D} ni de ningún otro material), registrada vía \texttt{@MaterialRegistry.register}.
+  \item \textbf{Tests}: tests/test\_cable\_material.py \ensuremath{\cdot} \texttt{TestCableMaterial1D} --- seis tests:
+  \item \texttt{test\_acceptance\_tension\_pura} (criterio 1).
+  \item \texttt{test\_acceptance\_compresion\_pura} (criterio 2).
+  \item \texttt{test\_acceptance\_punto\_de\_corte} (criterio 3).
+  \item \texttt{test\_acceptance\_state\_vars\_passthrough} (criterio 4).
+  \item \texttt{test\_registro\_en\_registry} --- verifica autodiscover.
+  \item \texttt{test\_validacion\_E\_positivo} --- rechaza $E \leq 0$.
+  \item \textbf{Notas de traducción}:
+  \item La ramificación en \texttt{compute\_state} es un único \texttt{if strain > 0.0}. El \texttt{>} estricto implementa la convención del punto de corte (el cero se asigna al régimen compresivo). El \texttt{else} cubre tanto $\varepsilon < 0$ como $\varepsilon = 0$ con las mismas salidas.
+  \item \texttt{state\_vars} se devuelve como llega (identidad, no copia). El test \texttt{test\_acceptance\_state\_vars\_passthrough} usa \texttt{assertIs} para confirmar identidad.
+  \item Validación de $E > 0$ al construir, con mensaje claro. Atrapa typos del input YAML temprano.
+  \item El material acepta \texttt{**kwargs} en \texttt{compute\_state} por compatibilidad con elementos que pudieran pasar argumentos adicionales (convención del proyecto).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Material creado como pieza independiente para la futura implementación de elementos de cable (\texttt{Cable2DCorot}, \texttt{Cable3DCorot}). Deliberadamente \textbf{no hereda} de \texttt{Elastic1D} aunque su rama en tensión sea idéntica: mantener el material autocontenido simplifica su lectura y evita acoplamientos futuros si la rama elástica cambia en otro archivo.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Discontinuidad en $\varepsilon = 0$: documentada explícitamente en \texttt{out\_of\_scope: regularización numérica}. Si aparece un caso de uso con destensiones frecuentes donde Newton-Raphson oscile, se añadirá una variante \texttt{CableMaterial1DRegularized} con $E_c \ll E$ en compresión --- \textbf{no} se modificará este material (contrato limpio).
+\end{itemize}
+
+
+\newpage
+
+
+\end{document}
