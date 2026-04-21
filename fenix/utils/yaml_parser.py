@@ -1,4 +1,5 @@
 # fenix_fem/fenix/utils/yaml_parser.py
+import inspect
 import re
 import yaml
 import os
@@ -188,6 +189,38 @@ class YamlParser:
                         for nref in node_refs:
                             if nref not in known_node_ids:
                                 errors.append(f"{ctx}: referencia a nodo inexistente (id={nref}).")
+
+                # Validación de kwargs: los campos extra del YAML deben existir
+                # en la firma del constructor del elemento registrado.
+                e_type = elem.get('type')
+                if e_type in ElementRegistry._elements:
+                    cls = ElementRegistry._elements[e_type]
+                    sig = inspect.signature(cls.__init__)
+                    accepted = {
+                        name for name, p in sig.parameters.items()
+                        if name != 'self' and p.kind in (
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            inspect.Parameter.KEYWORD_ONLY,
+                        )
+                    }
+                    has_var_keyword = any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD
+                        for p in sig.parameters.values()
+                    )
+                    if not has_var_keyword:
+                        reserved = {'id', 'type', 'material', 'nodes'}
+                        extras = set(elem.keys()) - reserved
+                        # 'element_id' lo inyecta el parser a partir de 'id'
+                        unknown = extras - accepted
+                        # Mensaje: excluir kwargs que el parser inyecta ('element_id')
+                        # y los reservados YAML ('material', 'nodes') que el usuario
+                        # ya está proveyendo por otros campos.
+                        advertised = sorted(accepted - {'element_id'} - reserved)
+                        for kw in sorted(unknown):
+                            errors.append(
+                                f"{ctx}: parámetro '{kw}' no aceptado por '{e_type}'. "
+                                f"Admitidos: {advertised}."
+                            )
 
         # --- Boundary conditions (por nodo) ---
         for bc in (data.get('boundary_conditions', []) or []) + (data.get('boundary_conditions_by_node', []) or []):
