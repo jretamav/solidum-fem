@@ -94,7 +94,7 @@ validity:
 
 out_of_scope:
   - flexión, cortante, momentos
-  - grandes desplazamientos o rotaciones (no existe variante corotacional 3D; pendiente)
+  - grandes desplazamientos o rotaciones (para ese régimen usar `Truss3DCorot`)
   - pandeo
   - "fuerzas de cuerpo distribuidas sobre el eje: el usuario reparte masa a los nodos"
 
@@ -120,7 +120,7 @@ references:
   - `L0`, `cx`, `cy`, `cz` se calculan una vez en `__init__` sobre la configuración inicial y no se actualizan — coherente con el régimen geométricamente lineal declarado.
   - El constructor tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), para facilitar transición de problemas planos embebidos.
   - El contrato con el material es el estándar del proyecto: `material.compute_state(ε, state) → (σ, Eₜ, state')`.
-  - Para grandes desplazamientos/rotaciones en 3D aún no existe un `Truss3DCorot`; es un componente pendiente del catálogo.
+  - Para grandes desplazamientos/rotaciones en 3D usar `Truss3DCorot`, que hereda de esta clase.
 
 ---
 

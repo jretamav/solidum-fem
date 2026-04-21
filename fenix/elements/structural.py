@@ -201,6 +201,74 @@ class Truss3D(Element):
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
 
 
+@ElementRegistry.register
+class Truss3DCorot(Truss3D):
+    """
+    Armadura 3D corotacional (Updated Lagrangian).
+
+    Hereda identidad estructural de Truss3D (mismos DOFs, parámetro A,
+    contrato con el material) y redefine la evaluación de estado para
+    capturar grandes desplazamientos y rotaciones en el espacio, manteniendo
+    la hipótesis de pequeña deformación (|ε| ≲ 1e-2).
+
+    Rigidez tangente = K_M (material, rango 1) + K_G (geométrica, rango 2,
+    proyector perpendicular al eje corriente); fuerzas internas proyectadas
+    sobre la dirección actual de la barra.
+    """
+
+    def _current_geometry(self, u_e: np.ndarray):
+        """Longitud y cosenos directores en configuración corriente."""
+        c1 = self.nodes[0].coordinates
+        c2 = self.nodes[1].coordinates
+        z1 = c1[2] if len(c1) > 2 else 0.0
+        z2 = c2[2] if len(c2) > 2 else 0.0
+        x1 = c1[0] + u_e[0]; y1 = c1[1] + u_e[1]; zn1 = z1 + u_e[2]
+        x2 = c2[0] + u_e[3]; y2 = c2[1] + u_e[4]; zn2 = z2 + u_e[5]
+        dx, dy, dz = x2 - x1, y2 - y1, zn2 - zn1
+        l = math.sqrt(dx**2 + dy**2 + dz**2)
+        if l == 0.0:
+            raise ValueError("Longitud corriente nula en Truss3DCorot.")
+        return l, dx / l, dy / l, dz / l
+
+    @staticmethod
+    def _perpendicular_projector(cx: float, cy: float, cz: float) -> np.ndarray:
+        """Proyector 3x3 al plano perpendicular al eje: P = I − ê·êᵀ."""
+        e = np.array([cx, cy, cz])
+        return np.eye(3) - np.outer(e, e)
+
+    def compute_element_state(self, u_e: np.ndarray):
+        l, cx, cy, cz = self._current_geometry(u_e)
+
+        epsilon = (l - self.L0) / self.L0
+        sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
+        self.state.vars_trial[0] = new_state
+        self.state.stresses_trial[0] = sigma
+
+        N = sigma * self.A
+        d = np.array([-cx, -cy, -cz, cx, cy, cz])
+        P = self._perpendicular_projector(cx, cy, cz)
+
+        K_M = ((E_t * self.A) / self.L0) * np.outer(d, d)
+
+        K_G = np.zeros((6, 6))
+        K_G[:3, :3] = P
+        K_G[3:, 3:] = P
+        K_G[:3, 3:] = -P
+        K_G[3:, :3] = -P
+        K_G *= (N / l)
+
+        F_int_e = N * d
+        return K_M + K_G, F_int_e
+
+    def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        u_e = self.get_local_displacements(U_global)
+        l, _, _, _ = self._current_geometry(u_e)
+        epsilon = (l - self.L0) / self.L0
+        sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
+        N = self.A * sigma
+        return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
+
 def _frame_geometry(nodes):
     """Devuelve (L0, c, s, T) para un par de nodos 2D que comparten DOFs ['ux','uy','rz']."""
     coords1 = nodes[0].coordinates

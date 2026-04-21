@@ -105,13 +105,46 @@ F_int = σ·A · d
 ### Régimen de validez
 - Pequeñas deformaciones (`|ε| ≲ 10⁻²`), pequeños desplazamientos y pequeñas rotaciones.
 - Cargas exclusivamente axiales.
-- **Sin variante corotacional**: para grandes rotaciones en 3D, `Truss3DCorot` es un componente pendiente.
+- Para grandes rotaciones en 3D → `Truss3DCorot`.
 
 ### Validación
 - Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss3D`.
 - Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss3D`.
 - Spec: [docs/specs/Truss3D.md](specs/Truss3D.md).
 - Referencias: Bathe §4.2.1; Cook §2.3.
+
+---
+
+## Truss3DCorot — barra axial 3D corotacional
+
+Barra axial 3D en régimen de **grandes desplazamientos y rotaciones con pequeña deformación** (Updated Lagrangian). Hereda de `Truss3D`; comparte DOFs, parámetros y contrato con el material.
+
+### Cinemática
+- Longitud y cosenos directores se recalculan en configuración **corriente** en cada evaluación.
+- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`.
+- La dirección perpendicular al eje es un **plano** (dimensión 2), no un vector único.
+
+### Formulación
+```
+d = [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]       (dirección corriente del eje)
+ê = (cₓ, c_y, c_z),  P = I₃ − ê·êᵀ        (proyector 3×3 al plano perpendicular)
+
+K_M   = (E·A / L₀) · d·dᵀ                  (6×6, rango 1)
+K_G   = (N / l) · [[P, −P], [−P, P]]       (6×6, rango 2)
+K_T   = K_M + K_G
+F_int = N · d
+```
+
+### Régimen de validez
+- `|ε| ≲ 10⁻²` (pequeña deformación axial).
+- Desplazamientos y rotaciones de cualquier magnitud en el espacio.
+- Cargas exclusivamente axiales.
+
+### Validación
+- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss3DCorot` (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
+- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss3DCorot`.
+- Spec: [docs/specs/Truss3DCorot.md](specs/Truss3DCorot.md).
+- Referencias: Crisfield §3.3; Belytschko §4.5.
 
 ---
 
