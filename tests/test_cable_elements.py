@@ -10,7 +10,8 @@ import numpy as np
 
 import fenix  # dispara autodiscover
 from fenix.core.node import Node
-from fenix.elements.cable import Cable2DCorot
+from fenix.elements.cable import Cable2DCorot, Cable3DCorot
+from fenix.elements.structural import Truss3DCorot
 from fenix.materials.cable_1d import CableMaterial1D
 from fenix.materials.elastic import Elastic1D
 
@@ -87,6 +88,76 @@ class TestCable2DCorot(unittest.TestCase):
         """El elemento queda registrado vía autodiscover."""
         from fenix.registry import ElementRegistry
         self.assertIn('Cable2DCorot', ElementRegistry._items)
+
+
+class TestCable3DCorot(unittest.TestCase):
+
+    def _build(self, coords1, coords2, material, A=1.0, cls=Cable3DCorot):
+        n1 = Node(1, list(coords1))
+        n2 = Node(2, list(coords2))
+        for k, node in enumerate((n1, n2)):
+            node.add_dof('ux'); node.add_dof('uy'); node.add_dof('uz')
+            node.dofs['ux'] = 3 * k
+            node.dofs['uy'] = 3 * k + 1
+            node.dofs['uz'] = 3 * k + 2
+        return cls(1, [n1, n2], material, A)
+
+    def test_acceptance_cable_tensado_como_barra_corot_3d(self):
+        """Criterio 1: tensado con material lineal coincide con Truss3DCorot."""
+        E, A = 1000.0, 1.0
+        cable = self._build([0.0, 0.0, 0.0], [3.0, 4.0, 12.0], Elastic1D(E=E), A=A)
+        truss = self._build([0.0, 0.0, 0.0], [3.0, 4.0, 12.0], Elastic1D(E=E), A=A,
+                            cls=Truss3DCorot)
+        axis = np.array([3.0, 4.0, 12.0]) / 13.0
+        u_tiny = np.concatenate([np.zeros(3), 1e-6 * axis])
+
+        K_c, F_c = cable.compute_element_state(u_tiny)
+        K_t, F_t = truss.compute_element_state(u_tiny)
+
+        self.assertTrue(np.allclose(K_c, K_t, rtol=1e-4))
+        self.assertTrue(np.allclose(F_c, F_t, rtol=1e-4))
+
+    def test_acceptance_cable_destensado_aportacion_nula(self):
+        """Criterio 2: con material unilateral + ε < 0 ⇒ K_T = 0, F_int = 0."""
+        mat = CableMaterial1D(E=1000.0)
+        cable = self._build([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], mat, A=1.0)
+        u_e = np.array([0.0, 0.0, 0.0, -1e-3, 0.0, 0.0])  # ε < 0
+
+        K_T, F_int = cable.compute_element_state(u_e)
+
+        self.assertTrue(np.allclose(K_T, 0.0, atol=1e-12))
+        self.assertTrue(np.allclose(F_int, 0.0, atol=1e-12))
+        self.assertEqual(cable.state.stresses_trial[0], 0.0)
+
+    def test_acceptance_rotacion_rigida_3d(self):
+        """Criterio 3: rotación rígida 3D ⇒ ε = 0 ⇒ σ = 0, F_int = 0."""
+        mat = CableMaterial1D(E=1000.0)
+        cable = self._build([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], mat, A=1.0)
+        theta = math.pi / 4
+        c, s = math.cos(theta), math.sin(theta)
+        # R_y(theta) @ (1,0,0) = (c, 0, -s); u_2 = final - inicial
+        u_e = np.array([0.0, 0.0, 0.0, c - 1.0, 0.0, -s])
+
+        _, F_int = cable.compute_element_state(u_e)
+
+        self.assertAlmostEqual(cable.state.stresses_trial[0], 0.0, places=12)
+        self.assertTrue(np.allclose(F_int, 0.0, atol=1e-10))
+
+    def test_acceptance_cruce_por_cero(self):
+        """Criterio 4: u_e = 0 ⇒ σ = 0, E_t = 0, K_T = 0, F_int = 0."""
+        mat = CableMaterial1D(E=1000.0)
+        cable = self._build([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], mat, A=1.0)
+        u_e = np.zeros(6)
+
+        K_T, F_int = cable.compute_element_state(u_e)
+
+        self.assertEqual(cable.state.stresses_trial[0], 0.0)
+        self.assertTrue(np.allclose(K_T, 0.0, atol=1e-12))
+        self.assertTrue(np.allclose(F_int, 0.0, atol=1e-12))
+
+    def test_registro_en_registry(self):
+        from fenix.registry import ElementRegistry
+        self.assertIn('Cable3DCorot', ElementRegistry._items)
 
 
 if __name__ == '__main__':

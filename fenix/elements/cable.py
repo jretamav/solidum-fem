@@ -98,3 +98,102 @@ class Cable2DCorot(Element):
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
+
+@ElementRegistry.register
+class Cable3DCorot(Element):
+    """Cable 3D corotacional — tensión unilateral, grandes rotaciones en el espacio.
+
+    Dos nodos articulados, 3 DOFs por nodo (ux, uy, uz). Cinemática
+    corotacional 3D: longitud y cosenos directores se recalculan en
+    configuración corriente. La respuesta física de cable (unilateralidad)
+    vive en el material; el elemento delega sin filtrar por signo.
+
+    Clase totalmente autónoma: hereda directamente de Element, sin relación
+    con Cable2DCorot ni con los elementos de armadura.
+
+    Parameters
+    ----------
+    element_id : int
+    nodes : List[Node]
+        Exactamente 2 nodos extremos. Acepta nodos con 2 ó 3 coordenadas
+        (completa con z=0 si falta).
+    material : Material
+        Material 1D (STRAIN_DIM=1). Para cable genuino, unilateral
+        (p. ej. CableMaterial1D).
+    A : float
+        Área de la sección transversal del cable.
+    """
+
+    DOF_NAMES = ['ux', 'uy', 'uz']
+    STRAIN_DIM = 1
+    N_INTEGRATION_POINTS = 1
+
+    def __init__(self, element_id: int, nodes: List[Node], material: Material,
+                 A: float):
+        if len(nodes) != 2:
+            raise ValueError("El elemento Cable3DCorot requiere exactamente 2 nodos.")
+
+        self.A = A
+        super().__init__(element_id, nodes, material)
+
+        c1 = self.nodes[0].coordinates
+        c2 = self.nodes[1].coordinates
+        z1_0 = c1[2] if len(c1) > 2 else 0.0
+        z2_0 = c2[2] if len(c2) > 2 else 0.0
+        dx0, dy0, dz0 = c2[0] - c1[0], c2[1] - c1[1], z2_0 - z1_0
+        self.L0 = math.sqrt(dx0**2 + dy0**2 + dz0**2)
+        if self.L0 == 0.0:
+            raise ValueError("La longitud del cable no puede ser cero.")
+
+    def _current_geometry(self, u_e: np.ndarray):
+        """Longitud y cosenos directores en configuración corriente."""
+        c1 = self.nodes[0].coordinates
+        c2 = self.nodes[1].coordinates
+        z1 = c1[2] if len(c1) > 2 else 0.0
+        z2 = c2[2] if len(c2) > 2 else 0.0
+        x1 = c1[0] + u_e[0]; y1 = c1[1] + u_e[1]; zn1 = z1 + u_e[2]
+        x2 = c2[0] + u_e[3]; y2 = c2[1] + u_e[4]; zn2 = z2 + u_e[5]
+        dx, dy, dz = x2 - x1, y2 - y1, zn2 - zn1
+        l = math.sqrt(dx**2 + dy**2 + dz**2)
+        if l == 0.0:
+            raise ValueError("Longitud corriente nula en Cable3DCorot.")
+        return l, dx / l, dy / l, dz / l
+
+    @staticmethod
+    def _perpendicular_projector(cx: float, cy: float, cz: float) -> np.ndarray:
+        """Proyector 3×3 al plano perpendicular al eje: P = I − ê·êᵀ."""
+        e = np.array([cx, cy, cz])
+        return np.eye(3) - np.outer(e, e)
+
+    def compute_element_state(self, u_e: np.ndarray):
+        l, cx, cy, cz = self._current_geometry(u_e)
+
+        epsilon = (l - self.L0) / self.L0
+        sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
+        self.state.vars_trial[0] = new_state
+        self.state.stresses_trial[0] = sigma
+
+        N = sigma * self.A
+        d = np.array([-cx, -cy, -cz, cx, cy, cz])
+        P = self._perpendicular_projector(cx, cy, cz)
+
+        K_M = ((E_t * self.A) / self.L0) * np.outer(d, d)
+
+        K_G = np.zeros((6, 6))
+        K_G[:3, :3] = P
+        K_G[3:, 3:] = P
+        K_G[:3, 3:] = -P
+        K_G[3:, :3] = -P
+        K_G *= (N / l)
+
+        F_int_e = N * d
+        return K_M + K_G, F_int_e
+
+    def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        u_e = self.get_local_displacements(U_global)
+        l, _, _, _ = self._current_geometry(u_e)
+        epsilon = (l - self.L0) / self.L0
+        sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
+        N = self.A * sigma
+        return {'axial_force': N, 'stress': sigma, 'strain': epsilon}

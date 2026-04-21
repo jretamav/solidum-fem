@@ -184,6 +184,42 @@ El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se impl
 
 ---
 
+## Cable3DCorot — cable 3D corotacional
+
+Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite solo tracción, puede rotar libremente en el espacio. Cinemática corotacional 3D; unilateralidad aportada por el material (típicamente `CableMaterial1D`).
+
+### Cinemática
+- Idéntica en filosofía a una barra corotacional 3D: longitud y cosenos directores se recalculan en configuración corriente.
+- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`.
+- La dirección perpendicular al eje es un **plano** (dimensión 2).
+
+### Formulación
+```
+d = [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]
+ê = (cₓ, c_y, c_z),  P = I₃ − ê·êᵀ      (proyector 3×3)
+
+K_M   = (E_t · A / L₀) · d·dᵀ            (0 si material destensado)
+K_G   = (N / l) · [[P, −P], [−P, P]]     (0 si N = 0)
+K_T   = K_M + K_G
+F_int = N · d                            (0 si N = 0)
+```
+
+### Régimen de validez
+- `|ε| ≲ 10⁻²` en régimen tensado.
+- Grandes desplazamientos y rotaciones en el espacio.
+- Cables completamente destensados aportan `K_T = 0` al sistema global.
+
+### Independencia del diseño
+No hereda de `Cable2DCorot` ni de `Truss3DCorot`. La maquinaria cinemática 3D se implementa íntegra dentro de la clase.
+
+### Validación
+- Tests: [tests/test_cable_elements.py](tests/test_cable_elements.py) · `TestCable3DCorot` (4 tests de aceptación).
+- Archivo fuente: [fenix/elements/cable.py](fenix/elements/cable.py) · clase `Cable3DCorot`.
+- Spec: [docs/specs/Cable3DCorot.md](specs/Cable3DCorot.md).
+- Referencias: Crisfield §3.3; Belytschko §4.5; Irvine §1.2.
+
+---
+
 ## Frame2DEuler — pórtico/viga 2D Euler-Bernoulli
 
 - **Propósito**: viga esbelta 2D que transmite axial + cortante + momento flector.
