@@ -110,9 +110,9 @@ references:
   - [tests/test_structural.py](../../tests/test_structural.py) · `TestTruss2D` — verifica `L0`, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.
   - [tests/test_integration.py](../../tests/test_integration.py) · `TestSolversIntegration` — resuelve end-to-end el caso de aceptación (barra empotrada en un extremo, carga axial en el otro) con `NonlinearSolver` y `ArcLengthSolver`; en régimen elástico precedente a la fluencia reproduce $u(L)=FL/(EA)$.
 - **Notas de traducción**:
-  - La clase incluye una bandera `large_strains: bool` que activa una formulación corotacional (Updated Lagrangian) — **funcionalmente equivalente a `Truss2DCorot` pero empaquetada como opción interna**. Esta duplicación conceptual es deuda del refactor previo a spec-first; conservar como está hasta decidir si se unifica.
-  - `L0`, `c`, `s` se calculan una vez en `__init__` sobre la configuración inicial; son los que usa el camino lineal. En `large_strains=True` se recalculan en cada evaluación de estado.
+  - `L0`, `c`, `s` se calculan una vez en `__init__` sobre la configuración inicial y no se actualizan — coherente con el régimen infinitesimal declarado.
   - El contrato con el material es el estándar del proyecto: `material.compute_state(ε, state) → (σ, Eₜ, state')`.
+  - Para grandes desplazamientos/rotaciones usar `Truss2DCorot`, que hereda de esta clase.
 
 ---
 

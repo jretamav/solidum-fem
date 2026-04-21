@@ -10,10 +10,11 @@ from fenix.registry import ElementRegistry
 @ElementRegistry.register
 class Truss2D(Element):
     """
-    Elemento de armadura 2D para análisis no lineal.
+    Elemento de armadura 2D, primer orden, formulación lineal infinitesimal.
 
-    Formulación de barra articulada que solo soporta cargas axiales
-    (tracción/compresión) e integra la respuesta constitutiva en su punto central.
+    Barra articulada que transmite únicamente esfuerzo axial. Régimen válido:
+    pequeños desplazamientos, pequeñas rotaciones, |ε| ≲ 1e-2. Para grandes
+    rotaciones con pequeña deformación usar Truss2DCorot.
 
     Parameters
     ----------
@@ -24,20 +25,17 @@ class Truss2D(Element):
         Material 1D (STRAIN_DIM=1).
     A : float
         Área de la sección transversal.
-    large_strains : bool, optional
-        Si True, formulación corotacional (Updated Lagrangian) para grandes desplazamientos.
     """
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 A: float, large_strains: bool = False):
+                 A: float):
         if len(nodes) != 2:
             raise ValueError("El elemento Truss2D requiere exactamente 2 nodos.")
 
         self.A = A
-        self.large_strains = large_strains
         super().__init__(element_id, nodes, material)
 
         coords1 = self.nodes[0].coordinates
@@ -50,38 +48,6 @@ class Truss2D(Element):
         self.s = dy / self.L0
 
     def compute_element_state(self, u_e: np.ndarray):
-        if self.large_strains:
-            # --- Formulación Corotacional / Updated Lagrangian ---
-            x1 = self.nodes[0].coordinates[0] + u_e[0]
-            y1 = self.nodes[0].coordinates[1] + u_e[1]
-            x2 = self.nodes[1].coordinates[0] + u_e[2]
-            y2 = self.nodes[1].coordinates[1] + u_e[3]
-
-            dx, dy = x2 - x1, y2 - y1
-            L = math.sqrt(dx**2 + dy**2)
-            c, s = dx / L, dy / L
-
-            epsilon = (L - self.L0) / self.L0
-            sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
-            self.state.vars_trial[0] = new_state
-            self.state.stresses_trial[0] = sigma
-
-            N = sigma * self.A
-            B_dir = np.array([-c, -s, c, s])
-
-            K_e = ((E_t * self.A) / self.L0) * np.outer(B_dir, B_dir)
-
-            # Matriz de Rigidez Geométrica (Kg)
-            K_g = (N / L) * np.array([
-                [ s**2, -c*s, -s**2,  c*s],
-                [-c*s,  c**2,  c*s, -c**2],
-                [-s**2,  c*s,  s**2, -c*s],
-                [ c*s, -c**2, -c*s,  c**2]
-            ])
-
-            return K_e + K_g, N * B_dir
-
-        # --- Formulación Lineal (Pequeñas Deformaciones) ---
         c, s, L = self.c, self.s, self.L0
         B = np.array([-c, -s, c, s]) / L
         epsilon = np.dot(B, u_e)
@@ -90,33 +56,70 @@ class Truss2D(Element):
         self.state.vars_trial[0] = new_state
         self.state.stresses_trial[0] = sigma
 
-        coef = (E_t * self.A) / L
-        K_e = coef * np.array([
-            [ c**2,   c*s,  -c**2,  -c*s],
-            [ c*s,    s**2, -c*s,   -s**2],
-            [-c**2,  -c*s,   c**2,   c*s],
-            [-c*s,   -s**2,  c*s,    s**2]
-        ])
-        F_int_e = (sigma * self.A) * np.array([-c, -s, c, s])
-
+        d = np.array([-c, -s, c, s])
+        K_e = ((E_t * self.A) / L) * np.outer(d, d)
+        F_int_e = (sigma * self.A) * d
         return K_e, F_int_e
 
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         """Utilidad para reportes de post-procesamiento."""
         u_e = self.get_local_displacements(U_global)
+        c, s, L = self.c, self.s, self.L0
+        B = np.array([-c, -s, c, s]) / L
+        epsilon = np.dot(B, u_e)
 
-        if self.large_strains:
-            x1 = self.nodes[0].coordinates[0] + u_e[0]
-            y1 = self.nodes[0].coordinates[1] + u_e[1]
-            x2 = self.nodes[1].coordinates[0] + u_e[2]
-            y2 = self.nodes[1].coordinates[1] + u_e[3]
-            L = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            epsilon = (L - self.L0) / self.L0
-        else:
-            c, s, L = self.c, self.s, self.L0
-            B = np.array([-c, -s, c, s]) / L
-            epsilon = np.dot(B, u_e)
+        sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
+        N = self.A * sigma
+        return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
 
+
+@ElementRegistry.register
+class Truss2DCorot(Truss2D):
+    """
+    Armadura 2D corotacional (Updated Lagrangian).
+
+    Hereda identidad estructural de Truss2D (mismos DOFs, parámetros, material)
+    y redefine la evaluación de estado para capturar grandes desplazamientos y
+    rotaciones manteniendo la hipótesis de pequeña deformación (|ε| ≲ 1e-2).
+
+    Rigidez tangente = K_M (material) + K_G (geométrica); las fuerzas internas
+    se proyectan sobre la dirección corriente del eje de la barra.
+    """
+
+    def _current_geometry(self, u_e: np.ndarray):
+        """Posiciones, longitud y cosenos directores en la configuración corriente."""
+        x1 = self.nodes[0].coordinates[0] + u_e[0]
+        y1 = self.nodes[0].coordinates[1] + u_e[1]
+        x2 = self.nodes[1].coordinates[0] + u_e[2]
+        y2 = self.nodes[1].coordinates[1] + u_e[3]
+        dx, dy = x2 - x1, y2 - y1
+        l = math.sqrt(dx**2 + dy**2)
+        if l == 0.0:
+            raise ValueError("Longitud corriente nula en Truss2DCorot.")
+        return l, dx / l, dy / l
+
+    def compute_element_state(self, u_e: np.ndarray):
+        l, c_t, s_t = self._current_geometry(u_e)
+
+        epsilon = (l - self.L0) / self.L0
+        sigma, E_t, new_state = self.material.compute_state(epsilon, self.state.vars[0])
+        self.state.vars_trial[0] = new_state
+        self.state.stresses_trial[0] = sigma
+
+        N = sigma * self.A
+        d = np.array([-c_t, -s_t, c_t, s_t])
+        n = np.array([-s_t, c_t, s_t, -c_t])
+
+        K_M = ((E_t * self.A) / self.L0) * np.outer(d, d)
+        K_G = (N / l) * np.outer(n, n)
+        F_int_e = N * d
+
+        return K_M + K_G, F_int_e
+
+    def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        u_e = self.get_local_displacements(U_global)
+        l, _, _ = self._current_geometry(u_e)
+        epsilon = (l - self.L0) / self.L0
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}

@@ -38,7 +38,40 @@ F_int = σ·A · d
 ### Validación
 - Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss2D`.
 - Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss2D`.
+- Spec: [docs/specs/Truss2D.md](specs/Truss2D.md).
 - Referencia: Bathe, *Finite Element Procedures*, §4.2.1.
+
+---
+
+## Truss2DCorot — armadura 2D corotacional
+
+Barra axial 2D en régimen de **grandes desplazamientos y rotaciones con pequeña deformación** (Updated Lagrangian). Hereda de `Truss2D`; comparte DOFs, parámetros y contrato con el material.
+
+### Cinemática
+- Longitud y cosenos directores se recalculan en configuración **corriente** en cada evaluación.
+- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`.
+
+### Formulación
+```
+d = [−c_θ, −s_θ, c_θ, s_θ]      (dirección corriente del eje)
+n = [−s_θ,  c_θ, s_θ, −c_θ]     (perpendicular al eje)
+K_M   = (E·A / L₀) · d·dᵀ
+K_G   = (N / l) · n·nᵀ           (rigidez geométrica)
+K_T   = K_M + K_G
+F_int = N · d
+```
+
+### Régimen de validez
+- `|ε| ≲ 10⁻²` (pequeña deformación axial).
+- Desplazamientos y rotaciones de cualquier magnitud.
+- Cargas exclusivamente axiales.
+- **Fuera de alcance**: pandeo por bifurcación (se capta ablandamiento precrítico pero no el punto crítico; para snap-through usar arc-length).
+
+### Validación
+- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss2DCorot` (3 tests, uno por criterio de aceptación).
+- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss2DCorot`.
+- Spec: [docs/specs/Truss2DCorot.md](specs/Truss2DCorot.md).
+- Referencias: Crisfield §3.3, Belytschko §4.5.
 
 ---
 

@@ -64,7 +64,7 @@ No aplica (forma cerrada; un único punto conceptual en el eje).
 ```yaml
 name: Truss2DCorot
 kind: element
-status: draft
+status: validated
 
 interface:
   dof_names: [ux, uy]
@@ -121,17 +121,21 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
-
-- Archivo: —
-- Clase: —
-- Tests: —
-- Notas de traducción: —
+- **Archivo**: [fenix/elements/structural.py](../../fenix/elements/structural.py)
+- **Clase**: `Truss2DCorot` — hereda de `Truss2D` (reutiliza `__init__`, `ClassVar`s y metadatos de registro) y sobrescribe `compute_element_state` y `compute_internal_forces` para evaluar cosenos directores y longitud en configuración corriente.
+- **Tests**: [tests/test_structural.py](../../tests/test_structural.py) · `TestTruss2DCorot` — tres tests, uno por cada `acceptance`:
+  - `test_acceptance_linear_limit_matches_truss2d` (criterio 1).
+  - `test_acceptance_rigid_body_rotation` (criterio 2).
+  - `test_acceptance_geometric_stiffness_under_traction` (criterio 3).
+- **Notas de traducción**:
+  - La longitud corriente $l$ y los cosenos $c_\theta, s_\theta$ se recalculan en cada evaluación (no se cachean entre llamadas del solver, como exige Updated Lagrangian).
+  - El vector $\mathbf d$ de §7 se construye con signos $[-c_\theta, -s_\theta, c_\theta, s_\theta]$; el transverso $\mathbf n$ como $[-s_\theta, c_\theta, s_\theta, -c_\theta]$. Ambos con norma $\sqrt 2$ — el factor se absorbe en los coeficientes $EA/L_0$ y $N/l$.
+  - La rigidez tangente se devuelve ya sumada $\mathbf K_M + \mathbf K_G$; el solver no distingue las dos contribuciones.
+  - El test 3 confronta $\mathbf K_T$ con la descomposición esperada y además verifica $\mathbf K_G \mathbf n = (2N/l)\mathbf n$ (autovalor sobre el vector sin normalizar, que es $N/l$ sobre el versor — así queda la ambigüedad resuelta explícitamente).
 
 ---
 
 ## Diálogo
 
-*Preguntas, aclaraciones y hallazgos durante la implementación. Entradas fechadas.*
-
-- *(vacío)*
+- **2026-04-21** · Implementación inicial tras validar el diseño spec-first. Se optó por herencia `Truss2DCorot(Truss2D)` para reutilizar el constructor (L0, cosenos iniciales) y los `ClassVar`s del registro; los métodos que dependen de configuración corriente se sobrescriben. La bandera `large_strains` que tenía `Truss2D` previamente se elimina en el mismo commit — el régimen corotacional vive ahora como elemento independiente.
+- **2026-04-21** · Normalización del autovalor transverso (criterio 3): la fórmula del libro da $N/l$ sobre el **versor** $\hat{\mathbf n} = \mathbf n/\sqrt 2$; sobre el vector $\mathbf n$ directo (norma $\sqrt 2$) el autovalor es $2N/l$. El test verifica la segunda forma para evitar raíces cuadradas y la nota de traducción documenta la equivalencia.
