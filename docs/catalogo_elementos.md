@@ -251,8 +251,8 @@ F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del mate
 Archivo propio. No hereda de ningún otro elemento y no comparte utilidades con otros módulos — la matriz de transformación se construye dentro de la clase.
 
 ### Validación
-- Tests: [tests/test_frame_euler.py](tests/test_frame_euler.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
-- Archivo fuente: [fenix/elements/frame_euler.py](fenix/elements/frame_euler.py) · clase `Frame2DEuler`.
+- Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
+- Archivo fuente: [fenix/elements/frame.py](fenix/elements/frame.py) · clase `Frame2DEuler`.
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
 
@@ -299,8 +299,8 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 Archivo propio. No hereda de ningún otro elemento. La matriz de transformación se construye dentro de la clase (`_build_geometry` como método estático).
 
 ### Validación
-- Tests: [tests/test_frame_timoshenko.py](tests/test_frame_timoshenko.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
-- Archivo fuente: [fenix/elements/frame_timoshenko.py](fenix/elements/frame_timoshenko.py) · clase `Frame2DTimoshenko`.
+- Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
+- Archivo fuente: [fenix/elements/frame.py](fenix/elements/frame.py) · clase `Frame2DTimoshenko`.
 - Spec: [docs/specs/Frame2DTimoshenko.md](specs/Frame2DTimoshenko.md).
 - Referencias: Reddy cap. 5; Bathe §5.4.
 

@@ -157,9 +157,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/frame_timoshenko.py](../../fenix/elements/frame_timoshenko.py) — archivo propio. La utilidad `_frame_geometry` que antes se compartía con `Frame2DEuler` en `structural.py` queda eliminada del repositorio: ambas vigas 2D la replican internamente como método estático `_build_geometry`.
+- **Archivo**: [fenix/elements/frame.py](../../fenix/elements/frame.py) — archivo propio. La utilidad `_frame_geometry` que antes se compartía con `Frame2DEuler` en `structural.py` queda eliminada del repositorio: ambas vigas 2D la replican internamente como método estático `_build_geometry`.
 - **Clase**: `Frame2DTimoshenko` — hereda directamente de `Element`. No comparte código con ningún otro elemento.
-- **Tests**: [tests/test_frame_timoshenko.py](../../tests/test_frame_timoshenko.py) · `TestFrame2DTimoshenkoAcceptance`:
+- **Tests**: [tests/test_frame.py](../../tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance`:
   - `test_acceptance_convergencia_euler_en_viga_esbelta` (criterio 1) — viga con $L/h$ muy grande, verifica que la flecha tiende a $PL^3/(3EI)$ con tolerancia relativa $10^{-3}$.
   - `test_acceptance_respuesta_axial_pura` (criterio 2) — carga axial pura, verifica $u_x = FL/(EA)$.
   - `test_acceptance_simetria_K` (criterio 3) — viga oblicua, verifica $\mathbf K = \mathbf K^\top$.
@@ -174,5 +174,5 @@ references:
 
 ## Diálogo
 
-- **2026-04-21** · Elemento movido a archivo propio `fenix/elements/frame_timoshenko.py` y desacoplado del helper `_frame_geometry`. Con este movimiento, el helper compartido se elimina completamente del repositorio: `Frame2DEuler` y `Frame2DTimoshenko` replican la construcción de $\mathbf T$ como método estático `_build_geometry`, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
+- **2026-04-21** · Elemento movido a archivo propio `fenix/elements/frame.py` y desacoplado del helper `_frame_geometry`. Con este movimiento, el helper compartido se elimina completamente del repositorio: `Frame2DEuler` y `Frame2DTimoshenko` replican la construcción de $\mathbf T$ como método estático `_build_geometry`, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
 - **2026-04-21** · Test del criterio 1: se eligió $L/h$ grande en lugar de reproducir un caso específico de libro porque la convergencia Timoshenko → Euler es el comportamiento **esperado por construcción** (factor $\Phi \to 0$). Verificarlo directamente con el solver completo valida simultáneamente la cinemática de Timoshenko, el tratamiento del shear locking y la integración con ensamblador + solver.

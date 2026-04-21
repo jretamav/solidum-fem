@@ -160,9 +160,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/frame_euler.py](../../fenix/elements/frame_euler.py) — archivo propio, no comparte utilidades con otros módulos de elementos.
+- **Archivo**: [fenix/elements/frame.py](../../fenix/elements/frame.py) — archivo propio, no comparte utilidades con otros módulos de elementos.
 - **Clase**: `Frame2DEuler` — hereda directamente de `Element`. La construcción de la matriz de transformación $\mathbf T$ se extrae a un método estático privado `_build_geometry` para que la clase sea autocontenida (anteriormente se usaba una función helper `_frame_geometry` compartida con `Frame2DTimoshenko` en `structural.py`; la duplicación es deliberada para garantizar independencia).
-- **Tests**: [tests/test_frame_euler.py](../../tests/test_frame_euler.py) · `TestFrame2DEulerAcceptance` — los tres criterios físicos y el registro:
+- **Tests**: [tests/test_frame.py](../../tests/test_frame.py) · `TestFrame2DEulerAcceptance` — los tres criterios físicos y el registro:
   - `test_acceptance_respuesta_axial_pura` (criterio 1) — resuelve el voladizo con solver, verifica $u_x(L) = FL/(EA)$.
   - `test_acceptance_voladizo_carga_transversal` (criterio 2) — carga transversal $P$, verifica flecha $v = PL^3/(3EI)$ y rotación $\theta = PL^2/(2EI)$.
   - `test_acceptance_simetria_K` (criterio 3) — viga oblicua (c=0.6, s=0.8) para evitar ejes canónicos, verifica $\mathbf K = \mathbf K^\top$.
@@ -176,5 +176,5 @@ references:
 
 ## Diálogo
 
-- **2026-04-21** · Elemento movido a archivo propio `fenix/elements/frame_euler.py` y desacoplado del helper compartido `_frame_geometry`. El método estático `_build_geometry` reimplementa la construcción de $\mathbf T$ dentro de la clase. `Frame2DTimoshenko` sigue en `structural.py` usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
+- **2026-04-21** · Elemento movido a archivo propio `fenix/elements/frame.py` y desacoplado del helper compartido `_frame_geometry`. El método estático `_build_geometry` reimplementa la construcción de $\mathbf T$ dentro de la clase. `Frame2DTimoshenko` sigue en `structural.py` usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
 - **2026-04-21** · Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto — validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
