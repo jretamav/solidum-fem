@@ -306,6 +306,49 @@ Archivo propio. No hereda de ningún otro elemento. La matriz de transformación
 
 ---
 
+## Frame2DEulerCorot — viga 2D Euler-Bernoulli corotacional
+
+Viga 2D esbelta Euler-Bernoulli en formulación **corotacional** (Updated Lagrangian). Grandes desplazamientos y grandes rotaciones rígidas del elemento; deformaciones axiales pequeñas y rotaciones nodales deformacionales moderadas.
+
+### Cinemática corotacional
+- Rotación rígida $\alpha_e$ del eje separada de las rotaciones deformacionales de las secciones $\bar\theta_1, \bar\theta_2$.
+- DOFs deformacionales locales: $[u_l = l - L_0, \bar\theta_1, \bar\theta_2]$.
+- Todo en configuración corriente: $c, s, l, \alpha$ se recalculan por evaluación.
+
+### Formulación
+```
+Rigidez local (3×3) en DOFs deformacionales:
+  K_ll = diag-block([EA/L₀], [[4EI/L₀, 2EI/L₀], [2EI/L₀, 4EI/L₀]])
+
+Matriz B (3×6) en configuración corriente acopla DOFs locales y globales.
+
+Rigidez tangente:
+  K_T = B ᵀ · K_ll · B + K_σ
+  K_σ = (N/l)·z·zᵀ − ((M₁+M₂)/l²)·(r·zᵀ + z·rᵀ)
+
+con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
+```
+
+### Régimen de validez
+- `|ε_axial| ≲ 10⁻²`.
+- Rotaciones rígidas del elemento ilimitadas entre commits (hasta $|\alpha_e| < \pi$ por paso).
+- Rotaciones deformacionales de las secciones moderadas (`|θ̄| ≲ 30°`).
+- Rotaciones continuas > π requerirían tracking de vueltas (fuera de alcance).
+
+### Dominios que abre
+Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, brazos flexibles, cables con rigidez a flexión. Problemas que la viga lineal `Frame2DEuler` no puede atacar.
+
+### Independencia del diseño
+Archivo compartido con `Frame2DEuler` y `Frame2DTimoshenko` por familia temática (vigas 2D), pero **sin herencia**: cada clase replica su propia cinemática internamente.
+
+### Validación
+- Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro).
+- Archivo fuente: [fenix/elements/frame.py](fenix/elements/frame.py) · clase `Frame2DEulerCorot`.
+- Spec: [docs/specs/Frame2DEulerCorot.md](specs/Frame2DEulerCorot.md).
+- Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
+
+---
+
 ## Frame3D — pórtico/viga 3D Euler-Bernoulli
 
 Viga 3D esbelta con 6 DOFs por nodo (`ux, uy, uz, rx, ry, rz`). Transmite axial + cortante en dos planos + flexión en dos planos + torsión. Régimen geométricamente lineal.
