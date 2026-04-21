@@ -306,6 +306,53 @@ Archivo propio. No hereda de ningún otro elemento. La matriz de transformación
 
 ---
 
+## Frame3D — pórtico/viga 3D Euler-Bernoulli
+
+Viga 3D esbelta con 6 DOFs por nodo (`ux, uy, uz, rx, ry, rz`). Transmite axial + cortante en dos planos + flexión en dos planos + torsión. Régimen geométricamente lineal.
+
+### Cinemática
+- Secciones planas perpendiculares al eje neutro deformado (Euler-Bernoulli).
+- Torsión de Saint-Venant pura (sin alabeo).
+- Flexiones en ejes principales desacopladas.
+- Configuración inicial fija (no hay variante corotacional 3D por ahora).
+
+### Ejes locales y orientación de la sección
+El eje $\hat{\mathbf x}$ local va del nodo 1 al nodo 2. Los ejes $\hat{\mathbf y}, \hat{\mathbf z}$ de la sección se definen proyectando un **vector de referencia** (`ref_vector`) sobre el plano perpendicular al eje. Default: `[0, 0, 1]` (eje z global); fallback a `[1, 0, 0]` con advertencia si la barra es casi vertical.
+
+### Formulación
+Matriz de transformación $\mathbf T$ 12×12 en bloques de $\boldsymbol{\lambda}$ (3×3). Matriz local 12×12 desacoplada:
+```
+Axial      (2×2) : EA/L
+Torsión    (2×2) : GJ/L       con G = E/[2(1+ν)]
+Flexión xy (4×4) : 12EIz/L³, 6EIz/L², 4EIz/L, 2EIz/L
+Flexión xz (4×4) : 12EIy/L³, 6EIy/L², 4EIy/L, 2EIy/L  (signos invertidos)
+
+K_global = Tᵀ K_local T
+```
+
+### Parámetros
+- `A`, `Iy`, `Iz` (área y momentos de inercia respecto a ejes locales y, z).
+- `J` (constante torsional de Saint-Venant).
+- `nu` (opcional, del material si lo expone, sino del elemento con default 0.3).
+- `ref_vector` (opcional, default `[0, 0, 1]`).
+
+### Régimen de validez
+- Vigas esbeltas (`L/h ≳ 10`).
+- Pequeños desplazamientos, pequeñas rotaciones.
+- Sin alabeo (secciones macizas o cerradas).
+- Para grandes rotaciones en 3D: pendiente `Frame3DCorot`.
+
+### Independencia del diseño
+Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimoshenko`, ni con los trusses 3D.
+
+### Validación
+- Tests: [tests/test_frame3d.py](tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro).
+- Archivo fuente: [fenix/elements/frame3d.py](fenix/elements/frame3d.py) · clase `Frame3D`.
+- Spec: [docs/specs/Frame3D.md](specs/Frame3D.md).
+- Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
+
+---
+
 ## Quad4 — cuadrilátero bilineal 2D
 
 - **Propósito**: continuo 2D isoparamétrico; problema mecánico plano.
