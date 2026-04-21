@@ -260,15 +260,49 @@ Archivo propio. No hereda de ningún otro elemento y no comparte utilidades con 
 
 ## Frame2DTimoshenko — pórtico/viga 2D Timoshenko
 
-- **Propósito**: viga 2D con deformación por cortante transversal incluida explícitamente.
-- **DOFs por nodo**: `['ux', 'uy', 'rz']` · 2 nodos · `STRAIN_DIM = 1`.
-- **Cinemática**: Timoshenko (secciones planas pero **no** perpendiculares al eje deformado). Factor `Φ = 12·E·I / (G·A_s·L²)` corrige la rigidez para evitar shear locking.
-- **Integración**: matriz `K_local 6×6` analítica con corrección por `Φ`.
-- **Parámetros**: `A`, `I`, `As` (área efectiva de cortante), `nu` (Poisson, opcional si el material lo expone).
-- **Limitaciones**: misma que Euler en no-linealidad material (E_t escala todo).
-- **Cuándo usarlo**: vigas gruesas (L/h ≲ 10), peraltadas, o cuando la flecha por cortante no es despreciable.
-- **Referencia**: Reddy, *An Introduction to the Finite Element Method*, cap. 5.
-- **Archivo**: [fenix/elements/structural.py](fenix/elements/structural.py)
+Viga 2D con deformación por cortante transversal explícita. Dos nodos rígidamente conectados; transmite axial + cortante + momento flector. Apropiado para vigas peraltadas o cortas (`L/h ≲ 10`).
+
+### Cinemática
+- Secciones planas, **no** perpendiculares al eje neutro deformado (rotación independiente de la pendiente de la elástica).
+- Distorsión angular $\gamma = dv/ds - \theta$ tratada como campo independiente.
+- Configuración inicial fija (régimen geométricamente lineal).
+
+### Formulación
+Factor de corrección contra shear locking:
+```
+Φ = 12 · E · I / (G · A_s · L²),      G = E / [2(1 + ν)]
+```
+Matriz local con coeficientes ajustados:
+```
+a = 12·EI / [L³(1+Φ)],   b = 6·EI / [L²(1+Φ)]
+c = (4+Φ)·EI / [L(1+Φ)], d = (2-Φ)·EI / [L(1+Φ)]
+
+K_local = [[ EA/L,  0,  0, -EA/L,  0,  0],
+           [    0,  a,  b,     0, -a,  b],
+           [    0,  b,  c,     0, -b,  d],
+           [-EA/L,  0,  0,  EA/L,  0,  0],
+           [    0, -a, -b,     0,  a, -b],
+           [    0,  b,  d,     0, -b,  c]]
+```
+Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
+
+### Parámetros
+- `A`, `I`, `As` (área efectiva de cortante).
+- `nu` (opcional): se toma de `material.nu` si está disponible; en su defecto, del parámetro del elemento con default 0.3 y aviso por consola.
+
+### Régimen de validez
+- Vigas gruesas/peraltadas (`L/h ≲ 10`); para esbeltas → `Frame2DEuler` (más simple y sin shear locking).
+- Pequeños desplazamientos, pequeñas rotaciones.
+- No captura plasticidad distribuida: `E_tangent` escala toda la matriz.
+
+### Independencia del diseño
+Archivo propio. No hereda de ningún otro elemento. La matriz de transformación se construye dentro de la clase (`_build_geometry` como método estático).
+
+### Validación
+- Tests: [tests/test_frame_timoshenko.py](tests/test_frame_timoshenko.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
+- Archivo fuente: [fenix/elements/frame_timoshenko.py](fenix/elements/frame_timoshenko.py) · clase `Frame2DTimoshenko`.
+- Spec: [docs/specs/Frame2DTimoshenko.md](specs/Frame2DTimoshenko.md).
+- Referencias: Reddy cap. 5; Bathe §5.4.
 
 ---
 
