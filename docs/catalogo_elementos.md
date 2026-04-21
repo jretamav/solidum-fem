@@ -6,15 +6,39 @@
 
 ---
 
-## Truss2D — armadura 2D
+## Truss2D — barra axial 2D
 
-- **Propósito**: barra articulada que solo transmite carga axial.
-- **DOFs por nodo**: `['ux', 'uy']` · 2 nodos · `STRAIN_DIM = 1`.
-- **Cinemática**: lineal o **corotacional** (Updated Lagrangian) según `large_strains`. La opción no lineal añade matriz de rigidez geométrica `K_g = (N/L) · ...`.
-- **Integración**: 1 punto (centro).
-- **Parámetros**: `A` (área), `large_strains` (bool).
-- **Limitaciones**: solo carga axial; si las cargas transversales no son despreciables → usar `Frame2DEuler`/`Frame2DTimoshenko`.
-- **Archivo**: [fenix/elements/structural.py](fenix/elements/structural.py)
+Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos; transmite exclusivamente esfuerzo axial.
+
+### Cinemática
+- Interpolación lineal del desplazamiento entre los dos nodos.
+- Deformación axial uniforme en el elemento.
+
+### Formulación
+Cosenos directores del eje: `c = (x₂−x₁)/L`, `s = (y₂−y₁)/L`.
+
+```
+ε     = B · u_e,          B = (1/L) · [−c, −s, c, s]
+K_e   = (E·A / L) · dᵀd,  d = [−c, −s, c, s]
+F_int = σ·A · d
+```
+
+### Convenciones
+- Tracción positiva: `ε > 0 ⇔ elongación ⇔ σ > 0`.
+- `STRAIN_DIM = 1`: la deformación que recibe el material es un escalar (no Voigt).
+- La orientación de los nodos no afecta el resultado (`K_e` y `F_int` son invariantes bajo su permutación).
+
+### Parámetros
+- `A` — área de la sección transversal.
+
+### Régimen de validez
+- Pequeñas deformaciones (`|ε| ≲ 10⁻²`) y pequeños desplazamientos.
+- Cargas exclusivamente axiales. Si la carga transversal sobre la barra no es despreciable → `Frame2DEuler` / `Frame2DTimoshenko`.
+
+### Validación
+- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss2D`.
+- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss2D`.
+- Referencia: Bathe, *Finite Element Procedures*, §4.2.1.
 
 ---
 
@@ -85,5 +109,7 @@
 
 ## Cómo añadir un elemento nuevo
 
-`/fenix-new element <Name>` — genera archivo en `fenix/elements/`, decorador `@ElementRegistry.register`, esqueleto de test.
-Tras implementar la formulación, **añadir una entrada a este catálogo** siguiendo el formato de arriba.
+1. **Spec primero** — el usuario crea `docs/specs/<Nombre>.md` a partir de `docs/specs/_template_element.md` (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.
+2. **Scaffolding** — `/fenix-new element <Nombre>` genera archivo en `fenix/elements/`, decorador `@ElementRegistry.register` y esqueleto de test.
+3. **Implementación + validación** — la IA codifica contra la spec; los tests cubren los casos de `acceptance` declarados.
+4. **Catálogo** — cuando la spec pasa a `status: validated`, se añade aquí una entrada breve siguiendo el formato de arriba (la spec sigue siendo la referencia detallada).
