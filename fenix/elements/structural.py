@@ -128,8 +128,23 @@ class Truss2DCorot(Truss2D):
 @ElementRegistry.register
 class Truss3D(Element):
     """
-    Elemento de armadura 3D para análisis no lineal.
-    Extensión espacial de Truss2D.
+    Elemento de armadura 3D, primer orden, formulación lineal infinitesimal.
+
+    Barra articulada en el espacio que transmite únicamente esfuerzo axial.
+    Dos nodos, tres DOFs de desplazamiento por nodo. Régimen válido: pequeños
+    desplazamientos, pequeñas rotaciones, |ε| ≲ 1e-2. La configuración de
+    referencia es fija; no existe variante corotacional en este elemento.
+
+    Parameters
+    ----------
+    element_id : int
+    nodes : List[Node]
+        Exactamente 2 nodos extremos. Acepta nodos con 2 ó 3 coordenadas
+        (completa con z=0 si la tercera falta).
+    material : Material
+        Material 1D (STRAIN_DIM=1).
+    A : float
+        Área de la sección transversal.
     """
     DOF_NAMES = ['ux', 'uy', 'uz']
     STRAIN_DIM = 1

@@ -75,15 +75,43 @@ F_int = N · d
 
 ---
 
-## Truss3D — armadura 3D
+## Truss3D — barra axial 3D
 
-- **Propósito**: extensión espacial de `Truss2D`.
-- **DOFs por nodo**: `['ux', 'uy', 'uz']` · 2 nodos · `STRAIN_DIM = 1`.
-- **Cinemática**: pequeñas deformaciones (no implementa corotacional).
-- **Integración**: 1 punto (centro).
-- **Parámetros**: `A`.
-- **Limitaciones**: lineal-geométrica; sin matriz de rigidez geométrica.
-- **Archivo**: [fenix/elements/structural.py](fenix/elements/structural.py)
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite exclusivamente esfuerzo axial. Régimen estrictamente de **linealidad geométrica**.
+
+### Cinemática
+- Interpolación lineal del desplazamiento entre los dos nodos.
+- Deformación axial uniforme en el elemento.
+- Configuración inicial fija: `L₀`, `cₓ`, `c_y`, `c_z` no se actualizan con los desplazamientos.
+
+### Formulación
+Cosenos directores del eje: `cₓ = (x₂−x₁)/L`, `c_y = (y₂−y₁)/L`, `c_z = (z₂−z₁)/L`.
+
+```
+ε     = B · u_e,          B = (1/L) · [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]
+K_e   = (E·A / L) · d·dᵀ,  d = [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]    (6×6, rango 1)
+F_int = σ·A · d
+```
+
+### Convenciones
+- Tracción positiva: `ε > 0 ⇔ elongación ⇔ σ > 0`.
+- `STRAIN_DIM = 1`: la deformación que recibe el material es un escalar (no Voigt).
+- La orientación de los nodos no afecta el resultado (`K_e` y `F_int` son invariantes bajo su permutación).
+- Acepta nodos con 2 ó 3 coordenadas (completa con `z = 0` si la tercera falta).
+
+### Parámetros
+- `A` — área de la sección transversal.
+
+### Régimen de validez
+- Pequeñas deformaciones (`|ε| ≲ 10⁻²`), pequeños desplazamientos y pequeñas rotaciones.
+- Cargas exclusivamente axiales.
+- **Sin variante corotacional**: para grandes rotaciones en 3D, `Truss3DCorot` es un componente pendiente.
+
+### Validación
+- Tests: [tests/test_structural.py](tests/test_structural.py) · `TestTruss3D`.
+- Archivo fuente: [fenix/elements/structural.py](fenix/elements/structural.py) · clase `Truss3D`.
+- Spec: [docs/specs/Truss3D.md](specs/Truss3D.md).
+- Referencias: Bathe §4.2.1; Cook §2.3.
 
 ---
 
