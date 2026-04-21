@@ -59,7 +59,16 @@ def parse_spec(path: Path) -> Spec:
     impl_body = impl_match.group(1).strip() if impl_match else ""
     # Consideramos "rellena" si hay al menos un archivo o clase declarados
     # (la plantilla deja guiones "—" como placeholder).
-    filled = bool(re.search(r"(Archivo|Clase)\s*:\s*[A-Za-z0-9_./]+", impl_body))
+    # Acepta "Archivo: path", "**Archivo**: path", "- Archivo: path", etc.
+    # Lo que indica 'rellena' es que tras "Archivo"/"Clase" y dos puntos haya
+    # algo distinto del placeholder "—" o "-" solo.
+    filled = bool(
+        re.search(
+            r"(Archivo|Clase)\*{0,2}\s*:\s*(?![—\-]\s*$)\S+",
+            impl_body,
+            flags=re.MULTILINE,
+        )
+    )
 
     return Spec(path=Path(path), contract=contract, implementation_filled=filled)
 
