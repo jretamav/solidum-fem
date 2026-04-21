@@ -23,7 +23,8 @@ from fenix.materials.damage_1d import IsotropicDamage1D
 from fenix.materials.damage_2d import IsotropicDamage2D
 
 from fenix.elements.solid_2d import Quad4, Tri3
-from fenix.elements.structural import Truss2D, Truss3D, Frame2DEuler, Frame2DTimoshenko
+from fenix.elements.structural import Truss2D, Truss3D, Frame2DTimoshenko
+from fenix.elements.frame_euler import Frame2DEuler
 
 from fenix.math.assembly import Assembler
 from fenix.math.solvers import LinearSolver, NonlinearSolver, ArcLengthSolver

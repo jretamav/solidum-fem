@@ -222,14 +222,39 @@ No hereda de `Cable2DCorot` ni de `Truss3DCorot`. La maquinaria cinemática 3D s
 
 ## Frame2DEuler — pórtico/viga 2D Euler-Bernoulli
 
-- **Propósito**: viga esbelta 2D que transmite axial + cortante + momento flector.
-- **DOFs por nodo**: `['ux', 'uy', 'rz']` · 2 nodos · `STRAIN_DIM = 1`.
-- **Cinemática**: hipótesis Euler-Bernoulli (secciones planas, perpendiculares al eje neutro deformado).
-- **Integración**: matriz `K_local 6×6` analítica; estado constitutivo evaluado a partir de la deformación axial media `(u₃ − u₀)/L`.
-- **Parámetros**: `A` (área), `I` (inercia respecto Z).
-- **Limitaciones**: la no-linealidad material escala toda la rigidez por `E_t` (no captura rótulas plásticas distribuidas en sección); válido solo para vigas esbeltas (L/h ≳ 10).
-- **Referencia**: Bathe, *Finite Element Procedures*, cap. 5.
-- **Archivo**: [fenix/elements/structural.py](fenix/elements/structural.py)
+Viga esbelta 2D con hipótesis de Euler-Bernoulli: secciones planas perpendiculares al eje neutro deformado. Dos nodos rígidamente conectados; transmite axial + cortante + momento flector.
+
+### Cinemática
+- Interpolación lineal del desplazamiento axial, Hermite cúbica del desplazamiento transverso.
+- Pequeños desplazamientos y rotaciones (régimen geométricamente lineal).
+- Configuración inicial fija: `L₀, c, s, T` se calculan una vez y no se actualizan.
+
+### Formulación
+Matriz de transformación global→local $\mathbf T$ ($6\times 6$) con cosenos directores del eje. Matriz local analítica:
+```
+K_local = [[ EA/L,       0,       0, -EA/L,       0,       0 ],
+           [    0, 12EI/L³,  6EI/L²,     0,-12EI/L³,  6EI/L²],
+           [    0,  6EI/L²,   4EI/L,     0, -6EI/L²,   2EI/L],
+           [-EA/L,       0,       0,  EA/L,       0,       0 ],
+           [    0,-12EI/L³, -6EI/L²,     0, 12EI/L³, -6EI/L²],
+           [    0,  6EI/L²,   2EI/L,     0, -6EI/L²,   4EI/L]]
+K_global = Tᵀ · K_local · T
+F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del material)
+```
+
+### Régimen de validez
+- Vigas esbeltas (`L/h ≳ 10`); peraltadas → `Frame2DTimoshenko`.
+- Pequeños desplazamientos, pequeñas rotaciones.
+- No captura rótulas plásticas distribuidas: `E_tangent` escala toda la matriz por igual.
+
+### Independencia del diseño
+Archivo propio. No hereda de ningún otro elemento y no comparte utilidades con otros módulos — la matriz de transformación se construye dentro de la clase.
+
+### Validación
+- Tests: [tests/test_frame_euler.py](tests/test_frame_euler.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
+- Archivo fuente: [fenix/elements/frame_euler.py](fenix/elements/frame_euler.py) · clase `Frame2DEuler`.
+- Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
+- Referencias: Bathe cap. 5; Cook §2.7.
 
 ---
 
