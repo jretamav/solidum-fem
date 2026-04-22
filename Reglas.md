@@ -42,7 +42,48 @@ La IA, por tanto, **nunca trata el sistema como caja negra para el usuario**. Cu
 - **Cambio arquitectural grande** (refactor transversal, nuevo subsistema, ruptura de contratos) → la IA crea un **ADR breve** (Architecture Decision Record, ~1 página) en `docs/adr/000N-titulo.md` antes o junto al commit. Los ADRs son persistentes y consultables; sustituyen a las explicaciones efímeras de chat para que el sistema siga siendo entendible meses o años después.
 - **Bajo demanda**: si el usuario pide profundizar en cualquier pieza, la IA explica al nivel solicitado, desde lo conceptual hasta el detalle de implementación.
 
-## 5. Salvaguardas
+## 5. Convenciones de signos
+
+Convención única del proyecto. Obligatoria en toda formulación, test, API pública (`internal_forces`, `SolveResult`), documentación y catálogo. Si una referencia bibliográfica usa otra convención, se traduce al implementar y se anota la traducción en el test.
+
+**Ejes y giros — 2D estática**
+- `x` positivo a la derecha, `y` positivo hacia arriba.
+- Giro/momento positivo en sentido antihorario (regla de la mano derecha con `z` saliendo del plano).
+
+**Ejes y giros — 3D estática**
+- Regla de la mano derecha para todos los ejes (locales y globales) y todos los momentos (`Mx`, `My`, `Mz`, `T`).
+
+**Esfuerzos internos sobre elemento diferencial 2D — signos por deformación**
+Convención clásica de vigas: `N` positivo ↔ tracción; `V` positivo tiende a rotar el diferencial en sentido horario; `M` positivo ↔ tracción en la fibra inferior (sagging).
+
+- Cara izquierda (normal saliente en `−x`): `N` apunta en `−x`, `V` apunta en `+y`, `M` actúa en sentido horario.
+- Cara derecha (normal saliente en `+x`): `N` apunta en `+x`, `V` apunta en `−y`, `M` actúa en sentido antihorario.
+
+**Esfuerzos internos en 3D — convención stress-resultant / RHR pura**
+En la cara con normal saliente `+x_local`, los esfuerzos positivos son:
+- `N` en `+x_local` (tracción positiva).
+- `Vy` en `+y_local`, `Vz` en `+z_local`.
+- `T ≡ Mx`, `My`, `Mz`: vectores momento en `+x_local`, `+y_local`, `+z_local` respectivamente (regla de la mano derecha).
+
+En la cara con normal saliente `−x_local`, todos los sentidos se invierten (Newton 3ª ley).
+
+Justificación: es la convención que sale de integrar directamente el tensor de tensiones sobre la sección (`N=∫σxx dA`, `Vy=∫σxy dA`, `Vz=∫σxz dA`, `T=∫(y·σxz − z·σxy) dA`, `My=−∫z·σxx dA`, `Mz=∫y·σxx dA`). Es la que adoptan Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS (Beam188/189), Abaqus (B31/B32). La convención estructural de "sagging positivo" no tiene extensión canónica a 3D — se usa solo en 2D.
+
+Convención de fibra para flectores (consecuencia del signo de arriba):
+- `Mz > 0` ⇒ tracción en fibras con `y < 0` (equivalente a sagging en el plano xy con `+y=arriba`).
+- `My > 0` ⇒ tracción en fibras con `z > 0`.
+
+**Capa interna vs API pública**
+- *Interna (formulación)*: todos los elementos — 2D y 3D — trabajan internamente en la convención stress-resultant/RHR. Matrices `B`, fuerzas internas `f_int = ∫Bᵀσ dΩ`, jacobianos, residuales, etc., en esta convención. Evita signos especiales por dimensión.
+- *API pública (`internal_forces`, diagramas, catálogo)*: los elementos 3D la exponen tal cual. Los elementos 2D exponen la convención de viga estructural de la sección anterior — `V` con signo opuesto al interno — por ser la intuición clásica de diagramas. La traducción B↔A es un simple cambio de signo en `V`, aplicado dentro de `internal_forces()` del elemento 2D.
+
+Relación 2D↔3D en el API público:
+- `M_2D` ≡ `Mz_3D` (mismo signo, ambos sagging positivo con `+y=arriba`).
+- `V_2D` y `Vy_3D` difieren en signo en el API público por la razón anterior.
+
+Los valores se exponen siempre en **ejes locales del elemento**; la transformación a globales es una capa separada.
+
+## 6. Salvaguardas
 
 - **Tests blindan física no obvia.** Toda formulación nueva entra acompañada de un test de validación contra solución analítica o benchmark conocido. La IA puede equivocarse en sutilezas físicas (signos en Voigt, factores de ½, hipótesis plane stress vs plane strain) que no rompen la compilación; los tests son la red de seguridad.
 - **El usuario lee diffs y commits.** No escribe, sí supervisa. Esta es la salvaguarda primaria contra errores numéricos sutiles.
