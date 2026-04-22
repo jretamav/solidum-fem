@@ -3,6 +3,7 @@ import sys, os
 import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import fenix
 from fenix.utils.yaml_parser import YamlParser
 from fenix.math.assembly import Assembler
 from fenix.utils.vtk_exporter import VtkExporter
@@ -143,14 +144,25 @@ def _make_step_callback(mesh, F_ext, ruta_base: str, base_dir: str,
 # Ejecución del solver
 # ---------------------------------------------------------------------------
 
-def _run_solver(solver, F_ext, step_callback):
-    """Ejecuta el solver y retorna el vector de desplazamientos final."""
-    if hasattr(solver, 'num_steps') or hasattr(solver, 'max_steps'):
-        return solver.solve(F_ext, step_callback=step_callback)
-    else:
-        U = solver.solve(F_ext)
-        step_callback(1, U, 1.0)
-        return U
+def _run_solver(domain, assembler, solver, F_ext, step_callback):
+    """Ejecuta el pipeline oficial ``fenix.run`` y retorna ``U``.
+
+    Delega en ``fenix.run`` para centralizar Assembler→solver→SolveResult
+    (ADR 0002); ``domain.last_result`` queda poblado tras el retorno. Para
+    solvers lineales (sin ``step_callback`` nativo) sigue invocando el callback
+    una sola vez post-solve, preservando la semántica de exportación del script.
+    """
+    has_native_callback = hasattr(solver, 'num_steps') or hasattr(solver, 'max_steps')
+    result = fenix.run(
+        domain,
+        assembler=assembler,
+        solver=solver,
+        F_applied=F_ext,
+        step_callback=step_callback if has_native_callback else None,
+    )
+    if not has_native_callback:
+        step_callback(1, result.U, 1.0)
+    return result.U
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +291,7 @@ def main():
         export_text, text_nodes, text_elems, text_n_vars, text_e_vars,
         pvd_data, text_data, nombre_base,
     )
-    U = _run_solver(solver, F_ext, step_callback)
+    U = _run_solver(mesh, assembler, solver, F_ext, step_callback)
 
     # 5. Post-proceso
     _export_pvd(pvd_data, ruta_base)

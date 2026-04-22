@@ -1,12 +1,19 @@
 # fenix_fem/fenix/core/domain.py
-from typing import Dict
+from typing import Dict, Optional, TYPE_CHECKING
 from fenix.core.node import Node
+
+if TYPE_CHECKING:
+    from fenix.results import SolveResult
+
 
 class Domain:
     def __init__(self):
         self.nodes: Dict[int, Node] = {}
         self.elements = {}
         self.total_dofs: int = 0
+        # Resultado agregado de la última solución (ADR 0002). Lo asigna el
+        # entrypoint fenix.run tras solver.solve vía build_solve_result.
+        self.last_result: Optional["SolveResult"] = None
 
     def add_node(self, node_id: int, coordinates: list[float]) -> Node:
         if node_id in self.nodes:

@@ -14,9 +14,13 @@ a otro posterior.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from fenix.core.domain import Domain
+    from fenix.math.assembly import Assembler
 
 
 ElementKind = Literal["truss", "cable", "frame2d", "frame3d"]
@@ -120,3 +124,66 @@ class SolveResult:
     element_forces: dict[int, ElementForces] = field(default_factory=dict)
     converged: bool = True
     num_steps: int = 1
+
+
+def build_solve_result(
+    domain: "Domain",
+    assembler: "Assembler",
+    U: np.ndarray,
+    F_applied: np.ndarray,
+    *,
+    converged: bool = True,
+    num_steps: int = 1,
+) -> SolveResult:
+    """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
+
+    Calcula:
+    - Reacciones ``R`` globales: ``F_int(U) − F_applied`` en DOFs restringidos,
+      cero en DOFs libres (por equilibrio al convergir).
+    - ``reactions_by_node``: vista filtrada a nodos con al menos un DOF con
+      condición de Dirichlet.
+    - ``element_forces``: ``element.internal_forces(U)`` para cada elemento
+      que implemente el contrato (los que devuelvan ``None`` se omiten).
+
+    El llamador (típicamente ``fenix.run``) asigna el resultado a
+    ``domain.last_result``.
+    """
+    ndof = U.shape[0]
+
+    _, F_int = assembler.assemble_non_linear_system(U)
+
+    if not getattr(assembler, "_bc_built", False):
+        assembler._build_bc_arrays()
+    bc_dofs = assembler._bc_dofs
+
+    R = np.zeros(ndof)
+    if bc_dofs.size > 0:
+        R[bc_dofs] = F_int[bc_dofs] - F_applied[bc_dofs]
+
+    reactions_by_node: dict[int, dict[str, float]] = {}
+    for node_id, node in domain.nodes.items():
+        if not node.boundary_conditions:
+            continue
+        per_dof = {
+            dof_name: float(R[node.dofs[dof_name]])
+            for dof_name in node.boundary_conditions
+            if dof_name in node.dofs
+        }
+        if per_dof:
+            reactions_by_node[node_id] = per_dof
+
+    element_forces: dict[int, ElementForces] = {}
+    for elem_id, elem in domain.elements.items():
+        ef = elem.internal_forces(U)
+        if ef is not None:
+            element_forces[elem_id] = ef
+
+    return SolveResult(
+        U=U,
+        F_applied=F_applied,
+        R=R,
+        reactions_by_node=reactions_by_node,
+        element_forces=element_forces,
+        converged=converged,
+        num_steps=num_steps,
+    )

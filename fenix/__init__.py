@@ -14,7 +14,8 @@ from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, Qu
 #    esta lista es solo azúcar para uso programático directo.
 from fenix.core.domain import Domain
 from fenix.core.node import Node
-from fenix.results import ElementForces, SolveResult
+from fenix.results import ElementForces, SolveResult, build_solve_result
+from fenix.entry import run, run_yaml
 
 from fenix.materials.elastic import Elastic1D
 from fenix.materials.elastic_2d import Elastic2D
