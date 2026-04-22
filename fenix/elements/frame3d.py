@@ -15,6 +15,7 @@ from fenix.core.element import Element
 from fenix.core.material import Material
 from fenix.core.node import Node
 from fenix.registry import ElementRegistry
+from fenix.results import ElementForces
 
 
 @ElementRegistry.register
@@ -218,3 +219,31 @@ class Frame3D(Element):
             'stress': sigma,
             'strain': epsilon,
         }
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N, Vy, Vz, T, My, Mz en nodos i, j.
+
+        Convención stress-resultant / RHR pura (Reglas.md §5). F_local tiene
+        semántica ``K·u = F_ext`` en ejes locales, layout
+        ``[Fi, Mi, Fj, Mj]`` (cada bloque 3-componente). El nodo i vive en la
+        cara con normal saliente ``−x_local`` → signo invertido para todas las
+        componentes; el nodo j en cara ``+x_local`` → signo directo.
+
+        Verificado con: tracción pura (N=[+F,+F]), tip-load y (Vy=[-F,-F],
+        Mz=[-F,0]), tip-load z (Vz=[-F,-F], My=[+F,0]), torsión pura
+        (T=[+T,+T]).
+        """
+        u_e = self.get_local_displacements(U_global)
+        _, F_int = self.compute_element_state(u_e)
+        F_local = self.T @ F_int
+        return ElementForces(
+            kind="frame3d",
+            components={
+                "N":  np.array([-F_local[0],  F_local[6]]),
+                "Vy": np.array([-F_local[1],  F_local[7]]),
+                "Vz": np.array([-F_local[2],  F_local[8]]),
+                "T":  np.array([-F_local[3],  F_local[9]]),
+                "My": np.array([-F_local[4],  F_local[10]]),
+                "Mz": np.array([-F_local[5],  F_local[11]]),
+            },
+        )

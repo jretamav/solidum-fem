@@ -5,6 +5,7 @@ from fenix.core.element import Element
 from fenix.core.node import Node
 from fenix.core.material import Material
 from fenix.registry import ElementRegistry
+from fenix.results import ElementForces
 
 
 @ElementRegistry.register
@@ -71,6 +72,15 @@ class Truss2D(Element):
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N en ejes locales, tracción positiva (§5).
+
+        El truss transmite solo esfuerzo axial uniforme a lo largo del elemento,
+        por lo que el valor en i y j es el mismo.
+        """
+        N = self.compute_internal_forces(U_global)['axial_force']
+        return ElementForces(kind="truss", components={"N": np.array([N, N])})
 
 
 @ElementRegistry.register
@@ -199,6 +209,11 @@ class Truss3D(Element):
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N en ejes locales, tracción positiva (§5)."""
+        N = self.compute_internal_forces(U_global)['axial_force']
+        return ElementForces(kind="truss", components={"N": np.array([N, N])})
 
 
 @ElementRegistry.register

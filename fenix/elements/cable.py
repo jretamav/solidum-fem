@@ -15,6 +15,7 @@ from fenix.core.element import Element
 from fenix.core.material import Material
 from fenix.core.node import Node
 from fenix.registry import ElementRegistry
+from fenix.results import ElementForces
 
 
 @ElementRegistry.register
@@ -98,6 +99,15 @@ class Cable2DCorot(Element):
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N en ejes locales, tracción positiva (§5).
+
+        La unilateralidad (N≥0, cero cuando slack) está delegada al material;
+        si se emparejó con CableMaterial1D, el valor ya refleja la rama correcta.
+        """
+        N = self.compute_internal_forces(U_global)['axial_force']
+        return ElementForces(kind="cable", components={"N": np.array([N, N])})
 
 
 @ElementRegistry.register
@@ -197,3 +207,11 @@ class Cable3DCorot(Element):
         sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N en ejes locales, tracción positiva (§5).
+
+        La unilateralidad está delegada al material (ver Cable2DCorot).
+        """
+        N = self.compute_internal_forces(U_global)['axial_force']
+        return ElementForces(kind="cable", components={"N": np.array([N, N])})

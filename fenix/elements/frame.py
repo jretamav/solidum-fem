@@ -20,6 +20,31 @@ from fenix.core.element import Element
 from fenix.core.material import Material
 from fenix.core.node import Node
 from fenix.registry import ElementRegistry
+from fenix.results import ElementForces
+
+
+def _frame2d_forces_from_local(F_local: np.ndarray) -> ElementForces:
+    """Traduce un vector F_local (6,) en convención stress-resultant interna a
+    ``ElementForces`` en convención de viga estructural (Reglas.md §5).
+
+    F_local tiene semántica ``K·u = F_ext``: fuerzas/momentos externos sobre los
+    nodos del elemento en ejes locales, layout ``[Fx_i, Fy_i, Mz_i, Fx_j, Fy_j, Mz_j]``.
+
+    Mapeo §5:
+      - Nodo i (cara −x): N = −F_local[0], V = +F_local[1], M = −F_local[2]
+      - Nodo j (cara +x): N = +F_local[3], V = −F_local[4], M = +F_local[5]
+
+    Verificado con cantilever (carga en punta → M hogging) y cantilever con
+    momento en punta (M constante sagging).
+    """
+    return ElementForces(
+        kind="frame2d",
+        components={
+            "N": np.array([-F_local[0],  F_local[3]]),
+            "V": np.array([ F_local[1], -F_local[4]]),
+            "M": np.array([-F_local[2],  F_local[5]]),
+        },
+    )
 
 
 @ElementRegistry.register
@@ -130,6 +155,13 @@ class Frame2DEuler(Element):
             'stress': sigma,
             'strain': epsilon,
         }
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N, V, M en nodos i, j, convención §5."""
+        u_e = self.get_local_displacements(U_global)
+        _, F_int = self.compute_element_state(u_e)
+        F_local = self.T @ F_int
+        return _frame2d_forces_from_local(F_local)
 
 
 @ElementRegistry.register
@@ -262,6 +294,13 @@ class Frame2DTimoshenko(Element):
             'strain': epsilon,
         }
 
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N, V, M en nodos i, j, convención §5."""
+        u_e = self.get_local_displacements(U_global)
+        _, F_int = self.compute_element_state(u_e)
+        F_local = self.T @ F_int
+        return _frame2d_forces_from_local(F_local)
+
 
 
 @ElementRegistry.register
@@ -391,3 +430,20 @@ class Frame2DEulerCorot(Element):
             'stress': sigma,
             'strain': epsilon,
         }
+
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+        """API pública (ADR 0002): N, V, M en nodos i, j, convención §5.
+
+        Usa los cosenos directores de la configuración corriente (corotacional);
+        el ``state`` interno ya está comprometido tras ``solve()``.
+        """
+        u_e = self.get_local_displacements(U_global)
+        _, c, s, _ = self._current_geometry(u_e)
+        _, F_int = self.compute_element_state(u_e)
+        lam2 = np.array([[c, s], [-s, c]])
+        F_local = np.empty(6)
+        F_local[0:2] = lam2 @ F_int[0:2]
+        F_local[2]   = F_int[2]
+        F_local[3:5] = lam2 @ F_int[3:5]
+        F_local[5]   = F_int[5]
+        return _frame2d_forces_from_local(F_local)

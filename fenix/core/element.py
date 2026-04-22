@@ -7,6 +7,7 @@ import numpy as np
 from fenix.core.element_state import ElementState
 from fenix.core.material import Material
 from fenix.core.node import Node
+from fenix.results import ElementForces
 
 
 class Element(ABC):
@@ -117,6 +118,28 @@ class Element(ABC):
         K_e      : ndarray (ndof_e × ndof_e)
         F_int_e  : ndarray (ndof_e,)
         """
+
+    # ------------------------------------------------------------------
+    # API pública de resultados (ADR 0002)
+    # ------------------------------------------------------------------
+
+    def internal_forces(self, U_global: np.ndarray) -> Optional[ElementForces]:
+        """Esfuerzos internos en ejes locales del elemento, en los nodos i, j.
+
+        Convenciones de signo fijadas en Reglas.md §5:
+        - Frames 2D, trusses y cables: convención de viga estructural.
+        - Frames 3D: stress-resultant / RHR pura.
+
+        Los elementos corotacionales deben usar su ``state`` ya comprometido
+        tras la solución (no recomputar desde cero).
+
+        Returns
+        -------
+        ElementForces | None
+            ``None`` por defecto (elementos sólidos y cualquier elemento para
+            el que N/V/M no aplican). Subclases barra/viga/cable sobreescriben.
+        """
+        return None
 
     # ------------------------------------------------------------------
     # Utilidades heredadas
