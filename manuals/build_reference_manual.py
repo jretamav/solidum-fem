@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPECS_DIR = ROOT / "docs" / "specs"
+SOURCES_DIR = ROOT / "manuals" / "sources"
 OUT_DIR = ROOT / "manuals"
 OUT_TEX = OUT_DIR / "Reference_manual.tex"
 OUT_PDF = OUT_DIR / "Reference_manual.pdf"
@@ -33,6 +34,12 @@ GROUPS: list[tuple[str, list[str]]] = [
     ("Elementos 1D — Cables", ["Cable2DCorot", "Cable3DCorot"]),
     ("Elementos 1D — Marcos / Vigas", ["Frame2DEuler", "Frame2DTimoshenko", "Frame2DEulerCorot", "Frame3D"]),
     ("Modelos Constitutivos (Materiales)", ["CableMaterial1D"]),
+]
+
+# Capítulos finales que NO derivan de specs (referencia técnica de plumbing
+# arquitectural). Cada entrada: (título_capítulo, archivo_fuente).
+APPENDIX_CHAPTERS: list[tuple[str, str]] = [
+    ("Anexos técnicos", "anexo_capa_algebraica.md"),
 ]
 
 UNICODE_MAP: dict[str, str] = {
@@ -420,6 +427,19 @@ def assemble() -> str:
             parts.append(f"\\section{{{comp}}}\n")
             parts.append(ltx)
             parts.append("\n\\newpage\n")
+
+    # Anexos técnicos (no derivan de specs; viven en manuals/sources/).
+    for chapter_name, source_file in APPENDIX_CHAPTERS:
+        source_path = SOURCES_DIR / source_file
+        if not source_path.exists():
+            print(f"  [!] Anexo no encontrado: {source_path}")
+            continue
+        md = source_path.read_text(encoding="utf-8")
+        ltx = md_to_latex(md)
+        parts.append(f"\\chapter{{{chapter_name}}}\n")
+        parts.append(ltx)
+        parts.append("\n\\newpage\n")
+
     parts.append(POSTAMBLE)
     return "\n".join(parts)
 

@@ -387,6 +387,8 @@ solver:
 
 Los solvers disponibles y sus parámetros se documentan en el Capítulo~\ref{cap:solvers}.
 
+\textbf{Nota sobre el solver algebraico interno.} El sistema lineal $\mathbf{K}\,\delta\mathbf{U}=\mathbf{R}$ que aparece dentro de cada iteración se resuelve con un backend algebraico (Cholesky, LU\ldots) seleccionado \emph{automáticamente} según las propiedades de $\mathbf{K}$. Esta elección \textbf{no} es decisión de modelado y no requiere configuración. Si por motivos de diagnóstico necesitas forzar un backend específico, consulta el capítulo \emph{Anexos técnicos --- Capa algebraica} del Manual de Referencia.
+
 \section{Salida: \texttt{output}}
 Configura qué se exporta y cuándo:
 

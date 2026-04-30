@@ -2192,5 +2192,104 @@ references:
 
 \newpage
 
+\chapter{Anexos técnicos}
+
+
+
+\textit{Esta sección es referencia técnica del subsistema interno que resuelve el sistema lineal \texttt{K\ensuremath{\cdot}x = b} que aparece en el corazón de cada solver no lineal. La elección del backend es \textbf{automática}; el usuario no decide. Esta sección documenta cómo se decide y cuáles son los puntos de override para diagnóstico.}
+
+\textit{> Diseño completo: ver ADR 0003 en \texttt{docs/adr/0003-despachador-de-solver-algebraico.md}.}
+
+
+\section{Dos capas que se llaman ambas «solver»}
+
+Conviene distinguirlas:
+
+\begin{itemize}
+  \item \textbf{Solver no lineal} --- \texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}. Orquesta la estrategia de paso, las iteraciones de Newton, el control de longitud de arco, los criterios de convergencia. Es lo que el usuario elige en el YAML con \texttt{solver.type}.
+  \item \textbf{Capa algebraica} --- \texttt{fenix.math.linalg}. Resuelve el sistema lineal \texttt{K\ensuremath{\cdot}\ensuremath{\delta}U = R} que aparece dentro de cada iteración del solver no lineal. Tiene varios \textit{backends} numéricos y un despachador interno que elige el adecuado según las propiedades de \texttt{K}. Es plumbing automático: el usuario no la ve salvo que pida diagnóstico.
+\end{itemize}
+
+\section{Backends disponibles y criterio de selección}
+
+El despachador (\texttt{fenix.math.linalg.dispatcher.select\_solver}) elige el backend en función de tres flags declarativos sobre \texttt{K}: simetría, positividad y talla.
+
+| Régimen de \texttt{K} | Backend elegido | Notas |
+|---|---|---|
+| Simétrica + positiva definida | \textbf{Cholesky} (CHOLMOD) | ~2\ensuremath{\times} más rápido y ~2\ensuremath{\times} menos memoria que LU. Requiere la dependencia opcional \texttt{scikit-sparse}. Si falta, degrada a LU con un \textit{warning} una sola vez. |
+| Simétrica indefinida | LU general (placeholder LDL\ensuremath{^{\top}}) | Ideal para LDL\ensuremath{^{\top}} con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo, se usa LU sin pérdida de corrección, solo sin diagnóstico de bifurcación. |
+| No simétrica | \textbf{LU general} (SuperLU) | Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. |
+
+\textbf{Origen de los flags}, todos derivables del modelo:
+\begin{itemize}
+  \item \texttt{is\_symmetric}: AND lógico de \texttt{material.IS\_SYMMETRIC} y \texttt{element.PRESERVES\_SYMMETRY} sobre todos los componentes del dominio. Defaults \texttt{True}.
+  \item \texttt{is\_positive\_definite}: arranca en \texttt{True} para \texttt{LinearSolver} y \texttt{NonlinearSolver}; en \texttt{False} para \texttt{ArcLengthSolver}. Se degrada automáticamente si Cholesky reporta no-positividad.
+  \item \texttt{size}: número total de DOFs.
+\end{itemize}
+
+Ningún flag se pide al usuario.
+
+\section{Fallback automático SPD \ensuremath{\to} LU}
+
+Si en algún paso \texttt{K} deja de ser positiva definida (paso a régimen postcrítico, daño con reblandecimiento), Cholesky lanza \texttt{CholeskyNotPositiveDefiniteError}. Los tres solvers no lineales lo capturan y reinstancian el backend con LU general para el resto del análisis. La transición es silenciosa --- solo se imprime un mensaje informativo en stdout.
+
+Esto significa que \textbf{forzar Cholesky desde YAML como diagnóstico nunca rompe el análisis}: si la matriz se vuelve incompatible, el sistema se autocorrige.
+
+\section{Factorización reusable y Newton modificado}
+
+La interfaz expone \texttt{solver.factorize(K)} que retorna un objeto \texttt{FactorizedSolver} con \texttt{solve(b)} reutilizable. Habilita:
+
+\begin{itemize}
+  \item \textbf{Newton modificado}: el \texttt{NonlinearSolver} admite el parámetro \texttt{freeze\_tangent\_after\_iter: int} que congela la factorización tras N iteraciones del paso. Útil cuando la tangente cambia poco y el coste dominante es la factorización.
+  \item \textbf{Análisis futuros} (modal, pandeo lineal, dinámica implícita) que reutilizan factorización están preparados a nivel de interfaz.
+\end{itemize}
+
+Ejemplo YAML:
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+  tol: 1.0e-8
+  freeze_tangent_after_iter: 2
+
+\end{lstlisting}
+
+\section{Override desde YAML --- herramienta de diagnóstico}
+
+Solo en caso de necesidad de \textit{diagnóstico} o \textit{benchmarking}, el bloque \texttt{solver} admite el campo opcional \texttt{linear\_algebra}:
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: LinearSolver
+  linear_algebra: auto         # default; el despachador decide
+  # linear_algebra: cholesky   # forzar Cholesky (requiere scikit-sparse)
+  # linear_algebra: lu         # forzar LU (siempre disponible)
+  # linear_algebra: ldlt       # placeholder; degrada a LU con warning
+
+\end{lstlisting}
+
+\textbf{Cuándo usar el override:}
+
+\begin{itemize}
+  \item Comparar tiempos entre Cholesky y LU en un mismo problema.
+  \item Forzar LU si se sospecha un bug en la auto-detección de simetría tras añadir un material nuevo.
+  \item Reproducir un caso de regresión bit-a-bit con un backend específico.
+\end{itemize}
+
+\textbf{Cuándo NO usarlo}: como parte del setup habitual de un caso de análisis. No es decisión de modelado; el default \texttt{auto} cubre todos los regímenes correctamente.
+
+\section{Activación de Cholesky (opcional)}
+
+\begin{lstlisting}[language=bash]
+conda install -c conda-forge scikit-sparse
+
+\end{lstlisting}
+
+Una vez instalado, los problemas estáticos lineales y los Newton estables empiezan a usar Cholesky automáticamente --- sin tocar YAML, sin recompilar, sin reescribir specs. Si la dependencia no está disponible, Fenix funciona idéntico con LU.
+
+
+\newpage
+
 
 \end{document}

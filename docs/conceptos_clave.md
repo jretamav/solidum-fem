@@ -73,6 +73,13 @@ Se separa el movimiento de cuerpo rígido (rotación de la cuerda del elemento) 
 ### 19. Numba JIT en hot loops
 Funciones críticas (ensamblaje elemento→global, return mapping interior) decoradas con `@njit` se compilan a código nativo en la primera llamada. La primera ejecución paga el coste de compilación; las siguientes corren a velocidad cercana a Fortran. Restricción: solo tipos numéricos primitivos y arrays NumPy — no objetos Python.
 
+### 20. Capa algebraica vs. solver no lineal (ADR 0003)
+Hay **dos capas de "solver"** y conviene no confundirlas:
+- **Solver no lineal** (`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`): orquesta la estrategia de paso, iteraciones de Newton, criterios de convergencia, longitud de arco. Lo que el usuario elige en el YAML con `solver.type`.
+- **Capa algebraica** (`fenix/math/linalg/`): resuelve el sistema lineal `K·δU = R` que aparece dentro de cada iteración del solver no lineal. Tiene varios backends (Cholesky, LU, …) y un **despachador interno** que elige el adecuado según las propiedades de `K` (simétrica, positiva definida, …).
+
+El usuario solo ve la primera capa; la segunda es plumbing automático. Solo se expone el campo opcional `linear_algebra` en YAML como herramienta de diagnóstico — no como decisión de modelado.
+
 ---
 
 ## Mantenimiento de este documento

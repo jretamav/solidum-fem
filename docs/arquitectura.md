@@ -47,6 +47,12 @@
 │   integration.py  →  cuadraturas de Gauss                     │
 │   solvers.py      →  LinearSolver / NonlinearSolver /         │
 │                      ArcLengthSolver  (registrados)           │
+│   linalg/         →  capa algebraica K·x = b (ADR 0003)       │
+│       base.py        →  Protocol + StiffnessProperties        │
+│       lu.py          →  LUSolver (SuperLU, fallback universal)│
+│       cholesky.py    →  CholeskySolver (CHOLMOD, opcional)    │
+│       ldlt.py        →  LDLTSolver (placeholder fase 2)       │
+│       dispatcher.py  →  select_solver(props, override)        │
 └───────────────────────────────┬───────────────────────────────┘
                                 │
 ┌───────────────────────────────▼───────────────────────────────┐
@@ -65,7 +71,9 @@
    - Pide a cada elemento su `K_local` y `f_internal` (vía `ElementState` trial).
    - **`Assembler`** ensambla `K_global` sparse usando topología COO cacheada.
    - Aplica BCs Dirichlet por método de penalidad (vectorizado).
-   - Resuelve sistema lineal, calcula residuo, evalúa convergencia (criterio dual: desplazamientos + fuerza).
+   - **`linalg.select_solver(props)`** elige el backend algebraico adecuado
+     (Cholesky para SPD, LU general en el resto) y resuelve `K·δU = R`.
+   - Calcula residuo, evalúa convergencia (criterio dual: desplazamientos + fuerza).
    - Si converge el paso → `commit_state()` en cada elemento (trial → committed).
 6. **`VtkExporter`** escribe el resultado del paso.
 
