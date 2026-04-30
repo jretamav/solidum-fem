@@ -1,0 +1,1368 @@
+\documentclass[11pt,letterpaper,oneside]{report}
+
+% Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
+\usepackage{fontspec}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[margin=2.5cm, headheight=15pt]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric}
+\usepackage[most]{tcolorbox}
+
+% Columna X de tabularx con justificación a la izquierda sin guionado agresivo.
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash\footnotesize}X}
+
+\definecolor{yamlkey}{RGB}{0, 102, 204}
+\definecolor{yamlval}{RGB}{204, 0, 0}
+\definecolor{yamlcomment}{RGB}{120, 120, 120}
+\definecolor{bglight}{RGB}{245, 245, 245}
+\definecolor{darkgray}{RGB}{50, 50, 50}
+\definecolor{pendienteorange}{RGB}{200, 100, 0}
+
+% Comando para texto pendiente: etiqueta [Pendiente] + texto en cursiva,
+% ambos en naranja oscuro. La etiqueta se sintetiza en el conversor MD->LaTeX
+% a partir del marcador `[PENDIENTE: ...]` en las fuentes.
+\newcommand{\pendiente}[1]{\textcolor{pendienteorange}{\textit{[Pendiente]}~\textcolor{pendienteorange}{\textit{#1}}}}
+
+% Cuadro de informacion complementaria: borde discreto, fondo muy claro,
+% un titulo en negrita en la parte superior. Se usa para apartados como
+% Justificacion, Riesgo de arquitectura, Razones del rechazo, etc.
+\newtcolorbox{infobox}[1]{
+  enhanced,
+  colback=bglight, colframe=darkgray, colbacktitle=bglight,
+  coltitle=yamlkey, fonttitle=\bfseries\small,
+  title=#1, attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={colback=white, colframe=white, sharp corners},
+  boxrule=0.4pt, arc=2pt,
+  left=4mm, right=4mm, top=2mm, bottom=2mm,
+  before skip=8pt, after skip=8pt,
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=yamlkey,
+    urlcolor=yamlkey,
+    pdftitle={Manual de Arquitectura - Fenix FEM},
+    pdfauthor={Jaime Retama Velasco}
+}
+
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{yamlkey}}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}{\Large\bfseries\color{darkgray}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+% Redefinicion de \chaptermark para que el encabezado muestre
+% "Cap. N - Titulo" en lugar del texto en mayusculas por defecto.
+\renewcommand{\chaptermark}[1]{\markboth{Cap.\ \thechapter\ ---\ #1}{}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Arquitectura}}
+\fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\fancyfoot[R]{\footnotesize\color{darkgray}FF-MA}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{bglight},
+  frame=single,
+  rulecolor=\color{lightgray},
+  breaklines=true,
+  showstringspaces=false,
+  extendedchars=true,
+  captionpos=b,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+           {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
+           {§}{{\S{}}}1
+           {ε}{{$\varepsilon$}}1 {σ}{{$\sigma$}}1 {α}{{$\alpha$}}1
+           {β}{{$\beta$}}1 {γ}{{$\gamma$}}1 {δ}{{$\delta$}}1
+           {θ}{{$\theta$}}1 {κ}{{$\kappa$}}1 {λ}{{$\lambda$}}1
+           {μ}{{$\mu$}}1 {ν}{{$\nu$}}1 {π}{{$\pi$}}1
+           {ρ}{{$\rho$}}1 {τ}{{$\tau$}}1 {φ}{{$\varphi$}}1
+           {ω}{{$\omega$}}1 {Δ}{{$\Delta$}}1 {Ω}{{$\Omega$}}1
+           {Φ}{{$\Phi$}}1
+           {⇔}{{$\Leftrightarrow$}}1 {⇒}{{$\Rightarrow$}}1 {⇐}{{$\Leftarrow$}}1
+           {→}{{$\to$}}1 {←}{{$\leftarrow$}}1 {↔}{{$\leftrightarrow$}}1
+           {≤}{{$\le$}}1 {≥}{{$\ge$}}1 {≠}{{$\neq$}}1
+           {·}{{$\cdot$}}1 {×}{{$\times$}}1 {±}{{$\pm$}}1
+           {°}{{$^{\circ}$}}1 {²}{{$^{2}$}}1 {³}{{$^{3}$}}1
+           {₀}{{$_{0}$}}1 {₁}{{$_{1}$}}1 {₂}{{$_{2}$}}1
+           {ᵀ}{{$^{\top}$}}1 {⁺}{{$^{+}$}}1 {⁻}{{$^{-}$}}1
+           {—}{{---}}1 {–}{{--}}1 {−}{{-}}1
+           {“}{{``}}1 {”}{{''}}1
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    \vspace{1cm}
+    {\LARGE Manual de Arquitectura \par}
+    \vspace{0.3cm}
+    {\normalsize\color{darkgray} Sigla: \texttt{FF-MA} \par}
+    \vspace{0.5cm}
+    \rule{\linewidth}{0.5mm} \par
+    \vspace{2cm}
+    {\large Visión arquitectural del programa: capas, bloques funcionales,\\
+            mecanismos transversales y dirección de evolución\par}
+    \vspace{2cm}
+    {\large Lectura del arquitecto, sin entrar al detalle de cada componente\par}
+    \vspace{1cm}
+    {\Large \textbf{Autor:} Jaime Retama Velasco \par}
+    \vspace{0.5cm}
+    {\large Facultad de Estudios Superiores Aragón \\ Universidad Nacional Autónoma de México \par}
+    \vfill
+    {\large \today \par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\setcounter{page}{1}
+\tableofcontents
+\newpage
+
+\chapter*{Sobre este manual}
+\addcontentsline{toc}{chapter}{Sobre este manual}
+\noindent Este manual ofrece una \textbf{visión arquitectural} de Fenix FEM. Su objetivo es que el lector pueda reconstruir mentalmente cómo está organizado el programa, qué piezas tiene y cómo encajan, sin entrar al detalle de la formulación de cada elemento ni al algoritmo concreto de cada solver.
+
+Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, contratos YAML, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
+
+Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-procesamiento), consultar \texttt{manuals/User\_manual.pdf}.
+
+Este manual se regenera con:
+\begin{center}\texttt{python manuals/build\_architecture\_manual.py}\end{center}
+
+\noindent No editar este PDF manualmente; cualquier corrección debe hacerse sobre los archivos fuente en \texttt{manuals/sources/architecture/}.
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+
+\chapter{Filosofía del proyecto}
+\label{cap:1}
+
+
+
+\section{Identidad del programa}
+
+Fenix FEM es un programa de Método de Elementos Finitos (MEF) en aproximación de desplazamientos, orientado a la investigación en mecánica de sólidos: simulación de problemas mecánico y térmico, acoplados o desacoplados. Su público objetivo es la comunidad de investigación en mecánica computacional que requiere incorporar materiales, elementos o esquemas de solución sin verse limitada por la rigidez interna del programa.
+
+\section{Hipótesis fundacional}
+
+La mayor parte del coste de un programa de MEF de investigación no reside en la implementación del primer elemento, sino en el mantenimiento de un coste bajo para la incorporación del elemento N+1. Todo proyecto que crece sin disciplina de arquitectura acaba penalizando cada nueva incorporación: el primer material se implementa en una sesión; el décimo requiere modificar varios archivos; el vigésimo se desincentiva. Fenix FEM se diseña explícitamente para que la pendiente de coste de extensión se mantenga plana.
+
+\section{Modelo de colaboración}
+
+El desarrollo de Fenix FEM se rige por un contrato explícito entre el usuario (investigador con dominio profundo en MEF) y un asistente de inteligencia artificial responsable de la escritura del código. El flujo es: usuario \ensuremath{\to} asistente \ensuremath{\to} código \ensuremath{\to} resultados \ensuremath{\to} usuario. El asistente produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos y las decisiones de arquitectura.
+
+La analogía operativa es la de una calculadora científica: se conoce qué representa la función seno, sus propiedades y el orden de magnitud esperado de su resultado, pero no se memoriza el algoritmo CORDIC interno; sí se detectan resultados absurdos. Trasladado al proyecto: la escritura del código (sintaxis, infraestructura, patrones de software) se delega; la comprensión conceptual no. El usuario mantiene un modelo mental completo del \textit{qué} y del \textit{por qué} de cada pieza de la arquitectura sin necesidad de escribir su implementación.
+
+\section{Principios rectores}
+
+\textbf{Optimización para extensión.} Cada decisión de arquitectura se evalúa también contra el coste de añadir el componente N+1. Un cambio que no abarata las extensiones futuras no se justifica únicamente por motivos estéticos. La consecuencia práctica es la preferencia por contratos declarativos sobre métodos abstractos cuando el comportamiento puede inferirse del dato, y por mecanismos de auto-registro sobre listas manuales de importaciones.
+
+\textbf{Equilibrio entre velocidad de cómputo y consumo de memoria.} Las decisiones de implementación interna (estructuras dispersas, almacenamiento en formato Coordinate (COO) en caché, vectorización, compilación Just-In-Time (JIT)) buscan el compromiso entre tiempo de ejecución y consumo de memoria, y no la optimización aislada de uno solo de los dos ejes.
+
+\textbf{Mecanismos de transparencia conceptual.} El sistema mantiene tres artefactos vivos para preservar la comprensión del usuario a medida que el código crece: un mapa de arquitectura (este manual y \texttt{docs/arquitectura.md}), un inventario explícito de los conceptos sostenedores (\texttt{docs/conceptos\_clave.md}) y un protocolo conversacional para profundizar bajo demanda. Estos mecanismos se formalizan en el Architecture Decision Record (ADR) 0001.
+
+\textbf{Validación física mediante pruebas.} Las sutilezas físicas (signos en notación de Voigt, factores de un medio, hipótesis de tensión plana frente a deformación plana) no se manifiestan en errores de compilación. Toda formulación nueva se acompaña de una prueba de validación contra solución analítica o frente a un caso de referencia conocido.
+
+\textbf{Convención de signos única.} Toda formulación, prueba, interfaz pública y documentación utiliza la misma convención de signos. Si una referencia bibliográfica adopta otra, la traducción se realiza al implementar y se anota en la prueba correspondiente. Esta convención se detalla en el capítulo dedicado.
+
+\section{Cuándo usar Fenix FEM y cuándo no}
+
+La identidad de un programa se define tanto por su alcance como por sus límites. Esta sección delimita explícitamente lo que Fenix FEM pretende ser y lo que no.
+
+\textbf{Casos para los que Fenix FEM es la herramienta indicada.} Investigación en mecánica de sólidos donde la prioridad es la \textbf{transparencia y la modificabilidad} del código: prototipado de modelos constitutivos nuevos antes de portarlos a un programa industrial; ensayo de variantes algorítmicas en solvers no lineales (predictores, correctores, criterios de longitud de arco); evaluación de formulaciones de elementos finitos contra soluciones analíticas y casos de referencia conocidos; trabajo docente y de tesis donde el estudiante debe comprender, modificar y validar cada pieza del cálculo.
+
+\textbf{Casos para los que Fenix FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Análisis dinámicos transitorios o problemas multifísicos hoy: están previstos como evolución futura pero no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
+
+\textbf{Posición frente a programas de referencia.} Fenix FEM no compite en escala con los programas industriales: complementa el flujo de investigación. La hipótesis es que el código que el investigador puede leer, modificar y validar línea a línea es más valioso, en su contexto, que un programa cerrado del que se obtiene un resultado sin posibilidad de auditoría interna. Cuando el modelo investigado madura y debe aplicarse a producción, la traducción a un programa industrial es la trayectoria natural.
+
+
+\newpage
+
+\chapter{Estructura en capas}
+\label{cap:2}
+
+
+
+El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa se comunica con las contiguas mediante contratos explícitos; ninguna capa accede al interior de otra que no sea la inmediatamente inferior.
+
+\section{Mapa de capas}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  node distance = 5mm and 0mm,
+  layer/.style = {
+    rectangle, draw=darkgray, thick, rounded corners=2pt,
+    fill=bglight, text width=12.5cm, align=left,
+    inner sep=6pt, font=\small
+  },
+  title/.style = {font=\small\bfseries\color{yamlkey}},
+  arr/.style   = {-{Stealth[length=3mm]}, thick, draw=darkgray}
+]
+\node[layer] (entrada) {
+  {\title Entrada del usuario}\\
+  \texttt{case.yaml} (descripción declarativa del problema)\\
+  Mallas \texttt{.msh} (geometría desde Gmsh)
+};
+\node[layer, below=of entrada] (init) {
+  {\title Capa de inicialización} \hfill \texttt{fenix/\_\_init\_\_.py}\\
+  Al importar el paquete se invoca \texttt{autodiscover.initialize()};
+  los decoradores \texttt{@*Registry} pueblan
+  \texttt{MaterialRegistry}, \texttt{ElementRegistry} y
+  \texttt{SolverRegistry}.
+};
+\node[layer, below=of init] (parse) {
+  {\title Capa de interpretación del caso} \hfill \texttt{fenix/utils/yaml\_parser.py}\\
+  Lee el archivo YAML y construye objetos consultando los registros
+  por introspección del constructor.
+};
+\node[layer, below=of parse] (dominio) {
+  {\title Capa de dominio} \hfill \texttt{fenix/core/}\\
+  \texttt{Domain} -- \texttt{Node} -- DOF (numeración global). Bases
+  \texttt{Element} (con \texttt{DOF\_NAMES}, \texttt{STRAIN\_DIM},
+  \texttt{N\_INTEGRATION\_POINTS}, \texttt{ElementState} en estados
+  \emph{trial} y comprometido) y \texttt{Material} (con
+  \texttt{STRAIN\_DIM}, \texttt{PRIMARY\_STATE\_VAR}).
+};
+\node[layer, below=of dominio] (numerica) {
+  {\title Capa numérica} \hfill \texttt{fenix/math/}\\
+  \texttt{assembly.py} (ensamblaje disperso con caché COO),
+  \texttt{integration.py} (cuadraturas de Gauss),
+  \texttt{solvers.py} (\texttt{LinearSolver}, \texttt{NonlinearSolver},
+  \texttt{ArcLengthSolver}) y subsistema algebraico
+  \texttt{linalg/} (\texttt{LUSolver}, \texttt{CholeskySolver},
+  \texttt{LDLTSolver} reservado, despachador
+  \texttt{select\_solver}).
+};
+\node[layer, below=of numerica] (salida) {
+  {\title Capa de salida} \hfill \texttt{fenix/utils/vtk\_exporter.py} + \texttt{fenix.results}\\
+  Exporta $\mathbf U$, $\sigma$ y \texttt{PRIMARY\_STATE\_VAR} en
+  formato VTK. \texttt{SolveResult} expone $\mathbf U$,
+  $\mathbf F_\text{aplicada}$ y los esfuerzos internos por elemento
+  como interfaz pública para consumidores externos.
+};
+
+\draw[arr] (entrada) -- (init);
+\draw[arr] (init) -- (parse);
+\draw[arr] (parse) -- (dominio);
+\draw[arr] (dominio) -- (numerica);
+\draw[arr] (numerica) -- (salida);
+\end{tikzpicture}
+\caption{Estructura en capas de Fenix FEM. Cada capa se comunica con la inmediatamente inferior mediante contratos explícitos.}
+\end{figure}
+
+
+\section{Responsabilidad de cada capa}
+
+\textbf{Entrada del usuario.} Un caso de Fenix FEM se describe de forma declarativa en un archivo en formato YAML (acrónimo recursivo de \textit{YAML Ain't Markup Language}): nodos, materiales, elementos, condiciones de contorno, cargas y solver. La malla puede embeberse en el YAML o leerse desde un archivo \texttt{.msh} generado por Gmsh. El YAML constituye contrato público; cualquier consumidor externo (Interfaz Gráfica de Usuario o GUI, \textit{scripts} de automatización) opera contra él.
+
+\textbf{Capa de inicialización.} Su única responsabilidad consiste en poblar los registros (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas; los decoradores \texttt{@register} se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente.
+
+\textbf{Capa de interpretación del caso.} Traduce el archivo YAML en objetos. No contiene ramificaciones del tipo \texttt{if material\_type == "Elastic1D"} por cada material: introspecciona los argumentos formales del constructor de la clase recuperada del registro y le transmite los campos del YAML. La incorporación de un material nuevo no requiere modificación del intérprete.
+
+\textbf{Capa de dominio.} El objeto \texttt{Domain} mantiene la numeración global de grados de libertad (DOF) y la conectividad. Las clases base \texttt{Element} y \texttt{Material} definen el contrato que cumple cada componente concreto. El objeto \texttt{ElementState} encapsula las dos copias de las variables internas (tensiones, variables de estado, historia) sobre las que opera el solver no lineal: una copia \textit{trial} y otra comprometida.
+
+\textbf{Capa numérica.} Concentra los componentes propios de la mecánica computacional: ensamblaje de matrices dispersas, cuadraturas de integración, estrategia de paso (lineal, no lineal incremental, longitud de arco) y el subsistema algebraico que resuelve los sistemas lineales que aparecen dentro de cada iteración.
+
+\textbf{Capa de salida.} Provee dos productos. Por un lado, \texttt{VtkExporter} para visualización en programas compatibles con VTK (ParaView). Por otro, \texttt{SolveResult} con los desplazamientos, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento, concebido para consumidores externos como FenixBAR (\hyperref[adr:0002]{ADR 0002}).
+
+\section{Justificación de la separación}
+
+La frontera entre capas no es decorativa: define qué cambia con coste bajo y qué cambia con coste alto. La incorporación de un material nuevo afecta exclusivamente a la capa de dominio (\texttt{fenix/materials/<nombre>.py}) y no requiere modificar el intérprete del caso, el ensamblador ni el solver. La modificación del algoritmo del ensamblaje disperso no repercute sobre ningún material ni elemento concretos. La estanqueidad entre capas es el mecanismo que mantiene plana la pendiente de coste de extensión.
+
+
+\newpage
+
+\chapter{Flujo de un análisis}
+\label{cap:3}
+
+
+
+Esta sección describe, paso a paso, la secuencia de operaciones que se ejecuta sobre un caso desde su lanzamiento hasta la generación de resultados. La descripción es de alto nivel y omite detalles de implementación.
+
+\section{1. Arranque}
+
+El caso se lanza desde un \textit{script} de usuario o desde la interfaz pública de entrada (\texttt{fenix.run} / \texttt{fenix.run\_yaml}). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete \texttt{fenix}. Dicha importación dispara el procedimiento de descubrimiento automático (\textit{autodiscover}), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador \texttt{@register} correspondiente, los registros quedan poblados sin enumeración manual.
+
+\section{2. Lectura del caso}
+
+El intérprete del caso abre el archivo YAML y construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado.
+
+En esta etapa se ejecuta la primera comprobación de consistencia: cuando un elemento se construye, su clase base verifica que el material recibido sea dimensionalmente compatible. Un elemento \texttt{Truss2D} con material \texttt{Elastic2D} produce un error en la fase de construcción del caso, no doscientas iteraciones después en forma de fallo opaco durante la solución.
+
+\section{3. Numeración de grados de libertad}
+
+El objeto \texttt{Domain} recorre nodos y elementos. Cada elemento declara los DOF requeridos en cada uno de sus nodos mediante el atributo \texttt{DOF\_NAMES}. El dominio asigna índices globales de forma consistente con esa información y obtiene así el tamaño y la topología de la matriz de rigidez global. Esta numeración rige el ensamblaje durante toda la simulación.
+
+\section{4. Bucle del solver}
+
+El solver toma el control. Su comportamiento depende del tipo seleccionado (lineal, no lineal con Newton-Raphson, longitud de arco), pero todos los tipos comparten una estructura común: una secuencia de pasos de carga, una o varias iteraciones dentro de cada paso y, dentro de cada iteración, la siguiente secuencia interna:
+
+\begin{enumerate}
+  \item Se solicita a cada elemento su matriz de rigidez tangente local \texttt{K\_local} y su vector de fuerzas internas \texttt{f\_internal}. El elemento las obtiene a partir del estado \textit{trial} de sus puntos de Gauss y mediante una llamada al material con la deformación correspondiente.
+  \item El ensamblador construye la matriz global \texttt{K\_global} y el vector global utilizando topología COO en caché: en la primera invocación se calculan los pares de índices; en las invocaciones siguientes se reescribe únicamente el vector de datos sobre la misma topología.
+  \item Se imponen las condiciones de Dirichlet mediante el método de penalización en forma vectorizada.
+  \item El subsistema algebraico resuelve el sistema lineal \texttt{K \ensuremath{\cdot} \ensuremath{\delta}U = R}. Aquí interviene el despachador (\hyperref[adr:0003]{ADR 0003}): se inspeccionan las propiedades de \texttt{K} (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general).
+  \item Se evalúa la convergencia mediante un criterio dual: norma del incremento de desplazamientos y norma del residuo de fuerza, ambas en valor relativo. La convergencia del paso requiere que ambas normas se sitúen por debajo de la tolerancia.
+\end{enumerate}
+
+\section{5. Cierre del paso}
+
+Tras la convergencia de un paso, el solver invoca \texttt{commit\_state()} sobre cada elemento. Esta operación promueve el estado \textit{trial} a estado comprometido: las variables internas (deformaciones plásticas, daño, historia) que los puntos de Gauss han recorrido durante las iteraciones se consolidan. Si el paso no convergiera y se redujese el incremento, el estado \textit{trial} se descartaría sin contaminar el estado comprometido.
+
+\section{6. Salida}
+
+A la finalización del solver, el objeto \texttt{Domain} construye un \texttt{SolveResult} inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento en la convención de signos del proyecto. Este \texttt{SolveResult} constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, \textit{scripts} de post-proceso). De forma paralela, el módulo \texttt{VtkExporter} escribe un archivo VTK con los desplazamientos, las tensiones y la variable principal del material declarada por cada material mediante el atributo \texttt{PRIMARY\_STATE\_VAR}.
+
+\section{Visión sintética}
+
+A grandes rasgos, la secuencia es: importación \ensuremath{\to} descubrimiento automático \ensuremath{\to} interpretación del caso \ensuremath{\to} numeración de DOF \ensuremath{\to} bucle del solver { ensamblaje \ensuremath{\to} resolución algebraica \ensuremath{\to} evaluación de convergencia } \ensuremath{\to} consolidación \ensuremath{\to} salida. Cada flecha corresponde a un contrato declarado y verificado; cada paso intermedio es sustituible sin afectar al resto.
+
+
+\newpage
+
+\chapter{Bloques funcionales}
+\label{cap:4}
+
+
+
+Este capítulo describe los grandes bloques del programa desde el punto de vista funcional: la responsabilidad de cada uno, los componentes disponibles en la versión actual y el espacio de extensión natural. No se trata de un manual de referencia: para la formulación detallada de cada componente debe consultarse \texttt{manuals/Reference\_manual.pdf} y los catálogos en \texttt{docs/}.
+
+A lo largo del capítulo se utilizan las denominaciones abreviadas habituales para las dimensiones del espacio físico: una dimensión (1D), dos dimensiones (2D) y tres dimensiones (3D). En el contexto de los materiales, la \textbf{notación de Voigt} representa el tensor simétrico de deformación o tensión como un vector: con tres componentes para el caso bidimensional (Voigt-3) y con seis componentes para el caso tridimensional (Voigt-6). El atributo \texttt{STRAIN\_DIM} de cada material indica el tamaño de ese vector y, por tanto, la dimensión geométrica del problema sobre el que opera.
+
+\section{Materiales}
+
+Un material en Fenix FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo \texttt{STRAIN\_DIM}) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo \texttt{STRAIN\_DIM} y la interfaz \texttt{compute\_stress\_and\_tangent(strain, state)}.
+
+Familias actualmente implementadas:
+
+\begin{itemize}
+  \item \textit{Elásticos lineales}: \texttt{Elastic1D} para deformación axial escalar; \texttt{Elastic2D} para problemas planos (tensión plana o deformación plana) en notación de Voigt 3.
+  \item \textit{Plásticos 1D}: \texttt{Plastic1D} con endurecimiento isótropo lineal y deformación axial escalar.
+  \item \textit{Plásticos 2D}: \texttt{VonMises2D} con criterio de fluencia J2 y algoritmo de retorno radial (\textit{return mapping}) en notación de Voigt 3.
+  \item \textit{Daño}: \texttt{Damage1D} y \texttt{Damage2D}, modelos de daño isótropo escalar.
+  \item \textit{Cables}: \texttt{CableMaterial1D}, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
+\end{itemize}
+
+Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse como una función \texttt{(strain, state) \ensuremath{\to} (stress, tangent)} se incorpora sin modificación del resto del programa. Candidatos directos:
+
+\begin{itemize}
+  \item \pendiente{Modelo de Drucker-Prager para suelos y materiales granulares.}
+  \item \pendiente{Modelo de Mohr-Coulomb para suelos y rocas.}
+  \item \pendiente{Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).}
+  \item \pendiente{Viscoplasticidad de Perzyna y Duvaut-Lions.}
+  \item \pendiente{Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.}
+\end{itemize}
+
+En todos los casos basta declarar el \texttt{STRAIN\_DIM} apropiado y el atributo \texttt{PRIMARY\_STATE\_VAR} para visualización.
+
+\section{Elementos}
+
+Un elemento finito en Fenix FEM es una entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su \texttt{DOF\_NAMES}, su \texttt{STRAIN\_DIM} y el número de puntos de integración mediante \texttt{N\_INTEGRATION\_POINTS}. La clase base concentra la lógica común (registro de DOF, ensamblaje local\ensuremath{\to}global, validación material\ensuremath{\leftrightarrow}elemento, gestión del \texttt{ElementState}) y cada subclase aporta exclusivamente lo físicamente específico (matriz \texttt{B}, esquema de integración, invocación al material).
+
+El estado del programa por familia se presenta a continuación en forma de \textbf{matrices de cobertura}. Cada celda combina dos ejes ortogonales: el régimen geométrico (linealidad o no linealidad) y el régimen material (lineal o no lineal). La no linealidad material se obtiene mediante la asignación al elemento de un material no lineal del catálogo (plasticidad, daño); ningún elemento es intrínsecamente no lineal en el material. La marca \ensuremath{\checkmark} indica combinación implementada y validada; la marca [Pendiente: ...] indica el hueco como candidato natural de extensión; el guion (---) indica combinación que no aplica físicamente o que no se contempla.
+
+\subsection{Familia armadura (truss)}
+
+Elemento articulado que transmite exclusivamente esfuerzo axial. Material consumido: 1D escalar (\texttt{Elastic1D}, \texttt{Elastoplastic1D}, \texttt{IsotropicDamage1D}).
+
+\textbf{Primer orden (interpolación lineal, dos nodos)}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia armadura --- primer orden.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal} & \textbf{2D \ensuremath{\cdot} material no lineal} & \textbf{3D \ensuremath{\cdot} material lineal} & \textbf{3D \ensuremath{\cdot} material no lineal} \\
+\hline
+Linealidad geométrica & \ensuremath{\checkmark} \texttt{Truss2D} & \ensuremath{\checkmark} \texttt{Truss2D} & \ensuremath{\checkmark} \texttt{Truss3D} & \ensuremath{\checkmark} \texttt{Truss3D} \\
+No linealidad geométrica & \ensuremath{\checkmark} \texttt{Truss2DCorot} & \ensuremath{\checkmark} \texttt{Truss2DCorot} & \ensuremath{\checkmark} \texttt{Truss3DCorot} & \ensuremath{\checkmark} \texttt{Truss3DCorot} \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Segundo orden (interpolación cuadrática, tres nodos)}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia armadura --- segundo orden.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal} & \textbf{2D \ensuremath{\cdot} material no lineal} & \textbf{3D \ensuremath{\cdot} material lineal} & \textbf{3D \ensuremath{\cdot} material no lineal} \\
+\hline
+Linealidad geométrica & \pendiente{Armadura 2D de segundo orden con linealidad geométrica.} & \pendiente{Armadura 2D de segundo orden con linealidad geométrica y material no lineal.} & \pendiente{Armadura 3D de segundo orden con linealidad geométrica.} & \pendiente{Armadura 3D de segundo orden con linealidad geométrica y material no lineal.} \\
+No linealidad geométrica & \pendiente{Armadura 2D de segundo orden corrotacional.} & \pendiente{Armadura 2D de segundo orden corrotacional con material no lineal.} & \pendiente{Armadura 3D de segundo orden corrotacional.} & \pendiente{Armadura 3D de segundo orden corrotacional con material no lineal.} \\
+\hline
+\end{tabularx}
+\end{table}
+\subsection{Familia cable}
+
+Elemento de tracción exclusiva en formulación corrotacional. Material consumido: \texttt{CableMaterial1D} (sin respuesta a compresión).
+
+\textbf{Primer orden (interpolación lineal, dos nodos)}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia cable --- primer orden.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal a tracción} & \textbf{2D \ensuremath{\cdot} material no lineal a tracción} & \textbf{3D \ensuremath{\cdot} material lineal a tracción} & \textbf{3D \ensuremath{\cdot} material no lineal a tracción} \\
+\hline
+Linealidad geométrica & --- & --- & --- & --- \\
+No linealidad geométrica & \ensuremath{\checkmark} \texttt{Cable2DCorot} & \pendiente{Cable 2D corrotacional con ley constitutiva no lineal a tracción (relajación, fluencia, daño tensional).} & \ensuremath{\checkmark} \texttt{Cable3DCorot} & \pendiente{Cable 3D corrotacional con ley constitutiva no lineal a tracción.} \\
+\hline
+\end{tabularx}
+\end{table}
+La fila "Linealidad geom." se marca como no aplicable: un cable es, por su naturaleza física, un elemento de grandes desplazamientos (la rigidez axial es la única que aporta y depende de la configuración corriente).
+
+\textbf{Segundo orden (interpolación cuadrática, tres nodos)}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia cable --- segundo orden.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal} & \textbf{2D \ensuremath{\cdot} material no lineal} & \textbf{3D \ensuremath{\cdot} material lineal} & \textbf{3D \ensuremath{\cdot} material no lineal} \\
+\hline
+No linealidad geométrica & \pendiente{Cable 2D de segundo orden corrotacional.} & \pendiente{Cable 2D de segundo orden corrotacional con material no lineal.} & \pendiente{Cable 3D de segundo orden corrotacional.} & \pendiente{Cable 3D de segundo orden corrotacional con material no lineal.} \\
+\hline
+\end{tabularx}
+\end{table}
+\subsection{Familia marco / viga}
+
+Elemento con flexión y, en su caso, cortante y torsión. Material consumido: 1D escalar. La no linealidad material se introduce mediante el módulo tangente \texttt{E\_t} del material, que escala uniformemente la sección; \textbf{la plasticidad distribuida en la sección (formulación fibra a fibra) no está implementada} y se marca como pendiente independiente.
+
+\textbf{Primer orden, formulación Euler-Bernoulli}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia marco --- primer orden, formulación Euler-Bernoulli.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal} & \textbf{2D \ensuremath{\cdot} material no lineal (sección uniforme)} & \textbf{3D \ensuremath{\cdot} material lineal} & \textbf{3D \ensuremath{\cdot} material no lineal (sección uniforme)} \\
+\hline
+Linealidad geométrica & \ensuremath{\checkmark} \texttt{Frame2DEuler} & \ensuremath{\checkmark} \texttt{Frame2DEuler} con \texttt{Elastoplastic1D} o \texttt{IsotropicDamage1D} & \ensuremath{\checkmark} \texttt{Frame3D} & \ensuremath{\checkmark} \texttt{Frame3D} con material 1D no lineal \\
+No linealidad geométrica & \ensuremath{\checkmark} \texttt{Frame2DEulerCorot} & \ensuremath{\checkmark} \texttt{Frame2DEulerCorot} con material 1D no lineal & \pendiente{Marco 3D Euler-Bernoulli corrotacional con grandes rotaciones.} & \pendiente{Marco 3D Euler-Bernoulli corrotacional con material no lineal.} \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Primer orden, formulación Timoshenko (con deformación por cortante)}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia marco --- primer orden, formulación Timoshenko.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal} & \textbf{2D \ensuremath{\cdot} material no lineal (sección uniforme)} & \textbf{3D \ensuremath{\cdot} material lineal} & \textbf{3D \ensuremath{\cdot} material no lineal} \\
+\hline
+Linealidad geométrica & \ensuremath{\checkmark} \texttt{Frame2DTimoshenko} & \ensuremath{\checkmark} \texttt{Frame2DTimoshenko} con material 1D no lineal & \pendiente{Marco 3D Timoshenko con deformación por cortante.} & \pendiente{Marco 3D Timoshenko con material no lineal.} \\
+No linealidad geométrica & \pendiente{Marco 2D Timoshenko corrotacional.} & \pendiente{Marco 2D Timoshenko corrotacional con material no lineal.} & \pendiente{Marco 3D Timoshenko corrotacional.} & \pendiente{Marco 3D Timoshenko corrotacional con material no lineal.} \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Segundo orden y formulaciones avanzadas}
+
+\begin{itemize}
+  \item \pendiente{Marco de segundo orden (interpolación cuadrática) en cualquiera de las formulaciones anteriores.}
+  \item \pendiente{Plasticidad distribuida fibra a fibra en marcos 2D y 3D, con discretización transversal de la sección.}
+  \item \pendiente{Marco con sección variable a lo largo del eje (sección no prismática).}
+\end{itemize}
+
+\subsection{Familia sólido 2D}
+
+Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (\texttt{Elastic2D}, \texttt{VonMises2D}, \texttt{IsotropicDamage2D}).
+
+\textbf{Primer orden}
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia sólido bidimensional --- primer orden.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Topología} & \textbf{Material lineal} & \textbf{Material no lineal} \\
+\hline
+Triangular lineal (3 nodos) & \ensuremath{\checkmark} \texttt{Tri3} & \ensuremath{\checkmark} \texttt{Tri3} con \texttt{VonMises2D} o \texttt{IsotropicDamage2D} \\
+Cuadrilátero bilineal (4 nodos) & \ensuremath{\checkmark} \texttt{Quad4} & \ensuremath{\checkmark} \texttt{Quad4} con \texttt{VonMises2D} o \texttt{IsotropicDamage2D} \\
+\hline
+\end{tabularx}
+\end{table}
+La columna de no linealidad geométrica se omite en esta familia: los elementos sólidos 2D actuales no incluyen formulación corrotacional ni lagrangiana actualizada.
+
+\begin{itemize}
+  \item \pendiente{Sólido 2D con no linealidad geométrica (formulación lagrangiana actualizada o total).}
+\end{itemize}
+
+\textbf{Segundo orden}
+
+\begin{itemize}
+  \item \pendiente{Triangular cuadrático \texttt{Tri6} (seis nodos).}
+  \item \pendiente{Cuadrilátero serendípito \texttt{Quad8} (ocho nodos).}
+  \item \pendiente{Cuadrilátero lagrangiano \texttt{Quad9} (nueve nodos).}
+\end{itemize}
+
+\subsection{Familia sólido 3D}
+
+\begin{itemize}
+  \item \pendiente{Tetraedro lineal \texttt{Tet4} (cuatro nodos), primer orden.}
+  \item \pendiente{Tetraedro cuadrático \texttt{Tet10} (diez nodos), segundo orden.}
+  \item \pendiente{Hexaedro trilineal \texttt{Hex8} (ocho nodos), primer orden.}
+  \item \pendiente{Hexaedro serendípito \texttt{Hex20} (veinte nodos), segundo orden.}
+  \item \pendiente{Hexaedro lagrangiano \texttt{Hex27} (veintisiete nodos), segundo orden.}
+\end{itemize}
+
+\subsection{Familias adicionales no implementadas}
+
+\begin{itemize}
+  \item \pendiente{Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).}
+  \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
+  \item \pendiente{Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.}
+\end{itemize}
+
+\subsection{Contrato común y convención de signos}
+
+Todos los elementos tipo armadura, cable o marco implementan el contrato \texttt{internal\_forces(U)} y devuelven los esfuerzos en la convención de signos del proyecto (\hyperref[adr:0002]{ADR 0002}).
+
+\section{Solvers no lineales}
+
+El solver no lineal corresponde al nivel estratégico del cálculo: orquesta la subdivisión en pasos, las iteraciones internas y los criterios de convergencia. Es el componente que el usuario selecciona en el archivo YAML mediante el campo \texttt{solver.type}.
+
+Disponibles en la versión actual:
+
+\begin{itemize}
+  \item \texttt{LinearSolver} --- un único paso, una única resolución del sistema \texttt{K \ensuremath{\cdot} U = F}. Aplicable a problemas estrictamente lineales (rigidez constante, sin actualización de geometría, sin no linealidad material).
+  \item \texttt{NonlinearSolver} --- método de Newton-Raphson incremental con control de carga. Aplica fracciones crecientes de la carga total y, en cada paso, itera hasta la convergencia. Criterio de parada dual (desplazamiento y fuerza).
+  \item \texttt{ArcLengthSolver} --- método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
+\end{itemize}
+
+Espacio natural de extensión:
+
+\begin{itemize}
+  \item \pendiente{Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.}
+  \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.}
+  \item \pendiente{Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.}
+  \item \pendiente{Esquemas implícitos para dinámica estructural transitoria (Newmark, HHT-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}).}
+  \item \pendiente{Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto.}
+\end{itemize}
+
+La incorporación de un solver nuevo se realiza en \texttt{fenix/math/solver\_<nombre>.py} mediante el decorador \texttt{@SolverRegistry.register}, sin modificación del intérprete del caso, el dominio o los elementos.
+
+\section{Subsistema algebraico}
+
+Por debajo del solver no lineal, dentro de cada iteración, se requiere la resolución de un sistema lineal \texttt{K \ensuremath{\cdot} x = b}. Esta es la responsabilidad del subsistema algebraico (\texttt{fenix/math/linalg/}, \hyperref[adr:0003]{ADR 0003}). Constituye un nivel táctico: no decide la estrategia del cálculo, sino que selecciona el algoritmo numérico adecuado para resolver cada sistema lineal.
+
+Algoritmos disponibles:
+
+\begin{itemize}
+  \item \texttt{LUSolver} --- factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
+  \item \texttt{CholeskySolver} --- factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando \texttt{K} es simétrica y definida positiva.
+  \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} para el caso simétrico no definido positivo, reservada para la fase 2 del \hyperref[adr:0003]{ADR 0003}.}
+  \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
+  \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
+\end{itemize}
+
+\textbf{Despachador.} La función \texttt{select\_solver(props)} inspecciona las propiedades de la matriz (encapsuladas en \texttt{StiffnessProperties}: simetría, definición positiva) y selecciona el algoritmo adecuado de forma automática. El usuario puede forzar un algoritmo específico desde el archivo YAML mediante el campo opcional \texttt{linear\_algebra} en calidad de herramienta de diagnóstico, no como decisión de modelado.
+
+\textbf{Justificación de la separación en dos niveles.} El solver no lineal y el subsistema algebraico resuelven cuestiones distintas. El primero decide cómo recorrer la respuesta del sistema (incrementos, iteraciones, longitud de arco). El segundo decide con qué método resolver cada sistema lineal individual. Esta separación permite, por ejemplo, mejorar el rendimiento del paso elástico sin afectar al método de Newton-Raphson, o introducir longitud de arco sin reescribir el código del subsistema algebraico.
+
+\section{Tipos de análisis}
+
+El tipo de análisis en Fenix FEM corresponde al problema físico que afronta el solver, no al solver en sí.
+
+Implementados en la versión actual:
+
+\begin{itemize}
+  \item \textit{Estática lineal}. Desplazamientos pequeños, rigidez constante, una resolución directa. Combinación: \texttt{LinearSolver} con materiales lineales y elementos en formulación lineal.
+  \item \textit{Estática no lineal incremental}. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: \texttt{NonlinearSolver} o \texttt{ArcLengthSolver} con materiales no lineales y/o elementos corrotacionales.
+\end{itemize}
+
+Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
+
+\begin{itemize}
+  \item \pendiente{Dinámica estructural transitoria implícita con integradores Newmark y HHT-\ensuremath{\alpha}.}
+  \item \pendiente{Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.}
+  \item \pendiente{Análisis modal (frecuencias propias y modos de vibración) mediante problema de autovalores generalizado.}
+  \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
+  \item \pendiente{Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).}
+  \item \pendiente{Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.}
+  \item \pendiente{Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.}
+\end{itemize}
+
+La estructura de capas y registros se ha diseñado para incorporar dichos análisis sin reformular las piezas existentes; el ADR correspondiente se redactará al inicio de cada fase de diseño.
+
+
+\newpage
+
+\chapter{Mecanismos transversales}
+\label{cap:5}
+
+
+
+Los patrones que se describen a continuación estructuran el código de Fenix FEM sin pertenecer a una capa concreta. Aparecen indistintamente en materiales, elementos y solvers; su comprensión es necesaria para la lectura de cualquier zona del programa.
+
+\section{Registros con auto-registro}
+
+Cada categoría de componente dispone de su propio diccionario global: \texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}. Cada clase concreta se inscribe en su diccionario mediante un decorador (\texttt{@MaterialRegistry.register} y análogos) que se ejecuta en el momento de definición de la clase. El intérprete del archivo YAML no requiere conocimiento \textit{a priori} de los materiales o elementos existentes: consulta el registro por el nombre que aparece en el archivo. La incorporación de un componente nuevo no exige la modificación de listas centrales.
+
+\section{Descubrimiento automático}
+
+El módulo \texttt{fenix/autodiscover.py} se invoca una sola vez durante la importación del paquete. Recorre, mediante \texttt{pkgutil.iter\_modules}, las carpetas canónicas (\texttt{fenix/materials}, \texttt{fenix/elements}, \texttt{fenix/math}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución.
+
+\section{Contratos declarativos mediante atributos de clase}
+
+En lugar de imponer métodos abstractos cuando el comportamiento puede inferirse del dato, Fenix FEM declara los contratos como atributos de clase: \texttt{STRAIN\_DIM} (1, 3 o 6), \texttt{DOF\_NAMES} (lista de nombres de DOF por nodo), \texttt{N\_INTEGRATION\_POINTS}, \texttt{PRIMARY\_STATE\_VAR}. La clase base los lee y se autoconfigura: registra los DOF, valida la compatibilidad material\ensuremath{\leftrightarrow}elemento e inicializa el \texttt{ElementState} con la forma correcta. Este mecanismo sustituye los métodos \texttt{setup()} repetitivos que cada subclase tendría que implementar.
+
+\section{Validación temprana en construcción}
+
+Durante la instanciación de un elemento, su método \texttt{\_\_init\_\_} verifica que el material recibido sea dimensionalmente compatible. Un elemento \texttt{Truss2D} con material \texttt{Elastic2D} produce un error en la construcción del caso, no después de doscientas iteraciones en forma de fallo opaco durante la solución. El coste es una comprobación trivial; el beneficio consiste en que ciertos errores físicos se detectan de forma inmediata en el momento de su introducción.
+
+\section{Intérprete genérico por introspección de argumentos}
+
+El componente \texttt{YamlParser} no contiene ramificaciones del tipo \texttt{if material\_type == "Elastic1D"} por cada material. Inspecciona los argumentos del constructor de la clase recuperada del registro y le transmite los campos del archivo YAML. La incorporación de un material nuevo no requiere modificación del intérprete; es suficiente con que el constructor declare los parámetros con nombres compatibles con el archivo YAML.
+
+\section{Estados \textit{trial} y comprometido en \texttt{ElementState}}
+
+Cada elemento mantiene un objeto \texttt{ElementState} con dos copias de las variables internas: una copia \textit{trial} (la que se explora durante las iteraciones del solver) y una copia comprometida (la que corresponde al último paso convergido). El solver invoca \texttt{commit\_state()} solo cuando un paso converge, lo que evita la contaminación del historial plástico o de daño con tentativas posteriormente descartadas. Esta semántica es crítica para problemas con plasticidad o daño: en su ausencia, una iteración no convergida que casualmente quedase dentro de tolerancia contaminaría el historial de forma irreversible.
+
+\section{Ensamblaje disperso con caché en formato Coordinate}
+
+El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental y los almacena en formato Coordinate (COO). En las iteraciones siguientes, se reescribe únicamente el vector de datos sobre la misma topología, sin recalculo de índices. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre \texttt{scipy.sparse}.
+
+\section{Penalización vectorizada para condiciones de Dirichlet}
+
+Las condiciones de contorno de tipo Dirichlet se imponen mediante la suma de un valor grande sobre la diagonal de los DOF restringidos. En lugar de un bucle iterativo por condición, se construye un vector disperso de penalizaciones y se suma a \texttt{K} mediante \texttt{scipy.sparse.diags}. Se evita así un bucle crítico para el rendimiento.
+
+\section{Compilación Just-In-Time mediante Numba}
+
+Las funciones críticas (ensamblaje elemento\ensuremath{\to}global, núcleo del algoritmo de retorno radial) se decoran con \texttt{@njit} y se compilan a código nativo en su primera invocación. La primera ejecución asume el coste de compilación; las invocaciones siguientes se ejecutan a velocidad cercana a la de un programa Fortran compilado. La restricción consiste en que el código compilado solo admite tipos primitivos y arreglos NumPy, no objetos arbitrarios de Python.
+
+\section{Variable principal de visualización}
+
+Cada material declara como atributo de clase la variable interna principal a efectos de visualización: por ejemplo \texttt{'damage'} en un modelo de daño o \texttt{'alpha'} en plasticidad con endurecimiento. El componente \texttt{VtkExporter} la lee de forma genérica sin conocimiento del material que la origina. Este mecanismo permite la incorporación de materiales nuevos con visualización automática, sin modificación del exportador.
+
+\section{Cuadraturas centralizadas}
+
+Las tablas y reglas de cuadratura de Gauss-Legendre 1D, 2D y 3D residen centralizadas en \texttt{fenix/math/integration.py}. Cada elemento declara su \texttt{N\_INTEGRATION\_POINTS} y consume los puntos y pesos correspondientes, sin reproducción de tablas en cada subclase.
+
+
+\newpage
+
+\chapter{Convenciones de signos}
+\label{cap:6}
+
+
+
+La convención de signos es única para el conjunto del proyecto y de aplicación obligatoria en toda formulación, prueba, interfaz pública (\texttt{internal\_forces}, \texttt{SolveResult}), documentación y catálogo. Si una referencia bibliográfica adopta otra convención, la traducción se realiza al implementar y se anota en la prueba correspondiente.
+
+\section{Ejes y giros}
+
+\textbf{Estática 2D.} Eje \texttt{x} positivo a la derecha; eje \texttt{y} positivo hacia arriba. Giro y momento positivos en sentido antihorario (regla de la mano derecha (RHR) con \texttt{z} saliente del plano).
+
+\textbf{Estática 3D.} Aplicación de la RHR a todos los ejes (locales y globales) y a todos los momentos (\texttt{Mx}, \texttt{My}, \texttt{Mz}, \texttt{T}).
+
+\section{Esfuerzos internos en 2D --- convención de viga estructural}
+
+Sobre un elemento diferencial, con \texttt{N} positivo en tracción, \texttt{V} positivo cuando tiende a rotar el diferencial en sentido horario y \texttt{M} positivo en flexión sagitada (tracción en la fibra inferior con \texttt{+y} hacia arriba):
+
+\begin{itemize}
+  \item \textit{Cara izquierda} (normal saliente en \texttt{−x}): \texttt{N} apunta en \texttt{−x}, \texttt{V} apunta en \texttt{+y}, \texttt{M} actúa en sentido horario.
+  \item \textit{Cara derecha} (normal saliente en \texttt{+x}): \texttt{N} apunta en \texttt{+x}, \texttt{V} apunta en \texttt{−y}, \texttt{M} actúa en sentido antihorario.
+\end{itemize}
+
+Esta es la convención clásica de los diagramas de esfuerzos en vigas.
+
+\section{Esfuerzos internos en 3D --- convención de resultantes de tensión bajo RHR}
+
+En la cara con normal saliente \texttt{+x\_local}, los esfuerzos positivos se definen como:
+
+\begin{itemize}
+  \item \texttt{N} en \texttt{+x\_local} (tracción positiva).
+  \item \texttt{Vy} en \texttt{+y\_local}, \texttt{Vz} en \texttt{+z\_local}.
+  \item \texttt{T ≡ Mx}, \texttt{My}, \texttt{Mz}: vectores de momento en \texttt{+x\_local}, \texttt{+y\_local}, \texttt{+z\_local} respectivamente, conforme a la RHR.
+\end{itemize}
+
+En la cara con normal saliente \texttt{−x\_local}, todos los sentidos se invierten (tercera ley de Newton).
+
+Justificación: esta es la convención que resulta de integrar directamente el tensor de tensiones sobre la sección. Es la adoptada por Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS y Abaqus para vigas 3D. La convención estructural de "flexión sagitada positiva" no admite extensión canónica a 3D y se utiliza únicamente en 2D.
+
+Convención de fibra para los flectores en 3D, consecuencia directa del signo:
+
+\begin{itemize}
+  \item \texttt{Mz > 0} \ensuremath{\Rightarrow} tracción en fibras con \texttt{y < 0} (equivalente a flexión sagitada en el plano \texttt{xy} con \texttt{+y} hacia arriba).
+  \item \texttt{My > 0} \ensuremath{\Rightarrow} tracción en fibras con \texttt{z > 0}.
+\end{itemize}
+
+\section{Capa interna y capa pública}
+
+Internamente, todos los elementos (2D y 3D) operan en la convención de resultantes de tensión bajo RHR. Las matrices \texttt{B}, las fuerzas internas \texttt{f\_int = \ensuremath{\int}B\ensuremath{^{\top}}\ensuremath{\sigma} d\ensuremath{\Omega}}, los jacobianos y los residuos se calculan en dicha convención. Esta uniformidad evita signos especiales por dimensión dentro del código de formulación.
+
+En la interfaz pública (\texttt{internal\_forces}, diagramas, catálogo), los elementos 3D la exponen sin transformación. Los elementos 2D, en cambio, exponen la convención de viga estructural (\texttt{V} con signo opuesto al interno) por ser la representación clásica en los diagramas de esfuerzos. La traducción consiste en un simple cambio de signo en \texttt{V}, aplicado dentro del método \texttt{internal\_forces()} del elemento 2D.
+
+Relación 2D \ensuremath{\leftrightarrow} 3D en la interfaz pública:
+
+\begin{itemize}
+  \item \texttt{M\_2D} ≡ \texttt{Mz\_3D} (mismo signo; ambos corresponden a flexión sagitada positiva con \texttt{+y} hacia arriba).
+  \item \texttt{V\_2D} y \texttt{Vy\_3D} difieren en signo en la interfaz pública por la razón anterior.
+\end{itemize}
+
+Los valores se exponen siempre en ejes locales del elemento; la transformación a ejes globales constituye una capa separada.
+
+
+\newpage
+
+\chapter{Crecimiento del sistema}
+\label{cap:7}
+
+
+
+Los capítulos anteriores describen el estado actual del programa. Este capítulo describe el procedimiento por el que se incorporan piezas nuevas --- el aspecto del proyecto que la arquitectura optimiza explícitamente.
+
+\section{Tres puntos de extensión canónicos}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{Componente a incorporar} & \textbf{Ubicación} & \textbf{Mecanismo de registro} & \textbf{Modifica otros archivos} \\
+\hline
+Material & \texttt{fenix/materials/<snake>.py} & \texttt{@MaterialRegistry.register} & No \\
+Elemento & \texttt{fenix/elements/<snake>.py} & \texttt{@ElementRegistry.register} & No \\
+Solver & \texttt{fenix/math/solver\_<snake>.py} & \texttt{@SolverRegistry.register} & No \\
+\hline
+\end{tabularx}
+\end{center}
+La columna "modifica otros archivos" es deliberadamente "No". Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
+
+\section{Skill \texttt{/fenix-new}}
+
+Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una \textit{skill} versionada (\texttt{.claude/skills/fenix-new/}) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es \texttt{/fenix-new material|element|solver <Name>} y produce automáticamente:
+
+\begin{itemize}
+  \item El archivo en su carpeta canónica con la plantilla del tipo correspondiente.
+  \item El decorador \texttt{@register} correctamente posicionado.
+  \item Una prueba esqueleto en \texttt{tests/} con la estructura habitual (configuración, expectativas, validación contra solución analítica si aplica).
+\end{itemize}
+
+La \textit{skill} no sustituye al razonamiento físico ni a la formulación; constituye estrictamente un mecanismo de generación de plantillas. Cierra el ciclo entre la arquitectura (optimizada para extensión) y la herramienta operativa que la materializa.
+
+\section{Ciclo especificación \ensuremath{\to} código \ensuremath{\to} catálogo}
+
+Cuando el componente a incorporar es físico (no infraestructura), el flujo es:
+
+\begin{enumerate}
+  \item \textit{Apertura de la especificación.} El usuario abre una especificación en \texttt{docs/specs/<Nombre>.md} a partir de la plantilla \texttt{\_template\_<kind>.md}. La especificación contiene: especificación física, formulación numérica y contrato YAML (\texttt{interface}, \texttt{parameters}, \texttt{acceptance}, \texttt{references}).
+  \item \textit{Bloqueo en ausencia de especificación completa.} El asistente no escribe código hasta que la especificación esté completa. Si falta información, formula consultas en la sección \textit{Diálogo} de la propia especificación. Esto convierte la especificación, sucesivamente, en orden de trabajo y en referencia detallada del componente.
+  \item \textit{Implementación.} El asistente implementa el componente y añade pruebas conforme a los criterios de \texttt{acceptance}.
+  \item \textit{Cierre.} Tras la validación (todas las pruebas verdes contra los criterios), el asistente actualiza \texttt{status: validated} en la especificación e inserta una entrada en el catálogo correspondiente (\texttt{docs/catalogo\_<elementos|materiales|solvers>.md}).
+\end{enumerate}
+
+La relación es: la especificación constituye la orden de trabajo y la referencia detallada por componente; el catálogo constituye el índice navegable del conjunto. El manual de referencia (\texttt{Reference\_manual.pdf}) se genera de forma automática a partir de las especificaciones.
+
+\section{Architecture Decision Records: memoria de arquitectura persistente}
+
+Para los cambios que afectan al diseño del programa (no a la implementación interna de un módulo), el asistente crea un Architecture Decision Record en \texttt{docs/adr/000N-titulo.md} antes del \textit{commit} o de forma simultánea al mismo. Los ADR son persistentes y consultables; sustituyen a las explicaciones efímeras del \textit{chat} a fin de que el sistema permanezca comprensible meses o años después. Los ADR vigentes se enumeran en el siguiente capítulo.
+
+\section{Mantenimiento de los documentos vivos}
+
+Los archivos \texttt{docs/arquitectura.md}, \texttt{docs/conceptos\_clave.md} y este manual se mantienen sincronizados con el estado del código. El asistente los actualiza cuando se modifica la topología del sistema (introducción de una capa nueva, una carpeta canónica nueva o una responsabilidad transversal nueva), no cuando se modifica la implementación interna de un módulo. Si tras un refactor de tamaño medio cualquiera de estos documentos no refleja la realidad del código, dicha discrepancia constituye un defecto del propio refactor.
+
+
+\newpage
+
+\chapter{Decisiones de arquitectura (ADR)}
+\label{cap:8}
+
+
+
+Los Architecture Decision Records (ADR) son el registro persistente de las decisiones que han modelado la arquitectura de Fenix FEM. Cada ADR responde, en una página, a tres cuestiones: contexto, decisión y consecuencias. En este capítulo se resumen los ADR vigentes; el texto completo reside en \texttt{docs/adr/}.
+
+\section{ADR 0001 --- Mecanismos de transparencia conceptual}
+\label{adr:0001}
+
+\textbf{Fecha}: 19 de abril de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} El documento \texttt{Reglas.md} §2 establece el modelo "calculadora con manual disponible": el usuario delega la escritura del código pero conserva su comprensión conceptual. Para que dicho principio se opere, y no permanezca como mera declaración de intenciones, el proyecto requiere mecanismos prácticos que prevengan la deriva hacia la opacidad a medida que el código crece.
+
+\textbf{Decisión.} Se introducen tres mecanismos vivos, de mantenimiento económico y mutuamente reforzantes:
+
+\begin{enumerate}
+  \item \textit{Mapa de arquitectura.} El archivo \texttt{docs/arquitectura.md} consiste en una página con diagrama de bloques y flujo de datos. El asistente lo actualiza al modificarse la topología del sistema.
+  \item \textit{Conceptos clave.} El archivo \texttt{docs/conceptos\_clave.md} contiene un inventario explícito de los conceptos sostenedores del sistema, cada uno con dos o tres frases conceptuales. Define el "test de no opacidad": el usuario debe poder explicar cualquier entrada en términos generales en cualquier momento.
+  \item \textit{Modo "explícame X" bajo demanda.} Protocolo conversacional, no artefacto en repositorio. Constituye la válvula de escape ante opacidad puntual sin necesidad de sesiones programadas.
+\end{enumerate}
+
+\textbf{Consecuencia para este manual.} El presente \texttt{Architecture\_manual.pdf} es el siguiente eslabón en la cadena de transparencia conceptual: amplía el mapa de arquitectura a una lectura cómoda en formato de libro, manteniendo la disciplina de no entrar al detalle de cada componente.
+
+\section{ADR 0002 --- Interfaz pública de resultados para consumidores externos}
+\label{adr:0002}
+
+\textbf{Fecha}: 22 de abril de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Fenix FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y los esfuerzos internos carecían de método público homogéneo.
+
+\textbf{Decisión.} Interfaz pública estructurada en tres niveles:
+
+\begin{enumerate}
+  \item \textit{Contrato por elemento.} Todos los elementos tipo armadura, cable o marco implementan \texttt{internal\_forces(U) -> ElementForces}, que devuelve los esfuerzos en ejes locales con claves homogéneas por familia (\texttt{\{N\}} para armadura y cable; \texttt{\{N, V, M\}} para marco 2D; \texttt{\{N, Vy, Vz, T, My, Mz\}} para marco 3D). La convención de signos es la del proyecto (capítulo anterior).
+  \item \textit{Agregado en \texttt{Domain}.} El objeto \texttt{SolveResult} se calcula de forma anticipada al final de \texttt{solver.solve()} y es inmutable. Expone los desplazamientos globales, las cargas aplicadas, las reacciones y un diccionario de esfuerzos internos por elemento.
+  \item \textit{Puntos de entrada oficiales.} Las funciones \texttt{fenix.run(case)} y \texttt{fenix.run\_yaml(path)} devuelven directamente un \texttt{SolveResult}. Cualquier consumidor externo opera contra esta interfaz.
+\end{enumerate}
+
+\textbf{Consecuencia.} El consumidor externo no recalcula esfuerzos a partir de \texttt{U}; la lógica de MEF reside íntegramente en Fenix FEM. La incorporación de un elemento nuevo obliga a implementar \texttt{internal\_forces} con las claves de su familia: el contrato es explícito.
+
+\section{ADR 0003 --- Despachador de algoritmo algebraico}
+\label{adr:0003}
+
+\textbf{Fecha}: 26 de abril de 2026. \textbf{Estado}: aceptado; fases 1 y 2 implementadas.
+
+\textbf{Contexto.} Dentro de cada iteración del método de Newton-Raphson se requiere la resolución del sistema lineal \texttt{K \ensuremath{\cdot} \ensuremath{\delta}U = R}. El algoritmo utilizado hasta el momento era SuperLU (factorización LU general), válido para todo caso pero subóptimo cuando \texttt{K} es simétrica y definida positiva, situación habitual en estática lineal y en numerosas no linealidades suaves. La factorización de Cholesky es típicamente entre 1.5 y 2 veces más rápida y consume considerablemente menos memoria en dichos casos.
+
+\textbf{Decisión.} Se introduce un subsistema algebraico independiente del solver no lineal, con varios algoritmos disponibles y un despachador que selecciona el adecuado de forma automática:
+
+\begin{itemize}
+  \item \texttt{LUSolver} (SuperLU) --- algoritmo universal.
+  \item \texttt{CholeskySolver} (CHOLMOD) --- para matrices simétricas y definidas positivas; opcional según disponibilidad de \texttt{scikit-sparse}.
+  \item \texttt{LDLTSolver} --- reservado para la fase 2 (matrices simétricas indefinidas).
+\end{itemize}
+
+El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt{StiffnessProperties} (atributos \texttt{is\_symmetric}, \texttt{is\_positive\_definite}) y selecciona la factorización de Cholesky cuando aplica, o la factorización LU en caso contrario. El usuario puede forzar un algoritmo desde el archivo YAML mediante el campo \texttt{linear\_algebra} en calidad de herramienta de diagnóstico, no como decisión de modelado.
+
+\textbf{Consecuencia.} Los solvers no lineales (\texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}) ya no invocan SuperLU directamente: solicitan un solver algebraico al despachador y se desentienden del algoritmo numérico subyacente. La incorporación de un nuevo algoritmo (Pardiso, MUMPS, métodos algebraicos multimalla iterativos) afecta exclusivamente a \texttt{fenix/math/linalg/}. La separación entre estrategia (solver no lineal) y táctica (subsistema algebraico) queda explícita en el código.
+
+\section{Evolución de esta lista}
+
+Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
+
+\begin{itemize}
+  \item \pendiente{ADR para la introducción del análisis dinámico transitorio (esquemas implícitos y explícitos), incluyendo el contrato de la matriz de masa por elemento y el tratamiento de amortiguamiento.}
+  \item \pendiente{ADR para la introducción del análisis modal (problema de autovalores generalizado), incluyendo la elección de algoritmo (Lanczos, Arnoldi).}
+  \item \pendiente{ADR para la introducción del problema térmico, incluyendo la generalización del concepto de DOF a magnitudes escalares no mecánicas.}
+  \item \pendiente{ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.}
+\end{itemize}
+
+
+\newpage
+
+\chapter{Evolución de la arquitectura}
+\label{cap:9}
+
+
+
+Este capítulo presenta la trayectoria prevista de la arquitectura de Fenix FEM. Su función es preservar la imagen de la arquitectura del programa a medida que crece: cada fase incorpora un nuevo tipo de análisis con sus contratos propios, sus variables de estado y, eventualmente, capas o subsistemas adicionales. La diferencia con los pendientes del \hyperref[cap:4]{capítulo 4} es de granularidad: aquellos enumeran componentes individuales; este capítulo describe los \textbf{estados sucesivos de la arquitectura} del programa, cada uno con su mapa de capas correspondiente.
+
+Las fases posteriores a la actual están marcadas como pendientes y se materializarán mediante los Architecture Decision Records (ADR) anunciados en el \hyperref[cap:8]{capítulo 8}. La estructura de cada fase se redefinirá en su ADR de apertura; lo aquí descrito constituye una hipótesis razonada de partida.
+
+\section{Fase 1 (actual) --- Estática lineal y no lineal}
+
+\textbf{Estado}: implementado.
+
+\textbf{Capas activas}: las seis capas descritas en el \hyperref[cap:2]{capítulo 2} (entrada, inicialización, interpretación del caso, dominio, capa numérica, salida).
+
+\textbf{Tipos de análisis}: estática lineal (\texttt{LinearSolver}) y estática no lineal incremental (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}).
+
+\textbf{Variables de estado}: desplazamientos \texttt{U}. Variables internas del material (deformaciones plásticas, daño, historia) gestionadas mediante \texttt{ElementState} con semántica \textit{trial} / comprometido.
+
+\textbf{Matrices globales}: matriz de rigidez \texttt{K} (única).
+
+\textbf{Contrato de elemento}: \texttt{K\_local}, \texttt{f\_internal}, \texttt{internal\_forces(U)}. La matriz \texttt{B} y el residuo se calculan en cada iteración.
+
+\begin{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, solvers] - [Salida]
+
+\end{lstlisting}
+
+\section{Fase 2 --- Dinámica estructural transitoria}
+
+\textbf{Estado}: \pendiente{Implementación de la fase 2 --- dinámica estructural transitoria.}
+
+\textbf{Cambios respecto a la fase 1}:
+
+\begin{itemize}
+  \item Aparece la matriz de masa \texttt{M}, ensamblada con la misma infraestructura que \texttt{K}. Cada elemento añade un método \texttt{M\_local} consistente con su esquema de integración.
+  \item Aparece (opcionalmente) la matriz de amortiguamiento \texttt{C}, típicamente como combinación de Rayleigh \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K}.
+  \item Las variables de estado se amplían: además del desplazamiento \texttt{U}, se almacenan velocidad \texttt{Ú} y aceleración \texttt{Ü}.
+  \item Se introduce una nueva familia de solvers para integración temporal: implícitos (Newmark, HHT-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}) y explícitos (diferencias centradas).
+  \item El subsistema algebraico recibe matrices efectivas del tipo \texttt{K\_eff = a\ensuremath{\cdot}M + b\ensuremath{\cdot}C + c\ensuremath{\cdot}K}, donde los coeficientes dependen del integrador y del paso de tiempo. El despachador del \hyperref[adr:0003]{ADR 0003} sigue aplicando: \texttt{K\_eff} mantiene las propiedades de simetría y, a menudo, definición positiva de \texttt{K}.
+\end{itemize}
+
+\textbf{Topología prevista}:
+
+\begin{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, C, solvers] - [Salida]
+                                                                         |
+                                                            [Integradores temporales]
+
+\end{lstlisting}
+
+```callout Riesgo de arquitectura
+La generalización del concepto de DOF se mantiene (siguen siendo grados de libertad mecánicos), pero \texttt{ElementState} debe ampliarse para almacenar las derivadas temporales. La semántica \textit{trial} / comprometido se generaliza al estado completo \texttt{(U, Ú, Ü, variables internas)}.
+\begin{lstlisting}
+
+## Fase 3 — Análisis modal
+
+**Estado**: \pendiente{Implementación de la fase 3 --- análisis modal.}
+
+**Cambios respecto a la fase 2**:
+
+- No hay paso de tiempo ni iteración no lineal; el problema es un autovalor generalizado `(K − ω²·M)·φ = 0`.
+- Se introduce un nuevo subsistema en la capa numérica: el resolutor de autovalores. Algoritmos típicos: Lanczos para problemas grandes, Arnoldi para sistemas no simétricos, ARPACK como biblioteca de referencia.
+- La salida cambia de naturaleza: en lugar de una historia temporal, se devuelve un conjunto de frecuencias propias `ω_i` y modos de vibración `φ_i`.
+- El `SolveResult` se generaliza o se especializa: una alternativa es introducir un `ModalResult` separado; otra es mantener un único agregado polimórfico. La decisión queda diferida al ADR de apertura.
+
+**Topología prevista**:
+
+
+\end{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, eigensolver] - [Salida: ModalResult]
+\begin{lstlisting}
+
+
+\end{lstlisting}callout Riesgo de arquitectura
+Bajo. El análisis modal reutiliza \texttt{K} y \texttt{M} ya disponibles desde la fase 2 y solo añade un nuevo tipo de algoritmo numérico.
+\begin{lstlisting}
+
+## Fase 4 — Problema térmico estacionario y transitorio
+
+**Estado**: \pendiente{Implementación de la fase 4 --- problema térmico.}
+
+**Cambios respecto a las fases anteriores**:
+
+- Aparece un campo escalar nuevo: la temperatura `T`. Esto obliga a generalizar el concepto de DOF: hasta ahora todos los DOF eran mecánicos (desplazamientos, rotaciones); ahora se incorporan DOF térmicos.
+- Aparece la matriz de conductividad `K_t` (análogo térmico de la rigidez) y la matriz de capacidad `C_t` (análogo térmico de la masa).
+- Se introduce una nueva familia de elementos térmicos, paralela a la mecánica. Cada elemento térmico declara `DOF_NAMES = ['T']` y consume materiales con propiedades térmicas (conductividad, capacidad, fuente).
+- Aparece una nueva familia de materiales térmicos con interfaz propia: `compute_flux_and_tangent(grad_T, state)`.
+- En transitorio, se reutilizan los integradores temporales de la fase 2, adaptados al sistema térmico (Crank-Nicolson, theta-método).
+
+**Topología prevista**:
+
+
+\end{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K\_m, M\_m, K\_t, C\_t, solvers] - [Salida]
+                                                  |
+                              [DOF mecanicos] + [DOF termicos]
+                              [Materiales mec.] + [Materiales term.]
+                              [Elementos mec.]  + [Elementos term.]
+\begin{lstlisting}
+
+
+\end{lstlisting}callout Riesgo de arquitectura
+Medio. Es la primera fase que rompe la suposición implícita "todos los DOF son mecánicos" presente hoy en numerosos puntos del código. La generalización requiere atributo \texttt{DOF\_KIND} o similar en cada DOF (mecánico, térmico, futuro presión, futuro químico); posible separación entre \texttt{MechanicalElement} y \texttt{ThermalElement} con base común \texttt{Element}, o un único \texttt{Element} polimórfico (decisión a tomar en el ADR de apertura); adaptación del \texttt{VtkExporter} para escribir campos escalares además de vectoriales.
+\begin{lstlisting}
+
+## Fase 5 — Acoplamiento termo-mecánico
+
+**Estado**: \pendiente{Implementación de la fase 5 --- acoplamiento termo-mecánico.}
+
+**Cambios respecto a la fase 4**:
+
+- Aparece la interacción entre los campos térmico y mecánico: dilatación térmica que induce deformaciones, disipación mecánica que genera calor.
+- Dos estrategias distintas en términos de arquitectura, a decidir en el ADR de apertura:
+  - *Estrategia desacoplada (staggered)*: en cada paso, se resuelve primero el problema térmico con los desplazamientos de la última iteración, después el problema mecánico con las temperaturas recién calculadas. Cada subsistema mantiene su propia matriz; el acoplamiento se realiza mediante intercambio de campos. Implementación de bajo riesgo de arquitectura pero convergencia limitada en problemas de fuerte interacción.
+  - *Estrategia monolítica*: se ensambla un sistema único `K_acoplada` que combina los DOF mecánicos y térmicos. Convergencia robusta pero exige una nueva infraestructura de ensamblaje multifísico.
+- Aparece una nueva familia de materiales acoplados con interfaz extendida: `compute_response(strain, T, grad_T, state)`.
+
+**Topología prevista (estrategia monolítica)**:
+
+
+\end{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K\_acoplada, M\_acoplada, solvers] - [Salida]
+                                                  |
+                                       [Materiales termo-mec.]
+                                       [Elementos termo-mec.]
+                                       [Solver acoplado]
+\begin{lstlisting}
+
+
+\end{lstlisting}callout Riesgo de arquitectura
+Alto. Es la primera fase con auténtica multifísica. Requiere generalización del subsistema algebraico para manejar matrices con bloques no homogéneos (un bloque mecánico simétrico positivo definido y un bloque térmico no simétrico, en la formulación habitual); generalización del concepto de prueba de validación, ya que no basta una solución analítica monodisciplinaria y los problemas de referencia deben tener acoplamiento conocido; posible introducción de precondicionadores específicos para sistemas acoplados (precondicionamiento por bloques, complemento de Schur).
+```
+
+\section{Mantenimiento de este capítulo}
+
+Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:
+
+\begin{enumerate}
+  \item La fase pasa de "\pendiente{...}" a "implementado".
+  \item La hipótesis inicial sobre la arquitectura se sustituye por la descripción real, ajustada a las decisiones que se hayan tomado durante la implementación.
+  \item El diagrama de capas se redibuja conforme a la topología efectiva.
+  \item Las consecuencias no previstas (ajustes en capas anteriores, contratos modificados) se registran en una subsección "Lecciones de la fase N", de cara a fases posteriores.
+\end{enumerate}
+
+De este modo, el capítulo se convierte en una crónica ordenada del crecimiento del programa: en cualquier momento futuro, abrir el manual permite reconstruir no solo el estado actual de Fenix FEM sino la trayectoria completa que lo ha llevado hasta él.
+
+
+\newpage
+
+\chapter{Compromisos de diseño}
+\label{cap:10}
+
+
+
+Los Architecture Decision Records (ADR) del \hyperref[cap:8]{capítulo 8} registran las decisiones de arquitectura que han sido \textbf{tomadas e implementadas}. Este capítulo registra el complemento simétrico: las decisiones que han sido \textbf{deliberadamente postergadas o rechazadas}, junto con la justificación de su no adopción. La función es preservar memoria sobre los caminos no recorridos, de modo que cuestiones ya resueltas no se reabran innecesariamente en sesiones futuras y que, si en algún momento las circunstancias del proyecto cambian, la revisión parta de un punto informado y no desde cero.
+
+A diferencia de los ADR, las entradas de este capítulo no se materializan en archivos individuales en \texttt{docs/adr/}: viven exclusivamente aquí. Cada entrada se actualiza cuando las circunstancias que motivaron la decisión cambien sustancialmente.
+
+\section{Paralelización con MPI}
+
+\textbf{Decisión}: postergada sin fecha.
+
+\textbf{Contexto}. La paralelización mediante el estándar Message Passing Interface (MPI) sería el paso natural para llevar Fenix FEM a problemas de gran escala (mallas de millones de elementos, descomposición de dominio, ejecución en clúster).
+
+\textbf{Razones de la postergación}. Un solo desarrollador trabaja en el proyecto y los problemas que motivan su uso (investigación en mecánica de sólidos, validación de modelos constitutivos, prototipado de algoritmos) se ejecutan satisfactoriamente en máquinas de un solo nodo. La introducción de MPI multiplicaría el coste de cualquier extensión por la necesidad de mantener consistencia de estado entre procesos, complicaría sustancialmente las pruebas (ejecución determinística reproducible bajo distintas particiones de malla) y exigiría rediseñar el ensamblaje y el subsistema algebraico. El compromiso entre coste de mantenimiento y beneficio inmediato no es favorable mientras el caso de uso del proyecto se mantenga en su perfil actual.
+
+```callout Reapertura de la decisión
+Procedería revisar este compromiso si Fenix FEM se aplicara de forma habitual a mallas mayores que 10⁶ elementos, o si se incorporasen colaboradores adicionales con experiencia en programación paralela.
+\begin{lstlisting}
+
+## Adopción de PETSc o Trilinos como backend numérico
+
+**Decisión**: rechazada para el alcance actual.
+
+**Contexto**. PETSc y Trilinos son las dos bibliotecas estándar para álgebra lineal dispersa, solvers iterativos, descomposición de dominio y gestión de matrices distribuidas en programas de elementos finitos de gran escala. Su adopción daría acceso inmediato a multimalla algebraica, precondicionadores avanzados y soporte MPI maduro.
+
+**Razones del rechazo**. Ambas son dependencias binarias pesadas con un proceso de instalación no trivial en Windows, plataforma de trabajo del desarrollador. Su modelo de programación es de matriz distribuida y orientación procedural, lo que choca con la arquitectura actual basada en `scipy.sparse` y orientación a objetos. La capacidad de Fenix FEM hoy se ajusta a lo que SuperLU y CHOLMOD ofrecen mediante `scipy.sparse` y `scikit-sparse`; añadir PETSc o Trilinos sin un caso de uso concreto que lo exija supondría una dependencia infrautilizada y un coste de mantenimiento desproporcionado.
+
+
+\end{lstlisting}callout Reapertura de la decisión
+Procedería si se adopta MPI (compromiso anterior) y, simultáneamente, los problemas tratados requirieran solvers iterativos con precondicionamiento avanzado. En ese escenario, PETSc se convertiría en la opción natural por encima de implementar dichos algoritmos en código propio.
+\begin{lstlisting}
+
+## Arquitectura cliente-servidor o servicio web
+
+**Decisión**: rechazada.
+
+**Contexto**. Una arquitectura cliente-servidor expondría Fenix FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
+
+**Razones del rechazo**. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con `SolveResult`, `fenix.run` y `fenix.run_yaml` en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
+
+
+\end{lstlisting}callout Reapertura de la decisión
+Procedería si Fenix FEM se ofreciera como servicio público a múltiples consumidores no relacionados con el desarrollo, o si la GUI se desacoplara hasta el punto de ejecutarse en máquinas distintas.
+\begin{lstlisting}
+
+## Soporte de múltiples lenguajes en la interfaz pública
+
+**Decisión**: rechazada para el alcance actual.
+
+**Contexto**. La interfaz pública del programa (`fenix.run`, `fenix.run_yaml`, `SolveResult`) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
+
+**Razones del rechazo**. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Fenix FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (`py.fenix.run_yaml(path)`), sin necesidad de modificar Fenix FEM.
+
+
+\end{lstlisting}callout Reapertura de la decisión
+Procedería si surgiera un consumidor estable escrito en un lenguaje distinto de Python y la solución \textit{vía} el puente nativo de cada lenguaje no fuera viable.
+\begin{lstlisting}
+
+## Sistema de plugins externo al repositorio
+
+**Decisión**: rechazada.
+
+**Contexto**. Algunos programas grandes de elementos finitos permiten que terceros publiquen materiales, elementos o solvers como paquetes externos que se descubren en tiempo de ejecución sin formar parte del repositorio principal. La alternativa es la actual: todo componente vive dentro del repositorio de Fenix FEM y se valida con sus pruebas.
+
+**Razones del rechazo**. La filosofía del proyecto (ver \hyperref[cap:1]{capítulo 1}) considera la transparencia y la auditabilidad del código como valor primordial. Un sistema de plugins externos abriría la puerta a componentes no auditados que podrían silenciosamente romper la convención de signos del proyecto, los contratos declarativos del catálogo o las hipótesis de validación contra soluciones analíticas. Mientras el desarrollo lo lleve un único equipo, la incorporación de cualquier componente nuevo pasa por el repositorio y por las pruebas correspondientes, lo que mantiene la trazabilidad completa.
+
+
+\end{lstlisting}callout Reapertura de la decisión
+Procedería si el proyecto creciera hasta tener una comunidad amplia de contribuyentes externos con necesidades especializadas no absorbibles en el catálogo principal. Hoy no es el caso ni se prevé que lo sea.
+\begin{lstlisting}
+
+## Refactor a tipado estático estricto con `mypy --strict`
+
+**Decisión**: postergada sin fecha.
+
+**Contexto**. El código de Fenix FEM utiliza anotaciones de tipo en sus interfaces públicas pero no se valida con `mypy` en modo estricto. Adoptarlo proporcionaría garantías estáticas adicionales y detectaría algunas familias de errores antes de la ejecución.
+
+**Razones de la postergación**. La librería `numpy` y, en menor medida, `scipy.sparse` tienen un soporte de tipado estático que ha mejorado mucho pero sigue dejando puntos donde `mypy --strict` produce ruido sin valor real. El esfuerzo de pulir todas esas fricciones no se compensa, en el alcance actual del proyecto, con el beneficio en detección de defectos. La política presente — anotaciones de tipo en interfaces públicas y validación de comportamiento mediante pruebas de física — se considera suficiente.
+
+
+\end{lstlisting}callout Reapertura de la decisión
+Procedería cuando el ecosistema NumPy/SciPy cierre las lagunas de tipado restantes y la activación del modo estricto deje de generar fricción artificial.
+```
+
+\section{Mantenimiento de este capítulo}
+
+Cada vez que se reabra una decisión y se modifique su estado (de "postergada" a "rechazada", o viceversa), o cuando una decisión postergada se materialice en un ADR formal, la entrada correspondiente se actualiza. Si la decisión pasa a aceptarse, su entrada se retira de este capítulo y se sustituye por el ADR correspondiente en el \hyperref[cap:8]{capítulo 8}.
+
+
+\newpage
+
+\chapter{Glosario}
+\label{cap:11}
+
+
+
+Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada entrada da una definición breve (de una a tres frases) y, cuando procede, remite al capítulo donde el concepto se desarrolla.
+
+\textbf{Ajuste de paso (incremento de carga)}. División de la carga total en fracciones que se aplican sucesivamente en problemas no lineales. Permite que el método de Newton-Raphson converja a partir de una aproximación cercana a la solución del paso anterior.
+
+\textbf{Ardura corrotacional (formulación)}. Descomposición del movimiento de un elemento en una rotación de cuerpo rígido más una deformación local pequeña. La ley constitutiva trabaja en la configuración local; la cinemática del elemento absorbe las grandes rotaciones. Aplicable a armaduras, cables y marcos en régimen geométricamente no lineal con deformación pequeña.
+
+\textbf{Architecture Decision Record (ADR)}. Documento breve que registra una decisión de arquitectura junto con su contexto, alternativas consideradas y consecuencias. Reside en \texttt{docs/adr/000N-titulo.md}. Ver \hyperref[cap:8]{capítulo 8}.
+
+\textbf{Autodiscover (descubrimiento automático)}. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores \texttt{@register} y, con ello, la inscripción de cada componente en su registro. Ver \hyperref[cap:5]{capítulo 5}.
+
+\textbf{Capa algebraica}. Subsistema en \texttt{fenix/math/linalg/} responsable de resolver el sistema lineal \texttt{K \ensuremath{\cdot} x = b} que aparece dentro de cada iteración del solver no lineal. Está separada del solver no lineal y selecciona automáticamente el algoritmo de factorización adecuado mediante un despachador. Ver \hyperref[cap:4]{capítulo 4} y \hyperref[adr:0003]{ADR 0003}.
+
+\textbf{Catálogo}. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers) con sus parámetros, validez y referencias. Reside en \texttt{docs/catalogo\_<categoría>.md}. Es índice y resumen; el detalle vive en las especificaciones.
+
+\textbf{Contrato declarativo}. Mecanismo por el cual una clase declara, mediante atributos de clase como \texttt{STRAIN\_DIM}, \texttt{DOF\_NAMES}, \texttt{N\_INTEGRATION\_POINTS} o \texttt{PRIMARY\_STATE\_VAR}, las propiedades fijas que el sistema necesita conocer de ella. La clase base lee estos atributos y se autoconfigura, sustituyendo métodos de inicialización repetitivos en cada subclase. Ver \hyperref[cap:5]{capítulo 5}.
+
+\textbf{Despachador algebraico}. Función \texttt{select\_solver(props, override)} que recibe las propiedades de la matriz de rigidez (simetría, definición positiva) y devuelve el algoritmo de factorización adecuado: Cholesky cuando aplica, LU en caso contrario. Ver \hyperref[adr:0003]{ADR 0003}.
+
+\textbf{\texttt{DOF\_NAMES}}. Atributo de clase de cada elemento que enumera los nombres de los grados de libertad activos en cada uno de sus nodos. La clase base lo lee para registrar los grados de libertad globales en el \texttt{Domain}.
+
+\textbf{\texttt{Domain}}. Objeto central de la capa de dominio que mantiene la lista de nodos, la conectividad de los elementos, la numeración global de los grados de libertad y, tras la solución, el agregado \texttt{SolveResult}.
+
+\textbf{Elemento}. Entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asignado. Sus contratos declarativos están en \texttt{fenix/elements/}. Ver \hyperref[cap:4]{capítulo 4}.
+
+\textbf{\texttt{ElementState}}. Objeto que encapsula las dos copias de las variables internas de cada elemento: una copia \textit{trial} (la que se explora durante las iteraciones del solver) y otra comprometida (la del último paso convergido). Ver \hyperref[cap:5]{capítulo 5}.
+
+\textbf{Ensamblaje con caché Coordinate (COO)}. Estrategia de ensamblaje en la que la primera invocación calcula los pares de índices \texttt{(i, j)} de cada contribución elemental y los almacena en formato Coordinate; las invocaciones siguientes reescriben únicamente el vector de datos sobre la misma topología, sin recalcular índices. Ver \hyperref[cap:5]{capítulo 5}.
+
+\textbf{Especificación (spec)}. Documento que describe un componente físico nuevo antes de su implementación: especificación física, formulación numérica, contrato YAML y criterios de aceptación. Reside en \texttt{docs/specs/<Nombre>.md}. Es a la vez orden de trabajo y referencia detallada del componente. Ver \hyperref[cap:7]{capítulo 7}.
+
+**Estado \textit{trial} y estado comprometido**. Las dos copias de las variables internas de cada elemento. El estado \textit{trial} se explora durante las iteraciones del solver no lineal; al converger un paso, el solver invoca \texttt{commit\_state()} y promueve el \textit{trial} a estado comprometido. Esta semántica es indispensable en problemas con plasticidad o daño para no contaminar el historial con tentativas posteriormente descartadas.
+
+\textbf{Familia de elementos}. Conjunto de elementos que comparten la cinemática esencial: armaduras, cables, marcos (vigas), sólidos 2D, sólidos 3D, cáscaras. Ver \hyperref[cap:4]{capítulo 4}.
+
+\textbf{Grado de libertad (DOF)}. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el \texttt{Domain}.
+
+\textbf{Longitud de arco (método de Crisfield)}. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
+
+\textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en \texttt{fenix/materials/}. Ver \hyperref[cap:4]{capítulo 4}.
+
+\textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Fenix FEM trabaja en aproximación de desplazamientos.
+
+\textbf{Método de penalización (para condiciones de Dirichlet)}. Estrategia de imposición de condiciones de contorno esenciales que suma un valor grande a la diagonal de los grados de libertad restringidos. Sustituye al método de eliminación o al método de multiplicadores de Lagrange. Implementación vectorizada en Fenix FEM.
+
+\textbf{Notación de Voigt}. Representación de un tensor simétrico de segundo orden como un vector. En 2D, los tres componentes son las dos componentes normales y la componente de cortante (Voigt-3); en 3D, los seis componentes son las tres normales y las tres de cortante (Voigt-6).
+
+\textbf{Numba (compilación Just-In-Time, JIT)}. Decorador \texttt{@njit} que compila a código nativo, en la primera invocación, las funciones a las que se aplica. La primera ejecución asume el coste de compilación; las siguientes corren a velocidad cercana a Fortran. Restringido a tipos primitivos y arreglos NumPy.
+
+\textbf{\texttt{PRIMARY\_STATE\_VAR}}. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
+
+\textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) que mapea el nombre de cada componente con su clase. Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver \hyperref[cap:5]{capítulo 5}.
+
+\textbf{Regla de la mano derecha (RHR)}. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Fenix FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver \hyperref[cap:6]{capítulo 6}.
+
+\textbf{Retorno radial (return mapping)}. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si la tensión predictora lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
+
+\textbf{\texttt{SolveResult}}. Agregado inmutable que el \texttt{Domain} construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento. Es la interfaz pública para consumidores externos. Ver \hyperref[adr:0002]{ADR 0002}.
+
+\textbf{Solver no lineal}. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En Fenix FEM están implementados \texttt{LinearSolver}, \texttt{NonlinearSolver} y \texttt{ArcLengthSolver}. Es nivel estratégico, distinto del subsistema algebraico. Ver \hyperref[cap:4]{capítulo 4}.
+
+\textbf{\texttt{STRAIN\_DIM}}. Atributo de clase de cada material y elemento que declara la dimensión del vector de deformación que manejan: 1 (escalar axial), 3 (Voigt-3 bidimensional), 6 (Voigt-6 tridimensional). El sistema lo usa para validar la compatibilidad material\ensuremath{\leftrightarrow}elemento en el momento de construcción.
+
+\textbf{Tensión plana / deformación plana}. Hipótesis de modelado para problemas bidimensionales. La tensión plana asume que la tensión perpendicular al plano es nula (placas delgadas); la deformación plana asume que la deformación perpendicular es nula (cuerpos extensos en una dimensión, secciones de tuberías largas).
+
+\textbf{Validación temprana en construcción}. Comprobación que la clase base de elemento ejecuta cuando se le asigna un material: verifica que la dimensión de deformación del material coincida con la del elemento. Errores físicos de combinación se detectan en la construcción del caso, no doscientas iteraciones después.
+
+\textbf{Visualization Toolkit (VTK)}. Conjunto de formatos de archivo y bibliotecas para representación de mallas y campos discretos en visualizadores de simulación numérica como ParaView. El \texttt{VtkExporter} de Fenix FEM produce los archivos correspondientes.
+
+\textbf{YAML (YAML Ain't Markup Language)}. Formato de serialización legible por humanos en el que se describen los casos de Fenix FEM (nodos, materiales, elementos, condiciones de contorno, cargas, solver). Es contrato público del programa.
+
+
+\newpage
+
+\appendix
+
+\chapter{Pendientes de desarrollo}
+
+\noindent Este apéndice consolida, en una sola vista, todos los elementos marcados a lo largo del manual como pendientes de desarrollo. Cada entrada indica el capítulo de procedencia y el texto del pendiente. La lista se genera de forma automática a partir de los marcadores \texttt{[PENDIENTE: ...]} insertados en las fuentes; cualquier modificación se realiza sobre el archivo fuente correspondiente, no sobre este apéndice.
+
+
+\section*{Bloques funcionales}
+
+\addcontentsline{toc}{section}{Bloques funcionales}
+
+\begin{itemize}
+
+  \item \pendiente{Modelo de Drucker-Prager para suelos y materiales granulares.}
+
+  \item \pendiente{Modelo de Mohr-Coulomb para suelos y rocas.}
+
+  \item \pendiente{Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).}
+
+  \item \pendiente{Viscoplasticidad de Perzyna y Duvaut-Lions.}
+
+  \item \pendiente{Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.}
+
+  \item \pendiente{Armadura 2D de segundo orden con linealidad geométrica.}
+
+  \item \pendiente{Armadura 2D de segundo orden con linealidad geométrica y material no lineal.}
+
+  \item \pendiente{Armadura 3D de segundo orden con linealidad geométrica.}
+
+  \item \pendiente{Armadura 3D de segundo orden con linealidad geométrica y material no lineal.}
+
+  \item \pendiente{Armadura 2D de segundo orden corrotacional.}
+
+  \item \pendiente{Armadura 2D de segundo orden corrotacional con material no lineal.}
+
+  \item \pendiente{Armadura 3D de segundo orden corrotacional.}
+
+  \item \pendiente{Armadura 3D de segundo orden corrotacional con material no lineal.}
+
+  \item \pendiente{Cable 2D corrotacional con ley constitutiva no lineal a tracción (relajación, fluencia, daño tensional).}
+
+  \item \pendiente{Cable 3D corrotacional con ley constitutiva no lineal a tracción.}
+
+  \item \pendiente{Cable 2D de segundo orden corrotacional.}
+
+  \item \pendiente{Cable 2D de segundo orden corrotacional con material no lineal.}
+
+  \item \pendiente{Cable 3D de segundo orden corrotacional.}
+
+  \item \pendiente{Cable 3D de segundo orden corrotacional con material no lineal.}
+
+  \item \pendiente{Marco 3D Euler-Bernoulli corrotacional con grandes rotaciones.}
+
+  \item \pendiente{Marco 3D Euler-Bernoulli corrotacional con material no lineal.}
+
+  \item \pendiente{Marco 3D Timoshenko con deformación por cortante.}
+
+  \item \pendiente{Marco 3D Timoshenko con material no lineal.}
+
+  \item \pendiente{Marco 2D Timoshenko corrotacional.}
+
+  \item \pendiente{Marco 2D Timoshenko corrotacional con material no lineal.}
+
+  \item \pendiente{Marco 3D Timoshenko corrotacional.}
+
+  \item \pendiente{Marco 3D Timoshenko corrotacional con material no lineal.}
+
+  \item \pendiente{Marco de segundo orden (interpolación cuadrática) en cualquiera de las formulaciones anteriores.}
+
+  \item \pendiente{Plasticidad distribuida fibra a fibra en marcos 2D y 3D, con discretización transversal de la sección.}
+
+  \item \pendiente{Marco con sección variable a lo largo del eje (sección no prismática).}
+
+  \item \pendiente{Sólido 2D con no linealidad geométrica (formulación lagrangiana actualizada o total).}
+
+  \item \pendiente{Triangular cuadrático \texttt{Tri6} (seis nodos).}
+
+  \item \pendiente{Cuadrilátero serendípito \texttt{Quad8} (ocho nodos).}
+
+  \item \pendiente{Cuadrilátero lagrangiano \texttt{Quad9} (nueve nodos).}
+
+  \item \pendiente{Tetraedro lineal \texttt{Tet4} (cuatro nodos), primer orden.}
+
+  \item \pendiente{Tetraedro cuadrático \texttt{Tet10} (diez nodos), segundo orden.}
+
+  \item \pendiente{Hexaedro trilineal \texttt{Hex8} (ocho nodos), primer orden.}
+
+  \item \pendiente{Hexaedro serendípito \texttt{Hex20} (veinte nodos), segundo orden.}
+
+  \item \pendiente{Hexaedro lagrangiano \texttt{Hex27} (veintisiete nodos), segundo orden.}
+
+  \item \pendiente{Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).}
+
+  \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
+
+  \item \pendiente{Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.}
+
+  \item \pendiente{Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.}
+
+  \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.}
+
+  \item \pendiente{Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.}
+
+  \item \pendiente{Esquemas implícitos para dinámica estructural transitoria (Newmark, HHT-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}).}
+
+  \item \pendiente{Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto.}
+
+  \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} para el caso simétrico no definido positivo, reservada para la fase 2 del \hyperref[adr:0003]{ADR 0003}.}
+
+  \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
+
+  \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
+
+  \item \pendiente{Dinámica estructural transitoria implícita con integradores Newmark y HHT-\ensuremath{\alpha}.}
+
+  \item \pendiente{Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.}
+
+  \item \pendiente{Análisis modal (frecuencias propias y modos de vibración) mediante problema de autovalores generalizado.}
+
+  \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
+
+  \item \pendiente{Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).}
+
+  \item \pendiente{Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.}
+
+  \item \pendiente{Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.}
+
+\end{itemize}
+
+
+\section*{Decisiones de arquitectura (ADR)}
+
+\addcontentsline{toc}{section}{Decisiones de arquitectura (ADR)}
+
+\begin{itemize}
+
+  \item \pendiente{ADR para la introducción del análisis dinámico transitorio (esquemas implícitos y explícitos), incluyendo el contrato de la matriz de masa por elemento y el tratamiento de amortiguamiento.}
+
+  \item \pendiente{ADR para la introducción del análisis modal (problema de autovalores generalizado), incluyendo la elección de algoritmo (Lanczos, Arnoldi).}
+
+  \item \pendiente{ADR para la introducción del problema térmico, incluyendo la generalización del concepto de DOF a magnitudes escalares no mecánicas.}
+
+  \item \pendiente{ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.}
+
+\end{itemize}
+
+
+\section*{Evolución de la arquitectura}
+
+\addcontentsline{toc}{section}{Evolución de la arquitectura}
+
+\begin{itemize}
+
+  \item \pendiente{Implementación de la fase 2 --- dinámica estructural transitoria.}
+
+  \item \pendiente{Implementación de la fase 3 --- análisis modal.}
+
+  \item \pendiente{Implementación de la fase 4 --- problema térmico.}
+
+  \item \pendiente{Implementación de la fase 5 --- acoplamiento termo-mecánico.}
+
+  \item \pendiente{...}
+
+\end{itemize}
+
+
+\newpage
+
+\clearpage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{center}
+\rule{0.4\textwidth}{0.4pt}\\[1em]
+{\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
+Sigla del manual: \texttt{FF-MA}\\[0.5em]
+Compilado el 30 de abril de 2026, 12:29\\[0.5em]
+Commit Git: \texttt{743f8cb} (con cambios sin confirmar)\\[1em]
+\rule{0.4\textwidth}{0.4pt}\\[2em]
+\parbox{0.75\textwidth}{\small\itshape\centering
+Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
+\end{center}
+\vspace*{\fill}
+\end{document}

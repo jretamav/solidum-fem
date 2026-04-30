@@ -12,8 +12,13 @@
 \usepackage{amssymb}
 \usepackage{amsfonts}
 \usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
 \usepackage{fancyhdr}
 \usepackage{microtype}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash\footnotesize}X}
 
 \definecolor{yamlkey}{RGB}{0, 102, 204}
 \definecolor{yamlval}{RGB}{204, 0, 0}
@@ -2214,12 +2219,17 @@ Conviene distinguirlas:
 
 El despachador (\texttt{fenix.math.linalg.dispatcher.select\_solver}) elige el backend en función de tres flags declarativos sobre \texttt{K}: simetría, positividad y talla.
 
-| Régimen de \texttt{K} | Backend elegido | Notas |
-|---|---|---|
-| Simétrica + positiva definida | \textbf{Cholesky} (CHOLMOD) | ~2\ensuremath{\times} más rápido y ~2\ensuremath{\times} menos memoria que LU. Requiere la dependencia opcional \texttt{scikit-sparse}. Si falta, degrada a LU con un \textit{warning} una sola vez. |
-| Simétrica indefinida | LU general (placeholder LDL\ensuremath{^{\top}}) | Ideal para LDL\ensuremath{^{\top}} con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo, se usa LU sin pérdida de corrección, solo sin diagnóstico de bifurcación. |
-| No simétrica | \textbf{LU general} (SuperLU) | Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. |
-
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Régimen de \texttt{K}} & \textbf{Backend elegido} & \textbf{Notas} \\
+\hline
+Simétrica + positiva definida & \textbf{Cholesky} (CHOLMOD) & ~2\ensuremath{\times} más rápido y ~2\ensuremath{\times} menos memoria que LU. Requiere la dependencia opcional \texttt{scikit-sparse}. Si falta, degrada a LU con un \textit{warning} una sola vez. \\
+Simétrica indefinida & LU general (placeholder LDL\ensuremath{^{\top}}) & Ideal para LDL\ensuremath{^{\top}} con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo, se usa LU sin pérdida de corrección, solo sin diagnóstico de bifurcación. \\
+No simétrica & \textbf{LU general} (SuperLU) & Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. \\
+\hline
+\end{tabularx}
+\end{center}
 \textbf{Origen de los flags}, todos derivables del modelo:
 \begin{itemize}
   \item \texttt{is\_symmetric}: AND lógico de \texttt{material.IS\_SYMMETRIC} y \texttt{element.PRESERVES\_SYMMETRY} sobre todos los componentes del dominio. Defaults \texttt{True}.

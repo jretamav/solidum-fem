@@ -43,6 +43,7 @@ APPENDIX_CHAPTERS: list[tuple[str, str]] = [
 ]
 
 UNICODE_MAP: dict[str, str] = {
+    "✓": r"\ensuremath{\checkmark}",
     "σ": r"\ensuremath{\sigma}",
     "Σ": r"\ensuremath{\Sigma}",
     "ε": r"\ensuremath{\varepsilon}",
@@ -150,10 +151,34 @@ def md_to_latex(md: str) -> str:
     counter = [0]
 
     # 1a. Bloques de código ```lang ... ```
+    #     Casos especiales:
+    #       lang == "latex" o "tex": el contenido se inserta verbatim en el
+    #         documento LaTeX, sin envoltorio `lstlisting`. Sirve para incluir
+    #         diagramas TikZ, formulas extensas o cualquier fragmento LaTeX
+    #         que deba renderizarse como tal y no como codigo fuente.
     def _code_block(m: re.Match) -> str:
-        lang = (m.group(1) or "").strip().lower()
+        lang_raw = (m.group(1) or "").strip()
+        lang = lang_raw.lower()
         code = m.group(2)
-        if lang in ("yaml", "yml"):
+        # Bloques `callout Titulo`: el contenido se procesa recursivamente
+        # como Markdown y se envuelve en el entorno `infobox` con el titulo
+        # indicado tras la palabra clave. Solo disponible en manuales que
+        # carguen el entorno (ver preamble del manual de arquitectura).
+        if lang.startswith("callout"):
+            title = lang_raw[len("callout"):].strip() or "Nota"
+            inner_md = code.strip()
+            for key, val in placeholders.items():
+                inner_md = inner_md.replace(key, val)
+            inner_latex = md_to_latex(inner_md).strip()
+            ltx = (
+                f"\\begin{{infobox}}{{{title}}}\n"
+                f"{inner_latex}\n"
+                f"\\end{{infobox}}"
+            )
+            return _save(ltx, "CALLOUT", placeholders, counter)
+        if lang in ("latex", "tex"):
+            ltx = code  # se inserta tal cual al documento
+        elif lang in ("yaml", "yml"):
             ltx = f"\\begin{{lstlisting}}[language=yaml]\n{code}\n\\end{{lstlisting}}"
         elif lang in ("python", "py"):
             ltx = f"\\begin{{lstlisting}}[language=Python]\n{code}\n\\end{{lstlisting}}"
@@ -193,6 +218,97 @@ def md_to_latex(md: str) -> str:
         return _save(f"\\texttt{{{body}}}", "ICODE", placeholders, counter)
 
     md = re.sub(r"`([^`\n]+?)`", _inline_code, md)
+
+    # 1e. Tablas estilo pipe Markdown.
+    #     Patron: una linea de cabecera "| a | b |", separador "|---|---|"
+    #     y una o mas filas de datos. Se convierten a `tabular` LaTeX y se
+    #     guardan como placeholder para sobrevivir al escape posterior.
+    def _table_block(m: re.Match) -> str:
+        block = m.group(0).strip()
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        if len(lines) < 2:
+            return block
+
+        # Si la primera linea es un caption con formato "[TABLA: texto]",
+        # se extrae para envolver la tabla en `\\begin{table}\\caption{...}`
+        # y obtener numeracion automatica. Si no, la tabla se emite sin
+        # numerar (mismo comportamiento previo).
+        caption: str | None = None
+        cap_match = re.match(r"^\[TABLA:\s*(.+?)\]$", lines[0])
+        if cap_match:
+            caption = cap_match.group(1).strip()
+            lines = lines[1:]
+            if len(lines) < 2:
+                return block
+
+        def _split_row(row: str) -> list[str]:
+            row = row.strip()
+            if row.startswith("|"):
+                row = row[1:]
+            if row.endswith("|"):
+                row = row[:-1]
+            return [c.strip() for c in row.split("|")]
+
+        header = _split_row(lines[0])
+        ncols = len(header)
+        # Cada columna usa el tipo `Y` (X de tabularx con RaggedRight y
+        # \footnotesize). Reparte \textwidth y permite el ajuste de linea
+        # automatico, evitando que celdas con texto largo desborden el
+        # ancho de la pagina.
+        align_spec = "Y" * ncols
+
+        # Convertir contenido de cada celda recursivamente (md -> latex) para
+        # cubrir negritas, código inline y símbolos Unicode dentro de la tabla.
+        # Antes de la llamada recursiva, restauramos los placeholders del
+        # nivel exterior (@@ICODEn@@, @@MINLn@@, etc.) que ya pudieran
+        # haberse insertado en el texto de la celda — de lo contrario, la
+        # llamada interior no los reconoce y los emite literalmente al PDF.
+        def _cell(text: str) -> str:
+            for key, val in placeholders.items():
+                text = text.replace(key, val)
+            return md_to_latex(text).strip()
+
+        body_rows = [_split_row(ln) for ln in lines[2:]]
+
+        if caption is not None:
+            # Tabla con caption: envoltorio `table` + `\caption` para
+            # numeracion automatica y entrada en la lista de tablas.
+            cap_latex = md_to_latex(caption).strip()
+            out = [
+                "\\begin{table}[h]",
+                "\\centering",
+                f"\\caption{{{cap_latex}}}",
+                f"\\begin{{tabularx}}{{\\textwidth}}{{{align_spec}}}",
+            ]
+        else:
+            out = [
+                f"\\begin{{center}}\n"
+                f"\\begin{{tabularx}}{{\\textwidth}}{{{align_spec}}}"
+            ]
+        out.append("\\hline")
+        out.append(" & ".join(f"\\textbf{{{_cell(c)}}}" for c in header) + " \\\\")
+        out.append("\\hline")
+        for row in body_rows:
+            cells = list(row) + [""] * (ncols - len(row))
+            out.append(" & ".join(_cell(c) for c in cells[:ncols]) + " \\\\")
+        out.append("\\hline")
+        out.append("\\end{tabularx}")
+        if caption is not None:
+            out.append("\\end{table}")
+        else:
+            out.append("\\end{center}")
+        latex = "\n".join(out)
+        return _save(latex, "TABLE", placeholders, counter)
+
+    md = re.sub(
+        r"(?:^\[TABLA:[^\]]+\][ \t]*\n)?"    # caption opcional
+        r"(?:^\|[^\n]+\|[ \t]*\n)"           # cabecera
+        r"(?:\|[ \t:|\-]+\|[ \t]*\n)"         # separador --- | ---
+        r"(?:\|[^\n]+\|[ \t]*\n?)+",           # filas
+        _table_block,
+        md,
+        flags=re.MULTILINE,
+    )
 
     # 2. Escapar caracteres LaTeX especiales en el texto restante (los
     #    placeholders @@...@@ no contienen ninguno, así que están a salvo).
@@ -278,8 +394,13 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \usepackage{amssymb}
 \usepackage{amsfonts}
 \usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
 \usepackage{fancyhdr}
 \usepackage{microtype}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash\footnotesize}X}
 
 \definecolor{yamlkey}{RGB}{0, 102, 204}
 \definecolor{yamlval}{RGB}{204, 0, 0}

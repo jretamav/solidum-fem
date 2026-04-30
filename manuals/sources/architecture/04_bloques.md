@@ -1,0 +1,197 @@
+# Bloques funcionales
+
+Este capítulo describe los grandes bloques del programa desde el punto de vista funcional: la responsabilidad de cada uno, los componentes disponibles en la versión actual y el espacio de extensión natural. No se trata de un manual de referencia: para la formulación detallada de cada componente debe consultarse `manuals/Reference_manual.pdf` y los catálogos en `docs/`.
+
+A lo largo del capítulo se utilizan las denominaciones abreviadas habituales para las dimensiones del espacio físico: una dimensión (1D), dos dimensiones (2D) y tres dimensiones (3D). En el contexto de los materiales, la **notación de Voigt** representa el tensor simétrico de deformación o tensión como un vector: con tres componentes para el caso bidimensional (Voigt-3) y con seis componentes para el caso tridimensional (Voigt-6). El atributo `STRAIN_DIM` de cada material indica el tamaño de ese vector y, por tanto, la dimensión geométrica del problema sobre el que opera.
+
+## Materiales
+
+Un material en Fenix FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo `STRAIN_DIM`) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo `STRAIN_DIM` y la interfaz `compute_stress_and_tangent(strain, state)`.
+
+Familias actualmente implementadas:
+
+- *Elásticos lineales*: `Elastic1D` para deformación axial escalar; `Elastic2D` para problemas planos (tensión plana o deformación plana) en notación de Voigt 3.
+- *Plásticos 1D*: `Plastic1D` con endurecimiento isótropo lineal y deformación axial escalar.
+- *Plásticos 2D*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3.
+- *Daño*: `Damage1D` y `Damage2D`, modelos de daño isótropo escalar.
+- *Cables*: `CableMaterial1D`, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
+
+Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse como una función `(strain, state) → (stress, tangent)` se incorpora sin modificación del resto del programa. Candidatos directos:
+
+- [PENDIENTE: Modelo de Drucker-Prager para suelos y materiales granulares.]
+- [PENDIENTE: Modelo de Mohr-Coulomb para suelos y rocas.]
+- [PENDIENTE: Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).]
+- [PENDIENTE: Viscoplasticidad de Perzyna y Duvaut-Lions.]
+- [PENDIENTE: Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.]
+
+En todos los casos basta declarar el `STRAIN_DIM` apropiado y el atributo `PRIMARY_STATE_VAR` para visualización.
+
+## Elementos
+
+Un elemento finito en Fenix FEM es una entidad geométrica que construye su matriz de gradientes `B`, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su `DOF_NAMES`, su `STRAIN_DIM` y el número de puntos de integración mediante `N_INTEGRATION_POINTS`. La clase base concentra la lógica común (registro de DOF, ensamblaje local→global, validación material↔elemento, gestión del `ElementState`) y cada subclase aporta exclusivamente lo físicamente específico (matriz `B`, esquema de integración, invocación al material).
+
+El estado del programa por familia se presenta a continuación en forma de **matrices de cobertura**. Cada celda combina dos ejes ortogonales: el régimen geométrico (linealidad o no linealidad) y el régimen material (lineal o no lineal). La no linealidad material se obtiene mediante la asignación al elemento de un material no lineal del catálogo (plasticidad, daño); ningún elemento es intrínsecamente no lineal en el material. La marca ✓ indica combinación implementada y validada; la marca [Pendiente: ...] indica el hueco como candidato natural de extensión; el guion (—) indica combinación que no aplica físicamente o que no se contempla.
+
+### Familia armadura (truss)
+
+Elemento articulado que transmite exclusivamente esfuerzo axial. Material consumido: 1D escalar (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`).
+
+**Primer orden (interpolación lineal, dos nodos)**
+
+[TABLA: Cobertura de la familia armadura — primer orden.]
+| Régimen | 2D · material lineal | 2D · material no lineal | 3D · material lineal | 3D · material no lineal |
+|---|---|---|---|---|
+| Linealidad geométrica | ✓ `Truss2D` | ✓ `Truss2D` | ✓ `Truss3D` | ✓ `Truss3D` |
+| No linealidad geométrica | ✓ `Truss2DCorot` | ✓ `Truss2DCorot` | ✓ `Truss3DCorot` | ✓ `Truss3DCorot` |
+
+**Segundo orden (interpolación cuadrática, tres nodos)**
+
+[TABLA: Cobertura de la familia armadura — segundo orden.]
+| Régimen | 2D · material lineal | 2D · material no lineal | 3D · material lineal | 3D · material no lineal |
+|---|---|---|---|---|
+| Linealidad geométrica | [PENDIENTE: Armadura 2D de segundo orden con linealidad geométrica.] | [PENDIENTE: Armadura 2D de segundo orden con linealidad geométrica y material no lineal.] | [PENDIENTE: Armadura 3D de segundo orden con linealidad geométrica.] | [PENDIENTE: Armadura 3D de segundo orden con linealidad geométrica y material no lineal.] |
+| No linealidad geométrica | [PENDIENTE: Armadura 2D de segundo orden corrotacional.] | [PENDIENTE: Armadura 2D de segundo orden corrotacional con material no lineal.] | [PENDIENTE: Armadura 3D de segundo orden corrotacional.] | [PENDIENTE: Armadura 3D de segundo orden corrotacional con material no lineal.] |
+
+### Familia cable
+
+Elemento de tracción exclusiva en formulación corrotacional. Material consumido: `CableMaterial1D` (sin respuesta a compresión).
+
+**Primer orden (interpolación lineal, dos nodos)**
+
+[TABLA: Cobertura de la familia cable — primer orden.]
+| Régimen | 2D · material lineal a tracción | 2D · material no lineal a tracción | 3D · material lineal a tracción | 3D · material no lineal a tracción |
+|---|---|---|---|---|
+| Linealidad geométrica | — | — | — | — |
+| No linealidad geométrica | ✓ `Cable2DCorot` | [PENDIENTE: Cable 2D corrotacional con ley constitutiva no lineal a tracción (relajación, fluencia, daño tensional).] | ✓ `Cable3DCorot` | [PENDIENTE: Cable 3D corrotacional con ley constitutiva no lineal a tracción.] |
+
+La fila "Linealidad geom." se marca como no aplicable: un cable es, por su naturaleza física, un elemento de grandes desplazamientos (la rigidez axial es la única que aporta y depende de la configuración corriente).
+
+**Segundo orden (interpolación cuadrática, tres nodos)**
+
+[TABLA: Cobertura de la familia cable — segundo orden.]
+| Régimen | 2D · material lineal | 2D · material no lineal | 3D · material lineal | 3D · material no lineal |
+|---|---|---|---|---|
+| No linealidad geométrica | [PENDIENTE: Cable 2D de segundo orden corrotacional.] | [PENDIENTE: Cable 2D de segundo orden corrotacional con material no lineal.] | [PENDIENTE: Cable 3D de segundo orden corrotacional.] | [PENDIENTE: Cable 3D de segundo orden corrotacional con material no lineal.] |
+
+### Familia marco / viga
+
+Elemento con flexión y, en su caso, cortante y torsión. Material consumido: 1D escalar. La no linealidad material se introduce mediante el módulo tangente `E_t` del material, que escala uniformemente la sección; **la plasticidad distribuida en la sección (formulación fibra a fibra) no está implementada** y se marca como pendiente independiente.
+
+**Primer orden, formulación Euler-Bernoulli**
+
+[TABLA: Cobertura de la familia marco — primer orden, formulación Euler-Bernoulli.]
+| Régimen | 2D · material lineal | 2D · material no lineal (sección uniforme) | 3D · material lineal | 3D · material no lineal (sección uniforme) |
+|---|---|---|---|---|
+| Linealidad geométrica | ✓ `Frame2DEuler` | ✓ `Frame2DEuler` con `Elastoplastic1D` o `IsotropicDamage1D` | ✓ `Frame3D` | ✓ `Frame3D` con material 1D no lineal |
+| No linealidad geométrica | ✓ `Frame2DEulerCorot` | ✓ `Frame2DEulerCorot` con material 1D no lineal | [PENDIENTE: Marco 3D Euler-Bernoulli corrotacional con grandes rotaciones.] | [PENDIENTE: Marco 3D Euler-Bernoulli corrotacional con material no lineal.] |
+
+**Primer orden, formulación Timoshenko (con deformación por cortante)**
+
+[TABLA: Cobertura de la familia marco — primer orden, formulación Timoshenko.]
+| Régimen | 2D · material lineal | 2D · material no lineal (sección uniforme) | 3D · material lineal | 3D · material no lineal |
+|---|---|---|---|---|
+| Linealidad geométrica | ✓ `Frame2DTimoshenko` | ✓ `Frame2DTimoshenko` con material 1D no lineal | [PENDIENTE: Marco 3D Timoshenko con deformación por cortante.] | [PENDIENTE: Marco 3D Timoshenko con material no lineal.] |
+| No linealidad geométrica | [PENDIENTE: Marco 2D Timoshenko corrotacional.] | [PENDIENTE: Marco 2D Timoshenko corrotacional con material no lineal.] | [PENDIENTE: Marco 3D Timoshenko corrotacional.] | [PENDIENTE: Marco 3D Timoshenko corrotacional con material no lineal.] |
+
+**Segundo orden y formulaciones avanzadas**
+
+- [PENDIENTE: Marco de segundo orden (interpolación cuadrática) en cualquiera de las formulaciones anteriores.]
+- [PENDIENTE: Plasticidad distribuida fibra a fibra en marcos 2D y 3D, con discretización transversal de la sección.]
+- [PENDIENTE: Marco con sección variable a lo largo del eje (sección no prismática).]
+
+### Familia sólido 2D
+
+Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (`Elastic2D`, `VonMises2D`, `IsotropicDamage2D`).
+
+**Primer orden**
+
+[TABLA: Cobertura de la familia sólido bidimensional — primer orden.]
+| Topología | Material lineal | Material no lineal |
+|---|---|---|
+| Triangular lineal (3 nodos) | ✓ `Tri3` | ✓ `Tri3` con `VonMises2D` o `IsotropicDamage2D` |
+| Cuadrilátero bilineal (4 nodos) | ✓ `Quad4` | ✓ `Quad4` con `VonMises2D` o `IsotropicDamage2D` |
+
+La columna de no linealidad geométrica se omite en esta familia: los elementos sólidos 2D actuales no incluyen formulación corrotacional ni lagrangiana actualizada.
+
+- [PENDIENTE: Sólido 2D con no linealidad geométrica (formulación lagrangiana actualizada o total).]
+
+**Segundo orden**
+
+- [PENDIENTE: Triangular cuadrático `Tri6` (seis nodos).]
+- [PENDIENTE: Cuadrilátero serendípito `Quad8` (ocho nodos).]
+- [PENDIENTE: Cuadrilátero lagrangiano `Quad9` (nueve nodos).]
+
+### Familia sólido 3D
+
+- [PENDIENTE: Tetraedro lineal `Tet4` (cuatro nodos), primer orden.]
+- [PENDIENTE: Tetraedro cuadrático `Tet10` (diez nodos), segundo orden.]
+- [PENDIENTE: Hexaedro trilineal `Hex8` (ocho nodos), primer orden.]
+- [PENDIENTE: Hexaedro serendípito `Hex20` (veinte nodos), segundo orden.]
+- [PENDIENTE: Hexaedro lagrangiano `Hex27` (veintisiete nodos), segundo orden.]
+
+### Familias adicionales no implementadas
+
+- [PENDIENTE: Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).]
+- [PENDIENTE: Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.]
+- [PENDIENTE: Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.]
+
+### Contrato común y convención de signos
+
+Todos los elementos tipo armadura, cable o marco implementan el contrato `internal_forces(U)` y devuelven los esfuerzos en la convención de signos del proyecto (ADR 0002).
+
+## Solvers no lineales
+
+El solver no lineal corresponde al nivel estratégico del cálculo: orquesta la subdivisión en pasos, las iteraciones internas y los criterios de convergencia. Es el componente que el usuario selecciona en el archivo YAML mediante el campo `solver.type`.
+
+Disponibles en la versión actual:
+
+- `LinearSolver` — un único paso, una única resolución del sistema `K · U = F`. Aplicable a problemas estrictamente lineales (rigidez constante, sin actualización de geometría, sin no linealidad material).
+- `NonlinearSolver` — método de Newton-Raphson incremental con control de carga. Aplica fracciones crecientes de la carga total y, en cada paso, itera hasta la convergencia. Criterio de parada dual (desplazamiento y fuerza).
+- `ArcLengthSolver` — método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con *snap-back* o *snap-through*.
+
+Espacio natural de extensión:
+
+- [PENDIENTE: Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.]
+- [PENDIENTE: Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.]
+- [PENDIENTE: Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.]
+- [PENDIENTE: Esquemas implícitos para dinámica estructural transitoria (Newmark, HHT-α, Bossak-α).]
+- [PENDIENTE: Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto.]
+
+La incorporación de un solver nuevo se realiza en `fenix/math/solver_<nombre>.py` mediante el decorador `@SolverRegistry.register`, sin modificación del intérprete del caso, el dominio o los elementos.
+
+## Subsistema algebraico
+
+Por debajo del solver no lineal, dentro de cada iteración, se requiere la resolución de un sistema lineal `K · x = b`. Esta es la responsabilidad del subsistema algebraico (`fenix/math/linalg/`, ADR 0003). Constituye un nivel táctico: no decide la estrategia del cálculo, sino que selecciona el algoritmo numérico adecuado para resolver cada sistema lineal.
+
+Algoritmos disponibles:
+
+- `LUSolver` — factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
+- `CholeskySolver` — factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando `K` es simétrica y definida positiva.
+- [PENDIENTE: `LDLTSolver` — factorización LDLᵀ para el caso simétrico no definido positivo, reservada para la fase 2 del ADR 0003.]
+- [PENDIENTE: Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.]
+- [PENDIENTE: Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).]
+
+**Despachador.** La función `select_solver(props)` inspecciona las propiedades de la matriz (encapsuladas en `StiffnessProperties`: simetría, definición positiva) y selecciona el algoritmo adecuado de forma automática. El usuario puede forzar un algoritmo específico desde el archivo YAML mediante el campo opcional `linear_algebra` en calidad de herramienta de diagnóstico, no como decisión de modelado.
+
+**Justificación de la separación en dos niveles.** El solver no lineal y el subsistema algebraico resuelven cuestiones distintas. El primero decide cómo recorrer la respuesta del sistema (incrementos, iteraciones, longitud de arco). El segundo decide con qué método resolver cada sistema lineal individual. Esta separación permite, por ejemplo, mejorar el rendimiento del paso elástico sin afectar al método de Newton-Raphson, o introducir longitud de arco sin reescribir el código del subsistema algebraico.
+
+## Tipos de análisis
+
+El tipo de análisis en Fenix FEM corresponde al problema físico que afronta el solver, no al solver en sí.
+
+Implementados en la versión actual:
+
+- *Estática lineal*. Desplazamientos pequeños, rigidez constante, una resolución directa. Combinación: `LinearSolver` con materiales lineales y elementos en formulación lineal.
+- *Estática no lineal incremental*. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: `NonlinearSolver` o `ArcLengthSolver` con materiales no lineales y/o elementos corrotacionales.
+
+Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
+
+- [PENDIENTE: Dinámica estructural transitoria implícita con integradores Newmark y HHT-α.]
+- [PENDIENTE: Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.]
+- [PENDIENTE: Análisis modal (frecuencias propias y modos de vibración) mediante problema de autovalores generalizado.]
+- [PENDIENTE: Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).]
+- [PENDIENTE: Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).]
+- [PENDIENTE: Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.]
+- [PENDIENTE: Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.]
+
+La estructura de capas y registros se ha diseñado para incorporar dichos análisis sin reformular las piezas existentes; el ADR correspondiente se redactará al inicio de cada fase de diseño.
