@@ -95,13 +95,22 @@ out_of_scope:
   - "grandes deformaciones"
 
 acceptance:
-  - name: parche de tracción uniaxial
-    setup: "malla triangular con carga axial uniforme y material Elastic2D"
-    expect: "deformación constante en todo el dominio"
-    tol_rel: 1.0e-12
-  - name: jacobiano degenerado abortado
-    setup: "tres nodos colineales"
-    expect: "ValueError en _compute_kinematics_tri3"
+  verification:
+    - name: patch_test_macneal_harder
+      setup: "4 Tri3 distorsionados alrededor de un nodo interior descentrado
+             con campo lineal u = 1e-3·(x + y/2), v = 1e-3·(y + x/2)
+             impuesto en los 4 nodos del contorno del cuadrado unitario"
+      expect: "nodo interior adopta el campo lineal y ε = (1e-3, 1e-3,
+              1e-3) en cada elemento; σ uniforme"
+      tol_rel: 1.0e-10
+  specific:
+    - name: parche de deformación constante sobre malla triangular regular
+      setup: "malla triangular con campo de desplazamiento lineal y material Elastic2D"
+      expect: "ε constante (CST reproduce campos lineales por construcción)"
+      tol_rel: 1.0e-12
+    - name: jacobiano degenerado abortado
+      setup: "tres nodos colineales"
+      expect: "ValueError en _compute_kinematics_tri3"
 
 references:
   - "Cook, Malkus, Plesha, Witt, Concepts and Applications of FEA, §3.6 (CST)"
@@ -115,10 +124,13 @@ references:
 - **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py)
 - **Clase**: `Tri3` (registrada vía `@ElementRegistry.register`)
 - **Función núcleo**: `_compute_kinematics_tri3(coords)`, decorada con `@njit`. Reutiliza `_compute_integrands` con peso $w = 0{.}5$.
-- **Tests**: [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — incluye el patch test sobre malla triangular y verifica que el modo de cuerpo rígido produce fuerzas internas nulas.
+- **Tests**:
+  - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — patch test sobre malla triangular regular y modos de cuerpo rígido.
+  - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder con nodo interior libre (NAFEMS, V&V).
 
 ---
 
 ## Diálogo
 
 - **2026-04-30** · Spec retroactiva. `Tri3` precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada. Promovido `status: validated`.
+- **2026-04-30** · Añadido patch test de MacNeal-Harder (NAFEMS) en `acceptance.verification`. Cuatro triángulos alrededor de un nodo interior descentrado reproducen un campo lineal impuesto en el contorno con ε constante en cada elemento.

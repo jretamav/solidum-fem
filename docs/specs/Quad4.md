@@ -94,13 +94,22 @@ out_of_scope:
   - "elementos de alto orden (Q8, Q9)"
 
 acceptance:
-  - name: parche de tracción uniaxial
-    setup: "malla regular con carga axial uniforme y material Elastic2D"
-    expect: "deformación constante ε_xx = σ_aplicada / E_efectivo en todo el dominio"
-    tol_rel: 1.0e-12
-  - name: jacobiano degenerado abortado
-    setup: "elemento con nodos colineales o en orden inverso"
-    expect: "ValueError en _compute_kinematics"
+  verification:
+    - name: patch_test_macneal_harder
+      setup: "5 Quad4 distorsionados (4 nodos exteriores + 4 interiores)
+             con campo lineal u = 1e-3·(x + y/2), v = 1e-3·(y + x/2)
+             impuesto en los 4 nodos del contorno"
+      expect: "nodos interiores adoptan el campo lineal y ε = (1e-3, 1e-3,
+              1e-3) en todos los puntos de Gauss; σ uniforme"
+      tol_rel: 1.0e-10
+  specific:
+    - name: parche de tracción uniaxial sobre malla regular
+      setup: "malla regular con campo de desplazamiento lineal y material Elastic2D"
+      expect: "ε_xx constante en todos los puntos de Gauss"
+      tol_rel: 1.0e-12
+    - name: jacobiano degenerado abortado
+      setup: "elemento con nodos colineales o en orden inverso"
+      expect: "ValueError en _compute_kinematics"
 
 references:
   - "Bathe K.-J., Finite Element Procedures, §5.3 (isoparametric elements)"
@@ -114,10 +123,13 @@ references:
 - **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py)
 - **Clase**: `Quad4` (registrada vía `@ElementRegistry.register`)
 - **Funciones núcleo**: `_compute_kinematics(xi, eta, coords)` y `_compute_integrands(B, C, σ, detJ, w, t)`, ambas decoradas con `@njit` (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran.
-- **Tests**: [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — verifica el ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$ en geometrías regulares, conservación de modos de cuerpo rígido (translación y rotación pura producen $\mathbf{F}_{\text{int}} = 0$), y el patch test de tracción uniaxial.
+- **Tests**:
+  - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
+  - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V&V).
 
 ---
 
 ## Diálogo
 
 - **2026-04-30** · Spec retroactiva. `Quad4` precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada y verificada. Promovido `status: validated`.
+- **2026-04-30** · Añadido patch test de MacNeal-Harder (NAFEMS) en `acceptance.verification`. Cinco Quad4 distorsionados con cuatro nodos interiores libres reproducen exactamente un campo lineal impuesto en el contorno, con ε constante e igual al gradiente analítico en todos los puntos de Gauss.

@@ -80,10 +80,29 @@ out_of_scope:
   - ""
 
 acceptance:
-  - name: ""
-    setup: ""
-    expect: ""
-    tol_rel: 1.0e-10
+  # Bloque de verificación obligatorio para todo elemento nuevo.
+  # Sigue la disciplina V&V de NAFEMS (verification = el código resuelve
+  # bien las ecuaciones; validation = las ecuaciones modelan bien la física).
+  verification:
+    - name: patch_test_macneal_harder
+      setup: "malla con nodos interiores y elementos distorsionados; campo
+             lineal u = a₀ + a₁·x + a₂·y, v = b₀ + b₁·x + b₂·y impuesto en
+             los nodos del contorno"
+      expect: "nodos interiores adoptan el campo lineal y ε es constante e
+              igual a (a₁, b₂, a₂+b₁) en todos los puntos de Gauss"
+      tol_rel: 1.0e-10
+    - name: nafems_LE_<n>
+      setup: "<benchmark NAFEMS aplicable: LE1 elasticidad plana, LE10 placa
+             gruesa, T1 térmico…>"
+      expect: "<magnitud y punto de referencia tabulados en el benchmark>"
+      tol_rel: <según tabla del benchmark>
+  # Tests adicionales específicos del elemento (degeneración, modos de
+  # cuerpo rígido, particularidades de la formulación).
+  specific:
+    - name: ""
+      setup: ""
+      expect: ""
+      tol_rel: 1.0e-10
 
 references:
   - ""
