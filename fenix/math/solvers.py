@@ -1,17 +1,34 @@
 # fenix_fem/fenix/math/solvers.py
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
 from fenix.constants import CONVERGENCE_TOL, ZERO_TOL
 from fenix.registry import SolverRegistry
+from fenix.math.linalg import LUSolver, StiffnessProperties, select_solver
+
+try:
+    from fenix.math.linalg.cholesky import CholeskyNotPositiveDefiniteError
+except ImportError:
+    class CholeskyNotPositiveDefiniteError(Exception):
+        """Placeholder cuando scikit-sparse no está instalado (nunca se lanza)."""
+
+
+def _domain_is_symmetric(domain) -> bool:
+    """Agrega los flags declarativos IS_SYMMETRIC / PRESERVES_SYMMETRY (ADR 0003 §2)."""
+    for elem in domain.elements.values():
+        if not getattr(type(elem), "PRESERVES_SYMMETRY", True):
+            return False
+        material = getattr(elem, "material", None)
+        if material is not None and not getattr(type(material), "IS_SYMMETRIC", True):
+            return False
+    return True
 
 
 @SolverRegistry.register
 class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
-    def __init__(self, assembler, penalty_value=1e15):
+    def __init__(self, assembler, penalty_value=1e15, linear_algebra: str = "auto"):
         self.assembler = assembler
         self.penalty = penalty_value
+        self.linear_algebra = linear_algebra
 
     def solve(self, F_ext_global: np.ndarray) -> np.ndarray:
         print("\n--- INICIANDO SOLVER LINEAL ---")
@@ -20,15 +37,28 @@ class LinearSolver:
         R = F_ext_global.copy()
 
         K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty)
-        
-        U = spla.spsolve(K_global, R)
+
+        # Estático lineal estable: K simétrica si todos los componentes lo son,
+        # y positiva definida tras imponer BCs por penalización.
+        props = StiffnessProperties(
+            is_symmetric=_domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=True,
+            size=K_global.shape[0],
+        )
+        linalg = select_solver(props, override=self.linear_algebra)
+        try:
+            U = linalg.solve(K_global, R)
+        except CholeskyNotPositiveDefiniteError:
+            # Fallback automático SPD→LU (ADR 0003 §5).
+            print("  -> Cholesky reportó no-positividad. Degradando a LU.")
+            U = LUSolver().solve(K_global, R)
         print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
 @SolverRegistry.register
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15, min_delta_lambda=1e-5):
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
@@ -36,6 +66,55 @@ class NonlinearSolver:
         self.adaptive = adaptive
         self.penalty = penalty_value
         self.min_delta_lambda = min_delta_lambda
+        self.linear_algebra = linear_algebra
+        # Newton modificado (ADR 0003 fase 2): si es int, se factoriza fresca
+        # las primeras N iteraciones del paso y se reusa la factorización en
+        # las siguientes. None ⇒ Newton estándar (factoriza cada iteración).
+        self.freeze_tangent_after_iter = freeze_tangent_after_iter
+        # Se inicializa al comienzo de solve(); se degrada a LU si Cholesky aborta.
+        self._linalg = None
+        self._is_pd = True
+        self._frozen_factor = None  # FactorizedSolver | None
+
+    def _make_linalg(self, ndof: int):
+        props = StiffnessProperties(
+            is_symmetric=_domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=self._is_pd,
+            size=ndof,
+        )
+        return select_solver(props, override=self.linear_algebra)
+
+    def _solve_step(self, K, R, iteration: int = 0):
+        """Resuelve K·δU = R con fallback SPD→LU y soporte de Newton modificado.
+
+        Si ``freeze_tangent_after_iter`` está activo, factoriza fresca solo
+        durante las primeras N iteraciones del paso y reusa la factorización
+        cacheada en las siguientes (ADR 0003 §5 + fase 2).
+        """
+        if self.freeze_tangent_after_iter is None:
+            # Newton estándar.
+            try:
+                return self._linalg.solve(K, R)
+            except CholeskyNotPositiveDefiniteError:
+                return self._fallback_to_lu_and_solve(K, R)
+
+        # Newton modificado.
+        threshold = self.freeze_tangent_after_iter
+        if iteration < threshold or self._frozen_factor is None:
+            try:
+                self._frozen_factor = self._linalg.factorize(K)
+            except CholeskyNotPositiveDefiniteError:
+                self._is_pd = False
+                self._linalg = self._make_linalg(K.shape[0])
+                print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
+                self._frozen_factor = self._linalg.factorize(K)
+        return self._frozen_factor.solve(R)
+
+    def _fallback_to_lu_and_solve(self, K, R):
+        print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
+        self._is_pd = False
+        self._linalg = self._make_linalg(K.shape[0])
+        return self._linalg.solve(K, R)
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -43,7 +122,9 @@ class NonlinearSolver:
         U_current = np.zeros(ndof)
         
         print("\n--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
-        
+
+        self._linalg = self._make_linalg(ndof)
+
         load_factor = 0.0
         target_load = 1.0
         delta_lambda = 1.0 / self.num_steps
@@ -69,11 +150,11 @@ class NonlinearSolver:
                 K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=next_load_factor, U_current=U_iter)
                 
                 try:
-                    delta_U = spla.spsolve(K_global, R)
+                    delta_U = self._solve_step(K_global, R, iteration=iteration)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular detectada.")
                     break
-                
+
                 U_iter += delta_U
 
                 # Criterio dual: norma de desplazamiento Y norma de residuo de fuerza.
@@ -103,6 +184,11 @@ class NonlinearSolver:
                         
                     break
                     
+            # Cierre de paso (converja o no): la K_t cambia con U_current,
+            # así que la factorización congelada deja de ser válida para el
+            # siguiente paso (Newton modificado, ADR 0003 fase 2).
+            self._frozen_factor = None
+
             if not converged:
                 if self.adaptive:
                     delta_lambda /= 2.0
@@ -111,7 +197,7 @@ class NonlinearSolver:
                         raise RuntimeError(f"El incremento de carga ({delta_lambda:.2e}) cayó por debajo del mínimo ({self.min_delta_lambda:.2e}). El solver ha divergido.")
                 else:
                     raise RuntimeError(f"El solucionador no convergió en el paso {step}.")
-            
+
         return U_current
 
 @SolverRegistry.register
@@ -123,7 +209,8 @@ class ArcLengthSolver:
     """
     def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
-                 dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8):
+                 dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,
+                 linear_algebra: str = "auto"):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
@@ -139,6 +226,46 @@ class ArcLengthSolver:
         self.dl_shrink_factor = dl_shrink_factor
         self.dl_grow_iter_threshold = dl_grow_iter_threshold
         self.dl_shrink_iter_threshold = dl_shrink_iter_threshold
+        self.linear_algebra = linear_algebra
+        self._linalg = None
+
+    def _make_linalg(self, ndof: int):
+        # Régimen postcrítico: K_t puede ser indefinida → no asumir SPD.
+        props = StiffnessProperties(
+            is_symmetric=_domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=False,
+            size=ndof,
+        )
+        return select_solver(props, override=self.linear_algebra)
+
+    def _solve(self, K, b):
+        """Resuelve K·x = b con fallback Cholesky→LU.
+
+        El default ``auto`` ya elige LU para régimen postcrítico, pero si el
+        usuario fuerza ``linear_algebra: cholesky`` desde YAML para
+        diagnóstico y ``K_t`` se vuelve indefinida en algún paso, degradamos
+        limpiamente a LU para que el override no rompa el análisis.
+        """
+        try:
+            return self._linalg.solve(K, b)
+        except CholeskyNotPositiveDefiniteError:
+            print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
+            self._linalg = LUSolver()
+            return self._linalg.solve(K, b)
+
+    def _negative_pivots(self, K) -> int | None:
+        """Diagnóstico de bifurcación vía Sturm sequence (ADR 0003 fase 2).
+
+        Cuando ``LDLTSolver`` esté implementado (backend con LDLᵀ verdadero
+        de Bunch-Kaufman, p. ej. pypardiso), este método factoriza ``K_t`` y
+        retorna ``factor.n_negative_pivots``. Por la ley de inercia de
+        Sylvester equivale al número de autovalores negativos: 0 antes de
+        bifurcación, 1 tras el primer punto crítico, etc.
+
+        En fase 2 retorna ``None`` (LDLᵀ es placeholder; LU general no
+        preserva inercia y dar un conteo aproximado sería engañoso).
+        """
+        return None
 
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -152,7 +279,9 @@ class ArcLengthSolver:
         delta_U_step = np.zeros(ndof)  # Historial del incremento del paso para guiar el arco
         
         print("\n--- INICIANDO SOLVER NO LINEAL (MÉTODO ARC-LENGTH) ---")
-        
+
+        self._linalg = self._make_linalg(ndof)
+
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
             print(f"\n[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
@@ -170,7 +299,7 @@ class ArcLengthSolver:
             K_t, F_t = self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
             
             try:
-                du_t = spla.spsolve(K_t, F_t)
+                du_t = self._solve(K_t, F_t)
             except RuntimeError:
                 print("  -> Error: Matriz singular en predictor. Bisección de dl...")
                 dl /= 2.0
@@ -204,8 +333,8 @@ class ArcLengthSolver:
                 K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=lambda_iter, U_current=U_iter)
 
                 try:
-                    du_R = spla.spsolve(K_global, R)
-                    du_t = spla.spsolve(K_t, F_t)
+                    du_R = self._solve(K_global, R)
+                    du_t = self._solve(K_t, F_t)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular en corrector.")
                     break

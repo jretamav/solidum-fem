@@ -25,6 +25,14 @@ class Element(ABC):
         Validado contra `material.STRAIN_DIM` al construir.
     N_INTEGRATION_POINTS : ClassVar[int], default=1
         Puntos de Gauss del elemento. Determina el tamaño del ElementState.
+    PRESERVES_SYMMETRY : ClassVar[bool], default=True
+        Indica si la matriz tangente del elemento es simétrica cuando lo es
+        la del material. ``True`` para todos los elementos derivados de un
+        funcional de energía con cargas conservativas (formulación
+        variacional estándar). ``False`` para follower loads (presión que
+        sigue a la superficie deformada) y formulaciones corrotacionales con
+        rotaciones finitas no simetrizadas. La capa algebraica (ADR 0003)
+        lo agrega con ``material.IS_SYMMETRIC`` para elegir backend.
 
     Métodos abstractos a implementar
     --------------------------------
@@ -39,6 +47,7 @@ class Element(ABC):
     DOF_NAMES: ClassVar[List[str]]
     STRAIN_DIM: ClassVar[int]
     N_INTEGRATION_POINTS: ClassVar[int] = 1
+    PRESERVES_SYMMETRY: ClassVar[bool] = True
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Optional[Material] = None):

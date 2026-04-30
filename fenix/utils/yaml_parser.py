@@ -246,6 +246,17 @@ class YamlParser:
                         f"Disponibles: {sorted(registered_solvers)}."
                     )
 
+            # Override del backend algebraico (ADR 0003 §4) — diagnóstico, no
+            # decisión de modelado. Validamos contra el registro del despachador.
+            la = solver_cfg.get('linear_algebra')
+            if la is not None:
+                from fenix.math.linalg.dispatcher import _REGISTRY as _LA_REGISTRY
+                if la != 'auto' and la not in _LA_REGISTRY:
+                    errors.append(
+                        f"solver: 'linear_algebra' desconocido: '{la}'. "
+                        f"Disponibles: {['auto'] + sorted(_LA_REGISTRY)}."
+                    )
+
         return errors
 
     def _parse_nodes(self, data: dict):
