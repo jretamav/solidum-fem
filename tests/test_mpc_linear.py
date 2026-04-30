@@ -21,6 +21,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from fenix.bc.constraints import ConstraintSet
 from fenix.core.domain import Domain
+from fenix.elements.frame import Frame2DEuler
 from fenix.elements.truss import Truss2D
 from fenix.math.assembly import Assembler
 from fenix.math.solvers import LinearSolver
@@ -221,6 +222,151 @@ class TestPeriodicity(unittest.TestCase):
         result = build_solve_result(domain, assembler, U, F)
         self.assertAlmostEqual(result.reactions_by_node[1]["ux"], -P / 2.0, places=10)
         self.assertAlmostEqual(result.reactions_by_node[3]["ux"], -P / 2.0, places=10)
+
+
+class TestRigidLink(unittest.TestCase):
+    """Unión rígida master-slave entre dos nodos en 2D.
+
+    La cinemática del cuerpo rígido en el plano fija el desplazamiento de
+    un nodo esclavo en función del desplazamiento y la rotación de un nodo
+    maestro. Para un offset ``r = (r_x, r_y) = pos_slave − pos_master``:
+
+        u_x_slave = u_x_master − r_y · θ_master
+        u_y_slave = u_y_master + r_x · θ_master
+        θ_slave   = θ_master
+
+    Caso de prueba: cantilever Bernoulli-Euler de longitud ``L`` con un
+    nodo satélite a offset ``(0, 0.5)`` rígidamente unido al extremo libre.
+    Bajo momento puro ``M`` aplicado al nodo maestro, la solución analítica
+    del cantilever es ``θ = ML/EI``, ``v = ML²/(2EI)`` en el extremo. El
+    nodo satélite debe seguir la cinemática rígida.
+    """
+
+    def test_rigid_link_with_rotation(self):
+        L, EI, EA, M = 1.0, 1.0, 1.0, 1.0
+        offset_x, offset_y = 0.0, 0.5
+
+        domain = Domain()
+        n1 = domain.add_node(1, [0.0, 0.0])  # empotrado
+        n2 = domain.add_node(2, [L, 0.0])    # extremo libre — maestro
+        n3 = domain.add_node(3, [L + offset_x, offset_y])  # satélite — esclavo
+
+        # El frame solo une n1-n2; n3 no tiene elemento, sus DOFs los fija
+        # íntegramente la unión rígida — los registramos a mano porque
+        # ``_register_dofs`` solo lo hacen los elementos.
+        mat = DummyMaterial(E=EA)
+        domain.add_element(Frame2DEuler(1, [n1, n2], mat, A=EA, I=EI))
+        for dof in ("ux", "uy", "rz"):
+            n3.add_dof(dof)
+
+        # Empotramiento total en n1.
+        for dof in ("ux", "uy", "rz"):
+            n1.fix_dof(dof, 0.0)
+
+        # Unión rígida n3 ← n2:
+        #   u_x_n3 = u_x_n2 − r_y · rz_n2
+        #   u_y_n3 = u_y_n2 + r_x · rz_n2
+        #   rz_n3  = rz_n2
+        domain.add_linear_constraint(
+            slave=(3, "ux"),
+            masters=[(2, "ux"), (2, "rz")],
+            coefficients=[1.0, -offset_y],
+            g=0.0,
+        )
+        domain.add_linear_constraint(
+            slave=(3, "uy"),
+            masters=[(2, "uy"), (2, "rz")],
+            coefficients=[1.0, offset_x],
+            g=0.0,
+        )
+        domain.add_linear_constraint(
+            slave=(3, "rz"),
+            masters=[(2, "rz")],
+            coefficients=[1.0],
+            g=0.0,
+        )
+
+        domain.generate_equation_numbers()
+        F = np.zeros(domain.total_dofs)
+        F[n2.dofs["rz"]] = M  # momento puro en el extremo libre
+
+        U = LinearSolver(Assembler(domain)).solve(F)
+
+        # Solución analítica del cantilever Bernoulli-Euler bajo momento puro.
+        theta_n2 = M * L / EI
+        v_n2 = M * L**2 / (2.0 * EI)
+        u_x_n2 = 0.0  # sin carga axial
+
+        self.assertAlmostEqual(U[n2.dofs["ux"]], u_x_n2, places=10)
+        self.assertAlmostEqual(U[n2.dofs["uy"]], v_n2, places=10)
+        self.assertAlmostEqual(U[n2.dofs["rz"]], theta_n2, places=10)
+
+        # Cinemática rígida en el satélite.
+        expected_ux_n3 = u_x_n2 - offset_y * theta_n2
+        expected_uy_n3 = v_n2 + offset_x * theta_n2
+        expected_rz_n3 = theta_n2
+        self.assertAlmostEqual(U[n3.dofs["ux"]], expected_ux_n3, places=12)
+        self.assertAlmostEqual(U[n3.dofs["uy"]], expected_uy_n3, places=12)
+        self.assertAlmostEqual(U[n3.dofs["rz"]], expected_rz_n3, places=12)
+
+
+class TestYamlLinearConstraints(unittest.TestCase):
+    """El parser YAML reconoce el bloque ``linear_constraints`` y construye
+    las MPC equivalentes a la API programática."""
+
+    def test_yaml_periodicity(self):
+        import os
+        import tempfile
+
+        yaml_text = """
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [0.0, 1.0]}
+  - {id: 4, coords: [1.0, 1.0]}
+
+materials:
+  - {id: 1, type: Elastic1D, E: 1.0e+6}
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, nodes: [1, 2], A: 1.0e-3}
+  - {id: 2, type: Truss2D, material: 1, nodes: [3, 4], A: 1.0e-3}
+
+boundary_conditions:
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 3, ux: 0.0, uy: 0.0}
+  - {node_id: 2, uy: 0.0}
+  - {node_id: 4, uy: 0.0}
+
+linear_constraints:
+  - slave: {node: 4, dof: ux}
+    masters:
+      - {node: 2, dof: ux}
+    coefficients: [1.0]
+
+point_loads:
+  - {node_id: 2, ux: 1.0}
+
+solver:
+  type: LinearSolver
+"""
+        from fenix.utils.yaml_parser import YamlParser
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(yaml_text)
+            path = fh.name
+        try:
+            parser = YamlParser(path)
+            domain = parser.parse()
+            self.assertEqual(len(domain.linear_constraints), 1)
+            self.assertEqual(domain.linear_constraints[0]["slave"], (4, "ux"))
+            self.assertEqual(domain.linear_constraints[0]["masters"], [(2, "ux")])
+            self.assertEqual(domain.linear_constraints[0]["coefficients"], [1.0])
+            self.assertEqual(domain.linear_constraints[0]["g"], 0.0)
+        finally:
+            os.unlink(path)
 
 
 if __name__ == "__main__":

@@ -78,6 +78,20 @@
 
 ---
 
+## CableMaterial1D — cable axial 1D con elasticidad unilateral
+
+- **Ley**: `σ = E·ε` si `ε > 0`; `σ = 0` si `ε ≤ 0` (sin rigidez en compresión).
+- **STRAIN_DIM**: 1.
+- **Parámetros**: `E` (módulo de Young en tensión, estrictamente positivo).
+- **Variables internas**: ninguna (respuesta memoryless: la rigidez depende solo del signo instantáneo de `ε`).
+- **Tangente**: `E_t = E` en tensión, `E_t = 0` en compresión o sin tensión.
+- **Implicación numérica**: la rigidez tangente colapsa a cero cuando el cable se afloja, lo que requiere precondicionamiento o regularización en el solver para no degenerar la matriz global. El uso típico es a través del elemento `Cable2DCorot`/`Cable3DCorot`, que detecta la situación y la maneja correctamente.
+- **Compatible con**: `Cable2DCorot`, `Cable3DCorot`.
+- **Referencia**: ver `docs/specs/CableMaterial1D.md`.
+- **Archivo**: [fenix/materials/cable_1d.py](fenix/materials/cable_1d.py)
+
+---
+
 ## VonMises2D — plasticidad J2 2D con endurecimiento isotrópico lineal
 
 - **Modelo**: J2 (Von Mises) en deformación plana; criterio `f = ‖s_trial‖ − √(2/3)·(σ_y + H·α) ≤ 0`.

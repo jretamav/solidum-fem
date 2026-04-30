@@ -36,7 +36,7 @@ class IsotropicDamage2D(Material):
             d = min(d, DAMAGE_MAX) # Evitar singularidad numérica
             
         # 4. Esfuerzo y tensor constitutivo secante
-        _, Ce = self.elastic_base.compute_state(np.zeros(3))
+        Ce = self.elastic_base.C
         C_sec = (1.0 - d) * Ce
         sigma = C_sec @ strain
         

@@ -116,6 +116,7 @@ class Quad4(Element):
     """
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
+    N_INTEGRATION_POINTS = 4   # default Gauss 2×2; el constructor lo sobreescribe a nivel de instancia si se pasa otra cuadratura.
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):

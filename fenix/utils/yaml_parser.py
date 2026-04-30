@@ -80,6 +80,7 @@ class YamlParser:
         self._parse_materials(data)
         self._parse_mesh_or_elements(data)
         self._parse_boundary_conditions(data)
+        self._parse_linear_constraints(data)
         self._parse_point_loads_config(data)
 
         self.output_config = data.get('output', {})
@@ -231,6 +232,33 @@ class YamlParser:
                 errors.append("boundary_conditions: una entrada no tiene 'node_id'.")
             elif known_node_ids and nid not in known_node_ids:
                 errors.append(f"boundary_conditions: 'node_id={nid}' no existe en el bloque 'nodes'.")
+
+        # --- Restricciones afines lineales (MPC, ADR 0004 fase 2) ---
+        for i, lc in enumerate(data.get('linear_constraints', []) or []):
+            ctx = f"linear_constraints[{i}]"
+            if not isinstance(lc, dict):
+                errors.append(f"{ctx}: cada entrada debe ser un diccionario.")
+                continue
+            slave = lc.get('slave')
+            if not isinstance(slave, dict) or 'node' not in slave or 'dof' not in slave:
+                errors.append(f"{ctx}: 'slave' debe ser {{node: <id>, dof: <name>}}.")
+            elif known_node_ids and slave['node'] not in known_node_ids:
+                errors.append(f"{ctx}: 'slave.node={slave['node']}' no existe en el bloque 'nodes'.")
+            masters = lc.get('masters', [])
+            coefficients = lc.get('coefficients', [])
+            if not isinstance(masters, list) or not isinstance(coefficients, list):
+                errors.append(f"{ctx}: 'masters' y 'coefficients' deben ser listas.")
+            elif len(masters) != len(coefficients):
+                errors.append(
+                    f"{ctx}: 'masters' ({len(masters)}) y 'coefficients' "
+                    f"({len(coefficients)}) deben tener la misma longitud."
+                )
+            else:
+                for j, m in enumerate(masters):
+                    if not isinstance(m, dict) or 'node' not in m or 'dof' not in m:
+                        errors.append(f"{ctx}.masters[{j}]: debe ser {{node: <id>, dof: <name>}}.")
+                    elif known_node_ids and m['node'] not in known_node_ids:
+                        errors.append(f"{ctx}.masters[{j}]: 'node={m['node']}' no existe en el bloque 'nodes'.")
 
         # --- Solver ---
         solver_cfg = data.get('solver', {})
@@ -384,6 +412,34 @@ class YamlParser:
                         if node:
                             for dof, value in bcs.items():
                                 if dof not in ['group_name']: node.fix_dof(dof, float(value))
+
+    def _parse_linear_constraints(self, data: dict):
+        """Restricciones afines lineales MPC (ADR 0004 fase 2).
+
+        Sintaxis YAML::
+
+            linear_constraints:
+              - slave:  {node: 3, dof: uy}
+                masters:
+                  - {node: 2, dof: uy}
+                  - {node: 2, dof: rz}
+                coefficients: [1.0, 0.5]
+                g: 0.0          # opcional, default 0.0
+
+        Casos de uso típicos: apoyo en plano oblicuo, periodicidad, unión
+        rígida master-slave, simetrías no alineadas con ejes globales.
+        """
+        for lc in data.get('linear_constraints', []) or []:
+            slave = lc['slave']
+            masters = [(m['node'], m['dof']) for m in lc.get('masters', [])]
+            coefficients = list(lc.get('coefficients', []))
+            g = float(lc.get('g', 0.0))
+            self.domain.add_linear_constraint(
+                slave=(slave['node'], slave['dof']),
+                masters=masters,
+                coefficients=coefficients,
+                g=g,
+            )
 
     def _parse_point_loads_config(self, data: dict):
         self.point_loads = data.get('point_loads', [])
