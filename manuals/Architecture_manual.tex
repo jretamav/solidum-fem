@@ -648,9 +648,11 @@ Cada elemento mantiene un objeto \texttt{ElementState} con dos copias de las var
 
 El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental y los almacena en formato Coordinate (COO). En las iteraciones siguientes, se reescribe únicamente el vector de datos sobre la misma topología, sin recalculo de índices. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre \texttt{scipy.sparse}.
 
-\section{Eliminación directa de condiciones de Dirichlet}
+\section{Eliminación directa de condiciones de frontera}
 
-Las condiciones de contorno de tipo Dirichlet se imponen por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (subpaquete \texttt{fenix.bc}). El ensamblador construye un operador disperso \texttt{T} que selecciona los DOF libres y un vector \texttt{g} con los términos prescritos, de modo que \texttt{u = T \ensuremath{\cdot} u\_libre + g}. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo, preserva la simetría y la positividad definida de \texttt{K}, y deja el sistema reducido apto para solvers iterativos (CG, GMRES). La forma afín cubre además, sin cambios en el solver, los casos de asentamiento prescrito y, en una fase posterior, las restricciones multipunto lineales (uniones rígidas, periodicidad, simetrías oblicuas).
+Las condiciones de frontera, tanto Dirichlet nodales como restricciones multipunto lineales (MPC), se imponen por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (subpaquete \texttt{fenix.bc}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}: en filas correspondientes a DOF libres, \texttt{T} es la matriz identidad rectangular; en filas esclavas, lleva los coeficientes \texttt{\ensuremath{\alpha}\_si} en las columnas de los maestros. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo, preserva la simetría y la positividad definida de \texttt{K}, y deja el sistema reducido apto para solvers iterativos (CG, GMRES).
+
+La forma afín cubre con la misma maquinaria los casos de empotramiento, asentamiento prescrito, apoyo en plano oblicuo, periodicidad de celda unitaria y unión rígida master-slave entre nodos. Las restricciones declaradas como cadenas (un esclavo cuyo maestro es a su vez esclavo de otra restricción) se resuelven por cierre transitivo en el momento de construir \texttt{T}; los ciclos y las redeclaraciones inconsistentes se detectan en validación temprana. La declaración se hace mediante \texttt{Domain.add\_linear\_constraint} o desde el bloque \texttt{linear\_constraints} del archivo YAML.
 
 \section{Compilación Just-In-Time mediante Numba}
 
@@ -1154,6 +1156,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Fenix FEM trabaja en aproximación de desplazamientos.
 
+\textbf{Multipoint constraint (MPC)}. Restricción afín lineal que liga el desplazamiento de un grado de libertad esclavo a una combinación lineal de los desplazamientos de uno o varios grados de libertad maestros, posiblemente con un término independiente. Modelan apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas entre nodos y simetrías no alineadas con los ejes globales. Se declaran mediante \texttt{Domain.add\_linear\_constraint} o desde el bloque \texttt{linear\_constraints} del archivo YAML, y se imponen por eliminación directa con la misma maquinaria que las condiciones de Dirichlet. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0004]{ADR 0004}.
+
 \textbf{Notación de Voigt}. Representación de un tensor simétrico de segundo orden como un vector. En 2D, los tres componentes son las dos componentes normales y la componente de cortante (Voigt-3); en 3D, los seis componentes son las tres normales y las tres de cortante (Voigt-6).
 
 \textbf{Numba (compilación Just-In-Time, JIT)}. Decorador \texttt{@njit} que compila a código nativo, en la primera invocación, las funciones a las que se aplica. La primera ejecución asume el coste de compilación; las siguientes corren a velocidad cercana a Fortran. Restringido a tipos primitivos y arreglos NumPy.
@@ -1358,8 +1362,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 30 de abril de 2026, 15:43\\[0.5em]
-Commit Git: \texttt{a7ad4d5} (con cambios sin confirmar)\\[1em]
+Compilado el 30 de abril de 2026, 16:28\\[0.5em]
+Commit Git: \texttt{5d31ce1} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

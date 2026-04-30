@@ -33,6 +33,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ("Elementos 1D — Armaduras", ["Truss2D", "Truss2DCorot", "Truss3D", "Truss3DCorot"]),
     ("Elementos 1D — Cables", ["Cable2DCorot", "Cable3DCorot"]),
     ("Elementos 1D — Marcos / Vigas", ["Frame2DEuler", "Frame2DTimoshenko", "Frame2DEulerCorot", "Frame3D"]),
+    ("Elementos 2D — Sólidos", ["Quad4", "Tri3"]),
     ("Modelos Constitutivos (Materiales)", ["CableMaterial1D"]),
 ]
 

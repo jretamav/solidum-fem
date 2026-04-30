@@ -364,6 +364,34 @@ boundary_conditions_by_group:
   "Borde_Empotrado": {ux: 0.0, uy: 0.0}
 \end{lstlisting}
 
+\subsection{Restricciones multipunto (MPC): \texttt{linear\_constraints}}
+Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Fenix FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si}\, u_{m_i}$ (ADR 0004 fase 2). Se declaran en el bloque \texttt{linear\_constraints}:
+
+\begin{lstlisting}[language=yaml]
+linear_constraints:
+  # Apoyo a 45 grados en el nodo 4: u_y = u_x.
+  - slave: {node: 4, dof: uy}
+    masters:
+      - {node: 4, dof: ux}
+    coefficients: [1.0]
+
+  # Periodicidad: u_x del nodo 7 igual al del nodo 3.
+  - slave: {node: 7, dof: ux}
+    masters:
+      - {node: 3, dof: ux}
+    coefficients: [1.0]
+
+  # Union rigida: u_x del satelite N9 sigue al maestro N5 con offset r_y=0.5.
+  - slave: {node: 9, dof: ux}
+    masters:
+      - {node: 5, dof: ux}
+      - {node: 5, dof: rz}
+    coefficients: [1.0, -0.5]
+    g: 0.0
+\end{lstlisting}
+
+Las restricciones se imponen por eliminación directa (no por penalización), de modo que la imposición es exacta a redondeo y preserva la simetría y la positividad definida del sistema. Las cadenas master-slave se resuelven automáticamente por cierre transitivo; los ciclos y las redeclaraciones inconsistentes se detectan en construcción y abortan el análisis con un mensaje específico.
+
 \section{Cargas Puntuales}
 Misma estructura que las condiciones de frontera, en bloques \texttt{point\_loads\_by\_node}, \texttt{point\_loads\_by\_coord} y \texttt{point\_loads\_by\_group}. Los valores son fuerzas nodales (en las unidades del modelo, típicamente Newtons):
 
