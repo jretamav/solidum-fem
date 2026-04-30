@@ -14,6 +14,47 @@ class Domain:
         # Resultado agregado de la última solución (ADR 0002). Lo asigna el
         # entrypoint fenix.run tras solver.solve vía build_solve_result.
         self.last_result: Optional["SolveResult"] = None
+        # Restricciones afines lineales (MPC) declaradas por el usuario
+        # (ADR 0004 fase 2). Cada entrada: dict con 'slave' = (node_id,
+        # dof_name), 'masters' = [(node_id, dof_name), ...], 'coefficients',
+        # y opcional 'g'. El Assembler las traduce a DOFs globales y las
+        # acumula en su ConstraintSet.
+        self.linear_constraints: list[dict] = []
+
+    def add_linear_constraint(
+        self,
+        slave: tuple[int, str],
+        masters: list[tuple[int, str]],
+        coefficients: list[float],
+        g: float = 0.0,
+    ) -> None:
+        """Declara una restricción afín ``u_s = g + Σ α_i · u_mi``.
+
+        Parameters
+        ----------
+        slave
+            Par ``(node_id, dof_name)`` del DOF esclavo.
+        masters
+            Lista de pares ``(node_id, dof_name)`` de los DOFs maestro.
+        coefficients
+            Coeficientes ``α_i`` en el mismo orden que ``masters``.
+        g
+            Término independiente (cero por defecto).
+
+        Casos de uso típicos: apoyo en plano oblicuo, periodicidad, unión
+        rígida, simetría no alineada con ejes globales.
+        """
+        if len(masters) != len(coefficients):
+            raise ValueError(
+                "masters y coefficients deben tener la misma longitud "
+                f"({len(masters)} vs {len(coefficients)})."
+            )
+        self.linear_constraints.append({
+            "slave": slave,
+            "masters": list(masters),
+            "coefficients": list(coefficients),
+            "g": float(g),
+        })
 
     def add_node(self, node_id: int, coordinates: list[float]) -> Node:
         if node_id in self.nodes:

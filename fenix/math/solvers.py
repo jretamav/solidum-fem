@@ -36,7 +36,7 @@ class LinearSolver:
         F = F_ext_global.copy()
 
         # Eliminación directa de DOFs prescritos (ADR 0004).
-        K_red, F_red, free_dofs, g_full = self.assembler.reduce(K_global, F)
+        K_red, F_red, T, g_full = self.assembler.reduce(K_global, F)
 
         props = StiffnessProperties(
             is_symmetric=_domain_is_symmetric(self.assembler.domain),
@@ -51,7 +51,7 @@ class LinearSolver:
             print("  -> Cholesky reportó no-positividad. Degradando a LU.")
             u_red = LUSolver().solve(K_red, F_red)
 
-        U = self.assembler.expand(u_red, free_dofs, g_full)
+        U = self.assembler.expand(u_red, T, g_full)
         print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
@@ -121,7 +121,9 @@ class NonlinearSolver:
         print("\n--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
 
         # Tras reducción el solver algebraico opera sobre n_libre, no sobre ndof.
-        n_free = ndof - len(self.assembler.constraint_set)
+        cs = self.assembler.constraint_set
+        n_free = ndof - len(cs)
+        free_dofs = cs.free_dofs(ndof)
         self._linalg = self._make_linalg(n_free)
 
         load_factor = 0.0
@@ -146,7 +148,7 @@ class NonlinearSolver:
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = F_ext_step - F_int_global
 
-                K_red, R_red, free_dofs, g_inc = self.assembler.reduce(
+                K_red, R_red, T_op, g_inc = self.assembler.reduce(
                     K_global, R, U_current=U_iter, load_factor=next_load_factor
                 )
 
@@ -156,7 +158,7 @@ class NonlinearSolver:
                     print("  -> Error: Matriz Singular detectada.")
                     break
 
-                delta_U = self.assembler.expand(delta_U_red, free_dofs, g_inc)
+                delta_U = self.assembler.expand(delta_U_red, T_op, g_inc)
                 U_iter += delta_U
 
                 # Criterio dual: norma de desplazamiento Y norma de residuo de
@@ -280,7 +282,8 @@ class ArcLengthSolver:
 
         print("\n--- INICIANDO SOLVER NO LINEAL (MÉTODO ARC-LENGTH) ---")
 
-        n_free = ndof - len(self.assembler.constraint_set)
+        cs = self.assembler.constraint_set
+        n_free = ndof - len(cs)
         self._linalg = self._make_linalg(n_free)
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
@@ -294,7 +297,7 @@ class ArcLengthSolver:
             # --- 1. PREDICTOR ---
             K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
 
-            K_t_red, F_t_red, free_dofs, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
+            K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
 
             try:
                 du_t_red = self._solve(K_t_red, F_t_red)
@@ -303,7 +306,7 @@ class ArcLengthSolver:
                 dl /= 2.0
                 continue
 
-            du_t = self.assembler.expand(du_t_red, free_dofs, g_t)
+            du_t = self.assembler.expand(du_t_red, T_t, g_t)
 
             # Determinar el sentido del avance (evitar regresar por donde vinimos)
             sign = 1.0
@@ -326,8 +329,8 @@ class ArcLengthSolver:
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = lambda_iter * F_ext_ref - F_int_global
 
-                K_t_red, F_t_red, free_dofs, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
-                K_red, R_red, free_dofs_R, g_R = self.assembler.reduce(
+                K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
+                K_red, R_red, T_R, g_R = self.assembler.reduce(
                     K_global, R, U_current=U_iter, load_factor=lambda_iter
                 )
 
@@ -338,8 +341,8 @@ class ArcLengthSolver:
                     print("  -> Error: Matriz Singular en corrector.")
                     break
 
-                du_R = self.assembler.expand(du_R_red, free_dofs_R, g_R)
-                du_t = self.assembler.expand(du_t_red, free_dofs, g_t)
+                du_R = self.assembler.expand(du_R_red, T_R, g_R)
+                du_t = self.assembler.expand(du_t_red, T_t, g_t)
 
                 if final_step:
                     # Último paso: lambda fijo, solo corrección de desplazamientos (Newton-Raphson puro)
@@ -381,7 +384,7 @@ class ArcLengthSolver:
                     np.linalg.norm(F_int_global),
                     ZERO_TOL,
                 )
-                err_force = np.linalg.norm(R[free_dofs_R]) / ref_force
+                err_force = np.linalg.norm(R[cs.free_dofs(ndof)]) / ref_force
                 error = max(err_disp, err_force)
                 print(f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
 

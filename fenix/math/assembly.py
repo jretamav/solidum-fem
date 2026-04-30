@@ -119,6 +119,25 @@ class Assembler:
         for node in self.domain.nodes.values():
             for dof_name, value in node.boundary_conditions.items():
                 cs.add_dirichlet(node.dofs[dof_name], value)
+        for spec in getattr(self.domain, "linear_constraints", []):
+            slave_node_id, slave_dof_name = spec["slave"]
+            slave_node = self.domain.get_node(slave_node_id)
+            if slave_node is None or slave_dof_name not in slave_node.dofs:
+                raise ValueError(
+                    f"Restricción lineal: nodo {slave_node_id} o DOF "
+                    f"'{slave_dof_name}' inexistente."
+                )
+            slave = slave_node.dofs[slave_dof_name]
+            masters: list[int] = []
+            for nid, dn in spec["masters"]:
+                node = self.domain.get_node(nid)
+                if node is None or dn not in node.dofs:
+                    raise ValueError(
+                        f"Restricción lineal: nodo maestro {nid} o DOF "
+                        f"'{dn}' inexistente."
+                    )
+                masters.append(node.dofs[dn])
+            cs.add_linear(slave, masters, spec["coefficients"], spec.get("g", 0.0))
         return cs
 
     def reduce(
@@ -130,61 +149,45 @@ class Assembler:
     ):
         """Reduce ``K, F`` a la subred de DOFs libres (eliminación directa).
 
-        Modelo afín ``u = T·u_libre + g`` con ``T`` rectangular que selecciona
-        DOFs libres y ``g`` no nulo solo en DOFs prescritos. Para sistemas
-        incrementales (Newton) se interpreta ``u`` como ``δu`` y ``g`` como
-        ``δu`` impuesto en los esclavos: ``g[bc] = load_factor·valor − U_current[bc]``.
+        Modelo afín ``u = T·u_libre + g`` con ``T`` sparse de shape
+        ``(ndof, n_libre)`` que selecciona DOFs libres y, en filas esclavas,
+        lleva los coeficientes ``α_si`` de las restricciones lineales. ``g``
+        es no nulo solo en filas esclavas con término independiente.
 
-        Parameters
-        ----------
-        K, F
-            Sistema completo ``K·u = F``.
-        U_current
-            Si se pasa, ``g`` se calcula como incremento desde ``U_current``
-            (uso típico: Newton, arc-length corrector). ``None`` para resolver
-            ``u`` absoluto (lineal, predictor).
-        load_factor
-            Escala los valores prescritos. Útil para incrementos en
-            Newton-Raphson y arc-length.
+        Para sistemas incrementales (Newton, corrector arc-length) se
+        interpreta el resultado como ``δu = T·δu_libre + g_inc`` con
+        ``g_inc = T·U_current[free] + load_factor·g_indep − U_current``,
+        que en DOFs libres se anula y en DOFs esclavos representa la
+        corrección necesaria para satisfacer la restricción.
 
         Returns
         -------
-        K_red, F_red, free_dofs, g_full
-            ``K_red = T^T K T``, ``F_red = T^T (F − K·g_full)``, los índices
-            de DOFs libres y el vector ``g_full ∈ ℝ^n``. La reconstrucción se
-            hace con :meth:`expand`.
+        K_red, F_red, T, g
+            ``K_red = TᵀKT``, ``F_red = Tᵀ(F − K·g)``, el operador ``T`` y
+            el vector ``g``. La reconstrucción se hace con :meth:`expand`.
         """
         cs = self.constraint_set
-        bc_dofs = cs.slave_dofs
-        bc_vals = cs.slave_values
-        free_dofs = cs.free_dofs(self.ndof)
+        T, g_indep = cs.build(self.ndof)
 
-        g_full = np.zeros(self.ndof)
-        if bc_dofs.size > 0:
-            target = bc_vals * load_factor
-            if U_current is not None:
-                g_full[bc_dofs] = target - U_current[bc_dofs]
-            else:
-                g_full[bc_dofs] = target
-
-        K_red = K[free_dofs, :][:, free_dofs]
-        if bc_dofs.size > 0 and np.any(g_full):
-            F_red = F[free_dofs] - (K @ g_full)[free_dofs]
+        if U_current is None:
+            g = load_factor * g_indep
         else:
-            F_red = F[free_dofs].copy()
+            free_dofs = cs.free_dofs(self.ndof)
+            u_free = U_current[free_dofs]
+            g = T @ u_free + load_factor * g_indep - U_current
 
-        return K_red, F_red, free_dofs, g_full
+        K_red = T.T @ K @ T
+        F_red = T.T @ (F - K @ g)
+        return K_red, F_red, T, g
 
     def expand(
         self,
         u_red: np.ndarray,
-        free_dofs: np.ndarray,
-        g_full: np.ndarray,
+        T: sp.spmatrix,
+        g: np.ndarray,
     ) -> np.ndarray:
-        """Reconstruye ``u`` completo: ``u = T·u_red + g_full``."""
-        u_full = g_full.copy()
-        u_full[free_dofs] = u_red
-        return u_full
+        """Reconstruye ``u`` completo: ``u = T·u_red + g``."""
+        return T @ u_red + g
 
     def commit_all_states(self):
         """Confirma las variables internas de todos los elementos tras la convergencia del paso."""
