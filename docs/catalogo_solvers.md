@@ -7,8 +7,8 @@
 ## LinearSolver — solución lineal directa en un paso
 
 - **Propósito**: resolver `K · U = F` en un único `spsolve`.
-- **Esquema**: ensamblaje único → aplicación de BCs por penalidad → `scipy.sparse.linalg.spsolve`.
-- **Parámetros**: `penalty_value` (default `1e15`).
+- **Esquema**: ensamblaje único → eliminación directa de DOFs prescritos (ADR 0004) → `scipy.sparse.linalg.spsolve`.
+- **Parámetros**: `linear_algebra` (default `auto`; ADR 0003 §4).
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **No converge / no aplica**: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
 - **Archivo**: [fenix/math/solvers.py](fenix/math/solvers.py)
@@ -25,7 +25,7 @@
     `err_disp = ‖ΔU‖ / (‖U‖ + ε)` y `err_force = ‖R‖ / max(‖λ·F_ext‖, ‖F_int‖, ε)`.
   - **Adaptatividad** (`adaptive=True`): si converge en < 5 iteraciones, agranda el siguiente paso (×1.5); si no converge, biseca (÷2). Falla si `Δλ < min_delta_lambda`.
   - Tras converger un paso → `assembler.commit_all_states()` (trial → committed en todos los elementos).
-- **Parámetros**: `tol`, `max_iter`, `num_steps`, `adaptive`, `penalty_value`, `min_delta_lambda`.
+- **Parámetros**: `tol`, `max_iter`, `num_steps`, `adaptive`, `min_delta_lambda`, `linear_algebra`, `freeze_tangent_after_iter`.
 - **Cuándo usarlo**: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back/snap-through).
 - **Limitación**: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para eso → `ArcLengthSolver`.
 - **Referencia**: Crisfield, *Non-linear Finite Element Analysis of Solids and Structures*, vol. 1, cap. 9.

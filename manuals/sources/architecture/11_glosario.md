@@ -22,6 +22,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 **`Domain`**. Objeto central de la capa de dominio que mantiene la lista de nodos, la conectividad de los elementos, la numeración global de los grados de libertad y, tras la solución, el agregado `SolveResult`.
 
+**Eliminación directa (de condiciones de Dirichlet)**. Estrategia de imposición de condiciones esenciales que retira los grados de libertad prescritos del sistema antes de resolverlo, en oposición a la penalización (que añade un valor grande a la diagonal) y a los multiplicadores de Lagrange (que amplían el sistema). Toda restricción se expresa en forma afín `u_s = g_s + Σ α_si · u_mi` y se acumula en un `ConstraintSet` (`fenix/bc/`). El ensamblador construye un operador disperso `T` y un vector `g` tales que `u = T · u_libre + g`, y entrega al solver el sistema reducido `K_red = TᵀKT`, `F_red = Tᵀ(F − K · g)`. La imposición es exacta a redondeo y preserva la simetría y la positividad definida de la matriz original. Ver ADR 0004.
+
 **Elemento**. Entidad geométrica que construye su matriz de gradientes `B`, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asignado. Sus contratos declarativos están en `fenix/elements/`. Ver capítulo 4.
 
 **`ElementState`**. Objeto que encapsula las dos copias de las variables internas de cada elemento: una copia *trial* (la que se explora durante las iteraciones del solver) y otra comprometida (la del último paso convergido). Ver capítulo 5.
@@ -41,8 +43,6 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 **Material**. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en `fenix/materials/`. Ver capítulo 4.
 
 **Método de Elementos Finitos (MEF)**. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Fenix FEM trabaja en aproximación de desplazamientos.
-
-**Método de penalización (para condiciones de Dirichlet)**. Estrategia de imposición de condiciones de contorno esenciales que suma un valor grande a la diagonal de los grados de libertad restringidos. Sustituye al método de eliminación o al método de multiplicadores de Lagrange. Implementación vectorizada en Fenix FEM.
 
 **Notación de Voigt**. Representación de un tensor simétrico de segundo orden como un vector. En 2D, los tres componentes son las dos componentes normales y la componente de cortante (Voigt-3); en 3D, los seis componentes son las tres normales y las tres de cortante (Voigt-6).
 

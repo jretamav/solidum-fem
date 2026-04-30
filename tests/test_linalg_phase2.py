@@ -203,8 +203,8 @@ class TestSPDFallback(unittest.TestCase):
             dom, n2, F = self._cantilever_axial()
             U = solvers_module.LinearSolver(Assembler(dom)).solve(F)
             expected = 1000.0 * 2.0 / (210e9 * 1e-3)
-            # rtol moderado: la penalización (α=1e15) consume ~7 dígitos del 16 disponibles.
-            np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-6)
+            # Tras eliminación directa (ADR 0004) la imposición es exacta a redondeo.
+            np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-12)
         finally:
             solvers_module.select_solver = original
 
@@ -230,8 +230,8 @@ class TestSPDFallback(unittest.TestCase):
             dom, n2, F = self._cantilever_axial()
             U = solvers_module.NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1).solve(F)
             expected = 1000.0 * 2.0 / (210e9 * 1e-3)
-            # rtol moderado: la penalización (α=1e15) consume ~7 dígitos del 16 disponibles.
-            np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-6)
+            # Tras eliminación directa (ADR 0004) la imposición es exacta a redondeo.
+            np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-12)
         finally:
             solvers_module.select_solver = original
 

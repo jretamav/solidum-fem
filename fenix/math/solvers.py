@@ -25,46 +25,45 @@ def _domain_is_symmetric(domain) -> bool:
 @SolverRegistry.register
 class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
-    def __init__(self, assembler, penalty_value=1e15, linear_algebra: str = "auto"):
+    def __init__(self, assembler, linear_algebra: str = "auto"):
         self.assembler = assembler
-        self.penalty = penalty_value
         self.linear_algebra = linear_algebra
 
     def solve(self, F_ext_global: np.ndarray) -> np.ndarray:
         print("\n--- INICIANDO SOLVER LINEAL ---")
         self.assembler.assemble_system()
         K_global = self.assembler.K_global.copy()
-        R = F_ext_global.copy()
+        F = F_ext_global.copy()
 
-        K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty)
+        # Eliminación directa de DOFs prescritos (ADR 0004).
+        K_red, F_red, free_dofs, g_full = self.assembler.reduce(K_global, F)
 
-        # Estático lineal estable: K simétrica si todos los componentes lo son,
-        # y positiva definida tras imponer BCs por penalización.
         props = StiffnessProperties(
             is_symmetric=_domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
-            size=K_global.shape[0],
+            size=K_red.shape[0],
         )
         linalg = select_solver(props, override=self.linear_algebra)
         try:
-            U = linalg.solve(K_global, R)
+            u_red = linalg.solve(K_red, F_red)
         except CholeskyNotPositiveDefiniteError:
             # Fallback automático SPD→LU (ADR 0003 §5).
             print("  -> Cholesky reportó no-positividad. Degradando a LU.")
-            U = LUSolver().solve(K_global, R)
+            u_red = LUSolver().solve(K_red, F_red)
+
+        U = self.assembler.expand(u_red, free_dofs, g_full)
         print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
 @SolverRegistry.register
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, penalty_value=1e15, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
         self.assembler = assembler
         self.tol = tol
         self.max_iter = max_iter
         self.num_steps = num_steps
         self.adaptive = adaptive
-        self.penalty = penalty_value
         self.min_delta_lambda = min_delta_lambda
         self.linear_algebra = linear_algebra
         # Newton modificado (ADR 0003 fase 2): si es int, se factoriza fresca
@@ -84,89 +83,91 @@ class NonlinearSolver:
         )
         return select_solver(props, override=self.linear_algebra)
 
-    def _solve_step(self, K, R, iteration: int = 0):
-        """Resuelve K·δU = R con fallback SPD→LU y soporte de Newton modificado.
+    def _solve_reduced(self, K_red, R_red, iteration: int = 0):
+        """Resuelve K_red·δU_red = R_red con fallback SPD→LU y Newton modificado.
 
         Si ``freeze_tangent_after_iter`` está activo, factoriza fresca solo
         durante las primeras N iteraciones del paso y reusa la factorización
         cacheada en las siguientes (ADR 0003 §5 + fase 2).
         """
         if self.freeze_tangent_after_iter is None:
-            # Newton estándar.
             try:
-                return self._linalg.solve(K, R)
+                return self._linalg.solve(K_red, R_red)
             except CholeskyNotPositiveDefiniteError:
-                return self._fallback_to_lu_and_solve(K, R)
+                return self._fallback_to_lu_and_solve(K_red, R_red)
 
-        # Newton modificado.
         threshold = self.freeze_tangent_after_iter
         if iteration < threshold or self._frozen_factor is None:
             try:
-                self._frozen_factor = self._linalg.factorize(K)
+                self._frozen_factor = self._linalg.factorize(K_red)
             except CholeskyNotPositiveDefiniteError:
                 self._is_pd = False
-                self._linalg = self._make_linalg(K.shape[0])
+                self._linalg = self._make_linalg(K_red.shape[0])
                 print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
-                self._frozen_factor = self._linalg.factorize(K)
-        return self._frozen_factor.solve(R)
+                self._frozen_factor = self._linalg.factorize(K_red)
+        return self._frozen_factor.solve(R_red)
 
-    def _fallback_to_lu_and_solve(self, K, R):
+    def _fallback_to_lu_and_solve(self, K_red, R_red):
         print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
         self._is_pd = False
-        self._linalg = self._make_linalg(K.shape[0])
-        return self._linalg.solve(K, R)
+        self._linalg = self._make_linalg(K_red.shape[0])
+        return self._linalg.solve(K_red, R_red)
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U_current = np.zeros(ndof)
-        
+
         print("\n--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
 
-        self._linalg = self._make_linalg(ndof)
+        # Tras reducción el solver algebraico opera sobre n_libre, no sobre ndof.
+        n_free = ndof - len(self.assembler.constraint_set)
+        self._linalg = self._make_linalg(n_free)
 
         load_factor = 0.0
         target_load = 1.0
         delta_lambda = 1.0 / self.num_steps
         step = 0
-        
+
         while load_factor < target_load - 1e-9:
             step += 1
-            
+
             if load_factor + delta_lambda > target_load:
                 delta_lambda = target_load - load_factor
-                
+
             next_load_factor = load_factor + delta_lambda
             print(f"\n[PASO {step}] Intentando Factor de Carga: {next_load_factor:.4f} (Incremento: {delta_lambda:.4f})")
-            
+
             F_ext_step = F_ext_global * next_load_factor
             U_iter = U_current.copy()
             converged = False
-            
+
             for iteration in range(self.max_iter):
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = F_ext_step - F_int_global
-                
-                K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=next_load_factor, U_current=U_iter)
-                
+
+                K_red, R_red, free_dofs, g_inc = self.assembler.reduce(
+                    K_global, R, U_current=U_iter, load_factor=next_load_factor
+                )
+
                 try:
-                    delta_U = self._solve_step(K_global, R, iteration=iteration)
+                    delta_U_red = self._solve_reduced(K_red, R_red, iteration=iteration)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular detectada.")
                     break
 
+                delta_U = self.assembler.expand(delta_U_red, free_dofs, g_inc)
                 U_iter += delta_U
 
-                # Criterio dual: norma de desplazamiento Y norma de residuo de fuerza.
-                # Ambos deben converger para garantizar equilibrio.
-                # En problemas controlados por desplazamientos F_ext_step ≈ 0; usamos
-                # max(|F_ext|, |F_int|) como referencia para no dividir por ~ZERO_TOL.
+                # Criterio dual: norma de desplazamiento Y norma de residuo de
+                # fuerza. En DOFs prescritos R contiene la reacción física (no
+                # un fallo de equilibrio), por eso se evalúa en free_dofs.
                 err_disp = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + ZERO_TOL)
                 ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global), ZERO_TOL)
-                err_force = np.linalg.norm(R) / ref_force
+                err_force = np.linalg.norm(R[free_dofs]) / ref_force
                 error = max(err_disp, err_force)
                 print(f"  Iteración {iteration+1:2d} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
-                
+
                 if error < self.tol:
                     print("  -> CONVERGENCIA ALCANZADA.")
                     self.assembler.commit_all_states()
@@ -174,16 +175,16 @@ class NonlinearSolver:
                     U_current = U_iter
                     load_factor = next_load_factor
                     converged = True
-                    
+
                     if self.adaptive and iteration < 4 and delta_lambda < (1.0 / self.num_steps):
                         delta_lambda = min(delta_lambda * 1.5, 1.0 / self.num_steps)
                         print(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
-                        
+
                     if step_callback:
                         step_callback(step, U_current, load_factor)
-                        
+
                     break
-                    
+
             # Cierre de paso (converja o no): la K_t cambia con U_current,
             # así que la factorización congelada deja de ser válida para el
             # siguiente paso (Newton modificado, ADR 0003 fase 2).
@@ -207,7 +208,7 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100, penalty_value=1e15,
+    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
                  dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,
                  linear_algebra: str = "auto"):
@@ -217,7 +218,6 @@ class ArcLengthSolver:
         self.max_lambda = max_lambda
         self.dl = initial_dl
         self.max_steps = max_steps
-        self.penalty = penalty_value
         # Factores de auto-ajuste de la longitud de arco:
         #   Si converge en < dl_grow_iter_threshold iter → ampliar dl × dl_grow_factor (max: initial_dl × dl_max_factor)
         #   Si converge en > dl_shrink_iter_threshold iter → reducir dl × dl_shrink_factor
@@ -271,40 +271,40 @@ class ArcLengthSolver:
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U_current = np.zeros(ndof)
-        
+
         lambda_curr = 0.0
         step = 0
         dl = self.dl
-        
+
         delta_U_step = np.zeros(ndof)  # Historial del incremento del paso para guiar el arco
-        
+
         print("\n--- INICIANDO SOLVER NO LINEAL (MÉTODO ARC-LENGTH) ---")
 
-        self._linalg = self._make_linalg(ndof)
+        n_free = ndof - len(self.assembler.constraint_set)
+        self._linalg = self._make_linalg(n_free)
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
             print(f"\n[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
-            
+
             U_iter = U_current.copy()
             lambda_iter = lambda_curr
             converged = False
-            
+
             # --- 1. PREDICTOR ---
             K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-            
-            K_t = K_global.copy()
-            F_t = F_ext_ref.copy()
-            
-            K_t, F_t = self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
-            
+
+            K_t_red, F_t_red, free_dofs, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
+
             try:
-                du_t = self._solve(K_t, F_t)
+                du_t_red = self._solve(K_t_red, F_t_red)
             except RuntimeError:
                 print("  -> Error: Matriz singular en predictor. Bisección de dl...")
                 dl /= 2.0
                 continue
-                
+
+            du_t = self.assembler.expand(du_t_red, free_dofs, g_t)
+
             # Determinar el sentido del avance (evitar regresar por donde vinimos)
             sign = 1.0
             if step > 1 and np.dot(delta_U_step, du_t) < 0:
@@ -326,18 +326,20 @@ class ArcLengthSolver:
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = lambda_iter * F_ext_ref - F_int_global
 
-                K_t = K_global.copy()
-                F_t = F_ext_ref.copy()
-
-                K_t, F_t = self.assembler.apply_bcs_to_system(K_t, F_t, penalty_value=self.penalty)
-                K_global, R = self.assembler.apply_bcs_to_system(K_global, R, penalty_value=self.penalty, load_factor=lambda_iter, U_current=U_iter)
+                K_t_red, F_t_red, free_dofs, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
+                K_red, R_red, free_dofs_R, g_R = self.assembler.reduce(
+                    K_global, R, U_current=U_iter, load_factor=lambda_iter
+                )
 
                 try:
-                    du_R = self._solve(K_global, R)
-                    du_t = self._solve(K_t, F_t)
+                    du_R_red = self._solve(K_red, R_red)
+                    du_t_red = self._solve(K_t_red, F_t_red)
                 except RuntimeError:
                     print("  -> Error: Matriz Singular en corrector.")
                     break
+
+                du_R = self.assembler.expand(du_R_red, free_dofs_R, g_R)
+                du_t = self.assembler.expand(du_t_red, free_dofs, g_t)
 
                 if final_step:
                     # Último paso: lambda fijo, solo corrección de desplazamientos (Newton-Raphson puro)
@@ -372,17 +374,17 @@ class ArcLengthSolver:
                 else:
                     dU_iter = dU_iter + dU_update
                 U_iter = U_current + dU_iter
-                
+
                 err_disp = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + ZERO_TOL)
                 ref_force = max(
                     np.linalg.norm(F_ext_ref) * abs(lambda_iter),
                     np.linalg.norm(F_int_global),
                     ZERO_TOL,
                 )
-                err_force = np.linalg.norm(R) / ref_force
+                err_force = np.linalg.norm(R[free_dofs_R]) / ref_force
                 error = max(err_disp, err_force)
                 print(f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
-                
+
                 if error < self.tol:
                     print(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
                     self.assembler.commit_all_states()
@@ -394,16 +396,16 @@ class ArcLengthSolver:
                         dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
                     elif iteration > self.dl_shrink_iter_threshold:
                         dl *= self.dl_shrink_factor
-                    
+
                     if step_callback:
                         step_callback(step, U_current, lambda_curr)
-                        
+
                     break
-                    
+
             if not converged:
                 dl *= 0.5
                 print(f"  -> Bisección: reduciendo longitud de arco a {dl:.4e}")
                 if dl < 1e-6 * self.dl:
                     raise RuntimeError("Arc-Length fracasó irreparablemente.")
-                    
+
         return U_current

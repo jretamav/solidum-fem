@@ -697,11 +697,11 @@ materials:
 % ==========================================
 
 \section{\texttt{LinearSolver} --- solución directa lineal}
-Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ en un único \texttt{spsolve}. Aplicación de condiciones de frontera por penalidad.
+Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ en un único \texttt{spsolve}. Las condiciones de Dirichlet se imponen por eliminación directa (ADR 0004): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.
 
 \begin{itemize}
     \item \textbf{Cuándo usarlo}: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
-    \item \textbf{Parámetros}: \texttt{penalty\_value} (default \texttt{1.0e15}).
+    \item \textbf{Parámetros}: \texttt{linear\_algebra} (default \texttt{auto}; ADR 0003 \S 4).
     \item \textbf{No aplica}: cualquier no-linealidad material (daño, plasticidad, cable) o geométrica (corotacional). Producirá resultados inconsistentes.
 \end{itemize}
 
@@ -732,7 +732,7 @@ solver:
   adaptive: true
 \end{lstlisting}
 
-\textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{penalty\_value}, \texttt{min\_delta\_lambda}.
+\textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}.
 
 \textbf{Limitación}: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para esos casos $\to$ \texttt{ArcLengthSolver}.
 

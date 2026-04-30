@@ -52,8 +52,8 @@ Cada material declara cuál de sus variables internas es la "principal" para vis
 ### 12. Ensamblaje sparse con cache COO
 El primer ensamblaje calcula los pares (i, j) de cada contribución elemental y los guarda. En las iteraciones siguientes, solo se reescriben los `data` sobre la misma topología — sin recomputar índices. Análogo al patrón "compute once, reuse" típico en FEM compilado, pero implementado sobre `scipy.sparse`.
 
-### 13. Penalidad vectorizada para Dirichlet
-Las BCs Dirichlet se imponen sumando un valor grande a la diagonal de los DOFs restringidos (método de penalidad). En lugar de un loop por BC, se construye un vector sparse de penalizaciones y se suma a `K` con `scipy.sparse.diags`. Hot loop evitado.
+### 13. Eliminación directa de Dirichlet (ADR 0004)
+Las condiciones de frontera Dirichlet se imponen por eliminación directa del sistema, no por penalización. Toda restricción se expresa como afín `u_s = g_s + Σ α_si·u_mi` y se acumula en un `ConstraintSet` (`fenix/bc/constraints.py`). El `Assembler` produce el par `(T, g)` tal que `u = T·u_libre + g`; el solver ve siempre el sistema reducido `K_red·u_libre = F_red` con `K_red = TᵀKT`, `F_red = Tᵀ(F − K·g)`. La imposición es exacta a redondeo (no aproximada como en penalización), preserva la simetría y positividad de `K`, y abre la puerta a MPC lineales sin tocar el solver. Las reacciones se calculan post-hoc como `R = F_int(U) − F_applied` evaluado en los DOFs prescritos.
 
 ### 14. Criterio de convergencia dual
 Newton-Raphson termina cuando **ambos** criterios están bajo tolerancia: norma del incremento de desplazamientos (relativa) y norma del residuo de fuerza (relativa). Cualquiera por separado puede dar falsos positivos en problemas con softening o con cargas casi nulas.

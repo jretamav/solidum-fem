@@ -132,11 +132,13 @@ class {{Name}}:
     """{{Descripción de una línea}}."""
 
     def __init__(self, assembler, tol=CONVERGENCE_TOL, {{otros_params}},
-                 penalty_value=1e15):
+                 linear_algebra: str = "auto"):
         self.assembler = assembler
         self.tol = tol
-        self.penalty = penalty_value
-        # TODO: parámetros adicionales
+        self.linear_algebra = linear_algebra
+        # TODO: parámetros adicionales. Imposición de Dirichlet: usa
+        # assembler.reduce(K, F, U_current=..., load_factor=...) y
+        # assembler.expand(u_red, free_dofs, g) — eliminación directa (ADR 0004).
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain

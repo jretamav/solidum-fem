@@ -30,9 +30,9 @@ Cada elemento mantiene un objeto `ElementState` con dos copias de las variables 
 
 El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental y los almacena en formato Coordinate (COO). En las iteraciones siguientes, se reescribe únicamente el vector de datos sobre la misma topología, sin recalculo de índices. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre `scipy.sparse`.
 
-## Penalización vectorizada para condiciones de Dirichlet
+## Eliminación directa de condiciones de Dirichlet
 
-Las condiciones de contorno de tipo Dirichlet se imponen mediante la suma de un valor grande sobre la diagonal de los DOF restringidos. En lugar de un bucle iterativo por condición, se construye un vector disperso de penalizaciones y se suma a `K` mediante `scipy.sparse.diags`. Se evita así un bucle crítico para el rendimiento.
+Las condiciones de contorno de tipo Dirichlet se imponen por eliminación directa (ADR 0004). Toda restricción se expresa en forma afín `u_s = g_s + Σ α_si · u_mi` y se acumula en un `ConstraintSet` (subpaquete `fenix.bc`). El ensamblador construye un operador disperso `T` que selecciona los DOF libres y un vector `g` con los términos prescritos, de modo que `u = T · u_libre + g`. El sistema entregado al subsistema algebraico es `K_red = TᵀKT`, `F_red = Tᵀ(F − K · g)`. La imposición es exacta a redondeo, preserva la simetría y la positividad definida de `K`, y deja el sistema reducido apto para solvers iterativos (CG, GMRES). La forma afín cubre además, sin cambios en el solver, los casos de asentamiento prescrito y, en una fase posterior, las restricciones multipunto lineales (uniones rígidas, periodicidad, simetrías oblicuas).
 
 ## Compilación Just-In-Time mediante Numba
 

@@ -152,9 +152,10 @@ def build_solve_result(
 
     _, F_int = assembler.assemble_non_linear_system(U)
 
-    if not getattr(assembler, "_bc_built", False):
-        assembler._build_bc_arrays()
-    bc_dofs = assembler._bc_dofs
+    # Reacciones por residuo en DOFs prescritos (ADR 0004 §3). En equilibrio
+    # F_int[free] = F_applied[free]; en DOFs restringidos la diferencia es la
+    # reacción que el apoyo ejerce sobre el sistema.
+    bc_dofs = assembler.constraint_set.slave_dofs
 
     R = np.zeros(ndof)
     if bc_dofs.size > 0:

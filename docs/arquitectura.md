@@ -70,9 +70,12 @@
 5. **`Solver`** (en cada iteración Newton-Raphson o paso de arc-length):
    - Pide a cada elemento su `K_local` y `f_internal` (vía `ElementState` trial).
    - **`Assembler`** ensambla `K_global` sparse usando topología COO cacheada.
-   - Aplica BCs Dirichlet por método de penalidad (vectorizado).
+   - **`Assembler.reduce(K, F, ...)`** elimina los DOFs prescritos del sistema
+     (ADR 0004): construye `T, g` tal que `u = T·u_libre + g` y devuelve
+     `K_red = TᵀKT`, `F_red = Tᵀ(F − K·g)`. Imposición exacta, sin penalización.
    - **`linalg.select_solver(props)`** elige el backend algebraico adecuado
-     (Cholesky para SPD, LU general en el resto) y resuelve `K·δU = R`.
+     (Cholesky para SPD, LU general en el resto) y resuelve `K_red·δU_red = R_red`.
+   - **`Assembler.expand(δU_red, …)`** reconstruye el incremento completo.
    - Calcula residuo, evalúa convergencia (criterio dual: desplazamientos + fuerza).
    - Si converge el paso → `commit_state()` en cada elemento (trial → committed).
 6. **`VtkExporter`** escribe el resultado del paso.

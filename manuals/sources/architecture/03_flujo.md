@@ -22,9 +22,9 @@ El solver toma el control. Su comportamiento depende del tipo seleccionado (line
 
 1. Se solicita a cada elemento su matriz de rigidez tangente local `K_local` y su vector de fuerzas internas `f_internal`. El elemento las obtiene a partir del estado *trial* de sus puntos de Gauss y mediante una llamada al material con la deformación correspondiente.
 2. El ensamblador construye la matriz global `K_global` y el vector global utilizando topología COO en caché: en la primera invocación se calculan los pares de índices; en las invocaciones siguientes se reescribe únicamente el vector de datos sobre la misma topología.
-3. Se imponen las condiciones de Dirichlet mediante el método de penalización en forma vectorizada.
-4. El subsistema algebraico resuelve el sistema lineal `K · δU = R`. Aquí interviene el despachador (ADR 0003): se inspeccionan las propiedades de `K` (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general).
-5. Se evalúa la convergencia mediante un criterio dual: norma del incremento de desplazamientos y norma del residuo de fuerza, ambas en valor relativo. La convergencia del paso requiere que ambas normas se sitúen por debajo de la tolerancia.
+3. Se imponen las condiciones de Dirichlet por eliminación directa (ADR 0004). Toda restricción se expresa en forma afín `u_s = g_s + Σ α_si · u_mi` y se acumula en un `ConstraintSet`; el ensamblador produce el par `(T, g)` tal que `u = T · u_libre + g` y entrega al solver el sistema reducido `K_red = TᵀKT`, `F_red = Tᵀ(F − K · g)`. La imposición es exacta a redondeo y preserva la simetría y la positividad de la matriz original.
+4. El subsistema algebraico resuelve el sistema reducido `K_red · δU_libre = F_red`. Aquí interviene el despachador (ADR 0003): se inspeccionan las propiedades de `K_red` (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general). El ensamblador reconstruye después el incremento completo mediante `expand`.
+5. Se evalúa la convergencia mediante un criterio dual: norma del incremento de desplazamientos y norma del residuo de fuerza, ambas en valor relativo. El residuo de fuerza se evalúa únicamente sobre los DOF libres, dado que en los DOF prescritos el residuo contiene la reacción física, no un fallo de equilibrio. La convergencia del paso requiere que ambas normas se sitúen por debajo de la tolerancia.
 
 ## 5. Cierre del paso
 

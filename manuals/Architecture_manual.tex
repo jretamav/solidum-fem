@@ -323,9 +323,9 @@ El solver toma el control. Su comportamiento depende del tipo seleccionado (line
 \begin{enumerate}
   \item Se solicita a cada elemento su matriz de rigidez tangente local \texttt{K\_local} y su vector de fuerzas internas \texttt{f\_internal}. El elemento las obtiene a partir del estado \textit{trial} de sus puntos de Gauss y mediante una llamada al material con la deformación correspondiente.
   \item El ensamblador construye la matriz global \texttt{K\_global} y el vector global utilizando topología COO en caché: en la primera invocación se calculan los pares de índices; en las invocaciones siguientes se reescribe únicamente el vector de datos sobre la misma topología.
-  \item Se imponen las condiciones de Dirichlet mediante el método de penalización en forma vectorizada.
-  \item El subsistema algebraico resuelve el sistema lineal \texttt{K \ensuremath{\cdot} \ensuremath{\delta}U = R}. Aquí interviene el despachador (\hyperref[adr:0003]{ADR 0003}): se inspeccionan las propiedades de \texttt{K} (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general).
-  \item Se evalúa la convergencia mediante un criterio dual: norma del incremento de desplazamientos y norma del residuo de fuerza, ambas en valor relativo. La convergencia del paso requiere que ambas normas se sitúen por debajo de la tolerancia.
+  \item Se imponen las condiciones de Dirichlet por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet}; el ensamblador produce el par \texttt{(T, g)} tal que \texttt{u = T \ensuremath{\cdot} u\_libre + g} y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad de la matriz original.
+  \item El subsistema algebraico resuelve el sistema reducido \texttt{K\_red \ensuremath{\cdot} \ensuremath{\delta}U\_libre = F\_red}. Aquí interviene el despachador (\hyperref[adr:0003]{ADR 0003}): se inspeccionan las propiedades de \texttt{K\_red} (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general). El ensamblador reconstruye después el incremento completo mediante \texttt{expand}.
+  \item Se evalúa la convergencia mediante un criterio dual: norma del incremento de desplazamientos y norma del residuo de fuerza, ambas en valor relativo. El residuo de fuerza se evalúa únicamente sobre los DOF libres, dado que en los DOF prescritos el residuo contiene la reacción física, no un fallo de equilibrio. La convergencia del paso requiere que ambas normas se sitúen por debajo de la tolerancia.
 \end{enumerate}
 
 \section{5. Cierre del paso}
@@ -648,9 +648,9 @@ Cada elemento mantiene un objeto \texttt{ElementState} con dos copias de las var
 
 El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental y los almacena en formato Coordinate (COO). En las iteraciones siguientes, se reescribe únicamente el vector de datos sobre la misma topología, sin recalculo de índices. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre \texttt{scipy.sparse}.
 
-\section{Penalización vectorizada para condiciones de Dirichlet}
+\section{Eliminación directa de condiciones de Dirichlet}
 
-Las condiciones de contorno de tipo Dirichlet se imponen mediante la suma de un valor grande sobre la diagonal de los DOF restringidos. En lugar de un bucle iterativo por condición, se construye un vector disperso de penalizaciones y se suma a \texttt{K} mediante \texttt{scipy.sparse.diags}. Se evita así un bucle crítico para el rendimiento.
+Las condiciones de contorno de tipo Dirichlet se imponen por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (subpaquete \texttt{fenix.bc}). El ensamblador construye un operador disperso \texttt{T} que selecciona los DOF libres y un vector \texttt{g} con los términos prescritos, de modo que \texttt{u = T \ensuremath{\cdot} u\_libre + g}. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo, preserva la simetría y la positividad definida de \texttt{K}, y deja el sistema reducido apto para solvers iterativos (CG, GMRES). La forma afín cubre además, sin cambios en el solver, los casos de asentamiento prescrito y, en una fase posterior, las restricciones multipunto lineales (uniones rígidas, periodicidad, simetrías oblicuas).
 
 \section{Compilación Just-In-Time mediante Numba}
 
@@ -1132,6 +1132,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{\texttt{Domain}}. Objeto central de la capa de dominio que mantiene la lista de nodos, la conectividad de los elementos, la numeración global de los grados de libertad y, tras la solución, el agregado \texttt{SolveResult}.
 
+\textbf{Eliminación directa (de condiciones de Dirichlet)}. Estrategia de imposición de condiciones esenciales que retira los grados de libertad prescritos del sistema antes de resolverlo, en oposición a la penalización (que añade un valor grande a la diagonal) y a los multiplicadores de Lagrange (que amplían el sistema). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (\texttt{fenix/bc/}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}, y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad definida de la matriz original. Ver \hyperref[adr:0004]{ADR 0004}.
+
 \textbf{Elemento}. Entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asignado. Sus contratos declarativos están en \texttt{fenix/elements/}. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{\texttt{ElementState}}. Objeto que encapsula las dos copias de las variables internas de cada elemento: una copia \textit{trial} (la que se explora durante las iteraciones del solver) y otra comprometida (la del último paso convergido). Ver \hyperref[cap:5]{capítulo 5}.
@@ -1151,8 +1153,6 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en \texttt{fenix/materials/}. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Fenix FEM trabaja en aproximación de desplazamientos.
-
-\textbf{Método de penalización (para condiciones de Dirichlet)}. Estrategia de imposición de condiciones de contorno esenciales que suma un valor grande a la diagonal de los grados de libertad restringidos. Sustituye al método de eliminación o al método de multiplicadores de Lagrange. Implementación vectorizada en Fenix FEM.
 
 \textbf{Notación de Voigt}. Representación de un tensor simétrico de segundo orden como un vector. En 2D, los tres componentes son las dos componentes normales y la componente de cortante (Voigt-3); en 3D, los seis componentes son las tres normales y las tres de cortante (Voigt-6).
 
@@ -1358,8 +1358,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 30 de abril de 2026, 12:29\\[0.5em]
-Commit Git: \texttt{743f8cb} (con cambios sin confirmar)\\[1em]
+Compilado el 30 de abril de 2026, 15:43\\[0.5em]
+Commit Git: \texttt{a7ad4d5} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
