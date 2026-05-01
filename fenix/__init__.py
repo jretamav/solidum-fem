@@ -1,5 +1,10 @@
 # fenix_fem/fenix/__init__.py
 
+# 0. Logging configurable (ADR 0005). Inicializa el logger raíz "fenix" antes
+#    de cualquier otro import, para que los módulos pidan sus loggers hijos
+#    sobre una configuración ya consistente.
+from fenix.logging import get_logger, set_log_level
+
 # 1. Auto-descubrimiento: importa todos los materiales/elementos/solvers/cuadraturas,
 #    activando los decoradores @Registry.register que los inscriben automáticamente.
 #    Añadir un archivo nuevo en fenix/materials/ o fenix/elements/ es suficiente:

@@ -1,6 +1,7 @@
 # fenix_fem/fenix/math/solvers.py
 import numpy as np
 from fenix.constants import CONVERGENCE_TOL, ZERO_TOL
+from fenix.logging import get_logger
 from fenix.registry import SolverRegistry
 from fenix.math.linalg import LUSolver, StiffnessProperties, select_solver
 
@@ -9,6 +10,9 @@ try:
 except ImportError:
     class CholeskyNotPositiveDefiniteError(Exception):
         """Placeholder cuando scikit-sparse no está instalado (nunca se lanza)."""
+
+
+_log = get_logger("solvers")
 
 
 def _domain_is_symmetric(domain) -> bool:
@@ -30,7 +34,7 @@ class LinearSolver:
         self.linear_algebra = linear_algebra
 
     def solve(self, F_ext_global: np.ndarray) -> np.ndarray:
-        print("\n--- INICIANDO SOLVER LINEAL ---")
+        _log.info("--- INICIANDO SOLVER LINEAL ---")
         self.assembler.assemble_system()
         K_global = self.assembler.K_global.copy()
         F = F_ext_global.copy()
@@ -48,11 +52,11 @@ class LinearSolver:
             u_red = linalg.solve(K_red, F_red)
         except CholeskyNotPositiveDefiniteError:
             # Fallback automático SPD→LU (ADR 0003 §5).
-            print("  -> Cholesky reportó no-positividad. Degradando a LU.")
+            _log.warning("Cholesky reportó no-positividad. Degradando a LU.")
             u_red = LUSolver().solve(K_red, F_red)
 
         U = self.assembler.expand(u_red, T, g_full)
-        print("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
+        _log.info("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
 
 @SolverRegistry.register
@@ -103,12 +107,12 @@ class NonlinearSolver:
             except CholeskyNotPositiveDefiniteError:
                 self._is_pd = False
                 self._linalg = self._make_linalg(K_red.shape[0])
-                print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
+                _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
                 self._frozen_factor = self._linalg.factorize(K_red)
         return self._frozen_factor.solve(R_red)
 
     def _fallback_to_lu_and_solve(self, K_red, R_red):
-        print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
+        _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
         self._is_pd = False
         self._linalg = self._make_linalg(K_red.shape[0])
         return self._linalg.solve(K_red, R_red)
@@ -118,7 +122,7 @@ class NonlinearSolver:
         ndof = domain.total_dofs
         U_current = np.zeros(ndof)
 
-        print("\n--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
+        _log.info("--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
 
         # Tras reducción el solver algebraico opera sobre n_libre, no sobre ndof.
         cs = self.assembler.constraint_set
@@ -138,7 +142,7 @@ class NonlinearSolver:
                 delta_lambda = target_load - load_factor
 
             next_load_factor = load_factor + delta_lambda
-            print(f"\n[PASO {step}] Intentando Factor de Carga: {next_load_factor:.4f} (Incremento: {delta_lambda:.4f})")
+            _log.info(f"[PASO {step}] Intentando Factor de Carga: {next_load_factor:.4f} (Incremento: {delta_lambda:.4f})")
 
             F_ext_step = F_ext_global * next_load_factor
             U_iter = U_current.copy()
@@ -155,7 +159,7 @@ class NonlinearSolver:
                 try:
                     delta_U_red = self._solve_reduced(K_red, R_red, iteration=iteration)
                 except RuntimeError:
-                    print("  -> Error: Matriz Singular detectada.")
+                    _log.error("Matriz Singular detectada.")
                     break
 
                 delta_U = self.assembler.expand(delta_U_red, T_op, g_inc)
@@ -168,10 +172,10 @@ class NonlinearSolver:
                 ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global), ZERO_TOL)
                 err_force = np.linalg.norm(R[free_dofs]) / ref_force
                 error = max(err_disp, err_force)
-                print(f"  Iteración {iteration+1:2d} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
+                _log.info(f"  Iteración {iteration+1:2d} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
 
                 if error < self.tol:
-                    print("  -> CONVERGENCIA ALCANZADA.")
+                    _log.info("  -> CONVERGENCIA ALCANZADA.")
                     self.assembler.commit_all_states()
 
                     U_current = U_iter
@@ -180,7 +184,7 @@ class NonlinearSolver:
 
                     if self.adaptive and iteration < 4 and delta_lambda < (1.0 / self.num_steps):
                         delta_lambda = min(delta_lambda * 1.5, 1.0 / self.num_steps)
-                        print(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
+                        _log.info(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
 
                     if step_callback:
                         step_callback(step, U_current, load_factor)
@@ -195,7 +199,7 @@ class NonlinearSolver:
             if not converged:
                 if self.adaptive:
                     delta_lambda /= 2.0
-                    print(f"  -> NO CONVERGIÓ. Bisección: reduciendo incremento a {delta_lambda:.4f}")
+                    _log.warning(f"NO CONVERGIÓ. Bisección: reduciendo incremento a {delta_lambda:.4f}")
                     if delta_lambda < self.min_delta_lambda:
                         raise RuntimeError(f"El incremento de carga ({delta_lambda:.2e}) cayó por debajo del mínimo ({self.min_delta_lambda:.2e}). El solver ha divergido.")
                 else:
@@ -251,7 +255,7 @@ class ArcLengthSolver:
         try:
             return self._linalg.solve(K, b)
         except CholeskyNotPositiveDefiniteError:
-            print("  -> Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
+            _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
             self._linalg = LUSolver()
             return self._linalg.solve(K, b)
 
@@ -280,7 +284,7 @@ class ArcLengthSolver:
 
         delta_U_step = np.zeros(ndof)  # Historial del incremento del paso para guiar el arco
 
-        print("\n--- INICIANDO SOLVER NO LINEAL (MÉTODO ARC-LENGTH) ---")
+        _log.info("--- INICIANDO SOLVER NO LINEAL (MÉTODO ARC-LENGTH) ---")
 
         cs = self.assembler.constraint_set
         n_free = ndof - len(cs)
@@ -288,7 +292,7 @@ class ArcLengthSolver:
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
-            print(f"\n[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
+            _log.info(f"[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
 
             U_iter = U_current.copy()
             lambda_iter = lambda_curr
@@ -302,7 +306,7 @@ class ArcLengthSolver:
             try:
                 du_t_red = self._solve(K_t_red, F_t_red)
             except RuntimeError:
-                print("  -> Error: Matriz singular en predictor. Bisección de dl...")
+                _log.error("Matriz singular en predictor. Bisección de dl...")
                 dl /= 2.0
                 continue
 
@@ -338,7 +342,7 @@ class ArcLengthSolver:
                     du_R_red = self._solve(K_red, R_red)
                     du_t_red = self._solve(K_t_red, F_t_red)
                 except RuntimeError:
-                    print("  -> Error: Matriz Singular en corrector.")
+                    _log.error("Matriz Singular en corrector.")
                     break
 
                 du_R = self.assembler.expand(du_R_red, T_R, g_R)
@@ -357,7 +361,7 @@ class ArcLengthSolver:
 
                     det = b**2 - 4.0 * a * c
                     if det < 0:
-                        print("  -> Raíces imaginarias. La solución diverge del arco.")
+                        _log.error("Raíces imaginarias. La solución diverge del arco.")
                         break
 
                     ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
@@ -386,10 +390,10 @@ class ArcLengthSolver:
                 )
                 err_force = np.linalg.norm(R[cs.free_dofs(ndof)]) / ref_force
                 error = max(err_disp, err_force)
-                print(f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
+                _log.info(f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
 
                 if error < self.tol:
-                    print(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
+                    _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
                     self.assembler.commit_all_states()
 
                     U_current = U_iter; lambda_curr = lambda_iter; delta_U_step = dU_iter
@@ -407,7 +411,7 @@ class ArcLengthSolver:
 
             if not converged:
                 dl *= 0.5
-                print(f"  -> Bisección: reduciendo longitud de arco a {dl:.4e}")
+                _log.warning(f"Bisección: reduciendo longitud de arco a {dl:.4e}")
                 if dl < 1e-6 * self.dl:
                     raise RuntimeError("Arc-Length fracasó irreparablemente.")
 

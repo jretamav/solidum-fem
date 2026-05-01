@@ -19,8 +19,11 @@ import numpy as np
 from fenix.core.element import Element
 from fenix.core.material import Material
 from fenix.core.node import Node
+from fenix.logging import get_logger
 from fenix.registry import ElementRegistry
 from fenix.results import ElementForces
+
+_log = get_logger("elements.frame")
 
 
 def _frame2d_forces_from_local(F_local: np.ndarray) -> ElementForces:
@@ -211,9 +214,10 @@ class Frame2DTimoshenko(Element):
             self.nu = material.nu
         else:
             if nu == 0.3:
-                print(f"  [!] ADVERTENCIA Frame2DTimoshenko (id={element_id}): "
-                      f"el material no expone 'nu'. Se usará nu={nu} (default). "
-                      f"Especifique 'nu' en el YAML del elemento si esto es incorrecto.")
+                _log.warning(
+                    f"Frame2DTimoshenko (id={element_id}): el material no expone 'nu'. "
+                    f"Se usará nu={nu} (default). Especifique 'nu' en el YAML del elemento si esto es incorrecto."
+                )
             self.nu = nu
 
         self.L0, self.c, self.s, self.T = self._build_geometry(self.nodes)

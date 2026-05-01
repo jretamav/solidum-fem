@@ -1,9 +1,12 @@
 # fenix_fem/fenix/core/domain.py
 from typing import Dict, Optional, TYPE_CHECKING
 from fenix.core.node import Node
+from fenix.logging import get_logger
 
 if TYPE_CHECKING:
     from fenix.results import SolveResult
+
+_log = get_logger("core.domain")
 
 
 class Domain:
@@ -79,4 +82,4 @@ class Domain:
                 eq_number += 1
         self.total_dofs = eq_number
         if verbose:
-            print(f"Numeración completada. Grados de libertad totales: {self.total_dofs}")
+            _log.info(f"Numeración completada. Grados de libertad totales: {self.total_dofs}")

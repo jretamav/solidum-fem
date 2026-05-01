@@ -1,6 +1,7 @@
 # fenix_fem/fenix/utils/gmsh_parser.py
 import numpy as np
 from fenix.core.domain import Domain
+from fenix.logging import get_logger
 from fenix.registry import ElementRegistry
 from fenix.core.material import Material
 
@@ -8,6 +9,8 @@ try:
     import meshio
 except ImportError:
     raise ImportError("Falta la librería 'meshio'. Instálala con: pip install meshio")
+
+_log = get_logger("parsers.gmsh")
 
 # Mapeo de tipos de elemento de Gmsh/meshio a los nombres registrados en Fenix FEM.
 # Esto permite extender el soporte a nuevos elementos (ej. 'triangle6': 'Tri6')
@@ -30,7 +33,7 @@ class GmshParser:
         Lee el archivo de malla y retorna un objeto Domain poblado.
         Permite mapear Physical Groups a diferentes materiales y espesores.
         """
-        print(f"Leyendo malla Gmsh desde: {self.filepath} ...")
+        _log.info(f"Leyendo malla Gmsh desde: {self.filepath} ...")
         mesh = meshio.read(self.filepath, file_format="gmsh")
         
         # Extraer Grupos Físicos (Physical Groups)
@@ -59,7 +62,7 @@ class GmshParser:
             # Pasamos solo X e Y para análisis 2D
             self.domain.add_node(node_id, [pt[0], pt[1]])
             
-        print(f"  -> Nodos importados: {len(self.domain.nodes)}")
+        _log.info(f"  -> Nodos importados: {len(self.domain.nodes)}")
             
         # 2. Extraer y crear los Elementos (Filtramos solo cuadriláteros)
         elem_id_counter = 1
@@ -107,5 +110,5 @@ class GmshParser:
         if len(self.domain.elements) == 0:
             raise RuntimeError("Error crítico: No se importó ningún elemento. Revisa que tu malla tenga superficies.")
             
-        print(f"  -> Elementos (Solid2D) importados: {len(self.domain.elements)}")
+        _log.info(f"  -> Elementos (Solid2D) importados: {len(self.domain.elements)}")
         return self.domain

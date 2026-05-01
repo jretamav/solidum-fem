@@ -6,7 +6,10 @@ import os
 import numpy as np
 from fenix.core.domain import Domain
 from fenix.autodiscover import initialize as _ensure_registries_initialized
+from fenix.logging import get_logger
 from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
+
+_log = get_logger("parsers.yaml")
 
 # Idempotente: garantiza que los registries estén poblados aunque se importe
 # este módulo sin pasar por `fenix/__init__.py` (p. ej., en tests aislados).
@@ -59,13 +62,12 @@ class YamlParser:
     def _get_quadrature(self, rule: str) -> tuple:
         """Convierte un string del YAML a una regla de cuadratura inyectable."""
         if rule == "1x1":
-            print("  [!] ADVERTENCIA: Se ha seleccionado integración reducida (1x1).")
-            print("      Tenga cuidado con posibles modos de energía nula (Hourglassing).")
-        
+            _log.warning("Integración reducida (1x1) seleccionada. Cuidado con modos de energía nula (hourglass).")
+
         return QuadratureRegistry.get(rule)
 
     def parse(self) -> Domain:
-        print(f"Leyendo modelo desde: {self.filepath} ...")
+        _log.info(f"Leyendo modelo desde: {self.filepath} ...")
         with open(self.filepath, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
 

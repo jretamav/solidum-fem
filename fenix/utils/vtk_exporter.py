@@ -3,11 +3,14 @@ import numpy as np
 from fenix.core.domain import Domain
 from fenix.elements.solid_2d import Quad4, Tri3
 from fenix.elements.truss import Truss2D, Truss3D
+from fenix.logging import get_logger
 
 try:
     import meshio
 except ImportError:
     meshio = None
+
+_log = get_logger("exporters.vtk")
 
 def _extract_state_scalar(sv: dict, primary_key: str = None) -> float:
     """Extrae un escalar del dict de variables de estado de un punto de integración.
@@ -33,7 +36,7 @@ class VtkExporter:
 
     def export(self, filepath: str, U: np.ndarray = None, F_ext: np.ndarray = None, nodal_vars: list = None, elem_vars: list = None):
         if meshio is None:
-            print("  -> Advertencia: La librería 'meshio' no está instalada. Omita la exportación VTK.")
+            _log.warning("La librería 'meshio' no está instalada. Omitiendo exportación VTK.")
             return
             
         if U is None:

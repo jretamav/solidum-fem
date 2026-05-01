@@ -14,8 +14,11 @@ import numpy as np
 from fenix.core.element import Element
 from fenix.core.material import Material
 from fenix.core.node import Node
+from fenix.logging import get_logger
 from fenix.registry import ElementRegistry
 from fenix.results import ElementForces
+
+_log = get_logger("elements.frame3d")
 
 
 @ElementRegistry.register
@@ -71,9 +74,10 @@ class Frame3D(Element):
             self.nu = material.nu
         else:
             if nu == 0.3:
-                print(f"  [!] ADVERTENCIA Frame3D (id={element_id}): el material "
-                      f"no expone 'nu'. Se usará nu={nu} (default). Especifique "
-                      f"'nu' en el YAML si esto es incorrecto.")
+                _log.warning(
+                    f"Frame3D (id={element_id}): el material no expone 'nu'. "
+                    f"Se usará nu={nu} (default). Especifique 'nu' en el YAML si esto es incorrecto."
+                )
             self.nu = nu
 
         self.L0, self.lam, self.T = self._build_local_frame(self.nodes, ref_vector,
@@ -101,10 +105,10 @@ class Frame3D(Element):
         if ref_vector is None:
             if abs(x_local[2]) > cls._VERTICAL_COS_TOL:
                 v_ref = np.array([1.0, 0.0, 0.0])
-                print(f"  [!] ADVERTENCIA Frame3D (id={element_id}): barra "
-                      f"cercanamente vertical sin ref_vector explícito. Se usa "
-                      f"fallback [1, 0, 0]. Especifique ref_vector si la "
-                      f"orientación de la sección debe ser otra.")
+                _log.warning(
+                    f"Frame3D (id={element_id}): barra cercanamente vertical sin ref_vector explícito. "
+                    f"Se usa fallback [1, 0, 0]. Especifique ref_vector si la orientación de la sección debe ser otra."
+                )
             else:
                 v_ref = np.array([0.0, 0.0, 1.0])
         else:
