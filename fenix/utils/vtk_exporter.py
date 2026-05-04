@@ -24,7 +24,7 @@ Campos nodales
 """
 import numpy as np
 from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad4, Tri3
+from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from fenix.logging import get_logger
 
 try:
@@ -132,27 +132,36 @@ class VtkExporter:
                     if node.dofs[dof_name] < len(U):
                         rotations[idx, axis] = U[node.dofs[dof_name]]
 
-        # Conectividad por tipo de celda VTK. Cualquier elemento con 2 nodos
-        # se proyecta a `line`, lo que cubre trusses, cables y frames de
-        # cualquier dimensión sin enumerar las clases una a una.
+        # Conectividad por tipo de celda VTK. Cualquier elemento de 2 nodos
+        # se proyecta a `line`. Quad4/Tri3 → quad/triangle. Quad8/Quad9 →
+        # quad8/quad9. Tri6 → triangle6. Para los de orden alto, los σ
+        # promedios alimentan tanto el cell_data como el suavizado nodal.
         quad_conn, tri_conn, line_conn = [], [], []
         quad_state, tri_state, line_state = [], [], []
         quad_stresses, tri_stresses = [], []
+        quad8_conn, quad9_conn, tri6_conn = [], [], []
+        quad8_state, quad9_state, tri6_state = [], [], []
+        quad8_stresses, quad9_stresses, tri6_stresses = [], [], []
 
         for elem in self.domain.elements.values():
             conn = [node_map[n.id] for n in elem.nodes]
             state_val = _state_var_avg(elem)
 
-            if isinstance(elem, Quad4):
-                quad_conn.append(conn)
-                quad_state.append(state_val)
-                s_avg = _avg_stress_from_elem(elem)
-                quad_stresses.append(_voigt2d_to_components(s_avg))
-            elif isinstance(elem, Tri3):
-                tri_conn.append(conn)
-                tri_state.append(state_val)
-                s_avg = _avg_stress_from_elem(elem)
-                tri_stresses.append(_voigt2d_to_components(s_avg))
+            if type(elem) is Quad4:
+                quad_conn.append(conn); quad_state.append(state_val)
+                quad_stresses.append(_voigt2d_to_components(_avg_stress_from_elem(elem)))
+            elif type(elem) is Tri3:
+                tri_conn.append(conn); tri_state.append(state_val)
+                tri_stresses.append(_voigt2d_to_components(_avg_stress_from_elem(elem)))
+            elif type(elem) is Quad8:
+                quad8_conn.append(conn); quad8_state.append(state_val)
+                quad8_stresses.append(_voigt2d_to_components(_avg_stress_from_elem(elem)))
+            elif type(elem) is Quad9:
+                quad9_conn.append(conn); quad9_state.append(state_val)
+                quad9_stresses.append(_voigt2d_to_components(_avg_stress_from_elem(elem)))
+            elif type(elem) is Tri6:
+                tri6_conn.append(conn); tri6_state.append(state_val)
+                tri6_stresses.append(_voigt2d_to_components(_avg_stress_from_elem(elem)))
             elif len(elem.nodes) == 2:
                 line_conn.append(conn)
                 line_state.append(state_val)
@@ -180,6 +189,19 @@ class VtkExporter:
             sxx_arrays.append(t_s[:, 0]); syy_arrays.append(t_s[:, 1])
             txy_arrays.append(t_s[:, 2]); vm_arrays.append(t_s[:, 3])
 
+        for cell_name, ho_conn, ho_state, ho_stress in (
+            ("quad8",     quad8_conn, quad8_state, quad8_stresses),
+            ("quad9",     quad9_conn, quad9_state, quad9_stresses),
+            ("triangle6", tri6_conn,  tri6_state,  tri6_stresses),
+        ):
+            if not ho_conn:
+                continue
+            cells.append((cell_name, np.array(ho_conn, dtype=int)))
+            state_arrays.append(np.array(ho_state, dtype=float))
+            arr = np.array(ho_stress, dtype=float)
+            sxx_arrays.append(arr[:, 0]); syy_arrays.append(arr[:, 1])
+            txy_arrays.append(arr[:, 2]); vm_arrays.append(arr[:, 3])
+
         if line_conn:
             cells.append(("line", np.array(line_conn, dtype=int)))
             state_arrays.append(np.array(line_state, dtype=float))
@@ -205,6 +227,9 @@ class VtkExporter:
             n_nodes,
             (quad_conn, quad_stresses),
             (tri_conn, tri_stresses),
+            (quad8_conn, quad8_stresses),
+            (quad9_conn, quad9_stresses),
+            (tri6_conn,  tri6_stresses),
         )
         if nodal_sigma is not None:
             sxx_n, syy_n, txy_n, vm_n = nodal_sigma

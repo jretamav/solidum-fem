@@ -24,7 +24,7 @@ import meshio  # noqa: E402
 from fenix.core.domain import Domain
 from fenix.core.material import Material
 from fenix.core.node import Node
-from fenix.elements.solid_2d import Quad4, Tri3
+from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from fenix.elements.truss import Truss2D, Truss3D
 from fenix.elements.frame import Frame2DEuler
 from fenix.elements.frame3d import Frame3D
@@ -238,6 +238,45 @@ class TestVtkExporterCoverage(unittest.TestCase):
         expected = mat.E * eps
         self.assertTrue(np.allclose(sigma_xx, expected, atol=1e-8))
         self.assertTrue(np.allclose(sigma_yy, 0.0, atol=1e-8))
+
+    def test_higher_order_solids(self):
+        """Quad8/Quad9/Tri6 generan los cell types correctos en el .vtu."""
+        domain = Domain()
+        mat = _Elastic2D()
+
+        nq8 = [Node(i + 1, list(c)) for i, c in enumerate([
+            (0, 0), (1, 0), (1, 1), (0, 1),
+            (0.5, 0), (1, 0.5), (0.5, 1), (0, 0.5),
+        ])]
+        q8 = Quad8(1, nq8, mat)
+
+        offset = len(nq8)
+        nq9 = [Node(i + 1 + offset, list(c)) for i, c in enumerate([
+            (2, 0), (3, 0), (3, 1), (2, 1),
+            (2.5, 0), (3, 0.5), (2.5, 1), (2, 0.5),
+            (2.5, 0.5),
+        ])]
+        q9 = Quad9(2, nq9, mat)
+
+        offset += len(nq9)
+        nt6 = [Node(i + 1 + offset, list(c)) for i, c in enumerate([
+            (0, 2), (1, 2), (0, 3),
+            (0.5, 2), (0.5, 2.5), (0, 2.5),
+        ])]
+        t6 = Tri6(3, nt6, mat)
+
+        for elem in (q8, q9, t6):
+            _add_element_to_domain(domain, elem)
+        _assign_global_dofs(domain)
+
+        path = self._tmp_path("_test_vtk_higher_order.vtu")
+        VtkExporter(domain).export(path, U=None)
+        mesh = meshio.read(path)
+        cell_types = {b.type for b in mesh.cells}
+        # meshio renombra 'triangle6' a 'triangle6' al releer (compatibilidad VTK)
+        self.assertIn("quad8", cell_types)
+        self.assertIn("quad9", cell_types)
+        self.assertIn("triangle6", cell_types)
 
     def test_export_sin_U_no_rompe(self):
         domain = Domain()

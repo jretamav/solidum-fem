@@ -426,6 +426,42 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 
 ---
 
+## Quad8 — cuadrilátero serendípito 2D de orden 2
+
+- **Propósito**: continuo 2D cuadrático sin shear locking severo en flexión; reproduce campos cuadráticos exactamente.
+- **DOFs por nodo**: `['ux', 'uy']` · 8 nodos (4 vértices antihorarios + 4 medios de borde) · `STRAIN_DIM = 3`.
+- **Funciones de forma**: serendípitas (sin término ξ²η²).
+- **Integración**: Gauss 3×3 (9 puntos) por defecto. Reducida 2×2 disponible vía `quadrature` (con riesgo de modos espurios).
+- **Cargas**: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
+- **Salida por Gauss**: `compute_gauss_state(U)` con 9 puntos por defecto.
+- **Spec**: [docs/specs/Quad8.md](specs/Quad8.md).
+- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+
+---
+
+## Quad9 — cuadrilátero Lagrangiano 2D de orden 2
+
+- **Propósito**: continuo 2D cuadrático con espacio polinómico completo $Q_2$; añade un noveno nodo central interior al Quad8.
+- **DOFs por nodo**: `['ux', 'uy']` · 9 nodos · `STRAIN_DIM = 3`.
+- **Funciones de forma**: producto tensorial Lagrange 1D-1D.
+- **Integración**: Gauss 3×3.
+- **Cargas y salida por Gauss**: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
+- **Spec**: [docs/specs/Quad9.md](specs/Quad9.md).
+- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+
+---
+
+## Tri6 — triángulo 2D cuadrático completo P₂
+
+- **Propósito**: triángulo isoparamétrico cuadrático que cura el shear locking del Tri3; reproduce campos cuadráticos exactamente.
+- **DOFs por nodo**: `['ux', 'uy']` · 6 nodos (3 vértices + 3 medios de borde) · `STRAIN_DIM = 3`.
+- **Integración**: 3 puntos en los puntos medios (cuadratura `tri_3`).
+- **Cargas**: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
+- **Spec**: [docs/specs/Tri6.md](specs/Tri6.md).
+- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+
+---
+
 ## Cómo añadir un elemento nuevo
 
 1. **Spec primero** — el usuario crea `docs/specs/<Nombre>.md` a partir de `docs/specs/_template_element.md` (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.
