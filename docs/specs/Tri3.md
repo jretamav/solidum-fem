@@ -67,6 +67,10 @@ $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA \;\Longr
 
 $\bar{\mathbf t}$ se especifica en coordenadas globales $(t_x, t_y)$. Tracción variable o presión normal no soportadas en este paso.
 
+### 13. Salida por punto de Gauss
+
+`compute_gauss_state(U)` devuelve la misma estructura que en `Quad4` pero con un único punto (centroide). Para Tri3 ε y σ son constantes sobre el elemento, así que el dato del punto coincide con el promedio.
+
 ---
 
 ## Limitación crítica — *shear locking*
@@ -157,4 +161,5 @@ references:
 
 - **2026-04-30** · Spec retroactiva. `Tri3` precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada. Promovido `status: validated`.
 - **2026-04-30** · Añadido patch test de MacNeal-Harder (NAFEMS) en `acceptance.verification`. Cuatro triángulos alrededor de un nodo interior descentrado reproducen un campo lineal impuesto en el contorno con ε constante en cada elemento.
+- **2026-05-04** · Expuesta `compute_gauss_state(U)` (1 punto central). El `VtkExporter` consume σ por elemento y promedia a nodos (`Sigma_*_nodal`).
 - **2026-05-04** · Añadidas cargas distribuidas consistentes (`compute_body_load`, `compute_edge_traction`) con la misma semántica que `Quad4`. Para Tri3 ambos integrandos son exactos analíticamente: body load reparte 1/3 por nodo, tracción de borde reparte L/2 a cada uno de los dos nodos del borde.

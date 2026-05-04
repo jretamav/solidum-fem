@@ -197,6 +197,26 @@ class VtkExporter:
         if nodal_vars is None or 'External_Forces' in nodal_vars:
             point_data["External_Forces"] = forces
 
+        # Suavizado nodal de los esfuerzos: media simple sobre los elementos
+        # adyacentes a cada nodo. Es nodal averaging de orden 0 — exacto
+        # cuando el campo es constante por elemento, aproximado en general.
+        # Útil para mapas continuos en ParaView sin pasar por Cell-To-Point.
+        nodal_sigma = _smooth_stress_to_nodes(
+            n_nodes,
+            (quad_conn, quad_stresses),
+            (tri_conn, tri_stresses),
+        )
+        if nodal_sigma is not None:
+            sxx_n, syy_n, txy_n, vm_n = nodal_sigma
+            if nodal_vars is None or 'Sigma_XX_nodal' in nodal_vars:
+                point_data["Sigma_XX_nodal"] = sxx_n
+            if nodal_vars is None or 'Sigma_YY_nodal' in nodal_vars:
+                point_data["Sigma_YY_nodal"] = syy_n
+            if nodal_vars is None or 'Tau_XY_nodal' in nodal_vars:
+                point_data["Tau_XY_nodal"] = txy_n
+            if nodal_vars is None or 'Von_Mises_nodal' in nodal_vars:
+                point_data["Von_Mises_nodal"] = vm_n
+
         cell_data = {}
         if state_arrays and (elem_vars is None or 'Internal_State' in elem_vars):
             cell_data["Internal_State"] = state_arrays
@@ -214,6 +234,42 @@ class VtkExporter:
 
         mesh = meshio.Mesh(points, cells, point_data=point_data, cell_data=cell_data)
         mesh.write(filepath)
+
+
+def _smooth_stress_to_nodes(n_nodes: int, *families):
+    """Promedio nodal del σ por elemento sobre los elementos adyacentes.
+
+    families: tuplas ``(conn_list, stresses_list)`` con la conectividad y los
+    [σxx, σyy, σxy, σ_VM] por celda. Devuelve ``(sxx, syy, txy, vm)`` como
+    arrays nodales o ``None`` si ninguna familia aporta datos.
+    """
+    sxx = np.zeros(n_nodes)
+    syy = np.zeros(n_nodes)
+    txy = np.zeros(n_nodes)
+    cnt = np.zeros(n_nodes, dtype=np.int64)
+    has_data = False
+
+    for conn_list, stress_list in families:
+        if not conn_list:
+            continue
+        has_data = True
+        for conn, sv in zip(conn_list, stress_list):
+            sx, sy, sxy, _vm = sv
+            for nidx in conn:
+                sxx[nidx] += sx
+                syy[nidx] += sy
+                txy[nidx] += sxy
+                cnt[nidx] += 1
+
+    if not has_data:
+        return None
+
+    mask = cnt > 0
+    sxx[mask] /= cnt[mask]
+    syy[mask] /= cnt[mask]
+    txy[mask] /= cnt[mask]
+    vm = np.sqrt(sxx * sxx + syy * syy - sxx * syy + 3.0 * txy * txy)
+    return sxx, syy, txy, vm
 
 
 def _voigt2d_to_components(s_avg) -> list:

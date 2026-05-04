@@ -184,24 +184,57 @@ class Quad4(Element):
         return K_e, F_int_e
 
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
-        """Utilidad para reportes de post-procesamiento."""
+        """Promedios de σ y ε sobre el elemento (utilidad rápida).
+
+        Para visualizar el campo no promediado úsese ``compute_gauss_state``.
+        """
+        gs = self.compute_gauss_state(U_global)
+        if gs['stress'].shape[0] == 0:
+            return {'stress': np.zeros(3), 'strain': np.zeros(3)}
+        return {
+            'stress': gs['stress'].mean(axis=0),
+            'strain': gs['strain'].mean(axis=0),
+        }
+
+    def compute_gauss_state(self, U_global: np.ndarray) -> dict:
+        """Estado en cada punto de Gauss del elemento.
+
+        Útil para post-proceso fino (mapas de esfuerzos, suavizado nodal,
+        extrapolación de Barlow). Reevalúa el material en cada punto a partir
+        de las deformaciones derivadas de ``U_global``.
+
+        Returns
+        -------
+        dict con claves:
+        - ``points_natural`` : ndarray (n_g, 2) con (ξ, η).
+        - ``points_global``  : ndarray (n_g, 2) con (x, y) en el sistema global.
+        - ``strain`` : ndarray (n_g, 3) — Voigt 2D [ε_xx, ε_yy, γ_xy].
+        - ``stress`` : ndarray (n_g, 3) — Voigt 2D [σ_xx, σ_yy, σ_xy].
+        """
         u_e = self.get_local_displacements(U_global)
         coords = self.get_coordinate_matrix(ndim=2)
+        n_g = self.N_INTEGRATION_POINTS
 
-        avg_stress = np.zeros(3)
-        avg_strain = np.zeros(3)
-        for idx, p in enumerate(self.points):
-            xi, eta = p
+        nat = np.asarray(self.points, dtype=np.float64).reshape(n_g, 2)
+        glb = np.zeros((n_g, 2))
+        eps = np.zeros((n_g, 3))
+        sig = np.zeros((n_g, 3))
+
+        for idx, (xi, eta) in enumerate(self.points):
+            N = _shape_functions_quad4(xi, eta)
+            glb[idx] = N @ coords
             B, _ = _compute_kinematics(xi, eta, coords)
             strain = B @ u_e
-            sigma, _, _ = self.material.compute_state(strain, self.state.vars[idx])
-            avg_strain += strain
-            avg_stress += sigma
+            stress, _, _ = self.material.compute_state(strain, self.state.vars[idx])
+            eps[idx] = strain
+            sig[idx] = stress
 
-        if self.N_INTEGRATION_POINTS == 0:
-            return {'stress': np.zeros(3), 'strain': np.zeros(3)}
-        n = self.N_INTEGRATION_POINTS
-        return {'stress': avg_stress / n, 'strain': avg_strain / n}
+        return {
+            'points_natural': nat,
+            'points_global': glb,
+            'strain': eps,
+            'stress': sig,
+        }
 
     # ------------------------------------------------------------------
     # Cargas distribuidas consistentes
@@ -311,13 +344,32 @@ class Tri3(Element):
         return K_e, F_int_e
 
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        """σ y ε del único punto central — coincide con el promedio del elemento."""
+        gs = self.compute_gauss_state(U_global)
+        return {'stress': gs['stress'][0], 'strain': gs['strain'][0]}
+
+    def compute_gauss_state(self, U_global: np.ndarray) -> dict:
+        """Estado en el punto de Gauss (1 punto central) del Tri3.
+
+        Devuelve la misma estructura que ``Quad4.compute_gauss_state``;
+        para Tri3 ε y σ son uniformes sobre el elemento (CST).
+        """
         u_e = self.get_local_displacements(U_global)
         coords = self.get_coordinate_matrix(ndim=2)
 
         B, _ = _compute_kinematics_tri3(coords)
         strain = B @ u_e
-        sigma, _, _ = self.material.compute_state(strain, self.state.vars[0])
-        return {'stress': sigma, 'strain': strain}
+        stress, _, _ = self.material.compute_state(strain, self.state.vars[0])
+
+        # Punto central en coordenadas baricéntricas (1/3, 1/3): el centroide.
+        centroid = coords.mean(axis=0)
+
+        return {
+            'points_natural': np.array([[1.0 / 3.0, 1.0 / 3.0]]),
+            'points_global': centroid.reshape(1, 2),
+            'strain': strain.reshape(1, 3),
+            'stress': stress.reshape(1, 3),
+        }
 
     # ------------------------------------------------------------------
     # Cargas distribuidas consistentes

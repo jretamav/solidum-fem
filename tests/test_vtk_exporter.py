@@ -195,6 +195,50 @@ class TestVtkExporterCoverage(unittest.TestCase):
         idx_n2 = int(np.argmin(np.linalg.norm(mesh.points - [1.0, 0.0, 0.0], axis=1)))
         self.assertAlmostEqual(rot[idx_n2, 2], 0.02, places=12)
 
+    def test_nodal_stress_smoothing_uniaxial(self):
+        """Suavizado nodal: con σ_xx = p uniforme por elemento, Sigma_XX_nodal
+        debe valer p en todos los nodos del dominio."""
+        domain = Domain()
+        mat = _Elastic2D(E=1000.0, nu=0.3)
+        # Dos Quad4 contiguos compartiendo el borde central
+        n1 = Node(1, [0.0, 0.0]); n2 = Node(2, [1.0, 0.0])
+        n3 = Node(3, [1.0, 1.0]); n4 = Node(4, [0.0, 1.0])
+        n5 = Node(5, [2.0, 0.0]); n6 = Node(6, [2.0, 1.0])
+        q1 = Quad4(1, [n1, n2, n3, n4], mat)
+        q2 = Quad4(2, [n2, n5, n6, n3], mat)
+        _add_element_to_domain(domain, q1)
+        _add_element_to_domain(domain, q2)
+        _assign_global_dofs(domain)
+
+        # Campo u(x,y) = (p/E)·x  ⇒  σ_xx = p, σ_yy = ν·... espera, plane
+        # stress: σ_yy = 0 sólo si ε_yy = -ν·ε_xx. Tomamos ε_xx=ε* y ε_yy=-ν·ε*
+        # para garantizar σ_xx = E·ε* y σ_yy = 0.
+        eps = 1e-3
+        nu = mat.nu
+        U = np.zeros(domain.total_dofs)
+        for nd in domain.nodes.values():
+            x, y = nd.coordinates[0], nd.coordinates[1]
+            U[nd.dofs['ux']] = eps * x
+            U[nd.dofs['uy']] = -nu * eps * y
+
+        # Aplicamos compute_element_state y commit_state para que el σ
+        # commiteado refleje el campo (el exporter lee σ committed).
+        for elem in domain.elements.values():
+            u_e = elem.get_local_displacements(U)
+            elem.compute_element_state(u_e)
+            elem.commit_state()
+
+        path = self._tmp_path("_test_vtk_nodal_smoothing.vtu")
+        VtkExporter(domain).export(path, U=U)
+        mesh = meshio.read(path)
+
+        sigma_xx = mesh.point_data["Sigma_XX_nodal"]
+        sigma_yy = mesh.point_data["Sigma_YY_nodal"]
+        # σ_xx esperado = E·ε* (plane stress con σ_yy = 0)
+        expected = mat.E * eps
+        self.assertTrue(np.allclose(sigma_xx, expected, atol=1e-8))
+        self.assertTrue(np.allclose(sigma_yy, 0.0, atol=1e-8))
+
     def test_export_sin_U_no_rompe(self):
         domain = Domain()
         mat = _Elastic2D()
