@@ -10,7 +10,7 @@ Fenix FEM se empieza a consumir desde una GUI externa (FenixBAR, análisis estru
 Hoy esa información no está expuesta de forma uniforme:
 
 - El único "runner" es el script de ejemplo `examples/ejecutar_yaml.py`; no hay entrypoint oficial.
-- `VtkExporter` solo maneja `Quad4`, `Tri3`, `Truss2D`, `Truss3D` (estos últimos como celdas `line` sin esfuerzos). `Frame2DEuler`, `Frame2DEulerCorot`, `Frame2DTimoshenko`, `Frame3D`, `Cable2DCorot`, `Cable3DCorot` no se exportan. `displacements` solo escribe `ux`/`uy` (sin `uz` ni rotaciones).
+- `VtkExporter` solo maneja `Quad4`, `Tri3`, `Truss2D`, `Truss3D` (estos últimos como celdas `line` sin esfuerzos). `Frame2DEuler`, `Frame2DEulerCorot`, `Frame2DTimoshenko`, `Frame3D`, `Cable2DCorot`, `Cable3DCorot` no se exportan. `displacements` solo escribe `ux`/`uy` (sin `uz` ni rotaciones). _(Cerrado 2026-05-04: el exportador acepta cualquier elemento de 2 nodos como celda `line`, escribe desplazamientos 3D y rotaciones nodales cuando hay DOFs rotacionales; los esfuerzos internos N/V/M de barras siguen consumiéndose vía `SolveResult.element_forces`, no por VTK.)_
 - Cada tipo de elemento conoce su formulación cinemática y constitutiva (Euler vs Timoshenko, corotacional vs lineal, ejes locales en 3D, tracción-sólo en cables), pero no ofrece método público homogéneo para devolver esfuerzos internos dado un `U`.
 
 Alternativa descartada: que el consumidor calcule N/V/M desde `U`. Duplicaría la formulación fuera del repo que la define, con riesgo de divergencia en cada elemento nuevo. Contrario al principio de que la lógica FEM vive en Fenix FEM.
