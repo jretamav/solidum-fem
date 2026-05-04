@@ -63,6 +63,36 @@ def _compute_integrands(B, C_alg, sigma, detJ, weight, thickness):
 
 
 @njit
+def _shape_functions_quad4(xi, eta):
+    """Funciones de forma bilineales del Quad4 evaluadas en (xi, eta)."""
+    N = np.zeros(4, dtype=np.float64)
+    N[0] = 0.25 * (1.0 - xi) * (1.0 - eta)
+    N[1] = 0.25 * (1.0 + xi) * (1.0 - eta)
+    N[2] = 0.25 * (1.0 + xi) * (1.0 + eta)
+    N[3] = 0.25 * (1.0 - xi) * (1.0 + eta)
+    return N
+
+
+@njit
+def _det_jacobian_quad4(xi, eta, coords):
+    """det J del mapeo isoparamétrico del Quad4 en (xi, eta).
+
+    Reutilizable desde compute_body_load sin pagar el coste de armar B.
+    """
+    dN_dxi = np.zeros((2, 4), dtype=np.float64)
+    dN_dxi[0, 0] = -(1.0 - eta) / 4.0
+    dN_dxi[0, 1] =  (1.0 - eta) / 4.0
+    dN_dxi[0, 2] =  (1.0 + eta) / 4.0
+    dN_dxi[0, 3] = -(1.0 + eta) / 4.0
+    dN_dxi[1, 0] = -(1.0 - xi) / 4.0
+    dN_dxi[1, 1] = -(1.0 + xi) / 4.0
+    dN_dxi[1, 2] =  (1.0 + xi) / 4.0
+    dN_dxi[1, 3] =  (1.0 - xi) / 4.0
+    J = np.dot(dN_dxi, coords)
+    return J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+
+
+@njit
 def _compute_kinematics_tri3(coords):
     # Derivadas de funciones de forma analíticas para Tri3 (xi, eta)
     dN_dxi = np.zeros((2, 3), dtype=np.float64)
@@ -173,6 +203,81 @@ class Quad4(Element):
         n = self.N_INTEGRATION_POINTS
         return {'stress': avg_stress / n, 'strain': avg_strain / n}
 
+    # ------------------------------------------------------------------
+    # Cargas distribuidas consistentes
+    # ------------------------------------------------------------------
+
+    EDGE_NODES = ((0, 1), (1, 2), (2, 3), (3, 0))
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector de cargas nodales consistente con una fuerza de cuerpo uniforme.
+
+        Integra ``∫ N^T b · t dA`` sobre el elemento usando la cuadratura del
+        propio elemento. ``b`` se da en coordenadas globales ``(b_x, b_y)``.
+
+        Parameters
+        ----------
+        b : ndarray (2,)
+            Fuerza de cuerpo por unidad de volumen (e.g. ``ρg`` para peso
+            propio: ``b = (0, -ρg)``).
+
+        Returns
+        -------
+        ndarray (8,)
+            Cargas equivalentes en los DOFs locales del elemento, ordenadas
+            ``[fx_1, fy_1, ..., fx_4, fy_4]``.
+        """
+        b = np.asarray(b, dtype=np.float64).reshape(2)
+        coords = self.get_coordinate_matrix(ndim=2)
+        f = np.zeros(8)
+        for (xi, eta), w in zip(self.points, self.weights):
+            N = _shape_functions_quad4(xi, eta)
+            detJ = _det_jacobian_quad4(xi, eta, coords)
+            if detJ <= 0.0:
+                raise ValueError(f"Jacobiano no positivo en Quad4 id={self.id}.")
+            factor = detJ * w * self.thickness
+            for i in range(4):
+                f[2 * i]     += N[i] * b[0] * factor
+                f[2 * i + 1] += N[i] * b[1] * factor
+        return f
+
+    def compute_edge_traction(self, edge: int, t_vec: np.ndarray) -> np.ndarray:
+        """Vector de cargas nodales consistente con una tracción uniforme en un borde.
+
+        Integra ``∫_Γ N^T t̄ · t dS`` sobre el borde indicado. ``t_vec`` es la
+        tracción ``(t_x, t_y)`` en coordenadas globales y se asume **constante
+        a lo largo del borde**. Para presión normal o tracción variable, el
+        usuario debe descomponer/discretizar manualmente.
+
+        Parameters
+        ----------
+        edge : int
+            Índice del borde según ``EDGE_NODES``: 0=(n0,n1), 1=(n1,n2),
+            2=(n2,n3), 3=(n3,n0).
+        t_vec : ndarray (2,)
+            Tracción uniforme en globales sobre el borde.
+
+        Returns
+        -------
+        ndarray (8,)
+            Cargas equivalentes en los DOFs locales del elemento.
+        """
+        if edge not in (0, 1, 2, 3):
+            raise ValueError(f"edge={edge} fuera de rango para Quad4 (0..3).")
+        t_vec = np.asarray(t_vec, dtype=np.float64).reshape(2)
+        a, c = self.EDGE_NODES[edge]
+        x_a = np.asarray(self.nodes[a].coordinates[:2], dtype=np.float64)
+        x_c = np.asarray(self.nodes[c].coordinates[:2], dtype=np.float64)
+        L = float(np.linalg.norm(x_c - x_a))
+        # Borde recto entre dos nodos: el reparto consistente para tracción
+        # uniforme y N lineales es L/2 en cada nodo, exacto sin cuadratura.
+        f = np.zeros(8)
+        f[2 * a]     = 0.5 * L * t_vec[0] * self.thickness
+        f[2 * a + 1] = 0.5 * L * t_vec[1] * self.thickness
+        f[2 * c]     = 0.5 * L * t_vec[0] * self.thickness
+        f[2 * c + 1] = 0.5 * L * t_vec[1] * self.thickness
+        return f
+
 
 @ElementRegistry.register
 class Tri3(Element):
@@ -213,3 +318,70 @@ class Tri3(Element):
         strain = B @ u_e
         sigma, _, _ = self.material.compute_state(strain, self.state.vars[0])
         return {'stress': sigma, 'strain': strain}
+
+    # ------------------------------------------------------------------
+    # Cargas distribuidas consistentes
+    # ------------------------------------------------------------------
+
+    EDGE_NODES = ((0, 1), (1, 2), (2, 0))
+
+    def _element_area(self) -> float:
+        coords = self.get_coordinate_matrix(ndim=2)
+        x = coords[:, 0]; y = coords[:, 1]
+        return 0.5 * abs(
+            (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0])
+        )
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector de cargas nodales consistente con una fuerza de cuerpo uniforme.
+
+        Para Tri3 con N lineal y b uniforme la integral es exacta:
+        cada nodo recibe ``b · A_e · t / 3``.
+
+        Parameters
+        ----------
+        b : ndarray (2,)
+            Fuerza de cuerpo por unidad de volumen en globales.
+
+        Returns
+        -------
+        ndarray (6,)
+            Cargas equivalentes ordenadas ``[fx_1, fy_1, ..., fx_3, fy_3]``.
+        """
+        b = np.asarray(b, dtype=np.float64).reshape(2)
+        A = self._element_area()
+        share = A * self.thickness / 3.0
+        f = np.zeros(6)
+        for i in range(3):
+            f[2 * i]     = share * b[0]
+            f[2 * i + 1] = share * b[1]
+        return f
+
+    def compute_edge_traction(self, edge: int, t_vec: np.ndarray) -> np.ndarray:
+        """Vector de cargas nodales consistente con una tracción uniforme en un borde.
+
+        Parameters
+        ----------
+        edge : int
+            Índice del borde según ``EDGE_NODES``: 0=(n0,n1), 1=(n1,n2), 2=(n2,n0).
+        t_vec : ndarray (2,)
+            Tracción uniforme en globales sobre el borde.
+
+        Returns
+        -------
+        ndarray (6,)
+            Cargas equivalentes en los DOFs locales del elemento.
+        """
+        if edge not in (0, 1, 2):
+            raise ValueError(f"edge={edge} fuera de rango para Tri3 (0..2).")
+        t_vec = np.asarray(t_vec, dtype=np.float64).reshape(2)
+        a, c = self.EDGE_NODES[edge]
+        x_a = np.asarray(self.nodes[a].coordinates[:2], dtype=np.float64)
+        x_c = np.asarray(self.nodes[c].coordinates[:2], dtype=np.float64)
+        L = float(np.linalg.norm(x_c - x_a))
+        f = np.zeros(6)
+        f[2 * a]     = 0.5 * L * t_vec[0] * self.thickness
+        f[2 * a + 1] = 0.5 * L * t_vec[1] * self.thickness
+        f[2 * c]     = 0.5 * L * t_vec[0] * self.thickness
+        f[2 * c + 1] = 0.5 * L * t_vec[1] * self.thickness
+        return f

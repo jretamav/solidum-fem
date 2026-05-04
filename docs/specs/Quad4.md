@@ -55,6 +55,25 @@ Por defecto Gauss–Legendre $2 \times 2$ (cuatro puntos): orden de exactitud 3 
 
 **Aviso sobre integración reducida**: el esquema $1 \times 1$ está disponible pero el código emite advertencia explícita; un único punto central no detecta los modos de hourglass (energía nula con desplazamientos de signo alternado), que pueden contaminar la respuesta sin estabilización adicional. No se implementa estabilización tipo Flanagan-Belytschko.
 
+### 12. Cargas distribuidas consistentes
+
+**Fuerza de cuerpo $\mathbf b$** (e.g. peso propio $\mathbf b = (0, -\rho g)$, fuerza centrífuga). Vector nodal equivalente:
+$$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA = \sum_{p=1}^{n_g} \mathbf N(\xi_p, \eta_p)^\top\, \mathbf b\, \det\mathbf J_p\, w_p\, t,$$
+donde $\mathbf N$ es la matriz $2 \times 8$ de funciones de forma. Se reutiliza la cuadratura del elemento (Gauss $2 \times 2$ por defecto) — exacta para $\mathbf b$ uniforme y geometrías de paralelogramo, y adecuada para geometrías irregulares moderadas.
+
+**Tracción de superficie $\bar{\mathbf t}$** sobre un borde $\Gamma_e \subset \partial\Omega_N$:
+$$\mathbf f_e^{t} = \int_{\Gamma_e} \mathbf N^\top\, \bar{\mathbf t}\, t\, dS.$$
+Cada borde es una recta entre dos nodos; sobre él las funciones de forma son lineales y, para $\bar{\mathbf t}$ constante, la integral se reduce a un reparto exacto de $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ a cada uno de los dos nodos del borde, donde $L$ es la longitud del segmento. Bordes numerados según la conectividad nodal:
+
+| Edge | Nodos |
+|------|-------|
+| 0    | (0, 1) |
+| 1    | (1, 2) |
+| 2    | (2, 3) |
+| 3    | (3, 0) |
+
+$\bar{\mathbf t}$ se especifica en **coordenadas globales** $(t_x, t_y)$; presiones normales se obtienen multiplicando previamente por la normal exterior del borde. Tracción variable a lo largo del borde no está soportada en este paso.
+
 ---
 
 ## Contrato de implementación
@@ -110,6 +129,18 @@ acceptance:
     - name: jacobiano degenerado abortado
       setup: "elemento con nodos colineales o en orden inverso"
       expect: "ValueError en _compute_kinematics"
+    - name: cargas consistentes — body load uniforme
+      setup: "Quad4 regular y distorsionado con b uniforme; sumar componentes nodales"
+      expect: "Σf_x = b_x·A·t y Σf_y = b_y·A·t (invariante de geometría)"
+      tol_rel: 1.0e-10
+    - name: cargas consistentes — tracción uniforme en un borde
+      setup: "Quad4 con tracción constante en un borde"
+      expect: "Σf = t̄·L·t y reparto L/2 a cada nodo del borde, 0 en los demás"
+      tol_rel: 1.0e-12
+    - name: patch físico de tracción uniaxial
+      setup: "Quad4 cuadrado L×H, borde izquierdo con ux=0 (n0,n3) + uy=0 (n0); borde derecho con tracción uniforme (p,0)"
+      expect: "u reproduce ux=p·x/E, uy=-ν·p·y/E (plane stress); σ_xx=p, σ_yy=σ_xy=0"
+      tol_rel: 1.0e-10
 
 references:
   - "Bathe K.-J., Finite Element Procedures, §5.3 (isoparametric elements)"
@@ -133,3 +164,4 @@ references:
 
 - **2026-04-30** · Spec retroactiva. `Quad4` precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada y verificada. Promovido `status: validated`.
 - **2026-04-30** · Añadido patch test de MacNeal-Harder (NAFEMS) en `acceptance.verification`. Cinco Quad4 distorsionados con cuatro nodos interiores libres reproducen exactamente un campo lineal impuesto en el contorno, con ε constante e igual al gradiente analítico en todos los puntos de Gauss.
+- **2026-05-04** · Añadidas cargas distribuidas consistentes (`compute_body_load`, `compute_edge_traction`). Para tracciones uniformes en bordes rectos el reparto es exacto (L/2 a cada nodo del borde) y se evita la cuadratura 1D; las fuerzas de cuerpo se integran con la cuadratura del elemento. Solo tracciones **constantes por borde** y en **coordenadas globales** en este paso; tracción variable y presión normal quedan para una iteración posterior.

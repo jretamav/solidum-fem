@@ -403,6 +403,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cinemática**: matriz `B(ξ, η)` calculada por mapeo isoparamétrico estándar; deformación Voigt `[ε_xx, ε_yy, γ_xy]`.
 - **Integración**: por defecto Gauss 2×2 (4 puntos). Configurable vía `quadrature` desde `QuadratureRegistry`. **Aviso**: integración reducida 1×1 → riesgo de hourglassing.
 - **Parámetros**: `thickness` (espesor para estado plano), `quadrature` (opcional).
+- **Cargas distribuidas**: `compute_body_load(b)` integra ∫N^T b sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
 - **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada.
 - **Limitaciones**: bloqueo volumétrico con materiales casi-incompresibles (ν → 0.5); en ese régimen usar formulación mixta (no implementada).
 - **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
@@ -416,6 +417,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cinemática**: matriz `B` constante (deformación uniforme dentro del elemento).
 - **Integración**: 1 punto central, peso 0.5 (área triángulo en coordenadas naturales).
 - **Parámetros**: `thickness`.
+- **Cargas distribuidas**: `compute_body_load(b)` reparte 1/3 a cada nodo (exacto para b uniforme); `compute_edge_traction(edge, t̄)` reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
 - **Limitaciones**: shear locking severo; convergencia lenta. **Preferir `Quad4`** salvo en transiciones donde Quad4 no encaja geométricamente.
 - **Implementación**: kernel `_compute_kinematics_tri3` con `@njit`.
 - **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)

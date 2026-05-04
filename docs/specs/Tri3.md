@@ -52,6 +52,21 @@ $$\mathbf{F}_{\text{int}} = \mathbf{B}^\top\, \boldsymbol{\sigma}\, A_e\, t.$$
 ### 11. Cuadratura
 Un punto central (en el baricentro) con peso $w = 1/2$ sobre el triángulo de referencia. Es exacto para formas constantes de $\mathbf{B}$ y $\boldsymbol{\sigma}$.
 
+### 12. Cargas distribuidas consistentes
+
+**Fuerza de cuerpo $\mathbf b$**. Con $N_i$ lineales y $\mathbf b$ uniforme la integral es exacta:
+$$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA \;\Longrightarrow\; \text{cada nodo recibe } \tfrac{1}{3}\, \mathbf b\, A_e\, t.$$
+
+**Tracción de superficie $\bar{\mathbf t}$** sobre un borde recto. Con $\bar{\mathbf t}$ constante el reparto es $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ en cada uno de los dos nodos del borde. Bordes numerados según la conectividad:
+
+| Edge | Nodos |
+|------|-------|
+| 0    | (0, 1) |
+| 1    | (1, 2) |
+| 2    | (2, 0) |
+
+$\bar{\mathbf t}$ se especifica en coordenadas globales $(t_x, t_y)$. Tracción variable o presión normal no soportadas en este paso.
+
 ---
 
 ## Limitación crítica — *shear locking*
@@ -111,6 +126,14 @@ acceptance:
     - name: jacobiano degenerado abortado
       setup: "tres nodos colineales"
       expect: "ValueError en _compute_kinematics_tri3"
+    - name: cargas consistentes — body load uniforme
+      setup: "Tri3 con b uniforme"
+      expect: "cada nodo recibe (1/3)·b·A_e·t; Σ = b·A_e·t"
+      tol_rel: 1.0e-12
+    - name: cargas consistentes — tracción uniforme en un borde
+      setup: "Tri3 con tracción constante en un borde"
+      expect: "Σf = t̄·L·t y reparto L/2 a cada nodo del borde, 0 en el opuesto"
+      tol_rel: 1.0e-12
 
 references:
   - "Cook, Malkus, Plesha, Witt, Concepts and Applications of FEA, §3.6 (CST)"
@@ -134,3 +157,4 @@ references:
 
 - **2026-04-30** · Spec retroactiva. `Tri3` precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada. Promovido `status: validated`.
 - **2026-04-30** · Añadido patch test de MacNeal-Harder (NAFEMS) en `acceptance.verification`. Cuatro triángulos alrededor de un nodo interior descentrado reproducen un campo lineal impuesto en el contorno con ε constante en cada elemento.
+- **2026-05-04** · Añadidas cargas distribuidas consistentes (`compute_body_load`, `compute_edge_traction`) con la misma semántica que `Quad4`. Para Tri3 ambos integrandos son exactos analíticamente: body load reparte 1/3 por nodo, tracción de borde reparte L/2 a cada uno de los dos nodos del borde.
