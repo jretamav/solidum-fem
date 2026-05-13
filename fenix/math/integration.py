@@ -74,23 +74,9 @@ class GaussQuadrature:
         weights = [w1] * 3 + [w2] * 3
         return points, weights
 
-    @staticmethod
-    def get_points_1d_2():
-        """Gauss-Legendre 1D, 2 puntos. Exacta para polinomios hasta grado 3.
-
-        Sirve para integrar tracciones de borde en elementos 2D con bordes
-        rectos (Quad4, Tri3): la geometría es lineal en s y la tracción se
-        toma constante a trozos, así que 2 puntos sobran.
-        """
-        pt = 1.0 / np.sqrt(3.0)
-        points = [-pt, pt]
-        weights = [1.0, 1.0]
-        return points, weights
-
 # Registrar reglas automáticamente
 QuadratureRegistry.register("1x1", *GaussQuadrature.get_points_2d_1x1())
 QuadratureRegistry.register("2x2", *GaussQuadrature.get_points_2d_2x2())
 QuadratureRegistry.register("3x3", *GaussQuadrature.get_points_2d_3x3())
 QuadratureRegistry.register("tri_3", *GaussQuadrature.get_points_tri_3())
 QuadratureRegistry.register("tri_6", *GaussQuadrature.get_points_tri_6())
-QuadratureRegistry.register("1d_2", *GaussQuadrature.get_points_1d_2())
