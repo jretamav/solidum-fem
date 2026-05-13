@@ -12,7 +12,7 @@ import fenix
 from fenix.core.domain import Domain
 from fenix.elements.frame import Frame2DEuler
 from fenix.elements.truss import Truss2D
-from fenix.results import SolveResult
+from fenix.results import ModalResult, SolveResult, TransientResult
 
 
 class LinearElastic1D:
@@ -72,10 +72,10 @@ class TestRun(unittest.TestCase):
 
 
 class TestRunYaml(unittest.TestCase):
-    """Smoke test: run_yaml produce SolveResult sobre un YAML de examples/."""
+    """Smoke test: run_yaml ejecuta el pipeline completo sobre un YAML de
+    examples/ sin excepciones."""
 
     def test_run_yaml_smoke(self):
-        # Busca un YAML sencillo en examples/
         examples_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'examples'))
         candidates = []
         for root, _, files in os.walk(examples_dir):
@@ -92,7 +92,11 @@ class TestRunYaml(unittest.TestCase):
         except Exception as e:
             self.skipTest(f"run_yaml falló en {yaml_path}: {e}")
 
-        self.assertIsInstance(res, SolveResult)
+        # El primer YAML alfabético puede ser estático, modal o transitorio:
+        # el smoke valida solo que el pipeline produce un resultado válido del
+        # catálogo de tipos. La validación específica por tipo vive en los
+        # tests de cada solver.
+        self.assertIsInstance(res, (SolveResult, ModalResult, TransientResult))
 
 
 if __name__ == "__main__":
