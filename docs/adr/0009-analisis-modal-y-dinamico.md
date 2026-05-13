@@ -1,22 +1,31 @@
-# ADR 0009 — Subsistema de análisis dinámico
+# ADR 0009 — Análisis modal y dinámico
 
 - **Estado**: Aceptado
 - **Fecha**: 2026-05-13
 - **Alcance**: clase base `Element` y todas las subclases; `Assembler`; `SolverRegistry`; parser YAML; catálogo de solvers; manual de usuario.
 
+## Terminología — distinción rigurosa
+
+Este ADR cubre dos análisis distintos que conviene separar terminológicamente:
+
+- **Análisis modal**: problema algebraico de valores y vectores característicos generalizado `K·φ = ω²·M·φ`. Las soluciones `(ω_n, φ_n)` admiten **interpretación** como frecuencias propias y formas de vibración libre no amortiguada, pero el análisis en sí es algebraico, no temporal.
+- **Análisis dinámico**: análisis con dependencia temporal explícita — integración de `M·ü + C·u̇ + K·u = F(t)` (transitorio) o resolución de `(−ω²M + iωC + K)·û = F̂` para barridos en `ω` (respuesta en frecuencia). Requiere integrador temporal o aritmética compleja en el dominio de la frecuencia.
+
+La fase 1 implementa **solo análisis modal**. Las fases 3-7 abren propiamente el análisis dinámico. El ADR las cubre conjuntamente porque comparten infraestructura: matriz de masa, amortiguamiento Rayleigh derivado de frecuencias modales, estado dinámico fuera de `Node`.
+
 ## Resumen ejecutivo
 
-Fenix abre el subsistema de análisis dinámico con un primer hito acotado — **análisis modal** — que solo introduce la matriz de masa **M** consistente y un solver de autovalor generalizado `K·φ = ω²·M·φ`. Este ADR documenta también la **hoja de ruta completa** del subsistema hasta dinámica transitoria no lineal y respuesta en frecuencia, fijando hoy las decisiones arquitecturales que condicionarán esas fases: M consistente con contrato extensible a lumped, todo el catálogo dinámico en `SolverRegistry` (sin fragmentación en `IntegratorRegistry`), amortiguamiento Rayleigh como entrada estándar, estado transitorio (`u̇`, `ü`) en el resultado del solver sin contaminar `Node`. Las fases posteriores reutilizan piezas ya existentes — capa algebraica (ADR 0003), `Material.density` (ADR 0008), convergencia calibrada (ADR 0007) — sin reabrir debates.
+Fenix abre la línea de trabajo con un primer hito acotado — **análisis modal** — que introduce la matriz de masa **M** consistente y un solver de autovalor generalizado `K·φ = ω²·M·φ`. Este ADR documenta también la **hoja de ruta completa** hacia análisis dinámico transitorio (lineal y no lineal) y respuesta en frecuencia, fijando hoy las decisiones arquitecturales que condicionarán esas fases: M consistente con contrato extensible a lumped, todo el catálogo (modal y dinámico) en `SolverRegistry` (sin fragmentación en `IntegratorRegistry`), amortiguamiento Rayleigh como entrada estándar para transitorio, estado transitorio (`u̇`, `ü`) en el resultado del solver sin contaminar `Node`. Las fases posteriores reutilizan piezas ya existentes — capa algebraica (ADR 0003), `Material.density` (ADR 0008), convergencia calibrada (ADR 0007) — sin reabrir debates.
 
 ## Contexto
 
 Tres ADRs previos ya prepararon el terreno:
 
-- **ADR 0003** identificó la dinámica entre los análisis que la capa algebraica iba a habilitar (filas "Análisis modal" y "Dinámica implícita" de su tabla de hoja de ruta) y reservó `EigenSolver` como capacidad fase 3.
-- **ADR 0008** introdujo `Material.density` como propiedad de primera clase, con enforcement diferido (`None` al construir → `ValueError` al pedir peso propio o matriz de masa). La densidad es el único dato físico nuevo que la dinámica necesita; ya está disponible.
+- **ADR 0003** identificó análisis modal y dinámica implícita entre los análisis que la capa algebraica iba a habilitar (filas "Análisis modal" y "Dinámica implícita" de su tabla de hoja de ruta) y reservó `EigenSolver` como capacidad fase 3.
+- **ADR 0008** introdujo `Material.density` como propiedad de primera clase, con enforcement diferido (`None` al construir → `ValueError` al pedir peso propio o matriz de masa). La densidad es el único dato físico nuevo que tanto modal como dinámico necesitan; ya está disponible.
 - **ADR 0007** dejó tolerancias y convergencia calibradas para cualquier solver iterativo: aplicable inmediatamente al Newton-Raphson dentro de cada paso de Newmark.
 
-Hoy Fenix tiene cero infraestructura dinámica: ni matriz de masa, ni autovalor, ni avance temporal. Pero todas las piezas que faltan son **incrementales sobre lo que ya existe**, no refactor estructural. Ese es el supuesto operativo que este ADR formaliza.
+Hoy Fenix no tiene ni matriz de masa, ni solver de autovalores, ni integrador temporal. Pero todas las piezas que faltan son **incrementales sobre lo que ya existe**, no refactor estructural. Ese es el supuesto operativo que este ADR formaliza.
 
 ## Decisión
 
@@ -111,11 +120,11 @@ Para la fase de transitorio (no para modal, que no usa C) se adopta el siguiente
 
 Como con `Material.density` (ADR 0008), todas las magnitudes dinámicas heredan la convención: el usuario es responsable de la consistencia de unidades. Si trabaja en kg/N/m, las frecuencias salen en rad/s; si trabaja en t/N/mm, también — el sistema no convierte. Las tolerancias adimensionales del ADR 0007 garantizan invariancia bajo cambio de unidades.
 
-## Hoja de ruta — fases del subsistema dinámico
+## Hoja de ruta — fases
 
 | Fase | Análisis | Pieza algebraica clave | Solver Fenix | Estado |
 |---|---|---|---|---|
-| 1 | **Modal** (frecuencias y modos) | `eigsh(K, M, sigma, which="LM")` con shift-invert | `ModalSolver` | **Esta orden de trabajo** |
+| 1 | **Análisis modal** (frecuencias y modos del problema generalizado) | `eigsh(K, M, sigma, which="LM")` con shift-invert | `ModalSolver` | **Implementada** |
 | 2 | Modal con concentración de masa (lumped) | M diagonal | `ModalSolver(lumping="lumped")` | Diferida — se abre cuando entre fase 5 |
 | 3 | Transitorio lineal Newmark / HHT-α | `factorize(M + γΔt·C + βΔt²·K)` reutilizable | `NewmarkSolver` | Diferida |
 | 4 | Transitorio no lineal Newmark + Newton | Newton dentro de cada paso, residuo `R = F_ext − F_int − Mü − Cu̇` | `NewmarkSolver` (mismo, con `nonlinear=True`) | Diferida |
@@ -125,9 +134,9 @@ Como con `Material.density` (ADR 0008), todas las magnitudes dinámicas heredan 
 
 Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix en estado funcional.
 
-## Fase 1 — Implementación inmediata (esta orden de trabajo)
+## Fase 1 — Análisis modal (implementada)
 
-Si el ADR se acepta, las piezas concretas son:
+Piezas concretas entregadas:
 
 1. **Spec** — `docs/specs/ModalSolver.md` desde `_template_solver.md`. Define interface YAML, parámetros (`n_modes`, `sigma`, `which`, tolerancia), acceptance (barra empotrada-libre, viga Bernoulli-Euler) y referencias bibliográficas.
 2. **Contrato `compute_mass_matrix`** en `Element` base con signatura `(self, lumping: str = "consistent")` y default `NotImplementedError` en la base abstracta.

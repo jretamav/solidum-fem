@@ -140,7 +140,7 @@ references:
   - "Lehoucq, Sorensen, Yang — ARPACK Users' Guide (Lanczos con shift-invert)."
   - "ADR 0003 — Capa algebraica (factorización reutilizable de (K − σM))."
   - "ADR 0008 — Material.density."
-  - "ADR 0009 — Subsistema de análisis dinámico (este solver es la fase 1)."
+  - "ADR 0009 — Análisis modal y dinámico (este solver es la fase 1: el análisis modal estricto, problema generalizado K·φ = ω²·M·φ; el análisis dinámico transitorio entra en fases 3-7)."
 ```
 
 ---
