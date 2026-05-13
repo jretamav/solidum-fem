@@ -68,9 +68,10 @@ class {{Name}}(Material):
     STRAIN_DIM = {{1|3|6}}
     PRIMARY_STATE_VAR = {{'kappa' o None}}
 
-    def __init__(self, {{params}}, density: float):
-        # density es OBLIGATORIA (ADR 0008): contrato del material para
-        # peso propio y futuras matrices de masa. Sin default.
+    def __init__(self, {{params}}, density: float | None = None):
+        # density es opcional (ADR 0008): el material la declara solo si el
+        # análisis la requiere. Consumidores que la necesitan (peso propio,
+        # matriz de masa) fallan con ValueError si la encuentran como None.
         # TODO: almacenar parámetros físicos como atributos.
         self.density = density
 

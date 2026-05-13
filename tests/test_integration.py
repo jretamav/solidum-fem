@@ -24,7 +24,7 @@ class TestSolversIntegration(unittest.TestCase):
         self.n2 = self.domain.add_node(2, [1.0, 0.0]) # Longitud L = 1.0
 
         # Material que fluye en 150 Pa y tiene endurecimiento de 50 Pa
-        self.material = Elastoplastic1D(E=100.0, sigma_y=150.0, H=50.0, density=0.0)
+        self.material = Elastoplastic1D(E=100.0, sigma_y=150.0, H=50.0)
         # El elemento registra los DoFs en los nodos al crearse
         self.element = Truss2D(1, [self.n1, self.n2], self.material, A=1.0)
 

@@ -13,7 +13,7 @@ class TestCableMaterial1D(unittest.TestCase):
 
     def setUp(self):
         self.E = 210e9
-        self.mat = CableMaterial1D(E=self.E, density=0.0)
+        self.mat = CableMaterial1D(E=self.E)
 
     def test_acceptance_tension_pura(self):
         """ε > 0 ⇒ σ = E·ε, E_t = E."""
@@ -51,9 +51,9 @@ class TestCableMaterial1D(unittest.TestCase):
     def test_validacion_E_positivo(self):
         """E ≤ 0 se rechaza al construir."""
         with self.assertRaises(ValueError):
-            CableMaterial1D(E=0.0, density=0.0)
+            CableMaterial1D(E=0.0)
         with self.assertRaises(ValueError):
-            CableMaterial1D(E=-1.0, density=0.0)
+            CableMaterial1D(E=-1.0)
 
 
 if __name__ == '__main__':

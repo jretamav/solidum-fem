@@ -57,7 +57,7 @@ def _tri3(coords, mat):
 
 class TestQuad4GaussState(unittest.TestCase):
     def setUp(self):
-        self.mat = _Elastic2D(density=0.0)
+        self.mat = _Elastic2D()
 
     def test_shape_and_global_points(self):
         # Cuadrado [0,2] x [0,2]: los puntos de Gauss caen en (1±1/√3, 1±1/√3)
@@ -102,7 +102,7 @@ class TestQuad4GaussState(unittest.TestCase):
 
 class TestTri3GaussState(unittest.TestCase):
     def setUp(self):
-        self.mat = _Elastic2D(density=0.0)
+        self.mat = _Elastic2D()
 
     def test_shape_and_centroid(self):
         coords = [(0, 0), (3, 0), (0, 3)]

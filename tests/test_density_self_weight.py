@@ -1,15 +1,17 @@
 """Tests del soporte de densidad por material y peso propio multimaterial.
 
-Verifica el ADR 0008:
+Verifica el ADR 0008 (versión definitiva, contrato lazy):
 
-1. ``density`` es argumento OBLIGATORIO al construir cualquier material;
-   omitirlo lanza ``TypeError`` en construcción (fallo ruidoso e inmediato,
-   sin posibilidad de propagar masa cero silenciosa a un análisis dinámico).
-2. ``Assembler.assemble_self_weight(g)`` aplica ``b_element = density · g``
-   por elemento, respetando la densidad del material asignado.
+1. ``density`` es opcional al construir; default ``None`` indica "no
+   declarada". Los análisis estáticos puros que no usan masa no tienen
+   que declararla.
+2. ``Assembler.assemble_self_weight(g)`` falla con ``ValueError`` si algún
+   material tiene ``density=None``, listando los materiales por nombre.
+   Sin posibilidad de fallo silencioso de masa cero en peso propio o
+   futura matriz de masa.
 3. Modelos multimaterial dan resultado físicamente correcto (cada elemento
    ve su propio ρ).
-4. Material con ``density = 0`` declarado explícitamente emite warning
+4. Material con ``density=0.0`` declarado explícitamente emite warning
    informativo y aporta cero al peso propio (caso legítimo: penalty,
    restricción).
 5. YAML: bloque ``gravity`` mutuamente exclusivo con ``body_force``.
@@ -40,15 +42,18 @@ from fenix.utils.yaml_parser import YamlParser, YamlValidationError
 
 
 class TestMaterialDensityAttribute(unittest.TestCase):
-    """Todos los materiales requieren `density` y exponen el atributo."""
+    """`density` es opcional al construir; tres estados semánticos:
+    ``None`` (no declarada), ``0.0`` (sin masa, explícito), ``> 0`` (con masa).
+    """
 
-    def test_elastic1d_density_obligatoria(self):
-        # Omitir density lanza TypeError al construir — no permite default silencioso.
-        with self.assertRaises(TypeError):
-            Elastic1D(E=210e9)
-        # Valor explícito (incluido 0.0 para fixtures) es válido.
+    def test_elastic1d_density_opcional(self):
+        # Omitir density es válido: análisis estático puro no la necesita.
+        m_unset = Elastic1D(E=210e9)
+        self.assertIsNone(m_unset.density)
+        # Cero explícito es válido (material sin masa por diseño).
         m_massless = Elastic1D(E=210e9, density=0.0)
         self.assertEqual(m_massless.density, 0.0)
+        # Valor físico.
         m_steel = Elastic1D(E=210e9, density=7850.0)
         self.assertEqual(m_steel.density, 7850.0)
 
@@ -117,6 +122,20 @@ class TestAssembleSelfWeight(unittest.TestCase):
         n2 = dom.nodes[2]
         esperado = 0.5 * (7850.0 + 2500.0) * (-9.81) * A * L
         np.testing.assert_allclose(F[n2.dofs['uy']], esperado, rtol=1e-12)
+
+    def test_density_none_lanza_value_error(self):
+        """Material sin density declarada + peso propio → ValueError ruidoso
+        identificando el material por nombre. Sin fallo silencioso."""
+        dom = Domain()
+        n1 = dom.add_node(1, [0.0, 0.0])
+        n2 = dom.add_node(2, [1.0, 0.0])
+        mat = Elastic1D(E=210e9)  # density no declarada
+        dom.add_element(Truss2D(1, [n1, n2], mat, A=1e-3))
+        dom.generate_equation_numbers(verbose=False)
+        asm = Assembler(dom)
+
+        with self.assertRaisesRegex(ValueError, "Elastic1D"):
+            asm.assemble_self_weight([0.0, -9.81])
 
     def test_density_cero_explicita_genera_warning_y_aporte_nulo(self):
         """Material con density=0.0 declarado explícitamente (caso legítimo:

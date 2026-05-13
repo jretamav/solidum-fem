@@ -276,11 +276,17 @@ class Assembler:
     def assemble_self_weight(self, g) -> np.ndarray:
         """Acumula peso propio usando `material.density` de cada elemento (ADR 0008).
 
-        Cada elemento ve `b_element = material.density · g`. Materiales que
-        no declaran densidad (`density = 0.0`) producen aporte nulo y emiten
-        un warning identificando el material concreto — probable olvido del
-        usuario, no comportamiento físico legítimo (la masa no puede ser cero
-        en peso propio).
+        Cada elemento ve `b_element = material.density · g`. Comportamiento
+        según el valor de `density` del material asignado:
+
+        - `density is None` (no declarado al construir el material): el
+          cálculo no puede completarse físicamente — falta información de
+          masa. La función falla con `ValueError` listando los materiales
+          afectados por nombre. Sin posibilidad de fallo silencioso.
+        - `density == 0.0` declarado explícitamente: caso legítimo de
+          material sin masa (penalty, restricción, fixture). Aporte nulo
+          al vector global; emite `WARNING` informativo.
+        - `density > 0`: aporte normal `ρ·g·integral consistente`.
 
         Promoción 2D↔3D: idéntica a `assemble_body_load`.
 
@@ -295,12 +301,23 @@ class Assembler:
         -------
         np.ndarray, shape (ndof,)
             Vector global de fuerzas nodales consistentes con peso propio.
+
+        Raises
+        ------
+        ValueError
+            Si algún material del modelo no declara `density` y se invoca
+            este cálculo.
         """
         g3 = self._promote_to_3d(g, "assemble_self_weight")
         warned_materials: set[int] = set()
 
+        missing: list[str] = []
+
         def _b_for_element(element):
-            density = element.material.density   # contrato: material siempre la declara (ADR 0008)
+            density = element.material.density
+            if density is None:
+                missing.append(type(element.material).__name__)
+                return 0.0 * (g3 if 'uz' in element.DOF_NAMES else g3[:2])  # placeholder; falla más abajo
             if density == 0.0 and id(element.material) not in warned_materials:
                 warned_materials.add(id(element.material))
                 _log.warning(
@@ -312,4 +329,15 @@ class Assembler:
             g_elem = g3 if 'uz' in element.DOF_NAMES else g3[:2]
             return density * g_elem
 
-        return self._iterate_body_force(_b_for_element)
+        F = self._iterate_body_force(_b_for_element)
+        if missing:
+            unique = sorted(set(missing))
+            raise ValueError(
+                "assemble_self_weight: los siguientes materiales no declaran "
+                "density y son requeridos por el cálculo de peso propio: "
+                f"{unique}. Añade el atributo `density` (kg/m³ en las unidades "
+                "del problema) en cada uno de ellos. Si el material no tiene "
+                "masa física (penalty/restricción), declarar `density=0.0` "
+                "explícitamente para silenciar este error."
+            )
+        return F

@@ -15,9 +15,9 @@ class IsotropicDamage2D(Material):
     PRIMARY_STATE_VAR = 'damage'  # variable de daño en [0, 1]
 
     def __init__(self, E: float, nu: float, kappa_0: float, alpha: float,
-                 density: float, hypothesis: str = 'plane_stress'):
+                 hypothesis: str = 'plane_stress', density: float | None = None):
         self.E = E
-        self.elastic_base = Elastic2D(E, nu, density=0.0, hypothesis=hypothesis)
+        self.elastic_base = Elastic2D(E, nu, hypothesis=hypothesis)
         self.kappa_0 = kappa_0
         self.alpha = alpha
         self.density = density

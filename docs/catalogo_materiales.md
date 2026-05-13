@@ -4,7 +4,7 @@
 >
 > **Convenciones**: `STRAIN_DIM` = dimensión Voigt de la deformación de entrada (1 = escalar, 3 = 2D `[ε_xx, ε_yy, γ_xy]`, 6 = 3D). `PRIMARY_STATE_VAR` = variable interna que el `VtkExporter` lleva al output.
 >
-> **Densidad (ADR 0008)**: todos los materiales requieren el parámetro `density` (kg/m³ en las unidades del problema) al construir. **Obligatorio**, sin default — omitirlo lanza `TypeError`. Valor `0.0` se admite explícitamente (fixtures, materiales de penalty/restricción) pero nunca por omisión silenciosa. Consumido por `Assembler.assemble_self_weight(g)` y reservado para análisis modal/dinámico.
+> **Densidad (ADR 0008)**: todos los materiales aceptan un parámetro opcional `density` (kg/m³ en las unidades del problema). No requerido al construir — análisis estáticos sin peso propio funcionan sin declararla. Cuando un consumidor que requiere masa la pide (`Assembler.assemble_self_weight(g)` y futuras `assemble_mass_matrix`, etc.) y la encuentra como `None`, **falla con `ValueError`** listando los materiales sin densidad. Valor `0.0` declarado explícitamente cubre el caso legítimo de material sin masa física (penalty, restricción) y emite warning informativo.
 
 ---
 

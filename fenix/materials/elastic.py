@@ -7,7 +7,7 @@ from fenix.registry import MaterialRegistry
 class Elastic1D(Material):
     STRAIN_DIM = 1
 
-    def __init__(self, E, density: float):
+    def __init__(self, E, density: float | None = None):
         self.E = E
         self.density = density
 

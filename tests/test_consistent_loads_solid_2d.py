@@ -63,7 +63,7 @@ def _make_tri3(coords, material, thickness=1.0):
 
 class TestQuad4ConsistentLoads(unittest.TestCase):
     def setUp(self):
-        self.mat = _Elastic2D(E=1000.0, nu=0.3, density=0.0)
+        self.mat = _Elastic2D(E=1000.0, nu=0.3)
 
     def test_body_load_uniform_regular_square(self):
         # Cuadrado 2x2 centrado en el origen, espesor 0.5, b = (0, -10)
@@ -124,7 +124,7 @@ class TestQuad4ConsistentLoads(unittest.TestCase):
 
 class TestTri3ConsistentLoads(unittest.TestCase):
     def setUp(self):
-        self.mat = _Elastic2D(E=1000.0, nu=0.3, density=0.0)
+        self.mat = _Elastic2D(E=1000.0, nu=0.3)
 
     def test_body_load_uniform(self):
         coords = [(0, 0), (3, 0), (0, 4)]
@@ -174,7 +174,7 @@ class TestQuad4UniaxialTractionPatch(unittest.TestCase):
         H = 1.0
         thick = 1.0
 
-        mat = _Elastic2D(E=E, nu=nu, density=0.0)
+        mat = _Elastic2D(E=E, nu=nu)
         coords = [(0, 0), (L, 0), (L, H), (0, H)]
         elem, nodes = _make_quad4(coords, mat, thickness=thick)
 

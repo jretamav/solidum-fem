@@ -121,7 +121,7 @@ class TestQuadraticPatchTest(unittest.TestCase):
     """ε_xx(x) = 2x exacto en todos los Gauss para los 3 elementos."""
 
     def setUp(self):
-        self.mat = _Elastic2D(density=0.0)
+        self.mat = _Elastic2D()
 
     def _check_patch(self, cls, coords):
         elem, _ = _make_element(cls, coords, self.mat)
@@ -153,7 +153,7 @@ class TestQuadraticPatchTest(unittest.TestCase):
 
 class TestConsistentLoads(unittest.TestCase):
     def setUp(self):
-        self.mat = _Elastic2D(density=0.0)
+        self.mat = _Elastic2D()
 
     def test_quad8_body_load_sum(self):
         coords = [(0, 0), (3, 0), (3, 2), (0, 2),
@@ -209,7 +209,7 @@ class TestQuad8UniaxialPatch(unittest.TestCase):
 
     def test_uniaxial(self):
         E = 1000.0; nu = 0.3; p = 5.0; L = 2.0; H = 1.0; t = 1.0
-        mat = _Elastic2D(E, nu, density=0.0)
+        mat = _Elastic2D(E, nu)
         coords = [(0, 0), (L, 0), (L, H), (0, H),
                   (L/2, 0), (L, H/2), (L/2, H), (0, H/2)]
         elem, nodes = _make_element(Quad8, coords, mat, thickness=t)

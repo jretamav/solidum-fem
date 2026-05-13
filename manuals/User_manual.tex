@@ -441,7 +441,7 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 
 \textbf{Qué hace Fenix}. Para cada elemento computa $\mathbf b_e = \rho_e\!\cdot\!\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de \texttt{body\_force}. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
 
-\textbf{Densidad obligatoria}. El campo \texttt{density} es \textbf{requerido} al declarar un material (ADR 0008). Omitirlo lanza \texttt{TypeError} al parsear el YAML; el fallo es ruidoso e inmediato, no diferido al análisis. Si un material legítimamente carece de masa física (penalty, restricción, fixture de test), debe declararse explícitamente como \texttt{density: 0.0} — caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo señalando el material por nombre y su contribución al peso propio es nula.
+\textbf{Densidad solo cuando se usa}. El campo \texttt{density} es \textbf{opcional} al declarar un material (ADR 0008): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar \texttt{gravity} (o, en su día, análisis modal/dinámico), Fenix exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con \texttt{ValueError} listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como \texttt{density: 0.0} — caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo y su contribución al peso propio es nula.
 
 \subsection{Detalles transversales}
 

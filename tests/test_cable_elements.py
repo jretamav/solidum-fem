@@ -30,7 +30,7 @@ class TestCable2DCorot(unittest.TestCase):
     def test_acceptance_cable_tensado_como_barra_corot(self):
         """Criterio 1: tensado con material lineal coincide con barra corot."""
         E, A = 1000.0, 1.0
-        mat = Elastic1D(E=E, density=0.0)
+        mat = Elastic1D(E=E)
         cable = self._build([0.0, 0.0], [1.0, 0.0], mat, A=A)
         u_e = np.array([0.0, 0.0, 1e-3, 0.0])  # ε = 1e-3 > 0 → tensado
 
@@ -49,7 +49,7 @@ class TestCable2DCorot(unittest.TestCase):
 
     def test_acceptance_cable_destensado_aportacion_nula(self):
         """Criterio 2: con material unilateral + ε < 0 ⇒ K_T = 0, F_int = 0."""
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         cable = self._build([0.0, 0.0], [1.0, 0.0], mat, A=1.0)
         u_e = np.array([0.0, 0.0, -1e-3, 0.0])  # ε < 0 → destensado
 
@@ -61,7 +61,7 @@ class TestCable2DCorot(unittest.TestCase):
 
     def test_acceptance_rotacion_rigida(self):
         """Criterio 3: rotación rígida ⇒ ε = 0 ⇒ σ = 0, F_int = 0."""
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         cable = self._build([0.0, 0.0], [1.0, 0.0], mat, A=1.0)
         theta = math.pi / 4
         c, s = math.cos(theta), math.sin(theta)
@@ -74,7 +74,7 @@ class TestCable2DCorot(unittest.TestCase):
 
     def test_acceptance_cruce_por_cero(self):
         """Criterio 4: ε = 0 exacto ⇒ σ = 0, E_t = 0, K_T = 0, F_int = 0."""
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         cable = self._build([0.0, 0.0], [1.0, 0.0], mat, A=1.0)
         u_e = np.zeros(4)  # ε = 0
 
@@ -105,8 +105,8 @@ class TestCable3DCorot(unittest.TestCase):
     def test_acceptance_cable_tensado_como_barra_corot_3d(self):
         """Criterio 1: tensado con material lineal coincide con Truss3DCorot."""
         E, A = 1000.0, 1.0
-        cable = self._build([0.0, 0.0, 0.0], [3.0, 4.0, 12.0], Elastic1D(E=E, density=0.0), A=A)
-        truss = self._build([0.0, 0.0, 0.0], [3.0, 4.0, 12.0], Elastic1D(E=E, density=0.0), A=A,
+        cable = self._build([0.0, 0.0, 0.0], [3.0, 4.0, 12.0], Elastic1D(E=E), A=A)
+        truss = self._build([0.0, 0.0, 0.0], [3.0, 4.0, 12.0], Elastic1D(E=E), A=A,
                             cls=Truss3DCorot)
         axis = np.array([3.0, 4.0, 12.0]) / 13.0
         u_tiny = np.concatenate([np.zeros(3), 1e-6 * axis])
@@ -119,7 +119,7 @@ class TestCable3DCorot(unittest.TestCase):
 
     def test_acceptance_cable_destensado_aportacion_nula(self):
         """Criterio 2: con material unilateral + ε < 0 ⇒ K_T = 0, F_int = 0."""
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         cable = self._build([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], mat, A=1.0)
         u_e = np.array([0.0, 0.0, 0.0, -1e-3, 0.0, 0.0])  # ε < 0
 
@@ -131,7 +131,7 @@ class TestCable3DCorot(unittest.TestCase):
 
     def test_acceptance_rotacion_rigida_3d(self):
         """Criterio 3: rotación rígida 3D ⇒ ε = 0 ⇒ σ = 0, F_int = 0."""
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         cable = self._build([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], mat, A=1.0)
         theta = math.pi / 4
         c, s = math.cos(theta), math.sin(theta)
@@ -145,7 +145,7 @@ class TestCable3DCorot(unittest.TestCase):
 
     def test_acceptance_cruce_por_cero(self):
         """Criterio 4: u_e = 0 ⇒ σ = 0, E_t = 0, K_T = 0, F_int = 0."""
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         cable = self._build([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], mat, A=1.0)
         u_e = np.zeros(6)
 
@@ -188,13 +188,13 @@ class TestUnilateralMaterialValidation(unittest.TestCase):
 
     def test_truss2d_rechaza_cable_material(self):
         n1, n2 = self._make_nodes_2d()
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         with self.assertRaisesRegex(ValueError, "unilateral"):
             Truss2D(1, [n1, n2], mat, A=1.0)
 
     def test_truss3d_rechaza_cable_material(self):
         n1, n2 = self._make_nodes_3d()
-        mat = CableMaterial1D(E=1000.0, density=0.0)
+        mat = CableMaterial1D(E=1000.0)
         with self.assertRaisesRegex(ValueError, "unilateral"):
             Truss3D(1, [n1, n2], mat, A=1.0)
 
@@ -204,24 +204,24 @@ class TestUnilateralMaterialValidation(unittest.TestCase):
         para él."""
         n1, n2 = self._make_nodes_2d()
         with self.assertRaisesRegex(ValueError, "unilateral"):
-            Truss2DCorot(1, [n1, n2], CableMaterial1D(E=1000.0, density=0.0), A=1.0)
+            Truss2DCorot(1, [n1, n2], CableMaterial1D(E=1000.0), A=1.0)
         n3, n4 = self._make_nodes_3d()
         with self.assertRaisesRegex(ValueError, "unilateral"):
-            Truss3DCorot(1, [n3, n4], CableMaterial1D(E=1000.0, density=0.0), A=1.0)
+            Truss3DCorot(1, [n3, n4], CableMaterial1D(E=1000.0), A=1.0)
 
     def test_cable_corot_acepta_cable_material(self):
         """Combinación canónica — no debe lanzar."""
         n1, n2 = self._make_nodes_2d()
-        Cable2DCorot(1, [n1, n2], CableMaterial1D(E=1000.0, density=0.0), A=1.0)
+        Cable2DCorot(1, [n1, n2], CableMaterial1D(E=1000.0), A=1.0)
         n3, n4 = self._make_nodes_3d()
-        Cable3DCorot(2, [n3, n4], CableMaterial1D(E=1000.0, density=0.0), A=1.0)
+        Cable3DCorot(2, [n3, n4], CableMaterial1D(E=1000.0), A=1.0)
 
     def test_truss_sigue_aceptando_materiales_bilaterales(self):
         """Regresión: la nueva validación no rompe el contrato con Elastic1D."""
         n1, n2 = self._make_nodes_2d()
-        Truss2D(1, [n1, n2], Elastic1D(E=1000.0, density=0.0), A=1.0)
+        Truss2D(1, [n1, n2], Elastic1D(E=1000.0), A=1.0)
         n3, n4 = self._make_nodes_3d()
-        Truss3D(1, [n3, n4], Elastic1D(E=1000.0, density=0.0), A=1.0)
+        Truss3D(1, [n3, n4], Elastic1D(E=1000.0), A=1.0)
 
 
 if __name__ == '__main__':

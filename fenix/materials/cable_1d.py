@@ -32,7 +32,7 @@ class CableMaterial1D(Material):
     PRIMARY_STATE_VAR = None
     IS_UNILATERAL = True
 
-    def __init__(self, E, density: float):
+    def __init__(self, E, density: float | None = None):
         if E <= 0:
             raise ValueError(f"CableMaterial1D: E debe ser > 0, se recibió {E}.")
         self.E = E

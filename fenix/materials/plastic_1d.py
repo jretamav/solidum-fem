@@ -12,7 +12,8 @@ class Elastoplastic1D(Material):
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
 
-    def __init__(self, E: float, sigma_y: float, density: float, H: float = 0.0):
+    def __init__(self, E: float, sigma_y: float, H: float = 0.0,
+                 density: float | None = None):
         self.E = E              # Módulo de Young
         self.sigma_y = sigma_y  # Esfuerzo de fluencia inicial
         self.H = H              # Módulo de endurecimiento (0 = plasticidad perfecta)

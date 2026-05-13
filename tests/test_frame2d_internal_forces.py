@@ -41,7 +41,7 @@ def _setup_cantilever(element_cls, L=1.0):
     ni.dofs = {'ux': 0, 'uy': 1, 'rz': 2}
     nj.dofs = {'ux': 3, 'uy': 4, 'rz': 5}
 
-    mat = LinearElastic1D(E=1.0, density=0.0)
+    mat = LinearElastic1D(E=1.0)
     if element_cls is Frame2DTimoshenko:
         elem = element_cls(1, [ni, nj], mat, A=1.0, I=1.0, As=1e6)  # As grande → Timoshenko ≈ Euler
     else:

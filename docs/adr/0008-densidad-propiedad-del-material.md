@@ -56,12 +56,12 @@ La densidad como propiedad del material es el contrato principal. No se introduc
 
 ```python
 class Material(ABC):
-    density: float   # propiedad obligatoria; cada subclase la fija en su constructor
+    density: Optional[float] = None   # declarada solo si el análisis la requiere
 ```
 
-- **Obligatoria al construir**: cada subclase concreta de `Material` recibe `density` como argumento **requerido** del constructor. La base no provee default. La omisión lanza `TypeError` en construcción — el fallo es ruidoso e inmediato, no diferido al momento del análisis. Esto previene "fallos silenciosos de masa" en dinámica, donde un material sin densidad declarada produciría matriz de masa parcialmente cero y resultados físicamente erróneos sin signal de error.
-- **Valor `0.0` admitido explícitamente**: el usuario puede declarar `density=0.0` para fixtures de test, materiales de penalty/restricción o casos legítimamente adimensionales — pero la elección debe ser consciente, nunca por omisión silenciosa.
-- **Warning en peso propio con density=0**: si `assemble_self_weight` recibe un material con `density=0.0`, emite `WARNING` identificando el material por nombre y aporta cero al vector global. Esto cubre el caso legítimo de mezcla (masas concentradas en algunos nodos, peso propio solo en otros) sin enmascarar el error de no declarar densidad en absoluto.
+- **Opcional al construir**: un material que se usa en análisis estático puro (sin peso propio ni matriz de masa) no necesita declarar densidad. La omisión es válida y el constructor no falla. Default `None` indica "no declarada", semánticamente distinto de "explícitamente cero".
+- **Enforcement diferida al uso**: `Assembler.assemble_self_weight(g)` (y, en su día, `assemble_mass_matrix()`, `assemble_centrifugal()`, etc.) inspecciona `material.density` por elemento. Si encuentra `None`, **falla con `ValueError`** listando los materiales afectados por nombre. El fallo es ruidoso e inmediato en el momento en que se pide la magnitud que requiere masa, no antes y no después. Imposible propagar masa cero silenciosa a un análisis dinámico.
+- **Valor `0.0` declarado explícitamente**: caso legítimo de material sin masa física (penalty, restricción, fixture). `assemble_self_weight` lo acepta, emite `WARNING` informativo, aporta cero al vector global. Distingue así "no he pensado en la masa" (`None` → error) de "este material no tiene masa por diseño" (`0.0` → warning).
 - **Unidades del problema**: como con todas las propiedades materiales, el usuario es responsable de la consistencia de unidades. Si trabaja en N/m, las densidades deben ser kg/m³ con g en m/s²; si trabaja en N/mm, kg/mm³ con g en mm/s². El sistema de tolerancias (ADR 0007) ya garantiza invariancia bajo cambio de unidades.
 
 ## Consecuencias
@@ -80,7 +80,7 @@ class Material(ABC):
 
 **Deuda heredada**:
 
-- Ninguna asimétrica al presente. La densidad obligatoria al construir el material elimina el riesgo de "fallo silencioso de masa" que tendría un default 0.0 en dinámica.
+- Ninguna asimétrica al presente. La enforcement diferida (`None` al construir → `ValueError` al pedir peso propio o matriz de masa) cubre simultáneamente las dos exigencias en tensión: (a) no obligar a declarar densidad en análisis estáticos que no la usan, y (b) impedir fallos silenciosos de masa cuando entre dinámica.
 
 ## Alternativas consideradas
 

@@ -31,13 +31,13 @@ from fenix.materials.von_mises_2d import VonMises2D
 
 class TestElastic1D(unittest.TestCase):
     def test_hooke(self):
-        mat = Elastic1D(E=2.0e5, density=0.0)
+        mat = Elastic1D(E=2.0e5)
         sigma, E_t, _ = mat.compute_state(strain=1.0e-3)
         self.assertAlmostEqual(sigma, 2.0e5 * 1.0e-3)
         self.assertEqual(E_t, 2.0e5)
 
     def test_state_vars_passthrough(self):
-        mat = Elastic1D(E=1.0, density=0.0)
+        mat = Elastic1D(E=1.0)
         _, _, state = mat.compute_state(strain=0.5, state_vars={"foo": 7})
         self.assertEqual(state, {"foo": 7})
 
@@ -71,7 +71,7 @@ class TestElastic2D(unittest.TestCase):
         np.testing.assert_allclose(mat.C, expected, rtol=1e-12)
 
     def test_symmetry_of_C(self):
-        mat = Elastic2D(E=1.0, nu=0.25, density=0.0)
+        mat = Elastic2D(E=1.0, nu=0.25)
         np.testing.assert_allclose(mat.C, mat.C.T, atol=1e-14)
 
 
@@ -82,7 +82,7 @@ class TestElastoplastic1D(unittest.TestCase):
         self.E = 2.0e5
         self.sigma_y = 250.0
         self.H = 1.0e4
-        self.mat = Elastoplastic1D(E=self.E, sigma_y=self.sigma_y, H=self.H, density=0.0)
+        self.mat = Elastoplastic1D(E=self.E, sigma_y=self.sigma_y, H=self.H)
 
     def test_elastic_below_yield(self):
         eps = self.sigma_y / self.E * 0.5  # mitad de la fluencia
@@ -134,7 +134,7 @@ class TestIsotropicDamage1D(unittest.TestCase):
         self.E = 2.0e5
         self.kappa_0 = 1.0e-4
         self.alpha = 100.0
-        self.mat = IsotropicDamage1D(E=self.E, kappa_0=self.kappa_0, alpha=self.alpha, density=0.0)
+        self.mat = IsotropicDamage1D(E=self.E, kappa_0=self.kappa_0, alpha=self.alpha)
 
     def test_no_damage_below_threshold(self):
         eps = 0.5 * self.kappa_0
@@ -183,7 +183,7 @@ class TestIsotropicDamage2D(unittest.TestCase):
         self.kappa_0 = 1.0e-4
         self.alpha = 100.0
         self.mat = IsotropicDamage2D(
-            E=self.E, nu=self.nu, kappa_0=self.kappa_0, alpha=self.alpha, density=0.0
+            E=self.E, nu=self.nu, kappa_0=self.kappa_0, alpha=self.alpha
         )
 
     def test_no_damage_below_threshold(self):
@@ -281,8 +281,8 @@ class TestAdmissibilityToleranceUnitInvariance(unittest.TestCase):
         # Sistema A (MPa, mm, N):  E=2e5, σ_y=250,   H=1e4
         # Sistema B (Pa,  m,  N):  E=2e11, σ_y=2.5e8, H=1e10
         # Una misma trayectoria de deformación (adimensional) debe dar el mismo α.
-        mat_MPa = Elastoplastic1D(E=2.0e5, sigma_y=250.0, H=1.0e4, density=0.0)
-        mat_Pa  = Elastoplastic1D(E=2.0e11, sigma_y=2.5e8, H=1.0e10, density=0.0)
+        mat_MPa = Elastoplastic1D(E=2.0e5, sigma_y=250.0, H=1.0e4)
+        mat_Pa  = Elastoplastic1D(E=2.0e11, sigma_y=2.5e8, H=1.0e10)
 
         strains = [0.0005, 0.001, 0.002, 0.003, 0.0025, 0.0015, 0.002, 0.004]
 
@@ -302,8 +302,8 @@ class TestAdmissibilityToleranceUnitInvariance(unittest.TestCase):
 
     def test_isotropic_damage1d_unit_invariance(self):
         # Mismo concepto: dos parametrizaciones físicamente equivalentes.
-        mat_MPa = IsotropicDamage1D(E=2.0e5,  kappa_0=1.0e-4, alpha=100.0, density=0.0)
-        mat_Pa  = IsotropicDamage1D(E=2.0e11, kappa_0=1.0e-4, alpha=100.0, density=0.0)
+        mat_MPa = IsotropicDamage1D(E=2.0e5,  kappa_0=1.0e-4, alpha=100.0)
+        mat_Pa  = IsotropicDamage1D(E=2.0e11, kappa_0=1.0e-4, alpha=100.0)
 
         strains = [0.5e-4, 1.5e-4, 2.0e-4, 1.0e-4, 3.0e-4, 0.0]
 
@@ -317,7 +317,7 @@ class TestAdmissibilityToleranceUnitInvariance(unittest.TestCase):
 
     def test_admissibility_scale_adaptativa_con_endurecimiento(self):
         """La escala devuelta crece al endurecerse (no se queda en σ_y inicial)."""
-        mat = Elastoplastic1D(E=2.0e5, sigma_y=250.0, H=1.0e4, density=0.0)
+        mat = Elastoplastic1D(E=2.0e5, sigma_y=250.0, H=1.0e4)
         scale_inicial = mat.admissibility_scale(None)
         self.assertAlmostEqual(scale_inicial, 250.0)
         # Tras α = 0.01: escala = 250 + 1e4·0.01 = 350.
@@ -326,7 +326,7 @@ class TestAdmissibilityToleranceUnitInvariance(unittest.TestCase):
 
     def test_admissibility_scale_default_para_elastico_puro(self):
         """Materiales sin override heredan el default 1.0 (nunca se invoca)."""
-        mat = Elastic1D(E=1.0e5, density=0.0)
+        mat = Elastic1D(E=1.0e5)
         self.assertEqual(mat.admissibility_scale(), 1.0)
 
 

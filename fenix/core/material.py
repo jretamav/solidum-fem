@@ -48,12 +48,12 @@ class Material(ABC):
     IS_UNILATERAL: ClassVar[bool] = False
 
     # Densidad física del medio continuo (kg/m³, en las unidades del usuario).
-    # OBLIGATORIA en cada subclase concreta: el constructor de todo material
-    # debe declarar `density` como argumento requerido. Valor `0.0` se admite
-    # para casos legítimos (materiales de penalty, restricción pura, fixtures
-    # de test que ignoran masa) pero solo cuando el usuario lo declare
-    # explícitamente — nunca por omisión silenciosa. Ver ADR 0008.
-    density: float
+    # Opcional al construir: análisis que no invocan peso propio o matriz de
+    # masa no necesitan declararla. Default `None` indica "no declarada".
+    # Cuando un consumidor que requiere masa la lee y encuentra `None`, falla
+    # con `ValueError` identificando el material — sin posibilidad de fallo
+    # silencioso de masa cero. Ver ADR 0008.
+    density: Optional[float] = None
 
     @abstractmethod
     def compute_state(self, strain, state_vars=None):
