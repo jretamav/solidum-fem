@@ -12,10 +12,11 @@ class Elastoplastic1D(Material):
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
 
-    def __init__(self, E: float, sigma_y: float, H: float = 0.0):
+    def __init__(self, E: float, sigma_y: float, H: float = 0.0, density: float = 0.0):
         self.E = E              # Módulo de Young
         self.sigma_y = sigma_y  # Esfuerzo de fluencia inicial
         self.H = H              # Módulo de endurecimiento (0 = plasticidad perfecta)
+        self.density = density
 
     def admissibility_scale(self, state_vars=None) -> float:
         """Esfuerzo de fluencia corriente ``σ_y + H·α`` (ADR 0006)."""

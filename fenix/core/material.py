@@ -47,6 +47,12 @@ class Material(ABC):
     IS_SYMMETRIC: ClassVar[bool] = True
     IS_UNILATERAL: ClassVar[bool] = False
 
+    # Densidad física del medio continuo (kg/m³, en las unidades del usuario).
+    # Default 0.0: estática pura sin peso propio funciona sin declararla. Cuando
+    # se invoca peso propio o matriz de masa, se asume kg/m³ consistente con el
+    # resto del sistema de unidades del problema. Ver ADR 0008.
+    density: float = 0.0
+
     @abstractmethod
     def compute_state(self, strain, state_vars=None):
         """Calcula esfuerzo, módulo tangente/secante y nuevas variables internas.

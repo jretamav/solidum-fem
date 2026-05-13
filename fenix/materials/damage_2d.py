@@ -14,11 +14,13 @@ class IsotropicDamage2D(Material):
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'damage'  # variable de daño en [0, 1]
 
-    def __init__(self, E: float, nu: float, kappa_0: float, alpha: float, hypothesis: str = 'plane_stress'):
+    def __init__(self, E: float, nu: float, kappa_0: float, alpha: float,
+                 hypothesis: str = 'plane_stress', density: float = 0.0):
         self.E = E
         self.elastic_base = Elastic2D(E, nu, hypothesis)
         self.kappa_0 = kappa_0
         self.alpha = alpha
+        self.density = density
 
     def admissibility_scale(self, state_vars=None) -> float:
         """Esfuerzo umbral inicial ``E·κ_0`` (ADR 0006); ver IsotropicDamage1D."""

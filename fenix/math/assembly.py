@@ -1,9 +1,14 @@
 # fenix_fem/fenix/math/assembly.py
+from typing import Callable
+
 import numpy as np
 import scipy.sparse as sp
 
 from fenix.bc.constraints import ConstraintSet
 from fenix.core.domain import Domain
+from fenix.logging import get_logger
+
+_log = get_logger("assembly")
 
 
 class Assembler:
@@ -200,23 +205,56 @@ class Assembler:
             idx = node.dofs[dof_name]
             self.F_global[idx] += value
 
+    @staticmethod
+    def _promote_to_3d(v, name: str) -> np.ndarray:
+        """Acepta vector 2D ó 3D y promueve a R³ con padding cero si es 2D."""
+        arr = np.asarray(v, dtype=float).ravel()
+        if arr.size == 2:
+            return np.array([arr[0], arr[1], 0.0])
+        if arr.size == 3:
+            return arr
+        raise ValueError(
+            f"{name}: dimensión inesperada ({arr.size}). Esperado 2 ó 3 componentes."
+        )
+
+    def _iterate_body_force(self, get_b_for_element: Callable) -> np.ndarray:
+        """Recorrido interno común a `assemble_body_load` y `assemble_self_weight`.
+
+        Itera sobre todos los elementos que declaran `compute_body_load` y
+        delega en `get_b_for_element(element) -> np.ndarray` la obtención del
+        vector de fuerza de cuerpo apropiado para cada uno (en sus
+        componentes 2D ó 3D según `'uz' in element.DOF_NAMES`).
+        """
+        if not self._topology_built:
+            self._build_topology()
+
+        F_body = np.zeros(self.ndof)
+        for i, element in enumerate(self.domain.elements.values()):
+            method = getattr(element, "compute_body_load", None)
+            if method is None:
+                continue
+            b_elem = get_b_for_element(element)
+            f_e = method(b_elem)
+            F_body[self._elem_dof_indices[i]] += f_e
+        return F_body
+
     def assemble_body_load(self, b) -> np.ndarray:
-        """Acumula la integral consistente de fuerza de cuerpo sobre el dominio.
+        """Acumula la integral consistente de fuerza de cuerpo uniforme.
 
-        Itera sobre todos los elementos que declaran ``compute_body_load`` y
-        agrega su aporte al vector global de fuerzas externas. Útil para peso
-        propio (``b = (0, -ρ·g)`` en 2D, ``b = (0, 0, -ρ·g)`` en 3D) y, en
-        general, cualquier fuerza por unidad de volumen uniforme sobre el
-        modelo.
+        Aplica el mismo vector `b` (fuerza por unidad de volumen, en ejes
+        globales) a todos los elementos. Útil cuando el usuario precalcula
+        `ρ·g` para una estructura monomaterial, o cuando la fuerza de cuerpo
+        no proviene de gravedad (campo electromagnético, centrífuga, etc.).
 
-        Promoción 2D↔3D: se acepta ``b`` con 2 ó 3 componentes y se hace
-        padding con cero al pasar a R³ si es necesario. Cada elemento recibe
-        el slice apropiado según su dimensionalidad — los elementos cuyo
-        contrato declara DOFs translacionales 3D (``'uz' in DOF_NAMES``)
-        reciben ``b[:3]``; los demás reciben ``b[:2]``. La omisión silenciosa
-        de elementos sin ``compute_body_load`` (caso hipotético tras añadir
-        un elemento nuevo sin la implementación) es deliberada — el método
-        es opcional, no parte del contrato base de ``Element``.
+        Para peso propio en estructuras multimaterial, preferir
+        :meth:`assemble_self_weight` que usa `material.density` por elemento
+        (ADR 0008).
+
+        Promoción 2D↔3D: se acepta `b` con 2 ó 3 componentes; cada elemento
+        recibe el slice apropiado según su dimensionalidad
+        (`'uz' in DOF_NAMES` ⇒ 3D, en otro caso 2D). La omisión silenciosa
+        de elementos sin `compute_body_load` es deliberada — el método es
+        opcional, no parte del contrato base de `Element`.
 
         Parameters
         ----------
@@ -226,30 +264,51 @@ class Assembler:
         Returns
         -------
         np.ndarray, shape (ndof,)
-            Vector global de fuerzas nodales consistentes con la integral
-            ``∫NᵀbA dx`` agregada sobre todos los elementos compatibles.
+            Vector global de fuerzas nodales consistentes con `∫NᵀbA dx`.
         """
-        if not self._topology_built:
-            self._build_topology()
+        b3 = self._promote_to_3d(b, "assemble_body_load")
 
-        b = np.asarray(b, dtype=float).ravel()
-        if b.size == 2:
-            b3 = np.array([b[0], b[1], 0.0])
-        elif b.size == 3:
-            b3 = b
-        else:
-            raise ValueError(
-                f"assemble_body_load: dimensión inesperada de b ({b.size}). "
-                f"Esperado 2 ó 3 componentes."
-            )
+        def _b_for_element(element):
+            return b3 if 'uz' in element.DOF_NAMES else b3[:2]
 
-        F_body = np.zeros(self.ndof)
-        for i, element in enumerate(self.domain.elements.values()):
-            method = getattr(element, "compute_body_load", None)
-            if method is None:
-                continue
-            b_elem = b3 if 'uz' in element.DOF_NAMES else b3[:2]
-            f_e = method(b_elem)
-            F_body[self._elem_dof_indices[i]] += f_e
+        return self._iterate_body_force(_b_for_element)
 
-        return F_body
+    def assemble_self_weight(self, g) -> np.ndarray:
+        """Acumula peso propio usando `material.density` de cada elemento (ADR 0008).
+
+        Cada elemento ve `b_element = material.density · g`. Materiales que
+        no declaran densidad (`density = 0.0`) producen aporte nulo y emiten
+        un warning identificando el material concreto — probable olvido del
+        usuario, no comportamiento físico legítimo (la masa no puede ser cero
+        en peso propio).
+
+        Promoción 2D↔3D: idéntica a `assemble_body_load`.
+
+        Parameters
+        ----------
+        g : np.ndarray or list, shape (2,) or (3,)
+            Vector aceleración gravitatoria en ejes globales (m/s² o las
+            unidades correspondientes del problema). Típicamente
+            `[0, -9.81]` en 2D ó `[0, 0, -9.81]` en 3D.
+
+        Returns
+        -------
+        np.ndarray, shape (ndof,)
+            Vector global de fuerzas nodales consistentes con peso propio.
+        """
+        g3 = self._promote_to_3d(g, "assemble_self_weight")
+        warned_materials: set[int] = set()
+
+        def _b_for_element(element):
+            density = getattr(element.material, "density", 0.0)
+            if density == 0.0 and id(element.material) not in warned_materials:
+                warned_materials.add(id(element.material))
+                _log.warning(
+                    f"assemble_self_weight: material '{type(element.material).__name__}' "
+                    f"tiene density=0.0; su aporte al peso propio será nulo. "
+                    f"¿Olvidó declarar 'density' en YAML?"
+                )
+            g_elem = g3 if 'uz' in element.DOF_NAMES else g3[:2]
+            return density * g_elem
+
+        return self._iterate_body_force(_b_for_element)

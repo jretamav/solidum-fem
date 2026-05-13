@@ -90,7 +90,8 @@ class VonMises2D(Material):
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
 
-    def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0, hypothesis: str = 'plane_strain'):
+    def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0,
+                 hypothesis: str = 'plane_strain', density: float = 0.0):
         if hypothesis != 'plane_strain':
             raise NotImplementedError(
                 "El material 'VonMises2D' actualmente solo soporta la hipótesis de 'plane_strain' (Deformación Plana). "
@@ -102,6 +103,7 @@ class VonMises2D(Material):
         self.nu = nu
         self.sigma_y = sigma_y
         self.H = H
+        self.density = density
         
         # Módulos elásticos de volumen (K) y corte (G)
         self.K = E / (3.0 * (1.0 - 2.0 * nu))
