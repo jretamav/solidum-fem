@@ -47,7 +47,7 @@ class LinearElastic2DPlaneStress(Material):
 
     STRAIN_DIM = 3
 
-    def __init__(self, E: float, nu: float):
+    def __init__(self, E: float, nu: float, density: float = 0.0):
         self.E = E
         self.nu = nu
         fac = E / (1.0 - nu * nu)

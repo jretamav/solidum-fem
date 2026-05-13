@@ -20,7 +20,7 @@ from fenix.elements.frame3d import Frame3D
 class LinearElastic1D:
     STRAIN_DIM = 1
 
-    def __init__(self, E, nu=0.3):
+    def __init__(self, E, nu=0.3, density: float = 0.0):
         self.E = E
         self.nu = nu
 
@@ -37,7 +37,7 @@ def _cantilever():
             n.add_dof(d)
     ni.dofs = {d: i for i, d in enumerate(dof_names)}
     nj.dofs = {d: i + 6 for i, d in enumerate(dof_names)}
-    mat = LinearElastic1D(E=1.0, nu=0.0)  # G = 1/2, fijo
+    mat = LinearElastic1D(E=1.0, nu=0.0, density=0.0)  # G = 1/2, fijo
     # ref_vector=(0,1,0) fuerza y_local=global_y, z_local=global_z.
     # Con el default (0,0,1) el frame se construye rotado y las cargas globales
     # no coinciden con las locales, complicando la interpretación del test.

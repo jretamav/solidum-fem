@@ -324,6 +324,7 @@ materials:
   - id: 1
     type: Elastic1D
     E: 200.0e9
+    density: 7850.0
   - id: 2
     type: VonMises2D
     E: 210.0e9
@@ -331,6 +332,7 @@ materials:
     sigma_y: 250.0e6
     H: 2.0e9
     hypothesis: plane_strain
+    density: 7850.0
 \end{lstlisting}
 
 Los parámetros aceptados dependen del material; consulte el Capítulo~\ref{cap:materiales} para el catálogo completo.
@@ -439,7 +441,7 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 
 \textbf{Qué hace Fenix}. Para cada elemento computa $\mathbf b_e = \rho_e\!\cdot\!\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de \texttt{body\_force}. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
 
-\textbf{Densidad olvidada}. Si un material declarado no incluye \texttt{density} (o lo deja en cero), su contribución al peso propio será nula y Fenix emite un \texttt{WARNING} identificando el material concreto. Esto detecta olvidos sin romper el análisis.
+\textbf{Densidad obligatoria}. El campo \texttt{density} es \textbf{requerido} al declarar un material (ADR 0008). Omitirlo lanza \texttt{TypeError} al parsear el YAML; el fallo es ruidoso e inmediato, no diferido al análisis. Si un material legítimamente carece de masa física (penalty, restricción, fixture de test), debe declararse explícitamente como \texttt{density: 0.0} — caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo señalando el material por nombre y su contribución al peso propio es nula.
 
 \subsection{Detalles transversales}
 
@@ -574,6 +576,7 @@ materials:
   - id: 1
     type: CableMaterial1D
     E: 150.0e9
+    density: 7850.0
 
 elements:
   - id: 1
@@ -682,6 +685,7 @@ materials:
   - id: 1
     type: Elastic1D
     E: 200.0e9
+    density: 7850.0
 \end{lstlisting}
 
 \subsection{\texttt{Elastic2D} --- elasticidad lineal isótropa 2D}
@@ -694,6 +698,7 @@ materials:
     E: 200.0e9
     nu: 0.3
     hypothesis: plane_stress
+    density: 7850.0
 \end{lstlisting}
 
 La hipótesis \texttt{plane\_stress} se usa para placas delgadas sin confinamiento normal; \texttt{plane\_strain} para secciones de presa, túneles o problemas con extensión infinita en el eje longitudinal.
@@ -716,6 +721,7 @@ materials:
     E: 200.0e9
     sigma_y: 250.0e6
     H: 2.0e9
+    density: 7850.0
 \end{lstlisting}
 
 \subsection{\texttt{VonMises2D} --- plasticidad J2 plana con endurecimiento isótropo}
@@ -740,6 +746,7 @@ materials:
     sigma_y: 250.0e6
     H: 2.0e9
     hypothesis: plane_strain
+    density: 7850.0
 \end{lstlisting}
 
 \section{Daño Mecánico}
@@ -773,6 +780,7 @@ materials:
     kappa_0: 1.5e-4
     alpha: 800.0
     hypothesis: plane_stress
+    density: 2500.0   # hormigón
 \end{lstlisting}
 
 \section{Elasticidad Unilateral (Cable)}
@@ -795,6 +803,7 @@ materials:
   - id: 1
     type: CableMaterial1D
     E: 150.0e9
+    density: 7850.0
 \end{lstlisting}
 
 % ==========================================
@@ -934,6 +943,7 @@ materials:
   - id: 1
     type: Elastic1D
     E: 200.0e9
+    density: 7850.0
 
 elements:
   - id: 1
@@ -988,6 +998,7 @@ materials:
     sigma_y: 250.0e6
     H: 1.5e9
     hypothesis: plane_strain
+    density: 7850.0
 
 boundary_conditions_by_group:
   "Borde_Fijo": {ux: 0.0, uy: 0.0}
@@ -1026,6 +1037,7 @@ materials:
   - id: 1
     type: CableMaterial1D
     E: 150.0e9
+    density: 7850.0
 
 elements:
   - id: 1

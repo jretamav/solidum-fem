@@ -21,6 +21,7 @@ materials:
     E: 200.0e9
     nu: 0.3
     hypothesis: plane_stress
+    density: 7850.0
 
 elements:
   - id: 1

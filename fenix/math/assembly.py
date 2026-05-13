@@ -300,13 +300,14 @@ class Assembler:
         warned_materials: set[int] = set()
 
         def _b_for_element(element):
-            density = getattr(element.material, "density", 0.0)
+            density = element.material.density   # contrato: material siempre la declara (ADR 0008)
             if density == 0.0 and id(element.material) not in warned_materials:
                 warned_materials.add(id(element.material))
                 _log.warning(
                     f"assemble_self_weight: material '{type(element.material).__name__}' "
-                    f"tiene density=0.0; su aporte al peso propio será nulo. "
-                    f"¿Olvidó declarar 'density' en YAML?"
+                    f"declara density=0.0 explícitamente; su aporte al peso propio "
+                    f"es nulo. Caso legítimo si el material representa restricción/penalty "
+                    f"sin masa física; revísalo si esperabas peso propio aquí."
                 )
             g_elem = g3 if 'uz' in element.DOF_NAMES else g3[:2]
             return density * g_elem

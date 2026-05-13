@@ -118,7 +118,7 @@ def _build_truss(F_axial: float, E: float, A: float, L: float):
     dom = Domain()
     n1 = dom.add_node(1, [0.0, 0.0])
     n2 = dom.add_node(2, [L, 0.0])
-    mat = Elastic1D(E=E)
+    mat = Elastic1D(E=E, density=0.0)
     elem = Truss2D(1, [n1, n2], mat, A=A)
     n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0); n2.fix_dof('uy', 0.0)
     dom.add_element(elem)

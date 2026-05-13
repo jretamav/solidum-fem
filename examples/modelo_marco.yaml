@@ -11,6 +11,7 @@ materials:
   - id: 1
     type: Elastic1D
     E: 200.0e9     # Acero (200 GPa)
+    density: 7850.0   # acero (kg/m³)
 
 elements:
   - id: 1

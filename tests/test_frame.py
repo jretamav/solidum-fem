@@ -24,7 +24,7 @@ class TestFrame2DEulerAcceptance(unittest.TestCase):
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0])
         n2 = dom.add_node(2, [L, 0.0])
-        mat = Elastic1D(E=E)
+        mat = Elastic1D(E=E, density=0.0)
         elem = Frame2DEuler(1, [n1, n2], mat, A=A, I=I)
         n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0); n1.fix_dof('rz', 0.0)
         dom.add_element(elem)
@@ -71,7 +71,7 @@ class TestFrame2DEulerAcceptance(unittest.TestCase):
             node.dofs['ux'] = 3 * k
             node.dofs['uy'] = 3 * k + 1
             node.dofs['rz'] = 3 * k + 2
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem = Frame2DEuler(1, [n1, n2], mat, A=1e-3, I=1e-6)
 
         u_e = np.array([0.0, 0.0, 0.0, 1e-4, 2e-4, 3e-4])
@@ -90,7 +90,7 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0])
         n2 = dom.add_node(2, [L, 0.0])
-        mat = Elastic1D(E=E)
+        mat = Elastic1D(E=E, density=0.0)
         elem = Frame2DTimoshenko(1, [n1, n2], mat, A=A, I=I, As=As, nu=nu)
         n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0); n1.fix_dof('rz', 0.0)
         dom.add_element(elem)
@@ -137,7 +137,7 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
             node.dofs['ux'] = 3 * k
             node.dofs['uy'] = 3 * k + 1
             node.dofs['rz'] = 3 * k + 2
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem = Frame2DTimoshenko(1, [n1, n2], mat, A=1e-3, I=1e-6, As=0.8e-3, nu=0.3)
 
         u_e = np.array([0.0, 0.0, 0.0, 1e-4, 2e-4, 3e-4])
@@ -160,14 +160,14 @@ class TestFrame2DEulerCorotAcceptance(unittest.TestCase):
             for i, dof in enumerate(('ux', 'uy', 'rz')):
                 node.add_dof(dof)
                 node.dofs[dof] = 3 * k + i
-        mat = Elastic1D(E=E)
+        mat = Elastic1D(E=E, density=0.0)
         return Frame2DEulerCorot(1, [n1, n2], mat, A=A, I=I)
 
     def _cantilever_domain(self, L=2.0, E=210e9, A=1e-3, I=1e-6):
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0])
         n2 = dom.add_node(2, [L, 0.0])
-        mat = Elastic1D(E=E)
+        mat = Elastic1D(E=E, density=0.0)
         elem = Frame2DEulerCorot(1, [n1, n2], mat, A=A, I=I)
         n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0); n1.fix_dof('rz', 0.0)
         dom.add_element(elem)

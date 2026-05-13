@@ -18,6 +18,7 @@ materials:
     nu: 0.3
     sigma_y: 250.0e6
     H: 2.0e9
+    density: 7850.0   # acero (kg/m³)
 
 elements:
   - {id: 1, type: Quad4, material: 1, thickness: 0.1, nodes: [1, 2, 5, 4]}

@@ -37,7 +37,7 @@ class TestAssembleBodyLoad(unittest.TestCase):
         n1 = dom.add_node(1, [0.0, 0.0])
         n2 = dom.add_node(2, [1.0, 0.0])
         n3 = dom.add_node(3, [2.0, 0.0])
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         e1 = Truss2D(1, [n1, n2], mat, A=1e-3)
         e2 = Truss2D(2, [n2, n3], mat, A=1e-3)
         dom.add_element(e1)
@@ -70,7 +70,7 @@ class TestAssembleBodyLoad(unittest.TestCase):
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0])
         n2 = dom.add_node(2, [1.0, 0.0])
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         dom.add_element(Truss2D(1, [n1, n2], mat, A=1e-3))
         dom.generate_equation_numbers(verbose=False)
         asm = Assembler(dom)
@@ -110,6 +110,7 @@ materials:
   - id: 1
     type: Elastic1D
     E: 210.0e9
+    density: 0.0
 
 elements:
   - {id: 1, type: Frame2DEuler, material: 1, nodes: [1, 2], A: 1.0e-2, I: 8.33e-6}
@@ -174,6 +175,7 @@ materials:
   - id: 1
     type: Elastic1D
     E: 210.0e9
+    density: 0.0
 
 elements:
   - {id: 1, type: Truss2D, material: 1, nodes: [1, 2], A: 1.0e-3}

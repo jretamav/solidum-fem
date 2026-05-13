@@ -10,6 +10,7 @@ materials:
     E: 200.0e9
     sigma_y: 250.0e6
     H: 10.0e9
+    density: 7850.0
 
 elements:
   - {id: 1, type: Truss2D, material: 1, A: 0.01, nodes: [1, 2]}

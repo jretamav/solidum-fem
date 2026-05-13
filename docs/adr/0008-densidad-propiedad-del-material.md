@@ -23,7 +23,7 @@ Sin densidad declarada por material, ninguno de estos subsistemas puede construi
 
 ### YAML
 
-Se introduce el bloque `gravity` como **alternativa preferida** a `body_force` para el caso del peso propio:
+Se introduce el bloque `gravity` como atajo declarativo para el caso particular `b = ρ·g` (peso propio), complementario al bloque general `body_force` (vector arbitrario uniforme):
 
 ```yaml
 materials:
@@ -48,21 +48,20 @@ def assemble_self_weight(self, g: np.ndarray) -> np.ndarray:
 
 Ambos métodos comparten el bucle interno sobre elementos (factorizado en un helper privado `_iterate_body_force(get_b_for_element)`). La diferencia es solo cómo se obtiene `b` para cada elemento: constante en `assemble_body_load`, derivado de la densidad en `assemble_self_weight`.
 
-### Override a nivel de elemento (reservado para futuro)
+### Override a nivel de elemento
 
-Hay un caso real donde el usuario querría declarar masa por unidad de longitud directamente en un elemento, sin pasar por `ρ·A`: perfiles HEB200 idealizados con masa efectiva tabulada de catálogo (acero + recubrimientos + accesorios), secciones no prismáticas, masas concentradas (motores, equipos). La extensión natural es un atributo opcional `mass_per_length` (en marcos/armaduras) o `mass_per_area` (en sólidos 2D / cáscaras) que, si está presente, sobreescribe la combinación `material.density · A`.
-
-Esta extensión **no se implementa ahora**. Se documenta como camino abierto para activar cuando aparezca el primer caso real. La elección "density vive en el material como camino principal, override en elemento como excepción" queda fijada por este ADR.
+La densidad como propiedad del material es el contrato principal. No se introduce override a nivel de elemento por este ADR — cualquier especialización futura (perfiles HEB con masa efectiva tabulada, secciones no prismáticas, masas concentradas) será objeto de un ADR propio cuando llegue, no una promesa anticipada aquí.
 
 ## Contrato `Material.density`
 
 ```python
 class Material(ABC):
-    density: ClassVar[float] = 0.0   # kg/m³, default cero (sin masa)
+    density: float   # propiedad obligatoria; cada subclase la fija en su constructor
 ```
 
-- **Default `0.0`** porque hoy ningún material lo necesita para estática pura sin peso propio. Forzar a declararlo rompería retrocompatibilidad sin beneficio.
-- **Validación lazy**: si un consumidor (peso propio, mass matrix) recibe un material con density=0 y la operación lo requiere, log warning ruidoso identificando el material concreto. No falla con excepción para permitir mezclas legítimas (masas concentradas en algunos nodos, peso propio solo en otros).
+- **Obligatoria al construir**: cada subclase concreta de `Material` recibe `density` como argumento **requerido** del constructor. La base no provee default. La omisión lanza `TypeError` en construcción — el fallo es ruidoso e inmediato, no diferido al momento del análisis. Esto previene "fallos silenciosos de masa" en dinámica, donde un material sin densidad declarada produciría matriz de masa parcialmente cero y resultados físicamente erróneos sin signal de error.
+- **Valor `0.0` admitido explícitamente**: el usuario puede declarar `density=0.0` para fixtures de test, materiales de penalty/restricción o casos legítimamente adimensionales — pero la elección debe ser consciente, nunca por omisión silenciosa.
+- **Warning en peso propio con density=0**: si `assemble_self_weight` recibe un material con `density=0.0`, emite `WARNING` identificando el material por nombre y aporta cero al vector global. Esto cubre el caso legítimo de mezcla (masas concentradas en algunos nodos, peso propio solo en otros) sin enmascarar el error de no declarar densidad en absoluto.
 - **Unidades del problema**: como con todas las propiedades materiales, el usuario es responsable de la consistencia de unidades. Si trabaja en N/m, las densidades deben ser kg/m³ con g en m/s²; si trabaja en N/mm, kg/mm³ con g en mm/s². El sistema de tolerancias (ADR 0007) ya garantiza invariancia bajo cambio de unidades.
 
 ## Consecuencias
@@ -81,8 +80,7 @@ class Material(ABC):
 
 **Deuda heredada**:
 
-- Sin enforcement de declarar `density` cuando se invoca peso propio. El warning lazy es la única protección. Cuando aparezca un material que sí tenga restricción dura (algo análogo a `admissibility_scale` con piso obligatorio), se elevará a contrato.
-- Override `mass_per_length` / `mass_per_area` documentado pero no implementado. Primer caso real lo activa.
+- Ninguna asimétrica al presente. La densidad obligatoria al construir el material elimina el riesgo de "fallo silencioso de masa" que tendría un default 0.0 en dinámica.
 
 ## Alternativas consideradas
 

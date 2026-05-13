@@ -45,7 +45,7 @@ class TestTrussBodyLoad(unittest.TestCase):
         ang = math.radians(ang_deg)
         n1 = _node(1, 0.0, 0.0)
         n2 = _node(2, L * math.cos(ang), L * math.sin(ang))
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         return Truss2D(1, [n1, n2], mat, A=A), A, L
 
     def test_truss2d_reparto_mitad_mitad(self):
@@ -62,7 +62,7 @@ class TestTrussBodyLoad(unittest.TestCase):
         L, A = 3.0, 2e-4
         n1 = _node(1, 0.0, 0.0)
         n2 = _node(2, L * math.cos(ang), L * math.sin(ang))
-        mat = Elastic1D(E=200e9)
+        mat = Elastic1D(E=200e9, density=0.0)
         elem = Truss2DCorot(1, [n1, n2], mat, A=A)
         b = np.array([0.0, -78.5e3])  # peso propio de acero, ρg
         f = elem.compute_body_load(b)
@@ -75,7 +75,7 @@ class TestTrussBodyLoad(unittest.TestCase):
         d = d / np.linalg.norm(d) * L
         n1 = _node(1, 0.0, 0.0, 0.0)
         n2 = _node(2, d[0], d[1], d[2])
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem = Truss3D(1, [n1, n2], mat, A=A)
         b = np.array([1.5, -2.5, 4.0])
         f = elem.compute_body_load(b)
@@ -87,7 +87,7 @@ class TestTrussBodyLoad(unittest.TestCase):
         L, A = 1.8, 1e-3
         n1 = _node(1, 0.0, 0.0, 0.0)
         n2 = _node(2, 0.0, 0.0, L)
-        mat = Elastic1D(E=200e9)
+        mat = Elastic1D(E=200e9, density=0.0)
         elem = Truss3DCorot(1, [n1, n2], mat, A=A)
         b = np.array([0.0, 0.0, -78.5e3])
         f = elem.compute_body_load(b)
@@ -103,7 +103,7 @@ class TestCableBodyLoad(unittest.TestCase):
         L, A = 5.0, 2e-5
         n1 = _node(1, 0.0, 0.0)
         n2 = _node(2, L, 0.0)
-        mat = CableMaterial1D(E=150e9)
+        mat = CableMaterial1D(E=150e9, density=0.0)
         elem = Cable2DCorot(1, [n1, n2], mat, A=A)
         b = np.array([0.0, -78.5e3])
         f = elem.compute_body_load(b)
@@ -115,7 +115,7 @@ class TestCableBodyLoad(unittest.TestCase):
         L, A = 10.0, 3e-5
         n1 = _node(1, 0.0, 0.0, 0.0)
         n2 = _node(2, L, 0.0, 0.0)
-        mat = CableMaterial1D(E=150e9)
+        mat = CableMaterial1D(E=150e9, density=0.0)
         elem = Cable3DCorot(1, [n1, n2], mat, A=A)
         b = np.array([0.0, 0.0, -78.5e3])
         f = elem.compute_body_load(b)
@@ -130,7 +130,7 @@ class TestFrame2DBodyLoad(unittest.TestCase):
     def _viga_horizontal(self, L=4.0, A=1e-2, I=8.33e-6, cls=Frame2DEuler):
         n1 = _node(1, 0.0, 0.0)
         n2 = _node(2, L, 0.0)
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         if cls is Frame2DTimoshenko:
             return cls(1, [n1, n2], mat, A=A, I=I, As=A*5/6, nu=0.3), A, L
         return cls(1, [n1, n2], mat, A=A, I=I), A, L
@@ -158,7 +158,7 @@ class TestFrame2DBodyLoad(unittest.TestCase):
         L, A, I = 3.0, 1e-2, 8.33e-6
         n1 = _node(1, 0.0, 0.0)
         n2 = _node(2, L * math.cos(ang), L * math.sin(ang))
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem = Frame2DEuler(1, [n1, n2], mat, A=A, I=I)
         b = np.array([2.0e3, -78.5e3])
         f = elem.compute_body_load(b)
@@ -184,7 +184,7 @@ class TestFrame2DBodyLoad(unittest.TestCase):
         L, A, I = 2.0, 5e-3, 4e-6
         n1 = _node(1, 0.0, 0.0)
         n2 = _node(2, L * math.cos(ang), L * math.sin(ang))
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem_e = Frame2DEuler(1, [n1, n2], mat, A=A, I=I)
         elem_c = Frame2DEulerCorot(2, [n1, n2], mat, A=A, I=I)
         b = np.array([1.5e3, -78.5e3])
@@ -201,7 +201,7 @@ class TestFrame3DBodyLoad(unittest.TestCase):
     def _frame3d_axial_x(self, L=4.0, A=1e-2, Iy=8.33e-6, Iz=8.33e-6, J=1e-5):
         n1 = _node(1, 0.0, 0.0, 0.0)
         n2 = _node(2, L, 0.0, 0.0)
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         # ref_vector por defecto [0,0,1] da: y_local=+y_global, z_local=+z_global.
         return Frame3D(1, [n1, n2], mat, A=A, Iy=Iy, Iz=Iz, J=J), A, L
 
@@ -245,7 +245,7 @@ class TestFrame3DBodyLoad(unittest.TestCase):
         n2 = _node(2, 2.0, 1.0, 1.5)
         L = math.sqrt(2.0**2 + 1.0**2 + 1.5**2)
         A = 5e-3
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem = Frame3D(1, [n1, n2], mat, A=A, Iy=1e-6, Iz=1e-6, J=2e-6,
                        ref_vector=[0.0, 0.0, 1.0])
         b = np.array([1.0e3, -2.0e3, -78.5e3])

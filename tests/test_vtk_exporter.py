@@ -35,7 +35,7 @@ class _Elastic2D(Material):
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = None
 
-    def __init__(self, E=1000.0, nu=0.3):
+    def __init__(self, E=1000.0, nu=0.3, density: float = 0.0):
         self.E = E
         self.nu = nu
         fac = E / (1.0 - nu * nu)
@@ -52,7 +52,7 @@ class _Elastic2D(Material):
 class _Elastic1D(Material):
     STRAIN_DIM = 1
 
-    def __init__(self, E=1000.0, nu=0.3):
+    def __init__(self, E=1000.0, nu=0.3, density: float = 0.0):
         self.E = E
         self.nu = nu
 
@@ -95,8 +95,8 @@ class TestVtkExporterCoverage(unittest.TestCase):
 
     def test_solids_y_truss(self):
         domain = Domain()
-        mat2d = _Elastic2D()
-        mat1d = _Elastic1D()
+        mat2d = _Elastic2D(density=0.0)
+        mat1d = _Elastic1D(density=0.0)
 
         # Quad4
         n1 = Node(1, [0.0, 0.0])
@@ -149,7 +149,7 @@ class TestVtkExporterCoverage(unittest.TestCase):
 
     def test_frames_3d_y_2d_generan_lines_y_rotations(self):
         domain = Domain()
-        mat1d = _Elastic1D()
+        mat1d = _Elastic1D(density=0.0)
 
         # Frame2DEuler (DOFs ux, uy, rz)
         n1 = Node(1, [0.0, 0.0])
@@ -199,7 +199,7 @@ class TestVtkExporterCoverage(unittest.TestCase):
         """Suavizado nodal: con σ_xx = p uniforme por elemento, Sigma_XX_nodal
         debe valer p en todos los nodos del dominio."""
         domain = Domain()
-        mat = _Elastic2D(E=1000.0, nu=0.3)
+        mat = _Elastic2D(E=1000.0, nu=0.3, density=0.0)
         # Dos Quad4 contiguos compartiendo el borde central
         n1 = Node(1, [0.0, 0.0]); n2 = Node(2, [1.0, 0.0])
         n3 = Node(3, [1.0, 1.0]); n4 = Node(4, [0.0, 1.0])
@@ -242,7 +242,7 @@ class TestVtkExporterCoverage(unittest.TestCase):
     def test_higher_order_solids(self):
         """Quad8/Quad9/Tri6 generan los cell types correctos en el .vtu."""
         domain = Domain()
-        mat = _Elastic2D()
+        mat = _Elastic2D(density=0.0)
 
         nq8 = [Node(i + 1, list(c)) for i, c in enumerate([
             (0, 0), (1, 0), (1, 1), (0, 1),
@@ -280,7 +280,7 @@ class TestVtkExporterCoverage(unittest.TestCase):
 
     def test_export_sin_U_no_rompe(self):
         domain = Domain()
-        mat = _Elastic2D()
+        mat = _Elastic2D(density=0.0)
         n1 = Node(1, [0.0, 0.0])
         n2 = Node(2, [1.0, 0.0])
         n3 = Node(3, [1.0, 1.0])

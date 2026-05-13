@@ -12,6 +12,7 @@ materials:
     nu: 0.3
     sigma_y: 250.0e6
     H: 2.0e9
+    density: 7850.0
 
 # Método 1: Búsqueda por coordenadas extremas (Fallback si no hay grupos)
 # boundary_conditions_by_coord:

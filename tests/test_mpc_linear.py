@@ -326,7 +326,7 @@ nodes:
   - {id: 4, coords: [1.0, 1.0]}
 
 materials:
-  - {id: 1, type: Elastic1D, E: 1.0e+6}
+  - {id: 1, type: Elastic1D, E: 1.0e+6, density: 0.0}
 
 elements:
   - {id: 1, type: Truss2D, material: 1, nodes: [1, 2], A: 1.0e-3}

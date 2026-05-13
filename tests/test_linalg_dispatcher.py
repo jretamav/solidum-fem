@@ -133,7 +133,7 @@ class TestLinearSolverYAMLOverride(unittest.TestCase):
 
         class _ElasticMat(Material):
             STRAIN_DIM = 1
-            def __init__(self, E):
+            def __init__(self, E, density: float = 0.0):
                 self.E = E
             def compute_state(self, strain, state_vars=None):
                 return self.E * strain, self.E, state_vars

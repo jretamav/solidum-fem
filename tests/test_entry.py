@@ -18,7 +18,7 @@ from fenix.results import SolveResult
 class LinearElastic1D:
     STRAIN_DIM = 1
 
-    def __init__(self, E, nu=0.3):
+    def __init__(self, E, nu=0.3, density: float = 0.0):
         self.E = E
         self.nu = nu
 
@@ -31,7 +31,7 @@ class TestRun(unittest.TestCase):
         domain = Domain()
         n1 = domain.add_node(1, [0.0, 0.0])
         n2 = domain.add_node(2, [1.0, 0.0])
-        elem = Frame2DEuler(1, [n1, n2], LinearElastic1D(E=1.0), A=1.0, I=1.0)
+        elem = Frame2DEuler(1, [n1, n2], LinearElastic1D(E=1.0, density=0.0), A=1.0, I=1.0)
         domain.add_element(elem)
         n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0); n1.fix_dof('rz', 0.0)
         domain.generate_equation_numbers()
@@ -60,7 +60,7 @@ class TestRun(unittest.TestCase):
         domain = Domain()
         n1 = domain.add_node(1, [0.0, 0.0])
         n2 = domain.add_node(2, [1.0, 0.0])
-        truss = Truss2D(1, [n1, n2], LinearElastic1D(E=1.0), A=1.0)
+        truss = Truss2D(1, [n1, n2], LinearElastic1D(E=1.0, density=0.0), A=1.0)
         domain.add_element(truss)
         n1.fix_dof('ux', 0.0); n1.fix_dof('uy', 0.0); n2.fix_dof('uy', 0.0)
         # Deliberadamente NO llamamos generate_equation_numbers antes de run().

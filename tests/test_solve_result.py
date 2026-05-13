@@ -27,7 +27,7 @@ from fenix.results import build_solve_result
 class LinearElastic1D:
     STRAIN_DIM = 1
 
-    def __init__(self, E, nu=0.3):
+    def __init__(self, E, nu=0.3, density: float = 0.0):
         self.E = E
         self.nu = nu
 
@@ -44,7 +44,7 @@ class TestBuildSolveResult(unittest.TestCase):
         n1 = self.domain.add_node(1, [0.0, 0.0])
         n2 = self.domain.add_node(2, [1.0, 0.0])
 
-        mat = LinearElastic1D(E=1.0)
+        mat = LinearElastic1D(E=1.0, density=0.0)
         elem = Frame2DEuler(1, [n1, n2], mat, A=1.0, I=1.0)
         self.domain.add_element(elem)
 

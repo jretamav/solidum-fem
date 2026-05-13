@@ -68,9 +68,11 @@ class {{Name}}(Material):
     STRAIN_DIM = {{1|3|6}}
     PRIMARY_STATE_VAR = {{'kappa' o None}}
 
-    def __init__(self, {{params}}):
-        # TODO: almacenar parámetros como atributos
-        ...
+    def __init__(self, {{params}}, density: float):
+        # density es OBLIGATORIA (ADR 0008): contrato del material para
+        # peso propio y futuras matrices de masa. Sin default.
+        # TODO: almacenar parámetros físicos como atributos.
+        self.density = density
 
     def compute_state(self, strain, state_vars=None):
         # TODO: implementar la física

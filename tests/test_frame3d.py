@@ -25,7 +25,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0, 0.0])
         n2 = dom.add_node(2, [L * axis_coord[0], L * axis_coord[1], L * axis_coord[2]])
-        mat = Elastic1D(E=E)
+        mat = Elastic1D(E=E, density=0.0)
         elem = Frame3D(1, [n1, n2], mat, A=A, Iy=Iy, Iz=Iz, J=J,
                        nu=nu, ref_vector=ref_vector)
         # Empotramiento completo en nodo 1
@@ -120,7 +120,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
             for i, dof in enumerate(('ux', 'uy', 'uz', 'rx', 'ry', 'rz')):
                 node.add_dof(dof)
                 node.dofs[dof] = 6 * k + i
-        mat = Elastic1D(E=210e9)
+        mat = Elastic1D(E=210e9, density=0.0)
         elem = Frame3D(1, [n1, n2], mat, A=1e-3, Iy=1e-6, Iz=2e-6, J=1.5e-6,
                        nu=0.3, ref_vector=[0.0, 0.0, 1.0])
 

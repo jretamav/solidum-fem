@@ -34,7 +34,7 @@ from fenix.results import build_solve_result
 class LinearElastic1D:
     STRAIN_DIM = 1
 
-    def __init__(self, E, nu=0.3):
+    def __init__(self, E, nu=0.3, density: float = 0.0):
         self.E = E
         self.nu = nu
 
@@ -83,7 +83,7 @@ def _build_simply_supported_beam(*, settlement_at_right: float = 0.0):
     n1 = domain.add_node(1, [0.0, 0.0])
     n2 = domain.add_node(2, [2.0, 0.0])
 
-    mat = LinearElastic1D(E=1.0)
+    mat = LinearElastic1D(E=1.0, density=0.0)
     elem = Frame2DEuler(1, [n1, n2], mat, A=1.0, I=1.0)
     domain.add_element(elem)
 
@@ -147,7 +147,7 @@ class TestKReducedSymmetry(unittest.TestCase):
         n2 = domain.add_node(2, [3.0, 4.0])
         n3 = domain.add_node(3, [6.0, 0.0])
 
-        mat = LinearElastic1D(E=210.0e9)
+        mat = LinearElastic1D(E=210.0e9, density=0.0)
         domain.add_element(Truss2D(1, [n1, n2], mat, A=1e-3))
         domain.add_element(Truss2D(2, [n2, n3], mat, A=1e-3))
         domain.add_element(Truss2D(3, [n1, n3], mat, A=1e-3))
@@ -183,7 +183,7 @@ class TestReactionsBalance(unittest.TestCase):
         n1 = domain.add_node(1, [0.0, 0.0])
         n2 = domain.add_node(2, [1.0, 0.0])
 
-        mat = LinearElastic1D(E=1.0)
+        mat = LinearElastic1D(E=1.0, density=0.0)
         domain.add_element(Frame2DEuler(1, [n1, n2], mat, A=1.0, I=1.0))
 
         for dof in ('ux', 'uy', 'rz'):

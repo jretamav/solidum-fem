@@ -2608,7 +2608,7 @@ references:
 
 \textit{> \textbf{Convenciones}: \texttt{STRAIN\_DIM} = dimensión Voigt de la deformación de entrada (1 = escalar, 3 = 2D \texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\gamma}\_xy]}, 6 = 3D). \texttt{PRIMARY\_STATE\_VAR} = variable interna que el \texttt{VtkExporter} lleva al output.}
 
-\textit{> \textbf{Densidad (ADR 0008)}: todos los materiales aceptan un parámetro opcional \texttt{density} (kg/m\ensuremath{^{3}} en las unidades del problema). Default \texttt{0.0} --- si se omite, peso propio (\texttt{gravity: [...]} en YAML) y futuras matrices de masa darán contribución nula con warning. Consumido por \texttt{Assembler.assemble\_self\_weight(g)} y reservado para análisis modal/dinámico.}
+\textit{> \textbf{Densidad (ADR 0008)}: todos los materiales requieren el parámetro \texttt{density} (kg/m\ensuremath{^{3}} en las unidades del problema) al construir. \textbf{Obligatorio}, sin default --- omitirlo lanza \texttt{TypeError}. Valor \texttt{0.0} se admite explícitamente (fixtures, materiales de penalty/restricción) pero nunca por omisión silenciosa. Consumido por \texttt{Assembler.assemble\_self\_weight(g)} y reservado para análisis modal/dinámico.}
 
 
 

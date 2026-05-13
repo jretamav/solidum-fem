@@ -14,7 +14,7 @@ class IsotropicDamage1D(Material):
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'damage'  # variable de daño en [0, 1]
 
-    def __init__(self, E: float, kappa_0: float, alpha: float, density: float = 0.0):
+    def __init__(self, E: float, kappa_0: float, alpha: float, density: float):
         self.E = E              # Módulo de Young intacto
         self.kappa_0 = kappa_0  # Umbral de deformación elástica inicial
         self.alpha = alpha      # Parámetro que controla la velocidad de degradación (ablandamiento)
