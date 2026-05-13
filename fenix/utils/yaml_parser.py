@@ -57,6 +57,7 @@ class YamlParser:
         self.point_loads_by_coord = {}
         self.point_loads_by_group = {}
         self.point_loads_by_node = []
+        self.body_force = None  # np.ndarray (2,) o (3,) o None si no se especificó
         self.output_config = {}
 
     def _get_quadrature(self, rule: str) -> tuple:
@@ -84,6 +85,7 @@ class YamlParser:
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
         self._parse_point_loads_config(data)
+        self._parse_body_force(data)
 
         self.output_config = data.get('output', {})
         self.solver_config = data.get('solver', {})
@@ -446,15 +448,43 @@ class YamlParser:
     def _parse_point_loads_config(self, data: dict):
         self.point_loads = data.get('point_loads', [])
         self.point_loads_by_node = data.get('point_loads_by_node', [])
-        
+
         p_loads_coord = data.get('point_loads_by_coord', [])
         self.point_loads_by_coord = list(p_loads_coord.values()) if isinstance(p_loads_coord, dict) else p_loads_coord
-            
+
         p_loads_group = data.get('point_loads_by_group', [])
         if isinstance(p_loads_group, dict):
             self.point_loads_by_group = [{'group_name': k, **v} for k, v in p_loads_group.items()]
         else:
             self.point_loads_by_group = p_loads_group
+
+    def _parse_body_force(self, data: dict):
+        """Lee la fuerza de cuerpo global (e.g. peso propio) del YAML.
+
+        Forma aceptada::
+
+            body_force: [0.0, 0.0, -78.5e3]   # 3D: bx, by, bz [N/m³]
+            body_force: [0.0, -78.5e3]        # 2D: bx, by
+
+        Aplica uniformemente a todos los elementos del dominio. Cada elemento
+        recibe el slice apropiado según su dimensionalidad (manejo en
+        :meth:`Assembler.assemble_body_load`).
+        """
+        bf = data.get('body_force')
+        if bf is None:
+            self.body_force = None
+            return
+        try:
+            arr = np.asarray(bf, dtype=float).ravel()
+        except (TypeError, ValueError) as exc:
+            raise YamlValidationError(
+                [f"body_force: no se pudo interpretar como vector numérico: {bf!r} ({exc})."]
+            )
+        if arr.size not in (2, 3):
+            raise YamlValidationError(
+                [f"body_force: longitud {arr.size}, esperado 2 ó 3 componentes."]
+            )
+        self.body_force = arr
         
     def get_external_forces(self) -> np.ndarray:
         """Construye el vector de fuerzas externas global F_ext."""
@@ -505,8 +535,19 @@ class YamlParser:
                             for dof, value in loads.items():
                                 if dof not in ['group_name'] and dof in node.dofs:
                                     F_ext[node.dofs[dof]] += float(value)
-                                    
+
         return F_ext
+
+    def get_body_load(self, assembler) -> np.ndarray:
+        """Vector global de fuerzas nodales por fuerza de cuerpo (peso propio).
+
+        Devuelve ``np.zeros(ndof)`` si el YAML no declara ``body_force``.
+        Cuando sí lo declara, delega en ``assembler.assemble_body_load(b)``
+        para acumular la integral consistente sobre los elementos.
+        """
+        if self.body_force is None:
+            return np.zeros(self.domain.total_dofs)
+        return assembler.assemble_body_load(self.body_force)
 
     def get_solver(self, assembler):
         """Construye y retorna el solver dinámicamente según la configuración YAML."""

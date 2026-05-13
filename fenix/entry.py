@@ -112,7 +112,7 @@ def run_yaml(
     domain.generate_equation_numbers()
     assembler = Assembler(domain)
     solver = parser.get_solver(assembler)
-    F_ext = parser.get_external_forces()
+    F_ext = parser.get_external_forces() + parser.get_body_load(assembler)
     return run(
         domain,
         assembler=assembler,

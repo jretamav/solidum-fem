@@ -199,3 +199,57 @@ class Assembler:
         if node and dof_name in node.dofs:
             idx = node.dofs[dof_name]
             self.F_global[idx] += value
+
+    def assemble_body_load(self, b) -> np.ndarray:
+        """Acumula la integral consistente de fuerza de cuerpo sobre el dominio.
+
+        Itera sobre todos los elementos que declaran ``compute_body_load`` y
+        agrega su aporte al vector global de fuerzas externas. Útil para peso
+        propio (``b = (0, -ρ·g)`` en 2D, ``b = (0, 0, -ρ·g)`` en 3D) y, en
+        general, cualquier fuerza por unidad de volumen uniforme sobre el
+        modelo.
+
+        Promoción 2D↔3D: se acepta ``b`` con 2 ó 3 componentes y se hace
+        padding con cero al pasar a R³ si es necesario. Cada elemento recibe
+        el slice apropiado según su dimensionalidad — los elementos cuyo
+        contrato declara DOFs translacionales 3D (``'uz' in DOF_NAMES``)
+        reciben ``b[:3]``; los demás reciben ``b[:2]``. La omisión silenciosa
+        de elementos sin ``compute_body_load`` (caso hipotético tras añadir
+        un elemento nuevo sin la implementación) es deliberada — el método
+        es opcional, no parte del contrato base de ``Element``.
+
+        Parameters
+        ----------
+        b : np.ndarray or list, shape (2,) or (3,)
+            Fuerza de cuerpo por unidad de volumen en ejes globales.
+
+        Returns
+        -------
+        np.ndarray, shape (ndof,)
+            Vector global de fuerzas nodales consistentes con la integral
+            ``∫NᵀbA dx`` agregada sobre todos los elementos compatibles.
+        """
+        if not self._topology_built:
+            self._build_topology()
+
+        b = np.asarray(b, dtype=float).ravel()
+        if b.size == 2:
+            b3 = np.array([b[0], b[1], 0.0])
+        elif b.size == 3:
+            b3 = b
+        else:
+            raise ValueError(
+                f"assemble_body_load: dimensión inesperada de b ({b.size}). "
+                f"Esperado 2 ó 3 componentes."
+            )
+
+        F_body = np.zeros(self.ndof)
+        for i, element in enumerate(self.domain.elements.values()):
+            method = getattr(element, "compute_body_load", None)
+            if method is None:
+                continue
+            b_elem = b3 if 'uz' in element.DOF_NAMES else b3[:2]
+            f_e = method(b_elem)
+            F_body[self._elem_dof_indices[i]] += f_e
+
+        return F_body

@@ -403,6 +403,26 @@ point_loads_by_group:
   "Borde_Carga": {ux: 1500000.0}
 \end{lstlisting}
 
+\section{Fuerzas de Cuerpo}\index{peso propio}\index{body force}
+
+Fuerza por unidad de volumen aplicada uniformemente a todos los elementos del modelo. El caso de uso típico es el peso propio:
+
+\begin{lstlisting}[language=yaml]
+body_force: [0.0, -78.5e3]          # 2D: bx, by en N/m^3 (acero)
+\end{lstlisting}
+
+o, para problemas 3D:
+
+\begin{lstlisting}[language=yaml]
+body_force: [0.0, 0.0, -78.5e3]     # 3D: bx, by, bz en N/m^3 (acero)
+\end{lstlisting}
+
+\textbf{Cómo se aplica.} Cada elemento que declare el método \texttt{compute\_body\_load} (todos los elementos del catálogo lo hacen hoy: armaduras, cables, marcos 2D/3D y sólidos 2D) integra $\int \mathbf{N}^\top \mathbf{b}\,A\,dx$ y acumula el resultado en el vector global de fuerzas. Para vigas Hermite cúbicas la fórmula consistente incluye fuerza nodal $qL/2$ y momento $\pm qL^2/12$; para barras axiales el reparto es mitad-mitad.
+
+\textbf{Padding 2D$\leftrightarrow$3D.} Si el modelo mezcla elementos 2D y 3D, declarar \texttt{body\_force} con tres componentes; el ensamblador pasa el slice apropiado (\texttt{b[:2]} o \texttt{b[:3]}) a cada elemento según la dimensionalidad declarada por su \texttt{DOF\_NAMES}.
+
+\textbf{Limitaciones del cableado actual}: \texttt{body\_force} es un único vector global aplicado a todo el modelo. Para densidades distintas por material/grupo se requiere una extensión del esquema (pendiente de uso real que lo justifique).
+
 \section{Solver}
 \begin{lstlisting}[language=yaml]
 solver:
