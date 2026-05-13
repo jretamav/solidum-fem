@@ -33,6 +33,14 @@ class Element(ABC):
         sigue a la superficie deformada) y formulaciones corrotacionales con
         rotaciones finitas no simetrizadas. La capa algebraica (ADR 0003)
         lo agrega con ``material.IS_SYMMETRIC`` para elegir backend.
+    ACCEPTS_UNILATERAL : ClassVar[bool], default=False
+        Indica si el elemento es robusto frente a materiales unilaterales
+        (``material.IS_UNILATERAL = True``), cuyo módulo tangente puede
+        colapsar a cero en algún régimen. Solo elementos preparados para
+        manejar rigidez nula localmente (típicamente corotacionales con
+        K_G no degenerado) deben sobreescribir a ``True``. Validado en
+        construcción para evitar que un truss ordinario acepte un material
+        de cable.
 
     Métodos abstractos a implementar
     --------------------------------
@@ -48,6 +56,7 @@ class Element(ABC):
     STRAIN_DIM: ClassVar[int]
     N_INTEGRATION_POINTS: ClassVar[int] = 1
     PRESERVES_SYMMETRY: ClassVar[bool] = True
+    ACCEPTS_UNILATERAL: ClassVar[bool] = False
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Optional[Material] = None):
@@ -80,6 +89,14 @@ class Element(ABC):
                 f"El elemento requiere STRAIN_DIM={self.STRAIN_DIM} pero el material "
                 f"{type(self.material).__name__} declara STRAIN_DIM={mat_dim}. "
                 f"Use un material 1D con elementos Truss/Frame, 2D con Quad/Tri, etc."
+            )
+        if getattr(self.material, "IS_UNILATERAL", False) and not self.ACCEPTS_UNILATERAL:
+            raise ValueError(
+                f"{type(self).__name__}(id={self.id}): material unilateral "
+                f"{type(self.material).__name__} no admitido. Su módulo tangente "
+                f"puede colapsar a cero y degenerar la matriz global en este "
+                f"elemento. Use un elemento que lo acepte (p. ej. Cable2DCorot o "
+                f"Cable3DCorot) o sustituya el material por uno bilateral."
             )
 
     def _register_dofs(self) -> None:

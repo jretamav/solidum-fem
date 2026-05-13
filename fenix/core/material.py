@@ -2,6 +2,8 @@
 from abc import ABC, abstractmethod
 from typing import ClassVar, Optional
 
+from fenix.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
+
 
 class Material(ABC):
     """Clase base abstracta para todos los materiales de Fenix FEM.
@@ -27,14 +29,23 @@ class Material(ABC):
         Indica si la contribución del material a la matriz tangente es
         simétrica. ``True`` para elasticidad, daño isótropo, plasticidad
         asociada (J2, etc.). ``False`` para plasticidad no asociada,
-        daño anisotrópico con back-stress, viscoplasticidad con
+        daño anisótropo con back-stress, viscoplasticidad con
         endurecimiento cinemático no asociado. La capa algebraica
         (ADR 0003) lo agrega para elegir entre Cholesky/LDLᵀ/LU.
+
+    IS_UNILATERAL : ClassVar[bool]
+        ``True`` para materiales con respuesta unilateral cuyo módulo
+        tangente puede colapsar a cero en algún régimen (p. ej. cables
+        sin rigidez en compresión, gaps de solo compresión). Solo se
+        aceptan en elementos que declaren ``ACCEPTS_UNILATERAL = True``
+        — habitualmente formulaciones corotacionales preparadas para
+        manejar rigidez nula sin degenerar la matriz global.
     """
 
     STRAIN_DIM: ClassVar[int]
     PRIMARY_STATE_VAR: ClassVar[Optional[str]] = None
     IS_SYMMETRIC: ClassVar[bool] = True
+    IS_UNILATERAL: ClassVar[bool] = False
 
     @abstractmethod
     def compute_state(self, strain, state_vars=None):
@@ -45,3 +56,39 @@ class Material(ABC):
         (stress, tangent_modulus, new_state_vars)
         """
         pass
+
+    # ------------------------------------------------------------------
+    # Política de tolerancias del criterio de admisibilidad (ADR 0006)
+    # ------------------------------------------------------------------
+
+    def admissibility_scale(self, state_vars=None) -> float:
+        """Escala característica del criterio de admisibilidad, **en unidades
+        de esfuerzo**.
+
+        Se usa para normalizar la tolerancia de la comparación ``f ≤ tol``
+        (fluencia, umbral de daño, etc.) según el estado corriente del
+        material, garantizando invariancia bajo cambio de unidades y
+        adaptatividad ante endurecimiento o evolución de variables internas.
+
+        Returns
+        -------
+        float
+            Esfuerzo característico positivo. El default ``1.0`` solo lo
+            usan materiales sin check de admisibilidad (elásticos puros,
+            cables); para esos materiales la magnitud es irrelevante porque
+            ``admissibility_scale`` no se invoca.
+        """
+        return 1.0
+
+    def is_admissible(self, f: float, state_vars=None) -> bool:
+        """Decide si el estado de prueba está dentro de la región admisible.
+
+        Aplica la política estándar combinada absoluta + relativa::
+
+            f ≤ ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL · escala
+
+        donde ``escala = admissibility_scale(state_vars)``. Tanto ``f`` como
+        la escala deben venir en unidades de esfuerzo. El término absoluto
+        actúa como piso para estados donde ``escala → 0``.
+        """
+        return f <= ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL * self.admissibility_scale(state_vars)

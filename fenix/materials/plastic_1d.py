@@ -1,14 +1,12 @@
 # fenix_fem/fenix/materials/plastic_1d.py
-import numpy as np
 from fenix.core.material import Material
-from fenix.constants import PLASTIC_YIELD_TOL
 from fenix.registry import MaterialRegistry
 
 
 @MaterialRegistry.register
 class Elastoplastic1D(Material):
     """
-    Material elastoplástico 1D con endurecimiento isotrópico lineal.
+    Material elastoplástico 1D con endurecimiento isótropo lineal.
     Implementa el algoritmo de retorno (Return Mapping) clásico.
     """
     STRAIN_DIM = 1
@@ -18,6 +16,11 @@ class Elastoplastic1D(Material):
         self.E = E              # Módulo de Young
         self.sigma_y = sigma_y  # Esfuerzo de fluencia inicial
         self.H = H              # Módulo de endurecimiento (0 = plasticidad perfecta)
+
+    def admissibility_scale(self, state_vars=None) -> float:
+        """Esfuerzo de fluencia corriente ``σ_y + H·α`` (ADR 0006)."""
+        alpha = 0.0 if state_vars is None else state_vars.get('alpha', 0.0)
+        return self.sigma_y + self.H * alpha
 
     def compute_state(self, strain: float, state_vars=None):
         # 1. Recuperar memoria histórica
@@ -33,7 +36,7 @@ class Elastoplastic1D(Material):
         yield_stress = self.sigma_y + self.H * alpha_old
         f = abs(sigma_trial) - yield_stress
 
-        if f <= PLASTIC_YIELD_TOL:
+        if self.is_admissible(f, state_vars):
             # Paso Elástico (Adentro de la superficie de fluencia)
             sigma = sigma_trial
             E_t = self.E

@@ -607,7 +607,7 @@ materials:
 \end{lstlisting}
 
 \subsection{\texttt{Elastic2D} --- elasticidad lineal isótropa 2D}
-Tensor constitutivo isotrópico $\boldsymbol\sigma = \mathbf C \cdot \boldsymbol\varepsilon$ en notación Voigt $[xx, yy, xy]$. Sin variables internas. Compatible con \texttt{Quad4}, \texttt{Tri3}.
+Tensor constitutivo isótropo $\boldsymbol\sigma = \mathbf C \cdot \boldsymbol\varepsilon$ en notación Voigt $[xx, yy, xy]$. Sin variables internas. Compatible con \texttt{Quad4}, \texttt{Tri3}.
 
 \begin{lstlisting}[language=yaml]
 materials:
@@ -622,7 +622,7 @@ La hipótesis \texttt{plane\_stress} se usa para placas delgadas sin confinamien
 
 \section{Plasticidad}
 
-\subsection{\texttt{Elastoplastic1D} --- plasticidad J2 axial con endurecimiento isotrópico}
+\subsection{\texttt{Elastoplastic1D} --- plasticidad J2 axial con endurecimiento isótropo}
 Plasticidad asociativa con criterio $f = |\sigma_{\text{trial}}| - (\sigma_y + H \alpha) \le 0$. Algoritmo de \textit{return mapping} clásico 1D; tangente algorítmica consistente $E_t = E\,H / (E + H)$.
 
 \begin{itemize}
@@ -640,7 +640,7 @@ materials:
     H: 2.0e9
 \end{lstlisting}
 
-\subsection{\texttt{VonMises2D} --- plasticidad J2 plana con endurecimiento isotrópico}
+\subsection{\texttt{VonMises2D} --- plasticidad J2 plana con endurecimiento isótropo}
 Return mapping radial sobre la parte desviadora. Tangente algorítmica consistente.
 
 \begin{itemize}

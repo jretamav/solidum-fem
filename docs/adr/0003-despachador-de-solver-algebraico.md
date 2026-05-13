@@ -71,7 +71,7 @@ class StiffnessProperties:
 ```
 
 Origen de cada flag:
-- `is_symmetric`: AND lógico sobre `material.is_symmetric` (default `True`; se sobrescribe en plasticidad no asociada, daño anisotrópico con back-stress, etc.) y `element.preserves_symmetry` (default `True`; falso para follower loads y formulaciones corrotacionales con rotaciones finitas no simetrizadas).
+- `is_symmetric`: AND lógico sobre `material.is_symmetric` (default `True`; se sobrescribe en plasticidad no asociada, daño anisótropo con back-stress, etc.) y `element.preserves_symmetry` (default `True`; falso para follower loads y formulaciones corrotacionales con rotaciones finitas no simetrizadas).
 - `is_positive_definite`: arranca en `True` para `LinearSolver` y `NonlinearSolver`; arranca en `False` para `ArcLengthSolver` (régimen postcrítico). Se degrada automáticamente a `False` si el backend reporta pérdida de positividad (Cholesky aborta, LDLᵀ encuentra pivote negativo).
 - `size`: `domain.total_dofs`.
 

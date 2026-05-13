@@ -46,6 +46,7 @@ class Cable2DCorot(Element):
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
+    ACCEPTS_UNILATERAL = True
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  A: float):
@@ -138,6 +139,7 @@ class Cable3DCorot(Element):
     DOF_NAMES = ['ux', 'uy', 'uz']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
+    ACCEPTS_UNILATERAL = True
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  A: float):

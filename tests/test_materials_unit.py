@@ -76,7 +76,7 @@ class TestElastic2D(unittest.TestCase):
 
 
 class TestElastoplastic1D(unittest.TestCase):
-    """Plasticidad J2 1D con endurecimiento isotrópico lineal."""
+    """Plasticidad J2 1D con endurecimiento isótropo lineal."""
 
     def setUp(self):
         self.E = 2.0e5
@@ -265,6 +265,69 @@ class TestVonMises2D(unittest.TestCase):
         # El predictor cae justo sobre la nueva superficie de fluencia →
         # no hay más incremento plástico (módulo redondeo del return mapping).
         self.assertAlmostEqual(state2["alpha"], alpha_1, places=10)
+
+
+class TestAdmissibilityToleranceUnitInvariance(unittest.TestCase):
+    """Invariancia del check de admisibilidad bajo cambio de unidades (ADR 0006).
+
+    Mismo problema físico expresado en MPa y Pa debe producir el mismo estado
+    interno tras la misma trayectoria de deformación. Antes de ADR 0006 la
+    tolerancia ``PLASTIC_YIELD_TOL = 1e-9`` era absoluta y los dos sistemas
+    podían divergir según el rango de unidades.
+    """
+
+    def test_elastoplastic1d_unit_invariance_MPa_vs_Pa(self):
+        # Acero típico: E = 200 GPa, σ_y = 250 MPa, H = 10 GPa.
+        # Sistema A (MPa, mm, N):  E=2e5, σ_y=250,   H=1e4
+        # Sistema B (Pa,  m,  N):  E=2e11, σ_y=2.5e8, H=1e10
+        # Una misma trayectoria de deformación (adimensional) debe dar el mismo α.
+        mat_MPa = Elastoplastic1D(E=2.0e5, sigma_y=250.0, H=1.0e4)
+        mat_Pa  = Elastoplastic1D(E=2.0e11, sigma_y=2.5e8, H=1.0e10)
+
+        strains = [0.0005, 0.001, 0.002, 0.003, 0.0025, 0.0015, 0.002, 0.004]
+
+        state_MPa = None
+        state_Pa = None
+        for eps in strains:
+            _, _, state_MPa = mat_MPa.compute_state(eps, state_vars=state_MPa)
+            _, _, state_Pa = mat_Pa.compute_state(eps, state_vars=state_Pa)
+            self.assertAlmostEqual(
+                state_MPa["alpha"], state_Pa["alpha"], places=14,
+                msg=f"Divergencia en α tras ε={eps}: MPa={state_MPa['alpha']}, Pa={state_Pa['alpha']}",
+            )
+            self.assertAlmostEqual(
+                state_MPa["eps_p"], state_Pa["eps_p"], places=14,
+                msg=f"Divergencia en ε_p tras ε={eps}",
+            )
+
+    def test_isotropic_damage1d_unit_invariance(self):
+        # Mismo concepto: dos parametrizaciones físicamente equivalentes.
+        mat_MPa = IsotropicDamage1D(E=2.0e5,  kappa_0=1.0e-4, alpha=100.0)
+        mat_Pa  = IsotropicDamage1D(E=2.0e11, kappa_0=1.0e-4, alpha=100.0)
+
+        strains = [0.5e-4, 1.5e-4, 2.0e-4, 1.0e-4, 3.0e-4, 0.0]
+
+        state_MPa = None
+        state_Pa = None
+        for eps in strains:
+            _, _, state_MPa = mat_MPa.compute_state(eps, state_vars=state_MPa)
+            _, _, state_Pa = mat_Pa.compute_state(eps, state_vars=state_Pa)
+            self.assertAlmostEqual(state_MPa["damage"], state_Pa["damage"], places=14)
+            self.assertAlmostEqual(state_MPa["kappa"], state_Pa["kappa"], places=14)
+
+    def test_admissibility_scale_adaptativa_con_endurecimiento(self):
+        """La escala devuelta crece al endurecerse (no se queda en σ_y inicial)."""
+        mat = Elastoplastic1D(E=2.0e5, sigma_y=250.0, H=1.0e4)
+        scale_inicial = mat.admissibility_scale(None)
+        self.assertAlmostEqual(scale_inicial, 250.0)
+        # Tras α = 0.01: escala = 250 + 1e4·0.01 = 350.
+        scale_endurecido = mat.admissibility_scale({"alpha": 0.01})
+        self.assertAlmostEqual(scale_endurecido, 350.0)
+
+    def test_admissibility_scale_default_para_elastico_puro(self):
+        """Materiales sin override heredan el default 1.0 (nunca se invoca)."""
+        mat = Elastic1D(E=1.0e5)
+        self.assertEqual(mat.admissibility_scale(), 1.0)
 
 
 if __name__ == "__main__":

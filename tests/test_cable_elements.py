@@ -11,7 +11,7 @@ import numpy as np
 import fenix  # dispara autodiscover
 from fenix.core.node import Node
 from fenix.elements.cable import Cable2DCorot, Cable3DCorot
-from fenix.elements.truss import Truss3DCorot
+from fenix.elements.truss import Truss2D, Truss3D, Truss2DCorot, Truss3DCorot
 from fenix.materials.cable_1d import CableMaterial1D
 from fenix.materials.elastic import Elastic1D
 
@@ -158,6 +158,70 @@ class TestCable3DCorot(unittest.TestCase):
     def test_registro_en_registry(self):
         from fenix.registry import ElementRegistry
         self.assertIn('Cable3DCorot', ElementRegistry._items)
+
+
+class TestUnilateralMaterialValidation(unittest.TestCase):
+    """Validación declarativa material.IS_UNILATERAL vs element.ACCEPTS_UNILATERAL.
+
+    Un material cuya rigidez tangente puede colapsar a cero (cables, gaps)
+    solo es admisible en elementos preparados para manejarlo. La base
+    Element atrapa la combinación incompatible en construcción.
+    """
+
+    def _make_nodes_2d(self):
+        n1 = Node(1, [0.0, 0.0]); n2 = Node(2, [1.0, 0.0])
+        for k, node in enumerate((n1, n2)):
+            node.add_dof('ux'); node.add_dof('uy')
+            node.dofs['ux'] = 2 * k
+            node.dofs['uy'] = 2 * k + 1
+        return n1, n2
+
+    def _make_nodes_3d(self):
+        n1 = Node(1, [0.0, 0.0, 0.0]); n2 = Node(2, [1.0, 0.0, 0.0])
+        for k, node in enumerate((n1, n2)):
+            for d in ('ux', 'uy', 'uz'):
+                node.add_dof(d)
+            node.dofs['ux'] = 3 * k
+            node.dofs['uy'] = 3 * k + 1
+            node.dofs['uz'] = 3 * k + 2
+        return n1, n2
+
+    def test_truss2d_rechaza_cable_material(self):
+        n1, n2 = self._make_nodes_2d()
+        mat = CableMaterial1D(E=1000.0)
+        with self.assertRaisesRegex(ValueError, "unilateral"):
+            Truss2D(1, [n1, n2], mat, A=1.0)
+
+    def test_truss3d_rechaza_cable_material(self):
+        n1, n2 = self._make_nodes_3d()
+        mat = CableMaterial1D(E=1000.0)
+        with self.assertRaisesRegex(ValueError, "unilateral"):
+            Truss3D(1, [n1, n2], mat, A=1.0)
+
+    def test_truss_corot_tambien_rechaza_cable_material(self):
+        """Truss*Corot tampoco lo acepta — el material unilateral se reserva
+        a Cable*Corot, donde la formulación está diseñada explícitamente
+        para él."""
+        n1, n2 = self._make_nodes_2d()
+        with self.assertRaisesRegex(ValueError, "unilateral"):
+            Truss2DCorot(1, [n1, n2], CableMaterial1D(E=1000.0), A=1.0)
+        n3, n4 = self._make_nodes_3d()
+        with self.assertRaisesRegex(ValueError, "unilateral"):
+            Truss3DCorot(1, [n3, n4], CableMaterial1D(E=1000.0), A=1.0)
+
+    def test_cable_corot_acepta_cable_material(self):
+        """Combinación canónica — no debe lanzar."""
+        n1, n2 = self._make_nodes_2d()
+        Cable2DCorot(1, [n1, n2], CableMaterial1D(E=1000.0), A=1.0)
+        n3, n4 = self._make_nodes_3d()
+        Cable3DCorot(2, [n3, n4], CableMaterial1D(E=1000.0), A=1.0)
+
+    def test_truss_sigue_aceptando_materiales_bilaterales(self):
+        """Regresión: la nueva validación no rompe el contrato con Elastic1D."""
+        n1, n2 = self._make_nodes_2d()
+        Truss2D(1, [n1, n2], Elastic1D(E=1000.0), A=1.0)
+        n3, n4 = self._make_nodes_3d()
+        Truss3D(1, [n3, n4], Elastic1D(E=1000.0), A=1.0)
 
 
 if __name__ == '__main__':

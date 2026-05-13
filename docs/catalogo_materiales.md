@@ -20,7 +20,7 @@
 
 ## Elastic2D — elástico lineal 2D
 
-- **Ley**: `σ = C · ε`, con `C` el tensor constitutivo isotrópico en notación Voigt `[xx, yy, xy]`.
+- **Ley**: `σ = C · ε`, con `C` el tensor constitutivo isótropo en notación Voigt `[xx, yy, xy]`.
 - **STRAIN_DIM**: 3.
 - **Parámetros**: `E`, `nu`, `hypothesis ∈ {'plane_stress', 'plane_strain'}`.
 - **Variables internas**: ninguna.
@@ -30,7 +30,7 @@
 
 ---
 
-## IsotropicDamage1D — daño isotrópico 1D con softening exponencial
+## IsotropicDamage1D — daño isótropo 1D con softening exponencial
 
 - **Modelo**: daño escalar `d ∈ [0, 1)`, módulo secante `E_sec = (1 − d) · E`, `σ = E_sec · ε`.
 - **Evolución del daño** (Kuhn-Tucker):
@@ -47,7 +47,7 @@
 
 ---
 
-## IsotropicDamage2D — daño isotrópico 2D con softening exponencial
+## IsotropicDamage2D — daño isótropo 2D con softening exponencial
 
 - **Modelo**: extensión 2D de `IsotropicDamage1D`. Tensor constitutivo secante `C_sec = (1 − d) · C_e`.
 - **Deformación equivalente**: `ε_eq = √(ε_xx² + ε_yy² + ½·γ_xy²)` (norma simple sin distinguir tensión/compresión).
@@ -62,7 +62,7 @@
 
 ---
 
-## Elastoplastic1D — plasticidad J2 1D con endurecimiento isotrópico lineal
+## Elastoplastic1D — plasticidad J2 1D con endurecimiento isótropo lineal
 
 - **Modelo**: plasticidad asociativa con criterio `f = |σ_trial| − (σ_y + H·α) ≤ 0`.
 - **Algoritmo**: return mapping clásico 1D.
@@ -92,7 +92,7 @@
 
 ---
 
-## VonMises2D — plasticidad J2 2D con endurecimiento isotrópico lineal
+## VonMises2D — plasticidad J2 2D con endurecimiento isótropo lineal
 
 - **Modelo**: J2 (Von Mises) en deformación plana; criterio `f = ‖s_trial‖ − √(2/3)·(σ_y + H·α) ≤ 0`.
 - **Algoritmo**: return mapping radial sobre la parte desviadora.

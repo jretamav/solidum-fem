@@ -56,7 +56,7 @@ conventions:
 validity:
   - "E > 0"
   - "|ε| ≲ 1e-2 en el régimen tensado (elasticidad lineal)"
-  - "compatible con cualquier elemento con STRAIN_DIM=1 (Truss2D, Truss3D y sus variantes corotacionales)"
+  - "IS_UNILATERAL = True ⇒ solo admitido en elementos con ACCEPTS_UNILATERAL = True (Cable2DCorot, Cable3DCorot). La base Element rechaza la combinación con Truss* en construcción."
 
 out_of_scope:
   - plasticidad, fluencia, fatiga
@@ -119,3 +119,4 @@ references:
 
 - **2026-04-21** · Material creado como pieza independiente para la futura implementación de elementos de cable (`Cable2DCorot`, `Cable3DCorot`). Deliberadamente **no hereda** de `Elastic1D` aunque su rama en tensión sea idéntica: mantener el material autocontenido simplifica su lectura y evita acoplamientos futuros si la rama elástica cambia en otro archivo.
 - **2026-04-21** · Discontinuidad en $\varepsilon = 0$: documentada explícitamente en `out_of_scope: regularización numérica`. Si aparece un caso de uso con destensiones frecuentes donde Newton-Raphson oscile, se añadirá una variante `CableMaterial1DRegularized` con $E_c \ll E$ en compresión — **no** se modificará este material (contrato limpio).
+- **2026-05-12** · Restricción de emparejamiento elevada a contrato: `IS_UNILATERAL = True` en el material; `ACCEPTS_UNILATERAL = True` en `Cable2DCorot`/`Cable3DCorot`. La base `Element._validate_material_compatibility` rechaza la combinación con `Truss*` (cuyo tangente colapsa la rigidez global sin K_G que lo compense). Antes el contrato lo permitía y solo se desaconsejaba en docstring; ahora falla limpio al construir.
