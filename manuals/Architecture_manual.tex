@@ -325,7 +325,7 @@ El solver toma el control. Su comportamiento depende del tipo seleccionado (line
   \item El ensamblador construye la matriz global \texttt{K\_global} y el vector global utilizando topología COO en caché: en la primera invocación se calculan los pares de índices; en las invocaciones siguientes se reescribe únicamente el vector de datos sobre la misma topología.
   \item Se imponen las condiciones de Dirichlet por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet}; el ensamblador produce el par \texttt{(T, g)} tal que \texttt{u = T \ensuremath{\cdot} u\_libre + g} y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad de la matriz original.
   \item El subsistema algebraico resuelve el sistema reducido \texttt{K\_red \ensuremath{\cdot} \ensuremath{\delta}U\_libre = F\_red}. Aquí interviene el despachador (\hyperref[adr:0003]{ADR 0003}): se inspeccionan las propiedades de \texttt{K\_red} (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general). El ensamblador reconstruye después el incremento completo mediante \texttt{expand}.
-  \item Se evalúa la convergencia mediante un criterio dual: norma del incremento de desplazamientos y norma del residuo de fuerza, ambas en valor relativo. El residuo de fuerza se evalúa únicamente sobre los DOF libres, dado que en los DOF prescritos el residuo contiene la reacción física, no un fallo de equilibrio. La convergencia del paso requiere que ambas normas se sitúen por debajo de la tolerancia.
+  \item Se evalúa la convergencia mediante un criterio dual: norma del residuo de fuerza y norma del incremento de desplazamientos, ambas comparadas contra una tolerancia de la forma \texttt{atol + rtol \ensuremath{\cdot} escala(estado)} con la escala adaptativa al estado corriente del problema (\hyperref[adr:0007]{ADR 0007}). Los términos absolutos \texttt{atol} se autoderivan de las escalas del primer ensamblaje, lo que garantiza invariancia bajo cambio de unidades: el mismo problema planteado en N/m, kN/mm o MN/m converge en el mismo número de iteraciones hasta paridad de bits. El residuo de fuerza se evalúa únicamente sobre los DOF libres, dado que en los DOF prescritos el residuo contiene la reacción física, no un fallo de equilibrio. La convergencia del paso requiere que ambos criterios se cumplan simultáneamente (semántica AND, no OR).
 \end{enumerate}
 
 \section{5. Cierre del paso}
@@ -666,6 +666,23 @@ Cada material declara como atributo de clase la variable interna principal a efe
 
 Las tablas y reglas de cuadratura de Gauss-Legendre 1D, 2D y 3D residen centralizadas en \texttt{fenix/math/integration.py}. Cada elemento declara su \texttt{N\_INTEGRATION\_POINTS} y consume los puntos y pesos correspondientes, sin reproducción de tablas en cada subclase.
 
+\section{Política unificada de tolerancias: patrón \texttt{atol + rtol \ensuremath{\cdot} escala}}
+
+Toda comparación con significado físico o iterativo del proyecto --- admisibilidad constitutiva, convergencia de Newton-Raphson, convergencia de arc-length, futuros criterios de cierre de gap en contacto o de inversión del jacobiano --- sigue una misma fórmula estructural:
+
+\begin{lstlisting}
+magnitud  ≤  atol  +  rtol · escala(estado)
+
+\end{lstlisting}
+
+donde \texttt{atol} es un piso absoluto en las unidades físicas del problema, \texttt{rtol} es una banda relativa adimensional y \texttt{escala(estado)} es la magnitud característica del criterio en el estado corriente. Esta forma única garantiza tres propiedades simultáneamente: invariancia bajo cambio de unidades (la \texttt{escala} se ajusta), adaptatividad al estado (la tolerancia crece con la evolución del problema, p. ej. con el endurecimiento plástico) y robustez en regímenes degenerados (cuando la escala colapsa transitoriamente, \texttt{atol} mantiene la comparación significativa).
+
+El patrón vive centralizado por subsistema, no replicado: la admisibilidad constitutiva se aplica en \texttt{Material.is\_admissible} y \texttt{Material.admissibility\_tol} (\hyperref[adr:0006]{ADR 0006}); la convergencia de los solvers no lineales reside en la clase \texttt{ConvergenceCriterion} de \texttt{fenix/math/convergence.py} (\hyperref[adr:0007]{ADR 0007}). Cada material o solver declara su \texttt{escala} mediante un método ligero (por ejemplo \texttt{Material.admissibility\_scale}, que devuelve la fluencia corriente o el umbral de daño), y la fórmula no se reproduce a mano en ningún sitio salvo cuando una restricción técnica (kernel compilado con Numba) obliga a precomputar la tolerancia fuera del kernel --- y, aun así, vía el método centralizado.
+
+Adicionalmente, los términos absolutos \texttt{atol} se autoderivan de las escalas del problema en su primer ensamblaje, no se codifican como constantes globales con unidades. Las constantes globales del proyecto que rigen esta política son adimensionales (\texttt{CONVERGENCE\_RTOL\_FORCE}, \texttt{CONVERGENCE\_ATOL\_FORCE\_FACTOR}, \texttt{ADMISSIBILITY\_TOL\_REL}, etc.), lo que mantiene el código independiente del sistema de unidades elegido por el usuario.
+
+La importancia de este mecanismo es estructural: la convergencia es lo que marca el éxito de un análisis numérico, y la diferencia entre un código robusto y uno frágil está en la disciplina con que se construyen estas comparaciones. Toda extensión futura que introduzca un nuevo criterio de comparación contra cero adopta este patrón.
+
 
 \newpage
 
@@ -849,6 +866,50 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt{StiffnessProperties} (atributos \texttt{is\_symmetric}, \texttt{is\_positive\_definite}) y selecciona la factorización de Cholesky cuando aplica, o la factorización LU en caso contrario. El usuario puede forzar un algoritmo desde el archivo YAML mediante el campo \texttt{linear\_algebra} en calidad de herramienta de diagnóstico, no como decisión de modelado.
 
 \textbf{Consecuencia.} Los solvers no lineales (\texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}) ya no invocan SuperLU directamente: solicitan un solver algebraico al despachador y se desentienden del algoritmo numérico subyacente. La incorporación de un nuevo algoritmo (Pardiso, MUMPS, métodos algebraicos multimalla iterativos) afecta exclusivamente a \texttt{fenix/math/linalg/}. La separación entre estrategia (solver no lineal) y táctica (subsistema algebraico) queda explícita en el código.
+
+\section{ADR 0004 --- Imposición de condiciones de Dirichlet por eliminación directa}
+\label{adr:0004}
+
+\textbf{Fecha}: 4 de mayo de 2026. \textbf{Estado}: aceptado; fases 1 (Dirichlet nodal) y 2 (restricciones lineales afines) implementadas.
+
+\textbf{Contexto.} Las condiciones de contorno de Dirichlet, tanto los empotramientos nodales clásicos como las restricciones multipunto (MPC: asentamientos prescritos, apoyos en plano oblicuo, periodicidad de celda unitaria, unión rígida master-slave), se imponían previamente por método de penalidad: añadir términos diagonales muy grandes al sistema. Dicho método introduce condicionamiento numérico artificialmente malo, contamina la simetría y la positividad de la matriz de rigidez y no es exacto a redondeo.
+
+\textbf{Decisión.} Se adopta la imposición por eliminación directa. Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} del subpaquete \texttt{fenix.bc}. El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. Las restricciones encadenadas (un esclavo cuyo maestro es a su vez esclavo) se resuelven por cierre transitivo al construir \texttt{T}; los ciclos y redeclaraciones inconsistentes se detectan en validación temprana.
+
+\textbf{Consecuencia.} La imposición es exacta a redondeo, preserva simetría y positividad definida de \texttt{K}, y deja el sistema reducido apto para los algoritmos del subsistema algebraico, incluidos solvers iterativos como gradiente conjugado o GMRES. La misma maquinaria cubre empotramiento, asentamiento, apoyo oblicuo, periodicidad y unión rígida sin ramificación específica por tipo.
+
+\section{ADR 0005 --- Logging configurable en lugar de \texttt{print}
+\label{adr:0005} directo}
+
+\textbf{Fecha}: 7 de mayo de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} La trazabilidad del solver durante un análisis (incrementos de carga, iteraciones de Newton, ratios de convergencia, factorizaciones reusadas) se emitía mediante \texttt{print} directo en la salida estándar. Esto impedía silenciar el ruido en pipelines de batch testing, redirigir la traza a un archivo de log paralelo y diferenciar niveles de gravedad (información ordinaria, advertencias, errores recuperables).
+
+\textbf{Decisión.} Se introduce un \textit{logger} configurable basado en el módulo estándar \texttt{logging} de Python, expuesto al resto del proyecto vía \texttt{fenix.logging.get\_logger(name)}. Todos los componentes consumen este \textit{logger} en lugar de \texttt{print}. El nivel y el formato se configuran de forma centralizada y pueden sobreescribirse desde el archivo YAML del caso o programáticamente.
+
+\textbf{Consecuencia.} Tests automatizados pueden silenciar la traza sin perder la información de errores. La integración con herramientas externas (GUI FenixBAR, batería de tests, pipelines CI) se hace mediante la API estándar de \texttt{logging}, sin acoplamiento a \texttt{sys.stdout}. Las advertencias internas relevantes (degradación de Cholesky a LU, bisección de incremento) quedan marcadas con su nivel adecuado.
+
+\section{ADR 0006 --- Tolerancias del criterio de admisibilidad constitutiva}
+\label{adr:0006}
+
+\textbf{Fecha}: 12 de mayo de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Cada modelo constitutivo no lineal tiene un criterio de admisibilidad --- una función \texttt{f(estado)} que decide si el material está en régimen reversible (\texttt{f \ensuremath{\le} 0}) o disipativo (\texttt{f > 0}). En aritmética de doble precisión la comparación no puede ser exacta: tras un return mapping, el ruido de redondeo deja \texttt{f} cerca de cero pero no exactamente cero, por lo que la comparación se escribe \texttt{f \ensuremath{\le} tol}. La implementación anterior usaba una tolerancia absoluta hardcodeada (\texttt{PLASTIC\_YIELD\_TOL = 1e-9}), frágil bajo cambio de unidades y no adaptativa al estado en modelos con endurecimiento severo o sin parámetro de referencia inicial.
+
+\textbf{Decisión.} Se adopta el esquema combinado absoluto + relativo, estilo solver de ecuaciones diferenciales ordinarias: \texttt{f \ensuremath{\le} ADMISSIBILITY\_TOL\_ABS + ADMISSIBILITY\_TOL\_REL \ensuremath{\cdot} escala(estado)}. Cada material declara su escala característica vía el método \texttt{admissibility\_scale(state\_vars)}, devolviendo un esfuerzo positivo característico del criterio en el estado corriente: \texttt{\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha}} para plasticidad J2 1D, \texttt{E\ensuremath{\cdot}\ensuremath{\kappa}\_0} para daño isótropo, \texttt{\ensuremath{\surd}(2/3)\ensuremath{\cdot}(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})} para Von Mises 2D. La comparación se encapsula en \texttt{Material.is\_admissible(f, state\_vars)} y en \texttt{Material.admissibility\_tol(state\_vars)} para que los modelos no la repliquen.
+
+\textbf{Consecuencia.} Misma física en MPa, Pa, GPa o adimensional produce idéntico estado interno hasta precisión de doble. En endurecimiento severo la tolerancia crece junto con la fluencia. Modelos energéticos futuros (phase-field, gradient damage) encajan declarando su escala (\texttt{\ensuremath{\surd}(2\ensuremath{\cdot}E\ensuremath{\cdot}g\_c)}) sin tocar la política. Los modelos con kernel compilado (Numba) consumen \texttt{admissibility\_tol} desde código Python antes de invocar el kernel, preservando la centralización de la fórmula.
+
+\section{ADR 0007 --- Tolerancias de convergencia en solvers no lineales}
+\label{adr:0007}
+
+\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} El criterio de convergencia del \texttt{NonlinearSolver} y del \texttt{ArcLengthSolver} era puramente relativo: \texttt{\ensuremath{\|}residuo\ensuremath{\|} / ref\_force \ensuremath{\le} tol} y \texttt{\ensuremath{\|}\ensuremath{\delta}U\ensuremath{\|} / \ensuremath{\|}U\ensuremath{\|} \ensuremath{\le} tol}, con un único parámetro \texttt{tol} para los dos criterios y sin término absoluto real. Esta forma arrastraba tres limitaciones estructurales: no había tolerancia absoluta cuando la escala relativa colapsaba transitoriamente, una sola tolerancia mezclaba dos criterios físicamente distintos (incrementabilidad del iterado vs equilibrio), y la fórmula se replicaba en los dos solvers a mano.
+
+\textbf{Decisión.} Se aplica el mismo patrón del \hyperref[adr:0006]{ADR 0006} a la convergencia, separado por criterio. La política reside en una clase pequeña \texttt{ConvergenceCriterion} en \texttt{fenix/math/convergence.py}, que encapsula configuración (cuatro tolerancias: \texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}) y estado calibrado (los \texttt{atol} efectivos derivados de las escalas del primer ensamblaje). Los solvers no lineales reciben una instancia en el constructor (parámetro \texttt{convergence}), calibran al inicio de \texttt{solve()} y delegan en \texttt{evaluate()} la comparación. La semántica es AND, no OR (ambos criterios deben cumplirse simultáneamente), coherente con la convención de Bathe, Crisfield y Owen-Hinton.
+
+\textbf{Consecuencia.} Invariancia bit-paritaria bajo cambio de unidades (el mismo problema en N/m, kN/mm o MN/m converge en el mismo número de iteraciones). Régimen degenerado (carga inicial nula, control en desplazamiento puro) deja de oscilar espuriamente: el piso absoluto \texttt{atol\_force} autoderivado define cuándo se da por convergido un residuo numéricamente cero. Problemas casi-rígidos y plásticos perfectos se afinan independientemente vía \texttt{rtol\_disp} vs \texttt{rtol\_force} sin compromisos. La política vive en un único punto del código; un solver no lineal futuro la consume sin replicarla.
 
 \section{Evolución de esta lista}
 
@@ -1362,8 +1423,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 30 de abril de 2026, 16:28\\[0.5em]
-Commit Git: \texttt{5d31ce1} (con cambios sin confirmar)\\[1em]
+Compilado el 13 de mayo de 2026, 07:46\\[0.5em]
+Commit Git: \texttt{e828e0a} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

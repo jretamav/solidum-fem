@@ -38,9 +38,11 @@ GROUPS: list[tuple[str, list[str]]] = [
 ]
 
 # Capítulos finales que NO derivan de specs (referencia técnica de plumbing
-# arquitectural). Cada entrada: (título_capítulo, archivo_fuente).
+# arquitectural o catálogos transversales). Cada entrada: (título_capítulo,
+# ruta del archivo fuente relativa a la raíz del repositorio).
 APPENDIX_CHAPTERS: list[tuple[str, str]] = [
-    ("Anexos técnicos", "anexo_capa_algebraica.md"),
+    ("Modelos constitutivos — catálogo", "docs/catalogo_materiales.md"),
+    ("Anexos técnicos", "manuals/sources/anexo_capa_algebraica.md"),
 ]
 
 UNICODE_MAP: dict[str, str] = {
@@ -550,9 +552,9 @@ def assemble() -> str:
             parts.append(ltx)
             parts.append("\n\\newpage\n")
 
-    # Anexos técnicos (no derivan de specs; viven en manuals/sources/).
-    for chapter_name, source_file in APPENDIX_CHAPTERS:
-        source_path = SOURCES_DIR / source_file
+    # Anexos (no derivan de specs; rutas relativas a la raíz del repo).
+    for chapter_name, source_rel in APPENDIX_CHAPTERS:
+        source_path = ROOT / source_rel
         if not source_path.exists():
             print(f"  [!] Anexo no encontrado: {source_path}")
             continue

@@ -2138,6 +2138,38 @@ Por defecto Gauss--Legendre $2 \times 2$ (cuatro puntos): orden de exactitud 3 -
 
 \textbf{Aviso sobre integración reducida}: el esquema $1 \times 1$ está disponible pero el código emite advertencia explícita; un único punto central no detecta los modos de hourglass (energía nula con desplazamientos de signo alternado), que pueden contaminar la respuesta sin estabilización adicional. No se implementa estabilización tipo Flanagan-Belytschko.
 
+\subsection{12. Cargas distribuidas consistentes}
+
+\textbf{Fuerza de cuerpo $\mathbf b$} (e.g. peso propio $\mathbf b = (0, -\rho g)$, fuerza centrífuga). Vector nodal equivalente:
+\[
+\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA = \sum_{p=1}^{n_g} \mathbf N(\xi_p, \eta_p)^\top\, \mathbf b\, \det\mathbf J_p\, w_p\, t,
+\]
+donde $\mathbf N$ es la matriz $2 \times 8$ de funciones de forma. Se reutiliza la cuadratura del elemento (Gauss $2 \times 2$ por defecto) --- exacta para $\mathbf b$ uniforme y geometrías de paralelogramo, y adecuada para geometrías irregulares moderadas.
+
+\textbf{Tracción de superficie $\bar{\mathbf t}$} sobre un borde $\Gamma_e \subset \partial\Omega_N$:
+\[
+\mathbf f_e^{t} = \int_{\Gamma_e} \mathbf N^\top\, \bar{\mathbf t}\, t\, dS.
+\]
+Cada borde es una recta entre dos nodos; sobre él las funciones de forma son lineales y, para $\bar{\mathbf t}$ constante, la integral se reduce a un reparto exacto de $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ a cada uno de los dos nodos del borde, donde $L$ es la longitud del segmento. Bordes numerados según la conectividad nodal:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Edge} & \textbf{Nodos} \\
+\hline
+0 & (0, 1) \\
+1 & (1, 2) \\
+2 & (2, 3) \\
+3 & (3, 0) \\
+\hline
+\end{tabularx}
+\end{center}
+$\bar{\mathbf t}$ se especifica en \textbf{coordenadas globales} $(t_x, t_y)$; presiones normales se obtienen multiplicando previamente por la normal exterior del borde. Tracción variable a lo largo del borde no está soportada en este paso.
+
+\subsection{13. Salida por punto de Gauss}
+
+\texttt{compute\_gauss\_state(U)} devuelve un dict con $\boldsymbol\varepsilon$ y $\boldsymbol\sigma$ en cada uno de los $n_g$ puntos de Gauss del elemento, junto con sus coordenadas naturales y globales. Habilita post-proceso fino (mapas no promediados, suavizado nodal, extrapolación tipo Barlow). \texttt{compute\_internal\_forces} queda como atajo de promedio.
+
 
 \section{Contrato de implementación}
 
@@ -2176,13 +2208,34 @@ out_of_scope:
   - "elementos de alto orden (Q8, Q9)"
 
 acceptance:
-  - name: parche de tracción uniaxial
-    setup: "malla regular con carga axial uniforme y material Elastic2D"
-    expect: "deformación constante ε_xx = σ_aplicada / E_efectivo en todo el dominio"
-    tol_rel: 1.0e-12
-  - name: jacobiano degenerado abortado
-    setup: "elemento con nodos colineales o en orden inverso"
-    expect: "ValueError en _compute_kinematics"
+  verification:
+    - name: patch_test_macneal_harder
+      setup: "5 Quad4 distorsionados (4 nodos exteriores + 4 interiores)
+             con campo lineal u = 1e-3·(x + y/2), v = 1e-3·(y + x/2)
+             impuesto en los 4 nodos del contorno"
+      expect: "nodos interiores adoptan el campo lineal y ε = (1e-3, 1e-3,
+              1e-3) en todos los puntos de Gauss; σ uniforme"
+      tol_rel: 1.0e-10
+  specific:
+    - name: parche de tracción uniaxial sobre malla regular
+      setup: "malla regular con campo de desplazamiento lineal y material Elastic2D"
+      expect: "ε_xx constante en todos los puntos de Gauss"
+      tol_rel: 1.0e-12
+    - name: jacobiano degenerado abortado
+      setup: "elemento con nodos colineales o en orden inverso"
+      expect: "ValueError en _compute_kinematics"
+    - name: cargas consistentes — body load uniforme
+      setup: "Quad4 regular y distorsionado con b uniforme; sumar componentes nodales"
+      expect: "Σf_x = b_x·A·t y Σf_y = b_y·A·t (invariante de geometría)"
+      tol_rel: 1.0e-10
+    - name: cargas consistentes — tracción uniforme en un borde
+      setup: "Quad4 con tracción constante en un borde"
+      expect: "Σf = t̄·L·t y reparto L/2 a cada nodo del borde, 0 en los demás"
+      tol_rel: 1.0e-12
+    - name: patch físico de tracción uniaxial
+      setup: "Quad4 cuadrado L×H, borde izquierdo con ux=0 (n0,n3) + uy=0 (n0); borde derecho con tracción uniforme (p,0)"
+      expect: "u reproduce ux=p·x/E, uy=-ν·p·y/E (plane stress); σ_xx=p, σ_yy=σ_xy=0"
+      tol_rel: 1.0e-10
 
 references:
   - "Bathe K.-J., Finite Element Procedures, §5.3 (isoparametric elements)"
@@ -2197,7 +2250,9 @@ references:
   \item \textbf{Archivo}: fenix/elements/solid\_2d.py
   \item \textbf{Clase}: \texttt{Quad4} (registrada vía \texttt{@ElementRegistry.register})
   \item \textbf{Funciones núcleo}: \texttt{\_compute\_kinematics(xi, eta, coords)} y \texttt{\_compute\_integrands(B, C, \ensuremath{\sigma}, detJ, w, t)}, ambas decoradas con \texttt{@njit} (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran.
-  \item \textbf{Tests}: tests/test\_solid\_2d.py --- verifica el ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$ en geometrías regulares, conservación de modos de cuerpo rígido (translación y rotación pura producen $\mathbf{F}_{\text{int}} = 0$), y el patch test de tracción uniaxial.
+  \item \textbf{Tests}:
+  \item tests/test\_solid\_2d.py --- ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
+  \item tests/test\_patch\_solid\_2d.py --- patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V\&V).
 \end{itemize}
 
 
@@ -2205,6 +2260,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-04-30} \ensuremath{\cdot} Spec retroactiva. \texttt{Quad4} precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada y verificada. Promovido \texttt{status: validated}.
+  \item \textbf{2026-04-30} \ensuremath{\cdot} Añadido patch test de MacNeal-Harder (NAFEMS) en \texttt{acceptance.verification}. Cinco Quad4 distorsionados con cuatro nodos interiores libres reproducen exactamente un campo lineal impuesto en el contorno, con \ensuremath{\varepsilon} constante e igual al gradiente analítico en todos los puntos de Gauss.
+  \item \textbf{2026-05-04} \ensuremath{\cdot} Expuesta \texttt{compute\_gauss\_state(U)} con \ensuremath{\sigma} y \ensuremath{\varepsilon} por punto de Gauss y coordenadas naturales/globales. \texttt{compute\_internal\_forces} queda como promedio derivado. El \texttt{VtkExporter} añade campos nodales \texttt{Sigma\_XX\_nodal}, \texttt{Sigma\_YY\_nodal}, \texttt{Tau\_XY\_nodal} y \texttt{Von\_Mises\_nodal} por promedio simple sobre los elementos contiguos a cada nodo (suavizado de orden 0).
+  \item \textbf{2026-05-04} \ensuremath{\cdot} Añadidas cargas distribuidas consistentes (\texttt{compute\_body\_load}, \texttt{compute\_edge\_traction}). Para tracciones uniformes en bordes rectos el reparto es exacto (L/2 a cada nodo del borde) y se evita la cuadratura 1D; las fuerzas de cuerpo se integran con la cuadratura del elemento. Solo tracciones \textbf{constantes por borde} y en \textbf{coordenadas globales} en este paso; tracción variable y presión normal quedan para una iteración posterior.
 \end{itemize}
 
 
@@ -2281,6 +2339,32 @@ con $A_e = \tfrac{1}{2}\, \det \mathbf{J}$ el área del triángulo y $t$ el espe
 \subsection{11. Cuadratura}
 Un punto central (en el baricentro) con peso $w = 1/2$ sobre el triángulo de referencia. Es exacto para formas constantes de $\mathbf{B}$ y $\boldsymbol{\sigma}$.
 
+\subsection{12. Cargas distribuidas consistentes}
+
+\textbf{Fuerza de cuerpo $\mathbf b$}. Con $N_i$ lineales y $\mathbf b$ uniforme la integral es exacta:
+\[
+\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA \;\Longrightarrow\; \text{cada nodo recibe } \tfrac{1}{3}\, \mathbf b\, A_e\, t.
+\]
+
+\textbf{Tracción de superficie $\bar{\mathbf t}$} sobre un borde recto. Con $\bar{\mathbf t}$ constante el reparto es $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ en cada uno de los dos nodos del borde. Bordes numerados según la conectividad:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Edge} & \textbf{Nodos} \\
+\hline
+0 & (0, 1) \\
+1 & (1, 2) \\
+2 & (2, 0) \\
+\hline
+\end{tabularx}
+\end{center}
+$\bar{\mathbf t}$ se especifica en coordenadas globales $(t_x, t_y)$. Tracción variable o presión normal no soportadas en este paso.
+
+\subsection{13. Salida por punto de Gauss}
+
+\texttt{compute\_gauss\_state(U)} devuelve la misma estructura que en \texttt{Quad4} pero con un único punto (centroide). Para Tri3 \ensuremath{\varepsilon} y \ensuremath{\sigma} son constantes sobre el elemento, así que el dato del punto coincide con el promedio.
+
 
 \section{Limitación crítica --- \textit{shear locking}}
 
@@ -2322,13 +2406,30 @@ out_of_scope:
   - "grandes deformaciones"
 
 acceptance:
-  - name: parche de tracción uniaxial
-    setup: "malla triangular con carga axial uniforme y material Elastic2D"
-    expect: "deformación constante en todo el dominio"
-    tol_rel: 1.0e-12
-  - name: jacobiano degenerado abortado
-    setup: "tres nodos colineales"
-    expect: "ValueError en _compute_kinematics_tri3"
+  verification:
+    - name: patch_test_macneal_harder
+      setup: "4 Tri3 distorsionados alrededor de un nodo interior descentrado
+             con campo lineal u = 1e-3·(x + y/2), v = 1e-3·(y + x/2)
+             impuesto en los 4 nodos del contorno del cuadrado unitario"
+      expect: "nodo interior adopta el campo lineal y ε = (1e-3, 1e-3,
+              1e-3) en cada elemento; σ uniforme"
+      tol_rel: 1.0e-10
+  specific:
+    - name: parche de deformación constante sobre malla triangular regular
+      setup: "malla triangular con campo de desplazamiento lineal y material Elastic2D"
+      expect: "ε constante (CST reproduce campos lineales por construcción)"
+      tol_rel: 1.0e-12
+    - name: jacobiano degenerado abortado
+      setup: "tres nodos colineales"
+      expect: "ValueError en _compute_kinematics_tri3"
+    - name: cargas consistentes — body load uniforme
+      setup: "Tri3 con b uniforme"
+      expect: "cada nodo recibe (1/3)·b·A_e·t; Σ = b·A_e·t"
+      tol_rel: 1.0e-12
+    - name: cargas consistentes — tracción uniforme en un borde
+      setup: "Tri3 con tracción constante en un borde"
+      expect: "Σf = t̄·L·t y reparto L/2 a cada nodo del borde, 0 en el opuesto"
+      tol_rel: 1.0e-12
 
 references:
   - "Cook, Malkus, Plesha, Witt, Concepts and Applications of FEA, §3.6 (CST)"
@@ -2343,7 +2444,9 @@ references:
   \item \textbf{Archivo}: fenix/elements/solid\_2d.py
   \item \textbf{Clase}: \texttt{Tri3} (registrada vía \texttt{@ElementRegistry.register})
   \item \textbf{Función núcleo}: \texttt{\_compute\_kinematics\_tri3(coords)}, decorada con \texttt{@njit}. Reutiliza \texttt{\_compute\_integrands} con peso $w = 0{.}5$.
-  \item \textbf{Tests}: tests/test\_solid\_2d.py --- incluye el patch test sobre malla triangular y verifica que el modo de cuerpo rígido produce fuerzas internas nulas.
+  \item \textbf{Tests}:
+  \item tests/test\_solid\_2d.py --- patch test sobre malla triangular regular y modos de cuerpo rígido.
+  \item tests/test\_patch\_solid\_2d.py --- patch test de MacNeal-Harder con nodo interior libre (NAFEMS, V\&V).
 \end{itemize}
 
 
@@ -2351,6 +2454,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-04-30} \ensuremath{\cdot} Spec retroactiva. \texttt{Tri3} precedía al protocolo spec-first; la spec se creó documentando la formulación ya implementada. Promovido \texttt{status: validated}.
+  \item \textbf{2026-04-30} \ensuremath{\cdot} Añadido patch test de MacNeal-Harder (NAFEMS) en \texttt{acceptance.verification}. Cuatro triángulos alrededor de un nodo interior descentrado reproducen un campo lineal impuesto en el contorno con \ensuremath{\varepsilon} constante en cada elemento.
+  \item \textbf{2026-05-04} \ensuremath{\cdot} Expuesta \texttt{compute\_gauss\_state(U)} (1 punto central). El \texttt{VtkExporter} consume \ensuremath{\sigma} por elemento y promedia a nodos (\texttt{Sigma\_*\_nodal}).
+  \item \textbf{2026-05-04} \ensuremath{\cdot} Añadidas cargas distribuidas consistentes (\texttt{compute\_body\_load}, \texttt{compute\_edge\_traction}) con la misma semántica que \texttt{Quad4}. Para Tri3 ambos integrandos son exactos analíticamente: body load reparte 1/3 por nodo, tracción de borde reparte L/2 a cada uno de los dos nodos del borde.
 \end{itemize}
 
 
@@ -2423,7 +2529,7 @@ conventions:
 validity:
   - "E > 0"
   - "|ε| ≲ 1e-2 en el régimen tensado (elasticidad lineal)"
-  - "compatible con cualquier elemento con STRAIN_DIM=1 (Truss2D, Truss3D y sus variantes corotacionales)"
+  - "IS_UNILATERAL = True ⇒ solo admitido en elementos con ACCEPTS_UNILATERAL = True (Cable2DCorot, Cable3DCorot). La base Element rechaza la combinación con Truss* en construcción."
 
 out_of_scope:
   - plasticidad, fluencia, fatiga
@@ -2488,7 +2594,143 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Material creado como pieza independiente para la futura implementación de elementos de cable (\texttt{Cable2DCorot}, \texttt{Cable3DCorot}). Deliberadamente \textbf{no hereda} de \texttt{Elastic1D} aunque su rama en tensión sea idéntica: mantener el material autocontenido simplifica su lectura y evita acoplamientos futuros si la rama elástica cambia en otro archivo.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Discontinuidad en $\varepsilon = 0$: documentada explícitamente en \texttt{out\_of\_scope: regularización numérica}. Si aparece un caso de uso con destensiones frecuentes donde Newton-Raphson oscile, se añadirá una variante \texttt{CableMaterial1DRegularized} con $E_c \ll E$ en compresión --- \textbf{no} se modificará este material (contrato limpio).
+  \item \textbf{2026-05-12} \ensuremath{\cdot} Restricción de emparejamiento elevada a contrato: \texttt{IS\_UNILATERAL = True} en el material; \texttt{ACCEPTS\_UNILATERAL = True} en \texttt{Cable2DCorot}/\texttt{Cable3DCorot}. La base \texttt{Element.\_validate\_material\_compatibility} rechaza la combinación con \texttt{Truss*} (cuyo tangente colapsa la rigidez global sin K\_G que lo compense). Antes el contrato lo permitía y solo se desaconsejaba en docstring; ahora falla limpio al construir.
 \end{itemize}
+
+
+\newpage
+
+\chapter{Modelos constitutivos — catálogo}
+
+
+
+\textit{Referencia rápida de los modelos constitutivos implementados. Una entrada por material. Para detalles del algoritmo \ensuremath{\to} código fuente.}
+
+\textit{> \textbf{Convenciones}: \texttt{STRAIN\_DIM} = dimensión Voigt de la deformación de entrada (1 = escalar, 3 = 2D \texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\gamma}\_xy]}, 6 = 3D). \texttt{PRIMARY\_STATE\_VAR} = variable interna que el \texttt{VtkExporter} lleva al output.}
+
+
+
+\section{Elastic1D --- elástico lineal 1D}
+
+\begin{itemize}
+  \item \textbf{Ley}: \texttt{\ensuremath{\sigma} = E \ensuremath{\cdot} \ensuremath{\varepsilon}} (Hooke 1D).
+  \item \textbf{STRAIN\_DIM}: 1.
+  \item \textbf{Parámetros}: \texttt{E} (módulo de Young).
+  \item \textbf{Variables internas}: ninguna (sin historia).
+  \item \textbf{Tangente}: constante = \texttt{E}.
+  \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}, \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko}.
+  \item \textbf{Archivo}: fenix/materials/elastic.py
+\end{itemize}
+
+
+\section{Elastic2D --- elástico lineal 2D}
+
+\begin{itemize}
+  \item \textbf{Ley}: \texttt{\ensuremath{\sigma} = C \ensuremath{\cdot} \ensuremath{\varepsilon}}, con \texttt{C} el tensor constitutivo isótropo en notación Voigt \texttt{[xx, yy, xy]}.
+  \item \textbf{STRAIN\_DIM}: 3.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{hypothesis \ensuremath{\in} \{'plane\_stress', 'plane\_strain'\}}.
+  \item \textbf{Variables internas}: ninguna.
+  \item \textbf{Tangente}: constante = \texttt{C}.
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}.
+  \item \textbf{Archivo}: fenix/materials/elastic\_2d.py
+\end{itemize}
+
+
+\section{IsotropicDamage1D --- daño isótropo 1D con softening exponencial}
+
+\begin{itemize}
+  \item \textbf{Modelo}: daño escalar \texttt{d \ensuremath{\in} [0, 1)}, módulo secante \texttt{E\_sec = (1 − d) \ensuremath{\cdot} E}, \texttt{\ensuremath{\sigma} = E\_sec \ensuremath{\cdot} \ensuremath{\varepsilon}}.
+  \item \textbf{Evolución del daño} (Kuhn-Tucker):
+  \item Deformación equivalente: \texttt{\ensuremath{\varepsilon}\_eq = |\ensuremath{\varepsilon}|}.
+  \item Variable histórica: \texttt{\ensuremath{\kappa} = max(\ensuremath{\kappa}\_old, \ensuremath{\varepsilon}\_eq)}.
+  \item Si \texttt{\ensuremath{\kappa} \ensuremath{\le} \ensuremath{\kappa}\_0} \ensuremath{\to} \texttt{d = 0}. Si no: \texttt{d = 1 − (\ensuremath{\kappa}\_0/\ensuremath{\kappa}) \ensuremath{\cdot} exp(−\ensuremath{\alpha}\ensuremath{\cdot}(\ensuremath{\kappa} − \ensuremath{\kappa}\_0))}, saturado en \texttt{DAMAGE\_MAX}.
+  \item \textbf{STRAIN\_DIM}: 1 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{kappa\_0} (umbral elástico), \texttt{alpha} (velocidad de degradación).
+  \item \textbf{Variables internas}: \texttt{kappa}, \texttt{damage}.
+  \item \textbf{Tangente}: secante (\texttt{E\_sec}); no consistente con tangente algorítmica del daño --- adecuado para Newton-Raphson amortiguado, no óptimo para arc-length agresivo.
+  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = E \ensuremath{\cdot} \ensuremath{\kappa}\_0} --- esfuerzo umbral inicial donde se activa el daño. Garantiza invariancia bajo cambio de unidades del check \texttt{f \ensuremath{\le} atol + rtol \ensuremath{\cdot} escala}.
+  \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}.
+  \item \textbf{Referencia}: Lemaitre \& Chaboche, \textit{Mechanics of Solid Materials}; Oliver, "A consistent characteristic length for smeared cracking models" (IJNME 1989).
+  \item \textbf{Archivo}: fenix/materials/damage\_1d.py
+\end{itemize}
+
+
+\section{IsotropicDamage2D --- daño isótropo 2D con softening exponencial}
+
+\begin{itemize}
+  \item \textbf{Modelo}: extensión 2D de \texttt{IsotropicDamage1D}. Tensor constitutivo secante \texttt{C\_sec = (1 − d) \ensuremath{\cdot} C\_e}.
+  \item \textbf{Deformación equivalente}: \texttt{\ensuremath{\varepsilon}\_eq = \ensuremath{\surd}(\ensuremath{\varepsilon}\_xx\ensuremath{^{2}} + \ensuremath{\varepsilon}\_yy\ensuremath{^{2}} + ½\ensuremath{\cdot}\ensuremath{\gamma}\_xy\ensuremath{^{2}})} (norma simple sin distinguir tensión/compresión).
+  \item \textbf{Evolución}: idéntica a 1D (\ensuremath{\kappa} máxima histórica + ley exponencial).
+  \item \textbf{STRAIN\_DIM}: 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis} (delegado a \texttt{Elastic2D} interno).
+  \item \textbf{Variables internas}: \texttt{kappa}, \texttt{damage}.
+  \item \textbf{Tangente}: secante.
+  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = E \ensuremath{\cdot} \ensuremath{\kappa}\_0} --- idéntica al caso 1D, el criterio de daño tiene el mismo umbral característico independientemente de la dimensión.
+  \item \textbf{Limitación}: la \texttt{\ensuremath{\varepsilon}\_eq} simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (no implementado).
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}.
+  \item \textbf{Archivo}: fenix/materials/damage\_2d.py
+\end{itemize}
+
+
+\section{Elastoplastic1D --- plasticidad J2 1D con endurecimiento isótropo lineal}
+
+\begin{itemize}
+  \item \textbf{Modelo}: plasticidad asociativa con criterio \texttt{f = |\ensuremath{\sigma}\_trial| − (\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha}) \ensuremath{\le} 0}.
+  \item \textbf{Algoritmo}: return mapping clásico 1D.
+  \item Predictor elástico: \texttt{\ensuremath{\sigma}\_trial = E \ensuremath{\cdot} (\ensuremath{\varepsilon} − \ensuremath{\varepsilon}\_p\_old)}.
+  \item Corrector: \texttt{\ensuremath{\Delta}\ensuremath{\gamma} = f / (E + H)}, \texttt{\ensuremath{\sigma} = \ensuremath{\sigma}\_trial − \ensuremath{\Delta}\ensuremath{\gamma}\ensuremath{\cdot}E\ensuremath{\cdot}sign(\ensuremath{\sigma}\_trial)}.
+  \item Tangente algorítmica consistente: \texttt{E\_t = E\ensuremath{\cdot}H / (E + H)}.
+  \item \textbf{STRAIN\_DIM}: 1 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'alpha'}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{sigma\_y} (fluencia inicial), \texttt{H} (módulo de endurecimiento; 0 = perfectamente plástico).
+  \item \textbf{Variables internas}: \texttt{eps\_p} (deformación plástica), \texttt{alpha} (acumulada equivalente).
+  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = \ensuremath{\sigma}\_y + H \ensuremath{\cdot} \ensuremath{\alpha}} --- fluencia corriente (adaptativa al endurecimiento). El check \texttt{f \ensuremath{\le} atol + rtol \ensuremath{\cdot} escala} se hace contra la superficie de fluencia \textit{en el estado de entrada del paso}.
+  \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}, \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko} (en estos últimos solo se aplica al esfuerzo axial).
+  \item \textbf{Referencia}: Simo \& Hughes, \textit{Computational Inelasticity}, cap. 1.
+  \item \textbf{Archivo}: fenix/materials/plastic\_1d.py
+\end{itemize}
+
+
+\section{CableMaterial1D --- cable axial 1D con elasticidad unilateral}
+
+\begin{itemize}
+  \item \textbf{Ley}: \texttt{\ensuremath{\sigma} = E\ensuremath{\cdot}\ensuremath{\varepsilon}} si \texttt{\ensuremath{\varepsilon} > 0}; \texttt{\ensuremath{\sigma} = 0} si \texttt{\ensuremath{\varepsilon} \ensuremath{\le} 0} (sin rigidez en compresión).
+  \item \textbf{STRAIN\_DIM}: 1.
+  \item \textbf{Parámetros}: \texttt{E} (módulo de Young en tensión, estrictamente positivo).
+  \item \textbf{Variables internas}: ninguna (respuesta memoryless: la rigidez depende solo del signo instantáneo de \texttt{\ensuremath{\varepsilon}}).
+  \item \textbf{Tangente}: \texttt{E\_t = E} en tensión, \texttt{E\_t = 0} en compresión o sin tensión.
+  \item \textbf{Implicación numérica}: la rigidez tangente colapsa a cero cuando el cable se afloja, lo que requiere precondicionamiento o regularización en el solver para no degenerar la matriz global. El uso típico es a través del elemento \texttt{Cable2DCorot}/\texttt{Cable3DCorot}, que detecta la situación y la maneja correctamente.
+  \item \textbf{Compatible con}: \texttt{Cable2DCorot}, \texttt{Cable3DCorot}.
+  \item \textbf{Referencia}: ver \texttt{docs/specs/CableMaterial1D.md}.
+  \item \textbf{Archivo}: fenix/materials/cable\_1d.py
+\end{itemize}
+
+
+\section{VonMises2D --- plasticidad J2 2D con endurecimiento isótropo lineal}
+
+\begin{itemize}
+  \item \textbf{Modelo}: J2 (Von Mises) en deformación plana; criterio \texttt{f = \ensuremath{\|}s\_trial\ensuremath{\|} − \ensuremath{\surd}(2/3)\ensuremath{\cdot}(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha}) \ensuremath{\le} 0}.
+  \item \textbf{Algoritmo}: return mapping radial sobre la parte desviadora.
+  \item Descomposición volumétrica/desviadora: \texttt{p = K\ensuremath{\cdot}tr(\ensuremath{\varepsilon})}, \texttt{s = 2G\ensuremath{\cdot}e\_dev}.
+  \item Predictor elástico desviador, corrector radial \texttt{\ensuremath{\Delta}\ensuremath{\gamma} = f\_trial / (2G + ⅔\ensuremath{\cdot}H)}.
+  \item Actualización: \texttt{s\_new = s\_trial − 2G\ensuremath{\cdot}\ensuremath{\Delta}\ensuremath{\gamma}\ensuremath{\cdot}N}, con \texttt{N = s\_trial / \ensuremath{\|}s\_trial\ensuremath{\|}}.
+  \item Tangente algorítmica consistente derivada por linealización del return mapping.
+  \item \textbf{STRAIN\_DIM}: 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'alpha'}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{sigma\_y}, \texttt{H}, \texttt{hypothesis} (\textbf{obligatorio} \texttt{'plane\_strain'}).
+  \item \textbf{Variables internas}: \texttt{eps\_p} (tensorial 4 componentes \texttt{[xx, yy, zz, xy]}), \texttt{alpha} (acumulada equivalente).
+  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = \ensuremath{\surd}(2/3) \ensuremath{\cdot} (\ensuremath{\sigma}\_y + H \ensuremath{\cdot} \ensuremath{\alpha})} --- radio en espacio desviador de la superficie de Von Mises en el estado corriente. Es la escala natural de \texttt{\ensuremath{\|}s\_trial\ensuremath{\|}} en la frontera de fluencia J2. Por estar el return mapping en un kernel \texttt{@njit}, la tolerancia se precomputa fuera del kernel vía \texttt{self.admissibility\_tol(state\_vars)} y se pasa como \texttt{float} al JIT.
+  \item \textbf{Restricción crítica}: solo deformación plana. Usar con \texttt{hypothesis='plane\_stress'} lanza \texttt{NotImplementedError} (el return mapping para plane stress requiere algoritmo diferente).
+  \item \textbf{Implementación}: kernel \texttt{\_compute\_j2\_plasticity} con \texttt{@njit}.
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3} (configurados en plane strain).
+  \item \textbf{Referencia}: Simo \& Hughes, \textit{Computational Inelasticity}, cap. 3 (return mapping J2).
+  \item \textbf{Archivo}: fenix/materials/von\_mises\_2d.py
+\end{itemize}
+
+
+\section{Cómo añadir un material nuevo}
+
+\texttt{/fenix-new material <Name>} --- genera archivo en \texttt{fenix/materials/}, decorador \texttt{@MaterialRegistry.register}, esqueleto de test.
+Declarar \textbf{\texttt{STRAIN\_DIM}} y, si tiene historia, \textbf{\texttt{PRIMARY\_STATE\_VAR}} (la variable que aparecerá en el VTK).
+Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba.
 
 
 \newpage
@@ -2556,10 +2798,8 @@ Ejemplo YAML:
 solver:
   type: NonlinearSolver
   num_steps: 10
+  tol: 1.0e-8
   freeze_tangent_after_iter: 2
-  convergence:
-    rtol_force: 1.0e-8
-    rtol_disp: 1.0e-8
 
 \end{lstlisting}
 

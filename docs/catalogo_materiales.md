@@ -41,6 +41,7 @@
 - **Parámetros**: `E`, `kappa_0` (umbral elástico), `alpha` (velocidad de degradación).
 - **Variables internas**: `kappa`, `damage`.
 - **Tangente**: secante (`E_sec`); no consistente con tangente algorítmica del daño — adecuado para Newton-Raphson amortiguado, no óptimo para arc-length agresivo.
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — esfuerzo umbral inicial donde se activa el daño. Garantiza invariancia bajo cambio de unidades del check `f ≤ atol + rtol · escala`.
 - **Compatible con**: `Truss2D`, `Truss3D`.
 - **Referencia**: Lemaitre & Chaboche, *Mechanics of Solid Materials*; Oliver, "A consistent characteristic length for smeared cracking models" (IJNME 1989).
 - **Archivo**: [fenix/materials/damage_1d.py](fenix/materials/damage_1d.py)
@@ -56,6 +57,7 @@
 - **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (delegado a `Elastic2D` interno).
 - **Variables internas**: `kappa`, `damage`.
 - **Tangente**: secante.
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D, el criterio de daño tiene el mismo umbral característico independientemente de la dimensión.
 - **Limitación**: la `ε_eq` simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (no implementado).
 - **Compatible con**: `Quad4`, `Tri3`.
 - **Archivo**: [fenix/materials/damage_2d.py](fenix/materials/damage_2d.py)
@@ -72,6 +74,7 @@
 - **STRAIN_DIM**: 1 · **PRIMARY_STATE_VAR**: `'alpha'`.
 - **Parámetros**: `E`, `sigma_y` (fluencia inicial), `H` (módulo de endurecimiento; 0 = perfectamente plástico).
 - **Variables internas**: `eps_p` (deformación plástica), `alpha` (acumulada equivalente).
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = σ_y + H · α` — fluencia corriente (adaptativa al endurecimiento). El check `f ≤ atol + rtol · escala` se hace contra la superficie de fluencia *en el estado de entrada del paso*.
 - **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko` (en estos últimos solo se aplica al esfuerzo axial).
 - **Referencia**: Simo & Hughes, *Computational Inelasticity*, cap. 1.
 - **Archivo**: [fenix/materials/plastic_1d.py](fenix/materials/plastic_1d.py)
@@ -103,6 +106,7 @@
 - **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'alpha'`.
 - **Parámetros**: `E`, `nu`, `sigma_y`, `H`, `hypothesis` (**obligatorio** `'plane_strain'`).
 - **Variables internas**: `eps_p` (tensorial 4 componentes `[xx, yy, zz, xy]`), `alpha` (acumulada equivalente).
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = √(2/3) · (σ_y + H · α)` — radio en espacio desviador de la superficie de Von Mises en el estado corriente. Es la escala natural de `‖s_trial‖` en la frontera de fluencia J2. Por estar el return mapping en un kernel `@njit`, la tolerancia se precomputa fuera del kernel vía `self.admissibility_tol(state_vars)` y se pasa como `float` al JIT.
 - **Restricción crítica**: solo deformación plana. Usar con `hypothesis='plane_stress'` lanza `NotImplementedError` (el return mapping para plane stress requiere algoritmo diferente).
 - **Implementación**: kernel `_compute_j2_plasticity` con `@njit`.
 - **Compatible con**: `Quad4`, `Tri3` (configurados en plane strain).
