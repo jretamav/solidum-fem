@@ -11,14 +11,11 @@ from fenix.elements.frame._shared import (
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
+    _log,
     build_geometry_2d,
 )
-from fenix.logging import get_logger
 from fenix.registry import ElementRegistry
 from fenix.results import ElementForces
-
-
-_log = get_logger("elements.frame")
 
 
 @ElementRegistry.register

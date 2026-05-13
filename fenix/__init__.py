@@ -30,7 +30,7 @@ from fenix.materials.damage_1d import IsotropicDamage1D
 from fenix.materials.damage_2d import IsotropicDamage2D
 from fenix.materials.cable_1d import CableMaterial1D
 
-from fenix.elements.solid_2d import Quad4, Tri3
+from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from fenix.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
 from fenix.elements.cable import Cable2DCorot, Cable3DCorot
 from fenix.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimoshenko

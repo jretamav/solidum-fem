@@ -90,7 +90,7 @@ class ModalSolver:
         with np.errstate(divide="ignore", invalid="ignore"):
             periods = np.where(
                 frequencies_hz > 0.0,
-                np.where(frequencies_hz > 0.0, 1.0 / frequencies_hz, np.inf),
+                1.0 / frequencies_hz,
                 np.inf,
             )
 

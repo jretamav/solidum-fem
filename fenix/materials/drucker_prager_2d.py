@@ -36,25 +36,11 @@ def _compute_drucker_prager_plane_strain(strain, eps_p_old, alpha_old,
     ``Δγ = f_trial/(G + 9K·η_f·η_g + Hk)``; si ``√J₂^{n+1} < 0`` activa retorno
     al ápice con ``Δγ_apex = (I₁_trial·η_f − k(α))/(9K·η_f·η_g + Hk)``.
     """
-    # Predictor elástico — descomposición volumétrica-desviadora 3D, ε_zz = 0
-    eps_v = strain[0] + strain[1]
-
-    # eps_p tensorial 4 comp [xx, yy, zz, xy_tens]. Volumen plástico acumulado:
-    eps_p_vol = eps_p_old[0] + eps_p_old[1] + eps_p_old[2]
-
-    e_dev = np.array([
-        strain[0] - eps_v / 3.0,
-        strain[1] - eps_v / 3.0,
-        -eps_v / 3.0,
-        strain[2] / 2.0   # xy tensorial
-    ])
-    e_dev_trial = e_dev - eps_p_old   # eps_p_old tiene la parte plástica acumulada en cada componente
-
-    # Restar también la parte volumétrica plástica acumulada del desviador trial.
-    # Re-derivación: e_dev = dev(ε - ε_p_total). e_dev arriba se calculó como
-    # dev(ε), pero ε_p tiene parte volumétrica no nula (dilatación plástica).
-    # La corrección: e_dev_trial = dev(ε - ε_p) ≠ dev(ε) - ε_p en general.
-    # Implementación robusta: descomponer ε - ε_p explícitamente.
+    # Predictor elástico — descomposición desviadora 3D plane strain con
+    # `ε_zz = 0`. Trabajamos directamente sobre `ε - ε_p` (que tiene parte
+    # volumétrica no nula por dilatancia plástica): e_dev = dev(ε - ε_p) y
+    # NO `dev(ε) - ε_p`, que difiere en la parte volumétrica del flujo.
+    # eps_p tensorial 4 componentes [xx, yy, zz, xy_tens].
     eps_minus_p_xx = strain[0] - eps_p_old[0]
     eps_minus_p_yy = strain[1] - eps_p_old[1]
     eps_minus_p_zz = 0.0 - eps_p_old[2]  # ε_zz = 0 plane strain

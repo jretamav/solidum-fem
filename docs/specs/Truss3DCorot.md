@@ -128,7 +128,7 @@ references:
   - `test_acceptance_geometric_stiffness_transverse_plane` (criterio 3 — aplica $\mathbf K_G$ a **dos** direcciones linealmente independientes del plano perpendicular al eje).
 - **Notas de traducción**:
   - La clave respecto a 2D es el proyector $\mathbf P_3 = \mathbf I - \hat{\mathbf e}\hat{\mathbf e}^\top$ (3×3, rango 2): el plano perpendicular al eje es bidimensional. $\mathbf K_G$ resulta entonces de rango 2, no rango 1.
-  - Método estático `_perpendicular_projector(cx, cy, cz)` extrae esta operación para legibilidad y posible reuso.
+  - El proyector se construye con `fenix.math.geometry.perpendicular_projector(ê)`, helper compartido con `Cable3DCorot` (operación geométrica pura, no específica de armaduras ni de cables).
   - La longitud corriente $l$ y los cosenos $c_x, c_y, c_z$ se recalculan en cada evaluación (Updated Lagrangian); no se cachean entre llamadas del solver.
   - Autovalores de $\mathbf K_G$ sobre modos transversos (rotación de la barra alrededor de su centro): $2N/l$ sobre el vector sin normalizar — igual que en 2D, el factor 2 viene de que el vector de 6 componentes tiene norma $\sqrt 2$. Sobre el versor el autovalor es $N/l$.
 

@@ -121,11 +121,10 @@ class Frame2DEuler(Element):
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa consistente del Frame2DEuler en ejes globales.
 
-        Sale de :func:`_frame2d_consistent_mass_local` (axial lineal + flexional
-        Hermitiana cúbica) seguida de la rotación al sistema global
-        ``T^T · M_local · T``. La inercia rotacional de sección (``ρI``) se
-        omite — válida para vigas esbeltas Bernoulli-Euler; ver ADR 0009 §1
-        para la justificación.
+        Sale de :func:`_frame2d_consistent_mass_local` (axial lineal +
+        flexional Hermitiana cúbica + inercia rotacional de sección ``ρI``)
+        seguida de la rotación al sistema global ``T^T · M_local · T``.
+        ADR 0009 §1.
 
         Returns
         -------

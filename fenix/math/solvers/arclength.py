@@ -1,11 +1,11 @@
 # fenix_fem/fenix/math/solvers/arclength.py
 """``ArcLengthSolver`` — método de longitud de arco cilíndrico (Crisfield).
 """
-from typing import Optional
+from __future__ import annotations
 
 import numpy as np
 
-from fenix.constants import ZERO_TOL
+from fenix.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
 from fenix.math.convergence import (
     ConvergenceCriterion,
     stiffness_diag_scale,
@@ -26,7 +26,7 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
-    def __init__(self, assembler, convergence: Optional[ConvergenceCriterion] = None, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
+    def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
                  dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,
                  linear_algebra: str = "auto"):
@@ -203,10 +203,9 @@ class ArcLengthSolver:
 
                 # Actualizar iteraciones
                 lambda_iter += ddlambda
-                if not final_step:
-                    dU_iter = dU_iter  # ya actualizado arriba
-                else:
+                if final_step:
                     dU_iter = dU_iter + dU_update
+                # En la rama no-final `dU_iter` ya quedó actualizado arriba.
                 U_iter = U_current + dU_iter
 
                 ref_force = max(
@@ -245,7 +244,7 @@ class ArcLengthSolver:
             if not converged:
                 dl *= 0.5
                 _log.warning(f"Bisección: reduciendo longitud de arco a {dl:.4e}")
-                if dl < 1e-6 * self.dl:
+                if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
                     raise RuntimeError("Arc-Length fracasó irreparablemente.")
 
         return U_current

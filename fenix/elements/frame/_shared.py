@@ -20,7 +20,13 @@ from typing import List
 import numpy as np
 
 from fenix.core.node import Node
+from fenix.logging import get_logger
 from fenix.results import ElementForces
+
+# Logger compartido por todos los elementos del paquete `frame`. Los
+# módulos consumidores hacen `from fenix.elements.frame._shared import _log`
+# en vez de declarar uno propio.
+_log = get_logger("elements.frame")
 
 
 def build_geometry_2d(nodes: List[Node]):

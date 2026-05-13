@@ -32,3 +32,11 @@ CONVERGENCE_RTOL_FORCE = 1.0e-5
 CONVERGENCE_RTOL_DISP = 1.0e-5
 CONVERGENCE_ATOL_FORCE_FACTOR = 1.0e-9
 CONVERGENCE_ATOL_DISP_FACTOR = 1.0e-9
+
+# --- Tolerancia mínima de longitud de arco antes de declarar fracaso ---
+# Factor adimensional sobre el `initial_dl` declarado por el usuario:
+# si la bisección del paso reduce ``dl`` por debajo de
+# ``ARCLENGTH_MIN_DL_FACTOR · initial_dl``, ArcLengthSolver aborta con
+# RuntimeError. Por debajo de ese umbral la convergencia ya no es
+# físicamente significativa (ruido numérico domina la longitud de arco).
+ARCLENGTH_MIN_DL_FACTOR = 1.0e-6

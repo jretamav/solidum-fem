@@ -1,5 +1,4 @@
 # fenix_fem/fenix/utils/gmsh_parser.py
-import numpy as np
 from fenix.core.domain import Domain
 from fenix.logging import get_logger
 from fenix.registry import ElementRegistry
@@ -36,8 +35,12 @@ class GmshParser:
         _log.info(f"Leyendo malla Gmsh desde: {self.filepath} ...")
         mesh = meshio.read(self.filepath, file_format="gmsh")
         
-        # Extraer Grupos Físicos (Physical Groups)
+        # Extraer Grupos Físicos (Physical Groups). Inicializamos `tag_to_name`
+        # fuera del condicional: si la malla no trae `field_data` pero sí
+        # `cell_data["gmsh:physical"]` (caso raro pero plausible), el bucle
+        # de elementos seguía usándola más abajo y disparaba `UnboundLocalError`.
         self.domain.physical_groups = {}
+        tag_to_name: dict[int, str] = {}
         if hasattr(mesh, 'field_data') and hasattr(mesh, 'cell_data') and "gmsh:physical" in mesh.cell_data:
             tag_to_name = {int(data[0]): name for name, data in mesh.field_data.items()}
             for name in tag_to_name.values():

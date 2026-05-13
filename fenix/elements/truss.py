@@ -4,6 +4,7 @@ from typing import List
 from fenix.core.element import Element
 from fenix.core.node import Node
 from fenix.core.material import Material
+from fenix.math.geometry import perpendicular_projector
 from fenix.registry import ElementRegistry
 from fenix.results import ElementForces
 
@@ -346,12 +347,6 @@ class Truss3DCorot(Truss3D):
             raise ValueError("Longitud corriente nula en Truss3DCorot.")
         return l, dx / l, dy / l, dz / l
 
-    @staticmethod
-    def _perpendicular_projector(cx: float, cy: float, cz: float) -> np.ndarray:
-        """Proyector 3x3 al plano perpendicular al eje: P = I − ê·êᵀ."""
-        e = np.array([cx, cy, cz])
-        return np.eye(3) - np.outer(e, e)
-
     def compute_element_state(self, u_e: np.ndarray):
         l, cx, cy, cz = self._current_geometry(u_e)
 
@@ -362,7 +357,7 @@ class Truss3DCorot(Truss3D):
 
         N = sigma * self.A
         d = np.array([-cx, -cy, -cz, cx, cy, cz])
-        P = self._perpendicular_projector(cx, cy, cz)
+        P = perpendicular_projector(np.array([cx, cy, cz]))
 
         K_M = ((E_t * self.A) / self.L0) * np.outer(d, d)
 

@@ -6,8 +6,10 @@ ningún otro elemento ni comparte helpers: la construcción de ejes
 locales, la matriz de transformación 12×12 y la rigidez local se generan
 íntegramente dentro de la clase. Ver docs/specs/Frame3D.md.
 """
+from __future__ import annotations
+
 import math
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 
@@ -44,7 +46,7 @@ class Frame3D(Element):
         Constante torsional de Saint-Venant.
     nu : float, optional
         Coeficiente de Poisson si el material no lo expone. Default 0.3.
-    ref_vector : Optional[List[float]], optional
+    ref_vector : list[float] | None, optional
         Vector de referencia 3D para fijar la orientación de los ejes
         locales y, z. Default `[0, 0, 1]`; con fallback `[1, 0, 0]` si
         la barra es cercanamente vertical.
@@ -59,7 +61,7 @@ class Frame3D(Element):
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  A: float, Iy: float, Iz: float, J: float,
                  nu: float = 0.3,
-                 ref_vector: Optional[List[float]] = None):
+                 ref_vector: List[float] | None = None):
         if len(nodes) != 2:
             raise ValueError("El elemento Frame3D requiere exactamente 2 nodos.")
 
@@ -85,7 +87,7 @@ class Frame3D(Element):
 
     @classmethod
     def _build_local_frame(cls, nodes: List[Node],
-                            ref_vector: Optional[List[float]],
+                            ref_vector: List[float] | None,
                             element_id: int):
         """Construye longitud, matriz λ (3×3) y T (12×12). Una sola vez."""
         c1 = nodes[0].coordinates
@@ -328,10 +330,10 @@ class Frame3D(Element):
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa consistente del Frame3D en ejes globales.
 
-        Ensambla :meth:`_build_local_mass` y la rota con ``T^T · M_local · T``,
-        donde ``T`` es la matriz 12×12 ya construida en ``__init__``. La
-        inercia rotacional propia de sección (``ρI``) se omite (Bernoulli
-        esbelta — ver ADR 0009 §1 y :meth:`_build_local_mass`).
+        Ensambla :meth:`_build_local_mass` (axial + Hermitiana cúbica en los
+        dos planos de flexión + inercia rotacional de sección ``ρI`` en
+        ambos ejes locales) y la rota con ``T^T · M_local · T``, donde ``T``
+        es la matriz 12×12 ya construida en ``__init__``. ADR 0009 §1.
 
         Returns
         -------

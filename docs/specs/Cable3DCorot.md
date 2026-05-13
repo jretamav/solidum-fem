@@ -145,7 +145,7 @@ references:
   - `test_registro_en_registry` — autodiscover.
 - **Notas de traducción**:
   - La clase duplica la maquinaria corotacional 3D de `Truss3DCorot`. Duplicación deliberada por la misma razón que en 2D: desacoplar la evolución futura de armaduras y cables.
-  - Método estático `_perpendicular_projector(cx, cy, cz)` extrae la construcción del proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ para legibilidad.
+  - El proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ se construye con `fenix.math.geometry.perpendicular_projector(ê)`, helper compartido con `Truss3DCorot` (operación geométrica pura, ortogonal al hecho de que el material sea unilateral o no).
   - `_current_geometry` tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), heredando la flexibilidad de `Truss3D` para problemas embebidos.
   - En estado destensado, $\mathbf K_M = \mathbf 0$ y $\mathbf K_G = \mathbf 0$ simultáneamente; el elemento aporta literalmente ceros al ensamblaje.
   - El test del criterio 1 compara directamente contra `Truss3DCorot` con material `Elastic1D`: si ambos producen $\mathbf K$ y $\mathbf F_{\text{int}}$ iguales a tolerancia, la cinemática del cable y de la barra son consistentes entre sí en el régimen tensado.
