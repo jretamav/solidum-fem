@@ -252,6 +252,99 @@ class Frame3D(Element):
             },
         )
 
+    def _build_local_mass(self, rho: float) -> np.ndarray:
+        """Matriz de masa consistente 12×12 en ejes locales del elemento.
+
+        Contribuciones desacopladas, ensambladas en el layout local
+        ``[ux_i, uy_i, uz_i, rx_i, ry_i, rz_i, ux_j, uy_j, uz_j, rx_j, ry_j, rz_j]``:
+
+        - **Axial** (ux_i, ux_j): ``(ρAL/6) · [[2,1],[1,2]]``.
+        - **Torsión** (rx_i, rx_j): ``(ρ·Jp·L/6) · [[2,1],[1,2]]`` con
+          ``Jp = Iy + Iz`` (momento polar geométrico de área, no la constante
+          torsional de Saint-Venant ``J`` — esa rige la rigidez, no la inercia).
+        - **Flexión xy** (uy_i, rz_i, uy_j, rz_j): masa Hermitiana cúbica
+          ``(ρAL/420) · H`` con la convención sign-aware ``θ_z = +dw_y/dx``.
+        - **Flexión xz** (uz_i, ry_i, uz_j, ry_j): masa Hermitiana con
+          ``θ_y = −dw_z/dx`` (signo opuesto al de la flexión xy en todos los
+          términos que llevan una rotación una sola vez). Coherente con la
+          construcción de la rigidez ``K_local`` en este mismo elemento.
+        - **Inercia rotacional propia de sección** en flexión (ADR 0009 §1):
+          ``ρ·Iz·L/6 · [[2,1],[1,2]]`` para los DOFs ``rz_i, rz_j`` y
+          ``ρ·Iy·L/6 · [[2,1],[1,2]]`` para los DOFs ``ry_i, ry_j``. Recoge
+          la energía cinética de rotación de la sección alrededor de cada
+          eje local. La componente torsional ``rx`` ya está cubierta por el
+          término torsional (con ``Jp = Iy + Iz``).
+        """
+        L = self.L0
+        L2 = L * L
+        c_ax = rho * self.A * L / 6.0
+        c_tr = rho * self.A * L / 420.0
+        Jp = self.Iy + self.Iz
+        c_tor = rho * Jp * L / 6.0
+        c_rot_y = rho * self.Iy * L / 6.0
+        c_rot_z = rho * self.Iz * L / 6.0
+
+        M = np.zeros((12, 12))
+
+        # Axial (0 ↔ 6)
+        M[0, 0]  = 2.0 * c_ax;  M[0, 6]  = 1.0 * c_ax
+        M[6, 0]  = 1.0 * c_ax;  M[6, 6]  = 2.0 * c_ax
+
+        # Torsión (3 ↔ 9)
+        M[3, 3]  = 2.0 * c_tor; M[3, 9]  = 1.0 * c_tor
+        M[9, 3]  = 1.0 * c_tor; M[9, 9]  = 2.0 * c_tor
+
+        # Flexión xy: idx_xy = [uy_i=1, rz_i=5, uy_j=7, rz_j=11]
+        H_xy = c_tr * np.array([
+            [156.0,   22.0 * L,   54.0,  -13.0 * L],
+            [22.0 * L,  4.0 * L2,  13.0 * L, -3.0 * L2],
+            [54.0,    13.0 * L,  156.0,  -22.0 * L],
+            [-13.0 * L, -3.0 * L2, -22.0 * L,  4.0 * L2],
+        ])
+        idx_xy = [1, 5, 7, 11]
+        for i, gi in enumerate(idx_xy):
+            for j, gj in enumerate(idx_xy):
+                M[gi, gj] = H_xy[i, j]
+
+        # Flexión xz: idx_xz = [uz_i=2, ry_i=4, uz_j=8, ry_j=10]. Mismos
+        # coeficientes que H_xy, pero con signo invertido en los términos
+        # que involucran exactamente una rotación (filas/columnas 1 y 3).
+        S = np.diag([1.0, -1.0, 1.0, -1.0])
+        H_xz = S @ H_xy @ S
+        idx_xz = [2, 4, 8, 10]
+        for i, gi in enumerate(idx_xz):
+            for j, gj in enumerate(idx_xz):
+                M[gi, gj] = H_xz[i, j]
+
+        # Inercia rotacional propia de sección sobre ry (5,11) y rz (4,10)
+        # son los DOFs de rotación; idx_ry = [4, 10], idx_rz = [5, 11].
+        M[5, 5]  += 2.0 * c_rot_z; M[5, 11] += 1.0 * c_rot_z
+        M[11, 5] += 1.0 * c_rot_z; M[11, 11] += 2.0 * c_rot_z
+        M[4, 4]  += 2.0 * c_rot_y; M[4, 10] += 1.0 * c_rot_y
+        M[10, 4] += 1.0 * c_rot_y; M[10, 10] += 2.0 * c_rot_y
+
+        return M
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa consistente del Frame3D en ejes globales.
+
+        Ensambla :meth:`_build_local_mass` y la rota con ``T^T · M_local · T``,
+        donde ``T`` es la matriz 12×12 ya construida en ``__init__``. La
+        inercia rotacional propia de sección (``ρI``) se omite (Bernoulli
+        esbelta — ver ADR 0009 §1 y :meth:`_build_local_mass`).
+
+        Returns
+        -------
+        np.ndarray, shape (12, 12)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Frame3D.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        M_local = self._build_local_mass(self.material.density)
+        return self.T.T @ M_local @ self.T
+
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con ∫NᵀbA dx para marco 3D (peso propio).
 

@@ -6,6 +6,7 @@ import scipy.sparse as sp
 
 from fenix.bc.constraints import ConstraintSet
 from fenix.core.domain import Domain
+from fenix.core.element import Element
 from fenix.logging import get_logger
 
 _log = get_logger("assembly")
@@ -27,6 +28,11 @@ class Assembler:
 
         # Caché del ConstraintSet (ADR 0004 fase 1).
         self._constraint_set: ConstraintSet | None = None
+
+        # Caché de la matriz de masa global (ADR 0009). M es lineal y no
+        # cambia entre llamadas: se ensambla una vez por análisis y se reusa.
+        self._M_global: sp.csr_matrix | None = None
+        self._M_lumping: str | None = None
 
     def _get_element_global_indices(self, element) -> list:
         """Extrae los índices globales de DOFs del elemento en el orden correcto.
@@ -193,6 +199,125 @@ class Assembler:
     ) -> np.ndarray:
         """Reconstruye ``u`` completo: ``u = T·u_red + g``."""
         return T @ u_red + g
+
+    # ------------------------------------------------------------------
+    # Matriz de masa global (ADR 0009)
+    # ------------------------------------------------------------------
+
+    def assemble_mass_matrix(self, lumping: str = "consistent") -> sp.csr_matrix:
+        """Ensambla la matriz de masa global ``M`` (ADR 0009).
+
+        Reutiliza la topología COO cacheada por ``_build_topology`` — ``M`` y
+        ``K`` comparten el mismo patrón de sparsity porque se ensamblan sobre
+        los mismos pares de DOFs elemento a elemento. El coste de ensamblaje
+        de ``M`` es comparable al de ``K``.
+
+        La masa lineal es constante en el tiempo y se cachea por análisis:
+        llamadas sucesivas con el mismo ``lumping`` devuelven el resultado
+        previo sin recomputar.
+
+        Pre-validación agregada (espíritu de ADR 0008 y del YAML parser):
+
+        - Materiales que no declaran ``density`` se acumulan y reportan
+          juntos con ``ValueError``.
+        - Elementos cuya subclase no override ``compute_mass_matrix`` (la
+          base lanza ``NotImplementedError``) se reportan en la misma
+          excepción.
+
+        Parameters
+        ----------
+        lumping : {"consistent"}, default "consistent"
+            Estrategia de discretización de la inercia. Se propaga literal
+            a cada elemento; cada subclase valida los valores que admite.
+
+        Returns
+        -------
+        scipy.sparse.csr_matrix, shape (ndof, ndof)
+            Matriz de masa global, simétrica, positiva (semi)definida.
+
+        Raises
+        ------
+        ValueError
+            Si algún material no declara ``density`` o algún elemento no
+            implementa ``compute_mass_matrix``. El mensaje agrupa ambos
+            tipos de problema.
+        """
+        if not self._topology_built:
+            self._build_topology()
+
+        if self._M_global is not None and self._M_lumping == lumping:
+            return self._M_global
+
+        missing_density: list[str] = []
+        missing_method: list[str] = []
+        for element in self.domain.elements.values():
+            mat = element.material
+            if mat is None or getattr(mat, "density", None) is None:
+                missing_density.append(
+                    type(mat).__name__ if mat is not None else "<sin material>"
+                )
+            if type(element).compute_mass_matrix is Element.compute_mass_matrix:
+                missing_method.append(type(element).__name__)
+
+        if missing_density or missing_method:
+            parts = ["assemble_mass_matrix: el cálculo no puede completarse."]
+            if missing_density:
+                parts.append(
+                    "- Materiales sin `density` declarada (ADR 0008): "
+                    f"{sorted(set(missing_density))}. Añade el atributo "
+                    "`density` (kg/m³ en las unidades del problema) en cada "
+                    "uno; usa 0.0 explícitamente si el material es sin masa "
+                    "por diseño (penalty, restricción)."
+                )
+            if missing_method:
+                parts.append(
+                    "- Elementos sin `compute_mass_matrix` implementado "
+                    f"(ADR 0009): {sorted(set(missing_method))}. La subclase "
+                    "debe sobreescribir el método para participar en análisis "
+                    "modal o dinámico."
+                )
+            raise ValueError("\n".join(parts))
+
+        data = np.zeros(self._total_entries, dtype=np.float64)
+        ptr = 0
+        for i, element in enumerate(self.domain.elements.values()):
+            M_e = element.compute_mass_matrix(lumping=lumping)
+            n_idx = len(self._elem_dof_indices[i])
+            data[ptr:ptr + n_idx**2] = M_e.ravel()
+            ptr += n_idx**2
+
+        self._M_global = sp.coo_matrix(
+            (data, (self._coo_rows, self._coo_cols)),
+            shape=(self.ndof, self.ndof),
+        ).tocsr()
+        self._M_lumping = lumping
+        return self._M_global
+
+    def reduce_pair(
+        self,
+        K: sp.spmatrix,
+        M: sp.spmatrix,
+    ) -> tuple[sp.spmatrix, sp.spmatrix, sp.spmatrix]:
+        """Reduce simultáneamente ``K`` y ``M`` por eliminación directa.
+
+        Variante de :meth:`reduce` para el problema generalizado modal
+        ``K·φ = ω²·M·φ`` (ADR 0009 §5). Los términos ``g_indep`` de
+        restricciones lineales no homogéneas no aplican: los modos son
+        solución del problema homogéneo asociado, así que el operador ``T``
+        de selección/coeficientes basta para mapear DOFs libres a globales.
+
+        Returns
+        -------
+        K_red, M_red, T
+            Matrices reducidas ``K_red = TᵀKT`` y ``M_red = TᵀMT``, junto al
+            operador ``T``. La expansión de modos al espacio completo se
+            obtiene como ``φ = T·φ_red`` (en DOFs prescritos el modo es 0).
+        """
+        cs = self.constraint_set
+        T, _g_indep = cs.build(self.ndof)
+        K_red = T.T @ K @ T
+        M_red = T.T @ M @ T
+        return K_red, M_red, T
 
     def commit_all_states(self):
         """Confirma las variables internas de todos los elementos tras la convergencia del paso."""

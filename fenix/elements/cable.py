@@ -133,6 +133,32 @@ class Cable2DCorot(Element):
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
 
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa elemental consistente, evaluada en la configuración
+        de referencia (ADR 0009 §1 + Lagrangeano total).
+
+        Masa translacional invariante rotacional, idéntica en forma a la del
+        Truss2D: ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₂)``. La unilateralidad
+        del cable (sólo carga axial en tracción) afecta a la rigidez, no a la
+        inercia: la masa total del cable es siempre física.
+
+        Returns
+        -------
+        np.ndarray, shape (4, 4)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Cable2DCorot.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        coef = self.material.density * self.A * self.L0 / 6.0
+        return coef * np.array([
+            [2.0, 0.0, 1.0, 0.0],
+            [0.0, 2.0, 0.0, 1.0],
+            [1.0, 0.0, 2.0, 0.0],
+            [0.0, 1.0, 0.0, 2.0],
+        ])
+
 
 @ElementRegistry.register
 class Cable3DCorot(Element):
@@ -262,3 +288,22 @@ class Cable3DCorot(Element):
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[2],
                          half * b[0], half * b[1], half * b[2]])
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del cable 3D, evaluada en configuración de referencia
+        (Lagrangeano total). Análoga a Truss3D.
+
+        Returns
+        -------
+        np.ndarray, shape (6, 6)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Cable3DCorot.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        coef = self.material.density * self.A * self.L0 / 6.0
+        I3 = np.eye(3)
+        M = np.block([[2.0 * I3, I3       ],
+                      [I3,       2.0 * I3]])
+        return coef * M

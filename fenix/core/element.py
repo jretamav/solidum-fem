@@ -46,6 +46,18 @@ class Element(ABC):
     --------------------------------
     compute_element_state(u_e) → (K_e, F_int_e)
 
+    Métodos opcionales (implementan análisis específicos)
+    -----------------------------------------------------
+    compute_mass_matrix(lumping)
+        Matriz de masa elemental en ejes globales. Necesaria para análisis
+        modal y dinámico (ADR 0009). Si no se sobreescribe, la base lanza
+        ``NotImplementedError`` con mensaje claro al ser invocada. El
+        contrato declarativo acepta el parámetro ``lumping`` desde el día
+        uno (fase 1: solo ``"consistent"``; fases futuras: ``"lumped"``,
+        ``"hrz"``, ...) para que la extensión sea aditiva.
+    compute_body_load(b), compute_edge_traction(edge, t_vec)
+        Cargas distribuidas consistentes. Opcionales según el tipo.
+
     Métodos heredados (no sobreescribir salvo necesidad)
     ----------------------------------------------------
     commit_state(), state_vars, stresses, get_global_dof_indices,
@@ -144,6 +156,42 @@ class Element(ABC):
         K_e      : ndarray (ndof_e × ndof_e)
         F_int_e  : ndarray (ndof_e,)
         """
+
+    # ------------------------------------------------------------------
+    # Contrato opcional para análisis modal y dinámico (ADR 0009)
+    # ------------------------------------------------------------------
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa elemental en ejes globales, ordenada como ``compute_element_state``.
+
+        El contrato base lanza ``NotImplementedError`` para señalar que la
+        subclase no la implementa. El ``Assembler.assemble_mass_matrix``
+        intercepta el fallo y reporta de forma agregada qué tipos de
+        elemento carecen de masa, evitando que un análisis modal se cuelgue
+        en runtime con un mensaje críptico.
+
+        Parameters
+        ----------
+        lumping : {"consistent"}, default "consistent"
+            Estrategia de discretización de la inercia (ADR 0009 §1). En la
+            fase 1 solo se admite ``"consistent"`` (masa de Galerkin
+            ``∫ρ·NᵀN dΩ``); las subclases deben lanzar
+            ``NotImplementedError`` para otros valores hasta que la rama
+            correspondiente se implemente (e.g. ``"lumped"``, ``"hrz"``).
+            El parámetro vive en la firma desde el día uno para que añadir
+            esas ramas sea aditivo y no rompa llamadores existentes.
+
+        Returns
+        -------
+        np.ndarray, shape (ndof_e, ndof_e)
+            Matriz de masa simétrica, positiva semi-definida.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} no implementa `compute_mass_matrix`. "
+            f"El análisis solicitado (modal o dinámico) requiere la matriz "
+            f"de masa elemental. Implementa el método en la subclase o "
+            f"retira este elemento del modelo."
+        )
 
     # ------------------------------------------------------------------
     # API pública de resultados (ADR 0002)

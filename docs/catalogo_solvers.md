@@ -52,8 +52,32 @@
 
 ---
 
+## ModalSolver — análisis modal por autovalores generalizados (ADR 0009)
+
+- **Propósito**: calcular frecuencias naturales `ω_n` y modos `φ_n` de vibración no amortiguados resolviendo `K · φ = ω² · M · φ`.
+- **Esquema**:
+  - Ensamblaje de `K` (rigidez lineal en `u = 0`) y `M` (masa consistente, ADR 0009 §1) reusando la topología COO cacheada del `Assembler`.
+  - Reducción simultánea por Dirichlet `Assembler.reduce_pair(K, M)` → `K_red, M_red, T`.
+  - `EigenSolver` envuelve `scipy.sparse.linalg.eigsh` con **shift-invert** en `sigma` (`sigma=0` → frecuencias más bajas) y `which="LM"`. ARPACK factoriza `(K_red − σ·M_red)` una sola vez y la reusa en todas las iteraciones Lanczos.
+  - Expansión de modos al espacio completo: `φ = T · φ_red`. En DOFs prescritos por Dirichlet la componente es 0.
+  - Salida en `ModalResult`: `frequencies_rad`, `frequencies_hz`, `periods`, `modes` (M-ortonormales), `n_modes`, `converged`.
+- **Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0), `which` (default `"LM"`), `tolerance` (default 1.0e-9), `lumping` (default `"consistent"`; fase 1 solo admite ese valor), `linear_algebra` (reservado; ADR 0003).
+- **Firma del solver**: `solve()` sin argumentos (no consume `F_applied`). El entrypoint público es `fenix.run_modal(domain, n_modes=N)` o YAML con `solver: type: ModalSolver`. `fenix.run_yaml` despacha automáticamente al detectar el tipo.
+- **Cuándo usarlo**: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
+- **Limitaciones**: lineal (`K` evaluada en `u = 0`); sin amortiguamiento; sin masas modales efectivas ni factores de participación (fase 7 del ADR 0009); modos complejos no soportados.
+- **Referencia**: Bathe, *Finite Element Procedures*, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, *The Finite Element Method*, cap. 7; ARPACK Users' Guide (Lehoucq–Sorensen–Yang).
+- **Spec**: [docs/specs/ModalSolver.md](specs/ModalSolver.md)
+- **Archivos**: [fenix/math/solvers.py](../fenix/math/solvers.py) (clase `ModalSolver`), [fenix/math/linalg/eigen.py](../fenix/math/linalg/eigen.py) (clase `EigenSolver`), [fenix/results.py](../fenix/results.py) (`ModalResult`).
+
+---
+
 ## Cómo añadir un solver nuevo
 
 `/fenix-new solver <Name>` — genera archivo en `fenix/math/solver_<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
-Convención de interfaz: constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None)` devuelve `U_final` y compromete los estados internos vía `assembler.commit_all_states()` al converger cada paso.
-Tras implementar, **añadir una entrada a este catálogo** siguiendo el formato de arriba.
+
+Convenciones de interfaz:
+
+- **Solvers estáticos** (lineales, no lineales, arc-length): constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
+- **Solvers de autovalor** (modal — ADR 0009 — y futuros pandeo lineal): constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo de resultado específico). No consumen vector de cargas. El entrypoint `fenix.run_yaml` despacha por `isinstance` al entrypoint específico (`fenix.run_modal` para modal).
+
+Tras implementar, **añadir una entrada a este catálogo** siguiendo el formato de arriba y promover la spec a `status: validated`.

@@ -11,6 +11,7 @@ from fenix.math.linalg.base import (
     StiffnessProperties,
 )
 from fenix.math.linalg.dispatcher import select_solver
+from fenix.math.linalg.eigen import EigenSolver
 from fenix.math.linalg.ldlt import LDLTNotAvailableError, LDLTSolver
 from fenix.math.linalg.lu import LUFactorized, LUSolver
 
@@ -34,6 +35,7 @@ __all__ = [
     "LUFactorized",
     "LDLTSolver",
     "LDLTNotAvailableError",
+    "EigenSolver",
 ]
 if _HAS_CHOLESKY:
     __all__ += ["CholeskySolver", "CholeskyFactorized", "CholeskyNotPositiveDefiniteError"]

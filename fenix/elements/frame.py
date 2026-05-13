@@ -72,6 +72,65 @@ def _frame2d_consistent_body_load(b: np.ndarray, A: float, L: float,
     return T.T @ f_local
 
 
+def _frame2d_consistent_mass_local(rho: float, A: float, I: float,
+                                     L: float) -> np.ndarray:
+    """Matriz de masa consistente 6×6 en ejes locales del elemento 2D (ADR 0009).
+
+    Tres contribuciones:
+
+    - **Axial** (ux_i, ux_j): masa traslacional lineal ``(ρAL/6)·[[2,1],[1,2]]``.
+    - **Flexión transversal** (uy_i, rz_i, uy_j, rz_j): masa Hermitiana cúbica
+      ``(ρAL/420)·H``, idéntica para Euler-Bernoulli y Timoshenko (la
+      densidad lineal ``ρA`` no depende ni de ``I`` ni de ``As/Φ``).
+    - **Inercia rotacional propia de sección** (rz_i, rz_j): masa rotacional
+      ``(ρIL/6)·[[2,1],[1,2]]`` que recoge la energía cinética asociada a la
+      rotación de la sección alrededor del nodo. Estándar en vigas peraltadas
+      (Timoshenko) y mejora pequeña pero correcta en Bernoulli. Sin esta
+      contribución, M sería rotacionalmente "singular" en ausencia de inercia
+      a través de la deflexión Hermitiana — patrón consistente con la
+      rigidez ``K_local`` que sí tiene términos rotacionales puros.
+
+    Layout local: ``[ux_i, uy_i, rz_i, ux_j, uy_j, rz_j]``.
+
+    Parameters
+    ----------
+    rho : float
+        Densidad del material.
+    A : float
+        Área de la sección.
+    I : float
+        Momento de inercia de la sección respecto al eje perpendicular al
+        plano de flexión (``Iz`` en convención 3D). Mismo parámetro usado
+        en la rigidez.
+    L : float
+        Longitud del elemento (en configuración de referencia para
+        formulaciones corotacionales — Lagrangeano total, ADR 0009).
+    """
+    c_ax = rho * A * L / 6.0
+    c_tr = rho * A * L / 420.0
+    c_rot = rho * I * L / 6.0
+    L2 = L * L
+    M = np.zeros((6, 6))
+    # Axial (ux_i, ux_j): masa de barra lineal 1D.
+    M[0, 0] = 2.0 * c_ax;  M[0, 3] = 1.0 * c_ax
+    M[3, 0] = 1.0 * c_ax;  M[3, 3] = 2.0 * c_ax
+    # Flexional (uy_i, rz_i, uy_j, rz_j): masa Hermitiana cúbica.
+    H = c_tr * np.array([
+        [156.0,   22.0 * L,   54.0,  -13.0 * L],
+        [22.0 * L,  4.0 * L2,  13.0 * L, -3.0 * L2],
+        [54.0,    13.0 * L,  156.0,  -22.0 * L],
+        [-13.0 * L, -3.0 * L2, -22.0 * L,  4.0 * L2],
+    ])
+    idx = [1, 2, 4, 5]
+    for i, gi in enumerate(idx):
+        for j, gj in enumerate(idx):
+            M[gi, gj] = H[i, j]
+    # Inercia rotacional propia de sección (rz_i, rz_j): ρI·L masa rotacional.
+    M[2, 2] += 2.0 * c_rot;  M[2, 5] += 1.0 * c_rot
+    M[5, 2] += 1.0 * c_rot;  M[5, 5] += 2.0 * c_rot
+    return M
+
+
 def _frame2d_forces_from_local(F_local: np.ndarray) -> ElementForces:
     """Traduce un vector F_local (6,) en convención stress-resultant interna a
     ``ElementForces`` en convención de viga estructural (Reglas.md §5).
@@ -217,6 +276,29 @@ class Frame2DEuler(Element):
         :func:`_frame2d_consistent_body_load`.
         """
         return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa consistente del Frame2DEuler en ejes globales.
+
+        Sale de :func:`_frame2d_consistent_mass_local` (axial lineal + flexional
+        Hermitiana cúbica) seguida de la rotación al sistema global
+        ``T^T · M_local · T``. La inercia rotacional de sección (``ρI``) se
+        omite — válida para vigas esbeltas Bernoulli-Euler; ver ADR 0009 §1
+        para la justificación.
+
+        Returns
+        -------
+        np.ndarray, shape (6, 6)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Frame2DEuler.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        M_local = _frame2d_consistent_mass_local(
+            self.material.density, self.A, self.I, self.L0
+        )
+        return self.T.T @ M_local @ self.T
 
 
 @ElementRegistry.register
@@ -365,6 +447,21 @@ class Frame2DTimoshenko(Element):
         """
         return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
 
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del Frame2DTimoshenko, idéntica en forma a la de
+        Frame2DEuler (la densidad lineal ``ρA`` no depende de ``As`` ni de
+        ``Φ``; la versión Hermite-blended introduce términos ``O(Φ²)``
+        despreciables). Ver :func:`_frame2d_consistent_mass_local` y ADR 0009.
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Frame2DTimoshenko.compute_mass_matrix: lumping='{lumping}' "
+                f"no implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        M_local = _frame2d_consistent_mass_local(
+            self.material.density, self.A, self.I, self.L0
+        )
+        return self.T.T @ M_local @ self.T
 
 
 @ElementRegistry.register
@@ -521,8 +618,13 @@ class Frame2DEulerCorot(Element):
         de segundo orden y se acepta como aproximación estándar. Ver
         :func:`_frame2d_consistent_body_load`.
         """
+        T = self._reference_transform()
+        return _frame2d_consistent_body_load(b, self.A, self.L0, T)
+
+    def _reference_transform(self) -> np.ndarray:
+        """Matriz de transformación 6×6 en la configuración de referencia."""
         c, s = math.cos(self.alpha0), math.sin(self.alpha0)
-        T = np.array([
+        return np.array([
             [ c,  s, 0, 0, 0, 0],
             [-s,  c, 0, 0, 0, 0],
             [ 0,  0, 1, 0, 0, 0],
@@ -530,4 +632,20 @@ class Frame2DEulerCorot(Element):
             [ 0,  0, 0,-s, c, 0],
             [ 0,  0, 0, 0, 0, 1],
         ])
-        return _frame2d_consistent_body_load(b, self.A, self.L0, T)
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del Frame2DEulerCorot, evaluada en la configuración
+        de referencia (Lagrangeano total, ADR 0009 §1). Análoga a Frame2DEuler
+        pero la matriz de transformación se reconstruye desde ``alpha0`` ya que
+        el corotacional no almacena ``self.T`` precalculada.
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Frame2DEulerCorot.compute_mass_matrix: lumping='{lumping}' "
+                f"no implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        M_local = _frame2d_consistent_mass_local(
+            self.material.density, self.A, self.I, self.L0
+        )
+        T = self._reference_transform()
+        return T.T @ M_local @ T

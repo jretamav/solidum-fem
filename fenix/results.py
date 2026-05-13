@@ -87,6 +87,42 @@ class ElementForces:
 
 
 @dataclass(frozen=True)
+class ModalResult:
+    """Resultado de un análisis modal (ADR 0009 fase 1). Inmutable.
+
+    Parameters
+    ----------
+    frequencies_rad
+        Frecuencias naturales ``ω_n`` en rad/s, shape ``(n_modes,)``.
+        Ordenadas ascendentemente. Modos de cuerpo rígido se reportan
+        con ``ω ≈ 0`` (clip numérico aplicado).
+    frequencies_hz
+        ``f_n = ω_n / (2π)`` en Hz, shape ``(n_modes,)``. Mismo orden.
+    periods
+        ``T_n = 1/f_n`` en segundos. ``np.inf`` si ``f_n = 0``
+        (modo de cuerpo rígido).
+    modes
+        Modos ``φ_n`` en columnas, shape ``(n_dof, n_modes)``,
+        M-ortonormales (``ΦᵀMΦ = I``). En DOFs prescritos por Dirichlet
+        la componente del modo es 0. Signo arbitrario por columna.
+    n_modes
+        Número de modos calculados. Coincide con ``frequencies_rad.size``.
+    converged
+        ``True`` si ARPACK convergió en los modos pedidos. ``False`` solo
+        si el solver fue forzado a parar (max iteraciones); típicamente
+        no debe ocurrir si las tolerancias del YAML están en el rango
+        razonable por defecto.
+    """
+
+    frequencies_rad: np.ndarray
+    frequencies_hz: np.ndarray
+    periods: np.ndarray
+    modes: np.ndarray
+    n_modes: int
+    converged: bool = True
+
+
+@dataclass(frozen=True)
 class SolveResult:
     """Resultado agregado de una solución. Inmutable; calculado eager al final
     de ``solver.solve``.

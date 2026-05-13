@@ -106,6 +106,39 @@ class Truss2D(Element):
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
 
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa elemental consistente (ADR 0009 §1).
+
+        Masa translacional invariante rotacional: ``M = (ρAL₀/6) · M̂`` con
+
+            M̂ = [[2I, I], [I, 2I]],    I = I₂
+
+        Sale del Galerkin sobre las funciones de forma lineales aplicadas
+        independientemente a cada componente del desplazamiento traslacional.
+        La inercia se aplica tanto en la dirección axial como en la
+        transversal — la barra articulada **transmite** solo axial, pero su
+        masa física tiene componente traslacional global completa. Convención
+        canónica (SAP2000, OpenSees, ANSYS). Invariante a la orientación de
+        la barra: no requiere transformación local→global.
+
+        Returns
+        -------
+        np.ndarray, shape (4, 4)
+            Simétrica, positiva definida.
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Truss2D.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        coef = self.material.density * self.A * self.L0 / 6.0
+        return coef * np.array([
+            [2.0, 0.0, 1.0, 0.0],
+            [0.0, 2.0, 0.0, 1.0],
+            [1.0, 0.0, 2.0, 0.0],
+            [0.0, 1.0, 0.0, 2.0],
+        ])
+
 
 @ElementRegistry.register
 class Truss2DCorot(Truss2D):
@@ -261,6 +294,27 @@ class Truss3D(Element):
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[2],
                          half * b[0], half * b[1], half * b[2]])
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa elemental consistente (ADR 0009 §1).
+
+        Versión 3D de la masa translacional de Truss2D:
+        ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₃)``. Invariante rotacional.
+
+        Returns
+        -------
+        np.ndarray, shape (6, 6)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Truss3D.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        coef = self.material.density * self.A * self.L0 / 6.0
+        I3 = np.eye(3)
+        M = np.block([[2.0 * I3, I3       ],
+                      [I3,       2.0 * I3]])
+        return coef * M
 
 
 @ElementRegistry.register

@@ -311,6 +311,35 @@ class Quad4(Element):
         f[2 * c + 1] = 0.5 * L * t_vec[1] * self.thickness
         return f
 
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del Quad4 por cuadratura del propio elemento (ADR 0009).
+
+        ``M_e = ∫ρ·N^T·N·t·dA``. Para Quad4 bilineal con cuadratura 2×2,
+        la integral es exacta (productos de bilineal × bilineal = orden 2 en
+        ξ y η; 2×2 integra hasta orden 3 en cada variable). Si se construyó
+        con cuadratura 1×1 (subintegración para evitar locking), la masa
+        queda subintegrada y la frecuencia se desvía respecto a la 2×2.
+
+        Returns
+        -------
+        np.ndarray, shape (8, 8)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Quad4.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        rho = self.material.density
+        coords = self.get_coordinate_matrix(ndim=2)
+        M_s = np.zeros((4, 4))
+        for (xi, eta), w in zip(self.points, self.weights):
+            N = _shape_functions_quad4(xi, eta)
+            detJ = _det_jacobian_quad4(xi, eta, coords)
+            if detJ <= 0.0:
+                raise ValueError(f"Jacobiano no positivo en Quad4 id={self.id}.")
+            M_s += rho * np.outer(N, N) * (detJ * w * self.thickness)
+        return _expand_scalar_mass(M_s)
+
 
 @ElementRegistry.register
 class Tri3(Element):
@@ -438,6 +467,35 @@ class Tri3(Element):
         f[2 * c + 1] = 0.5 * L * t_vec[1] * self.thickness
         return f
 
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del Tri3 (CST) por fórmula analítica exacta.
+
+        Para funciones de forma lineales en coordenadas baricéntricas, la
+        integral ``∫N_i·N_j dA`` es ``A·(1+δ_ij)/12``. Resulta:
+
+            M_scalar = (ρ·t·A/12) · [[2, 1, 1],
+                                     [1, 2, 1],
+                                     [1, 1, 2]]
+
+        La cuadratura del propio elemento (1 punto central) sería
+        insuficiente (integraría exactamente solo polinomios lineales);
+        por eso se usa la fórmula cerrada — exacta y barata.
+
+        Returns
+        -------
+        np.ndarray, shape (6, 6)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Tri3.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        coef = self.material.density * self._element_area() * self.thickness / 12.0
+        M_s = coef * np.array([[2.0, 1.0, 1.0],
+                               [1.0, 2.0, 1.0],
+                               [1.0, 1.0, 2.0]])
+        return _expand_scalar_mass(M_s)
+
 
 # ============================================================================
 # Higher-order continuous 2D elements: Quad8 (serendipity), Quad9 (Lagrange),
@@ -557,6 +615,27 @@ def _kinematics_higher_order(grad_fn, xi, eta, coords, n_nodes):
     return B, detJ
 
 
+def _expand_scalar_mass(M_scalar: np.ndarray) -> np.ndarray:
+    """Expande una masa escalar (n_nodos × n_nodos) a la matriz traslacional
+    completa (2·n_nodos × 2·n_nodos) por bloque diagonal: cada componente
+    (ux, uy) hereda independientemente el mismo escalar de masa nodal.
+
+    ``M[2i, 2j]     = M_scalar[i, j]``     (componente x)
+    ``M[2i+1, 2j+1] = M_scalar[i, j]``     (componente y)
+    El acoplamiento ux↔uy entre el mismo o distinto nodo es cero — los dos
+    grados de libertad traslacionales del continuo son ortogonales en la
+    integral ``∫N^T N``.
+    """
+    n = M_scalar.shape[0]
+    M = np.zeros((2 * n, 2 * n))
+    for i in range(n):
+        for j in range(n):
+            v = M_scalar[i, j]
+            M[2 * i,     2 * j]     = v
+            M[2 * i + 1, 2 * j + 1] = v
+    return M
+
+
 def _quadratic_edge_traction(elem, edge: int, t_vec: np.ndarray, n_dofs: int) -> np.ndarray:
     """Reparto consistente de tracción uniforme sobre un borde recto con
     funciones de forma cuadráticas: 1/6 al vértice inicial, 4/6 al medio,
@@ -653,6 +732,38 @@ class _HigherOrderQuad(Element):
                 f[2 * i]     += N[i] * b[0] * factor
                 f[2 * i + 1] += N[i] * b[1] * factor
         return f
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del cuadrilátero de orden superior por cuadratura
+        del propio elemento (ADR 0009).
+
+        Quad8 y Quad9 con cuadratura 3×3 (default ``_DEFAULT_QUADRATURE``)
+        integran exactamente la masa consistente: productos de funciones
+        cuadráticas son de orden 4, y 3×3 integra hasta orden 5 en cada
+        variable. Si el usuario inyecta una cuadratura más pobre, la masa
+        queda subintegrada (mismo trade-off documentado para K).
+
+        Returns
+        -------
+        np.ndarray, shape (2·n_nodos, 2·n_nodos)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"{type(self).__name__}.compute_mass_matrix: lumping="
+                f"'{lumping}' no implementado. Fase 1 (ADR 0009) solo "
+                f"admite 'consistent'."
+            )
+        rho = self.material.density
+        coords = self.get_coordinate_matrix(ndim=2)
+        n = self._n_nodes
+        M_s = np.zeros((n, n))
+        for (xi, eta), w in zip(self.points, self.weights):
+            N = self._SHAPE_FN(xi, eta)
+            _, detJ = _kinematics_higher_order(
+                self._GRAD_FN, xi, eta, coords, n
+            )
+            M_s += rho * np.outer(N, N) * (detJ * w * self.thickness)
+        return _expand_scalar_mass(M_s)
 
 
 @ElementRegistry.register
@@ -783,3 +894,34 @@ class Tri6(Element):
         if edge not in (0, 1, 2):
             raise ValueError(f"edge={edge} fuera de rango para Tri6 (0..2).")
         return _quadratic_edge_traction(self, edge, t_vec, n_dofs=12)
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Masa consistente del Tri6 por cuadratura del propio elemento (ADR 0009).
+
+        Con la cuadratura ``tri_3`` (3 puntos, orden 2 exacto) la masa
+        consistente queda **levemente subintegrada**: el producto ``N_i·N_j``
+        de funciones cuadráticas es de orden 4 y tri_3 integra exactamente
+        sólo hasta orden 2. El error introducido en la masa es ``O(h⁴)``
+        sobre el campo de prueba, una décima parte del orden de la masa
+        nodal, y se manifiesta como una pequeña deriva en las frecuencias
+        altas. Si la precisión modal sobre Tri6 importa críticamente,
+        inyectar una cuadratura más rica (``tri_6``, ``tri_7``) en el
+        constructor — el resto del solver no necesita cambios.
+
+        Returns
+        -------
+        np.ndarray, shape (12, 12)
+        """
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Tri6.compute_mass_matrix: lumping='{lumping}' no "
+                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+            )
+        rho = self.material.density
+        coords = self.get_coordinate_matrix(ndim=2)
+        M_s = np.zeros((6, 6))
+        for (xi, eta), w in zip(self.points, self.weights):
+            N = _N_tri6(xi, eta)
+            _, detJ = _kinematics_higher_order(_dN_tri6, xi, eta, coords, 6)
+            M_s += rho * np.outer(N, N) * (detJ * w * self.thickness)
+        return _expand_scalar_mass(M_s)
