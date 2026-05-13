@@ -403,49 +403,51 @@ point_loads_by_group:
   "Borde_Carga": {ux: 1500000.0}
 \end{lstlisting}
 
-\section{Fuerzas de Cuerpo y Peso Propio}\index{peso propio}\index{body force}\index{gravity}\index{densidad}
+\section{Fuerzas de Cuerpo}\index{fuerza de cuerpo}\index{body force}\index{peso propio}\index{gravity}\index{densidad}
 
-\subsection{Peso propio físicamente correcto: \texttt{density} + \texttt{gravity}}
+Una \emph{fuerza de cuerpo} es una fuerza por unidad de volumen $\mathbf b$ que actúa sobre todo el dominio material del elemento, no solo sobre su frontera. Cada elemento del catálogo (armaduras, cables, marcos 2D/3D, sólidos 2D) integra la contribución consistente $\int \mathbf{N}^\top \mathbf{b}\,A\,dx$ y la acumula al vector global de fuerzas. Para vigas Hermite cúbicas el reparto incluye fuerza nodal $qL/2$ y momento $\pm qL^2/12$; para barras axiales es mitad-mitad por nodo.
 
-La forma recomendada para incluir peso propio en un análisis declara la densidad como propiedad del material y un vector de gravedad global:
+Casos típicos en mecánica estructural: peso propio (un caso particular con $\mathbf b = \rho\,\mathbf g$), fuerzas centrífugas en cuerpos rotatorios ($\mathbf b = \rho\,\omega^2\,\mathbf r$), fuerzas electromagnéticas sobre materiales conductores, expansión térmica modelada como pseudocarga. Fenix expone dos formas declarativas en YAML que cubren todos estos casos.
+
+\subsection{Forma general: \texttt{body\_force}}
+
+Aplica un vector $\mathbf b$ uniforme (fuerza por unidad de volumen, en ejes globales) a todos los elementos del modelo:
+
+\begin{lstlisting}[language=yaml]
+body_force: [0.0, -77008.5]          # 2D: bx, by en N/m^3
+\end{lstlisting}
+
+o, para problemas 3D:
+
+\begin{lstlisting}[language=yaml]
+body_force: [0.0, 0.0, -77008.5]     # 3D: bx, by, bz
+\end{lstlisting}
+
+Es la forma genérica y la única necesaria para fuerzas de cuerpo que no son peso propio (campos electromagnéticos precalculados, centrífuga estática, etc.). También sirve para peso propio cuando todo el modelo es monomaterial y el usuario prefiere precalcular $\rho\!\cdot\!g$.
+
+\subsection{Caso particular --- peso propio: \texttt{gravity} + \texttt{density}}
+
+El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial — donde cada elemento debe ver \emph{su propio} $\rho$ — Fenix expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
 
 \begin{lstlisting}[language=yaml]
 materials:
   - {id: 1, type: Elastic1D, E: 210.0e9, density: 7850.0}     # acero
   - {id: 2, type: Elastic1D, E:  30.0e9, density: 2500.0}     # hormigón
 
-gravity: [0.0, -9.81]      # 2D, +y hacia arriba (m/s^2)
+gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 \end{lstlisting}
 
-o, para problemas 3D:
+\textbf{Qué hace Fenix}. Para cada elemento computa $\mathbf b_e = \rho_e\!\cdot\!\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de \texttt{body\_force}. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
 
-\begin{lstlisting}[language=yaml]
-gravity: [0.0, 0.0, -9.81] # 3D, +z hacia arriba
-\end{lstlisting}
-
-\textbf{Qué hace Fenix}. Para cada elemento del modelo, computa la fuerza de cuerpo \emph{específica} de ese elemento como $\mathbf b_e = \rho_e \cdot \mathbf g$, donde $\rho_e$ es la densidad del material asignado al elemento. La integral consistente $\int \mathbf{N}^\top \mathbf{b}_e\,A\,dx$ se acumula al vector global. Resultado: estructuras multimaterial dan peso propio correcto, cada elemento con su propio $\rho$.
-
-\textbf{Densidad olvidada}. Si un material declarado no incluye \texttt{density} (o lo deja en cero), su contribución al peso propio será nula y Fenix emite un \texttt{WARNING} identificando el material concreto. Esto detecta olvidos del usuario sin romper el análisis.
-
-\subsection{Fuerza de cuerpo arbitraria: \texttt{body\_force}}
-
-Para fuerzas de cuerpo que \textbf{no son peso propio} (campos electromagnéticos, fuerzas centrífugas precalculadas, expansión térmica acumulada como pseudocarga, etc.), o para casos monomaterial donde el usuario prefiere precalcular $\rho\!\cdot\!g$:
-
-\begin{lstlisting}[language=yaml]
-body_force: [0.0, -77008.5]          # 2D: bx, by en N/m^3 (acero, ρg)
-\end{lstlisting}
-
-Aplica el mismo vector uniforme a todos los elementos del modelo (sin usar \texttt{density}).
-
-\textbf{Exclusividad}. Declarar \texttt{gravity} y \texttt{body\_force} en el mismo archivo lanza error de validación. Son dos formas de expresar lo mismo desde distintos ángulos; el solapamiento es ambigüedad, no flexibilidad.
+\textbf{Densidad olvidada}. Si un material declarado no incluye \texttt{density} (o lo deja en cero), su contribución al peso propio será nula y Fenix emite un \texttt{WARNING} identificando el material concreto. Esto detecta olvidos sin romper el análisis.
 
 \subsection{Detalles transversales}
 
-\textbf{Cómo se integra}. Cada elemento que declare el método \texttt{compute\_body\_load} (todos los del catálogo: armaduras, cables, marcos 2D/3D, sólidos 2D) realiza la integral consistente. Para vigas Hermite cúbicas el reparto incluye fuerza nodal $qL/2$ y momento $\pm qL^2/12$; para barras axiales es mitad-mitad por nodo.
+\textbf{Exclusividad}. \texttt{body\_force} y \texttt{gravity} son dos formas declarativas para expresar fuerzas de cuerpo; declarar ambas en el mismo archivo lanza error de validación. La forma general (\texttt{body\_force}) es la subyacente; \texttt{gravity} es atajo para su caso particular más común.
 
-\textbf{Padding 2D$\leftrightarrow$3D}. Si el modelo mezcla elementos 2D y 3D, declarar \texttt{gravity} o \texttt{body\_force} con tres componentes; el ensamblador pasa el slice apropiado a cada elemento según la dimensionalidad declarada por su \texttt{DOF\_NAMES}.
+\textbf{Padding 2D$\leftrightarrow$3D}. Si el modelo mezcla elementos 2D y 3D, declarar el vector con tres componentes; el ensamblador pasa el slice apropiado a cada elemento según la dimensionalidad declarada por su \texttt{DOF\_NAMES}.
 
-\textbf{Reservado para análisis dinámico}. El atributo \texttt{density} introducido aquí es la misma magnitud que consume la matriz de masa $\mathbf M_e = \int \rho\,\mathbf N^\top\mathbf N\,dV$ en futuros análisis modales y dinámicos. Declararlo ahora no añade coste y prepara el modelo para esas extensiones (ADR 0008).
+\textbf{Reservado para análisis dinámico}. El atributo \texttt{density} introducido aquí es la misma magnitud que consume la matriz de masa $\mathbf M_e = \int \rho\,\mathbf N^\top\mathbf N\,dV$ en futuros análisis modales y dinámicos. Declararlo ahora prepara el modelo para esas extensiones sin coste adicional (ADR 0008).
 
 \section{Solver}
 \begin{lstlisting}[language=yaml]
