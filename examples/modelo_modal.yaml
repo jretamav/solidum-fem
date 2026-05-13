@@ -1,0 +1,38 @@
+# Archivo de entrada Fenix FEM: Análisis modal de una armadura empotrada-libre.
+#
+# Estructura: barra axial 1D de longitud L=1 m, A=0.01 m², acero (E=200 GPa,
+# rho=7850 kg/m³) empotrada en el nodo 1. Se extraen los 2 primeros modos
+# axiales. El primer modo teórico analítico es:
+#   ω1 = (pi/2) · sqrt(E/rho) / L  ≈  7937 rad/s  ≈  1263 Hz
+#
+# Ejecutar:
+#   python examples/ejecutar_yaml.py examples/modelo_modal.yaml
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [0.25, 0.0]}
+  - {id: 3, coords: [0.5, 0.0]}
+  - {id: 4, coords: [0.75, 0.0]}
+  - {id: 5, coords: [1.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastic1D, E: 200.0e9, density: 7850.0}
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, A: 0.01, nodes: [1, 2]}
+  - {id: 2, type: Truss2D, material: 1, A: 0.01, nodes: [2, 3]}
+  - {id: 3, type: Truss2D, material: 1, A: 0.01, nodes: [3, 4]}
+  - {id: 4, type: Truss2D, material: 1, A: 0.01, nodes: [4, 5]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}    # empotrado
+  - {node_id: 2, uy: 0.0}
+  - {node_id: 3, uy: 0.0}
+  - {node_id: 4, uy: 0.0}
+  - {node_id: 5, uy: 0.0}
+
+solver:
+  type: ModalSolver
+  n_modes: 3
+  sigma: 0.0           # shift-invert en 0 -> frecuencias más bajas
+  tolerance: 1.0e-9

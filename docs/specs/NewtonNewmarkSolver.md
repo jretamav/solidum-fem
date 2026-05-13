@@ -59,14 +59,8 @@ referencia (Abaqus, ANSYS, OpenSees) realiza por defecto.
 
 ### Reducción y commit de estado
 
-- **Reducción por Dirichlet** heredada de la fase 3 (ADR 0004): mismo operador
-  $\mathbf T$ y $\mathbf g$ constantes; el residuo y el jacobiano se proyectan a
-  DOFs libres antes de cada solve.
-- **Commit de variables internas**: al converger el paso, se llama
-  `assembler.commit_all_states()` — los estados $(\boldsymbol\varepsilon^p, \alpha,
-  \kappa, d, \ldots)$ pasan de *trial* a *committed*. Mismo patrón que
-  `NonlinearSolver` y `ArcLengthSolver`. Si el paso no converge, los estados
-  trial se descartan (no se llama commit) y se reporta error.
+- **Reducción por Dirichlet** heredada de la fase 3 (ADR 0004): mismo operador $\mathbf T$ y $\mathbf g$ constantes; el residuo y el jacobiano se proyectan a DOFs libres antes de cada solve.
+- **Commit de variables internas**: al converger el paso, se llama `assembler.commit_all_states()` — los estados $(\boldsymbol\varepsilon^p, \alpha, \kappa, d, \ldots)$ pasan de *trial* a *committed*. Mismo patrón que `NonlinearSolver` y `ArcLengthSolver`. Si el paso no converge, los estados trial se descartan (no se llama commit) y se reporta error.
 
 ### Convergencia (ADR 0007)
 

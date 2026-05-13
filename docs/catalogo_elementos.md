@@ -433,7 +433,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cinemática**: matriz `B(ξ, η)` calculada por mapeo isoparamétrico estándar; deformación Voigt `[ε_xx, ε_yy, γ_xy]`.
 - **Integración**: por defecto Gauss 2×2 (4 puntos). Configurable vía `quadrature` desde `QuadratureRegistry`. **Aviso**: integración reducida 1×1 → riesgo de hourglassing.
 - **Parámetros**: `thickness` (espesor para estado plano), `quadrature` (opcional).
-- **Cargas distribuidas**: `compute_body_load(b)` integra ∫N^T b sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
+- **Cargas distribuidas**: `compute_body_load(b)` integra $\int \mathbf N^\top \mathbf b\, dV$ sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve σ, ε y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (`Sigma_*_nodal`).
 - **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada. Viven en `fenix/elements/solid_2d/_shared.py`, compartidos con Tri3.
 - **Limitaciones**: bloqueo volumétrico con materiales casi-incompresibles (ν → 0.5); en ese régimen usar formulación mixta (no implementada).

@@ -70,9 +70,9 @@
 
 % Lenguaje YAML para listings
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, max_steps, material, thickness, kappa_0, alpha},
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor},
   keywordstyle=\color{yamlkey}\bfseries,
-  ndkeywords={true, false, null, all, plane_stress, plane_strain, LinearSolver, NonlinearSolver, ArcLengthSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Tri3},
+  ndkeywords={true, false, null, all, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6},
   ndkeywordstyle=\color{yamlval}\bfseries,
   identifierstyle=\color{black},
   sensitive=false,
@@ -137,9 +137,9 @@ El catálogo actual incluye:
 
 \begin{itemize}
     \item \textbf{10 elementos finitos 1D} en el plano y en el espacio: armaduras, cables y marcos en variantes lineales y corotacionales.
-    \item \textbf{2 elementos finitos 2D} continuos: cuadrilátero bilineal \texttt{Quad4} y triángulo lineal \texttt{Tri3}.
-    \item \textbf{7 modelos constitutivos}: elasticidad lineal 1D y 2D, plasticidad J2 1D y 2D, daño isótropo 1D y 2D, y elasticidad unilateral para cables.
-    \item \textbf{3 esquemas de solución}: solver lineal directo, Newton-Raphson incremental con paso adaptativo, y longitud de arco cilíndrico de Crisfield para snap-through y snap-back.
+    \item \textbf{5 elementos finitos 2D} continuos: cuadrilátero bilineal \texttt{Quad4} y triángulo lineal \texttt{Tri3}; cuadrático serendípito \texttt{Quad8}, cuadrático Lagrangiano \texttt{Quad9} y triángulo cuadrático \texttt{Tri6}.
+    \item \textbf{8 modelos constitutivos}: elasticidad lineal 1D y 2D, plasticidad J2 1D, plasticidad J2 2D en \textit{plane strain} y \textit{plane stress} (\texttt{VonMises2D}), plasticidad friccional cohesivo-friccional 2D (\texttt{DruckerPrager2D}), daño isótropo 1D y 2D con tangente algorítmica consistente, y elasticidad unilateral para cables.
+    \item \textbf{6 esquemas de solución}: solver lineal directo (\texttt{LinearSolver}), Newton-Raphson incremental con paso adaptativo (\texttt{NonlinearSolver}), longitud de arco cilíndrico de Crisfield (\texttt{ArcLengthSolver}) para snap-through y snap-back, análisis modal por autovalores generalizados (\texttt{ModalSolver}), análisis dinámico transitorio lineal Newmark-$\beta$ (\texttt{NewmarkSolver}), y análisis dinámico transitorio no lineal Newton-Newmark (\texttt{NewtonNewmarkSolver}).
 \end{itemize}
 
 La interacción del usuario con el motor se realiza mediante un único \textbf{archivo de entrada YAML} que describe geometría, materiales, condiciones de frontera, cargas y configuración del solver. La salida se exporta en formato \texttt{.vtu} (VTK XML) para post-procesamiento en \textit{ParaView}, y opcionalmente en texto plano estilo FEAP.
@@ -670,6 +670,44 @@ Triángulo CST de 3 nodos, un único punto de integración.
     \item \textbf{Limitación}: \textit{shear locking} severo, convergencia lenta. \textbf{Preferir \texttt{Quad4}} salvo en transiciones donde Quad4 no encaja geométricamente.
 \end{itemize}
 
+\subsection{Cuadrilátero Serendípito de Orden 2: \texttt{Quad8}}
+Cuadrilátero isoparamétrico cuadrático de 8 nodos (4 vértices antihorarios + 4 nodos medios de borde). Funciones de forma serendípitas (sin el término $\xi^2\eta^2$). Reproduce campos cuadráticos exactamente y mitiga el bloqueo por cortante en problemas de flexión.
+
+\begin{itemize}
+    \item \textbf{DOFs/nodo}: \texttt{ux, uy} \quad ($\texttt{STRAIN\_DIM} = 3$).
+    \item \textbf{Cuadratura}: Gauss 3$\times$3 (9 puntos) por defecto; 2$\times$2 disponible vía \texttt{quadrature} pero con riesgo de modos espurios.
+    \item \textbf{Parámetros}: \texttt{thickness}, \texttt{quadrature} (opcional).
+    \item \textbf{Tracción de borde}: reparte $1/6$, $4/6$, $1/6$ entre los nodos del borde (vértice, medio, vértice).
+\end{itemize}
+
+\subsection{Cuadrilátero Lagrangiano de Orden 2: \texttt{Quad9}}
+Cuadrilátero Lagrangiano cuadrático de 9 nodos (los 8 de \texttt{Quad8} más un noveno nodo central interior). Las funciones de forma son producto tensorial Lagrange 1D-1D, espacio polinómico completo $Q_2$.
+
+\begin{itemize}
+    \item \textbf{DOFs/nodo}: \texttt{ux, uy} \quad ($\texttt{STRAIN\_DIM} = 3$).
+    \item \textbf{Cuadratura}: Gauss 3$\times$3.
+    \item \textbf{Parámetros}: \texttt{thickness}, \texttt{quadrature} (opcional).
+    \item \textbf{Diferencia con \texttt{Quad8}}: el nodo central interior añade el término $\xi^2\eta^2$ y mejora el comportamiento en problemas con campos no separables; el nodo 8 (índice central) no participa en bordes.
+\end{itemize}
+
+\subsection{Triángulo Cuadrático Completo P$_2$: \texttt{Tri6}}
+Triángulo isoparamétrico cuadrático de 6 nodos (3 vértices + 3 medios de borde). Resuelve el \textit{shear locking} severo de \texttt{Tri3} y reproduce campos cuadráticos exactamente.
+
+\begin{itemize}
+    \item \textbf{DOFs/nodo}: \texttt{ux, uy} \quad ($\texttt{STRAIN\_DIM} = 3$).
+    \item \textbf{Cuadratura}: 3 puntos en los puntos medios (regla \texttt{tri\_3}).
+    \item \textbf{Parámetros}: \texttt{thickness}.
+    \item \textbf{Tracción de borde}: reparte $1/6$, $4/6$, $1/6$ entre los nodos del borde (vértice, medio, vértice).
+    \item \textbf{Cuándo usarlo}: transiciones de malla cuadráticas, geometrías curvadas donde Quad8/Quad9 no encajan.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+elements:
+  - {id: 1, type: Quad8, material: 1, thickness: 0.1, nodes: [1, 2, 3, 4, 5, 6, 7, 8]}
+  - {id: 2, type: Quad9, material: 1, thickness: 0.1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9]}
+  - {id: 3, type: Tri6,  material: 1, thickness: 0.1, nodes: [1, 2, 3, 4, 5, 6]}
+\end{lstlisting}
+
 % ==========================================
 \chapter{Catálogo de Modelos Constitutivos}
 \label{cap:materiales}
@@ -725,20 +763,18 @@ materials:
 \end{lstlisting}
 
 \subsection{\texttt{VonMises2D} --- plasticidad J2 plana con endurecimiento isótropo}
-Return mapping radial sobre la parte desviadora. Tangente algorítmica consistente.
+Plasticidad asociativa con criterio J2 y endurecimiento isótropo lineal. Soporta \textbf{dos hipótesis cinemáticas} mutuamente excluyentes, seleccionadas con el campo \texttt{hypothesis} al construir el material:
 
 \begin{itemize}
-    \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{sigma\_y}, \texttt{H}, \texttt{hypothesis} (\textbf{obligatorio} \texttt{plane\_strain}).
-    \item \textbf{Variables internas}: $\varepsilon_p$ tensorial (4 componentes $[xx, yy, zz, xy]$), $\alpha$.
-    \item \textbf{Implementación}: kernel \texttt{\_compute\_j2\_plasticity} con \texttt{@njit}.
+    \item \texttt{plane\_strain} ($\varepsilon_{zz} = 0$): return mapping radial cerrado sobre la parte desviadora 3D extendida (Simó-Hughes \S 3.3). Corrector $\Delta\gamma = f_{\text{trial}} / (2G + \tfrac{2}{3} H)$ con $N = s_{\text{trial}} / \lVert s_{\text{trial}}\rVert$ y actualización $\alpha_{\text{new}} = \alpha + \sqrt{2/3}\,\Delta\gamma$. Default histórico.
+    \item \texttt{plane\_stress} ($\sigma_{zz} = 0$): \textit{plane stress projected algorithm} (Simó-Hughes \S 3.4.1). Función de fluencia proyectada $\bar f = \tfrac{1}{2}\boldsymbol\sigma^\top \mathbf P\,\boldsymbol\sigma - R^2/3$ con operador $\mathbf P = \tfrac{1}{3}\bigl[\begin{smallmatrix}2&-1&0\\-1&2&0\\0&0&6\end{smallmatrix}\bigr]$ y Newton local escalar sobre $\Delta\gamma$ en la base de autovectores de $\mathbf C_e\mathbf P$. Converge en 3--6 iteraciones por evaluación. Actualización físicamente correcta $\alpha_{\text{new}} = \alpha + \Delta\gamma\sqrt{2\boldsymbol\sigma^\top\!\mathbf P\,\boldsymbol\sigma / 3}$ (en plane stress $\Delta\gamma$ tiene unidades $[1/\text{esfuerzo}]$, por lo que la heurística $\sqrt{2/3}\,\Delta\gamma$ válida en plane strain rompe la invariancia bajo cambio de unidades). Incompresibilidad plástica cierra $e^p_{zz} = -(e^p_{xx} + e^p_{yy})$.
 \end{itemize}
 
-\begin{advertencia}
-\textbf{Restricción cinemática}: solo \texttt{plane\_strain}. Asignar \texttt{plane\_stress} a \texttt{VonMises2D} lanza \texttt{NotImplementedError} (el return mapping en estado plano de esfuerzos requiere algoritmo distinto, no implementado).
-\end{advertencia}
+\textbf{Parámetros comunes}: \texttt{E}, \texttt{nu}, \texttt{sigma\_y}, \texttt{H} ($\ge 0$, default 0 = perfectamente plástico), \texttt{hypothesis} (default \texttt{plane\_strain}), \texttt{density} (opcional). Variables internas: $\varepsilon_p$ tensorial 4 componentes $[xx, yy, zz, xy_{\text{tens}}]$ y $\alpha$ acumulada equivalente adimensional. \textbf{Tangente algorítmica consistente cerrada} en ambas hipótesis (con corrección por $\mathrm d\alpha/\mathrm d\Delta\gamma \neq \sqrt{2/3}$ en plane stress). Compatible con todos los elementos 2D del catálogo.
 
 \begin{lstlisting}[language=yaml]
 materials:
+  # Hipótesis por defecto: plane_strain
   - id: 2
     type: VonMises2D
     E: 210.0e9
@@ -747,28 +783,76 @@ materials:
     H: 2.0e9
     hypothesis: plane_strain
     density: 7850.0
+
+  # Mismo material en plane_stress (placas delgadas sin confinamiento normal)
+  - id: 3
+    type: VonMises2D
+    E: 210.0e9
+    nu: 0.3
+    sigma_y: 250.0e6
+    H: 2.0e9
+    hypothesis: plane_stress
+    density: 7850.0
+\end{lstlisting}
+
+\subsection{\texttt{DruckerPrager2D} --- plasticidad friccional cohesivo-friccional 2D}\index{Drucker-Prager}\index{plasticidad friccional}
+Modelo de Drucker-Prager: cono circular suave de Mohr-Coulomb con cohesión y fricción interna. Criterio de fluencia $f = \sqrt{J_2} + \eta_f\,I_1 - k(\alpha) \le 0$ con $k(\alpha) = k_0 + H\alpha$ (endurecimiento isótropo lineal en cohesión). Plasticidad \emph{no} asociada por defecto: el ángulo de dilatancia $\psi$ es parámetro independiente del ángulo de fricción $\phi$.
+
+\textbf{Algoritmo --- dos ramas con detección automática}:
+\begin{itemize}
+    \item \textbf{Return regular} (superficie del cono): $\Delta\gamma = f_{\text{trial}} / (G + 9K\eta_f\eta_g + H)$, dirección desviadora preservada. Tangente algorítmica $\mathbf C_{\text{alg}} = K\,\mathbf v\otimes\mathbf v + 2G(1-\beta)\mathbf I_{\text{dev}} + 4G\beta\,\hat{\mathbf n}\otimes\hat{\mathbf n} - (1/A)\,\mathbf b_g\otimes\mathbf b_f$ con $\beta = G\Delta\gamma / \sqrt{J_2^{\text{trial}}}$.
+    \item \textbf{Return al ápice} (vértice puramente hidrostático): si tras el return regular el estado caería fuera del cono, conmuta a $\Delta\gamma_{\text{apex}} = (I_1^{\text{trial}}\eta_f - k(\alpha)) / (9K\eta_f\eta_g + H)$ con $\boldsymbol\sigma_{n+1} = (k/3\eta_f)\,\mathbf I$ puramente hidrostático. Tangente reducida $K H / (9K\eta_f\eta_g + H)\,\mathbf v\otimes\mathbf v$.
+\end{itemize}
+
+\textbf{Calibración con Mohr-Coulomb} (campo \texttt{variant}):
+\begin{itemize}
+    \item \texttt{plane\_strain\_matched} (default): coincide exactamente con MC en plane strain. $\eta_f = \tan\phi / \sqrt{9 + 12\tan^2\phi}$, $k_0 = 3c_0 / \sqrt{9 + 12\tan^2\phi}$.
+    \item \texttt{outer\_cone}: circunscribe MC. $\eta_f = 2\sin\phi / [\sqrt 3 (3 - \sin\phi)]$.
+    \item \texttt{inner\_cone}: inscribe MC. $\eta_f = 2\sin\phi / [\sqrt 3 (3 + \sin\phi)]$.
+\end{itemize}
+
+\textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{cohesion} (cohesión inicial $c_0$), \texttt{phi\_deg} ($0 \le \phi < 90$), \texttt{psi\_deg} (dilatancia, $0 \le \psi \le \phi$; default $\psi = \phi$ = asociada), \texttt{H} ($\ge 0$, default 0), \texttt{variant} (default \texttt{plane\_strain\_matched}), \texttt{density} (opcional). Variables internas: $\varepsilon_p$ tensorial 4 componentes y $\alpha$ acumulada. \texttt{IS\_SYMMETRIC = False} declarativo (no asociada $\Rightarrow$ tangente asimétrica; el despachador algebraico ADR 0003 elige LU).
+
+\begin{advertencia}
+\textbf{Restricción cinemática}: solo \texttt{plane\_strain}. La proyección con $\sigma_{zz} = 0$ acoplada a flujo dilatante es notoriamente delicada y queda \textit{out-of-scope} en esta entrega.
+\end{advertencia}
+
+\begin{lstlisting}[language=yaml]
+materials:
+  - id: 4
+    type: DruckerPrager2D
+    E: 30.0e9
+    nu: 0.25
+    cohesion: 2.0e5      # Pa
+    phi_deg: 30.0
+    psi_deg: 10.0        # no asociada (psi < phi)
+    H: 0.0               # plasticidad perfecta
+    variant: plane_strain_matched
+    density: 2000.0      # arena densa
 \end{lstlisting}
 
 \section{Daño Mecánico}
 
 \subsection{\texttt{IsotropicDamage1D} --- daño isótropo 1D con softening exponencial}
-Daño escalar $d \in [0, 1)$ con módulo secante $E_{\text{sec}} = (1 - d)\,E$. Evolución por norma de la deformación equivalente $\varepsilon_{eq} = |\varepsilon|$ y umbral $\kappa_0$:
+Daño escalar $d \in [0, 1)$ con esfuerzo nominal $\sigma = (1 - d)\,E\,\varepsilon$. Evolución por norma de la deformación equivalente $\varepsilon_{eq} = |\varepsilon|$ y umbral $\kappa_0$:
 
 $$d = 1 - \frac{\kappa_0}{\kappa}\,\exp\bigl(-\alpha(\kappa - \kappa_0)\bigr) \quad \text{para } \kappa > \kappa_0$$
 
 \begin{itemize}
-    \item \textbf{Parámetros}: \texttt{E}, \texttt{kappa\_0} (umbral elástico), \texttt{alpha} (velocidad de softening).
+    \item \textbf{Parámetros}: \texttt{E}, \texttt{kappa\_0} (umbral elástico), \texttt{alpha} (velocidad de softening), \texttt{density} (opcional).
     \item \textbf{Variables internas}: $\kappa$ (máxima histórica), $d$ (daño).
-    \item \textbf{Tangente}: secante (no algorítmica consistente; adecuado para Newton amortiguado, no óptimo para arc-length agresivo).
+    \item \textbf{Tangente}: \textbf{algorítmica consistente} en carga activa con daño no saturado: $E_{\text{tan}} = -(1 - d)\,E\,\alpha\,\kappa$ --- negativa, refleja la pendiente descendente $\sigma$-$\varepsilon$ post-pico. En descarga, sin daño activo o al saturar, vuelve a la secante $(1-d)E$.
 \end{itemize}
 
 \subsection{\texttt{IsotropicDamage2D} --- daño isótropo 2D}
-Extensión 2D del modelo anterior. Tensor constitutivo secante $\mathbf C_{\text{sec}} = (1-d)\,\mathbf C_e$.
+Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$. Deformación equivalente simétrica:
+
+$$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2}$$
 
 \begin{itemize}
-    \item \textbf{Deformación equivalente}: $\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2}$.
-    \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis}.
-    \item \textbf{Limitación}: $\varepsilon_{eq}$ simétrica no distingue daño en tensión vs compresión; para hormigón se requiere modelo de Mazars o split tensión/compresión (no implementado).
+    \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis} (\texttt{plane\_stress} default o \texttt{plane\_strain}), \texttt{density} (opcional).
+    \item \textbf{Tangente algorítmica consistente}: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes (\mathbf M\boldsymbol\varepsilon)$ con $\mathbf M = \mathrm{diag}(1, 1, 1/2)$ en carga activa. \textbf{No simétrica} ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales); el atributo \texttt{IS\_SYMMETRIC = False} hace que el despachador algebraico ADR 0003 elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
+    \item \textbf{Limitación}: $\varepsilon_{eq}$ simétrica no distingue daño en tensión vs compresión; para hormigón se requiere modelo de Mazars o split tensión/compresión (no implementado). Sin regularización por longitud característica $\to$ \textit{mesh-dependency} en régimen de ablandamiento.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
@@ -879,6 +963,124 @@ solver:
 \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite. Más caro por paso (dos \texttt{spsolve} por iteración) pero indispensable en estos casos.
 
 \textbf{Referencia}: Crisfield, ``A fast incremental/iterative solution procedure that handles snap-through'' (\textit{Computers \& Structures}, 1981).
+
+% ==========================================
+\chapter{Análisis Dinámico}
+\label{cap:dinamica}
+% ==========================================
+
+Fenix FEM expone tres análisis dinámicos cerrados por la fase 4 del ADR 0009: modal (autovalores generalizados), transitorio lineal (Newmark-$\beta$) y transitorio no lineal (Newton-Newmark). Todos consumen la matriz de masa consistente que cada elemento devuelve por \texttt{compute\_mass\_matrix(lumping="consistent")} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, ADR 0008).
+
+\section{\texttt{ModalSolver} --- análisis modal por autovalores generalizados}\index{modal}\index{autovalores}\index{vibraci\'on}
+
+Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf M \boldsymbol\phi$ con $\mathbf K$ evaluada en $\mathbf u = 0$ (régimen lineal) y $\mathbf M$ ensamblada por cuadratura consistente sobre todos los elementos. La capa algebraica (\texttt{EigenSolver}) envuelve \texttt{scipy.sparse.linalg.eigsh} con \textit{shift-invert} en $\sigma$ (ARPACK Lanczos), de modo que basta una sola factorización de $\mathbf K - \sigma\mathbf M$ para extraer las $n$ frecuencias más bajas.
+
+\textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0; \texttt{sigma=0} extrae las frecuencias más bajas), \texttt{which} (default \texttt{"LM"}), \texttt{tolerance} (default \texttt{1.0e-9}), \texttt{lumping} (default \texttt{"consistent"}; la masa concentrada queda diferida a fase 2 del ADR 0009).
+
+\textbf{Salida}: instancia de \texttt{ModalResult} con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales). El método \texttt{ModalResult.free\_vibration(M, u0, u0\_dot, t)} reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
+
+\begin{lstlisting}[language=yaml]
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastic1D, E: 200.0e9, density: 7850.0}
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, A: 0.01, nodes: [1, 2]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 2, uy: 0.0}
+
+solver:
+  type: ModalSolver
+  n_modes: 3
+  sigma: 0.0
+\end{lstlisting}
+
+\begin{nota}
+La densidad es \emph{obligatoria} para todo material involucrado en análisis modal o transitorio. La omisión lanza \texttt{ValueError} (ADR 0008) listando los materiales afectados por nombre antes de iniciar el cálculo.
+\end{nota}
+
+\section{\texttt{NewmarkSolver} --- transitorio lineal Newmark-$\beta$}\index{Newmark}\index{transitorio}
+
+Integra en el tiempo $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \mathbf K\mathbf u = \mathbf F(t)$ por la familia Newmark-$\beta$. Con $(\beta, \gamma) = (1/4, 1/2)$ --- \textit{average acceleration}, default --- es \emph{incondicionalmente estable}, sin amortiguamiento numérico, con error $\mathcal O(\Delta t^2)$.
+
+\textbf{Esquema operativo}:
+\begin{itemize}
+    \item Predictor: $\tilde{\mathbf u} = \mathbf u_n + \Delta t\,\dot{\mathbf u}_n + (\Delta t^2/2)(1 - 2\beta)\ddot{\mathbf u}_n$ y análogo para $\tilde{\dot{\mathbf u}}$.
+    \item Sistema efectivo en aceleración: $\mathbf A_{\text{eff}}\ddot{\mathbf u}_{n+1} = \mathbf F_{n+1} - \mathbf C\tilde{\dot{\mathbf u}} - \mathbf K\tilde{\mathbf u}$ con $\mathbf A_{\text{eff}} = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K$. Factorización \emph{única} al inicio del análisis y reusada en todos los pasos (\texttt{FactorizedSolver}, ADR 0003 fase 2).
+    \item Corrector: $\mathbf u_{n+1} = \tilde{\mathbf u} + \beta\Delta t^2\,\ddot{\mathbf u}_{n+1}$, $\dot{\mathbf u}_{n+1} = \tilde{\dot{\mathbf u}} + \gamma\Delta t\,\ddot{\mathbf u}_{n+1}$.
+\end{itemize}
+
+\textbf{Amortiguamiento Rayleigh} $\mathbf C = \alpha\mathbf M + \beta\mathbf K$, declarado de dos formas:
+\begin{itemize}
+    \item Directa: \texttt{rayleigh: \{alpha: 0.1, beta: 1.0e-4\}}.
+    \item Calibración modal: \texttt{rayleigh: \{xi1: 0.02, omega1: 50.0, xi2: 0.02, omega2: 200.0\}} --- Fenix resuelve los $(\alpha, \beta)$ que reproducen los amortiguamientos $\xi_1, \xi_2$ a las frecuencias $\omega_1, \omega_2$.
+\end{itemize}
+
+\textbf{Parámetros}: \texttt{t\_end}, \texttt{dt} (obligatorios); \texttt{beta} (default 0.25), \texttt{gamma} (default 0.5), \texttt{rayleigh} (opcional), \texttt{u0}, \texttt{u0\_dot} (condiciones iniciales, default ceros), \texttt{F\_func} (callback Python $t \to \mathbf F(t)$; default vibración libre).
+
+\textbf{Salida}: \texttt{TransientResult} con \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} (forma $(n_{\text{dof}}, n_{\text{steps}} + 1)$) y los $\alpha_{\text{Rayleigh}}, \beta_{\text{Rayleigh}}$ efectivos.
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: NewmarkSolver
+  t_end: 2.0
+  dt: 0.005
+  beta: 0.25
+  gamma: 0.5
+  rayleigh:
+    xi1: 0.02
+    omega1: 50.0
+    xi2: 0.02
+    omega2: 200.0
+\end{lstlisting}
+
+\textbf{Limitaciones}: lineal ($\mathbf K, \mathbf M$ constantes; para no-linealidad material o geométrica $\to$ \texttt{NewtonNewmarkSolver}). Apoyos Dirichlet constantes en el tiempo. Paso $\Delta t$ fijo (adaptativo diferido). HHT-$\alpha$ y generalized-$\alpha$ (con amortiguamiento numérico controlado) no incluidos.
+
+\section{\texttt{NewtonNewmarkSolver} --- transitorio no lineal Newton-Newmark}\index{Newton-Newmark}\index{plasticidad din\'amica}
+
+Subclase de \texttt{NewmarkSolver} (Reglas \S 4 --- variante de componente existente) que añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico:
+
+$$\mathbf R = \mathbf F_{\text{ext}}(t) - \mathbf F_{\text{int}}(\mathbf u) - \mathbf C\dot{\mathbf u} - \mathbf M\ddot{\mathbf u}, \quad \mathbf J = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K_t$$
+
+\textbf{Convergencia dual} (ADR 0007): mismas tolerancias \texttt{rtol\_force} / \texttt{rtol\_disp} y factores \texttt{atol\_*\_factor} que los solvers no lineales estáticos. Tras converger cada paso se invoca \texttt{assembler.commit\_all\_states()} (trial $\to$ committed en todos los elementos); si agota \texttt{max\_iter} se lanza \texttt{RuntimeError} y se descarta el estado trial.
+
+\textbf{Amortiguamiento Rayleigh constante en el tiempo}, calibrado con la rigidez elástica de referencia $\mathbf K_0$ al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees) que evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+
+\textbf{Newton modificado opcional} (\texttt{freeze\_tangent\_after\_iter}, ADR 0003 fase 2): factoriza fresco las primeras $N$ iter y reusa la factorización en las siguientes para abaratar pasos largos.
+
+\textbf{Recuperación del caso lineal}: con materiales sin historia o no plastificados, el residuo se anula en 1 iter y el resultado coincide \emph{a paridad de bits} con \texttt{NewmarkSolver}. Validado en tests.
+
+\textbf{Parámetros}: heredados de \texttt{NewmarkSolver} más \texttt{max\_iter} (default 20), bloque \texttt{convergence} (\texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ADR 0007) y \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}). El despacho YAML es automático: como \texttt{NewtonNewmarkSolver} es subclase de \texttt{NewmarkSolver}, \texttt{fenix.run\_yaml} lo detecta vía \texttt{isinstance} y enruta a \texttt{run\_transient}.
+
+\begin{lstlisting}[language=yaml]
+materials:
+  - {id: 1, type: VonMises2D, E: 200.0e9, nu: 0.3, sigma_y: 250.0e6, H: 2.0e9, hypothesis: plane_strain, density: 7850.0}
+
+solver:
+  type: NewtonNewmarkSolver
+  t_end: 0.5
+  dt: 0.001
+  beta: 0.25
+  gamma: 0.5
+  rayleigh:
+    xi1: 0.02
+    omega1: 100.0
+    xi2: 0.02
+    omega2: 500.0
+  max_iter: 15
+  convergence:
+    rtol_force: 1.0e-6
+    rtol_disp: 1.0e-6
+\end{lstlisting}
+
+\textbf{Cuándo usarlo}: respuesta dinámica de estructuras con plasticidad transitoria (sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo), vibraciones de marcos elastoplásticos. Materiales con historia disponibles en dinámica: \texttt{Elastoplastic1D}, \texttt{VonMises2D} (\textit{plane strain} y \textit{plane stress}), \texttt{DruckerPrager2D}, \texttt{IsotropicDamage1D/2D}.
+
+\textbf{Limitaciones}: igual que \texttt{NewmarkSolver} en lo lineal (apoyos constantes, paso fijo, sin HHT-$\alpha$). Además: no resuelve \textit{snap-back} dinámico con softening severo --- combinar con \texttt{ArcLengthSolver} si emerge.
 
 % ==========================================
 \chapter{Post-Procesamiento y Visualización}
@@ -1135,9 +1337,6 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 
     \item \textbf{\textit{No se importó ningún elemento (Solid2D).}} \\
     El parser de Gmsh no encontró superficies bidimensionales. En Gmsh, crear una \textit{Plane Surface} y generar la malla 2D antes de exportar.
-
-    \item \textbf{\textit{NotImplementedError: VonMises2D requires plane\_strain.}} \\
-    El modelo \texttt{VonMises2D} solo soporta deformación plana. Cambiar \texttt{hypothesis} a \texttt{plane\_strain} en el material o reemplazar por un modelo compatible con plane stress (no implementado actualmente).
 
     \item \textbf{\textit{Cable totalmente destensado --- $\mathbf K_T = \mathbf 0$.}} \\
     Pretensar el cable o garantizar que la estructura tiene rigidez residual por otros elementos. Considerar también pasos de carga finos para capturar la transición tensado $\to$ destensado.

@@ -55,7 +55,7 @@ En carga activa **siempre es negativa**: $E^\text{alg} = -(1-d)\,E\,\alpha\,\kap
 
 ### Por qué no tests de integración en esta spec
 
-A diferencia de [[IsotropicDamage2D]], no se añade benchmark de integración Truss2D + IsotropicDamage1D + NonlinearSolver: con un solo elemento axial el comportamiento global está dominado por la inestabilidad de softening (E^alg < 0) y la única vía limpia de seguir la respuesta post-pico es arc-length. La validación de la tangente consistente se cubre con tests unitarios (incluyendo diferencia finita centrada como verificación de la derivada cerrada). Si en el futuro aparece un caso real de problema con daño 1D ramificado, se añadirá un benchmark dedicado con `ArcLengthSolver`.
+A diferencia de [[IsotropicDamage2D]], no se añade benchmark de integración Truss2D + IsotropicDamage1D + NonlinearSolver: con un solo elemento axial el comportamiento global está dominado por la inestabilidad de softening ($E_{\text{alg}} < 0$) y la única vía limpia de seguir la respuesta post-pico es arc-length. La validación de la tangente consistente se cubre con tests unitarios (incluyendo diferencia finita centrada como verificación de la derivada cerrada). Si en el futuro aparece un caso real de problema con daño 1D ramificado, se añadirá un benchmark dedicado con `ArcLengthSolver`.
 
 ---
 

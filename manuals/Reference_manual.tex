@@ -2465,6 +2465,292 @@ references:
 
 \newpage
 
+\section{Quad8}
+
+
+
+\textit{Elemento sólido 2D de orden cuadrático con interpolación serendípita.}
+
+\textit{Reproduce exactamente campos hasta $Q_2^{seren}$ (todos los polinomios de grado total \ensuremath{\le} 2 más algunos de orden 3 sin el término $\xi^2\eta^2$). Mucho más preciso que \texttt{Quad4} en flexión y geometrías curvas con el mismo grado de malla.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Cuadrilátero plano de 8 nodos: 4 vértices + 4 nodos en los puntos medios de los bordes. Pequeñas deformaciones, isoparamétrico.
+
+\subsection{1. Cinemática de desplazamientos}
+\[
+u_x(\xi, \eta) = \sum_{i=1}^{8} N_i(\xi, \eta)\, u_x^{(i)}, \qquad u_y(\xi, \eta) = \sum_{i=1}^{8} N_i(\xi, \eta)\, u_y^{(i)}.
+\]
+
+\subsection{2. Cinemática de deformaciones}
+Voigt 2D $[\varepsilon_{xx}, \varepsilon_{yy}, \gamma_{xy}]$, idéntica al \texttt{Quad4}.
+
+\subsection{3. Ecuación constitutiva}
+Material 2D (\texttt{STRAIN\_DIM = 3}).
+
+\subsection{4-5. Equilibrio}
+Idénticas a \texttt{Quad4}.
+
+
+\section{Formulación numérica}
+
+\subsection{6. Discretización}
+Nodos en orden estándar: 0-3 vértices antihorarios desde $(-1, -1)$; 4 medio del borde 0-1, 5 medio del 1-2, 6 medio del 2-3, 7 medio del 3-0. Mapeo isoparamétrico.
+
+\subsection{7. Funciones de forma serendípitas}
+Vértices ($i = 0, 1, 2, 3$ con $(\xi_i, \eta_i) \in \{\pm 1\}^2$):
+\[
+N_i = \tfrac{1}{4}(1 + \xi_i\xi)(1 + \eta_i\eta)(\xi_i\xi + \eta_i\eta - 1).
+\]
+
+Medios de borde:
+\begin{itemize}
+  \item Bordes con $\xi = 0$ (nodos 4, 6): $N_i = \tfrac{1}{2}(1 - \xi^2)(1 + \eta_i\eta)$ con $\eta_i = \mp 1$.
+  \item Bordes con $\eta = 0$ (nodos 5, 7): $N_i = \tfrac{1}{2}(1 + \xi_i\xi)(1 - \eta^2)$ con $\xi_i = \pm 1$.
+\end{itemize}
+
+\subsection{8. Matriz $\mathbf B$}
+Ensamblaje estándar a partir de $\partial N_i / \partial x = \mathbf J^{-1} \partial N_i / \partial \xi$. Tamaño $3 \times 16$.
+
+\subsection{9-10. Rigidez y fuerzas internas}
+\[
+\mathbf K_e = \int \mathbf B^\top \mathbf D\, \mathbf B\, t\, dA, \qquad \mathbf F_{\text{int}}^e = \int \mathbf B^\top \boldsymbol\sigma\, t\, dA.
+\]
+Cuadratura Gauss $3 \times 3$ por defecto.
+
+\subsection{11. Cuadratura}
+Gauss--Legendre $3 \times 3$ (9 puntos) --- exacta para polinomios hasta grado 5, suficiente para integrar $\mathbf B^\top \mathbf D \mathbf B$ del Quad8 sobre Jacobiano constante. La opción \texttt{2x2} queda disponible (reducida) pero introduce modos espurios; emite advertencia.
+
+\subsection{12. Cargas distribuidas consistentes}
+\begin{itemize}
+  \item \textbf{Body load}: $\int N^\top \mathbf b\, t\, dA$ con la cuadratura del elemento (3\ensuremath{\times}3).
+  \item \textbf{Edge traction} uniforme: en un borde recto con N cuadráticas la integral analítica reparte $L/6$ a cada nodo extremo y $4L/6$ al nodo medio (regla 1-4-1, Simpson). Bordes:
+\end{itemize}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Edge} & \textbf{Nodos extremos} & \textbf{Nodo medio} \\
+\hline
+0 & (0, 1) & 4 \\
+1 & (1, 2) & 5 \\
+2 & (2, 3) & 6 \\
+3 & (3, 0) & 7 \\
+\hline
+\end{tabularx}
+\end{center}
+\subsection{13. Salida por punto de Gauss}
+\texttt{compute\_gauss\_state(U)} con la misma estructura que \texttt{Quad4}: 9 puntos por defecto.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Quad8
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy]
+  n_nodes: 8
+  strain_dim: 3
+  n_integration_points: 9       # default Gauss 3×3
+
+parameters:
+  - { name: thickness, type: float, required: false, default: 1.0 }
+  - { name: quadrature, type: tuple, required: false, default: "3x3" }
+
+material_contract:
+  signature: "compute_state(ε, state) -> (σ, C_tangent, state')"
+  strain_kind: "Voigt 2D [ε_xx, ε_yy, γ_xy]"
+
+conventions:
+  sign: "tensión positiva = tracción"
+  voigt: "[xx, yy, xy] con γ_xy = 2·ε_xy"
+  node_orientation: "vértices antihorarios; medios en el orden de los bordes"
+
+validity:
+  - "pequeños desplazamientos y deformaciones"
+
+out_of_scope:
+  - "grandes deformaciones"
+  - "estabilización contra modos espurios bajo integración reducida"
+
+acceptance:
+  verification:
+    - name: patch_lineal
+      setup: "campo u = a₀ + a₁·x + a₂·y impuesto en el contorno"
+      expect: "ε constante en todos los Gauss e igual al gradiente analítico"
+      tol_rel: 1.0e-10
+    - name: patch_cuadratico
+      setup: "campo u_x = x²·1e-3 impuesto en los 8 nodos"
+      expect: "ε_xx(x, y) = 2e-3·x exacto en todos los puntos de Gauss"
+      tol_rel: 1.0e-10
+  specific:
+    - name: cargas consistentes — body load uniforme
+      setup: "Σf = b·A·t (regular y distorsionado)"
+      tol_rel: 1.0e-10
+    - name: cargas consistentes — tracción uniforme en un borde
+      setup: "Σf = t̄·L·t y reparto 1/6, 4/6, 1/6 en (vértice, medio, vértice)"
+      tol_rel: 1.0e-12
+
+references:
+  - "Bathe K.-J., Finite Element Procedures, §5.3"
+  - "Cook, Malkus, Plesha, Witt, Concepts and Applications of FEA, §6"
+  - "Zienkiewicz O.C., The Finite Element Method, vol. 1, §8"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py \ensuremath{\cdot} clase \texttt{Quad8} (subclase de la base interna \texttt{\_HigherOrderQuad} en \_shared.py, compartida con Quad9).
+  \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
+\end{itemize}
+
+
+\newpage
+
+\section{Quad9}
+
+
+
+\textit{Variante Lagrangiana del Quad8: añade un noveno nodo central interior.}
+
+\textit{Espacio polinómico completo $Q_2$ (incluye el término $\xi^2\eta^2$ que el serendípito omite).}
+
+
+
+\section{Especificación física}
+
+Idéntica a \texttt{Quad8} salvo por las funciones de forma.
+
+\subsection{7. Funciones de forma}
+Producto tensorial de los polinomios de Lagrange 1D de orden 2:
+\[
+L_0(\xi) = \tfrac{1}{2}\xi(\xi - 1), \quad L_1(\xi) = 1 - \xi^2, \quad L_2(\xi) = \tfrac{1}{2}\xi(\xi + 1).
+\]
+$N_i(\xi, \eta) = L_a(\xi)\,L_b(\eta)$ con $(a, b)$ asociado al nodo $i$ según la numeración:
+
+\begin{itemize}
+  \item 0..3: vértices (-1,-1), (+1,-1), (+1,+1), (-1,+1).
+  \item 4: medio del borde 0-1 (\ensuremath{\eta} = -1).
+  \item 5: medio del borde 1-2 (\ensuremath{\xi} = +1).
+  \item 6: medio del borde 2-3 (\ensuremath{\eta} = +1).
+  \item 7: medio del borde 3-0 (\ensuremath{\xi} = -1).
+  \item 8: nodo central interior (\ensuremath{\xi}, \ensuremath{\eta}) = (0, 0) --- \textit{bubble}.
+\end{itemize}
+
+\subsection{11. Cuadratura}
+Gauss $3 \times 3$ por defecto.
+
+\subsection{12. Cargas distribuidas}
+Body load con la cuadratura del elemento. Tracción en bordes idéntica a \texttt{Quad8} (1/6, 4/6, 1/6 --- el nodo 8 no participa, no toca bordes).
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Quad9
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy]
+  n_nodes: 9
+  strain_dim: 3
+  n_integration_points: 9
+
+acceptance:
+  verification:
+    - name: patch_cuadratico
+      setup: "u = (x², 0) impuesto en los 9 nodos"
+      expect: "ε_xx = 2x exacto en todos los Gauss"
+      tol_rel: 1.0e-10
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py \ensuremath{\cdot} clase \texttt{Quad9} (subclase de la base interna \texttt{\_HigherOrderQuad} en \_shared.py, compartida con Quad8).
+  \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
+\end{itemize}
+
+
+\newpage
+
+\section{Tri6}
+
+
+
+\textit{Triángulo isoparamétrico de 6 nodos. Cura el shear locking severo del \texttt{Tri3} y reproduce campos cuadráticos exactamente. Útil cuando la malla es triangular por geometría.}
+
+
+
+\section{Especificación física}
+
+Idéntica al \texttt{Tri3} salvo por la cinemática y la cuadratura.
+
+\subsection{7. Funciones de forma}
+Coordenadas baricéntricas $L_1 = 1 - \xi - \eta$, $L_2 = \xi$, $L_3 = \eta$:
+\[
+N_i^{vert} = L_i(2 L_i - 1), \quad i = 1, 2, 3
+\]
+\[
+N_4 = 4 L_1 L_2, \quad N_5 = 4 L_2 L_3, \quad N_6 = 4 L_3 L_1.
+\]
+
+Numeración: 0,1,2 vértices en (0,0), (1,0), (0,1); 3 medio del borde 0-1, 4 medio del 1-2, 5 medio del 2-0.
+
+\subsection{11. Cuadratura}
+Cuadratura triangular de 3 puntos (puntos medios de los lados; peso 1/6 cada uno) --- exacta para polinomios hasta grado 2 sobre el triángulo de referencia.
+
+\subsection{12. Cargas distribuidas}
+\begin{itemize}
+  \item Body load con la cuadratura del elemento.
+  \item Edge traction uniforme: reparto 1/6, 4/6, 1/6 a (vértice, medio, vértice).
+\end{itemize}
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Tri6
+kind: element
+status: validated
+
+interface:
+  dof_names: [ux, uy]
+  n_nodes: 6
+  strain_dim: 3
+  n_integration_points: 3
+
+acceptance:
+  verification:
+    - name: patch_cuadratico
+      setup: "u = (x², 0) impuesto en los 6 nodos"
+      expect: "ε_xx = 2x exacto en cada Gauss"
+      tol_rel: 1.0e-10
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py \ensuremath{\cdot} clase \texttt{Tri6}.
+  \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
+\end{itemize}
+
+
+\newpage
+
 \chapter{Modelos Constitutivos (Materiales)}
 
 \section{CableMaterial1D}
@@ -2599,6 +2885,2596 @@ references:
   \item \textbf{2026-04-21} \ensuremath{\cdot} Discontinuidad en $\varepsilon = 0$: documentada explícitamente en \texttt{out\_of\_scope: regularización numérica}. Si aparece un caso de uso con destensiones frecuentes donde Newton-Raphson oscile, se añadirá una variante \texttt{CableMaterial1DRegularized} con $E_c \ll E$ en compresión --- \textbf{no} se modificará este material (contrato limpio).
   \item \textbf{2026-05-12} \ensuremath{\cdot} Restricción de emparejamiento elevada a contrato: \texttt{IS\_UNILATERAL = True} en el material; \texttt{ACCEPTS\_UNILATERAL = True} en \texttt{Cable2DCorot}/\texttt{Cable3DCorot}. La base \texttt{Element.\_validate\_material\_compatibility} rechaza la combinación con \texttt{Truss*} (cuyo tangente colapsa la rigidez global sin K\_G que lo compense). Antes el contrato lo permitía y solo se desaconsejaba en docstring; ahora falla limpio al construir.
 \end{itemize}
+
+
+\newpage
+
+\section{VonMises2D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+\textit{> Spec \textbf{retroactiva con ampliación}: la hipótesis \texttt{plane\_strain} está implementada y testeada desde sesiones anteriores; esta spec la documenta y añade \texttt{plane\_stress} como hipótesis a implementar en esta sesión.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+
+Modelo elastoplástico independiente de la velocidad ("rate-independent") basado en el criterio \textbf{J2 / Von Mises} con regla de flujo \textbf{asociada} y \textbf{endurecimiento isótropo lineal}. Captura plasticidad de metales dúctiles en régimen de pequeñas deformaciones, sin efectos cinemáticos (Bauschinger), térmicos ni viscosos.
+
+Soporta dos hipótesis cinemáticas 2D mutuamente excluyentes seleccionadas en construcción:
+
+\begin{itemize}
+  \item \textbf{\texttt{plane\_strain}} --- $\varepsilon_{zz} = \varepsilon_{xz} = \varepsilon_{yz} = 0$. Cuerpos prismáticos largos cargados transversalmente (presa, túnel, cilindro largo).
+  \item \textbf{\texttt{plane\_stress}} --- $\sigma_{zz} = \sigma_{xz} = \sigma_{yz} = 0$. Láminas o membranas delgadas en su plano (chapa traccionada, placa fina).
+\end{itemize}
+
+\subsection{1. Descomposición aditiva}
+
+En pequeñas deformaciones, el tensor de deformación se descompone aditivamente:
+
+\[
+\boldsymbol\varepsilon = \boldsymbol\varepsilon^e + \boldsymbol\varepsilon^p
+\]
+
+La parte elástica $\boldsymbol\varepsilon^e$ gobierna el esfuerzo vía la ley elástica isótropa; la parte plástica $\boldsymbol\varepsilon^p$ es \textbf{histórica} y evoluciona según la regla de flujo.
+
+\subsection{2. Ley elástica}
+
+\[
+\boldsymbol\sigma = \mathbf C_e : \boldsymbol\varepsilon^e = \mathbf C_e : (\boldsymbol\varepsilon - \boldsymbol\varepsilon^p)
+\]
+
+con $\mathbf C_e$ tensor de rigidez elástica isótropa parametrizado por $(E, \nu)$ o equivalentemente $(K, G)$:
+
+\[
+K = \frac{E}{3(1-2\nu)}, \qquad G = \frac{E}{2(1+\nu)}
+\]
+
+\subsection{3. Superficie de fluencia (J2)}
+
+\[
+f(\boldsymbol\sigma, \alpha) = \|\mathbf s\| - \sqrt{\tfrac{2}{3}}\,\big(\sigma_y + H\,\alpha\big) \;\leq\; 0
+\]
+
+donde $\mathbf s = \boldsymbol\sigma - \tfrac{1}{3}\operatorname{tr}(\boldsymbol\sigma)\mathbf I$ es el tensor desviador, $\|\mathbf s\| = \sqrt{\mathbf s:\mathbf s}$, $\sigma_y > 0$ es la fluencia inicial y $H \geq 0$ el módulo de endurecimiento isótropo lineal. El factor $\sqrt{2/3}$ alinea $\sigma_y$ con la fluencia uniaxial estándar.
+
+\subsection{4. Regla de flujo (asociada)}
+
+\[
+\dot{\boldsymbol\varepsilon}^p = \dot\gamma \,\frac{\partial f}{\partial \boldsymbol\sigma} = \dot\gamma \,\mathbf N, \qquad \mathbf N = \frac{\mathbf s}{\|\mathbf s\|}
+\]
+
+El flujo es puramente desviador ($\operatorname{tr}(\mathbf N) = 0$) --- \textbf{plasticidad incompresible}, propiedad central de J2.
+
+\subsection{5. Endurecimiento isótropo lineal}
+
+\[
+\dot\alpha = \sqrt{\tfrac{2}{3}}\,\dot\gamma
+\]
+
+$\alpha$ es la \textbf{deformación plástica acumulada equivalente} (escalar, monótona no decreciente). La superficie de fluencia se expande uniformemente con $\alpha$ manteniendo su centro en el origen del espacio de tensiones desviadoras.
+
+\subsection{6. Condiciones de Kuhn-Tucker}
+
+\[
+\dot\gamma \geq 0, \qquad f \leq 0, \qquad \dot\gamma\,f = 0
+\]
+
+Garantizan que $\dot\gamma > 0$ solo si el estado intenta salir de la superficie, y que el estado real siempre cumple $f \leq 0$.
+
+\subsection{7. Variables internas}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Símbolo} & \textbf{Tipo} & \textbf{Significado} \\
+\hline
+$\boldsymbol\varepsilon^p$ & tensor (4 componentes Voigt extendido en plane strain, ver §8) & deformación plástica \\
+$\alpha$ & escalar & deformación plástica acumulada equivalente \\
+\hline
+\end{tabularx}
+\end{center}
+\texttt{alpha} es la variable principal exportable (\texttt{PRIMARY\_STATE\_VAR = 'alpha'}); \texttt{eps\_p} es interna al algoritmo de return mapping.
+
+\subsection{8. Notación Voigt y manejo de $\varepsilon^p_{zz}$}
+
+Convención del proyecto para 2D: $\boldsymbol\varepsilon = [\varepsilon_{xx},\,\varepsilon_{yy},\,\gamma_{xy}]$ con $\gamma_{xy} = 2\varepsilon_{xy}$. Pero la \textbf{descomposición desviadora} requiere todas las componentes 3D, así que internamente el material maneja $\boldsymbol\varepsilon^p = [\varepsilon^p_{xx},\,\varepsilon^p_{yy},\,\varepsilon^p_{zz},\,\varepsilon^p_{xy}]$ (4 componentes, $\varepsilon^p_{xy}$ tensorial sin factor 2).
+
+\begin{itemize}
+  \item \textbf{Plane strain}: $\varepsilon_{zz} = 0$ se impone \textit{en deformación total}. La componente $\varepsilon^p_{zz}$ es no nula y evoluciona libremente (la incompresibilidad plástica acopla $\varepsilon^p_{zz} = -(\varepsilon^p_{xx} + \varepsilon^p_{yy})$). Por simetría, $\sigma_{zz}$ resulta no nulo pero no se expone en el API público 2D --- vive solo en el cómputo interno.
+  \item \textbf{Plane stress}: $\sigma_{zz} = 0$ se impone \textit{en esfuerzo}. La componente $\varepsilon_{zz}$ es no nula (extensión transversal de Poisson + Poisson plástico), y aparece como variable adicional en el problema local de retorno (ver §10).
+\end{itemize}
+
+
+\section{Formulación numérica}
+
+\subsection{9. Esquema temporal --- Backward Euler implícito}
+
+Dado el estado convergido $\{\boldsymbol\varepsilon^p_n, \alpha_n\}$ al paso $n$ y la deformación total prescrita $\boldsymbol\varepsilon_{n+1}$, resolver para $\{\boldsymbol\sigma_{n+1}, \boldsymbol\varepsilon^p_{n+1}, \alpha_{n+1}\}$ con discretización implícita:
+
+\[
+\boldsymbol\varepsilon^p_{n+1} = \boldsymbol\varepsilon^p_n + \Delta\gamma\,\mathbf N_{n+1}, \qquad \alpha_{n+1} = \alpha_n + \sqrt{\tfrac{2}{3}}\,\Delta\gamma
+\]
+
+más $f(\boldsymbol\sigma_{n+1}, \alpha_{n+1}) \leq 0$ con la condición de complementariedad.
+
+\subsection{10. Return mapping plane strain --- \textbf{algoritmo radial cerrado} (existente)}
+
+Descomposición volumétrica-desviadora del estado de prueba:
+
+\[
+\boldsymbol\varepsilon^{\text{trial}}_{n+1} = \boldsymbol\varepsilon_{n+1} - \boldsymbol\varepsilon^p_n, \qquad \mathbf s^{\text{trial}} = 2G\,\mathbf e^{\text{trial}}, \qquad p^{\text{trial}} = K\,\operatorname{tr}(\boldsymbol\varepsilon_{n+1})
+\]
+
+donde $\mathbf e^{\text{trial}}$ es la parte desviadora de $\boldsymbol\varepsilon^{\text{trial}}_{n+1}$. Función de fluencia trial:
+
+\[
+f^{\text{trial}} = \|\mathbf s^{\text{trial}}\| - \sqrt{\tfrac{2}{3}}\,(\sigma_y + H\,\alpha_n)
+\]
+
+Si $f^{\text{trial}} \leq \text{tol}$ \ensuremath{\to} paso elástico, $\boldsymbol\sigma_{n+1} = \mathbf C_e:\boldsymbol\varepsilon_{n+1}$, estado intacto.
+
+Si no, el flujo es radial (la dirección no cambia entre trial y final por isotropía + asociado en J2):
+
+\[
+\Delta\gamma = \frac{f^{\text{trial}}}{2G + \tfrac{2}{3}H} \qquad\text{(forma cerrada)}
+\]
+
+\[
+\mathbf N = \frac{\mathbf s^{\text{trial}}}{\|\mathbf s^{\text{trial}}\|}, \quad \mathbf s_{n+1} = \mathbf s^{\text{trial}} - 2G\,\Delta\gamma\,\mathbf N, \quad \boldsymbol\sigma_{n+1} = \mathbf s_{n+1} + p^{\text{trial}}\,\mathbf I
+\]
+
+\textbf{Tangente consistente algorítmica} (derivada del algoritmo, no de la ley continua):
+
+\[
+\mathbf C^{\text{alg}} = K\,\mathbf 1\otimes\mathbf 1 + 2G(1-\beta)\,\mathbf I_{\text{dev}} - 2G\,\bar\gamma\,\mathbf N\otimes\mathbf N
+\]
+
+con $\beta = \dfrac{2G\,\Delta\gamma}{\|\mathbf s^{\text{trial}}\|}$, $\bar\gamma = \dfrac{1}{1 + H/(3G)} - \beta$.
+
+\subsection{11. Return mapping plane stress --- \textbf{algoritmo proyectado} (a implementar)}
+
+Referencia: Simó \& Hughes 1998, \textit{Computational Inelasticity}, §3.4.1 ("Plane stress projected algorithm").
+
+La restricción $\sigma_{zz} = 0$ se impone \textbf{eliminando} $\varepsilon_{zz}$ del problema mediante un operador de proyección, no como ecuación extra. Resultado: el problema local sigue siendo escalar en $\Delta\gamma$, sin nested Newton.
+
+\textbf{Matriz elástica plane stress} (3\ensuremath{\times}3, base Voigt $[\varepsilon_{xx},\varepsilon_{yy},\gamma_{xy}]$):
+
+\[
+\mathbf C^{ps}_e = \frac{E}{1-\nu^2}\begin{bmatrix} 1 & \nu & 0 \\ \nu & 1 & 0 \\ 0 & 0 & (1-\nu)/2 \end{bmatrix}
+\]
+
+\textbf{Predictor elástico} en el subespacio plane stress:
+
+\[
+\boldsymbol\sigma^{\text{trial}} = \mathbf C^{ps}_e\,(\boldsymbol\varepsilon_{n+1} - \mathbf P_\varepsilon\,\boldsymbol\varepsilon^p_n)
+\]
+
+con $\mathbf P_\varepsilon$ extrayendo las componentes plane $[\varepsilon^p_{xx},\varepsilon^p_{yy},2\varepsilon^p_{xy}]$ del tensor 4D.
+
+\textbf{Operador $\mathbf P$ --- norma desviadora bajo $\sigma_{zz}=0$} (Simó-Hughes Box 3.1):
+
+\[
+\mathbf P = \frac{1}{3}\begin{bmatrix} 2 & -1 & 0 \\ -1 & 2 & 0 \\ 0 & 0 & 6 \end{bmatrix}
+\]
+
+Esta matriz codifica el producto escalar desviador en el subespacio plane stress; reemplaza $\|\mathbf s\|^2$ por $\boldsymbol\sigma^\top \mathbf P\,\boldsymbol\sigma$ con todas las componentes 3D ya eliminadas analíticamente.
+
+\textbf{Función de fluencia plane stress proyectada}:
+
+\[
+\bar f(\boldsymbol\sigma, \alpha) = \tfrac{1}{2}\,\boldsymbol\sigma^\top \mathbf P\,\boldsymbol\sigma - \tfrac{1}{3}\big(\sigma_y + H\,\alpha\big)^2 \;\leq\; 0
+\]
+
+\textbf{Esquema de retorno}:
+
+\[
+\boldsymbol\sigma_{n+1} = \big[\mathbf C^{ps}_e\big]^{-1}\,\big(\boldsymbol\sigma^{\text{trial}}\big) - \Delta\gamma\,\mathbf P\,\boldsymbol\sigma_{n+1}
+\]
+
+reordenando:
+
+\[
+\boldsymbol\sigma_{n+1} = \mathbf A(\Delta\gamma)^{-1}\,\boldsymbol\sigma^{\text{trial}}, \qquad \mathbf A(\Delta\gamma) = \mathbf I + \Delta\gamma\,\mathbf C^{ps}_e\,\mathbf P
+\]
+
+La matriz $\mathbf A$ es 3\ensuremath{\times}3, diagonalizable en los autovectores ortonormales de $\mathbf C^{ps}_e\mathbf P$. Los autovalores son cerrados:
+
+\[
+\mu_1 = \frac{E}{3(1-\nu)}, \quad \mu_2 = 2G, \quad \mu_3 = 2G
+\]
+
+con autovectores $\mathbf v_1 = \tfrac{1}{\sqrt 2}[1,1,0]$ (hidrostático plano), $\mathbf v_2 = \tfrac{1}{\sqrt 2}[1,-1,0]$ (desviador plano), $\mathbf v_3 = [0,0,1]$ (cortante). Diagonalizan simultáneamente $\mathbf C^{ps}_e$ y $\mathbf P$, con $\mathbf v_i^\top\mathbf P\,\mathbf v_i \in \{1/3, 1, 2\}$.
+
+\textbf{Actualización de la deformación plástica acumulada equivalente}. La regla $\dot\alpha = \sqrt{2/3}\,\dot\gamma$ usada en plane strain \textbf{no} es válida aquí: en plane stress projected $\dot\gamma$ tiene unidades $[1/\text{esfuerzo}]$ (porque $\dot{\boldsymbol\varepsilon}^p = \dot\gamma\,\mathbf P\boldsymbol\sigma$ con $\mathbf P\boldsymbol\sigma$ en unidades de esfuerzo). La fórmula físicamente correcta y dimensionalmente consistente, obtenida de $\dot\alpha = \sqrt{2/3}\,\|\dot{\boldsymbol\varepsilon}^p\|_\text{Frob}$:
+
+\[
+\alpha_{n+1} = \alpha_n + \Delta\gamma \,\sqrt{\tfrac{2}{3}\,\boldsymbol\sigma_{n+1}^\top\mathbf P\,\boldsymbol\sigma_{n+1}}
+\]
+
+\textbf{Newton local} sobre $\Delta\gamma$. En base autovectores $\sigma_i(\Delta\gamma) = a_i / (1+\Delta\gamma\,\mu_i)$, así $\boldsymbol\sigma^\top\mathbf P\,\boldsymbol\sigma$ se expresa cerrado:
+
+\[
+\boldsymbol\sigma^\top\mathbf P\,\boldsymbol\sigma(\Delta\gamma) = \frac{a_1^2}{3(1+\Delta\gamma\mu_1)^2} + \frac{a_2^2}{(1+\Delta\gamma\mu_2)^2} + \frac{2\,a_3^2}{(1+\Delta\gamma\mu_3)^2}
+\]
+
+donde $a_i$ son las proyecciones de $\boldsymbol\sigma^{\text{trial}}$ en los autovectores. La ecuación residual:
+
+\[
+\bar f(\Delta\gamma) = \tfrac{1}{2}\,\boldsymbol\sigma^\top\mathbf P\,\boldsymbol\sigma(\Delta\gamma) - \tfrac{1}{3}\big(\sigma_y + H\,\alpha(\Delta\gamma)\big)^2 = 0
+\]
+
+con $\alpha(\Delta\gamma) = \alpha_n + \Delta\gamma\sqrt{(2/3)\,\boldsymbol\sigma^\top\mathbf P\,\boldsymbol\sigma}$ es monótona decreciente; tangente cerrada con regla de la cadena. \textbf{Newton local converge} típicamente en 3-6 iteraciones desde $\Delta\gamma = 0$. Coste: O(1) por punto de Gauss, comparable a plane strain.
+
+\textbf{Tangente consistente plane stress}. Sea $\mathbf D = \mathbf A^{-1}\mathbf C^{ps}_e$, $\mathbf q = \boldsymbol\sigma_{n+1}^\top\mathbf P\,\mathbf D\,\mathbf P\,\boldsymbol\sigma_{n+1}$, $w = \sqrt{(2/3)\boldsymbol\sigma_{n+1}^\top\mathbf P\,\boldsymbol\sigma_{n+1}}$, $m = (2/3)\,R\,H$, $n = 2\Delta\gamma/(3w)$. De la condición de consistencia ($\dot{\bar f}=0$) con la regla correcta de $\alpha$:
+
+\[
+\mathbf C^{\text{alg}}_{ps} = \mathbf D - \frac{(\mathbf D\,\mathbf P\boldsymbol\sigma_{n+1})\,(\boldsymbol\sigma_{n+1}^\top\mathbf P\,\mathbf D)}{q + m\,w / (1 - m\,n)}
+\]
+
+Si $H=0$ (plasticidad perfecta) el término $m$ se anula y el denominador se reduce a $q$. Forma cerrada --- sin diferenciación numérica.
+
+\textbf{Predictor elástico con $\boldsymbol\varepsilon^p \neq 0$}. Tanto en plane strain como en plane stress, el predictor debe construirse como $\boldsymbol\sigma^{\text{trial}} = \mathbf C_e\,(\boldsymbol\varepsilon - \boldsymbol\varepsilon^p_n)$ (o equivalente desviador + presión), \textbf{no} como $\mathbf C_e\,\boldsymbol\varepsilon$, que ignoraría la deformación plástica acumulada. Importante en descargas elásticas desde estado plástico y al reevaluar el material con \texttt{compute\_gauss\_state(U\_final)} tras un análisis converged.
+
+\subsection{12. Tolerancia de fluencia}
+
+Vía ADR 0006 (\texttt{Material.admissibility\_tol}), patrón atol + rtol\ensuremath{\cdot}escala:
+
+\begin{itemize}
+  \item \textbf{Plane strain}: \texttt{admissibility\_scale = \ensuremath{\surd}(2/3)(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})} (norma desviadora característica en la frontera).
+  \item \textbf{Plane stress}: \texttt{admissibility\_scale = (\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})\ensuremath{^{2}}/3} (escala de $\bar f$ proyectada; los dos términos son del mismo orden).
+\end{itemize}
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: VonMises2D
+kind: material
+status: validated
+
+interface:
+  strain_dim: 3
+  primary_state_var: alpha   # deformación plástica acumulada equivalente
+
+parameters:
+  - { name: E,          type: float, required: true,  desc: "Módulo de Young" }
+  - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson" }
+  - { name: sigma_y,    type: float, required: true,  desc: "Tensión de fluencia inicial" }
+  - { name: H,          type: float, required: false, default: 0.0, desc: "Módulo de endurecimiento isótropo lineal (≥0). H=0 ⇒ plasticidad perfecta" }
+  - { name: hypothesis, type: str,   required: false, default: "plane_strain", desc: "plane_strain | plane_stress" }
+  - { name: density,    type: float, required: false, default: null, desc: "Densidad (kg/m³). Opcional al construir; obligatoria solo si se ensambla peso propio o masa (ADR 0008)" }
+
+signature:
+  compute_state: "(ε: ndarray(3,), state_vars=None) -> (σ: ndarray(3,), C_alg: ndarray(3,3), state_vars')"
+  strain_kind: "plano Voigt — [ε_xx, ε_yy, γ_xy] con γ_xy = 2·ε_xy"
+
+state_schema:
+  eps_p:   "ndarray(4,) — [ε^p_xx, ε^p_yy, ε^p_zz, ε^p_xy] (xy tensorial, sin factor 2)"
+  alpha:   "float ≥ 0 — deformación plástica acumulada equivalente"
+
+conventions:
+  sign: "σ > 0 ⇔ tracción (Reglas §5)"
+  voigt: "γ_xy = 2·ε_xy en deformación total; ε^p_xy almacenada en componente tensorial (sin factor 2)"
+  hypothesis_dispatch: "selección por kwarg al construir; mutuamente excluyentes"
+
+validity:
+  - "E > 0, σ_y > 0, H ≥ 0"
+  - "ν ∈ (-1, 0.5) en plane_strain; ν ∈ (-1, 0.5) en plane_stress (ν=0.5 no admitido por singularidad)"
+  - "|ε| ≲ 1e-2 (régimen de pequeñas deformaciones)"
+  - "hypothesis ∈ {'plane_strain', 'plane_stress'}"
+
+out_of_scope:
+  - "endurecimiento cinemático (back-stress); usar variante futura VonMises2DKinematic"
+  - "endurecimiento isótropo no lineal (Voce, exponencial)"
+  - "endurecimiento por ablandamiento (H<0); requiere regularización (longitud característica, no-local)"
+  - "regla de flujo no asociada"
+  - "acoplamiento con daño; usar modelo plástico-dañado dedicado"
+  - "viscoplasticidad y dependencia de la velocidad de deformación"
+  - "grandes deformaciones (descomposición multiplicativa F = F^e·F^p)"
+  - "anisotropía (Hill, Barlat) — el modelo es estrictamente J2 isótropo"
+
+numerical_caveats:
+  - "Plane strain: incompresibilidad plástica genera locking volumétrico en elementos de bajo orden (Quad4, Tri3) cuando ν→0.5 o el campo plástico domina. Mitigaciones futuras: B-bar, F-bar, elementos mixtos u-p. No incluidas en esta spec."
+  - "Plane stress: el Newton local sobre Δγ asume H ≥ 0; con H = 0 (perfectamente plástico) la ecuación residual sigue siendo monótona pero su pendiente al final del paso plástico tiende a 0 — convergencia más lenta. Mitigación: bisección de respaldo si Newton local diverge."
+  - "Para ν cercano a 0.5 en plane strain, K → ∞ y el predictor elástico pierde precisión numérica. Recomendado ν ≤ 0.49 en metales (típico ν=0.3)."
+
+acceptance:
+  # Cubierto por tests/test_materials_unit.py · TestVonMises2D y TestVonMises2DPlaneStress
+  unit_plane_strain:
+    - name: paso_elastico_bajo_fluencia
+      expect: "ε=[1e-5,0,0]: σ=C_e·ε exacto, alpha=0, tangente=C_e"
+      tol_rel: 1.0e-10
+    - name: fluencia_traccion_uniaxial_confinada
+      expect: "fluencia activa con ε=[0.01,-0.01,0]: alpha>0 tras un solo paso"
+    - name: monotonicidad_alpha
+      expect: "α no decrece bajo carga creciente con eps_yy=-ε; α_final > 0"
+    - name: no_further_yield_on_frontier
+      expect: "repetir ε en frontera de fluencia no incrementa α (return mapping consistente)"
+      tol_rel: 1.0e-10
+    - name: hypothesis_validation
+      expect: "constructor rechaza hypothesis distinto de 'plane_strain'/'plane_stress' con ValueError"
+
+  unit_plane_stress:
+    - name: paso_elastico_bajo_fluencia
+      expect: "ε pequeño: σ=C_e^ps·ε, tangente=C_e^ps, alpha=0, eps_p=0"
+      tol_rel: 1.0e-10
+    - name: degeneracion_a_1d_traccion_pura_elastico
+      expect: "ε=(eps,-ν·eps,0): σ_xx=E·eps, σ_yy≈0 (regimen elástico, no E/(1-ν²))"
+      tol_rel: 1.0e-4
+    - name: yield_uniaxial_at_sigma_y
+      expect: "primer yield en σ_xx=σ_y bajo tracción uniaxial pura (no E/(1-ν²)·ε)"
+      tol_rel: 1.0e-2
+    - name: traccion_biaxial_isotropa
+      expect: "fluencia biaxial isótropa exactamente en σ_xx=σ_yy=σ_y (||s||=σ·√(2/3) iguala √(2/3)σ_y); ε_yield=σ_y(1-ν)/E"
+      tol_rel: 1.0e-2
+    - name: incompresibilidad_plastica
+      expect: "tr(ε^p) = ε^p_xx + ε^p_yy + ε^p_zz = 0 tras cualquier paso plástico"
+      tol_abs: 1.0e-12
+    - name: alpha_monotonic
+      expect: "α no decrece bajo carga monotónica creciente"
+    - name: descarga_recupera_C_e_ps
+      expect: "tras estado plástico, paso siguiente con menor ε produce tangente=C_e^ps y α intacto"
+      tol_rel: 1.0e-10
+    - name: tangente_simetrica
+      expect: "C_alg simétrica (J2 asociado ⇒ IS_SYMMETRIC=True)"
+      tol_abs: 1.0e-8
+    - name: unit_invariance_MPa_vs_Pa
+      expect: "mismo path adimensional en (MPa,mm,N) y (Pa,m,N) ⇒ α y ε^p idénticos"
+      tol_rel: 1.0e-12
+
+  # Cubierto por tests/test_solid_2d_plasticity.py
+  integration:
+    - name: pipeline_plane_strain_elastico
+      setup: "Quad4 unitario, confinamiento uy=0; tracción horizontal por debajo del yield"
+      expect: "u_x = ε_xx_target exacto; α=0"
+      tol_rel: 1.0e-8
+
+    - name: pipeline_plane_strain_plastico_vs_material_directo
+      setup: "mismo setup, carga 1.5×σ_xx_yield → régimen plástico; integrar 10 pasos"
+      expect: "σ_xx FEM (gauss avg) coincide con material standalone en ε_xx_final bajo trayectoria monótona; α coincide"
+      tol_rel: 1.0e-3
+
+    - name: pipeline_plane_stress_elastico_uniaxial
+      setup: "Quad4 unitario, lado izq apoyado en ux; nodo (0,0) y (1,0) en uy; nodo (1,1) libre en y. Tracción horizontal por debajo del yield"
+      expect: "u_x = ε_xx_target; contracción transversal u_y(0,1) = -ν·ε_xx (Poisson); α=0"
+      tol_rel: 1.0e-6
+
+    - name: pipeline_plane_stress_plastico_vs_1d
+      setup: "mismo setup, carga 1.2σ_y para entrar plástico; comparar contra Elastoplastic1D bajo mismo path ε_xx"
+      expect: "σ_xx FEM = σ_1D, σ_yy FEM ≈ 0 (uniaxial puro emergente); α_FEM = α_1D"
+      tol_rel: 1.0e-3
+
+    - name: pipeline_converges_few_iter_plane_strain
+      setup: "carga plástica significativa, 4 incrementos, max_iter=8"
+      expect: "solver converge en todos los pasos sin agotar max_iter; alpha final > 0"
+
+    - name: pipeline_converges_few_iter_plane_stress
+      setup: "tracción uniaxial pura plane stress 1.5σ_y, 4 incrementos, max_iter=8"
+      expect: "solver converge en todos los pasos; alpha final > 0"
+
+references:
+  - "Simó J.C., Hughes T.J.R. (1998). Computational Inelasticity. Springer. §3.3 (plane strain return mapping), §3.4 (plane stress projected algorithm), Box 3.1 (operador P)."
+  - "Crisfield M.A. (1991). Non-linear Finite Element Analysis of Solids and Structures, Vol. 1. Wiley. Cap. 6 (J2 plasticity)."
+  - "Chen W.F., Han D.J. (1988). Plasticity for Structural Engineers. Springer. Cap. 5 (cilindro a presión interna, sol. cerrada Hill)."
+  - "de Souza Neto E.A., Perić D., Owen D.R.J. (2008). Computational Methods for Plasticity. Wiley. §9.4 (plane stress projection alternativa)."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/materials/von\_mises\_2d.py.
+  \item \textbf{Clase}: \texttt{VonMises2D}, registrada vía \texttt{@MaterialRegistry.register}. Despacho por \texttt{hypothesis} en construcción (sin coste runtime).
+  \item \textbf{Kernels Numba}:
+  \item \texttt{\_compute\_j2\_plane\_strain}: descomposición volumétrica-desviadora 3D ($\varepsilon^p_{zz}$ libre), return mapping radial cerrado, tangente algorítmica consistente cerrada. Predictor elástico construido como $\mathbf s_\text{trial} + p\mathbf I$ con $\mathbf s_\text{trial} = 2G(\mathbf e^\text{dev} - \boldsymbol\varepsilon^p_n)$ --- respeta $\boldsymbol\varepsilon^p_n$ en descargas/reevaluaciones.
+  \item \texttt{\_compute\_j2\_plane\_stress}: predictor $\boldsymbol\sigma^\text{trial} = \mathbf C^{ps}_e(\boldsymbol\varepsilon - \boldsymbol\varepsilon^p_n)$, función de fluencia $\bar f$ proyectada, Newton local sobre $\Delta\gamma$ con tangente cerrada y máximo \texttt{\_PLANE\_STRESS\_MAX\_LOCAL\_ITER = 25} iteraciones. Construcción de $\mathbf A^{-1}$ y \ensuremath{\sigma}\_new vía base de autovectores conocida ($\mathbf v_1, \mathbf v_2, \mathbf v_3$); incompresibilidad plástica cierra $\varepsilon^p_{zz} = -(\varepsilon^p_{xx} + \varepsilon^p_{yy})$.
+  \item \textbf{State schema}: \texttt{eps\_p} ndarray(4,) \texttt{[xx, yy, zz, xy\_tensorial]}, \texttt{alpha} escalar. Las cuatro componentes de \texttt{eps\_p} son obligatorias en ambas hipótesis para preservar invariantes (incompresibilidad, normas tensoriales).
+  \item \textbf{\texttt{admissibility\_scale}}:
+  \item plane\_strain: \texttt{\ensuremath{\surd}(2/3)\ensuremath{\cdot}(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})}
+  \item plane\_stress: \texttt{(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})\ensuremath{^{2}}/3}
+  \item \textbf{Tests}:
+  \item tests/test\_materials\_unit.py \ensuremath{\cdot} \texttt{TestVonMises2D} (5 tests plane strain pre-existentes, no regresión) + \texttt{TestVonMises2DPlaneStress} (9 tests plane stress).
+  \item tests/test\_solid\_2d\_plasticity.py \ensuremath{\cdot} 6 tests de integración del pipeline Quad4 + VonMises2D + NonlinearSolver en ambas hipótesis.
+  \item tests/test\_density\_self\_weight.py \ensuremath{\cdot} \texttt{test\_vonmises2d\_density} --- densidad ADR 0008.
+  \item \textbf{Notas de traducción}:
+  \item El kernel plane stress trabaja con $\boldsymbol\sigma$ en Voigt mixto: las componentes $\boldsymbol\sigma = [\sigma_{xx},\sigma_{yy},\sigma_{xy}]$ son las "engineering" mientras que $\boldsymbol\varepsilon$ usa $\gamma_{xy} = 2\varepsilon_{xy}$. El operador $\mathbf P$ en esta convención tiene la forma con \texttt{6} en la entrada (3,3); $\mathbf P\boldsymbol\sigma$ devuelve la componente cortante como $2\sigma_{xy}$ (convención engineering), que se convierte a tensorial dividiendo por 2 antes de acumular en $\varepsilon^p_{xy}$.
+  \item La actualización $\alpha_{n+1} = \alpha_n + \Delta\gamma\sqrt{(2/3)\boldsymbol\sigma^\top\mathbf P\boldsymbol\sigma}$ se evalúa \textbf{con $\boldsymbol\sigma$ final} del paso plástico (tras converger Newton local). Durante las iteraciones se usa la misma fórmula con el $\boldsymbol\sigma$ corriente.
+  \item Validación de parámetros en constructor: \texttt{E>0}, \texttt{\ensuremath{\sigma}\_y>0}, \texttt{H\ensuremath{\ge}0}, \texttt{\ensuremath{\nu}\ensuremath{\in}(-1,0.5)}, \texttt{hypothesis \ensuremath{\in} \{plane\_strain, plane\_stress\}}. Mensajes en español describiendo la violación.
+\end{itemize}
+
+\subsection{Bug fixes detectados al implementar}
+
+\begin{itemize}
+  \item \textbf{Predictor elástico plane strain ignoraba $\boldsymbol\varepsilon^p$}. Versión previa devolvía $\boldsymbol\sigma = \mathbf C_e\boldsymbol\varepsilon$ cuando $f^\text{trial} \leq 0$ --- correcto solo si $\boldsymbol\varepsilon^p = 0$. En descargas elásticas desde estado plástico, o al reevaluar el material vía \texttt{compute\_gauss\_state(U\_final)} tras un análisis converged, devolvía \ensuremath{\sigma} inconsistente con el estado interno. Corregido a $\boldsymbol\sigma = \mathbf s_\text{trial} + p\mathbf I$. Detectado por el test de integración \texttt{test\_plastic\_regime\_matches\_standalone\_material}: \ensuremath{\sigma} FEM reportado coincidía con el valor de equilibrio (F/A) en Newton (donde sí entra a return mapping), pero \texttt{compute\_gauss\_state} post-converged daba el valor incorrecto del predictor elástico, divergiendo del material standalone.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada retroactivamente sobre material existente (J2 plane strain) y extendida con J2 plane stress. Decisión de algoritmo plane stress: \textbf{proyección de Simó-Hughes §3.4.1} en lugar de nested Newton sobre $\varepsilon_{zz}$. Justificación: forma cerrada del problema local (Newton local escalar sobre $\Delta\gamma$ con tangente cerrada, 3-6 iteraciones, O(1) por Gauss); Numba-compatible (kernel plano); tangente consistente cerrada vía operador $\mathbf P$. Nested Newton implicaría ~5-10\ensuremath{\times} el coste por anidación de return mapping completo dentro de cada iteración externa sobre $\sigma_{zz}=0$, justificable solo con endurecimiento no lineal complejo (Voce, plasticidad mixta) que no es el caso. Registrado aquí, no en ADR --- afecta a un material, no a contratos arquitecturales transversales.
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Corrección durante la implementación: la regla heurística $\alpha_{n+1} = \alpha_n + \sqrt{2/3}\,\Delta\gamma$ heredada de plane strain rompe la invariancia bajo cambio de unidades en plane stress, porque allí $\Delta\gamma$ tiene unidades $[1/\text{esfuerzo}]$ (la regla de flujo $\dot{\boldsymbol\varepsilon}^p = \dot\gamma\,\mathbf P\boldsymbol\sigma$ tiene $\mathbf P\boldsymbol\sigma$ con dimensión de esfuerzo). La fórmula físicamente correcta es $\alpha_{n+1} = \alpha_n + \Delta\gamma\,\sqrt{(2/3)\boldsymbol\sigma^\top\mathbf P\boldsymbol\sigma}$ --- adimensional. Detectado por el test unitario \texttt{test\_unit\_invariance\_MPa\_vs\_Pa} que daba un factor 1e6 entre los dos sistemas. Implica recalcular la tangente consistente con $\partial\alpha/\partial\Delta\gamma \neq \sqrt{2/3}$ (ver §11).
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Corrección plane strain: el predictor elástico devolvía $\boldsymbol\sigma = \mathbf C_e\boldsymbol\varepsilon$, ignorando $\boldsymbol\varepsilon^p_n$. Bug latente preexistente sin tests que lo cubrieran (los unitarios solo probaban primer paso con $\boldsymbol\varepsilon^p = 0$). Detectado al validar el pipeline FEM: \texttt{compute\_gauss\_state(U\_final)} reportaba \ensuremath{\sigma} del predictor elástico (incorrecto) en lugar del \ensuremath{\sigma} post return-mapping. Corregido a $\boldsymbol\sigma = \mathbf s_\text{trial} + p\mathbf I$. La rama plane stress ya lo hacía bien desde el principio (predictor incluía la sustracción de $\boldsymbol\varepsilon^p$).
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Validación numérica de plane strain queda implícita en los tests unitarios existentes; los tests de integración \texttt{tests/test\_solid\_2d\_plasticity.py} abren por primera vez el pipeline completo Quad4 + VonMises2D + NonlinearSolver en ambas hipótesis --- hasta hoy no había cobertura de integración sólido 2D + material plástico.
+  \item \textbf{2026-05-14} \ensuremath{\cdot} No se introduce ADR. La spec no rompe contratos: extiende un material existente con una rama nueva del despacho por \texttt{hypothesis}. Sí se actualiza \texttt{docs/catalogo\_materiales.md} al validar.
+\end{itemize}
+
+
+\newpage
+
+\section{IsotropicDamage1D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+\textit{> Spec \textbf{retroactiva con ampliación}: modelo implementado desde sesiones anteriores con tangente secante; esta spec lo documenta y añade la tangente algorítmica consistente, replicando la derivación de [[IsotropicDamage2D]] reducida a 1D escalar.}
+
+
+
+\section{Especificación física}
+
+Versión 1D de \texttt{IsotropicDamage2D}. Modelo de daño escalar isótropo en pequeñas deformaciones para barras, cables y elementos axiales. Captura degradación progresiva de la rigidez axial con ablandamiento exponencial.
+
+\subsection{Ecuaciones}
+
+\begin{itemize}
+  \item \textbf{Constitutiva}: $\sigma = (1 - d)\,E\,\varepsilon$, con $\sigma^\text{eff} = E\varepsilon$.
+  \item \textbf{Deformación equivalente}: $\varepsilon_\text{eq} = |\varepsilon|$.
+  \item \textbf{Variable histórica}: $\kappa_{n+1} = \max(\kappa_n, |\varepsilon_{n+1}|)$, con $\kappa_0$ inicial.
+  \item \textbf{Daño}: $d(\kappa) = \begin{cases}0 & \kappa \leq \kappa_0 \\ 1 - (\kappa_0/\kappa)\,e^{-\alpha(\kappa - \kappa_0)} & \kappa > \kappa_0\end{cases}$, saturado a \texttt{DAMAGE\_MAX}.
+\end{itemize}
+
+Todas las propiedades físicas (irreversibilidad, asintótica $d \to 1$, papel de $\alpha$) son las del modelo 2D restringidas a un escalar. No distingue tracción de compresión.
+
+
+\section{Formulación numérica}
+
+\subsection{Tangente algorítmica consistente}
+
+\[
+\frac{\partial \sigma}{\partial \varepsilon} = (1-d)\,E - E\varepsilon\,\frac{\partial d}{\partial \kappa}\,\frac{\partial \kappa}{\partial \varepsilon}
+\]
+
+con:
+
+\begin{itemize}
+  \item $\dfrac{\partial d}{\partial \kappa} = (1-d)\left(\dfrac{1}{\kappa} + \alpha\right)$ (idéntico a 2D).
+  \item $\dfrac{\partial \kappa}{\partial \varepsilon} = \operatorname{sign}(\varepsilon)$ en \textbf{carga activa} ($|\varepsilon| > \kappa_n$); $0$ en descarga.
+\end{itemize}
+
+\textbf{Tangente final}:
+
+\[
+E^\text{alg} = \begin{cases}
+E & \kappa \leq \kappa_0 \;(\text{sin daño}) \\
+(1-d)\,E & \text{descarga} \\
+(1-d)\,E\big[1 - (1/\kappa + \alpha)\,\kappa\big] = -(1-d)\,E\,\alpha\,\kappa & \text{carga activa, } d < d_\text{max} \\
+(1-d_\text{max})\,E & d = d_\text{max} \;(\text{saturación})
+\end{cases}
+\]
+
+donde se ha usado $(1/\kappa + \alpha)\kappa = 1 + \alpha\kappa$ y $E\varepsilon\,\operatorname{sign}(\varepsilon) = E|\varepsilon| = E\kappa$ en carga activa.
+
+\subsection{Signo de la tangente consistente}
+
+En carga activa \textbf{siempre es negativa}: $E^\text{alg} = -(1-d)\,E\,\alpha\,\kappa < 0$ porque $1-d > 0$, $E > 0$, $\alpha > 0$, $\kappa > 0$. Refleja físicamente el régimen de \textbf{softening} (ablandamiento): la curva $\sigma$--$\varepsilon$ desciende tras el umbral.
+
+\textbf{Implicaciones numéricas}:
+
+\begin{itemize}
+  \item La rigidez tangente del elemento ($\mathbf K_e = \int B^\top E^\text{alg} B\, dV$) puede tener autovalores negativos. La matriz \textbf{sigue siendo simétrica} (escalar \ensuremath{\times} forma cuadrática) --- \texttt{IS\_SYMMETRIC = True} se mantiene.
+  \item La matriz global puede dejar de ser \textbf{positiva definida}. El despachador algebraico (ADR 0003) detecta el fallo de Cholesky y degrada a LU automáticamente --- no requiere cambio declarativo.
+  \item Control de carga puede no converger en problemas con suficiente daño para producir snap-back; en ese régimen se requiere control de longitud de arco (\texttt{ArcLengthSolver}).
+\end{itemize}
+
+\subsection{Por qué no tests de integración en esta spec}
+
+A diferencia de [[IsotropicDamage2D]], no se añade benchmark de integración Truss2D + IsotropicDamage1D + NonlinearSolver: con un solo elemento axial el comportamiento global está dominado por la inestabilidad de softening ($E_{\text{alg}} < 0$) y la única vía limpia de seguir la respuesta post-pico es arc-length. La validación de la tangente consistente se cubre con tests unitarios (incluyendo diferencia finita centrada como verificación de la derivada cerrada). Si en el futuro aparece un caso real de problema con daño 1D ramificado, se añadirá un benchmark dedicado con \texttt{ArcLengthSolver}.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: IsotropicDamage1D
+kind: material
+status: validated
+
+interface:
+  strain_dim: 1
+  primary_state_var: damage
+  is_symmetric: true       # tangente escalar ⇒ contribución elemento simétrica (puede ser indefinida pero simétrica)
+
+parameters:
+  - { name: E,        type: float, required: true,  desc: "Módulo de Young intacto" }
+  - { name: kappa_0,  type: float, required: true,  desc: "Umbral de deformación equivalente |ε|" }
+  - { name: alpha,    type: float, required: true,  desc: "Velocidad de degradación exponencial (>0)" }
+  - { name: density,  type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
+
+signature:
+  compute_state: "(ε: float, state_vars=None) -> (σ: float, E_tan: float, state_vars')"
+  strain_kind: axial escalar
+
+state_schema:
+  kappa:  "float ≥ κ_0 — máxima |ε| histórica"
+  damage: "float ∈ [0, DAMAGE_MAX]"
+
+conventions:
+  sign: "σ > 0 ⇔ tracción; el modelo no distingue tracción de compresión en la activación del daño"
+  damage_irreversibility: "κ monótono no decreciente; d(κ) no decreciente"
+
+validity:
+  - "E > 0, κ_0 > 0, α > 0"
+  - "|ε| ≲ 1e-2 (régimen de pequeñas deformaciones)"
+
+out_of_scope:
+  - "split tracción/compresión"
+  - "fatiga / acumulación cíclica"
+  - "regularización para mesh-dependency en problemas con varios elementos en serie"
+  - "test de integración con NonlinearSolver — requiere arc-length para superar el snap-back, fuera de scope hasta caso real"
+
+numerical_caveats:
+  - "Tangente consistente NEGATIVA en carga activa (softening). La rigidez global puede no ser PD; el despachador algebraico (ADR 0003) degrada a LU automáticamente al detectar fallo de Cholesky."
+  - "Control de carga con un elemento aislado tras alcanzar el pico se vuelve inestable. Usar arc-length para seguir la rama post-pico."
+  - "Transición carga↔descarga discontinua en la tangente (rama loading vs unloading): aceptable para Newton convergente, problemático cerca del umbral en problemas patológicos."
+
+acceptance:
+  unit_existing_no_regression:
+    - name: secant_response_below_threshold
+      expect: "ε pequeño, κ ≤ κ_0 ⇒ d=0, σ=E·ε, tangente = E"
+      tol_rel: 1.0e-12
+
+    - name: damage_evolution_exponential
+      expect: "ley exponencial reproducida con la fórmula"
+      tol_rel: 1.0e-10
+
+  unit_consistent_tangent:
+    - name: tangent_equals_E_below_threshold
+      setup: "ε < κ_0"
+      expect: "E_tan = E (sin daño)"
+      tol_rel: 1.0e-12
+
+    - name: tangent_equals_secant_on_unloading
+      setup: "cargar a κ > κ_0; descargar a |ε| < κ"
+      expect: "E_tan = (1-d)·E exacto"
+      tol_rel: 1.0e-12
+
+    - name: tangent_negative_on_loading
+      setup: "carga activa con κ > κ_0, d ∈ (0, DAMAGE_MAX)"
+      expect: "E_tan = -(1-d)·E·α·κ < 0"
+      tol_rel: 1.0e-12
+
+    - name: tangent_equals_secant_at_saturation
+      setup: "ε enorme tal que d = DAMAGE_MAX"
+      expect: "E_tan = (1-DAMAGE_MAX)·E (sin término consistente al saturar)"
+      tol_rel: 1.0e-12
+
+    - name: tangent_matches_finite_difference
+      setup: "carga activa; ∂σ/∂ε por FD centrada (h=1e-7) vs fórmula cerrada"
+      expect: "error relativo < 1e-5"
+      tol_rel: 1.0e-5
+
+    - name: tangent_consistent_with_2D_when_uniaxial
+      setup: "evaluar IsotropicDamage1D(E, κ_0, α) en ε=eps y comparar contra IsotropicDamage2D(E, ν=0, κ_0, α) plane stress en ε=[eps, 0, 0]; la primera componente de σ y la entrada [0,0] de C_alg deben coincidir"
+      expect: "σ_1D = σ_xx_2D; E_tan_1D = C_alg_2D[0,0]"
+      tol_rel: 1.0e-10
+
+references:
+  - "Lemaitre J., Chaboche J.-L. (1990). Mechanics of Solid Materials. Cambridge UP. Cap. 7."
+  - "Simó J.C., Ju J.W. (1987). Strain- and stress-based continuum damage models — I. Int. J. Solids Struct. 23, 821-840."
+  - "Spec hermana: [docs/specs/IsotropicDamage2D.md](IsotropicDamage2D.md) — modelo 2D, derivación detallada de la tangente consistente."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/materials/damage\_1d.py.
+  \item \textbf{Clase}: \texttt{IsotropicDamage1D}, registrada vía \texttt{@MaterialRegistry.register}. \texttt{IS\_SYMMETRIC} queda \texttt{True} (default heredado de \texttt{Material}) --- la contribución elemental es simétrica aunque pueda ser indefinida.
+  \item \textbf{Algoritmo \texttt{compute\_state}}:
+\end{itemize}
+\begin{enumerate}
+  \item Recuperar $\kappa_n$ y calcular $\varepsilon_\text{eq} = |\varepsilon|$.
+  \item Si $\varepsilon_\text{eq} > \kappa_n$: carga activa, $\kappa_{n+1} = \varepsilon_\text{eq}$. Si no: descarga, $\kappa_{n+1} = \kappa_n$.
+  \item Calcular $d$ por la ley exponencial, saturar a \texttt{DAMAGE\_MAX}.
+  \item $\sigma = (1 - d)\,E\,\varepsilon$.
+  \item Tangente: ramas (sin daño / descarga / saturación / carga activa) idénticas en estructura al modelo 2D, con la fórmula escalar resultante. En carga activa con daño efectivo no saturado, \texttt{E\_tan = -(1-d)\ensuremath{\cdot}E\ensuremath{\cdot}\ensuremath{\alpha}\ensuremath{\cdot}\ensuremath{\kappa}}.
+\end{enumerate}
+\begin{itemize}
+  \item \textbf{Tests}:
+  \item tests/test\_materials\_unit.py \ensuremath{\cdot} \texttt{TestIsotropicDamage1D} (existente, no regresión) + nueva clase \texttt{TestIsotropicDamage1DConsistentTangent}.
+  \item Sin tests de integración (justificado arriba).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada retroactivamente sobre material existente (tangente secante) y extendida con tangente algorítmica consistente. Réplica directa de [[IsotropicDamage2D]] reducida a escalar. Sin ADR --- extensión local al material, no afecta a contratos.
+  \item \textbf{2026-05-14} \ensuremath{\cdot} \texttt{IS\_SYMMETRIC} permanece \texttt{True}: la rigidez axial es escalar y la contribución elemental \texttt{B\textasciicircum{}T\ensuremath{\cdot}E\_tan\ensuremath{\cdot}B} es simétrica aunque pueda ser indefinida cuando \texttt{E\_tan < 0}. El sistema global puede dejar de ser PD; el fallback automático de Cholesky a LU del despachador algebraico (ADR 0003) lo gestiona sin cambios declarativos.
+  \item \textbf{2026-05-14} \ensuremath{\cdot} No se añade test de integración. Justificación: con tangente consistente <0 en carga activa, un benchmark Truss2D bajo control de carga se vuelve inestable tras el pico; el seguimiento de la rama post-pico requiere arc-length que cae fuera del scope inmediato. Tests unitarios (incluyendo FD numérica y consistencia con la versión 2D reducida) cubren la corrección de la fórmula.
+\end{itemize}
+
+
+\newpage
+
+\section{IsotropicDamage2D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+\textit{> Spec \textbf{retroactiva con ampliación}: el modelo está implementado desde sesiones anteriores con \textbf{tangente secante}. Esta spec lo documenta y añade la \textbf{tangente algorítmica consistente} para recuperar convergencia cuadrática del Newton global.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+
+Modelo de \textbf{daño isótropo escalar} en pequeñas deformaciones para sólidos 2D. Captura degradación progresiva e isótropa de la rigidez en respuesta a la deformación máxima histórica, con ablandamiento exponencial. Pensado para hormigón en tracción uniforme, cerámicos, materiales cuasi-frágiles donde la microfisuración distribuida puede modelarse mediante un escalar de daño en lugar de microestructura explícita.
+
+\subsection{1. Cinemática}
+
+Pequeñas deformaciones, descomposición elástica pura: la deformación plástica no existe en este modelo (sin plasticidad). El daño se manifiesta como degradación de la rigidez efectiva.
+
+\subsection{2. Esfuerzo nominal vs esfuerzo efectivo}
+
+\[
+\boldsymbol\sigma = (1 - d)\,\boldsymbol\sigma^\text{eff}, \qquad \boldsymbol\sigma^\text{eff} = \mathbf C_e\,\boldsymbol\varepsilon
+\]
+
+con $d \in [0, d_\text{max}]$ la variable de daño isótropa y $\mathbf C_e$ el tensor constitutivo elástico isótropo (2D, plane stress o plane strain según \texttt{hypothesis} heredada del \texttt{Elastic2D} interno).
+
+El esfuerzo efectivo $\boldsymbol\sigma^\text{eff}$ es el que el material intacto soportaría con la deformación corriente. El esfuerzo nominal $\boldsymbol\sigma$ es lo que efectivamente transmite considerando la degradación.
+
+\subsection{3. Deformación equivalente}
+
+Cantidad escalar que cuantifica la "intensidad" de la deformación. Convención del proyecto, norma simétrica simple en notación Voigt $[\varepsilon_{xx}, \varepsilon_{yy}, \gamma_{xy}]$ con $\gamma_{xy} = 2\varepsilon_{xy}$:
+
+\[
+\varepsilon_\text{eq}(\boldsymbol\varepsilon) = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2} = \sqrt{\boldsymbol\varepsilon^\top \mathbf M\,\boldsymbol\varepsilon}
+\]
+
+con $\mathbf M = \operatorname{diag}(1, 1, 1/2)$. Equivalente a la norma de Frobenius del tensor deformación 2D plana ($\boldsymbol\varepsilon : \boldsymbol\varepsilon$ con $\varepsilon_{xy} = \gamma_{xy}/2$).
+
+\textbf{Limitación}: no distingue tracción de compresión. Para hormigón a compresión se necesitaría un split tipo Mazars o de Vree; aquí se diferencia explícitamente como \textit{out-of-scope}.
+
+\subsection{4. Variable histórica y condición de carga (Kuhn-Tucker)}
+
+\[
+\kappa_{n+1} = \max(\kappa_n, \varepsilon_\text{eq}(\boldsymbol\varepsilon_{n+1})), \qquad \kappa_0 \text{ inicial}
+\]
+
+Esto codifica:
+\begin{itemize}
+  \item \textbf{Carga activa} ($\dot\kappa > 0$): $\kappa$ crece con $\varepsilon_\text{eq}$; el daño puede aumentar.
+  \item \textbf{Descarga / recarga} ($\dot\kappa = 0$): $\kappa$ queda congelado; el daño no cambia.
+  \item \textbf{Irreversibilidad}: $\kappa$ es monótono no decreciente.
+\end{itemize}
+
+\subsection{5. Ley de evolución del daño}
+
+\[
+d(\kappa) = \begin{cases}
+0 & \kappa \leq \kappa_0 \\
+1 - \dfrac{\kappa_0}{\kappa}\,e^{-\alpha(\kappa - \kappa_0)} & \kappa > \kappa_0
+\end{cases}
+\]
+
+con saturación numérica $d \leq d_\text{max} = $ \texttt{DAMAGE\_MAX} (\texttt{fenix.constants.DAMAGE\_MAX}, evita rigidez nula).
+
+Propiedades:
+\begin{itemize}
+  \item $d(\kappa_0) = 0$ (continuidad).
+  \item $d'(\kappa) > 0$ para $\kappa > \kappa_0$ (irreversibilidad).
+  \item $\lim_{\kappa \to \infty} d = 1$ (asintótico).
+  \item $\alpha$ controla la velocidad de degradación (ablandamiento más abrupto si $\alpha$ grande).
+\end{itemize}
+
+
+\section{Formulación numérica}
+
+\subsection{6. Algoritmo en un paso}
+
+Dado $\{\kappa_n\}$ y $\boldsymbol\varepsilon_{n+1}$:
+
+\begin{enumerate}
+  \item $\varepsilon_\text{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2}$.
+  \item Si $\varepsilon_\text{eq} > \kappa_n$: \textbf{carga activa}, $\kappa_{n+1} = \varepsilon_\text{eq}$. Si no: \textbf{descarga}, $\kappa_{n+1} = \kappa_n$.
+  \item Aplicar ley de daño con $\kappa_{n+1}$; saturar a $d_\text{max}$.
+  \item $\boldsymbol\sigma_{n+1} = (1 - d)\,\mathbf C_e\,\boldsymbol\varepsilon_{n+1}$.
+  \item Tangente: \textbf{secante} en descarga / sin daño / saturación; \textbf{algorítmica consistente} en carga activa con daño no saturado (ver §7).
+\end{enumerate}
+
+El algoritmo es \textbf{explícito}: no requiere Newton local. La actualización de $\kappa$ y $d$ es directa.
+
+\subsection{7. Tangente algorítmica consistente (ampliación)}
+
+\[
+\mathbf C^\text{alg} = \frac{\partial \boldsymbol\sigma_{n+1}}{\partial \boldsymbol\varepsilon_{n+1}}
+\]
+
+Derivando $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$:
+
+\[
+\mathbf C^\text{alg} = (1-d)\,\mathbf C_e - \boldsymbol\sigma^\text{eff} \otimes \frac{\partial d}{\partial \boldsymbol\varepsilon}
+\]
+
+con $\boldsymbol\sigma^\text{eff} = \mathbf C_e\,\boldsymbol\varepsilon$. La derivada del daño respecto a la deformación, por regla de la cadena:
+
+\[
+\frac{\partial d}{\partial \boldsymbol\varepsilon} = \frac{\partial d}{\partial \kappa}\,\frac{\partial \kappa}{\partial \boldsymbol\varepsilon}
+\]
+
+donde:
+
+\begin{itemize}
+  \item $\dfrac{\partial d}{\partial \kappa} = (1 - d)\left(\dfrac{1}{\kappa} + \alpha\right)$ para la ley exponencial. (Demostración: derivando $d = 1 - (\kappa_0/\kappa)e^{-\alpha(\kappa-\kappa_0)}$ y reagrupando vía $1 - d = (\kappa_0/\kappa)e^{-\alpha(\kappa-\kappa_0)}$.)
+\end{itemize}
+
+\begin{itemize}
+  \item $\dfrac{\partial \kappa}{\partial \boldsymbol\varepsilon}$ depende del régimen:
+  \item \textbf{Carga activa} ($\varepsilon_\text{eq} > \kappa_n$, $\kappa = \varepsilon_\text{eq}$):
+\end{itemize}
+    \[
+\dfrac{\partial \kappa}{\partial \boldsymbol\varepsilon} = \dfrac{\partial \varepsilon_\text{eq}}{\partial \boldsymbol\varepsilon} = \dfrac{1}{\varepsilon_\text{eq}}\begin{bmatrix}\varepsilon_{xx} \\ \varepsilon_{yy} \\ \tfrac{1}{2}\gamma_{xy}\end{bmatrix}
+\]
+\begin{itemize}
+  \item \textbf{Descarga} ($\varepsilon_\text{eq} \leq \kappa_n$): $\partial \kappa / \partial \boldsymbol\varepsilon = 0$.
+\end{itemize}
+
+\textbf{Tangente final}:
+
+\[
+\mathbf C^\text{alg} = \begin{cases}
+\mathbf C_e & \kappa \leq \kappa_0 \;(\text{sin daño}) \\
+(1-d)\,\mathbf C_e & \text{descarga} \\
+(1-d)\,\mathbf C_e \;-\; \dfrac{(1-d)(1/\kappa + \alpha)}{\varepsilon_\text{eq}}\,(\mathbf C_e\boldsymbol\varepsilon)(\mathbf M\boldsymbol\varepsilon)^\top & \text{carga activa, } d < d_\text{max} \\
+(1-d_\text{max})\,\mathbf C_e & d = d_\text{max} \;(\text{saturación})
+\end{cases}
+\]
+
+con $\mathbf M = \operatorname{diag}(1, 1, 1/2)$.
+
+\subsection{8. Pérdida de simetría}
+
+El producto externo $(\mathbf C_e\boldsymbol\varepsilon)(\mathbf M\boldsymbol\varepsilon)^\top$ es una matriz $3\times 3$ que \textbf{no es simétrica en general}. $\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales salvo en estados de deformación muy particulares (e.g. uniaxial puro alineado con ejes).
+
+Esto rompe la simetría heredada de la tangente secante $(1-d)\mathbf C_e$:
+
+\begin{itemize}
+  \item \textbf{Tangente secante}: simétrica. \texttt{IS\_SYMMETRIC = True} sería válido.
+  \item \textbf{Tangente consistente}: no simétrica en general. \textbf{\texttt{IS\_SYMMETRIC = False} obligatorio.}
+\end{itemize}
+
+Consecuencia algebraica (ADR 0003): el despachador elige LU en lugar de Cholesky/LDL\ensuremath{^{\top}} para sistemas globales que incluyan este material. El coste por paso aumenta ~30-50\% respecto a Cholesky, pero la convergencia cuadrática del Newton global con tangente consistente recupera ese coste con creces (típicamente 2-3 iteraciones en lugar de 5-10 con tangente secante).
+
+\subsection{9. Decisión de régimen durante el Newton}
+
+Durante una iteración del Newton global, el material recibe un $\boldsymbol\varepsilon$ trial y debe decidir carga/descarga comparando con $\kappa_n$ (el estado committed del paso anterior). La transición entre ramas (loading \ensuremath{\leftrightarrow} unloading) es \textbf{discontinua en la tangente}: al cruzar $\varepsilon_\text{eq} = \kappa_n$ el segundo término aparece/desaparece bruscamente. En la práctica esto no genera problemas porque el Newton converge antes de oscilar entre ramas; en problemas patológicos puede requerir continuation o arc-length.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: IsotropicDamage2D
+kind: material
+status: validated
+
+interface:
+  strain_dim: 3
+  primary_state_var: damage
+  is_symmetric: false      # tangente consistente no simétrica (ver §8)
+
+parameters:
+  - { name: E,          type: float, required: true,  desc: "Módulo de Young intacto" }
+  - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson" }
+  - { name: kappa_0,    type: float, required: true,  desc: "Umbral de deformación equivalente; daño nulo mientras κ ≤ κ_0" }
+  - { name: alpha,      type: float, required: true,  desc: "Velocidad de degradación exponencial (>0)" }
+  - { name: hypothesis, type: str,   required: false, default: "plane_stress", desc: "plane_stress | plane_strain (delegado a Elastic2D interno)" }
+  - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
+
+signature:
+  compute_state: "(ε: ndarray(3,), state_vars=None) -> (σ: ndarray(3,), C_tan: ndarray(3,3), state_vars')"
+  strain_kind: "plano Voigt — [ε_xx, ε_yy, γ_xy] con γ_xy = 2·ε_xy"
+
+state_schema:
+  kappa:  "float ≥ κ_0 — máxima deformación equivalente histórica"
+  damage: "float ∈ [0, DAMAGE_MAX] — variable de daño escalar isótropa"
+
+conventions:
+  sign: "σ > 0 ⇔ tracción; el modelo no distingue tracción de compresión en la activación del daño"
+  voigt: "γ_xy = 2·ε_xy en deformación; ε_eq usa norma M=diag(1,1,1/2)"
+  damage_irreversibility: "κ monótono no decreciente vía max(κ_old, ε_eq); d(κ) creciente"
+
+validity:
+  - "E > 0, κ_0 > 0, α > 0"
+  - "ν ∈ (-1, 0.5) (delegación a Elastic2D)"
+  - "hypothesis ∈ {'plane_stress', 'plane_strain'}"
+
+out_of_scope:
+  - "split tracción/compresión (Mazars, de Vree, Mises modificado); el modelo daña por igual en cualquier régimen"
+  - "anisotropía del daño (tensor de daño D vs escalar)"
+  - "regularización para evitar mesh-dependency en regime de ablandamiento (longitud característica, no-local, gradient)"
+  - "acoplamiento con plasticidad"
+  - "fatiga / acumulación cíclica del daño"
+  - "tangente consistente para IsotropicDamage1D — fuera del alcance de esta spec; misma deuda gemela"
+
+numerical_caveats:
+  - "Tangente consistente NO simétrica → IS_SYMMETRIC=False obliga al despachador algebraico a usar LU (ADR 0003). Costo por paso ~30-50% mayor que Cholesky pero convergencia cuadrática del Newton global lo compensa."
+  - "Transición loading↔unloading es discontinua en la tangente. Newton converge antes de oscilar entre ramas en casos típicos. Para problemas patológicos cerca del umbral, considerar arc-length."
+  - "Saturación d=DAMAGE_MAX corta la corrección consistente (∂d/∂κ deja de ser efectivamente (1-d)(1/κ+α)); el algoritmo devuelve tangente secante en ese caso para evitar términos espurios."
+  - "Sin regularización, la solución es mesh-dependent en régimen de ablandamiento (localización en una banda de elementos). Para benchmark cuantitativo se requiere mismo refinamiento de malla; para comparaciones cualitativas (presencia de banda, dirección) basta con regularización de gradiente o longitud característica (fuera de scope)."
+
+acceptance:
+  # Cubierto por tests/test_materials_unit.py · TestIsotropicDamage2D (preexistentes)
+  # y tests/test_damage2d_consistent_tangent.py (nuevos)
+  unit_existing_no_regression:
+    - name: secant_response_below_threshold
+      expect: "κ ≤ κ_0 ⇒ d=0, σ = C_e·ε, tangente = C_e (sin cambio respecto a versión secante anterior)"
+      tol_rel: 1.0e-12
+
+    - name: damage_evolution_exponential
+      expect: "para κ > κ_0, d cumple ley exponencial dentro de la fórmula"
+      tol_rel: 1.0e-10
+
+  unit_consistent_tangent:
+    - name: tangent_equals_secant_on_unloading
+      setup: "carga hasta κ>κ_0, descarga con ε de menor norma"
+      expect: "C_tan = (1-d)·C_e exacto (segundo término se anula con ∂κ/∂ε = 0)"
+      tol_rel: 1.0e-12
+
+    - name: tangent_equals_secant_below_threshold
+      setup: "ε pequeño, κ_old = κ_0"
+      expect: "C_tan = C_e (sin daño activo, ni secante con d=0 ni corrección)"
+      tol_rel: 1.0e-12
+
+    - name: tangent_equals_secant_at_saturation
+      setup: "carga hasta κ enorme tal que d alcanza DAMAGE_MAX"
+      expect: "C_tan = (1-DAMAGE_MAX)·C_e (el término consistente se corta porque ∂d/∂κ efectivamente 0 al saturar)"
+      tol_rel: 1.0e-12
+
+    - name: tangent_consistent_term_on_loading
+      setup: "carga activa con κ > κ_0 y d < DAMAGE_MAX"
+      expect: "C_tan ≠ (1-d)·C_e — incluye el término rank-1 -(1-d)(1/κ+α)/ε_eq · (Ce·ε) ⊗ (M·ε)"
+      verification: "compara contra fórmula explícita evaluada en el mismo estado"
+      tol_rel: 1.0e-9
+
+    - name: tangent_not_symmetric_in_loading
+      setup: "carga activa con estado de deformación no degenerado (ε_xx ≠ ε_yy, γ_xy ≠ 0)"
+      expect: "C_tan − C_tan^T ≠ 0 (al menos un elemento off-diagonal con diferencia significativa)"
+      verification: "‖C_tan - C_tan^T‖_F / ‖C_tan‖_F ≥ 0.01 en el caso de prueba"
+
+    - name: tangent_finite_difference_consistency
+      setup: "carga activa; calcular tangente por diferencia finita centrada (perturbación 1e-7) y comparar con cerrada"
+      expect: "‖C_tan_FD − C_tan_closed_form‖ / ‖C_tan‖ < 1e-5"
+      tol_rel: 1.0e-5
+
+  unit_arch:
+    - name: is_symmetric_attribute_is_false
+      expect: "IsotropicDamage2D.IS_SYMMETRIC == False (atributo declarado en clase)"
+
+  integration:
+    - name: quad4_damage_newton_converges_in_few_iter
+      setup: "Quad4 unitario, IsotropicDamage2D plane stress, carga uniaxial hasta régimen plenamente dañado"
+      expect: "Newton converge en ≤6 iteraciones por paso (evidencia de convergencia cuadrática con tangente consistente)"
+
+references:
+  - "Lemaitre J., Chaboche J.-L. (1990). Mechanics of Solid Materials. Cambridge UP. Cap. 7 (continuum damage mechanics)."
+  - "Oliver J. (1989). A consistent characteristic length for smeared cracking models. IJNME 28, 461-474."
+  - "Simó J.C., Ju J.W. (1987). Strain- and stress-based continuum damage models — I. Formulation. Int. J. Solids Struct. 23, 821-840 (tangente consistente para daño isótropo)."
+  - "de Souza Neto E.A., Perić D., Owen D.R.J. (2008). Computational Methods for Plasticity. Wiley. §12 (damage models)."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/materials/damage\_2d.py.
+  \item \textbf{Clase}: \texttt{IsotropicDamage2D}, registrada vía \texttt{@MaterialRegistry.register}. Declara \texttt{IS\_SYMMETRIC = False} como ClassVar (sobreescribe el default \texttt{True} de \texttt{Material}).
+  \item \textbf{Estado}: dict \texttt{\{'kappa': float, 'damage': float\}}. \texttt{PRIMARY\_STATE\_VAR = 'damage'}.
+  \item \textbf{Algoritmo \texttt{compute\_state}}:
+\end{itemize}
+\begin{enumerate}
+  \item Recuperar $\kappa_n$ y calcular $\varepsilon_\text{eq}(\boldsymbol\varepsilon)$.
+  \item Si $\varepsilon_\text{eq} > \kappa_n$ y $\kappa_{n+1} > \kappa_0$: rama de carga activa.
+  \item Calcular $d$ por la ley exponencial, saturar a \texttt{DAMAGE\_MAX}.
+  \item Calcular $\boldsymbol\sigma = (1-d)\mathbf C_e\boldsymbol\varepsilon$.
+  \item Tangente: rama según §7 (secante o consistente). En la rama consistente, calcular el término rank-1 una sola vez y restar a $(1-d)\mathbf C_e$.
+\end{enumerate}
+\begin{itemize}
+  \item \textbf{\texttt{admissibility\_scale}}: sin cambios respecto a versión previa, \texttt{E\ensuremath{\cdot}\ensuremath{\kappa}\_0} (umbral inicial --- la escala no evoluciona con el estado porque el criterio se mide contra $\kappa_0$, no contra $\kappa$).
+  \item \textbf{Compatibilidad}: el cambio rompe \texttt{IS\_SYMMETRIC} para este material. El despachador algebraico (ADR 0003) verifica \texttt{domain\_is\_symmetric} agregando \texttt{material.IS\_SYMMETRIC} sobre todos los materiales del dominio; basta un material con \texttt{IS\_SYMMETRIC=False} para que el solver elija LU.
+  \item \textbf{Tests}:
+  \item tests/test\_materials\_unit.py \ensuremath{\cdot} \texttt{TestIsotropicDamage2D} (existente, no regresión) + nueva clase \texttt{TestIsotropicDamage2DConsistentTangent}.
+  \item tests/test\_solid\_2d\_damage.py nuevo: integración Quad4 + IsotropicDamage2D + NonlinearSolver con tangente consistente.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada retroactivamente sobre material existente (tangente secante) y extendida con tangente algorítmica consistente. Sin ADR: extiende un material existente añadiendo un término a la tangente; no rompe contratos arquitecturales transversales. Sí cambia \texttt{IS\_SYMMETRIC} para este material, lo cual el despachador algebraico ya soporta vía agregación sobre el dominio (no requiere refactor).
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Decisión: la transición loading\ensuremath{\leftrightarrow}unloading se decide con $\kappa_n$ committed (no con $\kappa$ trial dentro del Newton). Esto es lo estándar y evita oscilaciones del Newton entre ramas en pasos con ambigüedad. Si el paso converge, $\kappa$ se compromete y la decisión es consistente con la trayectoria.
+  \item \textbf{2026-05-14} \ensuremath{\cdot} \texttt{IsotropicDamage1D} queda con tangente secante. Misma deuda gemela conceptual, pero fuera del alcance pactado (A2 era solo 2D). Si el usuario la prioriza luego, replicar es trivial: misma fórmula reducida a escalar.
+\end{itemize}
+
+
+\newpage
+
+\section{DruckerPrager2D}
+
+
+
+\textit{Orden de trabajo. El usuario escribe \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+
+Modelo elastoplástico \textbf{friccional} independiente de la velocidad. Suelos, hormigón, granulares, materiales cuasi-frágiles cohesivo-friccionales. Suaviza la pirámide hexagonal de Mohr-Coulomb a un \textbf{cono circular} en el espacio de tensiones principales, eliminando las aristas que complican el return mapping.
+
+Diferencia clave con J2:
+
+\begin{itemize}
+  \item \textbf{Dependencia de la presión}. La resistencia al corte aumenta con la presión de confinamiento (componente friccional).
+  \item \textbf{Plasticidad no asociada}. La dilatancia volumétrica real del flujo plástico ($\psi$) es típicamente menor que la fricción del criterio ($\phi$). Forzar $\psi = \phi$ (asociada) sobreestima la dilatancia y el volumen post-fluencia.
+  \item \textbf{Retorno al ápice}. El criterio define un cono con vértice; estados de prueba en zona puramente hidrostática extrema retornan al vértice (zona singular en la dirección de flujo).
+\end{itemize}
+
+Hipótesis cinemática soportada: \textbf{\texttt{plane\_strain}} únicamente en esta spec.
+
+\subsection{1. Descomposición aditiva y elasticidad}
+
+Pequeñas deformaciones: $\boldsymbol\varepsilon = \boldsymbol\varepsilon^e + \boldsymbol\varepsilon^p$. Ley elástica isótropa: $\boldsymbol\sigma = \mathbf C_e (\boldsymbol\varepsilon - \boldsymbol\varepsilon^p)$.
+
+\subsection{2. Criterio de fluencia (Drucker-Prager)}
+
+\[
+f(\boldsymbol\sigma, \alpha) = \sqrt{J_2} + \eta_f\,I_1 - k(\alpha) \;\leq\; 0
+\]
+
+con:
+
+\begin{itemize}
+  \item $J_2 = \tfrac{1}{2}\,\mathbf s : \mathbf s$, segundo invariante del desviador.
+  \item $I_1 = \operatorname{tr}(\boldsymbol\sigma) = \sigma_{xx} + \sigma_{yy} + \sigma_{zz}$, primer invariante.
+  \item $\eta_f$, coeficiente friccional del cono (adimensional, $\geq 0$).
+  \item $k(\alpha) = k_0 + H_k\,\alpha$, parámetro cohesivo con endurecimiento isótropo lineal.
+\end{itemize}
+
+La superficie es un cono con eje en la línea hidrostática ($\sigma_{xx} = \sigma_{yy} = \sigma_{zz}$), vértice en $I_1 = k/\eta_f$, abertura controlada por $\eta_f$.
+
+\subsection{3. Calibración con Mohr-Coulomb}
+
+Los parámetros $(\eta_f, k_0)$ se derivan de los parámetros físicos $(c_0, \phi)$ --- cohesión y ángulo de fricción interna --- según la variante del cono elegida:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{variant} & \textbf{$\eta_f$} & \textbf{$k_0$} \\
+\hline
+\texttt{plane\_strain\_matched} (default) & $\tan(\phi)/\sqrt{9 + 12\tan^2(\phi)}$ & $3\,c_0/\sqrt{9 + 12\tan^2(\phi)}$ \\
+\texttt{outer\_cone} & $2\sin(\phi)/[\sqrt 3\,(3 - \sin(\phi))]$ & $6\,c_0\cos(\phi)/[\sqrt 3\,(3 - \sin(\phi))]$ \\
+\texttt{inner\_cone} & $2\sin(\phi)/[\sqrt 3\,(3 + \sin(\phi))]$ & $6\,c_0\cos(\phi)/[\sqrt 3\,(3 + \sin(\phi))]$ \\
+\hline
+\end{tabularx}
+\end{center}
+\texttt{plane\_strain\_matched} es la variante que coincide exactamente con Mohr-Coulomb en condiciones de plane strain (Drucker, 1953). Las otras dos circunscriben (outer) o inscriben (inner) el hexágono de MC en el plano \ensuremath{\pi}. Como esta spec solo soporta plane strain, \texttt{plane\_strain\_matched} es el default natural.
+
+\subsection{4. Regla de flujo (no asociada por defecto)}
+
+Potencial plástico $g$ con coeficiente de \textbf{dilatancia} $\eta_g$ (función del ángulo de dilatancia $\psi$, calibrado con la misma fórmula que $\eta_f$ pero usando $\psi$):
+
+\[
+g(\boldsymbol\sigma) = \sqrt{J_2} + \eta_g\,I_1
+\]
+
+\[
+\dot{\boldsymbol\varepsilon}^p = \dot\gamma\,\frac{\partial g}{\partial \boldsymbol\sigma} = \dot\gamma\,\left(\frac{\mathbf s}{2\sqrt{J_2}} + \eta_g\,\mathbf I\right)
+\]
+
+Descomposición:
+\begin{itemize}
+  \item \textbf{Parte desviadora}: $\dot{\mathbf e}^p = \dot\gamma\,\mathbf s/(2\sqrt{J_2})$ --- análoga a J2.
+  \item \textbf{Parte volumétrica}: $\operatorname{tr}(\dot{\boldsymbol\varepsilon}^p) = 3\dot\gamma\,\eta_g$ --- \textbf{dilatación plástica positiva} si $\eta_g > 0$.
+\end{itemize}
+
+Si $\psi = \phi$ (i.e. $\eta_g = \eta_f$) el modelo se vuelve \textbf{asociado}; tangente algorítmica simétrica. Para $\psi < \phi$ (típico en suelos: $\psi \approx \phi/2$ o incluso $\psi = 0$, "non-dilatant"), el modelo es \textbf{no asociado} y la tangente algorítmica es \textbf{asimétrica}.
+
+\subsection{5. Endurecimiento isótropo lineal}
+
+\[
+\dot\alpha = \dot\gamma
+\]
+
+con $\alpha$ la \textbf{deformación plástica equivalente} (convención del proyecto para Drucker-Prager). La superficie crece manteniendo eje y abertura, solo $k$ aumenta linealmente.
+
+Endurecimiento por fricción/dilatancia (cambio de $\eta_f$ o $\eta_g$ con $\alpha$) queda fuera de esta spec --- escenario que no necesitamos hoy y que añade no-linealidad fuerte al return mapping.
+
+\subsection{6. Condiciones de Kuhn-Tucker}
+
+\[
+\dot\gamma \geq 0,\qquad f \leq 0,\qquad \dot\gamma\,f = 0
+\]
+
+\subsection{7. Variables internas}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Símbolo} & \textbf{Tipo} & \textbf{Significado} \\
+\hline
+$\boldsymbol\varepsilon^p$ & tensor 4 componentes \texttt{[xx, yy, zz, xy\_tensorial]} & deformación plástica \\
+$\alpha$ & escalar $\geq 0$ & deformación plástica equivalente (= acumulado de $\Delta\gamma$) \\
+\hline
+\end{tabularx}
+\end{center}
+\texttt{alpha} es la variable principal exportable (\texttt{PRIMARY\_STATE\_VAR = 'alpha'}).
+
+
+\section{Formulación numérica}
+
+\subsection{8. Esquema implícito --- Backward Euler}
+
+Dado $\{\boldsymbol\varepsilon^p_n, \alpha_n\}$ y $\boldsymbol\varepsilon_{n+1}$, predictor elástico:
+
+\[
+\boldsymbol\varepsilon^\text{trial} = \boldsymbol\varepsilon_{n+1} - \boldsymbol\varepsilon^p_n, \qquad \mathbf s^\text{trial} = 2G\,\mathbf e^\text{trial}_\text{dev},\qquad p^\text{trial} = K\,\operatorname{tr}(\boldsymbol\varepsilon^\text{trial})
+\]
+
+con $I_1^\text{trial} = 3\,p^\text{trial}$, $\sqrt{J_2^\text{trial}} = \|\mathbf s^\text{trial}\|/\sqrt{2}$.
+
+Función de fluencia trial:
+
+\[
+f^\text{trial} = \sqrt{J_2^\text{trial}} + \eta_f\,I_1^\text{trial} - k(\alpha_n)
+\]
+
+Si $f^\text{trial} \leq \text{tol}$ \ensuremath{\to} paso elástico. Si no, intentar \textbf{return regular}.
+
+\subsection{9. Return regular (cone surface)}
+
+La dirección desviadora $\hat{\mathbf n} = \mathbf s^\text{trial}/\sqrt{2 J_2^\text{trial}} = \mathbf s/\sqrt{2 J_2}$ es invariante bajo carga radial. Las actualizaciones son lineales en $\Delta\gamma$:
+
+\[
+\sqrt{J_2^{n+1}} = \sqrt{J_2^\text{trial}} - G\,\Delta\gamma
+\]
+\[
+p^{n+1} = p^\text{trial} - 3K\,\eta_g\,\Delta\gamma, \qquad I_1^{n+1} = 3\,p^{n+1}
+\]
+
+La consistencia $f(\sigma_{n+1}, \alpha_{n+1}) = 0$ con $\alpha_{n+1} = \alpha_n + \Delta\gamma$ y $k_{n+1} = k_0 + H_k(\alpha_n + \Delta\gamma)$ da:
+
+\[
+\boxed{\;\Delta\gamma = \frac{f^\text{trial}}{G + 9K\,\eta_f\,\eta_g + H_k}\;}
+\]
+
+\textbf{Forma cerrada} --- sin Newton local. Cada término del denominador:
+\begin{itemize}
+  \item $G$: cambio en $\sqrt{J_2}$ por la parte desviadora del flujo.
+  \item $9K\,\eta_f\,\eta_g$: cambio en $\eta_f I_1$ por la parte volumétrica dilatante del flujo (multiplicado por $\eta_f$ del criterio y $\eta_g$ del potencial).
+  \item $H_k$: endurecimiento.
+\end{itemize}
+
+\textbf{Actualizaciones}:
+
+\[
+\mathbf s^{n+1} = \frac{\sqrt{J_2^{n+1}}}{\sqrt{J_2^\text{trial}}}\,\mathbf s^\text{trial}
+\]
+
+\[
+\boldsymbol\sigma^{n+1} = \mathbf s^{n+1} + p^{n+1}\,\mathbf I
+\]
+
+\[
+\boldsymbol\varepsilon^p_{n+1} = \boldsymbol\varepsilon^p_n + \Delta\gamma\,\left(\frac{\mathbf s^{n+1}}{2\sqrt{J_2^{n+1}}} + \eta_g\,\mathbf I\right)
+\]
+
+\textbf{Condición de validez del return regular}: $\sqrt{J_2^{n+1}} \geq 0$. Si $\Delta\gamma_\text{reg} > \sqrt{J_2^\text{trial}}/G$, el desviador "se pasa de cero" y el algoritmo regular es inválido --- toca \textbf{return al ápice}.
+
+\subsection{10. Return al ápice}
+
+Cuando el estado de prueba cae en zona puramente hidrostática extrema (p\_trial muy traccionante respecto a la cohesión), la proyección al cono cae en su vértice, donde $\mathbf s = 0$ y la dirección desviadora $\hat{\mathbf n}$ no está definida.
+
+En el ápice: $\boldsymbol\sigma^{n+1} = (k_{n+1}/\eta_f)\,\mathbf I$ (puramente hidrostático), $\sqrt{J_2^{n+1}} = 0$.
+
+Por conservación volumétrica:
+
+\[
+p^{n+1} = p^\text{trial} - 3K\,\eta_g\,\Delta\gamma = \frac{k_{n+1}}{3\,\eta_f}
+\]
+
+con $k_{n+1} = k_0 + H_k(\alpha_n + \Delta\gamma)$. Despejando:
+
+\[
+\boxed{\;\Delta\gamma_\text{apex} = \frac{p^\text{trial}\,\eta_f - k(\alpha_n)/3 \cdot \eta_f \cdot 3}{3K\,\eta_f\,\eta_g + H_k} = \frac{3 p^\text{trial}\,\eta_f - k(\alpha_n)}{3K \cdot 3\eta_f\,\eta_g + H_k}\;}
+\]
+
+Reordeno: $3p^\text{trial}\,\eta_f - k(\alpha_n) = I_1^\text{trial}\,\eta_f - k(\alpha_n)$. Denominador: $9K\,\eta_f\,\eta_g + H_k$. (Equivalente a la fórmula regular sin el término $G$, porque la rama de apex es puramente volumétrica.)
+
+\[
+\Delta\gamma_\text{apex} = \frac{I_1^\text{trial}\,\eta_f - k(\alpha_n)}{9K\,\eta_f\,\eta_g + H_k}
+\]
+
+\textbf{Actualizaciones (apex)}:
+
+\[
+\mathbf s^{n+1} = 0,\qquad p^{n+1} = K(\operatorname{tr}(\boldsymbol\varepsilon_{n+1}) - 3\,\eta_g\,\Delta\gamma) \;\equiv\; \frac{k_{n+1}}{3\,\eta_f}
+\]
+
+\[
+\boldsymbol\sigma^{n+1} = p^{n+1}\,\mathbf I
+\]
+
+\[
+\boldsymbol\varepsilon^p_{n+1} = \boldsymbol\varepsilon^p_n + \Delta\gamma\,\eta_g\,\mathbf I + \boldsymbol\varepsilon^{p,\text{dev}}_\text{trial}
+\]
+
+(la parte desviadora plástica absorbe completamente el desviador de prueba, ya que $\mathbf s^{n+1} = 0$.)
+
+\subsection{11. Detección del régimen de retorno}
+
+Algoritmo de despacho:
+
+\begin{enumerate}
+  \item Calcular $\Delta\gamma_\text{reg}$ por la fórmula regular.
+  \item Si $\sqrt{J_2^\text{trial}} - G\,\Delta\gamma_\text{reg} \geq 0$ \ensuremath{\to} return regular.
+  \item Si no \ensuremath{\to} return al ápice con $\Delta\gamma_\text{apex}$.
+\end{enumerate}
+
+El criterio es geométricamente: el predictor cae más allá del ápice si la proyección desviadora exigiría reducir $\sqrt{J_2}$ por debajo de cero.
+
+\subsection{12. Tangente algorítmica consistente}
+
+\textbf{Return regular} ($\sqrt{J_2^{n+1}} > 0$):
+
+Por linealización del algoritmo:
+
+\[
+\mathbf C^\text{alg} = K\,\mathbf 1\otimes\mathbf 1 + 2G\left(1 - \frac{G\,\Delta\gamma}{\sqrt{J_2^\text{trial}}}\right)\mathbf I_\text{dev} + 2G\,\Theta\,\hat{\mathbf n}\otimes\hat{\mathbf n} - 3K\,\eta_g\,\mathbf 1\otimes \mathbf a_f - 3K\,\eta_f\,\mathbf a_g\otimes\mathbf 1 + \text{corrección}
+\]
+
+donde:
+\begin{itemize}
+  \item $\hat{\mathbf n} = \mathbf s^{n+1}/(2\sqrt{J_2^{n+1}})$ (dirección de flujo desviador, normalizada por convención).
+  \item $\mathbf 1 = (1,1,1,0)$ en notación 4 componentes (hidrostática).
+  \item $\Theta$, $\mathbf a_f$, $\mathbf a_g$: términos cruzados que recogen el acoplamiento entre cambio de $\sqrt{J_2}$ y endurecimiento.
+\end{itemize}
+
+Forma compacta (de Souza Neto §8.3.4):
+
+\[
+\mathbf C^\text{alg} = K\,\mathbf 1\otimes\mathbf 1 + 2G\,\Big(1 - \tfrac{G\Delta\gamma}{\sqrt{J_2^\text{trial}}}\Big)\,\mathbf I_\text{dev} - \frac{1}{G + 9K\eta_f\eta_g + H_k}\,\mathbf b_g \otimes \mathbf b_f
+\]
+
+con $\mathbf b_g = G\hat{\mathbf n} + 3K\eta_g\,\mathbf 1$, $\mathbf b_f = G\hat{\mathbf n} + 3K\eta_f\,\mathbf 1$. \textbf{Asimétrica si $\eta_f \neq \eta_g$} (no asociada).
+
+\textbf{Return al ápice} ($\sqrt{J_2^{n+1}} = 0$):
+
+\[
+\mathbf C^\text{alg} = K\,\Big(1 - \frac{3K\eta_f\eta_g}{3K\eta_f\eta_g + H_k/3}\Big)\,\mathbf 1\otimes\mathbf 1
+\]
+
+--- rigidez puramente volumétrica reducida (el material en el ápice se comporta como un fluido con compresibilidad finita; sin rigidez desviadora alguna).
+
+Forma equivalente más limpia: $\mathbf C^\text{alg}_\text{apex} = \dfrac{K\,H_k}{9K\eta_f\eta_g + H_k}\,\mathbf 1\otimes\mathbf 1$ (con $H_k=0$, el ápice se vuelve completamente plástico volumétrico y la tangente colapsa; este caso queda manejado en el código devolviendo un escalar pequeño $>0$ para evitar singularidad).
+
+\subsection{13. Tolerancia de fluencia}
+
+ADR 0006: \texttt{admissibility\_scale = k(\ensuremath{\alpha}) = k\_0 + H\_k\ensuremath{\cdot}\ensuremath{\alpha}} (escala cohesiva corriente del cono). Tiene unidades de esfuerzo, igual que $f$.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: DruckerPrager2D
+kind: material
+status: validated
+
+interface:
+  strain_dim: 3
+  primary_state_var: alpha
+  is_symmetric: false      # tangente asimétrica si no asociada (ψ ≠ φ)
+
+parameters:
+  - { name: E,          type: float, required: true,  desc: "Módulo de Young" }
+  - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson" }
+  - { name: cohesion,   type: float, required: true,  desc: "Cohesión c_0 inicial (esfuerzo)" }
+  - { name: phi_deg,    type: float, required: true,  desc: "Ángulo de fricción interna en grados; típico suelos 20-40°, hormigón 30-37°" }
+  - { name: psi_deg,    type: float, required: false, default: null, desc: "Ángulo de dilatancia en grados. Default = phi_deg (asociada). Típico no asociada: ψ < φ, e.g. 0 o φ/2." }
+  - { name: H,          type: float, required: false, default: 0.0, desc: "Endurecimiento isótropo lineal en cohesión H_k (≥0). H=0 ⇒ perfectamente plástico." }
+  - { name: hypothesis, type: str,   required: false, default: "plane_strain", desc: "plane_strain (único soportado)" }
+  - { name: variant,    type: str,   required: false, default: "plane_strain_matched", desc: "plane_strain_matched | outer_cone | inner_cone — calibración con Mohr-Coulomb" }
+  - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
+
+signature:
+  compute_state: "(ε: ndarray(3,), state_vars=None) -> (σ: ndarray(3,), C_alg: ndarray(3,3), state_vars')"
+  strain_kind: "plano Voigt — [ε_xx, ε_yy, γ_xy] con γ_xy = 2·ε_xy"
+
+state_schema:
+  eps_p:   "ndarray(4,) — [ε^p_xx, ε^p_yy, ε^p_zz, ε^p_xy_tensorial]"
+  alpha:   "float ≥ 0 — multiplicador plástico acumulado"
+
+conventions:
+  sign: "σ > 0 ⇔ tracción (Reglas §5)"
+  voigt: "γ_xy = 2·ε_xy en deformación; ε^p_xy en tensorial (sin factor 2)"
+  associated_flow: "ψ = φ ⇒ asociada (tangente simétrica); ψ ≠ φ ⇒ no asociada"
+
+validity:
+  - "E > 0, c_0 > 0, 0 ≤ φ < 90°, 0 ≤ ψ ≤ φ"
+  - "ν ∈ (-1, 0.5)"
+  - "H ≥ 0"
+  - "hypothesis == 'plane_strain' (único soportado en esta spec)"
+  - "variant ∈ {'plane_strain_matched', 'outer_cone', 'inner_cone'}"
+
+out_of_scope:
+  - "plane_stress — la proyección de Drucker-Prager con σ_zz=0 acoplada a regla de flujo dilatante es notoriamente delicada; difiere hasta caso real"
+  - "endurecimiento por cambio de φ y/o ψ con α — no lineal fuerte en el return mapping"
+  - "endurecimiento cinemático (back-stress hidrostático y desviador)"
+  - "cap (modelo cap-cone) para suelos compactables"
+  - "ablandamiento (H<0) — requiere regularización"
+  - "grandes deformaciones"
+
+numerical_caveats:
+  - "Tangente algorítmica asimétrica si ψ ≠ φ → IS_SYMMETRIC=False, el despachador algebraico usa LU (ADR 0003)."
+  - "Modos de carga muy traccionantes pueden caer en la rama de ápice. La detección automática del régimen (regular vs apex) está en el algoritmo; si en el futuro aparece oscilación entre ramas en pasos cerca de la transición, considerar smoothing con vertex regularization."
+  - "Con ψ = 0 (sin dilatancia) y H_k = 0, en la rama de ápice la tangente volumétrica se anula → singularidad. El código devuelve un valor de respaldo (rigidez volumétrica reducida no nula) para evitar matriz singular; típicamente sale del ápice en el siguiente paso."
+  - "El return regular puede generar α creciente con incrementos pequeños cerca de la transición regular↔apex. Newton global converge igual; si en problema concreto se detecta oscilación, usar arc-length."
+
+acceptance:
+  unit:
+    - name: parameter_validation
+      expect: "constructor rechaza variant inválida, φ ≥ 90°, ψ > φ, hypothesis distinto de plane_strain"
+
+    - name: calibration_matched_consistency
+      expect: "para variant='plane_strain_matched' con ψ = φ, asociada → η_f = η_g; con ψ = 0, η_g = 0 (sin dilatación)"
+
+    - name: paso_elastico_below_yield
+      expect: "ε pequeño; σ = C_e·ε, eps_p y alpha intactos"
+      tol_rel: 1.0e-10
+
+    - name: regular_return_under_shear
+      setup: "ε cortante puro suficiente para fluir (ε_xy = γ/2, sin parte hidrostática)"
+      expect: "return regular activo, α > 0, √J₂ del estado final = √(2/3)·k - η_f·I₁ ≥ 0 (cumple criterio)"
+      tol_rel: 1.0e-8
+
+    - name: apex_return_under_pure_tension
+      setup: "ε puramente hidrostática traccionante (ε_xx = ε_yy > 0, sin cortante)"
+      expect: "return al ápice; σ_xx = σ_yy = k/(3η_f) tras converger; √J₂ = 0"
+      tol_rel: 1.0e-8
+
+    - name: associated_tangent_is_symmetric
+      setup: "ψ = φ (asociada), estado plástico activo"
+      expect: "C_alg simétrica (‖C_alg − C_alg^T‖ < tol)"
+      tol_abs: 1.0e-8
+
+    - name: nonassociated_tangent_is_asymmetric
+      setup: "ψ = 0, φ = 30°, estado plástico activo no degenerado"
+      expect: "C_alg − C_alg^T ≠ 0 con norma significativa"
+
+    - name: tangent_matches_finite_difference
+      setup: "estado plástico regular; comparar C_alg cerrada con diferencia finita centrada"
+      expect: "error relativo < 1e-5"
+      tol_rel: 1.0e-5
+
+    - name: alpha_monotonic_under_increasing_load
+      expect: "bajo carga creciente α no decrece"
+
+    - name: unloading_recovers_C_e
+      setup: "cargar a plástico, descargar elásticamente"
+      expect: "tangente = C_e en el paso de descarga, α se conserva"
+      tol_rel: 1.0e-10
+
+    - name: unit_invariance_MPa_vs_Pa
+      expect: "mismo path adimensional en (MPa,mm,N) y (Pa,m,N) ⇒ α idéntico"
+      tol_rel: 1.0e-12
+
+  integration:
+    - name: quad4_pipeline_elastico
+      setup: "Quad4 unitario plane strain, carga muy por debajo del yield"
+      expect: "respuesta elástica pura, α=0"
+      tol_rel: 1.0e-8
+
+    - name: quad4_pipeline_plastico_converges
+      setup: "Quad4 unitario plane strain, carga que produce plasticidad activa, 4 pasos, max_iter=8"
+      expect: "Newton converge en cada paso, α > 0 al final"
+
+references:
+  - "Drucker D.C., Prager W. (1952). Soil mechanics and plastic analysis or limit design. Quart. Appl. Math. 10, 157-165."
+  - "Drucker D.C. (1953). Coulomb friction, plasticity, and limit loads. J. Appl. Mech. 21, 71-74. (calibración plane_strain_matched)"
+  - "Simó J.C., Hughes T.J.R. (1998). Computational Inelasticity. Springer. §6 (cone plasticity, apex return)."
+  - "de Souza Neto E.A., Perić D., Owen D.R.J. (2008). Computational Methods for Plasticity. Wiley. §8 (Drucker-Prager, tangentes algorítmicas detalladas)."
+  - "Chen W.F., Han D.J. (1988). Plasticity for Structural Engineers. Springer. §7 (cohesivo-friccionales)."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/materials/drucker\_prager\_2d.py.
+  \item \textbf{Clase}: \texttt{DruckerPrager2D}, registrada vía \texttt{@MaterialRegistry.register}. \texttt{IS\_SYMMETRIC = False} declarativo (la tangente puede ser asimétrica; el despachador agrega el flag sobre todos los materiales del dominio).
+  \item \textbf{Kernel Numba} \texttt{\_compute\_drucker\_prager\_plane\_strain}:
+\end{itemize}
+\begin{enumerate}
+  \item Predictor elástico desviador-volumétrico (paralelo a J2 plane strain, $\varepsilon^p_{zz}$ libre).
+  \item Check $f^\text{trial}$.
+  \item Si elástico: devolver \ensuremath{\sigma}\_trial restaurando contribución hidrostática y volumétrica.
+  \item Si no: intentar $\Delta\gamma_\text{reg}$ cerrado; comprobar $\sqrt{J_2^{n+1}} \geq 0$.
+  \item Si regular válido: actualizar \ensuremath{\sigma}, $\boldsymbol\varepsilon^p$, $\alpha$, tangente regular (de Souza Neto §8.3.4).
+  \item Si regular inválido: rama de ápice --- $\Delta\gamma_\text{apex}$ cerrado, \ensuremath{\sigma} puramente hidrostático, tangente volumétrica reducida.
+\end{enumerate}
+\begin{itemize}
+  \item \textbf{Cálculo de $(\eta_f, k_0, \eta_g)$}: en \texttt{\_\_init\_\_} desde $(c_0, \phi, \psi, \text{variant})$ --- sin coste runtime. Se valida $\psi \leq \phi$ (físicamente sensato).
+  \item \textbf{\texttt{admissibility\_scale}}: $k(\alpha) = k_0 + H \cdot \alpha$.
+  \item \textbf{Tests}:
+  \item tests/test\_materials\_unit.py \ensuremath{\cdot} \texttt{TestDruckerPrager2D}.
+  \item tests/test\_solid\_2d\_drucker\_prager.py.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada. Decisiones clave del alcance MVP:
+  \item Solo \texttt{plane\_strain} en esta entrega; \texttt{plane\_stress} con cono en \ensuremath{\sigma}\_zz=0 es notoriamente delicado y de uso geotécnico raro --- se difiere.
+  \item Parámetros físicos \texttt{(c\_0, \ensuremath{\varphi}, \ensuremath{\psi})} en lugar de adimensionales \texttt{(k\_0, \ensuremath{\eta}\_f, \ensuremath{\eta}\_g)} --- más natural para el usuario de geotecnia. Calibración interna por \texttt{variant}.
+  \item \textbf{No asociada por defecto} (\ensuremath{\psi} es parámetro independiente con default = \ensuremath{\varphi} que la fuerza a asociada solo si el usuario no especifica). Plasticidad asociada en suelos sobreestima dilatancia.
+  \item Endurecimiento solo en cohesión (lineal); fricción/dilatancia constantes.
+  \item \texttt{IS\_SYMMETRIC = False} declarativo a nivel material (independiente del caso particular de uso; conservador y consistente con el patrón del proyecto: el despachador agrega).
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Sin ADR. El modelo encaja en el patrón establecido por \texttt{VonMises2D} (kernel Numba, despacho hypothesis aunque solo soporte una, semántica trial/commit) y no rompe contratos transversales.
+\end{itemize}
+
+
+\newpage
+
+\chapter{Esquemas de Solución}
+
+\section{ModalSolver}
+
+
+
+\textit{Orden de trabajo. La especificación física y la formulación numérica son patrimonio del usuario (revisa con detalle). La IA implementa y rellena las secciones marcadas.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Análisis modal lineal de una estructura discretizada por FEM: cálculo de frecuencias naturales y modos de vibración no amortiguados. Hipótesis: linealidad geométrica y material, amortiguamiento nulo (\texttt{C = 0}), masa constante en el tiempo (lagrangeano total).
+
+\subsection{1. Problema físico}
+Vibración libre no amortiguada del sistema discreto:
+\[
+\mathbf M\,\ddot{\mathbf u}(t) + \mathbf K\,\mathbf u(t) = \mathbf 0.
+\]
+Solución armónica $\mathbf u(t) = \boldsymbol\phi\, e^{i\omega t}$. Sustituyendo:
+\[
+\bigl(\mathbf K - \omega^2 \mathbf M\bigr)\,\boldsymbol\phi = \mathbf 0.
+\]
+
+\subsection{2. Problema de autovalor generalizado}
+Solución no trivial requiere $\det(\mathbf K - \omega^2 \mathbf M) = 0$. Equivalente:
+\[
+\mathbf K\,\boldsymbol\phi_n = \omega_n^2\, \mathbf M\,\boldsymbol\phi_n, \qquad n = 1, \ldots, N_{\text{dof}}.
+\]
+Autovalores $\lambda_n = \omega_n^2 \ge 0$; autovectores $\boldsymbol\phi_n$ son los modos de vibración.
+
+\subsection{3. Propiedades del par $(\mathbf K, \mathbf M)$}
+\begin{itemize}
+  \item $\mathbf K$ simétrica, positiva (semi)definida tras Dirichlet.
+  \item $\mathbf M$ simétrica, \textbf{positiva definida} estrictamente para masa consistente (toda fila/columna tiene aporte de algún elemento con $\rho > 0$).
+  \item Espectro real no negativo: $\omega_n \in \mathbb R_{\ge 0}$.
+\end{itemize}
+
+\subsection{4. Salidas}
+\begin{itemize}
+  \item Frecuencias naturales $\omega_n$ (rad/s), $f_n = \omega_n/(2\pi)$ (Hz), períodos $T_n = 1/f_n$ (s).
+  \item Modos $\boldsymbol\phi_n$ M-ortonormales: $\boldsymbol\phi_i^\top \mathbf M\, \boldsymbol\phi_j = \delta_{ij}$.
+  \item Ordenación ascendente: $\omega_1 \le \omega_2 \le \ldots \le \omega_{n_\text{modes}}$.
+\end{itemize}
+
+
+\section{Formulación numérica}
+
+\subsection{5. Reducción por Dirichlet}
+Por eliminación directa (ADR 0004) con operador $\mathbf T \in \mathbb R^{N_\text{dof} \times N_\text{libre}}$ que selecciona DOFs libres:
+\[
+\mathbf K_\text{red} = \mathbf T^\top \mathbf K\, \mathbf T, \qquad \mathbf M_\text{red} = \mathbf T^\top \mathbf M\, \mathbf T.
+\]
+El problema reducido $\mathbf K_\text{red}\,\boldsymbol\phi_\text{red} = \omega^2\, \mathbf M_\text{red}\,\boldsymbol\phi_\text{red}$ se resuelve sobre los DOFs libres. El término $\mathbf g_\text{indep}$ de restricciones lineales no homogéneas no aplica: los modos son solución del problema homogéneo (los modos de la estructura con apoyos a desplazamiento prescrito no nulo coinciden con los de apoyos nulos; el campo prescrito solo entra en la respuesta estática). Tras resolver, expansión $\boldsymbol\phi = \mathbf T\,\boldsymbol\phi_\text{red}$; en DOFs prescritos $\phi_i = 0$.
+
+\subsection{6. Algoritmo numérico: Lanczos con shift-invert}
+ARPACK vía \texttt{scipy.sparse.linalg.eigsh}:
+\[
+\text{eigsh}(\mathbf K_\text{red},\; k = n_\text{modes},\; \mathbf M = \mathbf M_\text{red},\; \sigma,\; \text{which}\!=\!\text{`LM'},\; \text{tol}).
+\]
+\begin{itemize}
+  \item \textbf{Shift-invert} transforma el problema en $\bigl(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red}\bigr)^{-1}\mathbf M_\text{red}\,\boldsymbol\phi = \mu\,\boldsymbol\phi$ con $\mu = 1/(\omega^2 - \sigma)$. Buscar \texttt{which="LM"} (mayor magnitud de $\mu$) equivale a buscar autovalores cercanos al shift $\sigma$.
+  \item $\sigma = 0$ por defecto: las frecuencias más bajas, que son las relevantes en ingeniería estructural.
+  \item Internamente ARPACK factoriza $(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red})$ una sola vez y la reusa en cada iteración Lanczos.
+\end{itemize}
+
+\subsection{7. Normalización}
+\texttt{eigsh} con $\mathbf M$ explícita devuelve autovectores M-ortonormales sin reescalado adicional. Signo arbitrario (autovector definido módulo signo); convención de signo se documenta solo si emerge como preferencia (no parte del contrato).
+
+\subsection{8. Post-procesado}
+\begin{itemize}
+  \item $\omega_n = \sqrt{\lambda_n}$ (clip a cero los autovalores ligeramente negativos por ruido numérico, $|\lambda| < 10^{-14}\,\lambda_\text{max}$).
+  \item $f_n = \omega_n / (2\pi)$, $T_n = 1/f_n$ (con $T_n = \infty$ si $\omega_n = 0$, modo de cuerpo rígido).
+  \item Reordenación ascendente por $\omega_n$.
+\end{itemize}
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: ModalSolver
+kind: solver
+status: validated       # draft → implemented → validated
+
+interface:
+  yaml_type: modal      # solver: { type: modal }
+  output: ModalResult   # campos: frequencies_hz, frequencies_rad, periods, modes, n_modes
+
+parameters:
+  - { name: n_modes,   type: int,   required: true,  desc: "Número de modos a calcular" }
+  - { name: sigma,     type: float, required: false, default: 0.0,     desc: "Shift (rad²/s²) para shift-invert; 0 → frecuencias más bajas" }
+  - { name: which,     type: str,   required: false, default: "LM",    desc: "Estrategia ARPACK: LM | SM | LA | SA | BE" }
+  - { name: tolerance, type: float, required: false, default: 1.0e-9,  desc: "Tolerancia ARPACK sobre el residuo del autovalor" }
+  - { name: lumping,   type: str,   required: false, default: "consistent", desc: "Discretización de masa; solo 'consistent' en fase 1" }
+  - { name: linear_algebra, type: str, required: false, default: "auto", desc: "Backend para la factorización de (K - σM) interna a shift-invert (ADR 0003)" }
+
+requirements:
+  - "Todos los materiales del modelo declaran `density > 0` (ADR 0008). Densidad cero genera M_red singular → eigsh con sigma=0 falla; el solver propaga el error con mensaje físico."
+  - "Al menos un DOF libre tras Dirichlet."
+  - "n_modes < N_libre (ARPACK exige k < n)."
+
+conventions:
+  units:        "heredadas del modelo (ADR 0008); ω en rad/s, f en Hz, T en s consistentes con kg/N/m o equivalentes."
+  frequencies:  "ω y f expuestos simultáneamente; el usuario consulta cualquiera."
+  modes:        "M-ortonormales (Φᵀ M Φ = I); signo arbitrario por modo."
+  ordering:     "ascendente en ω: ω₁ ≤ ω₂ ≤ … ≤ ω_n_modes."
+  rigid_body:   "modos de cuerpo rígido aparecen con ω≈0; T=∞ se reporta sin error."
+
+out_of_scope:
+  - "Masa lumped (fase 2 del ADR 0009)."
+  - "Masas modales efectivas y factores de participación (fase 7, análisis sísmico)."
+  - "Modos complejos con amortiguamiento no proporcional."
+  - "Análisis modal sobre estado deformado (modos de pequeña amplitud alrededor de configuración prestressed) — diferido."
+
+acceptance:
+  verification:
+    - name: barra_axial_empotrada_libre
+      setup: |
+        Barra 1D elástica empotrada en x=0, libre en x=L. Discretización con
+        N=20 elementos Truss2D alineados con el eje x. E=210e9 Pa, ρ=7850 kg/m³,
+        A=1e-4 m², L=1.0 m.
+      expect: |
+        Frecuencias propias analíticas (ondas axiales en barra empotrada-libre):
+          ω_n = ((2n-1)π / (2L)) · sqrt(E/ρ),    n = 1, 2, 3, …
+        Los primeros 3 modos calculados coinciden con la solución analítica.
+      tol_rel: 0.01
+    - name: viga_bernoulli_simplemente_apoyada
+      setup: |
+        Viga Bernoulli-Euler simplemente apoyada en sus dos extremos.
+        Discretización con N=20 elementos Frame2DEuler alineados con el eje x.
+        E=210e9 Pa, ρ=7850 kg/m³, A=1e-4 m², I=8.33e-10 m⁴, L=1.0 m.
+      expect: |
+        Frecuencias propias analíticas (flexión transversal):
+          ω_n = (nπ/L)² · sqrt(E·I / (ρ·A)),    n = 1, 2, 3, …
+        Los primeros 3 modos coinciden con la solución analítica.
+      tol_rel: 0.02
+  specific:
+    - name: ortonormalidad_de_masa
+      setup: "Cualquier modelo bien formado tras resolver el problema modal."
+      expect: "Φᵀ M Φ = I (n_modes × n_modes)."
+      tol_abs: 1.0e-10
+    - name: ortogonalidad_de_rigidez
+      setup: "Mismo modelo."
+      expect: "Φᵀ K Φ = diag(ω²₁, …, ω²_n)."
+      tol_rel: 1.0e-8
+    - name: dirichlet_anula_modos_en_prescritos
+      setup: "Barra empotrada-libre; nodo x=0 con ux=0."
+      expect: "Componente del modo en el DOF prescrito = 0 exacto."
+      tol_abs: 1.0e-14
+    - name: density_faltante_lanza_value_error
+      setup: "Material sin density declarada en el modelo."
+      expect: "ModalSolver.solve() lanza ValueError listando los materiales afectados (mismo patrón que assemble_self_weight, ADR 0008)."
+
+references:
+  - "Bathe K.-J., Finite Element Procedures (2014), cap. 9 (matriz de masa consistente) y cap. 11 (algoritmos de autovalor)."
+  - "Cook, Malkus & Plesha, Concepts and Applications of Finite Element Analysis, §11.3–§11.5."
+  - "Hughes T. J. R., The Finite Element Method, cap. 7."
+  - "Wilson E. L., Three-Dimensional Static and Dynamic Analysis of Structures, cap. 10."
+  - "Lehoucq, Sorensen, Yang — ARPACK Users' Guide (Lanczos con shift-invert)."
+  - "ADR 0003 — Capa algebraica (factorización reutilizable de (K − σM))."
+  - "ADR 0008 — Material.density."
+  - "ADR 0009 — Análisis modal y dinámico (este solver es la fase 1: el análisis modal estricto, problema generalizado K·φ = ω²·M·φ; el análisis dinámico transitorio entra en fases 3-7)."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/math/solvers/modal.py (clase \texttt{ModalSolver}, registrada vía \texttt{@SolverRegistry.register}).
+  \item \textbf{Backend algebraico}: fenix/math/linalg/eigen.py (clase \texttt{EigenSolver} envolviendo \texttt{scipy.sparse.linalg.eigsh}).
+  \item \textbf{Tipo de resultado}: \texttt{ModalResult} --- dataclass frozen con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes}, \texttt{n\_modes}, \texttt{converged}. Expone \texttt{free\_vibration(M, u0, u0\_dot, t)} para reconstruir analíticamente la respuesta temporal de vibración libre sin amortiguamiento por superposición modal --- solución cerrada de \texttt{M\ensuremath{\cdot}ü + K\ensuremath{\cdot}u = 0} proyectada sobre los modos calculados (modos rígidos tratados aparte con evolución lineal \texttt{q\_n(t) = a\_n + b\_n\ensuremath{\cdot}t}).
+  \item \textbf{Entrypoint público}: \texttt{fenix.run\_modal} para uso programático; \texttt{fenix.run\_yaml} despacha automáticamente a \texttt{run\_modal} cuando el YAML declara \texttt{solver: type: ModalSolver}.
+  \item \textbf{Pipeline}: \texttt{Assembler.assemble\_system()} \ensuremath{\to} \texttt{Assembler.assemble\_mass\_matrix()} \ensuremath{\to} \texttt{Assembler.reduce\_pair(K, M)} \ensuremath{\to} \texttt{EigenSolver.solve(K\_red, M\_red, n\_modes)} \ensuremath{\to} expansión \texttt{\ensuremath{\Phi} = T \ensuremath{\cdot} \ensuremath{\Phi}\_red} \ensuremath{\to} \texttt{ModalResult}.
+  \item \textbf{Caché}: \texttt{Assembler} cachea \texttt{M\_global} con el lumping usado; reusos posteriores del mismo análisis no recomputan.
+  \item \textbf{Validación de density}: pre-chequeo agregado en \texttt{Assembler.assemble\_mass\_matrix} con el mismo patrón de ADR 0008 --- \texttt{assemble\_self\_weight}.
+  \item \textbf{Tests}:
+  \item tests/test\_modal.py --- 13 tests cubriendo:
+  \item \texttt{TestModalAxialBar}: barra empotrada-libre, 20 elementos Truss2D, frecuencias contra \texttt{\ensuremath{\omega}\_n = ((2n-1)\ensuremath{\pi}/(2L))\ensuremath{\cdot}\ensuremath{\surd}(E/\ensuremath{\rho})} (tol 1\%).
+  \item \texttt{TestModalSimplySupportedBeam}: viga biapoyada, 20 elementos Frame2DEuler, frecuencias contra \texttt{\ensuremath{\omega}\_n = (n\ensuremath{\pi}/L)\ensuremath{^{2}}\ensuremath{\cdot}\ensuremath{\surd}(EI/(\ensuremath{\rho}A))} (tol 2\%).
+  \item \texttt{TestModalAlgebraicProperties}: ortonormalidad \texttt{\ensuremath{\Phi}\ensuremath{^{\top}}M\ensuremath{\Phi} = I} (atol 1e-10) y ortogonalidad \texttt{\ensuremath{\Phi}\ensuremath{^{\top}}K\ensuremath{\Phi} = diag(\ensuremath{\omega}\ensuremath{^{2}})} (rtol 1e-8) en ambos modelos.
+  \item \texttt{TestModalSolverContract}: errores agregados (\texttt{density} faltante, \texttt{lumping="lumped"} no implementado, \texttt{run\_modal} sin solver ni n\_modes).
+  \item \texttt{TestModalYamlPipeline}: pipeline end-to-end desde YAML.
+  \item \textbf{Notas de traducción}:
+  \item El parámetro \texttt{linear\_algebra} está en el constructor por coherencia con los demás solvers, pero en fase 1 no se usa: ARPACK gestiona internamente la factorización LU de \texttt{(K − \ensuremath{\sigma}M)} para shift-invert. Cuando se enchufe a la capa algebraica (ADR 0003), se podrá inyectar Cholesky o LDL\ensuremath{^{\top}}.
+  \item El bloque \texttt{convergence:} del YAML (ADR 0007) se omite silenciosamente para \texttt{ModalSolver} igual que para \texttt{LinearSolver}: no hay iteración Newton ni norma de residuo configurable; la tolerancia es la propia de ARPACK (\texttt{tolerance:}).
+  \item Matriz de masa consistente "translacional invariante rotacional" para \texttt{Truss*} y \texttt{Cable*} (\texttt{M = kron([[2,1],[1,2]] \ensuremath{\cdot} \ensuremath{\rho}AL/6, I\_dim)}). Para frames se ensambla la masa local axial + Hermitiana cúbica y se rota con \texttt{T\textasciicircum{}T \ensuremath{\cdot} M\_local \ensuremath{\cdot} T}. Para Frame3D se incluye masa torsional con momento polar geométrico \texttt{Jp = Iy + Iz} (no la constante de Saint-Venant \texttt{J}, que rige la rigidez). Para sólidos 2D, integración por la cuadratura del propio elemento (Tri3 usa fórmula analítica exacta porque su cuadratura 1-punto sería insuficiente).
+  \item Inercia rotacional propia de sección (\texttt{\ensuremath{\rho}I\ensuremath{\cdot}L}) \textbf{incluida} en los DOFs rotacionales de Frame2D (Euler, Timoshenko, EulerCorot) y Frame3D --- coherente con Timoshenko y con la rigidez \texttt{K\_local} que tiene términos rotacionales puros (ADR 0009 §1).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-13} \ensuremath{\cdot} Validado. Los 13 tests de \texttt{tests/test\_modal.py} cubren los criterios de \texttt{acceptance} (verificación analítica + propiedades algebraicas + contrato de errores + pipeline YAML) y pasan con las tolerancias declaradas. Promovido \texttt{status: validated}.
+\end{itemize}
+
+
+\newpage
+
+\section{NewmarkSolver}
+
+
+
+\textit{Orden de trabajo. La especificación física y la formulación numérica son patrimonio del usuario (revisa con detalle). La IA implementa y rellena las secciones marcadas.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+Análisis dinámico transitorio \textbf{lineal} de una estructura discretizada por FEM: integración temporal directa de la ecuación semidiscreta de movimiento bajo cargas dependientes del tiempo. Hipótesis: linealidad geométrica y material (K constante), masa M constante (lagrangeano total), amortiguamiento Rayleigh proporcional \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K}. Apoyos Dirichlet constantes en el tiempo. La no-linealidad (Newton dentro de cada paso) se difiere a la fase 4 del ADR 0009.
+
+\subsection{1. Ecuación de movimiento semidiscreta}
+Tras la discretización espacial por FEM, el problema continuo
+\[
+\rho\,\ddot{\mathbf u} - \operatorname{div}\boldsymbol\sigma = \mathbf b(\mathbf x, t)
+\]
+se reduce al sistema acoplado de ODEs:
+\[
+\mathbf M\,\ddot{\mathbf u}(t) + \mathbf C\,\dot{\mathbf u}(t) + \mathbf K\,\mathbf u(t) = \mathbf F(t),
+\]
+con condiciones iniciales $\mathbf u(0) = \mathbf u_0$, $\dot{\mathbf u}(0) = \dot{\mathbf u}_0$ y condiciones de contorno Dirichlet $\mathbf u_s(t) = \mathbf g$ constantes.
+
+\subsection{2. Amortiguamiento Rayleigh}
+\[
+\mathbf C = \alpha\,\mathbf M + \beta\,\mathbf K,
+\]
+con coeficientes calibrados a partir de dos pares modales $(\xi_1, \omega_1)$ y $(\xi_2, \omega_2)$:
+\[
+\alpha = \frac{2\,\omega_1\omega_2\,(\xi_1\omega_2 - \xi_2\omega_1)}{\omega_2^2 - \omega_1^2}, \qquad
+  \beta = \frac{2\,(\xi_2\omega_2 - \xi_1\omega_1)}{\omega_2^2 - \omega_1^2}.
+\]
+La razón de amortiguamiento del modo $n$-ésimo resulta $\xi_n = \tfrac{1}{2}(\alpha/\omega_n + \beta\omega_n)$ --- exacta en $\omega_1, \omega_2$ y suavemente sobreamortiguada fuera del rango. El usuario también puede pasar \texttt{(\ensuremath{\alpha}, \ensuremath{\beta})} directos.
+
+\subsection{3. Salidas}
+\begin{itemize}
+  \item $\mathbf u(t_k)$, $\dot{\mathbf u}(t_k)$, $\ddot{\mathbf u}(t_k)$ para cada paso temporal $k = 0, 1, \ldots, N_t$.
+  \item Vector de instantes $t_k = k\,\Delta t$.
+  \item Diagnósticos: $\alpha, \beta$ Rayleigh efectivos; número de pasos; tiempo de factorización vs tiempo de pasos.
+\end{itemize}
+
+
+\section{Formulación numérica}
+
+\subsection{4. Método de Newmark-\ensuremath{\beta} (a-form)}
+Familia paramétrica con $(\beta, \gamma)$. Predictores:
+\[
+\tilde{\mathbf u}_{n+1} = \mathbf u_n + \Delta t\,\dot{\mathbf u}_n + \tfrac{\Delta t^2}{2}(1 - 2\beta)\,\ddot{\mathbf u}_n,
+\]
+\[
+\tilde{\dot{\mathbf u}}_{n+1} = \dot{\mathbf u}_n + \Delta t\,(1 - \gamma)\,\ddot{\mathbf u}_n.
+\]
+
+Sistema efectivo en aceleraciones:
+\[
+\bigl(\mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K\bigr)\,\ddot{\mathbf u}_{n+1} \;=\; \mathbf F_{n+1} - \mathbf C\,\tilde{\dot{\mathbf u}}_{n+1} - \mathbf K\,\tilde{\mathbf u}_{n+1}.
+\]
+
+Correctores:
+\[
+\mathbf u_{n+1} = \tilde{\mathbf u}_{n+1} + \beta\Delta t^2\,\ddot{\mathbf u}_{n+1}, \qquad
+  \dot{\mathbf u}_{n+1} = \tilde{\dot{\mathbf u}}_{n+1} + \gamma\Delta t\,\ddot{\mathbf u}_{n+1}.
+\]
+
+\subsection{5. Aceleración inicial}
+$\ddot{\mathbf u}_0$ se calcula consistentemente con la ecuación de movimiento en $t = 0$:
+\[
+\mathbf M\,\ddot{\mathbf u}_0 = \mathbf F(0) - \mathbf C\,\dot{\mathbf u}_0 - \mathbf K\,\mathbf u_0.
+\]
+
+\subsection{6. Parámetros canónicos}
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{Esquema} & \textbf{\ensuremath{\beta}} & \textbf{\ensuremath{\gamma}} & \textbf{Propiedades} \\
+\hline
+\textbf{Average acceleration (default)} & 1/4 & 1/2 & Incondicionalmente estable, sin amortiguamiento numérico, exactitud $O(\Delta t^2)$ \\
+Linear acceleration & 1/6 & 1/2 & Condicionalmente estable ($\Delta t \le 2\sqrt{3}/\omega_{\max}$), $O(\Delta t^2)$ \\
+Fox-Goodwin & 1/12 & 1/2 & Condicionalmente estable, $O(\Delta t^4)$ \\
+Diferencias centradas & 0 & 1/2 & Explícito; condicionalmente estable ($\Delta t \le 2/\omega_{\max}$), $O(\Delta t^2)$ \\
+\hline
+\end{tabularx}
+\end{center}
+\subsection{7. Imposición de Dirichlet con apoyos constantes}
+Mismo mecanismo que estática (ADR 0004 fase 1) con operador $\mathbf T$ que selecciona DOFs libres y $\mathbf g$ que recoge los valores prescritos: $\mathbf u = \mathbf T\,\mathbf u_\text{free} + \mathbf g$. Como $\mathbf g$ es constante, $\dot{\mathbf u} = \mathbf T\,\dot{\mathbf u}_\text{free}$ y $\ddot{\mathbf u} = \mathbf T\,\ddot{\mathbf u}_\text{free}$. El sistema efectivo se proyecta a DOFs libres:
+\[
+\mathbf A_\text{eff,red}\,\ddot{\mathbf u}_{\text{free},n+1} = \mathbf T^\top\bigl(\mathbf F_{n+1} - \mathbf K\,\mathbf g\bigr) - \mathbf C_\text{red}\,\tilde{\dot{\mathbf u}}_\text{free} - \mathbf K_\text{red}\,\tilde{\mathbf u}_\text{free},
+\]
+donde $\mathbf A_\text{eff,red} = \mathbf M_\text{red} + \gamma\Delta t\,\mathbf C_\text{red} + \beta\Delta t^2\,\mathbf K_\text{red}$. El término $\mathbf T^\top\,\mathbf K\,\mathbf g$ se precalcula una vez. La expansión final a globales es $\mathbf u_n = \mathbf T\,\mathbf u_{\text{free},n} + \mathbf g$.
+
+\subsection{8. Factorización reutilizable}
+Con $\Delta t$ constante y problema lineal, $\mathbf A_\text{eff,red}$ es constante. Se factoriza una vez al inicio (ADR 0003 --- \texttt{FactorizedSolver}) y cada paso es una resolución triangular barata. Para $N_t$ pasos sobre $N_\text{libre}$ DOFs: coste $\sim O(\text{factor})_\text{una vez} + N_t \cdot O(N_\text{libre})_\text{por paso}$.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: NewmarkSolver
+kind: solver
+status: validated       # draft → implemented → validated
+
+interface:
+  yaml_type: NewmarkSolver
+  output: TransientResult   # campos: t_history, u_history, udot_history, uddot_history
+
+parameters:
+  - { name: t_end,     type: float, required: true,                desc: "Tiempo final del análisis (s)" }
+  - { name: dt,        type: float, required: true,                desc: "Paso temporal constante (s)" }
+  - { name: beta,      type: float, required: false, default: 0.25, desc: "Parámetro β de Newmark (default: average acceleration)" }
+  - { name: gamma,     type: float, required: false, default: 0.5,  desc: "Parámetro γ de Newmark" }
+  - { name: rayleigh,  type: dict,  required: false, default: null, desc: "Amortiguamiento Rayleigh: {alpha, beta} directos o {xi1, omega1, xi2, omega2} para calibración modal" }
+  - { name: u0,        type: ndarray, required: false, default: null, desc: "Desplazamiento inicial (ndof,); cero por defecto" }
+  - { name: u0_dot,    type: ndarray, required: false, default: null, desc: "Velocidad inicial (ndof,); cero por defecto" }
+  - { name: F_func,    type: callable, required: false, default: null, desc: "Callback Python F_func(t) -> ndarray (ndof,); cero por defecto" }
+  - { name: linear_algebra, type: str, required: false, default: "auto", desc: "Backend para factorizar A_eff (ADR 0003)" }
+  - { name: lumping,   type: str, required: false, default: "consistent", desc: "Discretización de masa; solo 'consistent' en esta fase" }
+
+requirements:
+  - "Todos los materiales del modelo declaran `density > 0` (ADR 0008)."
+  - "K lineal y constante (hipótesis de pequeñas deformaciones, material elástico)."
+  - "Apoyos Dirichlet constantes en el tiempo."
+
+conventions:
+  units:   "heredadas del modelo (ADR 0008); t en s, ω en rad/s, F en N consistente con kg/N/m."
+  damping: "Rayleigh proporcional: C = α·M + β·K. Si se pasan (ξ₁,ω₁),(ξ₂,ω₂), (α,β) se derivan automáticamente."
+  stability: |
+    Default (β=1/4, γ=1/2) es incondicionalmente estable. Para β=0 (diferencias
+    centradas) o β=1/6 (lineal) el usuario es responsable de que Δt ≤ 2/ω_max;
+    el solver no comprueba esta cota automáticamente.
+
+out_of_scope:
+  - "No-linealidad (Newton dentro de Newmark) — fase 4 del ADR 0009."
+  - "Apoyos dependientes del tiempo (multi-support excitation sísmica) — diferido."
+  - "Δt adaptativo — diferido."
+  - "HHT-α, generalized-α y otros esquemas con amortiguamiento numérico — diferidos."
+
+acceptance:
+  verification:
+    - name: oscilador_1gdl_no_amortiguado
+      setup: |
+        Sistema 1 GDL: M=1, K=ω²=25 (ω=5 rad/s), C=0. Condiciones iniciales
+        u₀=1, u̇₀=0. F(t)=0. Δt=ω·T/100 (100 pasos por período). Integrar
+        durante 4 períodos.
+      expect: |
+        u(t) = cos(ω·t) exacto. Error máximo en u durante el intervalo
+        < 1% (β=1/4 tiene error de período O(Δt²) bajo control con 100
+        pasos por período).
+      tol_rel: 0.01
+    - name: oscilador_1gdl_amortiguado_rayleigh
+      setup: |
+        Sistema 1 GDL: M=1, K=25, C=2·ξ·ω·M con ξ=0.05 (sub-amortiguado).
+        u₀=1, u̇₀=0, F=0. Δt = T/100, t_end = 4·T. Construir C vía
+        Rayleigh con un único par (ξ, ω).
+      expect: |
+        u(t) = e^(-ξωt)·(cos(ω_d·t) + (ξω/ω_d)·sin(ω_d·t)) con
+        ω_d = ω·√(1-ξ²). Error máximo < 2 %.
+      tol_rel: 0.02
+    - name: viga_voladizo_carga_subita_modal_vs_newmark
+      setup: |
+        Voladizo Frame2DEuler (20 elementos) con carga puntual aplicada en
+        el extremo en t=0 como step function. Δt = T₁/40 (T₁ período del
+        primer modo), t_end = 2·T₁. Sin amortiguamiento.
+      expect: |
+        La reconstrucción modal de la respuesta (superposición de primeros
+        5 modos forzados por F(t)=H(t)·F₀ con solución analítica conocida)
+        coincide con Newmark a < 5 %.
+      tol_rel: 0.05
+    - name: orden_de_convergencia
+      setup: |
+        Oscilador 1 GDL no amortiguado integrado con β=1/4, γ=1/2 a
+        Δt, Δt/2, Δt/4. Calcular el error máximo en u contra solución
+        analítica.
+      expect: |
+        El cociente de errores e(Δt)/e(Δt/2) tiende a 4 (orden 2 exacto).
+      tol_rel: 0.5  # tolerancia sobre el cociente: 4 ± 2
+  specific:
+    - name: rayleigh_calibration
+      setup: "Dados (ξ₁=0.02, ω₁=10), (ξ₂=0.05, ω₂=100), calibrar (α, β)."
+      expect: |
+        α = 2·ω₁·ω₂·(ξ₁·ω₂ − ξ₂·ω₁)/(ω₂² − ω₁²) ≈ 0.303,
+        β = 2·(ξ₂·ω₂ − ξ₁·ω₁)/(ω₂² − ω₁²) ≈ 9.6e-4.
+        Y verificar ξ(ω_n) = (α/ω_n + β·ω_n)/2 reproduce ξ₁ en ω₁ y ξ₂ en ω₂.
+      tol_rel: 1.0e-10
+
+references:
+  - "Newmark N. M. (1959), A method of computation for structural dynamics, J. Eng. Mech. Div. ASCE."
+  - "Bathe K.-J., Finite Element Procedures (2014), cap. 9 (matriz de masa) y cap. 9.4 (Newmark)."
+  - "Hughes T. J. R., The Finite Element Method, cap. 9 (algoritmos de integración temporal)."
+  - "Chopra A. K., Dynamics of Structures, cap. 5 (1 GDL) y cap. 15 (MDOF Newmark)."
+  - "ADR 0003 — Capa algebraica (factorización reutilizable de A_eff)."
+  - "ADR 0007 — Convergencia y tolerancias."
+  - "ADR 0009 — Análisis modal y dinámico (este solver es la fase 3)."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewmarkSolver}, registrada vía \texttt{@SolverRegistry.register}).
+  \item \textbf{Amortiguamiento}: fenix/math/damping.py (\texttt{rayleigh\_from\_modes}, \texttt{rayleigh\_xi}).
+  \item \textbf{Tipo de resultado}: \texttt{TransientResult} --- dataclass frozen con \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history}, \texttt{n\_steps}, \texttt{alpha\_rayleigh}, \texttt{beta\_rayleigh}, \texttt{converged}.
+  \item \textbf{Entrypoint público}: \texttt{fenix.run\_transient} para uso programático; \texttt{fenix.run\_yaml} despacha automáticamente cuando el YAML declara \texttt{solver: type: NewmarkSolver}.
+  \item \textbf{Pipeline}: \texttt{Assembler.assemble\_system()} \ensuremath{\to} \texttt{Assembler.assemble\_mass\_matrix()} \ensuremath{\to} \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K} \ensuremath{\to} reducción simultánea por Dirichlet (operador \texttt{T}) \ensuremath{\to} cálculo de \texttt{ü\ensuremath{_{0}}} \ensuremath{\to} factorización única de \texttt{A\_eff\_red = M\_red + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C\_red + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_red} \ensuremath{\to} bucle de pasos con resolución triangular reutilizada.
+  \item \textbf{Tests}:
+  \item tests/test\_newmark.py --- 14 tests:
+  \item \texttt{TestRayleighCalibration}: \texttt{(\ensuremath{\alpha}, \ensuremath{\beta})} reproduce \ensuremath{\xi} objetivo en \ensuremath{\omega}\ensuremath{_{1}}, \ensuremath{\omega}\ensuremath{_{2}}; errores agregados (\ensuremath{\omega} iguales, no positivos).
+  \item \texttt{TestNewmark1DofUndamped}: vibración libre \texttt{u(t) = cos(\ensuremath{\omega}t)} a 1 \%; estado inicial preservado.
+  \item \texttt{TestNewmark1DofDamped}: respuesta sub-amortiguada \texttt{e\textasciicircum{}(-\ensuremath{\xi}\ensuremath{\omega}t)\ensuremath{\cdot}(cos(\ensuremath{\omega}\_d\ensuremath{\cdot}t) + ...)} a 2 \%; coeficientes Rayleigh propagados al \texttt{TransientResult}.
+  \item \texttt{TestNewmark1DofStepResponse}: \texttt{u(t) = (F\ensuremath{_{0}}/K)(1 − cos(\ensuremath{\omega}t))} a 0.1 \%.
+  \item \texttt{TestNewmarkConvergenceOrder}: cociente de errores al refinar \ensuremath{\Delta}t \ensuremath{\in} {T/40, T/80, T/160} cae en \texttt{[3.5, 4.5]} \ensuremath{\to} orden 2 confirmado.
+  \item \texttt{TestNewmarkContract}: validaciones de constructor y \texttt{run\_transient}.
+  \item \texttt{TestNewmarkYamlPipeline}: end-to-end desde YAML.
+  \item \textbf{Notas de traducción}:
+  \item \textbf{Factorización única}: con \texttt{\ensuremath{\Delta}t} constante y problema lineal, \texttt{A\_eff\_red} es invariante; se factoriza al inicio (\texttt{A\_solver.factorize(A\_eff)}) y cada paso es una sustitución triangular barata (ADR 0003 --- \texttt{FactorizedSolver}).
+  \item \textbf{\texttt{reduce\_pair} vs \texttt{reduce} triple}: en el problema modal \texttt{reduce\_pair(K, M)} basta porque \texttt{g} no entra en autovalores. En Newmark se manejan tres matrices (\texttt{K, M, C}) y un término constante \texttt{F\_dir = T\ensuremath{^{\top}}K\ensuremath{\cdot}g} para apoyos no nulos; se hace explícitamente en \texttt{NewmarkSolver.solve()} sin un helper unificado (no aporta valor centralizarlo con un solo consumidor).
+  \item \textbf{Aceleración inicial consistente}: \texttt{M\ensuremath{\cdot}ü\ensuremath{_{0}} = F(0) − C\ensuremath{\cdot}u̇\ensuremath{_{0}} − K\ensuremath{\cdot}u\ensuremath{_{0}}} resuelve un sistema lineal aparte; se usa el dispatcher de la capa algebraica sobre \texttt{M\_red} (siempre SPD si la masa es consistente y la densidad estrictamente positiva).
+  \item \textbf{\texttt{F\_func} opcional}: si es \texttt{None}, se trata como vector cero (vibración libre). El callback se invoca una vez por paso con \texttt{t\_\{n+1\}}; el usuario es responsable de la coherencia temporal (no se reusan valores entre pasos).
+  \item \textbf{El bloque \texttt{convergence:} del YAML} (ADR 0007) se omite para \texttt{NewmarkSolver} igual que para \texttt{LinearSolver} y \texttt{ModalSolver}: la fase 3 es lineal y no hay iteración Newton interna; cuando entre la fase 4 (Newton dentro de cada paso), el bloque se reincorporará.
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-13} \ensuremath{\cdot} Validado. Los 14 tests de \texttt{tests/test\_newmark.py} cubren \texttt{acceptance.verification} (osciladores 1 GDL no amortiguado / amortiguado / step / orden de convergencia) y \texttt{acceptance.specific} (calibración Rayleigh). Promovido \texttt{status: validated}.
+\end{itemize}
+
+
+\newpage
+
+\section{NewtonNewmarkSolver}
+
+
+
+\textit{Variante de \texttt{NewmarkSolver} según la regla de variantes}
+
+\textit{(Reglas.md §4). Documenta \textbf{solo lo que cambia} respecto al padre. Implementa}
+
+\textit{la \textbf{fase 4 del ADR 0009}; reusa todas las decisiones arquitecturales del}
+
+\textit{ADR padre --- sin ADR nuevo.}
+
+
+
+\section{Qué cambia respecto a \texttt{NewmarkSolver}}
+
+\texttt{NewmarkSolver} integra \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + K\ensuremath{\cdot}u = F(t)} asumiendo \textbf{K constante}:
+factoriza \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K} una vez y cada paso temporal es una
+resolución triangular barata.
+
+\texttt{NewtonNewmarkSolver} resuelve el mismo problema cuando **la rigidez no es
+constante**: hay materiales con historia (plasticidad, daño) o no linealidad
+geométrica. En cada paso temporal se introduce un bucle de \textbf{Newton-Raphson}
+sobre el residuo dinámico, hasta cumplir el criterio de convergencia.
+
+\subsection{Residuo dinámico en cada paso}
+
+En el instante $t_{n+1}$ las incógnitas son $(\mathbf u_{n+1}, \dot{\mathbf u}_{n+1}, \ddot{\mathbf u}_{n+1})$
+ligadas por los correctores Newmark:
+
+\[
+\mathbf u_{n+1} = \tilde{\mathbf u}_{n+1} + \beta\Delta t^2\,\ddot{\mathbf u}_{n+1}, \qquad
+  \dot{\mathbf u}_{n+1} = \tilde{\dot{\mathbf u}}_{n+1} + \gamma\Delta t\,\ddot{\mathbf u}_{n+1}
+\]
+
+(con predictores idénticos a la fase 3). El residuo dinámico es:
+
+\[
+\mathbf R(\ddot{\mathbf u}_{n+1}) \;=\; \mathbf F_\text{ext}(t_{n+1}) \;-\; \mathbf F_\text{int}(\mathbf u_{n+1}) \;-\; \mathbf C\,\dot{\mathbf u}_{n+1} \;-\; \mathbf M\,\ddot{\mathbf u}_{n+1} \;-\; \mathbf F_\text{dir}
+\]
+
+donde $\mathbf F_\text{int}(\mathbf u)$ es el vector de fuerzas internas no lineales
+(plástico, dañado, etc.) que el \texttt{Assembler.assemble\_non\_linear\_system} ya
+calcula para los solvers estáticos (ADR 0003 + ADR 0006 + ADR 0008).
+
+\subsection{Jacobiano dinámico tangente}
+
+Derivando $\mathbf R$ respecto a $\ddot{\mathbf u}_{n+1}$ usando los correctores:
+
+\[
+\mathbf J \;=\; -\frac{\partial \mathbf R}{\partial \ddot{\mathbf u}_{n+1}} \;=\; \mathbf M \;+\; \gamma\Delta t\,\mathbf C \;+\; \beta\Delta t^2\,\mathbf K_\text{t}
+\]
+
+donde $\mathbf K_\text{t} = \partial \mathbf F_\text{int}/\partial \mathbf u$ es la
+rigidez tangente del estado corriente. La iteración es:
+
+\[
+\mathbf J\,\delta \ddot{\mathbf u} = \mathbf R, \qquad \ddot{\mathbf u}_{n+1}^{(k+1)} = \ddot{\mathbf u}_{n+1}^{(k)} + \delta \ddot{\mathbf u}
+\]
+
+Los desplazamientos y velocidades se actualizan con los mismos correctores
+Newmark tras cada update de $\ddot{\mathbf u}_{n+1}$.
+
+\subsection{Amortiguamiento Rayleigh --- heredado, constante en el tiempo}
+
+$\mathbf C = \alpha\,\mathbf M + \beta_R\,\mathbf K_0$ con $\mathbf K_0$ la
+rigidez \textbf{elástica de referencia} (la primera ensamblada en $t = 0$, $\mathbf u = 0$).
+No se actualiza con la plasticidad: el Rayleigh es modelo aproximado de
+amortiguamiento estructural, no consecuencia de la cinemática elastoplástica.
+Mantenerlo constante evita un acoplamiento ad-hoc que ningún código de
+referencia (Abaqus, ANSYS, OpenSees) realiza por defecto.
+
+\subsection{Reducción y commit de estado}
+
+\begin{itemize}
+  \item \textbf{Reducción por Dirichlet} heredada de la fase 3 (ADR 0004): mismo operador $\mathbf T$ y $\mathbf g$ constantes; el residuo y el jacobiano se proyectan a DOFs libres antes de cada solve.
+  \item \textbf{Commit de variables internas}: al converger el paso, se llama \texttt{assembler.commit\_all\_states()} --- los estados $(\boldsymbol\varepsilon^p, \alpha, \kappa, d, \ldots)$ pasan de \textit{trial} a \textit{committed}. Mismo patrón que \texttt{NonlinearSolver} y \texttt{ArcLengthSolver}. Si el paso no converge, los estados trial se descartan (no se llama commit) y se reporta error.
+\end{itemize}
+
+\subsection{Convergencia (ADR 0007)}
+
+Criterio dual fuerza + desplazamiento, calibrado al primer paso temporal con
+la escala del ensamblaje inicial:
+
+\begin{itemize}
+  \item $\|\mathbf R\|/(\text{atol} + \text{rtol}\,\|\mathbf F\|)\,\leq 1$
+  \item $\|\delta \mathbf u\|/(\text{atol} + \text{rtol}\,\|\mathbf u\|)\,\leq 1$
+\end{itemize}
+
+Idéntico al \texttt{NonlinearSolver} estático. La calibración se hace una vez al
+inicio del análisis; las tolerancias son adimensionales (invariantes bajo
+cambio de unidades) gracias a la calibración con \texttt{force\_scale}/\texttt{disp\_scale}.
+
+\subsection{Factorización por iteración}
+
+A diferencia de \texttt{NewmarkSolver} (que factoriza $\mathbf J$ una sola vez al
+inicio), aquí $\mathbf K_\text{t}$ cambia con cada iteración, así que $\mathbf J$
+debe re-factorizarse. Se mantiene el patrón de \textbf{Newton modificado opcional}
+(ADR 0003 fase 2): si \texttt{freeze\_tangent\_after\_iter} es \texttt{int}, se factoriza fresco
+las primeras N iteraciones del paso y se reusa la factorización en las
+siguientes. \texttt{None} \ensuremath{\Rightarrow} Newton estándar (re-factoriza cada iteración).
+
+\subsection{Recuperación del comportamiento lineal}
+
+Si todos los materiales del modelo son lineales, $\mathbf K_\text{t} \equiv \mathbf K_0$
+constante y el residuo se anula en una iteración de Newton (\ensuremath{\Delta}x exacto en el
+primer solve). Por tanto **\texttt{NewtonNewmarkSolver} con materiales lineales
+reproduce exactamente \texttt{NewmarkSolver}** (sin discretización extra ni error
+adicional). Esto se valida en los acceptance.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: NewtonNewmarkSolver
+kind: solver
+status: validated
+extends: NewmarkSolver       # variante según Reglas §4
+
+interface:
+  type_yaml: NewtonNewmarkSolver
+  pipeline_kind: transient    # mismo que NewmarkSolver
+
+parameters_extra_to_NewmarkSolver:
+  - { name: convergence,                type: ConvergenceCriterion, required: false, desc: "Política ADR 0007. Default: ConvergenceCriterion() con rtols de fenix.constants." }
+  - { name: max_iter,                   type: int,                 required: false, default: 20, desc: "Máximo iteraciones Newton por paso temporal." }
+  - { name: freeze_tangent_after_iter,  type: int or None,          required: false, default: null, desc: "Si int, Newton modificado: factoriza fresco las primeras N iter y reusa después (ADR 0003 fase 2)." }
+
+parameters_inherited:
+  # Idénticos a NewmarkSolver: t_end, dt, beta, gamma, rayleigh, u0, u0_dot,
+  # F_func, linear_algebra, lumping. Ver docs/specs/NewmarkSolver.md.
+
+state_handling:
+  commit: "assembler.commit_all_states() tras converger cada paso"
+  rollback: "estado trial descartado si el paso no converge → RuntimeError"
+
+acceptance:
+  recovery_linear:
+    - name: linear_material_matches_NewmarkSolver
+      setup: "Mismo modelo y carga que un caso analítico de NewmarkSolver (oscilador 1 GDL, viga), pero con NewtonNewmarkSolver"
+      expect: "u_history idéntico (rtol 1e-10) al de NewmarkSolver — convergencia en 1-2 iter por paso"
+
+  nonlinear:
+    - name: oscilador_1gdl_elastoplastico_libre
+      setup: "1 nodo, Truss2D con Elastoplastic1D, masa concentrada, condición inicial u_0 más allá del yield, vibración libre (F=0)"
+      expect: "u(t) refleja decaimiento por disipación plástica; α (deformación plástica acumulada) > 0 al final"
+
+    - name: viga_voladizo_elastoplastica_pulso
+      setup: "Frame2DEuler con varios elementos, masa distribuida, pulso de carga concentrada en el extremo libre"
+      expect: "respuesta no lineal con redistribución plástica; converge en pocas iter por paso (max ≤6 típicamente)"
+
+  convergence:
+    - name: newton_converges_in_few_iter
+      setup: "paso plástico activo en un benchmark"
+      expect: "número de iteraciones Newton por paso ≤ max_iter; raramente excede 8 con tangente algorítmica consistente"
+
+references:
+  - "ADR 0009 §Fase 4 — Transitorio no lineal Newmark + Newton"
+  - "Hughes T.J.R. (2000). The Finite Element Method, cap. 7-9 (Newmark, Newton dentro de paso temporal)"
+  - "Crisfield M.A. (1991). Non-Linear Finite Element Analysis of Solids and Structures, vol. 2 cap. 24 (dinámica no lineal)"
+  - "Spec padre: [docs/specs/NewmarkSolver.md](NewmarkSolver.md)"
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\begin{itemize}
+  \item \textbf{Archivo}: fenix/math/solvers/newmark.py --- junto al padre.
+  \item \textbf{Clase}: \texttt{NewtonNewmarkSolver(NewmarkSolver)}, registrada con \texttt{@SolverRegistry.register}. Hereda \texttt{\_\_init\_\_} con kwargs adicionales \texttt{convergence}, \texttt{max\_iter}, \texttt{freeze\_tangent\_after\_iter}. Sobrescribe \texttt{solve()}.
+  \item \textbf{Flujo de \texttt{solve()}}:
+\end{itemize}
+\begin{enumerate}
+  \item Ensamblar $\mathbf M$, ensamblar sistema no lineal inicial para obtener $\mathbf K_0$ y $\mathbf F_\text{int,0}$.
+  \item Calibrar amortiguamiento Rayleigh con $\mathbf K_0$ (constante en el tiempo).
+  \item Reducir por Dirichlet (mismo $\mathbf T$, $\mathbf g$, $\mathbf F_\text{dir}$ que la fase 3).
+  \item Aceleración inicial consistente: $\mathbf M\,\ddot{\mathbf u}_0 = \mathbf F_\text{ext}(0) - \mathbf F_\text{int}(\mathbf u_0) - \mathbf C\,\dot{\mathbf u}_0 - \mathbf F_\text{dir}$.
+  \item Bucle temporal con Newton interno: predictor \ensuremath{\to} iteración $(\mathbf R, \mathbf J = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K_\text{t})$, factoriza/solve, actualiza correctores; converger; commit.
+  \item Volcar historial; reportar éxito.
+\end{enumerate}
+\begin{itemize}
+  \item \textbf{Refactor del padre}: la fase 3 (\texttt{NewmarkSolver}) sigue intacta. La subclase no extrae métodos del padre por ahora (el flujo no lineal es lo suficientemente distinto como para que la herencia sea estructural, no compartición de pasos internos). Si emergen variantes adicionales (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}) y se ve que comparten \textit{este} flujo no lineal específico, entonces se refactoriza al patrón con \texttt{\_solve\_step} virtual.
+  \item \textbf{Despacho YAML}: \texttt{solver: type: NewtonNewmarkSolver} activado vía \texttt{SolverRegistry} y \texttt{run\_yaml}. Como en \texttt{NewmarkSolver}, \texttt{PIPELINE\_KIND = "transient"} declarativo: si futura regla disparo C reemplaza el \texttt{isinstance} en \texttt{entry.run\_yaml}, no se rompe.
+  \item \textbf{Tests}:
+  \item tests/test\_newmark\_nonlinear.py nuevo: acceptance.
+  \item Cobertura de regresión de los tests de \texttt{NewmarkSolver} permanece intacta (la subclase no toca el padre).
+\end{itemize}
+
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada como \textbf{variante} de \texttt{NewmarkSolver} aplicando la nueva regla §4 (registrada en el mismo commit que esta spec). Sin ADR nuevo: reusa las decisiones de ADR 0009 fase 4 (residuo, jacobiano, conmutar Newton dentro del paso). Sin entrada propia en el manual estructural --- la subclase es invisible al usuario API (excepto por el \texttt{type} en YAML y los parámetros extra).
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Decisión: \textbf{subclase} sobre \texttt{NewmarkSolver} en lugar de bandera \texttt{nonlinear=True} en la misma clase. Razones: (i) más explícito en el código y en el YAML (\texttt{type} distinto para análisis distinto); (ii) evita condicionales que ensucian el flujo lineal de la fase 3; (iii) deja sitio para variantes adicionales (HHT-\ensuremath{\alpha} no lineal, generalized-\ensuremath{\alpha}) por composición. El ADR 0009 fila "Fase 4" decía "\texttt{NewmarkSolver} (mismo, con \texttt{nonlinear=True})" --- interpretación textualista vs. arquitectural: la regla §4 nueva legitima la elección de subclase, y el patrón conserva el espíritu (mismo análisis, mismas decisiones, mismo entrypoint) sin la implementación literal.
+  \item \textbf{2026-05-14} \ensuremath{\cdot} Amortiguamiento Rayleigh queda fijado con $\mathbf K_0$ (rigidez elástica de referencia) y constante en el tiempo. Alternativa rechazada: Rayleigh con $\mathbf K_\text{t}$ corriente --- no es la convención estándar y crea coupling artificial entre la disipación viscosa y la plástica. Documentado en sección "Amortiguamiento Rayleigh --- heredado".
+\end{itemize}
+
+
+\newpage
+
+\chapter{Elementos — catálogo}
+
+
+
+\textit{Referencia rápida de los elementos implementados. Una entrada por elemento. Para detalles físicos/numéricos \ensuremath{\to} código fuente.}
+
+\textit{> \textbf{Convenciones}: \texttt{STRAIN\_DIM} = dimensión Voigt esperada del material asociado (1 = axial escalar, 3 = 2D \texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\gamma}\_xy]}, 6 = 3D). DOFs por nodo = \texttt{DOF\_NAMES}.}
+
+
+
+\section{Truss2D --- barra axial 2D}
+
+Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos; transmite exclusivamente esfuerzo axial.
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Interpolación lineal del desplazamiento entre los dos nodos.
+  \item Deformación axial uniforme en el elemento.
+\end{itemize}
+
+\subsection{Formulación}
+Cosenos directores del eje: \texttt{c = (x\ensuremath{_{2}}−x\ensuremath{_{1}})/L}, \texttt{s = (y\ensuremath{_{2}}−y\ensuremath{_{1}})/L}.
+
+\begin{lstlisting}
+ε     = B · u_e,          B = (1/L) · [−c, −s, c, s]
+K_e   = (E·A / L) · dᵀd,  d = [−c, −s, c, s]
+F_int = σ·A · d
+
+\end{lstlisting}
+
+\subsection{Convenciones}
+\begin{itemize}
+  \item Convención de signos: \texttt{\ensuremath{\sigma} > 0 \ensuremath{\Leftrightarrow} \ensuremath{\varepsilon} > 0 (elongación)}.
+  \item \texttt{STRAIN\_DIM = 1}: la deformación que recibe el material es un escalar (no Voigt).
+  \item La orientación de los nodos no afecta el resultado (\texttt{K\_e} y \texttt{F\_int} son invariantes bajo su permutación).
+\end{itemize}
+
+\subsection{Parámetros}
+\begin{itemize}
+  \item \texttt{A} --- área de la sección transversal.
+\end{itemize}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} reparte \texttt{b \ensuremath{\cdot} A \ensuremath{\cdot} L\ensuremath{_{0}} / 2} por nodo en cada componente global (forma cerrada exacta para \texttt{b} uniforme). Útil para peso propio: \texttt{b = (0, -\ensuremath{\rho}\ensuremath{\cdot}g)}.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item Pequeñas deformaciones (\texttt{|\ensuremath{\varepsilon}| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}}) y pequeños desplazamientos.
+  \item Cargas exclusivamente axiales. Si la carga transversal sobre la barra no es despreciable \ensuremath{\to} \texttt{Frame2DEuler} / \texttt{Frame2DTimoshenko}.
+\end{itemize}
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2D}.
+  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss2D}.
+  \item Spec: docs/specs/Truss2D.md.
+  \item Referencia: Bathe, \textit{Finite Element Procedures}, §4.2.1.
+\end{itemize}
+
+
+\section{Truss2DCorot --- armadura 2D corotacional}
+
+Barra axial 2D en régimen de \textbf{grandes desplazamientos y rotaciones con pequeña deformación} (Updated Lagrangian). Hereda de \texttt{Truss2D}; comparte DOFs, parámetros y contrato con el material.
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Longitud y cosenos directores se recalculan en configuración \textbf{corriente} en cada evaluación.
+  \item Deformación ingenieril corotacional: \texttt{\ensuremath{\varepsilon} = (l − L\ensuremath{_{0}})/L\ensuremath{_{0}}}.
+\end{itemize}
+
+\subsection{Formulación}
+\begin{lstlisting}
+d = [−c_θ, −s_θ, c_θ, s_θ]      (dirección corriente del eje)
+n = [−s_θ,  c_θ, s_θ, −c_θ]     (perpendicular al eje)
+K_M   = (E·A / L₀) · d·dᵀ
+K_G   = (N / l) · n·nᵀ           (rigidez geométrica)
+K_T   = K_M + K_G
+F_int = N · d
+
+\end{lstlisting}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item Heredado de \texttt{Truss2D}: \texttt{compute\_body\_load(b)} reparte \texttt{b \ensuremath{\cdot} A \ensuremath{\cdot} L\ensuremath{_{0}} / 2} por nodo, evaluado en geometría de referencia (aproximación estándar para cargas conservadoras en formulaciones corotacionales).
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item \texttt{|\ensuremath{\varepsilon}| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}} (pequeña deformación axial).
+  \item Desplazamientos y rotaciones de cualquier magnitud.
+  \item Cargas exclusivamente axiales.
+  \item \textbf{Fuera de alcance}: pandeo por bifurcación (se capta ablandamiento precrítico pero no el punto crítico; para snap-through usar arc-length).
+\end{itemize}
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2DCorot} (3 tests, uno por criterio de aceptación).
+  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss2DCorot}.
+  \item Spec: docs/specs/Truss2DCorot.md.
+  \item Referencias: Crisfield §3.3, Belytschko §4.5.
+\end{itemize}
+
+
+\section{Truss3D --- barra axial 3D}
+
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite exclusivamente esfuerzo axial. Régimen estrictamente de \textbf{linealidad geométrica}.
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Interpolación lineal del desplazamiento entre los dos nodos.
+  \item Deformación axial uniforme en el elemento.
+  \item Configuración inicial fija: \texttt{L\ensuremath{_{0}}}, \texttt{cₓ}, \texttt{c\_y}, \texttt{c\_z} no se actualizan con los desplazamientos.
+\end{itemize}
+
+\subsection{Formulación}
+Cosenos directores del eje: \texttt{cₓ = (x\ensuremath{_{2}}−x\ensuremath{_{1}})/L}, \texttt{c\_y = (y\ensuremath{_{2}}−y\ensuremath{_{1}})/L}, \texttt{c\_z = (z\ensuremath{_{2}}−z\ensuremath{_{1}})/L}.
+
+\begin{lstlisting}
+ε     = B · u_e,          B = (1/L) · [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]
+K_e   = (E·A / L) · d·dᵀ,  d = [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]    (6×6, rango 1)
+F_int = σ·A · d
+
+\end{lstlisting}
+
+\subsection{Convenciones}
+\begin{itemize}
+  \item Convención de signos: \texttt{\ensuremath{\sigma} > 0 \ensuremath{\Leftrightarrow} \ensuremath{\varepsilon} > 0 (elongación)}.
+  \item \texttt{STRAIN\_DIM = 1}: la deformación que recibe el material es un escalar (no Voigt).
+  \item La orientación de los nodos no afecta el resultado (\texttt{K\_e} y \texttt{F\_int} son invariantes bajo su permutación).
+  \item Acepta nodos con 2 ó 3 coordenadas (completa con \texttt{z = 0} si la tercera falta).
+\end{itemize}
+
+\subsection{Parámetros}
+\begin{itemize}
+  \item \texttt{A} --- área de la sección transversal.
+\end{itemize}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} reparte \texttt{b \ensuremath{\cdot} A \ensuremath{\cdot} L\ensuremath{_{0}} / 2} por nodo en cada componente global (forma cerrada exacta). Útil para peso propio: \texttt{b = (0, 0, -\ensuremath{\rho}\ensuremath{\cdot}g)}.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item Pequeñas deformaciones (\texttt{|\ensuremath{\varepsilon}| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}}), pequeños desplazamientos y pequeñas rotaciones.
+  \item Cargas exclusivamente axiales.
+  \item Para grandes rotaciones en 3D \ensuremath{\to} \texttt{Truss3DCorot}.
+\end{itemize}
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3D}.
+  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss3D}.
+  \item Spec: docs/specs/Truss3D.md.
+  \item Referencias: Bathe §4.2.1; Cook §2.3.
+\end{itemize}
+
+
+\section{Truss3DCorot --- barra axial 3D corotacional}
+
+Barra axial 3D en régimen de \textbf{grandes desplazamientos y rotaciones con pequeña deformación} (Updated Lagrangian). Hereda de \texttt{Truss3D}; comparte DOFs, parámetros y contrato con el material.
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Longitud y cosenos directores se recalculan en configuración \textbf{corriente} en cada evaluación.
+  \item Deformación ingenieril corotacional: \texttt{\ensuremath{\varepsilon} = (l − L\ensuremath{_{0}})/L\ensuremath{_{0}}}.
+  \item La dirección perpendicular al eje es un \textbf{plano} (dimensión 2), no un vector único.
+\end{itemize}
+
+\subsection{Formulación}
+\begin{lstlisting}
+d = [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]       (dirección corriente del eje)
+ê = (cₓ, c_y, c_z),  P = I₃ − ê·êᵀ        (proyector 3×3 al plano perpendicular)
+
+K_M   = (E·A / L₀) · d·dᵀ                  (6×6, rango 1)
+K_G   = (N / l) · [[P, −P], [−P, P]]       (6×6, rango 2)
+K_T   = K_M + K_G
+F_int = N · d
+
+\end{lstlisting}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item Heredado de \texttt{Truss3D}: \texttt{compute\_body\_load(b)} reparte \texttt{b \ensuremath{\cdot} A \ensuremath{\cdot} L\ensuremath{_{0}} / 2} por nodo, evaluado en geometría de referencia.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item \texttt{|\ensuremath{\varepsilon}| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}} (pequeña deformación axial).
+  \item Desplazamientos y rotaciones de cualquier magnitud en el espacio.
+  \item Cargas exclusivamente axiales.
+\end{itemize}
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3DCorot} (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
+  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss3DCorot}.
+  \item Spec: docs/specs/Truss3DCorot.md.
+  \item Referencias: Crisfield §3.3; Belytschko §4.5.
+\end{itemize}
+
+
+\section{Cable2DCorot --- cable 2D corotacional}
+
+Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite solo tensión. Cinemática corotacional; la unilateralidad la aporta el material (típicamente \texttt{CableMaterial1D}).
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Idéntica a una barra corotacional: longitud y cosenos directores se recalculan en configuración corriente en cada evaluación.
+  \item Deformación ingenieril corotacional: \texttt{\ensuremath{\varepsilon} = (l − L\ensuremath{_{0}})/L\ensuremath{_{0}}}.
+  \item La respuesta física de cable aparece \textbf{solo} si el material devuelve \texttt{\ensuremath{\sigma} = 0} en compresión.
+\end{itemize}
+
+\subsection{Formulación}
+\begin{lstlisting}
+d = [−c_θ, −s_θ, c_θ, s_θ]
+n = [−s_θ,  c_θ, s_θ, −c_θ]
+
+K_M   = (E_t · A / L₀) · d·dᵀ        (0 si material destensado)
+K_G   = (N / l) · n·nᵀ                (0 si N = 0)
+K_T   = K_M + K_G
+F_int = N · d                         (0 si N = 0)
+
+\end{lstlisting}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} reparte \texttt{b \ensuremath{\cdot} A \ensuremath{\cdot} L\ensuremath{_{0}} / 2} por nodo en cada componente global, evaluado en geometría de referencia. Útil para peso propio.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item \texttt{|\ensuremath{\varepsilon}| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}} en régimen tensado.
+  \item Grandes desplazamientos y rotaciones en el plano.
+  \item Cables completamente destensados aportan \texttt{K\_T = 0} al sistema global: otros elementos deben garantizar la estabilidad numérica.
+\end{itemize}
+
+\subsection{Independencia del diseño}
+El elemento \textbf{no hereda} de \texttt{Truss2DCorot}. La cinemática corotacional se implementa dentro de la clase para que futuras modificaciones de las armaduras no afecten a los cables, y viceversa.
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable2DCorot} (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
+  \item Archivo fuente: fenix/elements/cable.py \ensuremath{\cdot} clase \texttt{Cable2DCorot}.
+  \item Spec: docs/specs/Cable2DCorot.md.
+  \item Referencias: Crisfield §3.3; Irvine §1.2.
+\end{itemize}
+
+
+\section{Cable3DCorot --- cable 3D corotacional}
+
+Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite solo tensión, puede rotar libremente en el espacio. Cinemática corotacional 3D; unilateralidad aportada por el material (típicamente \texttt{CableMaterial1D}).
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Idéntica en filosofía a una barra corotacional 3D: longitud y cosenos directores se recalculan en configuración corriente.
+  \item Deformación ingenieril corotacional: \texttt{\ensuremath{\varepsilon} = (l − L\ensuremath{_{0}})/L\ensuremath{_{0}}}.
+  \item La dirección perpendicular al eje es un \textbf{plano} (dimensión 2).
+\end{itemize}
+
+\subsection{Formulación}
+\begin{lstlisting}
+d = [−cₓ, −c_y, −c_z, cₓ, c_y, c_z]
+ê = (cₓ, c_y, c_z),  P = I₃ − ê·êᵀ      (proyector 3×3)
+
+K_M   = (E_t · A / L₀) · d·dᵀ            (0 si material destensado)
+K_G   = (N / l) · [[P, −P], [−P, P]]     (0 si N = 0)
+K_T   = K_M + K_G
+F_int = N · d                            (0 si N = 0)
+
+\end{lstlisting}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} reparte \texttt{b \ensuremath{\cdot} A \ensuremath{\cdot} L\ensuremath{_{0}} / 2} por nodo en cada componente global, evaluado en geometría de referencia.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item \texttt{|\ensuremath{\varepsilon}| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}} en régimen tensado.
+  \item Grandes desplazamientos y rotaciones en el espacio.
+  \item Cables completamente destensados aportan \texttt{K\_T = 0} al sistema global.
+\end{itemize}
+
+\subsection{Independencia del diseño}
+No hereda de \texttt{Cable2DCorot} ni de \texttt{Truss3DCorot}. La maquinaria cinemática 3D se implementa íntegra dentro de la clase.
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable3DCorot} (4 tests de aceptación).
+  \item Archivo fuente: fenix/elements/cable.py \ensuremath{\cdot} clase \texttt{Cable3DCorot}.
+  \item Spec: docs/specs/Cable3DCorot.md.
+  \item Referencias: Crisfield §3.3; Belytschko §4.5; Irvine §1.2.
+\end{itemize}
+
+
+\section{Frame2DEuler --- marco/viga 2D Euler-Bernoulli}
+
+Viga esbelta 2D con hipótesis de Euler-Bernoulli: secciones planas perpendiculares al eje neutro deformado. Dos nodos rígidamente conectados; transmite axial + cortante + momento flector.
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Interpolación lineal del desplazamiento axial, Hermite cúbica del desplazamiento transverso.
+  \item Pequeños desplazamientos y rotaciones (régimen geométricamente lineal).
+  \item Configuración inicial fija: \texttt{L\ensuremath{_{0}}, c, s, T} se calculan una vez y no se actualizan.
+\end{itemize}
+
+\subsection{Formulación}
+Matriz de transformación global\ensuremath{\to}local $\mathbf T$ ($6\times 6$) con cosenos directores del eje. Matriz local analítica:
+\begin{lstlisting}
+K_local = [[ EA/L,       0,       0, -EA/L,       0,       0 ],
+           [    0, 12EI/L³,  6EI/L²,     0,-12EI/L³,  6EI/L²],
+           [    0,  6EI/L²,   4EI/L,     0, -6EI/L²,   2EI/L],
+           [-EA/L,       0,       0,  EA/L,       0,       0 ],
+           [    0,-12EI/L³, -6EI/L²,     0, 12EI/L³, -6EI/L²],
+           [    0,  6EI/L²,   2EI/L,     0, -6EI/L²,   4EI/L]]
+K_global = Tᵀ · K_local · T
+F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del material)
+
+\end{lstlisting}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} distribuye \texttt{q = A \ensuremath{\cdot} b} (carga por unidad de longitud) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal \texttt{q\ensuremath{\cdot}L/2} en fuerza y \texttt{\ensuremath{\pm}q\ensuremath{\cdot}L\ensuremath{^{2}}/12} en momento (signo positivo en nodo i, negativo en j). Transformación local\ensuremath{\leftrightarrow}global vía la misma \texttt{T} del elemento. Útil para peso propio.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item Vigas esbeltas (\texttt{L/h \ensuremath{\gtrsim} 10}); peraltadas \ensuremath{\to} \texttt{Frame2DTimoshenko}.
+  \item Pequeños desplazamientos, pequeñas rotaciones.
+  \item No captura rótulas plásticas distribuidas: \texttt{E\_tangent} escala toda la matriz por igual.
+\end{itemize}
+
+\subsection{Independencia del diseño}
+Vive en el paquete \texttt{fenix/elements/frame/} junto a \texttt{Frame2DTimoshenko} y \texttt{Frame2DEulerCorot}, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6\ensuremath{\times}6 se delega a \texttt{build\_geometry\_2d} en \texttt{fenix/elements/frame/\_shared.py}, compartida con \texttt{Frame2DTimoshenko} (la versión corotacional reconstruye T desde \texttt{alpha0} por su lógica propia).
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerAcceptance} (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
+  \item Archivo fuente: fenix/elements/frame/euler.py \ensuremath{\cdot} clase \texttt{Frame2DEuler}.
+  \item Spec: docs/specs/Frame2DEuler.md.
+  \item Referencias: Bathe cap. 5; Cook §2.7.
+\end{itemize}
+
+
+\section{Frame2DTimoshenko --- marco/viga 2D Timoshenko}
+
+Viga 2D con deformación por cortante transversal explícita. Dos nodos rígidamente conectados; transmite axial + cortante + momento flector. Apropiado para vigas peraltadas o cortas (\texttt{L/h \ensuremath{\lesssim} 10}).
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Secciones planas, \textbf{no} perpendiculares al eje neutro deformado (rotación independiente de la pendiente de la elástica).
+  \item Distorsión angular $\gamma = dv/ds - \theta$ tratada como campo independiente.
+  \item Configuración inicial fija (régimen geométricamente lineal).
+\end{itemize}
+
+\subsection{Formulación}
+Factor de corrección contra shear locking:
+\begin{lstlisting}
+Φ = 12 · E · I / (G · A_s · L²),      G = E / [2(1 + ν)]
+
+\end{lstlisting}
+Matriz local con coeficientes ajustados:
+\begin{lstlisting}
+a = 12·EI / [L³(1+Φ)],   b = 6·EI / [L²(1+Φ)]
+c = (4+Φ)·EI / [L(1+Φ)], d = (2-Φ)·EI / [L(1+Φ)]
+
+K_local = [[ EA/L,  0,  0, -EA/L,  0,  0],
+           [    0,  a,  b,     0, -a,  b],
+           [    0,  b,  c,     0, -b,  d],
+           [-EA/L,  0,  0,  EA/L,  0,  0],
+           [    0, -a, -b,     0,  a, -b],
+           [    0,  b,  d,     0, -b,  c]]
+
+\end{lstlisting}
+Para \texttt{\ensuremath{\Phi} \ensuremath{\to} 0} (viga esbelta) se recupera la matriz Euler-Bernoulli.
+
+\subsection{Parámetros}
+\begin{itemize}
+  \item \texttt{A}, \texttt{I}, \texttt{As} (área efectiva de cortante).
+  \item \texttt{nu} (opcional): se toma de \texttt{material.nu} si está disponible; en su defecto, del parámetro del elemento con default 0.3 y aviso por consola.
+\end{itemize}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} usa la misma fórmula consistente Hermite cúbica que \texttt{Frame2DEuler} (idéntica para carga uniforme --- la diferencia entre formulaciones aparece solo con cargas no uniformes o concentradas).
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item Vigas gruesas/peraltadas (\texttt{L/h \ensuremath{\lesssim} 10}); para esbeltas \ensuremath{\to} \texttt{Frame2DEuler} (más simple y sin shear locking).
+  \item Pequeños desplazamientos, pequeñas rotaciones.
+  \item No captura plasticidad distribuida: \texttt{E\_tangent} escala toda la matriz.
+\end{itemize}
+
+\subsection{Independencia del diseño}
+Vive en el paquete \texttt{fenix/elements/frame/}, sin herencia con las otras vigas 2D. Comparte \texttt{build\_geometry\_2d} con \texttt{Frame2DEuler} en \texttt{fenix/elements/frame/\_shared.py} --- la construcción de la matriz de transformación 6\ensuremath{\times}6 ya no se duplica.
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DTimoshenkoAcceptance} (convergencia a Euler en viga esbelta, axial puro, simetría).
+  \item Archivo fuente: fenix/elements/frame/timoshenko.py \ensuremath{\cdot} clase \texttt{Frame2DTimoshenko}.
+  \item Spec: docs/specs/Frame2DTimoshenko.md.
+  \item Referencias: Reddy cap. 5; Bathe §5.4.
+\end{itemize}
+
+
+\section{Frame2DEulerCorot --- viga 2D Euler-Bernoulli corotacional}
+
+Viga 2D esbelta Euler-Bernoulli en formulación \textbf{corotacional} (Updated Lagrangian). Grandes desplazamientos y grandes rotaciones rígidas del elemento; deformaciones axiales pequeñas y rotaciones nodales deformacionales moderadas.
+
+\subsection{Cinemática corotacional}
+\begin{itemize}
+  \item Rotación rígida $\alpha_e$ del eje separada de las rotaciones deformacionales de las secciones $\bar\theta_1, \bar\theta_2$.
+  \item DOFs deformacionales locales: $[u_l = l - L_0, \bar\theta_1, \bar\theta_2]$.
+  \item Todo en configuración corriente: $c, s, l, \alpha$ se recalculan por evaluación.
+\end{itemize}
+
+\subsection{Formulación}
+\begin{lstlisting}
+Rigidez local (3×3) en DOFs deformacionales:
+  K_ll = diag-block([EA/L₀], [[4EI/L₀, 2EI/L₀], [2EI/L₀, 4EI/L₀]])
+
+Matriz B (3×6) en configuración corriente acopla DOFs locales y globales.
+
+Rigidez tangente:
+  K_T = B ᵀ · K_ll · B + K_σ
+  K_σ = (N/l)·z·zᵀ − ((M₁+M₂)/l²)·(r·zᵀ + z·rᵀ)
+
+con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
+
+\end{lstlisting}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} evalúa la integral consistente en la configuración de referencia (misma fórmula Hermite cúbica que \texttt{Frame2DEuler}). Para grandes rotaciones con cargas conservadoras (gravedad) la diferencia frente a la integración sobre la geometría corriente es de segundo orden y se asume aceptable.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item \texttt{|\ensuremath{\varepsilon}\_axial| \ensuremath{\lesssim} 10\ensuremath{^{-}}\ensuremath{^{2}}}.
+  \item Rotaciones rígidas del elemento ilimitadas entre commits (hasta $|\alpha_e| < \pi$ por paso).
+  \item Rotaciones deformacionales de las secciones moderadas (\texttt{|\ensuremath{\theta}̄| \ensuremath{\lesssim} 30\ensuremath{^{\circ}}}).
+  \item Rotaciones continuas > \ensuremath{\pi} requerirían tracking de vueltas (fuera de alcance).
+\end{itemize}
+
+\subsection{Dominios que abre}
+Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, brazos flexibles, cables con rigidez a flexión. Problemas que la viga lineal \texttt{Frame2DEuler} no puede atacar.
+
+\subsection{Independencia del diseño}
+Vive en el paquete \texttt{fenix/elements/frame/} junto a las otras vigas 2D, \textbf{sin herencia}: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye \texttt{T} desde \texttt{alpha0} en lugar de usar \texttt{build\_geometry\_2d} compartido). Sí comparte con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} los helpers libres de \texttt{\_shared.py} para carga de cuerpo (\texttt{\_frame2d\_consistent\_body\_load}), masa (\texttt{\_frame2d\_consistent\_mass\_local}) y traducción a \texttt{ElementForces} (\texttt{\_frame2d\_forces\_from\_local}).
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerCorotAcceptance} (4 criterios físicos + \textbf{chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$} + registro).
+  \item Archivo fuente: fenix/elements/frame/euler\_corot.py \ensuremath{\cdot} clase \texttt{Frame2DEulerCorot}.
+  \item Spec: docs/specs/Frame2DEulerCorot.md.
+  \item Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
+\end{itemize}
+
+
+\section{Frame3D --- marco/viga 3D Euler-Bernoulli}
+
+Viga 3D esbelta con 6 DOFs por nodo (\texttt{ux, uy, uz, rx, ry, rz}). Transmite axial + cortante en dos planos + flexión en dos planos + torsión. Régimen geométricamente lineal.
+
+\subsection{Cinemática}
+\begin{itemize}
+  \item Secciones planas perpendiculares al eje neutro deformado (Euler-Bernoulli).
+  \item Torsión de Saint-Venant pura (sin alabeo).
+  \item Flexiones en ejes principales desacopladas.
+  \item Configuración inicial fija (no hay variante corotacional 3D por ahora).
+\end{itemize}
+
+\subsection{Ejes locales y orientación de la sección}
+El eje $\hat{\mathbf x}$ local va del nodo 1 al nodo 2. Los ejes $\hat{\mathbf y}, \hat{\mathbf z}$ de la sección se definen proyectando un \textbf{vector de referencia} (\texttt{ref\_vector}) sobre el plano perpendicular al eje. Default: \texttt{[0, 0, 1]} (eje z global); fallback a \texttt{[1, 0, 0]} con advertencia si la barra es casi vertical.
+
+\subsection{Formulación}
+Matriz de transformación $\mathbf T$ 12\ensuremath{\times}12 en bloques de $\boldsymbol{\lambda}$ (3\ensuremath{\times}3). Matriz local 12\ensuremath{\times}12 desacoplada:
+\begin{lstlisting}
+Axial      (2×2) : EA/L
+Torsión    (2×2) : GJ/L       con G = E/[2(1+ν)]
+Flexión xy (4×4) : 12EIz/L³, 6EIz/L², 4EIz/L, 2EIz/L
+Flexión xz (4×4) : 12EIy/L³, 6EIy/L², 4EIy/L, 2EIy/L  (signos invertidos)
+
+K_global = Tᵀ K_local T
+
+\end{lstlisting}
+
+\subsection{Parámetros}
+\begin{itemize}
+  \item \texttt{A}, \texttt{Iy}, \texttt{Iz} (área y momentos de inercia respecto a ejes locales y, z).
+  \item \texttt{J} (constante torsional de Saint-Venant).
+  \item \texttt{nu} (opcional, del material si lo expone, sino del elemento con default 0.3).
+  \item \texttt{ref\_vector} (opcional, default \texttt{[0, 0, 1]}).
+\end{itemize}
+
+\subsection{Cargas distribuidas}
+\begin{itemize}
+  \item \texttt{compute\_body\_load(b)} proyecta \texttt{q = A \ensuremath{\cdot} b} sobre los ejes locales y reparte con la fórmula Hermite cúbica en ambos planos de flexión: \texttt{q \ensuremath{\cdot} L / 2} en fuerzas, \texttt{\ensuremath{\pm}q \ensuremath{\cdot} L\ensuremath{^{2}} / 12} en momentos (con signos \texttt{+} en nodo i y \texttt{−} en nodo j para \texttt{Mz}, y signos opuestos para \texttt{My} por la regla de la mano derecha). No genera torsión (carga uniforme sin excentricidad respecto al centro de cortadura). Útil para peso propio: \texttt{b = (0, 0, -\ensuremath{\rho}\ensuremath{\cdot}g)}.
+\end{itemize}
+
+\subsection{Régimen de validez}
+\begin{itemize}
+  \item Vigas esbeltas (\texttt{L/h \ensuremath{\gtrsim} 10}).
+  \item Pequeños desplazamientos, pequeñas rotaciones.
+  \item Sin alabeo (secciones macizas o cerradas).
+  \item Para grandes rotaciones en 3D: pendiente \texttt{Frame3DCorot}.
+\end{itemize}
+
+\subsection{Independencia del diseño}
+Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko}, ni con los trusses 3D.
+
+\subsection{Validación}
+\begin{itemize}
+  \item Tests: tests/test\_frame3d.py \ensuremath{\cdot} \texttt{TestFrame3DAcceptance} (5 criterios físicos + validación de \texttt{ref\_vector} + registro).
+  \item Archivo fuente: fenix/elements/frame3d.py \ensuremath{\cdot} clase \texttt{Frame3D}.
+  \item Spec: docs/specs/Frame3D.md.
+  \item Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
+\end{itemize}
+
+
+\section{Quad4 --- cuadrilátero bilineal 2D}
+
+\begin{itemize}
+  \item \textbf{Propósito}: continuo 2D isoparamétrico; problema mecánico plano.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy']} \ensuremath{\cdot} 4 nodos (antihorario) \ensuremath{\cdot} \texttt{STRAIN\_DIM = 3}.
+  \item \textbf{Cinemática}: matriz \texttt{B(\ensuremath{\xi}, \ensuremath{\eta})} calculada por mapeo isoparamétrico estándar; deformación Voigt \texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\gamma}\_xy]}.
+  \item \textbf{Integración}: por defecto Gauss 2\ensuremath{\times}2 (4 puntos). Configurable vía \texttt{quadrature} desde \texttt{QuadratureRegistry}. \textbf{Aviso}: integración reducida 1\ensuremath{\times}1 \ensuremath{\to} riesgo de hourglassing.
+  \item \textbf{Parámetros}: \texttt{thickness} (espesor para estado plano), \texttt{quadrature} (opcional).
+  \item \textbf{Cargas distribuidas}: \texttt{compute\_body\_load(b)} integra $\int \mathbf N^\top \mathbf b\, dV$ sobre el elemento; \texttt{compute\_edge\_traction(edge, t̄)} reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
+  \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} devuelve \ensuremath{\sigma}, \ensuremath{\varepsilon} y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (\texttt{Sigma\_*\_nodal}).
+  \item \textbf{Implementación}: kernels \texttt{\_compute\_kinematics} y \texttt{\_compute\_integrands} con \texttt{@njit} (Numba) --- JIT en primera llamada. Viven en \texttt{fenix/elements/solid\_2d/\_shared.py}, compartidos con Tri3.
+  \item \textbf{Limitaciones}: bloqueo volumétrico con materiales casi-incompresibles (\ensuremath{\nu} \ensuremath{\to} 0.5); en ese régimen usar formulación mixta (no implementada).
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad4.py
+\end{itemize}
+
+
+\section{Tri3 --- triángulo lineal 2D (CST)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: triángulo de deformación constante; útil para transiciones de malla.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy']} \ensuremath{\cdot} 3 nodos \ensuremath{\cdot} \texttt{STRAIN\_DIM = 3}.
+  \item \textbf{Cinemática}: matriz \texttt{B} constante (deformación uniforme dentro del elemento).
+  \item \textbf{Integración}: 1 punto central, peso 0.5 (área triángulo en coordenadas naturales).
+  \item \textbf{Parámetros}: \texttt{thickness}.
+  \item \textbf{Cargas distribuidas}: \texttt{compute\_body\_load(b)} reparte 1/3 a cada nodo (exacto para b uniforme); \texttt{compute\_edge\_traction(edge, t̄)} reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
+  \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} devuelve el único \ensuremath{\sigma}, \ensuremath{\varepsilon} y centroide del elemento (mismo formato que Quad4).
+  \item \textbf{Limitaciones}: shear locking severo; convergencia lenta. \textbf{Preferir \texttt{Quad4}} salvo en transiciones donde Quad4 no encaja geométricamente.
+  \item \textbf{Implementación}: kernel \texttt{\_compute\_kinematics\_tri3} con \texttt{@njit} en \texttt{fenix/elements/solid\_2d/\_shared.py}.
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri3.py
+\end{itemize}
+
+
+\section{Quad8 --- cuadrilátero serendípito 2D de orden 2}
+
+\begin{itemize}
+  \item \textbf{Propósito}: continuo 2D cuadrático sin shear locking severo en flexión; reproduce campos cuadráticos exactamente.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy']} \ensuremath{\cdot} 8 nodos (4 vértices antihorarios + 4 medios de borde) \ensuremath{\cdot} \texttt{STRAIN\_DIM = 3}.
+  \item \textbf{Funciones de forma}: serendípitas (sin término \ensuremath{\xi}\ensuremath{^{2}}\ensuremath{\eta}\ensuremath{^{2}}).
+  \item \textbf{Integración}: Gauss 3\ensuremath{\times}3 (9 puntos) por defecto. Reducida 2\ensuremath{\times}2 disponible vía \texttt{quadrature} (con riesgo de modos espurios).
+  \item \textbf{Cargas}: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
+  \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} con 9 puntos por defecto.
+  \item \textbf{Spec}: docs/specs/Quad8.md.
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py (subclase de la base interna \texttt{\_HigherOrderQuad} definida en \texttt{\_shared.py}, compartida con Quad9).
+\end{itemize}
+
+
+\section{Quad9 --- cuadrilátero Lagrangiano 2D de orden 2}
+
+\begin{itemize}
+  \item \textbf{Propósito}: continuo 2D cuadrático con espacio polinómico completo $Q_2$; añade un noveno nodo central interior al Quad8.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy']} \ensuremath{\cdot} 9 nodos \ensuremath{\cdot} \texttt{STRAIN\_DIM = 3}.
+  \item \textbf{Funciones de forma}: producto tensorial Lagrange 1D-1D.
+  \item \textbf{Integración}: Gauss 3\ensuremath{\times}3.
+  \item \textbf{Cargas y salida por Gauss}: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
+  \item \textbf{Spec}: docs/specs/Quad9.md.
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py (subclase de la base interna \texttt{\_HigherOrderQuad}, compartida con Quad8).
+\end{itemize}
+
+
+\section{Tri6 --- triángulo 2D cuadrático completo P\ensuremath{_{2}}}
+
+\begin{itemize}
+  \item \textbf{Propósito}: triángulo isoparamétrico cuadrático que cura el shear locking del Tri3; reproduce campos cuadráticos exactamente.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy']} \ensuremath{\cdot} 6 nodos (3 vértices + 3 medios de borde) \ensuremath{\cdot} \texttt{STRAIN\_DIM = 3}.
+  \item \textbf{Integración}: 3 puntos en los puntos medios (cuadratura \texttt{tri\_3}).
+  \item \textbf{Cargas}: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
+  \item \textbf{Spec}: docs/specs/Tri6.md.
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py
+\end{itemize}
+
+
+\section{Cómo añadir un elemento nuevo}
+
+\begin{enumerate}
+  \item \textbf{Spec primero} --- el usuario crea \texttt{docs/specs/<Nombre>.md} a partir de \texttt{docs/specs/\_template\_element.md} (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.
+  \item \textbf{Scaffolding} --- \texttt{/fenix-new element <Nombre>} genera archivo en \texttt{fenix/elements/}, decorador \texttt{@ElementRegistry.register} y esqueleto de test.
+  \item \textbf{Implementación + validación} --- la IA codifica contra la spec; los tests cubren los casos de \texttt{acceptance} declarados.
+  \item \textbf{Catálogo} --- cuando la spec pasa a \texttt{status: validated}, se añade aquí una entrada breve siguiendo el formato de arriba (la spec sigue siendo la referencia detallada).
+\end{enumerate}
 
 
 \newpage
@@ -2777,6 +5653,157 @@ references:
 \texttt{/fenix-new material <Name>} --- genera archivo en \texttt{fenix/materials/}, decorador \texttt{@MaterialRegistry.register}, esqueleto de test.
 Declarar \textbf{\texttt{STRAIN\_DIM}} y, si tiene historia, \textbf{\texttt{PRIMARY\_STATE\_VAR}} (la variable que aparecerá en el VTK).
 Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba.
+
+
+\newpage
+
+\chapter{Solvers — catálogo}
+
+
+
+\textit{Referencia rápida de los métodos de solución implementados. Una entrada por solver. Para detalles del algoritmo \ensuremath{\to} código fuente.}
+
+
+
+\section{LinearSolver --- solución lineal directa en un paso}
+
+\begin{itemize}
+  \item \textbf{Propósito}: resolver \texttt{K \ensuremath{\cdot} U = F} en un único \texttt{spsolve}.
+  \item \textbf{Esquema}: ensamblaje único \ensuremath{\to} eliminación directa de DOFs prescritos (ADR 0004) \ensuremath{\to} \texttt{scipy.sparse.linalg.spsolve}.
+  \item \textbf{Parámetros}: \texttt{linear\_algebra} (default \texttt{auto}; ADR 0003 §4).
+  \item \textbf{Cuándo usarlo}: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
+  \item \textbf{No converge / no aplica}: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
+  \item \textbf{Archivo}: fenix/math/solvers/linear.py
+\end{itemize}
+
+
+\section{NonlinearSolver --- Newton-Raphson incremental con paso adaptativo}
+
+\begin{itemize}
+  \item \textbf{Propósito}: resolver problemas no lineales con control de carga, dividiendo la carga total en pasos y aplicando Newton-Raphson dentro de cada paso.
+  \item \textbf{Esquema}:
+  \item Bucle externo: incrementar factor de carga \texttt{\ensuremath{\lambda}} desde 0 hasta 1 en \texttt{num\_steps} pasos.
+  \item Bucle interno: Newton-Raphson con \texttt{K\_t \ensuremath{\cdot} \ensuremath{\Delta}U = R = \ensuremath{\lambda}\ensuremath{\cdot}F\_ext − F\_int}.
+  \item \textbf{Criterio de convergencia dual}: \texttt{max(err\_disp, err\_force) < tol}, con
+\end{itemize}
+    \texttt{err\_disp = \ensuremath{\|}\ensuremath{\Delta}U\ensuremath{\|} / (\ensuremath{\|}U\ensuremath{\|} + \ensuremath{\varepsilon})} y \texttt{err\_force = \ensuremath{\|}R\ensuremath{\|} / max(\ensuremath{\|}\ensuremath{\lambda}\ensuremath{\cdot}F\_ext\ensuremath{\|}, \ensuremath{\|}F\_int\ensuremath{\|}, \ensuremath{\varepsilon})}.
+\begin{itemize}
+  \item \textbf{Adaptatividad} (\texttt{adaptive=True}): si converge en < 5 iteraciones, agranda el siguiente paso (\ensuremath{\times}1.5); si no converge, biseca (÷2). Falla si \texttt{\ensuremath{\Delta}\ensuremath{\lambda} < min\_delta\_lambda}.
+  \item Tras converger un paso \ensuremath{\to} \texttt{assembler.commit\_all\_states()} (trial \ensuremath{\to} committed en todos los elementos).
+  \item \textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}.
+  \item \textbf{Cuándo usarlo}: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back/snap-through).
+  \item \textbf{Limitación}: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para eso \ensuremath{\to} \texttt{ArcLengthSolver}.
+  \item \textbf{Referencia}: Crisfield, \textit{Non-linear Finite Element Analysis of Solids and Structures}, vol. 1, cap. 9.
+  \item \textbf{Archivo}: fenix/math/solvers/nonlinear.py
+\end{itemize}
+
+
+\section{ArcLengthSolver --- método de longitud de arco cilíndrico (Crisfield)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: trazar curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de carga, controlando simultáneamente desplazamientos y factor de carga.
+  \item \textbf{Esquema}:
+  \item \textbf{Predictor tangente}: \texttt{du\_t = K\_t\ensuremath{^{-}}¹ \ensuremath{\cdot} F\_ext\_ref}; \texttt{d\ensuremath{\lambda} = sign \ensuremath{\cdot} dl / \ensuremath{\|}du\_t\ensuremath{\|}}.
+\end{itemize}
+    El \texttt{sign} se elige por proyección con el incremento del paso anterior (evitar regresar).
+\begin{itemize}
+  \item \textbf{Corrector iterativo}: en cada iteración resuelve dos sistemas (\texttt{du\_R = K\ensuremath{^{-}}¹\ensuremath{\cdot}R} y \texttt{du\_t = K\ensuremath{^{-}}¹\ensuremath{\cdot}F\_ext}) y aplica la restricción cuadrática cilíndrica de Crisfield: \texttt{\ensuremath{\|}dU\ensuremath{\|}\ensuremath{^{2}} = dl\ensuremath{^{2}}}.
+  \item De las dos raíces se elige la que mantiene el ángulo positivo con el incremento previo.
+  \item \textbf{Caso especial --- final\_step}: si el predictor sobrepasaría \texttt{max\_lambda}, fija \ensuremath{\lambda} exactamente a \texttt{max\_lambda} y resuelve solo desplazamientos (Newton-Raphson puro).
+  \item \textbf{Auto-ajuste de \texttt{dl}}: < 4 iter \ensuremath{\to} ampliar (\ensuremath{\times}1.5, tope \texttt{5\ensuremath{\cdot}dl\_initial}); > 8 iter \ensuremath{\to} reducir (\ensuremath{\times}0.6); no converge \ensuremath{\to} biseca (÷2).
+  \item Convergencia: mismo criterio dual que \texttt{NonlinearSolver}.
+  \item \textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_grow\_iter\_threshold}, \texttt{dl\_shrink\_iter\_threshold}.
+  \item \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite.
+  \item \textbf{Limitación}: más caro por paso (dos \texttt{spsolve} por iteración); requiere ajuste de \texttt{initial\_dl} para problemas nuevos.
+  \item \textbf{Referencia}: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers \& Structures, 1981); Crisfield vol. 1, cap. 9.
+  \item \textbf{Archivo}: fenix/math/solvers/arclength.py
+\end{itemize}
+
+
+\section{ModalSolver --- análisis modal por autovalores generalizados (ADR 0009)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: calcular frecuencias naturales \texttt{\ensuremath{\omega}\_n} y modos \texttt{\ensuremath{\varphi}\_n} de vibración no amortiguados resolviendo \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}.
+  \item \textbf{Esquema}:
+  \item Ensamblaje de \texttt{K} (rigidez lineal en \texttt{u = 0}) y \texttt{M} (masa consistente, ADR 0009 §1) reusando la topología COO cacheada del \texttt{Assembler}.
+  \item Reducción simultánea por Dirichlet \texttt{Assembler.reduce\_pair(K, M)} \ensuremath{\to} \texttt{K\_red, M\_red, T}.
+  \item \texttt{EigenSolver} envuelve \texttt{scipy.sparse.linalg.eigsh} con \textbf{shift-invert} en \texttt{sigma} (\texttt{sigma=0} \ensuremath{\to} frecuencias más bajas) y \texttt{which="LM"}. ARPACK factoriza \texttt{(K\_red − \ensuremath{\sigma}\ensuremath{\cdot}M\_red)} una sola vez y la reusa en todas las iteraciones Lanczos.
+  \item Expansión de modos al espacio completo: \texttt{\ensuremath{\varphi} = T \ensuremath{\cdot} \ensuremath{\varphi}\_red}. En DOFs prescritos por Dirichlet la componente es 0.
+  \item Salida en \texttt{ModalResult}: \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales), \texttt{n\_modes}, \texttt{converged}.
+  \item \textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0), \texttt{which} (default \texttt{"LM"}), \texttt{tolerance} (default 1.0e-9), \texttt{lumping} (default \texttt{"consistent"}; fase 1 solo admite ese valor), \texttt{linear\_algebra} (reservado; ADR 0003).
+  \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos (no consume \texttt{F\_applied}). El entrypoint público es \texttt{fenix.run\_modal(domain, n\_modes=N)} o YAML con \texttt{solver: type: ModalSolver}. \texttt{fenix.run\_yaml} despacha automáticamente al detectar el tipo.
+  \item \textbf{Cuándo usarlo}: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
+  \item \textbf{Limitaciones}: lineal (\texttt{K} evaluada en \texttt{u = 0}); sin amortiguamiento; sin masas modales efectivas ni factores de participación (fase 7 del ADR 0009); modos complejos no soportados.
+  \item \textbf{Referencia}: Bathe, \textit{Finite Element Procedures}, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, \textit{The Finite Element Method}, cap. 7; ARPACK Users' Guide (Lehoucq--Sorensen--Yang).
+  \item \textbf{Spec}: docs/specs/ModalSolver.md
+  \item \textbf{Archivos}: fenix/math/solvers/modal.py (clase \texttt{ModalSolver}), fenix/math/linalg/eigen.py (clase \texttt{EigenSolver}), fenix/results.py (\texttt{ModalResult}).
+\end{itemize}
+
+
+\section{NewmarkSolver --- análisis dinámico transitorio lineal (ADR 0009 fase 3)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: integrar en el tiempo la ecuación de movimiento semidiscreta \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + K\ensuremath{\cdot}u = F(t)} con amortiguamiento Rayleigh \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K} y apoyos Dirichlet constantes.
+  \item \textbf{Esquema}:
+  \item Familia Newmark-\ensuremath{\beta} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables; default \texttt{(1/4, 1/2)} --- average acceleration, incondicionalmente estable, sin amortiguamiento numérico, error \texttt{O(\ensuremath{\Delta}t\ensuremath{^{2}})}.
+  \item \textbf{Predictores}: \texttt{ũ = u\_n + \ensuremath{\Delta}t\ensuremath{\cdot}u̇\_n + (\ensuremath{\Delta}t\ensuremath{^{2}}/2)(1−2\ensuremath{\beta})\ensuremath{\cdot}ü\_n}, \texttt{ũ̇ = u̇\_n + \ensuremath{\Delta}t\ensuremath{\cdot}(1−\ensuremath{\gamma})\ensuremath{\cdot}ü\_n}.
+  \item \textbf{Sistema efectivo}: \texttt{A\_eff\ensuremath{\cdot}ü\_\{n+1\} = F\_\{n+1\} − C\ensuremath{\cdot}ũ̇ − K\ensuremath{\cdot}ũ} con \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K}.
+  \item \textbf{Correctores}: \texttt{u\_\{n+1\} = ũ + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}ü\_\{n+1\}}, \texttt{u̇\_\{n+1\} = ũ̇ + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}ü\_\{n+1\}}.
+  \item Reducción por Dirichlet (operador \texttt{T}) aplicada a \texttt{(K, M, C)} simultáneamente; factorización única de \texttt{A\_eff\_red} reusada en todos los pasos.
+  \item Aceleración inicial consistente con la ecuación de movimiento en \texttt{t=0}.
+  \item \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt} (obligatorios), \texttt{beta} (default 0.25), \texttt{gamma} (default 0.5), \texttt{rayleigh} (None | \texttt{\{alpha, beta\}} directos | \texttt{\{xi1, omega1, xi2, omega2\}} para calibración modal), \texttt{u0}, \texttt{u0\_dot} (default ceros), \texttt{F\_func} (callback Python \texttt{t \ensuremath{\to} F(t)}; default vibración libre), \texttt{linear\_algebra}, \texttt{lumping}.
+  \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos, retorna \texttt{TransientResult} con historiales \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} (shape \texttt{(n\_dof, n\_steps + 1)}).
+  \item \textbf{Cuándo usarlo}: respuesta a cargas dependientes del tiempo (sísmica time-history, impacto, vibración forzada), evolución transitoria desde condiciones iniciales arbitrarias, validación de respuesta libre/forzada de estructuras lineales.
+  \item \textbf{Limitaciones}:
+  \item Solo lineal (\texttt{K}, \texttt{M} constantes). La extensión a no-linealidad (Newton dentro de cada paso) es fase 4 del ADR 0009.
+  \item Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
+  \item Paso \texttt{\ensuremath{\Delta}t} fijo. Adaptativo diferido.
+  \item HHT-\ensuremath{\alpha} y generalized-\ensuremath{\alpha} (con amortiguamiento numérico controlado) no incluidos.
+  \item \textbf{Referencia}: Newmark (1959), J. Eng. Mech. Div. ASCE; Bathe, \textit{FEP} cap. 9.4; Hughes, \textit{FEM} cap. 9; Chopra, \textit{Dynamics of Structures} cap. 5 y 15.
+  \item \textbf{Spec}: docs/specs/NewmarkSolver.md
+  \item \textbf{Archivos}: fenix/math/solvers/newmark.py (clase \texttt{NewmarkSolver}), fenix/math/damping.py (Rayleigh), fenix/results.py (\texttt{TransientResult}).
+\end{itemize}
+
+
+\section{NewtonNewmarkSolver --- análisis dinámico transitorio no lineal (ADR 0009 fase 4)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: integrar en el tiempo \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + F\_int(u) = F\_ext(t)} con materiales no lineales (plasticidad, daño) o no linealidad geométrica. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores/correctores y reducción de Dirichlet; añade Newton-Raphson dentro de cada paso temporal.
+  \item \textbf{Esquema}:
+  \item Predictores Newmark idénticos a la fase 3.
+  \item \textbf{Bucle interno de Newton-Raphson} sobre el residuo dinámico
+\end{itemize}
+    \texttt{R(ü\_\{n+1\}) = F\_ext(t\_\{n+1\}) − F\_int(u\_\{n+1\}) − C\ensuremath{\cdot}u̇\_\{n+1\} − M\ensuremath{\cdot}ü\_\{n+1\}},
+    con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t} y \texttt{K\_t} la rigidez tangente corriente.
+\begin{itemize}
+  \item \textbf{Convergencia dual} (ADR 0007): \texttt{R/(atol + rtol\ensuremath{\cdot}F\_ref) \ensuremath{\le} 1} y \texttt{\ensuremath{\delta}u/(atol + rtol\ensuremath{\cdot}\ensuremath{\|}u\ensuremath{\|}) \ensuremath{\le} 1}.
+  \item \textbf{Commit de estado}: tras converger cada paso, \texttt{assembler.commit\_all\_states()} (trial \ensuremath{\to} committed). Si no converge en \texttt{max\_iter}, lanza \texttt{RuntimeError} y se descarta el state trial.
+  \item \textbf{Amortiguamiento Rayleigh constante en el tiempo}, calibrado con la \textbf{rigidez elástica de referencia} \texttt{K\_0} (al inicio del análisis, \texttt{u = 0}). Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+  \item \textbf{Newton modificado opcional} (\texttt{freeze\_tangent\_after\_iter}, ADR 0003 fase 2): factoriza fresco las primeras N iter de cada paso y reusa la factorización en las siguientes.
+  \item \textbf{Recuperación del caso lineal}: con materiales lineales (\texttt{K\_t ≡ K\_0}), el residuo se anula en 1 iter y el resultado coincide exactamente con \texttt{NewmarkSolver}. Validado en tests.
+  \item \textbf{Parámetros}: heredados de \texttt{NewmarkSolver} (\texttt{t\_end}, \texttt{dt}, \texttt{beta}, \texttt{gamma}, \texttt{rayleigh}, \texttt{u0}, \texttt{u0\_dot}, \texttt{F\_func}, \texttt{linear\_algebra}, \texttt{lumping}) más \texttt{convergence} (\texttt{ConvergenceCriterion}, ADR 0007), \texttt{max\_iter} (default 20), \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}).
+  \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos, retorna \texttt{TransientResult} (mismo formato que \texttt{NewmarkSolver}).
+  \item \textbf{Cuándo usarlo}: respuesta dinámica de estructuras con plasticidad transitoria, fatiga de bajo ciclo, impacto en hormigón friccional, vibraciones de marcos con disipación plástica.
+  \item \textbf{Limitaciones}: igual que \texttt{NewmarkSolver} en lo lineal (apoyos constantes, paso fijo, sin HHT-\ensuremath{\alpha}). Además: no resuelve snap-back en problemas con softening severo --- combinar con \texttt{ArcLengthSolver} si emerge.
+  \item \textbf{Despacho YAML}: \texttt{solver.type: NewtonNewmarkSolver}. Como es subclase de \texttt{NewmarkSolver}, \texttt{entry.run\_yaml} lo detecta vía \texttt{isinstance} y despacha a \texttt{run\_transient} automáticamente.
+  \item \textbf{Referencia}: ADR 0009 §Fase 4; Hughes, \textit{FEM} cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
+  \item \textbf{Spec}: docs/specs/NewtonNewmarkSolver.md
+  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewtonNewmarkSolver}, junto al padre).
+\end{itemize}
+
+
+\section{Cómo añadir un solver nuevo}
+
+\texttt{/fenix-new solver <Name>} --- genera archivo en \texttt{fenix/math/solvers/<snake>.py}, decorador \texttt{@SolverRegistry.register}, esqueleto de test.
+
+Convenciones de interfaz:
+
+\begin{itemize}
+  \item \textbf{Solvers estáticos} (lineales, no lineales, arc-length): constructor recibe \texttt{assembler} + parámetros; método \texttt{solve(F\_ext\_global, step\_callback=None) \ensuremath{\to} U\_final}. Comprometen los estados internos vía \texttt{assembler.commit\_all\_states()} al converger cada paso. Retornan el campo de desplazamientos completo.
+  \item \textbf{Solvers de autovalor} (modal --- ADR 0009 --- y futuros pandeo lineal): constructor recibe \texttt{assembler} + parámetros; método \texttt{solve() \ensuremath{\to} ModalResult} (u otro tipo de resultado específico). No consumen vector de cargas. El entrypoint \texttt{fenix.run\_yaml} despacha por \texttt{isinstance} al entrypoint específico (\texttt{fenix.run\_modal} para modal).
+\end{itemize}
+
+Tras implementar, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba y promover la spec a \texttt{status: validated}.
 
 
 \newpage

@@ -41,7 +41,7 @@ El problema reducido $\mathbf K_\text{red}\,\boldsymbol\phi_\text{red} = \omega^
 
 ### 6. Algoritmo numérico: Lanczos con shift-invert
 ARPACK vía `scipy.sparse.linalg.eigsh`:
-$$\text{eigsh}(\mathbf K_\text{red},\; k = n_\text{modes},\; \mathbf M = \mathbf M_\text{red},\; \sigma,\; \text{which="LM"},\; \text{tol}).$$
+$$\text{eigsh}(\mathbf K_\text{red},\; k = n_\text{modes},\; \mathbf M = \mathbf M_\text{red},\; \sigma,\; \text{which}\!=\!\text{`LM'},\; \text{tol}).$$
 - **Shift-invert** transforma el problema en $\bigl(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red}\bigr)^{-1}\mathbf M_\text{red}\,\boldsymbol\phi = \mu\,\boldsymbol\phi$ con $\mu = 1/(\omega^2 - \sigma)$. Buscar `which="LM"` (mayor magnitud de $\mu$) equivale a buscar autovalores cercanos al shift $\sigma$.
 - $\sigma = 0$ por defecto: las frecuencias más bajas, que son las relevantes en ingeniería estructural.
 - Internamente ARPACK factoriza $(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red})$ una sola vez y la reusa en cada iteración Lanczos.

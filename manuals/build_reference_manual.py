@@ -33,15 +33,28 @@ GROUPS: list[tuple[str, list[str]]] = [
     ("Elementos 1D — Armaduras", ["Truss2D", "Truss2DCorot", "Truss3D", "Truss3DCorot"]),
     ("Elementos 1D — Cables", ["Cable2DCorot", "Cable3DCorot"]),
     ("Elementos 1D — Marcos / Vigas", ["Frame2DEuler", "Frame2DTimoshenko", "Frame2DEulerCorot", "Frame3D"]),
-    ("Elementos 2D — Sólidos", ["Quad4", "Tri3"]),
-    ("Modelos Constitutivos (Materiales)", ["CableMaterial1D"]),
+    ("Elementos 2D — Sólidos", ["Quad4", "Tri3", "Quad8", "Quad9", "Tri6"]),
+    ("Modelos Constitutivos (Materiales)", [
+        "CableMaterial1D",
+        "VonMises2D",
+        "IsotropicDamage1D",
+        "IsotropicDamage2D",
+        "DruckerPrager2D",
+    ]),
+    ("Esquemas de Solución", [
+        "ModalSolver",
+        "NewmarkSolver",
+        "NewtonNewmarkSolver",
+    ]),
 ]
 
 # Capítulos finales que NO derivan de specs (referencia técnica de plumbing
 # arquitectural o catálogos transversales). Cada entrada: (título_capítulo,
 # ruta del archivo fuente relativa a la raíz del repositorio).
 APPENDIX_CHAPTERS: list[tuple[str, str]] = [
+    ("Elementos — catálogo", "docs/catalogo_elementos.md"),
     ("Modelos constitutivos — catálogo", "docs/catalogo_materiales.md"),
+    ("Solvers — catálogo", "docs/catalogo_solvers.md"),
     ("Anexos técnicos", "manuals/sources/anexo_capa_algebraica.md"),
 ]
 
@@ -215,6 +228,13 @@ def md_to_latex(md: str) -> str:
         body = body.replace("_", r"\_").replace("&", r"\&")
         body = body.replace("#", r"\#").replace("%", r"\%")
         body = body.replace("$", r"\$")
+        # Caracteres LaTeX activos que aparecen en código (e.g. B^T, ~user).
+        # Dentro de \texttt{} `^` inicia superscript y `~` non-breaking space;
+        # ambos rompen la compilación si llegan literales. Se traducen a las
+        # macros \textasciicircum y \textasciitilde para que aparezcan como
+        # glifos ASCII normales sin entrar en modo matemático.
+        body = body.replace("^", r"\textasciicircum{}")
+        body = body.replace("~", r"\textasciitilde{}")
         # Sustituir Unicode dentro del inline code (no llega la fase 4)
         for ch, cmd in UNICODE_MAP.items():
             body = body.replace(ch, cmd)
@@ -584,8 +604,14 @@ def compile_pdf(tex_path: Path) -> bool:
             errors="replace",
         )
         if result.returncode != 0:
-            print(f"[!] lualatex (pasada {i+1}) falló:")
-            print(result.stdout[-3000:])
+            print(f"[!] lualatex (pasada {i+1}) fallo:")
+            tail = result.stdout[-3000:]
+            try:
+                print(tail)
+            except UnicodeEncodeError:
+                # Console encoding (cp1252 en Windows) puede no aceptar
+                # algunos glifos Unicode del log; degradamos a ASCII.
+                print(tail.encode("ascii", errors="replace").decode("ascii"))
             return False
     return True
 

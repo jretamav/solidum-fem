@@ -1,0 +1,56 @@
+# Archivo de entrada Fenix FEM: Análisis dinámico transitorio no lineal
+# de un oscilador 1 GDL elastoplástico en vibración libre desde u0 > u_yield.
+#
+# Estructura: barra axial Truss2D de L=1 m, A=1 m² con material
+# Elastoplastic1D (J2 1D, sigma_y = 5 Pa, H = 5 Pa, rho = 3 kg/m³ dan
+# omega = 5 rad/s y u_y = 0.2). El nodo libre arranca en u0_x = 0.5 (más
+# allá del límite elástico) y vibra libremente; cada ciclo plastifica
+# y disipa energía hasta estabilizarse cerca de la nueva configuración.
+#
+# Es la versión YAML del test `test_free_vibration_with_yield_dissipates_energy`
+# en `tests/test_newmark_nonlinear.py`, con valores de tolerancia y duración
+# pensados para producir gráficas de histéresis visibles.
+#
+# Ejecutar:
+#   python examples/ejecutar_yaml.py examples/modelo_dinamico_plastico.yaml
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+
+materials:
+  - id: 1
+    type: Elastoplastic1D
+    E: 25.0           # módulo de Young (Pa)
+    sigma_y: 5.0      # fluencia (Pa)
+    H: 5.0            # endurecimiento isotrópico modesto (Pa)
+    density: 3.0      # kg/m³ (para que omega = 5 rad/s)
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, A: 1.0, nodes: [1, 2]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}    # empotrado
+  - {node_id: 2, uy: 0.0}             # solo libera ux
+
+# Condiciones iniciales: u0_x del nodo 2 = 0.5 (sobre el límite elástico
+# u_y = 0.2 ⇒ primer cuarto de ciclo plastifica). El orden del vector
+# u0 sigue la numeración global de DOFs: [n1.ux, n1.uy, n2.ux, n2.uy] = 4 DOFs.
+solver:
+  type: NewtonNewmarkSolver
+  t_end: 6.3            # ≈5 periodos T = 2π/ω ≈ 1.257 s cada uno
+  dt: 0.0125            # T/100
+  beta: 0.25
+  gamma: 0.5
+  u0: [0.0, 0.0, 0.5, 0.0]
+  max_iter: 15
+  convergence:
+    rtol_force: 1.0e-7
+    rtol_disp: 1.0e-7
+
+output:
+  file_name: "oscilador_plastico_1gdl"
+  results:
+    frequency: "all_steps"
+    nodal_results: ["Displacements"]
+    element_results: ["Internal_State"]
