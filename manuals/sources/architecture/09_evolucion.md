@@ -22,54 +22,83 @@ Las fases posteriores a la actual están marcadas como pendientes y se materiali
 [Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, solvers] - [Salida]
 ```
 
-## Fase 2 — Dinámica estructural transitoria
+## Fase 2 — Análisis modal
 
-**Estado**: [PENDIENTE: Implementación de la fase 2 — dinámica estructural transitoria.]
+**Estado**: implementado (ADR 0009 fase 1, sesión del 2026-05-13).
+
+El análisis modal resuelve el problema generalizado de valores y vectores característicos `K·φ = ω²·M·φ`. Es un problema algebraico cuyas soluciones admiten **interpretación** como frecuencias propias y formas de vibración libre no amortiguada, pero el análisis en sí es estático: no hay paso de tiempo ni evolución temporal. Se acometió antes que la dinámica transitoria porque solo requiere la matriz de masa nueva, aísla esa pieza, y deja la infraestructura preparada para Newmark.
 
 **Cambios respecto a la fase 1**:
 
-- Aparece la matriz de masa `M`, ensamblada con la misma infraestructura que `K`. Cada elemento añade un método `M_local` consistente con su esquema de integración.
-- Aparece (opcionalmente) la matriz de amortiguamiento `C`, típicamente como combinación de Rayleigh `C = α·M + β·K`.
-- Las variables de estado se amplían: además del desplazamiento `U`, se almacenan velocidad `Ú` y aceleración `Ü`.
-- Se introduce una nueva familia de solvers para integración temporal: implícitos (Newmark, HHT-α, Bossak-α) y explícitos (diferencias centradas).
-- El subsistema algebraico recibe matrices efectivas del tipo `K_eff = a·M + b·C + c·K`, donde los coeficientes dependen del integrador y del paso de tiempo. El despachador del ADR 0003 sigue aplicando: `K_eff` mantiene las propiedades de simetría y, a menudo, definición positiva de `K`.
+- Aparece la matriz de masa `M`, ensamblada con la misma infraestructura que `K` (mismo patrón de sparsity, misma topología COO cacheada).
+- Cada elemento implementa `compute_mass_matrix(lumping)` — masa consistente translacional invariante en barras y cables, axial + Hermitiana cúbica + inercia rotacional propia de sección en frames 2D/3D, integral `∫ρ·NᵀN·t dA` en sólidos 2D (Tri6 usa cuadratura específica `tri_6` por subintegración con `tri_3`).
+- Nuevo subsistema en la capa algebraica: `EigenSolver` que envuelve ARPACK Lanczos con shift-invert (`scipy.sparse.linalg.eigsh`).
+- Nueva clase de solver: `ModalSolver`, registrado en `SolverRegistry` (no se fragmenta el registro). Reutiliza Dirichlet por eliminación directa con un `reduce_pair(K, M)` que aplica `T` a ambas matrices simultáneamente.
+- Nueva salida especializada: `ModalResult` (frozen) con `frequencies_rad/hz`, `periods`, `modes` M-ortonormales, y un método `free_vibration(M, u0, u0_dot, t)` que reconstruye analíticamente la respuesta libre sin amortiguamiento por superposición modal — sin necesidad de integrador temporal.
+- `Material.density` (ADR 0008) ya disponía de la única propiedad física nueva necesaria.
 
-**Topología prevista**:
-
-```
-[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, C, solvers] - [Salida]
-                                                                         |
-                                                            [Integradores temporales]
-```
-
-```callout Riesgo de arquitectura
-La generalización del concepto de DOF se mantiene (siguen siendo grados de libertad mecánicos), pero `ElementState` debe ampliarse para almacenar las derivadas temporales. La semántica *trial* / comprometido se generaliza al estado completo `(U, Ú, Ü, variables internas)`.
-```
-
-## Fase 3 — Análisis modal
-
-**Estado**: [PENDIENTE: Implementación de la fase 3 — análisis modal.]
-
-**Cambios respecto a la fase 2**:
-
-- No hay paso de tiempo ni iteración no lineal; el problema es un autovalor generalizado `(K − ω²·M)·φ = 0`.
-- Se introduce un nuevo subsistema en la capa numérica: el resolutor de autovalores. Algoritmos típicos: Lanczos para problemas grandes, Arnoldi para sistemas no simétricos, ARPACK como biblioteca de referencia.
-- La salida cambia de naturaleza: en lugar de una historia temporal, se devuelve un conjunto de frecuencias propias `ω_i` y modos de vibración `φ_i`.
-- El `SolveResult` se generaliza o se especializa: una alternativa es introducir un `ModalResult` separado; otra es mantener un único agregado polimórfico. La decisión queda diferida al ADR de apertura.
-
-**Topología prevista**:
+**Topología efectiva**:
 
 ```
 [Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, eigensolver] - [Salida: ModalResult]
 ```
 
 ```callout Riesgo de arquitectura
-Bajo. El análisis modal reutiliza `K` y `M` ya disponibles desde la fase 2 y solo añade un nuevo tipo de algoritmo numérico.
+Bajo. El análisis modal añade un nuevo tipo de problema algebraico (autovalor generalizado en lugar de sistema lineal) y una nueva familia de resultados, sin modificar contratos existentes ni la infraestructura de Dirichlet.
 ```
 
-## Fase 4 — Problema térmico estacionario y transitorio
+## Fase 3 — Dinámica estructural transitoria lineal
 
-**Estado**: [PENDIENTE: Implementación de la fase 4 — problema térmico.]
+**Estado**: implementado (ADR 0009 fase 3, sesión del 2026-05-13).
+
+Integración temporal directa de la ecuación de movimiento semidiscreta `M·ü + C·u̇ + K·u = F(t)` por el método de Newmark-β. Es el primer análisis con dependencia temporal real; aprovecha la matriz de masa introducida en la fase 2 y reutiliza las decisiones arquitecturales fijadas en el ADR 0009 (registro unificado, estado dinámico fuera de `Node`, amortiguamiento Rayleigh como entrada estándar).
+
+**Cambios respecto a la fase 2**:
+
+- Aparece la matriz de amortiguamiento `C = α·M + β·K` (Rayleigh proporcional). Los coeficientes pueden pasarse directos o calibrarse modalmente a partir de `(ξ₁, ω₁), (ξ₂, ω₂)` con `fenix.math.damping.rayleigh_from_modes`.
+- Las variables de estado se amplían a `(u, u̇, ü)`. Coherente con el ADR 0009 §5, el estado dinámico **no contamina** la clase `Node`: vive en el nuevo `TransientResult` (frozen) como historiales `t_history`, `u_history`, `udot_history`, `uddot_history` indexados por paso temporal.
+- Nuevo solver `NewmarkSolver` con esquema `(β, γ)` parametrizable (default 1/4, 1/2 — average acceleration, incondicionalmente estable, error `O(Δt²)`). Cargas dependientes del tiempo por callback Python (`F_func: t → F`).
+- El subsistema algebraico recibe una matriz efectiva `A_eff = M + γΔt·C + βΔt²·K`. Con `Δt` constante y problema lineal, `A_eff` es invariante: se factoriza **una sola vez** al inicio (ADR 0003 — `FactorizedSolver`) y cada paso temporal se reduce a una sustitución triangular barata.
+- Aceleración inicial calculada de forma consistente con la ecuación de movimiento: `M·ü₀ = F(0) − C·u̇₀ − K·u₀`.
+
+**Topología efectiva**:
+
+```
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, C, A_eff, solver] - [Salida: TransientResult]
+                                                                                  |
+                                                                  [Integrador temporal Newmark]
+```
+
+```callout Riesgo de arquitectura
+Bajo. La decisión 5 del ADR 0009 (estado dinámico fuera de `Node`, en `TransientResult`) preserva la pureza topológica/geométrica de `Node` y evita que análisis estáticos paguen el coste de campos que no usan. La semántica *trial* / comprometido del estado interno de elementos (ADR sobre `ElementState`) sigue intacta porque la fase 3 es lineal: no hay variables internas que evolucionen.
+```
+
+**Limitaciones declaradas en esta fase**:
+
+- Solo lineal: `K, M` constantes. No-linealidad (Newton dentro de Newmark) diferida a la fase 4.
+- Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
+- `Δt` fijo; adaptativo diferido.
+- Esquemas con amortiguamiento numérico controlado (HHT-α, generalized-α) diferidos a subclase futura.
+
+## Fase 4 — Dinámica estructural transitoria no lineal
+
+**Estado**: [PENDIENTE: Implementación de la fase 4 — Newton-Raphson dentro de cada paso de Newmark.]
+
+**Cambios respecto a la fase 3**:
+
+- En cada paso temporal, el residuo `R = F(t_{n+1}) − F_int(u_{n+1}) − M·ü_{n+1} − C·u̇_{n+1}` se anula iterativamente con Newton-Raphson, reutilizando la infraestructura del `NonlinearSolver` estático (ADR 0007 — `ConvergenceCriterion` calibrado).
+- La matriz tangente efectiva incorpora la rigidez dependiente del estado: `A_eff = M + γΔt·C + βΔt²·K_t(u)`. Se refactoriza cuando `K_t` cambia significativamente; con `K_t` constante (régimen lineal local) se reaprovecha la factorización del paso anterior.
+- El estado interno de los elementos (`ElementState`) recupera plenamente su semántica *trial* / comprometido: se commit al converger cada paso temporal, no solo cada paso de carga.
+
+**Topología prevista**: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal.
+
+```callout Riesgo de arquitectura
+Bajo. Toda la infraestructura ya existe — el `NonlinearSolver` estático tiene calibración de convergencia, fallback de positividad, y Newton modificado. La fase 4 es composición de las fases 1 y 3.
+```
+
+## Fase 5 — Problema térmico estacionario y transitorio
+
+**Estado**: [PENDIENTE: Implementación de la fase 5 — problema térmico.]
 
 **Cambios respecto a las fases anteriores**:
 
@@ -93,11 +122,11 @@ Bajo. El análisis modal reutiliza `K` y `M` ya disponibles desde la fase 2 y so
 Medio. Es la primera fase que rompe la suposición implícita "todos los DOF son mecánicos" presente hoy en numerosos puntos del código. La generalización requiere atributo `DOF_KIND` o similar en cada DOF (mecánico, térmico, futuro presión, futuro químico); posible separación entre `MechanicalElement` y `ThermalElement` con base común `Element`, o un único `Element` polimórfico (decisión a tomar en el ADR de apertura); adaptación del `VtkExporter` para escribir campos escalares además de vectoriales.
 ```
 
-## Fase 5 — Acoplamiento termo-mecánico
+## Fase 6 — Acoplamiento termo-mecánico
 
-**Estado**: [PENDIENTE: Implementación de la fase 5 — acoplamiento termo-mecánico.]
+**Estado**: [PENDIENTE: Implementación de la fase 6 — acoplamiento termo-mecánico.]
 
-**Cambios respecto a la fase 4**:
+**Cambios respecto a la fase 5**:
 
 - Aparece la interacción entre los campos térmico y mecánico: dilatación térmica que induce deformaciones, disipación mecánica que genera calor.
 - Dos estrategias distintas en términos de arquitectura, a decidir en el ADR de apertura:

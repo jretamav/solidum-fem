@@ -86,11 +86,39 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 **Consecuencia.** Invariancia bit-paritaria bajo cambio de unidades (el mismo problema en N/m, kN/mm o MN/m converge en el mismo número de iteraciones). Régimen degenerado (carga inicial nula, control en desplazamiento puro) deja de oscilar espuriamente: el piso absoluto `atol_force` autoderivado define cuándo se da por convergido un residuo numéricamente cero. Problemas casi-rígidos y plásticos perfectos se afinan independientemente vía `rtol_disp` vs `rtol_force` sin compromisos. La política vive en un único punto del código; un solver no lineal futuro la consume sin replicarla.
 
+## ADR 0008 — Densidad como propiedad del material
+
+**Fecha**: 13 de mayo de 2026. **Estado**: aceptado.
+
+**Contexto.** El cableado de fuerza de cuerpo introducido previamente aceptaba un vector `body_force: [bx, by, bz]` global, aplicable uniformemente a todos los elementos. Esto servía para estructuras monomaterial — el usuario calculaba `ρ · g` una vez y lo declaraba — pero fallaba en estructuras multimaterial: con un único vector global, no había forma de distinguir el peso propio del acero del hormigón o de un cable tensado. Adicionalmente, la densidad es la magnitud física que abre la puerta a la matriz de masa elemental y por tanto a todo el subsistema dinámico futuro.
+
+**Decisión.** La densidad es propiedad del material, no del elemento. Se introduce como atributo `density` en la clase base `Material` con valor por defecto `None` (no declarado). La densidad es físicamente intrínseca al medio continuo; vive en el mismo nivel jerárquico que `E`, `ν` o `σ_y`. En el YAML se acepta el bloque atajo `gravity: [0, -9.81]` complementario a `body_force` (mutuamente excluyentes). El ensamblador incorpora `assemble_self_weight(g)` que itera sobre elementos y aplica `b_element = material.density · g`. Si algún material tiene `density=None`, el método falla con `ValueError` listando los materiales afectados — enforcement diferida al uso, sin posibilidad de propagar masa cero silenciosa a un análisis dinámico.
+
+**Consecuencia.** Peso propio físicamente correcto en estructuras multimaterial. API del YAML más intuitiva. Tests existentes con `body_force` siguen pasando. La fase de análisis modal y dinámico hereda la propiedad sin rediseño: `Assembler.assemble_mass_matrix` reutiliza el mismo patrón de validación.
+
+## ADR 0009 — Análisis modal y dinámico
+
+**Fecha**: 13 de mayo de 2026. **Estado**: aceptado; fase 1 (modal) y fase 3 (Newmark transitorio lineal) implementadas.
+
+**Contexto.** El ADR 0003 había identificado análisis modal y dinámica implícita entre los análisis futuros que la capa algebraica iba a habilitar; el ADR 0008 había puesto la densidad como propiedad del material disponible. Quedaba abrir el subsistema con dos análisis distintos pero relacionados: el análisis modal — problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ` —, cuyas soluciones admiten interpretación dinámica pero no constituyen análisis dinámico per se; y el análisis dinámico propiamente dicho, con dependencia temporal explícita — integración de `M · ü + C · u̇ + K · u = F(t)`.
+
+**Decisión.** Se acometen ambos análisis con una hoja de ruta común y siete decisiones arquitecturales fijadas hoy para no reabrir debates en fases posteriores:
+
+1. Matriz de masa **consistente** en la fase 1 (con contrato extensible a `lumped` mediante un parámetro `lumping` ya presente en la firma de `compute_mass_matrix`, suficiente para la futura integración explícita).
+2. Ensamblaje de M paralelo al de K, reutilizando la topología COO cacheada del `Assembler` y la enforcement de densidad del ADR 0008.
+3. `ModalSolver` registrado en el mismo `SolverRegistry` que los solvers estáticos: no se crea un `IntegratorRegistry` paralelo, manteniendo el patrón "un solver = un análisis = una clase registrada".
+4. Dirichlet en el problema modal por eliminación directa (mismo mecanismo del ADR 0004); el término independiente `g` de restricciones lineales no aplica en modal.
+5. Estado dinámico transitorio `(u, u̇, ü)` fuera de `Node`: vive en un `TransientResult` específico, preservando la pureza topológica/geométrica de la clase nodal y evitando que análisis estáticos paguen el coste de campos que no usan.
+6. Amortiguamiento Rayleigh `C = α · M + β · K` como entrada estándar para la fase de dinámica transitoria, con coeficientes calibrables modalmente a partir de dos pares `(ξ, ω)`. Amortiguamiento modal por modo y otros esquemas (Caughey, local) diferidos.
+7. Convención de unidades heredada del modelo (ADR 0008): el usuario es responsable de la consistencia; las tolerancias adimensionales del ADR 0007 garantizan invariancia bajo cambio de unidades.
+
+La fase 1 (`ModalSolver` + ARPACK Lanczos con shift-invert) y la fase 3 (`NewmarkSolver` con `(β, γ)` parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) quedan implementadas y validadas con tests contra solución analítica.
+
+**Consecuencia.** El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 4 (Newton dentro de Newmark — dinámica no lineal), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase `Node` conserva su semántica original.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
 
-- [PENDIENTE: ADR para la introducción del análisis dinámico transitorio (esquemas implícitos y explícitos), incluyendo el contrato de la matriz de masa por elemento y el tratamiento de amortiguamiento.]
-- [PENDIENTE: ADR para la introducción del análisis modal (problema de autovalores generalizado), incluyendo la elección de algoritmo (Lanczos, Arnoldi).]
 - [PENDIENTE: ADR para la introducción del problema térmico, incluyendo la generalización del concepto de DOF a magnitudes escalares no mecánicas.]
 - [PENDIENTE: ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.]

@@ -28,6 +28,8 @@ El despachador (`fenix.math.linalg.dispatcher.select_solver`) elige el backend e
 
 Ningún flag se pide al usuario.
 
+**`EigenSolver` (ADR 0009, problema generalizado)**. La capa algebraica incluye además `fenix.math.linalg.eigen.EigenSolver`, que resuelve el problema generalizado simétrico `K · φ = ω² · M · φ` envolviendo `scipy.sparse.linalg.eigsh` (ARPACK Lanczos con shift-invert centrado en `σ`). No comparte el `Protocol` `LinearAlgebraSolver` de los backends de `K·x = b` porque su firma natural es `solve(K, M, n_modes) → (λ, φ)`. El `ModalSolver` lo invoca para el análisis modal; los cálculos internos de shift-invert generan una factorización de `(K − σ · M)` reutilizada en cada iteración Lanczos, así que la palanca de optimización es la misma — Cholesky enchufado en lugar de SuperLU bajaría 2× el coste del modal en problemas SPD (pendiente, ver memoria de cierre).
+
 ## Fallback automático SPD → LU
 
 Si en algún paso `K` deja de ser positiva definida (paso a régimen postcrítico, daño con reblandecimiento), Cholesky lanza `CholeskyNotPositiveDefiniteError`. Los tres solvers no lineales lo capturan y reinstancian el backend con LU general para el resto del análisis. La transición es silenciosa — solo se imprime un mensaje informativo en stdout.
@@ -39,7 +41,8 @@ Esto significa que **forzar Cholesky desde YAML como diagnóstico nunca rompe el
 La interfaz expone `solver.factorize(K)` que retorna un objeto `FactorizedSolver` con `solve(b)` reutilizable. Habilita:
 
 - **Newton modificado**: el `NonlinearSolver` admite el parámetro `freeze_tangent_after_iter: int` que congela la factorización tras N iteraciones del paso. Útil cuando la tangente cambia poco y el coste dominante es la factorización.
-- **Análisis futuros** (modal, pandeo lineal, dinámica implícita) que reutilizan factorización están preparados a nivel de interfaz.
+- **Dinámica implícita lineal** (ADR 0009 fase 3): el `NewmarkSolver` factoriza una sola vez la matriz efectiva `A_eff = M + γΔt · C + βΔt² · K` al inicio del análisis y reutiliza la factorización en cada paso temporal. Con `Δt` constante y problema lineal, los cientos o miles de pasos del análisis se reducen a sustituciones triangulares baratas. Es el mismo `FactorizedSolver` del despachador.
+- **Análisis futuros** (pandeo lineal, dinámica implícita no lineal con factorización congelada entre pasos cuando la tangente cambia poco) reutilizan la misma interfaz sin extensiones adicionales.
 
 Ejemplo YAML:
 

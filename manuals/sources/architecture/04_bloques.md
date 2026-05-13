@@ -148,14 +148,19 @@ Disponibles en la versión actual:
 - `LinearSolver` — un único paso, una única resolución del sistema `K · U = F`. Aplicable a problemas estrictamente lineales (rigidez constante, sin actualización de geometría, sin no linealidad material).
 - `NonlinearSolver` — método de Newton-Raphson incremental con control de carga. Aplica fracciones crecientes de la carga total y, en cada paso, itera hasta la convergencia. Criterio de parada dual (desplazamiento y fuerza).
 - `ArcLengthSolver` — método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con *snap-back* o *snap-through*.
+- `ModalSolver` (ADR 0009 fase 1) — análisis modal: problema generalizado de valores y vectores característicos `K · φ = ω² · M · φ`. No es análisis dinámico propiamente dicho (no hay paso de tiempo ni evolución temporal); sus soluciones admiten interpretación como frecuencias propias y formas de vibración libre no amortiguada. Internamente delega en `EigenSolver` (ARPACK Lanczos con shift-invert) sobre el sistema reducido por Dirichlet. Devuelve `ModalResult` con frecuencias, períodos y modos M-ortonormales; expone además `free_vibration(M, u0, u0_dot, t)` para reconstruir analíticamente la respuesta libre por superposición modal.
+- `NewmarkSolver` (ADR 0009 fase 3) — análisis dinámico transitorio lineal: integración temporal directa de `M · ü + C · u̇ + K · u = F(t)` por el método de Newmark-β con `(β, γ)` parametrizables (default 1/4, 1/2 — *average acceleration*, incondicionalmente estable, error `O(Δt²)`). Amortiguamiento Rayleigh `C = α · M + β · K` con coeficientes directos o calibrados modalmente a partir de dos pares `(ξ, ω)`. Cargas dependientes del tiempo por callback Python. Devuelve `TransientResult` con historiales `(t, u, u̇, ü)`. La matriz efectiva `A_eff = M + γΔt · C + βΔt² · K` se factoriza una sola vez al inicio y se reutiliza en todos los pasos.
 
 Espacio natural de extensión:
 
-- [PENDIENTE: Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.]
 - [PENDIENTE: Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.]
 - [PENDIENTE: Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.]
-- [PENDIENTE: Esquemas implícitos para dinámica estructural transitoria (Newmark, HHT-α, Bossak-α).]
-- [PENDIENTE: Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto.]
+- [PENDIENTE: Newton-Raphson dentro de cada paso de Newmark — dinámica estructural transitoria no lineal (fase 4 del ADR 0009).]
+- [PENDIENTE: Esquemas con amortiguamiento numérico controlado (HHT-α, generalized-α, Bossak-α) como subclase de `NewmarkSolver`.]
+- [PENDIENTE: Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto. Requieren masa lumped (fase 2 del ADR 0009, contrato `lumping="lumped"` ya en la firma de `compute_mass_matrix`).]
+- [PENDIENTE: Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.]
+- [PENDIENTE: Respuesta en frecuencia (steady-state harmonic): `(−ω² · M + iω · C + K) · û = F̂` con barrido en `ω`.]
+- [PENDIENTE: Análisis espectral / sísmico por combinación modal (CQC, SRSS sobre espectro de respuesta).]
 
 La incorporación de un solver nuevo se realiza en `fenix/math/solver_<nombre>.py` mediante el decorador `@SolverRegistry.register`, sin modificación del intérprete del caso, el dominio o los elementos.
 
@@ -167,6 +172,7 @@ Algoritmos disponibles:
 
 - `LUSolver` — factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
 - `CholeskySolver` — factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando `K` es simétrica y definida positiva.
+- `EigenSolver` (ADR 0009) — algoritmo de autovalor generalizado simétrico para el problema `K · φ = ω² · M · φ`. Envuelve `scipy.sparse.linalg.eigsh` (ARPACK Lanczos con shift-invert centrado en `σ`). Vive en `fenix/math/linalg/eigen.py` y no comparte la interfaz `solve(K, b)` de los anteriores — su firma natural es `solve(K, M, n_modes) → (λ, φ)`.
 - [PENDIENTE: `LDLTSolver` — factorización LDLᵀ para el caso simétrico no definido positivo, reservada para la fase 2 del ADR 0003.]
 - [PENDIENTE: Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.]
 - [PENDIENTE: Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).]
@@ -183,12 +189,14 @@ Implementados en la versión actual:
 
 - *Estática lineal*. Desplazamientos pequeños, rigidez constante, una resolución directa. Combinación: `LinearSolver` con materiales lineales y elementos en formulación lineal.
 - *Estática no lineal incremental*. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: `NonlinearSolver` o `ArcLengthSolver` con materiales no lineales y/o elementos corrotacionales.
+- *Análisis modal* (ADR 0009 fase 1). Problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ`. Combinación: `ModalSolver` con materiales que declaren `density` y elementos que implementen `compute_mass_matrix`.
+- *Dinámica estructural transitoria lineal* (ADR 0009 fase 3). Integración temporal directa de la ecuación de movimiento por Newmark-β, con amortiguamiento Rayleigh proporcional y cargas dependientes del tiempo por callback Python. Combinación: `NewmarkSolver` con material lineal, elementos en formulación lineal y `density` declarada.
 
 Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
 
-- [PENDIENTE: Dinámica estructural transitoria implícita con integradores Newmark y HHT-α.]
+- [PENDIENTE: Dinámica estructural transitoria no lineal — Newton-Raphson dentro de cada paso de Newmark (fase 4 del ADR 0009).]
 - [PENDIENTE: Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.]
-- [PENDIENTE: Análisis modal (frecuencias propias y modos de vibración) mediante problema de autovalores generalizado.]
+- [PENDIENTE: Respuesta en frecuencia (steady-state harmonic) y análisis espectral sísmico por combinación modal.]
 - [PENDIENTE: Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).]
 - [PENDIENTE: Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).]
 - [PENDIENTE: Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.]
