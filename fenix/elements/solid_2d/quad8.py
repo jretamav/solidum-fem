@@ -2,7 +2,7 @@
 import numpy as np
 
 from fenix.elements.solid_2d._shared import (
-    _HigherOrderQuad,
+    _HigherOrderSolid2D,
     _dN_quad8,
     _N_quad8,
     _quadratic_edge_traction,
@@ -11,7 +11,7 @@ from fenix.registry import ElementRegistry
 
 
 @ElementRegistry.register
-class Quad8(_HigherOrderQuad):
+class Quad8(_HigherOrderSolid2D):
     """Cuadrilátero serendípito 2D de orden 2 (8 nodos).
 
     Reproduce campos cuadráticos exactamente; sin shear locking severo en

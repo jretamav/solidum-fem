@@ -773,7 +773,7 @@ references:
   \item \texttt{test\_acceptance\_geometric\_stiffness\_transverse\_plane} (criterio 3 --- aplica $\mathbf K_G$ a \textbf{dos} direcciones linealmente independientes del plano perpendicular al eje).
   \item \textbf{Notas de traducción}:
   \item La clave respecto a 2D es el proyector $\mathbf P_3 = \mathbf I - \hat{\mathbf e}\hat{\mathbf e}^\top$ (3\ensuremath{\times}3, rango 2): el plano perpendicular al eje es bidimensional. $\mathbf K_G$ resulta entonces de rango 2, no rango 1.
-  \item Método estático \texttt{\_perpendicular\_projector(cx, cy, cz)} extrae esta operación para legibilidad y posible reuso.
+  \item El proyector se construye con \texttt{fenix.math.geometry.perpendicular\_projector(ê)}, helper compartido con \texttt{Cable3DCorot} (operación geométrica pura, no específica de armaduras ni de cables).
   \item La longitud corriente $l$ y los cosenos $c_x, c_y, c_z$ se recalculan en cada evaluación (Updated Lagrangian); no se cachean entre llamadas del solver.
   \item Autovalores de $\mathbf K_G$ sobre modos transversos (rotación de la barra alrededor de su centro): $2N/l$ sobre el vector sin normalizar --- igual que en 2D, el factor 2 viene de que el vector de 6 componentes tiene norma $\sqrt 2$. Sobre el versor el autovalor es $N/l$.
 \end{itemize}
@@ -1145,7 +1145,7 @@ references:
   \item \texttt{test\_registro\_en\_registry} --- autodiscover.
   \item \textbf{Notas de traducción}:
   \item La clase duplica la maquinaria corotacional 3D de \texttt{Truss3DCorot}. Duplicación deliberada por la misma razón que en 2D: desacoplar la evolución futura de armaduras y cables.
-  \item Método estático \texttt{\_perpendicular\_projector(cx, cy, cz)} extrae la construcción del proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ para legibilidad.
+  \item El proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ se construye con \texttt{fenix.math.geometry.perpendicular\_projector(ê)}, helper compartido con \texttt{Truss3DCorot} (operación geométrica pura, ortogonal al hecho de que el material sea unilateral o no).
   \item \texttt{\_current\_geometry} tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), heredando la flexibilidad de \texttt{Truss3D} para problemas embebidos.
   \item En estado destensado, $\mathbf K_M = \mathbf 0$ y $\mathbf K_G = \mathbf 0$ simultáneamente; el elemento aporta literalmente ceros al ensamblaje.
   \item El test del criterio 1 compara directamente contra \texttt{Truss3DCorot} con material \texttt{Elastic1D}: si ambos producen $\mathbf K$ y $\mathbf F_{\text{int}}$ iguales a tolerancia, la cinemática del cable y de la barra son consistentes entre sí en el régimen tensado.
@@ -2608,7 +2608,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py \ensuremath{\cdot} clase \texttt{Quad8} (subclase de la base interna \texttt{\_HigherOrderQuad} en \_shared.py, compartida con Quad9).
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py \ensuremath{\cdot} clase \texttt{Quad8} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad9 y Tri6).
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
 \end{itemize}
 
@@ -2678,7 +2678,7 @@ acceptance:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py \ensuremath{\cdot} clase \texttt{Quad9} (subclase de la base interna \texttt{\_HigherOrderQuad} en \_shared.py, compartida con Quad8).
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py \ensuremath{\cdot} clase \texttt{Quad9} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Tri6).
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
 \end{itemize}
 
@@ -2744,7 +2744,7 @@ acceptance:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py \ensuremath{\cdot} clase \texttt{Tri6}.
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py \ensuremath{\cdot} clase \texttt{Tri6} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Quad9). Declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (\texttt{tri\_3}, orden 2) subintegra el producto cuadrático\ensuremath{\times}cuadrático de la masa consistente.
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
 \end{itemize}
 
@@ -5438,7 +5438,7 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Cargas}: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
   \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} con 9 puntos por defecto.
   \item \textbf{Spec}: docs/specs/Quad8.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py (subclase de la base interna \texttt{\_HigherOrderQuad} definida en \texttt{\_shared.py}, compartida con Quad9).
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py (subclase de la base interna \texttt{\_HigherOrderSolid2D} definida en \texttt{\_shared.py}, compartida con Quad9 y Tri6).
 \end{itemize}
 
 
@@ -5451,7 +5451,7 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Integración}: Gauss 3\ensuremath{\times}3.
   \item \textbf{Cargas y salida por Gauss}: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
   \item \textbf{Spec}: docs/specs/Quad9.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py (subclase de la base interna \texttt{\_HigherOrderQuad}, compartida con Quad8).
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py (subclase de la base interna \texttt{\_HigherOrderSolid2D}, compartida con Quad8 y Tri6).
 \end{itemize}
 
 
@@ -5463,7 +5463,7 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Integración}: 3 puntos en los puntos medios (cuadratura \texttt{tri\_3}).
   \item \textbf{Cargas}: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
   \item \textbf{Spec}: docs/specs/Tri6.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \texttt{\_shared.py}, compartida con Quad8 y Quad9; declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
 \end{itemize}
 
 

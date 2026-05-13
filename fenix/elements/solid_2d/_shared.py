@@ -14,8 +14,10 @@ Cuatro grupos:
    tracciones cuadráticas: :func:`_kinematics_higher_order`,
    :func:`_quadratic_edge_traction`. Más el expansor escalar→bloque para
    masa traslacional: :func:`_expand_scalar_mass`.
-4. **Base interna** :class:`_HigherOrderQuad` que comparten Quad8 y
-   Quad9 (mismo bucle Gauss, distinto par ``_SHAPE_FN``/``_GRAD_FN``).
+4. **Base interna** :class:`_HigherOrderSolid2D` que comparten Quad8,
+   Quad9 y Tri6 (mismo bucle de Gauss, distinto par
+   ``_SHAPE_FN``/``_GRAD_FN``, y cuadratura específica para masa cuando
+   la del elemento subintegra el producto cuadrático×cuadrático).
 
 Todos los símbolos llevan guion bajo: son privados al paquete. Los tres
 o cuatro que tests existentes importan se reexportan desde
@@ -311,16 +313,30 @@ def _quadratic_edge_traction(elem, edge: int, t_vec: np.ndarray, n_dofs: int) ->
 
 
 # ---------------------------------------------------------------------------
-# Base interna compartida por Quad8 y Quad9.
+# Base interna compartida por todos los elementos sólidos 2D isoparamétricos
+# de orden superior (cuadrático o más): Quad8, Quad9, Tri6.
 # ---------------------------------------------------------------------------
 
-class _HigherOrderQuad(Element):
-    """Base interna para Quad8/Quad9: comparte los bucles de Gauss y body load."""
+class _HigherOrderSolid2D(Element):
+    """Base interna para sólidos 2D isoparamétricos de orden superior.
+
+    Comparte los bucles de Gauss para K, F_int, gauss state, body load y
+    masa consistente. Cada subclase declara las funciones de forma
+    (``_SHAPE_FN``, ``_GRAD_FN``), la cuadratura por defecto del elemento
+    (``_DEFAULT_QUADRATURE``) y, opcionalmente, una cuadratura
+    independiente para la matriz de masa (``_MASS_QUADRATURE``). El
+    número de nodos se infiere de ``len(self.nodes)``: la base no
+    presupone si la geometría es cuadrilátera o triangular.
+    """
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
     _SHAPE_FN = staticmethod(lambda xi, eta: None)
     _GRAD_FN = staticmethod(lambda xi, eta: None)
     _DEFAULT_QUADRATURE = "3x3"
+    # Cuadratura específica para masa cuando la del elemento subintegra el
+    # producto cuadrático×cuadrático (orden 4). ``None`` = usa la del
+    # elemento (caso Quad8/Quad9 con 3×3, orden 5 — masa exacta).
+    _MASS_QUADRATURE: str | None = None
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):
@@ -391,14 +407,16 @@ class _HigherOrderQuad(Element):
         return f
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del cuadrilátero de orden superior por cuadratura
-        del propio elemento (ADR 0009).
+        """Masa consistente del elemento sólido 2D de orden superior (ADR 0009).
 
-        Quad8 y Quad9 con cuadratura 3×3 (default ``_DEFAULT_QUADRATURE``)
-        integran exactamente la masa consistente: productos de funciones
-        cuadráticas son de orden 4, y 3×3 integra hasta orden 5 en cada
-        variable. Si el usuario inyecta una cuadratura más pobre, la masa
-        queda subintegrada (mismo trade-off documentado para K).
+        Cuando la cuadratura del elemento integra exactamente el producto
+        cuadrático×cuadrático (Quad8/Quad9 con 3×3, orden 5), la masa se
+        integra con esa misma cuadratura — caso default
+        (``_MASS_QUADRATURE = None``). Cuando subintegra (Tri6 con
+        ``tri_3``, orden 2, frente al producto de orden 4 de la masa), la
+        subclase declara ``_MASS_QUADRATURE`` con una regla específica
+        suficientemente exacta (e.g. ``tri_6``, Dunavant orden 4), evitando
+        modos nulos espurios en M.
 
         Returns
         -------
@@ -413,8 +431,12 @@ class _HigherOrderQuad(Element):
         rho = self.material.density
         coords = self.get_coordinate_matrix(ndim=2)
         n = self._n_nodes
+        if self._MASS_QUADRATURE is None:
+            mass_points, mass_weights = self.points, self.weights
+        else:
+            mass_points, mass_weights = QuadratureRegistry.get(self._MASS_QUADRATURE)
         M_s = np.zeros((n, n))
-        for (xi, eta), w in zip(self.points, self.weights):
+        for (xi, eta), w in zip(mass_points, mass_weights):
             N = self._SHAPE_FN(xi, eta)
             _, detJ = _kinematics_higher_order(
                 self._GRAD_FN, xi, eta, coords, n

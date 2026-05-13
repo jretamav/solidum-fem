@@ -12,9 +12,9 @@ clase vive en su módulo:
 
 Los helpers libres (funciones de forma, derivadas, kinematics Numba para
 los lineales, ``_expand_scalar_mass``, ``_quadratic_edge_traction`` y la
-base interna ``_HigherOrderQuad`` de Quad8/Quad9) viven en
-:mod:`_shared`. Algunos tests del repositorio importan estos helpers
-privados directamente (``test_patch_solid_2d``,
+base interna ``_HigherOrderSolid2D`` compartida por Quad8, Quad9 y Tri6)
+viven en :mod:`_shared`. Algunos tests del repositorio importan estos
+helpers privados directamente (``test_patch_solid_2d``,
 ``test_higher_order_solid_2d``); el paquete los reexporta para preservar
 esos imports sin cambios.
 """

@@ -465,7 +465,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cargas**: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
 - **Salida por Gauss**: `compute_gauss_state(U)` con 9 puntos por defecto.
 - **Spec**: [docs/specs/Quad8.md](specs/Quad8.md).
-- **Archivo**: [fenix/elements/solid_2d/quad8.py](../fenix/elements/solid_2d/quad8.py) (subclase de la base interna `_HigherOrderQuad` definida en `_shared.py`, compartida con Quad9).
+- **Archivo**: [fenix/elements/solid_2d/quad8.py](../fenix/elements/solid_2d/quad8.py) (subclase de la base interna `_HigherOrderSolid2D` definida en `_shared.py`, compartida con Quad9 y Tri6).
 
 ---
 
@@ -477,7 +477,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Integración**: Gauss 3×3.
 - **Cargas y salida por Gauss**: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
 - **Spec**: [docs/specs/Quad9.md](specs/Quad9.md).
-- **Archivo**: [fenix/elements/solid_2d/quad9.py](../fenix/elements/solid_2d/quad9.py) (subclase de la base interna `_HigherOrderQuad`, compartida con Quad8).
+- **Archivo**: [fenix/elements/solid_2d/quad9.py](../fenix/elements/solid_2d/quad9.py) (subclase de la base interna `_HigherOrderSolid2D`, compartida con Quad8 y Tri6).
 
 ---
 
@@ -488,7 +488,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Integración**: 3 puntos en los puntos medios (cuadratura `tri_3`).
 - **Cargas**: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
 - **Spec**: [docs/specs/Tri6.md](specs/Tri6.md).
-- **Archivo**: [fenix/elements/solid_2d/tri6.py](../fenix/elements/solid_2d/tri6.py)
+- **Archivo**: [fenix/elements/solid_2d/tri6.py](../fenix/elements/solid_2d/tri6.py) (subclase de la base interna `_HigherOrderSolid2D` en `_shared.py`, compartida con Quad8 y Quad9; declara `_MASS_QUADRATURE = "tri_6"` para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
 
 ---
 

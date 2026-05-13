@@ -2,7 +2,7 @@
 import numpy as np
 
 from fenix.elements.solid_2d._shared import (
-    _HigherOrderQuad,
+    _HigherOrderSolid2D,
     _dN_quad9,
     _N_quad9,
     _quadratic_edge_traction,
@@ -11,7 +11,7 @@ from fenix.registry import ElementRegistry
 
 
 @ElementRegistry.register
-class Quad9(_HigherOrderQuad):
+class Quad9(_HigherOrderSolid2D):
     """Cuadrilátero Lagrangiano 2D de orden 2 (9 nodos)."""
     N_INTEGRATION_POINTS = 9
     _SHAPE_FN = staticmethod(_N_quad9)
