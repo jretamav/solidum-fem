@@ -195,15 +195,16 @@ class TestSPDFallback(unittest.TestCase):
 
     def test_linear_solver_falls_back_to_lu(self):
         from fenix.math import solvers as solvers_module
+        from fenix.math.solvers import linear as linear_module
         from fenix.math.assembly import Assembler
 
         FailingCholesky, _ = self._make_failing_cholesky()
 
-        # solvers.py hace ``from fenix.math.linalg import select_solver``, así
-        # que tenemos que pinchar el símbolo en el módulo solvers, no en
-        # linalg.dispatcher.
-        original = solvers_module.select_solver
-        solvers_module.select_solver = lambda props, override=None: FailingCholesky()
+        # ``LinearSolver`` resuelve ``select_solver`` por su import propio en
+        # ``fenix.math.solvers.linear``; el monkey-patch debe apuntar a ese
+        # submódulo, no al paquete.
+        original = linear_module.select_solver
+        linear_module.select_solver = lambda props, override=None: FailingCholesky()
         try:
             dom, n2, F = self._cantilever_axial()
             U = solvers_module.LinearSolver(Assembler(dom)).solve(F)
@@ -211,10 +212,11 @@ class TestSPDFallback(unittest.TestCase):
             # Tras eliminación directa (ADR 0004) la imposición es exacta a redondeo.
             np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-12)
         finally:
-            solvers_module.select_solver = original
+            linear_module.select_solver = original
 
     def test_nonlinear_solver_falls_back_to_lu(self):
         from fenix.math import solvers as solvers_module
+        from fenix.math.solvers import nonlinear as nonlinear_module
         from fenix.math.assembly import Assembler
         from fenix.math.linalg.lu import LUSolver as RealLU
 
@@ -229,8 +231,10 @@ class TestSPDFallback(unittest.TestCase):
                 return FailingCholesky()
             return RealLU()
 
-        original = solvers_module.select_solver
-        solvers_module.select_solver = _patched
+        # ``NonlinearSolver`` lo importa en su propio submódulo (ver
+        # ``test_linear_solver_falls_back_to_lu`` para la lógica).
+        original = nonlinear_module.select_solver
+        nonlinear_module.select_solver = _patched
         try:
             dom, n2, F = self._cantilever_axial()
             from fenix.math.convergence import ConvergenceCriterion
@@ -240,7 +244,7 @@ class TestSPDFallback(unittest.TestCase):
             # Tras eliminación directa (ADR 0004) la imposición es exacta a redondeo.
             np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-12)
         finally:
-            solvers_module.select_solver = original
+            nonlinear_module.select_solver = original
 
 
 if __name__ == "__main__":

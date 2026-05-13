@@ -45,13 +45,17 @@ from fenix.materials.elastic_2d import Elastic2D
 from fenix.math.assembly import Assembler
 from fenix.math.solvers import ModalSolver
 
+from _modal_fixtures import (
+    A_SECTION,
+    E,
+    L_TOTAL,
+    N_ELEMS,
+    RHO,
+    build_axial_bar_2d,
+    build_axial_bar_3d,
+    build_simply_supported_beam,
+)
 
-# Constantes físicas comunes (acero)
-E = 210.0e9
-RHO = 7850.0
-A_SECTION = 1.0e-4
-L_TOTAL = 1.0
-N_ELEMS = 20
 
 # Frecuencias analíticas de barra axial empotrada-libre: ω_n = ((2n-1)π/(2L))·√(E/ρ).
 def _axial_freqs(n: int = 3) -> np.ndarray:
@@ -60,49 +64,13 @@ def _axial_freqs(n: int = 3) -> np.ndarray:
                      for k in range(1, n + 1)])
 
 
-# ---------------------------------------------------------------------------
-# Helpers de construcción de modelos axiales (barras 1D embebidas en 2D/3D)
-# ---------------------------------------------------------------------------
-
-def _build_axial_bar_2d(elem_cls, *, n_elems: int = N_ELEMS) -> Domain:
-    """Barra 2D alineada con eje x; uy=0 global, ux=0 en n1."""
-    dom = Domain()
-    nodes = [dom.add_node(i + 1, [i * L_TOTAL / n_elems, 0.0])
-             for i in range(n_elems + 1)]
-    mat = Elastic1D(E=E, density=RHO)
-    for i in range(n_elems):
-        dom.add_element(elem_cls(i + 1, [nodes[i], nodes[i + 1]],
-                                  mat, A=A_SECTION))
-    nodes[0].fix_dof("ux", 0.0)
-    for n in nodes:
-        n.fix_dof("uy", 0.0)
-    dom.generate_equation_numbers()
-    return dom
-
-
-def _build_axial_bar_3d(elem_cls, *, n_elems: int = N_ELEMS) -> Domain:
-    """Barra 3D alineada con eje x; uy=uz=0 global, ux=0 en n1."""
-    dom = Domain()
-    nodes = [dom.add_node(i + 1, [i * L_TOTAL / n_elems, 0.0, 0.0])
-             for i in range(n_elems + 1)]
-    mat = Elastic1D(E=E, density=RHO)
-    for i in range(n_elems):
-        dom.add_element(elem_cls(i + 1, [nodes[i], nodes[i + 1]],
-                                  mat, A=A_SECTION))
-    nodes[0].fix_dof("ux", 0.0)
-    for n in nodes:
-        n.fix_dof("uy", 0.0); n.fix_dof("uz", 0.0)
-    dom.generate_equation_numbers()
-    return dom
-
-
 # ===========================================================================
 # Tests analíticos
 # ===========================================================================
 
 class TestModalTruss3D(unittest.TestCase):
     def test_axial_first_three(self):
-        dom = _build_axial_bar_3d(Truss3D)
+        dom = build_axial_bar_3d(Truss3D)
         result = run_modal(dom, n_modes=5)
         np.testing.assert_allclose(
             result.frequencies_rad[:3], _axial_freqs(3), rtol=0.01
@@ -197,40 +165,22 @@ class TestModalCorotEquivalence(unittest.TestCase):
     su contribución no lineal a cero en el estado natural)."""
 
     def test_truss2dcorot_matches_truss2d(self):
-        base = run_modal(_build_axial_bar_2d(Truss2D), n_modes=3)
-        corot = run_modal(_build_axial_bar_2d(Truss2DCorot), n_modes=3)
+        base = run_modal(build_axial_bar_2d(Truss2D), n_modes=3)
+        corot = run_modal(build_axial_bar_2d(Truss2DCorot), n_modes=3)
         np.testing.assert_allclose(
             corot.frequencies_rad, base.frequencies_rad, rtol=1e-10
         )
 
     def test_truss3dcorot_matches_truss3d(self):
-        base = run_modal(_build_axial_bar_3d(Truss3D), n_modes=3)
-        corot = run_modal(_build_axial_bar_3d(Truss3DCorot), n_modes=3)
+        base = run_modal(build_axial_bar_3d(Truss3D), n_modes=3)
+        corot = run_modal(build_axial_bar_3d(Truss3DCorot), n_modes=3)
         np.testing.assert_allclose(
             corot.frequencies_rad, base.frequencies_rad, rtol=1e-10
         )
 
     def test_frame2deulercorot_matches_frame2deuler(self):
-        I_beam = 8.33e-10
-        n_elems = N_ELEMS
-
-        def build(elem_cls):
-            dom = Domain()
-            nodes = [dom.add_node(i + 1, [i * L_TOTAL / n_elems, 0.0])
-                     for i in range(n_elems + 1)]
-            mat = Elastic1D(E=E, density=RHO)
-            for i in range(n_elems):
-                dom.add_element(elem_cls(
-                    i + 1, [nodes[i], nodes[i + 1]], mat,
-                    A=A_SECTION, I=I_beam,
-                ))
-            nodes[0].fix_dof("ux", 0.0); nodes[0].fix_dof("uy", 0.0)
-            nodes[-1].fix_dof("ux", 0.0); nodes[-1].fix_dof("uy", 0.0)
-            dom.generate_equation_numbers()
-            return dom
-
-        base = run_modal(build(Frame2DEuler), n_modes=3)
-        corot = run_modal(build(Frame2DEulerCorot), n_modes=3)
+        base = run_modal(build_simply_supported_beam(Frame2DEuler), n_modes=3)
+        corot = run_modal(build_simply_supported_beam(Frame2DEulerCorot), n_modes=3)
         np.testing.assert_allclose(
             corot.frequencies_rad, base.frequencies_rad, rtol=1e-10
         )
@@ -243,15 +193,15 @@ class TestModalCablesBilateralEquivalence(unittest.TestCase):
     tangente axial colapsa a cero en compresión / slack)."""
 
     def test_cable2d_matches_truss2d(self):
-        truss = run_modal(_build_axial_bar_2d(Truss2D), n_modes=3)
-        cable = run_modal(_build_axial_bar_2d(Cable2DCorot), n_modes=3)
+        truss = run_modal(build_axial_bar_2d(Truss2D), n_modes=3)
+        cable = run_modal(build_axial_bar_2d(Cable2DCorot), n_modes=3)
         np.testing.assert_allclose(
             cable.frequencies_rad, truss.frequencies_rad, rtol=1e-10
         )
 
     def test_cable3d_matches_truss3d(self):
-        truss = run_modal(_build_axial_bar_3d(Truss3D), n_modes=3)
-        cable = run_modal(_build_axial_bar_3d(Cable3DCorot), n_modes=3)
+        truss = run_modal(build_axial_bar_3d(Truss3D), n_modes=3)
+        cable = run_modal(build_axial_bar_3d(Cable3DCorot), n_modes=3)
         np.testing.assert_allclose(
             cable.frequencies_rad, truss.frequencies_rad, rtol=1e-10
         )

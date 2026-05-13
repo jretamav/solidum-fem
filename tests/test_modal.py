@@ -31,59 +31,25 @@ from fenix.math.assembly import Assembler
 from fenix.math.solvers import ModalSolver
 from fenix.results import ModalResult
 
-
-# Parámetros físicos comunes (acero):
-E = 210.0e9
-RHO = 7850.0
-A = 1.0e-4
-L_TOTAL = 1.0
-N_ELEMS = 20
+from _modal_fixtures import (
+    A_SECTION,
+    E,
+    L_TOTAL,
+    N_ELEMS,
+    RHO,
+    build_axial_bar_2d,
+    build_simply_supported_beam,
+)
 
 
 def _build_axial_bar(n_elems: int = N_ELEMS) -> Domain:
-    """Barra empotrada-libre discretizada en `n_elems` Truss2D alineados con x.
-
-    Todos los DOFs ``uy`` se fijan a cero para reducir el problema al modo
-    axial puro — es el caso analítico contra el que se valida.
-    """
-    dom = Domain()
-    nodes = []
-    for i in range(n_elems + 1):
-        x = i * (L_TOTAL / n_elems)
-        nodes.append(dom.add_node(i + 1, [x, 0.0]))
-
-    mat = Elastic1D(E=E, density=RHO)
-    for i in range(n_elems):
-        dom.add_element(Truss2D(i + 1, [nodes[i], nodes[i + 1]], mat, A=A))
-
-    # Empotramiento en x=0, restricción transversal global a uy=0.
-    nodes[0].fix_dof("ux", 0.0)
-    for node in nodes:
-        node.fix_dof("uy", 0.0)
-    dom.generate_equation_numbers(verbose=False)
-    return dom
+    """Atajo histórico: barra axial Truss2D con la configuración estándar."""
+    return build_axial_bar_2d(Truss2D, n_elems=n_elems)
 
 
 def _build_simply_supported_beam(n_elems: int = N_ELEMS) -> Domain:
-    """Viga Bernoulli-Euler simplemente apoyada (apoyos a ambos extremos
-    fijos en ``ux`` y ``uy``, rotación libre)."""
-    I_beam = 8.33e-10
-    dom = Domain()
-    nodes = []
-    for i in range(n_elems + 1):
-        x = i * (L_TOTAL / n_elems)
-        nodes.append(dom.add_node(i + 1, [x, 0.0]))
-
-    mat = Elastic1D(E=E, density=RHO)
-    for i in range(n_elems):
-        dom.add_element(Frame2DEuler(i + 1, [nodes[i], nodes[i + 1]], mat,
-                                       A=A, I=I_beam))
-
-    # Apoyos simples a ambos extremos: ux=uy=0, rz libre.
-    nodes[0].fix_dof("ux", 0.0); nodes[0].fix_dof("uy", 0.0)
-    nodes[-1].fix_dof("ux", 0.0); nodes[-1].fix_dof("uy", 0.0)
-    dom.generate_equation_numbers(verbose=False)
-    return dom
+    """Atajo histórico: viga Bernoulli simplemente apoyada Frame2DEuler."""
+    return build_simply_supported_beam(Frame2DEuler, n_elems=n_elems)
 
 
 class TestModalAxialBar(unittest.TestCase):
@@ -141,7 +107,7 @@ class TestModalSimplySupportedBeam(unittest.TestCase):
         result = run_modal(dom, n_modes=5)
 
         # ω_n = (nπ/L)²·√(EI/(ρA)).
-        beta = math.sqrt(E * I_beam / (RHO * A))
+        beta = math.sqrt(E * I_beam / (RHO * A_SECTION))
         omegas_analytic = np.array(
             [(n * math.pi / L_TOTAL) ** 2 * beta for n in (1, 2, 3)]
         )
@@ -206,7 +172,7 @@ class TestModalSolverContract(unittest.TestCase):
         n1 = dom.add_node(1, [0.0, 0.0])
         n2 = dom.add_node(2, [1.0, 0.0])
         mat = Elastic1D(E=E)  # ¡sin density!
-        dom.add_element(Truss2D(1, [n1, n2], mat, A=A))
+        dom.add_element(Truss2D(1, [n1, n2], mat, A=A_SECTION))
         n1.fix_dof("ux", 0.0); n1.fix_dof("uy", 0.0); n2.fix_dof("uy", 0.0)
         dom.generate_equation_numbers(verbose=False)
 
@@ -246,7 +212,7 @@ class TestModalYamlPipeline(unittest.TestCase):
         )
         elems_yaml = "\n".join(
             f"  - {{id: {i + 1}, type: Truss2D, material: 1, "
-            f"nodes: [{i + 1}, {i + 2}], A: {A}}}"
+            f"nodes: [{i + 1}, {i + 2}], A: {A_SECTION}}}"
             for i in range(N_ELEMS)
         )
         bcs_yaml = "  - {node_id: 1, ux: 0.0, uy: 0.0}\n"
