@@ -179,7 +179,9 @@ def md_to_latex(md: str) -> str:
         # Bloques `callout Titulo`: el contenido se procesa recursivamente
         # como Markdown y se envuelve en el entorno `infobox` con el titulo
         # indicado tras la palabra clave. Solo disponible en manuales que
-        # carguen el entorno (ver preamble del manual de arquitectura).
+        # carguen el entorno (preambles de los builders de arquitectura y
+        # de usuario; el de referencia no lo carga, por lo que los callouts
+        # solo deben usarse en fuentes consumidas por aquellos).
         if lang.startswith("callout"):
             title = lang_raw[len("callout"):].strip() or "Nota"
             inner_md = code.strip()
@@ -204,7 +206,12 @@ def md_to_latex(md: str) -> str:
             ltx = f"\\begin{{lstlisting}}\n{code}\n\\end{{lstlisting}}"
         return _save(ltx, "CODE", placeholders, counter)
 
-    md = re.sub(r"```([\w]*)\n(.*?)```", _code_block, md, flags=re.DOTALL)
+    # Nota: la cabecera del fence acepta cualquier caracter no-newline para
+    # soportar titulos con espacios (e.g. ``` callout Riesgo de arquitectura ```).
+    # El uso original `[\w]*` solo capturaba la primera palabra y dejaba el
+    # resto del titulo fuera del match, haciendo que la regex no encontrase
+    # el bloque y el callout cayese al fallback de `lstlisting` generico.
+    md = re.sub(r"```([^\n]*)\n(.*?)```", _code_block, md, flags=re.DOTALL)
 
     # 1b. Math display $$...$$
     def _math_display(m: re.Match) -> str:

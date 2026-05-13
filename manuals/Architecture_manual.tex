@@ -1028,120 +1028,126 @@ El análisis modal resuelve el problema generalizado de valores y vectores carac
 
 \end{lstlisting}
 
-```callout Riesgo de arquitectura
+\begin{infobox}{Riesgo de arquitectura}
 Bajo. El análisis modal añade un nuevo tipo de problema algebraico (autovalor generalizado en lugar de sistema lineal) y una nueva familia de resultados, sin modificar contratos existentes ni la infraestructura de Dirichlet.
+\end{infobox}
+
+\section{Fase 3 --- Dinámica estructural transitoria lineal}
+
+\textbf{Estado}: implementado (\hyperref[adr:0009]{ADR 0009} fase 3, sesión del 2026-05-13).
+
+Integración temporal directa de la ecuación de movimiento semidiscreta \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + K\ensuremath{\cdot}u = F(t)} por el método de Newmark-\ensuremath{\beta}. Es el primer análisis con dependencia temporal real; aprovecha la matriz de masa introducida en la fase 2 y reutiliza las decisiones arquitecturales fijadas en el \hyperref[adr:0009]{ADR 0009} (registro unificado, estado dinámico fuera de \texttt{Node}, amortiguamiento Rayleigh como entrada estándar).
+
+\textbf{Cambios respecto a la fase 2}:
+
+\begin{itemize}
+  \item Aparece la matriz de amortiguamiento \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K} (Rayleigh proporcional). Los coeficientes pueden pasarse directos o calibrarse modalmente a partir de \texttt{(\ensuremath{\xi}\ensuremath{_{1}}, \ensuremath{\omega}\ensuremath{_{1}}), (\ensuremath{\xi}\ensuremath{_{2}}, \ensuremath{\omega}\ensuremath{_{2}})} con \texttt{fenix.math.damping.rayleigh\_from\_modes}.
+  \item Las variables de estado se amplían a \texttt{(u, u̇, ü)}. Coherente con el \hyperref[adr:0009]{ADR 0009} §5, el estado dinámico \textbf{no contamina} la clase \texttt{Node}: vive en el nuevo \texttt{TransientResult} (frozen) como historiales \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} indexados por paso temporal.
+  \item Nuevo solver \texttt{NewmarkSolver} con esquema \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizable (default 1/4, 1/2 --- average acceleration, incondicionalmente estable, error \texttt{O(\ensuremath{\Delta}t\ensuremath{^{2}})}). Cargas dependientes del tiempo por callback Python (\texttt{F\_func: t \ensuremath{\to} F}).
+  \item El subsistema algebraico recibe una matriz efectiva \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K}. Con \texttt{\ensuremath{\Delta}t} constante y problema lineal, \texttt{A\_eff} es invariante: se factoriza \textbf{una sola vez} al inicio (\hyperref[adr:0003]{ADR 0003} --- \texttt{FactorizedSolver}) y cada paso temporal se reduce a una sustitución triangular barata.
+  \item Aceleración inicial calculada de forma consistente con la ecuación de movimiento: \texttt{M\ensuremath{\cdot}ü\ensuremath{_{0}} = F(0) − C\ensuremath{\cdot}u̇\ensuremath{_{0}} − K\ensuremath{\cdot}u\ensuremath{_{0}}}.
+\end{itemize}
+
+\textbf{Topología efectiva}:
+
 \begin{lstlisting}
-
-## Fase 3 — Dinámica estructural transitoria lineal
-
-**Estado**: implementado (\hyperref[adr:0009]{ADR 0009} fase 3, sesión del 2026-05-13).
-
-Integración temporal directa de la ecuación de movimiento semidiscreta `M·ü + C·u̇ + K·u = F(t)` por el método de Newmark-β. Es el primer análisis con dependencia temporal real; aprovecha la matriz de masa introducida en la fase 2 y reutiliza las decisiones arquitecturales fijadas en el \hyperref[adr:0009]{ADR 0009} (registro unificado, estado dinámico fuera de `Node`, amortiguamiento Rayleigh como entrada estándar).
-
-**Cambios respecto a la fase 2**:
-
-- Aparece la matriz de amortiguamiento `C = α·M + β·K` (Rayleigh proporcional). Los coeficientes pueden pasarse directos o calibrarse modalmente a partir de `(ξ₁, ω₁), (ξ₂, ω₂)` con `fenix.math.damping.rayleigh_from_modes`.
-- Las variables de estado se amplían a `(u, u̇, ü)`. Coherente con el \hyperref[adr:0009]{ADR 0009} §5, el estado dinámico **no contamina** la clase `Node`: vive en el nuevo `TransientResult` (frozen) como historiales `t_history`, `u_history`, `udot_history`, `uddot_history` indexados por paso temporal.
-- Nuevo solver `NewmarkSolver` con esquema `(β, γ)` parametrizable (default 1/4, 1/2 — average acceleration, incondicionalmente estable, error `O(Δt²)`). Cargas dependientes del tiempo por callback Python (`F_func: t → F`).
-- El subsistema algebraico recibe una matriz efectiva `A_eff = M + γΔt·C + βΔt²·K`. Con `Δt` constante y problema lineal, `A_eff` es invariante: se factoriza **una sola vez** al inicio (\hyperref[adr:0003]{ADR 0003} — `FactorizedSolver`) y cada paso temporal se reduce a una sustitución triangular barata.
-- Aceleración inicial calculada de forma consistente con la ecuación de movimiento: `M·ü₀ = F(0) − C·u̇₀ − K·u₀`.
-
-**Topología efectiva**:
-
-
-\end{lstlisting}
-[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, C, A\_eff, solver] - [Salida: TransientResult]
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K, M, C, A_eff, solver] - [Salida: TransientResult]
                                                                                   |
                                                                   [Integrador temporal Newmark]
-\begin{lstlisting}
-
-
-\end{lstlisting}callout Riesgo de arquitectura
-Bajo. La decisión 5 del \hyperref[adr:0009]{ADR 0009} (estado dinámico fuera de \texttt{Node}, en \texttt{TransientResult}) preserva la pureza topológica/geométrica de \texttt{Node} y evita que análisis estáticos paguen el coste de campos que no usan. La semántica \textit{trial} / comprometido del estado interno de elementos (ADR sobre \texttt{ElementState}) sigue intacta porque la fase 3 es lineal: no hay variables internas que evolucionen.
-\begin{lstlisting}
-
-**Limitaciones declaradas en esta fase**:
-
-- Solo lineal: `K, M` constantes. No-linealidad (Newton dentro de Newmark) diferida a la fase 4.
-- Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
-- `Δt` fijo; adaptativo diferido.
-- Esquemas con amortiguamiento numérico controlado (HHT-α, generalized-α) diferidos a subclase futura.
-
-## Fase 4 — Dinámica estructural transitoria no lineal
-
-**Estado**: implementado (\hyperref[adr:0009]{ADR 0009} fase 4, sesión del 2026-05-14).
-
-**Cambios respecto a la fase 3**:
-
-- Nueva clase `NewtonNewmarkSolver` como **variante** de `NewmarkSolver` (Reglas §4 — extensión documentada en spec corta, sin ADR nuevo porque reúsa todas las decisiones del \hyperref[adr:0009]{ADR 0009}): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal.
-- En cada paso, el residuo `R = F_ext(t_{n+1}) − F_int(u_{n+1}) − C·u̇_{n+1} − M·ü_{n+1}` se anula iterativamente con jacobiano `J = M + γΔt·C + βΔt²·K_t`, donde `K_t = ∂F_int/∂u` es la rigidez tangente corriente. Convergencia dual del \hyperref[adr:0007]{ADR 0007} calibrada al primer paso.
-- Reaprovecha íntegramente la maquinaria del `NonlinearSolver` estático: `ConvergenceCriterion`, `freeze_tangent_after_iter` (Newton modificado, \hyperref[adr:0003]{ADR 0003} fase 2), `commit_all_states()` tras converger cada paso temporal — el estado interno de los elementos recupera plenamente su semántica *trial* / comprometido también en dinámica.
-- Amortiguamiento Rayleigh `C = α·M + β·K_0` **constante en el tiempo**, calibrado con la rigidez elástica de referencia `K_0` al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
-- **Recuperación del caso lineal**: con materiales sin historia (o plásticos no plastificados), `K_t ≡ K_0` y el residuo se anula en una iteración. El resultado coincide a paridad de bits con `NewmarkSolver`, validado en tests.
-- Despacho YAML automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `entry.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient` sin tocar el dispatcher.
-
-**Topología efectiva**: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal y la rigidez tangente reensamblada en cada iteración.
-
-
-\end{lstlisting}callout Riesgo de arquitectura
-Bajo en la práctica: toda la infraestructura ya existía. El \texttt{NonlinearSolver} estático aportaba calibración de convergencia, fallback de positividad y Newton modificado; la fase 3 aportaba predictores/correctores Newmark y reducción de Dirichlet. La fase 4 es la composición exacta de ambas, formalizada como subclase para no duplicar código.
-\begin{lstlisting}
-
-## Fase 5 — Problema térmico estacionario y transitorio
-
-**Estado**: \pendiente{Implementación de la fase 5 --- problema térmico.}
-
-**Cambios respecto a las fases anteriores**:
-
-- Aparece un campo escalar nuevo: la temperatura `T`. Esto obliga a generalizar el concepto de DOF: hasta ahora todos los DOF eran mecánicos (desplazamientos, rotaciones); ahora se incorporan DOF térmicos.
-- Aparece la matriz de conductividad `K_t` (análogo térmico de la rigidez) y la matriz de capacidad `C_t` (análogo térmico de la masa).
-- Se introduce una nueva familia de elementos térmicos, paralela a la mecánica. Cada elemento térmico declara `DOF_NAMES = ['T']` y consume materiales con propiedades térmicas (conductividad, capacidad, fuente).
-- Aparece una nueva familia de materiales térmicos con interfaz propia: `compute_flux_and_tangent(grad_T, state)`.
-- En transitorio, se reutilizan los integradores temporales de la fase 2, adaptados al sistema térmico (Crank-Nicolson, theta-método).
-
-**Topología prevista**:
-
 
 \end{lstlisting}
-[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K\_m, M\_m, K\_t, C\_t, solvers] - [Salida]
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. La decisión 5 del \hyperref[adr:0009]{ADR 0009} (estado dinámico fuera de \texttt{Node}, en \texttt{TransientResult}) preserva la pureza topológica/geométrica de \texttt{Node} y evita que análisis estáticos paguen el coste de campos que no usan. La semántica \textit{trial} / comprometido del estado interno de elementos (ADR sobre \texttt{ElementState}) sigue intacta porque la fase 3 es lineal: no hay variables internas que evolucionen.
+\end{infobox}
+
+\textbf{Limitaciones declaradas en esta fase}:
+
+\begin{itemize}
+  \item Solo lineal: \texttt{K, M} constantes. No-linealidad (Newton dentro de Newmark) diferida a la fase 4.
+  \item Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
+  \item \texttt{\ensuremath{\Delta}t} fijo; adaptativo diferido.
+  \item Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}) diferidos a subclase futura.
+\end{itemize}
+
+\section{Fase 4 --- Dinámica estructural transitoria no lineal}
+
+\textbf{Estado}: implementado (\hyperref[adr:0009]{ADR 0009} fase 4, sesión del 2026-05-14).
+
+\textbf{Cambios respecto a la fase 3}:
+
+\begin{itemize}
+  \item Nueva clase \texttt{NewtonNewmarkSolver} como \textbf{variante} de \texttt{NewmarkSolver} (Reglas §4 --- extensión documentada en spec corta, sin ADR nuevo porque reúsa todas las decisiones del \hyperref[adr:0009]{ADR 0009}): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal.
+  \item En cada paso, el residuo \texttt{R = F\_ext(t\_\{n+1\}) − F\_int(u\_\{n+1\}) − C\ensuremath{\cdot}u̇\_\{n+1\} − M\ensuremath{\cdot}ü\_\{n+1\}} se anula iterativamente con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}, donde \texttt{K\_t = \ensuremath{\partial}F\_int/\ensuremath{\partial}u} es la rigidez tangente corriente. Convergencia dual del \hyperref[adr:0007]{ADR 0007} calibrada al primer paso.
+  \item Reaprovecha íntegramente la maquinaria del \texttt{NonlinearSolver} estático: \texttt{ConvergenceCriterion}, \texttt{freeze\_tangent\_after\_iter} (Newton modificado, \hyperref[adr:0003]{ADR 0003} fase 2), \texttt{commit\_all\_states()} tras converger cada paso temporal --- el estado interno de los elementos recupera plenamente su semántica \textit{trial} / comprometido también en dinámica.
+  \item Amortiguamiento Rayleigh \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K\_0} \textbf{constante en el tiempo}, calibrado con la rigidez elástica de referencia \texttt{K\_0} al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+  \item \textbf{Recuperación del caso lineal}: con materiales sin historia (o plásticos no plastificados), \texttt{K\_t ≡ K\_0} y el residuo se anula en una iteración. El resultado coincide a paridad de bits con \texttt{NewmarkSolver}, validado en tests.
+  \item Despacho YAML automático: como \texttt{NewtonNewmarkSolver} es subclase de \texttt{NewmarkSolver}, \texttt{entry.run\_yaml} lo detecta vía \texttt{isinstance} y enruta a \texttt{run\_transient} sin tocar el dispatcher.
+\end{itemize}
+
+\textbf{Topología efectiva}: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal y la rigidez tangente reensamblada en cada iteración.
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo en la práctica: toda la infraestructura ya existía. El \texttt{NonlinearSolver} estático aportaba calibración de convergencia, fallback de positividad y Newton modificado; la fase 3 aportaba predictores/correctores Newmark y reducción de Dirichlet. La fase 4 es la composición exacta de ambas, formalizada como subclase para no duplicar código.
+\end{infobox}
+
+\section{Fase 5 --- Problema térmico estacionario y transitorio}
+
+\textbf{Estado}: \pendiente{Implementación de la fase 5 --- problema térmico.}
+
+\textbf{Cambios respecto a las fases anteriores}:
+
+\begin{itemize}
+  \item Aparece un campo escalar nuevo: la temperatura \texttt{T}. Esto obliga a generalizar el concepto de DOF: hasta ahora todos los DOF eran mecánicos (desplazamientos, rotaciones); ahora se incorporan DOF térmicos.
+  \item Aparece la matriz de conductividad \texttt{K\_t} (análogo térmico de la rigidez) y la matriz de capacidad \texttt{C\_t} (análogo térmico de la masa).
+  \item Se introduce una nueva familia de elementos térmicos, paralela a la mecánica. Cada elemento térmico declara \texttt{DOF\_NAMES = ['T']} y consume materiales con propiedades térmicas (conductividad, capacidad, fuente).
+  \item Aparece una nueva familia de materiales térmicos con interfaz propia: \texttt{compute\_flux\_and\_tangent(grad\_T, state)}.
+  \item En transitorio, se reutilizan los integradores temporales de la fase 2, adaptados al sistema térmico (Crank-Nicolson, theta-método).
+\end{itemize}
+
+\textbf{Topología prevista}:
+
+\begin{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K_m, M_m, K_t, C_t, solvers] - [Salida]
                                                   |
                               [DOF mecanicos] + [DOF termicos]
                               [Materiales mec.] + [Materiales term.]
                               [Elementos mec.]  + [Elementos term.]
-\begin{lstlisting}
-
-
-\end{lstlisting}callout Riesgo de arquitectura
-Medio. Es la primera fase que rompe la suposición implícita "todos los DOF son mecánicos" presente hoy en numerosos puntos del código. La generalización requiere atributo \texttt{DOF\_KIND} o similar en cada DOF (mecánico, térmico, futuro presión, futuro químico); posible separación entre \texttt{MechanicalElement} y \texttt{ThermalElement} con base común \texttt{Element}, o un único \texttt{Element} polimórfico (decisión a tomar en el ADR de apertura); adaptación del \texttt{VtkExporter} para escribir campos escalares además de vectoriales.
-\begin{lstlisting}
-
-## Fase 6 — Acoplamiento termo-mecánico
-
-**Estado**: \pendiente{Implementación de la fase 6 --- acoplamiento termo-mecánico.}
-
-**Cambios respecto a la fase 5**:
-
-- Aparece la interacción entre los campos térmico y mecánico: dilatación térmica que induce deformaciones, disipación mecánica que genera calor.
-- Dos estrategias distintas en términos de arquitectura, a decidir en el ADR de apertura:
-  - *Estrategia desacoplada (staggered)*: en cada paso, se resuelve primero el problema térmico con los desplazamientos de la última iteración, después el problema mecánico con las temperaturas recién calculadas. Cada subsistema mantiene su propia matriz; el acoplamiento se realiza mediante intercambio de campos. Implementación de bajo riesgo de arquitectura pero convergencia limitada en problemas de fuerte interacción.
-  - *Estrategia monolítica*: se ensambla un sistema único `K_acoplada` que combina los DOF mecánicos y térmicos. Convergencia robusta pero exige una nueva infraestructura de ensamblaje multifísico.
-- Aparece una nueva familia de materiales acoplados con interfaz extendida: `compute_response(strain, T, grad_T, state)`.
-
-**Topología prevista (estrategia monolítica)**:
-
 
 \end{lstlisting}
-[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K\_acoplada, M\_acoplada, solvers] - [Salida]
+
+\begin{infobox}{Riesgo de arquitectura}
+Medio. Es la primera fase que rompe la suposición implícita "todos los DOF son mecánicos" presente hoy en numerosos puntos del código. La generalización requiere atributo \texttt{DOF\_KIND} o similar en cada DOF (mecánico, térmico, futuro presión, futuro químico); posible separación entre \texttt{MechanicalElement} y \texttt{ThermalElement} con base común \texttt{Element}, o un único \texttt{Element} polimórfico (decisión a tomar en el ADR de apertura); adaptación del \texttt{VtkExporter} para escribir campos escalares además de vectoriales.
+\end{infobox}
+
+\section{Fase 6 --- Acoplamiento termo-mecánico}
+
+\textbf{Estado}: \pendiente{Implementación de la fase 6 --- acoplamiento termo-mecánico.}
+
+\textbf{Cambios respecto a la fase 5}:
+
+\begin{itemize}
+  \item Aparece la interacción entre los campos térmico y mecánico: dilatación térmica que induce deformaciones, disipación mecánica que genera calor.
+  \item Dos estrategias distintas en términos de arquitectura, a decidir en el ADR de apertura:
+  \item \textit{Estrategia desacoplada (staggered)}: en cada paso, se resuelve primero el problema térmico con los desplazamientos de la última iteración, después el problema mecánico con las temperaturas recién calculadas. Cada subsistema mantiene su propia matriz; el acoplamiento se realiza mediante intercambio de campos. Implementación de bajo riesgo de arquitectura pero convergencia limitada en problemas de fuerte interacción.
+  \item \textit{Estrategia monolítica}: se ensambla un sistema único \texttt{K\_acoplada} que combina los DOF mecánicos y térmicos. Convergencia robusta pero exige una nueva infraestructura de ensamblaje multifísico.
+  \item Aparece una nueva familia de materiales acoplados con interfaz extendida: \texttt{compute\_response(strain, T, grad\_T, state)}.
+\end{itemize}
+
+\textbf{Topología prevista (estrategia monolítica)}:
+
+\begin{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K_acoplada, M_acoplada, solvers] - [Salida]
                                                   |
                                        [Materiales termo-mec.]
                                        [Elementos termo-mec.]
                                        [Solver acoplado]
-\begin{lstlisting}
 
+\end{lstlisting}
 
-\end{lstlisting}callout Riesgo de arquitectura
+\begin{infobox}{Riesgo de arquitectura}
 Alto. Es la primera fase con auténtica multifísica. Requiere generalización del subsistema algebraico para manejar matrices con bloques no homogéneos (un bloque mecánico simétrico positivo definido y un bloque térmico no simétrico, en la formulación habitual); generalización del concepto de prueba de validación, ya que no basta una solución analítica monodisciplinaria y los problemas de referencia deben tener acoplamiento conocido; posible introducción de precondicionadores específicos para sistemas acoplados (precondicionamiento por bloques, complemento de Schur).
-```
+\end{infobox}
 
 \section{Mantenimiento de este capítulo}
 
@@ -1176,74 +1182,69 @@ A diferencia de los ADR, las entradas de este capítulo no se materializan en ar
 
 \textbf{Razones de la postergación}. Un solo desarrollador trabaja en el proyecto y los problemas que motivan su uso (investigación en mecánica de sólidos, validación de modelos constitutivos, prototipado de algoritmos) se ejecutan satisfactoriamente en máquinas de un solo nodo. La introducción de MPI multiplicaría el coste de cualquier extensión por la necesidad de mantener consistencia de estado entre procesos, complicaría sustancialmente las pruebas (ejecución determinística reproducible bajo distintas particiones de malla) y exigiría rediseñar el ensamblaje y el subsistema algebraico. El compromiso entre coste de mantenimiento y beneficio inmediato no es favorable mientras el caso de uso del proyecto se mantenga en su perfil actual.
 
-```callout Reapertura de la decisión
+\begin{infobox}{Reapertura de la decisión}
 Procedería revisar este compromiso si Fenix FEM se aplicara de forma habitual a mallas mayores que 10⁶ elementos, o si se incorporasen colaboradores adicionales con experiencia en programación paralela.
-\begin{lstlisting}
+\end{infobox}
 
-## Adopción de PETSc o Trilinos como backend numérico
+\section{Adopción de PETSc o Trilinos como backend numérico}
 
-**Decisión**: rechazada para el alcance actual.
+\textbf{Decisión}: rechazada para el alcance actual.
 
-**Contexto**. PETSc y Trilinos son las dos bibliotecas estándar para álgebra lineal dispersa, solvers iterativos, descomposición de dominio y gestión de matrices distribuidas en programas de elementos finitos de gran escala. Su adopción daría acceso inmediato a multimalla algebraica, precondicionadores avanzados y soporte MPI maduro.
+\textbf{Contexto}. PETSc y Trilinos son las dos bibliotecas estándar para álgebra lineal dispersa, solvers iterativos, descomposición de dominio y gestión de matrices distribuidas en programas de elementos finitos de gran escala. Su adopción daría acceso inmediato a multimalla algebraica, precondicionadores avanzados y soporte MPI maduro.
 
-**Razones del rechazo**. Ambas son dependencias binarias pesadas con un proceso de instalación no trivial en Windows, plataforma de trabajo del desarrollador. Su modelo de programación es de matriz distribuida y orientación procedural, lo que choca con la arquitectura actual basada en `scipy.sparse` y orientación a objetos. La capacidad de Fenix FEM hoy se ajusta a lo que SuperLU y CHOLMOD ofrecen mediante `scipy.sparse` y `scikit-sparse`; añadir PETSc o Trilinos sin un caso de uso concreto que lo exija supondría una dependencia infrautilizada y un coste de mantenimiento desproporcionado.
+\textbf{Razones del rechazo}. Ambas son dependencias binarias pesadas con un proceso de instalación no trivial en Windows, plataforma de trabajo del desarrollador. Su modelo de programación es de matriz distribuida y orientación procedural, lo que choca con la arquitectura actual basada en \texttt{scipy.sparse} y orientación a objetos. La capacidad de Fenix FEM hoy se ajusta a lo que SuperLU y CHOLMOD ofrecen mediante \texttt{scipy.sparse} y \texttt{scikit-sparse}; añadir PETSc o Trilinos sin un caso de uso concreto que lo exija supondría una dependencia infrautilizada y un coste de mantenimiento desproporcionado.
 
-
-\end{lstlisting}callout Reapertura de la decisión
+\begin{infobox}{Reapertura de la decisión}
 Procedería si se adopta MPI (compromiso anterior) y, simultáneamente, los problemas tratados requirieran solvers iterativos con precondicionamiento avanzado. En ese escenario, PETSc se convertiría en la opción natural por encima de implementar dichos algoritmos en código propio.
-\begin{lstlisting}
+\end{infobox}
 
-## Arquitectura cliente-servidor o servicio web
+\section{Arquitectura cliente-servidor o servicio web}
 
-**Decisión**: rechazada.
+\textbf{Decisión}: rechazada.
 
-**Contexto**. Una arquitectura cliente-servidor expondría Fenix FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
+\textbf{Contexto}. Una arquitectura cliente-servidor expondría Fenix FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
 
-**Razones del rechazo**. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con `SolveResult`, `fenix.run` y `fenix.run_yaml` en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
+\textbf{Razones del rechazo}. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con \texttt{SolveResult}, \texttt{fenix.run} y \texttt{fenix.run\_yaml} en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
 
-
-\end{lstlisting}callout Reapertura de la decisión
+\begin{infobox}{Reapertura de la decisión}
 Procedería si Fenix FEM se ofreciera como servicio público a múltiples consumidores no relacionados con el desarrollo, o si la GUI se desacoplara hasta el punto de ejecutarse en máquinas distintas.
-\begin{lstlisting}
+\end{infobox}
 
-## Soporte de múltiples lenguajes en la interfaz pública
+\section{Soporte de múltiples lenguajes en la interfaz pública}
 
-**Decisión**: rechazada para el alcance actual.
+\textbf{Decisión}: rechazada para el alcance actual.
 
-**Contexto**. La interfaz pública del programa (`fenix.run`, `fenix.run_yaml`, `SolveResult`) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
+\textbf{Contexto}. La interfaz pública del programa (\texttt{fenix.run}, \texttt{fenix.run\_yaml}, \texttt{SolveResult}) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
 
-**Razones del rechazo**. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Fenix FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (`py.fenix.run_yaml(path)`), sin necesidad de modificar Fenix FEM.
+\textbf{Razones del rechazo}. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Fenix FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (\texttt{py.fenix.run\_yaml(path)}), sin necesidad de modificar Fenix FEM.
 
-
-\end{lstlisting}callout Reapertura de la decisión
+\begin{infobox}{Reapertura de la decisión}
 Procedería si surgiera un consumidor estable escrito en un lenguaje distinto de Python y la solución \textit{vía} el puente nativo de cada lenguaje no fuera viable.
-\begin{lstlisting}
+\end{infobox}
 
-## Sistema de plugins externo al repositorio
+\section{Sistema de plugins externo al repositorio}
 
-**Decisión**: rechazada.
+\textbf{Decisión}: rechazada.
 
-**Contexto**. Algunos programas grandes de elementos finitos permiten que terceros publiquen materiales, elementos o solvers como paquetes externos que se descubren en tiempo de ejecución sin formar parte del repositorio principal. La alternativa es la actual: todo componente vive dentro del repositorio de Fenix FEM y se valida con sus pruebas.
+\textbf{Contexto}. Algunos programas grandes de elementos finitos permiten que terceros publiquen materiales, elementos o solvers como paquetes externos que se descubren en tiempo de ejecución sin formar parte del repositorio principal. La alternativa es la actual: todo componente vive dentro del repositorio de Fenix FEM y se valida con sus pruebas.
 
-**Razones del rechazo**. La filosofía del proyecto (ver \hyperref[cap:1]{capítulo 1}) considera la transparencia y la auditabilidad del código como valor primordial. Un sistema de plugins externos abriría la puerta a componentes no auditados que podrían silenciosamente romper la convención de signos del proyecto, los contratos declarativos del catálogo o las hipótesis de validación contra soluciones analíticas. Mientras el desarrollo lo lleve un único equipo, la incorporación de cualquier componente nuevo pasa por el repositorio y por las pruebas correspondientes, lo que mantiene la trazabilidad completa.
+\textbf{Razones del rechazo}. La filosofía del proyecto (ver \hyperref[cap:1]{capítulo 1}) considera la transparencia y la auditabilidad del código como valor primordial. Un sistema de plugins externos abriría la puerta a componentes no auditados que podrían silenciosamente romper la convención de signos del proyecto, los contratos declarativos del catálogo o las hipótesis de validación contra soluciones analíticas. Mientras el desarrollo lo lleve un único equipo, la incorporación de cualquier componente nuevo pasa por el repositorio y por las pruebas correspondientes, lo que mantiene la trazabilidad completa.
 
-
-\end{lstlisting}callout Reapertura de la decisión
+\begin{infobox}{Reapertura de la decisión}
 Procedería si el proyecto creciera hasta tener una comunidad amplia de contribuyentes externos con necesidades especializadas no absorbibles en el catálogo principal. Hoy no es el caso ni se prevé que lo sea.
-\begin{lstlisting}
+\end{infobox}
 
-## Refactor a tipado estático estricto con `mypy --strict`
+\section{Refactor a tipado estático estricto con \texttt{mypy --strict}}
 
-**Decisión**: postergada sin fecha.
+\textbf{Decisión}: postergada sin fecha.
 
-**Contexto**. El código de Fenix FEM utiliza anotaciones de tipo en sus interfaces públicas pero no se valida con `mypy` en modo estricto. Adoptarlo proporcionaría garantías estáticas adicionales y detectaría algunas familias de errores antes de la ejecución.
+\textbf{Contexto}. El código de Fenix FEM utiliza anotaciones de tipo en sus interfaces públicas pero no se valida con \texttt{mypy} en modo estricto. Adoptarlo proporcionaría garantías estáticas adicionales y detectaría algunas familias de errores antes de la ejecución.
 
-**Razones de la postergación**. La librería `numpy` y, en menor medida, `scipy.sparse` tienen un soporte de tipado estático que ha mejorado mucho pero sigue dejando puntos donde `mypy --strict` produce ruido sin valor real. El esfuerzo de pulir todas esas fricciones no se compensa, en el alcance actual del proyecto, con el beneficio en detección de defectos. La política presente — anotaciones de tipo en interfaces públicas y validación de comportamiento mediante pruebas de física — se considera suficiente.
+\textbf{Razones de la postergación}. La librería \texttt{numpy} y, en menor medida, \texttt{scipy.sparse} tienen un soporte de tipado estático que ha mejorado mucho pero sigue dejando puntos donde \texttt{mypy --strict} produce ruido sin valor real. El esfuerzo de pulir todas esas fricciones no se compensa, en el alcance actual del proyecto, con el beneficio en detección de defectos. La política presente --- anotaciones de tipo en interfaces públicas y validación de comportamiento mediante pruebas de física --- se considera suficiente.
 
-
-\end{lstlisting}callout Reapertura de la decisión
+\begin{infobox}{Reapertura de la decisión}
 Procedería cuando el ecosistema NumPy/SciPy cierre las lagunas de tipado restantes y la activación del modo estricto deje de generar fricción artificial.
-```
+\end{infobox}
 
 \section{Mantenimiento de este capítulo}
 
@@ -1497,8 +1498,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 13 de mayo de 2026, 15:49\\[0.5em]
-Commit Git: \texttt{13012c2} (con cambios sin confirmar)\\[1em]
+Compilado el 13 de mayo de 2026, 16:10\\[0.5em]
+Commit Git: \texttt{54e69fe} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
