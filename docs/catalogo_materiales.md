@@ -34,34 +34,41 @@
 
 ## IsotropicDamage1D — daño isótropo 1D con softening exponencial
 
-- **Modelo**: daño escalar `d ∈ [0, 1)`, módulo secante `E_sec = (1 − d) · E`, `σ = E_sec · ε`.
+- **Modelo**: daño escalar `d ∈ [0, DAMAGE_MAX]`, esfuerzo `σ = (1 − d) · E · ε`. Versión 1D de [`IsotropicDamage2D`](#isotropicdamage2d--daño-isótropo-2d-con-softening-exponencial).
 - **Evolución del daño** (Kuhn-Tucker):
   - Deformación equivalente: `ε_eq = |ε|`.
   - Variable histórica: `κ = max(κ_old, ε_eq)`.
   - Si `κ ≤ κ_0` → `d = 0`. Si no: `d = 1 − (κ_0/κ) · exp(−α·(κ − κ_0))`, saturado en `DAMAGE_MAX`.
-- **STRAIN_DIM**: 1 · **PRIMARY_STATE_VAR**: `'damage'`.
-- **Parámetros**: `E`, `kappa_0` (umbral elástico), `alpha` (velocidad de degradación).
+- **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·E` en descarga, sin daño activo o al saturar.
+  - Fórmula consistente: `E_tan = -(1-d)·E·α·κ` — **negativa** durante toda la fase de softening (refleja la pendiente descendente σ-ε post-pico).
+  - Derivación: de `(1-d)·E - E·ε·(∂d/∂κ)·sign(ε)` con `∂d/∂κ = (1-d)(1/κ + α)` y `sign(ε)·ε = |ε| = κ` en carga.
+- **STRAIN_DIM**: 1 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `True` (la tangente escalar produce contribución elemental simétrica aunque pueda ser indefinida; el despachador algebraico ADR 0003 detecta no-PD y degrada Cholesky→LU automáticamente).
+- **Parámetros**: `E`, `kappa_0` (umbral elástico), `alpha` (velocidad de degradación), `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`.
-- **Tangente**: secante (`E_sec`); no consistente con tangente algorítmica del daño — adecuado para Newton-Raphson amortiguado, no óptimo para arc-length agresivo.
-- **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — esfuerzo umbral inicial donde se activa el daño. Garantiza invariancia bajo cambio de unidades del check `f ≤ atol + rtol · escala`.
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — esfuerzo umbral inicial. Garantiza invariancia bajo cambio de unidades del check `f ≤ atol + rtol · escala`.
+- **Limitaciones**: no distingue tracción/compresión en la activación del daño; control de carga global puede ser inestable tras el pico (requiere `ArcLengthSolver` para seguir la rama de softening).
 - **Compatible con**: `Truss2D`, `Truss3D`.
-- **Referencia**: Lemaitre & Chaboche, *Mechanics of Solid Materials*; Oliver, "A consistent characteristic length for smeared cracking models" (IJNME 1989).
+- **Referencia**: ver `docs/specs/IsotropicDamage1D.md` y la hermana 2D para derivación detallada. Lemaitre & Chaboche, *Mechanics of Solid Materials*. Simó & Ju (1987, IJSS 23) marco de tangente consistente.
 - **Archivo**: [fenix/materials/damage_1d.py](fenix/materials/damage_1d.py)
 
 ---
 
 ## IsotropicDamage2D — daño isótropo 2D con softening exponencial
 
-- **Modelo**: extensión 2D de `IsotropicDamage1D`. Tensor constitutivo secante `C_sec = (1 − d) · C_e`.
+- **Modelo**: extensión 2D de `IsotropicDamage1D`. Esfuerzo nominal `σ = (1 − d) · C_e · ε`; daño escalar `d ∈ [0, DAMAGE_MAX]`.
 - **Deformación equivalente**: `ε_eq = √(ε_xx² + ε_yy² + ½·γ_xy²)` (norma simple sin distinguir tensión/compresión).
-- **Evolución**: idéntica a 1D (κ máxima histórica + ley exponencial).
-- **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage'`.
-- **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (delegado a `Elastic2D` interno).
+- **Evolución**: κ máxima histórica (Kuhn-Tucker `κ_n+1 = max(κ_n, ε_eq)`), ley exponencial `d(κ) = 1 - (κ_0/κ)·exp(-α(κ-κ_0))` para `κ > κ_0`, saturado a `DAMAGE_MAX`.
+- **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·C_e` en descarga, sin daño activo (`κ ≤ κ_0`) o al saturar.
+  - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ (M·ε)` con `M = diag(1, 1, 1/2)`.
+  - Derivación: `∂d/∂κ = (1-d)·(1/κ + α)` por la ley exponencial; `∂κ/∂ε = M·ε/ε_eq` en carga activa, 0 en descarga.
+  - **No simétrica en general** (`(C_e·ε)` y `(M·ε)` no son proporcionales). Recupera convergencia cuadrática del Newton global frente a la secante (que daba convergencia lineal).
+- **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU en lugar de Cholesky para el sistema global).
+- **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis ∈ {'plane_stress' (default), 'plane_strain'}`, `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`.
-- **Tangente**: secante.
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D, el criterio de daño tiene el mismo umbral característico independientemente de la dimensión.
-- **Limitación**: la `ε_eq` simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (no implementado).
-- **Compatible con**: `Quad4`, `Tri3`.
+- **Limitación**: la `ε_eq` simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (out-of-scope). Sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9`.
+- **Referencia**: ver `docs/specs/IsotropicDamage2D.md`. Simó & Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre & Chaboche (1990) marco de continuum damage mechanics.
 - **Archivo**: [fenix/materials/damage_2d.py](fenix/materials/damage_2d.py)
 
 ---
@@ -97,22 +104,55 @@
 
 ---
 
+## DruckerPrager2D — plasticidad friccional cohesivo-friccional 2D plane strain
+
+- **Modelo**: cono circular suave de Mohr-Coulomb con cohesión y fricción interna. Criterio `f = √J₂ + η_f·I₁ − k(α) ≤ 0` con `k(α) = k_0 + H·α` (endurecimiento isótropo lineal en cohesión).
+- **Hipótesis**: solo `plane_strain` en esta entrega. `plane_stress` declarado *out-of-scope* (proyección con σ_zz=0 acoplada a flujo dilatante es notoriamente delicada).
+- **Plasticidad no asociada por defecto**: ángulo de dilatancia `ψ` parámetro independiente, default `ψ = φ` (asociada). Para `ψ ≠ φ` la tangente algorítmica es **asimétrica** → `IS_SYMMETRIC = False`.
+- **Calibración con Mohr-Coulomb** (variant):
+  - `plane_strain_matched` (default): η_f = tan(φ)/√(9 + 12tan²(φ)), k_0 = 3c_0/√(9 + 12tan²(φ)). Coincide exactamente con MC en plane strain.
+  - `outer_cone`: η_f = 2·sin(φ)/[√3·(3 - sin(φ))]. Circunscribe MC.
+  - `inner_cone`: η_f = 2·sin(φ)/[√3·(3 + sin(φ))]. Inscribe MC.
+- **Algoritmo — dos ramas cerradas con detección automática**:
+  - **Return regular** (cone surface): `Δγ = f_trial / (G + 9K·η_f·η_g + H)`, dirección desviadora preservada. Tangente algorítmica `C_alg = K·v⊗v + 2G·(1-β)·I_dev + 4G·β·n̂⊗n̂ - (1/A)·b_g⊗b_f` con `β = G·Δγ/√J₂_trial`, `b_g = 2G·n̂ + 3K·η_g·v`, `b_f = 2G·n̂ + 3K·η_f·v`.
+  - **Return al ápice** (vértice del cono, zona puramente hidrostática): `Δγ_apex = (I₁_trial·η_f - k(α))/(9K·η_f·η_g + H)`, σ_n+1 = (k/3η_f)·I puramente hidrostático. Tangente reducida a `K·H/(9K·η_f·η_g + H) · v⊗v` (simétrica, sin rigidez desviadora).
+  - Detección regular ↔ apex: si tras `Δγ_regular` resulta `√J₂_new < 0` → cae en apex; cambia a la fórmula apex.
+- **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'alpha'` · **IS_SYMMETRIC**: `False` (declarativo, conservador; el despachador algebraico ADR 0003 elige LU).
+- **Parámetros** (físicos):
+  - `E`, `nu`: elásticos.
+  - `cohesion`: cohesión inicial `c_0` (esfuerzo).
+  - `phi_deg`: ángulo de fricción interna (grados, `0 ≤ φ < 90`).
+  - `psi_deg`: ángulo de dilatancia (grados, `0 ≤ ψ ≤ φ`; default `φ` ⇒ asociada).
+  - `H` (≥0, default 0): endurecimiento isótropo lineal en cohesión.
+  - `variant`: calibración con MC (default `'plane_strain_matched'`).
+  - `density` (opcional, ADR 0008).
+- **Variables internas**: `eps_p` (tensorial 4 componentes `[xx, yy, zz, xy_tensorial]`), `alpha` (multiplicador plástico acumulado, adimensional).
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = k(α) = k_0 + H·α` (cohesión efectiva corriente, unidades de esfuerzo igual que `f`).
+- **Limitaciones** (out-of-scope):
+  - Sin `plane_stress`, endurecimiento por fricción/dilatancia, endurecimiento cinemático, cap (modelo cap-cone), ablandamiento (`H<0` requiere regularización), grandes deformaciones.
+  - Validación inicial cubierta por tests unitarios (incluyendo FD numérica de la tangente) y un benchmark de pipeline Quad4 (rama elástica + rama apex + caso asociado). El régimen "rama regular pura" en geometría confinada es difícil de calibrar sin caer en apex; se cubre por los tests unitarios de cortante puro.
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos con material 2D plane strain).
+- **Referencia**: ver `docs/specs/DruckerPrager2D.md`. Drucker & Prager (1952). de Souza Neto, Perić & Owen (2008) cap. 8 (Drucker-Prager, tangentes algorítmicas).
+- **Archivo**: [fenix/materials/drucker_prager_2d.py](fenix/materials/drucker_prager_2d.py)
+
+---
+
 ## VonMises2D — plasticidad J2 2D con endurecimiento isótropo lineal
 
-- **Modelo**: J2 (Von Mises) en deformación plana; criterio `f = ‖s_trial‖ − √(2/3)·(σ_y + H·α) ≤ 0`.
-- **Algoritmo**: return mapping radial sobre la parte desviadora.
-  - Descomposición volumétrica/desviadora: `p = K·tr(ε)`, `s = 2G·e_dev`.
-  - Predictor elástico desviador, corrector radial `Δγ = f_trial / (2G + ⅔·H)`.
-  - Actualización: `s_new = s_trial − 2G·Δγ·N`, con `N = s_trial / ‖s_trial‖`.
-  - Tangente algorítmica consistente derivada por linealización del return mapping.
+- **Modelo**: J2 (Von Mises) con regla de flujo asociada y endurecimiento isótropo lineal. Soporta **dos hipótesis cinemáticas** mutuamente excluyentes (selección por kwarg `hypothesis` al construir): `plane_strain` (`ε_zz = 0`) y `plane_stress` (`σ_zz = 0`). Cada hipótesis usa un kernel Numba especializado.
+- **Algoritmo plane strain** (Simó-Hughes §3.3): return mapping radial cerrado sobre la parte desviadora 3D extendida. Predictor elástico desviador `s_trial = 2G·(e_dev − e_p)` con presión `p = K·tr(ε)`; criterio `f = ‖s_trial‖ − √(2/3)·(σ_y + H·α) ≤ 0`; corrector radial `Δγ = f_trial / (2G + ⅔·H)` con `N = s_trial/‖s_trial‖`; actualización `α_new = α + √(2/3)·Δγ`. Tangente algorítmica consistente cerrada.
+- **Algoritmo plane stress** (Simó-Hughes §3.4.1, "plane stress projected algorithm"): predictor `σ_trial = C_e_ps · (ε − e_p)` en subespacio plane stress; función de fluencia proyectada `f̄ = ½·σ·P·σ − R²/3` con operador `P = (1/3)·[[2,-1,0],[-1,2,0],[0,0,6]]`. Newton local escalar sobre `Δγ` en base de autovectores ortonormales `v_1=[1,1,0]/√2`, `v_2=[1,-1,0]/√2`, `v_3=[0,0,1]` de `C_e_ps·P` con autovalores `μ_1=E/(3(1-ν))`, `μ_2=μ_3=2G`. Converge en 3-6 iteraciones (tangente cerrada). Actualización de `α` con la regla físicamente correcta `α_new = α + Δγ·√(2σPσ/3)` (la heurística `√(2/3)·Δγ` válida en plane strain rompe la invariancia bajo cambio de unidades en plane stress, donde `Δγ` tiene unidades `[1/esfuerzo]`). Incompresibilidad plástica cierra `e_p_zz = -(e_p_xx + e_p_yy)`. Tangente algorítmica consistente cerrada con corrección por `dα/dΔγ ≠ √(2/3)`.
 - **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'alpha'`.
-- **Parámetros**: `E`, `nu`, `sigma_y`, `H`, `hypothesis` (**obligatorio** `'plane_strain'`).
-- **Variables internas**: `eps_p` (tensorial 4 componentes `[xx, yy, zz, xy]`), `alpha` (acumulada equivalente).
-- **Admisibilidad (ADR 0006)**: `admissibility_scale = √(2/3) · (σ_y + H · α)` — radio en espacio desviador de la superficie de Von Mises en el estado corriente. Es la escala natural de `‖s_trial‖` en la frontera de fluencia J2. Por estar el return mapping en un kernel `@njit`, la tolerancia se precomputa fuera del kernel vía `self.admissibility_tol(state_vars)` y se pasa como `float` al JIT.
-- **Restricción crítica**: solo deformación plana. Usar con `hypothesis='plane_stress'` lanza `NotImplementedError` (el return mapping para plane stress requiere algoritmo diferente).
-- **Implementación**: kernel `_compute_j2_plasticity` con `@njit`.
-- **Compatible con**: `Quad4`, `Tri3` (configurados en plane strain).
-- **Referencia**: Simo & Hughes, *Computational Inelasticity*, cap. 3 (return mapping J2).
+- **Parámetros**: `E`, `nu`, `sigma_y`, `H` (≥0, default 0), `hypothesis ∈ {'plane_strain' (default), 'plane_stress'}`, `density` (opcional, ADR 0008).
+- **Variables internas**: `eps_p` (tensorial 4 componentes `[xx, yy, zz, xy_tensorial]`), `alpha` (acumulada equivalente, adimensional en ambas hipótesis).
+- **Admisibilidad (ADR 0006)**:
+  - plane_strain: `admissibility_scale = √(2/3)·(σ_y + H·α)` — radio desviador de la superficie J2.
+  - plane_stress: `admissibility_scale = (σ_y + H·α)²/3` — escala de `f̄` proyectada.
+  - En ambos, la tolerancia se precomputa fuera del kernel `@njit` y se pasa como `float`.
+- **Limitaciones declaradas** (ver `out_of_scope` en spec): no endurecimiento cinemático/Voce, no ablandamiento (`H<0` requiere regularización), no regla de flujo no asociada, no daño acoplado, no viscoplasticidad, no grandes deformaciones, no anisotropía. Locking volumétrico en plane strain con elementos de bajo orden cuando `ν → 0.5` o dominio plástico (mitigaciones B-bar/F-bar diferidas).
+- **Implementación**: kernels `_compute_j2_plane_strain` y `_compute_j2_plane_stress` con `@njit`. Despacho por `hypothesis` en construcción (sin coste runtime).
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (configurados en cualquiera de las dos hipótesis).
+- **Referencia**: ver `docs/specs/VonMises2D.md`. Simó & Hughes, *Computational Inelasticity* (1998), §3.3 (plane strain), §3.4 (plane stress projected, Box 3.1). de Souza Neto, Perić & Owen, *Computational Methods for Plasticity* (2008), §9.4.
 - **Archivo**: [fenix/materials/von_mises_2d.py](fenix/materials/von_mises_2d.py)
 
 ---
