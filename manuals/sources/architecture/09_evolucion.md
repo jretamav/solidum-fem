@@ -82,18 +82,21 @@ Bajo. La decisión 5 del ADR 0009 (estado dinámico fuera de `Node`, en `Transie
 
 ## Fase 4 — Dinámica estructural transitoria no lineal
 
-**Estado**: [PENDIENTE: Implementación de la fase 4 — Newton-Raphson dentro de cada paso de Newmark.]
+**Estado**: implementado (ADR 0009 fase 4, sesión del 2026-05-14).
 
 **Cambios respecto a la fase 3**:
 
-- En cada paso temporal, el residuo `R = F(t_{n+1}) − F_int(u_{n+1}) − M·ü_{n+1} − C·u̇_{n+1}` se anula iterativamente con Newton-Raphson, reutilizando la infraestructura del `NonlinearSolver` estático (ADR 0007 — `ConvergenceCriterion` calibrado).
-- La matriz tangente efectiva incorpora la rigidez dependiente del estado: `A_eff = M + γΔt·C + βΔt²·K_t(u)`. Se refactoriza cuando `K_t` cambia significativamente; con `K_t` constante (régimen lineal local) se reaprovecha la factorización del paso anterior.
-- El estado interno de los elementos (`ElementState`) recupera plenamente su semántica *trial* / comprometido: se commit al converger cada paso temporal, no solo cada paso de carga.
+- Nueva clase `NewtonNewmarkSolver` como **variante** de `NewmarkSolver` (Reglas §4 — extensión documentada en spec corta, sin ADR nuevo porque reúsa todas las decisiones del ADR 0009): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal.
+- En cada paso, el residuo `R = F_ext(t_{n+1}) − F_int(u_{n+1}) − C·u̇_{n+1} − M·ü_{n+1}` se anula iterativamente con jacobiano `J = M + γΔt·C + βΔt²·K_t`, donde `K_t = ∂F_int/∂u` es la rigidez tangente corriente. Convergencia dual del ADR 0007 calibrada al primer paso.
+- Reaprovecha íntegramente la maquinaria del `NonlinearSolver` estático: `ConvergenceCriterion`, `freeze_tangent_after_iter` (Newton modificado, ADR 0003 fase 2), `commit_all_states()` tras converger cada paso temporal — el estado interno de los elementos recupera plenamente su semántica *trial* / comprometido también en dinámica.
+- Amortiguamiento Rayleigh `C = α·M + β·K_0` **constante en el tiempo**, calibrado con la rigidez elástica de referencia `K_0` al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+- **Recuperación del caso lineal**: con materiales sin historia (o plásticos no plastificados), `K_t ≡ K_0` y el residuo se anula en una iteración. El resultado coincide a paridad de bits con `NewmarkSolver`, validado en tests.
+- Despacho YAML automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `entry.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient` sin tocar el dispatcher.
 
-**Topología prevista**: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal.
+**Topología efectiva**: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal y la rigidez tangente reensamblada en cada iteración.
 
 ```callout Riesgo de arquitectura
-Bajo. Toda la infraestructura ya existe — el `NonlinearSolver` estático tiene calibración de convergencia, fallback de positividad, y Newton modificado. La fase 4 es composición de las fases 1 y 3.
+Bajo en la práctica: toda la infraestructura ya existía. El `NonlinearSolver` estático aportaba calibración de convergencia, fallback de positividad y Newton modificado; la fase 3 aportaba predictores/correctores Newmark y reducción de Dirichlet. La fase 4 es la composición exacta de ambas, formalizada como subclase para no duplicar código.
 ```
 
 ## Fase 5 — Problema térmico estacionario y transitorio

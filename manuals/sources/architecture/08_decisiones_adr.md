@@ -98,7 +98,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 ## ADR 0009 — Análisis modal y dinámico
 
-**Fecha**: 13 de mayo de 2026. **Estado**: aceptado; fase 1 (modal) y fase 3 (Newmark transitorio lineal) implementadas.
+**Fecha**: 13 de mayo de 2026. **Estado**: aceptado; fases 1 (modal), 3 (Newmark transitorio lineal) y 4 (Newton-Newmark transitorio no lineal) implementadas.
 
 **Contexto.** El ADR 0003 había identificado análisis modal y dinámica implícita entre los análisis futuros que la capa algebraica iba a habilitar; el ADR 0008 había puesto la densidad como propiedad del material disponible. Quedaba abrir el subsistema con dos análisis distintos pero relacionados: el análisis modal — problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ` —, cuyas soluciones admiten interpretación dinámica pero no constituyen análisis dinámico per se; y el análisis dinámico propiamente dicho, con dependencia temporal explícita — integración de `M · ü + C · u̇ + K · u = F(t)`.
 
@@ -112,9 +112,9 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 6. Amortiguamiento Rayleigh `C = α · M + β · K` como entrada estándar para la fase de dinámica transitoria, con coeficientes calibrables modalmente a partir de dos pares `(ξ, ω)`. Amortiguamiento modal por modo y otros esquemas (Caughey, local) diferidos.
 7. Convención de unidades heredada del modelo (ADR 0008): el usuario es responsable de la consistencia; las tolerancias adimensionales del ADR 0007 garantizan invariancia bajo cambio de unidades.
 
-La fase 1 (`ModalSolver` + ARPACK Lanczos con shift-invert) y la fase 3 (`NewmarkSolver` con `(β, γ)` parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) quedan implementadas y validadas con tests contra solución analítica.
+La fase 1 (`ModalSolver` + ARPACK Lanczos con shift-invert), la fase 3 (`NewmarkSolver` con `(β, γ)` parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) y la fase 4 (`NewtonNewmarkSolver` — subclase de `NewmarkSolver` que añade Newton-Raphson dentro de cada paso con jacobiano `J = M + γΔt·C + βΔt²·K_t`, convergencia dual del ADR 0007, Rayleigh constante calibrado con `K_0`) quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad.
 
-**Consecuencia.** El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 4 (Newton dentro de Newmark — dinámica no lineal), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase `Node` conserva su semántica original.
+**Consecuencia.** El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase `Node` conserva su semántica original.
 
 ## Evolución de esta lista
 

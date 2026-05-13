@@ -250,11 +250,13 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   {\title Capa numérica} \hfill \texttt{fenix/math/}\\
   \texttt{assembly.py} (ensamblaje disperso con caché COO),
   \texttt{integration.py} (cuadraturas de Gauss),
-  \texttt{solvers.py} (\texttt{LinearSolver}, \texttt{NonlinearSolver},
-  \texttt{ArcLengthSolver}) y subsistema algebraico
+  paquete \texttt{solvers/} con un módulo por solver
+  (\texttt{LinearSolver}, \texttt{NonlinearSolver},
+  \texttt{ArcLengthSolver}, \texttt{ModalSolver},
+  \texttt{NewmarkSolver}, \texttt{NewtonNewmarkSolver}) y subsistema algebraico
   \texttt{linalg/} (\texttt{LUSolver}, \texttt{CholeskySolver},
   \texttt{LDLTSolver} reservado, despachador
-  \texttt{select\_solver}).
+  \texttt{select\_solver}, \texttt{EigenSolver}).
 };
 \node[layer, below=of numerica] (salida) {
   {\title Capa de salida} \hfill \texttt{fenix/utils/vtk\_exporter.py} + \texttt{fenix.results}\\
@@ -360,20 +362,22 @@ Familias actualmente implementadas:
 
 \begin{itemize}
   \item \textit{Elásticos lineales}: \texttt{Elastic1D} para deformación axial escalar; \texttt{Elastic2D} para problemas planos (tensión plana o deformación plana) en notación de Voigt 3.
-  \item \textit{Plásticos 1D}: \texttt{Plastic1D} con endurecimiento isótropo lineal y deformación axial escalar.
-  \item \textit{Plásticos 2D}: \texttt{VonMises2D} con criterio de fluencia J2 y algoritmo de retorno radial (\textit{return mapping}) en notación de Voigt 3.
-  \item \textit{Daño}: \texttt{Damage1D} y \texttt{Damage2D}, modelos de daño isótropo escalar.
+  \item \textit{Plásticos 1D}: \texttt{Elastoplastic1D} con criterio J2 axial, endurecimiento isótropo lineal y tangente algorítmica consistente.
+  \item \textit{Plásticos 2D --- J2}: \texttt{VonMises2D} con criterio de fluencia J2 y algoritmo de retorno radial (\textit{return mapping}) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y tensión plana (\textit{plane stress projected algorithm}, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
+  \item \textit{Plásticos 2D --- friccional}: \texttt{DruckerPrager2D} con criterio cohesivo-friccional (cono circular suave de Mohr-Coulomb), plasticidad no asociada por defecto y dos ramas cerradas de return (regular sobre el cono y al ápice). Tres calibraciones con Mohr-Coulomb (\texttt{plane\_strain\_matched}, \texttt{outer\_cone}, \texttt{inner\_cone}). \texttt{IS\_SYMMETRIC = False} cuando \texttt{\ensuremath{\psi} \ensuremath{\neq} \ensuremath{\varphi}}; el despachador algebraico (\hyperref[adr:0003]{ADR 0003}) degrada Cholesky\ensuremath{\to}LU automáticamente.
+  \item \textit{Daño isótropo}: \texttt{IsotropicDamage1D} y \texttt{IsotropicDamage2D}, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa (negativa en 1D durante softening; asimétrica en 2D porque \texttt{(C\_e\ensuremath{\cdot}\ensuremath{\varepsilon}) ⊗ (M\ensuremath{\cdot}\ensuremath{\varepsilon})} no es simétrica). Secante en descarga.
   \item \textit{Cables}: \texttt{CableMaterial1D}, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
 \end{itemize}
 
 Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse como una función \texttt{(strain, state) \ensuremath{\to} (stress, tangent)} se incorpora sin modificación del resto del programa. Candidatos directos:
 
 \begin{itemize}
-  \item \pendiente{Modelo de Drucker-Prager para suelos y materiales granulares.}
-  \item \pendiente{Modelo de Mohr-Coulomb para suelos y rocas.}
+  \item \pendiente{Modelo de Mohr-Coulomb 2D con esquinas (multi-superficie) para mayor fidelidad geotécnica respecto a Drucker-Prager.}
+  \item \pendiente{Endurecimiento cinemático (Bauschinger) en J2 para plasticidad cíclica y fatiga.}
   \item \pendiente{Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).}
   \item \pendiente{Viscoplasticidad de Perzyna y Duvaut-Lions.}
   \item \pendiente{Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.}
+  \item \pendiente{Drucker-Prager en tensión plana (la proyección con \texttt{\ensuremath{\sigma}\_zz=0} acoplada a flujo dilatante queda fuera del alcance de la versión actual).}
 \end{itemize}
 
 En todos los casos basta declarar el \texttt{STRAIN\_DIM} apropiado y el atributo \texttt{PRIMARY\_STATE\_VAR} para visualización.
@@ -491,7 +495,7 @@ No linealidad geométrica & \pendiente{Marco 2D Timoshenko corrotacional.} & \pe
 
 \subsection{Familia sólido 2D}
 
-Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (\texttt{Elastic2D}, \texttt{VonMises2D}, \texttt{IsotropicDamage2D}).
+Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (\texttt{Elastic2D}, \texttt{VonMises2D}, \texttt{IsotropicDamage2D}, \texttt{DruckerPrager2D}).
 
 \textbf{Primer orden}
 
@@ -502,8 +506,8 @@ Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o def
 \hline
 \textbf{Topología} & \textbf{Material lineal} & \textbf{Material no lineal} \\
 \hline
-Triangular lineal (3 nodos) & \ensuremath{\checkmark} \texttt{Tri3} & \ensuremath{\checkmark} \texttt{Tri3} con \texttt{VonMises2D} o \texttt{IsotropicDamage2D} \\
-Cuadrilátero bilineal (4 nodos) & \ensuremath{\checkmark} \texttt{Quad4} & \ensuremath{\checkmark} \texttt{Quad4} con \texttt{VonMises2D} o \texttt{IsotropicDamage2D} \\
+Triangular lineal (3 nodos) & \ensuremath{\checkmark} \texttt{Tri3} & \ensuremath{\checkmark} \texttt{Tri3} con \texttt{VonMises2D}, \texttt{IsotropicDamage2D} o \texttt{DruckerPrager2D} \\
+Cuadrilátero bilineal (4 nodos) & \ensuremath{\checkmark} \texttt{Quad4} & \ensuremath{\checkmark} \texttt{Quad4} con \texttt{VonMises2D}, \texttt{IsotropicDamage2D} o \texttt{DruckerPrager2D} \\
 \hline
 \end{tabularx}
 \end{table}
@@ -515,12 +519,19 @@ La columna de no linealidad geométrica se omite en esta familia: los elementos 
 
 \textbf{Segundo orden}
 
-\begin{itemize}
-  \item \pendiente{Triangular cuadrático \texttt{Tri6} (seis nodos).}
-  \item \pendiente{Cuadrilátero serendípito \texttt{Quad8} (ocho nodos).}
-  \item \pendiente{Cuadrilátero lagrangiano \texttt{Quad9} (nueve nodos).}
-\end{itemize}
-
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia sólido bidimensional --- segundo orden.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Topología} & \textbf{Material lineal} & \textbf{Material no lineal} \\
+\hline
+Triangular cuadrático $P_2$ (6 nodos) & \ensuremath{\checkmark} \texttt{Tri6} & \ensuremath{\checkmark} \texttt{Tri6} con \texttt{VonMises2D}, \texttt{IsotropicDamage2D} o \texttt{DruckerPrager2D} \\
+Cuadrilátero serendípito $Q_2^{\text{seren}}$ (8 nodos) & \ensuremath{\checkmark} \texttt{Quad8} & \ensuremath{\checkmark} \texttt{Quad8} con cualquier material 2D no lineal \\
+Cuadrilátero lagrangiano $Q_2$ (9 nodos) & \ensuremath{\checkmark} \texttt{Quad9} & \ensuremath{\checkmark} \texttt{Quad9} con cualquier material 2D no lineal \\
+\hline
+\end{tabularx}
+\end{table}
 \subsection{Familia sólido 3D}
 
 \begin{itemize}
@@ -555,6 +566,7 @@ Disponibles en la versión actual:
   \item \texttt{ArcLengthSolver} --- método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
   \item \texttt{ModalSolver} (\hyperref[adr:0009]{ADR 0009} fase 1) --- análisis modal: problema generalizado de valores y vectores característicos \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. No es análisis dinámico propiamente dicho (no hay paso de tiempo ni evolución temporal); sus soluciones admiten interpretación como frecuencias propias y formas de vibración libre no amortiguada. Internamente delega en \texttt{EigenSolver} (ARPACK Lanczos con shift-invert) sobre el sistema reducido por Dirichlet. Devuelve \texttt{ModalResult} con frecuencias, períodos y modos M-ortonormales; expone además \texttt{free\_vibration(M, u0, u0\_dot, t)} para reconstruir analíticamente la respuesta libre por superposición modal.
   \item \texttt{NewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 3) --- análisis dinámico transitorio lineal: integración temporal directa de \texttt{M \ensuremath{\cdot} ü + C \ensuremath{\cdot} u̇ + K \ensuremath{\cdot} u = F(t)} por el método de Newmark-\ensuremath{\beta} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables (default 1/4, 1/2 --- \textit{average acceleration}, incondicionalmente estable, error \texttt{O(\ensuremath{\Delta}t\ensuremath{^{2}})}). Amortiguamiento Rayleigh \texttt{C = \ensuremath{\alpha} \ensuremath{\cdot} M + \ensuremath{\beta} \ensuremath{\cdot} K} con coeficientes directos o calibrados modalmente a partir de dos pares \texttt{(\ensuremath{\xi}, \ensuremath{\omega})}. Cargas dependientes del tiempo por callback Python. Devuelve \texttt{TransientResult} con historiales \texttt{(t, u, u̇, ü)}. La matriz efectiva \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K} se factoriza una sola vez al inicio y se reutiliza en todos los pasos.
+  \item \texttt{NewtonNewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 4) --- análisis dinámico transitorio no lineal. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico \texttt{R = F\_ext − F\_int(u) − C \ensuremath{\cdot} u̇ − M \ensuremath{\cdot} ü} con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K\_t} (rigidez tangente corriente). Convergencia dual (\hyperref[adr:0007]{ADR 0007}). Amortiguamiento Rayleigh constante en el tiempo, calibrado con \texttt{K\_0} (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (\texttt{freeze\_tangent\_after\_iter}, \hyperref[adr:0003]{ADR 0003} fase 2). Despacho YAML automático vía \texttt{isinstance} sobre la clase padre.
 \end{itemize}
 
 Espacio natural de extensión:
@@ -562,7 +574,6 @@ Espacio natural de extensión:
 \begin{itemize}
   \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.}
   \item \pendiente{Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.}
-  \item \pendiente{Newton-Raphson dentro de cada paso de Newmark --- dinámica estructural transitoria no lineal (fase 4 del \hyperref[adr:0009]{ADR 0009}).}
   \item \pendiente{Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}) como subclase de \texttt{NewmarkSolver}.}
   \item \pendiente{Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto. Requieren masa lumped (fase 2 del \hyperref[adr:0009]{ADR 0009}, contrato \texttt{lumping="lumped"} ya en la firma de \texttt{compute\_mass\_matrix}).}
   \item \pendiente{Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.}
@@ -602,12 +613,12 @@ Implementados en la versión actual:
   \item \textit{Estática no lineal incremental}. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: \texttt{NonlinearSolver} o \texttt{ArcLengthSolver} con materiales no lineales y/o elementos corrotacionales.
   \item \textit{Análisis modal} (\hyperref[adr:0009]{ADR 0009} fase 1). Problema algebraico de valores y vectores característicos generalizado \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Combinación: \texttt{ModalSolver} con materiales que declaren \texttt{density} y elementos que implementen \texttt{compute\_mass\_matrix}.
   \item \textit{Dinámica estructural transitoria lineal} (\hyperref[adr:0009]{ADR 0009} fase 3). Integración temporal directa de la ecuación de movimiento por Newmark-\ensuremath{\beta}, con amortiguamiento Rayleigh proporcional y cargas dependientes del tiempo por callback Python. Combinación: \texttt{NewmarkSolver} con material lineal, elementos en formulación lineal y \texttt{density} declarada.
+  \item \textit{Dinámica estructural transitoria no lineal} (\hyperref[adr:0009]{ADR 0009} fase 4). Integración Newmark con Newton-Raphson dentro de cada paso sobre el residuo dinámico \texttt{R = F\_ext − F\_int(u) − C\ensuremath{\cdot}u̇ − M\ensuremath{\cdot}ü}. Combinación: \texttt{NewtonNewmarkSolver} con cualquier material con historia (\texttt{Elastoplastic1D}, \texttt{VonMises2D} en ambas hipótesis, \texttt{DruckerPrager2D}, \texttt{IsotropicDamage1D/2D}) y \texttt{density} declarada. Habilita sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo y vibraciones de marcos elastoplásticos.
 \end{itemize}
 
 Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
 
 \begin{itemize}
-  \item \pendiente{Dinámica estructural transitoria no lineal --- Newton-Raphson dentro de cada paso de Newmark (fase 4 del \hyperref[adr:0009]{ADR 0009}).}
   \item \pendiente{Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.}
   \item \pendiente{Respuesta en frecuencia (steady-state harmonic) y análisis espectral sísmico por combinación modal.}
   \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
@@ -933,7 +944,7 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
 \section{ADR 0009 --- Análisis modal y dinámico}
 \label{adr:0009}
 
-\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; fase 1 (modal) y fase 3 (Newmark transitorio lineal) implementadas.
+\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; fases 1 (modal), 3 (Newmark transitorio lineal) y 4 (Newton-Newmark transitorio no lineal) implementadas.
 
 \textbf{Contexto.} El \hyperref[adr:0003]{ADR 0003} había identificado análisis modal y dinámica implícita entre los análisis futuros que la capa algebraica iba a habilitar; el \hyperref[adr:0008]{ADR 0008} había puesto la densidad como propiedad del material disponible. Quedaba abrir el subsistema con dos análisis distintos pero relacionados: el análisis modal --- problema algebraico de valores y vectores característicos generalizado \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}} ---, cuyas soluciones admiten interpretación dinámica pero no constituyen análisis dinámico per se; y el análisis dinámico propiamente dicho, con dependencia temporal explícita --- integración de \texttt{M \ensuremath{\cdot} ü + C \ensuremath{\cdot} u̇ + K \ensuremath{\cdot} u = F(t)}.
 
@@ -949,9 +960,9 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
   \item Convención de unidades heredada del modelo (\hyperref[adr:0008]{ADR 0008}): el usuario es responsable de la consistencia; las tolerancias adimensionales del \hyperref[adr:0007]{ADR 0007} garantizan invariancia bajo cambio de unidades.
 \end{enumerate}
 
-La fase 1 (\texttt{ModalSolver} + ARPACK Lanczos con shift-invert) y la fase 3 (\texttt{NewmarkSolver} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) quedan implementadas y validadas con tests contra solución analítica.
+La fase 1 (\texttt{ModalSolver} + ARPACK Lanczos con shift-invert), la fase 3 (\texttt{NewmarkSolver} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) y la fase 4 (\texttt{NewtonNewmarkSolver} --- subclase de \texttt{NewmarkSolver} que añade Newton-Raphson dentro de cada paso con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}, convergencia dual del \hyperref[adr:0007]{ADR 0007}, Rayleigh constante calibrado con \texttt{K\_0}) quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad.
 
-\textbf{Consecuencia.} El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 4 (Newton dentro de Newmark --- dinámica no lineal), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase \texttt{Node} conserva su semántica original.
+\textbf{Consecuencia.} El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase \texttt{Node} conserva su semántica original.
 
 \section{Evolución de esta lista}
 
@@ -1058,19 +1069,22 @@ Bajo. La decisión 5 del \hyperref[adr:0009]{ADR 0009} (estado dinámico fuera d
 
 ## Fase 4 — Dinámica estructural transitoria no lineal
 
-**Estado**: \pendiente{Implementación de la fase 4 --- Newton-Raphson dentro de cada paso de Newmark.}
+**Estado**: implementado (\hyperref[adr:0009]{ADR 0009} fase 4, sesión del 2026-05-14).
 
 **Cambios respecto a la fase 3**:
 
-- En cada paso temporal, el residuo `R = F(t_{n+1}) − F_int(u_{n+1}) − M·ü_{n+1} − C·u̇_{n+1}` se anula iterativamente con Newton-Raphson, reutilizando la infraestructura del `NonlinearSolver` estático (\hyperref[adr:0007]{ADR 0007} — `ConvergenceCriterion` calibrado).
-- La matriz tangente efectiva incorpora la rigidez dependiente del estado: `A_eff = M + γΔt·C + βΔt²·K_t(u)`. Se refactoriza cuando `K_t` cambia significativamente; con `K_t` constante (régimen lineal local) se reaprovecha la factorización del paso anterior.
-- El estado interno de los elementos (`ElementState`) recupera plenamente su semántica *trial* / comprometido: se commit al converger cada paso temporal, no solo cada paso de carga.
+- Nueva clase `NewtonNewmarkSolver` como **variante** de `NewmarkSolver` (Reglas §4 — extensión documentada en spec corta, sin ADR nuevo porque reúsa todas las decisiones del \hyperref[adr:0009]{ADR 0009}): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal.
+- En cada paso, el residuo `R = F_ext(t_{n+1}) − F_int(u_{n+1}) − C·u̇_{n+1} − M·ü_{n+1}` se anula iterativamente con jacobiano `J = M + γΔt·C + βΔt²·K_t`, donde `K_t = ∂F_int/∂u` es la rigidez tangente corriente. Convergencia dual del \hyperref[adr:0007]{ADR 0007} calibrada al primer paso.
+- Reaprovecha íntegramente la maquinaria del `NonlinearSolver` estático: `ConvergenceCriterion`, `freeze_tangent_after_iter` (Newton modificado, \hyperref[adr:0003]{ADR 0003} fase 2), `commit_all_states()` tras converger cada paso temporal — el estado interno de los elementos recupera plenamente su semántica *trial* / comprometido también en dinámica.
+- Amortiguamiento Rayleigh `C = α·M + β·K_0` **constante en el tiempo**, calibrado con la rigidez elástica de referencia `K_0` al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+- **Recuperación del caso lineal**: con materiales sin historia (o plásticos no plastificados), `K_t ≡ K_0` y el residuo se anula en una iteración. El resultado coincide a paridad de bits con `NewmarkSolver`, validado en tests.
+- Despacho YAML automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `entry.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient` sin tocar el dispatcher.
 
-**Topología prevista**: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal.
+**Topología efectiva**: igual que la fase 3, con el bucle Newton añadido dentro del bucle temporal y la rigidez tangente reensamblada en cada iteración.
 
 
 \end{lstlisting}callout Riesgo de arquitectura
-Bajo. Toda la infraestructura ya existe --- el \texttt{NonlinearSolver} estático tiene calibración de convergencia, fallback de positividad, y Newton modificado. La fase 4 es composición de las fases 1 y 3.
+Bajo en la práctica: toda la infraestructura ya existía. El \texttt{NonlinearSolver} estático aportaba calibración de convergencia, fallback de positividad y Newton modificado; la fase 3 aportaba predictores/correctores Newmark y reducción de Dirichlet. La fase 4 es la composición exacta de ambas, formalizada como subclase para no duplicar código.
 \begin{lstlisting}
 
 ## Fase 5 — Problema térmico estacionario y transitorio
@@ -1331,15 +1345,17 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \begin{itemize}
 
-  \item \pendiente{Modelo de Drucker-Prager para suelos y materiales granulares.}
+  \item \pendiente{Modelo de Mohr-Coulomb 2D con esquinas (multi-superficie) para mayor fidelidad geotécnica respecto a Drucker-Prager.}
 
-  \item \pendiente{Modelo de Mohr-Coulomb para suelos y rocas.}
+  \item \pendiente{Endurecimiento cinemático (Bauschinger) en J2 para plasticidad cíclica y fatiga.}
 
   \item \pendiente{Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).}
 
   \item \pendiente{Viscoplasticidad de Perzyna y Duvaut-Lions.}
 
   \item \pendiente{Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.}
+
+  \item \pendiente{Drucker-Prager en tensión plana (la proyección con \texttt{\ensuremath{\sigma}\_zz=0} acoplada a flujo dilatante queda fuera del alcance de la versión actual).}
 
   \item \pendiente{Armadura 2D de segundo orden con linealidad geométrica.}
 
@@ -1393,12 +1409,6 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
   \item \pendiente{Sólido 2D con no linealidad geométrica (formulación lagrangiana actualizada o total).}
 
-  \item \pendiente{Triangular cuadrático \texttt{Tri6} (seis nodos).}
-
-  \item \pendiente{Cuadrilátero serendípito \texttt{Quad8} (ocho nodos).}
-
-  \item \pendiente{Cuadrilátero lagrangiano \texttt{Quad9} (nueve nodos).}
-
   \item \pendiente{Tetraedro lineal \texttt{Tet4} (cuatro nodos), primer orden.}
 
   \item \pendiente{Tetraedro cuadrático \texttt{Tet10} (diez nodos), segundo orden.}
@@ -1419,8 +1429,6 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
   \item \pendiente{Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.}
 
-  \item \pendiente{Newton-Raphson dentro de cada paso de Newmark --- dinámica estructural transitoria no lineal (fase 4 del \hyperref[adr:0009]{ADR 0009}).}
-
   \item \pendiente{Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}) como subclase de \texttt{NewmarkSolver}.}
 
   \item \pendiente{Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto. Requieren masa lumped (fase 2 del \hyperref[adr:0009]{ADR 0009}, contrato \texttt{lumping="lumped"} ya en la firma de \texttt{compute\_mass\_matrix}).}
@@ -1436,8 +1444,6 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
   \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
 
   \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
-
-  \item \pendiente{Dinámica estructural transitoria no lineal --- Newton-Raphson dentro de cada paso de Newmark (fase 4 del \hyperref[adr:0009]{ADR 0009}).}
 
   \item \pendiente{Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.}
 
@@ -1473,8 +1479,6 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \begin{itemize}
 
-  \item \pendiente{Implementación de la fase 4 --- Newton-Raphson dentro de cada paso de Newmark.}
-
   \item \pendiente{Implementación de la fase 5 --- problema térmico.}
 
   \item \pendiente{Implementación de la fase 6 --- acoplamiento termo-mecánico.}
@@ -1493,8 +1497,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 13 de mayo de 2026, 11:58\\[0.5em]
-Commit Git: \texttt{833fb9d} (con cambios sin confirmar)\\[1em]
+Compilado el 13 de mayo de 2026, 15:49\\[0.5em]
+Commit Git: \texttt{13012c2} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

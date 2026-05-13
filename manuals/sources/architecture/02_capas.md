@@ -49,7 +49,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   paquete \texttt{solvers/} con un módulo por solver
   (\texttt{LinearSolver}, \texttt{NonlinearSolver},
   \texttt{ArcLengthSolver}, \texttt{ModalSolver},
-  \texttt{NewmarkSolver}) y subsistema algebraico
+  \texttt{NewmarkSolver}, \texttt{NewtonNewmarkSolver}) y subsistema algebraico
   \texttt{linalg/} (\texttt{LUSolver}, \texttt{CholeskySolver},
   \texttt{LDLTSolver} reservado, despachador
   \texttt{select\_solver}, \texttt{EigenSolver}).

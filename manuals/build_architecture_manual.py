@@ -470,8 +470,14 @@ def compile_pdf(tex_path: Path) -> bool:
             errors="replace",
         )
         if result.returncode != 0:
-            print(f"[!] lualatex (pasada {i+1}) falló:")
-            print(result.stdout[-3000:])
+            print(f"[!] lualatex (pasada {i+1}) fallo:")
+            tail = result.stdout[-3000:]
+            try:
+                print(tail)
+            except UnicodeEncodeError:
+                # Console encoding (cp1252 en Windows) puede no aceptar
+                # algunos glifos Unicode del log; degradamos a ASCII.
+                print(tail.encode("ascii", errors="replace").decode("ascii"))
             return False
     return True
 

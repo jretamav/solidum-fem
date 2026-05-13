@@ -11,18 +11,20 @@ Un material en Fenix FEM es una ley constitutiva: dada una deformación (escalar
 Familias actualmente implementadas:
 
 - *Elásticos lineales*: `Elastic1D` para deformación axial escalar; `Elastic2D` para problemas planos (tensión plana o deformación plana) en notación de Voigt 3.
-- *Plásticos 1D*: `Plastic1D` con endurecimiento isótropo lineal y deformación axial escalar.
-- *Plásticos 2D*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3.
-- *Daño*: `Damage1D` y `Damage2D`, modelos de daño isótropo escalar.
+- *Plásticos 1D*: `Elastoplastic1D` con criterio J2 axial, endurecimiento isótropo lineal y tangente algorítmica consistente.
+- *Plásticos 2D — J2*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y tensión plana (*plane stress projected algorithm*, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
+- *Plásticos 2D — friccional*: `DruckerPrager2D` con criterio cohesivo-friccional (cono circular suave de Mohr-Coulomb), plasticidad no asociada por defecto y dos ramas cerradas de return (regular sobre el cono y al ápice). Tres calibraciones con Mohr-Coulomb (`plane_strain_matched`, `outer_cone`, `inner_cone`). `IS_SYMMETRIC = False` cuando `ψ ≠ φ`; el despachador algebraico (ADR 0003) degrada Cholesky→LU automáticamente.
+- *Daño isótropo*: `IsotropicDamage1D` y `IsotropicDamage2D`, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa (negativa en 1D durante softening; asimétrica en 2D porque `(C_e·ε) ⊗ (M·ε)` no es simétrica). Secante en descarga.
 - *Cables*: `CableMaterial1D`, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
 
 Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse como una función `(strain, state) → (stress, tangent)` se incorpora sin modificación del resto del programa. Candidatos directos:
 
-- [PENDIENTE: Modelo de Drucker-Prager para suelos y materiales granulares.]
-- [PENDIENTE: Modelo de Mohr-Coulomb para suelos y rocas.]
+- [PENDIENTE: Modelo de Mohr-Coulomb 2D con esquinas (multi-superficie) para mayor fidelidad geotécnica respecto a Drucker-Prager.]
+- [PENDIENTE: Endurecimiento cinemático (Bauschinger) en J2 para plasticidad cíclica y fatiga.]
 - [PENDIENTE: Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).]
 - [PENDIENTE: Viscoplasticidad de Perzyna y Duvaut-Lions.]
 - [PENDIENTE: Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.]
+- [PENDIENTE: Drucker-Prager en tensión plana (la proyección con `σ_zz=0` acoplada a flujo dilatante queda fuera del alcance de la versión actual).]
 
 En todos los casos basta declarar el `STRAIN_DIM` apropiado y el atributo `PRIMARY_STATE_VAR` para visualización.
 
@@ -101,15 +103,15 @@ Elemento con flexión y, en su caso, cortante y torsión. Material consumido: 1D
 
 ### Familia sólido 2D
 
-Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (`Elastic2D`, `VonMises2D`, `IsotropicDamage2D`).
+Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (`Elastic2D`, `VonMises2D`, `IsotropicDamage2D`, `DruckerPrager2D`).
 
 **Primer orden**
 
 [TABLA: Cobertura de la familia sólido bidimensional — primer orden.]
 | Topología | Material lineal | Material no lineal |
 |---|---|---|
-| Triangular lineal (3 nodos) | ✓ `Tri3` | ✓ `Tri3` con `VonMises2D` o `IsotropicDamage2D` |
-| Cuadrilátero bilineal (4 nodos) | ✓ `Quad4` | ✓ `Quad4` con `VonMises2D` o `IsotropicDamage2D` |
+| Triangular lineal (3 nodos) | ✓ `Tri3` | ✓ `Tri3` con `VonMises2D`, `IsotropicDamage2D` o `DruckerPrager2D` |
+| Cuadrilátero bilineal (4 nodos) | ✓ `Quad4` | ✓ `Quad4` con `VonMises2D`, `IsotropicDamage2D` o `DruckerPrager2D` |
 
 La columna de no linealidad geométrica se omite en esta familia: los elementos sólidos 2D actuales no incluyen formulación corrotacional ni lagrangiana actualizada.
 
@@ -117,9 +119,12 @@ La columna de no linealidad geométrica se omite en esta familia: los elementos 
 
 **Segundo orden**
 
-- [PENDIENTE: Triangular cuadrático `Tri6` (seis nodos).]
-- [PENDIENTE: Cuadrilátero serendípito `Quad8` (ocho nodos).]
-- [PENDIENTE: Cuadrilátero lagrangiano `Quad9` (nueve nodos).]
+[TABLA: Cobertura de la familia sólido bidimensional — segundo orden.]
+| Topología | Material lineal | Material no lineal |
+|---|---|---|
+| Triangular cuadrático $P_2$ (6 nodos) | ✓ `Tri6` | ✓ `Tri6` con `VonMises2D`, `IsotropicDamage2D` o `DruckerPrager2D` |
+| Cuadrilátero serendípito $Q_2^{\text{seren}}$ (8 nodos) | ✓ `Quad8` | ✓ `Quad8` con cualquier material 2D no lineal |
+| Cuadrilátero lagrangiano $Q_2$ (9 nodos) | ✓ `Quad9` | ✓ `Quad9` con cualquier material 2D no lineal |
 
 ### Familia sólido 3D
 
@@ -150,12 +155,12 @@ Disponibles en la versión actual:
 - `ArcLengthSolver` — método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con *snap-back* o *snap-through*.
 - `ModalSolver` (ADR 0009 fase 1) — análisis modal: problema generalizado de valores y vectores característicos `K · φ = ω² · M · φ`. No es análisis dinámico propiamente dicho (no hay paso de tiempo ni evolución temporal); sus soluciones admiten interpretación como frecuencias propias y formas de vibración libre no amortiguada. Internamente delega en `EigenSolver` (ARPACK Lanczos con shift-invert) sobre el sistema reducido por Dirichlet. Devuelve `ModalResult` con frecuencias, períodos y modos M-ortonormales; expone además `free_vibration(M, u0, u0_dot, t)` para reconstruir analíticamente la respuesta libre por superposición modal.
 - `NewmarkSolver` (ADR 0009 fase 3) — análisis dinámico transitorio lineal: integración temporal directa de `M · ü + C · u̇ + K · u = F(t)` por el método de Newmark-β con `(β, γ)` parametrizables (default 1/4, 1/2 — *average acceleration*, incondicionalmente estable, error `O(Δt²)`). Amortiguamiento Rayleigh `C = α · M + β · K` con coeficientes directos o calibrados modalmente a partir de dos pares `(ξ, ω)`. Cargas dependientes del tiempo por callback Python. Devuelve `TransientResult` con historiales `(t, u, u̇, ü)`. La matriz efectiva `A_eff = M + γΔt · C + βΔt² · K` se factoriza una sola vez al inicio y se reutiliza en todos los pasos.
+- `NewtonNewmarkSolver` (ADR 0009 fase 4) — análisis dinámico transitorio no lineal. **Variante** de `NewmarkSolver` (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico `R = F_ext − F_int(u) − C · u̇ − M · ü` con jacobiano `J = M + γΔt · C + βΔt² · K_t` (rigidez tangente corriente). Convergencia dual (ADR 0007). Amortiguamiento Rayleigh constante en el tiempo, calibrado con `K_0` (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (`freeze_tangent_after_iter`, ADR 0003 fase 2). Despacho YAML automático vía `isinstance` sobre la clase padre.
 
 Espacio natural de extensión:
 
 - [PENDIENTE: Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.]
 - [PENDIENTE: Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.]
-- [PENDIENTE: Newton-Raphson dentro de cada paso de Newmark — dinámica estructural transitoria no lineal (fase 4 del ADR 0009).]
 - [PENDIENTE: Esquemas con amortiguamiento numérico controlado (HHT-α, generalized-α, Bossak-α) como subclase de `NewmarkSolver`.]
 - [PENDIENTE: Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto. Requieren masa lumped (fase 2 del ADR 0009, contrato `lumping="lumped"` ya en la firma de `compute_mass_matrix`).]
 - [PENDIENTE: Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.]
@@ -191,10 +196,10 @@ Implementados en la versión actual:
 - *Estática no lineal incremental*. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: `NonlinearSolver` o `ArcLengthSolver` con materiales no lineales y/o elementos corrotacionales.
 - *Análisis modal* (ADR 0009 fase 1). Problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ`. Combinación: `ModalSolver` con materiales que declaren `density` y elementos que implementen `compute_mass_matrix`.
 - *Dinámica estructural transitoria lineal* (ADR 0009 fase 3). Integración temporal directa de la ecuación de movimiento por Newmark-β, con amortiguamiento Rayleigh proporcional y cargas dependientes del tiempo por callback Python. Combinación: `NewmarkSolver` con material lineal, elementos en formulación lineal y `density` declarada.
+- *Dinámica estructural transitoria no lineal* (ADR 0009 fase 4). Integración Newmark con Newton-Raphson dentro de cada paso sobre el residuo dinámico `R = F_ext − F_int(u) − C·u̇ − M·ü`. Combinación: `NewtonNewmarkSolver` con cualquier material con historia (`Elastoplastic1D`, `VonMises2D` en ambas hipótesis, `DruckerPrager2D`, `IsotropicDamage1D/2D`) y `density` declarada. Habilita sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo y vibraciones de marcos elastoplásticos.
 
 Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
 
-- [PENDIENTE: Dinámica estructural transitoria no lineal — Newton-Raphson dentro de cada paso de Newmark (fase 4 del ADR 0009).]
 - [PENDIENTE: Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.]
 - [PENDIENTE: Respuesta en frecuencia (steady-state harmonic) y análisis espectral sísmico por combinación modal.]
 - [PENDIENTE: Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).]
