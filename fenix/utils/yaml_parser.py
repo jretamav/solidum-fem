@@ -512,4 +512,14 @@ class YamlParser:
         """Construye y retorna el solver dinámicamente según la configuración YAML."""
         s_type = self.solver_config.get('type', 'LinearSolver')
         kwargs = {k: v for k, v in self.solver_config.items() if k != 'type'}
+
+        # Bloque `convergence:` (ADR 0007). Si está presente lo materializamos
+        # como ConvergenceCriterion antes de pasar al constructor del solver.
+        # Los solvers lineales no lo admiten — se omite silenciosamente.
+        if 'convergence' in kwargs:
+            from fenix.math.convergence import make_convergence_from_config
+            cfg = kwargs.pop('convergence')
+            if s_type != 'LinearSolver':
+                kwargs['convergence'] = make_convergence_from_config(cfg)
+
         return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

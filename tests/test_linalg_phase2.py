@@ -126,14 +126,16 @@ class TestNewtonModificado(unittest.TestCase):
 
     def test_modified_newton_matches_standard(self):
         from fenix.math.assembly import Assembler
+        from fenix.math.convergence import ConvergenceCriterion
         from fenix.math.solvers import NonlinearSolver
 
+        conv = lambda: ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10)
         dom_a, n2_a, F_a = self._cantilever_axial()
-        std = NonlinearSolver(Assembler(dom_a), tol=1e-10, num_steps=2)
+        std = NonlinearSolver(Assembler(dom_a), convergence=conv(), num_steps=2)
         U_std = std.solve(F_a)
 
         dom_b, n2_b, F_b = self._cantilever_axial()
-        mod = NonlinearSolver(Assembler(dom_b), tol=1e-10, num_steps=2,
+        mod = NonlinearSolver(Assembler(dom_b), convergence=conv(), num_steps=2,
                               freeze_tangent_after_iter=1)
         U_mod = mod.solve(F_b)
 
@@ -142,10 +144,13 @@ class TestNewtonModificado(unittest.TestCase):
     def test_modified_newton_invalidates_factor_between_steps(self):
         """Tras solve(), la factorización congelada debe haberse liberado."""
         from fenix.math.assembly import Assembler
+        from fenix.math.convergence import ConvergenceCriterion
         from fenix.math.solvers import NonlinearSolver
 
         dom, n2, F = self._cantilever_axial()
-        solver = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=2,
+        solver = NonlinearSolver(Assembler(dom),
+                                 convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10),
+                                 num_steps=2,
                                  freeze_tangent_after_iter=1)
         solver.solve(F)
         self.assertIsNone(solver._frozen_factor)
@@ -228,7 +233,9 @@ class TestSPDFallback(unittest.TestCase):
         solvers_module.select_solver = _patched
         try:
             dom, n2, F = self._cantilever_axial()
-            U = solvers_module.NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1).solve(F)
+            from fenix.math.convergence import ConvergenceCriterion
+            conv = ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10)
+            U = solvers_module.NonlinearSolver(Assembler(dom), convergence=conv, num_steps=1).solve(F)
             expected = 1000.0 * 2.0 / (210e9 * 1e-3)
             # Tras eliminación directa (ADR 0004) la imposición es exacta a redondeo.
             np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-12)

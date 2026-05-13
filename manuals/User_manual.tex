@@ -409,8 +409,10 @@ solver:
   type: NonlinearSolver
   num_steps: 20
   max_iter: 15
-  tol: 1.0e-5
   adaptive: true
+  convergence:
+    rtol_force: 1.0e-5
+    rtol_disp: 1.0e-5
 \end{lstlisting}
 
 Los solvers disponibles y sus parámetros se documentan en el Capítulo~\ref{cap:solvers}.
@@ -756,11 +758,13 @@ solver:
   type: NonlinearSolver
   num_steps: 20
   max_iter: 15
-  tol: 1.0e-5
   adaptive: true
+  convergence:
+    rtol_force: 1.0e-5
+    rtol_disp: 1.0e-5
 \end{lstlisting}
 
-\textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}.
+\textbf{Parámetros}: \texttt{convergence} (bloque con \texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ver ADR 0007), \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}.
 
 \textbf{Limitación}: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para esos casos $\to$ \texttt{ArcLengthSolver}.
 
@@ -778,11 +782,13 @@ Traza curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de
 \begin{lstlisting}[language=yaml]
 solver:
   type: ArcLengthSolver
-  tol: 1.0e-5
   max_iter: 15
   max_lambda: 1.0
   initial_dl: 0.05
   max_steps: 200
+  convergence:
+    rtol_force: 1.0e-5
+    rtol_disp: 1.0e-5
 \end{lstlisting}
 
 \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite. Más caro por paso (dos \texttt{spsolve} por iteración) pero indispensable en estos casos.
@@ -1018,7 +1024,7 @@ F_ext[n3.dofs['ux']] = 150000.0
 
 # 5. Resolución
 assembler = Assembler(domain)
-solver = NonlinearSolver(assembler, num_steps=10, tol=1e-5, adaptive=True)
+solver = NonlinearSolver(assembler, num_steps=10, adaptive=True)
 U = solver.solve(F_ext)
 
 # 6. Exportación

@@ -121,9 +121,13 @@ class {{Name}}(Element):
 ### solver — `fenix/math/solver_<snake>.py`
 
 ```python
+from typing import Optional
+
 import numpy as np
 import scipy.sparse.linalg as spla
-from fenix.constants import CONVERGENCE_TOL, ZERO_TOL
+
+from fenix.constants import ZERO_TOL
+from fenix.math.convergence import ConvergenceCriterion, stiffness_diag_scale
 from fenix.registry import SolverRegistry
 
 
@@ -131,10 +135,11 @@ from fenix.registry import SolverRegistry
 class {{Name}}:
     """{{Descripción de una línea}}."""
 
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, {{otros_params}},
-                 linear_algebra: str = "auto"):
+    def __init__(self, assembler, convergence: Optional[ConvergenceCriterion] = None,
+                 {{otros_params}}, linear_algebra: str = "auto"):
         self.assembler = assembler
-        self.tol = tol
+        # Política de convergencia (ADR 0007). Si es None, defaults del proyecto.
+        self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.linear_algebra = linear_algebra
         # TODO: parámetros adicionales. Imposición de Dirichlet: usa
         # assembler.reduce(K, F, U_current=..., load_factor=...) y
@@ -144,6 +149,14 @@ class {{Name}}:
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U = np.zeros(ndof)
+        # En el primer ensamblaje, calibrar el criterio (ADR 0007):
+        #   K, F_int = self.assembler.assemble_non_linear_system(U)
+        #   force_scale = max(np.linalg.norm(F_ext_global), np.linalg.norm(F_int), 1.0)
+        #   disp_scale = force_scale / stiffness_diag_scale(K)
+        #   self.convergence.calibrate(force_scale, disp_scale)
+        # En cada iteración, evaluar:
+        #   state = self.convergence.evaluate(residual_norm, ref_force, delta_u_norm, u_norm)
+        #   if state.converged: break
         # TODO: implementar el algoritmo
         raise NotImplementedError
 ```

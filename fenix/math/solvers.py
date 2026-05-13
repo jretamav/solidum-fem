@@ -1,7 +1,15 @@
 # fenix_fem/fenix/math/solvers.py
+from typing import Optional
+
 import numpy as np
-from fenix.constants import CONVERGENCE_TOL, ZERO_TOL
+
+from fenix.constants import ZERO_TOL
 from fenix.logging import get_logger
+from fenix.math.convergence import (
+    ConvergenceCriterion,
+    make_convergence_from_config,
+    stiffness_diag_scale,
+)
 from fenix.registry import SolverRegistry
 from fenix.math.linalg import LUSolver, StiffnessProperties, select_solver
 
@@ -62,9 +70,11 @@ class LinearSolver:
 @SolverRegistry.register
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
+    def __init__(self, assembler, convergence: Optional[ConvergenceCriterion] = None, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
         self.assembler = assembler
-        self.tol = tol
+        # Política de convergencia (ADR 0007). El criterio se calibra una vez
+        # al inicio de solve() con la escala del primer ensamblaje.
+        self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = max_iter
         self.num_steps = num_steps
         self.adaptive = adaptive
@@ -156,6 +166,21 @@ class NonlinearSolver:
                     K_global, R, U_current=U_iter, load_factor=next_load_factor
                 )
 
+                # Calibración del criterio en el primer ensamblaje de la corrida
+                # (ADR 0007). Las escalas se derivan del estado inicial real:
+                # ‖F_ext_global‖ para fuerza, ‖F_ext‖/max|diag(K)| para
+                # desplazamiento. Si ‖F_ext_global‖ = 0 (control en desplazamiento
+                # puro), usar la reacción interna del primer paso o fallback 1.0.
+                if not self.convergence.is_calibrated:
+                    force_scale = max(
+                        np.linalg.norm(F_ext_global),
+                        np.linalg.norm(F_int_global),
+                        1.0,
+                    )
+                    K_diag = stiffness_diag_scale(K_global)
+                    disp_scale = force_scale / K_diag
+                    self.convergence.calibrate(force_scale, disp_scale)
+
                 try:
                     delta_U_red = self._solve_reduced(K_red, R_red, iteration=iteration)
                 except RuntimeError:
@@ -165,16 +190,23 @@ class NonlinearSolver:
                 delta_U = self.assembler.expand(delta_U_red, T_op, g_inc)
                 U_iter += delta_U
 
-                # Criterio dual: norma de desplazamiento Y norma de residuo de
-                # fuerza. En DOFs prescritos R contiene la reacción física (no
-                # un fallo de equilibrio), por eso se evalúa en free_dofs.
-                err_disp = np.linalg.norm(delta_U) / (np.linalg.norm(U_iter) + ZERO_TOL)
-                ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global), ZERO_TOL)
-                err_force = np.linalg.norm(R[free_dofs]) / ref_force
-                error = max(err_disp, err_force)
-                _log.info(f"  Iteración {iteration+1:2d} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
+                # Criterio dual fuerza + desplazamiento (ADR 0007). El residuo se
+                # evalúa en DOFs libres (en prescritos R contiene la reacción
+                # física, no un fallo de equilibrio).
+                ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global))
+                state = self.convergence.evaluate(
+                    residual_norm=np.linalg.norm(R[free_dofs]),
+                    ref_force=ref_force,
+                    delta_u_norm=np.linalg.norm(delta_U),
+                    u_norm=np.linalg.norm(U_iter),
+                )
+                _log.info(
+                    f"  Iteración {iteration+1:2d} | "
+                    f"R/tol_F: {state.ratio_force:.4e} | "
+                    f"dU/tol_d: {state.ratio_disp:.4e}"
+                )
 
-                if error < self.tol:
+                if state.converged:
                     _log.info("  -> CONVERGENCIA ALCANZADA.")
                     self.assembler.commit_all_states()
 
@@ -214,12 +246,14 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
-    def __init__(self, assembler, tol=CONVERGENCE_TOL, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
+    def __init__(self, assembler, convergence: Optional[ConvergenceCriterion] = None, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
                  dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,
                  linear_algebra: str = "auto"):
         self.assembler = assembler
-        self.tol = tol
+        # Política de convergencia (ADR 0007). Compartida con NonlinearSolver:
+        # cambiar la política aquí llega automáticamente al arc-length.
+        self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = max_iter
         self.max_lambda = max_lambda
         self.dl = initial_dl
@@ -300,6 +334,19 @@ class ArcLengthSolver:
 
             # --- 1. PREDICTOR ---
             K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
+
+            # Calibración del criterio en el primer ensamblaje (ADR 0007).
+            # La carga de referencia F_ext_ref es la escala natural en arc-length
+            # (el factor de carga lambda se irá ajustando, pero F_ext_ref es fijo).
+            if not self.convergence.is_calibrated:
+                force_scale = max(
+                    np.linalg.norm(F_ext_ref),
+                    np.linalg.norm(F_int_global),
+                    1.0,
+                )
+                K_diag = stiffness_diag_scale(K_global)
+                disp_scale = force_scale / K_diag
+                self.convergence.calibrate(force_scale, disp_scale)
 
             K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
 
@@ -382,17 +429,23 @@ class ArcLengthSolver:
                     dU_iter = dU_iter + dU_update
                 U_iter = U_current + dU_iter
 
-                err_disp = np.linalg.norm(dU_update) / (np.linalg.norm(U_iter) + ZERO_TOL)
                 ref_force = max(
                     np.linalg.norm(F_ext_ref) * abs(lambda_iter),
                     np.linalg.norm(F_int_global),
-                    ZERO_TOL,
                 )
-                err_force = np.linalg.norm(R[cs.free_dofs(ndof)]) / ref_force
-                error = max(err_disp, err_force)
-                _log.info(f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | Err_dU: {err_disp:.4e} | Err_R: {err_force:.4e}")
+                state = self.convergence.evaluate(
+                    residual_norm=np.linalg.norm(R[cs.free_dofs(ndof)]),
+                    ref_force=ref_force,
+                    delta_u_norm=np.linalg.norm(dU_update),
+                    u_norm=np.linalg.norm(U_iter),
+                )
+                _log.info(
+                    f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | "
+                    f"R/tol_F: {state.ratio_force:.4e} | "
+                    f"dU/tol_d: {state.ratio_disp:.4e}"
+                )
 
-                if error < self.tol:
+                if state.converged:
                     _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
                     self.assembler.commit_all_states()
 

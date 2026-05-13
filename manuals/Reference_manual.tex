@@ -2556,8 +2556,10 @@ Ejemplo YAML:
 solver:
   type: NonlinearSolver
   num_steps: 10
-  tol: 1.0e-8
   freeze_tangent_after_iter: 2
+  convergence:
+    rtol_force: 1.0e-8
+    rtol_disp: 1.0e-8
 
 \end{lstlisting}
 

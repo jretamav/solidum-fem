@@ -8,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from fenix.core.domain import Domain
 from fenix.math.assembly import Assembler
+from fenix.math.convergence import ConvergenceCriterion
 from fenix.math.solvers import NonlinearSolver, ArcLengthSolver
 from fenix.materials.plastic_1d import Elastoplastic1D
 from fenix.elements.truss import Truss2D
@@ -42,7 +43,8 @@ class TestSolversIntegration(unittest.TestCase):
         F_ext[self.n2.dofs['ux']] = 200.0
         
         # 4 incrementos de carga (50 N por paso)
-        solver = NonlinearSolver(self.assembler, tol=1e-6, num_steps=4)
+        conv = ConvergenceCriterion(rtol_force=1e-6, rtol_disp=1e-6)
+        solver = NonlinearSolver(self.assembler, convergence=conv, num_steps=4)
         U = solver.solve(F_ext)
         
         # Validación de cinemática macroscópica
@@ -58,7 +60,8 @@ class TestSolversIntegration(unittest.TestCase):
         F_ext = np.zeros(self.domain.total_dofs)
         F_ext[self.n2.dofs['ux']] = 200.0
         
-        solver = ArcLengthSolver(self.assembler, tol=1e-6, max_lambda=1.0, initial_dl=0.25)
+        conv = ConvergenceCriterion(rtol_force=1e-6, rtol_disp=1e-6)
+        solver = ArcLengthSolver(self.assembler, convergence=conv, max_lambda=1.0, initial_dl=0.25)
         U = solver.solve(F_ext)
         
         self.assertAlmostEqual(U[self.n2.dofs['ux']], 3.0, places=4, msg="Arc-Length falló en encontrar el equilibrio final.")

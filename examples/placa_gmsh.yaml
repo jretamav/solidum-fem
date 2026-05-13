@@ -27,8 +27,10 @@ solver:
   type: NonlinearSolver
   num_steps: 10
   max_iter: 15
-  tol: 1.0e-5
   adaptive: true
+  convergence:
+    rtol_force: 1.0e-5
+    rtol_disp: 1.0e-5
 
 output:
   file_name: "resultados_placa"

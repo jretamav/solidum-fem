@@ -13,6 +13,7 @@ from fenix.core.domain import Domain
 from fenix.elements.frame import Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot
 from fenix.materials.elastic import Elastic1D
 from fenix.math.assembly import Assembler
+from fenix.math.convergence import ConvergenceCriterion
 from fenix.math.solvers import NonlinearSolver
 
 
@@ -37,7 +38,7 @@ class TestFrame2DEulerAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['ux']] = F
 
-        solver = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1)
+        solver = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1)
         U = solver.solve(F_ext)
 
         self.assertAlmostEqual(U[n2.dofs['ux']], F * L / (E * A), places=10)
@@ -51,7 +52,7 @@ class TestFrame2DEulerAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['uy']] = P
 
-        solver = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1)
+        solver = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1)
         U = solver.solve(F_ext)
 
         v_expected = P * L**3 / (3 * E * I)
@@ -105,7 +106,7 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['uy']] = P
 
-        solver = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1)
+        solver = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1)
         U = solver.solve(F_ext)
 
         v_euler = P * L**3 / (3 * E * I)
@@ -120,7 +121,7 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['ux']] = F
 
-        solver = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1)
+        solver = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1)
         U = solver.solve(F_ext)
 
         self.assertAlmostEqual(U[n2.dofs['ux']], F * L / (E * A), places=10)
@@ -181,7 +182,7 @@ class TestFrame2DEulerCorotAcceptance(unittest.TestCase):
         P = 10.0
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['uy']] = P
-        U = NonlinearSolver(Assembler(dom), tol=1e-8, num_steps=1).solve(F_ext)
+        U = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-8, rtol_disp=1e-8), num_steps=1).solve(F_ext)
         v_corot = U[n2.dofs['uy']]
         v_linear = P * L**3 / (3 * E * I)
         self.assertAlmostEqual(v_corot / v_linear, 1.0, delta=1e-3)

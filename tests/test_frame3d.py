@@ -12,6 +12,7 @@ from fenix.core.domain import Domain
 from fenix.elements.frame3d import Frame3D
 from fenix.materials.elastic import Elastic1D
 from fenix.math.assembly import Assembler
+from fenix.math.convergence import ConvergenceCriterion
 from fenix.math.solvers import NonlinearSolver
 
 
@@ -42,7 +43,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['ux']] = F
 
-        U = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1).solve(F_ext)
+        U = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1).solve(F_ext)
 
         self.assertAlmostEqual(U[n2.dofs['ux']], F * L / (E * A), places=10)
         # Demás DOFs del nodo libre nulos
@@ -58,7 +59,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['uy']] = P
 
-        U = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1).solve(F_ext)
+        U = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1).solve(F_ext)
 
         v_expected = P * L**3 / (3 * E * Iz)
         theta_expected = P * L**2 / (2 * E * Iz)
@@ -80,7 +81,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['uz']] = P
 
-        U = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1).solve(F_ext)
+        U = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1).solve(F_ext)
 
         v_expected = P * L**3 / (3 * E * Iy)
         self.assertAlmostEqual(U[n2.dofs['uz']], v_expected, places=8)
@@ -102,7 +103,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
         F_ext = np.zeros(dom.total_dofs)
         F_ext[n2.dofs['rx']] = T_moment
 
-        U = NonlinearSolver(Assembler(dom), tol=1e-10, num_steps=1).solve(F_ext)
+        U = NonlinearSolver(Assembler(dom), convergence=ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10), num_steps=1).solve(F_ext)
 
         G = E / (2 * (1 + nu))
         theta_expected = T_moment * L / (G * J)
