@@ -16,7 +16,7 @@ Concretamente, esto se traduce en preferir:
 - Contratos declarativos (`STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`) sobre métodos abstractos cuando el comportamiento puede inferirse del dato.
 - Auto-registro vía decoradores + descubrimiento automático sobre listas manuales de imports.
 - Validación temprana al construir con mensajes claros sobre fallos crípticos en runtime.
-- Resistir abstracciones especulativas no justificadas por al menos dos casos reales del dominio.
+- Resistir abstracciones especulativas no justificadas por al menos dos casos reales del dominio. Cuando aparece el segundo caso real, sí centralizar — no posponer indefinidamente con "solo 2 sitios".
 
 ## 2. Modelo de colaboración: la IA como calculadora con manual disponible
 
@@ -32,7 +32,7 @@ La IA, por tanto, **nunca trata el sistema como caja negra para el usuario**. Cu
 |---|---|---|
 | **Modelos físicos y matemáticos** — materiales (constitutivos, return mapping, criterios de fluencia/daño, módulos tangentes), elementos (cinemática, matriz B, formulación variacional, integración, transformaciones), solvers (criterios de convergencia, predictores/correctores, paso adaptativo, longitud de arco), constantes con significado físico (tolerancias de fluencia, factor de penalidad). | **Usuario revisa con detalle.** | Ecuaciones (LaTeX/ASCII), referencia bibliográfica si aplica, diff acotado, propuesta de test contra solución analítica o benchmark conocido. |
 | **Plumbing de software** — registry, autodiscover, decoradores, contratos abstractos, ensamblaje sparse, cache de topología COO, vectorización, Numba, parsers (YAML, gmsh, VTK), scaffolding, estructura de directorios, type hints. | **IA decide.** | Una frase de qué cambió y por qué; tests verdes como evidencia. No se pide al usuario que lea la implementación. |
-| **Zona gris** — clases base (`Element`, `Material`), semántica trial/commit de variables internas, esquema de `ElementState`. | IA propone, usuario valida concepto. | Aviso conceptual breve; lectura detallada solo si el usuario la pide. |
+| **Zona gris** — clases base (`Element`, `Material`), semántica trial/commit de variables internas, esquema de `ElementState`, API pública del paquete (re-exports raíz, entrypoints `fenix.run*`, dataclasses `SolveResult`/`ModalResult`/`TransientResult`), decisiones con ADR en curso o incompleto. Lista enumerativa, no cerrada — ante la duda, el agente eleva a zona gris. | IA propone, usuario valida concepto. | Aviso conceptual breve; lectura detallada solo si el usuario la pide. |
 
 ## 4. Protocolo de presentación de cambios
 
@@ -40,6 +40,7 @@ La IA, por tanto, **nunca trata el sistema como caja negra para el usuario**. Cu
 - **Variante de componente existente** (subclase de un solver / elemento / material que reusa decisiones de un ADR/spec ya aceptados — p. ej. Newton-Newmark sobre `NewmarkSolver`, HHT-α sobre `NewmarkSolver`, una calibración alternativa de Drucker-Prager) → **spec corta tipo extensión** en `docs/specs/<Variante>.md` que documenta **solo lo que cambia** respecto al componente padre (cambios de formulación, parámetros nuevos, comportamientos distintos) y enlaza el padre. **Sin ADR nuevo** mientras reuse decisiones del ADR padre. **Sin entrada estructural nueva** en el manual si la variante es invisible para el usuario del API (típicamente lo es: la subclase comparte el mismo entrypoint). Sí actualizar el catálogo (entrada propia, o nota en la del padre) cuando la variante sea seleccionable en YAML. Sí test analítico/numérico cuando la variante cambia física, no solo plumbing. El objetivo de esta regla es evitar la sobreingeniería del ritual completo cuando la decisión arquitectural ya está tomada.
 - **Cambio físico/matemático** sobre componente existente → ecuaciones, diff acotado, justificación física, propuesta de test. La IA pide visto bueno antes de commitear si el cambio afecta a la formulación, no solo a la implementación. Si la formulación de la spec cambia, se actualiza la spec en el mismo commit.
 - **Cambio pequeño de plumbing** → una frase descriptiva, sin requerir lectura del código.
+- **Refactor zonal** (centralización de código duplicado, renombrado de clase base que aparece en docs, extracción de utilidad común a `fenix/math/`) → diff acotado + rationale en el commit message + actualización de specs/catálogo/manuales que mencionen símbolos cambiados, en el mismo commit. **Sin ADR** si la estructura conceptual no cambia.
 - **Cambio arquitectural grande** (refactor transversal, nuevo subsistema, ruptura de contratos) → la IA crea un **ADR breve** (Architecture Decision Record, ~1 página) en `docs/adr/000N-titulo.md` antes o junto al commit. Los ADRs son persistentes y consultables; sustituyen a las explicaciones efímeras de chat para que el sistema siga siendo entendible meses o años después.
 - **Bajo demanda**: si el usuario pide profundizar en cualquier pieza, la IA explica al nivel solicitado, desde lo conceptual hasta el detalle de implementación.
 
