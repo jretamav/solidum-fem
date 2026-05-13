@@ -26,6 +26,52 @@ from fenix.results import ElementForces
 _log = get_logger("elements.frame")
 
 
+def _frame2d_consistent_body_load(b: np.ndarray, A: float, L: float,
+                                   T: np.ndarray) -> np.ndarray:
+    """Vector nodal consistente con ∫NᵀbA dx para una viga 2D de 2 nodos.
+
+    Compartido por ``Frame2DEuler``, ``Frame2DTimoshenko`` y
+    ``Frame2DEulerCorot`` porque la fórmula es idéntica: shape lineal en
+    axial (mitad-mitad) y shape Hermite cúbico en transversal (qL/2 en
+    fuerza, ±qL²/12 en momento). Para Timoshenko con interpolación
+    Hermite-blended el resultado coincide exactamente con Euler-Bernoulli
+    en el caso de carga uniforme, que es lo que cubre este método.
+
+    Parameters
+    ----------
+    b : np.ndarray, shape (2,)
+        Fuerza de cuerpo por unidad de volumen en ejes globales.
+    A : float
+        Área de la sección transversal.
+    L : float
+        Longitud del elemento (en configuración de referencia para
+        formulaciones corotacionales).
+    T : np.ndarray, shape (6, 6)
+        Matriz de transformación local↔global del elemento.
+
+    Returns
+    -------
+    np.ndarray, shape (6,)
+        ``[Fx_i, Fy_i, Mz_i, Fx_j, Fy_j, Mz_j]`` en ejes globales.
+    """
+    b = np.asarray(b, dtype=float).reshape(2)
+    # Carga distribuida por unidad de longitud (en globales).
+    q_global = A * b
+    # Transformar a ejes locales: T[0:2, 0:2] es la sub-rotación 2D global→local.
+    R = T[0:2, 0:2]
+    q_local = R @ q_global  # (q_axial, q_transversal)
+    qa, qt = q_local[0], q_local[1]
+    f_local = np.array([
+        0.5 * qa * L,
+        0.5 * qt * L,
+        qt * L * L / 12.0,
+        0.5 * qa * L,
+        0.5 * qt * L,
+        -qt * L * L / 12.0,
+    ])
+    return T.T @ f_local
+
+
 def _frame2d_forces_from_local(F_local: np.ndarray) -> ElementForces:
     """Traduce un vector F_local (6,) en convención stress-resultant interna a
     ``ElementForces`` en convención de viga estructural (Reglas.md §5).
@@ -166,6 +212,12 @@ class Frame2DEuler(Element):
         F_local = self.T @ F_int
         return _frame2d_forces_from_local(F_local)
 
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con peso propio uniforme. Ver
+        :func:`_frame2d_consistent_body_load`.
+        """
+        return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
+
 
 @ElementRegistry.register
 class Frame2DTimoshenko(Element):
@@ -304,6 +356,14 @@ class Frame2DTimoshenko(Element):
         _, F_int = self.compute_element_state(u_e)
         F_local = self.T @ F_int
         return _frame2d_forces_from_local(F_local)
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con peso propio uniforme. Para Timoshenko
+        con interpolación Hermite-blended, la fórmula coincide con la de
+        Euler-Bernoulli en el caso de carga uniforme. Ver
+        :func:`_frame2d_consistent_body_load`.
+        """
+        return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
 
 
 
@@ -451,3 +511,23 @@ class Frame2DEulerCorot(Element):
         F_local[3:5] = lam2 @ F_int[3:5]
         F_local[5]   = F_int[5]
         return _frame2d_forces_from_local(F_local)
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con peso propio uniforme, evaluado en la
+        configuración de referencia.
+
+        Para grandes rotaciones con cargas conservadoras (gravedad), la
+        diferencia frente a la integración sobre la geometría corriente es
+        de segundo orden y se acepta como aproximación estándar. Ver
+        :func:`_frame2d_consistent_body_load`.
+        """
+        c, s = math.cos(self.alpha0), math.sin(self.alpha0)
+        T = np.array([
+            [ c,  s, 0, 0, 0, 0],
+            [-s,  c, 0, 0, 0, 0],
+            [ 0,  0, 1, 0, 0, 0],
+            [ 0,  0, 0, c, s, 0],
+            [ 0,  0, 0,-s, c, 0],
+            [ 0,  0, 0, 0, 0, 1],
+        ])
+        return _frame2d_consistent_body_load(b, self.A, self.L0, T)

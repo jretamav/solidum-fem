@@ -251,3 +251,62 @@ class Frame3D(Element):
                 "Mz": np.array([-F_local[5],  F_local[11]]),
             },
         )
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con ∫NᵀbA dx para marco 3D (peso propio).
+
+        La carga distribuida por unidad de longitud ``q = A · b`` se proyecta
+        sobre los ejes locales mediante la matriz λ (3×3). En local, cada
+        componente reparte (forma Hermite cúbica para transversales, lineal
+        para axial):
+
+        - Axial ``q_x_local``: mitad-mitad por nodo, sin momentos.
+        - Transversal ``q_y_local``: ``q_y · L/2`` por nodo en F_y;
+          ``+q_y · L²/12`` en Mz_i y ``-q_y · L²/12`` en Mz_j.
+        - Transversal ``q_z_local``: ``q_z · L/2`` por nodo en F_z;
+          ``-q_z · L²/12`` en My_i y ``+q_z · L²/12`` en My_j (signo
+          opuesto a ``M_z`` por la regla de la mano derecha aplicada al
+          eje de flexión y_local).
+        - Sin torsión (sin excentricidad de la carga respecto al centro de
+          cortadura).
+
+        Los signos de los momentos siguen la convención stress-resultant /
+        RHR pura del proyecto (Reglas.md §5) y son consistentes con la
+        matriz ``K_local`` del elemento.
+
+        Parameters
+        ----------
+        b : np.ndarray, shape (3,)
+            Fuerza de cuerpo por unidad de volumen en ejes globales (e.g.
+            ``b = (0, 0, -ρ·g)`` para peso propio con ``+z`` hacia arriba).
+
+        Returns
+        -------
+        np.ndarray, shape (12,)
+            Vector consistente en ejes globales, layout estándar de Frame3D:
+            ``[Fx_i, Fy_i, Fz_i, Mx_i, My_i, Mz_i, Fx_j, ..., Mz_j]``.
+        """
+        b = np.asarray(b, dtype=float).reshape(3)
+        # Carga distribuida por unidad de longitud en globales.
+        q_global = self.A * b
+        # Proyección a ejes locales: λ es la rotación 3×3 global→local.
+        q_local = self.lam @ q_global  # (q_axial, q_y_local, q_z_local)
+        qa, qy, qz = q_local[0], q_local[1], q_local[2]
+        L = self.L0
+        m_y = qz * L * L / 12.0
+        m_z = qy * L * L / 12.0
+        f_local = np.array([
+            0.5 * qa * L,   # Fx_i
+            0.5 * qy * L,   # Fy_i
+            0.5 * qz * L,   # Fz_i
+            0.0,            # Mx_i  (sin torsión por carga uniforme centrada)
+            -m_y,           # My_i
+            +m_z,           # Mz_i
+            0.5 * qa * L,   # Fx_j
+            0.5 * qy * L,   # Fy_j
+            0.5 * qz * L,   # Fz_j
+            0.0,            # Mx_j
+            +m_y,           # My_j
+            -m_z,           # Mz_j
+        ])
+        return self.T.T @ f_local

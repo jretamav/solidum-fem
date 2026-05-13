@@ -110,6 +110,29 @@ class Cable2DCorot(Element):
         N = self.compute_internal_forces(U_global)['axial_force']
         return ElementForces(kind="cable", components={"N": np.array([N, N])})
 
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con ∫NᵀbA dx en configuración de referencia.
+
+        Reparto exacto ``b · A · L₀ / 2`` por nodo, en cada componente global,
+        evaluado sobre la geometría inicial. Aproximación estándar para
+        cargas de cuerpo en elementos corotacionales: para grandes rotaciones
+        con cargas conservadoras (gravedad), la diferencia frente a la
+        integración sobre la geometría corriente es de segundo orden.
+
+        Parameters
+        ----------
+        b : np.ndarray, shape (2,)
+            Fuerza de cuerpo por unidad de volumen en ejes globales.
+
+        Returns
+        -------
+        np.ndarray, shape (4,)
+            ``[Fx_i, Fy_i, Fx_j, Fy_j]`` en ejes globales.
+        """
+        b = np.asarray(b, dtype=float).reshape(2)
+        half = 0.5 * self.A * self.L0
+        return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
+
 
 @ElementRegistry.register
 class Cable3DCorot(Element):
@@ -217,3 +240,25 @@ class Cable3DCorot(Element):
         """
         N = self.compute_internal_forces(U_global)['axial_force']
         return ElementForces(kind="cable", components={"N": np.array([N, N])})
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con ∫NᵀbA dx para cable 3D.
+
+        Reparto exacto ``b · A · L₀ / 2`` por nodo, en cada componente global,
+        sobre la geometría inicial. Ver Cable2DCorot para la justificación
+        del uso de la configuración de referencia.
+
+        Parameters
+        ----------
+        b : np.ndarray, shape (3,)
+            Fuerza de cuerpo por unidad de volumen en ejes globales.
+
+        Returns
+        -------
+        np.ndarray, shape (6,)
+            ``[Fx_i, Fy_i, Fz_i, Fx_j, Fy_j, Fz_j]`` en ejes globales.
+        """
+        b = np.asarray(b, dtype=float).reshape(3)
+        half = 0.5 * self.A * self.L0
+        return np.array([half * b[0], half * b[1], half * b[2],
+                         half * b[0], half * b[1], half * b[2]])

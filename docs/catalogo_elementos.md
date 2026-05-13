@@ -31,6 +31,9 @@ F_int = σ·A · d
 ### Parámetros
 - `A` — área de la sección transversal.
 
+### Cargas distribuidas
+- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global (forma cerrada exacta para `b` uniforme). Útil para peso propio: `b = (0, -ρ·g)`.
+
 ### Régimen de validez
 - Pequeñas deformaciones (`|ε| ≲ 10⁻²`) y pequeños desplazamientos.
 - Cargas exclusivamente axiales. Si la carga transversal sobre la barra no es despreciable → `Frame2DEuler` / `Frame2DTimoshenko`.
@@ -60,6 +63,9 @@ K_G   = (N / l) · n·nᵀ           (rigidez geométrica)
 K_T   = K_M + K_G
 F_int = N · d
 ```
+
+### Cargas distribuidas
+- Heredado de `Truss2D`: `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo, evaluado en geometría de referencia (aproximación estándar para cargas conservadoras en formulaciones corotacionales).
 
 ### Régimen de validez
 - `|ε| ≲ 10⁻²` (pequeña deformación axial).
@@ -102,6 +108,9 @@ F_int = σ·A · d
 ### Parámetros
 - `A` — área de la sección transversal.
 
+### Cargas distribuidas
+- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global (forma cerrada exacta). Útil para peso propio: `b = (0, 0, -ρ·g)`.
+
 ### Régimen de validez
 - Pequeñas deformaciones (`|ε| ≲ 10⁻²`), pequeños desplazamientos y pequeñas rotaciones.
 - Cargas exclusivamente axiales.
@@ -135,6 +144,9 @@ K_T   = K_M + K_G
 F_int = N · d
 ```
 
+### Cargas distribuidas
+- Heredado de `Truss3D`: `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo, evaluado en geometría de referencia.
+
 ### Régimen de validez
 - `|ε| ≲ 10⁻²` (pequeña deformación axial).
 - Desplazamientos y rotaciones de cualquier magnitud en el espacio.
@@ -167,6 +179,9 @@ K_G   = (N / l) · n·nᵀ                (0 si N = 0)
 K_T   = K_M + K_G
 F_int = N · d                         (0 si N = 0)
 ```
+
+### Cargas distribuidas
+- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global, evaluado en geometría de referencia. Útil para peso propio.
 
 ### Régimen de validez
 - `|ε| ≲ 10⁻²` en régimen tensado.
@@ -203,6 +218,9 @@ K_G   = (N / l) · [[P, −P], [−P, P]]     (0 si N = 0)
 K_T   = K_M + K_G
 F_int = N · d                            (0 si N = 0)
 ```
+
+### Cargas distribuidas
+- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global, evaluado en geometría de referencia.
 
 ### Régimen de validez
 - `|ε| ≲ 10⁻²` en régimen tensado.
@@ -241,6 +259,9 @@ K_local = [[ EA/L,       0,       0, -EA/L,       0,       0 ],
 K_global = Tᵀ · K_local · T
 F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del material)
 ```
+
+### Cargas distribuidas
+- `compute_body_load(b)` distribuye `q = A · b` (carga por unidad de longitud) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal `q·L/2` en fuerza y `±q·L²/12` en momento (signo positivo en nodo i, negativo en j). Transformación local↔global vía la misma `T` del elemento. Útil para peso propio.
 
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`); peraltadas → `Frame2DTimoshenko`.
@@ -290,6 +311,9 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 - `A`, `I`, `As` (área efectiva de cortante).
 - `nu` (opcional): se toma de `material.nu` si está disponible; en su defecto, del parámetro del elemento con default 0.3 y aviso por consola.
 
+### Cargas distribuidas
+- `compute_body_load(b)` usa la misma fórmula consistente Hermite cúbica que `Frame2DEuler` (idéntica para carga uniforme — la diferencia entre formulaciones aparece solo con cargas no uniformes o concentradas).
+
 ### Régimen de validez
 - Vigas gruesas/peraltadas (`L/h ≲ 10`); para esbeltas → `Frame2DEuler` (más simple y sin shear locking).
 - Pequeños desplazamientos, pequeñas rotaciones.
@@ -328,6 +352,9 @@ Rigidez tangente:
 
 con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
 ```
+
+### Cargas distribuidas
+- `compute_body_load(b)` evalúa la integral consistente en la configuración de referencia (misma fórmula Hermite cúbica que `Frame2DEuler`). Para grandes rotaciones con cargas conservadoras (gravedad) la diferencia frente a la integración sobre la geometría corriente es de segundo orden y se asume aceptable.
 
 ### Régimen de validez
 - `|ε_axial| ≲ 10⁻²`.
@@ -378,6 +405,9 @@ K_global = Tᵀ K_local T
 - `J` (constante torsional de Saint-Venant).
 - `nu` (opcional, del material si lo expone, sino del elemento con default 0.3).
 - `ref_vector` (opcional, default `[0, 0, 1]`).
+
+### Cargas distribuidas
+- `compute_body_load(b)` proyecta `q = A · b` sobre los ejes locales y reparte con la fórmula Hermite cúbica en ambos planos de flexión: `q · L / 2` en fuerzas, `±q · L² / 12` en momentos (con signos `+` en nodo i y `−` en nodo j para `Mz`, y signos opuestos para `My` por la regla de la mano derecha). No genera torsión (carga uniforme sin excentricidad respecto al centro de cortadura). Útil para peso propio: `b = (0, 0, -ρ·g)`.
 
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`).

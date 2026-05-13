@@ -82,6 +82,30 @@ class Truss2D(Element):
         N = self.compute_internal_forces(U_global)['axial_force']
         return ElementForces(kind="truss", components={"N": np.array([N, N])})
 
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con la integral ∫NᵀbA dx (peso propio).
+
+        Para una armadura recta de sección constante con funciones de forma
+        lineales, el reparto es exacto: ``b · A · L / 2`` a cada nodo, en cada
+        componente global. La armadura solo transmite axial; la componente
+        transversal de ``b`` se traduce en fuerza nodal pura que debe ser
+        equilibrada por el resto del modelo o por restricciones.
+
+        Parameters
+        ----------
+        b : np.ndarray, shape (2,)
+            Fuerza de cuerpo por unidad de volumen en ejes globales (e.g.
+            ``b = (0, -ρ·g)`` para peso propio con ``+y`` hacia arriba).
+
+        Returns
+        -------
+        np.ndarray, shape (4,)
+            ``[Fx_i, Fy_i, Fx_j, Fy_j]`` en ejes globales.
+        """
+        b = np.asarray(b, dtype=float).reshape(2)
+        half = 0.5 * self.A * self.L0
+        return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
+
 
 @ElementRegistry.register
 class Truss2DCorot(Truss2D):
@@ -214,6 +238,29 @@ class Truss3D(Element):
         """API pública (ADR 0002): N en ejes locales, tracción positiva (§5)."""
         N = self.compute_internal_forces(U_global)['axial_force']
         return ElementForces(kind="truss", components={"N": np.array([N, N])})
+
+    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente con ∫NᵀbA dx para una armadura 3D.
+
+        Reparto exacto ``b · A · L / 2`` por nodo, en cada componente global.
+        Mismas consideraciones que en 2D: la componente perpendicular al eje
+        de la barra es fuerza nodal pura.
+
+        Parameters
+        ----------
+        b : np.ndarray, shape (3,)
+            Fuerza de cuerpo por unidad de volumen en ejes globales (e.g.
+            ``b = (0, 0, -ρ·g)`` para peso propio con ``+z`` hacia arriba).
+
+        Returns
+        -------
+        np.ndarray, shape (6,)
+            ``[Fx_i, Fy_i, Fz_i, Fx_j, Fy_j, Fz_j]`` en ejes globales.
+        """
+        b = np.asarray(b, dtype=float).reshape(3)
+        half = 0.5 * self.A * self.L0
+        return np.array([half * b[0], half * b[1], half * b[2],
+                         half * b[0], half * b[1], half * b[2]])
 
 
 @ElementRegistry.register
