@@ -1,15 +1,25 @@
 # fenix_fem/fenix/math/solvers/newmark.py
 """``NewmarkSolver`` — integración Newmark-β para ``M·ü + C·u̇ + K·u = F(t)``
 (ADR 0009 fase 3).
+
+``NewtonNewmarkSolver`` (ADR 0009 fase 4) — variante no lineal con Newton-Raphson
+dentro de cada paso temporal. Subclase de ``NewmarkSolver`` que reusa
+predictores/correctores y reducción de Dirichlet, sobrescribe ``solve()`` para
+ensamblar el residuo dinámico no lineal y resolver iterativamente.
 """
 from typing import Callable, Optional
 
 import numpy as np
 import scipy.sparse as sp
 
+from fenix.math.convergence import ConvergenceCriterion, stiffness_diag_scale
 from fenix.math.damping import rayleigh_from_modes
 from fenix.math.linalg import StiffnessProperties, select_solver
-from fenix.math.solvers._shared import _log, domain_is_symmetric
+from fenix.math.solvers._shared import (
+    CholeskyNotPositiveDefiniteError,
+    _log,
+    domain_is_symmetric,
+)
 from fenix.registry import SolverRegistry
 from fenix.results import TransientResult
 
@@ -219,6 +229,277 @@ class NewmarkSolver:
 
         _log.info(f"  -> {n_steps} pasos completados. "
                    f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
+
+        return TransientResult(
+            t_history=t_history,
+            u_history=u_history,
+            udot_history=udot_history,
+            uddot_history=uddot_history,
+            n_steps=n_steps,
+            alpha_rayleigh=alpha_r,
+            beta_rayleigh=beta_r,
+            converged=True,
+        )
+
+
+@SolverRegistry.register
+class NewtonNewmarkSolver(NewmarkSolver):
+    """Análisis dinámico transitorio **no lineal** por Newmark + Newton (ADR 0009 fase 4).
+
+    Subclase de :class:`NewmarkSolver` para problemas con materiales con historia
+    (plasticidad, daño) o no linealidad geométrica. En cada paso temporal
+    introduce un bucle de Newton-Raphson sobre el residuo dinámico:
+
+    .. math::
+
+        \\mathbf R(\\ddot{\\mathbf u}_{n+1}) = \\mathbf F_\\text{ext}(t_{n+1}) - \\mathbf F_\\text{int}(\\mathbf u_{n+1})
+                                              - \\mathbf C\\,\\dot{\\mathbf u}_{n+1} - \\mathbf M\\,\\ddot{\\mathbf u}_{n+1}
+
+    El jacobiano dinámico
+    ``J = M + γΔt·C + βΔt²·K_tangente`` se re-factoriza cada iteración (o
+    cada N iter con ``freeze_tangent_after_iter``, Newton modificado ADR 0003).
+
+    El amortiguamiento Rayleigh se calibra con la rigidez **elástica de
+    referencia** ``K_0`` (al inicio del análisis, ``u = 0``) y se mantiene
+    constante en el tiempo. Convención estándar (Abaqus, ANSYS, OpenSees);
+    evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+
+    Parameters extra a :class:`NewmarkSolver`
+    -----------------------------------------
+    convergence : ConvergenceCriterion, optional
+        Política de convergencia (ADR 0007). Default: ``ConvergenceCriterion()``
+        con tolerancias por defecto del proyecto.
+    max_iter : int, default 20
+        Máximo iteraciones Newton por paso temporal. Si se agota se lanza
+        ``RuntimeError``; el estado trial no se commitea.
+    freeze_tangent_after_iter : int or None, default None
+        Si ``int``, Newton modificado (ADR 0003 fase 2): factoriza fresco las
+        primeras N iter de cada paso y reusa la factorización en las siguientes.
+        ``None`` ⇒ Newton estándar (re-factoriza cada iteración).
+
+    Notes
+    -----
+    Si los materiales son lineales, el solver converge en una iteración por
+    paso y reproduce exactamente :class:`NewmarkSolver` (validado en
+    ``tests/test_newmark_nonlinear.py``).
+
+    Ver ``docs/specs/NewtonNewmarkSolver.md``.
+    """
+
+    def __init__(
+        self,
+        assembler,
+        t_end: float,
+        dt: float,
+        *,
+        convergence: Optional[ConvergenceCriterion] = None,
+        max_iter: int = 20,
+        freeze_tangent_after_iter: Optional[int] = None,
+        beta: float = 0.25,
+        gamma: float = 0.5,
+        rayleigh: Optional[dict] = None,
+        u0: Optional[np.ndarray] = None,
+        u0_dot: Optional[np.ndarray] = None,
+        F_func: Optional[Callable[[float], np.ndarray]] = None,
+        linear_algebra: str = "auto",
+        lumping: str = "consistent",
+    ):
+        super().__init__(
+            assembler, t_end, dt,
+            beta=beta, gamma=gamma, rayleigh=rayleigh,
+            u0=u0, u0_dot=u0_dot, F_func=F_func,
+            linear_algebra=linear_algebra, lumping=lumping,
+        )
+        self.convergence = convergence if convergence is not None else ConvergenceCriterion()
+        self.max_iter = int(max_iter)
+        self.freeze_tangent_after_iter = freeze_tangent_after_iter
+
+    def solve(self) -> TransientResult:
+        _log.info("--- INICIANDO SOLVER NEWMARK NO LINEAL (Newton dentro de Newmark) ---")
+
+        # Disparar el build de topología del assembler antes de leer ndof.
+        # `assembler.ndof` solo se rellena tras un primer ensamblaje.
+        if self.assembler.domain.total_dofs == 0:
+            self.assembler.domain.generate_equation_numbers()
+        ndof = self.assembler.domain.total_dofs
+
+        # Condiciones iniciales en globales. Aseguramos compatibilidad con apoyos.
+        u_total = (np.zeros(ndof) if self.u0 is None
+                    else np.asarray(self.u0, dtype=float).reshape(ndof)).copy()
+        udot_total = (np.zeros(ndof) if self.u0_dot is None
+                       else np.asarray(self.u0_dot, dtype=float).reshape(ndof)).copy()
+
+        # Masa (constante).
+        M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
+
+        # Sistema no lineal en u_0 para obtener K_0 (Rayleigh) y F_int(u_0).
+        K_0, F_int = self.assembler.assemble_non_linear_system(u_total)
+
+        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        C = alpha_r * M + beta_r * K_0
+
+        # Reducción por Dirichlet (apoyos constantes).
+        cs = self.assembler.constraint_set
+        T_op, g_vec = cs.build(ndof)
+        free_dofs = cs.free_dofs(ndof)
+        n_free = T_op.shape[1]
+
+        # Forzar u_total compatible con apoyos: u_total[prescribed] = g_vec[prescribed].
+        # En DOFs libres se mantiene self.u0; en prescritos se impone g_vec.
+        prescribed = np.ones(ndof, dtype=bool)
+        prescribed[free_dofs] = False
+        u_total[prescribed] = g_vec[prescribed]
+        # u̇ y ü en DOFs prescritos = 0 (apoyos constantes en el tiempo).
+        udot_total[prescribed] = 0.0
+
+        # Reducción de las matrices invariantes en el tiempo.
+        M_red = (T_op.T @ M @ T_op).tocsr()
+        if alpha_r != 0.0 or beta_r != 0.0:
+            C_red = (T_op.T @ C @ T_op).tocsr()
+        else:
+            C_red = sp.csr_matrix(M_red.shape)
+
+        # Aceleración inicial consistente: M·ü₀ = F_ext(0) - F_int(u₀) - C·u̇₀.
+        F0_global = (np.zeros(ndof) if self.F_func is None
+                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        rhs0 = T_op.T @ (F0_global - F_int - C @ udot_total)
+        props_M = StiffnessProperties(
+            is_symmetric=domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=True,
+            size=n_free,
+        )
+        M_solver = select_solver(props_M, override=self.linear_algebra)
+        uddot_free = M_solver.solve(M_red, rhs0)
+        uddot_total = np.zeros(ndof)
+        uddot_total[free_dofs] = uddot_free
+
+        # Historiales.
+        dt = self.dt
+        beta = self.beta
+        gamma = self.gamma
+        n_steps = int(np.ceil(self.t_end / dt))
+        t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
+        u_history = np.zeros((ndof, n_steps + 1))
+        udot_history = np.zeros((ndof, n_steps + 1))
+        uddot_history = np.zeros((ndof, n_steps + 1))
+        u_history[:, 0] = u_total
+        udot_history[:, 0] = udot_total
+        uddot_history[:, 0] = uddot_total
+
+        # Coeficientes Newmark precomputados.
+        half_dt2 = 0.5 * dt * dt
+        one_minus_2beta = 1.0 - 2.0 * beta
+        one_minus_gamma = 1.0 - gamma
+        beta_dt2 = beta * dt * dt
+        gamma_dt = gamma * dt
+
+        # Selector del solver lineal (puede degradar Cholesky→LU si emerge no-PD).
+        is_sym = domain_is_symmetric(self.assembler.domain)
+        is_pd = True
+        props_J = StiffnessProperties(
+            is_symmetric=is_sym, is_positive_definite=is_pd, size=n_free,
+        )
+        linalg = select_solver(props_J, override=self.linear_algebra)
+        frozen_factor = None  # Newton modificado: cache de factorización por paso
+
+        for step in range(n_steps):
+            t_next = t_history[step + 1]
+
+            # Predictores Newmark.
+            u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
+            udot_pred = udot_total + dt * one_minus_gamma * uddot_total
+
+            # Inicialización del Newton: ü^(0) = ü_n (continuidad).
+            uddot_iter = uddot_total.copy()
+            u_iter = u_pred + beta_dt2 * uddot_iter
+            udot_iter = udot_pred + gamma_dt * uddot_iter
+
+            F_ext_next = (np.zeros(ndof) if self.F_func is None
+                           else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+
+            converged = False
+            for it in range(self.max_iter):
+                K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
+                R = F_ext_next - F_int_iter - C @ udot_iter - M @ uddot_iter
+                R_red = T_op.T @ R
+
+                J = (M_red + gamma_dt * C_red + beta_dt2 * (T_op.T @ K_t @ T_op)).tocsr()
+
+                # Calibración del criterio en el primer ensamblaje.
+                if not self.convergence.is_calibrated:
+                    force_scale = max(
+                        np.linalg.norm(F_ext_next),
+                        np.linalg.norm(F_int_iter),
+                        1.0,
+                    )
+                    K_diag = stiffness_diag_scale(K_t)
+                    disp_scale = force_scale / K_diag
+                    self.convergence.calibrate(force_scale, disp_scale)
+
+                # Resolver δü_red, con Newton modificado opcional.
+                threshold = self.freeze_tangent_after_iter
+                try:
+                    if threshold is None:
+                        delta_uddot_red = linalg.solve(J, R_red)
+                    elif it < threshold or frozen_factor is None:
+                        frozen_factor = linalg.factorize(J)
+                        delta_uddot_red = frozen_factor.solve(R_red)
+                    else:
+                        delta_uddot_red = frozen_factor.solve(R_red)
+                except CholeskyNotPositiveDefiniteError:
+                    _log.warning("Cholesky no-PD en NewtonNewmark; degradando a LU.")
+                    is_pd = False
+                    props_J = StiffnessProperties(
+                        is_symmetric=is_sym, is_positive_definite=False, size=n_free,
+                    )
+                    linalg = select_solver(props_J, override=self.linear_algebra)
+                    frozen_factor = None
+                    delta_uddot_red = linalg.solve(J, R_red)
+
+                # Actualizar incógnitas con correctores Newmark.
+                uddot_iter[free_dofs] += delta_uddot_red
+                u_iter = u_pred + beta_dt2 * uddot_iter
+                udot_iter = udot_pred + gamma_dt * uddot_iter
+
+                # δu corresponde a βΔt² · δü (cambio en desplazamiento por la iter).
+                delta_u_norm = beta_dt2 * np.linalg.norm(delta_uddot_red)
+                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_iter))
+                state = self.convergence.evaluate(
+                    residual_norm=np.linalg.norm(R[free_dofs]),
+                    ref_force=ref_force,
+                    delta_u_norm=delta_u_norm,
+                    u_norm=np.linalg.norm(u_iter[free_dofs]),
+                )
+
+                if state.converged:
+                    _log.info(
+                        f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
+                        f"iter={it+1} | R/tol_F={state.ratio_force:.2e}"
+                    )
+                    self.assembler.commit_all_states()
+                    converged = True
+                    break
+
+            # Cierre de paso: la factorización congelada solo es válida dentro
+            # del paso (K_t cambia al pasar a t_{n+2}).
+            frozen_factor = None
+
+            if not converged:
+                raise RuntimeError(
+                    f"NewtonNewmarkSolver: paso {step+1} (t={t_next:.4e}) no "
+                    f"convergió en {self.max_iter} iteraciones."
+                )
+
+            u_total = u_iter
+            udot_total = udot_iter
+            uddot_total = uddot_iter
+
+            u_history[:, step + 1] = u_total
+            udot_history[:, step + 1] = udot_total
+            uddot_history[:, step + 1] = uddot_total
+
+        _log.info(f"  -> {n_steps} pasos completados (no lineal). "
+                  f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
 
         return TransientResult(
             t_history=t_history,

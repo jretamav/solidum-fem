@@ -2644,18 +2644,21 @@ references:
 \section{IsotropicDamage1D --- daño isótropo 1D con softening exponencial}
 
 \begin{itemize}
-  \item \textbf{Modelo}: daño escalar \texttt{d \ensuremath{\in} [0, 1)}, módulo secante \texttt{E\_sec = (1 − d) \ensuremath{\cdot} E}, \texttt{\ensuremath{\sigma} = E\_sec \ensuremath{\cdot} \ensuremath{\varepsilon}}.
+  \item \textbf{Modelo}: daño escalar \texttt{d \ensuremath{\in} [0, DAMAGE\_MAX]}, esfuerzo \texttt{\ensuremath{\sigma} = (1 − d) \ensuremath{\cdot} E \ensuremath{\cdot} \ensuremath{\varepsilon}}. Versión 1D de \texttt{IsotropicDamage2D}.
   \item \textbf{Evolución del daño} (Kuhn-Tucker):
   \item Deformación equivalente: \texttt{\ensuremath{\varepsilon}\_eq = |\ensuremath{\varepsilon}|}.
   \item Variable histórica: \texttt{\ensuremath{\kappa} = max(\ensuremath{\kappa}\_old, \ensuremath{\varepsilon}\_eq)}.
   \item Si \texttt{\ensuremath{\kappa} \ensuremath{\le} \ensuremath{\kappa}\_0} \ensuremath{\to} \texttt{d = 0}. Si no: \texttt{d = 1 − (\ensuremath{\kappa}\_0/\ensuremath{\kappa}) \ensuremath{\cdot} exp(−\ensuremath{\alpha}\ensuremath{\cdot}(\ensuremath{\kappa} − \ensuremath{\kappa}\_0))}, saturado en \texttt{DAMAGE\_MAX}.
-  \item \textbf{STRAIN\_DIM}: 1 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'}.
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{kappa\_0} (umbral elástico), \texttt{alpha} (velocidad de degradación).
+  \item \textbf{Tangente}: \textbf{algorítmica consistente} en carga activa con daño no saturado; \textbf{secante} \texttt{(1-d)\ensuremath{\cdot}E} en descarga, sin daño activo o al saturar.
+  \item Fórmula consistente: \texttt{E\_tan = -(1-d)\ensuremath{\cdot}E\ensuremath{\cdot}\ensuremath{\alpha}\ensuremath{\cdot}\ensuremath{\kappa}} --- \textbf{negativa} durante toda la fase de softening (refleja la pendiente descendente \ensuremath{\sigma}-\ensuremath{\varepsilon} post-pico).
+  \item Derivación: de \texttt{(1-d)\ensuremath{\cdot}E - E\ensuremath{\cdot}\ensuremath{\varepsilon}\ensuremath{\cdot}(\ensuremath{\partial}d/\ensuremath{\partial}\ensuremath{\kappa})\ensuremath{\cdot}sign(\ensuremath{\varepsilon})} con \texttt{\ensuremath{\partial}d/\ensuremath{\partial}\ensuremath{\kappa} = (1-d)(1/\ensuremath{\kappa} + \ensuremath{\alpha})} y \texttt{sign(\ensuremath{\varepsilon})\ensuremath{\cdot}\ensuremath{\varepsilon} = |\ensuremath{\varepsilon}| = \ensuremath{\kappa}} en carga.
+  \item \textbf{STRAIN\_DIM}: 1 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'} \ensuremath{\cdot} \textbf{IS\_SYMMETRIC}: \texttt{True} (la tangente escalar produce contribución elemental simétrica aunque pueda ser indefinida; el despachador algebraico ADR 0003 detecta no-PD y degrada Cholesky\ensuremath{\to}LU automáticamente).
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{kappa\_0} (umbral elástico), \texttt{alpha} (velocidad de degradación), \texttt{density} (opcional, ADR 0008).
   \item \textbf{Variables internas}: \texttt{kappa}, \texttt{damage}.
-  \item \textbf{Tangente}: secante (\texttt{E\_sec}); no consistente con tangente algorítmica del daño --- adecuado para Newton-Raphson amortiguado, no óptimo para arc-length agresivo.
-  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = E \ensuremath{\cdot} \ensuremath{\kappa}\_0} --- esfuerzo umbral inicial donde se activa el daño. Garantiza invariancia bajo cambio de unidades del check \texttt{f \ensuremath{\le} atol + rtol \ensuremath{\cdot} escala}.
+  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = E \ensuremath{\cdot} \ensuremath{\kappa}\_0} --- esfuerzo umbral inicial. Garantiza invariancia bajo cambio de unidades del check \texttt{f \ensuremath{\le} atol + rtol \ensuremath{\cdot} escala}.
+  \item \textbf{Limitaciones}: no distingue tracción/compresión en la activación del daño; control de carga global puede ser inestable tras el pico (requiere \texttt{ArcLengthSolver} para seguir la rama de softening).
   \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}.
-  \item \textbf{Referencia}: Lemaitre \& Chaboche, \textit{Mechanics of Solid Materials}; Oliver, "A consistent characteristic length for smeared cracking models" (IJNME 1989).
+  \item \textbf{Referencia}: ver \texttt{docs/specs/IsotropicDamage1D.md} y la hermana 2D para derivación detallada. Lemaitre \& Chaboche, \textit{Mechanics of Solid Materials}. Simó \& Ju (1987, IJSS 23) marco de tangente consistente.
   \item \textbf{Archivo}: fenix/materials/damage\_1d.py
 \end{itemize}
 
@@ -2663,16 +2666,20 @@ references:
 \section{IsotropicDamage2D --- daño isótropo 2D con softening exponencial}
 
 \begin{itemize}
-  \item \textbf{Modelo}: extensión 2D de \texttt{IsotropicDamage1D}. Tensor constitutivo secante \texttt{C\_sec = (1 − d) \ensuremath{\cdot} C\_e}.
+  \item \textbf{Modelo}: extensión 2D de \texttt{IsotropicDamage1D}. Esfuerzo nominal \texttt{\ensuremath{\sigma} = (1 − d) \ensuremath{\cdot} C\_e \ensuremath{\cdot} \ensuremath{\varepsilon}}; daño escalar \texttt{d \ensuremath{\in} [0, DAMAGE\_MAX]}.
   \item \textbf{Deformación equivalente}: \texttt{\ensuremath{\varepsilon}\_eq = \ensuremath{\surd}(\ensuremath{\varepsilon}\_xx\ensuremath{^{2}} + \ensuremath{\varepsilon}\_yy\ensuremath{^{2}} + ½\ensuremath{\cdot}\ensuremath{\gamma}\_xy\ensuremath{^{2}})} (norma simple sin distinguir tensión/compresión).
-  \item \textbf{Evolución}: idéntica a 1D (\ensuremath{\kappa} máxima histórica + ley exponencial).
-  \item \textbf{STRAIN\_DIM}: 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'}.
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis} (delegado a \texttt{Elastic2D} interno).
+  \item \textbf{Evolución}: \ensuremath{\kappa} máxima histórica (Kuhn-Tucker \texttt{\ensuremath{\kappa}\_n+1 = max(\ensuremath{\kappa}\_n, \ensuremath{\varepsilon}\_eq)}), ley exponencial \texttt{d(\ensuremath{\kappa}) = 1 - (\ensuremath{\kappa}\_0/\ensuremath{\kappa})\ensuremath{\cdot}exp(-\ensuremath{\alpha}(\ensuremath{\kappa}-\ensuremath{\kappa}\_0))} para \texttt{\ensuremath{\kappa} > \ensuremath{\kappa}\_0}, saturado a \texttt{DAMAGE\_MAX}.
+  \item \textbf{Tangente}: \textbf{algorítmica consistente} en carga activa con daño no saturado; \textbf{secante} \texttt{(1-d)\ensuremath{\cdot}C\_e} en descarga, sin daño activo (\texttt{\ensuremath{\kappa} \ensuremath{\le} \ensuremath{\kappa}\_0}) o al saturar.
+  \item Fórmula consistente: \texttt{C\_alg = (1-d)\ensuremath{\cdot}C\_e - [(1-d)\ensuremath{\cdot}(1/\ensuremath{\kappa} + \ensuremath{\alpha})/\ensuremath{\varepsilon}\_eq] \ensuremath{\cdot} (C\_e\ensuremath{\cdot}\ensuremath{\varepsilon}) ⊗ (M\ensuremath{\cdot}\ensuremath{\varepsilon})} con \texttt{M = diag(1, 1, 1/2)}.
+  \item Derivación: \texttt{\ensuremath{\partial}d/\ensuremath{\partial}\ensuremath{\kappa} = (1-d)\ensuremath{\cdot}(1/\ensuremath{\kappa} + \ensuremath{\alpha})} por la ley exponencial; \texttt{\ensuremath{\partial}\ensuremath{\kappa}/\ensuremath{\partial}\ensuremath{\varepsilon} = M\ensuremath{\cdot}\ensuremath{\varepsilon}/\ensuremath{\varepsilon}\_eq} en carga activa, 0 en descarga.
+  \item \textbf{No simétrica en general} (\texttt{(C\_e\ensuremath{\cdot}\ensuremath{\varepsilon})} y \texttt{(M\ensuremath{\cdot}\ensuremath{\varepsilon})} no son proporcionales). Recupera convergencia cuadrática del Newton global frente a la secante (que daba convergencia lineal).
+  \item \textbf{STRAIN\_DIM}: 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'} \ensuremath{\cdot} \textbf{IS\_SYMMETRIC}: \texttt{False} (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU en lugar de Cholesky para el sistema global).
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis \ensuremath{\in} \{'plane\_stress' (default), 'plane\_strain'\}}, \texttt{density} (opcional, ADR 0008).
   \item \textbf{Variables internas}: \texttt{kappa}, \texttt{damage}.
-  \item \textbf{Tangente}: secante.
   \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = E \ensuremath{\cdot} \ensuremath{\kappa}\_0} --- idéntica al caso 1D, el criterio de daño tiene el mismo umbral característico independientemente de la dimensión.
-  \item \textbf{Limitación}: la \texttt{\ensuremath{\varepsilon}\_eq} simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (no implementado).
-  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}.
+  \item \textbf{Limitación}: la \texttt{\ensuremath{\varepsilon}\_eq} simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (out-of-scope). Sin regularización por longitud característica \ensuremath{\to} mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9}.
+  \item \textbf{Referencia}: ver \texttt{docs/specs/IsotropicDamage2D.md}. Simó \& Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre \& Chaboche (1990) marco de continuum damage mechanics.
   \item \textbf{Archivo}: fenix/materials/damage\_2d.py
 \end{itemize}
 
@@ -2710,23 +2717,57 @@ references:
 \end{itemize}
 
 
+\section{DruckerPrager2D --- plasticidad friccional cohesivo-friccional 2D plane strain}
+
+\begin{itemize}
+  \item \textbf{Modelo}: cono circular suave de Mohr-Coulomb con cohesión y fricción interna. Criterio \texttt{f = \ensuremath{\surd}J\ensuremath{_{2}} + \ensuremath{\eta}\_f\ensuremath{\cdot}I\ensuremath{_{1}} − k(\ensuremath{\alpha}) \ensuremath{\le} 0} con \texttt{k(\ensuremath{\alpha}) = k\_0 + H\ensuremath{\cdot}\ensuremath{\alpha}} (endurecimiento isótropo lineal en cohesión).
+  \item \textbf{Hipótesis}: solo \texttt{plane\_strain} en esta entrega. \texttt{plane\_stress} declarado \textit{out-of-scope} (proyección con \ensuremath{\sigma}\_zz=0 acoplada a flujo dilatante es notoriamente delicada).
+  \item \textbf{Plasticidad no asociada por defecto}: ángulo de dilatancia \texttt{\ensuremath{\psi}} parámetro independiente, default \texttt{\ensuremath{\psi} = \ensuremath{\varphi}} (asociada). Para \texttt{\ensuremath{\psi} \ensuremath{\neq} \ensuremath{\varphi}} la tangente algorítmica es \textbf{asimétrica} \ensuremath{\to} \texttt{IS\_SYMMETRIC = False}.
+  \item \textbf{Calibración con Mohr-Coulomb} (variant):
+  \item \texttt{plane\_strain\_matched} (default): \ensuremath{\eta}\_f = tan(\ensuremath{\varphi})/\ensuremath{\surd}(9 + 12tan\ensuremath{^{2}}(\ensuremath{\varphi})), k\_0 = 3c\_0/\ensuremath{\surd}(9 + 12tan\ensuremath{^{2}}(\ensuremath{\varphi})). Coincide exactamente con MC en plane strain.
+  \item \texttt{outer\_cone}: \ensuremath{\eta}\_f = 2\ensuremath{\cdot}sin(\ensuremath{\varphi})/[\ensuremath{\surd}3\ensuremath{\cdot}(3 - sin(\ensuremath{\varphi}))]. Circunscribe MC.
+  \item \texttt{inner\_cone}: \ensuremath{\eta}\_f = 2\ensuremath{\cdot}sin(\ensuremath{\varphi})/[\ensuremath{\surd}3\ensuremath{\cdot}(3 + sin(\ensuremath{\varphi}))]. Inscribe MC.
+  \item \textbf{Algoritmo --- dos ramas cerradas con detección automática}:
+  \item \textbf{Return regular} (cone surface): \texttt{\ensuremath{\Delta}\ensuremath{\gamma} = f\_trial / (G + 9K\ensuremath{\cdot}\ensuremath{\eta}\_f\ensuremath{\cdot}\ensuremath{\eta}\_g + H)}, dirección desviadora preservada. Tangente algorítmica \texttt{C\_alg = K\ensuremath{\cdot}v⊗v + 2G\ensuremath{\cdot}(1-\ensuremath{\beta})\ensuremath{\cdot}I\_dev + 4G\ensuremath{\cdot}\ensuremath{\beta}\ensuremath{\cdot}n̂⊗n̂ - (1/A)\ensuremath{\cdot}b\_g⊗b\_f} con \texttt{\ensuremath{\beta} = G\ensuremath{\cdot}\ensuremath{\Delta}\ensuremath{\gamma}/\ensuremath{\surd}J\ensuremath{_{2}}\_trial}, \texttt{b\_g = 2G\ensuremath{\cdot}n̂ + 3K\ensuremath{\cdot}\ensuremath{\eta}\_g\ensuremath{\cdot}v}, \texttt{b\_f = 2G\ensuremath{\cdot}n̂ + 3K\ensuremath{\cdot}\ensuremath{\eta}\_f\ensuremath{\cdot}v}.
+  \item \textbf{Return al ápice} (vértice del cono, zona puramente hidrostática): \texttt{\ensuremath{\Delta}\ensuremath{\gamma}\_apex = (I\ensuremath{_{1}}\_trial\ensuremath{\cdot}\ensuremath{\eta}\_f - k(\ensuremath{\alpha}))/(9K\ensuremath{\cdot}\ensuremath{\eta}\_f\ensuremath{\cdot}\ensuremath{\eta}\_g + H)}, \ensuremath{\sigma}\_n+1 = (k/3\ensuremath{\eta}\_f)\ensuremath{\cdot}I puramente hidrostático. Tangente reducida a \texttt{K\ensuremath{\cdot}H/(9K\ensuremath{\cdot}\ensuremath{\eta}\_f\ensuremath{\cdot}\ensuremath{\eta}\_g + H) \ensuremath{\cdot} v⊗v} (simétrica, sin rigidez desviadora).
+  \item Detección regular \ensuremath{\leftrightarrow} apex: si tras \texttt{\ensuremath{\Delta}\ensuremath{\gamma}\_regular} resulta \texttt{\ensuremath{\surd}J\ensuremath{_{2}}\_new < 0} \ensuremath{\to} cae en apex; cambia a la fórmula apex.
+  \item \textbf{STRAIN\_DIM}: 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'alpha'} \ensuremath{\cdot} \textbf{IS\_SYMMETRIC}: \texttt{False} (declarativo, conservador; el despachador algebraico ADR 0003 elige LU).
+  \item \textbf{Parámetros} (físicos):
+  \item \texttt{E}, \texttt{nu}: elásticos.
+  \item \texttt{cohesion}: cohesión inicial \texttt{c\_0} (esfuerzo).
+  \item \texttt{phi\_deg}: ángulo de fricción interna (grados, \texttt{0 \ensuremath{\le} \ensuremath{\varphi} < 90}).
+  \item \texttt{psi\_deg}: ángulo de dilatancia (grados, \texttt{0 \ensuremath{\le} \ensuremath{\psi} \ensuremath{\le} \ensuremath{\varphi}}; default \texttt{\ensuremath{\varphi}} \ensuremath{\Rightarrow} asociada).
+  \item \texttt{H} (\ensuremath{\ge}0, default 0): endurecimiento isótropo lineal en cohesión.
+  \item \texttt{variant}: calibración con MC (default \texttt{'plane\_strain\_matched'}).
+  \item \texttt{density} (opcional, ADR 0008).
+  \item \textbf{Variables internas}: \texttt{eps\_p} (tensorial 4 componentes \texttt{[xx, yy, zz, xy\_tensorial]}), \texttt{alpha} (multiplicador plástico acumulado, adimensional).
+  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = k(\ensuremath{\alpha}) = k\_0 + H\ensuremath{\cdot}\ensuremath{\alpha}} (cohesión efectiva corriente, unidades de esfuerzo igual que \texttt{f}).
+  \item \textbf{Limitaciones} (out-of-scope):
+  \item Sin \texttt{plane\_stress}, endurecimiento por fricción/dilatancia, endurecimiento cinemático, cap (modelo cap-cone), ablandamiento (\texttt{H<0} requiere regularización), grandes deformaciones.
+  \item Validación inicial cubierta por tests unitarios (incluyendo FD numérica de la tangente) y un benchmark de pipeline Quad4 (rama elástica + rama apex + caso asociado). El régimen "rama regular pura" en geometría confinada es difícil de calibrar sin caer en apex; se cubre por los tests unitarios de cortante puro.
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos con material 2D plane strain).
+  \item \textbf{Referencia}: ver \texttt{docs/specs/DruckerPrager2D.md}. Drucker \& Prager (1952). de Souza Neto, Perić \& Owen (2008) cap. 8 (Drucker-Prager, tangentes algorítmicas).
+  \item \textbf{Archivo}: fenix/materials/drucker\_prager\_2d.py
+\end{itemize}
+
+
 \section{VonMises2D --- plasticidad J2 2D con endurecimiento isótropo lineal}
 
 \begin{itemize}
-  \item \textbf{Modelo}: J2 (Von Mises) en deformación plana; criterio \texttt{f = \ensuremath{\|}s\_trial\ensuremath{\|} − \ensuremath{\surd}(2/3)\ensuremath{\cdot}(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha}) \ensuremath{\le} 0}.
-  \item \textbf{Algoritmo}: return mapping radial sobre la parte desviadora.
-  \item Descomposición volumétrica/desviadora: \texttt{p = K\ensuremath{\cdot}tr(\ensuremath{\varepsilon})}, \texttt{s = 2G\ensuremath{\cdot}e\_dev}.
-  \item Predictor elástico desviador, corrector radial \texttt{\ensuremath{\Delta}\ensuremath{\gamma} = f\_trial / (2G + ⅔\ensuremath{\cdot}H)}.
-  \item Actualización: \texttt{s\_new = s\_trial − 2G\ensuremath{\cdot}\ensuremath{\Delta}\ensuremath{\gamma}\ensuremath{\cdot}N}, con \texttt{N = s\_trial / \ensuremath{\|}s\_trial\ensuremath{\|}}.
-  \item Tangente algorítmica consistente derivada por linealización del return mapping.
+  \item \textbf{Modelo}: J2 (Von Mises) con regla de flujo asociada y endurecimiento isótropo lineal. Soporta \textbf{dos hipótesis cinemáticas} mutuamente excluyentes (selección por kwarg \texttt{hypothesis} al construir): \texttt{plane\_strain} (\texttt{\ensuremath{\varepsilon}\_zz = 0}) y \texttt{plane\_stress} (\texttt{\ensuremath{\sigma}\_zz = 0}). Cada hipótesis usa un kernel Numba especializado.
+  \item \textbf{Algoritmo plane strain} (Simó-Hughes §3.3): return mapping radial cerrado sobre la parte desviadora 3D extendida. Predictor elástico desviador \texttt{s\_trial = 2G\ensuremath{\cdot}(e\_dev − e\_p)} con presión \texttt{p = K\ensuremath{\cdot}tr(\ensuremath{\varepsilon})}; criterio \texttt{f = \ensuremath{\|}s\_trial\ensuremath{\|} − \ensuremath{\surd}(2/3)\ensuremath{\cdot}(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha}) \ensuremath{\le} 0}; corrector radial \texttt{\ensuremath{\Delta}\ensuremath{\gamma} = f\_trial / (2G + ⅔\ensuremath{\cdot}H)} con \texttt{N = s\_trial/\ensuremath{\|}s\_trial\ensuremath{\|}}; actualización \texttt{\ensuremath{\alpha}\_new = \ensuremath{\alpha} + \ensuremath{\surd}(2/3)\ensuremath{\cdot}\ensuremath{\Delta}\ensuremath{\gamma}}. Tangente algorítmica consistente cerrada.
+  \item \textbf{Algoritmo plane stress} (Simó-Hughes §3.4.1, "plane stress projected algorithm"): predictor \texttt{\ensuremath{\sigma}\_trial = C\_e\_ps \ensuremath{\cdot} (\ensuremath{\varepsilon} − e\_p)} en subespacio plane stress; función de fluencia proyectada \texttt{f̄ = ½\ensuremath{\cdot}\ensuremath{\sigma}\ensuremath{\cdot}P\ensuremath{\cdot}\ensuremath{\sigma} − R\ensuremath{^{2}}/3} con operador \texttt{P = (1/3)\ensuremath{\cdot}[[2,-1,0],[-1,2,0],[0,0,6]]}. Newton local escalar sobre \texttt{\ensuremath{\Delta}\ensuremath{\gamma}} en base de autovectores ortonormales \texttt{v\_1=[1,1,0]/\ensuremath{\surd}2}, \texttt{v\_2=[1,-1,0]/\ensuremath{\surd}2}, \texttt{v\_3=[0,0,1]} de \texttt{C\_e\_ps\ensuremath{\cdot}P} con autovalores \texttt{\ensuremath{\mu}\_1=E/(3(1-\ensuremath{\nu}))}, \texttt{\ensuremath{\mu}\_2=\ensuremath{\mu}\_3=2G}. Converge en 3-6 iteraciones (tangente cerrada). Actualización de \texttt{\ensuremath{\alpha}} con la regla físicamente correcta \texttt{\ensuremath{\alpha}\_new = \ensuremath{\alpha} + \ensuremath{\Delta}\ensuremath{\gamma}\ensuremath{\cdot}\ensuremath{\surd}(2\ensuremath{\sigma}P\ensuremath{\sigma}/3)} (la heurística \texttt{\ensuremath{\surd}(2/3)\ensuremath{\cdot}\ensuremath{\Delta}\ensuremath{\gamma}} válida en plane strain rompe la invariancia bajo cambio de unidades en plane stress, donde \texttt{\ensuremath{\Delta}\ensuremath{\gamma}} tiene unidades \texttt{[1/esfuerzo]}). Incompresibilidad plástica cierra \texttt{e\_p\_zz = -(e\_p\_xx + e\_p\_yy)}. Tangente algorítmica consistente cerrada con corrección por \texttt{d\ensuremath{\alpha}/d\ensuremath{\Delta}\ensuremath{\gamma} \ensuremath{\neq} \ensuremath{\surd}(2/3)}.
   \item \textbf{STRAIN\_DIM}: 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'alpha'}.
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{sigma\_y}, \texttt{H}, \texttt{hypothesis} (\textbf{obligatorio} \texttt{'plane\_strain'}).
-  \item \textbf{Variables internas}: \texttt{eps\_p} (tensorial 4 componentes \texttt{[xx, yy, zz, xy]}), \texttt{alpha} (acumulada equivalente).
-  \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = \ensuremath{\surd}(2/3) \ensuremath{\cdot} (\ensuremath{\sigma}\_y + H \ensuremath{\cdot} \ensuremath{\alpha})} --- radio en espacio desviador de la superficie de Von Mises en el estado corriente. Es la escala natural de \texttt{\ensuremath{\|}s\_trial\ensuremath{\|}} en la frontera de fluencia J2. Por estar el return mapping en un kernel \texttt{@njit}, la tolerancia se precomputa fuera del kernel vía \texttt{self.admissibility\_tol(state\_vars)} y se pasa como \texttt{float} al JIT.
-  \item \textbf{Restricción crítica}: solo deformación plana. Usar con \texttt{hypothesis='plane\_stress'} lanza \texttt{NotImplementedError} (el return mapping para plane stress requiere algoritmo diferente).
-  \item \textbf{Implementación}: kernel \texttt{\_compute\_j2\_plasticity} con \texttt{@njit}.
-  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3} (configurados en plane strain).
-  \item \textbf{Referencia}: Simo \& Hughes, \textit{Computational Inelasticity}, cap. 3 (return mapping J2).
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{sigma\_y}, \texttt{H} (\ensuremath{\ge}0, default 0), \texttt{hypothesis \ensuremath{\in} \{'plane\_strain' (default), 'plane\_stress'\}}, \texttt{density} (opcional, ADR 0008).
+  \item \textbf{Variables internas}: \texttt{eps\_p} (tensorial 4 componentes \texttt{[xx, yy, zz, xy\_tensorial]}), \texttt{alpha} (acumulada equivalente, adimensional en ambas hipótesis).
+  \item \textbf{Admisibilidad (ADR 0006)}:
+  \item plane\_strain: \texttt{admissibility\_scale = \ensuremath{\surd}(2/3)\ensuremath{\cdot}(\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})} --- radio desviador de la superficie J2.
+  \item plane\_stress: \texttt{admissibility\_scale = (\ensuremath{\sigma}\_y + H\ensuremath{\cdot}\ensuremath{\alpha})\ensuremath{^{2}}/3} --- escala de \texttt{f̄} proyectada.
+  \item En ambos, la tolerancia se precomputa fuera del kernel \texttt{@njit} y se pasa como \texttt{float}.
+  \item \textbf{Limitaciones declaradas} (ver \texttt{out\_of\_scope} en spec): no endurecimiento cinemático/Voce, no ablandamiento (\texttt{H<0} requiere regularización), no regla de flujo no asociada, no daño acoplado, no viscoplasticidad, no grandes deformaciones, no anisotropía. Locking volumétrico en plane strain con elementos de bajo orden cuando \texttt{\ensuremath{\nu} \ensuremath{\to} 0.5} o dominio plástico (mitigaciones B-bar/F-bar diferidas).
+  \item \textbf{Implementación}: kernels \texttt{\_compute\_j2\_plane\_strain} y \texttt{\_compute\_j2\_plane\_stress} con \texttt{@njit}. Despacho por \texttt{hypothesis} en construcción (sin coste runtime).
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (configurados en cualquiera de las dos hipótesis).
+  \item \textbf{Referencia}: ver \texttt{docs/specs/VonMises2D.md}. Simó \& Hughes, \textit{Computational Inelasticity} (1998), §3.3 (plane strain), §3.4 (plane stress projected, Box 3.1). de Souza Neto, Perić \& Owen, \textit{Computational Methods for Plasticity} (2008), §9.4.
   \item \textbf{Archivo}: fenix/materials/von\_mises\_2d.py
 \end{itemize}
 

@@ -95,6 +95,30 @@
 
 ---
 
+## NewtonNewmarkSolver — análisis dinámico transitorio no lineal (ADR 0009 fase 4)
+
+- **Propósito**: integrar en el tiempo `M·ü + C·u̇ + F_int(u) = F_ext(t)` con materiales no lineales (plasticidad, daño) o no linealidad geométrica. **Variante** de `NewmarkSolver` (Reglas §4): hereda predictores/correctores y reducción de Dirichlet; añade Newton-Raphson dentro de cada paso temporal.
+- **Esquema**:
+  - Predictores Newmark idénticos a la fase 3.
+  - **Bucle interno de Newton-Raphson** sobre el residuo dinámico
+    `R(ü_{n+1}) = F_ext(t_{n+1}) − F_int(u_{n+1}) − C·u̇_{n+1} − M·ü_{n+1}`,
+    con jacobiano `J = M + γΔt·C + βΔt²·K_t` y `K_t` la rigidez tangente corriente.
+  - **Convergencia dual** (ADR 0007): `R/(atol + rtol·F_ref) ≤ 1` y `δu/(atol + rtol·‖u‖) ≤ 1`.
+  - **Commit de estado**: tras converger cada paso, `assembler.commit_all_states()` (trial → committed). Si no converge en `max_iter`, lanza `RuntimeError` y se descarta el state trial.
+  - **Amortiguamiento Rayleigh constante en el tiempo**, calibrado con la **rigidez elástica de referencia** `K_0` (al inicio del análisis, `u = 0`). Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
+  - **Newton modificado opcional** (`freeze_tangent_after_iter`, ADR 0003 fase 2): factoriza fresco las primeras N iter de cada paso y reusa la factorización en las siguientes.
+  - **Recuperación del caso lineal**: con materiales lineales (`K_t ≡ K_0`), el residuo se anula en 1 iter y el resultado coincide exactamente con `NewmarkSolver`. Validado en tests.
+- **Parámetros**: heredados de `NewmarkSolver` (`t_end`, `dt`, `beta`, `gamma`, `rayleigh`, `u0`, `u0_dot`, `F_func`, `linear_algebra`, `lumping`) más `convergence` (`ConvergenceCriterion`, ADR 0007), `max_iter` (default 20), `freeze_tangent_after_iter` (default `None`).
+- **Firma del solver**: `solve()` sin argumentos, retorna `TransientResult` (mismo formato que `NewmarkSolver`).
+- **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria, fatiga de bajo ciclo, impacto en hormigón friccional, vibraciones de marcos con disipación plástica.
+- **Limitaciones**: igual que `NewmarkSolver` en lo lineal (apoyos constantes, paso fijo, sin HHT-α). Además: no resuelve snap-back en problemas con softening severo — combinar con `ArcLengthSolver` si emerge.
+- **Despacho YAML**: `solver.type: NewtonNewmarkSolver`. Como es subclase de `NewmarkSolver`, `entry.run_yaml` lo detecta vía `isinstance` y despacha a `run_transient` automáticamente.
+- **Referencia**: ADR 0009 §Fase 4; Hughes, *FEM* cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
+- **Spec**: [docs/specs/NewtonNewmarkSolver.md](specs/NewtonNewmarkSolver.md)
+- **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonNewmarkSolver`, junto al padre).
+
+---
+
 ## Cómo añadir un solver nuevo
 
 `/fenix-new solver <Name>` — genera archivo en `fenix/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.

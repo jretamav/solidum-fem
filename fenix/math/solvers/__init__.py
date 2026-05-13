@@ -9,8 +9,9 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
 - ``arclength`` — :class:`ArcLengthSolver` (Crisfield cilíndrico, post-crítico).
 - ``modal`` — :class:`ModalSolver` (problema de valores característicos
   ``K·φ = ω²·M·φ``; ADR 0009 fase 1).
-- ``newmark`` — :class:`NewmarkSolver` (integración Newmark-β para
-  ``M·ü + C·u̇ + K·u = F(t)``; ADR 0009 fase 3).
+- ``newmark`` — :class:`NewmarkSolver` (integración Newmark-β lineal para
+  ``M·ü + C·u̇ + K·u = F(t)``; ADR 0009 fase 3) y :class:`NewtonNewmarkSolver`
+  (variante no lineal con Newton dentro de cada paso; ADR 0009 fase 4).
 
 Los reexports a nivel de paquete preservan los imports históricos
 ``from fenix.math.solvers import LinearSolver`` sin alterar al consumidor.
@@ -23,7 +24,7 @@ from fenix.math.solvers.linear import LinearSolver
 from fenix.math.solvers.nonlinear import NonlinearSolver
 from fenix.math.solvers.arclength import ArcLengthSolver
 from fenix.math.solvers.modal import ModalSolver
-from fenix.math.solvers.newmark import NewmarkSolver
+from fenix.math.solvers.newmark import NewmarkSolver, NewtonNewmarkSolver
 
 __all__ = [
     "CholeskyNotPositiveDefiniteError",
@@ -32,4 +33,5 @@ __all__ = [
     "ArcLengthSolver",
     "ModalSolver",
     "NewmarkSolver",
+    "NewtonNewmarkSolver",
 ]
