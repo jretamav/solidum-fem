@@ -195,6 +195,46 @@ class ModalResult:
 
 
 @dataclass(frozen=True)
+class TransientResult:
+    """Resultado de un análisis dinámico transitorio (ADR 0009 fase 3). Inmutable.
+
+    Almacena las historias temporales completas del estado dinámico
+    ``(u, u̇, ü)`` en cada paso del integrador. Mismo patrón que
+    ``lambda_history`` en arc-length, generalizado a tres campos.
+
+    Parameters
+    ----------
+    t_history
+        Vector de instantes temporales evaluados, shape ``(n_steps + 1,)``.
+        Incluye ``t = 0`` (condiciones iniciales).
+    u_history, udot_history, uddot_history
+        Historiales de desplazamiento, velocidad y aceleración en globales,
+        shape ``(n_dof, n_steps + 1)``. La columna ``[:, k]`` corresponde
+        a ``t_history[k]``. En DOFs prescritos por Dirichlet la componente
+        es el valor constante del apoyo (u), o cero (u̇, ü).
+    n_steps
+        Número de pasos temporales realizados (``len(t_history) - 1``).
+    alpha_rayleigh, beta_rayleigh
+        Coeficientes Rayleigh efectivos usados en ``C = α·M + β·K``.
+        ``(0.0, 0.0)`` si el análisis fue sin amortiguamiento.
+    converged
+        ``True`` si el integrador completó todos los pasos. ``False`` solo
+        si se detuvo prematuramente por inestabilidad numérica detectada
+        (no aplica al Newmark incondicionalmente estable con default
+        β=1/4, γ=1/2).
+    """
+
+    t_history: np.ndarray
+    u_history: np.ndarray
+    udot_history: np.ndarray
+    uddot_history: np.ndarray
+    n_steps: int
+    alpha_rayleigh: float = 0.0
+    beta_rayleigh: float = 0.0
+    converged: bool = True
+
+
+@dataclass(frozen=True)
 class SolveResult:
     """Resultado agregado de una solución. Inmutable; calculado eager al final
     de ``solver.solve``.

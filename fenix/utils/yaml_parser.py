@@ -589,7 +589,7 @@ class YamlParser:
         if 'convergence' in kwargs:
             from fenix.math.convergence import make_convergence_from_config
             cfg = kwargs.pop('convergence')
-            if s_type not in ('LinearSolver', 'ModalSolver'):
+            if s_type not in ('LinearSolver', 'ModalSolver', 'NewmarkSolver'):
                 kwargs['convergence'] = make_convergence_from_config(cfg)
 
         return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

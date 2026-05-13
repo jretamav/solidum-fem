@@ -71,6 +71,30 @@
 
 ---
 
+## NewmarkSolver — análisis dinámico transitorio lineal (ADR 0009 fase 3)
+
+- **Propósito**: integrar en el tiempo la ecuación de movimiento semidiscreta `M·ü + C·u̇ + K·u = F(t)` con amortiguamiento Rayleigh `C = α·M + β·K` y apoyos Dirichlet constantes.
+- **Esquema**:
+  - Familia Newmark-β con `(β, γ)` parametrizables; default `(1/4, 1/2)` — average acceleration, incondicionalmente estable, sin amortiguamiento numérico, error `O(Δt²)`.
+  - **Predictores**: `ũ = u_n + Δt·u̇_n + (Δt²/2)(1−2β)·ü_n`, `ũ̇ = u̇_n + Δt·(1−γ)·ü_n`.
+  - **Sistema efectivo**: `A_eff·ü_{n+1} = F_{n+1} − C·ũ̇ − K·ũ` con `A_eff = M + γΔt·C + βΔt²·K`.
+  - **Correctores**: `u_{n+1} = ũ + βΔt²·ü_{n+1}`, `u̇_{n+1} = ũ̇ + γΔt·ü_{n+1}`.
+  - Reducción por Dirichlet (operador `T`) aplicada a `(K, M, C)` simultáneamente; factorización única de `A_eff_red` reusada en todos los pasos.
+  - Aceleración inicial consistente con la ecuación de movimiento en `t=0`.
+- **Parámetros**: `t_end`, `dt` (obligatorios), `beta` (default 0.25), `gamma` (default 0.5), `rayleigh` (None | `{alpha, beta}` directos | `{xi1, omega1, xi2, omega2}` para calibración modal), `u0`, `u0_dot` (default ceros), `F_func` (callback Python `t → F(t)`; default vibración libre), `linear_algebra`, `lumping`.
+- **Firma del solver**: `solve()` sin argumentos, retorna `TransientResult` con historiales `t_history`, `u_history`, `udot_history`, `uddot_history` (shape `(n_dof, n_steps + 1)`).
+- **Cuándo usarlo**: respuesta a cargas dependientes del tiempo (sísmica time-history, impacto, vibración forzada), evolución transitoria desde condiciones iniciales arbitrarias, validación de respuesta libre/forzada de estructuras lineales.
+- **Limitaciones**:
+  - Solo lineal (`K`, `M` constantes). La extensión a no-linealidad (Newton dentro de cada paso) es fase 4 del ADR 0009.
+  - Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
+  - Paso `Δt` fijo. Adaptativo diferido.
+  - HHT-α y generalized-α (con amortiguamiento numérico controlado) no incluidos.
+- **Referencia**: Newmark (1959), J. Eng. Mech. Div. ASCE; Bathe, *FEP* cap. 9.4; Hughes, *FEM* cap. 9; Chopra, *Dynamics of Structures* cap. 5 y 15.
+- **Spec**: [docs/specs/NewmarkSolver.md](specs/NewmarkSolver.md)
+- **Archivos**: [fenix/math/solvers.py](../fenix/math/solvers.py) (clase `NewmarkSolver`), [fenix/math/damping.py](../fenix/math/damping.py) (Rayleigh), [fenix/results.py](../fenix/results.py) (`TransientResult`).
+
+---
+
 ## Cómo añadir un solver nuevo
 
 `/fenix-new solver <Name>` — genera archivo en `fenix/math/solver_<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.

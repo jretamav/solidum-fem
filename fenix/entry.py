@@ -22,8 +22,8 @@ import numpy as np
 
 from fenix.core.domain import Domain
 from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver, ModalSolver
-from fenix.results import ModalResult, SolveResult, build_solve_result
+from fenix.math.solvers import LinearSolver, ModalSolver, NewmarkSolver
+from fenix.results import ModalResult, SolveResult, TransientResult, build_solve_result
 
 
 StepCallback = Callable[[int, np.ndarray, float], None]
@@ -138,23 +138,75 @@ def run_modal(
     return result
 
 
+def run_transient(
+    domain: Domain,
+    *,
+    assembler: Optional[Assembler] = None,
+    solver: Optional[NewmarkSolver] = None,
+    t_end: Optional[float] = None,
+    dt: Optional[float] = None,
+    **solver_kwargs,
+) -> TransientResult:
+    """Ejecuta un análisis dinámico transitorio Newmark y retorna el resultado.
+
+    Parameters
+    ----------
+    domain
+        Dominio con nodos, elementos y BCs ya configurados.
+    assembler
+        Assembler opcional. Si es ``None`` se construye sobre ``domain``.
+    solver
+        Instancia ``NewmarkSolver`` ya vinculada al assembler. Si es
+        ``None``, se construye con los kwargs siguientes.
+    t_end, dt
+        Tiempo final y paso temporal. Requeridos cuando ``solver is None``.
+    **solver_kwargs
+        Resto de parámetros del constructor de ``NewmarkSolver``
+        (``beta``, ``gamma``, ``rayleigh``, ``u0``, ``u0_dot``, ``F_func``,
+        ``linear_algebra``, ``lumping``).
+
+    Returns
+    -------
+    TransientResult
+        Historiales temporales de ``u, u̇, ü``. Queda también en
+        ``domain.last_result``.
+    """
+    if domain.total_dofs == 0:
+        domain.generate_equation_numbers()
+    if assembler is None:
+        assembler = Assembler(domain)
+    if solver is None:
+        if t_end is None or dt is None:
+            raise ValueError(
+                "run_transient: pasar `solver` o (`t_end` y `dt`)."
+            )
+        solver = NewmarkSolver(assembler, t_end=t_end, dt=dt, **solver_kwargs)
+
+    result = solver.solve()
+    domain.last_result = result
+    return result
+
+
 def run_yaml(
     path: str | Path,
     *,
     step_callback: Optional[StepCallback] = None,
-) -> Union[SolveResult, ModalResult]:
+) -> Union[SolveResult, ModalResult, TransientResult]:
     """Parsea un archivo YAML, arma el modelo completo y lo resuelve.
 
     Despacha según el tipo de solver declarado en el YAML:
 
-    - ``ModalSolver`` (ADR 0009) → :func:`run_modal`, retorna ``ModalResult``.
+    - ``ModalSolver`` (ADR 0009 fase 1) → :func:`run_modal`,
+      retorna ``ModalResult``.
+    - ``NewmarkSolver`` (ADR 0009 fase 3) → :func:`run_transient`,
+      retorna ``TransientResult``.
     - cualquier otro → :func:`run`, retorna ``SolveResult``.
 
     Returns
     -------
-    SolveResult | ModalResult
+    SolveResult | ModalResult | TransientResult
         Resultado agregado. Inspeccionar el tipo concreto si el consumidor
-        necesita distinguir (e.g. ``isinstance(result, ModalResult)``).
+        necesita distinguir (e.g. ``isinstance(result, TransientResult)``).
     """
     # Import diferido para evitar costes si el consumidor no usa YAML.
     from fenix.utils.yaml_parser import YamlParser
@@ -171,6 +223,11 @@ def run_yaml(
     # a `run_modal`, que también cachea el resultado en `domain.last_result`.
     if isinstance(solver, ModalSolver):
         return run_modal(domain, assembler=assembler, solver=solver)
+
+    # NewmarkSolver tiene firma propia `solve()` y devuelve TransientResult.
+    # Se despacha a `run_transient` por el mismo motivo.
+    if isinstance(solver, NewmarkSolver):
+        return run_transient(domain, assembler=assembler, solver=solver)
 
     F_ext = parser.get_external_forces() + parser.get_body_load(assembler)
     return run(
