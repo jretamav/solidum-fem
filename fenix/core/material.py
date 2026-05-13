@@ -80,6 +80,20 @@ class Material(ABC):
         """
         return 1.0
 
+    def admissibility_tol(self, state_vars=None) -> float:
+        """Tolerancia numérica del criterio de admisibilidad, en unidades de esfuerzo.
+
+        Política única del proyecto (ADR 0006), combinada absoluta + relativa::
+
+            tol = ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL · escala
+
+        donde ``escala = admissibility_scale(state_vars)``. Es el **único punto**
+        donde vive la fórmula; modificarla aquí propaga a todos los consumidores,
+        incluidos los que no pueden invocar ``is_admissible`` por estar dentro
+        de un kernel ``@njit`` y precomputar la tolerancia fuera (ver VonMises2D).
+        """
+        return ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL * self.admissibility_scale(state_vars)
+
     def is_admissible(self, f: float, state_vars=None) -> bool:
         """Decide si el estado de prueba está dentro de la región admisible.
 
@@ -91,4 +105,4 @@ class Material(ABC):
         la escala deben venir en unidades de esfuerzo. El término absoluto
         actúa como piso para estados donde ``escala → 0``.
         """
-        return f <= ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL * self.admissibility_scale(state_vars)
+        return f <= self.admissibility_tol(state_vars)

@@ -2,7 +2,6 @@
 import numpy as np
 import math
 from fenix.core.material import Material
-from fenix.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
 from fenix.registry import MaterialRegistry
 from numba import njit
 
@@ -132,9 +131,9 @@ class VonMises2D(Material):
         eps_p_old = np.zeros(4) if state_vars is None else state_vars.get('eps_p', np.zeros(4))
         alpha_old = 0.0 if state_vars is None else state_vars.get('alpha', 0.0)
 
-        # Tolerancia de admisibilidad evaluada en el estado de entrada (ADR 0006).
-        # Se precomputa fuera del kernel @njit para mantenerlo numérico puro.
-        yield_tol = ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL * self.admissibility_scale({'alpha': alpha_old})
+        # Tolerancia de admisibilidad precomputada fuera del kernel @njit
+        # (ADR 0006: política única en Material.admissibility_tol).
+        yield_tol = self.admissibility_tol({'alpha': alpha_old})
 
         sigma, C_alg, eps_p_new, alpha_new = _compute_j2_plasticity(
             strain, eps_p_old, alpha_old, self.sigma_y, self.H, self.K, self.G, self.C_e, yield_tol
