@@ -45,8 +45,9 @@
 │  CAPA DE MATEMÁTICA  —  fenix/math/                           │
 │   assembly.py     →  ensamblaje sparse con cache COO          │
 │   integration.py  →  cuadraturas de Gauss                     │
-│   solvers.py      →  LinearSolver / NonlinearSolver /         │
-│                      ArcLengthSolver  (registrados)           │
+│   solvers/       →  paquete (un módulo por solver):           │
+│                      linear, nonlinear, arclength, modal,     │
+│                      newmark + _shared (todos registrados)    │
 │   linalg/         →  capa algebraica K·x = b (ADR 0003)       │
 │       base.py        →  Protocol + StiffnessProperties        │
 │       lu.py          →  LUSolver (SuperLU, fallback universal)│

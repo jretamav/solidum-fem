@@ -54,5 +54,5 @@ acceptance:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py) · clase `Quad9`.
+- **Archivo**: [fenix/elements/solid_2d/quad9.py](../../fenix/elements/solid_2d/quad9.py) · clase `Quad9` (subclase de la base interna `_HigherOrderQuad` en [_shared.py](../../fenix/elements/solid_2d/_shared.py), compartida con Quad8).
 - **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).

@@ -148,9 +148,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py)
+- **Archivo**: [fenix/elements/solid_2d/tri3.py](../../fenix/elements/solid_2d/tri3.py)
 - **Clase**: `Tri3` (registrada vía `@ElementRegistry.register`)
-- **Función núcleo**: `_compute_kinematics_tri3(coords)`, decorada con `@njit`. Reutiliza `_compute_integrands` con peso $w = 0{.}5$.
+- **Función núcleo**: `_compute_kinematics_tri3(coords)`, decorada con `@njit`, en [_shared.py](../../fenix/elements/solid_2d/_shared.py). Reutiliza `_compute_integrands` (también en `_shared`, compartido con Quad4) con peso $w = 0{.}5$.
 - **Tests**:
   - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — patch test sobre malla triangular regular y modos de cuerpo rígido.
   - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder con nodo interior libre (NAFEMS, V&V).

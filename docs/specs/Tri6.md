@@ -49,5 +49,5 @@ acceptance:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py) · clase `Tri6`.
+- **Archivo**: [fenix/elements/solid_2d/tri6.py](../../fenix/elements/solid_2d/tri6.py) · clase `Tri6`.
 - **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).

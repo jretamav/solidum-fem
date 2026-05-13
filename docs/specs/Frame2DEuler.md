@@ -160,8 +160,8 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/frame.py](../../fenix/elements/frame.py) — archivo propio, no comparte utilidades con otros módulos de elementos.
-- **Clase**: `Frame2DEuler` — hereda directamente de `Element`. La construcción de la matriz de transformación $\mathbf T$ se extrae a un método estático privado `_build_geometry` para que la clase sea autocontenida (anteriormente se usaba una función helper `_frame_geometry` compartida con `Frame2DTimoshenko` en `structural.py`; la duplicación es deliberada para garantizar independencia).
+- **Archivo**: [fenix/elements/frame/euler.py](../../fenix/elements/frame/euler.py) — submódulo del paquete `fenix/elements/frame/` que aloja también `Frame2DTimoshenko` y `Frame2DEulerCorot`.
+- **Clase**: `Frame2DEuler` — hereda directamente de `Element`. La construcción de la matriz de transformación $\mathbf T$ se delega a `build_geometry_2d` en [fenix/elements/frame/_shared.py](../../fenix/elements/frame/_shared.py), compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye $\mathbf T$ desde `alpha0` por su lógica propia).
 - **Tests**: [tests/test_frame.py](../../tests/test_frame.py) · `TestFrame2DEulerAcceptance` — los tres criterios físicos y el registro:
   - `test_acceptance_respuesta_axial_pura` (criterio 1) — resuelve el voladizo con solver, verifica $u_x(L) = FL/(EA)$.
   - `test_acceptance_voladizo_carga_transversal` (criterio 2) — carga transversal $P$, verifica flecha $v = PL^3/(3EI)$ y rotación $\theta = PL^2/(2EI)$.
@@ -178,3 +178,4 @@ references:
 
 - **2026-04-21** · Elemento movido a archivo propio `fenix/elements/frame.py` y desacoplado del helper compartido `_frame_geometry`. El método estático `_build_geometry` reimplementa la construcción de $\mathbf T$ dentro de la clase. `Frame2DTimoshenko` sigue en `structural.py` usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
 - **2026-04-21** · Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto — validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
+- **2026-05-13** · `frame.py` se parte en paquete `fenix/elements/frame/{euler,timoshenko,euler_corot,_shared}.py`. La duplicación de `_build_geometry` entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (`build_geometry_2d` en `_shared.py`), pero esta vez sin función helper externa flotante — pertenece al paquete `frame/`. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde `alpha0` porque su cinemática corotacional no se beneficia del helper común.

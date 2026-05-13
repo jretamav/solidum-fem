@@ -269,11 +269,11 @@ F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del mate
 - No captura rótulas plásticas distribuidas: `E_tangent` escala toda la matriz por igual.
 
 ### Independencia del diseño
-Archivo propio. No hereda de ningún otro elemento y no comparte utilidades con otros módulos — la matriz de transformación se construye dentro de la clase.
+Vive en el paquete `fenix/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `fenix/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
 
 ### Validación
 - Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
-- Archivo fuente: [fenix/elements/frame.py](fenix/elements/frame.py) · clase `Frame2DEuler`.
+- Archivo fuente: [fenix/elements/frame/euler.py](fenix/elements/frame/euler.py) · clase `Frame2DEuler`.
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
 
@@ -320,11 +320,11 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 - No captura plasticidad distribuida: `E_tangent` escala toda la matriz.
 
 ### Independencia del diseño
-Archivo propio. No hereda de ningún otro elemento. La matriz de transformación se construye dentro de la clase (`_build_geometry` como método estático).
+Vive en el paquete `fenix/elements/frame/`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en `fenix/elements/frame/_shared.py` — la construcción de la matriz de transformación 6×6 ya no se duplica.
 
 ### Validación
 - Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
-- Archivo fuente: [fenix/elements/frame.py](fenix/elements/frame.py) · clase `Frame2DTimoshenko`.
+- Archivo fuente: [fenix/elements/frame/timoshenko.py](fenix/elements/frame/timoshenko.py) · clase `Frame2DTimoshenko`.
 - Spec: [docs/specs/Frame2DTimoshenko.md](specs/Frame2DTimoshenko.md).
 - Referencias: Reddy cap. 5; Bathe §5.4.
 
@@ -366,11 +366,11 @@ con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
 Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, brazos flexibles, cables con rigidez a flexión. Problemas que la viga lineal `Frame2DEuler` no puede atacar.
 
 ### Independencia del diseño
-Archivo compartido con `Frame2DEuler` y `Frame2DTimoshenko` por familia temática (vigas 2D), pero **sin herencia**: cada clase replica su propia cinemática internamente.
+Vive en el paquete `fenix/elements/frame/` junto a las otras vigas 2D, **sin herencia**: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye `T` desde `alpha0` en lugar de usar `build_geometry_2d` compartido). Sí comparte con `Frame2DEuler` y `Frame2DTimoshenko` los helpers libres de `_shared.py` para carga de cuerpo (`_frame2d_consistent_body_load`), masa (`_frame2d_consistent_mass_local`) y traducción a `ElementForces` (`_frame2d_forces_from_local`).
 
 ### Validación
 - Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro).
-- Archivo fuente: [fenix/elements/frame.py](fenix/elements/frame.py) · clase `Frame2DEulerCorot`.
+- Archivo fuente: [fenix/elements/frame/euler_corot.py](fenix/elements/frame/euler_corot.py) · clase `Frame2DEulerCorot`.
 - Spec: [docs/specs/Frame2DEulerCorot.md](specs/Frame2DEulerCorot.md).
 - Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
 
@@ -435,9 +435,9 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Parámetros**: `thickness` (espesor para estado plano), `quadrature` (opcional).
 - **Cargas distribuidas**: `compute_body_load(b)` integra ∫N^T b sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve σ, ε y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (`Sigma_*_nodal`).
-- **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada.
+- **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada. Viven en `fenix/elements/solid_2d/_shared.py`, compartidos con Tri3.
 - **Limitaciones**: bloqueo volumétrico con materiales casi-incompresibles (ν → 0.5); en ese régimen usar formulación mixta (no implementada).
-- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+- **Archivo**: [fenix/elements/solid_2d/quad4.py](../fenix/elements/solid_2d/quad4.py)
 
 ---
 
@@ -451,8 +451,8 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cargas distribuidas**: `compute_body_load(b)` reparte 1/3 a cada nodo (exacto para b uniforme); `compute_edge_traction(edge, t̄)` reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve el único σ, ε y centroide del elemento (mismo formato que Quad4).
 - **Limitaciones**: shear locking severo; convergencia lenta. **Preferir `Quad4`** salvo en transiciones donde Quad4 no encaja geométricamente.
-- **Implementación**: kernel `_compute_kinematics_tri3` con `@njit`.
-- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+- **Implementación**: kernel `_compute_kinematics_tri3` con `@njit` en `fenix/elements/solid_2d/_shared.py`.
+- **Archivo**: [fenix/elements/solid_2d/tri3.py](../fenix/elements/solid_2d/tri3.py)
 
 ---
 
@@ -465,7 +465,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cargas**: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
 - **Salida por Gauss**: `compute_gauss_state(U)` con 9 puntos por defecto.
 - **Spec**: [docs/specs/Quad8.md](specs/Quad8.md).
-- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+- **Archivo**: [fenix/elements/solid_2d/quad8.py](../fenix/elements/solid_2d/quad8.py) (subclase de la base interna `_HigherOrderQuad` definida en `_shared.py`, compartida con Quad9).
 
 ---
 
@@ -477,7 +477,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Integración**: Gauss 3×3.
 - **Cargas y salida por Gauss**: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
 - **Spec**: [docs/specs/Quad9.md](specs/Quad9.md).
-- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+- **Archivo**: [fenix/elements/solid_2d/quad9.py](../fenix/elements/solid_2d/quad9.py) (subclase de la base interna `_HigherOrderQuad`, compartida con Quad8).
 
 ---
 
@@ -488,7 +488,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Integración**: 3 puntos en los puntos medios (cuadratura `tri_3`).
 - **Cargas**: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
 - **Spec**: [docs/specs/Tri6.md](specs/Tri6.md).
-- **Archivo**: [fenix/elements/solid_2d.py](fenix/elements/solid_2d.py)
+- **Archivo**: [fenix/elements/solid_2d/tri6.py](../fenix/elements/solid_2d/tri6.py)
 
 ---
 

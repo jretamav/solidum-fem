@@ -170,7 +170,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers.py](../../fenix/math/solvers.py) (clase `NewmarkSolver`, registrada vía `@SolverRegistry.register`).
+- **Archivo**: [fenix/math/solvers/newmark.py](../../fenix/math/solvers/newmark.py) (clase `NewmarkSolver`, registrada vía `@SolverRegistry.register`).
 - **Amortiguamiento**: [fenix/math/damping.py](../../fenix/math/damping.py) (`rayleigh_from_modes`, `rayleigh_xi`).
 - **Tipo de resultado**: [`TransientResult`](../../fenix/results.py) — dataclass frozen con `t_history`, `u_history`, `udot_history`, `uddot_history`, `n_steps`, `alpha_rayleigh`, `beta_rayleigh`, `converged`.
 - **Entrypoint público**: [`fenix.run_transient`](../../fenix/entry.py) para uso programático; [`fenix.run_yaml`](../../fenix/entry.py) despacha automáticamente cuando el YAML declara `solver: type: NewmarkSolver`.

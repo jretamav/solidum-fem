@@ -11,7 +11,7 @@
 - **Parámetros**: `linear_algebra` (default `auto`; ADR 0003 §4).
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **No converge / no aplica**: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
-- **Archivo**: [fenix/math/solvers.py](fenix/math/solvers.py)
+- **Archivo**: [fenix/math/solvers/linear.py](../fenix/math/solvers/linear.py)
 
 ---
 
@@ -29,7 +29,7 @@
 - **Cuándo usarlo**: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back/snap-through).
 - **Limitación**: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para eso → `ArcLengthSolver`.
 - **Referencia**: Crisfield, *Non-linear Finite Element Analysis of Solids and Structures*, vol. 1, cap. 9.
-- **Archivo**: [fenix/math/solvers.py](fenix/math/solvers.py)
+- **Archivo**: [fenix/math/solvers/nonlinear.py](../fenix/math/solvers/nonlinear.py)
 
 ---
 
@@ -48,7 +48,7 @@
 - **Cuándo usarlo**: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando `NonlinearSolver` diverge cerca de un punto límite.
 - **Limitación**: más caro por paso (dos `spsolve` por iteración); requiere ajuste de `initial_dl` para problemas nuevos.
 - **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers & Structures, 1981); Crisfield vol. 1, cap. 9.
-- **Archivo**: [fenix/math/solvers.py](fenix/math/solvers.py)
+- **Archivo**: [fenix/math/solvers/arclength.py](../fenix/math/solvers/arclength.py)
 
 ---
 
@@ -67,7 +67,7 @@
 - **Limitaciones**: lineal (`K` evaluada en `u = 0`); sin amortiguamiento; sin masas modales efectivas ni factores de participación (fase 7 del ADR 0009); modos complejos no soportados.
 - **Referencia**: Bathe, *Finite Element Procedures*, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, *The Finite Element Method*, cap. 7; ARPACK Users' Guide (Lehoucq–Sorensen–Yang).
 - **Spec**: [docs/specs/ModalSolver.md](specs/ModalSolver.md)
-- **Archivos**: [fenix/math/solvers.py](../fenix/math/solvers.py) (clase `ModalSolver`), [fenix/math/linalg/eigen.py](../fenix/math/linalg/eigen.py) (clase `EigenSolver`), [fenix/results.py](../fenix/results.py) (`ModalResult`).
+- **Archivos**: [fenix/math/solvers/modal.py](../fenix/math/solvers/modal.py) (clase `ModalSolver`), [fenix/math/linalg/eigen.py](../fenix/math/linalg/eigen.py) (clase `EigenSolver`), [fenix/results.py](../fenix/results.py) (`ModalResult`).
 
 ---
 
@@ -91,13 +91,13 @@
   - HHT-α y generalized-α (con amortiguamiento numérico controlado) no incluidos.
 - **Referencia**: Newmark (1959), J. Eng. Mech. Div. ASCE; Bathe, *FEP* cap. 9.4; Hughes, *FEM* cap. 9; Chopra, *Dynamics of Structures* cap. 5 y 15.
 - **Spec**: [docs/specs/NewmarkSolver.md](specs/NewmarkSolver.md)
-- **Archivos**: [fenix/math/solvers.py](../fenix/math/solvers.py) (clase `NewmarkSolver`), [fenix/math/damping.py](../fenix/math/damping.py) (Rayleigh), [fenix/results.py](../fenix/results.py) (`TransientResult`).
+- **Archivos**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewmarkSolver`), [fenix/math/damping.py](../fenix/math/damping.py) (Rayleigh), [fenix/results.py](../fenix/results.py) (`TransientResult`).
 
 ---
 
 ## Cómo añadir un solver nuevo
 
-`/fenix-new solver <Name>` — genera archivo en `fenix/math/solver_<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
+`/fenix-new solver <Name>` — genera archivo en `fenix/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
 
 Convenciones de interfaz:
 

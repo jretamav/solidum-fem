@@ -59,7 +59,7 @@ Las condiciones de frontera Dirichlet se imponen por eliminación directa del si
 Newton-Raphson termina cuando **ambos** criterios están bajo tolerancia: norma del incremento de desplazamientos (relativa) y norma del residuo de fuerza (relativa). Cualquiera por separado puede dar falsos positivos en problemas con softening o con cargas casi nulas.
 
 ### 15. `ArcLengthSolver` (Crisfield)
-Cuando el problema tiene snap-back / snap-through, Newton-Raphson con control de carga falla. Arc-length añade una incógnita (factor de carga λ) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), permitiendo recorrer ramas con derivada infinita o negativa. Vive en `fenix/math/solvers.py`.
+Cuando el problema tiene snap-back / snap-through, Newton-Raphson con control de carga falla. Arc-length añade una incógnita (factor de carga λ) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), permitiendo recorrer ramas con derivada infinita o negativa. Vive en `fenix/math/solvers/arclength.py`.
 
 ### 16. Cuadraturas de Gauss centralizadas (`fenix/math/integration.py`)
 Tablas y reglas de cuadratura Gauss-Legendre 1D/2D/3D centralizadas. Cada elemento declara `N_INTEGRATION_POINTS` y consume estos puntos/pesos — sin duplicar tablas en cada subclase.

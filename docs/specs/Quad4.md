@@ -155,9 +155,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py)
+- **Archivo**: [fenix/elements/solid_2d/quad4.py](../../fenix/elements/solid_2d/quad4.py)
 - **Clase**: `Quad4` (registrada vía `@ElementRegistry.register`)
-- **Funciones núcleo**: `_compute_kinematics(xi, eta, coords)` y `_compute_integrands(B, C, σ, detJ, w, t)`, ambas decoradas con `@njit` (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran.
+- **Funciones núcleo**: `_compute_kinematics(xi, eta, coords)` y `_compute_integrands(B, C, σ, detJ, w, t)`, ambas decoradas con `@njit` (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran. Viven en [fenix/elements/solid_2d/_shared.py](../../fenix/elements/solid_2d/_shared.py) y se comparten con Tri3.
 - **Tests**:
   - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
   - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V&V).

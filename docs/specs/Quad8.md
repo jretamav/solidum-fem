@@ -124,5 +124,5 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_2d.py](../../fenix/elements/solid_2d.py) · clase `Quad8`.
+- **Archivo**: [fenix/elements/solid_2d/quad8.py](../../fenix/elements/solid_2d/quad8.py) · clase `Quad8` (subclase de la base interna `_HigherOrderQuad` en [_shared.py](../../fenix/elements/solid_2d/_shared.py), compartida con Quad9).
 - **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).

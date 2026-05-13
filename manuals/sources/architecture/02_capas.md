@@ -46,11 +46,13 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   {\title Capa numérica} \hfill \texttt{fenix/math/}\\
   \texttt{assembly.py} (ensamblaje disperso con caché COO),
   \texttt{integration.py} (cuadraturas de Gauss),
-  \texttt{solvers.py} (\texttt{LinearSolver}, \texttt{NonlinearSolver},
-  \texttt{ArcLengthSolver}) y subsistema algebraico
+  paquete \texttt{solvers/} con un módulo por solver
+  (\texttt{LinearSolver}, \texttt{NonlinearSolver},
+  \texttt{ArcLengthSolver}, \texttt{ModalSolver},
+  \texttt{NewmarkSolver}) y subsistema algebraico
   \texttt{linalg/} (\texttt{LUSolver}, \texttt{CholeskySolver},
   \texttt{LDLTSolver} reservado, despachador
-  \texttt{select\_solver}).
+  \texttt{select\_solver}, \texttt{EigenSolver}).
 };
 \node[layer, below=of numerica] (salida) {
   {\title Capa de salida} \hfill \texttt{fenix/utils/vtk\_exporter.py} + \texttt{fenix.results}\\
