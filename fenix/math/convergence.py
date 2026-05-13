@@ -7,8 +7,9 @@ fórmula del criterio de convergencia; los solvers no lineales la consumen
 vía ``ConvergenceCriterion.evaluate(...)``.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -91,8 +92,8 @@ class ConvergenceCriterion:
         self.rtol_disp = float(rtol_disp)
         self.atol_force_factor = float(atol_force_factor)
         self.atol_disp_factor = float(atol_disp_factor)
-        self._atol_force: Optional[float] = None
-        self._atol_disp: Optional[float] = None
+        self._atol_force: float | None = None
+        self._atol_disp: float | None = None
 
     @property
     def is_calibrated(self) -> bool:
@@ -190,7 +191,7 @@ class ConvergenceCriterion:
         )
 
 
-def make_convergence_from_config(cfg: Optional[dict]) -> ConvergenceCriterion:
+def make_convergence_from_config(cfg: dict | None) -> ConvergenceCriterion:
     """Construye un ``ConvergenceCriterion`` desde un dict YAML.
 
     El dict acepta cualquier subconjunto de ``rtol_force``, ``rtol_disp``,

@@ -1,5 +1,8 @@
 # fenix_fem/fenix/core/domain.py
-from typing import Dict, Optional, TYPE_CHECKING, Union
+from __future__ import annotations
+
+from typing import Dict, TYPE_CHECKING
+
 from fenix.core.node import Node
 from fenix.logging import get_logger
 
@@ -18,7 +21,7 @@ class Domain:
         # estáticos lo asigna ``fenix.run`` vía ``build_solve_result``
         # (``SolveResult``); para análisis modal lo asigna ``fenix.run_modal``
         # directamente (``ModalResult``). Ambos son frozen dataclasses.
-        self.last_result: Optional[Union["SolveResult", "ModalResult"]] = None
+        self.last_result: SolveResult | ModalResult | None = None
         # Restricciones afines lineales (MPC) declaradas por el usuario
         # (ADR 0004 fase 2). Cada entrada: dict con 'slave' = (node_id,
         # dof_name), 'masters' = [(node_id, dof_name), ...], 'coefficients',

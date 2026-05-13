@@ -1,6 +1,8 @@
 # fenix_fem/fenix/core/element.py
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import ClassVar, List, Optional, Tuple
+from typing import ClassVar, List, Tuple
 
 import numpy as np
 
@@ -71,7 +73,7 @@ class Element(ABC):
     ACCEPTS_UNILATERAL: ClassVar[bool] = False
 
     def __init__(self, element_id: int, nodes: List[Node],
-                 material: Optional[Material] = None):
+                 material: Material | None = None):
         self.id = element_id
         self.nodes = nodes
         self.material = material
@@ -197,7 +199,7 @@ class Element(ABC):
     # API pública de resultados (ADR 0002)
     # ------------------------------------------------------------------
 
-    def internal_forces(self, U_global: np.ndarray) -> Optional[ElementForces]:
+    def internal_forces(self, U_global: np.ndarray) -> ElementForces | None:
         """Esfuerzos internos en ejes locales del elemento, en los nodos i, j.
 
         Convenciones de signo fijadas en Reglas.md §5:

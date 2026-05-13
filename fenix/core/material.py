@@ -1,6 +1,8 @@
 # fenix_fem/fenix/core/material.py
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from fenix.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
 
@@ -19,7 +21,7 @@ class Material(ABC):
         coincide con la dimensión que ellos requieren, atajando errores
         que de otro modo aparecerían como `matmul` críptico en runtime.
 
-    PRIMARY_STATE_VAR : ClassVar[Optional[str]]
+    PRIMARY_STATE_VAR : ClassVar[str | None]
         Nombre de la clave principal dentro del dict de state_vars
         (ej. 'alpha', 'damage'). Se usa en VtkExporter para exportar
         la variable de estado sin hardcodear nombres. `None` para
@@ -43,7 +45,7 @@ class Material(ABC):
     """
 
     STRAIN_DIM: ClassVar[int]
-    PRIMARY_STATE_VAR: ClassVar[Optional[str]] = None
+    PRIMARY_STATE_VAR: ClassVar[str | None] = None
     IS_SYMMETRIC: ClassVar[bool] = True
     IS_UNILATERAL: ClassVar[bool] = False
 
@@ -53,7 +55,7 @@ class Material(ABC):
     # Cuando un consumidor que requiere masa la lee y encuentra `None`, falla
     # con `ValueError` identificando el material — sin posibilidad de fallo
     # silencioso de masa cero. Ver ADR 0008.
-    density: Optional[float] = None
+    density: float | None = None
 
     @abstractmethod
     def compute_state(self, strain, state_vars=None):

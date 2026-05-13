@@ -7,7 +7,6 @@ respeta su elección — herramienta de diagnóstico, no decisión de modelado.
 from __future__ import annotations
 
 import warnings
-from typing import Optional
 
 from fenix.math.linalg.base import LinearAlgebraSolver, StiffnessProperties
 from fenix.math.linalg.ldlt import LDLTSolver
@@ -34,7 +33,7 @@ _LDLT_AVAILABLE = False
 
 def select_solver(
     props: StiffnessProperties,
-    override: Optional[str] = None,
+    override: str | None = None,
 ) -> LinearAlgebraSolver:
     """Devuelve la instancia de backend algebraico adecuada para ``K``.
 

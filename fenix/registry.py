@@ -14,7 +14,9 @@ Las clases se descubren automáticamente al importar `fenix` gracias a
 `fenix.autodiscover.initialize()`, eliminando la necesidad de mantener
 listas de imports en `registry_initialization.py`.
 """
-from typing import Dict, Type, Any, Optional, Callable, Union
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, Type
 
 
 class _BaseRegistry:
@@ -28,8 +30,8 @@ class _BaseRegistry:
     _kind: str = "ítem"
 
     @classmethod
-    def register(cls, name_or_class: Optional[Union[str, Type]] = None,
-                 klass: Optional[Type] = None) -> Union[Type, Callable[[Type], Type]]:
+    def register(cls, name_or_class: str | Type | None = None,
+                 klass: Type | None = None) -> Type | Callable[[Type], Type]:
         # Forma legacy: register("Foo", FooClass)
         if klass is not None:
             cls._items[name_or_class] = klass

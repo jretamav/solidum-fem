@@ -16,7 +16,7 @@ cachean en ``domain.last_result``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable
 
 import numpy as np
 
@@ -30,7 +30,7 @@ StepCallback = Callable[[int, np.ndarray, float], None]
 
 
 def _invoke_solve(solver: Any, F_applied: np.ndarray,
-                   step_callback: Optional[StepCallback]) -> np.ndarray:
+                   step_callback: StepCallback | None) -> np.ndarray:
     """Llama ``solver.solve`` pasando ``step_callback`` solo si el solver lo acepta.
 
     ``LinearSolver.solve`` no lo admite; los no-lineales sí. Detectar por firma
@@ -47,10 +47,10 @@ def _invoke_solve(solver: Any, F_applied: np.ndarray,
 def run(
     domain: Domain,
     *,
-    assembler: Optional[Assembler] = None,
-    solver: Optional[Any] = None,
-    F_applied: Optional[np.ndarray] = None,
-    step_callback: Optional[StepCallback] = None,
+    assembler: Assembler | None = None,
+    solver: Any | None = None,
+    F_applied: np.ndarray | None = None,
+    step_callback: StepCallback | None = None,
 ) -> SolveResult:
     """Ejecuta el pipeline completo y retorna el resultado agregado.
 
@@ -95,9 +95,9 @@ def run(
 def run_modal(
     domain: Domain,
     *,
-    assembler: Optional[Assembler] = None,
-    solver: Optional[ModalSolver] = None,
-    n_modes: Optional[int] = None,
+    assembler: Assembler | None = None,
+    solver: ModalSolver | None = None,
+    n_modes: int | None = None,
 ) -> ModalResult:
     """Ejecuta un análisis modal y retorna el resultado.
 
@@ -141,10 +141,10 @@ def run_modal(
 def run_transient(
     domain: Domain,
     *,
-    assembler: Optional[Assembler] = None,
-    solver: Optional[NewmarkSolver] = None,
-    t_end: Optional[float] = None,
-    dt: Optional[float] = None,
+    assembler: Assembler | None = None,
+    solver: NewmarkSolver | None = None,
+    t_end: float | None = None,
+    dt: float | None = None,
     **solver_kwargs,
 ) -> TransientResult:
     """Ejecuta un análisis dinámico transitorio Newmark y retorna el resultado.
@@ -190,8 +190,8 @@ def run_transient(
 def run_yaml(
     path: str | Path,
     *,
-    step_callback: Optional[StepCallback] = None,
-) -> Union[SolveResult, ModalResult, TransientResult]:
+    step_callback: StepCallback | None = None,
+) -> SolveResult | ModalResult | TransientResult:
     """Parsea un archivo YAML, arma el modelo completo y lo resuelve.
 
     Despacha según el tipo de solver declarado en el YAML:

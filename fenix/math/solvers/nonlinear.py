@@ -1,7 +1,7 @@
 # fenix_fem/fenix/math/solvers/nonlinear.py
 """``NonlinearSolver`` — Newton-Raphson incremental con paso adaptativo.
 """
-from typing import Optional
+from __future__ import annotations
 
 import numpy as np
 
@@ -21,7 +21,7 @@ from fenix.registry import SolverRegistry
 @SolverRegistry.register
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
-    def __init__(self, assembler, convergence: Optional[ConvergenceCriterion] = None, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
+    def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None):
         self.assembler = assembler
         # Política de convergencia (ADR 0007). El criterio se calibra una vez
         # al inicio de solve() con la escala del primer ensamblaje.

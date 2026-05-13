@@ -7,7 +7,9 @@ dentro de cada paso temporal. Subclase de ``NewmarkSolver`` que reusa
 predictores/correctores y reducción de Dirichlet, sobrescribe ``solve()`` para
 ensamblar el residuo dinámico no lineal y resolver iterativamente.
 """
-from typing import Callable, Optional
+from __future__ import annotations
+
+from typing import Callable
 
 import numpy as np
 import scipy.sparse as sp
@@ -74,10 +76,10 @@ class NewmarkSolver:
         *,
         beta: float = 0.25,
         gamma: float = 0.5,
-        rayleigh: Optional[dict] = None,
-        u0: Optional[np.ndarray] = None,
-        u0_dot: Optional[np.ndarray] = None,
-        F_func: Optional[Callable[[float], np.ndarray]] = None,
+        rayleigh: dict | None = None,
+        u0: np.ndarray | None = None,
+        u0_dot: np.ndarray | None = None,
+        F_func: Callable[[float], np.ndarray] | None = None,
         linear_algebra: str = "auto",
         lumping: str = "consistent",
     ):
@@ -98,7 +100,7 @@ class NewmarkSolver:
         self.lumping = str(lumping)
 
     @staticmethod
-    def _resolve_rayleigh(cfg: Optional[dict]) -> tuple[float, float]:
+    def _resolve_rayleigh(cfg: dict | None) -> tuple[float, float]:
         """Traduce el dict del usuario a ``(α, β)``. Tres formas — ver __init__."""
         if cfg is None:
             return 0.0, 0.0
@@ -292,15 +294,15 @@ class NewtonNewmarkSolver(NewmarkSolver):
         t_end: float,
         dt: float,
         *,
-        convergence: Optional[ConvergenceCriterion] = None,
+        convergence: ConvergenceCriterion | None = None,
         max_iter: int = 20,
-        freeze_tangent_after_iter: Optional[int] = None,
+        freeze_tangent_after_iter: int | None = None,
         beta: float = 0.25,
         gamma: float = 0.5,
-        rayleigh: Optional[dict] = None,
-        u0: Optional[np.ndarray] = None,
-        u0_dot: Optional[np.ndarray] = None,
-        F_func: Optional[Callable[[float], np.ndarray]] = None,
+        rayleigh: dict | None = None,
+        u0: np.ndarray | None = None,
+        u0_dot: np.ndarray | None = None,
+        F_func: Callable[[float], np.ndarray] | None = None,
         linear_algebra: str = "auto",
         lumping: str = "consistent",
     ):
