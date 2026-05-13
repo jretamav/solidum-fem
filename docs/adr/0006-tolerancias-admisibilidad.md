@@ -73,6 +73,16 @@ La comparación se encapsula en `Material.is_admissible(f, state_vars)` para que
 - **Formulación variacional/energética pura** (estilo Carstensen-Mielke). Más rigurosa, pero implica reescribir todos los modelos como minimización incremental. Coste desproporcionado para el beneficio inmediato; queda como camino futuro para modelos específicos.
 - **Semi-smooth Newton interno** con la tolerancia viviendo en el Newton. Compatible con el contrato propuesto y se reservaría para cuando los modelos lo demanden (Voce, Chaboche).
 
+## Deuda conocida
+
+Identificada al cerrar el ADR; no bloqueante con los cuatro materiales actuales, a revisitar cuando el catálogo crezca.
+
+- **Contrato por convención, sin enforcement.** Un material futuro puede tener un criterio de admisibilidad no trivial y, por descuido, no invocar `is_admissible`/`admissibility_tol` — replicando su propia comparación con tolerancia hardcoded y saltándose la política central. La clase base no tiene un punto natural de validación que detecte esto en construcción (a diferencia de `STRAIN_DIM`, que sí lo valida el elemento). Mitigación pendiente: cuando haya 6-8 materiales se justifica un mecanismo más estricto (p. ej. flag declarativo `HAS_ADMISSIBILITY_CHECK` que obligue a sobreescribir `admissibility_scale`).
+
+- **Footgun del default `admissibility_scale = 1.0`.** Si un material con check olvida sobreescribir la escala, hereda `1.0` y la tolerancia resultante (`~1e-10` en unidades absolutas) es absurdamente apretada en cualquier sistema físico real. El fallo es silencioso, no ruidoso: produce un régimen "todo plástico/dañado siempre" sin excepción. La mitigación natural es la misma del punto anterior (declarar explícitamente la presencia del check para forzar el override).
+
+- **Sin test del piso `ABS`.** El caso degenerado `escala → 0` está cubierto por el término absoluto `1e-14`, pero ningún material actual lo ejercita. Cuando entre el primero (cinemático puro, phase-field con `g_c` muy pequeña, etc.), escribir el test antes de la implementación.
+
 ## Referencias
 
 - de Souza Neto, Perić, Owen (2008), *Computational Methods for Plasticity*, §7.3 (tolerancias de retorno).
