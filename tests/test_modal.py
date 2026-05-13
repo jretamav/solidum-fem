@@ -285,5 +285,118 @@ solver:
         )
 
 
+class TestModalFreeVibration(unittest.TestCase):
+    """Superposición modal para vibración libre sin amortiguamiento (ADR 0009).
+
+    Soluciones cerradas verificables:
+    - ``u₀ = φ_n``, ``u̇₀ = 0`` ⇒ ``u(t) = cos(ω_n·t)·φ_n``.
+    - ``u₀ = 0``, ``u̇₀ = φ_n`` ⇒ ``u(t) = (1/ω_n)·sin(ω_n·t)·φ_n``.
+    - ``t = 0`` reproduce las condiciones iniciales en el subespacio modal.
+    - Modos de cuerpo rígido (``ω = 0``) integran linealmente en el tiempo.
+    """
+
+    def _bar_and_M(self):
+        dom = _build_axial_bar()
+        asm = Assembler(dom)
+        solver = ModalSolver(asm, n_modes=5)
+        result = solver.solve()
+        M = asm.assemble_mass_matrix()
+        return result, M
+
+    def test_initial_displacement_first_mode_pure_cosine(self):
+        result, M = self._bar_and_M()
+        phi1 = result.modes[:, 0]
+        omega1 = result.frequencies_rad[0]
+        t = np.array([0.0, 0.25, 0.5, 0.75, 1.0]) * (2.0 * np.pi / omega1)
+        u = result.free_vibration(M, u0=phi1, u0_dot=np.zeros_like(phi1), t=t)
+        expected = np.outer(phi1, np.cos(omega1 * t))
+        np.testing.assert_allclose(u, expected, atol=1e-10)
+
+    def test_initial_velocity_first_mode_pure_sine(self):
+        result, M = self._bar_and_M()
+        phi1 = result.modes[:, 0]
+        omega1 = result.frequencies_rad[0]
+        t = np.linspace(0.0, np.pi / omega1, 5)
+        u = result.free_vibration(M, u0=np.zeros_like(phi1), u0_dot=phi1, t=t)
+        expected = np.outer(phi1 / omega1, np.sin(omega1 * t))
+        np.testing.assert_allclose(u, expected, atol=1e-10)
+
+    def test_t_zero_recovers_initial_conditions_in_modal_subspace(self):
+        """Cuando ``u₀`` y ``u̇₀`` viven en el subespacio modal, ``u(0)=u₀``
+        y ``u̇(0)=u̇₀`` exactos. La velocidad inicial se verifica
+        analíticamente vía la proyección modal: ``u̇(0) = Φ·Φᵀ·M·u̇₀``, que
+        en el subespacio coincide con ``u̇₀`` por M-ortonormalidad."""
+        result, M = self._bar_and_M()
+        c_disp = np.array([1.0, 0.5, -0.3, 0.1, -0.05])
+        c_vel = np.array([0.0, 2.0, 0.0, -1.0, 0.5])
+        u0 = result.modes @ c_disp
+        u0_dot = result.modes @ c_vel
+        # u(0) = u₀.
+        u = result.free_vibration(M, u0, u0_dot, t=np.array([0.0]))
+        np.testing.assert_allclose(u[:, 0], u0, atol=1e-10)
+        # u̇(0) reconstruida por la proyección modal exacta.
+        u_dot_0 = result.modes @ (result.modes.T @ (M @ u0_dot))
+        np.testing.assert_allclose(u_dot_0, u0_dot, atol=1e-10)
+
+    def test_one_dof_analytical(self):
+        """Oscilador armónico simple (1 GDL): ``u(t) = u₀·cos(ωt) + (u̇₀/ω)·sin(ωt)``.
+
+        Test sintético sin pasar por ARPACK: instanciamos un ``ModalResult``
+        a mano con un único modo ``φ=1``, ``ω=5 rad/s``, ``M=1``. La
+        respuesta debe coincidir con la fórmula cerrada a precisión de
+        máquina."""
+        omega = 5.0
+        result = ModalResult(
+            frequencies_rad=np.array([omega]),
+            frequencies_hz=np.array([omega / (2.0 * np.pi)]),
+            periods=np.array([2.0 * np.pi / omega]),
+            modes=np.array([[1.0]]),
+            n_modes=1,
+        )
+        M = np.array([[1.0]])
+        u0 = np.array([2.0]); u0_dot = np.array([3.0])
+        t = np.linspace(0.0, 2.0 * np.pi / omega, 11)
+        u = result.free_vibration(M, u0, u0_dot, t)
+        expected = u0[0] * np.cos(omega * t) + (u0_dot[0] / omega) * np.sin(omega * t)
+        np.testing.assert_allclose(u[0, :], expected, atol=1e-13)
+
+    def test_superposition_of_two_modes(self):
+        result, M = self._bar_and_M()
+        phi1 = result.modes[:, 0]; phi2 = result.modes[:, 1]
+        w1 = result.frequencies_rad[0]; w2 = result.frequencies_rad[1]
+        u0 = phi1 + 2.0 * phi2
+        t = np.linspace(0.0, 1.0e-3, 7)
+        u = result.free_vibration(M, u0=u0, u0_dot=np.zeros_like(u0), t=t)
+        expected = (np.outer(phi1, np.cos(w1 * t))
+                    + 2.0 * np.outer(phi2, np.cos(w2 * t)))
+        np.testing.assert_allclose(u, expected, atol=1e-10)
+
+    def test_rigid_body_mode_integrates_linearly_in_time(self):
+        """Si ``ω_n = 0``, la coordenada modal evoluciona como ``a + b·t``.
+
+        Construcción directa de un ModalResult con un modo único rígido
+        sobre una M identidad — evita necesitar un modelo singular en eigsh.
+        """
+        n_dof = 3
+        phi = np.array([[1.0], [0.0], [0.0]])  # un modo rígido translacional en x.
+        result = ModalResult(
+            frequencies_rad=np.array([0.0]),
+            frequencies_hz=np.array([0.0]),
+            periods=np.array([np.inf]),
+            modes=phi,
+            n_modes=1,
+            converged=True,
+        )
+        M = np.eye(n_dof)
+        u0 = np.array([0.0, 0.0, 0.0])
+        u0_dot = np.array([1.0, 0.0, 0.0])
+        t = np.array([0.0, 1.0, 2.0, 5.0])
+        u = result.free_vibration(M, u0, u0_dot, t)
+        # u(t) = (a + b·t) · φ_1 con a=0, b=φ_1^T·M·u̇₀=1 ⇒ u_x(t) = t.
+        expected_x = t
+        np.testing.assert_allclose(u[0, :], expected_x, atol=1e-12)
+        np.testing.assert_allclose(u[1:, :], 0.0, atol=1e-12)
+
+
 if __name__ == "__main__":
     unittest.main()

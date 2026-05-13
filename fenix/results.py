@@ -121,6 +121,78 @@ class ModalResult:
     n_modes: int
     converged: bool = True
 
+    def free_vibration(
+        self,
+        M,
+        u0: np.ndarray,
+        u0_dot: np.ndarray,
+        t: np.ndarray,
+    ) -> np.ndarray:
+        """Respuesta temporal de vibración libre sin amortiguamiento por
+        superposición modal — solución analítica del problema
+        ``M·ü + K·u = 0`` con condiciones iniciales ``(u(0), u̇(0))``.
+
+        Sobre los modos M-ortonormales ``φ_n``, las coordenadas modales
+        ``q_n(t) = φ_n^T·M·u(t)`` satisfacen ``q̈_n + ω_n²·q_n = 0``, con
+        solución::
+
+            q_n(t) = a_n · cos(ω_n·t) + (b_n / ω_n) · sin(ω_n·t)
+
+        donde ``a_n = φ_n^T·M·u₀`` y ``b_n = φ_n^T·M·u̇₀``. Para modos de
+        cuerpo rígido (``ω_n = 0``) la ecuación degenera a ``q̈_n = 0`` y la
+        solución es lineal en el tiempo: ``q_n(t) = a_n + b_n·t``. La
+        respuesta completa se reconstruye como ``u(t) = Σ_n q_n(t)·φ_n``.
+
+        **Limitación importante**: este método solo reconstruye la
+        respuesta sobre el subespacio de los modos calculados. Si pediste
+        ``n_modes = 5``, las componentes de ``u₀`` y ``u̇₀`` en modos más
+        altos no aparecen en ``u(t)``. Para condiciones iniciales con
+        contenido en modos altos, aumenta ``n_modes`` o usa un integrador
+        temporal (fase 3 del ADR 0009, no disponible).
+
+        Parameters
+        ----------
+        M : scipy.sparse.spmatrix or ndarray, shape (n_dof, n_dof)
+            Matriz de masa global. Típicamente ``assembler.assemble_mass_matrix()``.
+        u0 : np.ndarray, shape (n_dof,)
+            Desplazamiento inicial.
+        u0_dot : np.ndarray, shape (n_dof,)
+            Velocidad inicial.
+        t : np.ndarray, shape (n_t,)
+            Vector de instantes temporales para evaluar la respuesta.
+
+        Returns
+        -------
+        np.ndarray, shape (n_dof, n_t)
+            ``u(t)`` con una columna por instante temporal.
+        """
+        u0 = np.asarray(u0, dtype=float).ravel()
+        u0_dot = np.asarray(u0_dot, dtype=float).ravel()
+        t = np.asarray(t, dtype=float).ravel()
+
+        # Coeficientes modales: a_n = φ_n^T·M·u₀,  b_n = φ_n^T·M·u̇₀.
+        a = self.modes.T @ (M @ u0)
+        b = self.modes.T @ (M @ u0_dot)
+
+        omega = self.frequencies_rad
+        # Modulación temporal por modo: q_{n,k} = q_n(t_k), shape (n_modes, n_t).
+        # Modo rígido (ω≈0): q_n(t) = a_n + b_n·t.
+        # Modo elástico (ω>0): q_n(t) = a_n·cos(ω_n·t) + (b_n/ω_n)·sin(ω_n·t).
+        rigid = omega == 0.0
+        q = np.empty((self.n_modes, t.size))
+        if np.any(~rigid):
+            w = omega[~rigid][:, None]      # (n_elast, 1)
+            tt = t[None, :]                 # (1, n_t)
+            q[~rigid, :] = (
+                a[~rigid, None] * np.cos(w * tt)
+                + (b[~rigid, None] / w) * np.sin(w * tt)
+            )
+        if np.any(rigid):
+            q[rigid, :] = a[rigid, None] + b[rigid, None] * t[None, :]
+
+        # u(t) = Φ · q(t)
+        return self.modes @ q
+
 
 @dataclass(frozen=True)
 class SolveResult:
