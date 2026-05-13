@@ -1355,8 +1355,8 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame.py --- archivo propio, no comparte utilidades con otros módulos de elementos.
-  \item \textbf{Clase}: \texttt{Frame2DEuler} --- hereda directamente de \texttt{Element}. La construcción de la matriz de transformación $\mathbf T$ se extrae a un método estático privado \texttt{\_build\_geometry} para que la clase sea autocontenida (anteriormente se usaba una función helper \texttt{\_frame\_geometry} compartida con \texttt{Frame2DTimoshenko} en \texttt{structural.py}; la duplicación es deliberada para garantizar independencia).
+  \item \textbf{Archivo}: fenix/elements/frame/euler.py --- submódulo del paquete \texttt{fenix/elements/frame/} que aloja también \texttt{Frame2DTimoshenko} y \texttt{Frame2DEulerCorot}.
+  \item \textbf{Clase}: \texttt{Frame2DEuler} --- hereda directamente de \texttt{Element}. La construcción de la matriz de transformación $\mathbf T$ se delega a \texttt{build\_geometry\_2d} en fenix/elements/frame/\_shared.py, compartida con \texttt{Frame2DTimoshenko} (la versión corotacional reconstruye $\mathbf T$ desde \texttt{alpha0} por su lógica propia).
   \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerAcceptance} --- los tres criterios físicos y el registro:
   \item \texttt{test\_acceptance\_respuesta\_axial\_pura} (criterio 1) --- resuelve el voladizo con solver, verifica $u_x(L) = FL/(EA)$.
   \item \texttt{test\_acceptance\_voladizo\_carga\_transversal} (criterio 2) --- carga transversal $P$, verifica flecha $v = PL^3/(3EI)$ y rotación $\theta = PL^2/(2EI)$.
@@ -1374,6 +1374,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{fenix/elements/frame.py} y desacoplado del helper compartido \texttt{\_frame\_geometry}. El método estático \texttt{\_build\_geometry} reimplementa la construcción de $\mathbf T$ dentro de la clase. \texttt{Frame2DTimoshenko} sigue en \texttt{structural.py} usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto --- validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
+  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{fenix/elements/frame/\{euler,timoshenko,euler\_corot,\_shared\}.py}. La duplicación de \texttt{\_build\_geometry} entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (\texttt{build\_geometry\_2d} en \texttt{\_shared.py}), pero esta vez sin función helper externa flotante --- pertenece al paquete \texttt{frame/}. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde \texttt{alpha0} porque su cinemática corotacional no se beneficia del helper común.
 \end{itemize}
 
 
@@ -1565,8 +1566,8 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame.py --- archivo propio. La utilidad \texttt{\_frame\_geometry} que antes se compartía con \texttt{Frame2DEuler} en \texttt{structural.py} queda eliminada del repositorio: ambas vigas 2D la replican internamente como método estático \texttt{\_build\_geometry}.
-  \item \textbf{Clase}: \texttt{Frame2DTimoshenko} --- hereda directamente de \texttt{Element}. No comparte código con ningún otro elemento.
+  \item \textbf{Archivo}: fenix/elements/frame/timoshenko.py --- submódulo del paquete \texttt{fenix/elements/frame/} que aloja también \texttt{Frame2DEuler} y \texttt{Frame2DEulerCorot}.
+  \item \textbf{Clase}: \texttt{Frame2DTimoshenko} --- hereda directamente de \texttt{Element}, sin herencia con las otras vigas 2D. Comparte \texttt{build\_geometry\_2d} con \texttt{Frame2DEuler} en fenix/elements/frame/\_shared.py; además, los helpers libres de carga de cuerpo, masa consistente y traducción a \texttt{ElementForces} también viven en \texttt{\_shared.py}.
   \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DTimoshenkoAcceptance}:
   \item \texttt{test\_acceptance\_convergencia\_euler\_en\_viga\_esbelta} (criterio 1) --- viga con $L/h$ muy grande, verifica que la flecha tiende a $PL^3/(3EI)$ con tolerancia relativa $10^{-3}$.
   \item \texttt{test\_acceptance\_respuesta\_axial\_pura} (criterio 2) --- carga axial pura, verifica $u_x = FL/(EA)$.
@@ -1585,6 +1586,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{fenix/elements/frame.py} y desacoplado del helper \texttt{\_frame\_geometry}. Con este movimiento, el helper compartido se elimina completamente del repositorio: \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} replican la construcción de $\mathbf T$ como método estático \texttt{\_build\_geometry}, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Test del criterio 1: se eligió $L/h$ grande en lugar de reproducir un caso específico de libro porque la convergencia Timoshenko \ensuremath{\to} Euler es el comportamiento \textbf{esperado por construcción} (factor $\Phi \to 0$). Verificarlo directamente con el solver completo valida simultáneamente la cinemática de Timoshenko, el tratamiento del shear locking y la integración con ensamblador + solver.
+  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{fenix/elements/frame/}. La duplicación de \texttt{\_build\_geometry} ya no se justifica: ambas vigas comparten \texttt{build\_geometry\_2d} en \texttt{\_shared.py}, helper interno al paquete (no flotante). Las clases siguen sin herencia entre sí.
 \end{itemize}
 
 
@@ -1789,7 +1791,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame.py --- convive con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} por familia temática, sin heredar de ninguno.
+  \item \textbf{Archivo}: fenix/elements/frame/euler\_corot.py --- convive con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} en el paquete \texttt{fenix/elements/frame/}, sin heredar de ninguno. Comparte con ellos los helpers libres de \_shared.py (carga de cuerpo, masa consistente, traducción a \texttt{ElementForces}), pero no \texttt{build\_geometry\_2d}: reconstruye \texttt{T} desde \texttt{alpha0} por su lógica corotacional propia.
   \item \textbf{Clase}: \texttt{Frame2DEulerCorot} --- hereda directamente de \texttt{Element}. Métodos internos \texttt{\_current\_geometry} (longitud, cosenos, ángulo corriente y rigid-body $\alpha_e$) y \texttt{\_unwrap} (reducción a $(-\pi, \pi]$).
   \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerCorotAcceptance} --- 4 criterios + registro:
   \item \texttt{test\_acceptance\_limite\_lineal\_coincide\_con\_frame2deuler}
@@ -1809,6 +1811,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación siguiendo Crisfield §7.3. Convive en \texttt{frame.py} con las vigas lineales por familia temática (todas son vigas 2D), sin herencia ni helpers compartidos.
+  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{fenix/elements/frame/}. EulerCorot vive ahora en \texttt{euler\_corot.py}, sin herencia con las otras vigas 2D. Pasan a compartirse los helpers libres de carga de cuerpo, masa y traducción de fuerzas a través de \texttt{\_shared.py}; la lógica corotacional propia (reconstrucción de \texttt{T} desde \texttt{alpha0}, cinemática actual) se mantiene íntegra dentro de la clase.
   \item \textbf{2026-04-21} \ensuremath{\cdot} La primera versión tenía el signo equivocado en la parte de momentos de $\mathbf K_\sigma$ ($+$ en lugar de $-$). El test de coherencia tangente/fuerza interna por diferencias finitas lo detectó inmediatamente: $\|\mathbf K_{T,\text{analítica}} - \mathbf K_{T,\text{FD}}\|_{\text{rel}}$ del orden de 1e-1 en lugar de 1e-5. Tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ cuidadosamente (ver notas) el signo correcto es negativo. Este episodio justifica retrospectivamente incluir un test FD como criterio de aceptación en toda formulación no-lineal geométrica futura.
   \item \textbf{2026-04-21} \ensuremath{\cdot} El test del límite lineal usa $P=10$ N para obtener $v/L \sim 10^{-4}$: suficientemente pequeño para estar en régimen lineal pero suficientemente grande para que el residuo del solver converja por debajo de \texttt{tol=1e-8} (cargas menores producen desplazamientos del orden del ruido numérico y el Newton oscila en la tolerancia relativa).
 \end{itemize}
@@ -2247,9 +2250,9 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d.py
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad4.py
   \item \textbf{Clase}: \texttt{Quad4} (registrada vía \texttt{@ElementRegistry.register})
-  \item \textbf{Funciones núcleo}: \texttt{\_compute\_kinematics(xi, eta, coords)} y \texttt{\_compute\_integrands(B, C, \ensuremath{\sigma}, detJ, w, t)}, ambas decoradas con \texttt{@njit} (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran.
+  \item \textbf{Funciones núcleo}: \texttt{\_compute\_kinematics(xi, eta, coords)} y \texttt{\_compute\_integrands(B, C, \ensuremath{\sigma}, detJ, w, t)}, ambas decoradas con \texttt{@njit} (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran. Viven en fenix/elements/solid\_2d/\_shared.py y se comparten con Tri3.
   \item \textbf{Tests}:
   \item tests/test\_solid\_2d.py --- ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
   \item tests/test\_patch\_solid\_2d.py --- patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V\&V).
@@ -2441,9 +2444,9 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d.py
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri3.py
   \item \textbf{Clase}: \texttt{Tri3} (registrada vía \texttt{@ElementRegistry.register})
-  \item \textbf{Función núcleo}: \texttt{\_compute\_kinematics\_tri3(coords)}, decorada con \texttt{@njit}. Reutiliza \texttt{\_compute\_integrands} con peso $w = 0{.}5$.
+  \item \textbf{Función núcleo}: \texttt{\_compute\_kinematics\_tri3(coords)}, decorada con \texttt{@njit}, en \_shared.py. Reutiliza \texttt{\_compute\_integrands} (también en \texttt{\_shared}, compartido con Quad4) con peso $w = 0{.}5$.
   \item \textbf{Tests}:
   \item tests/test\_solid\_2d.py --- patch test sobre malla triangular regular y modos de cuerpo rígido.
   \item tests/test\_patch\_solid\_2d.py --- patch test de MacNeal-Harder con nodo interior libre (NAFEMS, V\&V).
@@ -2779,6 +2782,8 @@ No simétrica & \textbf{LU general} (SuperLU) & Backend universal. Cubre plastic
 
 Ningún flag se pide al usuario.
 
+\textbf{\texttt{EigenSolver} (ADR 0009, problema generalizado)}. La capa algebraica incluye además \texttt{fenix.math.linalg.eigen.EigenSolver}, que resuelve el problema generalizado simétrico \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}} envolviendo \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). No comparte el \texttt{Protocol} \texttt{LinearAlgebraSolver} de los backends de \texttt{K\ensuremath{\cdot}x = b} porque su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}. El \texttt{ModalSolver} lo invoca para el análisis modal; los cálculos internos de shift-invert generan una factorización de \texttt{(K − \ensuremath{\sigma} \ensuremath{\cdot} M)} reutilizada en cada iteración Lanczos, así que la palanca de optimización es la misma --- Cholesky enchufado en lugar de SuperLU bajaría 2\ensuremath{\times} el coste del modal en problemas SPD (pendiente, ver memoria de cierre).
+
 \section{Fallback automático SPD \ensuremath{\to} LU}
 
 Si en algún paso \texttt{K} deja de ser positiva definida (paso a régimen postcrítico, daño con reblandecimiento), Cholesky lanza \texttt{CholeskyNotPositiveDefiniteError}. Los tres solvers no lineales lo capturan y reinstancian el backend con LU general para el resto del análisis. La transición es silenciosa --- solo se imprime un mensaje informativo en stdout.
@@ -2791,7 +2796,8 @@ La interfaz expone \texttt{solver.factorize(K)} que retorna un objeto \texttt{Fa
 
 \begin{itemize}
   \item \textbf{Newton modificado}: el \texttt{NonlinearSolver} admite el parámetro \texttt{freeze\_tangent\_after\_iter: int} que congela la factorización tras N iteraciones del paso. Útil cuando la tangente cambia poco y el coste dominante es la factorización.
-  \item \textbf{Análisis futuros} (modal, pandeo lineal, dinámica implícita) que reutilizan factorización están preparados a nivel de interfaz.
+  \item \textbf{Dinámica implícita lineal} (ADR 0009 fase 3): el \texttt{NewmarkSolver} factoriza una sola vez la matriz efectiva \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K} al inicio del análisis y reutiliza la factorización en cada paso temporal. Con \texttt{\ensuremath{\Delta}t} constante y problema lineal, los cientos o miles de pasos del análisis se reducen a sustituciones triangulares baratas. Es el mismo \texttt{FactorizedSolver} del despachador.
+  \item \textbf{Análisis futuros} (pandeo lineal, dinámica implícita no lineal con factorización congelada entre pasos cuando la tangente cambia poco) reutilizan la misma interfaz sin extensiones adicionales.
 \end{itemize}
 
 Ejemplo YAML:
