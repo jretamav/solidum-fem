@@ -43,6 +43,38 @@ class GaussQuadrature:
         return points, weights
 
     @staticmethod
+    def get_points_tri_6():
+        """Dunavant 6 puntos, orden 4 exacto sobre el triángulo de referencia.
+
+        Necesaria para integrar exactamente productos cuadrático×cuadrático
+        (orden 4 sobre ξ, η) — caso de la masa consistente del Tri6. La
+        cuadratura ``tri_3`` (orden 2) la subintegraría, produciendo modos
+        nulos espurios en la masa.
+
+        Coordenadas baricéntricas: dos ternas simétricas
+        (a, a, 1−2a) y (b, b, 1−2b) con sus 3 permutaciones cada una.
+        Referencia: Dunavant (1985), "High degree efficient symmetrical
+        Gaussian quadrature rules for the triangle", IJNME.
+        """
+        a1 = 0.445948490915965
+        w1 = 0.111690794839005
+        a2 = 0.091576213509771
+        w2 = 0.054975871827661
+        # En el triángulo de referencia (0,0)-(1,0)-(0,1) con
+        # L1 = 1 − ξ − η, L2 = ξ, L3 = η: cada terna (L1, L2, L3) mapea a
+        # (ξ, η) = (L2, L3). Sumas de pesos = 0.5 (= área del triángulo).
+        triples_1 = [(a1, a1, 1.0 - 2.0 * a1),
+                     (a1, 1.0 - 2.0 * a1, a1),
+                     (1.0 - 2.0 * a1, a1, a1)]
+        triples_2 = [(a2, a2, 1.0 - 2.0 * a2),
+                     (a2, 1.0 - 2.0 * a2, a2),
+                     (1.0 - 2.0 * a2, a2, a2)]
+        points = [(t[1], t[2]) for t in triples_1] + \
+                 [(t[1], t[2]) for t in triples_2]
+        weights = [w1] * 3 + [w2] * 3
+        return points, weights
+
+    @staticmethod
     def get_points_1d_2():
         """Gauss-Legendre 1D, 2 puntos. Exacta para polinomios hasta grado 3.
 
@@ -60,4 +92,5 @@ QuadratureRegistry.register("1x1", *GaussQuadrature.get_points_2d_1x1())
 QuadratureRegistry.register("2x2", *GaussQuadrature.get_points_2d_2x2())
 QuadratureRegistry.register("3x3", *GaussQuadrature.get_points_2d_3x3())
 QuadratureRegistry.register("tri_3", *GaussQuadrature.get_points_tri_3())
+QuadratureRegistry.register("tri_6", *GaussQuadrature.get_points_tri_6())
 QuadratureRegistry.register("1d_2", *GaussQuadrature.get_points_1d_2())

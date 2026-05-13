@@ -896,17 +896,17 @@ class Tri6(Element):
         return _quadratic_edge_traction(self, edge, t_vec, n_dofs=12)
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del Tri6 por cuadratura del propio elemento (ADR 0009).
+        """Masa consistente del Tri6 con cuadratura específica ``tri_6``
+        (Dunavant 6 puntos, orden 4) — independiente de la cuadratura del
+        elemento (ADR 0009).
 
-        Con la cuadratura ``tri_3`` (3 puntos, orden 2 exacto) la masa
-        consistente queda **levemente subintegrada**: el producto ``N_i·N_j``
-        de funciones cuadráticas es de orden 4 y tri_3 integra exactamente
-        sólo hasta orden 2. El error introducido en la masa es ``O(h⁴)``
-        sobre el campo de prueba, una décima parte del orden de la masa
-        nodal, y se manifiesta como una pequeña deriva en las frecuencias
-        altas. Si la precisión modal sobre Tri6 importa críticamente,
-        inyectar una cuadratura más rica (``tri_6``, ``tri_7``) en el
-        constructor — el resto del solver no necesita cambios.
+        La cuadratura ``tri_3`` del elemento integra exactamente la rigidez
+        (producto lineal×lineal = orden 2) pero **subintegra la masa**
+        (producto cuadrático×cuadrático = orden 4). La subintegración deja
+        modos nulos espurios en M (semi-definida positiva en lugar de
+        definida), que rompen el problema generalizado ``K·φ = ω²·M·φ``.
+        Usar una cuadratura específica para masa es práctica estándar
+        cuando rigidez y masa requieren órdenes distintos.
 
         Returns
         -------
@@ -919,8 +919,10 @@ class Tri6(Element):
             )
         rho = self.material.density
         coords = self.get_coordinate_matrix(ndim=2)
+        # Cuadratura específica para masa (orden 4 exacto), no la del elemento.
+        mass_points, mass_weights = QuadratureRegistry.get("tri_6")
         M_s = np.zeros((6, 6))
-        for (xi, eta), w in zip(self.points, self.weights):
+        for (xi, eta), w in zip(mass_points, mass_weights):
             N = _N_tri6(xi, eta)
             _, detJ = _kinematics_higher_order(_dN_tri6, xi, eta, coords, 6)
             M_s += rho * np.outer(N, N) * (detJ * w * self.thickness)
