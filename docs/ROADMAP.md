@@ -94,55 +94,31 @@ Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sob
 
 ---
 
-## Etapa 5 — Bifurcación · decisión pendiente
+## Etapa 5 — Discontinuidades interiores embebidas · abierta (2026-05-13)
 
-Hoy el catálogo de Fenix cubre **estática completa en 1D/2D + dinámica básica**. La etapa 5 abre una decisión sobre **hacia dónde crece**: el coste de cada bifurcación es distinto, y el orden importa porque algunas opciones desbloquean otras.
+**Capacidad que se abre**: fractura computacional vía **embedded discontinuity en aproximación discreta** (Retama 2010). Primera línea de fractura del proyecto. Introduce dos abstracciones nuevas: una familia paralela `CohesiveMaterial` (traction-jump `t = T[[u]]`, parámetros `σ_t0`, `G_F`) y una subjerarquía de elementos con **DOFs enriquecidos a nivel elemental** y **condensación estática local**. La etapa replica fielmente la formulación KOS sobre CST 2D de la tesis del usuario (incluyendo la aportación original `l_d = (A/h)·cos(θ−α)` del Cap. 6) y la valida con los benchmarks Van Vliet (Cap. 8.1) y el experimento numérico de stress locking que la tesis no contiene.
 
-Las opciones identificadas:
+**Por qué esta entre las 5 opciones inicialmente identificadas (A-E, ahora diferidas)**: maximiza el uso del conocimiento doctoral del usuario (autor de la formulación), construye abstracciones reutilizables (futuros CZM clásicos, futuros incompatible-modes, eventual XFEM-style), e introduce fractura computacional a Fenix — capacidad que ninguno de los caminos A-E aportaba.
 
-### A. **Sólidos 3D** (Hex8, Tet4, después Tet10/Hex20/Hex27)
-- Abre toda la mecánica de sólidos 3D, donde reside el peso del trabajo de investigación que motiva Fenix.
-- Reusa toda la maquinaria de cuadratura, ensamblaje, materiales 2D extendidos a 6 componentes Voigt.
-- **Coste**: alto. Requiere extender materiales (J2, daño, Drucker-Prager) a Voigt 6D — la formulación está; es trabajo de implementación + tests. Hex8 abre el problema de locking volumétrico (B-bar/F-bar) y de hourglassing (reduced integration) que en 2D no era prioritario.
-- **Pre-requisitos**: ninguno bloqueante.
-- **Desbloquea**: prácticamente todas las fases posteriores (térmico, acoplado, plasticidad 3D rigurosa, contacto).
+**ADR que la articula**:
+- [ADR 0010 — Discontinuidades interiores embebidas](adr/0010-discontinuidades-interiores-embebidas.md). 5 fases activas (material cohesivo, elemento CST embedded, validación Cap. 6, benchmark Van Vliet, catálogo + manuales) + 5 fases diferidas (sin-tracking, modo mixto, KSON, 3D, orden superior).
 
-### B. **Placas y láminas** (Mindlin, Kirchhoff, MITC)
-- Cubre la otra mitad de los problemas estructurales que SAP2000/ANSYS atienden con elementos shell.
-- Mecánicamente "intermedio" entre frame y sólido 3D: 2.5D, formulaciones específicas, locking transversal que requiere MITC u otras técnicas.
-- **Coste**: medio-alto. Formulación shell es notoriamente delicada (interpolación covariante, cortante, drilling DOFs).
-- **Pre-requisitos**: ninguno bloqueante.
-- **Desbloquea**: análisis de cascarones, edificios con muros, depósitos.
+**Estado actual (2026-05-13)**:
+- ADR 0010 aceptado.
+- Spec `CohesiveDamageIsotropic` redactada como borrador en [docs/specs/CohesiveDamageIsotropic.md](specs/CohesiveDamageIsotropic.md); `status: draft`. Tres puntos abiertos pendientes de decisión del usuario antes de implementar (ver sección *Diálogo* de la spec).
+- Aún sin código.
 
-### C. **Análisis térmico desacoplado** (`Laplaciano` estacionario + transitorio)
-- Salto a otro tipo de problema físico (escalar, no vectorial). Reutiliza ensamblaje sparse, Dirichlet, integración temporal.
-- Lleva el ADR 0006/0007 a un escenario nuevo (criterio de convergencia escalar, tolerancias en temperatura).
-- **Coste**: medio. La formulación es muy estándar; el plumbing (segundo tipo de problema) requiere alguna abstracción mínima.
-- **Pre-requisitos**: ninguno bloqueante. Es independiente del mecánico.
-- **Desbloquea**: análisis térmico-mecánico acoplado (etapa 6+).
+### Opciones diferidas (las 5 originalmente identificadas como bifurcación)
 
-### D. **Completar el ADR 0009** (HHT-α, diferencias centradas, harmonic)
-- Cierra los huecos de la línea dinámica antes de abrir otra física.
-- HHT-α aporta amortiguamiento numérico controlado (necesario para problemas con altos modos espurios); central differences abre dinámica explícita; harmonic abre respuesta en frecuencia.
-- **Coste**: bajo-medio. Las decisiones arquitecturales ya están tomadas (ADR 0009 §3); falta implementación.
-- **Pre-requisitos**: ninguno.
-- **Desbloquea**: análisis sísmico con espectro de respuesta, dinámica de alta frecuencia.
+Las opciones A-E identificadas anteriormente quedan **diferidas como etapas futuras**, sin orden cerrado. Se enumeran abreviadas; el ROADMAP previo a esta versión contenía la argumentación completa, recuperable por `git log`.
 
-### E. **Mohr-Coulomb 2D + FiberSection para frames no-lineales**
-- Cierra dos huecos puntuales del catálogo actual: el criterio plástico friccional canónico para geotecnia (Drucker-Prager es la suavización; MC es el clásico) y la plasticidad por flexión en frames (hoy los frames sólo plastifican axialmente).
-- **Coste**: medio. MC tiene esquinas en la superficie (return mapping a aristas y vértice); FiberSection requiere diseñar el contrato sección-fibra y modificar `Frame*` para consumirla.
-- **Pre-requisitos**: ninguno.
-- **Desbloquea**: análisis de muros de contención, taludes; análisis sísmico de marcos con rótulas plásticas distribuidas.
+- **A. Sólidos 3D** (Hex8, Tet4, Tet10/Hex20/Hex27): extender materiales J2/daño/Drucker-Prager a Voigt 6D; abrir locking volumétrico y hourglassing. Pre-requisito de prácticamente todas las extensiones posteriores.
+- **B. Placas y láminas** (Mindlin, Kirchhoff, MITC): formulación shell con cortante transversal y drilling DOFs.
+- **C. Análisis térmico desacoplado** (Laplaciano estacionario + transitorio): salto a problema escalar; abre la puerta a termomecánica acoplada.
+- **D. Completar ADR 0009** (HHT-α, diferencias centradas, harmonic): cierra los huecos de la línea dinámica.
+- **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames).
 
-**Decisión pendiente del usuario**. Argumento por opción más representativa de la dirección del proyecto:
-
-- **Si la investigación apunta a problemas de sólidos 3D con plasticidad/daño** (continuum mechanics computacional rigurosa): **A**.
-- **Si apunta a estructuras civiles complejas** (cascarones, depósitos, edificios con muros): **B**.
-- **Si la motivación principal es avanzar pronto hacia termomecánica acoplada**: **C** primero, después acoplado.
-- **Si lo prioritario es no dejar la línea dinámica a medias**: **D**.
-- **Si la prioridad es completar bien el catálogo de 2D antes de abrir 3D**: **E**.
-
-No hay decisión correcta en abstracto. Cuando el usuario elija, se redactará un ADR que materialice la etapa 5 con sus componentes y criterios de cierre.
+Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra a continuación se retoma con argumentos de la dirección que tome el proyecto entonces.
 
 ---
 
@@ -193,4 +169,4 @@ El presente ROADMAP es uno de cuatro documentos previstos para que la traceabili
 
 ---
 
-*Última actualización: 2026-05-14 — cierre de etapa 4 (parcial) y formalización del documento.*
+*Última actualización: 2026-05-13 — apertura de Etapa 5 (discontinuidades interiores embebidas, ADR 0010); las 5 opciones A-E originalmente identificadas quedan diferidas.*

@@ -14,7 +14,7 @@
 | **Elementos** | 15 (10 estructurales 1D + 5 sólidos 2D) |
 | **Materiales** | 8 (2 elásticos + 2 plasticidad + 2 daño + 1 cable + 1 friccional) |
 | **Solvers** | 6 (3 estáticos + 1 modal + 2 transitorios) |
-| **ADRs aceptados** | 9 (0001–0009) |
+| **ADRs aceptados** | 10 (0001–0010) |
 | **Specs `validated`** | 23 |
 | **Etapas cerradas** | 3 completas + 1 parcial (etapa 4 vía ADR 0009 fases 1, 3, 4) |
 
@@ -84,9 +84,9 @@ Ninguno de los tres bloquea el avance. Todos están documentados con su contexto
 
 ## Próximo hito
 
-**Decidir la Etapa 5** entre las 5 opciones del ROADMAP (sólidos 3D / placas-láminas / térmico desacoplado / completar ADR 0009 / Mohr-Coulomb + FiberSection). La decisión la toma el usuario; tras ella, se redactará un ADR que materialice la etapa.
+**Fase 1 del ADR 0010** — discontinuidades interiores embebidas. Subsistema nuevo (fractura computacional vía embedded discontinuity en aproximación discreta, fiel a Retama 2010). Arranca con la spec + implementación de `CohesiveDamageIsotropic` (material traction-jump, Modo-I, daño isótropo, softening lineal/exponencial), seguida del elemento `CST_Embedded2D` (KOS), la validación numérica del `l_d` correcto (Cap. 6 de la tesis) y el benchmark de Van Vliet.
 
-Mientras la decisión esté pendiente, **el proyecto se considera estable** — no hay refactor pendiente, ni componente a medio implementar, ni test rojo.
+Esta decisión sustituye al "decidir Etapa 5" anterior; las 5 opciones del ROADMAP original quedan diferidas en favor de esta línea por autorización explícita del usuario (autor de la formulación).
 
 ---
 
@@ -100,4 +100,4 @@ Mientras la decisión esté pendiente, **el proyecto se considera estable** — 
 
 ---
 
-*Última actualización: 2026-05-14 — tras cierre de etapa 4 (parcial) y formalización del sistema de documentos navegacionales.*
+*Última actualización: 2026-05-13 — tras aceptación de ADR 0010 (discontinuidades interiores embebidas).*

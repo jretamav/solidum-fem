@@ -26,7 +26,7 @@ Para arrancar sin contexto previo, lee en este orden — **no necesitas más par
 2. **[STATUS.md](STATUS.md)** (~2 min): foto del estado actual. Métricas, capacidades, deuda técnica, próximo hito.
 3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente (Etapa 5). Da contexto histórico.
 4. **[MATRIZ.md](MATRIZ.md)** (~3 min): qué combinaciones elemento × material son válidas y testeadas.
-5. **Último ADR aceptado** (hoy [ADR 0009](adr/0009-analisis-modal-y-dinamico.md)): para entender la última decisión arquitectural grande.
+5. **Último ADR aceptado** (hoy [ADR 0010 — Discontinuidades interiores embebidas](adr/0010-discontinuidades-interiores-embebidas.md)): para entender la última decisión arquitectural grande. Apunta la **Etapa 5 en curso** (fractura computacional vía embedded discontinuity, fiel a la tesis del usuario, fase 1 = material cohesivo `CohesiveDamageIsotropic` cuya spec está en estado `draft`).
 
 Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/specs/<Nombre>.md` y su entrada en `docs/catalogo_<elementos|materiales|solvers>.md`.
 
@@ -49,10 +49,11 @@ fenix_fem/
 │   ├── results.py                ← SolveResult, ModalResult, TransientResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 385 verdes + 5 skipped (pytest)
+├── tests/                        ← 401 verdes + 5 skipped (pytest)
 ├── docs/
-│   ├── adr/                      ← 0001-0009: decisiones arquitecturales
+│   ├── adr/                      ← 0001-0010: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
+│   ├── referencias/              ← PDFs/papers citados desde ADRs y specs (tesis Retama 2010, etc.)
 │   ├── catalogo_*.md             ← índices navegables por dominio
 │   ├── ROADMAP.md, STATUS.md,
 │   ├── MATRIZ.md, ONBOARDING.md  ← documentos navegacionales (este set)
@@ -129,7 +130,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ## 8. Antes de commitear
 
-1. `python -m pytest tests/ -q` verde (385 pasan, 5 skipped es normal).
+1. `python -m pytest tests/ -q` verde (401 pasan, 5 skipped es normal).
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
 4. **Pre-commit hooks**: no usar `--no-verify`. Si un hook falla, investigar la causa raíz.
