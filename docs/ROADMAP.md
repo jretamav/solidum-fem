@@ -13,7 +13,7 @@
 
 ## Estado a fecha del último commit
 
-Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)** y **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo (1D y 2D)**. Sobre la misma maquinaria se ha abierto recientemente la línea **dinámica**: **análisis modal** y **transitorio Newmark (lineal y no lineal)**. **385 tests verdes + 5 skipped intencionales**.
+Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)** y **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo (1D y 2D)**. Sobre la misma maquinaria se ha abierto recientemente la línea **dinámica**: **análisis modal** y **transitorio Newmark (lineal y no lineal)**. **401 tests verdes + 5 skipped intencionales**.
 
 > Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver `docs/STATUS.md` (pendiente de crear; ver §"Documentos complementarios" al final).
 
@@ -166,7 +166,6 @@ Todos comparten un patrón: **incrementales sobre lo existente, no refactor estr
 Items que no bloquean el avance pero conviene tener visibles:
 
 - **ADR 0002 incompleto para sólidos 2D** ([memoria de proyecto](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_adr_0002_incompleto_solidos.md)): `internal_forces` devuelve `None` en sólidos; `compute_internal_forces`/`compute_gauss_state` cubren la necesidad. Decisión sobre cerrar o replantear el ADR diferida hasta caso de uso real (post-proceso avanzado, sólidos 3D, consumidor externo).
-- **Cobertura asimétrica de sólidos 2D con materiales no lineales**: sólo `Quad4` tiene tests de sistema con `VonMises2D` / `DruckerPrager2D` / `IsotropicDamage2D`; `Quad8` / `Quad9` / `Tri6` / `Tri3` están en ○ (válidos por contrato, sin verificación de pipeline). Coste de cubrir: bajo. Ver [STATUS.md](STATUS.md) §"Deuda técnica priorizada" y [MATRIZ.md](MATRIZ.md) §"Huecos visibles".
 - **`FiberSection` para frames no-lineales** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_pendiente_fiber_section.md)): frames 2D/3D plastifican sólo en axial. Plasticidad por flexión espera caso de uso (entraría como componente de la etapa 5 si la opción E se elige).
 - **Reglas de disparo C y D** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_reglas_disparo_pendientes.md)): dos refactors arquitecturales que esperan eventos antes de ejecutarse.
 

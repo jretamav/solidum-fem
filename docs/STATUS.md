@@ -10,7 +10,7 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 385 pasan / 5 skipped / 0 fallos (390 colectados) |
+| **Tests** | 401 pasan / 5 skipped / 0 fallos (406 colectados) |
 | **Elementos** | 15 (10 estructurales 1D + 5 sólidos 2D) |
 | **Materiales** | 8 (2 elásticos + 2 plasticidad + 2 daño + 1 cable + 1 friccional) |
 | **Solvers** | 6 (3 estáticos + 1 modal + 2 transitorios) |
@@ -73,11 +73,12 @@
 | # | Item | Criterio de retoma |
 |---|---|---|
 | 1 | `internal_forces` devuelve `None` en sólidos 2D (ADR 0002 incompleto). | Cuando entren sólidos 3D, post-proceso avanzado o consumidor externo que pida `ElementForces` para sólidos. |
-| 2 | Sólidos 2D `Quad8` / `Quad9` / `Tri6` / `Tri3` sin tests de sistema con materiales no lineales (`VonMises2D`, `DruckerPrager2D`, `IsotropicDamage2D`). Sólo `Quad4` está blindado. El catálogo declara compatibilidad sin verificación. Ver §"Huecos visibles" de [MATRIZ.md](MATRIZ.md). | Bajo demanda — coste bajo (parametrizar 3 tests existentes sobre 4 elementos). Conveniente antes de aceptar nuevos consumidores externos del catálogo. |
-| 3 | `FiberSection` para plasticidad por flexión en frames. | Si la Etapa 5 se decide por la opción E (Mohr-Coulomb + FiberSection). |
-| 4 | Reglas de disparo C y D arquitecturales pendientes ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_reglas_disparo_pendientes.md)). | Cuando ocurra el evento que cada regla espera. |
+| 2 | `FiberSection` para plasticidad por flexión en frames. | Si la Etapa 5 se decide por la opción E (Mohr-Coulomb + FiberSection). |
+| 3 | Reglas de disparo C y D arquitecturales pendientes ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_reglas_disparo_pendientes.md)). | Cuando ocurra el evento que cada regla espera. |
 
-Ninguno de los cuatro bloquea el avance. Todos están documentados con su contexto en la memoria del proyecto o en [MATRIZ.md](MATRIZ.md), y no requieren acción proactiva.
+Ninguno de los tres bloquea el avance. Todos están documentados con su contexto en la memoria del proyecto o en [MATRIZ.md](MATRIZ.md), y no requieren acción proactiva.
+
+**Deuda saldada 2026-05-14**: cobertura asimétrica de sólidos 2D no-Quad4 con materiales no lineales — cerrada con [`test_solid_2d_nonlinear_higher_order.py`](../tests/test_solid_2d_nonlinear_higher_order.py) (16 tests verdes a la primera; no había bug latente).
 
 ---
 
