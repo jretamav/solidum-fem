@@ -175,9 +175,9 @@ Decisión: `bulk_material` y `cohesive_material` se declaran por separado en el 
 
 | Fase | Componente | Entrega | Estado |
 |---|---|---|---|
-| 1 | Spec + implementación `CohesiveDamageIsotropic` (Mode-I, daño isótropo, softening lineal/exponencial) | Material testeado en aislamiento con historial prescrito de `[[u]]`; verifica `∫t·d[[u]] = G_F` | Pendiente |
-| 2 | Spec + implementación `CST_Embedded2D` (KOS, fiel a Retama 2010 Caps. 2, 5, 7) | Elemento aislado en tracción uniaxial reproduce curva σ–ε esperada | Pendiente |
-| 3 | Validación del Cap. 6 — test `l_d ingenuo` vs `l_d = (A/h)·cos(θ−α)` | Test integrado en spec del elemento documenta stress locking en la versión ingenua | Pendiente |
+| 1 | Spec + implementación `CohesiveDamageIsotropic` (Mode-I, daño isótropo, softening lineal/exponencial) | Material testeado en aislamiento con historial prescrito de `[[u]]`; verifica `∫t·d[[u]] = G_F` | Completado (commit `c7e68de`, 2026-05-18) |
+| 2 | Spec + implementación `CST_Embedded2D` (KOS, fiel a Retama 2010 Caps. 2, 5, 7) | Elemento aislado en tracción uniaxial reproduce curva σ–ε esperada | Completado (commit `2e85a70`, 2026-05-18) |
+| 3 | Validación del Cap. 6 — test `l_d ingenuo` vs `l_d = (A/h)·cos(θ−α)` | Test integrado en spec del elemento documenta stress locking en la versión ingenua | Completado (`tests/test_ld_chapter_6_validation.py`, 2026-05-18) |
 | 4 | Benchmark Van Vliet (Retama 2010 §8.1) | Test end-to-end, comparativa con curva experimental para ambas leyes de softening | Pendiente |
 | 5 | Catálogos + manuales | Entradas en `catalogo_elementos.md` y `catalogo_materiales.md`; manuales auto-regenerados | Pendiente |
 | F | Cracking-elements-style sin crack tracking (Brank 2021, Zhang 2018+) | Variante del elemento que elimina la necesidad de tracking trivial | Diferida |
