@@ -177,6 +177,59 @@ def _frame2d_consistent_mass_local(rho: float, A: float, I: float,
     return M
 
 
+def _frame2d_lumped_mass_local(rho: float, A: float, I: float,
+                                 L: float) -> np.ndarray:
+    """Matriz de masa lumped 6×6 en ejes locales del frame 2D (ADR 0009 fase 2).
+
+    Esquema **nodal directo**: la masa se distribuye en partes iguales entre
+    los dos nodos del elemento, con la misma magnitud en cada dirección
+    traslacional y una inercia rotacional proporcional al momento de
+    inercia geométrico de la sección:
+
+    .. math::
+
+        m_t = \\rho A L / 2 \\quad \\text{(por DOF traslacional)}
+
+        m_r = \\rho I L / 2 \\quad \\text{(por DOF rotacional)}
+
+    Layout local: ``[ux_i, uy_i, rz_i, ux_j, uy_j, rz_j]``.
+
+    Propiedades:
+
+    - Preserva la masa total ``ρAL`` exactamente (suma sobre nodos en
+      cada dirección).
+    - Preserva la inercia rotacional propia total ``ρIL`` (suma sobre
+      nodos).
+    - **Diagonal en global** tras la rotación ``T^T·M·T``: el bloque
+      traslacional 2×2 por nodo es ``m_t·I_2``, invariante a rotación 2D;
+      el bloque rotacional 1×1 es escalar. Esta diagonalidad en global es
+      la condición que vuelve trivial la inversión ``M⁻¹`` requerida por
+      diferencias centradas (ADR 0009 fase 5).
+
+    Frente al lumping HRZ canónico (Hinton-Rock-Zienkiewicz 1976) aplicado
+    a la diagonal consistente: el HRZ daría masas distintas en los DOFs
+    ``ux_local`` (lineal) y ``uy_local`` (Hermitiana) — diagonal en local
+    pero **no** en global tras rotar. El esquema nodal directo sacrifica
+    la "fidelidad a la diagonal consistente" a cambio de la diagonalidad
+    global, que es la propiedad operacional relevante para integradores
+    explícitos. Es el esquema lumped estándar en frames (SAP2000, OpenSees,
+    Cook-Malkus-Plesha §11.4).
+
+    Parameters
+    ----------
+    rho, A, I, L
+        Mismos parámetros físicos que :func:`_frame2d_consistent_mass_local`.
+
+    Returns
+    -------
+    np.ndarray, shape (6, 6)
+        Diagonal, positiva definida.
+    """
+    m_t = rho * A * L / 2.0
+    m_r = rho * I * L / 2.0
+    return np.diag([m_t, m_t, m_r, m_t, m_t, m_r])
+
+
 def _frame2d_forces_from_local(F_local: np.ndarray) -> ElementForces:
     """Traduce un vector F_local (6,) en convención stress-resultant interna a
     ``ElementForces`` en convención de viga estructural (Reglas.md §5).

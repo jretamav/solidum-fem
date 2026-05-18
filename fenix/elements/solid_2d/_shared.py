@@ -32,6 +32,7 @@ from fenix.constants import ZERO_JACOBIAN_TOL
 from fenix.core.element import Element
 from fenix.core.material import Material
 from fenix.core.node import Node
+from fenix.math.mass_lumping import lump_hrz
 from fenix.registry import QuadratureRegistry
 
 
@@ -407,27 +408,27 @@ class _HigherOrderSolid2D(Element):
         return f
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del elemento sólido 2D de orden superior (ADR 0009).
+        """Masa del elemento sólido 2D de orden superior (ADR 0009).
 
-        Cuando la cuadratura del elemento integra exactamente el producto
-        cuadrático×cuadrático (Quad8/Quad9 con 3×3, orden 5), la masa se
-        integra con esa misma cuadratura — caso default
-        (``_MASS_QUADRATURE = None``). Cuando subintegra (Tri6 con
-        ``tri_3``, orden 2, frente al producto de orden 4 de la masa), la
-        subclase declara ``_MASS_QUADRATURE`` con una regla específica
+        **Consistente** (default): cuando la cuadratura del elemento integra
+        exactamente el producto cuadrático×cuadrático (Quad8/Quad9 con 3×3,
+        orden 5), la masa se integra con esa misma cuadratura — caso
+        ``_MASS_QUADRATURE = None``. Cuando subintegra (Tri6 con ``tri_3``,
+        orden 2, frente al producto de orden 4 de la masa), la subclase
+        declara ``_MASS_QUADRATURE`` con una regla específica
         suficientemente exacta (e.g. ``tri_6``, Dunavant orden 4), evitando
         modos nulos espurios en M.
+
+        **Lumped** (fase 2): HRZ canónico aplicado a la diagonal
+        consistente. En Tri6/Quad8/Quad9 (con nodos intermedios o
+        centroide) el HRZ preserva masa total y mantiene la
+        proporcionalidad de la diagonal; row-sum daría masas negativas en
+        los vértices y debe evitarse (Bathe FEP §9.2.4).
 
         Returns
         -------
         np.ndarray, shape (2·n_nodos, 2·n_nodos)
         """
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"{type(self).__name__}.compute_mass_matrix: lumping="
-                f"'{lumping}' no implementado. Fase 1 (ADR 0009) solo "
-                f"admite 'consistent'."
-            )
         rho = self.material.density
         coords = self.get_coordinate_matrix(ndim=2)
         n = self._n_nodes
@@ -436,10 +437,22 @@ class _HigherOrderSolid2D(Element):
         else:
             mass_points, mass_weights = QuadratureRegistry.get(self._MASS_QUADRATURE)
         M_s = np.zeros((n, n))
+        m_total = 0.0
         for (xi, eta), w in zip(mass_points, mass_weights):
             N = self._SHAPE_FN(xi, eta)
             _, detJ = _kinematics_higher_order(
                 self._GRAD_FN, xi, eta, coords, n
             )
-            M_s += rho * np.outer(N, N) * (detJ * w * self.thickness)
-        return _expand_scalar_mass(M_s)
+            weight = detJ * w * self.thickness
+            M_s += rho * np.outer(N, N) * weight
+            m_total += rho * weight
+        M_consistent = _expand_scalar_mass(M_s)
+        if lumping == "lumped":
+            return lump_hrz(M_consistent, total_mass=m_total, n_translational_dirs=2)
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"{type(self).__name__}.compute_mass_matrix: lumping="
+                f"'{lumping}' no soportado. Valores admitidos: "
+                f"'consistent', 'lumped'."
+            )
+        return M_consistent

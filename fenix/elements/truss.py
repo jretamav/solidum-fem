@@ -108,31 +108,40 @@ class Truss2D(Element):
         return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Matriz de masa elemental consistente (ADR 0009 §1).
+        """Matriz de masa elemental (ADR 0009 §1, fase 2 con ``lumping="lumped"``).
 
-        Masa translacional invariante rotacional: ``M = (ρAL₀/6) · M̂`` con
+        **Consistente** (default): masa translacional invariante rotacional
+        ``M = (ρAL₀/6) · M̂`` con ``M̂ = [[2I, I], [I, 2I]]`` (``I = I₂``).
+        Sale del Galerkin sobre funciones de forma lineales aplicadas
+        independientemente a cada componente traslacional. La inercia
+        aparece tanto en la dirección axial como en la transversal — la
+        barra articulada **transmite** solo axial, pero su masa física tiene
+        componente traslacional global completa. Convención canónica
+        (SAP2000, OpenSees, ANSYS). Invariante a la orientación.
 
-            M̂ = [[2I, I], [I, 2I]],    I = I₂
+        **Lumped**: masa nodal uniforme ``ρAL₀/2`` por DOF traslacional. Sin
+        DOFs rotacionales en la barra articulada, el lumping HRZ canónico
+        coincide con la fórmula nodal directa (suma de fila / partición
+        equitativa entre nodos). Diagonal e invariante a rotación.
 
-        Sale del Galerkin sobre las funciones de forma lineales aplicadas
-        independientemente a cada componente del desplazamiento traslacional.
-        La inercia se aplica tanto en la dirección axial como en la
-        transversal — la barra articulada **transmite** solo axial, pero su
-        masa física tiene componente traslacional global completa. Convención
-        canónica (SAP2000, OpenSees, ANSYS). Invariante a la orientación de
-        la barra: no requiere transformación local→global.
+        Parameters
+        ----------
+        lumping : {"consistent", "lumped"}, default "consistent"
 
         Returns
         -------
         np.ndarray, shape (4, 4)
-            Simétrica, positiva definida.
+            Simétrica positiva definida.
         """
+        m_e = self.material.density * self.A * self.L0
+        if lumping == "lumped":
+            return np.diag([0.5 * m_e] * 4)
         if lumping != "consistent":
             raise NotImplementedError(
                 f"Truss2D.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        coef = self.material.density * self.A * self.L0 / 6.0
+        coef = m_e / 6.0
         return coef * np.array([
             [2.0, 0.0, 1.0, 0.0],
             [0.0, 2.0, 0.0, 1.0],
@@ -297,21 +306,28 @@ class Truss3D(Element):
                          half * b[0], half * b[1], half * b[2]])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Matriz de masa elemental consistente (ADR 0009 §1).
+        """Matriz de masa elemental (ADR 0009 §1, fase 2 con ``lumping="lumped"``).
 
-        Versión 3D de la masa translacional de Truss2D:
+        **Consistente**: versión 3D de la masa translacional de Truss2D,
         ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₃)``. Invariante rotacional.
+
+        **Lumped**: masa nodal uniforme ``ρAL₀/2`` por DOF traslacional.
+        Análogo al caso 2D — sin DOFs rotacionales en la barra articulada,
+        HRZ coincide con la fórmula nodal directa. Diagonal en globales.
 
         Returns
         -------
         np.ndarray, shape (6, 6)
         """
+        m_e = self.material.density * self.A * self.L0
+        if lumping == "lumped":
+            return np.diag([0.5 * m_e] * 6)
         if lumping != "consistent":
             raise NotImplementedError(
                 f"Truss3D.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        coef = self.material.density * self.A * self.L0 / 6.0
+        coef = m_e / 6.0
         I3 = np.eye(3)
         M = np.block([[2.0 * I3, I3       ],
                       [I3,       2.0 * I3]])

@@ -135,24 +135,29 @@ class Cable2DCorot(Element):
         return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Matriz de masa elemental consistente, evaluada en la configuración
-        de referencia (ADR 0009 §1 + Lagrangeano total).
+        """Matriz de masa elemental (ADR 0009 §1, fase 2 con ``lumping="lumped"``).
 
-        Masa translacional invariante rotacional, idéntica en forma a la del
-        Truss2D: ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₂)``. La unilateralidad
-        del cable (sólo carga axial en tracción) afecta a la rigidez, no a la
-        inercia: la masa total del cable es siempre física.
+        **Consistente**: idéntica en forma a Truss2D
+        ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₂)``, evaluada en configuración
+        de referencia (Lagrangeano total). La unilateralidad del cable
+        afecta a la rigidez, no a la inercia: la masa total siempre es física.
+
+        **Lumped**: masa nodal uniforme ``ρAL₀/2`` por DOF traslacional
+        (HRZ = nodal directo en barras articuladas).
 
         Returns
         -------
         np.ndarray, shape (4, 4)
         """
+        m_e = self.material.density * self.A * self.L0
+        if lumping == "lumped":
+            return np.diag([0.5 * m_e] * 4)
         if lumping != "consistent":
             raise NotImplementedError(
                 f"Cable2DCorot.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        coef = self.material.density * self.A * self.L0 / 6.0
+        coef = m_e / 6.0
         return coef * np.array([
             [2.0, 0.0, 1.0, 0.0],
             [0.0, 2.0, 0.0, 1.0],
@@ -285,19 +290,26 @@ class Cable3DCorot(Element):
                          half * b[0], half * b[1], half * b[2]])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del cable 3D, evaluada en configuración de referencia
-        (Lagrangeano total). Análoga a Truss3D.
+        """Matriz de masa elemental (ADR 0009 §1, fase 2 con ``lumping="lumped"``).
+
+        **Consistente**: análoga a Truss3D
+        ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₃)``.
+
+        **Lumped**: masa nodal uniforme ``ρAL₀/2`` por DOF traslacional.
 
         Returns
         -------
         np.ndarray, shape (6, 6)
         """
+        m_e = self.material.density * self.A * self.L0
+        if lumping == "lumped":
+            return np.diag([0.5 * m_e] * 6)
         if lumping != "consistent":
             raise NotImplementedError(
                 f"Cable3DCorot.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        coef = self.material.density * self.A * self.L0 / 6.0
+        coef = m_e / 6.0
         I3 = np.eye(3)
         M = np.block([[2.0 * I3, I3       ],
                       [I3,       2.0 * I3]])

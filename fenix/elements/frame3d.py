@@ -327,24 +327,73 @@ class Frame3D(Element):
 
         return M
 
-    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Matriz de masa consistente del Frame3D en ejes globales.
+    def _build_local_mass_lumped(self, rho: float) -> np.ndarray:
+        """Matriz de masa lumped 12×12 en ejes locales (ADR 0009 fase 2).
 
-        Ensambla :meth:`_build_local_mass` (axial + Hermitiana cúbica en los
-        dos planos de flexión + inercia rotacional de sección ``ρI`` en
-        ambos ejes locales) y la rota con ``T^T · M_local · T``, donde ``T``
-        es la matriz 12×12 ya construida en ``__init__``. ADR 0009 §1.
+        Esquema nodal directo:
+
+        - Traslacional ``m_t = ρAL/2`` por DOF (``ux``, ``uy``, ``uz``).
+        - Rotacional torsional ``m_rx = ρ·Jp·L/2`` con ``Jp = Iy + Iz``
+          (momento polar geométrico).
+        - Rotacional flexional ``m_ry = ρ·Iy·L/2``, ``m_rz = ρ·Iz·L/2``.
+
+        Diagonal en local. **En global la diagonalidad se preserva sólo
+        cuando el eje del elemento coincide con un eje global** (la
+        rotación T no mezcla DOFs locales con globales en los grados
+        rotacionales). En orientación oblicua, el bloque traslacional 3×3
+        por nodo permanece diagonal porque ``m_t·I_3`` es invariante a
+        SO(3); el bloque rotacional 3×3 por nodo no es escalar porque
+        ``m_rx = ρJp·L/2``, ``m_ry = ρIy·L/2``, ``m_rz = ρIz·L/2`` son
+        valores siempre distintos para una sección real (la torsional usa
+        el momento polar geométrico ``Jp = Iy + Iz``, las flexionales sólo
+        ``Iy`` o ``Iz``), de modo que tras rotar T el bloque rotacional
+        queda lleno. M_global resulta entonces **bloque-diagonal** por
+        nodo. Es la limitación estándar del lumping en frames 3D
+        (Cook-Malkus-Plesha §11.4): aceptable para Newmark/HHT
+        (factorización requerida igualmente) y para diferencias centradas
+        con inversión local de bloques 6×6 baratos por nodo.
+
+        Layout local: ``[ux_i, uy_i, uz_i, rx_i, ry_i, rz_i,
+        ux_j, uy_j, uz_j, rx_j, ry_j, rz_j]``.
 
         Returns
         -------
         np.ndarray, shape (12, 12)
         """
-        if lumping != "consistent":
+        L = self.L0
+        m_t = rho * self.A * L / 2.0
+        Jp = self.Iy + self.Iz
+        m_rx = rho * Jp * L / 2.0
+        m_ry = rho * self.Iy * L / 2.0
+        m_rz = rho * self.Iz * L / 2.0
+        return np.diag([m_t, m_t, m_t, m_rx, m_ry, m_rz,
+                        m_t, m_t, m_t, m_rx, m_ry, m_rz])
+
+    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
+        """Matriz de masa del Frame3D en ejes globales (ADR 0009).
+
+        **Consistente** (fase 1): :meth:`_build_local_mass` (axial +
+        Hermitiana cúbica en los dos planos de flexión + inercia
+        rotacional de sección ``ρI`` en ambos ejes locales + torsión
+        ``ρJp``).
+
+        **Lumped** (fase 2): :meth:`_build_local_mass_lumped`. Ver allí la
+        nota sobre Iy ≠ Iz y bloque-diagonalidad en global.
+
+        Returns
+        -------
+        np.ndarray, shape (12, 12)
+        """
+        rho = self.material.density
+        if lumping == "lumped":
+            M_local = self._build_local_mass_lumped(rho)
+        elif lumping == "consistent":
+            M_local = self._build_local_mass(rho)
+        else:
             raise NotImplementedError(
                 f"Frame3D.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        M_local = self._build_local_mass(self.material.density)
         return self.T.T @ M_local @ self.T
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:

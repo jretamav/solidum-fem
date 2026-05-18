@@ -13,6 +13,7 @@ from fenix.elements.frame._shared import (
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
+    _frame2d_lumped_mass_local,
 )
 from fenix.registry import ElementRegistry
 from fenix.results import ElementForces
@@ -188,18 +189,26 @@ class Frame2DEulerCorot(Element):
         ])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del Frame2DEulerCorot, evaluada en la configuración
-        de referencia (Lagrangeano total, ADR 0009 §1). Análoga a Frame2DEuler
-        pero la matriz de transformación se reconstruye desde ``alpha0`` ya que
-        el corotacional no almacena ``self.T`` precalculada.
+        """Matriz de masa del Frame2DEulerCorot en ejes globales (ADR 0009).
+
+        Evaluada en la configuración de referencia (Lagrangeano total).
+        Análoga a Frame2DEuler pero la matriz de transformación se
+        reconstruye desde ``alpha0`` ya que el corotacional no almacena
+        ``self.T`` precalculada.
+
+        **Consistente**: :func:`_frame2d_consistent_mass_local`.
+
+        **Lumped** (fase 2): :func:`_frame2d_lumped_mass_local`.
         """
-        if lumping != "consistent":
+        rho = self.material.density
+        if lumping == "lumped":
+            M_local = _frame2d_lumped_mass_local(rho, self.A, self.I, self.L0)
+        elif lumping == "consistent":
+            M_local = _frame2d_consistent_mass_local(rho, self.A, self.I, self.L0)
+        else:
             raise NotImplementedError(
                 f"Frame2DEulerCorot.compute_mass_matrix: lumping='{lumping}' "
-                f"no implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"no soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        M_local = _frame2d_consistent_mass_local(
-            self.material.density, self.A, self.I, self.L0
-        )
         T = self._reference_transform()
         return T.T @ M_local @ T

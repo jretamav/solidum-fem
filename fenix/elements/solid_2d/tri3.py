@@ -11,6 +11,7 @@ from fenix.elements.solid_2d._shared import (
     _compute_kinematics_tri3,
     _expand_scalar_mass,
 )
+from fenix.math.mass_lumping import lump_hrz
 from fenix.registry import ElementRegistry
 
 
@@ -141,10 +142,10 @@ class Tri3(Element):
         return f
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del Tri3 (CST) por fórmula analítica exacta.
+        """Masa del Tri3 (CST) por fórmula analítica exacta (ADR 0009).
 
-        Para funciones de forma lineales en coordenadas baricéntricas, la
-        integral ``∫N_i·N_j dA`` es ``A·(1+δ_ij)/12``. Resulta:
+        **Consistente** (default): para funciones de forma lineales en
+        coordenadas baricéntricas, ``∫N_i·N_j dA = A·(1+δ_ij)/12``. Resulta
 
             M_scalar = (ρ·t·A/12) · [[2, 1, 1],
                                      [1, 2, 1],
@@ -152,19 +153,27 @@ class Tri3(Element):
 
         La cuadratura del propio elemento (1 punto central) sería
         insuficiente (integraría exactamente solo polinomios lineales);
-        por eso se usa la fórmula cerrada — exacta y barata.
+        por eso se usa la fórmula cerrada.
+
+        **Lumped** (fase 2): HRZ canónico. Para Tri3 coincide con row-sum
+        por simetría — ``ρAt/3`` en cada DOF traslacional (masa total ``ρAt``
+        repartida equitativamente entre los 3 nodos).
 
         Returns
         -------
         np.ndarray, shape (6, 6)
         """
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Tri3.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
-            )
-        coef = self.material.density * self._element_area() * self.thickness / 12.0
+        m_total = self.material.density * self._element_area() * self.thickness
+        coef = m_total / 12.0
         M_s = coef * np.array([[2.0, 1.0, 1.0],
                                [1.0, 2.0, 1.0],
                                [1.0, 1.0, 2.0]])
-        return _expand_scalar_mass(M_s)
+        M_consistent = _expand_scalar_mass(M_s)
+        if lumping == "lumped":
+            return lump_hrz(M_consistent, total_mass=m_total, n_translational_dirs=2)
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Tri3.compute_mass_matrix: lumping='{lumping}' no "
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
+            )
+        return M_consistent

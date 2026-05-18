@@ -11,6 +11,7 @@ from fenix.elements.frame._shared import (
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
+    _frame2d_lumped_mass_local,
     _log,
     build_geometry_2d,
 )
@@ -144,17 +145,24 @@ class Frame2DTimoshenko(Element):
         return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del Frame2DTimoshenko, idéntica en forma a la de
-        Frame2DEuler (la densidad lineal ``ρA`` no depende de ``As`` ni de
-        ``Φ``; la versión Hermite-blended introduce términos ``O(Φ²)``
-        despreciables). Ver :func:`_frame2d_consistent_mass_local` y ADR 0009.
+        """Matriz de masa del Frame2DTimoshenko en ejes globales (ADR 0009).
+
+        **Consistente**: idéntica en forma a la de Frame2DEuler — la
+        densidad lineal ``ρA`` no depende de ``As`` ni de ``Φ``; la versión
+        Hermite-blended introduce términos ``O(Φ²)`` despreciables. Ver
+        :func:`_frame2d_consistent_mass_local`.
+
+        **Lumped** (fase 2): nodal directo ``ρAL/2`` traslacional + ``ρIL/2``
+        rotacional por nodo. Ver :func:`_frame2d_lumped_mass_local`.
         """
-        if lumping != "consistent":
+        rho = self.material.density
+        if lumping == "lumped":
+            M_local = _frame2d_lumped_mass_local(rho, self.A, self.I, self.L0)
+        elif lumping == "consistent":
+            M_local = _frame2d_consistent_mass_local(rho, self.A, self.I, self.L0)
+        else:
             raise NotImplementedError(
                 f"Frame2DTimoshenko.compute_mass_matrix: lumping='{lumping}' "
-                f"no implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"no soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        M_local = _frame2d_consistent_mass_local(
-            self.material.density, self.A, self.I, self.L0
-        )
         return self.T.T @ M_local @ self.T

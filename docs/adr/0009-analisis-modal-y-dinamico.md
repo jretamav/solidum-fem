@@ -125,10 +125,11 @@ Como con `Material.density` (ADR 0008), todas las magnitudes dinámicas heredan 
 | Fase | Análisis | Pieza algebraica clave | Solver Fenix | Estado |
 |---|---|---|---|---|
 | 1 | **Análisis modal** (frecuencias y modos del problema generalizado) | `eigsh(K, M, sigma, which="LM")` con shift-invert | `ModalSolver` | **Implementada** |
-| 2 | Modal con concentración de masa (lumped) | M diagonal | `ModalSolver(lumping="lumped")` | Diferida — se abre cuando entre fase 5 |
-| 3 | Transitorio lineal Newmark / HHT-α | `factorize(M + γΔt·C + βΔt²·K)` reutilizable | `NewmarkSolver` | Diferida |
-| 4 | Transitorio no lineal Newmark + Newton | Newton dentro de cada paso, residuo `R = F_ext − F_int − Mü − Cu̇` | `NewmarkSolver` (mismo, con `nonlinear=True`) | Diferida |
-| 5 | Transitorio explícito (diferencias centradas) | `M⁻¹` trivial con M lumped | `CentralDifferenceSolver` | Diferida |
+| 2 | Modal con concentración de masa (lumped) | M diagonal | `ModalSolver(lumping="lumped")` | **Implementada** (2026-05-18) |
+| 3 | Transitorio lineal Newmark | `factorize(M + γΔt·C + βΔt²·K)` reutilizable | `NewmarkSolver` | **Implementada** |
+| 3-bis | HHT-α (variante de Newmark con disipación numérica) | mismo, con `(1+α)γΔt`, `(1+α)βΔt²` | `HHTSolver` | **Implementada** (variante, spec corta) |
+| 4 | Transitorio no lineal Newton-Newmark | Newton dentro de cada paso, residuo `R = F_ext − F_int − Mü − Cu̇` | `NewtonNewmarkSolver` (+ `NewtonHHTSolver`) | **Implementada** |
+| 5 | Transitorio explícito (diferencias centradas) | `M⁻¹` trivial con M lumped | `CentralDifferenceSolver` | Diferida — habilitada por fase 2 |
 | 6 | Respuesta en frecuencia (steady-state harmonic) | `(−ω²M + iωC + K)·û = F̂` complejo, barrido en ω | `HarmonicSolver` | Diferida |
 | 7 | Análisis espectral / sísmico (combinación modal) | CQC, SRSS sobre espectro de respuesta | `ResponseSpectrumSolver` | Diferida |
 
@@ -159,6 +160,39 @@ Piezas concretas entregadas:
    ```
 8. **Tests** — `tests/test_modal_truss.py` y `tests/test_modal_frame.py`. Ver sección "Criterios de aceptación" en la spec del `ModalSolver`.
 
+## Fase 2 — Mass lumping (implementada 2026-05-18)
+
+La fase 1 dejó el parámetro `lumping` en la firma del método y rechazaba `"lumped"` con `NotImplementedError`. La fase 2 lo habilita siguiendo dos estrategias distintas según la familia de elemento.
+
+### Decisiones de esquema
+
+**Sólidos isoparamétricos (Tri3, Quad4, Tri6, Quad8, Quad9)** — **HRZ canónico** (Hinton-Rock-Zienkiewicz 1976). Aplica:
+
+```
+α = (D · m_total) / Σ_{i traslacional} M_ii^consistent
+M_lumped[i,i] = α · M_consistent[i,i]
+off-diagonals → 0
+```
+
+Centralizado en `fenix/math/mass_lumping.py::lump_hrz`. Para Tri3 y Quad4 coincide con row-sum por simetría; para Tri6/Quad8/Quad9 HRZ evita las masas negativas que daría row-sum puro en vértices con funciones de forma cuadráticas (Bathe FEP §9.2.4).
+
+**Vigas y marcos (Truss2D/3D, Cable2D/3D, Frame2D Euler/Timoshenko/EulerCorot, Frame3D)** — **lumping nodal directo**:
+
+- Masa traslacional: `ρAL/2` por DOF y nodo (la misma en cada dirección local — condición necesaria para que el bloque traslacional `m_t·I_d` sea invariante a SO(d) y la matriz global resulte diagonal tras `Tᵀ·M·T`).
+- Inercia rotacional flexional: `ρI·L/2` por DOF rotacional y nodo (Frame2D); `ρIy·L/2`, `ρIz·L/2` (Frame3D).
+- Inercia rotacional torsional (Frame3D): `ρ·Jp·L/2` con `Jp = Iy + Iz` (momento polar geométrico).
+
+Implementado en helpers cerrados (`_frame2d_lumped_mass_local`, `Frame3D._build_local_mass_lumped`). El HRZ canónico aplicado a la diagonal consistente local daría masas distintas en `ux_local` (lineal) vs `uy_local` (Hermitiana) — diagonal en local pero **no en global tras rotar**. La diagonalidad en global es la propiedad operacional relevante para diferencias centradas (fase 5); por eso se prefiere el esquema nodal directo, estándar en frames (SAP2000, OpenSees, Cook-Malkus-Plesha §11.4).
+
+### Limitación documentada (Frame3D oblicuo)
+
+Para Frame3D con eje del elemento desalineado de los ejes globales, el bloque rotacional 3×3 por nodo no es escalar (`m_rx ≠ m_ry ≠ m_rz` en general, incluso con `Iy = Iz`: la torsional usa `Jp = Iy + Iz`, las flexionales `Iy` o `Iz`). La rotación general mezcla los tres DOFs rotacionales locales con los globales y el bloque rotacional queda lleno tras `Tᵀ·M·T`. M_global resulta **bloque-diagonal por nodo** con bloque traslacional diagonal + bloque rotacional 3×3 lleno; los nodos siguen sin acoplarse entre sí. Es la limitación estándar del lumping en frames 3D — aceptable para Newmark/HHT (factorización requerida igualmente) y para diferencias centradas con inversión local de bloques 6×6 baratos por nodo.
+
+### Tests
+
+- `tests/test_mass_lumping.py` (19 tests): contrato del helper HRZ, diagonalidad estricta por elemento, masa total preservada, entradas positivas, invariancia a la orientación del elemento (frames 2D), bloque-diagonalidad en Frame3D oblicuo, recuperación de la fundamental modal con masa lumped dentro de tolerancia.
+- `tests/test_modal.py::TestModalSolverContract::test_lumped_runs_after_phase2`: cableado modal con `lumping="lumped"`.
+
 ## Consecuencias
 
 **Positivas**
@@ -175,7 +209,7 @@ Piezas concretas entregadas:
 
 **Alternativas consideradas**
 
-- *Implementar lumped y consistente a la vez en fase 1*. Rechazada: lumped no aporta valor en modal de barras (introduce decisiones heurísticas sobre rotaciones) y bloquea validación contra fórmulas analíticas. Abstracción especulativa hoy; trivial mañana.
+- *Implementar lumped y consistente a la vez en fase 1*. Rechazada entonces: lumped no aportaba valor en modal de barras y bloqueaba validación contra fórmulas analíticas. La fase 2 (2026-05-18) materializó el lumped cuando se convirtió en precondición para diferencias centradas — sin reabrir debates de firma porque el ADR ya lo había previsto en `compute_mass_matrix(self, lumping="consistent")`.
 - *`IntegratorRegistry` separado de `SolverRegistry`*. Rechazada: fragmenta el catálogo sin beneficio funcional. La distinción solver/integrator es semántica conversacional, no estructural. Los solvers actuales ya orquestan ambos roles.
 - *Almacenar `velocity` y `acceleration` en `Node`*. Rechazada: contamina la clase con campos que solo usan análisis transitorios (~5–10% del uso esperado del catálogo). El patrón "estado dinámico en el resultado del solver" preserva la pureza de `Node` y replica el modo en que arc-length almacena `lambda_history` sin tocar `Node`.
 - *Densidad como propiedad del elemento (no del material)*. Ya rechazada en ADR 0008. Se mantiene por completitud.

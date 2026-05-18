@@ -179,13 +179,15 @@ class TestModalSolverContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Elastic1D"):
             run_modal(dom, n_modes=1)
 
-    def test_lumped_not_implemented(self):
-        """``lumping='lumped'`` lanza NotImplementedError (delegado al elemento)."""
+    def test_lumped_runs_after_phase2(self):
+        """``lumping='lumped'`` corre tras ADR 0009 fase 2 y devuelve
+        frecuencias positivas. La validación cuantitativa (recuperación de
+        la fundamental, diagonalidad de M) vive en ``test_mass_lumping``.
+        """
         dom = _build_axial_bar()
         asm = Assembler(dom)
-        solver = ModalSolver(asm, n_modes=1, lumping="lumped")
-        with self.assertRaises(NotImplementedError):
-            solver.solve()
+        result = ModalSolver(asm, n_modes=1, lumping="lumped").solve()
+        self.assertGreater(result.frequencies_rad[0], 0.0)
 
     def test_runmodal_requires_solver_or_nmodes(self):
         dom = _build_axial_bar()

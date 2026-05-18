@@ -11,6 +11,7 @@ from fenix.elements.frame._shared import (
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
+    _frame2d_lumped_mass_local,
     build_geometry_2d,
 )
 from fenix.registry import ElementRegistry
@@ -119,23 +120,31 @@ class Frame2DEuler(Element):
         return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Matriz de masa consistente del Frame2DEuler en ejes globales.
+        """Matriz de masa del Frame2DEuler en ejes globales (ADR 0009).
 
-        Sale de :func:`_frame2d_consistent_mass_local` (axial lineal +
-        flexional Hermitiana cúbica + inercia rotacional de sección ``ρI``)
-        seguida de la rotación al sistema global ``T^T · M_local · T``.
-        ADR 0009 §1.
+        **Consistente** (default, fase 1): axial lineal + flexional
+        Hermitiana cúbica + inercia rotacional de sección ``ρI``. Ver
+        :func:`_frame2d_consistent_mass_local`.
+
+        **Lumped** (fase 2): nodal directo ``ρAL/2`` traslacional + ``ρIL/2``
+        rotacional por nodo. Ver :func:`_frame2d_lumped_mass_local`.
+
+        Ambos casos pasan por ``T^T · M_local · T``. Para el lumped, T es
+        ortogonal por bloques compatibles con la diagonalidad: el resultado
+        global también es diagonal.
 
         Returns
         -------
         np.ndarray, shape (6, 6)
         """
-        if lumping != "consistent":
+        rho = self.material.density
+        if lumping == "lumped":
+            M_local = _frame2d_lumped_mass_local(rho, self.A, self.I, self.L0)
+        elif lumping == "consistent":
+            M_local = _frame2d_consistent_mass_local(rho, self.A, self.I, self.L0)
+        else:
             raise NotImplementedError(
                 f"Frame2DEuler.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        M_local = _frame2d_consistent_mass_local(
-            self.material.density, self.A, self.I, self.L0
-        )
         return self.T.T @ M_local @ self.T

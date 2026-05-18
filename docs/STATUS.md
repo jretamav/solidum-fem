@@ -10,13 +10,13 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 476 pasan / 5 skipped / 0 fallos (481 colectados) |
+| **Tests** | 512 pasan / 5 skipped / 0 fallos (517 colectados) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
-| **Solvers** | 6 (3 estáticos + 1 modal + 2 transitorios) |
+| **Solvers** | 8 (3 estáticos + 1 modal + 4 transitorios) |
 | **ADRs aceptados** | 11 (0001–0011) |
-| **Specs `validated`** | 25 |
-| **Etapas cerradas** | 4 completas + 1 parcial (etapa 4 vía ADR 0009 fases 1, 3, 4) |
+| **Specs `validated`** | 26 |
+| **Etapas cerradas** | 4 completas + 1 parcial (etapa 4 vía ADR 0009 fases 1, 2, 3, 4 + HHT-α) |
 
 ---
 
@@ -29,8 +29,9 @@
 
 **Análisis dinámicos**
 - Modal — autovalores generalizados con shift-invert ARPACK (`ModalSolver`).
-- Transitorio lineal Newmark con amortiguamiento Rayleigh, β-γ parametrizables (`NewmarkSolver`).
-- Transitorio no lineal Newton-Newmark, mismo amortiguamiento (`NewtonNewmarkSolver`).
+- Transitorio lineal Newmark con amortiguamiento Rayleigh, β-γ parametrizables (`NewmarkSolver`); variante HHT-α (`HHTSolver`) con disipación numérica controlada (`-1/3 ≤ α ≤ 0`).
+- Transitorio no lineal Newton-Newmark con Newton dentro de cada paso (`NewtonNewmarkSolver`); variante HHT-α no lineal (`NewtonHHTSolver`).
+- **Masa**: consistente (default) o lumped (ADR 0009 fase 2). Lumped vía HRZ canónico para sólidos isoparamétricos y vía lumping nodal directo para vigas/marcos (`ρAL/2` traslacional + `ρIL/2` rotacional). Diagonal en globales para todos los elementos excepto Frame3D en orientación oblicua con `Iy ≠ Iz` (bloque-diagonal por nodo, limitación documentada estándar — Cook-Malkus-Plesha §11.4).
 
 **Geometrías cubiertas**
 - Estructuras 1D: barras (`Truss2D/3D` lineales y corotacionales), cables (`Cable2D/3D` corotacionales), vigas (`Frame2DEuler`, `Frame2DTimoshenko`, `Frame2DEulerCorot`, `Frame3D`).
@@ -62,7 +63,7 @@
 - **Placas y láminas**: pendiente.
 - **Análisis térmico**: pendiente (decoupled → coupled).
 - **Mohr-Coulomb 2D**, **FiberSection para frames no-lineales**: pendientes.
-- **HHT-α, central differences, harmonic, response spectrum**: fases 5–7 del ADR 0009 diferidas.
+- **Central differences, harmonic, response spectrum**: fases 5–7 del ADR 0009 diferidas.
 - **Contacto mecánico**: horizonte largo.
 - **Grandes deformaciones en sólidos** (lagrangiano total/actualizado): horizonte largo.
 - **Hiperelasticidad**, **plasticidad anisótropa**, **daño con regularización** (gradient damage, phase-field): horizonte largo.
@@ -98,7 +99,7 @@ Ninguno de los tres bloquea el avance. Todos están documentados con su contexto
 - A. Sólidos 3D (`Hex8`, `Tet4`, …).
 - B. Placas y láminas.
 - C. Análisis térmico desacoplado.
-- D. Completar ADR 0009 (HHT-α, central differences, harmonic).
+- D. Completar ADR 0009 (HHT-α ✅ cerrada; central differences, harmonic, response spectrum pendientes).
 - E. Mohr-Coulomb 2D + `FiberSection`.
 
 El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La decisión la toma el usuario con base en la dirección que quiera dar al proyecto tras esta etapa.
@@ -115,4 +116,4 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010) y de la rama de trabajo de robustez de solvers no lineales (ADR 0011); próxima decisión = Etapa 6 entre opciones A-E.*
+*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010), de la rama de trabajo de robustez de solvers no lineales (ADR 0011), y de Etapa 6/D1+D2 del ADR 0009 (HHT-α + mass lumping fase 2); próxima decisión = continuar D (central differences D3, harmonic D4) o cambiar de dirección.*

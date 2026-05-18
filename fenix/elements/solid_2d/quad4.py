@@ -13,6 +13,7 @@ from fenix.elements.solid_2d._shared import (
     _expand_scalar_mass,
     _shape_functions_quad4,
 )
+from fenix.math.mass_lumping import lump_hrz
 from fenix.registry import ElementRegistry, QuadratureRegistry
 
 
@@ -205,30 +206,39 @@ class Quad4(Element):
         return f
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """Masa consistente del Quad4 por cuadratura del propio elemento (ADR 0009).
+        """Masa del Quad4 por cuadratura del propio elemento (ADR 0009).
 
-        ``M_e = ∫ρ·N^T·N·t·dA``. Para Quad4 bilineal con cuadratura 2×2,
-        la integral es exacta (productos de bilineal × bilineal = orden 2 en
-        ξ y η; 2×2 integra hasta orden 3 en cada variable). Si se construyó
+        **Consistente** (default): ``M_e = ∫ρ·N^T·N·t·dA``. Para Quad4
+        bilineal con cuadratura 2×2 la integral es exacta. Si se construyó
         con cuadratura 1×1 (subintegración para evitar locking), la masa
         queda subintegrada y la frecuencia se desvía respecto a la 2×2.
+
+        **Lumped** (fase 2): HRZ canónico (Hinton-Rock-Zienkiewicz 1976)
+        aplicado a la diagonal consistente. Para Quad4 coincide con
+        row-sum por simetría — ``ρ·V_e/4`` en cada DOF traslacional.
 
         Returns
         -------
         np.ndarray, shape (8, 8)
         """
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Quad4.compute_mass_matrix: lumping='{lumping}' no "
-                f"implementado. Fase 1 (ADR 0009) solo admite 'consistent'."
-            )
         rho = self.material.density
         coords = self.get_coordinate_matrix(ndim=2)
         M_s = np.zeros((4, 4))
+        m_total = 0.0
         for (xi, eta), w in zip(self.points, self.weights):
             N = _shape_functions_quad4(xi, eta)
             detJ = _det_jacobian_quad4(xi, eta, coords)
             if detJ <= 0.0:
                 raise ValueError(f"Jacobiano no positivo en Quad4 id={self.id}.")
-            M_s += rho * np.outer(N, N) * (detJ * w * self.thickness)
-        return _expand_scalar_mass(M_s)
+            weight = detJ * w * self.thickness
+            M_s += rho * np.outer(N, N) * weight
+            m_total += rho * weight
+        M_consistent = _expand_scalar_mass(M_s)
+        if lumping == "lumped":
+            return lump_hrz(M_consistent, total_mass=m_total, n_translational_dirs=2)
+        if lumping != "consistent":
+            raise NotImplementedError(
+                f"Quad4.compute_mass_matrix: lumping='{lumping}' no "
+                f"soportado. Valores admitidos: 'consistent', 'lumped'."
+            )
+        return M_consistent
