@@ -22,8 +22,19 @@ import numpy as np
 
 from fenix.core.domain import Domain
 from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver, ModalSolver, NewmarkSolver  # noqa: F401 — NewmarkSolver es el default de run_transient
-from fenix.results import ModalResult, SolveResult, TransientResult, build_solve_result
+from fenix.math.solvers import (  # noqa: F401 — NewmarkSolver default de run_transient
+    HarmonicSolver,
+    LinearSolver,
+    ModalSolver,
+    NewmarkSolver,
+)
+from fenix.results import (
+    HarmonicResult,
+    ModalResult,
+    SolveResult,
+    TransientResult,
+    build_solve_result,
+)
 
 
 StepCallback = Callable[[int, np.ndarray, float], None]
@@ -189,11 +200,56 @@ def run_transient(
     return result
 
 
+def run_harmonic(
+    domain: Domain,
+    *,
+    assembler: Assembler | None = None,
+    solver: HarmonicSolver | None = None,
+    **solver_kwargs,
+) -> HarmonicResult:
+    """Ejecuta un análisis de respuesta armónica y retorna el resultado.
+
+    Acepta cualquier solver con ``PIPELINE_KIND="harmonic"`` y firma
+    ``solve() -> HarmonicResult``. Si ``solver is None`` construye un
+    :class:`HarmonicSolver` con los kwargs siguientes.
+
+    Parameters
+    ----------
+    domain
+        Dominio con nodos, elementos y BCs ya configurados.
+    assembler
+        Assembler opcional. Si es ``None`` se construye sobre ``domain``.
+    solver
+        Instancia ya vinculada al assembler. Si es ``None``, se construye
+        con los kwargs siguientes.
+    **solver_kwargs
+        Parámetros del constructor de :class:`HarmonicSolver`
+        (``omega`` / ``omega_min`` / ``omega_max`` / ``n_omega`` /
+        ``scale`` / ``F_amplitude`` / ``rayleigh`` / ``lumping``).
+
+    Returns
+    -------
+    HarmonicResult
+        Amplitud compleja del desplazamiento para cada frecuencia del
+        barrido. Queda también en ``domain.last_result``.
+    """
+    if domain.total_dofs == 0:
+        domain.generate_equation_numbers()
+    if assembler is None:
+        assembler = Assembler(domain)
+    if solver is None:
+        solver = HarmonicSolver(assembler, **solver_kwargs)
+
+    result = solver.solve()
+    domain.last_result = result
+    return result
+
+
 def run_yaml(
     path: str | Path,
     *,
     step_callback: StepCallback | None = None,
-) -> SolveResult | ModalResult | TransientResult:
+) -> SolveResult | ModalResult | TransientResult | HarmonicResult:
     """Parsea un archivo YAML, arma el modelo completo y lo resuelve.
 
     Despacha según el atributo de clase ``PIPELINE_KIND`` del solver
@@ -201,6 +257,7 @@ def run_yaml(
 
     - ``"modal"`` → :func:`run_modal`, retorna ``ModalResult``.
     - ``"transient"`` → :func:`run_transient`, retorna ``TransientResult``.
+    - ``"harmonic"`` → :func:`run_harmonic`, retorna ``HarmonicResult``.
     - ``"static"`` (default) → :func:`run`, retorna ``SolveResult``.
 
     El despacho declarativo (atributo de clase en lugar de cadena de
@@ -230,6 +287,8 @@ def run_yaml(
         return run_modal(domain, assembler=assembler, solver=solver)
     if pipeline_kind == "transient":
         return run_transient(domain, assembler=assembler, solver=solver)
+    if pipeline_kind == "harmonic":
+        return run_harmonic(domain, assembler=assembler, solver=solver)
 
     # "static" o desconocido — cae al pipeline genérico de fuerzas externas.
     F_ext = parser.get_external_forces() + parser.get_body_load(assembler)

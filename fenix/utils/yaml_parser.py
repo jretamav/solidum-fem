@@ -640,10 +640,21 @@ class YamlParser:
             cfg = kwargs.pop('convergence')
             # Solvers lineales (sin Newton interno) no admiten `convergence`:
             # estáticos lineales, modal (ARPACK gestiona su propia tolerancia),
-            # transitorios lineales (Newmark y HHT).
+            # transitorios lineales (Newmark y HHT) y armónico (lineal por
+            # construcción).
             if s_type not in ('LinearSolver', 'ModalSolver',
                               'NewmarkSolver', 'HHTSolver',
-                              'CentralDifferenceSolver'):
+                              'CentralDifferenceSolver',
+                              'HarmonicSolver'):
                 kwargs['convergence'] = make_convergence_from_config(cfg)
+
+        # HarmonicSolver: si no se pasó `F_amplitude` explícito, derivar la
+        # amplitud compleja del bloque estándar de cargas externas del YAML
+        # (point_loads / etc.). Las cargas se interpretan como amplitudes
+        # reales con fase cero; para cargas con fase, el usuario pasa
+        # `F_amplitude` numpy complejo directamente desde código (YAML no
+        # soporta tipos complejos nativos).
+        if s_type == 'HarmonicSolver' and 'F_amplitude' not in kwargs:
+            kwargs['F_amplitude'] = self.get_external_forces()
 
         return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

@@ -19,6 +19,10 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
   explícita por diferencias centradas, lineal y no lineal en una sola
   clase con parámetro ``nonlinear``; ADR 0009 fase 5). Requiere masa
   lumped diagonal.
+- ``harmonic`` — :class:`HarmonicSolver` (respuesta forzada armónica en
+  el dominio de la frecuencia, ADR 0009 fase 6). Aritmética compleja con
+  barrido sobre ``ω``. ``PIPELINE_KIND = "harmonic"`` despacha a
+  ``fenix.entry.run_harmonic``.
 
 Los reexports a nivel de paquete preservan los imports históricos
 ``from fenix.math.solvers import LinearSolver`` sin alterar al consumidor.
@@ -45,6 +49,7 @@ from fenix.math.solvers.newmark import (
     NewtonNewmarkSolver,
 )
 from fenix.math.solvers.central_difference import CentralDifferenceSolver
+from fenix.math.solvers.harmonic import HarmonicSolver
 
 __all__ = [
     "CholeskyNotPositiveDefiniteError",
@@ -57,4 +62,5 @@ __all__ = [
     "HHTSolver",
     "NewtonHHTSolver",
     "CentralDifferenceSolver",
+    "HarmonicSolver",
 ]

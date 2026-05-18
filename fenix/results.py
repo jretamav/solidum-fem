@@ -235,6 +235,61 @@ class TransientResult:
 
 
 @dataclass(frozen=True)
+class HarmonicResult:
+    """Resultado de un análisis de respuesta armónica (ADR 0009 fase 6). Inmutable.
+
+    Almacena la amplitud compleja del desplazamiento ``û(ω)`` para cada
+    frecuencia del barrido. La fase queda codificada en el argumento del
+    complejo: ``|û|`` es la amplitud y ``arg(û)`` el desfase respecto a la
+    excitación. El régimen estacionario es asumido (transitorio no
+    incluido — el análisis es lineal en el dominio de la frecuencia).
+
+    Parameters
+    ----------
+    omega
+        Vector de frecuencias angulares evaluadas, shape ``(n_omega,)``,
+        en rad/s. Las frecuencias en Hz se obtienen vía ``omega / (2π)``.
+    u_complex
+        Amplitudes complejas del desplazamiento global, shape
+        ``(n_dof, n_omega)``. La columna ``[:, k]`` corresponde a
+        ``omega[k]``. En DOFs prescritos por Dirichlet la componente es
+        cero (el apoyo no oscila).
+    F_complex
+        Amplitudes complejas de la carga aplicada, shape ``(n_dof,)``.
+        Constante a lo largo del barrido (la dependencia con ω está en la
+        respuesta, no en la entrada). Puede tener parte imaginaria si la
+        carga lleva fase.
+    alpha_rayleigh, beta_rayleigh
+        Coeficientes Rayleigh efectivos usados en ``C = α·M + β·K``.
+        ``(0.0, 0.0)`` si el análisis fue sin amortiguamiento (caso
+        singular en resonancia exacta — pico infinito teórico).
+    """
+
+    omega: np.ndarray
+    u_complex: np.ndarray
+    F_complex: np.ndarray
+    alpha_rayleigh: float = 0.0
+    beta_rayleigh: float = 0.0
+
+    @property
+    def frequencies_hz(self) -> np.ndarray:
+        """Frecuencias del barrido en Hz."""
+        return self.omega / (2.0 * np.pi)
+
+    @property
+    def n_omega(self) -> int:
+        return int(self.omega.shape[0])
+
+    def amplitude(self) -> np.ndarray:
+        """``|û(ω)|`` shape ``(n_dof, n_omega)`` — espectro de amplitudes."""
+        return np.abs(self.u_complex)
+
+    def phase(self) -> np.ndarray:
+        """``arg(û(ω))`` shape ``(n_dof, n_omega)`` en radianes."""
+        return np.angle(self.u_complex)
+
+
+@dataclass(frozen=True)
 class SolveResult:
     """Resultado agregado de una solución. Inmutable; calculado eager al final
     de ``solver.solve``.

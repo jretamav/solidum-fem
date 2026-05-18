@@ -174,6 +174,20 @@
 
 ---
 
+## HarmonicSolver — respuesta forzada armónica en el dominio de la frecuencia (ADR 0009 fase 6)
+
+- **Propósito**: resolver `(−ω²M + iωC + K)·û = F̂` para un barrido de frecuencias y devolver la amplitud compleja `û(ω)` en cada frecuencia. Lineal, en estado estacionario — sin transitorio. Apropiado para FRFs, diagnóstico de resonancias y respuesta forzada periódica.
+- **Esquema**: ensamble único de `K`, `M`, `C = α·M + β·K`; reducción de Dirichlet; barrido `for ω in omega: spsolve(Z(ω), F_red)` con `Z(ω) = -ω²M + iωC + K` compleja. Factorización LU compleja por frecuencia (no se cachea — `Z` cambia con `ω`).
+- **Barrido configurable**: lineal (`scale="linear"`), logarítmico (`scale="log"`), o vector explícito (`omega=array`). Default `n_omega=100`.
+- **Parámetros**: `omega` o (`omega_min`, `omega_max`, `n_omega`, `scale`); `F_amplitude` (default ceros; YAML inyecta automáticamente las `point_loads`); `rayleigh`; `lumping`.
+- **Cuándo usarlo**: diagnóstico de resonancias, FRFs, respuesta forzada armónica de máquinas rotantes, viento turbulento descompuesto en armónicos. Si el problema requiere no linealidad (geométrica o material), usar `NewtonNewmarkSolver` con excitación armónica.
+- **Caveats**: resonancia exacta sin amortiguamiento ⇒ `Z(ω_n)` singular (`spsolve` puede fallar). Mitigación: añadir Rayleigh. Cargas con fase compleja requieren construcción desde código — YAML no soporta tipos complejos nativos.
+- **Despacho YAML**: `solver.type: HarmonicSolver`. Vía atributo `PIPELINE_KIND="harmonic"` → `run_harmonic`. Tercer valor del literal (después de `"static"`, `"modal"`, `"transient"`).
+- **Spec**: [docs/specs/HarmonicSolver.md](specs/HarmonicSolver.md).
+- **Archivo**: [fenix/math/solvers/harmonic.py](../fenix/math/solvers/harmonic.py).
+
+---
+
 ## Cómo añadir un solver nuevo
 
 `/fenix-new solver <Name>` — genera archivo en `fenix/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
@@ -182,7 +196,8 @@ Convenciones de interfaz:
 
 - **Solvers estáticos** (lineales, no lineales, arc-length): `PIPELINE_KIND = "static"`. Constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
 - **Solvers modales / autovalor** (modal — ADR 0009 — y futuros pandeo lineal): `PIPELINE_KIND = "modal"`. Constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo específico). No consumen vector de cargas. `run_yaml` despacha a `run_modal`.
-- **Solvers transitorios** (Newmark, HHT, central differences, futuros harmonic/response spectrum): `PIPELINE_KIND = "transient"`. Constructor recibe `assembler`, `t_end`, `dt` + parámetros; método `solve() → TransientResult`. `run_yaml` despacha a `run_transient`.
+- **Solvers transitorios** (Newmark, HHT, central differences): `PIPELINE_KIND = "transient"`. Constructor recibe `assembler`, `t_end`, `dt` + parámetros; método `solve() → TransientResult`. `run_yaml` despacha a `run_transient`.
+- **Solvers en frecuencia** (harmonic, futuros response spectrum): `PIPELINE_KIND = "harmonic"` (o `"spectrum"` cuando entre fase 7). Constructor recibe `assembler` + parámetros del barrido en `ω`; método `solve() → HarmonicResult` (u otro tipo en frecuencia). `run_yaml` despacha a `run_harmonic`.
 
 El **dispatch en `run_yaml`** se hace por el atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18). Solvers nuevos no clásicos (que no hereden de los existentes) sólo declaran su `PIPELINE_KIND` y quedan automáticamente cableados — no requieren tocar `entry.py`.
 
