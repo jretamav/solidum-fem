@@ -14,6 +14,10 @@ from typing import Callable
 import numpy as np
 import scipy.sparse as sp
 
+from fenix.constants import (
+    LINE_SEARCH_MAX_BACKTRACKS,
+    LINE_SEARCH_RHO,
+)
 from fenix.math.convergence import ConvergenceCriterion, stiffness_diag_scale
 from fenix.math.damping import rayleigh_from_modes
 from fenix.math.linalg import StiffnessProperties, select_solver
@@ -21,6 +25,9 @@ from fenix.math.solvers._shared import (
     CholeskyNotPositiveDefiniteError,
     _log,
     domain_is_symmetric,
+)
+from fenix.math.solvers.diagnostics import (
+    classify_divergence,
 )
 from fenix.registry import SolverRegistry
 from fenix.results import TransientResult
@@ -297,6 +304,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
         convergence: ConvergenceCriterion | None = None,
         max_iter: int = 20,
         freeze_tangent_after_iter: int | None = None,
+        line_search: bool = False,
         beta: float = 0.25,
         gamma: float = 0.5,
         rayleigh: dict | None = None,
@@ -315,6 +323,12 @@ class NewtonNewmarkSolver(NewmarkSolver):
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = int(max_iter)
         self.freeze_tangent_after_iter = freeze_tangent_after_iter
+        # Line search por descenso no monótono (ADR 0011). Default ``False``
+        # por la misma razón que ``NonlinearSolver``: contraproducente en
+        # regímenes con tangente consistente cuasi-cuadrática. La masa del
+        # jacobiano dinámico además estabiliza el Newton sin necesidad de
+        # globalización en la mayoría de los casos (ver auditoría fase A).
+        self.line_search = bool(line_search)
 
     def solve(self) -> TransientResult:
         _log.info("--- INICIANDO SOLVER NEWMARK NO LINEAL (Newton dentro de Newmark) ---")
@@ -419,6 +433,14 @@ class NewtonNewmarkSolver(NewmarkSolver):
             F_ext_next = (np.zeros(ndof) if self.F_func is None
                            else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
 
+            # Historial del paso para clasificación de divergencia (ADR 0011).
+            residual_history: list[float] = []
+            delta_history: list[float] = []
+            singular_tangent_seen = False
+            last_residual = float("inf")
+            last_delta = 0.0
+            last_alpha = 1.0
+
             converged = False
             for it in range(self.max_iter):
                 K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
@@ -458,20 +480,42 @@ class NewtonNewmarkSolver(NewmarkSolver):
                     frozen_factor = None
                     delta_uddot_red = linalg.solve(J, R_red)
 
-                # Actualizar incógnitas con correctores Newmark.
-                uddot_iter[free_dofs] += delta_uddot_red
+                # Line search por descenso no monótono (ADR 0011). Escala δü
+                # (y por ende δu, δu̇ vía correctores Newmark) por α ∈ (0, 1].
+                R_norm_before = float(np.linalg.norm(R[free_dofs]))
+                alpha = self._armijo_step_dynamic(
+                    uddot_iter, delta_uddot_red, u_pred, udot_pred,
+                    beta_dt2, gamma_dt, free_dofs,
+                    F_ext_next, C, M, R_norm_before,
+                )
+                last_alpha = alpha
+
+                # Actualizar incógnitas con correctores Newmark (α·δü).
+                uddot_iter[free_dofs] += alpha * delta_uddot_red
                 u_iter = u_pred + beta_dt2 * uddot_iter
                 udot_iter = udot_pred + gamma_dt * uddot_iter
 
-                # δu corresponde a βΔt² · δü (cambio en desplazamiento por la iter).
-                delta_u_norm = beta_dt2 * np.linalg.norm(delta_uddot_red)
-                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_iter))
+                # Re-ensamblar para obtener R y F_int coherentes con el U avanzado.
+                # (El last_alpha != 1 en su ensamblaje interno habrá dejado el
+                # state trial coherente, pero re-ensamblar aquí mantiene
+                # simetría con la rama sin line search.)
+                _, F_int_after = self.assembler.assemble_non_linear_system(u_iter)
+                R_after = F_ext_next - F_int_after - C @ udot_iter - M @ uddot_iter
+                R_norm_after = float(np.linalg.norm(R_after[free_dofs]))
+
+                # δu corresponde a βΔt² · α · δü (cambio en desplazamiento por la iter).
+                delta_u_norm = beta_dt2 * float(np.linalg.norm(alpha * delta_uddot_red))
+                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_after))
                 state = self.convergence.evaluate(
-                    residual_norm=np.linalg.norm(R[free_dofs]),
+                    residual_norm=R_norm_after,
                     ref_force=ref_force,
                     delta_u_norm=delta_u_norm,
                     u_norm=np.linalg.norm(u_iter[free_dofs]),
                 )
+                residual_history.append(R_norm_after)
+                delta_history.append(delta_u_norm)
+                last_residual = R_norm_after
+                last_delta = delta_u_norm
 
                 if state.converged:
                     _log.info(
@@ -487,9 +531,22 @@ class NewtonNewmarkSolver(NewmarkSolver):
             frozen_factor = None
 
             if not converged:
-                raise RuntimeError(
-                    f"NewtonNewmarkSolver: paso {step+1} (t={t_next:.4e}) no "
-                    f"convergió en {self.max_iter} iteraciones."
+                # Clasificar el modo y lanzar excepción tipada (ADR 0011).
+                err_cls = classify_divergence(
+                    residual_history, delta_history,
+                    singular_tangent_detected=singular_tangent_seen,
+                )
+                raise err_cls(
+                    last_residual=last_residual,
+                    last_delta=last_delta,
+                    last_load_factor=t_next,
+                    n_bisections=0,
+                    extra_message=(
+                        f"NewtonNewmarkSolver: paso {step+1} (t={t_next:.4e}) no "
+                        f"convergió en {self.max_iter} iteraciones; "
+                        f"line_search={'on' if self.line_search else 'off'}; "
+                        f"último α={last_alpha:.3f}."
+                    ),
                 )
 
             u_total = u_iter
@@ -513,3 +570,47 @@ class NewtonNewmarkSolver(NewmarkSolver):
             beta_rayleigh=beta_r,
             converged=True,
         )
+
+    def _armijo_step_dynamic(self, uddot_iter: np.ndarray,
+                              delta_uddot_red: np.ndarray,
+                              u_pred: np.ndarray, udot_pred: np.ndarray,
+                              beta_dt2: float, gamma_dt: float,
+                              free_dofs,
+                              F_ext_next: np.ndarray,
+                              C, M,
+                              R_norm_before: float) -> float:
+        """Line search por descenso no monótono para el residuo dinámico (ADR 0011).
+
+        Aplica el mismo patrón que ``NonlinearSolver._armijo_step`` al
+        residuo dinámico ``R = F_ext − F_int(u) − C·u̇ − M·ü``. Escala
+        ``δü`` por ``α ∈ (0, 1]`` y propaga la consistencia a ``δu``,
+        ``δu̇`` vía los correctores Newmark.
+
+        Devuelve solo ``α``: el bucle exterior re-ensambla para obtener
+        F_int y R coherentes con el U avanzado.
+
+        Cuando ``self.line_search=False`` devuelve 1.0 directamente sin
+        evaluar.
+        """
+        if not self.line_search:
+            return 1.0
+
+        rho = LINE_SEARCH_RHO
+        max_bt = LINE_SEARCH_MAX_BACKTRACKS
+
+        alpha = 1.0
+        for _ in range(max_bt + 1):
+            uddot_trial = uddot_iter.copy()
+            uddot_trial[free_dofs] += alpha * delta_uddot_red
+            u_trial = u_pred + beta_dt2 * uddot_trial
+            udot_trial = udot_pred + gamma_dt * uddot_trial
+
+            _, F_int_trial = self.assembler.assemble_non_linear_system(u_trial)
+            R_trial = F_ext_next - F_int_trial - C @ udot_trial - M @ uddot_trial
+            R_trial_norm = float(np.linalg.norm(R_trial[free_dofs]))
+
+            if R_trial_norm <= R_norm_before:
+                return alpha
+            alpha *= rho
+
+        return alpha

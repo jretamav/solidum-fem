@@ -40,3 +40,14 @@ CONVERGENCE_ATOL_DISP_FACTOR = 1.0e-9
 # RuntimeError. Por debajo de ese umbral la convergencia ya no es
 # físicamente significativa (ruido numérico domina la longitud de arco).
 ARCLENGTH_MIN_DL_FACTOR = 1.0e-6
+
+# --- Line search Armijo en solvers no lineales (ADR 0011) ---
+# Globalización del Newton-Raphson: tras computar el incremento δU, se busca
+# un factor α ∈ (0, 1] que satisfaga la condición de Armijo (suficiente
+# decrecimiento del residuo):
+#     ‖R(U + α·δU)‖ ≤ (1 − c₁·α) · ‖R(U)‖
+# Si α=1 no satisface, se hace backtracking α ← ρ·α hasta MAX_BACKTRACKS retrocesos.
+# Valores canónicos de Nocedal-Wright §3.1.
+LINE_SEARCH_C1 = 1.0e-4              # Constante de Armijo (suficiente decrecimiento)
+LINE_SEARCH_RHO = 0.5                # Factor de backtracking
+LINE_SEARCH_MAX_BACKTRACKS = 10      # Cota superior de retrocesos por iteración
