@@ -642,7 +642,8 @@ class YamlParser:
             # estáticos lineales, modal (ARPACK gestiona su propia tolerancia),
             # transitorios lineales (Newmark y HHT).
             if s_type not in ('LinearSolver', 'ModalSolver',
-                              'NewmarkSolver', 'HHTSolver'):
+                              'NewmarkSolver', 'HHTSolver',
+                              'CentralDifferenceSolver'):
                 kwargs['convergence'] = make_convergence_from_config(cfg)
 
         return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

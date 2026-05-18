@@ -26,6 +26,9 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
     """
+
+    PIPELINE_KIND = "static"
+
     def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
                  dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,

@@ -16,6 +16,8 @@ from fenix.registry import SolverRegistry
 class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
 
+    PIPELINE_KIND = "static"
+
     def __init__(self, assembler, linear_algebra: str = "auto"):
         self.assembler = assembler
         self.linear_algebra = linear_algebra

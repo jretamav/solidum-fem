@@ -22,7 +22,7 @@ import numpy as np
 
 from fenix.core.domain import Domain
 from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver, ModalSolver, NewmarkSolver
+from fenix.math.solvers import LinearSolver, ModalSolver, NewmarkSolver  # noqa: F401 — NewmarkSolver es el default de run_transient
 from fenix.results import ModalResult, SolveResult, TransientResult, build_solve_result
 
 
@@ -142,12 +142,17 @@ def run_transient(
     domain: Domain,
     *,
     assembler: Assembler | None = None,
-    solver: NewmarkSolver | None = None,
+    solver: Any | None = None,
     t_end: float | None = None,
     dt: float | None = None,
     **solver_kwargs,
 ) -> TransientResult:
-    """Ejecuta un análisis dinámico transitorio Newmark y retorna el resultado.
+    """Ejecuta un análisis dinámico transitorio y retorna el resultado.
+
+    Acepta cualquier solver con ``PIPELINE_KIND="transient"`` y firma
+    ``solve() -> TransientResult`` (NewmarkSolver, NewtonNewmarkSolver,
+    HHTSolver, NewtonHHTSolver, CentralDifferenceSolver). Si ``solver is
+    None`` construye un ``NewmarkSolver`` con los kwargs siguientes.
 
     Parameters
     ----------
@@ -156,14 +161,11 @@ def run_transient(
     assembler
         Assembler opcional. Si es ``None`` se construye sobre ``domain``.
     solver
-        Instancia ``NewmarkSolver`` ya vinculada al assembler. Si es
-        ``None``, se construye con los kwargs siguientes.
+        Instancia de solver transitorio ya vinculada al assembler.
     t_end, dt
         Tiempo final y paso temporal. Requeridos cuando ``solver is None``.
     **solver_kwargs
-        Resto de parámetros del constructor de ``NewmarkSolver``
-        (``beta``, ``gamma``, ``rayleigh``, ``u0``, ``u0_dot``, ``F_func``,
-        ``linear_algebra``, ``lumping``).
+        Resto de parámetros del constructor del NewmarkSolver default.
 
     Returns
     -------
@@ -194,13 +196,17 @@ def run_yaml(
 ) -> SolveResult | ModalResult | TransientResult:
     """Parsea un archivo YAML, arma el modelo completo y lo resuelve.
 
-    Despacha según el tipo de solver declarado en el YAML:
+    Despacha según el atributo de clase ``PIPELINE_KIND`` del solver
+    declarado en el YAML:
 
-    - ``ModalSolver`` (ADR 0009 fase 1) → :func:`run_modal`,
-      retorna ``ModalResult``.
-    - ``NewmarkSolver`` (ADR 0009 fase 3) → :func:`run_transient`,
-      retorna ``TransientResult``.
-    - cualquier otro → :func:`run`, retorna ``SolveResult``.
+    - ``"modal"`` → :func:`run_modal`, retorna ``ModalResult``.
+    - ``"transient"`` → :func:`run_transient`, retorna ``TransientResult``.
+    - ``"static"`` (default) → :func:`run`, retorna ``SolveResult``.
+
+    El despacho declarativo (atributo de clase en lugar de cadena de
+    ``isinstance``) permite añadir nuevos solvers no clásicos sin tocar
+    este archivo: el solver declara su ``PIPELINE_KIND`` y queda
+    automáticamente despachado al pipeline correcto.
 
     Returns
     -------
@@ -218,17 +224,14 @@ def run_yaml(
     assembler = Assembler(domain)
     solver = parser.get_solver(assembler)
 
-    # ModalSolver tiene firma propia `solve()` sin F_applied y devuelve
-    # ModalResult: no encaja en el pipeline genérico de `run`. Se despacha
-    # a `run_modal`, que también cachea el resultado en `domain.last_result`.
-    if isinstance(solver, ModalSolver):
-        return run_modal(domain, assembler=assembler, solver=solver)
+    pipeline_kind = getattr(solver, "PIPELINE_KIND", "static")
 
-    # NewmarkSolver tiene firma propia `solve()` y devuelve TransientResult.
-    # Se despacha a `run_transient` por el mismo motivo.
-    if isinstance(solver, NewmarkSolver):
+    if pipeline_kind == "modal":
+        return run_modal(domain, assembler=assembler, solver=solver)
+    if pipeline_kind == "transient":
         return run_transient(domain, assembler=assembler, solver=solver)
 
+    # "static" o desconocido — cae al pipeline genérico de fuerzas externas.
     F_ext = parser.get_external_forces() + parser.get_body_load(assembler)
     return run(
         domain,

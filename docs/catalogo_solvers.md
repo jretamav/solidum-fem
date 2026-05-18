@@ -151,9 +151,26 @@
   - **Recuperación**: con materiales lineales, el residuo de Newton se anula en una iteración y el resultado coincide con `HHTSolver`. Validado en tests.
 - **Parámetros**: `alpha` (default `-0.05`) + heredados de `NewtonNewmarkSolver` (`convergence`, `max_iter`, `freeze_tangent_after_iter`, `line_search`, …).
 - **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria + presencia de modos altos espurios que el Newmark trapezoidal no atenuaría.
-- **Despacho YAML**: `solver.type: NewtonHHTSolver`. Vía isinstance de `NewmarkSolver` → `run_transient`.
+- **Despacho YAML**: `solver.type: NewtonHHTSolver`. Vía atributo `PIPELINE_KIND="transient"` heredado de `NewmarkSolver` → `run_transient`.
 - **Spec**: [docs/specs/HHTSolver.md](specs/HHTSolver.md) (cubre ambas variantes lineal y no lineal).
 - **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
+
+---
+
+## CentralDifferenceSolver — integración explícita por diferencias centradas (ADR 0009 fase 5)
+
+- **Propósito**: integrar `M·ü + C·u̇ + F_int(u) = F(t)` con esquema **explícito** de segundo orden — la aceleración se actualiza en cada paso por `M⁻¹·rhs` con `M` diagonal lumped, sin sistema lineal ni Newton interno. Cubre análisis lineal y no lineal con un solo solver (parámetro `nonlinear: bool`).
+- **Esquema (leapfrog Belytschko-Liu-Moran)**:
+  - Inicialización: `a_0 = M⁻¹·(F(0) − F_int(u_0) − C·v_0 − F_dir)`, `v_{1/2} = v_0 + (Δt/2)·a_0`.
+  - Paso `n → n+1`: `u_{n+1} = u_n + Δt·v_{n+1/2}`; reevaluar `F_int(u_{n+1})`; `a_{n+1} = M⁻¹·(F_{n+1} − F_int − C·v_{n+1/2} − F_dir)`; `v_{n+1} = v_{n+1/2} + (Δt/2)·a_{n+1}`.
+  - Modo lineal: `F_int = K·u` (K constante, ensamblada una vez). Modo no lineal: `Assembler.assemble_non_linear_system(u)` cada paso (descarta la tangente).
+- **Estabilidad condicional CFL**: `Δt < 2/ω_max`. Para barras: `Δt < L_el/c_p = L_el·√(ρ/E)`. Si se excede, el solver detecta la explosión exponencial a posteriori y aborta con `RuntimeError` informativo. **El solver no calcula `Δt_crit` automáticamente** — responsabilidad del usuario en esta versión inicial (power iteration sobre `M⁻¹K` queda diferida).
+- **Parámetros**: `t_end`, `dt`, `nonlinear` (default `False`), `rayleigh`, `u0`, `u0_dot`, `F_func`, `lumping` (default `"lumped"`; `"consistent"` rechazado), `divergence_threshold` (default `1e8`).
+- **Cuándo usarlo**: wave propagation, impacto, dinámica de respuesta rápida — situaciones donde el `Δt` natural del problema cae por debajo del paso de estabilidad incondicional de Newmark. Para problemas con plasticidad transitoria de respuesta moderadamente rápida, sigue siendo competitivo frente a Newton-Newmark por evitar la factorización de la tangente cada iteración.
+- **Rechazos defensivos**: `lumping="consistent"` → `ValueError` (la inversión de M consistente cada paso anula la ventaja); Frame3D con eje oblicuo a globales → `ValueError` (M_red no es estrictamente diagonal; ADR 0009 fase 2 documenta la bloque-diagonalidad inherente).
+- **Despacho YAML**: `solver.type: CentralDifferenceSolver`. Vía atributo `PIPELINE_KIND="transient"` → `run_transient`. **Primer solver fuera de la jerarquía de Newmark**, lo que disparó la regla C de refactor (atributo declarativo en lugar de cadena de isinstance).
+- **Spec**: [docs/specs/CentralDifferenceSolver.md](specs/CentralDifferenceSolver.md).
+- **Archivo**: [fenix/math/solvers/central_difference.py](../fenix/math/solvers/central_difference.py).
 
 ---
 
@@ -163,7 +180,10 @@
 
 Convenciones de interfaz:
 
-- **Solvers estáticos** (lineales, no lineales, arc-length): constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
-- **Solvers de autovalor** (modal — ADR 0009 — y futuros pandeo lineal): constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo de resultado específico). No consumen vector de cargas. El entrypoint `fenix.run_yaml` despacha por `isinstance` al entrypoint específico (`fenix.run_modal` para modal).
+- **Solvers estáticos** (lineales, no lineales, arc-length): `PIPELINE_KIND = "static"`. Constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
+- **Solvers modales / autovalor** (modal — ADR 0009 — y futuros pandeo lineal): `PIPELINE_KIND = "modal"`. Constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo específico). No consumen vector de cargas. `run_yaml` despacha a `run_modal`.
+- **Solvers transitorios** (Newmark, HHT, central differences, futuros harmonic/response spectrum): `PIPELINE_KIND = "transient"`. Constructor recibe `assembler`, `t_end`, `dt` + parámetros; método `solve() → TransientResult`. `run_yaml` despacha a `run_transient`.
+
+El **dispatch en `run_yaml`** se hace por el atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18). Solvers nuevos no clásicos (que no hereden de los existentes) sólo declaran su `PIPELINE_KIND` y quedan automáticamente cableados — no requieren tocar `entry.py`.
 
 Tras implementar, **añadir una entrada a este catálogo** siguiendo el formato de arriba y promover la spec a `status: validated`.

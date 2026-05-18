@@ -72,8 +72,11 @@ class NewmarkSolver:
     linear_algebra : str, default "auto"
         Backend para factorizar ``A_eff_red`` (ADR 0003).
     lumping : str, default "consistent"
-        Discretización de masa. Solo ``"consistent"`` en fase 1.
+        Discretización de masa. ``"consistent"`` (default) o ``"lumped"``
+        (ADR 0009 fase 2).
     """
+
+    PIPELINE_KIND = "transient"
 
     def __init__(
         self,

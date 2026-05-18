@@ -14,6 +14,8 @@ from fenix.results import ModalResult
 class ModalSolver:
     """Análisis modal: frecuencias propias y modos de vibración (ADR 0009 fase 1).
 
+    PIPELINE_KIND = "modal" — ``run_yaml`` despacha a ``run_modal``.
+
     Resuelve el problema generalizado simétrico ``K·φ = ω²·M·φ`` sobre los
     DOFs libres tras imposición de Dirichlet por eliminación directa. La
     capa algebraica delega en :class:`EigenSolver` (ARPACK Lanczos con
@@ -44,6 +46,8 @@ class ModalSolver:
         solvers y para no romper la firma cuando se cablee a la capa
         algebraica (ADR 0003).
     """
+
+    PIPELINE_KIND = "modal"
 
     def __init__(
         self,

@@ -31,6 +31,9 @@ from fenix.registry import SolverRegistry
 @SolverRegistry.register
 class NonlinearSolver:
     """Solucionador incremental-iterativo de Newton-Raphson con paso adaptativo."""
+
+    PIPELINE_KIND = "static"
+
     def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None, line_search: bool = False):
         self.assembler = assembler
         # Política de convergencia (ADR 0007). El criterio se calibra una vez
