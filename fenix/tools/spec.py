@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 import yaml
 
-VALID_KINDS = {"element", "material", "solver"}
+VALID_KINDS = {"element", "material", "cohesive_material", "solver"}
 VALID_STATUSES = {"draft", "implemented", "validated"}
 
 _YAML_BLOCK_RE = re.compile(r"```yaml\s*\n(.*?)\n```", re.DOTALL)
@@ -133,11 +133,17 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
         )
 
     import fenix  # noqa: F401 — dispara autodiscover
-    from fenix.registry import ElementRegistry, MaterialRegistry, SolverRegistry
+    from fenix.registry import (
+        CohesiveMaterialRegistry,
+        ElementRegistry,
+        MaterialRegistry,
+        SolverRegistry,
+    )
 
     registry = {
         "element": ElementRegistry,
         "material": MaterialRegistry,
+        "cohesive_material": CohesiveMaterialRegistry,
         "solver": SolverRegistry,
     }[spec.kind]
 
@@ -167,6 +173,26 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
             code_val = getattr(cls, attr)
             spec_val = iface[key]
             if list(code_val) != list(spec_val) if attr == "DOF_NAMES" else code_val != spec_val:
+                errors.append(
+                    f"{spec.path}: {attr}={code_val!r} (código) vs "
+                    f"{key}={spec_val!r} (spec)"
+                )
+    elif spec.kind == "cohesive_material":
+        cls = registry._items[spec.name]
+        iface = spec.contract["interface"]
+        for attr, key in (
+            ("JUMP_DIM", "jump_dim"),
+            ("PRIMARY_STATE_VAR", "primary_state_var"),
+            ("IS_SYMMETRIC", "is_symmetric"),
+        ):
+            if key not in iface:
+                continue  # campos opcionales en la spec; lo declarado debe coincidir
+            if not hasattr(cls, attr):
+                errors.append(f"{spec.path}: {cls.__name__} no declara {attr}")
+                continue
+            code_val = getattr(cls, attr)
+            spec_val = iface[key]
+            if code_val != spec_val:
                 errors.append(
                     f"{spec.path}: {attr}={code_val!r} (código) vs "
                     f"{key}={spec_val!r} (spec)"

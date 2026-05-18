@@ -26,5 +26,6 @@ def initialize() -> None:
     usuario añada con su propio decorador.
     """
     _discover_package("fenix.materials")
+    _discover_package("fenix.cohesive_materials")
     _discover_package("fenix.elements")
     _discover_package("fenix.math")

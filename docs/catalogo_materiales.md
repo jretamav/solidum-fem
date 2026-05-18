@@ -157,8 +157,37 @@
 
 ---
 
+---
+
+# Materiales cohesivos (familia paralela, ADR 0010)
+
+Los materiales cohesivos son una **jerarquía paralela e independiente** de los materiales continuos: operan sobre el salto de desplazamientos `[[u]]` sobre una superficie de discontinuidad `Γ_d` y devuelven tracciones `t`, no esfuerzos sobre `ε`. Viven en `fenix/cohesive_materials/`, heredan de `fenix.core.cohesive_material.CohesiveMaterial`, se registran vía `CohesiveMaterialRegistry` y se declaran en YAML bajo la sección `cohesive_materials` (separada de `materials`). El bulk del elemento sigue siendo un `Material` continuo; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
+
+> **Convenciones de la familia**: `JUMP_DIM` = dimensión del vector de salto (2 en 2D, 3 en 3D); `PRIMARY_STATE_VAR` = variable interna que se exporta al post-proceso; `IS_SYMMETRIC` = simetría de la contribución a la tangente del elemento. Parámetros físicos típicos: `sigma_t0` (Pa), `G_f` (N/m), `K_e` (Pa/m). No tienen densidad — la inercia es del bulk.
+
+---
+
+## CohesiveDamageIsotropic — daño cohesivo isótropo Modo-I con softening lineal/exponencial
+
+- **Modelo**: daño escalar `ω ∈ [0, 1]` sobre el salto. Tracción `t_n = (1 − ω)·K_e·[[u_n]]` en dirección normal, `t_s = 0` en tangencial (Modo-I puro). Activación tipo Rankine (`f = ⟨[[u_n]]⟩ − κ`); historial monótono `κ_{n+1} = max(κ_n, ⟨[[u_n]]⟩)` con `κ_0 = σ_t0/K_e`. Energía de fractura `G_f` cierra la curva analíticamente:
+  - **Lineal**: `T_soft(κ) = σ_t0·(w_c − κ)/(w_c − κ_0)` con apertura crítica `w_c = 2·G_f/σ_t0`. `ω(κ) = 1 − σ_t0·(w_c − κ)/[K_e·κ·(w_c − κ_0)]`. `ω = 1` en `κ ≥ w_c`.
+  - **Exponencial**: `T_soft(κ) = σ_t0·exp[−σ_t0·(κ − κ_0)/H]` con `H = G_f − σ_t0·κ_0/2`. `ω(κ) = 1 − T_soft(κ)/(K_e·κ)`. Asintótica a 1.
+- **Tangente**: simétrica por construcción (rank-1 sobre `n⊗n`). Algorítmica consistente en carga activa: `T_tan = K_e·[(1−ω) − [[u_n]]·dω/dκ]·(n⊗n)`. Secante reducida `(1−ω)·K_e·(n⊗n)` en descarga y sin daño. Cap por `DAMAGE_MAX` aplicado **sólo a la rigidez tangente** cuando `ω ≥ DAMAGE_MAX`; el valor de `ω` reportado y la tracción usan el valor físico (puede llegar a 1.0 exacto) — esto distingue al material de `IsotropicDamage2D`, donde `K_e ≡ E` permite truncar ω sin sesgo.
+- **JUMP_DIM**: 2 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `True`.
+- **Parámetros**: `sigma_t0` (resistencia a tracción, Pa), `G_f` (energía de fractura, N/m), `K_e` (rigidez del salto / penalty, Pa/m; sin default automático, ver §12 de la spec para guía `K_e ≈ 10·E_bulk/ℓ_c`), `softening ∈ {'linear', 'exponential'}`.
+- **Variables internas**: `kappa` (historial del salto equivalente, [m]), `damage` (ω).
+- **Validación energética**: por construcción `∫_0^{w_c} t·d[[u_n]] = G_f` (lineal) o `∫_0^∞ ≈ G_f` (exponencial); cubierto por tests con cuadratura trapezoidal.
+- **Limitaciones declaradas** (`out_of_scope` en la spec): sólo Modo-I (mixto I–II diferido a fase G del ADR 0010), sin contacto unilateral en compresión (la grieta dañada transmite compresión con rigidez `(1−ω)·K_e`, no rígida), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento `CST_Embedded2D`, no del material).
+- **Compatible con**: pendiente de fase 2 del ADR 0010 (elemento `CST_Embedded2D`). En aislamiento, testeable con historial prescrito de `[[u]]`.
+- **Referencia**: ver `docs/specs/CohesiveDamageIsotropic.md`. Retama (2010) Cap. 3; Hillerborg, Modéer & Petersson (1976); Simó & Ju (1987).
+- **Archivo**: [fenix/cohesive_materials/damage_isotropic.py](fenix/cohesive_materials/damage_isotropic.py)
+
+---
+
 ## Cómo añadir un material nuevo
 
 `/fenix-new material <Name>` — genera archivo en `fenix/materials/`, decorador `@MaterialRegistry.register`, esqueleto de test.
 Declarar **`STRAIN_DIM`** y, si tiene historia, **`PRIMARY_STATE_VAR`** (la variable que aparecerá en el VTK).
 Tras implementar el modelo constitutivo, **añadir una entrada a este catálogo** siguiendo el formato de arriba.
+
+Para un material **cohesivo** nuevo: el patrón es análogo pero el archivo vive en `fenix/cohesive_materials/`, la clase hereda de `CohesiveMaterial` (no `Material`) y se registra con `@CohesiveMaterialRegistry.register`. Declarar `JUMP_DIM`, `PRIMARY_STATE_VAR` y `IS_SYMMETRIC`. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.

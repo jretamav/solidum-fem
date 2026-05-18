@@ -12,7 +12,13 @@ from fenix.logging import get_logger, set_log_level
 from fenix.autodiscover import initialize as _initialize_registries
 _initialize_registries()
 
-from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
+from fenix.registry import (
+    MaterialRegistry,
+    CohesiveMaterialRegistry,
+    ElementRegistry,
+    SolverRegistry,
+    QuadratureRegistry,
+)
 
 # 2. Re-exports de API pública (conveniencia para `from fenix import Foo`).
 #    El registro YAML funciona aunque un material/elemento nuevo NO se exporte aquí;
@@ -29,6 +35,8 @@ from fenix.materials.plastic_1d import Elastoplastic1D
 from fenix.materials.damage_1d import IsotropicDamage1D
 from fenix.materials.damage_2d import IsotropicDamage2D
 from fenix.materials.cable_1d import CableMaterial1D
+
+from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 
 from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from fenix.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot

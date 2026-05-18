@@ -70,6 +70,16 @@ class MaterialRegistry(_BaseRegistry):
     _materials = _items
 
 
+class CohesiveMaterialRegistry(_BaseRegistry):
+    """Registry paralelo a ``MaterialRegistry`` para materiales cohesivos
+    traction-jump (ADR 0010). Separado intencionalmente: los cohesivos
+    operan sobre ``[[u]]`` y devuelven ``t`` sobre ``Γ_d``, no sobre Voigt
+    de ``ε`` en el bulk. Mezclarlos forzaría al parser YAML a discriminar
+    por tipo en cada uso."""
+    _items: Dict[str, Type] = {}
+    _kind = "MaterialCohesivo"
+
+
 class ElementRegistry(_BaseRegistry):
     _items: Dict[str, Type] = {}
     _kind = "Elemento"

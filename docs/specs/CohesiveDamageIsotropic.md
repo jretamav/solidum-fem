@@ -77,9 +77,13 @@ con `κ ≥ κ_0`. Para `κ ≤ κ_0`, `ω = 0` por definición.
 
 **Softening lineal**:
 
-$$T_\text{soft}(\kappa) = \sigma_{t0}\left(1 - \frac{\kappa - \kappa_0}{w_c - \kappa_0}\right), \qquad w_c = \frac{2\,G_F}{\sigma_{t0}}$$
+$$T_\text{soft}(\kappa) = \sigma_{t0}\left(1 - \frac{\kappa - \kappa_0}{w_c - \kappa_0}\right) = \frac{\sigma_{t0}\,(w_c - \kappa)}{w_c - \kappa_0}, \qquad w_c = \frac{2\,G_F}{\sigma_{t0}}$$
 
-válida en `κ ∈ [κ_0, w_c]`. Para `κ ≥ w_c`: `T_\text{soft} = 0`, `ω = 1` (saturada a `DAMAGE_MAX`).
+válida en `κ ∈ [κ_0, w_c]`. Para `κ ≥ w_c`: `T_\text{soft} = 0`, `ω = 1` (saturada a `DAMAGE_MAX`). Forma cerrada de `ω(κ)`:
+
+$$\omega(\kappa) = 1 - \frac{\sigma_{t0}\,(w_c - \kappa)}{K_e\,\kappa\,(w_c - \kappa_0)} \qquad (\kappa \in [\kappa_0,\,w_c])$$
+
+Verificación en los extremos: `ω(κ_0) = 1 − σ_{t0}/(K_e·κ_0) = 0` (por `κ_0 = σ_{t0}/K_e`), y `ω(w_c) = 1`.
 
 **Softening exponencial**:
 
@@ -144,17 +148,19 @@ $$\mathbf T^\text{alg} = (1-\omega)\,K_e\,(\mathbf n \otimes \mathbf n) - \frac{
 
 $$= \left[(1-\omega) - \frac{d\omega}{d\kappa}\,\llbracket u_n\rrbracket\right]\,K_e\,(\mathbf n \otimes \mathbf n)$$
 
-- **Saturado** (`ω = DAMAGE_MAX`):
+- **Cap numérico de la tangente** (`ω ≥ DAMAGE_MAX`, o `κ ≥ w_c` en lineal):
 
 $$\mathbf T^\text{alg} = (1-\text{DAMAGE\_MAX})\,K_e\,(\mathbf n \otimes \mathbf n)$$
 
-(`dω/dκ` efectivamente cero al saturar; mismo corte que `IsotropicDamage2D`).
+El cap se aplica **sólo a la rigidez tangente** para evitar singularidad del Newton cuando `ω → 1`. La tracción se calcula con el `ω` físico (que llega a `1.0` exacto en lineal con `κ ≥ w_c`, asintóticamente en exponencial) y por tanto `t_n = 0` cuando la grieta está totalmente abierta, sin residuo numérico contaminando la energía disipada.
 
 Las derivadas `dω/dκ` cerradas:
 
-- **Lineal**, en `κ ∈ [κ_0, w_c]`:
-  $$\frac{d\omega}{d\kappa} = \frac{\sigma_{t0}}{K_e\,\kappa^2}\left(\frac{w_c}{w_c - \kappa_0}\right) - \frac{\sigma_{t0}}{K_e\,\kappa\,(w_c - \kappa_0)} = \frac{\sigma_{t0}\,(w_c - \kappa)}{K_e\,\kappa^2\,(w_c - \kappa_0)} \cdot \frac{1}{1}\;.\;.$$
-  *(Forma explícita: simplificar tras derivar `ω(κ) = 1 − T_\text{soft}(κ)/(K_e·κ)`. El usuario revisa el álgebra durante la implementación; la spec exige que la forma cerrada se documente en el docstring de la clase.)*
+- **Lineal**, en `κ ∈ [κ_0, w_c]`. Reescribiendo `ω(κ) = 1 − C·(w_c − κ)/κ = 1 − C·w_c/κ + C` con `C = σ_{t0} / [K_e·(w_c − κ_0)]` constante:
+
+  $$\frac{d\omega}{d\kappa} = \frac{C\,w_c}{\kappa^2} = \frac{\sigma_{t0}\,w_c}{K_e\,\kappa^2\,(w_c - \kappa_0)}$$
+
+  Positiva y finita en todo el rango `[κ_0, w_c]`. Verificación en extremos: en `κ = κ_0` (con `κ_0 = σ_{t0}/K_e` ⇒ `K_e·κ_0² = σ_{t0}·κ_0`) toma el valor `w_c / [κ_0·(w_c − κ_0)]`; en `κ = w_c` toma `σ_{t0} / [K_e·w_c·(w_c − κ_0)]`. Dimensionalmente, `[dω/dκ] = m⁻¹` (ω adimensional sobre κ con unidad de longitud). ✓
 
 - **Exponencial**, en `κ > κ_0`:
   $$\frac{d\omega}{d\kappa} = \frac{T_\text{soft}(\kappa)}{K_e\,\kappa}\left(\frac{1}{\kappa} + \frac{\sigma_{t0}}{H}\right) = (1 - \omega(\kappa))\left(\frac{1}{\kappa} + \frac{\sigma_{t0}}{H}\right)$$
@@ -179,7 +185,7 @@ Dentro de una iteración del Newton global, el material recibe `[[u]]_trial` y d
 
 - **Elección de `K_e` (penalty)**. Si `K_e` muy pequeño: `κ_0 = σ_{t0}/K_e` no es despreciable y la respuesta elástica deforma significativamente la curva (la grieta "se abre" antes del pico). Si `K_e` muy grande: condicionamiento del sistema empeora (`K_e ≫ E_bulk·L_e` introduce diferencia de magnitudes en `K_{ũũ}`). Regla práctica: `K_e ≈ 10·E_bulk/ℓ_c` con `ℓ_c` la longitud característica del elemento (su lado más corto). El usuario lo declara explícitamente en YAML; no hay default automático.
 - **Cierre en compresión**. Cuando `[[u_n]] < 0` el modelo devuelve `t_n = (1−ω)·K_e·[[u_n]]` (compresión reducida). Físicamente, la grieta cerrada debería transmitir compresión a rigidez completa `K_e` (contacto unilateral). En fase 1 esta limitación se acepta tal cual — los benchmarks de la tesis (Van Vliet, viga SEN) son traccionados puros. Un modelo con corrección de cierre se contempla como **deuda explícita** para casos con cambio de signo en la grieta.
-- **Saturación numérica**. `DAMAGE_MAX < 1` evita rigidez exactamente nula (singularidad del Newton). Constante del proyecto `fenix.constants.DAMAGE_MAX` (mismo valor que `IsotropicDamage2D`).
+- **Cap numérico de la rigidez tangente**. `DAMAGE_MAX < 1` se aplica **sólo** sobre `T_tan` para evitar singularidad del Newton (`stiffness = max(1−ω, 1−DAMAGE_MAX)·K_e`). El `ω` reportado en el estado y usado en `t_n = (1−ω)·K_e·[[u_n]]` es físico (puede valer exactamente 1.0 en lineal con `κ ≥ w_c`). Diferencia respecto al patrón en `IsotropicDamage2D`: allí `K_e ≡ E` es moderado y truncar ω no introduce residuo significativo en σ; aquí `K_e` es penalty (≫E) y `u_n` recorre rangos macroscópicos, así que truncar ω contaminaría la energía disipada en ~10–30 %.
 - **Sensibilidad de malla** en régimen de softening. Sin regularización, el patrón de fallo localiza en función del tamaño y orientación de elementos. La integración con el elemento `CST_Embedded2D` (fase 2 del ADR 0010) y con el `l_d = (A/h)·cos(θ−α)` de Cap. 6 da objetividad parcial respecto a la longitud de la grieta — pero la dirección de propagación sigue dependiendo de la dirección de tensiones principales en el elemento. Mitigación a nivel del *elemento*, no del material.
 - **Validación energética**. Por construcción `∫_0^{w_c} t(w)·dw = G_F`. Esto se verifica en los tests (§acceptance). Si la curva implementada no integra a `G_F`, hay error en `w_c` o en `H`.
 
@@ -190,7 +196,7 @@ Dentro de una iteración del Newton global, el material recibe `[[u]]_trial` y d
 ```yaml
 name: CohesiveDamageIsotropic
 kind: cohesive_material         # nueva familia, ADR 0010
-status: draft
+status: validated
 
 interface:
   jump_dim: 2                   # [[u]] ∈ ℝ² en 2D (componentes n, s en frame local)
@@ -233,9 +239,9 @@ out_of_scope:
 numerical_caveats:
   - "Penalty K_e: balance entre κ_0 despreciable (K_e grande) y condicionamiento (K_e moderado). Guía: K_e ≈ 10·E_bulk/ℓ_c. Declarado por el usuario en YAML, sin default automático."
   - "Cierre en compresión: rigidez reducida (1−ω)·K_e, no recuperación de contacto rígido. Aceptable para benchmarks puramente traccionados; deuda explícita para casos con cambio de signo."
-  - "Saturación ω = DAMAGE_MAX evita singularidad numérica; la tangente en saturación es secante pura sin corrección consistente."
+  - "Cap por DAMAGE_MAX aplicado sólo a la rigidez tangente (stiffness = max(1−ω, 1−DAMAGE_MAX)·K_e) para evitar singularidad del Newton. La tracción se calcula con ω físico (1.0 exacto en lineal con κ≥w_c) y por tanto t_n = 0 cuando la grieta está totalmente abierta, sin sesgo en la energía disipada."
   - "Régimen elastic↔softening discontinuo en la tangente al cruzar κ_0; régimen loading↔unloading discontinuo al cruzar κ_n committed. Mismo patrón que IsotropicDamage2D."
-  - "Para softening lineal con κ → w_c, ω → 1 con derivada finita: la transición a ω=DAMAGE_MAX puede dejar un residuo pequeño en la curva (corte numérico). Aceptable si DAMAGE_MAX está cerca de 1."
+  - "En la zona ω ≥ DAMAGE_MAX la tangente colapsa a la secante reducida (1−DAMAGE_MAX)·K_e, no a la consistente; el Newton degrada de convergencia cuadrática a lineal en esa rama (típicamente irrelevante porque la rama corresponde a un elemento prácticamente roto)."
 
 acceptance:
   verification:
@@ -298,7 +304,7 @@ acceptance:
 
     - name: saturacion_en_w_c_softening_lineal
       setup: "[[u_n]] = w_c·1.01 con softening='linear'"
-      expect: "ω = DAMAGE_MAX (saturado); t_n ≈ (1−DAMAGE_MAX)·K_e·[[u_n]] (residuo numérico controlado)"
+      expect: "ω = 1.0 exacto, t_n = 0 exacto (grieta totalmente abierta). T_tan = (1−DAMAGE_MAX)·K_e (cap numérico sólo sobre la rigidez)."
       tol_rel: 1.0e-10
 
     - name: degeneracion_a_elasticidad_intacta
@@ -326,19 +332,28 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
-
-- Archivo: —
-- Clase: —
+- Archivo: `fenix/cohesive_materials/damage_isotropic.py`
+- Clase: `CohesiveDamageIsotropic` (registrada en `CohesiveMaterialRegistry`)
+- Base abstracta: `fenix/core/cohesive_material.py` (`CohesiveMaterial`)
+- Registry: `fenix/registry.py` (`CohesiveMaterialRegistry`, paralelo a `MaterialRegistry`)
+- Autodiscover: `fenix.autodiscover.initialize()` descubre `fenix.cohesive_materials` automáticamente.
 - Tests:
-  - —
-- Notas de traducción: —
+  - `tests/test_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
+- Notas de traducción:
+  - El algoritmo §8 es explícito (sin Newton local); no se usa `is_admissible` en este material.
+  - `JUMP_DIM = 2`, `PRIMARY_STATE_VAR = 'damage'`, `IS_SYMMETRIC = True`.
+  - Frame local interno: `n = (1, 0)`, `s = (0, 1)`; el material no transforma a globales (responsabilidad del elemento consumidor).
+  - `t_s` y `T_tan[1,1]` son 0 por construcción (Modo-I). El elemento que consuma el material debe estar preparado para rigidez tangencial nula.
+  - `K_e` obligatorio en el constructor (sin default). `kappa_0`, `w_c` (lineal) y `H` (exponencial) se derivan en `__init__`.
 
 ---
 
 ## Diálogo
 
 - **2026-05-13** · Spec pre-redactada por la IA como **orden de trabajo** sobre el Cap. 3 de Retama 2010 (tesis del usuario). La física es traducción directa de la tesis; la mecánica del proyecto (Voigt, registry, signatura, tests) sigue convenciones de `IsotropicDamage2D`. Pendiente de validación del usuario.
-- **Punto abierto** · Decisión sobre **PRIMARY_STATE_VAR** (`damage` vs `kappa`). En el borrador se adoptó `damage` por interpretabilidad física (mismo criterio que `IsotropicDamage2D`); si el usuario prefiere `kappa` por ser la variable más fundamental, cambia trivialmente.
-- **Punto abierto** · La fórmula cerrada de `dω/dκ` para softening lineal se dejó simplificable durante la implementación. Sale directa de derivar `ω(κ) = 1 − [σ_t0·(1 − (κ−κ_0)/(w_c−κ_0))]/(K_e·κ)` con regla del cociente — el usuario revisa el álgebra al cerrar el docstring de la clase.
-- **Punto abierto** · `K_e` queda como parámetro obligatorio sin default automático. Alternativa considerada: derivar `K_e` de `E_bulk` y `ℓ_c` automáticamente al construir el elemento. Se descartó para no acoplar bulk y cohesivo en el contrato del material — el bulk es responsabilidad del elemento, el cohesivo se construye independiente y se acopla en el elemento. Si el usuario prefiere lo contrario, se revisa.
+- **2026-05-18** · Usuario delega las tres decisiones a la IA. Cierre con justificación arquitectural:
+  - **PRIMARY_STATE_VAR = `damage` (ω)** — adoptado. Razones: (a) coherencia con `IsotropicDamage2D` (mismo criterio en toda la familia de daños), (b) ω ∈ [0, DAMAGE_MAX] es adimensional e interpretable físicamente y es lo que se colorea en el post-proceso VTK, (c) κ tiene unidades [m] y depende de `K_e` (no es portable entre materiales). κ se almacena como variable interna secundaria, controla todo determinísticamente vía `ω(κ)` cerrada.
+  - **`dω/dκ` lineal cerrada en §9** — hecho. Forma simplificada: `dω/dκ = σ_t0·w_c / [K_e·κ²·(w_c − κ_0)]`. Documentada en la spec para que el docstring del código pueda referenciarla en vez de derivarla.
+  - **`K_e` obligatorio en YAML, sin default automático** — adoptado. ADR 0010 §1 separa explícitamente `bulk_material` y `cohesive_material`; derivar `K_e` de `E_bulk·ℓ_c` los acoplaría a nivel de material y ensuciaría el contrato (el material recibiría `E_bulk` y `ℓ_c` como inputs ocultos). Si en una iteración futura el YAML pide derivado automático, la fábrica vivirá en el elemento (`CST_Embedded2D` construye el `CohesiveDamageIsotropic` con `K_e` derivado si se omite), no en el material.
+- **2026-05-18** · Status → `validated`. La IA arranca implementación.
+- **2026-05-18** · *Nota tras implementación*: durante los tests el corte por `DAMAGE_MAX` aplicado a ω introducía ~10 % de exceso en `∫t·d[[u_n]]` respecto a `G_F` (vs ~0.001 esperado). Razón física: en cohesivos `K_e` es penalty (≫ E_bulk) y `u_n` recorre rango macroscópico, así que `(1−DAMAGE_MAX)·K_e·u_n` no es despreciable. Fix arquitectural: el cap por `DAMAGE_MAX` se aplica **sólo a la rigidez tangente** (para mantener el Newton no singular), no al `ω` reportado ni a `t_n`. Actualizadas §9, §12 y `acceptance.saturacion_en_w_c_softening_lineal` consecuentemente. Distinto del patrón en `IsotropicDamage2D` por la diferencia en escalas de `K_e` y de la variable de entrada.
