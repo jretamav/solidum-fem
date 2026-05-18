@@ -292,7 +292,9 @@ class TestLocalRecovery(unittest.TestCase):
         emb.compute_element_state(u_e)
         ds = emb.discontinuity_state
 
-        # Reconstruir R^{[[u]]} con el jump_trial obtenido
+        # Reconstruir R^{[[u]]} con el jump_trial obtenido. El término
+        # cohesivo debe incluir el factor ``thickness`` para que el
+        # balance dimensional sea consistente con el del bulk.
         from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
         B, detJ = _compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
@@ -305,8 +307,123 @@ class TestLocalRecovery(unittest.TestCase):
         t_local, _, _ = emb.cohesive_material.compute_traction(
             ds.jump_trial, ds.cohesive_state_committed or None,
         )
-        R_jump = -G.T @ (B_phi.T @ sigma) * vol + ds.l_d * t_local
+        R_jump = -G.T @ (B_phi.T @ sigma) * vol + ds.l_d * t_local * emb.thickness
         self.assertLess(np.linalg.norm(R_jump), 1e-6)
+
+
+# =========================================================================
+# Consistencia dimensional bajo thickness ≠ 1.0
+# =========================================================================
+
+
+class TestThicknessDimensionalConsistency(unittest.TestCase):
+    """Blinda contra el bug arquitectural del 2026-05-18.
+
+    El acoplamiento bulk↔cohesivo en ``_element_state_cracked`` exige
+    que el término cohesivo del residuo y la rigidez locales lleven el
+    factor ``thickness``. Sin él, el Newton local converge a un salto
+    proporcionalmente menor al correcto por un factor ``thickness``, el
+    cohesivo entrega ``t < σ_bulk·n`` (no satura), el global no cierra
+    con softening y el subsistema entero queda silenciosamente roto en
+    cualquier modelo con espesor distinto de 1 m. Históricamente
+    invisible porque todos los tests previos usaban ``thickness=1.0``;
+    el benchmark Van Vliet (thickness=0.1 m) lo descubrió.
+    """
+
+    def _build_loaded_emb(self, thickness: float):
+        coords = _ref_triangle_coords()
+        nodes = _triangle_nodes(coords)
+        cohesive = _make_cohesive(sigma_t0=1.0e6, softening='linear')
+        emb = CST_Embedded2D(
+            1, nodes, _make_bulk(), cohesive, thickness=thickness,
+        )
+        emb._activate(np.array([1.0, 0.0]), coords)
+        # ux del nodo 1 = 2e-4 produce σxx_bulk ≫ σ_t0 si el cohesivo
+        # no abriera; el cohesivo debe absorber el salto y limitar σ a σ_t0.
+        u_e = np.array([0.0, 0.0, 2.0e-4, 0.0, 0.0, 0.0])
+        emb.compute_element_state(u_e)
+        return emb
+
+    def test_cohesive_engages_with_non_unit_thickness(self):
+        """Con thickness=0.1 m, el cohesivo debe dañar y saturar."""
+        emb = self._build_loaded_emb(thickness=0.1)
+        coh = emb.discontinuity_state.cohesive_state_trial
+        self.assertGreater(
+            coh['damage'], 0.0,
+            "El cohesivo no daña con thickness ≠ 1.0: bug dimensional reabierto.",
+        )
+        self.assertGreater(coh['kappa'], emb.cohesive_material.kappa_0)
+
+    def test_traction_balances_bulk_stress(self):
+        """t_n (cohesivo) ≈ σ_bulk · n en equilibrio local, con thickness ≠ 1."""
+        emb = self._build_loaded_emb(thickness=0.1)
+        ds = emb.discontinuity_state
+
+        from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
+        coords = emb.get_coordinate_matrix(ndim=2)
+        B, _ = _compute_kinematics_tri3(coords)
+        i_star = ds.solitary_node
+        B_phi = B[:, 2 * i_star:2 * i_star + 2]
+        G = np.column_stack([ds.normal, ds.tangent])
+
+        u_e = np.array([0.0, 0.0, 2.0e-4, 0.0, 0.0, 0.0])
+        strain = B @ u_e - B_phi @ (G @ ds.jump_trial)
+        sigma = emb.material.C @ strain  # Voigt [σ_xx, σ_yy, σ_xy]
+
+        # σ proyectada en el frame local de Γ_d: σ_nn = n·σ·n
+        n = ds.normal
+        sigma_nn = (sigma[0] * n[0]**2 + sigma[1] * n[1]**2
+                    + 2.0 * sigma[2] * n[0] * n[1])
+
+        t_local, _, _ = emb.cohesive_material.compute_traction(
+            ds.jump_trial, ds.cohesive_state_committed or None,
+        )
+        # Balance: t_n debe ≈ σ_nn (continuidad de la tracción normal a Γ_d).
+        # Tolerancia relativa al σ_t0 del cohesivo (escala física natural).
+        self.assertLess(
+            abs(t_local[0] - sigma_nn) / emb.cohesive_material.sigma_t0,
+            1.0e-3,
+            f"Desbalance bulk↔cohesivo: t_n={t_local[0]:.3e}, σ_nn={sigma_nn:.3e}",
+        )
+
+    def test_residual_with_correct_formula_vanishes(self):
+        """R^{[[u]]} con el factor ``thickness`` correcto debe anularse."""
+        emb = self._build_loaded_emb(thickness=0.1)
+        ds = emb.discontinuity_state
+
+        from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
+        coords = emb.get_coordinate_matrix(ndim=2)
+        B, detJ = _compute_kinematics_tri3(coords)
+        G = np.column_stack([ds.normal, ds.tangent])
+        i_star = ds.solitary_node
+        B_phi = B[:, 2 * i_star:2 * i_star + 2]
+        vol = 0.5 * detJ * emb.thickness
+
+        u_e = np.array([0.0, 0.0, 2.0e-4, 0.0, 0.0, 0.0])
+        strain_bulk = B @ u_e - B_phi @ (G @ ds.jump_trial)
+        sigma = emb.material.C @ strain_bulk
+        t_local, _, _ = emb.cohesive_material.compute_traction(
+            ds.jump_trial, ds.cohesive_state_committed or None,
+        )
+        R_jump = (-G.T @ (B_phi.T @ sigma) * vol
+                  + ds.l_d * t_local * emb.thickness)
+        self.assertLess(np.linalg.norm(R_jump), 1e-6)
+
+    def test_jump_scales_independently_of_thickness(self):
+        """El salto físico ``[[u]]`` no debe depender de ``thickness``.
+
+        Con la misma cinemática (mismo u_e, misma geometría, mismo material),
+        el equilibrio bulk↔cohesivo es local a Γ_d y no involucra el espesor
+        out-of-plane. Antes del fix, jump_n escalaba con thickness (× factor
+        wrong); tras el fix, debe ser invariante.
+        """
+        emb_thick = self._build_loaded_emb(thickness=1.0)
+        emb_thin = self._build_loaded_emb(thickness=0.1)
+        np.testing.assert_allclose(
+            emb_thick.discontinuity_state.jump_trial,
+            emb_thin.discontinuity_state.jump_trial,
+            rtol=1.0e-9, atol=1.0e-15,
+        )
 
 
 # =========================================================================

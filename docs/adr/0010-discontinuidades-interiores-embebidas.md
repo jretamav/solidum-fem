@@ -212,6 +212,38 @@ Cada fase es un commit cerrado con tests verdes, no bloquea las siguientes y dej
 - *Empezar por la versión sin crack tracking (Brank 2021, Zhang cracking elements)*: rechazada por decisión explícita del usuario — fiel a la tesis 2010 primero, validar el trabajo original, después extender.
 - *Implementar KOS y KSON en paralelo en fase 1 para replicar la comparativa de la tesis*: rechazada — infla el alcance ~30% sin valor inmediato. KSON entra como fase H si se quiere reproducir la comparativa académica.
 
+## Caveats y lecciones aprendidas
+
+### Consistencia dimensional de los términos cohesivos (descubierto 2026-05-18)
+
+**Síntoma**: durante un ensayo *diagnóstico* del subsistema (probeta Van Vliet en tracción centrada — no la versión faithful con excentricidad de la fase 4), la curva carga-deformación nunca alcanzaba pico. El cohesivo no degradaba aunque `σ_bulk` superase `σ_t0` en los elementos del crack. En diagnóstico por elemento: `jump_n ≈ 3×10⁻¹⁰ m` (10× menor que el equilibrio físico requeriría, ~3×10⁻⁹ m), `damage = 0` siempre, y la tracción cohesiva era `t_n ≈ σ_bulk/10`.
+
+**Causa raíz**: en `CST_Embedded2D._element_state_cracked`, el residual y la rigidez locales del Newton del salto sumaban dos términos en **unidades diferentes**:
+
+- Bulk: `-G^T · B^φ^T · σ · vol` con `vol = A_e · thickness` → unidades de N (fuerza 3D).
+- Cohesivo: `l_d · t` con `l_d` en m y `t` en Pa → unidades de N/m (fuerza por unidad de espesor).
+
+Sumar `N + N/m` produce un residuo numéricamente válido pero físicamente inconsistente: el cohesivo entraba sobre-pesado por `1/thickness` en el balance local. Newton convergía a un salto `thickness×` **menor** del correcto, y el cohesivo nunca alcanzaba `κ_0` para activar damage.
+
+**Fix**: multiplicar los términos cohesivos por `self.thickness` para cerrar la consistencia dimensional:
+
+```python
+R_jump = -G.T @ (B_phi.T @ sigma) * vol + ds.l_d * t_local * self.thickness
+K_jj   = G.T @ (B_phi.T @ C_tan_bulk @ B_phi) @ G * vol + ds.l_d * T_coh * self.thickness
+```
+
+**Por qué fue invisible**: todos los tests existentes del subsistema (fases 1–3 + bring-up de integración + 24 tests del elemento) usaban `thickness = 1.0`. Con espesor unitario, el factor faltante es la identidad y el bug no se manifiesta. El primer caso real con `thickness ≠ 1.0` fue Van Vliet (`thickness = 0.1 m`).
+
+**Blindaje**: cuatro tests nuevos en `tests/test_cst_embedded.py::TestThicknessDimensionalConsistency`, todos ejercitan `thickness = 0.1`:
+1. `test_cohesive_engages_with_non_unit_thickness` — verifica que `damage > 0` cuando la carga rebasa el umbral.
+2. `test_traction_balances_bulk_stress` — verifica continuidad `t_n ≈ σ·n` con tolerancia `1e-3 · σ_t0`.
+3. `test_residual_with_correct_formula_vanishes` — reconstruye `R^{[[u]]}` con el factor `thickness` correcto y confirma anulación.
+4. `test_jump_scales_independently_of_thickness` — el salto físico es invariante bajo cambio de `thickness` con cinemática idéntica (antes del fix, escalaba con `thickness`).
+
+El test antiguo `TestLocalRecovery.test_residual_vanishes_after_loading` también se actualizó para usar la fórmula corregida (era *accidentalmente* correcto con `thickness=1.0` y habría dado falso negativo con cualquier otro espesor).
+
+**Lección general**: tests de unidad con coeficientes "1.0" (espesores unitarios, módulos unitarios, áreas unitarias) son **trampa de cobertura**. Validan la lógica simbólica del operador pero hacen invisible cualquier inconsistencia dimensional. Política para el subsistema: tests con al menos un parámetro físico de escala ≠ 1.0 cuando ese parámetro aparezca en la formulación.
+
 ## Referencias
 
 - **Retama Velasco, J. (2010).** *Formulation and Approximation to Problems in Solids by Embedded Discontinuity Models*. Tesis Doctoral, Instituto de Ingeniería, UNAM. Director: Dr. A. Gustavo Ayala Milián. **Referencia primaria; el autor de la tesis es el usuario de Fenix FEM.** PDF en [`docs/referencias/PhD_Thesis_Retama_2010.pdf`](../referencias/PhD_Thesis_Retama_2010.pdf).

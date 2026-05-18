@@ -1,0 +1,52 @@
+# Curva de referencia para el benchmark Van Vliet (§8.1 de Retama, 2010).
+#
+# Fuente: figura 8.3 de "Formulation and Approximation to Problems in Solids
+# by Embedded Discontinuity Models" (Retama, 2010), página 56 del PDF.
+# Archivo en docs/referencias/PhD_Thesis_Retama_2010.pdf.
+#
+# Método: digitalización manual (a ojo) de los tres trazos de la figura.
+# La figura está como imagen rasterizada en el PDF; no hay datos tabulares
+# originales disponibles. Precisión típica: ±1 kN en carga, ±5 µm en deformación.
+# Adecuado para comparativa visual y sanity check del orden de magnitud;
+# NO para validación cuantitativa estricta.
+#
+# Columnas:
+#   deformation_um   — deformación entre puntos de referencia L_s = 0.6·D, en micrómetros.
+#                      L_s = 120 mm para D = 200 mm.
+#   P_lineal_kN      — respuesta numérica de Retama con softening lineal.
+#   P_exponencial_kN — respuesta numérica de Retama con softening exponencial.
+#   P_experimental_kN — datos experimentales reportados por Van Vliet (referencia [111] de la tesis,
+#                       espécimen "type C" de la serie DRY, concreto 05C04N30).
+#
+# Parámetros del experimento (de la tesis §8.1):
+#   D = 200 mm; r = 145 mm; depth = 100 mm; e = D/50 = 4 mm.
+#   Concreto: E = 39.8 GPa, nu = 0.2, sigma_t0 = 2.57 MPa, G_F = 0.1219 N/mm.
+#   Mode-I de falla; mode-II rigidez nula.
+#
+deformation_um,P_lineal_kN,P_exponencial_kN,P_experimental_kN
+0.0,0.0,0.0,0.0
+1.0,5.5,5.5,5.0
+2.0,11.0,11.0,10.0
+3.0,16.5,16.5,15.0
+4.0,22.0,22.0,20.0
+5.0,26.0,26.0,24.5
+6.0,27.0,27.0,26.5
+7.0,27.0,27.0,26.0
+8.0,25.0,25.5,24.0
+10.0,22.0,23.5,21.5
+12.0,19.0,21.5,19.5
+15.0,16.0,18.5,17.0
+18.0,13.5,16.5,15.0
+20.0,12.0,15.5,14.0
+25.0,9.5,13.0,12.0
+30.0,7.5,11.0,10.5
+35.0,6.5,9.5,9.5
+40.0,5.5,8.5,8.5
+50.0,4.5,7.0,7.0
+60.0,3.5,6.0,6.0
+75.0,3.0,5.0,5.0
+100.0,2.5,4.0,4.5
+125.0,2.0,3.0,3.5
+150.0,1.5,2.5,3.0
+175.0,1.2,2.0,2.5
+200.0,1.0,1.5,2.0

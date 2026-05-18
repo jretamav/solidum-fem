@@ -227,10 +227,16 @@ class CST_Embedded2D(Element):
             )
 
             # Residual y rigidez del salto:
-            #   R^{[[u]]} = −G^T · (B^φ)^T · σ · vol + l_d · t
-            #   K_jj    = G^T · (B^φ)^T · C_tan_bulk · B^φ · G · vol + l_d · T_coh
-            R_jump = -G.T @ (B_phi.T @ sigma) * vol + ds.l_d * t_local
-            K_jj = G.T @ (B_phi.T @ C_tan_bulk @ B_phi) @ G * vol + ds.l_d * T_coh
+            #   R^{[[u]]} = −G^T · (B^φ)^T · σ · vol + l_d · t · thickness
+            #   K_jj    = G^T · (B^φ)^T · C_tan_bulk · B^φ · G · vol + l_d · T_coh · thickness
+            # El factor ``thickness`` en los términos cohesivos cierra la
+            # consistencia dimensional: el bulk lleva ``vol = A_e · thickness``
+            # mientras que el cohesivo en 2D entrega ``t · l_d`` con unidades
+            # N/m por unidad de espesor; multiplicarlo por ``thickness``
+            # devuelve fuerza 3D N y rigidez N/m. Con ``thickness = 1.0`` el
+            # bug es invisible (caso de todos los tests previos).
+            R_jump = -G.T @ (B_phi.T @ sigma) * vol + ds.l_d * t_local * self.thickness
+            K_jj = G.T @ (B_phi.T @ C_tan_bulk @ B_phi) @ G * vol + ds.l_d * T_coh * self.thickness
 
             scale = max(np.linalg.norm(t_local) * ds.l_d, 1.0)
             converged = np.linalg.norm(R_jump) < _LOCAL_JUMP_RTOL * scale
