@@ -12,6 +12,9 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
 - ``newmark`` — :class:`NewmarkSolver` (integración Newmark-β lineal para
   ``M·ü + C·u̇ + K·u = F(t)``; ADR 0009 fase 3) y :class:`NewtonNewmarkSolver`
   (variante no lineal con Newton dentro de cada paso; ADR 0009 fase 4).
+  Variantes HHT-α (Hilber-Hughes-Taylor 1977) con disipación numérica
+  controlada: :class:`HHTSolver` (lineal) y :class:`NewtonHHTSolver`
+  (no lineal).
 
 Los reexports a nivel de paquete preservan los imports históricos
 ``from fenix.math.solvers import LinearSolver`` sin alterar al consumidor.
@@ -24,7 +27,12 @@ from fenix.math.solvers.linear import LinearSolver
 from fenix.math.solvers.nonlinear import NonlinearSolver
 from fenix.math.solvers.arclength import ArcLengthSolver
 from fenix.math.solvers.modal import ModalSolver
-from fenix.math.solvers.newmark import NewmarkSolver, NewtonNewmarkSolver
+from fenix.math.solvers.newmark import (
+    HHTSolver,
+    NewmarkSolver,
+    NewtonHHTSolver,
+    NewtonNewmarkSolver,
+)
 
 __all__ = [
     "CholeskyNotPositiveDefiniteError",
@@ -34,4 +42,6 @@ __all__ = [
     "ModalSolver",
     "NewmarkSolver",
     "NewtonNewmarkSolver",
+    "HHTSolver",
+    "NewtonHHTSolver",
 ]

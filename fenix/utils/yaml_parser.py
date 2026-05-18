@@ -638,7 +638,11 @@ class YamlParser:
         if 'convergence' in kwargs:
             from fenix.math.convergence import make_convergence_from_config
             cfg = kwargs.pop('convergence')
-            if s_type not in ('LinearSolver', 'ModalSolver', 'NewmarkSolver'):
+            # Solvers lineales (sin Newton interno) no admiten `convergence`:
+            # estáticos lineales, modal (ARPACK gestiona su propia tolerancia),
+            # transitorios lineales (Newmark y HHT).
+            if s_type not in ('LinearSolver', 'ModalSolver',
+                              'NewmarkSolver', 'HHTSolver'):
                 kwargs['convergence'] = make_convergence_from_config(cfg)
 
         return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

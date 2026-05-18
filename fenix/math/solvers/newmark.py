@@ -614,3 +614,551 @@ class NewtonNewmarkSolver(NewmarkSolver):
             alpha *= rho
 
         return alpha
+
+
+def _hht_autoderive_beta_gamma(alpha: float) -> tuple[float, float]:
+    """Auto-derivación de β, γ desde α para HHT-α (Hilber 1977).
+
+    Preserva orden 2 de precisión y estabilidad incondicional:
+        β = (1 − α)² / 4
+        γ = (1 − 2α) / 2
+    Con α=0 recupera Newmark trapezoidal (β=1/4, γ=1/2).
+    """
+    beta = (1.0 - alpha) ** 2 / 4.0
+    gamma = (1.0 - 2.0 * alpha) / 2.0
+    return beta, gamma
+
+
+@SolverRegistry.register
+class HHTSolver(NewmarkSolver):
+    """Análisis dinámico transitorio lineal por Hilber-Hughes-Taylor α (1977).
+
+    Variante de :class:`NewmarkSolver` con **disipación numérica controlada**
+    en altas frecuencias. La ecuación de equilibrio temporal evalúa fuerzas
+    elásticas, viscosas y externas en un instante intermedio ``t_{n+1−α}``,
+    mientras la fuerza inercial se mantiene en ``t_{n+1}``:
+
+    .. math::
+
+        \\mathbf M\\,\\ddot{\\mathbf u}_{n+1}
+          + (1+\\alpha)\\mathbf C\\dot{\\mathbf u}_{n+1} - \\alpha\\mathbf C\\dot{\\mathbf u}_n
+          + (1+\\alpha)\\mathbf K\\mathbf u_{n+1} - \\alpha\\mathbf K\\mathbf u_n
+          = (1+\\alpha)\\mathbf F_{n+1} - \\alpha\\mathbf F_n
+
+    Para preservar segundo orden y estabilidad incondicional, ``β`` y ``γ``
+    se auto-derivan desde ``α`` (Hilber 1977): ``β=(1−α)²/4, γ=(1−2α)/2``.
+    Con ``α=0`` recupera Newmark trapezoidal exactamente.
+
+    Parameters
+    ----------
+    alpha : float, default −0.05
+        Parámetro HHT en [−1/3, 0]. Valor canónico ``−0.05`` (Hilber 1977,
+        Abaqus, OpenSees). ``α=0`` → sin disipación numérica. ``α=−1/3`` →
+        disipación máxima manteniendo orden 2. Radio espectral en alta
+        frecuencia: ``ρ_∞ = (1+α)/(1−α)``.
+    beta, gamma : float or None
+        Si ``None`` (default), se autoderivan desde ``alpha``. Override
+        explícito posible pero no recomendado: combinaciones arbitrarias
+        pueden perder estabilidad incondicional u orden 2.
+    (resto heredado de NewmarkSolver — ver docstring del padre)
+
+    Notes
+    -----
+    La matriz efectiva ``A_eff = M + (1+α)γΔt·C + (1+α)βΔt²·K`` es constante
+    (depende solo de M, C, K y de los coeficientes) y se factoriza una sola
+    vez al inicio. Cada paso temporal es una resolución triangular barata,
+    igual que `NewmarkSolver`.
+
+    Ver ``docs/specs/HHTSolver.md``.
+    """
+
+    def __init__(
+        self,
+        assembler,
+        t_end: float,
+        dt: float,
+        *,
+        alpha: float = -0.05,
+        beta: float | None = None,
+        gamma: float | None = None,
+        rayleigh: dict | None = None,
+        u0: np.ndarray | None = None,
+        u0_dot: np.ndarray | None = None,
+        F_func: Callable[[float], np.ndarray] | None = None,
+        linear_algebra: str = "auto",
+        lumping: str = "consistent",
+    ):
+        if not (-1.0 / 3.0 - 1.0e-12 <= alpha <= 0.0 + 1.0e-12):
+            raise ValueError(
+                f"HHTSolver: alpha={alpha} fuera del rango [-1/3, 0]. "
+                "Valores fuera de este rango pierden estabilidad incondicional u orden 2."
+            )
+        beta_eff, gamma_eff = _hht_autoderive_beta_gamma(alpha)
+        if beta is not None:
+            beta_eff = float(beta)
+        if gamma is not None:
+            gamma_eff = float(gamma)
+
+        super().__init__(
+            assembler, t_end, dt,
+            beta=beta_eff, gamma=gamma_eff, rayleigh=rayleigh,
+            u0=u0, u0_dot=u0_dot, F_func=F_func,
+            linear_algebra=linear_algebra, lumping=lumping,
+        )
+        self.alpha = float(alpha)
+
+    def solve(self) -> TransientResult:
+        _log.info(f"--- INICIANDO SOLVER HHT-α (alpha={self.alpha:.4f}) ---")
+
+        self.assembler.assemble_system()
+        K = self.assembler.K_global
+        M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
+
+        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        C = alpha_r * M + beta_r * K
+
+        cs = self.assembler.constraint_set
+        T, g = cs.build(self.assembler.ndof)
+        free_dofs = cs.free_dofs(self.assembler.ndof)
+
+        K_red = (T.T @ K @ T).tocsr()
+        M_red = (T.T @ M @ T).tocsr()
+        C_red = (T.T @ C @ T).tocsr() if (alpha_r != 0.0 or beta_r != 0.0) \
+                else sp.csr_matrix(K_red.shape)
+        F_dir = T.T @ (K @ g)
+
+        ndof = self.assembler.ndof
+        n_free = K_red.shape[0]
+
+        u0_global = (np.zeros(ndof) if self.u0 is None
+                      else np.asarray(self.u0, dtype=float).reshape(ndof))
+        u0_dot_global = (np.zeros(ndof) if self.u0_dot is None
+                          else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
+        u_free = u0_global[free_dofs].copy()
+        udot_free = u0_dot_global[free_dofs].copy()
+
+        F0_global = (np.zeros(ndof) if self.F_func is None
+                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        F0_red = T.T @ F0_global
+
+        # Aceleración inicial consistente con la ecuación de movimiento en t=0
+        # (idéntica a Newmark: no involucra α porque no hay paso anterior).
+        rhs0 = F0_red - F_dir - C_red @ udot_free - K_red @ u_free
+        props_M = StiffnessProperties(
+            is_symmetric=domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=True,
+            size=n_free,
+        )
+        M_solver = select_solver(props_M, override=self.linear_algebra)
+        uddot_free = M_solver.solve(M_red, rhs0)
+
+        # Sistema efectivo HHT-α: A_eff = M + (1+α)γΔt·C + (1+α)βΔt²·K.
+        # Constante en el tiempo → factorización única reutilizable.
+        alpha_hht = self.alpha
+        one_plus_alpha = 1.0 + alpha_hht
+        dt = self.dt
+        beta = self.beta
+        gamma = self.gamma
+        A_eff = (M_red
+                 + one_plus_alpha * gamma * dt * C_red
+                 + one_plus_alpha * beta * dt * dt * K_red).tocsr()
+        props_A = StiffnessProperties(
+            is_symmetric=domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=True,
+            size=n_free,
+        )
+        A_solver = select_solver(props_A, override=self.linear_algebra)
+        A_factor = A_solver.factorize(A_eff)
+
+        n_steps = int(np.ceil(self.t_end / dt))
+        t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
+        u_history = np.zeros((ndof, n_steps + 1))
+        udot_history = np.zeros((ndof, n_steps + 1))
+        uddot_history = np.zeros((ndof, n_steps + 1))
+        u_history[:, 0] = T @ u_free + g
+        udot_history[:, 0] = T @ udot_free
+        uddot_history[:, 0] = T @ uddot_free
+
+        half_dt2 = 0.5 * dt * dt
+        one_minus_2beta = 1.0 - 2.0 * beta
+        one_minus_gamma = 1.0 - gamma
+        beta_dt2 = beta * dt * dt
+        gamma_dt = gamma * dt
+
+        # Cache de F_n (carga del paso anterior) para los términos α·F_n.
+        F_n_red = F0_red
+
+        for step in range(n_steps):
+            t_next = t_history[step + 1]
+
+            # Predictores Newmark (idénticos al padre).
+            u_pred = u_free + dt * udot_free + half_dt2 * one_minus_2beta * uddot_free
+            udot_pred = udot_free + dt * one_minus_gamma * uddot_free
+
+            # u_n, u̇_n son el estado al inicio del paso (antes del avance).
+            u_n = u_free
+            udot_n = udot_free
+
+            F_global = (np.zeros(ndof) if self.F_func is None
+                         else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+            F_next_red = T.T @ F_global
+
+            # RHS HHT-α: (1+α)·F_{n+1} − α·F_n − F_dir
+            #            − (1+α)·C·ũ̇ + α·C·u̇_n
+            #            − (1+α)·K·ũ + α·K·u_n
+            rhs = (one_plus_alpha * F_next_red - alpha_hht * F_n_red
+                   - F_dir
+                   - one_plus_alpha * (C_red @ udot_pred) + alpha_hht * (C_red @ udot_n)
+                   - one_plus_alpha * (K_red @ u_pred) + alpha_hht * (K_red @ u_n))
+
+            uddot_free = A_factor.solve(rhs)
+
+            # Correctores Newmark.
+            u_free = u_pred + beta_dt2 * uddot_free
+            udot_free = udot_pred + gamma_dt * uddot_free
+
+            u_history[:, step + 1] = T @ u_free + g
+            udot_history[:, step + 1] = T @ udot_free
+            uddot_history[:, step + 1] = T @ uddot_free
+
+            F_n_red = F_next_red
+
+        _log.info(f"  -> {n_steps} pasos completados (HHT-α). "
+                   f"alpha={alpha_hht:.4f}, ρ_∞={(one_plus_alpha)/(1.0-alpha_hht):.4f}. "
+                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
+
+        return TransientResult(
+            t_history=t_history,
+            u_history=u_history,
+            udot_history=udot_history,
+            uddot_history=uddot_history,
+            n_steps=n_steps,
+            alpha_rayleigh=alpha_r,
+            beta_rayleigh=beta_r,
+            converged=True,
+        )
+
+
+@SolverRegistry.register
+class NewtonHHTSolver(NewtonNewmarkSolver):
+    """Análisis dinámico transitorio **no lineal** por HHT-α + Newton.
+
+    Variante de :class:`NewtonNewmarkSolver` que aplica el esquema temporal
+    HHT-α al residuo dinámico no lineal. Residuo y jacobiano modificados:
+
+    .. math::
+
+        \\mathbf R(\\ddot{\\mathbf u}_{n+1}) =
+          (1+\\alpha)\\mathbf F_{n+1} - \\alpha\\mathbf F_n
+          - [(1+\\alpha)\\mathbf F_\\text{int}(\\mathbf u_{n+1}) - \\alpha\\mathbf F_\\text{int}(\\mathbf u_n)]
+          - [(1+\\alpha)\\mathbf C\\dot{\\mathbf u}_{n+1} - \\alpha\\mathbf C\\dot{\\mathbf u}_n]
+          - \\mathbf M\\ddot{\\mathbf u}_{n+1}
+
+    .. math::
+
+        \\mathbf J = \\mathbf M + (1+\\alpha)\\gamma\\Delta t\\,\\mathbf C
+                                  + (1+\\alpha)\\beta\\Delta t^2\\,\\mathbf K_\\text{t}
+
+    Todo lo demás (criterio de convergencia, line search opt-in, telemetría
+    tipada, commit/rollback de estado, Rayleigh con K_0 constante) se hereda
+    de ``NewtonNewmarkSolver`` sin cambios.
+
+    Parameters
+    ----------
+    alpha : float, default −0.05
+        Parámetro HHT (ver `HHTSolver`).
+    beta, gamma : float or None
+        Auto-derivados desde alpha si `None`.
+    (resto heredado de NewtonNewmarkSolver)
+
+    Notes
+    -----
+    Con materiales lineales, este solver reproduce exactamente `HHTSolver`
+    (el residuo de Newton se anula en una iteración). Validado en tests.
+
+    Ver ``docs/specs/HHTSolver.md``.
+    """
+
+    def __init__(
+        self,
+        assembler,
+        t_end: float,
+        dt: float,
+        *,
+        alpha: float = -0.05,
+        convergence: ConvergenceCriterion | None = None,
+        max_iter: int = 20,
+        freeze_tangent_after_iter: int | None = None,
+        line_search: bool = False,
+        beta: float | None = None,
+        gamma: float | None = None,
+        rayleigh: dict | None = None,
+        u0: np.ndarray | None = None,
+        u0_dot: np.ndarray | None = None,
+        F_func: Callable[[float], np.ndarray] | None = None,
+        linear_algebra: str = "auto",
+        lumping: str = "consistent",
+    ):
+        if not (-1.0 / 3.0 - 1.0e-12 <= alpha <= 0.0 + 1.0e-12):
+            raise ValueError(
+                f"NewtonHHTSolver: alpha={alpha} fuera del rango [-1/3, 0]. "
+                "Valores fuera de este rango pierden estabilidad incondicional u orden 2."
+            )
+        beta_eff, gamma_eff = _hht_autoderive_beta_gamma(alpha)
+        if beta is not None:
+            beta_eff = float(beta)
+        if gamma is not None:
+            gamma_eff = float(gamma)
+
+        super().__init__(
+            assembler, t_end, dt,
+            convergence=convergence, max_iter=max_iter,
+            freeze_tangent_after_iter=freeze_tangent_after_iter,
+            line_search=line_search,
+            beta=beta_eff, gamma=gamma_eff, rayleigh=rayleigh,
+            u0=u0, u0_dot=u0_dot, F_func=F_func,
+            linear_algebra=linear_algebra, lumping=lumping,
+        )
+        self.alpha = float(alpha)
+
+    def solve(self) -> TransientResult:
+        _log.info(f"--- INICIANDO SOLVER HHT-α NO LINEAL (alpha={self.alpha:.4f}) ---")
+
+        if self.assembler.domain.total_dofs == 0:
+            self.assembler.domain.generate_equation_numbers()
+        ndof = self.assembler.domain.total_dofs
+
+        u_total = (np.zeros(ndof) if self.u0 is None
+                    else np.asarray(self.u0, dtype=float).reshape(ndof)).copy()
+        udot_total = (np.zeros(ndof) if self.u0_dot is None
+                       else np.asarray(self.u0_dot, dtype=float).reshape(ndof)).copy()
+
+        M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
+
+        K_0, F_int = self.assembler.assemble_non_linear_system(u_total)
+
+        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        C = alpha_r * M + beta_r * K_0
+
+        cs = self.assembler.constraint_set
+        T_op, g_vec = cs.build(ndof)
+        free_dofs = cs.free_dofs(ndof)
+        n_free = T_op.shape[1]
+
+        prescribed = np.ones(ndof, dtype=bool)
+        prescribed[free_dofs] = False
+        u_total[prescribed] = g_vec[prescribed]
+        udot_total[prescribed] = 0.0
+
+        M_red = (T_op.T @ M @ T_op).tocsr()
+        if alpha_r != 0.0 or beta_r != 0.0:
+            C_red = (T_op.T @ C @ T_op).tocsr()
+        else:
+            C_red = sp.csr_matrix(M_red.shape)
+
+        F0_global = (np.zeros(ndof) if self.F_func is None
+                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        rhs0 = T_op.T @ (F0_global - F_int - C @ udot_total)
+        props_M = StiffnessProperties(
+            is_symmetric=domain_is_symmetric(self.assembler.domain),
+            is_positive_definite=True,
+            size=n_free,
+        )
+        M_solver = select_solver(props_M, override=self.linear_algebra)
+        uddot_free = M_solver.solve(M_red, rhs0)
+        uddot_total = np.zeros(ndof)
+        uddot_total[free_dofs] = uddot_free
+
+        # Estado del paso anterior (al inicio del análisis: instante 0).
+        # Usado en los términos α·X_n de HHT.
+        F_int_prev = F_int.copy()
+        udot_prev = udot_total.copy()
+        F_prev_global = F0_global.copy()
+
+        dt = self.dt
+        beta = self.beta
+        gamma = self.gamma
+        alpha_hht = self.alpha
+        one_plus_alpha = 1.0 + alpha_hht
+        n_steps = int(np.ceil(self.t_end / dt))
+        t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
+        u_history = np.zeros((ndof, n_steps + 1))
+        udot_history = np.zeros((ndof, n_steps + 1))
+        uddot_history = np.zeros((ndof, n_steps + 1))
+        u_history[:, 0] = u_total
+        udot_history[:, 0] = udot_total
+        uddot_history[:, 0] = uddot_total
+
+        half_dt2 = 0.5 * dt * dt
+        one_minus_2beta = 1.0 - 2.0 * beta
+        one_minus_gamma = 1.0 - gamma
+        beta_dt2 = beta * dt * dt
+        gamma_dt = gamma * dt
+
+        is_sym = domain_is_symmetric(self.assembler.domain)
+        is_pd = True
+        props_J = StiffnessProperties(
+            is_symmetric=is_sym, is_positive_definite=is_pd, size=n_free,
+        )
+        linalg = select_solver(props_J, override=self.linear_algebra)
+        frozen_factor = None
+
+        for step in range(n_steps):
+            t_next = t_history[step + 1]
+
+            u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
+            udot_pred = udot_total + dt * one_minus_gamma * uddot_total
+
+            uddot_iter = uddot_total.copy()
+            u_iter = u_pred + beta_dt2 * uddot_iter
+            udot_iter = udot_pred + gamma_dt * uddot_iter
+
+            F_ext_next = (np.zeros(ndof) if self.F_func is None
+                           else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+
+            residual_history: list[float] = []
+            delta_history: list[float] = []
+            singular_tangent_seen = False
+            last_residual = float("inf")
+            last_delta = 0.0
+
+            converged = False
+            for it in range(self.max_iter):
+                K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
+
+                # Residuo HHT-α no lineal:
+                # R = (1+α)·F_{n+1} − α·F_n
+                #     − [(1+α)·F_int(u_{n+1}) − α·F_int_n]
+                #     − [(1+α)·C·u̇_{n+1} − α·C·u̇_n]
+                #     − M·ü_{n+1}
+                R = (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
+                     - one_plus_alpha * F_int_iter + alpha_hht * F_int_prev
+                     - one_plus_alpha * (C @ udot_iter) + alpha_hht * (C @ udot_prev)
+                     - M @ uddot_iter)
+                R_red = T_op.T @ R
+
+                # Jacobiano: J = M + (1+α)·γΔt·C + (1+α)·βΔt²·K_t
+                J = (M_red
+                     + one_plus_alpha * gamma_dt * C_red
+                     + one_plus_alpha * beta_dt2 * (T_op.T @ K_t @ T_op)).tocsr()
+
+                if not self.convergence.is_calibrated:
+                    force_scale = max(
+                        np.linalg.norm(F_ext_next),
+                        np.linalg.norm(F_int_iter),
+                        1.0,
+                    )
+                    K_diag = stiffness_diag_scale(K_t)
+                    disp_scale = force_scale / K_diag
+                    self.convergence.calibrate(force_scale, disp_scale)
+
+                threshold = self.freeze_tangent_after_iter
+                try:
+                    if threshold is None:
+                        delta_uddot_red = linalg.solve(J, R_red)
+                    elif it < threshold or frozen_factor is None:
+                        frozen_factor = linalg.factorize(J)
+                        delta_uddot_red = frozen_factor.solve(R_red)
+                    else:
+                        delta_uddot_red = frozen_factor.solve(R_red)
+                except CholeskyNotPositiveDefiniteError:
+                    _log.warning("Cholesky no-PD en NewtonHHT; degradando a LU.")
+                    is_pd = False
+                    props_J = StiffnessProperties(
+                        is_symmetric=is_sym, is_positive_definite=False, size=n_free,
+                    )
+                    linalg = select_solver(props_J, override=self.linear_algebra)
+                    frozen_factor = None
+                    delta_uddot_red = linalg.solve(J, R_red)
+
+                # Line search (opt-in, ADR 0011). Mismo helper que NewtonNewmark.
+                R_norm_before = float(np.linalg.norm(R[free_dofs]))
+                alpha_ls = self._armijo_step_dynamic(
+                    uddot_iter, delta_uddot_red, u_pred, udot_pred,
+                    beta_dt2, gamma_dt, free_dofs,
+                    F_ext_next, C, M, R_norm_before,
+                )
+
+                uddot_iter[free_dofs] += alpha_ls * delta_uddot_red
+                u_iter = u_pred + beta_dt2 * uddot_iter
+                udot_iter = udot_pred + gamma_dt * uddot_iter
+
+                # Re-ensamblar para R coherente con el U avanzado.
+                _, F_int_after = self.assembler.assemble_non_linear_system(u_iter)
+                R_after = (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
+                           - one_plus_alpha * F_int_after + alpha_hht * F_int_prev
+                           - one_plus_alpha * (C @ udot_iter) + alpha_hht * (C @ udot_prev)
+                           - M @ uddot_iter)
+                R_norm_after = float(np.linalg.norm(R_after[free_dofs]))
+
+                delta_u_norm = beta_dt2 * float(np.linalg.norm(alpha_ls * delta_uddot_red))
+                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_after))
+                state = self.convergence.evaluate(
+                    residual_norm=R_norm_after,
+                    ref_force=ref_force,
+                    delta_u_norm=delta_u_norm,
+                    u_norm=np.linalg.norm(u_iter[free_dofs]),
+                )
+                residual_history.append(R_norm_after)
+                delta_history.append(delta_u_norm)
+                last_residual = R_norm_after
+                last_delta = delta_u_norm
+
+                if state.converged:
+                    _log.info(
+                        f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
+                        f"iter={it+1} | R/tol_F={state.ratio_force:.2e}"
+                    )
+                    self.assembler.commit_all_states()
+                    converged = True
+                    # Actualizar F_int_iter para almacenarlo como F_int_prev
+                    F_int_iter = F_int_after
+                    break
+
+            frozen_factor = None
+
+            if not converged:
+                err_cls = classify_divergence(
+                    residual_history, delta_history,
+                    singular_tangent_detected=singular_tangent_seen,
+                )
+                raise err_cls(
+                    last_residual=last_residual,
+                    last_delta=last_delta,
+                    last_load_factor=t_next,
+                    n_bisections=0,
+                    extra_message=(
+                        f"NewtonHHTSolver (alpha={alpha_hht:.4f}): "
+                        f"paso {step+1} (t={t_next:.4e}) no convergió en "
+                        f"{self.max_iter} iteraciones; "
+                        f"line_search={'on' if self.line_search else 'off'}."
+                    ),
+                )
+
+            u_total = u_iter
+            udot_total = udot_iter
+            uddot_total = uddot_iter
+
+            u_history[:, step + 1] = u_total
+            udot_history[:, step + 1] = udot_total
+            uddot_history[:, step + 1] = uddot_total
+
+            # Cache para el siguiente paso (términos α·X_n).
+            F_int_prev = F_int_iter
+            udot_prev = udot_total.copy()
+            F_prev_global = F_ext_next
+
+        _log.info(f"  -> {n_steps} pasos completados (HHT-α no lineal). "
+                  f"alpha={alpha_hht:.4f}, ρ_∞={(one_plus_alpha)/(1.0-alpha_hht):.4f}. "
+                  f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
+
+        return TransientResult(
+            t_history=t_history,
+            u_history=u_history,
+            udot_history=udot_history,
+            uddot_history=uddot_history,
+            n_steps=n_steps,
+            alpha_rayleigh=alpha_r,
+            beta_rayleigh=beta_r,
+            converged=True,
+        )

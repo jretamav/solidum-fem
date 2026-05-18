@@ -114,11 +114,46 @@
 - **Diagnóstico al diverger**: lanza una subclase tipada de `RuntimeError` con métricas y `hint` (mismo patrón que `NonlinearSolver`, ADR 0011).
 - **Firma del solver**: `solve()` sin argumentos, retorna `TransientResult` (mismo formato que `NewmarkSolver`).
 - **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria, fatiga de bajo ciclo, impacto en hormigón friccional, vibraciones de marcos con disipación plástica.
-- **Limitaciones**: igual que `NewmarkSolver` en lo lineal (apoyos constantes, paso fijo, sin HHT-α). Además: no resuelve snap-back en problemas con softening severo — combinar con `ArcLengthSolver` si emerge.
+- **Limitaciones**: igual que `NewmarkSolver` en lo lineal (apoyos constantes, paso fijo). Además: no resuelve snap-back en problemas con softening severo — combinar con `ArcLengthSolver` si emerge.
 - **Despacho YAML**: `solver.type: NewtonNewmarkSolver`. Como es subclase de `NewmarkSolver`, `entry.run_yaml` lo detecta vía `isinstance` y despacha a `run_transient` automáticamente.
 - **Referencia**: ADR 0009 §Fase 4; Hughes, *FEM* cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
 - **Spec**: [docs/specs/NewtonNewmarkSolver.md](specs/NewtonNewmarkSolver.md)
 - **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonNewmarkSolver`, junto al padre).
+
+---
+
+## HHTSolver — análisis dinámico transitorio lineal con disipación numérica (Hilber-Hughes-Taylor α)
+
+- **Propósito**: integrar `M·ü + C·u̇ + K·u = F(t)` con **amortiguamiento numérico controlado** que disipa selectivamente los modos de alta frecuencia espurios sin afectar los modos resueltos. **Variante** de `NewmarkSolver` (Reglas §4): hereda predictores/correctores, reducción Dirichlet y factorización única de `A_eff`.
+- **Esquema**:
+  - Ecuación de equilibrio temporal: `M·ü_{n+1} + (1+α)·C·u̇_{n+1} − α·C·u̇_n + (1+α)·K·u_{n+1} − α·K·u_n = (1+α)·F_{n+1} − α·F_n`.
+  - **Auto-derivación de β, γ desde α** (Hilber 1977): `β = (1−α)²/4`, `γ = (1−2α)/2`. Preserva orden 2 y estabilidad incondicional.
+  - **Sistema efectivo**: `A_eff = M + (1+α)·γΔt·C + (1+α)·βΔt²·K`. Constante en el tiempo → factorización única reutilizable (como Newmark).
+  - **Radio espectral en alta frecuencia**: `ρ_∞ = (1+α)/(1−α)`. Con `α=0` → `ρ_∞=1` (sin disipación, recupera Newmark trapezoidal). Con `α=−0.05` → `ρ_∞≈0.905`. Con `α=−1/3` → `ρ_∞=0.5` (disipación máxima manteniendo orden 2).
+  - **Disipación selectiva**: modos con `ωΔt > π` se atenúan significativamente; modos con `ωΔt « 1` casi intactos. Es lo que distingue HHT-α de subir γ Newmark (que disipa en todas las frecuencias y baja a orden 1).
+- **Parámetros**: `t_end`, `dt` obligatorios. **`alpha`** (default `-0.05`, rango `[−1/3, 0]`). `beta`, `gamma` autoderivados desde `alpha` salvo override explícito (no recomendado fuera de experimentación). Resto heredado de `NewmarkSolver`: `rayleigh`, `u0`, `u0_dot`, `F_func`, `linear_algebra`, `lumping`.
+- **Cuándo usarlo**: cuando la respuesta transitoria contenga modos de alta frecuencia espurios (mallas con modos altos no de interés, impacto, contacto, propagación con `ωΔt` cerca o por encima de π) que enmascaren la señal. Si quieres exactamente Newmark trapezoidal sin disipación, usa `NewmarkSolver`.
+- **Default de `alpha`**: `-0.05` es el valor canónico (Hilber 1977; Abaqus, OpenSees, ANSYS): disipación >9% por ciclo en altas frecuencias, <0.5% en modos de interés. Si pides `HHTSolver` con `alpha=0.0`, es funcionalmente idéntico a `NewmarkSolver(beta=0.25, gamma=0.5)`.
+- **Despacho YAML**: `solver.type: HHTSolver`. Como subclase de `NewmarkSolver`, `entry.run_yaml` lo detecta vía `isinstance` y despacha a `run_transient`.
+- **Referencia**: Hilber, Hughes & Taylor (1977), *Earthquake Eng. Struct. Dyn.* 5(3) 283-292; Hughes *FEM* §9.3; Chopra *Dynamics of Structures* §15.4.
+- **Spec**: [docs/specs/HHTSolver.md](specs/HHTSolver.md)
+- **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `HHTSolver`).
+
+---
+
+## NewtonHHTSolver — análisis dinámico transitorio no lineal HHT-α
+
+- **Propósito**: combinar HHT-α (disipación numérica) con Newton-Raphson interno para problemas con materiales no lineales (plasticidad, daño) o no linealidad geométrica. **Variante** de `NewtonNewmarkSolver` (Reglas §4) que aplica el esquema temporal HHT-α al residuo dinámico no lineal.
+- **Esquema**:
+  - Residuo dinámico: `R(ü_{n+1}) = (1+α)·F_{n+1} − α·F_n − [(1+α)·F_int(u_{n+1}) − α·F_int(u_n)] − [(1+α)·C·u̇_{n+1} − α·C·u̇_n] − M·ü_{n+1}`.
+  - Jacobiano: `J = M + (1+α)·γΔt·C + (1+α)·βΔt²·K_t`.
+  - Todo lo demás idéntico a `NewtonNewmarkSolver`: convergencia dual (ADR 0007), commit/rollback, Rayleigh con K_0, Newton modificado opcional, **`line_search`** opt-in (ADR 0011), telemetría tipada al diverger.
+  - **Recuperación**: con materiales lineales, el residuo de Newton se anula en una iteración y el resultado coincide con `HHTSolver`. Validado en tests.
+- **Parámetros**: `alpha` (default `-0.05`) + heredados de `NewtonNewmarkSolver` (`convergence`, `max_iter`, `freeze_tangent_after_iter`, `line_search`, …).
+- **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria + presencia de modos altos espurios que el Newmark trapezoidal no atenuaría.
+- **Despacho YAML**: `solver.type: NewtonHHTSolver`. Vía isinstance de `NewmarkSolver` → `run_transient`.
+- **Spec**: [docs/specs/HHTSolver.md](specs/HHTSolver.md) (cubre ambas variantes lineal y no lineal).
+- **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
 
 ---
 
