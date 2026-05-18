@@ -10,11 +10,11 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 420 pasan / 5 skipped / 0 fallos (425 colectados) |
+| **Tests** | 476 pasan / 5 skipped / 0 fallos (481 colectados) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
 | **Solvers** | 6 (3 estáticos + 1 modal + 2 transitorios) |
-| **ADRs aceptados** | 10 (0001–0010) |
+| **ADRs aceptados** | 11 (0001–0011) |
 | **Specs `validated`** | 25 |
 | **Etapas cerradas** | 4 completas + 1 parcial (etapa 4 vía ADR 0009 fases 1, 3, 4) |
 
@@ -24,8 +24,8 @@
 
 **Análisis estáticos**
 - Lineal (`LinearSolver`).
-- No lineal con control de carga (`NonlinearSolver`, Newton-Raphson incremental con paso adaptativo).
-- Trazado de curvas de equilibrio con snap-through/snap-back (`ArcLengthSolver`, Crisfield cilíndrico).
+- No lineal con control de carga (`NonlinearSolver`, Newton-Raphson incremental con paso adaptativo). Atraviesa puntos límite suaves con bisección + cinemática corotacional (hallazgo empírico de la auditoría 2026-05-18); no atraviesa snap-back con `du/dλ < 0`.
+- Trazado de curvas de equilibrio con snap-through/snap-back (`ArcLengthSolver`, Crisfield cilíndrico). Atraviesa softening de daño bulk continuo (1D/2D); el límite del solver para softening severo aplica solo al penalty cohesivo stiff del embedded.
 
 **Análisis dinámicos**
 - Modal — autovalores generalizados con shift-invert ARPACK (`ModalSolver`).
@@ -52,6 +52,7 @@
 - Tolerancias adimensionales con escala física por material (ADR 0006) y convergencia dual desplazamiento + residuo (ADR 0007).
 - Parser YAML con despacho automático estático / modal / transitorio.
 - Tres manuales `.tex/.pdf` generados desde markdown: Reference (FF-MR), User (FF-MU), Architecture (FF-MA).
+- Diagnóstico tipado de divergencia en `NonlinearSolver`/`NewtonNewmarkSolver` (ADR 0011): subclases de `SolverDivergedError` (`OscillatingNewtonError`, `SingularTangentError`, `LoadExceedsCapacityError`, `UnknownDivergenceError`) con métricas y `hint`. Line search por descenso no monótono (Grippo-Lampariello-Lucidi) disponible vía `line_search=True` — opt-in, default `False` por la justificación bibliográfica del ADR.
 
 ---
 
@@ -67,7 +68,7 @@
 - **Hiperelasticidad**, **plasticidad anisótropa**, **daño con regularización** (gradient damage, phase-field): horizonte largo.
 - **Locking volumétrico** en `Quad4`/`Quad8` con ν → 0.5: declarado limitación, mitigaciones B-bar/F-bar diferidas.
 - **Plasticidad por flexión en frames**: hoy sólo plastifican axialmente (espera `FiberSection`).
-- **Trazado completo de la rama post-pico con embedded discontinuity**: `NonlinearSolver` y `ArcLengthSolver` cilíndrico no atraviesan la transición elástico→softening con penalty cohesivo stiff (`K_t` casi singular en `κ_0`). El modelo físico está verificado en aislamiento (material cohesivo + elemento + condensación); el límite es solver. Retoma vía mini-ADR de "solvers para softening" (dissipation arc-length, control CMOD/CTOD, sign-of-pivot tracking) cuando se priorice.
+- **Trazado completo de la rama post-pico con embedded discontinuity**: `NonlinearSolver` y `ArcLengthSolver` cilíndrico no atraviesan la transición elástico→softening **con penalty cohesivo stiff** (`K_t` casi singular en `κ_0`). El límite es específico al embedded — para softening de daño bulk continuo (1D/2D) el arc-length sí traza la rama post-pico (verificado en `tests/test_solver_robustness.py::test_arc_length_traverses_damage_softening`). El modelo físico del embedded está verificado en aislamiento; el límite es solver. Retoma vía mini-ADR de "solvers para softening" (dissipation arc-length, control CMOD/CTOD, sign-of-pivot tracking) cuando se priorice.
 - **Modo mixto I-II en cohesivo**, **KSON no-simétrico**, **embedded sin tracking**, **3D embedded**, **orden superior**: fases F-J del ADR 0010 diferidas.
 
 ---
@@ -86,6 +87,8 @@ Ninguno de los tres bloquea el avance. Todos están documentados con su contexto
 **Deuda saldada 2026-05-14**: cobertura asimétrica de sólidos 2D no-Quad4 con materiales no lineales — cerrada con [`test_solid_2d_nonlinear_higher_order.py`](../tests/test_solid_2d_nonlinear_higher_order.py) (16 tests verdes a la primera; no había bug latente).
 
 **Etapa cerrada 2026-05-18**: discontinuidades interiores embebidas (Etapa 5, [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md)). Subsistema completo de fractura computacional vía embedded discontinuity discreta, fiel a Retama 2010: material cohesivo `CohesiveDamageIsotropic`, elemento `CST_Embedded2D` con condensación local, validación numérica del `l_d` del Cap. 6 y bring-up end-to-end. Bug arquitectural cazado durante el bring-up (factor `thickness` faltante en términos cohesivos, invisible con tests de espesor unitario) documentado en el ADR §"Caveats y lecciones aprendidas" y blindado con cuatro tests de regresión. Fases 4 (benchmark Van Vliet faithful) y 5 (manuales explícitos) diferidas — modelo físico verificado por curva analítica 1D, límite en solver no en formulación.
+
+**Rama de trabajo cerrada 2026-05-18 (segunda)**: robustez de solvers no lineales ([ADR 0011](adr/0011-robustez-newton-line-search.md)). Auditoría de 11 tests ([fase A](auditorias/solvers_robustez_fase_A.md)) que mapeó el comportamiento real de `NonlinearSolver`, `ArcLengthSolver` y `NewtonNewmarkSolver` en regímenes problemáticos; identificó como único modo de fallo no atribuible a limitación física la oscilación del Newton en Drucker-Prager perfectamente plástico con sobrecarga. Implementó (fase C) la infraestructura completa de globalización: helper de line search por descenso no monótono y jerarquía de excepciones tipadas (`SolverDivergedError` + 4 subclases con métricas y `hint`). Enmienda al ADR durante la implementación: `line_search=False` por defecto, ya que con full Newton-Raphson + tangente consistente la globalización es contraproducente (respaldado por Tabla 3.1 de de Borst & Sluys 1999 §3.4, añadido al repo en `docs/referencias/`). Hallazgos colaterales documentados en el catálogo de solvers y reflejados en las "Capacidades" y "Limitaciones" arriba.
 
 ---
 
@@ -112,4 +115,4 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010); fases 4 y 5 diferidas con justificación; próxima decisión = Etapa 6 entre opciones A-E.*
+*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010) y de la rama de trabajo de robustez de solvers no lineales (ADR 0011); próxima decisión = Etapa 6 entre opciones A-E.*
