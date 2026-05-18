@@ -94,19 +94,28 @@ Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sob
 
 ---
 
-## Etapa 5 — Discontinuidades interiores embebidas · abierta (2026-05-13)
+## Etapa 5 — Discontinuidades interiores embebidas · cerrada (2026-05-18)
 
-**Capacidad que se abre**: fractura computacional vía **embedded discontinuity en aproximación discreta** (Retama 2010). Primera línea de fractura del proyecto. Introduce dos abstracciones nuevas: una familia paralela `CohesiveMaterial` (traction-jump `t = T[[u]]`, parámetros `σ_t0`, `G_F`) y una subjerarquía de elementos con **DOFs enriquecidos a nivel elemental** y **condensación estática local**. La etapa replica fielmente la formulación KOS sobre CST 2D de la tesis del usuario (incluyendo la aportación original `l_d = (A/h)·cos(θ−α)` del Cap. 6) y la valida con los benchmarks Van Vliet (Cap. 8.1) y el experimento numérico de stress locking que la tesis no contiene.
+**Capacidad entregada**: fractura computacional vía **embedded discontinuity en aproximación discreta** (Retama 2010). Primera línea de fractura del proyecto. Subsistema completo:
 
-**Por qué esta entre las 5 opciones inicialmente identificadas (A-E, ahora diferidas)**: maximiza el uso del conocimiento doctoral del usuario (autor de la formulación), construye abstracciones reutilizables (futuros CZM clásicos, futuros incompatible-modes, eventual XFEM-style), e introduce fractura computacional a Fenix — capacidad que ninguno de los caminos A-E aportaba.
+- Familia paralela `CohesiveMaterial` (traction-jump `t = T[[u]]`, parámetros `σ_t0`, `G_F`) con `CohesiveDamageIsotropic` validado (Mode-I, daño isótropo, softening lineal/exponencial).
+- Elemento `CST_Embedded2D` con **DOFs enriquecidos a nivel elemental** y **condensación estática local** (formulación KOS, Caps. 2/5/7 de la tesis).
+- Aportación original `l_d = (A/h)·cos(θ−α)` (Cap. 6) implementada y validada con experimento numérico de stress locking que la tesis no contiene.
+- Bring-up de integración end-to-end con `Assembler` + `NonlinearSolver`/`ArcLengthSolver`.
+
+**Por qué se eligió entre las 5 opciones A-E**: maximizó el conocimiento doctoral del usuario (autor de la formulación), construyó abstracciones reutilizables (futuros CZM clásicos, futuros incompatible-modes, eventual XFEM-style), e introdujo fractura computacional a Fenix — capacidad que ninguno de los caminos A-E aportaba.
 
 **ADR que la articula**:
-- [ADR 0010 — Discontinuidades interiores embebidas](adr/0010-discontinuidades-interiores-embebidas.md). 5 fases activas (material cohesivo, elemento CST embedded, validación Cap. 6, benchmark Van Vliet, catálogo + manuales) + 5 fases diferidas (sin-tracking, modo mixto, KSON, 3D, orden superior).
+- [ADR 0010 — Discontinuidades interiores embebidas](adr/0010-discontinuidades-interiores-embebidas.md). Fases 1, 2, 3, 3b completadas; fases 4 (benchmark Van Vliet faithful contra la curva experimental) y 5 (regeneración explícita de manuales) **diferidas con justificación**.
 
-**Estado actual (2026-05-13)**:
-- ADR 0010 aceptado.
-- Spec `CohesiveDamageIsotropic` redactada como borrador en [docs/specs/CohesiveDamageIsotropic.md](specs/CohesiveDamageIsotropic.md); `status: draft`. Tres puntos abiertos pendientes de decisión del usuario antes de implementar (ver sección *Diálogo* de la spec).
-- Aún sin código.
+**Lo entregado** (commits `c7e68de`, `2e85a70`, `737a0e1`, `e98aebb`, `e54b5ce`):
+- Material `CohesiveDamageIsotropic` y elemento `CST_Embedded2D` registrados, con specs `validated` y entradas en catálogos.
+- 56 + 4 tests específicos del subsistema; 420 tests verdes en la suite global.
+- Bug arquitectural cazado durante el bring-up: factor `thickness` faltante en el balance bulk↔cohesivo del Newton local, invisible mientras todos los tests usasen `thickness = 1.0`. Documentado en el ADR §"Caveats y lecciones aprendidas" y blindado con cuatro tests de regresión `TestThicknessDimensionalConsistency`.
+
+**Lo diferido y por qué**:
+- **Fase 4 — benchmark Van Vliet faithful**: el modelo físico (elemento + cohesivo + condensación) está verificado por curva analítica 1D (`examples/van_vliet/trace_softening_1d.py`); los puntos MEF disponibles caen exactamente sobre la analítica donde el solver llegó. Pero los solvers actuales (`NonlinearSolver` Newton-Raphson, `ArcLengthSolver` cilíndrico) no atraviesan la rama post-pico — la transición elástico→softening con penalty cohesivo stiff (`K_e ≈ 1e15 N/m³`) hace `K_t` casi singular en `κ_0`. Es dificultad numérica conocida del campo, no defecto del modelo. Retoma vía un mini-ADR de "solvers para softening" (dissipation arc-length, control por CMOD/CTOD de la grieta, indicador de sign-of-pivot) cuando se priorice.
+- **Fase 5 — regeneración explícita de manuales**: catálogos ya tienen las entradas; los manuales se auto-regeneran del MD. La sección dedicada "Familia de fractura computacional" en el manual User/Architecture queda diferida con la fase 4 (sin la comparativa Van Vliet la sección no aporta).
 
 ### Opciones diferidas (las 5 originalmente identificadas como bifurcación)
 
@@ -169,4 +178,4 @@ El presente ROADMAP es uno de cuatro documentos previstos para que la traceabili
 
 ---
 
-*Última actualización: 2026-05-13 — apertura de Etapa 5 (discontinuidades interiores embebidas, ADR 0010); las 5 opciones A-E originalmente identificadas quedan diferidas.*
+*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010); fases 4 y 5 diferidas con justificación. Próxima decisión: cuál de las opciones A-E entra ahora como Etapa 6.*
