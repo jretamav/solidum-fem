@@ -39,6 +39,7 @@ from fenix.materials.cable_1d import CableMaterial1D
 from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 
 from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
+from fenix.elements.solid_2d.embedded_cst import CST_Embedded2D
 from fenix.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
 from fenix.elements.cable import Cable2DCorot, Cable3DCorot
 from fenix.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimoshenko

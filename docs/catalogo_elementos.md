@@ -492,6 +492,36 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 
 ---
 
+# Elementos con discontinuidad embebida (ADR 0010)
+
+Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación estática local**: el ensamblador no ve los grados de libertad del salto. Cuando se cumple un criterio de activación (Rankine en fase 1), el elemento materializa una discontinuidad interna `Γ_d` y enriquece su cinemática con un salto `[[u]]` gobernado por un material cohesivo (`CohesiveMaterial`, ver el [catálogo de materiales](catalogo_materiales.md) §"Materiales cohesivos"). La activación se evalúa en el hook `Element.prepare_step(U_committed)` que los solvers no lineales invocan **una vez por paso**, antes del Newton (anti-chattering, ADR 0010 §5).
+
+## CST_Embedded2D — triángulo CST con discontinuidad interior embebida (KOS)
+
+- **Propósito**: introducir fractura computacional en aproximación discreta sobre el CST padre. Fiel a Retama (2010), Caps. 2, 5, 6 y 7: cinemática KOS, condensación estática local, longitud efectiva `l_d = (A_e/h)·cos(θ−α)`.
+- **DOFs por nodo**: `['ux', 'uy']` · 3 nodos · `STRAIN_DIM = 3` · `N_INTEGRATION_POINTS = 1`.
+- **DOFs enriquecidos (elementales, no globales)**: `[[u]] ∈ ℝ²` en frame local `(n, s)` de `Γ_d`. Se condensan dentro de `compute_element_state` y nunca llegan al ensamblador.
+- **Estado intacto**: bit-exact con [Tri3](#tri3--triángulo-lineal-2d-cst) (mismo `B`, mismo material, misma cuadratura).
+- **Estado agrietado**: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`; después la condensación `K_cond = K_dd − K_du · K_{[[u]][[u]]}⁻¹ · K_du^T` se devuelve al ensamblador. El bulk descarga elásticamente conforme `[[u]]` crece (discrete approach); la disipación va al cohesivo en `Γ_d`.
+- **Activación**: criterio Rankine (`σ_I > σ_t0` del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. **Irreversible**: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
+- **Materiales aceptados**: bulk **solo `Elastic2D`** en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier `CohesiveMaterial` con `JUMP_DIM = 2`.
+- **Estado de la discontinuidad**: `DiscontinuityState` (en [fenix/core/discontinuity_state.py](../fenix/core/discontinuity_state.py)) — paralela a `ElementState`, semántica trial/commit.
+- **YAML**:
+  ```yaml
+  cohesive_materials:
+    - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+       K_e: 1.0e13, softening: linear}
+  elements:
+    - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+       material: 1, cohesive_material: 1}
+  ```
+- **Post-procesamiento**: `compute_gauss_state(U)` añade clave `'discontinuity'` con `{normal, tangent, centroid, solitary_node, l_d, jump, traction, damage}` cuando el elemento está agrietado.
+- **Limitaciones declaradas** (`out_of_scope` en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de `n` tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (`Tri6_Embedded`), 3D (`Tet4_Embedded`).
+- **Spec**: [docs/specs/CST_Embedded2D.md](specs/CST_Embedded2D.md).
+- **Archivo**: [fenix/elements/solid_2d/embedded_cst.py](../fenix/elements/solid_2d/embedded_cst.py).
+
+---
+
 ## Cómo añadir un elemento nuevo
 
 1. **Spec primero** — el usuario crea `docs/specs/<Nombre>.md` a partir de `docs/specs/_template_element.md` (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.

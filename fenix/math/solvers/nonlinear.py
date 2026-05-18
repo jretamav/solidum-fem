@@ -109,6 +109,13 @@ class NonlinearSolver:
             U_iter = U_current.copy()
             converged = False
 
+            # ADR 0010 §5: hook de preparación de paso. Evaluado con el estado
+            # convergido del paso anterior para evitar chattering por
+            # predictores lineales dentro del Newton. No-op para elementos
+            # estándar; lo usan elementos con discontinuidad embebida
+            # (CST_Embedded2D) para chequear activación.
+            self.assembler.prepare_all_steps(U_current)
+
             for iteration in range(self.max_iter):
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = F_ext_step - F_int_global

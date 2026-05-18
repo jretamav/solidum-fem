@@ -324,6 +324,18 @@ class Assembler:
         for elem in self.domain.elements.values():
             elem.commit_state()
 
+    def prepare_all_steps(self, U_committed: np.ndarray) -> None:
+        """Invoca ``prepare_step(U_committed)`` en todos los elementos del dominio.
+
+        Hook de preparación de paso (ADR 0010 §5). Lo llaman los solvers no
+        lineales una vez por paso, con el campo convergido del paso anterior,
+        antes del primer ensamblaje del Newton. La implementación base de
+        ``Element.prepare_step`` es no-op; los elementos con discontinuidad
+        embebida lo sobreescriben para chequear activación.
+        """
+        for elem in self.domain.elements.values():
+            elem.prepare_step(U_committed)
+
     def apply_point_load(self, node_id: int, dof_name: str, value: float):
         node = self.domain.get_node(node_id)
         if node and dof_name in node.dofs:

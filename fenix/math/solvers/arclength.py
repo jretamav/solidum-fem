@@ -112,6 +112,11 @@ class ArcLengthSolver:
             lambda_iter = lambda_curr
             converged = False
 
+            # ADR 0010 §5: hook de preparación de paso (activación de
+            # discontinuidades embebidas, etc.). Evaluado con el estado
+            # convergido del paso anterior para evitar chattering.
+            self.assembler.prepare_all_steps(U_current)
+
             # --- 1. PREDICTOR ---
             K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
 

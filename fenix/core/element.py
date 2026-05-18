@@ -160,6 +160,31 @@ class Element(ABC):
         """
 
     # ------------------------------------------------------------------
+    # Hook de preparación de paso (ADR 0010 §5)
+    # ------------------------------------------------------------------
+
+    def prepare_step(self, U_committed: np.ndarray) -> None:
+        """Prepara el elemento al inicio de un paso de carga, antes del Newton.
+
+        Hook invocado por los solvers no lineales una vez por paso, con el
+        campo de desplazamientos **convergido** del paso anterior. La
+        implementación base es no-op; lo sobreescriben los elementos que
+        necesitan tomar decisiones discretas estables entre pasos (p. ej.
+        activación de discontinuidad embebida en ``CST_Embedded2D``, ADR
+        0010 §5) y que se romperían si las hicieran dentro del Newton (donde
+        los predictores lineales oscilan sobre el umbral y producen
+        chattering).
+
+        Parameters
+        ----------
+        U_committed : np.ndarray
+            Campo global de desplazamientos convergido del paso anterior. El
+            elemento extrae los DOFs locales con ``get_local_displacements``
+            si los necesita.
+        """
+        # No-op por defecto. Subclases pueden sobreescribir.
+
+    # ------------------------------------------------------------------
     # Contrato opcional para análisis modal y dinámico (ADR 0009)
     # ------------------------------------------------------------------
 

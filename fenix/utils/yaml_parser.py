@@ -7,7 +7,13 @@ import numpy as np
 from fenix.core.domain import Domain
 from fenix.autodiscover import initialize as _ensure_registries_initialized
 from fenix.logging import get_logger
-from fenix.registry import MaterialRegistry, ElementRegistry, SolverRegistry, QuadratureRegistry
+from fenix.registry import (
+    CohesiveMaterialRegistry,
+    ElementRegistry,
+    MaterialRegistry,
+    QuadratureRegistry,
+    SolverRegistry,
+)
 
 _log = get_logger("parsers.yaml")
 
@@ -52,6 +58,7 @@ class YamlParser:
         self.filepath = filepath
         self.domain = Domain()
         self.materials = {}
+        self.cohesive_materials = {}    # ADR 0010 — familia paralela
         self.solver_config = {}
         self.point_loads = {}
         self.point_loads_by_coord = {}
@@ -82,6 +89,7 @@ class YamlParser:
 
         self._parse_nodes(data)
         self._parse_materials(data)
+        self._parse_cohesive_materials(data)
         self._parse_mesh_or_elements(data)
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
@@ -155,6 +163,26 @@ class YamlParser:
                     f"Disponibles: {sorted(registered_materials)}."
                 )
 
+        # --- Materiales cohesivos (ADR 0010 — sección paralela) ---
+        known_cohesive_ids = set()
+        registered_cohesives = set(CohesiveMaterialRegistry._items.keys())
+        for i, mat in enumerate(data.get('cohesive_materials', []) or []):
+            ctx = f"cohesive_materials[{i}]"
+            if not isinstance(mat, dict):
+                errors.append(f"{ctx}: cada material cohesivo debe ser un diccionario.")
+                continue
+            if 'id' not in mat:
+                errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+            else:
+                known_cohesive_ids.add(mat['id'])
+            if 'type' not in mat:
+                errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
+            elif registered_cohesives and mat['type'] not in registered_cohesives:
+                errors.append(
+                    f"{ctx} (id={mat.get('id', '?')}): tipo de cohesivo desconocido "
+                    f"'{mat['type']}'. Disponibles: {sorted(registered_cohesives)}."
+                )
+
         # --- Elementos (bloque inline, no mesh) ---
         registered_elements = set(ElementRegistry._elements.keys())
         elements_data = data.get('elements', [])
@@ -185,6 +213,13 @@ class YamlParser:
                     errors.append(f"{ctx}: falta el campo obligatorio 'material'.")
                 elif elem['material'] not in known_mat_ids:
                     errors.append(f"{ctx}: referencia a material inexistente (id={elem['material']}).")
+                # ADR 0010 — referencia a cohesivo opcional, sólo si el elemento
+                # la admite. Si se declara, validar contra `cohesive_materials`.
+                if 'cohesive_material' in elem and elem['cohesive_material'] not in known_cohesive_ids:
+                    errors.append(
+                        f"{ctx}: referencia a cohesive_material inexistente "
+                        f"(id={elem['cohesive_material']})."
+                    )
                 if 'nodes' not in elem:
                     errors.append(f"{ctx}: falta el campo obligatorio 'nodes'.")
                 else:
@@ -214,13 +249,13 @@ class YamlParser:
                         for p in sig.parameters.values()
                     )
                     if not has_var_keyword:
-                        reserved = {'id', 'type', 'material', 'nodes'}
+                        reserved = {'id', 'type', 'material', 'nodes', 'cohesive_material'}
                         extras = set(elem.keys()) - reserved
                         # 'element_id' lo inyecta el parser a partir de 'id'
                         unknown = extras - accepted
                         # Mensaje: excluir kwargs que el parser inyecta ('element_id')
-                        # y los reservados YAML ('material', 'nodes') que el usuario
-                        # ya está proveyendo por otros campos.
+                        # y los reservados YAML ('material', 'nodes', 'cohesive_material')
+                        # que el usuario provee por campos dedicados.
                         advertised = sorted(accepted - {'element_id'} - reserved)
                         for kw in sorted(unknown):
                             errors.append(
@@ -308,6 +343,17 @@ class YamlParser:
             kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
             self.materials[mat_id] = MaterialRegistry.create(mat_type, **kwargs)
 
+    def _parse_cohesive_materials(self, data: dict):
+        """Materiales cohesivos *traction-jump* (ADR 0010, sección paralela a
+        ``materials``). Se construyen con :class:`CohesiveMaterialRegistry`
+        para que el contrato del parser YAML no se mezcle con los continuos.
+        """
+        for mat_data in data.get('cohesive_materials', []) or []:
+            mat_id = mat_data['id']
+            mat_type = mat_data['type']
+            kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
+            self.cohesive_materials[mat_id] = CohesiveMaterialRegistry.create(mat_type, **kwargs)
+
     def _parse_mesh_or_elements(self, data: dict):
         mesh_file = data.get('mesh', None)
         if mesh_file:
@@ -348,9 +394,12 @@ class YamlParser:
                     nodes = [self.domain.get_node(nid) for nid in node_ids]
                     material = self.materials[mat_id]
                     
-                    kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes')}
+                    kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes', 'cohesive_material')}
                     if 'quadrature' in kwargs and isinstance(kwargs['quadrature'], str):
                         kwargs['quadrature'] = self._get_quadrature(kwargs['quadrature'])
+                    # ADR 0010 — resolver referencia a material cohesivo si está declarada.
+                    if 'cohesive_material' in elem_dict:
+                        kwargs['cohesive_material'] = self.cohesive_materials[elem_dict['cohesive_material']]
                     self.domain.add_element(ElementRegistry.create(e_type, element_id=elem_id, nodes=nodes, material=material, **kwargs))
             elif elements_data:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios.")
