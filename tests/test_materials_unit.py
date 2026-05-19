@@ -618,6 +618,34 @@ class TestVonMises2DPlaneStress(unittest.TestCase):
         # Componentes: [xx, yy, zz, xy_tensorial]
         self.assertAlmostEqual(eps_p[0] + eps_p[1] + eps_p[2], 0.0, places=12)
 
+    def test_plastic_incompressibility_persistente(self):
+        """tr(ε^p) = 0 persiste a lo largo de una trayectoria multi-paso (H-3.9).
+
+        El kernel plane stress cierra ``ε^p_zz = -(ε^p_xx + ε^p_yy)`` en cada
+        paso por construcción, pero asume implícitamente que el ``ε^p_old``
+        entrante también cumple ``tr = 0``. Este test ejercita el invariante
+        en una trayectoria realista (carga monotónica + descarga + recarga +
+        cortante), garantizando que se conserva paso tras paso sin drift
+        numérico.
+        """
+        strain_path = [
+            np.array([1.0e-3, 0.0, 0.0]),                  # elástico
+            np.array([3.0e-3, -0.5e-3, 0.0]),              # plástico inicial
+            np.array([5.0e-3, -1.0e-3, 0.5e-3]),           # plástico con cortante
+            np.array([4.0e-3, -0.8e-3, 0.4e-3]),           # descarga parcial
+            np.array([6.0e-3, -1.2e-3, 0.6e-3]),           # recarga plástica
+            np.array([7.0e-3, -2.0e-3, 1.0e-3]),           # más plasticidad
+        ]
+        state = None
+        for k, eps in enumerate(strain_path):
+            _, _, state = self.mat.compute_state(eps, state_vars=state)
+            eps_p = state["eps_p"]
+            trace = eps_p[0] + eps_p[1] + eps_p[2]
+            self.assertAlmostEqual(
+                trace, 0.0, places=12,
+                msg=f"paso {k}: tr(ε^p) = {trace:.3e} ≠ 0 tras ε={eps.tolist()}",
+            )
+
     def test_alpha_monotonic_under_increasing_load(self):
         """α (deformación plástica acumulada) no decrece bajo carga creciente."""
         state = None
