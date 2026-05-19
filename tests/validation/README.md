@@ -7,13 +7,14 @@ con cifras citables contra referencias externas.
 
 ## Cobertura actual
 
-| # | Benchmark | Archivo | Elementos | Resultado |
-|---|-----------|---------|-----------|-----------|
+| # | Benchmark | Archivo | Elementos / solver | Resultado |
+|---|-----------|---------|--------------------|-----------|
 | 1 | Cilindro grueso de Lamé (plane strain) | `test_lame_cylinder.py` | Quad4, Tri3, Quad8, Quad9, Tri6 | 12/12 |
 | 2 | NAFEMS LE1 — elliptic membrane (plane stress) | `test_nafems_le1.py` | Quad4, Tri3, Quad8, Quad9, Tri6 | 10/10 |
 | 3 | MacNeal-Harder slender cantilever | `test_slender_cantilever.py` | Frame2DEuler, Frame2DTimoshenko, Quad4, Quad8 | 8/8 |
+| 4 | Bathe wave propagation (barra 1D) | `test_bathe_wave_propagation.py` | Truss2D + CentralDifferenceSolver | 4/4 |
 
-**Total: 30/30 tests verde**. Última actualización: 2026-05-19.
+**Total: 34/34 tests verde**. Última actualización: 2026-05-19.
 
 ## Resultados cuantitativos por benchmark
 
@@ -85,6 +86,29 @@ Referencias analíticas:
   <5%. Esta es una limitación conocida del elemento bilinear sin
   reduced-integration / B-bar.
 - **Q8 12×1** sin locking severo: -0.7% con malla coarse.
+
+### 4. Bathe wave propagation (barra 1D + central difference)
+
+Barra empotrada-libre L=10, E=1, ρ=1, A=1. Velocidad analítica de onda
+c = √(E/ρ) = 1.0. Escalón de fuerza F₀ = 10⁻³ aplicado en x=L en t=0⁺.
+Discretización con Truss2D, integración explícita con
+`CentralDifferenceSolver` (masa lumped, requisito del integrador).
+
+Velocidad de onda medida vs analítica (Δt = 0.5·CFL crítico):
+
+| N elementos | Δt        | c_numérico | Error |
+|-------------|-----------|------------|-------|
+| 50          | 0.14142   | 1.01563    | 1.56% |
+| 100         | 0.07071   | 1.00645    | 0.65% |
+| 200         | 0.03536   | 1.00169    | 0.17% |
+
+- **Tiempo de llegada del frente** al midpoint (t=5) con N=100: error <5%.
+- **Velocidad inferida de 3 estaciones (x=0.25L, 0.5L, 0.75L)**: error <5%.
+- **Convergencia O(h)** del error de dispersión verificada.
+
+Este benchmark cierra el hueco identificado en `[[project_validacion_fase_b]]`
+sobre validación de wave propagation en central difference — ningún test
+anterior medía la velocidad de propagación.
 
 ## Decisiones de diseño
 
