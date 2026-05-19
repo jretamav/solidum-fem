@@ -113,6 +113,10 @@ acceptance:
     - name: cargas consistentes — tracción uniforme en un borde
       setup: "Σf = t̄·L·t y reparto 1/6, 4/6, 1/6 en (vértice, medio, vértice)"
       tol_rel: 1.0e-12
+    - name: Cook's membrane (Cook 1974)                              # 2026-05-19
+      setup: "trapezoid (0,0)-(48,44)-(48,60)-(0,44), E=1, ν=1/3, plane stress, cortante total F=1 distribuido en borde derecho; malla 4×4 Q8"
+      expect: "u_y en (48,52) ≈ 23.91 ± 0.5; refinamiento 2×2→4×4→6×6 reduce error monotónicamente"
+      tol_abs: 0.5
 
 references:
   - "Bathe K.-J., Finite Element Procedures, §5.3"

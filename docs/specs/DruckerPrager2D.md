@@ -312,6 +312,21 @@ acceptance:
       setup: "Quad4 unitario plane strain, carga que produce plasticidad activa, 4 pasos, max_iter=8"
       expect: "Newton converge en cada paso, α > 0 al final"
 
+    - name: quad4_yield_onset_confined_tension          # DP-1 (2026-05-19)
+      setup: "Quad4 unitario plane strain con desplazamientos prescritos en los 4 nodos para ε_xx=k·ε_y, ε_yy=0, γ_xy=0"
+      expect: "ε_xx=0.5·ε_y elástico (σ_xx coincide con (λ+2μ)·ε exacto, α=0); ε_xx=0.99·ε_y aún α=0; ε_xx=1.5·ε_y plástico con α>0 idéntico en los 4 Gauss points"
+      tol_rel: 1.0e-8
+
+    - name: quad4_flow_rule_invariant                   # DP-2 (2026-05-19)
+      setup: "Quad4 unitario plane strain, carga monótona en rama regular (5 niveles 1.2·ε_y → 2.6·ε_y), ψ ≠ φ"
+      expect: "invariante cinemática tr(ε_p) = 3·η_g·α en cada Gauss point y en cada nivel"
+      tol_rel: 1.0e-8
+
+    - name: quad4_apex_under_biaxial_tension            # DP-2bis (2026-05-19)
+      setup: "Quad4 unitario plane strain, ε_xx = ε_yy ~ 1e-2 (predictor hidrostático extremo)"
+      expect: "estado final cae en ápice: σ_xx ≈ σ_yy = k(α)/(3·η_f), σ_xy ≈ 0, en cada Gauss point"
+      tol_rel: 1.0e-6
+
 references:
   - "Drucker D.C., Prager W. (1952). Soil mechanics and plastic analysis or limit design. Quart. Appl. Math. 10, 157-165."
   - "Drucker D.C. (1953). Coulomb friction, plasticity, and limit loads. J. Appl. Mech. 21, 71-74. (calibración plane_strain_matched)"

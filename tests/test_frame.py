@@ -238,5 +238,102 @@ class TestFrame2DEulerCorotAcceptance(unittest.TestCase):
         self.assertIn('Frame2DEulerCorot', ElementRegistry._items)
 
 
+class TestFrame2DEulerCorotBatheBolourchi(unittest.TestCase):
+    """Bathe-Bolourchi: cantilever bajo momento puro en la punta.
+
+    Benchmark analítico canónico de grandes rotaciones (Bathe & Bolourchi
+    1979). Bajo momento M aplicado en el extremo libre de un voladizo
+    Euler-Bernoulli, el flector es constante a lo largo de la barra
+    ⇒ curvatura κ = M/(E·I) constante ⇒ la viga se enrosca en un
+    **arco circular** de radio R = E·I/M.
+
+    Predicción cerrada (medida desde el empotramiento):
+        θ_tip(s=L) = L/R = M·L/(E·I)
+        x_tip       = R·sin(θ_tip)
+        y_tip       = R·(1 − cos(θ_tip))
+        u_x         = x_tip − L,    u_y = y_tip,    r_z = θ_tip
+
+    Cierra el hueco "Frame2DEulerCorot sin benchmark de grandes rotaciones"
+    de la matriz de validación (Fase B, 2026-05-19).
+    """
+
+    def _arc_cantilever(self, n_elem: int, L=2.0, E=210e9, A=1e-3, I=1e-6):
+        """Voladizo recto en x, discretizado con ``n_elem`` Frame2DEulerCorot."""
+        dom = Domain()
+        nodes = []
+        for k in range(n_elem + 1):
+            nodes.append(dom.add_node(k + 1, [k * L / n_elem, 0.0]))
+        mat = Elastic1D(E=E)
+        for k in range(n_elem):
+            dom.add_element(Frame2DEulerCorot(k + 1, [nodes[k], nodes[k + 1]], mat, A=A, I=I))
+        n_root = nodes[0]
+        n_tip = nodes[-1]
+        n_root.fix_dof('ux', 0.0); n_root.fix_dof('uy', 0.0); n_root.fix_dof('rz', 0.0)
+        dom.generate_equation_numbers(verbose=False)
+        return dom, n_root, n_tip
+
+    def _solve_with_tip_moment(self, dom, n_tip, M_total: float, num_steps: int,
+                                rtol=1.0e-7, max_iter=30):
+        F_ext = np.zeros(dom.total_dofs)
+        F_ext[n_tip.dofs['rz']] = M_total
+        solver = NonlinearSolver(
+            Assembler(dom),
+            convergence=ConvergenceCriterion(rtol_force=rtol, rtol_disp=rtol),
+            num_steps=num_steps,
+            max_iter=max_iter,
+        )
+        return solver.solve(F_ext)
+
+    def test_quarter_circle(self):
+        """θ_tip = π/2 (cuarto de círculo). Tolerancia generosa por error de
+        discretización en cuerdas rectas: 10 elementos ⇒ ~0.2% en cuerda."""
+        L, E, I = 2.0, 210e9, 1.0e-6
+        n_elem = 10
+        dom, _, n_tip = self._arc_cantilever(n_elem=n_elem, L=L, E=E, I=I)
+
+        theta_target = math.pi / 2
+        M_total = theta_target * E * I / L
+        U = self._solve_with_tip_moment(dom, n_tip, M_total, num_steps=8)
+
+        R = E * I / M_total
+        x_tip_exact = R * math.sin(theta_target)
+        y_tip_exact = R * (1.0 - math.cos(theta_target))
+        ux_exact = x_tip_exact - L
+        uy_exact = y_tip_exact
+
+        ux = U[n_tip.dofs['ux']]
+        uy = U[n_tip.dofs['uy']]
+        rz = U[n_tip.dofs['rz']]
+        # Tolerancia ~0.5% sobre L: dominada por error de cuerda en 10 elementos.
+        self.assertAlmostEqual(ux, ux_exact, delta=0.005 * L)
+        self.assertAlmostEqual(uy, uy_exact, delta=0.005 * L)
+        self.assertAlmostEqual(rz, theta_target, delta=1.0e-4)
+
+    def test_half_circle(self):
+        """θ_tip = π (medio círculo, Bathe-Bolourchi clásico). El extremo
+        libre vuelve a x≈0 y queda a y=2L/π por encima del empotramiento."""
+        L, E, I = 2.0, 210e9, 1.0e-6
+        n_elem = 20
+        dom, _, n_tip = self._arc_cantilever(n_elem=n_elem, L=L, E=E, I=I)
+
+        theta_target = math.pi
+        M_total = theta_target * E * I / L
+        # Pasos incrementales: ramping suave es crítico para convergencia en
+        # rotaciones grandes con cuerdas rectas.
+        U = self._solve_with_tip_moment(dom, n_tip, M_total, num_steps=20, max_iter=40)
+
+        R = E * I / M_total
+        ux_exact = R * math.sin(theta_target) - L      # = -L
+        uy_exact = R * (1.0 - math.cos(theta_target))  # = 2R = 2L/π
+
+        ux = U[n_tip.dofs['ux']]
+        uy = U[n_tip.dofs['uy']]
+        rz = U[n_tip.dofs['rz']]
+        # Tolerancia ~1% sobre L: 20 elementos en arco completo.
+        self.assertAlmostEqual(ux, ux_exact, delta=0.01 * L)
+        self.assertAlmostEqual(uy, uy_exact, delta=0.01 * L)
+        self.assertAlmostEqual(rz, theta_target, delta=2.0e-3)
+
+
 if __name__ == '__main__':
     unittest.main()

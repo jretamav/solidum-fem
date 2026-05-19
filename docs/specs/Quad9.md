@@ -48,6 +48,10 @@ acceptance:
       setup: "u = (x², 0) impuesto en los 9 nodos"
       expect: "ε_xx = 2x exacto en todos los Gauss"
       tol_rel: 1.0e-10
+    - name: Cook's membrane (Cook 1974)                              # 2026-05-19
+      setup: "trapezoid (0,0)-(48,44)-(48,60)-(0,44), E=1, ν=1/3, plane stress, cortante total F=1 distribuido en borde derecho; malla 4×4 Q9"
+      expect: "u_y en (48,52) ≈ 23.91 ± 0.5"
+      tol_abs: 0.5
 ```
 
 ---

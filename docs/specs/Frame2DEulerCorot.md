@@ -152,6 +152,16 @@ acceptance:
     expect: "K_T = K_Tᵀ"
     tol_abs: 1.0e-6
 
+  - name: Bathe-Bolourchi — cuarto de círculo                 # añadido 2026-05-19
+    setup: "voladizo recto, 10 elementos, momento puro M = (π/2)·EI/L en la punta, 8 pasos"
+    expect: "tip se mueve a (R·sin(π/2)-L, R·(1-cos(π/2))) con R=EI/M; θ_tip = π/2"
+    tol_abs: 0.005   # sobre L (cuerda ~0.2% en 10 elementos rectos)
+
+  - name: Bathe-Bolourchi — medio círculo                     # añadido 2026-05-19
+    setup: "voladizo recto, 20 elementos, momento puro M = π·EI/L en la punta, 20 pasos"
+    expect: "tip a (-L, 2L/π) y θ_tip = π — la viga se enrosca en semicírculo cerrado"
+    tol_abs: 0.01    # sobre L
+
 references:
   - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §7.3 (corotational beams)"
   - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.11"

@@ -10,7 +10,7 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 602 pasan / 5 skipped / 0 fallos (607 colectados, +13 subtests) |
+| **Tests** | 610 pasan / 5 skipped / 0 fallos (615 colectados, +13 subtests) — Fase B validación 2026-05-19: 3 benchmarks DP2D + 2 Bathe-Bolourchi (Frame2DEulerCorot) + 3 Cook's membrane (Quad8 4×4, Quad9 4×4, refinamiento Q8 monótono) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
 | **Solvers** | 11 (3 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
