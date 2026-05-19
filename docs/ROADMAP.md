@@ -205,4 +205,4 @@ El presente ROADMAP es uno de cuatro documentos previstos para que la traceabili
 
 ---
 
-*Última actualización: 2026-05-18 — Cierre de Etapa 5 (discontinuidades embebidas, ADR 0010) **y** Etapa 6 (ADR 0009 completo: HHT-α + mass lumping + central differences + harmonic + response spectrum + reglas C y D aplicadas). Próxima decisión: Etapa 7 entre opciones A, B, C, E originalmente diferidas.*
+*Última actualización: 2026-05-19 — sin nuevas etapas. Sesión de saneamiento post-auditoría 2026-05-18 cerró 23 hallazgos (3 críticos + 4 altos + 16 medios/bajos) sin tocar el ROADMAP estructural (todos eran deuda de infraestructura, no nuevas capacidades). Suite 558 → 585. Resumen en STATUS.md "Sesión de saneamiento cerrada 2026-05-19" y addendum del informe de auditoría. Próxima decisión: Etapa 7 entre opciones A, B, C, E originalmente diferidas.*

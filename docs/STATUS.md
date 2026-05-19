@@ -10,13 +10,14 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 558 pasan / 5 skipped / 0 fallos (563 colectados) |
+| **Tests** | 585 pasan / 5 skipped / 0 fallos (590 colectados) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
 | **Solvers** | 11 (3 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
 | **ADRs aceptados** | 11 (0001–0011) |
 | **Specs `validated`** | 29 |
 | **Etapas cerradas** | 6 completas (Etapa 4 = ADR 0009 fases 1, 3, 4; Etapa 5 = ADR 0010 embedded; Etapa 6 = cierre completo del ADR 0009 con fases 2, 5, 6, 7 + HHT-α + reglas C y D) |
+| **Auditoría global** | Conducida 2026-05-18 — 51 hallazgos. 23 cerrados, 6 diferidos con rationale, 20 bajos pendientes. Informe + addendum en [docs/auditorias/auditoria_global_2026-05-18.md](auditorias/auditoria_global_2026-05-18.md). |
 
 ---
 
@@ -95,6 +96,8 @@ Ninguno de los tres bloquea el avance. Todos están documentados con su contexto
 
 **Rama de trabajo cerrada 2026-05-18 (segunda)**: robustez de solvers no lineales ([ADR 0011](adr/0011-robustez-newton-line-search.md)). Auditoría de 11 tests ([fase A](auditorias/solvers_robustez_fase_A.md)) que mapeó el comportamiento real de `NonlinearSolver`, `ArcLengthSolver` y `NewtonNewmarkSolver` en regímenes problemáticos; identificó como único modo de fallo no atribuible a limitación física la oscilación del Newton en Drucker-Prager perfectamente plástico con sobrecarga. Implementó (fase C) la infraestructura completa de globalización: helper de line search por descenso no monótono y jerarquía de excepciones tipadas (`SolverDivergedError` + 4 subclases con métricas y `hint`). Enmienda al ADR durante la implementación: `line_search=False` por defecto, ya que con full Newton-Raphson + tangente consistente la globalización es contraproducente (respaldado por Tabla 3.1 de de Borst & Sluys 1999 §3.4, añadido al repo en `docs/referencias/`). Hallazgos colaterales documentados en el catálogo de solvers y reflejados en las "Capacidades" y "Limitaciones" arriba.
 
+**Sesión de saneamiento cerrada 2026-05-19**: post-auditoría 2026-05-18 ([informe + addendum](auditorias/auditoria_global_2026-05-18.md)). 23 hallazgos cerrados de los 51 listados: 3 críticos (todos en solvers — `singular_tangent_seen`, cache de factorización, doble resta `F_dir`), 4 altos (autodiscover recursivo, `_resolve_rayleigh` centralizado, doble contrato `internal_forces` documentado, tests dimensionales fail-fast), 12 medios (validaciones defensivas en `Elastic*`/`DruckerPrager`, `HHTSolver` warning en override, `LinearSolver.is_positive_definite` declarativo, `validate_lumping_kwarg` centralizado, magic numbers a `constants.py`, FD de tangentes algorítmicas, `TransientResult.internal_forces_history`, …) + 3 cubiertos documentalmente. 6 medios diferidos con rationale técnico explícito en el addendum. Suite +27 tests (558 → 585) con verificación de regresión donde aplica. Las APIs nuevas son todas aditivas (no rompedoras).
+
 ---
 
 ## Próximo hito
@@ -121,4 +124,4 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-18 — cierre completo de la Etapa 6 (ADR 0009 fases 1-7 + variante HHT-α + reglas C y D aplicadas): HHT-α, mass lumping, central differences, harmonic, response spectrum. Subsistema dinámico/modal/espectral cerrado en su totalidad. Próxima decisión = nueva Etapa 7 entre opciones A, B, C, E del ROADMAP, o saldar deudas técnicas vigentes.*
+*Última actualización: 2026-05-19 — sesión de saneamiento post-auditoría. 23 de 51 hallazgos cerrados (3 críticos + 4 altos + 16 medios/bajos), 6 medios diferidos con rationale técnico en el addendum del informe (`docs/auditorias/auditoria_global_2026-05-18.md`). Suite pasa de 558 a 585 tests verdes (+27, todos con verificación de regresión donde aplica). APIs públicas añadidas (todas aditivas, no rompedoras): `LinearSolver.invalidate_cache()`, `TransientResult.internal_forces_history(domain)`, `fenix.math.damping.resolve_rayleigh_config()`, `fenix.materials._softening.evaluate_exponential_damage()`, `fenix.core.element.validate_lumping_kwarg`. Próxima decisión = nueva Etapa 7 entre opciones A, B, C, E del ROADMAP, o cerrar los 20 bajos pendientes en sesión dedicada de housekeeping.*
