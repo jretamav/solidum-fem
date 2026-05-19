@@ -15,7 +15,7 @@
 
 Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)** y **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo (1D y 2D)**. Sobre la misma maquinaria se ha abierto recientemente la línea **dinámica**: **análisis modal** y **transitorio Newmark (lineal y no lineal)**. **401 tests verdes + 5 skipped intencionales**.
 
-> Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver `docs/STATUS.md` (pendiente de crear; ver §"Documentos complementarios" al final).
+> Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver [`docs/STATUS.md`](STATUS.md). Para combinaciones validadas: [`docs/MATRIZ.md`](MATRIZ.md). Para arranque en frío: [`docs/ONBOARDING.md`](ONBOARDING.md). Ver §"Documentos complementarios" al final para una guía del sistema.
 
 ---
 
@@ -183,14 +183,14 @@ Items que no bloquean el avance pero conviene tener visibles:
 
 ---
 
-## Documentos complementarios (pendientes de crear)
+## Documentos complementarios
 
-El presente ROADMAP es uno de cuatro documentos previstos para que la traceability del proyecto escale con el catálogo:
+El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con el catálogo. Los cuatro existen y se mantienen sincronizados:
 
-1. **`ROADMAP.md` (este archivo)**: visión por etapas, decisiones de bifurcación. **Cambia cuando se cierra una etapa o se decide una bifurcación.**
-2. **`STATUS.md`** (pendiente): foto de una página del estado actual — métricas (#tests, #elementos, #materiales, #solvers, #ADRs, #specs), capacidades habilitadas, deuda técnica con prioridades, próximo hito. **Se regenera o actualiza tras cada PR significativa.**
-3. **`MATRIZ.md`** (pendiente): tabla cruzada elemento × material × solver con celdas validadas por test, en blanco (combinación posible no testeada) o vetadas (combinación prohibida con razón). Sirve para detectar huecos del catálogo y para usuarios externos que quieren saber qué combinación es segura.
-4. **`ONBOARDING.md`** (pendiente): documento de entrada para agente o humano que arranca sesión sin contexto previo. Indica qué leer primero (este ROADMAP, `Reglas.md`, último ADR), cómo correr tests, dónde está la memoria, qué patrones de cambio merecen ADR.
+1. **[`ROADMAP.md`](ROADMAP.md) (este archivo)**: visión por etapas, decisiones de bifurcación. **Cambia cuando se cierra una etapa o se decide una bifurcación.**
+2. **[`STATUS.md`](STATUS.md)**: foto de una página del estado actual — métricas (#tests, #elementos, #materiales, #solvers, #ADRs, #specs), capacidades habilitadas, deuda técnica con prioridades, próximo hito. **Se regenera o actualiza tras cada PR significativa.**
+3. **[`MATRIZ.md`](MATRIZ.md)**: tabla cruzada elemento × material × solver con celdas validadas por test, en blanco (combinación posible no testeada) o vetadas (combinación prohibida con razón). Sirve para detectar huecos del catálogo y para usuarios externos que quieren saber qué combinación es segura.
+4. **[`ONBOARDING.md`](ONBOARDING.md)**: documento de entrada para agente o humano que arranca sesión sin contexto previo. Indica qué leer primero (este ROADMAP, `Reglas.md`, último ADR), cómo correr tests, dónde está la memoria, qué patrones de cambio merecen ADR. **Punto de entrada recomendado para sesiones cold-start.**
 
 ---
 

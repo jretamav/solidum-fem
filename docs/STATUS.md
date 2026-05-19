@@ -2,7 +2,7 @@
 
 > Foto de una página del estado actual. **Se regenera o actualiza tras cada PR significativa** (cierre de etapa, nuevo componente validado, nuevo ADR aceptado, deuda saldada).
 >
-> Para visión por etapas y bifurcaciones: ver [ROADMAP.md](ROADMAP.md). Para combinaciones validadas: ver `MATRIZ.md` (pendiente).
+> Para visión por etapas y bifurcaciones: ver [ROADMAP.md](ROADMAP.md). Para combinaciones validadas: ver [MATRIZ.md](MATRIZ.md). Para arranque en frío: ver [ONBOARDING.md](ONBOARDING.md).
 
 ---
 
