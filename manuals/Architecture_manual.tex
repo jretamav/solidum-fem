@@ -566,22 +566,25 @@ Disponibles en la versión actual:
   \item \texttt{ArcLengthSolver} --- método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
   \item \texttt{ModalSolver} (\hyperref[adr:0009]{ADR 0009} fase 1) --- análisis modal: problema generalizado de valores y vectores característicos \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. No es análisis dinámico propiamente dicho (no hay paso de tiempo ni evolución temporal); sus soluciones admiten interpretación como frecuencias propias y formas de vibración libre no amortiguada. Internamente delega en \texttt{EigenSolver} (ARPACK Lanczos con shift-invert) sobre el sistema reducido por Dirichlet. Devuelve \texttt{ModalResult} con frecuencias, períodos y modos M-ortonormales; expone además \texttt{free\_vibration(M, u0, u0\_dot, t)} para reconstruir analíticamente la respuesta libre por superposición modal.
   \item \texttt{NewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 3) --- análisis dinámico transitorio lineal: integración temporal directa de \texttt{M \ensuremath{\cdot} ü + C \ensuremath{\cdot} u̇ + K \ensuremath{\cdot} u = F(t)} por el método de Newmark-\ensuremath{\beta} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables (default 1/4, 1/2 --- \textit{average acceleration}, incondicionalmente estable, error \texttt{O(\ensuremath{\Delta}t\ensuremath{^{2}})}). Amortiguamiento Rayleigh \texttt{C = \ensuremath{\alpha} \ensuremath{\cdot} M + \ensuremath{\beta} \ensuremath{\cdot} K} con coeficientes directos o calibrados modalmente a partir de dos pares \texttt{(\ensuremath{\xi}, \ensuremath{\omega})}. Cargas dependientes del tiempo por callback Python. Devuelve \texttt{TransientResult} con historiales \texttt{(t, u, u̇, ü)}. La matriz efectiva \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K} se factoriza una sola vez al inicio y se reutiliza en todos los pasos.
-  \item \texttt{NewtonNewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 4) --- análisis dinámico transitorio no lineal. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico \texttt{R = F\_ext − F\_int(u) − C \ensuremath{\cdot} u̇ − M \ensuremath{\cdot} ü} con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K\_t} (rigidez tangente corriente). Convergencia dual (\hyperref[adr:0007]{ADR 0007}). Amortiguamiento Rayleigh constante en el tiempo, calibrado con \texttt{K\_0} (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (\texttt{freeze\_tangent\_after\_iter}, \hyperref[adr:0003]{ADR 0003} fase 2). Despacho YAML automático vía \texttt{isinstance} sobre la clase padre.
+  \item \texttt{NewtonNewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 4) --- análisis dinámico transitorio no lineal. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico \texttt{R = F\_ext − F\_int(u) − C \ensuremath{\cdot} u̇ − M \ensuremath{\cdot} ü} con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K\_t} (rigidez tangente corriente). Convergencia dual (\hyperref[adr:0007]{ADR 0007}). Amortiguamiento Rayleigh constante en el tiempo, calibrado con \texttt{K\_0} (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (\texttt{freeze\_tangent\_after\_iter}, \hyperref[adr:0003]{ADR 0003} fase 2).
+  \item \texttt{HHTSolver} y \texttt{NewtonHHTSolver} (\hyperref[adr:0009]{ADR 0009}, variantes HHT-\ensuremath{\alpha}) --- disipación numérica controlada en altas frecuencias (Hilber-Hughes-Taylor 1977) con parámetro \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]} y \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} auto-derivados. Subclases de \texttt{NewmarkSolver} y \texttt{NewtonNewmarkSolver} respectivamente (Reglas §4 --- variantes).
+  \item \texttt{CentralDifferenceSolver} (\hyperref[adr:0009]{ADR 0009} fase 5) --- integración explícita por diferencias centradas (leapfrog Belytschko-Liu-Moran). \texttt{M\ensuremath{^{-}}¹} trivial sobre masa lumped diagonal. Lineal y no lineal en una sola clase con parámetro \texttt{nonlinear}. Estabilidad condicional CFL con detección a posteriori de divergencia.
+  \item \texttt{HarmonicSolver} (\hyperref[adr:0009]{ADR 0009} fase 6) --- respuesta forzada armónica en el dominio de la frecuencia. Aritmética compleja con \texttt{scipy.sparse.linalg.spsolve} complejo; factorización LU compleja por frecuencia (no se cachea). Barrido lineal/logarítmico/explícito. Devuelve \texttt{HarmonicResult} con métodos \texttt{.amplitude()} y \texttt{.phase()}.
+  \item \texttt{ResponseSpectrumSolver} (\hyperref[adr:0009]{ADR 0009} fase 7) --- análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta \texttt{ModalSolver} interno y delega los algoritmos en \texttt{fenix.math.modal\_response} (centralización por regla D de auditoría). Devuelve \texttt{ResponseSpectrumResult} con respuesta envolvente, factores de participación y masas efectivas.
 \end{itemize}
 
 Espacio natural de extensión:
 
 \begin{itemize}
-  \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.}
+  \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia. \textbf{Parcialmente entregado por \hyperref[adr:0011]{ADR 0011}} --- line search disponible como opt-in (\texttt{line\_search=True}); default \texttt{False} por la justificación bibliográfica de Borst \& Sluys 1999.}
   \item \pendiente{Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.}
-  \item \pendiente{Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}) como subclase de \texttt{NewmarkSolver}.}
-  \item \pendiente{Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto. Requieren masa lumped (fase 2 del \hyperref[adr:0009]{ADR 0009}, contrato \texttt{lumping="lumped"} ya en la firma de \texttt{compute\_mass\_matrix}).}
+  \item \pendiente{Generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha} --- esquemas adicionales de la familia con disipación numérica.}
   \item \pendiente{Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.}
-  \item \pendiente{Respuesta en frecuencia (steady-state harmonic): \texttt{(−\ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M + i\ensuremath{\omega} \ensuremath{\cdot} C + K) \ensuremath{\cdot} û = F̂} con barrido en \texttt{\ensuremath{\omega}}.}
-  \item \pendiente{Análisis espectral / sísmico por combinación modal (CQC, SRSS sobre espectro de respuesta).}
+  \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, regla 100/30/30) y multi-support seismic excitation.}
+  \item \pendiente{\ensuremath{\Delta}t adaptativo para transitorios.}
 \end{itemize}
 
-La incorporación de un solver nuevo se realiza en \texttt{fenix/math/solver\_<nombre>.py} mediante el decorador \texttt{@SolverRegistry.register}, sin modificación del intérprete del caso, el dominio o los elementos.
+La incorporación de un solver nuevo se realiza en \texttt{fenix/math/solvers/<nombre>.py} mediante el decorador \texttt{@SolverRegistry.register}. El \textbf{dispatch a entrypoints} en \texttt{fenix.entry.run\_yaml} es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} y \texttt{run\_yaml} despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
 
 \section{Subsistema algebraico}
 
@@ -614,17 +617,20 @@ Implementados en la versión actual:
   \item \textit{Análisis modal} (\hyperref[adr:0009]{ADR 0009} fase 1). Problema algebraico de valores y vectores característicos generalizado \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Combinación: \texttt{ModalSolver} con materiales que declaren \texttt{density} y elementos que implementen \texttt{compute\_mass\_matrix}.
   \item \textit{Dinámica estructural transitoria lineal} (\hyperref[adr:0009]{ADR 0009} fase 3). Integración temporal directa de la ecuación de movimiento por Newmark-\ensuremath{\beta}, con amortiguamiento Rayleigh proporcional y cargas dependientes del tiempo por callback Python. Combinación: \texttt{NewmarkSolver} con material lineal, elementos en formulación lineal y \texttt{density} declarada.
   \item \textit{Dinámica estructural transitoria no lineal} (\hyperref[adr:0009]{ADR 0009} fase 4). Integración Newmark con Newton-Raphson dentro de cada paso sobre el residuo dinámico \texttt{R = F\_ext − F\_int(u) − C\ensuremath{\cdot}u̇ − M\ensuremath{\cdot}ü}. Combinación: \texttt{NewtonNewmarkSolver} con cualquier material con historia (\texttt{Elastoplastic1D}, \texttt{VonMises2D} en ambas hipótesis, \texttt{DruckerPrager2D}, \texttt{IsotropicDamage1D/2D}) y \texttt{density} declarada. Habilita sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo y vibraciones de marcos elastoplásticos.
+  \item \textit{Dinámica estructural transitoria con disipación HHT-\ensuremath{\alpha}} (\hyperref[adr:0009]{ADR 0009}, variante de fases 3 y 4). Mismas combinaciones que Newmark, con la familia HHT-\ensuremath{\alpha} que controla la disipación numérica de modos altos espurios.
+  \item \textit{Dinámica estructural transitoria explícita} (\hyperref[adr:0009]{ADR 0009} fase 5). Integración explícita por diferencias centradas. Combinación: \texttt{CentralDifferenceSolver} con masa lumped (\texttt{lumping="lumped"}) y la condición de estabilidad CFL \texttt{\ensuremath{\Delta}t < L\_el \ensuremath{\cdot} \ensuremath{\surd}(\ensuremath{\rho}/E)} respetada por el usuario. Apropiado para \textit{wave propagation}, impacto y dinámica de respuesta rápida.
+  \item \textit{Respuesta forzada armónica en el dominio de la frecuencia} (\hyperref[adr:0009]{ADR 0009} fase 6). Resolución directa del sistema complejo \texttt{(−\ensuremath{\omega}\ensuremath{^{2}}M + i\ensuremath{\omega}C + K)\ensuremath{\cdot}û = F̂} por barrido en \texttt{\ensuremath{\omega}}. Combinación: \texttt{HarmonicSolver} con amortiguamiento Rayleigh y excitación armónica.
+  \item \textit{Análisis sísmico por combinación modal espectral} (\hyperref[adr:0009]{ADR 0009} fase 7). Cálculo modal interno + factores de participación + combinación SRSS o CQC contra un espectro de respuesta tabulado o callable. Combinación: \texttt{ResponseSpectrumSolver} con materiales lineales, \texttt{density} declarada y un espectro normativo o equivalente.
 \end{itemize}
 
 Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
 
 \begin{itemize}
-  \item \pendiente{Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.}
-  \item \pendiente{Respuesta en frecuencia (steady-state harmonic) y análisis espectral sísmico por combinación modal.}
   \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
   \item \pendiente{Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).}
   \item \pendiente{Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.}
   \item \pendiente{Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.}
+  \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, 100/30/30) y multi-support para diferencias de movimiento entre apoyos.}
 \end{itemize}
 
 La estructura de capas y registros se ha diseñado para incorporar dichos análisis sin reformular las piezas existentes; el ADR correspondiente se redactará al inicio de cada fase de diseño.
@@ -944,7 +950,7 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
 \section{ADR 0009 --- Análisis modal y dinámico}
 \label{adr:0009}
 
-\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; fases 1 (modal), 3 (Newmark transitorio lineal) y 4 (Newton-Newmark transitorio no lineal) implementadas.
+\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; \textbf{todas las fases (1-7) implementadas} al 18 de mayo de 2026, junto con la variante HHT-\ensuremath{\alpha} y las reglas C y D de refactor arquitectural aplicadas.
 
 \textbf{Contexto.} El \hyperref[adr:0003]{ADR 0003} había identificado análisis modal y dinámica implícita entre los análisis futuros que la capa algebraica iba a habilitar; el \hyperref[adr:0008]{ADR 0008} había puesto la densidad como propiedad del material disponible. Quedaba abrir el subsistema con dos análisis distintos pero relacionados: el análisis modal --- problema algebraico de valores y vectores característicos generalizado \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}} ---, cuyas soluciones admiten interpretación dinámica pero no constituyen análisis dinámico per se; y el análisis dinámico propiamente dicho, con dependencia temporal explícita --- integración de \texttt{M \ensuremath{\cdot} ü + C \ensuremath{\cdot} u̇ + K \ensuremath{\cdot} u = F(t)}.
 
@@ -960,9 +966,27 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
   \item Convención de unidades heredada del modelo (\hyperref[adr:0008]{ADR 0008}): el usuario es responsable de la consistencia; las tolerancias adimensionales del \hyperref[adr:0007]{ADR 0007} garantizan invariancia bajo cambio de unidades.
 \end{enumerate}
 
-La fase 1 (\texttt{ModalSolver} + ARPACK Lanczos con shift-invert), la fase 3 (\texttt{NewmarkSolver} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) y la fase 4 (\texttt{NewtonNewmarkSolver} --- subclase de \texttt{NewmarkSolver} que añade Newton-Raphson dentro de cada paso con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}, convergencia dual del \hyperref[adr:0007]{ADR 0007}, Rayleigh constante calibrado con \texttt{K\_0}) quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad.
+Las siete fases quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad:
 
-\textbf{Consecuencia.} El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase \texttt{Node} conserva su semántica original.
+\begin{itemize}
+  \item \textbf{Fase 1} (\texttt{ModalSolver} + ARPACK Lanczos con shift-invert). Cerrada 2026-05-13.
+  \item \textbf{Fase 2} (mass lumping HRZ canónico en sólidos + nodal directo en frames). Helper centralizado \texttt{fenix.math.mass\_lumping.lump\_hrz}. Cerrada 2026-05-18 (commit \texttt{c92bf4e}).
+  \item \textbf{Fase 3} (\texttt{NewmarkSolver} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables, factorización única, Rayleigh, cargas por callback). Cerrada 2026-05-13.
+  \item \textbf{Fase 3-bis} (\texttt{HHTSolver} como variante de Newmark con disipación numérica controlada por \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]}). Cerrada 2026-05-18 (commit \texttt{73742f4}).
+  \item \textbf{Fase 4} (\texttt{NewtonNewmarkSolver} con Newton interno, jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}, convergencia dual \hyperref[adr:0007]{ADR 0007}, Rayleigh constante con \texttt{K\_0}; \texttt{NewtonHHTSolver} análogo). Cerrada 2026-05-13/-18.
+  \item \textbf{Fase 5} (\texttt{CentralDifferenceSolver} --- leapfrog explícito Belytschko-Liu-Moran, lineal y no lineal en una clase con \texttt{nonlinear}, estabilidad condicional CFL con detección a posteriori). Cerrada 2026-05-18 (commit \texttt{e66473d}).
+  \item \textbf{Fase 6} (\texttt{HarmonicSolver} --- respuesta forzada armónica \texttt{(−\ensuremath{\omega}\ensuremath{^{2}}M+i\ensuremath{\omega}C+K)\ensuremath{\cdot}û=F̂} con barrido configurable, aritmética compleja). Cerrada 2026-05-18 (commit \texttt{47a1333}).
+  \item \textbf{Fase 7} (\texttt{ResponseSpectrumSolver} --- combinación modal SRSS/CQC sobre espectro de respuesta). Cerrada 2026-05-18 (commit \texttt{5151d7d}).
+\end{itemize}
+
+\textbf{Reglas arquitecturales aplicadas durante el cierre del ADR}:
+
+\begin{itemize}
+  \item \textbf{Regla C} (auditoría 2026-05-13). Disparada por \texttt{CentralDifferenceSolver} como primer solver fuera de la jerarquía de Newmark. \texttt{entry.py::run\_yaml} despacha por atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} en lugar de cadena de \texttt{isinstance}. Solvers no clásicos futuros no requieren tocar \texttt{entry.py}.
+  \item \textbf{Regla D} (auditoría 2026-05-13). Disparada por \texttt{ResponseSpectrumSolver} como segundo método de cómputo sobre \texttt{ModalResult}. El algoritmo de \texttt{free\_vibration} migra a \texttt{fenix/math/modal\_response.py} junto con los nuevos \texttt{participation\_factors}, \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}. \texttt{ModalResult.free\_vibration} queda como wrapper delgado, preservando la API histórica.
+\end{itemize}
+
+\textbf{Consecuencia.} El subsistema modal/dinámico/espectral queda \textbf{completo en su totalidad}. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, \ensuremath{\Delta}t adaptativo, generalized-\ensuremath{\alpha}) requieren caso de uso específico --- no son piezas del ADR pendientes. La clase \texttt{Node} conserva su semántica original.
 
 \section{Evolución de esta lista}
 
@@ -1061,13 +1085,13 @@ Integración temporal directa de la ecuación de movimiento semidiscreta \texttt
 Bajo. La decisión 5 del \hyperref[adr:0009]{ADR 0009} (estado dinámico fuera de \texttt{Node}, en \texttt{TransientResult}) preserva la pureza topológica/geométrica de \texttt{Node} y evita que análisis estáticos paguen el coste de campos que no usan. La semántica \textit{trial} / comprometido del estado interno de elementos (ADR sobre \texttt{ElementState}) sigue intacta porque la fase 3 es lineal: no hay variables internas que evolucionen.
 \end{infobox}
 
-\textbf{Limitaciones declaradas en esta fase}:
+\textbf{Limitaciones declaradas en esta fase 3}:
 
 \begin{itemize}
-  \item Solo lineal: \texttt{K, M} constantes. No-linealidad (Newton dentro de Newmark) diferida a la fase 4.
+  \item Solo lineal: \texttt{K, M} constantes. No-linealidad (Newton dentro de Newmark) entregada en la fase 4.
   \item Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
   \item \texttt{\ensuremath{\Delta}t} fijo; adaptativo diferido.
-  \item Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}) diferidos a subclase futura.
+  \item Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}) entregados en 2026-05-18 como variante de la familia Newmark.
 \end{itemize}
 
 \section{Fase 4 --- Dinámica estructural transitoria no lineal}
@@ -1089,6 +1113,42 @@ Bajo. La decisión 5 del \hyperref[adr:0009]{ADR 0009} (estado dinámico fuera d
 
 \begin{infobox}{Riesgo de arquitectura}
 Bajo en la práctica: toda la infraestructura ya existía. El \texttt{NonlinearSolver} estático aportaba calibración de convergencia, fallback de positividad y Newton modificado; la fase 3 aportaba predictores/correctores Newmark y reducción de Dirichlet. La fase 4 es la composición exacta de ambas, formalizada como subclase para no duplicar código.
+\end{infobox}
+
+\section{Fase 4 (extensión 2026-05-18) --- Cierre completo del subsistema modal/dinámico/espectral}
+
+\textbf{Estado}: implementado (\hyperref[adr:0009]{ADR 0009} fases 2, 5, 6, 7 + variante HHT-\ensuremath{\alpha} + reglas C y D de auditoría aplicadas).
+
+Las cuatro fases pendientes del \hyperref[adr:0009]{ADR 0009} se cierran en una secuencia obligada (cada una precondición de la siguiente) sin reabrir las decisiones arquitecturales tomadas en el ADR original:
+
+\textbf{Mass lumping (fase 2)} --- \texttt{compute\_mass\_matrix(lumping="lumped")} operativo en todos los elementos. Helper centralizado \texttt{fenix.math.mass\_lumping.lump\_hrz} con esquema HRZ canónico (Hinton-Rock-Zienkiewicz 1976) para sólidos isoparamétricos y fórmula nodal directa para frames. Diagonalidad estricta en globales para todos los elementos excepto Frame3D con eje oblicuo (queda bloque-diagonal --- limitación documentada, Cook-Malkus-Plesha §11.4).
+
+\textbf{HHT-\ensuremath{\alpha} (variante)} --- \texttt{HHTSolver} y \texttt{NewtonHHTSolver} como variantes de la familia Newmark (Reglas §4 --- spec corta sin ADR nuevo). Disipación numérica controlada por \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} auto-derivados canónicamente.
+
+\textbf{Central differences (fase 5)} --- \texttt{CentralDifferenceSolver} con leapfrog explícito Belytschko-Liu-Moran. Una sola clase cubre lineal y no lineal con parámetro \texttt{nonlinear}. Requiere masa lumped (\texttt{lumping="consistent"} rechazado con \texttt{ValueError}). Estabilidad condicional CFL con detección a posteriori de divergencia exponencial.
+
+\textbf{Harmonic (fase 6)} --- \texttt{HarmonicSolver} resuelve \texttt{(−\ensuremath{\omega}\ensuremath{^{2}}M + i\ensuremath{\omega}C + K)\ensuremath{\cdot}û = F̂} con aritmética compleja para un barrido en \texttt{\ensuremath{\omega}}. Factorización LU compleja por frecuencia. Nuevo \texttt{HarmonicResult} con métodos \texttt{.amplitude()} y \texttt{.phase()}. Cuarto valor del literal \texttt{PIPELINE\_KIND} (ver regla C abajo).
+
+\textbf{Response spectrum (fase 7)} --- \texttt{ResponseSpectrumSolver} combina respuestas máximas modales bajo un espectro \texttt{S\_d(\ensuremath{\omega})} o \texttt{S\_a(\ensuremath{\omega})} por SRSS (default) o CQC (Der Kiureghian 1980, para modos cercanos). Devuelve \texttt{ResponseSpectrumResult} con respuesta envolvente, contribución modal individual, factores de participación, masas efectivas y método \texttt{.cumulative\_effective\_mass\_ratio()} para verificación normativa (\ensuremath{\ge} 0.9).
+
+\textbf{Reglas C y D aplicadas durante esta extensión} (auditoría arquitectural 2026-05-13):
+
+\begin{itemize}
+  \item \textbf{Regla C} --- \texttt{entry.py::run\_yaml} despacha por atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} en lugar de cadena de \texttt{isinstance}. Solvers no clásicos futuros no requieren tocar \texttt{entry.py}.
+  \item \textbf{Regla D} --- \texttt{fenix/math/modal\_response.py} agrupa todos los cómputos sobre modos: \texttt{free\_vibration} (movido desde \texttt{results.py}), \texttt{participation\_factors}, \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, helpers de espectros (\texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}). \texttt{ModalResult.free\_vibration} queda como wrapper delgado preservando la API histórica. \texttt{results.py} vuelve a su propósito declarado: dataclasses inmutables, no algoritmos.
+\end{itemize}
+
+\textbf{Topología efectiva} tras la extensión:
+
+\begin{lstlisting}
+[Entrada] - [Inicializacion] - [Interprete: PIPELINE_KIND] - [Dominio] - [Numerica: K, M, C, lump_hrz, modal_response] - [Salida]
+                                                                                                                          |
+                            [run, run_modal, run_transient, run_harmonic, run_response_spectrum]    →    [Result type específico]
+
+\end{lstlisting}
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo \texttt{mass\_lumping.py}, nuevo módulo \texttt{modal\_response.py}, cinco solvers nuevos en \texttt{fenix/math/solvers/}, dos \texttt{Result} nuevos (\texttt{HarmonicResult}, \texttt{ResponseSpectrumResult}). El despacho declarativo \texttt{PIPELINE\_KIND} reemplaza la cadena de \texttt{isinstance} sin romper contratos --- los solvers existentes heredan el nuevo atributo. La regla D centraliza algoritmos sin modificar la API pública de \texttt{ModalResult}.
 \end{infobox}
 
 \section{Fase 5 --- Problema térmico estacionario y transitorio}
@@ -1426,29 +1486,23 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
   \item \pendiente{Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.}
 
-  \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia.}
+  \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia. \textbf{Parcialmente entregado por \hyperref[adr:0011]{ADR 0011}} --- line search disponible como opt-in (\texttt{line\_search=True}); default \texttt{False} por la justificación bibliográfica de Borst \& Sluys 1999.}
 
   \item \pendiente{Solver cuasi-Newton tipo BFGS para reducir el coste de actualización de la matriz tangente.}
 
-  \item \pendiente{Esquemas con amortiguamiento numérico controlado (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha}) como subclase de \texttt{NewmarkSolver}.}
-
-  \item \pendiente{Esquemas explícitos (diferencias centradas) para problemas con propagación de ondas y contacto. Requieren masa lumped (fase 2 del \hyperref[adr:0009]{ADR 0009}, contrato \texttt{lumping="lumped"} ya en la firma de \texttt{compute\_mass\_matrix}).}
+  \item \pendiente{Generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha} --- esquemas adicionales de la familia con disipación numérica.}
 
   \item \pendiente{Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.}
 
-  \item \pendiente{Respuesta en frecuencia (steady-state harmonic): \texttt{(−\ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M + i\ensuremath{\omega} \ensuremath{\cdot} C + K) \ensuremath{\cdot} û = F̂} con barrido en \texttt{\ensuremath{\omega}}.}
+  \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, regla 100/30/30) y multi-support seismic excitation.}
 
-  \item \pendiente{Análisis espectral / sísmico por combinación modal (CQC, SRSS sobre espectro de respuesta).}
+  \item \pendiente{\ensuremath{\Delta}t adaptativo para transitorios.}
 
   \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} para el caso simétrico no definido positivo, reservada para la fase 2 del \hyperref[adr:0003]{ADR 0003}.}
 
   \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
 
   \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
-
-  \item \pendiente{Dinámica estructural transitoria explícita con diferencias centradas, condicionalmente estable.}
-
-  \item \pendiente{Respuesta en frecuencia (steady-state harmonic) y análisis espectral sísmico por combinación modal.}
 
   \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
 
@@ -1457,6 +1511,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
   \item \pendiente{Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.}
 
   \item \pendiente{Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.}
+
+  \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, 100/30/30) y multi-support para diferencias de movimiento entre apoyos.}
 
 \end{itemize}
 
@@ -1498,8 +1554,8 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 13 de mayo de 2026, 16:10\\[0.5em]
-Commit Git: \texttt{54e69fe} (con cambios sin confirmar)\\[1em]
+Compilado el 18 de mayo de 2026, 18:24\\[0.5em]
+Commit Git: \texttt{d485c85} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

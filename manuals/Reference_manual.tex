@@ -5467,6 +5467,38 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
 \end{itemize}
 
 
+Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{condensación estática local}: el ensamblador no ve los grados de libertad del salto. Cuando se cumple un criterio de activación (Rankine en fase 1), el elemento materializa una discontinuidad interna \texttt{Γ\_d} y enriquece su cinemática con un salto \texttt{[[u]]} gobernado por un material cohesivo (\texttt{CohesiveMaterial}, ver el catálogo de materiales §"Materiales cohesivos"). La activación se evalúa en el hook \texttt{Element.prepare\_step(U\_committed)} que los solvers no lineales invocan \textbf{una vez por paso}, antes del Newton (anti-chattering, ADR 0010 §5).
+
+\section{CST\_Embedded2D --- triángulo CST con discontinuidad interior embebida (KOS)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: introducir fractura computacional en aproximación discreta sobre el CST padre. Fiel a Retama (2010), Caps. 2, 5, 6 y 7: cinemática KOS, condensación estática local, longitud efectiva \texttt{l\_d = (A\_e/h)\ensuremath{\cdot}cos(\ensuremath{\theta}−\ensuremath{\alpha})}.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy']} \ensuremath{\cdot} 3 nodos \ensuremath{\cdot} \texttt{STRAIN\_DIM = 3} \ensuremath{\cdot} \texttt{N\_INTEGRATION\_POINTS = 1}.
+  \item \textbf{DOFs enriquecidos (elementales, no globales)}: \texttt{[[u]] \ensuremath{\in} \ensuremath{\mathbb{R}}\ensuremath{^{2}}} en frame local \texttt{(n, s)} de \texttt{Γ\_d}. Se condensan dentro de \texttt{compute\_element\_state} y nunca llegan al ensamblador.
+  \item \textbf{Estado intacto}: bit-exact con Tri3 (mismo \texttt{B}, mismo material, misma cuadratura).
+  \item \textbf{Estado agrietado}: Newton local sobre \texttt{[[u]]} hasta \texttt{R\textasciicircum{}\{[[u]]\} = 0}; después la condensación \texttt{K\_cond = K\_dd − K\_du \ensuremath{\cdot} K\_\{[[u]][[u]]\}\ensuremath{^{-}}¹ \ensuremath{\cdot} K\_du\textasciicircum{}T} se devuelve al ensamblador. El bulk descarga elásticamente conforme \texttt{[[u]]} crece (discrete approach); la disipación va al cohesivo en \texttt{Γ\_d}.
+  \item \textbf{Activación}: criterio Rankine (\texttt{\ensuremath{\sigma}\_I > \ensuremath{\sigma}\_t0} del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. \textbf{Irreversible}: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
+  \item \textbf{Materiales aceptados}: bulk \textbf{solo \texttt{Elastic2D}} en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier \texttt{CohesiveMaterial} con \texttt{JUMP\_DIM = 2}.
+  \item \textbf{Estado de la discontinuidad}: \texttt{DiscontinuityState} (en fenix/core/discontinuity\_state.py) --- paralela a \texttt{ElementState}, semántica trial/commit.
+  \item \textbf{YAML}:
+\end{itemize}
+  \begin{lstlisting}[language=yaml]
+  cohesive_materials:
+    - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+       K_e: 1.0e13, softening: linear}
+  elements:
+    - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+       material: 1, cohesive_material: 1}
+  
+\end{lstlisting}
+\begin{itemize}
+  \item \textbf{Post-procesamiento}: \texttt{compute\_gauss\_state(U)} añade clave \texttt{'discontinuity'} con \texttt{\{normal, tangent, centroid, solitary\_node, l\_d, jump, traction, damage\}} cuando el elemento está agrietado.
+  \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de \texttt{n} tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (\texttt{Tri6\_Embedded}), 3D (\texttt{Tet4\_Embedded}).
+  \item \textbf{Spec}: docs/specs/CST\_Embedded2D.md.
+  \item \textbf{Archivo}: fenix/elements/solid\_2d/embedded\_cst.py.
+\end{itemize}
+
+
 \section{Cómo añadir un elemento nuevo}
 
 \begin{enumerate}
@@ -5648,11 +5680,38 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
 \end{itemize}
 
 
+
+Los materiales cohesivos son una \textbf{jerarquía paralela e independiente} de los materiales continuos: operan sobre el salto de desplazamientos \texttt{[[u]]} sobre una superficie de discontinuidad \texttt{Γ\_d} y devuelven tracciones \texttt{t}, no esfuerzos sobre \texttt{\ensuremath{\varepsilon}}. Viven en \texttt{fenix/cohesive\_materials/}, heredan de \texttt{fenix.core.cohesive\_material.CohesiveMaterial}, se registran vía \texttt{CohesiveMaterialRegistry} y se declaran en YAML bajo la sección \texttt{cohesive\_materials} (separada de \texttt{materials}). El bulk del elemento sigue siendo un \texttt{Material} continuo; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
+
+\textit{\textbf{Convenciones de la familia}: \texttt{JUMP\_DIM} = dimensión del vector de salto (2 en 2D, 3 en 3D); \texttt{PRIMARY\_STATE\_VAR} = variable interna que se exporta al post-proceso; \texttt{IS\_SYMMETRIC} = simetría de la contribución a la tangente del elemento. Parámetros físicos típicos: \texttt{sigma\_t0} (Pa), \texttt{G\_f} (N/m), \texttt{K\_e} (Pa/m). No tienen densidad --- la inercia es del bulk.}
+
+
+
+\section{CohesiveDamageIsotropic --- daño cohesivo isótropo Modo-I con softening lineal/exponencial}
+
+\begin{itemize}
+  \item \textbf{Modelo}: daño escalar \texttt{\ensuremath{\omega} \ensuremath{\in} [0, 1]} sobre el salto. Tracción \texttt{t\_n = (1 − \ensuremath{\omega})\ensuremath{\cdot}K\_e\ensuremath{\cdot}[[u\_n]]} en dirección normal, \texttt{t\_s = 0} en tangencial (Modo-I puro). Activación tipo Rankine (\texttt{f = \ensuremath{\langle}[[u\_n]]\ensuremath{\rangle} − \ensuremath{\kappa}}); historial monótono \texttt{\ensuremath{\kappa}\_\{n+1\} = max(\ensuremath{\kappa}\_n, \ensuremath{\langle}[[u\_n]]\ensuremath{\rangle})} con \texttt{\ensuremath{\kappa}\_0 = \ensuremath{\sigma}\_t0/K\_e}. Energía de fractura \texttt{G\_f} cierra la curva analíticamente:
+  \item \textbf{Lineal}: \texttt{T\_soft(\ensuremath{\kappa}) = \ensuremath{\sigma}\_t0\ensuremath{\cdot}(w\_c − \ensuremath{\kappa})/(w\_c − \ensuremath{\kappa}\_0)} con apertura crítica \texttt{w\_c = 2\ensuremath{\cdot}G\_f/\ensuremath{\sigma}\_t0}. \texttt{\ensuremath{\omega}(\ensuremath{\kappa}) = 1 − \ensuremath{\sigma}\_t0\ensuremath{\cdot}(w\_c − \ensuremath{\kappa})/[K\_e\ensuremath{\cdot}\ensuremath{\kappa}\ensuremath{\cdot}(w\_c − \ensuremath{\kappa}\_0)]}. \texttt{\ensuremath{\omega} = 1} en \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}.
+  \item \textbf{Exponencial}: \texttt{T\_soft(\ensuremath{\kappa}) = \ensuremath{\sigma}\_t0\ensuremath{\cdot}exp[−\ensuremath{\sigma}\_t0\ensuremath{\cdot}(\ensuremath{\kappa} − \ensuremath{\kappa}\_0)/H]} con \texttt{H = G\_f − \ensuremath{\sigma}\_t0\ensuremath{\cdot}\ensuremath{\kappa}\_0/2}. \texttt{\ensuremath{\omega}(\ensuremath{\kappa}) = 1 − T\_soft(\ensuremath{\kappa})/(K\_e\ensuremath{\cdot}\ensuremath{\kappa})}. Asintótica a 1.
+  \item \textbf{Tangente}: simétrica por construcción (rank-1 sobre \texttt{n⊗n}). Algorítmica consistente en carga activa: \texttt{T\_tan = K\_e\ensuremath{\cdot}[(1−\ensuremath{\omega}) − [[u\_n]]\ensuremath{\cdot}d\ensuremath{\omega}/d\ensuremath{\kappa}]\ensuremath{\cdot}(n⊗n)}. Secante reducida \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e\ensuremath{\cdot}(n⊗n)} en descarga y sin daño. Cap por \texttt{DAMAGE\_MAX} aplicado \textbf{sólo a la rigidez tangente} cuando \texttt{\ensuremath{\omega} \ensuremath{\ge} DAMAGE\_MAX}; el valor de \texttt{\ensuremath{\omega}} reportado y la tracción usan el valor físico (puede llegar a 1.0 exacto) --- esto distingue al material de \texttt{IsotropicDamage2D}, donde \texttt{K\_e ≡ E} permite truncar \ensuremath{\omega} sin sesgo.
+  \item \textbf{JUMP\_DIM}: 2 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'} \ensuremath{\cdot} \textbf{IS\_SYMMETRIC}: \texttt{True}.
+  \item \textbf{Parámetros}: \texttt{sigma\_t0} (resistencia a tracción, Pa), \texttt{G\_f} (energía de fractura, N/m), \texttt{K\_e} (rigidez del salto / penalty, Pa/m; sin default automático, ver §12 de la spec para guía \texttt{K\_e \ensuremath{\approx} 10\ensuremath{\cdot}E\_bulk/ℓ\_c}), \texttt{softening \ensuremath{\in} \{'linear', 'exponential'\}}.
+  \item \textbf{Variables internas}: \texttt{kappa} (historial del salto equivalente, [m]), \texttt{damage} (\ensuremath{\omega}).
+  \item \textbf{Validación energética}: por construcción \texttt{\ensuremath{\int}\_0\textasciicircum{}\{w\_c\} t\ensuremath{\cdot}d[[u\_n]] = G\_f} (lineal) o \texttt{\ensuremath{\int}\_0\textasciicircum{}\ensuremath{\infty} \ensuremath{\approx} G\_f} (exponencial); cubierto por tests con cuadratura trapezoidal.
+  \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): sólo Modo-I (mixto I--II diferido a fase G del ADR 0010), sin contacto unilateral en compresión (la grieta dañada transmite compresión con rigidez \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e}, no rígida), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento \texttt{CST\_Embedded2D}, no del material).
+  \item \textbf{Compatible con}: pendiente de fase 2 del ADR 0010 (elemento \texttt{CST\_Embedded2D}). En aislamiento, testeable con historial prescrito de \texttt{[[u]]}.
+  \item \textbf{Referencia}: ver \texttt{docs/specs/CohesiveDamageIsotropic.md}. Retama (2010) Cap. 3; Hillerborg, Modéer \& Petersson (1976); Simó \& Ju (1987).
+  \item \textbf{Archivo}: fenix/cohesive\_materials/damage\_isotropic.py
+\end{itemize}
+
+
 \section{Cómo añadir un material nuevo}
 
 \texttt{/fenix-new material <Name>} --- genera archivo en \texttt{fenix/materials/}, decorador \texttt{@MaterialRegistry.register}, esqueleto de test.
 Declarar \textbf{\texttt{STRAIN\_DIM}} y, si tiene historia, \textbf{\texttt{PRIMARY\_STATE\_VAR}} (la variable que aparecerá en el VTK).
 Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba.
+
+Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo vive en \texttt{fenix/cohesive\_materials/}, la clase hereda de \texttt{CohesiveMaterial} (no \texttt{Material}) y se registra con \texttt{@CohesiveMaterialRegistry.register}. Declarar \texttt{JUMP\_DIM}, \texttt{PRIMARY\_STATE\_VAR} y \texttt{IS\_SYMMETRIC}. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.
 
 
 \newpage
@@ -5690,10 +5749,12 @@ Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este cat�
 \begin{itemize}
   \item \textbf{Adaptatividad} (\texttt{adaptive=True}): si converge en < 5 iteraciones, agranda el siguiente paso (\ensuremath{\times}1.5); si no converge, biseca (÷2). Falla si \texttt{\ensuremath{\Delta}\ensuremath{\lambda} < min\_delta\_lambda}.
   \item Tras converger un paso \ensuremath{\to} \texttt{assembler.commit\_all\_states()} (trial \ensuremath{\to} committed en todos los elementos).
-  \item \textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}.
-  \item \textbf{Cuándo usarlo}: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back/snap-through).
-  \item \textbf{Limitación}: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para eso \ensuremath{\to} \texttt{ArcLengthSolver}.
-  \item \textbf{Referencia}: Crisfield, \textit{Non-linear Finite Element Analysis of Solids and Structures}, vol. 1, cap. 9.
+  \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}, \textbf{\texttt{line\_search}} (default \texttt{False}, ADR 0011).
+  \item \textbf{Cuándo usarlo}: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back).
+  \item \textbf{Cuándo activar \texttt{line\_search=True}}: cuando se observe oscilación del residuo entre iteraciones (síntoma clásico: ratios alternados sin descenso monótono). Caso documentado: plasticidad perfecta con carga cerca/sobre la capacidad. \textbf{Default \texttt{False}} porque en problemas con tangente consistente cuasi-cuadrática (daño activo, plasticidad estándar) el line search rechaza pasos correctos del Newton donde el residuo sube transitoriamente --- ver ADR 0011 §"Enmiendas".
+  \item \textbf{Diagnóstico al diverger}: lanza una subclase tipada de \texttt{RuntimeError} (\texttt{OscillatingNewtonError}, \texttt{SingularTangentError}, \texttt{LoadExceedsCapacityError}, \texttt{UnknownDivergenceError}) con métricas (último \ensuremath{\|}R\ensuremath{\|}, último \ensuremath{\|}\ensuremath{\delta}U\ensuremath{\|}, factor de carga, bisecciones consumidas) y \texttt{hint} textual. Ver \texttt{fenix/math/solvers/diagnostics.py}.
+  \item \textbf{Limitación}: con bisección adaptativa y cinemática no lineal (corotacional) puede atravesar puntos límite suaves; no atraviesa snap-back con \texttt{du/d\ensuremath{\lambda} < 0}. Para eso \ensuremath{\to} \texttt{ArcLengthSolver}. Hallazgo de la auditoría fase A: el solver es más capaz de lo asumido históricamente (ver \texttt{docs/auditorias/solvers\_robustez\_fase\_A.md}).
+  \item \textbf{Referencia}: Crisfield, \textit{Non-linear Finite Element Analysis of Solids and Structures}, vol. 1, cap. 9. Line search: Grippo-Lampariello-Lucidi 1986 (variante de descenso no monótono).
   \item \textbf{Archivo}: fenix/math/solvers/nonlinear.py
 \end{itemize}
 
@@ -5781,14 +5842,104 @@ Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este cat�
   \item \textbf{Amortiguamiento Rayleigh constante en el tiempo}, calibrado con la \textbf{rigidez elástica de referencia} \texttt{K\_0} (al inicio del análisis, \texttt{u = 0}). Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
   \item \textbf{Newton modificado opcional} (\texttt{freeze\_tangent\_after\_iter}, ADR 0003 fase 2): factoriza fresco las primeras N iter de cada paso y reusa la factorización en las siguientes.
   \item \textbf{Recuperación del caso lineal}: con materiales lineales (\texttt{K\_t ≡ K\_0}), el residuo se anula en 1 iter y el resultado coincide exactamente con \texttt{NewmarkSolver}. Validado en tests.
-  \item \textbf{Parámetros}: heredados de \texttt{NewmarkSolver} (\texttt{t\_end}, \texttt{dt}, \texttt{beta}, \texttt{gamma}, \texttt{rayleigh}, \texttt{u0}, \texttt{u0\_dot}, \texttt{F\_func}, \texttt{linear\_algebra}, \texttt{lumping}) más \texttt{convergence} (\texttt{ConvergenceCriterion}, ADR 0007), \texttt{max\_iter} (default 20), \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}).
+  \item \textbf{Parámetros}: heredados de \texttt{NewmarkSolver} (\texttt{t\_end}, \texttt{dt}, \texttt{beta}, \texttt{gamma}, \texttt{rayleigh}, \texttt{u0}, \texttt{u0\_dot}, \texttt{F\_func}, \texttt{linear\_algebra}, \texttt{lumping}) más \texttt{convergence} (\texttt{ConvergenceCriterion}, ADR 0007), \texttt{max\_iter} (default 20), \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}), \textbf{\texttt{line\_search}} (default \texttt{False}, ADR 0011 --- mismo criterio que \texttt{NonlinearSolver}).
+  \item \textbf{Diagnóstico al diverger}: lanza una subclase tipada de \texttt{RuntimeError} con métricas y \texttt{hint} (mismo patrón que \texttt{NonlinearSolver}, ADR 0011).
   \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos, retorna \texttt{TransientResult} (mismo formato que \texttt{NewmarkSolver}).
   \item \textbf{Cuándo usarlo}: respuesta dinámica de estructuras con plasticidad transitoria, fatiga de bajo ciclo, impacto en hormigón friccional, vibraciones de marcos con disipación plástica.
-  \item \textbf{Limitaciones}: igual que \texttt{NewmarkSolver} en lo lineal (apoyos constantes, paso fijo, sin HHT-\ensuremath{\alpha}). Además: no resuelve snap-back en problemas con softening severo --- combinar con \texttt{ArcLengthSolver} si emerge.
+  \item \textbf{Limitaciones}: igual que \texttt{NewmarkSolver} en lo lineal (apoyos constantes, paso fijo). Además: no resuelve snap-back en problemas con softening severo --- combinar con \texttt{ArcLengthSolver} si emerge.
   \item \textbf{Despacho YAML}: \texttt{solver.type: NewtonNewmarkSolver}. Como es subclase de \texttt{NewmarkSolver}, \texttt{entry.run\_yaml} lo detecta vía \texttt{isinstance} y despacha a \texttt{run\_transient} automáticamente.
   \item \textbf{Referencia}: ADR 0009 §Fase 4; Hughes, \textit{FEM} cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
   \item \textbf{Spec}: docs/specs/NewtonNewmarkSolver.md
   \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewtonNewmarkSolver}, junto al padre).
+\end{itemize}
+
+
+\section{HHTSolver --- análisis dinámico transitorio lineal con disipación numérica (Hilber-Hughes-Taylor \ensuremath{\alpha})}
+
+\begin{itemize}
+  \item \textbf{Propósito}: integrar \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + K\ensuremath{\cdot}u = F(t)} con \textbf{amortiguamiento numérico controlado} que disipa selectivamente los modos de alta frecuencia espurios sin afectar los modos resueltos. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores/correctores, reducción Dirichlet y factorización única de \texttt{A\_eff}.
+  \item \textbf{Esquema}:
+  \item Ecuación de equilibrio temporal: \texttt{M\ensuremath{\cdot}ü\_\{n+1\} + (1+\ensuremath{\alpha})\ensuremath{\cdot}C\ensuremath{\cdot}u̇\_\{n+1\} − \ensuremath{\alpha}\ensuremath{\cdot}C\ensuremath{\cdot}u̇\_n + (1+\ensuremath{\alpha})\ensuremath{\cdot}K\ensuremath{\cdot}u\_\{n+1\} − \ensuremath{\alpha}\ensuremath{\cdot}K\ensuremath{\cdot}u\_n = (1+\ensuremath{\alpha})\ensuremath{\cdot}F\_\{n+1\} − \ensuremath{\alpha}\ensuremath{\cdot}F\_n}.
+  \item \textbf{Auto-derivación de \ensuremath{\beta}, \ensuremath{\gamma} desde \ensuremath{\alpha}} (Hilber 1977): \texttt{\ensuremath{\beta} = (1−\ensuremath{\alpha})\ensuremath{^{2}}/4}, \texttt{\ensuremath{\gamma} = (1−2\ensuremath{\alpha})/2}. Preserva orden 2 y estabilidad incondicional.
+  \item \textbf{Sistema efectivo}: \texttt{A\_eff = M + (1+\ensuremath{\alpha})\ensuremath{\cdot}\ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + (1+\ensuremath{\alpha})\ensuremath{\cdot}\ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K}. Constante en el tiempo \ensuremath{\to} factorización única reutilizable (como Newmark).
+  \item \textbf{Radio espectral en alta frecuencia}: \texttt{\ensuremath{\rho}\_\ensuremath{\infty} = (1+\ensuremath{\alpha})/(1−\ensuremath{\alpha})}. Con \texttt{\ensuremath{\alpha}=0} \ensuremath{\to} \texttt{\ensuremath{\rho}\_\ensuremath{\infty}=1} (sin disipación, recupera Newmark trapezoidal). Con \texttt{\ensuremath{\alpha}=−0.05} \ensuremath{\to} \texttt{\ensuremath{\rho}\_\ensuremath{\infty}\ensuremath{\approx}0.905}. Con \texttt{\ensuremath{\alpha}=−1/3} \ensuremath{\to} \texttt{\ensuremath{\rho}\_\ensuremath{\infty}=0.5} (disipación máxima manteniendo orden 2).
+  \item \textbf{Disipación selectiva}: modos con \texttt{\ensuremath{\omega}\ensuremath{\Delta}t > \ensuremath{\pi}} se atenúan significativamente; modos con \texttt{\ensuremath{\omega}\ensuremath{\Delta}t « 1} casi intactos. Es lo que distingue HHT-\ensuremath{\alpha} de subir \ensuremath{\gamma} Newmark (que disipa en todas las frecuencias y baja a orden 1).
+  \item \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt} obligatorios. \textbf{\texttt{alpha}} (default \texttt{-0.05}, rango \texttt{[−1/3, 0]}). \texttt{beta}, \texttt{gamma} autoderivados desde \texttt{alpha} salvo override explícito (no recomendado fuera de experimentación). Resto heredado de \texttt{NewmarkSolver}: \texttt{rayleigh}, \texttt{u0}, \texttt{u0\_dot}, \texttt{F\_func}, \texttt{linear\_algebra}, \texttt{lumping}.
+  \item \textbf{Cuándo usarlo}: cuando la respuesta transitoria contenga modos de alta frecuencia espurios (mallas con modos altos no de interés, impacto, contacto, propagación con \texttt{\ensuremath{\omega}\ensuremath{\Delta}t} cerca o por encima de \ensuremath{\pi}) que enmascaren la señal. Si quieres exactamente Newmark trapezoidal sin disipación, usa \texttt{NewmarkSolver}.
+  \item \textbf{Default de \texttt{alpha}}: \texttt{-0.05} es el valor canónico (Hilber 1977; Abaqus, OpenSees, ANSYS): disipación >9\% por ciclo en altas frecuencias, <0.5\% en modos de interés. Si pides \texttt{HHTSolver} con \texttt{alpha=0.0}, es funcionalmente idéntico a \texttt{NewmarkSolver(beta=0.25, gamma=0.5)}.
+  \item \textbf{Despacho YAML}: \texttt{solver.type: HHTSolver}. Como subclase de \texttt{NewmarkSolver}, \texttt{entry.run\_yaml} lo detecta vía \texttt{isinstance} y despacha a \texttt{run\_transient}.
+  \item \textbf{Referencia}: Hilber, Hughes \& Taylor (1977), \textit{Earthquake Eng. Struct. Dyn.} 5(3) 283-292; Hughes \textit{FEM} §9.3; Chopra \textit{Dynamics of Structures} §15.4.
+  \item \textbf{Spec}: docs/specs/HHTSolver.md
+  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{HHTSolver}).
+\end{itemize}
+
+
+\section{NewtonHHTSolver --- análisis dinámico transitorio no lineal HHT-\ensuremath{\alpha}}
+
+\begin{itemize}
+  \item \textbf{Propósito}: combinar HHT-\ensuremath{\alpha} (disipación numérica) con Newton-Raphson interno para problemas con materiales no lineales (plasticidad, daño) o no linealidad geométrica. \textbf{Variante} de \texttt{NewtonNewmarkSolver} (Reglas §4) que aplica el esquema temporal HHT-\ensuremath{\alpha} al residuo dinámico no lineal.
+  \item \textbf{Esquema}:
+  \item Residuo dinámico: \texttt{R(ü\_\{n+1\}) = (1+\ensuremath{\alpha})\ensuremath{\cdot}F\_\{n+1\} − \ensuremath{\alpha}\ensuremath{\cdot}F\_n − [(1+\ensuremath{\alpha})\ensuremath{\cdot}F\_int(u\_\{n+1\}) − \ensuremath{\alpha}\ensuremath{\cdot}F\_int(u\_n)] − [(1+\ensuremath{\alpha})\ensuremath{\cdot}C\ensuremath{\cdot}u̇\_\{n+1\} − \ensuremath{\alpha}\ensuremath{\cdot}C\ensuremath{\cdot}u̇\_n] − M\ensuremath{\cdot}ü\_\{n+1\}}.
+  \item Jacobiano: \texttt{J = M + (1+\ensuremath{\alpha})\ensuremath{\cdot}\ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + (1+\ensuremath{\alpha})\ensuremath{\cdot}\ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}.
+  \item Todo lo demás idéntico a \texttt{NewtonNewmarkSolver}: convergencia dual (ADR 0007), commit/rollback, Rayleigh con K\_0, Newton modificado opcional, \textbf{\texttt{line\_search}} opt-in (ADR 0011), telemetría tipada al diverger.
+  \item \textbf{Recuperación}: con materiales lineales, el residuo de Newton se anula en una iteración y el resultado coincide con \texttt{HHTSolver}. Validado en tests.
+  \item \textbf{Parámetros}: \texttt{alpha} (default \texttt{-0.05}) + heredados de \texttt{NewtonNewmarkSolver} (\texttt{convergence}, \texttt{max\_iter}, \texttt{freeze\_tangent\_after\_iter}, \texttt{line\_search}, \ldots{}).
+  \item \textbf{Cuándo usarlo}: respuesta dinámica de estructuras con plasticidad transitoria + presencia de modos altos espurios que el Newmark trapezoidal no atenuaría.
+  \item \textbf{Despacho YAML}: \texttt{solver.type: NewtonHHTSolver}. Vía atributo \texttt{PIPELINE\_KIND="transient"} heredado de \texttt{NewmarkSolver} \ensuremath{\to} \texttt{run\_transient}.
+  \item \textbf{Spec}: docs/specs/HHTSolver.md (cubre ambas variantes lineal y no lineal).
+  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewtonHHTSolver}).
+\end{itemize}
+
+
+\section{CentralDifferenceSolver --- integración explícita por diferencias centradas (ADR 0009 fase 5)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: integrar \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + F\_int(u) = F(t)} con esquema \textbf{explícito} de segundo orden --- la aceleración se actualiza en cada paso por \texttt{M\ensuremath{^{-}}¹\ensuremath{\cdot}rhs} con \texttt{M} diagonal lumped, sin sistema lineal ni Newton interno. Cubre análisis lineal y no lineal con un solo solver (parámetro \texttt{nonlinear: bool}).
+  \item \textbf{Esquema (leapfrog Belytschko-Liu-Moran)}:
+  \item Inicialización: \texttt{a\_0 = M\ensuremath{^{-}}¹\ensuremath{\cdot}(F(0) − F\_int(u\_0) − C\ensuremath{\cdot}v\_0 − F\_dir)}, \texttt{v\_\{1/2\} = v\_0 + (\ensuremath{\Delta}t/2)\ensuremath{\cdot}a\_0}.
+  \item Paso \texttt{n \ensuremath{\to} n+1}: \texttt{u\_\{n+1\} = u\_n + \ensuremath{\Delta}t\ensuremath{\cdot}v\_\{n+1/2\}}; reevaluar \texttt{F\_int(u\_\{n+1\})}; \texttt{a\_\{n+1\} = M\ensuremath{^{-}}¹\ensuremath{\cdot}(F\_\{n+1\} − F\_int − C\ensuremath{\cdot}v\_\{n+1/2\} − F\_dir)}; \texttt{v\_\{n+1\} = v\_\{n+1/2\} + (\ensuremath{\Delta}t/2)\ensuremath{\cdot}a\_\{n+1\}}.
+  \item Modo lineal: \texttt{F\_int = K\ensuremath{\cdot}u} (K constante, ensamblada una vez). Modo no lineal: \texttt{Assembler.assemble\_non\_linear\_system(u)} cada paso (descarta la tangente).
+  \item \textbf{Estabilidad condicional CFL}: \texttt{\ensuremath{\Delta}t < 2/\ensuremath{\omega}\_max}. Para barras: \texttt{\ensuremath{\Delta}t < L\_el/c\_p = L\_el\ensuremath{\cdot}\ensuremath{\surd}(\ensuremath{\rho}/E)}. Si se excede, el solver detecta la explosión exponencial a posteriori y aborta con \texttt{RuntimeError} informativo. \textbf{El solver no calcula \texttt{\ensuremath{\Delta}t\_crit} automáticamente} --- responsabilidad del usuario en esta versión inicial (power iteration sobre \texttt{M\ensuremath{^{-}}¹K} queda diferida).
+  \item \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt}, \texttt{nonlinear} (default \texttt{False}), \texttt{rayleigh}, \texttt{u0}, \texttt{u0\_dot}, \texttt{F\_func}, \texttt{lumping} (default \texttt{"lumped"}; \texttt{"consistent"} rechazado), \texttt{divergence\_threshold} (default \texttt{1e8}).
+  \item \textbf{Cuándo usarlo}: wave propagation, impacto, dinámica de respuesta rápida --- situaciones donde el \texttt{\ensuremath{\Delta}t} natural del problema cae por debajo del paso de estabilidad incondicional de Newmark. Para problemas con plasticidad transitoria de respuesta moderadamente rápida, sigue siendo competitivo frente a Newton-Newmark por evitar la factorización de la tangente cada iteración.
+  \item \textbf{Rechazos defensivos}: \texttt{lumping="consistent"} \ensuremath{\to} \texttt{ValueError} (la inversión de M consistente cada paso anula la ventaja); Frame3D con eje oblicuo a globales \ensuremath{\to} \texttt{ValueError} (M\_red no es estrictamente diagonal; ADR 0009 fase 2 documenta la bloque-diagonalidad inherente).
+  \item \textbf{Despacho YAML}: \texttt{solver.type: CentralDifferenceSolver}. Vía atributo \texttt{PIPELINE\_KIND="transient"} \ensuremath{\to} \texttt{run\_transient}. \textbf{Primer solver fuera de la jerarquía de Newmark}, lo que disparó la regla C de refactor (atributo declarativo en lugar de cadena de isinstance).
+  \item \textbf{Spec}: docs/specs/CentralDifferenceSolver.md.
+  \item \textbf{Archivo}: fenix/math/solvers/central\_difference.py.
+\end{itemize}
+
+
+\section{HarmonicSolver --- respuesta forzada armónica en el dominio de la frecuencia (ADR 0009 fase 6)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: resolver \texttt{(−\ensuremath{\omega}\ensuremath{^{2}}M + i\ensuremath{\omega}C + K)\ensuremath{\cdot}û = F̂} para un barrido de frecuencias y devolver la amplitud compleja \texttt{û(\ensuremath{\omega})} en cada frecuencia. Lineal, en estado estacionario --- sin transitorio. Apropiado para FRFs, diagnóstico de resonancias y respuesta forzada periódica.
+  \item \textbf{Esquema}: ensamble único de \texttt{K}, \texttt{M}, \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K}; reducción de Dirichlet; barrido \texttt{for \ensuremath{\omega} in omega: spsolve(Z(\ensuremath{\omega}), F\_red)} con \texttt{Z(\ensuremath{\omega}) = -\ensuremath{\omega}\ensuremath{^{2}}M + i\ensuremath{\omega}C + K} compleja. Factorización LU compleja por frecuencia (no se cachea --- \texttt{Z} cambia con \texttt{\ensuremath{\omega}}).
+  \item \textbf{Barrido configurable}: lineal (\texttt{scale="linear"}), logarítmico (\texttt{scale="log"}), o vector explícito (\texttt{omega=array}). Default \texttt{n\_omega=100}.
+  \item \textbf{Parámetros}: \texttt{omega} o (\texttt{omega\_min}, \texttt{omega\_max}, \texttt{n\_omega}, \texttt{scale}); \texttt{F\_amplitude} (default ceros; YAML inyecta automáticamente las \texttt{point\_loads}); \texttt{rayleigh}; \texttt{lumping}.
+  \item \textbf{Cuándo usarlo}: diagnóstico de resonancias, FRFs, respuesta forzada armónica de máquinas rotantes, viento turbulento descompuesto en armónicos. Si el problema requiere no linealidad (geométrica o material), usar \texttt{NewtonNewmarkSolver} con excitación armónica.
+  \item \textbf{Caveats}: resonancia exacta sin amortiguamiento \ensuremath{\Rightarrow} \texttt{Z(\ensuremath{\omega}\_n)} singular (\texttt{spsolve} puede fallar). Mitigación: añadir Rayleigh. Cargas con fase compleja requieren construcción desde código --- YAML no soporta tipos complejos nativos.
+  \item \textbf{Despacho YAML}: \texttt{solver.type: HarmonicSolver}. Vía atributo \texttt{PIPELINE\_KIND="harmonic"} \ensuremath{\to} \texttt{run\_harmonic}. Tercer valor del literal (después de \texttt{"static"}, \texttt{"modal"}, \texttt{"transient"}).
+  \item \textbf{Spec}: docs/specs/HarmonicSolver.md.
+  \item \textbf{Archivo}: fenix/math/solvers/harmonic.py.
+\end{itemize}
+
+
+\section{ResponseSpectrumSolver --- análisis sísmico por combinación modal (ADR 0009 fase 7)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: combinar las respuestas máximas de los primeros \texttt{n\_modes} modos del sistema bajo un espectro de respuesta dado (\texttt{S\_d(\ensuremath{\omega})} o \texttt{S\_a(\ensuremath{\omega})}) en una envolvente máxima. Análisis estadístico, no temporal --- apropiado para diseño sísmico normativo (ASCE 7, Eurocódigo 8, NCh 433, NTC-DS).
+  \item \textbf{Esquema}:
+  \item Análisis modal interno vía \texttt{ModalSolver} para obtener \texttt{(modes, frequencies)}.
+  \item Factores de participación \texttt{Γ\_n = \ensuremath{\varphi}\_n\ensuremath{^{\top}}\ensuremath{\cdot}M\ensuremath{\cdot}r} con \texttt{r} el vector de excitación rígida en la dirección sísmica.
+  \item Respuesta máxima por modo: \texttt{u\_n\textasciicircum{}max = Γ\_n \ensuremath{\cdot} \ensuremath{\varphi}\_n \ensuremath{\cdot} S\_d(\ensuremath{\omega}\_n)}.
+  \item Combinación SRSS (default) o CQC con coeficientes de correlación de Der Kiureghian.
+  \item \textbf{Parámetros}: \texttt{n\_modes}, \texttt{direction} (ndarray o \texttt{\{"dof\_name": "ux"\}}), \texttt{spectrum} (callable o dict tabulado/constante), \texttt{combination} (\texttt{"SRSS"}/\texttt{"CQC"}), \texttt{damping} (sólo CQC, default 0.05), \texttt{sigma}, \texttt{lumping}.
+  \item \textbf{Cuándo usarlo}: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
+  \item \textbf{Caveats}: precisión depende del número de modos incluidos --- verifica \texttt{cumulative\_effective\_mass\_ratio} \ensuremath{\ge} 0.9. CQC requerido con modos cercanos en frecuencia (cociente < 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
+  \item \textbf{Despacho YAML}: \texttt{solver.type: ResponseSpectrumSolver}. Vía atributo \texttt{PIPELINE\_KIND="spectrum"} \ensuremath{\to} \texttt{run\_response\_spectrum}. Cuarto valor del literal (después de \texttt{"static"}, \texttt{"modal"}, \texttt{"transient"}, \texttt{"harmonic"}).
+  \item \textbf{Algoritmos centralizados}: \texttt{fenix/math/modal\_response.py} --- \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, \texttt{participation\_factors}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}. Compartido con \texttt{ModalResult.free\_vibration} (wrapper delgado tras regla D 2026-05-18).
+  \item \textbf{Spec}: docs/specs/ResponseSpectrumSolver.md.
+  \item \textbf{Archivo}: fenix/math/solvers/response\_spectrum.py.
 \end{itemize}
 
 
@@ -5799,9 +5950,13 @@ Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este cat�
 Convenciones de interfaz:
 
 \begin{itemize}
-  \item \textbf{Solvers estáticos} (lineales, no lineales, arc-length): constructor recibe \texttt{assembler} + parámetros; método \texttt{solve(F\_ext\_global, step\_callback=None) \ensuremath{\to} U\_final}. Comprometen los estados internos vía \texttt{assembler.commit\_all\_states()} al converger cada paso. Retornan el campo de desplazamientos completo.
-  \item \textbf{Solvers de autovalor} (modal --- ADR 0009 --- y futuros pandeo lineal): constructor recibe \texttt{assembler} + parámetros; método \texttt{solve() \ensuremath{\to} ModalResult} (u otro tipo de resultado específico). No consumen vector de cargas. El entrypoint \texttt{fenix.run\_yaml} despacha por \texttt{isinstance} al entrypoint específico (\texttt{fenix.run\_modal} para modal).
+  \item \textbf{Solvers estáticos} (lineales, no lineales, arc-length): \texttt{PIPELINE\_KIND = "static"}. Constructor recibe \texttt{assembler} + parámetros; método \texttt{solve(F\_ext\_global, step\_callback=None) \ensuremath{\to} U\_final}. Comprometen los estados internos vía \texttt{assembler.commit\_all\_states()} al converger cada paso. Retornan el campo de desplazamientos completo.
+  \item \textbf{Solvers modales / autovalor} (modal --- ADR 0009 --- y futuros pandeo lineal): \texttt{PIPELINE\_KIND = "modal"}. Constructor recibe \texttt{assembler} + parámetros; método \texttt{solve() \ensuremath{\to} ModalResult} (u otro tipo específico). No consumen vector de cargas. \texttt{run\_yaml} despacha a \texttt{run\_modal}.
+  \item \textbf{Solvers transitorios} (Newmark, HHT, central differences): \texttt{PIPELINE\_KIND = "transient"}. Constructor recibe \texttt{assembler}, \texttt{t\_end}, \texttt{dt} + parámetros; método \texttt{solve() \ensuremath{\to} TransientResult}. \texttt{run\_yaml} despacha a \texttt{run\_transient}.
+  \item \textbf{Solvers en frecuencia / espectrales} (harmonic con \texttt{PIPELINE\_KIND = "harmonic"}, response spectrum con \texttt{"spectrum"}). Constructor recibe \texttt{assembler} + parámetros del análisis; método \texttt{solve()} devuelve el resultado específico (\texttt{HarmonicResult}, \texttt{ResponseSpectrumResult}). \texttt{run\_yaml} despacha a \texttt{run\_harmonic} o \texttt{run\_response\_spectrum} según el atributo.
 \end{itemize}
+
+El \textbf{dispatch en \texttt{run\_yaml}} se hace por el atributo de clase \texttt{PIPELINE\_KIND} (regla C, 2026-05-18). Solvers nuevos no clásicos (que no hereden de los existentes) sólo declaran su \texttt{PIPELINE\_KIND} y quedan automáticamente cableados --- no requieren tocar \texttt{entry.py}.
 
 Tras implementar, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba y promover la spec a \texttt{status: validated}.
 

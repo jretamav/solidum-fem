@@ -1010,6 +1010,8 @@ materials:
 
 
 
+Este capítulo cubre los \textbf{solvers estáticos} del catálogo: lineal, no lineal (Newton-Raphson) y arc-length (Crisfield cilíndrico). Los solvers de análisis modal, dinámico (Newmark, HHT-\ensuremath{\alpha}, central differences) y de análisis en frecuencia / espectral (Harmonic, Response Spectrum) se documentan en el siguiente capítulo, "Análisis Dinámico".
+
 \section{\texttt{LinearSolver} --- solución directa lineal}
 
 Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ en un único \texttt{spsolve}. Las condiciones de Dirichlet se imponen por eliminación directa (ADR 0004): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.
@@ -1099,7 +1101,19 @@ solver:
 
 
 
-Fenix FEM expone tres análisis dinámicos cerrados por la fase 4 del ADR 0009: modal (autovalores generalizados), transitorio lineal (Newmark-$\beta$) y transitorio no lineal (Newton-Newmark). Todos consumen la matriz de masa consistente que cada elemento devuelve por \texttt{compute\_mass\_matrix(lumping="consistent")} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, ADR 0008).
+Fenix FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (ADR 0009 cerrado en su totalidad 2026-05-18). Cubre los siete regímenes canónicos de la mecánica computacional clásica:
+
+\begin{enumerate}
+  \item \textbf{Modal}: autovalores generalizados $\mathbf K \boldsymbol\phi = \omega^2\mathbf M\boldsymbol\phi$ (\texttt{ModalSolver}).
+  \item \textbf{Mass lumping}: matriz de masa diagonal vía HRZ canónico (sólidos) o nodal directo (frames). Disponible en todos los elementos vía \texttt{compute\_mass\_matrix(lumping="lumped")}.
+  \item \textbf{Transitorio implícito lineal}: Newmark-$\beta$ (\texttt{NewmarkSolver}) y variante HHT-$\alpha$ con disipación numérica (\texttt{HHTSolver}).
+  \item \textbf{Transitorio implícito no lineal}: Newton-Newmark (\texttt{NewtonNewmarkSolver}) y Newton-HHT (\texttt{NewtonHHTSolver}).
+  \item \textbf{Transitorio explícito}: diferencias centradas leapfrog (\texttt{CentralDifferenceSolver}).
+  \item \textbf{Frecuencia}: respuesta forzada armónica (\texttt{HarmonicSolver}).
+  \item \textbf{Espectral / sísmico}: combinación modal SRSS/CQC contra espectros normativos (\texttt{ResponseSpectrumSolver}).
+\end{enumerate}
+
+Todos los solvers consumen la masa global que cada elemento devuelve por \texttt{compute\_mass\_matrix(lumping)} con \texttt{lumping \ensuremath{\in} \{"consistent", "lumped"\}} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, ADR 0008).
 
 \section{\texttt{ModalSolver} --- análisis modal por autovalores generalizados}
 
@@ -1217,7 +1231,186 @@ solver:
 
 \textbf{Cuándo usarlo}: respuesta dinámica de estructuras con plasticidad transitoria (sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo), vibraciones de marcos elastoplásticos. Materiales con historia disponibles en dinámica: \texttt{Elastoplastic1D}, \texttt{VonMises2D} (\textit{plane strain} y \textit{plane stress}), \texttt{DruckerPrager2D}, \texttt{IsotropicDamage1D/2D}.
 
-\textbf{Limitaciones}: igual que \texttt{NewmarkSolver} en lo lineal (apoyos constantes, paso fijo, sin HHT-$\alpha$). Además: no resuelve \textit{snap-back} dinámico con softening severo --- combinar con \texttt{ArcLengthSolver} si emerge.
+\textbf{Limitaciones}: igual que \texttt{NewmarkSolver} en lo lineal (apoyos constantes, paso fijo). No resuelve \textit{snap-back} dinámico con softening severo --- combinar con \texttt{ArcLengthSolver} si emerge.
+
+\section{\texttt{HHTSolver} y \texttt{NewtonHHTSolver} --- variantes Hilber-Hughes-Taylor}
+
+Variantes de Newmark con \textbf{disipación numérica controlada} en altas frecuencias (Hilber, Hughes \& Taylor 1977). Útiles cuando modos altos espurios contaminan la respuesta y conviene atenuarlos preservando segundo orden y estabilidad incondicional.
+
+El parámetro $\alpha \in [-1/3, 0]$ controla la disipación; los coeficientes $(\beta, \gamma)$ se auto-derivan canónicamente:
+
+\[
+\beta = \frac{(1-\alpha)^2}{4}, \quad \gamma = \frac{1-2\alpha}{2}
+\]
+
+con radio espectral $\rho_\infty = (1+\alpha)/(1-\alpha)$. Recuperación exacta a Newmark cuando $\alpha = 0$.
+
+\textbf{Esquema operativo}: idéntico a Newmark pero con factor $(1+\alpha)$ en los términos elásticos y de amortiguamiento del residuo dinámico, y $-\alpha$ multiplicando los del paso anterior. Variantes lineal (\texttt{HHTSolver}) y no lineal (\texttt{NewtonHHTSolver}) heredan toda la maquinaria de \texttt{NewmarkSolver} / \texttt{NewtonNewmarkSolver} (Reglas §4 sobre variantes).
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: HHTSolver           # o NewtonHHTSolver para materiales con historia
+  t_end: 2.0
+  dt: 0.005
+  alpha: -0.05              # default; disipación ligera de altas frecuencias
+
+\end{lstlisting}
+
+\section{\texttt{CentralDifferenceSolver} --- explícito por diferencias centradas (ADR 0009 fase 5)}
+
+Integración \textbf{explícita} de segundo orden por leapfrog Belytschko-Liu-Moran. Sin sistema lineal en cada paso --- la única "inversión" es $\mathbf M^{-1}$, trivial con masa lumped diagonal. Apropiado para wave propagation, impacto, dinámica de respuesta rápida.
+
+\textbf{Esquema operativo} (forma predictor-corrector):
+
+\[
+\mathbf a_0 = \mathbf M^{-1}(\mathbf F(0) - \mathbf F_{\text{int}}(\mathbf u_0) - \mathbf C\mathbf v_0); \quad \mathbf v_{1/2} = \mathbf v_0 + \tfrac{\Delta t}{2}\mathbf a_0
+\]
+
+Paso $n \to n+1$:
+
+\[
+\mathbf u_{n+1} = \mathbf u_n + \Delta t\,\mathbf v_{n+1/2}; \quad \mathbf a_{n+1} = \mathbf M^{-1}(\mathbf F_{n+1} - \mathbf F_{\text{int}}(\mathbf u_{n+1}) - \mathbf C\mathbf v_{n+1/2})
+\]
+
+\[
+\mathbf v_{n+1} = \mathbf v_{n+1/2} + \tfrac{\Delta t}{2}\mathbf a_{n+1}
+\]
+
+Una sola clase cubre lineal y no lineal con parámetro \texttt{nonlinear}: con \texttt{False} usa $\mathbf F_{\text{int}} = \mathbf K\mathbf u$ con $\mathbf K$ constante; con \texttt{True} recalcula $\mathbf F_{\text{int}}$ cada paso vía \texttt{Assembler.assemble\_non\_linear\_system}.
+
+\textbf{Condición de estabilidad CFL}: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta divergencia exponencial a posteriori y aborta con \texttt{RuntimeError} informativo si la condición se viola.
+
+\textbf{Requisitos}: \texttt{lumping="lumped"} obligatorio (\texttt{"consistent"} rechazado con \texttt{ValueError} --- el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). Frame3D con eje oblicuo a los ejes globales también rechazado (la rotación rompe la diagonalidad estricta --- limitación documentada estándar, Cook-Malkus-Plesha §11.4).
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: CentralDifferenceSolver
+  t_end: 2.5
+  dt: 0.005                  # debe respetar CFL: Δt < L_el·√(ρ/E)
+  lumping: lumped            # obligatorio
+  nonlinear: false           # true para materiales con historia
+  u0: [0.0, 0.0, 1.0, 0.0]
+
+\end{lstlisting}
+
+\section{\texttt{HarmonicSolver} --- respuesta forzada armónica en frecuencia (ADR 0009 fase 6)}
+
+Análisis \textbf{lineal en estado estacionario}: dada una excitación armónica $\mathbf F(t) = \text{Re}\{\hat{\mathbf F}\,e^{i\omega t}\}$, calcula la amplitud compleja $\hat{\mathbf u}(\omega)$ de la respuesta estacionaria $\mathbf u(t) = \text{Re}\{\hat{\mathbf u}(\omega)\,e^{i\omega t}\}$ para un barrido de frecuencias.
+
+\textbf{Ecuación resuelta} por frecuencia:
+
+\[
+(-\omega^2\mathbf M + i\omega\mathbf C + \mathbf K)\,\hat{\mathbf u}(\omega) = \hat{\mathbf F}
+\]
+
+Aritmética compleja directa con \texttt{scipy.sparse.linalg.spsolve}. Factorización LU compleja por frecuencia (no se cachea --- la matriz cambia con $\omega$). Coste dominante: $O(n_\omega \cdot \text{coste\_factorizacion})$.
+
+\textbf{Barrido configurable}:
+
+\begin{itemize}
+  \item Vector explícito vía \texttt{omega} (lista de rad/s).
+  \item Lineal: \texttt{omega\_min}, \texttt{omega\_max}, \texttt{n\_omega}, \texttt{scale: linear}.
+  \item Logarítmico: \texttt{scale: log} con \texttt{np.geomspace}.
+\end{itemize}
+
+\textbf{Cargas}: las \texttt{point\_loads} del bloque YAML estándar se inyectan automáticamente como \texttt{F\_amplitude} real con fase cero. Cargas con fase compleja requieren construcción desde código Python (YAML no soporta tipos complejos nativos).
+
+\textbf{Salida}: \texttt{HarmonicResult} con \texttt{omega}, \texttt{u\_complex} (shape $(n_{\text{dof}}, n_\omega)$), \texttt{F\_complex}, y métodos \texttt{.amplitude()} ($|\hat{\mathbf u}|$) y \texttt{.phase()} ($\arg \hat{\mathbf u}$). Propiedad derivada \texttt{frequencies\_hz}.
+
+\begin{lstlisting}[language=yaml]
+point_loads:
+  - {node_id: 2, ux: 1.0}    # amplitud real (fase 0)
+
+solver:
+  type: HarmonicSolver
+  omega_min: 1.0
+  omega_max: 10.0
+  n_omega: 91
+  scale: linear              # o "log" para FRFs sobre rangos amplios
+  rayleigh:
+    alpha: 0.5
+    beta: 0.0
+
+\end{lstlisting}
+
+\textbf{Cuándo usarlo}: funciones de transferencia (FRFs), diagnóstico de resonancias antes de un transitorio caro, respuesta forzada por maquinaria rotante o cargas armónicas descompuestas.
+
+\textbf{Caveats}: cerca de resonancia exacta sin amortiguamiento $\mathbf Z(\omega_n)$ es singular y el \texttt{spsolve} puede fallar --- añadir Rayleigh.
+
+\section{\texttt{ResponseSpectrumSolver} --- análisis sísmico por combinación modal (ADR 0009 fase 7)}
+
+Análisis \textbf{sísmico clásico}: el suelo se caracteriza por un espectro de respuesta (en aceleración $S_a(T)$ o desplazamiento $S_d(T)$ vs período), no por un acelerograma temporal. El solver combina las respuestas máximas modales en una envolvente máxima --- pierde la fase temporal entre modos por construcción, sólo conserva amplitudes envolventes.
+
+\textbf{Esquema operativo}:
+
+\begin{enumerate}
+  \item Análisis modal interno vía \texttt{ModalSolver(n\_modes, sigma, lumping)}.
+  \item Factores de participación $\Gamma_n = \boldsymbol\phi_n^T\mathbf M\,\mathbf r$ con $\mathbf r$ el vector de excitación rígida (dirección sísmica).
+  \item Respuesta máxima por modo: $\mathbf u_n^{\max} = \Gamma_n\,\boldsymbol\phi_n\,S_d(\omega_n)$.
+  \item \textbf{Combinación SRSS} (Square Root of Sum of Squares, modos bien separados):
+\end{enumerate}
+
+\[
+u^{\max}_k = \sqrt{\sum_n (u_{k,n}^{\max})^2}
+\]
+
+\begin{enumerate}
+  \item \textbf{Combinación CQC} (Complete Quadratic Combination, Der Kiureghian 1980, para modos cercanos):
+\end{enumerate}
+
+\[
+u^{\max}_k = \sqrt{\sum_i \sum_j \rho_{ij}\,u_{k,i}^{\max}\,u_{k,j}^{\max}}, \quad \rho_{ij} = \frac{8\xi^2(1+r) r^{3/2}}{(1-r^2)^2 + 4\xi^2 r(1+r)^2}
+\]
+
+con $r = \omega_i/\omega_j$. Cuando $\xi \to 0$ o $r \to 0$: $\rho_{ij} \to \delta_{ij}$ y CQC degenera a SRSS.
+
+\textbf{Interfaz del espectro}:
+
+\begin{itemize}
+  \item Callable directo \texttt{spectrum(omega) -> S\_d}.
+  \item Dict tabulado: \texttt{\{type: tabulated, kind: Sd|Sa, periods: [...], values: [...]\}}. Interpolación lineal en período; clamp fuera de rango.
+  \item Constante: \texttt{\{type: constant\_acceleration, Sa: ...\}}.
+\end{itemize}
+
+\textbf{Dirección de excitación}:
+
+\begin{itemize}
+  \item Vector explícito (\texttt{np.ndarray} shape $(n_{\text{dof}},)$).
+  \item Atajo por DOF: \texttt{\{dof\_name: ux\}} --- el solver construye el vector unitario en ese DOF de todos los nodos.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: ResponseSpectrumSolver
+  n_modes: 5
+  direction:
+    dof_name: ux
+  spectrum:
+    type: tabulated
+    kind: Sa                 # aceleración espectral; el solver convierte a Sd
+    periods: [0.1, 0.5, 1.0, 2.0, 5.0]
+    values:  [10.0, 10.0, 5.0, 1.0, 0.25]
+  combination: SRSS          # o "CQC" para modos cercanos
+  damping: 0.05              # ξ — sólo usado por CQC
+
+\end{lstlisting}
+
+\textbf{Salida}: \texttt{ResponseSpectrumResult} con \texttt{u\_combined} (envolvente, positiva), \texttt{u\_per\_mode} (contribución modal con signo), \texttt{participation\_factors} ($\Gamma_n$), \texttt{effective\_masses} ($\Gamma_n^2$), \texttt{frequencies\_rad}, \texttt{combination}, \texttt{damping}, \texttt{direction}. Método \texttt{.cumulative\_effective\_mass\_ratio()} para verificar que la masa modal acumulada alcanza el objetivo normativo ($\geq 0.9$).
+
+\textbf{Cuándo usarlo}: diseño sísmico contra espectros normativos (ASCE 7, Eurocódigo 8, NCh 433, NTC-DS México). Diagnóstico de qué modos dominan la respuesta en una dirección de excitación.
+
+\textbf{Caveats}: precisión depende del número de modos incluidos (verifica \texttt{cumulative\_effective\_mass\_ratio} \ensuremath{\ge} 0.9). Excitación multi-direccional simultánea (CQC3, regla 100/30/30) requiere combinar varios análisis fuera del solver.
+
+\section{Mass lumping (ADR 0009 fase 2)}
+
+Independiente de cualquier solver: todos los elementos del catálogo soportan \texttt{compute\_mass\_matrix(lumping="lumped")}. El esquema se elige por familia:
+
+\begin{itemize}
+  \item \textbf{Sólidos isoparamétricos} (Tri3, Quad4, Tri6, Quad8, Quad9): \textbf{HRZ canónico} (Hinton-Rock-Zienkiewicz 1976) centralizado en \texttt{fenix.math.mass\_lumping.lump\_hrz}. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
+  \item \textbf{Vigas y marcos} (Truss, Cable, Frame2D Euler/Timoshenko/EulerCorot, Frame3D): \textbf{lumping nodal directo} --- $\rho AL/2$ traslacional + $\rho I L/2$ rotacional por nodo. Único esquema que sobrevive a la rotación local\ensuremath{\to}global manteniendo $\mathbf M$ diagonal.
+\end{itemize}
+
+\textbf{Diagonalidad en globales}: garantizada en todos los elementos excepto Frame3D con eje oblicuo (queda \textbf{bloque-diagonal} por nodo --- limitación documentada estándar; \texttt{CentralDifferenceSolver} rechaza este caso explícitamente).
 
 
 \newpage
@@ -1532,8 +1725,8 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Fenix FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 13 de mayo de 2026, 17:07\\[0.5em]
-Commit Git: \texttt{3597434} (con cambios sin confirmar)\\[1em]
+Compilado el 18 de mayo de 2026, 18:24\\[0.5em]
+Commit Git: \texttt{d485c85} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
