@@ -10,13 +10,13 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 556 pasan / 5 skipped / 0 fallos (561 colectados) |
+| **Tests** | 558 pasan / 5 skipped / 0 fallos (563 colectados) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
 | **Solvers** | 11 (3 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
 | **ADRs aceptados** | 11 (0001–0011) |
 | **Specs `validated`** | 29 |
-| **Etapas cerradas** | 5 completas (Etapa 4 = ADR 0009 completo, fases 1-7 + HHT-α) |
+| **Etapas cerradas** | 6 completas (Etapa 4 = ADR 0009 fases 1, 3, 4; Etapa 5 = ADR 0010 embedded; Etapa 6 = cierre completo del ADR 0009 con fases 2, 5, 6, 7 + HHT-α + reglas C y D) |
 
 ---
 
@@ -99,11 +99,12 @@ Ninguno de los tres bloquea el avance. Todos están documentados con su contexto
 
 ## Próximo hito
 
-**Elección de Etapa 6** entre las opciones diferidas A-E del ROADMAP:
+**Elección de Etapa 7** entre las opciones del catálogo de bifurcaciones original (A, B, C, E — la D se ejecutó como Etapa 6 el 2026-05-18):
+
 - A. Sólidos 3D (`Hex8`, `Tet4`, …).
 - B. Placas y láminas.
 - C. Análisis térmico desacoplado.
-- ~~D. Completar ADR 0009~~ ✅ cerrada en su totalidad (2026-05-18) — fases 1-7 + variante HHT-α + reglas C y D aplicadas.
+- ~~D. Completar ADR 0009~~ ✅ ejecutada como Etapa 6 (2026-05-18) — fases 1-7 + variante HHT-α + reglas C y D aplicadas.
 - E. Mohr-Coulomb 2D + `FiberSection`.
 
 El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La decisión la toma el usuario con base en la dirección que quiera dar al proyecto tras esta etapa.
