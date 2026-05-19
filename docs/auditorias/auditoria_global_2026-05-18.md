@@ -656,13 +656,38 @@ Items pendientes después de esta sesión. Ninguno bloquea el avance; la
 decisión de retomarlos requiere un caso de uso explícito o una decisión
 arquitectural mayor.
 
-### H-1.3 — `TransientResult`/`HarmonicResult`/`ResponseSpectrumResult` sin `element_forces`
-**Severidad**: medio. **Razón del diferimiento**: añadir API pública
-nueva (`internal_forces_history(domain)` lazy) sin un consumidor real
-que la demande introduce superficie sin caso de uso comprobado. Mejor
-materializarla cuando un script externo o tutorial la necesite — en ese
-momento el diseño del formato de retorno (dict `{elem_id → {N, V, M}}`
-indexado en tiempo) se decide con la información concreta del consumidor.
+### H-1.3 (parcial) — `HarmonicResult` y `ResponseSpectrumResult` sin `element_forces`
+**Severidad**: medio. **Cerrado para `TransientResult`** (commit
+`ebe42a5`): método lazy `internal_forces_history(domain)` que recorre
+los pasos temporales y devuelve `{elem_id: [ElementForces, ...]}`. Test
+analítico verde para Truss2D contra `N(t) = E·A·u(t)/L₀`. Limitación
+documentada: corotacionales devuelven el state del último paso, no el
+contemporáneo (acción para un futuro: historial de state si aparece
+caso de uso).
+
+**Diferido para `HarmonicResult` y `ResponseSpectrumResult`** por razón
+técnica, no por falta de consumidor:
+
+- `HarmonicResult.u_complex` es campo complejo (amplitud + fase). El
+  contrato `internal_forces(U)` está pensado para campos reales — los
+  return mappings de materiales no lineales no aceptan complejos. Para
+  caso lineal el cálculo `N(ω) = E·A·û(ω)/L₀` es directo, pero exponerlo
+  vía `internal_forces` exigiría extender el contrato base (cambio
+  arquitectural). Alternativa más limpia: método dedicado en el
+  resultado armónico que asuma comportamiento lineal y compute
+  esfuerzos amplitud-fase desde `u_complex`.
+- `ResponseSpectrumResult.u_combined` es envolvente máxima (SRSS/CQC
+  sobre modos), no campo coherente de desplazamientos. Esfuerzos
+  derivados *no* pueden obtenerse llamando `internal_forces(u_combined)`
+  — habría que reconstruir respuestas modales individuales
+  (`u_n_max = Γ_n·φ_n·S_d(ω_n)`), evaluar `internal_forces(u_n_max)` por
+  modo, y aplicar SRSS/CQC a los esfuerzos. Requiere que el resultado
+  almacene también las componentes modales individuales en el espacio
+  de DOFs (hoy sólo guarda `u_per_mode` que es lo que necesita; falta
+  el wiring de cómputo).
+
+Ambos cierres son refactor arquitectural específico y no se acometen
+sin un caso de uso real que dirija las decisiones de diseño.
 
 ### H-1.4 — Doble contrato `compute_internal_forces` (dict) vs `internal_forces` (`ElementForces|None`)
 **Severidad**: medio. **Razón del diferimiento**: la solución
@@ -735,15 +760,17 @@ housekeeping (orden por archivo del informe original):
 
 | Eje | Cerrados | Diferidos con rationale | Bajos pendientes |
 |---|---:|---:|---:|
-| 1 — Arquitectura | 5 | 3 | 7 |
+| 1 — Arquitectura | 5 (H-1.3 parcial: TransientResult ✅, Harmonic/Spectrum diferidos) | 2 | 7 |
 | 2 — Elementos | 5 | 1 | 3 |
 | 3 — Materiales | 5 | 0 | 6 |
 | 4 — Solvers | 4 | 2 | 2 |
 | 5 — Docs / cobertura | 3 | 1 | 2 |
-| **Total** | **22** | **7** | **20** |
+| **Total** | **23** | **6** | **20** |
 
 (El item H-2.6 cuenta como "cubierto documentalmente" y no se duplica;
-H-5.4 es alias de H-2.2 y se cuenta una vez; H-4.5 es alias de H-1.2.)
+H-5.4 es alias de H-2.2 y se cuenta una vez; H-4.5 es alias de H-1.2.
+H-1.3 ahora vale como cerrado para `TransientResult`; `HarmonicResult` y
+`ResponseSpectrumResult` permanecen diferidos por razón técnica.)
 
-Suite global al final del addendum: **584 passed, 5 skipped, 0 failures**
-(originales 558 + 26 tests añadidos durante la sesión).
+Suite global al final del addendum: **585 passed, 5 skipped, 0 failures**
+(originales 558 + 27 tests añadidos durante la sesión).
