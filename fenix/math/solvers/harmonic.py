@@ -42,7 +42,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from fenix.math.damping import rayleigh_from_modes
+from fenix.math.damping import resolve_rayleigh_config
 from fenix.math.solvers._shared import _log
 from fenix.registry import SolverRegistry
 from fenix.results import HarmonicResult
@@ -142,30 +142,6 @@ class HarmonicSolver:
         self.rayleigh_cfg = rayleigh
         self.lumping = str(lumping)
 
-    @staticmethod
-    def _resolve_rayleigh(cfg: dict | None) -> tuple[float, float]:
-        """Mismo contrato que :meth:`NewmarkSolver._resolve_rayleigh`."""
-        if cfg is None:
-            return 0.0, 0.0
-        if not isinstance(cfg, dict):
-            raise ValueError(
-                f"HarmonicSolver.rayleigh: esperado dict o None, "
-                f"recibido {type(cfg).__name__}."
-            )
-        if "alpha" in cfg and "beta" in cfg:
-            return float(cfg["alpha"]), float(cfg["beta"])
-        required = {"xi1", "omega1", "xi2", "omega2"}
-        if required.issubset(cfg):
-            return rayleigh_from_modes(
-                float(cfg["xi1"]), float(cfg["omega1"]),
-                float(cfg["xi2"]), float(cfg["omega2"]),
-            )
-        raise ValueError(
-            "HarmonicSolver.rayleigh: dict admitido es {'alpha', 'beta'} "
-            "o {'xi1','omega1','xi2','omega2'}; recibido "
-            + repr(set(cfg.keys()))
-        )
-
     def solve(self) -> HarmonicResult:
         _log.info("--- INICIANDO SOLVER HARMONIC ---")
 
@@ -175,7 +151,9 @@ class HarmonicSolver:
         K = self.assembler.K_global
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
-        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        alpha_r, beta_r = resolve_rayleigh_config(
+            self.rayleigh_cfg, source=type(self).__name__,
+        )
         C = alpha_r * M + beta_r * K
 
         # Reducción por Dirichlet. û en DOFs prescritos es cero (el apoyo

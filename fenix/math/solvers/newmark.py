@@ -19,7 +19,7 @@ from fenix.constants import (
     LINE_SEARCH_RHO,
 )
 from fenix.math.convergence import ConvergenceCriterion, stiffness_diag_scale
-from fenix.math.damping import rayleigh_from_modes
+from fenix.math.damping import resolve_rayleigh_config
 from fenix.math.linalg import StiffnessProperties, select_solver
 from fenix.math.solvers._shared import (
     CholeskyNotPositiveDefiniteError,
@@ -109,28 +109,6 @@ class NewmarkSolver:
         self.linear_algebra = str(linear_algebra)
         self.lumping = str(lumping)
 
-    @staticmethod
-    def _resolve_rayleigh(cfg: dict | None) -> tuple[float, float]:
-        """Traduce el dict del usuario a ``(α, β)``. Tres formas — ver __init__."""
-        if cfg is None:
-            return 0.0, 0.0
-        if not isinstance(cfg, dict):
-            raise ValueError(
-                f"NewmarkSolver.rayleigh: esperado dict o None, recibido "
-                f"{type(cfg).__name__}."
-            )
-        if "alpha" in cfg and "beta" in cfg:
-            return float(cfg["alpha"]), float(cfg["beta"])
-        required = {"xi1", "omega1", "xi2", "omega2"}
-        if required.issubset(cfg):
-            return rayleigh_from_modes(
-                float(cfg["xi1"]), float(cfg["omega1"]),
-                float(cfg["xi2"]), float(cfg["omega2"]),
-            )
-        raise ValueError(
-            "NewmarkSolver.rayleigh: dict admitido es {'alpha', 'beta'} o "
-            "{'xi1','omega1','xi2','omega2'}; recibido " + repr(set(cfg.keys()))
-        )
 
     def solve(self) -> TransientResult:
         _log.info("--- INICIANDO SOLVER NEWMARK ---")
@@ -141,7 +119,9 @@ class NewmarkSolver:
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
         # Amortiguamiento Rayleigh: C = α·M + β·K.
-        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        alpha_r, beta_r = resolve_rayleigh_config(
+            self.rayleigh_cfg, source=type(self).__name__,
+        )
         C = alpha_r * M + beta_r * K
 
         # Reducción por Dirichlet (ADR 0004). T selecciona DOFs libres;
@@ -354,7 +334,9 @@ class NewtonNewmarkSolver(NewmarkSolver):
         # Sistema no lineal en u_0 para obtener K_0 (Rayleigh) y F_int(u_0).
         K_0, F_int = self.assembler.assemble_non_linear_system(u_total)
 
-        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        alpha_r, beta_r = resolve_rayleigh_config(
+            self.rayleigh_cfg, source=type(self).__name__,
+        )
         C = alpha_r * M + beta_r * K_0
 
         # Reducción por Dirichlet (apoyos constantes).
@@ -727,7 +709,9 @@ class HHTSolver(NewmarkSolver):
         K = self.assembler.K_global
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
-        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        alpha_r, beta_r = resolve_rayleigh_config(
+            self.rayleigh_cfg, source=type(self).__name__,
+        )
         C = alpha_r * M + beta_r * K
 
         cs = self.assembler.constraint_set
@@ -950,7 +934,9 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
 
         K_0, F_int = self.assembler.assemble_non_linear_system(u_total)
 
-        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        alpha_r, beta_r = resolve_rayleigh_config(
+            self.rayleigh_cfg, source=type(self).__name__,
+        )
         C = alpha_r * M + beta_r * K_0
 
         cs = self.assembler.constraint_set

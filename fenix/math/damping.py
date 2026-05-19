@@ -76,6 +76,63 @@ def rayleigh_from_modes(
     return alpha, beta
 
 
+def resolve_rayleigh_config(
+    cfg: dict | None,
+    *,
+    source: str = "solver",
+) -> tuple[float, float]:
+    """Traduce el dict de Rayleigh del usuario a la tupla ``(α, β)``.
+
+    Tres formas aceptadas:
+
+    - ``None`` → ``(0.0, 0.0)`` (sin amortiguamiento).
+    - ``{"alpha": ..., "beta": ...}`` → coeficientes directos.
+    - ``{"xi1": ..., "omega1": ..., "xi2": ..., "omega2": ...}`` →
+      calibración modal automática vía :func:`rayleigh_from_modes`.
+
+    Parameters
+    ----------
+    cfg
+        Configuración tal como llega del constructor del solver o del
+        YAML. ``None`` significa "sin amortiguamiento".
+    source
+        Etiqueta del llamador (``"NewmarkSolver"``, ``"HarmonicSolver"``,
+        ...) que se interpola en los mensajes de error. Permite que el
+        usuario localice el solver al que pertenecía la configuración
+        inválida.
+
+    Returns
+    -------
+    alpha, beta
+        Coeficientes de Rayleigh ``C = α·M + β·K``.
+
+    Raises
+    ------
+    ValueError
+        Si ``cfg`` no es ``None`` ni ``dict``, o si las claves del dict
+        no encajan en ninguna de las dos formas aceptadas.
+    """
+    if cfg is None:
+        return 0.0, 0.0
+    if not isinstance(cfg, dict):
+        raise ValueError(
+            f"{source}.rayleigh: esperado dict o None, recibido "
+            f"{type(cfg).__name__}."
+        )
+    if "alpha" in cfg and "beta" in cfg:
+        return float(cfg["alpha"]), float(cfg["beta"])
+    required = {"xi1", "omega1", "xi2", "omega2"}
+    if required.issubset(cfg):
+        return rayleigh_from_modes(
+            float(cfg["xi1"]), float(cfg["omega1"]),
+            float(cfg["xi2"]), float(cfg["omega2"]),
+        )
+    raise ValueError(
+        f"{source}.rayleigh: dict admitido es {{'alpha','beta'}} o "
+        f"{{'xi1','omega1','xi2','omega2'}}; recibido {set(cfg.keys())!r}."
+    )
+
+
 def rayleigh_xi(alpha: float, beta: float, omega: float) -> float:
     """Razón de amortiguamiento ``ξ(ω) = (α/ω + β·ω) / 2`` predicha por
     los coeficientes Rayleigh para un modo de frecuencia ``ω``.

@@ -59,7 +59,7 @@ from typing import Callable
 import numpy as np
 import scipy.sparse as sp
 
-from fenix.math.damping import rayleigh_from_modes
+from fenix.math.damping import resolve_rayleigh_config
 from fenix.math.solvers._shared import _log
 from fenix.registry import SolverRegistry
 from fenix.results import TransientResult
@@ -155,30 +155,6 @@ class CentralDifferenceSolver:
         self.divergence_threshold = float(divergence_threshold)
 
     @staticmethod
-    def _resolve_rayleigh(cfg: dict | None) -> tuple[float, float]:
-        """Mismo contrato que :meth:`NewmarkSolver._resolve_rayleigh`."""
-        if cfg is None:
-            return 0.0, 0.0
-        if not isinstance(cfg, dict):
-            raise ValueError(
-                f"CentralDifferenceSolver.rayleigh: esperado dict o None, "
-                f"recibido {type(cfg).__name__}."
-            )
-        if "alpha" in cfg and "beta" in cfg:
-            return float(cfg["alpha"]), float(cfg["beta"])
-        required = {"xi1", "omega1", "xi2", "omega2"}
-        if required.issubset(cfg):
-            return rayleigh_from_modes(
-                float(cfg["xi1"]), float(cfg["omega1"]),
-                float(cfg["xi2"]), float(cfg["omega2"]),
-            )
-        raise ValueError(
-            "CentralDifferenceSolver.rayleigh: dict admitido es "
-            "{'alpha', 'beta'} o {'xi1','omega1','xi2','omega2'}; "
-            "recibido " + repr(set(cfg.keys()))
-        )
-
-    @staticmethod
     def _invert_diagonal_mass(M_red: sp.spmatrix) -> np.ndarray:
         """Devuelve el vector ``1/diag(M_red)`` si M_red es diagonal pura.
 
@@ -219,7 +195,9 @@ class CentralDifferenceSolver:
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
         # Amortiguamiento Rayleigh.
-        alpha_r, beta_r = self._resolve_rayleigh(self.rayleigh_cfg)
+        alpha_r, beta_r = resolve_rayleigh_config(
+            self.rayleigh_cfg, source=type(self).__name__,
+        )
 
         # Reducción por Dirichlet.
         cs = self.assembler.constraint_set
