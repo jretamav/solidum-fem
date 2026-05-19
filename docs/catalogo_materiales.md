@@ -16,6 +16,7 @@
 - **Variables internas**: ninguna (sin historia).
 - **Tangente**: constante = `E`.
 - **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko`.
+- **Spec**: [docs/specs/Elastic1D.md](specs/Elastic1D.md)
 - **Archivo**: [fenix/materials/elastic.py](fenix/materials/elastic.py)
 
 ---
@@ -28,6 +29,7 @@
 - **Variables internas**: ninguna.
 - **Tangente**: constante = `C`.
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`).
+- **Spec**: [docs/specs/Elastic2D.md](specs/Elastic2D.md)
 - **Archivo**: [fenix/materials/elastic_2d.py](fenix/materials/elastic_2d.py)
 
 ---
@@ -86,6 +88,7 @@
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = σ_y + H · α` — fluencia corriente (adaptativa al endurecimiento). El check `f ≤ atol + rtol · escala` se hace contra la superficie de fluencia *en el estado de entrada del paso*.
 - **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko` (en estos últimos solo se aplica al esfuerzo axial).
 - **Referencia**: Simo & Hughes, *Computational Inelasticity*, cap. 1.
+- **Spec**: [docs/specs/Elastoplastic1D.md](specs/Elastoplastic1D.md)
 - **Archivo**: [fenix/materials/plastic_1d.py](fenix/materials/plastic_1d.py)
 
 ---

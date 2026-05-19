@@ -11,6 +11,7 @@
 - **Parámetros**: `linear_algebra` (default `auto`; ADR 0003 §4).
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **No converge / no aplica**: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
+- **Spec**: [docs/specs/LinearSolver.md](specs/LinearSolver.md)
 - **Archivo**: [fenix/math/solvers/linear.py](../fenix/math/solvers/linear.py)
 
 ---
@@ -31,6 +32,7 @@
 - **Diagnóstico al diverger**: lanza una subclase tipada de `RuntimeError` (`OscillatingNewtonError`, `SingularTangentError`, `LoadExceedsCapacityError`, `UnknownDivergenceError`) con métricas (último ‖R‖, último ‖δU‖, factor de carga, bisecciones consumidas) y `hint` textual. Ver `fenix/math/solvers/diagnostics.py`.
 - **Limitación**: con bisección adaptativa y cinemática no lineal (corotacional) puede atravesar puntos límite suaves; no atraviesa snap-back con `du/dλ < 0`. Para eso → `ArcLengthSolver`. Hallazgo de la auditoría fase A: el solver es más capaz de lo asumido históricamente (ver [`docs/auditorias/solvers_robustez_fase_A.md`](auditorias/solvers_robustez_fase_A.md)).
 - **Referencia**: Crisfield, *Non-linear Finite Element Analysis of Solids and Structures*, vol. 1, cap. 9. Line search: Grippo-Lampariello-Lucidi 1986 (variante de descenso no monótono).
+- **Spec**: [docs/specs/NonlinearSolver.md](specs/NonlinearSolver.md)
 - **Archivo**: [fenix/math/solvers/nonlinear.py](../fenix/math/solvers/nonlinear.py)
 
 ---
@@ -50,6 +52,7 @@
 - **Cuándo usarlo**: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando `NonlinearSolver` diverge cerca de un punto límite.
 - **Limitación**: más caro por paso (dos `spsolve` por iteración); requiere ajuste de `initial_dl` para problemas nuevos.
 - **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers & Structures, 1981); Crisfield vol. 1, cap. 9.
+- **Spec**: [docs/specs/ArcLengthSolver.md](specs/ArcLengthSolver.md)
 - **Archivo**: [fenix/math/solvers/arclength.py](../fenix/math/solvers/arclength.py)
 
 ---
@@ -152,7 +155,7 @@
 - **Parámetros**: `alpha` (default `-0.05`) + heredados de `NewtonNewmarkSolver` (`convergence`, `max_iter`, `freeze_tangent_after_iter`, `line_search`, …).
 - **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria + presencia de modos altos espurios que el Newmark trapezoidal no atenuaría.
 - **Despacho YAML**: `solver.type: NewtonHHTSolver`. Vía atributo `PIPELINE_KIND="transient"` heredado de `NewmarkSolver` → `run_transient`.
-- **Spec**: [docs/specs/HHTSolver.md](specs/HHTSolver.md) (cubre ambas variantes lineal y no lineal).
+- **Spec**: [docs/specs/NewtonHHTSolver.md](specs/NewtonHHTSolver.md) (variante corta sobre la spec padre [`HHTSolver.md`](specs/HHTSolver.md)).
 - **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
 
 ---
