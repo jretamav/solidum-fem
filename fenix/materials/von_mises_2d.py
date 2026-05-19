@@ -315,7 +315,7 @@ class VonMises2D(Material):
         Coeficiente de Poisson. Debe cumplir |ν| < 1/2; ν cercano a 0.5 induce
         locking volumétrico en plane strain con elementos de bajo orden.
     sigma_y : float
-        Tensión de fluencia inicial (uniaxial).
+        Esfuerzo de fluencia inicial (uniaxial).
     H : float, optional
         Módulo de endurecimiento isótropo lineal. ``H >= 0``; ``H = 0`` ⇒
         plasticidad perfecta. Default 0.

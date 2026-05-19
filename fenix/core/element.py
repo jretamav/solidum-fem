@@ -266,7 +266,7 @@ class Element(ABC):
             ``None`` para elementos donde N/V/M no aplica como vector de
             cantidades discretas por extremo — típicamente **sólidos 2D**
             (``Tri3``, ``Quad4``, ``Tri6``, ``Quad8``, ``Quad9``,
-            ``CST_Embedded2D``), donde el estado de tensión es un campo
+            ``CST_Embedded2D``), donde el estado de esfuerzo es un campo
             distribuido sobre los puntos de Gauss. Para esos elementos
             consultar :meth:`compute_gauss_state` (cuando esté
             implementado), que devuelve ``{stress, strain, ...}`` por

@@ -1,4 +1,4 @@
-"""Paquete de elementos sólidos 2D (deformación/tensión plana).
+"""Paquete de elementos sólidos 2D (deformación/esfuerzo plano).
 
 Históricamente un único archivo de 929 líneas, dividido por elemento para
 abaratar la incorporación de nuevas formulaciones (Reglas.md §1). Cada

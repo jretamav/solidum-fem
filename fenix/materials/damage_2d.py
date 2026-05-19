@@ -48,6 +48,14 @@ class IsotropicDamage2D(Material):
     ``M = diag(1,1,1/2)`` no produce una matriz simétrica. Esto fuerza
     ``IS_SYMMETRIC = False`` y el despachador algebraico usa LU para el sistema
     global (ADR 0003).
+
+    Cap ``DAMAGE_MAX`` aplica al daño escalar ``d`` y al esfuerzo nominal
+    ``σ = (1-d)·C_e·ε`` — semántica de daño **continuo**. Esto contrasta con
+    la familia paralela ``CohesiveMaterial`` (cohesivos traction-jump), donde
+    el cap se aplica **sólo a la rigidez tangente** y no a ``ω`` ni a la
+    tracción física, porque la escala del penalty ``K_e`` haría que un cap
+    global desaparezca la tracción cohesiva real. Ver memoria
+    ``feedback_damage_max_cohesivos.md`` para la justificación.
     """
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'damage'

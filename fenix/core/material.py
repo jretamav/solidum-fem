@@ -61,9 +61,38 @@ class Material(ABC):
     def compute_state(self, strain, state_vars=None):
         """Calcula esfuerzo, módulo tangente/secante y nuevas variables internas.
 
+        Semántica trial/commit
+        ----------------------
+        ``compute_state`` se llama múltiples veces por paso de carga: una vez
+        por cada iteración del solver no lineal (Newton-Raphson, arc-length,
+        Newton dinámico). El ``new_state_vars`` devuelto es el estado **trial**
+        del paso — refleja la actualización tentativa correspondiente al
+        ``strain`` recibido, pero **no se considera definitivo hasta que el
+        solver invoque ``commit_all_states()`` al converger el paso**.
+
+        Quien gestiona la promoción trial → committed es el ``ElementState``
+        (ver ``fenix.core.element``): cada iteración Newton produce un nuevo
+        ``state_vars`` trial; el commit congela los trial actuales como
+        committed para que en el siguiente paso se construya el predictor
+        elástico a partir del estado convergido (``ε^p_n``, ``α_n``, ``κ_n``,
+        ``d_n``, ...).
+
+        Si el paso no converge, el solver llama a la lógica de rollback que
+        descarta los trial — los committed sobreviven. Esto es esencial para
+        bisección adaptativa y para line search: una llamada a
+        ``compute_state`` con un ``strain`` distinto **no contamina** el
+        estado committed, sólo el trial corriente.
+
+        Las llamadas a ``compute_state`` deben ser puras respecto al estado
+        que el material guarda internamente — toda la historia entra por
+        ``state_vars`` y sale por ``new_state_vars``. La instancia ``self``
+        sólo contiene parámetros constantes del modelo (E, ν, σ_y, ...).
+
         Returns
         -------
         (stress, tangent_modulus, new_state_vars)
+            ``new_state_vars`` es **trial**; el solver decide cuándo
+            promoverlo a committed.
         """
         pass
 

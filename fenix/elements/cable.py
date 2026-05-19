@@ -21,7 +21,7 @@ from fenix.results import ElementForces
 
 @ElementRegistry.register
 class Cable2DCorot(Element):
-    """Cable 2D corotacional — tensión unilateral, grandes rotaciones.
+    """Cable 2D corotacional — tracción unilateral, grandes rotaciones.
 
     Dos nodos articulados en el plano, 2 DOFs por nodo (ux, uy). La
     cinemática corotacional (Updated Lagrangian) recalcula longitud y
@@ -164,7 +164,7 @@ class Cable2DCorot(Element):
 
 @ElementRegistry.register
 class Cable3DCorot(Element):
-    """Cable 3D corotacional — tensión unilateral, grandes rotaciones en el espacio.
+    """Cable 3D corotacional — tracción unilateral, grandes rotaciones en el espacio.
 
     Dos nodos articulados, 3 DOFs por nodo (ux, uy, uz). Cinemática
     corotacional 3D: longitud y cosenos directores se recalculan en

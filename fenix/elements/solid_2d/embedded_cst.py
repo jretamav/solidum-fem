@@ -348,7 +348,7 @@ class CST_Embedded2D(Element):
 
 
 def _max_principal_stress_2d(sigma: np.ndarray):
-    """Devuelve ``(σ_I, n)`` con ``σ_I`` la tensión principal mayor y ``n``
+    """Devuelve ``(σ_I, n)`` con ``σ_I`` el esfuerzo principal mayor y ``n``
     su autovector unitario en el plano. ``sigma`` en Voigt ``[xx, yy, xy]``.
     """
     sxx, syy, sxy = float(sigma[0]), float(sigma[1]), float(sigma[2])
