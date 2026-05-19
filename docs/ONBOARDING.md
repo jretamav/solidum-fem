@@ -54,7 +54,7 @@ fenix_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 635 verdes + 5 skipped (pytest)
+├── tests/                        ← 653 verdes + 5 skipped (pytest)
 ├── docs/
 │   ├── adr/                      ← 0001-0010: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
@@ -135,7 +135,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ## 8. Antes de commitear
 
-1. `python -m pytest tests/ -q` verde (635 pasan, 5 skipped es normal).
+1. `python -m pytest tests/ -q` verde (653 pasan, 5 skipped es normal).
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
 4. **Pre-commit hooks**: no usar `--no-verify`. Si un hook falla, investigar la causa raíz.
