@@ -370,6 +370,16 @@ class _HigherOrderSolid2D(Element):
         return K_e, F_int_e
 
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        """API legada: devuelve ``{stress, strain}`` promediados sobre
+        los puntos de Gauss del elemento (consumida por el VTK exporter
+        y scripts de post-proceso libre).
+
+        **No es el contrato del ADR 0002** — ese es :meth:`internal_forces`
+        que devuelve ``ElementForces`` para barras/vigas/cables y ``None``
+        para sólidos (ver docstring base en :class:`Element` para la
+        deuda técnica documentada). Para acceso por punto de integración
+        usar :meth:`compute_gauss_state`, que esta función agrega.
+        """
         gs = self.compute_gauss_state(U_global)
         return {'stress': gs['stress'].mean(axis=0), 'strain': gs['strain'].mean(axis=0)}
 

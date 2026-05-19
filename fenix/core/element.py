@@ -227,9 +227,14 @@ class Element(ABC):
     def internal_forces(self, U_global: np.ndarray) -> ElementForces | None:
         """Esfuerzos internos en ejes locales del elemento, en los nodos i, j.
 
-        Convenciones de signo fijadas en Reglas.md §5:
-        - Frames 2D, trusses y cables: convención de viga estructural.
-        - Frames 3D: stress-resultant / RHR pura.
+        Contrato canónico del ADR 0002: devuelve un :class:`ElementForces`
+        inmutable con N, V, M (y T, My, Mz en 3D) por extremo. Convenciones
+        de signo fijadas en Reglas.md §5:
+
+        - Frames 2D, trusses y cables: convención de viga estructural
+          (``V`` con signo invertido respecto al interno; ``M`` positivo
+          = sagging con ``+y`` arriba).
+        - Frames 3D: stress-resultant / RHR pura sin inversión de signos.
 
         Los elementos corotacionales deben usar su ``state`` ya comprometido
         tras la solución (no recomputar desde cero).
@@ -237,8 +242,37 @@ class Element(ABC):
         Returns
         -------
         ElementForces | None
-            ``None`` por defecto (elementos sólidos y cualquier elemento para
-            el que N/V/M no aplican). Subclases barra/viga/cable sobreescriben.
+            ``None`` para elementos donde N/V/M no aplica como vector de
+            cantidades discretas por extremo — típicamente **sólidos 2D**
+            (``Tri3``, ``Quad4``, ``Tri6``, ``Quad8``, ``Quad9``,
+            ``CST_Embedded2D``), donde el estado de tensión es un campo
+            distribuido sobre los puntos de Gauss. Para esos elementos
+            consultar :meth:`compute_gauss_state` (cuando esté
+            implementado), que devuelve ``{stress, strain, ...}`` por
+            punto de integración. Subclases barra/viga/cable
+            sobrescriben este método y devuelven el ``ElementForces``
+            tipado.
+
+        Notes
+        -----
+        ADR 0002 está incompleto para sólidos 2D — deuda técnica
+        declarada (ver memoria de proyecto
+        ``project_adr_0002_incompleto_solidos.md``). Hoy ``None`` es la
+        señal explícita de que el caller debe usar la API por Gauss.
+        Cuando entren sólidos 3D o un consumidor externo que demande
+        ``ElementForces`` sobre sólidos, se replanteará el contrato.
+
+        Adicionalmente, varios elementos (todos los actuales) exponen un
+        método legado :meth:`compute_internal_forces` que devuelve un
+        ``dict`` ad-hoc por familia (``{N, V, M}`` para frames,
+        ``{stress, strain}`` para sólidos, ``{axial_force, ...}`` para
+        trusses). Es la API histórica para post-proceso libre (VTK
+        exporter, scripts) y **no es el contrato del ADR 0002**.
+        Coexisten ambas; el contrato canónico es éste. Renombrar
+        :meth:`compute_internal_forces` para reflejar la diferencia es
+        deuda **deliberadamente pospuesta** (la memoria del proyecto
+        prohíbe maquillar con renombres parciales hasta cerrar la
+        deuda principal del ADR 0002).
         """
         return None
 
