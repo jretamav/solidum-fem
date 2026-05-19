@@ -17,7 +17,7 @@
 |---|---|---:|---:|---:|---:|---:|---|
 | Truss2D | elem | 1 | 1 | — | — | — | test_truss, test_integration |
 | Truss3D | elem | 1 | 1 | — | — | — | test_truss |
-| Truss2DCorot | elem | 3 | 2 | — | 1 | — | test_truss |
+| Truss2DCorot | elem | 3 | 2 | 1 | — | — | test_truss, test_snap_through_corot (von Mises 2-bar vs solución cerrada, 2026-05-19) |
 | Truss3DCorot | elem | 3 | 2 | — | 1 | — | test_truss |
 | Frame2DEuler | elem | 3 | 3 | — | — | — | test_frame |
 | Frame2DTimoshenko | elem | 3 | 3 | — | — | — | test_frame |
@@ -42,7 +42,7 @@
 | CohesiveDamageIsotropic | mat | 6 | 4 | — | 2 | — | test_cohesive_damage_isotropic |
 | LinearSolver | solv | 3 | 3 | — | — | — | test_integration |
 | NonlinearSolver | solv | 6 | 5 | 1 | — | — | test_integration, test_solid_2d_plasticity, test_solver_robustness |
-| ArcLengthSolver | solv | 3 | 2 | 1 | — | — | test_integration |
+| ArcLengthSolver | solv | 3 | 2 | 1 | — | — | test_integration, test_snap_through_corot (curva carga-desplazamiento von Mises 2-bar punto a punto, 2026-05-19) |
 | NewmarkSolver | solv | 4 | 2 | — | 2 | — | test_newmark |
 | HHTSolver | solv | 6 | 3 | 1 | 2 | — | test_hht (amortiguamiento numérico contra matriz de amplificación analítica + ρ_∞ asintótico, 2026-05-19) |
 | NewtonNewmarkSolver | solv | 4 | 2 | — | 2 | — | test_newmark_nonlinear |
@@ -60,7 +60,7 @@ Componentes con criterios físicamente delicados cubiertos sólo por sanidad, or
 
 1. ~~**DruckerPrager2D**~~ — **CERRADO 2026-05-19 (Tanda 1)**: DP-1 (onset confinado), DP-2 (invariante de flujo no asociado tr(ε_p)=3η_g·α), DP-2bis (apex biaxial) añadidos a `test_solid_2d_drucker_prager.py`. DP-3 (cilindro Hill) diferido a sesión propia.
 2. **CohesiveDamageIsotropic** — sin pipeline completo de fractura con `CST_Embedded2D` ni medida de G_F.
-3. **Corotacionales**: `Frame2DEulerCorot` **CERRADO 2026-05-19 (Tanda 1)** (Bathe-Bolourchi cuarto + medio círculo). Pendientes: Truss2D/3DCorot, Cable2D/3DCorot — benchmark de snap-through (von Mises truss) requiere arc-length, sesión propia.
+3. **Corotacionales**: `Frame2DEulerCorot` **CERRADO 2026-05-19 (Tanda 1)** (Bathe-Bolourchi cuarto + medio círculo). `Truss2DCorot` **CERRADO 2026-05-19 (Tanda 3)**: snap-through clásico del shallow von Mises 2-bar (h/L=0.1) con `ArcLengthSolver`; cada punto convergido (u_y, λ·F_ref) trazado por el solver se compara contra `P(w) = 2·E·A·(L_0 − L_d)/L_0 · (h − w)/L_d` (engineering strain) con tolerancia absoluta 0.01% de F_ref. Cobertura adicional: la malla de pasos cubre la rama elástica, la rama inestable (entorno del pico) y la rama invertida con λ < 0. Pendientes: `Truss3DCorot` (la formulación 3D del proyector perpendicular es plumbing del 2D, validación analítica heredada); `Cable2D/3DCorot` (no aplicable al snap-through — son unilaterales y no soportan compresión).
 4. **CST_Embedded2D** — integración multi-elemento y modo II sólo en sanidad.
 5. ~~**ResponseSpectrumSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)**: cadena 4-truss Laplaciano 1D con autovalores cerrados ω_n² = 2 − 2·cos(nπ/4), valida ω, γ y SRSS contra fórmula analítica.
 6. ~~**HHTSolver / NewtonHHTSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)** para HHTSolver: matriz de amplificación 3×3 analítica para la convención Fenix (Hughes 1987 §9.3) contrastada contra contracción medida a Ω moderado + asíntota ρ_∞ = (1+α)/(1−α). NewtonHHTSolver hereda la verificación lineal. **CentralDifferenceSolver CERRADO 2026-05-19 (Tanda 2)**: frontera ``Δt_crit = 2/ω_max`` validada en 1-DOF y en cadena 2-DOF con autovalores cerrados ω_max=√3.
