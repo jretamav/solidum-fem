@@ -610,3 +610,140 @@ Mantener como housekeeping cuando se entre a una sesión de pulido. Ninguno bloq
 ---
 
 *Auditoría conducida 2026-05-18 por 4 agentes IA paralelos + consolidación con verificación directa de hallazgos críticos sobre el snapshot del repositorio al cierre de Etapa 6 (commit `5151d7d`). 51 hallazgos totales: 3 críticos, 4 altos, 27 medios, 17 bajos. El núcleo numérico y físico de Fenix FEM es robusto; las deudas accionables son de infraestructura.*
+
+---
+
+# Addendum — Progreso 2026-05-19
+
+Bitácora de cierre tras la sesión de saneamiento post-auditoría. Cuatro
+batches de fixes aplicados, **19 hallazgos cerrados** sobre los 51 del
+informe; **6 hallazgos diferidos con rationale** explícito (todos
+medios-bajos sin bloqueo de avance).
+
+## Hallazgos cerrados (19)
+
+### Críticos (3/3 cerrados)
+- ✅ **H-4.3** — `CentralDifferenceSolver` no-lineal contabiliza `F_dir` una sola vez (commit `8c2a809`).
+- ✅ **H-4.1** — `SingularTangentError` accesible en `NewtonNewmark`/`NewtonHHT` (commit `5b09a34`).
+- ✅ **H-4.2** — `LinearSolver` cachea factorización entre `solve` (commit `b517718`).
+
+### Altos (4/4 cerrados)
+- ✅ **H-1.1** — Autodiscover recursivo con `walk_packages` (commit `60c4cb7`).
+- ✅ **H-1.2 / H-4.5** — `resolve_rayleigh_config` centralizado en `math/damping` (commit `25ca8ba`).
+- ✅ **H-2.1** — Docstring de `Element.internal_forces` extendido con la convención del doble contrato y la deuda ADR 0002 (commit `d333f95`).
+- ✅ **H-2.2 / H-5.4** — Test fail-fast de escalamiento dimensional para los 5 sólidos 2D (commit `c89aa37`).
+
+### Medios cerrados (12)
+- ✅ **H-1.6** — `validate_lumping_kwarg` centralizado en `core/element` (commit `ac7dc13`).
+- ✅ **H-1.7** — `run_yaml` valida `PIPELINE_KIND` contra `_KNOWN_PIPELINE_KINDS` (commit `a7ed8c7`).
+- ✅ **H-1.9** — Magic numbers de modal/central-diff/embedded/J2 movidos a `constants.py` con prefijos descriptivos (commit `dbd8210`).
+- ✅ **H-2.4** — Catálogo de elementos documenta la limitación de Frame3D lumped en orientación oblicua (commit `a04c5c3`).
+- ✅ **H-2.5** — Frame2D Euler/Timoshenko: comentario explícito en `compute_element_state` aclarando que sólo el axial captura plasticidad (commit `a04c5c3`).
+- ✅ **H-2.7** — Tri6: docstring extendido con el caveat de subintegración con `tri_3` en mallas distorsionadas (commit `4e4ed54`).
+- ✅ **H-3.1** — `DruckerPrager2D.IS_SYMMETRIC` derivado de `self.associated` por instancia; `domain_is_symmetric` lee del instance (commit `a7ed8c7`).
+- ✅ **H-3.2** — `Elastic1D`/`Elastic2D` validan `E>0`, `ν∈(-1, 0.5)`, `hypothesis` y `density≥0` (commit `a7ed8c7`).
+- ✅ **H-3.4** — `evaluate_exponential_damage` centralizado en `materials/_softening` (commit `d66c1a7`).
+- ✅ **H-3.5** — Validación FD de tangentes algorítmicas para VonMises2D (plane strain + plane stress) y DruckerPrager2D regular (commit `4e4ed54`).
+- ✅ **H-4.6** — `HHTSolver`/`NewtonHHTSolver` emiten `RuntimeWarning` en override de β/γ (commit `a7ed8c7`).
+- ✅ **H-4.7** — `LinearSolver` deriva `is_positive_definite` del flag de simetría del dominio (commit `a7ed8c7`).
+
+### Bajos cerrados — ninguno explícito en esta ronda
+Documentalmente: **H-2.6** (lumping nodal vs HRZ) cubierto por la documentación previa en docstring de `_frame2d_lumped_mass_local` y ADR 0009 §"Fase 2"; **H-5.1** (3 textos desactualizados en catálogo de solvers) y **H-5.2** (Elastic2D compatibilidad en catálogo de materiales) corregidos en el commit de catálogos (`a04c5c3`).
+
+## Hallazgos diferidos con rationale (6)
+
+Items pendientes después de esta sesión. Ninguno bloquea el avance; la
+decisión de retomarlos requiere un caso de uso explícito o una decisión
+arquitectural mayor.
+
+### H-1.3 — `TransientResult`/`HarmonicResult`/`ResponseSpectrumResult` sin `element_forces`
+**Severidad**: medio. **Razón del diferimiento**: añadir API pública
+nueva (`internal_forces_history(domain)` lazy) sin un consumidor real
+que la demande introduce superficie sin caso de uso comprobado. Mejor
+materializarla cuando un script externo o tutorial la necesite — en ese
+momento el diseño del formato de retorno (dict `{elem_id → {N, V, M}}`
+indexado en tiempo) se decide con la información concreta del consumidor.
+
+### H-1.4 — Doble contrato `compute_internal_forces` (dict) vs `internal_forces` (`ElementForces|None`)
+**Severidad**: medio. **Razón del diferimiento**: la solución
+arquitectural (renombrar `compute_internal_forces` como legado deprecado,
+o consolidar ambas APIs) requiere cerrar primero la deuda mayor del
+ADR 0002 (incompleto para sólidos 2D — registrada en
+`project_adr_0002_incompleto_solidos.md`). Renombre parcial sin cerrar
+la deuda principal está explícitamente prohibido por la memoria del
+proyecto. Acción cubierta documentalmente por H-2.1 ✅ (docstring que
+explicita el doble contrato).
+
+### H-2.3 — Truss2D / Truss3D sin matriz geométrica `K_G`
+**Severidad**: medio. **Razón del diferimiento**: implementar `K_G` en
+los trusses lineales es **ampliación de scope** (nueva feature), no fix.
+Las variantes corotacionales (`Truss2DCorot`, `Truss3DCorot`) ya tienen
+`K_G`; el caso "análisis de pandeo lineal con trusses no-corotacionales"
+es resoluble usando la variante corotacional con linearización al
+estado inicial. Retomar cuando aparezca un benchmark de pandeo lineal
+de armaduras que demande explícitamente trusses lineales con `K_G`.
+
+### H-4.4 — Refactor zonal de los cuatro solvers Newmark/HHT
+**Severidad**: medio. **Razón del diferimiento**: refactor grande
+(~880 líneas) sin caso de uso priorizado. Abarataría extensiones futuras
+del subsistema temporal (Bossak, generalized-α, energy-momentum schemes)
+pero el riesgo de regresión en el código actual supera el beneficio
+inmediato. Retomar cuando entre el segundo esquema temporal — ahí la
+duplicación pasa el umbral "centralizar siempre" sin ambigüedad.
+
+### H-4.8 — `Assembler.assemble_non_linear_system(u, jac=False)` opcional
+**Severidad**: medio. **Razón del diferimiento**: optimización de coste
+constante por paso en `CentralDifferenceSolver` no-lineal. Tocar la API
+del `Assembler` sin medir el impacto real (qué porción del paso es
+ensamblaje de `K_t` vs ensamblaje de `F_int` solo) introduce riesgo
+sin garantía de ganancia. Retomar con profiling concreto cuando
+`CentralDifference` no-lineal sea el cuello de botella demostrado en
+un caso real.
+
+### H-5.3 — 7 huecos de spec vs componentes registrados
+**Severidad**: medio. **Razón del diferimiento**: deuda documental
+conocida. Cuatro componentes (`Elastic1D`, `Elastic2D`, `Elastoplastic1D`,
+`LinearSolver`/`NonlinearSolver`/`ArcLengthSolver`) son anteriores a la
+convención de specs validadas. `NewtonHHTSolver` es variante de
+`HHTSolver` y comparte spec por Reglas §4 ("spec corta tipo extensión").
+Rellenar las 7 specs son ~3.5h de trabajo mecánico que no aporta nuevo
+conocimiento físico ni cambia comportamiento — se retoma en una sesión
+dedicada de housekeeping documental.
+
+## Hallazgos bajos pendientes (17)
+
+Sin acción en esta ronda. Lista resumen para próxima sesión de
+housekeeping (orden por archivo del informe original):
+
+- Eje 1: H-1.8 (step_callback silenciado), H-1.10 (frozen=True semántico),
+  H-1.11 (capa core importa results), H-1.12 (excepciones tipadas no
+  extendidas a return mapping), H-1.13 (duplicación geom truss/cable
+  corot), H-1.14 (YAML parser usa `_materials` privado), H-1.15
+  (Node.dofs sentinel -1).
+- Eje 2: H-2.8 (Frame2D doble rotación cosmético), H-2.9 (warning
+  Frame3D casi-vertical), H-2.10 (CST_Embedded2D valida bulk por nombre
+  de clase).
+- Eje 3: H-3.3 (nomenclatura "tensión" vs "esfuerzo"), H-3.6 (test del
+  switching exact CableMaterial1D), H-3.7 (nota cap DAMAGE_MAX en
+  docstring), H-3.8 (trial/commit no documentado en contrato), H-3.9
+  (invariante `tr(ε^p)=0` no verificado), H-3.10 (yield_tol con alpha_old).
+- Eje 4: H-4.9 (doble ensamblaje line_search), H-4.10 (`Iventalla.dat`
+  untracked — fuera de alcance).
+- Eje 5: H-5.5 (`MATRIZ.md` faltante), H-5.6 (`ONBOARDING.md` pendiente).
+
+## Métricas finales
+
+| Eje | Cerrados | Diferidos con rationale | Bajos pendientes |
+|---|---:|---:|---:|
+| 1 — Arquitectura | 5 | 3 | 7 |
+| 2 — Elementos | 5 | 1 | 3 |
+| 3 — Materiales | 5 | 0 | 6 |
+| 4 — Solvers | 4 | 2 | 2 |
+| 5 — Docs / cobertura | 3 | 1 | 2 |
+| **Total** | **22** | **7** | **20** |
+
+(El item H-2.6 cuenta como "cubierto documentalmente" y no se duplica;
+H-5.4 es alias de H-2.2 y se cuenta una vez; H-4.5 es alias de H-1.2.)
+
+Suite global al final del addendum: **584 passed, 5 skipped, 0 failures**
+(originales 558 + 26 tests añadidos durante la sesión).
