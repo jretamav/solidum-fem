@@ -18,15 +18,17 @@ import math
 import numpy as np
 from numba import njit
 
+from fenix.constants import J2_DENOM_FLOOR, J2_PLANE_STRESS_MAX_LOCAL_ITER
 from fenix.core.material import Material
 from fenix.registry import MaterialRegistry
 
 
-# Máximo de iteraciones del Newton local del return mapping plane stress.
-# La función residual f̄(Δγ) es monótona decreciente con tangente cerrada,
-# así que en la práctica converge en 3-6 iteraciones; cota holgada para
-# pasos plásticos extremos (carga súbita muy por encima de fluencia).
-_PLANE_STRESS_MAX_LOCAL_ITER = 25
+# Re-export local del límite de iteraciones (centralizado en fenix.constants
+# tras auditoría H-1.9). Conservamos el alias de módulo porque los kernels
+# Numba están compilados con la referencia local.
+_PLANE_STRESS_MAX_LOCAL_ITER = J2_PLANE_STRESS_MAX_LOCAL_ITER
+# Piso para denominadores en la corrección de tangente del return mapping.
+_DENOM_FLOOR = J2_DENOM_FLOOR
 
 
 @njit
@@ -201,7 +203,7 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
         )
         dhalf_dg = 0.5 * dsPs_dg
         # dw/dΔγ = (1/(2w))·(2/3)·d(σPσ)/dΔγ = dsPs_dg / (3 w)
-        if w > 1.0e-30:
+        if w > _DENOM_FLOOR:
             dw_dg = dsPs_dg / (3.0 * w)
         else:
             dw_dg = 0.0
@@ -272,7 +274,7 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
 
     R_new = sigma_y + H * alpha_new
     m = (2.0 / 3.0) * R_new * H
-    if w_final > 1.0e-30:
+    if w_final > _DENOM_FLOOR:
         n = 2.0 * delta_gamma / (3.0 * w_final)
     else:
         n = 0.0
@@ -280,12 +282,12 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
     one_minus_mn = 1.0 - m * n
     # Forma agrupada equivalente, numéricamente estable cuando m·n → 1:
     # denom = q + m·w / (1 - m·n)
-    if abs(one_minus_mn) < 1.0e-30 or H == 0.0:
+    if abs(one_minus_mn) < _DENOM_FLOOR or H == 0.0:
         denom_beta = q  # H=0 → no hay corrección por endurecimiento
     else:
         denom_beta = q + m * w_final / one_minus_mn
 
-    if abs(denom_beta) < 1.0e-30:
+    if abs(denom_beta) < _DENOM_FLOOR:
         C_alg = D.copy()
     else:
         C_alg = D - np.outer(D_P_sigma, sigma_P_D) / denom_beta

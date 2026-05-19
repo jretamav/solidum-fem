@@ -4,6 +4,7 @@
 """
 import numpy as np
 
+from fenix.constants import MODAL_ARPACK_TOLERANCE, MODAL_EIGENVALUE_ZERO_RTOL
 from fenix.math.linalg import EigenSolver
 from fenix.math.solvers._shared import _log
 from fenix.registry import SolverRegistry
@@ -59,7 +60,7 @@ class ModalSolver:
         *,
         sigma: float = 0.0,
         which: str = "LM",
-        tolerance: float = 1.0e-9,
+        tolerance: float = MODAL_ARPACK_TOLERANCE,
         lumping: str = "consistent",
         linear_algebra: str = "auto",
     ):
@@ -89,7 +90,9 @@ class ModalSolver:
         # (modos de cuerpo rígido o casi). El cero exacto produce T = ∞,
         # que se reporta tal cual.
         lam_max = float(np.max(np.abs(lambdas))) if lambdas.size else 0.0
-        lambdas = np.where(np.abs(lambdas) < 1e-12 * lam_max, 0.0, lambdas)
+        lambdas = np.where(
+            np.abs(lambdas) < MODAL_EIGENVALUE_ZERO_RTOL * lam_max, 0.0, lambdas,
+        )
         lambdas = np.clip(lambdas, 0.0, None)
 
         omegas = np.sqrt(lambdas)

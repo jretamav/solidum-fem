@@ -59,6 +59,7 @@ from typing import Callable
 import numpy as np
 import scipy.sparse as sp
 
+from fenix.constants import LUMPED_MASS_OFF_DIAGONAL_RTOL
 from fenix.math.damping import resolve_rayleigh_config
 from fenix.math.solvers._shared import _log
 from fenix.registry import SolverRegistry
@@ -169,7 +170,7 @@ class CentralDifferenceSolver:
         off = M_dense - np.diag(diag)
         off_max = float(np.max(np.abs(off))) if off.size else 0.0
         diag_max = float(np.max(np.abs(diag))) if diag.size else 1.0
-        if off_max > 1e-12 * max(diag_max, 1.0):
+        if off_max > LUMPED_MASS_OFF_DIAGONAL_RTOL * max(diag_max, 1.0):
             raise ValueError(
                 "CentralDifferenceSolver: M_lumped no es estrictamente "
                 "diagonal tras reducir Dirichlet — probablemente Frame3D "

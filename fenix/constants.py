@@ -51,3 +51,36 @@ ARCLENGTH_MIN_DL_FACTOR = 1.0e-6
 LINE_SEARCH_C1 = 1.0e-4              # Constante de Armijo (suficiente decrecimiento)
 LINE_SEARCH_RHO = 0.5                # Factor de backtracking
 LINE_SEARCH_MAX_BACKTRACKS = 10      # Cota superior de retrocesos por iteración
+
+# --- Tolerancias internas del análisis modal (ADR 0009 fase 1) ---
+# Tolerancia de residuo ARPACK: criterio que ``eigsh`` usa para declarar
+# converida la iteración Lanczos. Más estricto que rtol del Newton porque
+# los modos se reusan en cómputos derivados (participation_factors,
+# response_spectrum) que amplifican errores.
+MODAL_ARPACK_TOLERANCE = 1.0e-9
+# Umbral relativo para clip de autovalores espurios negativos cerca de los
+# modos rígidos (``λ < MODAL_EIGENVALUE_ZERO_RTOL · λ_max`` se considera 0).
+MODAL_EIGENVALUE_ZERO_RTOL = 1.0e-12
+
+# --- Tolerancias internas del solver explícito (ADR 0009 fase 5) ---
+# Umbral relativo para considerar diagonal "estrictamente" en
+# ``CentralDifferenceSolver._invert_diagonal_mass``. Por encima de este,
+# se rechaza el ensamble lumped (típico: Frame3D oblicuo).
+LUMPED_MASS_OFF_DIAGONAL_RTOL = 1.0e-12
+
+# --- Newton local del salto cohesivo en CST_Embedded2D (ADR 0010) ---
+# Tolerancia relativa del Newton local sobre ``[[u]]`` (residuo r_jump).
+# Más estricta que la del Newton global porque típicamente converge en
+# 1-3 iteraciones gracias al penalty stiff K_e ≈ 1e15.
+EMBEDDED_LOCAL_JUMP_RTOL = 1.0e-10
+EMBEDDED_LOCAL_JUMP_MAX_ITER = 30
+
+# --- Return mapping J2 plane stress (Simó-Hughes §3.4.1) ---
+# Newton local sobre ``Δγ`` con función de fluencia proyectada
+# ``f̄ = ½·σ·P·σ − R²/3``. Converge típicamente en 3-6 iteraciones por
+# la tangente cerrada; cota superior conservadora.
+J2_PLANE_STRESS_MAX_LOCAL_ITER = 25
+# Piso para denominadores en la corrección de tangente del J2 plane stress.
+# Por debajo de este, el material reporta como "casi degenerado" en la
+# rama Newton local (situación patológica que tests no han forzado).
+J2_DENOM_FLOOR = 1.0e-30

@@ -23,8 +23,12 @@ from fenix.registry import ElementRegistry
 
 
 # Tolerancias del Newton local del salto (algoritmo de condensación).
-_LOCAL_JUMP_RTOL = 1.0e-10
-_LOCAL_JUMP_MAX_ITER = 30
+# Centralizadas en ``fenix.constants`` (auditoría H-1.9) — re-exportadas
+# como alias de módulo para preservar imports históricos.
+from fenix.constants import (
+    EMBEDDED_LOCAL_JUMP_MAX_ITER as _LOCAL_JUMP_MAX_ITER,
+    EMBEDDED_LOCAL_JUMP_RTOL as _LOCAL_JUMP_RTOL,
+)
 
 # Bulks aceptados en fase 1 (ver punto abierto A de la spec, decisión cerrada
 # 2026-05-18: la discrete approach presupone bulk elástico).
