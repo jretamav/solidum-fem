@@ -53,6 +53,57 @@ L_1DOF = 1.0
 OMEGA_1DOF = 5.0
 
 
+def _build_3dof_analytic_chain() -> Domain:
+    """Sistema 3-DOF con autovalores analíticos cerrados (Laplaciano 1D).
+
+    Cuatro trusses ``n1-n2-n3-n4-n5`` con ``n1`` y ``n5`` fijos en ``ux/uy``
+    y ``n2/n3/n4`` libres en ``ux`` (fijos en ``uy``). Con ``E=A=L=1`` cada
+    truss aporta ``EA/L = 1`` a la rigidez axial y ``ρAL = 1`` a la masa
+    total (mitad por nodo bajo lumping).
+
+    Matrices reducidas sobre ``(ux₂, ux₃, ux₄)`` con masa **lumped**:
+
+        K = [[ 2, -1,  0],
+             [-1,  2, -1],
+             [ 0, -1,  2]],     M = I.
+
+    Autovalores del Laplaciano 1D discreto con 3 nodos interiores:
+    ``ω_n² = 2 − 2·cos(nπ/4)``, n ∈ {1, 2, 3}:
+
+        ω₁² = 2 − √2,   ω₂² = 2,   ω₃² = 2 + √2.
+
+    Modos M-ortonormales (φ_n[i] = √(2/4)·sin(n·i·π/4), i ∈ {1,2,3}):
+
+        φ₁ = (1/2,  1/√2,  1/2)
+        φ₂ = (1/√2,  0,   −1/√2)
+        φ₃ = (1/2, −1/√2,  1/2)
+
+    Como ARPACK exige ``n_modes < n_dof_libre = 3``, las verificaciones
+    usan ``n_modes = 2`` (modos 1 y 2). Para que el resto del subespacio
+    quede cubierto, escogemos direcciones de excitación que satisfagan
+    ``γ₃ = φ₃ᵀ·d = 0`` y por tanto la masa efectiva total esté en los
+    dos primeros modos. La condición ``φ₃ᵀd = 0`` con ``φ₃`` simétrico
+    se cumple para ``d = (1, 1/√2, 0)``.
+    """
+    dom = Domain()
+    n1 = dom.add_node(1, [0.0, 0.0])
+    n2 = dom.add_node(2, [1.0, 0.0])
+    n3 = dom.add_node(3, [2.0, 0.0])
+    n4 = dom.add_node(4, [3.0, 0.0])
+    n5 = dom.add_node(5, [4.0, 0.0])
+    mat = Elastic1D(E=1.0, density=1.0)
+    for elem_id, (a, b) in enumerate(((n1, n2), (n2, n3), (n3, n4), (n4, n5)),
+                                       start=1):
+        dom.add_element(Truss2D(elem_id, [a, b], mat, A=1.0))
+    n1.fix_dof("ux", 0.0); n1.fix_dof("uy", 0.0)
+    n2.fix_dof("uy", 0.0)
+    n3.fix_dof("uy", 0.0)
+    n4.fix_dof("uy", 0.0)
+    n5.fix_dof("ux", 0.0); n5.fix_dof("uy", 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    return dom
+
+
 def _build_2dof_chain(rho2_factor: float = 1.0) -> Domain:
     """Dos masas conectadas axialmente. Frecuencias modales conocidas en
     función de los parámetros — útil para SRSS analítico. 2 DOFs libres
@@ -164,6 +215,137 @@ class TestResponseSpectrumSingleMode(unittest.TestCase):
         m_norm_sq = float(u1 @ (M @ u1))
         expected_sq = (gamma1 * Sd_expected) ** 2
         self.assertAlmostEqual(m_norm_sq, expected_sq, places=8)
+
+
+# ---------------------------------------------------------------------------
+# 2-DOF con autovalores analíticos cerrados (Fase B 2026-05-19)
+# ---------------------------------------------------------------------------
+
+
+class TestResponseSpectrumAnalytic2DOF(unittest.TestCase):
+    """Validación contra solución cerrada del 3-DOF construido en
+    :func:`_build_3dof_analytic_chain`: ``K`` Toeplitz tridiagonal,
+    ``M=I``, autovalores ``ω_n² = 2 − 2·cos(nπ/4)`` con modos
+    ``φ_n[i] = √(2/4)·sin(n·i·π/4)`` (forma cerrada del Laplaciano 1D
+    discreto). ARPACK limita ``n_modes < 3``, así que se usan los dos
+    primeros modos y se escogen direcciones con ``φ₃ᵀd = 0`` para que
+    los modos truncados no introduzcan masa efectiva residual.
+
+    Cierra el hueco "espectro 1-DOF analítico" de la matriz de validación:
+    contrasta autovalores, factores de participación, contribución modal
+    individual ``γ_n·φ_n·S_d(ω_n)`` y envolvente SRSS contra valores
+    construidos a mano. Las verificaciones son invariantes al signo
+    arbitrario de ARPACK porque comparan magnitudes o sumas cuadráticas.
+    """
+
+    def test_eigenvalues_match_closed_form(self):
+        """ω₁ = √(2−√2), ω₂ = √2 hasta precisión doble."""
+        dom = _build_3dof_analytic_chain()
+        solver = ResponseSpectrumSolver(
+            Assembler(dom), n_modes=2, direction={"dof_name": "ux"},
+            spectrum=lambda w: 1.0, lumping="lumped",
+        )
+        result = solver.solve()
+        omega1_analytic = math.sqrt(2.0 - math.sqrt(2.0))
+        omega2_analytic = math.sqrt(2.0)
+        self.assertAlmostEqual(result.frequencies_rad[0], omega1_analytic,
+                                 places=10)
+        self.assertAlmostEqual(result.frequencies_rad[1], omega2_analytic,
+                                 places=10)
+
+    def test_participation_factors_match_closed_form(self):
+        """Direction ``d = (1, 1/√2, 0)`` ⇒ ``γ₁ = 1, γ₂ = 1/√2, γ₃ = 0``.
+
+        Construida para que el modo 3 (no resuelto con ARPACK n_modes=2)
+        no aporte masa efectiva: ``φ₃ᵀd = 1/2 − (1/√2)·(1/√2) + 0 = 0``.
+        Σ γ_n² = 1 + 1/2 = 3/2 = ``dᵀMd`` ⇒ cobertura modal del 100%
+        con sólo los dos primeros modos.
+        """
+        dom = _build_3dof_analytic_chain()
+        ndof = dom.total_dofs
+        direction = np.zeros(ndof)
+        direction[dom.nodes[2].dofs["ux"]] = 1.0
+        direction[dom.nodes[3].dofs["ux"]] = 1.0 / math.sqrt(2.0)
+        # direction[ux₄] queda en 0.
+
+        solver = ResponseSpectrumSolver(
+            Assembler(dom), n_modes=2, direction=direction,
+            spectrum=lambda w: 1.0, lumping="lumped",
+        )
+        result = solver.solve()
+        gamma_sq = result.participation_factors ** 2
+        np.testing.assert_allclose(gamma_sq, [1.0, 0.5], atol=1e-10)
+        # Masa efectiva acumulada con 2 modos = ‖d‖²_M = 3/2.
+        cum = result.cumulative_effective_mass_ratio()
+        self.assertAlmostEqual(cum[-1], 1.0, places=10)
+
+    def test_srss_envelope_matches_analytic(self):
+        """Mismo ``d`` y ``S_d ≡ 1``: ``u_combined`` analítica = ``(1/√2, 1/√2, 1/√2)``.
+
+        Modo 1 aporta ``γ₁·φ₁ = 1·(1/2, 1/√2, 1/2)``.
+        Modo 2 aporta ``γ₂·φ₂ = (1/√2)·(1/√2, 0, −1/√2) = (1/2, 0, −1/2)``.
+        SRSS por componente:
+            u_combined[0] = √((1/2)² + (1/2)²) = √(1/2) = 1/√2.
+            u_combined[1] = √((1/√2)² + 0²)    = 1/√2.
+            u_combined[2] = √((1/2)² + (−1/2)²) = 1/√2.
+        """
+        dom = _build_3dof_analytic_chain()
+        ndof = dom.total_dofs
+        direction = np.zeros(ndof)
+        direction[dom.nodes[2].dofs["ux"]] = 1.0
+        direction[dom.nodes[3].dofs["ux"]] = 1.0 / math.sqrt(2.0)
+
+        solver = ResponseSpectrumSolver(
+            Assembler(dom), n_modes=2, direction=direction,
+            spectrum=lambda w: 1.0, combination="SRSS", lumping="lumped",
+        )
+        result = solver.solve()
+
+        expected = 1.0 / math.sqrt(2.0)
+        for nid in (2, 3, 4):
+            dof = dom.nodes[nid].dofs["ux"]
+            self.assertAlmostEqual(result.u_combined[dof], expected, places=10)
+
+    def test_single_mode_excitation_with_midpoint_direction(self):
+        """``d = e_{ux₃}`` (sólo nodo central): excita únicamente el modo 1.
+
+        ``γ₁ = φ₁[1] = 1/√2``, ``γ₂ = φ₂[1] = 0``, ``γ₃ = φ₃[1] = −1/√2``.
+        Con ``n_modes = 2`` el modo 3 se trunca; queda sólo el modo 1.
+
+        Para ``Sd ≡ c``:
+            u_per_mode[:, 0] = γ₁·φ₁·c = (1/√2)·(1/2, 1/√2, 1/2)·c
+                              = (c/(2√2), c/2, c/(2√2)).
+            u_per_mode[:, 1] = 0  (γ₂ = 0).
+        ``u_combined`` = ``|u_per_mode[:, 0]|`` exactamente porque sólo
+        contribuye un modo. Esto es la analítica de un 1-GDL "tomada del
+        2-DOF": un sólo modo, contribución exactamente conocida en cada
+        nodo.
+        """
+        dom = _build_3dof_analytic_chain()
+        ndof = dom.total_dofs
+        direction = np.zeros(ndof)
+        direction[dom.nodes[3].dofs["ux"]] = 1.0  # sólo nodo central
+
+        Sd_const = 0.4
+        solver = ResponseSpectrumSolver(
+            Assembler(dom), n_modes=2, direction=direction,
+            spectrum=lambda w: Sd_const, lumping="lumped",
+        )
+        result = solver.solve()
+
+        # γ₁² = 1/2,  γ₂² = 0.
+        gamma_sq = result.participation_factors ** 2
+        np.testing.assert_allclose(gamma_sq, [0.5, 0.0], atol=1e-10)
+
+        # u_combined analítico.
+        c = Sd_const
+        expected = {
+            dom.nodes[2].dofs["ux"]: c / (2.0 * math.sqrt(2.0)),
+            dom.nodes[3].dofs["ux"]: c / 2.0,
+            dom.nodes[4].dofs["ux"]: c / (2.0 * math.sqrt(2.0)),
+        }
+        for dof, u_exp in expected.items():
+            self.assertAlmostEqual(result.u_combined[dof], u_exp, places=10)
 
 
 # ---------------------------------------------------------------------------

@@ -147,6 +147,15 @@ acceptance:
       setup: "Δt grande (>10 periodos del modo); HHTSolver con varios α"
       expect: "ρ_∞ observado = (1+α)/(1-α) dentro de tolerancia 5%"
 
+    - name: amplification_matrix_spectral_radius_analytic
+      setup: "Oscilador 1-GDL con HHTSolver(α∈{-0.05, -0.10, -1/3}); Δt tal que Ω=ω·Δt=2"
+      expect: |
+        Razón de contracción por paso medida en la simulación
+        coincide con max|λ(A)|, donde A es la matriz de amplificación 3×3 HHT-α
+        (Hughes 1987 §9.3, Bathe 2014 §9.5.4): D=1+β(1+α)Ω², A[0,0]=(1+αβΩ²)/D, …
+        Tolerancia 1%.
+      ref: "tests/test_hht.py::TestHHTNumericalDampingAnalytic"
+
   stability:
     - name: unconditional_stability_large_dt
       setup: "Sistema lineal con Δt = 100·T (T periodo natural), 10 pasos"

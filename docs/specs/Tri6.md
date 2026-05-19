@@ -43,6 +43,14 @@ acceptance:
       setup: "u = (x², 0) impuesto en los 6 nodos"
       expect: "ε_xx = 2x exacto en cada Gauss"
       tol_rel: 1.0e-10
+    - name: cooks_membrane_4x4
+      setup: "Trapezoide de Cook triangulado 4×4 (32 Tri6, diagonal c1→c3 con center node compartido)"
+      expect: "u_y(48, 52) ≈ 23.91 (Bathe; Hughes)"
+      tol_abs: 1.5
+    - name: cooks_membrane_refinamiento
+      setup: "Mallas 2×2 → 4×4 → 6×6 con la misma triangulación"
+      expect: "Error |u_y − 23.91| decreciente monótonamente"
+      tol_rel: 0.0
 ```
 
 ---
@@ -50,4 +58,4 @@ acceptance:
 ## Implementación
 
 - **Archivo**: [fenix/elements/solid_2d/tri6.py](../../fenix/elements/solid_2d/tri6.py) · clase `Tri6` (subclase de la base interna `_HigherOrderSolid2D` en [_shared.py](../../fenix/elements/solid_2d/_shared.py), compartida con Quad8 y Quad9). Declara `_MASS_QUADRATURE = "tri_6"` (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (`tri_3`, orden 2) subintegra el producto cuadrático×cuadrático de la masa consistente.
-- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).
+- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py) (patch cuadrático), [tests/test_cooks_membrane.py](../../tests/test_cooks_membrane.py) (benchmark Bathe/Hughes con malla triangulada 4×4 + refinamiento monótono, añadido Fase B 2026-05-19).

@@ -10,7 +10,7 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 610 pasan / 5 skipped / 0 fallos (615 colectados, +13 subtests) — Fase B validación 2026-05-19: 3 benchmarks DP2D + 2 Bathe-Bolourchi (Frame2DEulerCorot) + 3 Cook's membrane (Quad8 4×4, Quad9 4×4, refinamiento Q8 monótono) |
+| **Tests** | 624 pasan / 5 skipped / 0 fallos (629 colectados, +20 subtests) — Fase B validación 2026-05-19: Tanda 1 (8 benchmarks: 3 DP2D + 2 Bathe-Bolourchi Frame2DEulerCorot + 3 Cook's membrane Quad8/Quad9 + refinamiento monótono) y Tanda 2 (14 benchmarks: 2 Cook's Tri6, 4 ResponseSpectrumSolver Laplaciano-1D analítico, 3 HHTSolver matriz de amplificación analítica, 5 CentralDifferenceSolver CFL = 2/ω_max) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
 | **Solvers** | 11 (3 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
@@ -126,4 +126,4 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-19 — saneamiento completo de la auditoría 2026-05-18. **41 de 51 hallazgos cerrados** entre dos sesiones del mismo día: 23 cerrados en la primera ronda (3 críticos + 4 altos + 16 medios/bajos accionables; suite 558 → 585) y 18 adicionales en la sesión de housekeeping (7 specs faltantes, MATRIZ/ONBOARDING ya existentes con limpieza de menciones, batch de docs/tests/plumbing; suite 585 → 602). 10 hallazgos sin acción: 6 con rationale técnico explícito en el addendum, 4 sin acción por su propia recomendación (ver addendum). El proyecto queda con todos los hallazgos accionables resueltos. Próxima decisión = nueva Etapa 7 entre opciones A, B, C, E del ROADMAP.*
+*Última actualización: 2026-05-19 — Tanda 2 de Fase B (validación cuantitativa): 14 benchmarks contra solución cerrada o valor publicado: Tri6 Cook's membrane (Bathe/Hughes ref 23.91, malla 4×4 + refinamiento monótono), ResponseSpectrumSolver con cadena Laplaciano 1D y autovalores cerrados ω_n² = 2 − 2·cos(nπ/4), HHTSolver vs matriz de amplificación 3×3 analítica para la convención Fenix (Hughes 1987 §9.3) + asíntota ρ_∞ = (1+α)/(1−α), CentralDifferenceSolver con frontera CFL = 2/ω_max validada en 1-DOF y 2-DOF. Suite 610 → 624 (+20 subtests). Quedan abiertos en el plan de validación: cohesivo+embedded G_F end-to-end, truss/cable corotacionales snap-through con arc-length, y test de locking volumétrico ν → 0.5 (Fase D — limitaciones arquitecturales).*

@@ -143,6 +143,19 @@ acceptance:
       setup: "Modelo 2-DOF, n_modes=1, S_d constante=1"
       expect: "u_combined = |u_per_mode[:, 0]| (SRSS trivial sobre un modo)"
       tol_rel: 1.0e-12
+    - name: laplaciano_1d_3dof_analitico
+      setup: |
+        Cadena 4-truss n1-n2-n3-n4-n5 con n1, n5 fijos. E=A=L=1, ρ=1, lumped →
+        K Toeplitz tridiagonal [[2,-1,0],[-1,2,-1],[0,-1,2]], M=I. Autovalores
+        cerrados del Laplaciano 1D discreto: ω_n² = 2 − 2·cos(nπ/4); modos
+        φ_n[i] = √(2/4)·sin(n·i·π/4).
+      expect: |
+        (1) ω₁ = √(2−√2), ω₂ = √2 a precisión doble.
+        (2) Con d = (1, 1/√2, 0): γ₁ = 1, γ₂ = 1/√2, γ₃ = 0 (φ₃ᵀd = 0 por construcción).
+        (3) Para Sd ≡ 1 y SRSS: u_combined = (1/√2, 1/√2, 1/√2) exacto.
+        (4) Con d = e_{ux₃} (centro): sólo modo 1 contribuye, u_combined = (c/(2√2), c/2, c/(2√2)).
+      tol_rel: 1.0e-10
+      ref: "tests/test_response_spectrum.py::TestResponseSpectrumAnalytic2DOF"
     - name: srss_manual_combination
       setup: "Modelo 3-DOF, 2 modos, comparar contra raíz cuadrada de suma de cuadrados componente a componente"
       expect: "Coincidencia exacta a precisión de máquina"

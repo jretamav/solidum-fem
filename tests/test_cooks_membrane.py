@@ -29,7 +29,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from fenix.core.domain import Domain
 from fenix.core.material import Material
-from fenix.elements.solid_2d import Quad8, Quad9
+from fenix.elements.solid_2d import Quad8, Quad9, Tri6
 from fenix.math.assembly import Assembler
 from fenix.math.solvers import LinearSolver
 
@@ -122,23 +122,98 @@ def _build_cook_mesh(elem_cls, nx: int, ny: int, material, thickness: float = 1.
     return domain, right_elements, mid_right
 
 
-def _apply_right_edge_shear(domain, right_elements, total_force: float = 1.0):
+def _apply_right_edge_shear(domain, right_elements, total_force: float = 1.0,
+                              edge_idx: int = 1):
     """Aplica ``F_total`` en y como tracción uniforme sobre el borde derecho.
 
-    Borde derecho = edge 1 de cada Quad8/Quad9 rightmost.
+    ``edge_idx`` = 1 para Quad8/Quad9 (edge entre c2 y c3) y para los Tri6
+    de la diagonal inferior (edge entre vértices 1 y 2 de la triangulación
+    A definida en :func:`_build_cook_tri6_mesh`).
     """
     edge_length = 16.0  # de (48,44) a (48,60)
     thickness = right_elements[0].thickness
     t_y = total_force / (edge_length * thickness)
     F_ext = np.zeros(domain.total_dofs)
     for elem in right_elements:
-        f_elem = elem.compute_edge_traction(1, np.array([0.0, t_y]))
+        f_elem = elem.compute_edge_traction(edge_idx, np.array([0.0, t_y]))
         # Ensamblar manualmente sobre los DOFs globales del elemento.
         dof_map = elem.get_global_dof_indices()
         for k_local, k_global in enumerate(dof_map):
             if k_global >= 0:
                 F_ext[k_global] += f_elem[k_local]
     return F_ext
+
+
+def _build_cook_tri6_mesh(nx: int, ny: int, material, thickness: float = 1.0):
+    """Triangulación estructurada del trapezoide de Cook con Tri6.
+
+    Cada celda del grid ``nx × ny`` se parte en dos triángulos cuadráticos
+    a lo largo de la diagonal c1→c3. El nodo central paramétrico (idéntico
+    al center node de Q9) actúa como midnode compartido de la diagonal.
+
+    Numeración Tri6 (Fenix convention): vértices 0,1,2 con midnodes
+    3 (entre 0-1), 4 (entre 1-2), 5 (entre 2-0).
+
+    - **Triángulo A** (inferior-derecho): vértices ``(c1, c2, c3)`` →
+      midnodes ``(m12, m23, center)``. Su edge 1 (entre nodos 1 y 2) coincide
+      con el borde derecho del quad — los del último column se devuelven
+      como ``right_elements`` para aplicar la cortante.
+    - **Triángulo B** (superior-izquierdo): vértices ``(c1, c3, c4)`` →
+      midnodes ``(center, m34, m41)``.
+    """
+    domain = Domain()
+    nid_grid = {}
+    nid = 0
+    # Mismo grid (2nx+1) × (2ny+1) que las mallas Q8/Q9, incluyendo el
+    # nodo central de cada celda — es el midnode de la diagonal Tri6.
+    for J in range(2 * ny + 1):
+        for I in range(2 * nx + 1):
+            nid += 1
+            xi = I / (2.0 * nx)
+            eta = J / (2.0 * ny)
+            x, y = _cook_coords(xi, eta)
+            nid_grid[(I, J)] = domain.add_node(nid, [x, y])
+
+    eid = 0
+    right_elements = []
+    for jy in range(ny):
+        for ix in range(nx):
+            I0 = 2 * ix
+            J0 = 2 * jy
+            c1 = nid_grid[(I0,   J0)]
+            c2 = nid_grid[(I0+2, J0)]
+            c3 = nid_grid[(I0+2, J0+2)]
+            c4 = nid_grid[(I0,   J0+2)]
+            m12 = nid_grid[(I0+1, J0)]
+            m23 = nid_grid[(I0+2, J0+1)]
+            m34 = nid_grid[(I0+1, J0+2)]
+            m41 = nid_grid[(I0,   J0+1)]
+            center = nid_grid[(I0+1, J0+1)]
+
+            # Triángulo A: (c1, c2, c3) con midnodes (m12, m23, center).
+            eid += 1
+            tri_a = Tri6(eid, [c1, c2, c3, m12, m23, center],
+                         material, thickness=thickness)
+            domain.add_element(tri_a)
+            if ix == nx - 1:
+                # edge 1 (entre vértices 1 y 2 = c2-c3) está en x=48.
+                right_elements.append(tri_a)
+
+            # Triángulo B: (c1, c3, c4) con midnodes (center, m34, m41).
+            eid += 1
+            tri_b = Tri6(eid, [c1, c3, c4, center, m34, m41],
+                         material, thickness=thickness)
+            domain.add_element(tri_b)
+
+    # Empotramiento total del borde izquierdo (I = 0).
+    for J in range(2 * ny + 1):
+        n = nid_grid[(0, J)]
+        n.fix_dof('ux', 0.0)
+        n.fix_dof('uy', 0.0)
+
+    mid_right = nid_grid[(2 * nx, ny)]
+    domain.generate_equation_numbers(verbose=False)
+    return domain, right_elements, mid_right
 
 
 class TestCooksMembrane(unittest.TestCase):
@@ -194,6 +269,43 @@ class TestCooksMembrane(unittest.TestCase):
                         msg=f"4×4 no mejora sobre 2×2: errores={errors}")
         self.assertLess(errors[2], errors[1],
                         msg=f"6×6 no mejora sobre 4×4: errores={errors}")
+
+    def test_tri6_4x4(self):
+        """Malla 4×4 triangulada en Tri6 (32 triángulos, 81 nodos).
+
+        Cada celda parte en dos Tri6 a lo largo de la diagonal c1→c3.
+        Tolerancia 1.5 (≈6%): la triangulación cuadrática converge a la
+        misma referencia que Q8/Q9 pero con paso de error mayor por
+        elemento (Bathe; Hughes — T6 vs Q8 con malla equivalente).
+        """
+        domain, right_elems, mid_right = _build_cook_tri6_mesh(
+            nx=4, ny=4, material=self.material, thickness=1.0,
+        )
+        F = _apply_right_edge_shear(domain, right_elems, total_force=1.0,
+                                     edge_idx=1)
+        U = LinearSolver(Assembler(domain)).solve(F)
+        u_y = U[mid_right.dofs['uy']]
+        self.assertAlmostEqual(
+            u_y, self.u_y_reference, delta=1.5,
+            msg=f"Cook Tri6 4×4: u_y={u_y:.4f} (ref {self.u_y_reference})",
+        )
+
+    def test_tri6_refinement_monotonic(self):
+        """Refinamiento 2×2 → 4×4 → 6×6 con Tri6: error decreciente monótono."""
+        errors = []
+        for n in (2, 4, 6):
+            domain, right_elems, mid_right = _build_cook_tri6_mesh(
+                nx=n, ny=n, material=self.material, thickness=1.0,
+            )
+            F = _apply_right_edge_shear(domain, right_elems, total_force=1.0,
+                                         edge_idx=1)
+            U = LinearSolver(Assembler(domain)).solve(F)
+            u_y = U[mid_right.dofs['uy']]
+            errors.append(abs(u_y - self.u_y_reference))
+        self.assertLess(errors[1], errors[0],
+                        msg=f"Tri6 4×4 no mejora sobre 2×2: errores={errors}")
+        self.assertLess(errors[2], errors[1],
+                        msg=f"Tri6 6×6 no mejora sobre 4×4: errores={errors}")
 
 
 if __name__ == '__main__':

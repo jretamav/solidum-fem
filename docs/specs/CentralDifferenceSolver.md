@@ -150,6 +150,21 @@ acceptance:
       setup: "Δt = 3·Δt_crit"
       expect: "RuntimeError con mensaje CFL informativo"
       tol_rel: 0
+    - name: cfl_threshold_matches_2_over_omega_max_1dof
+      setup: "Oscilador 1-GDL (ω=5, Δt_crit=2/ω=0.4): integrar con Δt = 0.95·Δt_crit vs 1.05·Δt_crit"
+      expect: "0.95·Δt_crit produce trayectoria acotada (30 ciclos); 1.05·Δt_crit lanza RuntimeError CFL"
+      tol_rel: 0
+    - name: cfl_threshold_matches_2_over_omega_max_2dof
+      setup: |
+        Cadena 2-DOF (3 trusses E=A=L=1, ρ=1, lumped) con K=[[2,-1],[-1,2]], M=I →
+        autovalores cerrados ω² ∈ {1, 3}, ω_max=√3, Δt_crit=2/√3. Estado inicial
+        excita modo antisimétrico (1, -1) — puro ω_max.
+      expect: |
+        (1) Δt = 0.95·Δt_crit estable.
+        (2) Δt = 1.05·Δt_crit lanza RuntimeError CFL.
+        (3) Δt = Δt_crit/10 reproduce u(t) = (cos(√3·t), -cos(√3·t)) con error < 2%.
+      tol_rel: 0.02
+      ref: "tests/test_central_difference.py::TestCentralDifferenceCFLAnalytic"
     - name: linear_mode_matches_nonlinear_mode_for_linear_material
       setup: "Mismo problema con material lineal puro, solver con nonlinear=False vs nonlinear=True"
       expect: "Coincidencia exacta a precisión de máquina"

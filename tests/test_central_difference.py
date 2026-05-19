@@ -200,6 +200,139 @@ class TestCentralDifferenceStability(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# CFL analítico: Δt_crit numérico = 2/ω_max (Fase B 2026-05-19)
+# ---------------------------------------------------------------------------
+
+
+def _build_2dof_analytic_chain():
+    """Cadena 2-DOF n1-n2-n3-n4 con n1, n4 fijos y EA/L = 1, ρAL/2 = 1/2.
+
+    Bajo masa lumped: K_red = [[2, -1], [-1, 2]], M_red = I.
+    Autovalores: ω² ∈ {1, 3} → ω_min = 1, ω_max = √3.
+    Δt_crit = 2/ω_max = 2/√3.
+
+    Devuelve ``(domain, free_dofs_list)`` para que el test los reuse.
+    """
+    dom = Domain()
+    n1 = dom.add_node(1, [0.0, 0.0])
+    n2 = dom.add_node(2, [1.0, 0.0])
+    n3 = dom.add_node(3, [2.0, 0.0])
+    n4 = dom.add_node(4, [3.0, 0.0])
+    mat = Elastic1D(E=1.0, density=1.0)
+    dom.add_element(Truss2D(1, [n1, n2], mat, A=1.0))
+    dom.add_element(Truss2D(2, [n2, n3], mat, A=1.0))
+    dom.add_element(Truss2D(3, [n3, n4], mat, A=1.0))
+    n1.fix_dof("ux", 0.0); n1.fix_dof("uy", 0.0)
+    n2.fix_dof("uy", 0.0)
+    n3.fix_dof("uy", 0.0)
+    n4.fix_dof("ux", 0.0); n4.fix_dof("uy", 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    return dom, [dom.nodes[2].dofs["ux"], dom.nodes[3].dofs["ux"]]
+
+
+class TestCentralDifferenceCFLAnalytic(unittest.TestCase):
+    """Verifica que la frontera ``Δt_crit`` numérica coincide con la
+    expresión analítica ``Δt_crit = 2/ω_max``: por debajo, integración
+    estable; por encima, ``RuntimeError`` por divergencia CFL.
+
+    Cierra el hueco "CentralDifferenceSolver sin verificación de CFL
+    teórico" de la matriz de validación. Se ejecuta tanto en el
+    oscilador 1-GDL (ω_max = ω = 5) como en una cadena 2-DOF con
+    autovalores cerrados (ω_max = √3) — el segundo caso ejercita el
+    cálculo del máximo de la masa sobre múltiples modos.
+    """
+
+    def test_just_below_cfl_is_stable_1dof(self):
+        """``Δt = 0.95·Δt_crit`` ⇒ trayectoria acotada del oscilador 1-GDL."""
+        dt = 0.95 * DT_CRIT_1DOF
+        dom = _build_1dof_oscillator()
+        u0 = np.zeros(dom.total_dofs); u0[_free_dof(dom)] = 1.0
+        # ~30 ciclos de simulación.
+        T = 2.0 * math.pi / OMEGA_1DOF
+        res = CentralDifferenceSolver(
+            Assembler(dom), t_end=30.0 * T, dt=dt, u0=u0,
+        ).solve()
+        max_abs = float(np.max(np.abs(res.u_history)))
+        self.assertLess(max_abs, 1.5,
+                          f"Δt = 0.95·Δt_crit debería ser estable; |u|_max = {max_abs}")
+
+    def test_just_above_cfl_diverges_1dof(self):
+        """``Δt = 1.05·Δt_crit`` ⇒ ``RuntimeError`` CFL en el 1-GDL."""
+        dt = 1.05 * DT_CRIT_1DOF
+        dom = _build_1dof_oscillator()
+        u0 = np.zeros(dom.total_dofs); u0[_free_dof(dom)] = 1.0
+        solver = CentralDifferenceSolver(
+            Assembler(dom), t_end=200.0 * dt, dt=dt, u0=u0,
+        )
+        with self.assertRaisesRegex(RuntimeError, "divergencia.*CFL"):
+            solver.solve()
+
+    def test_just_below_cfl_is_stable_2dof(self):
+        """Cadena 2-DOF (ω_max = √3, Δt_crit = 2/√3): justo por debajo, estable."""
+        dt_crit = 2.0 / math.sqrt(3.0)
+        dt = 0.95 * dt_crit
+        dom, free_dofs = _build_2dof_analytic_chain()
+        u0 = np.zeros(dom.total_dofs)
+        u0[free_dofs[0]] = 1.0   # exitar el modo asimétrico
+        u0[free_dofs[1]] = -1.0
+        # 30 periodos del modo lento ω_min=1: T_min = 2π.
+        res = CentralDifferenceSolver(
+            Assembler(dom), t_end=30.0 * 2.0 * math.pi, dt=dt, u0=u0,
+        ).solve()
+        max_abs = float(np.max(np.abs(res.u_history)))
+        self.assertLess(max_abs, 2.0,
+                          f"Δt = 0.95·(2/√3) debería ser estable; |u|_max = {max_abs}")
+
+    def test_just_above_cfl_diverges_2dof(self):
+        """Cadena 2-DOF: ``Δt = 1.05·(2/√3)`` ⇒ ``RuntimeError`` CFL.
+
+        El modo ω_max = √3 desestabiliza primero al violarse su CFL local,
+        aunque ω_min = 1 estaría a salvo a este Δt. Es el verdadero test
+        de "Δt_crit gobernado por el modo más rápido".
+        """
+        dt_crit = 2.0 / math.sqrt(3.0)
+        dt = 1.05 * dt_crit
+        dom, free_dofs = _build_2dof_analytic_chain()
+        u0 = np.zeros(dom.total_dofs)
+        u0[free_dofs[0]] = 1.0
+        u0[free_dofs[1]] = -1.0
+        solver = CentralDifferenceSolver(
+            Assembler(dom), t_end=400.0 * dt, dt=dt, u0=u0,
+        )
+        with self.assertRaisesRegex(RuntimeError, "divergencia.*CFL"):
+            solver.solve()
+
+    def test_well_below_cfl_matches_analytic_solution_2dof(self):
+        """Cadena 2-DOF: con Δt = Δt_crit/10, la trayectoria coincide con
+        la superposición modal analítica.
+
+        Estado inicial ``(1, -1)`` (puro modo antisimétrico ``φ_2``) →
+        evolución armónica pura en ω_max = √3. La solución analítica
+        es ``u(t) = (cos(√3·t), -cos(√3·t))``.
+        """
+        dt_crit = 2.0 / math.sqrt(3.0)
+        dt = dt_crit / 10.0
+        dom, free_dofs = _build_2dof_analytic_chain()
+        u0 = np.zeros(dom.total_dofs)
+        u0[free_dofs[0]] = 1.0
+        u0[free_dofs[1]] = -1.0
+        # 2 periodos del modo rápido.
+        t_end = 2.0 * 2.0 * math.pi / math.sqrt(3.0)
+        res = CentralDifferenceSolver(
+            Assembler(dom), t_end=t_end, dt=dt, u0=u0,
+        ).solve()
+        t = res.t_history
+        u_analytic = np.cos(math.sqrt(3.0) * t)
+        # Banda 2% (O(Δt²) sobre 2 periodos del modo rápido).
+        err_d2 = float(np.max(np.abs(res.u_history[free_dofs[0], :] - u_analytic)))
+        err_d3 = float(np.max(np.abs(res.u_history[free_dofs[1], :] + u_analytic)))
+        self.assertLess(err_d2, 0.02,
+                          f"u(ux₂) − cos(√3·t) excede 2%: err={err_d2:.4f}")
+        self.assertLess(err_d3, 0.02,
+                          f"u(ux₃) + cos(√3·t) excede 2%: err={err_d3:.4f}")
+
+
+# ---------------------------------------------------------------------------
 # Modo no lineal — coincide con NewtonNewmark en régimen elástico
 # ---------------------------------------------------------------------------
 

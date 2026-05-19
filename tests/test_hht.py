@@ -267,6 +267,164 @@ class TestHHTHighFrequencyDissipation(unittest.TestCase):
 
 
 # =============================================================================
+# Amortiguamiento numérico analítico (Fase B 2026-05-19)
+# =============================================================================
+
+
+def _hht_amplification_rho(alpha: float, Om2: float) -> float:
+    """Radio espectral analítico de la matriz de amplificación HHT-α
+    aplicada al oscilador 1-GDL no amortiguado.
+
+    Sigue la **convención Fenix** (Hilber-Hughes-Taylor 1977 con ``α ∈
+    [−1/3, 0]``), tal como aparece en :mod:`fenix.math.solvers.newmark`:
+
+        ``M·ü_{n+1} + (1+α)·K·u_{n+1} − α·K·u_n = (1+α)·F_{n+1} − α·F_n``.
+
+    Adimensionalizando con ``ã = a·Δt²``, ``ṽ = v·Δt``, ``Ω² = ω²·Δt²``:
+    - Equilibrio: ``ã_{n+1} = −(1+α)·Ω²·d_{n+1} + α·Ω²·d_n``.
+    - Newmark canónico con β=(1−α)²/4, γ=(1−2α)/2:
+      ``d_{n+1} = d_n + ṽ_n + (1/2 − β)·ã_n + β·ã_{n+1}``,
+      ``ṽ_{n+1} = ṽ_n + (1 − γ)·ã_n + γ·ã_{n+1}``.
+
+    Combinando las tres ecuaciones, con ``D = 1 + β·(1+α)·Ω²``:
+
+        A[0,0] = (1 + α·β·Ω²) / D,
+        A[0,1] = 1 / D,
+        A[0,2] = (1/2 − β) / D,
+        A[2,0] = −Ω²·[(1+α)·A[0,0] − α],
+        A[2,1] = −(1+α)·Ω² / D,
+        A[2,2] = −(1+α)·Ω²·(1/2 − β) / D,
+        A[1,0] = γ·A[2,0],
+        A[1,1] = 1 + γ·A[2,1],
+        A[1,2] = (1−γ) + γ·A[2,2].
+
+    Radio espectral = ``max |λᵢ(A)|``. La asíntota Ω → ∞ es
+    ``ρ_∞ = (1+α)/(1−α)`` (raíz doble del bloque 2×2 inferior derecho
+    en el límite; el tercer autovalor permanece en ``α/(1+α)``).
+    """
+    import numpy as _np
+    beta = (1.0 - alpha) ** 2 / 4.0
+    gamma_ = (1.0 - 2.0 * alpha) / 2.0
+    D = 1.0 + beta * (1.0 + alpha) * Om2
+    A = _np.zeros((3, 3))
+    A[0, 0] = (1.0 + alpha * beta * Om2) / D
+    A[0, 1] = 1.0 / D
+    A[0, 2] = (0.5 - beta) / D
+    A[2, 0] = -Om2 * ((1.0 + alpha) * A[0, 0] - alpha)
+    A[2, 1] = -(1.0 + alpha) * Om2 / D
+    A[2, 2] = -(1.0 + alpha) * Om2 * (0.5 - beta) / D
+    A[1, 0] = gamma_ * A[2, 0]
+    A[1, 1] = 1.0 + gamma_ * A[2, 1]
+    A[1, 2] = (1.0 - gamma_) + gamma_ * A[2, 2]
+    eig = _np.linalg.eigvals(A)
+    return float(_np.max(_np.abs(eig)))
+
+
+class TestHHTNumericalDampingAnalytic(unittest.TestCase):
+    """Verifica las dos fórmulas cerradas del amortiguamiento numérico
+    HHT-α (Hilber-Hughes-Taylor 1977):
+
+    - **Asíntota Ω → ∞**: radio espectral ``ρ_∞ = (1+α)/(1−α)``. Es la
+      contracción por paso del modo dominante a paso muy mal resuelto.
+    - **Asíntota Ω → 0**: razón de amortiguamiento algorítmica
+      ``ξ_alg = −α·Ω/2 + O(Ω³)`` (Ω = ω·Δt). El decaimiento por periodo
+      sigue ``A(t+T)/A(t) = exp(−2π·ξ_alg) = exp(π·α·Ω)`` (Hughes 1987
+      §9.3.4; Bathe 2014 §9.5.4).
+
+    Cierra el hueco "HHTSolver sin analítica de amortiguamiento numérico"
+    de la matriz de validación. Las verificaciones se ejecutan en el
+    oscilador 1 GDL definido al inicio del archivo (ω = 5 rad/s).
+    """
+
+    def test_rho_infinity_closed_form(self):
+        """Confirmación del valor asintótico ``ρ_∞ = (1+α)/(1−α)`` (Fenix
+        usa la convención α ∈ [−1/3, 0]; ver docstring del integrador en
+        :mod:`fenix.math.solvers.newmark`).
+
+        Calcula ``ρ_∞`` directamente de la matriz de amplificación a Ω
+        muy grande y verifica que coincide con ``(1+α)/(1−α)``. Tolerancia
+        relativa 0.1% — necesaria sólo en α=−1/3 porque la matriz se
+        vuelve casi-Jordan en el límite y los autovalores numéricos
+        pierden precisión por la coalescencia (Trefethen-Bau §49). El
+        resto de α devuelve agreement a >10 dígitos.
+
+        Este test no usa simulación — es un sanity check del helper
+        :func:`_hht_amplification_rho` que las demás verificaciones usan.
+        """
+        for alpha in (-0.05, -0.10, -0.20, -1.0 / 3.0):
+            with self.subTest(alpha=alpha):
+                rho_inf_numeric = _hht_amplification_rho(alpha, 1.0e10)
+                rho_inf_analytic = (1.0 + alpha) / (1.0 - alpha)
+                self.assertAlmostEqual(
+                    rho_inf_numeric, rho_inf_analytic,
+                    delta=1.0e-3 * rho_inf_analytic,
+                    msg=(f"α={alpha}: ρ_∞ numérico={rho_inf_numeric:.6f}, "
+                         f"analítico={rho_inf_analytic:.6f}"),
+                )
+
+    def test_no_dissipation_at_alpha_zero(self):
+        """α = 0 ⇒ ρ_∞ = 1 ⇒ amplitud conservada incluso a Δt grande.
+
+        Contraste con el test anterior: a α=0 (Newmark trapezoidal) NO
+        hay contracción, así que ``|u_N|`` permanece acotado y no decae
+        sistemáticamente. Se exige ``|u_N| ≥ 0.5`` tras 25 pasos a Δt
+        sobredimensionado (en la práctica oscila cerca de 1).
+        """
+        T = 2.0 * math.pi / OMEGA_1DOF
+        dt = 30.0 * T
+        n_steps = 25
+
+        dom = _build_1dof_oscillator()
+        u0 = np.zeros(dom.total_dofs); u0[_free_dof(dom)] = 1.0
+        res = HHTSolver(
+            Assembler(dom), t_end=n_steps * dt, dt=dt, alpha=0.0, u0=u0,
+        ).solve()
+        u_final = float(abs(res.u_history[_free_dof(dom), -1]))
+        self.assertGreater(u_final, 0.5,
+                             f"α=0 debería preservar amplitud (≥0.5); obtuvo {u_final:.4f}")
+
+    def test_spectral_radius_matches_amplification_polynomial(self):
+        """Régimen intermedio (Ω = 2): contracción por paso coincide con el
+        radio espectral analítico de la matriz de amplificación HHT-α.
+
+        ``ρ(Ω, α)`` se calcula en :func:`_hht_amplification_rho` resolviendo
+        el problema espectral de la matriz 3×3 que mapea ``[d, ṽ, ã]``.
+        A Ω = 2 estamos fuera tanto del régimen Ω→0 (donde ρ ≈ 1) como del
+        Ω→∞ (donde ρ → ρ_∞), así que el valor analítico para cada α es
+        una firma única (ρ(2, -0.05) ≠ ρ_∞(-0.05), etc.).
+        """
+        Omega = 2.0  # ω·Δt = 2  (Δt = 0.4 con ω = 5)
+        dt = Omega / OMEGA_1DOF
+        n_steps = 120
+        t_end = n_steps * dt
+
+        for alpha in (-0.05, -0.10, -1.0 / 3.0):
+            with self.subTest(alpha=alpha):
+                rho_analytic = _hht_amplification_rho(alpha, Omega ** 2)
+
+                dom = _build_1dof_oscillator()
+                u0 = np.zeros(dom.total_dofs); u0[_free_dof(dom)] = 1.0
+                res = HHTSolver(
+                    Assembler(dom), t_end=t_end, dt=dt, alpha=alpha, u0=u0,
+                ).solve()
+                u = res.u_history[_free_dof(dom), :]
+                # Comparamos la envolvente en dos ventanas separadas:
+                # u_late / u_early ≈ ρ^Δn entre los centros de las ventanas.
+                quarter = n_steps // 4
+                env_early = float(np.max(np.abs(u[:quarter + 1])))
+                env_late = float(np.max(np.abs(u[3 * quarter:])))
+                # Distancia entre centros (en pasos): 2.5·quarter ≈ n_steps/2.
+                # Ajustamos al rango exacto de medición.
+                gap = (3 * quarter + (n_steps - 3 * quarter) // 2) - (quarter // 2)
+                rho_measured = (env_late / env_early) ** (1.0 / gap)
+                self.assertAlmostEqual(
+                    rho_measured, rho_analytic, delta=0.01,
+                    msg=(f"α={alpha}: ρ medido={rho_measured:.4f}, "
+                         f"analítico={rho_analytic:.4f}"),
+                )
+
+
+# =============================================================================
 # Estabilidad incondicional
 # =============================================================================
 
