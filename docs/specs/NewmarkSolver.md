@@ -103,10 +103,10 @@ conventions:
     el solver no comprueba esta cota automáticamente.
 
 out_of_scope:
-  - "No-linealidad (Newton dentro de Newmark) — fase 4 del ADR 0009."
   - "Apoyos dependientes del tiempo (multi-support excitation sísmica) — diferido."
   - "Δt adaptativo — diferido."
-  - "HHT-α, generalized-α y otros esquemas con amortiguamiento numérico — diferidos."
+  - "Generalized-α, Bossak-α — diferidos (variantes adicionales de la familia con amortiguamiento numérico)."
+  - "No-linealidad y disipación numérica controlada — implementados como variantes en clases hermanas (`NewtonNewmarkSolver`, `HHTSolver`, `NewtonHHTSolver`); fases 4 y 3-bis del ADR 0009, cerradas."
 
 acceptance:
   verification:

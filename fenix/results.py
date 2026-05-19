@@ -1,14 +1,31 @@
 """API pública de resultados de una solución (ADR 0002).
 
-Contiene los tipos de dato que exponen los resultados al exterior:
+Contiene los tipos de dato que exponen los resultados al exterior. Todos son
+``frozen`` para impedir que un consumidor mute resultados y sorprenda a otro
+posterior:
 
 - :class:`ElementForces`: esfuerzos internos en ejes locales de un elemento, en
   los nodos i, j. Convenciones de signo definidas en ``Reglas.md §5``.
-- :class:`SolveResult`: agregado inmutable producido al final de ``solver.solve``
-  y retenido por el ``Domain`` en ``last_result``.
+- :class:`SolveResult`: agregado de un análisis estático — desplazamientos,
+  reacciones, fuerzas internas. Producido por ``LinearSolver``,
+  ``NonlinearSolver``, ``ArcLengthSolver``.
+- :class:`ModalResult`: frecuencias propias y modos M-ortonormales del problema
+  ``K·φ = ω²·M·φ`` (ADR 0009 fase 1). Expone ``free_vibration`` como wrapper
+  delgado sobre ``fenix.math.modal_response``.
+- :class:`TransientResult`: historiales temporales ``(t, u, u̇, ü)`` de un
+  análisis dinámico transitorio (ADR 0009 fases 3, 4 y 5). Producido por
+  ``NewmarkSolver``, ``NewtonNewmarkSolver``, ``HHTSolver``,
+  ``NewtonHHTSolver``, ``CentralDifferenceSolver``.
+- :class:`HarmonicResult`: amplitud compleja ``û(ω)`` por barrido en frecuencia
+  (ADR 0009 fase 6). Producido por ``HarmonicSolver``. Métodos derivados
+  ``.amplitude()`` y ``.phase()``.
+- :class:`ResponseSpectrumResult`: envolvente máxima por combinación modal
+  SRSS/CQC contra espectro de respuesta (ADR 0009 fase 7). Producido por
+  ``ResponseSpectrumSolver``. Incluye factores de participación, masas
+  efectivas y método ``.cumulative_effective_mass_ratio()``.
 
-Ambos son ``frozen`` para impedir que un consumidor mute resultados y sorprenda
-a otro posterior.
+Cada solver retorna el ``Result`` específico de su pipeline; el `Domain`
+cachea el último en ``domain.last_result`` independientemente del tipo.
 """
 
 from __future__ import annotations

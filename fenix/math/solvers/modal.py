@@ -38,13 +38,16 @@ class ModalSolver:
     tolerance : float, default 1.0e-9
         Tolerancia ARPACK sobre el residuo del autovalor.
     lumping : str, default "consistent"
-        Discretización de la masa. Solo ``"consistent"`` implementada en
-        fase 1 (ADR 0009 §1).
+        Discretización de la masa. Valores: ``"consistent"`` (default) o
+        ``"lumped"`` (ADR 0009 fases 1 y 2, ambas cerradas). El esquema
+        lumped delega en ``fenix.math.mass_lumping.lump_hrz`` para sólidos
+        isoparamétricos y en la fórmula nodal directa de cada elemento
+        para vigas/marcos.
     linear_algebra : str, default "auto"
-        Reservado. En fase 1 ARPACK usa su factorización LU interna sin
-        override; el parámetro vive aquí para coherencia con los demás
-        solvers y para no romper la firma cuando se cablee a la capa
-        algebraica (ADR 0003).
+        Reservado. ARPACK usa su factorización LU interna sin override;
+        el parámetro vive aquí para coherencia con los demás solvers y
+        para no romper la firma cuando se cablee a la capa algebraica
+        (ADR 0003).
     """
 
     PIPELINE_KIND = "modal"

@@ -4350,10 +4350,9 @@ conventions:
   rigid_body:   "modos de cuerpo rígido aparecen con ω≈0; T=∞ se reporta sin error."
 
 out_of_scope:
-  - "Masa lumped (fase 2 del ADR 0009)."
-  - "Masas modales efectivas y factores de participación (fase 7, análisis sísmico)."
   - "Modos complejos con amortiguamiento no proporcional."
   - "Análisis modal sobre estado deformado (modos de pequeña amplitud alrededor de configuración prestressed) — diferido."
+  - "Masa lumped y factores de participación / masas efectivas — implementados (fase 2 y fase 7 del ADR 0009, cerradas 2026-05-18); accesibles vía `lumping='lumped'` y `ResponseSpectrumSolver` respectivamente."
 
 acceptance:
   verification:
@@ -4422,7 +4421,7 @@ references:
   \item \texttt{TestModalAxialBar}: barra empotrada-libre, 20 elementos Truss2D, frecuencias contra \texttt{\ensuremath{\omega}\_n = ((2n-1)\ensuremath{\pi}/(2L))\ensuremath{\cdot}\ensuremath{\surd}(E/\ensuremath{\rho})} (tol 1\%).
   \item \texttt{TestModalSimplySupportedBeam}: viga biapoyada, 20 elementos Frame2DEuler, frecuencias contra \texttt{\ensuremath{\omega}\_n = (n\ensuremath{\pi}/L)\ensuremath{^{2}}\ensuremath{\cdot}\ensuremath{\surd}(EI/(\ensuremath{\rho}A))} (tol 2\%).
   \item \texttt{TestModalAlgebraicProperties}: ortonormalidad \texttt{\ensuremath{\Phi}\ensuremath{^{\top}}M\ensuremath{\Phi} = I} (atol 1e-10) y ortogonalidad \texttt{\ensuremath{\Phi}\ensuremath{^{\top}}K\ensuremath{\Phi} = diag(\ensuremath{\omega}\ensuremath{^{2}})} (rtol 1e-8) en ambos modelos.
-  \item \texttt{TestModalSolverContract}: errores agregados (\texttt{density} faltante, \texttt{lumping="lumped"} no implementado, \texttt{run\_modal} sin solver ni n\_modes).
+  \item \texttt{TestModalSolverContract}: errores agregados (\texttt{density} faltante, \texttt{run\_modal} sin solver ni n\_modes) y verificación de que \texttt{lumping="lumped"} corre tras ADR 0009 fase 2 (cerrada 2026-05-18).
   \item \texttt{TestModalYamlPipeline}: pipeline end-to-end desde YAML.
   \item \textbf{Notas de traducción}:
   \item El parámetro \texttt{linear\_algebra} está en el constructor por coherencia con los demás solvers, pero en fase 1 no se usa: ARPACK gestiona internamente la factorización LU de \texttt{(K − \ensuremath{\sigma}M)} para shift-invert. Cuando se enchufe a la capa algebraica (ADR 0003), se podrá inyectar Cholesky o LDL\ensuremath{^{\top}}.
@@ -4573,10 +4572,10 @@ conventions:
     el solver no comprueba esta cota automáticamente.
 
 out_of_scope:
-  - "No-linealidad (Newton dentro de Newmark) — fase 4 del ADR 0009."
   - "Apoyos dependientes del tiempo (multi-support excitation sísmica) — diferido."
   - "Δt adaptativo — diferido."
-  - "HHT-α, generalized-α y otros esquemas con amortiguamiento numérico — diferidos."
+  - "Generalized-α, Bossak-α — diferidos (variantes adicionales de la familia con amortiguamiento numérico)."
+  - "No-linealidad y disipación numérica controlada — implementados como variantes en clases hermanas (`NewtonNewmarkSolver`, `HHTSolver`, `NewtonHHTSolver`); fases 4 y 3-bis del ADR 0009, cerradas."
 
 acceptance:
   verification:
@@ -4854,7 +4853,7 @@ references:
   \item Volcar historial; reportar éxito.
 \end{enumerate}
 \begin{itemize}
-  \item \textbf{Refactor del padre}: la fase 3 (\texttt{NewmarkSolver}) sigue intacta. La subclase no extrae métodos del padre por ahora (el flujo no lineal es lo suficientemente distinto como para que la herencia sea estructural, no compartición de pasos internos). Si emergen variantes adicionales (HHT-\ensuremath{\alpha}, generalized-\ensuremath{\alpha}) y se ve que comparten \textit{este} flujo no lineal específico, entonces se refactoriza al patrón con \texttt{\_solve\_step} virtual.
+  \item \textbf{Refactor del padre}: la fase 3 (\texttt{NewmarkSolver}) sigue intacta. La subclase no extrae métodos del padre por ahora (el flujo no lineal es lo suficientemente distinto como para que la herencia sea estructural, no compartición de pasos internos). Cuando emergió la variante HHT-\ensuremath{\alpha} (2026-05-18, \texttt{NewtonHHTSolver} como subclase de \texttt{NewtonNewmarkSolver}) la herencia estructural funcionó tal cual --- los métodos \texttt{solve()} se sobrescriben íntegramente en cada subclase sin compartir pasos internos. Si en el futuro entran generalized-\ensuremath{\alpha} u otras variantes y se observa que comparten \textit{este} flujo no lineal específico, entonces se refactorizará al patrón con \texttt{\_solve\_step} virtual.
   \item \textbf{Despacho YAML}: \texttt{solver: type: NewtonNewmarkSolver} activado vía \texttt{SolverRegistry} y \texttt{run\_yaml}. Como en \texttt{NewmarkSolver}, \texttt{PIPELINE\_KIND = "transient"} declarativo: si futura regla disparo C reemplaza el \texttt{isinstance} en \texttt{entry.run\_yaml}, no se rompe.
   \item \textbf{Tests}:
   \item tests/test\_newmark\_nonlinear.py nuevo: acceptance.

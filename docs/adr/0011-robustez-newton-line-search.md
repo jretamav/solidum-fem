@@ -165,9 +165,12 @@ commit del ADR para reflejar:
 
 **Hacia adelante**:
 
-- Solvers futuros (HHT-α, Riks generalizado, etc.) consumen el mismo
-  patrón de line search y excepciones tipadas. El módulo
-  `fenix/math/solvers/diagnostics.py` es punto único.
+- HHT-α ya consume el mismo patrón: `NewtonHHTSolver` (2026-05-18,
+  ADR 0009 variante de fase 4) hereda el `line_search` opcional y la
+  jerarquía de excepciones tipadas de `NewtonNewmarkSolver` sin tocar
+  el módulo `fenix/math/solvers/diagnostics.py`. Otros solvers no
+  lineales futuros (Riks generalizado, BFGS) consumirán el mismo
+  patrón.
 - El modo `oscillating` con line search activado y aun así divergiendo es
   señal de que el problema requiere una globalización más fuerte (trust
   region, Cauchy mixto). Marca natural para retomar.

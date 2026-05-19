@@ -11,7 +11,8 @@ Cubre:
    - Componente nula del modo en DOFs prescritos por Dirichlet.
 3. Contrato del solver:
    - ``density`` faltante en cualquier material → ``ValueError`` agregado.
-   - ``lumping="lumped"`` aún no implementado → ``NotImplementedError``.
+   - ``lumping="lumped"`` corre tras ADR 0009 fase 2 (cerrada 2026-05-18);
+     la validación cuantitativa vive en ``tests/test_mass_lumping.py``.
    - Cableado YAML: ``solver: type: ModalSolver``.
 """
 import math

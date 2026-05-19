@@ -88,10 +88,9 @@ conventions:
   rigid_body:   "modos de cuerpo rígido aparecen con ω≈0; T=∞ se reporta sin error."
 
 out_of_scope:
-  - "Masa lumped (fase 2 del ADR 0009)."
-  - "Masas modales efectivas y factores de participación (fase 7, análisis sísmico)."
   - "Modos complejos con amortiguamiento no proporcional."
   - "Análisis modal sobre estado deformado (modos de pequeña amplitud alrededor de configuración prestressed) — diferido."
+  - "Masa lumped y factores de participación / masas efectivas — implementados (fase 2 y fase 7 del ADR 0009, cerradas 2026-05-18); accesibles vía `lumping='lumped'` y `ResponseSpectrumSolver` respectivamente."
 
 acceptance:
   verification:
@@ -159,7 +158,7 @@ references:
     - `TestModalAxialBar`: barra empotrada-libre, 20 elementos Truss2D, frecuencias contra `ω_n = ((2n-1)π/(2L))·√(E/ρ)` (tol 1%).
     - `TestModalSimplySupportedBeam`: viga biapoyada, 20 elementos Frame2DEuler, frecuencias contra `ω_n = (nπ/L)²·√(EI/(ρA))` (tol 2%).
     - `TestModalAlgebraicProperties`: ortonormalidad `ΦᵀMΦ = I` (atol 1e-10) y ortogonalidad `ΦᵀKΦ = diag(ω²)` (rtol 1e-8) en ambos modelos.
-    - `TestModalSolverContract`: errores agregados (`density` faltante, `lumping="lumped"` no implementado, `run_modal` sin solver ni n_modes).
+    - `TestModalSolverContract`: errores agregados (`density` faltante, `run_modal` sin solver ni n_modes) y verificación de que `lumping="lumped"` corre tras ADR 0009 fase 2 (cerrada 2026-05-18).
     - `TestModalYamlPipeline`: pipeline end-to-end desde YAML.
 - **Notas de traducción**:
   - El parámetro `linear_algebra` está en el constructor por coherencia con los demás solvers, pero en fase 1 no se usa: ARPACK gestiona internamente la factorización LU de `(K − σM)` para shift-invert. Cuando se enchufe a la capa algebraica (ADR 0003), se podrá inyectar Cholesky o LDLᵀ.
