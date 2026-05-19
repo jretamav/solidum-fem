@@ -1,0 +1,58 @@
+# Archivo de entrada Fenix FEM: Análisis de respuesta forzada armónica
+# en el dominio de la frecuencia (ADR 0009 fase 6).
+#
+# Estructura: barra axial Truss2D L=1 m, A=1 m², E=25 Pa, ρ=3 kg/m³
+# (masa consistente). Frecuencia natural ω_n = √(EA/L · 3/(ρAL)) = 5 rad/s.
+#
+# Excitación armónica de amplitud unitaria sobre el DOF libre. El solver
+# barre un rango de frecuencias [1, 10] rad/s y devuelve la amplitud
+# compleja û(ω) en cada una; se observa el pico de resonancia cerca de
+# ω_n = 5 rad/s, atenuado por amortiguamiento Rayleigh ξ ≈ 5%.
+#
+# Las point_loads del bloque estándar se inyectan automáticamente como
+# F_amplitude real (parte imaginaria cero — sin fase). Cargas con fase
+# requieren construcción desde código Python (YAML no soporta complejos).
+#
+# Ejecutar:
+#   python -c "
+#   from fenix.entry import run_yaml
+#   r = run_yaml('examples/modelo_harmonic.yaml')
+#   amp = r.amplitude()
+#   import numpy as np
+#   idx_peak = int(np.argmax(amp.max(axis=0)))
+#   print(f'Pico de resonancia en omega = {r.omega[idx_peak]:.4f} rad/s')
+#   print(f'|u_max| en el pico = {amp.max():.4e}')
+#   "
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+
+materials:
+  - id: 1
+    type: Elastic1D
+    E: 25.0
+    density: 3.0
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, A: 1.0, nodes: [1, 2]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 2, uy: 0.0}
+
+# point_loads se inyectan automáticamente como F_amplitude real
+# (amplitud de la excitación armónica) cuando el solver es HarmonicSolver.
+point_loads:
+  - {node_id: 2, ux: 1.0}
+
+solver:
+  type: HarmonicSolver
+  omega_min: 1.0
+  omega_max: 10.0
+  n_omega: 91              # paso de 0.1 rad/s — captura bien el pico
+  scale: linear            # alternativa: "log" con geomspace
+  rayleigh:
+    # ξ ≈ 5% en ω_n = 5 con amortiguamiento masa-pura: α = 2·ξ·ω_n.
+    alpha: 0.5             # α = 2·0.05·5 = 0.5
+    beta: 0.0

@@ -1,0 +1,63 @@
+# Archivo de entrada Fenix FEM: Análisis sísmico por combinación modal
+# espectral (ADR 0009 fase 7).
+#
+# Estructura: barra axial Truss2D discretizada en 3 elementos, configura un
+# sistema MDOF axial con 3 DOFs libres en ux. Bajo excitación rígida en
+# la dirección x (vector r con 1 en cada ux libre), el solver:
+#
+#   1. Calcula los 2 primeros modos vía ModalSolver interno.
+#   2. Aplica Γ_n = φ_nᵀ·M·r para los factores de participación.
+#   3. Evalúa S_d(ω_n) interpolando el espectro tabulado (declarado en kind=Sa,
+#      el solver lo convierte internamente a Sd = Sa/ω²).
+#   4. Combina las respuestas modales máximas con SRSS.
+#
+# Espectro tabulado simulando una respuesta tipo NCh-433 / ASCE 7 simplificada:
+# plataforma de aceleración constante en periodos cortos, caída en periodos
+# largos. La interpolación es lineal en periodo.
+#
+# Ejecutar:
+#   python -c "
+#   from fenix.entry import run_yaml
+#   r = run_yaml('examples/modelo_response_spectrum.yaml')
+#   print('Frecuencias propias [rad/s]:', r.frequencies_rad)
+#   print('Factores de participación:', r.participation_factors)
+#   print('Masas efectivas (Γ²):', r.effective_masses)
+#   print('Razón de masa efectiva acumulada:', r.cumulative_effective_mass_ratio())
+#   print('Desplazamiento máximo combinado SRSS:', r.u_combined)
+#   "
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [2.0, 0.0]}
+  - {id: 4, coords: [3.0, 0.0]}
+
+materials:
+  - id: 1
+    type: Elastic1D
+    E: 25.0
+    density: 3.0
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, A: 1.0, nodes: [1, 2]}
+  - {id: 2, type: Truss2D, material: 1, A: 1.0, nodes: [2, 3]}
+  - {id: 3, type: Truss2D, material: 1, A: 1.0, nodes: [3, 4]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 2, uy: 0.0}
+  - {node_id: 3, uy: 0.0}
+  - {node_id: 4, uy: 0.0}
+
+solver:
+  type: ResponseSpectrumSolver
+  n_modes: 2               # de los 3 modos disponibles del subespacio libre
+  direction:
+    dof_name: ux           # vector unitario en ux de cada nodo
+  spectrum:
+    type: tabulated
+    kind: Sa               # aceleración espectral; el solver convierte a Sd
+    periods: [0.1, 0.5, 1.0, 2.0, 5.0]      # segundos
+    values:  [10.0, 10.0, 5.0, 1.0, 0.25]   # m/s² (depende de unidades del modelo)
+  combination: SRSS        # alternativa: "CQC" para modos cercanos
+  damping: 0.05            # ξ = 5% — sólo usado por CQC, ignorado por SRSS

@@ -1,5 +1,7 @@
 # Esquemas de Solución
 
+Este capítulo cubre los **solvers estáticos** del catálogo: lineal, no lineal (Newton-Raphson) y arc-length (Crisfield cilíndrico). Los solvers de análisis modal, dinámico (Newmark, HHT-α, central differences) y de análisis en frecuencia / espectral (Harmonic, Response Spectrum) se documentan en el siguiente capítulo, "Análisis Dinámico".
+
 ## `LinearSolver` — solución directa lineal
 
 Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ en un único `spsolve`. Las condiciones de Dirichlet se imponen por eliminación directa (ADR 0004): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.

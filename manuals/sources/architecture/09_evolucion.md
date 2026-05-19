@@ -73,12 +73,12 @@ Integración temporal directa de la ecuación de movimiento semidiscreta `M·ü 
 Bajo. La decisión 5 del ADR 0009 (estado dinámico fuera de `Node`, en `TransientResult`) preserva la pureza topológica/geométrica de `Node` y evita que análisis estáticos paguen el coste de campos que no usan. La semántica *trial* / comprometido del estado interno de elementos (ADR sobre `ElementState`) sigue intacta porque la fase 3 es lineal: no hay variables internas que evolucionen.
 ```
 
-**Limitaciones declaradas en esta fase**:
+**Limitaciones declaradas en esta fase 3**:
 
-- Solo lineal: `K, M` constantes. No-linealidad (Newton dentro de Newmark) diferida a la fase 4.
+- Solo lineal: `K, M` constantes. No-linealidad (Newton dentro de Newmark) entregada en la fase 4.
 - Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
 - `Δt` fijo; adaptativo diferido.
-- Esquemas con amortiguamiento numérico controlado (HHT-α, generalized-α) diferidos a subclase futura.
+- Esquemas con amortiguamiento numérico controlado (HHT-α) entregados en 2026-05-18 como variante de la familia Newmark.
 
 ## Fase 4 — Dinámica estructural transitoria no lineal
 
@@ -97,6 +97,39 @@ Bajo. La decisión 5 del ADR 0009 (estado dinámico fuera de `Node`, en `Transie
 
 ```callout Riesgo de arquitectura
 Bajo en la práctica: toda la infraestructura ya existía. El `NonlinearSolver` estático aportaba calibración de convergencia, fallback de positividad y Newton modificado; la fase 3 aportaba predictores/correctores Newmark y reducción de Dirichlet. La fase 4 es la composición exacta de ambas, formalizada como subclase para no duplicar código.
+```
+
+## Fase 4 (extensión 2026-05-18) — Cierre completo del subsistema modal/dinámico/espectral
+
+**Estado**: implementado (ADR 0009 fases 2, 5, 6, 7 + variante HHT-α + reglas C y D de auditoría aplicadas).
+
+Las cuatro fases pendientes del ADR 0009 se cierran en una secuencia obligada (cada una precondición de la siguiente) sin reabrir las decisiones arquitecturales tomadas en el ADR original:
+
+**Mass lumping (fase 2)** — `compute_mass_matrix(lumping="lumped")` operativo en todos los elementos. Helper centralizado `fenix.math.mass_lumping.lump_hrz` con esquema HRZ canónico (Hinton-Rock-Zienkiewicz 1976) para sólidos isoparamétricos y fórmula nodal directa para frames. Diagonalidad estricta en globales para todos los elementos excepto Frame3D con eje oblicuo (queda bloque-diagonal — limitación documentada, Cook-Malkus-Plesha §11.4).
+
+**HHT-α (variante)** — `HHTSolver` y `NewtonHHTSolver` como variantes de la familia Newmark (Reglas §4 — spec corta sin ADR nuevo). Disipación numérica controlada por `α ∈ [−1/3, 0]` con `(β, γ)` auto-derivados canónicamente.
+
+**Central differences (fase 5)** — `CentralDifferenceSolver` con leapfrog explícito Belytschko-Liu-Moran. Una sola clase cubre lineal y no lineal con parámetro `nonlinear`. Requiere masa lumped (`lumping="consistent"` rechazado con `ValueError`). Estabilidad condicional CFL con detección a posteriori de divergencia exponencial.
+
+**Harmonic (fase 6)** — `HarmonicSolver` resuelve `(−ω²M + iωC + K)·û = F̂` con aritmética compleja para un barrido en `ω`. Factorización LU compleja por frecuencia. Nuevo `HarmonicResult` con métodos `.amplitude()` y `.phase()`. Cuarto valor del literal `PIPELINE_KIND` (ver regla C abajo).
+
+**Response spectrum (fase 7)** — `ResponseSpectrumSolver` combina respuestas máximas modales bajo un espectro `S_d(ω)` o `S_a(ω)` por SRSS (default) o CQC (Der Kiureghian 1980, para modos cercanos). Devuelve `ResponseSpectrumResult` con respuesta envolvente, contribución modal individual, factores de participación, masas efectivas y método `.cumulative_effective_mass_ratio()` para verificación normativa (≥ 0.9).
+
+**Reglas C y D aplicadas durante esta extensión** (auditoría arquitectural 2026-05-13):
+
+- **Regla C** — `entry.py::run_yaml` despacha por atributo de clase `PIPELINE_KIND ∈ {"static", "modal", "transient", "harmonic", "spectrum"}` en lugar de cadena de `isinstance`. Solvers no clásicos futuros no requieren tocar `entry.py`.
+- **Regla D** — `fenix/math/modal_response.py` agrupa todos los cómputos sobre modos: `free_vibration` (movido desde `results.py`), `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, helpers de espectros (`spectrum_from_sa`, `spectrum_tabulated`). `ModalResult.free_vibration` queda como wrapper delgado preservando la API histórica. `results.py` vuelve a su propósito declarado: dataclasses inmutables, no algoritmos.
+
+**Topología efectiva** tras la extensión:
+
+```
+[Entrada] - [Inicializacion] - [Interprete: PIPELINE_KIND] - [Dominio] - [Numerica: K, M, C, lump_hrz, modal_response] - [Salida]
+                                                                                                                          |
+                            [run, run_modal, run_transient, run_harmonic, run_response_spectrum]    →    [Result type específico]
+```
+
+```callout Riesgo de arquitectura
+Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo `mass_lumping.py`, nuevo módulo `modal_response.py`, cinco solvers nuevos en `fenix/math/solvers/`, dos `Result` nuevos (`HarmonicResult`, `ResponseSpectrumResult`). El despacho declarativo `PIPELINE_KIND` reemplaza la cadena de `isinstance` sin romper contratos — los solvers existentes heredan el nuevo atributo. La regla D centraliza algoritmos sin modificar la API pública de `ModalResult`.
 ```
 
 ## Fase 5 — Problema térmico estacionario y transitorio

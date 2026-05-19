@@ -11,10 +11,11 @@
 Fenix FEM es un programa de elementos finitos en aproximación de desplazamientos para **investigación en mecánica de sólidos** (mecánico ± térmico, acoplado o desacoplado). Hoy resuelve:
 
 - Estática lineal y no lineal (material y geométrica) sobre **1D estructural** y **sólidos 2D**.
-- Análisis modal y dinámica transitoria (lineal y no lineal con Newmark).
-- Catálogo de materiales con plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo.
+- **Subsistema modal/dinámico/espectral completo** (ADR 0009 cerrado 2026-05-18): modal por autovalores generalizados, transitorio implícito Newmark/HHT-α (lineal y no lineal con Newton), transitorio explícito por diferencias centradas, respuesta forzada armónica en frecuencia y análisis sísmico por combinación modal espectral (SRSS/CQC).
+- Catálogo de materiales con plasticidad J2 (plane strain + plane stress), Drucker-Prager, daño isótropo y cohesivo traction-jump.
+- Fractura computacional vía discontinuidades embebidas (CST_Embedded2D con condensación local).
 
-Lo que **no** resuelve aún: sólidos 3D, placas/láminas, térmico, contacto. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
+Lo que **no** resuelve aún: sólidos 3D, placas/láminas, térmico, contacto, Mohr-Coulomb, FiberSection. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
 
 ---
 
@@ -24,9 +25,9 @@ Para arrancar sin contexto previo, lee en este orden — **no necesitas más par
 
 1. **[Reglas.md](../Reglas.md)** (~5 min): contrato Usuario ↔ IA. Identidad del proyecto, división de dominios, convenciones de signos, salvaguardas. **Volver siempre que dudes sobre qué decisión te toca**.
 2. **[STATUS.md](STATUS.md)** (~2 min): foto del estado actual. Métricas, capacidades, deuda técnica, próximo hito.
-3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente (Etapa 5). Da contexto histórico.
+3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-6 cerradas; Etapa 7 abierta entre las opciones A, B, C, E del catálogo de bifurcaciones.
 4. **[MATRIZ.md](MATRIZ.md)** (~3 min): qué combinaciones elemento × material son válidas y testeadas.
-5. **Último ADR aceptado** (hoy [ADR 0010 — Discontinuidades interiores embebidas](adr/0010-discontinuidades-interiores-embebidas.md)): para entender la última decisión arquitectural grande. Apunta la **Etapa 5 en curso** (fractura computacional vía embedded discontinuity, fiel a la tesis del usuario, fase 1 = material cohesivo `CohesiveDamageIsotropic` cuya spec está en estado `draft`).
+5. **Último ADR aceptado** ([ADR 0011 — Robustez de Newton-Raphson con line search](adr/0011-robustez-newton-line-search.md)): para entender la última decisión arquitectural grande. Línea de fractura computacional articulada por [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md); subsistema dinámico/modal/espectral articulado por [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (cerrado en su totalidad 2026-05-18, fases 1-7 + variante HHT-α + reglas C y D aplicadas).
 
 Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/specs/<Nombre>.md` y su entrada en `docs/catalogo_<elementos|materiales|solvers>.md`.
 
@@ -42,11 +43,15 @@ fenix_fem/
 │   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/
 │   ├── materials/                ← elastic, plastic_1d, von_mises_2d, drucker_prager_2d, damage_*
 │   ├── math/
-│   │   ├── solvers/              ← linear, nonlinear, arclength, modal, newmark
+│   │   ├── solvers/              ← linear, nonlinear, arclength, modal, newmark (+HHT),
+│   │   │                            central_difference, harmonic, response_spectrum
 │   │   ├── linalg/               ← dispatcher, eigen
+│   │   ├── mass_lumping.py       ← HRZ canónico (ADR 0009 fase 2)
+│   │   ├── modal_response.py     ← free_vibration + SRSS/CQC + helpers de espectros
 │   │   ├── integration.py        ← QuadratureRegistry
 │   │   └── geometry.py, damping.py, convergence.py
-│   ├── results.py                ← SolveResult, ModalResult, TransientResult
+│   ├── results.py                ← SolveResult, ModalResult, TransientResult,
+│   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
 ├── tests/                        ← 401 verdes + 5 skipped (pytest)

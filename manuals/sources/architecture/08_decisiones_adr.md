@@ -98,7 +98,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 ## ADR 0009 — Análisis modal y dinámico
 
-**Fecha**: 13 de mayo de 2026. **Estado**: aceptado; fases 1 (modal), 3 (Newmark transitorio lineal) y 4 (Newton-Newmark transitorio no lineal) implementadas.
+**Fecha**: 13 de mayo de 2026. **Estado**: aceptado; **todas las fases (1-7) implementadas** al 18 de mayo de 2026, junto con la variante HHT-α y las reglas C y D de refactor arquitectural aplicadas.
 
 **Contexto.** El ADR 0003 había identificado análisis modal y dinámica implícita entre los análisis futuros que la capa algebraica iba a habilitar; el ADR 0008 había puesto la densidad como propiedad del material disponible. Quedaba abrir el subsistema con dos análisis distintos pero relacionados: el análisis modal — problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ` —, cuyas soluciones admiten interpretación dinámica pero no constituyen análisis dinámico per se; y el análisis dinámico propiamente dicho, con dependencia temporal explícita — integración de `M · ü + C · u̇ + K · u = F(t)`.
 
@@ -112,9 +112,23 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 6. Amortiguamiento Rayleigh `C = α · M + β · K` como entrada estándar para la fase de dinámica transitoria, con coeficientes calibrables modalmente a partir de dos pares `(ξ, ω)`. Amortiguamiento modal por modo y otros esquemas (Caughey, local) diferidos.
 7. Convención de unidades heredada del modelo (ADR 0008): el usuario es responsable de la consistencia; las tolerancias adimensionales del ADR 0007 garantizan invariancia bajo cambio de unidades.
 
-La fase 1 (`ModalSolver` + ARPACK Lanczos con shift-invert), la fase 3 (`NewmarkSolver` con `(β, γ)` parametrizables, factorización única de la matriz efectiva, Rayleigh proporcional y cargas por callback Python) y la fase 4 (`NewtonNewmarkSolver` — subclase de `NewmarkSolver` que añade Newton-Raphson dentro de cada paso con jacobiano `J = M + γΔt·C + βΔt²·K_t`, convergencia dual del ADR 0007, Rayleigh constante calibrado con `K_0`) quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad.
+Las siete fases quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad:
 
-**Consecuencia.** El subsistema dinámico se cierra con el alcance descrito; las fases 2 (lumped), 5 (diferencias centradas), 6 (respuesta en frecuencia) y 7 (análisis espectral / sísmico modal) quedan tabuladas en la hoja de ruta del ADR sin reabrir las decisiones arquitecturales tomadas aquí. La clase `Node` conserva su semántica original.
+- **Fase 1** (`ModalSolver` + ARPACK Lanczos con shift-invert). Cerrada 2026-05-13.
+- **Fase 2** (mass lumping HRZ canónico en sólidos + nodal directo en frames). Helper centralizado `fenix.math.mass_lumping.lump_hrz`. Cerrada 2026-05-18 (commit `c92bf4e`).
+- **Fase 3** (`NewmarkSolver` con `(β, γ)` parametrizables, factorización única, Rayleigh, cargas por callback). Cerrada 2026-05-13.
+- **Fase 3-bis** (`HHTSolver` como variante de Newmark con disipación numérica controlada por `α ∈ [−1/3, 0]`). Cerrada 2026-05-18 (commit `73742f4`).
+- **Fase 4** (`NewtonNewmarkSolver` con Newton interno, jacobiano `J = M + γΔt·C + βΔt²·K_t`, convergencia dual ADR 0007, Rayleigh constante con `K_0`; `NewtonHHTSolver` análogo). Cerrada 2026-05-13/-18.
+- **Fase 5** (`CentralDifferenceSolver` — leapfrog explícito Belytschko-Liu-Moran, lineal y no lineal en una clase con `nonlinear`, estabilidad condicional CFL con detección a posteriori). Cerrada 2026-05-18 (commit `e66473d`).
+- **Fase 6** (`HarmonicSolver` — respuesta forzada armónica `(−ω²M+iωC+K)·û=F̂` con barrido configurable, aritmética compleja). Cerrada 2026-05-18 (commit `47a1333`).
+- **Fase 7** (`ResponseSpectrumSolver` — combinación modal SRSS/CQC sobre espectro de respuesta). Cerrada 2026-05-18 (commit `5151d7d`).
+
+**Reglas arquitecturales aplicadas durante el cierre del ADR**:
+
+- **Regla C** (auditoría 2026-05-13). Disparada por `CentralDifferenceSolver` como primer solver fuera de la jerarquía de Newmark. `entry.py::run_yaml` despacha por atributo de clase `PIPELINE_KIND ∈ {"static", "modal", "transient", "harmonic", "spectrum"}` en lugar de cadena de `isinstance`. Solvers no clásicos futuros no requieren tocar `entry.py`.
+- **Regla D** (auditoría 2026-05-13). Disparada por `ResponseSpectrumSolver` como segundo método de cómputo sobre `ModalResult`. El algoritmo de `free_vibration` migra a `fenix/math/modal_response.py` junto con los nuevos `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated`. `ModalResult.free_vibration` queda como wrapper delgado, preservando la API histórica.
+
+**Consecuencia.** El subsistema modal/dinámico/espectral queda **completo en su totalidad**. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, Δt adaptativo, generalized-α) requieren caso de uso específico — no son piezas del ADR pendientes. La clase `Node` conserva su semántica original.
 
 ## Evolución de esta lista
 

@@ -72,25 +72,31 @@ Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sob
 
 ---
 
-## Etapa 4 — Análisis modal y dinámica transitoria · parcialmente cerrada
+## Etapa 4 — Análisis modal y dinámica transitoria · cerrada (2026-05-18)
 
-**Capacidad añadida**: matriz de masa consistente en todos los elementos del catálogo, autovalor generalizado `K·φ = ω²M·φ`, integración temporal Newmark lineal y no lineal con amortiguamiento Rayleigh.
+**Capacidad añadida**: subsistema modal/dinámico/espectral **completo**. Cubre los regímenes canónicos: modal por autovalores generalizados, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas) y análisis en frecuencia (respuesta armónica + espectro sísmico).
 
-**Componentes**:
-- Solvers: `ModalSolver` (ARPACK shift-invert), `NewmarkSolver` (transitorio lineal, β-γ parametrizables, Rayleigh con calibración modal), `NewtonNewmarkSolver` (Newton dentro de cada paso temporal, hereda predictores/correctores de `NewmarkSolver` — patrón de variante de Reglas §4).
-- Resultados: `ModalResult`, `TransientResult` (con historiales `u/u̇/ü`).
-- Despacho automático en `fenix.run_yaml` por `isinstance` sobre el tipo de solver.
+**Componentes** (11 solvers en total):
+
+- **Modal**: `ModalSolver` (ARPACK shift-invert sobre `K·φ = ω²M·φ`).
+- **Transitorio implícito lineal**: `NewmarkSolver` (β-γ parametrizables, Rayleigh con calibración modal); variante `HHTSolver` con disipación numérica controlada.
+- **Transitorio implícito no lineal**: `NewtonNewmarkSolver`, `NewtonHHTSolver` (Newton-Raphson dentro de cada paso, tangente algorítmica consistente, Rayleigh con `K_0`).
+- **Transitorio explícito**: `CentralDifferenceSolver` (leapfrog Belytschko-Liu-Moran; lineal y no lineal con parámetro `nonlinear`; estabilidad condicional CFL con detección a posteriori).
+- **Frecuencia**: `HarmonicSolver` (aritmética compleja sobre `(−ω²M + iωC + K)·û = F̂` con barrido lineal/log/explícito).
+- **Espectral / sísmico**: `ResponseSpectrumSolver` (combinación SRSS/CQC sobre espectro `S_d(ω)` o `S_a(ω)`).
+
+**Infraestructura compartida**:
+
+- **Mass lumping** (`fenix/math/mass_lumping.py::lump_hrz`): HRZ canónico para sólidos isoparamétricos + fórmula nodal directa para frames. Disponible en todos los elementos vía `compute_mass_matrix(lumping="lumped")`.
+- **Cómputos sobre modos** (`fenix/math/modal_response.py`): `free_vibration`, `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, helpers de espectros (`spectrum_from_sa`, `spectrum_tabulated`). `ModalResult.free_vibration` queda como wrapper delgado (regla D de auditoría aplicada).
+- **Dispatch declarativo** en `entry.py::run_yaml` por atributo de clase `PIPELINE_KIND` ∈ `{"static","modal","transient","harmonic","spectrum"}` (regla C de auditoría aplicada). Solvers no clásicos futuros no requieren tocar `entry.py`.
+
+**Resultados** (todos inmutables): `SolveResult`, `ModalResult`, `TransientResult`, `HarmonicResult`, `ResponseSpectrumResult`.
 
 **ADR que la articula**:
-- [ADR 0009 — Análisis modal y dinámico](adr/0009-analisis-modal-y-dinamico.md). Hoja de ruta en 7 fases internas; entregadas las fases **1 (modal)**, **3 (Newmark lineal)** y **4 (Newmark no lineal)**.
+- [ADR 0009 — Análisis modal y dinámico](adr/0009-analisis-modal-y-dinamico.md). Hoja de ruta en 7 fases **todas entregadas** + variante HHT-α + reglas C y D de refactor arquitectural saldadas.
 
-**Diferido dentro de la etapa 4** (fases del ADR 0009 sin entregar):
-- Fase 2: modal con masa lumped — se abre cuando entre la fase 5 (explícita).
-- Fase 5: integración explícita por diferencias centradas.
-- Fase 6: respuesta en frecuencia (steady-state harmonic).
-- Fase 7: análisis espectral / sísmico (CQC, SRSS).
-
-**Cierre parcial**: la línea dinámica está abierta y validada con benchmarks (barra empotrada-libre, viga Bernoulli-Euler, recuperación exacta del caso lineal por `NewtonNewmarkSolver`). Las fases diferidas no bloquean el avance: el resto del proyecto puede progresar mientras se decide cuándo retomarlas.
+**Validación**: ~100 tests específicos del subsistema (modal, modal_catalog, newmark, newmark_nonlinear, hht, mass_lumping, central_difference, harmonic, response_spectrum). Benchmarks: oscilador 1 GDL contra solución analítica, viga Bernoulli-Euler biapoyada, recuperación exacta del caso lineal en solvers no lineales, función de transferencia armónica analítica, CQC ↔ SRSS con modos cercanos vs separados.
 
 ---
 
@@ -124,14 +130,35 @@ Las opciones A-E identificadas anteriormente quedan **diferidas como etapas futu
 - **A. Sólidos 3D** (Hex8, Tet4, Tet10/Hex20/Hex27): extender materiales J2/daño/Drucker-Prager a Voigt 6D; abrir locking volumétrico y hourglassing. Pre-requisito de prácticamente todas las extensiones posteriores.
 - **B. Placas y láminas** (Mindlin, Kirchhoff, MITC): formulación shell con cortante transversal y drilling DOFs.
 - **C. Análisis térmico desacoplado** (Laplaciano estacionario + transitorio): salto a problema escalar; abre la puerta a termomecánica acoplada.
-- **D. Completar ADR 0009** (HHT-α, diferencias centradas, harmonic): cierra los huecos de la línea dinámica.
+- ~~**D. Completar ADR 0009**~~ **Cerrada 2026-05-18 como Etapa 6 in extenso** (HHT-α, mass lumping fase 2, diferencias centradas, harmonic, response spectrum + reglas C y D de auditoría arquitectural aplicadas).
 - **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames).
 
 Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra a continuación se retoma con argumentos de la dirección que tome el proyecto entonces.
 
 ---
 
-## Etapa 6+ — Horizonte largo
+## Etapa 6 — Cierre del subsistema dinámico (ADR 0009 completo) · cerrada (2026-05-18)
+
+**Capacidad entregada** (en una sesión, cinco commits): el subsistema modal/dinámico de la Etapa 4 quedó parcial al cierre original (fases 1, 3, 4); esta etapa completa el ADR 0009 con las cuatro fases pendientes (2, 5, 6, 7) y la variante HHT-α, además de aplicar las dos reglas arquitecturales C y D de la auditoría 2026-05-13 que esperaban evento.
+
+**Lo entregado**:
+- **HHT-α** (`HHTSolver` + `NewtonHHTSolver` como variantes de la familia Newmark) con disipación numérica controlada en altas frecuencias. Spec corta tipo extensión (Reglas §4).
+- **Fase 2 ADR 0009 — mass lumping**: `compute_mass_matrix(lumping="lumped")` operativo en todos los elementos (truss/cable, frames 2D/3D, sólidos 2D Tri3/Quad4/Tri6/Quad8/Quad9). Helper centralizado `fenix/math/mass_lumping.py::lump_hrz` (HRZ canónico) + fórmula nodal directa para frames.
+- **Regla C de auditoría aplicada** (dispatch declarativo en `entry.py::run_yaml` por atributo `PIPELINE_KIND`) + **`CentralDifferenceSolver`** (fase 5 ADR 0009) — leapfrog Belytschko-Liu-Moran con `M⁻¹` trivial, lineal y no lineal en una sola clase con parámetro `nonlinear`.
+- **`HarmonicSolver`** (fase 6) — respuesta forzada armónica en el dominio de la frecuencia con aritmética compleja, barrido configurable, `HarmonicResult` con métodos `.amplitude()` y `.phase()`.
+- **Regla D de auditoría aplicada** (`fenix/math/modal_response.py` agrupa `free_vibration` (movido) y los nuevos `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated`) + **`ResponseSpectrumSolver`** (fase 7) — combinación modal SRSS/CQC para análisis sísmico contra espectros normativos.
+
+**Por qué se eligió como Etapa 6 en lugar de A/B/C/E**: ningún otro camino aprovechaba el alineamiento natural — `CentralDifference` requería la fase 2 (lumping), `HarmonicSolver` requería la regla C (3ª rama no clásica), `ResponseSpectrumSolver` requería la regla D (2º método sobre `ModalResult`). Las cinco piezas se encadenan en una secuencia obligada que cierra el ADR 0009 en su totalidad. Cualquier orden distinto hubiera dejado deudas internas más caras de pagar luego.
+
+**Commits**: `73742f4` (HHT-α), `c92bf4e` (mass lumping), `e66473d` (regla C + central differences), `47a1333` (harmonic), `5151d7d` (regla D + response spectrum).
+
+**Validación**: 558 tests verdes en suite global. 19 + 10 + 11 + 19 + 19 = ~80 tests nuevos del subsistema (mass_lumping, central_difference, harmonic, response_spectrum + reorganización menor en test_modal). Benchmarks: oscilador 1 GDL contra solución analítica, función de transferencia `H(ω) = 1/(K-ω²M+iωC)`, recuperación SRSS = CQC con modos separados, CQC ≠ SRSS con modos cercanos.
+
+**Nada diferido de esta etapa**: el ADR 0009 queda cerrado en su totalidad. Las únicas extensiones futuras (excitación sísmica multi-directional simultánea CQC3, Δt adaptativo, MPC en frecuencia, generalized-α) requieren caso de uso real específico — no son piezas del ADR pendientes.
+
+---
+
+## Etapa 7+ — Horizonte largo
 
 Lo que el proyecto **previsiblemente** abrirá una vez consolidada la etapa 5, sin orden cerrado:
 
@@ -178,4 +205,4 @@ El presente ROADMAP es uno de cuatro documentos previstos para que la traceabili
 
 ---
 
-*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010); fases 4 y 5 diferidas con justificación. Próxima decisión: cuál de las opciones A-E entra ahora como Etapa 6.*
+*Última actualización: 2026-05-18 — Cierre de Etapa 5 (discontinuidades embebidas, ADR 0010) **y** Etapa 6 (ADR 0009 completo: HHT-α + mass lumping + central differences + harmonic + response spectrum + reglas C y D aplicadas). Próxima decisión: Etapa 7 entre opciones A, B, C, E originalmente diferidas.*

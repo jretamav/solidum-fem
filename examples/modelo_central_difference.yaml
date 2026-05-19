@@ -1,0 +1,42 @@
+# Archivo de entrada Fenix FEM: Análisis dinámico transitorio explícito
+# por diferencias centradas (ADR 0009 fase 5).
+#
+# Estructura: barra axial Truss2D L=1 m, A=1 m², E=25 Pa, ρ=2 kg/m³.
+# Frecuencia natural ω = √(K/M_lumped) = √(25/1) = 5 rad/s.
+# Condición de estabilidad CFL: Δt < 2/ω = 0.4 s. Aquí Δt = T/200 ≈ 0.0063 s,
+# muy por debajo del crítico.
+#
+# El nodo libre arranca en u₀ = 1.0 y vibra libremente: respuesta esperada
+# u(t) = cos(ωt) (sin amortiguamiento).
+#
+# Mass lumping ES OBLIGATORIO para central differences — el esquema pierde
+# su razón de ser sin M diagonal. La fase 2 del ADR 0009 habilitó lumped
+# en todos los elementos del catálogo.
+#
+# Ejecutar:
+#   python -c "from fenix.entry import run_yaml; r = run_yaml('examples/modelo_central_difference.yaml'); print('|u_max| =', float(abs(r.u_history).max()))"
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+
+materials:
+  - id: 1
+    type: Elastic1D
+    E: 25.0
+    density: 2.0
+
+elements:
+  - {id: 1, type: Truss2D, material: 1, A: 1.0, nodes: [1, 2]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0}
+  - {node_id: 2, uy: 0.0}
+
+solver:
+  type: CentralDifferenceSolver
+  t_end: 2.5132741        # 2 · 2π/ω
+  dt: 0.0062831853         # T/200
+  lumping: lumped          # OBLIGATORIO — 'consistent' lanza ValueError
+  nonlinear: false         # material lineal → F_int = K·u (sin ensamblaje por paso)
+  u0: [0.0, 0.0, 1.0, 0.0] # u₀ del nodo 2 en ux = 1.0
