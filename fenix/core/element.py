@@ -6,10 +6,10 @@ from typing import ClassVar, List, Tuple
 
 import numpy as np
 
+from fenix.core.element_forces import ElementForces
 from fenix.core.element_state import ElementState
 from fenix.core.material import Material
 from fenix.core.node import Node
-from fenix.results import ElementForces
 
 
 # Valores válidos del kwarg ``lumping`` de :meth:`Element.compute_mass_matrix`

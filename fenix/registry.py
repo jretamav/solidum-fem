@@ -62,12 +62,30 @@ class _BaseRegistry:
     def names(cls) -> list:
         return sorted(cls._items.keys())
 
+    @classmethod
+    def get(cls, name: str) -> Type:
+        """Devuelve la clase registrada bajo ``name`` sin instanciarla.
+
+        Útil para introspección (firmas de constructor, atributos de clase
+        declarativos como ``PIPELINE_KIND``) cuando ``create(name, **kwargs)``
+        no aplica porque se quiere consultar la clase sin construirla.
+
+        Raises
+        ------
+        KeyError
+            Si ``name`` no está registrado.
+        """
+        if name not in cls._items:
+            raise KeyError(
+                f"{cls._kind} '{name}' no registrado. "
+                f"Disponibles: {sorted(cls._items.keys())}"
+            )
+        return cls._items[name]
+
 
 class MaterialRegistry(_BaseRegistry):
     _items: Dict[str, Type] = {}
     _kind = "Material"
-    # Alias compatible con código existente que accede ._materials
-    _materials = _items
 
 
 class CohesiveMaterialRegistry(_BaseRegistry):
@@ -83,13 +101,11 @@ class CohesiveMaterialRegistry(_BaseRegistry):
 class ElementRegistry(_BaseRegistry):
     _items: Dict[str, Type] = {}
     _kind = "Elemento"
-    _elements = _items
 
 
 class SolverRegistry(_BaseRegistry):
     _items: Dict[str, Type] = {}
     _kind = "Solucionador"
-    _solvers = _items
 
 
 class QuadratureRegistry:

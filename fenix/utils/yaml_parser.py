@@ -145,7 +145,7 @@ class YamlParser:
 
         # --- Materiales ---
         known_mat_ids = set()
-        registered_materials = set(MaterialRegistry._materials.keys())
+        registered_materials = set(MaterialRegistry.names())
         for i, mat in enumerate(data.get('materials', [])):
             ctx = f"materials[{i}]"
             if not isinstance(mat, dict):
@@ -165,7 +165,7 @@ class YamlParser:
 
         # --- Materiales cohesivos (ADR 0010 — sección paralela) ---
         known_cohesive_ids = set()
-        registered_cohesives = set(CohesiveMaterialRegistry._items.keys())
+        registered_cohesives = set(CohesiveMaterialRegistry.names())
         for i, mat in enumerate(data.get('cohesive_materials', []) or []):
             ctx = f"cohesive_materials[{i}]"
             if not isinstance(mat, dict):
@@ -184,7 +184,7 @@ class YamlParser:
                 )
 
         # --- Elementos (bloque inline, no mesh) ---
-        registered_elements = set(ElementRegistry._elements.keys())
+        registered_elements = set(ElementRegistry.names())
         elements_data = data.get('elements', [])
         if isinstance(elements_data, list):
             known_elem_ids = set()
@@ -234,8 +234,8 @@ class YamlParser:
                 # Validación de kwargs: los campos extra del YAML deben existir
                 # en la firma del constructor del elemento registrado.
                 e_type = elem.get('type')
-                if e_type in ElementRegistry._elements:
-                    cls = ElementRegistry._elements[e_type]
+                if e_type in registered_elements:
+                    cls = ElementRegistry.get(e_type)
                     sig = inspect.signature(cls.__init__)
                     accepted = {
                         name for name, p in sig.parameters.items()
@@ -307,7 +307,7 @@ class YamlParser:
             if not s_type:
                 errors.append("solver: falta el campo 'type'.")
             else:
-                registered_solvers = set(SolverRegistry._solvers.keys())
+                registered_solvers = set(SolverRegistry.names())
                 if registered_solvers and s_type not in registered_solvers:
                     errors.append(
                         f"solver: tipo desconocido '{s_type}'. "

@@ -98,6 +98,12 @@ class Frame2DEuler(Element):
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         u_e = self.get_local_displacements(U_global)
         _, F_int = self.compute_element_state(u_e)
+        # ``compute_element_state`` aplica T.T para rotar F_int_local → F_int (globales).
+        # Aquí lo rotamos de vuelta a locales para extraer N/V/M. La doble rotación
+        # ``self.T @ (self.T.T @ F_int_local)`` es identidad porque T es ortogonal
+        # (rotación pura) — pagamos un producto 6×6·6 cosmético por mantener el
+        # contrato uniforme de ``compute_element_state`` devolviendo en globales
+        # (auditoría H-2.8, severidad bajo).
         F_local = self.T @ F_int
 
         u_local = self.T @ u_e

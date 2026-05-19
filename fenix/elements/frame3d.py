@@ -57,6 +57,11 @@ class Frame3D(Element):
     N_INTEGRATION_POINTS = 1
 
     _VERTICAL_COS_TOL = 0.99  # umbral para detectar barras casi-verticales
+    # Flag de clase para emitir el warning de fallback ref_vector sólo una vez
+    # por sesión (auditoría H-2.9): en estructuras con muchas columnas
+    # verticales el aviso por cada elemento es ruido sin valor — la primera
+    # emisión basta para alertar al usuario.
+    _vertical_warning_emitted: bool = False
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  A: float, Iy: float, Iz: float, J: float,
@@ -107,10 +112,17 @@ class Frame3D(Element):
         if ref_vector is None:
             if abs(x_local[2]) > cls._VERTICAL_COS_TOL:
                 v_ref = np.array([1.0, 0.0, 0.0])
-                _log.warning(
-                    f"Frame3D (id={element_id}): barra cercanamente vertical sin ref_vector explícito. "
-                    f"Se usa fallback [1, 0, 0]. Especifique ref_vector si la orientación de la sección debe ser otra."
-                )
+                # Aviso emitido una sola vez por sesión (H-2.9): estructuras
+                # con N columnas verticales sin ref_vector explícito generaban
+                # N warnings idénticos.
+                if not cls._vertical_warning_emitted:
+                    _log.warning(
+                        f"Frame3D (id={element_id}): barra cercanamente vertical sin ref_vector explícito. "
+                        f"Se usa fallback [1, 0, 0]. Especifique ref_vector si la orientación de la sección "
+                        f"debe ser otra. (Este aviso se emite una vez por sesión; otras barras verticales "
+                        f"con el mismo fallback no lo repetirán.)"
+                    )
+                    cls._vertical_warning_emitted = True
             else:
                 v_ref = np.array([0.0, 0.0, 1.0])
         else:

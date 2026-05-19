@@ -29,6 +29,7 @@ from fenix.math.solvers import (  # noqa: F401 — NewmarkSolver default de run_
     NewmarkSolver,
     ResponseSpectrumSolver,
 )
+from fenix.logging import get_logger
 from fenix.results import (
     HarmonicResult,
     ModalResult,
@@ -38,6 +39,7 @@ from fenix.results import (
     build_solve_result,
 )
 
+_log = get_logger("fenix.entry")
 
 StepCallback = Callable[[int, np.ndarray, float], None]
 
@@ -344,6 +346,19 @@ def run_yaml(
             f"run_yaml: PIPELINE_KIND={pipeline_kind!r} no reconocido en "
             f"{type(solver).__name__}. Valores válidos: "
             f"{sorted(_KNOWN_PIPELINE_KINDS)}."
+        )
+
+    # Aviso del usuario: ``step_callback`` sólo lo consume el pipeline estático
+    # (``run`` → ``NonlinearSolver.solve(..., step_callback=...)`` o
+    # ``ArcLengthSolver.solve(...)``). Pasarlo a ``run_yaml`` con un solver
+    # modal/transitorio/armónico/espectral es no-op silencioso, lo cual
+    # confunde al usuario que espera ver progreso. Aviso explícito (H-1.8).
+    if step_callback is not None and pipeline_kind != "static":
+        _log.warning(
+            "run_yaml: step_callback ignorado — solver %s declara "
+            "PIPELINE_KIND=%r, no 'static'. step_callback sólo afecta "
+            "al pipeline estático (NonlinearSolver/ArcLengthSolver).",
+            type(solver).__name__, pipeline_kind,
         )
 
     if pipeline_kind == "modal":

@@ -131,6 +131,17 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
        unidades — la regla ``α̇ = √(2/3)·γ̇`` no es válida en plane stress
        porque ``γ̇`` aquí tiene unidades ``[1/esfuerzo]``).
     6. Tangente consistente cerrada con corrección por dα/dΔγ no constante.
+
+    Nota sobre ``yield_tol`` (auditoría H-3.10): el caller pasa la tolerancia
+    ya calculada con ``alpha_old`` (escala del paso entrante). No se recalcula
+    dentro del Newton local con ``alpha_curr`` por simplicidad y porque el
+    impacto numérico es despreciable: en un paso plástico típico,
+    ``α_curr - α_old << α_old + admissibility_scale_baseline``, así que
+    ``tol(alpha_curr) ≈ tol(alpha_old)`` con error relativo del orden de
+    ``Δγ·w / (σ_y + H·α_old)``, varios órdenes por debajo de la propia
+    tolerancia. Si en algún caso patológico esto fuera relevante, recalcular
+    ``yield_tol`` cada iteración con ``alpha_curr`` es trivial pero no
+    necesario hoy.
     """
     # Deformación plástica plana en Voigt engineering [xx, yy, γ_xy = 2·ε_xy_tens]
     eps_p_voigt = np.array([eps_p_old[0], eps_p_old[1], 2.0 * eps_p_old[3]])

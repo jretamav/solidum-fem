@@ -494,6 +494,15 @@ class NewtonNewmarkSolver(NewmarkSolver):
                 # (El last_alpha != 1 en su ensamblaje interno habrá dejado el
                 # state trial coherente, pero re-ensamblar aquí mantiene
                 # simetría con la rama sin line search.)
+                #
+                # Auditoría H-4.9: con ``line_search=True`` esto produce un
+                # ensamblaje extra por iteración (uno dentro del backtracking,
+                # otro aquí), porque la simetría de código con la rama sin
+                # line search vale más que ahorrarse una llamada. El default
+                # del proyecto es ``line_search=False`` (ADR 0011 enmendado),
+                # así que el coste extra sólo aparece cuando el usuario opta
+                # explícitamente por line search — situación rara y bien
+                # diagnosticada.
                 _, F_int_after = self.assembler.assemble_non_linear_system(u_iter)
                 R_after = F_ext_next - F_int_after - C @ udot_iter - M @ uddot_iter
                 R_norm_after = float(np.linalg.norm(R_after[free_dofs]))
@@ -1120,6 +1129,11 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                 udot_iter = udot_pred + gamma_dt * uddot_iter
 
                 # Re-ensamblar para R coherente con el U avanzado.
+                # Mismo trade-off documentado en NewtonNewmarkSolver:
+                # con ``line_search=True`` esto duplica el ensamblaje por
+                # iteración. Aceptado por simetría de código y porque el
+                # default ``line_search=False`` (ADR 0011) no toca esta rama
+                # (auditoría H-4.9).
                 _, F_int_after = self.assembler.assemble_non_linear_system(u_iter)
                 R_after = (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
                            - one_plus_alpha * F_int_after + alpha_hht * F_int_prev

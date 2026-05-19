@@ -31,81 +31,30 @@ cachea el último en ``domain.last_result`` independientemente del tipo.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+# ElementForces vive en ``fenix.core`` (parte del contrato de Element,
+# ADR 0002). Re-exportado aquí para que la API pública
+# ``from fenix.results import ElementForces`` siga funcionando.
+from fenix.core.element_forces import ElementForces, ElementKind  # noqa: F401
 
 if TYPE_CHECKING:
     from fenix.core.domain import Domain
     from fenix.math.assembly import Assembler
 
 
-ElementKind = Literal["truss", "cable", "frame2d", "frame3d"]
-
-# Claves válidas por familia. Un componente ausente del dict significa "no aplica"
-# a ese tipo de elemento (p. ej. no hay M en un truss) — no se rellena con ceros.
-_VALID_COMPONENTS: dict[ElementKind, frozenset[str]] = {
-    "truss":   frozenset({"N"}),
-    "cable":   frozenset({"N"}),
-    "frame2d": frozenset({"N", "V", "M"}),
-    "frame3d": frozenset({"N", "Vy", "Vz", "T", "My", "Mz"}),
-}
-
-
-@dataclass(frozen=True)
-class ElementForces:
-    """Esfuerzos internos en ejes locales, evaluados en los nodos i, j.
-
-    Parameters
-    ----------
-    kind
-        Familia del elemento. Determina qué claves pueden aparecer en ``components``.
-    components
-        Diccionario ``{nombre: array(2,)}`` con el valor en el nodo i (índice 0) y
-        en el nodo j (índice 1). Las claves válidas dependen de ``kind``:
-
-        - ``"truss"`` / ``"cable"``: ``{"N"}``.
-        - ``"frame2d"``: ``{"N", "V", "M"}``. Convención de viga estructural
-          (Reglas.md §5): ``V`` rota el diferencial en horario si es positivo,
-          ``M`` positivo es sagging.
-        - ``"frame3d"``: ``{"N", "Vy", "Vz", "T", "My", "Mz"}``. Convención
-          stress-resultant / RHR pura (Reglas.md §5).
-    """
-
-    kind: ElementKind
-    components: dict[str, np.ndarray]
-
-    def __post_init__(self) -> None:
-        valid = _VALID_COMPONENTS.get(self.kind)
-        if valid is None:
-            raise ValueError(f"ElementForces.kind desconocido: {self.kind!r}")
-
-        extra = set(self.components) - valid
-        if extra:
-            raise ValueError(
-                f"Componentes inválidos para kind={self.kind!r}: {sorted(extra)}. "
-                f"Válidos: {sorted(valid)}"
-            )
-
-        for name, arr in self.components.items():
-            if not isinstance(arr, np.ndarray) or arr.shape != (2,):
-                raise ValueError(
-                    f"components[{name!r}] debe ser np.ndarray shape (2,), "
-                    f"recibido {type(arr).__name__} shape={getattr(arr, 'shape', None)}"
-                )
-
-    def at_node_i(self) -> dict[str, float]:
-        """Valores en el nodo i como escalares."""
-        return {k: float(v[0]) for k, v in self.components.items()}
-
-    def at_node_j(self) -> dict[str, float]:
-        """Valores en el nodo j como escalares."""
-        return {k: float(v[1]) for k, v in self.components.items()}
-
-
 @dataclass(frozen=True)
 class ModalResult:
-    """Resultado de un análisis modal (ADR 0009 fase 1). Inmutable.
+    """Resultado de un análisis modal (ADR 0009 fase 1). Inmutable (shallow).
+
+    El ``frozen=True`` de la dataclass impide reasignar los atributos, pero
+    los arrays NumPy y diccionarios que contiene **siguen siendo mutables
+    por contenido** — un consumidor con la referencia puede hacer
+    ``result.modes[0, 0] = 0`` y modificar el resultado in-place. No tratamos
+    estos objetos como cápsulas opacas: el contrato es "no reasignes;
+    tampoco modifiques los arrays interiores".
 
     Parameters
     ----------
@@ -170,7 +119,11 @@ class ModalResult:
 
 @dataclass(frozen=True)
 class TransientResult:
-    """Resultado de un análisis dinámico transitorio (ADR 0009 fase 3). Inmutable.
+    """Resultado de un análisis dinámico transitorio (ADR 0009 fase 3). Inmutable (shallow).
+
+    El ``frozen=True`` impide reasignar atributos; los historiales NumPy
+    interiores siguen siendo mutables por contenido. Tratar los arrays
+    como read-only por convención.
 
     Almacena las historias temporales completas del estado dinámico
     ``(u, u̇, ü)`` en cada paso del integrador. Mismo patrón que
@@ -266,7 +219,10 @@ class TransientResult:
 
 @dataclass(frozen=True)
 class HarmonicResult:
-    """Resultado de un análisis de respuesta armónica (ADR 0009 fase 6). Inmutable.
+    """Resultado de un análisis de respuesta armónica (ADR 0009 fase 6). Inmutable (shallow).
+
+    El ``frozen=True`` impide reasignar atributos; los arrays NumPy
+    interiores siguen siendo mutables por contenido. Tratar como read-only.
 
     Almacena la amplitud compleja del desplazamiento ``û(ω)`` para cada
     frecuencia del barrido. La fase queda codificada en el argumento del
@@ -322,7 +278,9 @@ class HarmonicResult:
 @dataclass(frozen=True)
 class ResponseSpectrumResult:
     """Resultado de un análisis de respuesta espectral (ADR 0009 fase 7).
-    Inmutable.
+    Inmutable (shallow): ``frozen=True`` impide reasignar atributos; los
+    arrays NumPy interiores siguen siendo mutables por contenido. Tratar
+    como read-only.
 
     Captura la respuesta máxima envolvente bajo una excitación
     caracterizada por un espectro de respuesta — no es una historia
@@ -395,8 +353,11 @@ class ResponseSpectrumResult:
 
 @dataclass(frozen=True)
 class SolveResult:
-    """Resultado agregado de una solución. Inmutable; calculado eager al final
-    de ``solver.solve``.
+    """Resultado agregado de una solución. Inmutable (shallow); calculado
+    eager al final de ``solver.solve``.
+
+    El ``frozen=True`` impide reasignar atributos; los arrays NumPy
+    interiores siguen siendo mutables por contenido. Tratar como read-only.
 
     Parameters
     ----------

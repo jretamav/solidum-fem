@@ -119,6 +119,8 @@ class Frame2DTimoshenko(Element):
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
         u_e = self.get_local_displacements(U_global)
         _, F_int = self.compute_element_state(u_e)
+        # Doble rotación ``T @ (T.T @ F_int_local)`` = identidad (T ortogonal);
+        # cosmético por uniformidad del contrato. Ver H-2.8.
         F_local = self.T @ F_int
 
         u_local = self.T @ u_e
