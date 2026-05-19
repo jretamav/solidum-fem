@@ -33,6 +33,19 @@ CONVERGENCE_RTOL_DISP = 1.0e-5
 CONVERGENCE_ATOL_FORCE_FACTOR = 1.0e-9
 CONVERGENCE_ATOL_DISP_FACTOR = 1.0e-9
 
+# --- Heurísticos del paso adaptativo del Newton-Raphson incremental ---
+# Aplican en ``NonlinearSolver.solve`` con ``adaptive=True`` (default).
+# El paso ``Δλ`` se acelera por ``GROWTH_FACTOR`` cuando el Newton del paso
+# previo convergió en pocas iteraciones (rápido ⇒ subir el paso); se biseca
+# (``Δλ ← Δλ/2``) cuando el paso diverge. ``MIN_DELTA_LAMBDA`` es el piso por
+# debajo del cual el solver aborta (``LoadExceedsCapacityError``).
+# El epsilon de cierre evita un paso espurio de "cola" cuando ``load_factor``
+# está dentro del último ULP de ``target_load``.
+NEWTON_ADAPTIVE_GROWTH_FACTOR = 1.5
+NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD = 4
+NEWTON_DEFAULT_MIN_DELTA_LAMBDA = 1.0e-5
+NEWTON_LOAD_FACTOR_EPSILON = 1.0e-9
+
 # --- Tolerancia mínima de longitud de arco antes de declarar fracaso ---
 # Factor adimensional sobre el `initial_dl` declarado por el usuario:
 # si la bisección del paso reduce ``dl`` por debajo de

@@ -9,6 +9,10 @@ from fenix.constants import (
     LINE_SEARCH_C1,
     LINE_SEARCH_MAX_BACKTRACKS,
     LINE_SEARCH_RHO,
+    NEWTON_ADAPTIVE_GROWTH_FACTOR,
+    NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD,
+    NEWTON_DEFAULT_MIN_DELTA_LAMBDA,
+    NEWTON_LOAD_FACTOR_EPSILON,
 )
 from fenix.math.convergence import (
     ConvergenceCriterion,
@@ -34,7 +38,19 @@ class NonlinearSolver:
 
     PIPELINE_KIND = "static"
 
-    def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, num_steps=10, adaptive=True, min_delta_lambda=1e-5, linear_algebra: str = "auto", freeze_tangent_after_iter: int | None = None, line_search: bool = False):
+    def __init__(
+        self,
+        assembler,
+        convergence: ConvergenceCriterion | None = None,
+        *,
+        max_iter: int = 20,
+        num_steps: int = 10,
+        adaptive: bool = True,
+        min_delta_lambda: float = NEWTON_DEFAULT_MIN_DELTA_LAMBDA,
+        linear_algebra: str = "auto",
+        freeze_tangent_after_iter: int | None = None,
+        line_search: bool = False,
+    ):
         self.assembler = assembler
         # Política de convergencia (ADR 0007). El criterio se calibra una vez
         # al inicio de solve() con la escala del primer ensamblaje.
@@ -180,7 +196,7 @@ class NonlinearSolver:
         step = 0
         n_bisections = 0  # contador de bisecciones globales del paso (ADR 0011)
 
-        while load_factor < target_load - 1e-9:
+        while load_factor < target_load - NEWTON_LOAD_FACTOR_EPSILON:
             step += 1
 
             if load_factor + delta_lambda > target_load:
@@ -283,8 +299,13 @@ class NonlinearSolver:
                     load_factor = next_load_factor
                     converged = True
 
-                    if self.adaptive and iteration < 4 and delta_lambda < (1.0 / self.num_steps):
-                        delta_lambda = min(delta_lambda * 1.5, 1.0 / self.num_steps)
+                    if (self.adaptive
+                            and iteration < NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD
+                            and delta_lambda < (1.0 / self.num_steps)):
+                        delta_lambda = min(
+                            delta_lambda * NEWTON_ADAPTIVE_GROWTH_FACTOR,
+                            1.0 / self.num_steps,
+                        )
                         _log.info(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
 
                     if step_callback:

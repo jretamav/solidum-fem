@@ -19,6 +19,17 @@ class Tri6(_HigherOrderSolid2D):
     puntos medios). Masa consistente con cuadratura ``tri_6`` (Dunavant,
     6 puntos, orden 4) porque la del elemento subintegra el producto
     cuadrático×cuadrático y dejaría modos nulos espurios en M.
+
+    Caveat (auditoría H-2.7): la integración con ``tri_3`` (orden 2)
+    es exacta para ``Bᵀ·C·B·detJ`` cuando el Jacobiano es constante
+    (malla con lados rectos). En **mallas curvilíneas o distorsionadas**
+    el integrando es polinomial de orden superior a 2 y ``tri_3``
+    subintegra ligeramente — efecto típicamente beneficioso para
+    aliviar locking volumétrico, pero puede introducir modos espurios
+    sutiles en regímenes patológicos. Si la integración exacta de la
+    rigidez es prioridad, pasar ``quadrature=tri_6_points``
+    explícitamente al constructor (heredado de
+    :class:`_HigherOrderSolid2D`).
     """
     N_INTEGRATION_POINTS = 3
     _SHAPE_FN = staticmethod(_N_tri6)
