@@ -463,25 +463,35 @@ class NewtonNewmarkSolver(NewmarkSolver):
                     disp_scale = force_scale / K_diag
                     self.convergence.calibrate(force_scale, disp_scale)
 
-                # Resolver δü_red, con Newton modificado opcional.
+                # Resolver δü_red, con Newton modificado opcional. Si la
+                # tangente dinámica J = M + γΔt·C + βΔt²·K_t resulta singular
+                # (RuntimeError de `splu` tras degradar a LU — cerca de
+                # bifurcaciones dinámicas o tangentes patológicas), se flipea
+                # el flag para que `classify_divergence` devuelva
+                # `SingularTangentError` (ADR 0011).
                 threshold = self.freeze_tangent_after_iter
                 try:
-                    if threshold is None:
+                    try:
+                        if threshold is None:
+                            delta_uddot_red = linalg.solve(J, R_red)
+                        elif it < threshold or frozen_factor is None:
+                            frozen_factor = linalg.factorize(J)
+                            delta_uddot_red = frozen_factor.solve(R_red)
+                        else:
+                            delta_uddot_red = frozen_factor.solve(R_red)
+                    except CholeskyNotPositiveDefiniteError:
+                        _log.warning("Cholesky no-PD en NewtonNewmark; degradando a LU.")
+                        is_pd = False
+                        props_J = StiffnessProperties(
+                            is_symmetric=is_sym, is_positive_definite=False, size=n_free,
+                        )
+                        linalg = select_solver(props_J, override=self.linear_algebra)
+                        frozen_factor = None
                         delta_uddot_red = linalg.solve(J, R_red)
-                    elif it < threshold or frozen_factor is None:
-                        frozen_factor = linalg.factorize(J)
-                        delta_uddot_red = frozen_factor.solve(R_red)
-                    else:
-                        delta_uddot_red = frozen_factor.solve(R_red)
-                except CholeskyNotPositiveDefiniteError:
-                    _log.warning("Cholesky no-PD en NewtonNewmark; degradando a LU.")
-                    is_pd = False
-                    props_J = StiffnessProperties(
-                        is_symmetric=is_sym, is_positive_definite=False, size=n_free,
-                    )
-                    linalg = select_solver(props_J, override=self.linear_algebra)
-                    frozen_factor = None
-                    delta_uddot_red = linalg.solve(J, R_red)
+                except RuntimeError:
+                    _log.error("Tangente dinámica singular en NewtonNewmark.")
+                    singular_tangent_seen = True
+                    break
 
                 # Line search por descenso no monótono (ADR 0011). Escala δü
                 # (y por ende δu, δu̇ vía correctores Newmark) por α ∈ (0, 1].
@@ -1055,24 +1065,32 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                     disp_scale = force_scale / K_diag
                     self.convergence.calibrate(force_scale, disp_scale)
 
+                # Tangente dinámica singular (RuntimeError de `splu` tras
+                # degradar a LU): flipea el flag para `classify_divergence`
+                # → `SingularTangentError` (ADR 0011).
                 threshold = self.freeze_tangent_after_iter
                 try:
-                    if threshold is None:
+                    try:
+                        if threshold is None:
+                            delta_uddot_red = linalg.solve(J, R_red)
+                        elif it < threshold or frozen_factor is None:
+                            frozen_factor = linalg.factorize(J)
+                            delta_uddot_red = frozen_factor.solve(R_red)
+                        else:
+                            delta_uddot_red = frozen_factor.solve(R_red)
+                    except CholeskyNotPositiveDefiniteError:
+                        _log.warning("Cholesky no-PD en NewtonHHT; degradando a LU.")
+                        is_pd = False
+                        props_J = StiffnessProperties(
+                            is_symmetric=is_sym, is_positive_definite=False, size=n_free,
+                        )
+                        linalg = select_solver(props_J, override=self.linear_algebra)
+                        frozen_factor = None
                         delta_uddot_red = linalg.solve(J, R_red)
-                    elif it < threshold or frozen_factor is None:
-                        frozen_factor = linalg.factorize(J)
-                        delta_uddot_red = frozen_factor.solve(R_red)
-                    else:
-                        delta_uddot_red = frozen_factor.solve(R_red)
-                except CholeskyNotPositiveDefiniteError:
-                    _log.warning("Cholesky no-PD en NewtonHHT; degradando a LU.")
-                    is_pd = False
-                    props_J = StiffnessProperties(
-                        is_symmetric=is_sym, is_positive_definite=False, size=n_free,
-                    )
-                    linalg = select_solver(props_J, override=self.linear_algebra)
-                    frozen_factor = None
-                    delta_uddot_red = linalg.solve(J, R_red)
+                except RuntimeError:
+                    _log.error("Tangente dinámica singular en NewtonHHT.")
+                    singular_tangent_seen = True
+                    break
 
                 # Line search (opt-in, ADR 0011). Mismo helper que NewtonNewmark.
                 R_norm_before = float(np.linalg.norm(R[free_dofs]))

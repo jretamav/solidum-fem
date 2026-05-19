@@ -17,6 +17,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -28,7 +29,10 @@ from fenix.materials.elastic import Elastic1D
 from fenix.materials.plastic_1d import Elastoplastic1D
 from fenix.math.assembly import Assembler
 from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NewmarkSolver, NewtonNewmarkSolver
+from fenix.math.linalg.lu import LUSolver
+from fenix.math.solvers import HHTSolver, NewmarkSolver, NewtonNewmarkSolver
+from fenix.math.solvers.diagnostics import SingularTangentError
+from fenix.math.solvers.newmark import NewtonHHTSolver
 from fenix.results import TransientResult
 
 
@@ -231,6 +235,61 @@ solver:
             self.assertTrue(result.converged)
         finally:
             path.unlink()
+
+
+class TestSingularTangentDiagnostic(unittest.TestCase):
+    """Regresión de la auditoría H-4.1.
+
+    Si la tangente dinámica J = M + γΔt·C + βΔt²·K_t resulta singular en LU
+    (`RuntimeError` de `scipy.sparse.linalg.splu`), `NewtonNewmarkSolver` y
+    `NewtonHHTSolver` deben lanzar `SingularTangentError` (subclase tipada de
+    `SolverDivergedError`, ADR 0011) — **no** `RuntimeError` plano ni otra
+    subclase de divergencia.
+
+    Antes del fix de H-4.1 el flag `singular_tangent_seen` se inicializaba
+    en `False` y nunca se actualizaba; `classify_divergence` jamás recibía
+    `True` y `SingularTangentError` era inaccesible desde el subsistema
+    dinámico no lineal.
+    """
+
+    def _make_solver_args(self):
+        mat = Elastic1D(E=E_1DOF, density=RHO_1DOF)
+        dom = _build_1dof_oscillator(mat)
+        return dict(
+            assembler=Assembler(dom),
+            t_end=0.05, dt=0.01,
+            linear_algebra="lu",  # forzar LU para que el mock intercepte
+        )
+
+    @staticmethod
+    def _fail_after_first_call():
+        """Side-effect que deja pasar la 1ª llamada (cálculo de aceleración
+        inicial con `M_red`) y lanza `RuntimeError("singular")` desde la 2ª
+        en adelante (primera resolución de `J` dentro del Newton del paso 1)."""
+        real_solve = LUSolver.solve
+        state = {"n": 0}
+
+        def side_effect(self_mock, K, b):
+            state["n"] += 1
+            if state["n"] == 1:
+                return real_solve(self_mock, K, b)
+            raise RuntimeError("singular factor")
+
+        return side_effect
+
+    def test_newton_newmark_raises_singular_tangent_on_lu_failure(self):
+        sol = NewtonNewmarkSolver(**self._make_solver_args())
+        with patch.object(LUSolver, "solve", autospec=True,
+                           side_effect=self._fail_after_first_call()):
+            with self.assertRaises(SingularTangentError):
+                sol.solve()
+
+    def test_newton_hht_raises_singular_tangent_on_lu_failure(self):
+        sol = NewtonHHTSolver(**self._make_solver_args())
+        with patch.object(LUSolver, "solve", autospec=True,
+                           side_effect=self._fail_after_first_call()):
+            with self.assertRaises(SingularTangentError):
+                sol.solve()
 
 
 if __name__ == '__main__':
