@@ -72,9 +72,14 @@ class LinearSolver:
         # Constante mientras K y g lo sean — se cachea junto al factor.
         F_dir = T.T @ (K_global @ g_full)
 
+        # En estática lineal, si el dominio es simétrico (todos los
+        # materiales con tangente simétrica) asumimos PD; si no, LU. El
+        # fallback automático Cholesky→LU sigue cubriendo los casos donde
+        # la simetría no implique PD (degenerados, casi-singulares).
+        is_sym = domain_is_symmetric(self.assembler.domain)
         props = StiffnessProperties(
-            is_symmetric=domain_is_symmetric(self.assembler.domain),
-            is_positive_definite=True,
+            is_symmetric=is_sym,
+            is_positive_definite=is_sym,
             size=K_red.shape[0],
         )
         linalg = select_solver(props, override=self.linear_algebra)

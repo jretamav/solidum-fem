@@ -42,6 +42,14 @@ from fenix.results import (
 StepCallback = Callable[[int, np.ndarray, float], None]
 
 
+# Valores válidos para el atributo declarativo PIPELINE_KIND de los solvers.
+# Cualquier solver con un valor fuera de este conjunto será rechazado en
+# ``run_yaml`` con ValueError (regla C del ADR 0009 + fail-fast del proyecto).
+_KNOWN_PIPELINE_KINDS = frozenset({
+    "static", "modal", "transient", "harmonic", "spectrum",
+})
+
+
 def _invoke_solve(solver: Any, F_applied: np.ndarray,
                    step_callback: StepCallback | None) -> np.ndarray:
     """Llama ``solver.solve`` pasando ``step_callback`` solo si el solver lo acepta.
@@ -331,6 +339,12 @@ def run_yaml(
     solver = parser.get_solver(assembler)
 
     pipeline_kind = getattr(solver, "PIPELINE_KIND", "static")
+    if pipeline_kind not in _KNOWN_PIPELINE_KINDS:
+        raise ValueError(
+            f"run_yaml: PIPELINE_KIND={pipeline_kind!r} no reconocido en "
+            f"{type(solver).__name__}. Valores válidos: "
+            f"{sorted(_KNOWN_PIPELINE_KINDS)}."
+        )
 
     if pipeline_kind == "modal":
         return run_modal(domain, assembler=assembler, solver=solver)
@@ -343,7 +357,7 @@ def run_yaml(
             domain, assembler=assembler, solver=solver,
         )
 
-    # "static" o desconocido — cae al pipeline genérico de fuerzas externas.
+    # "static" — pipeline genérico con fuerzas externas y peso propio.
     F_ext = parser.get_external_forces() + parser.get_body_load(assembler)
     return run(
         domain,

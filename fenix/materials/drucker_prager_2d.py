@@ -272,7 +272,11 @@ class DruckerPrager2D(Material):
     """
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'alpha'
-    IS_SYMMETRIC = False   # asimétrica si no asociada; conservador independiente del caso
+    # Default conservador a nivel de clase (caso no asociado). ``__init__``
+    # sobrescribe la instancia con ``True`` cuando ``ψ = φ`` (asociada,
+    # tangente algorítmica simétrica). ``domain_is_symmetric`` lee del
+    # instance, así que el dispatcher elige Cholesky/LDLᵀ cuando puede.
+    IS_SYMMETRIC = False
 
     def __init__(self, E: float, nu: float, cohesion: float, phi_deg: float,
                  psi_deg: float | None = None, H: float = 0.0,
@@ -337,6 +341,12 @@ class DruckerPrager2D(Material):
         )
         # ¿asociada? — útil de exponer para inspección/tests
         self.associated = (psi_deg == phi_deg)
+        # Override por instancia (ADR 0003): la tangente algorítmica del
+        # return mapping regular es simétrica cuando ``ψ = φ`` (regla de
+        # flujo asociada) — ``b_g ⊗ b_f`` colapsa a ``b_f ⊗ b_f``.
+        # ``domain_is_symmetric`` lo lee del instance y el despachador
+        # elige Cholesky/LDLᵀ para problemas asociados.
+        self.IS_SYMMETRIC = self.associated
 
     def admissibility_scale(self, state_vars=None) -> float:
         """Cohesión efectiva corriente ``k(α) = k_0 + H·α`` (ADR 0006).

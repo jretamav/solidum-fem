@@ -7,8 +7,16 @@ from fenix.registry import MaterialRegistry
 class Elastic1D(Material):
     STRAIN_DIM = 1
 
-    def __init__(self, E, density: float | None = None):
-        self.E = E
+    def __init__(self, E: float, density: float | None = None):
+        if E <= 0.0:
+            raise ValueError(
+                f"Elastic1D: E={E} debe ser estrictamente positivo."
+            )
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"Elastic1D: density={density} no puede ser negativa."
+            )
+        self.E = float(E)
         self.density = density
 
     def compute_state(self, strain, state_vars=None, **kwargs):

@@ -689,6 +689,22 @@ class HHTSolver(NewmarkSolver):
                 "Valores fuera de este rango pierden estabilidad incondicional u orden 2."
             )
         beta_eff, gamma_eff = _hht_autoderive_beta_gamma(alpha)
+        if beta is not None or gamma is not None:
+            # Override explícito de la autoderivación Hilber 1977: la propiedad
+            # "estabilidad incondicional + orden 2" sólo se preserva con
+            # β=(1-α)²/4, γ=(1-2α)/2. Cualquier otra combinación queda fuera
+            # del régimen probado; avisamos en lugar de fallar silenciosamente.
+            import warnings
+            warnings.warn(
+                f"HHTSolver: override explícito de beta/gamma "
+                f"(beta={beta}, gamma={gamma}) reemplaza los valores "
+                f"autoderivados desde alpha={alpha} "
+                f"(β={beta_eff}, γ={gamma_eff}). Combinaciones distintas "
+                "de las Hilber 1977 (β=(1-α)²/4, γ=(1-2α)/2) pueden romper "
+                "la estabilidad incondicional o el orden 2.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         if beta is not None:
             beta_eff = float(beta)
         if gamma is not None:
@@ -902,6 +918,19 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                 "Valores fuera de este rango pierden estabilidad incondicional u orden 2."
             )
         beta_eff, gamma_eff = _hht_autoderive_beta_gamma(alpha)
+        if beta is not None or gamma is not None:
+            # Mismo aviso que HHTSolver (override fuera del régimen Hilber 1977).
+            import warnings
+            warnings.warn(
+                f"NewtonHHTSolver: override explícito de beta/gamma "
+                f"(beta={beta}, gamma={gamma}) reemplaza los valores "
+                f"autoderivados desde alpha={alpha} "
+                f"(β={beta_eff}, γ={gamma_eff}). Combinaciones distintas "
+                "de las Hilber 1977 (β=(1-α)²/4, γ=(1-2α)/2) pueden romper "
+                "la estabilidad incondicional o el orden 2.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         if beta is not None:
             beta_eff = float(beta)
         if gamma is not None:

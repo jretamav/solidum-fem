@@ -23,12 +23,18 @@ def domain_is_symmetric(domain) -> bool:
     Recorre elementos y materiales y agrega los flags declarativos
     ``PRESERVES_SYMMETRY`` y ``IS_SYMMETRIC``. Default en ambos es ``True`` —
     sólo plasticidad no asociada, follower loads y similares lo desactivan.
+
+    Los flags se leen **a nivel de instancia** (no de clase) para permitir
+    que un material derive su simetría dinámicamente del estado del
+    constructor (p. ej. ``DruckerPrager2D`` asociado con ``ψ=φ`` tiene
+    tangente simétrica; con ψ≠φ no). La instancia hereda del ClassVar
+    cuando no hay override, así que el caso clásico sigue funcionando.
     """
     for elem in domain.elements.values():
-        if not getattr(type(elem), "PRESERVES_SYMMETRY", True):
+        if not getattr(elem, "PRESERVES_SYMMETRY", True):
             return False
         material = getattr(elem, "material", None)
-        if material is not None and not getattr(type(material), "IS_SYMMETRIC", True):
+        if material is not None and not getattr(material, "IS_SYMMETRIC", True):
             return False
     return True
 
