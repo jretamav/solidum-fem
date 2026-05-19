@@ -158,5 +158,79 @@ class TestLinearSolverYAMLOverride(unittest.TestCase):
             self.assertAlmostEqual(U[n2.dofs["ux"]], 0.01, places=10)
 
 
+class TestLinearSolverFactorizationCache(unittest.TestCase):
+    """Regresión de H-4.2 — ``LinearSolver`` reusa la factorización entre
+    llamadas a :meth:`solve` con la misma ``K``. La 1ª llamada factoriza,
+    las siguientes sólo resuelven contra el factor cacheado.
+    """
+
+    def _build_truss_solver(self, linear_algebra="lu"):
+        from fenix.core.domain import Domain
+        from fenix.core.material import Material
+        from fenix.elements.truss import Truss2D
+        from fenix.math.assembly import Assembler
+        from fenix.math.solvers import LinearSolver
+
+        class _ElasticMat(Material):
+            STRAIN_DIM = 1
+            def __init__(self, E):
+                self.E = E
+            def compute_state(self, strain, state_vars=None):
+                return self.E * strain, self.E, state_vars
+
+        domain = Domain()
+        n1 = domain.add_node(1, [0.0, 0.0])
+        n2 = domain.add_node(2, [1.0, 0.0])
+        domain.add_element(Truss2D(1, [n1, n2], _ElasticMat(E=1000.0), A=1.0))
+        n1.fix_dof("ux", 0.0); n1.fix_dof("uy", 0.0)
+        n2.fix_dof("uy", 0.0)
+        domain.generate_equation_numbers()
+        return LinearSolver(Assembler(domain), linear_algebra=linear_algebra), n2
+
+    def test_factorize_called_once_across_multiple_solves(self):
+        """``LinearSolver.solve`` con la misma K invoca ``factorize`` UNA vez."""
+        from unittest.mock import patch
+
+        solver, n2 = self._build_truss_solver(linear_algebra="lu")
+        ndof = solver.assembler.domain.total_dofs
+        F1 = np.zeros(ndof); F1[n2.dofs["ux"]] = 10.0
+        F2 = np.zeros(ndof); F2[n2.dofs["ux"]] = 20.0
+        F3 = np.zeros(ndof); F3[n2.dofs["ux"]] = -5.0
+
+        real_factorize = LUSolver.factorize
+        with patch.object(LUSolver, "factorize", autospec=True,
+                           side_effect=real_factorize) as mock_factorize:
+            u1 = solver.solve(F1)
+            u2 = solver.solve(F2)
+            u3 = solver.solve(F3)
+
+            # Linealidad: u(αF) = α·u(F). Verificación física.
+            self.assertAlmostEqual(u1[n2.dofs["ux"]], 0.01, places=10)
+            self.assertAlmostEqual(u2[n2.dofs["ux"]], 0.02, places=10)
+            self.assertAlmostEqual(u3[n2.dofs["ux"]], -0.005, places=10)
+
+            # Cache: tres `solve`, una sola `factorize`.
+            self.assertEqual(mock_factorize.call_count, 1)
+
+    def test_invalidate_cache_forces_refactor(self):
+        """Tras ``invalidate_cache``, la siguiente ``solve`` re-factoriza."""
+        from unittest.mock import patch
+
+        solver, n2 = self._build_truss_solver(linear_algebra="lu")
+        ndof = solver.assembler.domain.total_dofs
+        F = np.zeros(ndof); F[n2.dofs["ux"]] = 10.0
+
+        real_factorize = LUSolver.factorize
+        with patch.object(LUSolver, "factorize", autospec=True,
+                           side_effect=real_factorize) as mock_factorize:
+            solver.solve(F)               # 1ª: factoriza
+            solver.solve(F)               # 2ª: reusa
+            self.assertEqual(mock_factorize.call_count, 1)
+
+            solver.invalidate_cache()
+            solver.solve(F)               # 3ª: factoriza de nuevo
+            self.assertEqual(mock_factorize.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
