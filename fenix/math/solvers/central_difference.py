@@ -250,7 +250,7 @@ class CentralDifferenceSolver:
                       else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
         F0_red = T.T @ F0_global
 
-        F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red)
+        F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
 
         a_free = M_inv_diag * (F0_red - F_int_red - C_red @ v_free - F_dir)
 
@@ -285,7 +285,7 @@ class CentralDifferenceSolver:
             u_free = u_free + dt * v_half
 
             # F_int(u_{n+1}).
-            F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red)
+            F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
 
             # F(t_{n+1}).
             F_global = (np.zeros(ndof) if self.F_func is None
@@ -339,19 +339,29 @@ class CentralDifferenceSolver:
         T,
         g: np.ndarray,
         K_red: sp.spmatrix,
+        F_dir: np.ndarray,
     ) -> np.ndarray:
-        """``F_int`` proyectado a DOFs libres.
+        """``F_int`` proyectado a DOFs libres, **excluyendo la contribución del apoyo**.
 
-        - Lineal: ``F_int = K·u`` con ``K`` ensamblada una vez. En DOFs
-          libres reducidos: ``K_red · u_free + T.T · K · g`` (el último
-          término ya está en ``F_dir`` del llamador — aquí sólo
-          ``K_red · u_free`` porque ``F_dir`` se resta una vez al final).
-        - No lineal: ``Assembler.assemble_non_linear_system(u_global)``
-          recalcula ``F_int`` en el estado actual y se proyecta a libres.
+        Ambas ramas devuelven ``F_int`` sin el término que mueve a los DOFs
+        prescritos (``F_dir = T.T·K·g``). El cómputo de la aceleración resta
+        ``-F_dir`` una vez fuera de este método, de modo que la rama lineal
+        y la no lineal pasan por el mismo balance.
+
+        - Lineal: ``F_int(u_global) = K·u_global = K·T·u_free + K·g``;
+          proyectado a libres queda ``K_red·u_free + F_dir``. Aquí devolvemos
+          sólo ``K_red·u_free`` (la contribución del apoyo viene de ``-F_dir``
+          en el llamador).
+        - No lineal: ``Assembler.assemble_non_linear_system(u_global)`` recalcula
+          ``F_int`` sobre el estado actual e incluye **implícitamente** la
+          contribución del apoyo (porque ``u_global = T·u_free + g``). Restamos
+          ``F_dir`` aquí dentro para alinearnos con la rama lineal — si no se
+          restara, el llamador contaría el efecto del apoyo dos veces y la
+          dinámica con apoyos prescritos no nulos saldría corrompida.
         """
         if not self.nonlinear:
             return K_red @ u_free
         # Reconstruir u_global con apoyos prescritos y recalcular F_int.
         u_global = T @ u_free + g
         _K_t, F_int_global = self.assembler.assemble_non_linear_system(u_global)
-        return T.T @ F_int_global
+        return T.T @ F_int_global - F_dir

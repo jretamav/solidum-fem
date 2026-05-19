@@ -233,6 +233,59 @@ class TestCentralDifferenceNonlinear(unittest.TestCase):
         # Mismos valores numéricos hasta precisión de máquina.
         np.testing.assert_allclose(u_lin, u_nl, rtol=1e-9, atol=1e-12)
 
+    def test_nonlinear_matches_linear_with_nonzero_prescribed_support(self):
+        """Coincidencia lin↔no-lin con **apoyo prescrito no nulo** — regresión
+        de la doble resta de ``F_dir`` en la rama no-lineal (auditoría H-4.3).
+
+        Con el apoyo izquierdo en ``ux = g₀ ≠ 0`` la trayectoria analítica del
+        nodo libre es ``u(t) = g₀ + (u₀ − g₀)·cos(ωt)``. Si la rama no-lineal
+        restara ``F_dir`` dos veces, la aceleración inicial saldría amplificada
+        y la trayectoria divergiría de la rama lineal desde el primer paso.
+        El test exige coincidencia bit-a-bit entre ramas (el material es
+        lineal: ambas deben recorrer el mismo balance dinámico).
+        """
+        T = 2.0 * math.pi / OMEGA_1DOF
+        dt = T / 200.0
+        t_end = T
+        ndof = 4
+        dof = 2  # ux del nodo 2 (libre)
+        g0 = 0.5  # apoyo prescrito no nulo
+        u0 = np.zeros(ndof)
+        u0[dof] = 1.0
+        u0[0] = g0  # ux del nodo 1 (prescrito) — consistente con la BC
+
+        def _build_with_prescribed_support() -> Domain:
+            dom = Domain()
+            n1 = dom.add_node(1, [0.0, 0.0])
+            n2 = dom.add_node(2, [L_1DOF, 0.0])
+            mat = Elastic1D(E=E_1DOF, density=RHO_1DOF_LUMPED)
+            dom.add_element(Truss2D(1, [n1, n2], mat, A=A_1DOF))
+            n1.fix_dof("ux", g0); n1.fix_dof("uy", 0.0)
+            n2.fix_dof("uy", 0.0)
+            dom.generate_equation_numbers(verbose=False)
+            return dom
+
+        dom_lin = _build_with_prescribed_support()
+        solver_lin = CentralDifferenceSolver(
+            Assembler(dom_lin), t_end=t_end, dt=dt, u0=u0, nonlinear=False,
+        )
+        u_lin = solver_lin.solve().u_history[_free_dof(dom_lin), :]
+
+        dom_nl = _build_with_prescribed_support()
+        solver_nl = CentralDifferenceSolver(
+            Assembler(dom_nl), t_end=t_end, dt=dt, u0=u0, nonlinear=True,
+        )
+        u_nl = solver_nl.solve().u_history[_free_dof(dom_nl), :]
+
+        np.testing.assert_allclose(u_lin, u_nl, rtol=1e-9, atol=1e-12)
+
+        # Verificación analítica adicional: el modo lineal debe seguir
+        # u(t) = g₀ + (u₀ − g₀)·cos(ωt). Banda holgada (Δt²) — el objetivo
+        # primario es el contraste lin↔no-lin de arriba.
+        t = np.linspace(0.0, t_end, u_lin.size)
+        u_analytic = g0 + (1.0 - g0) * np.cos(OMEGA_1DOF * t)
+        np.testing.assert_allclose(u_lin, u_analytic, atol=2e-3)
+
 
 # ---------------------------------------------------------------------------
 # Rechazos defensivos
