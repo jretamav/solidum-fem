@@ -207,6 +207,62 @@ class TransientResult:
     beta_rayleigh: float = 0.0
     converged: bool = True
 
+    def internal_forces_history(
+        self, domain: "Domain",
+    ) -> dict[int, list["ElementForces"]]:
+        """Esfuerzos internos por paso temporal para cada elemento (lazy).
+
+        Para cada ``elem_id`` con ``internal_forces`` implementado (contrato
+        ADR 0002 — barras/vigas/cables 2D y 3D), devuelve la lista de
+        ``ElementForces`` evaluados con el campo ``u_history[:, k]`` en
+        cada paso ``k``. Los elementos cuya ``internal_forces(U)`` devuelve
+        ``None`` (sólidos 2D — deuda ADR 0002 documentada) se omiten del
+        dict.
+
+        Returns
+        -------
+        history
+            ``{elem_id: [ElementForces_t_0, ..., ElementForces_t_n_steps]}``.
+            Cada lista tiene longitud ``n_steps + 1`` (incluye ``t=0``).
+
+        Notes
+        -----
+        Cierra la asimetría arquitectural detectada en la auditoría H-1.3:
+        ``SolveResult.element_forces`` exponía los esfuerzos estáticos pero
+        ``TransientResult`` exigía al consumidor reconstruirlos manualmente.
+
+        **Limitación conocida — elementos corotacionales**: la cinemática
+        corotacional almacena estado interno (rotación rígida del frame
+        local) que se commitea paso a paso durante la solución. Tras el
+        análisis, el ``state`` del elemento queda en la configuración del
+        último paso. Llamar ``internal_forces(u_history[:, k])`` con ``k``
+        intermedio reusa ese ``state`` final, no el contemporáneo a
+        ``u_history[:, k]`` — los esfuerzos en pasos anteriores serán
+        incorrectos para corotacionales. Para elementos geométricamente
+        lineales (``Truss2D`` no-corot, ``Frame2DEuler``, ``Frame3D``,
+        ``Frame2DTimoshenko``) el método es exacto en cualquier paso
+        porque ``internal_forces`` reevalúa desde el desplazamiento sin
+        depender de historia geométrica.
+
+        Cálculo eager (recorre todos los pasos al llamar). Si necesitas
+        múltiples consultas, almacena el dict devuelto externamente — no
+        se cachea en la dataclass para no inflar la memoria del resultado
+        cuando el consumidor no lo necesita.
+        """
+        history: dict[int, list[ElementForces]] = {}
+        n_t = self.u_history.shape[1]
+        for elem_id, elem in domain.elements.items():
+            # Sondeo: si el primer paso devuelve ``None``, el elemento no
+            # implementa el contrato — saltar todo el elemento.
+            first = elem.internal_forces(self.u_history[:, 0])
+            if first is None:
+                continue
+            per_step = [first]
+            for k in range(1, n_t):
+                per_step.append(elem.internal_forces(self.u_history[:, k]))
+            history[elem_id] = per_step
+        return history
+
 
 @dataclass(frozen=True)
 class HarmonicResult:

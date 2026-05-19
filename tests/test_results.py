@@ -69,5 +69,65 @@ class TestSolveResult(unittest.TestCase):
             res.converged = False  # type: ignore[misc]
 
 
+class TestTransientResultInternalForcesHistory(unittest.TestCase):
+    """``TransientResult.internal_forces_history(domain)`` debe devolver
+    la historia de ``ElementForces`` para cada elemento que implemente el
+    contrato ADR 0002 (regresión auditoría H-1.3).
+
+    Caso de validación: oscilador 1 GDL no amortiguado con material
+    elástico lineal. El esfuerzo axial en cada paso ``k`` debe coincidir
+    con ``E·A·(u_2(t_k) − u_1(t_k))/L``, y la trayectoria de la fuerza
+    axial debe replicar la del desplazamiento del DOF libre porque la
+    relación es lineal y los apoyos son fijos.
+    """
+
+    def test_truss_internal_forces_track_displacement(self):
+        import math
+
+        import fenix  # autodiscover
+        from fenix.core.domain import Domain
+        from fenix.elements.truss import Truss2D
+        from fenix.entry import run_transient
+        from fenix.materials.elastic import Elastic1D
+
+        # Parámetros 1 GDL: ω = 5 rad/s con K=25, M=1.
+        E, A, L = 25.0, 1.0, 1.0
+        rho_lumped = 2.0
+        omega = 5.0
+
+        dom = Domain()
+        n1 = dom.add_node(1, [0.0, 0.0])
+        n2 = dom.add_node(2, [L, 0.0])
+        mat = Elastic1D(E=E, density=rho_lumped)
+        dom.add_element(Truss2D(1, [n1, n2], mat, A=A))
+        n1.fix_dof("ux", 0.0); n1.fix_dof("uy", 0.0)
+        n2.fix_dof("uy", 0.0)
+        dom.generate_equation_numbers(verbose=False)
+
+        T = 2.0 * math.pi / omega
+        dt = T / 200.0
+        u0 = np.zeros(dom.total_dofs); u0[n2.dofs["ux"]] = 0.1
+        result = run_transient(dom, t_end=T, dt=dt, u0=u0)
+
+        history = result.internal_forces_history(dom)
+
+        # Truss2D registrado con elem_id=1.
+        self.assertIn(1, history)
+        per_step = history[1]
+        # n_steps + 1 entradas (incluye t=0).
+        self.assertEqual(len(per_step), result.u_history.shape[1])
+
+        # ElementForces type para Truss tiene componente "N".
+        self.assertEqual(per_step[0].kind, "truss")
+        self.assertIn("N", per_step[0].components)
+
+        # Validación física: para Truss2D, N = E·A·(u_2x − u_1x)/L₀,
+        # con el primer nodo fijado en x=0 ⇒ N(t) = E·A·u_2x(t)/L₀.
+        u2x = result.u_history[n2.dofs["ux"], :]
+        N_expected = E * A * u2x / L
+        N_history = np.array([ef.components["N"][0] for ef in per_step])
+        np.testing.assert_allclose(N_history, N_expected, rtol=1e-10)
+
+
 if __name__ == "__main__":
     unittest.main()
