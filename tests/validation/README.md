@@ -13,8 +13,9 @@ con cifras citables contra referencias externas.
 | 2 | NAFEMS LE1 — elliptic membrane (plane stress) | `test_nafems_le1.py` | Quad4, Tri3, Quad8, Quad9, Tri6 | 10/10 |
 | 3 | MacNeal-Harder slender cantilever | `test_slender_cantilever.py` | Frame2DEuler, Frame2DTimoshenko, Quad4, Quad8 | 8/8 |
 | 4 | Bathe wave propagation (barra 1D) | `test_bathe_wave_propagation.py` | Truss2D + CentralDifferenceSolver | 4/4 |
+| 5 | Cilindro grueso de Hill — J2 perfecta (plane strain) | `test_hill_cylinder_j2.py` | Quad4 + VonMises2D + NonlinearSolver | 4/4 |
 
-**Total: 34/34 tests verde**. Última actualización: 2026-05-19.
+**Total: 38/38 tests verde**. Última actualización: 2026-05-19.
 
 ## Resultados cuantitativos por benchmark
 
@@ -109,6 +110,30 @@ Velocidad de onda medida vs analítica (Δt = 0.5·CFL crítico):
 Este benchmark cierra el hueco identificado en `[[project_validacion_fase_b]]`
 sobre validación de wave propagation en central difference — ningún test
 anterior medía la velocidad de propagación.
+
+### 5. Cilindro grueso de Hill (J2 perfecta, plane strain)
+
+Cuadrante de corona Rᵢ=1, Rₑ=2, presión interna p. Material von Mises
+perfecto (σ_y=1, H=0), E=1000, ν=0.3, plane strain.
+
+Presiones críticas analíticas (Hill 1950):
+
+    p_e = (σ_y/√3)·(1 − Rᵢ²/Rₑ²) = 0.4330      (yield onset)
+    p_L = (2σ_y/√3)·ln(Rₑ/Rᵢ)    = 0.8005      (límite plástico)
+
+Cuatro tests:
+
+| Test | Régimen | Verifica |
+|------|---------|----------|
+| `elastic_regime_no_plasticity` | p = 0.30 < p_e | α = 0 en todos los Gauss; σ_rr y σ_θθ coinciden con Lamé puro (e_L² < 20% / 6%) |
+| `elastoplastic_regime_yield_zone` | p = 0.70 (r_c ≈ 1.49) | Gauss en r < r_c−margen plastificados (α>0); Gauss en r > r_c+margen elásticos (α=0); σ_θθ − σ_rr ≈ 2σ_y/√3 en zona plástica (err < 5%) |
+| `stress_in_plastic_zone` | p = 0.70 | σ_rr en zona plástica coincide con fórmula de Hill (e_L² < 18%) |
+| `displacement_grows_approaching_limit` | p ∈ {0.50, 0.65, 0.78} | u_r(Rᵢ) crece monótonamente; ratio (p≈0.975·p_L)/(p<p_e) > 2 |
+
+Este benchmark valida cuantitativamente J2 perfecta en problema con
+solución analítica cerrada — el más citable de la familia de plasticidad
+de Hill. Cierra hueco identificado en la auditoría de Tanda 14: ningún
+test anterior comparaba J2 contra Hill 1950.
 
 ## Decisiones de diseño
 
