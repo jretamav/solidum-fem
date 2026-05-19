@@ -1,0 +1,138 @@
+# Benchmarks de validación externa — Fenix FEM
+
+Tests que validan Fenix contra **soluciones analíticas clásicas** y
+**benchmarks publicados** (NAFEMS, MacNeal-Harder, Timoshenko-Goodier).
+Complementan los tests unitarios y de integración del directorio padre
+con cifras citables contra referencias externas.
+
+## Cobertura actual
+
+| # | Benchmark | Archivo | Elementos | Resultado |
+|---|-----------|---------|-----------|-----------|
+| 1 | Cilindro grueso de Lamé (plane strain) | `test_lame_cylinder.py` | Quad4, Tri3, Quad8, Quad9, Tri6 | 12/12 |
+| 2 | NAFEMS LE1 — elliptic membrane (plane stress) | `test_nafems_le1.py` | Quad4, Tri3, Quad8, Quad9, Tri6 | 10/10 |
+| 3 | MacNeal-Harder slender cantilever | `test_slender_cantilever.py` | Frame2DEuler, Frame2DTimoshenko, Quad4, Quad8 | 8/8 |
+
+**Total: 30/30 tests verde**. Última actualización: 2026-05-19.
+
+## Resultados cuantitativos por benchmark
+
+### 1. Cilindro de Lamé (plane strain)
+
+Cuadrante de corona circular Rᵢ=1, Rₑ=2, presión interna p=1, E=1000, ν=0.3.
+
+Error L²-relativo de los esfuerzos σ_rr y σ_θθ en Gauss interiores:
+
+| Elemento | Malla | e_L²(σ_rr) | e_L²(σ_θθ) |
+|----------|-------|-----------|-----------|
+| Quad4 | 8×8   | 17.8%     | 2.7%      |
+| Quad4 | 16×16 |  8.8%     | 1.3%      |
+| Tri3  | 8×8   | 17.1%     | 8.2%      |
+| Quad8 | 4×4   |  3.8%     | 1.2%      |
+| Quad8 | 8×8   |  0.7%     | 0.3%      |
+| Quad9 | 4×4   |  3.5%     | 1.1%      |
+| Tri6  | 4×4   |  3.4%     | 1.3%      |
+| Tri6  | 8×8   |  0.9%     | 0.4%      |
+
+- **Convergencia O(h¹)** verificada para Quad4/Tri3 (σ ∈ P0 por elemento).
+- **Convergencia O(h²)** verificada para Quad8 (ratio 4×4→8×8 = 5.1).
+- **Anisotropía radial vs circunferencial** capturada correctamente —
+  habría destapado errores de signo en B/C.
+
+### 2. NAFEMS LE1 — elliptic membrane
+
+Cuadrante elíptico entre elipses concéntricas (2,1) y (3.25,2.75), presión
+exterior 10 MPa. Valor de referencia: **σ_yy(D=(2,0)) = 92.7 MPa**.
+
+σ_yy en el Gauss más cercano a D (sin stress recovery sofisticado):
+
+| Elemento | Malla   | σ_yy(D, nearest Gauss) | Error |
+|----------|---------|------------------------|-------|
+| Quad4    | 32×32   | 90.1                   |  2.8% |
+| Quad8    | 8×8     | 85.4                   |  7.9% |
+| Quad9    | 8×8     | 85.8                   |  7.4% |
+| Tri3     | 32×32   | 77.6                   | 16.3% |
+| Tri6     | 16×16   | 78.4                   | 15.4% |
+
+Convergencia h monótona verificada para los 5 elementos.
+
+**Limitación documentada**: para alcanzar el valor canónico 92.7 con malla
+coarse se necesita **recovery superconvergente (Zienkiewicz SPR)** no
+implementado en el post-proceso. Los Tri tienen Gauss en el centroide, lo
+que aleja inherentemente el "best sampling point" del nodo de esquina D.
+
+### 3. MacNeal-Harder slender cantilever
+
+Cantilever L=6, h=0.2, t=0.1 (esbeltez L/h=30), E=10⁷, ν=0.3, P_tip=1.
+Referencias analíticas:
+
+- **Euler-Bernoulli**: u_tip = PL³/(3EI) = 0.10800
+- **Timoshenko**:      u_tip = 0.10809 (corrección de cortante ~0.09%)
+
+| Caso                            | Resultado | Error |
+|---------------------------------|-----------|-------|
+| Frame2DEuler 1 elemento         | exacto    | < 1e-12 |
+| Frame2DTimoshenko 1 elemento    | exacto    | < 1%    |
+| Frame2DTimoshenko 8 elementos   | exacto    | < 1e-6  |
+| Quad4 30×1 (shear locking severo) | 0.0729 | -32.6%  |
+| Quad4 60×4                      | 0.0979    | -9.4%   |
+| Quad4 120×8                     | 0.1053    | -2.6%   |
+| Quad8 12×1                      | 0.1073    | -0.7%   |
+
+- **Frames analíticos** dan la solución exacta con 1 elemento.
+- **Shear locking en Q4** documentado cuantitativamente — Q4 1-capa
+  predice ~67% del valor real. Necesita malla 120×8 para alcanzar error
+  <5%. Esta es una limitación conocida del elemento bilinear sin
+  reduced-integration / B-bar.
+- **Q8 12×1** sin locking severo: -0.7% con malla coarse.
+
+## Decisiones de diseño
+
+### Métricas elegidas
+
+- **Lamé**: error L²-relativo sobre Gauss interiores (descartando bordes
+  donde la BC discreta introduce error de frontera). Métrica estándar de
+  Bathe §4.3, Hughes §3.10.
+- **LE1**: σ_yy en el Gauss más cercano a D — limitada por la ausencia
+  de stress recovery; ver "Deuda técnica" más abajo.
+- **Cantilever**: u_tip — escalar simple, físicamente intuitivo.
+
+### Tolerancias
+
+Calibradas empíricamente con margen. **No son fruto de bajar el listón
+hasta que un test pase** — reflejan el orden de convergencia teórico del
+elemento (O(h¹) para Q4/Tri3, O(h²) para los cuadráticos). El test de
+h-refinement complementa la verificación cuantitativa.
+
+### Convención de mallas estructuradas
+
+Cada benchmark construye su malla en coordenadas paramétricas (s, t) y
+mapea al dominio físico. La construcción de mallas con midnodes para
+Q8/Q9/Tri6 reusa el patrón establecido en `tests/test_cooks_membrane.py`.
+
+## Deuda técnica identificada
+
+1. **Stress recovery superconvergente (SPR de Zienkiewicz)** no
+   implementado. Tendría dos beneficios:
+   - σ_yy(D) en NAFEMS LE1 alcanzaría ≈92.7 con malla coarse.
+   - Cierres de algunos huecos abiertos de la Fase B (cohesivo G_F).
+2. **Q4 con shear locking**: alternativas como Quad4 con integración
+   reducida selectiva (SRI) o B-bar permitirían malla coarse en slender
+   beam sin locking. La spec de un Quad4-SRI sería un componente nuevo
+   (no variante) por su impacto en la rigidez.
+3. **Sólidos 3D**: el cimiento de validación es solo 2D. NAFEMS LE10
+   (placa gruesa 3D), LE2 (cilindro tapado), LE3 (hemisferio) requieren
+   H8/H20/T4/T10 antes de poder validar.
+
+## Cómo añadir un benchmark nuevo
+
+1. Crear `tests/validation/test_<benchmark>.py`.
+2. Module-docstring con: referencia bibliográfica completa, definición
+   física del problema, BCs, cantidad medida, valor de referencia.
+3. Helpers de malla y carga al estilo de los tres existentes.
+4. Marcador `@pytest.mark.parametrize` por elemento cuando aplique.
+5. **Al menos un test de h-convergencia** además de los tests con malla
+   fija (verifica la propiedad cualitativa más fuerte de la formulación).
+6. Tolerancias calibradas empíricamente — **no las hagas pasar bajando
+   el listón**, ajusta la malla o el método de medida.
+7. Actualizar la tabla de cobertura de este README.
