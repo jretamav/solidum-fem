@@ -64,10 +64,10 @@ Componentes con criterios físicamente delicados cubiertos sólo por sanidad, or
 4. **CST_Embedded2D** — integración multi-elemento y modo II sólo en sanidad.
 5. ~~**ResponseSpectrumSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)**: cadena 4-truss Laplaciano 1D con autovalores cerrados ω_n² = 2 − 2·cos(nπ/4), valida ω, γ y SRSS contra fórmula analítica.
 6. ~~**HHTSolver / NewtonHHTSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)** para HHTSolver: matriz de amplificación 3×3 analítica para la convención Fenix (Hughes 1987 §9.3) contrastada contra contracción medida a Ω moderado + asíntota ρ_∞ = (1+α)/(1−α). NewtonHHTSolver hereda la verificación lineal. **CentralDifferenceSolver CERRADO 2026-05-19 (Tanda 2)**: frontera ``Δt_crit = 2/ω_max`` validada en 1-DOF y en cadena 2-DOF con autovalores cerrados ω_max=√3.
-7. ~~**Quad8 / Quad9 / Tri6**~~ — **CERRADO 2026-05-19**: Quad8/Quad9 en Tanda 1 (Cook's 4×4 + refinamiento monótono). Tri6 en Tanda 2 (mismo trapezoide triangulado, diagonal c1→c3 con center node compartido). Pendiente: test de locking volumétrico ν → 0.5 (limitación arquitectural conocida, no bug).
+7. ~~**Quad8 / Quad9 / Tri6**~~ — **CERRADO 2026-05-19**: Quad8/Quad9 en Tanda 1 (Cook's 4×4 + refinamiento monótono). Tri6 en Tanda 2 (mismo trapezoide triangulado, diagonal c1→c3 con center node compartido). Locking volumétrico ν → 0.5 **CERRADO 2026-05-19 (Tanda 4)**: limitación arquitectural ahora blindada por test que demuestra que `Quad4` plane strain pierde >50% de deflexión al pasar de ν=0.3 a ν=0.4999, mientras que `Quad8` mantiene un ratio >1.5× mejor (lockea, pero menos). Ver `test_volumetric_locking.py`.
 
-## Limitaciones arquitecturales no documentadas (Fase D)
+## Limitaciones arquitecturales documentadas (Fase D)
 
-- Locking volumétrico en sólidos 2D para ν → 0.5 (B-bar / mixed no implementados).
+- ~~Locking volumétrico en sólidos 2D para ν → 0.5~~ ✅ **Blindado 2026-05-19**: `test_volumetric_locking.py` documenta el colapso del Quad4 y la mitigación parcial del Quad8 sobre cantilever esbelto. Mitigaciones B-bar / mixed siguen diferidas hasta caso de uso real.
 - Apex return de DP en zona muy traccionante: sin smoothing si oscilara entre ramas.
 - Newmark / HHT sin verificación de estabilidad analítica del esquema (sólo benchmarks numéricos).
