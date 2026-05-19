@@ -46,6 +46,7 @@ from fenix.math.solvers._shared import CholeskyNotPositiveDefiniteError
 from fenix.math.solvers.linear import LinearSolver
 from fenix.math.solvers.nonlinear import NonlinearSolver
 from fenix.math.solvers.arclength import ArcLengthSolver
+from fenix.math.solvers.dissipation_arclength import DissipationArcLengthSolver
 from fenix.math.solvers.modal import ModalSolver
 from fenix.math.solvers.newmark import (
     HHTSolver,
@@ -62,6 +63,7 @@ __all__ = [
     "LinearSolver",
     "NonlinearSolver",
     "ArcLengthSolver",
+    "DissipationArcLengthSolver",
     "ModalSolver",
     "NewmarkSolver",
     "NewtonNewmarkSolver",

@@ -54,7 +54,7 @@ fenix_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 703 verdes + 5 skipped (pytest)
+├── tests/                        ← 741 verdes + 5 skipped (pytest); de éstos, 38 en tests/validation/ contra benchmarks publicados (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2)
 ├── docs/
 │   ├── adr/                      ← 0001-0010: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
@@ -135,7 +135,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ## 8. Antes de commitear
 
-1. `python -m pytest tests/ -q` verde (703 pasan, 5 skipped es normal).
+1. `python -m pytest tests/ -q` verde (741 pasan, 5 skipped es normal).
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
 4. **Pre-commit hooks**: no usar `--no-verify`. Si un hook falla, investigar la causa raíz.
@@ -161,4 +161,4 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ---
 
-*Última actualización: 2026-05-14 — primer redactado tras formalizar el set de documentos navegacionales (ROADMAP + STATUS + MATRIZ + ONBOARDING).*
+*Última actualización: 2026-05-19 — cifras de suite y subcarpeta `tests/validation/` (Tandas 12-14, 38 tests contra benchmarks publicados).*
