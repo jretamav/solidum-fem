@@ -80,7 +80,14 @@ class Frame2DEuler(Element):
         ])
 
         F_int_local = K_local @ u_local
-        # Componente axial: usar sigma directo del material (permite materiales no-lineales)
+        # Componente axial: usar sigma directo del material — permite
+        # materiales no lineales en el axial uniforme (Elastoplastic1D,
+        # daño 1D). Los términos transversal/flexional siguen siendo
+        # ``K_local @ u_local`` con ``E_tangent`` aplicado globalmente:
+        # **no captura plasticidad por flexión** (las fibras inferiores
+        # en tracción no plastifican independientemente). La plasticidad
+        # distribuida en la sección requiere ``FiberSection`` (auditoría
+        # H-2.5; ver `project_pendiente_fiber_section.md` en memoria).
         F_int_local[0] = -sigma * self.A
         F_int_local[3] =  sigma * self.A
 

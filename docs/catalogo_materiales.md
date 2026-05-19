@@ -27,7 +27,7 @@
 - **Parámetros**: `E`, `nu`, `hypothesis ∈ {'plane_stress', 'plane_strain'}`.
 - **Variables internas**: ninguna.
 - **Tangente**: constante = `C`.
-- **Compatible con**: `Quad4`, `Tri3`.
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`).
 - **Archivo**: [fenix/materials/elastic_2d.py](fenix/materials/elastic_2d.py)
 
 ---

@@ -266,7 +266,7 @@ F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del mate
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`); peraltadas → `Frame2DTimoshenko`.
 - Pequeños desplazamientos, pequeñas rotaciones.
-- No captura rótulas plásticas distribuidas: `E_tangent` escala toda la matriz por igual.
+- No captura **plasticidad por flexión** distribuida en la sección: `E_tangent` escala toda la matriz de rigidez por igual. La fluencia que ocurre primero en la fibra inferior bajo flexión no se modela hasta que entre `FiberSection` (deuda técnica documentada).
 
 ### Independencia del diseño
 Vive en el paquete `fenix/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `fenix/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
@@ -414,6 +414,9 @@ K_global = Tᵀ K_local T
 - Pequeños desplazamientos, pequeñas rotaciones.
 - Sin alabeo (secciones macizas o cerradas).
 - Para grandes rotaciones en 3D: pendiente `Frame3DCorot`.
+
+### Masa lumped: limitación en orientación oblicua
+La masa lumped es estrictamente diagonal en ejes locales (`ρAL/2` traslacional, `ρI·L/2` rotacional con `I` específica por DOF). Tras la rotación `T^T·M·T` a globales, el bloque traslacional 3×3 por nodo permanece diagonal porque `m_t·I₃` es invariante bajo SO(3), pero el bloque rotacional 3×3 queda **lleno** porque `m_rx = ρJp·L/2`, `m_ry = ρIy·L/2`, `m_rz = ρIz·L/2` son valores distintos para una sección real. `M_global` resulta entonces **bloque-diagonal por nodo** (no estrictamente diagonal). Es la limitación estándar del lumping en frames 3D (Cook-Malkus-Plesha §11.4); aceptable para Newmark/HHT pero `CentralDifferenceSolver` rechaza con `ValueError` y orienta al usuario hacia Newmark o hacia un eje del elemento alineado con un eje global.
 
 ### Independencia del diseño
 Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimoshenko`, ni con los trusses 3D.

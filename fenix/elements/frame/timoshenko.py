@@ -104,6 +104,11 @@ class Frame2DTimoshenko(Element):
         ])
 
         F_int_local = K_local @ u_local
+        # Materiales no lineales sólo capturan el axial uniforme; los
+        # términos transversales/flexionales se quedan en ``K_local @ u_local``
+        # con ``E_tangent`` global — sin plasticidad por flexión hasta que
+        # entre ``FiberSection`` (auditoría H-2.5, ver memoria
+        # ``project_pendiente_fiber_section.md``).
         F_int_local[0] = -sigma * self.A
         F_int_local[3] =  sigma * self.A
 
