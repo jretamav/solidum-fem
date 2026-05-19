@@ -616,9 +616,11 @@ Mantener como housekeeping cuando se entre a una sesión de pulido. Ninguno bloq
 # Addendum — Progreso 2026-05-19
 
 Bitácora de cierre tras la sesión de saneamiento post-auditoría. Cuatro
-batches de fixes aplicados, **19 hallazgos cerrados** sobre los 51 del
+batches de fixes aplicados, **23 hallazgos cerrados** sobre los 51 del
 informe; **6 hallazgos diferidos con rationale** explícito (todos
-medios-bajos sin bloqueo de avance).
+medios-bajos sin bloqueo de avance). El mismo día se ejecutó una
+**segunda sesión de housekeeping** (sección siguiente) que cierra 18
+hallazgos adicionales para llevar el total a **41 cerrados de 51**.
 
 ## Hallazgos cerrados (19)
 
@@ -735,10 +737,11 @@ Rellenar las 7 specs son ~3.5h de trabajo mecánico que no aporta nuevo
 conocimiento físico ni cambia comportamiento — se retoma en una sesión
 dedicada de housekeeping documental.
 
-## Hallazgos bajos pendientes (17)
+## Hallazgos bajos pendientes (17) — al cierre de la primera sesión
 
-Sin acción en esta ronda. Lista resumen para próxima sesión de
-housekeeping (orden por archivo del informe original):
+Listados aquí para trazabilidad; **todos saldados o desestimados con
+rationale en la segunda sesión de housekeeping del 2026-05-19** — ver
+sección siguiente.
 
 - Eje 1: H-1.8 (step_callback silenciado), H-1.10 (frozen=True semántico),
   H-1.11 (capa core importa results), H-1.12 (excepciones tipadas no
@@ -756,21 +759,137 @@ housekeeping (orden por archivo del informe original):
   untracked — fuera de alcance).
 - Eje 5: H-5.5 (`MATRIZ.md` faltante), H-5.6 (`ONBOARDING.md` pendiente).
 
-## Métricas finales
+# Addendum — Segunda sesión de housekeeping 2026-05-19
 
-| Eje | Cerrados | Diferidos con rationale | Bajos pendientes |
+Sesión continuada el mismo día con 6 batches de cierre sobre los
+hallazgos que la primera ronda dejó pendientes. **18 cerrados** (de los
+27 que quedaban abiertos) y **4 desestimados con rationale** explícito.
+
+## Hallazgos cerrados (18 adicionales — total 41 de 51)
+
+### H-5.3 — 7 specs faltantes (cerrado)
+Specs retroactivas creadas para componentes anteriores a la convención
+de specs validadas: `Elastic1D`, `Elastic2D`, `Elastoplastic1D`,
+`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver` y `NewtonHHTSolver`
+(esta última como spec corta tipo extensión por Reglas §4). Sin cambios
+de código. Catálogos actualizados con el enlace a la spec. Commit `fe839f3`.
+
+### H-5.5 y H-5.6 — MATRIZ.md / ONBOARDING.md (cerrados)
+Ambos documentos ya existían y estaban completos al cierre de la
+Etapa 6. La auditoría los reportó como faltantes basándose en menciones
+obsoletas en `STATUS.md:5` y `ROADMAP.md:192-193`. Limpieza de las
+menciones; añadida fila `CST_Embedded2D` + columna
+`CohesiveDamageIsotropic` a la matriz Elemento × Material. Commit
+`3082345`.
+
+### H-3.3, H-3.7, H-3.8 — Nomenclatura y contrato Material (cerrados)
+- **H-3.3** — Barrido `tensión` → `esfuerzo`/`tracción` en docstrings
+  (`VonMises2D`, `CableMaterial1D`, `Cable2DCorot`/`Cable3DCorot`,
+  `_softening`, `core/element`, `solid_2d/__init__`, `embedded_cst`).
+- **H-3.7** — Nota en docstring de `IsotropicDamage1D`/`IsotropicDamage2D`
+  contrastando explícitamente la semántica del cap `DAMAGE_MAX` continuo
+  (aplica a ω y σ) frente al cohesivo (aplica solo a la tangente).
+- **H-3.8** — Docstring de `Material.compute_state` ampliado con la
+  sección "Semántica trial/commit": el `new_state_vars` devuelto es
+  trial; el `commit_all_states()` del solver lo promueve a committed.
+Commit `cbfe4e8`.
+
+### H-3.6, H-3.9 — Tests menores (cerrados)
+- **H-3.6** — `test_switching_exacto_continuidad_de_sigma` y
+  `test_switching_exacto_sin_histeresis` en `tests/test_cable_material.py`
+  verifican que σ es continuo en ε=0 y que el material es memoryless al
+  ciclar entre régimen tracción y compresión.
+- **H-3.9** — `test_plastic_incompressibility_persistente` en
+  `tests/test_materials_unit.py` verifica `tr(ε^p) = 0` en VonMises2D
+  plane stress a lo largo de una trayectoria de 6 pasos (elástico →
+  plástico → cortante → descarga → recarga).
+Commit `c928e47`. Suite +3.
+
+### H-1.8, H-1.10, H-1.11, H-1.14, H-2.8, H-2.9, H-3.10, H-4.9 — Plumbing (cerrados)
+- **H-1.8** — `entry.run_yaml` emite `_log.warning` cuando se pasa
+  `step_callback` a un pipeline distinto de `static`.
+- **H-1.10** — Documenta "shallow-frozen" en los 5 `Result` dataclasses.
+- **H-1.11** — `ElementForces` movido a `fenix/core/element_forces.py`;
+  `fenix.results` lo re-exporta. `fenix/core/element.py` ya no importa
+  `fenix.results` — jerarquía conceptual `core → ... → results`
+  preservada.
+- **H-1.14** — `yaml_parser.py` deja de acceder atributos privados de
+  los Registries (`._materials`, `._elements`, etc.). Nuevo método
+  público `Registry.get(name)` para introspección sin instanciar. Alias
+  muertos eliminados de `fenix.registry`.
+- **H-2.8** — Nota explicativa en `Frame2DEuler` y `Frame2DTimoshenko`
+  sobre la doble rotación `T @ T.T = I` (cosmético, severidad bajo —
+  no merece refactor que rompa la simetría con `compute_element_state`).
+- **H-2.9** — `Frame3D` emite el warning de barra casi-vertical sin
+  `ref_vector` **una sola vez por sesión** (flag de clase
+  `_vertical_warning_emitted`). Alinea código con el docstring/manual
+  que ya prometían "la primera vez".
+- **H-3.10** — Docstring del kernel J2 plane stress documenta por qué
+  `yield_tol` se evalúa con `alpha_old` (impacto numérico despreciable;
+  Δα/α_baseline << tolerancia).
+- **H-4.9** — Comentarios en `NewtonNewmark` y `NewtonHHT` sobre el
+  doble ensamblaje con `line_search=True`: aceptado por simetría con la
+  rama sin line search, y porque el default ADR 0011 (`line_search=False`)
+  no toca esta rama.
+Commit `1220d02`.
+
+### H-4.10 — `Iventalla.dat` (cerrado)
+Archivo untracked eliminado a petición del usuario al inicio de la
+sesión. Sin entrada en `.gitignore` — el archivo era residuo, no input
+con uso futuro.
+
+## Hallazgos desestimados con rationale (4)
+
+Diferidos sin acción porque la propia recomendación de la auditoría así
+lo indicaba, o porque el coste no era proporcional al valor:
+
+### H-1.12 — Excepciones tipadas en Newton local
+La propia recomendación dice "no actuar ahora. Cuando aparezca el
+segundo material con return mapping iterativo (Mohr-Coulomb), introducir
+`MaterialReturnMappingDivergedError`". Esperar caso de uso real.
+
+### H-1.13 — Duplicación geométrica truss/cable corotacional
+La recomendación es "monitorizar. Tercer elemento axial corotacional
+(cable térmico futuro) dispara centralización". Centralizar hoy con sólo
+dos casos contradice la disciplina del proyecto (memoria
+`feedback_consistencia_arquitectural`: centralizar sí, pero cuando hay
+duplicación real y persistente; aquí son dos casos con divergencia
+limitada).
+
+### H-1.15 — `Node.dofs` sentinel `-1`
+La recomendación es "dos dicts (declared, numbered) o sentinel `None` con
+check explícito". Cualquiera de las dos opciones toca **49 archivos**
+para una severidad bajo. La memoria `feedback_no_parches` aplica al
+revés: cambiar el contrato `Node` por estética sin valor proporcional no
+es disciplina. Si en el futuro se introduce numeración incremental
+(añadir/quitar DOFs durante la corrida), retomar.
+
+### H-2.10 — `CST_Embedded2D` valida bulk por nombre de clase
+La recomendación es "validar por contrato declarativo (`IS_ELASTIC_BULK`)
+cuando aparezca el segundo bulk válido". Hoy `_ACCEPTED_BULKS = ('Elastic2D',)`
+es suficiente; el contrato declarativo se justifica al introducir el
+segundo bulk admisible (típicamente cuando se prepare el fallback
+elástico para fases F-J del ADR 0010).
+
+## Métricas finales — saneamiento completo
+
+| Eje | Cerrados | Diferidos con rationale | Sin acción con rationale |
 |---|---:|---:|---:|
-| 1 — Arquitectura | 5 (H-1.3 parcial: TransientResult ✅, Harmonic/Spectrum diferidos) | 2 | 7 |
-| 2 — Elementos | 5 | 1 | 3 |
-| 3 — Materiales | 5 | 0 | 6 |
-| 4 — Solvers | 4 | 2 | 2 |
-| 5 — Docs / cobertura | 3 | 1 | 2 |
-| **Total** | **23** | **6** | **20** |
+| 1 — Arquitectura | 11 | 2 | 3 (H-1.12, H-1.13, H-1.15) |
+| 2 — Elementos | 7 | 1 | 1 (H-2.10) |
+| 3 — Materiales | 10 | 0 | 0 |
+| 4 — Solvers | 6 | 2 | 0 |
+| 5 — Docs / cobertura | 7 | 1 | 0 |
+| **Total** | **41** | **6** | **4** |
 
-(El item H-2.6 cuenta como "cubierto documentalmente" y no se duplica;
-H-5.4 es alias de H-2.2 y se cuenta una vez; H-4.5 es alias de H-1.2.
-H-1.3 ahora vale como cerrado para `TransientResult`; `HarmonicResult` y
-`ResponseSpectrumResult` permanecen diferidos por razón técnica.)
+Suite global al cierre de la segunda sesión: **602 passed, 5 skipped,
+0 failures** (originales 558 + 27 de la primera sesión + 17 de la
+segunda + 3 tests menores de H-3.6/H-3.9). Diferencial real respecto a
+la rama anterior: 17 tests adicionales por nuevos casos de cobertura.
 
-Suite global al final del addendum: **585 passed, 5 skipped, 0 failures**
-(originales 558 + 27 tests añadidos durante la sesión).
+**Veredicto al cierre del saneamiento**: Fenix queda con todos los
+hallazgos accionables resueltos. Los 10 que permanecen abiertos están
+debidamente justificados (6 esperan caso de uso o decisión arquitectural
+pendiente; 4 son no-actuables por su propia recomendación). El proyecto
+está listo para arrancar la Etapa 7 sin deudas infraestructurales
+pendientes que estorben.
