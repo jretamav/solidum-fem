@@ -5,10 +5,9 @@ Réplica escalar de :class:`fenix.materials.damage_2d.IsotropicDamage2D` con
 tangente algorítmica consistente en carga activa. Ver
 ``docs/specs/IsotropicDamage1D.md``.
 """
-import math
-
 from fenix.constants import DAMAGE_MAX
 from fenix.core.material import Material
+from fenix.materials._softening import evaluate_exponential_damage
 from fenix.registry import MaterialRegistry
 
 
@@ -87,9 +86,9 @@ class IsotropicDamage1D(Material):
         if self.is_admissible(f_stress, state_vars):
             d = 0.0
         else:
-            d = 1.0 - (self.kappa_0 / kappa_new) * math.exp(-self.alpha * (kappa_new - self.kappa_0))
-            if d >= DAMAGE_MAX:
-                d = DAMAGE_MAX
+            d, _ = evaluate_exponential_damage(
+                kappa_new, self.kappa_0, self.alpha,
+            )
         saturated = (d >= DAMAGE_MAX) and f_stress > 0.0
 
         sigma = (1.0 - d) * self.E * strain

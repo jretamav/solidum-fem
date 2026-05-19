@@ -9,6 +9,7 @@ import numpy as np
 
 from fenix.constants import DAMAGE_MAX
 from fenix.core.material import Material
+from fenix.materials._softening import evaluate_exponential_damage
 from fenix.materials.elastic_2d import Elastic2D
 from fenix.registry import MaterialRegistry
 
@@ -95,11 +96,10 @@ class IsotropicDamage2D(Material):
         if self.is_admissible(f_stress, state_vars):
             d = 0.0
         else:
-            d = 1.0 - (self.kappa_0 / kappa_new) * np.exp(-self.alpha * (kappa_new - self.kappa_0))
-            d_saturated = d >= DAMAGE_MAX
-            if d_saturated:
-                d = DAMAGE_MAX
-        # Flag de saturación recalculado de forma consistente al final del bloque
+            d, _ = evaluate_exponential_damage(
+                kappa_new, self.kappa_0, self.alpha,
+            )
+        # Flag de saturación consistente al final del bloque.
         saturated = (d >= DAMAGE_MAX) and f_stress > 0.0
 
         Ce = self.elastic_base.C
