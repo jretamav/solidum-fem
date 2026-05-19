@@ -27,10 +27,12 @@ from fenix.math.solvers import (  # noqa: F401 — NewmarkSolver default de run_
     LinearSolver,
     ModalSolver,
     NewmarkSolver,
+    ResponseSpectrumSolver,
 )
 from fenix.results import (
     HarmonicResult,
     ModalResult,
+    ResponseSpectrumResult,
     SolveResult,
     TransientResult,
     build_solve_result,
@@ -245,11 +247,57 @@ def run_harmonic(
     return result
 
 
+def run_response_spectrum(
+    domain: Domain,
+    *,
+    assembler: Assembler | None = None,
+    solver: ResponseSpectrumSolver | None = None,
+    **solver_kwargs,
+) -> ResponseSpectrumResult:
+    """Ejecuta un análisis de respuesta espectral y retorna el resultado.
+
+    Acepta cualquier solver con ``PIPELINE_KIND="spectrum"`` y firma
+    ``solve() -> ResponseSpectrumResult``. Si ``solver is None``
+    construye un :class:`ResponseSpectrumSolver` con los kwargs
+    siguientes.
+
+    Parameters
+    ----------
+    domain
+        Dominio con nodos, elementos y BCs ya configurados.
+    assembler
+        Assembler opcional. Si es ``None`` se construye sobre ``domain``.
+    solver
+        Instancia ya vinculada al assembler. Si es ``None``, se construye
+        con los kwargs siguientes.
+    **solver_kwargs
+        Parámetros del constructor de :class:`ResponseSpectrumSolver`
+        (``n_modes``, ``direction``, ``spectrum``, ``combination``,
+        ``damping``, ``sigma``, ``lumping``).
+
+    Returns
+    -------
+    ResponseSpectrumResult
+        Respuesta máxima envolvente. Queda también en
+        ``domain.last_result``.
+    """
+    if domain.total_dofs == 0:
+        domain.generate_equation_numbers()
+    if assembler is None:
+        assembler = Assembler(domain)
+    if solver is None:
+        solver = ResponseSpectrumSolver(assembler, **solver_kwargs)
+
+    result = solver.solve()
+    domain.last_result = result
+    return result
+
+
 def run_yaml(
     path: str | Path,
     *,
     step_callback: StepCallback | None = None,
-) -> SolveResult | ModalResult | TransientResult | HarmonicResult:
+) -> SolveResult | ModalResult | TransientResult | HarmonicResult | ResponseSpectrumResult:
     """Parsea un archivo YAML, arma el modelo completo y lo resuelve.
 
     Despacha según el atributo de clase ``PIPELINE_KIND`` del solver
@@ -258,6 +306,7 @@ def run_yaml(
     - ``"modal"`` → :func:`run_modal`, retorna ``ModalResult``.
     - ``"transient"`` → :func:`run_transient`, retorna ``TransientResult``.
     - ``"harmonic"`` → :func:`run_harmonic`, retorna ``HarmonicResult``.
+    - ``"spectrum"`` → :func:`run_response_spectrum`, retorna ``ResponseSpectrumResult``.
     - ``"static"`` (default) → :func:`run`, retorna ``SolveResult``.
 
     El despacho declarativo (atributo de clase en lugar de cadena de
@@ -289,6 +338,10 @@ def run_yaml(
         return run_transient(domain, assembler=assembler, solver=solver)
     if pipeline_kind == "harmonic":
         return run_harmonic(domain, assembler=assembler, solver=solver)
+    if pipeline_kind == "spectrum":
+        return run_response_spectrum(
+            domain, assembler=assembler, solver=solver,
+        )
 
     # "static" o desconocido — cae al pipeline genérico de fuerzas externas.
     F_ext = parser.get_external_forces() + parser.get_body_load(assembler)

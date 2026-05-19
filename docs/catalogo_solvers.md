@@ -188,6 +188,24 @@
 
 ---
 
+## ResponseSpectrumSolver — análisis sísmico por combinación modal (ADR 0009 fase 7)
+
+- **Propósito**: combinar las respuestas máximas de los primeros `n_modes` modos del sistema bajo un espectro de respuesta dado (`S_d(ω)` o `S_a(ω)`) en una envolvente máxima. Análisis estadístico, no temporal — apropiado para diseño sísmico normativo (ASCE 7, Eurocódigo 8, NCh 433, NTC-DS).
+- **Esquema**:
+  - Análisis modal interno vía `ModalSolver` para obtener `(modes, frequencies)`.
+  - Factores de participación `Γ_n = φ_nᵀ·M·r` con `r` el vector de excitación rígida en la dirección sísmica.
+  - Respuesta máxima por modo: `u_n^max = Γ_n · φ_n · S_d(ω_n)`.
+  - Combinación SRSS (default) o CQC con coeficientes de correlación de Der Kiureghian.
+- **Parámetros**: `n_modes`, `direction` (ndarray o `{"dof_name": "ux"}`), `spectrum` (callable o dict tabulado/constante), `combination` (`"SRSS"`/`"CQC"`), `damping` (sólo CQC, default 0.05), `sigma`, `lumping`.
+- **Cuándo usarlo**: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
+- **Caveats**: precisión depende del número de modos incluidos — verifica `cumulative_effective_mass_ratio` ≥ 0.9. CQC requerido con modos cercanos en frecuencia (cociente < 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
+- **Despacho YAML**: `solver.type: ResponseSpectrumSolver`. Vía atributo `PIPELINE_KIND="spectrum"` → `run_response_spectrum`. Cuarto valor del literal (después de `"static"`, `"modal"`, `"transient"`, `"harmonic"`).
+- **Algoritmos centralizados**: `fenix/math/modal_response.py` — `response_spectrum_srss`, `response_spectrum_cqc`, `participation_factors`, `spectrum_from_sa`, `spectrum_tabulated`. Compartido con `ModalResult.free_vibration` (wrapper delgado tras regla D 2026-05-18).
+- **Spec**: [docs/specs/ResponseSpectrumSolver.md](specs/ResponseSpectrumSolver.md).
+- **Archivo**: [fenix/math/solvers/response_spectrum.py](../fenix/math/solvers/response_spectrum.py).
+
+---
+
 ## Cómo añadir un solver nuevo
 
 `/fenix-new solver <Name>` — genera archivo en `fenix/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
@@ -197,7 +215,7 @@ Convenciones de interfaz:
 - **Solvers estáticos** (lineales, no lineales, arc-length): `PIPELINE_KIND = "static"`. Constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
 - **Solvers modales / autovalor** (modal — ADR 0009 — y futuros pandeo lineal): `PIPELINE_KIND = "modal"`. Constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo específico). No consumen vector de cargas. `run_yaml` despacha a `run_modal`.
 - **Solvers transitorios** (Newmark, HHT, central differences): `PIPELINE_KIND = "transient"`. Constructor recibe `assembler`, `t_end`, `dt` + parámetros; método `solve() → TransientResult`. `run_yaml` despacha a `run_transient`.
-- **Solvers en frecuencia** (harmonic, futuros response spectrum): `PIPELINE_KIND = "harmonic"` (o `"spectrum"` cuando entre fase 7). Constructor recibe `assembler` + parámetros del barrido en `ω`; método `solve() → HarmonicResult` (u otro tipo en frecuencia). `run_yaml` despacha a `run_harmonic`.
+- **Solvers en frecuencia / espectrales** (harmonic con `PIPELINE_KIND = "harmonic"`, response spectrum con `"spectrum"`). Constructor recibe `assembler` + parámetros del análisis; método `solve()` devuelve el resultado específico (`HarmonicResult`, `ResponseSpectrumResult`). `run_yaml` despacha a `run_harmonic` o `run_response_spectrum` según el atributo.
 
 El **dispatch en `run_yaml`** se hace por el atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18). Solvers nuevos no clásicos (que no hereden de los existentes) sólo declaran su `PIPELINE_KIND` y quedan automáticamente cableados — no requieren tocar `entry.py`.
 

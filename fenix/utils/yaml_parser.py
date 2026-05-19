@@ -645,7 +645,8 @@ class YamlParser:
             if s_type not in ('LinearSolver', 'ModalSolver',
                               'NewmarkSolver', 'HHTSolver',
                               'CentralDifferenceSolver',
-                              'HarmonicSolver'):
+                              'HarmonicSolver',
+                              'ResponseSpectrumSolver'):
                 kwargs['convergence'] = make_convergence_from_config(cfg)
 
         # HarmonicSolver: si no se pasó `F_amplitude` explícito, derivar la

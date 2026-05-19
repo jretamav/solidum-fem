@@ -10,13 +10,13 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 535 pasan / 5 skipped / 0 fallos (540 colectados) |
+| **Tests** | 556 pasan / 5 skipped / 0 fallos (561 colectados) |
 | **Elementos** | 16 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida) |
 | **Materiales** | 9 (8 continuos + 1 cohesivo traction-jump) |
-| **Solvers** | 10 (3 estáticos + 1 modal + 5 transitorios + 1 en frecuencia) |
+| **Solvers** | 11 (3 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
 | **ADRs aceptados** | 11 (0001–0011) |
-| **Specs `validated`** | 28 |
-| **Etapas cerradas** | 4 completas + 1 parcial (etapa 4 vía ADR 0009 fases 1, 2, 3, 4, 5, 6 + HHT-α) |
+| **Specs `validated`** | 29 |
+| **Etapas cerradas** | 5 completas (Etapa 4 = ADR 0009 completo, fases 1-7 + HHT-α) |
 
 ---
 
@@ -33,8 +33,10 @@
 - Transitorio no lineal Newton-Newmark con Newton dentro de cada paso (`NewtonNewmarkSolver`); variante HHT-α no lineal (`NewtonHHTSolver`).
 - Transitorio explícito diferencias centradas (`CentralDifferenceSolver`, ADR 0009 fase 5) — leapfrog Belytschko-Liu-Moran con masa lumped diagonal, lineal y no lineal en una sola clase con parámetro `nonlinear`. Estabilidad condicional CFL (detección a posteriori).
 - Respuesta forzada armónica en el dominio de la frecuencia (`HarmonicSolver`, ADR 0009 fase 6) — barrido sobre `ω` resolviendo `(−ω²M + iωC + K)·û = F̂` con aritmética compleja. Barrido lineal/logarítmico/explícito. Devuelve `HarmonicResult` con amplitud y fase complejas; métodos `.amplitude()` y `.phase()`.
+- Análisis sísmico por combinación modal espectral (`ResponseSpectrumSolver`, ADR 0009 fase 7) — combina las respuestas máximas de los primeros `n_modes` modos bajo un espectro `S_d(ω)` o `S_a(ω)` con SRSS (modos separados) o CQC (modos cercanos, Der Kiureghian 1980). Espectro como callable, tabulado o aceleración constante. Devuelve `ResponseSpectrumResult` con respuesta envolvente, contribución modal individual, factores de participación, masas efectivas, y método `.cumulative_effective_mass_ratio()` para diagnóstico.
 - **Masa**: consistente (default) o lumped (ADR 0009 fase 2). Lumped vía HRZ canónico para sólidos isoparamétricos y vía lumping nodal directo para vigas/marcos (`ρAL/2` traslacional + `ρIL/2` rotacional). Diagonal en globales para todos los elementos excepto Frame3D en orientación oblicua (bloque-diagonal por nodo, limitación documentada estándar — Cook-Malkus-Plesha §11.4).
-- **Dispatch declarativo**: `run_yaml` despacha por atributo de clase `PIPELINE_KIND` ∈ `{"static","modal","transient","harmonic"}` (regla C de auditoría arquitectural 2026-05-13, aplicada 2026-05-18). Solvers nuevos no clásicos no requieren tocar `entry.py`.
+- **Dispatch declarativo**: `run_yaml` despacha por atributo de clase `PIPELINE_KIND` ∈ `{"static","modal","transient","harmonic","spectrum"}` (regla C de auditoría arquitectural 2026-05-13, aplicada 2026-05-18). Solvers nuevos no clásicos no requieren tocar `entry.py`.
+- **Cómputo sobre modos centralizado**: `fenix/math/modal_response.py` agrupa `free_vibration`, `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated` (regla D de auditoría arquitectural 2026-05-13, aplicada 2026-05-18 al introducir el segundo método sobre `ModalResult`). `ModalResult.free_vibration` queda como wrapper delgado, preservando la API histórica.
 
 **Geometrías cubiertas**
 - Estructuras 1D: barras (`Truss2D/3D` lineales y corotacionales), cables (`Cable2D/3D` corotacionales), vigas (`Frame2DEuler`, `Frame2DTimoshenko`, `Frame2DEulerCorot`, `Frame3D`).
@@ -66,7 +68,6 @@
 - **Placas y láminas**: pendiente.
 - **Análisis térmico**: pendiente (decoupled → coupled).
 - **Mohr-Coulomb 2D**, **FiberSection para frames no-lineales**: pendientes.
-- **Response spectrum**: fase 7 del ADR 0009 diferida (dispararía la regla D pendiente — `free_vibration` fuera de `results.py`).
 - **Contacto mecánico**: horizonte largo.
 - **Grandes deformaciones en sólidos** (lagrangiano total/actualizado): horizonte largo.
 - **Hiperelasticidad**, **plasticidad anisótropa**, **daño con regularización** (gradient damage, phase-field): horizonte largo.
@@ -83,7 +84,7 @@
 |---|---|---|
 | 1 | `internal_forces` devuelve `None` en sólidos 2D (ADR 0002 incompleto). | Cuando entren sólidos 3D, post-proceso avanzado o consumidor externo que pida `ElementForces` para sólidos. |
 | 2 | `FiberSection` para plasticidad por flexión en frames. | Si la próxima etapa se decide por la opción E (Mohr-Coulomb + FiberSection). |
-| 3 | Regla de disparo D arquitectural pendiente: mover `free_vibration` fuera de `results.py` cuando entre 2º método sobre `ModalResult` ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_reglas_disparo_pendientes.md)). Regla C **aplicada 2026-05-18** con `PIPELINE_KIND` declarativo. | Cuando aparezca un 2º método (harmonic/response spectrum sobre modos). |
+| ~~3~~ | ~~Reglas de disparo C y D~~ ✅ **Ambas aplicadas 2026-05-18**: C con `PIPELINE_KIND` declarativo (commit `e66473d`); D con `fenix/math/modal_response.py` agrupando `free_vibration` + funciones de combinación espectral (commit final D4). | — |
 | 4 | Solver para softening severo con embedded discontinuity (fase 4 ADR 0010 + curva descarga Van Vliet). | Cuando se priorice un mini-ADR de "solvers para softening": dissipation arc-length, control CMOD/CTOD del crack, sign-of-pivot tracking. |
 
 Ninguno de los tres bloquea el avance. Todos están documentados con su contexto en la memoria del proyecto o en [MATRIZ.md](MATRIZ.md), y no requieren acción proactiva.
@@ -102,7 +103,7 @@ Ninguno de los tres bloquea el avance. Todos están documentados con su contexto
 - A. Sólidos 3D (`Hex8`, `Tet4`, …).
 - B. Placas y láminas.
 - C. Análisis térmico desacoplado.
-- D. Completar ADR 0009 (HHT-α ✅, fase 2 lumping ✅, central differences ✅, harmonic ✅; sólo response spectrum pendiente).
+- ~~D. Completar ADR 0009~~ ✅ cerrada en su totalidad (2026-05-18) — fases 1-7 + variante HHT-α + reglas C y D aplicadas.
 - E. Mohr-Coulomb 2D + `FiberSection`.
 
 El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La decisión la toma el usuario con base en la dirección que quiera dar al proyecto tras esta etapa.
@@ -119,4 +120,4 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-18 — cierre de Etapa 5 (discontinuidades interiores embebidas, ADR 0010), de la rama de trabajo de robustez de solvers no lineales (ADR 0011), y de Etapa 6/D1+D2+D3 del ADR 0009 (HHT-α + mass lumping + central differences + harmonic + regla C `PIPELINE_KIND`); próxima decisión = response spectrum D4 (dispararía regla D) o cambiar de dirección.*
+*Última actualización: 2026-05-18 — cierre completo de la Etapa 6 (ADR 0009 fases 1-7 + variante HHT-α + reglas C y D aplicadas): HHT-α, mass lumping, central differences, harmonic, response spectrum. Subsistema dinámico/modal/espectral cerrado en su totalidad. Próxima decisión = nueva Etapa 7 entre opciones A, B, C, E del ROADMAP, o saldar deudas técnicas vigentes.*

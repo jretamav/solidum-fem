@@ -131,7 +131,7 @@ Como con `Material.density` (ADR 0008), todas las magnitudes dinámicas heredan 
 | 4 | Transitorio no lineal Newton-Newmark | Newton dentro de cada paso, residuo `R = F_ext − F_int − Mü − Cu̇` | `NewtonNewmarkSolver` (+ `NewtonHHTSolver`) | **Implementada** |
 | 5 | Transitorio explícito (diferencias centradas) | `M⁻¹` trivial con M lumped | `CentralDifferenceSolver` | **Implementada** (2026-05-18) |
 | 6 | Respuesta en frecuencia (steady-state harmonic) | `(−ω²M + iωC + K)·û = F̂` complejo, barrido en ω | `HarmonicSolver` | **Implementada** (2026-05-18) |
-| 7 | Análisis espectral / sísmico (combinación modal) | CQC, SRSS sobre espectro de respuesta | `ResponseSpectrumSolver` | Diferida |
+| 7 | Análisis espectral / sísmico (combinación modal) | CQC, SRSS sobre espectro de respuesta | `ResponseSpectrumSolver` | **Implementada** (2026-05-18) — **ADR completo** |
 
 Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix en estado funcional.
 

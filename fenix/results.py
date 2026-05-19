@@ -129,69 +129,26 @@ class ModalResult:
         t: np.ndarray,
     ) -> np.ndarray:
         """Respuesta temporal de vibración libre sin amortiguamiento por
-        superposición modal — solución analítica del problema
-        ``M·ü + K·u = 0`` con condiciones iniciales ``(u(0), u̇(0))``.
+        superposición modal.
 
-        Sobre los modos M-ortonormales ``φ_n``, las coordenadas modales
-        ``q_n(t) = φ_n^T·M·u(t)`` satisfacen ``q̈_n + ω_n²·q_n = 0``, con
-        solución::
-
-            q_n(t) = a_n · cos(ω_n·t) + (b_n / ω_n) · sin(ω_n·t)
-
-        donde ``a_n = φ_n^T·M·u₀`` y ``b_n = φ_n^T·M·u̇₀``. Para modos de
-        cuerpo rígido (``ω_n = 0``) la ecuación degenera a ``q̈_n = 0`` y la
-        solución es lineal en el tiempo: ``q_n(t) = a_n + b_n·t``. La
-        respuesta completa se reconstruye como ``u(t) = Σ_n q_n(t)·φ_n``.
-
-        **Limitación importante**: este método solo reconstruye la
-        respuesta sobre el subespacio de los modos calculados. Si pediste
-        ``n_modes = 5``, las componentes de ``u₀`` y ``u̇₀`` en modos más
-        altos no aparecen en ``u(t)``. Para condiciones iniciales con
-        contenido en modos altos, aumenta ``n_modes`` o usa un integrador
-        temporal (fase 3 del ADR 0009, no disponible).
+        Wrapper delgado sobre :func:`fenix.math.modal_response.free_vibration`
+        (ADR 0009 fase 7, regla D — el algoritmo vive en
+        ``fenix/math/modal_response.py`` para componer con las funciones
+        de combinación modal espectral). Preserva la API histórica.
 
         Parameters
         ----------
-        M : scipy.sparse.spmatrix or ndarray, shape (n_dof, n_dof)
-            Matriz de masa global. Típicamente ``assembler.assemble_mass_matrix()``.
-        u0 : np.ndarray, shape (n_dof,)
-            Desplazamiento inicial.
-        u0_dot : np.ndarray, shape (n_dof,)
-            Velocidad inicial.
-        t : np.ndarray, shape (n_t,)
-            Vector de instantes temporales para evaluar la respuesta.
+        M, u0, u0_dot, t
+            Ver :func:`fenix.math.modal_response.free_vibration`.
 
         Returns
         -------
         np.ndarray, shape (n_dof, n_t)
-            ``u(t)`` con una columna por instante temporal.
         """
-        u0 = np.asarray(u0, dtype=float).ravel()
-        u0_dot = np.asarray(u0_dot, dtype=float).ravel()
-        t = np.asarray(t, dtype=float).ravel()
-
-        # Coeficientes modales: a_n = φ_n^T·M·u₀,  b_n = φ_n^T·M·u̇₀.
-        a = self.modes.T @ (M @ u0)
-        b = self.modes.T @ (M @ u0_dot)
-
-        omega = self.frequencies_rad
-        # Modulación temporal por modo: q_{n,k} = q_n(t_k), shape (n_modes, n_t).
-        # Modo rígido (ω≈0): q_n(t) = a_n + b_n·t.
-        # Modo elástico (ω>0): q_n(t) = a_n·cos(ω_n·t) + (b_n/ω_n)·sin(ω_n·t).
-        rigid = omega == 0.0
-        q = np.empty((self.n_modes, t.size))
-        if np.any(~rigid):
-            w = omega[~rigid][:, None]      # (n_elast, 1)
-            tt = t[None, :]                 # (1, n_t)
-            q[~rigid, :] = (
-                a[~rigid, None] * np.cos(w * tt)
-                + (b[~rigid, None] / w) * np.sin(w * tt)
-            )
-        if np.any(rigid):
-            q[rigid, :] = a[rigid, None] + b[rigid, None] * t[None, :]
-
-        # u(t) = Φ · q(t)
-        return self.modes @ q
+        from fenix.math.modal_response import free_vibration as _free_vibration
+        return _free_vibration(
+            self.modes, self.frequencies_rad, M, u0, u0_dot, t,
+        )
 
 
 @dataclass(frozen=True)
@@ -287,6 +244,80 @@ class HarmonicResult:
     def phase(self) -> np.ndarray:
         """``arg(û(ω))`` shape ``(n_dof, n_omega)`` en radianes."""
         return np.angle(self.u_complex)
+
+
+@dataclass(frozen=True)
+class ResponseSpectrumResult:
+    """Resultado de un análisis de respuesta espectral (ADR 0009 fase 7).
+    Inmutable.
+
+    Captura la respuesta máxima envolvente bajo una excitación
+    caracterizada por un espectro de respuesta — no es una historia
+    temporal, sino la combinación estadística de las respuestas modales
+    máximas. La fase relativa entre modos se pierde por construcción;
+    sólo se conservan amplitudes.
+
+    Parameters
+    ----------
+    u_combined
+        Respuesta máxima combinada (SRSS o CQC), shape ``(n_dof,)``.
+        Positiva por construcción (raíz cuadrada de suma de cuadrados).
+    u_per_mode
+        Contribución modal individual ``Γ_n·φ_n·S_d(ω_n)`` (con signo),
+        shape ``(n_dof, n_modes)``. Útil para diagnóstico de qué modos
+        dominan la respuesta.
+    frequencies_rad
+        Frecuencias naturales utilizadas en la combinación, shape
+        ``(n_modes,)``, rad/s.
+    participation_factors
+        Factores de participación ``Γ_n = φ_nᵀ·M·r``, shape
+        ``(n_modes,)``.
+    effective_masses
+        Masas modales efectivas ``Γ_n²`` (M-ortonormalidad), shape
+        ``(n_modes,)``. La suma sobre todos los modos converge a la
+        masa total del modelo en la dirección de excitación cuando se
+        incluyen suficientes modos.
+    combination
+        Identificador del método de combinación usado: ``"SRSS"`` o
+        ``"CQC"``.
+    damping
+        Amortiguamiento modal asumido para el espectro y para la
+        combinación CQC. ``0.0`` si SRSS (CQC requiere ``ξ > 0`` para
+        coeficientes de correlación no triviales).
+    direction
+        Vector de excitación rígida ``r`` aplicado al modelo, shape
+        ``(n_dof,)``. Para excitación sísmica unidireccional, sólo los
+        DOFs traslacionales en esa dirección son no nulos.
+    """
+
+    u_combined: np.ndarray
+    u_per_mode: np.ndarray
+    frequencies_rad: np.ndarray
+    participation_factors: np.ndarray
+    effective_masses: np.ndarray
+    combination: str
+    damping: float
+    direction: np.ndarray
+
+    @property
+    def n_modes(self) -> int:
+        return int(self.frequencies_rad.shape[0])
+
+    @property
+    def frequencies_hz(self) -> np.ndarray:
+        return self.frequencies_rad / (2.0 * np.pi)
+
+    def cumulative_effective_mass_ratio(self) -> np.ndarray:
+        """Razón de masa efectiva acumulada por modo, shape ``(n_modes,)``.
+
+        Útil para verificar cuántos modos hacen falta para capturar la
+        respuesta. Valor objetivo en códigos sísmicos: ≥ 0.9 con los
+        ``n_modes`` incluidos.
+        """
+        total = float(np.sum(self.effective_masses))
+        if total <= 0.0:
+            return np.zeros_like(self.effective_masses)
+        return np.cumsum(self.effective_masses) / total
 
 
 @dataclass(frozen=True)

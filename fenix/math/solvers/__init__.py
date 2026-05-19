@@ -23,6 +23,11 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
   el dominio de la frecuencia, ADR 0009 fase 6). Aritmética compleja con
   barrido sobre ``ω``. ``PIPELINE_KIND = "harmonic"`` despacha a
   ``fenix.entry.run_harmonic``.
+- ``response_spectrum`` — :class:`ResponseSpectrumSolver` (combinación
+  modal SRSS/CQC sobre un espectro de respuesta, ADR 0009 fase 7).
+  Orquesta ModalSolver interno y delega la combinación en
+  ``fenix.math.modal_response``. ``PIPELINE_KIND = "spectrum"`` despacha
+  a ``fenix.entry.run_response_spectrum``.
 
 Los reexports a nivel de paquete preservan los imports históricos
 ``from fenix.math.solvers import LinearSolver`` sin alterar al consumidor.
@@ -50,6 +55,7 @@ from fenix.math.solvers.newmark import (
 )
 from fenix.math.solvers.central_difference import CentralDifferenceSolver
 from fenix.math.solvers.harmonic import HarmonicSolver
+from fenix.math.solvers.response_spectrum import ResponseSpectrumSolver
 
 __all__ = [
     "CholeskyNotPositiveDefiniteError",
@@ -63,4 +69,5 @@ __all__ = [
     "NewtonHHTSolver",
     "CentralDifferenceSolver",
     "HarmonicSolver",
+    "ResponseSpectrumSolver",
 ]
