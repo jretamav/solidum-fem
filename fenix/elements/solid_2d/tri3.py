@@ -3,7 +3,7 @@ from typing import List
 
 import numpy as np
 
-from fenix.core.element import Element
+from fenix.core.element import Element, validate_lumping_kwarg
 from fenix.core.material import Material
 from fenix.core.node import Node
 from fenix.elements.solid_2d._shared import (
@@ -169,11 +169,7 @@ class Tri3(Element):
                                [1.0, 2.0, 1.0],
                                [1.0, 1.0, 2.0]])
         M_consistent = _expand_scalar_mass(M_s)
+        validate_lumping_kwarg(lumping, type(self).__name__)
         if lumping == "lumped":
             return lump_hrz(M_consistent, total_mass=m_total, n_translational_dirs=2)
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Tri3.compute_mass_matrix: lumping='{lumping}' no "
-                f"soportado. Valores admitidos: 'consistent', 'lumped'."
-            )
         return M_consistent

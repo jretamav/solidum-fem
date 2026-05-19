@@ -11,7 +11,7 @@ from typing import List
 
 import numpy as np
 
-from fenix.core.element import Element
+from fenix.core.element import Element, validate_lumping_kwarg
 from fenix.core.material import Material
 from fenix.core.node import Node
 from fenix.math.geometry import perpendicular_projector
@@ -149,14 +149,10 @@ class Cable2DCorot(Element):
         -------
         np.ndarray, shape (4, 4)
         """
+        validate_lumping_kwarg(lumping, type(self).__name__)
         m_e = self.material.density * self.A * self.L0
         if lumping == "lumped":
             return np.diag([0.5 * m_e] * 4)
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Cable2DCorot.compute_mass_matrix: lumping='{lumping}' no "
-                f"soportado. Valores admitidos: 'consistent', 'lumped'."
-            )
         coef = m_e / 6.0
         return coef * np.array([
             [2.0, 0.0, 1.0, 0.0],
@@ -301,14 +297,10 @@ class Cable3DCorot(Element):
         -------
         np.ndarray, shape (6, 6)
         """
+        validate_lumping_kwarg(lumping, type(self).__name__)
         m_e = self.material.density * self.A * self.L0
         if lumping == "lumped":
             return np.diag([0.5 * m_e] * 6)
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Cable3DCorot.compute_mass_matrix: lumping='{lumping}' no "
-                f"soportado. Valores admitidos: 'consistent', 'lumped'."
-            )
         coef = m_e / 6.0
         I3 = np.eye(3)
         M = np.block([[2.0 * I3, I3       ],

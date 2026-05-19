@@ -29,7 +29,7 @@ import numpy as np
 from numba import njit
 
 from fenix.constants import ZERO_JACOBIAN_TOL
-from fenix.core.element import Element
+from fenix.core.element import Element, validate_lumping_kwarg
 from fenix.core.material import Material
 from fenix.core.node import Node
 from fenix.math.mass_lumping import lump_hrz
@@ -457,12 +457,7 @@ class _HigherOrderSolid2D(Element):
             M_s += rho * np.outer(N, N) * weight
             m_total += rho * weight
         M_consistent = _expand_scalar_mass(M_s)
+        validate_lumping_kwarg(lumping, type(self).__name__)
         if lumping == "lumped":
             return lump_hrz(M_consistent, total_mass=m_total, n_translational_dirs=2)
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"{type(self).__name__}.compute_mass_matrix: lumping="
-                f"'{lumping}' no soportado. Valores admitidos: "
-                f"'consistent', 'lumped'."
-            )
         return M_consistent

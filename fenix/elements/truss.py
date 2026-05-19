@@ -1,7 +1,7 @@
 import math
 import numpy as np
 from typing import List
-from fenix.core.element import Element
+from fenix.core.element import Element, validate_lumping_kwarg
 from fenix.core.node import Node
 from fenix.core.material import Material
 from fenix.math.geometry import perpendicular_projector
@@ -133,14 +133,10 @@ class Truss2D(Element):
         np.ndarray, shape (4, 4)
             Simétrica positiva definida.
         """
+        validate_lumping_kwarg(lumping, type(self).__name__)
         m_e = self.material.density * self.A * self.L0
         if lumping == "lumped":
             return np.diag([0.5 * m_e] * 4)
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Truss2D.compute_mass_matrix: lumping='{lumping}' no "
-                f"soportado. Valores admitidos: 'consistent', 'lumped'."
-            )
         coef = m_e / 6.0
         return coef * np.array([
             [2.0, 0.0, 1.0, 0.0],
@@ -319,14 +315,10 @@ class Truss3D(Element):
         -------
         np.ndarray, shape (6, 6)
         """
+        validate_lumping_kwarg(lumping, type(self).__name__)
         m_e = self.material.density * self.A * self.L0
         if lumping == "lumped":
             return np.diag([0.5 * m_e] * 6)
-        if lumping != "consistent":
-            raise NotImplementedError(
-                f"Truss3D.compute_mass_matrix: lumping='{lumping}' no "
-                f"soportado. Valores admitidos: 'consistent', 'lumped'."
-            )
         coef = m_e / 6.0
         I3 = np.eye(3)
         M = np.block([[2.0 * I3, I3       ],

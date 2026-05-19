@@ -12,6 +12,27 @@ from fenix.core.node import Node
 from fenix.results import ElementForces
 
 
+# Valores válidos del kwarg ``lumping`` de :meth:`Element.compute_mass_matrix`
+# (ADR 0009 fase 2). Centralizado aquí para que la validación no se duplique
+# en cada subclase concreta (auditoría H-1.6).
+SUPPORTED_LUMPING: frozenset[str] = frozenset({"consistent", "lumped"})
+
+
+def validate_lumping_kwarg(lumping: str, elem_class_name: str) -> None:
+    """Valida el kwarg ``lumping`` contra el set canónico del proyecto.
+
+    Lanza ``NotImplementedError`` con mensaje uniforme si el valor no
+    está soportado. El primer argumento es el string recibido; el
+    segundo es el nombre de la clase concreta, para que el mensaje le
+    sea útil al usuario.
+    """
+    if lumping not in SUPPORTED_LUMPING:
+        raise NotImplementedError(
+            f"{elem_class_name}.compute_mass_matrix: lumping={lumping!r} "
+            f"no soportado. Valores admitidos: {sorted(SUPPORTED_LUMPING)}."
+        )
+
+
 class Element(ABC):
     """Clase base abstracta para todos los elementos finitos de Fenix FEM.
 
