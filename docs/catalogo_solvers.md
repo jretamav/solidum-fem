@@ -57,6 +57,25 @@
 
 ---
 
+## DissipationArcLengthSolver — variante de arc-length por disipación (Gutiérrez 2004)
+
+- **Propósito**: trazar la rama post-pico de problemas con **softening severo** controlando la disipación incremental de energía por paso en lugar de la longitud de arco euclídea. Más robusto que el cilíndrico cuando la curva U-λ tiene tramos casi-verticales en el plano (U, λ).
+- **Esquema**:
+  - Subclase de `ArcLengthSolver`; reusa predictor tangente, corrector Newton, ajuste de paso, Dirichlet/MPC y backend algebraico.
+  - **Restricción de paso**: `g(ΔU, Δλ) = ½·(λ_n·F·ΔU − Δλ·F·U_n) = τ`. **Lineal** en `(ΔU, Δλ)` ⇒ corrector con una sola raíz en `ddλ`, sin selección por menor ángulo ni patología de raíces imaginarias.
+  - **Switching automático cilíndrico↔disipación** según se detecte disipación neta sobre el umbral relativo `dissipation_threshold·‖F_ref‖·‖U‖`. Arranque obligado en cilíndrico (`α = ½·(λ_n·F·du_t − F·U_n)` es 0 cuando `λ_n = U_n = 0`).
+  - **Sign-of-pivot tracking aproximado** vía signo del `slogdet(K_t)`. Distingue 0 vs número impar de pivots negativos — diagnóstico de paso por punto límite simple. Tracking exacto requiere LDLᵀ Bunch-Kaufman (deuda técnica #7 STATUS.md).
+  - **Salvaguarda contra `final_step` prematuro**: si `|dλ_pred| > 3·(max_lambda − λ_curr)`, bisecta dl o τ antes de aceptar el paso.
+  - **Detección de α≈0**: threshold relativo `|α| < 1e-6·escala`; revierte temporalmente a cilíndrico (en problemas lineales monotónicos `α ≡ 0` exactamente por construcción).
+- **Parámetros heredados**: todos los de `ArcLengthSolver` (`max_iter`, `max_lambda`, `initial_dl`, `max_steps`, factores `dl_*`, `linear_algebra`). **Nuevos**: `initial_tau` (obligatorio), `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
+- **Cuándo usarlo**: problemas con softening continuo donde `ArcLengthSolver` cilíndrico bisecta excesivamente cerca del pico — daño bulk 1D/2D, plasticidad con localización progresiva, post-pandeo con descarga elástica.
+- **Cuándo NO usarlo (limitación documentada)**: cohesivo+embedded discontinuity con `K_e` stiff (`~1e13`). La activación discreta del Rankine introduce un salto en `F_int`/`K_t` que el `sign` por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDLᵀ Bunch-Kaufman real (item #7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con `ArcLengthSolver` cilíndrico a paridad de bits (regresión validada).
+- **Referencias**: Gutiérrez (2004), *Communications in Numerical Methods in Engineering* 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), *IJNME* 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
+- **Spec**: [docs/specs/DissipationArcLengthSolver.md](specs/DissipationArcLengthSolver.md) (status `implemented`, validación parcial).
+- **Archivo**: [fenix/math/solvers/dissipation_arclength.py](../fenix/math/solvers/dissipation_arclength.py)
+
+---
+
 ## ModalSolver — análisis modal por autovalores generalizados (ADR 0009)
 
 - **Propósito**: calcular frecuencias naturales `ω_n` y modos `φ_n` de vibración no amortiguados resolviendo `K · φ = ω² · M · φ`.
