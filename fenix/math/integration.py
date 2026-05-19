@@ -42,6 +42,71 @@ class GaussQuadrature:
         weights = [1.0 / 6.0, 1.0 / 6.0, 1.0 / 6.0]
         return points, weights
 
+    # ------------------------------------------------------------------
+    # Cuadraturas 3D (ADR 0012 — sólidos 3D).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_points_hex_1x1x1():
+        """Gauss-Legendre 1×1×1 sobre el cubo de referencia [-1,1]^3.
+
+        Único punto central, peso 8.0. **Aviso**: introduce 12 modos de
+        hourglass en Hex8; sin estabilización Flanagan-Belytschko (no
+        implementada) los modos espurios pueden contaminar la respuesta.
+        Disponible para experimentación; el default del Hex8 es 2×2×2.
+        """
+        points = [(0.0, 0.0, 0.0)]
+        weights = [8.0]
+        return points, weights
+
+    @staticmethod
+    def get_points_hex_2x2x2():
+        """Gauss-Legendre 2×2×2 (8 puntos) sobre el cubo de referencia
+        [-1,1]^3. Exacta para polinomios hasta grado 3 en cada dirección;
+        cuadratura por defecto del Hex8."""
+        pt = 1.0 / np.sqrt(3.0)
+        xs = [-pt, pt]
+        ws = [1.0, 1.0]
+        points, weights = [], []
+        for i, xi in enumerate(xs):
+            for j, eta in enumerate(xs):
+                for k, zeta in enumerate(xs):
+                    points.append((xi, eta, zeta))
+                    weights.append(ws[i] * ws[j] * ws[k])
+        return points, weights
+
+    @staticmethod
+    def get_points_hex_3x3x3():
+        """Gauss-Legendre 3×3×3 (27 puntos) sobre el cubo de referencia.
+
+        Exacta para polinomios hasta grado 5 en cada dirección. Útil para
+        materiales no lineales severos donde la 2×2×2 podría subintegrar el
+        integrando real, y para Hex20/Hex27 cuando entren.
+        """
+        a = np.sqrt(3.0 / 5.0)
+        xs = [-a, 0.0, a]
+        ws = [5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0]
+        points, weights = [], []
+        for i, xi in enumerate(xs):
+            for j, eta in enumerate(xs):
+                for k, zeta in enumerate(xs):
+                    points.append((xi, eta, zeta))
+                    weights.append(ws[i] * ws[j] * ws[k])
+        return points, weights
+
+    @staticmethod
+    def get_points_tet_1():
+        """Cuadratura tetraédrica de 1 punto sobre el tetraedro de referencia
+        con vértices (0,0,0), (1,0,0), (0,1,0), (0,0,1).
+
+        Punto en el baricentro (1/4, 1/4, 1/4) con peso 1/6 (= volumen del
+        tetraedro de referencia). Exacta para polinomios lineales en (ξ,η,ζ);
+        suficiente para Tet4 (CST 3D) donde B y σ son constantes.
+        """
+        points = [(0.25, 0.25, 0.25)]
+        weights = [1.0 / 6.0]
+        return points, weights
+
     @staticmethod
     def get_points_tri_6():
         """Dunavant 6 puntos, orden 4 exacto sobre el triángulo de referencia.
@@ -80,3 +145,7 @@ QuadratureRegistry.register("2x2", *GaussQuadrature.get_points_2d_2x2())
 QuadratureRegistry.register("3x3", *GaussQuadrature.get_points_2d_3x3())
 QuadratureRegistry.register("tri_3", *GaussQuadrature.get_points_tri_3())
 QuadratureRegistry.register("tri_6", *GaussQuadrature.get_points_tri_6())
+QuadratureRegistry.register("hex_1x1x1", *GaussQuadrature.get_points_hex_1x1x1())
+QuadratureRegistry.register("hex_2x2x2", *GaussQuadrature.get_points_hex_2x2x2())
+QuadratureRegistry.register("hex_3x3x3", *GaussQuadrature.get_points_hex_3x3x3())
+QuadratureRegistry.register("tet_1", *GaussQuadrature.get_points_tet_1())

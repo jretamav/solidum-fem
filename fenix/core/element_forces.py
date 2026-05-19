@@ -1,11 +1,21 @@
-"""Tipo `ElementForces` — esfuerzos internos de un elemento en ejes locales.
+"""Tipo `ElementForces` — esfuerzos internos de un elemento estructural 1D en ejes locales.
 
 Vive en ``fenix.core`` porque es parte del contrato de :class:`Element`
-(ADR 0002): cada subclase de elemento estructural devuelve un
-:class:`ElementForces` desde ``internal_forces(U)``. Mantenerlo aquí en
-lugar de en ``fenix.results`` evita que ``core/element.py`` importe la
-capa de resultados (capa más alta), preservando la jerarquía conceptual
-``core → ... → results``.
+(ADR 0002): cada subclase de elemento **estructural 1D** (truss, cable,
+frame 2D/3D) devuelve un :class:`ElementForces` desde
+``internal_forces(U)``. Mantenerlo aquí en lugar de en ``fenix.results``
+evita que ``core/element.py`` importe la capa de resultados (capa más
+alta), preservando la jerarquía conceptual ``core → ... → results``.
+
+**Dominio de aplicación (ADR 0012)**: este contrato aplica **solo a
+elementos estructurales 1D**. Los sólidos (2D y 3D) **no** lo exponen:
+en un continuo el equivalente de "esfuerzo seccional" es el campo
+tensorial ``σ(x)``, accesible vía
+:meth:`Element.compute_gauss_state(U)` (devuelve ``{stress, strain,
+points_natural, points_global}`` por punto de integración). Convertir
+``σ(x)`` a un valor único por elemento (promedio, centroide, valor
+representativo) introduce ambigüedad — cada consumidor escoge la
+agregación que necesite a partir de ``compute_gauss_state``.
 
 ``fenix.results`` lo re-exporta como parte de la API pública, así
 ``from fenix.results import ElementForces`` sigue funcionando para

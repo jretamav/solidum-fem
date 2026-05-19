@@ -158,9 +158,44 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 
 ---
 
-## Etapa 7+ — Horizonte largo
+## Etapa 7 — Sólidos 3D acotados · cerrada (2026-05-19)
 
-Lo que el proyecto **previsiblemente** abrirá una vez consolidada la etapa 5, sin orden cerrado:
+**Capacidad entregada**: primera línea de sólidos 3D en Fenix. Alcance acotado deliberadamente (Reglas.md §1 — regla de dos casos reales para centralizar) a los espejos naturales del Quad4/Tri3/Elastic2D:
+
+- **`Hex8`** — hexaedro trilineal isoparamétrico (8 nodos, orden VTK_HEXAHEDRON). Default Gauss 2×2×2 (8 puntos), configurable a 3×3×3 o 1×1×1. Body load por cuadratura del elemento; face traction sobre 6 caras numeradas con normal saliente (ADR 0012) con cuadratura 2D Gauss 2×2.
+- **`Tet4`** — tetraedro lineal (CST 3D, 4 nodos). 1 punto baricéntrico con peso 1/6. Caras numeradas por nodo opuesto. Masa consistente analítica `ρ·V·(1+δ_ij)/20`.
+- **`Elastic3D`** — material elástico isótropo 3D. Sin variantes (en 3D no aplican plane_stress/plane_strain). Voigt 6D `[xx, yy, zz, xy, yz, xz]` con `γ_ij = 2·ε_ij` *engineering*.
+
+**Infraestructura compartida**:
+
+- **Cuadraturas 3D** registradas en `QuadratureRegistry`: `hex_1x1x1`, `hex_2x2x2`, `hex_3x3x3`, `tet_1`.
+- **Mass lumping HRZ 3D**: `lump_hrz(M, total_mass=ρV, n_translational_dirs=3)` — el helper genérico ya soportaba 3D, solo había que invocarlo con la dimensión correcta. `_expand_scalar_mass_3d` en `fenix/elements/solid_3d/_shared.py` expande matriz escalar a bloque 3D vía Kronecker con I₃.
+- **Convención Voigt 3D** fijada en `Reglas.md §5` y blindada por test (simetría C, positividad definida, cortantes puros en los tres planos).
+
+**ADR que la articula**:
+- [ADR 0012 — Sólidos 3D: Voigt 6D y cierre del contrato `internal_forces`](adr/0012-solidos-3d-y-voigt-6d.md). Tres decisiones simultáneas: (1) orden Voigt 3D `[xx, yy, zz, xy, yz, xz]` (extensión natural del 2D), (2) cierre de la deuda técnica #1 por dominio explícito (sólidos exponen `compute_gauss_state`, no `internal_forces`), (3) API de tracción de superficie con caras orientadas con normal saliente.
+
+**Validación** (54 tests nuevos, suite 750 → 804):
+
+- **Unitarios** (`tests/test_solid_3d.py`, 31 tests): Elastic3D (simetría/positividad de C, tracción uniaxial, los tres cortantes puros, compresión hidrostática con bulk modulus, rechazos de inputs); Hex8 y Tet4 (dimensiones/DOFs, simetría K_e, patch tracción uniaxial, jacobiano degenerado abortado, body load + face traction con balances de fuerza, masa consistente + lumped HRZ, gauss state).
+- **Modos rígidos** (`tests/test_rigid_body_modes.py`, +10 tests): 6 modos rígidos en 3D (3 traslaciones + 3 rotaciones independientes en ejes x/y/z) para Hex8 y Tet4.
+- **Cubo Lamé 3D** (`tests/validation/test_cube_lame_3d.py`, 3 tests): tracción uniaxial Hex8 (1 elemento) y Tet4 (cubo dividido en 5 tetraedros) — reproducen solución analítica exacta a precisión máquina porque el campo de desplazamientos es lineal en (x, y, z) y ambos elementos lo representan exactamente. Compresión hidrostática Hex8 — `σ = -p·I`, `ε = (-p/3K)·I` exactos.
+- **MacNeal-Harder 3D** (`tests/validation/test_macneal_beam_3d.py`, 2 tests): cantilever esbelto `L/h = 30`. Hex8 12×1×1 documenta shear locking severo (ratio `u/u_EB` ∈ [0.10, 0.55]); refinamiento h reduce el locking monotonamente y la malla 48×4×4 alcanza ratio > 0.85.
+- **Locking volumétrico 3D** (`tests/test_volumetric_locking_3d.py`, 2 tests): `ratio = u(ν=0.4999)/u(ν=0.3) < 0.6` con Hex8 4×1×1 documenta y blinda la limitación arquitectural; con ν=0.3 la flecha es razonable (`u/u_EB > 0.30`). Mitigaciones B-bar/F-bar diferidas (política idéntica al Quad4 2D).
+
+**Cierre adicional**: deuda técnica #1 saldada por ADR 0012 — `internal_forces` aplica solo a estructurales 1D, sólidos exponen `compute_gauss_state`. Docstrings de `Element.internal_forces` y `ElementForces` actualizados con dominio acotado. STATUS.md tacha el item.
+
+**Lo diferido y por qué**:
+
+- **Elementos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`): no entran en esta etapa por regla de dos casos reales (no abrir base interna `_HigherOrderSolid3D` antes de tener al menos dos elementos cuadráticos). NAFEMS LE10 con valor canónico citable queda diferido — Hex8 lockea con malla coarse; sólo Hex20/Hex27 lo pasan. Sin caso de uso real bloqueado por LE10 hoy.
+- **Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`): extensiones naturales de los 2D existentes a Voigt 6D, pero cada uno abre un return mapping específico (especialmente Drucker-Prager con apex 3D). Quedan como sub-etapas posteriores.
+- **NAFEMS LE10/LE2/LE3** (placas gruesas y delgadas): bloqueados por cuadráticos 3D + por placas/láminas (Etapa 8 opción B). No deuda de esta etapa.
+
+---
+
+## Etapa 8+ — Horizonte largo
+
+Lo que el proyecto **previsiblemente** abrirá tras la Etapa 7, sin orden cerrado:
 
 - **Análisis termomecánico acoplado** (si C entró antes).
 - **Contacto mecánico** (penalización / Lagrangiano aumentado / mortar).
@@ -205,4 +240,6 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ---
 
-*Última actualización: 2026-05-19 — sin nuevas etapas. Sesión de saneamiento post-auditoría 2026-05-18 cerró 23 hallazgos (3 críticos + 4 altos + 16 medios/bajos) sin tocar el ROADMAP estructural (todos eran deuda de infraestructura, no nuevas capacidades). Suite 558 → 585. Resumen en STATUS.md "Sesión de saneamiento cerrada 2026-05-19" y addendum del informe de auditoría. Próxima decisión: Etapa 7 entre opciones A, B, C, E originalmente diferidas.*
+*Última actualización: 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: `Hex8` (trilineal), `Tet4` (CST 3D), `Elastic3D` (isótropo). Convención Voigt 6D `[xx, yy, zz, xy, yz, xz]` fijada en `Reglas.md §5`. Suite 750 → 804 (+54 tests verdes a la primera). Cierre adicional: deuda técnica #1 saldada por ADR 0012 (cierre por dominio explícito — sólidos exponen `compute_gauss_state`, no `internal_forces`). Cuadráticos 3D y materiales 3D no lineales diferidos a sub-etapas posteriores como ramificaciones naturales (A.bis, A.ter en STATUS.md). Próxima decisión: Etapa 8.*
+
+*Anterior 2026-05-19: sin nuevas etapas. Sesión de saneamiento post-auditoría 2026-05-18 cerró 23 hallazgos (3 críticos + 4 altos + 16 medios/bajos) sin tocar el ROADMAP estructural. Suite 558 → 585.*

@@ -10,12 +10,12 @@
 
 Fenix FEM es un programa de elementos finitos en aproximación de desplazamientos para **investigación en mecánica de sólidos** (mecánico ± térmico, acoplado o desacoplado). Hoy resuelve:
 
-- Estática lineal y no lineal (material y geométrica) sobre **1D estructural** y **sólidos 2D**.
+- Estática lineal y no lineal (material y geométrica) sobre **1D estructural**, **sólidos 2D** y **sólidos 3D lineales** (Hex8, Tet4 — Etapa 7 cerrada 2026-05-19, ADR 0012).
 - **Subsistema modal/dinámico/espectral completo** (ADR 0009 cerrado 2026-05-18): modal por autovalores generalizados, transitorio implícito Newmark/HHT-α (lineal y no lineal con Newton), transitorio explícito por diferencias centradas, respuesta forzada armónica en frecuencia y análisis sísmico por combinación modal espectral (SRSS/CQC).
-- Catálogo de materiales con plasticidad J2 (plane strain + plane stress), Drucker-Prager, daño isótropo y cohesivo traction-jump.
+- Catálogo de materiales con plasticidad J2 (plane strain + plane stress), Drucker-Prager, daño isótropo y cohesivo traction-jump. Elásticos en 1D, 2D y 3D.
 - Fractura computacional vía discontinuidades embebidas (CST_Embedded2D con condensación local).
 
-Lo que **no** resuelve aún: sólidos 3D, placas/láminas, térmico, contacto, Mohr-Coulomb, FiberSection. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
+Lo que **no** resuelve aún: sólidos 3D cuadráticos (Hex20/Hex27/Tet10), materiales 3D no lineales (VonMises3D/DruckerPrager3D/IsotropicDamage3D), placas/láminas, térmico, contacto, Mohr-Coulomb, FiberSection. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
 
 ---
 
@@ -23,11 +23,11 @@ Lo que **no** resuelve aún: sólidos 3D, placas/láminas, térmico, contacto, M
 
 Para arrancar sin contexto previo, lee en este orden — **no necesitas más para empezar**:
 
-1. **[Reglas.md](../Reglas.md)** (~5 min): contrato Usuario ↔ IA. Identidad del proyecto, división de dominios, convenciones de signos, salvaguardas. **Volver siempre que dudes sobre qué decisión te toca**.
+1. **[Reglas.md](../Reglas.md)** (~5 min): contrato Usuario ↔ IA. Identidad del proyecto, división de dominios, convenciones de signos (Voigt 2D y 3D), salvaguardas. **Volver siempre que dudes sobre qué decisión te toca**.
 2. **[STATUS.md](STATUS.md)** (~2 min): foto del estado actual. Métricas, capacidades, deuda técnica, próximo hito.
-3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-6 cerradas; Etapa 7 abierta entre las opciones A, B, C, E del catálogo de bifurcaciones.
+3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-7 cerradas; Etapa 8 abierta entre opciones B (placas/láminas), C (térmico), E (Mohr-Coulomb + FiberSection) y las ramificaciones naturales de la Etapa 7 (A.bis materiales 3D no lineales, A.ter cuadráticos 3D).
 4. **[MATRIZ.md](MATRIZ.md)** (~3 min): qué combinaciones elemento × material son válidas y testeadas.
-5. **Último ADR aceptado** ([ADR 0011 — Robustez de Newton-Raphson con line search](adr/0011-robustez-newton-line-search.md)): para entender la última decisión arquitectural grande. Línea de fractura computacional articulada por [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md); subsistema dinámico/modal/espectral articulado por [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (cerrado en su totalidad 2026-05-18, fases 1-7 + variante HHT-α + reglas C y D aplicadas).
+5. **Último ADR aceptado** ([ADR 0012 — Sólidos 3D y Voigt 6D](adr/0012-solidos-3d-y-voigt-6d.md)): para entender la última decisión arquitectural grande. Convención Voigt 3D del proyecto, cierre del contrato `internal_forces` por dominio explícito (sólidos exponen `compute_gauss_state`), API de caras 3D con normal saliente. Anteriores: [ADR 0011](adr/0011-robustez-newton-line-search.md) (robustez Newton), [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md) (embedded discontinuities), [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (subsistema dinámico).
 
 Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/specs/<Nombre>.md` y su entrada en `docs/catalogo_<elementos|materiales|solvers>.md`.
 
@@ -40,8 +40,8 @@ fenix_fem/
 ├── Reglas.md, CLAUDE.md          ← Contrato y guía operativa
 ├── fenix/                        ← Código fuente
 │   ├── core/                     ← Domain, Node, Element base, Material base, Assembler
-│   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/
-│   ├── materials/                ← elastic, plastic_1d, von_mises_2d, drucker_prager_2d, damage_*
+│   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/, solid_3d/
+│   ├── materials/                ← elastic, elastic_2d, elastic_3d, plastic_1d, von_mises_2d, drucker_prager_2d, damage_*
 │   ├── math/
 │   │   ├── solvers/              ← linear, nonlinear, arclength, modal, newmark (+HHT),
 │   │   │                            central_difference, harmonic, response_spectrum
@@ -54,9 +54,9 @@ fenix_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 741 verdes + 5 skipped (pytest); de éstos, 38 en tests/validation/ contra benchmarks publicados (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2)
+├── tests/                        ← 804 verdes + 5 skipped (pytest); 38 en tests/validation/ contra benchmarks publicados (Lamé 2D, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 5 nuevos 3D en tests/validation/ (cubo Lamé 3D, MacNeal 3D)
 ├── docs/
-│   ├── adr/                      ← 0001-0010: decisiones arquitecturales
+│   ├── adr/                      ← 0001-0012: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
 │   ├── referencias/              ← PDFs/papers citados desde ADRs y specs (tesis Retama 2010, etc.)
 │   ├── catalogo_*.md             ← índices navegables por dominio

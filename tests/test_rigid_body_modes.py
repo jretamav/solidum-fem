@@ -36,8 +36,10 @@ from fenix.core.domain import Domain
 from fenix.core.material import Material
 from fenix.elements.frame.euler_corot import Frame2DEulerCorot
 from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
+from fenix.elements.solid_3d import Hex8, Tet4
 from fenix.elements.truss import Truss2D, Truss2DCorot
 from fenix.materials.elastic import Elastic1D
+from fenix.materials.elastic_3d import Elastic3D
 
 
 class _PlaneStress(Material):
@@ -226,6 +228,115 @@ class TestRBMTri3(_RigidBodyModesSolid2DMixin, unittest.TestCase):
 
 class TestRBMTri6(_RigidBodyModesSolid2DMixin, unittest.TestCase):
     BUILDER = staticmethod(_build_tri6)
+
+
+# =============================================================================
+# Sólidos 3D — translation + rotation (x3 ejes) + rank-deficiency (6 modos)
+# =============================================================================
+
+def _build_hex8(material):
+    dom = Domain()
+    coords = [
+        (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0),
+    ]
+    nodes = [dom.add_node(i + 1, list(c)) for i, c in enumerate(coords)]
+    elem = Hex8(1, nodes, material)
+    dom.add_element(elem)
+    return elem
+
+
+def _build_tet4(material):
+    dom = Domain()
+    coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)]
+    nodes = [dom.add_node(i + 1, list(c)) for i, c in enumerate(coords)]
+    elem = Tet4(1, nodes, material)
+    dom.add_element(elem)
+    return elem
+
+
+def _rigid_translation_u_e_3d(elem, ax, ay, az):
+    n_nodes = len(elem.nodes)
+    u_e = np.zeros(n_nodes * 3)
+    for i in range(n_nodes):
+        u_e[3 * i]     = ax
+        u_e[3 * i + 1] = ay
+        u_e[3 * i + 2] = az
+    return u_e
+
+
+def _rigid_rotation_u_e_3d(elem, omega, center=(0.0, 0.0, 0.0)):
+    """Rotación rígida infinitesimal: u = ω × (x - c) con ω vector 3D pequeño."""
+    omega = np.asarray(omega, dtype=np.float64)
+    center = np.asarray(center, dtype=np.float64)
+    n_nodes = len(elem.nodes)
+    u_e = np.zeros(n_nodes * 3)
+    for i, node in enumerate(elem.nodes):
+        x = np.asarray(node.coordinates[:3], dtype=np.float64)
+        u_e[3 * i:3 * i + 3] = np.cross(omega, x - center)
+    return u_e
+
+
+class _RigidBodyModesSolid3DMixin:
+    """Verificación común para Hex8 y Tet4."""
+
+    BUILDER = None
+
+    def setUp(self):
+        self.material = Elastic3D(E=2.0e5, nu=0.3)
+        self.elem = self.BUILDER(self.material)
+
+    def test_rigid_translation_produces_zero_internal_force(self):
+        u_e = _rigid_translation_u_e_3d(self.elem, ax=0.5, ay=-0.3, az=0.7)
+        _, F_int = self.elem.compute_element_state(u_e)
+        np.testing.assert_allclose(
+            F_int, 0.0, atol=1.0e-9,
+            err_msg=f"{type(self.elem).__name__}: traslación rígida produce "
+                    f"max|F_int|={np.max(np.abs(F_int)):.3e}",
+        )
+
+    def test_rigid_rotation_x_produces_zero_internal_force(self):
+        u_e = _rigid_rotation_u_e_3d(
+            self.elem, omega=(1.0e-4, 0.0, 0.0), center=(0.5, 0.5, 0.5)
+        )
+        _, F_int = self.elem.compute_element_state(u_e)
+        np.testing.assert_allclose(F_int, 0.0, atol=1.0e-6)
+
+    def test_rigid_rotation_y_produces_zero_internal_force(self):
+        u_e = _rigid_rotation_u_e_3d(
+            self.elem, omega=(0.0, 1.0e-4, 0.0), center=(0.5, 0.5, 0.5)
+        )
+        _, F_int = self.elem.compute_element_state(u_e)
+        np.testing.assert_allclose(F_int, 0.0, atol=1.0e-6)
+
+    def test_rigid_rotation_z_produces_zero_internal_force(self):
+        u_e = _rigid_rotation_u_e_3d(
+            self.elem, omega=(0.0, 0.0, 1.0e-4), center=(0.5, 0.5, 0.5)
+        )
+        _, F_int = self.elem.compute_element_state(u_e)
+        np.testing.assert_allclose(F_int, 0.0, atol=1.0e-6)
+
+    def test_stiffness_has_six_zero_modes(self):
+        """K elemental tiene exactamente 6 autovalores ≈ 0 en 3D (3 trans + 3 rot)."""
+        n_dofs = len(self.elem.nodes) * 3
+        K, _ = self.elem.compute_element_state(np.zeros(n_dofs))
+        eigvals = np.sort(np.abs(np.linalg.eigvalsh(0.5 * (K + K.T))))
+        scale = float(eigvals[-1])
+        threshold = 1.0e-9 * scale
+        n_zeros = int(np.sum(eigvals < threshold))
+        self.assertEqual(
+            n_zeros, 6,
+            f"{type(self.elem).__name__}: K tiene {n_zeros} modos ≈ 0, "
+            f"esperaba 6. eigvals[:8]={eigvals[:8]}, threshold={threshold:.3e}",
+        )
+
+
+class TestRBMHex8(_RigidBodyModesSolid3DMixin, unittest.TestCase):
+    BUILDER = staticmethod(_build_hex8)
+
+
+class TestRBMTet4(_RigidBodyModesSolid3DMixin, unittest.TestCase):
+    BUILDER = staticmethod(_build_tet4)
 
 
 # =============================================================================

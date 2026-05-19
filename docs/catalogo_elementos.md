@@ -495,6 +495,52 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 
 ---
 
+# Elementos sólidos 3D (ADR 0012, Etapa 7)
+
+Sólidos tridimensionales con convención Voigt 6D del proyecto (`Reglas.md §5`):
+``[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]`` con ``γ_ij = 2·ε_ij``. Esta familia
+**no expone `internal_forces`** — la primitiva natural de salida en sólidos
+es ``compute_gauss_state(U)``, que devuelve ``{stress, strain, points_*}``
+por punto de integración (ADR 0012: cierre del contrato `internal_forces`
+por dominio explícito).
+
+## Hex8 — hexaedro trilineal 3D
+
+- **Propósito**: sólido 3D isoparamétrico de primer orden, espejo natural de Quad4.
+- **DOFs por nodo**: `['ux', 'uy', 'uz']` · 8 nodos (orden VTK_HEXAHEDRON) · `STRAIN_DIM = 6` · `N_INTEGRATION_POINTS = 8` (default Gauss 2×2×2).
+- **Cinemática**: matriz `B(ξ, η, ζ)` 6×24 por mapeo isoparamétrico estándar; deformación Voigt 3D.
+- **Integración**: por defecto Gauss 2×2×2 (8 puntos). Configurable vía `quadrature` (`hex_3x3x3` para no-lineales severos, `hex_1x1x1` reducido con riesgo de hourglass).
+- **Caras (ADR 0012)**: 6 caras numeradas con normal saliente — 0 (−ζ), 1 (+ζ), 2 (−η), 3 (+ξ), 4 (+η), 5 (−ξ). Ver `Hex8.FACE_NODES`.
+- **Cargas distribuidas**: `compute_body_load(b)` integra `∫ Nᵀb dV`; `compute_face_traction(face, t̄)` reparte tracción uniforme sobre una cara con cuadratura 2D Gauss 2×2 (4 puntos por cara). `t̄` en globales.
+- **Salida por Gauss**: `compute_gauss_state(U)` devuelve `{points_natural, points_global, strain (n_g, 6), stress (n_g, 6)}`. Sin `internal_forces` (ADR 0012).
+- **Implementación**: kernels `_compute_kinematics_hex8`, `_det_jacobian_hex8`, `_shape_functions_hex8` con `@njit` en `fenix/elements/solid_3d/_shared.py`. Mass lumping vía `lump_hrz` con `n_translational_dirs=3` y `_expand_scalar_mass_3d`.
+- **Limitaciones declaradas**:
+  - **Locking volumétrico** con ν → 0.5 — sin mitigación (política idéntica al Quad4 2D). Blindado por `tests/test_volumetric_locking_3d.py`.
+  - **Hourglass** con integración reducida `hex_1x1x1`: 12 modos espurios; sin estabilización Flanagan-Belytschko.
+  - **Shear locking** con malla coarse 1 capa en sección: documentado en `tests/validation/test_macneal_beam_3d.py`.
+- **Spec**: [docs/specs/Hex8.md](specs/Hex8.md).
+- **Archivo**: [fenix/elements/solid_3d/hex8.py](../fenix/elements/solid_3d/hex8.py).
+
+---
+
+## Tet4 — tetraedro lineal 3D (CST 3D)
+
+- **Propósito**: sólido 3D isoparamétrico de primer orden, espejo natural de Tri3. Útil para mallas no estructuradas y transiciones.
+- **DOFs por nodo**: `['ux', 'uy', 'uz']` · 4 nodos (orden VTK_TETRA, volumen positivo) · `STRAIN_DIM = 6` · `N_INTEGRATION_POINTS = 1`.
+- **Cinemática**: `B` constante 6×12 (deformación uniforme dentro del elemento — CST 3D). Reproduce campos lineales exactamente.
+- **Integración**: 1 punto baricéntrico con peso 1/6 (exacto por linealidad de B).
+- **Caras (ADR 0012)**: 4 caras triangulares numeradas con normal saliente; cara `i` opuesta al nodo `i`. Ver `Tet4.FACE_NODES`.
+- **Cargas distribuidas**: `compute_body_load(b)` reparte `b·V_e/4` a cada nodo (exacto); `compute_face_traction(face, t̄)` reparte `A_cara·t̄/3` a cada uno de los 3 nodos de la cara, cero al nodo opuesto.
+- **Salida por Gauss**: `compute_gauss_state(U)` con 1 punto (centroide); σ y ε constantes sobre el elemento.
+- **Implementación**: kernel `_compute_kinematics_tet4` con `@njit` en `_shared.py`. Masa consistente analítica `M_ij = ρ·V_e·(1+δ_ij)/20`; lumped HRZ canónico (= row-sum por simetría).
+- **Limitaciones declaradas**:
+  - **Shear locking severo** en flexión — peor que Hex8 por la pobreza del espacio lineal. Recomendación: usar Hex8 en mallas hexaédricas; Tet4 para transiciones de malla no estructurada o cuando geometría compleja impide hexaedros.
+  - **Locking volumétrico** con ν → 0.5 — aún peor que en Hex8.
+- **Spec**: [docs/specs/Tet4.md](specs/Tet4.md).
+- **Archivo**: [fenix/elements/solid_3d/tet4.py](../fenix/elements/solid_3d/tet4.py).
+
+---
+
 # Elementos con discontinuidad embebida (ADR 0010)
 
 Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación estática local**: el ensamblador no ve los grados de libertad del salto. Cuando se cumple un criterio de activación (Rankine en fase 1), el elemento materializa una discontinuidad interna `Γ_d` y enriquece su cinemática con un salto `[[u]]` gobernado por un material cohesivo (`CohesiveMaterial`, ver el [catálogo de materiales](catalogo_materiales.md) §"Materiales cohesivos"). La activación se evalúa en el hook `Element.prepare_step(U_committed)` que los solvers no lineales invocan **una vez por paso**, antes del Newton (anti-chattering, ADR 0010 §5).

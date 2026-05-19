@@ -34,6 +34,21 @@
 
 ---
 
+## Elastic3D — elástico lineal isótropo 3D
+
+- **Ley**: `σ = C · ε`, con `C` el tensor constitutivo isótropo 6×6 en notación Voigt 3D del proyecto `[xx, yy, zz, xy, yz, xz]` (ADR 0012, `Reglas.md §5`).
+- **STRAIN_DIM**: 6.
+- **Parámetros**: `E` (>0), `nu ∈ (-1, 0.5)`, `density` (opcional, ADR 0008).
+- **Variables internas**: ninguna.
+- **Tangente**: constante = `C`.
+- **Hipótesis**: no aplican `plane_stress`/`plane_strain` en 3D — toda la deformación es activa.
+- **Compatible con**: `Hex8`, `Tet4` (todos los sólidos 3D con `STRAIN_DIM = 6`).
+- **Caveat de compatibilidad**: ABAQUS usa orden Voigt `[11, 22, 33, 12, 13, 23]` (permutación `yz ↔ xz` respecto al proyecto). Importar datos de ABAQUS requiere intercambiar los componentes 5↔6 una vez en el preprocesador.
+- **Spec**: [docs/specs/Elastic3D.md](specs/Elastic3D.md)
+- **Archivo**: [fenix/materials/elastic_3d.py](../fenix/materials/elastic_3d.py)
+
+---
+
 ## IsotropicDamage1D — daño isótropo 1D con softening exponencial
 
 - **Modelo**: daño escalar `d ∈ [0, DAMAGE_MAX]`, esfuerzo `σ = (1 − d) · E · ε`. Versión 1D de [`IsotropicDamage2D`](#isotropicdamage2d--daño-isótropo-2d-con-softening-exponencial).

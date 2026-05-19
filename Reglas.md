@@ -85,6 +85,18 @@ Relación 2D↔3D en el API público:
 
 Los valores se exponen siempre en **ejes locales del elemento**; la transformación a globales es una capa separada.
 
+**Notación Voigt — convención del proyecto**
+
+*Voigt 2D* (sólidos 2D, materiales planos):
+- $\boldsymbol\varepsilon = [\varepsilon_{xx},\ \varepsilon_{yy},\ \gamma_{xy}]^\top$ con $\gamma_{xy} = 2\,\varepsilon_{xy}$ (deformación angular *engineering*).
+- $\boldsymbol\sigma = [\sigma_{xx},\ \sigma_{yy},\ \sigma_{xy}]^\top$ con el componente cortante **tensorial sin factor**.
+
+*Voigt 3D* (sólidos 3D, materiales 3D — ADR 0012):
+- $\boldsymbol\varepsilon = [\varepsilon_{xx},\ \varepsilon_{yy},\ \varepsilon_{zz},\ \gamma_{xy},\ \gamma_{yz},\ \gamma_{xz}]^\top$ con $\gamma_{ij} = 2\,\varepsilon_{ij}$ *engineering*.
+- $\boldsymbol\sigma = [\sigma_{xx},\ \sigma_{yy},\ \sigma_{zz},\ \sigma_{xy},\ \sigma_{yz},\ \sigma_{xz}]^\top$.
+
+El orden 3D es extensión natural del 2D: componentes diagonales primero, bloque cortante después, $\gamma_{xy}$ delante del resto. Obligatorio en toda subclase 3D (materiales, elementos, tests). Diferencia con ABAQUS (`[11, 22, 33, 12, 13, 23]`): permutación `yz ↔ xz` del bloque cortante — documentada como caveat en catálogos cuando aplique.
+
 ## 6. Salvaguardas
 
 - **Tests blindan física no obvia.** Toda formulación nueva entra acompañada de un test de validación contra solución analítica o benchmark conocido. La IA puede equivocarse en sutilezas físicas (signos en Voigt, factores de ½, hipótesis plane stress vs plane strain) que no rompen la compilación; los tests son la red de seguridad.
