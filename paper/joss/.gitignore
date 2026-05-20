@@ -1,0 +1,7 @@
+# Artefactos de la previsualización local del paper JOSS con lualatex + bibtex.
+# La versión canónica del PDF la genera el bot inara durante la revisión JOSS
+# directamente desde paper.md; aquí sólo guardamos las fuentes (paper.md, paper.bib).
+paper.tex
+paper.bbl
+paper.blg
+paper.pdf

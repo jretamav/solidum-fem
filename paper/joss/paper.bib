@@ -1,15 +1,115 @@
 % Bibliografía del paper JOSS de Solidum FEM.
-% Pendiente — añadir las referencias citadas en paper.md.
-%
-% Referencias previsibles que conviene incluir cuando se redacte:
-%   - Tesis del autor (Retama 2010, UNAM) — origen de la formulación KOS embebida.
-%   - de Borst & Sluys 1999 (o la versión Wiley 2012) — base teórica de solvers no lineales.
-%   - Gutiérrez 2004 — dissipation arc-length original.
-%   - Verhoosel et al. 2009 — switching cilíndrico↔disipación.
-%   - Hilber-Hughes-Taylor 1977 — HHT-α.
-%   - Der Kiureghian 1980 — CQC.
-%   - Hill 1950 — analítico de cilindro elastoplástico.
-%   - Bathe 1996 — wave propagation benchmark.
-%   - MacNeal & Harder 1985 — slender beam benchmark.
-%   - NAFEMS LE1 — elliptic membrane benchmark.
-%   - Frameworks comparables: FEniCS (Logg 2012), deal.II (Bangerth-Hartmann-Kanschat 2007), SfePy (Cimrman 2014).
+% Entradas en el orden en que aparecen citadas en paper.md.
+
+@phdthesis{Retama:2010,
+  author  = {Retama-Velasco, J.},
+  title   = {Formulation and Approximation to Problems in Solids by Embedded Discontinuity Models},
+  school  = {Universidad Nacional Autónoma de México (UNAM), Instituto de Ingeniería},
+  address = {Mexico City, Mexico},
+  type    = {{Ph.D.} Thesis},
+  year    = {2010}
+}
+
+@article{Gutierrez:2004,
+  author  = {Gutiérrez, M. A.},
+  title   = {Energy release control for numerical simulations of failure in quasi-brittle solids},
+  journal = {Communications in Numerical Methods in Engineering},
+  volume  = {20},
+  number  = {1},
+  pages   = {19--29},
+  year    = {2004},
+  doi     = {10.1002/cnm.649}
+}
+
+@article{Verhoosel:2009,
+  author  = {Verhoosel, Clemens V. and Remmers, Joris J. C. and Gutiérrez, Miguel A.},
+  title   = {A dissipation-based arc-length method for robust simulation of brittle and ductile failure},
+  journal = {International Journal for Numerical Methods in Engineering},
+  volume  = {77},
+  number  = {9},
+  pages   = {1290--1321},
+  year    = {2009},
+  doi     = {10.1002/nme.2447}
+}
+
+@book{Logg:2012,
+  editor    = {Logg, Anders and Mardal, Kent-Andre and Wells, Garth N.},
+  title     = {Automated Solution of Differential Equations by the Finite Element Method: The {FEniCS} Book},
+  series    = {Lecture Notes in Computational Science and Engineering},
+  volume    = {84},
+  publisher = {Springer},
+  address   = {Berlin, Heidelberg},
+  year      = {2012},
+  isbn      = {978-3-642-23098-1},
+  doi       = {10.1007/978-3-642-23099-8}
+}
+
+@article{Cimrman:2019,
+  author  = {Cimrman, Robert and Lukeš, Vladimír and Rohan, Eduard},
+  title   = {Multiscale finite element calculations in {Python} using {SfePy}},
+  journal = {Advances in Computational Mathematics},
+  volume  = {45},
+  number  = {4},
+  pages   = {1897--1921},
+  year    = {2019},
+  doi     = {10.1007/s10444-019-09666-0}
+}
+
+@article{Gustafsson:2020,
+  author  = {Gustafsson, Tom and McBain, Geordie D.},
+  title   = {scikit-fem: A {Python} package for finite element assembly},
+  journal = {Journal of Open Source Software},
+  volume  = {5},
+  number  = {52},
+  pages   = {2369},
+  year    = {2020},
+  doi     = {10.21105/joss.02369}
+}
+
+@article{Hilber:1977,
+  author  = {Hilber, Hans M. and Hughes, Thomas J. R. and Taylor, Robert L.},
+  title   = {Improved numerical dissipation for time integration algorithms in structural dynamics},
+  journal = {Earthquake Engineering \& Structural Dynamics},
+  volume  = {5},
+  number  = {3},
+  pages   = {283--292},
+  year    = {1977},
+  doi     = {10.1002/eqe.4290050306}
+}
+
+@techreport{NAFEMS:1990,
+  author      = {{NAFEMS}},
+  title       = {The Standard {NAFEMS} Benchmarks},
+  institution = {NAFEMS},
+  address     = {Glasgow, UK},
+  number      = {TNSB Rev. 3},
+  year        = {1990}
+}
+
+@article{MacNeal:1985,
+  author  = {MacNeal, Richard H. and Harder, Robert L.},
+  title   = {A proposed standard set of problems to test finite element accuracy},
+  journal = {Finite Elements in Analysis and Design},
+  volume  = {1},
+  number  = {1},
+  pages   = {3--20},
+  year    = {1985},
+  doi     = {10.1016/0168-874X(85)90003-4}
+}
+
+@book{Bathe:1996,
+  author    = {Bathe, Klaus-Jürgen},
+  title     = {Finite Element Procedures},
+  publisher = {Prentice Hall},
+  address   = {Englewood Cliffs, NJ},
+  year      = {1996},
+  isbn      = {978-0-13-301458-7}
+}
+
+@book{Hill:1950,
+  author    = {Hill, Rodney},
+  title     = {The Mathematical Theory of Plasticity},
+  publisher = {Oxford University Press},
+  address   = {Oxford, UK},
+  year      = {1950}
+}
