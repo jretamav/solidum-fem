@@ -5,12 +5,37 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "solidum-fem"
 version = "0.1.0"
-description = "Programa de elementos finitos en aproximación de desplazamientos para investigación en mecánica de sólidos"
+description = "A displacement-based finite element framework for research in solid mechanics"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "Jaime Retama Velasco" }
+    { name = "J. Retama-Velasco", email = "jretamav@comunidad.unam.mx" }
 ]
-license = { text = "Proprietary" }
+license = { text = "LGPL-3.0-or-later" }
+keywords = [
+    "finite element method",
+    "FEM",
+    "computational mechanics",
+    "solid mechanics",
+    "nonlinear mechanics",
+    "embedded discontinuity",
+    "plasticity",
+    "damage mechanics",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 
 dependencies = [
     "numpy>=1.24",
@@ -24,6 +49,11 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jretamav/solidum-fem"
+Repository = "https://github.com/jretamav/solidum-fem"
+Issues = "https://github.com/jretamav/solidum-fem/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
