@@ -20,17 +20,17 @@ import warnings
 
 import numpy as np
 
-import fenix  # autodiscover
+import solidum  # autodiscover
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d.quad4 import Quad4
-from fenix.elements.truss import Truss2D
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers._shared import domain_is_symmetric
-from fenix.math.solvers.newmark import HHTSolver, NewtonHHTSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d.quad4 import Quad4
+from solidum.elements.truss import Truss2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers._shared import domain_is_symmetric
+from solidum.math.solvers.newmark import HHTSolver, NewtonHHTSolver
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ class TestLinearSolverIsPdDerived(unittest.TestCase):
     def test_pd_flag_matches_domain_symmetry_asymmetric_case(self):
         """Con material no asociado (asimétrico), el solver debe declarar
         ``is_positive_definite=False`` para que el dispatcher elija LU."""
-        from fenix.math.solvers import LinearSolver
+        from solidum.math.solvers import LinearSolver
 
         dom = Domain()
         nodes = [dom.add_node(i + 1, c) for i, c in enumerate([
@@ -235,8 +235,8 @@ class TestRunYamlRejectsUnknownPipelineKind(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
 
-        from fenix.entry import run_yaml
-        from fenix.math.solvers import LinearSolver
+        from solidum.entry import run_yaml
+        from solidum.math.solvers import LinearSolver
 
         yaml_body = """
 nodes:

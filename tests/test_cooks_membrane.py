@@ -27,11 +27,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.core.material import Material
-from fenix.elements.solid_2d import Quad8, Quad9, Tri6
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
+from solidum.core.domain import Domain
+from solidum.core.material import Material
+from solidum.elements.solid_2d import Quad8, Quad9, Tri6
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 class _PlaneStress(Material):
@@ -151,7 +151,7 @@ def _build_cook_tri6_mesh(nx: int, ny: int, material, thickness: float = 1.0):
     a lo largo de la diagonal c1→c3. El nodo central paramétrico (idéntico
     al center node de Q9) actúa como midnode compartido de la diagonal.
 
-    Numeración Tri6 (Fenix convention): vértices 0,1,2 con midnodes
+    Numeración Tri6 (Solidum convention): vértices 0,1,2 con midnodes
     3 (entre 0-1), 4 (entre 1-2), 5 (entre 2-0).
 
     - **Triángulo A** (inferior-derecho): vértices ``(c1, c2, c3)`` →

@@ -19,9 +19,9 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.constants import DAMAGE_MAX
-from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from fenix.registry import CohesiveMaterialRegistry
+from solidum.constants import DAMAGE_MAX
+from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.registry import CohesiveMaterialRegistry
 
 
 # --- Parámetros tipo hormigón para los casos de validación ---------------

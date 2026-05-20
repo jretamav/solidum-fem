@@ -1,4 +1,4 @@
-# Reglas de Fenix FEM — contrato de colaboración Usuario ↔ IA
+# Reglas de Solidum FEM — contrato de colaboración Usuario ↔ IA
 
 Este documento establece los principios del proyecto y el protocolo de trabajo entre el usuario humano y la IA. La IA debe leerlo al inicio de cada sesión.
 
@@ -6,7 +6,7 @@ Este documento establece los principios del proyecto y el protocolo de trabajo e
 
 ## 0. Identidad del proyecto
 
-**Fenix FEM** es un programa de elementos finitos en aproximación de desplazamientos para investigación en mecánica de sólidos: simulación de problemas mecánico y térmico, acoplados o desacoplados. Su desarrollo debe ser riguroso tanto en arquitectura de software como en métodos numéricos. La arquitectura debe permitir el crecimiento futuro **sin grandes cambios en el código fuente original**.
+**Solidum FEM** es un programa de elementos finitos en aproximación de desplazamientos para investigación en mecánica de sólidos: simulación de problemas mecánico y térmico, acoplados o desacoplados. Su desarrollo debe ser riguroso tanto en arquitectura de software como en métodos numéricos. La arquitectura debe permitir el crecimiento futuro **sin grandes cambios en el código fuente original**.
 
 ## 1. Arquitectura optimizada para extensión por IA
 
@@ -20,7 +20,7 @@ Concretamente, esto se traduce en preferir:
 
 ## 2. Modelo de colaboración: la IA como calculadora con manual disponible
 
-Toda modificación o ampliación del código de Fenix FEM se realiza a través de la IA. El flujo es **Usuario → IA → Código → resultados → Usuario**: la IA produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos y las decisiones arquitecturales.
+Toda modificación o ampliación del código de Solidum FEM se realiza a través de la IA. El flujo es **Usuario → IA → Código → resultados → Usuario**: la IA produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos y las decisiones arquitecturales.
 
 El usuario delega la **escritura** del código (sintaxis, plumbing, patrones de software) pero **no la comprensión conceptual**. La analogía operativa es la de una calculadora científica: el usuario sabe qué es el seno, qué propiedades tiene y qué orden de magnitud esperar, pero no memoriza el algoritmo CORDIC interno; sí detecta resultados absurdos. Trasladado al proyecto, el usuario debe tener un modelo mental completo del **qué** y del **por qué** de cada pieza arquitectural — sin necesidad de escribir su implementación.
 
@@ -32,7 +32,7 @@ La IA, por tanto, **nunca trata el sistema como caja negra para el usuario**. Cu
 |---|---|---|
 | **Modelos físicos y matemáticos** — materiales (constitutivos, return mapping, criterios de fluencia/daño, módulos tangentes), elementos (cinemática, matriz B, formulación variacional, integración, transformaciones), solvers (criterios de convergencia, predictores/correctores, paso adaptativo, longitud de arco), constantes con significado físico (tolerancias de fluencia, factor de penalidad). | **Usuario revisa con detalle.** | Ecuaciones (LaTeX/ASCII), referencia bibliográfica si aplica, diff acotado, propuesta de test contra solución analítica o benchmark conocido. |
 | **Plumbing de software** — registry, autodiscover, decoradores, contratos abstractos, ensamblaje sparse, cache de topología COO, vectorización, Numba, parsers (YAML, gmsh, VTK), scaffolding, estructura de directorios, type hints. | **IA decide.** | Una frase de qué cambió y por qué; tests verdes como evidencia. No se pide al usuario que lea la implementación. |
-| **Zona gris** — clases base (`Element`, `Material`), semántica trial/commit de variables internas, esquema de `ElementState`, API pública del paquete (re-exports raíz, entrypoints `fenix.run*`, dataclasses `SolveResult`/`ModalResult`/`TransientResult`), decisiones con ADR en curso o incompleto. Lista enumerativa, no cerrada — ante la duda, el agente eleva a zona gris. | IA propone, usuario valida concepto. | Aviso conceptual breve; lectura detallada solo si el usuario la pide. |
+| **Zona gris** — clases base (`Element`, `Material`), semántica trial/commit de variables internas, esquema de `ElementState`, API pública del paquete (re-exports raíz, entrypoints `solidum.run*`, dataclasses `SolveResult`/`ModalResult`/`TransientResult`), decisiones con ADR en curso o incompleto. Lista enumerativa, no cerrada — ante la duda, el agente eleva a zona gris. | IA propone, usuario valida concepto. | Aviso conceptual breve; lectura detallada solo si el usuario la pide. |
 
 ## 4. Protocolo de presentación de cambios
 
@@ -40,7 +40,7 @@ La IA, por tanto, **nunca trata el sistema como caja negra para el usuario**. Cu
 - **Variante de componente existente** (subclase de un solver / elemento / material que reusa decisiones de un ADR/spec ya aceptados — p. ej. Newton-Newmark sobre `NewmarkSolver`, HHT-α sobre `NewmarkSolver`, una calibración alternativa de Drucker-Prager) → **spec corta tipo extensión** en `docs/specs/<Variante>.md` que documenta **solo lo que cambia** respecto al componente padre (cambios de formulación, parámetros nuevos, comportamientos distintos) y enlaza el padre. **Sin ADR nuevo** mientras reuse decisiones del ADR padre. **Sin entrada estructural nueva** en el manual si la variante es invisible para el usuario del API (típicamente lo es: la subclase comparte el mismo entrypoint). Sí actualizar el catálogo (entrada propia, o nota en la del padre) cuando la variante sea seleccionable en YAML. Sí test analítico/numérico cuando la variante cambia física, no solo plumbing. El objetivo de esta regla es evitar la sobreingeniería del ritual completo cuando la decisión arquitectural ya está tomada.
 - **Cambio físico/matemático** sobre componente existente → ecuaciones, diff acotado, justificación física, propuesta de test. La IA pide visto bueno antes de commitear si el cambio afecta a la formulación, no solo a la implementación. Si la formulación de la spec cambia, se actualiza la spec en el mismo commit.
 - **Cambio pequeño de plumbing** → una frase descriptiva, sin requerir lectura del código.
-- **Refactor zonal** (centralización de código duplicado, renombrado de clase base que aparece en docs, extracción de utilidad común a `fenix/math/`) → diff acotado + rationale en el commit message + actualización de specs/catálogo/manuales que mencionen símbolos cambiados, en el mismo commit. **Sin ADR** si la estructura conceptual no cambia.
+- **Refactor zonal** (centralización de código duplicado, renombrado de clase base que aparece en docs, extracción de utilidad común a `solidum/math/`) → diff acotado + rationale en el commit message + actualización de specs/catálogo/manuales que mencionen símbolos cambiados, en el mismo commit. **Sin ADR** si la estructura conceptual no cambia.
 - **Cambio arquitectural grande** (refactor transversal, nuevo subsistema, ruptura de contratos) → la IA crea un **ADR breve** (Architecture Decision Record, ~1 página) en `docs/adr/000N-titulo.md` antes o junto al commit. Los ADRs son persistentes y consultables; sustituyen a las explicaciones efímeras de chat para que el sistema siga siendo entendible meses o años después.
 - **Bajo demanda**: si el usuario pide profundizar en cualquier pieza, la IA explica al nivel solicitado, desde lo conceptual hasta el detalle de implementación.
 

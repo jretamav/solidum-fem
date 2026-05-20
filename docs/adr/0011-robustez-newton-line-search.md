@@ -2,7 +2,7 @@
 
 - **Estado**: aceptado con enmienda (ver §"Enmiendas tras implementación")
 - **Fecha**: 2026-05-18
-- **Alcance**: `NonlinearSolver` y `NewtonNewmarkSolver` en `fenix/math/solvers/`; mensaje de `RuntimeError` cuando el solver diverge; catálogo de solvers.
+- **Alcance**: `NonlinearSolver` y `NewtonNewmarkSolver` en `solidum/math/solvers/`; mensaje de `RuntimeError` cuando el solver diverge; catálogo de solvers.
 
 ## Contexto
 
@@ -83,11 +83,11 @@ Default `True` porque rescata casos sin sobrecoste perceptible cuando no
 es necesario. El usuario puede desactivarlo con `line_search=False` para
 diagnóstico o para reproducir comportamiento legacy. Sin parámetros de
 configuración adicionales (`c₁`, `ρ`, `max_backtracks`) en la API pública —
-viven como constantes en `fenix/constants.py` con los valores canónicos.
+viven como constantes en `solidum/constants.py` con los valores canónicos.
 
 ### Telemetría de divergencia tipada
 
-Se introduce un módulo nuevo `fenix/math/solvers/diagnostics.py` con un tipo
+Se introduce un módulo nuevo `solidum/math/solvers/diagnostics.py` con un tipo
 de excepción discriminado:
 
 ```python
@@ -168,7 +168,7 @@ commit del ADR para reflejar:
 - HHT-α ya consume el mismo patrón: `NewtonHHTSolver` (2026-05-18,
   ADR 0009 variante de fase 4) hereda el `line_search` opcional y la
   jerarquía de excepciones tipadas de `NewtonNewmarkSolver` sin tocar
-  el módulo `fenix/math/solvers/diagnostics.py`. Otros solvers no
+  el módulo `solidum/math/solvers/diagnostics.py`. Otros solvers no
   lineales futuros (Riks generalizado, BFGS) consumirán el mismo
   patrón.
 - El modo `oscillating` con line search activado y aun así divergiendo es
@@ -202,7 +202,7 @@ commit del ADR para reflejar:
 
 - **Newton-Krylov inexacto** (resolver el sistema lineal solo aproximadamente,
   reusar Krylov entre iteraciones). Orientado a problemas grandes donde
-  factorizar `K_t` cada iteración es prohibitivo. Fenix hoy resuelve mallas
+  factorizar `K_t` cada iteración es prohibitivo. Solidum hoy resuelve mallas
   pequeñas-medianas con factorización directa; over-engineering.
 
 - **Aplicar line search también a `ArcLengthSolver`**. Considerado y
@@ -229,7 +229,7 @@ commit del ADR para reflejar:
   acoplamiento no diagonal) podrían misclasificarse. Aceptable porque el
   `hint` invita al usuario a verificar, no prescribe.
 
-- **Constantes del line search en `fenix/constants.py`, no configurables**.
+- **Constantes del line search en `solidum/constants.py`, no configurables**.
   `c₁ = 1e-4`, `ρ = 0.5`, `max_backtracks = 10` son canónicos en la
   literatura (Nocedal-Wright). Si un caso real requiere ajuste fino,
   promover a parámetros de constructor en una segunda iteración.
@@ -345,7 +345,7 @@ iteraciones (34 vs 36 sin line-search). Cita textual de p. 51:
 > the solution within the radius of convergence of the Newton-Raphson
 > method."*
 
-Fenix usa **full Newton-Raphson** con **tangente consistente**
+Solidum usa **full Newton-Raphson** con **tangente consistente**
 (materiales con `compute_state` que devuelve tangente algorítmica:
 `Elastoplastic1D`, `VonMises2D`, `DruckerPrager2D`, `IsotropicDamage1D/2D`).
 La conclusión del libro aplica directamente: el line-search es

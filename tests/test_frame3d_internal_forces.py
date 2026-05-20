@@ -13,8 +13,8 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.node import Node
-from fenix.elements.frame3d import Frame3D
+from solidum.core.node import Node
+from solidum.elements.frame3d import Frame3D
 
 
 class LinearElastic1D:

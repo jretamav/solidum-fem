@@ -31,11 +31,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.core.material import Material
-from fenix.elements.solid_2d import Quad8, Quad9, Tri6
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
+from solidum.core.domain import Domain
+from solidum.core.material import Material
+from solidum.elements.solid_2d import Quad8, Quad9, Tri6
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 class _PlaneStress(Material):
@@ -238,7 +238,7 @@ class TestPatchTri6(unittest.TestCase):
             nid += 1
             ids[name] = dom.add_node(nid, list(xy))
 
-        # 4 Tri6 antihorarios. Numeración Fenix: [v0, v1, v2, m01, m12, m20].
+        # 4 Tri6 antihorarios. Numeración Solidum: [v0, v1, v2, m01, m12, m20].
         triangles = [
             # Inferior: sw, se, c | mids: se_m, se_c, sw_c
             ('sw', 'se', 'c',  'se_m', 'se_c', 'sw_c'),

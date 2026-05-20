@@ -62,7 +62,7 @@
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Usuario - Fenix FEM},
+    pdftitle={Manual de Usuario - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -76,7 +76,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Usuario}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Usuario}}
 \fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
 \fancyfoot[C]{\thepage}
 \fancyfoot[R]{\footnotesize\color{darkgray}FF-MU}
@@ -129,7 +129,7 @@
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
     \vspace{1cm}
     {\LARGE Plataforma de Análisis por Elementos Finitos en Python \par}
     \vspace{0.3cm}
@@ -156,7 +156,7 @@
 
 \chapter*{Sobre este manual}
 \addcontentsline{toc}{chapter}{Sobre este manual}
-\noindent Este manual está dirigido al \textbf{usuario final} de Fenix FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
+\noindent Este manual está dirigido al \textbf{usuario final} de Solidum FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
 
 Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
 
@@ -179,7 +179,7 @@ Este manual se regenera con:
 
 \section{Filosofía del Proyecto}
 
-Fenix FEM nace como herramienta de investigación en mecánica del medio continuo y análisis no lineal de estructuras. Su diseño persigue dos objetivos simultáneos:
+Solidum FEM nace como herramienta de investigación en mecánica del medio continuo y análisis no lineal de estructuras. Su diseño persigue dos objetivos simultáneos:
 
 \begin{enumerate}
   \item \textbf{Rigor numérico y físico.} Cada formulación incorporada está validada contra solución analítica o benchmark establecido. La separación estricta \texttt{Elemento} \ensuremath{\leftrightarrow} \texttt{Material} permite combinar cualquier cinemática con cualquier ley constitutiva siempre que sus protocolos sean compatibles.
@@ -192,7 +192,7 @@ Toda la orquestación de un análisis se concentra en un archivo \texttt{.yaml} 
 
 \section{Requisitos del Sistema}
 
-Fenix FEM se ejecuta sobre Python 3.8 o superior en Windows, Linux y macOS sin compilación nativa.
+Solidum FEM se ejecuta sobre Python 3.8 o superior en Windows, Linux y macOS sin compilación nativa.
 
 \subsection{Dependencias}
 
@@ -267,7 +267,7 @@ class Truss2D(Element):
 
 \end{lstlisting}
 
-Esto permite que el archivo YAML los referencie por nombre (\texttt{type: Truss2D}) sin que el usuario tenga que importar nada manualmente. El módulo \texttt{fenix.autodiscover} recorre los paquetes \texttt{elements/}, \texttt{materials/} y \texttt{math/solvers/} en la primera importación y puebla los registries.
+Esto permite que el archivo YAML los referencie por nombre (\texttt{type: Truss2D}) sin que el usuario tenga que importar nada manualmente. El módulo \texttt{solidum.autodiscover} recorre los paquetes \texttt{elements/}, \texttt{materials/} y \texttt{math/solvers/} en la primera importación y puebla los registries.
 
 \section{Validación Temprana del Input}
 
@@ -289,7 +289,7 @@ El parser YAML acumula todos los errores detectados en una sola pasada (no abort
 
 
 
-La interacción exclusiva con el motor de Fenix FEM se realiza mediante el archivo de entrada \texttt{.yaml}. Un archivo válido contiene los bloques siguientes (algunos opcionales según el caso de uso):
+La interacción exclusiva con el motor de Solidum FEM se realiza mediante el archivo de entrada \texttt{.yaml}. Un archivo válido contiene los bloques siguientes (algunos opcionales según el caso de uso):
 
 \begin{itemize}
   \item \texttt{nodes} \textit{o} \texttt{mesh} --- geometría.
@@ -388,7 +388,7 @@ Los parámetros aceptados dependen del material; consulte el capítulo \textit{C
 
 \section{Condiciones de Frontera}
 
-Fenix FEM ofrece tres mecanismos para imponer restricciones cinemáticas (Dirichlet), elegibles según la facilidad operativa:
+Solidum FEM ofrece tres mecanismos para imponer restricciones cinemáticas (Dirichlet), elegibles según la facilidad operativa:
 
 \subsection{Por nodo: \texttt{boundary\_conditions\_by\_node}}
 
@@ -424,7 +424,7 @@ boundary_conditions_by_group:
 
 \subsection{Restricciones multipunto (MPC): \texttt{linear\_constraints}}
 
-Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Fenix FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si} u_{m_i}$ (ADR 0004 fase 2). Se declaran en el bloque \texttt{linear\_constraints}:
+Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Solidum FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si} u_{m_i}$ (ADR 0004 fase 2). Se declaran en el bloque \texttt{linear\_constraints}:
 
 \begin{lstlisting}[language=yaml]
 linear_constraints:
@@ -469,7 +469,7 @@ point_loads_by_group:
 
 Una \textit{fuerza de cuerpo} es una fuerza por unidad de volumen $\mathbf b$ que actúa sobre todo el dominio material del elemento, no solo sobre su frontera. Cada elemento del catálogo (armaduras, cables, marcos 2D/3D, sólidos 2D) integra la contribución consistente $\int \mathbf{N}^\top \mathbf{b}\,A\,dx$ y la acumula al vector global de fuerzas. Para vigas Hermite cúbicas el reparto incluye fuerza nodal $qL/2$ y momento $\pm qL^2/12$; para barras axiales es mitad-mitad por nodo.
 
-Casos típicos en mecánica estructural: peso propio (un caso particular con $\mathbf b = \rho\,\mathbf g$), fuerzas centrífugas en cuerpos rotatorios ($\mathbf b = \rho\,\omega^2\,\mathbf r$), fuerzas electromagnéticas sobre materiales conductores, expansión térmica modelada como pseudocarga. Fenix expone dos formas declarativas en YAML que cubren todos estos casos.
+Casos típicos en mecánica estructural: peso propio (un caso particular con $\mathbf b = \rho\,\mathbf g$), fuerzas centrífugas en cuerpos rotatorios ($\mathbf b = \rho\,\omega^2\,\mathbf r$), fuerzas electromagnéticas sobre materiales conductores, expansión térmica modelada como pseudocarga. Solidum expone dos formas declarativas en YAML que cubren todos estos casos.
 
 \subsection{Forma general: \texttt{body\_force}}
 
@@ -491,7 +491,7 @@ Es la forma genérica y la única necesaria para fuerzas de cuerpo que no son pe
 
 \subsection{Caso particular --- peso propio: \texttt{gravity} + \texttt{density}}
 
-El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial --- donde cada elemento debe ver \textit{su propio} $\rho$ --- Fenix expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
+El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial --- donde cada elemento debe ver \textit{su propio} $\rho$ --- Solidum expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
 
 \begin{lstlisting}[language=yaml]
 materials:
@@ -502,9 +502,9 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 
 \end{lstlisting}
 
-\textbf{Qué hace Fenix}. Para cada elemento computa $\mathbf b_e = \rho_e\cdot\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de \texttt{body\_force}. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
+\textbf{Qué hace Solidum}. Para cada elemento computa $\mathbf b_e = \rho_e\cdot\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de \texttt{body\_force}. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
 
-\textbf{Densidad solo cuando se usa}. El campo \texttt{density} es \textbf{opcional} al declarar un material (ADR 0008): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar \texttt{gravity} (o, en su día, análisis modal/dinámico), Fenix exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con \texttt{ValueError} listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como \texttt{density: 0.0} --- caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo y su contribución al peso propio es nula.
+\textbf{Densidad solo cuando se usa}. El campo \texttt{density} es \textbf{opcional} al declarar un material (ADR 0008): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar \texttt{gravity} (o, en su día, análisis modal/dinámico), Solidum exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con \texttt{ValueError} listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como \texttt{density: 0.0} --- caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo y su contribución al peso propio es nula.
 
 \subsection{Detalles transversales}
 
@@ -551,7 +551,7 @@ Ambos criterios deben cumplirse \textbf{simultáneamente} (semántica AND) para 
   \item \texttt{atol\_disp\_factor} (default \texttt{1.0e-9}): análogo para desplazamiento.
 \end{itemize}
 
-\textbf{Por qué los \texttt{atol} se autoderivan.} El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm\ldots{}). En su lugar, Fenix calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: \textbf{el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits}, sin tocar las tolerancias. La justificación arquitectural está en el ADR 0007.
+\textbf{Por qué los \texttt{atol} se autoderivan.} El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm\ldots{}). En su lugar, Solidum calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: \textbf{el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits}, sin tocar las tolerancias. La justificación arquitectural está en el ADR 0007.
 
 \textbf{Cuándo afinar}. Para la inmensa mayoría de análisis los defaults son suficientes. Considera ajustar:
 
@@ -1101,7 +1101,7 @@ solver:
 
 
 
-Fenix FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (ADR 0009 cerrado en su totalidad 2026-05-18). Cubre los siete regímenes canónicos de la mecánica computacional clásica:
+Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (ADR 0009 cerrado en su totalidad 2026-05-18). Cubre los siete regímenes canónicos de la mecánica computacional clásica:
 
 \begin{enumerate}
   \item \textbf{Modal}: autovalores generalizados $\mathbf K \boldsymbol\phi = \omega^2\mathbf M\boldsymbol\phi$ (\texttt{ModalSolver}).
@@ -1165,7 +1165,7 @@ Integra en el tiempo $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \ma
 
 \begin{itemize}
   \item Directa: \texttt{rayleigh: \{alpha: 0.1, beta: 1.0e-4\}}.
-  \item Calibración modal: \texttt{rayleigh: \{xi1: 0.02, omega1: 50.0, xi2: 0.02, omega2: 200.0\}} --- Fenix resuelve los $(\alpha, \beta)$ que reproducen los amortiguamientos $\xi_1, \xi_2$ a las frecuencias $\omega_1, \omega_2$.
+  \item Calibración modal: \texttt{rayleigh: \{xi1: 0.02, omega1: 50.0, xi2: 0.02, omega2: 200.0\}} --- Solidum resuelve los $(\alpha, \beta)$ que reproducen los amortiguamientos $\xi_1, \xi_2$ a las frecuencias $\omega_1, \omega_2$.
 \end{itemize}
 
 \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt} (obligatorios); \texttt{beta} (default 0.25), \texttt{gamma} (default 0.5), \texttt{rayleigh} (opcional), \texttt{u0}, \texttt{u0\_dot} (condiciones iniciales, default ceros), \texttt{F\_func} (callback Python $t \to \mathbf F(t)$; default vibración libre).
@@ -1205,7 +1205,7 @@ Subclase de \texttt{NewmarkSolver} (Reglas §4 --- variante de componente existe
 
 \textbf{Recuperación del caso lineal}: con materiales sin historia o no plastificados, el residuo se anula en 1 iter y el resultado coincide \textit{a paridad de bits} con \texttt{NewmarkSolver}. Validado en tests.
 
-\textbf{Parámetros}: heredados de \texttt{NewmarkSolver} más \texttt{max\_iter} (default 20), bloque \texttt{convergence} (\texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ADR 0007) y \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}). El despacho YAML es automático: como \texttt{NewtonNewmarkSolver} es subclase de \texttt{NewmarkSolver}, \texttt{fenix.run\_yaml} lo detecta vía \texttt{isinstance} y enruta a \texttt{run\_transient}.
+\textbf{Parámetros}: heredados de \texttt{NewmarkSolver} más \texttt{max\_iter} (default 20), bloque \texttt{convergence} (\texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ADR 0007) y \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}). El despacho YAML es automático: como \texttt{NewtonNewmarkSolver} es subclase de \texttt{NewmarkSolver}, \texttt{solidum.run\_yaml} lo detecta vía \texttt{isinstance} y enruta a \texttt{run\_transient}.
 
 \begin{lstlisting}[language=yaml]
 materials:
@@ -1406,7 +1406,7 @@ solver:
 Independiente de cualquier solver: todos los elementos del catálogo soportan \texttt{compute\_mass\_matrix(lumping="lumped")}. El esquema se elige por familia:
 
 \begin{itemize}
-  \item \textbf{Sólidos isoparamétricos} (Tri3, Quad4, Tri6, Quad8, Quad9): \textbf{HRZ canónico} (Hinton-Rock-Zienkiewicz 1976) centralizado en \texttt{fenix.math.mass\_lumping.lump\_hrz}. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
+  \item \textbf{Sólidos isoparamétricos} (Tri3, Quad4, Tri6, Quad8, Quad9): \textbf{HRZ canónico} (Hinton-Rock-Zienkiewicz 1976) centralizado en \texttt{solidum.math.mass\_lumping.lump\_hrz}. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
   \item \textbf{Vigas y marcos} (Truss, Cable, Frame2D Euler/Timoshenko/EulerCorot, Frame3D): \textbf{lumping nodal directo} --- $\rho AL/2$ traslacional + $\rho I L/2$ rotacional por nodo. Único esquema que sobrevive a la rotación local\ensuremath{\to}global manteniendo $\mathbf M$ diagonal.
 \end{itemize}
 
@@ -1422,7 +1422,7 @@ Independiente de cualquier solver: todos los elementos del catálogo soportan \t
 
 \section{Formato VTU (VTK XML)}
 
-Mediante \texttt{meshio}, Fenix FEM exporta los resultados en archivos \texttt{.vtu} compatibles con ParaView. La información se clasifica en dos diccionarios estándar:
+Mediante \texttt{meshio}, Solidum FEM exporta los resultados en archivos \texttt{.vtu} compatibles con ParaView. La información se clasifica en dos diccionarios estándar:
 
 \subsection{Datos Nodales (Point Data)}
 
@@ -1647,7 +1647,7 @@ Los componentes principales se exponen desde la raíz del paquete:
 
 \begin{lstlisting}[language=Python]
 import numpy as np
-from fenix import Domain, VonMises2D, Quad4, Assembler, NonlinearSolver, VtkExporter
+from solidum import Domain, VonMises2D, Quad4, Assembler, NonlinearSolver, VtkExporter
 
 # 1. Dominio y nodos
 domain = Domain()
@@ -1723,10 +1723,10 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 \vspace*{\fill}
 \begin{center}
 \rule{0.4\textwidth}{0.4pt}\\[1em]
-{\bfseries\color{yamlkey} Fenix FEM --- Manual de Usuario}\\[0.5em]
+{\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 19 de mayo de 2026, 12:55\\[0.5em]
-Commit Git: \texttt{61fc8f1} (con cambios sin confirmar)\\[1em]
+Compilado el 19 de mayo de 2026, 18:45\\[0.5em]
+Commit Git: \texttt{71e4602} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

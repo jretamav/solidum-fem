@@ -5,7 +5,7 @@
 
 ## Contexto
 
-Fenix FEM se empieza a consumir desde una GUI externa (FenixBAR, análisis estructural con elementos barra). FenixBAR necesita, tras una solución, información suficiente para visualizar posproceso estándar de CAE: deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos (N, V, M, y en 3D también T, My, Mz) sobre cada barra.
+Solidum FEM se empieza a consumir desde una GUI externa (FenixBAR, análisis estructural con elementos barra). FenixBAR necesita, tras una solución, información suficiente para visualizar posproceso estándar de CAE: deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos (N, V, M, y en 3D también T, My, Mz) sobre cada barra.
 
 Hoy esa información no está expuesta de forma uniforme:
 
@@ -13,7 +13,7 @@ Hoy esa información no está expuesta de forma uniforme:
 - `VtkExporter` solo maneja `Quad4`, `Tri3`, `Truss2D`, `Truss3D` (estos últimos como celdas `line` sin esfuerzos). `Frame2DEuler`, `Frame2DEulerCorot`, `Frame2DTimoshenko`, `Frame3D`, `Cable2DCorot`, `Cable3DCorot` no se exportan. `displacements` solo escribe `ux`/`uy` (sin `uz` ni rotaciones). _(Cerrado 2026-05-04: el exportador acepta cualquier elemento de 2 nodos como celda `line`, escribe desplazamientos 3D y rotaciones nodales cuando hay DOFs rotacionales; los esfuerzos internos N/V/M de barras siguen consumiéndose vía `SolveResult.element_forces`, no por VTK.)_
 - Cada tipo de elemento conoce su formulación cinemática y constitutiva (Euler vs Timoshenko, corotacional vs lineal, ejes locales en 3D, tracción-sólo en cables), pero no ofrece método público homogéneo para devolver esfuerzos internos dado un `U`.
 
-Alternativa descartada: que el consumidor calcule N/V/M desde `U`. Duplicaría la formulación fuera del repo que la define, con riesgo de divergencia en cada elemento nuevo. Contrario al principio de que la lógica FEM vive en Fenix FEM.
+Alternativa descartada: que el consumidor calcule N/V/M desde `U`. Duplicaría la formulación fuera del repo que la define, con riesgo de divergencia en cada elemento nuevo. Contrario al principio de que la lógica FEM vive en Solidum FEM.
 
 ## Decisión
 
@@ -35,7 +35,7 @@ def internal_forces(self, U: np.ndarray) -> ElementForces:
 Retorno homogéneo por familia, con claves fijas y valor `np.ndarray` de shape `(2,)` (índice 0 = nodo i, índice 1 = nodo j). Componentes no aplicables se omiten del dict (no se rellenan con ceros — su ausencia es información).
 
 ```python
-# Definido en fenix.results
+# Definido en solidum.results
 @dataclass(frozen=True)
 class ElementForces:
     kind: Literal["truss", "cable", "frame2d", "frame3d"]
@@ -77,7 +77,7 @@ Decisiones:
 - `R` se da como vector global con ceros en libres, y `reactions_by_node` como vista conveniente filtrada a nodos restringidos. Ambos redundantes a propósito: barato de dar ambos, GUIs grandes prefieren vector, scripts prefieren dict.
 - `frozen=True` para evitar que un consumidor modifique resultados y sorprenda a otro consumidor posterior.
 
-### 3. Entrypoints públicos — `fenix.run` y `fenix.run_yaml`
+### 3. Entrypoints públicos — `solidum.run` y `solidum.run_yaml`
 
 Dos funciones, no una con unión de tipos:
 
@@ -88,7 +88,7 @@ def run_yaml(path: str | Path, *, solver_config: SolverConfig | None = None) -> 
 
 Encapsulan `Assembler → solver.solve → recolección de resultados`. `run_yaml` delega en `run` tras parsear.
 
-El script `examples/ejecutar_yaml.py` pasa a ser una demo delgada (≤ 20 líneas) que llama a `fenix.run_yaml`. La vía oficial para consumidores es `import fenix; result = fenix.run(domain)`.
+El script `examples/ejecutar_yaml.py` pasa a ser una demo delgada (≤ 20 líneas) que llama a `solidum.run_yaml`. La vía oficial para consumidores es `import solidum; result = solidum.run(domain)`.
 
 ## Consecuencias
 
@@ -107,7 +107,7 @@ El script `examples/ejecutar_yaml.py` pasa a ser una demo delgada (≤ 20 línea
 - Extender `VtkExporter` a todos los tipos de barra: no resuelve el problema — GUIs interactivas no quieren pasar por disco ni por un formato de ParaView.
 - Dejar al consumidor calcular N/V/M desde `U`: duplicaría formulación fuera del repo. Descartado.
 - Convención stress-resultant pura también en API 2D: más limpio internamente pero rompe la intuición clásica de diagramas. Rechazado a favor de A interno + B expuesto en 2D.
-- `fenix.run(domain_or_yaml)` con unión de tipos: rechazado por complicar el tipado y la documentación; dos funciones son más claras.
+- `solidum.run(domain_or_yaml)` con unión de tipos: rechazado por complicar el tipado y la documentación; dos funciones son más claras.
 
 **Implicaciones para `arquitectura.md` y `conceptos_clave.md`**
 - Añadir `SolveResult`, `ElementForces` y el contrato `Element.internal_forces` al mapa arquitectural.
@@ -115,11 +115,11 @@ El script `examples/ejecutar_yaml.py` pasa a ser una demo delgada (≤ 20 línea
 
 ## Plan de implementación (orden sugerido)
 
-1. Definir `ElementForces` y `SolveResult` en `fenix/results.py`.
+1. Definir `ElementForces` y `SolveResult` en `solidum/results.py`.
 2. Añadir método abstracto `internal_forces` a `Element` base con default `NotImplementedError`.
 3. Implementar en truss (trivial), cable (trivial con rama slack), frame2D Euler/Timoshenko, frame2D corot, frame3D.
 4. Ensamblar `SolveResult` en `Domain` al final de `solver.solve`; cablear `last_result`.
-5. Añadir `fenix.run` y `fenix.run_yaml`; refactorizar `ejecutar_yaml.py` como demo.
+5. Añadir `solidum.run` y `solidum.run_yaml`; refactorizar `ejecutar_yaml.py` como demo.
 6. (Fase 2, cuando FenixBAR lo pida) `sample_internal` en frames para diagramas suaves.
 
 Tests por punto (física no obvia, ver Reglas.md §6): ménsula con carga puntual para `Frame2DEuler` (M lineal, V constante), viga biempotrada con carga uniforme, torsión pura en Frame3D, arco con cable pretensado. Cada test compara signos contra Reglas.md §5, no contra la referencia original.

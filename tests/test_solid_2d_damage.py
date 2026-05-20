@@ -16,12 +16,12 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad4
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d import Quad4
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 def _build_uniaxial_quad4_domain(material):

@@ -21,19 +21,19 @@ from unittest.mock import patch
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.entry import run_transient, run_yaml
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.linalg.lu import LUSolver
-from fenix.math.solvers import HHTSolver, NewmarkSolver, NewtonNewmarkSolver
-from fenix.math.solvers.diagnostics import SingularTangentError
-from fenix.math.solvers.newmark import NewtonHHTSolver
-from fenix.results import TransientResult
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.entry import run_transient, run_yaml
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.linalg.lu import LUSolver
+from solidum.math.solvers import HHTSolver, NewmarkSolver, NewtonNewmarkSolver
+from solidum.math.solvers.diagnostics import SingularTangentError
+from solidum.math.solvers.newmark import NewtonHHTSolver
+from solidum.results import TransientResult
 
 
 # Mismos parámetros que test_newmark.py para 1 GDL:

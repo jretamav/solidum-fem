@@ -1,6 +1,6 @@
 # Decisiones de arquitectura (ADR)
 
-Los Architecture Decision Records (ADR) son el registro persistente de las decisiones que han modelado la arquitectura de Fenix FEM. Cada ADR responde, en una página, a tres cuestiones: contexto, decisión y consecuencias. En este capítulo se resumen los ADR vigentes; el texto completo reside en `docs/adr/`.
+Los Architecture Decision Records (ADR) son el registro persistente de las decisiones que han modelado la arquitectura de Solidum FEM. Cada ADR responde, en una página, a tres cuestiones: contexto, decisión y consecuencias. En este capítulo se resumen los ADR vigentes; el texto completo reside en `docs/adr/`.
 
 ## ADR 0001 — Mecanismos de transparencia conceptual
 
@@ -20,15 +20,15 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 
 **Fecha**: 22 de abril de 2026. **Estado**: aceptado.
 
-**Contexto.** Fenix FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos sobre cada barra. Esta información no se exponía de forma uniforme: el componente `VtkExporter` cubría únicamente algunos elementos y los esfuerzos internos carecían de método público homogéneo.
+**Contexto.** Solidum FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos sobre cada barra. Esta información no se exponía de forma uniforme: el componente `VtkExporter` cubría únicamente algunos elementos y los esfuerzos internos carecían de método público homogéneo.
 
 **Decisión.** Interfaz pública estructurada en tres niveles:
 
 1. *Contrato por elemento.* Todos los elementos tipo armadura, cable o marco implementan `internal_forces(U) -> ElementForces`, que devuelve los esfuerzos en ejes locales con claves homogéneas por familia (`{N}` para armadura y cable; `{N, V, M}` para marco 2D; `{N, Vy, Vz, T, My, Mz}` para marco 3D). La convención de signos es la del proyecto (capítulo anterior).
 2. *Agregado en `Domain`.* El objeto `SolveResult` se calcula de forma anticipada al final de `solver.solve()` y es inmutable. Expone los desplazamientos globales, las cargas aplicadas, las reacciones y un diccionario de esfuerzos internos por elemento.
-3. *Puntos de entrada oficiales.* Las funciones `fenix.run(case)` y `fenix.run_yaml(path)` devuelven directamente un `SolveResult`. Cualquier consumidor externo opera contra esta interfaz.
+3. *Puntos de entrada oficiales.* Las funciones `solidum.run(case)` y `solidum.run_yaml(path)` devuelven directamente un `SolveResult`. Cualquier consumidor externo opera contra esta interfaz.
 
-**Consecuencia.** El consumidor externo no recalcula esfuerzos a partir de `U`; la lógica de MEF reside íntegramente en Fenix FEM. La incorporación de un elemento nuevo obliga a implementar `internal_forces` con las claves de su familia: el contrato es explícito.
+**Consecuencia.** El consumidor externo no recalcula esfuerzos a partir de `U`; la lógica de MEF reside íntegramente en Solidum FEM. La incorporación de un elemento nuevo obliga a implementar `internal_forces` con las claves de su familia: el contrato es explícito.
 
 ## ADR 0003 — Despachador de algoritmo algebraico
 
@@ -44,7 +44,7 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 
 El despachador `select_solver(props, override)` recibe un objeto `StiffnessProperties` (atributos `is_symmetric`, `is_positive_definite`) y selecciona la factorización de Cholesky cuando aplica, o la factorización LU en caso contrario. El usuario puede forzar un algoritmo desde el archivo YAML mediante el campo `linear_algebra` en calidad de herramienta de diagnóstico, no como decisión de modelado.
 
-**Consecuencia.** Los solvers no lineales (`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`) ya no invocan SuperLU directamente: solicitan un solver algebraico al despachador y se desentienden del algoritmo numérico subyacente. La incorporación de un nuevo algoritmo (Pardiso, MUMPS, métodos algebraicos multimalla iterativos) afecta exclusivamente a `fenix/math/linalg/`. La separación entre estrategia (solver no lineal) y táctica (subsistema algebraico) queda explícita en el código.
+**Consecuencia.** Los solvers no lineales (`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`) ya no invocan SuperLU directamente: solicitan un solver algebraico al despachador y se desentienden del algoritmo numérico subyacente. La incorporación de un nuevo algoritmo (Pardiso, MUMPS, métodos algebraicos multimalla iterativos) afecta exclusivamente a `solidum/math/linalg/`. La separación entre estrategia (solver no lineal) y táctica (subsistema algebraico) queda explícita en el código.
 
 ## ADR 0004 — Imposición de condiciones de Dirichlet por eliminación directa
 
@@ -52,7 +52,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 **Contexto.** Las condiciones de contorno de Dirichlet, tanto los empotramientos nodales clásicos como las restricciones multipunto (MPC: asentamientos prescritos, apoyos en plano oblicuo, periodicidad de celda unitaria, unión rígida master-slave), se imponían previamente por método de penalidad: añadir términos diagonales muy grandes al sistema. Dicho método introduce condicionamiento numérico artificialmente malo, contamina la simetría y la positividad de la matriz de rigidez y no es exacto a redondeo.
 
-**Decisión.** Se adopta la imposición por eliminación directa. Toda restricción se expresa en forma afín `u_s = g_s + Σ α_si · u_mi` y se acumula en un `ConstraintSet` del subpaquete `fenix.bc`. El ensamblador construye un operador disperso `T` y un vector `g` tales que `u = T · u_libre + g`. El sistema entregado al subsistema algebraico es `K_red = TᵀKT`, `F_red = Tᵀ(F − K · g)`. Las restricciones encadenadas (un esclavo cuyo maestro es a su vez esclavo) se resuelven por cierre transitivo al construir `T`; los ciclos y redeclaraciones inconsistentes se detectan en validación temprana.
+**Decisión.** Se adopta la imposición por eliminación directa. Toda restricción se expresa en forma afín `u_s = g_s + Σ α_si · u_mi` y se acumula en un `ConstraintSet` del subpaquete `solidum.bc`. El ensamblador construye un operador disperso `T` y un vector `g` tales que `u = T · u_libre + g`. El sistema entregado al subsistema algebraico es `K_red = TᵀKT`, `F_red = Tᵀ(F − K · g)`. Las restricciones encadenadas (un esclavo cuyo maestro es a su vez esclavo) se resuelven por cierre transitivo al construir `T`; los ciclos y redeclaraciones inconsistentes se detectan en validación temprana.
 
 **Consecuencia.** La imposición es exacta a redondeo, preserva simetría y positividad definida de `K`, y deja el sistema reducido apto para los algoritmos del subsistema algebraico, incluidos solvers iterativos como gradiente conjugado o GMRES. La misma maquinaria cubre empotramiento, asentamiento, apoyo oblicuo, periodicidad y unión rígida sin ramificación específica por tipo.
 
@@ -62,7 +62,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 **Contexto.** La trazabilidad del solver durante un análisis (incrementos de carga, iteraciones de Newton, ratios de convergencia, factorizaciones reusadas) se emitía mediante `print` directo en la salida estándar. Esto impedía silenciar el ruido en pipelines de batch testing, redirigir la traza a un archivo de log paralelo y diferenciar niveles de gravedad (información ordinaria, advertencias, errores recuperables).
 
-**Decisión.** Se introduce un *logger* configurable basado en el módulo estándar `logging` de Python, expuesto al resto del proyecto vía `fenix.logging.get_logger(name)`. Todos los componentes consumen este *logger* en lugar de `print`. El nivel y el formato se configuran de forma centralizada y pueden sobreescribirse desde el archivo YAML del caso o programáticamente.
+**Decisión.** Se introduce un *logger* configurable basado en el módulo estándar `logging` de Python, expuesto al resto del proyecto vía `solidum.logging.get_logger(name)`. Todos los componentes consumen este *logger* en lugar de `print`. El nivel y el formato se configuran de forma centralizada y pueden sobreescribirse desde el archivo YAML del caso o programáticamente.
 
 **Consecuencia.** Tests automatizados pueden silenciar la traza sin perder la información de errores. La integración con herramientas externas (GUI FenixBAR, batería de tests, pipelines CI) se hace mediante la API estándar de `logging`, sin acoplamiento a `sys.stdout`. Las advertencias internas relevantes (degradación de Cholesky a LU, bisección de incremento) quedan marcadas con su nivel adecuado.
 
@@ -82,7 +82,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 **Contexto.** El criterio de convergencia del `NonlinearSolver` y del `ArcLengthSolver` era puramente relativo: `‖residuo‖ / ref_force ≤ tol` y `‖δU‖ / ‖U‖ ≤ tol`, con un único parámetro `tol` para los dos criterios y sin término absoluto real. Esta forma arrastraba tres limitaciones estructurales: no había tolerancia absoluta cuando la escala relativa colapsaba transitoriamente, una sola tolerancia mezclaba dos criterios físicamente distintos (incrementabilidad del iterado vs equilibrio), y la fórmula se replicaba en los dos solvers a mano.
 
-**Decisión.** Se aplica el mismo patrón del ADR 0006 a la convergencia, separado por criterio. La política reside en una clase pequeña `ConvergenceCriterion` en `fenix/math/convergence.py`, que encapsula configuración (cuatro tolerancias: `rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`) y estado calibrado (los `atol` efectivos derivados de las escalas del primer ensamblaje). Los solvers no lineales reciben una instancia en el constructor (parámetro `convergence`), calibran al inicio de `solve()` y delegan en `evaluate()` la comparación. La semántica es AND, no OR (ambos criterios deben cumplirse simultáneamente), coherente con la convención de Bathe, Crisfield y Owen-Hinton.
+**Decisión.** Se aplica el mismo patrón del ADR 0006 a la convergencia, separado por criterio. La política reside en una clase pequeña `ConvergenceCriterion` en `solidum/math/convergence.py`, que encapsula configuración (cuatro tolerancias: `rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`) y estado calibrado (los `atol` efectivos derivados de las escalas del primer ensamblaje). Los solvers no lineales reciben una instancia en el constructor (parámetro `convergence`), calibran al inicio de `solve()` y delegan en `evaluate()` la comparación. La semántica es AND, no OR (ambos criterios deben cumplirse simultáneamente), coherente con la convención de Bathe, Crisfield y Owen-Hinton.
 
 **Consecuencia.** Invariancia bit-paritaria bajo cambio de unidades (el mismo problema en N/m, kN/mm o MN/m converge en el mismo número de iteraciones). Régimen degenerado (carga inicial nula, control en desplazamiento puro) deja de oscilar espuriamente: el piso absoluto `atol_force` autoderivado define cuándo se da por convergido un residuo numéricamente cero. Problemas casi-rígidos y plásticos perfectos se afinan independientemente vía `rtol_disp` vs `rtol_force` sin compromisos. La política vive en un único punto del código; un solver no lineal futuro la consume sin replicarla.
 
@@ -115,7 +115,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 Las siete fases quedan implementadas y validadas con tests contra solución analítica y recuperación a paridad de bits del caso lineal en ausencia de plasticidad:
 
 - **Fase 1** (`ModalSolver` + ARPACK Lanczos con shift-invert). Cerrada 2026-05-13.
-- **Fase 2** (mass lumping HRZ canónico en sólidos + nodal directo en frames). Helper centralizado `fenix.math.mass_lumping.lump_hrz`. Cerrada 2026-05-18 (commit `c92bf4e`).
+- **Fase 2** (mass lumping HRZ canónico en sólidos + nodal directo en frames). Helper centralizado `solidum.math.mass_lumping.lump_hrz`. Cerrada 2026-05-18 (commit `c92bf4e`).
 - **Fase 3** (`NewmarkSolver` con `(β, γ)` parametrizables, factorización única, Rayleigh, cargas por callback). Cerrada 2026-05-13.
 - **Fase 3-bis** (`HHTSolver` como variante de Newmark con disipación numérica controlada por `α ∈ [−1/3, 0]`). Cerrada 2026-05-18 (commit `73742f4`).
 - **Fase 4** (`NewtonNewmarkSolver` con Newton interno, jacobiano `J = M + γΔt·C + βΔt²·K_t`, convergencia dual ADR 0007, Rayleigh constante con `K_0`; `NewtonHHTSolver` análogo). Cerrada 2026-05-13/-18.
@@ -126,7 +126,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 **Reglas arquitecturales aplicadas durante el cierre del ADR**:
 
 - **Regla C** (auditoría 2026-05-13). Disparada por `CentralDifferenceSolver` como primer solver fuera de la jerarquía de Newmark. `entry.py::run_yaml` despacha por atributo de clase `PIPELINE_KIND ∈ {"static", "modal", "transient", "harmonic", "spectrum"}` en lugar de cadena de `isinstance`. Solvers no clásicos futuros no requieren tocar `entry.py`.
-- **Regla D** (auditoría 2026-05-13). Disparada por `ResponseSpectrumSolver` como segundo método de cómputo sobre `ModalResult`. El algoritmo de `free_vibration` migra a `fenix/math/modal_response.py` junto con los nuevos `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated`. `ModalResult.free_vibration` queda como wrapper delgado, preservando la API histórica.
+- **Regla D** (auditoría 2026-05-13). Disparada por `ResponseSpectrumSolver` como segundo método de cómputo sobre `ModalResult`. El algoritmo de `free_vibration` migra a `solidum/math/modal_response.py` junto con los nuevos `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated`. `ModalResult.free_vibration` queda como wrapper delgado, preservando la API histórica.
 
 **Consecuencia.** El subsistema modal/dinámico/espectral queda **completo en su totalidad**. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, Δt adaptativo, generalized-α) requieren caso de uso específico — no son piezas del ADR pendientes. La clase `Node` conserva su semántica original.
 

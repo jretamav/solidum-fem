@@ -176,7 +176,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/elastic_3d.py](../../fenix/materials/elastic_3d.py).
+- **Archivo**: [solidum/materials/elastic_3d.py](../../solidum/materials/elastic_3d.py).
 - **Clase**: `Elastic3D`, registrada vía `@MaterialRegistry.register`.
 - **Despacho**: matriz `C` precalculada en el constructor. `compute_state` reduce a `self.C @ strain` sin ramificaciones — coste mínimo.
 - **Validación temprana** en constructor: `E > 0`, `ν ∈ (-1, 0.5)`, `density ≥ 0` si se pasa. Mensajes en español.

@@ -17,7 +17,7 @@
 - **Tangente**: constante = `E`.
 - **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko`.
 - **Spec**: [docs/specs/Elastic1D.md](specs/Elastic1D.md)
-- **Archivo**: [fenix/materials/elastic.py](fenix/materials/elastic.py)
+- **Archivo**: [solidum/materials/elastic.py](solidum/materials/elastic.py)
 
 ---
 
@@ -30,7 +30,7 @@
 - **Tangente**: constante = `C`.
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`).
 - **Spec**: [docs/specs/Elastic2D.md](specs/Elastic2D.md)
-- **Archivo**: [fenix/materials/elastic_2d.py](fenix/materials/elastic_2d.py)
+- **Archivo**: [solidum/materials/elastic_2d.py](solidum/materials/elastic_2d.py)
 
 ---
 
@@ -45,7 +45,7 @@
 - **Compatible con**: `Hex8`, `Tet4` (todos los sólidos 3D con `STRAIN_DIM = 6`).
 - **Caveat de compatibilidad**: ABAQUS usa orden Voigt `[11, 22, 33, 12, 13, 23]` (permutación `yz ↔ xz` respecto al proyecto). Importar datos de ABAQUS requiere intercambiar los componentes 5↔6 una vez en el preprocesador.
 - **Spec**: [docs/specs/Elastic3D.md](specs/Elastic3D.md)
-- **Archivo**: [fenix/materials/elastic_3d.py](../fenix/materials/elastic_3d.py)
+- **Archivo**: [solidum/materials/elastic_3d.py](../solidum/materials/elastic_3d.py)
 
 ---
 
@@ -66,7 +66,7 @@
 - **Limitaciones**: no distingue tracción/compresión en la activación del daño; control de carga global puede ser inestable tras el pico (requiere `ArcLengthSolver` para seguir la rama de softening).
 - **Compatible con**: `Truss2D`, `Truss3D`.
 - **Referencia**: ver `docs/specs/IsotropicDamage1D.md` y la hermana 2D para derivación detallada. Lemaitre & Chaboche, *Mechanics of Solid Materials*. Simó & Ju (1987, IJSS 23) marco de tangente consistente.
-- **Archivo**: [fenix/materials/damage_1d.py](fenix/materials/damage_1d.py)
+- **Archivo**: [solidum/materials/damage_1d.py](solidum/materials/damage_1d.py)
 
 ---
 
@@ -86,7 +86,7 @@
 - **Limitación**: la `ε_eq` simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (out-of-scope). Sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9`.
 - **Referencia**: ver `docs/specs/IsotropicDamage2D.md`. Simó & Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre & Chaboche (1990) marco de continuum damage mechanics.
-- **Archivo**: [fenix/materials/damage_2d.py](fenix/materials/damage_2d.py)
+- **Archivo**: [solidum/materials/damage_2d.py](solidum/materials/damage_2d.py)
 
 ---
 
@@ -104,7 +104,7 @@
 - **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko` (en estos últimos solo se aplica al esfuerzo axial).
 - **Referencia**: Simo & Hughes, *Computational Inelasticity*, cap. 1.
 - **Spec**: [docs/specs/Elastoplastic1D.md](specs/Elastoplastic1D.md)
-- **Archivo**: [fenix/materials/plastic_1d.py](fenix/materials/plastic_1d.py)
+- **Archivo**: [solidum/materials/plastic_1d.py](solidum/materials/plastic_1d.py)
 
 ---
 
@@ -118,7 +118,7 @@
 - **Implicación numérica**: la rigidez tangente colapsa a cero cuando el cable se afloja, lo que requiere precondicionamiento o regularización en el solver para no degenerar la matriz global. El uso típico es a través del elemento `Cable2DCorot`/`Cable3DCorot`, que detecta la situación y la maneja correctamente.
 - **Compatible con**: `Cable2DCorot`, `Cable3DCorot`.
 - **Referencia**: ver `docs/specs/CableMaterial1D.md`.
-- **Archivo**: [fenix/materials/cable_1d.py](fenix/materials/cable_1d.py)
+- **Archivo**: [solidum/materials/cable_1d.py](solidum/materials/cable_1d.py)
 
 ---
 
@@ -151,7 +151,7 @@
   - Validación inicial cubierta por tests unitarios (incluyendo FD numérica de la tangente) y un benchmark de pipeline Quad4 (rama elástica + rama apex + caso asociado). El régimen "rama regular pura" en geometría confinada es difícil de calibrar sin caer en apex; se cubre por los tests unitarios de cortante puro.
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos con material 2D plane strain).
 - **Referencia**: ver `docs/specs/DruckerPrager2D.md`. Drucker & Prager (1952). de Souza Neto, Perić & Owen (2008) cap. 8 (Drucker-Prager, tangentes algorítmicas).
-- **Archivo**: [fenix/materials/drucker_prager_2d.py](fenix/materials/drucker_prager_2d.py)
+- **Archivo**: [solidum/materials/drucker_prager_2d.py](solidum/materials/drucker_prager_2d.py)
 
 ---
 
@@ -171,7 +171,7 @@
 - **Implementación**: kernels `_compute_j2_plane_strain` y `_compute_j2_plane_stress` con `@njit`. Despacho por `hypothesis` en construcción (sin coste runtime).
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (configurados en cualquiera de las dos hipótesis).
 - **Referencia**: ver `docs/specs/VonMises2D.md`. Simó & Hughes, *Computational Inelasticity* (1998), §3.3 (plane strain), §3.4 (plane stress projected, Box 3.1). de Souza Neto, Perić & Owen, *Computational Methods for Plasticity* (2008), §9.4.
-- **Archivo**: [fenix/materials/von_mises_2d.py](fenix/materials/von_mises_2d.py)
+- **Archivo**: [solidum/materials/von_mises_2d.py](solidum/materials/von_mises_2d.py)
 
 ---
 
@@ -179,7 +179,7 @@
 
 # Materiales cohesivos (familia paralela, ADR 0010)
 
-Los materiales cohesivos son una **jerarquía paralela e independiente** de los materiales continuos: operan sobre el salto de desplazamientos `[[u]]` sobre una superficie de discontinuidad `Γ_d` y devuelven tracciones `t`, no esfuerzos sobre `ε`. Viven en `fenix/cohesive_materials/`, heredan de `fenix.core.cohesive_material.CohesiveMaterial`, se registran vía `CohesiveMaterialRegistry` y se declaran en YAML bajo la sección `cohesive_materials` (separada de `materials`). El bulk del elemento sigue siendo un `Material` continuo; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
+Los materiales cohesivos son una **jerarquía paralela e independiente** de los materiales continuos: operan sobre el salto de desplazamientos `[[u]]` sobre una superficie de discontinuidad `Γ_d` y devuelven tracciones `t`, no esfuerzos sobre `ε`. Viven en `solidum/cohesive_materials/`, heredan de `solidum.core.cohesive_material.CohesiveMaterial`, se registran vía `CohesiveMaterialRegistry` y se declaran en YAML bajo la sección `cohesive_materials` (separada de `materials`). El bulk del elemento sigue siendo un `Material` continuo; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
 
 > **Convenciones de la familia**: `JUMP_DIM` = dimensión del vector de salto (2 en 2D, 3 en 3D); `PRIMARY_STATE_VAR` = variable interna que se exporta al post-proceso; `IS_SYMMETRIC` = simetría de la contribución a la tangente del elemento. Parámetros físicos típicos: `sigma_t0` (Pa), `G_f` (N/m), `K_e` (Pa/m). No tienen densidad — la inercia es del bulk.
 
@@ -198,14 +198,14 @@ Los materiales cohesivos son una **jerarquía paralela e independiente** de los 
 - **Limitaciones declaradas** (`out_of_scope` en la spec): sólo Modo-I (mixto I–II diferido a fase G del ADR 0010), sin contacto unilateral en compresión (la grieta dañada transmite compresión con rigidez `(1−ω)·K_e`, no rígida), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento `CST_Embedded2D`, no del material).
 - **Compatible con**: pendiente de fase 2 del ADR 0010 (elemento `CST_Embedded2D`). En aislamiento, testeable con historial prescrito de `[[u]]`.
 - **Referencia**: ver `docs/specs/CohesiveDamageIsotropic.md`. Retama (2010) Cap. 3; Hillerborg, Modéer & Petersson (1976); Simó & Ju (1987).
-- **Archivo**: [fenix/cohesive_materials/damage_isotropic.py](fenix/cohesive_materials/damage_isotropic.py)
+- **Archivo**: [solidum/cohesive_materials/damage_isotropic.py](solidum/cohesive_materials/damage_isotropic.py)
 
 ---
 
 ## Cómo añadir un material nuevo
 
-`/fenix-new material <Name>` — genera archivo en `fenix/materials/`, decorador `@MaterialRegistry.register`, esqueleto de test.
+`/solidum-new material <Name>` — genera archivo en `solidum/materials/`, decorador `@MaterialRegistry.register`, esqueleto de test.
 Declarar **`STRAIN_DIM`** y, si tiene historia, **`PRIMARY_STATE_VAR`** (la variable que aparecerá en el VTK).
 Tras implementar el modelo constitutivo, **añadir una entrada a este catálogo** siguiendo el formato de arriba.
 
-Para un material **cohesivo** nuevo: el patrón es análogo pero el archivo vive en `fenix/cohesive_materials/`, la clase hereda de `CohesiveMaterial` (no `Material`) y se registra con `@CohesiveMaterialRegistry.register`. Declarar `JUMP_DIM`, `PRIMARY_STATE_VAR` y `IS_SYMMETRIC`. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.
+Para un material **cohesivo** nuevo: el patrón es análogo pero el archivo vive en `solidum/cohesive_materials/`, la clase hereda de `CohesiveMaterial` (no `Material`) y se registra con `@CohesiveMaterialRegistry.register`. Declarar `JUMP_DIM`, `PRIMARY_STATE_VAR` y `IS_SYMMETRIC`. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.

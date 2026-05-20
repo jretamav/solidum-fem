@@ -88,7 +88,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Arquitectura - Fenix FEM},
+    pdftitle={Manual de Arquitectura - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -104,7 +104,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Arquitectura}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Arquitectura}}
 \fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
 \fancyfoot[C]{\thepage}
 \fancyfoot[R]{\footnotesize\color{darkgray}FF-MA}
@@ -147,7 +147,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
     \vspace{1cm}
     {\LARGE Manual de Arquitectura \par}
     \vspace{0.3cm}
@@ -174,7 +174,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \chapter*{Sobre este manual}
 \addcontentsline{toc}{chapter}{Sobre este manual}
-\noindent Este manual ofrece una \textbf{visión arquitectural} de Fenix FEM. Su objetivo es que el lector pueda reconstruir mentalmente cómo está organizado el programa, qué piezas tiene y cómo encajan, sin entrar al detalle de la formulación de cada elemento ni al algoritmo concreto de cada solver.
+\noindent Este manual ofrece una \textbf{visión arquitectural} de Solidum FEM. Su objetivo es que el lector pueda reconstruir mentalmente cómo está organizado el programa, qué piezas tiene y cómo encajan, sin entrar al detalle de la formulación de cada elemento ni al algoritmo concreto de cada solver.
 
 Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, contratos YAML, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
 
@@ -399,7 +399,7 @@ def build_colofon() -> str:
         "\\vspace*{\\fill}\n"
         "\\begin{center}\n"
         "\\rule{0.4\\textwidth}{0.4pt}\\\\[1em]\n"
-        "{\\bfseries\\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\\\[0.5em]\n"
+        "{\\bfseries\\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\\\[0.5em]\n"
         f"Sigla del manual: \\texttt{{FF-MA}}\\\\[0.5em]\n"
         f"Compilado el {fecha}\\\\[0.5em]\n"
         f"Commit Git: \\texttt{{{commit}}}{dirty}\\\\[1em]\n"

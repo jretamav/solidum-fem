@@ -172,7 +172,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/frame/euler_corot.py](../../fenix/elements/frame/euler_corot.py) — convive con `Frame2DEuler` y `Frame2DTimoshenko` en el paquete `fenix/elements/frame/`, sin heredar de ninguno. Comparte con ellos los helpers libres de [_shared.py](../../fenix/elements/frame/_shared.py) (carga de cuerpo, masa consistente, traducción a `ElementForces`), pero no `build_geometry_2d`: reconstruye `T` desde `alpha0` por su lógica corotacional propia.
+- **Archivo**: [solidum/elements/frame/euler_corot.py](../../solidum/elements/frame/euler_corot.py) — convive con `Frame2DEuler` y `Frame2DTimoshenko` en el paquete `solidum/elements/frame/`, sin heredar de ninguno. Comparte con ellos los helpers libres de [_shared.py](../../solidum/elements/frame/_shared.py) (carga de cuerpo, masa consistente, traducción a `ElementForces`), pero no `build_geometry_2d`: reconstruye `T` desde `alpha0` por su lógica corotacional propia.
 - **Clase**: `Frame2DEulerCorot` — hereda directamente de `Element`. Métodos internos `_current_geometry` (longitud, cosenos, ángulo corriente y rigid-body $\alpha_e$) y `_unwrap` (reducción a $(-\pi, \pi]$).
 - **Tests**: [tests/test_frame.py](../../tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` — 4 criterios + registro:
   - `test_acceptance_limite_lineal_coincide_con_frame2deuler`
@@ -191,6 +191,6 @@ references:
 ## Diálogo
 
 - **2026-04-21** · Implementación siguiendo Crisfield §7.3. Convive en `frame.py` con las vigas lineales por familia temática (todas son vigas 2D), sin herencia ni helpers compartidos.
-- **2026-05-13** · `frame.py` se parte en paquete `fenix/elements/frame/`. EulerCorot vive ahora en `euler_corot.py`, sin herencia con las otras vigas 2D. Pasan a compartirse los helpers libres de carga de cuerpo, masa y traducción de fuerzas a través de `_shared.py`; la lógica corotacional propia (reconstrucción de `T` desde `alpha0`, cinemática actual) se mantiene íntegra dentro de la clase.
+- **2026-05-13** · `frame.py` se parte en paquete `solidum/elements/frame/`. EulerCorot vive ahora en `euler_corot.py`, sin herencia con las otras vigas 2D. Pasan a compartirse los helpers libres de carga de cuerpo, masa y traducción de fuerzas a través de `_shared.py`; la lógica corotacional propia (reconstrucción de `T` desde `alpha0`, cinemática actual) se mantiene íntegra dentro de la clase.
 - **2026-04-21** · La primera versión tenía el signo equivocado en la parte de momentos de $\mathbf K_\sigma$ ($+$ en lugar de $-$). El test de coherencia tangente/fuerza interna por diferencias finitas lo detectó inmediatamente: $\|\mathbf K_{T,\text{analítica}} - \mathbf K_{T,\text{FD}}\|_{\text{rel}}$ del orden de 1e-1 en lugar de 1e-5. Tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ cuidadosamente (ver notas) el signo correcto es negativo. Este episodio justifica retrospectivamente incluir un test FD como criterio de aceptación en toda formulación no-lineal geométrica futura.
 - **2026-04-21** · El test del límite lineal usa $P=10$ N para obtener $v/L \sim 10^{-4}$: suficientemente pequeño para estar en régimen lineal pero suficientemente grande para que el residuo del solver converja por debajo de `tol=1e-8` (cargas menores producen desplazamientos del orden del ruido numérico y el Newton oscila en la tolerancia relativa).

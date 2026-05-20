@@ -64,7 +64,7 @@ El factor $\tfrac{1-2\nu}{2}$ en los cortantes (no $1-2\nu$) es consecuencia dir
 - `Element` (clase base) explicita en docstring que `internal_forces` es **opcional**, no abstracta. Default: `return None`. Sólidos 2D y 3D heredan el default sin sobreescribir.
 - Estructuras 1D (truss, cable, frame en 2D y 3D) siguen sobreescribiendo `internal_forces` con su semántica seccional (`N`, `V`, `M`, `T`) — sin cambios para ellos.
 - `compute_gauss_state(U)` queda **garantizada** para todo elemento sólido (contrato abstracto en `Element` solo para subclases con `STRAIN_DIM ∈ {3, 6}`; para 1D estructurales es opcional y por convención no se implementa). Consumidores externos que necesiten salida de sólidos (post-proceso VTK, suavizado nodal, integradores de error) usan `compute_gauss_state`.
-- `ElementForces` (dataclass en `fenix.core`) recibe una nota en docstring explicitando que **aplica solo a elementos estructurales 1D**. No se mueve ni se renombra — el ADR 0002 sigue válido para su dominio.
+- `ElementForces` (dataclass en `solidum.core`) recibe una nota en docstring explicitando que **aplica solo a elementos estructurales 1D**. No se mueve ni se renombra — el ADR 0002 sigue válido para su dominio.
 
 **Por qué cierre por exclusión y no por extensión**:
 

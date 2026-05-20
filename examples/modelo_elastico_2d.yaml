@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Placa en Tensión (Plasticidad Von Mises 2D)
+# Archivo de entrada Solidum FEM: Placa en Tensión (Plasticidad Von Mises 2D)
 
 nodes:
   - {id: 1, coords: [0.0, 0.0]}

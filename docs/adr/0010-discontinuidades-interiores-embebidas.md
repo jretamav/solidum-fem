@@ -9,18 +9,18 @@
 - **Embedded discontinuity (ED-FEM)**: familia de métodos donde un elemento finito alberga internamente una discontinuidad de desplazamientos `[[u]]` sobre una superficie `Γ_d` que cruza el elemento. La continuidad del salto entre elementos vecinos **no** se impone (a diferencia de XFEM). Los DOFs del salto son **elementales**, no globales — se condensan estáticamente antes de devolver `K_e` y `f_e` al ensamblador.
 - **Discrete approach** (Retama 2010): el bulk se modela con una ley continua `σ–ε` elástica; la discontinuidad con una ley cohesiva `t–[[u]]` con softening. Movimiento de cuerpo rígido relativo entre las dos partes del elemento. Esta es la aproximación adoptada.
 - **Continuum approach** (alternativa no adoptada): una sola ley continua en todo el dominio, con la grieta apareciendo como un caso límite (`weak/strong discontinuity`). Queda fuera de este ADR.
-- **Clasificación de formulaciones (Jirásek 2000)**: SOS (Statically Optimal Symmetric), **KOS (Kinematically Optimal Symmetric)**, SKON (Statically/Kinematically Optimal Nonsymmetric). La **fase 1 de Fenix implementa KOS**, fiel a la formulación principal de Retama (2010). KSON queda diferida (fase H).
+- **Clasificación de formulaciones (Jirásek 2000)**: SOS (Statically Optimal Symmetric), **KOS (Kinematically Optimal Symmetric)**, SKON (Statically/Kinematically Optimal Nonsymmetric). La **fase 1 de Solidum implementa KOS**, fiel a la formulación principal de Retama (2010). KSON queda diferida (fase H).
 - **Traction-jump material**: material constitutivo que opera sobre el salto `[[u]] ∈ ℝ²` y devuelve tracciones `t ∈ ℝ²` definidas en `Γ_d`. Es la familia análoga a `Material` (que opera sobre `ε` y devuelve `σ`) pero con dimensión, escala y unidades distintas. Sus parámetros típicos son `σ_t0` (resistencia a tracción) y `G_F` (energía de fractura), no `E, ν`.
 - **`DiscontinuityState`**: estructura de datos elemental que recoge `(n, l_d, [[u]], κ, ω)` para un elemento agrietado. Análoga a `ElementState` pero específica de la discontinuidad.
 - **Activación**: transición de un elemento desde "intacto" (sin discontinuidad, comportamiento estándar) a "agrietado" (con discontinuidad activa, modos enriquecidos contribuyendo). Una vez activado, no revierte.
 
 ## Resumen ejecutivo
 
-Fenix abre la línea de fractura computacional adoptando **discontinuidades interiores embebidas en aproximación discreta** (Retama 2010), por las razones discutidas con el usuario: maximiza el aprovechamiento de su experticia doctoral y construye abstracciones que el proyecto necesitará tarde o temprano (materiales cohesivos, DOFs enriquecidos elementales, condensación estática local). La fase 1 implementa **KOS sobre CST 2D, Modo-I, fiel a la tesis 2010**, incluyendo explícitamente la aportación del Cap. 6 (`l_d = (A/h)·cos(θ−α)`) y validándola por primera vez con el experimento numérico que la tesis no contiene. Este ADR fija cinco decisiones arquitecturales cross-cutting (familia `CohesiveMaterial` paralela, elementos con DOFs enriquecidos elementales, condensación estática local, estado de discontinuidad, semántica de activación) y deja registrada la hoja de ruta hacia extensiones posteriores (sin tracking estilo Brank/Zhang, modo mixto, KSON, 3D, orden superior). Las decisiones se toman ahora para que las fases posteriores no reabran debates.
+Solidum abre la línea de fractura computacional adoptando **discontinuidades interiores embebidas en aproximación discreta** (Retama 2010), por las razones discutidas con el usuario: maximiza el aprovechamiento de su experticia doctoral y construye abstracciones que el proyecto necesitará tarde o temprano (materiales cohesivos, DOFs enriquecidos elementales, condensación estática local). La fase 1 implementa **KOS sobre CST 2D, Modo-I, fiel a la tesis 2010**, incluyendo explícitamente la aportación del Cap. 6 (`l_d = (A/h)·cos(θ−α)`) y validándola por primera vez con el experimento numérico que la tesis no contiene. Este ADR fija cinco decisiones arquitecturales cross-cutting (familia `CohesiveMaterial` paralela, elementos con DOFs enriquecidos elementales, condensación estática local, estado de discontinuidad, semántica de activación) y deja registrada la hoja de ruta hacia extensiones posteriores (sin tracking estilo Brank/Zhang, modo mixto, KSON, 3D, orden superior). Las decisiones se toman ahora para que las fases posteriores no reabran debates.
 
 ## Contexto
 
-Hoy Fenix tiene una línea de daño continuo madura (`IsotropicDamage1D/2D`, softening exponencial, tangente algorítmica consistente). Lo que no tiene — y lo que la línea de embedded discontinuity introduce — son **discontinuidades físicas reales** del campo de desplazamientos: grietas que abren, descargan el bulk vecino, dejan de transmitir tracción más allá de un umbral. Tu tesis doctoral (UNAM 2010, Cap. 8) muestra que esto es esencial en materiales cuasi-frágiles donde el bulk descarga elásticamente mientras la grieta dispara la disipación.
+Hoy Solidum tiene una línea de daño continuo madura (`IsotropicDamage1D/2D`, softening exponencial, tangente algorítmica consistente). Lo que no tiene — y lo que la línea de embedded discontinuity introduce — son **discontinuidades físicas reales** del campo de desplazamientos: grietas que abren, descargan el bulk vecino, dejan de transmitir tracción más allá de un umbral. Tu tesis doctoral (UNAM 2010, Cap. 8) muestra que esto es esencial en materiales cuasi-frágiles donde el bulk descarga elásticamente mientras la grieta dispara la disipación.
 
 **Relación con ADRs previos**:
 - **ADR 0002** (API de resultados): `SolveResult` admite campos por elemento sin cambios. El `DiscontinuityState` se expone como un campo elemental en post-proceso (`crack_opening`, `damage_at_crack`, `crack_normal`).
@@ -187,13 +187,13 @@ Decisión: `bulk_material` y `cohesive_material` se declaran por separado en el 
 | I | 3D embedded discontinuity (Tet4_Embedded, etc.) | Cuando entren sólidos 3D al proyecto | Diferida |
 | J | Orden superior (Tri6_Embedded, Quad8_Embedded) | Posterior a fase I | Diferida |
 
-Cada fase es un commit cerrado con tests verdes, no bloquea las siguientes y deja Fenix en estado funcional.
+Cada fase es un commit cerrado con tests verdes, no bloquea las siguientes y deja Solidum en estado funcional.
 
 ## Consecuencias
 
 **Positivas**
 
-- Fenix gana fractura computacional con una formulación que el usuario domina a nivel doctoral. Coste de aprendizaje cero.
+- Solidum gana fractura computacional con una formulación que el usuario domina a nivel doctoral. Coste de aprendizaje cero.
 - Las cuatro abstracciones nuevas (`CohesiveMaterial`, elementos con DOFs enriquecidos elementales, condensación estática local, `DiscontinuityState`) son **inversiones reutilizables**: sirven a futuros CZM clásicos, futuros incompatible-modes, futuras formulaciones EAS, eventual XFEM-style si llega.
 - La aportación original de la tesis (`l_d` correcto) queda implementada, validada numéricamente por primera vez, y atribuida explícitamente en el ADR y los tests.
 - Se preservan todos los contratos existentes: `Assembler`, despachador algebraico, Newton-Raphson, parser YAML, sistema de manuales. La cirugía está localizada en clases nuevas y un atributo nuevo en `Element` base.
@@ -201,7 +201,7 @@ Cada fase es un commit cerrado con tests verdes, no bloquea las siguientes y dej
 **Negativas / costes**
 
 - Subsistema grande. Esfuerzo de fase 1 estimado en 4–6 sesiones (material, elemento, validación Cap. 6, Van Vliet, catálogo). No es trabajo de fin de semana.
-- Introduce el concepto de "elemento que cambia de modo" durante la simulación. Aunque se contiene como bandera interna (decisión 5), conceptualmente es semántica nueva en Fenix.
+- Introduce el concepto de "elemento que cambia de modo" durante la simulación. Aunque se contiene como bandera interna (decisión 5), conceptualmente es semántica nueva en Solidum.
 - La condensación estática local añade un Newton interno por elemento agrietado (resolución de `K_ũũ · dũ = ...`). Para mallas con muchos elementos agrietados simultáneos el coste es no trivial; mitigación habitual: pocos elementos activos en cada paso (típico en problemas de fractura localizada).
 - Fase 1 hereda dos limitaciones reconocidas en la tesis: sólo Modo-I (modo mixto en fase G) y tracking trivial heredado de la dirección principal (sin tracking en fase F). Se documentan como `out_of_scope` en las specs.
 
@@ -247,7 +247,7 @@ El test antiguo `TestLocalRecovery.test_residual_vanishes_after_loading` tambié
 
 ## Referencias
 
-- **Retama Velasco, J. (2010).** *Formulation and Approximation to Problems in Solids by Embedded Discontinuity Models*. Tesis Doctoral, Instituto de Ingeniería, UNAM. Director: Dr. A. Gustavo Ayala Milián. **Referencia primaria; el autor de la tesis es el usuario de Fenix FEM.** PDF en [`docs/referencias/PhD_Thesis_Retama_2010.pdf`](../referencias/PhD_Thesis_Retama_2010.pdf).
+- **Retama Velasco, J. (2010).** *Formulation and Approximation to Problems in Solids by Embedded Discontinuity Models*. Tesis Doctoral, Instituto de Ingeniería, UNAM. Director: Dr. A. Gustavo Ayala Milián. **Referencia primaria; el autor de la tesis es el usuario de Solidum FEM.** PDF en [`docs/referencias/PhD_Thesis_Retama_2010.pdf`](../referencias/PhD_Thesis_Retama_2010.pdf).
 - Jirásek, M. (2000). Comparative study on finite elements with embedded discontinuities. *Computer Methods in Applied Mechanics and Engineering* 188, 307-330. — Clasificación SOS/KOS/SKON adoptada.
 - Oliver, J., Huespe, A.E., Sánchez, P.J. (2006). A comparative study on finite elements for capturing strong discontinuities. *CMAME* 195, 4732-4752.
 - Linder, C., Armero, F. (2007). Finite elements with embedded strong discontinuities for the modeling of failure in solids. *International Journal for Numerical Methods in Engineering* 72, 1391-1433.

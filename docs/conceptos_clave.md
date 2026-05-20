@@ -11,8 +11,8 @@
 ### 1. Registry + decorador `@register`
 Diccionario global por categoría (materiales, elementos, solvers) que mapea nombre → clase. Cada clase, al definirse, se autorregistra mediante un decorador que la añade al diccionario sin tocar listas centrales. Permite que el `YamlParser` instancie cualquier clase por su nombre sin conocerla en compile-time.
 
-### 2. Autodiscover (`fenix/autodiscover.py`)
-Al hacer `import fenix`, un solo recorrido (`pkgutil.iter_modules`) importa todos los módulos de `fenix/materials`, `fenix/elements`, `fenix/math`. Como los decoradores se ejecutan al importar el módulo, esto basta para poblar los Registry. Equivalente conceptual al `INCLUDE` automático en Fortran moderno, pero en runtime.
+### 2. Autodiscover (`solidum/autodiscover.py`)
+Al hacer `import solidum`, un solo recorrido (`pkgutil.iter_modules`) importa todos los módulos de `solidum/materials`, `solidum/elements`, `solidum/math`. Como los decoradores se ejecutan al importar el módulo, esto basta para poblar los Registry. Equivalente conceptual al `INCLUDE` automático en Fortran moderno, pero en runtime.
 
 ### 3. Contrato declarativo vía `ClassVar` (`STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `PRIMARY_STATE_VAR`)
 Cada elemento y material declara como atributos de clase qué espera y qué produce. La base abstracta los lee y se autoconfigura: registra DOFs, valida compatibilidad material↔elemento (mismo `STRAIN_DIM`), inicializa el `ElementState` con la forma correcta. Sustituye métodos `setup()` repetitivos en cada subclase.
@@ -23,7 +23,7 @@ Al instanciar un elemento, el `__init__` de la base verifica que el material sea
 ### 5. Generic `YamlParser` por introspección de `kwargs`
 El parser no contiene un `if material_type == "Elastic1D":` por cada material. Mira el `__init__` de la clase del Registry, extrae sus kwargs, y pasa lo que el YAML provee. Añadir un material nuevo no toca el parser nunca.
 
-### 6. Skill `/fenix-new` (`.claude/skills/fenix-new/SKILL.md`)
+### 6. Skill `/solidum-new` (`.claude/skills/solidum-new/SKILL.md`)
 Skill versionada con el repo que la IA invoca cuando el usuario pide un material/elemento/solver nuevo. Genera el archivo en su carpeta canónica, con el decorador correcto y un test esqueleto. Cierra el ciclo: la arquitectura optimizada para extensión + la herramienta que materializa la extensión.
 
 ---
@@ -53,15 +53,15 @@ Cada material declara cuál de sus variables internas es la "principal" para vis
 El primer ensamblaje calcula los pares (i, j) de cada contribución elemental y los guarda. En las iteraciones siguientes, solo se reescriben los `data` sobre la misma topología — sin recomputar índices. Análogo al patrón "compute once, reuse" típico en FEM compilado, pero implementado sobre `scipy.sparse`.
 
 ### 13. Eliminación directa de Dirichlet (ADR 0004)
-Las condiciones de frontera Dirichlet se imponen por eliminación directa del sistema, no por penalización. Toda restricción se expresa como afín `u_s = g_s + Σ α_si·u_mi` y se acumula en un `ConstraintSet` (`fenix/bc/constraints.py`). El `Assembler` produce el par `(T, g)` tal que `u = T·u_libre + g`; el solver ve siempre el sistema reducido `K_red·u_libre = F_red` con `K_red = TᵀKT`, `F_red = Tᵀ(F − K·g)`. La imposición es exacta a redondeo (no aproximada como en penalización), preserva la simetría y positividad de `K`, y abre la puerta a MPC lineales sin tocar el solver. Las reacciones se calculan post-hoc como `R = F_int(U) − F_applied` evaluado en los DOFs prescritos.
+Las condiciones de frontera Dirichlet se imponen por eliminación directa del sistema, no por penalización. Toda restricción se expresa como afín `u_s = g_s + Σ α_si·u_mi` y se acumula en un `ConstraintSet` (`solidum/bc/constraints.py`). El `Assembler` produce el par `(T, g)` tal que `u = T·u_libre + g`; el solver ve siempre el sistema reducido `K_red·u_libre = F_red` con `K_red = TᵀKT`, `F_red = Tᵀ(F − K·g)`. La imposición es exacta a redondeo (no aproximada como en penalización), preserva la simetría y positividad de `K`, y abre la puerta a MPC lineales sin tocar el solver. Las reacciones se calculan post-hoc como `R = F_int(U) − F_applied` evaluado en los DOFs prescritos.
 
 ### 14. Criterio de convergencia dual
 Newton-Raphson termina cuando **ambos** criterios están bajo tolerancia: norma del incremento de desplazamientos (relativa) y norma del residuo de fuerza (relativa). Cualquiera por separado puede dar falsos positivos en problemas con softening o con cargas casi nulas.
 
 ### 15. `ArcLengthSolver` (Crisfield)
-Cuando el problema tiene snap-back / snap-through, Newton-Raphson con control de carga falla. Arc-length añade una incógnita (factor de carga λ) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), permitiendo recorrer ramas con derivada infinita o negativa. Vive en `fenix/math/solvers/arclength.py`.
+Cuando el problema tiene snap-back / snap-through, Newton-Raphson con control de carga falla. Arc-length añade una incógnita (factor de carga λ) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), permitiendo recorrer ramas con derivada infinita o negativa. Vive en `solidum/math/solvers/arclength.py`.
 
-### 16. Cuadraturas de Gauss centralizadas (`fenix/math/integration.py`)
+### 16. Cuadraturas de Gauss centralizadas (`solidum/math/integration.py`)
 Tablas y reglas de cuadratura Gauss-Legendre 1D/2D/3D centralizadas. Cada elemento declara `N_INTEGRATION_POINTS` y consume estos puntos/pesos — sin duplicar tablas en cada subclase.
 
 ### 17. Return mapping (J2 plasticity, Von Mises 2D)
@@ -76,7 +76,7 @@ Funciones críticas (ensamblaje elemento→global, return mapping interior) deco
 ### 20. Capa algebraica vs. solver de análisis (ADR 0003)
 Hay **dos capas de "solver"** y conviene no confundirlas:
 - **Solver de análisis** (los 11 del catálogo: `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`, `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`): orquesta la estrategia de paso, iteraciones de Newton, criterios de convergencia, longitud de arco, integración temporal, barrido en frecuencia o combinación modal. Lo que el usuario elige en el YAML con `solver.type`. El despacho a entrypoints es declarativo por atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18).
-- **Capa algebraica** (`fenix/math/linalg/`): resuelve el sistema lineal `K·δU = R` (o `Z(ω)·û = F̂` en complejos, o `K·φ = ω²M·φ` en autovalor) que aparece dentro de cada iteración del solver de análisis. Tiene varios backends (Cholesky, LU, ARPACK, …) y un **despachador interno** que elige el adecuado según las propiedades del operador (simétrica, positiva definida, …).
+- **Capa algebraica** (`solidum/math/linalg/`): resuelve el sistema lineal `K·δU = R` (o `Z(ω)·û = F̂` en complejos, o `K·φ = ω²M·φ` en autovalor) que aparece dentro de cada iteración del solver de análisis. Tiene varios backends (Cholesky, LU, ARPACK, …) y un **despachador interno** que elige el adecuado según las propiedades del operador (simétrica, positiva definida, …).
 
 El usuario solo ve la primera capa; la segunda es plumbing automático. Solo se expone el campo opcional `linear_algebra` en YAML como herramienta de diagnóstico — no como decisión de modelado.
 

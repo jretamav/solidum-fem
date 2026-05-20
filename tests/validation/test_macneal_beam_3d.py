@@ -44,11 +44,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_3d import Hex8
-from fenix.materials.elastic_3d import Elastic3D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_3d import Hex8
+from solidum.materials.elastic_3d import Elastic3D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 L_BEAM = 6.0

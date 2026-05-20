@@ -3,7 +3,7 @@ carga cíclica para `Elastoplastic1D` y `VonMises2D`.
 
 **Nota sobre la regla de Masing**: la regla de Masing estricta —"la curva
 post-reversal en coordenadas relativas es 2·backbone(Δε/2)"— aplica al
-endurecimiento cinemático puro. Fenix implementa endurecimiento isótropo
+endurecimiento cinemático puro. Solidum implementa endurecimiento isótropo
 lineal (sin kinematic), donde la frontera de fluencia crece simétricamente
 con ``α``. Las propiedades cíclicas verificables en este modelo son:
 
@@ -32,8 +32,8 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.materials.von_mises_2d import VonMises2D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.materials.von_mises_2d import VonMises2D
 
 
 # =============================================================================

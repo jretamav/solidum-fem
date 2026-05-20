@@ -1,6 +1,6 @@
 """Tests de unidad de los modelos constitutivos.
 
-Cubre los seis materiales registrados en ``fenix.materials`` con foco en:
+Cubre los seis materiales registrados en ``solidum.materials`` con foco en:
 
 - Elasticidad: σ = E·ε o σ = C·ε con la matriz constitutiva esperada.
 - Plasticidad: predictor elástico, return mapping bajo carga, tangente
@@ -20,14 +20,14 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.constants import DAMAGE_MAX
-from fenix.materials.damage_1d import IsotropicDamage1D
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.materials.von_mises_2d import VonMises2D
+from solidum.constants import DAMAGE_MAX
+from solidum.materials.damage_1d import IsotropicDamage1D
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.materials.von_mises_2d import VonMises2D
 
 
 class TestElastic1D(unittest.TestCase):
@@ -262,7 +262,7 @@ class TestIsotropicDamage1DConsistentTangent(unittest.TestCase):
         sign(ε_xx)·ε_xx/ε_eq = sign(ε_xx) cuando ε_eq=|ε_xx|. Las fórmulas se
         reducen exactamente al caso escalar.
         """
-        from fenix.materials.damage_2d import IsotropicDamage2D
+        from solidum.materials.damage_2d import IsotropicDamage2D
         mat_2d = IsotropicDamage2D(
             E=self.E, nu=0.0, kappa_0=self.kappa_0, alpha=self.alpha,
             hypothesis='plane_stress',

@@ -4,12 +4,12 @@ import numpy as np
 import sys
 import os
 
-# Ensure the parent directory is in the path to import fenix
+# Ensure the parent directory is in the path to import solidum
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.node import Node
-from fenix.core.material import Material
-from fenix.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
+from solidum.core.node import Node
+from solidum.core.material import Material
+from solidum.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
 
 class DummyMaterial(Material):
     """Material elástico lineal simple para pruebas."""

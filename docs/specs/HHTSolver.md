@@ -182,7 +182,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/newmark.py](../../fenix/math/solvers/newmark.py) — junto a `NewmarkSolver` y `NewtonNewmarkSolver` (lógicamente cercanos; comparten predictores Newmark, reducción Dirichlet y amortiguamiento Rayleigh).
+- **Archivo**: [solidum/math/solvers/newmark.py](../../solidum/math/solvers/newmark.py) — junto a `NewmarkSolver` y `NewtonNewmarkSolver` (lógicamente cercanos; comparten predictores Newmark, reducción Dirichlet y amortiguamiento Rayleigh).
 - **Clases**:
   - `HHTSolver(NewmarkSolver)` — variante lineal con disipación numérica.
   - `NewtonHHTSolver(NewtonNewmarkSolver)` — variante no lineal con Newton interno + disipación numérica.

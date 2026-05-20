@@ -19,13 +19,13 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.bc.constraints import ConstraintSet
-from fenix.core.domain import Domain
-from fenix.elements.frame import Frame2DEuler
-from fenix.elements.truss import Truss2D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
-from fenix.results import build_solve_result
+from solidum.bc.constraints import ConstraintSet
+from solidum.core.domain import Domain
+from solidum.elements.frame import Frame2DEuler
+from solidum.elements.truss import Truss2D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
+from solidum.results import build_solve_result
 
 
 class DummyMaterial:
@@ -350,7 +350,7 @@ point_loads:
 solver:
   type: LinearSolver
 """
-        from fenix.utils.yaml_parser import YamlParser
+        from solidum.utils.yaml_parser import YamlParser
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False, encoding="utf-8"

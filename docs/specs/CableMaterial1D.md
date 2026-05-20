@@ -98,7 +98,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/cable_1d.py](../../fenix/materials/cable_1d.py) — archivo propio, sin dependencia de otros módulos de material salvo la clase base `Material`.
+- **Archivo**: [solidum/materials/cable_1d.py](../../solidum/materials/cable_1d.py) — archivo propio, sin dependencia de otros módulos de material salvo la clase base `Material`.
 - **Clase**: `CableMaterial1D` — hereda directamente de `Material` (no de `Elastic1D` ni de ningún otro material), registrada vía `@MaterialRegistry.register`.
 - **Tests**: [tests/test_cable_material.py](../../tests/test_cable_material.py) · `TestCableMaterial1D` — seis tests:
   - `test_acceptance_tension_pura` (criterio 1).

@@ -1,4 +1,4 @@
-# Roadmap de Fenix FEM
+# Roadmap de Solidum FEM
 
 > Documento navegacional de alto nivel. **El detalle vive en ADRs** (`docs/adr/`) y **specs** (`docs/specs/`); este archivo es el índice temporal que las articula.
 >
@@ -13,7 +13,7 @@
 
 ## Estado a fecha del último commit
 
-Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)** y **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo (1D y 2D)**. Sobre la misma maquinaria se ha abierto recientemente la línea **dinámica**: **análisis modal** y **transitorio Newmark (lineal y no lineal)**. **401 tests verdes + 5 skipped intencionales**.
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)** y **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo (1D y 2D)**. Sobre la misma maquinaria se ha abierto recientemente la línea **dinámica**: **análisis modal** y **transitorio Newmark (lineal y no lineal)**. **401 tests verdes + 5 skipped intencionales**.
 
 > Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver [`docs/STATUS.md`](STATUS.md). Para combinaciones validadas: [`docs/MATRIZ.md`](MATRIZ.md). Para arranque en frío: [`docs/ONBOARDING.md`](ONBOARDING.md). Ver §"Documentos complementarios" al final para una guía del sistema.
 
@@ -87,8 +87,8 @@ Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sob
 
 **Infraestructura compartida**:
 
-- **Mass lumping** (`fenix/math/mass_lumping.py::lump_hrz`): HRZ canónico para sólidos isoparamétricos + fórmula nodal directa para frames. Disponible en todos los elementos vía `compute_mass_matrix(lumping="lumped")`.
-- **Cómputos sobre modos** (`fenix/math/modal_response.py`): `free_vibration`, `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, helpers de espectros (`spectrum_from_sa`, `spectrum_tabulated`). `ModalResult.free_vibration` queda como wrapper delgado (regla D de auditoría aplicada).
+- **Mass lumping** (`solidum/math/mass_lumping.py::lump_hrz`): HRZ canónico para sólidos isoparamétricos + fórmula nodal directa para frames. Disponible en todos los elementos vía `compute_mass_matrix(lumping="lumped")`.
+- **Cómputos sobre modos** (`solidum/math/modal_response.py`): `free_vibration`, `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, helpers de espectros (`spectrum_from_sa`, `spectrum_tabulated`). `ModalResult.free_vibration` queda como wrapper delgado (regla D de auditoría aplicada).
 - **Dispatch declarativo** en `entry.py::run_yaml` por atributo de clase `PIPELINE_KIND` ∈ `{"static","modal","transient","harmonic","spectrum"}` (regla C de auditoría aplicada). Solvers no clásicos futuros no requieren tocar `entry.py`.
 
 **Resultados** (todos inmutables): `SolveResult`, `ModalResult`, `TransientResult`, `HarmonicResult`, `ResponseSpectrumResult`.
@@ -109,7 +109,7 @@ Fenix resuelve hoy **estática lineal y no lineal** (material y geométrica) sob
 - Aportación original `l_d = (A/h)·cos(θ−α)` (Cap. 6) implementada y validada con experimento numérico de stress locking que la tesis no contiene.
 - Bring-up de integración end-to-end con `Assembler` + `NonlinearSolver`/`ArcLengthSolver`.
 
-**Por qué se eligió entre las 5 opciones A-E**: maximizó el conocimiento doctoral del usuario (autor de la formulación), construyó abstracciones reutilizables (futuros CZM clásicos, futuros incompatible-modes, eventual XFEM-style), e introdujo fractura computacional a Fenix — capacidad que ninguno de los caminos A-E aportaba.
+**Por qué se eligió entre las 5 opciones A-E**: maximizó el conocimiento doctoral del usuario (autor de la formulación), construyó abstracciones reutilizables (futuros CZM clásicos, futuros incompatible-modes, eventual XFEM-style), e introdujo fractura computacional a Solidum — capacidad que ninguno de los caminos A-E aportaba.
 
 **ADR que la articula**:
 - [ADR 0010 — Discontinuidades interiores embebidas](adr/0010-discontinuidades-interiores-embebidas.md). Fases 1, 2, 3, 3b completadas; fases 4 (benchmark Van Vliet faithful contra la curva experimental) y 5 (regeneración explícita de manuales) **diferidas con justificación**.
@@ -143,10 +143,10 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 
 **Lo entregado**:
 - **HHT-α** (`HHTSolver` + `NewtonHHTSolver` como variantes de la familia Newmark) con disipación numérica controlada en altas frecuencias. Spec corta tipo extensión (Reglas §4).
-- **Fase 2 ADR 0009 — mass lumping**: `compute_mass_matrix(lumping="lumped")` operativo en todos los elementos (truss/cable, frames 2D/3D, sólidos 2D Tri3/Quad4/Tri6/Quad8/Quad9). Helper centralizado `fenix/math/mass_lumping.py::lump_hrz` (HRZ canónico) + fórmula nodal directa para frames.
+- **Fase 2 ADR 0009 — mass lumping**: `compute_mass_matrix(lumping="lumped")` operativo en todos los elementos (truss/cable, frames 2D/3D, sólidos 2D Tri3/Quad4/Tri6/Quad8/Quad9). Helper centralizado `solidum/math/mass_lumping.py::lump_hrz` (HRZ canónico) + fórmula nodal directa para frames.
 - **Regla C de auditoría aplicada** (dispatch declarativo en `entry.py::run_yaml` por atributo `PIPELINE_KIND`) + **`CentralDifferenceSolver`** (fase 5 ADR 0009) — leapfrog Belytschko-Liu-Moran con `M⁻¹` trivial, lineal y no lineal en una sola clase con parámetro `nonlinear`.
 - **`HarmonicSolver`** (fase 6) — respuesta forzada armónica en el dominio de la frecuencia con aritmética compleja, barrido configurable, `HarmonicResult` con métodos `.amplitude()` y `.phase()`.
-- **Regla D de auditoría aplicada** (`fenix/math/modal_response.py` agrupa `free_vibration` (movido) y los nuevos `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated`) + **`ResponseSpectrumSolver`** (fase 7) — combinación modal SRSS/CQC para análisis sísmico contra espectros normativos.
+- **Regla D de auditoría aplicada** (`solidum/math/modal_response.py` agrupa `free_vibration` (movido) y los nuevos `participation_factors`, `response_spectrum_srss`, `response_spectrum_cqc`, `spectrum_from_sa`, `spectrum_tabulated`) + **`ResponseSpectrumSolver`** (fase 7) — combinación modal SRSS/CQC para análisis sísmico contra espectros normativos.
 
 **Por qué se eligió como Etapa 6 en lugar de A/B/C/E**: ningún otro camino aprovechaba el alineamiento natural — `CentralDifference` requería la fase 2 (lumping), `HarmonicSolver` requería la regla C (3ª rama no clásica), `ResponseSpectrumSolver` requería la regla D (2º método sobre `ModalResult`). Las cinco piezas se encadenan en una secuencia obligada que cierra el ADR 0009 en su totalidad. Cualquier orden distinto hubiera dejado deudas internas más caras de pagar luego.
 
@@ -160,7 +160,7 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 
 ## Etapa 7 — Sólidos 3D acotados · cerrada (2026-05-19)
 
-**Capacidad entregada**: primera línea de sólidos 3D en Fenix. Alcance acotado deliberadamente (Reglas.md §1 — regla de dos casos reales para centralizar) a los espejos naturales del Quad4/Tri3/Elastic2D:
+**Capacidad entregada**: primera línea de sólidos 3D en Solidum. Alcance acotado deliberadamente (Reglas.md §1 — regla de dos casos reales para centralizar) a los espejos naturales del Quad4/Tri3/Elastic2D:
 
 - **`Hex8`** — hexaedro trilineal isoparamétrico (8 nodos, orden VTK_HEXAHEDRON). Default Gauss 2×2×2 (8 puntos), configurable a 3×3×3 o 1×1×1. Body load por cuadratura del elemento; face traction sobre 6 caras numeradas con normal saliente (ADR 0012) con cuadratura 2D Gauss 2×2.
 - **`Tet4`** — tetraedro lineal (CST 3D, 4 nodos). 1 punto baricéntrico con peso 1/6. Caras numeradas por nodo opuesto. Masa consistente analítica `ρ·V·(1+δ_ij)/20`.
@@ -169,7 +169,7 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 **Infraestructura compartida**:
 
 - **Cuadraturas 3D** registradas en `QuadratureRegistry`: `hex_1x1x1`, `hex_2x2x2`, `hex_3x3x3`, `tet_1`.
-- **Mass lumping HRZ 3D**: `lump_hrz(M, total_mass=ρV, n_translational_dirs=3)` — el helper genérico ya soportaba 3D, solo había que invocarlo con la dimensión correcta. `_expand_scalar_mass_3d` en `fenix/elements/solid_3d/_shared.py` expande matriz escalar a bloque 3D vía Kronecker con I₃.
+- **Mass lumping HRZ 3D**: `lump_hrz(M, total_mass=ρV, n_translational_dirs=3)` — el helper genérico ya soportaba 3D, solo había que invocarlo con la dimensión correcta. `_expand_scalar_mass_3d` en `solidum/elements/solid_3d/_shared.py` expande matriz escalar a bloque 3D vía Kronecker con I₃.
 - **Convención Voigt 3D** fijada en `Reglas.md §5` y blindada por test (simetría C, positividad definida, cortantes puros en los tres planos).
 
 **ADR que la articula**:
@@ -212,9 +212,9 @@ Todos comparten un patrón: **incrementales sobre lo existente, no refactor estr
 
 Items que no bloquean el avance pero conviene tener visibles:
 
-- **ADR 0002 incompleto para sólidos 2D** ([memoria de proyecto](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_adr_0002_incompleto_solidos.md)): `internal_forces` devuelve `None` en sólidos; `compute_internal_forces`/`compute_gauss_state` cubren la necesidad. Decisión sobre cerrar o replantear el ADR diferida hasta caso de uso real (post-proceso avanzado, sólidos 3D, consumidor externo).
-- **`FiberSection` para frames no-lineales** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_pendiente_fiber_section.md)): frames 2D/3D plastifican sólo en axial. Plasticidad por flexión espera caso de uso (entraría como componente de la etapa 5 si la opción E se elige).
-- **Reglas de disparo C y D** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-fenix-fem/memory/project_reglas_disparo_pendientes.md)): dos refactors arquitecturales que esperan eventos antes de ejecutarse.
+- **ADR 0002 incompleto para sólidos 2D** ([memoria de proyecto](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-solidum-fem/memory/project_adr_0002_incompleto_solidos.md)): `internal_forces` devuelve `None` en sólidos; `compute_internal_forces`/`compute_gauss_state` cubren la necesidad. Decisión sobre cerrar o replantear el ADR diferida hasta caso de uso real (post-proceso avanzado, sólidos 3D, consumidor externo).
+- **`FiberSection` para frames no-lineales** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-solidum-fem/memory/project_pendiente_fiber_section.md)): frames 2D/3D plastifican sólo en axial. Plasticidad por flexión espera caso de uso (entraría como componente de la etapa 5 si la opción E se elige).
+- **Reglas de disparo C y D** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-solidum-fem/memory/project_reglas_disparo_pendientes.md)): dos refactors arquitecturales que esperan eventos antes de ejecutarse.
 
 ---
 

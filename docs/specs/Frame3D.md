@@ -180,7 +180,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/frame3d.py](../../fenix/elements/frame3d.py) — archivo propio, sin dependencia de ningún otro elemento.
+- **Archivo**: [solidum/elements/frame3d.py](../../solidum/elements/frame3d.py) — archivo propio, sin dependencia de ningún otro elemento.
 - **Clase**: `Frame3D` — hereda directamente de `Element`. Métodos privados `_build_local_frame` (longitud, matriz $\boldsymbol{\lambda}$ 3×3 y $\mathbf T$ 12×12) y `_build_local_stiffness` (matriz $\mathbf K_{\text{local}}$ 12×12 con bloques axial, torsión y flexión en ambos planos).
 - **Tests**: [tests/test_frame3d.py](../../tests/test_frame3d.py) · `TestFrame3DAcceptance` — cubre los 5 criterios + validación de `ref_vector` paralelo al eje + registro:
   - `test_acceptance_respuesta_axial_pura`

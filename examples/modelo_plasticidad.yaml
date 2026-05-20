@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Ensayo de Plasticidad 1D
+# Archivo de entrada Solidum FEM: Ensayo de Plasticidad 1D
 
 nodes:
   - {id: 1, coords: [0.0, 0.0]}

@@ -32,14 +32,14 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.core.material import Material
-from fenix.elements.frame.euler_corot import Frame2DEulerCorot
-from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
-from fenix.elements.solid_3d import Hex8, Tet4
-from fenix.elements.truss import Truss2D, Truss2DCorot
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.elastic_3d import Elastic3D
+from solidum.core.domain import Domain
+from solidum.core.material import Material
+from solidum.elements.frame.euler_corot import Frame2DEulerCorot
+from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
+from solidum.elements.solid_3d import Hex8, Tet4
+from solidum.elements.truss import Truss2D, Truss2DCorot
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.elastic_3d import Elastic3D
 
 
 class _PlaneStress(Material):

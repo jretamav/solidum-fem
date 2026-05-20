@@ -269,13 +269,13 @@ references:
 
 ## Implementación
 
-- **Archivo**: [`fenix/math/solvers/dissipation_arclength.py`](../../fenix/math/solvers/dissipation_arclength.py).
+- **Archivo**: [`solidum/math/solvers/dissipation_arclength.py`](../../solidum/math/solvers/dissipation_arclength.py).
 - **Clase**: `DissipationArcLengthSolver(ArcLengthSolver)` — subclase. Reusa predictor, corrector, ajuste de paso, manejo de Dirichlet/MPC y backend del padre. Override completo de `solve()` con bifurcación por `self._mode`.
 - **Atributo `self._mode`**: `"cylindrical" | "dissipation"`. Transición tras commit según umbral ``dissipation_threshold·‖F_ref‖·‖U‖``.
 - **Sign-of-pivot tracking**: `_negative_pivots()` implementado vía signo del `slogdet` de `K_t`. Aproximación válida para distinguir indefinitud simple (0 vs número impar de pivots negativos) — base para detección de paso por punto límite simple. **LDLᵀ Bunch-Kaufman queda como deuda técnica** para tracking exacto del conteo.
 - **Salvaguarda contra ``final_step`` prematuro**: si ``|dλ_pred|`` excede ``3 × (max_lambda − lambda_curr)``, se bisecta dl o τ antes de aceptar el paso. Esencial en pasos iniciales sin calibrar y tras switch cilíndrico→disipación donde α puede ser pequeño.
 - **Detección de α≈0 vía threshold relativo**: ``|α| < 1e-6·½·|λ_n·F·du_t|`` reverte a cilíndrico — para problemas lineales monotónicos α≡0 exactamente, no es un error sino la matemática del régimen sin disipación física.
-- **Entrypoint público**: registrado vía `@SolverRegistry.register`, expuesto como `fenix.math.solvers.DissipationArcLengthSolver`.
+- **Entrypoint público**: registrado vía `@SolverRegistry.register`, expuesto como `solidum.math.solvers.DissipationArcLengthSolver`.
 
 ### Tests (suite [tests/test_dissipation_arclength.py](../../tests/test_dissipation_arclength.py))
 
@@ -305,7 +305,7 @@ Recomendación: dejar esta validación como deuda técnica priorizada en STATUS.
 
 ## Diálogo
 
-- **2026-05-19 (tarde)** · Spec promovida de `draft` a `implemented`. 7/7 tests verde sobre los casos de daño continuo (1D y 2D); el caso crítico cohesivo+embedded reveló una limitación más profunda del `sign` por producto escalar tras activación discreta del Rankine, que requiere LDLᵀ Bunch-Kaufman real o control CMOD/CTOD — ambos fuera del scope incremental de esta variante. Documentado en §"Implementación" como deuda técnica. La spec mantiene su valor: provee la arquitectura del switching cilíndrico↔disipación y la fórmula lineal de Gutiérrez funcional para todos los problemas con softening continuo (daño bulk 1D y 2D), que es donde más casos prácticos de Fenix se concentran.
+- **2026-05-19 (tarde)** · Spec promovida de `draft` a `implemented`. 7/7 tests verde sobre los casos de daño continuo (1D y 2D); el caso crítico cohesivo+embedded reveló una limitación más profunda del `sign` por producto escalar tras activación discreta del Rankine, que requiere LDLᵀ Bunch-Kaufman real o control CMOD/CTOD — ambos fuera del scope incremental de esta variante. Documentado en §"Implementación" como deuda técnica. La spec mantiene su valor: provee la arquitectura del switching cilíndrico↔disipación y la fórmula lineal de Gutiérrez funcional para todos los problemas con softening continuo (daño bulk 1D y 2D), que es donde más casos prácticos de Solidum se concentran.
 
 - **2026-05-19 (mañana)** · Spec creada como variante de `ArcLengthSolver` para desbloquear ADR 0010 fase 4 (embedded discontinuity con softening severo) y validación cuantitativa de $G_F$ en pipeline real. Motivada por el cierre de la campaña de validación externa Tandas 12-14 ([[project_validacion_externa_tandas_12_14]]) que identificó esta pieza como **el primer componente nuevo priorizado** tras la campaña. Sin ADR nuevo: reusa decisiones arquitecturales del padre (estructura del bucle predictor/corrector, manejo de Dirichlet/MPC, ADR 0003 algebraico, ADR 0007 convergencia, ADR 0008 unidades). El cambio se circunscribe a la **restricción del paso** (cuadrática → lineal) más mejoras secundarias (switching automático cilíndrico↔disipación, sign-of-pivot tracking).
 

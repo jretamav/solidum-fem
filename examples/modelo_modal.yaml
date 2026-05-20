@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Análisis modal de una armadura empotrada-libre.
+# Archivo de entrada Solidum FEM: Análisis modal de una armadura empotrada-libre.
 #
 # Estructura: barra axial 1D de longitud L=1 m, A=0.01 m², acero (E=200 GPa,
 # rho=7850 kg/m³) empotrada en el nodo 1. Se extraen los 2 primeros modos

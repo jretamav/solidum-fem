@@ -1,11 +1,11 @@
-"""Tests del descubrimiento automático de componentes (``fenix.autodiscover``).
+"""Tests del descubrimiento automático de componentes (``solidum.autodiscover``).
 
 Regresión de la auditoría H-1.1: el autodiscover usaba ``pkgutil.iter_modules``
 no recursivo, así que módulos dentro de subpaquetes (p. ej.
-``fenix/elements/solid_2d/embedded_cst.py``) sólo se registraban si alguien
+``solidum/elements/solid_2d/embedded_cst.py``) sólo se registraban si alguien
 los re-exportaba manualmente desde un ``__init__.py``. El fix migra a
 ``pkgutil.walk_packages`` (recursivo); este test asegura que toda clase con
-decorador ``@<Registry>.register`` en el árbol ``fenix/`` aparece en el
+decorador ``@<Registry>.register`` en el árbol ``solidum/`` aparece en el
 registry correspondiente tras ``_initialize_registries()``.
 """
 from __future__ import annotations
@@ -14,9 +14,9 @@ import ast
 import unittest
 from pathlib import Path
 
-import fenix  # dispara autodiscover
+import solidum  # dispara autodiscover
 
-from fenix.registry import (
+from solidum.registry import (
     CohesiveMaterialRegistry,
     ElementRegistry,
     MaterialRegistry,
@@ -24,7 +24,7 @@ from fenix.registry import (
 )
 
 
-_FENIX_ROOT = Path(fenix.__file__).resolve().parent
+_FENIX_ROOT = Path(solidum.__file__).resolve().parent
 
 # Registries cuyos miembros esperamos descubrir desde el árbol. ``Quadrature``
 # se llena por llamadas explícitas en `math/integration.py` (no por decorador

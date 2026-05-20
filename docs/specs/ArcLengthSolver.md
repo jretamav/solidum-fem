@@ -215,11 +215,11 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/arclength.py](../../fenix/math/solvers/arclength.py).
+- **Archivo**: [solidum/math/solvers/arclength.py](../../solidum/math/solvers/arclength.py).
 - **Clase**: `ArcLengthSolver`, registrada vía `@SolverRegistry.register` con `PIPELINE_KIND = "static"`.
 - **Restricción cuadrática y selección de raíz**: implementada en `solve`. Comparación de ángulos `theta1 = ΔU_iter · (ΔU_new + ddl1·δu_t)`, idem `theta2`, seleccionar el mayor → menor ángulo con la dirección previa.
 - **`_make_linalg`**: fuerza `is_positive_definite=False` independientemente de la simetría del dominio (régimen postcrítico).
-- **Entrypoint público**: `fenix.run_static(model, solver="arclength", ...)`.
+- **Entrypoint público**: `solidum.run_static(model, solver="arclength", ...)`.
 - **Tests**:
   - [tests/test_arclength.py](../../tests/test_arclength.py) · snap-through Lee frame, snap-back truss, recuperación lineal.
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) · `test_arc_length_traverses_damage_softening`.

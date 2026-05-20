@@ -182,11 +182,11 @@ references:
 
 ## Implementación
 
-- Archivo: [fenix/math/solvers/harmonic.py](../../fenix/math/solvers/harmonic.py)
+- Archivo: [solidum/math/solvers/harmonic.py](../../solidum/math/solvers/harmonic.py)
 - Clase: `HarmonicSolver` (registrada en `SolverRegistry`)
-- Atributo de despacho: `PIPELINE_KIND = "harmonic"` → `fenix.entry.run_harmonic` → `HarmonicResult`.
+- Atributo de despacho: `PIPELINE_KIND = "harmonic"` → `solidum.entry.run_harmonic` → `HarmonicResult`.
 - Tests: [tests/test_harmonic.py](../../tests/test_harmonic.py) (11 tests verdes).
-- Resultado: [`HarmonicResult`](../../fenix/results.py) — dataclass inmutable con `omega`, `u_complex`, `F_complex`, propiedades `frequencies_hz`, `n_omega`, métodos `amplitude()` y `phase()`.
+- Resultado: [`HarmonicResult`](../../solidum/results.py) — dataclass inmutable con `omega`, `u_complex`, `F_complex`, propiedades `frequencies_hz`, `n_omega`, métodos `amplitude()` y `phase()`.
 
 ---
 

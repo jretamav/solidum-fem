@@ -5,13 +5,13 @@
 
 ## Resumen ejecutivo
 
-Fenix sustituye los ~36 `print(...)` diseminados por solvers, parsers, exportadores y elementos por un logger jerárquico estándar (`logging.getLogger("fenix")`). El comportamiento visible por defecto se preserva: los mensajes siguen apareciendo en stdout con el mismo contenido. Lo que cambia es que ahora son **silenciables, redirigibles y filtrables por nivel** sin parchear código fuente. Habilita los frontends GUI y los scripts batch paramétricos previstos en la visión kernel + frontends sin acumular más deuda con cada solver nuevo.
+Solidum sustituye los ~36 `print(...)` diseminados por solvers, parsers, exportadores y elementos por un logger jerárquico estándar (`logging.getLogger("solidum")`). El comportamiento visible por defecto se preserva: los mensajes siguen apareciendo en stdout con el mismo contenido. Lo que cambia es que ahora son **silenciables, redirigibles y filtrables por nivel** sin parchear código fuente. Habilita los frontends GUI y los scripts batch paramétricos previstos en la visión kernel + frontends sin acumular más deuda con cada solver nuevo.
 
 ## Contexto
 
 ### Estado actual
 
-`fenix/math/solvers.py`, `fenix/utils/yaml_parser.py`, `fenix/utils/gmsh_parser.py`, `fenix/utils/vtk_exporter.py`, `fenix/elements/frame.py`, `fenix/elements/frame3d.py` y `fenix/core/domain.py` emiten progreso, advertencias y errores con `print(...)` directo a stdout. Total: 36 ocurrencias.
+`solidum/math/solvers.py`, `solidum/utils/yaml_parser.py`, `solidum/utils/gmsh_parser.py`, `solidum/utils/vtk_exporter.py`, `solidum/elements/frame.py`, `solidum/elements/frame3d.py` y `solidum/core/domain.py` emiten progreso, advertencias y errores con `print(...)` directo a stdout. Total: 36 ocurrencias.
 
 ### Problema
 
@@ -26,14 +26,14 @@ A diferencia de otras mejoras arquitecturales en backlog (capa Analysis, sistema
 
 ## Decisión
 
-### 1. Módulo `fenix.logging` — logger jerárquico estándar
+### 1. Módulo `solidum.logging` — logger jerárquico estándar
 
 Un módulo público fino que:
 
-- Define el logger raíz `"fenix"` con un `StreamHandler` por defecto a stdout y formato corto (`[NIVEL] mensaje`).
-- Expone `get_logger(name)` para que cada submódulo pida su logger hijo (`fenix.solvers`, `fenix.parsers.yaml`, etc.). La jerarquía permite filtrar por subsistema (silenciar solo el solver, p. ej.) sin mecanismos ad hoc.
-- Expone `set_log_level(level)` como helper público de conveniencia para usuarios finales: `fenix.set_log_level("WARNING")` silencia el progreso normal y deja solo advertencias y errores.
-- **No llama a `logging.basicConfig()`**: configurar solo el logger `"fenix"` para no contaminar la configuración de logging de aplicaciones que embeban Fenix (frontends GUI).
+- Define el logger raíz `"solidum"` con un `StreamHandler` por defecto a stdout y formato corto (`[NIVEL] mensaje`).
+- Expone `get_logger(name)` para que cada submódulo pida su logger hijo (`solidum.solvers`, `solidum.parsers.yaml`, etc.). La jerarquía permite filtrar por subsistema (silenciar solo el solver, p. ej.) sin mecanismos ad hoc.
+- Expone `set_log_level(level)` como helper público de conveniencia para usuarios finales: `solidum.set_log_level("WARNING")` silencia el progreso normal y deja solo advertencias y errores.
+- **No llama a `logging.basicConfig()`**: configurar solo el logger `"solidum"` para no contaminar la configuración de logging de aplicaciones que embeban Solidum (frontends GUI).
 
 ### 2. Nivel asignado a cada mensaje
 
@@ -51,7 +51,7 @@ Default `INFO`: preserva el comportamiento visible actual sin que el usuario cam
 ### 3. API pública
 
 ```python
-from fenix import set_log_level
+from solidum import set_log_level
 set_log_level("WARNING")  # silencia el progreso, deja avisos y errores
 ```
 
@@ -59,10 +59,10 @@ Acceso programático completo:
 
 ```python
 import logging
-logging.getLogger("fenix.solvers").setLevel(logging.DEBUG)
+logging.getLogger("solidum.solvers").setLevel(logging.DEBUG)
 ```
 
-Re-exportada `set_log_level` y `get_logger` desde `fenix/__init__.py`.
+Re-exportada `set_log_level` y `get_logger` desde `solidum/__init__.py`.
 
 ### 4. Migración
 

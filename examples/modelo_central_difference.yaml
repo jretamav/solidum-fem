@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Análisis dinámico transitorio explícito
+# Archivo de entrada Solidum FEM: Análisis dinámico transitorio explícito
 # por diferencias centradas (ADR 0009 fase 5).
 #
 # Estructura: barra axial Truss2D L=1 m, A=1 m², E=25 Pa, ρ=2 kg/m³.
@@ -14,7 +14,7 @@
 # en todos los elementos del catálogo.
 #
 # Ejecutar:
-#   python -c "from fenix.entry import run_yaml; r = run_yaml('examples/modelo_central_difference.yaml'); print('|u_max| =', float(abs(r.u_history).max()))"
+#   python -c "from solidum.entry import run_yaml; r = run_yaml('examples/modelo_central_difference.yaml'); print('|u_max| =', float(abs(r.u_history).max()))"
 
 nodes:
   - {id: 1, coords: [0.0, 0.0]}

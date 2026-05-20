@@ -35,11 +35,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.core.material import Material
-from fenix.elements.solid_2d import Quad4, Tri3, _compute_kinematics, _compute_kinematics_tri3
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
+from solidum.core.domain import Domain
+from solidum.core.material import Material
+from solidum.elements.solid_2d import Quad4, Tri3, _compute_kinematics, _compute_kinematics_tri3
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 class LinearElastic2DPlaneStress(Material):

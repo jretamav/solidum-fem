@@ -26,20 +26,20 @@ from pathlib import Path
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.frame3d import Frame3D
-from fenix.elements.truss import Truss2D
-from fenix.entry import run_transient, run_yaml
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import (
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.frame3d import Frame3D
+from solidum.elements.truss import Truss2D
+from solidum.entry import run_transient, run_yaml
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import (
     CentralDifferenceSolver,
     NewmarkSolver,
     NewtonNewmarkSolver,
 )
-from fenix.results import TransientResult
+from solidum.results import TransientResult
 
 
 # ---------------------------------------------------------------------------

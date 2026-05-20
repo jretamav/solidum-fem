@@ -318,7 +318,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/von_mises_2d.py](../../fenix/materials/von_mises_2d.py).
+- **Archivo**: [solidum/materials/von_mises_2d.py](../../solidum/materials/von_mises_2d.py).
 - **Clase**: `VonMises2D`, registrada vía `@MaterialRegistry.register`. Despacho por `hypothesis` en construcción (sin coste runtime).
 - **Kernels Numba**:
   - `_compute_j2_plane_strain`: descomposición volumétrica-desviadora 3D ($\varepsilon^p_{zz}$ libre), return mapping radial cerrado, tangente algorítmica consistente cerrada. Predictor elástico construido como $\mathbf s_\text{trial} + p\mathbf I$ con $\mathbf s_\text{trial} = 2G(\mathbf e^\text{dev} - \boldsymbol\varepsilon^p_n)$ — respeta $\boldsymbol\varepsilon^p_n$ en descargas/reevaluaciones.

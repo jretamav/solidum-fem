@@ -6,15 +6,15 @@ Los capítulos anteriores describen el estado actual del programa. Este capítul
 
 | Componente a incorporar | Ubicación | Mecanismo de registro | Modifica otros archivos |
 |---|---|---|---|
-| Material | `fenix/materials/<snake>.py` | `@MaterialRegistry.register` | No |
-| Elemento | `fenix/elements/<snake>.py` | `@ElementRegistry.register` | No |
-| Solver | `fenix/math/solver_<snake>.py` | `@SolverRegistry.register` | No |
+| Material | `solidum/materials/<snake>.py` | `@MaterialRegistry.register` | No |
+| Elemento | `solidum/elements/<snake>.py` | `@ElementRegistry.register` | No |
+| Solver | `solidum/math/solver_<snake>.py` | `@SolverRegistry.register` | No |
 
 La columna "modifica otros archivos" es deliberadamente "No". Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
 
-## Skill `/fenix-new`
+## Skill `/solidum-new`
 
-Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una *skill* versionada (`.claude/skills/fenix-new/`) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es `/fenix-new material|element|solver <Name>` y produce automáticamente:
+Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una *skill* versionada (`.claude/skills/solidum-new/`) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es `/solidum-new material|element|solver <Name>` y produce automáticamente:
 
 - El archivo en su carpeta canónica con la plantilla del tipo correspondiente.
 - El decorador `@register` correctamente posicionado.

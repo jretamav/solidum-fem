@@ -50,7 +50,7 @@ $$d(\kappa) = \begin{cases}
 1 - \dfrac{\kappa_0}{\kappa}\,e^{-\alpha(\kappa - \kappa_0)} & \kappa > \kappa_0
 \end{cases}$$
 
-con saturación numérica $d \leq d_\text{max} = $ `DAMAGE_MAX` (`fenix.constants.DAMAGE_MAX`, evita rigidez nula).
+con saturación numérica $d \leq d_\text{max} = $ `DAMAGE_MAX` (`solidum.constants.DAMAGE_MAX`, evita rigidez nula).
 
 Propiedades:
 - $d(\kappa_0) = 0$ (continuidad).
@@ -239,7 +239,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/damage_2d.py](../../fenix/materials/damage_2d.py).
+- **Archivo**: [solidum/materials/damage_2d.py](../../solidum/materials/damage_2d.py).
 - **Clase**: `IsotropicDamage2D`, registrada vía `@MaterialRegistry.register`. Declara `IS_SYMMETRIC = False` como ClassVar (sobreescribe el default `True` de `Material`).
 - **Estado**: dict `{'kappa': float, 'damage': float}`. `PRIMARY_STATE_VAR = 'damage'`.
 - **Algoritmo `compute_state`**:

@@ -12,7 +12,7 @@
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **No converge / no aplica**: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
 - **Spec**: [docs/specs/LinearSolver.md](specs/LinearSolver.md)
-- **Archivo**: [fenix/math/solvers/linear.py](../fenix/math/solvers/linear.py)
+- **Archivo**: [solidum/math/solvers/linear.py](../solidum/math/solvers/linear.py)
 
 ---
 
@@ -29,11 +29,11 @@
 - **Parámetros**: `convergence`, `max_iter`, `num_steps`, `adaptive`, `min_delta_lambda`, `linear_algebra`, `freeze_tangent_after_iter`, **`line_search`** (default `False`, ADR 0011).
 - **Cuándo usarlo**: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back).
 - **Cuándo activar `line_search=True`**: cuando se observe oscilación del residuo entre iteraciones (síntoma clásico: ratios alternados sin descenso monótono). Caso documentado: plasticidad perfecta con carga cerca/sobre la capacidad. **Default `False`** porque en problemas con tangente consistente cuasi-cuadrática (daño activo, plasticidad estándar) el line search rechaza pasos correctos del Newton donde el residuo sube transitoriamente — ver ADR 0011 §"Enmiendas".
-- **Diagnóstico al diverger**: lanza una subclase tipada de `RuntimeError` (`OscillatingNewtonError`, `SingularTangentError`, `LoadExceedsCapacityError`, `UnknownDivergenceError`) con métricas (último ‖R‖, último ‖δU‖, factor de carga, bisecciones consumidas) y `hint` textual. Ver `fenix/math/solvers/diagnostics.py`.
+- **Diagnóstico al diverger**: lanza una subclase tipada de `RuntimeError` (`OscillatingNewtonError`, `SingularTangentError`, `LoadExceedsCapacityError`, `UnknownDivergenceError`) con métricas (último ‖R‖, último ‖δU‖, factor de carga, bisecciones consumidas) y `hint` textual. Ver `solidum/math/solvers/diagnostics.py`.
 - **Limitación**: con bisección adaptativa y cinemática no lineal (corotacional) puede atravesar puntos límite suaves; no atraviesa snap-back con `du/dλ < 0`. Para eso → `ArcLengthSolver`. Hallazgo de la auditoría fase A: el solver es más capaz de lo asumido históricamente (ver [`docs/auditorias/solvers_robustez_fase_A.md`](auditorias/solvers_robustez_fase_A.md)).
 - **Referencia**: Crisfield, *Non-linear Finite Element Analysis of Solids and Structures*, vol. 1, cap. 9. Line search: Grippo-Lampariello-Lucidi 1986 (variante de descenso no monótono).
 - **Spec**: [docs/specs/NonlinearSolver.md](specs/NonlinearSolver.md)
-- **Archivo**: [fenix/math/solvers/nonlinear.py](../fenix/math/solvers/nonlinear.py)
+- **Archivo**: [solidum/math/solvers/nonlinear.py](../solidum/math/solvers/nonlinear.py)
 
 ---
 
@@ -53,7 +53,7 @@
 - **Limitación**: más caro por paso (dos `spsolve` por iteración); requiere ajuste de `initial_dl` para problemas nuevos.
 - **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers & Structures, 1981); Crisfield vol. 1, cap. 9.
 - **Spec**: [docs/specs/ArcLengthSolver.md](specs/ArcLengthSolver.md)
-- **Archivo**: [fenix/math/solvers/arclength.py](../fenix/math/solvers/arclength.py)
+- **Archivo**: [solidum/math/solvers/arclength.py](../solidum/math/solvers/arclength.py)
 
 ---
 
@@ -72,7 +72,7 @@
 - **Cuándo NO usarlo (limitación documentada)**: cohesivo+embedded discontinuity con `K_e` stiff (`~1e13`). La activación discreta del Rankine introduce un salto en `F_int`/`K_t` que el `sign` por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDLᵀ Bunch-Kaufman real (item #7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con `ArcLengthSolver` cilíndrico a paridad de bits (regresión validada).
 - **Referencias**: Gutiérrez (2004), *Communications in Numerical Methods in Engineering* 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), *IJNME* 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
 - **Spec**: [docs/specs/DissipationArcLengthSolver.md](specs/DissipationArcLengthSolver.md) (status `implemented`, validación parcial).
-- **Archivo**: [fenix/math/solvers/dissipation_arclength.py](../fenix/math/solvers/dissipation_arclength.py)
+- **Archivo**: [solidum/math/solvers/dissipation_arclength.py](../solidum/math/solvers/dissipation_arclength.py)
 
 ---
 
@@ -86,12 +86,12 @@
   - Expansión de modos al espacio completo: `φ = T · φ_red`. En DOFs prescritos por Dirichlet la componente es 0.
   - Salida en `ModalResult`: `frequencies_rad`, `frequencies_hz`, `periods`, `modes` (M-ortonormales), `n_modes`, `converged`.
 - **Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0), `which` (default `"LM"`), `tolerance` (default 1.0e-9), `lumping` (default `"consistent"`; fase 1 solo admite ese valor), `linear_algebra` (reservado; ADR 0003).
-- **Firma del solver**: `solve()` sin argumentos (no consume `F_applied`). El entrypoint público es `fenix.run_modal(domain, n_modes=N)` o YAML con `solver: type: ModalSolver`. `fenix.run_yaml` despacha automáticamente al detectar el tipo.
+- **Firma del solver**: `solve()` sin argumentos (no consume `F_applied`). El entrypoint público es `solidum.run_modal(domain, n_modes=N)` o YAML con `solver: type: ModalSolver`. `solidum.run_yaml` despacha automáticamente al detectar el tipo.
 - **Cuándo usarlo**: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
-- **Limitaciones**: lineal (`K` evaluada en `u = 0`); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en `fenix/math/modal_response.py` y los consume `ResponseSpectrumSolver` (ADR 0009 fase 7 cerrada).
+- **Limitaciones**: lineal (`K` evaluada en `u = 0`); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en `solidum/math/modal_response.py` y los consume `ResponseSpectrumSolver` (ADR 0009 fase 7 cerrada).
 - **Referencia**: Bathe, *Finite Element Procedures*, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, *The Finite Element Method*, cap. 7; ARPACK Users' Guide (Lehoucq–Sorensen–Yang).
 - **Spec**: [docs/specs/ModalSolver.md](specs/ModalSolver.md)
-- **Archivos**: [fenix/math/solvers/modal.py](../fenix/math/solvers/modal.py) (clase `ModalSolver`), [fenix/math/linalg/eigen.py](../fenix/math/linalg/eigen.py) (clase `EigenSolver`), [fenix/results.py](../fenix/results.py) (`ModalResult`).
+- **Archivos**: [solidum/math/solvers/modal.py](../solidum/math/solvers/modal.py) (clase `ModalSolver`), [solidum/math/linalg/eigen.py](../solidum/math/linalg/eigen.py) (clase `EigenSolver`), [solidum/results.py](../solidum/results.py) (`ModalResult`).
 
 ---
 
@@ -115,7 +115,7 @@
   - HHT-α y generalized-α (con amortiguamiento numérico controlado) no incluidos.
 - **Referencia**: Newmark (1959), J. Eng. Mech. Div. ASCE; Bathe, *FEP* cap. 9.4; Hughes, *FEM* cap. 9; Chopra, *Dynamics of Structures* cap. 5 y 15.
 - **Spec**: [docs/specs/NewmarkSolver.md](specs/NewmarkSolver.md)
-- **Archivos**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewmarkSolver`), [fenix/math/damping.py](../fenix/math/damping.py) (Rayleigh), [fenix/results.py](../fenix/results.py) (`TransientResult`).
+- **Archivos**: [solidum/math/solvers/newmark.py](../solidum/math/solvers/newmark.py) (clase `NewmarkSolver`), [solidum/math/damping.py](../solidum/math/damping.py) (Rayleigh), [solidum/results.py](../solidum/results.py) (`TransientResult`).
 
 ---
 
@@ -140,7 +140,7 @@
 - **Despacho YAML**: `solver.type: NewtonNewmarkSolver`. Hereda `PIPELINE_KIND = "transient"` de `NewmarkSolver`; `entry.run_yaml` despacha por ese atributo declarativo (regla C del ADR 0009, aplicada 2026-05-18) — sin `isinstance` ni cadenas hardcoded.
 - **Referencia**: ADR 0009 §Fase 4; Hughes, *FEM* cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
 - **Spec**: [docs/specs/NewtonNewmarkSolver.md](specs/NewtonNewmarkSolver.md)
-- **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonNewmarkSolver`, junto al padre).
+- **Archivo**: [solidum/math/solvers/newmark.py](../solidum/math/solvers/newmark.py) (clase `NewtonNewmarkSolver`, junto al padre).
 
 ---
 
@@ -159,7 +159,7 @@
 - **Despacho YAML**: `solver.type: HHTSolver`. Hereda `PIPELINE_KIND = "transient"` de `NewmarkSolver`; `entry.run_yaml` despacha por el atributo declarativo (regla C ADR 0009).
 - **Referencia**: Hilber, Hughes & Taylor (1977), *Earthquake Eng. Struct. Dyn.* 5(3) 283-292; Hughes *FEM* §9.3; Chopra *Dynamics of Structures* §15.4.
 - **Spec**: [docs/specs/HHTSolver.md](specs/HHTSolver.md)
-- **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `HHTSolver`).
+- **Archivo**: [solidum/math/solvers/newmark.py](../solidum/math/solvers/newmark.py) (clase `HHTSolver`).
 
 ---
 
@@ -175,7 +175,7 @@
 - **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria + presencia de modos altos espurios que el Newmark trapezoidal no atenuaría.
 - **Despacho YAML**: `solver.type: NewtonHHTSolver`. Vía atributo `PIPELINE_KIND="transient"` heredado de `NewmarkSolver` → `run_transient`.
 - **Spec**: [docs/specs/NewtonHHTSolver.md](specs/NewtonHHTSolver.md) (variante corta sobre la spec padre [`HHTSolver.md`](specs/HHTSolver.md)).
-- **Archivo**: [fenix/math/solvers/newmark.py](../fenix/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
+- **Archivo**: [solidum/math/solvers/newmark.py](../solidum/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
 
 ---
 
@@ -192,7 +192,7 @@
 - **Rechazos defensivos**: `lumping="consistent"` → `ValueError` (la inversión de M consistente cada paso anula la ventaja); Frame3D con eje oblicuo a globales → `ValueError` (M_red no es estrictamente diagonal; ADR 0009 fase 2 documenta la bloque-diagonalidad inherente).
 - **Despacho YAML**: `solver.type: CentralDifferenceSolver`. Vía atributo `PIPELINE_KIND="transient"` → `run_transient`. **Primer solver fuera de la jerarquía de Newmark**, lo que disparó la regla C de refactor (atributo declarativo en lugar de cadena de isinstance).
 - **Spec**: [docs/specs/CentralDifferenceSolver.md](specs/CentralDifferenceSolver.md).
-- **Archivo**: [fenix/math/solvers/central_difference.py](../fenix/math/solvers/central_difference.py).
+- **Archivo**: [solidum/math/solvers/central_difference.py](../solidum/math/solvers/central_difference.py).
 
 ---
 
@@ -206,7 +206,7 @@
 - **Caveats**: resonancia exacta sin amortiguamiento ⇒ `Z(ω_n)` singular (`spsolve` puede fallar). Mitigación: añadir Rayleigh. Cargas con fase compleja requieren construcción desde código — YAML no soporta tipos complejos nativos.
 - **Despacho YAML**: `solver.type: HarmonicSolver`. Vía atributo `PIPELINE_KIND="harmonic"` → `run_harmonic`. Tercer valor del literal (después de `"static"`, `"modal"`, `"transient"`).
 - **Spec**: [docs/specs/HarmonicSolver.md](specs/HarmonicSolver.md).
-- **Archivo**: [fenix/math/solvers/harmonic.py](../fenix/math/solvers/harmonic.py).
+- **Archivo**: [solidum/math/solvers/harmonic.py](../solidum/math/solvers/harmonic.py).
 
 ---
 
@@ -222,15 +222,15 @@
 - **Cuándo usarlo**: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
 - **Caveats**: precisión depende del número de modos incluidos — verifica `cumulative_effective_mass_ratio` ≥ 0.9. CQC requerido con modos cercanos en frecuencia (cociente < 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
 - **Despacho YAML**: `solver.type: ResponseSpectrumSolver`. Vía atributo `PIPELINE_KIND="spectrum"` → `run_response_spectrum`. Cuarto valor del literal (después de `"static"`, `"modal"`, `"transient"`, `"harmonic"`).
-- **Algoritmos centralizados**: `fenix/math/modal_response.py` — `response_spectrum_srss`, `response_spectrum_cqc`, `participation_factors`, `spectrum_from_sa`, `spectrum_tabulated`. Compartido con `ModalResult.free_vibration` (wrapper delgado tras regla D 2026-05-18).
+- **Algoritmos centralizados**: `solidum/math/modal_response.py` — `response_spectrum_srss`, `response_spectrum_cqc`, `participation_factors`, `spectrum_from_sa`, `spectrum_tabulated`. Compartido con `ModalResult.free_vibration` (wrapper delgado tras regla D 2026-05-18).
 - **Spec**: [docs/specs/ResponseSpectrumSolver.md](specs/ResponseSpectrumSolver.md).
-- **Archivo**: [fenix/math/solvers/response_spectrum.py](../fenix/math/solvers/response_spectrum.py).
+- **Archivo**: [solidum/math/solvers/response_spectrum.py](../solidum/math/solvers/response_spectrum.py).
 
 ---
 
 ## Cómo añadir un solver nuevo
 
-`/fenix-new solver <Name>` — genera archivo en `fenix/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
+`/solidum-new solver <Name>` — genera archivo en `solidum/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
 
 Convenciones de interfaz:
 

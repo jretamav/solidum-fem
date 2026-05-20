@@ -113,7 +113,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
+- **Archivo**: [solidum/elements/truss.py](../../solidum/elements/truss.py)
 - **Clase**: `Truss3D` — hereda directamente de `Element` (sin relación de herencia con `Truss2D` ni con `Truss2DCorot`).
 - **Tests**: [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss3D` — verifica `L0`, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
 - **Notas de traducción**:

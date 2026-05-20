@@ -1,6 +1,6 @@
 """Benchmarks de validación contra referencias externas (NAFEMS, Lamé, MacNeal-Harder slender beam, etc.).
 
-Esta carpeta contiene tests que validan Fenix FEM contra soluciones analíticas
+Esta carpeta contiene tests que validan Solidum FEM contra soluciones analíticas
 clásicas y benchmarks publicados, complementando los tests unitarios y de
 integración del directorio padre.
 

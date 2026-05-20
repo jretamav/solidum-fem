@@ -35,11 +35,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import NewmarkSolver
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import NewmarkSolver
 
 
 def _build_axial_chain(n_elem: int = 3, L: float = 1.0,

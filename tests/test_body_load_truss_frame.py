@@ -17,19 +17,19 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.core.node import Node
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.cable_1d import CableMaterial1D
-from fenix.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
-from fenix.elements.cable import Cable2DCorot, Cable3DCorot
-from fenix.elements.frame import (
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.core.node import Node
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.cable_1d import CableMaterial1D
+from solidum.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
+from solidum.elements.cable import Cable2DCorot, Cable3DCorot
+from solidum.elements.frame import (
     Frame2DEuler,
     Frame2DTimoshenko,
     Frame2DEulerCorot,
 )
-from fenix.elements.frame3d import Frame3D
+from solidum.elements.frame3d import Frame3D
 
 
 def _node(idx, *coords):

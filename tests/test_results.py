@@ -1,4 +1,4 @@
-"""Tests de los tipos de dato de fenix.results (ADR 0002)."""
+"""Tests de los tipos de dato de solidum.results (ADR 0002)."""
 
 import os
 import sys
@@ -8,7 +8,7 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.results import ElementForces, SolveResult
+from solidum.results import ElementForces, SolveResult
 
 
 class TestElementForces(unittest.TestCase):
@@ -84,11 +84,11 @@ class TestTransientResultInternalForcesHistory(unittest.TestCase):
     def test_truss_internal_forces_track_displacement(self):
         import math
 
-        import fenix  # autodiscover
-        from fenix.core.domain import Domain
-        from fenix.elements.truss import Truss2D
-        from fenix.entry import run_transient
-        from fenix.materials.elastic import Elastic1D
+        import solidum  # autodiscover
+        from solidum.core.domain import Domain
+        from solidum.elements.truss import Truss2D
+        from solidum.entry import run_transient
+        from solidum.materials.elastic import Elastic1D
 
         # Parámetros 1 GDL: ω = 5 rad/s con K=25, M=1.
         E, A, L = 25.0, 1.0, 1.0

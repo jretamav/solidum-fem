@@ -1,4 +1,4 @@
-"""Tests de los entrypoints públicos fenix.run y fenix.run_yaml (ADR 0002)."""
+"""Tests de los entrypoints públicos solidum.run y solidum.run_yaml (ADR 0002)."""
 
 import os
 import sys
@@ -8,11 +8,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import fenix
-from fenix.core.domain import Domain
-from fenix.elements.frame import Frame2DEuler
-from fenix.elements.truss import Truss2D
-from fenix.results import ModalResult, SolveResult, TransientResult
+import solidum
+from solidum.core.domain import Domain
+from solidum.elements.frame import Frame2DEuler
+from solidum.elements.truss import Truss2D
+from solidum.results import ModalResult, SolveResult, TransientResult
 
 
 class LinearElastic1D:
@@ -39,7 +39,7 @@ class TestRun(unittest.TestCase):
 
     def test_run_with_defaults_noload(self):
         domain, _ = self._build_cantilever()
-        res = fenix.run(domain)
+        res = solidum.run(domain)
         self.assertIsInstance(res, SolveResult)
         self.assertIs(domain.last_result, res)
         np.testing.assert_allclose(res.U, np.zeros(6), atol=1e-10)
@@ -48,7 +48,7 @@ class TestRun(unittest.TestCase):
         domain, n2 = self._build_cantilever()
         F = np.zeros(domain.total_dofs)
         F[n2.dofs['uy']] = -1.0
-        res = fenix.run(domain, F_applied=F)
+        res = solidum.run(domain, F_applied=F)
 
         self.assertTrue(res.converged)
         np.testing.assert_allclose(res.reactions_by_node[1]['uy'], 1.0, atol=1e-4)
@@ -66,7 +66,7 @@ class TestRun(unittest.TestCase):
         # Deliberadamente NO llamamos generate_equation_numbers antes de run().
         self.assertEqual(domain.total_dofs, 0)
 
-        res = fenix.run(domain)  # Tira con F=0, solo valida pipeline.
+        res = solidum.run(domain)  # Tira con F=0, solo valida pipeline.
         self.assertEqual(domain.total_dofs, 4)
         self.assertIsInstance(res, SolveResult)
 
@@ -88,7 +88,7 @@ class TestRunYaml(unittest.TestCase):
         # Tomar el primero determinista
         yaml_path = sorted(candidates)[0]
         try:
-            res = fenix.run_yaml(yaml_path)
+            res = solidum.run_yaml(yaml_path)
         except Exception as e:
             self.skipTest(f"run_yaml falló en {yaml_path}: {e}")
 

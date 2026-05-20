@@ -8,13 +8,13 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.frame import Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.frame import Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 class TestFrame2DEulerAcceptance(unittest.TestCase):
@@ -64,8 +64,8 @@ class TestFrame2DEulerAcceptance(unittest.TestCase):
     def test_acceptance_simetria_K(self):
         """Criterio 3: K_global = K_global.T en cualquier configuración (régimen elástico)."""
         # Frame oblicuo para no caer en casos triviales c=1,s=0 o c=0,s=1
-        n1 = fenix.core.node.Node(1, [0.0, 0.0])
-        n2 = fenix.core.node.Node(2, [3.0, 4.0])  # L = 5
+        n1 = solidum.core.node.Node(1, [0.0, 0.0])
+        n2 = solidum.core.node.Node(2, [3.0, 4.0])  # L = 5
         for k, node in enumerate((n1, n2)):
             node.add_dof('ux'); node.add_dof('uy'); node.add_dof('rz')
             node.dofs['ux'] = 3 * k
@@ -80,7 +80,7 @@ class TestFrame2DEulerAcceptance(unittest.TestCase):
         self.assertTrue(np.allclose(K, K.T, atol=1e-6))
 
     def test_registro_en_registry(self):
-        from fenix.registry import ElementRegistry
+        from solidum.registry import ElementRegistry
         self.assertIn('Frame2DEuler', ElementRegistry._items)
 
 
@@ -130,8 +130,8 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
 
     def test_acceptance_simetria_K(self):
         """Criterio 3: K_global = K_global.T en viga oblicua."""
-        n1 = fenix.core.node.Node(1, [0.0, 0.0])
-        n2 = fenix.core.node.Node(2, [3.0, 4.0])  # L=5, c=0.6, s=0.8
+        n1 = solidum.core.node.Node(1, [0.0, 0.0])
+        n2 = solidum.core.node.Node(2, [3.0, 4.0])  # L=5, c=0.6, s=0.8
         for k, node in enumerate((n1, n2)):
             node.add_dof('ux'); node.add_dof('uy'); node.add_dof('rz')
             node.dofs['ux'] = 3 * k
@@ -146,7 +146,7 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
         self.assertTrue(np.allclose(K, K.T, atol=1e-6))
 
     def test_registro_en_registry(self):
-        from fenix.registry import ElementRegistry
+        from solidum.registry import ElementRegistry
         self.assertIn('Frame2DTimoshenko', ElementRegistry._items)
 
 
@@ -154,8 +154,8 @@ class TestFrame2DEulerCorotAcceptance(unittest.TestCase):
     """Criterios de aceptación de docs/specs/Frame2DEulerCorot.md."""
 
     def _build_standalone(self, coords1, coords2, E=210e9, A=1e-3, I=1e-6):
-        n1 = fenix.core.node.Node(1, list(coords1))
-        n2 = fenix.core.node.Node(2, list(coords2))
+        n1 = solidum.core.node.Node(1, list(coords1))
+        n2 = solidum.core.node.Node(2, list(coords2))
         for k, node in enumerate((n1, n2)):
             for i, dof in enumerate(('ux', 'uy', 'rz')):
                 node.add_dof(dof)
@@ -234,7 +234,7 @@ class TestFrame2DEulerCorotAcceptance(unittest.TestCase):
         self.assertTrue(np.allclose(K, K.T, atol=1e-6))
 
     def test_registro_en_registry(self):
-        from fenix.registry import ElementRegistry
+        from solidum.registry import ElementRegistry
         self.assertIn('Frame2DEulerCorot', ElementRegistry._items)
 
 

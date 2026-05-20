@@ -165,7 +165,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/elastic_2d.py](../../fenix/materials/elastic_2d.py).
+- **Archivo**: [solidum/materials/elastic_2d.py](../../solidum/materials/elastic_2d.py).
 - **Clase**: `Elastic2D`, registrada vía `@MaterialRegistry.register`.
 - **Despacho por hipótesis**: la matriz `C` se precalcula en el constructor según `hypothesis`. `compute_state` solo hace `self.C @ strain` sin ramificaciones — coste mínimo.
 - **Validación temprana** en constructor: `E > 0`, `ν ∈ (-1, 0.5)`, `hypothesis ∈ {plane_stress, plane_strain}`, `density ≥ 0` si se pasa. Mensajes en español.

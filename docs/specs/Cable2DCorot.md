@@ -137,7 +137,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/cable.py](../../fenix/elements/cable.py) — archivo propio, no referencia a los módulos de armadura ni a ningún otro elemento.
+- **Archivo**: [solidum/elements/cable.py](../../solidum/elements/cable.py) — archivo propio, no referencia a los módulos de armadura ni a ningún otro elemento.
 - **Clase**: `Cable2DCorot` — hereda directamente de `Element` (no de `Truss2DCorot` ni de ningún elemento de armadura). La maquinaria cinemática corotacional se reimplementa íntegra dentro de la clase.
 - **Tests**: [tests/test_cable_elements.py](../../tests/test_cable_elements.py) · `TestCable2DCorot` — los cuatro criterios de `acceptance` más un test de registro:
   - `test_acceptance_cable_tensado_como_barra_corot` (criterio 1).

@@ -121,7 +121,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
+- **Archivo**: [solidum/elements/truss.py](../../solidum/elements/truss.py)
 - **Clase**: `Truss2DCorot` — hereda de `Truss2D` (reutiliza `__init__`, `ClassVar`s y metadatos de registro) y sobrescribe `compute_element_state` y `compute_internal_forces` para evaluar cosenos directores y longitud en configuración corriente.
 - **Tests**: [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss2DCorot` — tres tests, uno por cada `acceptance`:
   - `test_acceptance_linear_limit_matches_truss2d` (criterio 1).

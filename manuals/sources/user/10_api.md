@@ -8,7 +8,7 @@ Los componentes principales se exponen desde la raíz del paquete:
 
 ```python
 import numpy as np
-from fenix import Domain, VonMises2D, Quad4, Assembler, NonlinearSolver, VtkExporter
+from solidum import Domain, VonMises2D, Quad4, Assembler, NonlinearSolver, VtkExporter
 
 # 1. Dominio y nodos
 domain = Domain()

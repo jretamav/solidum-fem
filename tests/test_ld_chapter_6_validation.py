@@ -3,7 +3,7 @@
 Verifica numéricamente que la longitud efectiva ``l_d = (A_e/h)·cos(θ − α)``
 del Cap. 6 cura el *stress locking* que aparecería con la alternativa ingenua
 ``l_d_ingenuo = A_e/h``. La tesis no incluyó este experimento; lo aporta
-Fenix como fase 3 del ADR 0010 (decisión arquitectural cerrada — la fórmula
+Solidum como fase 3 del ADR 0010 (decisión arquitectural cerrada — la fórmula
 correcta es la única implementada en producción; los tests prueban la
 **alternativa rechazada** mediante monkey-patch para documentar el motivo).
 
@@ -33,10 +33,10 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from fenix.core.node import Node
-from fenix.elements.solid_2d.embedded_cst import CST_Embedded2D, _compute_ld
-from fenix.materials.elastic_2d import Elastic2D
+from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.core.node import Node
+from solidum.elements.solid_2d.embedded_cst import CST_Embedded2D, _compute_ld
+from solidum.materials.elastic_2d import Elastic2D
 
 
 # --- Helpers ---------------------------------------------------------------

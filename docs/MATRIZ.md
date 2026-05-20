@@ -103,7 +103,7 @@ Selección de tests "canónicos" que cubren combinaciones clave. La intención n
 | Respuesta forzada armónica en frecuencia                       | [`test_harmonic.py`](../tests/test_harmonic.py)                                     |
 | Análisis sísmico por combinación modal SRSS/CQC                | [`test_response_spectrum.py`](../tests/test_response_spectrum.py)                   |
 | Plasticidad sólido 2D (unitario del material)                  | [`test_materials_unit.py`](../tests/test_materials_unit.py)                         |
-| `fenix.run` y `fenix.run_yaml` end-to-end (estático + dinámico) | [`test_entry.py`](../tests/test_entry.py)                                          |
+| `solidum.run` y `solidum.run_yaml` end-to-end (estático + dinámico) | [`test_entry.py`](../tests/test_entry.py)                                          |
 | Peso propio (`assemble_self_weight`, ADR 0008)                 | [`test_density_self_weight.py`](../tests/test_density_self_weight.py) · [`test_body_force_pipeline.py`](../tests/test_body_force_pipeline.py) · [`test_body_load_truss_frame.py`](../tests/test_body_load_truss_frame.py) |
 
 ---

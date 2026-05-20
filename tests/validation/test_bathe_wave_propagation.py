@@ -63,12 +63,12 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.entry import run_transient
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import CentralDifferenceSolver
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.entry import run_transient
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import CentralDifferenceSolver
 
 
 # Parámetros físicos del benchmark.

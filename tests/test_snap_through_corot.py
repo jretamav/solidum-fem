@@ -14,7 +14,7 @@ del apex tiene un punto límite claro: arc-length lo atraviesa, control de
 carga puro no.
 
 **Convención del test**: ``w := -u_y`` (positivo hacia abajo), ``P > 0``
-descendente. El elemento ``Truss2DCorot`` (ver ``fenix/elements/truss.py``)
+descendente. El elemento ``Truss2DCorot`` (ver ``solidum/elements/truss.py``)
 usa engineering strain ``ε = (L_d - L_0)/L_0``, por lo que la solución cerrada
 del equilibrio en el apex es:
 
@@ -41,12 +41,12 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2DCorot
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import ArcLengthSolver
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2DCorot
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import ArcLengthSolver
 
 
 def _P_analytic(E: float, A: float, L: float, h: float, L0: float, w: float) -> float:

@@ -3,15 +3,15 @@ import numpy as np
 import sys
 import os
 
-# Asegurar que podemos importar fenix
+# Asegurar que podemos importar solidum
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver, ArcLengthSolver
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.elements.truss import Truss2D
+from solidum.core.domain import Domain
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver, ArcLengthSolver
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.elements.truss import Truss2D
 
 class TestSolversIntegration(unittest.TestCase):
     """

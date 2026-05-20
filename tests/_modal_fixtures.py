@@ -21,8 +21,8 @@ from typing import Any
 
 import numpy as np  # noqa: F401  — disponible para tests que importen este módulo.
 
-from fenix.core.domain import Domain
-from fenix.materials.elastic import Elastic1D
+from solidum.core.domain import Domain
+from solidum.materials.elastic import Elastic1D
 
 
 # Constantes físicas comunes (acero) — heredadas de los tests originales.

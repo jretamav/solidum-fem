@@ -1,6 +1,6 @@
 # ResponseSpectrumSolver — análisis sísmico por combinación modal (ADR 0009 fase 7)
 
-> Spec de **solver nuevo**. Combina las respuestas máximas modales bajo un espectro de respuesta dado (SRSS o CQC). Cierra el ADR 0009 completo y aplica la regla D de refactor arquitectural (free_vibration sale de `results.py` al nuevo `fenix/math/modal_response.py`).
+> Spec de **solver nuevo**. Combina las respuestas máximas modales bajo un espectro de respuesta dado (SRSS o CQC). Cierra el ADR 0009 completo y aplica la regla D de refactor arquitectural (free_vibration sale de `results.py` al nuevo `solidum/math/modal_response.py`).
 
 ---
 
@@ -192,16 +192,16 @@ references:
 
 ## Implementación
 
-- Archivo solver: [fenix/math/solvers/response_spectrum.py](../../fenix/math/solvers/response_spectrum.py)
+- Archivo solver: [solidum/math/solvers/response_spectrum.py](../../solidum/math/solvers/response_spectrum.py)
 - Clase: `ResponseSpectrumSolver` (registrada en `SolverRegistry`)
-- Atributo de despacho: `PIPELINE_KIND = "spectrum"` → `fenix.entry.run_response_spectrum` → `ResponseSpectrumResult`.
-- Algoritmos centralizados: [fenix/math/modal_response.py](../../fenix/math/modal_response.py) (`response_spectrum_srss`, `response_spectrum_cqc`, `participation_factors`, helpers `spectrum_from_sa`, `spectrum_tabulated`).
-- Resultado: [`ResponseSpectrumResult`](../../fenix/results.py) — dataclass inmutable.
+- Atributo de despacho: `PIPELINE_KIND = "spectrum"` → `solidum.entry.run_response_spectrum` → `ResponseSpectrumResult`.
+- Algoritmos centralizados: [solidum/math/modal_response.py](../../solidum/math/modal_response.py) (`response_spectrum_srss`, `response_spectrum_cqc`, `participation_factors`, helpers `spectrum_from_sa`, `spectrum_tabulated`).
+- Resultado: [`ResponseSpectrumResult`](../../solidum/results.py) — dataclass inmutable.
 - Tests: [tests/test_response_spectrum.py](../../tests/test_response_spectrum.py) (19 tests verdes).
 
 ---
 
 ## Diálogo
 
-- *2026-05-18*: regla D aplicada al introducir este solver — segundo método de cómputo sobre `ModalResult` (el primero fue `free_vibration`). El algoritmo de free_vibration se movió a `fenix/math/modal_response.py`; `ModalResult.free_vibration` queda como wrapper delgado de 3 líneas, preservando la API histórica. Los nuevos `response_spectrum_srss` y `response_spectrum_cqc` viven en el mismo módulo. `ResponseSpectrumSolver` orquesta `ModalSolver` interno + delegación a `modal_response`.
+- *2026-05-18*: regla D aplicada al introducir este solver — segundo método de cómputo sobre `ModalResult` (el primero fue `free_vibration`). El algoritmo de free_vibration se movió a `solidum/math/modal_response.py`; `ModalResult.free_vibration` queda como wrapper delgado de 3 líneas, preservando la API histórica. Los nuevos `response_spectrum_srss` y `response_spectrum_cqc` viven en el mismo módulo. `ResponseSpectrumSolver` orquesta `ModalSolver` interno + delegación a `modal_response`.
 - *2026-05-18*: el cuarto valor de `PIPELINE_KIND` (`"spectrum"`) extiende el despacho declarativo de `run_yaml` introducido en D2. Cierra el ADR 0009 completo (fases 1-7 + variante HHT-α).

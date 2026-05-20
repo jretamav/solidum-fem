@@ -1,7 +1,7 @@
 """Ejemplo mínimo de consumo de la API pública de resultados (ADR 0002).
 
 Muestra el patrón de uso esperado para consumidores externos como FenixBAR:
-construir un Domain programáticamente, invocar ``fenix.run`` y leer el
+construir un Domain programáticamente, invocar ``solidum.run`` y leer el
 ``SolveResult`` inmutable resultante.
 
 Se resuelve un marco 2D de una sola barra empotrada en un extremo con carga
@@ -15,9 +15,9 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import fenix
-from fenix import Domain, Frame2DEuler
-from fenix.materials.elastic import Elastic1D
+import solidum
+from solidum import Domain, Frame2DEuler
+from solidum.materials.elastic import Elastic1D
 import numpy as np
 
 
@@ -41,7 +41,7 @@ F = np.zeros(domain.total_dofs)
 F[n2.dofs['uy']] = -10_000.0
 
 # 4. Ejecutar — punto de entrada oficial para consumidores
-result = fenix.run(domain, F_applied=F)
+result = solidum.run(domain, F_applied=F)
 
 # 5. Leer resultados
 print(f"Convergió: {result.converged}  (pasos: {result.num_steps})")

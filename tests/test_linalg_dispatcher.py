@@ -1,4 +1,4 @@
-"""Tests de la capa algebraica fenix.math.linalg (ADR 0003 fase 1).
+"""Tests de la capa algebraica solidum.math.linalg (ADR 0003 fase 1).
 
 Cubre:
 1. Equivalencia bit-a-bit del LUSolver nuevo con el spsolve directo previo.
@@ -17,8 +17,8 @@ import scipy.sparse.linalg as spla
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.math.linalg import LUSolver, StiffnessProperties, select_solver
-from fenix.math.linalg.dispatcher import _HAS_CHOLESKY
+from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
+from solidum.math.linalg.dispatcher import _HAS_CHOLESKY
 
 
 def _build_spd_matrix(n: int = 50, seed: int = 0) -> sp.csr_matrix:
@@ -56,7 +56,7 @@ class TestCholeskyVsLU(unittest.TestCase):
     """En problemas SPD, Cholesky y LU deben coincidir a tolerancia de redondeo."""
 
     def test_solutions_agree(self):
-        from fenix.math.linalg import CholeskySolver  # type: ignore[attr-defined]
+        from solidum.math.linalg import CholeskySolver  # type: ignore[attr-defined]
 
         K = _build_spd_matrix(n=120, seed=42)
         b = np.cos(np.linspace(0.0, 6.28, 120))
@@ -110,8 +110,8 @@ class TestCholeskyFallback(unittest.TestCase):
     """Cholesky aborta con CholeskyNotPositiveDefiniteError ante K no-SPD."""
 
     def test_cholesky_aborts_on_indefinite(self):
-        from fenix.math.linalg import CholeskySolver  # type: ignore[attr-defined]
-        from fenix.math.linalg.cholesky import CholeskyNotPositiveDefiniteError
+        from solidum.math.linalg import CholeskySolver  # type: ignore[attr-defined]
+        from solidum.math.linalg.cholesky import CholeskyNotPositiveDefiniteError
 
         # K simétrica indefinida: diagonal con un autovalor negativo claro.
         K = sp.diags([1.0, 2.0, -1.0, 3.0], format="csr")
@@ -125,11 +125,11 @@ class TestLinearSolverYAMLOverride(unittest.TestCase):
     """El campo YAML 'linear_algebra' llega al solver y se respeta."""
 
     def test_override_propagates_to_linear_solver(self):
-        from fenix.elements.truss import Truss2D
-        from fenix.core.domain import Domain
-        from fenix.core.material import Material
-        from fenix.math.assembly import Assembler
-        from fenix.math.solvers import LinearSolver
+        from solidum.elements.truss import Truss2D
+        from solidum.core.domain import Domain
+        from solidum.core.material import Material
+        from solidum.math.assembly import Assembler
+        from solidum.math.solvers import LinearSolver
 
         class _ElasticMat(Material):
             STRAIN_DIM = 1
@@ -165,11 +165,11 @@ class TestLinearSolverFactorizationCache(unittest.TestCase):
     """
 
     def _build_truss_solver(self, linear_algebra="lu"):
-        from fenix.core.domain import Domain
-        from fenix.core.material import Material
-        from fenix.elements.truss import Truss2D
-        from fenix.math.assembly import Assembler
-        from fenix.math.solvers import LinearSolver
+        from solidum.core.domain import Domain
+        from solidum.core.material import Material
+        from solidum.elements.truss import Truss2D
+        from solidum.math.assembly import Assembler
+        from solidum.math.solvers import LinearSolver
 
         class _ElasticMat(Material):
             STRAIN_DIM = 1

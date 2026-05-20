@@ -2,7 +2,7 @@
 
 - **Estado**: aceptado
 - **Fecha**: 2026-05-13
-- **Alcance**: `NonlinearSolver` y `ArcLengthSolver` en `fenix/math/solvers.py`; constantes en `fenix/constants.py`; tests de convergencia en `tests/`.
+- **Alcance**: `NonlinearSolver` y `ArcLengthSolver` en `solidum/math/solvers.py`; constantes en `solidum/constants.py`; tests de convergencia en `tests/`.
 
 ## Contexto
 
@@ -44,7 +44,7 @@ con las escalas evaluadas en el estado corriente de la iteración:
 
 Las normas son L2 sobre DOFs libres (igual que hoy: prescritos contienen reacciones, no fallos de equilibrio).
 
-### Constantes nuevas en `fenix/constants.py`
+### Constantes nuevas en `solidum/constants.py`
 
 Todas adimensionales: las tolerancias relativas se aplican directamente al ratio, y las "absolutas" entran como **factores** que se multiplican por escalas autoderivadas del problema en su primera evaluación. Esto evita codificar valores con unidades en una constante global — el código deja de presuponer que el usuario trabaja en N/m vs MPa/mm.
 
@@ -95,7 +95,7 @@ Si `convergence` es `None`, se instancia con los defaults del proyecto. No se ac
 
 ### Punto único de la política: clase `ConvergenceCriterion`
 
-Se introduce un módulo nuevo `fenix/math/convergence.py` con una clase pequeña que encapsula configuración + estado calibrado + evaluación:
+Se introduce un módulo nuevo `solidum/math/convergence.py` con una clase pequeña que encapsula configuración + estado calibrado + evaluación:
 
 ```python
 @dataclass

@@ -6,7 +6,7 @@ A lo largo del capítulo se utilizan las denominaciones abreviadas habituales pa
 
 ## Materiales
 
-Un material en Fenix FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo `STRAIN_DIM`) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo `STRAIN_DIM` y la interfaz `compute_stress_and_tangent(strain, state)`.
+Un material en Solidum FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo `STRAIN_DIM`) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo `STRAIN_DIM` y la interfaz `compute_stress_and_tangent(strain, state)`.
 
 Familias actualmente implementadas:
 
@@ -30,7 +30,7 @@ En todos los casos basta declarar el `STRAIN_DIM` apropiado y el atributo `PRIMA
 
 ## Elementos
 
-Un elemento finito en Fenix FEM es una entidad geométrica que construye su matriz de gradientes `B`, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su `DOF_NAMES`, su `STRAIN_DIM` y el número de puntos de integración mediante `N_INTEGRATION_POINTS`. La clase base concentra la lógica común (registro de DOF, ensamblaje local→global, validación material↔elemento, gestión del `ElementState`) y cada subclase aporta exclusivamente lo físicamente específico (matriz `B`, esquema de integración, invocación al material).
+Un elemento finito en Solidum FEM es una entidad geométrica que construye su matriz de gradientes `B`, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su `DOF_NAMES`, su `STRAIN_DIM` y el número de puntos de integración mediante `N_INTEGRATION_POINTS`. La clase base concentra la lógica común (registro de DOF, ensamblaje local→global, validación material↔elemento, gestión del `ElementState`) y cada subclase aporta exclusivamente lo físicamente específico (matriz `B`, esquema de integración, invocación al material).
 
 El estado del programa por familia se presenta a continuación en forma de **matrices de cobertura**. Cada celda combina dos ejes ortogonales: el régimen geométrico (linealidad o no linealidad) y el régimen material (lineal o no lineal). La no linealidad material se obtiene mediante la asignación al elemento de un material no lineal del catálogo (plasticidad, daño); ningún elemento es intrínsecamente no lineal en el material. La marca ✓ indica combinación implementada y validada; la marca [Pendiente: ...] indica el hueco como candidato natural de extensión; el guion (—) indica combinación que no aplica físicamente o que no se contempla.
 
@@ -159,7 +159,7 @@ Disponibles en la versión actual:
 - `HHTSolver` y `NewtonHHTSolver` (ADR 0009, variantes HHT-α) — disipación numérica controlada en altas frecuencias (Hilber-Hughes-Taylor 1977) con parámetro `α ∈ [−1/3, 0]` y `(β, γ)` auto-derivados. Subclases de `NewmarkSolver` y `NewtonNewmarkSolver` respectivamente (Reglas §4 — variantes).
 - `CentralDifferenceSolver` (ADR 0009 fase 5) — integración explícita por diferencias centradas (leapfrog Belytschko-Liu-Moran). `M⁻¹` trivial sobre masa lumped diagonal. Lineal y no lineal en una sola clase con parámetro `nonlinear`. Estabilidad condicional CFL con detección a posteriori de divergencia.
 - `HarmonicSolver` (ADR 0009 fase 6) — respuesta forzada armónica en el dominio de la frecuencia. Aritmética compleja con `scipy.sparse.linalg.spsolve` complejo; factorización LU compleja por frecuencia (no se cachea). Barrido lineal/logarítmico/explícito. Devuelve `HarmonicResult` con métodos `.amplitude()` y `.phase()`.
-- `ResponseSpectrumSolver` (ADR 0009 fase 7) — análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta `ModalSolver` interno y delega los algoritmos en `fenix.math.modal_response` (centralización por regla D de auditoría). Devuelve `ResponseSpectrumResult` con respuesta envolvente, factores de participación y masas efectivas.
+- `ResponseSpectrumSolver` (ADR 0009 fase 7) — análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta `ModalSolver` interno y delega los algoritmos en `solidum.math.modal_response` (centralización por regla D de auditoría). Devuelve `ResponseSpectrumResult` con respuesta envolvente, factores de participación y masas efectivas.
 
 Espacio natural de extensión:
 
@@ -170,17 +170,17 @@ Espacio natural de extensión:
 - [PENDIENTE: Excitación sísmica multi-direccional simultánea (CQC3, regla 100/30/30) y multi-support seismic excitation.]
 - [PENDIENTE: Δt adaptativo para transitorios.]
 
-La incorporación de un solver nuevo se realiza en `fenix/math/solvers/<nombre>.py` mediante el decorador `@SolverRegistry.register`. El **dispatch a entrypoints** en `fenix.entry.run_yaml` es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase `PIPELINE_KIND ∈ {"static", "modal", "transient", "harmonic", "spectrum"}` y `run_yaml` despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
+La incorporación de un solver nuevo se realiza en `solidum/math/solvers/<nombre>.py` mediante el decorador `@SolverRegistry.register`. El **dispatch a entrypoints** en `solidum.entry.run_yaml` es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase `PIPELINE_KIND ∈ {"static", "modal", "transient", "harmonic", "spectrum"}` y `run_yaml` despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
 
 ## Subsistema algebraico
 
-Por debajo del solver no lineal, dentro de cada iteración, se requiere la resolución de un sistema lineal `K · x = b`. Esta es la responsabilidad del subsistema algebraico (`fenix/math/linalg/`, ADR 0003). Constituye un nivel táctico: no decide la estrategia del cálculo, sino que selecciona el algoritmo numérico adecuado para resolver cada sistema lineal.
+Por debajo del solver no lineal, dentro de cada iteración, se requiere la resolución de un sistema lineal `K · x = b`. Esta es la responsabilidad del subsistema algebraico (`solidum/math/linalg/`, ADR 0003). Constituye un nivel táctico: no decide la estrategia del cálculo, sino que selecciona el algoritmo numérico adecuado para resolver cada sistema lineal.
 
 Algoritmos disponibles:
 
 - `LUSolver` — factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
 - `CholeskySolver` — factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando `K` es simétrica y definida positiva.
-- `EigenSolver` (ADR 0009) — algoritmo de autovalor generalizado simétrico para el problema `K · φ = ω² · M · φ`. Envuelve `scipy.sparse.linalg.eigsh` (ARPACK Lanczos con shift-invert centrado en `σ`). Vive en `fenix/math/linalg/eigen.py` y no comparte la interfaz `solve(K, b)` de los anteriores — su firma natural es `solve(K, M, n_modes) → (λ, φ)`.
+- `EigenSolver` (ADR 0009) — algoritmo de autovalor generalizado simétrico para el problema `K · φ = ω² · M · φ`. Envuelve `scipy.sparse.linalg.eigsh` (ARPACK Lanczos con shift-invert centrado en `σ`). Vive en `solidum/math/linalg/eigen.py` y no comparte la interfaz `solve(K, b)` de los anteriores — su firma natural es `solve(K, M, n_modes) → (λ, φ)`.
 - [PENDIENTE: `LDLTSolver` — factorización LDLᵀ para el caso simétrico no definido positivo, reservada para la fase 2 del ADR 0003.]
 - [PENDIENTE: Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.]
 - [PENDIENTE: Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).]
@@ -191,7 +191,7 @@ Algoritmos disponibles:
 
 ## Tipos de análisis
 
-El tipo de análisis en Fenix FEM corresponde al problema físico que afronta el solver, no al solver en sí.
+El tipo de análisis en Solidum FEM corresponde al problema físico que afronta el solver, no al solver en sí.
 
 Implementados en la versión actual:
 

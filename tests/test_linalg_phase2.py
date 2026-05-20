@@ -19,9 +19,9 @@ import scipy.sparse as sp
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import fenix  # autodiscover
-from fenix.math.linalg import LUSolver, StiffnessProperties, select_solver
-from fenix.math.linalg.dispatcher import _HAS_CHOLESKY
+import solidum  # autodiscover
+from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
+from solidum.math.linalg.dispatcher import _HAS_CHOLESKY
 
 
 def _build_spd_matrix(n: int = 50, seed: int = 0) -> sp.csr_matrix:
@@ -60,7 +60,7 @@ class TestLUFactorized(unittest.TestCase):
 class TestCholeskyFactorized(unittest.TestCase):
 
     def test_factorize_then_solve_matches_lu(self):
-        from fenix.math.linalg import CholeskySolver  # type: ignore[attr-defined]
+        from solidum.math.linalg import CholeskySolver  # type: ignore[attr-defined]
 
         K = _build_spd_matrix(n=80, seed=11)
         b = np.sin(np.linspace(0, np.pi, 80))
@@ -72,7 +72,7 @@ class TestCholeskyFactorized(unittest.TestCase):
         np.testing.assert_allclose(x_chol, x_lu, rtol=1e-10, atol=1e-12)
 
     def test_cholesky_factor_reports_zero_negative_pivots(self):
-        from fenix.math.linalg import CholeskySolver  # type: ignore[attr-defined]
+        from solidum.math.linalg import CholeskySolver  # type: ignore[attr-defined]
         K = _build_spd_matrix(n=10)
         factor = CholeskySolver().factorize(K)
         self.assertEqual(factor.n_negative_pivots, 0)
@@ -83,7 +83,7 @@ class TestLDLTPlaceholder(unittest.TestCase):
 
     def setUp(self):
         # Reset del flag de warning una-vez para que se vuelva a emitir.
-        from fenix.math.linalg.ldlt import LDLTSolver
+        from solidum.math.linalg.ldlt import LDLTSolver
         LDLTSolver._warning_emitted = False
 
     def test_override_ldlt_emits_warning_and_returns_lu(self):
@@ -96,7 +96,7 @@ class TestLDLTPlaceholder(unittest.TestCase):
                         f"Esperaba warning sobre LDLTSolver, recibí: {[str(w.message) for w in caught]}")
 
     def test_ldlt_in_registry(self):
-        from fenix.math.linalg.dispatcher import _REGISTRY
+        from solidum.math.linalg.dispatcher import _REGISTRY
         self.assertIn("ldlt", _REGISTRY)
 
 
@@ -109,9 +109,9 @@ class TestNewtonModificado(unittest.TestCase):
     """
 
     def _cantilever_axial(self, F: float = 1000.0):
-        from fenix.core.domain import Domain
-        from fenix.elements.frame import Frame2DEuler
-        from fenix.materials.elastic import Elastic1D
+        from solidum.core.domain import Domain
+        from solidum.elements.frame import Frame2DEuler
+        from solidum.materials.elastic import Elastic1D
 
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0])
@@ -125,9 +125,9 @@ class TestNewtonModificado(unittest.TestCase):
         return dom, n2, F_ext
 
     def test_modified_newton_matches_standard(self):
-        from fenix.math.assembly import Assembler
-        from fenix.math.convergence import ConvergenceCriterion
-        from fenix.math.solvers import NonlinearSolver
+        from solidum.math.assembly import Assembler
+        from solidum.math.convergence import ConvergenceCriterion
+        from solidum.math.solvers import NonlinearSolver
 
         conv = lambda: ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10)
         dom_a, n2_a, F_a = self._cantilever_axial()
@@ -143,9 +143,9 @@ class TestNewtonModificado(unittest.TestCase):
 
     def test_modified_newton_invalidates_factor_between_steps(self):
         """Tras solve(), la factorización congelada debe haberse liberado."""
-        from fenix.math.assembly import Assembler
-        from fenix.math.convergence import ConvergenceCriterion
-        from fenix.math.solvers import NonlinearSolver
+        from solidum.math.assembly import Assembler
+        from solidum.math.convergence import ConvergenceCriterion
+        from solidum.math.solvers import NonlinearSolver
 
         dom, n2, F = self._cantilever_axial()
         solver = NonlinearSolver(Assembler(dom),
@@ -164,9 +164,9 @@ class TestSPDFallback(unittest.TestCase):
     """
 
     def _cantilever_axial(self):
-        from fenix.core.domain import Domain
-        from fenix.elements.frame import Frame2DEuler
-        from fenix.materials.elastic import Elastic1D
+        from solidum.core.domain import Domain
+        from solidum.elements.frame import Frame2DEuler
+        from solidum.materials.elastic import Elastic1D
 
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0])
@@ -181,8 +181,8 @@ class TestSPDFallback(unittest.TestCase):
 
     def _make_failing_cholesky(self):
         """Backend simulado que aborta como si CHOLMOD detectara no-positividad."""
-        from fenix.math import solvers as solvers_module
-        from fenix.math.linalg.lu import LUSolver
+        from solidum.math import solvers as solvers_module
+        from solidum.math.linalg.lu import LUSolver
 
         class _FailingCholesky:
             name = "cholesky"
@@ -194,14 +194,14 @@ class TestSPDFallback(unittest.TestCase):
         return _FailingCholesky, LUSolver
 
     def test_linear_solver_falls_back_to_lu(self):
-        from fenix.math import solvers as solvers_module
-        from fenix.math.solvers import linear as linear_module
-        from fenix.math.assembly import Assembler
+        from solidum.math import solvers as solvers_module
+        from solidum.math.solvers import linear as linear_module
+        from solidum.math.assembly import Assembler
 
         FailingCholesky, _ = self._make_failing_cholesky()
 
         # ``LinearSolver`` resuelve ``select_solver`` por su import propio en
-        # ``fenix.math.solvers.linear``; el monkey-patch debe apuntar a ese
+        # ``solidum.math.solvers.linear``; el monkey-patch debe apuntar a ese
         # submódulo, no al paquete.
         original = linear_module.select_solver
         linear_module.select_solver = lambda props, override=None: FailingCholesky()
@@ -215,10 +215,10 @@ class TestSPDFallback(unittest.TestCase):
             linear_module.select_solver = original
 
     def test_nonlinear_solver_falls_back_to_lu(self):
-        from fenix.math import solvers as solvers_module
-        from fenix.math.solvers import nonlinear as nonlinear_module
-        from fenix.math.assembly import Assembler
-        from fenix.math.linalg.lu import LUSolver as RealLU
+        from solidum.math import solvers as solvers_module
+        from solidum.math.solvers import nonlinear as nonlinear_module
+        from solidum.math.assembly import Assembler
+        from solidum.math.linalg.lu import LUSolver as RealLU
 
         FailingCholesky, _ = self._make_failing_cholesky()
 
@@ -237,7 +237,7 @@ class TestSPDFallback(unittest.TestCase):
         nonlinear_module.select_solver = _patched
         try:
             dom, n2, F = self._cantilever_axial()
-            from fenix.math.convergence import ConvergenceCriterion
+            from solidum.math.convergence import ConvergenceCriterion
             conv = ConvergenceCriterion(rtol_force=1e-10, rtol_disp=1e-10)
             U = solvers_module.NonlinearSolver(Assembler(dom), convergence=conv, num_steps=1).solve(F)
             expected = 1000.0 * 2.0 / (210e9 * 1e-3)

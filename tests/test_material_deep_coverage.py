@@ -21,9 +21,9 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.von_mises_2d import VonMises2D
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.von_mises_2d import VonMises2D
 
 
 # =============================================================================

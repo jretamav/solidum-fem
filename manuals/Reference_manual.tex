@@ -30,7 +30,7 @@
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Referencia - Fenix FEM},
+    pdftitle={Manual de Referencia - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -42,7 +42,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Referencia}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Referencia}}
 \fancyhead[R]{\color{darkgray}\leftmark}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -109,7 +109,7 @@
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
     \vspace{1cm}
     {\LARGE Manual de Referencia \par}
     \vspace{0.5cm}
@@ -134,7 +134,7 @@
 
 \chapter*{Sobre este Manual}
 \addcontentsline{toc}{chapter}{Sobre este Manual}
-\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Fenix FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
+\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Solidum FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
 
 El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
 \begin{center}\texttt{python manuals/build\_reference\_manual.py}\end{center}
@@ -275,7 +275,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Archivo}: solidum/elements/truss.py
   \item \textbf{Clase}: \texttt{Truss2D} (registrada vía \texttt{@ElementRegistry.register})
   \item \textbf{Tests}:
   \item tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2D} --- verifica \texttt{L0}, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.
@@ -442,7 +442,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Archivo}: solidum/elements/truss.py
   \item \textbf{Clase}: \texttt{Truss2DCorot} --- hereda de \texttt{Truss2D} (reutiliza \texttt{\_\_init\_\_}, \texttt{ClassVar}s y metadatos de registro) y sobrescribe \texttt{compute\_element\_state} y \texttt{compute\_internal\_forces} para evaluar cosenos directores y longitud en configuración corriente.
   \item \textbf{Tests}: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2DCorot} --- tres tests, uno por cada \texttt{acceptance}:
   \item \texttt{test\_acceptance\_linear\_limit\_matches\_truss2d} (criterio 1).
@@ -602,7 +602,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Archivo}: solidum/elements/truss.py
   \item \textbf{Clase}: \texttt{Truss3D} --- hereda directamente de \texttt{Element} (sin relación de herencia con \texttt{Truss2D} ni con \texttt{Truss2DCorot}).
   \item \textbf{Tests}: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3D} --- verifica \texttt{L0}, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
   \item \textbf{Notas de traducción}:
@@ -765,7 +765,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/truss.py
+  \item \textbf{Archivo}: solidum/elements/truss.py
   \item \textbf{Clase}: \texttt{Truss3DCorot} --- hereda de \texttt{Truss3D} (reutiliza \texttt{\_\_init\_\_}, tolerancia a nodos 2D/3D, metadatos de registro) y sobrescribe \texttt{compute\_element\_state} y \texttt{compute\_internal\_forces} para evaluar longitud y cosenos directores en configuración corriente.
   \item \textbf{Tests}: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3DCorot} --- tres tests, uno por cada \texttt{acceptance}:
   \item \texttt{test\_acceptance\_linear\_limit\_matches\_truss3d} (criterio 1).
@@ -773,7 +773,7 @@ references:
   \item \texttt{test\_acceptance\_geometric\_stiffness\_transverse\_plane} (criterio 3 --- aplica $\mathbf K_G$ a \textbf{dos} direcciones linealmente independientes del plano perpendicular al eje).
   \item \textbf{Notas de traducción}:
   \item La clave respecto a 2D es el proyector $\mathbf P_3 = \mathbf I - \hat{\mathbf e}\hat{\mathbf e}^\top$ (3\ensuremath{\times}3, rango 2): el plano perpendicular al eje es bidimensional. $\mathbf K_G$ resulta entonces de rango 2, no rango 1.
-  \item El proyector se construye con \texttt{fenix.math.geometry.perpendicular\_projector(ê)}, helper compartido con \texttt{Cable3DCorot} (operación geométrica pura, no específica de armaduras ni de cables).
+  \item El proyector se construye con \texttt{solidum.math.geometry.perpendicular\_projector(ê)}, helper compartido con \texttt{Cable3DCorot} (operación geométrica pura, no específica de armaduras ni de cables).
   \item La longitud corriente $l$ y los cosenos $c_x, c_y, c_z$ se recalculan en cada evaluación (Updated Lagrangian); no se cachean entre llamadas del solver.
   \item Autovalores de $\mathbf K_G$ sobre modos transversos (rotación de la barra alrededor de su centro): $2N/l$ sobre el vector sin normalizar --- igual que en 2D, el factor 2 viene de que el vector de 6 componentes tiene norma $\sqrt 2$. Sobre el versor el autovalor es $N/l$.
 \end{itemize}
@@ -951,7 +951,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/cable.py --- archivo propio, no referencia a los módulos de armadura ni a ningún otro elemento.
+  \item \textbf{Archivo}: solidum/elements/cable.py --- archivo propio, no referencia a los módulos de armadura ni a ningún otro elemento.
   \item \textbf{Clase}: \texttt{Cable2DCorot} --- hereda directamente de \texttt{Element} (no de \texttt{Truss2DCorot} ni de ningún elemento de armadura). La maquinaria cinemática corotacional se reimplementa íntegra dentro de la clase.
   \item \textbf{Tests}: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable2DCorot} --- los cuatro criterios de \texttt{acceptance} más un test de registro:
   \item \texttt{test\_acceptance\_cable\_tensado\_como\_barra\_corot} (criterio 1).
@@ -1135,7 +1135,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/cable.py --- comparte archivo con \texttt{Cable2DCorot} por convención temática del proyecto; no comparte código.
+  \item \textbf{Archivo}: solidum/elements/cable.py --- comparte archivo con \texttt{Cable2DCorot} por convención temática del proyecto; no comparte código.
   \item \textbf{Clase}: \texttt{Cable3DCorot} --- hereda directamente de \texttt{Element} (no de \texttt{Cable2DCorot}, no de \texttt{Truss3DCorot}, no de ningún otro elemento). Maquinaria cinemática 3D autónoma.
   \item \textbf{Tests}: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable3DCorot} --- los 4 criterios de \texttt{acceptance} más un test de registro:
   \item \texttt{test\_acceptance\_cable\_tensado\_como\_barra\_corot\_3d} (criterio 1).
@@ -1145,7 +1145,7 @@ references:
   \item \texttt{test\_registro\_en\_registry} --- autodiscover.
   \item \textbf{Notas de traducción}:
   \item La clase duplica la maquinaria corotacional 3D de \texttt{Truss3DCorot}. Duplicación deliberada por la misma razón que en 2D: desacoplar la evolución futura de armaduras y cables.
-  \item El proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ se construye con \texttt{fenix.math.geometry.perpendicular\_projector(ê)}, helper compartido con \texttt{Truss3DCorot} (operación geométrica pura, ortogonal al hecho de que el material sea unilateral o no).
+  \item El proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ se construye con \texttt{solidum.math.geometry.perpendicular\_projector(ê)}, helper compartido con \texttt{Truss3DCorot} (operación geométrica pura, ortogonal al hecho de que el material sea unilateral o no).
   \item \texttt{\_current\_geometry} tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), heredando la flexibilidad de \texttt{Truss3D} para problemas embebidos.
   \item En estado destensado, $\mathbf K_M = \mathbf 0$ y $\mathbf K_G = \mathbf 0$ simultáneamente; el elemento aporta literalmente ceros al ensamblaje.
   \item El test del criterio 1 compara directamente contra \texttt{Truss3DCorot} con material \texttt{Elastic1D}: si ambos producen $\mathbf K$ y $\mathbf F_{\text{int}}$ iguales a tolerancia, la cinemática del cable y de la barra son consistentes entre sí en el régimen tensado.
@@ -1155,7 +1155,7 @@ references:
 \section{Diálogo}
 
 \begin{itemize}
-  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como pieza totalmente autónoma por decisión del usuario: no hereda de \texttt{Cable2DCorot} ni de \texttt{Truss3DCorot}. Compartir archivo con \texttt{Cable2DCorot} (\texttt{fenix/elements/cable.py}) es convención temática del proyecto (elementos del mismo dominio conviven en un archivo, como las 4 armaduras y los 2 frames 2D en \texttt{structural.py}), no implica dependencia de código.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como pieza totalmente autónoma por decisión del usuario: no hereda de \texttt{Cable2DCorot} ni de \texttt{Truss3DCorot}. Compartir archivo con \texttt{Cable2DCorot} (\texttt{solidum/elements/cable.py}) es convención temática del proyecto (elementos del mismo dominio conviven en un archivo, como las 4 armaduras y los 2 frames 2D en \texttt{structural.py}), no implica dependencia de código.
   \item \textbf{2026-04-21} \ensuremath{\cdot} La única diferencia estructural con \texttt{Cable2DCorot} es el proyector 3D: en 2D la perpendicular es un vector único ($\mathbf n$); en 3D es un plano (dimensión 2). Esto se refleja en el rango de $\mathbf K_G$: 1 en 2D, 2 en 3D.
 \end{itemize}
 
@@ -1355,8 +1355,8 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame/euler.py --- submódulo del paquete \texttt{fenix/elements/frame/} que aloja también \texttt{Frame2DTimoshenko} y \texttt{Frame2DEulerCorot}.
-  \item \textbf{Clase}: \texttt{Frame2DEuler} --- hereda directamente de \texttt{Element}. La construcción de la matriz de transformación $\mathbf T$ se delega a \texttt{build\_geometry\_2d} en fenix/elements/frame/\_shared.py, compartida con \texttt{Frame2DTimoshenko} (la versión corotacional reconstruye $\mathbf T$ desde \texttt{alpha0} por su lógica propia).
+  \item \textbf{Archivo}: solidum/elements/frame/euler.py --- submódulo del paquete \texttt{solidum/elements/frame/} que aloja también \texttt{Frame2DTimoshenko} y \texttt{Frame2DEulerCorot}.
+  \item \textbf{Clase}: \texttt{Frame2DEuler} --- hereda directamente de \texttt{Element}. La construcción de la matriz de transformación $\mathbf T$ se delega a \texttt{build\_geometry\_2d} en solidum/elements/frame/\_shared.py, compartida con \texttt{Frame2DTimoshenko} (la versión corotacional reconstruye $\mathbf T$ desde \texttt{alpha0} por su lógica propia).
   \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerAcceptance} --- los tres criterios físicos y el registro:
   \item \texttt{test\_acceptance\_respuesta\_axial\_pura} (criterio 1) --- resuelve el voladizo con solver, verifica $u_x(L) = FL/(EA)$.
   \item \texttt{test\_acceptance\_voladizo\_carga\_transversal} (criterio 2) --- carga transversal $P$, verifica flecha $v = PL^3/(3EI)$ y rotación $\theta = PL^2/(2EI)$.
@@ -1372,9 +1372,9 @@ references:
 \section{Diálogo}
 
 \begin{itemize}
-  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{fenix/elements/frame.py} y desacoplado del helper compartido \texttt{\_frame\_geometry}. El método estático \texttt{\_build\_geometry} reimplementa la construcción de $\mathbf T$ dentro de la clase. \texttt{Frame2DTimoshenko} sigue en \texttt{structural.py} usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{solidum/elements/frame.py} y desacoplado del helper compartido \texttt{\_frame\_geometry}. El método estático \texttt{\_build\_geometry} reimplementa la construcción de $\mathbf T$ dentro de la clase. \texttt{Frame2DTimoshenko} sigue en \texttt{structural.py} usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto --- validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
-  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{fenix/elements/frame/\{euler,timoshenko,euler\_corot,\_shared\}.py}. La duplicación de \texttt{\_build\_geometry} entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (\texttt{build\_geometry\_2d} en \texttt{\_shared.py}), pero esta vez sin función helper externa flotante --- pertenece al paquete \texttt{frame/}. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde \texttt{alpha0} porque su cinemática corotacional no se beneficia del helper común.
+  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{solidum/elements/frame/\{euler,timoshenko,euler\_corot,\_shared\}.py}. La duplicación de \texttt{\_build\_geometry} entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (\texttt{build\_geometry\_2d} en \texttt{\_shared.py}), pero esta vez sin función helper externa flotante --- pertenece al paquete \texttt{frame/}. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde \texttt{alpha0} porque su cinemática corotacional no se beneficia del helper común.
 \end{itemize}
 
 
@@ -1566,8 +1566,8 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame/timoshenko.py --- submódulo del paquete \texttt{fenix/elements/frame/} que aloja también \texttt{Frame2DEuler} y \texttt{Frame2DEulerCorot}.
-  \item \textbf{Clase}: \texttt{Frame2DTimoshenko} --- hereda directamente de \texttt{Element}, sin herencia con las otras vigas 2D. Comparte \texttt{build\_geometry\_2d} con \texttt{Frame2DEuler} en fenix/elements/frame/\_shared.py; además, los helpers libres de carga de cuerpo, masa consistente y traducción a \texttt{ElementForces} también viven en \texttt{\_shared.py}.
+  \item \textbf{Archivo}: solidum/elements/frame/timoshenko.py --- submódulo del paquete \texttt{solidum/elements/frame/} que aloja también \texttt{Frame2DEuler} y \texttt{Frame2DEulerCorot}.
+  \item \textbf{Clase}: \texttt{Frame2DTimoshenko} --- hereda directamente de \texttt{Element}, sin herencia con las otras vigas 2D. Comparte \texttt{build\_geometry\_2d} con \texttt{Frame2DEuler} en solidum/elements/frame/\_shared.py; además, los helpers libres de carga de cuerpo, masa consistente y traducción a \texttt{ElementForces} también viven en \texttt{\_shared.py}.
   \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DTimoshenkoAcceptance}:
   \item \texttt{test\_acceptance\_convergencia\_euler\_en\_viga\_esbelta} (criterio 1) --- viga con $L/h$ muy grande, verifica que la flecha tiende a $PL^3/(3EI)$ con tolerancia relativa $10^{-3}$.
   \item \texttt{test\_acceptance\_respuesta\_axial\_pura} (criterio 2) --- carga axial pura, verifica $u_x = FL/(EA)$.
@@ -1584,9 +1584,9 @@ references:
 \section{Diálogo}
 
 \begin{itemize}
-  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{fenix/elements/frame.py} y desacoplado del helper \texttt{\_frame\_geometry}. Con este movimiento, el helper compartido se elimina completamente del repositorio: \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} replican la construcción de $\mathbf T$ como método estático \texttt{\_build\_geometry}, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
+  \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{solidum/elements/frame.py} y desacoplado del helper \texttt{\_frame\_geometry}. Con este movimiento, el helper compartido se elimina completamente del repositorio: \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} replican la construcción de $\mathbf T$ como método estático \texttt{\_build\_geometry}, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Test del criterio 1: se eligió $L/h$ grande en lugar de reproducir un caso específico de libro porque la convergencia Timoshenko \ensuremath{\to} Euler es el comportamiento \textbf{esperado por construcción} (factor $\Phi \to 0$). Verificarlo directamente con el solver completo valida simultáneamente la cinemática de Timoshenko, el tratamiento del shear locking y la integración con ensamblador + solver.
-  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{fenix/elements/frame/}. La duplicación de \texttt{\_build\_geometry} ya no se justifica: ambas vigas comparten \texttt{build\_geometry\_2d} en \texttt{\_shared.py}, helper interno al paquete (no flotante). Las clases siguen sin herencia entre sí.
+  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{solidum/elements/frame/}. La duplicación de \texttt{\_build\_geometry} ya no se justifica: ambas vigas comparten \texttt{build\_geometry\_2d} en \texttt{\_shared.py}, helper interno al paquete (no flotante). Las clases siguen sin herencia entre sí.
 \end{itemize}
 
 
@@ -1801,7 +1801,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame/euler\_corot.py --- convive con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} en el paquete \texttt{fenix/elements/frame/}, sin heredar de ninguno. Comparte con ellos los helpers libres de \_shared.py (carga de cuerpo, masa consistente, traducción a \texttt{ElementForces}), pero no \texttt{build\_geometry\_2d}: reconstruye \texttt{T} desde \texttt{alpha0} por su lógica corotacional propia.
+  \item \textbf{Archivo}: solidum/elements/frame/euler\_corot.py --- convive con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} en el paquete \texttt{solidum/elements/frame/}, sin heredar de ninguno. Comparte con ellos los helpers libres de \_shared.py (carga de cuerpo, masa consistente, traducción a \texttt{ElementForces}), pero no \texttt{build\_geometry\_2d}: reconstruye \texttt{T} desde \texttt{alpha0} por su lógica corotacional propia.
   \item \textbf{Clase}: \texttt{Frame2DEulerCorot} --- hereda directamente de \texttt{Element}. Métodos internos \texttt{\_current\_geometry} (longitud, cosenos, ángulo corriente y rigid-body $\alpha_e$) y \texttt{\_unwrap} (reducción a $(-\pi, \pi]$).
   \item \textbf{Tests}: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerCorotAcceptance} --- 4 criterios + registro:
   \item \texttt{test\_acceptance\_limite\_lineal\_coincide\_con\_frame2deuler}
@@ -1821,7 +1821,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación siguiendo Crisfield §7.3. Convive en \texttt{frame.py} con las vigas lineales por familia temática (todas son vigas 2D), sin herencia ni helpers compartidos.
-  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{fenix/elements/frame/}. EulerCorot vive ahora en \texttt{euler\_corot.py}, sin herencia con las otras vigas 2D. Pasan a compartirse los helpers libres de carga de cuerpo, masa y traducción de fuerzas a través de \texttt{\_shared.py}; la lógica corotacional propia (reconstrucción de \texttt{T} desde \texttt{alpha0}, cinemática actual) se mantiene íntegra dentro de la clase.
+  \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{solidum/elements/frame/}. EulerCorot vive ahora en \texttt{euler\_corot.py}, sin herencia con las otras vigas 2D. Pasan a compartirse los helpers libres de carga de cuerpo, masa y traducción de fuerzas a través de \texttt{\_shared.py}; la lógica corotacional propia (reconstrucción de \texttt{T} desde \texttt{alpha0}, cinemática actual) se mantiene íntegra dentro de la clase.
   \item \textbf{2026-04-21} \ensuremath{\cdot} La primera versión tenía el signo equivocado en la parte de momentos de $\mathbf K_\sigma$ ($+$ en lugar de $-$). El test de coherencia tangente/fuerza interna por diferencias finitas lo detectó inmediatamente: $\|\mathbf K_{T,\text{analítica}} - \mathbf K_{T,\text{FD}}\|_{\text{rel}}$ del orden de 1e-1 en lugar de 1e-5. Tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ cuidadosamente (ver notas) el signo correcto es negativo. Este episodio justifica retrospectivamente incluir un test FD como criterio de aceptación en toda formulación no-lineal geométrica futura.
   \item \textbf{2026-04-21} \ensuremath{\cdot} El test del límite lineal usa $P=10$ N para obtener $v/L \sim 10^{-4}$: suficientemente pequeño para estar en régimen lineal pero suficientemente grande para que el residuo del solver converja por debajo de \texttt{tol=1e-8} (cargas menores producen desplazamientos del orden del ruido numérico y el Newton oscila en la tolerancia relativa).
 \end{itemize}
@@ -2044,7 +2044,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/frame3d.py --- archivo propio, sin dependencia de ningún otro elemento.
+  \item \textbf{Archivo}: solidum/elements/frame3d.py --- archivo propio, sin dependencia de ningún otro elemento.
   \item \textbf{Clase}: \texttt{Frame3D} --- hereda directamente de \texttt{Element}. Métodos privados \texttt{\_build\_local\_frame} (longitud, matriz $\boldsymbol{\lambda}$ 3\ensuremath{\times}3 y $\mathbf T$ 12\ensuremath{\times}12) y \texttt{\_build\_local\_stiffness} (matriz $\mathbf K_{\text{local}}$ 12\ensuremath{\times}12 con bloques axial, torsión y flexión en ambos planos).
   \item \textbf{Tests}: tests/test\_frame3d.py \ensuremath{\cdot} \texttt{TestFrame3DAcceptance} --- cubre los 5 criterios + validación de \texttt{ref\_vector} paralelo al eje + registro:
   \item \texttt{test\_acceptance\_respuesta\_axial\_pura}
@@ -2260,9 +2260,9 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad4.py
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/quad4.py
   \item \textbf{Clase}: \texttt{Quad4} (registrada vía \texttt{@ElementRegistry.register})
-  \item \textbf{Funciones núcleo}: \texttt{\_compute\_kinematics(xi, eta, coords)} y \texttt{\_compute\_integrands(B, C, \ensuremath{\sigma}, detJ, w, t)}, ambas decoradas con \texttt{@njit} (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran. Viven en fenix/elements/solid\_2d/\_shared.py y se comparten con Tri3.
+  \item \textbf{Funciones núcleo}: \texttt{\_compute\_kinematics(xi, eta, coords)} y \texttt{\_compute\_integrands(B, C, \ensuremath{\sigma}, detJ, w, t)}, ambas decoradas con \texttt{@njit} (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran. Viven en solidum/elements/solid\_2d/\_shared.py y se comparten con Tri3.
   \item \textbf{Tests}:
   \item tests/test\_solid\_2d.py --- ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
   \item tests/test\_patch\_solid\_2d.py --- patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V\&V).
@@ -2454,7 +2454,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri3.py
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/tri3.py
   \item \textbf{Clase}: \texttt{Tri3} (registrada vía \texttt{@ElementRegistry.register})
   \item \textbf{Función núcleo}: \texttt{\_compute\_kinematics\_tri3(coords)}, decorada con \texttt{@njit}, en \_shared.py. Reutiliza \texttt{\_compute\_integrands} (también en \texttt{\_shared}, compartido con Quad4) con peso $w = 0{.}5$.
   \item \textbf{Tests}:
@@ -2622,7 +2622,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py \ensuremath{\cdot} clase \texttt{Quad8} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad9 y Tri6).
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/quad8.py \ensuremath{\cdot} clase \texttt{Quad8} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad9 y Tri6).
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
 \end{itemize}
 
@@ -2696,7 +2696,7 @@ acceptance:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py \ensuremath{\cdot} clase \texttt{Quad9} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Tri6).
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/quad9.py \ensuremath{\cdot} clase \texttt{Quad9} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Tri6).
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
 \end{itemize}
 
@@ -2770,7 +2770,7 @@ acceptance:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py \ensuremath{\cdot} clase \texttt{Tri6} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Quad9). Declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (\texttt{tri\_3}, orden 2) subintegra el producto cuadrático\ensuremath{\times}cuadrático de la masa consistente.
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/tri6.py \ensuremath{\cdot} clase \texttt{Tri6} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Quad9). Declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (\texttt{tri\_3}, orden 2) subintegra el producto cuadrático\ensuremath{\times}cuadrático de la masa consistente.
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py (patch cuadrático), tests/test\_cooks\_membrane.py (benchmark Bathe/Hughes con malla triangulada 4\ensuremath{\times}4 + refinamiento monótono, añadido Fase B 2026-05-19).
 \end{itemize}
 
@@ -2887,7 +2887,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/materials/cable\_1d.py --- archivo propio, sin dependencia de otros módulos de material salvo la clase base \texttt{Material}.
+  \item \textbf{Archivo}: solidum/materials/cable\_1d.py --- archivo propio, sin dependencia de otros módulos de material salvo la clase base \texttt{Material}.
   \item \textbf{Clase}: \texttt{CableMaterial1D} --- hereda directamente de \texttt{Material} (no de \texttt{Elastic1D} ni de ningún otro material), registrada vía \texttt{@MaterialRegistry.register}.
   \item \textbf{Tests}: tests/test\_cable\_material.py \ensuremath{\cdot} \texttt{TestCableMaterial1D} --- seis tests:
   \item \texttt{test\_acceptance\_tension\_pura} (criterio 1).
@@ -3295,7 +3295,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/materials/von\_mises\_2d.py.
+  \item \textbf{Archivo}: solidum/materials/von\_mises\_2d.py.
   \item \textbf{Clase}: \texttt{VonMises2D}, registrada vía \texttt{@MaterialRegistry.register}. Despacho por \texttt{hypothesis} en construcción (sin coste runtime).
   \item \textbf{Kernels Numba}:
   \item \texttt{\_compute\_j2\_plane\_strain}: descomposición volumétrica-desviadora 3D ($\varepsilon^p_{zz}$ libre), return mapping radial cerrado, tangente algorítmica consistente cerrada. Predictor elástico construido como $\mathbf s_\text{trial} + p\mathbf I$ con $\mathbf s_\text{trial} = 2G(\mathbf e^\text{dev} - \boldsymbol\varepsilon^p_n)$ --- respeta $\boldsymbol\varepsilon^p_n$ en descargas/reevaluaciones.
@@ -3502,7 +3502,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/materials/damage\_1d.py.
+  \item \textbf{Archivo}: solidum/materials/damage\_1d.py.
   \item \textbf{Clase}: \texttt{IsotropicDamage1D}, registrada vía \texttt{@MaterialRegistry.register}. \texttt{IS\_SYMMETRIC} queda \texttt{True} (default heredado de \texttt{Material}) --- la contribución elemental es simétrica aunque pueda ser indefinida.
   \item \textbf{Algoritmo \texttt{compute\_state}}:
 \end{itemize}
@@ -3595,7 +3595,7 @@ d(\kappa) = \begin{cases}
 \end{cases}
 \]
 
-con saturación numérica $d \leq d_\text{max} = $ \texttt{DAMAGE\_MAX} (\texttt{fenix.constants.DAMAGE\_MAX}, evita rigidez nula).
+con saturación numérica $d \leq d_\text{max} = $ \texttt{DAMAGE\_MAX} (\texttt{solidum.constants.DAMAGE\_MAX}, evita rigidez nula).
 
 Propiedades:
 \begin{itemize}
@@ -3805,7 +3805,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/materials/damage\_2d.py.
+  \item \textbf{Archivo}: solidum/materials/damage\_2d.py.
   \item \textbf{Clase}: \texttt{IsotropicDamage2D}, registrada vía \texttt{@MaterialRegistry.register}. Declara \texttt{IS\_SYMMETRIC = False} como ClassVar (sobreescribe el default \texttt{True} de \texttt{Material}).
   \item \textbf{Estado}: dict \texttt{\{'kappa': float, 'damage': float\}}. \texttt{PRIMARY\_STATE\_VAR = 'damage'}.
   \item \textbf{Algoritmo \texttt{compute\_state}}:
@@ -4245,7 +4245,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/materials/drucker\_prager\_2d.py.
+  \item \textbf{Archivo}: solidum/materials/drucker\_prager\_2d.py.
   \item \textbf{Clase}: \texttt{DruckerPrager2D}, registrada vía \texttt{@MaterialRegistry.register}. \texttt{IS\_SYMMETRIC = False} declarativo (la tangente puede ser asimétrica; el despachador agrega el flag sobre todos los materiales del dominio).
   \item \textbf{Kernel Numba} \texttt{\_compute\_drucker\_prager\_plane\_strain}:
 \end{itemize}
@@ -4450,10 +4450,10 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/math/solvers/modal.py (clase \texttt{ModalSolver}, registrada vía \texttt{@SolverRegistry.register}).
-  \item \textbf{Backend algebraico}: fenix/math/linalg/eigen.py (clase \texttt{EigenSolver} envolviendo \texttt{scipy.sparse.linalg.eigsh}).
+  \item \textbf{Archivo}: solidum/math/solvers/modal.py (clase \texttt{ModalSolver}, registrada vía \texttt{@SolverRegistry.register}).
+  \item \textbf{Backend algebraico}: solidum/math/linalg/eigen.py (clase \texttt{EigenSolver} envolviendo \texttt{scipy.sparse.linalg.eigsh}).
   \item \textbf{Tipo de resultado}: \texttt{ModalResult} --- dataclass frozen con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes}, \texttt{n\_modes}, \texttt{converged}. Expone \texttt{free\_vibration(M, u0, u0\_dot, t)} para reconstruir analíticamente la respuesta temporal de vibración libre sin amortiguamiento por superposición modal --- solución cerrada de \texttt{M\ensuremath{\cdot}ü + K\ensuremath{\cdot}u = 0} proyectada sobre los modos calculados (modos rígidos tratados aparte con evolución lineal \texttt{q\_n(t) = a\_n + b\_n\ensuremath{\cdot}t}).
-  \item \textbf{Entrypoint público}: \texttt{fenix.run\_modal} para uso programático; \texttt{fenix.run\_yaml} despacha automáticamente a \texttt{run\_modal} cuando el YAML declara \texttt{solver: type: ModalSolver}.
+  \item \textbf{Entrypoint público}: \texttt{solidum.run\_modal} para uso programático; \texttt{solidum.run\_yaml} despacha automáticamente a \texttt{run\_modal} cuando el YAML declara \texttt{solver: type: ModalSolver}.
   \item \textbf{Pipeline}: \texttt{Assembler.assemble\_system()} \ensuremath{\to} \texttt{Assembler.assemble\_mass\_matrix()} \ensuremath{\to} \texttt{Assembler.reduce\_pair(K, M)} \ensuremath{\to} \texttt{EigenSolver.solve(K\_red, M\_red, n\_modes)} \ensuremath{\to} expansión \texttt{\ensuremath{\Phi} = T \ensuremath{\cdot} \ensuremath{\Phi}\_red} \ensuremath{\to} \texttt{ModalResult}.
   \item \textbf{Caché}: \texttt{Assembler} cachea \texttt{M\_global} con el lumping usado; reusos posteriores del mismo análisis no recomputan.
   \item \textbf{Validación de density}: pre-chequeo agregado en \texttt{Assembler.assemble\_mass\_matrix} con el mismo patrón de ADR 0008 --- \texttt{assemble\_self\_weight}.
@@ -4681,10 +4681,10 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewmarkSolver}, registrada vía \texttt{@SolverRegistry.register}).
-  \item \textbf{Amortiguamiento}: fenix/math/damping.py (\texttt{rayleigh\_from\_modes}, \texttt{rayleigh\_xi}).
+  \item \textbf{Archivo}: solidum/math/solvers/newmark.py (clase \texttt{NewmarkSolver}, registrada vía \texttt{@SolverRegistry.register}).
+  \item \textbf{Amortiguamiento}: solidum/math/damping.py (\texttt{rayleigh\_from\_modes}, \texttt{rayleigh\_xi}).
   \item \textbf{Tipo de resultado}: \texttt{TransientResult} --- dataclass frozen con \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history}, \texttt{n\_steps}, \texttt{alpha\_rayleigh}, \texttt{beta\_rayleigh}, \texttt{converged}.
-  \item \textbf{Entrypoint público}: \texttt{fenix.run\_transient} para uso programático; \texttt{fenix.run\_yaml} despacha automáticamente cuando el YAML declara \texttt{solver: type: NewmarkSolver}.
+  \item \textbf{Entrypoint público}: \texttt{solidum.run\_transient} para uso programático; \texttt{solidum.run\_yaml} despacha automáticamente cuando el YAML declara \texttt{solver: type: NewmarkSolver}.
   \item \textbf{Pipeline}: \texttt{Assembler.assemble\_system()} \ensuremath{\to} \texttt{Assembler.assemble\_mass\_matrix()} \ensuremath{\to} \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K} \ensuremath{\to} reducción simultánea por Dirichlet (operador \texttt{T}) \ensuremath{\to} cálculo de \texttt{ü\ensuremath{_{0}}} \ensuremath{\to} factorización única de \texttt{A\_eff\_red = M\_red + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C\_red + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_red} \ensuremath{\to} bucle de pasos con resolución triangular reutilizada.
   \item \textbf{Tests}:
   \item tests/test\_newmark.py --- 14 tests:
@@ -4837,7 +4837,7 @@ interface:
   pipeline_kind: transient    # mismo que NewmarkSolver
 
 parameters_extra_to_NewmarkSolver:
-  - { name: convergence,                type: ConvergenceCriterion, required: false, desc: "Política ADR 0007. Default: ConvergenceCriterion() con rtols de fenix.constants." }
+  - { name: convergence,                type: ConvergenceCriterion, required: false, desc: "Política ADR 0007. Default: ConvergenceCriterion() con rtols de solidum.constants." }
   - { name: max_iter,                   type: int,                 required: false, default: 20, desc: "Máximo iteraciones Newton por paso temporal." }
   - { name: freeze_tangent_after_iter,  type: int or None,          required: false, default: null, desc: "Si int, Newton modificado: factoriza fresco las primeras N iter y reusa después (ADR 0003 fase 2)." }
 
@@ -4881,7 +4881,7 @@ references:
 \section{Implementación}
 
 \begin{itemize}
-  \item \textbf{Archivo}: fenix/math/solvers/newmark.py --- junto al padre.
+  \item \textbf{Archivo}: solidum/math/solvers/newmark.py --- junto al padre.
   \item \textbf{Clase}: \texttt{NewtonNewmarkSolver(NewmarkSolver)}, registrada con \texttt{@SolverRegistry.register}. Hereda \texttt{\_\_init\_\_} con kwargs adicionales \texttt{convergence}, \texttt{max\_iter}, \texttt{freeze\_tangent\_after\_iter}. Sobrescribe \texttt{solve()}.
   \item \textbf{Flujo de \texttt{solve()}}:
 \end{itemize}
@@ -4969,7 +4969,7 @@ F_int = σ·A · d
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2D}.
-  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss2D}.
+  \item Archivo fuente: solidum/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss2D}.
   \item Spec: docs/specs/Truss2D.md.
   \item Referencia: Bathe, \textit{Finite Element Procedures}, §4.2.1.
 \end{itemize}
@@ -5012,7 +5012,7 @@ F_int = N · d
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss2DCorot} (3 tests, uno por criterio de aceptación).
-  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss2DCorot}.
+  \item Archivo fuente: solidum/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss2DCorot}.
   \item Spec: docs/specs/Truss2DCorot.md.
   \item Referencias: Crisfield §3.3, Belytschko §4.5.
 \end{itemize}
@@ -5067,7 +5067,7 @@ F_int = σ·A · d
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3D}.
-  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss3D}.
+  \item Archivo fuente: solidum/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss3D}.
   \item Spec: docs/specs/Truss3D.md.
   \item Referencias: Bathe §4.2.1; Cook §2.3.
 \end{itemize}
@@ -5111,7 +5111,7 @@ F_int = N · d
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_truss.py \ensuremath{\cdot} \texttt{TestTruss3DCorot} (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
-  \item Archivo fuente: fenix/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss3DCorot}.
+  \item Archivo fuente: solidum/elements/truss.py \ensuremath{\cdot} clase \texttt{Truss3DCorot}.
   \item Spec: docs/specs/Truss3DCorot.md.
   \item Referencias: Crisfield §3.3; Belytschko §4.5.
 \end{itemize}
@@ -5158,7 +5158,7 @@ El elemento \textbf{no hereda} de \texttt{Truss2DCorot}. La cinemática corotaci
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable2DCorot} (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
-  \item Archivo fuente: fenix/elements/cable.py \ensuremath{\cdot} clase \texttt{Cable2DCorot}.
+  \item Archivo fuente: solidum/elements/cable.py \ensuremath{\cdot} clase \texttt{Cable2DCorot}.
   \item Spec: docs/specs/Cable2DCorot.md.
   \item Referencias: Crisfield §3.3; Irvine §1.2.
 \end{itemize}
@@ -5205,7 +5205,7 @@ No hereda de \texttt{Cable2DCorot} ni de \texttt{Truss3DCorot}. La maquinaria ci
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_cable\_elements.py \ensuremath{\cdot} \texttt{TestCable3DCorot} (4 tests de aceptación).
-  \item Archivo fuente: fenix/elements/cable.py \ensuremath{\cdot} clase \texttt{Cable3DCorot}.
+  \item Archivo fuente: solidum/elements/cable.py \ensuremath{\cdot} clase \texttt{Cable3DCorot}.
   \item Spec: docs/specs/Cable3DCorot.md.
   \item Referencias: Crisfield §3.3; Belytschko §4.5; Irvine §1.2.
 \end{itemize}
@@ -5249,12 +5249,12 @@ F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del mate
 \end{itemize}
 
 \subsection{Independencia del diseño}
-Vive en el paquete \texttt{fenix/elements/frame/} junto a \texttt{Frame2DTimoshenko} y \texttt{Frame2DEulerCorot}, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6\ensuremath{\times}6 se delega a \texttt{build\_geometry\_2d} en \texttt{fenix/elements/frame/\_shared.py}, compartida con \texttt{Frame2DTimoshenko} (la versión corotacional reconstruye T desde \texttt{alpha0} por su lógica propia).
+Vive en el paquete \texttt{solidum/elements/frame/} junto a \texttt{Frame2DTimoshenko} y \texttt{Frame2DEulerCorot}, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6\ensuremath{\times}6 se delega a \texttt{build\_geometry\_2d} en \texttt{solidum/elements/frame/\_shared.py}, compartida con \texttt{Frame2DTimoshenko} (la versión corotacional reconstruye T desde \texttt{alpha0} por su lógica propia).
 
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerAcceptance} (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
-  \item Archivo fuente: fenix/elements/frame/euler.py \ensuremath{\cdot} clase \texttt{Frame2DEuler}.
+  \item Archivo fuente: solidum/elements/frame/euler.py \ensuremath{\cdot} clase \texttt{Frame2DEuler}.
   \item Spec: docs/specs/Frame2DEuler.md.
   \item Referencias: Bathe cap. 5; Cook §2.7.
 \end{itemize}
@@ -5311,12 +5311,12 @@ Para \texttt{\ensuremath{\Phi} \ensuremath{\to} 0} (viga esbelta) se recupera la
 \end{itemize}
 
 \subsection{Independencia del diseño}
-Vive en el paquete \texttt{fenix/elements/frame/}, sin herencia con las otras vigas 2D. Comparte \texttt{build\_geometry\_2d} con \texttt{Frame2DEuler} en \texttt{fenix/elements/frame/\_shared.py} --- la construcción de la matriz de transformación 6\ensuremath{\times}6 ya no se duplica.
+Vive en el paquete \texttt{solidum/elements/frame/}, sin herencia con las otras vigas 2D. Comparte \texttt{build\_geometry\_2d} con \texttt{Frame2DEuler} en \texttt{solidum/elements/frame/\_shared.py} --- la construcción de la matriz de transformación 6\ensuremath{\times}6 ya no se duplica.
 
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DTimoshenkoAcceptance} (convergencia a Euler en viga esbelta, axial puro, simetría).
-  \item Archivo fuente: fenix/elements/frame/timoshenko.py \ensuremath{\cdot} clase \texttt{Frame2DTimoshenko}.
+  \item Archivo fuente: solidum/elements/frame/timoshenko.py \ensuremath{\cdot} clase \texttt{Frame2DTimoshenko}.
   \item Spec: docs/specs/Frame2DTimoshenko.md.
   \item Referencias: Reddy cap. 5; Bathe §5.4.
 \end{itemize}
@@ -5365,12 +5365,12 @@ con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
 Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, brazos flexibles, cables con rigidez a flexión. Problemas que la viga lineal \texttt{Frame2DEuler} no puede atacar.
 
 \subsection{Independencia del diseño}
-Vive en el paquete \texttt{fenix/elements/frame/} junto a las otras vigas 2D, \textbf{sin herencia}: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye \texttt{T} desde \texttt{alpha0} en lugar de usar \texttt{build\_geometry\_2d} compartido). Sí comparte con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} los helpers libres de \texttt{\_shared.py} para carga de cuerpo (\texttt{\_frame2d\_consistent\_body\_load}), masa (\texttt{\_frame2d\_consistent\_mass\_local}) y traducción a \texttt{ElementForces} (\texttt{\_frame2d\_forces\_from\_local}).
+Vive en el paquete \texttt{solidum/elements/frame/} junto a las otras vigas 2D, \textbf{sin herencia}: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye \texttt{T} desde \texttt{alpha0} en lugar de usar \texttt{build\_geometry\_2d} compartido). Sí comparte con \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} los helpers libres de \texttt{\_shared.py} para carga de cuerpo (\texttt{\_frame2d\_consistent\_body\_load}), masa (\texttt{\_frame2d\_consistent\_mass\_local}) y traducción a \texttt{ElementForces} (\texttt{\_frame2d\_forces\_from\_local}).
 
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_frame.py \ensuremath{\cdot} \texttt{TestFrame2DEulerCorotAcceptance} (4 criterios físicos + \textbf{chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$} + registro).
-  \item Archivo fuente: fenix/elements/frame/euler\_corot.py \ensuremath{\cdot} clase \texttt{Frame2DEulerCorot}.
+  \item Archivo fuente: solidum/elements/frame/euler\_corot.py \ensuremath{\cdot} clase \texttt{Frame2DEulerCorot}.
   \item Spec: docs/specs/Frame2DEulerCorot.md.
   \item Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
 \end{itemize}
@@ -5433,7 +5433,7 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
 \subsection{Validación}
 \begin{itemize}
   \item Tests: tests/test\_frame3d.py \ensuremath{\cdot} \texttt{TestFrame3DAcceptance} (5 criterios físicos + validación de \texttt{ref\_vector} + registro).
-  \item Archivo fuente: fenix/elements/frame3d.py \ensuremath{\cdot} clase \texttt{Frame3D}.
+  \item Archivo fuente: solidum/elements/frame3d.py \ensuremath{\cdot} clase \texttt{Frame3D}.
   \item Spec: docs/specs/Frame3D.md.
   \item Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
 \end{itemize}
@@ -5449,9 +5449,9 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Parámetros}: \texttt{thickness} (espesor para estado plano), \texttt{quadrature} (opcional).
   \item \textbf{Cargas distribuidas}: \texttt{compute\_body\_load(b)} integra $\int \mathbf N^\top \mathbf b\, dV$ sobre el elemento; \texttt{compute\_edge\_traction(edge, t̄)} reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
   \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} devuelve \ensuremath{\sigma}, \ensuremath{\varepsilon} y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (\texttt{Sigma\_*\_nodal}).
-  \item \textbf{Implementación}: kernels \texttt{\_compute\_kinematics} y \texttt{\_compute\_integrands} con \texttt{@njit} (Numba) --- JIT en primera llamada. Viven en \texttt{fenix/elements/solid\_2d/\_shared.py}, compartidos con Tri3.
+  \item \textbf{Implementación}: kernels \texttt{\_compute\_kinematics} y \texttt{\_compute\_integrands} con \texttt{@njit} (Numba) --- JIT en primera llamada. Viven en \texttt{solidum/elements/solid\_2d/\_shared.py}, compartidos con Tri3.
   \item \textbf{Limitaciones}: bloqueo volumétrico con materiales casi-incompresibles (\ensuremath{\nu} \ensuremath{\to} 0.5); en ese régimen usar formulación mixta (no implementada).
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad4.py
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/quad4.py
 \end{itemize}
 
 
@@ -5466,8 +5466,8 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Cargas distribuidas}: \texttt{compute\_body\_load(b)} reparte 1/3 a cada nodo (exacto para b uniforme); \texttt{compute\_edge\_traction(edge, t̄)} reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
   \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} devuelve el único \ensuremath{\sigma}, \ensuremath{\varepsilon} y centroide del elemento (mismo formato que Quad4).
   \item \textbf{Limitaciones}: shear locking severo; convergencia lenta. \textbf{Preferir \texttt{Quad4}} salvo en transiciones donde Quad4 no encaja geométricamente.
-  \item \textbf{Implementación}: kernel \texttt{\_compute\_kinematics\_tri3} con \texttt{@njit} en \texttt{fenix/elements/solid\_2d/\_shared.py}.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri3.py
+  \item \textbf{Implementación}: kernel \texttt{\_compute\_kinematics\_tri3} con \texttt{@njit} en \texttt{solidum/elements/solid\_2d/\_shared.py}.
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/tri3.py
 \end{itemize}
 
 
@@ -5481,7 +5481,7 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Cargas}: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
   \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} con 9 puntos por defecto.
   \item \textbf{Spec}: docs/specs/Quad8.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad8.py (subclase de la base interna \texttt{\_HigherOrderSolid2D} definida en \texttt{\_shared.py}, compartida con Quad9 y Tri6).
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/quad8.py (subclase de la base interna \texttt{\_HigherOrderSolid2D} definida en \texttt{\_shared.py}, compartida con Quad9 y Tri6).
 \end{itemize}
 
 
@@ -5494,7 +5494,7 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Integración}: Gauss 3\ensuremath{\times}3.
   \item \textbf{Cargas y salida por Gauss}: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
   \item \textbf{Spec}: docs/specs/Quad9.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/quad9.py (subclase de la base interna \texttt{\_HigherOrderSolid2D}, compartida con Quad8 y Tri6).
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/quad9.py (subclase de la base interna \texttt{\_HigherOrderSolid2D}, compartida con Quad8 y Tri6).
 \end{itemize}
 
 
@@ -5506,7 +5506,53 @@ Archivo propio. No hereda ni comparte helpers con \texttt{Frame2DEuler}, \texttt
   \item \textbf{Integración}: 3 puntos en los puntos medios (cuadratura \texttt{tri\_3}).
   \item \textbf{Cargas}: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
   \item \textbf{Spec}: docs/specs/Tri6.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/tri6.py (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \texttt{\_shared.py}, compartida con Quad8 y Quad9; declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/tri6.py (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \texttt{\_shared.py}, compartida con Quad8 y Quad9; declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
+\end{itemize}
+
+
+Sólidos tridimensionales con convención Voigt 6D del proyecto (\texttt{Reglas.md §5}):
+`\texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\varepsilon}\_zz, \ensuremath{\gamma}\_xy, \ensuremath{\gamma}\_yz, \ensuremath{\gamma}\_xz]}\texttt{ con }\texttt{\ensuremath{\gamma}\_ij = 2\ensuremath{\cdot}\ensuremath{\varepsilon}\_ij}`. Esta familia
+\textbf{no expone \texttt{internal\_forces}} --- la primitiva natural de salida en sólidos
+es `\texttt{compute\_gauss\_state(U)}\texttt{, que devuelve }\texttt{\{stress, strain, points\_*\}}`
+por punto de integración (ADR 0012: cierre del contrato \texttt{internal\_forces}
+por dominio explícito).
+
+\section{Hex8 --- hexaedro trilineal 3D}
+
+\begin{itemize}
+  \item \textbf{Propósito}: sólido 3D isoparamétrico de primer orden, espejo natural de Quad4.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy', 'uz']} \ensuremath{\cdot} 8 nodos (orden VTK\_HEXAHEDRON) \ensuremath{\cdot} \texttt{STRAIN\_DIM = 6} \ensuremath{\cdot} \texttt{N\_INTEGRATION\_POINTS = 8} (default Gauss 2\ensuremath{\times}2\ensuremath{\times}2).
+  \item \textbf{Cinemática}: matriz \texttt{B(\ensuremath{\xi}, \ensuremath{\eta}, \ensuremath{\zeta})} 6\ensuremath{\times}24 por mapeo isoparamétrico estándar; deformación Voigt 3D.
+  \item \textbf{Integración}: por defecto Gauss 2\ensuremath{\times}2\ensuremath{\times}2 (8 puntos). Configurable vía \texttt{quadrature} (\texttt{hex\_3x3x3} para no-lineales severos, \texttt{hex\_1x1x1} reducido con riesgo de hourglass).
+  \item \textbf{Caras (ADR 0012)}: 6 caras numeradas con normal saliente --- 0 (−\ensuremath{\zeta}), 1 (+\ensuremath{\zeta}), 2 (−\ensuremath{\eta}), 3 (+\ensuremath{\xi}), 4 (+\ensuremath{\eta}), 5 (−\ensuremath{\xi}). Ver \texttt{Hex8.FACE\_NODES}.
+  \item \textbf{Cargas distribuidas}: \texttt{compute\_body\_load(b)} integra \texttt{\ensuremath{\int} N\ensuremath{^{\top}}b dV}; \texttt{compute\_face\_traction(face, t̄)} reparte tracción uniforme sobre una cara con cuadratura 2D Gauss 2\ensuremath{\times}2 (4 puntos por cara). \texttt{t̄} en globales.
+  \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} devuelve \texttt{\{points\_natural, points\_global, strain (n\_g, 6), stress (n\_g, 6)\}}. Sin \texttt{internal\_forces} (ADR 0012).
+  \item \textbf{Implementación}: kernels \texttt{\_compute\_kinematics\_hex8}, \texttt{\_det\_jacobian\_hex8}, \texttt{\_shape\_functions\_hex8} con \texttt{@njit} en \texttt{solidum/elements/solid\_3d/\_shared.py}. Mass lumping vía \texttt{lump\_hrz} con \texttt{n\_translational\_dirs=3} y \texttt{\_expand\_scalar\_mass\_3d}.
+  \item \textbf{Limitaciones declaradas}:
+  \item \textbf{Locking volumétrico} con \ensuremath{\nu} \ensuremath{\to} 0.5 --- sin mitigación (política idéntica al Quad4 2D). Blindado por \texttt{tests/test\_volumetric\_locking\_3d.py}.
+  \item \textbf{Hourglass} con integración reducida \texttt{hex\_1x1x1}: 12 modos espurios; sin estabilización Flanagan-Belytschko.
+  \item \textbf{Shear locking} con malla coarse 1 capa en sección: documentado en \texttt{tests/validation/test\_macneal\_beam\_3d.py}.
+  \item \textbf{Spec}: docs/specs/Hex8.md.
+  \item \textbf{Archivo}: solidum/elements/solid\_3d/hex8.py.
+\end{itemize}
+
+
+\section{Tet4 --- tetraedro lineal 3D (CST 3D)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: sólido 3D isoparamétrico de primer orden, espejo natural de Tri3. Útil para mallas no estructuradas y transiciones.
+  \item \textbf{DOFs por nodo}: \texttt{['ux', 'uy', 'uz']} \ensuremath{\cdot} 4 nodos (orden VTK\_TETRA, volumen positivo) \ensuremath{\cdot} \texttt{STRAIN\_DIM = 6} \ensuremath{\cdot} \texttt{N\_INTEGRATION\_POINTS = 1}.
+  \item \textbf{Cinemática}: \texttt{B} constante 6\ensuremath{\times}12 (deformación uniforme dentro del elemento --- CST 3D). Reproduce campos lineales exactamente.
+  \item \textbf{Integración}: 1 punto baricéntrico con peso 1/6 (exacto por linealidad de B).
+  \item \textbf{Caras (ADR 0012)}: 4 caras triangulares numeradas con normal saliente; cara \texttt{i} opuesta al nodo \texttt{i}. Ver \texttt{Tet4.FACE\_NODES}.
+  \item \textbf{Cargas distribuidas}: \texttt{compute\_body\_load(b)} reparte \texttt{b\ensuremath{\cdot}V\_e/4} a cada nodo (exacto); \texttt{compute\_face\_traction(face, t̄)} reparte \texttt{A\_cara\ensuremath{\cdot}t̄/3} a cada uno de los 3 nodos de la cara, cero al nodo opuesto.
+  \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(U)} con 1 punto (centroide); \ensuremath{\sigma} y \ensuremath{\varepsilon} constantes sobre el elemento.
+  \item \textbf{Implementación}: kernel \texttt{\_compute\_kinematics\_tet4} con \texttt{@njit} en \texttt{\_shared.py}. Masa consistente analítica \texttt{M\_ij = \ensuremath{\rho}\ensuremath{\cdot}V\_e\ensuremath{\cdot}(1+\ensuremath{\delta}\_ij)/20}; lumped HRZ canónico (= row-sum por simetría).
+  \item \textbf{Limitaciones declaradas}:
+  \item \textbf{Shear locking severo} en flexión --- peor que Hex8 por la pobreza del espacio lineal. Recomendación: usar Hex8 en mallas hexaédricas; Tet4 para transiciones de malla no estructurada o cuando geometría compleja impide hexaedros.
+  \item \textbf{Locking volumétrico} con \ensuremath{\nu} \ensuremath{\to} 0.5 --- aún peor que en Hex8.
+  \item \textbf{Spec}: docs/specs/Tet4.md.
+  \item \textbf{Archivo}: solidum/elements/solid\_3d/tet4.py.
 \end{itemize}
 
 
@@ -5522,7 +5568,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Estado agrietado}: Newton local sobre \texttt{[[u]]} hasta \texttt{R\textasciicircum{}\{[[u]]\} = 0}; después la condensación \texttt{K\_cond = K\_dd − K\_du \ensuremath{\cdot} K\_\{[[u]][[u]]\}\ensuremath{^{-}}¹ \ensuremath{\cdot} K\_du\textasciicircum{}T} se devuelve al ensamblador. El bulk descarga elásticamente conforme \texttt{[[u]]} crece (discrete approach); la disipación va al cohesivo en \texttt{Γ\_d}.
   \item \textbf{Activación}: criterio Rankine (\texttt{\ensuremath{\sigma}\_I > \ensuremath{\sigma}\_t0} del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. \textbf{Irreversible}: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
   \item \textbf{Materiales aceptados}: bulk \textbf{solo \texttt{Elastic2D}} en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier \texttt{CohesiveMaterial} con \texttt{JUMP\_DIM = 2}.
-  \item \textbf{Estado de la discontinuidad}: \texttt{DiscontinuityState} (en fenix/core/discontinuity\_state.py) --- paralela a \texttt{ElementState}, semántica trial/commit.
+  \item \textbf{Estado de la discontinuidad}: \texttt{DiscontinuityState} (en solidum/core/discontinuity\_state.py) --- paralela a \texttt{ElementState}, semántica trial/commit.
   \item \textbf{YAML}:
 \end{itemize}
   \begin{lstlisting}[language=yaml]
@@ -5538,7 +5584,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Post-procesamiento}: \texttt{compute\_gauss\_state(U)} añade clave \texttt{'discontinuity'} con \texttt{\{normal, tangent, centroid, solitary\_node, l\_d, jump, traction, damage\}} cuando el elemento está agrietado.
   \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de \texttt{n} tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (\texttt{Tri6\_Embedded}), 3D (\texttt{Tet4\_Embedded}).
   \item \textbf{Spec}: docs/specs/CST\_Embedded2D.md.
-  \item \textbf{Archivo}: fenix/elements/solid\_2d/embedded\_cst.py.
+  \item \textbf{Archivo}: solidum/elements/solid\_2d/embedded\_cst.py.
 \end{itemize}
 
 
@@ -5546,7 +5592,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
 
 \begin{enumerate}
   \item \textbf{Spec primero} --- el usuario crea \texttt{docs/specs/<Nombre>.md} a partir de \texttt{docs/specs/\_template\_element.md} (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.
-  \item \textbf{Scaffolding} --- \texttt{/fenix-new element <Nombre>} genera archivo en \texttt{fenix/elements/}, decorador \texttt{@ElementRegistry.register} y esqueleto de test.
+  \item \textbf{Scaffolding} --- \texttt{/solidum-new element <Nombre>} genera archivo en \texttt{solidum/elements/}, decorador \texttt{@ElementRegistry.register} y esqueleto de test.
   \item \textbf{Implementación + validación} --- la IA codifica contra la spec; los tests cubren los casos de \texttt{acceptance} declarados.
   \item \textbf{Catálogo} --- cuando la spec pasa a \texttt{status: validated}, se añade aquí una entrada breve siguiendo el formato de arriba (la spec sigue siendo la referencia detallada).
 \end{enumerate}
@@ -5576,7 +5622,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Tangente}: constante = \texttt{E}.
   \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}, \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko}.
   \item \textbf{Spec}: docs/specs/Elastic1D.md
-  \item \textbf{Archivo}: fenix/materials/elastic.py
+  \item \textbf{Archivo}: solidum/materials/elastic.py
 \end{itemize}
 
 
@@ -5590,7 +5636,23 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Tangente}: constante = \texttt{C}.
   \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}).
   \item \textbf{Spec}: docs/specs/Elastic2D.md
-  \item \textbf{Archivo}: fenix/materials/elastic\_2d.py
+  \item \textbf{Archivo}: solidum/materials/elastic\_2d.py
+\end{itemize}
+
+
+\section{Elastic3D --- elástico lineal isótropo 3D}
+
+\begin{itemize}
+  \item \textbf{Ley}: \texttt{\ensuremath{\sigma} = C \ensuremath{\cdot} \ensuremath{\varepsilon}}, con \texttt{C} el tensor constitutivo isótropo 6\ensuremath{\times}6 en notación Voigt 3D del proyecto \texttt{[xx, yy, zz, xy, yz, xz]} (ADR 0012, \texttt{Reglas.md §5}).
+  \item \textbf{STRAIN\_DIM}: 6.
+  \item \textbf{Parámetros}: \texttt{E} (>0), \texttt{nu \ensuremath{\in} (-1, 0.5)}, \texttt{density} (opcional, ADR 0008).
+  \item \textbf{Variables internas}: ninguna.
+  \item \textbf{Tangente}: constante = \texttt{C}.
+  \item \textbf{Hipótesis}: no aplican \texttt{plane\_stress}/\texttt{plane\_strain} en 3D --- toda la deformación es activa.
+  \item \textbf{Compatible con}: \texttt{Hex8}, \texttt{Tet4} (todos los sólidos 3D con \texttt{STRAIN\_DIM = 6}).
+  \item \textbf{Caveat de compatibilidad}: ABAQUS usa orden Voigt \texttt{[11, 22, 33, 12, 13, 23]} (permutación \texttt{yz \ensuremath{\leftrightarrow} xz} respecto al proyecto). Importar datos de ABAQUS requiere intercambiar los componentes 5\ensuremath{\leftrightarrow}6 una vez en el preprocesador.
+  \item \textbf{Spec}: docs/specs/Elastic3D.md
+  \item \textbf{Archivo}: solidum/materials/elastic\_3d.py
 \end{itemize}
 
 
@@ -5612,7 +5674,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Limitaciones}: no distingue tracción/compresión en la activación del daño; control de carga global puede ser inestable tras el pico (requiere \texttt{ArcLengthSolver} para seguir la rama de softening).
   \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}.
   \item \textbf{Referencia}: ver \texttt{docs/specs/IsotropicDamage1D.md} y la hermana 2D para derivación detallada. Lemaitre \& Chaboche, \textit{Mechanics of Solid Materials}. Simó \& Ju (1987, IJSS 23) marco de tangente consistente.
-  \item \textbf{Archivo}: fenix/materials/damage\_1d.py
+  \item \textbf{Archivo}: solidum/materials/damage\_1d.py
 \end{itemize}
 
 
@@ -5633,7 +5695,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Limitación}: la \texttt{\ensuremath{\varepsilon}\_eq} simétrica no distingue daño en tensión vs compresión; para hormigón usar modelo de Mazars o split tensión/compresión (out-of-scope). Sin regularización por longitud característica \ensuremath{\to} mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
   \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9}.
   \item \textbf{Referencia}: ver \texttt{docs/specs/IsotropicDamage2D.md}. Simó \& Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre \& Chaboche (1990) marco de continuum damage mechanics.
-  \item \textbf{Archivo}: fenix/materials/damage\_2d.py
+  \item \textbf{Archivo}: solidum/materials/damage\_2d.py
 \end{itemize}
 
 
@@ -5652,7 +5714,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}, \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko} (en estos últimos solo se aplica al esfuerzo axial).
   \item \textbf{Referencia}: Simo \& Hughes, \textit{Computational Inelasticity}, cap. 1.
   \item \textbf{Spec}: docs/specs/Elastoplastic1D.md
-  \item \textbf{Archivo}: fenix/materials/plastic\_1d.py
+  \item \textbf{Archivo}: solidum/materials/plastic\_1d.py
 \end{itemize}
 
 
@@ -5667,7 +5729,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Implicación numérica}: la rigidez tangente colapsa a cero cuando el cable se afloja, lo que requiere precondicionamiento o regularización en el solver para no degenerar la matriz global. El uso típico es a través del elemento \texttt{Cable2DCorot}/\texttt{Cable3DCorot}, que detecta la situación y la maneja correctamente.
   \item \textbf{Compatible con}: \texttt{Cable2DCorot}, \texttt{Cable3DCorot}.
   \item \textbf{Referencia}: ver \texttt{docs/specs/CableMaterial1D.md}.
-  \item \textbf{Archivo}: fenix/materials/cable\_1d.py
+  \item \textbf{Archivo}: solidum/materials/cable\_1d.py
 \end{itemize}
 
 
@@ -5701,7 +5763,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item Validación inicial cubierta por tests unitarios (incluyendo FD numérica de la tangente) y un benchmark de pipeline Quad4 (rama elástica + rama apex + caso asociado). El régimen "rama regular pura" en geometría confinada es difícil de calibrar sin caer en apex; se cubre por los tests unitarios de cortante puro.
   \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos con material 2D plane strain).
   \item \textbf{Referencia}: ver \texttt{docs/specs/DruckerPrager2D.md}. Drucker \& Prager (1952). de Souza Neto, Perić \& Owen (2008) cap. 8 (Drucker-Prager, tangentes algorítmicas).
-  \item \textbf{Archivo}: fenix/materials/drucker\_prager\_2d.py
+  \item \textbf{Archivo}: solidum/materials/drucker\_prager\_2d.py
 \end{itemize}
 
 
@@ -5722,12 +5784,12 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Implementación}: kernels \texttt{\_compute\_j2\_plane\_strain} y \texttt{\_compute\_j2\_plane\_stress} con \texttt{@njit}. Despacho por \texttt{hypothesis} en construcción (sin coste runtime).
   \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (configurados en cualquiera de las dos hipótesis).
   \item \textbf{Referencia}: ver \texttt{docs/specs/VonMises2D.md}. Simó \& Hughes, \textit{Computational Inelasticity} (1998), §3.3 (plane strain), §3.4 (plane stress projected, Box 3.1). de Souza Neto, Perić \& Owen, \textit{Computational Methods for Plasticity} (2008), §9.4.
-  \item \textbf{Archivo}: fenix/materials/von\_mises\_2d.py
+  \item \textbf{Archivo}: solidum/materials/von\_mises\_2d.py
 \end{itemize}
 
 
 
-Los materiales cohesivos son una \textbf{jerarquía paralela e independiente} de los materiales continuos: operan sobre el salto de desplazamientos \texttt{[[u]]} sobre una superficie de discontinuidad \texttt{Γ\_d} y devuelven tracciones \texttt{t}, no esfuerzos sobre \texttt{\ensuremath{\varepsilon}}. Viven en \texttt{fenix/cohesive\_materials/}, heredan de \texttt{fenix.core.cohesive\_material.CohesiveMaterial}, se registran vía \texttt{CohesiveMaterialRegistry} y se declaran en YAML bajo la sección \texttt{cohesive\_materials} (separada de \texttt{materials}). El bulk del elemento sigue siendo un \texttt{Material} continuo; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
+Los materiales cohesivos son una \textbf{jerarquía paralela e independiente} de los materiales continuos: operan sobre el salto de desplazamientos \texttt{[[u]]} sobre una superficie de discontinuidad \texttt{Γ\_d} y devuelven tracciones \texttt{t}, no esfuerzos sobre \texttt{\ensuremath{\varepsilon}}. Viven en \texttt{solidum/cohesive\_materials/}, heredan de \texttt{solidum.core.cohesive\_material.CohesiveMaterial}, se registran vía \texttt{CohesiveMaterialRegistry} y se declaran en YAML bajo la sección \texttt{cohesive\_materials} (separada de \texttt{materials}). El bulk del elemento sigue siendo un \texttt{Material} continuo; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
 
 \textit{\textbf{Convenciones de la familia}: \texttt{JUMP\_DIM} = dimensión del vector de salto (2 en 2D, 3 en 3D); \texttt{PRIMARY\_STATE\_VAR} = variable interna que se exporta al post-proceso; \texttt{IS\_SYMMETRIC} = simetría de la contribución a la tangente del elemento. Parámetros físicos típicos: \texttt{sigma\_t0} (Pa), \texttt{G\_f} (N/m), \texttt{K\_e} (Pa/m). No tienen densidad --- la inercia es del bulk.}
 
@@ -5747,17 +5809,17 @@ Los materiales cohesivos son una \textbf{jerarquía paralela e independiente} de
   \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): sólo Modo-I (mixto I--II diferido a fase G del ADR 0010), sin contacto unilateral en compresión (la grieta dañada transmite compresión con rigidez \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e}, no rígida), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento \texttt{CST\_Embedded2D}, no del material).
   \item \textbf{Compatible con}: pendiente de fase 2 del ADR 0010 (elemento \texttt{CST\_Embedded2D}). En aislamiento, testeable con historial prescrito de \texttt{[[u]]}.
   \item \textbf{Referencia}: ver \texttt{docs/specs/CohesiveDamageIsotropic.md}. Retama (2010) Cap. 3; Hillerborg, Modéer \& Petersson (1976); Simó \& Ju (1987).
-  \item \textbf{Archivo}: fenix/cohesive\_materials/damage\_isotropic.py
+  \item \textbf{Archivo}: solidum/cohesive\_materials/damage\_isotropic.py
 \end{itemize}
 
 
 \section{Cómo añadir un material nuevo}
 
-\texttt{/fenix-new material <Name>} --- genera archivo en \texttt{fenix/materials/}, decorador \texttt{@MaterialRegistry.register}, esqueleto de test.
+\texttt{/solidum-new material <Name>} --- genera archivo en \texttt{solidum/materials/}, decorador \texttt{@MaterialRegistry.register}, esqueleto de test.
 Declarar \textbf{\texttt{STRAIN\_DIM}} y, si tiene historia, \textbf{\texttt{PRIMARY\_STATE\_VAR}} (la variable que aparecerá en el VTK).
 Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba.
 
-Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo vive en \texttt{fenix/cohesive\_materials/}, la clase hereda de \texttt{CohesiveMaterial} (no \texttt{Material}) y se registra con \texttt{@CohesiveMaterialRegistry.register}. Declarar \texttt{JUMP\_DIM}, \texttt{PRIMARY\_STATE\_VAR} y \texttt{IS\_SYMMETRIC}. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.
+Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo vive en \texttt{solidum/cohesive\_materials/}, la clase hereda de \texttt{CohesiveMaterial} (no \texttt{Material}) y se registra con \texttt{@CohesiveMaterialRegistry.register}. Declarar \texttt{JUMP\_DIM}, \texttt{PRIMARY\_STATE\_VAR} y \texttt{IS\_SYMMETRIC}. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.
 
 
 \newpage
@@ -5779,7 +5841,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Cuándo usarlo}: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
   \item \textbf{No converge / no aplica}: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
   \item \textbf{Spec}: docs/specs/LinearSolver.md
-  \item \textbf{Archivo}: fenix/math/solvers/linear.py
+  \item \textbf{Archivo}: solidum/math/solvers/linear.py
 \end{itemize}
 
 
@@ -5799,11 +5861,11 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}, \textbf{\texttt{line\_search}} (default \texttt{False}, ADR 0011).
   \item \textbf{Cuándo usarlo}: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back).
   \item \textbf{Cuándo activar \texttt{line\_search=True}}: cuando se observe oscilación del residuo entre iteraciones (síntoma clásico: ratios alternados sin descenso monótono). Caso documentado: plasticidad perfecta con carga cerca/sobre la capacidad. \textbf{Default \texttt{False}} porque en problemas con tangente consistente cuasi-cuadrática (daño activo, plasticidad estándar) el line search rechaza pasos correctos del Newton donde el residuo sube transitoriamente --- ver ADR 0011 §"Enmiendas".
-  \item \textbf{Diagnóstico al diverger}: lanza una subclase tipada de \texttt{RuntimeError} (\texttt{OscillatingNewtonError}, \texttt{SingularTangentError}, \texttt{LoadExceedsCapacityError}, \texttt{UnknownDivergenceError}) con métricas (último \ensuremath{\|}R\ensuremath{\|}, último \ensuremath{\|}\ensuremath{\delta}U\ensuremath{\|}, factor de carga, bisecciones consumidas) y \texttt{hint} textual. Ver \texttt{fenix/math/solvers/diagnostics.py}.
+  \item \textbf{Diagnóstico al diverger}: lanza una subclase tipada de \texttt{RuntimeError} (\texttt{OscillatingNewtonError}, \texttt{SingularTangentError}, \texttt{LoadExceedsCapacityError}, \texttt{UnknownDivergenceError}) con métricas (último \ensuremath{\|}R\ensuremath{\|}, último \ensuremath{\|}\ensuremath{\delta}U\ensuremath{\|}, factor de carga, bisecciones consumidas) y \texttt{hint} textual. Ver \texttt{solidum/math/solvers/diagnostics.py}.
   \item \textbf{Limitación}: con bisección adaptativa y cinemática no lineal (corotacional) puede atravesar puntos límite suaves; no atraviesa snap-back con \texttt{du/d\ensuremath{\lambda} < 0}. Para eso \ensuremath{\to} \texttt{ArcLengthSolver}. Hallazgo de la auditoría fase A: el solver es más capaz de lo asumido históricamente (ver \texttt{docs/auditorias/solvers\_robustez\_fase\_A.md}).
   \item \textbf{Referencia}: Crisfield, \textit{Non-linear Finite Element Analysis of Solids and Structures}, vol. 1, cap. 9. Line search: Grippo-Lampariello-Lucidi 1986 (variante de descenso no monótono).
   \item \textbf{Spec}: docs/specs/NonlinearSolver.md
-  \item \textbf{Archivo}: fenix/math/solvers/nonlinear.py
+  \item \textbf{Archivo}: solidum/math/solvers/nonlinear.py
 \end{itemize}
 
 
@@ -5826,7 +5888,27 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Limitación}: más caro por paso (dos \texttt{spsolve} por iteración); requiere ajuste de \texttt{initial\_dl} para problemas nuevos.
   \item \textbf{Referencia}: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers \& Structures, 1981); Crisfield vol. 1, cap. 9.
   \item \textbf{Spec}: docs/specs/ArcLengthSolver.md
-  \item \textbf{Archivo}: fenix/math/solvers/arclength.py
+  \item \textbf{Archivo}: solidum/math/solvers/arclength.py
+\end{itemize}
+
+
+\section{DissipationArcLengthSolver --- variante de arc-length por disipación (Gutiérrez 2004)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: trazar la rama post-pico de problemas con \textbf{softening severo} controlando la disipación incremental de energía por paso en lugar de la longitud de arco euclídea. Más robusto que el cilíndrico cuando la curva U-\ensuremath{\lambda} tiene tramos casi-verticales en el plano (U, \ensuremath{\lambda}).
+  \item \textbf{Esquema}:
+  \item Subclase de \texttt{ArcLengthSolver}; reusa predictor tangente, corrector Newton, ajuste de paso, Dirichlet/MPC y backend algebraico.
+  \item \textbf{Restricción de paso}: \texttt{g(\ensuremath{\Delta}U, \ensuremath{\Delta}\ensuremath{\lambda}) = ½\ensuremath{\cdot}(\ensuremath{\lambda}\_n\ensuremath{\cdot}F\ensuremath{\cdot}\ensuremath{\Delta}U − \ensuremath{\Delta}\ensuremath{\lambda}\ensuremath{\cdot}F\ensuremath{\cdot}U\_n) = \ensuremath{\tau}}. \textbf{Lineal} en \texttt{(\ensuremath{\Delta}U, \ensuremath{\Delta}\ensuremath{\lambda})} \ensuremath{\Rightarrow} corrector con una sola raíz en \texttt{dd\ensuremath{\lambda}}, sin selección por menor ángulo ni patología de raíces imaginarias.
+  \item \textbf{Switching automático cilíndrico\ensuremath{\leftrightarrow}disipación} según se detecte disipación neta sobre el umbral relativo \texttt{dissipation\_threshold\ensuremath{\cdot}\ensuremath{\|}F\_ref\ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}U\ensuremath{\|}}. Arranque obligado en cilíndrico (\texttt{\ensuremath{\alpha} = ½\ensuremath{\cdot}(\ensuremath{\lambda}\_n\ensuremath{\cdot}F\ensuremath{\cdot}du\_t − F\ensuremath{\cdot}U\_n)} es 0 cuando \texttt{\ensuremath{\lambda}\_n = U\_n = 0}).
+  \item \textbf{Sign-of-pivot tracking aproximado} vía signo del \texttt{slogdet(K\_t)}. Distingue 0 vs número impar de pivots negativos --- diagnóstico de paso por punto límite simple. Tracking exacto requiere LDL\ensuremath{^{\top}} Bunch-Kaufman (deuda técnica \#7 STATUS.md).
+  \item \textbf{Salvaguarda contra \texttt{final\_step} prematuro}: si \texttt{|d\ensuremath{\lambda}\_pred| > 3\ensuremath{\cdot}(max\_lambda − \ensuremath{\lambda}\_curr)}, bisecta dl o \ensuremath{\tau} antes de aceptar el paso.
+  \item \textbf{Detección de \ensuremath{\alpha}\ensuremath{\approx}0}: threshold relativo \texttt{|\ensuremath{\alpha}| < 1e-6\ensuremath{\cdot}escala}; revierte temporalmente a cilíndrico (en problemas lineales monotónicos \texttt{\ensuremath{\alpha} ≡ 0} exactamente por construcción).
+  \item \textbf{Parámetros heredados}: todos los de \texttt{ArcLengthSolver} (\texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dl}, \texttt{max\_steps}, factores \texttt{dl\_*}, \texttt{linear\_algebra}). \textbf{Nuevos}: \texttt{initial\_tau} (obligatorio), \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_shrink\_factor}, \texttt{tau\_grow\_iter\_threshold}, \texttt{tau\_shrink\_iter\_threshold}, \texttt{dissipation\_threshold}.
+  \item \textbf{Cuándo usarlo}: problemas con softening continuo donde \texttt{ArcLengthSolver} cilíndrico bisecta excesivamente cerca del pico --- daño bulk 1D/2D, plasticidad con localización progresiva, post-pandeo con descarga elástica.
+  \item \textbf{Cuándo NO usarlo (limitación documentada)}: cohesivo+embedded discontinuity con \texttt{K\_e} stiff (\texttt{\textasciitilde{}1e13}). La activación discreta del Rankine introduce un salto en \texttt{F\_int}/\texttt{K\_t} que el \texttt{sign} por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDL\ensuremath{^{\top}} Bunch-Kaufman real (item \#7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con \texttt{ArcLengthSolver} cilíndrico a paridad de bits (regresión validada).
+  \item \textbf{Referencias}: Gutiérrez (2004), \textit{Communications in Numerical Methods in Engineering} 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), \textit{IJNME} 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
+  \item \textbf{Spec}: docs/specs/DissipationArcLengthSolver.md (status \texttt{implemented}, validación parcial).
+  \item \textbf{Archivo}: solidum/math/solvers/dissipation\_arclength.py
 \end{itemize}
 
 
@@ -5841,12 +5923,12 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item Expansión de modos al espacio completo: \texttt{\ensuremath{\varphi} = T \ensuremath{\cdot} \ensuremath{\varphi}\_red}. En DOFs prescritos por Dirichlet la componente es 0.
   \item Salida en \texttt{ModalResult}: \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales), \texttt{n\_modes}, \texttt{converged}.
   \item \textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0), \texttt{which} (default \texttt{"LM"}), \texttt{tolerance} (default 1.0e-9), \texttt{lumping} (default \texttt{"consistent"}; fase 1 solo admite ese valor), \texttt{linear\_algebra} (reservado; ADR 0003).
-  \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos (no consume \texttt{F\_applied}). El entrypoint público es \texttt{fenix.run\_modal(domain, n\_modes=N)} o YAML con \texttt{solver: type: ModalSolver}. \texttt{fenix.run\_yaml} despacha automáticamente al detectar el tipo.
+  \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos (no consume \texttt{F\_applied}). El entrypoint público es \texttt{solidum.run\_modal(domain, n\_modes=N)} o YAML con \texttt{solver: type: ModalSolver}. \texttt{solidum.run\_yaml} despacha automáticamente al detectar el tipo.
   \item \textbf{Cuándo usarlo}: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
-  \item \textbf{Limitaciones}: lineal (\texttt{K} evaluada en \texttt{u = 0}); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en \texttt{fenix/math/modal\_response.py} y los consume \texttt{ResponseSpectrumSolver} (ADR 0009 fase 7 cerrada).
+  \item \textbf{Limitaciones}: lineal (\texttt{K} evaluada en \texttt{u = 0}); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en \texttt{solidum/math/modal\_response.py} y los consume \texttt{ResponseSpectrumSolver} (ADR 0009 fase 7 cerrada).
   \item \textbf{Referencia}: Bathe, \textit{Finite Element Procedures}, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, \textit{The Finite Element Method}, cap. 7; ARPACK Users' Guide (Lehoucq--Sorensen--Yang).
   \item \textbf{Spec}: docs/specs/ModalSolver.md
-  \item \textbf{Archivos}: fenix/math/solvers/modal.py (clase \texttt{ModalSolver}), fenix/math/linalg/eigen.py (clase \texttt{EigenSolver}), fenix/results.py (\texttt{ModalResult}).
+  \item \textbf{Archivos}: solidum/math/solvers/modal.py (clase \texttt{ModalSolver}), solidum/math/linalg/eigen.py (clase \texttt{EigenSolver}), solidum/results.py (\texttt{ModalResult}).
 \end{itemize}
 
 
@@ -5871,7 +5953,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item HHT-\ensuremath{\alpha} y generalized-\ensuremath{\alpha} (con amortiguamiento numérico controlado) no incluidos.
   \item \textbf{Referencia}: Newmark (1959), J. Eng. Mech. Div. ASCE; Bathe, \textit{FEP} cap. 9.4; Hughes, \textit{FEM} cap. 9; Chopra, \textit{Dynamics of Structures} cap. 5 y 15.
   \item \textbf{Spec}: docs/specs/NewmarkSolver.md
-  \item \textbf{Archivos}: fenix/math/solvers/newmark.py (clase \texttt{NewmarkSolver}), fenix/math/damping.py (Rayleigh), fenix/results.py (\texttt{TransientResult}).
+  \item \textbf{Archivos}: solidum/math/solvers/newmark.py (clase \texttt{NewmarkSolver}), solidum/math/damping.py (Rayleigh), solidum/results.py (\texttt{TransientResult}).
 \end{itemize}
 
 
@@ -5899,7 +5981,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Despacho YAML}: \texttt{solver.type: NewtonNewmarkSolver}. Hereda \texttt{PIPELINE\_KIND = "transient"} de \texttt{NewmarkSolver}; \texttt{entry.run\_yaml} despacha por ese atributo declarativo (regla C del ADR 0009, aplicada 2026-05-18) --- sin \texttt{isinstance} ni cadenas hardcoded.
   \item \textbf{Referencia}: ADR 0009 §Fase 4; Hughes, \textit{FEM} cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
   \item \textbf{Spec}: docs/specs/NewtonNewmarkSolver.md
-  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewtonNewmarkSolver}, junto al padre).
+  \item \textbf{Archivo}: solidum/math/solvers/newmark.py (clase \texttt{NewtonNewmarkSolver}, junto al padre).
 \end{itemize}
 
 
@@ -5919,7 +6001,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Despacho YAML}: \texttt{solver.type: HHTSolver}. Hereda \texttt{PIPELINE\_KIND = "transient"} de \texttt{NewmarkSolver}; \texttt{entry.run\_yaml} despacha por el atributo declarativo (regla C ADR 0009).
   \item \textbf{Referencia}: Hilber, Hughes \& Taylor (1977), \textit{Earthquake Eng. Struct. Dyn.} 5(3) 283-292; Hughes \textit{FEM} §9.3; Chopra \textit{Dynamics of Structures} §15.4.
   \item \textbf{Spec}: docs/specs/HHTSolver.md
-  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{HHTSolver}).
+  \item \textbf{Archivo}: solidum/math/solvers/newmark.py (clase \texttt{HHTSolver}).
 \end{itemize}
 
 
@@ -5936,7 +6018,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Cuándo usarlo}: respuesta dinámica de estructuras con plasticidad transitoria + presencia de modos altos espurios que el Newmark trapezoidal no atenuaría.
   \item \textbf{Despacho YAML}: \texttt{solver.type: NewtonHHTSolver}. Vía atributo \texttt{PIPELINE\_KIND="transient"} heredado de \texttt{NewmarkSolver} \ensuremath{\to} \texttt{run\_transient}.
   \item \textbf{Spec}: docs/specs/NewtonHHTSolver.md (variante corta sobre la spec padre \texttt{HHTSolver.md}).
-  \item \textbf{Archivo}: fenix/math/solvers/newmark.py (clase \texttt{NewtonHHTSolver}).
+  \item \textbf{Archivo}: solidum/math/solvers/newmark.py (clase \texttt{NewtonHHTSolver}).
 \end{itemize}
 
 
@@ -5954,7 +6036,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Rechazos defensivos}: \texttt{lumping="consistent"} \ensuremath{\to} \texttt{ValueError} (la inversión de M consistente cada paso anula la ventaja); Frame3D con eje oblicuo a globales \ensuremath{\to} \texttt{ValueError} (M\_red no es estrictamente diagonal; ADR 0009 fase 2 documenta la bloque-diagonalidad inherente).
   \item \textbf{Despacho YAML}: \texttt{solver.type: CentralDifferenceSolver}. Vía atributo \texttt{PIPELINE\_KIND="transient"} \ensuremath{\to} \texttt{run\_transient}. \textbf{Primer solver fuera de la jerarquía de Newmark}, lo que disparó la regla C de refactor (atributo declarativo en lugar de cadena de isinstance).
   \item \textbf{Spec}: docs/specs/CentralDifferenceSolver.md.
-  \item \textbf{Archivo}: fenix/math/solvers/central\_difference.py.
+  \item \textbf{Archivo}: solidum/math/solvers/central\_difference.py.
 \end{itemize}
 
 
@@ -5969,7 +6051,7 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Caveats}: resonancia exacta sin amortiguamiento \ensuremath{\Rightarrow} \texttt{Z(\ensuremath{\omega}\_n)} singular (\texttt{spsolve} puede fallar). Mitigación: añadir Rayleigh. Cargas con fase compleja requieren construcción desde código --- YAML no soporta tipos complejos nativos.
   \item \textbf{Despacho YAML}: \texttt{solver.type: HarmonicSolver}. Vía atributo \texttt{PIPELINE\_KIND="harmonic"} \ensuremath{\to} \texttt{run\_harmonic}. Tercer valor del literal (después de \texttt{"static"}, \texttt{"modal"}, \texttt{"transient"}).
   \item \textbf{Spec}: docs/specs/HarmonicSolver.md.
-  \item \textbf{Archivo}: fenix/math/solvers/harmonic.py.
+  \item \textbf{Archivo}: solidum/math/solvers/harmonic.py.
 \end{itemize}
 
 
@@ -5986,15 +6068,15 @@ Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo
   \item \textbf{Cuándo usarlo}: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
   \item \textbf{Caveats}: precisión depende del número de modos incluidos --- verifica \texttt{cumulative\_effective\_mass\_ratio} \ensuremath{\ge} 0.9. CQC requerido con modos cercanos en frecuencia (cociente < 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
   \item \textbf{Despacho YAML}: \texttt{solver.type: ResponseSpectrumSolver}. Vía atributo \texttt{PIPELINE\_KIND="spectrum"} \ensuremath{\to} \texttt{run\_response\_spectrum}. Cuarto valor del literal (después de \texttt{"static"}, \texttt{"modal"}, \texttt{"transient"}, \texttt{"harmonic"}).
-  \item \textbf{Algoritmos centralizados}: \texttt{fenix/math/modal\_response.py} --- \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, \texttt{participation\_factors}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}. Compartido con \texttt{ModalResult.free\_vibration} (wrapper delgado tras regla D 2026-05-18).
+  \item \textbf{Algoritmos centralizados}: \texttt{solidum/math/modal\_response.py} --- \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, \texttt{participation\_factors}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}. Compartido con \texttt{ModalResult.free\_vibration} (wrapper delgado tras regla D 2026-05-18).
   \item \textbf{Spec}: docs/specs/ResponseSpectrumSolver.md.
-  \item \textbf{Archivo}: fenix/math/solvers/response\_spectrum.py.
+  \item \textbf{Archivo}: solidum/math/solvers/response\_spectrum.py.
 \end{itemize}
 
 
 \section{Cómo añadir un solver nuevo}
 
-\texttt{/fenix-new solver <Name>} --- genera archivo en \texttt{fenix/math/solvers/<snake>.py}, decorador \texttt{@SolverRegistry.register}, esqueleto de test.
+\texttt{/solidum-new solver <Name>} --- genera archivo en \texttt{solidum/math/solvers/<snake>.py}, decorador \texttt{@SolverRegistry.register}, esqueleto de test.
 
 Convenciones de interfaz:
 
@@ -6027,12 +6109,12 @@ Conviene distinguirlas:
 
 \begin{itemize}
   \item \textbf{Solver no lineal} --- \texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}. Orquesta la estrategia de paso, las iteraciones de Newton, el control de longitud de arco, los criterios de convergencia. Es lo que el usuario elige en el YAML con \texttt{solver.type}.
-  \item \textbf{Capa algebraica} --- \texttt{fenix.math.linalg}. Resuelve el sistema lineal \texttt{K\ensuremath{\cdot}\ensuremath{\delta}U = R} que aparece dentro de cada iteración del solver no lineal. Tiene varios \textit{backends} numéricos y un despachador interno que elige el adecuado según las propiedades de \texttt{K}. Es plumbing automático: el usuario no la ve salvo que pida diagnóstico.
+  \item \textbf{Capa algebraica} --- \texttt{solidum.math.linalg}. Resuelve el sistema lineal \texttt{K\ensuremath{\cdot}\ensuremath{\delta}U = R} que aparece dentro de cada iteración del solver no lineal. Tiene varios \textit{backends} numéricos y un despachador interno que elige el adecuado según las propiedades de \texttt{K}. Es plumbing automático: el usuario no la ve salvo que pida diagnóstico.
 \end{itemize}
 
 \section{Backends disponibles y criterio de selección}
 
-El despachador (\texttt{fenix.math.linalg.dispatcher.select\_solver}) elige el backend en función de tres flags declarativos sobre \texttt{K}: simetría, positividad y talla.
+El despachador (\texttt{solidum.math.linalg.dispatcher.select\_solver}) elige el backend en función de tres flags declarativos sobre \texttt{K}: simetría, positividad y talla.
 
 \begin{center}
 \begin{tabularx}{\textwidth}{YYY}
@@ -6054,7 +6136,7 @@ No simétrica & \textbf{LU general} (SuperLU) & Backend universal. Cubre plastic
 
 Ningún flag se pide al usuario.
 
-\textbf{\texttt{EigenSolver} (ADR 0009, problema generalizado)}. La capa algebraica incluye además \texttt{fenix.math.linalg.eigen.EigenSolver}, que resuelve el problema generalizado simétrico \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}} envolviendo \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). No comparte el \texttt{Protocol} \texttt{LinearAlgebraSolver} de los backends de \texttt{K\ensuremath{\cdot}x = b} porque su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}. El \texttt{ModalSolver} lo invoca para el análisis modal; los cálculos internos de shift-invert generan una factorización de \texttt{(K − \ensuremath{\sigma} \ensuremath{\cdot} M)} reutilizada en cada iteración Lanczos, así que la palanca de optimización es la misma --- Cholesky enchufado en lugar de SuperLU bajaría 2\ensuremath{\times} el coste del modal en problemas SPD (pendiente, ver memoria de cierre).
+\textbf{\texttt{EigenSolver} (ADR 0009, problema generalizado)}. La capa algebraica incluye además \texttt{solidum.math.linalg.eigen.EigenSolver}, que resuelve el problema generalizado simétrico \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}} envolviendo \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). No comparte el \texttt{Protocol} \texttt{LinearAlgebraSolver} de los backends de \texttt{K\ensuremath{\cdot}x = b} porque su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}. El \texttt{ModalSolver} lo invoca para el análisis modal; los cálculos internos de shift-invert generan una factorización de \texttt{(K − \ensuremath{\sigma} \ensuremath{\cdot} M)} reutilizada en cada iteración Lanczos, así que la palanca de optimización es la misma --- Cholesky enchufado en lugar de SuperLU bajaría 2\ensuremath{\times} el coste del modal en problemas SPD (pendiente, ver memoria de cierre).
 
 \section{Fallback automático SPD \ensuremath{\to} LU}
 
@@ -6114,7 +6196,7 @@ conda install -c conda-forge scikit-sparse
 
 \end{lstlisting}
 
-Una vez instalado, los problemas estáticos lineales y los Newton estables empiezan a usar Cholesky automáticamente --- sin tocar YAML, sin recompilar, sin reescribir specs. Si la dependencia no está disponible, Fenix funciona idéntico con LU.
+Una vez instalado, los problemas estáticos lineales y los Newton estables empiezan a usar Cholesky automáticamente --- sin tocar YAML, sin recompilar, sin reescribir specs. Si la dependencia no está disponible, Solidum funciona idéntico con LU.
 
 
 \newpage

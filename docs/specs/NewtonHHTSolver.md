@@ -175,11 +175,11 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/newmark.py](../../fenix/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
+- **Archivo**: [solidum/math/solvers/newmark.py](../../solidum/math/solvers/newmark.py) (clase `NewtonHHTSolver`).
 - **Clase**: hereda de `NewtonNewmarkSolver`; añade el atributo `self.alpha` y reemplaza el cómputo del residuo y del jacobiano en `solve()`.
 - **Auto-derivación** de β y γ vía `_hht_autoderive_beta_gamma(alpha)` (función helper compartida con `HHTSolver`).
 - **Validación temprana** en `__init__`: `alpha ∈ [-1/3, 0]`, warning si override de β/γ.
-- **Entrypoint público**: `fenix.run_transient(model, solver="newton_hht", ...)` (despacho por `PIPELINE_KIND = "transient"`).
+- **Entrypoint público**: `solidum.run_transient(model, solver="newton_hht", ...)` (despacho por `PIPELINE_KIND = "transient"`).
 - **Tests**:
   - [tests/test_dynamic_nonlinear_hht.py](../../tests/test_dynamic_nonlinear_hht.py) — incluye recuperación de `NewtonNewmark` con α=0, recuperación de `HHTSolver` con materiales lineales, respuesta plástica dinámica.
 

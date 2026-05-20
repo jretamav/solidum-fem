@@ -2,7 +2,7 @@
 
 > Orden de trabajo. El usuario escribe la **especificación física**, la **formulación numérica** y el **contrato**. La IA rellena **implementación** y responde en **diálogo** durante el trabajo.
 >
-> Los materiales cohesivos forman una jerarquía paralela a la de materiales continuos (ADR 0010): operan sobre el salto `[[u]]` y devuelven tracciones `t` sobre `Γ_d`. No tienen `STRAIN_DIM` ni `density` (la inercia es del bulk). En su lugar declaran `JUMP_DIM`. Viven en `fenix/cohesive_materials/`, heredan de `fenix.core.cohesive_material.CohesiveMaterial`, se registran con `@CohesiveMaterialRegistry.register` y se declaran en YAML bajo `cohesive_materials:` (sección separada de `materials:`).
+> Los materiales cohesivos forman una jerarquía paralela a la de materiales continuos (ADR 0010): operan sobre el salto `[[u]]` y devuelven tracciones `t` sobre `Γ_d`. No tienen `STRAIN_DIM` ni `density` (la inercia es del bulk). En su lugar declaran `JUMP_DIM`. Viven en `solidum/cohesive_materials/`, heredan de `solidum.core.cohesive_material.CohesiveMaterial`, se registran con `@CohesiveMaterialRegistry.register` y se declaran en YAML bajo `cohesive_materials:` (sección separada de `materials:`).
 
 ---
 

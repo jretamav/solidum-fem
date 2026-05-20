@@ -40,7 +40,7 @@ F_int = σ·A · d
 
 ### Validación
 - Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss2D`.
-- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss2D`.
+- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss2D`.
 - Spec: [docs/specs/Truss2D.md](specs/Truss2D.md).
 - Referencia: Bathe, *Finite Element Procedures*, §4.2.1.
 
@@ -75,7 +75,7 @@ F_int = N · d
 
 ### Validación
 - Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss2DCorot` (3 tests, uno por criterio de aceptación).
-- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss2DCorot`.
+- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss2DCorot`.
 - Spec: [docs/specs/Truss2DCorot.md](specs/Truss2DCorot.md).
 - Referencias: Crisfield §3.3, Belytschko §4.5.
 
@@ -118,7 +118,7 @@ F_int = σ·A · d
 
 ### Validación
 - Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss3D`.
-- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss3D`.
+- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss3D`.
 - Spec: [docs/specs/Truss3D.md](specs/Truss3D.md).
 - Referencias: Bathe §4.2.1; Cook §2.3.
 
@@ -154,7 +154,7 @@ F_int = N · d
 
 ### Validación
 - Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss3DCorot` (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
-- Archivo fuente: [fenix/elements/truss.py](fenix/elements/truss.py) · clase `Truss3DCorot`.
+- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss3DCorot`.
 - Spec: [docs/specs/Truss3DCorot.md](specs/Truss3DCorot.md).
 - Referencias: Crisfield §3.3; Belytschko §4.5.
 
@@ -193,7 +193,7 @@ El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se impl
 
 ### Validación
 - Tests: [tests/test_cable_elements.py](tests/test_cable_elements.py) · `TestCable2DCorot` (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
-- Archivo fuente: [fenix/elements/cable.py](fenix/elements/cable.py) · clase `Cable2DCorot`.
+- Archivo fuente: [solidum/elements/cable.py](solidum/elements/cable.py) · clase `Cable2DCorot`.
 - Spec: [docs/specs/Cable2DCorot.md](specs/Cable2DCorot.md).
 - Referencias: Crisfield §3.3; Irvine §1.2.
 
@@ -232,7 +232,7 @@ No hereda de `Cable2DCorot` ni de `Truss3DCorot`. La maquinaria cinemática 3D s
 
 ### Validación
 - Tests: [tests/test_cable_elements.py](tests/test_cable_elements.py) · `TestCable3DCorot` (4 tests de aceptación).
-- Archivo fuente: [fenix/elements/cable.py](fenix/elements/cable.py) · clase `Cable3DCorot`.
+- Archivo fuente: [solidum/elements/cable.py](solidum/elements/cable.py) · clase `Cable3DCorot`.
 - Spec: [docs/specs/Cable3DCorot.md](specs/Cable3DCorot.md).
 - Referencias: Crisfield §3.3; Belytschko §4.5; Irvine §1.2.
 
@@ -269,11 +269,11 @@ F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del mate
 - No captura **plasticidad por flexión** distribuida en la sección: `E_tangent` escala toda la matriz de rigidez por igual. La fluencia que ocurre primero en la fibra inferior bajo flexión no se modela hasta que entre `FiberSection` (deuda técnica documentada).
 
 ### Independencia del diseño
-Vive en el paquete `fenix/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `fenix/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
+Vive en el paquete `solidum/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `solidum/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
 
 ### Validación
 - Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
-- Archivo fuente: [fenix/elements/frame/euler.py](fenix/elements/frame/euler.py) · clase `Frame2DEuler`.
+- Archivo fuente: [solidum/elements/frame/euler.py](solidum/elements/frame/euler.py) · clase `Frame2DEuler`.
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
 
@@ -320,11 +320,11 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 - No captura plasticidad distribuida: `E_tangent` escala toda la matriz.
 
 ### Independencia del diseño
-Vive en el paquete `fenix/elements/frame/`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en `fenix/elements/frame/_shared.py` — la construcción de la matriz de transformación 6×6 ya no se duplica.
+Vive en el paquete `solidum/elements/frame/`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en `solidum/elements/frame/_shared.py` — la construcción de la matriz de transformación 6×6 ya no se duplica.
 
 ### Validación
 - Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
-- Archivo fuente: [fenix/elements/frame/timoshenko.py](fenix/elements/frame/timoshenko.py) · clase `Frame2DTimoshenko`.
+- Archivo fuente: [solidum/elements/frame/timoshenko.py](solidum/elements/frame/timoshenko.py) · clase `Frame2DTimoshenko`.
 - Spec: [docs/specs/Frame2DTimoshenko.md](specs/Frame2DTimoshenko.md).
 - Referencias: Reddy cap. 5; Bathe §5.4.
 
@@ -366,11 +366,11 @@ con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
 Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, brazos flexibles, cables con rigidez a flexión. Problemas que la viga lineal `Frame2DEuler` no puede atacar.
 
 ### Independencia del diseño
-Vive en el paquete `fenix/elements/frame/` junto a las otras vigas 2D, **sin herencia**: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye `T` desde `alpha0` en lugar de usar `build_geometry_2d` compartido). Sí comparte con `Frame2DEuler` y `Frame2DTimoshenko` los helpers libres de `_shared.py` para carga de cuerpo (`_frame2d_consistent_body_load`), masa (`_frame2d_consistent_mass_local`) y traducción a `ElementForces` (`_frame2d_forces_from_local`).
+Vive en el paquete `solidum/elements/frame/` junto a las otras vigas 2D, **sin herencia**: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye `T` desde `alpha0` en lugar de usar `build_geometry_2d` compartido). Sí comparte con `Frame2DEuler` y `Frame2DTimoshenko` los helpers libres de `_shared.py` para carga de cuerpo (`_frame2d_consistent_body_load`), masa (`_frame2d_consistent_mass_local`) y traducción a `ElementForces` (`_frame2d_forces_from_local`).
 
 ### Validación
 - Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro).
-- Archivo fuente: [fenix/elements/frame/euler_corot.py](fenix/elements/frame/euler_corot.py) · clase `Frame2DEulerCorot`.
+- Archivo fuente: [solidum/elements/frame/euler_corot.py](solidum/elements/frame/euler_corot.py) · clase `Frame2DEulerCorot`.
 - Spec: [docs/specs/Frame2DEulerCorot.md](specs/Frame2DEulerCorot.md).
 - Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
 
@@ -423,7 +423,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 
 ### Validación
 - Tests: [tests/test_frame3d.py](tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro).
-- Archivo fuente: [fenix/elements/frame3d.py](fenix/elements/frame3d.py) · clase `Frame3D`.
+- Archivo fuente: [solidum/elements/frame3d.py](solidum/elements/frame3d.py) · clase `Frame3D`.
 - Spec: [docs/specs/Frame3D.md](specs/Frame3D.md).
 - Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
 
@@ -438,9 +438,9 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Parámetros**: `thickness` (espesor para estado plano), `quadrature` (opcional).
 - **Cargas distribuidas**: `compute_body_load(b)` integra $\int \mathbf N^\top \mathbf b\, dV$ sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve σ, ε y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (`Sigma_*_nodal`).
-- **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada. Viven en `fenix/elements/solid_2d/_shared.py`, compartidos con Tri3.
+- **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada. Viven en `solidum/elements/solid_2d/_shared.py`, compartidos con Tri3.
 - **Limitaciones**: bloqueo volumétrico con materiales casi-incompresibles (ν → 0.5); en ese régimen usar formulación mixta (no implementada).
-- **Archivo**: [fenix/elements/solid_2d/quad4.py](../fenix/elements/solid_2d/quad4.py)
+- **Archivo**: [solidum/elements/solid_2d/quad4.py](../solidum/elements/solid_2d/quad4.py)
 
 ---
 
@@ -454,8 +454,8 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cargas distribuidas**: `compute_body_load(b)` reparte 1/3 a cada nodo (exacto para b uniforme); `compute_edge_traction(edge, t̄)` reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve el único σ, ε y centroide del elemento (mismo formato que Quad4).
 - **Limitaciones**: shear locking severo; convergencia lenta. **Preferir `Quad4`** salvo en transiciones donde Quad4 no encaja geométricamente.
-- **Implementación**: kernel `_compute_kinematics_tri3` con `@njit` en `fenix/elements/solid_2d/_shared.py`.
-- **Archivo**: [fenix/elements/solid_2d/tri3.py](../fenix/elements/solid_2d/tri3.py)
+- **Implementación**: kernel `_compute_kinematics_tri3` con `@njit` en `solidum/elements/solid_2d/_shared.py`.
+- **Archivo**: [solidum/elements/solid_2d/tri3.py](../solidum/elements/solid_2d/tri3.py)
 
 ---
 
@@ -468,7 +468,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cargas**: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
 - **Salida por Gauss**: `compute_gauss_state(U)` con 9 puntos por defecto.
 - **Spec**: [docs/specs/Quad8.md](specs/Quad8.md).
-- **Archivo**: [fenix/elements/solid_2d/quad8.py](../fenix/elements/solid_2d/quad8.py) (subclase de la base interna `_HigherOrderSolid2D` definida en `_shared.py`, compartida con Quad9 y Tri6).
+- **Archivo**: [solidum/elements/solid_2d/quad8.py](../solidum/elements/solid_2d/quad8.py) (subclase de la base interna `_HigherOrderSolid2D` definida en `_shared.py`, compartida con Quad9 y Tri6).
 
 ---
 
@@ -480,7 +480,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Integración**: Gauss 3×3.
 - **Cargas y salida por Gauss**: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
 - **Spec**: [docs/specs/Quad9.md](specs/Quad9.md).
-- **Archivo**: [fenix/elements/solid_2d/quad9.py](../fenix/elements/solid_2d/quad9.py) (subclase de la base interna `_HigherOrderSolid2D`, compartida con Quad8 y Tri6).
+- **Archivo**: [solidum/elements/solid_2d/quad9.py](../solidum/elements/solid_2d/quad9.py) (subclase de la base interna `_HigherOrderSolid2D`, compartida con Quad8 y Tri6).
 
 ---
 
@@ -491,7 +491,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Integración**: 3 puntos en los puntos medios (cuadratura `tri_3`).
 - **Cargas**: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
 - **Spec**: [docs/specs/Tri6.md](specs/Tri6.md).
-- **Archivo**: [fenix/elements/solid_2d/tri6.py](../fenix/elements/solid_2d/tri6.py) (subclase de la base interna `_HigherOrderSolid2D` en `_shared.py`, compartida con Quad8 y Quad9; declara `_MASS_QUADRATURE = "tri_6"` para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
+- **Archivo**: [solidum/elements/solid_2d/tri6.py](../solidum/elements/solid_2d/tri6.py) (subclase de la base interna `_HigherOrderSolid2D` en `_shared.py`, compartida con Quad8 y Quad9; declara `_MASS_QUADRATURE = "tri_6"` para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
 
 ---
 
@@ -513,13 +513,13 @@ por dominio explícito).
 - **Caras (ADR 0012)**: 6 caras numeradas con normal saliente — 0 (−ζ), 1 (+ζ), 2 (−η), 3 (+ξ), 4 (+η), 5 (−ξ). Ver `Hex8.FACE_NODES`.
 - **Cargas distribuidas**: `compute_body_load(b)` integra `∫ Nᵀb dV`; `compute_face_traction(face, t̄)` reparte tracción uniforme sobre una cara con cuadratura 2D Gauss 2×2 (4 puntos por cara). `t̄` en globales.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve `{points_natural, points_global, strain (n_g, 6), stress (n_g, 6)}`. Sin `internal_forces` (ADR 0012).
-- **Implementación**: kernels `_compute_kinematics_hex8`, `_det_jacobian_hex8`, `_shape_functions_hex8` con `@njit` en `fenix/elements/solid_3d/_shared.py`. Mass lumping vía `lump_hrz` con `n_translational_dirs=3` y `_expand_scalar_mass_3d`.
+- **Implementación**: kernels `_compute_kinematics_hex8`, `_det_jacobian_hex8`, `_shape_functions_hex8` con `@njit` en `solidum/elements/solid_3d/_shared.py`. Mass lumping vía `lump_hrz` con `n_translational_dirs=3` y `_expand_scalar_mass_3d`.
 - **Limitaciones declaradas**:
   - **Locking volumétrico** con ν → 0.5 — sin mitigación (política idéntica al Quad4 2D). Blindado por `tests/test_volumetric_locking_3d.py`.
   - **Hourglass** con integración reducida `hex_1x1x1`: 12 modos espurios; sin estabilización Flanagan-Belytschko.
   - **Shear locking** con malla coarse 1 capa en sección: documentado en `tests/validation/test_macneal_beam_3d.py`.
 - **Spec**: [docs/specs/Hex8.md](specs/Hex8.md).
-- **Archivo**: [fenix/elements/solid_3d/hex8.py](../fenix/elements/solid_3d/hex8.py).
+- **Archivo**: [solidum/elements/solid_3d/hex8.py](../solidum/elements/solid_3d/hex8.py).
 
 ---
 
@@ -537,7 +537,7 @@ por dominio explícito).
   - **Shear locking severo** en flexión — peor que Hex8 por la pobreza del espacio lineal. Recomendación: usar Hex8 en mallas hexaédricas; Tet4 para transiciones de malla no estructurada o cuando geometría compleja impide hexaedros.
   - **Locking volumétrico** con ν → 0.5 — aún peor que en Hex8.
 - **Spec**: [docs/specs/Tet4.md](specs/Tet4.md).
-- **Archivo**: [fenix/elements/solid_3d/tet4.py](../fenix/elements/solid_3d/tet4.py).
+- **Archivo**: [solidum/elements/solid_3d/tet4.py](../solidum/elements/solid_3d/tet4.py).
 
 ---
 
@@ -554,7 +554,7 @@ Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación 
 - **Estado agrietado**: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`; después la condensación `K_cond = K_dd − K_du · K_{[[u]][[u]]}⁻¹ · K_du^T` se devuelve al ensamblador. El bulk descarga elásticamente conforme `[[u]]` crece (discrete approach); la disipación va al cohesivo en `Γ_d`.
 - **Activación**: criterio Rankine (`σ_I > σ_t0` del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. **Irreversible**: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
 - **Materiales aceptados**: bulk **solo `Elastic2D`** en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier `CohesiveMaterial` con `JUMP_DIM = 2`.
-- **Estado de la discontinuidad**: `DiscontinuityState` (en [fenix/core/discontinuity_state.py](../fenix/core/discontinuity_state.py)) — paralela a `ElementState`, semántica trial/commit.
+- **Estado de la discontinuidad**: `DiscontinuityState` (en [solidum/core/discontinuity_state.py](../solidum/core/discontinuity_state.py)) — paralela a `ElementState`, semántica trial/commit.
 - **YAML**:
   ```yaml
   cohesive_materials:
@@ -567,13 +567,13 @@ Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación 
 - **Post-procesamiento**: `compute_gauss_state(U)` añade clave `'discontinuity'` con `{normal, tangent, centroid, solitary_node, l_d, jump, traction, damage}` cuando el elemento está agrietado.
 - **Limitaciones declaradas** (`out_of_scope` en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de `n` tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (`Tri6_Embedded`), 3D (`Tet4_Embedded`).
 - **Spec**: [docs/specs/CST_Embedded2D.md](specs/CST_Embedded2D.md).
-- **Archivo**: [fenix/elements/solid_2d/embedded_cst.py](../fenix/elements/solid_2d/embedded_cst.py).
+- **Archivo**: [solidum/elements/solid_2d/embedded_cst.py](../solidum/elements/solid_2d/embedded_cst.py).
 
 ---
 
 ## Cómo añadir un elemento nuevo
 
 1. **Spec primero** — el usuario crea `docs/specs/<Nombre>.md` a partir de `docs/specs/_template_element.md` (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.
-2. **Scaffolding** — `/fenix-new element <Nombre>` genera archivo en `fenix/elements/`, decorador `@ElementRegistry.register` y esqueleto de test.
+2. **Scaffolding** — `/solidum-new element <Nombre>` genera archivo en `solidum/elements/`, decorador `@ElementRegistry.register` y esqueleto de test.
 3. **Implementación + validación** — la IA codifica contra la spec; los tests cubren los casos de `acceptance` declarados.
 4. **Catálogo** — cuando la spec pasa a `status: validated`, se añade aquí una entrada breve siguiendo el formato de arriba (la spec sigue siendo la referencia detallada).

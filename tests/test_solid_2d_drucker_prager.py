@@ -19,12 +19,12 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad4
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d import Quad4
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 def _build_quad4_plane_strain_domain(material, pattern: str = 'confined_y'):
@@ -152,8 +152,8 @@ def _build_quad4_prescribed_strain(material, eps_xx: float, eps_yy: float):
     punto de Gauss. Permite comparar σ y ε_p contra la derivación analítica
     del material sin acoplamientos elementales.
     """
-    from fenix.core.domain import Domain
-    from fenix.elements.solid_2d import Quad4
+    from solidum.core.domain import Domain
+    from solidum.elements.solid_2d import Quad4
 
     domain = Domain()
     n1 = domain.add_node(1, [0.0, 0.0])
@@ -213,10 +213,10 @@ class TestDruckerPrager2DAnalyticalBenchmarks(unittest.TestCase):
         el material devuelve C_e — la condición de consistencia se cumplió
         en el paso plástico).
         """
-        from fenix.materials.drucker_prager_2d import DruckerPrager2D
-        from fenix.math.assembly import Assembler
-        from fenix.math.convergence import ConvergenceCriterion
-        from fenix.math.solvers import NonlinearSolver
+        from solidum.materials.drucker_prager_2d import DruckerPrager2D
+        from solidum.math.assembly import Assembler
+        from solidum.math.convergence import ConvergenceCriterion
+        from solidum.math.solvers import NonlinearSolver
 
         E, nu, c0 = 2.0e4, 0.3, 10.0
         mat = DruckerPrager2D(E=E, nu=nu, cohesion=c0, phi_deg=30.0, psi_deg=10.0, H=0.0)
@@ -270,10 +270,10 @@ class TestDruckerPrager2DAnalyticalBenchmarks(unittest.TestCase):
         de state o el commit estuvieran mal escalados, el invariante fallaría
         aunque el solver convergiera.
         """
-        from fenix.materials.drucker_prager_2d import DruckerPrager2D
-        from fenix.math.assembly import Assembler
-        from fenix.math.convergence import ConvergenceCriterion
-        from fenix.math.solvers import NonlinearSolver
+        from solidum.materials.drucker_prager_2d import DruckerPrager2D
+        from solidum.math.assembly import Assembler
+        from solidum.math.convergence import ConvergenceCriterion
+        from solidum.math.solvers import NonlinearSolver
 
         mat = DruckerPrager2D(E=2.0e4, nu=0.3, cohesion=10.0,
                               phi_deg=30.0, psi_deg=10.0, H=100.0)
@@ -313,10 +313,10 @@ class TestDruckerPrager2DAnalyticalBenchmarks(unittest.TestCase):
         del estado plástico convergido); (ii) σ_xy ≈ 0; (iii) σ_xx coincide
         con ``k(α_final)/(3·η_f)`` derivado de α en el state.
         """
-        from fenix.materials.drucker_prager_2d import DruckerPrager2D
-        from fenix.math.assembly import Assembler
-        from fenix.math.convergence import ConvergenceCriterion
-        from fenix.math.solvers import NonlinearSolver
+        from solidum.materials.drucker_prager_2d import DruckerPrager2D
+        from solidum.math.assembly import Assembler
+        from solidum.math.convergence import ConvergenceCriterion
+        from solidum.math.solvers import NonlinearSolver
 
         mat = DruckerPrager2D(E=2.0e4, nu=0.3, cohesion=10.0,
                               phi_deg=30.0, psi_deg=10.0, H=100.0)

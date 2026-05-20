@@ -185,7 +185,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/plastic_1d.py](../../fenix/materials/plastic_1d.py).
+- **Archivo**: [solidum/materials/plastic_1d.py](../../solidum/materials/plastic_1d.py).
 - **Clase**: `Elastoplastic1D`, registrada vía `@MaterialRegistry.register`.
 - **`admissibility_scale`**: $\sigma_y + H\,\alpha$ (ADR 0006). El switching elástico/plástico usa el patrón atol + rtol·escala.
 - **State schema**: `{'eps_p': float, 'alpha': float}`. `state_vars=None` se interpreta como estado virgen ($\varepsilon^p = 0$, $\alpha = 0$).

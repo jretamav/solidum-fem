@@ -1,4 +1,4 @@
-# Onboarding — primer día en Fenix FEM
+# Onboarding — primer día en Solidum FEM
 
 > Documento de entrada para agente IA o desarrollador humano que arranca sesión sin contexto previo. Lo lees una vez, te orientas, y vas a la fuente concreta para profundizar.
 >
@@ -8,7 +8,7 @@
 
 ## 0. Cinco minutos para situarse
 
-Fenix FEM es un programa de elementos finitos en aproximación de desplazamientos para **investigación en mecánica de sólidos** (mecánico ± térmico, acoplado o desacoplado). Hoy resuelve:
+Solidum FEM es un programa de elementos finitos en aproximación de desplazamientos para **investigación en mecánica de sólidos** (mecánico ± térmico, acoplado o desacoplado). Hoy resuelve:
 
 - Estática lineal y no lineal (material y geométrica) sobre **1D estructural**, **sólidos 2D** y **sólidos 3D lineales** (Hex8, Tet4 — Etapa 7 cerrada 2026-05-19, ADR 0012).
 - **Subsistema modal/dinámico/espectral completo** (ADR 0009 cerrado 2026-05-18): modal por autovalores generalizados, transitorio implícito Newmark/HHT-α (lineal y no lineal con Newton), transitorio explícito por diferencias centradas, respuesta forzada armónica en frecuencia y análisis sísmico por combinación modal espectral (SRSS/CQC).
@@ -38,7 +38,7 @@ Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/spe
 ```
 fenix_fem/
 ├── Reglas.md, CLAUDE.md          ← Contrato y guía operativa
-├── fenix/                        ← Código fuente
+├── solidum/                        ← Código fuente
 │   ├── core/                     ← Domain, Node, Element base, Material base, Assembler
 │   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/, solid_3d/
 │   ├── materials/                ← elastic, elastic_2d, elastic_3d, plastic_1d, von_mises_2d, drucker_prager_2d, damage_*
@@ -83,7 +83,7 @@ python manuals/build_user_manual.py
 python manuals/build_architecture_manual.py
 
 # Pipeline YAML end-to-end
-python -c "import fenix; print(fenix.run_yaml('examples/<archivo>.yaml'))"
+python -c "import solidum; print(solidum.run_yaml('examples/<archivo>.yaml'))"
 ```
 
 ---
@@ -92,7 +92,7 @@ python -c "import fenix; print(fenix.run_yaml('examples/<archivo>.yaml'))"
 
 Hay dos memorias que persisten entre sesiones:
 
-- **`C:\Users\jreta\.claude\projects\g--Mi-unidad-Proyectos-IA-fenix-fem\memory\MEMORY.md`** y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque cuando sea relevante**. Tipos: `user`, `feedback`, `project`, `reference`. Detalle en el system prompt; protocolo en CLAUDE.md global.
+- **`C:\Users\jreta\.claude\projects\g--Mi-unidad-Proyectos-IA-solidum-fem\memory\MEMORY.md`** y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque cuando sea relevante**. Tipos: `user`, `feedback`, `project`, `reference`. Detalle en el system prompt; protocolo en CLAUDE.md global.
 - **`docs/specs/<Nombre>.md`**: memoria *física* y *numérica* de cada componente. Donde se guarda la formulación rigurosa.
 
 **Antes de actuar**: si la memoria menciona una decisión, **verificar que sigue vigente** consultando el código (los memos envejecen).
@@ -105,7 +105,7 @@ Resumen ágil de Reglas.md §3 (no la sustituye; léela entera al menos una vez)
 
 - **Decide el agente, reporta una frase**: plumbing puro — registry, decoradores, scaffolding, type hints, refactor zonal, vectorización, caché, manejo sparse.
 - **Decide el usuario, el agente propone con ecuaciones + test analítico**: formulación física-matemática — matriz `B`, return mapping, criterios de convergencia, constantes con significado físico, traducción de convenciones bibliográficas.
-- **Zona gris (el agente propone, el usuario valida concepto)**: clases base, semántica trial/commit, API pública (`SolveResult`, `fenix.run*`), decisiones con ADR en curso. **Ante la duda, eleva a zona gris**.
+- **Zona gris (el agente propone, el usuario valida concepto)**: clases base, semántica trial/commit, API pública (`SolveResult`, `solidum.run*`), decisiones con ADR en curso. **Ante la duda, eleva a zona gris**.
 
 ---
 

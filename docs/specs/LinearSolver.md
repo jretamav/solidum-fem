@@ -29,7 +29,7 @@ $$\mathbf K_{\text{red}} = \mathbf T^\top \mathbf K\,\mathbf T, \qquad \mathbf F
 - Vector de desplazamientos global $\mathbf U \in \mathbb R^{n_{\text{dof}}}$ (libres + prescritos consistentes).
 - Reacciones se recuperan a posteriori vía `domain.reactions(U)`.
 - Esfuerzos en puntos de Gauss vía `domain.recompute_gauss_state(U)`.
-- El resultado se envuelve en `SolveResult` por la capa pública (`fenix.run_static`).
+- El resultado se envuelve en `SolveResult` por la capa pública (`solidum.run_static`).
 
 ---
 
@@ -158,11 +158,11 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/linear.py](../../fenix/math/solvers/linear.py).
+- **Archivo**: [solidum/math/solvers/linear.py](../../solidum/math/solvers/linear.py).
 - **Clase**: `LinearSolver`, registrada vía `@SolverRegistry.register` con `PIPELINE_KIND = "static"`.
 - **Cache**: atributos `_factor`, `_T`, `_g_full`, `_F_dir`, `_n_free` se rellenan lazy en la primera llamada a `solve`. Método público `invalidate_cache()` los pone a `None` para forzar reensamblaje.
 - **Fallback Cholesky→LU**: capturado en `_build_cache` vía `CholeskyNotPositiveDefiniteError` (ADR 0003 §5); registra un warning y reintenta con LU.
-- **Entrypoint público**: `fenix.run_static(model, solver="linear", ...)` (despacho declarativo por `PIPELINE_KIND`, regla C de la auditoría).
+- **Entrypoint público**: `solidum.run_static(model, solver="linear", ...)` (despacho declarativo por `PIPELINE_KIND`, regla C de la auditoría).
 - **Tests**: cobertura masiva implícita — prácticamente todos los tests del pipeline estático lineal lo usan. Tests específicos del cache: `tests/test_solver_robustness.py::test_linear_solver_cache_reuse`.
 
 ---

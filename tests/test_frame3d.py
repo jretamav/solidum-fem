@@ -7,13 +7,13 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.frame3d import Frame3D
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.frame3d import Frame3D
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 class TestFrame3DAcceptance(unittest.TestCase):
@@ -114,8 +114,8 @@ class TestFrame3DAcceptance(unittest.TestCase):
 
     def test_acceptance_simetria_K(self):
         """Criterio 5: K_global = K_global.T en orientación arbitraria."""
-        n1 = fenix.core.node.Node(1, [0.0, 0.0, 0.0])
-        n2 = fenix.core.node.Node(2, [3.0, 4.0, 12.0])  # dirección arbitraria
+        n1 = solidum.core.node.Node(1, [0.0, 0.0, 0.0])
+        n2 = solidum.core.node.Node(2, [3.0, 4.0, 12.0])  # dirección arbitraria
         for k, node in enumerate((n1, n2)):
             for i, dof in enumerate(('ux', 'uy', 'uz', 'rx', 'ry', 'rz')):
                 node.add_dof(dof)
@@ -136,7 +136,7 @@ class TestFrame3DAcceptance(unittest.TestCase):
                              ref_vector=[1.0, 0.0, 0.0])
 
     def test_registro_en_registry(self):
-        from fenix.registry import ElementRegistry
+        from solidum.registry import ElementRegistry
         self.assertIn('Frame3D', ElementRegistry._items)
 
 

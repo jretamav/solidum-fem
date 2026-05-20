@@ -104,7 +104,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/truss.py](../../fenix/elements/truss.py)
+- **Archivo**: [solidum/elements/truss.py](../../solidum/elements/truss.py)
 - **Clase**: `Truss2D` (registrada vía `@ElementRegistry.register`)
 - **Tests**:
   - [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss2D` — verifica `L0`, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.

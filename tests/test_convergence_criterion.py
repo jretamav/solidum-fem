@@ -17,17 +17,17 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import (
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import (
     ConvergenceCriterion,
     ConvergenceState,
     make_convergence_from_config,
 )
-from fenix.math.solvers import NonlinearSolver
+from solidum.math.solvers import NonlinearSolver
 
 
 class TestConvergenceCriterionUnit(unittest.TestCase):
@@ -106,7 +106,7 @@ class TestConvergenceFromConfig(unittest.TestCase):
         c = make_convergence_from_config({"rtol_force": 1e-3})
         self.assertEqual(c.rtol_force, 1e-3)
         # rtol_disp queda en el default.
-        from fenix.constants import CONVERGENCE_RTOL_DISP
+        from solidum.constants import CONVERGENCE_RTOL_DISP
         self.assertEqual(c.rtol_disp, CONVERGENCE_RTOL_DISP)
 
 

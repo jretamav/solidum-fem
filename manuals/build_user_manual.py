@@ -1,4 +1,4 @@
-"""Genera User_manual.pdf — guía dirigida al usuario final de Fenix FEM.
+"""Genera User_manual.pdf — guía dirigida al usuario final de Solidum FEM.
 
 Reutiliza la conversión Markdown→LaTeX de `build_reference_manual.py`. Las
 fuentes son los archivos numerados en `manuals/sources/user/`, ensamblados en
@@ -95,7 +95,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Usuario - Fenix FEM},
+    pdftitle={Manual de Usuario - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -109,7 +109,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Usuario}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Usuario}}
 \fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
 \fancyfoot[C]{\thepage}
 \fancyfoot[R]{\footnotesize\color{darkgray}FF-MU}
@@ -162,7 +162,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
     \vspace{1cm}
     {\LARGE Plataforma de Análisis por Elementos Finitos en Python \par}
     \vspace{0.3cm}
@@ -189,7 +189,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \chapter*{Sobre este manual}
 \addcontentsline{toc}{chapter}{Sobre este manual}
-\noindent Este manual está dirigido al \textbf{usuario final} de Fenix FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
+\noindent Este manual está dirigido al \textbf{usuario final} de Solidum FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
 
 Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
 
@@ -302,7 +302,7 @@ def build_colofon() -> str:
         "\\vspace*{\\fill}\n"
         "\\begin{center}\n"
         "\\rule{0.4\\textwidth}{0.4pt}\\\\[1em]\n"
-        "{\\bfseries\\color{yamlkey} Fenix FEM --- Manual de Usuario}\\\\[0.5em]\n"
+        "{\\bfseries\\color{yamlkey} Solidum FEM --- Manual de Usuario}\\\\[0.5em]\n"
         f"Sigla del manual: \\texttt{{FF-MU}}\\\\[0.5em]\n"
         f"Compilado el {fecha}\\\\[0.5em]\n"
         f"Commit Git: \\texttt{{{commit}}}{dirty}\\\\[1em]\n"

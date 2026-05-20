@@ -143,7 +143,7 @@ Tratamiento en este proyecto: declarar limitación, **blindar con test** (`test_
 
 ### Mass lumping en orientación arbitraria
 
-`compute_mass_matrix(lumping="lumped")` usa HRZ canónico (`fenix/math/mass_lumping.py::lump_hrz`). Diagonal en ejes locales del elemento. En sólidos 3D la matriz lumped traslacional es estrictamente diagonal porque `m_t·I₃` es invariante bajo SO(3) — sin el caveat de `Frame3D` que sí aparece en su bloque rotacional (no hay rotaciones nodales en sólidos).
+`compute_mass_matrix(lumping="lumped")` usa HRZ canónico (`solidum/math/mass_lumping.py::lump_hrz`). Diagonal en ejes locales del elemento. En sólidos 3D la matriz lumped traslacional es estrictamente diagonal porque `m_t·I₃` es invariante bajo SO(3) — sin el caveat de `Frame3D` que sí aparece en su bloque rotacional (no hay rotaciones nodales en sólidos).
 
 ---
 
@@ -245,9 +245,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_3d/hex8.py](../../fenix/elements/solid_3d/hex8.py).
+- **Archivo**: [solidum/elements/solid_3d/hex8.py](../../solidum/elements/solid_3d/hex8.py).
 - **Clase**: `Hex8` (registrada vía `@ElementRegistry.register`).
-- **Funciones núcleo**: `_compute_kinematics_hex8(xi, eta, zeta, coords)`, `_det_jacobian_hex8(...)` y `_shape_functions_hex8(...)` con `@njit` (Numba) en [fenix/elements/solid_3d/_shared.py](../../fenix/elements/solid_3d/_shared.py). Integrandos comunes 3D (`_compute_integrands_3d`) y expansor masa traslacional (`_expand_scalar_mass_3d`) también en `_shared`.
+- **Funciones núcleo**: `_compute_kinematics_hex8(xi, eta, zeta, coords)`, `_det_jacobian_hex8(...)` y `_shape_functions_hex8(...)` con `@njit` (Numba) en [solidum/elements/solid_3d/_shared.py](../../solidum/elements/solid_3d/_shared.py). Integrandos comunes 3D (`_compute_integrands_3d`) y expansor masa traslacional (`_expand_scalar_mass_3d`) también en `_shared`.
 - **Tests**:
   - [tests/test_solid_3d.py](../../tests/test_solid_3d.py) — clase `TestHex8Element` (10 tests: dimensiones/DOFs, simetría K, patch tracción uniaxial, jacobiano negativo abortado, body load, face traction (balance + nodos activos + índice fuera de rango), masa consistente y lumped HRZ, gauss state).
   - [tests/test_rigid_body_modes.py](../../tests/test_rigid_body_modes.py) — `TestRBMHex8` (5 tests: traslación, 3 rotaciones independientes en (x, y, z), rank-deficiency = 6 modos rígidos).

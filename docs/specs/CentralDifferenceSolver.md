@@ -189,7 +189,7 @@ references:
 
 ## Implementación
 
-- Archivo: [fenix/math/solvers/central_difference.py](../../fenix/math/solvers/central_difference.py)
+- Archivo: [solidum/math/solvers/central_difference.py](../../solidum/math/solvers/central_difference.py)
 - Clase: `CentralDifferenceSolver` (registrada en `SolverRegistry`)
 - Atributo de despacho: `PIPELINE_KIND = "transient"` — `run_yaml` despacha a `run_transient` por el mecanismo declarativo de la regla C (aplicada 2026-05-18 al introducir este solver, primer caso fuera de la jerarquía de Newmark)
 - Tests: [tests/test_central_difference.py](../../tests/test_central_difference.py) (10 tests verdes)

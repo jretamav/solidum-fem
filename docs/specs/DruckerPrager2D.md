@@ -339,7 +339,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/drucker_prager_2d.py](../../fenix/materials/drucker_prager_2d.py).
+- **Archivo**: [solidum/materials/drucker_prager_2d.py](../../solidum/materials/drucker_prager_2d.py).
 - **Clase**: `DruckerPrager2D`, registrada vía `@MaterialRegistry.register`. `IS_SYMMETRIC = False` declarativo (la tangente puede ser asimétrica; el despachador agrega el flag sobre todos los materiales del dominio).
 - **Kernel Numba** `_compute_drucker_prager_plane_strain`:
   1. Predictor elástico desviador-volumétrico (paralelo a J2 plane strain, $\varepsilon^p_{zz}$ libre).

@@ -19,23 +19,23 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.cable import Cable2DCorot, Cable3DCorot
-from fenix.elements.frame import (
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.cable import Cable2DCorot, Cable3DCorot
+from solidum.elements.frame import (
     Frame2DEuler,
     Frame2DEulerCorot,
     Frame2DTimoshenko,
 )
-from fenix.elements.frame3d import Frame3D
-from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
-from fenix.elements.truss import Truss2D, Truss3D
-from fenix.entry import run_modal
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.math.assembly import Assembler
-from fenix.math.mass_lumping import lump_hrz
-from fenix.math.solvers import ModalSolver
+from solidum.elements.frame3d import Frame3D
+from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
+from solidum.elements.truss import Truss2D, Truss3D
+from solidum.entry import run_modal
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.math.assembly import Assembler
+from solidum.math.mass_lumping import lump_hrz
+from solidum.math.solvers import ModalSolver
 
 from _modal_fixtures import (
     A_SECTION,

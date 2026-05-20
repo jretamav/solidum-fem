@@ -21,14 +21,14 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad8, Quad9, Tri3, Tri6
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.von_mises_2d import VonMises2D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d import Quad8, Quad9, Tri3, Tri6
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.von_mises_2d import VonMises2D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 def _build_tri3_mesh(material):

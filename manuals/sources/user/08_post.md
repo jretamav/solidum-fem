@@ -2,7 +2,7 @@
 
 ## Formato VTU (VTK XML)
 
-Mediante `meshio`, Fenix FEM exporta los resultados en archivos `.vtu` compatibles con ParaView. La información se clasifica en dos diccionarios estándar:
+Mediante `meshio`, Solidum FEM exporta los resultados en archivos `.vtu` compatibles con ParaView. La información se clasifica en dos diccionarios estándar:
 
 ### Datos Nodales (Point Data)
 

@@ -24,21 +24,21 @@ from pathlib import Path
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.core.node import Node
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.materials.damage_1d import IsotropicDamage1D
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.von_mises_2d import VonMises2D
-from fenix.materials.cable_1d import CableMaterial1D
-from fenix.elements.truss import Truss2D
-from fenix.elements.frame import Frame2DEuler
-from fenix.entry import run
-from fenix.math.assembly import Assembler
-from fenix.utils.yaml_parser import YamlParser, YamlValidationError
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.core.node import Node
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.materials.damage_1d import IsotropicDamage1D
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.von_mises_2d import VonMises2D
+from solidum.materials.cable_1d import CableMaterial1D
+from solidum.elements.truss import Truss2D
+from solidum.elements.frame import Frame2DEuler
+from solidum.entry import run
+from solidum.math.assembly import Assembler
+from solidum.utils.yaml_parser import YamlParser, YamlValidationError
 
 
 class TestMaterialDensityAttribute(unittest.TestCase):
@@ -149,7 +149,7 @@ class TestAssembleSelfWeight(unittest.TestCase):
         dom.generate_equation_numbers(verbose=False)
         asm = Assembler(dom)
 
-        with self.assertLogs('fenix.assembly', level='WARNING') as cm:
+        with self.assertLogs('solidum.assembly', level='WARNING') as cm:
             F = asm.assemble_self_weight([0.0, -9.81])
 
         # Warning identifica el material por nombre.

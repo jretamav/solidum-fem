@@ -1,16 +1,16 @@
-# Auditoría global de Fenix FEM — 2026-05-18
+# Auditoría global de Solidum FEM — 2026-05-18
 
 > Auditoría a fondo de arquitectura, programación, implementación computacional y numérica. Cinco ejes paralelos (arquitectura/plumbing, elementos, materiales, solvers, cobertura/docs) sobre el snapshot del repositorio al cierre de Etapa 6 (ADR 0009 completo + ADR 0010 fase 3b + ADR 0011 enmendado).
 >
 > **Metodología**: cuatro agentes especializados leyeron el código de verdad (no sólo grep) bajo briefs autocontenidos con criterios concretos, evidencia `file:line`, severidad estandarizada y referencia a memorias del proyecto. El consolidador (yo) verificó todos los hallazgos críticos releyendo directamente el código antes de incluirlos en este informe.
 >
-> **Alcance**: ~70 archivos `.py` en `fenix/`, ~45 archivos de test, 11 ADRs aceptados, 32 specs, 558 tests verdes en suite global. La auditoría es **diagnóstico, no intervención**: este documento identifica; el usuario decide qué retomar y en qué orden.
+> **Alcance**: ~70 archivos `.py` en `solidum/`, ~45 archivos de test, 11 ADRs aceptados, 32 specs, 558 tests verdes en suite global. La auditoría es **diagnóstico, no intervención**: este documento identifica; el usuario decide qué retomar y en qué orden.
 
 ---
 
 ## Veredicto ejecutivo
 
-**Fenix FEM es un código robusto.** La arquitectura honra los principios de `Reglas.md`: contratos declarativos consistentes (`STRAIN_DIM`, `DOF_NAMES`, `PIPELINE_KIND`, `JUMP_DIM`), validación temprana con mensajes útiles, capas sin ciclos (`core ← math ← {materials, elements} ← entry/utils`), tolerancias adimensionales con autocalibración (ADRs 0006 y 0007), despacho declarativo del pipeline (ADR 0009 regla C), excepciones tipadas (ADR 0011). El núcleo numérico está rigurosamente implementado: J2 plane stress según Simó-Hughes §3.4.1 (Newton local con diagonalización en autovectores y tangente cerrada con corrección por endurecimiento — sofisticado), Drucker-Prager con dos ramas regular/apex y tangente algorítmica explícita, daño 2D con tangente asimétrica analítica, cinemática KOS del embedded con condensación estática y `l_d = (A_e/h)·cos(θ−α)` del Cap. 6 de la tesis. Los esquemas temporales (Newmark β-γ, HHT-α con auto-derivación, leapfrog Belytschko-Liu-Moran, Crisfield cilíndrico, SRSS/CQC Der Kiureghian 1980) están escritos conforme a la bibliografía canónica.
+**Solidum FEM es un código robusto.** La arquitectura honra los principios de `Reglas.md`: contratos declarativos consistentes (`STRAIN_DIM`, `DOF_NAMES`, `PIPELINE_KIND`, `JUMP_DIM`), validación temprana con mensajes útiles, capas sin ciclos (`core ← math ← {materials, elements} ← entry/utils`), tolerancias adimensionales con autocalibración (ADRs 0006 y 0007), despacho declarativo del pipeline (ADR 0009 regla C), excepciones tipadas (ADR 0011). El núcleo numérico está rigurosamente implementado: J2 plane stress según Simó-Hughes §3.4.1 (Newton local con diagonalización en autovectores y tangente cerrada con corrección por endurecimiento — sofisticado), Drucker-Prager con dos ramas regular/apex y tangente algorítmica explícita, daño 2D con tangente asimétrica analítica, cinemática KOS del embedded con condensación estática y `l_d = (A_e/h)·cos(θ−α)` del Cap. 6 de la tesis. Los esquemas temporales (Newmark β-γ, HHT-α con auto-derivación, leapfrog Belytschko-Liu-Moran, Crisfield cilíndrico, SRSS/CQC Der Kiureghian 1980) están escritos conforme a la bibliografía canónica.
 
 **Hay tres bugs críticos accionables**, todos verificados por relectura directa del código y todos **latentes** (no rompen la suite actual porque el escenario disparador no está cubierto):
 
@@ -44,9 +44,9 @@ Sin hallazgos críticos en formulación física, signos, return mappings, o esqu
 1. **[CRÍTICO · Eje 4]** `singular_tangent_seen` muerto en `NewtonNewmarkSolver` / `NewtonHHTSolver` — diagnóstico tipado del ADR 0011 inaccesible. (`newmark.py:442`, `newmark.py:476-484`).
 2. **[CRÍTICO · Eje 4]** `LinearSolver.solve` no cachea factorización entre llamadas — promesa rota del ADR 0003 para barrido de cargas. (`linear.py:25-49`).
 3. **[CRÍTICO · Eje 4]** `CentralDifferenceSolver` no lineal con apoyos prescritos no nulos resta `F_dir` dos veces. (`central_difference.py:232,296,353-357`).
-4. **[ALTO · Eje 1]** Autodiscover no recursivo: `embedded_cst.py` ya depende de re-export manual en `fenix/__init__.py:42`. Futuros archivos en subpaquetes pueden no registrarse silenciosamente. (`autodiscover.py:17`, `solid_2d/__init__.py:34-38`).
+4. **[ALTO · Eje 1]** Autodiscover no recursivo: `embedded_cst.py` ya depende de re-export manual en `solidum/__init__.py:42`. Futuros archivos en subpaquetes pueden no registrarse silenciosamente. (`autodiscover.py:17`, `solid_2d/__init__.py:34-38`).
 5. **[ALTO · Eje 1 + Eje 4]** Triplicación literal de `_resolve_rayleigh` en Newmark, CentralDifference y Harmonic — confirmado independientemente por dos ejes. (`newmark.py:113-127`, `central_difference.py:158-179`, `harmonic.py:146-163`).
-6. **[ALTO · Eje 2]** Sólidos 2D no exponen `internal_forces` (ADR 0002 incompleto declarado en MEMORY). Coexisten `compute_internal_forces` (dict) e `internal_forces` (`None`) en el mismo árbol — convención implícita. (`fenix/elements/solid_2d/*.py`, `core/element.py:227-243`).
+6. **[ALTO · Eje 2]** Sólidos 2D no exponen `internal_forces` (ADR 0002 incompleto declarado en MEMORY). Coexisten `compute_internal_forces` (dict) e `internal_forces` (`None`) en el mismo árbol — convención implícita. (`solidum/elements/solid_2d/*.py`, `core/element.py:227-243`).
 7. **[ALTO · Eje 2]** Tests con coeficientes unitarios (`thickness=1.0`, `E=1`, áreas unitarias) ocultan bugs dimensionales latentes — el bug histórico del `thickness` en el embedded fue precisamente esto. 27 ocurrencias de `thickness=1.0` en 11 archivos de test.
 8. **[MEDIO · Eje 3]** `DruckerPrager2D.IS_SYMMETRIC = False` hardcoded incluso cuando el usuario construye con `ψ = φ` (asociado). Renuncia a Cholesky innecesariamente. (`drucker_prager_2d.py:275, 339`).
 9. **[MEDIO · Eje 4]** Cuatro solvers Newmark/HHT duplican ~880 líneas de plumbing temporal idéntico — refactor zonal pendiente, abarata futuros esquemas (Bossak, generalized-α). (`newmark.py:135-1167`).
@@ -61,9 +61,9 @@ Sin hallazgos críticos en formulación física, signos, return mappings, o esqu
 ## H-1.1 — Autodiscover no recursivo
 **Severidad**: alto · **Categoría**: registries
 
-**Evidencia**: `fenix/autodiscover.py:17` usa `pkgutil.iter_modules(package.__path__)` (no recursivo). `fenix/elements/solid_2d/__init__.py:34-38` importa Quad4/Quad8/Quad9/Tri3/Tri6 pero **no** `embedded_cst`. `fenix/__init__.py:42` lo re-importa explícitamente.
+**Evidencia**: `solidum/autodiscover.py:17` usa `pkgutil.iter_modules(package.__path__)` (no recursivo). `solidum/elements/solid_2d/__init__.py:34-38` importa Quad4/Quad8/Quad9/Tri3/Tri6 pero **no** `embedded_cst`. `solidum/__init__.py:42` lo re-importa explícitamente.
 
-**Descripción**: el contrato implícito "añadir archivo nuevo en `fenix/elements/...` basta para registrarlo" es **falso** para módulos dentro de subpaquetes — hay que recordar editar el `__init__.py` del subpaquete o el `fenix/__init__.py` raíz. Para una arquitectura optimizada para la IA mantenedora sin contexto previo, es punto de regresión silenciosa.
+**Descripción**: el contrato implícito "añadir archivo nuevo en `solidum/elements/...` basta para registrarlo" es **falso** para módulos dentro de subpaquetes — hay que recordar editar el `__init__.py` del subpaquete o el `solidum/__init__.py` raíz. Para una arquitectura optimizada para la IA mantenedora sin contexto previo, es punto de regresión silenciosa.
 
 **Recomendación**: convertir `_discover_package` a `pkgutil.walk_packages` con `prefix=f"{package_name}."`, ignorando `_shared` y `diagnostics`. Alternativamente, añadir test `test_autodiscover_covers_all_decorated_classes` que escanee el árbol y verifique que toda clase con `@*Registry.register` aparece en el registry tras `_initialize_registries`.
 
@@ -74,7 +74,7 @@ Sin hallazgos críticos en formulación física, signos, return mappings, o esqu
 
 **Descripción**: función estática que traduce `{"alpha","beta"}` o `{"xi1","omega1","xi2","omega2"}` a `(α,β)` copiada tres veces literalmente. Pasa el umbral "centralizar siempre" de la memoria de consistencia arquitectural. Confirmado por agentes 1 y 4 de forma independiente.
 
-**Recomendación**: mover a `fenix/math/damping.py::resolve_rayleigh_config(cfg, *, source: str = "solver") -> (α, β)`. Las tres `_resolve_rayleigh` quedan como thin-wrappers o desaparecen.
+**Recomendación**: mover a `solidum/math/damping.py::resolve_rayleigh_config(cfg, *, source: str = "solver") -> (α, β)`. Las tres `_resolve_rayleigh` quedan como thin-wrappers o desaparecen.
 
 ## H-1.3 — API de `Result` asimétrica
 **Severidad**: medio · **Categoría**: API
@@ -142,7 +142,7 @@ Sin hallazgos críticos en formulación física, signos, return mappings, o esqu
 
 **Recomendación**: documentar "shallow-frozen" en los docstrings.
 
-## H-1.11 — `core/element.py` importa `fenix.results`
+## H-1.11 — `core/element.py` importa `solidum.results`
 **Severidad**: bajo · **Categoría**: capas
 
 **Evidencia**: `core/element.py:12`.
@@ -297,7 +297,7 @@ Sin hallazgos críticos en formulación física, signos, return mappings, o esqu
 
 **Evidencia**: `damage_1d.py:86-93`, `damage_2d.py:94-101`. Rama cálculo `d`, cap `DAMAGE_MAX`, flag `saturated` idénticos. Diferencia: `eps_eq` y tangente.
 
-**Recomendación**: extraer `fenix/materials/_softening.py::exponential_damage(kappa, kappa_0, alpha, cap) -> (d, dd_dkappa, saturated)`. Abrir puerta a `linear_damage(...)` para alinear API con cohesivo.
+**Recomendación**: extraer `solidum/materials/_softening.py::exponential_damage(kappa, kappa_0, alpha, cap) -> (d, dd_dkappa, saturated)`. Abrir puerta a `linear_damage(...)` para alinear API con cohesivo.
 
 ## H-3.5 — Tangente algorítmica DP sin diferencia finita explícita
 **Severidad**: medio · **Material**: DruckerPrager2D · **Categoría**: cobertura de test
@@ -576,7 +576,7 @@ Recomiendo agrupar los 3 en **una sola rama de trabajo "robustez infraestructura
 ## Corto plazo — hallazgos altos
 
 4. **H-1.1** — autodiscover recursivo con `pkgutil.walk_packages`. Más test `test_autodiscover_covers_all_decorated_classes`.
-5. **H-1.2 / H-4.5** — centralizar `resolve_rayleigh_config` en `fenix/math/damping.py`. Triplicación confirmada por dos ejes.
+5. **H-1.2 / H-4.5** — centralizar `resolve_rayleigh_config` en `solidum/math/damping.py`. Triplicación confirmada por dos ejes.
 6. **H-2.1** — documentar explícitamente el doble contrato (deuda ADR 0002 conocida) en docstrings y manual.
 7. **H-2.2** — añadir tests con coeficientes no unitarios para los elementos críticos (al menos uno por elemento sólido 2D y por frame).
 
@@ -609,7 +609,7 @@ Mantener como housekeeping cuando se entre a una sesión de pulido. Ninguno bloq
 
 ---
 
-*Auditoría conducida 2026-05-18 por 4 agentes IA paralelos + consolidación con verificación directa de hallazgos críticos sobre el snapshot del repositorio al cierre de Etapa 6 (commit `5151d7d`). 51 hallazgos totales: 3 críticos, 4 altos, 27 medios, 17 bajos. El núcleo numérico y físico de Fenix FEM es robusto; las deudas accionables son de infraestructura.*
+*Auditoría conducida 2026-05-18 por 4 agentes IA paralelos + consolidación con verificación directa de hallazgos críticos sobre el snapshot del repositorio al cierre de Etapa 6 (commit `5151d7d`). 51 hallazgos totales: 3 críticos, 4 altos, 27 medios, 17 bajos. El núcleo numérico y físico de Solidum FEM es robusto; las deudas accionables son de infraestructura.*
 
 ---
 
@@ -809,14 +809,14 @@ Commit `c928e47`. Suite +3.
 - **H-1.8** — `entry.run_yaml` emite `_log.warning` cuando se pasa
   `step_callback` a un pipeline distinto de `static`.
 - **H-1.10** — Documenta "shallow-frozen" en los 5 `Result` dataclasses.
-- **H-1.11** — `ElementForces` movido a `fenix/core/element_forces.py`;
-  `fenix.results` lo re-exporta. `fenix/core/element.py` ya no importa
-  `fenix.results` — jerarquía conceptual `core → ... → results`
+- **H-1.11** — `ElementForces` movido a `solidum/core/element_forces.py`;
+  `solidum.results` lo re-exporta. `solidum/core/element.py` ya no importa
+  `solidum.results` — jerarquía conceptual `core → ... → results`
   preservada.
 - **H-1.14** — `yaml_parser.py` deja de acceder atributos privados de
   los Registries (`._materials`, `._elements`, etc.). Nuevo método
   público `Registry.get(name)` para introspección sin instanciar. Alias
-  muertos eliminados de `fenix.registry`.
+  muertos eliminados de `solidum.registry`.
 - **H-2.8** — Nota explicativa en `Frame2DEuler` y `Frame2DTimoshenko`
   sobre la doble rotación `T @ T.T = I` (cosmético, severidad bajo —
   no merece refactor que rompa la simetría con `compute_element_state`).
@@ -887,7 +887,7 @@ Suite global al cierre de la segunda sesión: **602 passed, 5 skipped,
 segunda + 3 tests menores de H-3.6/H-3.9). Diferencial real respecto a
 la rama anterior: 17 tests adicionales por nuevos casos de cobertura.
 
-**Veredicto al cierre del saneamiento**: Fenix queda con todos los
+**Veredicto al cierre del saneamiento**: Solidum queda con todos los
 hallazgos accionables resueltos. Los 10 que permanecen abiertos están
 debidamente justificados (6 esperan caso de uso o decisión arquitectural
 pendiente; 4 son no-actuables por su propia recomendación). El proyecto

@@ -332,11 +332,11 @@ references:
 
 ## Implementación
 
-- Archivo: `fenix/cohesive_materials/damage_isotropic.py`
+- Archivo: `solidum/cohesive_materials/damage_isotropic.py`
 - Clase: `CohesiveDamageIsotropic` (registrada en `CohesiveMaterialRegistry`)
-- Base abstracta: `fenix/core/cohesive_material.py` (`CohesiveMaterial`)
-- Registry: `fenix/registry.py` (`CohesiveMaterialRegistry`, paralelo a `MaterialRegistry`)
-- Autodiscover: `fenix.autodiscover.initialize()` descubre `fenix.cohesive_materials` automáticamente.
+- Base abstracta: `solidum/core/cohesive_material.py` (`CohesiveMaterial`)
+- Registry: `solidum/registry.py` (`CohesiveMaterialRegistry`, paralelo a `MaterialRegistry`)
+- Autodiscover: `solidum.autodiscover.initialize()` descubre `solidum.cohesive_materials` automáticamente.
 - Tests:
   - `tests/test_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
 - Notas de traducción:

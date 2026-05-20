@@ -34,18 +34,18 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.frame.euler_corot import Frame2DEulerCorot
-from fenix.elements.solid_2d import Quad4
-from fenix.elements.truss import Truss2D, Truss2DCorot
-from fenix.materials.damage_1d import IsotropicDamage1D
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import (
+from solidum.core.domain import Domain
+from solidum.elements.frame.euler_corot import Frame2DEulerCorot
+from solidum.elements.solid_2d import Quad4
+from solidum.elements.truss import Truss2D, Truss2DCorot
+from solidum.materials.damage_1d import IsotropicDamage1D
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import (
     ArcLengthSolver,
     NewtonNewmarkSolver,
     NonlinearSolver,

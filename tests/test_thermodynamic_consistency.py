@@ -3,7 +3,7 @@
 Segunda ley (Clausius-Duhem para procesos isotermos): la disipación
 interna debe ser **no negativa** en cada paso del proceso de carga.
 
-Para los modelos del catálogo de Fenix, esto se traduce en dos
+Para los modelos del catálogo de Solidum, esto se traduce en dos
 verificaciones operativas, fáciles de implementar y muy diagnósticas:
 
 1. **Monotonicidad de las variables internas irreversibles** bajo carga
@@ -35,21 +35,21 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from fenix.materials.damage_1d import IsotropicDamage1D
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.von_mises_2d import VonMises2D
+from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.materials.damage_1d import IsotropicDamage1D
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.von_mises_2d import VonMises2D
 
 
 def _voigt_inner(sigma_3: np.ndarray, eps_4: np.ndarray) -> float:
-    """`σ : ε` con notación Fenix: σ es [xx, yy, xy] y ε_p es
+    """`σ : ε` con notación Solidum: σ es [xx, yy, xy] y ε_p es
     [xx, yy, zz, xy_tensorial].
 
     El producto interno tensorial es:
         σ_xx·ε_xx + σ_yy·ε_yy + σ_zz·ε_zz + 2·σ_xy·ε_xy
 
-    Aquí σ_zz no está en el vector σ (Fenix expone sólo 3 componentes en
+    Aquí σ_zz no está en el vector σ (Solidum expone sólo 3 componentes en
     plane strain/stress); su contribución se omite. Para plane strain
     con plasticidad J2 la traza desviadora de ε_p es cero (incompressible
     plastic flow), por lo que ε_p_zz = -(ε_p_xx + ε_p_yy), y σ_zz aporta;

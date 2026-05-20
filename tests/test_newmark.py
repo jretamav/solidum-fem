@@ -19,15 +19,15 @@ from pathlib import Path
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.entry import run_transient, run_yaml
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.damping import rayleigh_from_modes, rayleigh_xi
-from fenix.math.solvers import NewmarkSolver
-from fenix.results import TransientResult
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.entry import run_transient, run_yaml
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.damping import rayleigh_from_modes, rayleigh_xi
+from solidum.math.solvers import NewmarkSolver
+from solidum.results import TransientResult
 
 
 # ---------------------------------------------------------------------------

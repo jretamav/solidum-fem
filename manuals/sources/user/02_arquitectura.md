@@ -29,7 +29,7 @@ class Truss2D(Element):
     ...
 ```
 
-Esto permite que el archivo YAML los referencie por nombre (`type: Truss2D`) sin que el usuario tenga que importar nada manualmente. El módulo `fenix.autodiscover` recorre los paquetes `elements/`, `materials/` y `math/solvers/` en la primera importación y puebla los registries.
+Esto permite que el archivo YAML los referencie por nombre (`type: Truss2D`) sin que el usuario tenga que importar nada manualmente. El módulo `solidum.autodiscover` recorre los paquetes `elements/`, `materials/` y `math/solvers/` en la primera importación y puebla los registries.
 
 ## Validación Temprana del Input
 

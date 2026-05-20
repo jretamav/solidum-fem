@@ -82,12 +82,12 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad4
-from fenix.materials.von_mises_2d import VonMises2D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d import Quad4
+from solidum.materials.von_mises_2d import VonMises2D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 # Parámetros físicos.

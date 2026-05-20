@@ -17,17 +17,17 @@ from pathlib import Path
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.core.node import Node
-from fenix.materials.elastic import Elastic1D
-from fenix.elements.truss import Truss2D
-from fenix.elements.frame import Frame2DEuler
-from fenix.elements.frame3d import Frame3D
-from fenix.entry import run
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
-from fenix.utils.yaml_parser import YamlParser
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.core.node import Node
+from solidum.materials.elastic import Elastic1D
+from solidum.elements.truss import Truss2D
+from solidum.elements.frame import Frame2DEuler
+from solidum.elements.frame3d import Frame3D
+from solidum.entry import run
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
+from solidum.utils.yaml_parser import YamlParser
 
 
 class TestAssembleBodyLoad(unittest.TestCase):

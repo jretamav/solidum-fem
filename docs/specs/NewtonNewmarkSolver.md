@@ -106,7 +106,7 @@ interface:
   pipeline_kind: transient    # mismo que NewmarkSolver
 
 parameters_extra_to_NewmarkSolver:
-  - { name: convergence,                type: ConvergenceCriterion, required: false, desc: "Política ADR 0007. Default: ConvergenceCriterion() con rtols de fenix.constants." }
+  - { name: convergence,                type: ConvergenceCriterion, required: false, desc: "Política ADR 0007. Default: ConvergenceCriterion() con rtols de solidum.constants." }
   - { name: max_iter,                   type: int,                 required: false, default: 20, desc: "Máximo iteraciones Newton por paso temporal." }
   - { name: freeze_tangent_after_iter,  type: int or None,          required: false, default: null, desc: "Si int, Newton modificado: factoriza fresco las primeras N iter y reusa después (ADR 0003 fase 2)." }
 
@@ -149,7 +149,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/newmark.py](../../fenix/math/solvers/newmark.py) — junto al padre.
+- **Archivo**: [solidum/math/solvers/newmark.py](../../solidum/math/solvers/newmark.py) — junto al padre.
 - **Clase**: `NewtonNewmarkSolver(NewmarkSolver)`, registrada con `@SolverRegistry.register`. Hereda `__init__` con kwargs adicionales `convergence`, `max_iter`, `freeze_tangent_after_iter`. Sobrescribe `solve()`.
 - **Flujo de `solve()`**:
   1. Ensamblar $\mathbf M$, ensamblar sistema no lineal inicial para obtener $\mathbf K_0$ y $\mathbf F_\text{int,0}$.

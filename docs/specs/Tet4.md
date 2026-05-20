@@ -215,9 +215,9 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/elements/solid_3d/tet4.py](../../fenix/elements/solid_3d/tet4.py).
+- **Archivo**: [solidum/elements/solid_3d/tet4.py](../../solidum/elements/solid_3d/tet4.py).
 - **Clase**: `Tet4` (registrada vía `@ElementRegistry.register`).
-- **Función núcleo**: `_compute_kinematics_tet4(coords)` con `@njit` en [fenix/elements/solid_3d/_shared.py](../../fenix/elements/solid_3d/_shared.py). Reutiliza `_compute_integrands_3d` (también en `_shared`, compartido con Hex8) con peso `1/6` (volumen del tet de referencia).
+- **Función núcleo**: `_compute_kinematics_tet4(coords)` con `@njit` en [solidum/elements/solid_3d/_shared.py](../../solidum/elements/solid_3d/_shared.py). Reutiliza `_compute_integrands_3d` (también en `_shared`, compartido con Hex8) con peso `1/6` (volumen del tet de referencia).
 - **Masa consistente analítica**: ``M_ij = ρ·V_e·(1 + δ_ij)/20`` (matriz escalar 4×4, expandida 3D vía `_expand_scalar_mass_3d`). Evita cuadratura insuficiente en el centroide.
 - **Tests**:
   - [tests/test_solid_3d.py](../../tests/test_solid_3d.py) — clase `TestTet4Element` (10 tests: dimensiones/DOFs, simetría exacta de K (no numérica, por fórmula cerrada), volumen, patch tracción uniaxial, jacobiano degenerado abortado, body load, face traction (cara opuesta a nodo recibe cero, reparto A/3 a los 3 nodos restantes), masa consistente y lumped HRZ (reparto equitativo ρV/4 por DOF)).

@@ -170,10 +170,10 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/newmark.py](../../fenix/math/solvers/newmark.py) (clase `NewmarkSolver`, registrada vía `@SolverRegistry.register`).
-- **Amortiguamiento**: [fenix/math/damping.py](../../fenix/math/damping.py) (`rayleigh_from_modes`, `rayleigh_xi`).
-- **Tipo de resultado**: [`TransientResult`](../../fenix/results.py) — dataclass frozen con `t_history`, `u_history`, `udot_history`, `uddot_history`, `n_steps`, `alpha_rayleigh`, `beta_rayleigh`, `converged`.
-- **Entrypoint público**: [`fenix.run_transient`](../../fenix/entry.py) para uso programático; [`fenix.run_yaml`](../../fenix/entry.py) despacha automáticamente cuando el YAML declara `solver: type: NewmarkSolver`.
+- **Archivo**: [solidum/math/solvers/newmark.py](../../solidum/math/solvers/newmark.py) (clase `NewmarkSolver`, registrada vía `@SolverRegistry.register`).
+- **Amortiguamiento**: [solidum/math/damping.py](../../solidum/math/damping.py) (`rayleigh_from_modes`, `rayleigh_xi`).
+- **Tipo de resultado**: [`TransientResult`](../../solidum/results.py) — dataclass frozen con `t_history`, `u_history`, `udot_history`, `uddot_history`, `n_steps`, `alpha_rayleigh`, `beta_rayleigh`, `converged`.
+- **Entrypoint público**: [`solidum.run_transient`](../../solidum/entry.py) para uso programático; [`solidum.run_yaml`](../../solidum/entry.py) despacha automáticamente cuando el YAML declara `solver: type: NewmarkSolver`.
 - **Pipeline**: `Assembler.assemble_system()` → `Assembler.assemble_mass_matrix()` → `C = α·M + β·K` → reducción simultánea por Dirichlet (operador `T`) → cálculo de `ü₀` → factorización única de `A_eff_red = M_red + γΔt·C_red + βΔt²·K_red` → bucle de pasos con resolución triangular reutilizada.
 - **Tests**:
   - [tests/test_newmark.py](../../tests/test_newmark.py) — 14 tests:

@@ -14,7 +14,7 @@ Cubre:
 8. **Validaciones tempranas**.
 9. **Pipeline YAML** end-to-end con espectro tabulado.
 10. **Regla D aplicada**: ``free_vibration`` sigue funcionando vía
-    wrapper que delega a ``fenix.math.modal_response.free_vibration``.
+    wrapper que delega a ``solidum.math.modal_response.free_vibration``.
 """
 import math
 import tempfile
@@ -23,23 +23,23 @@ from pathlib import Path
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.entry import run_modal, run_response_spectrum, run_yaml
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.modal_response import (
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.entry import run_modal, run_response_spectrum, run_yaml
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.modal_response import (
     free_vibration,
     participation_factors,
     response_spectrum_srss,
 )
-from fenix.math.solvers import ResponseSpectrumSolver
-from fenix.math.solvers.response_spectrum import (
+from solidum.math.solvers import ResponseSpectrumSolver
+from solidum.math.solvers.response_spectrum import (
     spectrum_from_sa,
     spectrum_tabulated,
 )
-from fenix.results import ResponseSpectrumResult
+from solidum.results import ResponseSpectrumResult
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +429,7 @@ class TestSRSSvsCQC(unittest.TestCase):
             direction[dom.nodes[nid].dofs["ux"]] = 1.0
         spectrum_fn = lambda w: 1.0 / (w * w)
 
-        from fenix.math.modal_response import response_spectrum_cqc
+        from solidum.math.modal_response import response_spectrum_cqc
         u_srss, _, _ = response_spectrum_srss(
             modal_result.modes, modal_result.frequencies_rad, M,
             direction, spectrum_fn,
@@ -461,7 +461,7 @@ class TestSRSSvsCQC(unittest.TestCase):
         u_srss, _, _ = response_spectrum_srss(
             modes, np.array([omega1, omega2]), M, direction, spectrum_fn,
         )
-        from fenix.math.modal_response import response_spectrum_cqc
+        from solidum.math.modal_response import response_spectrum_cqc
         u_cqc, _, _ = response_spectrum_cqc(
             modes, np.array([omega1, omega2]), M, direction, spectrum_fn,
             damping=0.05,

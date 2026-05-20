@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Análisis dinámico transitorio no lineal
+# Archivo de entrada Solidum FEM: Análisis dinámico transitorio no lineal
 # de un oscilador 1 GDL elastoplástico en vibración libre desde u0 > u_yield.
 #
 # Estructura: barra axial Truss2D de L=1 m, A=1 m² con material

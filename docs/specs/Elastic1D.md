@@ -145,7 +145,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/elastic.py](../../fenix/materials/elastic.py).
+- **Archivo**: [solidum/materials/elastic.py](../../solidum/materials/elastic.py).
 - **Clase**: `Elastic1D`, registrada vía `@MaterialRegistry.register`.
 - **Estado**: `state_vars=None` permitido; se acepta y se devuelve sin tocar (compatibilidad con elementos no lineales que pasan diccionarios históricos).
 - **`admissibility_scale`**: hereda el comportamiento por defecto del contrato `Material` (no usado — sin criterio de admisibilidad).

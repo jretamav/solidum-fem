@@ -5,20 +5,20 @@
 
 ## Resumen ejecutivo
 
-Fenix sustituye la imposición de condiciones de Dirichlet por penalización (hoy: `K_ii ← K_ii + 10^{15}`, hard-coded) por **eliminación directa** mediante una abstracción única, `ConstraintSet`, que captura toda restricción afín de la forma `u_s = g_s + Σ α_si · u_mi`. La penalización desaparece del código. La nueva capa cubre Dirichlet homogéneo, asentamientos prescritos, simetrías inclinadas y, por extensión natural en una fase posterior, los multipoint constraints (MPC: uniones rígidas, periodicidad). El solver no lineal y los solvers algebraicos no se enteran del cambio: reciben un sistema reducido `K_red · u_libre = F_red` y la solución completa se reconstruye por post-proceso. Las reacciones se calculan a partir del residuo `K · u − F`, sin depender de un parámetro de penalización.
+Solidum sustituye la imposición de condiciones de Dirichlet por penalización (hoy: `K_ii ← K_ii + 10^{15}`, hard-coded) por **eliminación directa** mediante una abstracción única, `ConstraintSet`, que captura toda restricción afín de la forma `u_s = g_s + Σ α_si · u_mi`. La penalización desaparece del código. La nueva capa cubre Dirichlet homogéneo, asentamientos prescritos, simetrías inclinadas y, por extensión natural en una fase posterior, los multipoint constraints (MPC: uniones rígidas, periodicidad). El solver no lineal y los solvers algebraicos no se enteran del cambio: reciben un sistema reducido `K_red · u_libre = F_red` y la solución completa se reconstruye por post-proceso. Las reacciones se calculan a partir del residuo `K · u − F`, sin depender de un parámetro de penalización.
 
 ## Contexto
 
 ### Estado actual
 
-[fenix/math/assembly.py:115-132](../../fenix/math/assembly.py#L115-L132) implementa el método de penalización:
+[solidum/math/assembly.py:115-132](../../solidum/math/assembly.py#L115-L132) implementa el método de penalización:
 
 ```
 K  ←  K + P · I_bc           (P = 10^{15} en filas/columnas de DOFs prescritos)
 R[bc]  ←  P · (u_pre − u_cur)
 ```
 
-Funciona porque (a) los tres solvers actuales son directos (LU/Cholesky vía la capa algebraica del ADR 0003), (b) el cálculo de reacciones en [fenix/results.py:155-161](../../fenix/results.py#L155-L161) usa la vía limpia `R = F_int − F_applied` y no `P·(u_pre−u_cur)`, y (c) los tests existentes son casi todos empotramientos puros (`u_pre = 0`), donde el sesgo del método no se manifiesta.
+Funciona porque (a) los tres solvers actuales son directos (LU/Cholesky vía la capa algebraica del ADR 0003), (b) el cálculo de reacciones en [solidum/results.py:155-161](../../solidum/results.py#L155-L161) usa la vía limpia `R = F_int − F_applied` y no `P·(u_pre−u_cur)`, y (c) los tests existentes son casi todos empotramientos puros (`u_pre = 0`), donde el sesgo del método no se manifiesta.
 
 ### Problemas con la penalización tal como está
 
@@ -26,13 +26,13 @@ Funciona porque (a) los tres solvers actuales son directos (LU/Cholesky vía la 
 2. **Imposición sólo aproximada**. Para BC no homogéneas (`u_pre ≠ 0`) la solución cumple la restricción con error relativo ≈ ‖f‖/P. El sesgo no se ve en los tests actuales porque casi no hay casos de asentamiento prescrito.
 3. **Conceptualmente errónea**. Una BC de Dirichlet es una restricción exacta, no un muelle de rigidez muy grande.
 4. **No extiende a MPC limpiamente**. Penalizar acoplamientos (`u_s − Σ α_i u_mi = 0`) compone los problemas de condicionamiento.
-5. **Acoplamiento con el solver**. El parámetro `penalty` viaja por la firma de `apply_bcs_to_system` y por los tres solvers de [fenix/math/solvers.py](../../fenix/math/solvers.py) — plumbing innecesario.
+5. **Acoplamiento con el solver**. El parámetro `penalty` viaja por la firma de `apply_bcs_to_system` y por los tres solvers de [solidum/math/solvers.py](../../solidum/math/solvers.py) — plumbing innecesario.
 
 ### Estado del arte y filosofía elegida
 
 Los códigos FEM de referencia (ANSYS, Abaqus, Code_Aster, OpenSees, FEniCS, deal.II) usan **eliminación directa** como mecanismo por defecto para Dirichlet y MPC lineales, y reservan multiplicadores de Lagrange (o Lagrangiano aumentado) para restricciones no eliminables como contacto unilateral. El modelo arquitectural más limpio es el de deal.II con su clase `AffineConstraints`: un único objeto que captura Dirichlet, MPC, periodicidad y hanging nodes y los aplica al sistema con la misma maquinaria.
 
-Para el dominio de Fenix — mecánica de sólidos con mallas conformes, sin contacto inminente, sin métodos inmersos — la trayectoria natural es:
+Para el dominio de Solidum — mecánica de sólidos con mallas conformes, sin contacto inminente, sin métodos inmersos — la trayectoria natural es:
 
 - **Eliminación directa por defecto**, cubriendo Dirichlet y MPC lineales bajo una sola abstracción.
 - **Lagrange / Lagrange aumentado diferido** al ADR que abra contacto.
@@ -91,14 +91,14 @@ Las reacciones se calculan post-hoc:
 R_full  =  K_full · u_full  −  F_full
 ```
 
-evaluado solo en los DOFs prescritos. No depende de ningún parámetro de penalización. Sustituye la rama actual de [fenix/results.py:155-161](../../fenix/results.py#L155-L161). Es exacta a redondeo, simétrica para sistemas simétricos, y transparente para MPC futuros (la "reacción" en un nodo maestro de un MPC es la suma ponderada de las contribuciones esclavas — caso que se documentará cuando entren MPC).
+evaluado solo en los DOFs prescritos. No depende de ningún parámetro de penalización. Sustituye la rama actual de [solidum/results.py:155-161](../../solidum/results.py#L155-L161). Es exacta a redondeo, simétrica para sistemas simétricos, y transparente para MPC futuros (la "reacción" en un nodo maestro de un MPC es la suma ponderada de las contribuciones esclavas — caso que se documentará cuando entren MPC).
 
 ### 4. Estructura del módulo
 
-Módulo nuevo `fenix.bc.constraints`:
+Módulo nuevo `solidum.bc.constraints`:
 
 ```
-fenix/bc/
+solidum/bc/
     __init__.py
     constraints.py     # ConstraintSet, AffineConstraint, build_T_and_g(...)
 ```
@@ -152,15 +152,15 @@ Razón: mantiene los solvers en su rol de pura álgebra lineal, sin conocer `Con
 
 ### 7. Lo que se elimina del código existente
 
-- `Assembler._build_bc_arrays`, `apply_bcs_to_system`, `apply_dirichlet_bcs`, `_bc_dofs`, `_bc_vals`, `_bc_built` en [fenix/math/assembly.py](../../fenix/math/assembly.py).
-- Parámetro `penalty` en `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver` ([fenix/math/solvers.py](../../fenix/math/solvers.py)).
-- Rama de cálculo de reacciones penalty-aware en [fenix/results.py:144-161](../../fenix/results.py#L144-L161).
+- `Assembler._build_bc_arrays`, `apply_bcs_to_system`, `apply_dirichlet_bcs`, `_bc_dofs`, `_bc_vals`, `_bc_built` en [solidum/math/assembly.py](../../solidum/math/assembly.py).
+- Parámetro `penalty` en `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver` ([solidum/math/solvers.py](../../solidum/math/solvers.py)).
+- Rama de cálculo de reacciones penalty-aware en [solidum/results.py:144-161](../../solidum/results.py#L144-L161).
 
 ### 8. Lo que se preserva
 
 - `Node.boundary_conditions` como API de entrada del usuario. Es la fuente declarativa; cambia el mecanismo, no la forma de declararlas.
 - API pública de resultados (`SolveResult`, `internal_forces`).
-- Capa algebraica `fenix.math.linalg`. Se beneficia gratis: recibe sistemas más pequeños, simétricos y mejor condicionados.
+- Capa algebraica `solidum.math.linalg`. Se beneficia gratis: recibe sistemas más pequeños, simétricos y mejor condicionados.
 
 ## Hoja de ruta — qué tipos de restricción habilita esta arquitectura
 
@@ -180,10 +180,10 @@ Razón: mantiene los solvers en su rol de pura álgebra lineal, sin conocer `Con
 
 ### Fase 1 — Eliminación directa para Dirichlet (esta es la orden de trabajo si apruebas el ADR)
 
-1. Crear `fenix/bc/constraints.py` con `AffineConstraint`, `ConstraintSet`, `build(ndof) → (T, g)`. En fase 1 solo `add_dirichlet` está expuesto.
+1. Crear `solidum/bc/constraints.py` con `AffineConstraint`, `ConstraintSet`, `build(ndof) → (T, g)`. En fase 1 solo `add_dirichlet` está expuesto.
 2. Añadir `Assembler.reduce(K, F) → (K_red, F_red, T, g)` y `Assembler.expand(u_libre) → u_full`. Construye internamente el `ConstraintSet` a partir de `Node.boundary_conditions`.
-3. Migrar los tres solvers de [fenix/math/solvers.py](../../fenix/math/solvers.py) a llamar a `assembler.reduce(...)` en lugar de `apply_bcs_to_system(...)`. Los solvers retornan `u_libre`; el `Assembler` (o el wrapper del solver) llama `expand` antes de poblar `SolveResult`.
-4. Sustituir cálculo de reacciones en [fenix/results.py](../../fenix/results.py) por `R = K_full · u_full − F_full` evaluado en `bc_dofs`.
+3. Migrar los tres solvers de [solidum/math/solvers.py](../../solidum/math/solvers.py) a llamar a `assembler.reduce(...)` en lugar de `apply_bcs_to_system(...)`. Los solvers retornan `u_libre`; el `Assembler` (o el wrapper del solver) llama `expand` antes de poblar `SolveResult`.
+4. Sustituir cálculo de reacciones en [solidum/results.py](../../solidum/results.py) por `R = K_full · u_full − F_full` evaluado en `bc_dofs`.
 5. Borrar todo el código de penalización: `_build_bc_arrays`, `apply_bcs_to_system`, `apply_dirichlet_bcs`, parámetros `penalty` en los solvers, rama penalty-aware en `results.py`.
 6. Tests:
    - Todos los benchmarks existentes deben pasar sin modificación con tolerancias **más estrictas** que las anteriores (la solución es exacta a redondeo, antes era exacta a `‖f‖/P`).
@@ -227,11 +227,11 @@ ADR independiente cuando entre el primer caso de contacto. `ConstraintSet` se ma
 - *Mantener penalización con escalado automático* `P = α·max(diag(K))`: corrige el problema de magnitud pero deja la imposición aproximada y no escala a iterativos. Rechazado: pequeña mejora a coste arquitectural similar a la solución correcta.
 - *Multiplicadores de Lagrange como mecanismo único*: cubre todo (Dirichlet, MPC, contacto) bajo una sola maquinaria pero pierde positividad y simetría del sistema; obligaría a usar LDLᵀ con pivoteo o GMRES siempre, incluso para problemas SPD donde Cholesky es 2× más rápido. Rechazado para BC nodales puras y MPC lineales; reservado para contacto.
 - *Eliminación directa + penalización opcional como fallback*: dos caminos paralelos sin justificación física. Rechazado por coste arquitectural inútil.
-- *Nitsche*: irrelevante mientras Fenix use mallas conformes. Diferido sin fecha.
+- *Nitsche*: irrelevante mientras Solidum use mallas conformes. Diferido sin fecha.
 
 **Implicaciones para la documentación**
 
-- `arquitectura.md`: nuevo subsistema `fenix.bc` y diagrama de flujo `Domain → Assembler.reduce → Solver → Assembler.expand → SolveResult`.
+- `arquitectura.md`: nuevo subsistema `solidum.bc` y diagrama de flujo `Domain → Assembler.reduce → Solver → Assembler.expand → SolveResult`.
 - `conceptos_clave.md`: entrada nueva *"Imposición de condiciones de frontera por eliminación directa"* explicando el modelo afín `u = T·u_libre + g` en lenguaje conceptual.
 - Manual de arquitectura (FF-MA): capítulo o sección dedicada a la capa de restricciones, con la tabla de tipos cubiertos por fase.
 - Manual de usuario: la declaración de BC en YAML/script no cambia. Mención breve de que la imposición es exacta y sin parámetros de tuning.

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from fenix.tools.spec import (
+from solidum.tools.spec import (
     collect_specs,
     cross_check_with_registry,
     parse_spec,

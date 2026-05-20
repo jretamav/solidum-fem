@@ -18,20 +18,20 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.plastic_1d import Elastoplastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import (
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.plastic_1d import Elastoplastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import (
     HHTSolver,
     NewmarkSolver,
     NewtonHHTSolver,
     NewtonNewmarkSolver,
 )
-from fenix.math.solvers.newmark import _hht_autoderive_beta_gamma
+from solidum.math.solvers.newmark import _hht_autoderive_beta_gamma
 
 
 # Mismos parámetros que test_newmark.py para 1 GDL:
@@ -275,8 +275,8 @@ def _hht_amplification_rho(alpha: float, Om2: float) -> float:
     """Radio espectral analítico de la matriz de amplificación HHT-α
     aplicada al oscilador 1-GDL no amortiguado.
 
-    Sigue la **convención Fenix** (Hilber-Hughes-Taylor 1977 con ``α ∈
-    [−1/3, 0]``), tal como aparece en :mod:`fenix.math.solvers.newmark`:
+    Sigue la **convención Solidum** (Hilber-Hughes-Taylor 1977 con ``α ∈
+    [−1/3, 0]``), tal como aparece en :mod:`solidum.math.solvers.newmark`:
 
         ``M·ü_{n+1} + (1+α)·K·u_{n+1} − α·K·u_n = (1+α)·F_{n+1} − α·F_n``.
 
@@ -337,9 +337,9 @@ class TestHHTNumericalDampingAnalytic(unittest.TestCase):
     """
 
     def test_rho_infinity_closed_form(self):
-        """Confirmación del valor asintótico ``ρ_∞ = (1+α)/(1−α)`` (Fenix
+        """Confirmación del valor asintótico ``ρ_∞ = (1+α)/(1−α)`` (Solidum
         usa la convención α ∈ [−1/3, 0]; ver docstring del integrador en
-        :mod:`fenix.math.solvers.newmark`).
+        :mod:`solidum.math.solvers.newmark`).
 
         Calcula ``ρ_∞`` directamente de la matriz de amplificación a Ω
         muy grande y verifica que coincide con ``(1+α)/(1−α)``. Tolerancia

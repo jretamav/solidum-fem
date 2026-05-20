@@ -20,19 +20,19 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from fenix.core.discontinuity_state import DiscontinuityState
-from fenix.core.element import Element
-from fenix.core.node import Node
-from fenix.elements.solid_2d.embedded_cst import (
+from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.core.discontinuity_state import DiscontinuityState
+from solidum.core.element import Element
+from solidum.core.node import Node
+from solidum.elements.solid_2d.embedded_cst import (
     CST_Embedded2D,
     _compute_ld,
     _max_principal_stress_2d,
 )
-from fenix.elements.solid_2d.tri3 import Tri3
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.materials.damage_2d import IsotropicDamage2D
-from fenix.registry import ElementRegistry
+from solidum.elements.solid_2d.tri3 import Tri3
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.registry import ElementRegistry
 
 
 # --- Geometría y materiales canónicos para los tests ---------------------
@@ -200,7 +200,7 @@ class TestBulkElasticUnloadingAfterActivation(unittest.TestCase):
         emb.compute_element_state(u_e)
         # σ trial = el de la última iteración. La ε neta = ε_total − B^φ·G·[[u]].
         # Verificamos numéricamente: σ_trial debe ser C_e · ε_neta.
-        from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
+        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
         B, _ = _compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
@@ -295,7 +295,7 @@ class TestLocalRecovery(unittest.TestCase):
         # Reconstruir R^{[[u]]} con el jump_trial obtenido. El término
         # cohesivo debe incluir el factor ``thickness`` para que el
         # balance dimensional sea consistente con el del bulk.
-        from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
+        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
         B, detJ = _compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
@@ -359,7 +359,7 @@ class TestThicknessDimensionalConsistency(unittest.TestCase):
         emb = self._build_loaded_emb(thickness=0.1)
         ds = emb.discontinuity_state
 
-        from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
+        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
         coords = emb.get_coordinate_matrix(ndim=2)
         B, _ = _compute_kinematics_tri3(coords)
         i_star = ds.solitary_node
@@ -391,7 +391,7 @@ class TestThicknessDimensionalConsistency(unittest.TestCase):
         emb = self._build_loaded_emb(thickness=0.1)
         ds = emb.discontinuity_state
 
-        from fenix.elements.solid_2d._shared import _compute_kinematics_tri3
+        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
         coords = emb.get_coordinate_matrix(ndim=2)
         B, detJ = _compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
@@ -456,7 +456,7 @@ class TestConstructorValidations(unittest.TestCase):
         nodes = _triangle_nodes(coords)
 
         # Cohesivo falso con JUMP_DIM=3 (subclase mínima para el test)
-        from fenix.core.cohesive_material import CohesiveMaterial
+        from solidum.core.cohesive_material import CohesiveMaterial
 
         class Fake3D(CohesiveMaterial):
             JUMP_DIM = 3
@@ -571,7 +571,7 @@ class TestYamlIntegration(unittest.TestCase):
     def test_yaml_round_trip(self):
         import tempfile
 
-        from fenix.utils.yaml_parser import YamlParser
+        from solidum.utils.yaml_parser import YamlParser
 
         yaml_text = """
 nodes:
@@ -612,7 +612,7 @@ elements:
     def test_yaml_rejects_unknown_cohesive_reference(self):
         import tempfile
 
-        from fenix.utils.yaml_parser import YamlParser, YamlValidationError
+        from solidum.utils.yaml_parser import YamlParser, YamlValidationError
 
         yaml_text = """
 nodes:

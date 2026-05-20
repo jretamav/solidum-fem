@@ -1,6 +1,6 @@
 # Archivo de Entrada YAML
 
-La interacción exclusiva con el motor de Fenix FEM se realiza mediante el archivo de entrada `.yaml`. Un archivo válido contiene los bloques siguientes (algunos opcionales según el caso de uso):
+La interacción exclusiva con el motor de Solidum FEM se realiza mediante el archivo de entrada `.yaml`. Un archivo válido contiene los bloques siguientes (algunos opcionales según el caso de uso):
 
 - `nodes` *o* `mesh` — geometría.
 - `materials` — catálogo de leyes constitutivas instanciadas.
@@ -88,7 +88,7 @@ Los parámetros aceptados dependen del material; consulte el capítulo *Catálog
 
 ## Condiciones de Frontera
 
-Fenix FEM ofrece tres mecanismos para imponer restricciones cinemáticas (Dirichlet), elegibles según la facilidad operativa:
+Solidum FEM ofrece tres mecanismos para imponer restricciones cinemáticas (Dirichlet), elegibles según la facilidad operativa:
 
 ### Por nodo: `boundary_conditions_by_node`
 
@@ -121,7 +121,7 @@ boundary_conditions_by_group:
 
 ### Restricciones multipunto (MPC): `linear_constraints`
 
-Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Fenix FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si} u_{m_i}$ (ADR 0004 fase 2). Se declaran en el bloque `linear_constraints`:
+Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Solidum FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si} u_{m_i}$ (ADR 0004 fase 2). Se declaran en el bloque `linear_constraints`:
 
 ```yaml
 linear_constraints:
@@ -164,7 +164,7 @@ point_loads_by_group:
 
 Una *fuerza de cuerpo* es una fuerza por unidad de volumen $\mathbf b$ que actúa sobre todo el dominio material del elemento, no solo sobre su frontera. Cada elemento del catálogo (armaduras, cables, marcos 2D/3D, sólidos 2D) integra la contribución consistente $\int \mathbf{N}^\top \mathbf{b}\,A\,dx$ y la acumula al vector global de fuerzas. Para vigas Hermite cúbicas el reparto incluye fuerza nodal $qL/2$ y momento $\pm qL^2/12$; para barras axiales es mitad-mitad por nodo.
 
-Casos típicos en mecánica estructural: peso propio (un caso particular con $\mathbf b = \rho\,\mathbf g$), fuerzas centrífugas en cuerpos rotatorios ($\mathbf b = \rho\,\omega^2\,\mathbf r$), fuerzas electromagnéticas sobre materiales conductores, expansión térmica modelada como pseudocarga. Fenix expone dos formas declarativas en YAML que cubren todos estos casos.
+Casos típicos en mecánica estructural: peso propio (un caso particular con $\mathbf b = \rho\,\mathbf g$), fuerzas centrífugas en cuerpos rotatorios ($\mathbf b = \rho\,\omega^2\,\mathbf r$), fuerzas electromagnéticas sobre materiales conductores, expansión térmica modelada como pseudocarga. Solidum expone dos formas declarativas en YAML que cubren todos estos casos.
 
 ### Forma general: `body_force`
 
@@ -184,7 +184,7 @@ Es la forma genérica y la única necesaria para fuerzas de cuerpo que no son pe
 
 ### Caso particular — peso propio: `gravity` + `density`
 
-El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial — donde cada elemento debe ver *su propio* $\rho$ — Fenix expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
+El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial — donde cada elemento debe ver *su propio* $\rho$ — Solidum expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
 
 ```yaml
 materials:
@@ -194,9 +194,9 @@ materials:
 gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 ```
 
-**Qué hace Fenix**. Para cada elemento computa $\mathbf b_e = \rho_e\cdot\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de `body_force`. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
+**Qué hace Solidum**. Para cada elemento computa $\mathbf b_e = \rho_e\cdot\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de `body_force`. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
 
-**Densidad solo cuando se usa**. El campo `density` es **opcional** al declarar un material (ADR 0008): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar `gravity` (o, en su día, análisis modal/dinámico), Fenix exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con `ValueError` listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como `density: 0.0` — caso en el cual `gravity` emite un `WARNING` informativo y su contribución al peso propio es nula.
+**Densidad solo cuando se usa**. El campo `density` es **opcional** al declarar un material (ADR 0008): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar `gravity` (o, en su día, análisis modal/dinámico), Solidum exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con `ValueError` listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como `density: 0.0` — caso en el cual `gravity` emite un `WARNING` informativo y su contribución al peso propio es nula.
 
 ### Detalles transversales
 
@@ -239,7 +239,7 @@ Ambos criterios deben cumplirse **simultáneamente** (semántica AND) para dar e
 - `atol_force_factor` (default `1.0e-9`): factor adimensional que define el piso absoluto de fuerza. La tolerancia absoluta efectiva se autoderiva como `atol_force_factor · escala_inicial`, donde la escala se calcula en el primer ensamblaje. Solo conviene ajustarlo si el análisis tiene tramos donde la carga característica colapsa transitoriamente y aparece falsa no-convergencia.
 - `atol_disp_factor` (default `1.0e-9`): análogo para desplazamiento.
 
-**Por qué los `atol` se autoderivan.** El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm…). En su lugar, Fenix calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: **el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits**, sin tocar las tolerancias. La justificación arquitectural está en el ADR 0007.
+**Por qué los `atol` se autoderivan.** El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm…). En su lugar, Solidum calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: **el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits**, sin tocar las tolerancias. La justificación arquitectural está en el ADR 0007.
 
 **Cuándo afinar**. Para la inmensa mayoría de análisis los defaults son suficientes. Considera ajustar:
 

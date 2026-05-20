@@ -26,13 +26,13 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d.embedded_cst import CST_Embedded2D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.math.assembly import Assembler
-from fenix.math.convergence import ConvergenceCriterion
-from fenix.math.solvers import NonlinearSolver
+from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d.embedded_cst import CST_Embedded2D
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.math.assembly import Assembler
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers import NonlinearSolver
 
 
 # --- Parámetros del problema ----------------------------------------------

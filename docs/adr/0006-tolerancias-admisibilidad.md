@@ -62,7 +62,7 @@ La comparación se encapsula en `Material.is_admissible(f, state_vars)` para que
 - `Material.is_admissible` es el único punto del código que aplica la fórmula; cambiar la política (p. ej. a piso absoluto adaptativo `max(ABS, ε_machine · escala)`) es una edición en un sitio.
 
 **Migración**:
-- Constante `PLASTIC_YIELD_TOL` retirada de `fenix/constants.py` y sus importadores. No tenía consumidores externos al proyecto.
+- Constante `PLASTIC_YIELD_TOL` retirada de `solidum/constants.py` y sus importadores. No tenía consumidores externos al proyecto.
 - Tests existentes pasan sin modificación: el rango de unidades habitual (MPa) cae dentro del rango donde la nueva política coincide en valor numérico con la antigua hasta el límite de doble precisión.
 
 ## Alternativas consideradas

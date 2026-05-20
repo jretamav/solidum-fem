@@ -1,15 +1,15 @@
-# ADR 0003 — Capa algebraica `fenix.math.linalg` y despachador de solver para `K·x = y`
+# ADR 0003 — Capa algebraica `solidum.math.linalg` y despachador de solver para `K·x = y`
 
 **Fecha**: 2026-04-30
 **Estado**: Aceptado (2026-04-30)
 
 ## Resumen ejecutivo
 
-Fenix introduce una capa nueva, `fenix.math.linalg`, que abstrae la resolución del sistema algebraico `K·x = y` detrás de una interfaz uniforme con varios backends (Cholesky, LDLᵀ, LU, iterativos, eigensolver). Un **despachador interno** los selecciona automáticamente a partir de propiedades declarativas de `K` (simetría, positividad, talla) — el usuario nunca elige solver algebraico desde el YAML como decisión obligatoria. Esta capa es el cimiento sobre el que crecerán los próximos tipos de análisis (modal, pandeo, dinámica implícita, térmico-mecánico) sin romper los solvers existentes ni la API pública.
+Solidum introduce una capa nueva, `solidum.math.linalg`, que abstrae la resolución del sistema algebraico `K·x = y` detrás de una interfaz uniforme con varios backends (Cholesky, LDLᵀ, LU, iterativos, eigensolver). Un **despachador interno** los selecciona automáticamente a partir de propiedades declarativas de `K` (simetría, positividad, talla) — el usuario nunca elige solver algebraico desde el YAML como decisión obligatoria. Esta capa es el cimiento sobre el que crecerán los próximos tipos de análisis (modal, pandeo, dinámica implícita, térmico-mecánico) sin romper los solvers existentes ni la API pública.
 
 ## Contexto
 
-Hoy los tres solvers de `fenix/math/solvers.py` (`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`) llaman directamente a `scipy.sparse.linalg.spsolve` (SuperLU, factorización LU general). Eso tiene dos problemas:
+Hoy los tres solvers de `solidum/math/solvers.py` (`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`) llaman directamente a `scipy.sparse.linalg.spsolve` (SuperLU, factorización LU general). Eso tiene dos problemas:
 
 **1. Coste algebraico subóptimo.** SuperLU no detecta ni explota simetría ni positividad. Para una `K` simétrica y positiva definida — el caso de la mayoría del catálogo actual — pagamos del orden de **2× tiempo y 2× memoria** respecto a un Cholesky sparse. El sobrecoste compone con la talla del problema.
 
@@ -23,16 +23,16 @@ Hoy los tres solvers de `fenix/math/solvers.py` (`LinearSolver`, `NonlinearSolve
 
 FEAP en particular es ilustrativo porque su `psolve.f` despacha sobre `stype` (entero: 0 diagonal, ≤−1 directo, ≥1 iterativo), incluye soporte mixto simétrico/no-simétrico (primeras `neqs` ecuaciones simétricas, resto no), y aprovecha la factorización LDLᵀ para reportar el número de pivotes negativos — diagnóstico gratuito de bifurcaciones (Sturm sequence).
 
-**Filosofía elegida para Fenix.** Por el modelo de colaboración de Reglas.md §2 — el usuario no escribe código ni decide plumbing — Fenix adopta la línea ANSYS/Abaqus: dispatcher interno con auto-detección, default `auto`, override YAML solo como herramienta de diagnóstico. La elección del solver algebraico **no es decisión de modelado**, es consecuencia de qué materiales/elementos/análisis se hayan declarado.
+**Filosofía elegida para Solidum.** Por el modelo de colaboración de Reglas.md §2 — el usuario no escribe código ni decide plumbing — Solidum adopta la línea ANSYS/Abaqus: dispatcher interno con auto-detección, default `auto`, override YAML solo como herramienta de diagnóstico. La elección del solver algebraico **no es decisión de modelado**, es consecuencia de qué materiales/elementos/análisis se hayan declarado.
 
 ## Decisión
 
-### 1. Capa nueva `fenix.math.linalg`
+### 1. Capa nueva `solidum.math.linalg`
 
 Módulo nuevo con la siguiente estructura:
 
 ```
-fenix/math/linalg/
+solidum/math/linalg/
     __init__.py
     base.py            # Protocol LinearAlgebraSolver, dataclass StiffnessProperties
     lu.py              # LUSolver (envuelve spsolve actual)
@@ -141,14 +141,14 @@ Esta es la parte estratégica del ADR: cada tipo de análisis que el proyecto va
 
 ## Fases de implementación
 
-Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix en estado funcional.
+Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Solidum en estado funcional.
 
 ### Fase 1 — Cimientos (esta es la orden de trabajo inmediata si apruebas el ADR)
 
-1. Crear `fenix/math/linalg/` con `base.py`, `lu.py`, `dispatcher.py`. `LUSolver` envuelve el `spla.spsolve` actual.
+1. Crear `solidum/math/linalg/` con `base.py`, `lu.py`, `dispatcher.py`. `LUSolver` envuelve el `spla.spsolve` actual.
 2. Añadir flags `is_symmetric` y `preserves_symmetry` a `Material` y `Element` base con default `True`.
 3. Reemplazar las cuatro llamadas `spla.spsolve(...)` en `solvers.py` por `self._linalg.solve(...)`. El despachador se instancia al comienzo de `solve()`.
-4. Añadir `CholeskySolver` con import lazy de `scikit-sparse`. Si el import falla, el despachador degrada silenciosamente a `LUSolver` con warning. Fenix sigue funcionando sin la dependencia.
+4. Añadir `CholeskySolver` con import lazy de `scikit-sparse`. Si el import falla, el despachador degrada silenciosamente a `LUSolver` con warning. Solidum sigue funcionando sin la dependencia.
 5. Lógica de fallback automático SPD→LU (sección 5 del ADR).
 6. Override `linear_algebra` en el parser YAML.
 7. Tests:
@@ -167,7 +167,7 @@ Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix
 ### Fase 3 — Eigensolver (modal y pandeo lineal)
 
 12. `EigenSolver` envolviendo `scipy.sparse.linalg.eigsh` (Lanczos para simétrica) y `eigs` (Arnoldi para general). Soporte de shift-invert con `factorize(K − σ·M)`.
-13. Solver nuevo `ModalSolver` en `fenix/math/solvers.py` con su propia entrada en el catálogo.
+13. Solver nuevo `ModalSolver` en `solidum/math/solvers.py` con su propia entrada en el catálogo.
 14. Solver nuevo `LinearBucklingSolver` (autovalor generalizado `K·φ = λ·K_geom·φ`).
 
 ### Fase 4 — Dinámica implícita
@@ -187,12 +187,12 @@ Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix
 - Coste algebraico ~2× menor en lineal elástico y régimen no lineal estable. Beneficio inmediato sin cambiar API ni YAML.
 - Cada análisis futuro mapea a una capacidad de la capa algebraica ya prevista. Añadir modal/pandeo/dinámica no requiere refactor.
 - Reglas.md §1 cumplido: añadir un solver algebraico nuevo (paralelo, GPU, externo) es agregar una clase y registrar una regla.
-- La elección queda interna y declarativa: nadie tiene que saber álgebra lineal numérica para usar Fenix.
+- La elección queda interna y declarativa: nadie tiene que saber álgebra lineal numérica para usar Solidum.
 - El override YAML da una ventana de diagnóstico sin convertir la elección en decisión obligatoria.
 
 **Negativas / costes**
 
-- Dependencia nueva: `scikit-sparse` (CHOLMOD nativo). En Windows requiere conda-forge, no instala con `pip` puro. Mitigación: `CholeskySolver` es opcional; si la dependencia falta, Fenix sigue funcionando con `LUSolver`.
+- Dependencia nueva: `scikit-sparse` (CHOLMOD nativo). En Windows requiere conda-forge, no instala con `pip` puro. Mitigación: `CholeskySolver` es opcional; si la dependencia falta, Solidum sigue funcionando con `LUSolver`.
 - Cada material y elemento debe declarar su flag `is_symmetric` / `preserves_symmetry`. Coste pequeño y unidireccional.
 - Branch nuevo en el solver no lineal (asumir SPD, caer a LU al primer fallo). Acotado y testeable.
 
@@ -206,7 +206,7 @@ Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix
 
 **Implicaciones para la documentación**
 
-- `arquitectura.md`: añadir `fenix.math.linalg` como subsistema y diagrama de flujo `Solver no lineal → Despachador → Backend algebraico`.
+- `arquitectura.md`: añadir `solidum.math.linalg` como subsistema y diagrama de flujo `Solver no lineal → Despachador → Backend algebraico`.
 - `conceptos_clave.md`: entrada nueva *"Capa algebraica vs. solver no lineal"* explicando la separación entre las dos capas.
 - `catalogo_solvers.md`: no cambia en fase 1 (sigue catalogando `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`). En fase 3 añade `ModalSolver` y `LinearBucklingSolver`. En fase 4 añade los dinámicos.
 - Manual de usuario: sección nueva *"Diagnóstico y override de solver algebraico"* documentando `linear_algebra: <name>` como herramienta de soporte, **no** como elección de modelado.
@@ -215,16 +215,16 @@ Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix
 
 En FEM existen tres niveles de paralelismo, independientes entre sí:
 
-1. **Algebraico** — dentro del backend que resuelve `K·x = y`. Lo aportan las librerías nativas (CHOLMOD, Pardiso, MUMPS, MKL/OpenBLAS) vía OpenMP. No requiere código en Fenix.
+1. **Algebraico** — dentro del backend que resuelve `K·x = y`. Lo aportan las librerías nativas (CHOLMOD, Pardiso, MUMPS, MKL/OpenBLAS) vía OpenMP. No requiere código en Solidum.
 2. **Ensamblaje** — cálculo concurrente de `K_e` y `F_int_e` por elemento, con resolución del conflicto de escritura sobre entradas globales compartidas (coloreado de grafo, reducción por hilo, atómicos).
 3. **Descomposición de dominio** — partición de la malla entre procesos MPI, cada uno ensambla y resuelve su porción, comunicación solo en interfaces.
 
-**Este ADR cubre exclusivamente el nivel 1**, y lo hace gratis: las cinco fases lo absorben automáticamente porque cada backend (CHOLMOD desde fase 1, Pardiso/MUMPS desde fase 2, ARPACK desde fase 3, iterativos desde fase 5) ya es multihilo cuando se compila contra BLAS paralelo. Sin escribir código adicional, Fenix pasa a usar todos los cores disponibles para la operación más cara (la factorización) en problemas medianos típicos: ~4×–8× speedup en una estación de 8 cores.
+**Este ADR cubre exclusivamente el nivel 1**, y lo hace gratis: las cinco fases lo absorben automáticamente porque cada backend (CHOLMOD desde fase 1, Pardiso/MUMPS desde fase 2, ARPACK desde fase 3, iterativos desde fase 5) ya es multihilo cuando se compila contra BLAS paralelo. Sin escribir código adicional, Solidum pasa a usar todos los cores disponibles para la operación más cara (la factorización) en problemas medianos típicos: ~4×–8× speedup en una estación de 8 cores.
 
 **Los niveles 2 y 3 quedan diferidos a ADRs futuros**, en este orden:
 
 - **ADR 0004 (futuro)** — ensamblaje paralelo con coloreado de grafo. Se activa cuando el ensamblaje pase a dominar el coste por paso (> 50% del tiempo). Heurística diagnóstica: instrumentar tiempos `assemble` vs `solve` en `SolveResult.diagnostics`; mientras `solve` domine, este ADR es prematuro.
-- **ADR 0005 (futuro lejano)** — descomposición de dominio MPI. Se activa solo si Fenix necesita resolver problemas que no caben en RAM de una máquina (> 10⁶–10⁷ DOF en 3D). Es un esfuerzo grande (parfeap es ~30% del tamaño del FEAP serie). Para el rango de investigación en mecánica de sólidos sobre estación de trabajo individual, Pardiso/MUMPS multihilo en una máquina de 16–32 cores suele ser suficiente.
+- **ADR 0005 (futuro lejano)** — descomposición de dominio MPI. Se activa solo si Solidum necesita resolver problemas que no caben en RAM de una máquina (> 10⁶–10⁷ DOF en 3D). Es un esfuerzo grande (parfeap es ~30% del tamaño del FEAP serie). Para el rango de investigación en mecánica de sólidos sobre estación de trabajo individual, Pardiso/MUMPS multihilo en una máquina de 16–32 cores suele ser suficiente.
 
 Coherente con Reglas.md §1: no abstraer hacia paralelismo especulativo sin al menos dos casos reales del dominio que lo pidan. Hoy, la fase 1 ya te da la mejora más barata posible sin abrir frentes nuevos.
 

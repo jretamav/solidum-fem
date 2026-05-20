@@ -146,10 +146,10 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/modal.py](../../fenix/math/solvers/modal.py) (clase `ModalSolver`, registrada vía `@SolverRegistry.register`).
-- **Backend algebraico**: [fenix/math/linalg/eigen.py](../../fenix/math/linalg/eigen.py) (clase `EigenSolver` envolviendo `scipy.sparse.linalg.eigsh`).
-- **Tipo de resultado**: [`ModalResult`](../../fenix/results.py) — dataclass frozen con `frequencies_rad`, `frequencies_hz`, `periods`, `modes`, `n_modes`, `converged`. Expone `free_vibration(M, u0, u0_dot, t)` para reconstruir analíticamente la respuesta temporal de vibración libre sin amortiguamiento por superposición modal — solución cerrada de `M·ü + K·u = 0` proyectada sobre los modos calculados (modos rígidos tratados aparte con evolución lineal `q_n(t) = a_n + b_n·t`).
-- **Entrypoint público**: [`fenix.run_modal`](../../fenix/entry.py) para uso programático; [`fenix.run_yaml`](../../fenix/entry.py) despacha automáticamente a `run_modal` cuando el YAML declara `solver: type: ModalSolver`.
+- **Archivo**: [solidum/math/solvers/modal.py](../../solidum/math/solvers/modal.py) (clase `ModalSolver`, registrada vía `@SolverRegistry.register`).
+- **Backend algebraico**: [solidum/math/linalg/eigen.py](../../solidum/math/linalg/eigen.py) (clase `EigenSolver` envolviendo `scipy.sparse.linalg.eigsh`).
+- **Tipo de resultado**: [`ModalResult`](../../solidum/results.py) — dataclass frozen con `frequencies_rad`, `frequencies_hz`, `periods`, `modes`, `n_modes`, `converged`. Expone `free_vibration(M, u0, u0_dot, t)` para reconstruir analíticamente la respuesta temporal de vibración libre sin amortiguamiento por superposición modal — solución cerrada de `M·ü + K·u = 0` proyectada sobre los modos calculados (modos rígidos tratados aparte con evolución lineal `q_n(t) = a_n + b_n·t`).
+- **Entrypoint público**: [`solidum.run_modal`](../../solidum/entry.py) para uso programático; [`solidum.run_yaml`](../../solidum/entry.py) despacha automáticamente a `run_modal` cuando el YAML declara `solver: type: ModalSolver`.
 - **Pipeline**: `Assembler.assemble_system()` → `Assembler.assemble_mass_matrix()` → `Assembler.reduce_pair(K, M)` → `EigenSolver.solve(K_red, M_red, n_modes)` → expansión `Φ = T · Φ_red` → `ModalResult`.
 - **Caché**: `Assembler` cachea `M_global` con el lumping usado; reusos posteriores del mismo análisis no recomputan.
 - **Validación de density**: pre-chequeo agregado en `Assembler.assemble_mass_matrix` con el mismo patrón de [ADR 0008 — `assemble_self_weight`](../adr/0008-densidad-propiedad-del-material.md).

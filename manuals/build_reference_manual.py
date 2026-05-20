@@ -442,7 +442,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Referencia - Fenix FEM},
+    pdftitle={Manual de Referencia - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -454,7 +454,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Referencia}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Referencia}}
 \fancyhead[R]{\color{darkgray}\leftmark}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -521,7 +521,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
     \vspace{1cm}
     {\LARGE Manual de Referencia \par}
     \vspace{0.5cm}
@@ -546,7 +546,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \chapter*{Sobre este Manual}
 \addcontentsline{toc}{chapter}{Sobre este Manual}
-\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Fenix FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
+\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Solidum FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
 
 El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
 \begin{center}\texttt{python manuals/build\_reference\_manual.py}\end{center}

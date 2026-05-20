@@ -59,7 +59,7 @@ recovery posibles:
    vértice, y converge mucho más lento.
 3. **Extrapolación de Barlow / SPR de Zienkiewicz** — recovery
    "superconvergente" que devolvería ≈92.7 con malla coarse. **No está
-   implementado en post-proceso de Fenix.** Sería el siguiente paso si el
+   implementado en post-proceso de Solidum.** Sería el siguiente paso si el
    benchmark se quiere afinar.
 
 Este test usa **opción 2** (σ en el Gauss más cercano) y verifica:
@@ -82,11 +82,11 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 # Parámetros físicos del benchmark.

@@ -1,4 +1,4 @@
-# Matriz de validación — Fenix FEM
+# Matriz de validación — Solidum FEM
 
 > Artefacto vivo de la Fase A del plan de validación y verificación (sesión 2026-05-19). Cruza cada componente con sus criterios `acceptance` declarados en la spec y el tipo de cobertura real en `tests/`.
 
@@ -63,7 +63,7 @@ Componentes con criterios físicamente delicados cubiertos sólo por sanidad, or
 3. **Corotacionales**: `Frame2DEulerCorot` **CERRADO 2026-05-19 (Tanda 1)** (Bathe-Bolourchi cuarto + medio círculo). `Truss2DCorot` **CERRADO 2026-05-19 (Tanda 3)**: snap-through clásico del shallow von Mises 2-bar (h/L=0.1) con `ArcLengthSolver`; cada punto convergido (u_y, λ·F_ref) trazado por el solver se compara contra `P(w) = 2·E·A·(L_0 − L_d)/L_0 · (h − w)/L_d` (engineering strain) con tolerancia absoluta 0.01% de F_ref. Cobertura adicional: la malla de pasos cubre la rama elástica, la rama inestable (entorno del pico) y la rama invertida con λ < 0. Pendientes: `Truss3DCorot` (la formulación 3D del proyector perpendicular es plumbing del 2D, validación analítica heredada); `Cable2D/3DCorot` (no aplicable al snap-through — son unilaterales y no soportan compresión).
 4. **CST_Embedded2D** — integración multi-elemento y modo II sólo en sanidad.
 5. ~~**ResponseSpectrumSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)**: cadena 4-truss Laplaciano 1D con autovalores cerrados ω_n² = 2 − 2·cos(nπ/4), valida ω, γ y SRSS contra fórmula analítica.
-6. ~~**HHTSolver / NewtonHHTSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)** para HHTSolver: matriz de amplificación 3×3 analítica para la convención Fenix (Hughes 1987 §9.3) contrastada contra contracción medida a Ω moderado + asíntota ρ_∞ = (1+α)/(1−α). NewtonHHTSolver hereda la verificación lineal. **CentralDifferenceSolver CERRADO 2026-05-19 (Tanda 2)**: frontera ``Δt_crit = 2/ω_max`` validada en 1-DOF y en cadena 2-DOF con autovalores cerrados ω_max=√3.
+6. ~~**HHTSolver / NewtonHHTSolver**~~ — **CERRADO 2026-05-19 (Tanda 2)** para HHTSolver: matriz de amplificación 3×3 analítica para la convención Solidum (Hughes 1987 §9.3) contrastada contra contracción medida a Ω moderado + asíntota ρ_∞ = (1+α)/(1−α). NewtonHHTSolver hereda la verificación lineal. **CentralDifferenceSolver CERRADO 2026-05-19 (Tanda 2)**: frontera ``Δt_crit = 2/ω_max`` validada en 1-DOF y en cadena 2-DOF con autovalores cerrados ω_max=√3.
 7. ~~**Quad8 / Quad9 / Tri6**~~ — **CERRADO 2026-05-19**: Quad8/Quad9 en Tanda 1 (Cook's 4×4 + refinamiento monótono). Tri6 en Tanda 2 (mismo trapezoide triangulado, diagonal c1→c3 con center node compartido). Locking volumétrico ν → 0.5 **CERRADO 2026-05-19 (Tanda 4)**: limitación arquitectural ahora blindada por test que demuestra que `Quad4` plane strain pierde >50% de deflexión al pasar de ν=0.3 a ν=0.4999, mientras que `Quad8` mantiene un ratio >1.5× mejor (lockea, pero menos). Ver `test_volumetric_locking.py`.
 
 ## Limitaciones arquitecturales documentadas (Fase D)

@@ -21,10 +21,10 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.material import Material
-from fenix.core.node import Node
-from fenix.elements.solid_2d import Quad8, Quad9, Tri6
-from fenix.elements.solid_2d import _N_quad8, _N_quad9, _N_tri6, _dN_quad8, _dN_quad9, _dN_tri6
+from solidum.core.material import Material
+from solidum.core.node import Node
+from solidum.elements.solid_2d import Quad8, Quad9, Tri6
+from solidum.elements.solid_2d import _N_quad8, _N_quad9, _N_tri6, _dN_quad8, _dN_quad9, _dN_tri6
 
 
 class _Elastic2D(Material):

@@ -17,8 +17,8 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.node import Node
-from fenix.elements.frame import Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot
+from solidum.core.node import Node
+from solidum.elements.frame import Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot
 
 
 class LinearElastic1D:

@@ -54,7 +54,7 @@
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Arquitectura - Fenix FEM},
+    pdftitle={Manual de Arquitectura - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -70,7 +70,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Fenix FEM --- Arquitectura}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Arquitectura}}
 \fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
 \fancyfoot[C]{\thepage}
 \fancyfoot[R]{\footnotesize\color{darkgray}FF-MA}
@@ -113,7 +113,7 @@
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    {\Huge\bfseries\color{yamlkey} Fenix FEM \par}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
     \vspace{1cm}
     {\LARGE Manual de Arquitectura \par}
     \vspace{0.3cm}
@@ -140,7 +140,7 @@
 
 \chapter*{Sobre este manual}
 \addcontentsline{toc}{chapter}{Sobre este manual}
-\noindent Este manual ofrece una \textbf{visión arquitectural} de Fenix FEM. Su objetivo es que el lector pueda reconstruir mentalmente cómo está organizado el programa, qué piezas tiene y cómo encajan, sin entrar al detalle de la formulación de cada elemento ni al algoritmo concreto de cada solver.
+\noindent Este manual ofrece una \textbf{visión arquitectural} de Solidum FEM. Su objetivo es que el lector pueda reconstruir mentalmente cómo está organizado el programa, qué piezas tiene y cómo encajan, sin entrar al detalle de la formulación de cada elemento ni al algoritmo concreto de cada solver.
 
 Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, contratos YAML, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
 
@@ -163,15 +163,15 @@ Este manual se regenera con:
 
 \section{Identidad del programa}
 
-Fenix FEM es un programa de Método de Elementos Finitos (MEF) en aproximación de desplazamientos, orientado a la investigación en mecánica de sólidos: simulación de problemas mecánico y térmico, acoplados o desacoplados. Su público objetivo es la comunidad de investigación en mecánica computacional que requiere incorporar materiales, elementos o esquemas de solución sin verse limitada por la rigidez interna del programa.
+Solidum FEM es un programa de Método de Elementos Finitos (MEF) en aproximación de desplazamientos, orientado a la investigación en mecánica de sólidos: simulación de problemas mecánico y térmico, acoplados o desacoplados. Su público objetivo es la comunidad de investigación en mecánica computacional que requiere incorporar materiales, elementos o esquemas de solución sin verse limitada por la rigidez interna del programa.
 
 \section{Hipótesis fundacional}
 
-La mayor parte del coste de un programa de MEF de investigación no reside en la implementación del primer elemento, sino en el mantenimiento de un coste bajo para la incorporación del elemento N+1. Todo proyecto que crece sin disciplina de arquitectura acaba penalizando cada nueva incorporación: el primer material se implementa en una sesión; el décimo requiere modificar varios archivos; el vigésimo se desincentiva. Fenix FEM se diseña explícitamente para que la pendiente de coste de extensión se mantenga plana.
+La mayor parte del coste de un programa de MEF de investigación no reside en la implementación del primer elemento, sino en el mantenimiento de un coste bajo para la incorporación del elemento N+1. Todo proyecto que crece sin disciplina de arquitectura acaba penalizando cada nueva incorporación: el primer material se implementa en una sesión; el décimo requiere modificar varios archivos; el vigésimo se desincentiva. Solidum FEM se diseña explícitamente para que la pendiente de coste de extensión se mantenga plana.
 
 \section{Modelo de colaboración}
 
-El desarrollo de Fenix FEM se rige por un contrato explícito entre el usuario (investigador con dominio profundo en MEF) y un asistente de inteligencia artificial responsable de la escritura del código. El flujo es: usuario \ensuremath{\to} asistente \ensuremath{\to} código \ensuremath{\to} resultados \ensuremath{\to} usuario. El asistente produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos y las decisiones de arquitectura.
+El desarrollo de Solidum FEM se rige por un contrato explícito entre el usuario (investigador con dominio profundo en MEF) y un asistente de inteligencia artificial responsable de la escritura del código. El flujo es: usuario \ensuremath{\to} asistente \ensuremath{\to} código \ensuremath{\to} resultados \ensuremath{\to} usuario. El asistente produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos y las decisiones de arquitectura.
 
 La analogía operativa es la de una calculadora científica: se conoce qué representa la función seno, sus propiedades y el orden de magnitud esperado de su resultado, pero no se memoriza el algoritmo CORDIC interno; sí se detectan resultados absurdos. Trasladado al proyecto: la escritura del código (sintaxis, infraestructura, patrones de software) se delega; la comprensión conceptual no. El usuario mantiene un modelo mental completo del \textit{qué} y del \textit{por qué} de cada pieza de la arquitectura sin necesidad de escribir su implementación.
 
@@ -187,15 +187,15 @@ La analogía operativa es la de una calculadora científica: se conoce qué repr
 
 \textbf{Convención de signos única.} Toda formulación, prueba, interfaz pública y documentación utiliza la misma convención de signos. Si una referencia bibliográfica adopta otra, la traducción se realiza al implementar y se anota en la prueba correspondiente. Esta convención se detalla en el capítulo dedicado.
 
-\section{Cuándo usar Fenix FEM y cuándo no}
+\section{Cuándo usar Solidum FEM y cuándo no}
 
-La identidad de un programa se define tanto por su alcance como por sus límites. Esta sección delimita explícitamente lo que Fenix FEM pretende ser y lo que no.
+La identidad de un programa se define tanto por su alcance como por sus límites. Esta sección delimita explícitamente lo que Solidum FEM pretende ser y lo que no.
 
-\textbf{Casos para los que Fenix FEM es la herramienta indicada.} Investigación en mecánica de sólidos donde la prioridad es la \textbf{transparencia y la modificabilidad} del código: prototipado de modelos constitutivos nuevos antes de portarlos a un programa industrial; ensayo de variantes algorítmicas en solvers no lineales (predictores, correctores, criterios de longitud de arco); evaluación de formulaciones de elementos finitos contra soluciones analíticas y casos de referencia conocidos; trabajo docente y de tesis donde el estudiante debe comprender, modificar y validar cada pieza del cálculo.
+\textbf{Casos para los que Solidum FEM es la herramienta indicada.} Investigación en mecánica de sólidos donde la prioridad es la \textbf{transparencia y la modificabilidad} del código: prototipado de modelos constitutivos nuevos antes de portarlos a un programa industrial; ensayo de variantes algorítmicas en solvers no lineales (predictores, correctores, criterios de longitud de arco); evaluación de formulaciones de elementos finitos contra soluciones analíticas y casos de referencia conocidos; trabajo docente y de tesis donde el estudiante debe comprender, modificar y validar cada pieza del cálculo.
 
-\textbf{Casos para los que Fenix FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Análisis dinámicos transitorios o problemas multifísicos hoy: están previstos como evolución futura pero no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
+\textbf{Casos para los que Solidum FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Análisis dinámicos transitorios o problemas multifísicos hoy: están previstos como evolución futura pero no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
 
-\textbf{Posición frente a programas de referencia.} Fenix FEM no compite en escala con los programas industriales: complementa el flujo de investigación. La hipótesis es que el código que el investigador puede leer, modificar y validar línea a línea es más valioso, en su contexto, que un programa cerrado del que se obtiene un resultado sin posibilidad de auditoría interna. Cuando el modelo investigado madura y debe aplicarse a producción, la traducción a un programa industrial es la trayectoria natural.
+\textbf{Posición frente a programas de referencia.} Solidum FEM no compite en escala con los programas industriales: complementa el flujo de investigación. La hipótesis es que el código que el investigador puede leer, modificar y validar línea a línea es más valioso, en su contexto, que un programa cerrado del que se obtiene un resultado sin posibilidad de auditoría interna. Cuando el modelo investigado madura y debe aplicarse a producción, la traducción a un programa industrial es la trayectoria natural.
 
 
 \newpage
@@ -227,19 +227,19 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   Mallas \texttt{.msh} (geometría desde Gmsh)
 };
 \node[layer, below=of entrada] (init) {
-  {\title Capa de inicialización} \hfill \texttt{fenix/\_\_init\_\_.py}\\
+  {\title Capa de inicialización} \hfill \texttt{solidum/\_\_init\_\_.py}\\
   Al importar el paquete se invoca \texttt{autodiscover.initialize()};
   los decoradores \texttt{@*Registry} pueblan
   \texttt{MaterialRegistry}, \texttt{ElementRegistry} y
   \texttt{SolverRegistry}.
 };
 \node[layer, below=of init] (parse) {
-  {\title Capa de interpretación del caso} \hfill \texttt{fenix/utils/yaml\_parser.py}\\
+  {\title Capa de interpretación del caso} \hfill \texttt{solidum/utils/yaml\_parser.py}\\
   Lee el archivo YAML y construye objetos consultando los registros
   por introspección del constructor.
 };
 \node[layer, below=of parse] (dominio) {
-  {\title Capa de dominio} \hfill \texttt{fenix/core/}\\
+  {\title Capa de dominio} \hfill \texttt{solidum/core/}\\
   \texttt{Domain} -- \texttt{Node} -- DOF (numeración global). Bases
   \texttt{Element} (con \texttt{DOF\_NAMES}, \texttt{STRAIN\_DIM},
   \texttt{N\_INTEGRATION\_POINTS}, \texttt{ElementState} en estados
@@ -247,7 +247,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   \texttt{STRAIN\_DIM}, \texttt{PRIMARY\_STATE\_VAR}).
 };
 \node[layer, below=of dominio] (numerica) {
-  {\title Capa numérica} \hfill \texttt{fenix/math/}\\
+  {\title Capa numérica} \hfill \texttt{solidum/math/}\\
   \texttt{assembly.py} (ensamblaje disperso con caché COO),
   \texttt{integration.py} (cuadraturas de Gauss),
   paquete \texttt{solvers/} con un módulo por solver
@@ -259,7 +259,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   \texttt{select\_solver}, \texttt{EigenSolver}).
 };
 \node[layer, below=of numerica] (salida) {
-  {\title Capa de salida} \hfill \texttt{fenix/utils/vtk\_exporter.py} + \texttt{fenix.results}\\
+  {\title Capa de salida} \hfill \texttt{solidum/utils/vtk\_exporter.py} + \texttt{solidum.results}\\
   Exporta $\mathbf U$, $\sigma$ y \texttt{PRIMARY\_STATE\_VAR} en
   formato VTK. \texttt{SolveResult} expone $\mathbf U$,
   $\mathbf F_\text{aplicada}$ y los esfuerzos internos por elemento
@@ -272,13 +272,13 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 \draw[arr] (dominio) -- (numerica);
 \draw[arr] (numerica) -- (salida);
 \end{tikzpicture}
-\caption{Estructura en capas de Fenix FEM. Cada capa se comunica con la inmediatamente inferior mediante contratos explícitos.}
+\caption{Estructura en capas de Solidum FEM. Cada capa se comunica con la inmediatamente inferior mediante contratos explícitos.}
 \end{figure}
 
 
 \section{Responsabilidad de cada capa}
 
-\textbf{Entrada del usuario.} Un caso de Fenix FEM se describe de forma declarativa en un archivo en formato YAML (acrónimo recursivo de \textit{YAML Ain't Markup Language}): nodos, materiales, elementos, condiciones de contorno, cargas y solver. La malla puede embeberse en el YAML o leerse desde un archivo \texttt{.msh} generado por Gmsh. El YAML constituye contrato público; cualquier consumidor externo (Interfaz Gráfica de Usuario o GUI, \textit{scripts} de automatización) opera contra él.
+\textbf{Entrada del usuario.} Un caso de Solidum FEM se describe de forma declarativa en un archivo en formato YAML (acrónimo recursivo de \textit{YAML Ain't Markup Language}): nodos, materiales, elementos, condiciones de contorno, cargas y solver. La malla puede embeberse en el YAML o leerse desde un archivo \texttt{.msh} generado por Gmsh. El YAML constituye contrato público; cualquier consumidor externo (Interfaz Gráfica de Usuario o GUI, \textit{scripts} de automatización) opera contra él.
 
 \textbf{Capa de inicialización.} Su única responsabilidad consiste en poblar los registros (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas; los decoradores \texttt{@register} se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente.
 
@@ -292,7 +292,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 \section{Justificación de la separación}
 
-La frontera entre capas no es decorativa: define qué cambia con coste bajo y qué cambia con coste alto. La incorporación de un material nuevo afecta exclusivamente a la capa de dominio (\texttt{fenix/materials/<nombre>.py}) y no requiere modificar el intérprete del caso, el ensamblador ni el solver. La modificación del algoritmo del ensamblaje disperso no repercute sobre ningún material ni elemento concretos. La estanqueidad entre capas es el mecanismo que mantiene plana la pendiente de coste de extensión.
+La frontera entre capas no es decorativa: define qué cambia con coste bajo y qué cambia con coste alto. La incorporación de un material nuevo afecta exclusivamente a la capa de dominio (\texttt{solidum/materials/<nombre>.py}) y no requiere modificar el intérprete del caso, el ensamblador ni el solver. La modificación del algoritmo del ensamblaje disperso no repercute sobre ningún material ni elemento concretos. La estanqueidad entre capas es el mecanismo que mantiene plana la pendiente de coste de extensión.
 
 
 \newpage
@@ -306,7 +306,7 @@ Esta sección describe, paso a paso, la secuencia de operaciones que se ejecuta 
 
 \section{1. Arranque}
 
-El caso se lanza desde un \textit{script} de usuario o desde la interfaz pública de entrada (\texttt{fenix.run} / \texttt{fenix.run\_yaml}). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete \texttt{fenix}. Dicha importación dispara el procedimiento de descubrimiento automático (\textit{autodiscover}), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador \texttt{@register} correspondiente, los registros quedan poblados sin enumeración manual.
+El caso se lanza desde un \textit{script} de usuario o desde la interfaz pública de entrada (\texttt{solidum.run} / \texttt{solidum.run\_yaml}). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete \texttt{solidum}. Dicha importación dispara el procedimiento de descubrimiento automático (\textit{autodiscover}), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador \texttt{@register} correspondiente, los registros quedan poblados sin enumeración manual.
 
 \section{2. Lectura del caso}
 
@@ -356,7 +356,7 @@ A lo largo del capítulo se utilizan las denominaciones abreviadas habituales pa
 
 \section{Materiales}
 
-Un material en Fenix FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo \texttt{STRAIN\_DIM}) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo \texttt{STRAIN\_DIM} y la interfaz \texttt{compute\_stress\_and\_tangent(strain, state)}.
+Un material en Solidum FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo \texttt{STRAIN\_DIM}) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo \texttt{STRAIN\_DIM} y la interfaz \texttt{compute\_stress\_and\_tangent(strain, state)}.
 
 Familias actualmente implementadas:
 
@@ -384,7 +384,7 @@ En todos los casos basta declarar el \texttt{STRAIN\_DIM} apropiado y el atribut
 
 \section{Elementos}
 
-Un elemento finito en Fenix FEM es una entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su \texttt{DOF\_NAMES}, su \texttt{STRAIN\_DIM} y el número de puntos de integración mediante \texttt{N\_INTEGRATION\_POINTS}. La clase base concentra la lógica común (registro de DOF, ensamblaje local\ensuremath{\to}global, validación material\ensuremath{\leftrightarrow}elemento, gestión del \texttt{ElementState}) y cada subclase aporta exclusivamente lo físicamente específico (matriz \texttt{B}, esquema de integración, invocación al material).
+Un elemento finito en Solidum FEM es una entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su \texttt{DOF\_NAMES}, su \texttt{STRAIN\_DIM} y el número de puntos de integración mediante \texttt{N\_INTEGRATION\_POINTS}. La clase base concentra la lógica común (registro de DOF, ensamblaje local\ensuremath{\to}global, validación material\ensuremath{\leftrightarrow}elemento, gestión del \texttt{ElementState}) y cada subclase aporta exclusivamente lo físicamente específico (matriz \texttt{B}, esquema de integración, invocación al material).
 
 El estado del programa por familia se presenta a continuación en forma de \textbf{matrices de cobertura}. Cada celda combina dos ejes ortogonales: el régimen geométrico (linealidad o no linealidad) y el régimen material (lineal o no lineal). La no linealidad material se obtiene mediante la asignación al elemento de un material no lineal del catálogo (plasticidad, daño); ningún elemento es intrínsecamente no lineal en el material. La marca \ensuremath{\checkmark} indica combinación implementada y validada; la marca [Pendiente: ...] indica el hueco como candidato natural de extensión; el guion (---) indica combinación que no aplica físicamente o que no se contempla.
 
@@ -570,7 +570,7 @@ Disponibles en la versión actual:
   \item \texttt{HHTSolver} y \texttt{NewtonHHTSolver} (\hyperref[adr:0009]{ADR 0009}, variantes HHT-\ensuremath{\alpha}) --- disipación numérica controlada en altas frecuencias (Hilber-Hughes-Taylor 1977) con parámetro \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]} y \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} auto-derivados. Subclases de \texttt{NewmarkSolver} y \texttt{NewtonNewmarkSolver} respectivamente (Reglas §4 --- variantes).
   \item \texttt{CentralDifferenceSolver} (\hyperref[adr:0009]{ADR 0009} fase 5) --- integración explícita por diferencias centradas (leapfrog Belytschko-Liu-Moran). \texttt{M\ensuremath{^{-}}¹} trivial sobre masa lumped diagonal. Lineal y no lineal en una sola clase con parámetro \texttt{nonlinear}. Estabilidad condicional CFL con detección a posteriori de divergencia.
   \item \texttt{HarmonicSolver} (\hyperref[adr:0009]{ADR 0009} fase 6) --- respuesta forzada armónica en el dominio de la frecuencia. Aritmética compleja con \texttt{scipy.sparse.linalg.spsolve} complejo; factorización LU compleja por frecuencia (no se cachea). Barrido lineal/logarítmico/explícito. Devuelve \texttt{HarmonicResult} con métodos \texttt{.amplitude()} y \texttt{.phase()}.
-  \item \texttt{ResponseSpectrumSolver} (\hyperref[adr:0009]{ADR 0009} fase 7) --- análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta \texttt{ModalSolver} interno y delega los algoritmos en \texttt{fenix.math.modal\_response} (centralización por regla D de auditoría). Devuelve \texttt{ResponseSpectrumResult} con respuesta envolvente, factores de participación y masas efectivas.
+  \item \texttt{ResponseSpectrumSolver} (\hyperref[adr:0009]{ADR 0009} fase 7) --- análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta \texttt{ModalSolver} interno y delega los algoritmos en \texttt{solidum.math.modal\_response} (centralización por regla D de auditoría). Devuelve \texttt{ResponseSpectrumResult} con respuesta envolvente, factores de participación y masas efectivas.
 \end{itemize}
 
 Espacio natural de extensión:
@@ -584,18 +584,18 @@ Espacio natural de extensión:
   \item \pendiente{\ensuremath{\Delta}t adaptativo para transitorios.}
 \end{itemize}
 
-La incorporación de un solver nuevo se realiza en \texttt{fenix/math/solvers/<nombre>.py} mediante el decorador \texttt{@SolverRegistry.register}. El \textbf{dispatch a entrypoints} en \texttt{fenix.entry.run\_yaml} es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} y \texttt{run\_yaml} despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
+La incorporación de un solver nuevo se realiza en \texttt{solidum/math/solvers/<nombre>.py} mediante el decorador \texttt{@SolverRegistry.register}. El \textbf{dispatch a entrypoints} en \texttt{solidum.entry.run\_yaml} es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} y \texttt{run\_yaml} despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
 
 \section{Subsistema algebraico}
 
-Por debajo del solver no lineal, dentro de cada iteración, se requiere la resolución de un sistema lineal \texttt{K \ensuremath{\cdot} x = b}. Esta es la responsabilidad del subsistema algebraico (\texttt{fenix/math/linalg/}, \hyperref[adr:0003]{ADR 0003}). Constituye un nivel táctico: no decide la estrategia del cálculo, sino que selecciona el algoritmo numérico adecuado para resolver cada sistema lineal.
+Por debajo del solver no lineal, dentro de cada iteración, se requiere la resolución de un sistema lineal \texttt{K \ensuremath{\cdot} x = b}. Esta es la responsabilidad del subsistema algebraico (\texttt{solidum/math/linalg/}, \hyperref[adr:0003]{ADR 0003}). Constituye un nivel táctico: no decide la estrategia del cálculo, sino que selecciona el algoritmo numérico adecuado para resolver cada sistema lineal.
 
 Algoritmos disponibles:
 
 \begin{itemize}
   \item \texttt{LUSolver} --- factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
   \item \texttt{CholeskySolver} --- factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando \texttt{K} es simétrica y definida positiva.
-  \item \texttt{EigenSolver} (\hyperref[adr:0009]{ADR 0009}) --- algoritmo de autovalor generalizado simétrico para el problema \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Envuelve \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). Vive en \texttt{fenix/math/linalg/eigen.py} y no comparte la interfaz \texttt{solve(K, b)} de los anteriores --- su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}.
+  \item \texttt{EigenSolver} (\hyperref[adr:0009]{ADR 0009}) --- algoritmo de autovalor generalizado simétrico para el problema \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Envuelve \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). Vive en \texttt{solidum/math/linalg/eigen.py} y no comparte la interfaz \texttt{solve(K, b)} de los anteriores --- su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}.
   \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} para el caso simétrico no definido positivo, reservada para la fase 2 del \hyperref[adr:0003]{ADR 0003}.}
   \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
   \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
@@ -607,7 +607,7 @@ Algoritmos disponibles:
 
 \section{Tipos de análisis}
 
-El tipo de análisis en Fenix FEM corresponde al problema físico que afronta el solver, no al solver en sí.
+El tipo de análisis en Solidum FEM corresponde al problema físico que afronta el solver, no al solver en sí.
 
 Implementados en la versión actual:
 
@@ -643,7 +643,7 @@ La estructura de capas y registros se ha diseñado para incorporar dichos análi
 
 
 
-Los patrones que se describen a continuación estructuran el código de Fenix FEM sin pertenecer a una capa concreta. Aparecen indistintamente en materiales, elementos y solvers; su comprensión es necesaria para la lectura de cualquier zona del programa.
+Los patrones que se describen a continuación estructuran el código de Solidum FEM sin pertenecer a una capa concreta. Aparecen indistintamente en materiales, elementos y solvers; su comprensión es necesaria para la lectura de cualquier zona del programa.
 
 \section{Registros con auto-registro}
 
@@ -651,11 +651,11 @@ Cada categoría de componente dispone de su propio diccionario global: \texttt{M
 
 \section{Descubrimiento automático}
 
-El módulo \texttt{fenix/autodiscover.py} se invoca una sola vez durante la importación del paquete. Recorre, mediante \texttt{pkgutil.iter\_modules}, las carpetas canónicas (\texttt{fenix/materials}, \texttt{fenix/elements}, \texttt{fenix/math}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución.
+El módulo \texttt{solidum/autodiscover.py} se invoca una sola vez durante la importación del paquete. Recorre, mediante \texttt{pkgutil.iter\_modules}, las carpetas canónicas (\texttt{solidum/materials}, \texttt{solidum/elements}, \texttt{solidum/math}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución.
 
 \section{Contratos declarativos mediante atributos de clase}
 
-En lugar de imponer métodos abstractos cuando el comportamiento puede inferirse del dato, Fenix FEM declara los contratos como atributos de clase: \texttt{STRAIN\_DIM} (1, 3 o 6), \texttt{DOF\_NAMES} (lista de nombres de DOF por nodo), \texttt{N\_INTEGRATION\_POINTS}, \texttt{PRIMARY\_STATE\_VAR}. La clase base los lee y se autoconfigura: registra los DOF, valida la compatibilidad material\ensuremath{\leftrightarrow}elemento e inicializa el \texttt{ElementState} con la forma correcta. Este mecanismo sustituye los métodos \texttt{setup()} repetitivos que cada subclase tendría que implementar.
+En lugar de imponer métodos abstractos cuando el comportamiento puede inferirse del dato, Solidum FEM declara los contratos como atributos de clase: \texttt{STRAIN\_DIM} (1, 3 o 6), \texttt{DOF\_NAMES} (lista de nombres de DOF por nodo), \texttt{N\_INTEGRATION\_POINTS}, \texttt{PRIMARY\_STATE\_VAR}. La clase base los lee y se autoconfigura: registra los DOF, valida la compatibilidad material\ensuremath{\leftrightarrow}elemento e inicializa el \texttt{ElementState} con la forma correcta. Este mecanismo sustituye los métodos \texttt{setup()} repetitivos que cada subclase tendría que implementar.
 
 \section{Validación temprana en construcción}
 
@@ -675,7 +675,7 @@ El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de
 
 \section{Eliminación directa de condiciones de frontera}
 
-Las condiciones de frontera, tanto Dirichlet nodales como restricciones multipunto lineales (MPC), se imponen por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (subpaquete \texttt{fenix.bc}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}: en filas correspondientes a DOF libres, \texttt{T} es la matriz identidad rectangular; en filas esclavas, lleva los coeficientes \texttt{\ensuremath{\alpha}\_si} en las columnas de los maestros. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo, preserva la simetría y la positividad definida de \texttt{K}, y deja el sistema reducido apto para solvers iterativos (CG, GMRES).
+Las condiciones de frontera, tanto Dirichlet nodales como restricciones multipunto lineales (MPC), se imponen por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (subpaquete \texttt{solidum.bc}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}: en filas correspondientes a DOF libres, \texttt{T} es la matriz identidad rectangular; en filas esclavas, lleva los coeficientes \texttt{\ensuremath{\alpha}\_si} en las columnas de los maestros. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo, preserva la simetría y la positividad definida de \texttt{K}, y deja el sistema reducido apto para solvers iterativos (CG, GMRES).
 
 La forma afín cubre con la misma maquinaria los casos de empotramiento, asentamiento prescrito, apoyo en plano oblicuo, periodicidad de celda unitaria y unión rígida master-slave entre nodos. Las restricciones declaradas como cadenas (un esclavo cuyo maestro es a su vez esclavo de otra restricción) se resuelven por cierre transitivo en el momento de construir \texttt{T}; los ciclos y las redeclaraciones inconsistentes se detectan en validación temprana. La declaración se hace mediante \texttt{Domain.add\_linear\_constraint} o desde el bloque \texttt{linear\_constraints} del archivo YAML.
 
@@ -689,7 +689,7 @@ Cada material declara como atributo de clase la variable interna principal a efe
 
 \section{Cuadraturas centralizadas}
 
-Las tablas y reglas de cuadratura de Gauss-Legendre 1D, 2D y 3D residen centralizadas en \texttt{fenix/math/integration.py}. Cada elemento declara su \texttt{N\_INTEGRATION\_POINTS} y consume los puntos y pesos correspondientes, sin reproducción de tablas en cada subclase.
+Las tablas y reglas de cuadratura de Gauss-Legendre 1D, 2D y 3D residen centralizadas en \texttt{solidum/math/integration.py}. Cada elemento declara su \texttt{N\_INTEGRATION\_POINTS} y consume los puntos y pesos correspondientes, sin reproducción de tablas en cada subclase.
 
 \section{Política unificada de tolerancias: patrón \texttt{atol + rtol \ensuremath{\cdot} escala}}
 
@@ -702,7 +702,7 @@ magnitud  ≤  atol  +  rtol · escala(estado)
 
 donde \texttt{atol} es un piso absoluto en las unidades físicas del problema, \texttt{rtol} es una banda relativa adimensional y \texttt{escala(estado)} es la magnitud característica del criterio en el estado corriente. Esta forma única garantiza tres propiedades simultáneamente: invariancia bajo cambio de unidades (la \texttt{escala} se ajusta), adaptatividad al estado (la tolerancia crece con la evolución del problema, p. ej. con el endurecimiento plástico) y robustez en regímenes degenerados (cuando la escala colapsa transitoriamente, \texttt{atol} mantiene la comparación significativa).
 
-El patrón vive centralizado por subsistema, no replicado: la admisibilidad constitutiva se aplica en \texttt{Material.is\_admissible} y \texttt{Material.admissibility\_tol} (\hyperref[adr:0006]{ADR 0006}); la convergencia de los solvers no lineales reside en la clase \texttt{ConvergenceCriterion} de \texttt{fenix/math/convergence.py} (\hyperref[adr:0007]{ADR 0007}). Cada material o solver declara su \texttt{escala} mediante un método ligero (por ejemplo \texttt{Material.admissibility\_scale}, que devuelve la fluencia corriente o el umbral de daño), y la fórmula no se reproduce a mano en ningún sitio salvo cuando una restricción técnica (kernel compilado con Numba) obliga a precomputar la tolerancia fuera del kernel --- y, aun así, vía el método centralizado.
+El patrón vive centralizado por subsistema, no replicado: la admisibilidad constitutiva se aplica en \texttt{Material.is\_admissible} y \texttt{Material.admissibility\_tol} (\hyperref[adr:0006]{ADR 0006}); la convergencia de los solvers no lineales reside en la clase \texttt{ConvergenceCriterion} de \texttt{solidum/math/convergence.py} (\hyperref[adr:0007]{ADR 0007}). Cada material o solver declara su \texttt{escala} mediante un método ligero (por ejemplo \texttt{Material.admissibility\_scale}, que devuelve la fluencia corriente o el umbral de daño), y la fórmula no se reproduce a mano en ningún sitio salvo cuando una restricción técnica (kernel compilado con Numba) obliga a precomputar la tolerancia fuera del kernel --- y, aun así, vía el método centralizado.
 
 Adicionalmente, los términos absolutos \texttt{atol} se autoderivan de las escalas del problema en su primer ensamblaje, no se codifican como constantes globales con unidades. Las constantes globales del proyecto que rigen esta política son adimensionales (\texttt{CONVERGENCE\_RTOL\_FORCE}, \texttt{CONVERGENCE\_ATOL\_FORCE\_FACTOR}, \texttt{ADMISSIBILITY\_TOL\_REL}, etc.), lo que mantiene el código independiente del sistema de unidades elegido por el usuario.
 
@@ -788,17 +788,17 @@ Los capítulos anteriores describen el estado actual del programa. Este capítul
 \hline
 \textbf{Componente a incorporar} & \textbf{Ubicación} & \textbf{Mecanismo de registro} & \textbf{Modifica otros archivos} \\
 \hline
-Material & \texttt{fenix/materials/<snake>.py} & \texttt{@MaterialRegistry.register} & No \\
-Elemento & \texttt{fenix/elements/<snake>.py} & \texttt{@ElementRegistry.register} & No \\
-Solver & \texttt{fenix/math/solver\_<snake>.py} & \texttt{@SolverRegistry.register} & No \\
+Material & \texttt{solidum/materials/<snake>.py} & \texttt{@MaterialRegistry.register} & No \\
+Elemento & \texttt{solidum/elements/<snake>.py} & \texttt{@ElementRegistry.register} & No \\
+Solver & \texttt{solidum/math/solver\_<snake>.py} & \texttt{@SolverRegistry.register} & No \\
 \hline
 \end{tabularx}
 \end{center}
 La columna "modifica otros archivos" es deliberadamente "No". Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
 
-\section{Skill \texttt{/fenix-new}}
+\section{Skill \texttt{/solidum-new}}
 
-Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una \textit{skill} versionada (\texttt{.claude/skills/fenix-new/}) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es \texttt{/fenix-new material|element|solver <Name>} y produce automáticamente:
+Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una \textit{skill} versionada (\texttt{.claude/skills/solidum-new/}) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es \texttt{/solidum-new material|element|solver <Name>} y produce automáticamente:
 
 \begin{itemize}
   \item El archivo en su carpeta canónica con la plantilla del tipo correspondiente.
@@ -837,7 +837,7 @@ Los archivos \texttt{docs/arquitectura.md}, \texttt{docs/conceptos\_clave.md} y 
 
 
 
-Los Architecture Decision Records (ADR) son el registro persistente de las decisiones que han modelado la arquitectura de Fenix FEM. Cada ADR responde, en una página, a tres cuestiones: contexto, decisión y consecuencias. En este capítulo se resumen los ADR vigentes; el texto completo reside en \texttt{docs/adr/}.
+Los Architecture Decision Records (ADR) son el registro persistente de las decisiones que han modelado la arquitectura de Solidum FEM. Cada ADR responde, en una página, a tres cuestiones: contexto, decisión y consecuencias. En este capítulo se resumen los ADR vigentes; el texto completo reside en \texttt{docs/adr/}.
 
 \section{ADR 0001 --- Mecanismos de transparencia conceptual}
 \label{adr:0001}
@@ -861,17 +861,17 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 
 \textbf{Fecha}: 22 de abril de 2026. \textbf{Estado}: aceptado.
 
-\textbf{Contexto.} Fenix FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y los esfuerzos internos carecían de método público homogéneo.
+\textbf{Contexto.} Solidum FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y los esfuerzos internos carecían de método público homogéneo.
 
 \textbf{Decisión.} Interfaz pública estructurada en tres niveles:
 
 \begin{enumerate}
   \item \textit{Contrato por elemento.} Todos los elementos tipo armadura, cable o marco implementan \texttt{internal\_forces(U) -> ElementForces}, que devuelve los esfuerzos en ejes locales con claves homogéneas por familia (\texttt{\{N\}} para armadura y cable; \texttt{\{N, V, M\}} para marco 2D; \texttt{\{N, Vy, Vz, T, My, Mz\}} para marco 3D). La convención de signos es la del proyecto (capítulo anterior).
   \item \textit{Agregado en \texttt{Domain}.} El objeto \texttt{SolveResult} se calcula de forma anticipada al final de \texttt{solver.solve()} y es inmutable. Expone los desplazamientos globales, las cargas aplicadas, las reacciones y un diccionario de esfuerzos internos por elemento.
-  \item \textit{Puntos de entrada oficiales.} Las funciones \texttt{fenix.run(case)} y \texttt{fenix.run\_yaml(path)} devuelven directamente un \texttt{SolveResult}. Cualquier consumidor externo opera contra esta interfaz.
+  \item \textit{Puntos de entrada oficiales.} Las funciones \texttt{solidum.run(case)} y \texttt{solidum.run\_yaml(path)} devuelven directamente un \texttt{SolveResult}. Cualquier consumidor externo opera contra esta interfaz.
 \end{enumerate}
 
-\textbf{Consecuencia.} El consumidor externo no recalcula esfuerzos a partir de \texttt{U}; la lógica de MEF reside íntegramente en Fenix FEM. La incorporación de un elemento nuevo obliga a implementar \texttt{internal\_forces} con las claves de su familia: el contrato es explícito.
+\textbf{Consecuencia.} El consumidor externo no recalcula esfuerzos a partir de \texttt{U}; la lógica de MEF reside íntegramente en Solidum FEM. La incorporación de un elemento nuevo obliga a implementar \texttt{internal\_forces} con las claves de su familia: el contrato es explícito.
 
 \section{ADR 0003 --- Despachador de algoritmo algebraico}
 \label{adr:0003}
@@ -890,7 +890,7 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 
 El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt{StiffnessProperties} (atributos \texttt{is\_symmetric}, \texttt{is\_positive\_definite}) y selecciona la factorización de Cholesky cuando aplica, o la factorización LU en caso contrario. El usuario puede forzar un algoritmo desde el archivo YAML mediante el campo \texttt{linear\_algebra} en calidad de herramienta de diagnóstico, no como decisión de modelado.
 
-\textbf{Consecuencia.} Los solvers no lineales (\texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}) ya no invocan SuperLU directamente: solicitan un solver algebraico al despachador y se desentienden del algoritmo numérico subyacente. La incorporación de un nuevo algoritmo (Pardiso, MUMPS, métodos algebraicos multimalla iterativos) afecta exclusivamente a \texttt{fenix/math/linalg/}. La separación entre estrategia (solver no lineal) y táctica (subsistema algebraico) queda explícita en el código.
+\textbf{Consecuencia.} Los solvers no lineales (\texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}) ya no invocan SuperLU directamente: solicitan un solver algebraico al despachador y se desentienden del algoritmo numérico subyacente. La incorporación de un nuevo algoritmo (Pardiso, MUMPS, métodos algebraicos multimalla iterativos) afecta exclusivamente a \texttt{solidum/math/linalg/}. La separación entre estrategia (solver no lineal) y táctica (subsistema algebraico) queda explícita en el código.
 
 \section{ADR 0004 --- Imposición de condiciones de Dirichlet por eliminación directa}
 \label{adr:0004}
@@ -899,7 +899,7 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
 
 \textbf{Contexto.} Las condiciones de contorno de Dirichlet, tanto los empotramientos nodales clásicos como las restricciones multipunto (MPC: asentamientos prescritos, apoyos en plano oblicuo, periodicidad de celda unitaria, unión rígida master-slave), se imponían previamente por método de penalidad: añadir términos diagonales muy grandes al sistema. Dicho método introduce condicionamiento numérico artificialmente malo, contamina la simetría y la positividad de la matriz de rigidez y no es exacto a redondeo.
 
-\textbf{Decisión.} Se adopta la imposición por eliminación directa. Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} del subpaquete \texttt{fenix.bc}. El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. Las restricciones encadenadas (un esclavo cuyo maestro es a su vez esclavo) se resuelven por cierre transitivo al construir \texttt{T}; los ciclos y redeclaraciones inconsistentes se detectan en validación temprana.
+\textbf{Decisión.} Se adopta la imposición por eliminación directa. Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} del subpaquete \texttt{solidum.bc}. El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}. El sistema entregado al subsistema algebraico es \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. Las restricciones encadenadas (un esclavo cuyo maestro es a su vez esclavo) se resuelven por cierre transitivo al construir \texttt{T}; los ciclos y redeclaraciones inconsistentes se detectan en validación temprana.
 
 \textbf{Consecuencia.} La imposición es exacta a redondeo, preserva simetría y positividad definida de \texttt{K}, y deja el sistema reducido apto para los algoritmos del subsistema algebraico, incluidos solvers iterativos como gradiente conjugado o GMRES. La misma maquinaria cubre empotramiento, asentamiento, apoyo oblicuo, periodicidad y unión rígida sin ramificación específica por tipo.
 
@@ -910,7 +910,7 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
 
 \textbf{Contexto.} La trazabilidad del solver durante un análisis (incrementos de carga, iteraciones de Newton, ratios de convergencia, factorizaciones reusadas) se emitía mediante \texttt{print} directo en la salida estándar. Esto impedía silenciar el ruido en pipelines de batch testing, redirigir la traza a un archivo de log paralelo y diferenciar niveles de gravedad (información ordinaria, advertencias, errores recuperables).
 
-\textbf{Decisión.} Se introduce un \textit{logger} configurable basado en el módulo estándar \texttt{logging} de Python, expuesto al resto del proyecto vía \texttt{fenix.logging.get\_logger(name)}. Todos los componentes consumen este \textit{logger} en lugar de \texttt{print}. El nivel y el formato se configuran de forma centralizada y pueden sobreescribirse desde el archivo YAML del caso o programáticamente.
+\textbf{Decisión.} Se introduce un \textit{logger} configurable basado en el módulo estándar \texttt{logging} de Python, expuesto al resto del proyecto vía \texttt{solidum.logging.get\_logger(name)}. Todos los componentes consumen este \textit{logger} en lugar de \texttt{print}. El nivel y el formato se configuran de forma centralizada y pueden sobreescribirse desde el archivo YAML del caso o programáticamente.
 
 \textbf{Consecuencia.} Tests automatizados pueden silenciar la traza sin perder la información de errores. La integración con herramientas externas (GUI FenixBAR, batería de tests, pipelines CI) se hace mediante la API estándar de \texttt{logging}, sin acoplamiento a \texttt{sys.stdout}. Las advertencias internas relevantes (degradación de Cholesky a LU, bisección de incremento) quedan marcadas con su nivel adecuado.
 
@@ -932,7 +932,7 @@ El despachador \texttt{select\_solver(props, override)} recibe un objeto \texttt
 
 \textbf{Contexto.} El criterio de convergencia del \texttt{NonlinearSolver} y del \texttt{ArcLengthSolver} era puramente relativo: \texttt{\ensuremath{\|}residuo\ensuremath{\|} / ref\_force \ensuremath{\le} tol} y \texttt{\ensuremath{\|}\ensuremath{\delta}U\ensuremath{\|} / \ensuremath{\|}U\ensuremath{\|} \ensuremath{\le} tol}, con un único parámetro \texttt{tol} para los dos criterios y sin término absoluto real. Esta forma arrastraba tres limitaciones estructurales: no había tolerancia absoluta cuando la escala relativa colapsaba transitoriamente, una sola tolerancia mezclaba dos criterios físicamente distintos (incrementabilidad del iterado vs equilibrio), y la fórmula se replicaba en los dos solvers a mano.
 
-\textbf{Decisión.} Se aplica el mismo patrón del \hyperref[adr:0006]{ADR 0006} a la convergencia, separado por criterio. La política reside en una clase pequeña \texttt{ConvergenceCriterion} en \texttt{fenix/math/convergence.py}, que encapsula configuración (cuatro tolerancias: \texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}) y estado calibrado (los \texttt{atol} efectivos derivados de las escalas del primer ensamblaje). Los solvers no lineales reciben una instancia en el constructor (parámetro \texttt{convergence}), calibran al inicio de \texttt{solve()} y delegan en \texttt{evaluate()} la comparación. La semántica es AND, no OR (ambos criterios deben cumplirse simultáneamente), coherente con la convención de Bathe, Crisfield y Owen-Hinton.
+\textbf{Decisión.} Se aplica el mismo patrón del \hyperref[adr:0006]{ADR 0006} a la convergencia, separado por criterio. La política reside en una clase pequeña \texttt{ConvergenceCriterion} en \texttt{solidum/math/convergence.py}, que encapsula configuración (cuatro tolerancias: \texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}) y estado calibrado (los \texttt{atol} efectivos derivados de las escalas del primer ensamblaje). Los solvers no lineales reciben una instancia en el constructor (parámetro \texttt{convergence}), calibran al inicio de \texttt{solve()} y delegan en \texttt{evaluate()} la comparación. La semántica es AND, no OR (ambos criterios deben cumplirse simultáneamente), coherente con la convención de Bathe, Crisfield y Owen-Hinton.
 
 \textbf{Consecuencia.} Invariancia bit-paritaria bajo cambio de unidades (el mismo problema en N/m, kN/mm o MN/m converge en el mismo número de iteraciones). Régimen degenerado (carga inicial nula, control en desplazamiento puro) deja de oscilar espuriamente: el piso absoluto \texttt{atol\_force} autoderivado define cuándo se da por convergido un residuo numéricamente cero. Problemas casi-rígidos y plásticos perfectos se afinan independientemente vía \texttt{rtol\_disp} vs \texttt{rtol\_force} sin compromisos. La política vive en un único punto del código; un solver no lineal futuro la consume sin replicarla.
 
@@ -970,7 +970,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \begin{itemize}
   \item \textbf{Fase 1} (\texttt{ModalSolver} + ARPACK Lanczos con shift-invert). Cerrada 2026-05-13.
-  \item \textbf{Fase 2} (mass lumping HRZ canónico en sólidos + nodal directo en frames). Helper centralizado \texttt{fenix.math.mass\_lumping.lump\_hrz}. Cerrada 2026-05-18 (commit \texttt{c92bf4e}).
+  \item \textbf{Fase 2} (mass lumping HRZ canónico en sólidos + nodal directo en frames). Helper centralizado \texttt{solidum.math.mass\_lumping.lump\_hrz}. Cerrada 2026-05-18 (commit \texttt{c92bf4e}).
   \item \textbf{Fase 3} (\texttt{NewmarkSolver} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables, factorización única, Rayleigh, cargas por callback). Cerrada 2026-05-13.
   \item \textbf{Fase 3-bis} (\texttt{HHTSolver} como variante de Newmark con disipación numérica controlada por \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]}). Cerrada 2026-05-18 (commit \texttt{73742f4}).
   \item \textbf{Fase 4} (\texttt{NewtonNewmarkSolver} con Newton interno, jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}, convergencia dual \hyperref[adr:0007]{ADR 0007}, Rayleigh constante con \texttt{K\_0}; \texttt{NewtonHHTSolver} análogo). Cerrada 2026-05-13/-18.
@@ -983,7 +983,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \begin{itemize}
   \item \textbf{Regla C} (auditoría 2026-05-13). Disparada por \texttt{CentralDifferenceSolver} como primer solver fuera de la jerarquía de Newmark. \texttt{entry.py::run\_yaml} despacha por atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} en lugar de cadena de \texttt{isinstance}. Solvers no clásicos futuros no requieren tocar \texttt{entry.py}.
-  \item \textbf{Regla D} (auditoría 2026-05-13). Disparada por \texttt{ResponseSpectrumSolver} como segundo método de cómputo sobre \texttt{ModalResult}. El algoritmo de \texttt{free\_vibration} migra a \texttt{fenix/math/modal\_response.py} junto con los nuevos \texttt{participation\_factors}, \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}. \texttt{ModalResult.free\_vibration} queda como wrapper delgado, preservando la API histórica.
+  \item \textbf{Regla D} (auditoría 2026-05-13). Disparada por \texttt{ResponseSpectrumSolver} como segundo método de cómputo sobre \texttt{ModalResult}. El algoritmo de \texttt{free\_vibration} migra a \texttt{solidum/math/modal\_response.py} junto con los nuevos \texttt{participation\_factors}, \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}. \texttt{ModalResult.free\_vibration} queda como wrapper delgado, preservando la API histórica.
 \end{itemize}
 
 \textbf{Consecuencia.} El subsistema modal/dinámico/espectral queda \textbf{completo en su totalidad}. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, \ensuremath{\Delta}t adaptativo, generalized-\ensuremath{\alpha}) requieren caso de uso específico --- no son piezas del ADR pendientes. La clase \texttt{Node} conserva su semántica original.
@@ -1005,7 +1005,7 @@ Cada decisión de arquitectura de gran calado --- refactor transversal, subsiste
 
 
 
-Este capítulo presenta la trayectoria prevista de la arquitectura de Fenix FEM. Su función es preservar la imagen de la arquitectura del programa a medida que crece: cada fase incorpora un nuevo tipo de análisis con sus contratos propios, sus variables de estado y, eventualmente, capas o subsistemas adicionales. La diferencia con los pendientes del \hyperref[cap:4]{capítulo 4} es de granularidad: aquellos enumeran componentes individuales; este capítulo describe los \textbf{estados sucesivos de la arquitectura} del programa, cada uno con su mapa de capas correspondiente.
+Este capítulo presenta la trayectoria prevista de la arquitectura de Solidum FEM. Su función es preservar la imagen de la arquitectura del programa a medida que crece: cada fase incorpora un nuevo tipo de análisis con sus contratos propios, sus variables de estado y, eventualmente, capas o subsistemas adicionales. La diferencia con los pendientes del \hyperref[cap:4]{capítulo 4} es de granularidad: aquellos enumeran componentes individuales; este capítulo describe los \textbf{estados sucesivos de la arquitectura} del programa, cada uno con su mapa de capas correspondiente.
 
 Las fases posteriores a la actual están marcadas como pendientes y se materializarán mediante los Architecture Decision Records (ADR) anunciados en el \hyperref[cap:8]{capítulo 8}. La estructura de cada fase se redefinirá en su ADR de apertura; lo aquí descrito constituye una hipótesis razonada de partida.
 
@@ -1065,7 +1065,7 @@ Integración temporal directa de la ecuación de movimiento semidiscreta \texttt
 \textbf{Cambios respecto a la fase 2}:
 
 \begin{itemize}
-  \item Aparece la matriz de amortiguamiento \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K} (Rayleigh proporcional). Los coeficientes pueden pasarse directos o calibrarse modalmente a partir de \texttt{(\ensuremath{\xi}\ensuremath{_{1}}, \ensuremath{\omega}\ensuremath{_{1}}), (\ensuremath{\xi}\ensuremath{_{2}}, \ensuremath{\omega}\ensuremath{_{2}})} con \texttt{fenix.math.damping.rayleigh\_from\_modes}.
+  \item Aparece la matriz de amortiguamiento \texttt{C = \ensuremath{\alpha}\ensuremath{\cdot}M + \ensuremath{\beta}\ensuremath{\cdot}K} (Rayleigh proporcional). Los coeficientes pueden pasarse directos o calibrarse modalmente a partir de \texttt{(\ensuremath{\xi}\ensuremath{_{1}}, \ensuremath{\omega}\ensuremath{_{1}}), (\ensuremath{\xi}\ensuremath{_{2}}, \ensuremath{\omega}\ensuremath{_{2}})} con \texttt{solidum.math.damping.rayleigh\_from\_modes}.
   \item Las variables de estado se amplían a \texttt{(u, u̇, ü)}. Coherente con el \hyperref[adr:0009]{ADR 0009} §5, el estado dinámico \textbf{no contamina} la clase \texttt{Node}: vive en el nuevo \texttt{TransientResult} (frozen) como historiales \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} indexados por paso temporal.
   \item Nuevo solver \texttt{NewmarkSolver} con esquema \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizable (default 1/4, 1/2 --- average acceleration, incondicionalmente estable, error \texttt{O(\ensuremath{\Delta}t\ensuremath{^{2}})}). Cargas dependientes del tiempo por callback Python (\texttt{F\_func: t \ensuremath{\to} F}).
   \item El subsistema algebraico recibe una matriz efectiva \texttt{A\_eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K}. Con \texttt{\ensuremath{\Delta}t} constante y problema lineal, \texttt{A\_eff} es invariante: se factoriza \textbf{una sola vez} al inicio (\hyperref[adr:0003]{ADR 0003} --- \texttt{FactorizedSolver}) y cada paso temporal se reduce a una sustitución triangular barata.
@@ -1121,7 +1121,7 @@ Bajo en la práctica: toda la infraestructura ya existía. El \texttt{NonlinearS
 
 Las cuatro fases pendientes del \hyperref[adr:0009]{ADR 0009} se cierran en una secuencia obligada (cada una precondición de la siguiente) sin reabrir las decisiones arquitecturales tomadas en el ADR original:
 
-\textbf{Mass lumping (fase 2)} --- \texttt{compute\_mass\_matrix(lumping="lumped")} operativo en todos los elementos. Helper centralizado \texttt{fenix.math.mass\_lumping.lump\_hrz} con esquema HRZ canónico (Hinton-Rock-Zienkiewicz 1976) para sólidos isoparamétricos y fórmula nodal directa para frames. Diagonalidad estricta en globales para todos los elementos excepto Frame3D con eje oblicuo (queda bloque-diagonal --- limitación documentada, Cook-Malkus-Plesha §11.4).
+\textbf{Mass lumping (fase 2)} --- \texttt{compute\_mass\_matrix(lumping="lumped")} operativo en todos los elementos. Helper centralizado \texttt{solidum.math.mass\_lumping.lump\_hrz} con esquema HRZ canónico (Hinton-Rock-Zienkiewicz 1976) para sólidos isoparamétricos y fórmula nodal directa para frames. Diagonalidad estricta en globales para todos los elementos excepto Frame3D con eje oblicuo (queda bloque-diagonal --- limitación documentada, Cook-Malkus-Plesha §11.4).
 
 \textbf{HHT-\ensuremath{\alpha} (variante)} --- \texttt{HHTSolver} y \texttt{NewtonHHTSolver} como variantes de la familia Newmark (Reglas §4 --- spec corta sin ADR nuevo). Disipación numérica controlada por \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} auto-derivados canónicamente.
 
@@ -1135,7 +1135,7 @@ Las cuatro fases pendientes del \hyperref[adr:0009]{ADR 0009} se cierran en una 
 
 \begin{itemize}
   \item \textbf{Regla C} --- \texttt{entry.py::run\_yaml} despacha por atributo de clase \texttt{PIPELINE\_KIND \ensuremath{\in} \{"static", "modal", "transient", "harmonic", "spectrum"\}} en lugar de cadena de \texttt{isinstance}. Solvers no clásicos futuros no requieren tocar \texttt{entry.py}.
-  \item \textbf{Regla D} --- \texttt{fenix/math/modal\_response.py} agrupa todos los cómputos sobre modos: \texttt{free\_vibration} (movido desde \texttt{results.py}), \texttt{participation\_factors}, \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, helpers de espectros (\texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}). \texttt{ModalResult.free\_vibration} queda como wrapper delgado preservando la API histórica. \texttt{results.py} vuelve a su propósito declarado: dataclasses inmutables, no algoritmos.
+  \item \textbf{Regla D} --- \texttt{solidum/math/modal\_response.py} agrupa todos los cómputos sobre modos: \texttt{free\_vibration} (movido desde \texttt{results.py}), \texttt{participation\_factors}, \texttt{response\_spectrum\_srss}, \texttt{response\_spectrum\_cqc}, helpers de espectros (\texttt{spectrum\_from\_sa}, \texttt{spectrum\_tabulated}). \texttt{ModalResult.free\_vibration} queda como wrapper delgado preservando la API histórica. \texttt{results.py} vuelve a su propósito declarado: dataclasses inmutables, no algoritmos.
 \end{itemize}
 
 \textbf{Topología efectiva} tras la extensión:
@@ -1148,7 +1148,7 @@ Las cuatro fases pendientes del \hyperref[adr:0009]{ADR 0009} se cierran en una 
 \end{lstlisting}
 
 \begin{infobox}{Riesgo de arquitectura}
-Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo \texttt{mass\_lumping.py}, nuevo módulo \texttt{modal\_response.py}, cinco solvers nuevos en \texttt{fenix/math/solvers/}, dos \texttt{Result} nuevos (\texttt{HarmonicResult}, \texttt{ResponseSpectrumResult}). El despacho declarativo \texttt{PIPELINE\_KIND} reemplaza la cadena de \texttt{isinstance} sin romper contratos --- los solvers existentes heredan el nuevo atributo. La regla D centraliza algoritmos sin modificar la API pública de \texttt{ModalResult}.
+Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo \texttt{mass\_lumping.py}, nuevo módulo \texttt{modal\_response.py}, cinco solvers nuevos en \texttt{solidum/math/solvers/}, dos \texttt{Result} nuevos (\texttt{HarmonicResult}, \texttt{ResponseSpectrumResult}). El despacho declarativo \texttt{PIPELINE\_KIND} reemplaza la cadena de \texttt{isinstance} sin romper contratos --- los solvers existentes heredan el nuevo atributo. La regla D centraliza algoritmos sin modificar la API pública de \texttt{ModalResult}.
 \end{infobox}
 
 \section{Fase 5 --- Problema térmico estacionario y transitorio}
@@ -1220,7 +1220,7 @@ Cada vez que se cierre la implementación de una fase y se acepte su ADR de aper
   \item Las consecuencias no previstas (ajustes en capas anteriores, contratos modificados) se registran en una subsección "Lecciones de la fase N", de cara a fases posteriores.
 \end{enumerate}
 
-De este modo, el capítulo se convierte en una crónica ordenada del crecimiento del programa: en cualquier momento futuro, abrir el manual permite reconstruir no solo el estado actual de Fenix FEM sino la trayectoria completa que lo ha llevado hasta él.
+De este modo, el capítulo se convierte en una crónica ordenada del crecimiento del programa: en cualquier momento futuro, abrir el manual permite reconstruir no solo el estado actual de Solidum FEM sino la trayectoria completa que lo ha llevado hasta él.
 
 
 \newpage
@@ -1238,12 +1238,12 @@ A diferencia de los ADR, las entradas de este capítulo no se materializan en ar
 
 \textbf{Decisión}: postergada sin fecha.
 
-\textbf{Contexto}. La paralelización mediante el estándar Message Passing Interface (MPI) sería el paso natural para llevar Fenix FEM a problemas de gran escala (mallas de millones de elementos, descomposición de dominio, ejecución en clúster).
+\textbf{Contexto}. La paralelización mediante el estándar Message Passing Interface (MPI) sería el paso natural para llevar Solidum FEM a problemas de gran escala (mallas de millones de elementos, descomposición de dominio, ejecución en clúster).
 
 \textbf{Razones de la postergación}. Un solo desarrollador trabaja en el proyecto y los problemas que motivan su uso (investigación en mecánica de sólidos, validación de modelos constitutivos, prototipado de algoritmos) se ejecutan satisfactoriamente en máquinas de un solo nodo. La introducción de MPI multiplicaría el coste de cualquier extensión por la necesidad de mantener consistencia de estado entre procesos, complicaría sustancialmente las pruebas (ejecución determinística reproducible bajo distintas particiones de malla) y exigiría rediseñar el ensamblaje y el subsistema algebraico. El compromiso entre coste de mantenimiento y beneficio inmediato no es favorable mientras el caso de uso del proyecto se mantenga en su perfil actual.
 
 \begin{infobox}{Reapertura de la decisión}
-Procedería revisar este compromiso si Fenix FEM se aplicara de forma habitual a mallas mayores que 10⁶ elementos, o si se incorporasen colaboradores adicionales con experiencia en programación paralela.
+Procedería revisar este compromiso si Solidum FEM se aplicara de forma habitual a mallas mayores que 10⁶ elementos, o si se incorporasen colaboradores adicionales con experiencia en programación paralela.
 \end{infobox}
 
 \section{Adopción de PETSc o Trilinos como backend numérico}
@@ -1252,7 +1252,7 @@ Procedería revisar este compromiso si Fenix FEM se aplicara de forma habitual a
 
 \textbf{Contexto}. PETSc y Trilinos son las dos bibliotecas estándar para álgebra lineal dispersa, solvers iterativos, descomposición de dominio y gestión de matrices distribuidas en programas de elementos finitos de gran escala. Su adopción daría acceso inmediato a multimalla algebraica, precondicionadores avanzados y soporte MPI maduro.
 
-\textbf{Razones del rechazo}. Ambas son dependencias binarias pesadas con un proceso de instalación no trivial en Windows, plataforma de trabajo del desarrollador. Su modelo de programación es de matriz distribuida y orientación procedural, lo que choca con la arquitectura actual basada en \texttt{scipy.sparse} y orientación a objetos. La capacidad de Fenix FEM hoy se ajusta a lo que SuperLU y CHOLMOD ofrecen mediante \texttt{scipy.sparse} y \texttt{scikit-sparse}; añadir PETSc o Trilinos sin un caso de uso concreto que lo exija supondría una dependencia infrautilizada y un coste de mantenimiento desproporcionado.
+\textbf{Razones del rechazo}. Ambas son dependencias binarias pesadas con un proceso de instalación no trivial en Windows, plataforma de trabajo del desarrollador. Su modelo de programación es de matriz distribuida y orientación procedural, lo que choca con la arquitectura actual basada en \texttt{scipy.sparse} y orientación a objetos. La capacidad de Solidum FEM hoy se ajusta a lo que SuperLU y CHOLMOD ofrecen mediante \texttt{scipy.sparse} y \texttt{scikit-sparse}; añadir PETSc o Trilinos sin un caso de uso concreto que lo exija supondría una dependencia infrautilizada y un coste de mantenimiento desproporcionado.
 
 \begin{infobox}{Reapertura de la decisión}
 Procedería si se adopta MPI (compromiso anterior) y, simultáneamente, los problemas tratados requirieran solvers iterativos con precondicionamiento avanzado. En ese escenario, PETSc se convertiría en la opción natural por encima de implementar dichos algoritmos en código propio.
@@ -1262,21 +1262,21 @@ Procedería si se adopta MPI (compromiso anterior) y, simultáneamente, los prob
 
 \textbf{Decisión}: rechazada.
 
-\textbf{Contexto}. Una arquitectura cliente-servidor expondría Fenix FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
+\textbf{Contexto}. Una arquitectura cliente-servidor expondría Solidum FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
 
-\textbf{Razones del rechazo}. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con \texttt{SolveResult}, \texttt{fenix.run} y \texttt{fenix.run\_yaml} en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
+\textbf{Razones del rechazo}. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con \texttt{SolveResult}, \texttt{solidum.run} y \texttt{solidum.run\_yaml} en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
 
 \begin{infobox}{Reapertura de la decisión}
-Procedería si Fenix FEM se ofreciera como servicio público a múltiples consumidores no relacionados con el desarrollo, o si la GUI se desacoplara hasta el punto de ejecutarse en máquinas distintas.
+Procedería si Solidum FEM se ofreciera como servicio público a múltiples consumidores no relacionados con el desarrollo, o si la GUI se desacoplara hasta el punto de ejecutarse en máquinas distintas.
 \end{infobox}
 
 \section{Soporte de múltiples lenguajes en la interfaz pública}
 
 \textbf{Decisión}: rechazada para el alcance actual.
 
-\textbf{Contexto}. La interfaz pública del programa (\texttt{fenix.run}, \texttt{fenix.run\_yaml}, \texttt{SolveResult}) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
+\textbf{Contexto}. La interfaz pública del programa (\texttt{solidum.run}, \texttt{solidum.run\_yaml}, \texttt{SolveResult}) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
 
-\textbf{Razones del rechazo}. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Fenix FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (\texttt{py.fenix.run\_yaml(path)}), sin necesidad de modificar Fenix FEM.
+\textbf{Razones del rechazo}. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Solidum FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (\texttt{py.solidum.run\_yaml(path)}), sin necesidad de modificar Solidum FEM.
 
 \begin{infobox}{Reapertura de la decisión}
 Procedería si surgiera un consumidor estable escrito en un lenguaje distinto de Python y la solución \textit{vía} el puente nativo de cada lenguaje no fuera viable.
@@ -1286,7 +1286,7 @@ Procedería si surgiera un consumidor estable escrito en un lenguaje distinto de
 
 \textbf{Decisión}: rechazada.
 
-\textbf{Contexto}. Algunos programas grandes de elementos finitos permiten que terceros publiquen materiales, elementos o solvers como paquetes externos que se descubren en tiempo de ejecución sin formar parte del repositorio principal. La alternativa es la actual: todo componente vive dentro del repositorio de Fenix FEM y se valida con sus pruebas.
+\textbf{Contexto}. Algunos programas grandes de elementos finitos permiten que terceros publiquen materiales, elementos o solvers como paquetes externos que se descubren en tiempo de ejecución sin formar parte del repositorio principal. La alternativa es la actual: todo componente vive dentro del repositorio de Solidum FEM y se valida con sus pruebas.
 
 \textbf{Razones del rechazo}. La filosofía del proyecto (ver \hyperref[cap:1]{capítulo 1}) considera la transparencia y la auditabilidad del código como valor primordial. Un sistema de plugins externos abriría la puerta a componentes no auditados que podrían silenciosamente romper la convención de signos del proyecto, los contratos declarativos del catálogo o las hipótesis de validación contra soluciones analíticas. Mientras el desarrollo lo lleve un único equipo, la incorporación de cualquier componente nuevo pasa por el repositorio y por las pruebas correspondientes, lo que mantiene la trazabilidad completa.
 
@@ -1298,7 +1298,7 @@ Procedería si el proyecto creciera hasta tener una comunidad amplia de contribu
 
 \textbf{Decisión}: postergada sin fecha.
 
-\textbf{Contexto}. El código de Fenix FEM utiliza anotaciones de tipo en sus interfaces públicas pero no se valida con \texttt{mypy} en modo estricto. Adoptarlo proporcionaría garantías estáticas adicionales y detectaría algunas familias de errores antes de la ejecución.
+\textbf{Contexto}. El código de Solidum FEM utiliza anotaciones de tipo en sus interfaces públicas pero no se valida con \texttt{mypy} en modo estricto. Adoptarlo proporcionaría garantías estáticas adicionales y detectaría algunas familias de errores antes de la ejecución.
 
 \textbf{Razones de la postergación}. La librería \texttt{numpy} y, en menor medida, \texttt{scipy.sparse} tienen un soporte de tipado estático que ha mejorado mucho pero sigue dejando puntos donde \texttt{mypy --strict} produce ruido sin valor real. El esfuerzo de pulir todas esas fricciones no se compensa, en el alcance actual del proyecto, con el beneficio en detección de defectos. La política presente --- anotaciones de tipo en interfaces públicas y validación de comportamiento mediante pruebas de física --- se considera suficiente.
 
@@ -1318,7 +1318,7 @@ Cada vez que se reabra una decisión y se modifique su estado (de "postergada" a
 
 
 
-Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada entrada da una definición breve (de una a tres frases) y, cuando procede, remite al capítulo donde el concepto se desarrolla.
+Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada entrada da una definición breve (de una a tres frases) y, cuando procede, remite al capítulo donde el concepto se desarrolla.
 
 \textbf{Ajuste de paso (incremento de carga)}. División de la carga total en fracciones que se aplican sucesivamente en problemas no lineales. Permite que el método de Newton-Raphson converja a partir de una aproximación cercana a la solución del paso anterior.
 
@@ -1328,7 +1328,7 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{Autodiscover (descubrimiento automático)}. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores \texttt{@register} y, con ello, la inscripción de cada componente en su registro. Ver \hyperref[cap:5]{capítulo 5}.
 
-\textbf{Capa algebraica}. Subsistema en \texttt{fenix/math/linalg/} responsable de resolver el sistema lineal \texttt{K \ensuremath{\cdot} x = b} que aparece dentro de cada iteración del solver no lineal. Está separada del solver no lineal y selecciona automáticamente el algoritmo de factorización adecuado mediante un despachador. Ver \hyperref[cap:4]{capítulo 4} y \hyperref[adr:0003]{ADR 0003}.
+\textbf{Capa algebraica}. Subsistema en \texttt{solidum/math/linalg/} responsable de resolver el sistema lineal \texttt{K \ensuremath{\cdot} x = b} que aparece dentro de cada iteración del solver no lineal. Está separada del solver no lineal y selecciona automáticamente el algoritmo de factorización adecuado mediante un despachador. Ver \hyperref[cap:4]{capítulo 4} y \hyperref[adr:0003]{ADR 0003}.
 
 \textbf{Catálogo}. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers) con sus parámetros, validez y referencias. Reside en \texttt{docs/catalogo\_<categoría>.md}. Es índice y resumen; el detalle vive en las especificaciones.
 
@@ -1340,9 +1340,9 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{\texttt{Domain}}. Objeto central de la capa de dominio que mantiene la lista de nodos, la conectividad de los elementos, la numeración global de los grados de libertad y, tras la solución, el agregado \texttt{SolveResult}.
 
-\textbf{Eliminación directa (de condiciones de Dirichlet)}. Estrategia de imposición de condiciones esenciales que retira los grados de libertad prescritos del sistema antes de resolverlo, en oposición a la penalización (que añade un valor grande a la diagonal) y a los multiplicadores de Lagrange (que amplían el sistema). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (\texttt{fenix/bc/}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}, y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad definida de la matriz original. Ver \hyperref[adr:0004]{ADR 0004}.
+\textbf{Eliminación directa (de condiciones de Dirichlet)}. Estrategia de imposición de condiciones esenciales que retira los grados de libertad prescritos del sistema antes de resolverlo, en oposición a la penalización (que añade un valor grande a la diagonal) y a los multiplicadores de Lagrange (que amplían el sistema). Toda restricción se expresa en forma afín \texttt{u\_s = g\_s + \ensuremath{\Sigma} \ensuremath{\alpha}\_si \ensuremath{\cdot} u\_mi} y se acumula en un \texttt{ConstraintSet} (\texttt{solidum/bc/}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_libre + g}, y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad definida de la matriz original. Ver \hyperref[adr:0004]{ADR 0004}.
 
-\textbf{Elemento}. Entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asignado. Sus contratos declarativos están en \texttt{fenix/elements/}. Ver \hyperref[cap:4]{capítulo 4}.
+\textbf{Elemento}. Entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asignado. Sus contratos declarativos están en \texttt{solidum/elements/}. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{\texttt{ElementState}}. Objeto que encapsula las dos copias de las variables internas de cada elemento: una copia \textit{trial} (la que se explora durante las iteraciones del solver) y otra comprometida (la del último paso convergido). Ver \hyperref[cap:5]{capítulo 5}.
 
@@ -1358,9 +1358,9 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{Longitud de arco (método de Crisfield)}. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
 
-\textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en \texttt{fenix/materials/}. Ver \hyperref[cap:4]{capítulo 4}.
+\textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en \texttt{solidum/materials/}. Ver \hyperref[cap:4]{capítulo 4}.
 
-\textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Fenix FEM trabaja en aproximación de desplazamientos.
+\textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Solidum FEM trabaja en aproximación de desplazamientos.
 
 \textbf{Multipoint constraint (MPC)}. Restricción afín lineal que liga el desplazamiento de un grado de libertad esclavo a una combinación lineal de los desplazamientos de uno o varios grados de libertad maestros, posiblemente con un término independiente. Modelan apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas entre nodos y simetrías no alineadas con los ejes globales. Se declaran mediante \texttt{Domain.add\_linear\_constraint} o desde el bloque \texttt{linear\_constraints} del archivo YAML, y se imponen por eliminación directa con la misma maquinaria que las condiciones de Dirichlet. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0004]{ADR 0004}.
 
@@ -1372,13 +1372,13 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) que mapea el nombre de cada componente con su clase. Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver \hyperref[cap:5]{capítulo 5}.
 
-\textbf{Regla de la mano derecha (RHR)}. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Fenix FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver \hyperref[cap:6]{capítulo 6}.
+\textbf{Regla de la mano derecha (RHR)}. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver \hyperref[cap:6]{capítulo 6}.
 
 \textbf{Retorno radial (return mapping)}. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si la tensión predictora lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
 
 \textbf{\texttt{SolveResult}}. Agregado inmutable que el \texttt{Domain} construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento. Es la interfaz pública para consumidores externos. Ver \hyperref[adr:0002]{ADR 0002}.
 
-\textbf{Solver no lineal}. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En Fenix FEM están implementados \texttt{LinearSolver}, \texttt{NonlinearSolver} y \texttt{ArcLengthSolver}. Es nivel estratégico, distinto del subsistema algebraico. Ver \hyperref[cap:4]{capítulo 4}.
+\textbf{Solver no lineal}. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En Solidum FEM están implementados \texttt{LinearSolver}, \texttt{NonlinearSolver} y \texttt{ArcLengthSolver}. Es nivel estratégico, distinto del subsistema algebraico. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{\texttt{STRAIN\_DIM}}. Atributo de clase de cada material y elemento que declara la dimensión del vector de deformación que manejan: 1 (escalar axial), 3 (Voigt-3 bidimensional), 6 (Voigt-6 tridimensional). El sistema lo usa para validar la compatibilidad material\ensuremath{\leftrightarrow}elemento en el momento de construcción.
 
@@ -1386,9 +1386,9 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 
 \textbf{Validación temprana en construcción}. Comprobación que la clase base de elemento ejecuta cuando se le asigna un material: verifica que la dimensión de deformación del material coincida con la del elemento. Errores físicos de combinación se detectan en la construcción del caso, no doscientas iteraciones después.
 
-\textbf{Visualization Toolkit (VTK)}. Conjunto de formatos de archivo y bibliotecas para representación de mallas y campos discretos en visualizadores de simulación numérica como ParaView. El \texttt{VtkExporter} de Fenix FEM produce los archivos correspondientes.
+\textbf{Visualization Toolkit (VTK)}. Conjunto de formatos de archivo y bibliotecas para representación de mallas y campos discretos en visualizadores de simulación numérica como ParaView. El \texttt{VtkExporter} de Solidum FEM produce los archivos correspondientes.
 
-\textbf{YAML (YAML Ain't Markup Language)}. Formato de serialización legible por humanos en el que se describen los casos de Fenix FEM (nodos, materiales, elementos, condiciones de contorno, cargas, solver). Es contrato público del programa.
+\textbf{YAML (YAML Ain't Markup Language)}. Formato de serialización legible por humanos en el que se describen los casos de Solidum FEM (nodos, materiales, elementos, condiciones de contorno, cargas, solver). Es contrato público del programa.
 
 
 \newpage
@@ -1552,10 +1552,10 @@ Términos técnicos centrales de Fenix FEM, ordenados alfabéticamente. Cada ent
 \vspace*{\fill}
 \begin{center}
 \rule{0.4\textwidth}{0.4pt}\\[1em]
-{\bfseries\color{yamlkey} Fenix FEM --- Manual de Arquitectura}\\[0.5em]
+{\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 19 de mayo de 2026, 12:56\\[0.5em]
-Commit Git: \texttt{61fc8f1} (con cambios sin confirmar)\\[1em]
+Compilado el 19 de mayo de 2026, 18:46\\[0.5em]
+Commit Git: \texttt{71e4602} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

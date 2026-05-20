@@ -1,6 +1,6 @@
-# Benchmarks de validación externa — Fenix FEM
+# Benchmarks de validación externa — Solidum FEM
 
-Tests que validan Fenix contra **soluciones analíticas clásicas** y
+Tests que validan Solidum contra **soluciones analíticas clásicas** y
 **benchmarks publicados** (NAFEMS, MacNeal-Harder, Timoshenko-Goodier).
 Complementan los tests unitarios y de integración del directorio padre
 con cifras citables contra referencias externas.

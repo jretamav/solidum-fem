@@ -22,15 +22,15 @@ from pathlib import Path
 
 import numpy as np
 
-import fenix  # autodiscover
-from fenix.core.domain import Domain
-from fenix.elements.frame import Frame2DEuler
-from fenix.elements.truss import Truss2D
-from fenix.entry import run_modal, run_yaml
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import ModalSolver
-from fenix.results import ModalResult
+import solidum  # autodiscover
+from solidum.core.domain import Domain
+from solidum.elements.frame import Frame2DEuler
+from solidum.elements.truss import Truss2D
+from solidum.entry import run_modal, run_yaml
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import ModalSolver
+from solidum.results import ModalResult
 
 from _modal_fixtures import (
     A_SECTION,

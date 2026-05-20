@@ -155,7 +155,7 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/materials/damage_1d.py](../../fenix/materials/damage_1d.py).
+- **Archivo**: [solidum/materials/damage_1d.py](../../solidum/materials/damage_1d.py).
 - **Clase**: `IsotropicDamage1D`, registrada vía `@MaterialRegistry.register`. `IS_SYMMETRIC` queda `True` (default heredado de `Material`) — la contribución elemental es simétrica aunque pueda ser indefinida.
 - **Algoritmo `compute_state`**:
   1. Recuperar $\kappa_n$ y calcular $\varepsilon_\text{eq} = |\varepsilon|$.

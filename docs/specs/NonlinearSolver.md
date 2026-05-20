@@ -197,11 +197,11 @@ references:
 
 ## Implementación
 
-- **Archivo**: [fenix/math/solvers/nonlinear.py](../../fenix/math/solvers/nonlinear.py).
+- **Archivo**: [solidum/math/solvers/nonlinear.py](../../solidum/math/solvers/nonlinear.py).
 - **Clase**: `NonlinearSolver`, registrada vía `@SolverRegistry.register` con `PIPELINE_KIND = "static"`.
 - **Argumentos keyword-only**: todos menos `assembler` y `convergence` son keyword-only (auditoría H-1.5, sesión 2026-05-19, commit `4e4ed54`).
 - **Bisección y clasificación**: en `solve`, al fallar `Δλ < min_delta_lambda` se llama a `classify_divergence(residual_history, delta_history, singular_tangent_detected)` que devuelve la subclase apropiada de `SolverDivergedError` con métricas tipadas.
-- **Entrypoint público**: `fenix.run_static(model, solver="nonlinear", ...)`.
+- **Entrypoint público**: `solidum.run_static(model, solver="nonlinear", ...)`.
 - **Tests**: cobertura amplísima — todos los tests de plasticidad/daño/corotacional/embedded del pipeline estático lo ejercitan. Tests específicos del comportamiento adaptativo y de divergencia tipada en `tests/test_solver_robustness.py` y `tests/test_solver_diagnostics.py`.
 
 ---

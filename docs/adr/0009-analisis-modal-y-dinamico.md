@@ -15,7 +15,7 @@ La fase 1 implementa **solo análisis modal**. Las fases 3-7 abren propiamente e
 
 ## Resumen ejecutivo
 
-Fenix abre la línea de trabajo con un primer hito acotado — **análisis modal** — que introduce la matriz de masa **M** consistente y un solver de autovalor generalizado `K·φ = ω²·M·φ`. Este ADR documenta también la **hoja de ruta completa** hacia análisis dinámico transitorio (lineal y no lineal) y respuesta en frecuencia, fijando hoy las decisiones arquitecturales que condicionarán esas fases: M consistente con contrato extensible a lumped, todo el catálogo (modal y dinámico) en `SolverRegistry` (sin fragmentación en `IntegratorRegistry`), amortiguamiento Rayleigh como entrada estándar para transitorio, estado transitorio (`u̇`, `ü`) en el resultado del solver sin contaminar `Node`. Las fases posteriores reutilizan piezas ya existentes — capa algebraica (ADR 0003), `Material.density` (ADR 0008), convergencia calibrada (ADR 0007) — sin reabrir debates.
+Solidum abre la línea de trabajo con un primer hito acotado — **análisis modal** — que introduce la matriz de masa **M** consistente y un solver de autovalor generalizado `K·φ = ω²·M·φ`. Este ADR documenta también la **hoja de ruta completa** hacia análisis dinámico transitorio (lineal y no lineal) y respuesta en frecuencia, fijando hoy las decisiones arquitecturales que condicionarán esas fases: M consistente con contrato extensible a lumped, todo el catálogo (modal y dinámico) en `SolverRegistry` (sin fragmentación en `IntegratorRegistry`), amortiguamiento Rayleigh como entrada estándar para transitorio, estado transitorio (`u̇`, `ü`) en el resultado del solver sin contaminar `Node`. Las fases posteriores reutilizan piezas ya existentes — capa algebraica (ADR 0003), `Material.density` (ADR 0008), convergencia calibrada (ADR 0007) — sin reabrir debates.
 
 ## Contexto
 
@@ -25,7 +25,7 @@ Tres ADRs previos ya prepararon el terreno:
 - **ADR 0008** introdujo `Material.density` como propiedad de primera clase, con enforcement diferido (`None` al construir → `ValueError` al pedir peso propio o matriz de masa). La densidad es el único dato físico nuevo que tanto modal como dinámico necesitan; ya está disponible.
 - **ADR 0007** dejó tolerancias y convergencia calibradas para cualquier solver iterativo: aplicable inmediatamente al Newton-Raphson dentro de cada paso de Newmark.
 
-Hoy Fenix no tiene ni matriz de masa, ni solver de autovalores, ni integrador temporal. Pero todas las piezas que faltan son **incrementales sobre lo que ya existe**, no refactor estructural. Ese es el supuesto operativo que este ADR formaliza.
+Hoy Solidum no tiene ni matriz de masa, ni solver de autovalores, ni integrador temporal. Pero todas las piezas que faltan son **incrementales sobre lo que ya existe**, no refactor estructural. Ese es el supuesto operativo que este ADR formaliza.
 
 ## Decisión
 
@@ -49,7 +49,7 @@ def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
 
 - Para análisis modal y para integración temporal **implícita** (Newmark, HHT-α), la masa consistente da convergencia óptima en autovalores y es la referencia analítica. Es la elección por defecto de SAP2000, OpenSees, Abaqus, Code_Aster.
 - En **frames y vigas**, la masa lumped obliga a decidir qué hacer con la inercia rotacional nodal. Si se asigna cero, M es singular sobre los DOF rotacionales y el problema generalizado `K·φ = ω²M·φ` deja de tener forma estándar (eigsh requiere shift-invert con cuidado). Si se asigna por HRZ, introduce una heurística que ensucia la validación frente a fórmulas analíticas. La consistente sale directamente del Galerkin sobre las funciones de forma Hermitianas — sin heurística. **La fase 1 incluye además la inercia rotacional propia de sección** (`ρI·L/6·[[2,1],[1,2]]` aplicada a los DOFs rotacionales): es término real del medio continuo, indispensable en vigas peraltadas (consistente con Timoshenko) y mejora pequeña pero correcta en Bernoulli (el efecto relativo es `O(r²/L²)`). Su omisión sería inconsistente con `Frame2DTimoshenko`.
-- Lumped solo paga claramente en **integración explícita** (`ü = M⁻¹(F − Cu̇ − Ku)` con M⁻¹ trivial). Explícita en barras es marginal: la frecuencia más alta de un frame es enorme (modos rotacionales), el paso condicional es minúsculo. El dominio natural de Fenix (sólidos con plasticidad, no propagación de ondas) tira hacia implícito. Lumped tendrá sentido cuando entre explícita en sólidos 2D/3D.
+- Lumped solo paga claramente en **integración explícita** (`ü = M⁻¹(F − Cu̇ − Ku)` con M⁻¹ trivial). Explícita en barras es marginal: la frecuencia más alta de un frame es enorme (modos rotacionales), el paso condicional es minúsculo. El dominio natural de Solidum (sólidos con plasticidad, no propagación de ondas) tira hacia implícito. Lumped tendrá sentido cuando entre explícita en sólidos 2D/3D.
 
 **Por qué el parámetro `lumping` está en la firma desde el día uno**:
 
@@ -74,9 +74,9 @@ Tres observaciones de diseño:
 
 Se introduce `ModalSolver` como una clase más registrada en `SolverRegistry`, paralela a `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`. No se crea ningún registry paralelo `IntegratorRegistry`.
 
-**Razón**: en Fenix los solvers actuales ya orquestan ambos roles que en otros códigos (OpenSees, FEAP) están separados — control de avance (pseudo-temporal, factor de carga, longitud de arco) y resolución algebraica. La distinción "solver vs integrator" es semántica útil al hablar pero no aporta valor arquitectural cuando se materializa en dos registries distintos. Fragmentar abriría dos catálogos paralelos que el usuario tendría que conocer; mantenerlos unificados conserva el patrón "un solver = un análisis = una clase registrada".
+**Razón**: en Solidum los solvers actuales ya orquestan ambos roles que en otros códigos (OpenSees, FEAP) están separados — control de avance (pseudo-temporal, factor de carga, longitud de arco) y resolución algebraica. La distinción "solver vs integrator" es semántica útil al hablar pero no aporta valor arquitectural cuando se materializa en dos registries distintos. Fragmentar abriría dos catálogos paralelos que el usuario tendría que conocer; mantenerlos unificados conserva el patrón "un solver = un análisis = una clase registrada".
 
-`ModalSolver` internamente delega en `EigenSolver` de la capa algebraica (`fenix.math.linalg.eigen`), del mismo modo que `LinearSolver` delega en `LUSolver` / `CholeskySolver` (ADR 0003 §1). La separación de capas se mantiene:
+`ModalSolver` internamente delega en `EigenSolver` de la capa algebraica (`solidum.math.linalg.eigen`), del mismo modo que `LinearSolver` delega en `LUSolver` / `CholeskySolver` (ADR 0003 §1). La separación de capas se mantiene:
 
 ```
 ModalSolver (capa de orquestación: ensambla K, M, aplica Dirichlet, gestiona modos)
@@ -122,7 +122,7 @@ Como con `Material.density` (ADR 0008), todas las magnitudes dinámicas heredan 
 
 ## Hoja de ruta — fases
 
-| Fase | Análisis | Pieza algebraica clave | Solver Fenix | Estado |
+| Fase | Análisis | Pieza algebraica clave | Solver Solidum | Estado |
 |---|---|---|---|---|
 | 1 | **Análisis modal** (frecuencias y modos del problema generalizado) | `eigsh(K, M, sigma, which="LM")` con shift-invert | `ModalSolver` | **Implementada** |
 | 2 | Modal con concentración de masa (lumped) | M diagonal | `ModalSolver(lumping="lumped")` | **Implementada** (2026-05-18) |
@@ -133,7 +133,7 @@ Como con `Material.density` (ADR 0008), todas las magnitudes dinámicas heredan 
 | 6 | Respuesta en frecuencia (steady-state harmonic) | `(−ω²M + iωC + K)·û = F̂` complejo, barrido en ω | `HarmonicSolver` | **Implementada** (2026-05-18) |
 | 7 | Análisis espectral / sísmico (combinación modal) | CQC, SRSS sobre espectro de respuesta | `ResponseSpectrumSolver` | **Implementada** (2026-05-18) — **ADR completo** |
 
-Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Fenix en estado funcional.
+Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Solidum en estado funcional.
 
 ## Fase 1 — Análisis modal (implementada)
 
@@ -148,8 +148,8 @@ Piezas concretas entregadas:
    - `Frame3D` (axial + flexión en dos planos + torsional).
    - `Solid2D` (`∫NᵀρN·t dΩ` con la regla de cuadratura ya declarada en `N_INTEGRATION_POINTS` y la cinemática `STRAIN_DIM`).
 4. **`Assembler.assemble_mass_matrix(lumping="consistent")`** — patrón análogo a `assemble_system`, reusa la topología COO cacheada, valida `material.density` con el mismo error de ADR 0008.
-5. **`EigenSolver`** en `fenix/math/linalg/eigen.py` — envuelve `scipy.sparse.linalg.eigsh(K, k=n_modes, M=M, sigma=sigma, which="LM")`. Devuelve `(eigenvalues, eigenvectors)`.
-6. **`ModalSolver`** en `fenix/math/solvers.py` registrado en `SolverRegistry`. Orquesta: `Assembler.assemble_system()` + `assemble_mass_matrix()` + `reduce_pair(K, M)` + `EigenSolver.solve` + `expand(φ_red)`. Devuelve `ModalResult(frequencies_hz, frequencies_rad, periods, modes, effective_masses)`.
+5. **`EigenSolver`** en `solidum/math/linalg/eigen.py` — envuelve `scipy.sparse.linalg.eigsh(K, k=n_modes, M=M, sigma=sigma, which="LM")`. Devuelve `(eigenvalues, eigenvectors)`.
+6. **`ModalSolver`** en `solidum/math/solvers.py` registrado en `SolverRegistry`. Orquesta: `Assembler.assemble_system()` + `assemble_mass_matrix()` + `reduce_pair(K, M)` + `EigenSolver.solve` + `expand(φ_red)`. Devuelve `ModalResult(frequencies_hz, frequencies_rad, periods, modes, effective_masses)`.
 7. **Cableado YAML** — `entry.py` / `yaml_parser.py` aceptan:
    ```yaml
    solver:
@@ -174,7 +174,7 @@ M_lumped[i,i] = α · M_consistent[i,i]
 off-diagonals → 0
 ```
 
-Centralizado en `fenix/math/mass_lumping.py::lump_hrz`. Para Tri3 y Quad4 coincide con row-sum por simetría; para Tri6/Quad8/Quad9 HRZ evita las masas negativas que daría row-sum puro en vértices con funciones de forma cuadráticas (Bathe FEP §9.2.4).
+Centralizado en `solidum/math/mass_lumping.py::lump_hrz`. Para Tri3 y Quad4 coincide con row-sum por simetría; para Tri6/Quad8/Quad9 HRZ evita las masas negativas que daría row-sum puro en vértices con funciones de forma cuadráticas (Bathe FEP §9.2.4).
 
 **Vigas y marcos (Truss2D/3D, Cable2D/3D, Frame2D Euler/Timoshenko/EulerCorot, Frame3D)** — **lumping nodal directo**:
 
@@ -197,7 +197,7 @@ Para Frame3D con eje del elemento desalineado de los ejes globales, el bloque ro
 
 **Positivas**
 
-- Fenix gana análisis modal sin tocar arquitectura estática. Toda la maquinaria de ensamblaje, Dirichlet, expansión, y capa algebraica se reutiliza.
+- Solidum gana análisis modal sin tocar arquitectura estática. Toda la maquinaria de ensamblaje, Dirichlet, expansión, y capa algebraica se reutiliza.
 - M consistente con contrato extensible deja el camino libre a lumped sin breaking changes.
 - La hoja de ruta queda registrada: las fases 3–7 saben dónde colgar sin reabrir debates de registry, nomenclatura o ubicación del estado.
 - Cierra el lazo con ADR 0003 (capacidad eigen prevista), ADR 0007 (convergencia para Newton dentro de Newmark), ADR 0008 (density disponible).

@@ -34,9 +34,9 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.von_mises_2d import VonMises2D
+from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.von_mises_2d import VonMises2D
 
 
 def _tangent_fd(compute_fn, eps_base: np.ndarray, state_committed,

@@ -21,14 +21,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import meshio  # noqa: E402
 
-from fenix.core.domain import Domain
-from fenix.core.material import Material
-from fenix.core.node import Node
-from fenix.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
-from fenix.elements.truss import Truss2D, Truss3D
-from fenix.elements.frame import Frame2DEuler
-from fenix.elements.frame3d import Frame3D
-from fenix.utils.vtk_exporter import VtkExporter
+from solidum.core.domain import Domain
+from solidum.core.material import Material
+from solidum.core.node import Node
+from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
+from solidum.elements.truss import Truss2D, Truss3D
+from solidum.elements.frame import Frame2DEuler
+from solidum.elements.frame3d import Frame3D
+from solidum.utils.vtk_exporter import VtkExporter
 
 
 class _Elastic2D(Material):
@@ -291,7 +291,7 @@ class TestVtkExporterCoverage(unittest.TestCase):
         for elem in []:
             pass
         # pero el VtkExporter espera elementos en domain.elements
-        from fenix.elements.solid_2d import Quad4 as Q
+        from solidum.elements.solid_2d import Quad4 as Q
         domain.elements[1] = Q(1, [n1, n2, n3, n4], mat)
         _assign_global_dofs(domain)
         path = self._tmp_path("_test_vtk_pre.vtu")

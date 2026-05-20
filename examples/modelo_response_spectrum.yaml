@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Análisis sísmico por combinación modal
+# Archivo de entrada Solidum FEM: Análisis sísmico por combinación modal
 # espectral (ADR 0009 fase 7).
 #
 # Estructura: barra axial Truss2D discretizada en 3 elementos, configura un
@@ -17,7 +17,7 @@
 #
 # Ejecutar:
 #   python -c "
-#   from fenix.entry import run_yaml
+#   from solidum.entry import run_yaml
 #   r = run_yaml('examples/modelo_response_spectrum.yaml')
 #   print('Frecuencias propias [rad/s]:', r.frequencies_rad)
 #   print('Factores de participación:', r.participation_factors)

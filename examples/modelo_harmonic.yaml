@@ -1,4 +1,4 @@
-# Archivo de entrada Fenix FEM: Análisis de respuesta forzada armónica
+# Archivo de entrada Solidum FEM: Análisis de respuesta forzada armónica
 # en el dominio de la frecuencia (ADR 0009 fase 6).
 #
 # Estructura: barra axial Truss2D L=1 m, A=1 m², E=25 Pa, ρ=3 kg/m³
@@ -15,7 +15,7 @@
 #
 # Ejecutar:
 #   python -c "
-#   from fenix.entry import run_yaml
+#   from solidum.entry import run_yaml
 #   r = run_yaml('examples/modelo_harmonic.yaml')
 #   amp = r.amplitude()
 #   import numpy as np

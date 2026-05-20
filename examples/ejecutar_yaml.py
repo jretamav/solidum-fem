@@ -3,10 +3,10 @@ import sys, os
 import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import fenix
-from fenix.utils.yaml_parser import YamlParser
-from fenix.math.assembly import Assembler
-from fenix.utils.vtk_exporter import VtkExporter
+import solidum
+from solidum.utils.yaml_parser import YamlParser
+from solidum.math.assembly import Assembler
+from solidum.utils.vtk_exporter import VtkExporter
 
 
 # ---------------------------------------------------------------------------
@@ -145,15 +145,15 @@ def _make_step_callback(mesh, F_ext, ruta_base: str, base_dir: str,
 # ---------------------------------------------------------------------------
 
 def _run_solver(domain, assembler, solver, F_ext, step_callback):
-    """Ejecuta el pipeline oficial ``fenix.run`` y retorna ``U``.
+    """Ejecuta el pipeline oficial ``solidum.run`` y retorna ``U``.
 
-    Delega en ``fenix.run`` para centralizar Assembler→solver→SolveResult
+    Delega en ``solidum.run`` para centralizar Assembler→solver→SolveResult
     (ADR 0002); ``domain.last_result`` queda poblado tras el retorno. Para
     solvers lineales (sin ``step_callback`` nativo) sigue invocando el callback
     una sola vez post-solve, preservando la semántica de exportación del script.
     """
     has_native_callback = hasattr(solver, 'num_steps') or hasattr(solver, 'max_steps')
-    result = fenix.run(
+    result = solidum.run(
         domain,
         assembler=assembler,
         solver=solver,
@@ -249,7 +249,7 @@ def _export_final(mesh, U, F_ext, ruta_base: str, n_vars, e_vars):
 # ---------------------------------------------------------------------------
 
 def main():
-    print("--- FENIX FEM: MOTOR DE EJECUCIÓN YAML ---")
+    print("--- SOLIDUM FEM: MOTOR DE EJECUCIÓN YAML ---")
 
     ruta_yaml = _parse_args()
 

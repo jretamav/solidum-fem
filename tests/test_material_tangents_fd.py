@@ -22,10 +22,10 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
+import solidum  # autodiscover
 
-from fenix.materials.drucker_prager_2d import DruckerPrager2D
-from fenix.materials.von_mises_2d import VonMises2D
+from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.von_mises_2d import VonMises2D
 
 
 # Step de diferencia finita: suficientemente pequeño para que la FD

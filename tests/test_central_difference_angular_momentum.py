@@ -35,11 +35,11 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.truss import Truss2D
-from fenix.materials.elastic import Elastic1D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import CentralDifferenceSolver
+from solidum.core.domain import Domain
+from solidum.elements.truss import Truss2D
+from solidum.materials.elastic import Elastic1D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import CentralDifferenceSolver
 
 
 def _build_equilateral_triangle(E: float = 1.0e3, A: float = 1.0, rho: float = 1.0):

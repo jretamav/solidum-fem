@@ -5,8 +5,8 @@ docs/specs/CableMaterial1D.md.
 """
 import unittest
 
-import fenix  # dispara autodiscover → registra CableMaterial1D
-from fenix.materials.cable_1d import CableMaterial1D
+import solidum  # dispara autodiscover → registra CableMaterial1D
+from solidum.materials.cable_1d import CableMaterial1D
 
 
 class TestCableMaterial1D(unittest.TestCase):
@@ -43,7 +43,7 @@ class TestCableMaterial1D(unittest.TestCase):
 
     def test_registro_en_registry(self):
         """El material queda registrado vía autodiscover."""
-        from fenix.registry import MaterialRegistry
+        from solidum.registry import MaterialRegistry
         self.assertIn('CableMaterial1D', MaterialRegistry._items)
         instance = MaterialRegistry.create('CableMaterial1D', E=1000.0, density=0.0)
         self.assertIsInstance(instance, CableMaterial1D)

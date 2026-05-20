@@ -20,15 +20,15 @@ import unittest
 
 import numpy as np
 
-import fenix  # autodiscover
+import solidum  # autodiscover
 
-from fenix.core.domain import Domain
-from fenix.elements.solid_2d.quad4 import Quad4
-from fenix.elements.solid_2d.quad8 import Quad8
-from fenix.elements.solid_2d.quad9 import Quad9
-from fenix.elements.solid_2d.tri3 import Tri3
-from fenix.elements.solid_2d.tri6 import Tri6
-from fenix.materials.elastic_2d import Elastic2D
+from solidum.core.domain import Domain
+from solidum.elements.solid_2d.quad4 import Quad4
+from solidum.elements.solid_2d.quad8 import Quad8
+from solidum.elements.solid_2d.quad9 import Quad9
+from solidum.elements.solid_2d.tri3 import Tri3
+from solidum.elements.solid_2d.tri6 import Tri6
+from solidum.materials.elastic_2d import Elastic2D
 
 
 # Geometría unitaria, mismas reglas en todos los elementos.

@@ -63,13 +63,13 @@ import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from fenix.core.domain import Domain
-from fenix.elements.frame import Frame2DEuler, Frame2DTimoshenko
-from fenix.elements.solid_2d import Quad4, Quad8
-from fenix.materials.elastic import Elastic1D
-from fenix.materials.elastic_2d import Elastic2D
-from fenix.math.assembly import Assembler
-from fenix.math.solvers import LinearSolver
+from solidum.core.domain import Domain
+from solidum.elements.frame import Frame2DEuler, Frame2DTimoshenko
+from solidum.elements.solid_2d import Quad4, Quad8
+from solidum.materials.elastic import Elastic1D
+from solidum.materials.elastic_2d import Elastic2D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 # Parámetros físicos del benchmark.
@@ -149,7 +149,7 @@ def test_frame_timoshenko_single_element_exact():
     U = LinearSolver(Assembler(domain)).solve(F)
     u_tip = U[nodes[-1].dofs['uy']]
     # Timoshenko con un elemento puede tener shear locking moderado a baja
-    # esbeltez, pero para L/h = 30 con la integración del elemento de Fenix
+    # esbeltez, pero para L/h = 30 con la integración del elemento de Solidum
     # debe converger a < 1% al valor analítico.
     rel_err = abs(abs(u_tip) - U_TIP_TIMOSHENKO) / U_TIP_TIMOSHENKO
     assert rel_err < 0.01, (

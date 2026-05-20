@@ -8,12 +8,12 @@ import unittest
 
 import numpy as np
 
-import fenix  # dispara autodiscover
-from fenix.core.node import Node
-from fenix.elements.cable import Cable2DCorot, Cable3DCorot
-from fenix.elements.truss import Truss2D, Truss3D, Truss2DCorot, Truss3DCorot
-from fenix.materials.cable_1d import CableMaterial1D
-from fenix.materials.elastic import Elastic1D
+import solidum  # dispara autodiscover
+from solidum.core.node import Node
+from solidum.elements.cable import Cable2DCorot, Cable3DCorot
+from solidum.elements.truss import Truss2D, Truss3D, Truss2DCorot, Truss3DCorot
+from solidum.materials.cable_1d import CableMaterial1D
+from solidum.materials.elastic import Elastic1D
 
 
 class TestCable2DCorot(unittest.TestCase):
@@ -86,7 +86,7 @@ class TestCable2DCorot(unittest.TestCase):
 
     def test_registro_en_registry(self):
         """El elemento queda registrado vía autodiscover."""
-        from fenix.registry import ElementRegistry
+        from solidum.registry import ElementRegistry
         self.assertIn('Cable2DCorot', ElementRegistry._items)
 
 
@@ -156,7 +156,7 @@ class TestCable3DCorot(unittest.TestCase):
         self.assertTrue(np.allclose(F_int, 0.0, atol=1e-12))
 
     def test_registro_en_registry(self):
-        from fenix.registry import ElementRegistry
+        from solidum.registry import ElementRegistry
         self.assertIn('Cable3DCorot', ElementRegistry._items)
 
 

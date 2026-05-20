@@ -4,7 +4,7 @@ Esta sección describe, paso a paso, la secuencia de operaciones que se ejecuta 
 
 ## 1. Arranque
 
-El caso se lanza desde un *script* de usuario o desde la interfaz pública de entrada (`fenix.run` / `fenix.run_yaml`). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete `fenix`. Dicha importación dispara el procedimiento de descubrimiento automático (*autodiscover*), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador `@register` correspondiente, los registros quedan poblados sin enumeración manual.
+El caso se lanza desde un *script* de usuario o desde la interfaz pública de entrada (`solidum.run` / `solidum.run_yaml`). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete `solidum`. Dicha importación dispara el procedimiento de descubrimiento automático (*autodiscover*), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador `@register` correspondiente, los registros quedan poblados sin enumeración manual.
 
 ## 2. Lectura del caso
 
