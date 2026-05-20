@@ -41,7 +41,27 @@ Solidum FEM occupies the gap between these two families: it is a pure Python fra
 
 # Software design
 
-The architectural decision that organises the rest of the library is to keep the framework's core small and the catalogue of components large and easily extensible. Each element, material and solver is a self-registering Python module: a class is annotated with a decorator (`@register_element`, `@register_material`, `@register_solver`) and an automatic discovery pass at import time populates the global registries that the YAML problem-definition layer consults. Adding a new component is therefore a local change --- a single file with a single decorator --- and requires no edits to the framework's core, the parser, or any central dispatch table.
+The architectural decision that organises the rest of the library is to keep the framework's core small and the catalogue of components large and easily extensible. Each element, material and solver is a self-registering Python module: a class is annotated with a decorator (`@ElementRegistry.register`, `@MaterialRegistry.register`, `@SolverRegistry.register`) and an automatic discovery pass at import time populates the global registries that the YAML problem-definition layer consults. Adding a new component is therefore a local change --- a single file with a single decorator --- and requires no edits to the framework's core, the parser, or any central dispatch table. The simplest 2D continuum element in the catalogue, the constant-strain triangle, illustrates the contract end-to-end:
+
+```python
+from solidum.core.element import Element
+from solidum.registry import ElementRegistry
+
+@ElementRegistry.register
+class Tri3(Element):
+    DOF_NAMES = ['ux', 'uy']
+    STRAIN_DIM = 3
+    N_INTEGRATION_POINTS = 1
+
+    def compute_element_state(self, u_e):
+        coords = self.get_coordinate_matrix(ndim=2)
+        B, detJ = _compute_kinematics_tri3(coords)
+        strain = B @ u_e
+        sigma, C, _ = self.material.compute_state(strain, self.state.vars[0])
+        K_e = B.T @ C @ B * (detJ * 0.5 * self.thickness)
+        F_int_e = B.T @ sigma * (detJ * 0.5 * self.thickness)
+        return K_e, F_int_e
+```
 
 Component behaviour is declared rather than implemented whenever possible. Each element class exposes attributes such as `STRAIN_DIM`, `DOF_NAMES` and `N_INTEGRATION_POINTS`; each material class exposes `STRAIN_DIM` together with a small contract for stress and tangent evaluation. These declarations allow the framework to validate problem definitions early --- meaningful error messages at construction time, rather than cryptic shape mismatches deep in the assembly loop --- and to dispatch generic operations (assembly of internal forces, mass matrices and geometric stiffness contributions) without per-element conditional logic. Sign and ordering conventions are fixed once at the framework level: Voigt notation with engineering shear strains, $[\varepsilon_{xx}, \varepsilon_{yy}, \gamma_{xy}]$ in two dimensions and $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$ in three dimensions, and a stress-resultant right-hand-rule convention for internal forces in beam and frame elements.
 
