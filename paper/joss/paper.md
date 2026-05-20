@@ -13,7 +13,7 @@ authors:
     orcid: 0000-0001-6451-5597
     affiliation: 1
 affiliations:
-  - name: PENDIENTE — afiliación institucional del autor
+  - name: Civil Engineering Department, Facultad de Estudios Superiores Aragón, Universidad Nacional Autónoma de México (UNAM), Ciudad Nezahualcóyotl, Estado de México, Mexico
     index: 1
 date: 20 May 2026
 bibliography: paper.bib
