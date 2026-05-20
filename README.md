@@ -6,9 +6,8 @@
 <!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.PENDING.svg)](https://doi.org/10.5281/zenodo.PENDING) -->
 <!-- [![JOSS](https://joss.theoj.org/papers/PENDING/status.svg)](https://joss.theoj.org/papers/PENDING) -->
 
-A displacement-based finite element framework for research in solid mechanics:
-simulation of mechanical and thermal problems, coupled or decoupled, with an
-architecture optimized for extension via AI-assisted development.
+A displacement-based finite element framework for research in solid mechanics,
+with an architecture optimized for extension via AI-assisted development.
 
 ## Current capabilities
 
