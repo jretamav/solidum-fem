@@ -2,7 +2,7 @@
 
 [![License: LGPL v3](https://img.shields.io/badge/license-LGPL%20v3-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%E2%89%A5%203.10-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-804%20passed-brightgreen.svg)](#validation)
+[![Tests](https://github.com/jretamav/solidum-fem/actions/workflows/tests.yml/badge.svg)](https://github.com/jretamav/solidum-fem/actions/workflows/tests.yml)
 <!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.PENDING.svg)](https://doi.org/10.5281/zenodo.PENDING) -->
 <!-- [![JOSS](https://joss.theoj.org/papers/PENDING/status.svg)](https://joss.theoj.org/papers/PENDING) -->
 
