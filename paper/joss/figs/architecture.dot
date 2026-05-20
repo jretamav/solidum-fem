@@ -1,0 +1,36 @@
+// Solidum FEM — diagrama de arquitectura para el paper JOSS.
+// Compilar con: dot -Tpng architecture.dot -o architecture.png
+digraph SolidumArchitecture {
+    rankdir=TB;
+    ranksep=0.45;
+    nodesep=0.7;
+    bgcolor="white";
+    node [shape=box, style="rounded,filled", fontname="Helvetica",
+          fontsize=11, fillcolor="#f5f5f5", margin="0.20,0.10"];
+    edge [fontname="Helvetica", fontsize=10, color="#444444"];
+
+    // Entradas: el problema y el catálogo extensible (mismo rank).
+    yaml      [label="YAML problem\ndefinition", fillcolor="#e8f4f8"];
+    catalogue [label="Catalogue\n(elements, materials, solvers)\nself-registered at import",
+               fillcolor="#f0f8e8"];
+
+    // Núcleo del framework.
+    registries [label="Registries\n(Element, Material, Solver, ...)",
+                fillcolor="#fff4e6"];
+    domain     [label="Domain\n(nodes, elements, materials)"];
+    assembler  [label="Assembler\n(K, M, F)"];
+    solver     [label="Solver\n(linear, nonlinear, Newmark,\narc-length, response spectrum, ...)"];
+    results    [label="Results\n(SolveResult, ModalResult,\nTransientResult, ...)",
+                fillcolor="#e8f4f8"];
+
+    // Layout horizontal de los dos puntos de entrada.
+    { rank=same; yaml; catalogue; }
+
+    // Flujo principal de ejecución.
+    yaml       -> registries [label=" consults"];
+    catalogue  -> registries [style=dashed, label=" @register"];
+    registries -> domain     [label=" instantiates"];
+    domain     -> assembler;
+    assembler  -> solver;
+    solver     -> results;
+}
