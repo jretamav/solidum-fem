@@ -21,12 +21,12 @@ Lo que **no** resuelve aún: sólidos 3D cuadráticos (Hex20/Hex27/Tet10), mater
 
 El repo es **público en GitHub** bajo `https://github.com/jretamav/solidum-fem` con licencia **LGPL-3.0** (ver `LICENSE` y `LICENSE.GPL`). Decisiones macro de publicación están en memoria:
 
-- **Paper 1a → JOSS** (registro rápido). Esqueleto en `paper/joss/paper.md` con frontmatter completo (título, ORCID, afiliación FES Aragón UNAM); secciones de contenido pendientes de redactar.
-- **Paper 1b → SoftwareX** (software paper integral). Manuscrito vivirá fuera de Solidum (Overleaf o repo separado).
+- **Paper 1a → JOSS**. Draft completo en `paper/joss/paper.md` (~897 palabras, dentro del techo JOSS 1000) + `paper/joss/paper.bib` con 16 entradas auditadas contra CrossRef/JOSS/sitios oficiales. Sección no-estándar "Statement on the use of generative artificial intelligence" añadida en línea con la práctica del paper CAEE-Winkler del autor. Commits `155558e` (redacción) y `bba6d99` (enriquecimiento + auditoría bib) acumulados, **2 ahead de `origin/main`, push diferido para relectura en frío**. Checklist operativo de submission (push → tag → Zenodo DOI → formulario JOSS) en `[[project_paper_joss_estado]]`.
+- **Paper 1b → SoftwareX** (software paper integral). Manuscrito vivirá fuera de Solidum (Overleaf o repo separado). Pendiente sesión dedicada tras cerrar el JOSS.
 - **Papers 2+ → metodológicos** en IJNME / Computational Mechanics / Engineering Fracture Mechanics / AES / Computer Physics Communications (embedded KOS, dissipation arc-length, etc.).
 - AES fue evaluada y **descartada como destino del paper 1** tras consulta del scope real (la revista viró hacia PINN/ML; ya no publica framework papers).
 
-Estrategia detallada en `[[project_estrategia_publicaciones]]`; estado del repo público en `[[project_repo_publico_decidido]]`.
+Estrategia detallada en `[[project_estrategia_publicaciones]]`; estado vivo del paper JOSS en `[[project_paper_joss_estado]]`; estado del repo público en `[[project_repo_publico_decidido]]`; columna vertebral conceptual del proyecto para futuras comunicaciones en `[[project_solidum_motivacion_fundacional]]`.
 
 ---
 
@@ -176,4 +176,4 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ---
 
-*Última actualización: 2026-05-20 — apertura del repo al público en GitHub bajo LGPL-3.0, estrategia editorial JOSS + SoftwareX consolidada, política de idioma híbrida formalizada en Reglas.md §6, paper skeleton en `paper/joss/`, perfil del autor en GitHub completo con commits atribuidos retroactivamente. Próximo hito estratégico: redactar contenido del `paper/joss/paper.md` (sesión dedicada).*
+*Última actualización: 2026-05-20 (segunda sesión del día) — **paper JOSS draft completo y verificado** en `paper/joss/paper.md` (~897 palabras, 16 entradas bibliográficas auditadas, Statement of need enriquecido con la inversión de dirección + paisaje de 3 niveles + prueba de existencia embedded discontinuity). Commits `155558e` + `bba6d99` acumulados sin pushear (push diferido para relectura en frío). **Próximo hito estratégico**: flujo de submission JOSS — relectura → push → git tag de release → archivo Zenodo (verificar/configurar linkage) → formulario en https://joss.theoj.org/papers/new. Ver `[[project_paper_joss_estado]]` para el checklist operativo.*
