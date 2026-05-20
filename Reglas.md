@@ -102,4 +102,14 @@ El orden 3D es extensión natural del 2D: componentes diagonales primero, bloque
 - **Tests blindan física no obvia.** Toda formulación nueva entra acompañada de un test de validación contra solución analítica o benchmark conocido. La IA puede equivocarse en sutilezas físicas (signos en Voigt, factores de ½, hipótesis plane stress vs plane strain) que no rompen la compilación; los tests son la red de seguridad.
 - **El usuario lee diffs y commits.** No escribe, sí supervisa. Esta es la salvaguarda primaria contra errores numéricos sutiles.
 - **ADRs preservan memoria arquitectural** para el yo futuro del usuario y para revisores externos.
-- **Idioma**: docstrings y mensajes al usuario en español; identificadores de código en inglés.
+- **Idioma**: política híbrida por capa de visibilidad (decidida 2026-05-20 al preparar la publicación pública del repo):
+
+  | Capa | Idioma | Artefactos |
+  |---|---|---|
+  | Externa pública | **Inglés** | `README.md`, `CITATION.cff`, `CONTRIBUTING.md`, `paper.md` (JOSS), manuscritos de SoftwareX y posteriores, descripción de `pyproject.toml`, mensajes de issues/PRs públicos |
+  | Manuales (los 3) | **Bilingüe**: español canónico + inglés generado | `Reference_manual_{es,en}.pdf`, `User_manual_{es,en}.pdf`, `Architecture_manual_{es,en}.pdf` |
+  | Documental navegacional | **Español** | `docs/STATUS.md`, `docs/ROADMAP.md`, `docs/ONBOARDING.md`, `docs/MATRIZ.md`, catálogos `docs/catalogo_*.md` |
+  | Interna técnica | **Español** | Specs (fuente canónica en `docs/specs/`), ADRs (`docs/adr/`), docstrings, comentarios, commit messages, `CLAUDE.md`, `Reglas.md` |
+  | Código | **Inglés** | Identificadores de código (clases, funciones, variables, archivos) |
+
+  **Bilingüismo de los manuales (Opción C):** el español es la fuente canónica; el inglés es un artefacto generado por la IA a partir de las fuentes Markdown españolas. Pre-requisito: glosario terminológico ES↔EN versionado en `manuals/glossary.md` que fija la traducción única de cada término técnico del proyecto. La IA debe consultarlo en cada regeneración para mantener consistencia entre sesiones. El `User_manual` se mantiene a mano en ambos idiomas por brevedad y por su naturaleza orientada a sintaxis YAML (donde el código no se traduce).
