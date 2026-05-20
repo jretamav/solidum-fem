@@ -10,7 +10,7 @@ tags:
   - damage
 authors:
   - name: J. Retama-Velasco
-    orcid: 0000-0000-0000-0000  # PENDIENTE: añadir ORCID del autor
+    orcid: 0000-0001-6451-5597
     affiliation: 1
 affiliations:
   - name: PENDIENTE — afiliación institucional del autor
