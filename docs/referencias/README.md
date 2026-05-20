@@ -6,7 +6,7 @@ con la fuente oficial donde obtenerla.
 
 ## Retama (2010) — Discontinuidades interiores y daño cohesivo
 
-- **Autor**: J. Retama Velasco
+- **Autor**: J. Retama
 - **Tipo**: Tesis Doctoral en Ingeniería Civil
 - **Institución**: Universidad Nacional Autónoma de México (UNAM), Programa de Maestría y Doctorado en Ingeniería
 - **Año**: 2010
