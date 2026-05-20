@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/plastic_1d.py
+# solidum_fem/solidum/materials/plastic_1d.py
 from solidum.core.material import Material
 from solidum.registry import MaterialRegistry
 

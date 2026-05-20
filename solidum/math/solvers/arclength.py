@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/arclength.py
+# solidum_fem/solidum/math/solvers/arclength.py
 """``ArcLengthSolver`` — método de longitud de arco cilíndrico (Crisfield).
 """
 from __future__ import annotations

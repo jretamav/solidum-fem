@@ -1,4 +1,4 @@
-# fenix_fem/solidum/constants.py
+# solidum_fem/solidum/constants.py
 
 """
 Constantes y tolerancias numéricas globales del motor Solidum FEM.

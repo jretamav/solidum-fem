@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/response_spectrum.py
+# solidum_fem/solidum/math/solvers/response_spectrum.py
 """``ResponseSpectrumSolver`` — análisis de respuesta espectral por
 combinación modal (ADR 0009 fase 7).
 

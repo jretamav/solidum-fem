@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/drucker_prager_2d.py
+# solidum_fem/solidum/materials/drucker_prager_2d.py
 """``DruckerPrager2D`` — plasticidad friccional cohesivo-friccional 2D plane strain.
 
 Modelo Drucker-Prager (cono circular suave de Mohr-Coulomb) con:

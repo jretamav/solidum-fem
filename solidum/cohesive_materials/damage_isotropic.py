@@ -1,4 +1,4 @@
-# fenix_fem/solidum/cohesive_materials/damage_isotropic.py
+# solidum_fem/solidum/cohesive_materials/damage_isotropic.py
 """``CohesiveDamageIsotropic`` — material cohesivo traction-jump con daño escalar Modo-I.
 
 Traducción a código de Retama (2010), Cap. 3: daño escalar isótropo activado

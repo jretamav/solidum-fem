@@ -1,4 +1,4 @@
-# fenix_fem/solidum/utils/vtk_exporter.py
+# solidum_fem/solidum/utils/vtk_exporter.py
 """Export del dominio y resultados a formato VTK para ParaView.
 
 Cobertura

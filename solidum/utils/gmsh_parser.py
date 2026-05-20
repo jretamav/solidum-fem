@@ -1,4 +1,4 @@
-# fenix_fem/solidum/utils/gmsh_parser.py
+# solidum_fem/solidum/utils/gmsh_parser.py
 from solidum.core.domain import Domain
 from solidum.logging import get_logger
 from solidum.registry import ElementRegistry

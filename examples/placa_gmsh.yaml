@@ -1,4 +1,4 @@
-# fenix_fem/examples/placa_gmsh.yaml
+# solidum_fem/examples/placa_gmsh.yaml
 
 # En lugar de escribir nodos y elementos a mano, importamos el archivo de Gmsh
 mesh: placa.msh

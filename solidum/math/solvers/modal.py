@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/modal.py
+# solidum_fem/solidum/math/solvers/modal.py
 """``ModalSolver`` — problema de valores característicos ``K·φ = ω²·M·φ``
 (ADR 0009 fase 1).
 """

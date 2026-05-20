@@ -1,4 +1,4 @@
-# fenix_fem/solidum/core/node.py
+# solidum_fem/solidum/core/node.py
 class Node:
     # Al usar slots reducimos drásticamente la huella de memoria RAM 
     # en mallas con cientos de miles de nodos.

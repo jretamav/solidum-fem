@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/_shared.py
+# solidum_fem/solidum/math/solvers/_shared.py
 """Utilidades compartidas entre solvers del paquete ``solidum.math.solvers``.
 
 - :data:`_log`: logger común ``"solvers"`` reutilizado por todos los módulos

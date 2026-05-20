@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/cable_1d.py
+# solidum_fem/solidum/materials/cable_1d.py
 """Material de cable 1D con elasticidad unilateral.
 
 Ver docs/specs/CableMaterial1D.md para la especificación completa.

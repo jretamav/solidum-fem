@@ -1,4 +1,4 @@
-# fenix_fem/solidum/core/discontinuity_state.py
+# solidum_fem/solidum/core/discontinuity_state.py
 """Estado de una discontinuidad embebida (ADR 0010 §4).
 
 Estructura paralela a :class:`ElementState` con semántica trial/commit, pero

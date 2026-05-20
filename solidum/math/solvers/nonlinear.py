@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/nonlinear.py
+# solidum_fem/solidum/math/solvers/nonlinear.py
 """``NonlinearSolver`` — Newton-Raphson incremental con paso adaptativo.
 """
 from __future__ import annotations

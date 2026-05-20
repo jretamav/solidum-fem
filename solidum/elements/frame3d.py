@@ -1,4 +1,4 @@
-# fenix_fem/solidum/elements/frame3d.py
+# solidum_fem/solidum/elements/frame3d.py
 """Elemento de marco/viga 3D Euler-Bernoulli.
 
 Implementación **independiente** del resto de elementos. No hereda de

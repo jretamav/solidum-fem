@@ -36,7 +36,7 @@ Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/spe
 ## 2. Estructura del repositorio
 
 ```
-fenix_fem/
+solidum_fem/
 ├── Reglas.md, CLAUDE.md          ← Contrato y guía operativa
 ├── solidum/                        ← Código fuente
 │   ├── core/                     ← Domain, Node, Element base, Material base, Assembler

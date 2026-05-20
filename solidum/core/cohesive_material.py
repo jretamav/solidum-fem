@@ -1,4 +1,4 @@
-# fenix_fem/solidum/core/cohesive_material.py
+# solidum_fem/solidum/core/cohesive_material.py
 """Clase base abstracta para materiales cohesivos *traction-jump* (ADR 0010).
 
 Familia paralela a ``Material``: opera sobre el salto ``[[u]]`` y devuelve

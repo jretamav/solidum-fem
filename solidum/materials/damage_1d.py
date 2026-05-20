@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/damage_1d.py
+# solidum_fem/solidum/materials/damage_1d.py
 """``IsotropicDamage1D`` — daño escalar 1D con ablandamiento exponencial.
 
 Réplica escalar de :class:`solidum.materials.damage_2d.IsotropicDamage2D` con

@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/von_mises_2d.py
+# solidum_fem/solidum/materials/von_mises_2d.py
 """``VonMises2D`` — plasticidad J2 con endurecimiento isótropo lineal en 2D.
 
 Soporta dos hipótesis cinemáticas mutuamente excluyentes, seleccionadas al

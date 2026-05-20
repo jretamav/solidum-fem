@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/convergence.py
+# solidum_fem/solidum/math/convergence.py
 """Política de convergencia para solvers no lineales (ADR 0007).
 
 Implementa el patrón ``atol + rtol·escala(estado)`` separado por criterio

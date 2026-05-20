@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/newmark.py
+# solidum_fem/solidum/math/solvers/newmark.py
 """``NewmarkSolver`` — integración Newmark-β para ``M·ü + C·u̇ + K·u = F(t)``
 (ADR 0009 fase 3).
 

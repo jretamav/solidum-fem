@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/__init__.py
+# solidum_fem/solidum/math/solvers/__init__.py
 """Paquete de solvers no lineales y dinámicos.
 
 Históricamente un único archivo, dividido por solver para abaratar las

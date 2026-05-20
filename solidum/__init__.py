@@ -1,4 +1,4 @@
-# fenix_fem/solidum/__init__.py
+# solidum_fem/solidum/__init__.py
 
 # 0. Logging configurable (ADR 0005). Inicializa el logger raíz "solidum" antes
 #    de cualquier otro import, para que los módulos pidan sus loggers hijos

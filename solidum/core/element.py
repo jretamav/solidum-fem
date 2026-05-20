@@ -1,4 +1,4 @@
-# fenix_fem/solidum/core/element.py
+# solidum_fem/solidum/core/element.py
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

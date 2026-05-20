@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/damage_2d.py
+# solidum_fem/solidum/materials/damage_2d.py
 """``IsotropicDamage2D`` — daño escalar isótropo 2D con ablandamiento exponencial.
 
 Soporta tangente **algorítmica consistente** durante carga activa (recupera

@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/diagnostics.py
+# solidum_fem/solidum/math/solvers/diagnostics.py
 """Diagnóstico tipado de divergencia para solvers no lineales (ADR 0011).
 
 Sustituye al ``RuntimeError`` genérico ``"el solver ha divergido"`` por una

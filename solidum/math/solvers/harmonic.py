@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/harmonic.py
+# solidum_fem/solidum/math/solvers/harmonic.py
 """``HarmonicSolver`` — respuesta forzada armónica en el dominio de la
 frecuencia (ADR 0009 fase 6).
 

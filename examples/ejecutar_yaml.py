@@ -1,4 +1,4 @@
-# fenix_fem/examples/ejecutar_yaml.py
+# solidum_fem/examples/ejecutar_yaml.py
 import sys, os
 import numpy as np
 

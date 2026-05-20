@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/central_difference.py
+# solidum_fem/solidum/math/solvers/central_difference.py
 """``CentralDifferenceSolver`` — integración explícita por diferencias centradas
 para ``M·ü + C·u̇ + K·u = F(t)`` (ADR 0009 fase 5).
 

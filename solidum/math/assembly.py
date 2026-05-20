@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/assembly.py
+# solidum_fem/solidum/math/assembly.py
 from typing import Callable
 
 import numpy as np

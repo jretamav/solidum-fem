@@ -1,4 +1,4 @@
-# fenix_fem/solidum/core/domain.py
+# solidum_fem/solidum/core/domain.py
 from __future__ import annotations
 
 from typing import Dict, TYPE_CHECKING

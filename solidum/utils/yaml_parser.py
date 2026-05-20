@@ -1,4 +1,4 @@
-# fenix_fem/solidum/utils/yaml_parser.py
+# solidum_fem/solidum/utils/yaml_parser.py
 import inspect
 import re
 import yaml

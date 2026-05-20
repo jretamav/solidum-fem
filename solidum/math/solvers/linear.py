@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/solvers/linear.py
+# solidum_fem/solidum/math/solvers/linear.py
 """``LinearSolver`` — un paso, sistema ``K·U = F`` con Dirichlet por eliminación.
 
 La factorización se cachea entre llamadas a :meth:`solve` (ADR 0003): la

@@ -1,4 +1,4 @@
-# fenix_fem/solidum/math/integration.py
+# solidum_fem/solidum/math/integration.py
 import numpy as np
 from solidum.registry import QuadratureRegistry
 

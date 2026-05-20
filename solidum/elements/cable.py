@@ -1,4 +1,4 @@
-# fenix_fem/solidum/elements/cable.py
+# solidum_fem/solidum/elements/cable.py
 """Elementos de cable.
 
 Implementación **independiente** de los elementos de armadura (`Truss*`).

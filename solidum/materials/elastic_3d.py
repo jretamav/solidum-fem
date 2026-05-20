@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/elastic_3d.py
+# solidum_fem/solidum/materials/elastic_3d.py
 """Elasticidad lineal isótropa 3D (ADR 0012, spec ``docs/specs/Elastic3D.md``).
 
 Sin variantes de hipótesis (en 3D no aplican plane_stress/plane_strain).

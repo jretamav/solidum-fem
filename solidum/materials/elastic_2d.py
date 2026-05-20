@@ -1,4 +1,4 @@
-# fenix_fem/solidum/materials/elastic_2d.py
+# solidum_fem/solidum/materials/elastic_2d.py
 import numpy as np
 from solidum.core.material import Material
 from solidum.registry import MaterialRegistry
