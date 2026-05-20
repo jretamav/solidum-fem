@@ -1,0 +1,53 @@
+# CITATION.cff (Citation File Format 1.2.0)
+# https://citation-file-format.github.io/
+#
+# This file enables GitHub's "Cite this repository" feature and lets tools
+# such as Zenodo, JOSS, Zotero, and Mendeley generate consistent citations
+# of Solidum FEM.
+
+cff-version: 1.2.0
+message: "If you use Solidum FEM in academic work, please cite it as below."
+type: software
+title: "Solidum FEM"
+abstract: >-
+  A displacement-based finite element framework for research in solid
+  mechanics: simulation of mechanical and thermal problems, coupled or
+  decoupled, with an architecture optimized for extension via AI-assisted
+  development. Provides 1D structural elements (truss, cable, frame), 2D
+  and 3D solid elements (including embedded discontinuity), elastic, J2
+  and Drucker-Prager plasticity, continuum damage, and cohesive damage
+  materials, linear and nonlinear static solvers, cylindrical and
+  dissipation arc-length, modal analysis, Newmark and HHT time integration,
+  central difference, harmonic response, and response spectrum analysis.
+
+authors:
+  - family-names: "Retama-Velasco"
+    given-names: "Jaime"
+    orcid: "https://orcid.org/0000-0001-6451-5597"
+    email: "jretamav@comunidad.unam.mx"
+    affiliation: >-
+      Civil Engineering Department, Facultad de Estudios Superiores Aragón,
+      Universidad Nacional Autónoma de México (UNAM)
+
+version: 0.1.0
+license: LGPL-3.0-or-later
+repository-code: "https://github.com/jretamav/solidum-fem"
+url: "https://github.com/jretamav/solidum-fem"
+
+keywords:
+  - finite element method
+  - FEM
+  - computational mechanics
+  - solid mechanics
+  - nonlinear mechanics
+  - embedded discontinuity
+  - plasticity
+  - damage mechanics
+
+# Fields to fill at first official release:
+#   date-released: YYYY-MM-DD
+#   doi: 10.5281/zenodo.XXXXXXX   # Zenodo DOI assigned via GitHub release archival
+#
+# Once the JOSS paper is published, prefer citing the JOSS paper directly
+# (use the JOSS DOI). CITATION.cff can then be extended with a
+# `preferred-citation` block pointing to the JOSS entry.
