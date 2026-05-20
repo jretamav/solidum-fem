@@ -17,6 +17,17 @@ Solidum FEM es un programa de elementos finitos en aproximación de desplazamien
 
 Lo que **no** resuelve aún: sólidos 3D cuadráticos (Hex20/Hex27/Tet10), materiales 3D no lineales (VonMises3D/DruckerPrager3D/IsotropicDamage3D), placas/láminas, térmico, contacto, Mohr-Coulomb, FiberSection. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
 
+### Estado de publicación (2026-05-20)
+
+El repo es **público en GitHub** bajo `https://github.com/jretamav/solidum-fem` con licencia **LGPL-3.0** (ver `LICENSE` y `LICENSE.GPL`). Decisiones macro de publicación están en memoria:
+
+- **Paper 1a → JOSS** (registro rápido). Esqueleto en `paper/joss/paper.md` con frontmatter completo (título, ORCID, afiliación FES Aragón UNAM); secciones de contenido pendientes de redactar.
+- **Paper 1b → SoftwareX** (software paper integral). Manuscrito vivirá fuera de Solidum (Overleaf o repo separado).
+- **Papers 2+ → metodológicos** en IJNME / Computational Mechanics / Engineering Fracture Mechanics / AES / Computer Physics Communications (embedded KOS, dissipation arc-length, etc.).
+- AES fue evaluada y **descartada como destino del paper 1** tras consulta del scope real (la revista viró hacia PINN/ML; ya no publica framework papers).
+
+Estrategia detallada en `[[project_estrategia_publicaciones]]`; estado del repo público en `[[project_repo_publico_decidido]]`.
+
 ---
 
 ## 1. Orden de lectura recomendado
@@ -64,8 +75,12 @@ solidum_fem/
 │   ├── MATRIZ.md, ONBOARDING.md  ← documentos navegacionales (este set)
 ├── manuals/
 │   ├── sources/{reference,user,architecture}/  ← markdown fuente
-│   └── build_*_manual.py         ← un builder por manual; salida en LaTeX/PDF
-└── examples/                     ← YAMLs de ejemplo (estático, modal, transitorio)
+│   ├── build_*_manual.py         ← un builder por manual; salida en LaTeX/PDF
+│   └── glossary.md               ← (pendiente) glosario ES↔EN para regenerar manuales en inglés
+├── paper/joss/                   ← paper.md + paper.bib para JOSS (skeleton)
+├── examples/                     ← YAMLs de ejemplo (estático, modal, transitorio)
+├── README.md, CONTRIBUTING.md, CITATION.cff, LICENSE, LICENSE.GPL
+└── pyproject.toml
 ```
 
 ---
@@ -127,7 +142,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 ## 7. Convenciones críticas a no olvidar
 
 - **Signos**: convención única del proyecto (Reglas.md §5). 2D interno = stress-resultant; 2D público (`internal_forces`) = sagging-positivo de vigas. La traducción B↔A vive dentro de `internal_forces()` de cada elemento 2D.
-- **Idioma**: docstrings y mensajes al usuario en **español**; identificadores en **inglés** (Reglas.md §6).
+- **Idioma**: política híbrida por capa (Reglas.md §6 — política revisada 2026-05-20 al abrir el repo al público). Externa pública (README, CITATION, CONTRIBUTING, paper.md, manuscritos) en **inglés**; manuales **bilingües ES+EN** (español canónico, inglés generado por la IA con glosario terminológico — glosario pendiente en `manuals/glossary.md`); documental navegacional (STATUS, ROADMAP, ONBOARDING, MATRIZ, catálogos) en **español**; interna técnica (specs, ADRs, docstrings, commits) en **español**; identificadores de código en **inglés**. Ver `[[project_politica_idioma]]` para el detalle.
 - **Unidades**: el sistema no convierte. El usuario es responsable de la consistencia (Reglas.md §5 + ADR 0008).
 - **Tolerancias**: patrón `f ≤ atol + rtol · escala` con escala adimensional autoderivada (ADR 0006 / 0007). No introducir constantes hardcoded.
 
@@ -161,4 +176,4 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ---
 
-*Última actualización: 2026-05-19 — cifras de suite y subcarpeta `tests/validation/` (Tandas 12-14, 38 tests contra benchmarks publicados).*
+*Última actualización: 2026-05-20 — apertura del repo al público en GitHub bajo LGPL-3.0, estrategia editorial JOSS + SoftwareX consolidada, política de idioma híbrida formalizada en Reglas.md §6, paper skeleton en `paper/joss/`, perfil del autor en GitHub completo con commits atribuidos retroactivamente. Próximo hito estratégico: redactar contenido del `paper/joss/paper.md` (sesión dedicada).*
