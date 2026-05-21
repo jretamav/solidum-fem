@@ -23,11 +23,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from solidum.constants import DAMAGE_MAX
 from solidum.materials.damage_1d import IsotropicDamage1D
 from solidum.materials.damage_2d import IsotropicDamage2D
+from solidum.materials.damage_3d import IsotropicDamage3D
 from solidum.materials.drucker_prager_2d import DruckerPrager2D
+from solidum.materials.drucker_prager_3d import DruckerPrager3D
 from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.materials.plastic_1d import Elastoplastic1D
 from solidum.materials.von_mises_2d import VonMises2D
+from solidum.materials.von_mises_3d import VonMises3D
 
 
 class TestElastic1D(unittest.TestCase):
@@ -916,6 +919,830 @@ class TestDruckerPrager2D(unittest.TestCase):
             _, _, state_MPa = mat_MPa.compute_state(eps, state_vars=state_MPa)
             _, _, state_Pa = mat_Pa.compute_state(eps, state_vars=state_Pa)
             self.assertAlmostEqual(state_MPa['alpha'], state_Pa['alpha'], places=12)
+
+
+class TestVonMises3D(unittest.TestCase):
+    """J2 plasticidad 3D con endurecimiento isótropo lineal.
+
+    Acceptance de la spec ``docs/specs/VonMises3D.md`` § unit.
+    """
+
+    def setUp(self):
+        self.E = 2.0e5
+        self.nu = 0.3
+        self.sigma_y = 250.0
+        self.H = 1.0e4
+        self.mat = VonMises3D(
+            E=self.E, nu=self.nu, sigma_y=self.sigma_y, H=self.H, density=0.0,
+        )
+
+    def test_elastic_below_yield(self):
+        """Bajo fluencia: σ = C_e·ε, estado interno intacto."""
+        eps = np.array([1.0e-5, 0.0, 0.0, 0.0, 0.0, 0.0])
+        sigma, C, state = self.mat.compute_state(eps)
+        np.testing.assert_allclose(sigma, self.mat.C_e @ eps, rtol=1e-12)
+        np.testing.assert_allclose(C, self.mat.C_e, rtol=1e-12)
+        self.assertAlmostEqual(state["alpha"], 0.0, places=14)
+        np.testing.assert_allclose(state["eps_p"], np.zeros(6), atol=1e-14)
+
+    def test_yield_uniaxial_at_sigma_y(self):
+        """Tracción uniaxial: yield exactamente en σ_xx = σ_y.
+
+        Bajo ε = (ε_0, -ν·ε_0, -ν·ε_0, 0, 0, 0) la respuesta elástica es
+        σ_xx = E·ε_0 con σ_yy = σ_zz = 0. La frontera J2 se cruza cuando
+        σ_xx = σ_y ⇒ ε_yield = σ_y / E.
+        """
+        eps_yield = self.sigma_y / self.E
+
+        # Justo por debajo: elástico
+        eps_below = np.array([
+            0.999 * eps_yield, -self.nu * 0.999 * eps_yield, -self.nu * 0.999 * eps_yield,
+            0.0, 0.0, 0.0
+        ])
+        sigma_below, _, state_below = self.mat.compute_state(eps_below)
+        self.assertAlmostEqual(state_below["alpha"], 0.0, places=12)
+        self.assertAlmostEqual(sigma_below[0], 0.999 * self.sigma_y, places=6)
+        self.assertAlmostEqual(sigma_below[1], 0.0, places=8)
+        self.assertAlmostEqual(sigma_below[2], 0.0, places=8)
+
+        # Justo por encima: plástico
+        eps_above = np.array([
+            1.01 * eps_yield, -self.nu * 1.01 * eps_yield, -self.nu * 1.01 * eps_yield,
+            0.0, 0.0, 0.0
+        ])
+        sigma_above, _, state_above = self.mat.compute_state(eps_above)
+        self.assertGreater(state_above["alpha"], 0.0)
+        self.assertGreater(sigma_above[0], 0.99 * self.sigma_y)
+        self.assertLess(sigma_above[0], 1.05 * self.sigma_y)
+
+    def test_biaxial_isotropic_yield_at_sigma_y(self):
+        """Tracción biaxial isótropa: yield en σ_xx = σ_yy = σ_y.
+
+        Con σ_xx = σ_yy = σ, σ_zz = 0: ‖s‖ = σ·√(2/3) = √(2/3)·σ_y ⇒ σ = σ_y.
+        El estado se construye prescribiendo ε_xx = ε_yy = ε y
+        ε_zz = -2ν·ε/(1-ν) tal que σ_zz ≈ 0.
+        """
+        # Para que σ_zz = 0 en biaxial elástico: ε_zz = -2ν·ε_xx/(1-ν)
+        # con ε_xx = ε_yy = ε. La fluencia ocurre en σ = σ_y, equivalente a
+        # ε = σ_y·(1-ν)/E (σ = E·ε/(1-ν) elástico).
+        eps_yield = self.sigma_y * (1.0 - self.nu) / self.E
+        eps_zz_yield = -2.0 * self.nu * eps_yield / (1.0 - self.nu)
+
+        eps_below = np.array([0.99 * eps_yield, 0.99 * eps_yield, 0.99 * eps_zz_yield,
+                              0.0, 0.0, 0.0])
+        sigma_below, _, state_below = self.mat.compute_state(eps_below)
+        self.assertAlmostEqual(state_below["alpha"], 0.0, places=10)
+        # σ_xx = σ_yy = 0.99·σ_y; σ_zz ≈ 0
+        self.assertAlmostEqual(sigma_below[0], 0.99 * self.sigma_y, places=4)
+        self.assertAlmostEqual(sigma_below[1], 0.99 * self.sigma_y, places=4)
+        self.assertAlmostEqual(sigma_below[2], 0.0, places=6)
+
+        eps_above = np.array([1.02 * eps_yield, 1.02 * eps_yield, 1.02 * eps_zz_yield,
+                              0.0, 0.0, 0.0])
+        sigma_above, _, state_above = self.mat.compute_state(eps_above)
+        self.assertGreater(state_above["alpha"], 0.0)
+        # Tras return mapping σ_xx ≈ σ_yy ≈ σ_y; σ_zz pequeño respecto a σ_y
+        self.assertAlmostEqual(sigma_above[0], sigma_above[1], places=8)
+        self.assertGreater(sigma_above[0], 0.95 * self.sigma_y)
+        self.assertLess(sigma_above[0], 1.05 * self.sigma_y)
+
+    def test_shear_yield_sigma_y_over_sqrt_3(self):
+        """Cortante puro xy: yield en τ_xy = σ_y/√3 (criterio J2 en cortante).
+
+        Bajo ε = (0,0,0, γ, 0, 0) la respuesta elástica es σ_xy = G·γ.
+        La frontera J2 se cruza cuando τ_xy = σ_y/√3 ⇒ γ_yield = σ_y/(G·√3).
+        """
+        gamma_yield = self.sigma_y / (self.mat.G * math.sqrt(3.0))
+
+        # Justo por debajo: elástico
+        eps_below = np.array([0.0, 0.0, 0.0, 0.999 * gamma_yield, 0.0, 0.0])
+        sigma_below, _, state_below = self.mat.compute_state(eps_below)
+        self.assertAlmostEqual(state_below["alpha"], 0.0, places=12)
+        self.assertAlmostEqual(
+            sigma_below[3], 0.999 * self.sigma_y / math.sqrt(3.0), places=4
+        )
+
+        # Justo por encima: plástico
+        eps_above = np.array([0.0, 0.0, 0.0, 1.01 * gamma_yield, 0.0, 0.0])
+        sigma_above, _, state_above = self.mat.compute_state(eps_above)
+        self.assertGreater(state_above["alpha"], 0.0)
+        # τ_xy tras return mapping cae cerca de la frontera σ_y/√3 (más el
+        # endurecimiento marginal de Δα).
+        tau_expected = self.sigma_y / math.sqrt(3.0)
+        self.assertGreater(sigma_above[3], 0.99 * tau_expected)
+        self.assertLess(sigma_above[3], 1.05 * tau_expected)
+
+    def test_plastic_incompressibility(self):
+        """tr(ε^p) = ε^p_xx + ε^p_yy + ε^p_zz = 0 exacto (J2 asociado)."""
+        # Cargas multi-componente con cortantes activos
+        eps = np.array([5.0e-3, -2.0e-3, 1.0e-3, 2.0e-3, 1.0e-3, -1.0e-3])
+        _, _, state = self.mat.compute_state(eps)
+        eps_p = state["eps_p"]
+        self.assertAlmostEqual(
+            eps_p[0] + eps_p[1] + eps_p[2], 0.0, places=14
+        )
+
+    def test_plastic_incompressibility_persistente(self):
+        """tr(ε^p) = 0 persiste paso tras paso en una trayectoria multi-paso."""
+        strain_path = [
+            np.array([1.0e-3, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            np.array([3.0e-3, -0.5e-3, 0.2e-3, 1.0e-3, 0.0, 0.0]),
+            np.array([5.0e-3, -1.0e-3, 0.5e-3, 2.0e-3, 0.5e-3, 0.0]),
+            np.array([4.0e-3, -0.8e-3, 0.4e-3, 1.5e-3, 0.4e-3, -0.2e-3]),
+            np.array([6.0e-3, -1.2e-3, 0.6e-3, 2.5e-3, 0.8e-3, -0.5e-3]),
+        ]
+        state = None
+        for k, eps in enumerate(strain_path):
+            _, _, state = self.mat.compute_state(eps, state_vars=state)
+            eps_p = state["eps_p"]
+            trace = eps_p[0] + eps_p[1] + eps_p[2]
+            self.assertAlmostEqual(
+                trace, 0.0, places=12,
+                msg=f"paso {k}: tr(ε^p) = {trace:.3e} ≠ 0"
+            )
+
+    def test_alpha_monotonic_under_increasing_load(self):
+        """α no decrece bajo carga monotónica creciente."""
+        state = None
+        alpha_prev = 0.0
+        for k in range(1, 6):
+            eps = np.array([0.005 * k, -0.005 * k, 0.0, 0.0, 0.0, 0.0])
+            _, _, state = self.mat.compute_state(eps, state_vars=state)
+            self.assertGreaterEqual(state["alpha"], alpha_prev - 1.0e-14)
+            alpha_prev = state["alpha"]
+        self.assertGreater(alpha_prev, 0.0)
+
+    def test_elastic_unload_recovers_C_e(self):
+        """Tras descarga elástica desde estado plástico, la tangente vuelve a C_e."""
+        eps_load = np.array([3.0e-3, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, _, state_loaded = self.mat.compute_state(eps_load)
+        self.assertGreater(state_loaded["alpha"], 0.0)
+
+        eps_unload = np.array([2.0e-3, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, C_unload, state_unload = self.mat.compute_state(
+            eps_unload, state_vars=state_loaded
+        )
+        np.testing.assert_allclose(C_unload, self.mat.C_e, rtol=1e-10)
+        self.assertAlmostEqual(state_unload["alpha"], state_loaded["alpha"], places=12)
+
+    def test_tangente_simetrica(self):
+        """Tangente algorítmica simétrica (J2 asociado ⇒ IS_SYMMETRIC=True)."""
+        # Estado plástico con todos los componentes activos
+        eps = np.array([4.0e-3, -1.0e-3, 2.0e-3, 1.5e-3, 0.8e-3, -0.5e-3])
+        _, C_alg, _ = self.mat.compute_state(eps)
+        np.testing.assert_allclose(C_alg, C_alg.T, atol=1e-6)
+
+    def test_no_yield_under_pure_elasticity(self):
+        """Trayectoria que nunca alcanza el yield no incrementa α."""
+        # Todos los estados muy por debajo de yield (ε ~ 1e-5)
+        strain_path = [
+            np.array([1.0e-5 * k, -0.5e-5 * k, 0.2e-5 * k,
+                      0.3e-5 * k, 0.1e-5 * k, -0.2e-5 * k])
+            for k in range(1, 6)
+        ]
+        state = None
+        for eps in strain_path:
+            sigma, C, state = self.mat.compute_state(eps, state_vars=state)
+            np.testing.assert_allclose(C, self.mat.C_e, rtol=1e-12)
+            self.assertAlmostEqual(state["alpha"], 0.0, places=14)
+            np.testing.assert_allclose(state["eps_p"], np.zeros(6), atol=1e-14)
+
+    def test_unit_invariance_MPa_vs_Pa(self):
+        """Mismo path adimensional en (MPa,mm) vs (Pa,m) ⇒ α y eps_p idénticos."""
+        mat_MPa = VonMises3D(E=2.0e5, nu=0.3, sigma_y=250.0, H=1.0e4)
+        mat_Pa = VonMises3D(E=2.0e11, nu=0.3, sigma_y=2.5e8, H=1.0e10)
+        # Path adimensional (mismas componentes en ambos sistemas)
+        strain_path = [
+            np.array([1.0e-3, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            np.array([2.0e-3, -0.5e-3, 0.0, 1.0e-3, 0.0, 0.0]),
+            np.array([3.0e-3, -1.0e-3, 0.5e-3, 1.5e-3, 0.5e-3, 0.0]),
+        ]
+        state_MPa, state_Pa = None, None
+        for eps in strain_path:
+            _, _, state_MPa = mat_MPa.compute_state(eps, state_vars=state_MPa)
+            _, _, state_Pa = mat_Pa.compute_state(eps, state_vars=state_Pa)
+            self.assertAlmostEqual(state_MPa["alpha"], state_Pa["alpha"], places=12)
+            np.testing.assert_allclose(state_MPa["eps_p"], state_Pa["eps_p"], rtol=1e-12)
+
+    def test_rechazo_inputs_invalidos(self):
+        """El constructor rechaza E≤0, σ_y≤0, H<0, ν∉(-1, 0.5), density<0."""
+        with self.assertRaises(ValueError):
+            VonMises3D(E=-1.0, nu=0.3, sigma_y=100.0)
+        with self.assertRaises(ValueError):
+            VonMises3D(E=1.0, nu=0.3, sigma_y=-1.0)
+        with self.assertRaises(ValueError):
+            VonMises3D(E=1.0, nu=0.3, sigma_y=100.0, H=-1.0)
+        with self.assertRaises(ValueError):
+            VonMises3D(E=1.0, nu=0.5, sigma_y=100.0)
+        with self.assertRaises(ValueError):
+            VonMises3D(E=1.0, nu=-1.0, sigma_y=100.0)
+        with self.assertRaises(ValueError):
+            VonMises3D(E=1.0, nu=0.3, sigma_y=100.0, density=-1.0)
+
+
+class TestVonMises3DvsPlaneStrain(unittest.TestCase):
+    """Cross-consistency VM3D ↔ VM2D plane strain.
+
+    VM2D plane strain es la restricción de VM3D bajo
+    ``ε_zz = γ_yz = γ_xz = 0`` (deformación total impuesta), con
+    ``ε^p_zz, ε^p_yz, ε^p_xz`` libres por incompresibilidad/isotropía.
+    Bajo esta restricción ambos modelos deben reproducir idénticamente
+    ``σ_xx, σ_yy, σ_xy`` y ``α`` paso tras paso.
+    """
+
+    def setUp(self):
+        E, nu, sigma_y, H = 2.0e5, 0.3, 250.0, 1.0e4
+        self.mat3d = VonMises3D(E=E, nu=nu, sigma_y=sigma_y, H=H)
+        self.mat2d = VonMises2D(
+            E=E, nu=nu, sigma_y=sigma_y, H=H, hypothesis="plane_strain"
+        )
+
+    def test_equivalencia_plane_strain_path(self):
+        """Mismo path con ε_zz = γ_yz = γ_xz = 0 ⇒ σ_xx, σ_yy, σ_xy, α coinciden."""
+        # Path multi-paso plane strain con plasticidad activa
+        path_2d = [
+            np.array([1.0e-3, 0.0, 0.0]),                       # elástico
+            np.array([3.0e-3, -0.5e-3, 1.0e-3]),                # plástico inicial
+            np.array([5.0e-3, -1.0e-3, 2.0e-3]),                # plástico mayor
+            np.array([4.0e-3, -0.8e-3, 1.5e-3]),                # descarga parcial
+            np.array([6.0e-3, -1.5e-3, 2.5e-3]),                # recarga plástica
+        ]
+
+        state2d, state3d = None, None
+        for k, eps2 in enumerate(path_2d):
+            # Embebido en 3D con ε_zz = γ_yz = γ_xz = 0
+            eps3 = np.array([eps2[0], eps2[1], 0.0, eps2[2], 0.0, 0.0])
+
+            sigma2, _, state2d = self.mat2d.compute_state(eps2, state_vars=state2d)
+            sigma3, _, state3d = self.mat3d.compute_state(eps3, state_vars=state3d)
+
+            # σ_xx, σ_yy, σ_xy coinciden entre 3D y 2D PS
+            self.assertAlmostEqual(
+                sigma3[0], sigma2[0], places=8,
+                msg=f"paso {k}: σ_xx 3D={sigma3[0]:.6e} ≠ 2D PS={sigma2[0]:.6e}",
+            )
+            self.assertAlmostEqual(
+                sigma3[1], sigma2[1], places=8,
+                msg=f"paso {k}: σ_yy 3D={sigma3[1]:.6e} ≠ 2D PS={sigma2[1]:.6e}",
+            )
+            self.assertAlmostEqual(
+                sigma3[3], sigma2[2], places=8,
+                msg=f"paso {k}: σ_xy 3D={sigma3[3]:.6e} ≠ 2D PS={sigma2[2]:.6e}",
+            )
+            # α coincide
+            self.assertAlmostEqual(
+                state3d["alpha"], state2d["alpha"], places=10,
+                msg=f"paso {k}: α 3D={state3d['alpha']:.6e} ≠ 2D PS={state2d['alpha']:.6e}",
+            )
+            # Componentes plásticas planas coinciden (xx, yy, zz, xy_tens)
+            np.testing.assert_allclose(
+                state3d["eps_p"][:3], state2d["eps_p"][:3], atol=1e-12,
+                err_msg=f"paso {k}: eps_p [xx,yy,zz] divergente",
+            )
+            self.assertAlmostEqual(
+                state3d["eps_p"][3], state2d["eps_p"][3], places=12,
+                msg=f"paso {k}: eps_p xy tensorial divergente",
+            )
+            # Componentes 3D ausentes en 2D PS permanecen nulas en VM3D
+            self.assertAlmostEqual(state3d["eps_p"][4], 0.0, places=14)
+            self.assertAlmostEqual(state3d["eps_p"][5], 0.0, places=14)
+
+
+class TestDruckerPrager3D(unittest.TestCase):
+    """Drucker-Prager 3D con plasticidad no asociada y endurecimiento isótropo.
+
+    Acceptance de la spec ``docs/specs/DruckerPrager3D.md``.
+    """
+
+    def setUp(self):
+        # Parámetros típicos suelo/hormigón
+        self.E = 2.0e4
+        self.nu = 0.3
+        self.c0 = 10.0
+        self.phi = 30.0
+        self.psi = 10.0   # no asociada
+        self.H = 100.0
+        self.mat = DruckerPrager3D(
+            E=self.E, nu=self.nu, cohesion=self.c0,
+            phi_deg=self.phi, psi_deg=self.psi, H=self.H,
+            variant='outer_cone',
+        )
+
+    def test_rejects_plane_strain_matched(self):
+        """En 3D la calibración 'plane_strain_matched' no se acepta (2D-only)."""
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(
+                E=1e4, nu=0.3, cohesion=1.0, phi_deg=30.0,
+                variant='plane_strain_matched',
+            )
+
+    def test_invalid_variant_rejected(self):
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1e4, nu=0.3, cohesion=1.0, phi_deg=30.0, variant='bogus')
+
+    def test_psi_greater_than_phi_rejected(self):
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1e4, nu=0.3, cohesion=1.0, phi_deg=30.0, psi_deg=45.0)
+
+    def test_default_psi_equals_phi_is_associated(self):
+        mat = DruckerPrager3D(E=1e4, nu=0.3, cohesion=1.0, phi_deg=30.0)
+        self.assertTrue(mat.associated)
+        self.assertAlmostEqual(mat.eta_f, mat.eta_g)
+        # IS_SYMMETRIC override por instancia
+        self.assertTrue(mat.IS_SYMMETRIC)
+
+    def test_calibration_outer_cone_consistency(self):
+        """variant='outer_cone': η_f = 2sin(φ)/[√3(3-sin(φ))]."""
+        phi_rad = math.radians(self.phi)
+        sphi = math.sin(phi_rad)
+        cphi = math.cos(phi_rad)
+        sqrt3 = math.sqrt(3.0)
+        expected_eta_f = 2.0 * sphi / (sqrt3 * (3.0 - sphi))
+        expected_k0 = 6.0 * self.c0 * cphi / (sqrt3 * (3.0 - sphi))
+        self.assertAlmostEqual(self.mat.eta_f, expected_eta_f, places=12)
+        self.assertAlmostEqual(self.mat.k0, expected_k0, places=12)
+
+    def test_calibration_inner_vs_outer_relation(self):
+        """Outer cone siempre mayor que inner cone para mismo φ (geometría)."""
+        outer = DruckerPrager3D(
+            E=self.E, nu=self.nu, cohesion=self.c0, phi_deg=self.phi,
+            variant='outer_cone',
+        )
+        inner = DruckerPrager3D(
+            E=self.E, nu=self.nu, cohesion=self.c0, phi_deg=self.phi,
+            variant='inner_cone',
+        )
+        self.assertGreater(outer.eta_f, inner.eta_f)
+        self.assertGreater(outer.k0, inner.k0)
+
+    def test_elastic_below_yield(self):
+        """ε pequeño 6D: σ = C_e·ε, estado intacto."""
+        eps = np.array([1.0e-5, 0.0, 0.0, 0.0, 0.0, 0.0])
+        sigma, C, state = self.mat.compute_state(eps)
+        np.testing.assert_allclose(sigma, self.mat.C_e @ eps, rtol=1e-10)
+        np.testing.assert_allclose(C, self.mat.C_e, rtol=1e-12)
+        self.assertAlmostEqual(state['alpha'], 0.0, places=12)
+        np.testing.assert_allclose(state['eps_p'], np.zeros(6), atol=1e-14)
+
+    def test_regular_return_under_pure_shear(self):
+        """Cortante puro xy produce return regular activo (no apex)."""
+        eps = np.array([0.0, 0.0, 0.0, 5.0e-3, 0.0, 0.0])
+        sigma, _, state = self.mat.compute_state(eps)
+        self.assertGreater(state['alpha'], 0.0)
+        # σ_xy ≠ 0 (no colapsa al ápice)
+        self.assertGreater(abs(sigma[3]), 0.0)
+
+    def test_apex_return_under_hydrostatic_tension(self):
+        """ε hidrostática traccionante grande empuja al ápice."""
+        eps = np.array([1.0e-2, 1.0e-2, 1.0e-2, 0.0, 0.0, 0.0])
+        sigma, _, state = self.mat.compute_state(eps)
+        self.assertGreater(state['alpha'], 0.0)
+        # En el ápice σ_xx = σ_yy = σ_zz (hidrostático), cortantes ≈ 0
+        self.assertAlmostEqual(sigma[0], sigma[1], delta=abs(sigma[0]) * 1e-10)
+        self.assertAlmostEqual(sigma[0], sigma[2], delta=abs(sigma[0]) * 1e-10)
+        for k in range(3, 6):
+            self.assertAlmostEqual(sigma[k], 0.0, places=10)
+        # σ_xx ≈ k(α)/(3·η_f)
+        k_new = self.mat.k0 + self.mat.H * state['alpha']
+        expected_p = k_new / (3.0 * self.mat.eta_f)
+        self.assertAlmostEqual(sigma[0], expected_p, delta=abs(expected_p) * 1e-6)
+
+    def test_tr_eps_p_invariant(self):
+        """Bajo carga monotónica en rama regular, tr(ε^p) = 3·η_g·α en cada paso."""
+        state = None
+        path = [
+            np.array([1.0e-3, 0.0, 0.0, 2.0e-3, 0.0, 0.0]),
+            np.array([1.5e-3, -0.5e-3, 0.0, 3.0e-3, 0.0, 0.0]),
+            np.array([2.0e-3, -1.0e-3, 0.5e-3, 4.0e-3, 0.0, 0.0]),
+            np.array([2.5e-3, -1.5e-3, 0.7e-3, 5.0e-3, 0.5e-3, 0.0]),
+            np.array([3.0e-3, -2.0e-3, 1.0e-3, 6.0e-3, 0.8e-3, -0.3e-3]),
+        ]
+        for k, eps in enumerate(path):
+            _, _, state = self.mat.compute_state(eps, state_vars=state)
+            if state['alpha'] > 0.0:
+                tr_eps_p = state['eps_p'][0] + state['eps_p'][1] + state['eps_p'][2]
+                expected = 3.0 * self.mat.eta_g * state['alpha']
+                self.assertAlmostEqual(
+                    tr_eps_p, expected, delta=abs(expected) * 1e-10 + 1e-14,
+                    msg=f"paso {k}: tr(ε^p)={tr_eps_p:.6e} ≠ 3·η_g·α={expected:.6e}"
+                )
+
+    def test_associated_tangent_is_symmetric(self):
+        """ψ = φ (asociada): tangente simétrica."""
+        mat_assoc = DruckerPrager3D(
+            E=self.E, nu=self.nu, cohesion=self.c0,
+            phi_deg=self.phi, psi_deg=self.phi, H=self.H,
+            variant='outer_cone',
+        )
+        eps = np.array([1.0e-3, -1.0e-3, 0.5e-3, 4.0e-3, 0.5e-3, 0.0])
+        _, C_alg, state = mat_assoc.compute_state(eps)
+        self.assertGreater(state['alpha'], 0.0)
+        asym = np.linalg.norm(C_alg - C_alg.T) / np.linalg.norm(C_alg)
+        self.assertLess(asym, 1.0e-10)
+
+    def test_nonassociated_tangent_is_asymmetric(self):
+        """ψ ≠ φ: tangente algorítmica asimétrica."""
+        # ψ=0 (sin dilatancia) maximiza la asimetría
+        mat_na = DruckerPrager3D(
+            E=self.E, nu=self.nu, cohesion=self.c0,
+            phi_deg=self.phi, psi_deg=0.0, H=self.H,
+            variant='outer_cone',
+        )
+        eps = np.array([0.0, 0.0, 0.0, 5.0e-3, 0.0, 0.0])
+        _, C_alg, state = mat_na.compute_state(eps)
+        self.assertGreater(state['alpha'], 0.0)
+        asym = np.linalg.norm(C_alg - C_alg.T) / np.linalg.norm(C_alg)
+        self.assertGreater(asym, 1.0e-3)
+
+    def test_tangent_matches_finite_difference_regular(self):
+        """C_alg cerrada coincide con diferencia finita centrada en rama regular."""
+        eps = np.array([1.0e-3, -1.0e-3, 0.5e-3, 3.0e-3, 0.0, 0.0])
+        state_anchor = {'eps_p': np.zeros(6), 'alpha': 0.0}
+        _, C_alg, state_after = self.mat.compute_state(eps, state_vars=state_anchor)
+        # Debe estar en rama regular para que este test tenga sentido
+        self.assertGreater(state_after['alpha'], 0.0)
+
+        h = 1.0e-7
+        C_fd = np.zeros((6, 6))
+        for j in range(6):
+            ep = eps.copy(); ep[j] += h
+            em = eps.copy(); em[j] -= h
+            sp, _, _ = self.mat.compute_state(ep, state_vars=state_anchor)
+            sm, _, _ = self.mat.compute_state(em, state_vars=state_anchor)
+            C_fd[:, j] = (sp - sm) / (2.0 * h)
+        err = np.linalg.norm(C_alg - C_fd) / np.linalg.norm(C_alg)
+        self.assertLess(err, 1.0e-4)
+
+    def test_alpha_monotonic_under_increasing_load(self):
+        state = None
+        alpha_prev = 0.0
+        for k in range(1, 5):
+            eps = np.array([0.0, 0.0, 0.0, 2.0e-3 * k, 0.0, 0.0])
+            _, _, state = self.mat.compute_state(eps, state_vars=state)
+            self.assertGreaterEqual(state['alpha'], alpha_prev - 1e-14)
+            alpha_prev = state['alpha']
+        self.assertGreater(alpha_prev, 0.0)
+
+    def test_reevaluation_on_frontier_returns_C_e(self):
+        """Re-evaluar con la misma ε y state convergido: tangente = C_e, α no cambia."""
+        eps_load = np.array([0.0, 0.0, 0.0, 5.0e-3, 0.0, 0.0])
+        _, _, state_loaded = self.mat.compute_state(eps_load)
+        self.assertGreater(state_loaded['alpha'], 0.0)
+
+        _, C_re, state_re = self.mat.compute_state(eps_load, state_vars=state_loaded)
+        np.testing.assert_allclose(C_re, self.mat.C_e, rtol=1.0e-8)
+        self.assertAlmostEqual(state_re['alpha'], state_loaded['alpha'], places=10)
+
+    def test_unit_invariance_MPa_vs_Pa(self):
+        """Mismo path adimensional en (MPa,mm) vs (Pa,m) ⇒ α y eps_p idénticos."""
+        mat_MPa = DruckerPrager3D(
+            E=2.0e4, nu=0.3, cohesion=10.0, phi_deg=30.0, psi_deg=10.0, H=100.0,
+            variant='outer_cone',
+        )
+        mat_Pa = DruckerPrager3D(
+            E=2.0e10, nu=0.3, cohesion=1.0e7, phi_deg=30.0, psi_deg=10.0, H=1.0e8,
+            variant='outer_cone',
+        )
+        strain_path = [
+            np.array([0.0, 0.0, 0.0, 1.0e-3, 0.0, 0.0]),
+            np.array([1.0e-3, -1.0e-3, 0.5e-3, 3.0e-3, 0.5e-3, 0.0]),
+            np.array([2.0e-3, -2.0e-3, 1.0e-3, 5.0e-3, 1.0e-3, -0.5e-3]),
+        ]
+        state_MPa, state_Pa = None, None
+        for eps in strain_path:
+            _, _, state_MPa = mat_MPa.compute_state(eps, state_vars=state_MPa)
+            _, _, state_Pa = mat_Pa.compute_state(eps, state_vars=state_Pa)
+            self.assertAlmostEqual(state_MPa['alpha'], state_Pa['alpha'], places=12)
+            np.testing.assert_allclose(state_MPa['eps_p'], state_Pa['eps_p'], rtol=1e-12)
+
+    def test_rechazo_inputs_invalidos(self):
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=-1.0, nu=0.3, cohesion=1.0, phi_deg=30.0)
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1.0, nu=0.3, cohesion=-1.0, phi_deg=30.0)
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1.0, nu=0.3, cohesion=1.0, phi_deg=95.0)
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1.0, nu=0.5, cohesion=1.0, phi_deg=30.0)
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1.0, nu=0.3, cohesion=1.0, phi_deg=30.0, H=-1.0)
+        with self.assertRaises(ValueError):
+            DruckerPrager3D(E=1.0, nu=0.3, cohesion=1.0, phi_deg=30.0, density=-1.0)
+
+
+class TestDruckerPrager3DvsPlaneStrain(unittest.TestCase):
+    """Cross-consistency DP3D ↔ DP2D outer_cone plane_strain.
+
+    DP2D plane_strain con variant='outer_cone' es la restricción de DP3D
+    outer_cone bajo ``ε_zz = γ_yz = γ_xz = 0`` (deformación total impuesta),
+    con ``ε^p_zz, ε^p_yz, ε^p_xz`` libres por dilatancia/isotropía.
+    Solo `outer_cone` e `inner_cone` son variantes compartidas entre 2D y 3D
+    (`plane_strain_matched` es 2D-only). El test usa `outer_cone`.
+    """
+
+    def setUp(self):
+        E, nu, c0, phi, psi, H = 2.0e4, 0.3, 10.0, 30.0, 10.0, 100.0
+        self.mat3d = DruckerPrager3D(
+            E=E, nu=nu, cohesion=c0, phi_deg=phi, psi_deg=psi, H=H,
+            variant='outer_cone',
+        )
+        self.mat2d = DruckerPrager2D(
+            E=E, nu=nu, cohesion=c0, phi_deg=phi, psi_deg=psi, H=H,
+            hypothesis='plane_strain', variant='outer_cone',
+        )
+
+    def test_equivalencia_plane_strain_path_outer_cone(self):
+        """Mismo path con ε_zz=γ_yz=γ_xz=0 ⇒ σ y α coinciden 3D ↔ 2D PS."""
+        # Path multi-paso con plasticidad activa (rama regular)
+        path_2d = [
+            np.array([0.0, 0.0, 1.0e-3]),                       # elástico
+            np.array([1.0e-3, -1.0e-3, 3.0e-3]),                # plástico inicial
+            np.array([2.0e-3, -2.0e-3, 5.0e-3]),                # plástico mayor
+            np.array([1.5e-3, -1.5e-3, 4.0e-3]),                # descarga parcial
+            np.array([3.0e-3, -3.0e-3, 6.0e-3]),                # recarga plástica
+        ]
+
+        state2d, state3d = None, None
+        for k, eps2 in enumerate(path_2d):
+            # Embeber en 3D con ε_zz = γ_yz = γ_xz = 0
+            eps3 = np.array([eps2[0], eps2[1], 0.0, eps2[2], 0.0, 0.0])
+
+            sigma2, _, state2d = self.mat2d.compute_state(eps2, state_vars=state2d)
+            sigma3, _, state3d = self.mat3d.compute_state(eps3, state_vars=state3d)
+
+            # σ_xx, σ_yy, σ_xy coinciden
+            self.assertAlmostEqual(
+                sigma3[0], sigma2[0], places=8,
+                msg=f"paso {k}: σ_xx 3D={sigma3[0]:.6e} ≠ 2D PS={sigma2[0]:.6e}",
+            )
+            self.assertAlmostEqual(
+                sigma3[1], sigma2[1], places=8,
+                msg=f"paso {k}: σ_yy 3D={sigma3[1]:.6e} ≠ 2D PS={sigma2[1]:.6e}",
+            )
+            self.assertAlmostEqual(
+                sigma3[3], sigma2[2], places=8,
+                msg=f"paso {k}: σ_xy 3D={sigma3[3]:.6e} ≠ 2D PS={sigma2[2]:.6e}",
+            )
+            # α coincide
+            self.assertAlmostEqual(
+                state3d['alpha'], state2d['alpha'], places=10,
+                msg=f"paso {k}: α 3D={state3d['alpha']:.6e} ≠ 2D PS={state2d['alpha']:.6e}",
+            )
+            # Componentes plásticas planas (xx, yy, zz, xy_tens) coinciden
+            np.testing.assert_allclose(
+                state3d['eps_p'][:3], state2d['eps_p'][:3], atol=1e-12,
+                err_msg=f"paso {k}: eps_p [xx,yy,zz] divergente",
+            )
+            self.assertAlmostEqual(
+                state3d['eps_p'][3], state2d['eps_p'][3], places=12,
+                msg=f"paso {k}: eps_p xy tensorial divergente",
+            )
+            # Componentes 3D ausentes en plane strain permanecen nulas
+            self.assertAlmostEqual(state3d['eps_p'][4], 0.0, places=14)
+            self.assertAlmostEqual(state3d['eps_p'][5], 0.0, places=14)
+
+
+class TestIsotropicDamage3D(unittest.TestCase):
+    """Daño isótropo escalar 3D con ablandamiento exponencial y tangente
+    algorítmica consistente. Acceptance de ``docs/specs/IsotropicDamage3D.md``.
+    """
+
+    def setUp(self):
+        self.E = 2.0e4
+        self.nu = 0.2
+        self.kappa_0 = 1.0e-4
+        self.alpha = 500.0
+        self.mat = IsotropicDamage3D(
+            E=self.E, nu=self.nu, kappa_0=self.kappa_0, alpha=self.alpha,
+        )
+
+    def test_paso_elastico_bajo_umbral(self):
+        """ε pequeño, todas las componentes activas: σ = C_e·ε, d=0, C_tan=C_e."""
+        eps = np.array([1.0e-6, 0.5e-6, -0.3e-6, 1.0e-6, 0.5e-6, -0.5e-6])
+        sigma, C_tan, state = self.mat.compute_state(eps)
+        Ce = self.mat.elastic_base.C
+        np.testing.assert_allclose(sigma, Ce @ eps, rtol=1e-12)
+        np.testing.assert_allclose(C_tan, Ce, rtol=1e-12)
+        self.assertAlmostEqual(state['damage'], 0.0, places=14)
+        self.assertAlmostEqual(state['kappa'], self.kappa_0, places=14)
+
+    def test_damage_evolution_exponential(self):
+        """Carga grande activa daño según la ley exponencial."""
+        # eps_eq ~ 4·kappa_0
+        eps_target_eq = 4.0 * self.kappa_0
+        # ε uniaxial puro alineado con xx: ε_eq = |ε_xx|
+        eps = np.array([eps_target_eq, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, _, state = self.mat.compute_state(eps)
+        self.assertGreater(state['damage'], 0.0)
+        # Comparar con la fórmula directa
+        expected_d = 1.0 - (self.kappa_0 / state['kappa']) * math.exp(
+            -self.alpha * (state['kappa'] - self.kappa_0)
+        )
+        self.assertAlmostEqual(state['damage'], expected_d, places=10)
+
+    def test_tangent_equals_secant_on_unloading(self):
+        """Tras cargar a κ > κ_0, descargar con menor ε ⇒ tangente secante."""
+        # Cargar
+        eps_load = np.array([3.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, _, state_loaded = self.mat.compute_state(eps_load)
+        self.assertGreater(state_loaded['damage'], 0.0)
+
+        # Descargar
+        eps_unload = np.array([1.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0])  # ε_eq < κ
+        _, C_tan, state_unload = self.mat.compute_state(
+            eps_unload, state_vars=state_loaded
+        )
+        expected_secant = (1.0 - state_unload['damage']) * self.mat.elastic_base.C
+        np.testing.assert_allclose(C_tan, expected_secant, rtol=1e-12)
+        # κ preservado
+        self.assertAlmostEqual(state_unload['kappa'], state_loaded['kappa'], places=14)
+
+    def test_tangent_equals_secant_below_threshold(self):
+        """ε pequeño, κ_old = κ_0: C_tan = C_e (sin daño)."""
+        eps = np.array([1.0e-7, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, C_tan, _ = self.mat.compute_state(eps)
+        np.testing.assert_allclose(C_tan, self.mat.elastic_base.C, rtol=1e-12)
+
+    def test_tangent_equals_secant_at_saturation(self):
+        """Carga enorme tal que d alcanza DAMAGE_MAX: tangente secante (corregida)."""
+        eps_huge = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, C_tan, state = self.mat.compute_state(eps_huge)
+        self.assertAlmostEqual(state['damage'], DAMAGE_MAX, places=10)
+        expected_secant = (1.0 - DAMAGE_MAX) * self.mat.elastic_base.C
+        np.testing.assert_allclose(C_tan, expected_secant, rtol=1e-12)
+
+    def test_tangent_not_symmetric_in_loading(self):
+        """Carga activa con estado no degenerado ⇒ tangente asimétrica."""
+        # Componentes diagonales distintas + cortantes activos
+        eps = np.array([3.0e-4, 1.5e-4, -1.0e-4, 2.0e-4, 1.0e-4, -1.5e-4])
+        _, C_tan, state = self.mat.compute_state(eps)
+        self.assertGreater(state['damage'], 0.0)
+        asym = np.linalg.norm(C_tan - C_tan.T) / np.linalg.norm(C_tan)
+        self.assertGreater(asym, 0.01, msg=f"Asimetría relativa = {asym:.3e}")
+
+    def test_tangent_finite_difference_consistency(self):
+        """C_tan cerrada coincide con diferencia finita centrada en carga activa."""
+        eps = np.array([3.0e-4, 1.5e-4, -1.0e-4, 2.0e-4, 1.0e-4, -1.5e-4])
+        state_anchor = {'kappa': self.kappa_0, 'damage': 0.0}
+        _, C_tan, state_after = self.mat.compute_state(eps, state_vars=state_anchor)
+        self.assertGreater(state_after['damage'], 0.0)
+
+        h = 1.0e-9
+        C_fd = np.zeros((6, 6))
+        for j in range(6):
+            ep = eps.copy(); ep[j] += h
+            em = eps.copy(); em[j] -= h
+            sp, _, _ = self.mat.compute_state(ep, state_vars=state_anchor)
+            sm, _, _ = self.mat.compute_state(em, state_vars=state_anchor)
+            C_fd[:, j] = (sp - sm) / (2.0 * h)
+        err = np.linalg.norm(C_tan - C_fd) / np.linalg.norm(C_tan)
+        self.assertLess(err, 1.0e-5)
+
+    def test_kappa_monotonic(self):
+        """κ es monótono no decreciente bajo trayectoria carga-descarga-recarga."""
+        path = [
+            np.array([2.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0]),    # carga
+            np.array([4.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0]),    # carga mayor
+            np.array([1.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0]),    # descarga
+            np.array([3.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0]),    # recarga (< previo)
+            np.array([5.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0]),    # recarga (> previo)
+        ]
+        state = None
+        kappa_prev = 0.0
+        for eps in path:
+            _, _, state = self.mat.compute_state(eps, state_vars=state)
+            self.assertGreaterEqual(state['kappa'], kappa_prev - 1e-14)
+            kappa_prev = state['kappa']
+
+    def test_descarga_recarga_irreversibilidad(self):
+        """En descarga d permanece constante; al recargar más allá del máximo previo
+        d sigue creciendo."""
+        # Cargar
+        eps_load = np.array([3.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, _, state_loaded = self.mat.compute_state(eps_load)
+        d_loaded = state_loaded['damage']
+        self.assertGreater(d_loaded, 0.0)
+
+        # Descargar
+        eps_unload = np.array([1.5e-4, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, _, state_unload = self.mat.compute_state(eps_unload, state_vars=state_loaded)
+        self.assertAlmostEqual(state_unload['damage'], d_loaded, places=14)
+
+        # Recargar exactamente igual al previo máximo
+        _, _, state_recar = self.mat.compute_state(eps_load, state_vars=state_unload)
+        self.assertAlmostEqual(state_recar['damage'], d_loaded, places=12)
+
+        # Recargar más allá: d crece
+        eps_higher = np.array([5.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0])
+        _, _, state_higher = self.mat.compute_state(eps_higher, state_vars=state_recar)
+        self.assertGreater(state_higher['damage'], d_loaded)
+
+    def test_unit_invariance(self):
+        """Mismo path adimensional en unidades distintas ⇒ d y κ idénticos.
+
+        κ_0 es una deformación (adimensional), ε es adimensional → la invariancia
+        es exacta para cualquier sistema de unidades cuando se preservan los
+        ratios adimensionales (E es solo factor de escala en σ; no afecta a κ/d).
+        """
+        mat_MPa = IsotropicDamage3D(
+            E=2.0e4, nu=0.2, kappa_0=1.0e-4, alpha=500.0,
+        )
+        mat_Pa = IsotropicDamage3D(
+            E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=500.0,
+        )
+        path = [
+            np.array([2.0e-4, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            np.array([4.0e-4, 1.0e-4, 0.0, 0.0, 0.0, 0.0]),
+            np.array([6.0e-4, 1.5e-4, -0.5e-4, 1.0e-4, 0.0, 0.0]),
+        ]
+        state_MPa, state_Pa = None, None
+        for eps in path:
+            sigma_MPa, _, state_MPa = mat_MPa.compute_state(eps, state_vars=state_MPa)
+            sigma_Pa, _, state_Pa = mat_Pa.compute_state(eps, state_vars=state_Pa)
+            self.assertAlmostEqual(state_MPa['damage'], state_Pa['damage'], places=12)
+            self.assertAlmostEqual(state_MPa['kappa'], state_Pa['kappa'], places=12)
+            # σ escala con E: σ_Pa / σ_MPa = E_Pa / E_MPa
+            np.testing.assert_allclose(
+                sigma_Pa / 1.0e6, sigma_MPa, rtol=1e-12,
+            )
+
+    def test_rechazo_inputs_invalidos(self):
+        with self.assertRaises(ValueError):
+            IsotropicDamage3D(E=-1.0, nu=0.2, kappa_0=1e-4, alpha=500.0)
+        with self.assertRaises(ValueError):
+            IsotropicDamage3D(E=1.0, nu=0.2, kappa_0=-1e-4, alpha=500.0)
+        with self.assertRaises(ValueError):
+            IsotropicDamage3D(E=1.0, nu=0.2, kappa_0=1e-4, alpha=-500.0)
+        with self.assertRaises(ValueError):
+            IsotropicDamage3D(E=1.0, nu=0.5, kappa_0=1e-4, alpha=500.0)
+        with self.assertRaises(ValueError):
+            IsotropicDamage3D(E=1.0, nu=0.2, kappa_0=1e-4, alpha=500.0, density=-1.0)
+
+    def test_is_symmetric_attribute_is_false(self):
+        self.assertFalse(IsotropicDamage3D.IS_SYMMETRIC)
+
+
+class TestIsotropicDamage3DvsPlaneStrain(unittest.TestCase):
+    """Cross-consistency Damage3D ↔ Damage2D plane_strain.
+
+    Damage2D plane_strain es la restricción de Damage3D bajo
+    ``ε_zz = γ_yz = γ_xz = 0``. Ambos comparten:
+    - matriz elástica C_e (3D restringida a ε_zz=0 input = 2D plane_strain),
+    - fórmula de ε_eq (M=diag(1,1,1,1/2,1/2,1/2) restringida = diag(1,1,1/2) 2D),
+    - ley de daño exponencial (centralizada en _softening.py).
+    Resultado: σ_xx, σ_yy, σ_xy, κ, d idénticos a precisión máquina.
+    """
+
+    def setUp(self):
+        E, nu, kappa_0, alpha = 2.0e4, 0.2, 1.0e-4, 500.0
+        self.mat3d = IsotropicDamage3D(E=E, nu=nu, kappa_0=kappa_0, alpha=alpha)
+        self.mat2d = IsotropicDamage2D(
+            E=E, nu=nu, kappa_0=kappa_0, alpha=alpha, hypothesis='plane_strain',
+        )
+
+    def test_equivalencia_plane_strain_path(self):
+        """Path multi-paso con carga, descarga, recarga; resultados coinciden."""
+        path_2d = [
+            np.array([1.0e-4, 0.0, 0.0]),                  # elástico
+            np.array([3.0e-4, -0.5e-4, 1.0e-4]),           # carga activa
+            np.array([5.0e-4, -1.0e-4, 2.0e-4]),           # carga mayor
+            np.array([2.0e-4, -0.5e-4, 1.0e-4]),           # descarga
+            np.array([4.0e-4, -0.8e-4, 1.5e-4]),           # recarga (< κ previo)
+            np.array([6.0e-4, -1.2e-4, 2.5e-4]),           # recarga (> κ previo)
+        ]
+
+        state2d, state3d = None, None
+        for k, eps2 in enumerate(path_2d):
+            eps3 = np.array([eps2[0], eps2[1], 0.0, eps2[2], 0.0, 0.0])
+            sigma2, _, state2d = self.mat2d.compute_state(eps2, state_vars=state2d)
+            sigma3, _, state3d = self.mat3d.compute_state(eps3, state_vars=state3d)
+
+            self.assertAlmostEqual(
+                state3d['damage'], state2d['damage'], places=14,
+                msg=f"paso {k}: d 3D={state3d['damage']:.6e} ≠ 2D={state2d['damage']:.6e}",
+            )
+            self.assertAlmostEqual(
+                state3d['kappa'], state2d['kappa'], places=14,
+                msg=f"paso {k}: κ 3D={state3d['kappa']:.6e} ≠ 2D={state2d['kappa']:.6e}",
+            )
+            # σ_xx, σ_yy, σ_xy coinciden
+            self.assertAlmostEqual(
+                sigma3[0], sigma2[0], places=10,
+                msg=f"paso {k}: σ_xx 3D={sigma3[0]:.6e} ≠ 2D={sigma2[0]:.6e}",
+            )
+            self.assertAlmostEqual(
+                sigma3[1], sigma2[1], places=10,
+                msg=f"paso {k}: σ_yy 3D={sigma3[1]:.6e} ≠ 2D={sigma2[1]:.6e}",
+            )
+            self.assertAlmostEqual(
+                sigma3[3], sigma2[2], places=10,
+                msg=f"paso {k}: σ_xy 3D={sigma3[3]:.6e} ≠ 2D={sigma2[2]:.6e}",
+            )
+            # Componentes 3D ausentes en 2D plane_strain
+            # σ_zz no nulo en 3D (consistente con plane_strain interno);
+            # σ_yz, σ_xz nulos
+            self.assertAlmostEqual(sigma3[4], 0.0, places=12)
+            self.assertAlmostEqual(sigma3[5], 0.0, places=12)
 
 
 if __name__ == "__main__":
