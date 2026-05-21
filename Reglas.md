@@ -55,21 +55,21 @@ Convención única del proyecto. Obligatoria en toda formulación, test, API pú
 **Ejes y giros — 3D estática**
 - Regla de la mano derecha para todos los ejes (locales y globales) y todos los momentos (`Mx`, `My`, `Mz`, `T`).
 
-**Esfuerzos internos sobre elemento diferencial 2D — signos por deformación**
-Convención clásica de vigas: `N` positivo ↔ tracción; `V` positivo tiende a rotar el diferencial en sentido horario; `M` positivo ↔ tracción en la fibra inferior (sagging).
+**Fuerzas internas sobre elemento diferencial 2D — signos por deformación**
+`N`, `V`, `M` son **fuerzas internas** (resultantes integradas de los esfuerzos $\sigma$ sobre la sección), no esfuerzos. Convención clásica de vigas: `N` positivo ↔ tracción; `V` positivo tiende a rotar el diferencial en sentido horario; `M` positivo ↔ tracción en la fibra inferior (sagging).
 
 - Cara izquierda (normal saliente en `−x`): `N` apunta en `−x`, `V` apunta en `+y`, `M` actúa en sentido horario.
 - Cara derecha (normal saliente en `+x`): `N` apunta en `+x`, `V` apunta en `−y`, `M` actúa en sentido antihorario.
 
-**Esfuerzos internos en 3D — convención stress-resultant / RHR pura**
-En la cara con normal saliente `+x_local`, los esfuerzos positivos son:
+**Fuerzas internas en 3D — convención stress-resultant / RHR pura**
+En la cara con normal saliente `+x_local`, las fuerzas internas positivas son:
 - `N` en `+x_local` (tracción positiva).
 - `Vy` en `+y_local`, `Vz` en `+z_local`.
 - `T ≡ Mx`, `My`, `Mz`: vectores momento en `+x_local`, `+y_local`, `+z_local` respectivamente (regla de la mano derecha).
 
 En la cara con normal saliente `−x_local`, todos los sentidos se invierten (Newton 3ª ley).
 
-Justificación: es la convención que sale de integrar directamente el tensor de tensiones sobre la sección (`N=∫σxx dA`, `Vy=∫σxy dA`, `Vz=∫σxz dA`, `T=∫(y·σxz − z·σxy) dA`, `My=−∫z·σxx dA`, `Mz=∫y·σxx dA`). Es la que adoptan Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS (Beam188/189), Abaqus (B31/B32). La convención estructural de "sagging positivo" no tiene extensión canónica a 3D — se usa solo en 2D.
+Justificación: es la convención que sale de integrar directamente el tensor de esfuerzos sobre la sección (`N=∫σxx dA`, `Vy=∫σxy dA`, `Vz=∫σxz dA`, `T=∫(y·σxz − z·σxy) dA`, `My=−∫z·σxx dA`, `Mz=∫y·σxx dA`). Es la que adoptan Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS (Beam188/189), Abaqus (B31/B32). La convención estructural de "sagging positivo" no tiene extensión canónica a 3D — se usa solo en 2D.
 
 Convención de fibra para flectores (consecuencia del signo de arriba):
 - `Mz > 0` ⇒ tracción en fibras con `y < 0` (equivalente a sagging en el plano xy con `+y=arriba`).

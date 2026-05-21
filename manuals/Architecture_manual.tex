@@ -262,7 +262,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   {\title Capa de salida} \hfill \texttt{solidum/utils/vtk\_exporter.py} + \texttt{solidum.results}\\
   Exporta $\mathbf U$, $\sigma$ y \texttt{PRIMARY\_STATE\_VAR} en
   formato VTK. \texttt{SolveResult} expone $\mathbf U$,
-  $\mathbf F_\text{aplicada}$ y los esfuerzos internos por elemento
+  $\mathbf F_\text{aplicada}$ y las fuerzas internas por elemento
   como interfaz pública para consumidores externos.
 };
 
@@ -288,7 +288,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 \textbf{Capa numérica.} Concentra los componentes propios de la mecánica computacional: ensamblaje de matrices dispersas, cuadraturas de integración, estrategia de paso (lineal, no lineal incremental, longitud de arco) y el subsistema algebraico que resuelve los sistemas lineales que aparecen dentro de cada iteración.
 
-\textbf{Capa de salida.} Provee dos productos. Por un lado, \texttt{VtkExporter} para visualización en programas compatibles con VTK (ParaView). Por otro, \texttt{SolveResult} con los desplazamientos, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento, concebido para consumidores externos como FenixBAR (\hyperref[adr:0002]{ADR 0002}).
+\textbf{Capa de salida.} Provee dos productos. Por un lado, \texttt{VtkExporter} para visualización en programas compatibles con VTK (ParaView). Por otro, \texttt{SolveResult} con los desplazamientos, las cargas aplicadas, las reacciones y las fuerzas internas por elemento, concebido para consumidores externos como FenixBAR (\hyperref[adr:0002]{ADR 0002}).
 
 \section{Justificación de la separación}
 
@@ -336,7 +336,7 @@ Tras la convergencia de un paso, el solver invoca \texttt{commit\_state()} sobre
 
 \section{6. Salida}
 
-A la finalización del solver, el objeto \texttt{Domain} construye un \texttt{SolveResult} inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento en la convención de signos del proyecto. Este \texttt{SolveResult} constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, \textit{scripts} de post-proceso). De forma paralela, el módulo \texttt{VtkExporter} escribe un archivo VTK con los desplazamientos, las tensiones y la variable principal del material declarada por cada material mediante el atributo \texttt{PRIMARY\_STATE\_VAR}.
+A la finalización del solver, el objeto \texttt{Domain} construye un \texttt{SolveResult} inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y las fuerzas internas por elemento en la convención de signos del proyecto. Este \texttt{SolveResult} constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, \textit{scripts} de post-proceso). De forma paralela, el módulo \texttt{VtkExporter} escribe un archivo VTK con los desplazamientos, los esfuerzos y la variable principal del material declarada por cada material mediante el atributo \texttt{PRIMARY\_STATE\_VAR}.
 
 \section{Visión sintética}
 
@@ -390,7 +390,7 @@ El estado del programa por familia se presenta a continuación en forma de \text
 
 \subsection{Familia armadura (truss)}
 
-Elemento articulado que transmite exclusivamente esfuerzo axial. Material consumido: 1D escalar (\texttt{Elastic1D}, \texttt{Elastoplastic1D}, \texttt{IsotropicDamage1D}).
+Elemento articulado que transmite exclusivamente fuerza axial. Material consumido: 1D escalar (\texttt{Elastic1D}, \texttt{Elastoplastic1D}, \texttt{IsotropicDamage1D}).
 
 \textbf{Primer orden (interpolación lineal, dos nodos)}
 
@@ -552,7 +552,7 @@ Cuadrilátero lagrangiano $Q_2$ (9 nodos) & \ensuremath{\checkmark} \texttt{Quad
 
 \subsection{Contrato común y convención de signos}
 
-Todos los elementos tipo armadura, cable o marco implementan el contrato \texttt{internal\_forces(U)} y devuelven los esfuerzos en la convención de signos del proyecto (\hyperref[adr:0002]{ADR 0002}).
+Todos los elementos tipo armadura, cable o marco implementan el contrato \texttt{internal\_forces(U)} y devuelven las fuerzas internas (N, V, M, T) en la convención de signos del proyecto (\hyperref[adr:0002]{ADR 0002}).
 
 \section{Solvers no lineales}
 
@@ -724,20 +724,20 @@ La convención de signos es única para el conjunto del proyecto y de aplicació
 
 \textbf{Estática 3D.} Aplicación de la RHR a todos los ejes (locales y globales) y a todos los momentos (\texttt{Mx}, \texttt{My}, \texttt{Mz}, \texttt{T}).
 
-\section{Esfuerzos internos en 2D --- convención de viga estructural}
+\section{Fuerzas internas en 2D --- convención de viga estructural}
 
-Sobre un elemento diferencial, con \texttt{N} positivo en tracción, \texttt{V} positivo cuando tiende a rotar el diferencial en sentido horario y \texttt{M} positivo en flexión sagitada (tracción en la fibra inferior con \texttt{+y} hacia arriba):
+\texttt{N}, \texttt{V}, \texttt{M} son \textbf{fuerzas internas} (resultantes integradas del tensor de esfuerzos $\sigma$ sobre la sección), no esfuerzos. Sobre un elemento diferencial, con \texttt{N} positivo en tracción, \texttt{V} positivo cuando tiende a rotar el diferencial en sentido horario y \texttt{M} positivo en flexión sagitada (tracción en la fibra inferior con \texttt{+y} hacia arriba):
 
 \begin{itemize}
   \item \textit{Cara izquierda} (normal saliente en \texttt{−x}): \texttt{N} apunta en \texttt{−x}, \texttt{V} apunta en \texttt{+y}, \texttt{M} actúa en sentido horario.
   \item \textit{Cara derecha} (normal saliente en \texttt{+x}): \texttt{N} apunta en \texttt{+x}, \texttt{V} apunta en \texttt{−y}, \texttt{M} actúa en sentido antihorario.
 \end{itemize}
 
-Esta es la convención clásica de los diagramas de esfuerzos en vigas.
+Esta es la convención clásica de los diagramas de fuerzas internas en vigas.
 
-\section{Esfuerzos internos en 3D --- convención de resultantes de tensión bajo RHR}
+\section{Fuerzas internas en 3D --- convención de resultantes de esfuerzo bajo RHR}
 
-En la cara con normal saliente \texttt{+x\_local}, los esfuerzos positivos se definen como:
+En la cara con normal saliente \texttt{+x\_local}, las fuerzas internas positivas se definen como:
 
 \begin{itemize}
   \item \texttt{N} en \texttt{+x\_local} (tracción positiva).
@@ -747,7 +747,7 @@ En la cara con normal saliente \texttt{+x\_local}, los esfuerzos positivos se de
 
 En la cara con normal saliente \texttt{−x\_local}, todos los sentidos se invierten (tercera ley de Newton).
 
-Justificación: esta es la convención que resulta de integrar directamente el tensor de tensiones sobre la sección. Es la adoptada por Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS y Abaqus para vigas 3D. La convención estructural de "flexión sagitada positiva" no admite extensión canónica a 3D y se utiliza únicamente en 2D.
+Justificación: esta es la convención que resulta de integrar directamente el tensor de esfuerzos sobre la sección. Es la adoptada por Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS y Abaqus para vigas 3D. La convención estructural de "flexión sagitada positiva" no admite extensión canónica a 3D y se utiliza únicamente en 2D.
 
 Convención de fibra para los flectores en 3D, consecuencia directa del signo:
 
@@ -758,9 +758,9 @@ Convención de fibra para los flectores en 3D, consecuencia directa del signo:
 
 \section{Capa interna y capa pública}
 
-Internamente, todos los elementos (2D y 3D) operan en la convención de resultantes de tensión bajo RHR. Las matrices \texttt{B}, las fuerzas internas \texttt{f\_int = \ensuremath{\int}B\ensuremath{^{\top}}\ensuremath{\sigma} d\ensuremath{\Omega}}, los jacobianos y los residuos se calculan en dicha convención. Esta uniformidad evita signos especiales por dimensión dentro del código de formulación.
+Internamente, todos los elementos (2D y 3D) operan en la convención de resultantes de esfuerzo bajo RHR. Las matrices \texttt{B}, las fuerzas internas \texttt{f\_int = \ensuremath{\int}B\ensuremath{^{\top}}\ensuremath{\sigma} d\ensuremath{\Omega}}, los jacobianos y los residuos se calculan en dicha convención. Esta uniformidad evita signos especiales por dimensión dentro del código de formulación.
 
-En la interfaz pública (\texttt{internal\_forces}, diagramas, catálogo), los elementos 3D la exponen sin transformación. Los elementos 2D, en cambio, exponen la convención de viga estructural (\texttt{V} con signo opuesto al interno) por ser la representación clásica en los diagramas de esfuerzos. La traducción consiste en un simple cambio de signo en \texttt{V}, aplicado dentro del método \texttt{internal\_forces()} del elemento 2D.
+En la interfaz pública (\texttt{internal\_forces}, diagramas, catálogo), los elementos 3D la exponen sin transformación. Los elementos 2D, en cambio, exponen la convención de viga estructural (\texttt{V} con signo opuesto al interno) por ser la representación clásica en los diagramas de fuerzas internas. La traducción consiste en un simple cambio de signo en \texttt{V}, aplicado dentro del método \texttt{internal\_forces()} del elemento 2D.
 
 Relación 2D \ensuremath{\leftrightarrow} 3D en la interfaz pública:
 
@@ -861,17 +861,17 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 
 \textbf{Fecha}: 22 de abril de 2026. \textbf{Estado}: aceptado.
 
-\textbf{Contexto.} Solidum FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y los esfuerzos internos carecían de método público homogéneo.
+\textbf{Contexto.} Solidum FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de fuerzas internas sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y las fuerzas internas carecían de método público homogéneo.
 
 \textbf{Decisión.} Interfaz pública estructurada en tres niveles:
 
 \begin{enumerate}
-  \item \textit{Contrato por elemento.} Todos los elementos tipo armadura, cable o marco implementan \texttt{internal\_forces(U) -> ElementForces}, que devuelve los esfuerzos en ejes locales con claves homogéneas por familia (\texttt{\{N\}} para armadura y cable; \texttt{\{N, V, M\}} para marco 2D; \texttt{\{N, Vy, Vz, T, My, Mz\}} para marco 3D). La convención de signos es la del proyecto (capítulo anterior).
-  \item \textit{Agregado en \texttt{Domain}.} El objeto \texttt{SolveResult} se calcula de forma anticipada al final de \texttt{solver.solve()} y es inmutable. Expone los desplazamientos globales, las cargas aplicadas, las reacciones y un diccionario de esfuerzos internos por elemento.
+  \item \textit{Contrato por elemento.} Todos los elementos tipo armadura, cable o marco implementan \texttt{internal\_forces(U) -> ElementForces}, que devuelve las fuerzas internas en ejes locales con claves homogéneas por familia (\texttt{\{N\}} para armadura y cable; \texttt{\{N, V, M\}} para marco 2D; \texttt{\{N, Vy, Vz, T, My, Mz\}} para marco 3D). La convención de signos es la del proyecto (capítulo anterior).
+  \item \textit{Agregado en \texttt{Domain}.} El objeto \texttt{SolveResult} se calcula de forma anticipada al final de \texttt{solver.solve()} y es inmutable. Expone los desplazamientos globales, las cargas aplicadas, las reacciones y un diccionario de fuerzas internas por elemento.
   \item \textit{Puntos de entrada oficiales.} Las funciones \texttt{solidum.run(case)} y \texttt{solidum.run\_yaml(path)} devuelven directamente un \texttt{SolveResult}. Cualquier consumidor externo opera contra esta interfaz.
 \end{enumerate}
 
-\textbf{Consecuencia.} El consumidor externo no recalcula esfuerzos a partir de \texttt{U}; la lógica de MEF reside íntegramente en Solidum FEM. La incorporación de un elemento nuevo obliga a implementar \texttt{internal\_forces} con las claves de su familia: el contrato es explícito.
+\textbf{Consecuencia.} El consumidor externo no recalcula las fuerzas internas a partir de \texttt{U}; la lógica de MEF reside íntegramente en Solidum FEM. La incorporación de un elemento nuevo obliga a implementar \texttt{internal\_forces} con las claves de su familia: el contrato es explícito.
 
 \section{ADR 0003 --- Despachador de algoritmo algebraico}
 \label{adr:0003}
@@ -1376,7 +1376,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Retorno radial (return mapping)}. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si la tensión predictora lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
 
-\textbf{\texttt{SolveResult}}. Agregado inmutable que el \texttt{Domain} construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento. Es la interfaz pública para consumidores externos. Ver \hyperref[adr:0002]{ADR 0002}.
+\textbf{\texttt{SolveResult}}. Agregado inmutable que el \texttt{Domain} construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y las fuerzas internas (N, V, M, T) por elemento. Es la interfaz pública para consumidores externos. Ver \hyperref[adr:0002]{ADR 0002}.
 
 \textbf{Solver no lineal}. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En Solidum FEM están implementados \texttt{LinearSolver}, \texttt{NonlinearSolver} y \texttt{ArcLengthSolver}. Es nivel estratégico, distinto del subsistema algebraico. Ver \hyperref[cap:4]{capítulo 4}.
 
@@ -1554,8 +1554,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 19 de mayo de 2026, 18:46\\[0.5em]
-Commit Git: \texttt{71e4602} (con cambios sin confirmar)\\[1em]
+Compilado el 20 de mayo de 2026, 18:38\\[0.5em]
+Commit Git: \texttt{32ab801} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

@@ -36,7 +36,7 @@ El estado del programa por familia se presenta a continuación en forma de **mat
 
 ### Familia armadura (truss)
 
-Elemento articulado que transmite exclusivamente esfuerzo axial. Material consumido: 1D escalar (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`).
+Elemento articulado que transmite exclusivamente fuerza axial. Material consumido: 1D escalar (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`).
 
 **Primer orden (interpolación lineal, dos nodos)**
 
@@ -142,7 +142,7 @@ La columna de no linealidad geométrica se omite en esta familia: los elementos 
 
 ### Contrato común y convención de signos
 
-Todos los elementos tipo armadura, cable o marco implementan el contrato `internal_forces(U)` y devuelven los esfuerzos en la convención de signos del proyecto (ADR 0002).
+Todos los elementos tipo armadura, cable o marco implementan el contrato `internal_forces(U)` y devuelven las fuerzas internas (N, V, M, T) en la convención de signos del proyecto (ADR 0002).
 
 ## Solvers no lineales
 

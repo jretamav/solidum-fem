@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite únicamente esfuerzo axial. Aproximación $C^0$ del desplazamiento. Régimen estrictamente de **linealidad geométrica**: pequeños desplazamientos, pequeñas rotaciones, pequeñas deformaciones.
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite únicamente fuerza axial. Aproximación $C^0$ del desplazamiento. Régimen estrictamente de **linealidad geométrica**: pequeños desplazamientos, pequeñas rotaciones, pequeñas deformaciones.
 
 ### 1. Cinemática de desplazamientos
 Interpolación lineal del desplazamiento axial a lo largo del eje $s \in [0, L]$:

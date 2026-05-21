@@ -5,13 +5,13 @@
 
 ## Contexto
 
-Solidum FEM se empieza a consumir desde una GUI externa (FenixBAR, análisis estructural con elementos barra). FenixBAR necesita, tras una solución, información suficiente para visualizar posproceso estándar de CAE: deformada escalada, reacciones en apoyos y diagramas de esfuerzos internos (N, V, M, y en 3D también T, My, Mz) sobre cada barra.
+Solidum FEM se empieza a consumir desde una GUI externa (FenixBAR, análisis estructural con elementos barra). FenixBAR necesita, tras una solución, información suficiente para visualizar posproceso estándar de CAE: deformada escalada, reacciones en apoyos y diagramas de fuerzas internas (N, V, M, y en 3D también T, My, Mz) sobre cada barra.
 
 Hoy esa información no está expuesta de forma uniforme:
 
 - El único "runner" es el script de ejemplo `examples/ejecutar_yaml.py`; no hay entrypoint oficial.
-- `VtkExporter` solo maneja `Quad4`, `Tri3`, `Truss2D`, `Truss3D` (estos últimos como celdas `line` sin esfuerzos). `Frame2DEuler`, `Frame2DEulerCorot`, `Frame2DTimoshenko`, `Frame3D`, `Cable2DCorot`, `Cable3DCorot` no se exportan. `displacements` solo escribe `ux`/`uy` (sin `uz` ni rotaciones). _(Cerrado 2026-05-04: el exportador acepta cualquier elemento de 2 nodos como celda `line`, escribe desplazamientos 3D y rotaciones nodales cuando hay DOFs rotacionales; los esfuerzos internos N/V/M de barras siguen consumiéndose vía `SolveResult.element_forces`, no por VTK.)_
-- Cada tipo de elemento conoce su formulación cinemática y constitutiva (Euler vs Timoshenko, corotacional vs lineal, ejes locales en 3D, tracción-sólo en cables), pero no ofrece método público homogéneo para devolver esfuerzos internos dado un `U`.
+- `VtkExporter` solo maneja `Quad4`, `Tri3`, `Truss2D`, `Truss3D` (estos últimos como celdas `line` sin campos σ). `Frame2DEuler`, `Frame2DEulerCorot`, `Frame2DTimoshenko`, `Frame3D`, `Cable2DCorot`, `Cable3DCorot` no se exportan. `displacements` solo escribe `ux`/`uy` (sin `uz` ni rotaciones). _(Cerrado 2026-05-04: el exportador acepta cualquier elemento de 2 nodos como celda `line`, escribe desplazamientos 3D y rotaciones nodales cuando hay DOFs rotacionales; las fuerzas internas N/V/M de barras siguen consumiéndose vía `SolveResult.element_forces`, no por VTK.)_
+- Cada tipo de elemento conoce su formulación cinemática y constitutiva (Euler vs Timoshenko, corotacional vs lineal, ejes locales en 3D, tracción-sólo en cables), pero no ofrece método público homogéneo para devolver fuerzas internas dado un `U`.
 
 Alternativa descartada: que el consumidor calcule N/V/M desde `U`. Duplicaría la formulación fuera del repo que la define, con riesgo de divergencia en cada elemento nuevo. Contrario al principio de que la lógica FEM vive en Solidum FEM.
 
@@ -25,7 +25,7 @@ Todos los elementos barra/viga exponen:
 
 ```python
 def internal_forces(self, U: np.ndarray) -> ElementForces:
-    """Esfuerzos internos en ejes locales, en los dos nodos i, j.
+    """Fuerzas internas en ejes locales, en los dos nodos i, j.
 
     Respeta las convenciones de signos de Reglas.md §5.
     Para corotacionales, usa el state ya comprometido tras solve().

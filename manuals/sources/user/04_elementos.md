@@ -6,7 +6,7 @@ El motor expone dos familias de elementos: **1D** (estructuras reticulares: arma
 
 ### Armaduras: `Truss2D` / `Truss2DCorot` / `Truss3D` / `Truss3DCorot`
 
-Barra biarticulada que transmite exclusivamente esfuerzo axial. Cuatro variantes según dimensión y régimen geométrico:
+Barra biarticulada que transmite exclusivamente fuerza axial. Cuatro variantes según dimensión y régimen geométrico:
 
 [TABLA: Familia de armaduras.]
 | Elemento | DOFs/nodo | Dimensión | Régimen geom. | Uso |
@@ -31,7 +31,7 @@ elements:
 
 ### Cables: `Cable2DCorot` / `Cable3DCorot`
 
-Elemento 1D que transmite *únicamente* esfuerzo de tensión (no resiste compresión). La unilateralidad la aporta el material (típicamente `CableMaterial1D`, ver capítulo *Catálogo de Modelos Constitutivos*); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
+Elemento 1D que transmite *únicamente* fuerza axial de tensión (no resiste compresión). La unilateralidad la aporta el material (típicamente `CableMaterial1D`, ver capítulo *Catálogo de Modelos Constitutivos*); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
 
 - **DOFs/nodo**: `ux, uy` (2D); `ux, uy, uz` (3D).
 - **Parámetros**: `A`.

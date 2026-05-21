@@ -32,7 +32,7 @@ Tras la convergencia de un paso, el solver invoca `commit_state()` sobre cada el
 
 ## 6. Salida
 
-A la finalización del solver, el objeto `Domain` construye un `SolveResult` inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento en la convención de signos del proyecto. Este `SolveResult` constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, *scripts* de post-proceso). De forma paralela, el módulo `VtkExporter` escribe un archivo VTK con los desplazamientos, las tensiones y la variable principal del material declarada por cada material mediante el atributo `PRIMARY_STATE_VAR`.
+A la finalización del solver, el objeto `Domain` construye un `SolveResult` inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y las fuerzas internas por elemento en la convención de signos del proyecto. Este `SolveResult` constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, *scripts* de post-proceso). De forma paralela, el módulo `VtkExporter` escribe un archivo VTK con los desplazamientos, los esfuerzos y la variable principal del material declarada por cada material mediante el atributo `PRIMARY_STATE_VAR`.
 
 ## Visión sintética
 

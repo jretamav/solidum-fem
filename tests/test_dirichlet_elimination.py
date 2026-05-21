@@ -4,8 +4,8 @@ Cubre los tres criterios de aceptación añadidos al ADR:
 
 1. **Asentamiento prescrito**: viga simplemente apoyada con descenso impuesto
    en un apoyo. La solución analítica de Bernoulli-Euler para un cuerpo rígido
-   girando da rotación constante y desplazamiento lineal — sin esfuerzos
-   internos, sin reacciones espurias.
+   girando da rotación constante y desplazamiento lineal — sin fuerzas
+   internas, sin reacciones espurias.
 
 2. **Simetría de K_red**: tras la reducción, ``K_red − K_redᵀ`` ≈ 0 a
    redondeo cuando ``K`` es simétrica (lo es para los elementos del catálogo).
@@ -101,10 +101,10 @@ class TestPrescribedSettlement(unittest.TestCase):
     Solución analítica: rotación rígida de la viga alrededor del apoyo izquierdo.
     El nodo derecho desciende ``δ``, ambos giros valen ``θ = δ / L`` (con signo
     según convención Reglas.md §5: nodo izquierdo gira en sentido anti-horario
-    si δ < 0). Esfuerzos internos y reacciones nulos a redondeo.
+    si δ < 0). Fuerzas internas y reacciones nulas a redondeo.
     """
 
-    def test_asentamiento_unitario_no_genera_esfuerzos(self):
+    def test_asentamiento_unitario_no_genera_fuerzas_internas(self):
         delta = -0.1  # asentamiento descendente del apoyo derecho
         L = 2.0
         domain = _build_simply_supported_beam(settlement_at_right=delta)
@@ -125,13 +125,13 @@ class TestPrescribedSettlement(unittest.TestCase):
         self.assertAlmostEqual(U[n2.dofs['rz']], theta_expected, places=10)
 
         # Sin carga externa y sin deformación: reacciones cero a redondeo.
-        # (La viga rota como sólido rígido, no se generan tensiones.)
+        # (La viga rota como sólido rígido, no se desarrollan esfuerzos.)
         for node_id in (1, 2):
             for dof_name, val in result.reactions_by_node.get(node_id, {}).items():
                 self.assertAlmostEqual(val, 0.0, places=8,
                                        msg=f"R[{node_id}][{dof_name}] = {val}")
 
-        # Esfuerzos internos: cero a redondeo.
+        # Fuerzas internas: cero a redondeo.
         ef = result.element_forces[1]
         np.testing.assert_allclose(ef.components['N'], 0.0, atol=1e-10)
         np.testing.assert_allclose(ef.components['V'], 0.0, atol=1e-10)

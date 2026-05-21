@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Elemento 1D inmerso en el plano 2D que modela una **viga** según la teoría de **Timoshenko**. Dos nodos rígidamente conectados, 3 DOFs por nodo ($u_x, u_y, r_z$). Transmite **esfuerzo axial**, **cortante transverso** y **momento flector**. Incluye explícitamente la **deformación por cortante transversal**. Régimen de **linealidad geométrica** (pequeños desplazamientos y rotaciones).
+Elemento 1D inmerso en el plano 2D que modela una **viga** según la teoría de **Timoshenko**. Dos nodos rígidamente conectados, 3 DOFs por nodo ($u_x, u_y, r_z$). Transmite **fuerza axial**, **cortante transverso** y **momento flector**. Incluye explícitamente la **deformación por cortante transversal**. Régimen de **linealidad geométrica** (pequeños desplazamientos y rotaciones).
 
 ### 1. Hipótesis cinemática de Timoshenko
 - Las secciones transversales se mantienen **planas** tras la deformación (igual que Euler-Bernoulli).

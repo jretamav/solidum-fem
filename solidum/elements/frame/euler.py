@@ -23,7 +23,7 @@ class Frame2DEuler(Element):
     """Marco/viga 2D basado en Euler-Bernoulli.
 
     Dos nodos rígidamente conectados, 3 DOFs por nodo (ux, uy, rz). Transmite
-    esfuerzo axial, cortante y momento flector. Régimen de linealidad
+    fuerza axial, cortante y momento flector. Régimen de linealidad
     geométrica y régimen de validez Euler-Bernoulli (vigas esbeltas,
     L/h ≳ 10).
 

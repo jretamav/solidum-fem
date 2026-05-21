@@ -1,4 +1,4 @@
-"""Tipo `ElementForces` — esfuerzos internos de un elemento estructural 1D en ejes locales.
+"""Tipo `ElementForces` — fuerzas internas (N, V, M, T) de un elemento estructural 1D en ejes locales.
 
 Vive en ``solidum.core`` porque es parte del contrato de :class:`Element`
 (ADR 0002): cada subclase de elemento **estructural 1D** (truss, cable,
@@ -7,9 +7,14 @@ frame 2D/3D) devuelve un :class:`ElementForces` desde
 evita que ``core/element.py`` importe la capa de resultados (capa más
 alta), preservando la jerarquía conceptual ``core → ... → results``.
 
+Nota terminológica: ``N``, ``V``, ``M``, ``T`` son **fuerzas internas**
+(resultantes integradas del tensor de esfuerzos $\\sigma$ sobre la
+sección), no esfuerzos. El término "esfuerzo" se reserva para el campo
+tensorial $\\sigma(x)$ por unidad de área.
+
 **Dominio de aplicación (ADR 0012)**: este contrato aplica **solo a
 elementos estructurales 1D**. Los sólidos (2D y 3D) **no** lo exponen:
-en un continuo el equivalente de "esfuerzo seccional" es el campo
+en un continuo el equivalente de "fuerza interna seccional" es el campo
 tensorial ``σ(x)``, accesible vía
 :meth:`Element.compute_gauss_state(U)` (devuelve ``{stress, strain,
 points_natural, points_global}`` por punto de integración). Convertir
@@ -45,7 +50,7 @@ _VALID_COMPONENTS: dict[ElementKind, frozenset[str]] = {
 
 @dataclass(frozen=True)
 class ElementForces:
-    """Esfuerzos internos en ejes locales, evaluados en los nodos i, j.
+    """Fuerzas internas en ejes locales, evaluadas en los nodos i, j.
 
     Inmutable (shallow): ``frozen=True`` impide reasignar atributos; los
     arrays NumPy interiores siguen siendo mutables por contenido. Tratar

@@ -75,7 +75,7 @@ class TestTransientResultInternalForcesHistory(unittest.TestCase):
     contrato ADR 0002 (regresión auditoría H-1.3).
 
     Caso de validación: oscilador 1 GDL no amortiguado con material
-    elástico lineal. El esfuerzo axial en cada paso ``k`` debe coincidir
+    elástico lineal. La fuerza axial en cada paso ``k`` debe coincidir
     con ``E·A·(u_2(t_k) − u_1(t_k))/L``, y la trayectoria de la fuerza
     axial debe replicar la del desplazamiento del DOF libre porque la
     relación es lineal y los apoyos son fijos.

@@ -14,7 +14,7 @@ class Truss2D(Element):
     """
     Elemento de armadura 2D, primer orden, formulación lineal infinitesimal.
 
-    Barra articulada que transmite únicamente esfuerzo axial. Régimen válido:
+    Barra articulada que transmite únicamente fuerza axial. Régimen válido:
     pequeños desplazamientos, pequeñas rotaciones, |ε| ≲ 1e-2. Para grandes
     rotaciones con pequeña deformación usar Truss2DCorot.
 
@@ -77,7 +77,7 @@ class Truss2D(Element):
     def internal_forces(self, U_global: np.ndarray) -> ElementForces:
         """API pública (ADR 0002): N en ejes locales, tracción positiva (§5).
 
-        El truss transmite solo esfuerzo axial uniforme a lo largo del elemento,
+        El truss transmite solo fuerza axial uniforme a lo largo del elemento,
         por lo que el valor en i y j es el mismo.
         """
         N = self.compute_internal_forces(U_global)['axial_force']
@@ -203,7 +203,7 @@ class Truss3D(Element):
     """
     Elemento de armadura 3D, primer orden, formulación lineal infinitesimal.
 
-    Barra articulada en el espacio que transmite únicamente esfuerzo axial.
+    Barra articulada en el espacio que transmite únicamente fuerza axial.
     Dos nodos, tres DOFs de desplazamiento por nodo. Régimen válido: pequeños
     desplazamientos, pequeñas rotaciones, |ε| ≲ 1e-2. La configuración de
     referencia es fija; no existe variante corotacional en este elemento.

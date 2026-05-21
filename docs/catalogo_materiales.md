@@ -101,7 +101,7 @@
 - **Parámetros**: `E`, `sigma_y` (fluencia inicial), `H` (módulo de endurecimiento; 0 = perfectamente plástico).
 - **Variables internas**: `eps_p` (deformación plástica), `alpha` (acumulada equivalente).
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = σ_y + H · α` — fluencia corriente (adaptativa al endurecimiento). El check `f ≤ atol + rtol · escala` se hace contra la superficie de fluencia *en el estado de entrada del paso*.
-- **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko` (en estos últimos solo se aplica al esfuerzo axial).
+- **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko` (en estos últimos solo se aplica al esfuerzo axial $\sigma$).
 - **Referencia**: Simo & Hughes, *Computational Inelasticity*, cap. 1.
 - **Spec**: [docs/specs/Elastoplastic1D.md](specs/Elastoplastic1D.md)
 - **Archivo**: [solidum/materials/plastic_1d.py](solidum/materials/plastic_1d.py)

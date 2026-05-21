@@ -8,7 +8,7 @@
 
 ## Truss2D — barra axial 2D
 
-Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos; transmite exclusivamente esfuerzo axial.
+Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos; transmite exclusivamente fuerza axial.
 
 ### Cinemática
 - Interpolación lineal del desplazamiento entre los dos nodos.
@@ -83,7 +83,7 @@ F_int = N · d
 
 ## Truss3D — barra axial 3D
 
-Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite exclusivamente esfuerzo axial. Régimen estrictamente de **linealidad geométrica**.
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite exclusivamente fuerza axial. Régimen estrictamente de **linealidad geométrica**.
 
 ### Cinemática
 - Interpolación lineal del desplazamiento entre los dos nodos.

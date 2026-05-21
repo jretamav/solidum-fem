@@ -600,7 +600,7 @@ El motor expone dos familias de elementos: \textbf{1D} (estructuras reticulares:
 
 \subsection{Armaduras: \texttt{Truss2D} / \texttt{Truss2DCorot} / \texttt{Truss3D} / \texttt{Truss3DCorot}}
 
-Barra biarticulada que transmite exclusivamente esfuerzo axial. Cuatro variantes según dimensión y régimen geométrico:
+Barra biarticulada que transmite exclusivamente fuerza axial. Cuatro variantes según dimensión y régimen geométrico:
 
 \begin{table}[h]
 \centering
@@ -632,7 +632,7 @@ elements:
 
 \subsection{Cables: \texttt{Cable2DCorot} / \texttt{Cable3DCorot}}
 
-Elemento 1D que transmite \textit{únicamente} esfuerzo de tensión (no resiste compresión). La unilateralidad la aporta el material (típicamente \texttt{CableMaterial1D}, ver capítulo \textit{Catálogo de Modelos Constitutivos}); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
+Elemento 1D que transmite \textit{únicamente} fuerza axial de tensión (no resiste compresión). La unilateralidad la aporta el material (típicamente \texttt{CableMaterial1D}, ver capítulo \textit{Catálogo de Modelos Constitutivos}); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
 
 \begin{itemize}
   \item \textbf{DOFs/nodo}: \texttt{ux, uy} (2D); \texttt{ux, uy, uz} (3D).
@@ -1725,8 +1725,8 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 19 de mayo de 2026, 18:45\\[0.5em]
-Commit Git: \texttt{71e4602} (con cambios sin confirmar)\\[1em]
+Compilado el 20 de mayo de 2026, 18:38\\[0.5em]
+Commit Git: \texttt{32ab801} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

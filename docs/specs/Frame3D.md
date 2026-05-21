@@ -9,7 +9,7 @@
 ### 0. Descripción general
 Elemento 1D inmerso en el espacio tridimensional que modela una **viga esbelta 3D**. Dos nodos rígidamente conectados, 6 DOFs por nodo ($u_x, u_y, u_z, r_x, r_y, r_z$). Captura seis acciones internas:
 
-- **Axial** (esfuerzo normal $N$ a lo largo del eje local $x$).
+- **Axial** (fuerza normal $N$ a lo largo del eje local $x$).
 - **Cortante en dos planos** ($V_y$ en el plano $xy$, $V_z$ en el plano $xz$).
 - **Flexión en dos planos** ($M_z$ alrededor del eje local $z$, $M_y$ alrededor del eje local $y$).
 - **Torsión** ($M_x$ alrededor del eje longitudinal).
@@ -194,7 +194,7 @@ references:
   - La matriz $\boldsymbol{\lambda}$ 3×3 se construye como $[\hat{\mathbf x}^\top; \hat{\mathbf y}^\top; \hat{\mathbf z}^\top]$ — las filas son los ejes locales expresados en coordenadas globales. $\mathbf T$ 12×12 es un `blkdiag` de cuatro copias de $\boldsymbol{\lambda}$ (traslaciones y rotaciones transforman como vectores en 3D infinitesimal).
   - El default de `ref_vector` es `[0, 0, 1]`; el fallback `[1, 0, 0]` se activa cuando $|\hat{\mathbf x} \cdot \hat{\mathbf z}_{\text{global}}| > 0.99$ (barra cercanamente vertical). Ambas rutas emiten advertencia por consola la primera vez que se usan con default.
   - La matriz $\mathbf K_{\text{local}}$ se construye rellenando entradas no nulas en sus 4 bloques desacoplados (axial, torsión, flexión $xy$, flexión $xz$). Los signos de la flexión $xz$ están invertidos respecto a la flexión $xy$ porque la pareja $(u_z, r_y)$ tiene orientación dextrógira opuesta a $(u_y, r_z)$: este punto se verifica explícitamente en `test_acceptance_flexion_xz`.
-  - `compute_internal_forces` devuelve cortantes, torsión y momentos en ambos extremos separados — útil para post-proceso estructural (diagramas de esfuerzos).
+  - `compute_internal_forces` devuelve cortantes, torsión y momentos en ambos extremos separados — útil para post-proceso estructural (diagramas de fuerzas internas).
 
 ---
 

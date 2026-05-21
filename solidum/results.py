@@ -4,8 +4,9 @@ Contiene los tipos de dato que exponen los resultados al exterior. Todos son
 ``frozen`` para impedir que un consumidor mute resultados y sorprenda a otro
 posterior:
 
-- :class:`ElementForces`: esfuerzos internos en ejes locales de un elemento, en
-  los nodos i, j. Convenciones de signo definidas en ``Reglas.md §5``.
+- :class:`ElementForces`: fuerzas internas (N, V, M, T) en ejes locales de un
+  elemento estructural 1D, evaluadas en los nodos i, j. Convenciones de signo
+  definidas en ``Reglas.md §5``.
 - :class:`SolveResult`: agregado de un análisis estático — desplazamientos,
   reacciones, fuerzas internas. Producido por ``LinearSolver``,
   ``NonlinearSolver``, ``ArcLengthSolver``.
@@ -163,7 +164,7 @@ class TransientResult:
     def internal_forces_history(
         self, domain: "Domain",
     ) -> dict[int, list["ElementForces"]]:
-        """Esfuerzos internos por paso temporal para cada elemento (lazy).
+        """Fuerzas internas (N, V, M, T) por paso temporal para cada elemento (lazy).
 
         Para cada ``elem_id`` con ``internal_forces`` implementado (contrato
         ADR 0002 — barras/vigas/cables 2D y 3D), devuelve la lista de
@@ -181,7 +182,7 @@ class TransientResult:
         Notes
         -----
         Cierra la asimetría arquitectural detectada en la auditoría H-1.3:
-        ``SolveResult.element_forces`` exponía los esfuerzos estáticos pero
+        ``SolveResult.element_forces`` exponía las fuerzas internas estáticas pero
         ``TransientResult`` exigía al consumidor reconstruirlos manualmente.
 
         **Limitación conocida — elementos corotacionales**: la cinemática
@@ -190,7 +191,7 @@ class TransientResult:
         análisis, el ``state`` del elemento queda en la configuración del
         último paso. Llamar ``internal_forces(u_history[:, k])`` con ``k``
         intermedio reusa ese ``state`` final, no el contemporáneo a
-        ``u_history[:, k]`` — los esfuerzos en pasos anteriores serán
+        ``u_history[:, k]`` — las fuerzas internas en pasos anteriores serán
         incorrectos para corotacionales. Para elementos geométricamente
         lineales (``Truss2D`` no-corot, ``Frame2DEuler``, ``Frame3D``,
         ``Frame2DTimoshenko``) el método es exacto en cualquier paso
@@ -375,7 +376,7 @@ class SolveResult:
         Vista ``{node_id: {dof_name: valor}}`` filtrada a nodos con al menos un
         DOF restringido.
     element_forces
-        ``{elem_id: ElementForces}`` con los esfuerzos internos de cada elemento
+        ``{elem_id: ElementForces}`` con las fuerzas internas de cada elemento
         que implementa ``internal_forces``. Elementos sólidos pueden omitirse.
     converged
         ``True`` si el solver alcanzó el criterio de convergencia. Para solvers

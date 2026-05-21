@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Barra articulada 2D equivalente a `Truss2D` pero en régimen de **grandes desplazamientos y rotaciones** con **pequeña deformación axial**. La cinemática se actualiza en configuración corriente (corotacional / Updated Lagrangian): el eje de la barra gira con el movimiento y la deformación se mide sobre la longitud actual. Rigidez tangente = rigidez material + rigidez geométrica debida al esfuerzo axial.
+Barra articulada 2D equivalente a `Truss2D` pero en régimen de **grandes desplazamientos y rotaciones** con **pequeña deformación axial**. La cinemática se actualiza en configuración corriente (corotacional / Updated Lagrangian): el eje de la barra gira con el movimiento y la deformación se mide sobre la longitud actual. Rigidez tangente = rigidez material + rigidez geométrica debida a la fuerza axial.
 
 ### 1. Cinemática
 Configuraciones:
