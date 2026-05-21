@@ -10,13 +10,13 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 804 pasan / 5 skipped / 0 fallos (+54 vs 750 baseline, +20 subtests) — **Etapa 7 cerrada 2026-05-19** (ADR 0012, sólidos 3D acotados a Hex8 + Tet4 + Elastic3D): 31 unitarios (`tests/test_solid_3d.py`), 10 modos rígidos (`tests/test_rigid_body_modes.py`), 3 validación cubo Lamé 3D + 2 MacNeal 3D (`tests/validation/`), 2 locking volumétrico 3D blindado. La campaña de validación externa anterior (Tandas 1-14, 181 tests) sigue verde. |
-| **Elementos** | 18 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida + **2 sólidos 3D**) |
-| **Materiales** | 10 (9 continuos + 1 cohesivo traction-jump) |
+| **Tests** | 877 pasan / 5 skipped / 0 fallos (+73 vs 804 baseline post-Etapa-7). **Sub-etapa A.bis cerrada 2026-05-21**: tres materiales 3D no lineales (VM3D, DP3D, Damage3D) con 56 tests directos + 11 tests de la campaña de validación 3D consolidada (`tests/validation/`). |
+| **Elementos** | 18 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida + 2 sólidos 3D) |
+| **Materiales** | 13 (12 continuos + 1 cohesivo traction-jump) — **+3 en A.bis: VonMises3D, DruckerPrager3D, IsotropicDamage3D** |
 | **Solvers** | 12 (4 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
 | **ADRs aceptados** | 12 (0001–0012) |
-| **Specs `validated`** | 32 |
-| **Etapas cerradas** | 7 completas (Etapa 4 = ADR 0009 fases 1, 3, 4; Etapa 5 = ADR 0010 embedded; Etapa 6 = cierre completo del ADR 0009 con fases 2, 5, 6, 7 + HHT-α + reglas C y D; **Etapa 7 = sólidos 3D acotados con ADR 0012**) |
+| **Specs `validated`** | 35 (+3 A.bis: VonMises3D, DruckerPrager3D, IsotropicDamage3D) |
+| **Etapas cerradas** | 7 completas + **sub-etapa A.bis cerrada 2026-05-21** (materiales 3D no lineales sobre sólidos 3D lineales de Etapa 7) |
 | **Auditoría global** | Conducida 2026-05-18 — 51 hallazgos. 41 cerrados, 6 diferidos con rationale, 4 diferidos sin acción. Informe + addendum en [docs/auditorias/auditoria_global_2026-05-18.md](auditorias/auditoria_global_2026-05-18.md). Saneamiento completo en dos sesiones (19-mayo). |
 
 ---
@@ -47,11 +47,11 @@
 - **Sólidos 3D lineales** (Etapa 7, ADR 0012): `Hex8` (hexaedro trilineal isoparamétrico, 8 puntos Gauss 2×2×2 default, 6 caras numeradas con normal saliente) y `Tet4` (tetraedro lineal CST 3D, 1 punto baricéntrico). Convención Voigt 6D del proyecto `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]`. Locking volumétrico Hex8 + shear locking Tet4 declarados como limitaciones blindadas con tests, sin mitigación (política idéntica a Quad4/Tri3 en 2D). Cuadráticos 3D (`Hex20`, `Hex27`, `Tet10`) diferidos a sub-etapa posterior.
 
 **Materiales cubiertos**
-- Elásticos: `Elastic1D`, `Elastic2D` (plane stress + plane strain), **`Elastic3D`** (isótropo, sin variantes de hipótesis — Etapa 7).
+- Elásticos: `Elastic1D`, `Elastic2D` (plane stress + plane strain), `Elastic3D` (isótropo, sin variantes de hipótesis — Etapa 7).
 - Cable unilateral: `CableMaterial1D`.
-- Plasticidad J2: `Elastoplastic1D`, `VonMises2D` (kernels Numba especializados para plane strain y plane stress).
-- Plasticidad friccional: `DruckerPrager2D` (plane strain, dos ramas regular/apex, plasticidad no asociada).
-- Daño isótropo con softening exponencial: `IsotropicDamage1D`, `IsotropicDamage2D` (tangente algorítmica consistente, asimétrica en 2D).
+- Plasticidad J2: `Elastoplastic1D`, `VonMises2D` (kernels Numba especializados para plane strain y plane stress), **`VonMises3D`** (Voigt 6D, return mapping radial cerrado — A.bis).
+- Plasticidad friccional: `DruckerPrager2D` (plane strain), **`DruckerPrager3D`** (Voigt 6D con variantes outer/inner cone; sin `plane_strain_matched` — 2D-only). Ambos con dos ramas regular/apex y plasticidad no asociada por defecto.
+- Daño isótropo con softening exponencial: `IsotropicDamage1D`, `IsotropicDamage2D` (tangente algorítmica consistente, asimétrica en 2D), **`IsotropicDamage3D`** (Voigt 6D, tangente consistente asimétrica en 6D, ley de softening compartida con 1D/2D vía `_softening.py` — A.bis).
 - **Material cohesivo traction-jump** (familia paralela `CohesiveMaterial`, ADR 0010): `CohesiveDamageIsotropic` — Mode-I, daño isótropo con softening lineal/exponencial parametrizado por `σ_t0` y `G_F`. Penalty `K_e` separado de la rigidez del bulk.
 
 **Infraestructura común**
@@ -68,7 +68,7 @@
 ## Limitaciones declaradas (out-of-scope hoy)
 
 - **Sólidos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`): pendientes — los lineales `Hex8` y `Tet4` entraron en la Etapa 7. Los cuadráticos abren la base interna `_HigherOrderSolid3D` cuando aparezca el segundo caso real (regla de centralización post-dos-casos).
-- **Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`): pendientes — son el siguiente eslabón natural de la Etapa 7 (Voigt 6D ya canonicalizado en ADR 0012).
+- ~~**Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`)~~ ✅ **Cerrado 2026-05-21** (sub-etapa A.bis): los tres materiales con tangente algorítmica consistente, cross-consistency vs 2D plane_strain a 10-14 decimales, integración Hex8/Tet4, y campaña de validación 3D consolidada (triaxial DP3D vs cono, uniaxial Damage3D vs curva σ-ε analítica, cilindro Hill 3D vs Hill 1950 §5).
 - **Placas y láminas**: pendiente.
 - **Análisis térmico**: pendiente (decoupled → coupled).
 - **Mohr-Coulomb 2D**, **FiberSection para frames no-lineales**: pendientes.
@@ -110,12 +110,11 @@ Ninguno bloquea el avance. Todos están documentados con su contexto en la memor
 
 ## Próximo hito
 
-**Elección de Etapa 8** tras cerrar la Etapa 7 (sólidos 3D acotados con ADR 0012 el 2026-05-19). Opciones restantes del catálogo original + ramificaciones naturales de la Etapa 7:
+**Elección de Etapa 8** tras cerrar la Etapa 7 (sólidos 3D lineales, ADR 0012, 2026-05-19) y la sub-etapa **A.bis** (materiales 3D no lineales, 2026-05-21). El catálogo 3D queda en pie de igualdad funcional con el 2D para materiales y la suite de validación 3D consolidada cierra la campaña con 11 tests cuantitativos contra solución analítica. Opciones para Etapa 8:
 
 - B. Placas y láminas.
 - C. Análisis térmico desacoplado.
 - E. Mohr-Coulomb 2D + `FiberSection`.
-- **A.bis** (rama natural de A): materiales 3D no lineales (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`) — extender plasticidad/daño a Voigt 6D sobre Hex8/Tet4 ya disponibles.
 - **A.ter** (rama natural de A): elementos 3D cuadráticos (`Hex20`, `Hex27`, `Tet10`) — abrir base interna `_HigherOrderSolid3D` (regla de dos casos reales) y desbloquear benchmarks NAFEMS 3D con valor citable (LE10, LE2, LE3).
 
 El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La decisión la toma el usuario con base en la dirección que quiera dar al proyecto tras esta etapa.
@@ -132,7 +131,9 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: Hex8 (hexaedro trilineal, 8 puntos Gauss 2×2×2, 6 caras con normal saliente, body load + face traction consistentes), Tet4 (CST 3D, 1 punto baricéntrico, masa consistente analítica), Elastic3D (isótropo, sin variantes plane stress/plane strain). Convención Voigt 6D fijada en `Reglas.md §5` y blindada por ADR. Cuadraturas 3D registradas (`hex_1x1x1`, `hex_2x2x2`, `hex_3x3x3`, `tet_1`). Cierre adicional: deuda técnica #1 (`internal_forces` en sólidos) por dominio explícito en ADR 0012 — sólidos exponen `compute_gauss_state`, estructurales 1D exponen `internal_forces`. Tests: +54 (suite 750 → 804): 31 unitarios + 10 modos rígidos 3D + 3 cubo Lamé 3D (tracción uniaxial + hidrostática exactos a precisión máquina) + 2 MacNeal-Harder 3D (locking documentado + convergencia h monótona) + 2 locking volumétrico 3D blindado. Specs `Elastic3D`, `Hex8`, `Tet4` validadas; entradas en catálogos de elementos y materiales; MATRIZ ampliada con columna Elastic3D y filas Hex8/Tet4.*
+*Última actualización: 2026-05-21 — **Sub-etapa A.bis cerrada: materiales 3D no lineales**. Tres materiales con tangente algorítmica consistente sobre Voigt 6D del proyecto: `VonMises3D` (J2 radial cerrado), `DruckerPrager3D` (dos ramas regular/apex + variantes outer/inner cone, sin `plane_strain_matched` 2D-only), `IsotropicDamage3D` (daño escalar con softening exponencial centralizado, tangente asimétrica). 56 tests directos (12+12+12 unitarios + 1+1+1 cross-consistency vs 2D plane_strain a 10-14 decimales + 5+4+3 integración Hex8/Tet4) + 11 tests de validación 3D consolidada (DP3D triaxial vs cono analítico, Damage3D uniaxial vs curva σ-ε analítica, VM3D cilindro Hill 3D plane-strain con pipeline 3D vs Hill 1950 §5). Suite 804 → 877. Catálogo 3D ahora paritario con 2D en materiales no lineales.*
+
+*Anterior 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: Hex8 (hexaedro trilineal, 8 puntos Gauss 2×2×2, 6 caras con normal saliente, body load + face traction consistentes), Tet4 (CST 3D, 1 punto baricéntrico, masa consistente analítica), Elastic3D (isótropo, sin variantes plane stress/plane strain). Convención Voigt 6D fijada en `Reglas.md §5` y blindada por ADR. Cuadraturas 3D registradas (`hex_1x1x1`, `hex_2x2x2`, `hex_3x3x3`, `tet_1`). Cierre adicional: deuda técnica #1 (`internal_forces` en sólidos) por dominio explícito en ADR 0012 — sólidos exponen `compute_gauss_state`, estructurales 1D exponen `internal_forces`. Tests: +54 (suite 750 → 804): 31 unitarios + 10 modos rígidos 3D + 3 cubo Lamé 3D (tracción uniaxial + hidrostática exactos a precisión máquina) + 2 MacNeal-Harder 3D (locking documentado + convergencia h monótona) + 2 locking volumétrico 3D blindado. Specs `Elastic3D`, `Hex8`, `Tet4` validadas; entradas en catálogos de elementos y materiales; MATRIZ ampliada con columna Elastic3D y filas Hex8/Tet4.*
 
 *Anterior 2026-05-19: **DissipationArcLengthSolver implementado** (spec `docs/specs/DissipationArcLengthSolver.md` status `implemented`, archivo `solidum/math/solvers/dissipation_arclength.py`, tests `tests/test_dissipation_arclength.py` 7/7 verde). Cierra parcialmente la deuda técnica #4 (solver para softening) — funciona para daño continuo bulk 1D/2D, con switching automático cilíndrico↔disipación (Gutiérrez 2004 + Verhoosel et al. 2009). El caso cohesivo+embedded con `K_e=1e13` queda diferido a una segunda iteración que requiera LDLᵀ Bunch-Kaufman como backend (nuevo item #7 de deuda técnica). Suite 741 → 750 verdes + 5 skipped.*
 

@@ -70,6 +70,27 @@
 
 ---
 
+## IsotropicDamage3D — daño isótropo 3D con softening exponencial
+
+- **Modelo**: extensión 3D de `IsotropicDamage2D`. Esfuerzo nominal `σ = (1 − d) · C_e · ε` con `C_e` 6×6 isótropa 3D; daño escalar `d ∈ [0, DAMAGE_MAX]`. **Sin variantes de hipótesis** — en 3D todas las componentes son activas.
+- **Deformación equivalente** (Voigt 6D del proyecto): `ε_eq = √(ε_xx² + ε_yy² + ε_zz² + ½(γ_xy² + γ_yz² + γ_xz²))` con `M = diag(1, 1, 1, 1/2, 1/2, 1/2)`. Equivale a la norma de Frobenius del tensor deformación 3D y es la extensión natural de la convención 2D (`M_2D = diag(1, 1, 1/2)`).
+- **Evolución**: κ máxima histórica (Kuhn-Tucker `κ_{n+1} = max(κ_n, ε_eq)`); ley exponencial centralizada en `solidum.materials._softening.evaluate_exponential_damage` (compartida con `IsotropicDamage1D` e `IsotropicDamage2D`); saturación a `DAMAGE_MAX`.
+- **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·C_e` en descarga, sin daño activo (`κ ≤ κ_0`) o al saturar.
+  - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ (M·ε)`.
+  - Derivación: idéntica al 2D extendida a 6D. `∂d/∂κ = (1-d)·(1/κ + α)`; `∂κ/∂ε = M·ε/ε_eq` en carga activa, 0 en descarga.
+  - **No simétrica en general**: `(C_e·ε)` y `(M·ε)` no son proporcionales salvo en estados de deformación muy particulares (uniaxial puro alineado con ejes). Recupera convergencia cuadrática del Newton global frente a la secante (Simó-Ju 1987).
+- **Relación con `IsotropicDamage2D` plane_strain**: bajo restricción `ε_zz = γ_yz = γ_xz = 0`, Damage3D se reduce **exactamente** a Damage2D plane_strain (misma `C_e`, misma `ε_eq`, misma ley centralizada). Test cruzado `TestIsotropicDamage3DvsPlaneStrain` blindado a **14 decimales en `d` y `κ`**, 10 decimales en σ. Plane stress 2D usa un `C_e` proyectado distinto y no es comparable bajo restricción cinemática.
+- **STRAIN_DIM**: 6 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU para el sistema global).
+- **Parámetros**: `E` (>0), `nu` ∈ (-1, 0.5), `kappa_0` (>0), `alpha` (>0), `density` (opcional, ADR 0008).
+- **Variables internas**: `kappa`, `damage`. **Sin variables tensoriales** (a diferencia de los modelos plásticos): el daño es escalar, el historial es escalar.
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D/2D, constante respecto al estado.
+- **Limitaciones** (idénticas al 2D): la `ε_eq` simétrica no distingue daño en tensión vs compresión; sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (localización en una banda de elementos). Para hormigón con resistencia diferente en tracción/compresión usar split tipo Mazars o de Vree (out-of-scope). Locking volumétrico en `Hex8`/`Tet4` con `ν` cercano a 0.5 → mismo régimen ya documentado para los demás materiales 3D, blindado por test del elemento.
+- **Compatible con**: `Hex8`, `Tet4`.
+- **Referencia**: ver `docs/specs/IsotropicDamage3D.md`. Simó & Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre & Chaboche (1990) marco de continuum damage mechanics. de Souza Neto, Perić & Owen (2008) §12.
+- **Archivo**: [solidum/materials/damage_3d.py](../solidum/materials/damage_3d.py)
+
+---
+
 ## IsotropicDamage2D — daño isótropo 2D con softening exponencial
 
 - **Modelo**: extensión 2D de `IsotropicDamage1D`. Esfuerzo nominal `σ = (1 − d) · C_e · ε`; daño escalar `d ∈ [0, DAMAGE_MAX]`.
@@ -122,6 +143,37 @@
 
 ---
 
+## DruckerPrager3D — plasticidad friccional cohesivo-friccional 3D
+
+- **Modelo**: cono circular suave de Mohr-Coulomb 3D con cohesión y fricción interna. Criterio `f = √J₂ + η_f·I₁ − k(α) ≤ 0` con `k(α) = k_0 + H·α` (endurecimiento isótropo lineal en cohesión). **Sin variantes de hipótesis** — en 3D todas las componentes son activas.
+- **Calibraciones disponibles** (3D):
+  - `outer_cone` (default): η_f = 2·sin(φ)/[√3·(3 - sin(φ))], k_0 = 6·c_0·cos(φ)/[√3·(3 - sin(φ))]. Circunscribe Mohr-Coulomb en el meridiano de compresión triaxial.
+  - `inner_cone`: η_f = 2·sin(φ)/[√3·(3 + sin(φ))], k_0 = 6·c_0·cos(φ)/[√3·(3 + sin(φ))]. Inscribe MC en el meridiano de extensión triaxial.
+  - **No incluye `plane_strain_matched`** (existente en DP2D): esa calibración es 2D-only por construcción — MC en 3D depende del ángulo de Lode y no admite coincidencia circular global. El constructor rechaza explícitamente esa variante con mensaje claro.
+- **Plasticidad no asociada por defecto**: ángulo de dilatancia `ψ` parámetro independiente, default `ψ = φ` (asociada). Para `ψ ≠ φ` la tangente algorítmica es **asimétrica** → el despachador algebraico ADR 0003 elige LU.
+- **Algoritmo — dos ramas cerradas con detección automática**:
+  - **Return regular** (cone surface): `Δγ = f_trial / (G + 9K·η_f·η_g + H_k)`, dirección desviadora invariante bajo carga radial. Tangente algorítmica `C_alg = K·v⊗v + 2G·(1-β)·I_dev + 4G·β·n̂⊗n̂ - (1/A)·b_g⊗b_f` con `n̂` y `b_f, b_g` en Voigt 6D tensorial. Idéntica estructura algebraica al kernel 2D, solo extendida a 6 componentes activas.
+  - **Return al ápice** (vértice hidrostático): `Δγ_apex = (I_1_trial·η_f - k(α))/(9K·η_f·η_g + H_k)`, σ_n+1 = (k/(3η_f))·I puramente hidrostático en las tres componentes diagonales. Tangente reducida `(K·H_k/(9K·η_f·η_g + H_k))·v⊗v` (sin rigidez desviadora; salvaguarda numérica `K·1e-6·v⊗v` si la rigidez colapsa con H_k=0 y η_g≈0).
+  - Detección regular ↔ apex: si tras `Δγ_regular` resulta `√J₂_new < 0` → cae en apex; cambia a la fórmula apex.
+- **Relación con `DruckerPrager2D` plane_strain**: DP2D plane_strain con `variant='outer_cone'` (o `'inner_cone'`) es la restricción de DP3D bajo `ε_zz = γ_yz = γ_xz = 0`. Test cruzado `TestDruckerPrager3DvsPlaneStrain` blindado a 10 decimales sobre `σ_xx, σ_yy, σ_xy, α` y componentes plásticas planas; las componentes 3D ausentes en plane strain (`ε^p_yz, ε^p_xz`) permanecen nulas en VM3D.
+- **STRAIN_DIM**: 6 · **PRIMARY_STATE_VAR**: `'alpha'` · **IS_SYMMETRIC**: `False` declarativo (override por instancia a `True` cuando `ψ = φ`, asociada).
+- **Parámetros** (físicos):
+  - `E`, `nu`: elásticos (`ν ∈ (-1, 0.5)` estricto).
+  - `cohesion`: cohesión inicial `c_0` (esfuerzo, >0).
+  - `phi_deg`: ángulo de fricción interna (grados, `0 ≤ φ < 90`).
+  - `psi_deg`: ángulo de dilatancia (grados, `0 ≤ ψ ≤ φ`; default `φ` ⇒ asociada).
+  - `H` (≥0, default 0): endurecimiento isótropo lineal en cohesión.
+  - `variant`: `'outer_cone'` (default) o `'inner_cone'`.
+  - `density` (opcional, ADR 0008).
+- **Variables internas**: `eps_p` (6 componentes Voigt 6D con cortantes tensoriales `[xx, yy, zz, xy, yz, xz]`), `alpha` (multiplicador plástico acumulado, adimensional). **Invariante cinemático**: `tr(ε^p) = 3·η_g·α` en cualquier estado plástico (distinto de J2 donde `tr(ε^p) = 0`).
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = k(α) = k_0 + H·α`.
+- **Limitaciones declaradas** (`out_of_scope` en spec): MC con aristas (pirámide hexagonal — DP no captura efectos de Lode angle, diferencia hasta 15-20% en frontera fuera de los meridianos puros), variantes con dependencia explícita del Lode angle (Matsuoka-Nakai, Lade-Duncan), endurecimiento por fricción/dilatancia, endurecimiento cinemático, cap-cone, ablandamiento (`H<0` requiere regularización), grandes deformaciones. Locking volumétrico en `Hex8`/`Tet4` cuando `ψ > 0` (flujo dilatante) + `ν` moderado-alto — mismo régimen ya documentado para `Elastic3D`/`VonMises3D`, sin mitigación implementada.
+- **Compatible con**: `Hex8`, `Tet4`.
+- **Referencia**: ver `docs/specs/DruckerPrager3D.md`. Drucker & Prager (1952). Simó & Hughes (1998) §6 (cone plasticity, apex return). de Souza Neto, Perić & Owen (2008) §8 (calibraciones outer/inner 3D, tangentes algorítmicas detalladas).
+- **Archivo**: [solidum/materials/drucker_prager_3d.py](../solidum/materials/drucker_prager_3d.py)
+
+---
+
 ## DruckerPrager2D — plasticidad friccional cohesivo-friccional 2D plane strain
 
 - **Modelo**: cono circular suave de Mohr-Coulomb con cohesión y fricción interna. Criterio `f = √J₂ + η_f·I₁ − k(α) ≤ 0` con `k(α) = k_0 + H·α` (endurecimiento isótropo lineal en cohesión).
@@ -152,6 +204,23 @@
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos con material 2D plane strain).
 - **Referencia**: ver `docs/specs/DruckerPrager2D.md`. Drucker & Prager (1952). de Souza Neto, Perić & Owen (2008) cap. 8 (Drucker-Prager, tangentes algorítmicas).
 - **Archivo**: [solidum/materials/drucker_prager_2d.py](solidum/materials/drucker_prager_2d.py)
+
+---
+
+## VonMises3D — plasticidad J2 3D con endurecimiento isótropo lineal
+
+- **Modelo**: J2 (Von Mises) con regla de flujo asociada y endurecimiento isótropo lineal, formulado íntegramente en Voigt 6D del proyecto (ADR 0012). **Sin variantes de hipótesis** — en 3D todas las componentes de `ε` y `σ` son activas.
+- **Algoritmo** (Simó-Hughes §3.3): return mapping radial cerrado único sobre la parte desviadora 6D. Predictor elástico `s_trial = 2G·(e_dev − e_p)` con presión `p = K·tr(ε)`; criterio `f = ‖s‖ − √(2/3)·(σ_y + H·α) ≤ 0` con norma Frobenius tensorial `‖s‖² = Σ_diag s_ii² + 2·Σ_off s_ij²`; corrector radial `Δγ = f_trial / (2G + ⅔·H)` con `N = s_trial/‖s_trial‖`; actualización `α_new = α + √(2/3)·Δγ`. Tangente algorítmica consistente cerrada `C_alg = K·v⊗v + 2G(1-β)·I_dev - 2G·γ̄·N⊗N`. Idéntica estructura al kernel `plane_strain` de `VonMises2D` ampliada a 6 componentes activas; comparte el principio físico pero el código kernel se mantiene separado por simplicidad (zero-padding sistemático en Numba sería contraproducente).
+- **Relación con `VonMises2D` plane strain**: VM2D plane strain es la restricción de este modelo bajo `ε_zz = γ_yz = γ_xz = 0` (deformación total impuesta) con `ε^p_zz, ε^p_yz, ε^p_xz` libres por incompresibilidad/isotropía. Test cruzado `TestVonMises3DvsPlaneStrain` blindado a 10 decimales sobre `σ_xx, σ_yy, σ_xy, α` y componentes plásticas planas.
+- **STRAIN_DIM**: 6 · **PRIMARY_STATE_VAR**: `'alpha'` · **IS_SYMMETRIC**: `True` (J2 asociado).
+- **Parámetros**: `E` (>0), `nu ∈ (-1, 0.5)`, `sigma_y` (>0), `H` (≥0, default 0), `density` (opcional, ADR 0008).
+- **Variables internas**: `eps_p` (6 componentes Voigt 6D con cortantes tensoriales `[xx, yy, zz, xy, yz, xz]`), `alpha` (acumulada equivalente, adimensional). La parte plástica es **incompresible exacta**: `tr(ε^p) = 0` por construcción del flujo desviador.
+- **Admisibilidad (ADR 0006)**: `admissibility_scale = √(2/3)·(σ_y + H·α)` — idéntica a plane strain (misma norma desviadora en la frontera J2).
+- **Limitaciones declaradas** (`out_of_scope` en spec): no endurecimiento cinemático/Voce, no ablandamiento (`H<0` requiere regularización), no regla de flujo no asociada, no daño acoplado, no viscoplasticidad, no grandes deformaciones, no anisotropía. Locking volumétrico en `Hex8`/`Tet4` cuando la plasticidad domina + `ν` moderado-alto — mismo régimen ya documentado para `Elastic3D`, blindado por tests, sin mitigación implementada (B-bar/F-bar diferidas).
+- **Implementación**: kernel `_compute_j2_3d` con `@njit`. Sin despacho por hipótesis (no aplica en 3D).
+- **Compatible con**: `Hex8`, `Tet4` (todos los sólidos 3D con `STRAIN_DIM = 6`).
+- **Referencia**: ver `docs/specs/VonMises3D.md`. Simó & Hughes, *Computational Inelasticity* (1998), §3.3 (3D J2 return mapping radial cerrado). de Souza Neto, Perić & Owen, *Computational Methods for Plasticity* (2008), §7.
+- **Archivo**: [solidum/materials/von_mises_3d.py](../solidum/materials/von_mises_3d.py)
 
 ---
 

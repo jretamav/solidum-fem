@@ -188,7 +188,7 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 **Lo diferido y por qué**:
 
 - **Elementos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`): no entran en esta etapa por regla de dos casos reales (no abrir base interna `_HigherOrderSolid3D` antes de tener al menos dos elementos cuadráticos). NAFEMS LE10 con valor canónico citable queda diferido — Hex8 lockea con malla coarse; sólo Hex20/Hex27 lo pasan. Sin caso de uso real bloqueado por LE10 hoy.
-- **Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`): extensiones naturales de los 2D existentes a Voigt 6D, pero cada uno abre un return mapping específico (especialmente Drucker-Prager con apex 3D). Quedan como sub-etapas posteriores.
+- ~~**Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`)~~ ✅ **Cerrado 2026-05-21 (sub-etapa A.bis)**: tres materiales sobre Voigt 6D con tangente algorítmica consistente, cross-consistency vs 2D plane_strain a 10-14 decimales, integración Hex8/Tet4, y campaña de validación 3D consolidada (3 benchmarks publicados). Suite 804 → 877.
 - **NAFEMS LE10/LE2/LE3** (placas gruesas y delgadas): bloqueados por cuadráticos 3D + por placas/láminas (Etapa 8 opción B). No deuda de esta etapa.
 
 ---
@@ -240,6 +240,8 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ---
 
-*Última actualización: 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: `Hex8` (trilineal), `Tet4` (CST 3D), `Elastic3D` (isótropo). Convención Voigt 6D `[xx, yy, zz, xy, yz, xz]` fijada en `Reglas.md §5`. Suite 750 → 804 (+54 tests verdes a la primera). Cierre adicional: deuda técnica #1 saldada por ADR 0012 (cierre por dominio explícito — sólidos exponen `compute_gauss_state`, no `internal_forces`). Cuadráticos 3D y materiales 3D no lineales diferidos a sub-etapas posteriores como ramificaciones naturales (A.bis, A.ter en STATUS.md). Próxima decisión: Etapa 8.*
+*Última actualización: 2026-05-21 — **Sub-etapa A.bis cerrada: materiales 3D no lineales**. Los tres materiales (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`) cierran la paridad funcional 3D↔2D para plasticidad y daño. Suite 804 → 877 (+73 tests: 56 directos + 11 validación 3D consolidada + 6 colaterales). Próxima decisión: Etapa 8 (B placas/láminas, C térmico, E Mohr-Coulomb+FiberSection, A.ter cuadráticos 3D).*
+
+*Anterior 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: `Hex8` (trilineal), `Tet4` (CST 3D), `Elastic3D` (isótropo). Convención Voigt 6D `[xx, yy, zz, xy, yz, xz]` fijada en `Reglas.md §5`. Suite 750 → 804 (+54 tests verdes a la primera). Cierre adicional: deuda técnica #1 saldada por ADR 0012 (cierre por dominio explícito — sólidos exponen `compute_gauss_state`, no `internal_forces`).*
 
 *Anterior 2026-05-19: sin nuevas etapas. Sesión de saneamiento post-auditoría 2026-05-18 cerró 23 hallazgos (3 críticos + 4 altos + 16 medios/bajos) sin tocar el ROADMAP estructural. Suite 558 → 585.*
