@@ -58,7 +58,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   {\title Capa de salida} \hfill \texttt{solidum/utils/vtk\_exporter.py} + \texttt{solidum.results}\\
   Exporta $\mathbf U$, $\sigma$ y \texttt{PRIMARY\_STATE\_VAR} en
   formato VTK. \texttt{SolveResult} expone $\mathbf U$,
-  $\mathbf F_\text{aplicada}$ y los esfuerzos internos por elemento
+  $\mathbf F_\text{aplicada}$ y las fuerzas internas por elemento
   como interfaz pública para consumidores externos.
 };
 
@@ -84,7 +84,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 **Capa numérica.** Concentra los componentes propios de la mecánica computacional: ensamblaje de matrices dispersas, cuadraturas de integración, estrategia de paso (lineal, no lineal incremental, longitud de arco) y el subsistema algebraico que resuelve los sistemas lineales que aparecen dentro de cada iteración.
 
-**Capa de salida.** Provee dos productos. Por un lado, `VtkExporter` para visualización en programas compatibles con VTK (ParaView). Por otro, `SolveResult` con los desplazamientos, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento, concebido para consumidores externos como FenixBAR (ADR 0002).
+**Capa de salida.** Provee dos productos. Por un lado, `VtkExporter` para visualización en programas compatibles con VTK (ParaView). Por otro, `SolveResult` con los desplazamientos, las cargas aplicadas, las reacciones y las fuerzas internas por elemento, concebido para consumidores externos como FenixBAR (ADR 0002).
 
 ## Justificación de la separación
 

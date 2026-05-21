@@ -58,7 +58,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Retorno radial (return mapping)**. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si la tensión predictora lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
 
-**`SolveResult`**. Agregado inmutable que el `Domain` construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y los esfuerzos internos por elemento. Es la interfaz pública para consumidores externos. Ver ADR 0002.
+**`SolveResult`**. Agregado inmutable que el `Domain` construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y las fuerzas internas (N, V, M, T) por elemento. Es la interfaz pública para consumidores externos. Ver ADR 0002.
 
 **Solver no lineal**. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En Solidum FEM están implementados `LinearSolver`, `NonlinearSolver` y `ArcLengthSolver`. Es nivel estratégico, distinto del subsistema algebraico. Ver capítulo 4.
 

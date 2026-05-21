@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Elemento 1D inmerso en el plano 2D que modela una **viga esbelta** según la teoría de **Euler-Bernoulli**. Dos nodos rígidamente conectados (transmiten momento), 3 grados de libertad por nodo ($u_x, u_y, r_z$). Captura tres acciones internas: **esfuerzo axial**, **cortante transverso** y **momento flector**. Régimen de **linealidad geométrica** (pequeños desplazamientos y rotaciones).
+Elemento 1D inmerso en el plano 2D que modela una **viga esbelta** según la teoría de **Euler-Bernoulli**. Dos nodos rígidamente conectados (transmiten momento), 3 grados de libertad por nodo ($u_x, u_y, r_z$). Captura tres acciones internas: **fuerza axial**, **cortante transverso** y **momento flector**. Régimen de **linealidad geométrica** (pequeños desplazamientos y rotaciones).
 
 ### 1. Hipótesis cinemática de Euler-Bernoulli
 - Las secciones transversales se mantienen **planas** tras la deformación.

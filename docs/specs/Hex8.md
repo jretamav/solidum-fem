@@ -125,7 +125,7 @@ Cuadratura 2D sobre la cara: Gauss $2 \times 2$ (cuatro puntos por cara). Exacto
 
 ### 13. Salida por punto de Gauss
 
-`compute_gauss_state(U)` devuelve un dict con $\boldsymbol\varepsilon$ y $\boldsymbol\sigma$ en cada uno de los $n_g$ puntos de Gauss del elemento (8 por defecto), junto con coordenadas naturales y globales. Habilita post-proceso fino (mapas no promediados, suavizado nodal, recovery superconvergente futuro). Por ADR 0012, `internal_forces` devuelve `None` (sólidos no tienen "esfuerzo seccional").
+`compute_gauss_state(U)` devuelve un dict con $\boldsymbol\varepsilon$ y $\boldsymbol\sigma$ en cada uno de los $n_g$ puntos de Gauss del elemento (8 por defecto), junto con coordenadas naturales y globales. Habilita post-proceso fino (mapas no promediados, suavizado nodal, recovery superconvergente futuro). Por ADR 0012, `internal_forces` devuelve `None` (sólidos no tienen fuerzas internas seccionales discretas — son su campo $\boldsymbol\sigma(x)$ continuo).
 
 ---
 

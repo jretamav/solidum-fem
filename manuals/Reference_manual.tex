@@ -159,7 +159,7 @@ Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-proc
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos articulados; transmite únicamente esfuerzo axial. Aproximación $C^0$ del desplazamiento.
+Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos articulados; transmite únicamente fuerza axial. Aproximación $C^0$ del desplazamiento.
 
 \subsection{1. Cinemática de desplazamientos}
 Interpolación lineal del desplazamiento axial a lo largo del eje $s \in [0, L]$:
@@ -307,7 +307,7 @@ references:
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Barra articulada 2D equivalente a \texttt{Truss2D} pero en régimen de \textbf{grandes desplazamientos y rotaciones} con \textbf{pequeña deformación axial}. La cinemática se actualiza en configuración corriente (corotacional / Updated Lagrangian): el eje de la barra gira con el movimiento y la deformación se mide sobre la longitud actual. Rigidez tangente = rigidez material + rigidez geométrica debida al esfuerzo axial.
+Barra articulada 2D equivalente a \texttt{Truss2D} pero en régimen de \textbf{grandes desplazamientos y rotaciones} con \textbf{pequeña deformación axial}. La cinemática se actualiza en configuración corriente (corotacional / Updated Lagrangian): el eje de la barra gira con el movimiento y la deformación se mide sobre la longitud actual. Rigidez tangente = rigidez material + rigidez geométrica debida a la fuerza axial.
 
 \subsection{1. Cinemática}
 Configuraciones:
@@ -477,7 +477,7 @@ references:
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite únicamente esfuerzo axial. Aproximación $C^0$ del desplazamiento. Régimen estrictamente de \textbf{linealidad geométrica}: pequeños desplazamientos, pequeñas rotaciones, pequeñas deformaciones.
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite únicamente fuerza axial. Aproximación $C^0$ del desplazamiento. Régimen estrictamente de \textbf{linealidad geométrica}: pequeños desplazamientos, pequeñas rotaciones, pequeñas deformaciones.
 
 \subsection{1. Cinemática de desplazamientos}
 Interpolación lineal del desplazamiento axial a lo largo del eje $s \in [0, L]$:
@@ -802,7 +802,7 @@ references:
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Elemento 1D inmerso en el plano 2D que modela un \textbf{cable}: dos nodos articulados que solo transmiten \textbf{esfuerzo axial de tensión}. En compresión o estado sin tensar, el elemento no transmite nada --- se destensa. Cinemática \textbf{corotacional} (Updated Lagrangian): el eje rota con el movimiento, la longitud se mide sobre la configuración corriente.
+Elemento 1D inmerso en el plano 2D que modela un \textbf{cable}: dos nodos articulados que solo transmiten \textbf{fuerza axial de tensión}. En compresión o estado sin tensar, el elemento no transmite nada --- se destensa. Cinemática \textbf{corotacional} (Updated Lagrangian): el eje rota con el movimiento, la longitud se mide sobre la configuración corriente.
 
 La propiedad de unilateralidad vive en el \textbf{material}; el elemento es la maquinaria cinemática que aplica al material la deformación correcta. Para obtener el comportamiento propio de cable se empareja este elemento con un material unilateral como \texttt{CableMaterial1D}. Con un material elástico clásico, el elemento se comporta como una barra articulada corotacional (útil para pruebas, no para modelado realista de cables).
 
@@ -988,7 +988,7 @@ references:
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Elemento 1D inmerso en el espacio 3D que modela un \textbf{cable}: dos nodos articulados que solo transmiten \textbf{esfuerzo axial de tensión}. En compresión o estado sin tensar, el elemento no transmite nada. Cinemática \textbf{corotacional} (Updated Lagrangian): el eje rota libremente en el espacio, la longitud se mide sobre la configuración corriente.
+Elemento 1D inmerso en el espacio 3D que modela un \textbf{cable}: dos nodos articulados que solo transmiten \textbf{fuerza axial de tensión}. En compresión o estado sin tensar, el elemento no transmite nada. Cinemática \textbf{corotacional} (Updated Lagrangian): el eje rota libremente en el espacio, la longitud se mide sobre la configuración corriente.
 
 La unilateralidad vive en el \textbf{material}; el elemento es la maquinaria cinemática 3D. Para obtener respuesta física de cable, emparejar con \texttt{CableMaterial1D}. Con un material elástico clásico, el elemento se comporta como una barra corotacional 3D.
 
@@ -1175,7 +1175,7 @@ references:
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Elemento 1D inmerso en el plano 2D que modela una \textbf{viga esbelta} según la teoría de \textbf{Euler-Bernoulli}. Dos nodos rígidamente conectados (transmiten momento), 3 grados de libertad por nodo ($u_x, u_y, r_z$). Captura tres acciones internas: \textbf{esfuerzo axial}, \textbf{cortante transverso} y \textbf{momento flector}. Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones).
+Elemento 1D inmerso en el plano 2D que modela una \textbf{viga esbelta} según la teoría de \textbf{Euler-Bernoulli}. Dos nodos rígidamente conectados (transmiten momento), 3 grados de libertad por nodo ($u_x, u_y, r_z$). Captura tres acciones internas: \textbf{fuerza axial}, \textbf{cortante transverso} y \textbf{momento flector}. Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones).
 
 \subsection{1. Hipótesis cinemática de Euler-Bernoulli}
 \begin{itemize}
@@ -1391,7 +1391,7 @@ references:
 \section{Especificación física}
 
 \subsection{0. Descripción general}
-Elemento 1D inmerso en el plano 2D que modela una \textbf{viga} según la teoría de \textbf{Timoshenko}. Dos nodos rígidamente conectados, 3 DOFs por nodo ($u_x, u_y, r_z$). Transmite \textbf{esfuerzo axial}, \textbf{cortante transverso} y \textbf{momento flector}. Incluye explícitamente la \textbf{deformación por cortante transversal}. Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones).
+Elemento 1D inmerso en el plano 2D que modela una \textbf{viga} según la teoría de \textbf{Timoshenko}. Dos nodos rígidamente conectados, 3 DOFs por nodo ($u_x, u_y, r_z$). Transmite \textbf{fuerza axial}, \textbf{cortante transverso} y \textbf{momento flector}. Incluye explícitamente la \textbf{deformación por cortante transversal}. Régimen de \textbf{linealidad geométrica} (pequeños desplazamientos y rotaciones).
 
 \subsection{1. Hipótesis cinemática de Timoshenko}
 \begin{itemize}
@@ -1843,7 +1843,7 @@ references:
 Elemento 1D inmerso en el espacio tridimensional que modela una \textbf{viga esbelta 3D}. Dos nodos rígidamente conectados, 6 DOFs por nodo ($u_x, u_y, u_z, r_x, r_y, r_z$). Captura seis acciones internas:
 
 \begin{itemize}
-  \item \textbf{Axial} (esfuerzo normal $N$ a lo largo del eje local $x$).
+  \item \textbf{Axial} (fuerza normal $N$ a lo largo del eje local $x$).
   \item \textbf{Cortante en dos planos} ($V_y$ en el plano $xy$, $V_z$ en el plano $xz$).
   \item \textbf{Flexión en dos planos} ($M_z$ alrededor del eje local $z$, $M_y$ alrededor del eje local $y$).
   \item \textbf{Torsión} ($M_x$ alrededor del eje longitudinal).
@@ -2058,7 +2058,7 @@ references:
   \item La matriz $\boldsymbol{\lambda}$ 3\ensuremath{\times}3 se construye como $[\hat{\mathbf x}^\top; \hat{\mathbf y}^\top; \hat{\mathbf z}^\top]$ --- las filas son los ejes locales expresados en coordenadas globales. $\mathbf T$ 12\ensuremath{\times}12 es un \texttt{blkdiag} de cuatro copias de $\boldsymbol{\lambda}$ (traslaciones y rotaciones transforman como vectores en 3D infinitesimal).
   \item El default de \texttt{ref\_vector} es \texttt{[0, 0, 1]}; el fallback \texttt{[1, 0, 0]} se activa cuando $|\hat{\mathbf x} \cdot \hat{\mathbf z}_{\text{global}}| > 0.99$ (barra cercanamente vertical). Ambas rutas emiten advertencia por consola la primera vez que se usan con default.
   \item La matriz $\mathbf K_{\text{local}}$ se construye rellenando entradas no nulas en sus 4 bloques desacoplados (axial, torsión, flexión $xy$, flexión $xz$). Los signos de la flexión $xz$ están invertidos respecto a la flexión $xy$ porque la pareja $(u_z, r_y)$ tiene orientación dextrógira opuesta a $(u_y, r_z)$: este punto se verifica explícitamente en \texttt{test\_acceptance\_flexion\_xz}.
-  \item \texttt{compute\_internal\_forces} devuelve cortantes, torsión y momentos en ambos extremos separados --- útil para post-proceso estructural (diagramas de esfuerzos).
+  \item \texttt{compute\_internal\_forces} devuelve cortantes, torsión y momentos en ambos extremos separados --- útil para post-proceso estructural (diagramas de fuerzas internas).
 \end{itemize}
 
 
@@ -4925,7 +4925,7 @@ references:
 
 \section{Truss2D --- barra axial 2D}
 
-Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos; transmite exclusivamente esfuerzo axial.
+Elemento sólido 1D de primer orden, inmerso en el plano. Dos nodos; transmite exclusivamente fuerza axial.
 
 \subsection{Cinemática}
 \begin{itemize}
@@ -5020,7 +5020,7 @@ F_int = N · d
 
 \section{Truss3D --- barra axial 3D}
 
-Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite exclusivamente esfuerzo axial. Régimen estrictamente de \textbf{linealidad geométrica}.
+Elemento sólido 1D de primer orden, inmerso en el espacio tridimensional. Dos nodos articulados; transmite exclusivamente fuerza axial. Régimen estrictamente de \textbf{linealidad geométrica}.
 
 \subsection{Cinemática}
 \begin{itemize}
@@ -5711,7 +5711,7 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Parámetros}: \texttt{E}, \texttt{sigma\_y} (fluencia inicial), \texttt{H} (módulo de endurecimiento; 0 = perfectamente plástico).
   \item \textbf{Variables internas}: \texttt{eps\_p} (deformación plástica), \texttt{alpha} (acumulada equivalente).
   \item \textbf{Admisibilidad (ADR 0006)}: \texttt{admissibility\_scale = \ensuremath{\sigma}\_y + H \ensuremath{\cdot} \ensuremath{\alpha}} --- fluencia corriente (adaptativa al endurecimiento). El check \texttt{f \ensuremath{\le} atol + rtol \ensuremath{\cdot} escala} se hace contra la superficie de fluencia \textit{en el estado de entrada del paso}.
-  \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}, \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko} (en estos últimos solo se aplica al esfuerzo axial).
+  \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D}, \texttt{Frame2DEuler}, \texttt{Frame2DTimoshenko} (en estos últimos solo se aplica al esfuerzo axial $\sigma$).
   \item \textbf{Referencia}: Simo \& Hughes, \textit{Computational Inelasticity}, cap. 1.
   \item \textbf{Spec}: docs/specs/Elastoplastic1D.md
   \item \textbf{Archivo}: solidum/materials/plastic\_1d.py

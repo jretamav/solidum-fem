@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Elemento 1D inmerso en el espacio 3D que modela un **cable**: dos nodos articulados que solo transmiten **esfuerzo axial de tensión**. En compresión o estado sin tensar, el elemento no transmite nada. Cinemática **corotacional** (Updated Lagrangian): el eje rota libremente en el espacio, la longitud se mide sobre la configuración corriente.
+Elemento 1D inmerso en el espacio 3D que modela un **cable**: dos nodos articulados que solo transmiten **fuerza axial de tensión**. En compresión o estado sin tensar, el elemento no transmite nada. Cinemática **corotacional** (Updated Lagrangian): el eje rota libremente en el espacio, la longitud se mide sobre la configuración corriente.
 
 La unilateralidad vive en el **material**; el elemento es la maquinaria cinemática 3D. Para obtener respuesta física de cable, emparejar con `CableMaterial1D`. Con un material elástico clásico, el elemento se comporta como una barra corotacional 3D.
 

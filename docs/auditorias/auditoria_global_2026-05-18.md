@@ -79,7 +79,7 @@ Sin hallazgos críticos en formulación física, signos, return mappings, o esqu
 ## H-1.3 — API de `Result` asimétrica
 **Severidad**: medio · **Categoría**: API
 
-**Evidencia**: `results.py:340-377` (SolveResult con `element_forces`) vs `results.py:201-208,241-263,266-337` (TransientResult, HarmonicResult, ResponseSpectrumResult sin esfuerzos internos).
+**Evidencia**: `results.py:340-377` (SolveResult con `element_forces`) vs `results.py:201-208,241-263,266-337` (TransientResult, HarmonicResult, ResponseSpectrumResult sin fuerzas internas).
 
 **Descripción**: `SolveResult` expone dict de `ElementForces`; los `Result` dinámicos sólo exponen historias U, U̇, Ü. Consumidor que quiera N(t), M(t) debe reconstruirlos manualmente.
 
@@ -677,13 +677,13 @@ técnica, no por falta de consumidor:
   vía `internal_forces` exigiría extender el contrato base (cambio
   arquitectural). Alternativa más limpia: método dedicado en el
   resultado armónico que asuma comportamiento lineal y compute
-  esfuerzos amplitud-fase desde `u_complex`.
+  fuerzas internas amplitud-fase desde `u_complex`.
 - `ResponseSpectrumResult.u_combined` es envolvente máxima (SRSS/CQC
-  sobre modos), no campo coherente de desplazamientos. Esfuerzos
-  derivados *no* pueden obtenerse llamando `internal_forces(u_combined)`
+  sobre modos), no campo coherente de desplazamientos. Las fuerzas internas
+  derivadas *no* pueden obtenerse llamando `internal_forces(u_combined)`
   — habría que reconstruir respuestas modales individuales
   (`u_n_max = Γ_n·φ_n·S_d(ω_n)`), evaluar `internal_forces(u_n_max)` por
-  modo, y aplicar SRSS/CQC a los esfuerzos. Requiere que el resultado
+  modo, y aplicar SRSS/CQC a las fuerzas internas. Requiere que el resultado
   almacene también las componentes modales individuales en el espacio
   de DOFs (hoy sólo guarda `u_per_mode` que es lo que necesita; falta
   el wiring de cómputo).

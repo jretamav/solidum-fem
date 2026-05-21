@@ -246,12 +246,14 @@ class Element(ABC):
     # ------------------------------------------------------------------
 
     def internal_forces(self, U_global: np.ndarray) -> ElementForces | None:
-        """Esfuerzos internos en ejes locales — **solo elementos estructurales 1D**.
+        """Fuerzas internas en ejes locales — **solo elementos estructurales 1D**.
 
         Contrato canónico del ADR 0002 con **dominio acotado por ADR 0012**:
         aplica a elementos estructurales 1D (trusses, cables, frames 2D/3D)
-        que sí tienen "esfuerzos seccionales" discretos por extremo (N, V,
-        M, T). Devuelve un :class:`ElementForces` inmutable. Convenciones
+        que sí tienen fuerzas internas seccionales discretas por extremo
+        (``N``, ``V``, ``M``, ``T``) — resultantes integradas de $\\sigma$
+        sobre la sección, no esfuerzos. Devuelve un :class:`ElementForces`
+        inmutable. Convenciones
         de signo en Reglas.md §5:
 
         - Frames 2D, trusses y cables: convención de viga estructural
@@ -267,7 +269,7 @@ class Element(ABC):
         ElementForces | None
             ``None`` para **sólidos 2D y 3D** (Tri3, Quad4, Tri6, Quad8,
             Quad9, CST_Embedded2D, Hex8, Tet4). En un sólido continuo el
-            equivalente de "esfuerzo seccional" es el campo tensorial
+            equivalente de "fuerza interna seccional" es el campo tensorial
             ``σ(x)``, accesible vía :meth:`compute_gauss_state(U)`. La
             conversión a un único valor representativo por elemento
             (promedio, centroide, ponderado por volumen) la decide cada

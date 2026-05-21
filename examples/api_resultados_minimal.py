@@ -5,7 +5,7 @@ construir un Domain programáticamente, invocar ``solidum.run`` y leer el
 ``SolveResult`` inmutable resultante.
 
 Se resuelve un marco 2D de una sola barra empotrada en un extremo con carga
-transversal en el otro (cantilever clásico). Los esfuerzos internos retornados
+transversal en el otro (cantilever clásico). Las fuerzas internas retornadas
 siguen la convención §5 de Reglas.md: ``V`` horario positivo, ``M`` sagging
 positivo.
 """
@@ -52,7 +52,7 @@ for node_id, dofs in result.reactions_by_node.items():
     for dof_name, value in dofs.items():
         print(f"  nodo {node_id}, {dof_name}: {value:+.4e}")
 
-print("\nEsfuerzos internos por elemento (ejes locales, convención §5):")
+print("\nFuerzas internas por elemento (ejes locales, convención §5):")
 for elem_id, ef in result.element_forces.items():
     print(f"  elem {elem_id}  kind={ef.kind}")
     for comp_name, arr in ef.components.items():
