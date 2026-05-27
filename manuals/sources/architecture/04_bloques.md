@@ -128,11 +128,28 @@ La columna de no linealidad geométrica se omite en esta familia: los elementos 
 
 ### Familia sólido 3D
 
-- [PENDIENTE: Tetraedro lineal `Tet4` (cuatro nodos), primer orden.]
-- [PENDIENTE: Tetraedro cuadrático `Tet10` (diez nodos), segundo orden.]
-- [PENDIENTE: Hexaedro trilineal `Hex8` (ocho nodos), primer orden.]
-- [PENDIENTE: Hexaedro serendípito `Hex20` (veinte nodos), segundo orden.]
-- [PENDIENTE: Hexaedro lagrangiano `Hex27` (veintisiete nodos), segundo orden.]
+Sólidos tridimensionales con convención Voigt 6D del proyecto (Reglas.md §5):
+$\boldsymbol\varepsilon = [\varepsilon_{xx},\, \varepsilon_{yy},\, \varepsilon_{zz},\, \gamma_{xy},\, \gamma_{yz},\, \gamma_{xz}]^\top$
+con $\gamma_{ij} = 2\,\varepsilon_{ij}$ engineering (ADR 0012). A diferencia de la familia 2D, los sólidos 3D **no exponen** `internal_forces` — la primitiva de salida es `compute_gauss_state(U)`, que devuelve $\boldsymbol\varepsilon$ y $\boldsymbol\sigma$ por punto de integración (ADR 0012: cierre del contrato por dominio explícito).
+
+**Primer orden** (Etapa 7, 2026-05-19)
+
+[TABLA: Cobertura de la familia sólido tridimensional — primer orden.]
+| Topología | Material lineal | Material no lineal |
+|---|---|---|
+| Tetraedro lineal $P_1$ (4 nodos) | ✓ `Tet4` | ✓ `Tet4` con `VonMises3D`, `DruckerPrager3D` o `IsotropicDamage3D` |
+| Hexaedro trilineal $Q_1$ (8 nodos) | ✓ `Hex8` | ✓ `Hex8` con cualquier material 3D no lineal |
+
+**Segundo orden** (sub-etapa A.ter, 2026-05-27)
+
+[TABLA: Cobertura de la familia sólido tridimensional — segundo orden.]
+| Topología | Material lineal | Material no lineal |
+|---|---|---|
+| Tetraedro cuadrático $P_2$ (10 nodos) | ✓ `Tet10` | ✓ `Tet10` con cualquier material 3D no lineal |
+| Hexaedro serendípito $Q_2^{\text{seren}}$ (20 nodos) | ✓ `Hex20` | ✓ `Hex20` con cualquier material 3D no lineal |
+| Hexaedro lagrangiano $Q_2$ (27 nodos) | ✓ `Hex27` | ✓ `Hex27` con cualquier material 3D no lineal |
+
+La sub-etapa A.ter introduce la base interna `_HigherOrderSolid3D` (paritaria con `_HigherOrderSolid2D` de la familia 2D) que comparte los bucles de Gauss para rigidez, fuerzas internas, gauss state, body load, face traction y matriz de masa. Las tres subclases (`Hex20`, `Hex27`, `Tet10`) sólo declaran sus funciones de forma 3D, su cuadratura por defecto, su cuadratura de masa específica (cuando difiere), las funciones de forma 2D de cara y la cuadratura de cara. La centralización aplica la regla de los dos casos reales: se introduce al entrar el `Hex27` (segundo caso cuadrático después del `Hex20` standalone) y se reutiliza inmediatamente por el `Tet10` con cara triangular `Tri6`. Cuadraturas nuevas registradas: `tet_4` (Stroud 4 puntos, orden 2, para K) y `tet_15` (Keast 15 puntos, orden 5, para masa del `Tet10`).
 
 ### Familias adicionales no implementadas
 

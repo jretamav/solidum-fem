@@ -10,13 +10,13 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 877 pasan / 5 skipped / 0 fallos (+73 vs 804 baseline post-Etapa-7). **Sub-etapa A.bis cerrada 2026-05-21**: tres materiales 3D no lineales (VM3D, DP3D, Damage3D) con 56 tests directos + 11 tests de la campaña de validación 3D consolidada (`tests/validation/`). |
-| **Elementos** | 18 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida + 2 sólidos 3D) |
-| **Materiales** | 13 (12 continuos + 1 cohesivo traction-jump) — **+3 en A.bis: VonMises3D, DruckerPrager3D, IsotropicDamage3D** |
+| **Tests** | 959 pasan / 6 skipped / 0 fallos (+82 vs 877 baseline post-A.bis). **Sub-etapa A.ter cerrada 2026-05-27** (sub-fases 1, 2, 3, 5 — sub-fase 4 NAFEMS LE10/LE2 diferida con rationale, ver "Limitaciones declaradas"): tres elementos 3D cuadráticos (Hex20, Hex27, Tet10) sobre base centralizada `_HigherOrderSolid3D` (regla de los dos casos reales aplicada con la entrada del Hex27), 65 tests directos + 9 cross-check con materiales 3D no lineales + 8 cube Lamé exactos. |
+| **Elementos** | 21 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida + 5 sólidos 3D — **Hex8, Hex20, Hex27, Tet4, Tet10**) |
+| **Materiales** | 13 (12 continuos + 1 cohesivo traction-jump) |
 | **Solvers** | 12 (4 estáticos + 1 modal + 5 transitorios + 1 armónico + 1 espectral) |
 | **ADRs aceptados** | 12 (0001–0012) |
-| **Specs `validated`** | 35 (+3 A.bis: VonMises3D, DruckerPrager3D, IsotropicDamage3D) |
-| **Etapas cerradas** | 7 completas + **sub-etapa A.bis cerrada 2026-05-21** (materiales 3D no lineales sobre sólidos 3D lineales de Etapa 7) |
+| **Specs `validated`** | 38 (+3 A.ter: Hex20, Hex27, Tet10) |
+| **Etapas cerradas** | 7 completas + **sub-etapa A.bis cerrada 2026-05-21** + **sub-etapa A.ter cerrada 2026-05-27** (sólidos 3D cuadráticos completos: Hex20, Hex27, Tet10) |
 | **Auditoría global** | Conducida 2026-05-18 — 51 hallazgos. 41 cerrados, 6 diferidos con rationale, 4 diferidos sin acción. Informe + addendum en [docs/auditorias/auditoria_global_2026-05-18.md](auditorias/auditoria_global_2026-05-18.md). Saneamiento completo en dos sesiones (19-mayo). |
 
 ---
@@ -44,7 +44,8 @@
 - Estructuras 1D: barras (`Truss2D/3D` lineales y corotacionales), cables (`Cable2D/3D` corotacionales), vigas (`Frame2DEuler`, `Frame2DTimoshenko`, `Frame2DEulerCorot`, `Frame3D`).
 - Sólidos 2D: lineales (`Quad4`, `Tri3`) y cuadráticos (`Quad8`, `Quad9`, `Tri6`).
 - **Sólidos 2D con discontinuidad interior embebida** (Etapa 5, ADR 0010): `CST_Embedded2D` — CST con cinemática KOS enriquecida, DOFs del salto condensados a nivel elemental, activación Rankine en `prepare_step` con `l_d = (A_e/h)·cos(θ−α)` (Cap. 6 Retama 2010).
-- **Sólidos 3D lineales** (Etapa 7, ADR 0012): `Hex8` (hexaedro trilineal isoparamétrico, 8 puntos Gauss 2×2×2 default, 6 caras numeradas con normal saliente) y `Tet4` (tetraedro lineal CST 3D, 1 punto baricéntrico). Convención Voigt 6D del proyecto `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]`. Locking volumétrico Hex8 + shear locking Tet4 declarados como limitaciones blindadas con tests, sin mitigación (política idéntica a Quad4/Tri3 en 2D). Cuadráticos 3D (`Hex20`, `Hex27`, `Tet10`) diferidos a sub-etapa posterior.
+- **Sólidos 3D lineales** (Etapa 7, ADR 0012): `Hex8` (hexaedro trilineal isoparamétrico, 8 puntos Gauss 2×2×2 default, 6 caras numeradas con normal saliente) y `Tet4` (tetraedro lineal CST 3D, 1 punto baricéntrico). Convención Voigt 6D del proyecto `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]`. Locking volumétrico Hex8 + shear locking Tet4 declarados como limitaciones blindadas con tests, sin mitigación (política idéntica a Quad4/Tri3 en 2D).
+- **Sólidos 3D cuadráticos** (sub-etapa **A.ter cerrada 2026-05-27**): `Hex20` (serendípito, 27 puntos Gauss 3×3×3 default, cara Quad8 8 nodos), `Hex27` (Lagrangiano triquadrático completo, 27 puntos Gauss 3×3×3, cara Quad9 9 nodos) y `Tet10` (cuadrático tetraédrico, 4 puntos Stroud default, cara Tri6 6 nodos, masa con `tet_15` Keast 15 puntos orden 5 fija). Centralización compartida en `_HigherOrderSolid3D` (regla de los dos casos reales aplicada con la entrada del Hex27). Mitigación cuantitativa del shear locking: Hex20 6×1×1 en MacNeal beam alcanza 97% de u_EB vs <55% del Hex8 12×1×1. Patch test triquadrático completo `u_x = c·x²y²z²` exacto a precisión máquina (capacidad distintiva del Hex27 vs Hex20). Locking volumétrico atenuado vs Hex8 pero presente (ratio u(ν=0.4999)/u(ν=0.3) ≈ 0.80 vs <0.6 del Hex8). Reduced integration `hex_2x2x2`: Hex20 con 6 modos de hourglass, Hex27 con 27 — sin estabilización (uso default 3×3×3 obligatorio).
 
 **Materiales cubiertos**
 - Elásticos: `Elastic1D`, `Elastic2D` (plane stress + plane strain), `Elastic3D` (isótropo, sin variantes de hipótesis — Etapa 7).
@@ -67,7 +68,8 @@
 
 ## Limitaciones declaradas (out-of-scope hoy)
 
-- **Sólidos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`): pendientes — los lineales `Hex8` y `Tet4` entraron en la Etapa 7. Los cuadráticos abren la base interna `_HigherOrderSolid3D` cuando aparezca el segundo caso real (regla de centralización post-dos-casos).
+- ~~**Sólidos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`)~~ ✅ **Cerrado 2026-05-27** (sub-etapa A.ter): los tres elementos sobre base centralizada `_HigherOrderSolid3D` (regla de los dos casos reales aplicada con la entrada del Hex27). Cuadraturas nuevas `tet_4` (Stroud orden 2) y `tet_15` (Keast orden 5). Cross-check completo con materiales 3D no lineales: 15 celdas elemento × material en la matriz 3D verdes.
+- **Validación externa NAFEMS 3D** (LE10 placa elíptica gruesa, LE2 sólido cilíndrico): **diferida** — la construcción de mallas con frontera elíptica (LE10) y geometría cilíndrica con mid-edges curvos (LE2) merece sesión dedicada. La validación cuantitativa actual de A.ter se apoya en: (a) cubo Lamé 3D uniaxial e hidrostático exactos a precisión máquina para los 3 elementos cuadráticos sobre malla simple y malla 5-Tet10; (b) MacNeal slender beam con mitigación del shear locking documentada cuantitativamente Hex20 6×1×1 → 97% u_EB vs Hex8 12×1×1 → <55%; (c) patch test triquadrático completo (capacidad distintiva del Hex27); (d) cross-check elemento × material no lineal 3D.
 - ~~**Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`)~~ ✅ **Cerrado 2026-05-21** (sub-etapa A.bis): los tres materiales con tangente algorítmica consistente, cross-consistency vs 2D plane_strain a 10-14 decimales, integración Hex8/Tet4, y campaña de validación 3D consolidada (triaxial DP3D vs cono, uniaxial Damage3D vs curva σ-ε analítica, cilindro Hill 3D vs Hill 1950 §5).
 - **Placas y láminas**: pendiente.
 - **Análisis térmico**: pendiente (decoupled → coupled).
@@ -110,14 +112,14 @@ Ninguno bloquea el avance. Todos están documentados con su contexto en la memor
 
 ## Próximo hito
 
-**Elección de Etapa 8** tras cerrar la Etapa 7 (sólidos 3D lineales, ADR 0012, 2026-05-19) y la sub-etapa **A.bis** (materiales 3D no lineales, 2026-05-21). El catálogo 3D queda en pie de igualdad funcional con el 2D para materiales y la suite de validación 3D consolidada cierra la campaña con 11 tests cuantitativos contra solución analítica. Opciones para Etapa 8:
+**Elección de Etapa 8** tras cerrar la Etapa 7 (sólidos 3D lineales, ADR 0012, 2026-05-19), la sub-etapa **A.bis** (materiales 3D no lineales, 2026-05-21) y la sub-etapa **A.ter** (sólidos 3D cuadráticos, 2026-05-27). El catálogo 3D queda con paridad funcional completa con el 2D — 5 elementos × 4 materiales (3 no lineales + Elastic3D) todos cubiertos con ✓. Opciones para Etapa 8:
 
 - B. Placas y láminas.
 - C. Análisis térmico desacoplado.
 - E. Mohr-Coulomb 2D + `FiberSection`.
-- **A.ter** (rama natural de A): elementos 3D cuadráticos (`Hex20`, `Hex27`, `Tet10`) — abrir base interna `_HigherOrderSolid3D` (regla de dos casos reales) y desbloquear benchmarks NAFEMS 3D con valor citable (LE10, LE2, LE3).
+- **Validación NAFEMS 3D** (LE10, LE2): sub-fase 4 de A.ter diferida. Sesión dedicada con meshing elíptico/cilíndrico — cierra la campaña de validación A.ter con benchmarks publicados (refuerza el JOSS).
 
-El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La decisión la toma el usuario con base en la dirección que quiera dar al proyecto tras esta etapa.
+El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La decisión la toma el usuario con base en la dirección que quiera dar al proyecto.
 
 ---
 
@@ -131,7 +133,9 @@ El argumentario completo de cada opción está en [ROADMAP.md](ROADMAP.md). La d
 
 ---
 
-*Última actualización: 2026-05-21 — **Sub-etapa A.bis cerrada: materiales 3D no lineales**. Tres materiales con tangente algorítmica consistente sobre Voigt 6D del proyecto: `VonMises3D` (J2 radial cerrado), `DruckerPrager3D` (dos ramas regular/apex + variantes outer/inner cone, sin `plane_strain_matched` 2D-only), `IsotropicDamage3D` (daño escalar con softening exponencial centralizado, tangente asimétrica). 56 tests directos (12+12+12 unitarios + 1+1+1 cross-consistency vs 2D plane_strain a 10-14 decimales + 5+4+3 integración Hex8/Tet4) + 11 tests de validación 3D consolidada (DP3D triaxial vs cono analítico, Damage3D uniaxial vs curva σ-ε analítica, VM3D cilindro Hill 3D plane-strain con pipeline 3D vs Hill 1950 §5). Suite 804 → 877. Catálogo 3D ahora paritario con 2D en materiales no lineales.*
+*Última actualización: 2026-05-27 — **Sub-etapa A.ter cerrada (sub-fases 1, 2, 3, 5)**: sólidos 3D cuadráticos. Tres nuevos elementos sobre base centralizada `_HigherOrderSolid3D` (regla de los dos casos reales aplicada con la entrada del `Hex27`, refactor del `Hex20` standalone). **Hex20** serendípito 20 nodos (60 DOFs, default `hex_3x3x3`, cara Quad8): cubo Lamé exacto a precisión máquina, MacNeal beam 6×1×1 alcanza 97% u_EB vs Hex8 12×1×1 <55%, locking volumétrico atenuado (ratio 0.80 vs <0.6 Hex8), reducción `hex_2x2x2` genera 6 modos de hourglass por elemento aislado. **Hex27** Lagrangiano triquadrático completo 27 nodos (81 DOFs, default `hex_3x3x3`, cara Quad9): patch test triquadrático `u_x = c·x²y²z²` exacto a precisión máquina (capacidad distintiva vs Hex20), reducción genera 27 modos de hourglass. **Tet10** cuadrático 10 nodos (30 DOFs, default `tet_4` Stroud orden 2, masa con `tet_15` Keast orden 5 fija independiente de K, cara Tri6): cubo Lamé exacto en malla 5-tet con mid-edges compartidos. **Cross-check sub-fase 5**: 9 smoke tests cierran las 9 celdas ○ → ✓ de la matriz 3D (3 elementos × 3 materiales no lineales). Suite 877 → 959 (+82 tests). **Sub-fase 4 (NAFEMS LE10/LE2)** diferida a sesión dedicada con meshing elíptico/cilíndrico — la validación cuantitativa actual se apoya en cubo Lamé exacto, MacNeal beam, patch test triquadrático y cross-check con materiales no lineales 3D.
+
+Anterior 2026-05-21 — Sub-etapa A.bis cerrada: materiales 3D no lineales (VonMises3D, DruckerPrager3D, IsotropicDamage3D) con tangente algorítmica consistente sobre Voigt 6D, cross-consistency vs 2D plane_strain, integración Hex8/Tet4, y campaña de validación 3D consolidada (DP3D vs cono, Damage3D vs curva σ-ε analítica, VM3D cilindro Hill 3D).*
 
 *Anterior 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: Hex8 (hexaedro trilineal, 8 puntos Gauss 2×2×2, 6 caras con normal saliente, body load + face traction consistentes), Tet4 (CST 3D, 1 punto baricéntrico, masa consistente analítica), Elastic3D (isótropo, sin variantes plane stress/plane strain). Convención Voigt 6D fijada en `Reglas.md §5` y blindada por ADR. Cuadraturas 3D registradas (`hex_1x1x1`, `hex_2x2x2`, `hex_3x3x3`, `tet_1`). Cierre adicional: deuda técnica #1 (`internal_forces` en sólidos) por dominio explícito en ADR 0012 — sólidos exponen `compute_gauss_state`, estructurales 1D exponen `internal_forces`. Tests: +54 (suite 750 → 804): 31 unitarios + 10 modos rígidos 3D + 3 cubo Lamé 3D (tracción uniaxial + hidrostática exactos a precisión máquina) + 2 MacNeal-Harder 3D (locking documentado + convergencia h monótona) + 2 locking volumétrico 3D blindado. Specs `Elastic3D`, `Hex8`, `Tet4` validadas; entradas en catálogos de elementos y materiales; MATRIZ ampliada con columna Elastic3D y filas Hex8/Tet4.*
 
