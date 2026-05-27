@@ -55,7 +55,7 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from solidum.core.domain import Domain
-from solidum.elements.solid_3d import Hex8, Tet4
+from solidum.elements.solid_3d import Hex8, Hex20, Hex27, Tet4, Tet10
 from solidum.materials.elastic_3d import Elastic3D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import LinearSolver
@@ -77,6 +77,25 @@ TET5_CONNECTIVITY = (
 HEX8_VTK_COORDS = [
     (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0),
     (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0),
+]
+HEX20_VTK_COORDS = [
+    # Vértices (orden Hex8)
+    (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0),
+    (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0),
+    # Medios de aristas cara inferior z=0
+    (0.5, 0.0, 0.0), (1.0, 0.5, 0.0), (0.5, 1.0, 0.0), (0.0, 0.5, 0.0),
+    # Medios de aristas cara superior z=1
+    (0.5, 0.0, 1.0), (1.0, 0.5, 1.0), (0.5, 1.0, 1.0), (0.0, 0.5, 1.0),
+    # Medios de aristas verticales
+    (0.0, 0.0, 0.5), (1.0, 0.0, 0.5), (1.0, 1.0, 0.5), (0.0, 1.0, 0.5),
+]
+HEX27_VTK_COORDS = HEX20_VTK_COORDS + [
+    # Centros de cara: -x, +x, -y, +y, -z, +z
+    (0.0, 0.5, 0.5), (1.0, 0.5, 0.5),
+    (0.5, 0.0, 0.5), (0.5, 1.0, 0.5),
+    (0.5, 0.5, 0.0), (0.5, 0.5, 1.0),
+    # Centro de cuerpo
+    (0.5, 0.5, 0.5),
 ]
 
 
@@ -114,6 +133,31 @@ def _build_cube_hex8():
     nodes = [domain.nodes[i + 1] for i in range(8)]
     material = Elastic3D(E=E_YOUNG, nu=NU)
     elem = Hex8(1, nodes, material)
+    domain.add_element(elem)
+    return domain, elem
+
+
+def _build_cube_hex20():
+    """Cubo unitario con un Hex20 (20 nodos: 8 vértices + 12 medios de arista)."""
+    domain = Domain()
+    for i, c in enumerate(HEX20_VTK_COORDS):
+        domain.add_node(i + 1, list(c))
+    nodes = [domain.nodes[i + 1] for i in range(20)]
+    material = Elastic3D(E=E_YOUNG, nu=NU)
+    elem = Hex20(1, nodes, material)
+    domain.add_element(elem)
+    return domain, elem
+
+
+def _build_cube_hex27():
+    """Cubo unitario con un Hex27 (27 nodos: 20 del Hex20 + 6 centros de
+    cara + 1 centro de cuerpo)."""
+    domain = Domain()
+    for i, c in enumerate(HEX27_VTK_COORDS):
+        domain.add_node(i + 1, list(c))
+    nodes = [domain.nodes[i + 1] for i in range(27)]
+    material = Elastic3D(E=E_YOUNG, nu=NU)
+    elem = Hex27(1, nodes, material)
     domain.add_element(elem)
     return domain, elem
 
@@ -271,3 +315,261 @@ def test_hydrostatic_compression_hex8():
     expected_sigma = np.array([-PRESSURE, -PRESSURE, -PRESSURE, 0.0, 0.0, 0.0])
     for k in range(gs['stress'].shape[0]):
         np.testing.assert_allclose(gs['stress'][k], expected_sigma, atol=1.0e-8)
+
+
+# =============================================================================
+# Test 4 — Tracción uniaxial Hex20 (1 elemento)
+# =============================================================================
+
+def test_uniaxial_traction_hex20_exact():
+    """Un Hex20 reproduce la solución de tracción uniaxial exacta a precisión máquina.
+
+    El campo analítico es lineal en (x, y, z); el Hex20 (cuadrático serendípito)
+    contiene el espacio lineal trivialmente, así que el resultado es exacto a
+    precisión máquina — igual que el Hex8. La diferencia entre Hex8 y Hex20 sólo
+    aparece en problemas donde la solución exacta es más rica que lineal (e.g.
+    flexión, ver MacNeal beam 3D).
+    """
+    domain, elem = _build_cube_hex20()
+    _apply_uniaxial_bcs(domain)
+    assembler, F = _solve_static(domain)
+    _apply_face_traction(domain, elem, face=3, t_vec=np.array([PRESSURE, 0.0, 0.0]), F=F)
+
+    U = LinearSolver(assembler).solve(F)
+
+    for n in domain.nodes.values():
+        x, y, z = n.coordinates
+        ix, iy, iz = n.dofs['ux'], n.dofs['uy'], n.dofs['uz']
+        ux = 0.0 if ix < 0 else U[ix]
+        uy = 0.0 if iy < 0 else U[iy]
+        uz = 0.0 if iz < 0 else U[iz]
+        np.testing.assert_allclose(ux, PRESSURE * x / E_YOUNG, atol=1.0e-10)
+        np.testing.assert_allclose(uy, -NU * PRESSURE * y / E_YOUNG, atol=1.0e-10)
+        np.testing.assert_allclose(uz, -NU * PRESSURE * z / E_YOUNG, atol=1.0e-10)
+
+    gs = elem.compute_gauss_state(U)
+    expected_sigma = np.array([PRESSURE, 0.0, 0.0, 0.0, 0.0, 0.0])
+    for k in range(gs['stress'].shape[0]):
+        np.testing.assert_allclose(gs['stress'][k], expected_sigma, atol=1.0e-9)
+
+
+# =============================================================================
+# Test 5 — Compresión hidrostática Hex20 (1 elemento)
+# =============================================================================
+
+def test_hydrostatic_compression_hex20():
+    """Hex20 en compresión hidrostática: solución exacta a precisión máquina.
+
+    Mismas tres caras opuestas a los planos de simetría que ``Hex8``; campo
+    analítico lineal en (x, y, z) y por tanto reproducido exacto.
+    """
+    domain, elem = _build_cube_hex20()
+    _apply_symmetry_bcs(domain)
+    assembler, F = _solve_static(domain)
+
+    _apply_face_traction(domain, elem, face=3, t_vec=np.array([-PRESSURE, 0.0, 0.0]), F=F)
+    _apply_face_traction(domain, elem, face=4, t_vec=np.array([0.0, -PRESSURE, 0.0]), F=F)
+    _apply_face_traction(domain, elem, face=1, t_vec=np.array([0.0, 0.0, -PRESSURE]), F=F)
+
+    U = LinearSolver(assembler).solve(F)
+
+    eps_axial = -PRESSURE * (1.0 - 2.0 * NU) / E_YOUNG
+    for n in domain.nodes.values():
+        x, y, z = n.coordinates
+        ix, iy, iz = n.dofs['ux'], n.dofs['uy'], n.dofs['uz']
+        ux = 0.0 if ix < 0 else U[ix]
+        uy = 0.0 if iy < 0 else U[iy]
+        uz = 0.0 if iz < 0 else U[iz]
+        np.testing.assert_allclose(ux, eps_axial * x, atol=1.0e-10)
+        np.testing.assert_allclose(uy, eps_axial * y, atol=1.0e-10)
+        np.testing.assert_allclose(uz, eps_axial * z, atol=1.0e-10)
+
+    gs = elem.compute_gauss_state(U)
+    expected_sigma = np.array([-PRESSURE, -PRESSURE, -PRESSURE, 0.0, 0.0, 0.0])
+    for k in range(gs['stress'].shape[0]):
+        np.testing.assert_allclose(gs['stress'][k], expected_sigma, atol=1.0e-8)
+
+
+# =============================================================================
+# Tests 6-7 — Hex27 (uniaxial e hidrostático)
+# =============================================================================
+
+def test_uniaxial_traction_hex27_exact():
+    """Un Hex27 reproduce la solución uniaxial exacta a precisión máquina."""
+    domain, elem = _build_cube_hex27()
+    _apply_uniaxial_bcs(domain)
+    assembler, F = _solve_static(domain)
+    _apply_face_traction(domain, elem, face=3, t_vec=np.array([PRESSURE, 0.0, 0.0]), F=F)
+
+    U = LinearSolver(assembler).solve(F)
+
+    for n in domain.nodes.values():
+        x, y, z = n.coordinates
+        ix, iy, iz = n.dofs['ux'], n.dofs['uy'], n.dofs['uz']
+        ux = 0.0 if ix < 0 else U[ix]
+        uy = 0.0 if iy < 0 else U[iy]
+        uz = 0.0 if iz < 0 else U[iz]
+        np.testing.assert_allclose(ux, PRESSURE * x / E_YOUNG, atol=1.0e-10)
+        np.testing.assert_allclose(uy, -NU * PRESSURE * y / E_YOUNG, atol=1.0e-10)
+        np.testing.assert_allclose(uz, -NU * PRESSURE * z / E_YOUNG, atol=1.0e-10)
+
+    gs = elem.compute_gauss_state(U)
+    expected_sigma = np.array([PRESSURE, 0.0, 0.0, 0.0, 0.0, 0.0])
+    for k in range(gs['stress'].shape[0]):
+        np.testing.assert_allclose(gs['stress'][k], expected_sigma, atol=1.0e-9)
+
+
+def test_hydrostatic_compression_hex27():
+    """Hex27 en compresión hidrostática: solución exacta a precisión máquina."""
+    domain, elem = _build_cube_hex27()
+    _apply_symmetry_bcs(domain)
+    assembler, F = _solve_static(domain)
+
+    _apply_face_traction(domain, elem, face=3, t_vec=np.array([-PRESSURE, 0.0, 0.0]), F=F)
+    _apply_face_traction(domain, elem, face=4, t_vec=np.array([0.0, -PRESSURE, 0.0]), F=F)
+    _apply_face_traction(domain, elem, face=1, t_vec=np.array([0.0, 0.0, -PRESSURE]), F=F)
+
+    U = LinearSolver(assembler).solve(F)
+
+    eps_axial = -PRESSURE * (1.0 - 2.0 * NU) / E_YOUNG
+    for n in domain.nodes.values():
+        x, y, z = n.coordinates
+        ix, iy, iz = n.dofs['ux'], n.dofs['uy'], n.dofs['uz']
+        ux = 0.0 if ix < 0 else U[ix]
+        uy = 0.0 if iy < 0 else U[iy]
+        uz = 0.0 if iz < 0 else U[iz]
+        np.testing.assert_allclose(ux, eps_axial * x, atol=1.0e-10)
+        np.testing.assert_allclose(uy, eps_axial * y, atol=1.0e-10)
+        np.testing.assert_allclose(uz, eps_axial * z, atol=1.0e-10)
+
+    gs = elem.compute_gauss_state(U)
+    expected_sigma = np.array([-PRESSURE, -PRESSURE, -PRESSURE, 0.0, 0.0, 0.0])
+    for k in range(gs['stress'].shape[0]):
+        np.testing.assert_allclose(gs['stress'][k], expected_sigma, atol=1.0e-8)
+
+
+# =============================================================================
+# Tests 8-9 — Tet10 (uniaxial sobre malla 5-tet del cubo)
+# =============================================================================
+
+def _build_cube_tet10_mesh5():
+    """Cubo unitario en 5 Tet10. Construye nodos vértice (8) + medios de
+    arista únicos (18) = 26 nodos totales. La conectividad de los 5 tets
+    sigue la misma que ``TET5_CONNECTIVITY`` (Tet4); cada Tet10 toma sus
+    10 nodos en orden VTK_QUADRATIC_TETRA.
+    """
+    domain = Domain()
+    # Vértices de cubo: id 1..8 (Hex8 VTK order)
+    for i, c in enumerate(HEX8_VTK_COORDS):
+        domain.add_node(i + 1, list(c))
+
+    # Mid-edges únicos de la unión de las 5 tets.
+    # Recopilar todas las aristas, asignar id único compartido.
+    mid_node_id_by_edge = {}
+    next_id = 9
+
+    def _midpoint(va, vb):
+        return tuple((HEX8_VTK_COORDS[va][k] + HEX8_VTK_COORDS[vb][k]) / 2.0
+                     for k in range(3))
+
+    def _ensure_mid(va, vb):
+        nonlocal next_id
+        key = tuple(sorted((va, vb)))
+        if key not in mid_node_id_by_edge:
+            mp = _midpoint(va, vb)
+            domain.add_node(next_id, list(mp))
+            mid_node_id_by_edge[key] = next_id
+            next_id += 1
+        return mid_node_id_by_edge[key]
+
+    material = Elastic3D(E=E_YOUNG, nu=NU)
+    elems = []
+    for k, conn in enumerate(TET5_CONNECTIVITY):
+        # Vértices del tet en orden VTK_TETRA: conn[0..3].
+        v_ids = [c + 1 for c in conn]  # +1 porque domain.nodes está 1-indexed
+        # Medios de aristas en orden VTK_QUADRATIC_TETRA:
+        # 4: 0-1, 5: 1-2, 6: 2-0, 7: 0-3, 8: 1-3, 9: 2-3
+        edge_pairs = [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)]
+        mid_ids = [_ensure_mid(conn[a], conn[b]) for a, b in edge_pairs]
+        node_ids = v_ids + mid_ids
+        nodes = [domain.nodes[nid] for nid in node_ids]
+        e = Tet10(k + 1, nodes, material)
+        domain.add_element(e)
+        elems.append(e)
+    return domain, elems
+
+
+def test_uniaxial_traction_tet10_mesh_exact():
+    """Cubo en 5 Tet10 bajo tracción uniaxial — solución exacta nodal.
+
+    Los Tet10 contienen el espacio lineal trivialmente; el resultado es
+    exacto a precisión máquina con cualquier número de elementos. Este
+    test verifica adicionalmente que la conectividad multi-elemento con
+    mid-edges compartidos funciona correctamente.
+    """
+    domain, elems = _build_cube_tet10_mesh5()
+    _apply_uniaxial_bcs(domain)
+    assembler, F = _solve_static(domain)
+
+    for e in elems:
+        for face_idx, face_local in enumerate(e.FACE_NODES):
+            xs = [e.nodes[i].coordinates[0] for i in face_local]
+            if all(abs(x - 1.0) < 1e-12 for x in xs):
+                _apply_face_traction(
+                    domain, e, face=face_idx,
+                    t_vec=np.array([PRESSURE, 0.0, 0.0]), F=F,
+                )
+
+    U = LinearSolver(assembler).solve(F)
+
+    for n in domain.nodes.values():
+        x, y, z = n.coordinates
+        ix, iy, iz = n.dofs['ux'], n.dofs['uy'], n.dofs['uz']
+        ux = 0.0 if ix < 0 else U[ix]
+        uy = 0.0 if iy < 0 else U[iy]
+        uz = 0.0 if iz < 0 else U[iz]
+        np.testing.assert_allclose(ux, PRESSURE * x / E_YOUNG, atol=1.0e-10)
+        np.testing.assert_allclose(uy, -NU * PRESSURE * y / E_YOUNG, atol=1.0e-10)
+        np.testing.assert_allclose(uz, -NU * PRESSURE * z / E_YOUNG, atol=1.0e-10)
+
+    expected_sigma = np.array([PRESSURE, 0.0, 0.0, 0.0, 0.0, 0.0])
+    for e in elems:
+        gs = e.compute_gauss_state(U)
+        for k in range(gs['stress'].shape[0]):
+            np.testing.assert_allclose(gs['stress'][k], expected_sigma, atol=1.0e-8)
+
+
+def test_hydrostatic_compression_tet10_mesh():
+    """Hidrostático sobre cubo en 5 Tet10 — solución exacta nodal."""
+    domain, elems = _build_cube_tet10_mesh5()
+    _apply_symmetry_bcs(domain)
+    assembler, F = _solve_static(domain)
+
+    # Tracción normal -p en x=1, y=1, z=1: recorrer caras coincidentes.
+    for e in elems:
+        for face_idx, face_local in enumerate(e.FACE_NODES):
+            xs = [e.nodes[i].coordinates[0] for i in face_local]
+            ys = [e.nodes[i].coordinates[1] for i in face_local]
+            zs = [e.nodes[i].coordinates[2] for i in face_local]
+            if all(abs(x - 1.0) < 1e-12 for x in xs):
+                _apply_face_traction(domain, e, face=face_idx,
+                                     t_vec=np.array([-PRESSURE, 0.0, 0.0]), F=F)
+            elif all(abs(y - 1.0) < 1e-12 for y in ys):
+                _apply_face_traction(domain, e, face=face_idx,
+                                     t_vec=np.array([0.0, -PRESSURE, 0.0]), F=F)
+            elif all(abs(z - 1.0) < 1e-12 for z in zs):
+                _apply_face_traction(domain, e, face=face_idx,
+                                     t_vec=np.array([0.0, 0.0, -PRESSURE]), F=F)
+
+    U = LinearSolver(assembler).solve(F)
+
+    eps_axial = -PRESSURE * (1.0 - 2.0 * NU) / E_YOUNG
+    for n in domain.nodes.values():
+        x, y, z = n.coordinates
+        ix, iy, iz = n.dofs['ux'], n.dofs['uy'], n.dofs['uz']
+        ux = 0.0 if ix < 0 else U[ix]
+        uy = 0.0 if iy < 0 else U[iy]
+        uz = 0.0 if iz < 0 else U[iz]
+        np.testing.assert_allclose(ux, eps_axial * x, atol=1.0e-10)
+        np.testing.assert_allclose(uy, eps_axial * y, atol=1.0e-10)
+        np.testing.assert_allclose(uz, eps_axial * z, atol=1.0e-10)
