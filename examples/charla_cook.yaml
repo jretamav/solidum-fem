@@ -1,0 +1,54 @@
+# Cook's membrane — plasticidad J2 plane strain perfecta (H = 0).
+# Geometria y parametros materiales segun Simo & Armero (1992).
+#
+# Trapecio:
+#   Esquina inferior izquierda  (0, 0)    \
+#   Esquina inferior derecha    (48, 44)  | empotrado en x=0 (borde izquierdo)
+#   Esquina superior derecha    (48, 60)  | uy prescrito en x=48 (borde derecho)
+#   Esquina superior izquierda  (0, 44)   /
+#
+# Caso clasico: combina flexion + cortante + plasticidad en una sola corrida.
+# La zona plastica nace en la esquina inferior izquierda (donde el momento
+# flector + cortante producen el J2 mas alto) y se propaga en banda diagonal
+# hacia la esquina superior derecha.
+
+mesh: charla_cook.msh
+mesh_material: 1
+mesh_thickness: 1.0
+
+materials:
+  - id: 1
+    type: VonMises2D
+    E: 70.0           # modulo de Young
+    nu: 0.3333        # Poisson (cuasi-incompresible, valor clasico de Simo-Armero)
+    sigma_y: 0.243    # limite de fluencia
+    H: 0.0            # plasticidad perfecta (Simo-Armero usan H=0.135)
+    hypothesis: plane_strain
+    density: 1.0
+
+boundary_conditions_by_group:
+  - {group_name: "Apoyo_Izquierdo", ux: 0.0, uy: 0.0}
+  - {group_name: "Carga_Derecha",   uy: 10.0}   # desplazamiento vertical prescrito
+
+solver:
+  type: NonlinearSolver
+  num_steps: 100
+  max_iter: 25
+  adaptive: true
+  convergence:
+    rtol_force: 1.0e-6
+    rtol_disp:  1.0e-6
+
+output:
+  file_name: "charla_cook"
+  pre_process:
+    export: true
+  results:
+    frequency: "all_steps"
+    nodal_results:
+      - "Displacements"
+      - "External_Forces"
+      - "Supports"
+    element_results:
+      - "Von_Mises"
+      - "Internal_State"
