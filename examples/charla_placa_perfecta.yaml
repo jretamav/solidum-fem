@@ -1,0 +1,51 @@
+# Placa cuadrada (2 m x 2 m) con agujero central (r=0.4 m), traccion uniaxial.
+# Material J2 plane strain con plasticidad perfecta (H = 0).
+# Borde izquierdo empotrado, borde derecho con desplazamiento prescrito.
+#
+# Acero generico: E = 200 GPa, nu = 0.3, sigma_y = 250 MPa.
+# Carga: u_x = 4e-3 m sobre el borde derecho => deformacion lejana 2e-3,
+# es decir ~1.6 veces la deformacion de fluencia (eps_y = sigma_y/E = 1.25e-3).
+# Con la concentracion de esfuerzos del agujero (K_t ~ 3 en elasticidad), la
+# zona plastica nace temprano en el borde superior/inferior del agujero y se
+# propaga hacia los lados al avanzar la carga.
+
+mesh: charla_placa.msh
+mesh_material: 1
+mesh_thickness: 1.0   # espesor unitario; los resultados son por unidad de espesor
+
+materials:
+  - id: 1
+    type: VonMises2D
+    E: 200.0e9
+    nu: 0.3
+    sigma_y: 250.0e6
+    H: 0.0              # plasticidad perfecta
+    hypothesis: plane_strain
+    density: 7850.0
+
+boundary_conditions_by_group:
+  - {group_name: "Apoyo_Izquierdo", ux: 0.0, uy: 0.0}
+  - {group_name: "Carga_Derecha",  ux: 4.0e-3}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 100
+  max_iter: 25
+  adaptive: true
+  convergence:
+    rtol_force: 1.0e-6
+    rtol_disp:  1.0e-6
+
+output:
+  file_name: "charla_placa_perfecta"
+  pre_process:
+    export: true
+  results:
+    frequency: "all_steps"
+    nodal_results:
+      - "Displacements"
+      - "External_Forces"
+      - "Supports"
+    element_results:
+      - "Von_Mises"
+      - "Internal_State"
