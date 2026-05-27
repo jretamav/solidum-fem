@@ -538,6 +538,7 @@ por dominio explícito).
   - **Locking volumétrico** con ν → 0.5 **atenuado** respecto al `Hex8` pero aún presente — sin mitigación implementada (política idéntica a `Quad8`/`Hex8`). Blindado por `tests/test_volumetric_locking_3d.py::TestHex20VolumetricLocking` (ratio u(0.4999)/u(0.3) ≈ 0.80 vs < 0.6 en `Hex8`).
   - **Hourglass** con integración reducida `hex_2x2x2`: 6 modos espurios por elemento aislado; en mallas ensambladas con BC razonable los modos no propagan, pero un elemento aislado o capa pobre los mostraría. Sin estabilización.
   - **Shear locking** **drásticamente mitigado** respecto al `Hex8` en problemas de flexión: cuantificado en `tests/validation/test_macneal_beam_3d.py` (Hex20 6×1×1 alcanza 97% de u_EB, vs < 55% de Hex8 12×1×1).
+- **Validación externa**: NAFEMS LE10 thick plate pressure ([`tests/validation/test_nafems_le10.py`](../tests/validation/test_nafems_le10.py), 6×6×2 → σ_yy(D) ≈ −5.38 MPa canónico dentro de banda 10%). **Lamé thick cylinder 3D** ([`tests/validation/test_lame_cylinder_3d.py`](../tests/validation/test_lame_cylinder_3d.py), 4×4×1 → error L²-rel < 4% en σ y < 2% en u_r contra solución cerrada de Timoshenko-Goodier §28; convergencia h monótona del error L²(σ_θθ) verificada). Es la primera demostración cuantitativa del proyecto de **capacidad isoparamétrica curva** — los mid-edges quedan automáticamente sobre la superficie cilíndrica por la no-linealidad cos/sin del mapeo angular.
 - **Spec**: [docs/specs/Hex20.md](specs/Hex20.md).
 - **Archivo**: [solidum/elements/solid_3d/hex20.py](../solidum/elements/solid_3d/hex20.py).
 
@@ -558,6 +559,7 @@ por dominio explícito).
   - **Coste computacional**: 81 DOFs/elemento vs 60 del `Hex20` (35% más). Para flexión simple `Hex20` da resultados equivalentes a menor coste.
   - **Locking volumétrico** con ν → 0.5 comparable al `Hex20` (ratio ≈ 0.80 vs < 0.6 del `Hex8`). Sin mitigación implementada.
   - **Hourglass** con integración reducida `hex_2x2x2`: 27 modos espurios por elemento aislado (peor del catálogo 3D); en mallas estructuradas la mayoría no propaga tras ensamblar.
+- **Validación externa**: NAFEMS LE10 thick plate pressure ([`tests/validation/test_nafems_le10.py`](../tests/validation/test_nafems_le10.py), 5×5×2 → σ_yy(D) ≈ −5.38 MPa canónico dentro de banda 10%). **Lamé thick cylinder 3D** ([`tests/validation/test_lame_cylinder_3d.py`](../tests/validation/test_lame_cylinder_3d.py), 4×4×1 → error L²-rel < 4% en σ y < 2% en u_r contra Timoshenko-Goodier §28; convergencia h monótona). Mid-edges automáticos sobre superficie cilíndrica por la no-linealidad del mapeo angular.
 - **Spec**: [docs/specs/Hex27.md](specs/Hex27.md).
 - **Archivo**: [solidum/elements/solid_3d/hex27.py](../solidum/elements/solid_3d/hex27.py).
 
@@ -576,6 +578,8 @@ por dominio explícito).
 - **Limitaciones declaradas**:
   - **Locking volumétrico** con ν → 0.5 atenuado respecto al `Tet4` pero presente; sin mitigación implementada.
   - **Distorsión severa**: para Tet10 con mid-edges curvos, el Jacobiano varía espacialmente; el usuario debería seleccionar `tet_15` vía el parámetro `quadrature`.
+  - **Superficie curva con descomposición ingenua hex→5tets**: no converge. La cara del tet que toca una superficie curva tiene 3 mid-edges; con descomposición genérica de cada hex en 5 tets, sólo 1 de los 3 mid-edges está sobre una arista del grid paramétrico (curva), los otros 2 corresponden a aristas diagonales del hex que se vuelven aristas del tet con mid-edges rectos. La representación isoparamétrica se pierde y el error σ_rr **crece con refinamiento h** (ver `tests/validation/test_lame_cylinder_3d.py` — tests Tet10 con `@pytest.mark.skip` y motivo). Para validar Tet10 sobre superficie curva se requiere mesher tetraédrico nativo (gmsh API) o descomposición específica del dominio en tets cuyas aristas estén todas sobre el grid paramétrico. Deuda técnica #8 en STATUS. La capacidad del Tet10 sobre geometría plana está validada en `test_cube_lame_3d.py` (cubo Lamé exacto a precisión máquina), así que NO es fallo del elemento.
+- **Validación externa**: cubo Lamé 3D tracción uniaxial sobre malla 5-Tet (exacto a precisión máquina, `test_cube_lame_3d.py`). Superficie curva diferida — ver limitación arriba.
 - **Spec**: [docs/specs/Tet10.md](specs/Tet10.md).
 - **Archivo**: [solidum/elements/solid_3d/tet10.py](../solidum/elements/solid_3d/tet10.py).
 
