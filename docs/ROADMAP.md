@@ -216,11 +216,14 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 - **Locking volumétrico 3D** (`tests/test_volumetric_locking_3d.py`): atenuación cuantificada para `Hex20`/`Hex27` (ratio 0.80 vs < 0.6 Hex8), sin eliminación completa — B-bar/F-bar diferidos.
 - **Cross-check no lineal** (`tests/test_solid_3d_higher_order_nonlinear.py`): 9 combinaciones (3 elementos × 3 materiales) pasan smoke tests end-to-end con `NonlinearSolver` y entran al régimen no lineal (α > 0 plasticidad, ω > 0 daño).
 
-**Lo diferido y por qué**:
+**Sub-fase 4 — validación externa cerrada 2026-05-27**:
 
-- **Sub-fase 4 — NAFEMS LE10 (placa elíptica gruesa) y LE2 (sólido cilíndrico)**: meshing con frontera elíptica (LE10) y geometría cilíndrica con mid-edges sobre curvas (LE2) requiere infraestructura de mesher no trivial. La validación cuantitativa actual (cubo Lamé exacto, MacNeal beam, patch test triquadrático, cross-check con materiales no lineales) ya cubre el contenido esencial. Retoma en sesión dedicada — alta prioridad para reforzar el JOSS con benchmarks NAFEMS 3D citables.
+- ~~**NAFEMS LE10 (placa elíptica gruesa) + LE2 (sólido cilíndrico)**: diferida~~ ✅ **Cerrada 2026-05-27** con un giro de alcance: LE2 estricto descartado por incompatibilidad (es benchmark shell, implementarlo con brick 3D sería trampear el setup), reemplazado por **Lamé thick cylinder 3D** — extensión natural del benchmark 2D ya validado en el proyecto, solución analítica cerrada de Timoshenko-Goodier §28 contra cada Gauss del modelo. Dos archivos nuevos en `tests/validation/`:
+  - **`test_nafems_le10.py`** (5 tests verdes): NAFEMS LE10 thick plate pressure cuadrante elíptico × espesor, apoyo soft mid-plane, σ_yy(D) ≈ −5.38 MPa contra canónico para Hex20 6×6×2 y Hex27 5×5×2. Hallazgo de la sesión documentado en el módulo: el "thickness = 0.6 m" canónico es half-thickness, espesor total = 1.2 m.
+  - **`test_lame_cylinder_3d.py`** (6 tests verdes Hex20+Hex27, 2 tests skip Tet10): error L²-relativo < 4% en σ_rr/σ_θθ/σ_zz y < 2% en u_r con malla 4×4×1; convergencia h monótona verificada. **Primera demostración cuantitativa de la capacidad isoparamétrica curva** de los elementos cuadráticos del proyecto (mid-edges automáticos sobre superficie cilíndrica por la no-linealidad del mapeo angular).
+- **Tet10 sobre superficie curva** (limitación encontrada): la descomposición ingenua de cada celda hex en 5 tets rompe la representación isoparamétrica porque las aristas diagonales internas del hex se vuelven aristas del tet con mid-edges rectos. La cara del tet que toca la superficie curva tiene 2 de 3 mid-edges rectos → error σ_rr crece con refinamiento h (0.38 → 0.96 al refinar 2×2 → 8×8). Los tests Tet10 quedan en el archivo con `@pytest.mark.skip` y motivo arquitectural; código de la malla preservado para retoma futura. Nueva **deuda técnica #8** en STATUS — requiere mesher tetraédrico nativo (gmsh API) o descomposición específica del anillo cilíndrico. La capacidad del Tet10 sobre geometría plana ya está validada en `test_cube_lame_3d.py` (5-tet del cubo Lamé exacto a precisión máquina), así que no es fallo del elemento — es limitación de la malla.
 
-**Commits**: pendiente (no commiteado al momento de esta sesión).
+Suite 959 → 970 (+11 tests verdes; +2 skip Tet10).
 
 ---
 
