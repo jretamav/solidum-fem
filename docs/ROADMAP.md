@@ -13,7 +13,7 @@
 
 ## Estado a fecha del último commit
 
-Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)** y **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (plane strain + plane stress), Drucker-Prager y daño isótropo (1D y 2D)**. Sobre la misma maquinaria se ha abierto recientemente la línea **dinámica**: **análisis modal** y **transitorio Newmark (lineal y no lineal)**. **401 tests verdes + 5 skipped intencionales**.
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. **959 tests verdes + 6 skipped intencionales** tras la sub-etapa A.ter (sólidos 3D cuadráticos, 2026-05-27).
 
 > Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver [`docs/STATUS.md`](STATUS.md). Para combinaciones validadas: [`docs/MATRIZ.md`](MATRIZ.md). Para arranque en frío: [`docs/ONBOARDING.md`](ONBOARDING.md). Ver §"Documentos complementarios" al final para una guía del sistema.
 
@@ -187,9 +187,40 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 
 **Lo diferido y por qué**:
 
-- **Elementos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`): no entran en esta etapa por regla de dos casos reales (no abrir base interna `_HigherOrderSolid3D` antes de tener al menos dos elementos cuadráticos). NAFEMS LE10 con valor canónico citable queda diferido — Hex8 lockea con malla coarse; sólo Hex20/Hex27 lo pasan. Sin caso de uso real bloqueado por LE10 hoy.
+- ~~**Elementos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`)~~ ✅ **Cerrado 2026-05-27 (sub-etapa A.ter)**: los tres elementos sobre base centralizada `_HigherOrderSolid3D` (regla de los dos casos reales aplicada al entrar el `Hex27`). Cuadraturas nuevas `tet_4` (Stroud orden 2 para K) y `tet_15` (Keast orden 5 para masa del Tet10). Suite 877 → 959 (+82 tests).
 - ~~**Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`)~~ ✅ **Cerrado 2026-05-21 (sub-etapa A.bis)**: tres materiales sobre Voigt 6D con tangente algorítmica consistente, cross-consistency vs 2D plane_strain a 10-14 decimales, integración Hex8/Tet4, y campaña de validación 3D consolidada (3 benchmarks publicados). Suite 804 → 877.
-- **NAFEMS LE10/LE2/LE3** (placas gruesas y delgadas): bloqueados por cuadráticos 3D + por placas/láminas (Etapa 8 opción B). No deuda de esta etapa.
+- **NAFEMS LE10/LE2/LE3** (placas gruesas y delgadas): sub-fase 4 de A.ter **diferida** a sesión dedicada con meshing elíptico (LE10) y cilíndrico (LE2). Las validaciones cuantitativas de A.ter ya entregadas — cubo Lamé exacto en 3 elementos cuadráticos, MacNeal beam con mitigación cuantitativa del shear locking, patch test triquadrático completo, cross-check con materiales no lineales — cubren el contenido validacional esencial. LE3 (hemisphere/lámina) propiamente requiere placas/láminas (opción B).
+
+---
+
+## Sub-etapa A.ter — Sólidos 3D cuadráticos · cerrada (2026-05-27)
+
+**Capacidad entregada**: tres elementos sólidos 3D cuadráticos (Hex20, Hex27, Tet10) sobre base centralizada `_HigherOrderSolid3D`, paritarios con `_HigherOrderSolid2D` (Quad8/Quad9/Tri6). Cubre la totalidad de la matriz elemento 3D × material 3D (5 × 4 celdas, todas ✓).
+
+- **`Hex20`** — serendípito 20 nodos (60 DOFs). Default Gauss `hex_3x3x3` (27 puntos), cara Quad8 con cuadratura `3x3`. Reduce drásticamente el shear locking del `Hex8`: malla 6×1×1 alcanza 97% u_EB en MacNeal beam (Hex8 12×1×1 < 55%). 6 modos de hourglass por elemento aislado con cuadratura reducida `hex_2x2x2`.
+- **`Hex27`** — Lagrangiano triquadrático completo 27 nodos (81 DOFs). Default Gauss `hex_3x3x3`, cara Quad9. Patch test triquadrático `u_x = c·x²y²z²` exacto a precisión máquina (capacidad distintiva vs `Hex20`). 27 modos de hourglass por elemento aislado con `hex_2x2x2` (combinación más problemática del catálogo 3D — uso default obligatorio).
+- **`Tet10`** — cuadrático tetraédrico 10 nodos (30 DOFs). Default Stroud `tet_4` (4 puntos, orden 2 — suficiente para K con J constante); masa con `tet_15` Keast (15 puntos, orden 5) fija independiente de K para garantizar correctitud en análisis modal/transitorio. Cara Tri6 con cuadratura `tri_3`. Cubo Lamé exacto en malla 5-tet con mid-edges compartidos.
+
+**Centralización**: la base `_HigherOrderSolid3D` se introduce con la entrada del `Hex27` (sub-fase 2) — regla de los dos casos reales aplicada en el momento canónico, igual que `_HigherOrderSolid2D` cuando entró el `Quad9` después del `Quad8`. El `Hex20` original (sub-fase 1 standalone) se refactoriza a subclase de la base sin modificar tests. El `Tet10` (sub-fase 3) entra directamente sobre la base con face `Tri6` + cuadraturas tetraédricas.
+
+**Cross-check elemento × material no lineal 3D** (sub-fase 5): 9 smoke tests (`tests/test_solid_3d_higher_order_nonlinear.py`) cierran las 9 celdas ○ → ✓ de la matriz 3D (`Hex20`/`Hex27`/`Tet10` × `VonMises3D`/`DruckerPrager3D`/`IsotropicDamage3D`). Patrón paritario con los smoke tests existentes para `Tet4` en `test_solid_3d_plasticity.py`.
+
+**Sin ADR nuevo**: la decisión arquitectural (Voigt 6D, contrato `compute_gauss_state`, caras 3D con normal saliente) está tomada por ADR 0012. La centralización en `_HigherOrderSolid3D` se documenta en commits y specs (refactor zonal, no cambio arquitectural — Reglas.md §4).
+
+**Validación** (82 tests nuevos, suite 877 → 959):
+
+- **Unitarios** (`tests/test_solid_3d_higher_order.py`): patch lineal y cuadrático exactos para los tres elementos; patch triquadrático completo exclusivo para `Hex27`; conteos exactos de modos de hourglass con reducción (Hex20: 6, Hex27: 27); body load y face traction con balance global exacto; masa consistente y lumped HRZ con todas las entradas positivas.
+- **Modos rígidos 3D** (`tests/test_rigid_body_modes.py`): 6 modos cero exactos para `Hex20`, `Hex27`, `Tet10`.
+- **Cubo Lamé 3D** (`tests/validation/test_cube_lame_3d.py`): tracción uniaxial e hidrostática exactas a precisión máquina para los tres elementos. `Tet10` validado con malla 5-tet del cubo (mid-edges compartidos) — confirma compatibilidad multi-elemento.
+- **MacNeal-Harder 3D** (`tests/validation/test_macneal_beam_3d.py`): `Hex20` 6×1×1 → ratio 0.97 (Hex8 12×1×1 → < 0.55); `Hex27` vs `Hex20` < 3% en flexión simple (el espacio extra triquadrático del Hex27 rara vez gobierna en flexión).
+- **Locking volumétrico 3D** (`tests/test_volumetric_locking_3d.py`): atenuación cuantificada para `Hex20`/`Hex27` (ratio 0.80 vs < 0.6 Hex8), sin eliminación completa — B-bar/F-bar diferidos.
+- **Cross-check no lineal** (`tests/test_solid_3d_higher_order_nonlinear.py`): 9 combinaciones (3 elementos × 3 materiales) pasan smoke tests end-to-end con `NonlinearSolver` y entran al régimen no lineal (α > 0 plasticidad, ω > 0 daño).
+
+**Lo diferido y por qué**:
+
+- **Sub-fase 4 — NAFEMS LE10 (placa elíptica gruesa) y LE2 (sólido cilíndrico)**: meshing con frontera elíptica (LE10) y geometría cilíndrica con mid-edges sobre curvas (LE2) requiere infraestructura de mesher no trivial. La validación cuantitativa actual (cubo Lamé exacto, MacNeal beam, patch test triquadrático, cross-check con materiales no lineales) ya cubre el contenido esencial. Retoma en sesión dedicada — alta prioridad para reforzar el JOSS con benchmarks NAFEMS 3D citables.
+
+**Commits**: pendiente (no commiteado al momento de esta sesión).
 
 ---
 

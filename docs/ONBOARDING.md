@@ -10,12 +10,12 @@
 
 Solidum FEM es un programa de elementos finitos en aproximación de desplazamientos para **investigación en mecánica de sólidos** (mecánico ± térmico, acoplado o desacoplado). Hoy resuelve:
 
-- Estática lineal y no lineal (material y geométrica) sobre **1D estructural**, **sólidos 2D** y **sólidos 3D** (Hex8, Tet4 — Etapa 7 cerrada 2026-05-19 con ADR 0012; sub-etapa **A.bis cerrada 2026-05-21** con materiales 3D no lineales).
+- Estática lineal y no lineal (material y geométrica) sobre **1D estructural**, **sólidos 2D** y **sólidos 3D** (Hex8, Tet4 — Etapa 7 cerrada 2026-05-19 con ADR 0012; sub-etapa **A.bis cerrada 2026-05-21** con materiales 3D no lineales; sub-etapa **A.ter cerrada 2026-05-27** con Hex20, Hex27 y Tet10 cuadráticos sobre base centralizada `_HigherOrderSolid3D`).
 - **Subsistema modal/dinámico/espectral completo** (ADR 0009 cerrado 2026-05-18): modal por autovalores generalizados, transitorio implícito Newmark/HHT-α (lineal y no lineal con Newton), transitorio explícito por diferencias centradas, respuesta forzada armónica en frecuencia y análisis sísmico por combinación modal espectral (SRSS/CQC).
 - Catálogo de materiales con plasticidad J2 en 1D/2D/3D, Drucker-Prager en 2D/3D, daño isótropo en 1D/2D/3D, y cohesivo traction-jump. Elásticos en 1D, 2D y 3D. **Paridad funcional 3D↔2D en materiales no lineales tras A.bis.**
 - Fractura computacional vía discontinuidades embebidas (CST_Embedded2D con condensación local).
 
-Lo que **no** resuelve aún: sólidos 3D cuadráticos (Hex20/Hex27/Tet10), placas/láminas, térmico, contacto, Mohr-Coulomb, FiberSection. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
+Lo que **no** resuelve aún: placas/láminas, térmico, contacto, Mohr-Coulomb, FiberSection. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
 
 ### Estado de publicación (2026-05-20, segunda sesión)
 
@@ -36,7 +36,7 @@ Para arrancar sin contexto previo, lee en este orden — **no necesitas más par
 
 1. **[Reglas.md](../Reglas.md)** (~5 min): contrato Usuario ↔ IA. Identidad del proyecto, división de dominios, convenciones de signos (Voigt 2D y 3D), salvaguardas. **Volver siempre que dudes sobre qué decisión te toca**.
 2. **[STATUS.md](STATUS.md)** (~2 min): foto del estado actual. Métricas, capacidades, deuda técnica, próximo hito.
-3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-7 cerradas + **sub-etapa A.bis cerrada** (materiales 3D no lineales); Etapa 8 abierta entre opciones B (placas/láminas), C (térmico), E (Mohr-Coulomb + FiberSection), A.ter (cuadráticos 3D).
+3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-7 cerradas + **sub-etapas A.bis y A.ter cerradas** (materiales 3D no lineales + sólidos 3D cuadráticos Hex20/Hex27/Tet10); Etapa 8 abierta entre opciones B (placas/láminas), C (térmico), E (Mohr-Coulomb + FiberSection), o validación NAFEMS 3D (sub-fase 4 de A.ter diferida).
 4. **[MATRIZ.md](MATRIZ.md)** (~3 min): qué combinaciones elemento × material son válidas y testeadas.
 5. **Último ADR aceptado** ([ADR 0012 — Sólidos 3D y Voigt 6D](adr/0012-solidos-3d-y-voigt-6d.md)): para entender la última decisión arquitectural grande. Convención Voigt 3D del proyecto, cierre del contrato `internal_forces` por dominio explícito (sólidos exponen `compute_gauss_state`), API de caras 3D con normal saliente. Anteriores: [ADR 0011](adr/0011-robustez-newton-line-search.md) (robustez Newton), [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md) (embedded discontinuities), [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (subsistema dinámico).
 
@@ -51,7 +51,7 @@ solidum_fem/
 ├── Reglas.md, CLAUDE.md          ← Contrato y guía operativa
 ├── solidum/                        ← Código fuente
 │   ├── core/                     ← Domain, Node, Element base, Material base, Assembler
-│   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/, solid_3d/
+│   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/, solid_3d/ (hex8/hex20/hex27/tet4/tet10 + base _HigherOrderSolid3D)
 │   ├── materials/                ← elastic, elastic_2d, elastic_3d, plastic_1d, von_mises_{2d,3d}, drucker_prager_{2d,3d}, damage_{1d,2d,3d}
 │   ├── math/
 │   │   ├── solvers/              ← linear, nonlinear, arclength, modal, newmark (+HHT),
@@ -65,7 +65,7 @@ solidum_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 877 verdes + 5 skipped (pytest); 54 en tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D triaxial vs cono, Damage3D uniaxial vs curva σ-ε, VM3D cilindro Hill 3D plane-strain con pipeline 3D)
+├── tests/                        ← 959 verdes + 6 skipped (pytest); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
 ├── docs/
 │   ├── adr/                      ← 0001-0012: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
@@ -176,6 +176,6 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ---
 
-*Última actualización: 2026-05-21 — **Sub-etapa A.bis cerrada: materiales 3D no lineales + campaña de validación 3D consolidada**. Entregados los tres materiales 3D no lineales sobre Voigt 6D del ADR 0012: `VonMises3D` (J2 radial cerrado), `DruckerPrager3D` (cono outer/inner con dos ramas regular/apex; rechaza explícitamente `plane_strain_matched` 2D-only), `IsotropicDamage3D` (daño escalar con softening exponencial centralizado, tangente algorítmica consistente asimétrica en 6D). 56 tests directos (12+17+12 unitarios + 1+1+1 cruzados vs 2D plane_strain a 10-14 decimales + 5+4+3 integración Hex8/Tet4). Campaña de validación 3D consolidada con 3 benchmarks publicados/analíticos (11 tests): triaxial DP3D vs superficie del cono, uniaxial Damage3D vs curva σ-ε analítica a rtol < 1e-10 en 20 puntos, cilindro Hill 3D plane-strain con pipeline 3D vs Hill 1950 §5. Suite 804 → 877. Esfera octante Hill 1950 §V.4 diferida hasta tener mesher 3D (necesario para gestionar la singularidad polar). Tres commits pusheados a `origin/main`. Catálogo 3D ahora paritario con 2D en materiales no lineales. Próxima decisión: Etapa 8 (B placas, C térmico, E Mohr-Coulomb+FiberSection, A.ter cuadráticos 3D). Ver `[[project_estado_solidos_3d]]`, `[[project_validacion_3d_a_bis]]`.
+*Última actualización: 2026-05-27 — **Sub-etapa A.ter cerrada (sub-fases 1, 2, 3, 5)**: sólidos 3D cuadráticos sobre base centralizada `_HigherOrderSolid3D`. Tres elementos nuevos entregados con sus specs validadas: **Hex20** serendípito 20 nodos (60 DOFs, default `hex_3x3x3`, cara Quad8), **Hex27** Lagrangiano triquadrático 27 nodos (81 DOFs, default `hex_3x3x3`, cara Quad9), **Tet10** cuadrático 10 nodos (30 DOFs, default `tet_4` Stroud orden 2 + masa `tet_15` Keast orden 5 fija, cara Tri6). Centralización aplicada al entrar el `Hex27` (regla de los dos casos reales) y reutilizada por el `Tet10`. Cuadraturas nuevas registradas: `tet_4`, `tet_15`. Cross-check sub-fase 5: 9 smoke tests elemento × material no lineal 3D — matriz 3D completa con ✓ en 15 celdas. **Sub-fase 4 (NAFEMS LE10/LE2)** diferida a sesión dedicada con meshing elíptico/cilíndrico. Suite 877 → 959 (+82 tests). Hechos validacionales clave: cubo Lamé 3D exacto a precisión máquina para los 3 elementos cuadráticos, MacNeal beam Hex20 6×1×1 alcanza 97% u_EB (Hex8 12×1×1 < 55%), patch test triquadrático completo `u_x = c·x²y²z²` exacto para Hex27 (capacidad distintiva vs Hex20 serendípito), masa lumped HRZ con entradas estrictamente positivas en los 3 elementos. Próxima decisión: Etapa 8 (B placas, C térmico, E Mohr-Coulomb+FiberSection) o validación NAFEMS 3D dedicada.
 
-Anterior 2026-05-20 (cuarta sesión, corrección terminológica): paper JOSS refundido a formato 2024-2025; barrido terminológico esfuerzo (σ) vs tracción (t) vs fuerza interna (N/V/M); CI Actions verde; **bloqueante restante para JOSS**: historia pública ~6 semanas vs ≥6 meses. Ver `[[project_paper_joss_estado]]`, `[[feedback_esfuerzo_vs_traccion]]`.*
+Anterior 2026-05-21 — Sub-etapa A.bis cerrada: materiales 3D no lineales (VonMises3D, DruckerPrager3D, IsotropicDamage3D) con tangente algorítmica consistente sobre Voigt 6D y campaña de validación 3D consolidada (3 benchmarks publicados, 11 tests).*

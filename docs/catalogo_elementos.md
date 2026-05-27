@@ -523,6 +523,64 @@ por dominio explícito).
 
 ---
 
+## Hex20 — hexaedro serendípito 3D de orden 2 (20 nodos)
+
+- **Propósito**: sólido 3D isoparamétrico de orden cuadrático con interpolación serendípita; análogo 3D natural del `Quad8`. Reproduce campos cuadráticos completos en 3D y mitiga drásticamente el shear locking del `Hex8` en problemas de flexión y geometrías curvas.
+- **DOFs por nodo**: `['ux', 'uy', 'uz']` · 20 nodos (orden VTK_QUADRATIC_HEXAHEDRON: 8 vértices + 12 medios de arista, sin nodos de cara ni centroide) · `STRAIN_DIM = 6` · `N_INTEGRATION_POINTS = 27` (default Gauss 3×3×3).
+- **Cinemática**: matriz `B(ξ, η, ζ)` 6×60 sobre Voigt 6D del proyecto (ADR 0012). Funciones de forma serendípitas: vértices con multiplicador `(ξ_i ξ + η_i η + ζ_i ζ - 2)` que anula la función en todos los demás nodos; medios `(1 - α²)` con `α` el eje del cual son punto medio.
+- **Integración**: por defecto Gauss 3×3×3 (27 puntos, exacta para K con Jacobiano constante y para masa consistente cuadrática). Configurable vía `quadrature` (`hex_2x2x2` reducida con 6 modos de hourglass espurios por elemento aislado — sin estabilización implementada).
+- **Caras (ADR 0012)**: 6 caras numeradas con normal saliente, **8 nodos por cara** (4 vértices + 4 medios). Numeración paritaria con `Hex8` en los vértices; cada cara añade los 4 medios en el mismo orden cíclico (medio entre vértice k y k+1). Ver `Hex20.FACE_NODES`.
+- **Cargas distribuidas**: `compute_body_load(b)` integra `∫ Nᵀb dV` con la cuadratura del elemento (reparto **no uniforme** entre vértices y medios serendípitos, suma global `b·V_e` exacta). `compute_face_traction(face, t̄)` reparte la tracción uniforme sobre la cara serendípita Quad8 con Gauss 3×3 (exacto para tracción constante en cara plana): cada vértice recibe `-A·t̄/12` y cada medio `4·A·t̄/12`; los signos negativos en vértices son el fenómeno serendípito conocido del Quad8 2D (Cook-Malkus-Plesha-Witt §6.5).
+- **Salida por Gauss**: `compute_gauss_state(U)` devuelve `{points_natural, points_global, strain (n_g, 6), stress (n_g, 6)}`. Sin `internal_forces` (ADR 0012).
+- **Masa**: consistente con cuadratura `hex_3x3x3` **fija** (independiente de la cuadratura elegida para K, para que la masa siempre quede exacta). Lumped por HRZ canónico — para Hex20, row-sum produciría masas negativas en vértices serendípitos (Bathe FEP §9.2.4); HRZ es la única opción razonable.
+- **Implementación**: funciones de forma y derivadas en `_N_hex20`/`_dN_hex20` (numpy puro, no `@njit` por la complejidad de la rama por tipo de nodo) en `solidum/elements/solid_3d/_shared.py`. Kinematics genérico de orden superior 3D en `_kinematics_higher_order_3d` (también `_shared.py`), reutilizable por Hex27 y Tet10 en sub-fases siguientes. Cara serendípita integrada con `_N_quad8`/`_dN_quad8` importados del paquete 2D.
+- **Limitaciones declaradas**:
+  - **Locking volumétrico** con ν → 0.5 **atenuado** respecto al `Hex8` pero aún presente — sin mitigación implementada (política idéntica a `Quad8`/`Hex8`). Blindado por `tests/test_volumetric_locking_3d.py::TestHex20VolumetricLocking` (ratio u(0.4999)/u(0.3) ≈ 0.80 vs < 0.6 en `Hex8`).
+  - **Hourglass** con integración reducida `hex_2x2x2`: 6 modos espurios por elemento aislado; en mallas ensambladas con BC razonable los modos no propagan, pero un elemento aislado o capa pobre los mostraría. Sin estabilización.
+  - **Shear locking** **drásticamente mitigado** respecto al `Hex8` en problemas de flexión: cuantificado en `tests/validation/test_macneal_beam_3d.py` (Hex20 6×1×1 alcanza 97% de u_EB, vs < 55% de Hex8 12×1×1).
+- **Spec**: [docs/specs/Hex20.md](specs/Hex20.md).
+- **Archivo**: [solidum/elements/solid_3d/hex20.py](../solidum/elements/solid_3d/hex20.py).
+
+---
+
+## Hex27 — hexaedro Lagrangiano 3D triquadrático (27 nodos)
+
+- **Propósito**: sólido 3D isoparamétrico Lagrangiano completo de orden cuadrático; análogo 3D del `Quad9`. Reproduce **todos** los polinomios triquadráticos ``ξ^a η^b ζ^c`` con ``a, b, c ∈ {0, 1, 2}``, incluyendo los términos puramente triquadráticos (``ξ²η²ζ²`` y combinaciones) que faltan en el `Hex20` serendípito. Se prefiere sobre `Hex20` cuando la geometría tiene curvatura severa y se busca convergencia óptima en problemas donde el contenido espectral cubre el espacio completo; en flexión simple con geometría rectilínea `Hex27` y `Hex20` dan resultados prácticamente idénticos a un coste mayor para el primero (Bathe FEP §5.3.2).
+- **DOFs por nodo**: `['ux', 'uy', 'uz']` · 27 nodos (orden VTK_TRIQUADRATIC_HEXAHEDRON: 0-7 vértices, 8-19 medios de arista (paritarios con Hex20), 20-25 centros de cara en orden ``(-x, +x, -y, +y, -z, +z)``, 26 centro de cuerpo) · `STRAIN_DIM = 6` · `N_INTEGRATION_POINTS = 27` (default Gauss 3×3×3).
+- **Cinemática**: matriz `B(ξ, η, ζ)` 6×81 sobre Voigt 6D del proyecto (ADR 0012). Funciones de forma como producto tensorial de Lagrange cuadrático 1D: ``N_n = L_{i_n}(ξ)·L_{j_n}(η)·L_{k_n}(ζ)`` con ``i_n, j_n, k_n ∈ {-1, 0, +1}``.
+- **Integración**: por defecto Gauss 3×3×3 (27 puntos, exacta para K y masa consistente sobre Jacobiano constante). Reducida `hex_2x2x2` disponible pero **introduce 27 modos de hourglass espurios por elemento aislado** — la combinación más problemática del catálogo 3D. Recomendación operativa estricta: usar 3×3×3.
+- **Caras (ADR 0012)**: 6 caras numeradas con normal saliente, **9 nodos por cara** (4 vértices + 4 medios + 1 centro de cara). Numeración paritaria con `Hex8`/`Hex20` en los vértices y medios; el centro de cara correspondiente se añade al final (índice 20-25 según la cara). Las funciones de forma 2D de cara son las del `Quad9` Lagrangiano (`_N_quad9`/`_dN_quad9` del paquete 2D).
+- **Cargas distribuidas**: implementadas en la base `_HigherOrderSolid3D` (paritaria con `_HigherOrderSolid2D`). `compute_body_load(b)` integra `∫ Nᵀb dV`; `compute_face_traction(face, t̄)` integra sobre la cara Quad9 con cuadratura 3×3. Suma global `b·V_e` (body) y `A·t̄` (face) exactas en cara plana con campo uniforme.
+- **Salida por Gauss**: `compute_gauss_state(U)` con 27 puntos. Sin `internal_forces` (ADR 0012).
+- **Masa**: consistente con cuadratura `hex_3x3x3` fija (independiente de la cuadratura de K). Lumped HRZ canónico — row-sum produciría masas negativas en nodos interiores (Bathe FEP §9.2.4).
+- **Implementación**: funciones de forma y derivadas en `_N_hex27`/`_dN_hex27` (numpy puro, vía productos tensoriales de los polinomios Lagrange 1D `_L_lagrange_quad`/`_dL_lagrange_quad`). Subclase de la base `_HigherOrderSolid3D` introducida con la entrada del `Hex27` (regla de los dos casos reales aplicada). El cuerpo de `hex27.py` queda como declaración de atributos.
+- **Limitaciones declaradas**:
+  - **Coste computacional**: 81 DOFs/elemento vs 60 del `Hex20` (35% más). Para flexión simple `Hex20` da resultados equivalentes a menor coste.
+  - **Locking volumétrico** con ν → 0.5 comparable al `Hex20` (ratio ≈ 0.80 vs < 0.6 del `Hex8`). Sin mitigación implementada.
+  - **Hourglass** con integración reducida `hex_2x2x2`: 27 modos espurios por elemento aislado (peor del catálogo 3D); en mallas estructuradas la mayoría no propaga tras ensamblar.
+- **Spec**: [docs/specs/Hex27.md](specs/Hex27.md).
+- **Archivo**: [solidum/elements/solid_3d/hex27.py](../solidum/elements/solid_3d/hex27.py).
+
+---
+
+## Tet10 — tetraedro cuadrático 3D (10 nodos)
+
+- **Propósito**: sólido 3D isoparamétrico cuadrático sobre simplex tetraédrico. Análogo 3D del `Tri6` 2D. Mitiga drásticamente el shear locking y el locking volumétrico del `Tet4` (CST 3D). Adecuado para mallas no estructuradas y geometrías complejas donde el `Hex20`/`Hex27` requeriría mapeo estructurado.
+- **DOFs por nodo**: `['ux', 'uy', 'uz']` · 10 nodos (orden VTK_QUADRATIC_TETRA: 0-3 vértices idénticos al `Tet4`, 4-9 medios de arista en orden `(0-1, 1-2, 2-0, 0-3, 1-3, 2-3)`) · `STRAIN_DIM = 6` · `N_INTEGRATION_POINTS = 4` (default Stroud `tet_4`).
+- **Cinemática**: matriz `B(ξ, η, ζ)` 6×30 sobre Voigt 6D del proyecto (ADR 0012). Funciones de forma en coordenadas baricéntricas `L_i`: vértices `N_i = L_i(2L_i - 1)`; medios `N_ij = 4·L_i·L_j`. Reproduce todos los polinomios cuadráticos completos en `(ξ, η, ζ)`.
+- **Integración**: por defecto Stroud `tet_4` (4 puntos, orden 2 — exacta para K con Jacobiano constante, pues B es lineal en barycentric). Alternativa `tet_15` (Keast 15 puntos, orden 5) para geometrías distorsionadas. **La masa consistente usa `tet_15` fijo** (independiente de la cuadratura de K) para integrar exactamente el producto cuadrático×cuadrático y garantizar correctitud en análisis modal/transitorio.
+- **Caras (ADR 0012)**: 4 caras triangulares con normal saliente, paritarias con `Tet4` en los vértices. Cada cara añade los 3 medios de arista correspondientes en orden Tri6 (vértices antihorarios, medios entre 0-1, 1-2, 2-0). Cara i opuesta al vértice i. Las funciones de forma 2D de cara son las del `Tri6` (`_N_tri6`/`_dN_tri6` del paquete 2D).
+- **Cargas distribuidas**: implementadas en la base `_HigherOrderSolid3D`. `compute_body_load(b)` integra `∫ Nᵀb dV` con la cuadratura del elemento; reparto no uniforme entre vértices y medios, suma global `b·V_e` exacta. `compute_face_traction(face, t̄)` integra sobre la cara triangular Tri6 con cuadratura `tri_3` (exacta para tracción uniforme sobre cara plana).
+- **Salida por Gauss**: `compute_gauss_state(U)` con 4 puntos por defecto.
+- **Implementación**: funciones de forma y derivadas en `_N_tet10`/`_dN_tet10` (numpy puro, vía coordenadas baricéntricas) en `solidum/elements/solid_3d/_shared.py`. Subclase de la base `_HigherOrderSolid3D`. Las nuevas cuadraturas `tet_4` y `tet_15` viven en `solidum/math/integration.py`.
+- **Limitaciones declaradas**:
+  - **Locking volumétrico** con ν → 0.5 atenuado respecto al `Tet4` pero presente; sin mitigación implementada.
+  - **Distorsión severa**: para Tet10 con mid-edges curvos, el Jacobiano varía espacialmente; el usuario debería seleccionar `tet_15` vía el parámetro `quadrature`.
+- **Spec**: [docs/specs/Tet10.md](specs/Tet10.md).
+- **Archivo**: [solidum/elements/solid_3d/tet10.py](../solidum/elements/solid_3d/tet10.py).
+
+---
+
 ## Tet4 — tetraedro lineal 3D (CST 3D)
 
 - **Propósito**: sólido 3D isoparamétrico de primer orden, espejo natural de Tri3. Útil para mallas no estructuradas y transiciones.
