@@ -36,7 +36,7 @@ from solidum.core.domain import Domain
 from solidum.core.material import Material
 from solidum.elements.frame.euler_corot import Frame2DEulerCorot
 from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
-from solidum.elements.solid_3d import Hex8, Tet4
+from solidum.elements.solid_3d import Hex8, Hex20, Hex27, Tet4, Tet10
 from solidum.elements.truss import Truss2D, Truss2DCorot
 from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_3d import Elastic3D
@@ -255,6 +255,55 @@ def _build_tet4(material):
     return elem
 
 
+_HEX20_REF_COORDS = [
+    (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0),
+    (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0),
+    (0.5, 0.0, 0.0), (1.0, 0.5, 0.0), (0.5, 1.0, 0.0), (0.0, 0.5, 0.0),
+    (0.5, 0.0, 1.0), (1.0, 0.5, 1.0), (0.5, 1.0, 1.0), (0.0, 0.5, 1.0),
+    (0.0, 0.0, 0.5), (1.0, 0.0, 0.5), (1.0, 1.0, 0.5), (0.0, 1.0, 0.5),
+]
+_HEX27_REF_COORDS = _HEX20_REF_COORDS + [
+    (0.0, 0.5, 0.5), (1.0, 0.5, 0.5),
+    (0.5, 0.0, 0.5), (0.5, 1.0, 0.5),
+    (0.5, 0.5, 0.0), (0.5, 0.5, 1.0),
+    (0.5, 0.5, 0.5),
+]
+
+
+def _build_hex20(material):
+    """Cubo unitario Hex20 con nodos en orden VTK_QUADRATIC_HEXAHEDRON."""
+    dom = Domain()
+    nodes = [dom.add_node(i + 1, list(c)) for i, c in enumerate(_HEX20_REF_COORDS)]
+    elem = Hex20(1, nodes, material)
+    dom.add_element(elem)
+    return elem
+
+
+def _build_hex27(material):
+    """Cubo unitario Hex27 con nodos en orden VTK_TRIQUADRATIC_HEXAHEDRON."""
+    dom = Domain()
+    nodes = [dom.add_node(i + 1, list(c)) for i, c in enumerate(_HEX27_REF_COORDS)]
+    elem = Hex27(1, nodes, material)
+    dom.add_element(elem)
+    return elem
+
+
+_TET10_REF_COORDS = [
+    (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0),
+    (0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),
+    (0.0, 0.0, 0.5), (0.5, 0.0, 0.5), (0.0, 0.5, 0.5),
+]
+
+
+def _build_tet10(material):
+    """Tetraedro de referencia Tet10 con nodos VTK_QUADRATIC_TETRA."""
+    dom = Domain()
+    nodes = [dom.add_node(i + 1, list(c)) for i, c in enumerate(_TET10_REF_COORDS)]
+    elem = Tet10(1, nodes, material)
+    dom.add_element(elem)
+    return elem
+
+
 def _rigid_translation_u_e_3d(elem, ax, ay, az):
     n_nodes = len(elem.nodes)
     u_e = np.zeros(n_nodes * 3)
@@ -337,6 +386,18 @@ class TestRBMHex8(_RigidBodyModesSolid3DMixin, unittest.TestCase):
 
 class TestRBMTet4(_RigidBodyModesSolid3DMixin, unittest.TestCase):
     BUILDER = staticmethod(_build_tet4)
+
+
+class TestRBMHex20(_RigidBodyModesSolid3DMixin, unittest.TestCase):
+    BUILDER = staticmethod(_build_hex20)
+
+
+class TestRBMHex27(_RigidBodyModesSolid3DMixin, unittest.TestCase):
+    BUILDER = staticmethod(_build_hex27)
+
+
+class TestRBMTet10(_RigidBodyModesSolid3DMixin, unittest.TestCase):
+    BUILDER = staticmethod(_build_tet10)
 
 
 # =============================================================================
