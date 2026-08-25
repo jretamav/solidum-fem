@@ -24,7 +24,7 @@ pip install numpy scipy pyyaml meshio numba
 - **`numpy` / `scipy`**: álgebra lineal densa y dispersa; `spsolve` sobre matrices CSR.
 - **`pyyaml`**: análisis sintáctico del archivo de entrada.
 - **`meshio`**: importación de mallas Gmsh y exportación a VTK.
-- **`numba`**: compilación JIT de los kernels críticos en elementos 2D y plasticidad.
+- **`numba`**: compilación JIT de los kernels críticos en elementos sólidos 2D y 3D y en los modelos de plasticidad.
 
 ## Herramientas Externas Recomendadas
 

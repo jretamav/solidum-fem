@@ -172,3 +172,72 @@ materials:
     E: 150.0e9
     density: 7850.0
 ```
+
+## Materiales 3D
+
+Los materiales 3D operan sobre la convención **Voigt 6D** del proyecto (ADR 0012):
+
+$$\boldsymbol\varepsilon = [\varepsilon_{xx},\ \varepsilon_{yy},\ \varepsilon_{zz},\ \gamma_{xy},\ \gamma_{yz},\ \gamma_{xz}]^\top, \qquad \boldsymbol\sigma = [\sigma_{xx},\ \sigma_{yy},\ \sigma_{zz},\ \sigma_{xy},\ \sigma_{yz},\ \sigma_{xz}]^\top$$
+
+con $\gamma_{ij} = 2\varepsilon_{ij}$ (deformación angular *engineering*). Sólo son compatibles con elementos 3D ($\texttt{STRAIN\_DIM} = 6$).
+
+**Ninguno admite `hypothesis`**: las variantes `plane_stress` / `plane_strain` no tienen sentido en 3D, donde todas las componentes están activas. Declararla es un error.
+
+**Caveat de interoperabilidad con ABAQUS**: ABAQUS ordena Voigt como $[11, 22, 33, 12, 13, 23]$, es decir con el bloque cortante permutado ($yz \leftrightarrow xz$) respecto al proyecto. Importar tensores de ABAQUS exige intercambiar las componentes 5 y 6 una sola vez en el preprocesador.
+
+### `Elastic3D` — elástico lineal isótropo 3D
+
+$\boldsymbol\sigma = \mathbf{C}\,\boldsymbol\varepsilon$ con $\mathbf{C}$ isótropa $6\times6$. Tangente constante, sin variables internas.
+
+- **Parámetros**: `E` ($>0$), `nu` $\in (-1, 0.5)$, `density` (opcional).
+
+### `VonMises3D` — plasticidad J2 3D con endurecimiento isótropo lineal
+
+Extensión 3D de `VonMises2D`. Flujo asociado y *return mapping* radial cerrado sobre la parte desviadora (Simó-Hughes §3.3), con tangente algorítmica consistente.
+
+- **Parámetros**: `E`, `nu`, `sigma_y` ($>0$), `H` ($\ge 0$, default 0), `density` (opcional).
+- **Variables internas**: `eps_p` (6 componentes) y `alpha` (deformación plástica equivalente).
+- **Relación con el 2D**: bajo la restricción $\varepsilon_{zz} = \gamma_{yz} = \gamma_{xz} = 0$ se reduce exactamente a `VonMises2D` en `plane_strain`, verificado a 10 decimales.
+
+### `DruckerPrager3D` — plasticidad friccional 3D
+
+Cono circular suave de Mohr-Coulomb, criterio $f = \sqrt{J_2} + \eta_f I_1 - k(\alpha) \le 0$ con endurecimiento isótropo lineal en la cohesión. Dos ramas cerradas con detección automática: retorno regular a la superficie y retorno al ápice hidrostático.
+
+- **Parámetros**: `E`, `nu`, `cohesion`, `phi_deg` (ángulo de fricción en grados), `psi_deg` (dilatancia en grados, default $=\phi$), `H` (default 0), `variant` (default `outer_cone`), `density` (opcional).
+- **Calibraciones**: `outer_cone` (default, circunscribe Mohr-Coulomb) e `inner_cone` (inscribe). La variante `plane_strain_matched` del modelo 2D **no existe en 3D** y el constructor la rechaza con mensaje explícito: es una calibración 2D por construcción, porque Mohr-Coulomb en 3D depende del ángulo de Lode.
+- **Plasticidad no asociada**: con $\psi \neq \phi$ la tangente es asimétrica y el despachador algebraico selecciona LU automáticamente.
+
+### `IsotropicDamage3D` — daño isótropo 3D con softening exponencial
+
+$\boldsymbol\sigma = (1-d)\,\mathbf{C}_e\,\boldsymbol\varepsilon$ con daño escalar $d$ gobernado por la deformación equivalente
+
+$$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\left(\gamma_{xy}^2 + \gamma_{yz}^2 + \gamma_{xz}^2\right)}$$
+
+que es la norma de Frobenius del tensor de deformación y extiende de forma natural la convención 2D. Historial $\kappa$ máximo con condiciones de Kuhn-Tucker y ley de softening exponencial compartida con las versiones 1D y 2D.
+
+- **Parámetros**: `E`, `nu`, `kappa_0` (umbral de daño), `alpha` (parámetro de la ley de softening), `density` (opcional).
+- **Tangente**: algorítmica consistente en carga activa (no simétrica en general), secante en descarga y al saturar.
+
+```yaml
+materials:
+  - {id: 1, type: Elastic3D,   E: 210.0e9, nu: 0.3, density: 7850.0}
+  - {id: 2, type: VonMises3D,  E: 210.0e9, nu: 0.3, sigma_y: 250.0e6, H: 1.0e9}
+```
+
+## Materiales Cohesivos (salto de desplazamientos)
+
+Familia **paralela** al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la **tracción** $\mathbf{t}$ con el **salto de desplazamientos** $\llbracket u \rrbracket$ a través de una discontinuidad. Viven en su propio registro y se declaran en el bloque `cohesive_materials` del YAML, no en `materials`. Sólo los consumen elementos con discontinuidad embebida como `CST_Embedded2D`.
+
+### `CohesiveDamageIsotropic` — daño cohesivo Modo-I
+
+Daño escalar $\omega \in [0, 1]$ sobre el salto normal: $t_n = (1-\omega)K_e \llbracket u_n \rrbracket$, con $t_s = 0$ (Modo-I puro). La energía de fractura $G_f$ cierra la curva analíticamente, en variante lineal (apertura crítica $w_c = 2G_f/\sigma_{t0}$) o exponencial (asintótica).
+
+- **Parámetros**: `sigma_t0` (resistencia a tracción, Pa), `G_f` (energía de fractura, N/m), `K_e` (rigidez del salto, Pa/m), `softening` $\in$ {`linear`, `exponential`}.
+- **Sobre `K_e`**: es un *penalty* que representa la cohesión antes de agrietar, **no** una propiedad del bulk. No tiene default automático; como guía, $K_e \approx 10\,E_{bulk}/\ell_c$. Valores muy altos endurecen el sistema y dificultan la convergencia; valores bajos introducen flexibilidad espuria antes de la activación.
+- **Variables internas**: `kappa` (historial del salto) y `damage` ($\omega$).
+
+```yaml
+cohesive_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+     K_e: 1.0e13, softening: linear}
+```

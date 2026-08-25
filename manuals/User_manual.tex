@@ -11,6 +11,10 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsfonts}
+% Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
+% desplazamientos en discontinuidades embebidas y materiales cohesivos
+% (ADR 0010). No están en amssymb.
+\usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
@@ -205,7 +209,7 @@ pip install numpy scipy pyyaml meshio numba
   \item \textbf{\texttt{numpy} / \texttt{scipy}}: álgebra lineal densa y dispersa; \texttt{spsolve} sobre matrices CSR.
   \item \textbf{\texttt{pyyaml}}: análisis sintáctico del archivo de entrada.
   \item \textbf{\texttt{meshio}}: importación de mallas Gmsh y exportación a VTK.
-  \item \textbf{\texttt{numba}}: compilación JIT de los kernels críticos en elementos 2D y plasticidad.
+  \item \textbf{\texttt{numba}}: compilación JIT de los kernels críticos en elementos sólidos 2D y 3D y en los modelos de plasticidad.
 \end{itemize}
 
 \section{Herramientas Externas Recomendadas}
@@ -239,7 +243,7 @@ El script carga el YAML, valida su contenido (acumulando \textit{todos} los erro
 Cada elemento finito declara dos contratos sobre el material que acepta:
 
 \begin{itemize}
-  \item \textbf{\texttt{STRAIN\_DIM}}: dimensión Voigt de la deformación que entrega al material. \texttt{1} para elementos axiales (truss, cable, marcos --- la fibra centroidal); \texttt{3} para 2D (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\gamma}xy]}); \texttt{6} para 3D continuo (no implementado todavía).
+  \item \textbf{\texttt{STRAIN\_DIM}}: dimensión Voigt de la deformación que entrega al material. \texttt{1} para elementos axiales (truss, cable, marcos --- la fibra centroidal); \texttt{3} para 2D (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\gamma}xy]}); \texttt{6} para 3D continuo (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\varepsilon}zz, \ensuremath{\gamma}xy, \ensuremath{\gamma}yz, \ensuremath{\gamma}xz]}, ADR 0012).
   \item \textbf{\texttt{DOF\_NAMES}}: lista de grados de libertad por nodo. Por ejemplo, \texttt{['ux', 'uy', 'rz']} para un marco 2D.
 \end{itemize}
 
@@ -794,6 +798,108 @@ elements:
 
 \end{lstlisting}
 
+\section{Elementos 2D con discontinuidad embebida}
+
+Subfamilia dedicada a \textbf{fractura computacional}: el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son \textbf{elementales}: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
+
+\subsection{Triángulo CST con Discontinuidad Interior: \texttt{CST\_Embedded2D}}
+
+CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
+
+\begin{itemize}
+  \item \textbf{DOFs/nodo}: \texttt{ux, uy} ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
+  \item \textbf{Cuadratura}: 1 punto (hereda del \texttt{Tri3}).
+  \item \textbf{Parámetros}: \texttt{thickness}, \texttt{material} (bulk), \texttt{cohesive\_material}, \texttt{activation\_criterion} (opcional, default \texttt{rankine}).
+  \item \textbf{Dos materiales}: a diferencia del resto del catálogo, requiere \textbf{un material de bulk} que gobierna el continuo y \textbf{uno cohesivo} que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos.
+  \item \textbf{Estado intacto}: idéntico al \texttt{Tri3} hasta que la discontinuidad se activa.
+  \item \textbf{Activación}: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior. Es \textbf{irreversible}: una vez activada persiste aunque el paso siguiente descargue.
+  \item \textbf{Bulk aceptado}: sólo \texttt{Elastic2D} en la fase actual --- la \textit{discrete approach} presupone bulk elástico (ADR 0010).
+  \item \textbf{Post-proceso}: \texttt{compute\_gauss\_state(U)} añade la clave \texttt{'discontinuity'} con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
+  \item \textbf{Limitación operativa}: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver el capítulo de diagnóstico.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+cohesive_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+     K_e: 1.0e13, softening: linear}
+elements:
+  - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+     material: 1, cohesive_material: 1}
+
+\end{lstlisting}
+
+\section{Elementos 3D}
+
+Sólidos tridimensionales isoparamétricos (ADR 0012). Todos comparten DOFs \texttt{ux, uy, uz} y $\texttt{STRAIN\_DIM} = 6$ sobre la convención Voigt 3D del proyecto, $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$, y exigen un material 3D (\texttt{Elastic3D}, \texttt{VonMises3D}, \texttt{DruckerPrager3D}, \texttt{IsotropicDamage3D}).
+
+A diferencia de los 2D, \textbf{no llevan \texttt{thickness}}: el volumen sale de la geometría. Las cargas de superficie se aplican por \textbf{cara numerada con normal saliente} mediante \texttt{compute\_face\_traction(face, t̄)}, con \texttt{t̄} expresada en ejes globales.
+
+\subsection{Hexaedro Trilineal: \texttt{Hex8}}
+
+Hexaedro isoparamétrico de 8 nodos, espejo natural del \texttt{Quad4}. Orden de nodos VTK\_HEXAHEDRON.
+
+\begin{itemize}
+  \item \textbf{Nodos}: 8 \ensuremath{\cdot} \textbf{Cuadratura}: Gauss 2\ensuremath{\times}2\ensuremath{\times}2 (8 puntos) por defecto.
+  \item \textbf{Parámetros}: \texttt{quadrature} (opcional; \texttt{hex\_3x3x3} para no lineales severos, \texttt{hex\_1x1x1} reducida con riesgo de \textit{hourglass}).
+  \item \textbf{Caras}: 6, numeradas 0 (−\ensuremath{\zeta}), 1 (+\ensuremath{\zeta}), 2 (−\ensuremath{\eta}), 3 (+\ensuremath{\xi}), 4 (+\ensuremath{\eta}), 5 (−\ensuremath{\xi}).
+  \item \textbf{Limitaciones}: bloqueo volumétrico con $\nu \to 0.5$ y \textit{shear locking} con una sola capa de elementos en la sección. Sin mitigación, por política idéntica a la del \texttt{Quad4}.
+\end{itemize}
+
+\subsection{Tetraedro Lineal: \texttt{Tet4}}
+
+Tetraedro de 4 nodos, CST 3D --- espejo del \texttt{Tri3}. Deformación uniforme en el elemento.
+
+\begin{itemize}
+  \item \textbf{Nodos}: 4 \ensuremath{\cdot} \textbf{Cuadratura}: 1 punto baricéntrico.
+  \item \textbf{Caras}: 4 triangulares; la cara $i$ es la opuesta al nodo $i$.
+  \item \textbf{Limitación}: \textit{shear locking} severo, peor que el \texttt{Hex8} por la pobreza del espacio lineal, y bloqueo volumétrico aún más acusado. \textbf{Preferir \texttt{Hex8}} en mallas hexaédricas; reservar \texttt{Tet4} para transiciones o geometrías que no admitan hexaedros.
+\end{itemize}
+
+\subsection{Hexaedro Serendípito de Orden 2: \texttt{Hex20}}
+
+Hexaedro cuadrático de 20 nodos (8 vértices + 12 medios de arista, sin nodos de cara ni centroide). Análogo 3D del \texttt{Quad8}.
+
+\begin{itemize}
+  \item \textbf{Nodos}: 20 \ensuremath{\cdot} \textbf{Cuadratura}: Gauss 3\ensuremath{\times}3\ensuremath{\times}3 (27 puntos) por defecto.
+  \item \textbf{Caras}: 6, de 8 nodos cada una (cara \texttt{Quad8}).
+  \item \textbf{Tracción de cara}: reparto serendípito --- cada vértice recibe $-A\bar{t}/12$ y cada medio $4A\bar{t}/12$. Los signos negativos en los vértices son el fenómeno serendípito conocido del \texttt{Quad8} (Cook-Malkus-Plesha-Witt §6.5), no un error.
+  \item \textbf{Ventaja medida}: en la viga esbelta de MacNeal-Harder, una malla 6\ensuremath{\times}1\ensuremath{\times}1 de \texttt{Hex20} alcanza el 97 \% de la deflexión de Euler-Bernoulli, frente a menos del 55 \% de un \texttt{Hex8} 12\ensuremath{\times}1\ensuremath{\times}1.
+  \item \textbf{Precaución}: con \texttt{hex\_2x2x2} aparecen 6 modos de \textit{hourglass} por elemento aislado, sin estabilización. Usar la cuadratura por defecto.
+\end{itemize}
+
+\subsection{Hexaedro Lagrangiano Triquadrático: \texttt{Hex27}}
+
+Hexaedro Lagrangiano completo de 27 nodos (20 del \texttt{Hex20} + 6 centros de cara + 1 centro de cuerpo). Análogo 3D del \texttt{Quad9}.
+
+\begin{itemize}
+  \item \textbf{Nodos}: 27 \ensuremath{\cdot} \textbf{Cuadratura}: Gauss 3\ensuremath{\times}3\ensuremath{\times}3.
+  \item \textbf{Caras}: 6, de 9 nodos cada una (cara \texttt{Quad9}).
+  \item \textbf{Diferencia con \texttt{Hex20}}: reproduce \textbf{todos} los polinomios triquadráticos, incluidos los términos $\xi^2\eta^2\zeta^2$ que faltan en el serendípito. En flexión simple con geometría rectilínea ambos dan resultados prácticamente idénticos, con mayor coste para el \texttt{Hex27}; la diferencia se paga en geometrías de curvatura severa (Bathe FEP §5.3.2).
+  \item \textbf{Precaución}: con \texttt{hex\_2x2x2} aparecen 27 modos de \textit{hourglass} por elemento aislado --- la combinación más problemática del catálogo 3D. Usar 3\ensuremath{\times}3\ensuremath{\times}3 siempre.
+\end{itemize}
+
+\subsection{Tetraedro Cuadrático: \texttt{Tet10}}
+
+Tetraedro de 10 nodos (4 vértices + 6 medios de arista). Análogo 3D del \texttt{Tri6}.
+
+\begin{itemize}
+  \item \textbf{Nodos}: 10 \ensuremath{\cdot} \textbf{Cuadratura}: Stroud \texttt{tet\_4} (4 puntos) por defecto; \texttt{tet\_15} (Keast, 15 puntos) para elementos distorsionados.
+  \item \textbf{Caras}: 4 triangulares de 6 nodos (cara \texttt{Tri6}).
+  \item \textbf{Masa}: la matriz consistente usa \texttt{tet\_15} fijo, independientemente de la cuadratura elegida para $K$, para integrar exactamente el producto cuadrático\ensuremath{\times}cuadrático en análisis modal y transitorio.
+  \item \textbf{Cuándo usarlo}: mallas no estructuradas y geometrías complejas donde un mapeo hexaédrico no es viable. Mitiga drásticamente ambos bloqueos del \texttt{Tet4}.
+  \item \textbf{Limitación conocida}: sobre \textbf{superficies curvas} malladas por descomposición de hexaedros en tetraedros, la representación isoparamétrica se degrada porque parte de los nodos medios quedan sobre aristas rectas. Sobre geometría plana el elemento es exacto. Para geometría curva con tetraedros conviene un mallador nativo que sitúe los nodos medios sobre la superficie.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+elements:
+  - {id: 1, type: Hex8,  material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8]}
+  - {id: 2, type: Tet4,  material: 1, nodes: [1, 2, 3, 4]}
+  - {id: 3, type: Hex20, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                                              11, 12, 13, 14, 15, 16, 17, 18, 19, 20]}
+  - {id: 4, type: Tet10, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
+
+\end{lstlisting}
+
 
 \newpage
 
@@ -1002,6 +1108,91 @@ materials:
 
 \end{lstlisting}
 
+\section{Materiales 3D}
+
+Los materiales 3D operan sobre la convención \textbf{Voigt 6D} del proyecto (ADR 0012):
+
+\[
+\boldsymbol\varepsilon = [\varepsilon_{xx},\ \varepsilon_{yy},\ \varepsilon_{zz},\ \gamma_{xy},\ \gamma_{yz},\ \gamma_{xz}]^\top, \qquad \boldsymbol\sigma = [\sigma_{xx},\ \sigma_{yy},\ \sigma_{zz},\ \sigma_{xy},\ \sigma_{yz},\ \sigma_{xz}]^\top
+\]
+
+con $\gamma_{ij} = 2\varepsilon_{ij}$ (deformación angular \textit{engineering}). Sólo son compatibles con elementos 3D ($\texttt{STRAIN\_DIM} = 6$).
+
+\textbf{Ninguno admite \texttt{hypothesis}}: las variantes \texttt{plane\_stress} / \texttt{plane\_strain} no tienen sentido en 3D, donde todas las componentes están activas. Declararla es un error.
+
+\textbf{Caveat de interoperabilidad con ABAQUS}: ABAQUS ordena Voigt como $[11, 22, 33, 12, 13, 23]$, es decir con el bloque cortante permutado ($yz \leftrightarrow xz$) respecto al proyecto. Importar tensores de ABAQUS exige intercambiar las componentes 5 y 6 una sola vez en el preprocesador.
+
+\subsection{\texttt{Elastic3D} --- elástico lineal isótropo 3D}
+
+$\boldsymbol\sigma = \mathbf{C}\,\boldsymbol\varepsilon$ con $\mathbf{C}$ isótropa $6\times6$. Tangente constante, sin variables internas.
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{E} ($>0$), \texttt{nu} $\in (-1, 0.5)$, \texttt{density} (opcional).
+\end{itemize}
+
+\subsection{\texttt{VonMises3D} --- plasticidad J2 3D con endurecimiento isótropo lineal}
+
+Extensión 3D de \texttt{VonMises2D}. Flujo asociado y \textit{return mapping} radial cerrado sobre la parte desviadora (Simó-Hughes §3.3), con tangente algorítmica consistente.
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{sigma\_y} ($>0$), \texttt{H} ($\ge 0$, default 0), \texttt{density} (opcional).
+  \item \textbf{Variables internas}: \texttt{eps\_p} (6 componentes) y \texttt{alpha} (deformación plástica equivalente).
+  \item \textbf{Relación con el 2D}: bajo la restricción $\varepsilon_{zz} = \gamma_{yz} = \gamma_{xz} = 0$ se reduce exactamente a \texttt{VonMises2D} en \texttt{plane\_strain}, verificado a 10 decimales.
+\end{itemize}
+
+\subsection{\texttt{DruckerPrager3D} --- plasticidad friccional 3D}
+
+Cono circular suave de Mohr-Coulomb, criterio $f = \sqrt{J_2} + \eta_f I_1 - k(\alpha) \le 0$ con endurecimiento isótropo lineal en la cohesión. Dos ramas cerradas con detección automática: retorno regular a la superficie y retorno al ápice hidrostático.
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{cohesion}, \texttt{phi\_deg} (ángulo de fricción en grados), \texttt{psi\_deg} (dilatancia en grados, default $=\phi$), \texttt{H} (default 0), \texttt{variant} (default \texttt{outer\_cone}), \texttt{density} (opcional).
+  \item \textbf{Calibraciones}: \texttt{outer\_cone} (default, circunscribe Mohr-Coulomb) e \texttt{inner\_cone} (inscribe). La variante \texttt{plane\_strain\_matched} del modelo 2D \textbf{no existe en 3D} y el constructor la rechaza con mensaje explícito: es una calibración 2D por construcción, porque Mohr-Coulomb en 3D depende del ángulo de Lode.
+  \item \textbf{Plasticidad no asociada}: con $\psi \neq \phi$ la tangente es asimétrica y el despachador algebraico selecciona LU automáticamente.
+\end{itemize}
+
+\subsection{\texttt{IsotropicDamage3D} --- daño isótropo 3D con softening exponencial}
+
+$\boldsymbol\sigma = (1-d)\,\mathbf{C}_e\,\boldsymbol\varepsilon$ con daño escalar $d$ gobernado por la deformación equivalente
+
+\[
+\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\left(\gamma_{xy}^2 + \gamma_{yz}^2 + \gamma_{xz}^2\right)}
+\]
+
+que es la norma de Frobenius del tensor de deformación y extiende de forma natural la convención 2D. Historial $\kappa$ máximo con condiciones de Kuhn-Tucker y ley de softening exponencial compartida con las versiones 1D y 2D.
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0} (umbral de daño), \texttt{alpha} (parámetro de la ley de softening), \texttt{density} (opcional).
+  \item \textbf{Tangente}: algorítmica consistente en carga activa (no simétrica en general), secante en descarga y al saturar.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+materials:
+  - {id: 1, type: Elastic3D,   E: 210.0e9, nu: 0.3, density: 7850.0}
+  - {id: 2, type: VonMises3D,  E: 210.0e9, nu: 0.3, sigma_y: 250.0e6, H: 1.0e9}
+
+\end{lstlisting}
+
+\section{Materiales Cohesivos (salto de desplazamientos)}
+
+Familia \textbf{paralela} al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la \textbf{tracción} $\mathbf{t}$ con el \textbf{salto de desplazamientos} $\llbracket u \rrbracket$ a través de una discontinuidad. Viven en su propio registro y se declaran en el bloque \texttt{cohesive\_materials} del YAML, no en \texttt{materials}. Sólo los consumen elementos con discontinuidad embebida como \texttt{CST\_Embedded2D}.
+
+\subsection{\texttt{CohesiveDamageIsotropic} --- daño cohesivo Modo-I}
+
+Daño escalar $\omega \in [0, 1]$ sobre el salto normal: $t_n = (1-\omega)K_e \llbracket u_n \rrbracket$, con $t_s = 0$ (Modo-I puro). La energía de fractura $G_f$ cierra la curva analíticamente, en variante lineal (apertura crítica $w_c = 2G_f/\sigma_{t0}$) o exponencial (asintótica).
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{sigma\_t0} (resistencia a tracción, Pa), \texttt{G\_f} (energía de fractura, N/m), \texttt{K\_e} (rigidez del salto, Pa/m), \texttt{softening} $\in$ {\texttt{linear}, \texttt{exponential}}.
+  \item \textbf{Sobre \texttt{K\_e}}: es un \textit{penalty} que representa la cohesión antes de agrietar, \textbf{no} una propiedad del bulk. No tiene default automático; como guía, $K_e \approx 10\,E_{bulk}/\ell_c$. Valores muy altos endurecen el sistema y dificultan la convergencia; valores bajos introducen flexibilidad espuria antes de la activación.
+  \item \textbf{Variables internas}: \texttt{kappa} (historial del salto) y \texttt{damage} ($\omega$).
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+cohesive_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+     K_e: 1.0e13, softening: linear}
+
+\end{lstlisting}
+
 
 \newpage
 
@@ -1092,6 +1283,37 @@ solver:
 \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite. Más caro por paso (dos \texttt{spsolve} por iteración) pero indispensable en estos casos.
 
 \textbf{Referencia}: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (\textit{Computers \& Structures}, 1981).
+
+\section{\texttt{DissipationArcLengthSolver} --- arc-length por disipación de energía}
+
+Variante de \texttt{ArcLengthSolver} que controla la \textbf{disipación incremental de energía} por paso en lugar de la longitud de arco euclídea. Es la herramienta indicada cuando la curva $\mathbf U$--$\lambda$ tiene tramos casi verticales, donde la restricción cilíndrica se vuelve mal condicionada.
+
+\textbf{Diferencia esencial}: la restricción de paso
+
+\[
+g(\Delta\mathbf U, \Delta\lambda) = \tfrac{1}{2}\left(\lambda_n \mathbf F \cdot \Delta\mathbf U - \Delta\lambda\, \mathbf F \cdot \mathbf U_n\right) = \tau
+\]
+
+es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del cilíndrico. El corrector tiene por tanto una sola raíz: desaparecen la selección de raíz por menor ángulo y la patología de raíces imaginarias.
+
+\begin{itemize}
+  \item \textbf{Switching automático}: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
+  \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_shrink\_factor}, \texttt{tau\_grow\_iter\_threshold}, \texttt{tau\_shrink\_iter\_threshold}, \texttt{dissipation\_threshold}.
+  \item \textbf{Cuándo usarlo}: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
+  \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: DissipationArcLengthSolver
+  max_lambda: 1.0
+  initial_dl: 0.05
+  initial_tau: 1.0e-4
+  max_steps: 300
+
+\end{lstlisting}
+
+\textbf{Referencia}: Gutiérrez, "Energy release control for numerical simulations of failure in quasi-brittle solids" (\textit{Communications in Numerical Methods in Engineering}, 2004); switching a la Verhoosel et al. (2009).
 
 
 \newpage
@@ -1725,8 +1947,8 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 25 de agosto de 2026, 11:13\\[0.5em]
-Commit Git: \texttt{e9817cb} (con cambios sin confirmar)\\[1em]
+Compilado el 25 de agosto de 2026, 11:29\\[0.5em]
+Commit Git: \texttt{7b9acfb} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

@@ -172,3 +172,91 @@ elements:
   - {id: 2, type: Quad9, material: 1, thickness: 0.1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9]}
   - {id: 3, type: Tri6,  material: 1, thickness: 0.1, nodes: [1, 2, 3, 4, 5, 6]}
 ```
+
+## Elementos 2D con discontinuidad embebida
+
+Subfamilia dedicada a **fractura computacional**: el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son **elementales**: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
+
+### Triángulo CST con Discontinuidad Interior: `CST_Embedded2D`
+
+CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
+
+- **DOFs/nodo**: `ux, uy` ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
+- **Cuadratura**: 1 punto (hereda del `Tri3`).
+- **Parámetros**: `thickness`, `material` (bulk), `cohesive_material`, `activation_criterion` (opcional, default `rankine`).
+- **Dos materiales**: a diferencia del resto del catálogo, requiere **un material de bulk** que gobierna el continuo y **uno cohesivo** que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos.
+- **Estado intacto**: idéntico al `Tri3` hasta que la discontinuidad se activa.
+- **Activación**: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior. Es **irreversible**: una vez activada persiste aunque el paso siguiente descargue.
+- **Bulk aceptado**: sólo `Elastic2D` en la fase actual — la *discrete approach* presupone bulk elástico (ADR 0010).
+- **Post-proceso**: `compute_gauss_state(U)` añade la clave `'discontinuity'` con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
+- **Limitación operativa**: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver el capítulo de diagnóstico.
+
+```yaml
+cohesive_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+     K_e: 1.0e13, softening: linear}
+elements:
+  - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+     material: 1, cohesive_material: 1}
+```
+
+## Elementos 3D
+
+Sólidos tridimensionales isoparamétricos (ADR 0012). Todos comparten DOFs `ux, uy, uz` y $\texttt{STRAIN\_DIM} = 6$ sobre la convención Voigt 3D del proyecto, $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$, y exigen un material 3D (`Elastic3D`, `VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`).
+
+A diferencia de los 2D, **no llevan `thickness`**: el volumen sale de la geometría. Las cargas de superficie se aplican por **cara numerada con normal saliente** mediante `compute_face_traction(face, t̄)`, con `t̄` expresada en ejes globales.
+
+### Hexaedro Trilineal: `Hex8`
+
+Hexaedro isoparamétrico de 8 nodos, espejo natural del `Quad4`. Orden de nodos VTK_HEXAHEDRON.
+
+- **Nodos**: 8 · **Cuadratura**: Gauss 2×2×2 (8 puntos) por defecto.
+- **Parámetros**: `quadrature` (opcional; `hex_3x3x3` para no lineales severos, `hex_1x1x1` reducida con riesgo de *hourglass*).
+- **Caras**: 6, numeradas 0 (−ζ), 1 (+ζ), 2 (−η), 3 (+ξ), 4 (+η), 5 (−ξ).
+- **Limitaciones**: bloqueo volumétrico con $\nu \to 0.5$ y *shear locking* con una sola capa de elementos en la sección. Sin mitigación, por política idéntica a la del `Quad4`.
+
+### Tetraedro Lineal: `Tet4`
+
+Tetraedro de 4 nodos, CST 3D — espejo del `Tri3`. Deformación uniforme en el elemento.
+
+- **Nodos**: 4 · **Cuadratura**: 1 punto baricéntrico.
+- **Caras**: 4 triangulares; la cara $i$ es la opuesta al nodo $i$.
+- **Limitación**: *shear locking* severo, peor que el `Hex8` por la pobreza del espacio lineal, y bloqueo volumétrico aún más acusado. **Preferir `Hex8`** en mallas hexaédricas; reservar `Tet4` para transiciones o geometrías que no admitan hexaedros.
+
+### Hexaedro Serendípito de Orden 2: `Hex20`
+
+Hexaedro cuadrático de 20 nodos (8 vértices + 12 medios de arista, sin nodos de cara ni centroide). Análogo 3D del `Quad8`.
+
+- **Nodos**: 20 · **Cuadratura**: Gauss 3×3×3 (27 puntos) por defecto.
+- **Caras**: 6, de 8 nodos cada una (cara `Quad8`).
+- **Tracción de cara**: reparto serendípito — cada vértice recibe $-A\bar{t}/12$ y cada medio $4A\bar{t}/12$. Los signos negativos en los vértices son el fenómeno serendípito conocido del `Quad8` (Cook-Malkus-Plesha-Witt §6.5), no un error.
+- **Ventaja medida**: en la viga esbelta de MacNeal-Harder, una malla 6×1×1 de `Hex20` alcanza el 97 % de la deflexión de Euler-Bernoulli, frente a menos del 55 % de un `Hex8` 12×1×1.
+- **Precaución**: con `hex_2x2x2` aparecen 6 modos de *hourglass* por elemento aislado, sin estabilización. Usar la cuadratura por defecto.
+
+### Hexaedro Lagrangiano Triquadrático: `Hex27`
+
+Hexaedro Lagrangiano completo de 27 nodos (20 del `Hex20` + 6 centros de cara + 1 centro de cuerpo). Análogo 3D del `Quad9`.
+
+- **Nodos**: 27 · **Cuadratura**: Gauss 3×3×3.
+- **Caras**: 6, de 9 nodos cada una (cara `Quad9`).
+- **Diferencia con `Hex20`**: reproduce **todos** los polinomios triquadráticos, incluidos los términos $\xi^2\eta^2\zeta^2$ que faltan en el serendípito. En flexión simple con geometría rectilínea ambos dan resultados prácticamente idénticos, con mayor coste para el `Hex27`; la diferencia se paga en geometrías de curvatura severa (Bathe FEP §5.3.2).
+- **Precaución**: con `hex_2x2x2` aparecen 27 modos de *hourglass* por elemento aislado — la combinación más problemática del catálogo 3D. Usar 3×3×3 siempre.
+
+### Tetraedro Cuadrático: `Tet10`
+
+Tetraedro de 10 nodos (4 vértices + 6 medios de arista). Análogo 3D del `Tri6`.
+
+- **Nodos**: 10 · **Cuadratura**: Stroud `tet_4` (4 puntos) por defecto; `tet_15` (Keast, 15 puntos) para elementos distorsionados.
+- **Caras**: 4 triangulares de 6 nodos (cara `Tri6`).
+- **Masa**: la matriz consistente usa `tet_15` fijo, independientemente de la cuadratura elegida para $K$, para integrar exactamente el producto cuadrático×cuadrático en análisis modal y transitorio.
+- **Cuándo usarlo**: mallas no estructuradas y geometrías complejas donde un mapeo hexaédrico no es viable. Mitiga drásticamente ambos bloqueos del `Tet4`.
+- **Limitación conocida**: sobre **superficies curvas** malladas por descomposición de hexaedros en tetraedros, la representación isoparamétrica se degrada porque parte de los nodos medios quedan sobre aristas rectas. Sobre geometría plana el elemento es exacto. Para geometría curva con tetraedros conviene un mallador nativo que sitúe los nodos medios sobre la superficie.
+
+```yaml
+elements:
+  - {id: 1, type: Hex8,  material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8]}
+  - {id: 2, type: Tet4,  material: 1, nodes: [1, 2, 3, 4]}
+  - {id: 3, type: Hex20, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                                              11, 12, 13, 14, 15, 16, 17, 18, 19, 20]}
+  - {id: 4, type: Tet10, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
+```
