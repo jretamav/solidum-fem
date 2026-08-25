@@ -115,11 +115,12 @@ Devuelve el flujo y el tensor de conductividad —análogo a `(σ, C_tangent)` d
 ```yaml
 name: ThermalConduction
 kind: thermal_material
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   field: temperature     # campo primario que gobierna (1 DOF escalar por nodo)
-  flux_dim: 0            # 2 en 2D · 3 en 3D — se fija al construir según la dimensión
+  flux_dim: null         # 2 ó 3 — no es ClassVar: se fija por instancia al
+                         # construir (escalar + dim, o tamaño del tensor k)
   primary_state_var: null
   is_symmetric: true
 
@@ -217,13 +218,24 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- Archivo: [`solidum/materials/thermal_conduction.py`](../../solidum/materials/thermal_conduction.py)
+- Clase: `ThermalConduction`, registrada en `ThermalMaterialRegistry`
+- Clase base: [`solidum/core/thermal_material.py`](../../solidum/core/thermal_material.py) · `ThermalMaterial`
+- Tests: [`tests/test_thermal_material.py`](../../tests/test_thermal_material.py) — 31 verdes
 
-- Archivo: —
-- Clase: —
-- Tests:
-  - —
-- Notas de traducción: —
+**Notas de implementación:**
+
+- **`FLUX_DIM` es propiedad de instancia, no `ClassVar`.** A diferencia de `STRAIN_DIM` y `JUMP_DIM`, la dimensión del flujo no la fija la clase sino el tensor con que se construye: el mismo `ThermalConduction` sirve en 2D y en 3D. Se deduce de `conductivity.shape[0]`, de modo que `k` matricial manda sobre el argumento `dim` (que sólo se usa para expandir un escalar). El contrato de la spec declara `flux_dim: null` por esta razón.
+
+- **Validación de simetría con tolerancia escalada.** El criterio es `atol = 1e-12 · max|k|`, adimensional respecto a las unidades del usuario (ADR 0006). Un `allclose` con tolerancia absoluta fija habría rechazado tensores legítimos expresados en W/(mm·K) o aceptado asimetrías reales en W/(m·K).
+
+- **Positividad vía `eigvalsh`, no vía el determinante.** El determinante positivo no implica definición positiva en dimensión ≥ 2 (dos autovalores negativos lo dejan positivo). Se comprueban todos los autovalores, que además es barato para matrices 2×2 y 3×3.
+
+- **`volumetric_capacity()` vive en la clase base**, no en la subclase: el criterio del ADR 0008 y el formato del mensaje accionable son de familia, no de este material concreto. Cualquier material térmico futuro lo hereda.
+
+- **Concordancia gramatical del mensaje de error.** El mensaje flexiona singular/plural según cuántos parámetros falten ("el parámetro 'density', que no se declaró… Decláralo" vs "los parámetros 'density' y 'c', que no se declararon… Decláralos"). Un mensaje mal concordado resta credibilidad justo cuando el usuario está diagnosticando.
+
+- **`thermal_diffusivity` rechaza el caso anisótropo** en vez de devolver un valor plausible: con `k` tensorial la difusividad es un tensor, y un escalar sería una simplificación silenciosa. El mensaje remite a los autovalores de `conductivity` para estimar los extremos.
 
 ---
 

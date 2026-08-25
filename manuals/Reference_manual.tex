@@ -4686,6 +4686,561 @@ references:
 
 \newpage
 
+\chapter{Elementos Térmicos — 2D}
+
+\section{Quad4Thermal}
+
+
+
+\textit{Spec pre-redactada por la IA (2026-08-25). \textbf{El usuario revisa la física; el plumbing está resuelto.} Los puntos abiertos de §Diálogo son físicos o de alcance, nunca arquitecturales.}
+
+\textit{> Segundo componente de la Etapa 8 --- C1 núcleo mínimo. Primer elemento de la familia térmica. Consume \texttt{ThermalConduction}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+
+Cuadrilátero isoparamétrico de 4 nodos que resuelve \textbf{conducción de calor en 2D}. Misma geometría, mismas funciones de forma bilineales y misma cuadratura que el \texttt{Quad4} mecánico; lo que cambia es el campo que interpola y la ecuación que discretiza.
+
+\textbf{Un grado de libertad por nodo}: la temperatura $T$. \texttt{DOF\_NAMES = ['T']}.
+
+Es una \textbf{clase distinta} del \texttt{Quad4} mecánico, no un modo de operación suyo. \texttt{DOF\_NAMES} es atributo de clase y el registro, la validación temprana y el cruce spec\ensuremath{\leftrightarrow}código dependen de poder leerlo sin construir el objeto; un elemento que decidiera sus DOFs según el material recibido rompería ese contrato declarativo. Es también la separación que adoptan los códigos de referencia (Abaqus \texttt{CPE4} vs \texttt{DC2D4}; ANSYS \texttt{PLANE182} vs \texttt{PLANE55}).
+
+\subsection{1. Interpolación del campo}
+
+\[
+T(\xi,\eta) = \sum_{i=0}^{3} N_i(\xi,\eta)\,T_i, \qquad N_i = \tfrac14(1+\xi_i\xi)(1+\eta_i\eta)
+\]
+
+Las $N_i$ son \textbf{las mismas} del \texttt{Quad4} mecánico. Isoparamétrico: geometría y temperatura comparten interpolación.
+
+\subsection{2. Gradiente de temperatura}
+
+\[
+\nabla T = \mathbf B\,\mathbf T_e, \qquad \mathbf B = \begin{bmatrix} \partial N_0/\partial x & \cdots & \partial N_3/\partial x \\[2pt] \partial N_0/\partial y & \cdots & \partial N_3/\partial y \end{bmatrix} \in \mathbb R^{2\times 4}
+\]
+
+\textbf{Diferencia esencial con el mecánico}: aquí $\mathbf B$ es literalmente el gradiente de las funciones de forma, sin reordenamiento. En el \texttt{Quad4} mecánico las mismas derivadas $\partial N_i/\partial x_j$ se reordenan en una matriz $3\times 8$ que produce la deformación en notación Voigt. La materia prima es idéntica ---el kernel \texttt{\_compute\_kinematics} ya la calcula---; el ensamblaje difiere.
+
+Consecuencia: el gradiente $\nabla T$ es \textbf{bilineal por elemento} y su valor en cada punto de Gauss no es constante, a diferencia del CST.
+
+\subsection{3. Ecuación discretizada --- forma débil}
+
+Partiendo del balance $\rho c\,\dot T = \nabla\cdot(\mathbf k\nabla T) + Q$, multiplicando por una función de peso $w$ e integrando por partes:
+
+\[
+\int_\Omega \rho c\,w\,\dot T\,d\Omega + \int_\Omega (\nabla w)^\top \mathbf k \nabla T\,d\Omega = \int_\Omega w\,Q\,d\Omega - \int_{\partial\Omega} w\,\bar q\,d\Gamma
+\]
+
+que en forma matricial es el sistema semidiscreto
+
+\[
+\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F
+\]
+
+\textbf{de primer orden en el tiempo} --- a diferencia del mecánico $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \mathbf K\mathbf u = \mathbf F$, que es de segundo. Por eso Newmark no aplica y el transitorio requiere solver propio (spec separada).
+
+En \textbf{régimen estacionario} el término $\mathbf C\dot{\mathbf T}$ se anula y queda $\mathbf K\mathbf T = \mathbf F$, que resuelve el \texttt{LinearSolver} existente sin modificación.
+
+\subsection{4. Matriz de conductividad}
+
+\[
+\mathbf K_e = \int_\Omega \mathbf B^\top\,\mathbf k\,\mathbf B\;t\;d\Omega = \sum_{g} \mathbf B_g^\top\,\mathbf k\,\mathbf B_g\;t\;|\mathbf J_g|\,w_g
+\]
+
+$4\times4$, \textbf{simétrica} (por serlo $\mathbf k$) y \textbf{semidefinida positiva}: tiene un modo nulo, el campo de temperatura uniforme $\mathbf T = c\,[1,1,1,1]^\top$, que no produce flujo. Es el análogo térmico exacto de los modos de sólido rígido en mecánica, y como allí, el sistema global sólo se vuelve resoluble al imponer al menos una condición de Dirichlet.
+
+El \textbf{espesor} $t$ interviene igual que en el mecánico: el problema plano representa una rebanada de profundidad $t$, y el flujo total escala con ella.
+
+\subsection{5. Matriz de capacidad}
+
+\[
+\mathbf C_e = \int_\Omega \rho c\;\mathbf N^\top\mathbf N\;t\;d\Omega
+\]
+
+$4\times4$, simétrica y \textbf{definida positiva}. Estructuralmente idéntica a la matriz de masa consistente con $\rho c$ en lugar de $\rho$; de hecho $\mathbf C_e = \rho c\,\mathbf M_e^{escalar}/\rho$ sobre el mismo integrando.
+
+\textbf{Por decisión de alcance, el default es \texttt{lumped}, al revés que en dinámica estructural.} La razón es física, no de conveniencia:
+
+\begin{itemize}
+  \item La capacidad \textbf{consistente} produce \textbf{oscilaciones espurias} en los primeros pasos cuando existe un frente térmico abrupto (un salto de temperatura impuesto en la frontera). El campo calculado oscila alrededor de la solución y puede dar temperaturas \textbf{fuera del rango de los datos} ---por debajo del mínimo o por encima del máximo impuestos---, lo que viola el \textbf{principio del máximo} de la ecuación de difusión: una propiedad matemática de la solución exacta, no un artefacto tolerable.
+  \item La capacidad \textbf{lumped} amortigua esas oscilaciones y preserva la monotonía, a cambio de algo de precisión en régimen suave.
+\end{itemize}
+
+Ambas quedan disponibles con el mismo parámetro \texttt{lumping} del resto del catálogo. La coherencia arquitectural se preserva en el \textbf{mecanismo}; el default lo fija el criterio físico del dominio (Lewis-Nithiarasu-Seetharamu §6; Zienkiewicz-Taylor Vol.1 §7).
+
+\subsection{6. Condiciones de frontera y cargas}
+
+\textbf{Dirichlet --- temperatura impuesta.} $T = \bar T$ en $\Gamma_T$. Se impone por eliminación directa, con la maquinaria existente del ADR 0004, sin cambios: el mecanismo es agnóstico al significado del DOF.
+
+\textbf{Neumann --- flujo impuesto.} $\bar q$ [W/m\ensuremath{^{2}}] normal a un borde. El vector consistente sobre el borde $\Gamma_q$:
+
+\[
+\mathbf f^{\bar q}_e = -\int_{\Gamma_q} \bar q\,\mathbf N^\top\,t\;d\Gamma
+\]
+
+Para $\bar q$ uniforme sobre un borde recto de longitud $L$, la integral da $\bar q\,L\,t/2$ a cada uno de los dos nodos del borde, y cero a los otros dos --- el mismo reparto mitad-mitad que \texttt{compute\_edge\_traction} produce en el mecánico, con la misma numeración de bordes \texttt{EDGE\_NODES = ((0,1),(1,2),(2,3),(3,0))}.
+
+\textbf{Convención de signo}: $\bar q > 0$ significa flujo \textbf{saliente} del dominio (enfriamiento), coherente con que la normal $\mathbf n$ es saliente y con la deducción de la forma débil, donde el término de frontera aparece con signo negativo. Un flujo entrante se declara con $\bar q < 0$.
+
+Un borde sin condición declarada queda con $\bar q = 0$ --- \textbf{frontera adiabática}, aislada. Es el default natural de Neumann homogéneo, exactamente como un borde mecánico sin tracción queda libre.
+
+\textbf{Fuente volumétrica.} $Q$ [W/m\ensuremath{^{3}}] se aplica como carga del elemento (decisión de alcance; ver §Diálogo de \texttt{ThermalConduction}):
+
+\[
+\mathbf f^{Q}_e = \int_\Omega Q\;\mathbf N^\top\,t\;d\Omega
+\]
+
+Para $Q$ uniforme la suma de las componentes nodales es exactamente $Q\,A_e\,t$, invariante ante distorsión de la geometría --- el mismo criterio de verificación que se usa en \texttt{compute\_body\_load} del mecánico.
+
+\subsection{7. Salida por punto de Gauss}
+
+\texttt{compute\_gauss\_state(T\_global)} devuelve, en paralelo al contrato de los sólidos (ADR 0012):
+
+\begin{itemize}
+  \item \texttt{points\_natural}, \texttt{points\_global} --- posición de los puntos de Gauss.
+  \item \texttt{grad\_T} --- gradiente $(n_g, 2)$.
+  \item \texttt{flux} --- vector de flujo $\mathbf q = -\mathbf k\nabla T$, $(n_g, 2)$.
+\end{itemize}
+
+No expone \texttt{internal\_forces}: por el cierre por dominio del ADR 0012, ese método corresponde a elementos estructurales 1D. La familia térmica sigue el mismo criterio que los sólidos.
+
+
+\section{Formulación numérica}
+
+\subsection{8. Cuadratura}
+
+Gauss $2\times2$ (4 puntos) por defecto, la misma del \texttt{Quad4} mecánico, mediante \texttt{QuadratureRegistry}. Es \textbf{exacta} para $\mathbf K_e$ y $\mathbf C_e$ con jacobiano constante (elemento paralelogramo).
+
+La reducción $1\times1$ queda disponible por el mismo parámetro, pero \textbf{no se recomienda}: al igual que en el mecánico introduce modos espurios. En el caso térmico el rango de $\mathbf K_e$ con un punto es 2, frente a los 3 necesarios (4 DOFs menos el modo de temperatura uniforme), de modo que aparece \textbf{un modo hourglass} de temperatura no detectado por la matriz. Se documenta y se blinda con test de conteo de modos nulos.
+
+\subsection{9. Reutilización de kernels}
+
+\texttt{\_shape\_functions\_quad4}, \texttt{\_det\_jacobian\_quad4} y las derivadas de \texttt{\_compute\_kinematics} ya existen compiladas con Numba en \texttt{solidum/elements/solid\_2d/\_shared.py} y se reutilizan sin duplicar. Lo específico térmico es el ensamblaje $\mathbf B^\top\mathbf k\,\mathbf B$, que es más simple que el mecánico.
+
+\subsection{10. Caveats numéricos}
+
+\begin{itemize}
+  \item \textbf{Modo nulo de temperatura uniforme}: $\mathbf K$ global es singular sin Dirichlet. El sistema debe tener al menos un nodo con temperatura impuesta, o el solver falla con matriz singular. Es el análogo exacto de un modelo mecánico sin apoyos, y el diagnóstico debe nombrarlo como tal.
+  \item \textbf{Sin locking}: el problema escalar no tiene el análogo de la incompresibilidad ni del bloqueo por cortante. No aplica ninguna de las limitaciones que arrastra el \texttt{Quad4} mecánico.
+  \item \textbf{Número de Péclet}: sin término convectivo en la ecuación (fuera de alcance C1), no hay riesgo de oscilaciones por advección dominante. Se anota porque será la primera consideración a revisar si en el futuro entra convección forzada del medio.
+  \item \textbf{Distorsión de la malla}: como en el mecánico, un jacobiano casi degenerado degrada la solución; se valida $|\mathbf J| > 0$ en todos los puntos de Gauss.
+\end{itemize}
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Quad4Thermal
+kind: element
+status: draft            # draft → implemented → validated
+
+interface:
+  field: temperature            # campo primario (Etapa 8) — no displacement
+  dof_names: [T]
+  n_nodes: 4
+  flux_dim: 2                   # dimensión de ∇T y de q en 2D (no hay strain_dim)
+  n_integration_points: 4       # default Gauss 2×2
+
+parameters:
+  - { name: thickness,  type: float, required: false, default: 1.0,
+      desc: "Espesor de la rebanada plana [m]; el flujo total escala con él" }
+  - { name: quadrature, type: str,   required: false, default: "2x2",
+      desc: "Regla desde QuadratureRegistry. 1x1 disponible pero introduce
+             un modo hourglass de temperatura — sin estabilización" }
+
+material_contract:
+  signature: "compute_flux(∇T) -> (q, k)"
+  gradient_kind: "gradiente físico [∂T/∂x, ∂T/∂y] — sin notación Voigt"
+  accepted: [ThermalConduction]
+
+conventions:
+  sign_flux: "q̄ > 0 ⇔ flujo SALIENTE del dominio (enfriamiento); normal exterior"
+  adiabatic_default: "borde sin condición declarada ⇒ q̄ = 0 (aislado)"
+  node_orientation: "antihorario (asegura det J > 0) — idéntico al Quad4 mecánico"
+  edge_numbering: "EDGE_NODES = ((0,1),(1,2),(2,3),(3,0)) — paritario con Quad4"
+  capacity_default: "lumping='lumped' por default, al contrario que en dinámica
+                     estructural; razón física en §5"
+
+validity:
+  - "conducción lineal; k independiente de T"
+  - "material con field='temperature' (familia ThermalMaterial)"
+  - "det J > 0 en todos los puntos de Gauss"
+  - "el modelo global debe imponer al menos un Dirichlet de temperatura"
+
+out_of_scope:
+  - "convección (Robin) y radiación en la frontera — Etapa 8 posterior"
+  - "acoplamiento termomecánico y deformación térmica"
+  - "conducción con advección (término convectivo del medio)"
+  - "cambio de fase / calor latente"
+  - "estabilización del modo hourglass con cuadratura reducida"
+
+acceptance:
+  verification:
+    - name: patch_test_termico_lineal
+      setup: "5 Quad4Thermal distorsionados (4 exteriores + 1 interior);
+             imponer T = a + b·x + c·y en los nodos del contorno"
+      expect: "los nodos interiores adoptan el campo lineal exacto y ∇T =
+              (b, c) constante en TODOS los puntos de Gauss; q = -k·(b,c)"
+      tol_rel: 1.0e-10
+    - name: modo_nulo_temperatura_uniforme
+      setup: "K_e de un elemento aislado; campo T = [1,1,1,1]"
+      expect: "K_e·T = 0 exacto; rango(K_e) = 3; exactamente un autovalor nulo"
+      tol_abs: 1.0e-12
+    - name: simetria_y_semidefinicion
+      setup: "K_e y C_e con k isótropo y ortótropo, elemento regular y distorsionado"
+      expect: "K_e == K_e.T y C_e == C_e.T exactas; autovalores de K_e ≥ 0 con un
+               único cero; autovalores de C_e > 0 estrictos"
+      tol_abs: 1.0e-12
+  specific:
+    - name: conduccion_1d_pared_plana
+      setup: "franja de Quad4Thermal entre x=0 y x=L; T(0)=T_1, T(L)=T_2;
+             bordes superior e inferior adiabáticos; estacionario"
+      expect: "perfil lineal exacto T(x) = T_1 + (T_2-T_1)·x/L en todos los nodos;
+              flujo uniforme q_x = k·(T_1-T_2)/L en todos los Gauss"
+      tol_rel: 1.0e-12
+    - name: cilindro_hueco_logaritmico
+      setup: "corona circular r ∈ [a, b] mallada con Quad4Thermal;
+             T(a)=T_a, T(b)=T_b; estacionario"
+      expect: "perfil logarítmico analítico T(r) = T_a + (T_b-T_a)·ln(r/a)/ln(b/a);
+              convergencia con refinamiento h. Es el análogo térmico exacto del
+              benchmark de Lamé que el proyecto ya usa en mecánica"
+      tol_rel: 5.0e-3
+    - name: fuente_volumetrica_uniforme
+      setup: "Quad4Thermal regular y distorsionado con Q uniforme; sumar
+             componentes nodales de f^Q"
+      expect: "Σf = Q·A_e·t exacto, invariante ante distorsión de la geometría"
+      tol_rel: 1.0e-12
+    - name: flujo_neumann_en_un_borde
+      setup: "Quad4Thermal con q̄ constante sobre un borde"
+      expect: "Σf = -q̄·L·t con reparto L/2 a cada nodo del borde y 0 en los demás"
+      tol_rel: 1.0e-12
+    - name: balance_energetico_estacionario
+      setup: "dominio con fuente Q y Dirichlet en parte de la frontera; estacionario"
+      expect: "el calor generado iguala al evacuado por las reacciones nodales:
+              Σ Q·A·t + Σ reacciones = 0"
+      tol_rel: 1.0e-10
+    - name: capacidad_lumped_vs_consistente
+      setup: "C_e en ambos modos para elemento regular"
+      expect: "ambas suman ρ·c·A_e·t (capacidad total conservada); la lumped es
+              diagonal y estrictamente positiva"
+      tol_rel: 1.0e-12
+    - name: anisotropia_desvia_el_flujo
+      setup: "k = diag(k1, k2) con k1 ≠ k2; campo lineal a 45° de los ejes"
+      expect: "q no es antiparalelo a ∇T; coincide con -k·∇T calculado a mano"
+      tol_rel: 1.0e-12
+    - name: jacobiano_degenerado_abortado
+      setup: "elemento con nodos colineales o en orden inverso"
+      expect: "ValueError con mensaje claro"
+    - name: rechazo_material_mecanico
+      setup: "construir Quad4Thermal con un material de la familia mecánica (Elastic2D)"
+      expect: "TypeError/ValueError identificando la incompatibilidad de familia;
+               nunca aceptación silenciosa"
+
+references:
+  - "Lewis R.W., Nithiarasu P., Seetharamu K.N. (2004). Fundamentals of the FEM for Heat and Fluid Flow. Wiley. §3 y §6 (capacidad lumped vs consistente, oscilaciones)."
+  - "Zienkiewicz O.C., Taylor R.L. (2000). The Finite Element Method, Vol. 1. §7 (problemas de campo escalar)."
+  - "Reddy J.N., Gartling D.K. (2010). The Finite Element Method in Heat Transfer and Fluid Dynamics. CRC Press. §4."
+  - "Carslaw H.S., Jaeger J.C. (1959). Conduction of Heat in Solids. Oxford. §7.2 (cilindro hueco, solución logarítmica)."
+  - "Bathe K.-J. (2014). Finite Element Procedures. §7 (formulación de campo escalar; analogía con elasticidad)."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\textit{Rellena la IA tras programar.}
+
+\begin{itemize}
+  \item Archivo: ---
+  \item Clase: ---
+  \item Tests:
+  \item ---
+  \item Notas de traducción: ---
+\end{itemize}
+
+
+\section{Diálogo}
+
+\textit{Puntos abiertos para el usuario. Sólo física y alcance.}
+
+\textbf{2026-08-25 --- IA \ensuremath{\to} usuario. Dos puntos:}
+
+\begin{enumerate}
+  \item \textasciitilde{}\textasciitilde{}\textbf{Convención de signo del flujo de frontera.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- $\bar q > 0$ es flujo SALIENTE del dominio} (decisión del usuario).
+\end{enumerate}
+
+   Es la que resulta de la deducción de la forma débil con normal exterior $\mathbf n$, donde el término de frontera aparece con signo negativo, y coincide con Abaqus y con la mayoría de la literatura de MEF. Un flujo entrante (calentamiento) se declara con $\bar q < 0$.
+
+   \textbf{Consecuencia}: es convención del proyecto y debe registrarse en \texttt{Reglas.md §5} junto a las de signos mecánicas, al cerrar la etapa. Coherente además con \texttt{q = -k\ensuremath{\cdot}\ensuremath{\nabla}T} del material: ambos signos salen de la misma deducción, no son elecciones independientes.
+
+\begin{enumerate}
+  \item \textasciitilde{}\textasciitilde{}\textbf{Espesor \texttt{thickness}.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- se mantiene, con \texttt{default = 1.0}} (decisión del usuario).
+\end{enumerate}
+
+   Misma semántica que en el \texttt{Quad4} mecánico: el problema plano representa una rebanada de profundidad $t$ y el flujo total escala con ella. Tres razones:
+
+\begin{itemize}
+  \item \textbf{Consistencia} con los cinco sólidos planos del catálogo, que ya lo declaran.
+  \item \textbf{Balances energéticos en unidades absolutas}: el test \texttt{balance\_energetico\_estacionario} da watts reales, no "watts por metro de profundidad".
+  \item \textbf{Extensión futura}: si entra el acoplamiento termomecánico, el elemento térmico y el mecánico deben compartir profundidad; tenerlo desde el principio evita una asimetría posterior.
+\end{itemize}
+
+   El coste es nulo: quien no lo declare obtiene exactamente el comportamiento "por unidad de profundidad" que asume la literatura térmica. Omitirlo habría sido particularizar al caso de hoy.
+
+
+\newpage
+
+\chapter{Elementos Térmicos — 3D}
+
+\section{Hex8Thermal}
+
+
+
+\textit{Spec pre-redactada por la IA (2026-08-25). \textbf{Spec de extensión} (\texttt{Reglas.md §4}): documenta \textbf{sólo lo que cambia} respecto a \texttt{Quad4Thermal}, que es el hermano 2D y donde vive la formulación completa de la familia térmica. Sin ADR propio: reusa las decisiones de alcance de la Etapa 8.}
+
+\textit{> Tercer componente de la Etapa 8 --- C1 núcleo mínimo. Consume \texttt{ThermalConduction}.}
+
+
+
+\section{Qué comparte con \texttt{Quad4Thermal}}
+
+Todo lo esencial de la formulación, que \textbf{no se repite aquí}:
+
+\begin{itemize}
+  \item Un DOF por nodo, la temperatura $T$. \texttt{DOF\_NAMES = ['T']}.
+  \item Sistema semidiscreto $\mathbf C\dot{\mathbf T} + \mathbf K\mathbf T = \mathbf F$, de primer orden en el tiempo. Estacionario $\mathbf K\mathbf T = \mathbf F$ con el \texttt{LinearSolver} existente.
+  \item $\mathbf K_e = \int \mathbf B^\top\mathbf k\,\mathbf B\,d\Omega$ simétrica y \textbf{semidefinida positiva}, con el modo nulo de temperatura uniforme.
+  \item $\mathbf C_e = \int \rho c\,\mathbf N^\top\mathbf N\,d\Omega$, con \textbf{\texttt{lumped} por defecto} y la justificación física del principio del máximo.
+  \item Convención de signo: $\bar q > 0$ es flujo \textbf{saliente} del dominio; frontera sin declarar es \textbf{adiabática}.
+  \item Fuente $Q$ como carga del elemento.
+  \item Sin locking de ningún tipo; sin \texttt{internal\_forces} (cierre por dominio del ADR 0012).
+  \item Clase separada del \texttt{Hex8} mecánico, por el mismo argumento del \texttt{ClassVar DOF\_NAMES}.
+\end{itemize}
+
+
+\section{Qué cambia respecto a \texttt{Quad4Thermal}}
+
+\subsection{1. Dimensión del gradiente y de la matriz B}
+
+\[
+\nabla T = \mathbf B\,\mathbf T_e, \qquad \mathbf B = \begin{bmatrix} \partial N_0/\partial x & \cdots & \partial N_7/\partial x \\[2pt] \partial N_0/\partial y & \cdots & \partial N_7/\partial y \\[2pt] \partial N_0/\partial z & \cdots & \partial N_7/\partial z \end{bmatrix} \in \mathbb R^{3\times 8}
+\]
+
+\texttt{flux\_dim = 3}. La conductividad $\mathbf k$ es $3\times3$; el material \texttt{ThermalConduction} la expande a $k\mathbf I_3$ cuando recibe un escalar.
+
+$\mathbf K_e$ y $\mathbf C_e$ son $8\times8$. El modo nulo sigue siendo único (temperatura uniforme), luego $\text{rango}(\mathbf K_e) = 7$.
+
+\subsection{2. Sin espesor}
+
+\textbf{\texttt{Hex8Thermal} no lleva \texttt{thickness}.} El volumen sale de la geometría, igual que en los sólidos 3D mecánicos. Es la diferencia visible más inmediata para el usuario del YAML respecto al hermano 2D.
+
+\subsection{3. Interpolación trilineal}
+
+\[
+N_i(\xi,\eta,\zeta) = \tfrac18(1+\xi_i\xi)(1+\eta_i\eta)(1+\zeta_i\zeta)
+\]
+
+Las mismas del \texttt{Hex8} mecánico, orden de nodos VTK\_HEXAHEDRON. El gradiente resulta \textbf{trilineal} por elemento.
+
+\subsection{4. Cuadratura}
+
+Gauss $2\times2\times2$ (8 puntos) por defecto --- \texttt{hex\_2x2x2} del \texttt{QuadratureRegistry}, idéntica al \texttt{Hex8} mecánico. Exacta para $\mathbf K_e$ y $\mathbf C_e$ con jacobiano constante.
+
+Reducida \texttt{hex\_1x1x1} disponible por el mismo parámetro pero \textbf{no recomendada}: con un solo punto el rango de $\mathbf K_e$ es 3 frente a los 7 necesarios, dejando \textbf{4 modos hourglass} de temperatura sin detectar (frente al único del \texttt{Quad4Thermal} reducido). Se blinda con test de conteo.
+
+\subsection{5. Flujo de frontera por cara, no por borde}
+
+El flujo Neumann se aplica sobre \textbf{caras} con normal saliente, no sobre bordes:
+
+\[
+\mathbf f^{\bar q}_e = -\int_{\Gamma_q} \bar q\,\mathbf N^\top\,d\Gamma
+\]
+
+Numeración \textbf{paritaria con el \texttt{Hex8} mecánico} --- misma \texttt{FACE\_NODES}, mismas 6 caras: 0 ($-\zeta$), 1 ($+\zeta$), 2 ($-\eta$), 3 ($+\xi$), 4 ($+\eta$), 5 ($-\xi$). Reutiliza la maquinaria de integración sobre caras que ya existe.
+
+Para $\bar q$ uniforme sobre una cara plana de área $A$, el reparto es $\bar q A/4$ a cada uno de los 4 nodos de la cara y cero a los otros cuatro.
+
+\subsection{6. Validación específica 3D}
+
+Los benchmarks del hermano 2D se extienden, más uno propio de la dimensión:
+
+\begin{itemize}
+  \item \textbf{Pared plana 3D}: perfil lineal exacto; verifica que la tercera dimensión no introduce error.
+  \item \textbf{Cilindro hueco 3D}: perfil logarítmico, extensión del 2D --- análogo térmico del Lamé 3D que el proyecto ya valida en mecánica.
+  \item \textbf{Cross-check contra \texttt{Quad4Thermal}}: la misma pared plana resuelta en 2D y con una capa de \texttt{Hex8Thermal} con las caras $z$ adiabáticas debe dar campos idénticos nodo a nodo. Es el análogo del cross-check 3D\ensuremath{\leftrightarrow}2D \texttt{plane\_strain} que en A.bis blindó los materiales a 10-14 decimales, y \textbf{cubre los errores en la tercera dimensión sin necesidad de mallador}.
+\end{itemize}
+
+La \textbf{esfera hueca} ---único caso con flujo genuinamente tridimensional--- queda \textbf{diferida} de esta etapa (decisión del usuario, 2026-08-25): exige mallar un octante de corona esférica, y la cobertura que aportaría ya la da el cross-check anterior. Ver §Diálogo.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Hex8Thermal
+kind: element
+status: draft            # draft → implemented → validated
+
+interface:
+  field: temperature
+  dof_names: [T]
+  n_nodes: 8
+  flux_dim: 3                   # ∇T y q en 3D
+  n_integration_points: 8       # default Gauss 2×2×2
+
+parameters:
+  - { name: quadrature, type: str, required: false, default: "hex_2x2x2",
+      desc: "Regla desde QuadratureRegistry. hex_1x1x1 disponible pero deja 4
+             modos hourglass de temperatura — sin estabilización" }
+  # Sin `thickness`: el volumen sale de la geometría (igual que los sólidos 3D).
+
+material_contract:
+  signature: "compute_flux(∇T) -> (q, k)"
+  gradient_kind: "gradiente físico [∂T/∂x, ∂T/∂y, ∂T/∂z] — sin notación Voigt"
+  accepted: [ThermalConduction]
+
+conventions:
+  sign_flux: "q̄ > 0 ⇔ flujo SALIENTE del dominio; normal exterior"
+  adiabatic_default: "cara sin condición declarada ⇒ q̄ = 0 (aislada)"
+  node_orientation: "orden VTK_HEXAHEDRON, volumen positivo — idéntico al Hex8"
+  face_numbering: "FACE_NODES paritaria con Hex8: 0(−ζ) 1(+ζ) 2(−η) 3(+ξ) 4(+η) 5(−ξ)"
+  capacity_default: "lumping='lumped' por default; razón física en Quad4Thermal §5"
+
+validity:
+  - "conducción lineal; k independiente de T"
+  - "material con field='temperature' (familia ThermalMaterial)"
+  - "det J > 0 en todos los puntos de Gauss"
+  - "el modelo global debe imponer al menos un Dirichlet de temperatura"
+
+out_of_scope:
+  - "convección (Robin) y radiación en la frontera — Etapa 8 posterior"
+  - "acoplamiento termomecánico"
+  - "conducción con advección; cambio de fase"
+  - "estabilización del hourglass con cuadratura reducida"
+
+acceptance:
+  verification:
+    - name: patch_test_termico_lineal_3d
+      setup: "malla de Hex8Thermal distorsionados con nodo(s) interior(es);
+             imponer T = a + b·x + c·y + d·z en los nodos del contorno"
+      expect: "los nodos interiores adoptan el campo lineal exacto y ∇T =
+              (b, c, d) constante en TODOS los puntos de Gauss"
+      tol_rel: 1.0e-10
+    - name: modo_nulo_temperatura_uniforme
+      setup: "K_e de un elemento aislado; campo T = ones(8)"
+      expect: "K_e·T = 0 exacto; rango(K_e) = 7; exactamente un autovalor nulo"
+      tol_abs: 1.0e-12
+    - name: hourglass_con_integracion_reducida
+      setup: "K_e con quadrature='hex_1x1x1' sobre elemento aislado"
+      expect: "rango(K_e) = 3; 5 autovalores nulos (1 físico + 4 hourglass).
+               Documenta la limitación, no la corrige"
+      tol_abs: 1.0e-12
+    - name: simetria_y_semidefinicion
+      setup: "K_e y C_e con k isótropo y ortótropo, elemento regular y distorsionado"
+      expect: "K_e == K_e.T y C_e == C_e.T exactas; autovalores de K_e ≥ 0 con un
+               único cero; autovalores de C_e > 0 estrictos"
+      tol_abs: 1.0e-12
+  specific:
+    - name: conduccion_1d_pared_plana_3d
+      setup: "bloque de Hex8Thermal entre x=0 y x=L; T(0)=T_1, T(L)=T_2;
+             las otras cuatro caras adiabáticas; estacionario"
+      expect: "perfil lineal exacto en todos los nodos; q uniforme y sin
+              componentes transversales (q_y = q_z = 0)"
+      tol_rel: 1.0e-12
+    - name: cilindro_hueco_logaritmico_3d
+      setup: "sector de corona circular extruido; T(a)=T_a, T(b)=T_b;
+             caras planas adiabáticas; estacionario"
+      expect: "perfil logarítmico T(r) = T_a + (T_b−T_a)·ln(r/a)/ln(b/a);
+              convergencia con refinamiento h"
+      tol_rel: 5.0e-3
+    # Esfera hueca (perfil T(r) = T_a + (T_b−T_a)·(1/a − 1/r)/(1/a − 1/b)):
+    # DIFERIDA de esta etapa por decisión del usuario (2026-08-25). Es el único
+    # caso con flujo genuinamente tridimensional, pero exige mallar un octante
+    # de corona esférica —trabajo geométrico que ya difirió la campaña de
+    # validación 3D de A.bis por el mismo motivo— y la cobertura que aportaría
+    # sobre la tercera dimensión ya la da `consistencia_con_quad4thermal`, que
+    # no necesita mallador. Retomar si entra un mallador 3D nativo (gmsh API)
+    # o si aparece un caso de uso con flujo radial esférico.
+    - name: fuente_volumetrica_uniforme
+      setup: "Hex8Thermal regular y distorsionado con Q uniforme"
+      expect: "Σf = Q·V_e exacto, invariante ante distorsión"
+      tol_rel: 1.0e-12
+    - name: flujo_neumann_en_una_cara
+      setup: "Hex8Thermal con q̄ constante sobre cada una de las 6 caras"
+      expect: "Σf = -q̄·A_cara con reparto A/4 a cada nodo de la cara y 0 en el
+              resto; verificado en las 6 caras"
+      tol_rel: 1.0e-12
+    - name: balance_energetico_estacionario
+      setup: "dominio con fuente Q y Dirichlet en parte de la frontera"
+      expect: "Σ Q·V + Σ reacciones = 0"
+      tol_rel: 1.0e-10
+    - name: capacidad_lumped_vs_consistente
+      setup: "C_e en ambos modos para elemento regular"
+      expect: "ambas suman ρ·c·V_e; la lumped es diagonal y estrictamente positiva"
+      tol_rel: 1.0e-12
+    - name: anisotropia_desvia_el_flujo_3d
+      setup: "k = diag(k1, k2, k3) distintos; campo lineal oblicuo a los ejes"
+      expect: "q coincide con -k·∇T calculado a mano; no antiparalelo a ∇T"
+      tol_rel: 1.0e-12
+    - name: consistencia_con_quad4thermal
+      setup: "problema de pared plana resuelto con Quad4Thermal (2D) y con una
+             capa de Hex8Thermal con las caras z adiabáticas"
+      expect: "campos de temperatura idénticos nodo a nodo; es el cross-check
+              dimensional análogo al que el proyecto usa entre materiales 3D y
+              2D plane_strain"
+      tol_rel: 1.0e-12
+    - name: jacobiano_degenerado_abortado
+      setup: "elemento con nodos coplanares o numeración invertida"
+      expect: "ValueError con mensaje claro"
+    - name: rechazo_material_mecanico
+      setup: "construir Hex8Thermal con un material de la familia mecánica"
+      expect: "TypeError/ValueError identificando la incompatibilidad de familia"
+
+references:
+  - "Lewis R.W., Nithiarasu P., Seetharamu K.N. (2004). Fundamentals of the FEM for Heat and Fluid Flow. Wiley. §3, §6."
+  - "Zienkiewicz O.C., Taylor R.L. (2000). The Finite Element Method, Vol. 1. §7."
+  - "Carslaw H.S., Jaeger J.C. (1959). Conduction of Heat in Solids. Oxford. §7.2 (cilindro hueco). §9.3 cubre la esfera hueca, diferida de esta etapa."
+  - "Reddy J.N., Gartling D.K. (2010). The Finite Element Method in Heat Transfer and Fluid Dynamics. CRC Press. §4."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\textit{Rellena la IA tras programar.}
+
+\begin{itemize}
+  \item Archivo: ---
+  \item Clase: ---
+  \item Tests:
+  \item ---
+  \item Notas de traducción: ---
+\end{itemize}
+
+
+\section{Diálogo}
+
+\textit{Puntos abiertos para el usuario. Sólo física y alcance.}
+
+\textbf{2026-08-25 --- IA \ensuremath{\to} usuario. Un punto:}
+
+\begin{enumerate}
+  \item \textasciitilde{}\textasciitilde{}\textbf{Benchmark de la esfera hueca.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- DIFERIDA de esta etapa} (decisión del usuario).
+\end{enumerate}
+
+   La esfera hueca es el único caso propuesto con flujo genuinamente tridimensional: su perfil $\propto 1/r$ no lo producen ni la pared plana ni el cilindro, donde la temperatura varía en una sola dirección. Pero exige \textbf{mallar un octante de corona esférica}, trabajo geométrico que ya difirió la campaña de validación 3D de A.bis por el mismo motivo.
+
+   Se difiere porque \textbf{la cobertura que aportaría está cubierta por otra vía}: \texttt{consistencia\_con\_quad4thermal} detecta errores en la tercera dimensión comparando el mismo problema resuelto en 2D y en 3D, y no necesita mallador. La esfera daría confirmación adicional, no una comprobación ausente.
+
+   Nota técnica: cuando se retome, el \texttt{Hex8Thermal} \textbf{no} sufrirá el problema que bloquea al \texttt{Tet10} sobre superficie curva (deuda técnica \#8) --- al ser trilineal no tiene nodos intermedios que puedan quedar sobre aristas rectas. El bloqueante es sólo de mallado.
+
+   \textbf{Criterio de retoma}: si entra un mallador 3D nativo (gmsh API) o aparece un caso de uso con flujo radial esférico.
+
+
+\newpage
+
 \chapter{Modelos Constitutivos — 1D}
 
 \section{CableMaterial1D}
@@ -8790,7 +9345,7 @@ references:
 
 \chapter{Modelos Constitutivos — Térmicos}
 
-\section{ThermalIsotropic}
+\section{ThermalConduction}
 
 
 
@@ -8927,13 +9482,14 @@ Devuelve el flujo y el tensor de conductividad ---análogo a \texttt{(\ensuremat
 \section{Contrato de implementación}
 
 \begin{lstlisting}[language=yaml]
-name: ThermalIsotropic
+name: ThermalConduction
 kind: thermal_material
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   field: temperature     # campo primario que gobierna (1 DOF escalar por nodo)
-  flux_dim: 0            # 2 en 2D · 3 en 3D — se fija al construir según la dimensión
+  flux_dim: null         # 2 ó 3 — no es ClassVar: se fija por instancia al
+                         # construir (escalar + dim, o tamaño del tensor k)
   primary_state_var: null
   is_symmetric: true
 
@@ -9009,6 +9565,16 @@ acceptance:
       setup: "construir sin c ni density; solicitar matriz de capacidad"
       expect: "ValueError identificando el material y el parámetro faltante,
                nunca capacidad cero silenciosa (precedente ADR 0008)"
+    - name: mensaje_de_error_accionable
+      setup: "construir sin c y/o sin density; solicitar matriz de capacidad"
+      expect: "el mensaje nombra el material, nombra el/los parámetro(s) que faltan
+               e indica la salida ('declara ambas' | 'usa un solver estacionario').
+               No basta con reportar el atributo ausente"
+    - name: estacionario_no_exige_capacidad
+      setup: "construir sólo con k; ensamblar la matriz de conductividad"
+      expect: "K_e se ensambla sin error; c y density no se consultan en ningún punto
+               del camino estacionario"
+      tol_rel: 1.0e-14
 
 references:
   - "Incropera F.P., DeWitt D.P. (2007). Fundamentals of Heat and Mass Transfer. Wiley. §2 (ley de Fourier, conductividad tensorial)."
@@ -9021,14 +9587,37 @@ references:
 
 \section{Implementación}
 
-\textit{Rellena la IA tras programar.}
+\begin{itemize}
+  \item Archivo: \texttt{solidum/materials/thermal\_conduction.py}
+  \item Clase: \texttt{ThermalConduction}, registrada en \texttt{ThermalMaterialRegistry}
+  \item Clase base: \texttt{solidum/core/thermal\_material.py} \ensuremath{\cdot} \texttt{ThermalMaterial}
+  \item Tests: \texttt{tests/test\_thermal\_material.py} --- 31 verdes
+\end{itemize}
+
+\textbf{Notas de implementación:}
 
 \begin{itemize}
-  \item Archivo: ---
-  \item Clase: ---
-  \item Tests:
-  \item ---
-  \item Notas de traducción: ---
+  \item \textbf{\texttt{FLUX\_DIM} es propiedad de instancia, no \texttt{ClassVar}.} A diferencia de \texttt{STRAIN\_DIM} y \texttt{JUMP\_DIM}, la dimensión del flujo no la fija la clase sino el tensor con que se construye: el mismo \texttt{ThermalConduction} sirve en 2D y en 3D. Se deduce de \texttt{conductivity.shape[0]}, de modo que \texttt{k} matricial manda sobre el argumento \texttt{dim} (que sólo se usa para expandir un escalar). El contrato de la spec declara \texttt{flux\_dim: null} por esta razón.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{Validación de simetría con tolerancia escalada.} El criterio es \texttt{atol = 1e-12 \ensuremath{\cdot} max|k|}, adimensional respecto a las unidades del usuario (ADR 0006). Un \texttt{allclose} con tolerancia absoluta fija habría rechazado tensores legítimos expresados en W/(mm\ensuremath{\cdot}K) o aceptado asimetrías reales en W/(m\ensuremath{\cdot}K).
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{Positividad vía \texttt{eigvalsh}, no vía el determinante.} El determinante positivo no implica definición positiva en dimensión \ensuremath{\ge} 2 (dos autovalores negativos lo dejan positivo). Se comprueban todos los autovalores, que además es barato para matrices 2\ensuremath{\times}2 y 3\ensuremath{\times}3.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{\texttt{volumetric\_capacity()} vive en la clase base}, no en la subclase: el criterio del ADR 0008 y el formato del mensaje accionable son de familia, no de este material concreto. Cualquier material térmico futuro lo hereda.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{Concordancia gramatical del mensaje de error.} El mensaje flexiona singular/plural según cuántos parámetros falten ("el parámetro 'density', que no se declaró\ldots{} Decláralo" vs "los parámetros 'density' y 'c', que no se declararon\ldots{} Decláralos"). Un mensaje mal concordado resta credibilidad justo cuando el usuario está diagnosticando.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{\texttt{thermal\_diffusivity} rechaza el caso anisótropo} en vez de devolver un valor plausible: con \texttt{k} tensorial la difusividad es un tensor, y un escalar sería una simplificación silenciosa. El mensaje remite a los autovalores de \texttt{conductivity} para estimar los extremos.
 \end{itemize}
 
 
@@ -9039,16 +9628,30 @@ references:
 \textbf{2026-08-25 --- IA \ensuremath{\to} usuario. Tres puntos:}
 
 \begin{enumerate}
-  \item \textbf{Nombre del material.} Lo he llamado \texttt{ThermalIsotropic} por paralelismo con la nomenclatura del catálogo, pero el contrato admite tensor completo, así que el nombre se queda corto respecto a lo que hace. Alternativas: \texttt{ThermalConduction} (describe la física, no la simetría) o \texttt{FourierConduction} (nombra la ley). Me inclino por \texttt{ThermalConduction}. ¿Preferencia?
+  \item \textasciitilde{}\textasciitilde{}\textbf{Nombre del material.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- \texttt{ThermalConduction}} (decisión del usuario). El nombre inicial \texttt{ThermalIsotropic} describía mal el contrato, que admite tensor completo; \texttt{ThermalConduction} nombra la física y no compromete la simetría del tensor. Un futuro material térmico no lineal ---conductividad $\mathbf k(T)$, cambio de fase--- entrará como nombre propio distinto, no como variante de éste.
 \end{enumerate}
 
 \begin{enumerate}
-  \item \textbf{\texttt{c} y \texttt{density} opcionales.} He seguido el precedente del ADR 0008 (\texttt{density} opcional, \texttt{ValueError} si un consumidor la necesita y falta), de modo que un análisis estacionario no obliga a declarar propiedades que no usa. ¿Confirmas que ese criterio se traslada a \texttt{c}?
+  \item \textasciitilde{}\textasciitilde{}\textbf{\texttt{c} y \texttt{density} opcionales.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- se traslada el criterio del ADR 0008} (decisión del usuario). Ambas son opcionales al construir: un análisis \textbf{estacionario} sólo usa $\mathbf k$, y exigir propiedades que no entran en ninguna ecuación obligaría a inventar valores ficticios. El fallo silencioso ---el riesgo real de un parámetro opcional--- está cerrado por diseño: cuando un consumidor transitorio las encuentra \texttt{None}, lanza \texttt{ValueError} identificando el material.
 \end{enumerate}
 
+   \textbf{Requisito añadido en la decisión}: el mensaje debe ser \textbf{accionable}, no sólo descriptivo --- decir qué hacer, no sólo qué falta. Forma canónica:
+
+   > \texttt{ThermalConduction (id=1): el análisis transitorio requiere 'c' y 'density'. Declara ambas en el material, o usa un solver estacionario (LinearSolver).}
+
+   Es el espíritu de "validación temprana con mensajes claros" de \texttt{Reglas.md §1} aplicado al caso.
+
 \begin{enumerate}
-  \item \textbf{Fuente volumétrica $Q$.} La he dejado \textbf{fuera del material}, como carga aplicada en el elemento ---paralelo a cómo las fuerzas de cuerpo no viven en el material mecánico---. Es coherente con la arquitectura, pero en la literatura térmica $Q$ a veces se asocia al medio (p. ej. calor de hidratación del hormigón, generación en un conductor). ¿Te parece bien como carga, o prefieres que el material pueda declarar una generación propia?
+  \item \textasciitilde{}\textasciitilde{}\textbf{Fuente volumétrica $Q$.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- $Q$ es carga aplicada en el elemento, no propiedad del material} (decisión del usuario).
 \end{enumerate}
+
+   El material define la \textbf{ley constitutiva}, no las acciones sobre el medio; es el mismo reparto que en la familia mecánica, donde \texttt{Elastic2D} no sabe nada del peso propio ni de las fuerzas de cuerpo.
+
+   La razón que decide no es la simetría arquitectural sino la \textbf{variabilidad espacial y temporal}: la generación por hidratación del hormigón depende de la madurez, y el efecto Joule de la corriente. Ninguna es constante del medio. Modelada como carga, $Q$ puede variar por zona y por paso sin duplicar materiales; como propiedad del material, cada valor distinto exigiría un material propio.
+
+   Consecuencia para la spec del elemento: \texttt{compute\_body\_source(Q)} integra $\int_\Omega Q\,\mathbf N^\top d\Omega$, paralelo a \texttt{compute\_body\_load(b)} del mecánico. Se especifica allí, no aquí.
+
+   No cierra la puerta a un atajo futuro ---un material que declare generación propia--- si aparece el caso de uso que lo justifique.
 
 
 \newpage
@@ -11853,6 +12456,317 @@ references:
 
 \newpage
 
+\section{ThetaMethodSolver}
+
+
+
+\textit{Spec pre-redactada por la IA (2026-08-25). \textbf{El usuario revisa la física; el plumbing está resuelto.}}
+
+\textit{> Cuarto y último componente de la Etapa 8 --- C1 núcleo mínimo. Resuelve el transitorio de conducción sobre \texttt{Quad4Thermal} y \texttt{Hex8Thermal}.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general y por qué es un solver nuevo}
+
+Integrador temporal para sistemas semidiscretos de \textbf{primer orden}:
+
+\[
+\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F(t)
+\]
+
+\textbf{No es una variante de \texttt{NewmarkSolver}.} La familia Newmark integra la ecuación de \textbf{segundo orden} $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \mathbf K\mathbf u = \mathbf F$ mediante hipótesis sobre la aceleración dentro del paso. En conducción no existe segunda derivada temporal: no hay aceleración, no hay inercia, y las hipótesis de Newmark no tienen sobre qué aplicarse. Forzar Newmark con $\mathbf M = \mathbf 0$ degenera el esquema.
+
+Es, por tanto, un solver de familia propia, no una subclase --- y no le corresponde spec corta de extensión sino spec completa (\texttt{Reglas.md §4}).
+
+El \textbf{régimen estacionario} no lo usa: $\mathbf K\mathbf T = \mathbf F$ lo resuelve el \texttt{LinearSolver} existente sin modificación.
+
+\subsection{1. Esquema \ensuremath{\theta}}
+
+Se aproxima la ecuación en un punto intermedio del paso, ponderando el estado con el parámetro $\theta \in [0,1]$:
+
+\[
+\mathbf C\,\frac{\mathbf T_{n+1} - \mathbf T_n}{\Delta t} + \mathbf K\left[\theta\,\mathbf T_{n+1} + (1-\theta)\,\mathbf T_n\right] = \theta\,\mathbf F_{n+1} + (1-\theta)\,\mathbf F_n
+\]
+
+Reordenando, el sistema a resolver por paso:
+
+\[
+\underbrace{\left(\mathbf C + \theta\,\Delta t\,\mathbf K\right)}_{\mathbf A}\,\mathbf T_{n+1} = \left[\mathbf C - (1-\theta)\,\Delta t\,\mathbf K\right]\mathbf T_n + \Delta t\left[\theta\,\mathbf F_{n+1} + (1-\theta)\,\mathbf F_n\right]
+\]
+
+$\mathbf A$ es \textbf{simétrica y definida positiva} para $\theta > 0$ (suma de $\mathbf C$ definida positiva y $\mathbf K$ semidefinida, con Dirichlet impuesto), luego el despachador algebraico (ADR 0003) elige Cholesky. Con $\Delta t$ constante, $\mathbf A$ \textbf{se factoriza una sola vez} y se reutiliza en todos los pasos.
+
+\subsection{2. Casos particulares de \ensuremath{\theta}}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{$\theta$} & \textbf{Nombre} & \textbf{Orden} & \textbf{Estabilidad} \\
+\hline
+$0$ & Euler explícito (forward) & 1 & \textbf{Condicional}: $\Delta t \le 2/\lambda_{\max}$ \\
+$1/2$ & Crank-Nicolson & \textbf{2} & Incondicional (A-estable) \\
+$2/3$ & Galerkin & 1 & Incondicional \\
+$1$ & Euler implícito (backward) & 1 & Incondicional, \textbf{L-estable} \\
+\hline
+\end{tabularx}
+\end{center}
+Con $\theta \ge 1/2$ el esquema es \textbf{incondicionalmente estable}: ningún $\Delta t$ produce divergencia. Es la propiedad que distingue este solver del \texttt{CentralDifferenceSolver} mecánico, cuya estabilidad es siempre condicional (CFL).
+
+\subsection{3. Estabilidad no es lo mismo que ausencia de oscilaciones}
+
+Punto físico central de esta spec, y la razón de la elección de default.
+
+Crank-Nicolson ($\theta = 1/2$) es de \textbf{segundo orden} y por tanto el más preciso de la tabla, pero \textbf{A-estable y no L-estable}: su factor de amplificación tiende a $-1$ para los modos de frecuencia alta, en lugar de a $0$. Consecuencia práctica: ante un \textbf{cambio brusco} ---un escalón de temperatura impuesto en la frontera, típico en el arranque de un análisis--- produce \textbf{oscilaciones amortiguadas lentamente} en los primeros pasos, con temperaturas que pueden salirse del rango de los datos.
+
+Euler implícito ($\theta = 1$) es sólo de primer orden, pero \textbf{L-estable}: amortigua los modos altos por completo en un paso. Nunca oscila.
+
+Esto es el mismo fenómeno físico que motivó el default \texttt{lumped} en la matriz de capacidad, atacado desde el otro lado: \textbf{el principio del máximo} de la ecuación de difusión dice que la solución exacta nunca excede los extremos de los datos iniciales y de frontera. Un esquema que lo viola no es simplemente impreciso --- produce un resultado cualitativamente imposible.
+
+\textbf{Por eso el default propuesto es $\theta = 1$} (Euler implícito), robusto ante el arranque típico. Crank-Nicolson queda disponible para quien busque precisión de segundo orden y sepa que su problema es suave. Se documenta el criterio para que la elección sea informada y no una preferencia oculta.
+
+\subsection{4. Condición inicial}
+
+El campo $\mathbf T_0$ debe declararse. Dos formas admitidas:
+
+\begin{itemize}
+  \item \textbf{Uniforme}: un escalar, el caso más frecuente (cuerpo inicialmente a temperatura ambiente).
+  \item \textbf{Por nodo}: vector completo, para arrancar de un estado no uniforme (p. ej. el resultado de un análisis estacionario previo).
+\end{itemize}
+
+A diferencia del mecánico, \textbf{no hay velocidad inicial}: la ecuación es de primer orden y $\mathbf T_0$ la determina por completo.
+
+\textbf{Consistencia con Dirichlet}: si $\mathbf T_0$ contradice una temperatura impuesta en un nodo con Dirichlet, existe una discontinuidad en $t=0$. Es físicamente legítimo (un choque térmico es exactamente eso) pero es la situación que más excita las oscilaciones descritas en §3. El solver \textbf{avisa} cuando lo detecta, sin abortar: es modelización válida, no error.
+
+\subsection{5. Selección del paso de tiempo}
+
+El paso no se elige por estabilidad ---con $\theta \ge 1/2$ no hay límite--- sino por \textbf{precisión}. La escala física la da la difusividad $\alpha = k/(\rho c)$ [m\ensuremath{^{2}}/s] del material y el tamaño característico de elemento $h$:
+
+\[
+\Delta t_{\text{car}} \sim \frac{h^2}{\alpha}
+\]
+
+Es el tiempo que tarda el frente térmico en atravesar un elemento. Un $\Delta t \gg \Delta t_{\text{car}}$ es estable pero no resuelve el transitorio: salta por encima de la física que se quiere ver.
+
+El solver \textbf{no calcula ni impone} este valor ---igual que el \texttt{CentralDifferenceSolver} no calcula el $\Delta t$ crítico---, pero sí lo \textbf{reporta como diagnóstico} al arrancar, para que el usuario contraste su elección. Es información, no restricción.
+
+\subsection{6. Sin amortiguamiento de Rayleigh}
+
+El amortiguamiento de Rayleigh $\mathbf C = \alpha\mathbf M + \beta\mathbf K$ del subsistema dinámico \textbf{no aplica}: es un modelo de disipación de la ecuación de segundo orden. En conducción la "disipación" es la propia conducción, ya contenida en $\mathbf K$. El parámetro no existe en este solver.
+
+
+\section{Formulación numérica}
+
+\subsection{7. Algoritmo}
+
+\begin{lstlisting}
+A = C + θ·Δt·K                     # una vez, si Δt constante
+factor = factorize(A)              # Cholesky (A es SPD); reutilizada
+B = C − (1−θ)·Δt·K                 # una vez
+
+T = T_0
+para cada paso n:
+    rhs = B·T_n + Δt·[θ·F_{n+1} + (1−θ)·F_n]
+    aplicar Dirichlet (eliminación, ADR 0004)
+    T_{n+1} = factor.solve(rhs_reducido)
+    almacenar según output_every
+
+\end{lstlisting}
+
+\textbf{Coste por paso}: una sustitución hacia adelante/atrás. La factorización es única mientras $\Delta t$ y las matrices no cambien --- el problema es lineal y sin historia, así que $\mathbf K$ y $\mathbf C$ se ensamblan una sola vez.
+
+\subsection{8. Dirichlet dependiente del tiempo}
+
+Una temperatura impuesta puede variar en el tiempo, $\bar T(t)$ --- es un caso de uso central (una superficie sometida a un ciclo térmico). La eliminación del ADR 0004 se aplica en cada paso con el valor correspondiente; el término de acoplamiento $\mathbf K_{fp}\bar{\mathbf T}_p$ se recalcula, la factorización de $\mathbf A_{ff}$ \textbf{no}.
+
+\subsection{9. Resultado}
+
+Devuelve un \texttt{ThermalTransientResult} con \texttt{t\_history}, \texttt{T\_history}, \texttt{n\_steps} y \texttt{converged}.
+
+\textbf{Decisión de zona gris que se señala}: no se reutiliza \texttt{TransientResult}, cuyos campos \texttt{udot\_history}, \texttt{uddot\_history}, \texttt{alpha\_rayleigh} y \texttt{beta\_rayleigh} no tienen significado térmico. Rellenarlos con \texttt{None} o ceros produciría un objeto que miente sobre su contenido. Se sigue el criterio ya aplicado en el proyecto con \texttt{ModalResult}, \texttt{HarmonicResult} y \texttt{ResponseSpectrumResult}: un tipo de análisis con semántica propia tiene su dataclass propia.
+
+\subsection{10. Caveats numéricos}
+
+\begin{itemize}
+  \item \textbf{Sin Dirichlet, $\mathbf A$ es singular} en el estacionario y mal condicionada en el transitorio con $\Delta t$ grande. El diagnóstico debe nombrar el modo de temperatura uniforme, no reportar un fallo algebraico genérico.
+  \item \textbf{Oscilaciones con Crank-Nicolson ante escalón}: descrito en §3. No es un error del solver; se documenta y se cuantifica con test.
+  \item \textbf{$\theta = 0$ (explícito)}: se admite por completitud pero requiere $\Delta t \le 2/\lambda_{\max}$, y con capacidad consistente $\lambda_{\max}$ es grande. Sin masa lumped es prácticamente inutilizable; se avisa.
+  \item \textbf{Contraste alto de conductividad}: mal condicionamiento heredado del problema, no del esquema.
+\end{itemize}
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: ThetaMethodSolver
+kind: solver
+status: draft            # draft → implemented → validated
+
+interface:
+  pipeline_kind: thermal_transient
+  field: temperature
+  equation_order: 1      # primer orden en el tiempo (Newmark integra segundo)
+
+parameters:
+  - { name: theta, type: float, required: false, default: 1.0,
+      desc: "Peso del esquema ∈ [0,1]. 1.0 Euler implícito (L-estable, default);
+             0.5 Crank-Nicolson (2º orden, A-estable, puede oscilar ante escalón);
+             2/3 Galerkin; 0.0 explícito (condicionalmente estable)" }
+  - { name: dt, type: float, required: true,
+      desc: "Paso de tiempo [s]. No limitado por estabilidad si θ ≥ 0.5, sí por
+             precisión: contrastar con el Δt característico h²/α reportado" }
+  - { name: n_steps, type: int, required: true, desc: "Número de pasos" }
+  - { name: T_initial, type: float | array-like, required: true,
+      desc: "Condición inicial. Escalar ⇒ campo uniforme; vector ⇒ valor por nodo" }
+  - { name: lumping, type: str, required: false, default: "lumped",
+      desc: "Forma de la matriz de capacidad. Default lumped por el mismo criterio
+             físico que en los elementos térmicos (Quad4Thermal §5)" }
+  - { name: output_every, type: int, required: false, default: 1,
+      desc: "Almacenar el campo cada N pasos; limita la memoria en corridas largas" }
+  - { name: linear_algebra, type: str, required: false, default: "auto",
+      desc: "Backend algebraico (ADR 0003). A es SPD ⇒ Cholesky por defecto" }
+  # Sin `rayleigh`: el amortiguamiento de Rayleigh es de la ecuación de 2º orden.
+
+conventions:
+  stability: "θ ≥ 0.5 incondicionalmente estable; θ = 1 además L-estable
+              (amortigua modos altos por completo, nunca oscila)"
+  dt_guidance: "Δt característico ~ h²/α con α = k/(ρc). Reportado como
+                diagnóstico al arrancar; no impuesto"
+  order_reporting: "el solver reporta el orden efectivo del esquema según θ
+                    (2 si θ=0.5, 1 en el resto), para que el coste en precisión
+                    del default robusto sea visible y no silencioso"
+  factorization: "A = C + θ·Δt·K se factoriza UNA vez si Δt es constante"
+
+validity:
+  - "sistema lineal de primer orden: C·Ṫ + K·T = F"
+  - "θ ∈ [0, 1]; dt > 0; n_steps ≥ 1"
+  - "el modelo debe imponer al menos un Dirichlet de temperatura"
+  - "material con c y density declaradas (ThermalConduction §4)"
+
+out_of_scope:
+  - "no linealidad: k(T), cambio de fase, radiación ⇒ requerirían Newton por paso"
+  - "paso de tiempo adaptativo ⇒ diferido hasta caso de uso real"
+  - "amortiguamiento de Rayleigh (no aplica a 1er orden)"
+  - "acoplamiento termomecánico"
+
+acceptance:
+  verification:
+    - name: decaimiento_exponencial_1dof
+      setup: "sistema de 1 DOF c·Ṫ + k·T = 0 con T(0) = T_0; comparar contra
+             la solución analítica T(t) = T_0·exp(−k·t/c)"
+      expect: "error < tol para θ=1 y θ=0.5; el error de Crank-Nicolson decrece
+              como O(Δt²) y el de Euler implícito como O(Δt) — verificar AMBAS
+              tasas por refinamiento sucesivo de Δt"
+      tol_rel: 1.0e-3
+    - name: orden_de_convergencia_temporal
+      setup: "mismo problema, Δt sucesivamente halvado"
+      expect: "pendiente log-log ≈ 1 para θ=1 y ≈ 2 para θ=0.5.
+               Es el test que distingue realmente los dos esquemas"
+      tol_abs: 0.15
+    - name: estabilidad_incondicional
+      setup: "θ = 1 con Δt tres órdenes de magnitud mayor que h²/α"
+      expect: "la solución NO diverge; converge monótonamente al estacionario.
+               Con θ = 0 y el mismo Δt sí diverge (contraste explícito)"
+    - name: convergencia_al_estacionario
+      setup: "problema de pared plana con Dirichlet fijo en ambos extremos;
+             integrar hasta t → ∞"
+      expect: "el campo converge al perfil lineal que da el LinearSolver sobre
+              el MISMO modelo; comparación nodo a nodo"
+      tol_rel: 1.0e-8
+  specific:
+    - name: L_estabilidad_ante_escalon
+      setup: "cuerpo a T_0 uniforme; escalón de Dirichlet en una cara;
+             Δt grande; comparar θ=1 contra θ=0.5"
+      expect: "θ=1 monótono, sin temperaturas fuera del rango [T_0, T_pared];
+               θ=0.5 exhibe oscilación amortiguada en los primeros pasos.
+               El test DOCUMENTA la diferencia, no la corrige"
+    - name: principio_del_maximo
+      setup: "θ=1, capacidad lumped, sin fuente; condiciones de frontera
+             acotadas entre T_min y T_max"
+      expect: "en TODO paso y TODO nodo, T ∈ [T_min, T_max]. Ningún valor
+               fuera del rango de los datos"
+      tol_abs: 1.0e-12
+    - name: conduccion_transitoria_semi_infinita
+      setup: "barra larga inicialmente a T_0, con la cara x=0 llevada
+             súbitamente a T_s; comparar con la solución analítica de
+             Carslaw-Jaeger T(x,t) = T_s + (T_0−T_s)·erf(x/(2√(αt)))"
+      expect: "perfil coincidente en varios instantes mientras el frente no
+              alcanza el extremo opuesto (hipótesis de medio semi-infinito)"
+      tol_rel: 2.0e-2
+    - name: balance_energetico_transitorio
+      setup: "dominio aislado (todo Neumann homogéneo) con fuente Q constante"
+      expect: "la energía acumulada ΣρcVΔT iguala a Q·V·t en cada paso —
+              el esquema conserva la energía introducida"
+      tol_rel: 1.0e-10
+    - name: dirichlet_variable_en_el_tiempo
+      setup: "temperatura impuesta con variación sinusoidal en el tiempo"
+      expect: "el campo sigue la excitación; la factorización de A_ff se reutiliza
+               (verificado por contador de llamadas) mientras el acoplamiento
+               K_fp·T_p se recalcula por paso"
+      tol_rel: 1.0e-10
+    - name: condicion_inicial_escalar_y_vectorial
+      setup: "arrancar con T_initial escalar y con vector equivalente"
+      expect: "resultados idénticos; el escalar se expande correctamente"
+      tol_abs: 1.0e-14
+    - name: aviso_incompatibilidad_inicial_dirichlet
+      setup: "T_initial contradice un Dirichlet impuesto en un nodo"
+      expect: "el solver AVISA identificando los nodos, y continúa: un choque
+               térmico es modelización legítima, no un error"
+    - name: reporte_del_orden_efectivo
+      setup: "construir el solver con θ = 1, 0.5 y 2/3"
+      expect: "reporta orden 1, 2 y 1 respectivamente. Hace visible el coste en
+               precisión del default robusto en vez de dejarlo implícito"
+    - name: rechazo_inputs_invalidos
+      setup: "θ fuera de [0,1]; dt ≤ 0; n_steps < 1; material sin c ni density"
+      expect: "ValueError con mensaje accionable en cada caso"
+
+references:
+  - "Zienkiewicz O.C., Taylor R.L. (2000). The Finite Element Method, Vol. 1. Butterworth-Heinemann. §18 (esquemas de un paso para 1er orden; análisis de estabilidad)."
+  - "Lewis R.W., Nithiarasu P., Seetharamu K.N. (2004). Fundamentals of the FEM for Heat and Fluid Flow. Wiley. §6 (θ-method, oscilaciones, criterios de Δt)."
+  - "Hughes T.J.R. (2000). The Finite Element Method: Linear Static and Dynamic FEA. Dover. §8 (algoritmos para problemas parabólicos; A-estabilidad vs L-estabilidad)."
+  - "Carslaw H.S., Jaeger J.C. (1959). Conduction of Heat in Solids. Oxford. §2.4 (sólido semi-infinito, solución con función error)."
+  - "Wood W.L. (1990). Practical Time-Stepping Schemes. Oxford."
+
+\end{lstlisting}
+
+
+\section{Implementación}
+
+\textit{Rellena la IA tras programar.}
+
+\begin{itemize}
+  \item Archivo: ---
+  \item Clase: ---
+  \item Tests:
+  \item ---
+  \item Notas de traducción: ---
+\end{itemize}
+
+
+\section{Diálogo}
+
+\textit{Puntos abiertos para el usuario. Sólo física y alcance.}
+
+\textbf{2026-08-25 --- IA \ensuremath{\to} usuario. Un punto:}
+
+\begin{enumerate}
+  \item \textasciitilde{}\textasciitilde{}\textbf{Valor por defecto de $\theta$.}\textasciitilde{}\textasciitilde{} ✅ \textbf{Resuelto 2026-08-25 --- $\theta = 1$ (Euler implícito)}. El usuario delegó la decisión en la IA por ser materia de criterio técnico; queda razonada aquí para que sea auditable.
+\end{enumerate}
+
+   \textbf{La disyuntiva.} Crank-Nicolson ($\theta = 1/2$) es de orden 2 y más preciso para un mismo $\Delta t$; Euler implícito ($\theta = 1$) es de orden 1 pero \textbf{L-estable}. Ante el arranque típico ---un escalón de temperatura en la frontera--- Crank-Nicolson produce oscilaciones que pueden dar \textbf{temperaturas fuera del rango de los datos}, violando el principio del máximo.
+
+   \textbf{El criterio que decide} no es el orden de convergencia sino qué debe hacer el programa cuando el usuario no elige: un \textbf{default protege a quien no eligió}. Los dos modos de fallo no son simétricos --- un resultado impreciso se detecta refinando el paso y se corrige; un resultado \textit{imposible} desconcierta, y quien no conozca la teoría de A-estabilidad frente a L-estabilidad no tiene forma de diagnosticarlo. La precisión perdida es recuperable por el usuario; la confianza en un resultado cualitativamente absurdo, no.
+
+   \textbf{Coherencia interna}: es el mismo criterio que fijó \texttt{lumped} como default de la matriz de capacidad, aplicado ahora al eje temporal en vez del espacial. Ambos atacan el mismo fenómeno ---oscilación espuria ante frente abrupto--- y que apunten en la misma dirección hace el sistema predecible.
+
+   \textbf{El default no encierra a nadie}: Crank-Nicolson queda a un parámetro de distancia para quien sepa que su problema es suave y busque orden 2.
+
+   \textbf{Requisito añadido con la decisión}: el solver \textbf{reporta el orden efectivo del esquema} según el $\theta$ en uso, para que el coste en precisión del default sea visible y no una penalización silenciosa. Es la contrapartida honesta de elegir robustez.
+
+
+\newpage
+
 \chapter{Elementos — catálogo}
 
 
@@ -12890,6 +13804,29 @@ Los materiales cohesivos son una \textbf{jerarquía paralela e independiente} de
 \end{itemize}
 
 
+Familia paralela a los constitutivos mecánicos: relacionan el \textbf{flujo de calor} \texttt{q} con el \textbf{gradiente de temperatura} \texttt{\ensuremath{\nabla}T}, no \texttt{\ensuremath{\sigma}} con \texttt{\ensuremath{\varepsilon}}. Ni el gradiente ni el flujo son tensores simétricos, así que \textbf{no usan notación Voigt}. Viven en \texttt{ThermalMaterialRegistry} y sólo los consumen elementos térmicos; se declaran en el bloque \texttt{materials} del YAML con su \texttt{type} propio.
+
+\section{ThermalConduction --- conducción de calor de Fourier con conductividad tensorial}
+
+\begin{itemize}
+  \item \textbf{Ley}: \texttt{q = -k\ensuremath{\cdot}\ensuremath{\nabla}T}. Lineal y \textbf{sin variables internas} --- el análogo térmico de \texttt{Elastic2D}/\texttt{Elastic3D}. El signo negativo es física (segunda ley), no convención elegible.
+  \item \textbf{FLUX\_DIM}: 2 ó 3 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{None} \ensuremath{\cdot} \textbf{IS\_SYMMETRIC}: \texttt{True}.
+  \item A diferencia de \texttt{STRAIN\_DIM}/\texttt{JUMP\_DIM}, \textbf{no es \texttt{ClassVar}}: la dimensión la fija el tensor con que se construye, así que la misma clase sirve en 2D y en 3D.
+  \item \textbf{Conductividad tensorial}: \texttt{k} se guarda siempre como matriz. El constructor acepta \textbf{escalar} (isótropo, se expande a \texttt{k\ensuremath{\cdot}I} con la dimensión de \texttt{dim}) o \textbf{matriz} 2\ensuremath{\times}2 / 3\ensuremath{\times}3 (ortótropo/anisótropo), en cuyo caso el tamaño del tensor manda sobre \texttt{dim}.
+  \item Validada \textbf{simétrica} (relaciones recíprocas de Onsager) con tolerancia escalada \texttt{1e-12\ensuremath{\cdot}max|k|}, adimensional respecto a las unidades del usuario (ADR 0006).
+  \item Validada \textbf{definida positiva} por autovalores (\texttt{eigvalsh}), no por determinante: en dimensión \ensuremath{\ge} 2 un determinante positivo no implica definición positiva.
+  \item \textbf{Parámetros}: \texttt{k} (conductividad, W/(m\ensuremath{\cdot}K); escalar o matriz), \texttt{c} (calor específico, J/(kg\ensuremath{\cdot}K), opcional), \texttt{density} (kg/m\ensuremath{^{3}}, opcional), \texttt{dim} (2 ó 3, sólo para expandir un \texttt{k} escalar).
+  \item \textbf{\texttt{c} y \texttt{density} opcionales} siguiendo el criterio del ADR 0008: un análisis \textbf{estacionario} sólo usa \texttt{k}, y exigir propiedades que no entran en ninguna ecuación obligaría a inventar valores. Si un consumidor transitorio las encuentra ausentes, \texttt{ValueError} \textbf{accionable} --- nombra el material, los parámetros que faltan y la salida (declararlos o usar un solver estacionario).
+  \item \textbf{Magnitud derivada}: \texttt{thermal\_diffusivity} = \texttt{\ensuremath{\alpha} = k/(\ensuremath{\rho}c)} [m\ensuremath{^{2}}/s], que gobierna la velocidad del frente térmico y sirve para estimar \texttt{\ensuremath{\Delta}t \textasciitilde{} h\ensuremath{^{2}}/\ensuremath{\alpha}}. \textbf{Rechaza el caso anisótropo} en vez de devolver un escalar plausible: con \texttt{k} tensorial la difusividad es un tensor.
+  \item \textbf{Escala de temperatura}: la conducción pura sólo involucra \textbf{diferencias} de \texttt{T}, luego K y \ensuremath{^{\circ}}C son equivalentes. La distinción importará al entrar radiación (\texttt{T⁴} exige escala absoluta).
+  \item \textbf{Caveat de interoperabilidad}: no aplica el caveat de Voigt de ABAQUS --- \texttt{k} es un tensor de orden 2 en ejes físicos, sin reordenamiento.
+  \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): conductividad dependiente de la temperatura \texttt{k(T)} (introduciría no linealidad), convección y radiación (son condiciones de frontera, no del material), cambio de fase / calor latente, acoplamiento termomecánico.
+  \item \textbf{Compatible con}: \texttt{Quad4Thermal}, \texttt{Hex8Thermal} (elementos térmicos con \texttt{field='temperature'}).
+  \item \textbf{Referencia}: ver \texttt{docs/specs/ThermalConduction.md}. Incropera \& DeWitt (2007) §2; Carslaw \& Jaeger (1959) §1; Lewis, Nithiarasu \& Seetharamu (2004) §3.
+  \item \textbf{Archivo}: solidum/materials/thermal\_conduction.py \ensuremath{\cdot} clase base en solidum/core/thermal\_material.py
+\end{itemize}
+
+
 \section{Cómo añadir un material nuevo}
 
 \texttt{/solidum-new material <Name>} --- genera archivo en \texttt{solidum/materials/}, decorador \texttt{@MaterialRegistry.register}, esqueleto de test.
@@ -12897,6 +13834,8 @@ Declarar \textbf{\texttt{STRAIN\_DIM}} y, si tiene historia, \textbf{\texttt{PRI
 Tras implementar el modelo constitutivo, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba.
 
 Para un material \textbf{cohesivo} nuevo: el patrón es análogo pero el archivo vive en \texttt{solidum/cohesive\_materials/}, la clase hereda de \texttt{CohesiveMaterial} (no \texttt{Material}) y se registra con \texttt{@CohesiveMaterialRegistry.register}. Declarar \texttt{JUMP\_DIM}, \texttt{PRIMARY\_STATE\_VAR} y \texttt{IS\_SYMMETRIC}. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.
+
+Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMaterial} (en \texttt{solidum/core/thermal\_material.py}) y se registra con \texttt{@ThermalMaterialRegistry.register}. El método a implementar es \texttt{compute\_flux(\ensuremath{\nabla}T) -> (q, k)}, no \texttt{compute\_state}. Declarar \texttt{FLUX\_DIM} (2 ó 3 --- como propiedad de instancia si la clase sirve en ambas dimensiones), \texttt{PRIMARY\_STATE\_VAR} e \texttt{IS\_SYMMETRIC}. La validación de \texttt{c}/\texttt{density} con mensaje accionable ya la aporta \texttt{volumetric\_capacity()} de la clase base; no reimplementarla. En la spec, el contrato lleva \texttt{kind: thermal\_material} e \texttt{interface.field: temperature}. Añadir la entrada en la sección "Materiales térmicos" de este mismo catálogo.
 
 
 \newpage

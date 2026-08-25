@@ -271,6 +271,30 @@ Los materiales cohesivos son una **jerarquía paralela e independiente** de los 
 
 ---
 
+# Materiales térmicos (Etapa 8)
+
+Familia paralela a los constitutivos mecánicos: relacionan el **flujo de calor** `q` con el **gradiente de temperatura** `∇T`, no `σ` con `ε`. Ni el gradiente ni el flujo son tensores simétricos, así que **no usan notación Voigt**. Viven en `ThermalMaterialRegistry` y sólo los consumen elementos térmicos; se declaran en el bloque `materials` del YAML con su `type` propio.
+
+## ThermalConduction — conducción de calor de Fourier con conductividad tensorial
+
+- **Ley**: `q = -k·∇T`. Lineal y **sin variables internas** — el análogo térmico de `Elastic2D`/`Elastic3D`. El signo negativo es física (segunda ley), no convención elegible.
+- **FLUX_DIM**: 2 ó 3 · **PRIMARY_STATE_VAR**: `None` · **IS_SYMMETRIC**: `True`.
+  - A diferencia de `STRAIN_DIM`/`JUMP_DIM`, **no es `ClassVar`**: la dimensión la fija el tensor con que se construye, así que la misma clase sirve en 2D y en 3D.
+- **Conductividad tensorial**: `k` se guarda siempre como matriz. El constructor acepta **escalar** (isótropo, se expande a `k·I` con la dimensión de `dim`) o **matriz** 2×2 / 3×3 (ortótropo/anisótropo), en cuyo caso el tamaño del tensor manda sobre `dim`.
+  - Validada **simétrica** (relaciones recíprocas de Onsager) con tolerancia escalada `1e-12·max|k|`, adimensional respecto a las unidades del usuario (ADR 0006).
+  - Validada **definida positiva** por autovalores (`eigvalsh`), no por determinante: en dimensión ≥ 2 un determinante positivo no implica definición positiva.
+- **Parámetros**: `k` (conductividad, W/(m·K); escalar o matriz), `c` (calor específico, J/(kg·K), opcional), `density` (kg/m³, opcional), `dim` (2 ó 3, sólo para expandir un `k` escalar).
+- **`c` y `density` opcionales** siguiendo el criterio del ADR 0008: un análisis **estacionario** sólo usa `k`, y exigir propiedades que no entran en ninguna ecuación obligaría a inventar valores. Si un consumidor transitorio las encuentra ausentes, `ValueError` **accionable** — nombra el material, los parámetros que faltan y la salida (declararlos o usar un solver estacionario).
+- **Magnitud derivada**: `thermal_diffusivity` = `α = k/(ρc)` [m²/s], que gobierna la velocidad del frente térmico y sirve para estimar `Δt ~ h²/α`. **Rechaza el caso anisótropo** en vez de devolver un escalar plausible: con `k` tensorial la difusividad es un tensor.
+- **Escala de temperatura**: la conducción pura sólo involucra **diferencias** de `T`, luego K y °C son equivalentes. La distinción importará al entrar radiación (`T⁴` exige escala absoluta).
+- **Caveat de interoperabilidad**: no aplica el caveat de Voigt de ABAQUS — `k` es un tensor de orden 2 en ejes físicos, sin reordenamiento.
+- **Limitaciones declaradas** (`out_of_scope` en la spec): conductividad dependiente de la temperatura `k(T)` (introduciría no linealidad), convección y radiación (son condiciones de frontera, no del material), cambio de fase / calor latente, acoplamiento termomecánico.
+- **Compatible con**: `Quad4Thermal`, `Hex8Thermal` (elementos térmicos con `field='temperature'`).
+- **Referencia**: ver [`docs/specs/ThermalConduction.md`](specs/ThermalConduction.md). Incropera & DeWitt (2007) §2; Carslaw & Jaeger (1959) §1; Lewis, Nithiarasu & Seetharamu (2004) §3.
+- **Archivo**: [solidum/materials/thermal_conduction.py](../solidum/materials/thermal_conduction.py) · clase base en [solidum/core/thermal_material.py](../solidum/core/thermal_material.py)
+
+---
+
 ## Cómo añadir un material nuevo
 
 `/solidum-new material <Name>` — genera archivo en `solidum/materials/`, decorador `@MaterialRegistry.register`, esqueleto de test.
@@ -278,3 +302,5 @@ Declarar **`STRAIN_DIM`** y, si tiene historia, **`PRIMARY_STATE_VAR`** (la vari
 Tras implementar el modelo constitutivo, **añadir una entrada a este catálogo** siguiendo el formato de arriba.
 
 Para un material **cohesivo** nuevo: el patrón es análogo pero el archivo vive en `solidum/cohesive_materials/`, la clase hereda de `CohesiveMaterial` (no `Material`) y se registra con `@CohesiveMaterialRegistry.register`. Declarar `JUMP_DIM`, `PRIMARY_STATE_VAR` y `IS_SYMMETRIC`. Añadir la entrada en la sección "Materiales cohesivos" de este mismo catálogo.
+
+Para un material **térmico** nuevo: la clase hereda de `ThermalMaterial` (en `solidum/core/thermal_material.py`) y se registra con `@ThermalMaterialRegistry.register`. El método a implementar es `compute_flux(∇T) -> (q, k)`, no `compute_state`. Declarar `FLUX_DIM` (2 ó 3 — como propiedad de instancia si la clase sirve en ambas dimensiones), `PRIMARY_STATE_VAR` e `IS_SYMMETRIC`. La validación de `c`/`density` con mensaje accionable ya la aporta `volumetric_capacity()` de la clase base; no reimplementarla. En la spec, el contrato lleva `kind: thermal_material` e `interface.field: temperature`. Añadir la entrada en la sección "Materiales térmicos" de este mismo catálogo.
