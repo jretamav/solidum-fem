@@ -18,17 +18,17 @@ Hipótesis: lineales (K, M constantes). Para no-linealidad usar transitorio (New
 
 Para cada modo `n`:
 
-$$u_n^\max = \Gamma_n \cdot \phi_n \cdot S_d(\omega_n)$$
+$$u_n^{\max} = \Gamma_n \cdot \phi_n \cdot S_d(\omega_n)$$
 
 con $\Gamma_n = \phi_n^T M\, r$ el factor de participación modal en la dirección de excitación `r`.
 
 **Combinación SRSS** (Square Root of Sum of Squares):
 
-$$u^\max_k = \sqrt{\sum_n (u_{k,n}^\max)^2}$$
+$$u^{\max}_k = \sqrt{\sum_n (u_{k,n}^{\max})^2}$$
 
 **Combinación CQC** (Complete Quadratic Combination, Der Kiureghian 1980):
 
-$$u^\max_k = \sqrt{\sum_i \sum_j \rho_{ij} \cdot u_{k,i}^\max \cdot u_{k,j}^\max}$$
+$$u^{\max}_k = \sqrt{\sum_i \sum_j \rho_{ij} \cdot u_{k,i}^{\max} \cdot u_{k,j}^{\max}}$$
 
 $$\rho_{ij} = \frac{8\xi^2(1+r) r^{3/2}}{(1-r^2)^2 + 4\xi^2 r (1+r)^2}, \quad r = \omega_i/\omega_j$$
 

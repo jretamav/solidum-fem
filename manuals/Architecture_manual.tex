@@ -534,13 +534,40 @@ Cuadrilátero lagrangiano $Q_2$ (9 nodos) & \ensuremath{\checkmark} \texttt{Quad
 \end{table}
 \subsection{Familia sólido 3D}
 
-\begin{itemize}
-  \item \pendiente{Tetraedro lineal \texttt{Tet4} (cuatro nodos), primer orden.}
-  \item \pendiente{Tetraedro cuadrático \texttt{Tet10} (diez nodos), segundo orden.}
-  \item \pendiente{Hexaedro trilineal \texttt{Hex8} (ocho nodos), primer orden.}
-  \item \pendiente{Hexaedro serendípito \texttt{Hex20} (veinte nodos), segundo orden.}
-  \item \pendiente{Hexaedro lagrangiano \texttt{Hex27} (veintisiete nodos), segundo orden.}
-\end{itemize}
+Sólidos tridimensionales con convención Voigt 6D del proyecto (Reglas.md §5):
+$\boldsymbol\varepsilon = [\varepsilon_{xx},\, \varepsilon_{yy},\, \varepsilon_{zz},\, \gamma_{xy},\, \gamma_{yz},\, \gamma_{xz}]^\top$
+con $\gamma_{ij} = 2\,\varepsilon_{ij}$ engineering (\hyperref[adr:0012]{ADR 0012}). A diferencia de la familia 2D, los sólidos 3D \textbf{no exponen} \texttt{internal\_forces} --- la primitiva de salida es \texttt{compute\_gauss\_state(U)}, que devuelve $\boldsymbol\varepsilon$ y $\boldsymbol\sigma$ por punto de integración (\hyperref[adr:0012]{ADR 0012}: cierre del contrato por dominio explícito).
+
+\textbf{Primer orden} (Etapa 7, 2026-05-19)
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia sólido tridimensional --- primer orden.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Topología} & \textbf{Material lineal} & \textbf{Material no lineal} \\
+\hline
+Tetraedro lineal $P_1$ (4 nodos) & \ensuremath{\checkmark} \texttt{Tet4} & \ensuremath{\checkmark} \texttt{Tet4} con \texttt{VonMises3D}, \texttt{DruckerPrager3D} o \texttt{IsotropicDamage3D} \\
+Hexaedro trilineal $Q_1$ (8 nodos) & \ensuremath{\checkmark} \texttt{Hex8} & \ensuremath{\checkmark} \texttt{Hex8} con cualquier material 3D no lineal \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Segundo orden} (sub-etapa A.ter, 2026-05-27)
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia sólido tridimensional --- segundo orden.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Topología} & \textbf{Material lineal} & \textbf{Material no lineal} \\
+\hline
+Tetraedro cuadrático $P_2$ (10 nodos) & \ensuremath{\checkmark} \texttt{Tet10} & \ensuremath{\checkmark} \texttt{Tet10} con cualquier material 3D no lineal \\
+Hexaedro serendípito $Q_2^{\text{seren}}$ (20 nodos) & \ensuremath{\checkmark} \texttt{Hex20} & \ensuremath{\checkmark} \texttt{Hex20} con cualquier material 3D no lineal \\
+Hexaedro lagrangiano $Q_2$ (27 nodos) & \ensuremath{\checkmark} \texttt{Hex27} & \ensuremath{\checkmark} \texttt{Hex27} con cualquier material 3D no lineal \\
+\hline
+\end{tabularx}
+\end{table}
+La sub-etapa A.ter introduce la base interna \texttt{\_HigherOrderSolid3D} (paritaria con \texttt{\_HigherOrderSolid2D} de la familia 2D) que comparte los bucles de Gauss para rigidez, fuerzas internas, gauss state, body load, face traction y matriz de masa. Las tres subclases (\texttt{Hex20}, \texttt{Hex27}, \texttt{Tet10}) sólo declaran sus funciones de forma 3D, su cuadratura por defecto, su cuadratura de masa específica (cuando difiere), las funciones de forma 2D de cara y la cuadratura de cara. La centralización aplica la regla de los dos casos reales: se introduce al entrar el \texttt{Hex27} (segundo caso cuadrático después del \texttt{Hex20} standalone) y se reutiliza inmediatamente por el \texttt{Tet10} con cara triangular \texttt{Tri6}. Cuadraturas nuevas registradas: \texttt{tet\_4} (Stroud 4 puntos, orden 2, para K) y \texttt{tet\_15} (Keast 15 puntos, orden 5, para masa del \texttt{Tet10}).
 
 \subsection{Familias adicionales no implementadas}
 
@@ -1470,16 +1497,6 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
   \item \pendiente{Sólido 2D con no linealidad geométrica (formulación lagrangiana actualizada o total).}
 
-  \item \pendiente{Tetraedro lineal \texttt{Tet4} (cuatro nodos), primer orden.}
-
-  \item \pendiente{Tetraedro cuadrático \texttt{Tet10} (diez nodos), segundo orden.}
-
-  \item \pendiente{Hexaedro trilineal \texttt{Hex8} (ocho nodos), primer orden.}
-
-  \item \pendiente{Hexaedro serendípito \texttt{Hex20} (veinte nodos), segundo orden.}
-
-  \item \pendiente{Hexaedro lagrangiano \texttt{Hex27} (veintisiete nodos), segundo orden.}
-
   \item \pendiente{Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).}
 
   \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
@@ -1554,8 +1571,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 20 de mayo de 2026, 18:38\\[0.5em]
-Commit Git: \texttt{32ab801} (con cambios sin confirmar)\\[1em]
+Compilado el 25 de agosto de 2026, 11:14\\[0.5em]
+Commit Git: \texttt{e9817cb} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

@@ -80,11 +80,11 @@ Eliminación directa idéntica a `NewmarkSolver` (operador $\mathbf{T}$ + offset
 
 ### 9. Adaptatividad / control de paso
 
-No adaptativo en esta fase — paso temporal constante $\Delta t$. La adaptatividad explícita (e.g. estimación de $\omega_\max$ por power iteration con actualización por paso) queda diferida hasta que aparezca un caso de uso con $\omega_\max$ variable significativamente en el tiempo.
+No adaptativo en esta fase — paso temporal constante $\Delta t$. La adaptatividad explícita (e.g. estimación de $\omega_{\max}$ por power iteration con actualización por paso) queda diferida hasta que aparezca un caso de uso con $\omega_{\max}$ variable significativamente en el tiempo.
 
 ### 10. Caveats numéricos
 
-- **Estabilidad condicional**. La condición CFL exige $\Delta t < 2/\omega_\max$ donde $\omega_\max$ es la frecuencia natural máxima del sistema discreto. Para una barra axial elástica con elemento de longitud $L_e$ y velocidad de propagación $c_p = \sqrt{E/\rho}$: $\Delta t_\text{crit} \approx L_e/c_p$. Para sólidos 2D la fórmula análoga es $\Delta t_\text{crit} \approx h_e/c_d$ donde $c_d$ es la velocidad dilatacional. Si se excede, la solución diverge exponencialmente — el solver lo detecta a posteriori (umbral configurable `divergence_threshold`, default $10^8 \cdot |\mathbf{u}_0|$) y aborta con `RuntimeError` informativo.
+- **Estabilidad condicional**. La condición CFL exige $\Delta t < 2/\omega_{\max}$ donde $\omega_{\max}$ es la frecuencia natural máxima del sistema discreto. Para una barra axial elástica con elemento de longitud $L_e$ y velocidad de propagación $c_p = \sqrt{E/\rho}$: $\Delta t_\text{crit} \approx L_e/c_p$. Para sólidos 2D la fórmula análoga es $\Delta t_\text{crit} \approx h_e/c_d$ donde $c_d$ es la velocidad dilatacional. Si se excede, la solución diverge exponencialmente — el solver lo detecta a posteriori (umbral configurable `divergence_threshold`, default $10^8 \cdot |\mathbf{u}_0|$) y aborta con `RuntimeError` informativo.
 
 - **Frame3D oblicuo**. La fase 2 del ADR 0009 documenta que $\mathbf{M}_\text{lumped}$ es bloque-diagonal (no estrictamente diagonal) en Frame3D cuando el eje del elemento no coincide con un eje global. Para central differences esto significaría invertir bloques 6×6 por nodo cada paso, **anulando** la ventaja del esquema explícito. El solver rechaza ese caso con `ValueError`.
 
