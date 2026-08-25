@@ -23,30 +23,172 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# El builder se invoca como script (`python manuals/build_reference_manual.py`),
+# por lo que la raíz del repositorio no está en sys.path y `solidum.tools.spec`
+# —del que ahora se deriva la agrupación de capítulos— no sería importable.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 SPECS_DIR = ROOT / "docs" / "specs"
 SOURCES_DIR = ROOT / "manuals" / "sources"
 OUT_DIR = ROOT / "manuals"
 OUT_TEX = OUT_DIR / "Reference_manual.tex"
 OUT_PDF = OUT_DIR / "Reference_manual.pdf"
 
-GROUPS: list[tuple[str, list[str]]] = [
-    ("Elementos 1D — Armaduras", ["Truss2D", "Truss2DCorot", "Truss3D", "Truss3DCorot"]),
-    ("Elementos 1D — Cables", ["Cable2DCorot", "Cable3DCorot"]),
-    ("Elementos 1D — Marcos / Vigas", ["Frame2DEuler", "Frame2DTimoshenko", "Frame2DEulerCorot", "Frame3D"]),
-    ("Elementos 2D — Sólidos", ["Quad4", "Tri3", "Quad8", "Quad9", "Tri6"]),
-    ("Modelos Constitutivos (Materiales)", [
-        "CableMaterial1D",
-        "VonMises2D",
-        "IsotropicDamage1D",
-        "IsotropicDamage2D",
-        "DruckerPrager2D",
-    ]),
-    ("Esquemas de Solución", [
-        "ModalSolver",
-        "NewmarkSolver",
-        "NewtonNewmarkSolver",
-    ]),
+# ---------------------------------------------------------------------------
+# Agrupación de specs en capítulos — DERIVADA, no enumerada.
+#
+# Historia: hasta 2026-08 este módulo llevaba una lista literal con los nombres
+# de las specs que entraban al manual. Esa lista se quedó atrás respecto al
+# repositorio (23 de 46 specs no llegaban al PDF: todo el subsistema 3D, la
+# fractura embebida y 8 solvers) sin producir ningún error — el manual se
+# anunciaba como "generado automáticamente desde docs/specs/" mientras omitía
+# la mitad del catálogo en silencio. Reglas.md §1 prescribe justamente lo
+# contrario: descubrimiento automático sobre listas manuales.
+#
+# Ahora la PERTENENCIA de cada spec a un capítulo se infiere de su propio
+# contrato (`kind`, `interface.strain_dim`, `interface.dof_names`), que ya
+# está validado por tests/test_specs.py. Lo único que queda declarado a mano
+# es el ORDEN de presentación de los capítulos, que es criterio editorial y
+# no un dato del dominio.
+#
+# Una spec que no encaje en ningún capítulo ABORTA el build nombrándola. El
+# fallo silencioso era el defecto real; añadir un componente en el futuro debe
+# propagarse solo o detenerse ruidosamente.
+# ---------------------------------------------------------------------------
+
+# Orden editorial de los capítulos. Cada entrada es la etiqueta que aparece
+# como \chapter en el PDF; el orden de esta lista es el orden del manual.
+CHAPTER_ORDER: list[str] = [
+    "Elementos 1D — Armaduras",
+    "Elementos 1D — Cables",
+    "Elementos 1D — Marcos / Vigas",
+    "Elementos 2D — Sólidos",
+    "Elementos 2D — Discontinuidades embebidas",
+    "Elementos 3D — Sólidos",
+    "Modelos Constitutivos — 1D",
+    "Modelos Constitutivos — 2D",
+    "Modelos Constitutivos — 3D",
+    "Modelos Constitutivos — Cohesivos",
+    "Esquemas de Solución — Estáticos",
+    "Esquemas de Solución — Modal y dinámicos",
 ]
+
+# Solvers: la partición estático/dinámico no es inferible del contrato (no hay
+# campo que la declare), así que se declara aquí por nombre. Es la única
+# clasificación que permanece enumerada; cualquier solver no listado cae al
+# capítulo de estáticos sólo si su spec lo permite — si no, el build aborta.
+_STATIC_SOLVERS = {
+    "LinearSolver",
+    "NonlinearSolver",
+    "ArcLengthSolver",
+    "DissipationArcLengthSolver",
+}
+
+
+def _classify(spec) -> str:
+    """Devuelve el capítulo al que pertenece una spec, o lanza SpecError.
+
+    La clasificación usa exclusivamente datos ya presentes y validados en el
+    contrato de la spec, de modo que un componente nuevo se ubica solo.
+    """
+    from solidum.tools.spec import SpecError
+
+    kind = spec.kind
+    iface = spec.contract.get("interface") or {}
+    strain_dim = iface.get("strain_dim")
+    dof_names = iface.get("dof_names") or []
+    name = spec.name
+
+    if kind == "cohesive_material":
+        return "Modelos Constitutivos — Cohesivos"
+
+    if kind == "material":
+        by_dim = {
+            1: "Modelos Constitutivos — 1D",
+            3: "Modelos Constitutivos — 2D",
+            6: "Modelos Constitutivos — 3D",
+        }
+        if strain_dim in by_dim:
+            return by_dim[strain_dim]
+        raise SpecError(
+            f"{name}: material con strain_dim={strain_dim!r} no clasificable. "
+            f"Esperado uno de {sorted(by_dim)}."
+        )
+
+    if kind == "solver":
+        if name in _STATIC_SOLVERS:
+            return "Esquemas de Solución — Estáticos"
+        return "Esquemas de Solución — Modal y dinámicos"
+
+    if kind == "element":
+        # Sólidos: la dimensión del tensor de deformaciones separa 2D de 3D.
+        if strain_dim == 6:
+            return "Elementos 3D — Sólidos"
+        if strain_dim == 3:
+            # El embebido se distingue por exigir DOS materiales: el bulk del
+            # continuo y uno cohesivo que gobierna el salto en Gamma_d. Ese
+            # segundo contrato sólo lo declaran los elementos con
+            # discontinuidad interior, y ya está en el YAML de la spec.
+            if "cohesive" in (spec.contract.get("material_contract") or {}):
+                return "Elementos 2D — Discontinuidades embebidas"
+            return "Elementos 2D — Sólidos"
+        if strain_dim == 1:
+            # Dentro de los 1D, las rotaciones nodales separan vigas de barras,
+            # y el material unilateral separa el cable de la armadura.
+            if any(d.startswith("r") for d in dof_names):
+                return "Elementos 1D — Marcos / Vigas"
+            if "cable" in name.lower():
+                return "Elementos 1D — Cables"
+            return "Elementos 1D — Armaduras"
+        raise SpecError(
+            f"{name}: elemento con strain_dim={strain_dim!r} no clasificable."
+        )
+
+    raise SpecError(f"{name}: kind={kind!r} sin capítulo asignado.")
+
+
+def build_groups() -> list[tuple[str, list[str]]]:
+    """Agrupa todas las specs del repositorio en capítulos ordenados.
+
+    Recorre `docs/specs/` completo — no una lista literal — de modo que un
+    componente nuevo entra al manual por el mero hecho de tener spec.
+    """
+    from solidum.tools.spec import SpecError, collect_specs, parse_spec
+
+    buckets: dict[str, list[str]] = {ch: [] for ch in CHAPTER_ORDER}
+    unclassified: list[str] = []
+
+    for path in collect_specs(SPECS_DIR):
+        spec = parse_spec(path)
+        try:
+            chapter = _classify(spec)
+        except SpecError as exc:
+            unclassified.append(str(exc))
+            continue
+        if chapter not in buckets:
+            unclassified.append(
+                f"{spec.name}: capítulo '{chapter}' no está en CHAPTER_ORDER."
+            )
+            continue
+        buckets[chapter].append(spec.name)
+
+    if unclassified:
+        raise SystemExit(
+            "[!] Specs no clasificables — el manual estaría incompleto:\n  "
+            + "\n  ".join(unclassified)
+        )
+
+    # Orden estable dentro de cada capítulo: por número de nodos cuando el
+    # contrato lo declara (Quad4 antes que Quad8), alfabético en el resto.
+    def _sort_key(name: str):
+        spec = parse_spec(SPECS_DIR / f"{name}.md")
+        n_nodes = (spec.contract.get("interface") or {}).get("n_nodes")
+        return (n_nodes if isinstance(n_nodes, int) else 0, name)
+
+    return [(ch, sorted(buckets[ch], key=_sort_key)) for ch in CHAPTER_ORDER if buckets[ch]]
+
 
 # Capítulos finales que NO derivan de specs (referencia técnica de plumbing
 # arquitectural o catálogos transversales). Cada entrada: (título_capítulo,
@@ -144,6 +286,13 @@ LATEX_ESCAPE_TEXT = {
     "#": r"\#",
     "_": r"\_",
     "$": r"\$",
+    # `^` y `~` son activos también fuera de \texttt{}: en texto corriente
+    # inician superíndice y espacio irrompible. Aparecen en encabezados que
+    # citan símbolos sin delimitadores matemáticos (p. ej. "Matrices B
+    # estándar + B^φ" en la spec del CST_Embedded2D), donde abortaban la
+    # compilación con "Missing $ inserted".
+    "^": r"\textasciicircum{}",
+    "~": r"\textasciitilde{}",
 }
 
 
@@ -423,6 +572,11 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsfonts}
+% Corchetes dobles \llbracket ⟦u⟧ \rrbracket: notación del salto de
+% desplazamientos en las specs de discontinuidad embebida y material cohesivo
+% (ADR 0010). No están en amssymb; sin stmaryrd la compilación aborta con
+% "Undefined control sequence".
+\usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
@@ -564,10 +718,21 @@ POSTAMBLE = r"""
 """
 
 
+def _escape_title(text: str) -> str:
+    """Escapa un nombre de componente para usarlo como título LaTeX.
+
+    Los nombres de spec son identificadores de código (`CST_Embedded2D`), y el
+    guión bajo es carácter activo en LaTeX: sin escapar aborta la compilación
+    con "Missing $ inserted". Sólo aparece desde que el manual dejó de
+    enumerar specs a mano y empezó a recorrer `docs/specs/` completo.
+    """
+    return text.replace("\\", r"\textbackslash{}").replace("_", r"\_")
+
+
 def assemble() -> str:
     parts = [PREAMBLE]
-    for chapter_name, components in GROUPS:
-        parts.append(f"\\chapter{{{chapter_name}}}\n")
+    for chapter_name, components in build_groups():
+        parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
         for comp in components:
             spec_path = SPECS_DIR / f"{comp}.md"
             if not spec_path.exists():
@@ -575,7 +740,7 @@ def assemble() -> str:
                 continue
             md = spec_path.read_text(encoding="utf-8")
             ltx = md_to_latex(md)
-            parts.append(f"\\section{{{comp}}}\n")
+            parts.append(f"\\section{{{_escape_title(comp)}}}\n")
             parts.append(ltx)
             parts.append("\n\\newpage\n")
 
@@ -587,7 +752,7 @@ def assemble() -> str:
             continue
         md = source_path.read_text(encoding="utf-8")
         ltx = md_to_latex(md)
-        parts.append(f"\\chapter{{{chapter_name}}}\n")
+        parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
         parts.append(ltx)
         parts.append("\n\\newpage\n")
 
