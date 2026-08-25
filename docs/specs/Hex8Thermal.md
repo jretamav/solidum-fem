@@ -74,7 +74,7 @@ La **esfera hueca** —único caso con flujo genuinamente tridimensional— qued
 ```yaml
 name: Hex8Thermal
 kind: element
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   field: temperature
@@ -202,13 +202,31 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- Archivo: [`solidum/elements/thermal/hex8_thermal.py`](../../solidum/elements/thermal/hex8_thermal.py)
+- Clase: `Hex8Thermal`, registrada en `ElementRegistry`
+- Base compartida: [`solidum/elements/thermal/_shared.py`](../../solidum/elements/thermal/_shared.py) · `_ThermalSolid`
+- Tests: [`tests/test_hex8_thermal.py`](../../tests/test_hex8_thermal.py) — 26 verdes
 
-- Archivo: —
-- Clase: —
-- Tests:
-  - —
-- Notas de traducción: —
+**Notas de implementación:**
+
+- **La spec de extensión se confirmó en el código**: la clase concreta ocupa poco más de cien líneas y sólo aporta funciones de forma, gradiente, `FACE_NODES` y el flujo por cara. Todo lo demás —validación del material, conductividad, capacidad en ambos modos, fuente volumétrica, post-proceso— se hereda intacto de `_ThermalSolid`. Es la evidencia de que centralizar con el primer elemento fue correcto: el segundo caso real no necesitó tocar la base.
+
+- **Kernel `_compute_gradient_kinematics_hex8` en `solid_3d/_shared.py`**, junto a su gemelo mecánico, por la misma razón que en 2D: comparte el jacobiano 3×3 y su inversión por cofactores, que es la parte cara.
+
+- **`thickness` heredado como 1.0 y no expuesto** en el constructor. En 3D el volumen es geométrico; permitir el parámetro habría abierto la puerta a escalar el volumen dos veces. Blindado con test: escalar la geometría ×2 multiplica la fuente por 8, no por otro factor.
+
+**Predicciones de la spec confirmadas por test:**
+
+| Predicción | Medido |
+|---|---|
+| `rango(K_e) = 7`, un único modo nulo | ✔ exacto |
+| Reducida `hex_1x1x1` ⇒ rango 3, 4 hourglass | ✔ 5 autovalores nulos (1 físico + 4 espurios) |
+| Flujo por cara reparte `-q̄·A/4` | ✔ en las 6 caras |
+| Patch test lineal 3D exacto | ✔ también en elemento distorsionado |
+
+**Cross-check 2D↔3D — el test central de esta spec.** La misma pared plana resuelta con `Quad4Thermal` y con una capa de `Hex8Thermal` con las caras $z$ adiabáticas da campos **idénticos nodo a nodo con error $9.9\times10^{-14}$**, y ambos coinciden con el perfil lineal analítico. Es el análogo térmico del cross-check 3D↔2D `plane_strain` que en A.bis blindó los materiales, y es la razón por la que el benchmark de la esfera hueca pudo diferirse sin dejar hueco de cobertura: detecta errores en la tercera dimensión sin necesitar mallador.
+
+**Pendiente de esta spec — cilindro hueco 3D y balance energético.** Igual que en el hermano 2D, se agrupan con la campaña de validación del cierre de etapa por requerir mallado de corona circular. El estado `validated` refleja que la formulación está verificada contra solución analítica y contra el elemento 2D.
 
 ---
 

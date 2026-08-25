@@ -661,6 +661,22 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la `B` té
 - **Spec**: [docs/specs/Quad4Thermal.md](specs/Quad4Thermal.md).
 - **Archivo**: [solidum/elements/thermal/quad4_thermal.py](../solidum/elements/thermal/quad4_thermal.py).
 
+## Hex8Thermal — hexaedro trilineal de conducción 3D
+
+- **Propósito**: sólido térmico 3D de primer orden; hermano del `Hex8` mecánico en geometría, cuadratura y numeración de caras.
+- **DOFs por nodo**: `['T']` · 8 nodos en orden VTK_HEXAHEDRON · `FLUX_DIM = 3` · `N_INTEGRATION_POINTS = 8` (default Gauss 2×2×2).
+- **Cinemática**: `B(ξ,η,ζ)` de 3×8 — el gradiente `∇T`, sin Voigt. Matrices elementales 8×8.
+- **Parámetros**: `quadrature` (default `"hex_2x2x2"`). **Sin `thickness`**: el volumen sale de la geometría, igual que en los sólidos 3D mecánicos. Es la diferencia visible más inmediata respecto al hermano 2D.
+- **Caras**: `FACE_NODES` **paritaria con el `Hex8` mecánico** (ADR 0012) — 0(−ζ), 1(+ζ), 2(−η), 3(+ξ), 4(+η), 5(−ξ).
+- **Cargas**: `compute_body_source(Q)` (suma exacta `Q·V_e`); `compute_face_flux(face, q̄)` integra `−∫ q̄ Nᵀ dΓ` con Gauss 2×2 sobre la cara, repartiendo `−q̄·A/4` a cada uno de los 4 nodos. Misma convención de signo que en 2D: **`q̄ > 0` es saliente**.
+- **Modo nulo**: `rango(K_e) = 7` de 8 — un único autovalor nulo, la temperatura uniforme.
+- **Limitaciones declaradas**:
+  - **Hourglass** con `"hex_1x1x1"`: rango 3 frente a los 7 debidos ⇒ **4 modos espurios** de temperatura, frente al único del `Quad4Thermal` reducido. Sin estabilización; usar el default 2×2×2.
+  - Sin locking de ningún tipo (problema escalar).
+- **Validación**: patch test lineal 3D exacto (también distorsionado), modo nulo y rango, conteo de hourglass en la reducida, flujo verificado en las 6 caras, fuente invariante ante distorsión, y **cross-check 2D↔3D**: la misma pared plana resuelta con `Quad4Thermal` y con una capa de `Hex8Thermal` con caras `z` adiabáticas da campos idénticos nodo a nodo (error 9.9e-14) y ambos coinciden con el analítico. Es el análogo térmico del cross-check 3D↔2D `plane_strain` de A.bis.
+- **Spec**: [docs/specs/Hex8Thermal.md](specs/Hex8Thermal.md).
+- **Archivo**: [solidum/elements/thermal/hex8_thermal.py](../solidum/elements/thermal/hex8_thermal.py).
+
 ---
 
 ## Cómo añadir un elemento nuevo

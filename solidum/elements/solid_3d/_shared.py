@@ -146,6 +146,63 @@ def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
 
 
 @njit(cache=True)
+def _compute_gradient_kinematics_hex8(xi: float, eta: float, zeta: float,
+                                      coords: np.ndarray):
+    """Gradiente de las funciones de forma del Hex8 en globales.
+
+    Devuelve ``(dN_dx, detJ)`` con ``dN_dx`` de forma ``(3, 8)``: es la
+    matriz ``B`` de un problema de campo escalar (conducción de calor),
+    donde ``∇T = B·T_e``.
+
+    Misma materia prima que ``_compute_kinematics_hex8`` usa para el
+    problema mecánico; allí las derivadas se reordenan en la matriz
+    ``(6, 24)`` de Voigt, aquí se usan directas. Se factoriza junto a su
+    gemelo para no duplicar el jacobiano 3×3 ni su inversión por
+    cofactores.
+    """
+    xi_sign = (-1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0)
+    eta_sign = (-1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0)
+    zeta_sign = (-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0)
+
+    dN_dxi = np.zeros((3, 8), dtype=np.float64)
+    for i in range(8):
+        sx = xi_sign[i]
+        sy = eta_sign[i]
+        sz = zeta_sign[i]
+        dN_dxi[0, i] = 0.125 * sx * (1.0 + sy * eta) * (1.0 + sz * zeta)
+        dN_dxi[1, i] = 0.125 * sy * (1.0 + sx * xi) * (1.0 + sz * zeta)
+        dN_dxi[2, i] = 0.125 * sz * (1.0 + sx * xi) * (1.0 + sy * eta)
+
+    J = dN_dxi @ coords
+
+    detJ = (
+        J[0, 0] * (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1])
+        - J[0, 1] * (J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0])
+        + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
+    )
+
+    if detJ <= ZERO_JACOBIAN_TOL:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en Hex8Thermal. Revisa la "
+            "conectividad (orden VTK, volumen positivo) o la distorsión."
+        )
+
+    invJ = np.zeros((3, 3), dtype=np.float64)
+    invJ[0, 0] = (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1]) / detJ
+    invJ[0, 1] = -(J[0, 1] * J[2, 2] - J[0, 2] * J[2, 1]) / detJ
+    invJ[0, 2] = (J[0, 1] * J[1, 2] - J[0, 2] * J[1, 1]) / detJ
+    invJ[1, 0] = -(J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0]) / detJ
+    invJ[1, 1] = (J[0, 0] * J[2, 2] - J[0, 2] * J[2, 0]) / detJ
+    invJ[1, 2] = -(J[0, 0] * J[1, 2] - J[0, 2] * J[1, 0]) / detJ
+    invJ[2, 0] = (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0]) / detJ
+    invJ[2, 1] = -(J[0, 0] * J[2, 1] - J[0, 1] * J[2, 0]) / detJ
+    invJ[2, 2] = (J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]) / detJ
+
+    dN_dx = invJ @ dN_dxi
+    return dN_dx, detJ
+
+
+@njit(cache=True)
 def _det_jacobian_hex8(xi: float, eta: float, zeta: float,
                        coords: np.ndarray) -> float:
     """Solo det(J) del Hex8 (para body load, cuando B no se necesita)."""
