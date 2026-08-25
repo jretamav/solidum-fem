@@ -17,6 +17,8 @@
 
 Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[ε_xx, ε_yy, γ_xy]`, 6 = 3D Voigt `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]` — ADR 0012) y por la semántica del elemento.
 
+> Los **elementos y materiales térmicos** (Etapa 8) no aparecen en esta tabla: forman una familia paralela cuya compatibilidad la fija `FLUX_DIM`, no `STRAIN_DIM`. Ver §1.b.
+
 **Materiales 1D y 2D**:
 
 | Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | CohesiveDamageIsotropic |
@@ -78,7 +80,44 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `HarmonicSolver`             | `harmonic`     | Respuesta forzada armónica `(-ω²M + iωC + K)·û = F̂` con barrido en `ω`. | Lineal; `density` declarada.                                          |
 | `ResponseSpectrumSolver`     | `spectrum`     | Análisis sísmico por combinación modal SRSS/CQC contra espectro.  | Lineal; `density` declarada; suficientes modos (verificar `cumulative_effective_mass_ratio`). |
 
-**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento es compatible con los 12 solvers anteriores siempre que el material declare `density`. **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
+**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento **mecánico** es compatible con los 12 solvers anteriores siempre que el material declare `density`. Los elementos térmicos van por su propia vía (§2.b). **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
+
+---
+
+### 1.b Elementos térmicos × materiales térmicos
+
+Familia **paralela**, no una fila más de la tabla anterior. La compatibilidad no la determina `STRAIN_DIM` sino **`FLUX_DIM`** (2 ó 3): el campo es un escalar `T` por nodo y el gradiente `∇T` es un vector genuino, no un tensor simétrico en notación Voigt. Un material mecánico pasado a un elemento térmico se rechaza en construcción con `TypeError` explícito, y viceversa.
+
+| Elemento | `FLUX_DIM` | `ThermalConduction` (isótropo) | `ThermalConduction` (tensorial) |
+|---|---|---|---|
+| `Quad4Thermal` | 2 | ✓ | ✓ |
+| `Hex8Thermal`  | 3 | ✓ | ✓ |
+
+- **(t1)** El mismo material `ThermalConduction` cubre el caso isótropo y el anisótropo: el constructor acepta un escalar `k` y lo expande a `k·I`, o un tensor completo. **La anisotropía no requiere un material nuevo** — decisión de alcance del usuario en la Etapa 8.
+- **(t2)** La dimensión del material la fija el tensor con que se construyó, no la clase: `FLUX_DIM` es **propiedad de instancia**, no `ClassVar`. Construir el material con `dim=2` y pasarlo a un `Hex8Thermal` se rechaza con `ValueError` nombrando ambas dimensiones.
+- **(t3)** `ρ` y `c` son **opcionales**. Sólo el análisis transitorio los exige; el estacionario funciona sin ellos, y el mensaje de error lo dice explícitamente cuando faltan.
+
+---
+
+### 2.b Solver térmico
+
+| Solver | Pipeline kind | Tipo de problema | Pre-condición |
+|---|---|---|---|
+| `LinearSolver` | `static` | **Conducción estacionaria** `K·T = F`. | Ninguna adicional: el solver mecánico existente resuelve el térmico **sin modificación**. No requiere `ρ` ni `c`. |
+| `ThetaMethodSolver` | `thermal_transient` | **Conducción transitoria** `C·Ṫ + K·T = F(t)`, integración θ de primer orden. | `ρ` y `c` declaradas; al menos un Dirichlet de temperatura. |
+
+**El estacionario no tiene solver propio.** Que el `LinearSolver` resuelva el problema térmico sin un cambio de línea es el hallazgo arquitectural de la Etapa 8: la infraestructura de ensamblaje, imposición de Dirichlet (ADR 0004) y despacho algebraico (ADR 0003) resultó agnóstica al campo físico.
+
+**El transitorio sí lo tiene, y no es una variante de Newmark.** La ecuación térmica es de **primer orden** en el tiempo; la familia Newmark integra la de segundo orden mediante hipótesis sobre la aceleración, que aquí no tienen sobre qué aplicarse. `ThetaMethodSolver` no admite `rayleigh` (modelo de disipación de la ecuación de segundo orden) ni condición inicial de velocidad, y devuelve `ThermalTransientResult`, no `TransientResult`.
+
+**Defaults invertidos respecto a la dinámica estructural**, ambos por el mismo motivo físico —el principio del máximo de la ecuación de difusión, que un esquema oscilante viola produciendo temperaturas fuera del rango de los datos:
+
+| Parámetro | Default mecánico | Default térmico |
+|---|---|---|
+| `lumping` de la matriz de masa/capacidad | `"consistent"` | **`"lumped"`** |
+| Esquema temporal | Newmark β=1/4, γ=1/2 (sin disipación numérica) | **`θ = 1`** (Euler implícito, L-estable) |
+
+**Combinaciones vetadas**: los solvers `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver` y `ResponseSpectrumSolver` **no aplican** a elementos térmicos: todos integran o diagonalizan la ecuación de segundo orden. Los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`) tampoco tienen uso hoy porque el único material térmico es lineal; lo tendrán cuando entre `k(T)` o radiación.
 
 ---
 
@@ -120,6 +159,10 @@ Selección de tests "canónicos" que cubren combinaciones clave. La intención n
 | Respuesta forzada armónica en frecuencia                       | [`test_harmonic.py`](../tests/test_harmonic.py)                                     |
 | Análisis sísmico por combinación modal SRSS/CQC                | [`test_response_spectrum.py`](../tests/test_response_spectrum.py)                   |
 | Plasticidad sólido 2D (unitario del material)                  | [`test_materials_unit.py`](../tests/test_materials_unit.py)                         |
+| `ThermalConduction` (unitario del material térmico)            | [`test_thermal_material.py`](../tests/test_thermal_material.py) — Fourier isótropo y tensorial, validación de simetría con tolerancia escalada y definición positiva por autovalores, `ρc` opcional con mensaje accionable |
+| `Quad4Thermal` + `ThermalConduction` (estacionario)            | [`test_quad4_thermal.py`](../tests/test_quad4_thermal.py) — conductividad, capacidad consistente/lumped, fuente volumétrica, flujo por borde, pared plana vs perfil lineal analítico con el `LinearSolver` sin modificar |
+| `Hex8Thermal` + `ThermalConduction` (estacionario + cross-check) | [`test_hex8_thermal.py`](../tests/test_hex8_thermal.py) — rango 7/8 con el modo nulo de temperatura uniforme, 4 hourglass con cuadratura reducida, flujo en las 6 caras, **cross-check 2D↔3D** contra `Quad4Thermal` |
+| Transitorio térmico θ-method (orden, estabilidad, L-estabilidad) | [`test_theta_method.py`](../tests/test_theta_method.py) — orden temporal 1 / **2** / 1 para θ = 1 / 0.5 / 2/3 contra la solución exacta del sistema semidiscreto; principio del máximo; Carslaw-Jaeger semi-infinito; Dirichlet variable en el tiempo con factorización única; cross-check 2D↔3D paso a paso |
 | `solidum.run` y `solidum.run_yaml` end-to-end (estático + dinámico) | [`test_entry.py`](../tests/test_entry.py)                                          |
 | Peso propio (`assemble_self_weight`, ADR 0008)                 | [`test_density_self_weight.py`](../tests/test_density_self_weight.py) · [`test_body_force_pipeline.py`](../tests/test_body_force_pipeline.py) · [`test_body_load_truss_frame.py`](../tests/test_body_load_truss_frame.py) |
 
@@ -136,11 +179,16 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 5. **Frames + `Elastoplastic1D`** (los 4 frames): válido sólo axialmente (nota a), sin test específico que ejercite plasticidad en un frame. **Coste**: bajo. La plasticidad por flexión es hueco *físico* que espera `FiberSection` (deuda #3 de STATUS.md) — no se confunde con este.
 6. ~~**Sólidos 3D**: no figuran porque no existen aún.~~ — **abierto el 2026-05-19** con la Etapa 7 (ADR 0012). **A.bis cerrado 2026-05-21**: `VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D` (✓ para `Hex8`/`Tet4`). **A.ter cerrada por completo 2026-05-27**: filas `Hex20`, `Hex27` y `Tet10` con ✓ contra todos los materiales 3D (Elastic + tres no lineales). Matriz §1 sección 3D cerrada con ✓ en las 15 celdas. **Sub-fase 4 (validación externa NAFEMS 3D) cerrada 2026-05-27**: NAFEMS LE10 thick plate pressure (Hex20+Hex27 vs σ_yy(D) canónico) y Lamé thick cylinder 3D (Hex20+Hex27 vs solución analítica cerrada en cada Gauss; primera demostración cuantitativa de capacidad isoparamétrica curva). Tet10 sobre superficie curva diferido (descomposición hex→5tets diverge; deuda técnica #8).
 
+7. **Validación térmica sobre geometría curva** (Etapa 8): el cilindro hueco con perfil logarítmico —2D y 3D— y el balance energético global quedaron **diferidos** por requerir mallar una corona circular, capacidad que el proyecto aún no tiene. Es la misma carencia que difirió NAFEMS LE10 en su momento y que hoy bloquea también al `Tet10` sobre superficie curva (deuda técnica #8). La validación térmica vigente se apoya en pared plana analítica, sólido semi-infinito de Carslaw-Jaeger, convergencia al estacionario del `LinearSolver` y cross-check 2D↔3D. **Coste**: medio — el mallador desbloquearía tres frentes a la vez.
+
 **No-huecos** (combinaciones que parecen ausentes pero son decisiones documentadas):
 
 - **`DruckerPrager2D` en plane_stress**: declarado out-of-scope.
 - **`Cable*` + plasticidad o daño**: extensión futura, no hueco del catálogo actual.
 - **Frames + materiales 2D**: incompatibilidad estructural por `STRAIN_DIM`, no hueco.
+- **Elementos térmicos × solvers dinámicos** (`ModalSolver`, `NewmarkSolver`, `HHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`): incompatibilidad **física**, no hueco — todos integran o diagonalizan la ecuación de segundo orden, y la conducción es de primer orden. Ver §2.b.
+- **Elementos térmicos × solvers estáticos no lineales**: sin uso *hoy* porque el único material térmico es lineal. Dejará de ser un no-hueco cuando entre `k(T)` o radiación.
+- **Materiales térmicos × elementos mecánicos** (y viceversa): rechazado en construcción con `TypeError` explícito. Son familias con contratos distintos (`compute_flux` vs `compute_stress`), no una celda vacía.
 
 ---
 
@@ -153,4 +201,6 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 
 ---
 
-*Última actualización: 2026-05-27 — **A.ter sub-fases 1, 2 y 3**: añade filas `Hex20`, `Hex27` y `Tet10` a la tabla 3D; centralización en `_HigherOrderSolid3D` aplicada al entrar el `Hex27` (regla de los dos casos reales) y reutilizada por `Tet10` con cara triangular Tri6 + cuadraturas `tet_4`/`tet_15` nuevas. Las columnas 3D se triplicaron con `VonMises3D`/`DruckerPrager3D`/`IsotropicDamage3D` (✓ para `Hex8`/`Tet4`). Anterior 2026-05-18: cierre Etapa 6 (ADR 0009 completo).*
+*Última actualización: 2026-08-25 — **Etapa 8 (análisis térmico)**: añadidas §1.b (elementos × materiales térmicos, compatibilidad por `FLUX_DIM` en vez de `STRAIN_DIM`) y §2.b (solver térmico, con la tabla de defaults invertidos respecto a la dinámica estructural y las combinaciones vetadas por incompatibilidad física). La familia térmica va en secciones propias y no como filas de la tabla mecánica porque el campo es escalar y el gradiente no se comprime en notación Voigt. Cuatro filas nuevas en §3, hueco #7 (validación sobre geometría curva, diferida por falta de mallador de corona circular) y tres no-huecos nuevos en §4.*
+
+*Anterior 2026-05-27 — **A.ter sub-fases 1, 2 y 3**: añade filas `Hex20`, `Hex27` y `Tet10` a la tabla 3D; centralización en `_HigherOrderSolid3D` aplicada al entrar el `Hex27` (regla de los dos casos reales) y reutilizada por `Tet10` con cara triangular Tri6 + cuadraturas `tet_4`/`tet_15` nuevas. Las columnas 3D se triplicaron con `VonMises3D`/`DruckerPrager3D`/`IsotropicDamage3D` (✓ para `Hex8`/`Tet4`). Anterior 2026-05-18: cierre Etapa 6 (ADR 0009 completo).*
