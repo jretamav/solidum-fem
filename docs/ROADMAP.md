@@ -13,9 +13,9 @@
 
 ## Estado a fecha del último commit
 
-Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. **973 tests verdes + 8 skipped intencionales** tras el saneamiento de la capa de manuales (2026-08-25), sobre los 970 del cierre completo de la sub-etapa A.ter (sólidos 3D cuadráticos + validación externa NAFEMS 3D, 2026-05-27).
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. **1148 tests verdes + 8 skipped intencionales**.
 
-**Próximo hito: elección de la Etapa 8** entre las opciones B (placas y láminas), C (análisis térmico desacoplado) y E (Mohr-Coulomb 2D + `FiberSection`). Es una decisión del usuario; el argumentario está en §"Opciones diferidas".
+**Próximo hito: elección de la Etapa 9.** Cerrada la opción C en su núcleo mínimo, quedan abiertas **B** (placas y láminas) y **E** (Mohr-Coulomb 2D + `FiberSection`), más la continuación de la propia línea térmica —convección, acoplamiento termomecánico o no linealidad térmica—. Es una decisión del usuario; el argumentario está en §"Opciones diferidas".
 
 > Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver [`docs/STATUS.md`](STATUS.md). Para combinaciones validadas: [`docs/MATRIZ.md`](MATRIZ.md). Para arranque en frío: [`docs/ONBOARDING.md`](ONBOARDING.md). Ver §"Documentos complementarios" al final para una guía del sistema.
 
@@ -131,11 +131,11 @@ Las opciones A-E identificadas anteriormente quedan **diferidas como etapas futu
 
 - ~~**A. Sólidos 3D**~~ **Cerrada**: Etapa 7 (Hex8, Tet4, Elastic3D — ADR 0012, 2026-05-19), sub-etapa **A.bis** (materiales 3D no lineales, 2026-05-21) y sub-etapa **A.ter** (Hex20, Hex27, Tet10 + validación NAFEMS LE10 y Lamé 3D, 2026-05-27). Era pre-requisito de casi todas las extensiones posteriores, y ya no bloquea ninguna.
 - **B. Placas y láminas** (Mindlin, Kirchhoff, MITC): formulación shell con cortante transversal y drilling DOFs. Desbloquearía además los benchmarks NAFEMS de placas y cáscaras (LE3 hemisferio, FV1/FV5, FV2/FV12/FV32), hoy inalcanzables por falta del componente.
-- **C. Análisis térmico desacoplado** (Laplaciano estacionario + transitorio): salto a problema escalar; abre la puerta a la termomecánica acoplada que forma parte de la identidad declarada del proyecto (`Reglas.md §0`) y aún no existe.
+- ~~**C. Análisis térmico desacoplado**~~ **Cerrada en su núcleo mínimo**: Etapa 8 (2026-08-25) — conducción de Fourier pura, estacionaria y transitoria, 2D y 3D, con Dirichlet y Neumann. El salto a problema escalar confirmó que la infraestructura es agnóstica al campo (el estacionario no necesitó solver nuevo). **La termomecánica acoplada de `Reglas.md §0` sigue sin existir**: era el C2 explícitamente excluido del alcance, y es ahora la continuación natural de esta línea junto con la convección (Robin).
 - ~~**D. Completar ADR 0009**~~ **Cerrada 2026-05-18 como Etapa 6 in extenso** (HHT-α, mass lumping fase 2, diferencias centradas, harmonic, response spectrum + reglas C y D de auditoría arquitectural aplicadas).
 - **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames). La más acotada de las tres abiertas; salda de paso el item #2 de deuda técnica.
 
-**Estado de la bifurcación**: cerradas A y D, quedan **B, C y E** como candidatas a Etapa 8. La decisión es del usuario y se toma con la dirección que quiera dar al proyecto; ninguna está bloqueada técnicamente.
+**Estado de la bifurcación**: cerradas **A**, **C** (en su núcleo mínimo) y **D**; quedan **B** y **E** como candidatas a Etapa 9, más la continuación de la línea térmica que la propia Etapa 8 habilita. La decisión es del usuario y se toma con la dirección que quiera dar al proyecto; ninguna está bloqueada técnicamente.
 
 ---
 
@@ -230,11 +230,82 @@ Suite 959 → 970 (+11 tests verdes; +2 skip Tet10).
 
 ---
 
+## Etapa 8 — Análisis térmico, núcleo mínimo C1 · cerrada (2026-08-25)
+
+**Capacidad entregada**: conducción de calor de Fourier, estacionaria y transitoria, en 2D y 3D, con condiciones Dirichlet (temperatura impuesta, constante o variable en el tiempo) y Neumann (flujo prescrito). Es la opción **C** de la bifurcación, acotada por el usuario a su núcleo mínimo: **térmico puro, sin acoplamiento con el campo mecánico**.
+
+**Alcance decidido por el usuario**, punto por punto:
+
+1. Etapa 8 = análisis térmico (sobre B placas/láminas y E Mohr-Coulomb + FiberSection).
+2. Sólo **C1 térmico puro** — sin deformación térmica `α·ΔT`, sin acoplamiento.
+3. Sólo **conducción** — convección (Robin) y radiación explícitamente fuera.
+4. **Conductividad tensorial** en el contrato; el constructor acepta un escalar y lo expande a `k·I`, de modo que la anisotropía no requerirá un material nuevo.
+5. Ambas formas de capacidad, con **`lumped` por defecto** — invertido respecto a la dinámica estructural.
+6. Dos elementos: **uno 2D y uno 3D** (`Quad4Thermal` + `Hex8Thermal`), no dos 2D.
+
+### Componentes
+
+- **`ThermalMaterial`** — familia con registro propio (`ThermalMaterialRegistry`), paralela a `CohesiveMaterial` (ADR 0010). Contrato `compute_flux(∇T) → (q, k)` en lugar de `compute_stress(ε)`. `FLUX_DIM` como **propiedad de instancia**, no `ClassVar`: la dimensión la fija el tensor `k` con que se construyó el material, no la clase.
+- **`ThermalConduction`** — ley de Fourier `q = −k·∇T`. Valida simetría de `k` con tolerancia **escalada** a `1e-12·max|k|` y definición positiva por autovalores (no por determinante, que no la garantiza en 3D). `ρ` y `c` opcionales: sólo el transitorio los exige.
+- **`Quad4Thermal`**, **`Hex8Thermal`** — un DOF escalar `T` por nodo, sobre base común `_ThermalSolid`. Comparten los kernels de forma y jacobiano de sus gemelos mecánicos. La base se introdujo con el **primer** elemento y no con el segundo, contra la regla habitual de los dos casos reales, porque la ecuación discretizada `C·Ṫ + K·T = F` es idéntica en 2D y 3D — la dimensión sólo cambia el tamaño de `B`. La decisión se validó a posteriori: el `Hex8Thermal` no necesitó tocar la base.
+- **`ThetaMethodSolver`** — integración θ del sistema de **primer orden**. Familia propia con spec completa, **no variante de `NewmarkSolver`**: la familia Newmark integra la ecuación de segundo orden mediante hipótesis sobre la aceleración, y en conducción no existe segunda derivada temporal sobre la que aplicarlas. Resultado `ThermalTransientResult` propio.
+
+### El hallazgo arquitectural
+
+La infraestructura resultó **genuinamente agnóstica al campo**. El problema de pared plana se resolvió de extremo a extremo con el `Assembler` y el `LinearSolver` existentes —error 1.137e-13 contra el perfil lineal analítico— **sin tocar el ensamblador ni la imposición de Dirichlet**. El despachador algebraico reconoció por su cuenta la matriz térmica como candidata SPD a Cholesky.
+
+Es la validación empírica de ADR 0003 (despacho algebraico por propiedades, no por tipo de análisis) y ADR 0004 (Dirichlet por eliminación sobre DOFs genéricos) frente a un campo físico que no existía cuando se tomaron esas decisiones. El régimen estacionario, de hecho, **no necesitó solver nuevo**.
+
+### Dos decisiones físicas con el mismo criterio
+
+Ambas invierten el default respecto al subsistema mecánico, y por la misma razón:
+
+- **Capacidad `lumped` por defecto** (eje espacial) — la consistente produce oscilaciones espurias ante un frente térmico abrupto.
+- **`θ = 1`, Euler implícito, por defecto** (eje temporal) — Crank-Nicolson es de orden 2 y más preciso, pero A-estable y **no L-estable**: su factor de amplificación tiende a `−1` para los modos altos en vez de a `0`.
+
+El fenómeno común es la violación del **principio del máximo** de la ecuación de difusión: la solución exacta nunca excede los extremos de los datos iniciales y de frontera. Medido con `T_pared = 100` sobre un cuerpo a `0`: `θ = 1/2` alcanza `T_max = 151.27`; `θ = 1` se mantiene en `[0, 100]` y es monótono.
+
+El criterio que decide no es el orden de convergencia sino **qué debe hacer el programa cuando el usuario no elige**: un resultado impreciso se detecta refinando el paso y se corrige; uno *cualitativamente imposible* desconcierta a quien no conozca la teoría de A- frente a L-estabilidad. Contrapartida asumida: el solver **reporta el orden efectivo** del esquema para que el coste en precisión del default robusto sea visible y no una penalización silenciosa.
+
+### Validación
+
+| Criterio | Resultado |
+|---|---|
+| Orden temporal θ=1 / θ=1/2 / θ=2/3 | **0.9944 / 2.0001 / 0.9933** |
+| Convergencia al estacionario del `LinearSolver` | error **7.1e-14** |
+| Sólido semi-infinito (Carslaw-Jaeger §2.4) | error **3.0e-3** |
+| Cross-check 2D↔3D estacionario | error **9.9e-14** |
+| Pared plana vs perfil lineal analítico | error **1.137e-13** |
+| Estabilidad incondicional θ=1 vs divergencia θ=0 | confirmada con el mismo `Δt` |
+
+El orden temporal se mide contra la solución **exacta del sistema semidiscreto** `exp(−C⁻¹K·t)·T₀`, no contra la del continuo: el error espacial actuaría como suelo y enmascararía la tasa. Es el test que realmente distingue los dos esquemas — un θ-method con signos cruzados aún converge al estacionario correcto, porque en el límite `t → ∞` el término temporal desaparece.
+
+Las predicciones escritas en las specs se cumplieron sin ajuste: rango 7/8 del `Hex8Thermal` con un modo nulo (el de temperatura uniforme, análogo térmico del sólido rígido), 4 modos de hourglass con cuadratura reducida, y reparto `−q̄A/4` del flujo en las 6 caras.
+
+**Sin ADR nuevo.** La etapa no rompió contratos ni introdujo un subsistema con decisiones arquitecturales propias: reutilizó el patrón de familia paralela ya establecido por ADR 0010 y la infraestructura de ADR 0003/0004 sin modificarla. `Reglas.md §5` recibió la convención de signo del flujo (`q̄ > 0` ⇔ saliente) y la constancia de que el problema térmico **no usa notación Voigt** — `∇T` es un vector genuino, no un tensor simétrico comprimido.
+
+**Hallazgo colateral corregido**: la validación de `Assembler.assemble_mass_matrix` aconsejaba *"usa `0.0` si el material es sin masa por diseño"*, correcto en mecánica (ADR 0008) pero **físicamente incorrecto en térmico**, donde `density = 0` da capacidad calorífica nula y matriz singular. El ensamblador ahora delega el mensaje al material cuando éste sabe explicarse; ningún material mecánico cambia de comportamiento.
+
+Suite 973 → 1148 (+175 tests, sin regresiones).
+
+### Cierre pendiente de la etapa
+
+No bloquea elegir la siguiente, pero queda anotado:
+
+1. **Campaña de validación diferida**: cilindro hueco con perfil logarítmico (2D y 3D) y balance energético global. Ambos requieren mallar una **corona circular** — la misma carencia que difirió NAFEMS LE10 en su momento, y que sigue abierta.
+2. **Sección térmica en el User manual y el Architecture manual** (el Reference manual la incluye ya, generada desde las specs).
+
+### Fuera de alcance, con rationale
+
+Convección (Robin), radiación, conductividad `k(T)`, cambio de fase, paso de tiempo adaptativo y acoplamiento termomecánico. Las tres primeras y el cambio de fase exigen **Newton dentro de cada paso**; el `ThetaMethodSolver` actual asume el problema lineal y sin historia, que es justo lo que le permite factorizar `A = C + θΔt·K` una sola vez.
+
+---
+
 ## Etapa 8+ — Horizonte largo
 
-Lo que el proyecto **previsiblemente** abrirá tras la Etapa 7, sin orden cerrado:
+Lo que el proyecto **previsiblemente** abrirá tras la Etapa 8, sin orden cerrado:
 
-- **Análisis termomecánico acoplado** (si C entró antes).
+- **Análisis termomecánico acoplado** — **desbloqueado** por la Etapa 8, que entregó el campo térmico sin acoplar. Es el C2 que quedó fuera del alcance de aquélla; su decisión pendiente es acoplamiento débil (secuencial) vs fuerte (monolítico), y toca el contrato `Material`.
 - **Contacto mecánico** (penalización / Lagrangiano aumentado / mortar).
 - **Grandes deformaciones** (lagrangiano total / actualizado en sólidos; corotacional 3D para frames; viscoplasticidad).
 - **Materiales avanzados**: hiperelasticidad (Neo-Hooke, Mooney-Rivlin), plasticidad anisótropa, daño con regularización (gradient damage, phase-field), modelos para hormigón (Mazars, concrete damaged plasticity).
@@ -287,7 +358,9 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ---
 
-*Última actualización: 2026-08-25 — **Sincronización con STATUS** (sin cambios de código). Este documento había quedado desfasado en cuatro puntos y, por ser lectura de arranque en sesiones cold-start, dirigía a trabajo ya hecho: (1) la sección "Deuda técnica conocida" listaba como abiertos el **ADR 0002** (cerrado el 19-mayo por el ADR 0012) y las **reglas de disparo C y D** (aplicadas el 18-mayo), y omitía los 6 items realmente abiertos — ahora delega la autoridad en STATUS y resume los vigentes; (2) los enlaces de esa sección apuntaban a `~/.claude/projects/.../memory/`, ruta vacía que `CLAUDE.md` prohíbe explícitamente (la memoria vive en `.claude/memory/` del repo) — el mismo error estaba en ONBOARDING §4 y se corrigió allí también; (3) la **opción A** de la bifurcación seguía listada como futura pese a haberse ejecutado en la Etapa 7 + A.bis + A.ter, y la frase de cierre condicionaba la decisión al cierre de una Etapa 5 cerrada en mayo; (4) **NAFEMS LE10/LE2** figuraban como diferidos cuando LE10 cerró en la sub-fase 4 de A.ter y LE2 fue descartado con razón documentada (es benchmark de shell), sustituido por el Lamé thick cylinder 3D. Actualizado también el estado de cabecera (973 tests) y añadido el próximo hito explícito. Colateralmente, MATRIZ §2 omitía `DissipationArcLengthSolver` de la tabla de solvers pese a ser seleccionable en YAML: añadido, y su cobertura verificada contra los cuatro registros (46/46 componentes).*
+*Última actualización: 2026-08-25 — **Etapa 8 cerrada: análisis térmico (núcleo mínimo C1)**. Nueva sección de etapa con el alcance decidido por el usuario punto por punto, los cuatro componentes entregados, el hallazgo arquitectural (la infraestructura resultó agnóstica al campo — el estacionario no necesitó solver nuevo) y la tabla de validación. Actualizado el estado de cabecera (1148 tests), cerrada la **opción C** de la bifurcación en su núcleo mínimo dejando constancia de que la termomecánica acoplada de `Reglas.md §0` sigue sin existir, y desbloqueado el acoplamiento en el horizonte largo (deja de estar condicionado a "si C entró antes"). El próximo hito pasa a ser la elección de la Etapa 9 entre B, E y la continuación de la línea térmica.*
+
+*Anterior 2026-08-25 — **Sincronización con STATUS** (sin cambios de código). Este documento había quedado desfasado en cuatro puntos y, por ser lectura de arranque en sesiones cold-start, dirigía a trabajo ya hecho: (1) la sección "Deuda técnica conocida" listaba como abiertos el **ADR 0002** (cerrado el 19-mayo por el ADR 0012) y las **reglas de disparo C y D** (aplicadas el 18-mayo), y omitía los 6 items realmente abiertos — ahora delega la autoridad en STATUS y resume los vigentes; (2) los enlaces de esa sección apuntaban a `~/.claude/projects/.../memory/`, ruta vacía que `CLAUDE.md` prohíbe explícitamente (la memoria vive en `.claude/memory/` del repo) — el mismo error estaba en ONBOARDING §4 y se corrigió allí también; (3) la **opción A** de la bifurcación seguía listada como futura pese a haberse ejecutado en la Etapa 7 + A.bis + A.ter, y la frase de cierre condicionaba la decisión al cierre de una Etapa 5 cerrada en mayo; (4) **NAFEMS LE10/LE2** figuraban como diferidos cuando LE10 cerró en la sub-fase 4 de A.ter y LE2 fue descartado con razón documentada (es benchmark de shell), sustituido por el Lamé thick cylinder 3D. Actualizado también el estado de cabecera (973 tests) y añadido el próximo hito explícito. Colateralmente, MATRIZ §2 omitía `DissipationArcLengthSolver` de la tabla de solvers pese a ser seleccionable en YAML: añadido, y su cobertura verificada contra los cuatro registros (46/46 componentes).*
 
 *Anterior 2026-05-27 — **Sub-etapa A.ter cerrada por completo**: sólidos 3D cuadráticos (`Hex20`, `Hex27`, `Tet10`) sobre base centralizada `_HigherOrderSolid3D`, más la sub-fase 4 de validación externa (NAFEMS LE10 + Lamé thick cylinder 3D). Suite 877 → 970. La matriz 3D queda con paridad funcional completa frente al 2D: 5 elementos × 4 materiales, todas las celdas en ✓.*
 
