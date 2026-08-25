@@ -598,7 +598,7 @@ Cuando \texttt{frequency: "all\_steps"} y el solver es no lineal, se genera un a
 
 
 
-El motor expone dos familias de elementos: \textbf{1D} (estructuras reticulares: armaduras, cables, marcos) y \textbf{2D} (continuo plano: cuadrilátero y triángulo). Todos se referencian desde el YAML por su nombre exacto en \texttt{type:}.
+El motor expone varias familias de elementos: \textbf{1D} (estructuras reticulares: armaduras, cables, marcos), \textbf{2D} (continuo plano: cuadrilátero y triángulo), \textbf{3D} (continuo tridimensional: hexaedros y tetraedros, lineales y cuadráticos), \textbf{discontinuidades embebidas} (fractura con salto interior) y \textbf{térmicos} (conducción de calor, con un grado de libertad escalar por nodo; se documentan en el capítulo «Análisis Térmico»). Todos se referencian desde el YAML por su nombre exacto en \texttt{type:}.
 
 \section{Elementos 1D}
 
@@ -1637,8 +1637,318 @@ Independiente de cualquier solver: todos los elementos del catálogo soportan \t
 
 \newpage
 
-\chapter{Post-Procesamiento y Visualización}
+\chapter{Análisis Térmico}
 \label{cap:8}
+
+
+
+Solidum FEM resuelve \textbf{conducción de calor} por la ley de Fourier, en régimen estacionario y transitorio, sobre dominios 2D y 3D. El campo incógnita es un escalar $T$ por nodo.
+
+\textbf{Alcance actual}: conducción pura con condiciones de Dirichlet (temperatura impuesta) y Neumann (flujo prescrito). \textbf{No} incluye convección (Robin), radiación, conductividad dependiente de la temperatura $k(T)$, cambio de fase ni \textbf{acoplamiento termomecánico} --- no existe deformación térmica $\alpha\,\Delta T$: el análisis térmico y el mecánico son hoy independientes.
+
+\section{Formulación}
+
+La ecuación de balance de energía, con $\mathbf q = -\mathbf k\cdot\nabla T$ (Fourier):
+
+\[
+\rho c\,\dot T = \nabla\cdot(\mathbf k\,\nabla T) + Q
+\]
+
+Discretizada por elementos finitos:
+
+\[
+\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F
+\]
+
+donde $\mathbf K = \int_\Omega \mathbf B^\top\mathbf k\,\mathbf B\,d\Omega$ es la matriz de \textbf{conductividad}, $\mathbf C = \int_\Omega \rho c\,\mathbf N^\top\mathbf N\,d\Omega$ la de \textbf{capacidad calorífica} y $\mathbf F$ recoge la fuente volumétrica y el flujo de frontera.
+
+Nótese que el sistema es de \textbf{primer orden} en el tiempo, a diferencia del mecánico $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \mathbf K\mathbf u = \mathbf F$. No hay aceleración ni inercia: no existe un análogo térmico de la velocidad con significado físico en este modelo.
+
+\textbf{Sin notación Voigt.} El gradiente $\nabla T$ es un vector genuino de 2 ó 3 componentes, no un tensor simétrico comprimido, así que la matriz $\mathbf B$ térmica es el gradiente crudo $\partial N/\partial x$ y no lleva los factores $\gamma = 2\varepsilon$ de la notación Voigt mecánica. Los elementos térmicos declaran \texttt{FLUX\_DIM} (2 ó 3) en lugar de \texttt{STRAIN\_DIM}.
+
+\section{Material: \texttt{ThermalConduction}}
+
+Se declara en un bloque \textbf{\texttt{thermal\_materials}}, paralelo a \texttt{materials}. Los dos bloques tienen espacios de nombres de \texttt{type:} independientes, y un elemento resuelve su material contra el bloque donde se declaró el \texttt{id}.
+
+\begin{table}[h]
+\centering
+\caption{Parámetros de @@ICODE78@@.}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{Parámetro} & \textbf{Unidades} & \textbf{Obligatorio} & \textbf{Descripción} \\
+\hline
+\texttt{k} & W/(m\ensuremath{\cdot}K) & sí & Conductividad. Escalar (isótropo) o tensor completo \\
+\texttt{dim} & --- & no (2) & Dimensión del problema cuando \texttt{k} es escalar \\
+\texttt{c} & J/(kg\ensuremath{\cdot}K) & sólo transitorio & Calor específico \\
+\texttt{density} & kg/m\ensuremath{^{3}} & sólo transitorio & Densidad \\
+\hline
+\end{tabularx}
+\end{table}
+\begin{lstlisting}[language=yaml]
+thermal_materials:
+  - id: 1
+    type: ThermalConduction
+    k: 45.0            # acero estructural
+    c: 460.0           # sólo hace falta en transitorio
+    density: 7850.0    # sólo hace falta en transitorio
+
+\end{lstlisting}
+
+\textbf{\texttt{c} y \texttt{density} son opcionales}: el régimen estacionario no los necesita, porque el término $\mathbf C\dot{\mathbf T}$ desaparece. Si faltan y se pide un transitorio, el error lo dice explícitamente y sugiere el solver estacionario.
+
+\textbf{Conductividad anisótropa}: \texttt{k} admite un tensor completo, sin necesidad de un material distinto. Debe ser simétrico y definido positivo --- ambas cosas se validan al construir.
+
+\begin{lstlisting}[language=yaml]
+thermal_materials:
+  - id: 1
+    type: ThermalConduction
+    k: [[45.0, 0.0], [0.0, 12.0]]   # 3.75× más conductor en x que en y
+
+\end{lstlisting}
+
+\section{Elementos: \texttt{Quad4Thermal} y \texttt{Hex8Thermal}}
+
+Un DOF escalar \texttt{T} por nodo. Comparten geometría y numeración de nodos con sus gemelos mecánicos \texttt{Quad4} y \texttt{Hex8}.
+
+\begin{table}[h]
+\centering
+\caption{Elementos térmicos.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Elemento} & \textbf{\texttt{FLUX\_DIM}} & \textbf{Nodos} & \textbf{Cuadratura default} & \textbf{Parámetros} \\
+\hline
+\texttt{Quad4Thermal} & 2 & 4 & \texttt{2x2} & \texttt{thickness} (default 1.0), \texttt{quadrature} \\
+\texttt{Hex8Thermal} & 3 & 8 & \texttt{hex\_2x2x2} & \texttt{quadrature} \\
+\hline
+\end{tabularx}
+\end{table}
+\begin{lstlisting}[language=yaml]
+elements:
+  - id: 1
+    type: Quad4Thermal
+    material: 1          # id del bloque thermal_materials
+    nodes: [1, 2, 3, 4]
+    thickness: 0.3
+
+\end{lstlisting}
+
+Pasar un material mecánico a un elemento térmico ---o al revés--- se rechaza al construir, con un mensaje que nombra las dos familias. La dimensión también se comprueba: un material construido con \texttt{dim: 2} no entra en un \texttt{Hex8Thermal}.
+
+\section{Condiciones de frontera}
+
+\subsection{Dirichlet --- temperatura impuesta}
+
+Se declaran como cualquier otra condición de frontera, usando el nombre del DOF:
+
+\begin{lstlisting}[language=yaml]
+boundary_conditions:
+  - {node_id: 1, T: 100.0}
+  - {node_id: 2, T: 20.0}
+
+\end{lstlisting}
+
+\textbf{Todo modelo térmico necesita al menos un Dirichlet.} Sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico.
+
+\subsection{Neumann --- flujo prescrito}
+
+\begin{lstlisting}[language=yaml]
+thermal_loads:
+  boundary_flux:
+    - {element: 1, edge: 2, q: 500.0}      # 2D: borde del elemento
+    - {element: 7, face: 4, q: -200.0}     # 3D: cara del elemento
+
+\end{lstlisting}
+
+\textbf{Convención de signo}: $\bar q > 0$ es flujo \textbf{saliente} del dominio, es decir \textbf{enfriamiento}. Un flujo entrante (calentamiento) se declara con $\bar q < 0$. El signo sale de la forma débil, donde el término de frontera aparece como $-\int_\Gamma w\,\bar q\,d\Gamma$.
+
+\textbf{Un borde o cara sin declarar es adiabático} ($\bar q = 0$), igual que un borde sin carga es libre de tracción en mecánica. No hay que declarar el flujo nulo.
+
+Los índices de borde y cara son los mismos que en los elementos mecánicos: \texttt{edge: 0} conecta los nodos locales 0-1, \texttt{edge: 1} los 1-2, etc.
+
+\subsection{Fuente volumétrica}
+
+\begin{lstlisting}[language=yaml]
+thermal_loads:
+  body_source:
+    - {Q: 1.0e5}                       # W/m³, a todo el dominio
+    - {Q: 5.0e4, elements: [3, 4, 5]}  # sólo a esos elementos
+
+\end{lstlisting}
+
+\texttt{Q} es generación de calor por unidad de volumen (calor de hidratación, efecto Joule, reacción química). Es \textbf{carga del elemento y no propiedad del material}: varía en el espacio y con el tiempo, y como propiedad obligaría a duplicar materiales.
+
+También pueden aplicarse fuentes \textbf{nodales concentradas} [W] por la vía estándar:
+
+\begin{lstlisting}[language=yaml]
+point_loads:
+  - {node_id: 12, T: 250.0}
+
+\end{lstlisting}
+
+\section{Régimen estacionario}
+
+$\mathbf K\,\mathbf T = \mathbf F$ lo resuelve el \textbf{\texttt{LinearSolver} sin ninguna configuración especial}:
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: LinearSolver
+
+\end{lstlisting}
+
+El resultado es un \texttt{SolveResult} como el de un análisis mecánico; el campo \texttt{U} contiene las temperaturas nodales, y \texttt{reactions\_by\_node} los flujos de calor en los nodos con temperatura impuesta.
+
+\section{Régimen transitorio: \texttt{ThetaMethodSolver}}
+
+Integra $\mathbf C\dot{\mathbf T} + \mathbf K\mathbf T = \mathbf F(t)$ ponderando el estado dentro del paso con el parámetro $\theta$:
+
+\[
+\left(\mathbf C + \theta\Delta t\,\mathbf K\right)\mathbf T_{n+1} = \left[\mathbf C - (1-\theta)\Delta t\,\mathbf K\right]\mathbf T_n + \Delta t\left[\theta\mathbf F_{n+1} + (1-\theta)\mathbf F_n\right]
+\]
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: ThetaMethodSolver
+  dt: 60.0
+  n_steps: 500
+  T_initial: 20.0
+
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\caption{Parámetros de @@ICODE110@@.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Parámetro} & \textbf{Default} & \textbf{Descripción} \\
+\hline
+\texttt{dt} & --- & Paso temporal [s]. Obligatorio \\
+\texttt{n\_steps} & --- & Número de pasos. Obligatorio \\
+\texttt{T\_initial} & --- & Condición inicial: escalar (campo uniforme) o vector. Obligatorio \\
+\texttt{theta} & \texttt{1.0} & Peso del esquema $\in [0,1]$ \\
+\texttt{lumping} & \texttt{"lumped"} & Forma de la matriz de capacidad \\
+\texttt{output\_every} & \texttt{1} & Almacenar el campo cada N pasos \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{No hay condición inicial de velocidad}: la ecuación es de primer orden y $\mathbf T_0$ determina la evolución por completo. Tampoco existe el parámetro \texttt{rayleigh}: el amortiguamiento de Rayleigh modela disipación en la ecuación de segundo orden, y aquí la disipación es la propia conducción, ya contenida en $\mathbf K$.
+
+\subsection{Elección de $\theta$}
+
+\begin{table}[h]
+\centering
+\caption{Casos particulares del esquema @@MINL38@@.}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{$\theta$} & \textbf{Nombre} & \textbf{Orden} & \textbf{Estabilidad} \\
+\hline
+\texttt{0} & Euler explícito & 1 & Condicional ($\Delta t \le 2/\lambda_{\max}$) \\
+\texttt{0.5} & Crank-Nicolson & \textbf{2} & Incondicional (A-estable) \\
+\texttt{2/3} & Galerkin & 1 & Incondicional \\
+\texttt{1} & Euler implícito & 1 & Incondicional, \textbf{L-estable} (default) \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Estabilidad no significa ausencia de oscilaciones}, y esta distinción decide el valor por defecto.
+
+Crank-Nicolson ($\theta = 1/2$) es de segundo orden y por tanto el más preciso, pero su factor de amplificación tiende a $-1$ para los modos de frecuencia alta en lugar de a $0$. Ante un \textbf{cambio brusco} ---un escalón de temperatura impuesto en la frontera, típico en el arranque--- produce oscilaciones amortiguadas lentamente, con temperaturas que pueden \textbf{salirse del rango de los datos}. Eso viola el \textit{principio del máximo} de la ecuación de difusión, según el cual la solución exacta nunca excede los extremos de los datos iniciales y de frontera: no es un resultado impreciso, es un resultado imposible.
+
+Euler implícito ($\theta = 1$) es sólo de primer orden, pero \textbf{L-estable}: amortigua los modos altos por completo en un paso y nunca oscila. Por eso es el default.
+
+En un ensayo con pared a $100$ y cuerpo inicialmente a $0$, con paso grande, $\theta = 1$ se mantiene en $[0, 100]$ y es monótono, mientras $\theta = 1/2$ alcanza $151.27$.
+
+Si su problema es suave y busca la precisión de segundo orden, use \texttt{theta: 0.5} conscientemente. El resultado expone el campo \texttt{order} (2 con Crank-Nicolson, 1 en el resto) para que el coste en precisión del default robusto sea visible.
+
+\subsection{Elección de $\Delta t$}
+
+Con $\theta \ge 0.5$ \textbf{ningún paso diverge}, pero eso no significa que cualquier paso sirva. La escala física la da la difusividad $\alpha = k/(\rho c)$ y el tamaño de elemento $h$:
+
+\[
+\Delta t_{\text{car}} \sim \frac{h^2}{\alpha}
+\]
+
+Es el tiempo que tarda el frente térmico en atravesar un elemento. Un $\Delta t$ mucho mayor es estable pero \textbf{se salta el transitorio} que se quiere observar. El solver reporta este valor al arrancar y avisa si el paso elegido lo supera ampliamente. Es información, no restricción.
+
+En el otro extremo, el transitorio no ha \textbf{terminado} hasta $t \gg L^2/\alpha$ con $L$ la dimensión global del dominio. Integrar por debajo de esa escala y comparar con el estacionario da diferencias que no son error del esquema, sino un análisis inacabado.
+
+\subsection{Capacidad \texttt{lumped} por defecto}
+
+A diferencia del análisis dinámico estructural, donde el default es \texttt{consistent}, aquí la matriz de capacidad se agrupa (\texttt{lumped}) por defecto. El motivo es el mismo principio del máximo: la capacidad consistente produce oscilaciones espurias ante un frente térmico abrupto. Los dos defaults invertidos ---\texttt{lumped} en el eje espacial y $\theta = 1$ en el temporal--- atacan el mismo fenómeno desde lados distintos.
+
+\subsection{Resultado}
+
+\texttt{ThetaMethodSolver} devuelve un \textbf{\texttt{ThermalTransientResult}}, no el \texttt{TransientResult} del análisis dinámico: no hay velocidad, aceleración ni coeficientes de Rayleigh que reportar.
+
+\begin{table}[h]
+\centering
+\caption{Campos de @@ICODE134@@.}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Campo / método} & \textbf{Descripción} \\
+\hline
+\texttt{t\_history} & Instantes almacenados, shape \texttt{(n\_stored,)} \\
+\texttt{T\_history} & Campo global, shape \texttt{(n\_dof, n\_stored)} \\
+\texttt{T\_final} & Campo en el último instante \\
+\texttt{temperature\_at(dof)} & Historia temporal de un DOF concreto \\
+\texttt{extremes()} & \texttt{(T\_min, T\_max)} sobre todos los nodos e instantes \\
+\texttt{n\_steps}, \texttt{theta}, \texttt{dt}, \texttt{order} & Parámetros efectivos del análisis \\
+\hline
+\end{tabularx}
+\end{table}
+\texttt{extremes()} es la herramienta de diagnóstico del principio del máximo: en un problema sin fuente, cualquier valor fuera del rango de los datos señala oscilación espuria del esquema, no un fenómeno físico.
+
+\section{Ejemplo completo: pared plana en régimen transitorio}
+
+Pared de acero de 2 m, inicialmente a 20 \ensuremath{^{\circ}}C, con una cara llevada súbitamente a 100 \ensuremath{^{\circ}}C.
+
+\begin{lstlisting}[language=yaml]
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [2.0, 0.0]}
+  - {id: 4, coords: [0.0, 0.5]}
+  - {id: 5, coords: [1.0, 0.5]}
+  - {id: 6, coords: [2.0, 0.5]}
+
+thermal_materials:
+  - {id: 1, type: ThermalConduction, k: 45.0, c: 460.0, density: 7850.0}
+
+elements:
+  - {id: 1, type: Quad4Thermal, nodes: [1, 2, 5, 4], material: 1, thickness: 0.3}
+  - {id: 2, type: Quad4Thermal, nodes: [2, 3, 6, 5], material: 1, thickness: 0.3}
+
+boundary_conditions:
+  - {node_id: 1, T: 100.0}
+  - {node_id: 4, T: 100.0}
+  - {node_id: 3, T: 20.0}
+  - {node_id: 6, T: 20.0}
+
+solver:
+  type: ThetaMethodSolver
+  dt: 2000.0
+  n_steps: 200
+  T_initial: 20.0
+
+\end{lstlisting}
+
+Con estos valores el nodo central llega a $59.998$, frente al $60$ exacto del perfil lineal estacionario. La diferencia \textbf{no es error del esquema}: con $\Delta t = 2000$ s y 200 pasos el análisis cubre $4\times10^5$ s, mientras el tiempo de difusión global de esta pared es $L^2/\alpha \approx 3.2\times10^5$ s --- el transitorio está terminando pero aún no ha terminado. Es exactamente el efecto descrito en «Elección de $\Delta t$»: alargando el análisis, el campo converge al perfil lineal $100 \to 20$ que da el \texttt{LinearSolver} sobre el mismo modelo, a precisión de máquina.
+
+Como la condición inicial (20 \ensuremath{^{\circ}}C) contradice el Dirichlet impuesto (100 \ensuremath{^{\circ}}C) en la cara izquierda, el solver \textbf{avisa} de la discontinuidad en $t=0$ sin abortar: un choque térmico es modelización legítima, y es precisamente el caso que motiva el default $\theta = 1$.
+
+\section{Limitaciones actuales}
+
+\begin{itemize}
+  \item \textbf{Sin convección ni radiación}. Una frontera con convección $q = h(T - T_\infty)$ debe modelarse hoy como flujo prescrito equivalente, lo que exige conocer $T$ de antemano --- es decir, no es un sustituto general.
+  \item \textbf{Sin acoplamiento termomecánico}: el campo de temperatura no produce deformación. Un análisis termoelástico requiere hoy resolver el térmico y trasladar el resultado a mano.
+  \item \textbf{Material lineal}: $k$ no depende de la temperatura, y no hay cambio de fase. Cualquiera de las dos cosas exigiría iteraciones de Newton dentro de cada paso temporal.
+  \item \textbf{Paso de tiempo constante}: no hay adaptación automática.
+  \item \textbf{Sólo elementos lineales}: \texttt{Quad4Thermal} y \texttt{Hex8Thermal}. No existen versiones cuadráticas ni triangulares/tetraédricas térmicas.
+\end{itemize}
+
+
+\newpage
+
+\chapter{Post-Procesamiento y Visualización}
+\label{cap:9}
 
 
 
@@ -1695,7 +2005,7 @@ output:
 \newpage
 
 \chapter{Ejemplos Completos}
-\label{cap:9}
+\label{cap:10}
 
 
 
@@ -1857,7 +2167,7 @@ output:
 \newpage
 
 \chapter{Uso Avanzado: API Programática}
-\label{cap:10}
+\label{cap:11}
 
 
 
@@ -1908,7 +2218,7 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 \newpage
 
 \chapter{Diagnóstico de Problemas}
-\label{cap:11}
+\label{cap:12}
 
 
 
@@ -1947,8 +2257,8 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 25 de agosto de 2026, 11:29\\[0.5em]
-Commit Git: \texttt{7b9acfb} (con cambios sin confirmar)\\[1em]
+Compilado el 25 de agosto de 2026, 17:01\\[0.5em]
+Commit Git: \texttt{91a6d3c} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

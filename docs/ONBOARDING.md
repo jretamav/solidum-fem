@@ -66,7 +66,7 @@ solidum_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 1148 verdes + 8 skipped (pytest); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
+├── tests/                        ← 1176 verdes + 8 skipped (pytest); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
 ├── docs/
 │   ├── adr/                      ← 0001-0012: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
@@ -152,7 +152,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ## 8. Antes de commitear
 
-1. `python -m pytest tests/ -q` verde (1148 pasan, 8 skipped es normal).
+1. `python -m pytest tests/ -q` verde (1176 pasan, 8 skipped es normal).
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
 4. **Pre-commit hooks**: no usar `--no-verify`. Si un hook falla, investigar la causa raíz.

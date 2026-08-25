@@ -197,7 +197,7 @@ La identidad de un programa se define tanto por su alcance como por sus límites
 
 \textbf{Casos para los que Solidum FEM es la herramienta indicada.} Investigación en mecánica de sólidos donde la prioridad es la \textbf{transparencia y la modificabilidad} del código: prototipado de modelos constitutivos nuevos antes de portarlos a un programa industrial; ensayo de variantes algorítmicas en solvers no lineales (predictores, correctores, criterios de longitud de arco); evaluación de formulaciones de elementos finitos contra soluciones analíticas y casos de referencia conocidos; trabajo docente y de tesis donde el estudiante debe comprender, modificar y validar cada pieza del cálculo.
 
-\textbf{Casos para los que Solidum FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Problemas multifísicos ---análisis térmico, acoplamiento termomecánico, contacto---: están previstos como evolución futura pero no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
+\textbf{Casos para los que Solidum FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Problemas multifísicos con acoplamiento: la conducción de calor está implementada (Etapa 8) pero de forma \textbf{desacoplada} del campo mecánico ---no hay deformación térmica---; el acoplamiento termomecánico y el contacto están previstos como evolución futura y no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
 
 \textbf{Posición frente a programas de referencia.} Solidum FEM no compite en escala con los programas industriales: complementa el flujo de investigación. La hipótesis es que el código que el investigador puede leer, modificar y validar línea a línea es más valioso, en su contexto, que un programa cerrado del que se obtiene un resultado sin posibilidad de auditoría interna. Cuando el modelo investigado madura y debe aplicarse a producción, la traducción a un programa industrial es la trayectoria natural.
 
@@ -573,6 +573,32 @@ Hexaedro lagrangiano $Q_2$ (27 nodos) & \ensuremath{\checkmark} \texttt{Hex27} &
 \end{table}
 La sub-etapa A.ter introduce la base interna \texttt{\_HigherOrderSolid3D} (paritaria con \texttt{\_HigherOrderSolid2D} de la familia 2D) que comparte los bucles de Gauss para rigidez, fuerzas internas, gauss state, body load, face traction y matriz de masa. Las tres subclases (\texttt{Hex20}, \texttt{Hex27}, \texttt{Tet10}) sólo declaran sus funciones de forma 3D, su cuadratura por defecto, su cuadratura de masa específica (cuando difiere), las funciones de forma 2D de cara y la cuadratura de cara. La centralización aplica la regla de los dos casos reales: se introduce al entrar el \texttt{Hex27} (segundo caso cuadrático después del \texttt{Hex20} standalone) y se reutiliza inmediatamente por el \texttt{Tet10} con cara triangular \texttt{Tri6}. Cuadraturas nuevas registradas: \texttt{tet\_4} (Stroud 4 puntos, orden 2, para K) y \texttt{tet\_15} (Keast 15 puntos, orden 5, para masa del \texttt{Tet10}).
 
+\subsection{Familia térmica}
+
+Elementos de conducción de calor con un grado de libertad escalar \texttt{T} por nodo. Constituyen una familia \textbf{paralela} a las anteriores, no una extensión de ellas: el campo incógnita es escalar en lugar de vectorial, y la magnitud derivada es el gradiente $\nabla T$, un vector genuino de dos o tres componentes.
+
+Esa diferencia tiene una consecuencia que conviene subrayar, porque rompe una regularidad presente en el resto del programa: \textbf{el problema térmico no emplea notación de Voigt}. La notación de Voigt existe para comprimir un tensor \textit{simétrico} de segundo orden en un vector, aprovechando que sus componentes cruzadas son iguales dos a dos; un gradiente escalar no es un tensor simétrico y no admite ni requiere esa compresión. La matriz $\mathbf B$ térmica es por tanto el gradiente crudo de las funciones de forma, $\partial N/\partial x$, sin reordenamiento de componentes ni los factores $\gamma_{ij} = 2\varepsilon_{ij}$ de la convención mecánica. En correspondencia, los elementos térmicos declaran el atributo \texttt{FLUX\_DIM} (valor 2 o 3) en lugar de \texttt{STRAIN\_DIM}.
+
+\begin{table}[h]
+\centering
+\caption{Cobertura de la familia térmica.}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{Topología} & \textbf{Elemento} & \textbf{\texttt{FLUX\_DIM}} & \textbf{Cuadratura por defecto} \\
+\hline
+Cuadrilátero bilineal $Q_1$ (4 nodos) & \texttt{Quad4Thermal} & 2 & 2 x 2 \\
+Hexaedro trilineal $Q_1$ (8 nodos) & \texttt{Hex8Thermal} & 3 & 2 x 2 x 2 \\
+\hline
+\end{tabularx}
+\end{table}
+Ambos comparten los núcleos de cálculo de funciones de forma y jacobiano con sus homólogos mecánicos \texttt{Quad4} y \texttt{Hex8}, y una base interna común \texttt{\_ThermalSolid} que concentra el bucle de integración de la matriz de conductividad, la matriz de capacidad calorífica en sus dos formas, la fuente volumétrica y el post-proceso.
+
+Esa base se introdujo con el \textbf{primer} elemento de la familia y no con el segundo, apartándose deliberadamente de la regla general del proyecto de no centralizar hasta disponer de dos casos reales. La justificación es que la ecuación discretizada $\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F$ es idéntica en dos y tres dimensiones ---la dimensión sólo altera el tamaño de la matriz $\mathbf B$---, de modo que la abstracción no era especulativa sino la constatación de una identidad formal previa. La decisión quedó validada a posteriori: la incorporación del \texttt{Hex8Thermal} no requirió modificar la base.
+
+La familia expone \texttt{compute\_gauss\_state(T)}, que devuelve el gradiente y el flujo por punto de integración, en correspondencia con el cierre de contrato por dominio que el \hyperref[adr:0012]{ADR 0012} estableció para los sólidos. No expone \texttt{internal\_forces}, que corresponde a los elementos estructurales unidimensionales.
+
+\textbf{Convención de signo del flujo de frontera} (Reglas.md §5): un flujo prescrito positivo, $\bar q > 0$, representa flujo \textbf{saliente} del dominio, es decir enfriamiento. El signo procede de la forma débil, donde el término de frontera aparece como $-\int_\Gamma w\,\bar q\,d\Gamma$. Un borde o cara sobre el que no se declara condición alguna es \textbf{adiabático}, por analogía directa con el borde libre de tracción del problema mecánico.
+
 \subsection{Familias adicionales no implementadas}
 
 \begin{itemize}
@@ -654,11 +680,18 @@ Implementados en la versión actual:
   \item \textit{Análisis sísmico por combinación modal espectral} (\hyperref[adr:0009]{ADR 0009} fase 7). Cálculo modal interno + factores de participación + combinación SRSS o CQC contra un espectro de respuesta tabulado o callable. Combinación: \texttt{ResponseSpectrumSolver} con materiales lineales, \texttt{density} declarada y un espectro normativo o equivalente.
 \end{itemize}
 
+\begin{itemize}
+  \item \textit{Conducción de calor estacionaria}. Resolución de $\mathbf K\,\mathbf T = \mathbf F$ con la ley de Fourier $\mathbf q = -\mathbf k\cdot\nabla T$, condiciones de Dirichlet (temperatura impuesta) y de Neumann (flujo prescrito). Combinación: \texttt{LinearSolver} con \texttt{ThermalConduction} y elementos de la familia térmica. Merece señalarse que este régimen \textbf{no requirió un solver propio}: el solver lineal existente, concebido para el problema mecánico, resuelve el térmico sin modificación alguna. La razón es que ni el ensamblaje, ni la imposición de restricciones por eliminación (\hyperref[adr:0004]{ADR 0004}), ni el despacho algebraico (\hyperref[adr:0003]{ADR 0003}) hacen suposición alguna sobre el significado físico del grado de libertad; operan sobre un sistema algebraico y sobre las propiedades de su matriz. La incorporación del campo térmico constituyó, en ese sentido, una verificación empírica de esas decisiones frente a un campo físico que no existía cuando se tomaron.
+  \item \textit{Conducción de calor transitoria}. Integración temporal de $\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F(t)$ por el método $\theta$. Combinación: \texttt{ThetaMethodSolver} con material que declare densidad y calor específico. Este esquema \textbf{sí} constituye una familia de solver propia y no una variante de la familia Newmark: la ecuación térmica es de \textbf{primer orden} en el tiempo, mientras la familia Newmark integra la ecuación de segundo orden mediante hipótesis sobre la aceleración dentro del paso. En conducción no existe segunda derivada temporal sobre la que aplicar tales hipótesis, y forzar el esquema anulando la matriz de masa lo degenera. En correspondencia, el solver no admite amortiguamiento de Rayleigh ---modelo de disipación propio de la ecuación de segundo orden, mientras que aquí la disipación es la conducción misma, ya contenida en $\mathbf K$--- ni condición inicial de velocidad, y devuelve un tipo de resultado específico, \texttt{ThermalTransientResult}.
+\end{itemize}
+
+Ambos regímenes térmicos operan sobre el campo de temperatura de forma independiente del campo mecánico: no existe deformación térmica y los dos análisis no se comunican.
+
 Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
 
 \begin{itemize}
-  \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
-  \item \pendiente{Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).}
+  \item \pendiente{Conducción no lineal --- conductividad dependiente de la temperatura, radiación y cambio de fase; los tres exigen iteraciones de Newton dentro de cada paso, que el esquema actual evita por hipótesis de linealidad.}
+  \item \pendiente{Condición de frontera de convección (Robin), q = h (T - T\_inf); añade un término a la matriz de conductividad y otro al vector de cargas, sin alterar la estructura del solver.}
   \item \pendiente{Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.}
   \item \pendiente{Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.}
   \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, 100/30/30) y multi-support para diferencias de movimiento entre apoyos.}
@@ -1024,7 +1057,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
 
 \begin{itemize}
-  \item \pendiente{ADR para la introducción del problema térmico, incluyendo la generalización del concepto de DOF a magnitudes escalares no mecánicas.}
+  \item El problema térmico se incorporó en la Etapa 8 \textbf{sin ADR propio}, a diferencia de lo previsto aquí. La razón es que no rompió contrato alguno ni exigió la generalización del concepto de grado de libertad que se anticipaba: la infraestructura resultó ya agnóstica al campo físico, y la familia térmica reutilizó el patrón de familia paralela con registro propio que el \hyperref[adr:0010]{ADR 0010} había establecido para los materiales cohesivos. Las convenciones específicas ---signo del flujo de frontera saliente, ausencia de notación de Voigt en el problema escalar--- se registraron en \texttt{Reglas.md} §5. Un ADR quedaría justificado si se incorpora el acoplamiento, que sí obliga a decidir sobre el contrato de material.
   \item \pendiente{ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.}
 \end{itemize}
 
@@ -1184,19 +1217,26 @@ Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo \texttt{mass\_lum
 
 \section{Fase 5 --- Problema térmico estacionario y transitorio}
 
-\textbf{Estado}: \pendiente{Implementación de la fase 5 --- problema térmico.}
+\textbf{Estado}: implementada en su núcleo de conducción pura (Etapa 8, agosto de 2026). Quedan fuera la convección, la radiación y toda forma de no linealidad térmica.
 
-\textbf{Cambios respecto a las fases anteriores}:
+\textbf{Cambios efectivamente introducidos}:
 
 \begin{itemize}
-  \item Aparece un campo escalar nuevo: la temperatura \texttt{T}. Esto obliga a generalizar el concepto de DOF: hasta ahora todos los DOF eran mecánicos (desplazamientos, rotaciones); ahora se incorporan DOF térmicos.
-  \item Aparece la matriz de conductividad \texttt{K\_t} (análogo térmico de la rigidez) y la matriz de capacidad \texttt{C\_t} (análogo térmico de la masa).
-  \item Se introduce una nueva familia de elementos térmicos, paralela a la mecánica. Cada elemento térmico declara \texttt{DOF\_NAMES = ['T']} y consume materiales con propiedades térmicas (conductividad, capacidad, fuente).
-  \item Aparece una nueva familia de materiales térmicos con interfaz propia: \texttt{compute\_flux\_and\_tangent(grad\_T, state)}.
-  \item En transitorio, se reutilizan los integradores temporales de la fase 2, adaptados al sistema térmico (Crank-Nicolson, theta-método).
+  \item Un campo escalar nuevo, la temperatura \texttt{T}, con elementos que declaran \texttt{DOF\_NAMES = ['T']}.
+  \item Las matrices de conductividad y de capacidad calorífica, análogos térmicos de la rigidez y de la masa.
+  \item Una familia de elementos térmicos paralela a la mecánica (\texttt{Quad4Thermal}, \texttt{Hex8Thermal}) sobre base común \texttt{\_ThermalSolid}, y una familia de materiales térmicos con registro e interfaz propios.
+  \item Un solver de integración temporal de primer orden, \texttt{ThetaMethodSolver}, con tipo de resultado específico.
 \end{itemize}
 
-\textbf{Topología prevista}:
+\textbf{Contraste entre lo previsto y lo ocurrido.} Esta fase se había estimado de riesgo \textit{medio} por ser «la primera que rompe la suposición implícita de que todos los DOF son mecánicos, presente en numerosos puntos del código». Se anticipaban tres consecuencias: un atributo \texttt{DOF\_KIND} para clasificar cada grado de libertad, una posible escisión del contrato \texttt{Element} en ramas mecánica y térmica, y la adaptación del exportador de resultados.
+
+Ninguna de las dos primeras resultó necesaria. La suposición que se temía no estaba en el código: el ensamblador, la imposición de restricciones por eliminación y el despacho algebraico operan sobre índices de grado de libertad y sobre propiedades de la matriz, sin consultar en ningún punto el significado físico del campo. Las condiciones de frontera y las cargas nodales se aplican por \textit{nombre} de grado de libertad, de modo que \texttt{T} funcionó por el mismo mecanismo genérico que \texttt{ux}. El régimen estacionario, en consecuencia, no requirió solver alguno: el solver lineal existente resolvió el problema de conducción sin una sola línea de modificación.
+
+La tercera predicción sí se confirmó: \textbf{el exportador VTK escribe únicamente campos mecánicos} ---desplazamientos y rotaciones--- y no exporta el campo de temperatura. Es hoy la limitación práctica más visible del subsistema térmico, y queda registrada como tal.
+
+La lección de arquitectura que deja la fase es que el coste real de la extensión no se concentró donde la previsión lo situaba. Lo caro no fue generalizar la infraestructura ---que ya era agnóstica al campo, aunque nadie lo hubiera comprobado--- sino la física propia del problema: la elección de los esquemas por defecto contra el principio del máximo de la ecuación de difusión, y la constatación de que la ecuación de conducción, al ser de primer orden en el tiempo, no admite reutilizar la familia de integradores de Newmark. La interfaz del material tampoco fue la anticipada \texttt{compute\_flux\_and\_tangent(grad\_T, state)}, sino \texttt{compute\_flux(grad\_T)} sin argumento de estado, porque la conducción de Fourier carece de variables internas con historia.
+
+\textbf{Topología resultante}:
 
 \begin{lstlisting}
 [Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K_m, M_m, K_t, C_t, solvers] - [Salida]
@@ -1208,7 +1248,7 @@ Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo \texttt{mass\_lum
 \end{lstlisting}
 
 \begin{infobox}{Riesgo de arquitectura}
-Medio. Es la primera fase que rompe la suposición implícita "todos los DOF son mecánicos" presente hoy en numerosos puntos del código. La generalización requiere atributo \texttt{DOF\_KIND} o similar en cada DOF (mecánico, térmico, futuro presión, futuro químico); posible separación entre \texttt{MechanicalElement} y \texttt{ThermalElement} con base común \texttt{Element}, o un único \texttt{Element} polimórfico (decisión a tomar en el ADR de apertura); adaptación del \texttt{VtkExporter} para escribir campos escalares además de vectoriales.
+Resultó \textbf{bajo}, frente al riesgo medio estimado. La infraestructura existente absorbió el campo escalar sin generalización previa, lo que constituye una verificación empírica de las decisiones de despacho algebraico e imposición de restricciones frente a un campo físico que no existía cuando se tomaron. La deuda pendiente es de salida, no de arquitectura: la exportación del campo de temperatura a formato VTK.
 \end{infobox}
 
 \section{Fase 6 --- Acoplamiento termo-mecánico}
@@ -1525,9 +1565,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
   \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
 
-  \item \pendiente{Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).}
+  \item \pendiente{Conducción no lineal --- conductividad dependiente de la temperatura, radiación y cambio de fase; los tres exigen iteraciones de Newton dentro de cada paso, que el esquema actual evita por hipótesis de linealidad.}
 
-  \item \pendiente{Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).}
+  \item \pendiente{Condición de frontera de convección (Robin), q = h (T - T\_inf); añade un término a la matriz de conductividad y otro al vector de cargas, sin alterar la estructura del solver.}
 
   \item \pendiente{Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.}
 
@@ -1544,8 +1584,6 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \begin{itemize}
 
-  \item \pendiente{ADR para la introducción del problema térmico, incluyendo la generalización del concepto de DOF a magnitudes escalares no mecánicas.}
-
   \item \pendiente{ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.}
 
 \end{itemize}
@@ -1556,8 +1594,6 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \addcontentsline{toc}{section}{Evolución de la arquitectura}
 
 \begin{itemize}
-
-  \item \pendiente{Implementación de la fase 5 --- problema térmico.}
 
   \item \pendiente{Implementación de la fase 6 --- acoplamiento termo-mecánico.}
 
@@ -1575,8 +1611,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 25 de agosto de 2026, 11:30\\[0.5em]
-Commit Git: \texttt{7b9acfb} (con cambios sin confirmar)\\[1em]
+Compilado el 25 de agosto de 2026, 16:58\\[0.5em]
+Commit Git: \texttt{91a6d3c} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

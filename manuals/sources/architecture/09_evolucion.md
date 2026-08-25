@@ -134,17 +134,24 @@ Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo `mass_lumping.py`
 
 ## Fase 5 — Problema térmico estacionario y transitorio
 
-**Estado**: [PENDIENTE: Implementación de la fase 5 — problema térmico.]
+**Estado**: implementada en su núcleo de conducción pura (Etapa 8, agosto de 2026). Quedan fuera la convección, la radiación y toda forma de no linealidad térmica.
 
-**Cambios respecto a las fases anteriores**:
+**Cambios efectivamente introducidos**:
 
-- Aparece un campo escalar nuevo: la temperatura `T`. Esto obliga a generalizar el concepto de DOF: hasta ahora todos los DOF eran mecánicos (desplazamientos, rotaciones); ahora se incorporan DOF térmicos.
-- Aparece la matriz de conductividad `K_t` (análogo térmico de la rigidez) y la matriz de capacidad `C_t` (análogo térmico de la masa).
-- Se introduce una nueva familia de elementos térmicos, paralela a la mecánica. Cada elemento térmico declara `DOF_NAMES = ['T']` y consume materiales con propiedades térmicas (conductividad, capacidad, fuente).
-- Aparece una nueva familia de materiales térmicos con interfaz propia: `compute_flux_and_tangent(grad_T, state)`.
-- En transitorio, se reutilizan los integradores temporales de la fase 2, adaptados al sistema térmico (Crank-Nicolson, theta-método).
+- Un campo escalar nuevo, la temperatura `T`, con elementos que declaran `DOF_NAMES = ['T']`.
+- Las matrices de conductividad y de capacidad calorífica, análogos térmicos de la rigidez y de la masa.
+- Una familia de elementos térmicos paralela a la mecánica (`Quad4Thermal`, `Hex8Thermal`) sobre base común `_ThermalSolid`, y una familia de materiales térmicos con registro e interfaz propios.
+- Un solver de integración temporal de primer orden, `ThetaMethodSolver`, con tipo de resultado específico.
 
-**Topología prevista**:
+**Contraste entre lo previsto y lo ocurrido.** Esta fase se había estimado de riesgo *medio* por ser «la primera que rompe la suposición implícita de que todos los DOF son mecánicos, presente en numerosos puntos del código». Se anticipaban tres consecuencias: un atributo `DOF_KIND` para clasificar cada grado de libertad, una posible escisión del contrato `Element` en ramas mecánica y térmica, y la adaptación del exportador de resultados.
+
+Ninguna de las dos primeras resultó necesaria. La suposición que se temía no estaba en el código: el ensamblador, la imposición de restricciones por eliminación y el despacho algebraico operan sobre índices de grado de libertad y sobre propiedades de la matriz, sin consultar en ningún punto el significado físico del campo. Las condiciones de frontera y las cargas nodales se aplican por *nombre* de grado de libertad, de modo que `T` funcionó por el mismo mecanismo genérico que `ux`. El régimen estacionario, en consecuencia, no requirió solver alguno: el solver lineal existente resolvió el problema de conducción sin una sola línea de modificación.
+
+La tercera predicción sí se confirmó: **el exportador VTK escribe únicamente campos mecánicos** —desplazamientos y rotaciones— y no exporta el campo de temperatura. Es hoy la limitación práctica más visible del subsistema térmico, y queda registrada como tal.
+
+La lección de arquitectura que deja la fase es que el coste real de la extensión no se concentró donde la previsión lo situaba. Lo caro no fue generalizar la infraestructura —que ya era agnóstica al campo, aunque nadie lo hubiera comprobado— sino la física propia del problema: la elección de los esquemas por defecto contra el principio del máximo de la ecuación de difusión, y la constatación de que la ecuación de conducción, al ser de primer orden en el tiempo, no admite reutilizar la familia de integradores de Newmark. La interfaz del material tampoco fue la anticipada `compute_flux_and_tangent(grad_T, state)`, sino `compute_flux(grad_T)` sin argumento de estado, porque la conducción de Fourier carece de variables internas con historia.
+
+**Topología resultante**:
 
 ```
 [Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K_m, M_m, K_t, C_t, solvers] - [Salida]
@@ -155,7 +162,7 @@ Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo `mass_lumping.py`
 ```
 
 ```callout Riesgo de arquitectura
-Medio. Es la primera fase que rompe la suposición implícita "todos los DOF son mecánicos" presente hoy en numerosos puntos del código. La generalización requiere atributo `DOF_KIND` o similar en cada DOF (mecánico, térmico, futuro presión, futuro químico); posible separación entre `MechanicalElement` y `ThermalElement` con base común `Element`, o un único `Element` polimórfico (decisión a tomar en el ADR de apertura); adaptación del `VtkExporter` para escribir campos escalares además de vectoriales.
+Resultó **bajo**, frente al riesgo medio estimado. La infraestructura existente absorbió el campo escalar sin generalización previa, lo que constituye una verificación empírica de las decisiones de despacho algebraico e imposición de restricciones frente a un campo físico que no existía cuando se tomaron. La deuda pendiente es de salida, no de arquitectura: la exportación del campo de temperatura a formato VTK.
 ```
 
 ## Fase 6 — Acoplamiento termo-mecánico

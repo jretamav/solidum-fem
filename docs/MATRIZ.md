@@ -121,6 +121,47 @@ Familia **paralela**, no una fila más de la tabla anterior. La compatibilidad n
 
 ---
 
+### 2.c Sintaxis YAML del análisis térmico
+
+La familia térmica es accesible desde YAML como cualquier otro componente del catálogo. Tres bloques específicos, todos verificados por [`tests/test_thermal_yaml.py`](../tests/test_thermal_yaml.py):
+
+| Bloque | Papel | Notas |
+|---|---|---|
+| `thermal_materials` | Paralelo a `materials`, con espacio de nombres de `type` propio | Un elemento resuelve su `material: <id>` contra el bloque donde ese id se declaró; no hay que indicar la familia |
+| `thermal_loads.body_source` | Fuente volumétrica `Q` [W/m³] | `elements: [...]` la acota a un subconjunto; sin ese campo va a todo el dominio |
+| `thermal_loads.boundary_flux` | Flujo prescrito `q̄` [W/m²] | `edge:` en 2D, `face:` en 3D. **`q̄ > 0` = saliente** (enfriamiento) |
+
+Las condiciones Dirichlet y las fuentes nodales concentradas **no necesitan sintaxis nueva**: `boundary_conditions` y `point_loads` se aplican por *nombre* de DOF, así que `T: <valor>` funciona por el mecanismo genérico ya existente. Fue lo único de la cadena térmica que no hubo que cablear.
+
+```yaml
+thermal_materials:
+  - {id: 1, type: ThermalConduction, k: 45.0, c: 460.0, density: 7850.0}
+
+elements:
+  - {id: 1, type: Quad4Thermal, nodes: [1,2,3,4], material: 1, thickness: 0.3}
+
+boundary_conditions:
+  - {node_id: 1, T: 100.0}
+
+thermal_loads:
+  body_source:
+    - {Q: 1.0e5}
+  boundary_flux:
+    - {element: 1, edge: 2, q: 500.0}
+
+solver:
+  type: ThetaMethodSolver      # o LinearSolver para el estacionario
+  dt: 60.0
+  n_steps: 500
+  T_initial: 20.0
+```
+
+**Limitación de salida**: el `VtkExporter` escribe únicamente campos mecánicos (desplazamientos y rotaciones) y **no exporta el campo de temperatura**. Es la deuda práctica más visible del subsistema térmico; el resultado se consulta hoy desde `SolveResult.U` o `ThermalTransientResult.T_history`.
+
+**Carga variable en el tiempo**: el YAML deriva un `F_func` constante de `thermal_loads`. Para una carga o un Dirichlet que varíen en el tiempo hay que construir el solver desde código y pasar `F_func` o `dirichlet_func` propios.
+
+---
+
 ## 3. Casos test representativos por combinación
 
 Selección de tests "canónicos" que cubren combinaciones clave. La intención no es enumerar la suite completa (ver el recuento vigente en [STATUS.md](STATUS.md)) sino apuntar al fichero de referencia para cada celda no trivial.
@@ -163,6 +204,7 @@ Selección de tests "canónicos" que cubren combinaciones clave. La intención n
 | `Quad4Thermal` + `ThermalConduction` (estacionario)            | [`test_quad4_thermal.py`](../tests/test_quad4_thermal.py) — conductividad, capacidad consistente/lumped, fuente volumétrica, flujo por borde, pared plana vs perfil lineal analítico con el `LinearSolver` sin modificar |
 | `Hex8Thermal` + `ThermalConduction` (estacionario + cross-check) | [`test_hex8_thermal.py`](../tests/test_hex8_thermal.py) — rango 7/8 con el modo nulo de temperatura uniforme, 4 hourglass con cuadratura reducida, flujo en las 6 caras, **cross-check 2D↔3D** contra `Quad4Thermal` |
 | Transitorio térmico θ-method (orden, estabilidad, L-estabilidad) | [`test_theta_method.py`](../tests/test_theta_method.py) — orden temporal 1 / **2** / 1 para θ = 1 / 0.5 / 2/3 contra la solución exacta del sistema semidiscreto; principio del máximo; Carslaw-Jaeger semi-infinito; Dirichlet variable en el tiempo con factorización única; cross-check 2D↔3D paso a paso |
+| Vía YAML del análisis térmico (bloques, cargas, despacho, no-regresión mecánica) | [`test_thermal_yaml.py`](../tests/test_thermal_yaml.py) — `thermal_materials`, `thermal_loads` con fuente y flujo contra solución analítica, despacho a `thermal_transient`, y blindaje de que un modelo mecánico no cambia de comportamiento |
 | `solidum.run` y `solidum.run_yaml` end-to-end (estático + dinámico) | [`test_entry.py`](../tests/test_entry.py)                                          |
 | Peso propio (`assemble_self_weight`, ADR 0008)                 | [`test_density_self_weight.py`](../tests/test_density_self_weight.py) · [`test_body_force_pipeline.py`](../tests/test_body_force_pipeline.py) · [`test_body_load_truss_frame.py`](../tests/test_body_load_truss_frame.py) |
 

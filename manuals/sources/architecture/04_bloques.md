@@ -151,6 +151,26 @@ con $\gamma_{ij} = 2\,\varepsilon_{ij}$ engineering (ADR 0012). A diferencia de 
 
 La sub-etapa A.ter introduce la base interna `_HigherOrderSolid3D` (paritaria con `_HigherOrderSolid2D` de la familia 2D) que comparte los bucles de Gauss para rigidez, fuerzas internas, gauss state, body load, face traction y matriz de masa. Las tres subclases (`Hex20`, `Hex27`, `Tet10`) sólo declaran sus funciones de forma 3D, su cuadratura por defecto, su cuadratura de masa específica (cuando difiere), las funciones de forma 2D de cara y la cuadratura de cara. La centralización aplica la regla de los dos casos reales: se introduce al entrar el `Hex27` (segundo caso cuadrático después del `Hex20` standalone) y se reutiliza inmediatamente por el `Tet10` con cara triangular `Tri6`. Cuadraturas nuevas registradas: `tet_4` (Stroud 4 puntos, orden 2, para K) y `tet_15` (Keast 15 puntos, orden 5, para masa del `Tet10`).
 
+### Familia térmica
+
+Elementos de conducción de calor con un grado de libertad escalar `T` por nodo. Constituyen una familia **paralela** a las anteriores, no una extensión de ellas: el campo incógnita es escalar en lugar de vectorial, y la magnitud derivada es el gradiente $\nabla T$, un vector genuino de dos o tres componentes.
+
+Esa diferencia tiene una consecuencia que conviene subrayar, porque rompe una regularidad presente en el resto del programa: **el problema térmico no emplea notación de Voigt**. La notación de Voigt existe para comprimir un tensor *simétrico* de segundo orden en un vector, aprovechando que sus componentes cruzadas son iguales dos a dos; un gradiente escalar no es un tensor simétrico y no admite ni requiere esa compresión. La matriz $\mathbf B$ térmica es por tanto el gradiente crudo de las funciones de forma, $\partial N/\partial x$, sin reordenamiento de componentes ni los factores $\gamma_{ij} = 2\varepsilon_{ij}$ de la convención mecánica. En correspondencia, los elementos térmicos declaran el atributo `FLUX_DIM` (valor 2 o 3) en lugar de `STRAIN_DIM`.
+
+[TABLA: Cobertura de la familia térmica.]
+| Topología | Elemento | `FLUX_DIM` | Cuadratura por defecto |
+|---|---|---|---|
+| Cuadrilátero bilineal $Q_1$ (4 nodos) | `Quad4Thermal` | 2 | 2 x 2 |
+| Hexaedro trilineal $Q_1$ (8 nodos) | `Hex8Thermal` | 3 | 2 x 2 x 2 |
+
+Ambos comparten los núcleos de cálculo de funciones de forma y jacobiano con sus homólogos mecánicos `Quad4` y `Hex8`, y una base interna común `_ThermalSolid` que concentra el bucle de integración de la matriz de conductividad, la matriz de capacidad calorífica en sus dos formas, la fuente volumétrica y el post-proceso.
+
+Esa base se introdujo con el **primer** elemento de la familia y no con el segundo, apartándose deliberadamente de la regla general del proyecto de no centralizar hasta disponer de dos casos reales. La justificación es que la ecuación discretizada $\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F$ es idéntica en dos y tres dimensiones —la dimensión sólo altera el tamaño de la matriz $\mathbf B$—, de modo que la abstracción no era especulativa sino la constatación de una identidad formal previa. La decisión quedó validada a posteriori: la incorporación del `Hex8Thermal` no requirió modificar la base.
+
+La familia expone `compute_gauss_state(T)`, que devuelve el gradiente y el flujo por punto de integración, en correspondencia con el cierre de contrato por dominio que el ADR 0012 estableció para los sólidos. No expone `internal_forces`, que corresponde a los elementos estructurales unidimensionales.
+
+**Convención de signo del flujo de frontera** (Reglas.md §5): un flujo prescrito positivo, $\bar q > 0$, representa flujo **saliente** del dominio, es decir enfriamiento. El signo procede de la forma débil, donde el término de frontera aparece como $-\int_\Gamma w\,\bar q\,d\Gamma$. Un borde o cara sobre el que no se declara condición alguna es **adiabático**, por analogía directa con el borde libre de tracción del problema mecánico.
+
 ### Familias adicionales no implementadas
 
 - [PENDIENTE: Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).]
@@ -222,10 +242,15 @@ Implementados en la versión actual:
 - *Respuesta forzada armónica en el dominio de la frecuencia* (ADR 0009 fase 6). Resolución directa del sistema complejo `(−ω²M + iωC + K)·û = F̂` por barrido en `ω`. Combinación: `HarmonicSolver` con amortiguamiento Rayleigh y excitación armónica.
 - *Análisis sísmico por combinación modal espectral* (ADR 0009 fase 7). Cálculo modal interno + factores de participación + combinación SRSS o CQC contra un espectro de respuesta tabulado o callable. Combinación: `ResponseSpectrumSolver` con materiales lineales, `density` declarada y un espectro normativo o equivalente.
 
+- *Conducción de calor estacionaria*. Resolución de $\mathbf K\,\mathbf T = \mathbf F$ con la ley de Fourier $\mathbf q = -\mathbf k\cdot\nabla T$, condiciones de Dirichlet (temperatura impuesta) y de Neumann (flujo prescrito). Combinación: `LinearSolver` con `ThermalConduction` y elementos de la familia térmica. Merece señalarse que este régimen **no requirió un solver propio**: el solver lineal existente, concebido para el problema mecánico, resuelve el térmico sin modificación alguna. La razón es que ni el ensamblaje, ni la imposición de restricciones por eliminación (ADR 0004), ni el despacho algebraico (ADR 0003) hacen suposición alguna sobre el significado físico del grado de libertad; operan sobre un sistema algebraico y sobre las propiedades de su matriz. La incorporación del campo térmico constituyó, en ese sentido, una verificación empírica de esas decisiones frente a un campo físico que no existía cuando se tomaron.
+- *Conducción de calor transitoria*. Integración temporal de $\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F(t)$ por el método $\theta$. Combinación: `ThetaMethodSolver` con material que declare densidad y calor específico. Este esquema **sí** constituye una familia de solver propia y no una variante de la familia Newmark: la ecuación térmica es de **primer orden** en el tiempo, mientras la familia Newmark integra la ecuación de segundo orden mediante hipótesis sobre la aceleración dentro del paso. En conducción no existe segunda derivada temporal sobre la que aplicar tales hipótesis, y forzar el esquema anulando la matriz de masa lo degenera. En correspondencia, el solver no admite amortiguamiento de Rayleigh —modelo de disipación propio de la ecuación de segundo orden, mientras que aquí la disipación es la conducción misma, ya contenida en $\mathbf K$— ni condición inicial de velocidad, y devuelve un tipo de resultado específico, `ThermalTransientResult`.
+
+Ambos regímenes térmicos operan sobre el campo de temperatura de forma independiente del campo mecánico: no existe deformación térmica y los dos análisis no se comunican.
+
 Previstos y no implementados (dirección del proyecto, sin compromiso de calendario):
 
-- [PENDIENTE: Problema térmico estacionario lineal y no lineal (conductividad dependiente de la temperatura).]
-- [PENDIENTE: Problema térmico transitorio con esquemas de integración temporal (Crank-Nicolson, theta-método).]
+- [PENDIENTE: Conducción no lineal — conductividad dependiente de la temperatura, radiación y cambio de fase; los tres exigen iteraciones de Newton dentro de cada paso, que el esquema actual evita por hipótesis de linealidad.]
+- [PENDIENTE: Condición de frontera de convección (Robin), q = h (T - T_inf); añade un término a la matriz de conductividad y otro al vector de cargas, sin alterar la estructura del solver.]
 - [PENDIENTE: Acoplamiento termo-mecánico desacoplado (staggered) para casos en que la influencia mecánica sobre el campo térmico sea despreciable.]
 - [PENDIENTE: Acoplamiento termo-mecánico monolítico para problemas con fuerte interacción bidireccional.]
 - [PENDIENTE: Excitación sísmica multi-direccional simultánea (CQC3, 100/30/30) y multi-support para diferencias de movimiento entre apoyos.]
