@@ -274,13 +274,32 @@ def get_git_commit() -> str:
 
 
 def get_git_dirty() -> bool:
+    """Indica si hay cambios sin confirmar, EXCLUYENDO los artefactos generados.
+
+    El sello del colofón existe para que el lector sepa de qué versión exacta
+    del repositorio procede el documento. Contar cualquier cambio hace ese
+    sello inservible por una carrera intrínseca: los ``.tex`` y ``.pdf`` están
+    versionados, y este mismo build los reescribe justo antes de leer el
+    estado, de modo que **todo** manual saldría marcado como sucio aunque el
+    repositorio estuviera impecable.
+
+    Filtrar los artefactos que el propio build produce deja el sello midiendo
+    lo que importa: si las **fuentes** (specs, markdown, código) estaban
+    confirmadas cuando se generó el documento.
+    """
+    generados = (".tex", ".pdf", ".aux", ".log", ".out", ".toc")
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=ROOT, capture_output=True, text=True, timeout=5,
         )
-        if result.returncode == 0:
-            return bool(result.stdout.strip())
+        if result.returncode != 0:
+            return False
+        for linea in result.stdout.splitlines():
+            ruta = linea[3:].strip().strip('"')
+            if not ruta.lower().endswith(generados):
+                return True
+        return False
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     return False
