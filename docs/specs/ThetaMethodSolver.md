@@ -125,7 +125,7 @@ Devuelve un `ThermalTransientResult` con `t_history`, `T_history`, `n_steps` y `
 ```yaml
 name: ThetaMethodSolver
 kind: solver
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   pipeline_kind: thermal_transient
@@ -257,13 +257,55 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- **Archivo**: `solidum/math/solvers/theta_method.py`
+- **Clase**: `ThetaMethodSolver` (`@SolverRegistry.register`, `PIPELINE_KIND = "thermal_transient"`)
+- **Resultado**: `ThermalTransientResult` en `solidum/results.py`
+- **Entrypoint**: `solidum.entry.run_thermal_transient`
+- **Tests**: `tests/test_theta_method.py` (79 tests)
 
-- Archivo: —
-- Clase: —
-- Tests:
-  - —
-- Notas de traducción: —
+### Resultados medidos
+
+| Criterio de `acceptance` | Predicción de la spec | Medido |
+|---|---|---|
+| `orden_de_convergencia_temporal`, θ=1 | pendiente ≈ 1 | **0.9944** |
+| `orden_de_convergencia_temporal`, θ=1/2 | pendiente ≈ 2 | **2.0001** |
+| Galerkin θ=2/3 | 1 (no gana orden) | **0.9933** |
+| `convergencia_al_estacionario` | coincide con `LinearSolver` | **7.1e-14** |
+| `conduccion_transitoria_semi_infinita` | error < 2 % | **3.0e-3** |
+| `L_estabilidad_ante_escalon`, θ=1 | `T ∈ [0, 100]`, monótono | **exacto, monótono** |
+| `L_estabilidad_ante_escalon`, θ=1/2 | sobrepasa el rango | **T_max = 151.27** |
+| `estabilidad_incondicional`, θ=1 vs θ=0 | uno converge, el otro diverge | **confirmado** |
+| `dirichlet_variable_en_el_tiempo` | 1 sola factorización | **1** |
+
+### Notas de implementación
+
+**Medir el orden contra el sistema semidiscreto, no contra el continuo.** El error total mezcla discretización espacial (fija) y temporal (la que se refina); el error espacial actúa como suelo y enmascara la tasa temporal en cuanto el paso se hace pequeño. Los tests comparan contra $\mathbf T(t) = \exp(-\mathbf C^{-1}\mathbf K\, t)\,\mathbf T_0$ — la solución exacta en el tiempo del **mismo** sistema de ODEs que el solver integra —, de modo que sólo queda el error temporal. Es lo que hace que la pendiente salga 2.0001 y no un valor contaminado por el suelo espacial.
+
+**Término de capacidad en el Dirichlet variable en el tiempo.** El acoplamiento con los DOFs prescritos tiene *dos* contribuciones, no una:
+
+$$-\Delta t\,\mathbf K_{fp}\left[\theta\,\bar{\mathbf g}_{n+1} + (1-\theta)\,\bar{\mathbf g}_n\right] \;-\; \mathbf C_{fp}\left(\bar{\mathbf g}_{n+1} - \bar{\mathbf g}_n\right)$$
+
+El segundo término se anula cuando $\bar{\mathbf g}$ es constante —el caso habitual— y por eso es fácil de omitir; pero con un ciclo térmico impuesto representa la energía que entra al calentar el propio nodo prescrito, y sin él el resultado queda sesgado. Blindado por `test_dirichlet_constante_via_funcion_iguala_al_declarado`, que verifica que el camino con `dirichlet_func` constante reproduce exactamente el camino sin ella.
+
+**El diagnóstico del paso característico funciona en los dos sentidos.** Durante la validación, un primer sondeo del criterio `convergencia_al_estacionario` dio error 0.12 en vez de ~1e-13. No era un defecto del esquema: el sondeo integraba hasta $t_\text{end} = 2 \times 10^5$ s con un tiempo de difusión global $L^2/\alpha = 3.2 \times 10^5$ s — el transitorio simplemente **no había terminado**. Al integrar más allá de $L^2/\alpha$ el error cae a 7.1e-14. El test conserva ambos lados: la convergencia y el contraste `test_transitorio_inacabado_no_ha_convergido_todavia`, para que un cambio futuro que hiciera "converger" antes de tiempo —lo que sí sería un error— quede detectado.
+
+**Detección de divergencia.** El umbral (`_DIVERGENCE_FACTOR = 1e6` sobre el rango de los datos) es deliberadamente generoso: distingue una explosión numérica —$\theta < 1/2$ fuera de su límite de estabilidad, donde el campo crece órdenes de magnitud por paso— de una oscilación espuria acotada, que es un resultado malo pero no un fallo del bucle. Esta segunda se diagnostica con `ThermalTransientResult.extremes()` contra el principio del máximo, no con `converged`.
+
+**Captura de avisos en los tests.** `caplog` de pytest no sirve sobre el logger del proyecto: declara `propagate = False` (ADR 0005) para no contaminar a la aplicación que embeba Solidum, así que sus registros nunca llegan al logger raíz que `caplog` intercepta. Los tests enganchan un handler propio (`capturar_avisos`).
+
+**Notas de traducción**: ninguna. La formulación se implementó directamente en la convención del proyecto; no hay conflicto de signos con las referencias — Zienkiewicz §18, Lewis §6 y Hughes §8 usan todos $\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F$ con la misma orientación de flujo.
+
+### Hallazgo colateral, resuelto
+
+**Mensaje de error del `Assembler` para materiales de familias no mecánicas.** La validación de `Assembler.assemble_mass_matrix` aconsejaba *"usa `0.0` explícitamente si el material es sin masa por diseño (penalty, restricción)"* — consejo correcto en el dominio mecánico (ADR 0008), pero **físicamente incorrecto en térmico**: `density = 0` da $\rho c = 0$, es decir capacidad calorífica nula, que hace singular la matriz $\mathbf C$ y deja el transitorio irresoluble. Un usuario que siguiera el consejo llegaba a un fallo peor y más críptico.
+
+El mensaje accionable correcto ya existía en `ThermalMaterial.volumetric_capacity` —orienta hacia el `LinearSolver` estacionario, que no necesita $\rho c$— pero era inalcanzable porque la validación del ensamblador cortaba antes.
+
+**Resolución**: el ensamblador delega el mensaje al material cuando el material expone `volumetric_capacity`, y conserva el mensaje mecánico genérico cuando no. El ensamblador no necesita conocer las familias de material; sólo pregunta si el material sabe explicarse a sí mismo (Reglas.md §1, coste del componente N+1). Ningún material mecánico cambia de comportamiento, blindado por `test_un_material_mecanico_sin_density_conserva_su_mensaje`.
+
+### Fuera de alcance confirmado
+
+`out_of_scope` se cumplió sin excepciones: no hay `k(T)`, ni paso de tiempo adaptativo, ni amortiguamiento de Rayleigh (blindado por `test_no_acepta_rayleigh`), ni acoplamiento termomecánico.
 
 ---
 

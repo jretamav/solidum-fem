@@ -25,8 +25,13 @@ from solidum.registry import (
 #    esta lista es solo azúcar para uso programático directo.
 from solidum.core.domain import Domain
 from solidum.core.node import Node
-from solidum.results import ElementForces, SolveResult, build_solve_result
-from solidum.entry import run, run_yaml
+from solidum.results import (
+    ElementForces,
+    SolveResult,
+    ThermalTransientResult,
+    build_solve_result,
+)
+from solidum.entry import run, run_thermal_transient, run_yaml
 
 from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_2d import Elastic2D
@@ -38,15 +43,23 @@ from solidum.materials.cable_1d import CableMaterial1D
 
 from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 
+from solidum.materials.thermal_conduction import ThermalConduction
+
 from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from solidum.elements.solid_2d.embedded_cst import CST_Embedded2D
 from solidum.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
 from solidum.elements.cable import Cable2DCorot, Cable3DCorot
 from solidum.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimoshenko
 from solidum.elements.frame3d import Frame3D
+from solidum.elements.thermal import Hex8Thermal, Quad4Thermal
 
 from solidum.math.assembly import Assembler
-from solidum.math.solvers import LinearSolver, NonlinearSolver, ArcLengthSolver
+from solidum.math.solvers import (
+    ArcLengthSolver,
+    LinearSolver,
+    NonlinearSolver,
+    ThetaMethodSolver,
+)
 
 from solidum.utils.yaml_parser import YamlParser
 from solidum.utils.vtk_exporter import VtkExporter

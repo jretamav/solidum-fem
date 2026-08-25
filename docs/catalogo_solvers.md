@@ -228,6 +228,35 @@
 
 ---
 
+## ThetaMethodSolver — conducción de calor transitoria por integración θ (Etapa 8)
+
+- **Propósito**: integrar en el tiempo el sistema semidiscreto de **primer orden** `C·Ṫ + K·T = F(t)` de la conducción de calor. Es el único solver del proyecto que no integra la ecuación mecánica de segundo orden.
+- **Por qué no es una variante de `NewmarkSolver`**: la familia Newmark integra `M·ü + C·u̇ + K·u = F` mediante hipótesis sobre la **aceleración** dentro del paso. En conducción no existe segunda derivada temporal — no hay aceleración ni inercia, y esas hipótesis no tienen sobre qué aplicarse. Forzar Newmark con `M = 0` degenera el esquema. Familia propia, no subclase.
+- **El estacionario NO pasa por aquí**: `K·T = F` lo resuelve el `LinearSolver` existente sin modificación alguna.
+- **Esquema**: `(C + θΔt·K)·T_{n+1} = [C − (1−θ)Δt·K]·T_n + Δt·[θ·F_{n+1} + (1−θ)·F_n]`. La matriz `A = C + θΔt·K` es SPD ⇒ Cholesky (ADR 0003), y con `Δt` constante **se factoriza una sola vez**: el problema es lineal y sin historia, así que `K` y `C` también se ensamblan una única vez. Coste por paso = una sustitución triangular.
+
+| `θ` | Nombre | Orden | Estabilidad |
+|---|---|---|---|
+| `0` | Euler explícito | 1 | Condicional (`Δt ≤ 2/λ_max`) |
+| `1/2` | Crank-Nicolson | **2** | Incondicional (A-estable) |
+| `2/3` | Galerkin | 1 | Incondicional |
+| `1` | Euler implícito | 1 | Incondicional, **L-estable** — *default* |
+
+- **Estabilidad no es ausencia de oscilaciones** (la razón del default): Crank-Nicolson es el más preciso, pero A-estable y **no** L-estable — su factor de amplificación tiende a `−1` para los modos altos en vez de a `0`. Ante un escalón de temperatura en la frontera produce oscilación amortiguada con temperaturas **fuera del rango de los datos**, violando el principio del máximo de la ecuación de difusión: un resultado cualitativamente imposible, no sólo impreciso. Medido: `T_max = 151.27` con `T_pared = 100`. Euler implícito nunca oscila. El default protege a quien no eligió; Crank-Nicolson queda a un parámetro de distancia. Mismo criterio que fijó `lumped` como default de la capacidad, aplicado al eje temporal en vez del espacial.
+- **Reporte del orden efectivo**: contrapartida honesta del default robusto. `solver.order` (antes de correr) y `result.order` (después) devuelven `2` sólo con `θ = 1/2`, `1` en el resto — el coste en precisión es consultable, no una penalización silenciosa. También `is_unconditionally_stable` e `is_l_stable`.
+- **Parámetros**: `dt`, `n_steps`, `T_initial` (escalar ⇒ campo uniforme; vector ⇒ por nodo — **no hay velocidad inicial**, la ecuación es de primer orden y `T_0` la determina por completo); `theta` (default `1.0`), `lumping` (default `"lumped"`), `F_func`, `dirichlet_func`, `output_every`, `linear_algebra`. **Sin `rayleigh`**: es un modelo de disipación de la ecuación de segundo orden; en conducción la disipación es la conducción misma, ya contenida en `K`.
+- **Dirichlet variable en el tiempo**: `dirichlet_func(t) → g` permite un ciclo térmico sobre una superficie. El acoplamiento `K_fp·ḡ` **y** el término de capacidad `C_fp·(ḡ_{n+1} − ḡ_n)` se recalculan cada paso; la factorización de `A_ff` **no** (verificado por contador).
+- **Diagnóstico de `Δt`**: reporta el paso característico `h²/α` con `α = k/(ρc)` — el tiempo que tarda el frente térmico en cruzar un elemento. Es **información, no restricción**: con `θ ≥ 1/2` ningún `Δt` diverge, pero uno `≫ h²/α` se salta el transitorio que se quiere observar. Avisa si la razón supera 10. Análogamente, el transitorio no ha *terminado* hasta `t ≫ L²/α`.
+- **Cuándo usarlo**: arranque y enfriamiento de piezas, choque térmico, ciclos térmicos impuestos, calor de hidratación. Para el régimen permanente, `LinearSolver`.
+- **Caveats**: sin ningún Dirichlet la matriz es singular por el modo de temperatura uniforme (análogo térmico del sólido rígido) — se diagnostica nombrando el modo, no con un fallo algebraico genérico. `T_initial` incompatible con un Dirichlet impuesto **avisa sin abortar**: un choque térmico es modelización legítima. `θ < 1/2` con capacidad consistente es prácticamente inutilizable (`λ_max` grande) — se avisa. Requiere `density` y `c` declaradas en el material.
+- **Despacho YAML**: `solver.type: ThetaMethodSolver`. Vía atributo `PIPELINE_KIND="thermal_transient"` → `run_thermal_transient`. Quinto valor del literal (tras `"static"`, `"modal"`, `"transient"`, `"harmonic"`, `"spectrum"`).
+- **Resultado**: `ThermalTransientResult` — `t_history`, `T_history`, `theta`, `dt`, `order`, más `T_final`, `temperature_at(dof)` y `extremes()` (diagnóstico del principio del máximo). Dataclass propia y no `TransientResult`: sus campos `udot_history`, `uddot_history` y los coeficientes de Rayleigh no tienen significado térmico, y rellenarlos con ceros produciría un objeto que miente sobre su contenido.
+- **Validación**: orden temporal medido **0.9944** (θ=1) y **2.0001** (θ=1/2); convergencia al estacionario del `LinearSolver` con error **7.1e-14**; sólido semi-infinito de Carslaw-Jaeger con error **3.0e-3**; cross-check 2D↔3D paso a paso.
+- **Spec**: [docs/specs/ThetaMethodSolver.md](specs/ThetaMethodSolver.md).
+- **Archivo**: [solidum/math/solvers/theta_method.py](../solidum/math/solvers/theta_method.py).
+
+---
+
 ## Cómo añadir un solver nuevo
 
 `/solidum-new solver <Name>` — genera archivo en `solidum/math/solvers/<snake>.py`, decorador `@SolverRegistry.register`, esqueleto de test.
@@ -237,6 +266,7 @@ Convenciones de interfaz:
 - **Solvers estáticos** (lineales, no lineales, arc-length): `PIPELINE_KIND = "static"`. Constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
 - **Solvers modales / autovalor** (modal — ADR 0009 — y futuros pandeo lineal): `PIPELINE_KIND = "modal"`. Constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo específico). No consumen vector de cargas. `run_yaml` despacha a `run_modal`.
 - **Solvers transitorios** (Newmark, HHT, central differences): `PIPELINE_KIND = "transient"`. Constructor recibe `assembler`, `t_end`, `dt` + parámetros; método `solve() → TransientResult`. `run_yaml` despacha a `run_transient`.
+- **Solvers térmicos transitorios** (θ-method): `PIPELINE_KIND = "thermal_transient"`. Constructor recibe `assembler`, `dt`, `n_steps`, `T_initial` + parámetros; método `solve() → ThermalTransientResult`. `run_yaml` despacha a `run_thermal_transient`. Integran la ecuación de **primer orden** `C·Ṫ + K·T = F`, no la de segundo orden mecánica: no admiten `rayleigh` ni condición inicial de velocidad.
 - **Solvers en frecuencia / espectrales** (harmonic con `PIPELINE_KIND = "harmonic"`, response spectrum con `"spectrum"`). Constructor recibe `assembler` + parámetros del análisis; método `solve()` devuelve el resultado específico (`HarmonicResult`, `ResponseSpectrumResult`). `run_yaml` despacha a `run_harmonic` o `run_response_spectrum` según el atributo.
 
 El **dispatch en `run_yaml`** se hace por el atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18). Solvers nuevos no clásicos (que no hereden de los existentes) sólo declaran su `PIPELINE_KIND` y quedan automáticamente cableados — no requieren tocar `entry.py`.

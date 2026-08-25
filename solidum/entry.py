@@ -9,6 +9,10 @@ cachean en ``domain.last_result``.
 - :func:`run_modal`: análoga para análisis modal (ADR 0009). Devuelve
   :class:`ModalResult` en vez de :class:`SolveResult` — son análisis de
   naturaleza distinta y no se comparte el pipeline.
+- :func:`run_thermal_transient`: análoga para conducción de calor transitoria
+  (Etapa 8). Devuelve :class:`ThermalTransientResult`; pipeline propio porque
+  la ecuación es de primer orden y no comparte semántica con el transitorio
+  dinámico.
 - :func:`run_yaml`: parsea un archivo YAML, arma el modelo y despacha a
   :func:`run` o :func:`run_modal` según el ``type`` de solver declarado.
 """
@@ -28,6 +32,7 @@ from solidum.math.solvers import (  # noqa: F401 — NewmarkSolver default de ru
     ModalSolver,
     NewmarkSolver,
     ResponseSpectrumSolver,
+    ThetaMethodSolver,
 )
 from solidum.logging import get_logger
 from solidum.results import (
@@ -35,6 +40,7 @@ from solidum.results import (
     ModalResult,
     ResponseSpectrumResult,
     SolveResult,
+    ThermalTransientResult,
     TransientResult,
     build_solve_result,
 )
@@ -49,6 +55,7 @@ StepCallback = Callable[[int, np.ndarray, float], None]
 # ``run_yaml`` con ValueError (regla C del ADR 0009 + fail-fast del proyecto).
 _KNOWN_PIPELINE_KINDS = frozenset({
     "static", "modal", "transient", "harmonic", "spectrum",
+    "thermal_transient",
 })
 
 
@@ -212,6 +219,71 @@ def run_transient(
     return result
 
 
+def run_thermal_transient(
+    domain: Domain,
+    *,
+    assembler: Assembler | None = None,
+    solver: Any | None = None,
+    dt: float | None = None,
+    n_steps: int | None = None,
+    T_initial: float | np.ndarray | None = None,
+    **solver_kwargs,
+) -> ThermalTransientResult:
+    """Ejecuta un análisis **térmico transitorio** y retorna el resultado.
+
+    Acepta cualquier solver con ``PIPELINE_KIND="thermal_transient"`` y firma
+    ``solve() -> ThermalTransientResult``. Si ``solver is None`` construye un
+    :class:`ThetaMethodSolver` con los kwargs siguientes.
+
+    Pipeline propio y no ``run_transient`` porque la ecuación integrada es de
+    **primer orden** (``C·Ṫ + K·T = F``) y el resultado tiene semántica
+    distinta: no hay velocidad ni aceleración del campo, ni amortiguamiento
+    de Rayleigh. El régimen **estacionario** no pasa por aquí — lo resuelve
+    ``run``/``LinearSolver`` sin modificación.
+
+    Parameters
+    ----------
+    domain
+        Dominio con nodos, elementos térmicos y BCs de temperatura ya
+        configurados. Debe imponer al menos un Dirichlet.
+    assembler
+        Assembler opcional. Si es ``None`` se construye sobre ``domain``.
+    solver
+        Instancia de solver térmico transitorio ya vinculada al assembler.
+    dt, n_steps, T_initial
+        Paso temporal, número de pasos y condición inicial. Requeridos
+        cuando ``solver is None``.
+    **solver_kwargs
+        Resto de parámetros del constructor del ``ThetaMethodSolver``
+        (``theta``, ``lumping``, ``F_func``, ``dirichlet_func``,
+        ``output_every``, ``linear_algebra``).
+
+    Returns
+    -------
+    ThermalTransientResult
+        Historia ``(t, T)`` del campo de temperatura. Queda también en
+        ``domain.last_result``.
+    """
+    if domain.total_dofs == 0:
+        domain.generate_equation_numbers()
+    if assembler is None:
+        assembler = Assembler(domain)
+    if solver is None:
+        if dt is None or n_steps is None or T_initial is None:
+            raise ValueError(
+                "run_thermal_transient: pasar `solver`, o bien `dt`, "
+                "`n_steps` y `T_initial`."
+            )
+        solver = ThetaMethodSolver(
+            assembler, dt=dt, n_steps=n_steps, T_initial=T_initial,
+            **solver_kwargs,
+        )
+
+    result = solver.solve()
+    domain.last_result = result
+    return result
+
+
 def run_harmonic(
     domain: Domain,
     *,
@@ -369,6 +441,10 @@ def run_yaml(
         return run_harmonic(domain, assembler=assembler, solver=solver)
     if pipeline_kind == "spectrum":
         return run_response_spectrum(
+            domain, assembler=assembler, solver=solver,
+        )
+    if pipeline_kind == "thermal_transient":
+        return run_thermal_transient(
             domain, assembler=assembler, solver=solver,
         )
 

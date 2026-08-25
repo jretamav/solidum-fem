@@ -17,6 +17,10 @@ posterior:
   análisis dinámico transitorio (ADR 0009 fases 3, 4 y 5). Producido por
   ``NewmarkSolver``, ``NewtonNewmarkSolver``, ``HHTSolver``,
   ``NewtonHHTSolver``, ``CentralDifferenceSolver``.
+- :class:`ThermalTransientResult`: historia ``(t, T)`` de un análisis térmico
+  transitorio (Etapa 8). Producido por ``ThetaMethodSolver``. Dataclass propia
+  y no ``TransientResult`` porque la ecuación térmica es de primer orden: no
+  hay velocidad, aceleración ni amortiguamiento de Rayleigh.
 - :class:`HarmonicResult`: amplitud compleja ``û(ω)`` por barrido en frecuencia
   (ADR 0009 fase 6). Producido por ``HarmonicSolver``. Métodos derivados
   ``.amplitude()`` y ``.phase()``.
@@ -216,6 +220,95 @@ class TransientResult:
                 per_step.append(elem.internal_forces(self.u_history[:, k]))
             history[elem_id] = per_step
         return history
+
+
+@dataclass(frozen=True)
+class ThermalTransientResult:
+    """Resultado de un análisis térmico transitorio (Etapa 8). Inmutable (shallow).
+
+    El ``frozen=True`` impide reasignar atributos; los historiales NumPy
+    interiores siguen siendo mutables por contenido. Tratar como read-only.
+
+    Producido por :class:`ThetaMethodSolver`. Almacena la historia del campo
+    de temperatura al integrar ``C·Ṫ + K·T = F(t)``.
+
+    **Por qué no reutiliza** :class:`TransientResult`. La ecuación térmica es
+    de **primer orden** en el tiempo: no existen ``udot_history`` ni
+    ``uddot_history`` (no hay velocidad ni aceleración de la temperatura con
+    significado físico en el modelo), y ``alpha_rayleigh``/``beta_rayleigh``
+    describen un amortiguamiento viscoso propio de la ecuación de segundo
+    orden que aquí no aplica —la disipación es la conducción misma, ya
+    contenida en ``K``. Rellenar esos campos con ceros produciría un objeto
+    que miente sobre su contenido. Se sigue el criterio ya establecido con
+    ``ModalResult``, ``HarmonicResult`` y ``ResponseSpectrumResult``: un tipo
+    de análisis con semántica propia tiene su dataclass propia.
+
+    Parameters
+    ----------
+    t_history
+        Instantes almacenados, shape ``(n_stored,)``. Incluye siempre
+        ``t = 0`` (condición inicial) y el instante final. Con
+        ``output_every > 1`` los instantes intermedios se omiten, pero la
+        integración recorre **todos** los pasos: el submuestreo afecta al
+        almacenamiento, no al cálculo.
+    T_history
+        Campo de temperatura global, shape ``(n_dof, n_stored)``. La columna
+        ``[:, k]`` corresponde a ``t_history[k]``. En DOFs prescritos por
+        Dirichlet la componente es el valor impuesto en ese instante (que
+        puede variar en el tiempo).
+    n_steps
+        Número de pasos temporales **integrados**, no de columnas
+        almacenadas. Con ``output_every = 1`` se cumple
+        ``len(t_history) == n_steps + 1``.
+    theta
+        Peso del esquema efectivamente utilizado.
+    dt
+        Paso temporal constante utilizado [s].
+    order
+        Orden de convergencia temporal efectivo del esquema: ``2`` si
+        ``theta == 0.5`` (Crank-Nicolson), ``1`` en cualquier otro caso.
+        Se expone —en vez de dejarlo implícito— para que el coste en
+        precisión del default robusto ``theta = 1`` sea visible al
+        consumidor y no una penalización silenciosa.
+    converged
+        ``True`` si el integrador completó todos los pasos sin detectar
+        divergencia. Con ``theta >= 0.5`` el esquema es incondicionalmente
+        estable y no debe ser ``False``; con ``theta < 0.5`` puede serlo si
+        se excede el límite condicional de estabilidad.
+    """
+
+    t_history: np.ndarray
+    T_history: np.ndarray
+    n_steps: int
+    theta: float
+    dt: float
+    order: int
+    converged: bool = True
+
+    @property
+    def T_final(self) -> np.ndarray:
+        """Campo de temperatura en el último instante almacenado."""
+        return self.T_history[:, -1]
+
+    def temperature_at(self, dof: int) -> np.ndarray:
+        """Historia temporal de un DOF concreto, shape ``(n_stored,)``.
+
+        Atajo sobre ``T_history[dof, :]`` para el caso frecuente de graficar
+        la evolución en un punto de control.
+        """
+        return self.T_history[dof, :]
+
+    def extremes(self) -> tuple[float, float]:
+        """``(T_min, T_max)`` sobre todos los nodos e instantes almacenados.
+
+        Herramienta de diagnóstico del **principio del máximo**: en un
+        problema sin fuente, la solución exacta de la ecuación de difusión
+        nunca excede los extremos de los datos iniciales y de frontera. Un
+        resultado fuera de ese rango señala oscilación espuria del esquema
+        —típicamente Crank-Nicolson ante un escalón (ver
+        ``docs/specs/ThetaMethodSolver.md`` §3)— y no un fenómeno físico.
+        """
+        return float(np.min(self.T_history)), float(np.max(self.T_history))
 
 
 @dataclass(frozen=True)
