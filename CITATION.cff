@@ -19,6 +19,8 @@ abstract: >-
   materials, linear and nonlinear static solvers, cylindrical and
   dissipation arc-length, modal analysis, Newmark and HHT time integration,
   central difference, harmonic response, and response spectrum analysis.
+  Heat conduction is supported in steady state and transient regimes, in 2D
+  and 3D, currently uncoupled from the mechanical field.
 
 authors:
   - family-names: "Retama-Velasco"
