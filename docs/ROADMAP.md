@@ -13,7 +13,9 @@
 
 ## Estado a fecha del último commit
 
-Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. **959 tests verdes + 6 skipped intencionales** tras la sub-etapa A.ter (sólidos 3D cuadráticos, 2026-05-27).
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. **973 tests verdes + 8 skipped intencionales** tras el saneamiento de la capa de manuales (2026-08-25), sobre los 970 del cierre completo de la sub-etapa A.ter (sólidos 3D cuadráticos + validación externa NAFEMS 3D, 2026-05-27).
+
+**Próximo hito: elección de la Etapa 8** entre las opciones B (placas y láminas), C (análisis térmico desacoplado) y E (Mohr-Coulomb 2D + `FiberSection`). Es una decisión del usuario; el argumentario está en §"Opciones diferidas".
 
 > Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver [`docs/STATUS.md`](STATUS.md). Para combinaciones validadas: [`docs/MATRIZ.md`](MATRIZ.md). Para arranque en frío: [`docs/ONBOARDING.md`](ONBOARDING.md). Ver §"Documentos complementarios" al final para una guía del sistema.
 
@@ -127,13 +129,13 @@ Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) s
 
 Las opciones A-E identificadas anteriormente quedan **diferidas como etapas futuras**, sin orden cerrado. Se enumeran abreviadas; el ROADMAP previo a esta versión contenía la argumentación completa, recuperable por `git log`.
 
-- **A. Sólidos 3D** (Hex8, Tet4, Tet10/Hex20/Hex27): extender materiales J2/daño/Drucker-Prager a Voigt 6D; abrir locking volumétrico y hourglassing. Pre-requisito de prácticamente todas las extensiones posteriores.
-- **B. Placas y láminas** (Mindlin, Kirchhoff, MITC): formulación shell con cortante transversal y drilling DOFs.
-- **C. Análisis térmico desacoplado** (Laplaciano estacionario + transitorio): salto a problema escalar; abre la puerta a termomecánica acoplada.
+- ~~**A. Sólidos 3D**~~ **Cerrada**: Etapa 7 (Hex8, Tet4, Elastic3D — ADR 0012, 2026-05-19), sub-etapa **A.bis** (materiales 3D no lineales, 2026-05-21) y sub-etapa **A.ter** (Hex20, Hex27, Tet10 + validación NAFEMS LE10 y Lamé 3D, 2026-05-27). Era pre-requisito de casi todas las extensiones posteriores, y ya no bloquea ninguna.
+- **B. Placas y láminas** (Mindlin, Kirchhoff, MITC): formulación shell con cortante transversal y drilling DOFs. Desbloquearía además los benchmarks NAFEMS de placas y cáscaras (LE3 hemisferio, FV1/FV5, FV2/FV12/FV32), hoy inalcanzables por falta del componente.
+- **C. Análisis térmico desacoplado** (Laplaciano estacionario + transitorio): salto a problema escalar; abre la puerta a la termomecánica acoplada que forma parte de la identidad declarada del proyecto (`Reglas.md §0`) y aún no existe.
 - ~~**D. Completar ADR 0009**~~ **Cerrada 2026-05-18 como Etapa 6 in extenso** (HHT-α, mass lumping fase 2, diferencias centradas, harmonic, response spectrum + reglas C y D de auditoría arquitectural aplicadas).
-- **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames).
+- **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames). La más acotada de las tres abiertas; salda de paso el item #2 de deuda técnica.
 
-Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra a continuación se retoma con argumentos de la dirección que tome el proyecto entonces.
+**Estado de la bifurcación**: cerradas A y D, quedan **B, C y E** como candidatas a Etapa 8. La decisión es del usuario y se toma con la dirección que quiera dar al proyecto; ninguna está bloqueada técnicamente.
 
 ---
 
@@ -189,7 +191,8 @@ Cuando la Etapa 5 se cierre, la decisión sobre cuál de las opciones A-E entra 
 
 - ~~**Elementos 3D cuadráticos** (`Hex20`, `Hex27`, `Tet10`)~~ ✅ **Cerrado 2026-05-27 (sub-etapa A.ter)**: los tres elementos sobre base centralizada `_HigherOrderSolid3D` (regla de los dos casos reales aplicada al entrar el `Hex27`). Cuadraturas nuevas `tet_4` (Stroud orden 2 para K) y `tet_15` (Keast orden 5 para masa del Tet10). Suite 877 → 959 (+82 tests).
 - ~~**Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`)~~ ✅ **Cerrado 2026-05-21 (sub-etapa A.bis)**: tres materiales sobre Voigt 6D con tangente algorítmica consistente, cross-consistency vs 2D plane_strain a 10-14 decimales, integración Hex8/Tet4, y campaña de validación 3D consolidada (3 benchmarks publicados). Suite 804 → 877.
-- **NAFEMS LE10/LE2/LE3** (placas gruesas y delgadas): sub-fase 4 de A.ter **diferida** a sesión dedicada con meshing elíptico (LE10) y cilíndrico (LE2). Las validaciones cuantitativas de A.ter ya entregadas — cubo Lamé exacto en 3 elementos cuadráticos, MacNeal beam con mitigación cuantitativa del shear locking, patch test triquadrático completo, cross-check con materiales no lineales — cubren el contenido validacional esencial. LE3 (hemisphere/lámina) propiamente requiere placas/láminas (opción B).
+- ~~**NAFEMS LE10/LE2**~~ ✅ **Cerrado 2026-05-27 (sub-fase 4 de A.ter)**: **LE10** thick plate pressure entregado con cuadrante elíptico × espesor y σ_yy(D) ≈ −5.38 MPa contra el canónico para Hex20/Hex27 ([`test_nafems_le10.py`](../tests/validation/test_nafems_le10.py), 5 tests). **LE2 estricto descartado** por incompatibilidad de dominio: es un benchmark de *shell*, no de sólidos; se reemplazó conceptualmente por el **Lamé thick cylinder 3D** ([`test_lame_cylinder_3d.py`](../tests/validation/test_lame_cylinder_3d.py), 6 tests), extensión 3D del benchmark 2D del proyecto con solución analítica cerrada de Timoshenko-Goodier §28, que además es la primera demostración cuantitativa de la capacidad isoparamétrica curva. El `Tet10` sobre superficie curva queda como deuda técnica #8 (limitación de la malla, no del elemento).
+- **NAFEMS LE3** (hemisferio) y los benchmarks de placas y cáscaras (FV1/FV5, FV2/FV12/FV32): **siguen abiertos**, pero no se cierran con más tests — requieren el componente placas/láminas de la opción B.
 
 ---
 
@@ -244,11 +247,21 @@ Todos comparten un patrón: **incrementales sobre lo existente, no refactor estr
 
 ## Deuda técnica conocida
 
-Items que no bloquean el avance pero conviene tener visibles:
+> **La autoridad sobre la deuda técnica es [STATUS.md](STATUS.md) §"Deuda técnica priorizada"**, donde vive la tabla numerada con su criterio de retoma. Esta sección solo da el resumen navegacional; si ambas discrepan, manda STATUS.
 
-- **ADR 0002 incompleto para sólidos 2D** ([memoria de proyecto](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-solidum-fem/memory/project_adr_0002_incompleto_solidos.md)): `internal_forces` devuelve `None` en sólidos; `compute_internal_forces`/`compute_gauss_state` cubren la necesidad. Decisión sobre cerrar o replantear el ADR diferida hasta caso de uso real (post-proceso avanzado, sólidos 3D, consumidor externo).
-- **`FiberSection` para frames no-lineales** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-solidum-fem/memory/project_pendiente_fiber_section.md)): frames 2D/3D plastifican sólo en axial. Plasticidad por flexión espera caso de uso (entraría como componente de la etapa 5 si la opción E se elige).
-- **Reglas de disparo C y D** ([memoria](../../../.claude/projects/g--Mi-unidad-Proyectos-IA-solidum-fem/memory/project_reglas_disparo_pendientes.md)): dos refactors arquitecturales que esperan eventos antes de ejecutarse.
+Al cierre de la sub-etapa A.ter quedan **6 items abiertos**, ninguno bloqueante (numeración de STATUS):
+
+- **#2 — `FiberSection` para frames no-lineales**: los frames 2D/3D plastifican sólo en axial; la fluencia por flexión espera este componente. Entraría con la opción E.
+- **#4 — Solver para softening severo con embedded discontinuity**: parcialmente cerrado por `DissipationArcLengthSolver` (funciona para daño continuo 1D/2D); el caso cohesivo+embedded con penalty `K_e` rígido sigue abierto y depende del #7.
+- **#5 — Stress recovery superconvergente (SPR)**: NAFEMS LE1 da σ_yy(D) = 90.1 frente a 92.7 canónico, diferencia atribuible al recovery sin SPR.
+- **#6 — B-bar / F-bar para Quad4/Quad8**: locking volumétrico documentado y blindado por test; espera caso de uso con material casi-incompresible.
+- **#7 — LDLᵀ Bunch-Kaufman como backend algebraico**: habilitaría el *sign-of-pivot tracking* exacto que hoy se aproxima por el signo del determinante.
+- **#8 — Validación del `Tet10` sobre superficie curva**: limitación de la malla (descomposición hex→5tets deja mid-edges rectos sobre la frontera curva), no del elemento.
+
+**Cerrados** (se listan para que no se reabran por inercia):
+
+- ~~**ADR 0002 incompleto para sólidos**~~ ✅ **Cerrado 2026-05-19 por el [ADR 0012](adr/0012-solidos-3d-y-voigt-6d.md)**: cierre por dominio explícito. `internal_forces` aplica sólo a elementos estructurales 1D; los sólidos 2D y 3D exponen `compute_gauss_state(U)` como API canónica. Es una decisión arquitectural tomada, no deuda pendiente.
+- ~~**Reglas de disparo C y D**~~ ✅ **Ambas aplicadas 2026-05-18**: C con el despacho declarativo `PIPELINE_KIND`; D con `solidum/math/modal_response.py` agrupando el cómputo sobre modos. No quedan reglas de disparo arquitecturales activas.
 
 ---
 
@@ -274,7 +287,11 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ---
 
-*Última actualización: 2026-05-21 — **Sub-etapa A.bis cerrada: materiales 3D no lineales**. Los tres materiales (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`) cierran la paridad funcional 3D↔2D para plasticidad y daño. Suite 804 → 877 (+73 tests: 56 directos + 11 validación 3D consolidada + 6 colaterales). Próxima decisión: Etapa 8 (B placas/láminas, C térmico, E Mohr-Coulomb+FiberSection, A.ter cuadráticos 3D).*
+*Última actualización: 2026-08-25 — **Sincronización con STATUS** (sin cambios de código). Este documento había quedado desfasado en cuatro puntos y, por ser lectura de arranque en sesiones cold-start, dirigía a trabajo ya hecho: (1) la sección "Deuda técnica conocida" listaba como abiertos el **ADR 0002** (cerrado el 19-mayo por el ADR 0012) y las **reglas de disparo C y D** (aplicadas el 18-mayo), y omitía los 6 items realmente abiertos — ahora delega la autoridad en STATUS y resume los vigentes; (2) los enlaces de esa sección apuntaban a `~/.claude/projects/.../memory/`, ruta vacía que `CLAUDE.md` prohíbe explícitamente (la memoria vive en `.claude/memory/` del repo) — el mismo error estaba en ONBOARDING §4 y se corrigió allí también; (3) la **opción A** de la bifurcación seguía listada como futura pese a haberse ejecutado en la Etapa 7 + A.bis + A.ter, y la frase de cierre condicionaba la decisión al cierre de una Etapa 5 cerrada en mayo; (4) **NAFEMS LE10/LE2** figuraban como diferidos cuando LE10 cerró en la sub-fase 4 de A.ter y LE2 fue descartado con razón documentada (es benchmark de shell), sustituido por el Lamé thick cylinder 3D. Actualizado también el estado de cabecera (973 tests) y añadido el próximo hito explícito. Colateralmente, MATRIZ §2 omitía `DissipationArcLengthSolver` de la tabla de solvers pese a ser seleccionable en YAML: añadido, y su cobertura verificada contra los cuatro registros (46/46 componentes).*
+
+*Anterior 2026-05-27 — **Sub-etapa A.ter cerrada por completo**: sólidos 3D cuadráticos (`Hex20`, `Hex27`, `Tet10`) sobre base centralizada `_HigherOrderSolid3D`, más la sub-fase 4 de validación externa (NAFEMS LE10 + Lamé thick cylinder 3D). Suite 877 → 970. La matriz 3D queda con paridad funcional completa frente al 2D: 5 elementos × 4 materiales, todas las celdas en ✓.*
+
+*Anterior 2026-05-21 — **Sub-etapa A.bis cerrada: materiales 3D no lineales**. Los tres materiales (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`) cierran la paridad funcional 3D↔2D para plasticidad y daño. Suite 804 → 877 (+73 tests: 56 directos + 11 validación 3D consolidada + 6 colaterales).*
 
 *Anterior 2026-05-19 — **Etapa 7 cerrada: sólidos 3D acotados (ADR 0012)**. Alcance: `Hex8` (trilineal), `Tet4` (CST 3D), `Elastic3D` (isótropo). Convención Voigt 6D `[xx, yy, zz, xy, yz, xz]` fijada en `Reglas.md §5`. Suite 750 → 804 (+54 tests verdes a la primera). Cierre adicional: deuda técnica #1 saldada por ADR 0012 (cierre por dominio explícito — sólidos exponen `compute_gauss_state`, no `internal_forces`).*
 

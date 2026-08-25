@@ -68,6 +68,7 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `LinearSolver`               | `static`       | Estático lineal (`K·U = F` en un paso).                           | Todos los materiales con tangente constante; sin corotacional; sin cable. |
 | `NonlinearSolver`            | `static`       | Estático no lineal con control de carga (Newton-Raphson).         | Cualquier no-linealidad material o geométrica suave (sin snap-back).  |
 | `ArcLengthSolver`            | `static`       | Estático no lineal con snap-through / snap-back / softening.      | Igual que `NonlinearSolver`, además captura puntos límite.            |
+| `DissipationArcLengthSolver` | `static`       | Estático no lineal con softening severo, controlando la disipación de energía por paso (Gutiérrez 2004). Restricción lineal en vez de cuadrática; switching automático cilíndrico↔disipación. | Igual que `ArcLengthSolver` (es subclase). Validado para daño continuo bulk 1D/2D; **no** para cohesivo+embedded con penalty `K_e` rígido (deuda técnica #4). |
 | `ModalSolver`                | `modal`        | Autovalor generalizado `K·φ = ω²M·φ` (frecuencias y modos).       | Todos los materiales (lineales en `u = 0`); `density` declarada; `compute_mass_matrix`. |
 | `NewmarkSolver`              | `transient`    | Transitorio lineal `M·ü + C·u̇ + K·u = F(t)`.                      | Mismas restricciones que `LinearSolver` + `density` declarada.        |
 | `HHTSolver`                  | `transient`    | Variante de Newmark con disipación numérica controlada (HHT-α).   | Idénticas a `NewmarkSolver` (es subclase).                            |
@@ -77,13 +78,13 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `HarmonicSolver`             | `harmonic`     | Respuesta forzada armónica `(-ω²M + iωC + K)·û = F̂` con barrido en `ω`. | Lineal; `density` declarada.                                          |
 | `ResponseSpectrumSolver`     | `spectrum`     | Análisis sísmico por combinación modal SRSS/CQC contra espectro.  | Lineal; `density` declarada; suficientes modos (verificar `cumulative_effective_mass_ratio`). |
 
-**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento es compatible con los 11 solvers anteriores siempre que el material declare `density`. **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
+**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento es compatible con los 12 solvers anteriores siempre que el material declare `density`. **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
 
 ---
 
 ## 3. Casos test representativos por combinación
 
-Selección de tests "canónicos" que cubren combinaciones clave. La intención no es enumerar los 558 tests sino apuntar al fichero de referencia para cada celda no trivial.
+Selección de tests "canónicos" que cubren combinaciones clave. La intención no es enumerar la suite completa (ver el recuento vigente en [STATUS.md](STATUS.md)) sino apuntar al fichero de referencia para cada celda no trivial.
 
 | Combinación                                                    | Test representativo                                                                 |
 |----------------------------------------------------------------|-------------------------------------------------------------------------------------|

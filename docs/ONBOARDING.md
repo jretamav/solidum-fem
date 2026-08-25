@@ -107,7 +107,7 @@ python -c "import solidum; print(solidum.run_yaml('examples/<archivo>.yaml'))"
 
 Hay dos memorias que persisten entre sesiones:
 
-- **`C:\Users\jreta\.claude\projects\g--Mi-unidad-Proyectos-IA-solidum-fem\memory\MEMORY.md`** y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque cuando sea relevante**. Tipos: `user`, `feedback`, `project`, `reference`. Detalle en el system prompt; protocolo en CLAUDE.md global.
+- **`.claude/memory/MEMORY.md`** (dentro del repo) y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque siguiendo el índice**. Tipos: `user`, `feedback`, `project`, `reference`. Vive en el repo —sincronizada por Drive entre las varias PCs del usuario— y está excluida de git por `.gitignore`. **No crear memoria del agente en `~/.claude/projects/.../memory/`**: ese directorio existe pero está vacío y no se sincroniza. Protocolo en [CLAUDE.md](../CLAUDE.md).
 - **`docs/specs/<Nombre>.md`**: memoria *física* y *numérica* de cada componente. Donde se guarda la formulación rigurosa.
 
 **Antes de actuar**: si la memoria menciona una decisión, **verificar que sigue vigente** consultando el código (los memos envejecen).
