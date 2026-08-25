@@ -98,6 +98,18 @@ class CohesiveMaterialRegistry(_BaseRegistry):
     _kind = "MaterialCohesivo"
 
 
+class ThermalMaterialRegistry(_BaseRegistry):
+    """Registry paralelo a ``MaterialRegistry`` para materiales térmicos
+    (Etapa 8). Separado intencionalmente por la misma razón que el cohesivo:
+    un material térmico relaciona el flujo de calor ``q`` con el gradiente
+    ``∇T`` —dos vectores del espacio físico, sin notación Voigt ni tensor
+    simétrico de por medio— en vez de ``σ`` con ``ε``. Compartir registro
+    obligaría al parser YAML y a los elementos a discriminar por tipo en
+    cada uso."""
+    _items: Dict[str, Type] = {}
+    _kind = "MaterialTermico"
+
+
 class ElementRegistry(_BaseRegistry):
     _items: Dict[str, Type] = {}
     _kind = "Elemento"

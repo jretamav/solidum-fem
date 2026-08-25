@@ -67,10 +67,13 @@ CHAPTER_ORDER: list[str] = [
     "Elementos 2D — Sólidos",
     "Elementos 2D — Discontinuidades embebidas",
     "Elementos 3D — Sólidos",
+    "Elementos Térmicos — 2D",
+    "Elementos Térmicos — 3D",
     "Modelos Constitutivos — 1D",
     "Modelos Constitutivos — 2D",
     "Modelos Constitutivos — 3D",
     "Modelos Constitutivos — Cohesivos",
+    "Modelos Constitutivos — Térmicos",
     "Esquemas de Solución — Estáticos",
     "Esquemas de Solución — Modal y dinámicos",
 ]
@@ -104,6 +107,9 @@ def _classify(spec) -> str:
     if kind == "cohesive_material":
         return "Modelos Constitutivos — Cohesivos"
 
+    if kind == "thermal_material":
+        return "Modelos Constitutivos — Térmicos"
+
     if kind == "material":
         by_dim = {
             1: "Modelos Constitutivos — 1D",
@@ -123,6 +129,21 @@ def _classify(spec) -> str:
         return "Esquemas de Solución — Modal y dinámicos"
 
     if kind == "element":
+        # Los elementos térmicos se agrupan por su campo, no por strain_dim
+        # (no tienen deformación); la dimensión la da `flux_dim`.
+        if iface.get("field") == "temperature":
+            flux_dim = iface.get("flux_dim")
+            by_flux = {
+                2: "Elementos Térmicos — 2D",
+                3: "Elementos Térmicos — 3D",
+            }
+            if flux_dim in by_flux:
+                return by_flux[flux_dim]
+            raise SpecError(
+                f"{name}: elemento térmico con flux_dim={flux_dim!r} no "
+                f"clasificable. Esperado uno de {sorted(by_flux)}."
+            )
+
         # Sólidos: la dimensión del tensor de deformaciones separa 2D de 3D.
         if strain_dim == 6:
             return "Elementos 3D — Sólidos"
