@@ -633,6 +633,36 @@ Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación 
 
 ---
 
+# Elementos térmicos (Etapa 8)
+
+Familia de **conducción de calor**: un DOF escalar `T` por nodo, matriz de conductividad `K_e = ∫ Bᵀ k B dΩ` en vez de rigidez, y capacidad calorífica `C_e = ∫ ρc Nᵀ N dΩ` en vez de masa. La ecuación semidiscreta `C·Ṫ + K·T = F` es de **primer orden** en el tiempo — por eso el transitorio no usa Newmark sino un θ-method propio; el estacionario `K·T = F` lo resuelve el `LinearSolver` existente sin modificación.
+
+Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la `B` térmica es literalmente el gradiente `∂N/∂x`, la misma materia prima que el mecánico reordena en la matriz de Voigt. Consumen materiales de `ThermalMaterialRegistry` (ver [catálogo de materiales](catalogo_materiales.md)); un material mecánico pasado por error se rechaza al construir con `TypeError` explícito.
+
+**Base compartida `_ThermalSolid`** ([solidum/elements/thermal/_shared.py](../solidum/elements/thermal/_shared.py)): centraliza validación del material, bucles de Gauss, capacidad en ambos modos, fuente volumétrica y post-proceso. Las subclases sólo declaran geometría.
+
+**Modo nulo**: `K_e` es **semidefinida positiva** — el campo de temperatura uniforme no produce gradiente ni flujo. Es el análogo térmico de los modos de sólido rígido: el sistema global sólo se vuelve resoluble al imponer al menos un Dirichlet de temperatura. Un modelo sin ninguna temperatura impuesta falla con matriz singular, igual que un modelo mecánico sin apoyos.
+
+## Quad4Thermal — cuadrilátero bilineal de conducción 2D
+
+- **Propósito**: sólido térmico 2D de primer orden; hermano del `Quad4` mecánico en geometría, cuadratura y numeración de bordes.
+- **DOFs por nodo**: `['T']` · 4 nodos antihorarios · `FLUX_DIM = 2` · `N_INTEGRATION_POINTS = 4` (default Gauss 2×2).
+- **Cinemática**: `B(ξ,η)` de 2×4 — el gradiente `∇T = B·T_e`, **sin notación Voigt**. El gradiente resulta bilineal por elemento.
+- **Parámetros**: `thickness` (espesor de la rebanada plana [m], default 1.0 que reproduce el "por unidad de profundidad" de la literatura térmica), `quadrature` (default `"2x2"`).
+- **Bordes**: `EDGE_NODES = ((0,1),(1,2),(2,3),(3,0))`, paritaria con el `Quad4` mecánico.
+- **Cargas**: `compute_body_source(Q)` integra `∫ Q Nᵀ t dΩ` (suma exacta `Q·A_e·t`, invariante ante distorsión); `compute_edge_flux(edge, q̄)` reparte `−q̄·L·t/2` a cada nodo del borde. **Convención: `q̄ > 0` es flujo SALIENTE** del dominio (enfriamiento), coherente con la normal exterior y con `q = -k·∇T`; el signo negativo del vector viene de la forma débil, donde el término de frontera aparece como `−∫ w q̄ dΓ`. Un borde sin condición declarada queda **adiabático** (`q̄ = 0`), el default natural de Neumann homogéneo.
+- **Capacidad**: `compute_capacity_matrix(lumping)` con **`"lumped"` por DEFAULT** — al revés que en dinámica estructural. Razón física: la capacidad consistente produce oscilaciones espurias ante un frente térmico abrupto, con temperaturas que pueden salirse del rango de los datos, violando el **principio del máximo** de la ecuación de difusión. Ambas conservan la capacidad total `ρc·A_e·t`.
+- **Salida por Gauss**: `compute_gauss_state(T)` devuelve `{points_natural, points_global, grad_T (n_g,2), flux (n_g,2)}`. Sin `internal_forces` (cierre por dominio del ADR 0012).
+- **Sin estado interno**: la conducción de Fourier es lineal y sin memoria; no se crea `ElementState`.
+- **Limitaciones declaradas**:
+  - **Hourglass** con cuadratura reducida `"1x1"`: rango 2 frente a los 3 debidos, un modo espurio de temperatura. Sin estabilización; usar el default 2×2.
+  - **Sin locking de ningún tipo**: el problema escalar no tiene análogo de la incompresibilidad ni del bloqueo por cortante, así que **no hereda ninguna** de las limitaciones del `Quad4` mecánico.
+- **Validación**: patch test de campo lineal (exacto en todos los Gauss), modo nulo y rango, capacidad conservada en ambos modos, cargas invariantes ante distorsión, y **pared plana end-to-end** contra el perfil lineal analítico con error 1.1e-13.
+- **Spec**: [docs/specs/Quad4Thermal.md](specs/Quad4Thermal.md).
+- **Archivo**: [solidum/elements/thermal/quad4_thermal.py](../solidum/elements/thermal/quad4_thermal.py).
+
+---
+
 ## Cómo añadir un elemento nuevo
 
 1. **Spec primero** — el usuario crea `docs/specs/<Nombre>.md` a partir de `docs/specs/_template_element.md` (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.

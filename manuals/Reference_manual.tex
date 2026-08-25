@@ -4835,7 +4835,7 @@ La reducción $1\times1$ queda disponible por el mismo parámetro, pero \textbf{
 \begin{lstlisting}[language=yaml]
 name: Quad4Thermal
 kind: element
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   field: temperature            # campo primario (Etapa 8) — no displacement
@@ -4951,15 +4951,46 @@ references:
 
 \section{Implementación}
 
-\textit{Rellena la IA tras programar.}
+\begin{itemize}
+  \item Archivo: \texttt{solidum/elements/thermal/quad4\_thermal.py}
+  \item Clase: \texttt{Quad4Thermal}, registrada en \texttt{ElementRegistry}
+  \item Base compartida: \texttt{solidum/elements/thermal/\_shared.py} \ensuremath{\cdot} \texttt{\_ThermalSolid}
+  \item Tests: \texttt{tests/test\_quad4\_thermal.py} --- 31 verdes
+\end{itemize}
+
+\textbf{Notas de implementación:}
 
 \begin{itemize}
-  \item Archivo: ---
-  \item Clase: ---
-  \item Tests:
-  \item ---
-  \item Notas de traducción: ---
+  \item \textbf{Base \texttt{\_ThermalSolid} introducida con el primer elemento}, no con el segundo. No contradice la regla de los dos casos reales: el segundo caso ---\texttt{Hex8Thermal}, de esta misma etapa--- está especificado y difiere \textbf{únicamente en geometría}. La ecuación discretizada $\mathbf C\dot{\mathbf T} + \mathbf K\mathbf T = \mathbf F$, la validación del material, la capacidad, la fuente y el post-proceso son idénticos en 2D y 3D; la dimensión sólo cambia el tamaño de $\mathbf B$. La subclase concreta aporta funciones de forma, gradiente, cuadratura por defecto y topología de frontera.
 \end{itemize}
+
+\begin{itemize}
+  \item \textbf{\texttt{STRAIN\_DIM = None} y validación propia.} \texttt{Element.\_validate\_material\_compatibility} compara \texttt{STRAIN\_DIM} del elemento contra el del material; un elemento térmico no tiene deformación. Se sobreescribe el método para comprobar \textbf{familia} (\texttt{isinstance(mat, ThermalMaterial)}, con mensaje que explica la diferencia de contrato) y \textbf{dimensión} (\texttt{FLUX\_DIM}). Un material mecánico pasado por error se detecta al construir, no más tarde con un \texttt{AttributeError} sobre \texttt{compute\_flux}.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{\texttt{\_init\_state} devuelve \texttt{None}.} La conducción de Fourier no tiene variables internas, así que no se crea \texttt{ElementState}: no hay historia que promover trial \ensuremath{\to} committed. Cuando entre un material térmico con memoria, se reimplementa con el caso real delante.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{Kernel \texttt{\_compute\_gradient\_kinematics\_quad4} añadido a \texttt{solid\_2d/\_shared.py}}, no a la familia térmica. \texttt{\_compute\_kinematics} ya calculaba \texttt{dN\_dx} pero sólo devolvía la \texttt{B} mecánica ensamblada en Voigt; el nuevo kernel expone el gradiente crudo, que \textbf{es} la \texttt{B} térmica. Vive junto a su gemelo mecánico porque comparte el jacobiano y su inversión: separarlos habría duplicado esa aritmética.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{\texttt{lump\_hrz} con \texttt{total\_mass = \ensuremath{\rho}c\ensuremath{\cdot}V\_e}.} El campo es escalar (un DOF por nodo), así que \texttt{n\_translational\_dirs=1}. El esquema escala la diagonal para conservar la capacidad total, que es la propiedad que importa: la energía almacenable no debe depender de cómo se reparta entre nodos. Verificado en test para ambos modos.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{\texttt{compute\_edge\_flux} devuelve valores negativos para $\bar q > 0$.} El signo sale de la forma débil, donde el término de frontera aparece como $-\int w\,\bar q\,d\Gamma$: un flujo saliente positivo \textbf{extrae} energía. Blindado con test explícito de signo en ambos sentidos.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{Aliases \texttt{compute\_global\_stiffness} y \texttt{compute\_mass\_matrix}} delegan en conductividad y capacidad, de modo que el elemento encaja en el ensamblador y el pipeline existentes sin ramas especiales.
+\end{itemize}
+
+\textbf{Validación end-to-end confirmada}: el problema de pared plana resuelto con \texttt{Assembler} + \texttt{LinearSolver} reproduce el perfil lineal analítico con error máximo $1.1\times10^{-13}$, sin ninguna modificación del ensamblador ni de la imposición de Dirichlet (ADR 0004). Confirma que la infraestructura era genuinamente agnóstica al tipo de campo.
+
+\textbf{Pendiente de esta spec --- benchmark del cilindro hueco.} El caso \texttt{cilindro\_hueco\_logaritmico} del bloque \texttt{acceptance} \textbf{no está implementado todavía}: requiere mallar una corona circular, y se agrupa con la campaña de validación del cierre de etapa junto al \texttt{balance\_energetico\_estacionario}. Los tests entregados cubren el patch test, el modo nulo, las cargas, la capacidad en ambos modos y la pared plana end-to-end. El estado \texttt{validated} refleja que la formulación está verificada contra solución analítica; los dos casos restantes añaden cobertura sobre geometría curva y conservación global, no verifican la formulación básica.
 
 
 \section{Diálogo}
@@ -13504,6 +13535,35 @@ Subfamilia de elementos con \textbf{DOFs enriquecidos elementales} y \textbf{con
   \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de \texttt{n} tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (\texttt{Tri6\_Embedded}), 3D (\texttt{Tet4\_Embedded}).
   \item \textbf{Spec}: docs/specs/CST\_Embedded2D.md.
   \item \textbf{Archivo}: solidum/elements/solid\_2d/embedded\_cst.py.
+\end{itemize}
+
+
+Familia de \textbf{conducción de calor}: un DOF escalar \texttt{T} por nodo, matriz de conductividad \texttt{K\_e = \ensuremath{\int} B\ensuremath{^{\top}} k B d\ensuremath{\Omega}} en vez de rigidez, y capacidad calorífica \texttt{C\_e = \ensuremath{\int} \ensuremath{\rho}c N\ensuremath{^{\top}} N d\ensuremath{\Omega}} en vez de masa. La ecuación semidiscreta \texttt{C\ensuremath{\cdot}Ṫ + K\ensuremath{\cdot}T = F} es de \textbf{primer orden} en el tiempo --- por eso el transitorio no usa Newmark sino un \ensuremath{\theta}-method propio; el estacionario \texttt{K\ensuremath{\cdot}T = F} lo resuelve el \texttt{LinearSolver} existente sin modificación.
+
+Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt{B} térmica es literalmente el gradiente \texttt{\ensuremath{\partial}N/\ensuremath{\partial}x}, la misma materia prima que el mecánico reordena en la matriz de Voigt. Consumen materiales de \texttt{ThermalMaterialRegistry} (ver catálogo de materiales); un material mecánico pasado por error se rechaza al construir con \texttt{TypeError} explícito.
+
+\textbf{Base compartida \texttt{\_ThermalSolid}} (solidum/elements/thermal/\_shared.py): centraliza validación del material, bucles de Gauss, capacidad en ambos modos, fuente volumétrica y post-proceso. Las subclases sólo declaran geometría.
+
+\textbf{Modo nulo}: \texttt{K\_e} es \textbf{semidefinida positiva} --- el campo de temperatura uniforme no produce gradiente ni flujo. Es el análogo térmico de los modos de sólido rígido: el sistema global sólo se vuelve resoluble al imponer al menos un Dirichlet de temperatura. Un modelo sin ninguna temperatura impuesta falla con matriz singular, igual que un modelo mecánico sin apoyos.
+
+\section{Quad4Thermal --- cuadrilátero bilineal de conducción 2D}
+
+\begin{itemize}
+  \item \textbf{Propósito}: sólido térmico 2D de primer orden; hermano del \texttt{Quad4} mecánico en geometría, cuadratura y numeración de bordes.
+  \item \textbf{DOFs por nodo}: \texttt{['T']} \ensuremath{\cdot} 4 nodos antihorarios \ensuremath{\cdot} \texttt{FLUX\_DIM = 2} \ensuremath{\cdot} \texttt{N\_INTEGRATION\_POINTS = 4} (default Gauss 2\ensuremath{\times}2).
+  \item \textbf{Cinemática}: \texttt{B(\ensuremath{\xi},\ensuremath{\eta})} de 2\ensuremath{\times}4 --- el gradiente \texttt{\ensuremath{\nabla}T = B\ensuremath{\cdot}T\_e}, \textbf{sin notación Voigt}. El gradiente resulta bilineal por elemento.
+  \item \textbf{Parámetros}: \texttt{thickness} (espesor de la rebanada plana [m], default 1.0 que reproduce el "por unidad de profundidad" de la literatura térmica), \texttt{quadrature} (default \texttt{"2x2"}).
+  \item \textbf{Bordes}: \texttt{EDGE\_NODES = ((0,1),(1,2),(2,3),(3,0))}, paritaria con el \texttt{Quad4} mecánico.
+  \item \textbf{Cargas}: \texttt{compute\_body\_source(Q)} integra \texttt{\ensuremath{\int} Q N\ensuremath{^{\top}} t d\ensuremath{\Omega}} (suma exacta \texttt{Q\ensuremath{\cdot}A\_e\ensuremath{\cdot}t}, invariante ante distorsión); \texttt{compute\_edge\_flux(edge, q̄)} reparte \texttt{−q̄\ensuremath{\cdot}L\ensuremath{\cdot}t/2} a cada nodo del borde. \textbf{Convención: \texttt{q̄ > 0} es flujo SALIENTE} del dominio (enfriamiento), coherente con la normal exterior y con \texttt{q = -k\ensuremath{\cdot}\ensuremath{\nabla}T}; el signo negativo del vector viene de la forma débil, donde el término de frontera aparece como \texttt{−\ensuremath{\int} w q̄ dΓ}. Un borde sin condición declarada queda \textbf{adiabático} (\texttt{q̄ = 0}), el default natural de Neumann homogéneo.
+  \item \textbf{Capacidad}: \texttt{compute\_capacity\_matrix(lumping)} con \textbf{\texttt{"lumped"} por DEFAULT} --- al revés que en dinámica estructural. Razón física: la capacidad consistente produce oscilaciones espurias ante un frente térmico abrupto, con temperaturas que pueden salirse del rango de los datos, violando el \textbf{principio del máximo} de la ecuación de difusión. Ambas conservan la capacidad total \texttt{\ensuremath{\rho}c\ensuremath{\cdot}A\_e\ensuremath{\cdot}t}.
+  \item \textbf{Salida por Gauss}: \texttt{compute\_gauss\_state(T)} devuelve \texttt{\{points\_natural, points\_global, grad\_T (n\_g,2), flux (n\_g,2)\}}. Sin \texttt{internal\_forces} (cierre por dominio del ADR 0012).
+  \item \textbf{Sin estado interno}: la conducción de Fourier es lineal y sin memoria; no se crea \texttt{ElementState}.
+  \item \textbf{Limitaciones declaradas}:
+  \item \textbf{Hourglass} con cuadratura reducida \texttt{"1x1"}: rango 2 frente a los 3 debidos, un modo espurio de temperatura. Sin estabilización; usar el default 2\ensuremath{\times}2.
+  \item \textbf{Sin locking de ningún tipo}: el problema escalar no tiene análogo de la incompresibilidad ni del bloqueo por cortante, así que \textbf{no hereda ninguna} de las limitaciones del \texttt{Quad4} mecánico.
+  \item \textbf{Validación}: patch test de campo lineal (exacto en todos los Gauss), modo nulo y rango, capacidad conservada en ambos modos, cargas invariantes ante distorsión, y \textbf{pared plana end-to-end} contra el perfil lineal analítico con error 1.1e-13.
+  \item \textbf{Spec}: docs/specs/Quad4Thermal.md.
+  \item \textbf{Archivo}: solidum/elements/thermal/quad4\_thermal.py.
 \end{itemize}
 
 

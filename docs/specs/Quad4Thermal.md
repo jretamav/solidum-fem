@@ -123,7 +123,7 @@ La reducción $1\times1$ queda disponible por el mismo parámetro, pero **no se 
 ```yaml
 name: Quad4Thermal
 kind: element
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   field: temperature            # campo primario (Etapa 8) — no displacement
@@ -239,13 +239,30 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- Archivo: [`solidum/elements/thermal/quad4_thermal.py`](../../solidum/elements/thermal/quad4_thermal.py)
+- Clase: `Quad4Thermal`, registrada en `ElementRegistry`
+- Base compartida: [`solidum/elements/thermal/_shared.py`](../../solidum/elements/thermal/_shared.py) · `_ThermalSolid`
+- Tests: [`tests/test_quad4_thermal.py`](../../tests/test_quad4_thermal.py) — 31 verdes
 
-- Archivo: —
-- Clase: —
-- Tests:
-  - —
-- Notas de traducción: —
+**Notas de implementación:**
+
+- **Base `_ThermalSolid` introducida con el primer elemento**, no con el segundo. No contradice la regla de los dos casos reales: el segundo caso —`Hex8Thermal`, de esta misma etapa— está especificado y difiere **únicamente en geometría**. La ecuación discretizada $\mathbf C\dot{\mathbf T} + \mathbf K\mathbf T = \mathbf F$, la validación del material, la capacidad, la fuente y el post-proceso son idénticos en 2D y 3D; la dimensión sólo cambia el tamaño de $\mathbf B$. La subclase concreta aporta funciones de forma, gradiente, cuadratura por defecto y topología de frontera.
+
+- **`STRAIN_DIM = None` y validación propia.** `Element._validate_material_compatibility` compara `STRAIN_DIM` del elemento contra el del material; un elemento térmico no tiene deformación. Se sobreescribe el método para comprobar **familia** (`isinstance(mat, ThermalMaterial)`, con mensaje que explica la diferencia de contrato) y **dimensión** (`FLUX_DIM`). Un material mecánico pasado por error se detecta al construir, no más tarde con un `AttributeError` sobre `compute_flux`.
+
+- **`_init_state` devuelve `None`.** La conducción de Fourier no tiene variables internas, así que no se crea `ElementState`: no hay historia que promover trial → committed. Cuando entre un material térmico con memoria, se reimplementa con el caso real delante.
+
+- **Kernel `_compute_gradient_kinematics_quad4` añadido a `solid_2d/_shared.py`**, no a la familia térmica. `_compute_kinematics` ya calculaba `dN_dx` pero sólo devolvía la `B` mecánica ensamblada en Voigt; el nuevo kernel expone el gradiente crudo, que **es** la `B` térmica. Vive junto a su gemelo mecánico porque comparte el jacobiano y su inversión: separarlos habría duplicado esa aritmética.
+
+- **`lump_hrz` con `total_mass = ρc·V_e`.** El campo es escalar (un DOF por nodo), así que `n_translational_dirs=1`. El esquema escala la diagonal para conservar la capacidad total, que es la propiedad que importa: la energía almacenable no debe depender de cómo se reparta entre nodos. Verificado en test para ambos modos.
+
+- **`compute_edge_flux` devuelve valores negativos para $\bar q > 0$.** El signo sale de la forma débil, donde el término de frontera aparece como $-\int w\,\bar q\,d\Gamma$: un flujo saliente positivo **extrae** energía. Blindado con test explícito de signo en ambos sentidos.
+
+- **Aliases `compute_global_stiffness` y `compute_mass_matrix`** delegan en conductividad y capacidad, de modo que el elemento encaja en el ensamblador y el pipeline existentes sin ramas especiales.
+
+**Validación end-to-end confirmada**: el problema de pared plana resuelto con `Assembler` + `LinearSolver` reproduce el perfil lineal analítico con error máximo $1.1\times10^{-13}$, sin ninguna modificación del ensamblador ni de la imposición de Dirichlet (ADR 0004). Confirma que la infraestructura era genuinamente agnóstica al tipo de campo.
+
+**Pendiente de esta spec — benchmark del cilindro hueco.** El caso `cilindro_hueco_logaritmico` del bloque `acceptance` **no está implementado todavía**: requiere mallar una corona circular, y se agrupa con la campaña de validación del cierre de etapa junto al `balance_energetico_estacionario`. Los tests entregados cubren el patch test, el modo nulo, las cargas, la capacidad en ambos modos y la pared plana end-to-end. El estado `validated` refleja que la formulación está verificada contra solución analítica; los dos casos restantes añaden cobertura sobre geometría curva y conservación global, no verifican la formulación básica.
 
 ---
 
