@@ -27,11 +27,6 @@ class TestFenixLogger(unittest.TestCase):
 
     def test_logger_raiz_existe_con_handler_unico(self):
         root = logging.getLogger("solidum")
-        # DIAGNOSTICO TEMPORAL - retirar tras identificar la fuga en CI
-        import sys as _s
-        print("DIAG handlers:", len(root.handlers), file=_s.stderr)
-        for _h in root.handlers:
-            print("DIAG  ->", type(_h).__module__, type(_h).__name__, repr(_h), file=_s.stderr)
         self.assertGreaterEqual(len(root.handlers), 1)
         # Llamar de nuevo a get_logger no debe duplicar handlers.
         get_logger("subsistema_x")
