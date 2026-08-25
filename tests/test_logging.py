@@ -25,13 +25,32 @@ class TestFenixLogger(unittest.TestCase):
     def tearDown(self):
         set_log_level("INFO")
 
+    @staticmethod
+    def _handlers_del_proyecto(root):
+        """Handlers instalados por Solidum, excluyendo los de terceros.
+
+        El logger ``solidum`` puede llevar handlers que no son suyos:
+        ``_pytest.logging`` inyecta los propios (``LogCaptureHandler``,
+        ``_LiveLoggingNullHandler``, ``_FileHandler``) en cuanto algún test
+        de la suite engancha un handler a este logger, y una aplicación que
+        embeba Solidum haría lo mismo — es un caso de uso **documentado** en
+        el docstring de ``solidum/logging.py``.
+
+        Contar todos convertiría la aserción en una afirmación sobre el
+        entorno de ejecución en lugar de sobre el código del proyecto. Lo que
+        interesa verificar es que ``_configure_root_once`` es idempotente:
+        que Solidum instala **su** handler una sola vez.
+        """
+        return [h for h in root.handlers
+                if type(h).__module__.split(".")[0] not in ("_pytest", "pytest")]
+
     def test_logger_raiz_existe_con_handler_unico(self):
         root = logging.getLogger("solidum")
-        self.assertGreaterEqual(len(root.handlers), 1)
+        self.assertGreaterEqual(len(self._handlers_del_proyecto(root)), 1)
         # Llamar de nuevo a get_logger no debe duplicar handlers.
         get_logger("subsistema_x")
         get_logger("subsistema_y")
-        self.assertEqual(len(root.handlers), 1)
+        self.assertEqual(len(self._handlers_del_proyecto(root)), 1)
 
     def test_logger_no_propaga_a_root(self):
         # Evita que aplicaciones host con logging propio reciban duplicados.
