@@ -13,8 +13,29 @@ from typing import Any, Dict, List
 
 import yaml
 
-VALID_KINDS = {"element", "material", "cohesive_material", "solver"}
+VALID_KINDS = {
+    "element",
+    "material",
+    "cohesive_material",
+    "thermal_material",
+    "solver",
+}
 VALID_STATUSES = {"draft", "implemented", "validated"}
+
+# Familias de material: comparten el rol de "ley constitutiva" pero no la
+# semántica de su interfaz. `material` relaciona σ con ε en Voigt;
+# `cohesive_material` relaciona la tracción con el salto ⟦u⟧ sobre Γ_d
+# (ADR 0010); `thermal_material` relaciona el flujo de calor con ∇T sin
+# notación Voigt (Etapa 8). Cada una tiene su propio registro paralelo.
+MATERIAL_KINDS = {"material", "cohesive_material", "thermal_material"}
+
+# Campo físico que gobierna un elemento. Determina qué declara su interfaz:
+# un elemento mecánico tiene `strain_dim` (dimensión Voigt de la deformación
+# que entrega al material); uno térmico no tiene deformación alguna, sino un
+# gradiente escalar. Declararlo explícitamente evita que la validación
+# presuponga que todo elemento es mecánico.
+VALID_FIELDS = {"displacement", "temperature"}
+DEFAULT_FIELD = "displacement"
 
 _YAML_BLOCK_RE = re.compile(r"```yaml\s*\n(.*?)\n```", re.DOTALL)
 _IMPLEMENTATION_SECTION_RE = re.compile(
@@ -94,13 +115,33 @@ def validate_schema(spec: Spec) -> None:
 
 
 def _validate_element_interface(spec: Spec) -> None:
+    """Valida la interfaz de un elemento según el campo físico que resuelve.
+
+    Lo común a todo elemento —nodos, DOFs, puntos de integración— se exige
+    siempre. Lo que depende de la física se pide por campo: un elemento de
+    desplazamientos declara `strain_dim` (dimensión Voigt de la deformación
+    que entrega al material), mientras que uno térmico no tiene deformación
+    y declara `flux_dim` (dimensión del gradiente de temperatura, 2 ó 3).
+    """
     iface = spec.contract.get("interface") or {}
-    required = {
+
+    field = iface.get("field", DEFAULT_FIELD)
+    if field not in VALID_FIELDS:
+        raise SpecError(
+            f"{spec.path}: interface.field='{field}' inválido "
+            f"(esperado {sorted(VALID_FIELDS)})"
+        )
+
+    # Campos comunes a cualquier elemento, sea cual sea su física.
+    required: dict[str, type] = {
         "dof_names": list,
         "n_nodes": int,
-        "strain_dim": int,
         "n_integration_points": int,
     }
+    # Campo dimensional propio de cada física.
+    dim_key = {"displacement": "strain_dim", "temperature": "flux_dim"}[field]
+    required[dim_key] = int
+
     for key, typ in required.items():
         if key not in iface:
             raise SpecError(f"{spec.path}: interface.{key} ausente")
@@ -111,7 +152,7 @@ def _validate_element_interface(spec: Spec) -> None:
             )
     if not all(isinstance(d, str) for d in iface["dof_names"]):
         raise SpecError(f"{spec.path}: interface.dof_names debe ser lista de str")
-    for key in ("n_nodes", "strain_dim", "n_integration_points"):
+    for key in ("n_nodes", "n_integration_points", dim_key):
         if iface[key] < 1:
             raise SpecError(f"{spec.path}: interface.{key} debe ser ≥ 1")
 
@@ -138,12 +179,14 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
         ElementRegistry,
         MaterialRegistry,
         SolverRegistry,
+        ThermalMaterialRegistry,
     )
 
     registry = {
         "element": ElementRegistry,
         "material": MaterialRegistry,
         "cohesive_material": CohesiveMaterialRegistry,
+        "thermal_material": ThermalMaterialRegistry,
         "solver": SolverRegistry,
     }[spec.kind]
 
@@ -158,10 +201,17 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
     if spec.kind == "element":
         cls = registry._items[spec.name]
         iface = spec.contract["interface"]
+        # El atributo dimensional depende del campo físico: los elementos de
+        # desplazamientos declaran STRAIN_DIM; los térmicos, FLUX_DIM.
+        field = iface.get("field", DEFAULT_FIELD)
+        dim_attr, dim_key = {
+            "displacement": ("STRAIN_DIM", "strain_dim"),
+            "temperature": ("FLUX_DIM", "flux_dim"),
+        }[field]
         for attr, key in (
             ("DOF_NAMES", "dof_names"),
             ("N_NODES", "n_nodes"),
-            ("STRAIN_DIM", "strain_dim"),
+            (dim_attr, dim_key),
             ("N_INTEGRATION_POINTS", "n_integration_points"),
         ):
             if not hasattr(cls, attr):
