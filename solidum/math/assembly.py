@@ -253,6 +253,19 @@ class Assembler:
         for element in self.domain.elements.values():
             mat = element.material
             if mat is None or getattr(mat, "density", None) is None:
+                # Un material que sabe explicar su propio requisito lo hace
+                # él mismo. El mensaje genérico de abajo está escrito para el
+                # dominio mecánico —donde `density = 0.0` es legítimo en un
+                # material sin masa por diseño (penalty, restricción)— y ese
+                # consejo es FÍSICAMENTE INCORRECTO en otras familias: en un
+                # material térmico produciría `ρc = 0`, capacidad calorífica
+                # nula, que hace singular la matriz de capacidad y deja el
+                # transitorio irresoluble. Delegar preserva el diagnóstico
+                # accionable de cada familia sin que el ensamblador tenga que
+                # conocerlas (Reglas.md §1: el coste del componente N+1).
+                explicar = getattr(mat, "volumetric_capacity", None)
+                if callable(explicar):
+                    explicar(consumer="el ensamblaje de la matriz de capacidad")
                 missing_density.append(
                     type(mat).__name__ if mat is not None else "<sin material>"
                 )

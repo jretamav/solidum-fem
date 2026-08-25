@@ -97,6 +97,17 @@ Los valores se exponen siempre en **ejes locales del elemento**; la transformaci
 
 El orden 3D es extensión natural del 2D: componentes diagonales primero, bloque cortante después, $\gamma_{xy}$ delante del resto. Obligatorio en toda subclase 3D (materiales, elementos, tests). Diferencia con ABAQUS (`[11, 22, 33, 12, 13, 23]`): permutación `yz ↔ xz` del bloque cortante — documentada como caveat en catálogos cuando aplique.
 
+**Convención de signo del flujo térmico** (Etapa 8)
+
+- **Flujo de Fourier**: $\mathbf q = -\mathbf k\cdot\nabla T$ — vector flujo de calor [W/m²]. El calor fluye de caliente a frío; el signo negativo es la ley constitutiva, no una convención elegible.
+- **Flujo de frontera prescrito**: $\bar q > 0$ ⇔ flujo **saliente** del dominio (enfriamiento), con $\mathbf n$ la normal exterior. Un flujo entrante (calentamiento) se declara con $\bar q < 0$.
+- **Borde sin condición declarada ⇒ adiabático** ($\bar q = 0$), análogo al borde libre de tracción en mecánica.
+
+Justificación: sale directamente de la forma débil, donde el término de frontera aparece como $-\int_{\Gamma} w\,\bar q\,d\Gamma$. Consecuencia visible en el API: `compute_edge_flux` (2D) y `compute_face_flux` (3D) devuelven **valores negativos** para $\bar q > 0$, porque un flujo saliente extrae energía del sistema.
+
+**Sin notación Voigt en el problema térmico.** El gradiente $\nabla T$ es un vector genuino (2 ó 3 componentes), no un tensor simétrico comprimido: la matriz $\mathbf B$ térmica es el gradiente crudo $\partial N/\partial x$, sin el reordenamiento ni los factores $\gamma = 2\varepsilon$ de Voigt. La distinción es física — no hay componentes cortantes que duplicar. Los elementos térmicos declaran `FLUX_DIM` (2 ó 3) en vez de `STRAIN_DIM`.
+
+
 ## 6. Salvaguardas
 
 - **Tests blindan física no obvia.** Toda formulación nueva entra acompañada de un test de validación contra solución analítica o benchmark conocido. La IA puede equivocarse en sutilezas físicas (signos en Voigt, factores de ½, hipótesis plane stress vs plane strain) que no rompen la compilación; los tests son la red de seguridad.

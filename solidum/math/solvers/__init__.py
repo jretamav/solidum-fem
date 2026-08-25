@@ -23,6 +23,12 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
   el dominio de la frecuencia, ADR 0009 fase 6). Aritmética compleja con
   barrido sobre ``ω``. ``PIPELINE_KIND = "harmonic"`` despacha a
   ``solidum.entry.run_harmonic``.
+- ``theta_method`` — :class:`ThetaMethodSolver` (integración temporal θ para
+  el sistema de **primer orden** ``C·Ṫ + K·T = F(t)`` de conducción de calor;
+  Etapa 8). Familia propia, no variante de Newmark: la ecuación térmica no
+  tiene segunda derivada temporal sobre la que aplicar las hipótesis de
+  Newmark. ``PIPELINE_KIND = "thermal_transient"`` despacha a
+  ``solidum.entry.run_thermal_transient``.
 - ``response_spectrum`` — :class:`ResponseSpectrumSolver` (combinación
   modal SRSS/CQC sobre un espectro de respuesta, ADR 0009 fase 7).
   Orquesta ModalSolver interno y delega la combinación en
@@ -57,6 +63,7 @@ from solidum.math.solvers.newmark import (
 from solidum.math.solvers.central_difference import CentralDifferenceSolver
 from solidum.math.solvers.harmonic import HarmonicSolver
 from solidum.math.solvers.response_spectrum import ResponseSpectrumSolver
+from solidum.math.solvers.theta_method import ThetaMethodSolver
 
 __all__ = [
     "CholeskyNotPositiveDefiniteError",
@@ -72,4 +79,5 @@ __all__ = [
     "CentralDifferenceSolver",
     "HarmonicSolver",
     "ResponseSpectrumSolver",
+    "ThetaMethodSolver",
 ]

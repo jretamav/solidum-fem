@@ -12661,7 +12661,7 @@ Devuelve un \texttt{ThermalTransientResult} con \texttt{t\_history}, \texttt{T\_
 \begin{lstlisting}[language=yaml]
 name: ThetaMethodSolver
 kind: solver
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   pipeline_kind: thermal_transient
@@ -12793,15 +12793,64 @@ references:
 
 \section{Implementación}
 
-\textit{Rellena la IA tras programar.}
-
 \begin{itemize}
-  \item Archivo: ---
-  \item Clase: ---
-  \item Tests:
-  \item ---
-  \item Notas de traducción: ---
+  \item \textbf{Archivo}: \texttt{solidum/math/solvers/theta\_method.py}
+  \item \textbf{Clase}: \texttt{ThetaMethodSolver} (\texttt{@SolverRegistry.register}, \texttt{PIPELINE\_KIND = "thermal\_transient"})
+  \item \textbf{Resultado}: \texttt{ThermalTransientResult} en \texttt{solidum/results.py}
+  \item \textbf{Entrypoint}: \texttt{solidum.entry.run\_thermal\_transient}
+  \item \textbf{Tests}: \texttt{tests/test\_theta\_method.py} (79 tests)
 \end{itemize}
+
+\subsection{Resultados medidos}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Criterio de \texttt{acceptance}} & \textbf{Predicción de la spec} & \textbf{Medido} \\
+\hline
+\texttt{orden\_de\_convergencia\_temporal}, \ensuremath{\theta}=1 & pendiente \ensuremath{\approx} 1 & \textbf{0.9944} \\
+\texttt{orden\_de\_convergencia\_temporal}, \ensuremath{\theta}=1/2 & pendiente \ensuremath{\approx} 2 & \textbf{2.0001} \\
+Galerkin \ensuremath{\theta}=2/3 & 1 (no gana orden) & \textbf{0.9933} \\
+\texttt{convergencia\_al\_estacionario} & coincide con \texttt{LinearSolver} & \textbf{7.1e-14} \\
+\texttt{conduccion\_transitoria\_semi\_infinita} & error < 2 \% & \textbf{3.0e-3} \\
+\texttt{L\_estabilidad\_ante\_escalon}, \ensuremath{\theta}=1 & \texttt{T \ensuremath{\in} [0, 100]}, monótono & \textbf{exacto, monótono} \\
+\texttt{L\_estabilidad\_ante\_escalon}, \ensuremath{\theta}=1/2 & sobrepasa el rango & \textbf{T\_max = 151.27} \\
+\texttt{estabilidad\_incondicional}, \ensuremath{\theta}=1 vs \ensuremath{\theta}=0 & uno converge, el otro diverge & \textbf{confirmado} \\
+\texttt{dirichlet\_variable\_en\_el\_tiempo} & 1 sola factorización & \textbf{1} \\
+\hline
+\end{tabularx}
+\end{center}
+\subsection{Notas de implementación}
+
+\textbf{Medir el orden contra el sistema semidiscreto, no contra el continuo.} El error total mezcla discretización espacial (fija) y temporal (la que se refina); el error espacial actúa como suelo y enmascara la tasa temporal en cuanto el paso se hace pequeño. Los tests comparan contra $\mathbf T(t) = \exp(-\mathbf C^{-1}\mathbf K\, t)\,\mathbf T_0$ --- la solución exacta en el tiempo del \textbf{mismo} sistema de ODEs que el solver integra ---, de modo que sólo queda el error temporal. Es lo que hace que la pendiente salga 2.0001 y no un valor contaminado por el suelo espacial.
+
+\textbf{Término de capacidad en el Dirichlet variable en el tiempo.} El acoplamiento con los DOFs prescritos tiene \textit{dos} contribuciones, no una:
+
+\[
+-\Delta t\,\mathbf K_{fp}\left[\theta\,\bar{\mathbf g}_{n+1} + (1-\theta)\,\bar{\mathbf g}_n\right] \;-\; \mathbf C_{fp}\left(\bar{\mathbf g}_{n+1} - \bar{\mathbf g}_n\right)
+\]
+
+El segundo término se anula cuando $\bar{\mathbf g}$ es constante ---el caso habitual--- y por eso es fácil de omitir; pero con un ciclo térmico impuesto representa la energía que entra al calentar el propio nodo prescrito, y sin él el resultado queda sesgado. Blindado por \texttt{test\_dirichlet\_constante\_via\_funcion\_iguala\_al\_declarado}, que verifica que el camino con \texttt{dirichlet\_func} constante reproduce exactamente el camino sin ella.
+
+\textbf{El diagnóstico del paso característico funciona en los dos sentidos.} Durante la validación, un primer sondeo del criterio \texttt{convergencia\_al\_estacionario} dio error 0.12 en vez de \textasciitilde{}1e-13. No era un defecto del esquema: el sondeo integraba hasta $t_\text{end} = 2 \times 10^5$ s con un tiempo de difusión global $L^2/\alpha = 3.2 \times 10^5$ s --- el transitorio simplemente \textbf{no había terminado}. Al integrar más allá de $L^2/\alpha$ el error cae a 7.1e-14. El test conserva ambos lados: la convergencia y el contraste \texttt{test\_transitorio\_inacabado\_no\_ha\_convergido\_todavia}, para que un cambio futuro que hiciera "converger" antes de tiempo ---lo que sí sería un error--- quede detectado.
+
+\textbf{Detección de divergencia.} El umbral (\texttt{\_DIVERGENCE\_FACTOR = 1e6} sobre el rango de los datos) es deliberadamente generoso: distingue una explosión numérica ---$\theta < 1/2$ fuera de su límite de estabilidad, donde el campo crece órdenes de magnitud por paso--- de una oscilación espuria acotada, que es un resultado malo pero no un fallo del bucle. Esta segunda se diagnostica con \texttt{ThermalTransientResult.extremes()} contra el principio del máximo, no con \texttt{converged}.
+
+\textbf{Captura de avisos en los tests.} \texttt{caplog} de pytest no sirve sobre el logger del proyecto: declara \texttt{propagate = False} (ADR 0005) para no contaminar a la aplicación que embeba Solidum, así que sus registros nunca llegan al logger raíz que \texttt{caplog} intercepta. Los tests enganchan un handler propio (\texttt{capturar\_avisos}).
+
+\textbf{Notas de traducción}: ninguna. La formulación se implementó directamente en la convención del proyecto; no hay conflicto de signos con las referencias --- Zienkiewicz §18, Lewis §6 y Hughes §8 usan todos $\mathbf C\,\dot{\mathbf T} + \mathbf K\,\mathbf T = \mathbf F$ con la misma orientación de flujo.
+
+\subsection{Hallazgo colateral, resuelto}
+
+\textbf{Mensaje de error del \texttt{Assembler} para materiales de familias no mecánicas.} La validación de \texttt{Assembler.assemble\_mass\_matrix} aconsejaba \textit{"usa \texttt{0.0} explícitamente si el material es sin masa por diseño (penalty, restricción)"} --- consejo correcto en el dominio mecánico (ADR 0008), pero \textbf{físicamente incorrecto en térmico}: \texttt{density = 0} da $\rho c = 0$, es decir capacidad calorífica nula, que hace singular la matriz $\mathbf C$ y deja el transitorio irresoluble. Un usuario que siguiera el consejo llegaba a un fallo peor y más críptico.
+
+El mensaje accionable correcto ya existía en \texttt{ThermalMaterial.volumetric\_capacity} ---orienta hacia el \texttt{LinearSolver} estacionario, que no necesita $\rho c$--- pero era inalcanzable porque la validación del ensamblador cortaba antes.
+
+\textbf{Resolución}: el ensamblador delega el mensaje al material cuando el material expone \texttt{volumetric\_capacity}, y conserva el mensaje mecánico genérico cuando no. El ensamblador no necesita conocer las familias de material; sólo pregunta si el material sabe explicarse a sí mismo (Reglas.md §1, coste del componente N+1). Ningún material mecánico cambia de comportamiento, blindado por \texttt{test\_un\_material\_mecanico\_sin\_density\_conserva\_su\_mensaje}.
+
+\subsection{Fuera de alcance confirmado}
+
+\texttt{out\_of\_scope} se cumplió sin excepciones: no hay \texttt{k(T)}, ni paso de tiempo adaptativo, ni amortiguamiento de Rayleigh (blindado por \texttt{test\_no\_acepta\_rayleigh}), ni acoplamiento termomecánico.
 
 
 \section{Diálogo}
@@ -14197,6 +14246,43 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
 \end{itemize}
 
 
+\section{ThetaMethodSolver --- conducción de calor transitoria por integración \ensuremath{\theta} (Etapa 8)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: integrar en el tiempo el sistema semidiscreto de \textbf{primer orden} \texttt{C\ensuremath{\cdot}Ṫ + K\ensuremath{\cdot}T = F(t)} de la conducción de calor. Es el único solver del proyecto que no integra la ecuación mecánica de segundo orden.
+  \item \textbf{Por qué no es una variante de \texttt{NewmarkSolver}}: la familia Newmark integra \texttt{M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ + K\ensuremath{\cdot}u = F} mediante hipótesis sobre la \textbf{aceleración} dentro del paso. En conducción no existe segunda derivada temporal --- no hay aceleración ni inercia, y esas hipótesis no tienen sobre qué aplicarse. Forzar Newmark con \texttt{M = 0} degenera el esquema. Familia propia, no subclase.
+  \item \textbf{El estacionario NO pasa por aquí}: \texttt{K\ensuremath{\cdot}T = F} lo resuelve el \texttt{LinearSolver} existente sin modificación alguna.
+  \item \textbf{Esquema}: \texttt{(C + \ensuremath{\theta}\ensuremath{\Delta}t\ensuremath{\cdot}K)\ensuremath{\cdot}T\_\{n+1\} = [C − (1−\ensuremath{\theta})\ensuremath{\Delta}t\ensuremath{\cdot}K]\ensuremath{\cdot}T\_n + \ensuremath{\Delta}t\ensuremath{\cdot}[\ensuremath{\theta}\ensuremath{\cdot}F\_\{n+1\} + (1−\ensuremath{\theta})\ensuremath{\cdot}F\_n]}. La matriz \texttt{A = C + \ensuremath{\theta}\ensuremath{\Delta}t\ensuremath{\cdot}K} es SPD \ensuremath{\Rightarrow} Cholesky (ADR 0003), y con \texttt{\ensuremath{\Delta}t} constante \textbf{se factoriza una sola vez}: el problema es lineal y sin historia, así que \texttt{K} y \texttt{C} también se ensamblan una única vez. Coste por paso = una sustitución triangular.
+\end{itemize}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{\texttt{\ensuremath{\theta}}} & \textbf{Nombre} & \textbf{Orden} & \textbf{Estabilidad} \\
+\hline
+\texttt{0} & Euler explícito & 1 & Condicional (\texttt{\ensuremath{\Delta}t \ensuremath{\le} 2/\ensuremath{\lambda}\_max}) \\
+\texttt{1/2} & Crank-Nicolson & \textbf{2} & Incondicional (A-estable) \\
+\texttt{2/3} & Galerkin & 1 & Incondicional \\
+\texttt{1} & Euler implícito & 1 & Incondicional, \textbf{L-estable} --- \textit{default} \\
+\hline
+\end{tabularx}
+\end{center}
+\begin{itemize}
+  \item \textbf{Estabilidad no es ausencia de oscilaciones} (la razón del default): Crank-Nicolson es el más preciso, pero A-estable y \textbf{no} L-estable --- su factor de amplificación tiende a \texttt{−1} para los modos altos en vez de a \texttt{0}. Ante un escalón de temperatura en la frontera produce oscilación amortiguada con temperaturas \textbf{fuera del rango de los datos}, violando el principio del máximo de la ecuación de difusión: un resultado cualitativamente imposible, no sólo impreciso. Medido: \texttt{T\_max = 151.27} con \texttt{T\_pared = 100}. Euler implícito nunca oscila. El default protege a quien no eligió; Crank-Nicolson queda a un parámetro de distancia. Mismo criterio que fijó \texttt{lumped} como default de la capacidad, aplicado al eje temporal en vez del espacial.
+  \item \textbf{Reporte del orden efectivo}: contrapartida honesta del default robusto. \texttt{solver.order} (antes de correr) y \texttt{result.order} (después) devuelven \texttt{2} sólo con \texttt{\ensuremath{\theta} = 1/2}, \texttt{1} en el resto --- el coste en precisión es consultable, no una penalización silenciosa. También \texttt{is\_unconditionally\_stable} e \texttt{is\_l\_stable}.
+  \item \textbf{Parámetros}: \texttt{dt}, \texttt{n\_steps}, \texttt{T\_initial} (escalar \ensuremath{\Rightarrow} campo uniforme; vector \ensuremath{\Rightarrow} por nodo --- \textbf{no hay velocidad inicial}, la ecuación es de primer orden y \texttt{T\_0} la determina por completo); \texttt{theta} (default \texttt{1.0}), \texttt{lumping} (default \texttt{"lumped"}), \texttt{F\_func}, \texttt{dirichlet\_func}, \texttt{output\_every}, \texttt{linear\_algebra}. \textbf{Sin \texttt{rayleigh}}: es un modelo de disipación de la ecuación de segundo orden; en conducción la disipación es la conducción misma, ya contenida en \texttt{K}.
+  \item \textbf{Dirichlet variable en el tiempo}: \texttt{dirichlet\_func(t) \ensuremath{\to} g} permite un ciclo térmico sobre una superficie. El acoplamiento \texttt{K\_fp\ensuremath{\cdot}ḡ} \textbf{y} el término de capacidad \texttt{C\_fp\ensuremath{\cdot}(ḡ\_\{n+1\} − ḡ\_n)} se recalculan cada paso; la factorización de \texttt{A\_ff} \textbf{no} (verificado por contador).
+  \item \textbf{Diagnóstico de \texttt{\ensuremath{\Delta}t}}: reporta el paso característico \texttt{h\ensuremath{^{2}}/\ensuremath{\alpha}} con \texttt{\ensuremath{\alpha} = k/(\ensuremath{\rho}c)} --- el tiempo que tarda el frente térmico en cruzar un elemento. Es \textbf{información, no restricción}: con \texttt{\ensuremath{\theta} \ensuremath{\ge} 1/2} ningún \texttt{\ensuremath{\Delta}t} diverge, pero uno \texttt{≫ h\ensuremath{^{2}}/\ensuremath{\alpha}} se salta el transitorio que se quiere observar. Avisa si la razón supera 10. Análogamente, el transitorio no ha \textit{terminado} hasta \texttt{t ≫ L\ensuremath{^{2}}/\ensuremath{\alpha}}.
+  \item \textbf{Cuándo usarlo}: arranque y enfriamiento de piezas, choque térmico, ciclos térmicos impuestos, calor de hidratación. Para el régimen permanente, \texttt{LinearSolver}.
+  \item \textbf{Caveats}: sin ningún Dirichlet la matriz es singular por el modo de temperatura uniforme (análogo térmico del sólido rígido) --- se diagnostica nombrando el modo, no con un fallo algebraico genérico. \texttt{T\_initial} incompatible con un Dirichlet impuesto \textbf{avisa sin abortar}: un choque térmico es modelización legítima. \texttt{\ensuremath{\theta} < 1/2} con capacidad consistente es prácticamente inutilizable (\texttt{\ensuremath{\lambda}\_max} grande) --- se avisa. Requiere \texttt{density} y \texttt{c} declaradas en el material.
+  \item \textbf{Despacho YAML}: \texttt{solver.type: ThetaMethodSolver}. Vía atributo \texttt{PIPELINE\_KIND="thermal\_transient"} \ensuremath{\to} \texttt{run\_thermal\_transient}. Quinto valor del literal (tras \texttt{"static"}, \texttt{"modal"}, \texttt{"transient"}, \texttt{"harmonic"}, \texttt{"spectrum"}).
+  \item \textbf{Resultado}: \texttt{ThermalTransientResult} --- \texttt{t\_history}, \texttt{T\_history}, \texttt{theta}, \texttt{dt}, \texttt{order}, más \texttt{T\_final}, \texttt{temperature\_at(dof)} y \texttt{extremes()} (diagnóstico del principio del máximo). Dataclass propia y no \texttt{TransientResult}: sus campos \texttt{udot\_history}, \texttt{uddot\_history} y los coeficientes de Rayleigh no tienen significado térmico, y rellenarlos con ceros produciría un objeto que miente sobre su contenido.
+  \item \textbf{Validación}: orden temporal medido \textbf{0.9944} (\ensuremath{\theta}=1) y \textbf{2.0001} (\ensuremath{\theta}=1/2); convergencia al estacionario del \texttt{LinearSolver} con error \textbf{7.1e-14}; sólido semi-infinito de Carslaw-Jaeger con error \textbf{3.0e-3}; cross-check 2D\ensuremath{\leftrightarrow}3D paso a paso.
+  \item \textbf{Spec}: docs/specs/ThetaMethodSolver.md.
+  \item \textbf{Archivo}: solidum/math/solvers/theta\_method.py.
+\end{itemize}
+
+
 \section{Cómo añadir un solver nuevo}
 
 \texttt{/solidum-new solver <Name>} --- genera archivo en \texttt{solidum/math/solvers/<snake>.py}, decorador \texttt{@SolverRegistry.register}, esqueleto de test.
@@ -14207,6 +14293,7 @@ Convenciones de interfaz:
   \item \textbf{Solvers estáticos} (lineales, no lineales, arc-length): \texttt{PIPELINE\_KIND = "static"}. Constructor recibe \texttt{assembler} + parámetros; método \texttt{solve(F\_ext\_global, step\_callback=None) \ensuremath{\to} U\_final}. Comprometen los estados internos vía \texttt{assembler.commit\_all\_states()} al converger cada paso. Retornan el campo de desplazamientos completo.
   \item \textbf{Solvers modales / autovalor} (modal --- ADR 0009 --- y futuros pandeo lineal): \texttt{PIPELINE\_KIND = "modal"}. Constructor recibe \texttt{assembler} + parámetros; método \texttt{solve() \ensuremath{\to} ModalResult} (u otro tipo específico). No consumen vector de cargas. \texttt{run\_yaml} despacha a \texttt{run\_modal}.
   \item \textbf{Solvers transitorios} (Newmark, HHT, central differences): \texttt{PIPELINE\_KIND = "transient"}. Constructor recibe \texttt{assembler}, \texttt{t\_end}, \texttt{dt} + parámetros; método \texttt{solve() \ensuremath{\to} TransientResult}. \texttt{run\_yaml} despacha a \texttt{run\_transient}.
+  \item \textbf{Solvers térmicos transitorios} (\ensuremath{\theta}-method): \texttt{PIPELINE\_KIND = "thermal\_transient"}. Constructor recibe \texttt{assembler}, \texttt{dt}, \texttt{n\_steps}, \texttt{T\_initial} + parámetros; método \texttt{solve() \ensuremath{\to} ThermalTransientResult}. \texttt{run\_yaml} despacha a \texttt{run\_thermal\_transient}. Integran la ecuación de \textbf{primer orden} \texttt{C\ensuremath{\cdot}Ṫ + K\ensuremath{\cdot}T = F}, no la de segundo orden mecánica: no admiten \texttt{rayleigh} ni condición inicial de velocidad.
   \item \textbf{Solvers en frecuencia / espectrales} (harmonic con \texttt{PIPELINE\_KIND = "harmonic"}, response spectrum con \texttt{"spectrum"}). Constructor recibe \texttt{assembler} + parámetros del análisis; método \texttt{solve()} devuelve el resultado específico (\texttt{HarmonicResult}, \texttt{ResponseSpectrumResult}). \texttt{run\_yaml} despacha a \texttt{run\_harmonic} o \texttt{run\_response\_spectrum} según el atributo.
 \end{itemize}
 
