@@ -82,6 +82,49 @@ def _compute_kinematics(xi, eta, coords):
 
 
 @njit
+def _compute_gradient_kinematics_quad4(xi, eta, coords):
+    """Gradiente de las funciones de forma del Quad4 en globales.
+
+    Devuelve ``(dN_dx, detJ)`` con ``dN_dx`` de forma ``(2, 4)``: es
+    literalmente la matriz ``B`` de un problema de campo escalar
+    (conducción de calor), donde ``∇T = B·T_e``.
+
+    Es la misma materia prima que usa ``_compute_kinematics`` para el
+    problema mecánico; la diferencia está en el ensamblaje posterior —
+    allí las derivadas se reordenan en la matriz ``(3, 8)`` de Voigt, aquí
+    se usan directas. Se factoriza aquí para no duplicar el jacobiano ni
+    su inversión.
+    """
+    dN_dxi = np.zeros((2, 4), dtype=np.float64)
+    dN_dxi[0, 0] = -(1.0 - eta) / 4.0
+    dN_dxi[0, 1] =  (1.0 - eta) / 4.0
+    dN_dxi[0, 2] =  (1.0 + eta) / 4.0
+    dN_dxi[0, 3] = -(1.0 + eta) / 4.0
+    dN_dxi[1, 0] = -(1.0 - xi) / 4.0
+    dN_dxi[1, 1] = -(1.0 + xi) / 4.0
+    dN_dxi[1, 2] =  (1.0 + xi) / 4.0
+    dN_dxi[1, 3] =  (1.0 - xi) / 4.0
+
+    J = np.dot(dN_dxi, coords)
+    detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+
+    if detJ <= ZERO_JACOBIAN_TOL:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en elemento Quad4Thermal. "
+            "Revisa la conectividad (orden antihorario) o la distorsion."
+        )
+
+    invJ = np.zeros((2, 2), dtype=np.float64)
+    invJ[0, 0] =  J[1, 1] / detJ
+    invJ[0, 1] = -J[0, 1] / detJ
+    invJ[1, 0] = -J[1, 0] / detJ
+    invJ[1, 1] =  J[0, 0] / detJ
+
+    dN_dx = np.dot(invJ, dN_dxi)
+    return dN_dx, detJ
+
+
+@njit
 def _compute_integrands(B, C_alg, sigma, detJ, weight, thickness):
     dV = detJ * weight * thickness
 
