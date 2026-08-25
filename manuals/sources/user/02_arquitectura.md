@@ -4,7 +4,7 @@
 
 Cada elemento finito declara dos contratos sobre el material que acepta:
 
-- **`STRAIN_DIM`**: dimensión Voigt de la deformación que entrega al material. `1` para elementos axiales (truss, cable, marcos — la fibra centroidal); `3` para 2D (`[εxx, εyy, γxy]`); `6` para 3D continuo (no implementado todavía).
+- **`STRAIN_DIM`**: dimensión Voigt de la deformación que entrega al material. `1` para elementos axiales (truss, cable, marcos — la fibra centroidal); `3` para 2D (`[εxx, εyy, γxy]`); `6` para 3D continuo (`[εxx, εyy, εzz, γxy, γyz, γxz]`, ADR 0012).
 - **`DOF_NAMES`**: lista de grados de libertad por nodo. Por ejemplo, `['ux', 'uy', 'rz']` para un marco 2D.
 
 El protocolo del material es uniforme:

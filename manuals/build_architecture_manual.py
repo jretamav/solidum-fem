@@ -45,6 +45,10 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsfonts}
+% Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
+% desplazamientos en discontinuidades embebidas y materiales cohesivos
+% (ADR 0010). No están en amssymb.
+\usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}

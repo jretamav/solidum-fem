@@ -11,6 +11,10 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsfonts}
+% Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
+% desplazamientos en discontinuidades embebidas y materiales cohesivos
+% (\hyperref[adr:0010]{ADR 0010}). No están en amssymb.
+\usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
@@ -193,7 +197,7 @@ La identidad de un programa se define tanto por su alcance como por sus límites
 
 \textbf{Casos para los que Solidum FEM es la herramienta indicada.} Investigación en mecánica de sólidos donde la prioridad es la \textbf{transparencia y la modificabilidad} del código: prototipado de modelos constitutivos nuevos antes de portarlos a un programa industrial; ensayo de variantes algorítmicas en solvers no lineales (predictores, correctores, criterios de longitud de arco); evaluación de formulaciones de elementos finitos contra soluciones analíticas y casos de referencia conocidos; trabajo docente y de tesis donde el estudiante debe comprender, modificar y validar cada pieza del cálculo.
 
-\textbf{Casos para los que Solidum FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Análisis dinámicos transitorios o problemas multifísicos hoy: están previstos como evolución futura pero no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
+\textbf{Casos para los que Solidum FEM no es la herramienta indicada.} Análisis de producción de piezas industriales con mallas de millones de elementos: el rendimiento absoluto y la paralelización masiva no son objetivos del proyecto. Problemas multifísicos ---análisis térmico, acoplamiento termomecánico, contacto---: están previstos como evolución futura pero no implementados. Cálculos sometidos a normativa de certificación que requieren un programa con trazabilidad de validación industrial: se recomienda Code\_Aster, Abaqus o ANSYS según el contexto. Modelado geomecánico avanzado o modelado de hormigón con plasticidad acoplada al daño: existen programas especializados (OpenSees, ATENA, DIANA) más maduros para estos dominios.
 
 \textbf{Posición frente a programas de referencia.} Solidum FEM no compite en escala con los programas industriales: complementa el flujo de investigación. La hipótesis es que el código que el investigador puede leer, modificar y validar línea a línea es más valioso, en su contexto, que un programa cerrado del que se obtiene un resultado sin posibilidad de auditoría interna. Cuando el modelo investigado madura y debe aplicarse a producción, la traducción a un programa industrial es la trayectoria natural.
 
@@ -1571,8 +1575,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 25 de agosto de 2026, 11:14\\[0.5em]
-Commit Git: \texttt{e9817cb} (con cambios sin confirmar)\\[1em]
+Compilado el 25 de agosto de 2026, 11:30\\[0.5em]
+Commit Git: \texttt{7b9acfb} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

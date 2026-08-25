@@ -71,3 +71,29 @@ solver:
 **Cuándo usarlo**: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando `NonlinearSolver` diverge cerca de un punto límite. Más caro por paso (dos `spsolve` por iteración) pero indispensable en estos casos.
 
 **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (*Computers & Structures*, 1981).
+
+## `DissipationArcLengthSolver` — arc-length por disipación de energía
+
+Variante de `ArcLengthSolver` que controla la **disipación incremental de energía** por paso en lugar de la longitud de arco euclídea. Es la herramienta indicada cuando la curva $\mathbf U$–$\lambda$ tiene tramos casi verticales, donde la restricción cilíndrica se vuelve mal condicionada.
+
+**Diferencia esencial**: la restricción de paso
+
+$$g(\Delta\mathbf U, \Delta\lambda) = \tfrac{1}{2}\left(\lambda_n \mathbf F \cdot \Delta\mathbf U - \Delta\lambda\, \mathbf F \cdot \mathbf U_n\right) = \tau$$
+
+es **lineal** en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del cilíndrico. El corrector tiene por tanto una sola raíz: desaparecen la selección de raíz por menor ángulo y la patología de raíces imaginarias.
+
+- **Switching automático**: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
+- **Parámetros**: todos los de `ArcLengthSolver`, más `initial_tau` (obligatorio) y la familia `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
+- **Cuándo usarlo**: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
+- **Limitación conocida**: **no** resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
+
+```yaml
+solver:
+  type: DissipationArcLengthSolver
+  max_lambda: 1.0
+  initial_dl: 0.05
+  initial_tau: 1.0e-4
+  max_steps: 300
+```
+
+**Referencia**: Gutiérrez, "Energy release control for numerical simulations of failure in quasi-brittle solids" (*Communications in Numerical Methods in Engineering*, 2004); switching a la Verhoosel et al. (2009).
