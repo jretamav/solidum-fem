@@ -13,6 +13,7 @@ from solidum.registry import (
     MaterialRegistry,
     QuadratureRegistry,
     SolverRegistry,
+    ThermalMaterialRegistry,
 )
 
 _log = get_logger("parsers.yaml")
@@ -59,6 +60,9 @@ class YamlParser:
         self.domain = Domain()
         self.materials = {}
         self.cohesive_materials = {}    # ADR 0010 — familia paralela
+        self.thermal_materials = {}     # Etapa 8 — familia paralela
+        self.thermal_body_sources = []  # Etapa 8 — fuente volumétrica Q
+        self.thermal_boundary_fluxes = []  # Etapa 8 — flujo prescrito q̄
         self.solver_config = {}
         self.point_loads = {}
         self.point_loads_by_coord = {}
@@ -90,10 +94,12 @@ class YamlParser:
         self._parse_nodes(data)
         self._parse_materials(data)
         self._parse_cohesive_materials(data)
+        self._parse_thermal_materials(data)
         self._parse_mesh_or_elements(data)
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
         self._parse_point_loads_config(data)
+        self._parse_thermal_loads_config(data)
         self._parse_body_force(data)
 
         self.output_config = data.get('output', {})
@@ -115,8 +121,13 @@ class YamlParser:
         if not has_mesh and not has_nodes:
             errors.append("Falta el bloque 'nodes' (o 'mesh'). El modelo no tiene geometría definida.")
 
-        if not has_mesh and has_elements and not data.get('materials'):
-            errors.append("Falta el bloque 'materials'. Se definieron elementos pero no hay materiales.")
+        if (not has_mesh and has_elements
+                and not data.get('materials')
+                and not data.get('thermal_materials')):
+            errors.append(
+                "Falta el bloque 'materials' (o 'thermal_materials' para un "
+                "modelo térmico). Se definieron elementos pero no hay materiales."
+            )
 
         # --- Nodos ---
         known_node_ids = set()
@@ -183,6 +194,26 @@ class YamlParser:
                     f"'{mat['type']}'. Disponibles: {sorted(registered_cohesives)}."
                 )
 
+        # --- Materiales térmicos (Etapa 8 — sección paralela) ---
+        known_thermal_ids = set()
+        registered_thermals = set(ThermalMaterialRegistry.names())
+        for i, mat in enumerate(data.get('thermal_materials', []) or []):
+            ctx = f"thermal_materials[{i}]"
+            if not isinstance(mat, dict):
+                errors.append(f"{ctx}: cada material térmico debe ser un diccionario.")
+                continue
+            if 'id' not in mat:
+                errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+            else:
+                known_thermal_ids.add(mat['id'])
+            if 'type' not in mat:
+                errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
+            elif registered_thermals and mat['type'] not in registered_thermals:
+                errors.append(
+                    f"{ctx} (id={mat.get('id', '?')}): tipo de material térmico desconocido "
+                    f"'{mat['type']}'. Disponibles: {sorted(registered_thermals)}."
+                )
+
         # --- Elementos (bloque inline, no mesh) ---
         registered_elements = set(ElementRegistry.names())
         elements_data = data.get('elements', [])
@@ -211,8 +242,17 @@ class YamlParser:
                     )
                 if 'material' not in elem:
                     errors.append(f"{ctx}: falta el campo obligatorio 'material'.")
-                elif elem['material'] not in known_mat_ids:
-                    errors.append(f"{ctx}: referencia a material inexistente (id={elem['material']}).")
+                elif (elem['material'] not in known_mat_ids
+                      and elem['material'] not in known_thermal_ids):
+                    # Un elemento térmico referencia un id de `thermal_materials`;
+                    # uno mecánico, uno de `materials`. El campo es el mismo y la
+                    # familia se resuelve por el bloque donde se declaró el id, de
+                    # modo que el YAML no obliga al usuario a saber a qué registro
+                    # pertenece cada material.
+                    errors.append(
+                        f"{ctx}: referencia a material inexistente (id={elem['material']}). "
+                        f"Declarado ni en 'materials' ni en 'thermal_materials'."
+                    )
                 # ADR 0010 — referencia a cohesivo opcional, sólo si el elemento
                 # la admite. Si se declara, validar contra `cohesive_materials`.
                 if 'cohesive_material' in elem and elem['cohesive_material'] not in known_cohesive_ids:
@@ -354,6 +394,23 @@ class YamlParser:
             kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
             self.cohesive_materials[mat_id] = CohesiveMaterialRegistry.create(mat_type, **kwargs)
 
+    def _parse_thermal_materials(self, data: dict):
+        """Materiales térmicos (Etapa 8, sección paralela a ``materials``).
+
+        Familia con registro propio, igual que los cohesivos (ADR 0010): el
+        contrato es ``compute_flux(∇T)``, no ``compute_stress(ε)``, y la
+        compatibilidad con el elemento la fija ``FLUX_DIM``, no ``STRAIN_DIM``.
+        Separar los bloques evita que un material térmico y uno mecánico
+        compartan espacio de nombres de ``type``.
+        """
+        for mat_data in data.get('thermal_materials', []) or []:
+            mat_id = mat_data['id']
+            mat_type = mat_data['type']
+            kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
+            self.thermal_materials[mat_id] = ThermalMaterialRegistry.create(
+                mat_type, **kwargs,
+            )
+
     def _parse_mesh_or_elements(self, data: dict):
         mesh_file = data.get('mesh', None)
         if mesh_file:
@@ -392,10 +449,23 @@ class YamlParser:
                     node_ids = elem_dict['nodes']
                     
                     nodes = [self.domain.get_node(nid) for nid in node_ids]
-                    material = self.materials[mat_id]
-                    
+                    # El id se busca en las dos familias: el bloque donde se
+                    # declaró determina cuál. `materials` tiene prioridad para
+                    # que un modelo puramente mecánico no cambie de comportamiento.
+                    if mat_id in self.materials:
+                        material = self.materials[mat_id]
+                        es_termico = False
+                    else:
+                        material = self.thermal_materials[mat_id]
+                        es_termico = True
+
                     kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes', 'cohesive_material')}
-                    if 'quadrature' in kwargs and isinstance(kwargs['quadrature'], str):
+                    # Los elementos mecánicos reciben la regla de cuadratura ya
+                    # materializada; los térmicos reciben la **clave**, porque la
+                    # resuelven ellos mismos en su constructor para poder guardar
+                    # `quadrature_key` y reportarla en diagnósticos.
+                    if ('quadrature' in kwargs and isinstance(kwargs['quadrature'], str)
+                            and not es_termico):
                         kwargs['quadrature'] = self._get_quadrature(kwargs['quadrature'])
                     # ADR 0010 — resolver referencia a material cohesivo si está declarada.
                     if 'cohesive_material' in elem_dict:
@@ -494,6 +564,22 @@ class YamlParser:
                 coefficients=coefficients,
                 g=g,
             )
+
+    def _parse_thermal_loads_config(self, data: dict):
+        """Bloque ``thermal_loads`` (Etapa 8), con dos sub-bloques opcionales.
+
+        Sección propia y no dentro de ``point_loads`` porque una fuente
+        volumétrica y un flujo de frontera no son cargas nodales: se integran
+        sobre el elemento y su borde/cara, exactamente como el peso propio no
+        vive en ``point_loads``.
+        """
+        cfg = data.get('thermal_loads', {}) or {}
+        self.thermal_body_sources = cfg.get('body_source', []) or []
+        if isinstance(self.thermal_body_sources, dict):
+            self.thermal_body_sources = [self.thermal_body_sources]
+        self.thermal_boundary_fluxes = cfg.get('boundary_flux', []) or []
+        if isinstance(self.thermal_boundary_fluxes, dict):
+            self.thermal_boundary_fluxes = [self.thermal_boundary_fluxes]
 
     def _parse_point_loads_config(self, data: dict):
         self.point_loads = data.get('point_loads', [])
@@ -625,6 +711,55 @@ class YamlParser:
             return assembler.assemble_body_load(self.body_force)
         return np.zeros(self.domain.total_dofs)
 
+    def get_thermal_loads(self) -> np.ndarray:
+        """Vector global de cargas térmicas ``F`` [W] declaradas en el YAML.
+
+        Dos bloques, ambos opcionales:
+
+        - ``body_source``: fuente volumétrica ``Q`` [W/m³] aplicada a un
+          conjunto de elementos (o a todos). Se integra con
+          ``element.compute_body_source(Q)``.
+        - ``boundary_flux``: flujo prescrito ``q̄`` [W/m²] sobre bordes (2D) o
+          caras (3D) de elementos concretos. **Convención de signo**
+          (``Reglas.md §5``): ``q̄ > 0`` es flujo **saliente** del dominio
+          (enfriamiento), de modo que el vector resultante es negativo.
+
+        Un borde o cara sin declarar es **adiabático**, análogo al borde libre
+        de tracción en mecánica: no hay que declarar el flujo nulo.
+
+        Las cargas nodales concentradas van por el bloque estándar
+        ``point_loads`` con ``T: <valor>``, que ya es genérico por nombre de
+        DOF y no necesita tratamiento especial.
+        """
+        F = np.zeros(self.domain.total_dofs)
+
+        for src in self.thermal_body_sources:
+            Q = float(src.get('Q', src.get('value', 0.0)))
+            elem_ids = src.get('elements')
+            objetivo = (self.domain.elements.values() if elem_ids is None
+                        else [self.domain.elements[e] for e in elem_ids])
+            for elem in objetivo:
+                f_e = elem.compute_body_source(Q)
+                for a, node in enumerate(elem.nodes):
+                    F[node.dofs["T"]] += f_e[a]
+
+        for flux in self.thermal_boundary_fluxes:
+            q_bar = float(flux.get('q', flux.get('value', 0.0)))
+            elem = self.domain.elements[flux['element']]
+            if 'edge' in flux:
+                f_e = elem.compute_edge_flux(int(flux['edge']), q_bar)
+            elif 'face' in flux:
+                f_e = elem.compute_face_flux(int(flux['face']), q_bar)
+            else:
+                raise ValueError(
+                    "boundary_flux: cada entrada necesita 'edge' (elementos 2D) "
+                    "o 'face' (elementos 3D)."
+                )
+            for a, node in enumerate(elem.nodes):
+                F[node.dofs["T"]] += f_e[a]
+
+        return F
+
     def get_solver(self, assembler):
         """Construye y retorna el solver dinámicamente según la configuración YAML."""
         s_type = self.solver_config.get('type', 'LinearSolver')
@@ -657,5 +792,18 @@ class YamlParser:
         # soporta tipos complejos nativos).
         if s_type == 'HarmonicSolver' and 'F_amplitude' not in kwargs:
             kwargs['F_amplitude'] = self.get_external_forces()
+
+        # Solver térmico transitorio: `F_func` es un callable y el YAML no
+        # puede expresarlo. Se deriva el vector de carga térmica constante del
+        # bloque `thermal_loads` (+ las nodales de `point_loads` con `T:`) y se
+        # envuelve en una función del tiempo. Mismo patrón que `F_amplitude`
+        # arriba. Para una carga variable en el tiempo, el usuario construye el
+        # solver desde código y pasa su propio `F_func`.
+        solver_cls = SolverRegistry.get(s_type)
+        if (getattr(solver_cls, 'PIPELINE_KIND', None) == 'thermal_transient'
+                and 'F_func' not in kwargs):
+            F_termico = self.get_thermal_loads() + self.get_external_forces()
+            if np.any(F_termico):
+                kwargs['F_func'] = lambda t, _F=F_termico: _F
 
         return SolverRegistry.create(s_type, assembler=assembler, **kwargs)

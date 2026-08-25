@@ -134,5 +134,5 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
 
-- [PENDIENTE: ADR para la introducción del problema térmico, incluyendo la generalización del concepto de DOF a magnitudes escalares no mecánicas.]
+- El problema térmico se incorporó en la Etapa 8 **sin ADR propio**, a diferencia de lo previsto aquí. La razón es que no rompió contrato alguno ni exigió la generalización del concepto de grado de libertad que se anticipaba: la infraestructura resultó ya agnóstica al campo físico, y la familia térmica reutilizó el patrón de familia paralela con registro propio que el ADR 0010 había establecido para los materiales cohesivos. Las convenciones específicas —signo del flujo de frontera saliente, ausencia de notación de Voigt en el problema escalar— se registraron en `Reglas.md` §5. Un ADR quedaría justificado si se incorpora el acoplamiento, que sí obliga a decidir sobre el contrato de material.
 - [PENDIENTE: ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.]

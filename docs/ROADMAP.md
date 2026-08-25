@@ -13,7 +13,7 @@
 
 ## Estado a fecha del último commit
 
-Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. **1148 tests verdes + 8 skipped intencionales**.
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. **1176 tests verdes + 8 skipped intencionales**.
 
 **Próximo hito: elección de la Etapa 9.** Cerrada la opción C en su núcleo mínimo, quedan abiertas **B** (placas y láminas) y **E** (Mohr-Coulomb 2D + `FiberSection`), más la continuación de la propia línea térmica —convección, acoplamiento termomecánico o no linealidad térmica—. Es una decisión del usuario; el argumentario está en §"Opciones diferidas".
 
@@ -286,14 +286,14 @@ Las predicciones escritas en las specs se cumplieron sin ajuste: rango 7/8 del `
 
 **Hallazgo colateral corregido**: la validación de `Assembler.assemble_mass_matrix` aconsejaba *"usa `0.0` si el material es sin masa por diseño"*, correcto en mecánica (ADR 0008) pero **físicamente incorrecto en térmico**, donde `density = 0` da capacidad calorífica nula y matriz singular. El ensamblador ahora delega el mensaje al material cuando éste sabe explicarse; ningún material mecánico cambia de comportamiento.
 
-Suite 973 → 1148 (+175 tests, sin regresiones).
+Suite 973 → 1176 (+203 tests, sin regresiones).
 
 ### Cierre pendiente de la etapa
 
 No bloquea elegir la siguiente, pero queda anotado:
 
 1. **Campaña de validación diferida**: cilindro hueco con perfil logarítmico (2D y 3D) y balance energético global. Ambos requieren mallar una **corona circular** — la misma carencia que difirió NAFEMS LE10 en su momento, y que sigue abierta.
-2. **Sección térmica en el User manual y el Architecture manual** (el Reference manual la incluye ya, generada desde las specs).
+2. ~~Sección térmica en los manuales~~ ✅ **cerrada 2026-08-25**, junto con el cableado de la vía YAML que la hacía documentable.
 
 ### Fuera de alcance, con rationale
 

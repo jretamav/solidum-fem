@@ -1,6 +1,6 @@
 # Catálogo de Elementos Finitos
 
-El motor expone dos familias de elementos: **1D** (estructuras reticulares: armaduras, cables, marcos) y **2D** (continuo plano: cuadrilátero y triángulo). Todos se referencian desde el YAML por su nombre exacto en `type:`.
+El motor expone varias familias de elementos: **1D** (estructuras reticulares: armaduras, cables, marcos), **2D** (continuo plano: cuadrilátero y triángulo), **3D** (continuo tridimensional: hexaedros y tetraedros, lineales y cuadráticos), **discontinuidades embebidas** (fractura con salto interior) y **térmicos** (conducción de calor, con un grado de libertad escalar por nodo; se documentan en el capítulo «Análisis Térmico»). Todos se referencian desde el YAML por su nombre exacto en `type:`.
 
 ## Elementos 1D
 

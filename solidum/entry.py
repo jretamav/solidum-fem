@@ -449,7 +449,13 @@ def run_yaml(
         )
 
     # "static" — pipeline genérico con fuerzas externas y peso propio.
-    F_ext = parser.get_external_forces() + parser.get_body_load(assembler)
+    # Las cargas térmicas (`thermal_loads`: fuente volumétrica y flujo de
+    # frontera) entran por la misma vía: en régimen estacionario el problema
+    # térmico es `K·T = F` y lo resuelve el LinearSolver sin distinción. En un
+    # modelo mecánico el bloque no existe y el término es cero.
+    F_ext = (parser.get_external_forces()
+             + parser.get_body_load(assembler)
+             + parser.get_thermal_loads())
     return run(
         domain,
         assembler=assembler,
