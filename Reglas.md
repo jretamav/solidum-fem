@@ -124,3 +124,5 @@ Justificación: sale directamente de la forma débil, donde el término de front
   | Código | **Inglés** | Identificadores de código (clases, funciones, variables, archivos) |
 
   **Bilingüismo de los manuales (Opción C):** el español es la fuente canónica; el inglés es un artefacto generado por la IA a partir de las fuentes Markdown españolas. Pre-requisito: glosario terminológico ES↔EN versionado en `manuals/glossary.md` que fija la traducción única de cada término técnico del proyecto. La IA debe consultarlo en cada regeneración para mantener consistencia entre sesiones. El `User_manual` se mantiene a mano en ambos idiomas por brevedad y por su naturaleza orientada a sintaxis YAML (donde el código no se traduce).
+
+  > **Estado a 2026-08-25 — política declarada, no implementada.** Hoy existe una sola versión de cada manual (española, sin sufijo `_es`) y `manuals/glossary.md` no existe todavía. Registrado como deuda técnica #10 en [`docs/STATUS.md`](docs/STATUS.md). Mientras el glosario no exista, no generar las versiones inglesas: sin él la terminología derivaría entre sesiones, que es justo lo que este párrafo previene.
