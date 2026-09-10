@@ -36,6 +36,14 @@ material — eso es competencia de sus tests dedicados y de los benchmarks de
 `tests/validation/`. Aquí se comprueba que lo declarado y lo que ocurre en
 runtime concuerdan, que es donde se cuelan las incoherencias silenciosas.
 
+Piezas hermanas
+---------------
+`tests/test_element_contract_sweep.py` y `tests/test_solver_contract_sweep.py`
+aplican la misma idea a `ElementRegistry` y `SolverRegistry`. Las tres cubren
+los tres registros principales del proyecto, de modo que ningún componente
+nuevo —material, elemento o solver— puede quedarse fuera de los barridos
+genéricos por olvido.
+
 Registros paralelos
 -------------------
 `CohesiveMaterialRegistry` y `ThermalMaterialRegistry` son deliberadamente
