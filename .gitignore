@@ -27,3 +27,11 @@ dist/
 !.claude/skills/
 !.claude/agents/
 !.claude/commands/
+
+# Referencias bibliográficas externas: NUNCA se redistribuyen desde este
+# repositorio (público, LGPL-3.0) por derechos de autor de sus editores.
+# La convención de docs/referencias/README.md es documentar cada fuente y
+# dónde obtenerla, no incluir el PDF. Los archivos viven en disco para
+# consulta local y quedan fuera de git deliberadamente.
+docs/referencias/**/*.pdf
+docs/referencias/*.pdf
