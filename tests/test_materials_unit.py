@@ -1,12 +1,26 @@
 """Tests de unidad de los modelos constitutivos.
 
-Cubre los seis materiales registrados en ``solidum.materials`` con foco en:
+Cubre la **física** de una selección de materiales de ``solidum.materials``,
+con foco en:
 
 - Elasticidad: σ = E·ε o σ = C·ε con la matriz constitutiva esperada.
 - Plasticidad: predictor elástico, return mapping bajo carga, tangente
   consistente, regreso elástico tras descarga.
 - Daño: umbral, ley exponencial, irreversibilidad (κ máxima histórica),
   saturación a ``DAMAGE_MAX``.
+
+Selección, no barrido
+---------------------
+Los materiales se enumeran **a mano** (ver los imports abajo), porque cada uno
+exige comprobaciones físicas propias que no se generalizan: el return mapping
+de J2 no se parece al de Drucker-Prager ni a la ley de daño. Esa es la razón
+legítima de la lista manual, pero también su límite: un material nuevo **no
+entra solo** aquí.
+
+Quien cubre a todo material registrado —incluidos los que esta lista no
+menciona— es ``tests/test_material_contract_sweep.py``, que recorre
+``MaterialRegistry`` y verifica el contrato estructural común. Los dos son
+complementarios: aquí la física de cada modelo, allí el contrato de todos.
 
 No se cubre el ``CableMaterial1D`` (ya tiene ``test_cable_material.py``).
 """

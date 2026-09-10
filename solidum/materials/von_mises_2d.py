@@ -369,6 +369,10 @@ class VonMises2D(Material):
                 f"VonMises2D: nu debe estar en (-1, 0.5) (recibido {nu}). "
                 f"nu = 0.5 induce singularidad."
             )
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"VonMises2D: density={density} no puede ser negativa."
+            )
 
         self.E = E
         self.nu = nu

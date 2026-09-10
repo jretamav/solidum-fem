@@ -62,6 +62,10 @@ class IsotropicDamage1D(Material):
             raise ValueError(f"IsotropicDamage1D: kappa_0 debe ser > 0 (recibido {kappa_0}).")
         if alpha <= 0.0:
             raise ValueError(f"IsotropicDamage1D: alpha debe ser > 0 (recibido {alpha}).")
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"IsotropicDamage1D: density={density} no puede ser negativa."
+            )
 
         self.E = E
         self.kappa_0 = kappa_0

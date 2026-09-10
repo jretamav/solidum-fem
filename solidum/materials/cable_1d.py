@@ -35,6 +35,10 @@ class CableMaterial1D(Material):
     def __init__(self, E, density: float | None = None):
         if E <= 0:
             raise ValueError(f"CableMaterial1D: E debe ser > 0, se recibió {E}.")
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"CableMaterial1D: density={density} no puede ser negativa."
+            )
         self.E = E
         self.density = density
 
