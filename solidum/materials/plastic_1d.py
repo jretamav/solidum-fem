@@ -14,6 +14,22 @@ class Elastoplastic1D(Material):
 
     def __init__(self, E: float, sigma_y: float, H: float = 0.0,
                  density: float | None = None):
+        if E <= 0.0:
+            raise ValueError(f"Elastoplastic1D: E debe ser > 0 (recibido {E}).")
+        if sigma_y <= 0.0:
+            raise ValueError(
+                f"Elastoplastic1D: sigma_y debe ser > 0 (recibido {sigma_y})."
+            )
+        if H < 0.0:
+            raise ValueError(
+                f"Elastoplastic1D: H debe ser ≥ 0 (recibido {H}). "
+                f"Ablandamiento (H<0) requiere regularización no implementada."
+            )
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"Elastoplastic1D: density={density} no puede ser negativa."
+            )
+
         self.E = E              # Módulo de Young
         self.sigma_y = sigma_y  # Esfuerzo de fluencia inicial
         self.H = H              # Módulo de endurecimiento (0 = plasticidad perfecta)

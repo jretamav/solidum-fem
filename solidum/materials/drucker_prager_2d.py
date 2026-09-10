@@ -312,6 +312,10 @@ class DruckerPrager2D(Material):
             raise ValueError(
                 f"DruckerPrager2D: nu debe estar en (-1, 0.5) (recibido {nu})."
             )
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"DruckerPrager2D: density={density} no puede ser negativa."
+            )
 
         self.E = E
         self.nu = nu
