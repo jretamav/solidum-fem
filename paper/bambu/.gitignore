@@ -1,0 +1,8 @@
+# Artefactos de compilación LaTeX del artículo.
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
