@@ -69,6 +69,10 @@ class IsotropicDamage2D(Material):
             raise ValueError(f"IsotropicDamage2D: kappa_0 debe ser > 0 (recibido {kappa_0}).")
         if alpha <= 0.0:
             raise ValueError(f"IsotropicDamage2D: alpha debe ser > 0 (recibido {alpha}).")
+        if density is not None and density < 0.0:
+            raise ValueError(
+                f"IsotropicDamage2D: density={density} no puede ser negativa."
+            )
 
         self.E = E
         self.elastic_base = Elastic2D(E, nu, hypothesis=hypothesis)

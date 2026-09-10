@@ -75,10 +75,13 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
+from solidum.core.domain import Domain
 from solidum.core.node import Node
-from solidum.elements.solid_2d.quad4 import Quad4
+from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.materials.orthotropic_2d import Orthotropic2D
+from solidum.math.assembly import Assembler
+from solidum.math.solvers import LinearSolver
 
 
 BAMBU = dict(E1=15.0e9, E2=0.8e9, G12=0.7e9, nu12=0.35)
@@ -275,56 +278,224 @@ class TestAcoplamientoTraccionCortante(unittest.TestCase):
                 self.assertLess(abs(eta), 1e-14)
 
 
-class TestConsistenciaFEM(unittest.TestCase):
-    """El módulo aparente medido sobre un modelo Quad4 real.
 
-    Valida no sólo la constitutiva sino el camino completo
-    material -> elemento -> sistema -> desplazamientos.
+def _malla_cuadrada(elem_cls, material, n, L, t):
+    """Malla n x n del cuadrado [0,L]^2 con el elemento pedido.
+
+    Devuelve (dominio, nodos_borde_izquierdo, nodos_borde_derecho). Soporta
+    los cinco elementos sólidos 2D: los lineales usan la rejilla de corners;
+    los cuadráticos añaden midnodes (y centro paramétrico en Quad9); los
+    triángulos parten cada celda en dos.
+    """
+    cuadratico = elem_cls in (Quad8, Quad9, Tri6)
+    paso = 2 if cuadratico else 1
+    n_lin = n * paso + 1           # nodos por lado en la rejilla fina
+    h = L / (n * paso)
+
+    dom = Domain()
+    grid = {}
+    nid = 0
+    for J in range(n_lin):
+        for I in range(n_lin):
+            # Quad8 es serendipity: no lleva centro paramétrico. Tri6 sí usa
+            # ese nodo, aunque no como centro: es el midnode de la diagonal
+            # que parte la celda en dos triángulos.
+            if cuadratico and elem_cls is Quad8 and I % 2 == 1 and J % 2 == 1:
+                continue
+            nid += 1
+            grid[(I, J)] = dom.add_node(nid, [I * h, J * h])
+
+    eid = 0
+    for jy in range(n):
+        for ix in range(n):
+            I0, J0 = ix * paso, jy * paso
+            if elem_cls is Quad4:
+                conn = [grid[(I0, J0)], grid[(I0 + 1, J0)],
+                        grid[(I0 + 1, J0 + 1)], grid[(I0, J0 + 1)]]
+                eid += 1
+                dom.add_element(elem_cls(eid, conn, material, thickness=t))
+            elif elem_cls is Tri3:
+                c = [grid[(I0, J0)], grid[(I0 + 1, J0)],
+                     grid[(I0 + 1, J0 + 1)], grid[(I0, J0 + 1)]]
+                for tri in ((c[0], c[1], c[2]), (c[0], c[2], c[3])):
+                    eid += 1
+                    dom.add_element(elem_cls(eid, list(tri), material,
+                                             thickness=t))
+            elif elem_cls in (Quad8, Quad9):
+                conn = [grid[(I0, J0)], grid[(I0 + 2, J0)],
+                        grid[(I0 + 2, J0 + 2)], grid[(I0, J0 + 2)],
+                        grid[(I0 + 1, J0)], grid[(I0 + 2, J0 + 1)],
+                        grid[(I0 + 1, J0 + 2)], grid[(I0, J0 + 1)]]
+                if elem_cls is Quad9:
+                    conn.append(grid[(I0 + 1, J0 + 1)])
+                eid += 1
+                dom.add_element(elem_cls(eid, conn, material, thickness=t))
+            else:  # Tri6 — diagonal del cuadrante, [v0,v1,v2,m01,m12,m20]
+                sw, se = grid[(I0, J0)], grid[(I0 + 2, J0)]
+                ne, nw = grid[(I0 + 2, J0 + 2)], grid[(I0, J0 + 2)]
+                s_m, e_m = grid[(I0 + 1, J0)], grid[(I0 + 2, J0 + 1)]
+                n_m, w_m = grid[(I0 + 1, J0 + 2)], grid[(I0, J0 + 1)]
+                diag = grid[(I0 + 1, J0 + 1)]
+                for tri in ((sw, se, ne, s_m, e_m, diag),
+                            (sw, ne, nw, diag, n_m, w_m)):
+                    eid += 1
+                    dom.add_element(elem_cls(eid, list(tri), material,
+                                             thickness=t))
+
+    izq = [grid[(0, J)] for J in range(n_lin) if (0, J) in grid]
+    der = [grid[(n_lin - 1, J)] for J in range(n_lin) if (n_lin - 1, J) in grid]
+    return dom, izq, der
+
+
+def _cargas_de_borde(elem_cls, nodos_der, L, t, sigma):
+    """Reparte una tracción uniforme en cargas nodales consistentes.
+
+    Para elementos lineales el reparto es trapezoidal (1/2 en los extremos).
+    Para los cuadráticos, la carga consistente de una arista de tres nodos bajo
+    presión uniforme es (1/6, 4/6, 1/6) por arista, que acumulada sobre aristas
+    contiguas da el patrón 1:4:2:4:...:4:1.
+    """
+    F_total = sigma * L * t
+    m = len(nodos_der)
+    if elem_cls in (Quad8, Quad9, Tri6):
+        pesos = np.zeros(m)
+        for a in range(0, m - 1, 2):       # una arista por cada par de tramos
+            pesos[a] += 1.0
+            pesos[a + 1] += 4.0
+            pesos[a + 2] += 1.0
+        pesos /= pesos.sum()
+    else:
+        pesos = np.ones(m)
+        pesos[0] = pesos[-1] = 0.5
+        pesos /= pesos.sum()
+    return F_total * pesos
+
+
+ELEMENTOS_2D = (Quad4, Tri3, Quad8, Quad9, Tri6)
+
+# Geometría de la probeta y nivel de tracción del ensayo virtual.
+L_PROBETA = 1.0
+T_PROBETA = 0.01
+SIGMA_ENSAYO = 1.0e6
+
+
+def _constantes_aparentes_fem(elem_cls, theta, n=2):
+    """Mide (E_x, nu_xy, eta_xy_x) sobre un modelo FEM completo.
+
+    Reproduce numéricamente el ensayo que define las constantes aparentes de
+    Jones 2.8: tracción uniaxial pura, con las demás componentes de esfuerzo
+    libres. Las restricciones son las mínimas para eliminar el sólido rígido
+    sin coartar ni la contracción de Poisson ni la distorsión por acoplamiento
+    — empotrar un borde entero destruiría justamente el efecto a medir.
+
+    Bajo tracción uniaxial el campo es homogéneo, así que las tres constantes
+    se leen de los desplazamientos de las esquinas:
+
+        eps_xx   = u_x(esquina inferior derecha) / L
+        eps_yy   = u_y(esquina superior izquierda) / L
+        gamma_xy = u_y(esquina inferior derecha) / L
+
+    El borde izquierdo tiene ux = 0, de modo que la rotación de sólido rígido
+    está eliminada y el u_y del borde derecho es distorsión angular pura.
+
+    Todos los elementos del catálogo reproducen exactamente un campo lineal,
+    así que no hay error de discretización: la comparación con la forma cerrada
+    es aritmética pura y admite tolerancia estricta.
+    """
+    material = Orthotropic2D(**BAMBU, theta=theta)
+    L, t, sigma = L_PROBETA, T_PROBETA, SIGMA_ENSAYO
+
+    dom, izq, der = _malla_cuadrada(elem_cls, material, n, L, t)
+    cargas = _cargas_de_borde(elem_cls, der, L, t, sigma)
+
+    for node in izq:
+        node.fix_dof('ux', 0.0)
+    izq[0].fix_dof('uy', 0.0)      # sólo una esquina: fija la traslación
+    dom.generate_equation_numbers(verbose=False)
+
+    F = np.zeros(dom.total_dofs)
+    for node, valor in zip(der, cargas):
+        F[node.dofs['ux']] += valor
+    U = LinearSolver(Assembler(dom)).solve(F)
+
+    inf_der, sup_izq = der[0], izq[-1]
+
+    eps_xx = U[inf_der.dofs['ux']] / L
+    eps_yy = U[sup_izq.dofs['uy']] / L
+    gamma_xy = U[inf_der.dofs['uy']] / L
+
+    return sigma / eps_xx, -eps_yy / eps_xx, gamma_xy / eps_xx
+
+
+class TestConsistenciaFEM(unittest.TestCase):
+    """Las tres constantes de Jones medidas sobre modelos FEM reales.
+
+    Amplía la verificación a los **cinco** elementos sólidos 2D del catálogo.
+    Cada uno tiene su propia matriz B, su propia cuadratura y su propio mapeo
+    isoparamétrico; que los cinco reproduzcan la misma solución cerrada es lo
+    que descarta un error localizado en un elemento concreto.
+
+    Mide las tres constantes —no sólo E_x— porque son sensibles a errores
+    distintos: `eta_xy_x` en particular es la que detecta el factor 2 del
+    cortante engineering, y hasta ahora sólo se medía sobre la matriz C.
     """
 
-    @staticmethod
-    def _tirar_de_una_placa(theta_deg: float) -> float:
-        """Placa unitaria traccionada en x; devuelve el E_x medido.
+    def test_E_x_contra_jones(self):
+        for elem_cls in ELEMENTOS_2D:
+            for theta in ANGULOS:
+                with self.subTest(elemento=elem_cls.__name__, theta=theta):
+                    E_fem, _, _ = _constantes_aparentes_fem(elem_cls, theta)
+                    ref = _E_x_analitico(theta, **BAMBU)
+                    self.assertLess(abs(E_fem - ref) / ref, 1e-9)
 
-        Un solo Quad4 con carga uniforme reproduce un estado de esfuerzo
-        homogéneo exactamente (el Quad4 es exacto para campos lineales), así
-        que la comparación con la solución cerrada no arrastra error de
-        discretización — el residuo es sólo aritmético.
+    def test_nu_xy_contra_jones(self):
+        for elem_cls in ELEMENTOS_2D:
+            for theta in ANGULOS:
+                with self.subTest(elemento=elem_cls.__name__, theta=theta):
+                    _, nu_fem, _ = _constantes_aparentes_fem(elem_cls, theta)
+                    ref = _nu_xy_analitico(theta, **BAMBU)
+                    escala = max(abs(ref), 1e-3)
+                    self.assertLess(abs(nu_fem - ref) / escala, 1e-8)
+
+    def test_eta_acoplamiento_contra_la_constitutiva(self):
+        """El acoplamiento medido sobre el modelo coincide con el del material.
+
+        `_constantes_aparentes` lo obtiene invirtiendo C; aquí se obtiene de
+        los desplazamientos de un modelo con malla, ensamblaje y solver. Que
+        ambos caminos coincidan blinda la recuperación del cortante engineering
+        a lo largo de todo el pipeline, no sólo en la matriz constitutiva.
         """
-        mat = Orthotropic2D(**BAMBU, theta=theta_deg)
-        L, t = 1.0, 0.01
-        nodes = [Node(1, [0.0, 0.0]), Node(2, [L, 0.0]),
-                 Node(3, [L, L]), Node(4, [0.0, L])]
-        el = Quad4(1, nodes, mat, thickness=t)
+        for elem_cls in ELEMENTOS_2D:
+            for theta in ANGULOS:
+                with self.subTest(elemento=elem_cls.__name__, theta=theta):
+                    _, _, eta_fem = _constantes_aparentes_fem(elem_cls, theta)
+                    _, _, eta_mat = _constantes_aparentes(
+                        Orthotropic2D(**BAMBU, theta=theta))
+                    escala = max(abs(eta_mat), 1e-3)
+                    self.assertLess(abs(eta_fem - eta_mat) / escala, 1e-8)
 
-        K = el.compute_global_stiffness()
+    def test_acoplamiento_no_nulo_fuera_de_ejes_en_el_modelo(self):
+        """Guardia: fuera de eje el modelo FEM debe distorsionarse de verdad.
 
-        # DOFs: [ux1, uy1, ux2, uy2, ux3, uy3, ux4, uy4]
-        # Tracción uniaxial: bordes libres salvo restricciones de sólido
-        # rígido. ux = 0 en el borde izquierdo (nodos 1, 4); uy = 0 en el
-        # nodo 1 para bloquear la traslación vertical. El resto libre, de
-        # modo que la contracción de Poisson y la distorsión por
-        # acoplamiento pueden desarrollarse sin coartar el estado.
-        fijos = [0, 6, 1]           # ux1, ux4, uy1
-        libres = [i for i in range(8) if i not in fijos]
+        Sin esta comprobación, un fallo que anulase el acoplamiento haría que
+        los tests anteriores comparasen dos ceros y siguieran verdes.
+        """
+        for elem_cls in ELEMENTOS_2D:
+            for theta in (15.0, 30.0, 45.0, 60.0, 75.0):
+                with self.subTest(elemento=elem_cls.__name__, theta=theta):
+                    _, _, eta = _constantes_aparentes_fem(elem_cls, theta)
+                    self.assertGreater(
+                        abs(eta), 1e-3,
+                        "el modelo no distorsiona: acoplamiento perdido")
 
-        F = np.zeros(8)
-        sigma_x = 1.0e6
-        F[2] = F[4] = sigma_x * t * L / 2.0   # ux2, ux3
+    def test_sin_acoplamiento_en_ejes_principales_en_el_modelo(self):
+        """En theta = 0 y 90 la probeta se alarga y contrae, pero no se tuerce."""
+        for elem_cls in ELEMENTOS_2D:
+            for theta in (0.0, 90.0):
+                with self.subTest(elemento=elem_cls.__name__, theta=theta):
+                    _, _, eta = _constantes_aparentes_fem(elem_cls, theta)
+                    self.assertLess(abs(eta), 1e-9)
 
-        U = np.zeros(8)
-        U[libres] = np.linalg.solve(
-            K[np.ix_(libres, libres)], F[libres])
-
-        eps_xx = (U[2] - U[0]) / L            # alargamiento en x
-        return sigma_x / eps_xx
-
-    def test_E_x_fem_contra_analitico(self):
-        for theta in ANGULOS:
-            with self.subTest(theta=theta):
-                E_fem = self._tirar_de_una_placa(theta)
-                ref = _E_x_analitico(theta, **BAMBU)
-                self.assertLess(abs(E_fem - ref) / ref, 1e-10)
 
 
 class TestDegeneracionIsotropa(unittest.TestCase):
