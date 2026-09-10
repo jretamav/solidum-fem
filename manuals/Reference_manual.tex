@@ -7000,6 +7000,312 @@ references:
 
 \newpage
 
+\section{Orthotropic2D}
+
+
+
+\textit{Spec \textbf{pre-redactada por la IA} a partir de la sesión 2026-09-09, según \texttt{Reglas.md §4} y el criterio de [[feedback-filtrar-puntos-abiertos]]: el plumbing arquitectural lo decide la IA con razón documentada; los puntos abiertos que quedan son \textbf{físicos y de alcance}, y los valida el usuario en §Diálogo.}
+
+\textit{> Decisión arquitectural de fondo en ADR 0013 --- dónde vive la orientación material.}
+
+
+
+\section{Especificación física}
+
+\subsection{0. Descripción general}
+
+Modelo elástico lineal \textbf{ortótropo} bidimensional bajo hipótesis \textbf{plane stress}, parametrizado por cuatro constantes independientes $(E_1, E_2, G_{12}, \nu_{12})$ y un ángulo de orientación $\theta$ que sitúa los ejes principales del material respecto a los ejes globales.
+
+Un material ortótropo posee tres planos de simetría material mutuamente perpendiculares. Sus \textbf{ejes principales} son las direcciones privilegiadas respecto a las cuales el comportamiento se describe sin acoplamiento. En bambú:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Eje} & \textbf{Dirección física} & \textbf{Qué gobierna} \\
+\hline
+\textbf{1} ($L$) & Longitudinal, a lo largo del culmo & Haces vasculares --- dirección rígida \\
+\textbf{2} ($R$ o $T$) & Transversal en el plano de análisis & Sólo parénquima \\
+\hline
+\end{tabularx}
+\end{center}
+Independiente de la velocidad, sin variables históricas. Es el primer material anisótropo del catálogo.
+
+\textbf{\texttt{plane\_strain} está fuera de alcance} --- ver §Fuera de alcance y ADR 0013 §3.
+
+\subsection{1. Descomposición de la deformación}
+
+No aplica --- toda la deformación es elástica: $\boldsymbol\varepsilon = \boldsymbol\varepsilon^e$.
+
+\subsection{2. Ley elástica}
+
+\[
+\boldsymbol\sigma = \mathbf C_e\,\boldsymbol\varepsilon
+\]
+
+con la notación Voigt 2D del proyecto (\texttt{Reglas.md §5}): $\boldsymbol\varepsilon = [\varepsilon_{xx},\,\varepsilon_{yy},\,\gamma_{xy}]^\top$ con $\gamma_{xy} = 2\varepsilon_{xy}$ \textit{engineering}, y $\boldsymbol\sigma = [\sigma_{xx},\,\sigma_{yy},\,\sigma_{xy}]^\top$.
+
+\subsubsection{2.1 Flexibilidad en ejes del material}
+
+La forma inversa es donde las constantes tienen significado físico directo y medible:
+
+\[
+\begin{Bmatrix} \varepsilon_{11} \\ \varepsilon_{22} \\ \gamma_{12} \end{Bmatrix}
+=
+\begin{bmatrix}
+1/E_1 & -\nu_{21}/E_2 & 0 \\
+-\nu_{12}/E_1 & 1/E_2 & 0 \\
+0 & 0 & 1/G_{12}
+\end{bmatrix}
+\begin{Bmatrix} \sigma_{11} \\ \sigma_{22} \\ \sigma_{12} \end{Bmatrix}
+\]
+
+Los ceros del bloque cortante expresan que \textbf{en ejes del material no hay acoplamiento} entre esfuerzos normales y distorsión angular.
+
+\subsubsection{2.2 Reciprocidad}
+
+La simetría de la matriz de flexibilidad ---consecuencia de la existencia de una energía de deformación--- impone:
+
+\[
+\boxed{\dfrac{\nu_{12}}{E_1} = \dfrac{\nu_{21}}{E_2}} \qquad\Longrightarrow\qquad \nu_{21} = \nu_{12}\,\frac{E_2}{E_1}
+\]
+
+Por eso hay \textbf{cuatro} constantes independientes y no cinco: $\nu_{21}$ queda determinada.
+
+Consecuencia contraintuitiva pero correcta: como $E_1 \gg E_2$ en bambú, $\nu_{21} \ll \nu_{12}$. Con $E_1/E_2 = 20$ y $\nu_{12} = 0.35$ resulta $\nu_{21} = 0.0175$. \textbf{Valores de Poisson diminutos son normales} en materiales muy ortótropos, no error de medición.
+
+\subsubsection{2.3 Rigidez en ejes del material}
+
+Invirtiendo la flexibilidad:
+
+\[
+\mathbf C_{\text{mat}} =
+\begin{bmatrix}
+\dfrac{E_1}{1-\nu_{12}\nu_{21}} & \dfrac{\nu_{12}E_2}{1-\nu_{12}\nu_{21}} & 0 \\[6pt]
+\dfrac{\nu_{12}E_2}{1-\nu_{12}\nu_{21}} & \dfrac{E_2}{1-\nu_{12}\nu_{21}} & 0 \\[6pt]
+0 & 0 & G_{12}
+\end{bmatrix}
+\]
+
+El factor $1-\nu_{12}\nu_{21}$ juega el papel estructural que $1-\nu^2$ tiene en el isótropo.
+
+\subsubsection{2.4 Rotación a ejes globales}
+
+Con $\theta$ el ángulo de los ejes del material respecto a los globales (positivo antihorario, coherente con \texttt{Reglas.md §5}), $c=\cos\theta$, $s=\sin\theta$, la transformación de \textbf{deformaciones} en Voigt \textit{engineering} es:
+
+\[
+\mathbf T =
+\begin{bmatrix}
+c^2 & s^2 & cs \\
+s^2 & c^2 & -cs \\
+-2cs & 2cs & c^2-s^2
+\end{bmatrix}
+\qquad\Longrightarrow\qquad
+\boxed{\mathbf C_{\text{glob}} = \mathbf T^\top\,\mathbf C_{\text{mat}}\,\mathbf T}
+\]
+
+Para $\theta \neq 0$ la matriz \textbf{se llena por completo}:
+
+\[
+\mathbf C_{\text{glob}} =
+\begin{bmatrix}
+C_{11} & C_{12} & C_{16} \\
+C_{12} & C_{22} & C_{26} \\
+C_{16} & C_{26} & C_{66}
+\end{bmatrix}
+\]
+
+Los términos $C_{16}, C_{26}$ ---nulos en ejes del material--- son el \textbf{acoplamiento tracción--cortante}: un $\varepsilon_{xx}$ puro genera $\sigma_{xy}$. Físicamente, una tira cortada a 45\ensuremath{^{\circ}} de la fibra no sólo se alarga al traccionarla: se tuerce. Este acoplamiento no existe en ningún material isótropo.
+
+$\mathbf C_{\text{glob}}$ \textbf{sigue siendo simétrica} (lo garantiza la energía de deformación), luego \texttt{IS\_SYMMETRIC = True} y el despachador algebraico del ADR 0003 la trata igual que a las isótropas.
+
+\subsection{3-6. Fluencia, flujo, endurecimiento, Kuhn-Tucker}
+
+No aplican --- el material es indefinidamente elástico.
+
+\subsection{7. Variables internas}
+
+Ninguna. \texttt{PRIMARY\_STATE\_VAR = None}, como el resto de materiales puramente elásticos del catálogo.
+
+\subsection{8. Notación Voigt}
+
+La del proyecto (\texttt{Reglas.md §5}), sin componentes auxiliares fuera del plano: bajo plane stress $\sigma_{33}=0$ y $\varepsilon_{33}$ no interviene en la respuesta en el plano.
+
+\textbf{Convención de subíndices de Poisson --- fijada explícitamente.} Existen dos convenciones opuestas en la literatura y confundirlas \textbf{invierte los papeles de $E_1$ y $E_2$} sin fallo ruidoso. Se adopta la de Jones/Tsai:
+
+\[
+\nu_{12} = -\frac{\varepsilon_{22}}{\varepsilon_{11}} \quad\text{bajo carga uniaxial en la dirección 1}
+\]
+
+\textbf{Primer índice = dirección de carga. Segundo = dirección de la contracción medida.}
+
+
+\section{Formulación numérica}
+
+\subsection{9-10. Esquema temporal y actualización de estado}
+
+No aplican --- material sin historia. $\mathbf C_{\text{glob}}$ se \textbf{precalcula una sola vez en el constructor} (igual que \texttt{Elastic2D} precalcula \texttt{self.C} según la hipótesis) y \texttt{compute\_state} devuelve $(\mathbf C\boldsymbol\varepsilon,\ \mathbf C,\ \text{state\_vars})$ sin recomputar nada.
+
+\subsection{11. Tangente}
+
+Constante e igual a $\mathbf C_{\text{glob}}$ en todo régimen. Simétrica y definida positiva dentro del rango admisible (§12).
+
+\subsection{12. Admisibilidad y caveats}
+
+\textbf{No se puede reutilizar la validación de \texttt{Elastic2D}.} Ese material valida $-1<\nu<0.5$, criterio correcto para isótropo e \textbf{incorrecto aquí}. La condición ortótropa es que $\mathbf C$ sea definida positiva:
+
+\[
+E_1,\,E_2,\,G_{12} > 0 \qquad\text{y}\qquad 1-\nu_{12}\nu_{21} > 0 \iff |\nu_{12}| < \sqrt{E_1/E_2}
+\]
+
+Con $E_1/E_2=20$ el límite es $|\nu_{12}|<4.47$: \textbf{$\nu_{12}>0.5$ es físicamente legítimo} en un material muy ortótropo. Un validador heredado del isótropo rechazaría datos válidos de bambú.
+
+\textbf{Caveat de implementación --- el factor 2 del cortante.} Con $\gamma$ \textit{engineering}, las matrices de transformación de esfuerzo y de deformación \textbf{no coinciden}: difieren en factores 2 en el bloque cortante. La forma $\mathbf T^\top\mathbf C\mathbf T$ es válida precisamente para la $\mathbf T$ de deformaciones de §2.4. Es el error clásico al programar esto y debe quedar blindado por el test de invariancia (§\texttt{acceptance}).
+
+\textbf{$G_{12}$ es independiente}: no se deriva de $E$ y $\nu$ como en isótropo. Debe medirse.
+
+
+\section{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Orthotropic2D
+kind: material
+status: validated
+
+interface:
+  strain_dim: 3
+  primary_state_var: null
+  is_symmetric: true
+
+parameters:
+  - { name: E1,    type: float, required: true,  desc: "Módulo de Young en la dirección 1 (fibra). > 0" }
+  - { name: E2,    type: float, required: true,  desc: "Módulo de Young en la dirección 2 (transversal). > 0" }
+  - { name: G12,   type: float, required: true,  desc: "Módulo de cortante en el plano 1-2. Independiente de E y nu. > 0" }
+  - { name: nu12,  type: float, required: true,  desc: "Poisson mayor: carga en 1, contracción medida en 2. Admisible |nu12| < sqrt(E1/E2)" }
+  - { name: theta, type: float, required: false, default: 0.0, desc: "Ángulo en GRADOS de los ejes del material respecto a los globales, positivo antihorario. ADR 0013: atajo consciente, migrará al elemento." }
+  - { name: density, type: float, required: false, default: null, desc: "Densidad (ADR 0008). Opcional; requerida por peso propio y matriz de masa." }
+
+state_variables: []
+
+conventions:
+  voigt: "[eps_xx, eps_yy, gamma_xy] con gamma_xy = 2*eps_xy (engineering); [sig_xx, sig_yy, sig_xy]"
+  units: "E1, E2, G12 en Pa; nu12 adimensional; theta en grados; density en kg/m^3"
+  sign: "Tracción positiva. theta positivo antihorario (Reglas.md §5). nu_ij: primer índice = dirección de carga (Jones/Tsai)."
+
+validity:
+  - "Pequeñas deformaciones, elasticidad lineal indefinida"
+  - "Hipótesis plane_stress únicamente"
+  - "Ortotropía con ejes principales constantes en todo el material (theta uniforme)"
+
+out_of_scope:
+  - "plane_strain — requiere E3, nu13, nu23; el problema plano no cierra sin datos 3D (ADR 0013 §3)"
+  - "Orthotropic3D — nueve constantes independientes, rotación 6x6; cuando lo pida un caso real"
+  - "Criterios de falla ortótropos (Tsai-Wu, Hashin, Hoffman) — componente distinto y posterior"
+  - "Material gradado (propiedades función de la posición)"
+  - "Ortotropía cilíndrica (ejes que siguen la geometría del culmo) — requiere orientación por punto de Gauss, ADR 0013 §2"
+  - "Orientación variable por elemento — migración a ADR 0013 opción B"
+
+acceptance:
+  verification:
+    - name: degeneracion_al_isotropo
+      setup: "Construir con E1 = E2 = E, nu12 = nu, G12 = E/(2(1+nu)), theta = 0.
+             Comparar C contra Elastic2D(E, nu, 'plane_stress').C"
+      expect: "Coincidencia exacta: el isótropo es el caso particular del ortótropo"
+      tol_rel: 1.0e-14
+    - name: respuesta_elastica_en_ejes
+      setup: "theta = 0. Deformación uniaxial eps_xx impuesta, resto nulo"
+      expect: "sigma = C_mat @ eps exacto; sin acoplamiento: sigma_xy = 0"
+      tol_rel: 1.0e-12
+    - name: tangente_constante
+      setup: "Evaluar compute_state con varias deformaciones distintas"
+      expect: "La tangente devuelta es idéntica en todas: material sin historia"
+      tol_rel: 1.0e-14
+  specific:
+    - name: acoplamiento_traccion_cortante
+      setup: "theta = 45 grados, deformación uniaxial pura eps_xx"
+      expect: "sigma_xy != 0 (acoplamiento). Verificar contra C_glob = T^T C_mat T
+              calculada independientemente en el test"
+      tol_rel: 1.0e-12
+    - name: sin_acoplamiento_en_ejes
+      setup: "theta = 0 y theta = 90 grados"
+      expect: "C[0,2] = C[1,2] = 0 en ambos casos (ejes principales alineados);
+              en theta=90 los papeles de E1 y E2 quedan intercambiados"
+      tol_rel: 1.0e-14
+    - name: invariancia_rotacion_material_y_carga
+      setup: "Rotar material y estado de deformación el mismo ángulo; comparar la
+             energía de deformación 0.5*eps^T C eps y los invariantes de sigma"
+      expect: "Invariantes idénticos: la respuesta física no depende del sistema
+              de referencia. Blinda el factor 2 del cortante engineering (§12)"
+      tol_rel: 1.0e-12
+    - name: simetria_y_definicion_positiva
+      setup: "Barrido de theta en [0, 180) grados con datos típicos de bambú"
+      expect: "C simétrica a precisión máquina y autovalores > 0 para todo theta"
+      tol_rel: 1.0e-14
+    - name: reciprocidad
+      setup: "Verificar nu21 derivado internamente"
+      expect: "nu12/E1 == nu21/E2"
+      tol_rel: 1.0e-14
+    - name: admisibilidad_rechaza_invalidos
+      setup: "E1<=0, E2<=0, G12<=0, |nu12| >= sqrt(E1/E2)"
+      expect: "ValueError con mensaje que nombra el parámetro y el criterio violado"
+      tol_rel: null
+    - name: poisson_mayor_que_medio_es_admisible
+      setup: "E1/E2 = 20, nu12 = 0.6 (excede el límite isótropo de 0.5)"
+      expect: "Se construye sin error: |nu12| < sqrt(20) = 4.47. Blinda que NO se
+              copió la validación de Elastic2D"
+      tol_rel: null
+
+references:
+  - "Jones R.M. (1999). Mechanics of Composite Materials, 2a ed. Taylor & Francis. Cap. 2 (constitutiva ortótropa 2D, reciprocidad, transformación de ejes)."
+  - "Lekhnitskii S.G. (1963). Theory of Elasticity of an Anisotropic Elastic Body. Holden-Day. (Restricciones de admisibilidad por definición positiva.)"
+  - "Ting T.C.T. (1996). Anisotropic Elasticity: Theory and Applications. Oxford University Press."
+
+\end{lstlisting}
+
+
+\section{Diálogo}
+
+\subsection{Puntos abiertos para el usuario}
+
+Ninguno bloqueante --- las tres decisiones de alcance (sólo \texttt{plane\_stress}, sólo 2D, sólo elasticidad) se acordaron en sesión el 2026-09-09 y están registradas en el ADR 0013 §3.
+
+Queda una cuestión \textbf{física} que la campaña experimental del PAPIIT resolverá y que conviene anotar aquí cuando haya datos:
+
+\begin{enumerate}
+  \item \textbf{Valores de referencia de la especie estudiada.} Los órdenes de magnitud usados en los tests son de literatura general, no de una especie concreta:
+\end{enumerate}
+
+   | Constante | Orden típico en bambú |
+   |---|---|
+   | $E_1$ | 10--20 GPa |
+   | $E_2$ | 0.5--1 GPa |
+   | $G_{12}$ | 0.5--1 GPa |
+   | $\nu_{12}$ | 0.3--0.4 |
+
+   La relación $E_1/E_2 \approx 20$ sitúa al bambú en el mismo régimen que un laminado unidireccional de carbono (15--20) o la madera (15--25). Cuando existan valores medidos, sustituirlos en el test de barrido y anotar la especie.
+
+\begin{enumerate}
+  \item \textbf{¿El plano de análisis es $L$--$R$ o $L$--$T$?} Ambos son ortótropos 2D válidos y la spec los cubre igual, pero $E_2$ toma valores distintos según cuál sea. Es dato de la campaña, no decisión de diseño.
+\end{enumerate}
+
+
+\section{Implementación}
+
+\textit{Rellena la IA tras programar.}
+
+\begin{itemize}
+  \item \textbf{Archivo}: \texttt{solidum/materials/orthotropic\_2d.py}
+  \item \textbf{Clase}: \texttt{Orthotropic2D} (auto-registrada vía \texttt{@MaterialRegistry.register})
+  \item \textbf{Tests}: \texttt{tests/test\_orthotropic\_2d.py} --- 26 tests + 57 subtests, todos verdes. Suite global 1176 \ensuremath{\to} 1204.
+  \item \textbf{Notas de implementación}:
+  \item \texttt{C\_mat} y \texttt{C} (rotada) se \textbf{precalculan en el constructor}; \texttt{compute\_state} no recomputa nada. Mismo patrón que \texttt{Elastic2D} con su hipótesis.
+  \item \textbf{Tolerancias adimensionales en todos los tests} (ADR 0006). Primera versión usaba \texttt{assertAlmostEqual(..., places=6)} absoluto y fallaba en \texttt{theta \ensuremath{\in} \{90\ensuremath{^{\circ}}, 180\ensuremath{^{\circ}}\}} con residuos de \textasciitilde{}1e-6 sobre magnitudes de \textasciitilde{}1e10 Pa --- que son \textbf{1e-16 en relativo}, precisión máquina. El origen es que \texttt{sin(180\ensuremath{^{\circ}})} no da cero exacto en punto flotante. Comparar contra cero absoluto convertía el test en una medida de la magnitud de \texttt{E1}, no de la física. Verificado que el criterio es invariante ante cambio de unidades en 15 órdenes de magnitud (Pa, MPa, micro-unidades).
+  \item \textbf{Bring-up end-to-end} con \texttt{Quad4} + \texttt{LinearSolver}: \texttt{E\_aparente} = 15.10 GPa (\ensuremath{\theta}=0\ensuremath{^{\circ}}), 4.82 GPa (\ensuremath{\theta}=45\ensuremath{^{\circ}}), 0.805 GPa (\ensuremath{\theta}=90\ensuremath{^{\circ}}), con \texttt{\ensuremath{\sigma}\_xy \ensuremath{\neq} 0} sólo fuera de ejes principales y \texttt{K} simétrica en los tres casos.
+  \item \textbf{Notas de traducción}: ninguna --- la formulación de Jones se implementa en la convención del proyecto sin cambio de signos.
+\end{itemize}
+
+
+\newpage
+
 \section{VonMises2D}
 
 
@@ -13712,6 +14018,27 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt
   \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}).
   \item \textbf{Spec}: docs/specs/Elastic2D.md
   \item \textbf{Archivo}: solidum/materials/elastic\_2d.py
+\end{itemize}
+
+
+\section{Orthotropic2D --- elástico lineal \textbf{ortótropo} 2D (plane stress)}
+
+\begin{itemize}
+  \item \textbf{Ley}: \texttt{\ensuremath{\sigma} = C\_glob \ensuremath{\cdot} \ensuremath{\varepsilon}} con \texttt{C\_glob = T\ensuremath{^{\top}}\ensuremath{\cdot}C\_mat\ensuremath{\cdot}T}. Primer material \textbf{anisótropo} del catálogo.
+  \item \textbf{STRAIN\_DIM}: 3.
+  \item \textbf{Parámetros}: \texttt{E1}, \texttt{E2}, \texttt{G12}, \texttt{nu12}, \texttt{theta} (grados, default 0.0), \texttt{density} (opcional).
+  \item \textbf{Constantes independientes}: cuatro. \texttt{nu21} se deriva por reciprocidad \texttt{\ensuremath{\nu}\ensuremath{_{1}}\ensuremath{_{2}}/E\ensuremath{_{1}} = \ensuremath{\nu}\ensuremath{_{2}}\ensuremath{_{1}}/E\ensuremath{_{2}}}. \textbf{\texttt{G12} no se deriva} de E y \ensuremath{\nu} como en isótropo --- debe medirse.
+  \item \textbf{Convención de Poisson} (Jones/Tsai, fijada en ADR 0013 §5): \texttt{nu12 = −\ensuremath{\varepsilon}\ensuremath{_{2}}\ensuremath{_{2}}/\ensuremath{\varepsilon}\ensuremath{_{1}}\ensuremath{_{1}}} bajo carga uniaxial en \textbf{1}. Primer índice = dirección de carga. La convención opuesta existe en la literatura y \textbf{invierte E1 y E2 sin fallo ruidoso}.
+  \item \textbf{Orientación}: \texttt{theta} vive \textbf{en el material} --- atajo consciente y desechable del ADR 0013. Válido con fibra uniforme (probetas, tiras a ángulo constante); migrará al elemento cuando aparezca un caso con orientación variable en la malla.
+  \item \textbf{Acoplamiento tracción--cortante}: nulo en ejes principales (\texttt{theta \ensuremath{\in} \{0\ensuremath{^{\circ}}, 90\ensuremath{^{\circ}}\}}), máximo cerca de 45\ensuremath{^{\circ}}. Una tracción pura genera distorsión angular --- no ocurre en ningún isótropo.
+  \item \textbf{Admisibilidad}: \texttt{E1, E2, G12 > 0} y \texttt{|nu12| < \ensuremath{\surd}(E1/E2)}. \textbf{NO es el criterio isótropo}: con \texttt{E1/E2 = 20} el límite es 4.47, así que \texttt{nu12 > 0.5} es legítimo.
+  \item \textbf{Variables internas}: ninguna.
+  \item \textbf{Tangente}: constante = \texttt{C\_glob}, simétrica y definida positiva para todo \texttt{theta}.
+  \item \textbf{Caveat}: \texttt{plane\_strain} \textbf{fuera de alcance} --- requiere \texttt{E3}, \texttt{nu13}, \texttt{nu23}; el problema plano no cierra sin datos 3D.
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}).
+  \item \textbf{ADR}: docs/adr/0013-orientacion-material-y-ortotropia.md
+  \item \textbf{Spec}: docs/specs/Orthotropic2D.md
+  \item \textbf{Archivo}: solidum/materials/orthotropic\_2d.py
 \end{itemize}
 
 
