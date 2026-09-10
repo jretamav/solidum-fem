@@ -1,0 +1,90 @@
+# Tira de bambú traccionada con la fibra a 45° — Solidum FEM
+#
+# Demuestra el efecto que distingue a un material ortótropo de uno isótropo:
+# el ACOPLAMIENTO TRACCIÓN-CORTANTE. Al traccionar una tira cuya fibra no está
+# alineada con la carga, la tira no sólo se alarga — se distorsiona.
+#
+# Malla 4x4 de Quad4 sobre un cuadrado unitario de 10 mm de espesor.
+# Borde izquierdo restringido en x (simetría), esquina inferior izquierda
+# también en y para eliminar el movimiento de sólido rígido. Tracción uniforme
+# repartida sobre los cinco nodos del borde derecho.
+#
+# Para reproducir la curva completa E_x(theta), ver barrido_orientacion.py.
+
+nodes:
+  - {id:  1, coords: [0.00, 0.00]}
+  - {id:  2, coords: [0.25, 0.00]}
+  - {id:  3, coords: [0.50, 0.00]}
+  - {id:  4, coords: [0.75, 0.00]}
+  - {id:  5, coords: [1.00, 0.00]}
+  - {id:  6, coords: [0.00, 0.25]}
+  - {id:  7, coords: [0.25, 0.25]}
+  - {id:  8, coords: [0.50, 0.25]}
+  - {id:  9, coords: [0.75, 0.25]}
+  - {id: 10, coords: [1.00, 0.25]}
+  - {id: 11, coords: [0.00, 0.50]}
+  - {id: 12, coords: [0.25, 0.50]}
+  - {id: 13, coords: [0.50, 0.50]}
+  - {id: 14, coords: [0.75, 0.50]}
+  - {id: 15, coords: [1.00, 0.50]}
+  - {id: 16, coords: [0.00, 0.75]}
+  - {id: 17, coords: [0.25, 0.75]}
+  - {id: 18, coords: [0.50, 0.75]}
+  - {id: 19, coords: [0.75, 0.75]}
+  - {id: 20, coords: [1.00, 0.75]}
+  - {id: 21, coords: [0.00, 1.00]}
+  - {id: 22, coords: [0.25, 1.00]}
+  - {id: 23, coords: [0.50, 1.00]}
+  - {id: 24, coords: [0.75, 1.00]}
+  - {id: 25, coords: [1.00, 1.00]}
+
+materials:
+  - id: 1
+    type: Orthotropic2D
+    # Órdenes de literatura general para bambú (E1/E2 = 18.75).
+    # NO corresponden a una especie concreta — sustituir por valores medidos.
+    E1: 15.0e9        # longitudinal, a lo largo de los haces vasculares
+    E2: 0.8e9         # transversal
+    G12: 0.7e9        # cortante en el plano; independiente, hay que medirlo
+    nu12: 0.35        # carga en 1, contracción en 2 (convención Jones/Tsai)
+    theta: 45.0       # fibra a 45° de la dirección de carga
+    density: 700.0    # kg/m³
+
+elements:
+  - {id:  1, type: Quad4, material: 1, thickness: 0.01, nodes: [ 1,  2,  7,  6]}
+  - {id:  2, type: Quad4, material: 1, thickness: 0.01, nodes: [ 2,  3,  8,  7]}
+  - {id:  3, type: Quad4, material: 1, thickness: 0.01, nodes: [ 3,  4,  9,  8]}
+  - {id:  4, type: Quad4, material: 1, thickness: 0.01, nodes: [ 4,  5, 10,  9]}
+  - {id:  5, type: Quad4, material: 1, thickness: 0.01, nodes: [ 6,  7, 12, 11]}
+  - {id:  6, type: Quad4, material: 1, thickness: 0.01, nodes: [ 7,  8, 13, 12]}
+  - {id:  7, type: Quad4, material: 1, thickness: 0.01, nodes: [ 8,  9, 14, 13]}
+  - {id:  8, type: Quad4, material: 1, thickness: 0.01, nodes: [ 9, 10, 15, 14]}
+  - {id:  9, type: Quad4, material: 1, thickness: 0.01, nodes: [11, 12, 17, 16]}
+  - {id: 10, type: Quad4, material: 1, thickness: 0.01, nodes: [12, 13, 18, 17]}
+  - {id: 11, type: Quad4, material: 1, thickness: 0.01, nodes: [13, 14, 19, 18]}
+  - {id: 12, type: Quad4, material: 1, thickness: 0.01, nodes: [14, 15, 20, 19]}
+  - {id: 13, type: Quad4, material: 1, thickness: 0.01, nodes: [16, 17, 22, 21]}
+  - {id: 14, type: Quad4, material: 1, thickness: 0.01, nodes: [17, 18, 23, 22]}
+  - {id: 15, type: Quad4, material: 1, thickness: 0.01, nodes: [18, 19, 24, 23]}
+  - {id: 16, type: Quad4, material: 1, thickness: 0.01, nodes: [19, 20, 25, 24]}
+
+boundary_conditions:
+  # Borde izquierdo: restringido en x. Sólo el nodo 1 se fija también en y,
+  # para eliminar el movimiento de sólido rígido SIN coartar la contracción
+  # de Poisson ni la distorsión por acoplamiento — que es justo lo que este
+  # ejemplo quiere mostrar.
+  - {node_id:  1, ux: 0.0, uy: 0.0}
+  - {node_id:  6, ux: 0.0}
+  - {node_id: 11, ux: 0.0}
+  - {node_id: 16, ux: 0.0}
+  - {node_id: 21, ux: 0.0}
+
+point_loads:
+  # Tracción uniforme de 10 MPa sobre el borde derecho:
+  # F_total = 10e6 Pa * 1.0 m * 0.01 m = 1e5 N, repartido en 5 nodos
+  # (los extremos toman media parte, como corresponde a carga consistente).
+  - {node_id:  5, ux: 12500.0}
+  - {node_id: 10, ux: 25000.0}
+  - {node_id: 15, ux: 25000.0}
+  - {node_id: 20, ux: 25000.0}
+  - {node_id: 25, ux: 12500.0}

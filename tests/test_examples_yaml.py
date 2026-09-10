@@ -42,6 +42,25 @@ def _path(name: str) -> str:
     return os.path.join(_EXAMPLES_DIR, name)
 
 
+def _malla_faltante(ruta_yaml: str) -> bool:
+    """True si el YAML declara una malla `.msh` que no está en disco.
+
+    Los `.geo` de gmsh sí se versionan; los `.msh` que producen, no todos.
+    Distinguir "falta una dependencia externa declarada" de "el ejemplo está
+    roto" evita que el test se vuelva ruido y acabe silenciado.
+    """
+    with open(ruta_yaml, encoding='utf-8') as f:
+        for linea in f:
+            limpia = linea.split('#')[0].strip()
+            if limpia.startswith('mesh:'):
+                nombre = limpia.split(":", 1)[1].strip().strip("\"'")
+                if nombre.endswith('.msh'):
+                    destino = os.path.join(
+                        os.path.dirname(ruta_yaml), nombre)
+                    return not os.path.isfile(destino)
+    return False
+
+
 class TestExamplesYAMLRegression(unittest.TestCase):
     """Regresión end-to-end de cada YAML en `examples/`."""
 
@@ -127,6 +146,63 @@ class TestExamplesYAMLRegression(unittest.TestCase):
         self.assertIsInstance(r, SolveResult)
         self.assertAlmostEqual(float(np.max(np.abs(r.U))), 2.000000e-03,
                                delta=1.0e-8)
+
+
+class TestTodosLosEjemplosEjecutan(unittest.TestCase):
+    """Descubrimiento **recursivo**: ningún YAML de `examples/` queda fuera.
+
+    Los tests de arriba fijan cifras concretas para los ejemplos históricos,
+    pero los enumeran a mano: un YAML nuevo —o uno colocado en un
+    subdirectorio, como pide la convención de `examples/README.md`— no
+    entraría en la regresión y podría romperse en silencio.
+
+    Este test no verifica valores; verifica que **todo** ejemplo del
+    directorio sigue ejecutándose de extremo a extremo. Es el invariante que
+    hace segura la organización en carpetas.
+    """
+
+    def test_todos_los_yaml_se_ejecutan(self):
+        yamls = sorted(
+            os.path.join(raiz, f)
+            for raiz, _, archivos in os.walk(_EXAMPLES_DIR)
+            for f in archivos
+            if f.endswith('.yaml')
+        )
+        self.assertGreater(len(yamls), 0, "No se encontró ningún YAML")
+
+        for ruta in yamls:
+            rel = os.path.relpath(ruta, _EXAMPLES_DIR)
+            with self.subTest(ejemplo=rel):
+                if _malla_faltante(ruta):
+                    # Caso legítimo: los ejemplos de la charla consumen un
+                    # `.msh` que NO está versionado —sólo el `.geo` que lo
+                    # genera—, así que requieren correr gmsh antes. No es un
+                    # ejemplo roto; es una dependencia externa declarada.
+                    self.skipTest(
+                        f"{rel} necesita una malla .msh no versionada "
+                        f"(generar con gmsh desde el .geo correspondiente)"
+                    )
+                resultado = solidum.run_yaml(ruta)
+                self.assertIsInstance(
+                    resultado,
+                    (SolveResult, ModalResult, TransientResult,
+                     HarmonicResult, ResponseSpectrumResult),
+                    f"{rel} devolvió un tipo de resultado inesperado",
+                )
+
+    def test_los_ejemplos_compuestos_tienen_readme(self):
+        """La convención de `examples/README.md`: un ejemplo en carpeta propia
+        se documenta con su propio README, o deja de ser navegable."""
+        for entrada in sorted(os.listdir(_EXAMPLES_DIR)):
+            ruta = os.path.join(_EXAMPLES_DIR, entrada)
+            if not os.path.isdir(ruta) or entrada.startswith(('_', '.')):
+                continue
+            with self.subTest(carpeta=entrada):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(ruta, 'README.md')),
+                    f"examples/{entrada}/ no tiene README.md "
+                    f"(ver la convención en examples/README.md)",
+                )
 
 
 if __name__ == '__main__':
