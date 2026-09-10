@@ -19,8 +19,9 @@ con cifras citables contra referencias externas.
 | 8 | **Triaxial Drucker-Prager 3D** — superficie del cono | `test_triaxial_drucker_prager_3d.py` | Hex8 + DruckerPrager3D + NonlinearSolver | 5/5 |
 | 9 | **Uniaxial softening Damage3D** — curva σ-ε analítica | `test_uniaxial_softening_damage_3d.py` | Hex8 + IsotropicDamage3D + NonlinearSolver | 3/3 |
 | 10 | **Cilindro de Hill 3D** — J2 perfecta vía pipeline 3D | `test_hollow_cylinder_j2_3d.py` | Hex8 + VonMises3D + NonlinearSolver | 3/3 |
+| 11 | **Lámina ortótropa fuera de eje** — constantes aparentes vs Jones §2.8 | `test_off_axis_orthotropic.py` | Quad4 + Orthotropic2D + solución cerrada | 16/16 |
 
-**Total: 54/54 tests verde**. Última actualización: 2026-05-21 (cierre A.bis con campaña de validación 3D consolidada: benchmarks 8, 9 y 10).
+**Total: 70/70 tests verde**. Última actualización: 2026-09-09 (benchmark 11 — primer material anisótropo del catálogo, `Orthotropic2D`).
 
 ## Resultados cuantitativos por benchmark
 
@@ -204,6 +205,49 @@ validación sistema-completo contra solución analítica publicada. Confirma
 que el aparato 3D (caras Hex8, Voigt 6D del proyecto, asimetría no
 asociada, etc.) reproduce sistémicamente el benchmark Hill 2D en
 restricción plane strain con el mismo orden de error.
+
+### 11. Lámina ortótropa fuera de eje — constantes aparentes
+
+Primer benchmark de un material **anisótropo**. Valida `Orthotropic2D`
+contra las formas cerradas de Jones (1999) §2.8 para las constantes
+aparentes de una lámina cargada fuera de sus ejes principales.
+
+Datos de bambú (literatura general, E₁/E₂ = 18.75): E₁ = 15 GPa,
+E₂ = 0.8 GPa, G₁₂ = 0.7 GPa, ν₁₂ = 0.35.
+
+**Módulo aparente E_x(θ)** — coincide con Jones ec. 2.85 a 1e-12 relativo
+en todo el barrido, y con el mismo valor medido sobre un modelo `Quad4`
+traccionado (1e-10):
+
+| θ | E_x [GPa] | E_x/E₁ |
+|---|-----------|--------|
+| 0°  | 15.00 | 1.000 |
+| 15° |  6.67 | 0.444 |
+| 30° |  2.67 | 0.178 |
+| 45° |  1.48 | 0.099 |
+| 60° |  1.03 | 0.069 |
+| 90° |  0.80 | 0.053 |
+
+**La cifra citable**: a 45° la rigidez cae por debajo del **10 %** de E₁,
+muy por debajo de lo que sugiere el cociente E₁/E₂ = 18.75. El mínimo no
+se obtiene interpolando entre los dos módulos principales: el término
+cruzado `(1/G₁₂ − 2ν₁₂/E₁)` domina la zona intermedia, y con G₁₂ pequeño
+—como en bambú— hunde la curva por debajo de la media armónica. Ya a 15°
+se ha perdido más de la mitad de la rigidez axial. Es la razón cuantitativa
+de que la orientación de fibra sea un dato de primer orden.
+
+**Poisson aparente ν_xy(θ)** contra Jones ec. 2.86 (1e-10), degenerando a
+ν₁₂ = 0.35 en θ=0° y a ν₂₁ = 0.0187 en θ=90°.
+
+**Coeficiente de influencia mutua η_xy,x(θ)** — el acoplamiento
+tracción-cortante, sin análogo isótropo: nulo en ejes principales,
+antisimétrico respecto al signo de θ, e idénticamente nulo para datos
+isótropos a cualquier ángulo.
+
+**Mutation test documentado**: inyectando el error clásico —quitar el
+factor 2 del bloque cortante de la matriz de transformación de
+deformaciones, que en Voigt *engineering* distingue `T_ε` de `T_σ`— el
+benchmark produce **39 fallos**. No es un test que pase por construcción.
 
 ## Decisiones de diseño
 

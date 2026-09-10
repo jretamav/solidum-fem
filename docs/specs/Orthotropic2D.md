@@ -276,7 +276,9 @@ Queda una cuestión **física** que la campaña experimental del PAPIIT resolver
 
 - **Archivo**: [`solidum/materials/orthotropic_2d.py`](../../solidum/materials/orthotropic_2d.py)
 - **Clase**: `Orthotropic2D` (auto-registrada vía `@MaterialRegistry.register`)
-- **Tests**: [`tests/test_orthotropic_2d.py`](../../tests/test_orthotropic_2d.py) — 26 tests + 57 subtests, todos verdes. Suite global 1176 → 1204.
+- **Tests (verificación)**: [`tests/test_orthotropic_2d.py`](../../tests/test_orthotropic_2d.py) — 26 tests + 57 subtests.
+- **Validación externa**: [`tests/validation/test_off_axis_orthotropic.py`](../../tests/validation/test_off_axis_orthotropic.py) — 16 tests + 60 subtests contra las formas cerradas de **Jones (1999) §2.8**: módulo aparente `E_x(θ)` (ec. 2.85, 1e-12 rel.), Poisson aparente `ν_xy(θ)` (ec. 2.86, 1e-10) y coeficiente de influencia mutua `η_xy,x(θ)`. Incluye consistencia FEM sobre un `Quad4` real (1e-10), no sólo sobre la constitutiva. Cifra citable: a 45° la rigidez cae **por debajo del 10 % de E₁**, muy por debajo de lo que sugiere `E₁/E₂ = 18.75`, porque el término cruzado `(1/G₁₂ − 2ν₁₂/E₁)` domina la zona intermedia. **Mutation test documentado**: quitar el factor 2 del bloque cortante de `T` produce 39 fallos — el benchmark no pasa por construcción.
+- Suite global 1176 → 1220.
 - **Notas de implementación**:
   - `C_mat` y `C` (rotada) se **precalculan en el constructor**; `compute_state` no recomputa nada. Mismo patrón que `Elastic2D` con su hipótesis.
   - **Tolerancias adimensionales en todos los tests** (ADR 0006). Primera versión usaba `assertAlmostEqual(..., places=6)` absoluto y fallaba en `theta ∈ {90°, 180°}` con residuos de ~1e-6 sobre magnitudes de ~1e10 Pa — que son **1e-16 en relativo**, precisión máquina. El origen es que `sin(180°)` no da cero exacto en punto flotante. Comparar contra cero absoluto convertía el test en una medida de la magnitud de `E1`, no de la física. Verificado que el criterio es invariante ante cambio de unidades en 15 órdenes de magnitud (Pa, MPa, micro-unidades).
