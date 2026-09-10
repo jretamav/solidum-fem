@@ -34,6 +34,26 @@
 
 ---
 
+## Orthotropic2D — elástico lineal **ortótropo** 2D (plane stress)
+
+- **Ley**: `σ = C_glob · ε` con `C_glob = Tᵀ·C_mat·T`. Primer material **anisótropo** del catálogo.
+- **STRAIN_DIM**: 3.
+- **Parámetros**: `E1`, `E2`, `G12`, `nu12`, `theta` (grados, default 0.0), `density` (opcional).
+- **Constantes independientes**: cuatro. `nu21` se deriva por reciprocidad `ν₁₂/E₁ = ν₂₁/E₂`. **`G12` no se deriva** de E y ν como en isótropo — debe medirse.
+- **Convención de Poisson** (Jones/Tsai, fijada en ADR 0013 §5): `nu12 = −ε₂₂/ε₁₁` bajo carga uniaxial en **1**. Primer índice = dirección de carga. La convención opuesta existe en la literatura y **invierte E1 y E2 sin fallo ruidoso**.
+- **Orientación**: `theta` vive **en el material** — atajo consciente y desechable del ADR 0013. Válido con fibra uniforme (probetas, tiras a ángulo constante); migrará al elemento cuando aparezca un caso con orientación variable en la malla.
+- **Acoplamiento tracción–cortante**: nulo en ejes principales (`theta ∈ {0°, 90°}`), máximo cerca de 45°. Una tracción pura genera distorsión angular — no ocurre en ningún isótropo.
+- **Admisibilidad**: `E1, E2, G12 > 0` y `|nu12| < √(E1/E2)`. **NO es el criterio isótropo**: con `E1/E2 = 20` el límite es 4.47, así que `nu12 > 0.5` es legítimo.
+- **Variables internas**: ninguna.
+- **Tangente**: constante = `C_glob`, simétrica y definida positiva para todo `theta`.
+- **Caveat**: `plane_strain` **fuera de alcance** — requiere `E3`, `nu13`, `nu23`; el problema plano no cierra sin datos 3D.
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`).
+- **ADR**: [docs/adr/0013-orientacion-material-y-ortotropia.md](adr/0013-orientacion-material-y-ortotropia.md)
+- **Spec**: [docs/specs/Orthotropic2D.md](specs/Orthotropic2D.md)
+- **Archivo**: [solidum/materials/orthotropic_2d.py](solidum/materials/orthotropic_2d.py)
+
+---
+
 ## Elastic3D — elástico lineal isótropo 3D
 
 - **Ley**: `σ = C · ε`, con `C` el tensor constitutivo isótropo 6×6 en notación Voigt 3D del proyecto `[xx, yy, zz, xy, yz, xz]` (ADR 0012, `Reglas.md §5`).
