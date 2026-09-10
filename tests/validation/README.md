@@ -19,9 +19,9 @@ con cifras citables contra referencias externas.
 | 8 | **Triaxial Drucker-Prager 3D** — superficie del cono | `test_triaxial_drucker_prager_3d.py` | Hex8 + DruckerPrager3D + NonlinearSolver | 5/5 |
 | 9 | **Uniaxial softening Damage3D** — curva σ-ε analítica | `test_uniaxial_softening_damage_3d.py` | Hex8 + IsotropicDamage3D + NonlinearSolver | 3/3 |
 | 10 | **Cilindro de Hill 3D** — J2 perfecta vía pipeline 3D | `test_hollow_cylinder_j2_3d.py` | Hex8 + VonMises3D + NonlinearSolver | 3/3 |
-| 11 | **Lámina ortótropa fuera de eje** — constantes aparentes vs Jones §2.8 | `test_off_axis_orthotropic.py` | Quad4 + Orthotropic2D + solución cerrada | 16/16 |
+| 11 | **Lámina ortótropa fuera de eje** — constantes aparentes vs Jones §2.8 | `test_off_axis_orthotropic.py` | Quad4, Tri3, Quad8, Quad9, Tri6 + Orthotropic2D + solución cerrada | 20/20 |
 
-**Total: 70/70 tests verde**. Última actualización: 2026-09-09 (benchmark 11 — primer material anisótropo del catálogo, `Orthotropic2D`).
+**Total: 74/74 tests verde**. Última actualización: 2026-09-10 (benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
 
 ## Resultados cuantitativos por benchmark
 
@@ -216,8 +216,8 @@ Datos de bambú (literatura general, E₁/E₂ = 18.75): E₁ = 15 GPa,
 E₂ = 0.8 GPa, G₁₂ = 0.7 GPa, ν₁₂ = 0.35.
 
 **Módulo aparente E_x(θ)** — coincide con Jones ec. 2.85 a 1e-12 relativo
-en todo el barrido, y con el mismo valor medido sobre un modelo `Quad4`
-traccionado (1e-10):
+en todo el barrido, y con el mismo valor medido sobre modelos FEM completos
+de los **cinco** elementos sólidos 2D del catálogo (1e-9):
 
 | θ | E_x [GPa] | E_x/E₁ |
 |---|-----------|--------|
@@ -244,10 +244,29 @@ tracción-cortante, sin análogo isótropo: nulo en ejes principales,
 antisimétrico respecto al signo de θ, e idénticamente nulo para datos
 isótropos a cualquier ángulo.
 
+**Consistencia FEM sobre los cinco elementos** — las tres constantes se
+miden también sobre probetas resueltas con Quad4, Tri3, Quad8, Quad9 y Tri6,
+con la sujeción isostática mínima que no coarta la distorsión. Cada elemento
+tiene su propia matriz B, cuadratura y mapeo isoparamétrico: que los cinco
+reproduzcan la misma solución cerrada descarta un error localizado en uno
+concreto. En particular, η_xy,x medido sobre el modelo —y no sólo sobre la
+matriz constitutiva— valida la recuperación del cortante *engineering* a lo
+largo de todo el pipeline.
+
 **Mutation test documentado**: inyectando el error clásico —quitar el
 factor 2 del bloque cortante de la matriz de transformación de
 deformaciones, que en Voigt *engineering* distingue `T_ε` de `T_σ`— el
-benchmark produce **39 fallos**. No es un test que pase por construcción.
+benchmark produce **102 fallos** (39 antes de la ampliación). No es un test
+que pase por construcción.
+
+**Caveat sobre el patch test ortótropo**: el patch test de
+`tests/test_patch_orthotropic_2d.py` compara σ contra `material.C @ ε`, es
+decir contra la **misma** constitutiva que usa el elemento. Verificado por
+mutación: con el factor 2 roto, el patch test sigue verde. Eso no lo
+invalida —detecta errores del elemento: B mal armada, Voigt desordenado,
+ensamblaje— pero delimita su alcance: quien ancla `C` contra una referencia
+externa es este benchmark, no aquél. Los dos son complementarios y ninguno
+sustituye al otro.
 
 ## Decisiones de diseño
 

@@ -28,7 +28,8 @@
 - **Parámetros**: `E`, `nu`, `hypothesis ∈ {'plane_stress', 'plane_strain'}`.
 - **Variables internas**: ninguna.
 - **Tangente**: constante = `C`.
-- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`).
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`). Compatibilidad **verificada en los cinco**: patch test con constitutiva llena y constantes aparentes de Jones medidas sobre modelo FEM.
+- **Validación**: constantes aparentes contra Jones (1999) §2.8 sobre los cinco elementos; patch test de MacNeal-Harder a θ ∈ {0°, 30°, 45°, 90°} con σ verificado en cada punto de Gauss; regresión del ejemplo publicado vía YAML. 78 tests + 370 subtests.
 - **Spec**: [docs/specs/Elastic2D.md](specs/Elastic2D.md)
 - **Archivo**: [solidum/materials/elastic_2d.py](solidum/materials/elastic_2d.py)
 
@@ -47,7 +48,8 @@
 - **Variables internas**: ninguna.
 - **Tangente**: constante = `C_glob`, simétrica y definida positiva para todo `theta`.
 - **Caveat**: `plane_strain` **fuera de alcance** — requiere `E3`, `nu13`, `nu23`; el problema plano no cierra sin datos 3D.
-- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`).
+- **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9` (todos los sólidos 2D con `STRAIN_DIM = 3`). Compatibilidad **verificada en los cinco**: patch test con constitutiva llena y constantes aparentes de Jones medidas sobre modelo FEM.
+- **Validación**: constantes aparentes contra Jones (1999) §2.8 sobre los cinco elementos; patch test de MacNeal-Harder a θ ∈ {0°, 30°, 45°, 90°} con σ verificado en cada punto de Gauss; regresión del ejemplo publicado vía YAML. 78 tests + 370 subtests.
 - **ADR**: [docs/adr/0013-orientacion-material-y-ortotropia.md](adr/0013-orientacion-material-y-ortotropia.md)
 - **Spec**: [docs/specs/Orthotropic2D.md](specs/Orthotropic2D.md)
 - **Archivo**: [solidum/materials/orthotropic_2d.py](solidum/materials/orthotropic_2d.py)
