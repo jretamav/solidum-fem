@@ -449,34 +449,6 @@ class TestLinealidadDeLosElasticos(unittest.TestCase):
                                 f"declararse sin variables internas")
 
 
-# Deuda de validación detectada por este barrido el 2026-09-10, la primera vez
-# que un test recorrió el registro completo. NO son excepciones legítimas: son
-# materiales que no validan lo que sus pares sí validan, y la inconsistencia es
-# histórica (cada material se escribió en su momento con el criterio de
-# entonces), no una decisión de diseño.
-#
-# Se listan aquí en vez de silenciar el test para que la deuda quede contada y
-# visible. Cuando un material se corrija, se retira de la lista y el test lo
-# exige a partir de entonces — la lista sólo puede encogerse.
-#
-# Pendiente de decisión del usuario: tocar seis materiales validados es un
-# cambio transversal sobre código con física ya verificada, y no corresponde a
-# la IA emprenderlo por iniciativa propia (Reglas.md §2 y §3).
-
-SIN_VALIDAR_MODULO = frozenset({
-    'Elastoplastic1D',      # plastic_1d.py: asigna E sin comprobar signo
-})
-
-SIN_VALIDAR_DENSIDAD = frozenset({
-    'CableMaterial1D',
-    'DruckerPrager2D',      # su par 3D sí valida — inconsistencia entre gemelos
-    'Elastoplastic1D',
-    'IsotropicDamage1D',
-    'IsotropicDamage2D',    # su par 3D sí valida — inconsistencia entre gemelos
-    'VonMises2D',           # su par 3D sí valida — inconsistencia entre gemelos
-})
-
-
 class TestValidacionDefensiva(unittest.TestCase):
     """Validación mínima común a todo material del catálogo.
 
@@ -487,12 +459,24 @@ class TestValidacionDefensiva(unittest.TestCase):
 
     `Reglas.md §1` lo pide explícitamente: validación temprana al construir con
     mensajes claros, sobre fallos crípticos en runtime.
+
+    Historia
+    --------
+    La primera pasada de este barrido (2026-09-10) encontró la exigencia
+    incumplida por siete materiales: seis no rechazaban densidad negativa y
+    `Elastoplastic1D` tampoco un módulo no positivo. No era criterio deliberado
+    sino inconsistencia histórica —cada material se escribió con el criterio de
+    su momento—, y se delataba en que los pares 2D/3D discrepaban entre sí:
+    `DruckerPrager3D`, `IsotropicDamage3D` y `VonMises3D` validaban la densidad;
+    sus gemelos 2D no.
+
+    Saldada en el mismo commit que este test deja de tolerarla, de modo que la
+    exigencia vale ahora para **todo** material registrado, sin excepciones ni
+    listas de dispensa. Un material nuevo la hereda automáticamente.
     """
 
     def test_rechaza_modulo_no_positivo(self):
         for nombre in MaterialRegistry.names():
-            if nombre in SIN_VALIDAR_MODULO:
-                continue
             with self.subTest(material=nombre):
                 muestra = dict(MUESTRAS[nombre])
                 clave = 'E' if 'E' in muestra else 'E1'
@@ -504,8 +488,6 @@ class TestValidacionDefensiva(unittest.TestCase):
 
     def test_rechaza_densidad_negativa(self):
         for nombre in MaterialRegistry.names():
-            if nombre in SIN_VALIDAR_DENSIDAD:
-                continue
             with self.subTest(material=nombre):
                 with self.assertRaises(
                         ValueError,
@@ -513,44 +495,30 @@ class TestValidacionDefensiva(unittest.TestCase):
                     MaterialRegistry.create(nombre, **MUESTRAS[nombre],
                                             density=-1.0)
 
-    def test_las_listas_de_deuda_solo_encogen(self):
-        """Trinquete: si un material ya validaba, no puede dejar de hacerlo.
-
-        Comprueba que ningún nombre de las listas de deuda esté ya corregido
-        —en cuyo caso hay que retirarlo de la lista— y que no se hayan colado
-        nombres de materiales inexistentes.
-        """
-        registrados = set(MaterialRegistry.names())
-
-        for lista, etiqueta in ((SIN_VALIDAR_MODULO, 'módulo'),
-                                (SIN_VALIDAR_DENSIDAD, 'densidad')):
-            fantasmas = lista - registrados
-            self.assertFalse(
-                fantasmas,
-                f"La lista de deuda de {etiqueta} nombra materiales que ya no "
-                f"se registran: {sorted(fantasmas)}")
-
-        for nombre in sorted(SIN_VALIDAR_MODULO):
-            with self.subTest(material=nombre, criterio='módulo'):
-                muestra = dict(MUESTRAS[nombre])
-                clave = 'E' if 'E' in muestra else 'E1'
-                muestra[clave] = -1.0
-                try:
-                    MaterialRegistry.create(nombre, **muestra)
-                except ValueError:
-                    self.fail(
-                        f"{nombre} ya valida el módulo: retíralo de "
-                        f"SIN_VALIDAR_MODULO para que el test lo exija.")
-
-        for nombre in sorted(SIN_VALIDAR_DENSIDAD):
-            with self.subTest(material=nombre, criterio='densidad'):
-                try:
+    def test_el_mensaje_nombra_el_material_y_el_parametro(self):
+        """Un `ValueError` que no diga qué material ni qué parámetro obliga a
+        rastrear el modelo entero. `Reglas.md §1` pide mensajes claros, no sólo
+        el rechazo."""
+        for nombre in MaterialRegistry.names():
+            with self.subTest(material=nombre):
+                with self.assertRaises(ValueError) as ctx:
                     MaterialRegistry.create(nombre, **MUESTRAS[nombre],
                                             density=-1.0)
-                except ValueError:
-                    self.fail(
-                        f"{nombre} ya valida la densidad: retíralo de "
-                        f"SIN_VALIDAR_DENSIDAD para que el test lo exija.")
+                mensaje = str(ctx.exception)
+                self.assertIn(nombre, mensaje)
+                self.assertIn('density', mensaje)
+
+    def test_densidad_cero_es_admisible(self):
+        """Cero no es negativo: un material sin peso es un modelo legítimo
+        (análisis estático donde la masa no interviene). La guarda debe
+        rechazar lo negativo, no lo nulo."""
+        for nombre in MaterialRegistry.names():
+            with self.subTest(material=nombre):
+                material = MaterialRegistry.create(
+                    nombre, **MUESTRAS[nombre], density=0.0)
+                self.assertEqual(material.density, 0.0)
+
+
 
 
 if __name__ == '__main__':
