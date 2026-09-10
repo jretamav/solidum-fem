@@ -10,12 +10,12 @@
 
 | Indicador | Valor |
 |---|---|
-| **Tests** | 1176 pasan / 8 skipped / 0 fallos, desde los 973 del saneamiento de manuales (**+203**). **Etapa 8 (térmico, núcleo mínimo C1) cerrada 2026-08-25**: 167 de esos tests son de los cuatro archivos térmicos — material (31), `Quad4Thermal` (31), `Hex8Thermal` (26) y `ThetaMethodSolver` (79) —; los 8 siguientes cubren el arreglo colateral del mensaje de `Assembler.assemble_mass_matrix`, y los 28 finales la vía YAML del análisis térmico. Los 8 skipped siguen siendo los 2 de Tet10 sobre cilindro (deuda técnica #8) más 6 anteriores. |
+| **Tests** | 1204 pasan / 8 skipped / 0 fallos, desde los 973 del saneamiento de manuales (**+231**). **`Orthotropic2D` (2026-09-09)**: 26 tests + 57 subtests del primer material anisótropo. **Etapa 8 (térmico, núcleo mínimo C1) cerrada 2026-08-25**: 167 de esos tests son de los cuatro archivos térmicos — material (31), `Quad4Thermal` (31), `Hex8Thermal` (26) y `ThetaMethodSolver` (79) —; los 8 siguientes cubren el arreglo colateral del mensaje de `Assembler.assemble_mass_matrix`, y los 28 finales la vía YAML del análisis térmico. Los 8 skipped siguen siendo los 2 de Tet10 sobre cilindro (deuda técnica #8) más 6 anteriores. |
 | **Elementos** | 23 (10 estructurales 1D + 5 sólidos 2D + 1 sólido 2D con discontinuidad embebida + 5 sólidos 3D + **2 térmicos: `Quad4Thermal`, `Hex8Thermal`**) |
-| **Materiales** | 14 (12 continuos + 1 cohesivo traction-jump + **1 térmico: `ThermalConduction`**). Tres familias con registro propio: `MaterialRegistry`, `CohesiveMaterialRegistry`, **`ThermalMaterialRegistry`**. |
+| **Materiales** | 15 (13 continuos —de los cuales **1 anisótropo: `Orthotropic2D`**— + 1 cohesivo traction-jump + **1 térmico: `ThermalConduction`**). Tres familias con registro propio: `MaterialRegistry`, `CohesiveMaterialRegistry`, **`ThermalMaterialRegistry`**. |
 | **Solvers** | 13 (4 estáticos + 1 modal + 5 transitorios mecánicos + 1 armónico + 1 espectral + **1 térmico transitorio: `ThetaMethodSolver`**) |
-| **ADRs aceptados** | 12 (0001–0012) |
-| **Specs `validated`** | 49 de 50 (la restante, `DissipationArcLengthSolver`, en `implemented` por validación parcial — ver deuda técnica #4). Las 4 nuevas son las de la Etapa 8: `ThermalConduction`, `Quad4Thermal`, `Hex8Thermal`, `ThetaMethodSolver`. |
+| **ADRs aceptados** | 13 (0001–0013). El 0013 (orientación material) fija dónde vive el ángulo de fibra: en el material como atajo consciente, con la migración al elemento declarada y su condición de retoma escrita. |
+| **Specs `validated`** | 50 de 51 (la restante, `DissipationArcLengthSolver`, en `implemented` por validación parcial — ver deuda técnica #4). Las 4 nuevas son las de la Etapa 8: `ThermalConduction`, `Quad4Thermal`, `Hex8Thermal`, `ThetaMethodSolver`. |
 | **Etapas cerradas** | **8 completas** + sub-etapa A.bis (2026-05-21) + sub-etapa A.ter (2026-05-27). **Etapa 8 — análisis térmico, núcleo mínimo C1 — cerrada 2026-08-25**: conducción de Fourier pura, Dirichlet + Neumann, estacionario y transitorio, 2D y 3D. Sin convección, radiación ni acoplamiento (diferidos con rationale). |
 | **Auditoría global** | Conducida 2026-05-18 — 51 hallazgos. 41 cerrados, 6 diferidos con rationale, 4 diferidos sin acción. Informe + addendum en [docs/auditorias/auditoria_global_2026-05-18.md](auditorias/auditoria_global_2026-05-18.md). Saneamiento completo en dos sesiones (19-mayo). |
 
@@ -61,6 +61,7 @@
 
 **Materiales cubiertos**
 - Elásticos: `Elastic1D`, `Elastic2D` (plane stress + plane strain), `Elastic3D` (isótropo, sin variantes de hipótesis — Etapa 7).
+- **Anisótropos** (primero del catálogo, 2026-09-09): `Orthotropic2D` — elasticidad ortótropa 2D plane stress con orientación de fibra `theta`. Cuatro constantes independientes (`E1`, `E2`, `G12`, `nu12`); `nu21` por reciprocidad. Acoplamiento tracción–cortante fuera de ejes principales. **Admisibilidad distinta de la isótropa**: `|nu12| < √(E1/E2)`, así que `nu12 > 0.5` es legítimo. Orientación en el material por [ADR 0013](adr/0013-orientacion-material-y-ortotropia.md) — atajo consciente, migra al elemento cuando aparezca fibra variable en la malla. Motivado por el proyecto PAPIIT sobre bambú.
 - Cable unilateral: `CableMaterial1D`.
 - Plasticidad J2: `Elastoplastic1D`, `VonMises2D` (kernels Numba especializados para plane strain y plane stress), **`VonMises3D`** (Voigt 6D, return mapping radial cerrado — A.bis).
 - Plasticidad friccional: `DruckerPrager2D` (plane strain), **`DruckerPrager3D`** (Voigt 6D con variantes outer/inner cone; sin `plane_strain_matched` — 2D-only). Ambos con dos ramas regular/apex y plasticidad no asociada por defecto.
@@ -86,6 +87,7 @@
 - ~~**Materiales 3D no lineales** (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`)~~ ✅ **Cerrado 2026-05-21** (sub-etapa A.bis): los tres materiales con tangente algorítmica consistente, cross-consistency vs 2D plane_strain a 10-14 decimales, integración Hex8/Tet4, y campaña de validación 3D consolidada (triaxial DP3D vs cono, uniaxial Damage3D vs curva σ-ε analítica, cilindro Hill 3D vs Hill 1950 §5).
 - **Placas y láminas**: pendiente.
 - ~~**Análisis térmico desacoplado**~~ ✅ **Cerrado 2026-08-25** (Etapa 8, núcleo mínimo C1): conducción de Fourier pura, estacionaria y transitoria, 2D y 3D, con Dirichlet y Neumann. **Siguen fuera de alcance** por decisión explícita y documentada: convección (Robin), radiación, conductividad dependiente de la temperatura `k(T)`, cambio de fase, paso de tiempo adaptativo y **acoplamiento termomecánico** (sin deformación térmica `α·ΔT`). El acoplamiento es el siguiente paso natural de esta línea.
+- **Anisotropía más allá de `Orthotropic2D`**: diferidos con rationale en [ADR 0013](adr/0013-orientacion-material-y-ortotropia.md) §3 — **`plane_strain` ortótropo** (requiere `E3`, `nu13`, `nu23`: el problema plano no cierra sin datos 3D), **`Orthotropic3D`** (nueve constantes, rotación 6×6), **criterios de falla ortótropos** (Tsai-Wu, Hashin, Hoffman — el bambú falla de modo muy distinto a lo largo y a través de la fibra), **material gradado** (propiedades función de la posición) y **ortotropía cilíndrica** (ejes que siguen la geometría del culmo; requiere orientación por punto de Gauss).
 - **Mohr-Coulomb 2D**, **FiberSection para frames no-lineales**: pendientes.
 - **Contacto mecánico**: horizonte largo.
 - **Grandes deformaciones en sólidos** (lagrangiano total/actualizado): horizonte largo.
