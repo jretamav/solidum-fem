@@ -310,6 +310,8 @@ No bloquea elegir la siguiente, pero queda anotado:
 
 Convección (Robin), radiación, conductividad `k(T)`, cambio de fase, paso de tiempo adaptativo y acoplamiento termomecánico. Las tres primeras y el cambio de fase exigen **Newton dentro de cada paso**; el `ThetaMethodSolver` actual asume el problema lineal y sin historia, que es justo lo que le permite factorizar `A = C + θΔt·K` una sola vez.
 
+> 📌 **Cuando se retome el acoplamiento termomecánico**: formularlo como **deformación propia genérica** `ε₀`, no como deformación específicamente térmica — la térmica queda como el caso particular `ε₀ = α·ΔT`. La **deformación higroscópica** es formalmente idéntica (deformación impuesta por un campo escalar difusivo) y sale casi gratis con la formulación genérica; con una atada a la temperatura obligaría a refactorizar el contrato `Material` una segunda vez. En madera y bambú la higroscópica **domina sobre la térmica en unos dos órdenes de magnitud**, así que un acoplamiento sólo térmico resolvería el efecto secundario y dejaría fuera el principal. Argumentario completo en [`docs/STATUS.md`](STATUS.md) §"Próximo hito".
+
 ---
 
 ## Etapa 8+ — Horizonte largo

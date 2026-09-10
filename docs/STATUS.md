@@ -137,6 +137,12 @@ Ninguno bloquea el avance. Todos están documentados con su contexto en la memor
 - **F. Continuar la línea térmica.** Tres direcciones de distinto calibre:
   - *Convección (Robin)* — la extensión natural y más demandada: `q = h·(T − T_∞)` añade un término a `K` y otro a `F`, sin tocar la estructura del solver. Es la única de las tres que no requiere Newton.
   - *Acoplamiento termomecánico* — deformación térmica `ε_th = α·ΔT` restada de la deformación total. Es el salto conceptual real: obliga a decidir si el acoplamiento es débil (secuencial) o fuerte (monolítico), y toca el contrato `Material`.
+
+    > 📌 **Criterio de diseño fijado por anticipado (2026-09-10).** Cuando se implemente, formularlo como **deformación propia genérica** `ε₀` —una deformación impuesta que se resta de la total antes de evaluar la constitutiva— y **no** como una deformación específicamente térmica. La térmica pasa a ser el caso particular `ε₀ = α·ΔT`.
+    >
+    > La razón es que la **deformación higroscópica** (hinchamiento y contracción por humedad) es formalmente idéntica: una deformación impuesta por un campo escalar difusivo. Con la formulación genérica sale casi gratis; con una formulación atada a la temperatura exigiría refactorizar el contrato `Material` una segunda vez.
+    >
+    > El caso de uso que lo motiva es real y está documentado fuera de este repositorio: en madera y bambú la deformación higroscópica **domina sobre la térmica en unos dos órdenes de magnitud**, de modo que un acoplamiento sólo térmico resolvería el efecto secundario y dejaría fuera el principal. Mismo argumento que llevó a `ThermalConduction` a aceptar conductividad **tensorial** desde el contrato en vez de escalar (Etapa 8): la generalidad que no cuesta al diseñarla, cuesta mucho al añadirla después.
   - *No linealidad térmica* — `k(T)`, radiación, cambio de fase. Todas exigen Newton dentro de cada paso; el `ThetaMethodSolver` actual asume el problema lineal y sin historia para factorizar una sola vez.
 
 **Cierre pendiente de la propia Etapa 8** (no bloquea elegir la siguiente):
