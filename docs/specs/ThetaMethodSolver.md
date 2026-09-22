@@ -327,4 +327,3 @@ El mensaje accionable correcto ya existía en `ThermalMaterial.volumetric_capaci
 
    **Requisito añadido con la decisión**: el solver **reporta el orden efectivo del esquema** según el $\theta$ en uso, para que el coste en precisión del default sea visible y no una penalización silenciosa. Es la contrapartida honesta de elegir robustez.
 - **2026-09-22** · Auditoría global: el aviso de estabilidad condicional (θ < 0.5) cita el límite correcto `Δt ≤ 2/((1 − 2θ)·λ_max)`, que sólo coincide con `2/λ_max` en θ = 0.
-- **2026-09-22** · Auditoría global: el aviso de estabilidad condicional (θ < 0.5) cita el límite correcto `Δt ≤ 2/((1 − 2θ)·λ_max)`, que sólo coincide con `2/λ_max` en θ = 0.

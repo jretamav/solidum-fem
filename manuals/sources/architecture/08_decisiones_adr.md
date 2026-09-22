@@ -130,6 +130,16 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** El subsistema modal/dinámico/espectral queda **completo en su totalidad**. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, Δt adaptativo, generalized-α) requieren caso de uso específico — no son piezas del ADR pendientes. La clase `Node` conserva su semántica original.
 
+## ADR 0014 — Ensamblaje por lotes
+
+**Fecha**: 22 de septiembre de 2026. **Estado**: aceptado; fases 1-3 implementadas el mismo día.
+
+**Contexto.** El ensamblaje recorría los elementos uno a uno en Python y, dentro de cada uno, los puntos de Gauss uno a uno: más del 90 % del tiempo era sobrecarga de despacho, no aritmética (120–170 µs por Quad4 y ensamblaje; 0,4 s por commit copiando diccionarios), y el estado interno como diccionarios ocupaba más que la matriz global. La solución conocida desde los supercomputadores vectoriales es invertir el bucle y evaluar por lotes los elementos que comparten receta, pero el proyecto exige que la agrupación no fije hipótesis que un componente futuro tenga que deshacer.
+
+**Decisión.** (1) La *familia* se deriva de los contratos declarativos —clase de elemento, instancia de material, cuadratura, número de nodos—, nunca de listas. (2) El camino por elemento sigue siendo el contrato obligatorio y la referencia física; el camino por lotes es una capacidad que el componente declara (`BATCH_KINEMATICS` en el elemento, `STATE_SCHEMA` + `BATCH_KERNEL` en el material) con fallback automático dentro del mismo ensamblador. (3) Un único kernel de familia, compilado una vez y cacheado en disco, recibe la cinemática y la constitutiva como funciones tipadas por su firma. (4) Ambos caminos ejecutan las mismas funciones compiladas por punto de Gauss, y el barrido de contratos exige equivalencia a precisión de máquina. (5) El estado interno se declara (`STATE_SCHEMA`, obligatorio) y se almacena por arreglos con vistas compatibles con `ElementState`. (6) Nada derivado de la configuración deformada se cachea. (7) Trozos con presupuesto de memoria y mapa COO → CSR cacheado.
+
+**Consecuencia.** Quad4 + J2 ×29 y Hex8 + J2 ×13 en el ensamblaje; el commit pasa de cientos de milisegundos a una copia de arreglo; el estado interno ocupa 80 B por punto de Gauss en vez de 462. Un material nuevo declara `STATE_SCHEMA` (una línea) y, si quiere acelerarse, un adaptador de diez líneas sobre su propio return mapping; un elemento nuevo escribe su cinemática compilada con las mismas funciones que su `compute_element_state`. Diferidos: los elementos estructurales 1D y los adaptadores sin asignaciones de Drucker-Prager y daño.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

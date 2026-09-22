@@ -310,3 +310,4 @@ references:
   - Invariancia bajo cambio de unidades (E en MPa vs Pa) — `d`, `κ` idénticos a 12 decimales; σ escala linealmente con E.
 
   **Con esta entrega cierra la sub-etapa A.bis** (materiales 3D no lineales): VonMises3D + DruckerPrager3D + IsotropicDamage3D. Validación contra benchmark publicado (e.g. ensayo tensión-softening con valor cuantitativo de carga máxima en barra cargada axialmente con softening exponencial calibrado por G_f efectivo) **diferida a la campaña 3D consolidada** que se hará al cierre de A.bis junto con Hill 3D para VM3D y esfera hueca para DP3D.
+- **2026-09-22** · Ensamblaje por lotes (ADR 0014): la física de `compute_state` se movió a un núcleo `@njit` (`_compute_damage_3d`) que consumen el camino por elemento y el adaptador por lotes; `evaluate_exponential_damage` se compila y recibe el cap como argumento. Sin cambio de formulación; `STATE_SCHEMA = {kappa, damage}` con estado inicial `κ = κ₀`.

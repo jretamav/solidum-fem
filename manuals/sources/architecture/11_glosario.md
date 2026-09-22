@@ -28,13 +28,17 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **`ElementState`**. Objeto que encapsula las dos copias de las variables internas de cada elemento: una copia *trial* (la que se explora durante las iteraciones del solver) y otra comprometida (la del último paso convergido). Ver capítulo 5.
 
-**Ensamblaje con caché Coordinate (COO)**. Estrategia de ensamblaje en la que la primera invocación calcula los pares de índices `(i, j)` de cada contribución elemental y los almacena en formato Coordinate; las invocaciones siguientes reescriben únicamente el vector de datos sobre la misma topología, sin recalcular índices. Ver capítulo 5.
+**Ensamblaje con topología cacheada**. Estrategia de ensamblaje en la que la primera invocación calcula los pares de índices `(i, j)` de cada contribución elemental en formato Coordinate (COO), deriva la estructura CSR de la matriz y un mapa COO → CSR; las invocaciones siguientes reescriben únicamente el vector de datos y lo acumulan sobre la misma estructura, sin recalcular índices ni reordenar. Ver capítulo 5 y ADR 0014.
+
+**Ensamblaje por lotes**. Evaluación de todos los puntos de Gauss de una familia de lote dentro de un único kernel compilado (`solid_family_kernel`), que recibe la cinemática del elemento y la constitutiva del material como funciones tipadas por su firma. Coexiste con el camino por elemento, que sigue siendo el contrato obligatorio y la referencia física. Ver capítulo 5 y ADR 0014.
 
 **Especificación (spec)**. Documento que describe un componente físico nuevo antes de su implementación: especificación física, formulación numérica, contrato YAML y criterios de aceptación. Reside en `docs/specs/<Nombre>.md`. Es a la vez orden de trabajo y referencia detallada del componente. Ver capítulo 7.
 
 **Estado *trial* y estado comprometido**. Las dos copias de las variables internas de cada elemento. El estado *trial* se explora durante las iteraciones del solver no lineal; al converger un paso, el solver invoca `commit_state()` y promueve el *trial* a estado comprometido. Esta semántica es indispensable en problemas con plasticidad o daño para no contaminar el historial con tentativas posteriormente descartadas.
 
 **Familia de elementos**. Conjunto de elementos que comparten la cinemática esencial: armaduras, cables, marcos (vigas), sólidos 2D, sólidos 3D, cáscaras. Ver capítulo 4.
+
+**Familia de lote**. Conjunto de elementos de un dominio que comparten clase de elemento, instancia de material, regla de cuadratura y número de nodos, y que el ensamblador evalúa juntos en un kernel compilado. Su estado interno vive en un `FamilyState` (arreglos por punto de Gauss) del que `elem.state` es una vista (`BatchedElementState`). Ver capítulo 5 y ADR 0014.
 
 **Grado de libertad (DOF)**. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el `Domain`.
 

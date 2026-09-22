@@ -264,3 +264,4 @@ references:
    Consecuencia para la spec del elemento: `compute_body_source(Q)` integra $\int_\Omega Q\,\mathbf N^\top d\Omega$, paralelo a `compute_body_load(b)` del mecánico. Se especifica allí, no aquí.
 
    No cierra la puerta a un atajo futuro —un material que declare generación propia— si aparece el caso de uso que lo justifique.
+- **2026-09-22** · Ensamblaje por lotes (ADR 0014): `STATE_SCHEMA = {}` y kernel lineal compartido (`materials/_batch.linear_material_kernel`, `k·∇T`); `batch_matrix()` devuelve el tensor de conductividad.

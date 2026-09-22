@@ -188,3 +188,4 @@ references:
 ## Diálogo
 
 - **2026-05-19** · Spec creada como pieza inicial de la Etapa 7 (sólidos 3D, alcance acotado Hex8 + Tet4 + Elastic3D). Convención Voigt 6D fijada en ADR 0012. Sin variantes de hipótesis (no aplica plane_stress/plane_strain en 3D).
+- **2026-09-22** · Ensamblaje por lotes (ADR 0014): `STATE_SCHEMA = {}` y kernel lineal compartido (`materials/_batch.linear_material_kernel`, `σ = C·ε`); `batch_matrix()` devuelve la `C` precalculada.

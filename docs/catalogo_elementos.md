@@ -2,6 +2,8 @@
 
 > Referencia rápida de los elementos implementados. Una entrada por elemento. Para detalles físicos/numéricos → código fuente.
 >
+> **Ensamblaje por lotes (ADR 0014)**: los sólidos isoparamétricos 2D/3D y los térmicos declaran `BATCH_KINEMATICS` (la misma cinemática compilada que usa `compute_element_state`) y, los planos, `BATCH_SCALE = "thickness"`; el `Assembler` los agrupa en familias y los evalúa en un único kernel. Los estructurales 1D y `CST_Embedded2D` siguen el camino por elemento.
+>
 > **Convenciones**: `STRAIN_DIM` = dimensión Voigt esperada del material asociado (1 = axial escalar, 3 = 2D `[ε_xx, ε_yy, γ_xy]`, 6 = 3D). DOFs por nodo = `DOF_NAMES`.
 
 ---

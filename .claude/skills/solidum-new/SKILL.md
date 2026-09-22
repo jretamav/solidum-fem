@@ -28,7 +28,7 @@ Si faltan argumentos, pídelos al usuario.
 ## Flujo
 
 1. **Recoge metadatos mínimos** preguntando al usuario lo estrictamente necesario (no satures):
-   - **material**: `STRAIN_DIM` (1, 3 ó 6) · `PRIMARY_STATE_VAR` (str o `None`) · parámetros del constructor (lista `nombre: tipo`).
+   - **material**: `STRAIN_DIM` (1, 3 ó 6) · `PRIMARY_STATE_VAR` (str o `None`) · `STATE_SCHEMA` (`{nombre: forma}` de las variables internas, `{}` sin historia — obligatorio, ADR 0014) · parámetros del constructor (lista `nombre: tipo`).
    - **element**: `DOF_NAMES` (lista) · `STRAIN_DIM` (1, 3 ó 6) · `N_INTEGRATION_POINTS` · número exacto de nodos requeridos · parámetros adicionales (`A`, `I`, `thickness`, etc.).
    - **solver**: tipo (`lineal` / `no-lineal` / `path-following` / `otro`) · parámetros del constructor con sus defaults.
 2. **Genera el archivo** en su carpeta canónica (ver Templates) usando `snake_case(Name)` como nombre de archivo.
@@ -40,7 +40,7 @@ Si faltan argumentos, pídelos al usuario.
 
 ## Convenciones del proyecto
 
-- Material: hereda de `solidum.core.material.Material`. Decora con `@MaterialRegistry.register`. Implementa `compute_state(strain, state_vars=None) -> (stress, tangent, new_state_vars)`.
+- Material: hereda de `solidum.core.material.Material`. Decora con `@MaterialRegistry.register`. Implementa `compute_state(strain, state_vars=None) -> (stress, tangent, new_state_vars)` y declara `STATE_SCHEMA` (el barrido de contratos comprueba que coincide con el estado devuelto). El kernel por lotes (`BATCH_KERNEL`, `batch_params`, `batch_matrix`) es opcional; ver ADR 0014.
 - Element: hereda de `solidum.core.element.Element`. Decora con `@ElementRegistry.register`. Implementa `compute_element_state(u_e) -> (K_e, F_int_e)`. La base se encarga de `commit_state`, `state_vars`, validación STRAIN_DIM, registro de DOFs y creación de `ElementState`.
 - Solver: clase normal (no abstracta). Decora con `@SolverRegistry.register`. Constructor recibe `assembler` como primer arg. Implementa `solve(F_ext_global, step_callback=None) -> U_global`.
 - Comentarios: solo cuando el "por qué" no sea obvio (sigue las reglas del proyecto). No documentar el "qué" — los nombres ya lo dicen.
@@ -67,6 +67,12 @@ class {{Name}}(Material):
     """
     STRAIN_DIM = {{1|3|6}}
     PRIMARY_STATE_VAR = {{'kappa' o None}}
+    # Variables internas como {nombre: forma}, en el orden en que se guardan por
+    # filas en el ensamblaje por lotes (ADR 0014). {} si no hay historia.
+    STATE_SCHEMA = {{{'kappa': (), 'damage': ()} o {}}}
+    # Opcional: kernel puntual @njit con firma MAT_SIG (solidum/math/batch/signatures.py)
+    # que llame al return mapping; sin él el material sigue el camino por elemento.
+    # BATCH_KERNEL = _{{snake}}_batch
 
     def __init__(self, {{params}}, density: float | None = None):
         # density es opcional (ADR 0008): el material la declara solo si el
@@ -101,6 +107,9 @@ class {{Name}}(Element):
     DOF_NAMES = {{['ux', 'uy', ...]}}
     STRAIN_DIM = {{1|3|6}}
     N_INTEGRATION_POINTS = {{int}}
+    # Opcional (ADR 0014): cinemática compilada `detJ = kin(pt, coords, B)` con firma
+    # KIN_SIG, la misma que use compute_element_state, para entrar en el camino por lotes.
+    # BATCH_KINEMATICS = _batch_kin_{{snake}}
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  {{params_extra}}):

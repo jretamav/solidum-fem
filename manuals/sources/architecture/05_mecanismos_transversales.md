@@ -26,9 +26,15 @@ El componente `YamlParser` no contiene ramificaciones del tipo `if material_type
 
 Cada elemento mantiene un objeto `ElementState` con dos copias de las variables internas: una copia *trial* (la que se explora durante las iteraciones del solver) y una copia comprometida (la que corresponde al último paso convergido). El solver invoca `commit_state()` solo cuando un paso converge, lo que evita la contaminación del historial plástico o de daño con tentativas posteriormente descartadas. Esta semántica es crítica para problemas con plasticidad o daño: en su ausencia, una iteración no convergida que casualmente quedase dentro de tolerancia contaminaría el historial de forma irreversible.
 
-## Ensamblaje disperso con caché en formato Coordinate
+## Ensamblaje disperso con topología cacheada
 
-El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental y los almacena en formato Coordinate (COO). En las iteraciones siguientes, se reescribe únicamente el vector de datos sobre la misma topología, sin recalculo de índices. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre `scipy.sparse`.
+El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental en formato Coordinate (COO), deriva de ellos la estructura comprimida por filas (CSR) de la matriz y un mapa que lleva cada entrada COO a su posición CSR. En las iteraciones siguientes se reescribe únicamente el vector de datos sobre la misma topología y se acumula con una suma por índice (`numpy.bincount`), sin recalcular índices ni reordenar: la conversión COO a CSR que `scipy` rehacía en cada ensamblaje (unos 115 ms para 8 000 hexaedros) desaparece. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre `scipy.sparse` (ADR 0014).
+
+## Ensamblaje por lotes: familias y un único kernel compilado
+
+Los elementos que comparten clase, instancia de material, regla de cuadratura y número de nodos forman una *familia de lote* (`solidum/math/batch/`). La clave se deriva de atributos que ya existen; un elemento nuevo cae en su propia familia sin tocar el ensamblador. Cada familia guarda su estado interno como arreglos (`FamilyState`: variables internas y esfuerzos, committed y trial, una fila por punto de Gauss) y se evalúa completa dentro de un único bucle compilado, `solid_family_kernel`, que recibe la cinemática del elemento (`BATCH_KINEMATICS`) y la constitutiva del material (`BATCH_KERNEL`) como funciones tipadas por su firma. Esa tipificación (`numba.types.FunctionType`) es lo que permite compilar el kernel una sola vez para todas las parejas elemento × material y reutilizarlo desde el caché en disco: un despachador tiene identidad propia por proceso y obligaría a recompilar por pareja en cada ejecución.
+
+El camino por elemento (`compute_element_state`, `compute_state`) sigue siendo el contrato obligatorio y la referencia física. El camino por lotes es una capacidad que el componente declara: los elementos sin cinemática compilada (estructurales 1D, discontinuidad embebida) y los materiales sin esquema de estado se ensamblan como siempre dentro del mismo `Assembler`. Ambos caminos ejecutan las mismas funciones compiladas por punto de Gauss; el barrido de contratos exige que `K` y `F_int` coincidan a precisión de máquina en toda combinación registrada. El kernel recibe siempre coordenadas de referencia y desplazamientos y recomputa jacobiano y `B` en cada evaluación: nada derivado de la configuración deformada se cachea, de modo que el diseño vale para elementos lineales, corotacionales y formulaciones lagrangianas futuras. Medido sobre 10 000 Quad4 con plasticidad J2: 157 → 5,5 µs por elemento y ensamblaje (ADR 0014).
 
 ## Eliminación directa de condiciones de frontera
 
@@ -38,7 +44,7 @@ La forma afín cubre con la misma maquinaria los casos de empotramiento, asentam
 
 ## Compilación Just-In-Time mediante Numba
 
-Las funciones críticas (ensamblaje elemento→global, núcleo del algoritmo de retorno radial) se decoran con `@njit` y se compilan a código nativo en su primera invocación. La primera ejecución asume el coste de compilación; las invocaciones siguientes se ejecutan a velocidad cercana a la de un programa Fortran compilado. La restricción consiste en que el código compilado solo admite tipos primitivos y arreglos NumPy, no objetos arbitrarios de Python.
+Las funciones críticas (cinemática de los elementos, núcleos de los algoritmos de retorno, el kernel de familia del ensamblaje por lotes) se decoran con `@njit(cache=True)` y se compilan a código nativo en su primera invocación; el binario se guarda en `__pycache__` y las ejecuciones siguientes lo cargan en centésimas de segundo. Lo que se compila es el procedimiento, no los datos: la configuración deformada, los parámetros y las variables internas entran como argumentos en cada llamada, así que un cambio de geometría o de estado nunca exige recompilar. La restricción consiste en que el código compilado solo admite tipos primitivos y arreglos NumPy, no objetos arbitrarios de Python; por eso los materiales exponen su estado como filas de arreglo (`STATE_SCHEMA`) y sus constantes como un vector de parámetros (`batch_params`).
 
 ## Variable principal de visualización
 

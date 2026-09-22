@@ -177,4 +177,4 @@ references:
 
 - **2026-05-19** · Spec creada retroactivamente para cerrar el hueco H-5.3 de la auditoría 2026-05-18. Material anterior a la convención de specs validadas; no se modifica código. Aceptación cumplida por cobertura indirecta en pipelines existentes.
 - **2026-09-22** · Auditoría global: nuevo `out_of_plane_stress(σ, state)`: σ_zz = ν(σ_xx + σ_yy) en plane strain, 0 en plane stress. Lo consume el exportador VTK para el Von Mises 3D (antes usaba la fórmula de plane stress también en plane strain).
-- **2026-09-22** · Auditoría global: nuevo `out_of_plane_stress(σ, state)`: σ_zz = ν(σ_xx + σ_yy) en plane strain, 0 en plane stress. Lo consume el exportador VTK para el Von Mises 3D (antes usaba la fórmula de plane stress también en plane strain).
+- **2026-09-22** · Ensamblaje por lotes (ADR 0014): `STATE_SCHEMA = {}` y kernel lineal compartido (`materials/_batch.linear_material_kernel`, `σ = C·ε`); `batch_matrix()` devuelve la `C` precalculada.

@@ -198,3 +198,4 @@ references:
 ## Diálogo
 
 - **2026-05-19** · Spec creada retroactivamente para cerrar el hueco H-5.3 de la auditoría 2026-05-18. Material anterior a la convención de specs; no se modifica código. La aceptación se considera cumplida por los tests unitarios existentes.
+- **2026-09-22** · Ensamblaje por lotes (ADR 0014): declara `STATE_SCHEMA` (obligatorio en todo el catálogo). Sin kernel por lotes: los elementos 1D siguen el camino por elemento (fase 4 de la propuesta, diferida).

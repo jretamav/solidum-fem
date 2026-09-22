@@ -62,6 +62,8 @@ interface:
   strain_dim: 0          # 1 axial · 3 plano (ε_xx, ε_yy, γ_xy) · 6 3D
   primary_state_var: ""  # nombre de la variable interna exportada al post
   is_symmetric: true     # tangente algorítmica simétrica? (afecta al despachador algebraico ADR 0003)
+  state_schema: {}       # {nombre: forma} de las variables internas, en el orden de almacenamiento (ADR 0014); {} sin historia
+  batch_kernel: false    # ¿declara kernel puntual @njit con firma MAT_SIG para el ensamblaje por lotes? (opcional)
 
 parameters:
   - { name: , type: , required: true, desc:  }

@@ -39,7 +39,7 @@ Para arrancar sin contexto previo, lee en este orden — **no necesitas más par
 2. **[STATUS.md](STATUS.md)** (~2 min): foto del estado actual. Métricas, capacidades, deuda técnica, próximo hito.
 3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-8 cerradas + sub-etapas A.bis y A.ter. La **Etapa 8** cerró la opción C (térmico) en su núcleo mínimo; la Etapa 9 queda abierta entre **B** (placas/láminas), **E** (Mohr-Coulomb + FiberSection) y la continuación de la línea térmica (convección, acoplamiento o no linealidad).
 4. **[MATRIZ.md](MATRIZ.md)** (~3 min): qué combinaciones elemento × material son válidas y testeadas.
-5. **Último ADR aceptado** ([ADR 0012 — Sólidos 3D y Voigt 6D](adr/0012-solidos-3d-y-voigt-6d.md)): para entender la última decisión arquitectural grande. Convención Voigt 3D del proyecto, cierre del contrato `internal_forces` por dominio explícito (sólidos exponen `compute_gauss_state`), API de caras 3D con normal saliente. Anteriores: [ADR 0011](adr/0011-robustez-newton-line-search.md) (robustez Newton), [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md) (embedded discontinuities), [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (subsistema dinámico).
+5. **Último ADR aceptado** ([ADR 0014 — Ensamblaje por lotes](adr/0014-vectorizacion-por-lotes.md)): familias derivadas de los contratos, estado interno por arreglos (`STATE_SCHEMA`) y un único kernel Numba cacheado que recibe la cinemática y la constitutiva como funciones tipadas; el camino por elemento sigue siendo el contrato obligatorio y ambos coinciden a precisión de máquina. Anteriores: [ADR 0013](adr/0013-orientacion-material-y-ortotropia.md) (orientación material), [ADR 0012 — Sólidos 3D y Voigt 6D](adr/0012-solidos-3d-y-voigt-6d.md) (convención Voigt 3D, cierre del contrato `internal_forces` por dominio explícito, API de caras 3D), [ADR 0011](adr/0011-robustez-newton-line-search.md) (robustez Newton), [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md) (embedded discontinuities), [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (subsistema dinámico).
 
 Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/specs/<Nombre>.md` y su entrada en `docs/catalogo_<elementos|materiales|solvers>.md`.
 
@@ -61,14 +61,15 @@ solidum_fem/
 │   │   ├── mass_lumping.py       ← HRZ canónico (ADR 0009 fase 2)
 │   │   ├── modal_response.py     ← free_vibration + SRSS/CQC + helpers de espectros
 │   │   ├── integration.py        ← QuadratureRegistry
+│   │   ├── batch/                ← ensamblaje por lotes (ADR 0014): firmas, esquema de estado, FamilyState, kernel de familia
 │   │   └── geometry.py, damping.py, convergence.py
 │   ├── results.py                ← SolveResult, ModalResult, TransientResult,
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 1317 verdes + 9 skipped (pytest); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
+├── tests/                        ← 1425 verdes + 9 skipped (pytest); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
 ├── docs/
-│   ├── adr/                      ← 0001-0012: decisiones arquitecturales
+│   ├── adr/                      ← 0001-0014: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
 │   ├── referencias/              ← PDFs/papers citados desde ADRs y specs (tesis Retama 2010, etc.)
 │   ├── catalogo_*.md             ← índices navegables por dominio

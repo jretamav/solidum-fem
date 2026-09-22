@@ -202,4 +202,3 @@ references:
 
 - **2026-05-18** · Decisión sobre auto-derivación de β, γ: por defecto sí, desde `alpha`. Override explícito posible pero no recomendado (combinaciones α, β, γ arbitrarias pueden perder estabilidad incondicional u orden 2). El parámetro de la API es **el** α, no la terna; β, γ son consecuencia matemática de α salvo experimentación expresa. Esto simplifica el uso típico y centraliza la responsabilidad: si el usuario solo conoce α, el solver hace el resto.
 - **2026-09-22** · Auditoría global: mismos diagnósticos que `NewmarkSolver` (masa singular, conteo de pasos).
-- **2026-09-22** · Auditoría global: mismos diagnósticos que `NewmarkSolver` (masa singular, conteo de pasos).

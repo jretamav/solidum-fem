@@ -70,6 +70,7 @@ soporta subdirectorios sin cambios.)
 
 | Ejemplo | Qué demuestra |
 |---|---|
+| [`benchmarks/`](benchmarks/) | Medición reproducible del ensamblaje por elemento y por lotes (ADR 0014) en `100×100` Quad4 + J2 y `20³` Hex8 + J2, con comparación bit a bit; imprime la tabla que cita `docs/STATUS.md`. |
 | [`bambu_ortotropo/`](bambu_ortotropo/) | Acoplamiento tracción–cortante en un material ortótropo: una tira de bambú con la fibra fuera de eje se distorsiona al traccionarla, y su rigidez cae por debajo del 10 % de E₁ a 45°. Usa `Orthotropic2D`. |
 
 ### Modelos sueltos (pendientes de migrar)
