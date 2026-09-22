@@ -52,6 +52,8 @@ class Quad4Thermal(_ThermalSolid):
     FLUX_DIM: ClassVar[int] = 2
     N_NODES: ClassVar[int] = 4
     DEFAULT_QUADRATURE: ClassVar[str] = "2x2"
+    QUADRATURE_FAMILY: ClassVar[str] = "quad"
+    CAPACITY_QUADRATURE: ClassVar[str] = "2x2"
     N_INTEGRATION_POINTS: ClassVar[int] = 4  # default; la instancia lo ajusta
 
     # Bordes del cuadrilátero, paritarios con los del Quad4 mecánico.

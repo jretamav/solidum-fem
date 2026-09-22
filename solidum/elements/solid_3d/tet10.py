@@ -59,6 +59,7 @@ class Tet10(_HigherOrderSolid3D):
 
     _SHAPE_FN = staticmethod(_N_tet10)
     _GRAD_FN = staticmethod(_dN_tet10)
+    _QUADRATURE_FAMILY = "tet"
     _DEFAULT_QUADRATURE = "tet_4"
     # Mass quadrature fijada a tet_15: integra exactamente el producto
     # cuadrático×cuadrático (grado 4) sobre el tetraedro.

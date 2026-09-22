@@ -17,6 +17,7 @@ class Quad9(_HigherOrderSolid2D):
     _SHAPE_FN = staticmethod(_N_quad9)
     _GRAD_FN = staticmethod(_dN_quad9)
     _DEFAULT_QUADRATURE = "3x3"
+    _MASS_QUADRATURE = "3x3"
 
     EDGE_NODES = (
         (0, 4, 1),

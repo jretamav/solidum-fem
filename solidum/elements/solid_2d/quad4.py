@@ -14,6 +14,7 @@ from solidum.elements.solid_2d._shared import (
     _shape_functions_quad4,
 )
 from solidum.math.mass_lumping import lump_hrz
+from solidum.math.integration import resolve_quadrature
 from solidum.registry import ElementRegistry, QuadratureRegistry
 
 
@@ -31,8 +32,9 @@ class Quad4(Element):
         Material 2D (STRAIN_DIM=3).
     thickness : float, optional
         Espesor para estado plano. Default 1.0.
-    quadrature : tuple, optional
-        Tupla (puntos, pesos). Si es None, usa Gauss 2×2.
+    quadrature : str | tuple, optional
+        Clave del ``QuadratureRegistry`` (``"2x2"``, ``"1x1"``) o tupla
+        (puntos, pesos). Si es None, usa Gauss 2×2.
 
     Notes
     -----
@@ -44,10 +46,9 @@ class Quad4(Element):
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):
-        if quadrature is None:
-            self.points, self.weights = QuadratureRegistry.get("2x2")
-        else:
-            self.points, self.weights = quadrature
+        self.points, self.weights, self.quadrature_key = resolve_quadrature(
+            quadrature, "2x2", family="quad",
+        )
 
         self.thickness = thickness
         # ClassVar override: la base lee este atributo para dimensionar el ElementState
@@ -225,7 +226,11 @@ class Quad4(Element):
         coords = self.get_coordinate_matrix(ndim=2)
         M_s = np.zeros((4, 4))
         m_total = 0.0
-        for (xi, eta), w in zip(self.points, self.weights):
+        # La masa se integra SIEMPRE con la regla completa 2×2, exacta para
+        # el producto bilineal×bilineal: con la regla del elemento (1×1 en
+        # integración reducida) M quedaría de rango 2 y el problema
+        # modal/dinámico generalizado sería singular.
+        for (xi, eta), w in zip(*QuadratureRegistry.get("2x2")):
             N = _shape_functions_quad4(xi, eta)
             detJ = _det_jacobian_quad4(xi, eta, coords)
             if detJ <= 0.0:

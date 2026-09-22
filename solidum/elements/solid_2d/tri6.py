@@ -34,6 +34,7 @@ class Tri6(_HigherOrderSolid2D):
     N_INTEGRATION_POINTS = 3
     _SHAPE_FN = staticmethod(_N_tri6)
     _GRAD_FN = staticmethod(_dN_tri6)
+    _QUADRATURE_FAMILY = "tri"
     _DEFAULT_QUADRATURE = "tri_3"
     _MASS_QUADRATURE = "tri_6"
 

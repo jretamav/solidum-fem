@@ -35,13 +35,16 @@ Todos los símbolos llevan guion bajo: son privados al paquete.
 """
 from typing import List
 
+import math
+
 import numpy as np
 from numba import njit
 
-from solidum.constants import ZERO_JACOBIAN_TOL
+from solidum.constants import JACOBIAN_RTOL
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.math.integration import resolve_quadrature
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import QuadratureRegistry
 
@@ -49,6 +52,16 @@ from solidum.registry import QuadratureRegistry
 # ---------------------------------------------------------------------------
 # Hex8 — hexaedro trilineal isoparamétrico.
 # ---------------------------------------------------------------------------
+
+@njit(cache=True)
+def _jacobian_scale_3d(J):
+    """Producto de las normas de las filas de ``J`` (3×3): cota de Hadamard
+    de ``|det J|``. Hace adimensional el chequeo de jacobiano degenerado
+    (``det J <= JACOBIAN_RTOL · escala``), invariante al sistema de unidades."""
+    return (math.sqrt(J[0, 0] * J[0, 0] + J[0, 1] * J[0, 1] + J[0, 2] * J[0, 2])
+            * math.sqrt(J[1, 0] * J[1, 0] + J[1, 1] * J[1, 1] + J[1, 2] * J[1, 2])
+            * math.sqrt(J[2, 0] * J[2, 0] + J[2, 1] * J[2, 1] + J[2, 2] * J[2, 2]))
+
 
 @njit(cache=True)
 def _shape_functions_hex8(xi: float, eta: float, zeta: float) -> np.ndarray:
@@ -102,7 +115,7 @@ def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
         + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
     )
 
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
         raise ValueError(
             "Jacobiano negativo o cero detectado en Hex8. Revisa la "
             "conectividad o la distorsión."
@@ -181,7 +194,7 @@ def _compute_gradient_kinematics_hex8(xi: float, eta: float, zeta: float,
         + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
     )
 
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
         raise ValueError(
             "Jacobiano negativo o cero detectado en Hex8Thermal. Revisa la "
             "conectividad (orden VTK, volumen positivo) o la distorsión."
@@ -279,7 +292,7 @@ def _compute_kinematics_tet4(coords: np.ndarray):
         + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
     )
 
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
         raise ValueError(
             "Jacobiano negativo o cero detectado en Tet4. Cuatro nodos "
             "coplanares o en orden invertido."
@@ -680,7 +693,7 @@ def _kinematics_higher_order_3d(grad_fn, xi: float, eta: float, zeta: float,
         - J[0, 1] * (J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0])
         + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
     )
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
         raise ValueError(
             "Jacobiano negativo o cero detectado en sólido 3D de orden "
             "superior. Revisa la conectividad o la distorsión."
@@ -783,6 +796,7 @@ class _HigherOrderSolid3D(Element):
     _SHAPE_FN = staticmethod(lambda xi, eta, zeta: None)
     _GRAD_FN = staticmethod(lambda xi, eta, zeta: None)
     _DEFAULT_QUADRATURE: str = ""
+    _QUADRATURE_FAMILY: str = "hex"
     _MASS_QUADRATURE: str | None = None
     _FACE_N_FN = staticmethod(lambda s, t: None)
     _FACE_DN_FN = staticmethod(lambda s, t: None)
@@ -790,12 +804,10 @@ class _HigherOrderSolid3D(Element):
     FACE_NODES: tuple = ()
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 quadrature: str | None = None):
-        if quadrature is None:
-            quadrature = self._DEFAULT_QUADRATURE
-        pts, ws = QuadratureRegistry.get(quadrature)
-        self.points = pts
-        self.weights = ws
+                 quadrature=None):
+        self.points, self.weights, self.quadrature_key = resolve_quadrature(
+            quadrature, self._DEFAULT_QUADRATURE, family=self._QUADRATURE_FAMILY,
+        )
         self.N_INTEGRATION_POINTS = len(self.points)
         super().__init__(element_id, nodes, material)
 

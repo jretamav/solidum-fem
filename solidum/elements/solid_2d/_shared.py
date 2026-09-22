@@ -25,13 +25,16 @@ o cuatro que tests existentes importan se reexportan desde
 """
 from typing import List
 
+import math
+
 import numpy as np
 from numba import njit
 
-from solidum.constants import ZERO_JACOBIAN_TOL
+from solidum.constants import JACOBIAN_RTOL
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.math.integration import resolve_quadrature
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import QuadratureRegistry
 
@@ -39,6 +42,15 @@ from solidum.registry import QuadratureRegistry
 # ---------------------------------------------------------------------------
 # Kinematics Numba — elementos lineales Quad4 y Tri3.
 # ---------------------------------------------------------------------------
+
+@njit
+def _jacobian_scale_2d(J):
+    """Producto de las normas de las filas de ``J`` (2×2): cota de Hadamard
+    de ``|det J|``. Hace adimensional el chequeo de jacobiano degenerado
+    (``det J <= JACOBIAN_RTOL · escala``), invariante al sistema de unidades."""
+    return (math.sqrt(J[0, 0] * J[0, 0] + J[0, 1] * J[0, 1])
+            * math.sqrt(J[1, 0] * J[1, 0] + J[1, 1] * J[1, 1]))
+
 
 @njit
 def _compute_kinematics(xi, eta, coords):
@@ -57,7 +69,7 @@ def _compute_kinematics(xi, eta, coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
 
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
         raise ValueError("Jacobiano negativo o cero detectado en elemento Quad4. Revisa la conectividad o distorsion.")
 
     # Inversa del Jacobiano segura
@@ -108,7 +120,7 @@ def _compute_gradient_kinematics_quad4(xi, eta, coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
 
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
         raise ValueError(
             "Jacobiano negativo o cero detectado en elemento Quad4Thermal. "
             "Revisa la conectividad (orden antihorario) o la distorsion."
@@ -176,7 +188,7 @@ def _compute_kinematics_tri3(coords):
     J = np.dot(dN_dxi, coords)
     detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
 
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
         raise ValueError("Jacobiano negativo o cero detectado en elemento Tri3.")
 
     invJ = np.zeros((2, 2), dtype=np.float64)
@@ -300,7 +312,7 @@ def _kinematics_higher_order(grad_fn, xi, eta, coords, n_nodes):
     dN_dxi = grad_fn(xi, eta)
     J = dN_dxi @ coords
     detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
-    if detJ <= ZERO_JACOBIAN_TOL:
+    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
         raise ValueError("Jacobiano negativo o cero en elemento de orden superior.")
     invJ = np.array([[ J[1, 1], -J[0, 1]],
                      [-J[1, 0],  J[0, 0]]]) / detJ
@@ -377,17 +389,19 @@ class _HigherOrderSolid2D(Element):
     _SHAPE_FN = staticmethod(lambda xi, eta: None)
     _GRAD_FN = staticmethod(lambda xi, eta: None)
     _DEFAULT_QUADRATURE = "3x3"
-    # Cuadratura específica para masa cuando la del elemento subintegra el
-    # producto cuadrático×cuadrático (orden 4). ``None`` = usa la del
-    # elemento (caso Quad8/Quad9 con 3×3, orden 5 — masa exacta).
+    # Familia geométrica ("quad" | "tri") para validar la regla recibida.
+    _QUADRATURE_FAMILY = "quad"
+    # Cuadratura de la masa consistente: siempre una regla que integre
+    # exactamente el producto cuadrático×cuadrático (orden 4), con
+    # independencia de la regla de K (que puede ser reducida). ``None``
+    # reusa la del elemento, pero ninguna subclase lo deja así.
     _MASS_QUADRATURE: str | None = None
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):
-        if quadrature is None:
-            self.points, self.weights = QuadratureRegistry.get(self._DEFAULT_QUADRATURE)
-        else:
-            self.points, self.weights = quadrature
+        self.points, self.weights, self.quadrature_key = resolve_quadrature(
+            quadrature, self._DEFAULT_QUADRATURE, family=self._QUADRATURE_FAMILY,
+        )
         self.thickness = thickness
         self.N_INTEGRATION_POINTS = len(self.points)
         super().__init__(element_id, nodes, material)

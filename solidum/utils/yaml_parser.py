@@ -36,7 +36,15 @@ _FLOAT_RESOLVER = re.compile(
         )$""",
     re.VERBOSE,
 )
-yaml.SafeLoader.add_implicit_resolver(
+
+
+class _SolidumLoader(yaml.SafeLoader):
+    """``SafeLoader`` con floats YAML 1.2. Subclase propia para no mutar el
+    ``SafeLoader`` global de PyYAML, que compartiría cualquier otra librería
+    del proceso host (auditoría 2026-09-22)."""
+
+
+_SolidumLoader.add_implicit_resolver(
     'tag:yaml.org,2002:float', _FLOAT_RESOLVER, list('-+0123456789.')
 )
 
@@ -53,8 +61,38 @@ class YamlValidationError(Exception):
         super().__init__("\n\nEl archivo YAML contiene los siguientes errores:\n" + "\n".join(lines))
 
 
+def _constructor_kwargs(cls) -> tuple[set, bool]:
+    """``(nombres aceptados, acepta **kwargs)`` del constructor de ``cls``."""
+    sig = inspect.signature(cls.__init__)
+    accepted = {
+        name for name, p in sig.parameters.items()
+        if name != 'self' and p.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    }
+    has_var_keyword = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
+    return accepted, has_var_keyword
+
+
+def _unknown_kwargs(cls, given: set, reserved: set) -> tuple[list, list]:
+    """Claves de ``given`` que el constructor de ``cls`` no acepta, y la lista
+    de admitidas para el mensaje. Vacío si el constructor toma ``**kwargs``."""
+    accepted, var_kw = _constructor_kwargs(cls)
+    if var_kw:
+        return [], sorted(accepted - reserved)
+    unknown = sorted((given - reserved) - accepted)
+    return unknown, sorted(accepted - reserved)
+
+
 class YamlParser:
     """Lector automatizado de modelos estructurales desde archivos YAML."""
+
+    # Claves de control de una entrada ``*_by_coord`` (el resto son DOFs).
+    _COORD_KEYS = ('tol', 'coord', 'val', 'loc')
+    _COORD_LOCS = ('x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max')
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.domain = Domain()
@@ -82,7 +120,7 @@ class YamlParser:
     def parse(self) -> Domain:
         _log.info(f"Leyendo modelo desde: {self.filepath} ...")
         with open(self.filepath, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=_SolidumLoader)
 
         if not isinstance(data, dict) or not data:
             raise YamlValidationError(["El archivo YAML está vacío o no tiene formato de mapa clave-valor."])
@@ -173,6 +211,15 @@ class YamlParser:
                     f"{ctx} (id={mat.get('id', '?')}): tipo de material desconocido '{mat['type']}'. "
                     f"Disponibles: {sorted(registered_materials)}."
                 )
+            else:
+                unknown, advertised = _unknown_kwargs(
+                    MaterialRegistry.get(mat['type']), set(mat), {'id', 'type'},
+                )
+                for kw in unknown:
+                    errors.append(
+                        f"{ctx} (id={mat.get('id', '?')}): parámetro '{kw}' no aceptado "
+                        f"por '{mat['type']}'. Admitidos: {advertised}."
+                    )
 
         # --- Materiales cohesivos (ADR 0010 — sección paralela) ---
         known_cohesive_ids = set()
@@ -275,33 +322,22 @@ class YamlParser:
                 # en la firma del constructor del elemento registrado.
                 e_type = elem.get('type')
                 if e_type in registered_elements:
-                    cls = ElementRegistry.get(e_type)
-                    sig = inspect.signature(cls.__init__)
-                    accepted = {
-                        name for name, p in sig.parameters.items()
-                        if name != 'self' and p.kind in (
-                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                            inspect.Parameter.KEYWORD_ONLY,
-                        )
-                    }
-                    has_var_keyword = any(
-                        p.kind == inspect.Parameter.VAR_KEYWORD
-                        for p in sig.parameters.values()
+                    unknown, advertised = _unknown_kwargs(
+                        ElementRegistry.get(e_type), set(elem),
+                        {'id', 'type', 'material', 'nodes', 'cohesive_material', 'element_id'},
                     )
-                    if not has_var_keyword:
-                        reserved = {'id', 'type', 'material', 'nodes', 'cohesive_material'}
-                        extras = set(elem.keys()) - reserved
-                        # 'element_id' lo inyecta el parser a partir de 'id'
-                        unknown = extras - accepted
-                        # Mensaje: excluir kwargs que el parser inyecta ('element_id')
-                        # y los reservados YAML ('material', 'nodes', 'cohesive_material')
-                        # que el usuario provee por campos dedicados.
-                        advertised = sorted(accepted - {'element_id'} - reserved)
-                        for kw in sorted(unknown):
-                            errors.append(
-                                f"{ctx}: parámetro '{kw}' no aceptado por '{e_type}'. "
-                                f"Admitidos: {advertised}."
-                            )
+                    for kw in unknown:
+                        errors.append(
+                            f"{ctx}: parámetro '{kw}' no aceptado por '{e_type}'. "
+                            f"Admitidos: {advertised}."
+                        )
+
+        # --- Malla externa + bloques inline: ambigüedad ---
+        if has_mesh and (has_nodes or has_elements):
+            errors.append(
+                "'mesh' no puede combinarse con 'nodes'/'elements' inline: la malla "
+                "externa sustituye por completo a la geometría del archivo."
+            )
 
         # --- Boundary conditions (por nodo) ---
         for bc in (data.get('boundary_conditions', []) or []) + (data.get('boundary_conditions_by_node', []) or []):
@@ -312,6 +348,17 @@ class YamlParser:
                 errors.append("boundary_conditions: una entrada no tiene 'node_id'.")
             elif known_node_ids and nid not in known_node_ids:
                 errors.append(f"boundary_conditions: 'node_id={nid}' no existe en el bloque 'nodes'.")
+
+        # --- Cargas puntuales (por nodo) ---
+        for load in (data.get('point_loads', []) or []) + (data.get('point_loads_by_node', []) or []):
+            if not isinstance(load, dict):
+                errors.append("point_loads: cada entrada debe ser un diccionario.")
+                continue
+            nid = load.get('node_id')
+            if nid is None:
+                errors.append("point_loads: una entrada no tiene 'node_id'.")
+            elif known_node_ids and nid not in known_node_ids:
+                errors.append(f"point_loads: 'node_id={nid}' no existe en el bloque 'nodes'.")
 
         # --- Restricciones afines lineales (MPC, ADR 0004 fase 2) ---
         for i, lc in enumerate(data.get('linear_constraints', []) or []):
@@ -353,6 +400,18 @@ class YamlParser:
                         f"solver: tipo desconocido '{s_type}'. "
                         f"Disponibles: {sorted(registered_solvers)}."
                     )
+                else:
+                    # `convergence` se materializa aparte; `F_amplitude` y
+                    # `F_func` los inyecta el parser cuando el solver los acepta.
+                    unknown, advertised = _unknown_kwargs(
+                        SolverRegistry.get(s_type), set(solver_cfg),
+                        {'type', 'convergence', 'assembler'},
+                    )
+                    for kw in unknown:
+                        errors.append(
+                            f"solver: parámetro '{kw}' no aceptado por '{s_type}'. "
+                            f"Admitidos: {advertised}."
+                        )
 
             # Override del backend algebraico (ADR 0003 §4) — diagnóstico, no
             # decisión de modelado. Validamos contra el registro del despachador.
@@ -427,12 +486,23 @@ class YamlParser:
             default_thickness = float(data.get('mesh_thickness', 1.0))
             default_quad_str = data.get('mesh_quadrature', '2x2')
             
-            default_material = self.materials.get(default_mat_id)
+            if default_mat_id not in self.materials:
+                raise YamlValidationError([
+                    f"mesh_material={default_mat_id!r} no existe en 'materials' "
+                    f"(ids declarados: {sorted(self.materials)})."
+                ])
+            default_material = self.materials[default_mat_id]
             default_quadrature = self._get_quadrature(default_quad_str)
             
             physical_props = {}
             for group_name, props in data.get('mesh_physical_groups', {}).items():
-                mat = self.materials.get(props.get('material', default_mat_id))
+                mat_id = props.get('material', default_mat_id)
+                if mat_id not in self.materials:
+                    raise YamlValidationError([
+                        f"mesh_physical_groups[{group_name!r}]: material {mat_id!r} no "
+                        f"existe en 'materials' (ids declarados: {sorted(self.materials)})."
+                    ])
+                mat = self.materials[mat_id]
                 thick = float(props.get('thickness', default_thickness))
                 quad = self._get_quadrature(props.get('quadrature', default_quad_str))
                 physical_props[group_name] = (mat, thick, quad)
@@ -460,13 +530,11 @@ class YamlParser:
                         es_termico = True
 
                     kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes', 'cohesive_material')}
-                    # Los elementos mecánicos reciben la regla de cuadratura ya
-                    # materializada; los térmicos reciben la **clave**, porque la
-                    # resuelven ellos mismos en su constructor para poder guardar
-                    # `quadrature_key` y reportarla en diagnósticos.
-                    if ('quadrature' in kwargs and isinstance(kwargs['quadrature'], str)
-                            and not es_termico):
-                        kwargs['quadrature'] = self._get_quadrature(kwargs['quadrature'])
+                    # `quadrature` viaja como CLAVE del registro: todos los
+                    # elementos (2D, 3D y térmicos) la resuelven en su
+                    # constructor vía ``resolve_quadrature`` y guardan
+                    # ``quadrature_key`` para diagnósticos. Materializarla aquí
+                    # como tupla rompía los sólidos 3D (auditoría 2026-09-22).
                     # ADR 0010 — resolver referencia a material cohesivo si está declarada.
                     if 'cohesive_material' in elem_dict:
                         kwargs['cohesive_material'] = self.cohesive_materials[elem_dict['cohesive_material']]
@@ -489,53 +557,97 @@ class YamlParser:
                 if dof != 'node_id':
                     node.fix_dof(dof, float(value))
 
-        bcs_coord = data.get('boundary_conditions_by_coord', [])
-        if isinstance(bcs_coord, dict):
-            parsed_bcs = []
-            for k, v in bcs_coord.items():
-                if k in ['x_min', 'x_max', 'y_min', 'y_max']: v['loc'] = k
-                parsed_bcs.append(v)
-            bcs_coord = parsed_bcs
-            
-        if bcs_coord and self.domain.nodes:
-            x_coords = [n.coordinates[0] for n in self.domain.nodes.values() if n.dofs]
-            y_coords = [n.coordinates[1] for n in self.domain.nodes.values() if n.dofs]
-            if x_coords and y_coords:
-                x_min, x_max = min(x_coords), max(x_coords)
-                y_min, y_max = min(y_coords), max(y_coords)
-                
-                for node in self.domain.nodes.values():
-                    if not node.dofs: continue
-                    x, y = node.coordinates
-                    
-                    for bcs in bcs_coord:
-                        tol = float(bcs.get('tol', 1e-6))
-                        loc = bcs.get('loc')
-                        match = False
-                        if loc == 'x_min' and abs(x - x_min) < tol: match = True
-                        elif loc == 'x_max' and abs(x - x_max) < tol: match = True
-                        elif loc == 'y_min' and abs(y - y_min) < tol: match = True
-                        elif loc == 'y_max' and abs(y - y_max) < tol: match = True
-                        elif bcs.get('coord') == 'x' and 'val' in bcs and abs(x - float(bcs['val'])) < tol: match = True
-                        elif bcs.get('coord') == 'y' and 'val' in bcs and abs(y - float(bcs['val'])) < tol: match = True
-                        
-                        if match:
-                            for dof, value in bcs.items():
-                                if dof not in ['tol', 'coord', 'val', 'loc']: node.fix_dof(dof, float(value))
+        for spec in self._normalize_coord_specs(data.get('boundary_conditions_by_coord', [])):
+            for node in self._nodes_by_coord(spec, context='boundary_conditions_by_coord'):
+                for dof, value in spec.items():
+                    if dof not in self._COORD_KEYS:
+                        node.fix_dof(dof, float(value))
 
         bcs_group = data.get('boundary_conditions_by_group', [])
         if isinstance(bcs_group, dict):
             bcs_group = [{'group_name': k, **v} for k, v in bcs_group.items()]
             
-        if bcs_group and hasattr(self.domain, 'physical_groups'):
-            for bcs in bcs_group:
-                group_name = bcs.get('group_name')
-                if group_name and group_name in self.domain.physical_groups:
-                    for node_id in self.domain.physical_groups[group_name]:
-                        node = self.domain.get_node(node_id)
-                        if node:
-                            for dof, value in bcs.items():
-                                if dof not in ['group_name']: node.fix_dof(dof, float(value))
+        for bcs in bcs_group or []:
+            for node_id in self._group_node_ids(bcs.get('group_name'), 'boundary_conditions_by_group'):
+                node = self.domain.get_node(node_id)
+                for dof, value in bcs.items():
+                    if dof != 'group_name':
+                        node.fix_dof(dof, float(value))
+
+    # ------------------------------------------------------------------
+    # Selección de nodos por coordenada y por grupo físico
+    # ------------------------------------------------------------------
+
+    def _normalize_coord_specs(self, raw) -> list:
+        """Forma lista de entradas ``*_by_coord``. La forma dict
+        ``{x_min: {...}, ...}`` se convierte a lista inyectando ``loc``."""
+        if isinstance(raw, dict):
+            out = []
+            for k, v in raw.items():
+                v = dict(v)
+                if k in self._COORD_LOCS:
+                    v['loc'] = k
+                out.append(v)
+            return out
+        return list(raw or [])
+
+    def _nodes_by_coord(self, spec: dict, context: str) -> list:
+        """Nodos (con DOFs) cuya coordenada casa con ``spec``: ``loc`` en
+        ``x_min … z_max`` o ``coord``/``val``. Válido en 2D y 3D; antes
+        desempaquetaba ``x, y = node.coordinates`` y reventaba con nodos 3D.
+        Falla si ninguna coordenada casa (un selector que no selecciona nada
+        es casi siempre un error de modelo)."""
+        nodes = [n for n in self.domain.nodes.values() if n.dofs]
+        axes = {'x': 0, 'y': 1, 'z': 2}
+
+        def comp(n, ax):
+            c = n.coordinates
+            return float(c[ax]) if ax < len(c) else 0.0
+
+        tol = float(spec.get('tol', 1e-6))
+        loc, coord = spec.get('loc'), spec.get('coord')
+        if loc is not None:
+            if loc not in self._COORD_LOCS:
+                raise ValueError(f"{context}: 'loc={loc}' no válido; use uno de {self._COORD_LOCS}.")
+            ax = axes[loc[0]]
+            vals = [comp(n, ax) for n in nodes]
+            if not vals:
+                return []
+            target = min(vals) if loc.endswith('min') else max(vals)
+        elif coord is not None and 'val' in spec:
+            if coord not in axes:
+                raise ValueError(f"{context}: 'coord={coord}' no válido; use x, y o z.")
+            ax = axes[coord]
+            target = float(spec['val'])
+        else:
+            raise ValueError(f"{context}: cada entrada necesita 'loc' o el par 'coord'/'val'.")
+        matched = [n for n in nodes if abs(comp(n, ax) - target) < tol]
+        if not matched:
+            raise ValueError(f"{context}: ningún nodo casa con {spec}.")
+        return matched
+
+    def _group_node_ids(self, group_name, context: str) -> list:
+        groups = getattr(self.domain, 'physical_groups', None)
+        if not groups:
+            raise ValueError(
+                f"{context}: el modelo no tiene grupos físicos (sólo los aporta una "
+                f"malla gmsh vía 'mesh')."
+            )
+        if group_name not in groups:
+            raise ValueError(
+                f"{context}: grupo físico {group_name!r} inexistente. "
+                f"Disponibles: {sorted(groups)}."
+            )
+        return groups[group_name]
+
+    @staticmethod
+    def _add_nodal_load(F_ext, node, dof, value, context: str) -> None:
+        if dof not in node.dofs:
+            raise ValueError(
+                f"{context}: el DOF '{dof}' no existe en el nodo {node.id} "
+                f"(DOFs del nodo: {sorted(node.dofs)})."
+            )
+        F_ext[node.dofs[dof]] += float(value)
 
     def _parse_linear_constraints(self, data: dict):
         """Restricciones afines lineales MPC (ADR 0004 fase 2).
@@ -585,8 +697,9 @@ class YamlParser:
         self.point_loads = data.get('point_loads', [])
         self.point_loads_by_node = data.get('point_loads_by_node', [])
 
-        p_loads_coord = data.get('point_loads_by_coord', [])
-        self.point_loads_by_coord = list(p_loads_coord.values()) if isinstance(p_loads_coord, dict) else p_loads_coord
+        # La forma dict conserva la clave como ``loc`` (antes se perdía y el
+        # selector no casaba con ningún nodo en silencio).
+        self.point_loads_by_coord = self._normalize_coord_specs(data.get('point_loads_by_coord', []))
 
         p_loads_group = data.get('point_loads_by_group', [])
         if isinstance(p_loads_group, dict):
@@ -644,51 +757,29 @@ class YamlParser:
         """Construye el vector de fuerzas externas global F_ext."""
         F_ext = np.zeros(self.domain.total_dofs)
         
-        for load in self.point_loads + self.point_loads_by_node:
+        for load in (self.point_loads or []) + (self.point_loads_by_node or []):
             node_id = load.get('node_id')
-            if node_id is None: continue
+            if node_id is None:
+                raise ValueError("point_loads: una entrada no tiene 'node_id'.")
             node = self.domain.get_node(node_id)
-            if not node: continue
+            if node is None:
+                raise ValueError(f"point_loads: el nodo {node_id} no existe en el modelo.")
             for dof, value in load.items():
-                if dof != 'node_id' and dof in node.dofs:
-                    F_ext[node.dofs[dof]] += float(value)
-                    
-        if self.point_loads_by_coord and self.domain.nodes:
-            x_coords = [n.coordinates[0] for n in self.domain.nodes.values() if n.dofs]
-            y_coords = [n.coordinates[1] for n in self.domain.nodes.values() if n.dofs]
-            if x_coords and y_coords:
-                x_min, x_max = min(x_coords), max(x_coords)
-                y_min, y_max = min(y_coords), max(y_coords)
-                
-                for node in self.domain.nodes.values():
-                    if not node.dofs: continue
-                    x, y = node.coordinates
-                    for loads in self.point_loads_by_coord:
-                        tol = float(loads.get('tol', 1e-6))
-                        loc = loads.get('loc')
-                        match = False
-                        if loc == 'x_min' and abs(x - x_min) < tol: match = True
-                        elif loc == 'x_max' and abs(x - x_max) < tol: match = True
-                        elif loc == 'y_min' and abs(y - y_min) < tol: match = True
-                        elif loc == 'y_max' and abs(y - y_max) < tol: match = True
-                        elif loads.get('coord') == 'x' and 'val' in loads and abs(x - float(loads['val'])) < tol: match = True
-                        elif loads.get('coord') == 'y' and 'val' in loads and abs(y - float(loads['val'])) < tol: match = True
-                        
-                        if match:
-                            for dof, value in loads.items():
-                                if dof not in ['tol', 'coord', 'val', 'loc'] and dof in node.dofs:
-                                    F_ext[node.dofs[dof]] += float(value)
-                                    
-        if self.point_loads_by_group and hasattr(self.domain, 'physical_groups'):
-            for loads in self.point_loads_by_group:
-                group_name = loads.get('group_name')
-                if group_name and group_name in self.domain.physical_groups:
-                    for node_id in self.domain.physical_groups[group_name]:
-                        node = self.domain.get_node(node_id)
-                        if node:
-                            for dof, value in loads.items():
-                                if dof not in ['group_name'] and dof in node.dofs:
-                                    F_ext[node.dofs[dof]] += float(value)
+                if dof != 'node_id':
+                    self._add_nodal_load(F_ext, node, dof, value, 'point_loads')
+
+        for spec in self.point_loads_by_coord:
+            for node in self._nodes_by_coord(spec, context='point_loads_by_coord'):
+                for dof, value in spec.items():
+                    if dof not in self._COORD_KEYS:
+                        self._add_nodal_load(F_ext, node, dof, value, 'point_loads_by_coord')
+
+        for loads in self.point_loads_by_group or []:
+            for node_id in self._group_node_ids(loads.get('group_name'), 'point_loads_by_group'):
+                node = self.domain.get_node(node_id)
+                for dof, value in loads.items():
+                    if dof != 'group_name':
+                        self._add_nodal_load(F_ext, node, dof, value, 'point_loads_by_group')
 
         return F_ext
 
@@ -765,24 +856,38 @@ class YamlParser:
         s_type = self.solver_config.get('type', 'LinearSolver')
         kwargs = {k: v for k, v in self.solver_config.items() if k != 'type'}
 
-        # Bloque `convergence:` (ADR 0007). Si está presente lo materializamos
-        # como ConvergenceCriterion antes de pasar al constructor del solver.
-        # Los solvers lineales (estáticos y modales) no lo admiten — se omite
-        # silenciosamente. El análisis modal no es iterativo en el sentido
-        # de Newton; ARPACK gestiona su propia tolerancia interna.
+        solver_cls = SolverRegistry.get(s_type)
+        accepted, _var_kw = _constructor_kwargs(solver_cls)
+
+        # Bloque `convergence:` (ADR 0007). Se materializa como
+        # ConvergenceCriterion si el constructor del solver lo acepta; si no
+        # (solvers lineales, modal, armónico, espectral) se descarta CON AVISO.
         if 'convergence' in kwargs:
             from solidum.math.convergence import make_convergence_from_config
             cfg = kwargs.pop('convergence')
-            # Solvers lineales (sin Newton interno) no admiten `convergence`:
-            # estáticos lineales, modal (ARPACK gestiona su propia tolerancia),
-            # transitorios lineales (Newmark y HHT) y armónico (lineal por
-            # construcción).
-            if s_type not in ('LinearSolver', 'ModalSolver',
-                              'NewmarkSolver', 'HHTSolver',
-                              'CentralDifferenceSolver',
-                              'HarmonicSolver',
-                              'ResponseSpectrumSolver'):
+            if 'convergence' in accepted:
                 kwargs['convergence'] = make_convergence_from_config(cfg)
+            else:
+                _log.warning(
+                    f"solver: el bloque 'convergence' no aplica a {s_type} "
+                    f"(sin Newton interno); se ignora."
+                )
+
+        # Solvers transitorios mecánicos: `F_func` es un callable que el YAML
+        # no puede expresar. Las cargas del archivo (puntuales + peso propio o
+        # fuerza de cuerpo) se aplican como ESCALÓN constante en el tiempo
+        # desde t = 0. Antes se descartaban en silencio y el análisis corría
+        # como vibración libre (auditoría 2026-09-22). Para una historia F(t)
+        # arbitraria, construir el solver desde Python con su propio `F_func`.
+        if (getattr(solver_cls, 'PIPELINE_KIND', None) == 'transient'
+                and 'F_func' in accepted and 'F_func' not in kwargs):
+            F_const = self.get_external_forces() + self.get_body_load(assembler)
+            if np.any(F_const):
+                _log.info(
+                    f"solver {s_type}: las cargas del YAML se aplican como escalón "
+                    f"constante en el tiempo (F_func = cte)."
+                )
+                kwargs['F_func'] = lambda t, _F=F_const: _F
 
         # HarmonicSolver: si no se pasó `F_amplitude` explícito, derivar la
         # amplitud compleja del bloque estándar de cargas externas del YAML
@@ -799,7 +904,6 @@ class YamlParser:
         # envuelve en una función del tiempo. Mismo patrón que `F_amplitude`
         # arriba. Para una carga variable en el tiempo, el usuario construye el
         # solver desde código y pasa su propio `F_func`.
-        solver_cls = SolverRegistry.get(s_type)
         if (getattr(solver_cls, 'PIPELINE_KIND', None) == 'thermal_transient'
                 and 'F_func' not in kwargs):
             F_termico = self.get_thermal_loads() + self.get_external_forces()

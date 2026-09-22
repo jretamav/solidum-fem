@@ -6,7 +6,16 @@ Centralizar estos valores evita "magic numbers" hardcodeados y
 permite un ajuste fino global para problemas de convergencia.
 """
 
-ZERO_JACOBIAN_TOL = 1e-10  # Tolerancia para detectar un Jacobiano negativo o nulo
+# Tolerancia RELATIVA para detectar un jacobiano degenerado o invertido:
+#     det J <= JACOBIAN_RTOL · Π_i ‖fila_i(J)‖
+# El producto de las normas de las filas es la cota de Hadamard de |det J|,
+# así que el cociente det J / Π‖fila_i‖ es adimensional: vale 1 en un
+# elemento con filas ortogonales y tiende a 0 al colapsar. Una tolerancia
+# absoluta sobre det J (que tiene unidades de L² o L³) rechazaba mallas
+# finas en metros —un Hex8 de arista < 1 mm— sin que estuvieran
+# distorsionadas (auditoría 2026-09-22).
+JACOBIAN_RTOL = 1e-10
+ZERO_JACOBIAN_TOL = JACOBIAN_RTOL  # alias histórico (mismo valor, ahora relativo)
 DAMAGE_MAX = 0.999         # Límite máximo para el daño escalar (evita singularidad en la rigidez)
 ZERO_TOL = 1e-12           # Pequeñas operaciones numéricas (normalizaciones, comparaciones de cierre de paso)
 

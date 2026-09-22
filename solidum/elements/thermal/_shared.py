@@ -35,6 +35,8 @@ class _ThermalSolid(Element):
     ``FLUX_DIM`` : dimensión del gradiente (2 ó 3).
     ``N_NODES`` : número de nodos.
     ``DEFAULT_QUADRATURE`` : clave en ``QuadratureRegistry``.
+    ``QUADRATURE_FAMILY`` : familia geométrica ("quad" | "hex") para validar la regla.
+    ``CAPACITY_QUADRATURE`` : regla completa con la que se integra siempre la capacidad.
     ``_shape_functions(p)`` : ``N`` en el punto natural ``p``.
     ``_gradient(p, coords)`` : ``(dN_dx, detJ)`` — la matriz ``B`` térmica.
     ``_boundary_load(index, q_bar)`` : vector nodal del flujo de frontera.
@@ -72,9 +74,10 @@ class _ThermalSolid(Element):
                 f"{self.N_NODES} nodos, recibió {len(nodes)}."
             )
 
-        key = quadrature if quadrature is not None else self.DEFAULT_QUADRATURE
-        self.points, self.weights = QuadratureRegistry.get(key)
-        self.quadrature_key = key
+        from solidum.math.integration import resolve_quadrature
+        self.points, self.weights, self.quadrature_key = resolve_quadrature(
+            quadrature, self.DEFAULT_QUADRATURE, family=self.QUADRATURE_FAMILY,
+        )
         self.N_INTEGRATION_POINTS = len(self.points)
 
         super().__init__(element_id, nodes, material)
@@ -189,7 +192,12 @@ class _ThermalSolid(Element):
         coords = self.get_coordinate_matrix(ndim=self.FLUX_DIM)
         volume = 0.0
 
-        for p, w in zip(self.points, self.weights):
+        # La capacidad se integra siempre con la regla completa
+        # (``CAPACITY_QUADRATURE``), aunque K use integración reducida:
+        # con un solo punto C_e sería de rango 1.
+        from solidum.registry import QuadratureRegistry
+        cap_points, cap_weights = QuadratureRegistry.get(self.CAPACITY_QUADRATURE)
+        for p, w in zip(cap_points, cap_weights):
             N = self._shape_functions(p)
             _, detJ = self._gradient(p, coords)
             dV = detJ * w * self.thickness

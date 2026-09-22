@@ -19,6 +19,23 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Type
 
 
+def _store(items: Dict[str, Type], name: str, klass: Type, kind: str) -> None:
+    """Inscribe ``klass`` bajo ``name`` avisando si pisa a otra clase distinta.
+
+    Con el descubrimiento recursivo el ganador de una colisión dependía del
+    orden de importación, en silencio. Re-registrar el mismo objeto (p. ej.
+    un módulo recargado) no avisa."""
+    previous = items.get(name)
+    if previous is not None and previous is not klass:
+        from solidum.logging import get_logger
+        get_logger("registry").warning(
+            f"{kind} '{name}' ya estaba registrado ({previous.__module__}."
+            f"{previous.__qualname__}); lo sustituye {klass.__module__}."
+            f"{klass.__qualname__}."
+        )
+    items[name] = klass
+
+
 class _BaseRegistry:
     """Base genérica para registries con decorador.
 
@@ -34,18 +51,18 @@ class _BaseRegistry:
                  klass: Type | None = None) -> Type | Callable[[Type], Type]:
         # Forma legacy: register("Foo", FooClass)
         if klass is not None:
-            cls._items[name_or_class] = klass
+            _store(cls._items, name_or_class, klass, cls._kind)
             return klass
 
         # Forma decorador-sin-paréntesis: @register
         if isinstance(name_or_class, type):
-            cls._items[name_or_class.__name__] = name_or_class
+            _store(cls._items, name_or_class.__name__, name_or_class, cls._kind)
             return name_or_class
 
         # Forma decorador-con-paréntesis: @register("Alias") o @register()
         def decorator(target: Type) -> Type:
             registered_name = name_or_class if isinstance(name_or_class, str) else target.__name__
-            cls._items[registered_name] = target
+            _store(cls._items, registered_name, target, cls._kind)
             return target
         return decorator
 

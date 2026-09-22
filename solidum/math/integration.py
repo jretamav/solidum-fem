@@ -242,6 +242,74 @@ class GaussQuadrature:
         weights = [w1] * 3 + [w2] * 3
         return points, weights
 
+# ---------------------------------------------------------------------------
+# Resolución uniforme del argumento ``quadrature`` de los elementos.
+# ---------------------------------------------------------------------------
+
+# Medida del dominio de referencia de cada familia (suma de pesos de toda
+# regla válida) y dimensión de sus puntos. Sirven para rechazar en
+# construcción una regla de otra familia (p. ej. la del cuadrado sobre un
+# triángulo), que antes se aceptaba en silencio y producía K errónea.
+_REFERENCE_MEASURE = {"quad": 4.0, "tri": 0.5, "hex": 8.0, "tet": 1.0 / 6.0}
+_REFERENCE_DIM = {"quad": 2, "tri": 2, "hex": 3, "tet": 3}
+# Reglas de integración reducida: aviso único por proceso (hourglass).
+_REDUCED_RULES = {"1x1", "hex_1x1x1"}
+_reduced_warned: set = set()
+
+
+def resolve_quadrature(quadrature, default_key: str, family: str):
+    """Normaliza el argumento ``quadrature`` de un elemento.
+
+    Acepta ``None`` (regla por defecto de la clase), una **clave** del
+    ``QuadratureRegistry`` (``"2x2"``, ``"hex_3x3x3"``, …) o una **tupla**
+    ``(points, weights)`` ya materializada. Los elementos 2D exigían tupla
+    y los 3D clave, así que el mismo YAML fallaba según la familia
+    (auditoría 2026-09-22); ahora todos aceptan ambas formas.
+
+    Devuelve ``(points, weights, key)`` con ``key = None`` si llegó una
+    tupla. Valida que la regla pertenezca a la ``family`` del elemento
+    (``"quad"``, ``"tri"``, ``"hex"``, ``"tet"``) por la suma de pesos y
+    la dimensión de los puntos.
+    """
+    if quadrature is None:
+        key = default_key
+        points, weights = QuadratureRegistry.get(key)
+    elif isinstance(quadrature, str):
+        key = quadrature
+        points, weights = QuadratureRegistry.get(key)
+    else:
+        try:
+            points, weights = quadrature
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"quadrature={quadrature!r} no es ni una clave del registro "
+                f"({sorted(QuadratureRegistry._rules)}) ni una tupla (points, weights)."
+            ) from exc
+        key = None
+    points = list(points)
+    weights = list(weights)
+    if family not in _REFERENCE_MEASURE:
+        raise ValueError(f"Familia de cuadratura desconocida: {family!r}.")
+    measure = float(np.sum(weights))
+    expected = _REFERENCE_MEASURE[family]
+    dim = len(points[0]) if points else 0
+    if dim != _REFERENCE_DIM[family] or abs(measure - expected) > 1e-9 * max(1.0, expected):
+        raise ValueError(
+            f"Regla de cuadratura {key or quadrature!r} incompatible con la familia "
+            f"{family!r}: suma de pesos {measure:.6g} (esperada {expected:.6g}) y "
+            f"puntos de dimensión {dim} (esperada {_REFERENCE_DIM[family]})."
+        )
+    if key in _REDUCED_RULES and key not in _reduced_warned:
+        _reduced_warned.add(key)
+        from solidum.logging import get_logger
+        get_logger("integration").warning(
+            f"Integración reducida ({key}) seleccionada. Cuidado con modos de "
+            f"energía nula (hourglass); la masa/capacidad se integra siempre "
+            f"con la regla completa."
+        )
+    return points, weights, key
+
+
 # Registrar reglas automáticamente
 QuadratureRegistry.register("1x1", *GaussQuadrature.get_points_2d_1x1())
 QuadratureRegistry.register("2x2", *GaussQuadrature.get_points_2d_2x2())

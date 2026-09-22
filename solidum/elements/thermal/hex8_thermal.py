@@ -48,6 +48,8 @@ class Hex8Thermal(_ThermalSolid):
     FLUX_DIM: ClassVar[int] = 3
     N_NODES: ClassVar[int] = 8
     DEFAULT_QUADRATURE: ClassVar[str] = "hex_2x2x2"
+    QUADRATURE_FAMILY: ClassVar[str] = "hex"
+    CAPACITY_QUADRATURE: ClassVar[str] = "hex_2x2x2"
     N_INTEGRATION_POINTS: ClassVar[int] = 8  # default; la instancia lo ajusta
 
     # Caras con normal saliente, paritarias con las del Hex8 mecánico

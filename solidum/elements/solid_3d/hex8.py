@@ -13,6 +13,7 @@ from solidum.elements.solid_3d._shared import (
     _expand_scalar_mass_3d,
     _shape_functions_hex8,
 )
+from solidum.math.integration import resolve_quadrature
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import ElementRegistry, QuadratureRegistry
 
@@ -56,10 +57,10 @@ class Hex8(Element):
     )
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 quadrature: str = "hex_2x2x2"):
-        pts, ws = QuadratureRegistry.get(quadrature)
-        self.points = pts
-        self.weights = ws
+                 quadrature="hex_2x2x2"):
+        self.points, self.weights, self.quadrature_key = resolve_quadrature(
+            quadrature, "hex_2x2x2", family="hex",
+        )
         self.N_INTEGRATION_POINTS = len(self.points)
         super().__init__(element_id, nodes, material)
 
@@ -260,7 +261,9 @@ class Hex8(Element):
         coords = self.get_coordinate_matrix(ndim=3)
         M_s = np.zeros((8, 8))
         m_total = 0.0
-        for (xi, eta, zeta), w in zip(self.points, self.weights):
+        # Masa siempre con la regla completa 2×2×2 (exacta para el producto
+        # trilineal×trilineal); con hex_1x1x1 M sería de rango 3.
+        for (xi, eta, zeta), w in zip(*QuadratureRegistry.get("hex_2x2x2")):
             N = _shape_functions_hex8(xi, eta, zeta)
             detJ = _det_jacobian_hex8(xi, eta, zeta, coords)
             if detJ <= 0.0:
