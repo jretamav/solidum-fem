@@ -13,6 +13,7 @@ Spec: ``docs/specs/Tet10.md``.
 """
 from solidum.elements.solid_2d._shared import _dN_tri6, _N_tri6
 from solidum.elements.solid_3d._shared import (
+    _batch_kin_tet10,
     _HigherOrderSolid3D,
     _dN_tet10,
     _N_tet10,
@@ -56,6 +57,7 @@ class Tet10(_HigherOrderSolid3D):
     """
 
     N_INTEGRATION_POINTS = 4  # default Stroud 4 puntos
+    BATCH_KINEMATICS = _batch_kin_tet10
 
     _SHAPE_FN = staticmethod(_N_tet10)
     _GRAD_FN = staticmethod(_dN_tet10)

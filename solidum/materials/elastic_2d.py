@@ -1,6 +1,7 @@
 # solidum_fem/solidum/materials/elastic_2d.py
 import numpy as np
 from solidum.core.material import Material
+from solidum.materials._batch import linear_material_kernel
 from solidum.registry import MaterialRegistry
 
 
@@ -8,6 +9,7 @@ from solidum.registry import MaterialRegistry
 class Elastic2D(Material):
     STRAIN_DIM = 3
     STATE_SCHEMA = {}
+    BATCH_KERNEL = linear_material_kernel
 
     _VALID_HYPOTHESES = frozenset({"plane_stress", "plane_strain"})
 
@@ -45,6 +47,9 @@ class Elastic2D(Material):
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         return self.C @ strain, self.C, state_vars
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.C
 
     def out_of_plane_stress(self, sigma, state_vars=None) -> float:
         """``σ_zz = ν·(σ_xx + σ_yy)`` en plane strain; ``0`` en plane stress."""

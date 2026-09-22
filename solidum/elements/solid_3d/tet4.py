@@ -7,6 +7,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_3d._shared import (
+    _batch_kin_tet4,
     _compute_integrands_3d,
     _compute_kinematics_tet4,
     _expand_scalar_mass_3d,
@@ -26,6 +27,7 @@ class Tet4(Element):
     DOF_NAMES = ['ux', 'uy', 'uz']
     STRAIN_DIM = 6
     N_INTEGRATION_POINTS = 1
+    BATCH_KINEMATICS = _batch_kin_tet4
 
     # ADR 0012 — 4 caras con normal saliente. Cara i opuesta al nodo i.
     FACE_NODES = (
@@ -36,6 +38,11 @@ class Tet4(Element):
     )
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material):
+        # Regla de un punto (baricentro, peso = volumen del tetraedro de
+        # referencia); materializada para el camino por lotes.
+        self.points = [(0.25, 0.25, 0.25)]
+        self.weights = [1.0 / 6.0]
+        self.quadrature_key = "tet_1"
         super().__init__(element_id, nodes, material)
 
     # ------------------------------------------------------------------

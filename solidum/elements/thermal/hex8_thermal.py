@@ -12,6 +12,7 @@ import numpy as np
 from solidum.core.node import Node
 from solidum.core.thermal_material import ThermalMaterial
 from solidum.elements.solid_3d._shared import (
+    _batch_grad_hex8,
     _compute_gradient_kinematics_hex8,
     _shape_functions_hex8,
 )
@@ -51,6 +52,9 @@ class Hex8Thermal(_ThermalSolid):
     QUADRATURE_FAMILY: ClassVar[str] = "hex"
     CAPACITY_QUADRATURE: ClassVar[str] = "hex_2x2x2"
     N_INTEGRATION_POINTS: ClassVar[int] = 8  # default; la instancia lo ajusta
+    # Camino por lotes (ADR 0014): B térmica = ∂N/∂x (3×8); thickness = 1.
+    BATCH_KINEMATICS = _batch_grad_hex8
+    BATCH_SCALE = "thickness"
 
     # Caras con normal saliente, paritarias con las del Hex8 mecánico
     # (ADR 0012): 0(−ζ) 1(+ζ) 2(−η) 3(+ξ) 4(+η) 5(−ξ).

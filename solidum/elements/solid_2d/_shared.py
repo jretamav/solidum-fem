@@ -53,8 +53,8 @@ def _jacobian_scale_2d(J):
 
 
 @njit(cache=True)
-def _compute_kinematics(xi, eta, coords):
-    # Preasignar memoria en Numba es la forma 100% segura
+def _dN_quad4(xi, eta):
+    """Derivadas naturales ``(2, 4)`` de las funciones de forma bilineales."""
     dN_dxi = np.zeros((2, 4), dtype=np.float64)
     dN_dxi[0, 0] = -(1.0 - eta) / 4.0
     dN_dxi[0, 1] =  (1.0 - eta) / 4.0
@@ -64,33 +64,80 @@ def _compute_kinematics(xi, eta, coords):
     dN_dxi[1, 1] = -(1.0 + xi) / 4.0
     dN_dxi[1, 2] =  (1.0 + xi) / 4.0
     dN_dxi[1, 3] =  (1.0 - xi) / 4.0
+    return dN_dxi
 
-    # Jacobiano
-    J = np.dot(dN_dxi, coords)
-    detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
 
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
-        raise ValueError("Jacobiano negativo o cero detectado en elemento Quad4. Revisa la conectividad o distorsion.")
+@njit(cache=True)
+def _grad2d_from_dN(dN_dxi, coords, dN_dx):
+    """Núcleo 2D común: de las derivadas naturales ``(2, n)`` y las
+    coordenadas ``(n, 2)`` a las derivadas globales ``dN_dx`` ``(2, n)``,
+    escritas in situ. Devuelve ``det J``; lanza ``ValueError`` si el
+    jacobiano degenera (chequeo relativo de Hadamard, ``JACOBIAN_RTOL``).
 
-    # Inversa del Jacobiano segura
-    invJ = np.zeros((2, 2), dtype=np.float64)
-    invJ[0, 0] =  J[1, 1] / detJ
-    invJ[0, 1] = -J[0, 1] / detJ
-    invJ[1, 0] = -J[1, 0] / detJ
-    invJ[1, 1] =  J[0, 0] / detJ
+    Es la única implementación del jacobiano 2D: la usan los elementos
+    mecánicos (vía ``_kin2d_from_dN``) y térmicos, en el camino por
+    elemento y en el camino por lotes (ADR 0014), de modo que ambos
+    caminos ejecutan las mismas operaciones en el mismo orden.
+    """
+    n = dN_dxi.shape[1]
+    J00 = 0.0
+    J01 = 0.0
+    J10 = 0.0
+    J11 = 0.0
+    for i in range(n):
+        J00 += dN_dxi[0, i] * coords[i, 0]
+        J01 += dN_dxi[0, i] * coords[i, 1]
+        J10 += dN_dxi[1, i] * coords[i, 0]
+        J11 += dN_dxi[1, i] * coords[i, 1]
+    detJ = J00 * J11 - J01 * J10
+    scale = math.sqrt(J00 * J00 + J01 * J01) * math.sqrt(J10 * J10 + J11 * J11)
+    if detJ <= JACOBIAN_RTOL * scale:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en un elemento 2D. Revisa la "
+            "conectividad (orden antihorario) o la distorsion."
+        )
+    i00 = J11 / detJ
+    i01 = -J01 / detJ
+    i10 = -J10 / detJ
+    i11 = J00 / detJ
+    for i in range(n):
+        dN_dx[0, i] = i00 * dN_dxi[0, i] + i01 * dN_dxi[1, i]
+        dN_dx[1, i] = i10 * dN_dxi[0, i] + i11 * dN_dxi[1, i]
+    return detJ
 
-    # Derivadas respecto a coordenadas globales (x, y)
-    dN_dx = np.dot(invJ, dN_dxi)
 
-    # Ensamblaje de la matriz B (Deformación-Desplazamiento)
-    B = np.zeros((3, 8), dtype=np.float64)
-    for i in range(4):
-        B[0, 2*i]     = dN_dx[0, i]
-        B[1, 2*i + 1] = dN_dx[1, i]
-        B[2, 2*i]     = dN_dx[1, i]
-        B[2, 2*i + 1] = dN_dx[0, i]
+@njit(cache=True)
+def _kin2d_from_dN(dN_dxi, coords, B):
+    """Núcleo mecánico 2D: rellena ``B`` ``(3, 2n)`` en Voigt 2D del
+    proyecto a partir de las derivadas naturales y devuelve ``det J``.
+    Firma compatible con ``KIN_SIG`` una vez fijadas las derivadas."""
+    n = dN_dxi.shape[1]
+    dN_dx = np.empty((2, n), dtype=np.float64)
+    detJ = _grad2d_from_dN(dN_dxi, coords, dN_dx)
+    for i in range(n):
+        bx = dN_dx[0, i]
+        by = dN_dx[1, i]
+        B[0, 2 * i] = bx
+        B[0, 2 * i + 1] = 0.0
+        B[1, 2 * i] = 0.0
+        B[1, 2 * i + 1] = by
+        B[2, 2 * i] = by
+        B[2, 2 * i + 1] = bx
+    return detJ
 
+
+@njit(cache=True)
+def _compute_kinematics(xi, eta, coords):
+    """``(B, detJ)`` del Quad4 en ``(ξ, η)``. Camino por elemento."""
+    B = np.empty((3, 8), dtype=np.float64)
+    detJ = _kin2d_from_dN(_dN_quad4(xi, eta), coords, B)
     return B, detJ
+
+
+@njit(cache=True)
+def _batch_kin_quad4(pt, coords, B):
+    """``BATCH_KINEMATICS`` del Quad4 (firma ``KIN_SIG``, ADR 0014)."""
+    return _kin2d_from_dN(_dN_quad4(pt[0], pt[1]), coords, B)
 
 
 @njit(cache=True)
@@ -104,36 +151,18 @@ def _compute_gradient_kinematics_quad4(xi, eta, coords):
     Es la misma materia prima que usa ``_compute_kinematics`` para el
     problema mecánico; la diferencia está en el ensamblaje posterior —
     allí las derivadas se reordenan en la matriz ``(3, 8)`` de Voigt, aquí
-    se usan directas. Se factoriza aquí para no duplicar el jacobiano ni
-    su inversión.
+    se usan directas. Comparten ``_grad2d_from_dN`` para no duplicar el
+    jacobiano ni su inversión.
     """
-    dN_dxi = np.zeros((2, 4), dtype=np.float64)
-    dN_dxi[0, 0] = -(1.0 - eta) / 4.0
-    dN_dxi[0, 1] =  (1.0 - eta) / 4.0
-    dN_dxi[0, 2] =  (1.0 + eta) / 4.0
-    dN_dxi[0, 3] = -(1.0 + eta) / 4.0
-    dN_dxi[1, 0] = -(1.0 - xi) / 4.0
-    dN_dxi[1, 1] = -(1.0 + xi) / 4.0
-    dN_dxi[1, 2] =  (1.0 + xi) / 4.0
-    dN_dxi[1, 3] =  (1.0 - xi) / 4.0
-
-    J = np.dot(dN_dxi, coords)
-    detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
-
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
-        raise ValueError(
-            "Jacobiano negativo o cero detectado en elemento Quad4Thermal. "
-            "Revisa la conectividad (orden antihorario) o la distorsion."
-        )
-
-    invJ = np.zeros((2, 2), dtype=np.float64)
-    invJ[0, 0] =  J[1, 1] / detJ
-    invJ[0, 1] = -J[0, 1] / detJ
-    invJ[1, 0] = -J[1, 0] / detJ
-    invJ[1, 1] =  J[0, 0] / detJ
-
-    dN_dx = np.dot(invJ, dN_dxi)
+    dN_dx = np.empty((2, 4), dtype=np.float64)
+    detJ = _grad2d_from_dN(_dN_quad4(xi, eta), coords, dN_dx)
     return dN_dx, detJ
+
+
+@njit(cache=True)
+def _batch_grad_quad4(pt, coords, B):
+    """``BATCH_KINEMATICS`` del Quad4Thermal: ``B`` es ``(2, 4)``."""
+    return _grad2d_from_dN(_dN_quad4(pt[0], pt[1]), coords, B)
 
 
 @njit(cache=True)
@@ -178,39 +207,29 @@ def _det_jacobian_quad4(xi, eta, coords):
     return J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
 
 
+# Derivadas naturales constantes del Tri3 (CST): filas ∂/∂ξ, ∂/∂η.
+_DN_TRI3 = np.array([[-1.0, 1.0, 0.0],
+                     [-1.0, 0.0, 1.0]])
+
+
 @njit(cache=True)
 def _compute_kinematics_tri3(coords):
-    # Derivadas de funciones de forma analíticas para Tri3 (xi, eta)
-    dN_dxi = np.zeros((2, 3), dtype=np.float64)
-    dN_dxi[0, 0] = -1.0; dN_dxi[0, 1] = 1.0; dN_dxi[0, 2] = 0.0
-    dN_dxi[1, 0] = -1.0; dN_dxi[1, 1] = 0.0; dN_dxi[1, 2] = 1.0
-
-    J = np.dot(dN_dxi, coords)
-    detJ = J[0,0] * J[1,1] - J[0,1] * J[1,0]
-
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
-        raise ValueError("Jacobiano negativo o cero detectado en elemento Tri3.")
-
-    invJ = np.zeros((2, 2), dtype=np.float64)
-    invJ[0, 0] =  J[1, 1] / detJ
-    invJ[0, 1] = -J[0, 1] / detJ
-    invJ[1, 0] = -J[1, 0] / detJ
-    invJ[1, 1] =  J[0, 0] / detJ
-
-    dN_dx = np.dot(invJ, dN_dxi)
-
-    B = np.zeros((3, 6), dtype=np.float64)
-    for i in range(3):
-        B[0, 2*i]     = dN_dx[0, i]
-        B[1, 2*i + 1] = dN_dx[1, i]
-        B[2, 2*i]     = dN_dx[1, i]
-        B[2, 2*i + 1] = dN_dx[0, i]
-
+    """``(B, detJ)`` del Tri3, constantes sobre el elemento."""
+    B = np.empty((3, 6), dtype=np.float64)
+    detJ = _kin2d_from_dN(_DN_TRI3, coords, B)
     return B, detJ
 
 
+@njit(cache=True)
+def _batch_kin_tri3(pt, coords, B):
+    """``BATCH_KINEMATICS`` del Tri3 (el punto natural no interviene)."""
+    return _kin2d_from_dN(_DN_TRI3, coords, B)
+
+
 # ---------------------------------------------------------------------------
-# Funciones de forma y derivadas — elementos de orden superior (numpy puro).
+# Funciones de forma y derivadas — elementos de orden superior. Las
+# derivadas están compiladas (ADR 0014) porque las consumen los kernels
+# por lotes; las funciones de forma siguen en numpy puro (masa, cargas).
 # ---------------------------------------------------------------------------
 
 def _N_quad8(xi, eta):
@@ -232,6 +251,7 @@ def _N_quad8(xi, eta):
     return N
 
 
+@njit(cache=True)
 def _dN_quad8(xi, eta):
     dN = np.zeros((2, 8))
     xs = np.array([-1.0, 1.0, 1.0, -1.0])
@@ -267,16 +287,20 @@ def _N_quad9(xi, eta):
     return N
 
 
+_QUAD9_IDX_I = (0, 2, 2, 0, 1, 2, 1, 0, 1)
+_QUAD9_IDX_J = (0, 0, 2, 2, 0, 1, 2, 1, 1)
+
+
+@njit(cache=True)
 def _dN_quad9(xi, eta):
     L_xi  = np.array([0.5 * xi  * (xi  - 1), 1 - xi  * xi,  0.5 * xi  * (xi  + 1)])
     L_eta = np.array([0.5 * eta * (eta - 1), 1 - eta * eta, 0.5 * eta * (eta + 1)])
     dL_xi  = np.array([xi  - 0.5, -2 * xi,  xi  + 0.5])
     dL_eta = np.array([eta - 0.5, -2 * eta, eta + 0.5])
-    idx = [(0, 0), (2, 0), (2, 2), (0, 2),
-           (1, 0), (2, 1), (1, 2), (0, 1),
-           (1, 1)]
     dN = np.zeros((2, 9))
-    for k, (i, j) in enumerate(idx):
+    for k in range(9):
+        i = _QUAD9_IDX_I[k]
+        j = _QUAD9_IDX_J[k]
         dN[0, k] = dL_xi[i] * L_eta[j]
         dN[1, k] = L_xi[i]  * dL_eta[j]
     return dN
@@ -296,6 +320,7 @@ def _N_tri6(xi, eta):
     return N
 
 
+@njit(cache=True)
 def _dN_tri6(xi, eta):
     L1 = 1 - xi - eta; L2 = xi; L3 = eta
     dN = np.zeros((2, 6))
@@ -309,21 +334,27 @@ def _dN_tri6(xi, eta):
 
 
 def _kinematics_higher_order(grad_fn, xi, eta, coords, n_nodes):
-    dN_dxi = grad_fn(xi, eta)
-    J = dN_dxi @ coords
-    detJ = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_2d(J):
-        raise ValueError("Jacobiano negativo o cero en elemento de orden superior.")
-    invJ = np.array([[ J[1, 1], -J[0, 1]],
-                     [-J[1, 0],  J[0, 0]]]) / detJ
-    dN_dx = invJ @ dN_dxi
-    B = np.zeros((3, 2 * n_nodes))
-    for i in range(n_nodes):
-        B[0, 2 * i]     = dN_dx[0, i]
-        B[1, 2 * i + 1] = dN_dx[1, i]
-        B[2, 2 * i]     = dN_dx[1, i]
-        B[2, 2 * i + 1] = dN_dx[0, i]
+    """``(B, detJ)`` de un sólido 2D de orden superior a partir de su
+    función de derivadas naturales. Camino por elemento; la misma
+    aritmética compilada que los kernels por lotes (``_kin2d_from_dN``)."""
+    B = np.empty((3, 2 * n_nodes))
+    detJ = _kin2d_from_dN(grad_fn(xi, eta), np.ascontiguousarray(coords), B)
     return B, detJ
+
+
+@njit(cache=True)
+def _batch_kin_quad8(pt, coords, B):
+    return _kin2d_from_dN(_dN_quad8(pt[0], pt[1]), coords, B)
+
+
+@njit(cache=True)
+def _batch_kin_quad9(pt, coords, B):
+    return _kin2d_from_dN(_dN_quad9(pt[0], pt[1]), coords, B)
+
+
+@njit(cache=True)
+def _batch_kin_tri6(pt, coords, B):
+    return _kin2d_from_dN(_dN_tri6(pt[0], pt[1]), coords, B)
 
 
 def _expand_scalar_mass(M_scalar: np.ndarray) -> np.ndarray:
@@ -386,6 +417,9 @@ class _HigherOrderSolid2D(Element):
     """
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
+    # Camino por lotes (ADR 0014): cada subclase declara BATCH_KINEMATICS
+    # con el kernel de su función de forma; el espesor escala dV.
+    BATCH_SCALE = "thickness"
     _SHAPE_FN = staticmethod(lambda xi, eta: None)
     _GRAD_FN = staticmethod(lambda xi, eta: None)
     _DEFAULT_QUADRATURE = "3x3"

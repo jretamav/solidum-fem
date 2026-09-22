@@ -19,6 +19,7 @@ import math
 import numpy as np
 from numba import njit
 
+from solidum.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
 from solidum.core.material import Material
 from solidum.materials._plane_strain import sigma_zz_plane_strain
 from solidum.registry import MaterialRegistry
@@ -211,6 +212,27 @@ def _compute_drucker_prager_plane_strain(strain, eps_p_old, alpha_old,
     return sigma, C_alg, eps_p_new, alpha_new, 2   # rama=2 apex
 
 
+@njit(cache=True)
+def _dp_plane_strain_batch(strain, S_old, S_new, params, C, sigma, flag):
+    """Adaptador por lotes (ADR 0014). ``params = [η_f, η_g, k_0, H, K, G,
+    tol_abs, tol_rel]``; ``C`` = ``C_e``. Tolerancia como ``admissibility_tol``
+    (escala ``k(α) = k_0 + H·α``)."""
+    k0 = params[2]
+    Hk = params[3]
+    alpha_old = S_old[4]
+    yield_tol = params[6] + params[7] * (k0 + Hk * alpha_old)
+    sig, C_alg, eps_p_new, alpha_new, _branch = _compute_drucker_prager_plane_strain(
+        strain, S_old[0:4], alpha_old,
+        params[0], params[1], k0, Hk, params[4], params[5], C, yield_tol,
+    )
+    for i in range(3):
+        sigma[i] = sig[i]
+    for i in range(4):
+        S_new[i] = eps_p_new[i]
+    S_new[4] = alpha_new
+    return C_alg
+
+
 def _calibrate_drucker_prager(c0: float, phi_rad: float, psi_rad: float, variant: str):
     """Devuelve ``(eta_f, k0, eta_g)`` desde parámetros físicos (c, φ, ψ)."""
     tan_phi = math.tan(phi_rad)
@@ -395,6 +417,16 @@ class DruckerPrager2D(Material):
 
         new_state = {'eps_p': eps_p_new, 'alpha': alpha_new}
         return sigma, C_alg, new_state
+
+    # Camino por lotes (ADR 0014)
+    BATCH_KERNEL = _dp_plane_strain_batch
+
+    def batch_params(self) -> np.ndarray:
+        return np.array([self.eta_f, self.eta_g, self.k0, self.H, self.K, self.G,
+                         ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL], dtype=np.float64)
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.C_e
 
     def out_of_plane_stress(self, sigma, state_vars=None) -> float:
         """``σ_zz`` a partir de ``σ`` en plano y de ``ε^p_zz`` (ver

@@ -7,6 +7,7 @@ sin variables internas: el análogo térmico de ``Elastic2D``/``Elastic3D``.
 import numpy as np
 
 from solidum.core.thermal_material import ThermalMaterial
+from solidum.materials._batch import linear_material_kernel
 from solidum.registry import ThermalMaterialRegistry
 
 
@@ -48,6 +49,9 @@ class ThermalConduction(ThermalMaterial):
     PRIMARY_STATE_VAR = None
     IS_SYMMETRIC = True
     STATE_SCHEMA = {}
+    # En el camino por lotes la "deformación" es ∇T y el "esfuerzo" k·∇T, de
+    # modo que ∫Bᵀ(k·∇T) dΩ reproduce K_e·T_e (ADR 0014).
+    BATCH_KERNEL = linear_material_kernel
 
     # Tolerancia relativa para la comprobación de simetría de k. Escalada
     # con la magnitud del propio tensor para que el criterio sea
@@ -131,6 +135,9 @@ class ThermalConduction(ThermalMaterial):
     def FLUX_DIM(self) -> int:  # noqa: N802 — nombre de contrato, no de método
         """Dimensión del gradiente y del flujo, deducida del tensor."""
         return self.conductivity.shape[0]
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.conductivity
 
     def compute_flux(self, grad_T):
         """Devuelve ``(q, k)`` con ``q = -k·∇T`` (ley de Fourier)."""

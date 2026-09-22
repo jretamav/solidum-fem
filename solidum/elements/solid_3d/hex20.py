@@ -10,6 +10,7 @@ Spec: ``docs/specs/Hex20.md``.
 """
 from solidum.elements.solid_2d._shared import _dN_quad8, _N_quad8
 from solidum.elements.solid_3d._shared import (
+    _batch_kin_hex20,
     _HigherOrderSolid3D,
     _dN_hex20,
     _N_hex20,
@@ -51,6 +52,7 @@ class Hex20(_HigherOrderSolid3D):
     """
 
     N_INTEGRATION_POINTS = 27  # default Gauss 3×3×3
+    BATCH_KINEMATICS = _batch_kin_hex20
 
     _SHAPE_FN = staticmethod(_N_hex20)
     _GRAD_FN = staticmethod(_dN_hex20)

@@ -9,6 +9,7 @@ Spec: ``docs/specs/Hex27.md``.
 """
 from solidum.elements.solid_2d._shared import _dN_quad9, _N_quad9
 from solidum.elements.solid_3d._shared import (
+    _batch_kin_hex27,
     _HigherOrderSolid3D,
     _dN_hex27,
     _N_hex27,
@@ -57,6 +58,7 @@ class Hex27(_HigherOrderSolid3D):
     """
 
     N_INTEGRATION_POINTS = 27  # default Gauss 3×3×3
+    BATCH_KINEMATICS = _batch_kin_hex27
 
     _SHAPE_FN = staticmethod(_N_hex27)
     _GRAD_FN = staticmethod(_dN_hex27)

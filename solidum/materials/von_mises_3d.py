@@ -19,6 +19,7 @@ import math
 import numpy as np
 from numba import njit
 
+from solidum.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
 from solidum.core.material import Material
 from solidum.registry import MaterialRegistry
 
@@ -131,6 +132,25 @@ def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_to
     )
 
     return sigma, C_alg, eps_p_new, alpha_new
+
+
+@njit(cache=True)
+def _j2_3d_batch(strain, S_old, S_new, params, C, sigma, flag):
+    """Adaptador por lotes (ADR 0014). ``params = [σ_y, H, K, G, tol_abs,
+    tol_rel]``; ``C`` = ``C_e``. Tolerancia como ``admissibility_tol``."""
+    sigma_y = params[0]
+    H = params[1]
+    alpha_old = S_old[6]
+    R = sigma_y + H * alpha_old
+    yield_tol = params[4] + params[5] * (math.sqrt(2.0 / 3.0) * R)
+    sig, C_alg, eps_p_new, alpha_new = _compute_j2_3d(
+        strain, S_old[0:6], alpha_old, sigma_y, H, params[2], params[3], C, yield_tol
+    )
+    for i in range(6):
+        sigma[i] = sig[i]
+        S_new[i] = eps_p_new[i]
+    S_new[6] = alpha_new
+    return C_alg
 
 
 @MaterialRegistry.register
@@ -248,3 +268,13 @@ class VonMises3D(Material):
 
         new_state = {'eps_p': eps_p_new, 'alpha': alpha_new}
         return sigma, C_alg, new_state
+
+    # Camino por lotes (ADR 0014)
+    BATCH_KERNEL = _j2_3d_batch
+
+    def batch_params(self) -> np.ndarray:
+        return np.array([self.sigma_y, self.H, self.K, self.G,
+                         ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL], dtype=np.float64)
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.C_e

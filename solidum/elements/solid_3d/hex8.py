@@ -7,6 +7,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_3d._shared import (
+    _batch_kin_hex8,
     _compute_integrands_3d,
     _compute_kinematics_hex8,
     _det_jacobian_hex8,
@@ -44,6 +45,9 @@ class Hex8(Element):
     DOF_NAMES = ['ux', 'uy', 'uz']
     STRAIN_DIM = 6
     N_INTEGRATION_POINTS = 8  # default Gauss 2×2×2
+    # Camino por lotes (ADR 0014): misma cinemática compilada que
+    # compute_element_state; sin escala (el volumen va en detJ·w).
+    BATCH_KINEMATICS = _batch_kin_hex8
 
     # ADR 0012 — 6 caras con normal saliente. Cada tupla son los 4 nodos
     # locales de la cara en orden antihorario vistos desde fuera, es decir

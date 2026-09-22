@@ -7,6 +7,7 @@ ADR 0013 (dónde vive la orientación material).
 import numpy as np
 
 from solidum.core.material import Material
+from solidum.materials._batch import linear_material_kernel
 from solidum.registry import MaterialRegistry
 
 
@@ -62,6 +63,7 @@ class Orthotropic2D(Material):
     PRIMARY_STATE_VAR = None
     IS_SYMMETRIC = True
     STATE_SCHEMA = {}
+    BATCH_KERNEL = linear_material_kernel
 
     def __init__(self, E1: float, E2: float, G12: float, nu12: float,
                  theta: float = 0.0, density: float | None = None):
@@ -166,3 +168,6 @@ class Orthotropic2D(Material):
         hipótesis), así que aquí no se recomputa ni la rotación ni la inversa.
         """
         return self.C @ strain, self.C, state_vars
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.C

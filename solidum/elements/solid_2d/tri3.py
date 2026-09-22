@@ -7,6 +7,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
+    _batch_kin_tri3,
     _compute_integrands,
     _compute_kinematics_tri3,
     _expand_scalar_mass,
@@ -26,10 +27,18 @@ class Tri3(Element):
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
     N_INTEGRATION_POINTS = 1
+    BATCH_KINEMATICS = _batch_kin_tri3
+    BATCH_SCALE = "thickness"
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0):
         self.thickness = thickness
+        # Regla de un punto (centroide, peso = área del triángulo de
+        # referencia). El elemento la usa implícitamente; se materializa para
+        # que el camino por lotes la lea como en el resto de sólidos.
+        self.points = [(1.0 / 3.0, 1.0 / 3.0)]
+        self.weights = [0.5]
+        self.quadrature_key = "tri_1"
         super().__init__(element_id, nodes, material)
 
     def compute_element_state(self, u_e: np.ndarray):

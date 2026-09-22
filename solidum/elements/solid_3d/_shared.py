@@ -85,14 +85,8 @@ def _shape_functions_hex8(xi: float, eta: float, zeta: float) -> np.ndarray:
 
 
 @njit(cache=True)
-def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
-                             coords: np.ndarray):
-    """Calcula B (6×24) y det(J) del Hex8 en (ξ, η, ζ).
-
-    ``coords`` es la matriz 8×3 de coordenadas globales de los nodos
-    en orden VTK. Devuelve la matriz B en convención Voigt 6D del
-    proyecto (ADR 0012) y el determinante del Jacobiano.
-    """
+def _dN_hex8(xi: float, eta: float, zeta: float) -> np.ndarray:
+    """Derivadas naturales ``(3, 8)`` de las funciones de forma trilineales."""
     xi_sign = (-1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0)
     eta_sign = (-1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0)
     zeta_sign = (-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0)
@@ -105,40 +99,82 @@ def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
         dN_dxi[0, i] = 0.125 * sx * (1.0 + sy * eta) * (1.0 + sz * zeta)
         dN_dxi[1, i] = 0.125 * sy * (1.0 + sx * xi) * (1.0 + sz * zeta)
         dN_dxi[2, i] = 0.125 * sz * (1.0 + sx * xi) * (1.0 + sy * eta)
+    return dN_dxi
 
-    J = dN_dxi @ coords  # 3×3
+
+@njit(cache=True)
+def _grad3d_from_dN(dN_dxi, coords, dN_dx):
+    """Núcleo 3D común: de las derivadas naturales ``(3, n)`` y las
+    coordenadas ``(n, 3)`` a las derivadas globales ``dN_dx`` ``(3, n)``,
+    escritas in situ. Devuelve ``det J``; lanza ``ValueError`` si el
+    jacobiano degenera (chequeo relativo de Hadamard, ``JACOBIAN_RTOL``).
+
+    Única implementación del jacobiano 3×3 (inversa por cofactores):
+    la comparten los sólidos 3D lineales y de orden superior, el
+    ``Hex8Thermal`` y los kernels por lotes (ADR 0014).
+    """
+    n = dN_dxi.shape[1]
+    J00 = 0.0; J01 = 0.0; J02 = 0.0
+    J10 = 0.0; J11 = 0.0; J12 = 0.0
+    J20 = 0.0; J21 = 0.0; J22 = 0.0
+    for i in range(n):
+        d0 = dN_dxi[0, i]
+        d1 = dN_dxi[1, i]
+        d2 = dN_dxi[2, i]
+        x = coords[i, 0]
+        y = coords[i, 1]
+        z = coords[i, 2]
+        J00 += d0 * x; J01 += d0 * y; J02 += d0 * z
+        J10 += d1 * x; J11 += d1 * y; J12 += d1 * z
+        J20 += d2 * x; J21 += d2 * y; J22 += d2 * z
 
     # det(J) por expansión de la primera fila.
     detJ = (
-        J[0, 0] * (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1])
-        - J[0, 1] * (J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0])
-        + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
+        J00 * (J11 * J22 - J12 * J21)
+        - J01 * (J10 * J22 - J12 * J20)
+        + J02 * (J10 * J21 - J11 * J20)
     )
-
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
+    scale = (math.sqrt(J00 * J00 + J01 * J01 + J02 * J02)
+             * math.sqrt(J10 * J10 + J11 * J11 + J12 * J12)
+             * math.sqrt(J20 * J20 + J21 * J21 + J22 * J22))
+    if detJ <= JACOBIAN_RTOL * scale:
         raise ValueError(
-            "Jacobiano negativo o cero detectado en Hex8. Revisa la "
-            "conectividad o la distorsión."
+            "Jacobiano negativo o cero detectado en un elemento 3D. Revisa la "
+            "conectividad (orden VTK, volumen positivo) o la distorsión."
         )
 
     # Inversa 3×3 por cofactores.
-    invJ = np.zeros((3, 3), dtype=np.float64)
-    invJ[0, 0] = (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1]) / detJ
-    invJ[0, 1] = -(J[0, 1] * J[2, 2] - J[0, 2] * J[2, 1]) / detJ
-    invJ[0, 2] = (J[0, 1] * J[1, 2] - J[0, 2] * J[1, 1]) / detJ
-    invJ[1, 0] = -(J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0]) / detJ
-    invJ[1, 1] = (J[0, 0] * J[2, 2] - J[0, 2] * J[2, 0]) / detJ
-    invJ[1, 2] = -(J[0, 0] * J[1, 2] - J[0, 2] * J[1, 0]) / detJ
-    invJ[2, 0] = (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0]) / detJ
-    invJ[2, 1] = -(J[0, 0] * J[2, 1] - J[0, 1] * J[2, 0]) / detJ
-    invJ[2, 2] = (J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]) / detJ
+    i00 = (J11 * J22 - J12 * J21) / detJ
+    i01 = -(J01 * J22 - J02 * J21) / detJ
+    i02 = (J01 * J12 - J02 * J11) / detJ
+    i10 = -(J10 * J22 - J12 * J20) / detJ
+    i11 = (J00 * J22 - J02 * J20) / detJ
+    i12 = -(J00 * J12 - J02 * J10) / detJ
+    i20 = (J10 * J21 - J11 * J20) / detJ
+    i21 = -(J00 * J21 - J01 * J20) / detJ
+    i22 = (J00 * J11 - J01 * J10) / detJ
 
-    # Derivadas en globales (3×8).
-    dN_dx = invJ @ dN_dxi
+    for i in range(n):
+        d0 = dN_dxi[0, i]
+        d1 = dN_dxi[1, i]
+        d2 = dN_dxi[2, i]
+        dN_dx[0, i] = i00 * d0 + i01 * d1 + i02 * d2
+        dN_dx[1, i] = i10 * d0 + i11 * d1 + i12 * d2
+        dN_dx[2, i] = i20 * d0 + i21 * d1 + i22 * d2
+    return detJ
 
-    # B en Voigt 6D del proyecto: [xx, yy, zz, xy, yz, xz].
-    B = np.zeros((6, 24), dtype=np.float64)
-    for i in range(8):
+
+@njit(cache=True)
+def _kin3d_from_dN(dN_dxi, coords, B):
+    """Núcleo mecánico 3D: rellena ``B`` ``(6, 3n)`` en Voigt 6D del
+    proyecto ``[xx, yy, zz, xy, yz, xz]`` y devuelve ``det J``."""
+    n = dN_dxi.shape[1]
+    dN_dx = np.empty((3, n), dtype=np.float64)
+    detJ = _grad3d_from_dN(dN_dxi, coords, dN_dx)
+    for a in range(6):
+        for j in range(3 * n):
+            B[a, j] = 0.0
+    for i in range(n):
         bx = dN_dx[0, i]
         by = dN_dx[1, i]
         bz = dN_dx[2, i]
@@ -155,7 +191,27 @@ def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
         # γ_xz
         B[5, c0]     = bz
         B[5, c0 + 2] = bx
+    return detJ
+
+
+@njit(cache=True)
+def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
+                             coords: np.ndarray):
+    """Calcula B (6×24) y det(J) del Hex8 en (ξ, η, ζ).
+
+    ``coords`` es la matriz 8×3 de coordenadas globales de los nodos
+    en orden VTK. Devuelve la matriz B en convención Voigt 6D del
+    proyecto (ADR 0012) y el determinante del Jacobiano.
+    """
+    B = np.empty((6, 24), dtype=np.float64)
+    detJ = _kin3d_from_dN(_dN_hex8(xi, eta, zeta), coords, B)
     return B, detJ
+
+
+@njit(cache=True)
+def _batch_kin_hex8(pt, coords, B):
+    """``BATCH_KINEMATICS`` del Hex8 (firma ``KIN_SIG``, ADR 0014)."""
+    return _kin3d_from_dN(_dN_hex8(pt[0], pt[1], pt[2]), coords, B)
 
 
 @njit(cache=True)
@@ -169,50 +225,19 @@ def _compute_gradient_kinematics_hex8(xi: float, eta: float, zeta: float,
 
     Misma materia prima que ``_compute_kinematics_hex8`` usa para el
     problema mecánico; allí las derivadas se reordenan en la matriz
-    ``(6, 24)`` de Voigt, aquí se usan directas. Se factoriza junto a su
-    gemelo para no duplicar el jacobiano 3×3 ni su inversión por
-    cofactores.
+    ``(6, 24)`` de Voigt, aquí se usan directas. Comparten
+    ``_grad3d_from_dN`` para no duplicar el jacobiano 3×3 ni su inversión
+    por cofactores.
     """
-    xi_sign = (-1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0)
-    eta_sign = (-1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0)
-    zeta_sign = (-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0)
-
-    dN_dxi = np.zeros((3, 8), dtype=np.float64)
-    for i in range(8):
-        sx = xi_sign[i]
-        sy = eta_sign[i]
-        sz = zeta_sign[i]
-        dN_dxi[0, i] = 0.125 * sx * (1.0 + sy * eta) * (1.0 + sz * zeta)
-        dN_dxi[1, i] = 0.125 * sy * (1.0 + sx * xi) * (1.0 + sz * zeta)
-        dN_dxi[2, i] = 0.125 * sz * (1.0 + sx * xi) * (1.0 + sy * eta)
-
-    J = dN_dxi @ coords
-
-    detJ = (
-        J[0, 0] * (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1])
-        - J[0, 1] * (J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0])
-        + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
-    )
-
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
-        raise ValueError(
-            "Jacobiano negativo o cero detectado en Hex8Thermal. Revisa la "
-            "conectividad (orden VTK, volumen positivo) o la distorsión."
-        )
-
-    invJ = np.zeros((3, 3), dtype=np.float64)
-    invJ[0, 0] = (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1]) / detJ
-    invJ[0, 1] = -(J[0, 1] * J[2, 2] - J[0, 2] * J[2, 1]) / detJ
-    invJ[0, 2] = (J[0, 1] * J[1, 2] - J[0, 2] * J[1, 1]) / detJ
-    invJ[1, 0] = -(J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0]) / detJ
-    invJ[1, 1] = (J[0, 0] * J[2, 2] - J[0, 2] * J[2, 0]) / detJ
-    invJ[1, 2] = -(J[0, 0] * J[1, 2] - J[0, 2] * J[1, 0]) / detJ
-    invJ[2, 0] = (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0]) / detJ
-    invJ[2, 1] = -(J[0, 0] * J[2, 1] - J[0, 1] * J[2, 0]) / detJ
-    invJ[2, 2] = (J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]) / detJ
-
-    dN_dx = invJ @ dN_dxi
+    dN_dx = np.empty((3, 8), dtype=np.float64)
+    detJ = _grad3d_from_dN(_dN_hex8(xi, eta, zeta), coords, dN_dx)
     return dN_dx, detJ
+
+
+@njit(cache=True)
+def _batch_grad_hex8(pt, coords, B):
+    """``BATCH_KINEMATICS`` del Hex8Thermal: ``B`` es ``(3, 8)``."""
+    return _grad3d_from_dN(_dN_hex8(pt[0], pt[1], pt[2]), coords, B)
 
 
 @njit(cache=True)
@@ -263,6 +288,13 @@ def _shape_functions_tet4(xi: float, eta: float, zeta: float) -> np.ndarray:
     return N
 
 
+# Derivadas constantes de N_i en coordenadas naturales:
+# ∂N_1/∂(ξ,η,ζ) = (-1, -1, -1), ∂N_2 = (1, 0, 0), ∂N_3 = (0, 1, 0), ∂N_4 = (0, 0, 1).
+_DN_TET4 = np.array([[-1.0, 1.0, 0.0, 0.0],
+                     [-1.0, 0.0, 1.0, 0.0],
+                     [-1.0, 0.0, 0.0, 1.0]])
+
+
 @njit(cache=True)
 def _compute_kinematics_tet4(coords: np.ndarray):
     """Calcula B (6×12) y det(J) del Tet4. Ambos constantes sobre el elemento.
@@ -271,62 +303,15 @@ def _compute_kinematics_tet4(coords: np.ndarray):
     Devuelve B en convención Voigt 6D y det(J) = 6·V_e con V_e el volumen
     del tetraedro.
     """
-    # Derivadas constantes de N_i en coordenadas naturales:
-    # ∂N_1/∂(ξ,η,ζ) = (-1, -1, -1)
-    # ∂N_2/∂(ξ,η,ζ) = ( 1,  0,  0)
-    # ∂N_3/∂(ξ,η,ζ) = ( 0,  1,  0)
-    # ∂N_4/∂(ξ,η,ζ) = ( 0,  0,  1)
-    dN_dxi = np.zeros((3, 4), dtype=np.float64)
-    dN_dxi[0, 0] = -1.0
-    dN_dxi[1, 0] = -1.0
-    dN_dxi[2, 0] = -1.0
-    dN_dxi[0, 1] = 1.0
-    dN_dxi[1, 2] = 1.0
-    dN_dxi[2, 3] = 1.0
-
-    J = dN_dxi @ coords  # 3×3, constante sobre el elemento
-
-    detJ = (
-        J[0, 0] * (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1])
-        - J[0, 1] * (J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0])
-        + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
-    )
-
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
-        raise ValueError(
-            "Jacobiano negativo o cero detectado en Tet4. Cuatro nodos "
-            "coplanares o en orden invertido."
-        )
-
-    invJ = np.zeros((3, 3), dtype=np.float64)
-    invJ[0, 0] = (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1]) / detJ
-    invJ[0, 1] = -(J[0, 1] * J[2, 2] - J[0, 2] * J[2, 1]) / detJ
-    invJ[0, 2] = (J[0, 1] * J[1, 2] - J[0, 2] * J[1, 1]) / detJ
-    invJ[1, 0] = -(J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0]) / detJ
-    invJ[1, 1] = (J[0, 0] * J[2, 2] - J[0, 2] * J[2, 0]) / detJ
-    invJ[1, 2] = -(J[0, 0] * J[1, 2] - J[0, 2] * J[1, 0]) / detJ
-    invJ[2, 0] = (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0]) / detJ
-    invJ[2, 1] = -(J[0, 0] * J[2, 1] - J[0, 1] * J[2, 0]) / detJ
-    invJ[2, 2] = (J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]) / detJ
-
-    dN_dx = invJ @ dN_dxi  # 3×4, constante
-
-    B = np.zeros((6, 12), dtype=np.float64)
-    for i in range(4):
-        bx = dN_dx[0, i]
-        by = dN_dx[1, i]
-        bz = dN_dx[2, i]
-        c0 = 3 * i
-        B[0, c0]     = bx
-        B[1, c0 + 1] = by
-        B[2, c0 + 2] = bz
-        B[3, c0]     = by
-        B[3, c0 + 1] = bx
-        B[4, c0 + 1] = bz
-        B[4, c0 + 2] = by
-        B[5, c0]     = bz
-        B[5, c0 + 2] = bx
+    B = np.empty((6, 12), dtype=np.float64)
+    detJ = _kin3d_from_dN(_DN_TET4, coords, B)
     return B, detJ
+
+
+@njit(cache=True)
+def _batch_kin_tet4(pt, coords, B):
+    """``BATCH_KINEMATICS`` del Tet4 (el punto natural no interviene)."""
+    return _kin3d_from_dN(_DN_TET4, coords, B)
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +408,7 @@ def _N_hex20(xi: float, eta: float, zeta: float) -> np.ndarray:
     return N
 
 
+@njit(cache=True)
 def _dN_hex20(xi: float, eta: float, zeta: float) -> np.ndarray:
     """Derivadas de las funciones de forma del Hex20 en (ξ, η, ζ).
 
@@ -509,6 +495,7 @@ _HEX27_K = (
 )
 
 
+@njit(cache=True)
 def _L_lagrange_quad(idx: int, x: float) -> float:
     """Lagrange cuadrático 1D evaluado en ``x`` para índice ``idx ∈ {-1, 0, +1}``."""
     if idx == -1:
@@ -518,6 +505,7 @@ def _L_lagrange_quad(idx: int, x: float) -> float:
     return 0.5 * x * (x + 1.0)
 
 
+@njit(cache=True)
 def _dL_lagrange_quad(idx: int, x: float) -> float:
     """Derivada del Lagrange cuadrático 1D."""
     if idx == -1:
@@ -543,6 +531,7 @@ def _N_hex27(xi: float, eta: float, zeta: float) -> np.ndarray:
     return N
 
 
+@njit(cache=True)
 def _dN_hex27(xi: float, eta: float, zeta: float) -> np.ndarray:
     """Derivadas de las funciones de forma del Hex27 en (ξ, η, ζ).
 
@@ -619,6 +608,13 @@ def _N_tet10(xi: float, eta: float, zeta: float) -> np.ndarray:
     return N
 
 
+# Índices (0..3) de los dos L_k que forman cada nodo medio del Tet10, en
+# el orden de _TET10_EDGE_LS; formato plano para el kernel compilado.
+_TET10_EDGE_I = (0, 1, 2, 0, 1, 2)
+_TET10_EDGE_J = (1, 2, 0, 3, 3, 3)
+
+
+@njit(cache=True)
 def _dN_tet10(xi: float, eta: float, zeta: float) -> np.ndarray:
     """Derivadas de las funciones de forma del Tet10 en (ξ, η, ζ).
 
@@ -630,26 +626,26 @@ def _dN_tet10(xi: float, eta: float, zeta: float) -> np.ndarray:
         ∂L_3/∂(ξ,η,ζ) = ( 0,  1,  0)
         ∂L_4/∂(ξ,η,ζ) = ( 0,  0,  1)
     """
-    L = (1.0 - xi - eta - zeta, xi, eta, zeta)
-    # dL_k/d(ξ, η, ζ) por k = 0..3:
-    dL = (
-        (-1.0, -1.0, -1.0),   # L_1
-        ( 1.0,  0.0,  0.0),   # L_2
-        ( 0.0,  1.0,  0.0),   # L_3
-        ( 0.0,  0.0,  1.0),   # L_4
-    )
+    L = np.array([1.0 - xi - eta - zeta, xi, eta, zeta])
+    # dL_k/d(ξ, η, ζ) por k = 0..3 (fila k = L_{k+1}).
+    dL = np.array([
+        [-1.0, -1.0, -1.0],   # L_1
+        [ 1.0,  0.0,  0.0],   # L_2
+        [ 0.0,  1.0,  0.0],   # L_3
+        [ 0.0,  0.0,  1.0],   # L_4
+    ])
     dN = np.zeros((3, 10), dtype=np.float64)
     # Vértices: N_i = L_i(2L_i-1) → dN_i/dx_k = (4L_i - 1) · dL_i/dx_k.
     for i in range(4):
         factor = 4.0 * L[i] - 1.0
         for axis in range(3):
-            dN[axis, i] = factor * dL[i][axis]
+            dN[axis, i] = factor * dL[i, axis]
     # Medios: N_ij = 4 L_i L_j → dN_ij/dx_k = 4 (L_j dL_i/dx_k + L_i dL_j/dx_k).
-    for k, (i_idx, j_idx) in enumerate(_TET10_EDGE_LS):
-        i_ = i_idx - 1
-        j_ = j_idx - 1
+    for k in range(6):
+        i_ = _TET10_EDGE_I[k]
+        j_ = _TET10_EDGE_J[k]
         for axis in range(3):
-            dN[axis, 4 + k] = 4.0 * (L[j_] * dL[i_][axis] + L[i_] * dL[j_][axis])
+            dN[axis, 4 + k] = 4.0 * (L[j_] * dL[i_, axis] + L[i_] * dL[j_, axis])
     return dN
 
 
@@ -686,50 +682,24 @@ def _kinematics_higher_order_3d(grad_fn, xi: float, eta: float, zeta: float,
     detJ : float
         Determinante del Jacobiano 3×3.
     """
-    dN_dxi = grad_fn(xi, eta, zeta)  # (3, n_nodes)
-    J = dN_dxi @ coords              # (3, 3)
-    detJ = (
-        J[0, 0] * (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1])
-        - J[0, 1] * (J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0])
-        + J[0, 2] * (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0])
-    )
-    if detJ <= JACOBIAN_RTOL * _jacobian_scale_3d(J):
-        raise ValueError(
-            "Jacobiano negativo o cero detectado en sólido 3D de orden "
-            "superior. Revisa la conectividad o la distorsión."
-        )
-    # Inversa 3×3 por cofactores.
-    invJ = np.empty((3, 3), dtype=np.float64)
-    invJ[0, 0] = (J[1, 1] * J[2, 2] - J[1, 2] * J[2, 1]) / detJ
-    invJ[0, 1] = -(J[0, 1] * J[2, 2] - J[0, 2] * J[2, 1]) / detJ
-    invJ[0, 2] = (J[0, 1] * J[1, 2] - J[0, 2] * J[1, 1]) / detJ
-    invJ[1, 0] = -(J[1, 0] * J[2, 2] - J[1, 2] * J[2, 0]) / detJ
-    invJ[1, 1] = (J[0, 0] * J[2, 2] - J[0, 2] * J[2, 0]) / detJ
-    invJ[1, 2] = -(J[0, 0] * J[1, 2] - J[0, 2] * J[1, 0]) / detJ
-    invJ[2, 0] = (J[1, 0] * J[2, 1] - J[1, 1] * J[2, 0]) / detJ
-    invJ[2, 1] = -(J[0, 0] * J[2, 1] - J[0, 1] * J[2, 0]) / detJ
-    invJ[2, 2] = (J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]) / detJ
-    dN_dx = invJ @ dN_dxi  # (3, n_nodes) en globales
-
-    B = np.zeros((6, 3 * n_nodes), dtype=np.float64)
-    for i in range(n_nodes):
-        bx = dN_dx[0, i]
-        by = dN_dx[1, i]
-        bz = dN_dx[2, i]
-        c0 = 3 * i
-        B[0, c0]     = bx
-        B[1, c0 + 1] = by
-        B[2, c0 + 2] = bz
-        # γ_xy
-        B[3, c0]     = by
-        B[3, c0 + 1] = bx
-        # γ_yz
-        B[4, c0 + 1] = bz
-        B[4, c0 + 2] = by
-        # γ_xz
-        B[5, c0]     = bz
-        B[5, c0 + 2] = bx
+    B = np.empty((6, 3 * n_nodes), dtype=np.float64)
+    detJ = _kin3d_from_dN(grad_fn(xi, eta, zeta), np.ascontiguousarray(coords), B)
     return B, detJ
+
+
+@njit(cache=True)
+def _batch_kin_hex20(pt, coords, B):
+    return _kin3d_from_dN(_dN_hex20(pt[0], pt[1], pt[2]), coords, B)
+
+
+@njit(cache=True)
+def _batch_kin_hex27(pt, coords, B):
+    return _kin3d_from_dN(_dN_hex27(pt[0], pt[1], pt[2]), coords, B)
+
+
+@njit(cache=True)
+def _batch_kin_tet10(pt, coords, B):
+    return _kin3d_from_dN(_dN_tet10(pt[0], pt[1], pt[2]), coords, B)
 
 
 # ---------------------------------------------------------------------------

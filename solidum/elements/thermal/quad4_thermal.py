@@ -12,6 +12,7 @@ import numpy as np
 from solidum.core.node import Node
 from solidum.core.thermal_material import ThermalMaterial
 from solidum.elements.solid_2d._shared import (
+    _batch_grad_quad4,
     _compute_gradient_kinematics_quad4,
     _shape_functions_quad4,
 )
@@ -55,6 +56,9 @@ class Quad4Thermal(_ThermalSolid):
     QUADRATURE_FAMILY: ClassVar[str] = "quad"
     CAPACITY_QUADRATURE: ClassVar[str] = "2x2"
     N_INTEGRATION_POINTS: ClassVar[int] = 4  # default; la instancia lo ajusta
+    # Camino por lotes (ADR 0014): B térmica = ∂N/∂x (2×4); el espesor escala dV.
+    BATCH_KINEMATICS = _batch_grad_quad4
+    BATCH_SCALE = "thickness"
 
     # Bordes del cuadrilátero, paritarios con los del Quad4 mecánico.
     EDGE_NODES: ClassVar[tuple] = ((0, 1), (1, 2), (2, 3), (3, 0))

@@ -7,6 +7,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
+    _batch_kin_quad4,
     _compute_integrands,
     _compute_kinematics,
     _det_jacobian_quad4,
@@ -43,6 +44,10 @@ class Quad4(Element):
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
     N_INTEGRATION_POINTS = 4   # default Gauss 2×2; el constructor lo sobreescribe a nivel de instancia si se pasa otra cuadratura.
+    # Camino por lotes (ADR 0014): misma cinemática compilada que
+    # compute_element_state; el espesor escala dV.
+    BATCH_KINEMATICS = _batch_kin_quad4
+    BATCH_SCALE = "thickness"
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):

@@ -3,6 +3,7 @@ import numpy as np
 
 from solidum.elements.solid_2d._shared import (
     _HigherOrderSolid2D,
+    _batch_kin_quad8,
     _dN_quad8,
     _N_quad8,
     _quadratic_edge_traction,
@@ -18,6 +19,7 @@ class Quad8(_HigherOrderSolid2D):
     flexión. Default: Gauss 3×3.
     """
     N_INTEGRATION_POINTS = 9
+    BATCH_KINEMATICS = _batch_kin_quad8
     _SHAPE_FN = staticmethod(_N_quad8)
     _GRAD_FN = staticmethod(_dN_quad8)
     _DEFAULT_QUADRATURE = "3x3"

@@ -3,6 +3,7 @@ import numpy as np
 
 from solidum.elements.solid_2d._shared import (
     _HigherOrderSolid2D,
+    _batch_kin_tri6,
     _dN_tri6,
     _N_tri6,
     _quadratic_edge_traction,
@@ -32,6 +33,7 @@ class Tri6(_HigherOrderSolid2D):
     :class:`_HigherOrderSolid2D`).
     """
     N_INTEGRATION_POINTS = 3
+    BATCH_KINEMATICS = _batch_kin_tri6
     _SHAPE_FN = staticmethod(_N_tri6)
     _GRAD_FN = staticmethod(_dN_tri6)
     _QUADRATURE_FAMILY = "tri"

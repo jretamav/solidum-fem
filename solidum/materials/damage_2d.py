@@ -5,13 +5,88 @@ Soporta tangente **algorítmica consistente** durante carga activa (recupera
 convergencia cuadrática del Newton global). En descarga, por debajo del umbral
 o al saturar el daño, devuelve tangente secante. Ver ``docs/specs/IsotropicDamage2D.md``.
 """
-import numpy as np
+import math
 
-from solidum.constants import DAMAGE_MAX
+import numpy as np
+from numba import njit
+
+from solidum.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, DAMAGE_MAX
 from solidum.core.material import Material
 from solidum.materials._softening import evaluate_exponential_damage
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.registry import MaterialRegistry
+
+
+@njit(cache=True)
+def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap):
+    """Actualización del daño isótropo 2D en un punto de Gauss.
+
+    Devuelve ``(σ, C_tan, κ_new, d)``. ``tol`` es la tolerancia de
+    admisibilidad ya evaluada (ADR 0006) y ``cap`` el techo del daño
+    (``DAMAGE_MAX``). Es el único sitio donde vive la física del modelo:
+    lo llaman ``compute_state`` (camino por elemento) y el adaptador por
+    lotes ``_damage_2d_batch`` (ADR 0014).
+    """
+    # Deformación equivalente simétrica
+    eps_eq = math.sqrt(strain[0] ** 2 + strain[1] ** 2 + 0.5 * strain[2] ** 2)
+
+    # Régimen de carga vs descarga (Kuhn-Tucker)
+    if eps_eq > kappa_old:
+        kappa_new = eps_eq
+        loading = True
+    else:
+        kappa_new = kappa_old
+        loading = False
+
+    # Check de admisibilidad en esfuerzo (ADR 0006): f = E·(κ − κ_0)
+    f_stress = E * (kappa_new - kappa_0)
+    if f_stress <= tol:
+        d = 0.0
+    else:
+        d, _ = evaluate_exponential_damage(kappa_new, kappa_0, alpha, cap)
+    # Flag de saturación consistente al final del bloque.
+    saturated = (d >= cap) and f_stress > 0.0
+
+    C_sec = (1.0 - d) * Ce
+    sigma = C_sec @ strain
+
+    # Tangente: consistente solo en carga activa con daño efectivo no saturado.
+    # En todos los otros casos (descarga, sin daño, saturación), secante.
+    consistent_branch = loading and (d > 0.0) and (not saturated) and (eps_eq > 0.0)
+    if consistent_branch:
+        # C_alg = (1-d)·C_e - (∂d/∂κ)(∂κ/∂ε)·σ_eff^T
+        # ∂d/∂κ = (1-d)·(1/κ + α)
+        # ∂κ/∂ε = (1/ε_eq)·M·ε  con M = diag(1, 1, 1/2)
+        # σ_eff = C_e·ε
+        dd_dkappa = (1.0 - d) * (1.0 / kappa_new + alpha)
+        sigma_eff = Ce @ strain
+        depseq_deps = np.array([
+            strain[0] / eps_eq,
+            strain[1] / eps_eq,
+            0.5 * strain[2] / eps_eq,
+        ])
+        C_tan = C_sec - dd_dkappa * np.outer(sigma_eff, depseq_deps)
+    else:
+        C_tan = C_sec
+    return sigma, C_tan, kappa_new, d
+
+
+@njit(cache=True)
+def _damage_2d_batch(strain, S_old, S_new, params, C, sigma, flag):
+    """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, α, tol_abs,
+    tol_rel, DAMAGE_MAX]``; ``C`` = ``C_e`` del medio intacto; estado
+    ``[κ, d]``."""
+    E = params[0]
+    kappa_0 = params[1]
+    tol = params[3] + params[4] * (E * kappa_0)
+    sig, C_tan, kappa_new, d = _compute_damage_2d(
+        strain, S_old[0], E, kappa_0, params[2], C, tol, params[5]
+    )
+    for i in range(3):
+        sigma[i] = sig[i]
+    S_new[0] = kappa_new
+    S_new[1] = d
+    return C_tan
 
 
 @MaterialRegistry.register
@@ -97,54 +172,24 @@ class IsotropicDamage2D(Material):
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         kappa_old = self.kappa_0 if state_vars is None else state_vars.get('kappa', self.kappa_0)
-
-        # Deformación equivalente simétrica
-        eps_eq = np.sqrt(strain[0]**2 + strain[1]**2 + 0.5 * strain[2]**2)
-
-        # Régimen de carga vs descarga (Kuhn-Tucker)
-        if eps_eq > kappa_old:
-            kappa_new = eps_eq
-            loading = True
-        else:
-            kappa_new = kappa_old
-            loading = False
-
-        # Check de admisibilidad en esfuerzo (ADR 0006): f = E·(κ − κ_0)
-        f_stress = self.E * (kappa_new - self.kappa_0)
-        if self.is_admissible(f_stress, state_vars):
-            d = 0.0
-        else:
-            d, _ = evaluate_exponential_damage(
-                kappa_new, self.kappa_0, self.alpha,
-            )
-        # Flag de saturación consistente al final del bloque.
-        saturated = (d >= DAMAGE_MAX) and f_stress > 0.0
-
-        Ce = self.elastic_base.C
-        C_sec = (1.0 - d) * Ce
-        sigma = C_sec @ strain
-
-        # Tangente: consistente solo en carga activa con daño efectivo no saturado.
-        # En todos los otros casos (descarga, sin daño, saturación), secante.
-        consistent_branch = loading and (d > 0.0) and (not saturated) and (eps_eq > 0.0)
-        if consistent_branch:
-            # C_alg = (1-d)·C_e - (∂d/∂κ)(∂κ/∂ε)·σ_eff^T
-            # ∂d/∂κ = (1-d)·(1/κ + α)
-            # ∂κ/∂ε = (1/ε_eq)·M·ε  con M = diag(1, 1, 1/2)
-            # σ_eff = C_e·ε
-            dd_dkappa = (1.0 - d) * (1.0 / kappa_new + self.alpha)
-            sigma_eff = Ce @ strain
-            depseq_deps = np.array([
-                strain[0] / eps_eq,
-                strain[1] / eps_eq,
-                0.5 * strain[2] / eps_eq,
-            ])
-            C_tan = C_sec - dd_dkappa * np.outer(sigma_eff, depseq_deps)
-        else:
-            C_tan = C_sec
-
+        strain = np.ascontiguousarray(strain, dtype=np.float64)
+        sigma, C_tan, kappa_new, d = _compute_damage_2d(
+            strain, float(kappa_old), self.E, self.kappa_0, self.alpha,
+            self.elastic_base.C, self.admissibility_tol(state_vars), DAMAGE_MAX,
+        )
         new_state = {'kappa': kappa_new, 'damage': d}
         return sigma, C_tan, new_state
+
+    # Camino por lotes (ADR 0014)
+    BATCH_KERNEL = _damage_2d_batch
+
+    def batch_params(self) -> np.ndarray:
+        return np.array([self.E, self.kappa_0, self.alpha,
+                         ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, DAMAGE_MAX],
+                        dtype=np.float64)
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.elastic_base.C
 
     def out_of_plane_stress(self, sigma, state_vars=None) -> float:
         """Delegado al elástico base: ``σ = (1−d)·C_e·ε`` escala todas las

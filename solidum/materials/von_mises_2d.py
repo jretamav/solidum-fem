@@ -321,6 +321,56 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
     return sigma_new, C_alg, eps_p_new, alpha_new, converged_local
 
 
+@njit(cache=True)
+def _j2_plane_strain_batch(strain, S_old, S_new, params, C, sigma, flag):
+    """Adaptador por lotes (ADR 0014) del return mapping plane strain.
+
+    ``params = [σ_y, H, K, G, tol_abs, tol_rel]``; ``C`` = ``C_e``. La
+    tolerancia de fluencia se evalúa aquí con las mismas operaciones que
+    ``Material.admissibility_tol`` (ADR 0006), para que el camino por
+    lotes coincida bit a bit con el camino por elemento.
+    """
+    sigma_y = params[0]
+    H = params[1]
+    K = params[2]
+    G = params[3]
+    alpha_old = S_old[4]
+    R = sigma_y + H * alpha_old
+    yield_tol = params[4] + params[5] * (math.sqrt(2.0 / 3.0) * R)
+    sig, C_alg, eps_p_new, alpha_new = _compute_j2_plane_strain(
+        strain, S_old[0:4], alpha_old, sigma_y, H, K, G, C, yield_tol
+    )
+    for i in range(3):
+        sigma[i] = sig[i]
+    for i in range(4):
+        S_new[i] = eps_p_new[i]
+    S_new[4] = alpha_new
+    return C_alg
+
+
+@njit(cache=True)
+def _j2_plane_stress_batch(strain, S_old, S_new, params, C, sigma, flag):
+    """Adaptador por lotes (ADR 0014) del return mapping plane stress.
+
+    ``params = [σ_y, H, E, ν, G, tol_rel, tol_abs, max_local_iter]``;
+    ``C`` = ``C_e`` plane stress. Marca ``flag = 1`` si el Newton local no
+    convergió; el material lo reporta con ``batch_report``.
+    """
+    sig, C_alg, eps_p_new, alpha_new, local_ok = _compute_j2_plane_stress(
+        strain, S_old[0:4], S_old[4],
+        params[0], params[1], params[2], params[3], params[4], C,
+        params[5], params[6], int(params[7]),
+    )
+    if not local_ok:
+        flag[0] = 1
+    for i in range(3):
+        sigma[i] = sig[i]
+    for i in range(4):
+        S_new[i] = eps_p_new[i]
+    S_new[4] = alpha_new
+    return C_alg
+
+
 @MaterialRegistry.register
 class VonMises2D(Material):
     """
@@ -471,6 +521,37 @@ class VonMises2D(Material):
 
         new_state = {'eps_p': eps_p_new, 'alpha': alpha_new}
         return sigma, C_alg, new_state
+
+    # ------------------------------------------------------------------
+    # Camino por lotes (ADR 0014)
+    # ------------------------------------------------------------------
+
+    def batch_kernel(self):
+        if self.hypothesis == 'plane_strain':
+            return _j2_plane_strain_batch
+        return _j2_plane_stress_batch
+
+    def batch_params(self) -> np.ndarray:
+        if self.hypothesis == 'plane_strain':
+            return np.array([self.sigma_y, self.H, self.K, self.G,
+                             ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL], dtype=np.float64)
+        return np.array([self.sigma_y, self.H, self.E, self.nu, self.G,
+                         ADMISSIBILITY_TOL_REL, ADMISSIBILITY_TOL_ABS,
+                         float(_PLANE_STRESS_MAX_LOCAL_ITER)], dtype=np.float64)
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.C_e
+
+    def batch_report(self, n_flagged: int) -> None:
+        if not self._local_newton_warned:
+            self._local_newton_warned = True
+            _log.warning(
+                f"VonMises2D plane stress: el Newton local del return mapping "
+                f"agotó {_PLANE_STRESS_MAX_LOCAL_ITER} iteraciones sin converger "
+                f"en {n_flagged} punto(s) de Gauss (predictor muy lejano de la "
+                f"superficie de fluencia). σ puede quedar fuera de la superficie "
+                f"en este iterado."
+            )
 
     def out_of_plane_stress(self, sigma, state_vars=None) -> float:
         """``σ_zz`` en plane strain a partir de ``σ`` en plano y de ``ε^p_zz``

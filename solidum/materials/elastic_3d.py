@@ -8,6 +8,7 @@ Convención Voigt 6D del proyecto: ``[xx, yy, zz, xy, yz, xz]`` con
 import numpy as np
 
 from solidum.core.material import Material
+from solidum.materials._batch import linear_material_kernel
 from solidum.registry import MaterialRegistry
 
 
@@ -29,6 +30,7 @@ class Elastic3D(Material):
 
     STRAIN_DIM = 6
     STATE_SCHEMA = {}
+    BATCH_KERNEL = linear_material_kernel
 
     def __init__(self, E: float, nu: float, density: float | None = None):
         if E <= 0.0:
@@ -65,3 +67,6 @@ class Elastic3D(Material):
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         return self.C @ strain, self.C, state_vars
+
+    def batch_matrix(self) -> np.ndarray:
+        return self.C
