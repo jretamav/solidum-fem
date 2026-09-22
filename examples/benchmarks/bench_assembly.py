@@ -8,10 +8,13 @@ propuesta de vectorización por lotes:
   de Gauss);
 - ``20 × 20 × 20`` Hex8 con ``VonMises3D`` (8 000 elementos, 64 000 puntos).
 
-Cada malla se ensambla por el camino por elemento (``batch=False``) y por
-el camino por lotes (``batch=True``), y se comprueba que ``K`` y ``F_int``
-coinciden. Las cifras se imprimen como tabla Markdown para pegarlas en
-``docs/STATUS.md``.
+Cada malla se ensambla por el camino por elemento (``batch=False``), por
+el camino por lotes con el kernel serie (``parallel=False``) y con el
+kernel paralelo (``parallel=True``, ``prange`` sobre bloques de
+elementos); se comprueba que ``K`` y ``F_int`` coinciden entre caminos y
+que serie y paralelo son bit a bit iguales. Las cifras se imprimen como
+tabla Markdown para pegarlas en ``docs/STATUS.md``. El número de hilos lo
+fija Numba (``NUMBA_NUM_THREADS``).
 
 Uso::
 
@@ -95,35 +98,44 @@ def time_call(fn, repeat: int) -> float:
     return best
 
 
+MODES = (
+    ("elem", dict(batch=False)),
+    ("batch", dict(batch=True, parallel=False)),
+    ("par", dict(batch=True, parallel=True)),
+)
+
+
 def bench(domain: Domain, label: str, repeat: int, amplitude: float) -> dict:
     U = displacement_field(domain, amplitude)
     out = {"label": label, "n_elem": len(domain.elements), "n_dof": domain.total_dofs}
     results = {}
-    # 1) Ensamblaje desde el mismo estado committed (el inicial): ambos
+    # 1) Ensamblaje desde el mismo estado committed (el inicial): los tres
     #    caminos escriben sólo el trial, así que K y F_int son comparables.
-    for batch in (False, True):
-        asm = Assembler(domain, batch=batch)
+    for mode, kw in MODES:
+        asm = Assembler(domain, **kw)
         asm.assemble_non_linear_system(U)        # calienta JIT y topología
         t_asm = time_call(lambda: asm.assemble_non_linear_system(U), repeat)
         K, F = asm.assemble_non_linear_system(U)
-        results[batch] = [t_asm, None, K, F]
+        results[mode] = [t_asm, None, K, F]
         # Al invalidar, los estados por lotes vuelven a diccionarios y el
         # siguiente Assembler parte del mismo estado.
         asm.invalidate()
-    # 2) Commit (trial → committed) por ambos caminos.
-    for batch in (False, True):
-        asm = Assembler(domain, batch=batch)
+    # 2) Commit (trial → committed) por elemento y por lotes.
+    for mode, kw in MODES[:2]:
+        asm = Assembler(domain, **kw)
         asm.assemble_non_linear_system(U)
-        results[batch][1] = time_call(asm.commit_all_states, repeat)
+        results[mode][1] = time_call(asm.commit_all_states, repeat)
         asm.invalidate()
-    K0, F0 = results[False][2], results[False][3]
-    K1, F1 = results[True][2], results[True][3]
+    K0, F0 = results["elem"][2], results["elem"][3]
+    K1, F1 = results["batch"][2], results["batch"][3]
+    K2, F2 = results["par"][2], results["par"][3]
     dK = abs(K1 - K0).max() / abs(K0).max()
     dF = np.abs(F1 - F0).max() / max(np.abs(F0).max(), 1e-300)
+    bit_a_bit = (np.array_equal(K1.data, K2.data) and np.array_equal(F1, F2))
     out.update(
-        t_elem=results[False][0], t_batch=results[True][0],
-        c_elem=results[False][1], c_batch=results[True][1],
-        dK=dK, dF=dF,
+        t_elem=results["elem"][0], t_batch=results["batch"][0], t_par=results["par"][0],
+        c_elem=results["elem"][1], c_batch=results["batch"][1],
+        dK=dK, dF=dF, bit_a_bit=bit_a_bit,
     )
     return out
 
@@ -146,14 +158,21 @@ def main() -> None:
     rows.append(bench(mesh_hex8(args.n3, mat3d), f"Hex8 {args.n3}³ + VonMises3D",
                       args.repeat, amplitude=5.0e-3))
 
+    import numba
     print()
-    print("| Malla | Elementos | Ensamblaje por elemento | Ensamblaje por lotes | Aceleración | Commit por elemento | Commit por lotes | max Δ K / Δ F_int |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|")
+    print(f"Hilos de Numba: {numba.get_num_threads()} "
+          f"(NUMBA_NUM_THREADS / numba.set_num_threads). "
+          f"Serie y paralelo bit a bit: {all(r['bit_a_bit'] for r in rows)}.")
+    print()
+    print("| Malla | Elementos | Por elemento | Por lotes (serie) | Por lotes (paralelo) | Aceleración serie / paralelo | Commit por elemento | Commit por lotes | max Δ K / Δ F_int |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in rows:
+        n = r['n_elem']
         print(
-            f"| {r['label']} | {r['n_elem']} | {r['t_elem']*1e3:.0f} ms "
-            f"({r['t_elem']/r['n_elem']*1e6:.0f} µs/elem) | {r['t_batch']*1e3:.1f} ms "
-            f"({r['t_batch']/r['n_elem']*1e6:.1f} µs/elem) | ×{r['t_elem']/r['t_batch']:.0f} "
+            f"| {r['label']} | {n} | {r['t_elem']*1e3:.0f} ms "
+            f"({r['t_elem']/n*1e6:.0f} µs/elem) | {r['t_batch']*1e3:.1f} ms "
+            f"({r['t_batch']/n*1e6:.1f} µs/elem) | {r['t_par']*1e3:.1f} ms "
+            f"({r['t_par']/n*1e6:.1f} µs/elem) | ×{r['t_elem']/r['t_batch']:.0f} / ×{r['t_elem']/r['t_par']:.0f} "
             f"| {r['c_elem']*1e3:.0f} ms | {r['c_batch']*1e3:.1f} ms | {r['dK']:.1e} / {r['dF']:.1e} |"
         )
 

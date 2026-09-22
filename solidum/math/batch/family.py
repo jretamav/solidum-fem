@@ -21,9 +21,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from solidum.constants import BATCH_MEMORY_BUDGET_BYTES
+from solidum.constants import BATCH_MEMORY_BUDGET_BYTES, BATCH_PARALLEL_DEFAULT
 from solidum.logging import get_logger
-from solidum.math.batch.kernels import solid_family_kernel
+from solidum.math.batch.kernels import (
+    FLAG_BAD_JACOBIAN,
+    solid_family_kernel,
+    solid_family_kernel_parallel,
+)
 from solidum.math.batch.schema import StateSchema
 from solidum.math.batch.state import BatchedElementState, FamilyState
 
@@ -67,10 +71,13 @@ class Family:
 
     def __init__(self, key: tuple, elements: list, positions: list[int],
                  dof_indices: list[list[int]],
-                 memory_budget: int | None = None):
+                 memory_budget: int | None = None,
+                 parallel: bool | None = None):
         self.key = key
         self.elements = elements
         self.positions = np.asarray(positions, dtype=np.int64)
+        self.parallel = BATCH_PARALLEL_DEFAULT if parallel is None else bool(parallel)
+        self.kernel = solid_family_kernel_parallel if self.parallel else solid_family_kernel
         elem0 = elements[0]
         self.element_class = type(elem0)
         self.material = elem0.material
@@ -120,13 +127,16 @@ class Family:
 
         # Posición del bloque contiguo de esta familia en el vector `data`
         # de la COO cacheada; la fija el Assembler al construir la topología.
+        # El kernel escribe las K_e directamente en ese bloque (vista
+        # ``(n, n_dof, n_dof)`` sobre ``data``): no hay copia ni buffer
+        # aparte para las matrices elementales.
         self.ptr_start: int | None = None
         self.n_entries = N * self.n_dof * self.n_dof
 
+        # El único temporal por trozo es F_e (8·n_dof bytes por elemento).
         budget = BATCH_MEMORY_BUDGET_BYTES if memory_budget is None else int(memory_budget)
-        per_elem = 8 * (self.n_dof * self.n_dof + 2 * self.n_dof)
+        per_elem = 8 * self.n_dof
         self.chunk = int(max(1, min(N, budget // per_elem)))
-        self._K_out = np.zeros((self.chunk, self.n_dof, self.n_dof))
         self._F_out = np.zeros((self.chunk, self.n_dof))
 
         self._adopted = False
@@ -170,8 +180,8 @@ class Family:
 
     def evaluate(self, U: np.ndarray, data: np.ndarray, F_int: np.ndarray) -> None:
         """Evalúa ``K_e`` y ``F_int_e`` de todos los elementos en ``U`` y los
-        vuelca en el vector COO ``data`` y en ``F_int``. Escribe el estado y
-        los esfuerzos **trial** de la familia."""
+        vuelca en el vector COO ``data`` (contiguo, ``float64``) y en
+        ``F_int``. Escribe el estado y los esfuerzos **trial** de la familia."""
         if self.ptr_start is None:
             raise RuntimeError("Family.evaluate: la familia no tiene posición en la COO.")
         N = self.n_elements
@@ -185,9 +195,10 @@ class Family:
             e1 = min(N, e0 + self.chunk)
             n = e1 - e0
             r0, r1 = e0 * n_gp, e1 * n_gp
-            K_out = self._K_out[:n]
+            p0 = self.ptr_start + e0 * n2
+            K_out = data[p0:p0 + n * n2].reshape(n, n_dof, n_dof)
             F_out = self._F_out[:n]
-            solid_family_kernel(
+            self.kernel(
                 self.kin_fn, self.mat_fn,
                 self.X[e0:e1], u[e0:e1], self.gp_points, self.gp_weights,
                 self.scale[e0:e1],
@@ -195,19 +206,39 @@ class Family:
                 self.mat_params, self.C,
                 K_out, F_out, st.sig_trial[r0:r1], st.flags[r0:r1],
             )
-            p0 = self.ptr_start + e0 * n2
-            data[p0:p0 + n * n2] = K_out.reshape(-1)
+            self._raise_if_bad_jacobian(st.flags[r0:r1], e0)
             F_int += np.bincount(
                 self.dof_flat[e0 * n_dof:e1 * n_dof],
                 weights=F_out.reshape(-1), minlength=F_int.shape[0],
             )
-        n_flagged = int(np.count_nonzero(st.flags))
+        self._report_material_flags(st.flags)
+
+    # ------------------------------------------------------------------
+
+    def _raise_if_bad_jacobian(self, flags: np.ndarray, e_offset: int = 0) -> None:
+        """Convierte las marcas ``FLAG_BAD_JACOBIAN`` del kernel en el
+        ``ValueError`` del camino por elemento, con los ids afectados."""
+        bad = np.flatnonzero(flags == FLAG_BAD_JACOBIAN)
+        if bad.size == 0:
+            return
+        elems = sorted({int(e_offset + r // self.n_gp) for r in bad})
+        ids = [self.elements[e].id for e in elems[:10]]
+        more = "" if len(elems) <= 10 else f" (y {len(elems) - 10} más)"
+        raise ValueError(
+            f"Jacobiano negativo o cero en {self.element_class.__name__} "
+            f"id={ids if len(ids) > 1 else ids[0]}{more}. Revisa la conectividad "
+            f"(orden de nodos) o la distorsión del elemento."
+        )
+
+    def _report_material_flags(self, flags: np.ndarray) -> None:
+        n_flagged = int(np.count_nonzero(flags > 0))
         if n_flagged:
             self.material.batch_report(n_flagged)
 
 
 def build_families(elements: list, dof_indices: list[list[int]],
-                   memory_budget: int | None = None) -> tuple[list[Family], list[int]]:
+                   memory_budget: int | None = None,
+                   parallel: bool | None = None) -> tuple[list[Family], list[int]]:
     """Agrupa los elementos batchables por clave de familia.
 
     Returns
@@ -232,7 +263,7 @@ def build_families(elements: list, dof_indices: list[list[int]],
     families = []
     for key, (elems, positions) in groups.items():
         fam = Family(key, elems, positions, [dof_indices[p] for p in positions],
-                     memory_budget=memory_budget)
+                     memory_budget=memory_budget, parallel=parallel)
         families.append(fam)
     if families:
         _log.debug(

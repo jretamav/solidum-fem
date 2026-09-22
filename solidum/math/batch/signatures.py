@@ -18,8 +18,12 @@ Cinemática — ``KIN_SIG``
 - ``coords``: coordenadas de referencia del elemento, ``(n_nodos, d)``.
 - ``B``: matriz deformación–desplazamiento, ``(n_sigma, n_dof)``, que la
   función **rellena por completo** (incluidos los ceros).
-- Devuelve ``det J``. Lanza ``ValueError`` si el jacobiano degenera,
-  exactamente como el camino por elemento.
+- Devuelve ``det J``. **No lanza**: si el jacobiano degenera (mismo
+  chequeo relativo que el camino por elemento) devuelve un valor ``≤ 0``
+  y deja ``B`` sin escribir. El kernel de familia marca el punto y el
+  ensamblador lanza el ``ValueError`` con el id del elemento. La razón
+  es que una excepción dentro de un bucle ``prange`` de Numba se pierde,
+  y el mismo contrato debe servir a las variantes serie y paralela.
 
 Constitutiva — ``MAT_SIG``
 --------------------------
@@ -47,6 +51,11 @@ F64_1 = types.float64[::1]
 F64_2 = types.float64[:, ::1]
 F64_3 = types.float64[:, :, ::1]
 I8_1 = types.int8[::1]
+I32_1 = types.int32[::1]
+I64_1 = types.int64[::1]
+
+# reduce(data, src_ptr, src_idx, out): reducción COO → CSR por mapa inverso.
+REDUCE_SIG = types.void(F64_1, I64_1, I32_1, F64_1)
 
 KIN_SIG = types.float64(F64_1, F64_2, F64_2)
 MAT_SIG = F64_2(F64_1, F64_1, F64_1, F64_1, F64_2, F64_1, F64_2, I8_1)

@@ -112,8 +112,16 @@ J2_DENOM_FLOOR = 1.0e-30
 # camino por elemento sin que el usuario haga nada; poner ``False`` fuerza
 # el camino por elemento en todo el modelo (diagnostico, comparaciones).
 BATCH_ASSEMBLY_DEFAULT = True
-# Presupuesto de memoria (bytes) para los temporales de un trozo de familia
-# (matrices elementales K_e y vectores F_e del trozo). Fija el numero de
-# elementos por trozo: n_c = presupuesto / (8·(n_dof² + 2·n_dof)); con 64 MB
-# un Hex27 (81 DOF) procesa ~1200 elementos por trozo y un Quad4 ~100 000.
+# Presupuesto de memoria (bytes) para los temporales de un trozo de familia.
+# Las matrices elementales se escriben directamente en el vector COO de la
+# topologia cacheada (sin buffer aparte), asi que el unico temporal es el
+# vector F_e del trozo: n_c = presupuesto / (8·n_dof). Con 64 MB, un Hex27
+# (81 DOF) procesa ~100 000 elementos por trozo; en la practica un trozo
+# cubre la familia entera y el limite solo actua en mallas enormes.
 BATCH_MEMORY_BUDGET_BYTES = 64 * 1024 * 1024
+# Variante paralela del kernel de familia (``prange`` sobre bloques de
+# elementos; ADR 0014 §9). ``Assembler(parallel=None)`` lee esta constante.
+# El número de hilos lo gobierna Numba (``numba.set_num_threads`` o la
+# variable de entorno ``NUMBA_NUM_THREADS``); el resultado es bit a bit el
+# mismo con cualquier número de hilos y que la variante serie.
+BATCH_PARALLEL_DEFAULT = True

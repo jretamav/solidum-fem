@@ -20,6 +20,11 @@ Qué se verifica
    y los mismos esfuerzos de post-proceso por ambos caminos.
 5. Dominios mixtos (familias + elementos sin kernel), trozos de memoria
    mínimos, y elementos térmicos (que no llevan ``ElementState``).
+6. Kernel paralelo (``prange`` sobre bloques, ADR 0014 §9): resultado
+   **bit a bit** igual al del kernel serie en todo el barrido, y el
+   jacobiano degenerado se convierte en ``ValueError`` con el id del
+   elemento por las dos variantes (la excepción no puede lanzarse dentro
+   de la región paralela).
 """
 import os
 import sys
@@ -403,6 +408,29 @@ class TestDominiosMixtosYTrozos(unittest.TestCase):
         K0, _ = Assembler(dom, batch=False).assemble_non_linear_system(np.zeros(dom.total_dofs))
         np.testing.assert_allclose(K1.toarray(), K0.toarray(), rtol=0.0, atol=1e-14 * np.abs(K0).max())
 
+    def test_jacobiano_degenerado_lanza_con_el_id_por_ambas_variantes(self):
+        """Un elemento con dos nodos intercambiados (orientación horaria)
+        debe detenerse con ``ValueError`` que nombre al elemento, tanto con
+        el kernel serie como con el paralelo, y el camino por elemento
+        también lanza."""
+        mat = MaterialRegistry.create('Elastic2D', E=2.0e11, nu=0.3)
+        dom, _ = self._quad_mesh(4, 3, mat)
+        malo = dom.elements[7]
+        malo.nodes[1], malo.nodes[3] = malo.nodes[3], malo.nodes[1]
+        dom.generate_equation_numbers()
+        U = np.zeros(dom.total_dofs)
+        for parallel in (False, True):
+            with self.subTest(parallel=parallel):
+                asm = Assembler(dom, batch=True, parallel=parallel)
+                with self.assertRaises(ValueError) as ctx:
+                    asm.assemble_non_linear_system(U)
+                self.assertIn('id=7', str(ctx.exception))
+                with self.assertRaises(ValueError):
+                    asm.assemble_system()
+                asm.invalidate()
+        with self.assertRaises(ValueError):
+            Assembler(dom, batch=False).assemble_non_linear_system(U)
+
     def test_solve_no_lineal_completo_coincide(self):
         """Newton con plasticidad J2 por ambos caminos: mismo U, mismos σ."""
         def run(batch):
@@ -430,6 +458,74 @@ class TestDominiosMixtosYTrozos(unittest.TestCase):
         np.testing.assert_allclose(s1, s0, rtol=1e-10, atol=1e-10 * np.abs(s0).max())
         self.assertGreater(a0.max(), 0.0)
         np.testing.assert_allclose(a1, a0, rtol=1e-10, atol=1e-10 * a0.max())
+
+
+class TestKernelParalelo(unittest.TestCase):
+    """La variante ``prange`` del kernel de familia es una reordenación del
+    trabajo entre hilos, no de la aritmética: cada elemento suma en el
+    mismo orden, así que ``K``, ``F_int``, el estado trial y los esfuerzos
+    deben coincidir **bit a bit** con la variante serie."""
+
+    @staticmethod
+    def _evaluate(dom, U, parallel):
+        asm = Assembler(dom, batch=True, parallel=parallel)
+        K, F = asm.assemble_non_linear_system(U)
+        fam = asm.families[0]
+        out = (K.data.copy(), K.indices.copy(), F.copy(),
+               fam.state.S_trial.copy(), fam.state.sig_trial.copy(), fam.state.flags.copy())
+        asm.invalidate()
+        return out
+
+    def test_bit_a_bit_en_el_barrido(self):
+        cubiertos = 0
+        for nombre in ElementRegistry.names():
+            cls = ElementRegistry.get(nombre)
+            if getattr(cls, 'BATCH_KINEMATICS', None) is None:
+                continue
+            if nombre in ('Quad4Thermal', 'Hex8Thermal'):
+                continue
+            materiales = _materials_for(cls.STRAIN_DIM)
+            for etiqueta in list(materiales)[:1] + [k for k in materiales if 'VonMises' in k or 'Damage' in k][:2]:
+                with self.subTest(elemento=nombre, material=etiqueta):
+                    dom = _domain_of(nombre, materiales[etiqueta], n_copies=5)
+                    U = _field(dom, 1.0e-2)
+                    serie = self._evaluate(dom, U, parallel=False)
+                    paralelo = self._evaluate(dom, U, parallel=True)
+                    for a, b in zip(serie, paralelo):
+                        np.testing.assert_array_equal(a, b)
+                    cubiertos += 1
+        self.assertGreaterEqual(cubiertos, 10 * 2)
+
+    def test_bloques_parciales_y_varios_bloques(self):
+        """Más elementos que ``PARALLEL_BLOCK`` y un último bloque incompleto."""
+        from solidum.math.batch.kernels import PARALLEL_BLOCK
+        mat = MaterialRegistry.create('VonMises2D', E=2.0e11, nu=0.3, sigma_y=2.5e8, H=1.0e9)
+        dom = _domain_of('Quad4', mat, n_copies=3 * PARALLEL_BLOCK + 5)
+        U = _field(dom, 1.0e-2)
+        serie = self._evaluate(dom, U, parallel=False)
+        paralelo = self._evaluate(dom, U, parallel=True)
+        for a, b in zip(serie, paralelo):
+            np.testing.assert_array_equal(a, b)
+        # ...y ambos coinciden con el camino por elemento.
+        ref = Assembler(dom, batch=False)
+        K0, F0 = ref.assemble_non_linear_system(U)
+        asm = Assembler(dom, batch=True, parallel=True)
+        K1, F1 = asm.assemble_non_linear_system(U)
+        _assert_same(K0, F0, K1, F1)
+
+    def test_el_default_lee_la_constante_y_cambiarlo_reconstruye_la_topologia(self):
+        from solidum.constants import BATCH_PARALLEL_DEFAULT
+        mat = MaterialRegistry.create('Elastic2D', E=2.0e11, nu=0.3)
+        dom = _domain_of('Quad4', mat)
+        asm = Assembler(dom)
+        self.assertEqual(asm.parallel, BATCH_PARALLEL_DEFAULT)
+        asm.assemble_system()
+        fam = asm.families[0]
+        self.assertEqual(fam.parallel, BATCH_PARALLEL_DEFAULT)
+        asm.parallel = not BATCH_PARALLEL_DEFAULT
+        asm.assemble_system()
+        self.assertIsNot(asm.families[0], fam)
+        self.assertEqual(asm.families[0].parallel, not BATCH_PARALLEL_DEFAULT)
 
 
 if __name__ == '__main__':

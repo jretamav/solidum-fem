@@ -68,16 +68,22 @@ def _dN_quad4(xi, eta):
 
 
 @njit(cache=True)
-def _grad2d_from_dN(dN_dxi, coords, dN_dx):
+def _grad2d_core(dN_dxi, coords, dN_dx):
     """Núcleo 2D común: de las derivadas naturales ``(2, n)`` y las
     coordenadas ``(n, 2)`` a las derivadas globales ``dN_dx`` ``(2, n)``,
-    escritas in situ. Devuelve ``det J``; lanza ``ValueError`` si el
-    jacobiano degenera (chequeo relativo de Hadamard, ``JACOBIAN_RTOL``).
+    escritas in situ. Devuelve ``det J``.
+
+    **No lanza.** Si el jacobiano degenera (chequeo relativo de Hadamard,
+    ``JACOBIAN_RTOL``) devuelve un valor ``≤ 0`` y deja ``dN_dx`` sin
+    escribir; el llamador decide qué hacer. Es lo que permite usar el
+    mismo núcleo dentro de un bucle ``prange`` (ADR 0014 §9): una
+    excepción lanzada en una región paralela de Numba se pierde sin
+    aviso, así que la señal viaja en el valor de retorno.
 
     Es la única implementación del jacobiano 2D: la usan los elementos
-    mecánicos (vía ``_kin2d_from_dN``) y térmicos, en el camino por
-    elemento y en el camino por lotes (ADR 0014), de modo que ambos
-    caminos ejecutan las mismas operaciones en el mismo orden.
+    mecánicos (vía ``_kin2d_core``) y térmicos, en el camino por elemento
+    y en el camino por lotes, de modo que ambos caminos ejecutan las
+    mismas operaciones en el mismo orden.
     """
     n = dN_dxi.shape[1]
     J00 = 0.0
@@ -92,10 +98,7 @@ def _grad2d_from_dN(dN_dxi, coords, dN_dx):
     detJ = J00 * J11 - J01 * J10
     scale = math.sqrt(J00 * J00 + J01 * J01) * math.sqrt(J10 * J10 + J11 * J11)
     if detJ <= JACOBIAN_RTOL * scale:
-        raise ValueError(
-            "Jacobiano negativo o cero detectado en un elemento 2D. Revisa la "
-            "conectividad (orden antihorario) o la distorsion."
-        )
+        return min(detJ, 0.0)
     i00 = J11 / detJ
     i01 = -J01 / detJ
     i10 = -J10 / detJ
@@ -107,13 +110,29 @@ def _grad2d_from_dN(dN_dxi, coords, dN_dx):
 
 
 @njit(cache=True)
-def _kin2d_from_dN(dN_dxi, coords, B):
+def _grad2d_from_dN(dN_dxi, coords, dN_dx):
+    """``_grad2d_core`` que lanza ``ValueError`` si el jacobiano degenera.
+    Es la versión del camino por elemento."""
+    detJ = _grad2d_core(dN_dxi, coords, dN_dx)
+    if detJ <= 0.0:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en un elemento 2D. Revisa la "
+            "conectividad (orden antihorario) o la distorsion."
+        )
+    return detJ
+
+
+@njit(cache=True)
+def _kin2d_core(dN_dxi, coords, B):
     """Núcleo mecánico 2D: rellena ``B`` ``(3, 2n)`` en Voigt 2D del
     proyecto a partir de las derivadas naturales y devuelve ``det J``.
-    Firma compatible con ``KIN_SIG`` una vez fijadas las derivadas."""
+    Firma compatible con ``KIN_SIG`` una vez fijadas las derivadas. No
+    lanza: con jacobiano degenerado devuelve ``≤ 0`` y no escribe ``B``."""
     n = dN_dxi.shape[1]
     dN_dx = np.empty((2, n), dtype=np.float64)
-    detJ = _grad2d_from_dN(dN_dxi, coords, dN_dx)
+    detJ = _grad2d_core(dN_dxi, coords, dN_dx)
+    if detJ <= 0.0:
+        return detJ
     for i in range(n):
         bx = dN_dx[0, i]
         by = dN_dx[1, i]
@@ -123,6 +142,19 @@ def _kin2d_from_dN(dN_dxi, coords, B):
         B[1, 2 * i + 1] = by
         B[2, 2 * i] = by
         B[2, 2 * i + 1] = bx
+    return detJ
+
+
+@njit(cache=True)
+def _kin2d_from_dN(dN_dxi, coords, B):
+    """``_kin2d_core`` que lanza ``ValueError`` si el jacobiano degenera.
+    Es la versión del camino por elemento."""
+    detJ = _kin2d_core(dN_dxi, coords, B)
+    if detJ <= 0.0:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en un elemento 2D. Revisa la "
+            "conectividad (orden antihorario) o la distorsion."
+        )
     return detJ
 
 
@@ -137,7 +169,7 @@ def _compute_kinematics(xi, eta, coords):
 @njit(cache=True)
 def _batch_kin_quad4(pt, coords, B):
     """``BATCH_KINEMATICS`` del Quad4 (firma ``KIN_SIG``, ADR 0014)."""
-    return _kin2d_from_dN(_dN_quad4(pt[0], pt[1]), coords, B)
+    return _kin2d_core(_dN_quad4(pt[0], pt[1]), coords, B)
 
 
 @njit(cache=True)
@@ -162,7 +194,7 @@ def _compute_gradient_kinematics_quad4(xi, eta, coords):
 @njit(cache=True)
 def _batch_grad_quad4(pt, coords, B):
     """``BATCH_KINEMATICS`` del Quad4Thermal: ``B`` es ``(2, 4)``."""
-    return _grad2d_from_dN(_dN_quad4(pt[0], pt[1]), coords, B)
+    return _grad2d_core(_dN_quad4(pt[0], pt[1]), coords, B)
 
 
 @njit(cache=True)
@@ -223,7 +255,14 @@ def _compute_kinematics_tri3(coords):
 @njit(cache=True)
 def _batch_kin_tri3(pt, coords, B):
     """``BATCH_KINEMATICS`` del Tri3 (el punto natural no interviene)."""
-    return _kin2d_from_dN(_DN_TRI3, coords, B)
+    return _kin2d_core(_DN_TRI3, coords, B)
+
+
+def _shape_functions_tri3(xi, eta):
+    """Funciones de forma del Tri3 en coordenadas de área ``(ξ, η)``:
+    ``N = [1 − ξ − η, ξ, η]``. Sólo las usa el post-proceso por lotes
+    (``BATCH_SHAPE_FUNCTIONS``) para situar los puntos de Gauss."""
+    return np.array([1.0 - xi - eta, xi, eta])
 
 
 # ---------------------------------------------------------------------------
@@ -344,17 +383,17 @@ def _kinematics_higher_order(grad_fn, xi, eta, coords, n_nodes):
 
 @njit(cache=True)
 def _batch_kin_quad8(pt, coords, B):
-    return _kin2d_from_dN(_dN_quad8(pt[0], pt[1]), coords, B)
+    return _kin2d_core(_dN_quad8(pt[0], pt[1]), coords, B)
 
 
 @njit(cache=True)
 def _batch_kin_quad9(pt, coords, B):
-    return _kin2d_from_dN(_dN_quad9(pt[0], pt[1]), coords, B)
+    return _kin2d_core(_dN_quad9(pt[0], pt[1]), coords, B)
 
 
 @njit(cache=True)
 def _batch_kin_tri6(pt, coords, B):
-    return _kin2d_from_dN(_dN_tri6(pt[0], pt[1]), coords, B)
+    return _kin2d_core(_dN_tri6(pt[0], pt[1]), coords, B)
 
 
 def _expand_scalar_mass(M_scalar: np.ndarray) -> np.ndarray:

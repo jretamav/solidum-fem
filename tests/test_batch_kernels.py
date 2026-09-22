@@ -240,14 +240,28 @@ class TestCinematicaDeElementos(unittest.TestCase):
                     kin(pts[g], coords, B)
                     np.testing.assert_allclose(B @ u_e, gs['strain'][g], rtol=1e-13, atol=1e-18)
 
-    def test_jacobiano_invertido_lanza_valueerror(self):
-        elem = _construir('Quad4')
-        kin = type(elem).BATCH_KINEMATICS
-        pts, _ = elem.batch_quadrature()
-        coords = elem.batch_reference_coordinates(2)[::-1].copy()   # orden horario
-        B = np.zeros((3, 8))
-        with self.assertRaises(ValueError):
-            kin(pts[0], coords, B)
+    def test_jacobiano_invertido_devuelve_detj_no_positivo_sin_lanzar(self):
+        """Contrato ``KIN_SIG``: la cinemática por lotes **no lanza** (una
+        excepción dentro de ``prange`` se perdería); señala el jacobiano
+        degenerado devolviendo ``det J ≤ 0`` y sin escribir ``B``. Quien
+        lanza es el ensamblador (``test_batch_assembly``)."""
+        for nombre, dim, n_sig in (('Quad4', 2, 3), ('Hex8', 3, 6), ('Tet10', 3, 6), ('Tri6', 2, 3)):
+            with self.subTest(elemento=nombre):
+                elem = _construir(nombre)
+                kin = type(elem).BATCH_KINEMATICS
+                pts, _ = elem.batch_quadrature()
+                coords = elem.batch_reference_coordinates(dim)
+                # Reflejar el elemento invierte la orientación (det J < 0).
+                coords = coords.copy()
+                coords[:, 0] *= -1.0
+                B = np.full((n_sig, dim * len(elem.nodes)), 7.0)
+                detJ = kin(pts[0], coords, B)
+                self.assertLessEqual(detJ, 0.0)
+                self.assertTrue(np.all(B == 7.0))    # B intacta
+                # La versión del camino por elemento sí lanza.
+                with self.assertRaises(ValueError):
+                    elem.get_coordinate_matrix = lambda ndim=dim, c=coords: c
+                    elem.compute_gauss_state(np.zeros(elem.get_global_dof_indices().__len__()))
 
 
 if __name__ == '__main__':

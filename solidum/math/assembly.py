@@ -5,11 +5,12 @@ import numpy as np
 import scipy.sparse as sp
 
 from solidum.bc.constraints import ConstraintSet
-from solidum.constants import BATCH_ASSEMBLY_DEFAULT
+from solidum.constants import BATCH_ASSEMBLY_DEFAULT, BATCH_PARALLEL_DEFAULT
 from solidum.core.domain import Domain
 from solidum.core.element import Element
 from solidum.logging import get_logger
 from solidum.math.batch.family import Family, build_families
+from solidum.math.batch.kernels import coo_to_csr_reduce, coo_to_csr_reduce_parallel
 
 _log = get_logger("assembly")
 
@@ -47,10 +48,17 @@ class Assembler:
     batch_memory_budget
         Presupuesto (bytes) para los temporales de un trozo de familia;
         ``None`` ⇒ ``BATCH_MEMORY_BUDGET_BYTES``.
+    parallel
+        Variante del kernel de familia: ``True`` reparte los elementos de
+        cada trozo entre los hilos de Numba (``prange``), ``False`` usa la
+        variante serie; ``None`` lee ``BATCH_PARALLEL_DEFAULT``. El
+        resultado es bit a bit el mismo. El número de hilos lo fija Numba
+        (``numba.set_num_threads`` / ``NUMBA_NUM_THREADS``).
     """
 
     def __init__(self, domain: Domain, batch: bool | None = None,
-                 batch_memory_budget: int | None = None):
+                 batch_memory_budget: int | None = None,
+                 parallel: bool | None = None):
         self.domain = domain
         self.ndof = 0
         self.K_global = None
@@ -58,6 +66,7 @@ class Assembler:
 
         self.batch = BATCH_ASSEMBLY_DEFAULT if batch is None else bool(batch)
         self.batch_memory_budget = batch_memory_budget
+        self.parallel = BATCH_PARALLEL_DEFAULT if parallel is None else bool(parallel)
 
         # Variables para caché de topología COO
         self._topology_built = False
@@ -122,7 +131,8 @@ class Assembler:
         self._release_families()
         if self.batch:
             self._families, self._loose = build_families(
-                elements, self._elem_dof_indices, self.batch_memory_budget)
+                elements, self._elem_dof_indices, self.batch_memory_budget,
+                parallel=self.parallel)
         else:
             self._families, self._loose = [], list(range(len(elements)))
 
@@ -158,14 +168,20 @@ class Assembler:
         self._M_lumping = None
 
     def _build_csr_map(self) -> None:
-        """Estructura CSR de ``K`` y mapa COO → CSR, calculados una vez.
+        """Estructura CSR de ``K`` y mapa inverso COO → CSR, calculados una vez.
 
         ``scipy.sparse.coo_matrix(...).tocsr()`` ordena y suma duplicados en
         **cada** ensamblaje (unos 115 ms para 8 000 Hex8, más que el propio
         kernel elástico por lotes). Con el patrón fijo, basta calcular una
-        vez la posición CSR de cada entrada COO y acumular con
-        ``np.bincount``. Las filas y columnas COO se descartan después: el
-        mapa (4 B por entrada) ocupa la mitad que ellas.
+        vez qué entradas COO alimentan cada entrada CSR (``_csr_src_ptr``,
+        ``_csr_src_idx``: la lista de fuentes de cada posición CSR, en orden
+        creciente de índice COO) y reducir con un kernel compilado, serie o
+        paralelo según ``parallel``. La suma por posición sigue el mismo
+        orden que ``np.bincount``, así que el resultado es idéntico bit a
+        bit; la diferencia es que cada posición CSR se calcula de forma
+        independiente y se reparte entre hilos. Las filas y columnas COO se
+        descartan después: el mapa inverso (4 B por entrada más 8 B por
+        entrada CSR) ocupa menos que ellas.
         """
         n = self._total_entries
         ndof = self.ndof
@@ -182,13 +198,27 @@ class Assembler:
         csr_keys = (np.repeat(np.arange(ndof, dtype=np.int64), np.diff(self._csr_indptr))
                     * ndof + self._csr_indices)
         coo_keys = rows.astype(np.int64) * ndof + cols
-        self._csr_map = np.searchsorted(csr_keys, coo_keys).astype(np.int32)
+        csr_map = np.searchsorted(csr_keys, coo_keys)
+        # Mapa inverso: fuentes COO de cada posición CSR, estables en el
+        # orden COO (mismo orden de acumulación que ``np.bincount``).
+        order = np.argsort(csr_map, kind="stable")
+        counts = np.bincount(csr_map, minlength=self._nnz)
+        self._csr_src_ptr = np.zeros(self._nnz + 1, dtype=np.int64)
+        np.cumsum(counts, out=self._csr_src_ptr[1:])
+        self._csr_src_idx = np.ascontiguousarray(order, dtype=np.int32)
         self._coo_rows = None
         self._coo_cols = None
+        # Vector COO reutilizado en cada ensamblaje: todas sus entradas se
+        # sobreescriben (bloques completos por familia y por elemento), así
+        # que no hace falta ponerlo a cero.
+        self._data = np.empty(n, dtype=np.float64)
 
     def _to_csr(self, data: np.ndarray) -> sp.csr_matrix:
         """Matriz CSR a partir del vector de entradas COO (patrón cacheado)."""
-        values = np.bincount(self._csr_map, weights=data, minlength=self._nnz)
+        values = np.empty(self._nnz, dtype=np.float64)
+        reduce = coo_to_csr_reduce_parallel if self.parallel else coo_to_csr_reduce
+        reduce(np.ascontiguousarray(data, dtype=np.float64),
+               self._csr_src_ptr, self._csr_src_idx, values)
         return sp.csr_matrix(
             (values, self._csr_indices, self._csr_indptr),
             shape=(self.ndof, self.ndof),
@@ -209,7 +239,7 @@ class Assembler:
         return list(self._families)
 
     def _current_topology_key(self) -> tuple:
-        return (len(self.domain.elements), self.domain.total_dofs, self.batch)
+        return (len(self.domain.elements), self.domain.total_dofs, self.batch, self.parallel)
 
     def _ensure_topology(self) -> None:
         """Construye la topología COO si falta o si el modelo cambió de
@@ -245,7 +275,7 @@ class Assembler:
         self._ensure_topology()
 
         self.F_global = np.zeros(self.ndof)
-        data = np.zeros(self._total_entries, dtype=np.float64)
+        data = self._data
 
         if self._families:
             U0 = np.zeros(self.ndof)
@@ -268,7 +298,7 @@ class Assembler:
         self._ensure_topology()
 
         F_int_global = np.zeros(self.ndof)
-        data = np.zeros(self._total_entries, dtype=np.float64)
+        data = self._data
         U_current = np.asarray(U_current, dtype=np.float64)
 
         for fam in self._families:
@@ -489,7 +519,7 @@ class Assembler:
                 )
             raise ValueError("\n".join(parts))
 
-        data = np.zeros(self._total_entries, dtype=np.float64)
+        data = self._data
         for i, element in enumerate(self.domain.elements.values()):
             M_e = element.compute_mass_matrix(lumping=lumping)
             n_idx = len(self._elem_dof_indices[i])

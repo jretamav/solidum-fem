@@ -103,11 +103,15 @@ def _dN_hex8(xi: float, eta: float, zeta: float) -> np.ndarray:
 
 
 @njit(cache=True)
-def _grad3d_from_dN(dN_dxi, coords, dN_dx):
+def _grad3d_core(dN_dxi, coords, dN_dx):
     """Núcleo 3D común: de las derivadas naturales ``(3, n)`` y las
     coordenadas ``(n, 3)`` a las derivadas globales ``dN_dx`` ``(3, n)``,
-    escritas in situ. Devuelve ``det J``; lanza ``ValueError`` si el
-    jacobiano degenera (chequeo relativo de Hadamard, ``JACOBIAN_RTOL``).
+    escritas in situ. Devuelve ``det J``.
+
+    **No lanza.** Si el jacobiano degenera (chequeo relativo de Hadamard,
+    ``JACOBIAN_RTOL``) devuelve un valor ``≤ 0`` y deja ``dN_dx`` sin
+    escribir (ver ``_grad2d_core``: la señal viaja en el retorno para que
+    el núcleo sirva dentro de un bucle ``prange``).
 
     Única implementación del jacobiano 3×3 (inversa por cofactores):
     la comparten los sólidos 3D lineales y de orden superior, el
@@ -138,10 +142,7 @@ def _grad3d_from_dN(dN_dxi, coords, dN_dx):
              * math.sqrt(J10 * J10 + J11 * J11 + J12 * J12)
              * math.sqrt(J20 * J20 + J21 * J21 + J22 * J22))
     if detJ <= JACOBIAN_RTOL * scale:
-        raise ValueError(
-            "Jacobiano negativo o cero detectado en un elemento 3D. Revisa la "
-            "conectividad (orden VTK, volumen positivo) o la distorsión."
-        )
+        return min(detJ, 0.0)
 
     # Inversa 3×3 por cofactores.
     i00 = (J11 * J22 - J12 * J21) / detJ
@@ -165,12 +166,28 @@ def _grad3d_from_dN(dN_dxi, coords, dN_dx):
 
 
 @njit(cache=True)
-def _kin3d_from_dN(dN_dxi, coords, B):
+def _grad3d_from_dN(dN_dxi, coords, dN_dx):
+    """``_grad3d_core`` que lanza ``ValueError`` si el jacobiano degenera.
+    Es la versión del camino por elemento."""
+    detJ = _grad3d_core(dN_dxi, coords, dN_dx)
+    if detJ <= 0.0:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en un elemento 3D. Revisa la "
+            "conectividad (orden VTK, volumen positivo) o la distorsión."
+        )
+    return detJ
+
+
+@njit(cache=True)
+def _kin3d_core(dN_dxi, coords, B):
     """Núcleo mecánico 3D: rellena ``B`` ``(6, 3n)`` en Voigt 6D del
-    proyecto ``[xx, yy, zz, xy, yz, xz]`` y devuelve ``det J``."""
+    proyecto ``[xx, yy, zz, xy, yz, xz]`` y devuelve ``det J``. No lanza:
+    con jacobiano degenerado devuelve ``≤ 0`` y no escribe ``B``."""
     n = dN_dxi.shape[1]
     dN_dx = np.empty((3, n), dtype=np.float64)
-    detJ = _grad3d_from_dN(dN_dxi, coords, dN_dx)
+    detJ = _grad3d_core(dN_dxi, coords, dN_dx)
+    if detJ <= 0.0:
+        return detJ
     for a in range(6):
         for j in range(3 * n):
             B[a, j] = 0.0
@@ -195,6 +212,19 @@ def _kin3d_from_dN(dN_dxi, coords, B):
 
 
 @njit(cache=True)
+def _kin3d_from_dN(dN_dxi, coords, B):
+    """``_kin3d_core`` que lanza ``ValueError`` si el jacobiano degenera.
+    Es la versión del camino por elemento."""
+    detJ = _kin3d_core(dN_dxi, coords, B)
+    if detJ <= 0.0:
+        raise ValueError(
+            "Jacobiano negativo o cero detectado en un elemento 3D. Revisa la "
+            "conectividad (orden VTK, volumen positivo) o la distorsión."
+        )
+    return detJ
+
+
+@njit(cache=True)
 def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
                              coords: np.ndarray):
     """Calcula B (6×24) y det(J) del Hex8 en (ξ, η, ζ).
@@ -211,7 +241,7 @@ def _compute_kinematics_hex8(xi: float, eta: float, zeta: float,
 @njit(cache=True)
 def _batch_kin_hex8(pt, coords, B):
     """``BATCH_KINEMATICS`` del Hex8 (firma ``KIN_SIG``, ADR 0014)."""
-    return _kin3d_from_dN(_dN_hex8(pt[0], pt[1], pt[2]), coords, B)
+    return _kin3d_core(_dN_hex8(pt[0], pt[1], pt[2]), coords, B)
 
 
 @njit(cache=True)
@@ -237,7 +267,7 @@ def _compute_gradient_kinematics_hex8(xi: float, eta: float, zeta: float,
 @njit(cache=True)
 def _batch_grad_hex8(pt, coords, B):
     """``BATCH_KINEMATICS`` del Hex8Thermal: ``B`` es ``(3, 8)``."""
-    return _grad3d_from_dN(_dN_hex8(pt[0], pt[1], pt[2]), coords, B)
+    return _grad3d_core(_dN_hex8(pt[0], pt[1], pt[2]), coords, B)
 
 
 @njit(cache=True)
@@ -311,7 +341,7 @@ def _compute_kinematics_tet4(coords: np.ndarray):
 @njit(cache=True)
 def _batch_kin_tet4(pt, coords, B):
     """``BATCH_KINEMATICS`` del Tet4 (el punto natural no interviene)."""
-    return _kin3d_from_dN(_DN_TET4, coords, B)
+    return _kin3d_core(_DN_TET4, coords, B)
 
 
 # ---------------------------------------------------------------------------
@@ -689,17 +719,17 @@ def _kinematics_higher_order_3d(grad_fn, xi: float, eta: float, zeta: float,
 
 @njit(cache=True)
 def _batch_kin_hex20(pt, coords, B):
-    return _kin3d_from_dN(_dN_hex20(pt[0], pt[1], pt[2]), coords, B)
+    return _kin3d_core(_dN_hex20(pt[0], pt[1], pt[2]), coords, B)
 
 
 @njit(cache=True)
 def _batch_kin_hex27(pt, coords, B):
-    return _kin3d_from_dN(_dN_hex27(pt[0], pt[1], pt[2]), coords, B)
+    return _kin3d_core(_dN_hex27(pt[0], pt[1], pt[2]), coords, B)
 
 
 @njit(cache=True)
 def _batch_kin_tet10(pt, coords, B):
-    return _kin3d_from_dN(_dN_tet10(pt[0], pt[1], pt[2]), coords, B)
+    return _kin3d_core(_dN_tet10(pt[0], pt[1], pt[2]), coords, B)
 
 
 # ---------------------------------------------------------------------------
