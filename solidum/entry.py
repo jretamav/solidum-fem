@@ -117,7 +117,27 @@ def run(
 
     U = _invoke_solve(solver, F_applied, step_callback)
 
-    result = build_solve_result(domain, assembler, U, F_applied)
+    # Metadatos que el solver expone tras resolver (ADR 0002). Un solver sin
+    # ellos (LinearSolver) es un paso único convergido con λ = 1:
+    # - ``lambda_final``: factor de carga alcanzado. El arc-length puede
+    #   detenerse antes de ``max_lambda`` (o terminar en ``max_lambda ≠ 1``),
+    #   y las cargas que realmente ve el sistema son ``λ_final · F_applied``;
+    #   con ellas las reacciones ``R = F_int − F`` son coherentes.
+    # - ``reached_max_lambda`` → ``converged``; ``steps_done`` → ``num_steps``.
+    lambda_final = float(getattr(solver, "lambda_final", 1.0))
+    result = build_solve_result(
+        domain, assembler, U, F_applied * lambda_final,
+        converged=bool(getattr(solver, "reached_max_lambda", True)),
+        num_steps=int(getattr(solver, "steps_done", 1)),
+    )
+    # El estado final de un análisis estático es, por definición, convergido:
+    # ``build_solve_result`` acaba de ensamblar en ``U`` (estado trial
+    # coherente con la solución) y aquí se promueve a committed. Para los
+    # solvers incrementales es un no-op en valor (ya comitearon al converger
+    # el último paso); para ``LinearSolver``, que no comitea, deja
+    # ``state.stresses`` y ``state.vars`` consistentes con ``U`` para todo
+    # consumidor de post-proceso.
+    assembler.commit_all_states()
     domain.last_result = result
     return result
 

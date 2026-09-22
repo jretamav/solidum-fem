@@ -277,9 +277,12 @@ class TestLineSearch(unittest.TestCase):
         R_norm_current = float(np.linalg.norm(F_ext_step[free_dofs]))
 
         solver = NonlinearSolver(asm, line_search=True)
-        alpha, R_after, _ = solver._armijo_step(
+        # Devuelve (alpha, K, F_int) del punto aceptado; el residuo se
+        # reconstruye desde F_int (un ensamblaje por iteracion).
+        alpha, _, F_int_after = solver._armijo_step(
             U_iter, delta_U, R_norm_current, F_ext_step, free_dofs,
         )
+        R_after = float(np.linalg.norm((F_ext_step - F_int_after)[free_dofs]))
 
         self.assertLess(alpha, 1.0,
             f"Line search no reaccionó al paso exagerado: α={alpha}. "

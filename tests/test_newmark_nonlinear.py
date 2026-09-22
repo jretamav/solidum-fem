@@ -255,9 +255,15 @@ class TestSingularTangentDiagnostic(unittest.TestCase):
     def _make_solver_args(self):
         mat = Elastic1D(E=E_1DOF, density=RHO_1DOF)
         dom = _build_1dof_oscillator(mat)
+        # Estado inicial NO trivial: con u0 = 0 y sin carga el sistema esta
+        # en equilibrio, el Newton lo detecta al evaluar el residuo antes de
+        # resolver (un ensamblaje por iteracion) y nunca llama al backend
+        # algebraico, asi que el mock no tendria a que interceptar.
+        u0 = np.zeros(dom.total_dofs)
+        u0[_free_dof(dom)] = 1.0
         return dict(
             assembler=Assembler(dom),
-            t_end=0.05, dt=0.01,
+            t_end=0.05, dt=0.01, u0=u0,
             linear_algebra="lu",  # forzar LU para que el mock intercepte
         )
 

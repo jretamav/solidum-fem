@@ -1,12 +1,28 @@
 # solidum_fem/solidum/math/solvers/nonlinear.py
 """``NonlinearSolver`` — Newton-Raphson incremental con paso adaptativo.
+
+Estructura del bucle de Newton (un ensamblaje por iteración)
+-------------------------------------------------------------
+Cada iteración ensambla **una sola vez** en el iterado corriente ``U_k``:
+de ese ensamblaje salen la tangente ``K_t(U_k)`` para el sistema lineal,
+el residuo ``R(U_k)`` para el criterio de convergencia y el estado
+*trial* de los elementos. La convergencia se evalúa **al inicio** de la
+iteración con el par ``(‖R(U_k)‖, ‖δU_{k−1}‖)``: si se cumple, el estado
+trial que acaba de dejar el ensamblaje es exactamente el de ``U_k`` y se
+comitea sin reensamblar. Si no, se resuelve ``δU_k`` y se avanza.
+
+La alternativa —ensamblar en ``U_k`` para resolver y otra vez en
+``U_k + δU_k`` para evaluar el residuo— duplicaba el coste por iteración
+(auditoría 2026-09-22) para producir la misma secuencia de decisiones,
+sólo que desplazada una iteración. Con line search activo (opt-in) el
+backtracking ensambla en cada ``α`` probado y devuelve ``K`` y ``F_int``
+del punto aceptado, así que tampoco hay reensamblaje redundante.
 """
 from __future__ import annotations
 
 import numpy as np
 
 from solidum.constants import (
-    LINE_SEARCH_C1,
     LINE_SEARCH_MAX_BACKTRACKS,
     LINE_SEARCH_RHO,
     NEWTON_ADAPTIVE_GROWTH_FACTOR,
@@ -24,11 +40,7 @@ from solidum.math.solvers._shared import (
     _log,
     domain_is_symmetric,
 )
-from solidum.math.solvers.diagnostics import (
-    SolverDivergedError,
-    UnknownDivergenceError,
-    classify_divergence,
-)
+from solidum.math.solvers.diagnostics import classify_divergence
 from solidum.registry import SolverRegistry
 
 
@@ -76,6 +88,12 @@ class NonlinearSolver:
         self._linalg = None
         self._is_pd = True
         self._frozen_factor = None  # FactorizedSolver | None
+        # Metadatos del último análisis (los lee ``solidum.run``): pasos
+        # convergidos y factor de carga alcanzado (siempre 1.0 si ``solve``
+        # retorna; en caso contrario lanza una excepción tipada).
+        self.steps_done: int = 0
+        self.lambda_final: float = 0.0
+        self.reached_max_lambda: bool = False
 
     def _make_linalg(self, ndof: int):
         props = StiffnessProperties(
@@ -120,13 +138,15 @@ class NonlinearSolver:
                      free_dofs):
         """Line search por descenso no monótono (ADR 0011, variante GLL).
 
-        Devuelve ``(α, R_after_norm, F_int_after)`` donde ``α ∈ (0, 1]`` es
-        el primer factor que satisface ``‖R(U + α·δU)‖ ≤ ‖R(U)‖`` (la
-        condición Grippo-Lampariello-Lucidi 1986 simplificada — descenso
-        no monótono). Más permisiva que Armijo puro: acepta ``α = 1``
-        cuando Newton baja el residuo, **sin** exigir suficiente
-        decrecimiento al modo Wolfe. Solo hace backtracking cuando el paso
-        completo de Newton produce ``R`` mayor.
+        Devuelve ``(α, K_after, F_int_after)`` donde ``α ∈ (0, 1]`` es el
+        primer factor que satisface ``‖R(U + α·δU)‖ ≤ ‖R(U)‖`` (condición
+        Grippo-Lampariello-Lucidi 1986 simplificada — descenso no
+        monótono) y ``K_after``, ``F_int_after`` son la tangente y las
+        fuerzas internas **ensambladas en el punto aceptado**, para que el
+        bucle exterior las reutilice sin reensamblar. Más permisiva que
+        Armijo puro: acepta ``α = 1`` cuando Newton baja el residuo, sin
+        exigir suficiente decrecimiento al modo Wolfe. Solo hace
+        backtracking cuando el paso completo de Newton produce ``R`` mayor.
 
         Justificación: Armijo puro con ``c₁ > 0`` puede rechazar pasos de
         Newton correctos en problemas FEM no lineales (daño activo,
@@ -140,13 +160,10 @@ class NonlinearSolver:
         control externo (oscillation, bisección del paso).
 
         Tras esta llamada, el ``state.vars_trial`` de los elementos
-        corresponde al ensamblaje en ``U_iter + α·δU``: el bucle exterior
-        evalúa la convergencia coherentemente y ``commit_all_states()``
-        promueve el trial coherente con el U efectivamente avanzado.
+        corresponde al ensamblaje en ``U_iter + α·δU``.
 
-        Cuando ``self.line_search=False`` ensambla una vez con α=1 para
-        que el state trial quede coherente con el U avanzado (semántica
-        equivalente al código pre-ADR 0011).
+        Cuando ``self.line_search=False`` ensambla una vez con α=1 (misma
+        semántica que el paso de Newton estándar).
         """
         rho = LINE_SEARCH_RHO
         max_bt = LINE_SEARCH_MAX_BACKTRACKS
@@ -155,27 +172,21 @@ class NonlinearSolver:
         # legibilidad y por si se introduce una variante Wolfe en futuro.
 
         if not self.line_search:
-            U_trial = U_iter + delta_U
-            _, F_int_trial = self.assembler.assemble_non_linear_system(U_trial)
-            R_trial = F_ext_step - F_int_trial
-            R_trial_norm = float(np.linalg.norm(R_trial[free_dofs]))
-            return 1.0, R_trial_norm, F_int_trial
+            K_trial, F_int_trial = self.assembler.assemble_non_linear_system(U_iter + delta_U)
+            return 1.0, K_trial, F_int_trial
 
         alpha = 1.0
-        F_int_trial = None
-        R_trial_norm = float("inf")
-
+        K_trial = F_int_trial = None
         for _ in range(max_bt + 1):
             U_trial = U_iter + alpha * delta_U
-            _, F_int_trial = self.assembler.assemble_non_linear_system(U_trial)
+            K_trial, F_int_trial = self.assembler.assemble_non_linear_system(U_trial)
             R_trial = F_ext_step - F_int_trial
             R_trial_norm = float(np.linalg.norm(R_trial[free_dofs]))
-
             if R_trial_norm <= R_norm_current:
-                return alpha, R_trial_norm, F_int_trial
+                return alpha, K_trial, F_int_trial
             alpha *= rho
 
-        return alpha, R_trial_norm, F_int_trial
+        return alpha, K_trial, F_int_trial
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -195,6 +206,9 @@ class NonlinearSolver:
         delta_lambda = 1.0 / self.num_steps
         step = 0
         n_bisections = 0  # contador de bisecciones globales del paso (ADR 0011)
+        self.steps_done = 0
+        self.lambda_final = 0.0
+        self.reached_max_lambda = False
 
         while load_factor < target_load - NEWTON_LOAD_FACTOR_EPSILON:
             step += 1
@@ -225,13 +239,13 @@ class NonlinearSolver:
             last_residual = float("inf")
             last_delta = 0.0
 
-            for iteration in range(self.max_iter):
-                K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-                R = F_ext_step - F_int_global
+            # Ensamblaje inicial del paso en U_current (estado committed).
+            K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
+            delta_U_norm = 0.0  # no hay incremento previo en la iteración 0
+            n_solves = 0
 
-                K_red, R_red, T_op, g_inc = self.assembler.reduce(
-                    K_global, R, U_current=U_iter, load_factor=next_load_factor
-                )
+            for iteration in range(self.max_iter + 1):
+                R = F_ext_step - F_int_global
 
                 # Calibración del criterio en el primer ensamblaje de la corrida
                 # (ADR 0007). Las escalas se derivan del estado inicial real:
@@ -248,59 +262,51 @@ class NonlinearSolver:
                     disp_scale = force_scale / K_diag
                     self.convergence.calibrate(force_scale, disp_scale)
 
-                try:
-                    delta_U_red = self._solve_reduced(K_red, R_red, iteration=iteration)
-                except RuntimeError:
-                    _log.error("Matriz Singular detectada.")
-                    singular_tangent_seen = True
-                    break
+                # Criterio dual fuerza + desplazamiento (ADR 0007) sobre el
+                # iterado corriente: residuo de ESTE ensamblaje y norma del
+                # incremento que lo produjo. Residuo en DOFs libres.
+                #
+                # No se evalúa en la iteración 0: el iterado inicial del paso
+                # es el convergido del paso anterior y aún no incorpora el
+                # incremento de Dirichlet ``λ·g`` del paso nuevo (entra por
+                # ``reduce`` en la primera resolución). Con control en
+                # desplazamiento su residuo en DOFs libres es nulo y el
+                # criterio daría convergencia sin haber movido el apoyo.
+                # Todo paso hace, por tanto, al menos una resolución.
+                R_norm = float(np.linalg.norm(R[free_dofs]))
+                state = None
+                if iteration > 0:
+                    ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global))
+                    state = self.convergence.evaluate(
+                        residual_norm=R_norm,
+                        ref_force=ref_force,
+                        delta_u_norm=delta_U_norm,
+                        u_norm=np.linalg.norm(U_iter),
+                    )
+                    residual_history.append(R_norm)
+                    delta_history.append(delta_U_norm)
+                    last_residual = R_norm
+                    last_delta = delta_U_norm
 
-                delta_U = self.assembler.expand(delta_U_red, T_op, g_inc)
+                    alpha_tag = f" | α={last_alpha:.3f}" if last_alpha < 1.0 else ""
+                    _log.info(
+                        f"  Iteración {n_solves:2d} | "
+                        f"R/tol_F: {state.ratio_force:.4e} | "
+                        f"dU/tol_d: {state.ratio_disp:.4e}{alpha_tag}"
+                    )
 
-                # Line search Armijo con backtracking (ADR 0011). Devuelve también
-                # el ‖R‖ y F_int post-actualización, garantizando que el state
-                # trial queda coherente con el U avanzado para la evaluación de
-                # convergencia y el commit posterior.
-                R_norm_before = float(np.linalg.norm(R[free_dofs]))
-                alpha, R_norm_after, F_int_after = self._armijo_step(
-                    U_iter, delta_U, R_norm_before, F_ext_step, free_dofs,
-                )
-                last_alpha = alpha
-                U_iter = U_iter + alpha * delta_U
-
-                # Criterio dual fuerza + desplazamiento (ADR 0007), evaluado en
-                # el U_iter actualizado (R_norm_after corresponde al state trial
-                # coherente con este U). Residuo en DOFs libres.
-                ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_after))
-                delta_U_norm = float(np.linalg.norm(alpha * delta_U))
-                state = self.convergence.evaluate(
-                    residual_norm=R_norm_after,
-                    ref_force=ref_force,
-                    delta_u_norm=delta_U_norm,
-                    u_norm=np.linalg.norm(U_iter),
-                )
-                residual_history.append(R_norm_after)
-                delta_history.append(delta_U_norm)
-                last_residual = R_norm_after
-                last_delta = delta_U_norm
-
-                alpha_tag = f" | α={alpha:.3f}" if alpha < 1.0 else ""
-                _log.info(
-                    f"  Iteración {iteration+1:2d} | "
-                    f"R/tol_F: {state.ratio_force:.4e} | "
-                    f"dU/tol_d: {state.ratio_disp:.4e}{alpha_tag}"
-                )
-
-                if state.converged:
+                if state is not None and state.converged:
                     _log.info("  -> CONVERGENCIA ALCANZADA.")
+                    # El estado trial es el del ensamblaje en U_iter: coherente.
                     self.assembler.commit_all_states()
 
                     U_current = U_iter
                     load_factor = next_load_factor
                     converged = True
+                    self.steps_done += 1
 
                     if (self.adaptive
-                            and iteration < NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD
+                            and n_solves < NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD
                             and delta_lambda < (1.0 / self.num_steps)):
                         delta_lambda = min(
                             delta_lambda * NEWTON_ADAPTIVE_GROWTH_FACTOR,
@@ -312,6 +318,33 @@ class NonlinearSolver:
                         step_callback(step, U_current, load_factor)
 
                     break
+
+                if iteration == self.max_iter:
+                    break  # presupuesto de resoluciones agotado
+
+                K_red, R_red, T_op, g_inc = self.assembler.reduce(
+                    K_global, R, U_current=U_iter, load_factor=next_load_factor
+                )
+
+                try:
+                    delta_U_red = self._solve_reduced(K_red, R_red, iteration=iteration)
+                except RuntimeError:
+                    _log.error("Matriz Singular detectada.")
+                    singular_tangent_seen = True
+                    break
+                n_solves += 1
+
+                delta_U = self.assembler.expand(delta_U_red, T_op, g_inc)
+
+                # Paso de Newton (con line search opcional, ADR 0011). El
+                # helper ensambla en el punto aceptado y devuelve K y F_int
+                # de ese punto: es el único ensamblaje de la iteración.
+                alpha, K_global, F_int_global = self._armijo_step(
+                    U_iter, delta_U, R_norm, F_ext_step, free_dofs,
+                )
+                last_alpha = alpha
+                U_iter = U_iter + alpha * delta_U
+                delta_U_norm = float(np.linalg.norm(alpha * delta_U))
 
             # Cierre de paso (converja o no): la K_t cambia con U_current,
             # así que la factorización congelada deja de ser válida para el
@@ -356,4 +389,6 @@ class NonlinearSolver:
                         ),
                     )
 
+        self.lambda_final = load_factor
+        self.reached_max_lambda = True
         return U_current

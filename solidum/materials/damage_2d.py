@@ -139,3 +139,9 @@ class IsotropicDamage2D(Material):
 
         new_state = {'kappa': kappa_new, 'damage': d}
         return sigma, C_tan, new_state
+
+    def out_of_plane_stress(self, sigma, state_vars=None) -> float:
+        """Delegado al elástico base: ``σ = (1−d)·C_e·ε`` escala todas las
+        componentes por igual, así que ``σ_zz = ν·(σ_xx + σ_yy)`` sigue
+        valiendo en plane strain con cualquier nivel de daño."""
+        return self.elastic_base.out_of_plane_stress(sigma, state_vars)

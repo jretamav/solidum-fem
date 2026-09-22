@@ -37,7 +37,19 @@ class LUSolver:
     name = "lu"
 
     def solve(self, K: sp.spmatrix, b: np.ndarray) -> np.ndarray:
-        return spla.spsolve(K, b)
+        # ``spsolve`` ante una matriz singular emite ``MatrixRankWarning`` y
+        # devuelve ``NaN`` sin lanzar; ``splu`` sí lanza ``RuntimeError``
+        # ("Factor is exactly singular"), que es lo que los solvers no
+        # lineales capturan para diagnosticar tangente singular (ADR 0011).
+        # Una singularidad numérica (pivotes ~1e-300) tampoco lanza, así que
+        # se vigila además que la solución sea finita.
+        x = self.factorize(K).solve(b)
+        if not np.all(np.isfinite(x)):
+            raise RuntimeError(
+                "LUSolver: la solución no es finita (matriz singular o casi "
+                "singular)."
+            )
+        return x
 
     def factorize(self, K: sp.spmatrix) -> LUFactorized:
         K_csc = K.tocsc() if not sp.isspmatrix_csc(K) else K

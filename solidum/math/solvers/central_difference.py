@@ -61,7 +61,7 @@ import scipy.sparse as sp
 
 from solidum.constants import LUMPED_MASS_OFF_DIAGONAL_RTOL
 from solidum.math.damping import resolve_rayleigh_config
-from solidum.math.solvers._shared import _log
+from solidum.math.solvers._shared import _log, number_of_steps
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
 
@@ -165,10 +165,12 @@ class CentralDifferenceSolver:
         de invertir un bloque 6×6 nodal cada paso anula la ventaja del
         explícito frente a Newmark — se rechaza con ``ValueError``.
         """
-        M_dense = M_red.toarray() if sp.issparse(M_red) else np.asarray(M_red)
-        diag = np.diag(M_dense)
-        off = M_dense - np.diag(diag)
-        off_max = float(np.max(np.abs(off))) if off.size else 0.0
+        # Sin densificar: ``M_red`` puede tener decenas de miles de DOFs en
+        # propagación de ondas y ``toarray()`` costaría O(n²) de memoria.
+        M_sp = sp.csr_matrix(M_red)
+        diag = np.asarray(M_sp.diagonal()).ravel()
+        off = M_sp - sp.diags(diag, format="csr")
+        off_max = float(np.max(np.abs(off.data))) if off.nnz else 0.0
         diag_max = float(np.max(np.abs(diag))) if diag.size else 1.0
         if off_max > LUMPED_MASS_OFF_DIAGONAL_RTOL * max(diag_max, 1.0):
             raise ValueError(
@@ -239,7 +241,7 @@ class CentralDifferenceSolver:
         v_half = v_free + half_dt * a_free
 
         # Historiales.
-        n_steps = int(np.ceil(self.t_end / dt))
+        n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
         u_history = np.zeros((ndof, n_steps + 1))
         udot_history = np.zeros((ndof, n_steps + 1))
@@ -251,7 +253,7 @@ class CentralDifferenceSolver:
         # Escala inicial para detección de divergencia.
         initial_scale = max(
             float(np.linalg.norm(u_free)),
-            float(np.linalg.norm(F0_red)) / max(float(np.max(np.diag(M_red.toarray()))), 1.0),
+            float(np.linalg.norm(F0_red)) / max(float(np.max(M_red.diagonal())), 1.0),
             1.0,
         )
         threshold = self.divergence_threshold * initial_scale
@@ -343,4 +345,11 @@ class CentralDifferenceSolver:
         # Reconstruir u_global con apoyos prescritos y recalcular F_int.
         u_global = T @ u_free + g
         _K_t, F_int_global = self.assembler.assemble_non_linear_system(u_global)
+        # En un esquema explícito ``u_global`` es la configuración definitiva
+        # del instante (no un iterado tentativo): el estado trial que deja el
+        # ensamblaje es el estado convergido y se promueve a committed aquí
+        # mismo. Sin este commit los materiales con historia (plasticidad,
+        # daño) reevaluarían cada paso desde el estado virgen y el solver
+        # integraría un material elástico no lineal sin disipación.
+        self.assembler.commit_all_states()
         return T.T @ F_int_global - F_dir

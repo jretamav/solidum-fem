@@ -44,3 +44,9 @@ class Elastic2D(Material):
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         return self.C @ strain, self.C, state_vars
+
+    def out_of_plane_stress(self, sigma, state_vars=None) -> float:
+        """``σ_zz = ν·(σ_xx + σ_yy)`` en plane strain; ``0`` en plane stress."""
+        if self.hypothesis != 'plane_strain':
+            return 0.0
+        return float(self.nu * (sigma[0] + sigma[1]))

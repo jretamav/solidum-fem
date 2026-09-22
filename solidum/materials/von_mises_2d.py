@@ -20,6 +20,7 @@ from numba import njit
 
 from solidum.constants import J2_DENOM_FLOOR, J2_PLANE_STRESS_MAX_LOCAL_ITER
 from solidum.core.material import Material
+from solidum.materials._plane_strain import sigma_zz_plane_strain
 from solidum.registry import MaterialRegistry
 
 
@@ -441,3 +442,13 @@ class VonMises2D(Material):
 
         new_state = {'eps_p': eps_p_new, 'alpha': alpha_new}
         return sigma, C_alg, new_state
+
+    def out_of_plane_stress(self, sigma, state_vars=None) -> float:
+        """``σ_zz`` en plane strain a partir de ``σ`` en plano y de ``ε^p_zz``
+        (ver ``solidum.materials._plane_strain``); ``0`` en plane stress."""
+        if self.hypothesis != 'plane_strain':
+            return 0.0
+        eps_p_zz = 0.0 if state_vars is None else float(
+            state_vars.get('eps_p', np.zeros(4))[2]
+        )
+        return sigma_zz_plane_strain(sigma[0], sigma[1], eps_p_zz, self.K, self.G)

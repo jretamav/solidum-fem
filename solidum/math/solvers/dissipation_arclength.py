@@ -190,7 +190,9 @@ class DissipationArcLengthSolver(ArcLengthSolver):
 
         cs = self.assembler.constraint_set
         n_free = ndof - len(cs)
+        free_dofs = cs.free_dofs(ndof)
         self._linalg = self._make_linalg(n_free)
+        steps_done = 0
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
@@ -304,85 +306,30 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             lambda_iter += dlambda
             dU_iter = dlambda * du_t
             U_iter += dU_iter
+            dU_update = dU_iter.copy()  # incremento que produjo el iterado corriente
+            n_solves = 0
 
             # --- 2. CORRECTOR ITERATIVO ---
-            for iteration in range(self.max_iter):
+            # Un ensamblaje por iteración y convergencia evaluada ANTES de
+            # resolver (misma estructura que el padre): al converger, el
+            # estado trial es el del ensamblaje en U_iter y se comitea
+            # coherente con (U_current, lambda_curr).
+            for iteration in range(self.max_iter + 1):
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = lambda_iter * F_ext_ref - F_int_global
-
-                K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
-                    K_global, F_ext_ref.copy(),
-                )
-                K_red, R_red, T_R, g_R = self.assembler.reduce(
-                    K_global, R, U_current=U_iter, load_factor=lambda_iter,
-                )
-                try:
-                    du_R_red = self._solve(K_red, R_red)
-                    du_t_red = self._solve(K_t_red, F_t_red)
-                except RuntimeError:
-                    _log.error("Matriz singular en corrector.")
-                    break
-                du_R = self.assembler.expand(du_R_red, T_R, g_R)
-                du_t = self.assembler.expand(du_t_red, T_t, g_t)
-
-                if final_step:
-                    # Cierre exacto: lambda fijo, corrección puramente Newton.
-                    ddlambda = 0.0
-                    dU_update = du_R
-                elif mode_predictor == "cylindrical":
-                    # Restricción cuadrática (idéntica al padre).
-                    dU_new = dU_iter + du_R
-                    a = np.dot(du_t, du_t)
-                    b = 2.0 * np.dot(dU_new, du_t)
-                    c = np.dot(dU_new, dU_new) - dl**2
-                    det = b**2 - 4.0 * a * c
-                    if det < 0:
-                        _log.error("Raíces imaginarias en cilíndrico.")
-                        break
-                    ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
-                    ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
-                    theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
-                    theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
-                    ddlambda = ddl1 if theta1 > theta2 else ddl2
-                    dU_update = du_R + ddlambda * du_t
-                    dU_iter = dU_new + ddlambda * du_t
-                else:  # mode_predictor == "dissipation"
-                    # Restricción lineal Gutiérrez en ddλ:
-                    #   g(ΔU + du_R + ddλ·du_t, Δλ_pre + ddλ) = τ
-                    # ⇒ ddλ = (τ − g_partial) / α
-                    d_lambda_pre = lambda_iter - lambda_curr
-                    alpha = 0.5 * (
-                        lambda_curr * float(F_ext_ref @ du_t)
-                        - float(F_ext_ref @ U_current)
-                    )
-                    g_partial = 0.5 * (
-                        lambda_curr * float(F_ext_ref @ (dU_iter + du_R))
-                        - d_lambda_pre * float(F_ext_ref @ U_current)
-                    )
-                    if abs(alpha) < ZERO_TOL:
-                        _log.error("α ≈ 0 en corrector de disipación. Aborto del paso.")
-                        break
-                    ddlambda = (self._tau - g_partial) / alpha
-                    dU_update = du_R + ddlambda * du_t
-                    dU_iter = dU_iter + dU_update
-
-                lambda_iter += ddlambda
-                if final_step:
-                    dU_iter = dU_iter + dU_update
-                U_iter = U_current + dU_iter
 
                 ref_force = max(
                     np.linalg.norm(F_ext_ref) * abs(lambda_iter),
                     np.linalg.norm(F_int_global),
                 )
                 state = self.convergence.evaluate(
-                    residual_norm=np.linalg.norm(R[cs.free_dofs(ndof)]),
+                    residual_norm=np.linalg.norm(R[free_dofs]),
                     ref_force=ref_force,
                     delta_u_norm=np.linalg.norm(dU_update),
                     u_norm=np.linalg.norm(U_iter),
                 )
                 _log.info(
-                    f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | "
+                    f"  Iter. {n_solves:2d} | lam={lambda_iter:.4f} | "
                     f"R/tol_F: {state.ratio_force:.4e} | "
                     f"dU/tol_d: {state.ratio_disp:.4e}"
                 )
@@ -427,30 +374,95 @@ class DissipationArcLengthSolver(ArcLengthSolver):
 
                     # Adaptatividad según el modo del **siguiente** paso.
                     if self._mode == "cylindrical":
-                        if iteration < self.dl_grow_iter_threshold:
+                        if n_solves < self.dl_grow_iter_threshold:
                             dl = min(
                                 dl * self.dl_grow_factor,
                                 self.dl * self.dl_max_factor,
                             )
-                        elif iteration > self.dl_shrink_iter_threshold:
+                        elif n_solves > self.dl_shrink_iter_threshold:
                             dl *= self.dl_shrink_factor
                     else:
-                        if iteration < self.tau_grow_iter_threshold:
+                        if n_solves < self.tau_grow_iter_threshold:
                             self._tau = min(
                                 self._tau * self.tau_grow_factor,
                                 self.initial_tau * self.tau_max_factor,
                             )
-                        elif iteration > self.tau_shrink_iter_threshold:
+                        elif n_solves > self.tau_shrink_iter_threshold:
                             self._tau *= self.tau_shrink_factor
 
                     U_current = U_iter
                     lambda_curr = lambda_iter
                     delta_U_step = dU_iter
                     converged = True
+                    steps_done += 1
 
                     if step_callback is not None:
                         step_callback(step, U_current, lambda_curr)
                     break
+
+                if iteration == self.max_iter:
+                    break  # presupuesto de resoluciones agotado
+
+                K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
+                    K_global, F_ext_ref.copy(),
+                )
+                K_red, R_red, T_R, g_R = self.assembler.reduce(
+                    K_global, R, U_current=U_iter, load_factor=lambda_iter,
+                )
+                try:
+                    du_R_red = self._solve(K_red, R_red)
+                    du_t_red = self._solve(K_t_red, F_t_red)
+                except RuntimeError:
+                    _log.error("Matriz singular en corrector.")
+                    break
+                n_solves += 1
+                du_R = self.assembler.expand(du_R_red, T_R, g_R)
+                du_t = self.assembler.expand(du_t_red, T_t, g_t)
+
+                if final_step:
+                    # Cierre exacto: lambda fijo, corrección puramente Newton.
+                    ddlambda = 0.0
+                    dU_update = du_R
+                    dU_iter = dU_iter + dU_update
+                elif mode_predictor == "cylindrical":
+                    # Restricción cuadrática (idéntica al padre).
+                    dU_new = dU_iter + du_R
+                    a = np.dot(du_t, du_t)
+                    b = 2.0 * np.dot(dU_new, du_t)
+                    c = np.dot(dU_new, dU_new) - dl**2
+                    det = b**2 - 4.0 * a * c
+                    if det < 0:
+                        _log.error("Raíces imaginarias en cilíndrico.")
+                        break
+                    ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
+                    ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
+                    theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
+                    theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
+                    ddlambda = ddl1 if theta1 > theta2 else ddl2
+                    dU_update = du_R + ddlambda * du_t
+                    dU_iter = dU_new + ddlambda * du_t
+                else:  # mode_predictor == "dissipation"
+                    # Restricción lineal Gutiérrez en ddλ:
+                    #   g(ΔU + du_R + ddλ·du_t, Δλ_pre + ddλ) = τ
+                    # ⇒ ddλ = (τ − g_partial) / α
+                    d_lambda_pre = lambda_iter - lambda_curr
+                    alpha = 0.5 * (
+                        lambda_curr * float(F_ext_ref @ du_t)
+                        - float(F_ext_ref @ U_current)
+                    )
+                    g_partial = 0.5 * (
+                        lambda_curr * float(F_ext_ref @ (dU_iter + du_R))
+                        - d_lambda_pre * float(F_ext_ref @ U_current)
+                    )
+                    if abs(alpha) < ZERO_TOL:
+                        _log.error("α ≈ 0 en corrector de disipación. Aborto del paso.")
+                        break
+                    ddlambda = (self._tau - g_partial) / alpha
+                    dU_update = du_R + ddlambda * du_t
+                    dU_iter = dU_iter + dU_update
+
+                lambda_iter += ddlambda
+                U_iter = U_current + dU_iter
 
             if not converged:
                 # Bisección por modo del paso fallido.
@@ -477,4 +489,5 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                             "Aborto irreparable."
                         )
 
+        self._finish(lambda_curr, steps_done)
         return U_current

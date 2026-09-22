@@ -106,17 +106,21 @@ class ModalSolver:
 
         modes = T @ phi_red
 
-        if omegas.size:
+        n_found = int(omegas.size)
+        if n_found:
             _log.info(
-                f"  -> {self.n_modes} modo(s) calculado(s). "
+                f"  -> {n_found} modo(s) calculado(s). "
                 f"ω₁={omegas[0]:.4e} rad/s ({frequencies_hz[0]:.4e} Hz)"
             )
 
+        # ``converged`` refleja lo que reporta ARPACK: ``False`` si se detuvo
+        # con menos modos de los pedidos (``n_modes`` es entonces el número
+        # realmente devuelto, no el solicitado).
         return ModalResult(
             frequencies_rad=omegas,
             frequencies_hz=frequencies_hz,
             periods=periods,
             modes=np.asarray(modes),
-            n_modes=self.n_modes,
-            converged=True,
+            n_modes=n_found,
+            converged=bool(eig.last_converged),
         )

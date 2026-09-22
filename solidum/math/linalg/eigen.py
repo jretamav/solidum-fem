@@ -16,6 +16,16 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
+from solidum.logging import get_logger
+
+_log = get_logger("linalg.eigen")
+
+# Shift negativo relativo a la escala espectral ``tr(K)/tr(M)`` usado como
+# reintento cuando ``K`` es singular (modos rígidos, free-free) y el shift
+# pedido es exactamente 0: ``K − σM`` con ``σ < 0`` es definida positiva
+# y factoriza siempre; los modos rígidos salen como ``λ ≈ 0``.
+_SINGULAR_RETRY_SHIFT_RTOL = 1.0e-6
+
 
 class EigenSolver:
     """Solver de autovalor generalizado simétrico, real y positivo (semi)definido.
@@ -49,6 +59,9 @@ class EigenSolver:
         self.sigma = float(sigma)
         self.which = str(which)
         self.tol = float(tol)
+        # ``False`` si ARPACK se detuvo sin converger todos los modos pedidos
+        # (se devuelven los que convergieron). Lo consulta ``ModalSolver``.
+        self.last_converged: bool = True
 
     def solve(
         self,
@@ -85,14 +98,46 @@ class EigenSolver:
                 f"1 ≤ n_modes < {n} (= número de DOFs libres)."
             )
 
-        eigenvalues, eigenvectors = spla.eigsh(
-            K,
-            k=n_modes,
-            M=M,
-            sigma=self.sigma,
-            which=self.which,
-            tol=self.tol,
-        )
+        self.last_converged = True
+        sigma = self.sigma
+        try:
+            eigenvalues, eigenvectors = self._eigsh(K, M, n_modes, sigma)
+        except RuntimeError as exc:
+            # ``sigma = 0`` sobre ``K`` singular (estructura free-free con modos
+            # rígidos): SuperLU no puede factorizar ``K − 0·M``. Que ocurra o
+            # no dependía del redondeo de cada malla. Se reintenta con un
+            # shift negativo pequeño, que deja el problema bien planteado y
+            # conserva los modos de menor frecuencia como objetivo.
+            if sigma != 0.0:
+                raise
+            tr_K = float(np.sum(np.abs(K.diagonal())))
+            tr_M = float(np.sum(np.abs(M.diagonal())))
+            sigma = -_SINGULAR_RETRY_SHIFT_RTOL * (tr_K / tr_M if tr_M > 0.0 else 1.0)
+            _log.warning(
+                f"EigenSolver: K − σM singular con σ=0 ({exc}); probable "
+                f"estructura con modos de cuerpo rígido. Reintentando con "
+                f"σ={sigma:.3e}."
+            )
+            eigenvalues, eigenvectors = self._eigsh(K, M, n_modes, sigma)
 
         order = np.argsort(eigenvalues)
         return eigenvalues[order], eigenvectors[:, order]
+
+    def _eigsh(self, K, M, n_modes, sigma):
+        try:
+            return spla.eigsh(
+                K, k=n_modes, M=M, sigma=sigma, which=self.which, tol=self.tol,
+            )
+        except spla.ArpackNoConvergence as exc:
+            n_ok = int(np.size(exc.eigenvalues))
+            if n_ok == 0:
+                raise RuntimeError(
+                    "EigenSolver: ARPACK no convergió ningún modo. Revise la "
+                    "matriz de masa (¿DOF sin masa?) o aumente la tolerancia."
+                ) from exc
+            _log.warning(
+                f"EigenSolver: ARPACK convergió sólo {n_ok} de {n_modes} modos "
+                f"pedidos; se devuelven los convergidos (converged=False)."
+            )
+            self.last_converged = False
+            return np.asarray(exc.eigenvalues), np.asarray(exc.eigenvectors)

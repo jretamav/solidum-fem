@@ -1,5 +1,24 @@
 # solidum_fem/solidum/math/solvers/arclength.py
 """``ArcLengthSolver`` — método de longitud de arco cilíndrico (Crisfield).
+
+Estructura del corrector (un ensamblaje por iteración, estado coherente)
+------------------------------------------------------------------------
+Cada iteración del corrector ensambla una sola vez en el iterado corriente
+``U_k`` y evalúa la convergencia **antes** de resolver, con el par
+``(‖R(U_k)‖, ‖δU_{k−1}‖)``. Al converger, el estado trial de los elementos
+es exactamente el del ensamblaje en ``U_k`` y se comitea junto con
+``U_current = U_k`` y ``λ_curr = λ_k``. La versión anterior evaluaba el
+residuo en ``U_k`` pero almacenaba ``U_{k+1}``: el estado committed iba
+un iterado por detrás del desplazamiento guardado (auditoría 2026-09-22).
+
+Fin del trazado
+---------------
+El bucle termina al alcanzar ``max_lambda`` o al agotar ``max_steps``. En
+el segundo caso el solver **no** lanza excepción —trazar "hasta donde se
+pueda" es un uso legítimo del arc-length— pero lo registra con un
+``WARNING`` y lo expone en ``reached_max_lambda``/``lambda_final`` para
+que ``solidum.run`` pueda reflejarlo en ``SolveResult.converged`` y escalar
+``F_applied`` por el factor de carga realmente alcanzado.
 """
 from __future__ import annotations
 
@@ -25,6 +44,16 @@ class ArcLengthSolver:
     Solucionador no lineal con Método de Longitud de Arco Cilíndrico (Crisfield).
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
+
+    Atributos de estado tras ``solve``
+    ----------------------------------
+    lambda_final : float
+        Factor de carga del último paso convergido.
+    reached_max_lambda : bool
+        ``True`` si el trazado alcanzó ``max_lambda``; ``False`` si se detuvo
+        antes por agotar ``max_steps``.
+    steps_done : int
+        Número de pasos convergidos.
     """
 
     PIPELINE_KIND = "static"
@@ -51,6 +80,10 @@ class ArcLengthSolver:
         self.dl_shrink_iter_threshold = dl_shrink_iter_threshold
         self.linear_algebra = linear_algebra
         self._linalg = None
+        # Estado del último trazado (ver docstring de la clase).
+        self.lambda_final: float = 0.0
+        self.reached_max_lambda: bool = False
+        self.steps_done: int = 0
 
     def _make_linalg(self, ndof: int):
         # Régimen postcrítico: K_t puede ser indefinida → no asumir SPD.
@@ -90,6 +123,19 @@ class ArcLengthSolver:
         """
         return None
 
+    def _finish(self, lambda_curr: float, step: int) -> None:
+        """Registra el estado final del trazado y avisa si quedó incompleto."""
+        self.lambda_final = float(lambda_curr)
+        self.steps_done = int(step)
+        self.reached_max_lambda = lambda_curr >= self.max_lambda - ZERO_TOL
+        if not self.reached_max_lambda:
+            _log.warning(
+                f"{type(self).__name__}: trazado detenido en λ={lambda_curr:.4f} "
+                f"< max_lambda={self.max_lambda:.4f} tras agotar max_steps="
+                f"{self.max_steps}. El resultado corresponde al último paso "
+                f"convergido; aumente max_steps o initial_dl para completar."
+            )
+
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
         ndof = domain.total_dofs
@@ -97,6 +143,7 @@ class ArcLengthSolver:
 
         lambda_curr = 0.0
         step = 0
+        steps_done = 0
         dl = self.dl
 
         delta_U_step = np.zeros(ndof)  # Historial del incremento del paso para guiar el arco
@@ -105,6 +152,7 @@ class ArcLengthSolver:
 
         cs = self.assembler.constraint_set
         n_free = ndof - len(cs)
+        free_dofs = cs.free_dofs(ndof)
         self._linalg = self._make_linalg(n_free)
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
@@ -162,11 +210,51 @@ class ArcLengthSolver:
             lambda_iter += dlambda
             dU_iter = dlambda * du_t
             U_iter += dU_iter
+            dU_update = dU_iter.copy()  # incremento que produjo el iterado corriente
+            n_solves = 0
 
             # --- 2. CORRECTOR ITERATIVO ---
-            for iteration in range(self.max_iter):
+            for iteration in range(self.max_iter + 1):
                 K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
                 R = lambda_iter * F_ext_ref - F_int_global
+
+                ref_force = max(
+                    np.linalg.norm(F_ext_ref) * abs(lambda_iter),
+                    np.linalg.norm(F_int_global),
+                )
+                state = self.convergence.evaluate(
+                    residual_norm=np.linalg.norm(R[free_dofs]),
+                    ref_force=ref_force,
+                    delta_u_norm=np.linalg.norm(dU_update),
+                    u_norm=np.linalg.norm(U_iter),
+                )
+                _log.info(
+                    f"  Iter. {n_solves:2d} | lam={lambda_iter:.4f} | "
+                    f"R/tol_F: {state.ratio_force:.4e} | "
+                    f"dU/tol_d: {state.ratio_disp:.4e}"
+                )
+
+                if state.converged:
+                    _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
+                    # Estado trial del ensamblaje en U_iter: coherente con lo guardado.
+                    self.assembler.commit_all_states()
+
+                    U_current = U_iter; lambda_curr = lambda_iter; delta_U_step = dU_iter
+                    converged = True
+                    steps_done += 1
+                    # Auto-ajuste de longitud de arco
+                    if n_solves < self.dl_grow_iter_threshold:
+                        dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
+                    elif n_solves > self.dl_shrink_iter_threshold:
+                        dl *= self.dl_shrink_factor
+
+                    if step_callback:
+                        step_callback(step, U_current, lambda_curr)
+
+                    break
+
+                if iteration == self.max_iter:
+                    break  # presupuesto de resoluciones agotado
 
                 K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
                 K_red, R_red, T_R, g_R = self.assembler.reduce(
@@ -179,6 +267,7 @@ class ArcLengthSolver:
                 except RuntimeError:
                     _log.error("Matriz Singular en corrector.")
                     break
+                n_solves += 1
 
                 du_R = self.assembler.expand(du_R_red, T_R, g_R)
                 du_t = self.assembler.expand(du_t_red, T_t, g_t)
@@ -187,6 +276,7 @@ class ArcLengthSolver:
                     # Último paso: lambda fijo, solo corrección de desplazamientos (Newton-Raphson puro)
                     ddlambda = 0.0
                     dU_update = du_R
+                    dU_iter = dU_iter + dU_update
                 else:
                     # Ecuación cuadrática de restricción de Crisfield
                     dU_new = dU_iter + du_R
@@ -211,43 +301,7 @@ class ArcLengthSolver:
 
                 # Actualizar iteraciones
                 lambda_iter += ddlambda
-                if final_step:
-                    dU_iter = dU_iter + dU_update
-                # En la rama no-final `dU_iter` ya quedó actualizado arriba.
                 U_iter = U_current + dU_iter
-
-                ref_force = max(
-                    np.linalg.norm(F_ext_ref) * abs(lambda_iter),
-                    np.linalg.norm(F_int_global),
-                )
-                state = self.convergence.evaluate(
-                    residual_norm=np.linalg.norm(R[cs.free_dofs(ndof)]),
-                    ref_force=ref_force,
-                    delta_u_norm=np.linalg.norm(dU_update),
-                    u_norm=np.linalg.norm(U_iter),
-                )
-                _log.info(
-                    f"  Iter. {iteration+1:2d} | lam={lambda_iter:.4f} | "
-                    f"R/tol_F: {state.ratio_force:.4e} | "
-                    f"dU/tol_d: {state.ratio_disp:.4e}"
-                )
-
-                if state.converged:
-                    _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
-                    self.assembler.commit_all_states()
-
-                    U_current = U_iter; lambda_curr = lambda_iter; delta_U_step = dU_iter
-                    converged = True
-                    # Auto-ajuste de longitud de arco
-                    if iteration < self.dl_grow_iter_threshold:
-                        dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
-                    elif iteration > self.dl_shrink_iter_threshold:
-                        dl *= self.dl_shrink_factor
-
-                    if step_callback:
-                        step_callback(step, U_current, lambda_curr)
-
-                    break
 
             if not converged:
                 dl *= 0.5
@@ -255,4 +309,5 @@ class ArcLengthSolver:
                 if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
                     raise RuntimeError("Arc-Length fracasó irreparablemente.")
 
+        self._finish(lambda_curr, steps_done)
         return U_current

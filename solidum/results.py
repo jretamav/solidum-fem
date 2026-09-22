@@ -460,7 +460,9 @@ class SolveResult:
     F_applied
         Cargas aplicadas tal como las ve el sistema: nodales del usuario más
         equivalentes de elemento (distribuidas, térmicas) ya ensambladas a
-        nodos. Shape ``(n_dof,)``. No incluye reacciones.
+        nodos, **escaladas por el factor de carga final** del solver
+        (``λ_final · F_ref`` en arc-length; ``λ = 1`` en los demás). Shape
+        ``(n_dof,)``. No incluye reacciones.
     R
         Reacciones globales, shape ``(n_dof,)``. Ceros en DOF libres; valor no
         nulo solo en DOF restringidos. Se expone redundantemente con
@@ -472,11 +474,13 @@ class SolveResult:
         ``{elem_id: ElementForces}`` con las fuerzas internas de cada elemento
         que implementa ``internal_forces``. Elementos sólidos pueden omitirse.
     converged
-        ``True`` si el solver alcanzó el criterio de convergencia. Para solvers
-        lineales, siempre ``True`` tras una resolución exitosa.
+        ``True`` si el solver completó el análisis: siempre para el lineal y
+        el Newton-Raphson (que lanzan excepción si no convergen); ``False``
+        en arc-length cuando el trazado se detuvo por ``max_steps`` antes de
+        alcanzar ``max_lambda``.
     num_steps
-        Número de pasos/iteraciones realizados. ``1`` para solver lineal; ``N``
-        para Newton-Raphson / arc-length.
+        Número de pasos convergidos. ``1`` para solver lineal; ``N`` para
+        Newton-Raphson / arc-length.
     """
 
     U: np.ndarray

@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import solidum
 from solidum.utils.yaml_parser import YamlParser
 from solidum.math.assembly import Assembler
-from solidum.utils.vtk_exporter import VtkExporter
+from solidum.utils.vtk_exporter import VtkExporter, element_average_stress, von_mises
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def _make_step_callback(mesh, F_ext, ruta_base: str, base_dir: str,
             result[nid] = entry
         return result
 
-    def _collect_elem_data() -> dict:
+    def _collect_elem_data(U_step) -> dict:
         result = {}
         for eid in text_elems:
             elem = mesh.elements.get(eid)
@@ -96,12 +96,9 @@ def _make_step_callback(mesh, F_ext, ruta_base: str, base_dir: str,
                 continue
             entry = {}
             if not text_e_vars or "Von_Mises" in text_e_vars:
-                vm = 0.0
-                if hasattr(elem, 'stresses'):
-                    s_avg = np.mean(elem.stresses, axis=0)
-                    sx, sy, txy = s_avg[0], s_avg[1], s_avg[2]
-                    vm = np.sqrt(sx**2 + sy**2 - sx*sy + 3.0*txy**2)
-                entry['Von_Mises'] = vm
+                # Mismo cálculo que el exportador VTK: σ promedio evaluado en
+                # U_step (incluye σ_zz en plane strain) e invariante 3D.
+                entry['Von_Mises'] = von_mises(element_average_stress(elem, U_step))
             if not text_e_vars or "Internal_State" in text_e_vars:
                 state_val = 0.0
                 state_vars_list = None
@@ -134,7 +131,7 @@ def _make_step_callback(mesh, F_ext, ruta_base: str, base_dir: str,
                 'step': step,
                 'factor': factor,
                 'nodes': _collect_node_data(U_step, factor),
-                'elems': _collect_elem_data(),
+                'elems': _collect_elem_data(U_step),
             })
 
     return exportar_paso

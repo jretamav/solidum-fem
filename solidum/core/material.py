@@ -145,3 +145,23 @@ class Material(ABC):
         actúa como piso para estados donde ``escala → 0``.
         """
         return f <= self.admissibility_tol(state_vars)
+
+    # ------------------------------------------------------------------
+    # Componente fuera del plano (post-proceso de materiales 2D)
+    # ------------------------------------------------------------------
+
+    def out_of_plane_stress(self, sigma, state_vars=None) -> float:
+        """``σ_zz`` asociada a un estado Voigt 2D ``σ = [σ_xx, σ_yy, σ_xy]``.
+
+        Sólo tiene contenido en materiales 2D bajo *plane strain*, donde
+        ``σ_zz ≠ 0`` pero no forma parte del vector que devuelve
+        ``compute_state``. Los consumidores de post-proceso (invariantes 3D
+        como Von Mises en el exportador VTK) la necesitan para no calcular
+        un invariante de plane stress sobre un estado de plane strain.
+
+        El default ``0.0`` cubre plane stress, los materiales 1D y los 3D
+        (cuyo ``σ_zz`` ya viaja en el vector Voigt 6D). Las subclases 2D
+        con hipótesis plane strain lo sobreescriben con su propia
+        constitutiva; ver ``solidum.materials._plane_strain``.
+        """
+        return 0.0

@@ -39,7 +39,11 @@ def _build_nonsymmetric_matrix(n: int = 50) -> sp.csr_matrix:
 
 
 class TestLUSolverEquivalence(unittest.TestCase):
-    """LUSolver debe reproducir exactamente el comportamiento previo (spsolve)."""
+    """LUSolver debe reproducir el resultado de ``spsolve`` a tolerancia de
+    redondeo. Desde la auditoria 2026-09-22 resuelve via ``splu`` (que lanza
+    ``RuntimeError`` ante una matriz singular en vez de devolver NaN en
+    silencio), asi que la coincidencia ya no es bit a bit: cambia la
+    permutacion/pivoteo interno de SuperLU."""
 
     def test_lu_matches_raw_spsolve(self):
         K = _build_spd_matrix(n=80)
@@ -48,7 +52,13 @@ class TestLUSolverEquivalence(unittest.TestCase):
         x_old = spla.spsolve(K, b)
         x_new = LUSolver().solve(K, b)
 
-        np.testing.assert_array_equal(x_old, x_new)
+        np.testing.assert_allclose(x_old, x_new, rtol=1e-12, atol=1e-14)
+
+    def test_lu_singular_raises_instead_of_nan(self):
+        import scipy.sparse as sp
+        K = sp.csr_matrix(np.array([[1.0, 2.0], [2.0, 4.0]]))
+        with self.assertRaises(RuntimeError):
+            LUSolver().solve(K, np.array([1.0, 1.0]))
 
 
 @unittest.skipUnless(_HAS_CHOLESKY, "scikit-sparse no instalado; omitiendo Cholesky")

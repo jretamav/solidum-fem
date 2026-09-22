@@ -25,6 +25,8 @@ from solidum.math.solvers._shared import (
     CholeskyNotPositiveDefiniteError,
     _log,
     domain_is_symmetric,
+    number_of_steps,
+    solve_mass_system,
 )
 from solidum.math.solvers.diagnostics import (
     classify_divergence,
@@ -161,7 +163,7 @@ class NewmarkSolver:
             size=n_free,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = M_solver.solve(M_red, rhs0)
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
 
         # Factorización reutilizable de A_eff = M + γΔt·C + βΔt²·K.
         dt = self.dt
@@ -177,7 +179,7 @@ class NewmarkSolver:
         A_factor = A_solver.factorize(A_eff)
 
         # Historiales en globales. n_steps + 1 columnas (incluye t=0).
-        n_steps = int(np.ceil(self.t_end / dt))
+        n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
         u_history = np.zeros((ndof, n_steps + 1))
         udot_history = np.zeros((ndof, n_steps + 1))
@@ -322,11 +324,30 @@ class NewtonNewmarkSolver(NewmarkSolver):
             self.assembler.domain.generate_equation_numbers()
         ndof = self.assembler.domain.total_dofs
 
-        # Condiciones iniciales en globales. Aseguramos compatibilidad con apoyos.
-        u_total = (np.zeros(ndof) if self.u0 is None
-                    else np.asarray(self.u0, dtype=float).reshape(ndof)).copy()
-        udot_total = (np.zeros(ndof) if self.u0_dot is None
-                       else np.asarray(self.u0_dot, dtype=float).reshape(ndof)).copy()
+        # Reducción por Dirichlet / MPC (ADR 0004): ``u = T·u_free + g``,
+        # ``u̇ = T·u̇_free``, ``ü = T·ü_free``. Trabajar con la incógnita
+        # reducida y reconstruir los vectores completos con ``T`` cubre a la
+        # vez los apoyos (fila nula + g) y las restricciones lineales con
+        # maestros (fila con los coeficientes α_si); actualizar sólo
+        # ``free_dofs`` dejaba los esclavos congelados y el Newton no podía
+        # anular el residuo con MPC (auditoría 2026-09-22).
+        cs = self.assembler.constraint_set
+        T_op, g_vec = cs.build(ndof)
+        free_dofs = cs.free_dofs(ndof)
+        n_free = T_op.shape[1]
+
+        # Condiciones iniciales del usuario proyectadas sobre la variedad de
+        # restricciones ANTES de cualquier ensamblaje: se conservan sus
+        # componentes libres y los DOFs no libres se reconstruyen (apoyo
+        # constante ⇒ g; esclavo ⇒ combinación de maestros). Ensamblar
+        # ``F_int(u₀)`` antes de imponer ``g`` daba ü₀ inconsistente con
+        # apoyos prescritos no nulos.
+        u0_global = (np.zeros(ndof) if self.u0 is None
+                     else np.asarray(self.u0, dtype=float).reshape(ndof))
+        udot0_global = (np.zeros(ndof) if self.u0_dot is None
+                        else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
+        u_total = np.asarray(T_op @ u0_global[free_dofs] + g_vec, dtype=float)
+        udot_total = np.asarray(T_op @ udot0_global[free_dofs], dtype=float)
 
         # Masa (constante).
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
@@ -338,20 +359,6 @@ class NewtonNewmarkSolver(NewmarkSolver):
             self.rayleigh_cfg, source=type(self).__name__,
         )
         C = alpha_r * M + beta_r * K_0
-
-        # Reducción por Dirichlet (apoyos constantes).
-        cs = self.assembler.constraint_set
-        T_op, g_vec = cs.build(ndof)
-        free_dofs = cs.free_dofs(ndof)
-        n_free = T_op.shape[1]
-
-        # Forzar u_total compatible con apoyos: u_total[prescribed] = g_vec[prescribed].
-        # En DOFs libres se mantiene self.u0; en prescritos se impone g_vec.
-        prescribed = np.ones(ndof, dtype=bool)
-        prescribed[free_dofs] = False
-        u_total[prescribed] = g_vec[prescribed]
-        # u̇ y ü en DOFs prescritos = 0 (apoyos constantes en el tiempo).
-        udot_total[prescribed] = 0.0
 
         # Reducción de las matrices invariantes en el tiempo.
         M_red = (T_op.T @ M @ T_op).tocsr()
@@ -370,15 +377,14 @@ class NewtonNewmarkSolver(NewmarkSolver):
             size=n_free,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = M_solver.solve(M_red, rhs0)
-        uddot_total = np.zeros(ndof)
-        uddot_total[free_dofs] = uddot_free
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
+        uddot_total = np.asarray(T_op @ uddot_free, dtype=float)
 
         # Historiales.
         dt = self.dt
         beta = self.beta
         gamma = self.gamma
-        n_steps = int(np.ceil(self.t_end / dt))
+        n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
         u_history = np.zeros((ndof, n_steps + 1))
         udot_history = np.zeros((ndof, n_steps + 1))
@@ -403,15 +409,24 @@ class NewtonNewmarkSolver(NewmarkSolver):
         linalg = select_solver(props_J, override=self.linear_algebra)
         frozen_factor = None  # Newton modificado: cache de factorización por paso
 
+        def residual(F_int_at, udot_at, uddot_at):
+            return F_ext_next - F_int_at - C @ udot_at - M @ uddot_at
+
         for step in range(n_steps):
             t_next = t_history[step + 1]
+
+            # ADR 0010 §5: hook de preparación de paso con el estado
+            # convergido del paso anterior (activación de discontinuidades
+            # embebidas). Mismo protocolo que los solvers estáticos.
+            self.assembler.prepare_all_steps(u_total)
 
             # Predictores Newmark.
             u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
             udot_pred = udot_total + dt * one_minus_gamma * uddot_total
 
             # Inicialización del Newton: ü^(0) = ü_n (continuidad).
-            uddot_iter = uddot_total.copy()
+            uddot_free_iter = uddot_free.copy()
+            uddot_iter = np.asarray(T_op @ uddot_free_iter, dtype=float)
             u_iter = u_pred + beta_dt2 * uddot_iter
             udot_iter = udot_pred + gamma_dt * uddot_iter
 
@@ -426,13 +441,18 @@ class NewtonNewmarkSolver(NewmarkSolver):
             last_delta = 0.0
             last_alpha = 1.0
 
+            # Un ensamblaje por iteración: se ensambla en el iterado corriente
+            # y la convergencia se evalúa ANTES de resolver con el par
+            # (‖R(u_k)‖, ‖δu_{k−1}‖). Al converger, el estado trial es el del
+            # ensamblaje en u_k y se comitea sin reensamblar.
+            K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
+            delta_u_norm = 0.0
+            n_solves = 0
             converged = False
-            for it in range(self.max_iter):
-                K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
-                R = F_ext_next - F_int_iter - C @ udot_iter - M @ uddot_iter
+            for it in range(self.max_iter + 1):
+                R = residual(F_int_iter, udot_iter, uddot_iter)
                 R_red = T_op.T @ R
-
-                J = (M_red + gamma_dt * C_red + beta_dt2 * (T_op.T @ K_t @ T_op)).tocsr()
+                R_norm = float(np.linalg.norm(R_red))
 
                 # Calibración del criterio en el primer ensamblaje.
                 if not self.convergence.is_calibrated:
@@ -445,12 +465,37 @@ class NewtonNewmarkSolver(NewmarkSolver):
                     disp_scale = force_scale / K_diag
                     self.convergence.calibrate(force_scale, disp_scale)
 
+                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_iter))
+                state = self.convergence.evaluate(
+                    residual_norm=R_norm,
+                    ref_force=ref_force,
+                    delta_u_norm=delta_u_norm,
+                    u_norm=np.linalg.norm(u_iter[free_dofs]),
+                )
+                residual_history.append(R_norm)
+                delta_history.append(delta_u_norm)
+                last_residual = R_norm
+                last_delta = delta_u_norm
+
+                if state.converged:
+                    _log.info(
+                        f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
+                        f"iter={n_solves} | R/tol_F={state.ratio_force:.2e}"
+                    )
+                    self.assembler.commit_all_states()
+                    converged = True
+                    break
+
+                if it == self.max_iter:
+                    break  # presupuesto de resoluciones agotado
+
+                J = (M_red + gamma_dt * C_red + beta_dt2 * (T_op.T @ K_t @ T_op)).tocsr()
+
                 # Resolver δü_red, con Newton modificado opcional. Si la
                 # tangente dinámica J = M + γΔt·C + βΔt²·K_t resulta singular
-                # (RuntimeError de `splu` tras degradar a LU — cerca de
-                # bifurcaciones dinámicas o tangentes patológicas), se flipea
-                # el flag para que `classify_divergence` devuelva
-                # `SingularTangentError` (ADR 0011).
+                # (RuntimeError del backend), se flipea el flag para que
+                # `classify_divergence` devuelva `SingularTangentError`
+                # (ADR 0011).
                 threshold = self.freeze_tangent_after_iter
                 try:
                     try:
@@ -474,61 +519,33 @@ class NewtonNewmarkSolver(NewmarkSolver):
                     _log.error("Tangente dinámica singular en NewtonNewmark.")
                     singular_tangent_seen = True
                     break
+                n_solves += 1
 
-                # Line search por descenso no monótono (ADR 0011). Escala δü
-                # (y por ende δu, δu̇ vía correctores Newmark) por α ∈ (0, 1].
-                R_norm_before = float(np.linalg.norm(R[free_dofs]))
+                # Line search por descenso no monótono (ADR 0011, opt-in).
+                # Escala δü (y por ende δu, δu̇ vía correctores Newmark) por
+                # α ∈ (0, 1]; evalúa el residuo dinámico en cada α probado.
                 alpha = self._armijo_step_dynamic(
-                    uddot_iter, delta_uddot_red, u_pred, udot_pred,
-                    beta_dt2, gamma_dt, free_dofs,
-                    F_ext_next, C, M, R_norm_before,
+                    uddot_free_iter, delta_uddot_red, u_pred, udot_pred,
+                    beta_dt2, gamma_dt, T_op, R_norm,
+                    lambda u_t, ud_t, udd_t: float(np.linalg.norm(
+                        T_op.T @ residual(
+                            self.assembler.assemble_non_linear_system(u_t)[1], ud_t, udd_t,
+                        )
+                    )),
                 )
                 last_alpha = alpha
 
                 # Actualizar incógnitas con correctores Newmark (α·δü).
-                uddot_iter[free_dofs] += alpha * delta_uddot_red
+                uddot_free_iter = uddot_free_iter + alpha * delta_uddot_red
+                uddot_iter = np.asarray(T_op @ uddot_free_iter, dtype=float)
                 u_iter = u_pred + beta_dt2 * uddot_iter
                 udot_iter = udot_pred + gamma_dt * uddot_iter
 
-                # Re-ensamblar para obtener R y F_int coherentes con el U avanzado.
-                # (El last_alpha != 1 en su ensamblaje interno habrá dejado el
-                # state trial coherente, pero re-ensamblar aquí mantiene
-                # simetría con la rama sin line search.)
-                #
-                # Auditoría H-4.9: con ``line_search=True`` esto produce un
-                # ensamblaje extra por iteración (uno dentro del backtracking,
-                # otro aquí), porque la simetría de código con la rama sin
-                # line search vale más que ahorrarse una llamada. El default
-                # del proyecto es ``line_search=False`` (ADR 0011 enmendado),
-                # así que el coste extra sólo aparece cuando el usuario opta
-                # explícitamente por line search — situación rara y bien
-                # diagnosticada.
-                _, F_int_after = self.assembler.assemble_non_linear_system(u_iter)
-                R_after = F_ext_next - F_int_after - C @ udot_iter - M @ uddot_iter
-                R_norm_after = float(np.linalg.norm(R_after[free_dofs]))
-
                 # δu corresponde a βΔt² · α · δü (cambio en desplazamiento por la iter).
                 delta_u_norm = beta_dt2 * float(np.linalg.norm(alpha * delta_uddot_red))
-                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_after))
-                state = self.convergence.evaluate(
-                    residual_norm=R_norm_after,
-                    ref_force=ref_force,
-                    delta_u_norm=delta_u_norm,
-                    u_norm=np.linalg.norm(u_iter[free_dofs]),
-                )
-                residual_history.append(R_norm_after)
-                delta_history.append(delta_u_norm)
-                last_residual = R_norm_after
-                last_delta = delta_u_norm
 
-                if state.converged:
-                    _log.info(
-                        f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
-                        f"iter={it+1} | R/tol_F={state.ratio_force:.2e}"
-                    )
-                    self.assembler.commit_all_states()
-                    converged = True
-                    break
+                # Único ensamblaje de la iteración: en el iterado avanzado.
+                K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
 
             # Cierre de paso: la factorización congelada solo es válida dentro
             # del paso (K_t cambia al pasar a t_{n+2}).
@@ -556,6 +573,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             u_total = u_iter
             udot_total = udot_iter
             uddot_total = uddot_iter
+            uddot_free = uddot_free_iter
 
             u_history[:, step + 1] = u_total
             udot_history[:, step + 1] = udot_total
@@ -575,23 +593,30 @@ class NewtonNewmarkSolver(NewmarkSolver):
             converged=True,
         )
 
-    def _armijo_step_dynamic(self, uddot_iter: np.ndarray,
+    def _armijo_step_dynamic(self, uddot_free_iter: np.ndarray,
                               delta_uddot_red: np.ndarray,
                               u_pred: np.ndarray, udot_pred: np.ndarray,
                               beta_dt2: float, gamma_dt: float,
-                              free_dofs,
-                              F_ext_next: np.ndarray,
-                              C, M,
-                              R_norm_before: float) -> float:
+                              T_op,
+                              R_norm_before: float,
+                              residual_norm_fn) -> float:
         """Line search por descenso no monótono para el residuo dinámico (ADR 0011).
 
         Aplica el mismo patrón que ``NonlinearSolver._armijo_step`` al
-        residuo dinámico ``R = F_ext − F_int(u) − C·u̇ − M·ü``. Escala
-        ``δü`` por ``α ∈ (0, 1]`` y propaga la consistencia a ``δu``,
-        ``δu̇`` vía los correctores Newmark.
+        residuo dinámico del solver que lo invoca. Escala ``δü`` por
+        ``α ∈ (0, 1]`` y propaga la consistencia a ``δu``, ``δu̇`` vía los
+        correctores Newmark, reconstruyendo los vectores completos con
+        ``T`` (Dirichlet y MPC).
 
-        Devuelve solo ``α``: el bucle exterior re-ensambla para obtener
-        F_int y R coherentes con el U avanzado.
+        Parameters
+        ----------
+        residual_norm_fn : callable ``(u, u̇, ü) -> float``
+            Norma del residuo reducido del solver (Newmark o HHT-α) en el
+            punto de prueba; el helper no conoce la forma del residuo.
+
+        Devuelve solo ``α``: el bucle exterior reensambla en el punto
+        aceptado (único ensamblaje de la iteración cuando ``line_search``
+        está desactivado, que es el default).
 
         Cuando ``self.line_search=False`` devuelve 1.0 directamente sin
         evaluar.
@@ -604,16 +629,10 @@ class NewtonNewmarkSolver(NewmarkSolver):
 
         alpha = 1.0
         for _ in range(max_bt + 1):
-            uddot_trial = uddot_iter.copy()
-            uddot_trial[free_dofs] += alpha * delta_uddot_red
+            uddot_trial = np.asarray(T_op @ (uddot_free_iter + alpha * delta_uddot_red), dtype=float)
             u_trial = u_pred + beta_dt2 * uddot_trial
             udot_trial = udot_pred + gamma_dt * uddot_trial
-
-            _, F_int_trial = self.assembler.assemble_non_linear_system(u_trial)
-            R_trial = F_ext_next - F_int_trial - C @ udot_trial - M @ uddot_trial
-            R_trial_norm = float(np.linalg.norm(R_trial[free_dofs]))
-
-            if R_trial_norm <= R_norm_before:
+            if residual_norm_fn(u_trial, udot_trial, uddot_trial) <= R_norm_before:
                 return alpha
             alpha *= rho
 
@@ -772,7 +791,7 @@ class HHTSolver(NewmarkSolver):
             size=n_free,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = M_solver.solve(M_red, rhs0)
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
 
         # Sistema efectivo HHT-α: A_eff = M + (1+α)γΔt·C + (1+α)βΔt²·K.
         # Constante en el tiempo → factorización única reutilizable.
@@ -792,7 +811,7 @@ class HHTSolver(NewmarkSolver):
         A_solver = select_solver(props_A, override=self.linear_algebra)
         A_factor = A_solver.factorize(A_eff)
 
-        n_steps = int(np.ceil(self.t_end / dt))
+        n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
         u_history = np.zeros((ndof, n_steps + 1))
         udot_history = np.zeros((ndof, n_steps + 1))
@@ -963,10 +982,20 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             self.assembler.domain.generate_equation_numbers()
         ndof = self.assembler.domain.total_dofs
 
-        u_total = (np.zeros(ndof) if self.u0 is None
-                    else np.asarray(self.u0, dtype=float).reshape(ndof)).copy()
-        udot_total = (np.zeros(ndof) if self.u0_dot is None
-                       else np.asarray(self.u0_dot, dtype=float).reshape(ndof)).copy()
+        # Reducción por Dirichlet / MPC y proyección de las condiciones
+        # iniciales sobre la variedad de restricciones antes de ensamblar.
+        # Ver NewtonNewmarkSolver.solve para la justificación.
+        cs = self.assembler.constraint_set
+        T_op, g_vec = cs.build(ndof)
+        free_dofs = cs.free_dofs(ndof)
+        n_free = T_op.shape[1]
+
+        u0_global = (np.zeros(ndof) if self.u0 is None
+                     else np.asarray(self.u0, dtype=float).reshape(ndof))
+        udot0_global = (np.zeros(ndof) if self.u0_dot is None
+                        else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
+        u_total = np.asarray(T_op @ u0_global[free_dofs] + g_vec, dtype=float)
+        udot_total = np.asarray(T_op @ udot0_global[free_dofs], dtype=float)
 
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
@@ -976,16 +1005,6 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             self.rayleigh_cfg, source=type(self).__name__,
         )
         C = alpha_r * M + beta_r * K_0
-
-        cs = self.assembler.constraint_set
-        T_op, g_vec = cs.build(ndof)
-        free_dofs = cs.free_dofs(ndof)
-        n_free = T_op.shape[1]
-
-        prescribed = np.ones(ndof, dtype=bool)
-        prescribed[free_dofs] = False
-        u_total[prescribed] = g_vec[prescribed]
-        udot_total[prescribed] = 0.0
 
         M_red = (T_op.T @ M @ T_op).tocsr()
         if alpha_r != 0.0 or beta_r != 0.0:
@@ -1002,9 +1021,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             size=n_free,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = M_solver.solve(M_red, rhs0)
-        uddot_total = np.zeros(ndof)
-        uddot_total[free_dofs] = uddot_free
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
+        uddot_total = np.asarray(T_op @ uddot_free, dtype=float)
 
         # Estado del paso anterior (al inicio del análisis: instante 0).
         # Usado en los términos α·X_n de HHT.
@@ -1017,7 +1035,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         gamma = self.gamma
         alpha_hht = self.alpha
         one_plus_alpha = 1.0 + alpha_hht
-        n_steps = int(np.ceil(self.t_end / dt))
+        n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
         u_history = np.zeros((ndof, n_steps + 1))
         udot_history = np.zeros((ndof, n_steps + 1))
@@ -1040,13 +1058,28 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         linalg = select_solver(props_J, override=self.linear_algebra)
         frozen_factor = None
 
+        def residual(F_int_at, udot_at, uddot_at):
+            # Residuo HHT-α no lineal:
+            # R = (1+α)·F_{n+1} − α·F_n
+            #     − [(1+α)·F_int(u_{n+1}) − α·F_int_n]
+            #     − [(1+α)·C·u̇_{n+1} − α·C·u̇_n]
+            #     − M·ü_{n+1}
+            return (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
+                    - one_plus_alpha * F_int_at + alpha_hht * F_int_prev
+                    - one_plus_alpha * (C @ udot_at) + alpha_hht * (C @ udot_prev)
+                    - M @ uddot_at)
+
         for step in range(n_steps):
             t_next = t_history[step + 1]
+
+            # ADR 0010 §5: hook de preparación de paso.
+            self.assembler.prepare_all_steps(u_total)
 
             u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
             udot_pred = udot_total + dt * one_minus_gamma * uddot_total
 
-            uddot_iter = uddot_total.copy()
+            uddot_free_iter = uddot_free.copy()
+            uddot_iter = np.asarray(T_op @ uddot_free_iter, dtype=float)
             u_iter = u_pred + beta_dt2 * uddot_iter
             udot_iter = udot_pred + gamma_dt * uddot_iter
 
@@ -1059,25 +1092,15 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             last_residual = float("inf")
             last_delta = 0.0
 
+            # Un ensamblaje por iteración (ver NewtonNewmarkSolver.solve).
+            K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
+            delta_u_norm = 0.0
+            n_solves = 0
             converged = False
-            for it in range(self.max_iter):
-                K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
-
-                # Residuo HHT-α no lineal:
-                # R = (1+α)·F_{n+1} − α·F_n
-                #     − [(1+α)·F_int(u_{n+1}) − α·F_int_n]
-                #     − [(1+α)·C·u̇_{n+1} − α·C·u̇_n]
-                #     − M·ü_{n+1}
-                R = (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
-                     - one_plus_alpha * F_int_iter + alpha_hht * F_int_prev
-                     - one_plus_alpha * (C @ udot_iter) + alpha_hht * (C @ udot_prev)
-                     - M @ uddot_iter)
+            for it in range(self.max_iter + 1):
+                R = residual(F_int_iter, udot_iter, uddot_iter)
                 R_red = T_op.T @ R
-
-                # Jacobiano: J = M + (1+α)·γΔt·C + (1+α)·βΔt²·K_t
-                J = (M_red
-                     + one_plus_alpha * gamma_dt * C_red
-                     + one_plus_alpha * beta_dt2 * (T_op.T @ K_t @ T_op)).tocsr()
+                R_norm = float(np.linalg.norm(R_red))
 
                 if not self.convergence.is_calibrated:
                     force_scale = max(
@@ -1089,8 +1112,37 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                     disp_scale = force_scale / K_diag
                     self.convergence.calibrate(force_scale, disp_scale)
 
-                # Tangente dinámica singular (RuntimeError de `splu` tras
-                # degradar a LU): flipea el flag para `classify_divergence`
+                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_iter))
+                state = self.convergence.evaluate(
+                    residual_norm=R_norm,
+                    ref_force=ref_force,
+                    delta_u_norm=delta_u_norm,
+                    u_norm=np.linalg.norm(u_iter[free_dofs]),
+                )
+                residual_history.append(R_norm)
+                delta_history.append(delta_u_norm)
+                last_residual = R_norm
+                last_delta = delta_u_norm
+
+                if state.converged:
+                    _log.info(
+                        f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
+                        f"iter={n_solves} | R/tol_F={state.ratio_force:.2e}"
+                    )
+                    self.assembler.commit_all_states()
+                    converged = True
+                    break
+
+                if it == self.max_iter:
+                    break
+
+                # Jacobiano: J = M + (1+α)·γΔt·C + (1+α)·βΔt²·K_t
+                J = (M_red
+                     + one_plus_alpha * gamma_dt * C_red
+                     + one_plus_alpha * beta_dt2 * (T_op.T @ K_t @ T_op)).tocsr()
+
+                # Tangente dinámica singular (RuntimeError del backend):
+                # flipea el flag para `classify_divergence`
                 # → `SingularTangentError` (ADR 0011).
                 threshold = self.freeze_tangent_after_iter
                 try:
@@ -1115,55 +1167,27 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                     _log.error("Tangente dinámica singular en NewtonHHT.")
                     singular_tangent_seen = True
                     break
+                n_solves += 1
 
-                # Line search (opt-in, ADR 0011). Mismo helper que NewtonNewmark.
-                R_norm_before = float(np.linalg.norm(R[free_dofs]))
+                # Line search (opt-in, ADR 0011) sobre el residuo HHT-α.
                 alpha_ls = self._armijo_step_dynamic(
-                    uddot_iter, delta_uddot_red, u_pred, udot_pred,
-                    beta_dt2, gamma_dt, free_dofs,
-                    F_ext_next, C, M, R_norm_before,
+                    uddot_free_iter, delta_uddot_red, u_pred, udot_pred,
+                    beta_dt2, gamma_dt, T_op, R_norm,
+                    lambda u_t, ud_t, udd_t: float(np.linalg.norm(
+                        T_op.T @ residual(
+                            self.assembler.assemble_non_linear_system(u_t)[1], ud_t, udd_t,
+                        )
+                    )),
                 )
 
-                uddot_iter[free_dofs] += alpha_ls * delta_uddot_red
+                uddot_free_iter = uddot_free_iter + alpha_ls * delta_uddot_red
+                uddot_iter = np.asarray(T_op @ uddot_free_iter, dtype=float)
                 u_iter = u_pred + beta_dt2 * uddot_iter
                 udot_iter = udot_pred + gamma_dt * uddot_iter
 
-                # Re-ensamblar para R coherente con el U avanzado.
-                # Mismo trade-off documentado en NewtonNewmarkSolver:
-                # con ``line_search=True`` esto duplica el ensamblaje por
-                # iteración. Aceptado por simetría de código y porque el
-                # default ``line_search=False`` (ADR 0011) no toca esta rama
-                # (auditoría H-4.9).
-                _, F_int_after = self.assembler.assemble_non_linear_system(u_iter)
-                R_after = (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
-                           - one_plus_alpha * F_int_after + alpha_hht * F_int_prev
-                           - one_plus_alpha * (C @ udot_iter) + alpha_hht * (C @ udot_prev)
-                           - M @ uddot_iter)
-                R_norm_after = float(np.linalg.norm(R_after[free_dofs]))
-
                 delta_u_norm = beta_dt2 * float(np.linalg.norm(alpha_ls * delta_uddot_red))
-                ref_force = max(np.linalg.norm(F_ext_next), np.linalg.norm(F_int_after))
-                state = self.convergence.evaluate(
-                    residual_norm=R_norm_after,
-                    ref_force=ref_force,
-                    delta_u_norm=delta_u_norm,
-                    u_norm=np.linalg.norm(u_iter[free_dofs]),
-                )
-                residual_history.append(R_norm_after)
-                delta_history.append(delta_u_norm)
-                last_residual = R_norm_after
-                last_delta = delta_u_norm
 
-                if state.converged:
-                    _log.info(
-                        f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
-                        f"iter={it+1} | R/tol_F={state.ratio_force:.2e}"
-                    )
-                    self.assembler.commit_all_states()
-                    converged = True
-                    # Actualizar F_int_iter para almacenarlo como F_int_prev
-                    F_int_iter = F_int_after
-                    break
+                K_t, F_int_iter = self.assembler.assemble_non_linear_system(u_iter)
 
             frozen_factor = None
 
@@ -1188,18 +1212,19 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             u_total = u_iter
             udot_total = udot_iter
             uddot_total = uddot_iter
+            uddot_free = uddot_free_iter
 
             u_history[:, step + 1] = u_total
             udot_history[:, step + 1] = udot_total
             uddot_history[:, step + 1] = uddot_total
 
-            # Cache para el siguiente paso (términos α·X_n).
+            # Cache para el siguiente paso (términos α·X_n). F_int_iter es el
+            # del ensamblaje en u_{n+1} convergido.
             F_int_prev = F_int_iter
             udot_prev = udot_total.copy()
             F_prev_global = F_ext_next
 
         _log.info(f"  -> {n_steps} pasos completados (HHT-α no lineal). "
-                  f"alpha={alpha_hht:.4f}, ρ_∞={(one_plus_alpha)/(1.0-alpha_hht):.4f}. "
                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
 
         return TransientResult(
