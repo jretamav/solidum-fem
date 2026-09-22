@@ -795,6 +795,9 @@ class _HigherOrderSolid3D(Element):
     # Atributos a sobreescribir por cada subclase concreta:
     _SHAPE_FN = staticmethod(lambda xi, eta, zeta: None)
     _GRAD_FN = staticmethod(lambda xi, eta, zeta: None)
+
+    def batch_shape_functions(self, pts):
+        return np.array([np.asarray(self._SHAPE_FN(p[0], p[1], p[2]), dtype=np.float64) for p in pts])
     _DEFAULT_QUADRATURE: str = ""
     _QUADRATURE_FAMILY: str = "hex"
     _MASS_QUADRATURE: str | None = None

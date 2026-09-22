@@ -196,3 +196,6 @@ class IsotropicDamage2D(Material):
         componentes por igual, así que ``σ_zz = ν·(σ_xx + σ_yy)`` sigue
         valiendo en plane strain con cualquier nivel de daño."""
         return self.elastic_base.out_of_plane_stress(sigma, state_vars)
+
+    def batch_out_of_plane_stress(self, sigma, S):
+        return self.elastic_base.batch_out_of_plane_stress(sigma, S)

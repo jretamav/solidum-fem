@@ -69,6 +69,30 @@ class BatchMaterialHooks:
         """Hook tras cada evaluación por lotes con puntos marcados."""
         return None
 
+    def batch_out_of_plane_stress(self, sigma: np.ndarray, S: np.ndarray) -> np.ndarray:
+        """``σ_zz`` de ``P`` puntos a la vez: ``(P,)`` a partir de los
+        esfuerzos ``sigma`` ``(P, n_sigma)`` y de las filas de estado
+        committed ``S`` ``(P, n_state)``. Es la versión por arreglos de
+        :meth:`Material.out_of_plane_stress` para el post-proceso por
+        lotes (exportador VTK).
+
+        Por defecto: ceros si el material no sobreescribe
+        ``out_of_plane_stress`` (plane stress, 1D, 3D, térmicos); si lo
+        sobreescribe y no aporta versión vectorizada, se evalúa punto a
+        punto desempaquetando cada fila (correcto, más lento). Los
+        materiales 2D con plane strain del catálogo sobreescriben este
+        método con la fórmula vectorizada.
+        """
+        P = int(sigma.shape[0])
+        fn = getattr(type(self), "out_of_plane_stress", None)
+        base = getattr(Material, "out_of_plane_stress", None)
+        if fn is None or fn is base:
+            return np.zeros(P)
+        from solidum.math.batch.schema import StateSchema
+        schema = StateSchema(self.STATE_SCHEMA or {})
+        return np.array([float(self.out_of_plane_stress(sigma[i], schema.unpack(S[i])))
+                         for i in range(P)])
+
 
 class Material(BatchMaterialHooks, ABC):
     """Clase base abstracta para todos los materiales de Solidum FEM.

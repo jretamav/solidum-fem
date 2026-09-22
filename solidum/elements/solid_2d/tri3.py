@@ -11,6 +11,7 @@ from solidum.elements.solid_2d._shared import (
     _compute_integrands,
     _compute_kinematics_tri3,
     _expand_scalar_mass,
+    _shape_functions_tri3,
 )
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import ElementRegistry
@@ -29,6 +30,7 @@ class Tri3(Element):
     N_INTEGRATION_POINTS = 1
     BATCH_KINEMATICS = _batch_kin_tri3
     BATCH_SCALE = "thickness"
+    BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_tri3)
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0):

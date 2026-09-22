@@ -41,7 +41,7 @@ formulaciones lagrangianas futuras no cumplen.
 import numpy as np
 from numba import njit, prange, types
 
-from solidum.math.batch.signatures import FAMILY_SIG, REDUCE_SIG
+from solidum.math.batch.signatures import FAMILY_SIG, GAUSS_SIG, REDUCE_SIG
 
 # Elementos por bloque en la variante paralela. Un bloque amortiza la
 # asignación del espacio de trabajo (cinco arreglos pequeños) y da al
@@ -156,6 +156,73 @@ def solid_family_kernel_parallel(kin, mat, X, u, pts, w, scale, S_in, S_out, par
         for e in range(e0, e1):
             _element_integrals(kin, mat, e, X, u, pts, w, scale, S_in, S_out, params, C,
                                K_out[e], F_out[e], sig_out, flags, B, CB, strain, sigma, C_out)
+
+
+# ---------------------------------------------------------------------------
+# Post-proceso por familia: ε y σ por punto de Gauss (ADR 0014 §9)
+# ---------------------------------------------------------------------------
+#
+# Es ``compute_gauss_state`` sobre toda la familia: misma cinemática, misma
+# constitutiva evaluada desde el estado **committed**; no integra nada y
+# no escribe el trial (``S_scratch`` recibe la fila trial que el material
+# produce y se descarta).
+
+@njit(cache=True)
+def _element_gauss(kin, mat, e, X, u, pts, S_in, S_scratch, params, C,
+                   eps_out, sig_out, flags, B, strain, sigma, C_out):
+    n_gp = pts.shape[0]
+    n_dof = u.shape[1]
+    n_sig = sig_out.shape[1]
+    for g in range(n_gp):
+        row = e * n_gp + g
+        detJ = kin(pts[g], X[e], B)
+        if detJ <= 0.0:
+            flags[row] = FLAG_BAD_JACOBIAN
+            continue
+        for a in range(n_sig):
+            s = 0.0
+            for i in range(n_dof):
+                s += B[a, i] * u[e, i]
+            strain[a] = s
+        mat(strain, S_in[row], S_scratch[row], params, C, sigma, C_out,
+            flags[row:row + 1])
+        for a in range(n_sig):
+            eps_out[row, a] = strain[a]
+            sig_out[row, a] = sigma[a]
+
+
+@njit(GAUSS_SIG, cache=True)
+def solid_family_gauss_kernel(kin, mat, X, u, pts, S_in, S_scratch, params, C,
+                              eps_out, sig_out, flags):
+    n_elem = X.shape[0]
+    n_dof = u.shape[1]
+    n_sig = sig_out.shape[1]
+    B = np.zeros((n_sig, n_dof))
+    strain = np.zeros(n_sig)
+    sigma = np.zeros(n_sig)
+    C_out = np.zeros((n_sig, n_sig))
+    for e in range(n_elem):
+        _element_gauss(kin, mat, e, X, u, pts, S_in, S_scratch, params, C,
+                       eps_out, sig_out, flags, B, strain, sigma, C_out)
+
+
+@njit(GAUSS_SIG, cache=True, parallel=True)
+def solid_family_gauss_kernel_parallel(kin, mat, X, u, pts, S_in, S_scratch, params, C,
+                                       eps_out, sig_out, flags):
+    n_elem = X.shape[0]
+    n_dof = u.shape[1]
+    n_sig = sig_out.shape[1]
+    n_blocks = (n_elem + PARALLEL_BLOCK - 1) // PARALLEL_BLOCK
+    for blk in prange(n_blocks):
+        B = np.zeros((n_sig, n_dof))
+        strain = np.zeros(n_sig)
+        sigma = np.zeros(n_sig)
+        C_out = np.zeros((n_sig, n_sig))
+        e0 = blk * PARALLEL_BLOCK
+        e1 = min(n_elem, e0 + PARALLEL_BLOCK)
+        for e in range(e0, e1):
+            _element_gauss(kin, mat, e, X, u, pts, S_in, S_scratch, params, C,
+                           eps_out, sig_out, flags, B, strain, sigma, C_out)
 
 
 # ---------------------------------------------------------------------------

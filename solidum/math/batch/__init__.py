@@ -13,8 +13,11 @@ Piezas:
 - :mod:`signatures` — firmas Numba de los kernels puntuales y de familia.
 - :mod:`schema` — de ``STATE_SCHEMA`` a filas de arreglo.
 - :mod:`state` — ``FamilyState`` y vistas compatibles con ``ElementState``.
-- :mod:`kernels` — el bucle compilado sobre elementos y puntos de Gauss.
-- :mod:`family` — construcción de familias y evaluación por trozos.
+- :mod:`kernels` — los bucles compilados sobre elementos y puntos de Gauss
+  (ensamblaje serie y paralelo, post-proceso, reducción COO → CSR).
+- :mod:`family` — construcción de familias, evaluación por trozos y
+  post-proceso por familia (``gauss_state``).
+- :mod:`postprocess` — de dominio a familias: ``gauss_states(domain, U)``.
 """
 from solidum.math.batch.family import (
     Family,
@@ -23,8 +26,9 @@ from solidum.math.batch.family import (
     family_key,
     material_is_batchable,
 )
+from solidum.math.batch.postprocess import family_of, gauss_states, group_by_family
 from solidum.math.batch.schema import StateSchema
-from solidum.math.batch.signatures import FAMILY_SIG, KIN_SIG, MAT_SIG
+from solidum.math.batch.signatures import FAMILY_SIG, GAUSS_SIG, KIN_SIG, MAT_SIG
 from solidum.math.batch.state import BatchedElementState, FamilyState
 
 __all__ = [
@@ -36,7 +40,11 @@ __all__ = [
     "element_is_batchable",
     "material_is_batchable",
     "family_key",
+    "family_of",
+    "gauss_states",
+    "group_by_family",
     "KIN_SIG",
     "MAT_SIG",
     "FAMILY_SIG",
+    "GAUSS_SIG",
 ]

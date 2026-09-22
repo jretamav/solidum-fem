@@ -40,6 +40,16 @@ nula en plane stress y ``≠ 0`` en plane strain, donde el Von Mises en plano
 componentes ``yz``/``xz`` son cero en 2D. ``Internal_State`` es el promedio
 de la ``PRIMARY_STATE_VAR`` del material sobre el estado committed.
 
+Camino por lotes (ADR 0014 §9)
+------------------------------
+Los elementos que un ``Assembler`` por lotes agrupó en familias se
+evalúan **por familia** (``Family.gauss_state``: un kernel compilado sobre
+todos sus puntos de Gauss, ``σ_zz`` y ``Internal_State`` por arreglos),
+y sólo los elementos sin familia pasan por ``compute_gauss_state`` uno a
+uno. El resultado es el mismo; el coste por elemento baja de decenas de
+microsegundos a uno. Los nodos, las celdas y el suavizado nodal también
+se calculan por arreglos.
+
 Campos por celda (térmicos)
 ---------------------------
 ``Flux``: vector ``q`` [W/m²] promediado sobre los puntos de Gauss,
@@ -61,6 +71,7 @@ import numpy as np
 
 from solidum.core.domain import Domain
 from solidum.logging import get_logger
+from solidum.math.batch.postprocess import group_by_family
 
 try:
     import meshio
@@ -128,9 +139,38 @@ def von_mises(s: np.ndarray) -> float:
     ))
 
 
+def von_mises_rows(s: np.ndarray) -> np.ndarray:
+    """:func:`von_mises` fila a fila sobre ``(n, 6)`` → ``(n,)``."""
+    s = np.asarray(s, dtype=float).reshape(-1, 6)
+    sxx, syy, szz = s[:, 0], s[:, 1], s[:, 2]
+    txy, tyz, txz = s[:, 3], s[:, 4], s[:, 5]
+    return np.sqrt(
+        0.5 * ((sxx - syy) ** 2 + (syy - szz) ** 2 + (szz - sxx) ** 2)
+        + 3.0 * (txy * txy + tyz * tyz + txz * txz)
+    )
+
+
+def _six_components(avg: np.ndarray, szz: np.ndarray | None) -> np.ndarray:
+    """Completa a ``(n, 6)`` un promedio ``(n, 3)`` (Voigt 2D + σ_zz) o
+    devuelve el ``(n, 6)`` tal cual."""
+    if avg.shape[1] == 6:
+        return avg
+    if avg.shape[1] == 3:
+        out = np.zeros((avg.shape[0], 6))
+        out[:, 0] = avg[:, 0]
+        out[:, 1] = avg[:, 1]
+        out[:, 2] = 0.0 if szz is None else szz
+        out[:, 3] = avg[:, 2]
+        return out
+    raise ValueError(
+        f"VtkExporter: esfuerzos con {avg.shape[1]} componentes; se esperaban "
+        f"3 (Voigt 2D) ó 6 (Voigt 3D)."
+    )
+
+
 def element_average_stress(elem, U: np.ndarray | None) -> np.ndarray:
     """Esfuerzo promedio del elemento, shape ``(6,)`` en el orden de
-    :data:`STRESS_COMPONENT_NAMES`.
+    :data:`STRESS_COMPONENT_NAMES`. Camino por elemento.
 
     Evalúa ``compute_gauss_state(U)`` y promedia sobre los puntos de Gauss.
     En 2D completa ``σ_zz`` con ``material.out_of_plane_stress`` punto a
@@ -203,6 +243,35 @@ def _state_var_avg(elem) -> float:
     return sum(vals) / len(vals)
 
 
+def _family_cell_fields(fam, U: np.ndarray | None):
+    """Campos por celda de toda una familia, por arreglos: esfuerzo medio
+    ``(N, 6)``, flujo medio ``(N, 3)`` y ``Internal_State`` ``(N,)``, en
+    el orden de ``fam.elements``. Con ``U = None`` los dos primeros son
+    ceros (como en el camino por elemento)."""
+    N = fam.n_elements
+    stress = np.zeros((N, 6))
+    flux = np.zeros((N, 3))
+    primary = getattr(fam.material, "PRIMARY_STATE_VAR", None)
+    state = np.zeros(N) if fam.is_thermal else fam.state_average(primary)
+    if U is None:
+        return stress, flux, state
+    gs = fam.gauss_state(U)
+    if fam.is_thermal:
+        avg = gs["flux"].mean(axis=1)
+        flux[:, : avg.shape[1]] = avg
+        return stress, flux, state
+    sig = gs["stress"]                       # (N, n_gp, n_sig)
+    avg = sig.mean(axis=1)
+    szz = None
+    if sig.shape[2] == 3:
+        P = N * fam.n_gp
+        rows = fam.material.batch_out_of_plane_stress(
+            sig.reshape(P, 3), fam.state.S_committed)
+        szz = np.asarray(rows, dtype=float).reshape(N, fam.n_gp).mean(axis=1)
+    stress[:] = _six_components(avg, szz)
+    return stress, flux, state
+
+
 # ---------------------------------------------------------------------------
 # Exportador
 # ---------------------------------------------------------------------------
@@ -232,6 +301,7 @@ class VtkExporter:
             return
 
         ndof = self.domain.total_dofs
+        U_eval = None if U is None else np.asarray(U, dtype=float)
         if U is None:
             U = np.zeros(ndof)
         if F_ext is None:
@@ -284,13 +354,11 @@ class VtkExporter:
                 if node.dofs[_TEMPERATURE_DOF] < len(U):
                     temperature[idx] = U[node.dofs[_TEMPERATURE_DOF]]
 
-        # --- Celdas agrupadas por tipo, con sus campos --------------------------
+        # --- Celdas agrupadas por tipo -----------------------------------------
+        elements = list(self.domain.elements.values())
         conn_by_type: dict[str, list[list[int]]] = {}
-        state_by_type: dict[str, list[float]] = {}
-        stress_by_type: dict[str, list[np.ndarray]] = {}
-        flux_by_type: dict[str, list[np.ndarray]] = {}
-
-        for elem in self.domain.elements.values():
+        slot: list[tuple[str, int] | None] = []      # (tipo, índice en su bloque)
+        for elem in elements:
             cell_type = cell_type_for(elem)
             if cell_type is None:
                 _log.warning(
@@ -299,15 +367,11 @@ class VtkExporter:
                     f"celda VTK soportada; se omite. Declare VTK_CELL_TYPE en la "
                     f"clase si corresponde a una celda válida de VTK."
                 )
+                slot.append(None)
                 continue
-            conn_by_type.setdefault(cell_type, []).append([node_map[n.id] for n in elem.nodes])
-            state_by_type.setdefault(cell_type, []).append(_state_var_avg(elem))
-            if _is_thermal(elem):
-                stress_by_type.setdefault(cell_type, []).append(np.zeros(6))
-                flux_by_type.setdefault(cell_type, []).append(_element_average_flux(elem, U))
-            else:
-                stress_by_type.setdefault(cell_type, []).append(element_average_stress(elem, U))
-                flux_by_type.setdefault(cell_type, []).append(np.zeros(3))
+            block = conn_by_type.setdefault(cell_type, [])
+            block.append([node_map[n.id] for n in elem.nodes])
+            slot.append((cell_type, len(block) - 1))
 
         if not conn_by_type:
             raise ValueError(
@@ -316,18 +380,47 @@ class VtkExporter:
                 "una malla sin celdas)."
             )
 
+        state_by_type = {ct: np.zeros(len(c)) for ct, c in conn_by_type.items()}
+        stress_by_type = {ct: np.zeros((len(c), 6)) for ct, c in conn_by_type.items()}
+        flux_by_type = {ct: np.zeros((len(c), 3)) for ct, c in conn_by_type.items()}
+
+        # --- Campos por celda: familias por arreglos, el resto por elemento ---
+        groups, loose = group_by_family(elements)
+        for fam, positions in groups.items():
+            positions = [p for p in positions if slot[p] is not None]
+            if not positions:
+                continue
+            stress_f, flux_f, state_f = _family_cell_fields(fam, U_eval)
+            rows = {id(e): r for r, e in enumerate(fam.elements)}
+            fam_rows = np.array([rows[id(elements[p])] for p in positions], dtype=np.int64)
+            cell_type = slot[positions[0]][0]
+            idx = np.array([slot[p][1] for p in positions], dtype=np.int64)
+            stress_by_type[cell_type][idx] = stress_f[fam_rows]
+            flux_by_type[cell_type][idx] = flux_f[fam_rows]
+            state_by_type[cell_type][idx] = state_f[fam_rows]
+        for p in loose:
+            if slot[p] is None:
+                continue
+            elem = elements[p]
+            cell_type, idx = slot[p]
+            state_by_type[cell_type][idx] = _state_var_avg(elem)
+            if _is_thermal(elem):
+                flux_by_type[cell_type][idx] = _element_average_flux(elem, U_eval)
+            else:
+                stress_by_type[cell_type][idx] = element_average_stress(elem, U_eval)
+
         cells = []
         state_arrays, flux_arrays = [], []
         stress_arrays = {name: [] for name in STRESS_COMPONENT_NAMES}
         vm_arrays = []
         for cell_type, conn in conn_by_type.items():
             cells.append((cell_type, np.array(conn, dtype=int)))
-            state_arrays.append(np.array(state_by_type[cell_type], dtype=float))
-            s = np.array(stress_by_type[cell_type], dtype=float).reshape(len(conn), 6)
+            state_arrays.append(state_by_type[cell_type])
+            s = stress_by_type[cell_type]
             for k, name in enumerate(STRESS_COMPONENT_NAMES):
                 stress_arrays[name].append(s[:, k])
-            vm_arrays.append(np.array([von_mises(row) for row in s]))
-            flux_arrays.append(np.array(flux_by_type[cell_type], dtype=float).reshape(len(conn), 3))
+            vm_arrays.append(von_mises_rows(s))
+            flux_arrays.append(flux_by_type[cell_type])
 
         # --- Campos nodales -------------------------------------------------
         point_data = {}
@@ -351,7 +444,7 @@ class VtkExporter:
                 if want_nodal(f"{name}_nodal"):
                     point_data[f"{name}_nodal"] = nodal[:, k]
             if want_nodal("Von_Mises_nodal"):
-                point_data["Von_Mises_nodal"] = np.array([von_mises(row) for row in nodal])
+                point_data["Von_Mises_nodal"] = von_mises_rows(nodal)
 
         # --- Campos por celda -----------------------------------------------
         cell_data = {}
@@ -379,13 +472,14 @@ def _smooth_stress_to_nodes(n_nodes: int, conn_by_type: dict, stress_by_type: di
     cnt = np.zeros(n_nodes, dtype=np.int64)
     has_data = False
     for cell_type, conn_list in conn_by_type.items():
-        if cell_type == "line":
+        if cell_type == "line" or not conn_list:
             continue
-        for conn, s in zip(conn_list, stress_by_type[cell_type]):
-            has_data = True
-            for nidx in conn:
-                acc[nidx] += s
-                cnt[nidx] += 1
+        has_data = True
+        conn = np.asarray(conn_list, dtype=np.int64)          # (n_cells, n_por_celda)
+        s = np.asarray(stress_by_type[cell_type], dtype=float)  # (n_cells, 6)
+        n_per = conn.shape[1]
+        np.add.at(acc, conn.ravel(), np.repeat(s, n_per, axis=0))
+        cnt += np.bincount(conn.ravel(), minlength=n_nodes)
     if not has_data:
         return None
     mask = cnt > 0

@@ -588,3 +588,10 @@ class VonMises2D(Material):
             state_vars.get('eps_p', np.zeros(4))[2]
         )
         return sigma_zz_plane_strain(sigma[0], sigma[1], eps_p_zz, self.K, self.G)
+
+    def batch_out_of_plane_stress(self, sigma, S):
+        """Versión por arreglos: ``ε^p_zz`` es la columna 2 de la fila de
+        estado (``eps_p`` ocupa las columnas 0–3 del ``STATE_SCHEMA``)."""
+        if self.hypothesis != 'plane_strain':
+            return np.zeros(sigma.shape[0])
+        return sigma_zz_plane_strain(sigma[:, 0], sigma[:, 1], S[:, 2], self.K, self.G)

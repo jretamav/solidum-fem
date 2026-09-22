@@ -48,6 +48,7 @@ class Quad4(Element):
     # compute_element_state; el espesor escala dV.
     BATCH_KINEMATICS = _batch_kin_quad4
     BATCH_SCALE = "thickness"
+    BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_quad4)
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):

@@ -25,6 +25,8 @@ from solidum.constants import BATCH_MEMORY_BUDGET_BYTES, BATCH_PARALLEL_DEFAULT
 from solidum.logging import get_logger
 from solidum.math.batch.kernels import (
     FLAG_BAD_JACOBIAN,
+    solid_family_gauss_kernel,
+    solid_family_gauss_kernel_parallel,
     solid_family_kernel,
     solid_family_kernel_parallel,
 )
@@ -78,7 +80,11 @@ class Family:
         self.positions = np.asarray(positions, dtype=np.int64)
         self.parallel = BATCH_PARALLEL_DEFAULT if parallel is None else bool(parallel)
         self.kernel = solid_family_kernel_parallel if self.parallel else solid_family_kernel
+        self.gauss_kernel = (solid_family_gauss_kernel_parallel if self.parallel
+                             else solid_family_gauss_kernel)
         elem0 = elements[0]
+        # Familia térmica: el "esfuerzo" del kernel es k·∇T = −q.
+        self.is_thermal = hasattr(elem0, "FLUX_DIM")
         self.element_class = type(elem0)
         self.material = elem0.material
         N = len(elements)
@@ -139,6 +145,12 @@ class Family:
         self.chunk = int(max(1, min(N, budget // per_elem)))
         self._F_out = np.zeros((self.chunk, self.n_dof))
 
+        # Funciones de forma en los puntos de Gauss del elemento de
+        # referencia (iguales para toda la familia); se evalúan al primer
+        # post-proceso que las pida.
+        self._N_gp = None
+        self._N_gp_ready = False
+
         self._adopted = False
 
     # ------------------------------------------------------------------
@@ -149,10 +161,13 @@ class Family:
 
     def adopt_states(self) -> None:
         """Sustituye el ``ElementState`` de cada elemento por una vista sobre
-        los arreglos de la familia, conservando el contenido previo."""
+        los arreglos de la familia, conservando el contenido previo, y deja
+        en cada elemento la referencia ``_batch_family`` que usa el
+        post-proceso por lotes para encontrar la familia desde el dominio."""
         if self._adopted:
             return
         for e, elem in enumerate(self.elements):
+            elem._batch_family = self
             plain = getattr(elem, "state", None)
             if plain is None:
                 # Elementos sin estado (térmicos): no se les impone uno.
@@ -164,14 +179,21 @@ class Family:
 
     def release(self) -> None:
         """Devuelve a cada elemento un ``ElementState`` clásico con el
-        contenido actual de los arreglos (al invalidar la topología)."""
+        contenido actual de los arreglos (al invalidar la topología) y
+        retira la referencia a la familia."""
         if not self._adopted:
             return
         for elem in self.elements:
+            if getattr(elem, "_batch_family", None) is self:
+                elem._batch_family = None
             st = getattr(elem, "state", None)
             if isinstance(st, BatchedElementState) and st.family_state is self.state:
                 elem.state = st.to_plain()
         self._adopted = False
+
+    @property
+    def adopted(self) -> bool:
+        return self._adopted
 
     def commit(self) -> None:
         self.state.commit()
@@ -234,6 +256,96 @@ class Family:
         n_flagged = int(np.count_nonzero(flags > 0))
         if n_flagged:
             self.material.batch_report(n_flagged)
+
+    # ------------------------------------------------------------------
+    # Post-proceso por familia (ADR 0014 §9)
+    # ------------------------------------------------------------------
+
+    def gauss_shape_functions(self):
+        """``N`` en los puntos de Gauss del elemento de referencia,
+        ``(n_gp, n_nodos)``, o ``None`` si el elemento no las declara."""
+        if not self._N_gp_ready:
+            N = self.elements[0].batch_shape_functions(self.gp_points)
+            self._N_gp = None if N is None else np.ascontiguousarray(N, dtype=np.float64)
+            self._N_gp_ready = True
+        return self._N_gp
+
+    def gauss_points_global(self):
+        """Coordenadas globales de los puntos de Gauss, ``(N, n_gp, d)``:
+        ``x_g = N(ξ_g)·X_e`` sobre la geometría de referencia. ``None`` si
+        el elemento no declara funciones de forma."""
+        N = self.gauss_shape_functions()
+        if N is None:
+            return None
+        return np.einsum("gn,end->egd", N, self.X)
+
+    def gauss_state(self, U: np.ndarray) -> dict:
+        """``compute_gauss_state`` de toda la familia en una llamada.
+
+        Evalúa la cinemática y la constitutiva en cada punto de Gauss desde
+        el estado **committed** (como hace ``compute_gauss_state`` en el
+        camino por elemento) sin tocar el trial. Devuelve arreglos con el
+        eje de elemento delante, en el orden de ``self.elements``:
+
+        - mecánica: ``strain`` y ``stress`` ``(N, n_gp, n_sigma)``;
+        - térmica: ``grad_T`` y ``flux`` ``(N, n_gp, d)`` con ``q = −k·∇T``;
+        - ``points_natural`` ``(n_gp, d)`` y ``points_global`` ``(N, n_gp, d)``
+          (``None`` si el elemento no declara funciones de forma).
+
+        La rodaja ``[i]`` de cada arreglo es exactamente lo que devolvería
+        ``self.elements[i].compute_gauss_state(U)`` (salvo el último bit
+        del orden de suma de ``B·u``).
+        """
+        N = self.n_elements
+        n_gp = self.n_gp
+        n_sig = self.n_sigma
+        P = N * n_gp
+        u = np.ascontiguousarray(U[self.dof_indices], dtype=np.float64)
+        st = self.state
+        eps = np.zeros((P, n_sig))
+        sig = np.zeros((P, n_sig))
+        scratch = np.empty_like(st.S_trial)
+        flags = np.zeros(P, dtype=np.int8)
+        self.gauss_kernel(
+            self.kin_fn, self.mat_fn, self.X, u, self.gp_points,
+            st.S_committed, scratch, self.mat_params, self.C, eps, sig, flags,
+        )
+        self._raise_if_bad_jacobian(flags)
+        self._report_material_flags(flags)
+        eps = eps.reshape(N, n_gp, n_sig)
+        sig = sig.reshape(N, n_gp, n_sig)
+        out = {
+            "points_natural": self.gp_points.copy(),
+            "points_global": self.gauss_points_global(),
+        }
+        if self.is_thermal:
+            out["grad_T"] = eps
+            out["flux"] = -sig
+        else:
+            out["strain"] = eps
+            out["stress"] = sig
+        return out
+
+    def state_average(self, name: str | None):
+        """Promedio sobre los puntos de Gauss de la variable interna escalar
+        ``name`` del estado committed, ``(N,)``. Si ``name`` no es una
+        variable escalar del esquema se toma la primera escalar; si no hay
+        ninguna, ceros. Es la versión por arreglos del promedio de la
+        ``PRIMARY_STATE_VAR`` que exporta el VTK."""
+        schema = self.schema
+        col = None
+        if name is not None and name in schema.names:
+            k = schema.names.index(name)
+            if schema.shapes[k] == ():
+                col = schema.offsets[k]
+        if col is None:
+            for k, shape in enumerate(schema.shapes):
+                if shape == ():
+                    col = schema.offsets[k]
+                    break
+        if col is None:
+            return np.zeros(self.n_elements)
+        return self.state.S_committed[:, col].reshape(self.n_elements, self.n_gp).mean(axis=1)
 
 
 def build_families(elements: list, dof_indices: list[list[int]],

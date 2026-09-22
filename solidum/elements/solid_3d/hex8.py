@@ -48,6 +48,7 @@ class Hex8(Element):
     # Camino por lotes (ADR 0014): misma cinemática compilada que
     # compute_element_state; sin escala (el volumen va en detJ·w).
     BATCH_KINEMATICS = _batch_kin_hex8
+    BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_hex8)
 
     # ADR 0012 — 6 caras con normal saliente. Cada tupla son los 4 nodos
     # locales de la cara en orden antihorario vistos desde fuera, es decir

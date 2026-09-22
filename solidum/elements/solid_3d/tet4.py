@@ -11,6 +11,7 @@ from solidum.elements.solid_3d._shared import (
     _compute_integrands_3d,
     _compute_kinematics_tet4,
     _expand_scalar_mass_3d,
+    _shape_functions_tet4,
 )
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import ElementRegistry
@@ -28,6 +29,7 @@ class Tet4(Element):
     STRAIN_DIM = 6
     N_INTEGRATION_POINTS = 1
     BATCH_KINEMATICS = _batch_kin_tet4
+    BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_tet4)
 
     # ADR 0012 — 4 caras con normal saliente. Cara i opuesta al nodo i.
     FACE_NODES = (

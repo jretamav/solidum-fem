@@ -56,3 +56,8 @@ class Elastic2D(Material):
         if self.hypothesis != 'plane_strain':
             return 0.0
         return float(self.nu * (sigma[0] + sigma[1]))
+
+    def batch_out_of_plane_stress(self, sigma, S):
+        if self.hypothesis != 'plane_strain':
+            return np.zeros(sigma.shape[0])
+        return self.nu * (sigma[:, 0] + sigma[:, 1])

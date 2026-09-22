@@ -60,6 +60,25 @@ REDUCE_SIG = types.void(F64_1, I64_1, I32_1, F64_1)
 KIN_SIG = types.float64(F64_1, F64_2, F64_2)
 MAT_SIG = F64_2(F64_1, F64_1, F64_1, F64_1, F64_2, F64_1, F64_2, I8_1)
 
+# gauss(kin, mat, X, u, pts, S_in, S_scratch, params, C, eps_out, sig_out, flags):
+# post-proceso por familia — deformación y esfuerzo por punto de Gauss a
+# partir del estado committed, sin tocar el trial (S_scratch es un espacio
+# de trabajo con la forma de S_trial que se descarta).
+GAUSS_SIG = types.void(
+    types.FunctionType(KIN_SIG),
+    types.FunctionType(MAT_SIG),
+    F64_3,   # X        (N, n_nodos, d)
+    F64_2,   # u        (N, n_dof)
+    F64_2,   # pts      (n_gp, d)
+    F64_2,   # S_in     (N·n_gp, n_state)
+    F64_2,   # S_scratch(N·n_gp, n_state)
+    F64_1,   # params   (n_par,)
+    F64_2,   # C        (n_sigma, n_sigma)
+    F64_2,   # eps_out  (N·n_gp, n_sigma)
+    F64_2,   # sig_out  (N·n_gp, n_sigma)
+    I8_1,    # flags    (N·n_gp,)
+)
+
 # kernel(kin, mat, X, u, pts, w, scale, S_in, S_out, params, C,
 #        K_out, F_out, sig_out, flags)
 FAMILY_SIG = types.void(

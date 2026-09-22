@@ -77,6 +77,13 @@ class Element(ABC):
         Nombre del atributo escalar por elemento que multiplica el
         diferencial de volumen en el camino por lotes (``"thickness"`` en
         los sólidos planos). ``None`` ⇒ factor 1.
+    BATCH_SHAPE_FUNCTIONS : ClassVar[callable | None], default=None
+        Función ``N(ξ, η[, ζ]) → (n_nodos,)`` de forma del elemento de
+        referencia. Sólo la usa el post-proceso por lotes para situar los
+        puntos de Gauss en globales (``points_global = N·X``); sin ella la
+        familia devuelve ``points_global = None``. Las bases que ya tienen
+        la función como atributo (``_SHAPE_FN``, ``_shape_functions``)
+        sobreescriben :meth:`batch_shape_functions` en su lugar.
 
     Métodos abstractos a implementar
     --------------------------------
@@ -107,6 +114,7 @@ class Element(ABC):
     ACCEPTS_UNILATERAL: ClassVar[bool] = False
     BATCH_KINEMATICS: ClassVar = None
     BATCH_SCALE: ClassVar[str | None] = None
+    BATCH_SHAPE_FUNCTIONS: ClassVar = None
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material | None = None):
@@ -374,3 +382,14 @@ class Element(ABC):
         por lotes. Es la geometría **no deformada**: el kernel recompone lo
         que necesite a partir de ella y de los desplazamientos."""
         return np.ascontiguousarray(self.get_coordinate_matrix(ndim=ndim))
+
+    def batch_shape_functions(self, pts: np.ndarray):
+        """Funciones de forma del elemento de referencia en los puntos
+        naturales ``pts`` ``(n_gp, d)``: arreglo ``(n_gp, n_nodos)`` o
+        ``None`` si el elemento no declara ``BATCH_SHAPE_FUNCTIONS``. Las
+        familias lo evalúan una vez (es el mismo para todos sus elementos)
+        para obtener ``points_global`` en el post-proceso por lotes."""
+        fn = type(self).BATCH_SHAPE_FUNCTIONS
+        if fn is None:
+            return None
+        return np.array([np.asarray(fn(*p), dtype=np.float64).reshape(-1) for p in pts])

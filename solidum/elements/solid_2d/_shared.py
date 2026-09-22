@@ -460,6 +460,9 @@ class _HigherOrderSolid2D(Element):
     # con el kernel de su función de forma; el espesor escala dV.
     BATCH_SCALE = "thickness"
     _SHAPE_FN = staticmethod(lambda xi, eta: None)
+
+    def batch_shape_functions(self, pts):
+        return np.array([np.asarray(self._SHAPE_FN(p[0], p[1]), dtype=np.float64) for p in pts])
     _GRAD_FN = staticmethod(lambda xi, eta: None)
     _DEFAULT_QUADRATURE = "3x3"
     # Familia geométrica ("quad" | "tri") para validar la regla recibida.

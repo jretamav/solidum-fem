@@ -94,6 +94,9 @@ class _ThermalSolid(Element):
     def _gradient(self, point, coords):
         """Devuelve ``(dN_dx, detJ)`` — la matriz ``B`` térmica y el jacobiano."""
 
+    def batch_shape_functions(self, pts):
+        return np.array([np.asarray(self._shape_functions(p), dtype=np.float64) for p in pts])
+
     # ------------------------------------------------------------------
     # Validación e inicialización
     # ------------------------------------------------------------------
