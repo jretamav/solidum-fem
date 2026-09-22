@@ -25,6 +25,8 @@ _log = get_logger("linalg.eigen")
 # pedido es exactamente 0: ``K − σM`` con ``σ < 0`` es definida positiva
 # y factoriza siempre; los modos rígidos salen como ``λ ≈ 0``.
 _SINGULAR_RETRY_SHIFT_RTOL = 1.0e-6
+# Tamaño (DOFs libres) por debajo del cual se usa el eigensolver denso.
+_DENSE_FALLBACK_SIZE = 32
 
 
 class EigenSolver:
@@ -92,13 +94,21 @@ class EigenSolver:
             Modos ``φ_n`` en columnas, M-ortonormales.
         """
         n = K.shape[0]
-        if not (1 <= n_modes < n):
+        if not (1 <= n_modes <= n):
             raise ValueError(
                 f"EigenSolver: n_modes={n_modes} fuera de rango. Debe cumplir "
-                f"1 ≤ n_modes < {n} (= número de DOFs libres)."
+                f"1 ≤ n_modes ≤ {n} (= número de DOFs libres)."
             )
 
         self.last_converged = True
+        if n_modes >= n - 1 or n <= _DENSE_FALLBACK_SIZE:
+            # ARPACK exige k < n y es inestable en problemas diminutos; para
+            # modelos pequeños o al pedir (casi) todos los modos se resuelve el
+            # problema generalizado denso. ``eigh(a, b)`` devuelve los modos
+            # M-ortonormales (vᵀ·b·v = 1), la misma normalización que ARPACK.
+            from scipy.linalg import eigh
+            vals, vecs = eigh(np.asarray(K.todense()), np.asarray(M.todense()))
+            return vals[:n_modes], vecs[:, :n_modes]
         sigma = self.sigma
         try:
             eigenvalues, eigenvectors = self._eigsh(K, M, n_modes, sigma)

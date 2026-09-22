@@ -153,11 +153,8 @@ class GaussQuadrature:
         consistente del Tet10. La cuadratura ``tet_4`` (orden 2) la
         subintegraría, produciendo M aproximada.
 
-        Pesos todos positivos excepto el del centroide (negativo, común
-        en cuadraturas tetraédricas de alto orden — no afecta la
-        positividad de la masa total ni de la masa lumped HRZ porque la
-        ponderación global ``ρ ∫ N_i N_j dV`` queda con valores netos
-        positivos).
+        Los 15 pesos son positivos (incluido el del centroide, 16/810):
+        la regla es una fórmula PI, sin cancelaciones en la masa.
 
         Referencia: Keast P. (1986). "Moderate-degree tetrahedral
         quadrature formulas", *CMAME* 55(3), 339-348 (Tabla 8).

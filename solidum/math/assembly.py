@@ -34,6 +34,18 @@ class Assembler:
         self._M_global: sp.csr_matrix | None = None
         self._M_lumping: str | None = None
 
+        # Huellas para detectar cambios en el modelo entre llamadas: sin
+        # ellas un apoyo añadido o un elemento nuevo tras el primer
+        # ensamblaje se ignoraba en silencio (auditoría 2026-09-22).
+        self._topology_key: tuple | None = None
+        self._constraint_fp: int | None = None
+
+        # Cargas nodales equivalentes por elemento (ejes globales) del último
+        # ``assemble_body_load`` / ``assemble_self_weight``. Las consume
+        # ``build_solve_result`` para que ``internal_forces`` devuelva las
+        # fuerzas internas de extremo (``F_int − f_eq``) y no ``K·u``.
+        self.equivalent_loads: dict[int, np.ndarray] = {}
+
     def _get_element_global_indices(self, element) -> list:
         """Extrae los índices globales de DOFs del elemento en el orden correcto.
 
@@ -65,10 +77,36 @@ class Assembler:
             ptr += n_idx**2
 
         self._topology_built = True
+        self._topology_key = self._current_topology_key()
+        # La masa cacheada corresponde a la topología anterior.
+        self._M_global = None
+        self._M_lumping = None
+
+    def _current_topology_key(self) -> tuple:
+        return (len(self.domain.elements), self.domain.total_dofs)
+
+    def _ensure_topology(self) -> None:
+        """Construye la topología COO si falta o si el modelo cambió de
+        tamaño (elementos añadidos, renumeración) desde la última vez."""
+        if not self._topology_built or self._topology_key != self._current_topology_key():
+            self._build_topology()
+
+    def invalidate(self) -> None:
+        """Descarta todas las cachés (topología, restricciones, masa).
+
+        Las huellas de topología y de restricciones ya detectan por sí solas
+        elementos nuevos y apoyos/MPC añadidos o cambiados; este método es
+        el punto explícito para cambios que no dejan huella (densidad de un
+        material, por ejemplo, que invalida la masa cacheada)."""
+        self._topology_built = False
+        self._topology_key = None
+        self._constraint_set = None
+        self._constraint_fp = None
+        self._M_global = None
+        self._M_lumping = None
 
     def assemble_system(self):
-        if not self._topology_built:
-            self._build_topology()
+        self._ensure_topology()
 
         self.F_global = np.zeros(self.ndof)
         data = np.zeros(self._total_entries, dtype=np.float64)
@@ -88,8 +126,7 @@ class Assembler:
 
     def assemble_non_linear_system(self, U_current: np.ndarray):
         """Construye la matriz tangente global y el vector de fuerzas internas a máxima velocidad."""
-        if not self._topology_built:
-            self._build_topology()
+        self._ensure_topology()
 
         F_int_global = np.zeros(self.ndof)
         data = np.zeros(self._total_entries, dtype=np.float64)
@@ -116,16 +153,36 @@ class Assembler:
     # Imposición de Dirichlet por eliminación directa (ADR 0004 fase 1).
     # ------------------------------------------------------------------
 
+    def _constraint_fingerprint(self) -> int:
+        """Huella de las restricciones declaradas en el dominio (Dirichlet y
+        MPC). O(n_restricciones) por llamada; despreciable frente a un
+        ensamblaje y evita servir un ``ConstraintSet`` obsoleto."""
+        dirichlet = tuple(
+            (nid, dof, float(val))
+            for nid, node in self.domain.nodes.items()
+            for dof, val in node.boundary_conditions.items()
+        )
+        linear = tuple(
+            (tuple(spec['slave']), tuple(tuple(m) for m in spec['masters']),
+             tuple(float(c) for c in spec['coefficients']), float(spec.get('g', 0.0)))
+            for spec in getattr(self.domain, 'linear_constraints', [])
+        )
+        return hash((dirichlet, linear, self.domain.total_dofs))
+
     @property
     def constraint_set(self) -> ConstraintSet:
-        """ConstraintSet derivado de ``Node.boundary_conditions`` (lazy)."""
-        if self._constraint_set is None:
+        """ConstraintSet derivado de ``Node.boundary_conditions`` y de las
+        restricciones lineales del dominio. Se reconstruye automáticamente si
+        cambian (huella), así que añadir un apoyo tras el primer ``solve``
+        surte efecto en el siguiente."""
+        fp = self._constraint_fingerprint()
+        if self._constraint_set is None or fp != self._constraint_fp:
             self._constraint_set = self._build_constraint_set()
+            self._constraint_fp = fp
         return self._constraint_set
 
     def _build_constraint_set(self) -> ConstraintSet:
-        if not self._topology_built:
-            self._build_topology()
+        self._ensure_topology()
         cs = ConstraintSet()
         for node in self.domain.nodes.values():
             for dof_name, value in node.boundary_conditions.items():
@@ -242,8 +299,7 @@ class Assembler:
             implementa ``compute_mass_matrix``. El mensaje agrupa ambos
             tipos de problema.
         """
-        if not self._topology_built:
-            self._build_topology()
+        self._ensure_topology()
 
         if self._M_global is not None and self._M_lumping == lumping:
             return self._M_global
@@ -375,17 +431,19 @@ class Assembler:
         vector de fuerza de cuerpo apropiado para cada uno (en sus
         componentes 2D ó 3D según `'uz' in element.DOF_NAMES`).
         """
-        if not self._topology_built:
-            self._build_topology()
+        self._ensure_topology()
 
         F_body = np.zeros(self.ndof)
+        equivalent_loads: dict[int, np.ndarray] = {}
         for i, element in enumerate(self.domain.elements.values()):
             method = getattr(element, "compute_body_load", None)
             if method is None:
                 continue
             b_elem = get_b_for_element(element)
-            f_e = method(b_elem)
+            f_e = np.asarray(method(b_elem), dtype=float)
             F_body[self._elem_dof_indices[i]] += f_e
+            equivalent_loads[element.id] = f_e
+        self.equivalent_loads = equivalent_loads
         return F_body
 
     def assemble_body_load(self, b) -> np.ndarray:

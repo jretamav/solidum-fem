@@ -23,7 +23,7 @@ from solidum.core.material import Material
 from solidum.registry import MaterialRegistry
 
 
-@njit
+@njit(cache=True)
 def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol):
     """Return mapping J2 3D radial cerrado.
 

@@ -24,7 +24,7 @@ from solidum.materials._plane_strain import sigma_zz_plane_strain
 from solidum.registry import MaterialRegistry
 
 
-@njit
+@njit(cache=True)
 def _compute_drucker_prager_plane_strain(strain, eps_p_old, alpha_old,
                                          eta_f, eta_g, k0, Hk,
                                          K, G, C_e, yield_tol):
@@ -156,11 +156,20 @@ def _compute_drucker_prager_plane_strain(strain, eps_p_old, alpha_old,
 
     # Intento 2: return al ápice
     A_apex = 9.0 * K * eta_f * eta_g + Hk
-    if A_apex <= 0.0:
-        # Caso degenerado (η_g=0 y Hk=0): el ápice no admite descenso volumétrico.
-        # No debería ocurrir si los parámetros son físicamente sensatos (η_g≥0, Hk≥0
-        # y al menos uno >0 para que el ápice tenga rigidez).
-        A_apex = 1.0e-30
+    if eta_g <= 0.0 or A_apex <= 0.0:
+        # eta_g = 0: el flujo no tiene componente volumetrica, asi que la
+        # presion no puede relajarse plasticamente y el retorno al apice NO
+        # tiene solucion consistente con sigma = C_e:(eps - eps_p). Con H = 0
+        # la version anterior clampaba A_apex a 1e-30 (delta_gamma ~ 1e30);
+        # con H > 0 devolvia el sigma del apice sin la eps_p volumetrica que
+        # lo justifica (auditoria 2026-09-22). Fallar es lo unico honesto; el
+        # constructor avisa de que el apice es inalcanzable con psi = 0.
+        raise ValueError(
+            "DruckerPrager: estado de traccion hidrostatica mas alla del apice "
+            "con psi = 0 (flujo sin componente volumetrica): el retorno al "
+            "apice no tiene solucion. Use psi > 0 o revise las cargas de "
+            "traccion del modelo."
+        )
 
     delta_gamma_apex = (I1_trial * eta_f - k_curr) / A_apex
     if delta_gamma_apex < 0.0:
@@ -238,7 +247,9 @@ def _calibrate_drucker_prager(c0: float, phi_rad: float, psi_rad: float, variant
 class DruckerPrager2D(Material):
     """
     Modelo Drucker-Prager 2D plane strain con plasticidad no asociada y
-    endurecimiento isótropo lineal en cohesión.
+    endurecimiento isótropo lineal ``k(α) = k₀ + H·α`` sobre el radio del
+    cono (NO sobre la cohesión ``c``: ``dk/dc`` vale 0.83–1.2 según la
+    calibración, así que un ``H`` medido sobre ``c`` debe convertirse).
 
     Parameters
     ----------
@@ -344,6 +355,14 @@ class DruckerPrager2D(Material):
         self.eta_f, self.k0, self.eta_g = _calibrate_drucker_prager(
             cohesion, phi_rad, psi_rad, variant
         )
+        if self.eta_g == 0.0:
+            from solidum.logging import get_logger
+            get_logger("materials").warning(
+                f"{type(self).__name__}: con psi = 0 (flujo sin componente "
+                f"volumetrica) el retorno al apice no tiene solucion; un estado de "
+                f"traccion hidrostatica mas alla del apice lanzara ValueError "
+                f"durante el analisis."
+            )
         # ¿asociada? — útil de exponer para inspección/tests
         self.associated = (psi_deg == phi_deg)
         # Override por instancia (ADR 0003): la tangente algorítmica del

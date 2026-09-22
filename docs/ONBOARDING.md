@@ -155,7 +155,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 1. `python -m pytest tests/ -q` verde (1317 pasan, 9 skipped es normal).
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
-4. **Pre-commit hooks**: no usar `--no-verify`. Si un hook falla, investigar la causa raíz.
+4. **Hooks**: el repo no define hooks de pre-commit; la puerta de calidad es la suite completa del punto 1 más el CI de GitHub Actions. Si en el futuro se añaden hooks, no usar `--no-verify`.
 5. **Commit message**: en español, descriptivo, una línea + cuerpo si hace falta. Co-autoría con Claude al pie es opcional.
 
 ---

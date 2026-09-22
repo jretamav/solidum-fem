@@ -317,8 +317,11 @@ class TestDegenerateToElastic(unittest.TestCase):
     """acceptance.degeneracion_a_elasticidad_intacta"""
 
     def test_huge_sigma_t0_never_activates(self):
+        # G_f enorme para que w_c = 2·G_f/σ_t0 siga superando κ_0 = σ_t0/K_e:
+        # desde la auditoría 2026-09-22 el softening lineal exige
+        # K_e > σ_t0²/(2·G_f) igual que el exponencial.
         m = CohesiveDamageIsotropic(
-            sigma_t0=1.0e20, G_f=G_F, K_e=K_E, softening='linear'
+            sigma_t0=1.0e20, G_f=1.0e45, K_e=K_E, softening='linear'
         )
         u_n = 1.0e-3  # cualquier valor "humano"
         t, T, state = m.compute_traction(np.array([u_n, 0.0]))

@@ -326,6 +326,7 @@ class ResponseSpectrumSolver:
             )
 
         effective_masses = gamma * gamma
+        total_mass = float(direction @ (M @ direction))
 
         _log.info(
             f"  -> {self.n_modes} modos combinados con {self.combination}. "
@@ -343,4 +344,5 @@ class ResponseSpectrumSolver:
             combination=self.combination,
             damping=self.damping if self.combination == "CQC" else 0.0,
             direction=direction.copy(),
+            total_mass=total_mass,
         )

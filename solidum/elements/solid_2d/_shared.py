@@ -43,7 +43,7 @@ from solidum.registry import QuadratureRegistry
 # Kinematics Numba — elementos lineales Quad4 y Tri3.
 # ---------------------------------------------------------------------------
 
-@njit
+@njit(cache=True)
 def _jacobian_scale_2d(J):
     """Producto de las normas de las filas de ``J`` (2×2): cota de Hadamard
     de ``|det J|``. Hace adimensional el chequeo de jacobiano degenerado
@@ -52,7 +52,7 @@ def _jacobian_scale_2d(J):
             * math.sqrt(J[1, 0] * J[1, 0] + J[1, 1] * J[1, 1]))
 
 
-@njit
+@njit(cache=True)
 def _compute_kinematics(xi, eta, coords):
     # Preasignar memoria en Numba es la forma 100% segura
     dN_dxi = np.zeros((2, 4), dtype=np.float64)
@@ -93,7 +93,7 @@ def _compute_kinematics(xi, eta, coords):
     return B, detJ
 
 
-@njit
+@njit(cache=True)
 def _compute_gradient_kinematics_quad4(xi, eta, coords):
     """Gradiente de las funciones de forma del Quad4 en globales.
 
@@ -136,7 +136,7 @@ def _compute_gradient_kinematics_quad4(xi, eta, coords):
     return dN_dx, detJ
 
 
-@njit
+@njit(cache=True)
 def _compute_integrands(B, C_alg, sigma, detJ, weight, thickness):
     dV = detJ * weight * thickness
 
@@ -148,7 +148,7 @@ def _compute_integrands(B, C_alg, sigma, detJ, weight, thickness):
     return K_contrib, F_contrib
 
 
-@njit
+@njit(cache=True)
 def _shape_functions_quad4(xi, eta):
     """Funciones de forma bilineales del Quad4 evaluadas en (xi, eta)."""
     N = np.zeros(4, dtype=np.float64)
@@ -159,7 +159,7 @@ def _shape_functions_quad4(xi, eta):
     return N
 
 
-@njit
+@njit(cache=True)
 def _det_jacobian_quad4(xi, eta, coords):
     """det J del mapeo isoparamétrico del Quad4 en (xi, eta).
 
@@ -178,7 +178,7 @@ def _det_jacobian_quad4(xi, eta, coords):
     return J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
 
 
-@njit
+@njit(cache=True)
 def _compute_kinematics_tri3(coords):
     # Derivadas de funciones de forma analíticas para Tri3 (xi, eta)
     dN_dxi = np.zeros((2, 3), dtype=np.float64)

@@ -2,7 +2,9 @@
 """``CentralDifferenceSolver`` — integración explícita por diferencias centradas
 para ``M·ü + C·u̇ + K·u = F(t)`` (ADR 0009 fase 5).
 
-Esquema **explícito de segundo orden** sin sistema lineal a resolver en cada
+Esquema **explícito de segundo orden** (sin amortiguamiento; con Rayleigh la
+fuerza viscosa se evalúa en ``v_{n+1/2}`` a la Belytschko y el orden observado
+cae a 1 — auditoría 2026-09-22) sin sistema lineal a resolver en cada
 paso — la única "inversión" es ``M⁻¹``, trivial cuando M es diagonal
 (ADR 0009 fase 2, mass lumping). Apropiado para:
 

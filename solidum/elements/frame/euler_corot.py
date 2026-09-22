@@ -147,7 +147,8 @@ class Frame2DEulerCorot(Element):
             'strain': epsilon,
         }
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces:
         """API pública (ADR 0002): N, V, M en nodos i, j, convención §5.
 
         Usa los cosenos directores de la configuración corriente (corotacional);
@@ -156,6 +157,9 @@ class Frame2DEulerCorot(Element):
         u_e = self.get_local_displacements(U_global)
         _, c, s, _ = self._current_geometry(u_e)
         _, F_int = self.compute_element_state(u_e)
+        if equivalent_load is not None:
+            # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
+            F_int = F_int - np.asarray(equivalent_load, dtype=float)
         lam2 = np.array([[c, s], [-s, c]])
         F_local = np.empty(6)
         F_local[0:2] = lam2 @ F_int[0:2]

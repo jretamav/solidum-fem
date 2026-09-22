@@ -19,6 +19,7 @@ cachean en ``domain.last_result``.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any, Callable
 
@@ -68,10 +69,16 @@ def _invoke_solve(solver: Any, F_applied: np.ndarray,
     """
     if step_callback is None:
         return solver.solve(F_applied)
-    try:
+    # Por firma, no por ``except TypeError``: un TypeError genuino dentro del
+    # solve se enmascaraba y el análisis se ejecutaba dos veces (la segunda
+    # sobre elementos ya comiteados por la primera).
+    params = inspect.signature(solver.solve).parameters
+    accepts = 'step_callback' in params or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
+    if accepts:
         return solver.solve(F_applied, step_callback=step_callback)
-    except TypeError:
-        return solver.solve(F_applied)
+    return solver.solve(F_applied)
 
 
 def run(
@@ -129,6 +136,7 @@ def run(
         domain, assembler, U, F_applied * lambda_final,
         converged=bool(getattr(solver, "reached_max_lambda", True)),
         num_steps=int(getattr(solver, "steps_done", 1)),
+        load_factor=lambda_final,
     )
     # El estado final de un análisis estático es, por definición, convergido:
     # ``build_solve_result`` acaba de ensamblar en ``U`` (estado trial

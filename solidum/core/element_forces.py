@@ -101,3 +101,15 @@ class ElementForces:
     def at_node_j(self) -> dict[str, float]:
         """Valores en el nodo j como escalares."""
         return {k: float(v[1]) for k, v in self.components.items()}
+
+
+def axial_end_forces(F_net: np.ndarray, direction: np.ndarray) -> tuple[float, float]:
+    """``(N_i, N_j)`` de un elemento de dos nodos a partir de sus fuerzas
+    nodales netas ``F_net = F_int − f_eq`` (globales, layout ``[F_i, F_j]``)
+    y de la dirección unitaria ``i → j``. Cara ``−x`` en ``i``:
+    ``N_i = −F_i·d``; cara ``+x`` en ``j``: ``N_j = +F_j·d``. Compartido por
+    trusses y cables (Reglas.md §5, tracción positiva)."""
+    direction = np.asarray(direction, dtype=float)
+    k = direction.size
+    F_net = np.asarray(F_net, dtype=float)
+    return -float(F_net[:k] @ direction), float(F_net[k:] @ direction)

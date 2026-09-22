@@ -189,24 +189,35 @@ class TransientResult:
         ``SolveResult.element_forces`` exponía las fuerzas internas estáticas pero
         ``TransientResult`` exigía al consumidor reconstruirlos manualmente.
 
-        **Limitación conocida — elementos corotacionales**: la cinemática
-        corotacional almacena estado interno (rotación rígida del frame
-        local) que se commitea paso a paso durante la solución. Tras el
-        análisis, el ``state`` del elemento queda en la configuración del
-        último paso. Llamar ``internal_forces(u_history[:, k])`` con ``k``
-        intermedio reusa ese ``state`` final, no el contemporáneo a
-        ``u_history[:, k]`` — las fuerzas internas en pasos anteriores serán
-        incorrectos para corotacionales. Para elementos geométricamente
-        lineales (``Truss2D`` no-corot, ``Frame2DEuler``, ``Frame3D``,
-        ``Frame2DTimoshenko``) el método es exacto en cualquier paso
-        porque ``internal_forces`` reevalúa desde el desplazamiento sin
-        depender de historia geométrica.
+        **Limitación — sólo exacto sin historia**: ``internal_forces``
+        reevalúa cada paso desde ``u_history[:, k]`` con el estado interno
+        **final** de los elementos (el committed al terminar el análisis).
+        Es exacto para materiales sin variables internas y elementos
+        geométricamente lineales (``Truss2D``, ``Frame2DEuler``,
+        ``Frame2DTimoshenko``, ``Frame3D`` con material elástico). Con
+        **cualquier** historia —plasticidad o daño (``ε^p``, ``α``, ``κ``
+        del último paso aplicados a desplazamientos anteriores) o
+        cinemática corotacional— las fuerzas de pasos intermedios son
+        incorrectas, no sólo aproximadas (auditoría 2026-09-22). El método
+        avisa por log cuando detecta materiales con ``PRIMARY_STATE_VAR``;
+        la historia fiel exige que el solver almacene ``F_int`` por paso.
 
         Cálculo eager (recorre todos los pasos al llamar). Si necesitas
         múltiples consultas, almacena el dict devuelto externamente — no
         se cachea en la dataclass para no inflar la memoria del resultado
         cuando el consumidor no lo necesita.
         """
+        with_history = sorted({
+            type(e.material).__name__ for e in domain.elements.values()
+            if getattr(getattr(e, 'material', None), 'PRIMARY_STATE_VAR', None)
+        })
+        if with_history:
+            from solidum.logging import get_logger
+            get_logger("results").warning(
+                f"internal_forces_history: materiales con historia {with_history}; "
+                f"las fuerzas de pasos intermedios se evalúan con el estado interno "
+                f"final y NO son fieles a la historia."
+            )
         history: dict[int, list[ElementForces]] = {}
         n_t = self.u_history.shape[1]
         for elem_id, elem in domain.elements.items():
@@ -423,6 +434,10 @@ class ResponseSpectrumResult:
     combination: str
     damping: float
     direction: np.ndarray
+    # Masa total en la dirección de excitación, ``rᵀ·M·r``. Denominador
+    # correcto de la razón de masa efectiva; ``None`` sólo en resultados
+    # construidos a mano sin masa (se degrada a la suma de los modos).
+    total_mass: float | None = None
 
     @property
     def n_modes(self) -> int:
@@ -435,11 +450,14 @@ class ResponseSpectrumResult:
     def cumulative_effective_mass_ratio(self) -> np.ndarray:
         """Razón de masa efectiva acumulada por modo, shape ``(n_modes,)``.
 
-        Útil para verificar cuántos modos hacen falta para capturar la
-        respuesta. Valor objetivo en códigos sísmicos: ≥ 0.9 con los
-        ``n_modes`` incluidos.
+        ``Σ_{n≤k} Γ_n² / (rᵀ·M·r)``: la fracción de la masa total en la
+        dirección de excitación que capturan los primeros ``k`` modos.
+        Criterio normativo típico: ≥ 0.9 con los ``n_modes`` incluidos.
+        Normalizar por la suma de los modos calculados (versión anterior)
+        daba siempre 1.0 en el último modo y volvía el criterio trivial.
         """
-        total = float(np.sum(self.effective_masses))
+        total = (float(self.total_mass) if self.total_mass is not None
+                 else float(np.sum(self.effective_masses)))
         if total <= 0.0:
             return np.zeros_like(self.effective_masses)
         return np.cumsum(self.effective_masses) / total
@@ -500,6 +518,7 @@ def build_solve_result(
     *,
     converged: bool = True,
     num_steps: int = 1,
+    load_factor: float = 1.0,
 ) -> SolveResult:
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
@@ -539,9 +558,16 @@ def build_solve_result(
         if per_dof:
             reactions_by_node[node_id] = per_dof
 
+    # Cargas nodales equivalentes de la carga distribuida (peso propio /
+    # fuerza de cuerpo) por elemento, escaladas por el factor de carga: las
+    # fuerzas internas de extremo son F_int − f_eq, no K·u.
+    equivalent_loads = getattr(assembler, "equivalent_loads", None) or {}
     element_forces: dict[int, ElementForces] = {}
     for elem_id, elem in domain.elements.items():
-        ef = elem.internal_forces(U)
+        f_eq = equivalent_loads.get(elem_id)
+        ef = elem.internal_forces(
+            U, equivalent_load=None if f_eq is None else load_factor * f_eq,
+        )
         if ef is not None:
             element_forces[elem_id] = ef
 

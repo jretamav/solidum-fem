@@ -238,7 +238,8 @@ class Frame3D(Element):
             'strain': epsilon,
         }
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces:
         """API pública (ADR 0002): N, Vy, Vz, T, My, Mz en nodos i, j.
 
         Convención stress-resultant / RHR pura (Reglas.md §5). F_local tiene
@@ -253,6 +254,9 @@ class Frame3D(Element):
         """
         u_e = self.get_local_displacements(U_global)
         _, F_int = self.compute_element_state(u_e)
+        if equivalent_load is not None:
+            # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
+            F_int = F_int - np.asarray(equivalent_load, dtype=float)
         F_local = self.T @ F_int
         return ElementForces(
             kind="frame3d",

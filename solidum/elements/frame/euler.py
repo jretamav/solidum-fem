@@ -119,10 +119,14 @@ class Frame2DEuler(Element):
             'strain': epsilon,
         }
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces:
         """API pública (ADR 0002): N, V, M en nodos i, j, convención §5."""
         u_e = self.get_local_displacements(U_global)
         _, F_int = self.compute_element_state(u_e)
+        if equivalent_load is not None:
+            # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
+            F_int = F_int - np.asarray(equivalent_load, dtype=float)
         F_local = self.T @ F_int
         return _frame2d_forces_from_local(F_local)
 

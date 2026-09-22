@@ -100,6 +100,16 @@ class CohesiveDamageIsotropic(CohesiveMaterial):
         if softening == self.SOFTENING_LINEAR:
             self.w_c = 2.0 * G_f / sigma_t0     # apertura crítica
             self.H = None
+            if self.w_c <= self.kappa_0:
+                # Misma condición que el exponencial: K_e > σ_t0²/(2·G_F).
+                # Si no se cumple, ω salta a 1 en cuanto κ > κ_0 y la energía
+                # disipada (½·σ_t0·κ_0) supera G_F sin aviso.
+                raise ValueError(
+                    f"CohesiveDamageIsotropic: softening lineal requiere "
+                    f"w_c = 2·G_F/σ_t0 > κ_0 = σ_t0/K_e, es decir K_e > σ_t0²/(2·G_F). "
+                    f"Con los parámetros recibidos w_c = {self.w_c:.3e} ≤ κ_0 = "
+                    f"{self.kappa_0:.3e}."
+                )
         else:  # exponential
             self.H = G_f - 0.5 * sigma_t0 * self.kappa_0
             if self.H <= 0.0:

@@ -46,7 +46,9 @@ class Hex8(Element):
     N_INTEGRATION_POINTS = 8  # default Gauss 2×2×2
 
     # ADR 0012 — 6 caras con normal saliente. Cada tupla son los 4 nodos
-    # locales de la cara en orden tal que (a-b)×(c-b) apunte hacia fuera.
+    # locales de la cara en orden antihorario vistos desde fuera, es decir
+    # con (b−a)×(c−a) apuntando hacia fuera (la tracción uniforme usa |·|,
+    # así que el sentido sólo importa para presiones normales futuras).
     FACE_NODES = (
         (0, 3, 2, 1),  # 0: −ζ (inferior)
         (4, 5, 6, 7),  # 1: +ζ (superior)

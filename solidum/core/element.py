@@ -245,8 +245,19 @@ class Element(ABC):
     # API pública de resultados (ADR 0002)
     # ------------------------------------------------------------------
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces | None:
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces | None:
         """Fuerzas internas en ejes locales — **solo elementos estructurales 1D**.
+
+        ``equivalent_load`` es el vector nodal consistente (ejes globales,
+        layout del elemento) de la carga distribuida aplicada al elemento —
+        peso propio o fuerza de cuerpo ensamblados por el ``Assembler``—,
+        ya escalado por el factor de carga. Las fuerzas internas en los
+        extremos son ``F_int − f_eq`` en ejes locales: con carga
+        distribuida ``K·u`` solo da las fuerzas nodales, no las fuerzas
+        internas del elemento (un voladizo bajo peso propio tendría
+        ``V_i = qL/2`` y ``M_i = −5qL²/12`` en vez de ``qL`` y ``−qL²/2``,
+        auditoría 2026-09-22). ``None`` ⇒ sin carga distribuida.
 
         Contrato canónico del ADR 0002 con **dominio acotado por ADR 0012**:
         aplica a elementos estructurales 1D (trusses, cables, frames 2D/3D)

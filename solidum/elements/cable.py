@@ -16,6 +16,7 @@ from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.math.geometry import perpendicular_projector
 from solidum.registry import ElementRegistry
+from solidum.core.element_forces import axial_end_forces
 from solidum.results import ElementForces
 
 
@@ -102,14 +103,33 @@ class Cable2DCorot(Element):
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+    def _axis_direction(self, u_e: np.ndarray) -> np.ndarray:
+        """Cosenos directores unitarios del eje ``i → j``."""
+        _, c_t, s_t = self._current_geometry(u_e)
+        return np.array([c_t, s_t])
+
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces:
         """API pública (ADR 0002): N en ejes locales, tracción positiva (§5).
 
         La unilateralidad (N≥0, cero cuando slack) está delegada al material;
         si se emparejó con CableMaterial1D, el valor ya refleja la rama correcta.
+
+        Sin carga distribuida el axial es uniforme y el valor en i y j
+        coincide. Con ``equivalent_load`` (vector nodal consistente de la
+        carga distribuida, ejes globales) se devuelven las fuerzas de extremo
+        netas ``F_int − f_eq`` proyectadas sobre el eje, distintas en i y j.
         """
         N = self.compute_internal_forces(U_global)['axial_force']
-        return ElementForces(kind="cable", components={"N": np.array([N, N])})
+        N_i = N_j = N
+        if equivalent_load is not None:
+            u_e = self.get_local_displacements(U_global)
+            _, F_int = self.compute_element_state(u_e)
+            N_i, N_j = axial_end_forces(
+                F_int - np.asarray(equivalent_load, dtype=float),
+                self._axis_direction(u_e),
+            )
+        return ElementForces(kind="cable", components={"N": np.array([N_i, N_j])})
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con ∫NᵀbA dx en configuración de referencia.
@@ -255,13 +275,32 @@ class Cable3DCorot(Element):
         N = self.A * sigma
         return {'axial_force': N, 'stress': sigma, 'strain': epsilon}
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+    def _axis_direction(self, u_e: np.ndarray) -> np.ndarray:
+        """Cosenos directores unitarios del eje ``i → j``."""
+        _, cx, cy, cz = self._current_geometry(u_e)
+        return np.array([cx, cy, cz])
+
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces:
         """API pública (ADR 0002): N en ejes locales, tracción positiva (§5).
 
         La unilateralidad está delegada al material (ver Cable2DCorot).
+
+        Sin carga distribuida el axial es uniforme y el valor en i y j
+        coincide. Con ``equivalent_load`` (vector nodal consistente de la
+        carga distribuida, ejes globales) se devuelven las fuerzas de extremo
+        netas ``F_int − f_eq`` proyectadas sobre el eje, distintas en i y j.
         """
         N = self.compute_internal_forces(U_global)['axial_force']
-        return ElementForces(kind="cable", components={"N": np.array([N, N])})
+        N_i = N_j = N
+        if equivalent_load is not None:
+            u_e = self.get_local_displacements(U_global)
+            _, F_int = self.compute_element_state(u_e)
+            N_i, N_j = axial_end_forces(
+                F_int - np.asarray(equivalent_load, dtype=float),
+                self._axis_direction(u_e),
+            )
+        return ElementForces(kind="cable", components={"N": np.array([N_i, N_j])})
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con ∫NᵀbA dx para cable 3D.

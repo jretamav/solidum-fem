@@ -148,7 +148,9 @@ class TestRankineActivation(unittest.TestCase):
     def test_below_threshold_does_not_activate(self):
         coords = _ref_triangle_coords()
         nodes = _triangle_nodes(coords)
-        emb = CST_Embedded2D(1, nodes, _make_bulk(), _make_cohesive(sigma_t0=1.0e12))
+        # G_f acorde al umbral enorme: el softening lineal exige w_c > kappa_0
+        # (K_e > sigma_t0^2 / (2 G_f)) desde la auditoria 2026-09-22.
+        emb = CST_Embedded2D(1, nodes, _make_bulk(), _make_cohesive(sigma_t0=1.0e12, G_f=1.0e30))
         _assign_local_dofs(emb)
         emb.prepare_step(np.zeros(6))
         self.assertIsNone(emb.discontinuity_state)

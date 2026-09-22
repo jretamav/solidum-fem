@@ -84,7 +84,10 @@ class Frame2DTimoshenko(Element):
         self.state.stresses_trial[0] = sigma
 
         G = E_t / (2.0 * (1.0 + self.nu))
-        Phi = (12.0 * E_t * self.I) / (G * self.As * (L**2))
+        # Φ = 12·E·I/(G·A_s·L²) con G = E/(2(1+ν)) ⇒ Φ = 24(1+ν)·I/(A_s·L²):
+        # no depende de E_t, así que E_t = 0 (plasticidad perfecta) no divide
+        # por cero (auditoría 2026-09-22).
+        Phi = 24.0 * (1.0 + self.nu) * self.I / (self.As * (L**2))
 
         EA_L = E_t * self.A / L
         EI_L = E_t * self.I / L
@@ -136,10 +139,14 @@ class Frame2DTimoshenko(Element):
             'strain': epsilon,
         }
 
-    def internal_forces(self, U_global: np.ndarray) -> ElementForces:
+    def internal_forces(self, U_global: np.ndarray,
+                        equivalent_load: np.ndarray | None = None) -> ElementForces:
         """API pública (ADR 0002): N, V, M en nodos i, j, convención §5."""
         u_e = self.get_local_displacements(U_global)
         _, F_int = self.compute_element_state(u_e)
+        if equivalent_load is not None:
+            # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
+            F_int = F_int - np.asarray(equivalent_load, dtype=float)
         F_local = self.T @ F_int
         return _frame2d_forces_from_local(F_local)
 

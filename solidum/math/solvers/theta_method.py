@@ -377,7 +377,7 @@ class ThetaMethodSolver:
         if not self.is_unconditionally_stable:
             _log.warning(
                 "%s: theta=%g < 0.5 ⇒ estabilidad CONDICIONAL, el paso está "
-                "limitado por Δt ≤ 2/λ_max. Con capacidad consistente λ_max es "
+                "limitado por Δt ≤ 2/((1 − 2θ)·λ_max). Con capacidad consistente λ_max es "
                 "grande y el esquema resulta prácticamente inutilizable; usa "
                 "lumping='lumped', o theta ≥ 0.5 para eliminar el límite.",
                 cls, theta,

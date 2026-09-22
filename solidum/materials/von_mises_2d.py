@@ -18,10 +18,18 @@ import math
 import numpy as np
 from numba import njit
 
-from solidum.constants import J2_DENOM_FLOOR, J2_PLANE_STRESS_MAX_LOCAL_ITER
+from solidum.constants import (
+    ADMISSIBILITY_TOL_ABS,
+    ADMISSIBILITY_TOL_REL,
+    J2_DENOM_FLOOR,
+    J2_PLANE_STRESS_MAX_LOCAL_ITER,
+)
+from solidum.logging import get_logger
 from solidum.core.material import Material
 from solidum.materials._plane_strain import sigma_zz_plane_strain
 from solidum.registry import MaterialRegistry
+
+_log = get_logger("materials")
 
 
 # Re-export local del límite de iteraciones (centralizado en solidum.constants
@@ -32,7 +40,7 @@ _PLANE_STRESS_MAX_LOCAL_ITER = J2_PLANE_STRESS_MAX_LOCAL_ITER
 _DENOM_FLOOR = J2_DENOM_FLOOR
 
 
-@njit
+@njit(cache=True)
 def _compute_j2_plane_strain(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol):
     """Return mapping J2 plane strain. Descomposición volumétrica-desviadora 3D
     con ``ε_zz = 0`` impuesto en la deformación total; ``ε^p_zz`` evoluciona
@@ -108,10 +116,10 @@ def _compute_j2_plane_strain(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e
     return sigma, C_alg, eps_p_new, alpha_new
 
 
-@njit
+@njit(cache=True)
 def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
                              sigma_y, H, E, nu, G, C_e_ps,
-                             yield_tol, max_local_iter):
+                             tol_rel, tol_abs, max_local_iter):
     """Return mapping J2 plane stress proyectado (Simó-Hughes §3.4.1).
 
     Algoritmo:
@@ -133,16 +141,16 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
        porque ``γ̇`` aquí tiene unidades ``[1/esfuerzo]``).
     6. Tangente consistente cerrada con corrección por dα/dΔγ no constante.
 
-    Nota sobre ``yield_tol`` (auditoría H-3.10): el caller pasa la tolerancia
-    ya calculada con ``alpha_old`` (escala del paso entrante). No se recalcula
-    dentro del Newton local con ``alpha_curr`` por simplicidad y porque el
-    impacto numérico es despreciable: en un paso plástico típico,
-    ``α_curr - α_old << α_old + admissibility_scale_baseline``, así que
-    ``tol(alpha_curr) ≈ tol(alpha_old)`` con error relativo del orden de
-    ``Δγ·w / (σ_y + H·α_old)``, varios órdenes por debajo de la propia
-    tolerancia. Si en algún caso patológico esto fuera relevante, recalcular
-    ``yield_tol`` cada iteración con ``alpha_curr`` es trivial pero no
-    necesario hoy.
+    Tolerancia del Newton local (auditoría 2026-09-22): se recalcula en cada
+    iteración con la escala corriente ``R_curr²/3`` (``tol_abs + tol_rel·R²/3``,
+    ADR 0006). Con ``H > 0`` y un incremento plástico grande, ``R_curr ≫ R_old``
+    y una tolerancia fija en ``α_old`` quedaba por debajo del redondeo de ``f̄``
+    (~ε_mach·R_curr²), de modo que el bucle agotaba siempre ``max_local_iter``.
+    El punto de partida es la cota inferior de la raíz para ``H = 0``
+    (``Δγ₀ = (√(3·½σPσ_trial)/R − 1)/μ_max``): desde ``Δγ = 0`` el Newton
+    necesitaba ~log₁.₅(σ_trial/R) iteraciones y con predictores lejanos
+    (``σ_trial/R ≳ 3·10³``) salía sin converger y sin avisar. Devuelve un
+    quinto valor ``converged_local`` que el envoltorio Python registra.
     """
     # Deformación plástica plana en Voigt engineering [xx, yy, γ_xy = 2·ε_xy_tens]
     eps_p_voigt = np.array([eps_p_old[0], eps_p_old[1], 2.0 * eps_p_old[3]])
@@ -164,8 +172,8 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
     R_trial = sigma_y + H * alpha_old
     f_bar_trial = half_sPs_trial - (R_trial * R_trial) / 3.0
 
-    if f_bar_trial <= yield_tol:
-        return sigma_trial.copy(), C_e_ps.copy(), eps_p_old.copy(), alpha_old
+    if f_bar_trial <= tol_abs + tol_rel * (R_trial * R_trial) / 3.0:
+        return sigma_trial.copy(), C_e_ps.copy(), eps_p_old.copy(), alpha_old, True
 
     # Autovalores de C_e^ps · P
     mu1 = E / (3.0 * (1.0 - nu))
@@ -178,8 +186,13 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
     a2 = (sigma_trial[0] - sigma_trial[1]) * inv_sqrt2
     a3 = sigma_trial[2]
 
-    # Newton local sobre Δγ
-    delta_gamma = 0.0
+    # Newton local sobre Δγ. Warm start: cota inferior de la raíz para H = 0
+    # (f̄ es convexa decreciente en Δγ, así que desde la izquierda el Newton
+    # es monótono). Ver docstring.
+    mu_max = mu1 if mu1 > mu_dev else mu_dev
+    ratio = math.sqrt(3.0 * half_sPs_trial) / R_trial
+    delta_gamma = (ratio - 1.0) / mu_max if ratio > 1.0 else 0.0
+    converged_local = False
 
     for _ in range(max_local_iter):
         denom1 = 1.0 + delta_gamma * mu1
@@ -203,7 +216,8 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
 
         f_bar = half_sPs - (R_curr * R_curr) / 3.0
 
-        if abs(f_bar) < yield_tol:
+        if abs(f_bar) < tol_abs + tol_rel * (R_curr * R_curr) / 3.0:
+            converged_local = True
             break
 
         # Derivadas en cadena
@@ -304,7 +318,7 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
     else:
         C_alg = D - np.outer(D_P_sigma, sigma_P_D) / denom_beta
 
-    return sigma_new, C_alg, eps_p_new, alpha_new
+    return sigma_new, C_alg, eps_p_new, alpha_new, converged_local
 
 
 @MaterialRegistry.register
@@ -381,6 +395,7 @@ class VonMises2D(Material):
         self.H = H
         self.hypothesis = hypothesis
         self.density = density
+        self._local_newton_warned = False
 
         # Módulos elásticos (K solo se usa en plane strain)
         self.K = E / (3.0 * (1.0 - 2.0 * nu))
@@ -434,11 +449,23 @@ class VonMises2D(Material):
                 self.sigma_y, self.H, self.K, self.G, self.C_e, yield_tol
             )
         else:  # 'plane_stress'
-            sigma, C_alg, eps_p_new, alpha_new = _compute_j2_plane_stress(
+            sigma, C_alg, eps_p_new, alpha_new, local_ok = _compute_j2_plane_stress(
                 strain, eps_p_old, alpha_old,
                 self.sigma_y, self.H, self.E, self.nu, self.G, self.C_e,
-                yield_tol, _PLANE_STRESS_MAX_LOCAL_ITER
+                ADMISSIBILITY_TOL_REL, ADMISSIBILITY_TOL_ABS,
+                _PLANE_STRESS_MAX_LOCAL_ITER,
             )
+            if not local_ok and not self._local_newton_warned:
+                # Aviso único por instancia: el residuo global queda
+                # contaminado en este iterado; el Newton global suele
+                # recuperarse (bisección), pero no debe pasar en silencio.
+                self._local_newton_warned = True
+                _log.warning(
+                    f"VonMises2D plane stress: el Newton local del return mapping "
+                    f"agotó {_PLANE_STRESS_MAX_LOCAL_ITER} iteraciones sin converger "
+                    f"(predictor muy lejano de la superficie de fluencia). σ puede "
+                    f"quedar fuera de la superficie en este iterado."
+                )
 
         new_state = {'eps_p': eps_p_new, 'alpha': alpha_new}
         return sigma, C_alg, new_state

@@ -52,6 +52,8 @@ class LinearSolver:
         self._g_full = None
         self._F_dir = None
         self._n_free = None
+        # Las cachés del Assembler (topología, restricciones, masa) también.
+        self.assembler.invalidate()
 
     def _build_cache(self) -> None:
         """Ensambla ``K``, reduce a libres, factoriza y guarda el factor.

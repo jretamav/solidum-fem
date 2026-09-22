@@ -69,7 +69,7 @@ En la cara con normal saliente `+x_local`, las fuerzas internas positivas son:
 
 En la cara con normal saliente `−x_local`, todos los sentidos se invierten (Newton 3ª ley).
 
-Justificación: es la convención que sale de integrar directamente el tensor de esfuerzos sobre la sección (`N=∫σxx dA`, `Vy=∫σxy dA`, `Vz=∫σxz dA`, `T=∫(y·σxz − z·σxy) dA`, `My=−∫z·σxx dA`, `Mz=∫y·σxx dA`). Es la que adoptan Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS (Beam188/189), Abaqus (B31/B32). La convención estructural de "sagging positivo" no tiene extensión canónica a 3D — se usa solo en 2D.
+Justificación: es la convención que sale de integrar directamente el tensor de esfuerzos sobre la sección (`N=∫σxx dA`, `Vy=∫σxy dA`, `Vz=∫σxz dA`, `T=∫(y·σxz − z·σxy) dA`, `My=∫z·σxx dA`, `Mz=−∫y·σxx dA`). Es la que adoptan Bathe, Crisfield, Cook-Malkus-Plesha, SAP2000, OpenSees, ANSYS (Beam188/189), Abaqus (B31/B32). La convención estructural de "sagging positivo" no tiene extensión canónica a 3D — se usa solo en 2D.
 
 Convención de fibra para flectores (consecuencia del signo de arriba):
 - `Mz > 0` ⇒ tracción en fibras con `y < 0` (equivalente a sagging en el plano xy con `+y=arriba`).
