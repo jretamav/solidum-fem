@@ -1,0 +1,431 @@
+\documentclass[11pt,letterpaper,oneside]{article}
+
+% Motor: lualatex (Unicode nativo). Mismo juego de paquetes que los manuales.
+\usepackage{fontspec}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[margin=2.5cm, headheight=15pt]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage[most]{tcolorbox}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash\footnotesize}X}
+
+\definecolor{yamlkey}{RGB}{0, 102, 204}
+\definecolor{darkgray}{RGB}{50, 50, 50}
+\definecolor{bglight}{RGB}{245, 245, 245}
+\definecolor{notebackground}{RGB}{240, 248, 255}
+\definecolor{noteborder}{RGB}{0, 102, 204}
+\definecolor{warnbackground}{RGB}{255, 245, 230}
+\definecolor{warnborder}{RGB}{204, 102, 0}
+
+\newtcolorbox{infobox}[1]{
+  enhanced, colback=notebackground, colframe=noteborder, colbacktitle=notebackground,
+  coltitle=noteborder, fonttitle=\bfseries, title=#1,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={colback=white, colframe=white, sharp corners},
+  boxrule=0.4pt, arc=2pt, left=4mm, right=4mm, top=2mm, bottom=2mm,
+  before skip=8pt, after skip=8pt,
+}
+\newtcolorbox{warnbox}[1]{
+  enhanced, colback=warnbackground, colframe=warnborder, colbacktitle=warnbackground,
+  coltitle=warnborder, fonttitle=\bfseries, title=#1,
+  attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={colback=white, colframe=white, sharp corners},
+  boxrule=0.4pt, arc=2pt, left=4mm, right=4mm, top=2mm, bottom=2mm,
+  before skip=8pt, after skip=8pt,
+}
+
+\lstset{
+  language=Python, basicstyle=\ttfamily\footnotesize, backgroundcolor=\color{bglight},
+  frame=single, rulecolor=\color{darkgray}, framerule=0.3pt,
+  keywordstyle=\color{yamlkey}\bfseries, commentstyle=\color{darkgray}\itshape,
+  stringstyle=\color{red!70!black}, showstringspaces=false, breaklines=true,
+  columns=fullflexible, keepspaces=true, xleftmargin=2mm, xrightmargin=2mm,
+}
+
+\hypersetup{colorlinks=true, linkcolor=yamlkey, urlcolor=yamlkey,
+  pdftitle={Vectorizacion por lotes del ensamblaje - Solidum FEM},
+  pdfauthor={Solidum FEM}}
+
+\titleformat{\section}{\Large\bfseries\color{yamlkey}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Propuesta de diseño}}
+\fancyhead[R]{\color{darkgray}Vectorización por lotes del ensamblaje}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\color{yamlkey}\textbf{Vectorización por lotes del ensamblaje}\\[4pt]
+  \large\color{darkgray}Propuesta de diseño para la deuda técnica \#19 de Solidum FEM}
+\author{Documento de trabajo para el ADR correspondiente}
+\date{22 de septiembre de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+El ensamblaje de Solidum FEM recorre los elementos uno a uno en Python y, dentro de cada uno, los puntos de Gauss uno a uno. Un perfil sobre una malla de 10\,000 Quad4 muestra que más del 90\,\% del tiempo es sobrecarga de despacho (llamadas a funciones, creación de arreglos pequeños, diccionarios de estado) y no aritmética. Este documento propone reorganizar el ensamblaje ``por lotes'': agrupar los elementos por familia derivada de sus contratos declarativos, evaluar la cinemática y la constitutiva de todos los puntos de Gauss de la familia dentro de un único kernel compilado, y almacenar el estado interno como arreglos en vez de diccionarios. La ganancia esperada es de 30 a 100 veces en el ensamblaje y de un orden de magnitud en la memoria del estado interno, sin cachear la matriz $\mathbf B$ (que duplicaría la memoria por elemento) y sin hipótesis sobre la cinemática (el kernel recomputa siempre desde coordenadas de referencia y desplazamientos). El diseño se ciñe al principio del proyecto de no particularizar al presente: la agrupación se deriva de los contratos, el camino por elemento sigue siendo el contrato obligatorio y el camino por lotes es una capacidad que cada componente declara, con equivalencia bit a bit exigida en el barrido de registros. No se implementa nada hasta que se apruebe el ADR.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Motivación: dónde se va el tiempo y la memoria}
+
+\subsection{Perfil del ensamblaje actual}
+
+La tabla~\ref{tab:perfil} recoge el perfil (\code{cProfile}) de un ensamblaje no lineal de una malla regular de $100\times100$ Quad4 con \code{VonMises2D} en rama elástica, es decir, 10\,000 elementos y 40\,000 puntos de Gauss. El tiempo total con el perfilador activo es 1,97\,s; sin perfilador, 1,66\,s.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{Yrrr}
+\toprule
+Función & Tiempo propio & Llamadas & Coste unitario \\
+\midrule
+\code{Quad4.compute\_element\_state} (bucle de Gauss y despacho a kernels) & 0,96\,s & 10\,000 & 96\,µs por elemento \\
+\code{VonMises2D.compute\_state} (envoltorio Python del kernel) & 0,38\,s & 40\,000 & 9\,µs por punto \\
+\code{Assembler.assemble\_non\_linear\_system} (bucle, slicing, volcado) & 0,16\,s & 1 & 16\,µs por elemento \\
+\code{Element.get\_coordinate\_matrix} (bucle Python sobre nodos) & 0,13\,s & 10\,000 & 13\,µs por elemento \\
+\code{Assembler.commit\_all\_states} (\code{deepcopy} de 40\,000 dicts) & 0,40\,s & 1 & 10\,µs por punto \\
+\bottomrule
+\end{tabularx}
+\caption{Perfil de un ensamblaje de 10\,000 Quad4 con J2 (Python 3.14, Windows).}
+\label{tab:perfil}
+\end{table}
+
+Un análisis de Newton con 5 pasos y 4 iteraciones por paso son 25 ensamblajes y 5 commits: unos 45\,s para 10\,000 elementos y del orden de 8 minutos para 100\,000. Tras la auditoría de 2026-09-22 cada iteración de Newton ensambla una sola vez (antes dos), lo que ya redujo a la mitad el coste de todo análisis no lineal sin tocar contratos; el resto de este documento trata lo que queda.
+
+\subsection{Memoria del estado interno}
+
+La tabla~\ref{tab:memoria} muestra lo que ocupa el estado interno en la misma malla, medido con \code{tracemalloc}. Cada punto de Gauss guarda un diccionario Python con dos arreglos NumPy pequeños (\code{eps\_p} de cuatro componentes y \code{alpha} escalar). Las mismas magnitudes almacenadas como dos arreglos por familia ocupan once veces menos, y el commit deja de copiar.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Concepto & Memoria & Por punto de Gauss \\
+\midrule
+Estado trial como diccionarios, tras un ensamblaje & 17,6\,MB & 462\,B \\
+Estado committed (copia profunda en el commit) & 17,6\,MB & 462\,B \\
+Mismo estado como arreglos, trial y committed juntos & 3,05\,MB & 80\,B \\
+Matriz $\mathbf K$ dispersa en CSR & 4,2\,MB & --- \\
+Topología COO cacheada (filas, columnas y datos) & 9,8\,MB & --- \\
+\bottomrule
+\end{tabular}
+\caption{Memoria del estado interno frente a la matriz global (10\,000 Quad4, J2).}
+\label{tab:memoria}
+\end{table}
+
+Hoy el estado interno es la partida de memoria más grande del ensamblaje, mayor que la matriz global, y se duplica durante el análisis por la copia profunda.
+
+\section{Diagnóstico: sobrecarga de despacho, no aritmética}
+
+El patrón actual es ``un elemento por vez'': cada elemento recorre sus puntos de Gauss en Python y en cada uno realiza una decena de operaciones sobre matrices de $3\times8$ u $8\times8$. NumPy y Numba son rápidos por operación grande, pero cada llamada tiene un coste fijo $\tau$ de entre uno y tres microsegundos, sea sobre una matriz de $8\times8$ o de $8000\times8000$. Con $n_{\text{gp}}$ puntos de Gauss y $n_{\text{ops}}$ llamadas por punto, el tiempo por elemento es
+\begin{equation}
+  t_{\text{elem}} \approx n_{\text{gp}}\, n_{\text{ops}}\, \tau + t_{\text{arit}},
+\end{equation}
+con $t_{\text{arit}}$ la aritmética real. Para un Quad4 con J2, $n_{\text{gp}} = 4$, $n_{\text{ops}} \approx 15$ a $20$ y $\tau \approx 1{,}5$\,µs dan entre 90 y 120\,µs, mientras que $t_{\text{arit}}$ (unos cientos de operaciones de coma flotante por punto) vale menos de un microsegundo. La relación es del orden de 100 a 1.
+
+Los kernels \code{@njit} existentes (\code{\_compute\_kinematics}, \code{\_compute\_integrands}, los return mapping de J2 y Drucker-Prager) aceleran lo que ocurre dentro de ellos, pero no el hecho de invocarlos 80\,000 veces desde Python: la ley de Amdahl limita la ganancia de compilar el interior de un bucle cuya sobrecarga está en el exterior. A esto se suman tres costes de la misma naturaleza:
+
+\begin{itemize}[nosep]
+  \item el diccionario de estado por punto de Gauss (creación, \code{dict.get}, asignación en \code{vars\_trial});
+  \item \code{copy.deepcopy} en cada commit, que recorre 40\,000 diccionarios;
+  \item \code{get\_coordinate\_matrix}, un doble bucle Python que reconstruye en cada evaluación las coordenadas de un elemento cuya geometría de referencia no cambia.
+\end{itemize}
+
+\begin{infobox}{Conclusión del diagnóstico}
+El problema no es la aritmética ni el álgebra dispersa (la conversión COO a CSR cuesta 10\,ms). Es la granularidad: hay que invertir el bucle para que la operación sea grande y el despacho, único.
+\end{infobox}
+
+\section{Principios de diseño}
+
+Estos cinco principios recogen lo acordado con el usuario el 2026-09-22 y el criterio de \code{Reglas.md} §1: toda decisión se evalúa contra el coste de añadir el componente $N+1$.
+
+\begin{enumerate}[nosep]
+  \item \textbf{Agrupación derivada de los contratos, no de listas.} La clave del lote se construye con los atributos declarativos que ya existen (clase de elemento, clase de material, regla de cuadratura, número de nodos). Un elemento nuevo cae en su propio lote sin tocar el ensamblador.
+  \item \textbf{El camino por elemento sigue siendo el contrato obligatorio.} \code{compute\_element\_state} y \code{compute\_state} no cambian. El camino por lotes es una capacidad que el componente declara; si no la declara, el ensamblador lo procesa por el camino de siempre. Un material de investigación se implementa primero de forma simple y se acelera después si hace falta.
+  \item \textbf{El estado interno se declara, no se cablea.} Cada material declara el esquema de sus variables (nombres y formas) y el almacenamiento por arreglos se genera de esa declaración. Un estado que no encaje en arreglos queda automáticamente en el camino por elemento.
+  \item \textbf{El kernel no supone nada sobre la cinemática.} Recibe siempre coordenadas de referencia y desplazamientos y recomputa lo que necesite. Nada derivado de $\mathbf x = \mathbf X + \mathbf u$ se cachea entre iteraciones; vale para elementos lineales, corotacionales y para futuras formulaciones lagrangianas total o actualizada.
+  \item \textbf{Equivalencia demostrada, no supuesta.} El camino por elemento es la referencia física; el camino por lotes debe reproducirlo a precisión de máquina en toda combinación registrada, y la comprobación vive en el barrido de contratos que ya recorre los tres registros.
+\end{enumerate}
+
+\section{Arquitectura propuesta}
+
+\subsection{Familias de lote}
+
+Una \emph{familia} es el conjunto de elementos del dominio que comparten clase de elemento, clase de material, regla de cuadratura y número de nodos. La clave se deriva de atributos que ya existen:
+\begin{lstlisting}
+def family_key(elem):
+    return (type(elem), type(elem.material), elem.quadrature_key
+            if elem.quadrature_key is not None else id(elem.points),
+            len(elem.nodes))
+\end{lstlisting}
+Los parámetros que varían de un elemento a otro dentro de la familia (espesor en 2D; área e inercias en 1D) no forman parte de la clave: el elemento los declara en \code{BATCH\_PARAMS} y el constructor de la familia los reúne en un arreglo $(N, n_{\text{par}})$. Lo mismo ocurre con los parámetros del material, que son constantes por familia porque la instancia del material es la misma para todos sus elementos.
+
+El \code{Assembler} construye las familias una sola vez, junto con la topología COO que ya cachea, y las invalida con la misma huella de topología introducida en la auditoría. Para cada familia guarda los índices globales de sus elementos $(N, n_{\text{dof}})$ y el desplazamiento \code{ptr} de cada uno dentro del vector \code{data} de la COO.
+
+\subsection{Contrato opcional del elemento}
+
+El elemento que quiera participar en el camino por lotes declara dos atributos de clase:
+\begin{lstlisting}
+class Quad4(Element):
+    BATCH_PARAMS = ("thickness",)        # escalares por elemento
+    BATCH_KERNEL = _quad4_batch_kernel   # funcion @njit, None por defecto
+\end{lstlisting}
+El kernel recibe únicamente arreglos y un kernel puntual del material, y devuelve arreglos:
+\begin{lstlisting}
+@njit(cache=True)
+def _quad4_batch_kernel(X, u, params, gp_pts, gp_w,
+                        mat_kernel, mat_params, S_in, S_out,
+                        K_out, F_out, eps_out, sig_out):
+    # X: (N, 4, 2) coordenadas de referencia; u: (N, 8) desplazamientos
+    # S_in/S_out: (N*n_gp, n_state) estado committed / trial
+    n_gp = gp_pts.shape[0]
+    for e in range(X.shape[0]):
+        K = np.zeros((8, 8)); F = np.zeros(8)
+        for g in range(n_gp):
+            B, detJ = _compute_kinematics(gp_pts[g, 0], gp_pts[g, 1], X[e])
+            strain = B @ u[e]
+            row = e * n_gp + g
+            sigma, C, S_out[row] = mat_kernel(strain, S_in[row], mat_params)
+            dV = detJ * gp_w[g] * params[e, 0]
+            K += (B.T @ C @ B) * dV
+            F += (B.T @ sigma) * dV
+            eps_out[row] = strain; sig_out[row] = sigma
+        K_out[e] = K; F_out[e] = F
+\end{lstlisting}
+Dos observaciones sobre este esqueleto. Primera: la cinemática se recomputa dentro del bucle compilado; no hay caché de $\mathbf B$ (véase §\ref{sec:memoria}). Segunda: la física es exactamente la del camino por elemento, porque \code{\_compute\_kinematics} y \code{\_compute\_integrands} son las mismas funciones \code{@njit} que ya usa \code{Quad4.compute\_element\_state}; el kernel por lotes es el bucle exterior compilado, no una reimplementación.
+
+Para los sólidos de orden superior 2D y 3D, que hoy comparten una base (\code{\_HigherOrderSolid2D}, \code{\_HigherOrderSolid3D}) parametrizada por las funciones de forma, el kernel por lotes se construye una vez por base y recibe las funciones de forma compiladas como argumento, de modo que Quad8, Quad9, Tri6, Hex20, Hex27 y Tet10 lo heredan sin código propio.
+
+\subsection{Contrato opcional del material}
+
+El material declara el esquema de su estado y un kernel puntual con firma uniforme:
+\begin{lstlisting}
+class VonMises2D(Material):
+    STATE_SCHEMA = {"eps_p": (4,), "alpha": ()}   # 5 columnas en S
+    BATCH_KERNEL = _j2_point_kernel
+
+@njit(cache=True)
+def _j2_point_kernel(strain, S_row, p):
+    # p: tupla de parametros (sigma_y, H, K, G, C_e, tol_rel, tol_abs, ...)
+    eps_p_old = S_row[0:4]; alpha_old = S_row[4]
+    sigma, C, eps_p_new, alpha_new = _compute_j2_plane_strain(
+        strain, eps_p_old, alpha_old, p[0], p[1], p[2], p[3], p[4], p[5])
+    S_new = np.empty(5); S_new[0:4] = eps_p_new; S_new[4] = alpha_new
+    return sigma, C, S_new
+\end{lstlisting}
+El adaptador tiene una decena de líneas y llama al return mapping existente: no duplica física. La tolerancia de admisibilidad, que hoy se calcula en Python en cada llamada (\code{admissibility\_tol}, 129\,ms en el perfil), pasa a evaluarse dentro del kernel con las mismas constantes del ADR 0006, como ya hace el Newton local de plane stress desde la auditoría.
+
+\code{STATE\_SCHEMA} tiene valor incluso sin kernel por lotes: basta para que el estado se almacene como arreglos y el commit deje de copiar diccionarios. Por eso se propone que sea obligatorio en todo material nuevo (cuesta una línea) y que \code{BATCH\_KERNEL} sea opcional.
+
+\subsection{Estado interno por arreglos}
+
+Cada familia mantiene un \code{FamilyState} con cuatro arreglos: estado committed y trial, $(P, n_{\text{state}})$ con $P = N\cdot n_{\text{gp}}$, y esfuerzos committed y trial, $(P, n_{\sigma})$. Las operaciones son:
+\begin{itemize}[nosep]
+  \item \textbf{evaluación}: el kernel lee \code{S\_committed} y escribe \code{S\_trial};
+  \item \textbf{commit}: intercambio de referencias entre trial y committed; coste nulo;
+  \item \textbf{bisección o rechazo del paso}: nada que hacer; el siguiente ensamblaje sobrescribe el trial desde el committed, exactamente la semántica trial/commit actual de \code{ElementState}.
+\end{itemize}
+
+La compatibilidad hacia atrás se resuelve en \code{ElementState}. En una familia vectorizada, las listas \code{vars} y \code{stresses} del estado, indexadas por punto de Gauss, pasan a ser vistas que construyen el diccionario bajo demanda a partir de la fila correspondiente de \code{S} y del esquema; asignar en \code{vars\_trial} escribe la fila. Así \code{compute\_gauss\_state}, el exportador VTK y los tests que leen el estado siguen funcionando sin cambios, y el coste del diccionario sólo se paga cuando alguien lo pide.
+
+\subsection{Cinemática}
+
+El kernel recibe siempre $\mathbf X$ de referencia y $\mathbf u$, y recomputa jacobiano, su inversa y $\mathbf B$ en cada evaluación. Invertir un jacobiano de $3\times3$ son unas decenas de operaciones, despreciables frente al return mapping, y en código compilado no tienen el coste de despacho que hoy las encarece. Esta elección hace al diseño indiferente a la cinemática:
+\begin{itemize}[nosep]
+  \item \textbf{lineal} (todos los sólidos actuales): $\mathbf B$ depende sólo de $\mathbf X$; se recomputa igualmente, por uniformidad;
+  \item \textbf{corotacional} (armaduras, cables y marco 2D corotacionales): el kernel reconstruye la configuración corriente a partir de $\mathbf X + \mathbf u$, como hoy hace cada elemento en \code{\_current\_geometry};
+  \item \textbf{lagrangiana total} (futura): las derivadas respecto a $\mathbf X$ son fijas y el gradiente de deformación $\mathbf F$ se evalúa por punto; encaja sin cambio de estructura;
+  \item \textbf{lagrangiana actualizada} (futura): las derivadas se toman respecto a $\mathbf x = \mathbf X + \mathbf u$ y se recomputan; el kernel ya recibe ambos.
+\end{itemize}
+La topología COO, que depende sólo de la conectividad, sigue siendo válida con grandes desplazamientos.
+
+\subsection{Ensamblador}
+
+\code{assemble\_non\_linear\_system} recorre las familias. Para las vectorizadas, invoca el kernel por trozos (véase §\ref{sec:memoria}) y vuelca \code{K\_out} directamente en \code{data[ptr:ptr+n]} de la COO cacheada, y \code{F\_out} en \code{F\_int} con los índices precalculados. Para las no vectorizadas, aplica el bucle por elemento actual. Después construye la CSR exactamente como hoy. \code{commit\_all\_states} conmuta los arreglos de cada familia y llama a \code{commit\_state} en los elementos no vectorizados; \code{prepare\_all\_steps} no cambia.
+
+Los solvers (Newton estático, arc-length, Newmark, HHT, $\theta$-method, explícito) no se tocan: consumen \code{assemble\_non\_linear\_system}, \code{commit\_all\_states} y \code{reduce}, cuyos contratos se mantienen. Tampoco cambian \code{build\_solve\_result}, el exportador ni \code{compute\_gauss\_state}.
+
+\section{Memoria}
+\label{sec:memoria}
+
+\subsection{Lo que se ahorra}
+
+El estado por arreglos reduce la memoria del estado interno de 462 a 80\,B por punto de Gauss (tabla~\ref{tab:memoria}), once veces menos, y elimina la duplicación transitoria del commit. En un modelo 3D de 100\,000 Hex8 con J2 (800\,000 puntos de Gauss y siete variables de estado) son 90\,MB frente a los 740\,MB actuales.
+
+\subsection{Lo que no se debe cachear}
+
+Precalcular $\mathbf B$ y $\det\mathbf J$ por punto de Gauss es la variante que se pagaría en memoria. La tabla~\ref{tab:bcache} compara su coste con lo que ya ocupa cada elemento en la topología COO cacheada (una entrada de 8 bytes de datos más dos índices de 4 bytes por coeficiente de $\mathbf K_e$).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Elemento & Caché de $\mathbf B$ por elemento & Entradas COO por elemento \\
+\midrule
+Quad4 (4 gp, 3$\times$8) & 0,8\,KB & 1,0\,KB \\
+Quad8 (9 gp, 3$\times$16) & 3,5\,KB & 4,1\,KB \\
+Hex8 (8 gp, 6$\times$24) & 9,2\,KB & 9,2\,KB \\
+Hex20 (27 gp, 6$\times$60) & 77,8\,KB & 57,6\,KB \\
+Hex27 (27 gp, 6$\times$81) & 105\,KB & 105\,KB \\
+\bottomrule
+\end{tabular}
+\caption{Caché de $\mathbf B$ frente a la memoria ya comprometida por elemento en la COO.}
+\label{tab:bcache}
+\end{table}
+
+Cachear $\mathbf B$ duplica el consumo por elemento en todas las familias y en 3D es prohibitivo: 10\,000 Hex20 supondrían 780\,MB sólo de $\mathbf B$. La propuesta no la cachea; recomputarla en el kernel cuesta menos que el return mapping. Lo único cacheado es la geometría de referencia $(N, n_{\text{nodos}}, d)$: 64\,B por Quad4, 192\,B por Hex8.
+
+\subsection{Temporales acotados por trozos}
+
+Los arreglos temporales del lote (deformaciones, tangentes, matrices elementales) se acotan procesando la familia por trozos de $n_c$ elementos. El tamaño de trozo se fija con un presupuesto de memoria $M_{\max}$ (por ejemplo 64\,MB):
+\begin{equation}
+  n_c = \left\lfloor \frac{M_{\max}}{8\,\bigl[n_{\text{gp}}\,(n_\sigma\, n_{\text{dof}} + n_\sigma^2 + 2 n_\sigma) + n_{\text{dof}}^2 + n_{\text{dof}}\bigr]} \right\rfloor ,
+\end{equation}
+donde el corchete cuenta los dobles por elemento de $\mathbf B$, $\mathbf C$, deformación y esfuerzo por punto, más $\mathbf K_e$ y $\mathbf F_e$. Para Hex20 son unos 90\,KB por elemento, así que un presupuesto de 64\,MB procesa 700 elementos por trozo; el pico no crece con el tamaño de la malla. Las matrices elementales del trozo se vuelcan a \code{data} y el temporal se reutiliza.
+
+\subsection{El techo real}
+
+Con o sin vectorización, lo que limita el tamaño del modelo es la factorización dispersa: el relleno del LU en 3D multiplica varias veces los no nulos de $\mathbf K$. La palanca ahí es otra y ya está en el despachador algebraico (ADR 0003): Cholesky vía scikit-sparse para sistemas simétricos definidos positivos, con aproximadamente la mitad de memoria que LU, y a más largo plazo un solver iterativo con precondicionador para 3D grande. Ninguna depende de cómo se ensamble.
+
+\section{Rendimiento esperado y cómo validarlo}
+
+Con el bucle exterior compilado, el coste por punto de Gauss queda en la aritmética: cinemática (unas 100 operaciones), return mapping J2 (unas 200) y producto $\mathbf B^{\mathsf T}\mathbf C\mathbf B$ (unas 600 para Quad4). Son del orden de 0,3 a 1\,µs por punto, es decir, entre 2 y 4\,µs por Quad4 frente a los 120 a 170 actuales: entre 30 y 60 veces, con margen hasta 100 en elementos con más puntos de Gauss, donde la sobrecarga relativa de hoy es mayor. El commit pasa de 0,4\,s a un intercambio de referencias.
+
+Tras esa ganancia el ensamblaje deja de dominar: para 20\,000 grados de libertad la factorización LU cuesta unos 50\,ms y pasa a ser el término principal de cada iteración de Newton, lo que a su vez motiva el Cholesky del ADR 0003. La estimación debe validarse con un benchmark reproducible antes de aceptar el ADR: la misma malla de $100\times100$ Quad4 con J2 y una de $20\times20\times20$ Hex8, midiendo ensamblaje, commit y solve por separado. El script de medición usado para las tablas de este documento se incluye en el apéndice.
+
+\section{Verificación}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Equivalencia entre caminos.} Para cada combinación registrada elemento $\times$ material compatible, sobre una malla pequeña con geometría distorsionada y un campo de desplazamientos que plastifique o dañe, comparar $\mathbf K$, $\mathbf F_{\text{int}}$, esfuerzos y estado trial entre el camino por elemento y el camino por lotes. Tolerancia: relativa $10^{-14}$ (ambos caminos ejecutan las mismas funciones compiladas; la única diferencia admisible es el orden de suma). La comprobación se añade a \code{test\_element\_contract\_sweep.py} y \code{test\_material\_contract\_sweep.py}, que ya iteran los registros, así que una combinación nueva entra sin que nadie la añada a mano.
+  \item \textbf{Semántica trial/commit.} Reproducir con familias vectorizadas los tests existentes de bisección (el trial de un paso rechazado no contamina el committed), de \code{prepare\_step} y de \code{internal\_forces} tras el commit.
+  \item \textbf{Vistas de estado.} \code{state.vars[idx]} y \code{state.stresses[idx]} devuelven en una familia vectorizada lo mismo que en una no vectorizada; el exportador VTK y \code{compute\_gauss\_state} producen salidas idénticas.
+  \item \textbf{Benchmarks de validación.} Lamé, NAFEMS LE1 y LE10, Hill J2, Cook plane strain y los cruces 2D--3D deben dar cifras idénticas: son el criterio de que la física no se movió.
+  \item \textbf{Rendimiento.} Umbral de aceptación del benchmark: al menos 20 veces en el ensamblaje de Quad4 con J2 y al menos 10 veces en Hex8, sin superar el presupuesto de memoria de trozo.
+\end{enumerate}
+
+\section{Plan por fases}
+
+Cada fase deja la suite verde y es útil por sí sola; ninguna obliga a la siguiente.
+
+\begin{description}[style=nextline, leftmargin=0pt, itemsep=4pt]
+  \item[Fase 0 --- Benchmark reproducible.] Script en \code{examples/benchmarks/} que mide ensamblaje, commit y solve en las dos mallas de referencia y guarda las cifras de partida. Criterio: cifras publicadas en \code{STATUS.md}.
+  \item[Fase 1 --- Estado por arreglos.] \code{STATE\_SCHEMA} en los materiales con historia, \code{FamilyState} y las vistas en \code{ElementState}; commit sin copia profunda. Sin kernel por lotes todavía: el camino por elemento sigue escribiendo el estado, pero en las filas de los arreglos. Criterio: suite verde, memoria del estado dividida por diez, commit despreciable.
+  \item[Fase 2 --- Kernel por lotes para sólidos 2D lineales.] \code{BATCH\_KERNEL} en Quad4 y Tri3 y en la base de orden superior 2D; adaptadores puntuales para Elastic2D, Orthotropic2D, VonMises2D, DruckerPrager2D e IsotropicDamage2D. Criterio: equivalencia $10^{-14}$ en el barrido y umbral de rendimiento en Quad4.
+  \item[Fase 3 --- Sólidos 3D.] Hex8, Tet4 y la base de orden superior 3D con los materiales 3D. Criterio: equivalencia y umbral en Hex8; presupuesto de trozo respetado con Hex27.
+  \item[Fase 4 --- Elementos estructurales 1D.] Armaduras, cables y marcos, incluidos los corotacionales, con los materiales 1D. Aquí la ganancia es menor (pocos puntos de Gauss) y la fase puede diferirse si el benchmark no la justifica.
+  \item[Fase 5 --- Térmicos.] Quad4Thermal y Hex8Thermal con \code{ThermalConduction}; misma estructura con \code{FLUX\_DIM} en lugar de \code{STRAIN\_DIM}.
+\end{description}
+
+Fuera de alcance de todas las fases: \code{CST\_Embedded2D} y los materiales cohesivos. Su estado (\code{DiscontinuityState}, Newton local del salto) no encaja en arreglos regulares y su número de elementos es pequeño; permanecen en el camino por elemento sin penalización de diseño.
+
+\subsection{Coste del componente $N+1$}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lYY}
+\toprule
+Componente nuevo & Hoy & Con la propuesta \\
+\midrule
+Material sin historia & \code{compute\_state} & igual; \code{STATE\_SCHEMA = \{\}}; kernel puntual opcional (5 líneas) \\
+Material con historia & \code{compute\_state} + kernel \code{@njit} & igual + \code{STATE\_SCHEMA} (1 línea, obligatoria); adaptador puntual opcional (10 líneas) \\
+Sólido sobre una base existente & funciones de forma + \code{FACE\_NODES} & igual; hereda el kernel por lotes de la base \\
+Elemento con cinemática nueva & \code{compute\_element\_state} & igual; kernel por lotes opcional, escrito con las mismas funciones \code{@njit} del camino por elemento \\
+\bottomrule
+\end{tabularx}
+\caption{Lo que debe escribir quien añade un componente, antes y después.}
+\end{table}
+
+\section{Alternativas consideradas y descartadas}
+
+\begin{description}[style=nextline, leftmargin=0pt, itemsep=4pt]
+  \item[Cachear $\mathbf B$ por punto de Gauss.] Duplica la memoria por elemento y es prohibitiva en 3D (tabla~\ref{tab:bcache}); además introduce una hipótesis de geometría fija que las formulaciones futuras no cumplen.
+  \item[Reescribir elementos y materiales en C++ con pybind11.] Rompe el modelo de colaboración del proyecto (\code{Reglas.md} §2): el mantenedor es una IA que trabaja en Python con contratos declarativos, y una segunda base de código compilada duplica cada componente. Numba ofrece la compilación sin abandonar el lenguaje.
+  \item[Clases \code{jitclass} de Numba para elementos.] Sustituyen los contratos declarativos por tipos estáticos, impiden el fallback por elemento y complican el registro y el descubrimiento automático.
+  \item[Paralelizar el bucle por elemento con procesos.] La sobrecarga de despacho se multiplica, no se elimina; la serialización de elementos y estado cuesta más que lo que se ahorra. El paralelismo tiene sentido después de vectorizar, sobre los trozos, con \code{prange} de Numba.
+  \item[Optimizar la construcción de la matriz dispersa.] No es el cuello de botella: 10\,ms de 1\,660.
+\end{description}
+
+\section{Decisiones abiertas para el ADR}
+
+\begin{enumerate}[nosep]
+  \item Si \code{STATE\_SCHEMA} es obligatorio en todo material (propuesta: sí, con \code{\{\}} para los materiales sin historia).
+  \item Tolerancia de equivalencia entre caminos (propuesta: relativa $10^{-14}$; si algún reordenamiento de sumas la excede, documentar el caso y fijar $10^{-12}$ para ese material).
+  \item Ubicación del código: \code{solidum/math/batch/} para \code{FamilyState}, construcción de familias y volcado; los kernels por lotes junto a cada elemento, como hoy los \code{@njit}.
+  \item Presupuesto de memoria por trozo y si se expone como parámetro del \code{Assembler} (propuesta: constante en \code{constants.py}, 64\,MB, con override por argumento).
+  \item Si la fase 4 (elementos 1D) se ejecuta o se difiere según el benchmark.
+\end{enumerate}
+
+\begin{warnbox}{Lo que este documento no autoriza}
+Nada de lo anterior se implementa hasta que el ADR se apruebe. La vectorización es un cambio arquitectural grande según \code{Reglas.md} §4, y las fases 1 y 2 modifican cómo se almacena el estado interno, que es zona gris (semántica trial/commit) y requiere validación conceptual del usuario.
+\end{warnbox}
+
+\appendix
+\section{Reproducción de las mediciones}
+
+Las tablas~\ref{tab:perfil} y~\ref{tab:memoria} se obtuvieron con el siguiente script (Python 3.14, NumPy 2.3, SciPy 1.17, Numba con \code{cache=True}), sobre el estado del repositorio en el commit \code{90eff55}.
+
+\begin{lstlisting}
+import cProfile, pstats, tracemalloc, numpy as np, solidum
+from solidum import Domain, Quad4, VonMises2D, Assembler
+
+def mesh(nx, ny, mat):
+    d = Domain(); nid = 1
+    for j in range(ny + 1):
+        for i in range(nx + 1):
+            d.add_node(nid, [i / nx, j / ny]); nid += 1
+    eid = 1
+    for j in range(ny):
+        for i in range(nx):
+            n0 = 1 + i + j * (nx + 1)
+            nodes = [d.nodes[n0], d.nodes[n0 + 1],
+                     d.nodes[n0 + nx + 2], d.nodes[n0 + nx + 1]]
+            d.add_element(Quad4(eid, nodes, mat)); eid += 1
+    d.generate_equation_numbers()
+    return d
+
+d = mesh(100, 100, VonMises2D(E=1e3, nu=0.3, sigma_y=1e9))
+asm = Assembler(d)
+U = np.zeros(d.total_dofs)
+asm.assemble_non_linear_system(U)          # calienta el JIT y la topologia
+
+pr = cProfile.Profile(); pr.enable()
+asm.assemble_non_linear_system(U)
+pr.disable()
+pstats.Stats(pr).sort_stats("tottime").print_stats(8)
+
+tracemalloc.start()
+s0 = tracemalloc.take_snapshot()
+asm.assemble_non_linear_system(U)
+s1 = tracemalloc.take_snapshot()
+asm.commit_all_states()
+s2 = tracemalloc.take_snapshot()
+mb = lambda a, b: sum(x.size_diff for x in b.compare_to(a, "lineno")) / 2**20
+print("ensamblaje:", mb(s0, s1), "MB;  commit:", mb(s1, s2), "MB")
+\end{lstlisting}
+
+\end{document}
