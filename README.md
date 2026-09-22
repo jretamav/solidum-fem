@@ -31,7 +31,7 @@ with an architecture optimized for extension via AI-assisted development.
   no assumption about the physical meaning of a degree of freedom.
 - **12 accepted ADRs** documenting architectural decisions.
 - **49 validated specs** with quantitative acceptance criteria.
-- **1176 tests** green, including 8 published canonical benchmarks (Lamé 2D and
+- **1317 tests** green, including 8 published canonical benchmarks (Lamé 2D and
   3D, NAFEMS LE1 and LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation,
   Hill 1950, Carslaw-Jaeger semi-infinite solid).
 
