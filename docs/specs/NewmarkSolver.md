@@ -196,3 +196,5 @@ references:
 ## Diálogo
 
 - **2026-05-13** · Validado. Los 14 tests de `tests/test_newmark.py` cubren `acceptance.verification` (osciladores 1 GDL no amortiguado / amortiguado / step / orden de convergencia) y `acceptance.specific` (calibración Rayleigh). Promovido `status: validated`.
+- **2026-09-22** · Auditoría global: masa reducida singular (DOF libre sin masa, `density = 0.0`) → `ValueError` que nombra la causa, en vez de un historial de `NaN` con un simple warning de scipy. `number_of_steps` evita el paso espurio cuando `t_end = n·dt` acumula redondeo (t_final = t_end + dt en el 5 % de los pares).
+- **2026-09-22** · Auditoría global: masa reducida singular (DOF libre sin masa, `density = 0.0`) → `ValueError` que nombra la causa, en vez de un historial de `NaN` con un simple warning de scipy. `number_of_steps` evita el paso espurio cuando `t_end = n·dt` acumula redondeo (t_final = t_end + dt en el 5 % de los pares).

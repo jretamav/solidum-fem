@@ -130,7 +130,7 @@ out_of_scope:
   - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
   - plasticidad distribuida en la sección
   - pandeo
-  - "fuerzas de cuerpo distribuidas: el usuario reparte carga equivalente a los nodos"
+  - "fuerzas de cuerpo no uniformes (trapezoidales, puntuales en el vano): sólo b uniforme vía compute_body_load"
 
 acceptance:
   - name: convergencia a Euler-Bernoulli para viga esbelta
@@ -177,3 +177,5 @@ references:
 - **2026-04-21** · Elemento movido a archivo propio `solidum/elements/frame.py` y desacoplado del helper `_frame_geometry`. Con este movimiento, el helper compartido se elimina completamente del repositorio: `Frame2DEuler` y `Frame2DTimoshenko` replican la construcción de $\mathbf T$ como método estático `_build_geometry`, cada una en su clase. La duplicación (~15 líneas) es el precio aceptado de la independencia mutua.
 - **2026-04-21** · Test del criterio 1: se eligió $L/h$ grande en lugar de reproducir un caso específico de libro porque la convergencia Timoshenko → Euler es el comportamiento **esperado por construcción** (factor $\Phi \to 0$). Verificarlo directamente con el solver completo valida simultáneamente la cinemática de Timoshenko, el tratamiento del shear locking y la integración con ensamblador + solver.
 - **2026-05-13** · `frame.py` se parte en paquete `solidum/elements/frame/`. La duplicación de `_build_geometry` ya no se justifica: ambas vigas comparten `build_geometry_2d` en `_shared.py`, helper interno al paquete (no flotante). Las clases siguen sin herencia entre sí.
+- **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
+- **2026-09-22** · Auditoría global: `Φ = 24(1+ν)·I/(A_s·L²)`, independiente de E_t: con `E_t = 0` (plasticidad perfecta plastificada) la forma `12·E_t·I/(G·A_s·L²)` dividía 0/0.

@@ -41,3 +41,5 @@ U = solver.solve(F_ext)
 # 6. Exportación
 VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 ```
+
+El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`), así que funciona igual tras `LinearSolver.solve` directo, tras `solidum.run` o en un paso intermedio del `step_callback`. Si el modelo lleva peso propio o fuerza de cuerpo, usar `solidum.run(...)` en vez de `solver.solve(...)` para que `SolveResult.element_forces` reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.

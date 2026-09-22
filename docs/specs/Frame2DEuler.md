@@ -133,7 +133,7 @@ out_of_scope:
   - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
   - plasticidad distribuida en la sección (fibras); el modelo escala rigidez global por E_t
   - pandeo (requiere rigidez geométrica, no implementada en esta viga lineal)
-  - "fuerzas de cuerpo distribuidas: el usuario reparte carga equivalente a los nodos"
+  - "fuerzas de cuerpo no uniformes (trapezoidales, puntuales en el vano): sólo b uniforme vía compute_body_load"
 
 acceptance:
   - name: respuesta axial pura
@@ -179,3 +179,4 @@ references:
 - **2026-04-21** · Elemento movido a archivo propio `solidum/elements/frame.py` y desacoplado del helper compartido `_frame_geometry`. El método estático `_build_geometry` reimplementa la construcción de $\mathbf T$ dentro de la clase. `Frame2DTimoshenko` sigue en `structural.py` usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
 - **2026-04-21** · Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto — validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
 - **2026-05-13** · `frame.py` se parte en paquete `solidum/elements/frame/{euler,timoshenko,euler_corot,_shared}.py`. La duplicación de `_build_geometry` entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (`build_geometry_2d` en `_shared.py`), pero esta vez sin función helper externa flotante — pertenece al paquete `frame/`. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde `alpha0` porque su cinemática corotacional no se beneficia del helper común.
+- **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.

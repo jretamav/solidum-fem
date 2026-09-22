@@ -59,3 +59,7 @@ acceptance:
 
 - **Archivo**: [solidum/elements/solid_2d/tri6.py](../../solidum/elements/solid_2d/tri6.py) · clase `Tri6` (subclase de la base interna `_HigherOrderSolid2D` en [_shared.py](../../solidum/elements/solid_2d/_shared.py), compartida con Quad8 y Quad9). Declara `_MASS_QUADRATURE = "tri_6"` (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (`tri_3`, orden 2) subintegra el producto cuadrático×cuadrático de la masa consistente.
 - **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py) (patch cuadrático), [tests/test_cooks_membrane.py](../../tests/test_cooks_membrane.py) (benchmark Bathe/Hughes con malla triangulada 4×4 + refinamiento monótono, añadido Fase B 2026-05-19).
+
+## Diálogo
+
+- **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.

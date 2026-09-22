@@ -229,3 +229,4 @@ references:
 ## Diálogo
 
 - **2026-05-19** · Spec inicial. Elemento espejo natural de `Tri3`; convención Voigt 6D y numeración de caras fijadas por ADR 0012. Sin elementos de alto orden en esta etapa. Shear locking y locking volumétrico declarados como limitaciones; `Hex8` es la opción preferente cuando la malla lo permite.
+- **2026-09-22** · Auditoría global: tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.

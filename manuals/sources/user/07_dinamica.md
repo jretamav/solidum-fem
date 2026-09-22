@@ -60,7 +60,7 @@ Integra en el tiempo $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \ma
 - Directa: `rayleigh: {alpha: 0.1, beta: 1.0e-4}`.
 - Calibración modal: `rayleigh: {xi1: 0.02, omega1: 50.0, xi2: 0.02, omega2: 200.0}` — Solidum resuelve los $(\alpha, \beta)$ que reproducen los amortiguamientos $\xi_1, \xi_2$ a las frecuencias $\omega_1, \omega_2$.
 
-**Parámetros**: `t_end`, `dt` (obligatorios); `beta` (default 0.25), `gamma` (default 0.5), `rayleigh` (opcional), `u0`, `u0_dot` (condiciones iniciales, default ceros), `F_func` (callback Python $t \to \mathbf F(t)$; default vibración libre).
+**Parámetros**: `t_end`, `dt` (obligatorios); `beta` (default 0.25), `gamma` (default 0.5), `rayleigh` (opcional), `u0`, `u0_dot` (condiciones iniciales, default ceros), `F_func` (callback Python $t \to \mathbf F(t)$; default vibración libre). Desde YAML, las cargas del archivo (puntuales + peso propio / fuerza de cuerpo) se inyectan automáticamente como escalón constante en el tiempo; para una historia $\mathbf F(t)$ arbitraria, pasar `F_func` desde Python.
 
 **Salida**: `TransientResult` con `t_history`, `u_history`, `udot_history`, `uddot_history` (forma $(n_{\text{dof}}, n_{\text{steps}} + 1)$) y los $\alpha_{\text{Rayleigh}}, \beta_{\text{Rayleigh}}$ efectivos.
 

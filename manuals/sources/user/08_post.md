@@ -12,9 +12,9 @@ Mediante `meshio`, Solidum FEM exporta los resultados en archivos `.vtu` compati
 
 ### Datos de Elemento (Cell Data)
 
-- `Von_Mises`: tensión equivalente J2 (cuando aplica).
+- `Von_Mises`: esfuerzo equivalente J2, calculado como invariante 3D con las seis componentes; en plane strain incluye $\sigma_{zz}$ (que aporta el material vía `out_of_plane_stress`), en plane stress $\sigma_{zz} = 0$.
 - `Internal_State`: variable principal del material según su `PRIMARY_STATE_VAR` (acumulada equivalente $\alpha$ en plasticidad, $d$ en daño, etc.).
-- `Sigma_XX`, `Sigma_YY`, `Tau_XY`: componentes del tensor de esfuerzos en notación Voigt.
+- `Sigma_XX`, `Sigma_YY`, `Sigma_ZZ`, `Tau_XY`, `Tau_YZ`, `Tau_XZ`: las seis componentes del tensor de esfuerzos (en 2D las tres últimas son $\sigma_{zz}$ del material y ceros). Se evalúan en el campo `U` exportado vía `compute_gauss_state` y se promedian por elemento: el exportador no depende de qué solver produjo `U` ni de que el estado esté comiteado. Cubre sólidos 2D y 3D (`quad`, `triangle`, `quad8`, `quad9`, `triangle6`, `hexahedron`, `tetra`, `hexahedron20`, `hexahedron27`, `tetra10`), elementos térmicos (campo nodal `Temperature` y `Flux` por celda) y `CST_Embedded2D`.
 
 ## Animación con Archivo PVD
 

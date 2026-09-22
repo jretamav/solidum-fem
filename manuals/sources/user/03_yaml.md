@@ -47,7 +47,7 @@ mesh_quadrature: "2x2"
 | `mesh` | Ruta al archivo `.msh` de Gmsh, relativa al YAML. |
 | `mesh_material` | ID del material por defecto que se asocia a toda la malla. |
 | `mesh_thickness` | Espesor por defecto (estado plano 2D). |
-| `mesh_quadrature` | Regla de Gauss: `"2x2"` (completa, recomendada) o `"1x1"` (reducida; produce *hourglassing*). |
+| `mesh_quadrature` | Regla de Gauss: `"2x2"` (completa, recomendada) o `"1x1"` (reducida; produce *hourglassing*). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de `K`. |
 
 ### Mapeo Avanzado: `mesh_physical_groups`
 
@@ -108,7 +108,7 @@ boundary_conditions_by_coord:
   rodillos: {coord: 'y', val: 10.0, uy: 0.0, tol: 1.0e-4}
 ```
 
-Las claves predefinidas `x_min`, `x_max`, `y_min`, `y_max` usan los extremos detectados automáticamente del dominio.
+Las claves predefinidas `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` usan los extremos detectados automáticamente del dominio; `coord` admite `'x'`, `'y'` o `'z'`. Los selectores funcionan igual con nodos 2D y 3D. Un selector que no casa con **ningún** nodo es un error de modelo y detiene la lectura con `ValueError` (no se ignora en silencio).
 
 ### Por grupo físico: `boundary_conditions_by_group`
 
@@ -159,6 +159,10 @@ point_loads_by_node:
 point_loads_by_group:
   "Borde_Carga": {ux: 1500000.0}
 ```
+
+Las cargas son **estrictas**: un `node_id` inexistente se rechaza en la validación del archivo, y un nombre de DOF que el nodo no tiene (`fy` en vez de `uy`, `rz` sobre una armadura) o un grupo físico inexistente detienen la lectura con `ValueError`. Antes se ignoraban en silencio y el análisis corría sin carga.
+
+En los **solvers transitorios mecánicos** (`NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`) las cargas del archivo —puntuales más peso propio o fuerza de cuerpo— se aplican como **escalón constante en el tiempo** desde $t = 0$ (`F_func = cte`). Una historia $\mathbf F(t)$ arbitraria requiere construir el solver desde Python con su propio `F_func` (§10).
 
 ## Fuerzas de Cuerpo
 

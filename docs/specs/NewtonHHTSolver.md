@@ -188,3 +188,5 @@ references:
 ## Diálogo
 
 - **2026-05-19** · Spec corta tipo extensión creada para cerrar el hueco H-5.3 (variante de `HHTSolver`/`NewtonNewmarkSolver` por Reglas §4). Sin ADR nuevo: reúsa ADR 0009 (formulación temporal HHT) y ADR 0011 (Newton + diagnóstico). El comportamiento no se modifica.
+- **2026-09-22** · Auditoría global: misma reestructuración que `NewtonNewmarkSolver` (un ensamblaje por iteración, `g` antes de ensamblar, MPC vía `T`, `prepare_all_steps`); el line search opcional evalúa ahora el residuo HHT-α propio, no el de Newmark.
+- **2026-09-22** · Auditoría global: misma reestructuración que `NewtonNewmarkSolver` (un ensamblaje por iteración, `g` antes de ensamblar, MPC vía `T`, `prepare_all_steps`); el line search opcional evalúa ahora el residuo HHT-α propio, no el de Newmark.

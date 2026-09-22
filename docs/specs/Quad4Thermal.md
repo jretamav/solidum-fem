@@ -287,3 +287,4 @@ references:
    - **Extensión futura**: si entra el acoplamiento termomecánico, el elemento térmico y el mecánico deben compartir profundidad; tenerlo desde el principio evita una asimetría posterior.
 
    El coste es nulo: quien no lo declare obtiene exactamente el comportamiento "por unidad de profundidad" que asume la literatura térmica. Omitirlo habría sido particularizar al caso de hoy.
+- **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). La capacidad se integra siempre con `CAPACITY_QUADRATURE` (regla completa) aunque K use integración reducida (con un punto C_e era de rango 1). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.

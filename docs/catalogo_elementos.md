@@ -685,3 +685,7 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la `B` té
 2. **Scaffolding** — `/solidum-new element <Nombre>` genera archivo en `solidum/elements/`, decorador `@ElementRegistry.register` y esqueleto de test.
 3. **Implementación + validación** — la IA codifica contra la spec; los tests cubren los casos de `acceptance` declarados.
 4. **Catálogo** — cuando la spec pasa a `status: validated`, se añade aquí una entrada breve siguiendo el formato de arriba (la spec sigue siendo la referencia detallada).
+
+---
+
+**Nota 2026-09-22 (auditoría global).** En todos los sólidos el argumento `quadrature` acepta la clave del registro (`"2x2"`, `"hex_3x3x3"`, …) o una tupla `(points, weights)`; la regla se valida contra la familia del elemento (`resolve_quadrature`). La masa consistente y la capacidad térmica se integran siempre con la regla completa aunque `K` use integración reducida. La tolerancia del jacobiano es relativa y adimensional (`JACOBIAN_RTOL`). Los elementos estructurales 1D devuelven en `internal_forces` las fuerzas internas de extremo `F_int − f_eq` cuando hay carga distribuida (`solidum.run` pasa la carga nodal equivalente).

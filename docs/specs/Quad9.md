@@ -60,3 +60,7 @@ acceptance:
 
 - **Archivo**: [solidum/elements/solid_2d/quad9.py](../../solidum/elements/solid_2d/quad9.py) · clase `Quad9` (subclase de la base interna `_HigherOrderSolid2D` en [_shared.py](../../solidum/elements/solid_2d/_shared.py), compartida con Quad8 y Tri6).
 - **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).
+
+## Diálogo
+
+- **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). `_MASS_QUADRATURE = "3x3"` explícita: la masa se integra con la regla completa aunque K use 2×2 (antes M de rango 8/18). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.

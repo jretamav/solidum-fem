@@ -245,3 +245,4 @@ references:
    Nota técnica: cuando se retome, el `Hex8Thermal` **no** sufrirá el problema que bloquea al `Tet10` sobre superficie curva (deuda técnica #8) — al ser trilineal no tiene nodos intermedios que puedan quedar sobre aristas rectas. El bloqueante es sólo de mallado.
 
    **Criterio de retoma**: si entra un mallador 3D nativo (gmsh API) o aparece un caso de uso con flujo radial esférico.
+- **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). La capacidad se integra siempre con `CAPACITY_QUADRATURE` (regla completa) aunque K use integración reducida (con un punto C_e era de rango 1). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
