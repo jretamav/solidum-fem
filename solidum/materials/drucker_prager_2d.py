@@ -284,6 +284,7 @@ class DruckerPrager2D(Material):
     """
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'alpha'
+    STATE_SCHEMA = {'eps_p': (4,), 'alpha': ()}
     # Default conservador a nivel de clase (caso no asociado). ``__init__``
     # sobrescribe la instancia con ``True`` cuando ``ψ = φ`` (asociada,
     # tangente algorítmica simétrica). ``domain_is_symmetric`` lee del

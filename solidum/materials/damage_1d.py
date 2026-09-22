@@ -53,6 +53,7 @@ class IsotropicDamage1D(Material):
     """
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'damage'
+    STATE_SCHEMA = {'kappa': (), 'damage': ()}
 
     def __init__(self, E: float, kappa_0: float, alpha: float,
                  density: float | None = None):
@@ -80,6 +81,10 @@ class IsotropicDamage1D(Material):
         ``κ`` histórica crezca.
         """
         return self.E * self.kappa_0
+
+    def initial_state(self) -> dict:
+        """``κ`` arranca en ``κ_0``; el daño en cero."""
+        return {'kappa': float(self.kappa_0), 'damage': 0.0}
 
     def compute_state(self, strain: float, state_vars=None):
         kappa_old = self.kappa_0 if state_vars is None else state_vars.get('kappa', self.kappa_0)

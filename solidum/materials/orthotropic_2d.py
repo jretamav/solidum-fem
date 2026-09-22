@@ -61,6 +61,7 @@ class Orthotropic2D(Material):
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = None
     IS_SYMMETRIC = True
+    STATE_SCHEMA = {}
 
     def __init__(self, E1: float, E2: float, G12: float, nu12: float,
                  theta: float = 0.0, density: float | None = None):

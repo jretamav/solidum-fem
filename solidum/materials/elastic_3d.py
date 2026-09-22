@@ -28,6 +28,7 @@ class Elastic3D(Material):
     """
 
     STRAIN_DIM = 6
+    STATE_SCHEMA = {}
 
     def __init__(self, E: float, nu: float, density: float | None = None):
         if E <= 0.0:

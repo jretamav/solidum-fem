@@ -106,3 +106,14 @@ J2_PLANE_STRESS_MAX_LOCAL_ITER = 25
 # Por debajo de este, el material reporta como "casi degenerado" en la
 # rama Newton local (situación patológica que tests no han forzado).
 J2_DENOM_FLOOR = 1.0e-30
+# --- Ensamblaje por lotes (ADR 0014) ---
+# Activa por defecto el camino por lotes en ``Assembler`` (``batch=None``
+# lee esta constante). Los componentes que no declaran kernel siguen el
+# camino por elemento sin que el usuario haga nada; poner ``False`` fuerza
+# el camino por elemento en todo el modelo (diagnostico, comparaciones).
+BATCH_ASSEMBLY_DEFAULT = True
+# Presupuesto de memoria (bytes) para los temporales de un trozo de familia
+# (matrices elementales K_e y vectores F_e del trozo). Fija el numero de
+# elementos por trozo: n_c = presupuesto / (8·(n_dof² + 2·n_dof)); con 64 MB
+# un Hex27 (81 DOF) procesa ~1200 elementos por trozo y un Quad4 ~100 000.
+BATCH_MEMORY_BUDGET_BYTES = 64 * 1024 * 1024

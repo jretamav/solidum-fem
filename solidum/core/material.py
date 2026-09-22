@@ -2,12 +2,75 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import Callable, ClassVar
+
+import numpy as np
 
 from solidum.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
 
 
-class Material(ABC):
+class BatchMaterialHooks:
+    """Contrato opcional del camino por lotes (ADR 0014), común a las
+    familias de materiales (mecánicos y térmicos).
+
+    STATE_SCHEMA : ClassVar[dict | None]
+        Variables internas como ``{nombre: forma}`` en el orden en que se
+        almacenan por filas: ``{"eps_p": (4,), "alpha": ()}``. ``{}`` para
+        un material sin historia. **Obligatorio en todo material del
+        catálogo** (lo exige el barrido de contratos): con él, el estado
+        interno se guarda como arreglos y el commit deja de copiar
+        diccionarios, tenga o no el material kernel por lotes. ``None``
+        (el default de la base) significa "no declarado" y excluye al
+        material del camino por lotes sin más consecuencia.
+
+    BATCH_KERNEL : ClassVar[callable | None]
+        Función ``@njit`` con la firma ``MAT_SIG`` de
+        ``solidum.math.batch.signatures``. Opcional. Un material cuya
+        constitutiva dependa de la instancia (hipótesis plane stress /
+        plane strain) sobreescribe :meth:`batch_kernel` en vez del
+        atributo.
+
+    Los tres métodos siguientes alimentan al kernel con constantes de la
+    familia: :meth:`batch_params` (escalares en el orden que el kernel
+    documenta), :meth:`batch_matrix` (la matriz ``C`` del material) e
+    :meth:`initial_state` (valores iniciales de las variables internas,
+    p. ej. ``κ = κ₀`` en daño). :meth:`batch_report` recibe el número de
+    puntos que el kernel marcó con ``flag = 1`` tras cada evaluación.
+    """
+
+    STATE_SCHEMA: ClassVar[dict | None] = None
+    BATCH_KERNEL: ClassVar[Callable | None] = None
+
+    def batch_kernel(self) -> Callable | None:
+        return type(self).BATCH_KERNEL
+
+    def batch_params(self) -> np.ndarray:
+        return np.zeros(0)
+
+    def batch_matrix(self) -> np.ndarray:
+        raise NotImplementedError(
+            f"{type(self).__name__} declara un kernel por lotes pero no "
+            f"implementa batch_matrix()."
+        )
+
+    def initial_state(self) -> dict | None:
+        """Estado inicial por punto de Gauss: ceros para todas las variables
+        del esquema (``None`` si no hay)."""
+        schema = self.STATE_SCHEMA
+        if not schema:
+            return None
+        out = {}
+        for name, shape in schema.items():
+            shape = tuple(shape)
+            out[name] = 0.0 if shape == () else np.zeros(shape)
+        return out
+
+    def batch_report(self, n_flagged: int) -> None:
+        """Hook tras cada evaluación por lotes con puntos marcados."""
+        return None
+
+
+class Material(BatchMaterialHooks, ABC):
     """Clase base abstracta para todos los materiales de Solidum FEM.
 
     Contrato de subclases
@@ -42,6 +105,13 @@ class Material(ABC):
         aceptan en elementos que declaren ``ACCEPTS_UNILATERAL = True``
         — habitualmente formulaciones corotacionales preparadas para
         manejar rigidez nula sin degenerar la matriz global.
+
+    STATE_SCHEMA : ClassVar[dict]
+        Variables internas como ``{nombre: forma}`` (ADR 0014). Obligatorio;
+        ``{}`` si el material no tiene historia. Ver
+        :class:`BatchMaterialHooks` para el resto del contrato por lotes
+        (``BATCH_KERNEL``, ``batch_params``, ``batch_matrix``,
+        ``initial_state``), todo opcional.
     """
 
     STRAIN_DIM: ClassVar[int]

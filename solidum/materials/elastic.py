@@ -6,6 +6,7 @@ from solidum.registry import MaterialRegistry
 @MaterialRegistry.register
 class Elastic1D(Material):
     STRAIN_DIM = 1
+    STATE_SCHEMA = {}
 
     def __init__(self, E: float, density: float | None = None):
         if E <= 0.0:

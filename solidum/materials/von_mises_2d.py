@@ -362,6 +362,8 @@ class VonMises2D(Material):
     """
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'alpha'
+    # eps_p = [ε^p_xx, ε^p_yy, ε^p_zz, ε^p_xy_tensorial]; alpha escalar.
+    STATE_SCHEMA = {'eps_p': (4,), 'alpha': ()}
 
     def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0,
                  hypothesis: str = 'plane_strain', density: float | None = None):

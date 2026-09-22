@@ -15,8 +15,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
+from solidum.core.material import BatchMaterialHooks
 
-class ThermalMaterial(ABC):
+
+class ThermalMaterial(BatchMaterialHooks, ABC):
     """Clase base de los materiales térmicos de Solidum FEM (Etapa 8).
 
     Contrato de subclases
@@ -40,6 +42,13 @@ class ThermalMaterial(ABC):
         es simétrica. Lo es siempre que el tensor de conductividad lo sea
         —requisito de las relaciones recíprocas de Onsager—, de modo que
         el despachador algebraico (ADR 0003) puede elegir Cholesky.
+
+    STATE_SCHEMA / BATCH_KERNEL
+        Contrato opcional del camino por lotes (ADR 0014), heredado de
+        :class:`solidum.core.material.BatchMaterialHooks`. En un material
+        térmico el kernel recibe el gradiente ``∇T`` como "deformación" y
+        devuelve ``k·∇T`` como "esfuerzo", de modo que ``∫Bᵀ(k·∇T) dΩ`` es
+        el producto ``K_e·T_e`` del camino por elemento.
 
     Notas sobre unidades
     --------------------

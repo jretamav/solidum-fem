@@ -11,6 +11,7 @@ class Elastoplastic1D(Material):
     """
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'alpha'  # deformación plástica acumulada equivalente
+    STATE_SCHEMA = {'eps_p': (), 'alpha': ()}
 
     def __init__(self, E: float, sigma_y: float, H: float = 0.0,
                  density: float | None = None):

@@ -60,6 +60,7 @@ class IsotropicDamage2D(Material):
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'damage'
     IS_SYMMETRIC = False  # tangente consistente asimétrica en carga activa
+    STATE_SCHEMA = {'kappa': (), 'damage': ()}
 
     def __init__(self, E: float, nu: float, kappa_0: float, alpha: float,
                  hypothesis: str = 'plane_stress', density: float | None = None):
@@ -88,6 +89,11 @@ class IsotropicDamage2D(Material):
         aunque ``κ`` histórica crezca.
         """
         return self.E * self.kappa_0
+
+    def initial_state(self) -> dict:
+        """``κ`` arranca en ``κ_0`` (es lo que ``compute_state`` asume con
+        ``state_vars=None``); el daño en cero."""
+        return {'kappa': float(self.kappa_0), 'damage': 0.0}
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         kappa_old = self.kappa_0 if state_vars is None else state_vars.get('kappa', self.kappa_0)

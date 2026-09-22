@@ -47,6 +47,7 @@ class ThermalConduction(ThermalMaterial):
 
     PRIMARY_STATE_VAR = None
     IS_SYMMETRIC = True
+    STATE_SCHEMA = {}
 
     # Tolerancia relativa para la comprobación de simetría de k. Escalada
     # con la magnitud del propio tensor para que el criterio sea

@@ -31,6 +31,7 @@ class CableMaterial1D(Material):
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = None
     IS_UNILATERAL = True
+    STATE_SCHEMA = {}
 
     def __init__(self, E, density: float | None = None):
         if E <= 0:

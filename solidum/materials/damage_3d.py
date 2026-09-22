@@ -67,6 +67,7 @@ class IsotropicDamage3D(Material):
     STRAIN_DIM = 6
     PRIMARY_STATE_VAR = 'damage'
     IS_SYMMETRIC = False  # tangente consistente asimétrica en carga activa
+    STATE_SCHEMA = {'kappa': (), 'damage': ()}
 
     def __init__(self, E: float, nu: float, kappa_0: float, alpha: float,
                  density: float | None = None):
@@ -105,6 +106,11 @@ class IsotropicDamage3D(Material):
         ``κ`` histórica crezca. Idéntico al caso 1D/2D.
         """
         return self.E * self.kappa_0
+
+    def initial_state(self) -> dict:
+        """``κ`` arranca en ``κ_0`` (lo que ``compute_state`` asume con
+        ``state_vars=None``); el daño en cero."""
+        return {'kappa': float(self.kappa_0), 'damage': 0.0}
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         """Devuelve ``(σ, C_tan, new_state)``.

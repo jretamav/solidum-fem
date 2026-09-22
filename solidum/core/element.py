@@ -64,6 +64,19 @@ class Element(ABC):
         K_G no degenerado) deben sobreescribir a ``True``. Validado en
         construcción para evitar que un truss ordinario acepte un material
         de cable.
+    BATCH_KINEMATICS : ClassVar[callable | None], default=None
+        Contrato **opcional** del camino por lotes (ADR 0014): función
+        ``@njit`` con la firma ``KIN_SIG`` de
+        ``solidum.math.batch.signatures`` — ``detJ = kin(pt, coords, B)``,
+        que rellena la matriz ``B`` en el punto natural ``pt`` a partir de
+        las coordenadas de referencia. Debe ser **la misma función** que
+        usa ``compute_element_state``, para que ambos caminos coincidan a
+        precisión de máquina. Un elemento sin ella (o cuyo material no
+        declara kernel) sigue el camino por elemento.
+    BATCH_SCALE : ClassVar[str | None], default=None
+        Nombre del atributo escalar por elemento que multiplica el
+        diferencial de volumen en el camino por lotes (``"thickness"`` en
+        los sólidos planos). ``None`` ⇒ factor 1.
 
     Métodos abstractos a implementar
     --------------------------------
@@ -92,6 +105,8 @@ class Element(ABC):
     N_INTEGRATION_POINTS: ClassVar[int] = 1
     PRESERVES_SYMMETRY: ClassVar[bool] = True
     ACCEPTS_UNILATERAL: ClassVar[bool] = False
+    BATCH_KINEMATICS: ClassVar = None
+    BATCH_SCALE: ClassVar[str | None] = None
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material | None = None):
@@ -340,3 +355,22 @@ class Element(ABC):
             for j in range(min(ndim, len(node.coordinates))):
                 coords[i, j] = node.coordinates[j]
         return coords
+
+    # ------------------------------------------------------------------
+    # Datos que el camino por lotes toma del elemento (ADR 0014)
+    # ------------------------------------------------------------------
+
+    def batch_quadrature(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Puntos ``(n_gp, d)`` y pesos ``(n_gp,)`` de la cuadratura del
+        elemento, como arreglos contiguos. Requiere ``self.points`` y
+        ``self.weights``, que declaran todos los sólidos isoparamétricos."""
+        pts = np.ascontiguousarray(np.asarray(self.points, dtype=np.float64))
+        n_gp = pts.shape[0]
+        return pts.reshape(n_gp, -1), np.ascontiguousarray(
+            np.asarray(self.weights, dtype=np.float64).reshape(n_gp))
+
+    def batch_reference_coordinates(self, ndim: int) -> np.ndarray:
+        """Coordenadas de referencia ``(n_nodos, ndim)`` que recibe el kernel
+        por lotes. Es la geometría **no deformada**: el kernel recompone lo
+        que necesite a partir de ella y de los desplazamientos."""
+        return np.ascontiguousarray(self.get_coordinate_matrix(ndim=ndim))

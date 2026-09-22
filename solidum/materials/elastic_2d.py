@@ -7,6 +7,7 @@ from solidum.registry import MaterialRegistry
 @MaterialRegistry.register
 class Elastic2D(Material):
     STRAIN_DIM = 3
+    STATE_SCHEMA = {}
 
     _VALID_HYPOTHESES = frozenset({"plane_stress", "plane_strain"})
 

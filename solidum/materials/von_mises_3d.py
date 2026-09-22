@@ -169,6 +169,7 @@ class VonMises3D(Material):
     """
     STRAIN_DIM = 6
     PRIMARY_STATE_VAR = 'alpha'
+    STATE_SCHEMA = {'eps_p': (6,), 'alpha': ()}
 
     def __init__(self, E: float, nu: float, sigma_y: float, H: float = 0.0,
                  density: float | None = None):

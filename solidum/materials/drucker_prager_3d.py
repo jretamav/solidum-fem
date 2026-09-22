@@ -301,6 +301,7 @@ class DruckerPrager3D(Material):
     """
     STRAIN_DIM = 6
     PRIMARY_STATE_VAR = 'alpha'
+    STATE_SCHEMA = {'eps_p': (6,), 'alpha': ()}
     # Default conservador a nivel de clase (caso no asociado). ``__init__``
     # sobrescribe la instancia con ``True`` cuando ``ψ = φ`` (asociada).
     IS_SYMMETRIC = False
