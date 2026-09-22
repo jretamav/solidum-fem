@@ -72,7 +72,7 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap):
 
 
 @njit(cache=True)
-def _damage_2d_batch(strain, S_old, S_new, params, C, sigma, flag):
+def _damage_2d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, α, tol_abs,
     tol_rel, DAMAGE_MAX]``; ``C`` = ``C_e`` del medio intacto; estado
     ``[κ, d]``."""

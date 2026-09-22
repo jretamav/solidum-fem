@@ -40,7 +40,8 @@ def _run_kernel(material, kernel, strain, S_old):
     flag = np.zeros(1, dtype=np.int8)
     C = np.ascontiguousarray(material.batch_matrix(), dtype=np.float64)
     params = np.ascontiguousarray(material.batch_params(), dtype=np.float64).reshape(-1)
-    Ct = kernel(np.ascontiguousarray(strain, dtype=np.float64), S_old, S_new, params, C, sigma, flag)
+    C_out = np.zeros_like(C)
+    Ct = kernel(np.ascontiguousarray(strain, dtype=np.float64), S_old, S_new, params, C, sigma, C_out, flag)
     return sigma, np.asarray(Ct), S_new, int(flag[0])
 
 
@@ -149,7 +150,7 @@ def _run_kernel_thermal(mat, grad):
     sigma = np.zeros(C.shape[0])
     flag = np.zeros(1, dtype=np.int8)
     S = np.zeros(0)
-    Ct = kernel(np.ascontiguousarray(grad, float), S, S.copy(), np.zeros(0), C, sigma, flag)
+    Ct = kernel(np.ascontiguousarray(grad, float), S, S.copy(), np.zeros(0), C, sigma, np.zeros_like(C), flag)
     return sigma, np.asarray(Ct), None, int(flag[0])
 
 

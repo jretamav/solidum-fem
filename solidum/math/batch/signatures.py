@@ -23,7 +23,7 @@ Cinemática — ``KIN_SIG``
 
 Constitutiva — ``MAT_SIG``
 --------------------------
-``C_t = mat(strain, S_old, S_new, params, C, sigma, flag)``
+``C_t = mat(strain, S_old, S_new, params, C, sigma, C_out, flag)``
 
 - ``strain``: deformación en Voigt del proyecto, ``(n_sigma,)``.
 - ``S_old`` / ``S_new``: fila de estado committed / trial, ``(n_state,)``,
@@ -33,10 +33,13 @@ Constitutiva — ``MAT_SIG``
   orden que documenta cada ``Material.batch_params``.
 - ``C``: matriz del material (elástica o precalculada), ``(n_sigma, n_sigma)``.
 - ``sigma``: salida, esfuerzo ``(n_sigma,)``, escrita in situ.
+- ``C_out``: espacio de trabajo ``(n_sigma, n_sigma)`` donde el kernel
+  puede escribir la tangente sin asignar memoria por punto de Gauss.
 - ``flag``: vista de un entero (``(1,)``, ``int8``); el kernel escribe
   ``1`` para señalar una incidencia que el material reporta después con
   ``batch_report`` (p. ej. Newton local sin converger).
-- Devuelve la tangente algorítmica ``(n_sigma, n_sigma)``, contigua.
+- Devuelve la tangente algorítmica ``(n_sigma, n_sigma)``, contigua:
+  ``C`` (lineal), ``C_out`` (escrita in situ) o un arreglo propio.
 """
 from numba import types
 
@@ -46,7 +49,7 @@ F64_3 = types.float64[:, :, ::1]
 I8_1 = types.int8[::1]
 
 KIN_SIG = types.float64(F64_1, F64_2, F64_2)
-MAT_SIG = F64_2(F64_1, F64_1, F64_1, F64_1, F64_2, F64_1, I8_1)
+MAT_SIG = F64_2(F64_1, F64_1, F64_1, F64_1, F64_2, F64_1, F64_2, I8_1)
 
 # kernel(kin, mat, X, u, pts, w, scale, S_in, S_out, params, C,
 #        K_out, F_out, sig_out, flags)

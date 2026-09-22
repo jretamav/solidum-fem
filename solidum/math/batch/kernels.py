@@ -34,7 +34,12 @@ def solid_family_kernel(kin, mat, X, u, pts, w, scale, S_in, S_out, params, C,
     CB = np.zeros((n_sig, n_dof))
     strain = np.zeros(n_sig)
     sigma = np.zeros(n_sig)
+    C_out = np.zeros((n_sig, n_sig))
 
+    # Los bucles internos recorren siempre el último índice (contiguo) de
+    # B, CB y K para que LLVM los vectorice; el orden de las sumas es fijo
+    # y el mismo en cada evaluación, como exige la equivalencia con el
+    # camino por elemento.
     for e in range(n_elem):
         K = K_out[e]
         F = F_out[e]
@@ -54,30 +59,30 @@ def solid_family_kernel(kin, mat, X, u, pts, w, scale, S_in, S_out, params, C,
                 strain[a] = s
 
             row = e * n_gp + g
-            Ct = mat(strain, S_in[row], S_out[row], params, C, sigma,
+            Ct = mat(strain, S_in[row], S_out[row], params, C, sigma, C_out,
                      flags[row:row + 1])
 
             dV = detJ * w[g] * scale[e]
 
-            # CB = C_t · B
+            # CB = (C_t · B) · dV
             for a in range(n_sig):
                 for j in range(n_dof):
-                    s = 0.0
-                    for b in range(n_sig):
-                        s += Ct[a, b] * B[b, j]
-                    CB[a, j] = s
-
-            # K += Bᵀ · CB · dV ;  F += Bᵀ · σ · dV
-            for i in range(n_dof):
-                fi = 0.0
-                for a in range(n_sig):
-                    fi += B[a, i] * sigma[a]
-                F[i] += fi * dV
+                    CB[a, j] = 0.0
+                for b in range(n_sig):
+                    c = Ct[a, b]
+                    for j in range(n_dof):
+                        CB[a, j] += c * B[b, j]
                 for j in range(n_dof):
-                    s = 0.0
-                    for a in range(n_sig):
-                        s += B[a, i] * CB[a, j]
-                    K[i, j] += s * dV
+                    CB[a, j] *= dV
+
+            # K += Bᵀ · CB ;  F += Bᵀ · (σ · dV)
+            for a in range(n_sig):
+                sa = sigma[a] * dV
+                for i in range(n_dof):
+                    bai = B[a, i]
+                    F[i] += bai * sa
+                    for j in range(n_dof):
+                        K[i, j] += bai * CB[a, j]
 
             for a in range(n_sig):
                 sig_out[row, a] = sigma[a]

@@ -40,27 +40,45 @@ _PLANE_STRESS_MAX_LOCAL_ITER = J2_PLANE_STRESS_MAX_LOCAL_ITER
 _DENOM_FLOOR = J2_DENOM_FLOOR
 
 
+# Constantes del tangente J2 en Voigt 2D: v = gradiente de la traza,
+# I_dev = proyector desviador (½ en el cortante engineering).
+_V2 = (1.0, 1.0, 0.0)
+_I_DEV2 = ((2.0 / 3.0, -1.0 / 3.0, 0.0),
+           (-1.0 / 3.0, 2.0 / 3.0, 0.0),
+           (0.0, 0.0, 0.5))
+
+
 @njit(cache=True)
-def _compute_j2_plane_strain(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol):
-    """Return mapping J2 plane strain. Descomposición volumétrica-desviadora 3D
-    con ``ε_zz = 0`` impuesto en la deformación total; ``ε^p_zz`` evoluciona
-    libremente y queda registrada en ``eps_p`` (cuarta componente del estado).
+def _j2_plane_strain_core(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e,
+                          yield_tol, sigma, C_out, eps_p_new):
+    """Return mapping J2 plane strain **sin asignar memoria**: escribe
+    ``sigma`` (3), ``C_out`` (3×3) y ``eps_p_new`` (4) in situ y devuelve
+    ``alpha_new``. Descomposición volumétrica-desviadora 3D con ``ε_zz = 0``
+    impuesto en la deformación total; ``ε^p_zz`` evoluciona libremente y
+    queda registrada en ``eps_p`` (cuarta componente del estado).
+
+    Es la formulación de siempre escrita con escalares y **en el mismo
+    orden de operaciones** que la versión con arreglos que sustituye
+    (ADR 0014): los resultados coinciden bit a bit. Lo consumen
+    :func:`_compute_j2_plane_strain` (camino por elemento) y el adaptador
+    por lotes.
     """
     # Deformación volumétrica (traza, ε_zz = 0 por plane strain)
     eps_v = strain[0] + strain[1]
+    third = eps_v / 3.0
 
     # Desviador de la deformación 3D extendida [xx, yy, zz, xy_tensorial]
-    e_dev = np.array([
-        strain[0] - eps_v / 3.0,
-        strain[1] - eps_v / 3.0,
-        -eps_v / 3.0,
-        strain[2] / 2.0
-    ])
-
-    # Predictor elástico (desviador trial)
-    e_dev_trial = e_dev - eps_p_old
-    s_trial = 2.0 * G * e_dev_trial
-    norm_s_trial = math.sqrt(s_trial[0]**2 + s_trial[1]**2 + s_trial[2]**2 + 2.0 * s_trial[3]**2)
+    # menos la deformación plástica: predictor elástico.
+    e0 = (strain[0] - third) - eps_p_old[0]
+    e1 = (strain[1] - third) - eps_p_old[1]
+    e2 = (-third) - eps_p_old[2]
+    e3 = (strain[2] / 2.0) - eps_p_old[3]
+    twoG = 2.0 * G
+    s0 = twoG * e0
+    s1 = twoG * e1
+    s2 = twoG * e2
+    s3 = twoG * e3
+    norm_s_trial = math.sqrt(s0 * s0 + s1 * s1 + s2 * s2 + 2.0 * (s3 * s3))
 
     yield_stress = sigma_y + H * alpha_old
     f_trial = norm_s_trial - math.sqrt(2.0 / 3.0) * yield_stress
@@ -72,47 +90,60 @@ def _compute_j2_plane_strain(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e
         # Diferencia material en presencia de plasticidad acumulada (descarga o
         # reevaluación post-converged): C_e·strain devolvería un esfuerzo
         # incompatible con el estado interno; s_trial + p·I respeta ε_p_old.
-        sigma = np.array([
-            s_trial[0] + p,
-            s_trial[1] + p,
-            s_trial[3]
-        ])
-        return sigma, C_e.copy(), eps_p_old.copy(), alpha_old
+        sigma[0] = s0 + p
+        sigma[1] = s1 + p
+        sigma[2] = s3
+        for i in range(3):
+            for j in range(3):
+                C_out[i, j] = C_e[i, j]
+        for i in range(4):
+            eps_p_new[i] = eps_p_old[i]
+        return alpha_old
 
     # Corrector plástico — return mapping radial cerrado
     delta_gamma = f_trial / (2.0 * G + (2.0 / 3.0) * H)
-    N = s_trial / norm_s_trial
+    N0 = s0 / norm_s_trial
+    N1 = s1 / norm_s_trial
+    N2 = s2 / norm_s_trial
+    N3 = s3 / norm_s_trial
 
-    s_new = s_trial - 2.0 * G * delta_gamma * N
-    eps_p_new = eps_p_old + delta_gamma * N
+    c = twoG * delta_gamma
+    sn0 = s0 - c * N0
+    sn1 = s1 - c * N1
+    sn3 = s3 - c * N3
+    eps_p_new[0] = eps_p_old[0] + delta_gamma * N0
+    eps_p_new[1] = eps_p_old[1] + delta_gamma * N1
+    eps_p_new[2] = eps_p_old[2] + delta_gamma * N2
+    eps_p_new[3] = eps_p_old[3] + delta_gamma * N3
     alpha_new = alpha_old + math.sqrt(2.0 / 3.0) * delta_gamma
 
-    sigma = np.array([
-        s_new[0] + p,
-        s_new[1] + p,
-        s_new[3]
-    ])
+    sigma[0] = sn0 + p
+    sigma[1] = sn1 + p
+    sigma[2] = sn3
 
     # Matriz tangente algorítmica consistente
-    beta = (2.0 * G * delta_gamma) / norm_s_trial
+    # C_alg = K·v⊗v + 2G(1−β)·I_dev − 2G·γ·N⊗N   (N en Voigt: [N0, N1, N3])
+    beta = c / norm_s_trial
     gamma_factor = 1.0 / (1.0 + H / (3.0 * G)) - beta
+    a2 = twoG * (1.0 - beta)
+    a3 = twoG * gamma_factor
+    Nv = (N0, N1, N3)
+    for i in range(3):
+        for j in range(3):
+            C_out[i, j] = (K * (_V2[i] * _V2[j]) + a2 * _I_DEV2[i][j]) - a3 * (Nv[i] * Nv[j])
+    return alpha_new
 
-    v = np.array([1.0, 1.0, 0.0])
-    I_dev = np.array([
-        [ 2.0/3.0, -1.0/3.0, 0.0],
-        [-1.0/3.0,  2.0/3.0, 0.0],
-        [ 0.0,      0.0,     0.5]
-    ])
 
-    N_voigt = np.array([N[0], N[1], N[3]])
-    N_otimes_N = np.array([
-        [N_voigt[0]*N_voigt[0], N_voigt[0]*N_voigt[1], N_voigt[0]*N_voigt[2]],
-        [N_voigt[1]*N_voigt[0], N_voigt[1]*N_voigt[1], N_voigt[1]*N_voigt[2]],
-        [N_voigt[2]*N_voigt[0], N_voigt[2]*N_voigt[1], N_voigt[2]*N_voigt[2]]
-    ])
-
-    C_alg = K * np.outer(v, v) + 2.0 * G * (1.0 - beta) * I_dev - 2.0 * G * gamma_factor * N_otimes_N
-
+@njit(cache=True)
+def _compute_j2_plane_strain(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol):
+    """Return mapping J2 plane strain (camino por elemento): envoltorio con
+    asignación de :func:`_j2_plane_strain_core`. Devuelve
+    ``(σ, C_alg, ε^p_new, α_new)``."""
+    sigma = np.empty(3)
+    C_alg = np.empty((3, 3))
+    eps_p_new = np.empty(4)
+    alpha_new = _j2_plane_strain_core(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e,
+                                      yield_tol, sigma, C_alg, eps_p_new)
     return sigma, C_alg, eps_p_new, alpha_new
 
 
@@ -322,34 +353,29 @@ def _compute_j2_plane_stress(strain, eps_p_old, alpha_old,
 
 
 @njit(cache=True)
-def _j2_plane_strain_batch(strain, S_old, S_new, params, C, sigma, flag):
+def _j2_plane_strain_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014) del return mapping plane strain.
 
     ``params = [σ_y, H, K, G, tol_abs, tol_rel]``; ``C`` = ``C_e``. La
     tolerancia de fluencia se evalúa aquí con las mismas operaciones que
     ``Material.admissibility_tol`` (ADR 0006), para que el camino por
-    lotes coincida bit a bit con el camino por elemento.
+    lotes coincida bit a bit con el camino por elemento. Sin asignaciones
+    por punto de Gauss: escribe ``sigma``, ``C_out`` y la fila ``S_new``.
     """
     sigma_y = params[0]
     H = params[1]
-    K = params[2]
-    G = params[3]
     alpha_old = S_old[4]
     R = sigma_y + H * alpha_old
     yield_tol = params[4] + params[5] * (math.sqrt(2.0 / 3.0) * R)
-    sig, C_alg, eps_p_new, alpha_new = _compute_j2_plane_strain(
-        strain, S_old[0:4], alpha_old, sigma_y, H, K, G, C, yield_tol
+    S_new[4] = _j2_plane_strain_core(
+        strain, S_old[0:4], alpha_old, sigma_y, H, params[2], params[3], C, yield_tol,
+        sigma, C_out, S_new[0:4],
     )
-    for i in range(3):
-        sigma[i] = sig[i]
-    for i in range(4):
-        S_new[i] = eps_p_new[i]
-    S_new[4] = alpha_new
-    return C_alg
+    return C_out
 
 
 @njit(cache=True)
-def _j2_plane_stress_batch(strain, S_old, S_new, params, C, sigma, flag):
+def _j2_plane_stress_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014) del return mapping plane stress.
 
     ``params = [σ_y, H, E, ν, G, tol_rel, tol_abs, max_local_iter]``;

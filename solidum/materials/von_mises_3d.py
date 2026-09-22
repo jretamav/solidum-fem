@@ -24,9 +24,23 @@ from solidum.core.material import Material
 from solidum.registry import MaterialRegistry
 
 
+# Constantes del tangente J2 en Voigt 6D: v = operador traza sobre la
+# entrada engineering; I_dev = proyector desviador con ½ en los cortantes.
+_V6 = (1.0, 1.0, 1.0, 0.0, 0.0, 0.0)
+_I_DEV6 = ((2.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0, 0.0, 0.0, 0.0),
+           (-1.0 / 3.0, 2.0 / 3.0, -1.0 / 3.0, 0.0, 0.0, 0.0),
+           (-1.0 / 3.0, -1.0 / 3.0, 2.0 / 3.0, 0.0, 0.0, 0.0),
+           (0.0, 0.0, 0.0, 0.5, 0.0, 0.0),
+           (0.0, 0.0, 0.0, 0.0, 0.5, 0.0),
+           (0.0, 0.0, 0.0, 0.0, 0.0, 0.5))
+
+
 @njit(cache=True)
-def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol):
-    """Return mapping J2 3D radial cerrado.
+def _j2_3d_core(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol,
+                sigma, C_out, eps_p_new):
+    """Return mapping J2 3D radial cerrado **sin asignar memoria**: escribe
+    ``sigma`` (6), ``C_out`` (6×6) y ``eps_p_new`` (6) in situ y devuelve
+    ``alpha_new``.
 
     Convención Voigt 6D del proyecto (ADR 0012):
 
@@ -43,29 +57,34 @@ def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_to
     desviador trial — equivalente a ``C_e·(ε − ε^p_n)`` pero más numérica-
     mente estable y consistente con ``ε^p_n`` acumulada en descargas o
     reevaluaciones vía ``compute_gauss_state(U_final)``.
+
+    Misma formulación y **mismo orden de operaciones** que la versión con
+    arreglos que sustituye (ADR 0014): resultados bit a bit idénticos.
     """
     # Deformación volumétrica (traza)
     eps_v = strain[0] + strain[1] + strain[2]
+    third = eps_v / 3.0
 
-    # Desviador de la deformación 6D en convención TENSORIAL
-    # (cortantes divididos por 2 al entrar; saldrán tensoriales al ensamblar).
-    e_dev = np.array([
-        strain[0] - eps_v / 3.0,
-        strain[1] - eps_v / 3.0,
-        strain[2] - eps_v / 3.0,
-        strain[3] / 2.0,
-        strain[4] / 2.0,
-        strain[5] / 2.0
-    ])
-
-    # Predictor elástico (desviador trial, restando ε^p_n tensorial)
-    e_dev_trial = e_dev - eps_p_old
-    s_trial = 2.0 * G * e_dev_trial
+    # Desviador de la deformación 6D en convención TENSORIAL (cortantes
+    # divididos por 2 al entrar) menos ε^p_n tensorial: predictor elástico.
+    e0 = (strain[0] - third) - eps_p_old[0]
+    e1 = (strain[1] - third) - eps_p_old[1]
+    e2 = (strain[2] - third) - eps_p_old[2]
+    e3 = (strain[3] / 2.0) - eps_p_old[3]
+    e4 = (strain[4] / 2.0) - eps_p_old[4]
+    e5 = (strain[5] / 2.0) - eps_p_old[5]
+    twoG = 2.0 * G
+    s0 = twoG * e0
+    s1 = twoG * e1
+    s2 = twoG * e2
+    s3 = twoG * e3
+    s4 = twoG * e4
+    s5 = twoG * e5
 
     # Norma de Frobenius tensorial: ||s||² = Σ_diag s_ii² + 2·Σ_off s_ij²
     norm_s_trial = math.sqrt(
-        s_trial[0] ** 2 + s_trial[1] ** 2 + s_trial[2] ** 2
-        + 2.0 * (s_trial[3] ** 2 + s_trial[4] ** 2 + s_trial[5] ** 2)
+        s0 * s0 + s1 * s1 + s2 * s2
+        + 2.0 * (s3 * s3 + s4 * s4 + s5 * s5)
     )
 
     yield_stress = sigma_y + H * alpha_old
@@ -77,32 +96,42 @@ def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_to
         # Predictor elástico σ = s_trial + p·I (NO C_e·strain, que ignoraría
         # ε_p — bug detectado en VM2D plane strain, 2026-05-14, aplicado
         # desde el inicio en VM3D).
-        sigma = np.array([
-            s_trial[0] + p,
-            s_trial[1] + p,
-            s_trial[2] + p,
-            s_trial[3],
-            s_trial[4],
-            s_trial[5]
-        ])
-        return sigma, C_e.copy(), eps_p_old.copy(), alpha_old
+        sigma[0] = s0 + p
+        sigma[1] = s1 + p
+        sigma[2] = s2 + p
+        sigma[3] = s3
+        sigma[4] = s4
+        sigma[5] = s5
+        for i in range(6):
+            eps_p_new[i] = eps_p_old[i]
+            for j in range(6):
+                C_out[i, j] = C_e[i, j]
+        return alpha_old
 
     # Corrector plástico — return mapping radial cerrado
     delta_gamma = f_trial / (2.0 * G + (2.0 / 3.0) * H)
-    N = s_trial / norm_s_trial   # tensorial 6D, norma de Frobenius unitaria
+    # N = s_trial / ||s_trial||: tensorial 6D, norma de Frobenius unitaria
+    N0 = s0 / norm_s_trial
+    N1 = s1 / norm_s_trial
+    N2 = s2 / norm_s_trial
+    N3 = s3 / norm_s_trial
+    N4 = s4 / norm_s_trial
+    N5 = s5 / norm_s_trial
 
-    s_new = s_trial - 2.0 * G * delta_gamma * N
-    eps_p_new = eps_p_old + delta_gamma * N
+    c = twoG * delta_gamma
+    sigma[0] = (s0 - c * N0) + p
+    sigma[1] = (s1 - c * N1) + p
+    sigma[2] = (s2 - c * N2) + p
+    sigma[3] = s3 - c * N3
+    sigma[4] = s4 - c * N4
+    sigma[5] = s5 - c * N5
+    eps_p_new[0] = eps_p_old[0] + delta_gamma * N0
+    eps_p_new[1] = eps_p_old[1] + delta_gamma * N1
+    eps_p_new[2] = eps_p_old[2] + delta_gamma * N2
+    eps_p_new[3] = eps_p_old[3] + delta_gamma * N3
+    eps_p_new[4] = eps_p_old[4] + delta_gamma * N4
+    eps_p_new[5] = eps_p_old[5] + delta_gamma * N5
     alpha_new = alpha_old + math.sqrt(2.0 / 3.0) * delta_gamma
-
-    sigma = np.array([
-        s_new[0] + p,
-        s_new[1] + p,
-        s_new[2] + p,
-        s_new[3],
-        s_new[4],
-        s_new[5]
-    ])
 
     # Tangente algorítmica consistente (Simó-Hughes §3.3) en Voigt 6D del proyecto.
     # En esta convención (entrada engineering, salida tensorial off-diagonal):
@@ -110,47 +139,45 @@ def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_to
     #   - I_dev con 1/2 en los cortantes (mapea engineering γ a tensorial ε_ij)
     #   - N⊗N con N tensorial — el factor 2 implícito de Frobenius queda
     #     absorbido en cómo se aplica a γ_ij = 2·ε_ij.
-    beta = (2.0 * G * delta_gamma) / norm_s_trial
+    # C_alg = K·v⊗v + 2G(1−β)·I_dev − 2G·γ·N⊗N
+    beta = c / norm_s_trial
     gamma_factor = 1.0 / (1.0 + H / (3.0 * G)) - beta
+    a2 = twoG * (1.0 - beta)
+    a3 = twoG * gamma_factor
+    Nv = (N0, N1, N2, N3, N4, N5)
+    for i in range(6):
+        for j in range(6):
+            C_out[i, j] = (K * (_V6[i] * _V6[j]) + a2 * _I_DEV6[i][j]) - a3 * (Nv[i] * Nv[j])
+    return alpha_new
 
-    v = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 0.0])
-    I_dev = np.array([
-        [ 2.0 / 3.0, -1.0 / 3.0, -1.0 / 3.0, 0.0, 0.0, 0.0],
-        [-1.0 / 3.0,  2.0 / 3.0, -1.0 / 3.0, 0.0, 0.0, 0.0],
-        [-1.0 / 3.0, -1.0 / 3.0,  2.0 / 3.0, 0.0, 0.0, 0.0],
-        [ 0.0,        0.0,        0.0,       0.5, 0.0, 0.0],
-        [ 0.0,        0.0,        0.0,       0.0, 0.5, 0.0],
-        [ 0.0,        0.0,        0.0,       0.0, 0.0, 0.5]
-    ])
 
-    N_otimes_N = np.outer(N, N)
-
-    C_alg = (
-        K * np.outer(v, v)
-        + 2.0 * G * (1.0 - beta) * I_dev
-        - 2.0 * G * gamma_factor * N_otimes_N
-    )
-
+@njit(cache=True)
+def _compute_j2_3d(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e, yield_tol):
+    """Return mapping J2 3D (camino por elemento): envoltorio con asignación
+    de :func:`_j2_3d_core`. Devuelve ``(σ, C_alg, ε^p_new, α_new)``."""
+    sigma = np.empty(6)
+    C_alg = np.empty((6, 6))
+    eps_p_new = np.empty(6)
+    alpha_new = _j2_3d_core(strain, eps_p_old, alpha_old, sigma_y, H, K, G, C_e,
+                            yield_tol, sigma, C_alg, eps_p_new)
     return sigma, C_alg, eps_p_new, alpha_new
 
 
 @njit(cache=True)
-def _j2_3d_batch(strain, S_old, S_new, params, C, sigma, flag):
+def _j2_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [σ_y, H, K, G, tol_abs,
-    tol_rel]``; ``C`` = ``C_e``. Tolerancia como ``admissibility_tol``."""
+    tol_rel]``; ``C`` = ``C_e``. Tolerancia como ``admissibility_tol``. Sin
+    asignaciones por punto de Gauss."""
     sigma_y = params[0]
     H = params[1]
     alpha_old = S_old[6]
     R = sigma_y + H * alpha_old
     yield_tol = params[4] + params[5] * (math.sqrt(2.0 / 3.0) * R)
-    sig, C_alg, eps_p_new, alpha_new = _compute_j2_3d(
-        strain, S_old[0:6], alpha_old, sigma_y, H, params[2], params[3], C, yield_tol
+    S_new[6] = _j2_3d_core(
+        strain, S_old[0:6], alpha_old, sigma_y, H, params[2], params[3], C, yield_tol,
+        sigma, C_out, S_new[0:6],
     )
-    for i in range(6):
-        sigma[i] = sig[i]
-        S_new[i] = eps_p_new[i]
-    S_new[6] = alpha_new
-    return C_alg
+    return C_out
 
 
 @MaterialRegistry.register

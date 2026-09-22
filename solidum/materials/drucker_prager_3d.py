@@ -256,7 +256,7 @@ def _compute_drucker_prager_3d(strain, eps_p_old, alpha_old,
 
 
 @njit(cache=True)
-def _dp_3d_batch(strain, S_old, S_new, params, C, sigma, flag):
+def _dp_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [η_f, η_g, k_0, H, K, G,
     tol_abs, tol_rel]``; ``C`` = ``C_e``."""
     k0 = params[2]

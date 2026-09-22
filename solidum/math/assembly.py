@@ -5,19 +5,59 @@ import numpy as np
 import scipy.sparse as sp
 
 from solidum.bc.constraints import ConstraintSet
+from solidum.constants import BATCH_ASSEMBLY_DEFAULT
 from solidum.core.domain import Domain
 from solidum.core.element import Element
 from solidum.logging import get_logger
+from solidum.math.batch.family import Family, build_families
 
 _log = get_logger("assembly")
 
 
 class Assembler:
-    def __init__(self, domain: Domain):
+    """Ensambla las matrices y vectores globales del dominio.
+
+    Dos caminos coexisten (ADR 0014):
+
+    - **por lotes** (``batch=True``, default de ``BATCH_ASSEMBLY_DEFAULT``):
+      los elementos cuya clase declara ``BATCH_KINEMATICS`` y cuyo material
+      declara ``STATE_SCHEMA`` + kernel puntual se agrupan en *familias*
+      (misma clase, misma instancia de material, misma cuadratura, mismo
+      número de nodos) y se evalúan dentro de un único kernel compilado;
+      su estado interno vive en arreglos (``FamilyState``) y ``elem.state``
+      pasa a ser una vista sobre ellos.
+    - **por elemento**: el bucle de siempre sobre ``compute_element_state``.
+      Lo siguen los elementos sin kernel (1D, embebido, materiales sin
+      esquema) y todo el modelo cuando ``batch=False``.
+
+    Ambos caminos ejecutan las mismas funciones compiladas por punto de
+    Gauss y producen ``K`` y ``F_int`` idénticos a precisión de máquina; lo
+    garantiza ``tests/test_batch_assembly.py`` sobre los registros
+    completos. Los solvers no distinguen el camino: consumen
+    ``assemble_non_linear_system``, ``commit_all_states`` y ``reduce`` como
+    siempre.
+
+    Parameters
+    ----------
+    domain
+        Dominio con nodos y elementos.
+    batch
+        ``True`` / ``False`` para forzar el camino; ``None`` lee
+        ``solidum.constants.BATCH_ASSEMBLY_DEFAULT``.
+    batch_memory_budget
+        Presupuesto (bytes) para los temporales de un trozo de familia;
+        ``None`` ⇒ ``BATCH_MEMORY_BUDGET_BYTES``.
+    """
+
+    def __init__(self, domain: Domain, batch: bool | None = None,
+                 batch_memory_budget: int | None = None):
         self.domain = domain
         self.ndof = 0
         self.K_global = None
         self.F_global = None
+
+        self.batch = BATCH_ASSEMBLY_DEFAULT if batch is None else bool(batch)
+        self.batch_memory_budget = batch_memory_budget
 
         # Variables para caché de topología COO
         self._topology_built = False
@@ -25,6 +65,12 @@ class Assembler:
         self._coo_cols = None
         self._total_entries = 0
         self._elem_dof_indices = []
+        # Posición del bloque de cada elemento (orden del dominio) en `data`.
+        self._elem_ptr = np.zeros(0, dtype=np.int64)
+        # Familias por lotes y posiciones (orden del dominio) de los
+        # elementos que siguen el camino por elemento.
+        self._families: list[Family] = []
+        self._loose: list[int] = []
 
         # Caché del ConstraintSet (ADR 0004 fase 1).
         self._constraint_set: ConstraintSet | None = None
@@ -55,26 +101,55 @@ class Assembler:
         return element.get_global_dof_indices()
 
     def _build_topology(self):
-        """Precalcula y cachea la topología de ensamblaje (filas, columnas y mapeo) una sola vez."""
+        """Precalcula y cachea la topología de ensamblaje (filas, columnas y
+        mapeo) una sola vez, y construye las familias por lotes.
+
+        El vector COO ``data`` se ordena **por familia**: cada familia ocupa
+        un bloque contiguo (sus elementos en orden del dominio) y los
+        elementos del camino por elemento van detrás. La conversión a CSR
+        suma duplicados con independencia del orden, así que el patrón de
+        ``K`` no cambia; lo que se gana es volcar cada trozo de familia con
+        una asignación de rodaja en vez de un índice disperso.
+        """
         if self.domain.total_dofs == 0:
             self.domain.generate_equation_numbers()
 
         self.ndof = self.domain.total_dofs
-        self._total_entries = sum((len(e.DOF_NAMES) * len(e.nodes))**2 for e in self.domain.elements.values())
+        elements = list(self.domain.elements.values())
+        self._elem_dof_indices = [self._get_element_global_indices(e) for e in elements]
+        self._total_entries = sum(len(idx) ** 2 for idx in self._elem_dof_indices)
+
+        self._release_families()
+        if self.batch:
+            self._families, self._loose = build_families(
+                elements, self._elem_dof_indices, self.batch_memory_budget)
+        else:
+            self._families, self._loose = [], list(range(len(elements)))
 
         self._coo_rows = np.zeros(self._total_entries, dtype=np.int32)
         self._coo_cols = np.zeros(self._total_entries, dtype=np.int32)
-        self._elem_dof_indices = []
+        self._elem_ptr = np.zeros(len(elements), dtype=np.int64)
 
         ptr = 0
-        for element in self.domain.elements.values():
-            global_indices = self._get_element_global_indices(element)
-            self._elem_dof_indices.append(global_indices)
 
+        def _place(pos: int) -> None:
+            nonlocal ptr
+            global_indices = self._elem_dof_indices[pos]
             n_idx = len(global_indices)
-            self._coo_rows[ptr:ptr + n_idx**2] = np.repeat(global_indices, n_idx)
-            self._coo_cols[ptr:ptr + n_idx**2] = np.tile(global_indices, n_idx)
-            ptr += n_idx**2
+            self._coo_rows[ptr:ptr + n_idx ** 2] = np.repeat(global_indices, n_idx)
+            self._coo_cols[ptr:ptr + n_idx ** 2] = np.tile(global_indices, n_idx)
+            self._elem_ptr[pos] = ptr
+            ptr += n_idx ** 2
+
+        for fam in self._families:
+            fam.ptr_start = ptr
+            for pos in fam.positions:
+                _place(int(pos))
+            fam.adopt_states()
+        for pos in self._loose:
+            _place(pos)
+
+        self._build_csr_map()
 
         self._topology_built = True
         self._topology_key = self._current_topology_key()
@@ -82,8 +157,59 @@ class Assembler:
         self._M_global = None
         self._M_lumping = None
 
+    def _build_csr_map(self) -> None:
+        """Estructura CSR de ``K`` y mapa COO → CSR, calculados una vez.
+
+        ``scipy.sparse.coo_matrix(...).tocsr()`` ordena y suma duplicados en
+        **cada** ensamblaje (unos 115 ms para 8 000 Hex8, más que el propio
+        kernel elástico por lotes). Con el patrón fijo, basta calcular una
+        vez la posición CSR de cada entrada COO y acumular con
+        ``np.bincount``. Las filas y columnas COO se descartan después: el
+        mapa (4 B por entrada) ocupa la mitad que ellas.
+        """
+        n = self._total_entries
+        ndof = self.ndof
+        rows = self._coo_rows
+        cols = self._coo_cols
+        pattern = sp.csr_matrix(
+            (np.ones(n, dtype=np.float64), (rows, cols)), shape=(ndof, ndof)
+        )
+        pattern.sum_duplicates()
+        pattern.sort_indices()
+        self._csr_indptr = pattern.indptr.astype(np.int32, copy=False)
+        self._csr_indices = pattern.indices.astype(np.int32, copy=False)
+        self._nnz = int(self._csr_indices.shape[0])
+        csr_keys = (np.repeat(np.arange(ndof, dtype=np.int64), np.diff(self._csr_indptr))
+                    * ndof + self._csr_indices)
+        coo_keys = rows.astype(np.int64) * ndof + cols
+        self._csr_map = np.searchsorted(csr_keys, coo_keys).astype(np.int32)
+        self._coo_rows = None
+        self._coo_cols = None
+
+    def _to_csr(self, data: np.ndarray) -> sp.csr_matrix:
+        """Matriz CSR a partir del vector de entradas COO (patrón cacheado)."""
+        values = np.bincount(self._csr_map, weights=data, minlength=self._nnz)
+        return sp.csr_matrix(
+            (values, self._csr_indices, self._csr_indptr),
+            shape=(self.ndof, self.ndof),
+        )
+
+    def _release_families(self) -> None:
+        """Devuelve el estado de las familias a los ``ElementState`` clásicos
+        y olvida las familias (antes de reconstruir la topología)."""
+        for fam in self._families:
+            fam.release()
+        self._families = []
+        self._loose = []
+
+    @property
+    def families(self) -> list[Family]:
+        """Familias por lotes construidas con la topología vigente (vacía si
+        ``batch=False`` o si aún no se ha ensamblado)."""
+        return list(self._families)
+
     def _current_topology_key(self) -> tuple:
-        return (len(self.domain.elements), self.domain.total_dofs)
+        return (len(self.domain.elements), self.domain.total_dofs, self.batch)
 
     def _ensure_topology(self) -> None:
         """Construye la topología COO si falta o si el modelo cambió de
@@ -92,12 +218,15 @@ class Assembler:
             self._build_topology()
 
     def invalidate(self) -> None:
-        """Descarta todas las cachés (topología, restricciones, masa).
+        """Descarta todas las cachés (topología, familias, restricciones, masa).
 
         Las huellas de topología y de restricciones ya detectan por sí solas
         elementos nuevos y apoyos/MPC añadidos o cambiados; este método es
         el punto explícito para cambios que no dejan huella (densidad de un
-        material, por ejemplo, que invalida la masa cacheada)."""
+        material, un material o un espesor sustituidos en un elemento
+        existente, ...). El estado interno de las familias vuelve a los
+        elementos, así que no se pierde historia."""
+        self._release_families()
         self._topology_built = False
         self._topology_key = None
         self._constraint_set = None
@@ -105,24 +234,34 @@ class Assembler:
         self._M_global = None
         self._M_lumping = None
 
+    def _elements(self) -> list:
+        return list(self.domain.elements.values())
+
     def assemble_system(self):
+        """Matriz de rigidez global en la configuración de referencia
+        (``u = 0``): ``compute_global_stiffness`` en el camino por elemento y
+        el kernel de familia con ``U = 0`` en el camino por lotes. En ambos
+        casos el estado *trial* queda evaluado en ``u = 0``."""
         self._ensure_topology()
 
         self.F_global = np.zeros(self.ndof)
         data = np.zeros(self._total_entries, dtype=np.float64)
 
-        ptr = 0
-        for i, element in enumerate(self.domain.elements.values()):
-            K_e = element.compute_global_stiffness()
-            n_idx = len(self._elem_dof_indices[i])
+        if self._families:
+            U0 = np.zeros(self.ndof)
+            F_discard = np.zeros(self.ndof)
+            for fam in self._families:
+                fam.evaluate(U0, data, F_discard)
 
-            data[ptr:ptr + n_idx**2] = K_e.ravel()
-            ptr += n_idx**2
+        elements = self._elements()
+        for pos in self._loose:
+            K_e = elements[pos].compute_global_stiffness()
+            n_idx = len(self._elem_dof_indices[pos])
+            p0 = self._elem_ptr[pos]
+            data[p0:p0 + n_idx ** 2] = K_e.ravel()
 
         # CSR: eficiente para solve y para modificar entradas diagonales existentes
-        self.K_global = sp.coo_matrix(
-            (data, (self._coo_rows, self._coo_cols)), shape=(self.ndof, self.ndof)
-        ).tocsr()
+        self.K_global = self._to_csr(data)
 
     def assemble_non_linear_system(self, U_current: np.ndarray):
         """Construye la matriz tangente global y el vector de fuerzas internas a máxima velocidad."""
@@ -130,10 +269,15 @@ class Assembler:
 
         F_int_global = np.zeros(self.ndof)
         data = np.zeros(self._total_entries, dtype=np.float64)
+        U_current = np.asarray(U_current, dtype=np.float64)
 
-        ptr = 0
-        for i, element in enumerate(self.domain.elements.values()):
-            global_indices = self._elem_dof_indices[i]
+        for fam in self._families:
+            fam.evaluate(U_current, data, F_int_global)
+
+        elements = self._elements()
+        for pos in self._loose:
+            element = elements[pos]
+            global_indices = self._elem_dof_indices[pos]
             u_local = U_current[global_indices]
 
             K_e, F_int_e = element.compute_element_state(u_local)
@@ -141,13 +285,10 @@ class Assembler:
             F_int_global[global_indices] += F_int_e
 
             n_idx = len(global_indices)
-            data[ptr:ptr + n_idx**2] = K_e.ravel()
-            ptr += n_idx**2
+            p0 = self._elem_ptr[pos]
+            data[p0:p0 + n_idx ** 2] = K_e.ravel()
 
-        K_global = sp.coo_matrix(
-            (data, (self._coo_rows, self._coo_cols)), shape=(self.ndof, self.ndof)
-        ).tocsr()
-        return K_global, F_int_global
+        return self._to_csr(data), F_int_global
 
     # ------------------------------------------------------------------
     # Imposición de Dirichlet por eliminación directa (ADR 0004 fase 1).
@@ -264,10 +405,11 @@ class Assembler:
     def assemble_mass_matrix(self, lumping: str = "consistent") -> sp.csr_matrix:
         """Ensambla la matriz de masa global ``M`` (ADR 0009).
 
-        Reutiliza la topología COO cacheada por ``_build_topology`` — ``M`` y
+        Reutiliza la topología cacheada por ``_build_topology`` (posición de
+        cada elemento en el vector de entradas y mapa COO → CSR) — ``M`` y
         ``K`` comparten el mismo patrón de sparsity porque se ensamblan sobre
         los mismos pares de DOFs elemento a elemento. El coste de ensamblaje
-        de ``M`` es comparable al de ``K``.
+        de ``M`` es comparable al de ``K`` por elemento.
 
         La masa lineal es constante en el tiempo y se cachea por análisis:
         llamadas sucesivas con el mismo ``lumping`` devuelven el resultado
@@ -348,17 +490,13 @@ class Assembler:
             raise ValueError("\n".join(parts))
 
         data = np.zeros(self._total_entries, dtype=np.float64)
-        ptr = 0
         for i, element in enumerate(self.domain.elements.values()):
             M_e = element.compute_mass_matrix(lumping=lumping)
             n_idx = len(self._elem_dof_indices[i])
-            data[ptr:ptr + n_idx**2] = M_e.ravel()
-            ptr += n_idx**2
+            p0 = self._elem_ptr[i]
+            data[p0:p0 + n_idx ** 2] = M_e.ravel()
 
-        self._M_global = sp.coo_matrix(
-            (data, (self._coo_rows, self._coo_cols)),
-            shape=(self.ndof, self.ndof),
-        ).tocsr()
+        self._M_global = self._to_csr(data)
         self._M_lumping = lumping
         return self._M_global
 
@@ -389,9 +527,19 @@ class Assembler:
         return K_red, M_red, T
 
     def commit_all_states(self):
-        """Confirma las variables internas de todos los elementos tras la convergencia del paso."""
-        for elem in self.domain.elements.values():
-            elem.commit_state()
+        """Confirma las variables internas de todos los elementos tras la
+        convergencia del paso: copia trial → committed por familia (una
+        asignación de arreglo) y ``commit_state`` en los elementos del
+        camino por elemento."""
+        if not self._topology_built or self._topology_key != self._current_topology_key():
+            for elem in self.domain.elements.values():
+                elem.commit_state()
+            return
+        for fam in self._families:
+            fam.commit()
+        elements = self._elements()
+        for pos in self._loose:
+            elements[pos].commit_state()
 
     def prepare_all_steps(self, U_committed: np.ndarray) -> None:
         """Invoca ``prepare_step(U_committed)`` en todos los elementos del dominio.

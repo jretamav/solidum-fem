@@ -213,7 +213,7 @@ def _compute_drucker_prager_plane_strain(strain, eps_p_old, alpha_old,
 
 
 @njit(cache=True)
-def _dp_plane_strain_batch(strain, S_old, S_new, params, C, sigma, flag):
+def _dp_plane_strain_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [η_f, η_g, k_0, H, K, G,
     tol_abs, tol_rel]``; ``C`` = ``C_e``. Tolerancia como ``admissibility_tol``
     (escala ``k(α) = k_0 + H·α``)."""
