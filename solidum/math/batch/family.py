@@ -200,10 +200,23 @@ class Family:
 
     # ------------------------------------------------------------------
 
-    def evaluate(self, U: np.ndarray, data: np.ndarray, F_int: np.ndarray) -> None:
+    def evaluate(self, U: np.ndarray, data: np.ndarray, F_int: np.ndarray,
+                 keep_trial: bool = False) -> None:
         """Evalúa ``K_e`` y ``F_int_e`` de todos los elementos en ``U`` y los
         vuelca en el vector COO ``data`` (contiguo, ``float64``) y en
-        ``F_int``. Escribe el estado y los esfuerzos **trial** de la familia."""
+        ``F_int``. Escribe el estado y los esfuerzos **trial** de la familia,
+        salvo con ``keep_trial=True`` (evaluación auxiliar, p. ej. la rigidez
+        en ``u = 0`` de ``assemble_system``): entonces el trial previo se
+        restaura al salir, como hace ``Element.compute_global_stiffness``."""
+        if keep_trial:
+            st = self.state
+            saved = (st.S_trial.copy(), st.sig_trial.copy())
+            try:
+                self.evaluate(U, data, F_int, keep_trial=False)
+            finally:
+                np.copyto(st.S_trial, saved[0])
+                np.copyto(st.sig_trial, saved[1])
+            return
         if self.ptr_start is None:
             raise RuntimeError("Family.evaluate: la familia no tiene posición en la COO.")
         N = self.n_elements

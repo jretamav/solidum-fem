@@ -136,6 +136,17 @@ class BatchedElementState(ElementState):
     def commit(self) -> None:
         self.family_state.commit_element(self.elem_index)
 
+    def snapshot_trial(self):
+        fs = self.family_state
+        r = fs.rows(self.elem_index)
+        return (fs.S_trial[r].copy(), fs.sig_trial[r].copy())
+
+    def restore_trial(self, snapshot) -> None:
+        fs = self.family_state
+        r = fs.rows(self.elem_index)
+        fs.S_trial[r] = snapshot[0]
+        fs.sig_trial[r] = snapshot[1]
+
     # ------------------------------------------------------------------
     # Conversión desde / hacia el estado por diccionarios
     # ------------------------------------------------------------------

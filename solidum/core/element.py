@@ -351,9 +351,24 @@ class Element(ABC):
 
         Punto de partida del análisis lineal y delegación garantizada en la
         misma `compute_element_state`, asegurando consistencia lineal/no-lineal.
+
+        **No deja huella en el estado trial**: la evaluación en ``u = 0`` es
+        auxiliar (rigidez inicial para un análisis lineal, modal o
+        dinámico), no un iterado del paso en curso, así que el trial que
+        hubiera antes (p. ej. el del último ensamblaje del Newton) se
+        restaura al salir. Sin esto, llamar a ``assemble_system`` a mitad
+        de un análisis no lineal sobrescribía el trial con el estado en
+        ``u = 0`` y un ``commit`` posterior lo consolidaba (deuda #18 de
+        ``STATUS.md``).
         """
         ndof_e = len(self.DOF_NAMES) * len(self.nodes)
-        K_e, _ = self.compute_element_state(np.zeros(ndof_e))
+        state = getattr(self, "state", None)
+        snapshot = None if state is None else state.snapshot_trial()
+        try:
+            K_e, _ = self.compute_element_state(np.zeros(ndof_e))
+        finally:
+            if snapshot is not None:
+                state.restore_trial(snapshot)
         return K_e
 
     def get_coordinate_matrix(self, ndim: int = 2) -> np.ndarray:

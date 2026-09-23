@@ -22,3 +22,20 @@ class ElementState:
         """
         self.vars = copy.deepcopy(self.vars_trial)
         self.stresses = [np.copy(s) if s is not None else None for s in self.stresses_trial]
+
+    # ------------------------------------------------------------------
+    # Aislamiento del trial: evaluaciones que no deben dejar huella
+    # ------------------------------------------------------------------
+
+    def snapshot_trial(self):
+        """Copia independiente del estado trial (variables y esfuerzos),
+        para restaurarlo con :meth:`restore_trial` tras una evaluación
+        auxiliar (p. ej. ``compute_global_stiffness`` en ``u = 0``) que no
+        forma parte del paso en curso."""
+        return (copy.deepcopy(self.vars_trial),
+                [np.copy(s) if s is not None else None for s in self.stresses_trial])
+
+    def restore_trial(self, snapshot) -> None:
+        vars_trial, stresses_trial = snapshot
+        self.vars_trial = vars_trial
+        self.stresses_trial = stresses_trial

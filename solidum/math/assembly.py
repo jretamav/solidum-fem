@@ -271,7 +271,8 @@ class Assembler:
         """Matriz de rigidez global en la configuración de referencia
         (``u = 0``): ``compute_global_stiffness`` en el camino por elemento y
         el kernel de familia con ``U = 0`` en el camino por lotes. En ambos
-        casos el estado *trial* queda evaluado en ``u = 0``."""
+        casos el estado *trial* **no se modifica**: es una evaluación
+        auxiliar y el trial previo se restaura al salir."""
         self._ensure_topology()
 
         self.F_global = np.zeros(self.ndof)
@@ -281,7 +282,7 @@ class Assembler:
             U0 = np.zeros(self.ndof)
             F_discard = np.zeros(self.ndof)
             for fam in self._families:
-                fam.evaluate(U0, data, F_discard)
+                fam.evaluate(U0, data, F_discard, keep_trial=True)
 
         elements = self._elements()
         for pos in self._loose:

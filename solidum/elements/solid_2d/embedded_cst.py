@@ -281,6 +281,20 @@ class CST_Embedded2D(Element):
         if self.discontinuity_state is not None:
             self.discontinuity_state.commit()
 
+    def compute_global_stiffness(self) -> np.ndarray:
+        """Rigidez en ``u = 0`` sin dejar huella: además del trial del
+        material (que ya aísla la base), el Newton local del salto escribe
+        ``jump_trial`` y ``cohesive_state_trial``; se restauran al salir."""
+        ds = self.discontinuity_state
+        if ds is None:
+            return super().compute_global_stiffness()
+        import copy
+        saved = (np.copy(ds.jump_trial), copy.deepcopy(ds.cohesive_state_trial))
+        try:
+            return super().compute_global_stiffness()
+        finally:
+            ds.jump_trial, ds.cohesive_state_trial = saved
+
     # ------------------------------------------------------------------
     # Post-procesamiento (compute_gauss_state extendido)
     # ------------------------------------------------------------------
