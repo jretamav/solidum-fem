@@ -1189,7 +1189,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 \section{ADR 0018 --- Solver iterativo}
 \label{adr:0018}
 
-\textbf{Fecha}: 23 de septiembre de 2026. \textbf{Estado}: aceptado; la tolerancia, pendiente de validación.
+\textbf{Fecha}: 23 de septiembre de 2026. \textbf{Estado}: aceptado; la tolerancia (10\ensuremath{^{-}}¹⁰ sobre el residuo verdadero, fija y no configurable desde el YAML), validada por el usuario.
 
 \textbf{Contexto.} Los programas comerciales ofrecen un solver directo por defecto y uno iterativo para modelos grandes. La ventaja del iterativo no es la velocidad sino la memoria: la del directo crece más deprisa que el modelo.
 
@@ -1764,8 +1764,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 09:25\\[0.5em]
-Commit Git: \texttt{17d0d3c}\\[1em]
+Compilado el 23 de septiembre de 2026, 09:41\\[0.5em]
+Commit Git: \texttt{2cd664e}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
