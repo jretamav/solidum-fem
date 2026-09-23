@@ -56,7 +56,8 @@ U_B_ELASTICO = lame_ej.lame(RE)[2] / lame_ej.P   # u_r(b) por unidad de presión
 CASOS = [("Tri3", "Tri3", 8, None), ("Quad4", "Quad4", 8, None),
          ("Tri6", "Tri6", 4, None), ("Quad8", "Quad8", 4, None),
          ("Quad8R", "Quad8", 4, "2x2")]
-DL = 2.0e-5          # longitud de arco inicial [m]: del orden del desplazamiento elástico
+DLAMBDA = 0.02       # primer paso: 2 % de la presión de colapso (adimensional)
+DL_EXPLICITO = 0.1   # longitud explícita [m] de la advertencia del capítulo
 PASOS = 150
 U_LECTURA = (0.5e-3, 1.0e-3)   # desplazamientos exteriores donde se lee la carga
 
@@ -73,23 +74,31 @@ TOLERANCIAS = {
     **{f"{c}.crecimiento_meseta": (-0.002, 0.002) for c in ("Tri6", "Quad8", "Quad8R")},
     "Quad4.medio_fuera_MPa": (50.0, 1000.0),
     **{f"{c}.medio_fuera_MPa": 10.0 for c in ("Tri6", "Quad8", "Quad8R")},
-    # El paso de arco excesivo aterriza en λ = λ_max con desplazamientos absurdos.
-    "paso_excesivo.lambda": (1.49, 1.51),
+    # Longitud explícita de 0.1 m: el primer paso salta toda la transición
+    # elastoplástica (decenas de veces el desplazamiento elástico en el colapso).
+    "paso_excesivo.u_b_1_sobre_elastico": (10.0, 1000.0),
+    # A esos desplazamientos el Quad8 3×3 gana carga (bloqueo) y el 2×2 no.
+    "paso_excesivo.lambda_ultimo": (1.02, 2.0),
+    "paso_excesivo.lambda_ultimo_Quad8R": (0.999, 1.001),
 }
 
 
-def trazar(elemento: str, n: int, cuadratura, dl: float = DL, pasos: int = PASOS):
+def trazar(elemento: str, n: int, cuadratura, *, dlambda: float = DLAMBDA,
+           dl: float | None = None, pasos: int = PASOS):
     """Curva (λ, u_b) con p = λ·p_lim, u_b = desplazamiento radial exterior.
 
-    Devuelve también el esfuerzo medio de los puntos de Gauss en el primer
-    paso con u_b ≥ 1 mm (``None`` si no se llega): un punto fijo del recorrido,
-    comparable entre elementos."""
+    El primer paso se declara como fracción de la carga (``dlambda``) o, si
+    se pasa ``dl``, como longitud de arco explícita en metros. Devuelve
+    también el esfuerzo medio de los puntos de Gauss en el primer paso con
+    u_b ≥ 1 mm (``None`` si no se llega), un punto fijo del recorrido
+    comparable entre elementos, y la longitud de arco del primer paso."""
     material = VonMises2D(E=E, nu=NU, sigma_y=SY, H=0.0, hypothesis="plane_strain")
     domain, aristas, nodo = modelo(elemento, n, material=material, cuadratura=cuadratura)
     F = carga_de_presion(domain, aristas, P_LIM)          # λ = 1 ⇔ presión de colapso
     assembler = Assembler(domain)
+    primer_paso = {"initial_dl": dl} if dl is not None else {"initial_dlambda": dlambda}
     solver = ArcLengthSolver(assembler, max_iter=30, max_lambda=1.5,
-                             initial_dl=dl, max_steps=pasos)
+                             max_steps=pasos, **primer_paso)
     exterior = nodo[max(i for i, _ in nodo), 0]           # (b, 0)
     curva, medio = [], []
 
@@ -102,7 +111,7 @@ def trazar(elemento: str, n: int, cuadratura, dl: float = DL, pasos: int = PASOS
     solidum.run(domain, assembler=assembler, solver=solver, F_applied=F,
                 step_callback=al_converger)
     lam, ub = np.array(curva).T
-    return domain, lam, ub, (medio[0] if medio else None)
+    return domain, lam, ub, (medio[0] if medio else None), solver.dl_reference
 
 
 def presion_media(domain) -> np.ndarray:
@@ -122,11 +131,16 @@ def calcular() -> dict:
     k = SY / np.sqrt(3)
     medio_lo, medio_hi = -P_LIM + k, k
     out = {"sigma_y_MPa": SY / 1e6, "p_e_MPa": P_E / 1e6, "p_lim_MPa": P_LIM / 1e6,
-           "p_e_sobre_p_lim": P_E / P_LIM, "dl": DL, "pasos": PASOS,
+           "p_e_sobre_p_lim": P_E / P_LIM, "dlambda": DLAMBDA,
+           "dlambda_pct": 100 * DLAMBDA, "pasos": PASOS,
            "u_lectura_mm": [1e3 * u for u in U_LECTURA],
            "medio_exacto_min_MPa": medio_lo / 1e6, "medio_exacto_max_MPa": medio_hi / 1e6}
     for etiqueta, elemento, n, cuad in CASOS:
-        domain, lam, ub, pm = trazar(elemento, n, cuad)
+        domain, lam, ub, pm, dl_ref = trazar(elemento, n, cuad)
+        if etiqueta == "Quad8":
+            # ‖K⁻¹·F_ref‖ con F_ref = carga de colapso: la escala del problema.
+            norma_elastica = dl_ref / DLAMBDA
+            out["dl_primer_paso_m"] = dl_ref
         flex = ub[0] / (lam[0] * P_LIM)                    # primer paso: elástico
         l05, l10 = (float(np.interp(u, ub, lam)) for u in U_LECTURA)
         out[etiqueta] = {
@@ -141,10 +155,20 @@ def calcular() -> dict:
             # Cuánto se sale el esfuerzo medio del intervalo exacto [MPa].
             "medio_fuera_MPa": max(medio_lo - pm.min(), pm.max() - medio_hi, 0.0) / 1e6,
         }
-    # Advertencia del capítulo: paso de arco inicial por omisión (0.1 m).
-    _, lam, ub, _ = trazar("Quad8", 4, None, dl=0.1, pasos=1)
-    out["paso_excesivo"] = {"dl": 0.1, "lambda": float(lam[-1]), "u_b_m": float(ub[-1]),
-                            "u_b_sobre_elastico": float(ub[-1] / (U_B_ELASTICO * P_LIM))}
+    # Advertencia del capítulo: longitud de arco explícita de 0.1 m (el
+    # antiguo valor por omisión del solver).
+    _, lam, ub, _, _ = trazar("Quad8", 4, None, dl=DL_EXPLICITO, pasos=5)
+    u_el = U_B_ELASTICO * P_LIM                          # u_b elástico con p_lim
+    out["paso_excesivo"] = {
+        "dl": DL_EXPLICITO,
+        "dlambda_equivalente": DL_EXPLICITO / norma_elastica,
+        "lambda_1": float(lam[0]), "u_b_1_mm": float(1e3 * ub[0]),
+        "u_b_1_sobre_elastico": float(ub[0] / u_el),
+        "pasos": len(lam), "lambda_ultimo": float(lam[-1]), "u_b_ultimo_mm": float(1e3 * ub[-1]),
+    }
+    # Contraste: el mismo trazado con el Quad8 2×2, que no se bloquea.
+    _, lam_r, _, _, _ = trazar("Quad8", 4, "2x2", dl=DL_EXPLICITO, pasos=5)
+    out["paso_excesivo"]["lambda_ultimo_Quad8R"] = float(lam_r[-1])
     return out
 
 
@@ -193,7 +217,10 @@ def main() -> dict:
         d = res[c]
         print(f"{c:7s} gdl={d['gdl']:4d}  flexibilidad {d['error_flexibilidad']:.2e}  "
               f"λ(0.5 mm)={d['lambda_05']:.4f}  λ(1 mm)={d['lambda_10']:.4f}")
-    print(f"dl = 0.1: λ = {res['paso_excesivo']['lambda']:.3f}, u_b = {res['paso_excesivo']['u_b_m']:.2f} m")
+    pe = res["paso_excesivo"]
+    print(f"initial_dl = 0.1 m (≡ Δλ₁ = {pe['dlambda_equivalente']:.0f}): primer paso λ = "
+          f"{pe['lambda_1']:.4f}, u_b = {pe['u_b_1_mm']:.1f} mm; tras {pe['pasos']} pasos "
+          f"λ = {pe['lambda_ultimo']:.3f}, u_b = {pe['u_b_ultimo_mm']:.0f} mm")
     return res
 
 

@@ -54,15 +54,16 @@ Traza curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de
 
 - **Predictor tangente**: $\Delta\mathbf U_t = \mathbf K_t^{-1} \cdot \mathbf F_{\text{ext}}^{\text{ref}}$; $\Delta\lambda = \pm\,dl / \lVert\Delta\mathbf U_t\rVert$. Signo elegido por proyección con el incremento previo.
 - **Corrector iterativo**: en cada iteración resuelve dos sistemas ($\mathbf K \cdot \Delta\mathbf U_R = \mathbf R$ y $\mathbf K \cdot \Delta\mathbf U_t = \mathbf F_{\text{ext}}$) y aplica la restricción cuadrática cilíndrica $\lVert\delta\mathbf U\rVert^2 = dl^2$.
-- **Auto-ajuste de `dl`**: se agranda en convergencias rápidas, se reduce en lentas, biseca al fallar.
-- **Caso especial `final_step`**: si el predictor sobrepasaría `max_lambda`, fija $\lambda$ a ese valor y resuelve solo desplazamientos (Newton-Raphson puro).
+- **Primer paso**: se declara con `initial_dlambda`, como **fracción de la carga de referencia** (0.1 si no se declara, es decir, el 10 % de la carga). El solver lo convierte en longitud de arco con una resolución elástica, $dl_1 = \Delta\lambda_1\,\lVert\mathbf K^{-1}\mathbf F_{\text{ext}}^{\text{ref}}\rVert$, así que no hace falta conocer de antemano los desplazamientos del modelo y el valor significa lo mismo en cualquier sistema de unidades. La alternativa `initial_dl` fija la longitud de arco directamente, en unidades de desplazamiento; sólo tiene sentido si se conoce la escala del problema, y no puede declararse junto con `initial_dlambda`.
+- **Auto-ajuste de `dl`**: se agranda en convergencias rápidas (hasta `dl_max_factor` veces la del primer paso), se reduce en lentas, biseca al fallar.
+- **Llegada a `max_lambda`**: todos los pasos siguen la curva. Si uno la cruza, se repite desde el estado anterior hasta llegar exactamente a `max_lambda`. El solver nunca impone la carga máxima sin haber recorrido la curva hasta ella; si hay un colapso antes, el trazado se detiene por `max_steps` y lo avisa.
 
 ```yaml
 solver:
   type: ArcLengthSolver
   max_iter: 15
   max_lambda: 1.0
-  initial_dl: 0.05
+  initial_dlambda: 0.05      # primer paso: 5 % de la carga de referencia
   max_steps: 200
   convergence:
     rtol_force: 1.0e-5
@@ -92,7 +93,7 @@ es **lineal** en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del
 solver:
   type: DissipationArcLengthSolver
   max_lambda: 1.0
-  initial_dl: 0.05
+  initial_dlambda: 0.05
   initial_tau: 1.0e-4
   max_steps: 300
 ```

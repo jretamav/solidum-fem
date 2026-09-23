@@ -42,11 +42,13 @@ Idénticas a `NonlinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC ví
 
 ```
 λ = 0
-dl = initial_dl
+dl = (sin fijar)
 mientras λ < max_lambda y step < max_steps:
     # Predictor tangente
     K_t, F_int = assemble_non_linear_system(U_iter)
     δu_t = K_t^{-1} · F_ext^ref          # desplazamiento tangente unitario
+    si dl sin fijar:                     # primer paso (§5)
+        dl = Δl₁ = initial_dl  ó  initial_dlambda · ‖δu_t‖
     sign = sign(δU_prev · δu_t)          # evitar revertir dirección
     Δλ_pred = sign · dl / ‖δu_t‖
     ΔU_pred = Δλ_pred · δu_t
@@ -66,17 +68,27 @@ mientras λ < max_lambda y step < max_steps:
         Δλ += ddλ
         U_iter = U_current + ΔU
         si converge (ADR 0007):
+            si λ + Δλ > max_lambda:              # cruzó el objetivo (§10)
+                no consolidar; llegada exacta:
+                Newton puro con λ = max_lambda desde (U_current, λ),
+                arrancando de la interpolación lineal del tramo recorrido
             commit_all_states()
             λ += Δλ
             ajustar_dl_adaptativamente(iter)
             break
-    si no converge:
-        dl /= dl_shrink_factor
+    si no converge (o falla la llegada):
+        dl /= 2
 ```
 
 ### 5. Predictor / corrector
 
 **Predictor tangente**: $\delta\mathbf u_t = \mathbf K_t^{-1}\,\mathbf F_{\text{ext}}^{\text{ref}}$ (vector que mide la pendiente local del camino de equilibrio). $\Delta\lambda_{\text{pred}} = \pm dl / \lVert\delta\mathbf u_t\rVert$ con signo determinado por el producto escalar contra el incremento previo $\Delta\mathbf U^{\text{paso prev}}$ — así no se retrocede en el camino tras pasar un punto límite.
+
+**Primer paso (2026-09-23).** $dl$ es una longitud en unidades de desplazamiento, y quien plantea el modelo no conoce de antemano sus desplazamientos. El primer paso se declara, por omisión, como **fracción de la carga de referencia** $\Delta\lambda_1$ (`initial_dlambda`, 0.1 si no se declara) y la longitud de arco se deriva del predictor elástico del primer paso (Crisfield 1991, cap. 9):
+
+$$\Delta l_1 = \Delta\lambda_1\,\lVert\mathbf K_0^{-1}\,\mathbf F_{\text{ext}}^{\text{ref}}\rVert .$$
+
+En régimen elástico el primer paso lleva exactamente $\Delta\lambda_1$, en cualquier sistema de unidades. `initial_dl` fija $\Delta l_1$ directamente (longitud explícita) y es excluyente con `initial_dlambda`. $\Delta l_1$ queda en `dl_reference` y es la referencia de `dl_max_factor` y del umbral de aborto. Una carga de referencia que no produce desplazamiento ($\lVert\delta\mathbf u_t\rVert = 0$) no da escala al primer paso y es un error explícito. La norma mezcla todos los grados de libertad; en marcos, giros y desplazamientos, cuyo peso relativo depende de las unidades (deuda #22): el primer paso es invariante, los siguientes heredan esa mezcla.
 
 **Corrector** (Newton modificado para arc-length, Crisfield): cada iteración resuelve dos sistemas (residuo y tangente), combina con $dd\lambda$ que satisface la restricción cuadrática:
 
@@ -100,16 +112,16 @@ Régimen **postcrítico**: $\mathbf K_t$ puede ser indefinida (autovalores negat
 
 Política de auto-ajuste basada en iteraciones del paso:
 
-- Converge en $<$ `dl_grow_iter_threshold` iteraciones ⇒ $dl \to dl \cdot $ `dl_grow_factor` (cota: `initial_dl · dl_max_factor`).
+- Converge en $<$ `dl_grow_iter_threshold` iteraciones ⇒ $dl \to dl \cdot $ `dl_grow_factor` (cota: $\Delta l_1 \cdot$ `dl_max_factor`).
 - Converge en $>$ `dl_shrink_iter_threshold` iteraciones ⇒ $dl \to dl \cdot $ `dl_shrink_factor`.
 - No converge en `max_iter` ⇒ $dl /= 2$ y reintentar el paso.
-- Cota inferior: $dl < $ `ARCLENGTH_MIN_DL_FACTOR · initial_dl` ⇒ aborto.
+- Cota inferior: $dl < $ `ARCLENGTH_MIN_DL_FACTOR` $\cdot\,\Delta l_1$ ⇒ aborto.
 
 ### 10. Caveats numéricos
 
 - **Cancelación o bifurcación verdadera**: en bifurcaciones simétricas múltiples, la selección de raíz por menor ángulo puede saltar a un camino paralelo. Para análisis de bifurcación auténtica usar perturbación + post-procesado modal.
 - **Raíces imaginarias**: si el discriminante de la cuadrática es negativo (paso demasiado grande, mal condicionamiento severo), el solver aborta el paso y bisecta $dl$.
-- **Último paso**: cuando $\lambda + \Delta\lambda_{\text{pred}} \ge \lambda_{\max}$, el solver fija $\Delta\lambda = \lambda_{\max} - \lambda$ y corrige solo en desplazamientos (Newton puro), sin restricción cuadrática. Permite cerrar exactamente en el target.
+- **Llegada a $\lambda_{\max}$ (2026-09-23)**: todos los pasos llevan la restricción cilíndrica. Si uno converge con $\lambda > \lambda_{\max}$, su estado no se consolida y el paso se repite desde el último estado convergido con $\lambda = \lambda_{\max}$ fijo (Newton puro), arrancando de la interpolación lineal del tramo recién recorrido; como ese tramo cruza $\lambda_{\max}$, el equilibrio existe y está cerca. Si la llegada no converge, se biseca $dl$. Sustituye al "último paso" anterior, que se decidía extrapolando la tangente ($\lambda + \Delta\lambda_{\text{pred}} \ge \lambda_{\max}$) e imponía $\lambda_{\max}$ en control de carga sin recorrer la curva: podía saltar un punto límite, y un paso de arco que convergía por encima de $\lambda_{\max}$ terminaba el trazado ahí (medido: arco de von Mises, $\lambda_{\text{final}} = 0.398$ con $\lambda_{\max} = 0.39$).
 - **Softening con penalty cohesivo stiff** (CST_Embedded2D): no se atraviesa la transición elástico→softening por la quasi-singularidad de $\mathbf K_t$ cerca de $\kappa_0$. Limitación específica al embedded.
 - **Diagnóstico de bifurcación por inercia** (Sturm sequence): placeholder en `_negative_pivots()` — retorna `None` hasta que se implemente un backend LDLᵀ verdadero (Bunch-Kaufman) con conteo de pivots negativos.
 
@@ -134,13 +146,15 @@ parameters:
       desc: "Iteraciones Newton (corrector) máximas por paso" }
   - { name: max_lambda,               type: float, required: false, default: 1.0,
       desc: "Factor de carga objetivo" }
-  - { name: initial_dl,               type: float, required: false, default: 0.1,
-      desc: "Longitud de arco inicial" }
+  - { name: initial_dlambda,          type: float, required: false, default: 0.1,
+      desc: "Fracción de la carga de referencia del primer paso (adimensional, keyword-only); Δl₁ = Δλ₁·‖K₀⁻¹F_ref‖. Excluyente con initial_dl" }
+  - { name: initial_dl,               type: float, required: false, default: null,
+      desc: "Longitud de arco del primer paso en unidades de desplazamiento; sólo si se conoce la escala del problema. Excluyente con initial_dlambda" }
   - { name: max_steps,                type: int,   required: false, default: 100,
       desc: "Cota dura sobre el número de pasos" }
   - { name: dl_grow_factor,           type: float, required: false, default: 1.5 }
   - { name: dl_max_factor,            type: float, required: false, default: 5.0,
-      desc: "dl máximo = initial_dl · dl_max_factor" }
+      desc: "dl máximo = Δl₁ · dl_max_factor" }
   - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
@@ -150,7 +164,7 @@ parameters:
 requirements:
   - "Modelo con potencial snap-through/snap-back (geometría inestable, softening del material)"
   - "Apoyos suficientes; sin modos rígidos"
-  - "dl inicial razonable (orden de magnitud del desplazamiento característico del primer paso)"
+  - "Carga de referencia que produzca desplazamiento (escala del primer paso)"
 
 conventions:
   units: "heredadas del modelo (ADR 0008)"
@@ -194,6 +208,21 @@ acceptance:
       expect: "λ_final = 0.7 exacto (no por overshoot)"
       tol_abs: 1.0e-12
 
+    - name: primer_paso_fraccion_de_carga
+      setup: "placa elástica; sin declarar el primer paso, y con initial_dlambda = 0.25"
+      expect: "λ del primer paso = 0.1 y 0.25 respectivamente"
+      tol_abs: 1.0e-12
+
+    - name: trazado_invariante_ante_unidades
+      setup: "misma placa J2 en m y en mm (longitudes ×1000, módulos /10⁶), primer paso por omisión"
+      expect: "misma secuencia de λ, U_mm = 1000·U_m, dl_reference ×1000; con una longitud explícita igual en ambos, primeros λ distintos"
+      tol_rel: 1.0e-8
+
+    - name: llegada_exacta_dentro_del_tramo
+      setup: "arco de von Mises h/L = 0.1, max_lambda = 0.39 (sobre el pico, 0.385), initial_dl = 0.2 y 1.0"
+      expect: "λ_final = 0.39 exacto y equilibrio en ese estado (antes: 0.398 y 0.440)"
+      tol_abs: 1.0e-12
+
   specific:
     - name: seleccion_raiz_no_revierte
       setup: "paso tras un snap-back con dos raíces de signos opuestos"
@@ -223,6 +252,7 @@ references:
 - **Tests**:
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) (`TestArcLengthRobustness`: punto límite, snap-back, recuperación lineal), [tests/test_snap_through_corot.py](../../tests/test_snap_through_corot.py) (armadura de von Mises contra la solución cerrada) y [tests/test_integration.py](../../tests/test_integration.py) (`test_arclength_solver_elastoplastic`).
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) · `test_arc_length_traverses_damage_softening`.
+  - [tests/test_arclength_paso_inicial.py](../../tests/test_arclength_paso_inicial.py) — primer paso como fracción de carga, invariancia ante las unidades, declaración inválida, carga de referencia nula, clave YAML y llegada exacta a `max_lambda`.
 
 ---
 
@@ -233,3 +263,4 @@ references:
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_ArcProblem`: iterado `(U, λ, ΔU)`, dos resoluciones por iteración y restricción cilíndrica como método `constraint`; raíces imaginarias → `CorrectionAborted`; predictor tangente en `_tangent_predictor`; retirados `_solve` y `_make_linalg`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 - **2026-09-23** · ADR 0017-0019: `linear_algebra` admite `pardiso` e `iterative` (CG → MINRES automático ante curvatura negativa, adecuado a la tangente indefinida del régimen postcrítico); al empezar `solve` se rechaza un mecanismo rígido (`MechanismError`). Dentro del trazado no se rechaza ningún sistema casi singular: cerca de un punto límite es parte del algoritmo.
 - **2026-09-23** · Revisión documental: `tests/test_arclength.py` ya no existe; la cobertura está repartida en `test_solver_robustness.py`, `test_snap_through_corot.py` y `test_integration.py`.
+- **2026-09-23** · **Cambio de formulación validado por el usuario** (deuda #26, destapada en el ejemplo 4 del manual de ejemplos). (1) Primer paso adimensional: `initial_dlambda` (0.1 por omisión) y $\Delta l_1 = \Delta\lambda_1\lVert\mathbf K_0^{-1}\mathbf F_{\text{ref}}\rVert$; `initial_dl` pasa a ser una longitud explícita opcional, excluyente, sin valor por omisión. Antes el valor por omisión era `initial_dl = 0.1`, una longitud: en el cilindro J2 del ejemplo 4 pedía $\Delta\lambda = 86$ en el primer paso, el predictor rebasaba `max_lambda` y el solver imponía $\lambda = 1.5$ en control de carga, por encima del colapso, sobre un equilibrio espurio del modelo discreto (0,98 m de desplazamiento). (2) Llegada exacta a `max_lambda` dentro del tramo recorrido, en lugar del paso final decidido por el predictor (§10). Los 84 tests existentes de los dos solvers de arco pasan sin cambiar ningún valor esperado; los nuevos fallan con el código anterior (9 de 11).

@@ -176,8 +176,10 @@ parameters:
   - { name: max_iter,                 type: int,   required: false, default: 20 }
   - { name: max_lambda,               type: float, required: false, default: 1.0 }
   - { name: max_steps,                type: int,   required: false, default: 100 }
-  - { name: initial_dl,               type: float, required: false, default: 0.1,
-      desc: "Longitud de arco inicial — usado en modo cilíndrico (régimen elástico)" }
+  - { name: initial_dlambda,          type: float, required: false, default: 0.1,
+      desc: "Heredado: fracción de la carga de referencia del primer paso (modo cilíndrico); Δl₁ = Δλ₁·‖K₀⁻¹F_ref‖. Excluyente con initial_dl" }
+  - { name: initial_dl,               type: float, required: false, default: null,
+      desc: "Heredado: longitud de arco explícita del primer paso, en unidades de desplazamiento. Excluyente con initial_dlambda" }
   - { name: dl_grow_factor,           type: float, required: false, default: 1.5 }
   - { name: dl_max_factor,            type: float, required: false, default: 5.0 }
   - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
@@ -274,7 +276,7 @@ references:
 - **Clase**: `DissipationArcLengthSolver(ArcLengthSolver)` — subclase. Reusa predictor, corrector, ajuste de paso, manejo de Dirichlet/MPC y backend del padre. Override completo de `solve()` con bifurcación por `self._mode`.
 - **Atributo `self._mode`**: `"cylindrical" | "dissipation"`. Transición tras commit según umbral ``dissipation_threshold·‖F_ref‖·‖U‖``.
 - **Sign-of-pivot tracking**: `_negative_pivots()` implementado vía signo del `slogdet` de `K_t`. Aproximación válida para distinguir indefinitud simple (0 vs número impar de pivots negativos) — base para detección de paso por punto límite simple. **LDLᵀ Bunch-Kaufman queda como deuda técnica** para tracking exacto del conteo.
-- **Salvaguarda contra ``final_step`` prematuro**: si ``|dλ_pred|`` excede ``3 × (max_lambda − lambda_curr)``, se bisecta dl o τ antes de aceptar el paso. Esencial en pasos iniciales sin calibrar y tras switch cilíndrico→disipación donde α puede ser pequeño.
+- **Llegada a `max_lambda`** (desde 2026-09-23, la del padre): todos los pasos llevan su restricción (cilíndrica o de disipación); el que converge por encima de `max_lambda` no se consolida y se repite con λ = `max_lambda` fijo desde el estado anterior (`ArcLengthSolver._land`). Si la llegada falla se biseca dl o τ según el modo del paso. Sustituye a la salvaguarda anterior contra el `final_step` prematuro, que bisecaba cuando el predictor rebasaba `max_lambda` más de 3 veces lo que faltaba y, por debajo de ese factor, imponía `max_lambda` en control de carga.
 - **Detección de α≈0 vía threshold relativo**: ``|α| < 1e-6·½·|λ_n·F·du_t|`` reverte a cilíndrico — para problemas lineales monotónicos α≡0 exactamente, no es un error sino la matemática del régimen sin disipación física.
 - **Entrypoint público**: registrado vía `@SolverRegistry.register`, expuesto como `solidum.math.solvers.DissipationArcLengthSolver`.
 
@@ -317,3 +319,4 @@ Recomendación: dejar esta validación como deuda técnica priorizada en STATUS.
 - **2026-09-22** · Auditoría global: hereda la reestructuración del corrector y los metadatos de trazado de `ArcLengthSolver` (ensamblaje único por iteración, estado committed coherente, `reached_max_lambda`).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_DissipationArcProblem`: sobreescribe `constraint` con la restricción lineal de Gutiérrez para el modo de disipación y hereda los modos cilíndrico y de cierre exacto; `α ≈ 0` → `CorrectionAborted`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 - **2026-09-23** · ADR 0017-0019: hereda de `ArcLengthSolver` los valores nuevos de `linear_algebra` y la comprobación de mecanismo rígido al empezar `solve`.
+- **2026-09-23** · Hereda el cambio de formulación del padre validado por el usuario: primer paso como fracción de carga (`initial_dlambda`, 0.1 por omisión; `initial_dl` explícito y excluyente) y llegada exacta a `max_lambda` dentro del tramo recorrido, que sustituye a la salvaguarda del `final_step`. Ver el Diálogo de [`ArcLengthSolver`](ArcLengthSolver.md). Los tests de esta variante pasan sin cambiar ningún valor esperado (todos declaran `initial_dl` explícito).

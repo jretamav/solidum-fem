@@ -17,6 +17,32 @@ las dos resoluciones por iteración (``du_R`` y ``du_t``) y la restricción
 que fija ``ddλ``— vive en :class:`_ArcProblem`; la variante por
 disipación sólo redefine la restricción.
 
+Primer paso (2026-09-23)
+------------------------
+La longitud de arco es una longitud en unidades de desplazamiento, y el
+usuario no conoce de antemano los desplazamientos de su modelo. Por eso el
+primer paso se declara, por omisión, como **fracción de la carga de
+referencia** (``initial_dlambda`` = Δλ₁, Crisfield 1991, cap. 9) y el solver
+deriva la longitud con el predictor elástico: Δl₁ = Δλ₁·‖K⁻¹·F_ref‖. El
+primer paso lleva así la misma fracción de carga en cualquier sistema de
+unidades. ``initial_dl`` sigue disponible como longitud explícita,
+excluyente con ``initial_dlambda``. Antes el valor por omisión era
+``initial_dl = 0.1``: en el ejemplo 4 del manual de ejemplos eso pedía 86
+veces la carga de colapso en el primer paso.
+
+Llegada a ``max_lambda`` (2026-09-23)
+-------------------------------------
+Todos los pasos se dan con la restricción de arco. Si uno converge con
+λ > ``max_lambda``, su estado **no se consolida**: el paso se repite desde el
+último estado convergido con λ = ``max_lambda`` fijo (Newton puro), partiendo
+de la interpolación lineal sobre el tramo recién recorrido. Como ese tramo
+cruza ``max_lambda``, hay equilibrio y está cerca. Antes, el paso final se
+decidía con el predictor: si la extrapolación tangente rebasaba
+``max_lambda``, el solver fijaba λ = ``max_lambda`` sin recorrer la curva
+(control de carga), lo que podía saltar un punto límite; y un paso de arco
+que convergía por encima de ``max_lambda`` terminaba el trazado ahí (medido:
+arco de von Mises con ``max_lambda = 0.39`` devolvía λ = 0.398).
+
 Fin del trazado
 ---------------
 El bucle termina al alcanzar ``max_lambda`` o al agotar ``max_steps``. En
@@ -30,7 +56,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from solidum.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
+from solidum.constants import (
+    ARCLENGTH_DEFAULT_INITIAL_DLAMBDA,
+    ARCLENGTH_MIN_DL_FACTOR,
+    ZERO_TOL,
+)
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import (
@@ -51,13 +81,18 @@ class _ArcProblem:
 
     ``mode`` fija la restricción que determina ``ddλ``:
 
-    - ``"newton"`` — último paso: ``λ`` fijo, corrección de Newton pura;
+    - ``"newton"`` — llegada a ``max_lambda``: ``λ`` fijo, corrección de
+      Newton pura;
     - ``"cylindrical"`` — cuadrática de Crisfield ``‖ΔU‖² = dl²`` con
       selección de raíz por menor ángulo con el incremento previo.
+
+    Con ``max_lambda``, un paso con restricción que converge por encima de
+    él no consolida el estado y marca ``overshoot``: el solver repite el
+    paso con llegada exacta (``ArcLengthSolver._land``).
     """
 
     def __init__(self, assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-                 *, mode: str, dl: float):
+                 *, mode: str, dl: float, max_lambda: float | None = None):
         self.assembler = assembler
         self.U_current = U_current
         self.lambda_curr = float(lambda_curr)
@@ -65,6 +100,8 @@ class _ArcProblem:
         self.free_dofs = free_dofs
         self.mode = mode
         self.dl = float(dl)
+        self.max_lambda = max_lambda
+        self.overshoot = False
 
     # --- protocolo ----------------------------------------------------------
 
@@ -111,6 +148,13 @@ class _ArcProblem:
                 float(np.linalg.norm(alpha * dU_update)))
 
     def on_converged(self, x, state):
+        # Paso con restricción que acaba por encima de max_lambda: no se
+        # consolida (el trial queda en U_iter y el siguiente ensamblaje lo
+        # recalcula desde el estado consolidado); el solver aterriza.
+        if (self.mode != "newton" and self.max_lambda is not None
+                and x[1] > self.max_lambda + ZERO_TOL):
+            self.overshoot = True
+            return
         # Estado trial del ensamblaje en U_iter: coherente con lo guardado.
         self.assembler.commit_all_states()
 
@@ -146,6 +190,17 @@ class ArcLengthSolver:
     Permite trazar curvas de equilibrio con fenómenos de snap-through y snap-back
     variando simultáneamente los desplazamientos y la carga externa.
 
+    Primer paso
+    -----------
+    initial_dlambda : float, opcional
+        Fracción de la carga de referencia del primer paso (adimensional).
+        Por omisión ``ARCLENGTH_DEFAULT_INITIAL_DLAMBDA`` (0.1). El solver
+        deriva la longitud de arco Δl₁ = Δλ₁·‖K⁻¹·F_ref‖ con el predictor
+        elástico del primer paso.
+    initial_dl : float, opcional
+        Longitud de arco del primer paso, en unidades de desplazamiento.
+        Excluyente con ``initial_dlambda``.
+
     Atributos de estado tras ``solve``
     ----------------------------------
     lambda_final : float
@@ -155,21 +210,26 @@ class ArcLengthSolver:
         antes por agotar ``max_steps``.
     steps_done : int
         Número de pasos convergidos.
+    dl_reference : float
+        Longitud de arco del primer paso (Δl₁) usada en la corrida; es la
+        referencia de ``dl_max_factor`` y del umbral de aborto.
     """
 
     PIPELINE_KIND = "static"
 
-    def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, max_lambda=1.0, initial_dl=0.1, max_steps=100,
+    def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, max_lambda=1.0,
+                 initial_dl: float | None = None, max_steps=100,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
                  dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,
-                 linear_algebra: str = "auto"):
+                 linear_algebra: str = "auto", *, initial_dlambda: float | None = None):
         self.assembler = assembler
         # Política de convergencia (ADR 0007). Compartida con NonlinearSolver:
         # cambiar la política aquí llega automáticamente al arc-length.
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = max_iter
         self.max_lambda = max_lambda
-        self.dl = initial_dl
+        self.initial_dl, self.initial_dlambda = self._first_step_spec(initial_dl, initial_dlambda)
+        self.dl_reference: float | None = None
         self.max_steps = max_steps
         # Factores de auto-ajuste de la longitud de arco:
         #   Si converge en < dl_grow_iter_threshold iter → ampliar dl × dl_grow_factor (max: initial_dl × dl_max_factor)
@@ -211,6 +271,71 @@ class ArcLengthSolver:
         """
         return None
 
+    @classmethod
+    def _first_step_spec(cls, initial_dl, initial_dlambda):
+        """Valida la declaración del primer paso: ``(initial_dl, initial_dlambda)``
+        con uno de los dos en ``None``."""
+        name = cls.__name__
+        if initial_dl is not None and initial_dlambda is not None:
+            raise ValueError(
+                f"{name}: declarar sólo uno de 'initial_dlambda' (fracción de la carga "
+                f"de referencia en el primer paso, recomendado) o 'initial_dl' "
+                f"(longitud de arco en unidades de desplazamiento)."
+            )
+        if initial_dl is not None:
+            if not float(initial_dl) > 0.0:
+                raise ValueError(f"{name}: initial_dl={initial_dl} debe ser > 0.")
+            return float(initial_dl), None
+        dlam = ARCLENGTH_DEFAULT_INITIAL_DLAMBDA if initial_dlambda is None else float(initial_dlambda)
+        if not dlam > 0.0:
+            raise ValueError(f"{name}: initial_dlambda={initial_dlambda} debe ser > 0.")
+        return None, dlam
+
+    def _first_dl(self, du_t: np.ndarray) -> float:
+        """Longitud de arco del primer paso a partir del predictor elástico
+        ``du_t = K⁻¹·F_ref`` (misma norma que la restricción cilíndrica)."""
+        if self.initial_dl is not None:
+            dl = self.initial_dl
+        else:
+            norm = float(np.linalg.norm(du_t))
+            if not np.isfinite(norm) or norm == 0.0:
+                raise ValueError(
+                    f"{type(self).__name__}: la carga de referencia no produce "
+                    f"desplazamiento (‖K⁻¹·F_ref‖ = {norm}); no hay escala para el "
+                    f"primer paso. Revisar F_ref o declarar 'initial_dl'."
+                )
+            dl = self.initial_dlambda * norm
+            _log.info(
+                f"  Primer paso: Δλ₁ = {self.initial_dlambda:g} de la carga de "
+                f"referencia ⇒ Δl₁ = {dl:.4e}"
+            )
+        self.dl_reference = float(dl)
+        return float(dl)
+
+    def _land(self, U_current, lambda_curr, x_over, F_ext_ref, free_dofs):
+        """Llegada exacta a ``max_lambda`` dentro del tramo recién recorrido.
+
+        ``x_over`` es el paso con restricción que convergió por encima de
+        ``max_lambda`` (sin consolidar). Newton puro con λ = ``max_lambda``
+        desde el último estado consolidado, arrancando de la interpolación
+        lineal del tramo. Devuelve el ``CorrectorResult``.
+        """
+        U_over, lambda_over, _ = x_over
+        t = (self.max_lambda - lambda_curr) / (lambda_over - lambda_curr)
+        dU0 = t * (U_over - U_current)
+        _log.info(
+            f"  λ = {lambda_over:.4f} rebasa max_lambda = {self.max_lambda:.4f}: "
+            f"llegada exacta dentro del tramo recorrido."
+        )
+        problem = _ArcProblem(
+            self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+            mode="newton", dl=0.0,
+        )
+        return self.corrector.run(
+            problem, (U_current + dU0, self.max_lambda, dU0), check_initial=True,
+            initial_delta_norm=float(np.linalg.norm(dU0)),
+        )
+
     def _finish(self, lambda_curr: float, step: int) -> None:
         """Registra el estado final del trazado y avisa si quedó incompleto."""
         self.lambda_final = float(lambda_curr)
@@ -221,7 +346,8 @@ class ArcLengthSolver:
                 f"{type(self).__name__}: trazado detenido en λ={lambda_curr:.4f} "
                 f"< max_lambda={self.max_lambda:.4f} tras agotar max_steps="
                 f"{self.max_steps}. El resultado corresponde al último paso "
-                f"convergido; aumente max_steps o initial_dl para completar."
+                f"convergido; aumente max_steps o el primer paso "
+                f"(initial_dlambda) para completar."
             )
 
     # ------------------------------------------------------------------
@@ -256,7 +382,9 @@ class ArcLengthSolver:
         lambda_curr = 0.0
         step = 0
         steps_done = 0
-        dl = self.dl
+        dl = None          # Δl₁: se fija con el predictor del primer paso
+        dl_ref = None
+        self.dl_reference = None
 
         delta_U_step = np.zeros(ndof)  # Historial del incremento del paso para guiar el arco
 
@@ -271,7 +399,6 @@ class ArcLengthSolver:
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
-            _log.info(f"[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
 
             # ADR 0010 §5: hook de preparación de paso (activación de
             # discontinuidades embebidas, etc.). Evaluado con el estado
@@ -282,31 +409,30 @@ class ArcLengthSolver:
             pred = self._tangent_predictor(U_current, F_ext_ref, delta_U_step, step)
             if pred is None:
                 _log.error("Matriz singular en predictor. Bisección de dl...")
-                dl /= 2.0
+                if dl is not None:
+                    dl /= 2.0
                 continue
             du_t, sign = pred
+            if dl is None:
+                dl = dl_ref = self._first_dl(du_t)
+            _log.info(f"[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
 
             dlambda = sign * dl / (np.linalg.norm(du_t) + ZERO_TOL)
-
-            # Si el paso predictor sobrepasaría max_lambda, fijar lambda exactamente
-            final_step = (sign > 0 and lambda_curr + dlambda >= self.max_lambda - ZERO_TOL)
-            if final_step:
-                dlambda = self.max_lambda - lambda_curr
-
             dU_iter = dlambda * du_t
             x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
-            # --- 2. CORRECTOR ITERATIVO ---
-            # Último paso: lambda fijo, solo corrección de desplazamientos
-            # (Newton-Raphson puro); en el resto, restricción cilíndrica.
+            # --- 2. CORRECTOR ITERATIVO (restricción cilíndrica) ---
             problem = _ArcProblem(
                 self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-                mode="newton" if final_step else "cylindrical", dl=dl,
+                mode="cylindrical", dl=dl, max_lambda=self.max_lambda,
             )
             res = self.corrector.run(
                 problem, x0, check_initial=True,
                 initial_delta_norm=float(np.linalg.norm(dU_iter)),
             )
+            # Paso que cruza max_lambda: llegada exacta dentro del tramo.
+            if res.converged and problem.overshoot:
+                res = self._land(U_current, lambda_curr, res.x, F_ext_ref, free_dofs)
 
             if res.converged:
                 U_current, lambda_curr, delta_U_step = res.x
@@ -314,7 +440,7 @@ class ArcLengthSolver:
                 steps_done += 1
                 # Auto-ajuste de longitud de arco
                 if res.n_solves < self.dl_grow_iter_threshold:
-                    dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
+                    dl = min(dl * self.dl_grow_factor, dl_ref * self.dl_max_factor)
                 elif res.n_solves > self.dl_shrink_iter_threshold:
                     dl *= self.dl_shrink_factor
 
@@ -324,7 +450,7 @@ class ArcLengthSolver:
 
             dl *= 0.5
             _log.warning(f"Bisección: reduciendo longitud de arco a {dl:.4e}")
-            if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
+            if dl < ARCLENGTH_MIN_DL_FACTOR * dl_ref:
                 raise RuntimeError("Arc-Length fracasó irreparablemente.")
 
         self._finish(lambda_curr, steps_done)

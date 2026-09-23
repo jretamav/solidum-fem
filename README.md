@@ -45,7 +45,7 @@ with an architecture optimized for extension via AI-assisted development.
   meaningless displacements.
 - **19 accepted ADRs** documenting architectural decisions.
 - **50 validated specs** with quantitative acceptance criteria.
-- **1510 tests** green, including 8 published canonical benchmarks (Lamé 2D and
+- **1519 tests** green, including 8 published canonical benchmarks (Lamé 2D and
   3D, NAFEMS LE1 and LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation,
   Hill 1950, Carslaw-Jaeger semi-infinite solid).
 

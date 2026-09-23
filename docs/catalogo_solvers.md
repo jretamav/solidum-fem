@@ -46,15 +46,16 @@
 - **Propósito**: trazar curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de carga, controlando simultáneamente desplazamientos y factor de carga.
 - **Esquema**:
   - **Predictor tangente**: `du_t = K_t⁻¹ · F_ext_ref`; `dλ = sign · dl / ‖du_t‖`.
+  - **Primer paso** (2026-09-23): se declara como fracción de la carga de referencia, `initial_dlambda` (0.1 por omisión), y el solver deriva la longitud de arco `Δl₁ = Δλ₁·‖K₀⁻¹·F_ref‖` con el predictor elástico: el primer paso lleva esa fracción de la carga en cualquier sistema de unidades. `initial_dl` fija `Δl₁` como longitud explícita (excluyente).
     El `sign` se elige por proyección con el incremento del paso anterior (evitar regresar).
   - **Corrector iterativo**: en cada iteración resuelve dos sistemas (`du_R = K⁻¹·R` y `du_t = K⁻¹·F_ext`) y aplica la restricción cuadrática cilíndrica de Crisfield: `‖dU‖² = dl²`.
   - De las dos raíces se elige la que mantiene el ángulo positivo con el incremento previo.
-  - **Caso especial — final_step**: si el predictor sobrepasaría `max_lambda`, fija λ exactamente a `max_lambda` y resuelve solo desplazamientos (Newton-Raphson puro).
-  - **Auto-ajuste de `dl`**: < 4 iter → ampliar (×1.5, tope `5·dl_initial`); > 8 iter → reducir (×0.6); no converge → biseca (÷2).
+  - **Llegada a `max_lambda`** (2026-09-23): todos los pasos llevan la restricción; el que converge por encima de `max_lambda` no se consolida y se repite desde el estado anterior con λ = `max_lambda` fijo (Newton puro), dentro del tramo recién recorrido. Nunca impone `max_lambda` sin haber seguido la curva hasta él (antes el paso final se decidía extrapolando la tangente, en control de carga).
+  - **Auto-ajuste de `dl`**: < 4 iter → ampliar (×1.5, tope `5·Δl₁`); > 8 iter → reducir (×0.6); no converge → biseca (÷2).
   - Convergencia: mismo criterio dual que `NonlinearSolver`.
-- **Parámetros**: `convergence`, `max_iter`, `max_lambda`, `initial_dl`, `max_steps`, `dl_grow_factor`, `dl_max_factor`, `dl_shrink_factor`, `dl_grow_iter_threshold`, `dl_shrink_iter_threshold`, `linear_algebra`.
+- **Parámetros**: `convergence`, `max_iter`, `max_lambda`, `initial_dlambda`, `initial_dl`, `max_steps`, `dl_grow_factor`, `dl_max_factor`, `dl_shrink_factor`, `dl_grow_iter_threshold`, `dl_shrink_iter_threshold`, `linear_algebra`.
 - **Cuándo usarlo**: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando `NonlinearSolver` diverge cerca de un punto límite.
-- **Limitación**: más caro por paso (dos resoluciones del sistema por iteración); requiere ajuste de `initial_dl` para problemas nuevos.
+- **Limitación**: más caro por paso (dos resoluciones del sistema por iteración). La norma de la restricción mezcla todos los grados de libertad (en marcos, giros y desplazamientos: deuda #22).
 - **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers & Structures, 1981); Crisfield vol. 1, cap. 9.
 - **Spec**: [docs/specs/ArcLengthSolver.md](specs/ArcLengthSolver.md)
 - **Archivo**: [solidum/math/solvers/arclength.py](../solidum/math/solvers/arclength.py)
@@ -69,9 +70,9 @@
   - **Restricción de paso**: `g(ΔU, Δλ) = ½·(λ_n·F·ΔU − Δλ·F·U_n) = τ`. **Lineal** en `(ΔU, Δλ)` ⇒ corrector con una sola raíz en `ddλ`, sin selección por menor ángulo ni patología de raíces imaginarias.
   - **Switching automático cilíndrico↔disipación** según se detecte disipación neta sobre el umbral relativo `dissipation_threshold·‖F_ref‖·‖U‖`. Arranque obligado en cilíndrico (`α = ½·(λ_n·F·du_t − F·U_n)` es 0 cuando `λ_n = U_n = 0`).
   - **Sign-of-pivot tracking aproximado** vía signo del `slogdet(K_t)`. Distingue 0 vs número impar de pivots negativos — diagnóstico de paso por punto límite simple. Tracking exacto requiere LDLᵀ Bunch-Kaufman (deuda técnica #7 STATUS.md).
-  - **Salvaguarda contra `final_step` prematuro**: si `|dλ_pred| > 3·(max_lambda − λ_curr)`, bisecta dl o τ antes de aceptar el paso.
+  - **Llegada a `max_lambda`**: la del padre (paso que cruza, no consolidado, repetido con λ fijo dentro del tramo). Sustituye desde 2026-09-23 a la salvaguarda contra el `final_step` prematuro.
   - **Detección de α≈0**: threshold relativo `|α| < 1e-6·escala`; revierte temporalmente a cilíndrico (en problemas lineales monotónicos `α ≡ 0` exactamente por construcción).
-- **Parámetros heredados**: todos los de `ArcLengthSolver` (`max_iter`, `max_lambda`, `initial_dl`, `max_steps`, factores `dl_*`, `linear_algebra`). **Nuevos**: `initial_tau` (obligatorio), `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
+- **Parámetros heredados**: todos los de `ArcLengthSolver` (`max_iter`, `max_lambda`, `initial_dlambda`, `initial_dl`, `max_steps`, factores `dl_*`, `linear_algebra`). **Nuevos**: `initial_tau` (obligatorio), `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
 - **Cuándo usarlo**: problemas con softening continuo donde `ArcLengthSolver` cilíndrico bisecta excesivamente cerca del pico — daño bulk 1D/2D, plasticidad con localización progresiva, post-pandeo con descarga elástica.
 - **Cuándo NO usarlo (limitación documentada)**: cohesivo+embedded discontinuity con `K_e` stiff (`~1e13`). La activación discreta del Rankine introduce un salto en `F_int`/`K_t` que el `sign` por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDLᵀ Bunch-Kaufman real (item #7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con `ArcLengthSolver` cilíndrico a paridad de bits (regresión validada).
 - **Referencias**: Gutiérrez (2004), *Communications in Numerical Methods in Engineering* 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), *IJNME* 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.

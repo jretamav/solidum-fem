@@ -113,7 +113,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
 
     def __init__(self, assembler, convergence: ConvergenceCriterion | None = None,
                  max_iter: int = 20, max_lambda: float = 1.0,
-                 initial_dl: float = 0.1, max_steps: int = 100,
+                 initial_dl: float | None = None, max_steps: int = 100,
                  dl_grow_factor: float = 1.5, dl_max_factor: float = 5.0,
                  dl_shrink_factor: float = 0.6,
                  dl_grow_iter_threshold: int = 4,
@@ -121,6 +121,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                  linear_algebra: str = "auto",
                  *,
                  initial_tau: float,
+                 initial_dlambda: float | None = None,
                  tau_grow_factor: float = 1.5, tau_max_factor: float = 5.0,
                  tau_shrink_factor: float = 0.6,
                  tau_grow_iter_threshold: int = 4,
@@ -134,6 +135,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             dl_grow_iter_threshold=dl_grow_iter_threshold,
             dl_shrink_iter_threshold=dl_shrink_iter_threshold,
             linear_algebra=linear_algebra,
+            initial_dlambda=initial_dlambda,
         )
         if initial_tau <= 0.0:
             raise ValueError(
@@ -208,7 +210,9 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         U_current = np.zeros(ndof)
         lambda_curr = 0.0
         step = 0
-        dl = self.dl
+        dl = None          # Δl₁: se fija con el predictor del primer paso (padre)
+        dl_ref = None
+        self.dl_reference = None
         # Reset del estado adaptativo al inicio de una corrida nueva.
         self._tau = self.initial_tau
         self._mode = "cylindrical"
@@ -227,9 +231,6 @@ class DissipationArcLengthSolver(ArcLengthSolver):
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
-            _log.info(
-                f"[PASO {step}] modo={self._mode!s} dl={dl:.4e} tau={self._tau:.4e}"
-            )
 
             # ADR 0010 §5: hook de preparación de paso.
             self.assembler.prepare_all_steps(U_current)
@@ -238,10 +239,16 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             pred = self._tangent_predictor(U_current, F_ext_ref, delta_U_step, step)
             if pred is None:
                 _log.error("Matriz singular en predictor. Bisección...")
-                dl /= 2.0
+                if dl is not None:
+                    dl /= 2.0
                 self._tau /= 2.0
                 continue
             du_t, sign = pred
+            if dl is None:
+                dl = dl_ref = self._first_dl(du_t)
+            _log.info(
+                f"[PASO {step}] modo={self._mode!s} dl={dl:.4e} tau={self._tau:.4e}"
+            )
 
             # dlambda según modo activo.
             mode_predictor = self._mode
@@ -278,51 +285,38 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             else:  # dissipation
                 dlambda = sign * abs(self._tau / alpha)
 
-            # Cierre exacto en max_lambda.
-            final_step = (
-                sign > 0 and lambda_curr + dlambda >= self.max_lambda - ZERO_TOL
-            )
-            # Salvaguarda contra ``final_step`` prematuro en problemas con
-            # softening severo: si ``dλ_pred`` excede ``max_lambda`` por un
-            # factor importante, el Newton interno hereda un punto inicial
-            # lejano que rebota en la singularidad del pico. Bisectar la
-            # longitud característica (dl o τ) en lugar de aceptar el paso
-            # final salva ese caso.
-            #
-            # Casos típicos donde se dispara:
-            #   - Pasos 1-3 con dl/τ aún sin calibrar a la rigidez real.
-            #   - Inmediatamente tras un switch cilíndrico→disipación, donde
-            #     α puede ser pequeño y τ/α salta a ≫ Δλ del último paso
-            #     cilíndrico.
-            overshoot_factor = 3.0
-            remaining = self.max_lambda - lambda_curr
-            if final_step and abs(dlambda) > overshoot_factor * remaining:
-                _log.info(
-                    f"  Predictor excede max_lambda en {abs(dlambda)/remaining:.1f}×. "
-                    f"Bisecando longitud de paso (modo={mode_predictor})."
-                )
-                if mode_predictor == "cylindrical":
-                    dl *= 0.5
-                else:
-                    self._tau *= 0.5
-                continue
-            if final_step:
-                dlambda = self.max_lambda - lambda_curr
-
+            # Llegada a max_lambda (2026-09-23): sin paso final decidido por el
+            # predictor. Todos los pasos llevan su restricción; el que cruza
+            # max_lambda no se consolida y se repite con llegada exacta dentro
+            # del tramo recorrido (ArcLengthSolver._land). Sustituye a la
+            # salvaguarda anterior, que bisecaba cuando el predictor rebasaba
+            # max_lambda más de 3 veces lo que faltaba y, por debajo de ese
+            # factor, fijaba λ = max_lambda en control de carga.
             dU_iter = dlambda * du_t
             x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
             # --- 2. CORRECTOR ITERATIVO ---
             # Mismo corrector compartido que el padre; sólo cambia la
-            # restricción del modo activo (cierre exacto: Newton puro).
+            # restricción del modo activo.
             problem = _DissipationArcProblem(
                 self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-                mode="newton" if final_step else mode_predictor, dl=dl, tau=self._tau,
+                mode=mode_predictor, dl=dl, tau=self._tau, max_lambda=self.max_lambda,
             )
             res = self.corrector.run(
                 problem, x0, check_initial=True,
                 initial_delta_norm=float(np.linalg.norm(dU_iter)),
             )
+
+            if res.converged and problem.overshoot:
+                landed = self._land(U_current, lambda_curr, res.x, F_ext_ref, free_dofs)
+                if landed.converged:
+                    U_current, lambda_curr, delta_U_step = landed.x
+                    _log.info(f"  -> CONV. lam={lambda_curr:.4f} (llegada a max_lambda)")
+                    steps_done += 1
+                    if step_callback is not None:
+                        step_callback(step, U_current, lambda_curr)
+                    continue
+                res = landed          # llegada fallida: bisección del modo del paso
 
             if res.converged:
                 U_iter, lambda_iter, dU_iter = res.x
@@ -367,7 +361,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     if n_solves < self.dl_grow_iter_threshold:
                         dl = min(
                             dl * self.dl_grow_factor,
-                            self.dl * self.dl_max_factor,
+                            dl_ref * self.dl_max_factor,
                         )
                     elif n_solves > self.dl_shrink_iter_threshold:
                         dl *= self.dl_shrink_factor
@@ -395,10 +389,10 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 _log.warning(
                     f"Bisección cilíndrica: dl → {dl:.4e}"
                 )
-                if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
+                if dl < ARCLENGTH_MIN_DL_FACTOR * dl_ref:
                     raise RuntimeError(
                         "DissipationArcLengthSolver: dl bajó del umbral "
-                        f"({ARCLENGTH_MIN_DL_FACTOR * self.dl:.4e}). "
+                        f"({ARCLENGTH_MIN_DL_FACTOR * dl_ref:.4e}). "
                         "Aborto irreparable."
                     )
             else:

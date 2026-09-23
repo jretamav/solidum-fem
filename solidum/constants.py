@@ -56,12 +56,21 @@ NEWTON_DEFAULT_MIN_DELTA_LAMBDA = 1.0e-5
 NEWTON_LOAD_FACTOR_EPSILON = 1.0e-9
 
 # --- Tolerancia mínima de longitud de arco antes de declarar fracaso ---
-# Factor adimensional sobre el `initial_dl` declarado por el usuario:
-# si la bisección del paso reduce ``dl`` por debajo de
-# ``ARCLENGTH_MIN_DL_FACTOR · initial_dl``, ArcLengthSolver aborta con
+# Factor adimensional sobre la longitud de arco del primer paso (Δl₁, la
+# declarada con `initial_dl` o la derivada de `initial_dlambda`): si la
+# bisección del paso reduce ``dl`` por debajo de
+# ``ARCLENGTH_MIN_DL_FACTOR · Δl₁``, ArcLengthSolver aborta con
 # RuntimeError. Por debajo de ese umbral la convergencia ya no es
 # físicamente significativa (ruido numérico domina la longitud de arco).
 ARCLENGTH_MIN_DL_FACTOR = 1.0e-6
+
+# --- Primer paso del arc-length por omisión (2026-09-23) ---
+# Fracción de la carga de referencia que lleva el primer paso en régimen
+# elástico: Δl₁ = Δλ₁·‖K⁻¹·F_ref‖ (Crisfield 1991, cap. 9). Adimensional, así
+# que vale igual en cualquier sistema de unidades. Sustituye al antiguo
+# `initial_dl = 0.1` por omisión, una longitud que en el ejemplo 4 del manual
+# de ejemplos pedía 86 veces la carga de colapso en el primer paso.
+ARCLENGTH_DEFAULT_INITIAL_DLAMBDA = 0.1
 
 # --- Line search Armijo en solvers no lineales (ADR 0011) ---
 # Globalización del Newton-Raphson: tras computar el incremento δU, se busca
