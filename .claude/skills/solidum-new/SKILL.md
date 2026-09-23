@@ -140,7 +140,9 @@ import numpy as np
 import scipy.sparse.linalg as spla
 
 from solidum.constants import ZERO_TOL
-from solidum.math.convergence import ConvergenceCriterion, stiffness_diag_scale
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers._shared import _log, domain_is_symmetric
+from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
 from solidum.registry import SolverRegistry
 
 
@@ -154,23 +156,31 @@ class {{Name}}:
         # Política de convergencia (ADR 0007). Si es None, defaults del proyecto.
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.linear_algebra = linear_algebra
+        # Corrector de Newton compartido (ADR 0015): bucle, backend con
+        # degradacion a LU, Newton modificado, line search y telemetria.
+        self.corrector = NewtonCorrector(
+            self.convergence, max_iter=20,
+            is_symmetric=domain_is_symmetric(assembler.domain),
+            is_positive_definite=True, linear_algebra=linear_algebra,
+        )
         # TODO: parámetros adicionales. Imposición de Dirichlet: usa
         # assembler.reduce(K, F, U_current=..., load_factor=...) y
-        # assembler.expand(u_red, free_dofs, g) — eliminación directa (ADR 0004).
+        # assembler.expand(u_red, T, g) — eliminación directa (ADR 0004).
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U = np.zeros(ndof)
-        # En el primer ensamblaje, calibrar el criterio (ADR 0007):
-        #   K, F_int = self.assembler.assemble_non_linear_system(U)
-        #   force_scale = max(np.linalg.norm(F_ext_global), np.linalg.norm(F_int), 1.0)
-        #   disp_scale = force_scale / stiffness_diag_scale(K)
-        #   self.convergence.calibrate(force_scale, disp_scale)
-        # En cada iteración, evaluar:
-        #   state = self.convergence.evaluate(residual_norm, ref_force, delta_u_norm, u_norm)
-        #   if state.converged: break
-        # TODO: implementar el algoritmo
+        # Por paso: construir un objeto con el protocolo NewtonProblem
+        # (assemble, residual, residual_norm, calibration_scales,
+        # reference_force, x_norm, correction, apply, on_converged) y
+        #   res = self.corrector.run(problem, U, check_initial=False)
+        #   if not res.converged: raise res.divergence_error(last_load_factor=...)
+        #   U = res.x
+        # Ver solidum/math/solvers/nonlinear.py (_IncrementalProblem) como
+        # caso minimo; el corrector calibra el criterio (ADR 0007) con
+        # calibration_scales -> default_calibration_scales(F_ext, F_int, K).
+        # TODO: implementar el control de paso
         raise NotImplementedError
 ```
 

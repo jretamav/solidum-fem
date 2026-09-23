@@ -1,6 +1,8 @@
 # Catálogo de solvers
 
 > Referencia rápida de los métodos de solución implementados. Una entrada por solver. Para detalles del algoritmo → código fuente.
+>
+> **Corrector compartido (ADR 0015)**: los cinco solvers iterativos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) ejecutan el mismo bucle de Newton, `NewtonCorrector` (`solidum/math/solvers/corrector.py`): un ensamblaje por iteración, criterio dual (ADR 0007), backend con degradación Cholesky → LU y Newton modificado (ADR 0003), line search y excepciones tipadas (ADR 0011). Cada uno aporta un `NewtonProblem` por paso con su residuo, su sistema tangente y su actualización, y conserva su control de paso. `solver.corrector` es la superficie de instrumentación.
 
 ---
 
@@ -26,6 +28,7 @@
     `err_disp = ‖ΔU‖ / (‖U‖ + ε)` y `err_force = ‖R‖ / max(‖λ·F_ext‖, ‖F_int‖, ε)`.
   - **Adaptatividad** (`adaptive=True`): si converge en < 5 iteraciones, agranda el siguiente paso (×1.5); si no converge, biseca (÷2). Falla si `Δλ < min_delta_lambda`.
   - Tras converger un paso → `assembler.commit_all_states()` (trial → committed en todos los elementos).
+  - El bucle interno es el `NewtonCorrector` compartido (ADR 0015) con el problema `_IncrementalProblem` (residuo `λ·F_ext − F_int`, reducción con el incremento de Dirichlet del paso); la convergencia no se evalúa en la iteración 0 (todo paso hace al menos una resolución).
 - **Parámetros**: `convergence`, `max_iter`, `num_steps`, `adaptive`, `min_delta_lambda`, `linear_algebra`, `freeze_tangent_after_iter`, **`line_search`** (default `False`, ADR 0011).
 - **Cuándo usarlo**: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back).
 - **Cuándo activar `line_search=True`**: cuando se observe oscilación del residuo entre iteraciones (síntoma clásico: ratios alternados sin descenso monótono). Caso documentado: plasticidad perfecta con carga cerca/sobre la capacidad. **Default `False`** porque en problemas con tangente consistente cuasi-cuadrática (daño activo, plasticidad estándar) el line search rechaza pasos correctos del Newton donde el residuo sube transitoriamente — ver ADR 0011 §"Enmiendas".
@@ -264,6 +267,7 @@
 Convenciones de interfaz:
 
 - **Solvers estáticos** (lineales, no lineales, arc-length): `PIPELINE_KIND = "static"`. Constructor recibe `assembler` + parámetros; método `solve(F_ext_global, step_callback=None) → U_final`. Comprometen los estados internos vía `assembler.commit_all_states()` al converger cada paso. Retornan el campo de desplazamientos completo.
+- **Solvers iterativos (Newton)**: no escribir el bucle. Construir un `NewtonCorrector(convergence, max_iter=…, is_symmetric=domain_is_symmetric(domain), is_positive_definite=…, linear_algebra=…, freeze_tangent_after_iter=…, line_search=…)` en el constructor y, por paso, un objeto con el protocolo `NewtonProblem` (`assemble`, `residual`, `residual_norm`, `calibration_scales`, `reference_force`, `x_norm`, `correction`, `apply`, `on_converged`); `corrector.run(problem, x0)` devuelve un `CorrectorResult` con `converged`, `x`, `n_solves` y `divergence_error(...)` para lanzar la excepción tipada. Ver `nonlinear.py` (el caso más simple) y ADR 0015.
 - **Solvers modales / autovalor** (modal — ADR 0009 — y futuros pandeo lineal): `PIPELINE_KIND = "modal"`. Constructor recibe `assembler` + parámetros; método `solve() → ModalResult` (u otro tipo específico). No consumen vector de cargas. `run_yaml` despacha a `run_modal`.
 - **Solvers transitorios** (Newmark, HHT, central differences): `PIPELINE_KIND = "transient"`. Constructor recibe `assembler`, `t_end`, `dt` + parámetros; método `solve() → TransientResult`. `run_yaml` despacha a `run_transient`.
 - **Solvers térmicos transitorios** (θ-method): `PIPELINE_KIND = "thermal_transient"`. Constructor recibe `assembler`, `dt`, `n_steps`, `T_initial` + parámetros; método `solve() → ThermalTransientResult`. `run_yaml` despacha a `run_thermal_transient`. Integran la ecuación de **primer orden** `C·Ṫ + K·T = F`, no la de segundo orden mecánica: no admiten `rayleigh` ni condición inicial de velocidad.

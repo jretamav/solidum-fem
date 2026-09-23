@@ -140,6 +140,16 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Quad4 + J2 ×27 y Hex8 + J2 ×13 en el ensamblaje con el kernel serie, ×110 y ×84 con el paralelo en 16 hilos; la exportación VTK ×6–8; el commit pasa de cientos de milisegundos a una copia de arreglo; el estado interno ocupa 80 B por punto de Gauss en vez de 462. Un material nuevo declara `STATE_SCHEMA` (una línea) y, si quiere acelerarse, un adaptador de diez líneas sobre su propio return mapping; un elemento nuevo escribe su cinemática compilada con las mismas funciones que su `compute_element_state`. Diferidos: los elementos estructurales 1D y los adaptadores sin asignaciones de Drucker-Prager y daño.
 
+## ADR 0015 — Corrector de Newton compartido
+
+**Fecha**: 22 de septiembre de 2026. **Estado**: aceptado; los cinco solvers migrados el mismo día.
+
+**Contexto.** Los cinco solvers iterativos escribían el mismo bucle de corrección cinco veces (ensamblaje, residuo, criterio dual, backend con degradación a LU, Newton modificado, line search, historial de divergencia, commit), con dos variantes del line search y tres gestiones del backend. La auditoría de esa mañana tuvo que aplicar la misma corrección semántica en los cinco, y todo lo previsto (cargas con historia, acoplamiento, backend multihilo) los tocaría de nuevo.
+
+**Decisión.** Un solo `NewtonCorrector` posee el bucle y lo que persiste entre pasos (backend, degradación a LU, factor congelado); cada solver construye por paso un `NewtonProblem` —ensamblar, residuo y su norma, escalas del criterio, corrección con el `solve` del corrector, actualización, commit— y conserva su control de paso. El iterado es opaco (`U`; `(U, λ, ΔU)`; `(u, u̇, ü, ü_libre)`). La restricción del arc-length es un método del problema que la variante por disipación sobreescribe. `CorrectionAborted` permite abandonar un paso sin marcarlo como tangente singular.
+
+**Consecuencia.** Ningún resultado cambia (1 447 tests sin tocar un valor esperado). Un solver iterativo nuevo escribe su problema y su control de paso; un cambio del bucle, del backend o de la globalización se hace una vez. Retirados los ayudantes privados duplicados; `solver.corrector` es la superficie de instrumentación.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

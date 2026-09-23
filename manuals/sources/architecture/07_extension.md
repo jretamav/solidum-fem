@@ -8,7 +8,7 @@ Los capítulos anteriores describen el estado actual del programa. Este capítul
 |---|---|---|---|
 | Material | `solidum/materials/<snake>.py` | `@MaterialRegistry.register` | No |
 | Elemento | `solidum/elements/<snake>.py` | `@ElementRegistry.register` | No |
-| Solver | `solidum/math/solver_<snake>.py` | `@SolverRegistry.register` | No |
+| Solver | `solidum/math/solvers/<snake>.py` | `@SolverRegistry.register` | No |
 
 La columna "modifica otros archivos" es deliberadamente "No". Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
 
