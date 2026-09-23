@@ -1,4 +1,4 @@
-\documentclass[11pt,letterpaper,oneside]{report}
+\documentclass[11pt,oneside]{report}
 
 % Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
 \usepackage{fontspec}
@@ -10,8 +10,9 @@
 \setmainfont{Latin Modern Roman}[RawFeature={fallback=solidumserif}]
 \setsansfont{Latin Modern Sans}[RawFeature={fallback=solidumserif}]
 \setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]
+\usepackage[protrusion=true,expansion=true]{microtype}
 \usepackage[spanish,es-tabla]{babel}
-\usepackage[margin=2.5cm, headheight=15pt]{geometry}
+\usepackage[paperwidth=19.2cm, paperheight=25.6cm, hmargin=1.3cm, top=2.1cm, bottom=1.7cm, headheight=15pt, headsep=0.45cm, footskip=0.75cm]{geometry}
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{hyperref}
@@ -118,7 +119,8 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+           {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
            {ε}{{$\varepsilon$}}1 {σ}{{$\sigma$}}1 {α}{{$\alpha$}}1
@@ -136,7 +138,31 @@
            {“}{{``}}1 {”}{{''}}1
 }
 
+% --- Lectura en pantalla: ver with_screen_setup en build_reference_manual.py
+% Índice: columnas de número anchas (numeraciones de 2-3 niveles se
+% montaban sobre el título), índice compacto y marcadores profundos.
+\makeatletter
+\renewcommand*\l@section{\@dottedtocline{1}{1.5em}{3.3em}}
+\renewcommand*\l@subsection{\@dottedtocline{2}{4.8em}{4.2em}}
+\renewcommand*\l@subsubsection{\@dottedtocline{3}{9.0em}{5.0em}}
+\makeatother
+\setcounter{tocdepth}{2}
+\definecolor{enlaceinterno}{RGB}{0, 84, 166}
+\definecolor{enlaceexterno}{RGB}{0, 128, 110}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=enlaceinterno, citecolor=enlaceinterno,
+    urlcolor=enlaceexterno, filecolor=enlaceexterno,
+    bookmarksopen=true, bookmarksopenlevel=0, bookmarksnumbered=true, bookmarksdepth=3,
+    pdfpagemode=UseOutlines, pdfstartview=FitH, pdfdisplaydoctitle=true,
+    pdflang=es-ES,
+    pdfsubject={Guía de uso de Solidum FEM: YAML, análisis, resultados y diagnóstico},
+    pdfkeywords={elementos finitos, mecánica de sólidos, manual de usuario, YAML, Solidum FEM},
+}
+\setlength{\emergencystretch}{3em}
+\fancyfoot[L]{\hyperlink{indice}{\footnotesize Índice}}
 \begin{document}
+\addtocontents{toc}{\protect\hypertarget{indice}{}}
 
 \begin{titlepage}
     \centering
@@ -232,7 +258,7 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 
 \begin{itemize}
   \item \textbf{\texttt{pypardiso}} (\texttt{[fast]}): con él, el solver del sistema lineal ---que en un análisis grande se lleva la mayor parte del tiempo--- pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML.
-  \item \textbf{\texttt{pyamg}} (\texttt{[iterative]}): sólo lo usa el solver iterativo, que se pide expresamente (\texttt{linear\_algebra: iterative}) para modelos demasiado grandes para la memoria. En Python 3.14 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
+  \item \textbf{\texttt{pyamg}} (\texttt{[iterative]}): sólo lo usa el solver iterativo, que se pide expresamente (\texttt{linear\_\allowbreak{}algebra: iterative}) para modelos demasiado grandes para la memoria. En Python 3.14 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
   \item \textbf{\texttt{scikit-sparse}} (\texttt{[cholmod]}): factorización de Cholesky; en Windows se instala con \texttt{conda}, no con \texttt{pip}.
 \end{itemize}
 
@@ -245,7 +271,7 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 
 \section{Ejecución de un Análisis}
 
-El runner principal vive en \texttt{examples/ejecutar\_yaml.py}. Para ejecutar un modelo:
+El runner principal vive en \texttt{examples/\allowbreak{}ejecutar\_\allowbreak{}yaml.\allowbreak{}py}. Para ejecutar un modelo:
 
 \begin{lstlisting}[language=bash]
 python examples/ejecutar_yaml.py ruta/al/modelo.yaml
@@ -267,7 +293,7 @@ El script carga el YAML, valida su contenido (acumulando \textit{todos} los erro
 Cada elemento finito declara dos contratos sobre el material que acepta:
 
 \begin{itemize}
-  \item \textbf{\texttt{STRAIN\_DIM}}: dimensión Voigt de la deformación que entrega al material. \texttt{1} para elementos axiales (truss, cable, marcos --- la fibra centroidal); \texttt{3} para 2D (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\gamma}xy]}); \texttt{6} para 3D continuo (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\varepsilon}zz, \ensuremath{\gamma}xy, \ensuremath{\gamma}yz, \ensuremath{\gamma}xz]}, ADR 0012).
+  \item \textbf{\texttt{STRAIN\_DIM}}: dimensión Voigt de la deformación que entrega al material. \texttt{1} para elementos axiales (truss, cable, marcos --- la fibra centroidal); \texttt{3} para 2D (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\gamma}xy]}); \texttt{6} para 3D continuo (\texttt{[\ensuremath{\varepsilon}xx, \ensuremath{\varepsilon}yy, \ensuremath{\varepsilon}zz, \ensuremath{\gamma}xy, \ensuremath{\gamma}yz, \ensuremath{\gamma}xz]}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0012-solidos-3d-y-voigt-6d.md}{ADR 0012}).
   \item \textbf{\texttt{DOF\_NAMES}}: lista de grados de libertad por nodo. Por ejemplo, \texttt{['ux', 'uy', 'rz']} para un marco 2D.
 \end{itemize}
 
@@ -323,7 +349,7 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
   \item \texttt{nodes} \textit{o} \texttt{mesh} --- geometría.
   \item \texttt{materials} --- catálogo de leyes constitutivas instanciadas.
   \item \texttt{elements} --- conectividad (omisible si se importa malla Gmsh).
-  \item \texttt{boundary\_conditions\_by\_node} / \texttt{\_by\_coord} / \texttt{\_by\_group} --- restricciones de Dirichlet.
+  \item \texttt{boundary\_\allowbreak{}conditions\_\allowbreak{}by\_\allowbreak{}node} / \texttt{\_by\_coord} / \texttt{\_by\_group} --- restricciones de Dirichlet.
   \item \texttt{point\_loads\_by\_node} / \texttt{\_by\_coord} / \texttt{\_by\_group} --- cargas de Neumann puntuales.
   \item \texttt{solver} --- tipo de solver y sus parámetros.
   \item \texttt{output} --- frecuencia y formato de exportación de resultados.
@@ -418,7 +444,7 @@ Los parámetros aceptados dependen del material; consulte el capítulo \textit{C
 
 Solidum FEM ofrece tres mecanismos para imponer restricciones cinemáticas (Dirichlet), elegibles según la facilidad operativa:
 
-\subsection{Por nodo: \texttt{boundary\_conditions\_by\_node}}
+\subsection{Por nodo: \texttt{boundary\_\allowbreak{}conditions\_\allowbreak{}by\_\allowbreak{}node}}
 
 \begin{lstlisting}[language=yaml]
 boundary_conditions_by_node:
@@ -427,7 +453,7 @@ boundary_conditions_by_node:
 
 \end{lstlisting}
 
-\subsection{Por coordenada: \texttt{boundary\_conditions\_by\_coord}}
+\subsection{Por coordenada: \texttt{boundary\_\allowbreak{}conditions\_\allowbreak{}by\_\allowbreak{}coord}}
 
 Escanea todos los nodos y aplica la restricción a aquellos cuya coordenada coincide (dentro de \texttt{tol}):
 
@@ -440,7 +466,7 @@ boundary_conditions_by_coord:
 
 Las claves predefinidas \texttt{x\_min}, \texttt{x\_max}, \texttt{y\_min}, \texttt{y\_max}, \texttt{z\_min}, \texttt{z\_max} usan los extremos detectados automáticamente del dominio; \texttt{coord} admite \texttt{'x'}, \texttt{'y'} o \texttt{'z'}. Los selectores funcionan igual con nodos 2D y 3D. Un selector que no casa con \textbf{ningún} nodo es un error de modelo y detiene la lectura con \texttt{ValueError} (no se ignora en silencio).
 
-\subsection{Por grupo físico: \texttt{boundary\_conditions\_by\_group}}
+\subsection{Por grupo físico: \texttt{boundary\_\allowbreak{}conditions\_\allowbreak{}by\_\allowbreak{}group}}
 
 Aplica restricciones a todos los nodos de un \textit{Physical Group} de Gmsh:
 
@@ -452,7 +478,7 @@ boundary_conditions_by_group:
 
 \subsection{Restricciones multipunto (MPC): \texttt{linear\_constraints}}
 
-Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Solidum FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si} u_{m_i}$ (ADR 0004 fase 2). Se declaran en el bloque \texttt{linear\_constraints}:
+Para apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas master-slave y simetrías no alineadas con los ejes globales, Solidum FEM admite restricciones afines lineales de la forma $u_s = g_s + \sum_i \alpha_{si} u_{m_i}$ (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004} fase 2). Se declaran en el bloque \texttt{linear\_constraints}:
 
 \begin{lstlisting}[language=yaml]
 linear_constraints:
@@ -536,7 +562,7 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 
 \textbf{Qué hace Solidum}. Para cada elemento computa $\mathbf b_e = \rho_e\cdot\mathbf g$, donde $\rho_e$ es la densidad del material asignado, e integra la contribución consistente con la misma maquinaria de \texttt{body\_force}. Resultado: estructuras multimaterial dan peso propio físicamente correcto, cada elemento con su propio $\rho$.
 
-\textbf{Densidad solo cuando se usa}. El campo \texttt{density} es \textbf{opcional} al declarar un material (ADR 0008): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar \texttt{gravity} (o, en su día, análisis modal/dinámico), Solidum exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con \texttt{ValueError} listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como \texttt{density: 0.0} --- caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo y su contribución al peso propio es nula.
+\textbf{Densidad solo cuando se usa}. El campo \texttt{density} es \textbf{opcional} al declarar un material (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}): los análisis estáticos puros que no invocan peso propio ni matriz de masa no necesitan declararla. Pero al invocar \texttt{gravity} (o, en su día, análisis modal/dinámico), Solidum exige la densidad de cada material involucrado: si algún material no la trae declarada, el cálculo falla con \texttt{ValueError} listando los materiales afectados por nombre. Imposible propagar masa cero silenciosa. Si un material legítimamente carece de masa física (penalty, restricción), declararlo explícitamente como \texttt{density: 0.0} --- caso en el cual \texttt{gravity} emite un \texttt{WARNING} informativo y su contribución al peso propio es nula.
 
 \subsection{Detalles transversales}
 
@@ -544,7 +570,7 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 
 \textbf{Padding 2D\ensuremath{\leftrightarrow}3D}. Si el modelo mezcla elementos 2D y 3D, declarar el vector con tres componentes; el ensamblador pasa el slice apropiado a cada elemento según la dimensionalidad declarada por su \texttt{DOF\_NAMES}.
 
-\textbf{Reservado para análisis dinámico}. El atributo \texttt{density} introducido aquí es la misma magnitud que consume la matriz de masa $\mathbf M_e = \int \rho\,\mathbf N^\top\mathbf N\,dV$ en análisis modales y dinámicos. Declararlo prepara el modelo para esas extensiones sin coste adicional (ADR 0008).
+\textbf{Reservado para análisis dinámico}. El atributo \texttt{density} introducido aquí es la misma magnitud que consume la matriz de masa $\mathbf M_e = \int \rho\,\mathbf N^\top\mathbf N\,dV$ en análisis modales y dinámicos. Declararlo prepara el modelo para esas extensiones sin coste adicional (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}).
 
 \section{Solver}
 
@@ -590,11 +616,11 @@ Ambos criterios deben cumplirse \textbf{simultáneamente} (semántica AND) para 
 \begin{itemize}
   \item \texttt{rtol\_force} (default \texttt{1.0e-5}): tolerancia relativa del residuo de fuerza. Es el parámetro que normalmente ajustarás: bajarlo a \texttt{1.0e-7} para análisis de precisión, subirlo a \texttt{1.0e-3} para exploración rápida.
   \item \texttt{rtol\_disp} (default \texttt{1.0e-5}): tolerancia relativa de la corrección de desplazamiento. En problemas casi-rígidos puede afinarse independientemente del de fuerza.
-  \item \texttt{atol\_force\_factor} (default \texttt{1.0e-9}): factor adimensional que define el piso absoluto de fuerza. La tolerancia absoluta efectiva se autoderiva como \texttt{atol\_force\_factor \ensuremath{\cdot} escala\_inicial}, donde la escala se calcula en el primer ensamblaje. Solo conviene ajustarlo si el análisis tiene tramos donde la carga característica colapsa transitoriamente y aparece falsa no-convergencia.
+  \item \texttt{atol\_force\_factor} (default \texttt{1.0e-9}): factor adimensional que define el piso absoluto de fuerza. La tolerancia absoluta efectiva se autoderiva como \texttt{atol\_\allowbreak{}force\_\allowbreak{}factor \ensuremath{\cdot} escala\_\allowbreak{}inicial}, donde la escala se calcula en el primer ensamblaje. Solo conviene ajustarlo si el análisis tiene tramos donde la carga característica colapsa transitoriamente y aparece falsa no-convergencia.
   \item \texttt{atol\_disp\_factor} (default \texttt{1.0e-9}): análogo para desplazamiento.
 \end{itemize}
 
-\textbf{Por qué los \texttt{atol} se autoderivan.} El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm\ldots{}). En su lugar, Solidum calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: \textbf{el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits}, sin tocar las tolerancias. La justificación arquitectural está en el ADR 0007.
+\textbf{Por qué los \texttt{atol} se autoderivan.} El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm\ldots{}). En su lugar, Solidum calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: \textbf{el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits}, sin tocar las tolerancias. La justificación arquitectural está en el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0007-tolerancias-convergencia-solvers.md}{ADR 0007}.
 
 \textbf{Cuándo afinar}. Para la inmensa mayoría de análisis los defaults son suficientes. Considera ajustar:
 
@@ -852,7 +878,7 @@ CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
   \item \textbf{Dos materiales}: a diferencia del resto del catálogo, requiere \textbf{un material de bulk} que gobierna el continuo y \textbf{uno cohesivo} que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos.
   \item \textbf{Estado intacto}: idéntico al \texttt{Tri3} hasta que la discontinuidad se activa.
   \item \textbf{Activación}: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior. Es \textbf{irreversible}: una vez activada persiste aunque el paso siguiente descargue.
-  \item \textbf{Bulk aceptado}: sólo \texttt{Elastic2D} en la fase actual --- la \textit{discrete approach} presupone bulk elástico (ADR 0010).
+  \item \textbf{Bulk aceptado}: sólo \texttt{Elastic2D} en la fase actual --- la \textit{discrete approach} presupone bulk elástico (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}).
   \item \textbf{Post-proceso}: \texttt{compute\_gauss\_state(U)} añade la clave \texttt{'discontinuity'} con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
   \item \textbf{Limitación operativa}: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver el capítulo de diagnóstico.
 \end{itemize}
@@ -869,9 +895,9 @@ elements:
 
 \section{Elementos 3D}
 
-Sólidos tridimensionales isoparamétricos (ADR 0012). Todos comparten DOFs \texttt{ux, uy, uz} y $\texttt{STRAIN\_DIM} = 6$ sobre la convención Voigt 3D del proyecto, $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$, y exigen un material 3D (\texttt{Elastic3D}, \texttt{VonMises3D}, \texttt{DruckerPrager3D}, \texttt{IsotropicDamage3D}).
+Sólidos tridimensionales isoparamétricos (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0012-solidos-3d-y-voigt-6d.md}{ADR 0012}). Todos comparten DOFs \texttt{ux, uy, uz} y $\texttt{STRAIN\_DIM} = 6$ sobre la convención Voigt 3D del proyecto, $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$, y exigen un material 3D (\texttt{Elastic3D}, \texttt{VonMises3D}, \texttt{DruckerPrager3D}, \texttt{IsotropicDamage3D}).
 
-A diferencia de los 2D, \textbf{no llevan \texttt{thickness}}: el volumen sale de la geometría. Las cargas de superficie se aplican por \textbf{cara numerada con normal saliente} mediante \texttt{compute\_face\_traction(face, t̄)}, con \texttt{t̄} expresada en ejes globales.
+A diferencia de los 2D, \textbf{no llevan \texttt{thickness}}: el volumen sale de la geometría. Las cargas de superficie se aplican por \textbf{cara numerada con normal saliente} mediante \texttt{compute\_\allowbreak{}face\_\allowbreak{}traction(face, t̄)}, con \texttt{t̄} expresada en ejes globales.
 
 \subsection{Hexaedro Trilineal: \texttt{Hex8}}
 
@@ -1056,7 +1082,7 @@ Modelo de Drucker-Prager: cono circular suave de Mohr-Coulomb con cohesión y fr
   \item \texttt{inner\_cone}: inscribe MC. $\eta_f = 2\sin\phi / [\sqrt 3 (3 + \sin\phi)]$.
 \end{itemize}
 
-\textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{cohesion} (cohesión inicial $c_0$), \texttt{phi\_deg} ($0 \le \phi < 90$), \texttt{psi\_deg} (dilatancia, $0 \le \psi \le \phi$; default $\psi = \phi$ = asociada), \texttt{H} ($\ge 0$, default 0), \texttt{variant} (default \texttt{plane\_strain\_matched}), \texttt{density} (opcional). Variables internas: $\varepsilon_p$ tensorial 4 componentes y $\alpha$ acumulada. \texttt{IS\_SYMMETRIC = False} declarativo (no asociada $\Rightarrow$ tangente asimétrica; el despachador algebraico ADR 0003 elige LU).
+\textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{cohesion} (cohesión inicial $c_0$), \texttt{phi\_deg} ($0 \le \phi < 90$), \texttt{psi\_deg} (dilatancia, $0 \le \psi \le \phi$; default $\psi = \phi$ = asociada), \texttt{H} ($\ge 0$, default 0), \texttt{variant} (default \texttt{plane\_strain\_matched}), \texttt{density} (opcional). Variables internas: $\varepsilon_p$ tensorial 4 componentes y $\alpha$ acumulada. \texttt{IS\_SYMMETRIC = False} declarativo (no asociada $\Rightarrow$ tangente asimétrica; el despachador algebraico \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} elige LU).
 
 \begin{warnbox}{Advertencia}
 \textbf{Restricción cinemática}: solo \texttt{plane\_strain}. La proyección con $\sigma_{zz} = 0$ acoplada a flujo dilatante es notoriamente delicada y queda \textit{out-of-scope} en esta entrega.
@@ -1103,7 +1129,7 @@ Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,
 
 \begin{itemize}
   \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis} (\texttt{plane\_stress} default o \texttt{plane\_strain}), \texttt{density} (opcional).
-  \item \textbf{Tangente algorítmica consistente}: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes (\mathbf M\boldsymbol\varepsilon)$ con $\mathbf M = \mathrm{diag}(1, 1, 1/2)$ en carga activa. \textbf{No simétrica} ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales); el atributo \texttt{IS\_SYMMETRIC = False} hace que el despachador algebraico ADR 0003 elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
+  \item \textbf{Tangente algorítmica consistente}: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes (\mathbf M\boldsymbol\varepsilon)$ con $\mathbf M = \mathrm{diag}(1, 1, 1/2)$ en carga activa. \textbf{No simétrica} ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales); el atributo \texttt{IS\_SYMMETRIC = False} hace que el despachador algebraico \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
   \item \textbf{Limitación}: $\varepsilon_{eq}$ simétrica no distingue daño en tensión vs compresión; para hormigón se requiere modelo de Mazars o split tensión/compresión (no implementado). Sin regularización por longitud característica $\to$ \textit{mesh-dependency} en régimen de ablandamiento.
 \end{itemize}
 
@@ -1149,7 +1175,7 @@ materials:
 
 \section{Materiales 3D}
 
-Los materiales 3D operan sobre la convención \textbf{Voigt 6D} del proyecto (ADR 0012):
+Los materiales 3D operan sobre la convención \textbf{Voigt 6D} del proyecto (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0012-solidos-3d-y-voigt-6d.md}{ADR 0012}):
 
 \[
 \boldsymbol\varepsilon = [\varepsilon_{xx},\ \varepsilon_{yy},\ \varepsilon_{zz},\ \gamma_{xy},\ \gamma_{yz},\ \gamma_{xz}]^\top, \qquad \boldsymbol\sigma = [\sigma_{xx},\ \sigma_{yy},\ \sigma_{zz},\ \sigma_{xy},\ \sigma_{yz},\ \sigma_{xz}]^\top
@@ -1244,12 +1270,12 @@ Este capítulo cubre los \textbf{solvers estáticos} del catálogo: lineal, no l
 
 \section{\texttt{LinearSolver} --- solución directa lineal}
 
-Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ con una sola factorización del sistema (el backend lo elige Solidum: Cholesky, Pardiso o LU según la matriz y lo instalado). Las condiciones de Dirichlet se imponen por eliminación directa (ADR 0004): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.
+Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ con una sola factorización del sistema (el backend lo elige Solidum: Cholesky, Pardiso o LU según la matriz y lo instalado). Las condiciones de Dirichlet se imponen por eliminación directa (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.
 
 \begin{itemize}
   \item \textbf{Cuándo usarlo}: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
   \item \textbf{Parámetros}: \texttt{linear\_algebra} (default \texttt{auto}; ver \textit{Solver} en el capítulo del YAML).
-  \item \textbf{Comprobaciones automáticas} (ADR 0019): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver \textit{Diagnóstico de Problemas}).
+  \item \textbf{Comprobaciones automáticas} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver \textit{Diagnóstico de Problemas}).
   \item \textbf{No aplica}: cualquier no-linealidad material (daño, plasticidad, cable) o geométrica (corotacional). Producirá resultados inconsistentes.
 \end{itemize}
 
@@ -1290,7 +1316,7 @@ solver:
 
 \end{lstlisting}
 
-\textbf{Parámetros}: \texttt{convergence} (bloque con \texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ver ADR 0007), \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}.
+\textbf{Parámetros}: \texttt{convergence} (bloque con \texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ver \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0007-tolerancias-convergencia-solvers.md}{ADR 0007}), \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_\allowbreak{}tangent\_\allowbreak{}after\_\allowbreak{}iter}.
 
 \textbf{Limitación}: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para esos casos \ensuremath{\to} \texttt{ArcLengthSolver}.
 
@@ -1338,7 +1364,7 @@ es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrátic
 
 \begin{itemize}
   \item \textbf{Switching automático}: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
-  \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_shrink\_factor}, \texttt{tau\_grow\_iter\_threshold}, \texttt{tau\_shrink\_iter\_threshold}, \texttt{dissipation\_threshold}.
+  \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_shrink\_factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_threshold}.
   \item \textbf{Cuándo usarlo}: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
   \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
 \end{itemize}
@@ -1363,11 +1389,11 @@ solver:
 
 
 
-Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (ADR 0009 cerrado en su totalidad 2026-05-18). Cubre los siete regímenes canónicos de la mecánica computacional clásica:
+Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} cerrado en su totalidad 2026-05-18). Cubre los siete regímenes canónicos de la mecánica computacional clásica:
 
 \begin{enumerate}
   \item \textbf{Modal}: autovalores generalizados $\mathbf K \boldsymbol\phi = \omega^2\mathbf M\boldsymbol\phi$ (\texttt{ModalSolver}).
-  \item \textbf{Mass lumping}: matriz de masa diagonal vía HRZ canónico (sólidos) o nodal directo (frames). Disponible en todos los elementos vía \texttt{compute\_mass\_matrix(lumping="lumped")}.
+  \item \textbf{Mass lumping}: matriz de masa diagonal vía HRZ canónico (sólidos) o nodal directo (frames). Disponible en todos los elementos vía \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping="lumped")}.
   \item \textbf{Transitorio implícito lineal}: Newmark-$\beta$ (\texttt{NewmarkSolver}) y variante HHT-$\alpha$ con disipación numérica (\texttt{HHTSolver}).
   \item \textbf{Transitorio implícito no lineal}: Newton-Newmark (\texttt{NewtonNewmarkSolver}) y Newton-HHT (\texttt{NewtonHHTSolver}).
   \item \textbf{Transitorio explícito}: diferencias centradas leapfrog (\texttt{CentralDifferenceSolver}).
@@ -1375,15 +1401,15 @@ Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (AD
   \item \textbf{Espectral / sísmico}: combinación modal SRSS/CQC contra espectros normativos (\texttt{ResponseSpectrumSolver}).
 \end{enumerate}
 
-Todos los solvers consumen la masa global que cada elemento devuelve por \texttt{compute\_mass\_matrix(lumping)} con \texttt{lumping \ensuremath{\in} \{"consistent", "lumped"\}} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, ADR 0008).
+Todos los solvers consumen la masa global que cada elemento devuelve por \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping)} con \texttt{lumping \ensuremath{\in} \{"consistent", "lumped"\}} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}).
 
 \section{\texttt{ModalSolver} --- análisis modal por autovalores generalizados}
 
-Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf M \boldsymbol\phi$ con $\mathbf K$ evaluada en $\mathbf u = 0$ (régimen lineal) y $\mathbf M$ ensamblada por cuadratura consistente sobre todos los elementos. La capa algebraica (\texttt{EigenSolver}) envuelve \texttt{scipy.sparse.linalg.eigsh} con \textit{shift-invert} en $\sigma$ (ARPACK Lanczos), de modo que basta una sola factorización de $\mathbf K - \sigma\mathbf M$ para extraer las $n$ frecuencias más bajas.
+Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf M \boldsymbol\phi$ con $\mathbf K$ evaluada en $\mathbf u = 0$ (régimen lineal) y $\mathbf M$ ensamblada por cuadratura consistente sobre todos los elementos. La capa algebraica (\texttt{EigenSolver}) envuelve \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}eigsh} con \textit{shift-invert} en $\sigma$ (ARPACK Lanczos), de modo que basta una sola factorización de $\mathbf K - \sigma\mathbf M$ para extraer las $n$ frecuencias más bajas.
 
-\textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0; \texttt{sigma=0} extrae las frecuencias más bajas), \texttt{which} (default \texttt{"LM"}), \texttt{tolerance} (default \texttt{1.0e-9}), \texttt{lumping} (default \texttt{"consistent"}; la masa concentrada queda diferida a fase 2 del ADR 0009).
+\textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0; \texttt{sigma=0} extrae las frecuencias más bajas), \texttt{which} (default \texttt{"LM"}), \texttt{tolerance} (default \texttt{1.0e-9}), \texttt{lumping} (default \texttt{"consistent"}; la masa concentrada queda diferida a fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009}).
 
-\textbf{Salida}: instancia de \texttt{ModalResult} con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales). El método \texttt{ModalResult.free\_vibration(M, u0, u0\_dot, t)} reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
+\textbf{Salida}: instancia de \texttt{ModalResult} con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales). El método \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration(M, u0, u0\_\allowbreak{}dot, t)} reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
 
 \begin{lstlisting}[language=yaml]
 nodes:
@@ -1408,7 +1434,7 @@ solver:
 \end{lstlisting}
 
 \begin{infobox}{Nota}
-La densidad es \textit{obligatoria} para todo material involucrado en análisis modal o transitorio. La omisión lanza \texttt{ValueError} (ADR 0008) listando los materiales afectados por nombre antes de iniciar el cálculo.
+La densidad es \textit{obligatoria} para todo material involucrado en análisis modal o transitorio. La omisión lanza \texttt{ValueError} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}) listando los materiales afectados por nombre antes de iniciar el cálculo.
 \end{infobox}
 
 \section{\texttt{NewmarkSolver} --- transitorio lineal Newmark-$\beta$}
@@ -1419,20 +1445,20 @@ Integra en el tiempo $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \ma
 
 \begin{itemize}
   \item Predictor: $\tilde{\mathbf u} = \mathbf u_n + \Delta t\,\dot{\mathbf u}_n + (\Delta t^2/2)(1 - 2\beta)\ddot{\mathbf u}_n$ y análogo para $\tilde{\dot{\mathbf u}}$.
-  \item Sistema efectivo en aceleración: $\mathbf A_{\text{eff}}\ddot{\mathbf u}_{n+1} = \mathbf F_{n+1} - \mathbf C\tilde{\dot{\mathbf u}} - \mathbf K\tilde{\mathbf u}$ con $\mathbf A_{\text{eff}} = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K$. Factorización \textit{única} al inicio del análisis y reusada en todos los pasos (\texttt{FactorizedSolver}, ADR 0003 fase 2).
+  \item Sistema efectivo en aceleración: $\mathbf A_{\text{eff}}\ddot{\mathbf u}_{n+1} = \mathbf F_{n+1} - \mathbf C\tilde{\dot{\mathbf u}} - \mathbf K\tilde{\mathbf u}$ con $\mathbf A_{\text{eff}} = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K$. Factorización \textit{única} al inicio del análisis y reusada en todos los pasos (\texttt{FactorizedSolver}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} fase 2).
   \item Corrector: $\mathbf u_{n+1} = \tilde{\mathbf u} + \beta\Delta t^2\,\ddot{\mathbf u}_{n+1}$, $\dot{\mathbf u}_{n+1} = \tilde{\dot{\mathbf u}} + \gamma\Delta t\,\ddot{\mathbf u}_{n+1}$.
 \end{itemize}
 
 \textbf{Amortiguamiento Rayleigh} $\mathbf C = \alpha\mathbf M + \beta\mathbf K$, declarado de dos formas:
 
 \begin{itemize}
-  \item Directa: \texttt{rayleigh: \{alpha: 0.1, beta: 1.0e-4\}}.
-  \item Calibración modal: \texttt{rayleigh: \{xi1: 0.02, omega1: 50.0, xi2: 0.02, omega2: 200.0\}} --- Solidum resuelve los $(\alpha, \beta)$ que reproducen los amortiguamientos $\xi_1, \xi_2$ a las frecuencias $\omega_1, \omega_2$.
+  \item Directa: \texttt{rayleigh: \{alpha: 0.\allowbreak{}1, beta: 1.\allowbreak{}0e-4\}}.
+  \item Calibración modal: \texttt{rayleigh: \{xi1: 0.\allowbreak{}02, omega1: 50.\allowbreak{}0, xi2: 0.\allowbreak{}02, omega2: 200.\allowbreak{}0\}} --- Solidum resuelve los $(\alpha, \beta)$ que reproducen los amortiguamientos $\xi_1, \xi_2$ a las frecuencias $\omega_1, \omega_2$.
 \end{itemize}
 
 \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt} (obligatorios); \texttt{beta} (default 0.25), \texttt{gamma} (default 0.5), \texttt{rayleigh} (opcional), \texttt{u0}, \texttt{u0\_dot} (condiciones iniciales, default ceros), \texttt{F\_func} (callback Python $t \to \mathbf F(t)$; default vibración libre). Desde YAML, las cargas del archivo (puntuales + peso propio / fuerza de cuerpo) se inyectan automáticamente como escalón constante en el tiempo; para una historia $\mathbf F(t)$ arbitraria, pasar \texttt{F\_func} desde Python.
 
-\textbf{Salida}: \texttt{TransientResult} con \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} (forma $(n_{\text{dof}}, n_{\text{steps}} + 1)$) y los $\alpha_{\text{Rayleigh}}, \beta_{\text{Rayleigh}}$ efectivos. \texttt{result.internal\_forces\_history(domain)} da las fuerzas internas $(N, V, M, T)$ de los elementos estructurales 1D en cada paso: con \texttt{record\_internal\_forces: true} (parámetro común a los cinco solvers transitorios, también desde YAML) se registran \textbf{durante} el análisis con el estado interno de cada paso y quedan en \texttt{result.element\_forces\_history}; sin él se reconstruyen a posteriori desde \texttt{u\_history} con el estado final, lo que sólo es exacto sin historia (materiales elásticos, elementos geométricamente lineales) y avisa por log en caso contrario.
+\textbf{Salida}: \texttt{TransientResult} con \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} (forma $(n_{\text{dof}}, n_{\text{steps}} + 1)$) y los $\alpha_{\text{Rayleigh}}, \beta_{\text{Rayleigh}}$ efectivos. \texttt{result.\allowbreak{}internal\_\allowbreak{}forces\_\allowbreak{}history(domain)} da las fuerzas internas $(N, V, M, T)$ de los elementos estructurales 1D en cada paso: con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces: true} (parámetro común a los cinco solvers transitorios, también desde YAML) se registran \textbf{durante} el análisis con el estado interno de cada paso y quedan en \texttt{result.\allowbreak{}element\_\allowbreak{}forces\_\allowbreak{}history}; sin él se reconstruyen a posteriori desde \texttt{u\_history} con el estado final, lo que sólo es exacto sin historia (materiales elásticos, elementos geométricamente lineales) y avisa por log en caso contrario.
 
 \begin{lstlisting}[language=yaml]
 solver:
@@ -1459,15 +1485,15 @@ Subclase de \texttt{NewmarkSolver} (Reglas §4 --- variante de componente existe
 \mathbf R = \mathbf F_{\text{ext}}(t) - \mathbf F_{\text{int}}(\mathbf u) - \mathbf C\dot{\mathbf u} - \mathbf M\ddot{\mathbf u}, \quad \mathbf J = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K_t
 \]
 
-\textbf{Convergencia dual} (ADR 0007): mismas tolerancias \texttt{rtol\_force} / \texttt{rtol\_disp} y factores \texttt{atol\_*\_factor} que los solvers no lineales estáticos. Tras converger cada paso se invoca \texttt{assembler.commit\_all\_states()} (trial \ensuremath{\to} committed en todos los elementos); si agota \texttt{max\_iter} se lanza \texttt{RuntimeError} y se descarta el estado trial.
+\textbf{Convergencia dual} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0007-tolerancias-convergencia-solvers.md}{ADR 0007}): mismas tolerancias \texttt{rtol\_force} / \texttt{rtol\_disp} y factores \texttt{atol\_*\_factor} que los solvers no lineales estáticos. Tras converger cada paso se invoca \texttt{assembler.\allowbreak{}commit\_\allowbreak{}all\_\allowbreak{}states()} (trial \ensuremath{\to} committed en todos los elementos); si agota \texttt{max\_iter} se lanza \texttt{RuntimeError} y se descarta el estado trial.
 
 \textbf{Amortiguamiento Rayleigh constante en el tiempo}, calibrado con la rigidez elástica de referencia $\mathbf K_0$ al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees) que evita acoplamiento ad-hoc entre disipación viscosa y plástica.
 
-\textbf{Newton modificado opcional} (\texttt{freeze\_tangent\_after\_iter}, ADR 0003 fase 2): factoriza fresco las primeras $N$ iter y reusa la factorización en las siguientes para abaratar pasos largos.
+\textbf{Newton modificado opcional} (\texttt{freeze\_\allowbreak{}tangent\_\allowbreak{}after\_\allowbreak{}iter}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} fase 2): factoriza fresco las primeras $N$ iter y reusa la factorización en las siguientes para abaratar pasos largos.
 
 \textbf{Recuperación del caso lineal}: con materiales sin historia o no plastificados, el residuo se anula en 1 iter y el resultado coincide \textit{a paridad de bits} con \texttt{NewmarkSolver}. Validado en tests.
 
-\textbf{Parámetros}: heredados de \texttt{NewmarkSolver} más \texttt{max\_iter} (default 20), bloque \texttt{convergence} (\texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; ADR 0007) y \texttt{freeze\_tangent\_after\_iter} (default \texttt{None}). El despacho YAML es automático: como \texttt{NewtonNewmarkSolver} es subclase de \texttt{NewmarkSolver}, \texttt{solidum.run\_yaml} lo detecta vía \texttt{isinstance} y enruta a \texttt{run\_transient}.
+\textbf{Parámetros}: heredados de \texttt{NewmarkSolver} más \texttt{max\_iter} (default 20), bloque \texttt{convergence} (\texttt{rtol\_force}, \texttt{rtol\_disp}, \texttt{atol\_force\_factor}, \texttt{atol\_disp\_factor}; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0007-tolerancias-convergencia-solvers.md}{ADR 0007}) y \texttt{freeze\_\allowbreak{}tangent\_\allowbreak{}after\_\allowbreak{}iter} (default \texttt{None}). El despacho YAML es automático: como \texttt{NewtonNewmarkSolver} es subclase de \texttt{NewmarkSolver}, \texttt{solidum.run\_yaml} lo detecta vía \texttt{isinstance} y enruta a \texttt{run\_transient}.
 
 \begin{lstlisting}[language=yaml]
 materials:
@@ -1538,7 +1564,7 @@ Paso $n \to n+1$:
 \mathbf v_{n+1} = \mathbf v_{n+1/2} + \tfrac{\Delta t}{2}\mathbf a_{n+1}
 \]
 
-Una sola clase cubre lineal y no lineal con parámetro \texttt{nonlinear}: con \texttt{False} usa $\mathbf F_{\text{int}} = \mathbf K\mathbf u$ con $\mathbf K$ constante; con \texttt{True} recalcula $\mathbf F_{\text{int}}$ cada paso vía \texttt{Assembler.assemble\_non\_linear\_system}.
+Una sola clase cubre lineal y no lineal con parámetro \texttt{nonlinear}: con \texttt{False} usa $\mathbf F_{\text{int}} = \mathbf K\mathbf u$ con $\mathbf K$ constante; con \texttt{True} recalcula $\mathbf F_{\text{int}}$ cada paso vía \texttt{Assembler.\allowbreak{}assemble\_\allowbreak{}non\_\allowbreak{}linear\_\allowbreak{}system}.
 
 \textbf{Condición de estabilidad CFL}: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta divergencia exponencial a posteriori y aborta con \texttt{RuntimeError} informativo si la condición se viola.
 
@@ -1565,7 +1591,7 @@ Análisis \textbf{lineal en estado estacionario}: dada una excitación armónica
 (-\omega^2\mathbf M + i\omega\mathbf C + \mathbf K)\,\hat{\mathbf u}(\omega) = \hat{\mathbf F}
 \]
 
-Aritmética compleja directa con \texttt{scipy.sparse.linalg.spsolve}. Factorización LU compleja por frecuencia (no se cachea --- la matriz cambia con $\omega$). Coste dominante: $O(n_\omega \cdot \text{coste\_factorizacion})$.
+Aritmética compleja directa con \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}spsolve}. Factorización LU compleja por frecuencia (no se cachea --- la matriz cambia con $\omega$). Coste dominante: $O(n_\omega \cdot \text{coste\_factorizacion})$.
 
 \textbf{Barrido configurable}:
 
@@ -1606,7 +1632,7 @@ Análisis \textbf{sísmico clásico}: el suelo se caracteriza por un espectro de
 \textbf{Esquema operativo}:
 
 \begin{enumerate}
-  \item Análisis modal interno vía \texttt{ModalSolver(n\_modes, sigma, lumping)}.
+  \item Análisis modal interno vía \texttt{ModalSolver(n\_\allowbreak{}modes, sigma, lumping)}.
   \item Factores de participación $\Gamma_n = \boldsymbol\phi_n^T\mathbf M\,\mathbf r$ con $\mathbf r$ el vector de excitación rígida (dirección sísmica).
   \item Respuesta máxima por modo: $\mathbf u_n^{\max} = \Gamma_n\,\boldsymbol\phi_n\,S_d(\omega_n)$.
   \item \textbf{Combinación SRSS} (Square Root of Sum of Squares, modos bien separados):
@@ -1630,8 +1656,8 @@ con $r = \omega_i/\omega_j$. Cuando $\xi \to 0$ o $r \to 0$: $\rho_{ij} \to \del
 
 \begin{itemize}
   \item Callable directo \texttt{spectrum(omega) -> S\_d}.
-  \item Dict tabulado: \texttt{\{type: tabulated, kind: Sd|Sa, periods: [...], values: [...]\}}. Interpolación lineal en período; clamp fuera de rango.
-  \item Constante: \texttt{\{type: constant\_acceleration, Sa: ...\}}.
+  \item Dict tabulado: \texttt{\{type: tabulated, kind: Sd|Sa, periods: [.\allowbreak{}.\allowbreak{}.\allowbreak{}], values: [.\allowbreak{}.\allowbreak{}.\allowbreak{}]\}}. Interpolación lineal en período; clamp fuera de rango.
+  \item Constante: \texttt{\{type: constant\_\allowbreak{}acceleration, Sa: .\allowbreak{}.\allowbreak{}.\allowbreak{}\}}.
 \end{itemize}
 
 \textbf{Dirección de excitación}:
@@ -1657,18 +1683,18 @@ solver:
 
 \end{lstlisting}
 
-\textbf{Salida}: \texttt{ResponseSpectrumResult} con \texttt{u\_combined} (envolvente, positiva), \texttt{u\_per\_mode} (contribución modal con signo), \texttt{participation\_factors} ($\Gamma_n$), \texttt{effective\_masses} ($\Gamma_n^2$), \texttt{frequencies\_rad}, \texttt{combination}, \texttt{damping}, \texttt{direction}. Método \texttt{.cumulative\_effective\_mass\_ratio()} para verificar que la masa modal acumulada alcanza el objetivo normativo ($\geq 0.9$).
+\textbf{Salida}: \texttt{ResponseSpectrumResult} con \texttt{u\_combined} (envolvente, positiva), \texttt{u\_per\_mode} (contribución modal con signo), \texttt{participation\_factors} ($\Gamma_n$), \texttt{effective\_masses} ($\Gamma_n^2$), \texttt{frequencies\_rad}, \texttt{combination}, \texttt{damping}, \texttt{direction}. Método \texttt{.\allowbreak{}cumulative\_\allowbreak{}effective\_\allowbreak{}mass\_\allowbreak{}ratio()} para verificar que la masa modal acumulada alcanza el objetivo normativo ($\geq 0.9$).
 
 \textbf{Cuándo usarlo}: diseño sísmico contra espectros normativos (ASCE 7, Eurocódigo 8, NCh 433, NTC-DS México). Diagnóstico de qué modos dominan la respuesta en una dirección de excitación.
 
-\textbf{Caveats}: precisión depende del número de modos incluidos (verifica \texttt{cumulative\_effective\_mass\_ratio} \ensuremath{\ge} 0.9). Excitación multi-direccional simultánea (CQC3, regla 100/30/30) requiere combinar varios análisis fuera del solver.
+\textbf{Caveats}: precisión depende del número de modos incluidos (verifica \texttt{cumulative\_\allowbreak{}effective\_\allowbreak{}mass\_\allowbreak{}ratio} \ensuremath{\ge} 0.9). Excitación multi-direccional simultánea (CQC3, regla 100/30/30) requiere combinar varios análisis fuera del solver.
 
 \section{Mass lumping (ADR 0009 fase 2)}
 
-Independiente de cualquier solver: todos los elementos del catálogo soportan \texttt{compute\_mass\_matrix(lumping="lumped")}. El esquema se elige por familia:
+Independiente de cualquier solver: todos los elementos del catálogo soportan \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping="lumped")}. El esquema se elige por familia:
 
 \begin{itemize}
-  \item \textbf{Sólidos isoparamétricos} (Tri3, Quad4, Tri6, Quad8, Quad9): \textbf{HRZ canónico} (Hinton-Rock-Zienkiewicz 1976) centralizado en \texttt{solidum.math.mass\_lumping.lump\_hrz}. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
+  \item \textbf{Sólidos isoparamétricos} (Tri3, Quad4, Tri6, Quad8, Quad9): \textbf{HRZ canónico} (Hinton-Rock-Zienkiewicz 1976) centralizado en \texttt{solidum.\allowbreak{}math.\allowbreak{}mass\_\allowbreak{}lumping.\allowbreak{}lump\_\allowbreak{}hrz}. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
   \item \textbf{Vigas y marcos} (Truss, Cable, Frame2D Euler/Timoshenko/EulerCorot, Frame3D): \textbf{lumping nodal directo} --- $\rho AL/2$ traslacional + $\rho I L/2$ rotacional por nodo. Único esquema que sobrevive a la rotación local\ensuremath{\to}global manteniendo $\mathbf M$ diagonal.
 \end{itemize}
 
@@ -1712,7 +1738,7 @@ Se declara en un bloque \textbf{\texttt{thermal\_materials}}, paralelo a \texttt
 
 \begin{table}[h]
 \centering
-\caption{Parámetros de @@ICODE78@@.}
+\caption{Parámetros de \texttt{ThermalConduction}.}
 \begin{tabularx}{\textwidth}{YYYY}
 \hline
 \textbf{Parámetro} & \textbf{Unidades} & \textbf{Obligatorio} & \textbf{Descripción} \\
@@ -1856,7 +1882,7 @@ solver:
 
 \begin{table}[h]
 \centering
-\caption{Parámetros de @@ICODE110@@.}
+\caption{Parámetros de \texttt{ThetaMethodSolver}.}
 \begin{tabularx}{\textwidth}{YYY}
 \hline
 \textbf{Parámetro} & \textbf{Default} & \textbf{Descripción} \\
@@ -1876,7 +1902,7 @@ solver:
 
 \begin{table}[h]
 \centering
-\caption{Casos particulares del esquema @@MINL38@@.}
+\caption{Casos particulares del esquema $\theta$.}
 \begin{tabularx}{\textwidth}{YYYY}
 \hline
 \textbf{$\theta$} & \textbf{Nombre} & \textbf{Orden} & \textbf{Estabilidad} \\
@@ -1920,7 +1946,7 @@ A diferencia del análisis dinámico estructural, donde el default es \texttt{co
 
 \begin{table}[h]
 \centering
-\caption{Campos de @@ICODE134@@.}
+\caption{Campos de \texttt{ThermalTransientResult}.}
 \begin{tabularx}{\textwidth}{YY}
 \hline
 \textbf{Campo / método} & \textbf{Descripción} \\
@@ -2254,11 +2280,11 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 
 \end{lstlisting}
 
-\texttt{Assembler(domain)} ensambla \textbf{por lotes} (ADR 0014): agrupa los elementos que comparten clase, material y cuadratura en familias y los evalúa en un kernel compilado, con el mismo resultado que el bucle elemento a elemento a precisión de máquina. \texttt{Assembler(domain, batch=False)} fuerza el camino por elemento en todo el modelo (útil para comparar o diagnosticar); \texttt{parallel=False} usa el kernel serie en vez del paralelo (el resultado es bit a bit el mismo; el número de hilos lo fija Numba con la variable de entorno \texttt{NUMBA\_NUM\_THREADS} o \texttt{numba.set\_num\_threads}); \texttt{batch\_memory\_budget=} acota, en bytes, los temporales por trozo. Los elementos sin kernel por lotes (1D, discontinuidad embebida) se ensamblan como siempre dentro del mismo \texttt{Assembler}. Si se sustituye el material o el espesor de un elemento después del primer ensamblaje, llamar a \texttt{assembler.invalidate()}. Un elemento con nodos en orden incorrecto (jacobiano negativo) detiene el ensamblaje con \texttt{ValueError} que nombra su \texttt{id}.
+\texttt{Assembler(domain)} ensambla \textbf{por lotes} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014}): agrupa los elementos que comparten clase, material y cuadratura en familias y los evalúa en un kernel compilado, con el mismo resultado que el bucle elemento a elemento a precisión de máquina. \texttt{Assembler(domain, batch=False)} fuerza el camino por elemento en todo el modelo (útil para comparar o diagnosticar); \texttt{parallel=False} usa el kernel serie en vez del paralelo (el resultado es bit a bit el mismo; el número de hilos lo fija Numba con la variable de entorno \texttt{NUMBA\_NUM\_THREADS} o \texttt{numba.set\_num\_threads}); \texttt{batch\_memory\_budget=} acota, en bytes, los temporales por trozo. Los elementos sin kernel por lotes (1D, discontinuidad embebida) se ensamblan como siempre dentro del mismo \texttt{Assembler}. Si se sustituye el material o el espesor de un elemento después del primer ensamblaje, llamar a \texttt{assembler.invalidate()}. Un elemento con nodos en orden incorrecto (jacobiano negativo) detiene el ensamblaje con \texttt{ValueError} que nombra su \texttt{id}.
 
-Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo, \texttt{solidum.math.batch.gauss\_states(domain, U)} devuelve \texttt{\{id: compute\_gauss\_state(U)\}} evaluando cada familia de una vez (las entradas son vistas sobre arreglos) y llamando a \texttt{compute\_gauss\_state} sólo en los elementos sin familia; el exportador VTK hace lo mismo por dentro.
+Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo, \texttt{solidum.\allowbreak{}math.\allowbreak{}batch.\allowbreak{}gauss\_\allowbreak{}states(domain, U)} devuelve \texttt{\{id: compute\_\allowbreak{}gauss\_\allowbreak{}state(U)\}} evaluando cada familia de una vez (las entradas son vistas sobre arreglos) y llamando a \texttt{compute\_gauss\_state} sólo en los elementos sin familia; el exportador VTK hace lo mismo por dentro.
 
-El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute\_gauss\_state}), así que funciona igual tras \texttt{LinearSolver.solve} directo, tras \texttt{solidum.run} o en un paso intermedio del \texttt{step\_callback}. Si el modelo lleva peso propio o fuerza de cuerpo, usar \texttt{solidum.run(...)} en vez de \texttt{solver.solve(...)} para que \texttt{SolveResult.element\_forces} reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
+El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute\_gauss\_state}), así que funciona igual tras \texttt{LinearSolver.solve} directo, tras \texttt{solidum.run} o en un paso intermedio del \texttt{step\_callback}. Si el modelo lleva peso propio o fuerza de cuerpo, usar \texttt{solidum.run(...)} en vez de \texttt{solver.solve(...)} para que \texttt{SolveResult.\allowbreak{}element\_\allowbreak{}forces} reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
 
 \section{Errores tipados}
 
@@ -2281,7 +2307,7 @@ except MechanismError as err:
 
 \texttt{MechanismError.motions} lista los movimientos libres ya descritos en palabras. Los mensajes completos y cómo corregir cada caso están en el capítulo \textit{Diagnóstico de Problemas}.
 
-El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. \texttt{LinearSolver(assembler, linear\_algebra="iterative")}.
+El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. \texttt{LinearSolver(assembler, linear\_\allowbreak{}algebra="iterative")}.
 
 
 \newpage
@@ -2292,7 +2318,7 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 
 
 \begin{itemize}
-  \item \textbf{\texttt{YamlValidationError: parámetro 'X' no aceptado por 'Y'.}}
+  \item \textbf{\texttt{YamlValidationError: parámetro 'X' no aceptado por 'Y'.\allowbreak{}}}
 \end{itemize}
   El parser detecta un parámetro que el constructor del elemento no admite. La salida lista los parámetros aceptados; revisar el catálogo o la spec del componente.
 
@@ -2314,7 +2340,7 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \begin{itemize}
   \item \textbf{\texttt{MemoryError: Memoria insuficiente para factorizar\ldots{}}}
 \end{itemize}
-  El modelo es demasiado grande para el solver directo, cuya memoria crece más deprisa que el modelo. Usar \texttt{linear\_algebra: iterative} en el bloque \texttt{solver} (ver el anexo de la capa algebraica).
+  El modelo es demasiado grande para el solver directo, cuya memoria crece más deprisa que el modelo. Usar \texttt{linear\_\allowbreak{}algebra: iterative} en el bloque \texttt{solver} (ver el anexo de la capa algebraica).
 
 \begin{itemize}
   \item \textbf{Cables y materiales con ablandamiento.}
@@ -2322,17 +2348,17 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
   En modelos con cables o materiales con softening pronunciado, un elemento que se destensa o se degrada puede dejar un mecanismo: comprobar que existen caminos de carga alternativos.
 
 \begin{itemize}
-  \item \textbf{\texttt{Newton-Raphson no convergió / bisecando incremento.}}
+  \item \textbf{\texttt{Newton-Raphson no convergió /\allowbreak{} bisecando incremento.\allowbreak{}}}
 \end{itemize}
   El paso de carga es demasiado grande. Aumentar \texttt{num\_steps}, asegurar \texttt{adaptive: true}. Verificar tipeo de los parámetros constitutivos ($\sigma_y$, $\kappa_0$, etc.). Si el problema tiene snap-through o softening, cambiar a \texttt{ArcLengthSolver}.
 
 \begin{itemize}
-  \item \textbf{\texttt{No se importó ningún elemento (Solid2D).}}
+  \item \textbf{\texttt{No se importó ningún elemento (Solid2D).\allowbreak{}}}
 \end{itemize}
   El parser de Gmsh no encontró superficies bidimensionales. En Gmsh, crear una \textit{Plane Surface} y generar la malla 2D antes de exportar.
 
 \begin{itemize}
-  \item \textbf{\texttt{Cable totalmente destensado --- KT = 0.}}
+  \item \textbf{\texttt{Cable totalmente destensado --- KT = 0.\allowbreak{}}}
 \end{itemize}
   Pretensar el cable o garantizar que la estructura tiene rigidez residual por otros elementos. Considerar también pasos de carga finos para capturar la transición tensado \ensuremath{\to} destensado.
 
@@ -2346,8 +2372,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 09:25\\[0.5em]
-Commit Git: \texttt{17d0d3c}\\[1em]
+Compilado el 23 de septiembre de 2026, 10:19\\[0.5em]
+Commit Git: \texttt{5ba2eb0}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
