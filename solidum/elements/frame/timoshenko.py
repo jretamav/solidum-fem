@@ -52,7 +52,7 @@ class Frame2DTimoshenko(Element):
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 A: float, I: float, As: float, nu: float = 0.3):
+                 A: float, I: float, As: float, nu: float | None = None):
         if len(nodes) != 2:
             raise ValueError("El elemento Frame2DTimoshenko requiere exactamente 2 nodos.")
 
@@ -61,16 +61,19 @@ class Frame2DTimoshenko(Element):
         self.As = As
         super().__init__(element_id, nodes, material)
 
-        # Fuente del Poisson: material.nu si existe; si no, parámetro del elemento.
+        # Fuente del Poisson: material.nu si existe; si no, parámetro del
+        # elemento. `None` distingue "no declarado" (aviso + 0.3) de un 0.3
+        # declarado a propósito, que antes también disparaba el aviso.
         if hasattr(material, 'nu'):
             self.nu = material.nu
         else:
-            if nu == 0.3:
+            if nu is None:
+                nu = 0.3
                 _log.warning(
                     f"Frame2DTimoshenko (id={element_id}): el material no expone 'nu'. "
                     f"Se usará nu={nu} (default). Especifique 'nu' en el YAML del elemento si esto es incorrecto."
                 )
-            self.nu = nu
+            self.nu = float(nu)
 
         self.L0, self.c, self.s, self.T = build_geometry_2d(self.nodes)
 

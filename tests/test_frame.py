@@ -149,6 +149,21 @@ class TestFrame2DTimoshenkoAcceptance(unittest.TestCase):
         from solidum.registry import ElementRegistry
         self.assertIn('Frame2DTimoshenko', ElementRegistry._items)
 
+    def test_nu_declarado_no_avisa_y_omitido_si(self):
+        """El aviso "el material no expone 'nu'" sale sólo si nu no se declara.
+
+        Antes se comparaba contra el valor por omisión (0.3) y el aviso salía
+        también con ``nu: 0.3`` escrito a propósito en el YAML (2026-09-23).
+        """
+        n1, n2 = solidum.core.node.Node(1, [0.0, 0.0]), solidum.core.node.Node(2, [1.0, 0.0])
+        mat = Elastic1D(E=210e9)
+        with self.assertNoLogs("solidum.elements.frame", level="WARNING"):
+            elem = Frame2DTimoshenko(1, [n1, n2], mat, A=1e-3, I=1e-6, As=0.8e-3, nu=0.3)
+        self.assertEqual(elem.nu, 0.3)
+        with self.assertLogs("solidum.elements.frame", level="WARNING"):
+            elem = Frame2DTimoshenko(2, [n1, n2], mat, A=1e-3, I=1e-6, As=0.8e-3)
+        self.assertEqual(elem.nu, 0.3)
+
 
 class TestFrame2DEulerCorotAcceptance(unittest.TestCase):
     """Criterios de aceptación de docs/specs/Frame2DEulerCorot.md."""

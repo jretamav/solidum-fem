@@ -65,7 +65,7 @@ class Frame3D(Element):
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  A: float, Iy: float, Iz: float, J: float,
-                 nu: float = 0.3,
+                 nu: float | None = None,
                  ref_vector: List[float] | None = None):
         if len(nodes) != 2:
             raise ValueError("El elemento Frame3D requiere exactamente 2 nodos.")
@@ -76,16 +76,19 @@ class Frame3D(Element):
         self.J = J
         super().__init__(element_id, nodes, material)
 
-        # Poisson: material.nu si existe, si no el parámetro
+        # Poisson: material.nu si existe, si no el parámetro. `None` distingue
+        # "no declarado" de un 0.3 declarado a propósito: antes se comparaba
+        # contra 0.3 y el aviso salía también cuando el usuario lo escribía.
         if hasattr(material, 'nu'):
             self.nu = material.nu
         else:
-            if nu == 0.3:
+            if nu is None:
+                nu = 0.3
                 _log.warning(
                     f"Frame3D (id={element_id}): el material no expone 'nu'. "
                     f"Se usará nu={nu} (default). Especifique 'nu' en el YAML si esto es incorrecto."
                 )
-            self.nu = nu
+            self.nu = float(nu)
 
         self.L0, self.lam, self.T = self._build_local_frame(self.nodes, ref_vector,
                                                              element_id)
