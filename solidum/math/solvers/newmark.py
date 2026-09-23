@@ -22,6 +22,7 @@ from solidum.math.convergence import ConvergenceCriterion, stiffness_diag_scale
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.linalg import StiffnessProperties, select_solver
 from solidum.math.solvers._shared import (
+    ElementForcesRecorder,
     CholeskyNotPositiveDefiniteError,
     _log,
     domain_is_symmetric,
@@ -94,6 +95,7 @@ class NewmarkSolver:
         F_func: Callable[[float], np.ndarray] | None = None,
         linear_algebra: str = "auto",
         lumping: str = "consistent",
+        record_internal_forces: bool = False,
     ):
         if dt <= 0.0:
             raise ValueError(f"NewmarkSolver: dt={dt} debe ser positivo.")
@@ -110,6 +112,9 @@ class NewmarkSolver:
         self.F_func = F_func
         self.linear_algebra = str(linear_algebra)
         self.lumping = str(lumping)
+        # Registro de fuerzas internas por paso (ADR 0002 / deuda #15):
+        # opt-in porque cuesta una evaluacion por elemento 1D y paso.
+        self.record_internal_forces = bool(record_internal_forces)
 
 
     def solve(self) -> TransientResult:
@@ -186,6 +191,8 @@ class NewmarkSolver:
         uddot_history = np.zeros((ndof, n_steps + 1))
         # Estado inicial en globales (con apoyos g).
         u_history[:, 0] = T @ u_free + g
+        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
+        forces_rec.record(u_history[:, 0])
         udot_history[:, 0] = T @ udot_free
         uddot_history[:, 0] = T @ uddot_free
 
@@ -218,6 +225,7 @@ class NewmarkSolver:
 
             # Volcado a historial global.
             u_history[:, step + 1] = T @ u_free + g
+            forces_rec.record(u_history[:, step + 1])
             udot_history[:, step + 1] = T @ udot_free
             uddot_history[:, step + 1] = T @ uddot_free
 
@@ -233,6 +241,7 @@ class NewmarkSolver:
             alpha_rayleigh=alpha_r,
             beta_rayleigh=beta_r,
             converged=True,
+            element_forces_history=forces_rec.result(),
         )
 
 
@@ -298,12 +307,14 @@ class NewtonNewmarkSolver(NewmarkSolver):
         F_func: Callable[[float], np.ndarray] | None = None,
         linear_algebra: str = "auto",
         lumping: str = "consistent",
+        record_internal_forces: bool = False,
     ):
         super().__init__(
             assembler, t_end, dt,
             beta=beta, gamma=gamma, rayleigh=rayleigh,
             u0=u0, u0_dot=u0_dot, F_func=F_func,
             linear_algebra=linear_algebra, lumping=lumping,
+            record_internal_forces=record_internal_forces,
         )
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = int(max_iter)
@@ -390,6 +401,8 @@ class NewtonNewmarkSolver(NewmarkSolver):
         udot_history = np.zeros((ndof, n_steps + 1))
         uddot_history = np.zeros((ndof, n_steps + 1))
         u_history[:, 0] = u_total
+        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
+        forces_rec.record(u_history[:, 0])
         udot_history[:, 0] = udot_total
         uddot_history[:, 0] = uddot_total
 
@@ -576,6 +589,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             uddot_free = uddot_free_iter
 
             u_history[:, step + 1] = u_total
+            forces_rec.record(u_history[:, step + 1])
             udot_history[:, step + 1] = udot_total
             uddot_history[:, step + 1] = uddot_total
 
@@ -591,6 +605,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             alpha_rayleigh=alpha_r,
             beta_rayleigh=beta_r,
             converged=True,
+            element_forces_history=forces_rec.result(),
         )
 
     def _armijo_step_dynamic(self, uddot_free_iter: np.ndarray,
@@ -710,6 +725,7 @@ class HHTSolver(NewmarkSolver):
         F_func: Callable[[float], np.ndarray] | None = None,
         linear_algebra: str = "auto",
         lumping: str = "consistent",
+        record_internal_forces: bool = False,
     ):
         if not (-1.0 / 3.0 - 1.0e-12 <= alpha <= 0.0 + 1.0e-12):
             raise ValueError(
@@ -743,6 +759,7 @@ class HHTSolver(NewmarkSolver):
             beta=beta_eff, gamma=gamma_eff, rayleigh=rayleigh,
             u0=u0, u0_dot=u0_dot, F_func=F_func,
             linear_algebra=linear_algebra, lumping=lumping,
+            record_internal_forces=record_internal_forces,
         )
         self.alpha = float(alpha)
 
@@ -817,6 +834,8 @@ class HHTSolver(NewmarkSolver):
         udot_history = np.zeros((ndof, n_steps + 1))
         uddot_history = np.zeros((ndof, n_steps + 1))
         u_history[:, 0] = T @ u_free + g
+        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
+        forces_rec.record(u_history[:, 0])
         udot_history[:, 0] = T @ udot_free
         uddot_history[:, 0] = T @ uddot_free
 
@@ -859,6 +878,7 @@ class HHTSolver(NewmarkSolver):
             udot_free = udot_pred + gamma_dt * uddot_free
 
             u_history[:, step + 1] = T @ u_free + g
+            forces_rec.record(u_history[:, step + 1])
             udot_history[:, step + 1] = T @ udot_free
             uddot_history[:, step + 1] = T @ uddot_free
 
@@ -877,6 +897,7 @@ class HHTSolver(NewmarkSolver):
             alpha_rayleigh=alpha_r,
             beta_rayleigh=beta_r,
             converged=True,
+            element_forces_history=forces_rec.result(),
         )
 
 
@@ -939,6 +960,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         F_func: Callable[[float], np.ndarray] | None = None,
         linear_algebra: str = "auto",
         lumping: str = "consistent",
+        record_internal_forces: bool = False,
     ):
         if not (-1.0 / 3.0 - 1.0e-12 <= alpha <= 0.0 + 1.0e-12):
             raise ValueError(
@@ -972,6 +994,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             beta=beta_eff, gamma=gamma_eff, rayleigh=rayleigh,
             u0=u0, u0_dot=u0_dot, F_func=F_func,
             linear_algebra=linear_algebra, lumping=lumping,
+            record_internal_forces=record_internal_forces,
         )
         self.alpha = float(alpha)
 
@@ -1041,6 +1064,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         udot_history = np.zeros((ndof, n_steps + 1))
         uddot_history = np.zeros((ndof, n_steps + 1))
         u_history[:, 0] = u_total
+        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
+        forces_rec.record(u_history[:, 0])
         udot_history[:, 0] = udot_total
         uddot_history[:, 0] = uddot_total
 
@@ -1215,6 +1240,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             uddot_free = uddot_free_iter
 
             u_history[:, step + 1] = u_total
+            forces_rec.record(u_history[:, step + 1])
             udot_history[:, step + 1] = udot_total
             uddot_history[:, step + 1] = uddot_total
 
@@ -1236,4 +1262,5 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             alpha_rayleigh=alpha_r,
             beta_rayleigh=beta_r,
             converged=True,
+            element_forces_history=forces_rec.result(),
         )

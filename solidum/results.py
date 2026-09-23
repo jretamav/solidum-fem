@@ -154,6 +154,12 @@ class TransientResult:
         si se detuvo prematuramente por inestabilidad numérica detectada
         (no aplica al Newmark incondicionalmente estable con default
         β=1/4, γ=1/2).
+    element_forces_history
+        ``{elem_id: [ElementForces por paso]}`` registrado **durante** el
+        análisis con el estado interno de cada paso, cuando el solver se
+        construyó con ``record_internal_forces=True``; ``None`` si no se
+        registró. Es lo que devuelve :meth:`internal_forces_history` cuando
+        existe, y la única forma fiel con materiales con historia.
     """
 
     t_history: np.ndarray
@@ -164,11 +170,17 @@ class TransientResult:
     alpha_rayleigh: float = 0.0
     beta_rayleigh: float = 0.0
     converged: bool = True
+    element_forces_history: dict[int, list["ElementForces"]] | None = None
 
     def internal_forces_history(
         self, domain: "Domain",
     ) -> dict[int, list["ElementForces"]]:
-        """Fuerzas internas (N, V, M, T) por paso temporal para cada elemento (lazy).
+        """Fuerzas internas (N, V, M, T) por paso temporal para cada elemento.
+
+        Si el solver registró las fuerzas durante el análisis
+        (``record_internal_forces=True`` → :attr:`element_forces_history`),
+        devuelve ese registro, fiel a la historia interna de cada paso.
+        Si no, las reconstruye de forma *lazy* como se describe abajo.
 
         Para cada ``elem_id`` con ``internal_forces`` implementado (contrato
         ADR 0002 — barras/vigas/cables 2D y 3D), devuelve la lista de
@@ -207,6 +219,8 @@ class TransientResult:
         se cachea en la dataclass para no inflar la memoria del resultado
         cuando el consumidor no lo necesita.
         """
+        if self.element_forces_history is not None:
+            return {k: list(v) for k, v in self.element_forces_history.items()}
         with_history = sorted({
             type(e.material).__name__ for e in domain.elements.values()
             if getattr(getattr(e, 'material', None), 'PRIMARY_STATE_VAR', None)
@@ -216,7 +230,8 @@ class TransientResult:
             get_logger("results").warning(
                 f"internal_forces_history: materiales con historia {with_history}; "
                 f"las fuerzas de pasos intermedios se evalúan con el estado interno "
-                f"final y NO son fieles a la historia."
+                f"final y NO son fieles a la historia. Construya el solver con "
+                f"record_internal_forces=True para registrarlas durante el análisis."
             )
         history: dict[int, list[ElementForces]] = {}
         n_t = self.u_history.shape[1]

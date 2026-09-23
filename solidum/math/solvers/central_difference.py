@@ -63,7 +63,7 @@ import scipy.sparse as sp
 
 from solidum.constants import LUMPED_MASS_OFF_DIAGONAL_RTOL
 from solidum.math.damping import resolve_rayleigh_config
-from solidum.math.solvers._shared import _log, number_of_steps
+from solidum.math.solvers._shared import ElementForcesRecorder, _log, number_of_steps
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
 
@@ -132,6 +132,7 @@ class CentralDifferenceSolver:
         lumping: str = "lumped",
         divergence_threshold: float = 1.0e8,
         linear_algebra: str = "auto",  # noqa: ARG002 — aceptado por compatibilidad de firma
+        record_internal_forces: bool = False,
     ):
         if dt <= 0.0:
             raise ValueError(f"CentralDifferenceSolver: dt={dt} debe ser positivo.")
@@ -156,6 +157,8 @@ class CentralDifferenceSolver:
         self.F_func = F_func
         self.lumping = lumping
         self.divergence_threshold = float(divergence_threshold)
+        # Registro de fuerzas internas por paso (deuda #15): opt-in.
+        self.record_internal_forces = bool(record_internal_forces)
 
     @staticmethod
     def _invert_diagonal_mass(M_red: sp.spmatrix) -> np.ndarray:
@@ -251,6 +254,8 @@ class CentralDifferenceSolver:
         u_history[:, 0] = T @ u_free + g
         udot_history[:, 0] = T @ v_free
         uddot_history[:, 0] = T @ a_free
+        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
+        forces_rec.record(u_history[:, 0])
 
         # Escala inicial para detección de divergencia.
         initial_scale = max(
@@ -299,6 +304,9 @@ class CentralDifferenceSolver:
             u_history[:, step + 1] = T @ u_free + g
             udot_history[:, step + 1] = T @ v_free
             uddot_history[:, step + 1] = T @ a_free
+            # El estado del paso ya esta comiteado (rama no lineal) o no
+            # existe (lineal): las fuerzas registradas son las del instante.
+            forces_rec.record(u_history[:, step + 1])
 
         _log.info(
             f"  -> {n_steps} pasos completados. "
@@ -314,6 +322,7 @@ class CentralDifferenceSolver:
             n_steps=n_steps,
             alpha_rayleigh=alpha_r,
             beta_rayleigh=beta_r,
+            element_forces_history=forces_rec.result(),
         )
 
     def _compute_internal_forces_reduced(

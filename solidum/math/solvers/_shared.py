@@ -72,6 +72,51 @@ def number_of_steps(t_end: float, dt: float) -> int:
     return int(math.ceil(ratio))
 
 
+class ElementForcesRecorder:
+    """Registra ``elem.internal_forces(U)`` en cada paso comiteado de un
+    análisis transitorio, para ``TransientResult.element_forces_history``.
+
+    Con materiales con historia (plasticidad, daño) o elementos
+    corotacionales, las fuerzas internas de un paso sólo pueden evaluarse
+    **durante** el análisis, con el estado interno de ese paso: reevaluar
+    después desde ``u_history`` usa el estado final y no es fiel (deuda #15
+    de ``STATUS.md``). El registro es opt-in (``record_internal_forces``)
+    porque cuesta una evaluación por elemento 1D y paso.
+
+    Sólo participan los elementos cuyo ``internal_forces`` no devuelve
+    ``None`` (estructurales 1D, ADR 0002); se sondea en el primer registro.
+    """
+
+    def __init__(self, domain, enabled: bool):
+        self.domain = domain
+        self.enabled = bool(enabled)
+        self._history: dict[int, list] = {}
+        self._elements: list | None = None
+
+    def record(self, U: np.ndarray) -> None:
+        """Añade el paso actual; llamar tras comitear el estado del paso."""
+        if not self.enabled:
+            return
+        U = np.asarray(U, dtype=float)
+        if self._elements is None:
+            self._elements = []
+            for elem_id, elem in self.domain.elements.items():
+                forces = elem.internal_forces(U)
+                if forces is None:
+                    continue
+                self._elements.append((elem_id, elem))
+                self._history[elem_id] = [forces]
+            return
+        for elem_id, elem in self._elements:
+            self._history[elem_id].append(elem.internal_forces(U))
+
+    def result(self) -> dict[int, list] | None:
+        """``{elem_id: [ElementForces por paso]}`` o ``None`` si no se registró."""
+        if not self.enabled:
+            return None
+        return {k: list(v) for k, v in self._history.items()}
+
+
 def solve_mass_system(M_solver, M_red, rhs, solver_name: str):
     """``M_red · x = rhs`` con diagnóstico accionable si ``M_red`` es singular.
 
