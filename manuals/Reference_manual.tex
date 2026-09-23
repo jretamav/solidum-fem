@@ -2,6 +2,14 @@
 
 % Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
 \usepackage{fontspec}
+% Respaldo de glifos: ver FONT_SETUP en build_reference_manual.py.
+\directlua{
+  luaotfload.add_fallback("solidumserif", {"DejaVuSerif:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+  luaotfload.add_fallback("solidummono", {"DejaVuSansMono:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+}
+\setmainfont{Latin Modern Roman}[RawFeature={fallback=solidumserif}]
+\setsansfont{Latin Modern Sans}[RawFeature={fallback=solidumserif}]
+\setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]
 \usepackage[spanish,es-tabla]{babel}
 \usepackage[margin=2.5cm, headheight=15pt]{geometry}
 \usepackage{listings}
@@ -296,6 +304,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Cierre de ciclo retroactivo. La clase \texttt{Truss2D} preexistía al flujo spec-first; la spec se creó documentando la formulación ya implementada. Los tests unitarios y de integración satisfacen el único criterio de \texttt{acceptance} declarado (analíticamente, vía los valores de $\mathbf K_e$ y end-to-end vía el solver). Promovido \texttt{status: validated}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (\texttt{axial\_end\_forces}): con carga axial distribuida N\_i \ensuremath{\neq} N\_j.
 \end{itemize}
 
 
@@ -466,6 +475,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación inicial tras validar el diseño spec-first. Se optó por herencia \texttt{Truss2DCorot(Truss2D)} para reutilizar el constructor (L0, cosenos iniciales) y los \texttt{ClassVar}s del registro; los métodos que dependen de configuración corriente se sobrescriben. La bandera \texttt{large\_strains} que tenía \texttt{Truss2D} previamente se elimina en el mismo commit --- el régimen corotacional vive ahora como elemento independiente.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Normalización del autovalor transverso (criterio 3): la fórmula del libro da $N/l$ sobre el \textbf{versor} $\hat{\mathbf n} = \mathbf n/\sqrt 2$; sobre el vector $\mathbf n$ directo (norma $\sqrt 2$) el autovalor es $2N/l$. El test verifica la segunda forma para evitar raíces cuadradas y la nota de traducción documenta la equivalencia.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (\texttt{axial\_end\_forces}): con carga axial distribuida N\_i \ensuremath{\neq} N\_j.
 \end{itemize}
 
 
@@ -622,6 +632,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Apertura de spec retroactiva. La clase \texttt{Truss3D} preexistía al flujo spec-first; la spec se crea documentando la formulación ya implementada y estableciendo explícitamente su alcance: régimen de linealidad geométrica, sin bandera ni variante corotacional. Los tests unitarios existentes cubren el criterio de \texttt{acceptance} (vía los valores de $\mathbf K_e = (EA/L)\mathbf d\mathbf d^\top$ que implican algebraicamente $u(L)=FL/(EA)$). Promovido \texttt{status: validated}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (\texttt{axial\_end\_forces}): con carga axial distribuida N\_i \ensuremath{\neq} N\_j.
 \end{itemize}
 
 
@@ -789,6 +800,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Implementación tras validar el diseño spec-first. Se optó por herencia \texttt{Truss3DCorot(Truss3D)} por paralelismo con \texttt{Truss2DCorot(Truss2D)} y reutilización del constructor. La diferencia estructural con el caso 2D es el proyector $\mathbf P$: en 2D tenía rango 1 y generaba un $\mathbf K_G$ de rango 1 (vector $\mathbf n$ único); en 3D tiene rango 2 y $\mathbf K_G$ rango 2 (plano perpendicular al eje). Los tests del criterio 3 verifican explícitamente \textbf{dos} direcciones transversas linealmente independientes, capturando este cambio dimensional.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Test de invariancia bajo rotación rígida 3D: se verifican dos rotaciones distintas (plano x-y y plano x-z) para descartar coincidencias accidentales en ejes canónicos.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (\texttt{axial\_end\_forces}): con carga axial distribuida N\_i \ensuremath{\neq} N\_j.
 \end{itemize}
 
 
@@ -977,6 +989,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como componente totalmente independiente de \texttt{Truss2DCorot} por decisión explícita del usuario: la maquinaria cinemática se duplica dentro de la clase de cable para desacoplar su evolución futura del elemento de armadura. El coste es \textasciitilde{}40 líneas duplicadas; la ganancia es que ninguna refactorización de las armaduras puede contaminar silenciosamente el comportamiento de los cables.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Validación de material unilateral: se optó por \textbf{no} imponerla en \texttt{\_\_init\_\_}. Motivo: el contrato elemento\ensuremath{\leftrightarrow}material del proyecto es genérico sobre \texttt{STRAIN\_DIM=1}; introducir una verificación específica crearía un acoplamiento entre la clase del elemento y la identidad del material. Se documenta en \texttt{material\_contract.expected\_behaviour} del YAML para orientar al usuario.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (\texttt{axial\_end\_forces}): con carga axial distribuida N\_i \ensuremath{\neq} N\_j.
 \end{itemize}
 
 
@@ -1162,6 +1175,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como pieza totalmente autónoma por decisión del usuario: no hereda de \texttt{Cable2DCorot} ni de \texttt{Truss3DCorot}. Compartir archivo con \texttt{Cable2DCorot} (\texttt{solidum/elements/cable.py}) es convención temática del proyecto (elementos del mismo dominio conviven en un archivo, como las 4 armaduras y los 2 frames 2D en \texttt{structural.py}), no implica dependencia de código.
   \item \textbf{2026-04-21} \ensuremath{\cdot} La única diferencia estructural con \texttt{Cable2DCorot} es el proyector 3D: en 2D la perpendicular es un vector único ($\mathbf n$); en 3D es un plano (dimensión 2). Esto se refleja en el rango de $\mathbf K_G$: 1 en 2D, 2 en 3D.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (\texttt{axial\_end\_forces}): con carga axial distribuida N\_i \ensuremath{\neq} N\_j.
 \end{itemize}
 
 
@@ -1332,7 +1346,7 @@ out_of_scope:
   - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
   - plasticidad distribuida en la sección (fibras); el modelo escala rigidez global por E_t
   - pandeo (requiere rigidez geométrica, no implementada en esta viga lineal)
-  - "fuerzas de cuerpo distribuidas: el usuario reparte carga equivalente a los nodos"
+  - "fuerzas de cuerpo no uniformes (trapezoidales, puntuales en el vano): sólo b uniforme vía compute_body_load"
 
 acceptance:
   - name: respuesta axial pura
@@ -1380,6 +1394,7 @@ references:
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{solidum/elements/frame.py} y desacoplado del helper compartido \texttt{\_frame\_geometry}. El método estático \texttt{\_build\_geometry} reimplementa la construcción de $\mathbf T$ dentro de la clase. \texttt{Frame2DTimoshenko} sigue en \texttt{structural.py} usando su propio acceso al helper compartido; si mañana también se independiza, duplicará o internalizará su propia versión.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto --- validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
   \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{solidum/elements/frame/\{euler,timoshenko,euler\_corot,\_shared\}.py}. La duplicación de \texttt{\_build\_geometry} entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (\texttt{build\_geometry\_2d} en \texttt{\_shared.py}), pero esta vez sin función helper externa flotante --- pertenece al paquete \texttt{frame/}. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde \texttt{alpha0} porque su cinemática corotacional no se beneficia del helper común.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones.
 \end{itemize}
 
 
@@ -1617,6 +1632,7 @@ references:
   \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{solidum/elements/frame/}. EulerCorot vive ahora en \texttt{euler\_corot.py}, sin herencia con las otras vigas 2D. Pasan a compartirse los helpers libres de carga de cuerpo, masa y traducción de fuerzas a través de \texttt{\_shared.py}; la lógica corotacional propia (reconstrucción de \texttt{T} desde \texttt{alpha0}, cinemática actual) se mantiene íntegra dentro de la clase.
   \item \textbf{2026-04-21} \ensuremath{\cdot} La primera versión tenía el signo equivocado en la parte de momentos de $\mathbf K_\sigma$ ($+$ en lugar de $-$). El test de coherencia tangente/fuerza interna por diferencias finitas lo detectó inmediatamente: $\|\mathbf K_{T,\text{analítica}} - \mathbf K_{T,\text{FD}}\|_{\text{rel}}$ del orden de 1e-1 en lugar de 1e-5. Tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ cuidadosamente (ver notas) el signo correcto es negativo. Este episodio justifica retrospectivamente incluir un test FD como criterio de aceptación en toda formulación no-lineal geométrica futura.
   \item \textbf{2026-04-21} \ensuremath{\cdot} El test del límite lineal usa $P=10$ N para obtener $v/L \sim 10^{-4}$: suficientemente pequeño para estar en régimen lineal pero suficientemente grande para que el residuo del solver converja por debajo de \texttt{tol=1e-8} (cargas menores producen desplazamientos del orden del ruido numérico y el Newton oscila en la tolerancia relativa).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones.
 \end{itemize}
 
 
@@ -1780,7 +1796,7 @@ out_of_scope:
   - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
   - plasticidad distribuida en la sección
   - pandeo
-  - "fuerzas de cuerpo distribuidas: el usuario reparte carga equivalente a los nodos"
+  - "fuerzas de cuerpo no uniformes (trapezoidales, puntuales en el vano): sólo b uniforme vía compute_body_load"
 
 acceptance:
   - name: convergencia a Euler-Bernoulli para viga esbelta
@@ -1829,6 +1845,8 @@ references:
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento movido a archivo propio \texttt{solidum/elements/frame.py} y desacoplado del helper \texttt{\_frame\_geometry}. Con este movimiento, el helper compartido se elimina completamente del repositorio: \texttt{Frame2DEuler} y \texttt{Frame2DTimoshenko} replican la construcción de $\mathbf T$ como método estático \texttt{\_build\_geometry}, cada una en su clase. La duplicación (\textasciitilde{}15 líneas) es el precio aceptado de la independencia mutua.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Test del criterio 1: se eligió $L/h$ grande en lugar de reproducir un caso específico de libro porque la convergencia Timoshenko \ensuremath{\to} Euler es el comportamiento \textbf{esperado por construcción} (factor $\Phi \to 0$). Verificarlo directamente con el solver completo valida simultáneamente la cinemática de Timoshenko, el tratamiento del shear locking y la integración con ensamblador + solver.
   \item \textbf{2026-05-13} \ensuremath{\cdot} \texttt{frame.py} se parte en paquete \texttt{solidum/elements/frame/}. La duplicación de \texttt{\_build\_geometry} ya no se justifica: ambas vigas comparten \texttt{build\_geometry\_2d} en \texttt{\_shared.py}, helper interno al paquete (no flotante). Las clases siguen sin herencia entre sí.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{\ensuremath{\Phi} = 24(1+\ensuremath{\nu})\ensuremath{\cdot}I/(A\_s\ensuremath{\cdot}L\ensuremath{^{2}})}, independiente de E\_t: con \texttt{E\_t = 0} (plasticidad perfecta plastificada) la forma \texttt{12\ensuremath{\cdot}E\_t\ensuremath{\cdot}I/(G\ensuremath{\cdot}A\_s\ensuremath{\cdot}L\ensuremath{^{2}})} dividía 0/0.
 \end{itemize}
 
 
@@ -2073,6 +2091,7 @@ references:
   \item \textbf{2026-04-21} \ensuremath{\cdot} Elemento creado como componente totalmente autónomo: no hereda de \texttt{Frame2DEuler} ni de ninguna otra viga. La maquinaria cinemática 3D se implementa íntegra dentro de \texttt{frame3d.py}, coherente con la filosofía aplicada a cables.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Decisión sobre \texttt{ref\_vector} vs "tercer nodo de orientación". Se optó por \texttt{ref\_vector} (vector 3D proyectado al plano perpendicular al eje) por ser más compacto en YAML y no requerir nodos fantasma en la malla. El default \texttt{[0, 0, 1]} cubre la mayoría de casos de ingeniería estructural (estructuras terrestres con gravedad en $-z$); el fallback para barras verticales usa \texttt{[1, 0, 0]} con advertencia explícita.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Verificación cruzada con \texttt{Frame2DEuler}: el criterio 2 aplica una viga alineada con el eje $x$ global bajo carga en $y$; los desplazamientos resultantes deben coincidir con la solución 2D clásica $v = PL^3/(3EI_z)$, $\theta = PL^2/(2EI_z)$. El test lo verifica a 8 decimales. Esto blinda la coherencia dimensional: el 3D se reduce al 2D sin error acumulado cuando el problema es efectivamente plano.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{internal\_forces(U, equivalent\_load=None)}: cuando el \texttt{Assembler} ensambló peso propio o fuerza de cuerpo, \texttt{solidum.run} pasa el vector nodal equivalente del elemento (escalado por \ensuremath{\lambda}\_final) y las fuerzas internas de extremo son \texttt{F\_int − f\_eq} en ejes locales. Antes se devolvía \texttt{K\ensuremath{\cdot}u}, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V\_i = qL/2 y M\_i = −5qL\ensuremath{^{2}}/12 en vez de qL y −qL\ensuremath{^{2}}/2, contradiciendo a las reacciones.
 \end{itemize}
 
 
@@ -2269,6 +2288,9 @@ references:
   \item \textbf{2026-04-30} \ensuremath{\cdot} Añadido patch test de MacNeal-Harder (NAFEMS) en \texttt{acceptance.verification}. Cuatro triángulos alrededor de un nodo interior descentrado reproducen un campo lineal impuesto en el contorno con \ensuremath{\varepsilon} constante en cada elemento.
   \item \textbf{2026-05-04} \ensuremath{\cdot} Expuesta \texttt{compute\_gauss\_state(U)} (1 punto central). El \texttt{VtkExporter} consume \ensuremath{\sigma} por elemento y promedia a nodos (\texttt{Sigma\_*\_nodal}).
   \item \textbf{2026-05-04} \ensuremath{\cdot} Añadidas cargas distribuidas consistentes (\texttt{compute\_body\_load}, \texttt{compute\_edge\_traction}) con la misma semántica que \texttt{Quad4}. Para Tri3 ambos integrandos son exactos analíticamente: body load reparte 1/3 por nodo, tracción de borde reparte L/2 a cada uno de los dos nodos del borde.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin2d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -2475,6 +2497,9 @@ references:
   \item \textbf{2026-04-30} \ensuremath{\cdot} Añadido patch test de MacNeal-Harder (NAFEMS) en \texttt{acceptance.verification}. Cinco Quad4 distorsionados con cuatro nodos interiores libres reproducen exactamente un campo lineal impuesto en el contorno, con \ensuremath{\varepsilon} constante e igual al gradiente analítico en todos los puntos de Gauss.
   \item \textbf{2026-05-04} \ensuremath{\cdot} Expuesta \texttt{compute\_gauss\_state(U)} con \ensuremath{\sigma} y \ensuremath{\varepsilon} por punto de Gauss y coordenadas naturales/globales. \texttt{compute\_internal\_forces} queda como promedio derivado. El \texttt{VtkExporter} añade campos nodales \texttt{Sigma\_XX\_nodal}, \texttt{Sigma\_YY\_nodal}, \texttt{Tau\_XY\_nodal} y \texttt{Von\_Mises\_nodal} por promedio simple sobre los elementos contiguos a cada nodo (suavizado de orden 0).
   \item \textbf{2026-05-04} \ensuremath{\cdot} Añadidas cargas distribuidas consistentes (\texttt{compute\_body\_load}, \texttt{compute\_edge\_traction}). Para tracciones uniformes en bordes rectos el reparto es exacto (L/2 a cada nodo del borde) y se evita la cuadratura 1D; las fuerzas de cuerpo se integran con la cuadratura del elemento. Solo tracciones \textbf{constantes por borde} y en \textbf{coordenadas globales} en este paso; tracción variable y presión normal quedan para una iteración posterior.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). La masa consistente se integra siempre con la regla completa 2\ensuremath{\times}2 aunque K use integración reducida (con la regla del elemento y 1 punto, M quedaba de rango 2/8 y el problema modal era singular). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin2d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -2549,6 +2574,14 @@ acceptance:
 \begin{itemize}
   \item \textbf{Archivo}: solidum/elements/solid\_2d/tri6.py \ensuremath{\cdot} clase \texttt{Tri6} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Quad9). Declara \texttt{\_MASS\_QUADRATURE = "tri\_6"} (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (\texttt{tri\_3}, orden 2) subintegra el producto cuadrático\ensuremath{\times}cuadrático de la masa consistente.
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py (patch cuadrático), tests/test\_cooks\_membrane.py (benchmark Bathe/Hughes con malla triangulada 4\ensuremath{\times}4 + refinamiento monótono, añadido Fase B 2026-05-19).
+\end{itemize}
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin2d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -2705,6 +2738,14 @@ references:
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
 \end{itemize}
 
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). \texttt{\_MASS\_QUADRATURE = "3x3"} explícita: la masa se integra con la regla completa aunque K use 2\ensuremath{\times}2 (antes M de rango 8/16). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin2d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
+\end{itemize}
+
 
 \newpage
 
@@ -2777,6 +2818,14 @@ acceptance:
 \begin{itemize}
   \item \textbf{Archivo}: solidum/elements/solid\_2d/quad9.py \ensuremath{\cdot} clase \texttt{Quad9} (subclase de la base interna \texttt{\_HigherOrderSolid2D} en \_shared.py, compartida con Quad8 y Tri6).
   \item \textbf{Tests}: tests/test\_higher\_order\_solid\_2d.py.
+\end{itemize}
+
+\section{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). \texttt{\_MASS\_QUADRATURE = "3x3"} explícita: la masa se integra con la regla completa aunque K use 2\ensuremath{\times}2 (antes M de rango 8/18). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin2d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -3216,6 +3265,8 @@ references:
   \item \textbf{E --- Constructor \texttt{\_\_init\_\_(element\_id, nodes, material, cohesive\_material, thickness=1.0)}.} Mantengo el nombre \texttt{material} para el bulk (consistente con \texttt{Element.\_\_init\_\_}, que ya lo recibe así); \texttt{cohesive\_material} es el parámetro nuevo. El YAML mapea \texttt{bulk\_material: <name>} \ensuremath{\to} \texttt{material=...} y \texttt{cohesive\_material: <name>} \ensuremath{\to} \texttt{cohesive\_material=...}.
   \item \textbf{F --- Tolerancia \texttt{1e-14} (bit-exact)} en \texttt{estado\_intacto\_reproduce\_Tri3}. Si en la implementación emerge un desliz numérico documentado (por canceladas algebraicas tipo \texttt{G\ensuremath{\cdot}G\textasciicircum{}T = I}), se relaja con razón explícita en el Diálogo. Empezar estricta es mejor que pre-laxar.
   \item \textbf{2026-05-18} \ensuremath{\cdot} Status \ensuremath{\to} en draft hasta que el código + tests cierren; se promoverá a \texttt{validated} cuando los \texttt{acceptance} pasen. La IA arranca implementación.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Deuda \#18 (estado): \texttt{compute\_global\_stiffness} restaura al salir el trial del material y el del salto (\texttt{jump\_trial}, \texttt{cohesive\_state\_trial}), que el Newton local escribía al evaluar en \texttt{u = 0} (\texttt{tests/test\_trial\_isolation.py}).
 \end{itemize}
 
 
@@ -3483,6 +3534,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec inicial. Elemento espejo natural de \texttt{Tri3}; convención Voigt 6D y numeración de caras fijadas por ADR 0012. Sin elementos de alto orden en esta etapa. Shear locking y locking volumétrico declarados como limitaciones; \texttt{Hex8} es la opción preferente cuando la malla lo permite.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin3d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -3787,6 +3841,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec inicial. Elemento espejo natural de \texttt{Quad4}; convención Voigt 6D y numeración de caras fijadas por ADR 0012. Sin variantes corotacionales ni de alto orden en esta etapa. Locking volumétrico declarado como limitación con test que lo blinda; sin mitigación implementada (política idéntica al 2D).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). La masa consistente se integra siempre con la regla completa 2\ensuremath{\times}2\ensuremath{\times}2 aunque K use integración reducida (con la regla del elemento y 1 punto, M quedaba de rango 3/24 y el problema modal era singular). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin3d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -4030,6 +4087,9 @@ references:
 \begin{itemize}
   \item \textbf{2026-05-27} \ensuremath{\cdot} Spec inicial. Sub-fase 3 de A.ter --- cierra el catálogo cuadrático 3D con la rama tetraédrica. Subclase de \texttt{\_HigherOrderSolid3D} igual que \texttt{Hex20}/\texttt{Hex27}, pero con cara triangular (\texttt{Tri6} shape functions importadas del paquete 2D, cuadratura \texttt{tri\_3}) y cuadratura volumétrica tetraédrica nueva (\texttt{tet\_4} + \texttt{tet\_15}).
   \item \textbf{2026-05-27} \ensuremath{\cdot} Implementado y validado. Patch test lineal y cuadrático exactos a precisión máquina, 6 modos rígidos, body load suma exacta \texttt{b\ensuremath{\cdot}V\_e}, face traction balance exacto sobre la cara triangular, masa consistente con \texttt{tet\_15} exacta a precisión máquina (conservación \texttt{3\ensuremath{\cdot}\ensuremath{\rho}\ensuremath{\cdot}V}), lumped HRZ con todas las entradas positivas. Spec a \texttt{status: validated}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin3d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -4416,6 +4476,9 @@ references:
   \item \textbf{2026-05-27} \ensuremath{\cdot} Spec inicial. Sub-fase 1 de la sub-etapa A.ter (sólidos 3D cuadráticos). Hex20 standalone --- sin base interna compartida en esta sub-fase; el segundo caso (Hex27) entra en sub-fase 2 y dispara la centralización en \texttt{\_HigherOrderSolid3D} (regla de los dos casos reales aplicada).
   \item \textbf{2026-05-27} \ensuremath{\cdot} Implementado y validado. Patch test lineal y cuadrático exactos a precisión máquina, 6 modos rígidos exactos, cubo Lamé 3D uniaxial e hidrostático exactos. Demostración cuantitativa de la mitigación del shear locking sobre MacNeal 3D: Hex20 6\ensuremath{\times}1\ensuremath{\times}1 alcanza 97\% de la flecha analítica EB, frente a < 55\% de Hex8 12\ensuremath{\times}1\ensuremath{\times}1. Mitigación parcial del locking volumétrico documentada: ratio u(\ensuremath{\nu}=0.4999)/u(\ensuremath{\nu}=0.3) \ensuremath{\approx} 0.80 (vs < 0.6 del Hex8). Conteo de modos espurios con cuadratura reducida \texttt{hex\_2x2x2}: 12 = 6 rígidos + 6 hourglass por elemento aislado (corregido desde el "4" inicial tras verificación numérica directa; coincide con Belytschko-Liu-Moran §8.4.4). Spec actualizada a \texttt{status: validated}.
   \item \textbf{2026-05-27} \ensuremath{\cdot} Refactor a la base \texttt{\_HigherOrderSolid3D} con la entrada del \texttt{Hex27} (sub-fase 2). El cuerpo del archivo \texttt{hex20.py} queda como declaración de atributos (\texttt{\_SHAPE\_FN}, \texttt{\_GRAD\_FN}, \texttt{\_DEFAULT\_QUADRATURE}, \texttt{\_MASS\_QUADRATURE}, \texttt{\_FACE\_N\_FN}, \texttt{\_FACE\_DN\_FN}, \texttt{\_FACE\_QUADRATURE}, \texttt{FACE\_NODES}). La maquinaria de cálculo (bucle de Gauss para K, gauss state, body load, face traction, masa consistente, HRZ) ahora vive en la base --- paritaria con la centralización 2D \texttt{\_HigherOrderSolid2D} (Quad8/Quad9/Tri6). Los 26 tests previos pasan sin modificaciones.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin3d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -4681,6 +4744,9 @@ references:
 \begin{itemize}
   \item \textbf{2026-05-27} \ensuremath{\cdot} Spec inicial. Sub-fase 2 de A.ter --- el segundo caso real (Hex27) dispara la centralización en \texttt{\_HigherOrderSolid3D} (regla de los dos casos reales aplicada en el momento canónico, igual que el \texttt{\_HigherOrderSolid2D} cuando entró el \texttt{Quad9} después del \texttt{Quad8}).
   \item \textbf{2026-05-27} \ensuremath{\cdot} Implementado y validado. Patch test lineal, bilineal mixto (\texttt{u\_x = c\ensuremath{\cdot}xy}) y triquadrático completo (\texttt{u\_x = c\ensuremath{\cdot}x\ensuremath{^{2}}y\ensuremath{^{2}}z\ensuremath{^{2}}}) exactos a precisión máquina --- esta última es la capacidad distintiva del Hex27 respecto al Hex20 serendípito. K simétrica, 6 modos rígidos, masas consistente y lumped HRZ con todas las entradas positivas, balance de cargas distribuidas correcto. Spec a \texttt{status: validated}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin3d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_element\_state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/test\_batch\_assembly.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.gauss\_state}, mismo resultado que \texttt{compute\_gauss\_state}, verificado en \texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
 \end{itemize}
 
 
@@ -5020,6 +5086,11 @@ references:
 \end{itemize}
 
    El coste es nulo: quien no lo declare obtiene exactamente el comportamiento "por unidad de profundidad" que asume la literatura térmica. Omitirlo habría sido particularizar al caso de hoy.
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). La capacidad se integra siempre con \texttt{CAPACITY\_QUADRATURE} (regla completa) aunque K use integración reducida (con un punto C\_e era de rango 1). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): el gradiente \texttt{\ensuremath{\partial}N/\ensuremath{\partial}x} pasa a un núcleo compilado compartido con el elemento mecánico gemelo y se expone como \texttt{BATCH\_KINEMATICS}; la familia térmica se evalúa en el mismo kernel de familia con \texttt{k\ensuremath{\cdot}\ensuremath{\nabla}T} como "esfuerzo", de modo que \texttt{\ensuremath{\int}B\ensuremath{^{\top}}(k\ensuremath{\cdot}\ensuremath{\nabla}T) d\ensuremath{\Omega} = K\_e\ensuremath{\cdot}T\_e}. Sin \texttt{ElementState} (no hay historia).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes ya no lanza con jacobiano degenerado (devuelve \texttt{det J \ensuremath{\le} 0}; el ensamblador lanza con el id), el kernel de familia tiene variante paralela bit a bit igual a la serie, y el post-proceso por familia devuelve \texttt{grad\_T} y \texttt{flux = −k\ensuremath{\cdot}\ensuremath{\nabla}T} iguales a \texttt{compute\_gauss\_state} (\texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
+\end{itemize}
 
 
 \newpage
@@ -5297,6 +5368,11 @@ Patch test lineal 3D exacto & ✔ también en elemento distorsionado \\
    Nota técnica: cuando se retome, el \texttt{Hex8Thermal} \textbf{no} sufrirá el problema que bloquea al \texttt{Tet10} sobre superficie curva (deuda técnica \#8) --- al ser trilineal no tiene nodos intermedios que puedan quedar sobre aristas rectas. El bloqueante es sólo de mallado.
 
    \textbf{Criterio de retoma}: si entra un mallador 3D nativo (gmsh API) o aparece un caso de uso con flujo radial esférico.
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{quadrature} acepta clave del registro o tupla \texttt{(points, weights)} en todos los sólidos (\texttt{resolve\_quadrature} valida la familia por medida de referencia y dimensión). La capacidad se integra siempre con \texttt{CAPACITY\_QUADRATURE} (regla completa) aunque K use integración reducida (con un punto C\_e era de rango 1). tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): el gradiente \texttt{\ensuremath{\partial}N/\ensuremath{\partial}x} pasa a un núcleo compilado compartido con el elemento mecánico gemelo y se expone como \texttt{BATCH\_KINEMATICS}; la familia térmica se evalúa en el mismo kernel de familia con \texttt{k\ensuremath{\cdot}\ensuremath{\nabla}T} como "esfuerzo", de modo que \texttt{\ensuremath{\int}B\ensuremath{^{\top}}(k\ensuremath{\cdot}\ensuremath{\nabla}T) d\ensuremath{\Omega} = K\_e\ensuremath{\cdot}T\_e}. Sin \texttt{ElementState} (no hay historia).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): la cinemática por lotes ya no lanza con jacobiano degenerado (devuelve \texttt{det J \ensuremath{\le} 0}; el ensamblador lanza con el id), el kernel de familia tiene variante paralela bit a bit igual a la serie, y el post-proceso por familia devuelve \texttt{grad\_T} y \texttt{flux = −k\ensuremath{\cdot}\ensuremath{\nabla}T} iguales a \texttt{compute\_gauss\_state} (\texttt{tests/test\_batch\_postprocess.py}). Formulación sin cambios.
+\end{itemize}
 
 
 \newpage
@@ -5434,6 +5510,7 @@ references:
   \item \textbf{2026-04-21} \ensuremath{\cdot} Material creado como pieza independiente para la futura implementación de elementos de cable (\texttt{Cable2DCorot}, \texttt{Cable3DCorot}). Deliberadamente \textbf{no hereda} de \texttt{Elastic1D} aunque su rama en tensión sea idéntica: mantener el material autocontenido simplifica su lectura y evita acoplamientos futuros si la rama elástica cambia en otro archivo.
   \item \textbf{2026-04-21} \ensuremath{\cdot} Discontinuidad en $\varepsilon = 0$: documentada explícitamente en \texttt{out\_of\_scope: regularización numérica}. Si aparece un caso de uso con destensiones frecuentes donde Newton-Raphson oscile, se añadirá una variante \texttt{CableMaterial1DRegularized} con $E_c \ll E$ en compresión --- \textbf{no} se modificará este material (contrato limpio).
   \item \textbf{2026-05-12} \ensuremath{\cdot} Restricción de emparejamiento elevada a contrato: \texttt{IS\_UNILATERAL = True} en el material; \texttt{ACCEPTS\_UNILATERAL = True} en \texttt{Cable2DCorot}/\texttt{Cable3DCorot}. La base \texttt{Element.\_validate\_material\_compatibility} rechaza la combinación con \texttt{Truss*} (cuyo tangente colapsa la rigidez global sin K\_G que lo compense). Antes el contrato lo permitía y solo se desaconsejaba en docstring; ahora falla limpio al construir.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} (obligatorio en todo el catálogo). Sin kernel por lotes: los elementos 1D siguen el camino por elemento (fase 4 de la propuesta, diferida).
 \end{itemize}
 
 
@@ -5607,6 +5684,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada retroactivamente para cerrar el hueco H-5.3 de la auditoría 2026-05-18. El material es anterior a la convención de specs validadas; no se modifica código. La aceptación se considera cumplida por cobertura indirecta en tests de elementos.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} (obligatorio en todo el catálogo). Sin kernel por lotes: los elementos 1D siguen el camino por elemento (fase 4 de la propuesta, diferida).
 \end{itemize}
 
 
@@ -5845,6 +5923,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada retroactivamente para cerrar el hueco H-5.3 de la auditoría 2026-05-18. Material anterior a la convención de specs; no se modifica código. La aceptación se considera cumplida por los tests unitarios existentes.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} (obligatorio en todo el catálogo). Sin kernel por lotes: los elementos 1D siguen el camino por elemento (fase 4 de la propuesta, diferida).
 \end{itemize}
 
 
@@ -6042,6 +6121,7 @@ references:
   \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada retroactivamente sobre material existente (tangente secante) y extendida con tangente algorítmica consistente. Réplica directa de [[IsotropicDamage2D]] reducida a escalar. Sin ADR --- extensión local al material, no afecta a contratos.
   \item \textbf{2026-05-14} \ensuremath{\cdot} \texttt{IS\_SYMMETRIC} permanece \texttt{True}: la rigidez axial es escalar y la contribución elemental \texttt{B\textasciicircum{}T\ensuremath{\cdot}E\_tan\ensuremath{\cdot}B} es simétrica aunque pueda ser indefinida cuando \texttt{E\_tan < 0}. El sistema global puede dejar de ser PD; el fallback automático de Cholesky a LU del despachador algebraico (ADR 0003) lo gestiona sin cambios declarativos.
   \item \textbf{2026-05-14} \ensuremath{\cdot} No se añade test de integración. Justificación: con tangente consistente <0 en carga activa, un benchmark Truss2D bajo control de carga se vuelve inestable tras el pico; el seguimiento de la rama post-pico requiere arc-length que cae fuera del scope inmediato. Tests unitarios (incluyendo FD numérica y consistencia con la versión 2D reducida) cubren la corrección de la fórmula.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} (obligatorio en todo el catálogo). Sin kernel por lotes: los elementos 1D siguen el camino por elemento (fase 4 de la propuesta, diferida).
 \end{itemize}
 
 
@@ -6488,6 +6568,9 @@ references:
   \item Endurecimiento solo en cohesión (lineal); fricción/dilatancia constantes.
   \item \texttt{IS\_SYMMETRIC = False} declarativo a nivel material (independiente del caso particular de uso; conservador y consistente con el patrón del proyecto: el despachador agrega).
   \item \textbf{2026-05-14} \ensuremath{\cdot} Sin ADR. El modelo encaja en el patrón establecido por \texttt{VonMises2D} (kernel Numba, despacho hypothesis aunque solo soporte una, semántica trial/commit) y no rompe contratos transversales.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: retorno al ápice con \ensuremath{\psi} = 0: sin componente volumétrica del flujo no existe solución consistente con \ensuremath{\sigma} = C\_e:(\ensuremath{\varepsilon} − \ensuremath{\varepsilon}\textasciicircum{}p) (con H = 0 se clampaba \texttt{A\_apex} a 1e-30 y salía \ensuremath{\Delta}\ensuremath{\gamma} \ensuremath{\approx} 1e30; con H > 0 se devolvía el \ensuremath{\sigma} del ápice sin la \ensuremath{\varepsilon}\textasciicircum{}p volumétrica que lo justifica). Ahora el kernel lanza \texttt{ValueError} al entrar en la rama del ápice con \ensuremath{\eta}\_g = 0 y el constructor avisa al construir con \ensuremath{\psi} = 0. Aclarado que el endurecimiento actúa sobre \texttt{k(\ensuremath{\alpha}) = k\ensuremath{_{0}} + H\ensuremath{\cdot}\ensuremath{\alpha}} (radio del cono), no sobre la cohesión \texttt{c} (dk/dc vale 0.83--1.2 según la calibración). Nuevo \texttt{out\_of\_plane\_stress(\ensuremath{\sigma}, state)}: \ensuremath{\sigma}\_zz de plane strain desde \ensuremath{\varepsilon}\textasciicircum{}p\_zz (helper \texttt{materials/\_plane\_strain.py}), validado contra \texttt{DruckerPrager3D} con \ensuremath{\varepsilon}\_zz = 0.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} y un adaptador \texttt{@njit} con firma \texttt{MAT\_SIG} que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que \texttt{admissibility\_tol}. Formulación sin cambios; equivalencia con \texttt{compute\_state} exacta en esfuerzo, tangente y estado (\texttt{tests/test\_batch\_kernels.py}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): \texttt{batch\_out\_of\_plane\_stress(sigma, S)}, versión por arreglos de \texttt{out\_of\_plane\_stress} para el post-proceso por familia (exportador VTK); misma fórmula, \texttt{\ensuremath{\varepsilon}\textasciicircum{}p\_zz} leída de la fila de estado cuando aplica. Verificado archivo VTK idéntico por ambos caminos.
 \end{itemize}
 
 
@@ -6689,6 +6772,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada retroactivamente para cerrar el hueco H-5.3 de la auditoría 2026-05-18. Material anterior a la convención de specs validadas; no se modifica código. Aceptación cumplida por cobertura indirecta en pipelines existentes.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: nuevo \texttt{out\_of\_plane\_stress(\ensuremath{\sigma}, state)}: \ensuremath{\sigma}\_zz = \ensuremath{\nu}(\ensuremath{\sigma}\_xx + \ensuremath{\sigma}\_yy) en plane strain, 0 en plane stress. Lo consume el exportador VTK para el Von Mises 3D (antes usaba la fórmula de plane stress también en plane strain).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): \texttt{STATE\_SCHEMA = \{\}} y kernel lineal compartido (\texttt{materials/\_batch.linear\_material\_kernel}, \texttt{\ensuremath{\sigma} = C\ensuremath{\cdot}\ensuremath{\varepsilon}}); \texttt{batch\_matrix()} devuelve la \texttt{C} precalculada.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): \texttt{batch\_out\_of\_plane\_stress(sigma, S)}, versión por arreglos de \texttt{out\_of\_plane\_stress} para el post-proceso por familia (exportador VTK); misma fórmula, \texttt{\ensuremath{\varepsilon}\textasciicircum{}p\_zz} leída de la fila de estado cuando aplica. Verificado archivo VTK idéntico por ambos caminos.
 \end{itemize}
 
 
@@ -6995,6 +7081,9 @@ references:
   \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada retroactivamente sobre material existente (tangente secante) y extendida con tangente algorítmica consistente. Sin ADR: extiende un material existente añadiendo un término a la tangente; no rompe contratos arquitecturales transversales. Sí cambia \texttt{IS\_SYMMETRIC} para este material, lo cual el despachador algebraico ya soporta vía agregación sobre el dominio (no requiere refactor).
   \item \textbf{2026-05-14} \ensuremath{\cdot} Decisión: la transición loading\ensuremath{\leftrightarrow}unloading se decide con $\kappa_n$ committed (no con $\kappa$ trial dentro del Newton). Esto es lo estándar y evita oscilaciones del Newton entre ramas en pasos con ambigüedad. Si el paso converge, $\kappa$ se compromete y la decisión es consistente con la trayectoria.
   \item \textbf{2026-05-14} \ensuremath{\cdot} \texttt{IsotropicDamage1D} queda con tangente secante. Misma deuda gemela conceptual, pero fuera del alcance pactado (A2 era solo 2D). Si el usuario la prioriza luego, replicar es trivial: misma fórmula reducida a escalar.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: nuevo \texttt{out\_of\_plane\_stress} delegado al elástico base (\ensuremath{\sigma} = (1−d)\ensuremath{\cdot}C\_e\ensuremath{\cdot}\ensuremath{\varepsilon} escala todas las componentes, así que \ensuremath{\sigma}\_zz = \ensuremath{\nu}(\ensuremath{\sigma}\_xx + \ensuremath{\sigma}\_yy) sigue valiendo).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la física de \texttt{compute\_state} se movió a un núcleo \texttt{@njit} (\texttt{\_compute\_damage\_2d}) que consumen el camino por elemento y el adaptador por lotes; \texttt{evaluate\_exponential\_damage} se compila y recibe el cap como argumento. Sin cambio de formulación; \texttt{STATE\_SCHEMA = \{kappa, damage\}} con estado inicial \texttt{\ensuremath{\kappa} = \ensuremath{\kappa}\ensuremath{_{0}}}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): \texttt{batch\_out\_of\_plane\_stress(sigma, S)}, versión por arreglos de \texttt{out\_of\_plane\_stress} para el post-proceso por familia (exportador VTK); misma fórmula, \texttt{\ensuremath{\varepsilon}\textasciicircum{}p\_zz} leída de la fila de estado cuando aplica. Verificado archivo VTK idéntico por ambos caminos.
 \end{itemize}
 
 
@@ -7296,13 +7385,16 @@ Queda una cuestión \textbf{física} que la campaña experimental del PAPIIT res
   \item \textbf{Archivo}: \texttt{solidum/materials/orthotropic\_2d.py}
   \item \textbf{Clase}: \texttt{Orthotropic2D} (auto-registrada vía \texttt{@MaterialRegistry.register})
   \item \textbf{Tests (verificación)}: \texttt{tests/test\_orthotropic\_2d.py} --- 26 tests + 57 subtests.
-  \item \textbf{Validación externa}: \texttt{tests/validation/test\_off\_axis\_orthotropic.py} --- 16 tests + 60 subtests contra las formas cerradas de \textbf{Jones (1999) §2.8}: módulo aparente \texttt{E\_x(\ensuremath{\theta})} (ec. 2.85, 1e-12 rel.), Poisson aparente \texttt{\ensuremath{\nu}\_xy(\ensuremath{\theta})} (ec. 2.86, 1e-10) y coeficiente de influencia mutua \texttt{\ensuremath{\eta}\_xy,x(\ensuremath{\theta})}. Incluye consistencia FEM sobre un \texttt{Quad4} real (1e-10), no sólo sobre la constitutiva. Cifra citable: a 45\ensuremath{^{\circ}} la rigidez cae \textbf{por debajo del 10 \% de E\ensuremath{_{1}}}, muy por debajo de lo que sugiere \texttt{E\ensuremath{_{1}}/E\ensuremath{_{2}} = 18.75}, porque el término cruzado \texttt{(1/G\ensuremath{_{1}}\ensuremath{_{2}} − 2\ensuremath{\nu}\ensuremath{_{1}}\ensuremath{_{2}}/E\ensuremath{_{1}})} domina la zona intermedia. \textbf{Mutation test documentado}: quitar el factor 2 del bloque cortante de \texttt{T} produce 39 fallos --- el benchmark no pasa por construcción.
-  \item Suite global 1176 \ensuremath{\to} 1220.
+  \item \textbf{Validación externa}: \texttt{tests/validation/test\_off\_axis\_orthotropic.py} --- 20 tests + 221 subtests contra las formas cerradas de \textbf{Jones (1999) §2.8}: módulo aparente \texttt{E\_x(\ensuremath{\theta})} (ec. 2.85, 1e-12 rel.), Poisson aparente \texttt{\ensuremath{\nu}\_xy(\ensuremath{\theta})} (ec. 2.86, 1e-10) y coeficiente de influencia mutua \texttt{\ensuremath{\eta}\_xy,x(\ensuremath{\theta})}. Incluye consistencia FEM sobre un \texttt{Quad4} real (1e-10), no sólo sobre la constitutiva. Cifra citable: a 45\ensuremath{^{\circ}} la rigidez cae \textbf{por debajo del 10 \% de E\ensuremath{_{1}}}, muy por debajo de lo que sugiere \texttt{E\ensuremath{_{1}}/E\ensuremath{_{2}} = 18.75}, porque el término cruzado \texttt{(1/G\ensuremath{_{1}}\ensuremath{_{2}} − 2\ensuremath{\nu}\ensuremath{_{1}}\ensuremath{_{2}}/E\ensuremath{_{1}})} domina la zona intermedia. \textbf{Mutation test documentado}: quitar el factor 2 del bloque cortante de \texttt{T} produce 39 fallos --- el benchmark no pasa por construcción. \textbf{Ampliado 2026-09-10}: las tres constantes se miden ahora sobre modelos FEM de los \textbf{cinco} elementos sólidos 2D (Quad4, Tri3, Quad8, Quad9, Tri6), no sólo sobre \texttt{Quad4}; en particular \texttt{\ensuremath{\eta}\_xy,x} medido sobre el modelo valida la recuperación del cortante engineering en todo el pipeline. El mutation test pasa de 39 a \textbf{102 fallos}.
+  \item \textbf{Patch test ortótropo}: \texttt{tests/test\_patch\_orthotropic\_2d.py} --- 11 tests + 40 subtests. MacNeal-Harder sobre malla distorsionada con los cinco elementos y \ensuremath{\theta} \ensuremath{\in} {0\ensuremath{^{\circ}}, 30\ensuremath{^{\circ}}, 45\ensuremath{^{\circ}}, 90\ensuremath{^{\circ}}}, verificando \ensuremath{\varepsilon} \textbf{y \ensuremath{\sigma}} en cada punto de Gauss vía \texttt{compute\_gauss\_state()}. Con material isótropo \texttt{C[0,2] = C[1,2] = 0} enmascara errores de acoplamiento; con la constitutiva llena esos caminos quedan ejercitados. \textit{Alcance acotado}: compara \ensuremath{\sigma} contra la misma \texttt{C} que usa el elemento, así que valida el \textbf{elemento}, no la constitutiva --- verificado por mutación (caveat en \texttt{tests/validation/README.md} §11).
+  \item \textbf{Integración}: \texttt{tests/test\_orthotropic\_integration.py} --- 21 tests + 52 subtests. Cubre los caminos externos que ningún otro frente tocaba: regresión de la tabla publicada en el README del ejemplo (siete orientaciones vía \texttt{run\_yaml}), matriz de masa con \texttt{density} (la masa no debe ver la anisotropía), validación por YAML del criterio ortótropo, degeneración isótropa end-to-end contra \texttt{Elastic2D}, y el contrato genérico del material ---incluida la periodicidad \ensuremath{\theta} ≡ \ensuremath{\theta}+180\ensuremath{^{\circ}}--- que fija lo que la migración a orientación-en-el-elemento del ADR 0013 §2 debe preservar.
+  \item Suite global 1176 \ensuremath{\to} 1220 \ensuremath{\to} \textbf{1259}. Frente ortótropo: \textbf{78 tests + 370 subtests} repartidos en cuatro archivos (verificación, validación externa, patch test, integración).
   \item \textbf{Notas de implementación}:
   \item \texttt{C\_mat} y \texttt{C} (rotada) se \textbf{precalculan en el constructor}; \texttt{compute\_state} no recomputa nada. Mismo patrón que \texttt{Elastic2D} con su hipótesis.
   \item \textbf{Tolerancias adimensionales en todos los tests} (ADR 0006). Primera versión usaba \texttt{assertAlmostEqual(..., places=6)} absoluto y fallaba en \texttt{theta \ensuremath{\in} \{90\ensuremath{^{\circ}}, 180\ensuremath{^{\circ}}\}} con residuos de \textasciitilde{}1e-6 sobre magnitudes de \textasciitilde{}1e10 Pa --- que son \textbf{1e-16 en relativo}, precisión máquina. El origen es que \texttt{sin(180\ensuremath{^{\circ}})} no da cero exacto en punto flotante. Comparar contra cero absoluto convertía el test en una medida de la magnitud de \texttt{E1}, no de la física. Verificado que el criterio es invariante ante cambio de unidades en 15 órdenes de magnitud (Pa, MPa, micro-unidades).
   \item \textbf{Bring-up end-to-end} con \texttt{Quad4} + \texttt{LinearSolver}: \texttt{E\_aparente} = 15.10 GPa (\ensuremath{\theta}=0\ensuremath{^{\circ}}), 4.82 GPa (\ensuremath{\theta}=45\ensuremath{^{\circ}}), 0.805 GPa (\ensuremath{\theta}=90\ensuremath{^{\circ}}), con \texttt{\ensuremath{\sigma}\_xy \ensuremath{\neq} 0} sólo fuera de ejes principales y \texttt{K} simétrica en los tres casos.
   \item \textbf{Notas de traducción}: ninguna --- la formulación de Jones se implementa en la convención del proyecto sin cambio de signos.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): \texttt{STATE\_SCHEMA = \{\}} y kernel lineal compartido (\texttt{materials/\_batch.linear\_material\_kernel}, \texttt{\ensuremath{\sigma} = C\ensuremath{\cdot}\ensuremath{\varepsilon}}); \texttt{batch\_matrix()} devuelve la \texttt{C} precalculada.
 \end{itemize}
 
 
@@ -7722,6 +7814,9 @@ references:
   \item \textbf{2026-05-14} \ensuremath{\cdot} Corrección plane strain: el predictor elástico devolvía $\boldsymbol\sigma = \mathbf C_e\boldsymbol\varepsilon$, ignorando $\boldsymbol\varepsilon^p_n$. Bug latente preexistente sin tests que lo cubrieran (los unitarios solo probaban primer paso con $\boldsymbol\varepsilon^p = 0$). Detectado al validar el pipeline FEM: \texttt{compute\_gauss\_state(U\_final)} reportaba \ensuremath{\sigma} del predictor elástico (incorrecto) en lugar del \ensuremath{\sigma} post return-mapping. Corregido a $\boldsymbol\sigma = \mathbf s_\text{trial} + p\mathbf I$. La rama plane stress ya lo hacía bien desde el principio (predictor incluía la sustracción de $\boldsymbol\varepsilon^p$).
   \item \textbf{2026-05-14} \ensuremath{\cdot} Validación numérica de plane strain queda implícita en los tests unitarios existentes; los tests de integración \texttt{tests/test\_solid\_2d\_plasticity.py} abren por primera vez el pipeline completo Quad4 + VonMises2D + NonlinearSolver en ambas hipótesis --- hasta hoy no había cobertura de integración sólido 2D + material plástico.
   \item \textbf{2026-05-14} \ensuremath{\cdot} No se introduce ADR. La spec no rompe contratos: extiende un material existente con una rama nueva del despacho por \texttt{hypothesis}. Sí se actualiza \texttt{docs/catalogo\_materiales.md} al validar.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: Newton local del return mapping plane stress: tolerancia recalculada cada iteración con la escala corriente (\texttt{tol\_abs + tol\_rel\ensuremath{\cdot}R\_curr\ensuremath{^{2}}/3}, ADR 0006; con H > 0 la tolerancia fija en \ensuremath{\alpha}\_old quedaba bajo el redondeo y el bucle agotaba siempre el presupuesto) y warm start en la cota inferior de la raíz para H = 0 (\texttt{\ensuremath{\Delta}\ensuremath{\gamma}\ensuremath{_{0}} = (\ensuremath{\surd}(3\ensuremath{\cdot}½\ensuremath{\sigma}P\ensuremath{\sigma}\_trial)/R − 1)/\ensuremath{\mu}\_max}; desde \ensuremath{\Delta}\ensuremath{\gamma} = 0 con predictores lejanos salía sin converger y sin avisar). El agotamiento se registra con WARNING (una vez por instancia). Nuevo \texttt{out\_of\_plane\_stress} en plane strain desde \ensuremath{\varepsilon}\textasciicircum{}p\_zz, validado contra \texttt{VonMises3D} con \ensuremath{\varepsilon}\_zz = 0. Kernels con \texttt{cache=True}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} y un adaptador \texttt{@njit} con firma \texttt{MAT\_SIG} que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que \texttt{admissibility\_tol}. Formulación sin cambios; equivalencia con \texttt{compute\_state} exacta en esfuerzo, tangente y estado (\texttt{tests/test\_batch\_kernels.py}). El return mapping se reescribió sin asignaciones de memoria (\texttt{\_j2\_*\_core}) con el mismo orden de operaciones: verificado bit a bit sobre 20 000 estados aleatorios en ramas elástica y plástica.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del ADR 0014 (§9): \texttt{batch\_out\_of\_plane\_stress(sigma, S)}, versión por arreglos de \texttt{out\_of\_plane\_stress} para el post-proceso por familia (exportador VTK); misma fórmula, \texttt{\ensuremath{\varepsilon}\textasciicircum{}p\_zz} leída de la fila de estado cuando aplica. Verificado archivo VTK idéntico por ambos caminos.
 \end{itemize}
 
 
@@ -8236,6 +8331,8 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-21} \ensuremath{\cdot} \textbf{Implementación completa, status \texttt{validated}}. Kernel + clase + 17 tests unitarios + 1 test cruzado + 4 tests de integración (Hex8 elástico, Hex8 rama regular con tangente asimétrica + invariante $\operatorname{tr}(\boldsymbol\varepsilon^p) = 3\eta_g\alpha$, Hex8 rama ápice bajo expansión hidrostática, Tet4 smoke test). \textbf{24 tests añadidos a la suite (824 \ensuremath{\to} 848 verdes; suite global sin regresiones).} Todos los tests pasaron a la primera, incluyendo el cruzado DP3D \ensuremath{\leftrightarrow} DP2D outer\_cone plane\_strain a 10 decimales --- señal fuerte de que la convención Voigt 6D, la calibración compartida y la sustracción de $\boldsymbol\varepsilon^p_n$ antes del desviador son correctas. La integración Hex8 con cortante puro y tangente asimétrica ($\psi \neq \phi$) confirma que el despachador algebraico (ADR 0003) selecciona LU correctamente vía el flag declarativo \texttt{IS\_SYMMETRIC = False}. Validación contra solución analítica cerrada (cilindro con falla DP, esfera hueca bajo presión interna, etc.) \textbf{diferida a la campaña 3D consolidada} que se hará al final de la sub-etapa A.bis (tras completar \texttt{IsotropicDamage3D}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: misma corrección del ápice que \texttt{DruckerPrager2D}: con \ensuremath{\eta}\_g = 0 (\ensuremath{\psi} = 0) la rama del ápice lanza \texttt{ValueError} y el constructor avisa; antes se clampaba \texttt{A\_apex} a 1e-30.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} y un adaptador \texttt{@njit} con firma \texttt{MAT\_SIG} que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que \texttt{admissibility\_tol}. Formulación sin cambios; equivalencia con \texttt{compute\_state} exacta en esfuerzo, tangente y estado (\texttt{tests/test\_batch\_kernels.py}).
 \end{itemize}
 
 
@@ -8451,6 +8548,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada como pieza inicial de la Etapa 7 (sólidos 3D, alcance acotado Hex8 + Tet4 + Elastic3D). Convención Voigt 6D fijada en ADR 0012. Sin variantes de hipótesis (no aplica plane\_stress/plane\_strain en 3D).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): \texttt{STATE\_SCHEMA = \{\}} y kernel lineal compartido (\texttt{materials/\_batch.linear\_material\_kernel}, \texttt{\ensuremath{\sigma} = C\ensuremath{\cdot}\ensuremath{\varepsilon}}); \texttt{batch\_matrix()} devuelve la \texttt{C} precalculada.
 \end{itemize}
 
 
@@ -8819,6 +8917,9 @@ references:
 \end{itemize}
 
   \textbf{Con esta entrega cierra la sub-etapa A.bis} (materiales 3D no lineales): VonMises3D + DruckerPrager3D + IsotropicDamage3D. Validación contra benchmark publicado (e.g. ensayo tensión-softening con valor cuantitativo de carga máxima en barra cargada axialmente con softening exponencial calibrado por G\_f efectivo) \textbf{diferida a la campaña 3D consolidada} que se hará al cierre de A.bis junto con Hill 3D para VM3D y esfera hueca para DP3D.
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): la física de \texttt{compute\_state} se movió a un núcleo \texttt{@njit} (\texttt{\_compute\_damage\_3d}) que consumen el camino por elemento y el adaptador por lotes; \texttt{evaluate\_exponential\_damage} se compila y recibe el cap como argumento. Sin cambio de formulación; \texttt{STATE\_SCHEMA = \{kappa, damage\}} con estado inicial \texttt{\ensuremath{\kappa} = \ensuremath{\kappa}\ensuremath{_{0}}}.
+\end{itemize}
 
 
 \newpage
@@ -9274,6 +9375,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-21} \ensuremath{\cdot} \textbf{Implementación completa, status \texttt{validated}}. Kernel + clase + 12 tests unitarios + 1 test cruzado + 5 tests de integración (Hex8 uniaxial libre con Poisson, Hex8 confinado vs material standalone, Hex8 convergencia, Tet4 smoke test). \textbf{18 tests añadidos a la suite (804 \ensuremath{\to} 824 verdes; suite global sin regresiones).} Todos los tests pasaron a la primera, incluyendo el test cruzado VM3D \ensuremath{\leftrightarrow} VM2D plane strain a 10 decimales --- señal fuerte de que la convención Voigt 6D en el kernel y la tangente algorítmica son correctas. Validación Hill 3D (cilindro hueco bajo presión interna con plasticidad perfecta) \textbf{diferida a entrega separada} porque requiere setup de malla por octante con simetrías y carga incremental hasta plasticidad parcial; será el primer test de \texttt{tests/validation/} que ejercite VM3D contra solución analítica cerrada.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): declara \texttt{STATE\_SCHEMA} y un adaptador \texttt{@njit} con firma \texttt{MAT\_SIG} que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que \texttt{admissibility\_tol}. Formulación sin cambios; equivalencia con \texttt{compute\_state} exacta en esfuerzo, tangente y estado (\texttt{tests/test\_batch\_kernels.py}). El return mapping se reescribió sin asignaciones de memoria (\texttt{\_j2\_*\_core}) con el mismo orden de operaciones: verificado bit a bit sobre 20 000 estados aleatorios en ramas elástica y plástica.
 \end{itemize}
 
 
@@ -9706,6 +9808,7 @@ references:
   \item \textbf{\texttt{K\_e} obligatorio en YAML, sin default automático} --- adoptado. ADR 0010 §1 separa explícitamente \texttt{bulk\_material} y \texttt{cohesive\_material}; derivar \texttt{K\_e} de \texttt{E\_bulk\ensuremath{\cdot}ℓ\_c} los acoplaría a nivel de material y ensuciaría el contrato (el material recibiría \texttt{E\_bulk} y \texttt{ℓ\_c} como inputs ocultos). Si en una iteración futura el YAML pide derivado automático, la fábrica vivirá en el elemento (\texttt{CST\_Embedded2D} construye el \texttt{CohesiveDamageIsotropic} con \texttt{K\_e} derivado si se omite), no en el material.
   \item \textbf{2026-05-18} \ensuremath{\cdot} Status \ensuremath{\to} \texttt{validated}. La IA arranca implementación.
   \item \textbf{2026-05-18} \ensuremath{\cdot} \textit{Nota tras implementación}: durante los tests el corte por \texttt{DAMAGE\_MAX} aplicado a \ensuremath{\omega} introducía \textasciitilde{}10 \% de exceso en \texttt{\ensuremath{\int}t\ensuremath{\cdot}d[[u\_n]]} respecto a \texttt{G\_F} (vs \textasciitilde{}0.001 esperado). Razón física: en cohesivos \texttt{K\_e} es penalty (≫ E\_bulk) y \texttt{u\_n} recorre rango macroscópico, así que \texttt{(1−DAMAGE\_MAX)\ensuremath{\cdot}K\_e\ensuremath{\cdot}u\_n} no es despreciable. Fix arquitectural: el cap por \texttt{DAMAGE\_MAX} se aplica \textbf{sólo a la rigidez tangente} (para mantener el Newton no singular), no al \texttt{\ensuremath{\omega}} reportado ni a \texttt{t\_n}. Actualizadas §9, §12 y \texttt{acceptance.saturacion\_en\_w\_c\_softening\_lineal} consecuentemente. Distinto del patrón en \texttt{IsotropicDamage2D} por la diferencia en escalas de \texttt{K\_e} y de la variable de entrada.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: el softening lineal exige \texttt{w\_c > \ensuremath{\kappa}\ensuremath{_{0}}} (\texttt{K\_e > \ensuremath{\sigma}\_t0\ensuremath{^{2}}/(2\ensuremath{\cdot}G\_F)}), la misma condición que el exponencial; antes sólo validaba el exponencial y con \texttt{w\_c \ensuremath{\le} \ensuremath{\kappa}\ensuremath{_{0}}} \ensuremath{\omega} saltaba a 1 en cuanto \ensuremath{\kappa} > \ensuremath{\kappa}\ensuremath{_{0}}, disipando ½\ensuremath{\cdot}\ensuremath{\sigma}\_t0\ensuremath{\cdot}\ensuremath{\kappa}\ensuremath{_{0}} > G\_F sin aviso.
 \end{itemize}
 
 
@@ -10020,6 +10123,9 @@ references:
    Consecuencia para la spec del elemento: \texttt{compute\_body\_source(Q)} integra $\int_\Omega Q\,\mathbf N^\top d\Omega$, paralelo a \texttt{compute\_body\_load(b)} del mecánico. Se especifica allí, no aquí.
 
    No cierra la puerta a un atajo futuro ---un material que declare generación propia--- si aparece el caso de uso que lo justifique.
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (ADR 0014): \texttt{STATE\_SCHEMA = \{\}} y kernel lineal compartido (\texttt{materials/\_batch.linear\_material\_kernel}, \texttt{k\ensuremath{\cdot}\ensuremath{\nabla}T}); \texttt{batch\_matrix()} devuelve el tensor de conductividad.
+\end{itemize}
 
 
 \newpage
@@ -10186,7 +10292,7 @@ parameters:
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
   - { name: linear_algebra,           type: str,   required: false, default: "auto",
-      desc: "'auto' (LU para postcrítico), 'cholesky', 'lu'. En arc-length el default fuerza LU por indefinitud potencial" }
+      desc: "'auto' (Pardiso si está instalado, si no LU: el solver declara la tangente potencialmente indefinida y no usa Cholesky), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (CG que pasa a MINRES al detectar curvatura negativa)" }
 
 requirements:
   - "Modelo con potencial snap-through/snap-back (geometría inestable, softening del material)"
@@ -10261,7 +10367,7 @@ references:
   \item \textbf{Clase}: \texttt{ArcLengthSolver}, registrada vía \texttt{@SolverRegistry.register} con \texttt{PIPELINE\_KIND = "static"}.
   \item \textbf{Restricción cuadrática y selección de raíz}: implementada en \texttt{solve}. Comparación de ángulos \texttt{theta1 = \ensuremath{\Delta}U\_iter \ensuremath{\cdot} (\ensuremath{\Delta}U\_new + ddl1\ensuremath{\cdot}\ensuremath{\delta}u\_t)}, idem \texttt{theta2}, seleccionar el mayor \ensuremath{\to} menor ángulo con la dirección previa.
   \item \textbf{\texttt{\_make\_linalg}}: fuerza \texttt{is\_positive\_definite=False} independientemente de la simetría del dominio (régimen postcrítico).
-  \item \textbf{Entrypoint público}: \texttt{solidum.run\_static(model, solver="arclength", ...)}.
+  \item \textbf{Entrypoint público}: \texttt{solidum.run(domain, solver=ArcLengthSolver(assembler, ...), F\_applied=...)} o \texttt{solidum.run\_yaml(path)}.
   \item \textbf{Tests}:
   \item tests/test\_arclength.py \ensuremath{\cdot} snap-through Lee frame, snap-back truss, recuperación lineal.
   \item tests/test\_solver\_robustness.py \ensuremath{\cdot} \texttt{test\_arc\_length\_traverses\_damage\_softening}.
@@ -10272,6 +10378,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs. La spec recoge la implementación tal como está al cierre de la sesión de saneamiento post-auditoría.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: corrector con un ensamblaje por iteración y convergencia evaluada antes de resolver: el estado committed corresponde exactamente a \texttt{U\_current} (antes se evaluaba R en U\_k, se comiteaba el trial de U\_k y se guardaba U\_{k+1}: un iterado de desfase, del orden de la tolerancia). La parada por \texttt{max\_steps} sin alcanzar \texttt{max\_lambda} emite WARNING y se expone en \texttt{reached\_max\_lambda}, \texttt{lambda\_final} y \texttt{steps\_done}; \texttt{solidum.run} escala \texttt{F\_applied} por \ensuremath{\lambda}\_final (reacciones coherentes) y reporta \texttt{converged}/\texttt{num\_steps} reales (antes siempre \texttt{True}/1).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} ADR 0015: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_ArcProblem}: iterado \texttt{(U, \ensuremath{\lambda}, \ensuremath{\Delta}U)}, dos resoluciones por iteración y restricción cilíndrica como método \texttt{constraint}; raíces imaginarias \ensuremath{\to} \texttt{CorrectionAborted}; predictor tangente en \texttt{\_tangent\_predictor}; retirados \texttt{\_solve} y \texttt{\_make\_linalg}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+  \item \textbf{2026-09-23} \ensuremath{\cdot} ADR 0017-0019: \texttt{linear\_algebra} admite \texttt{pardiso} e \texttt{iterative} (CG \ensuremath{\to} MINRES automático ante curvatura negativa, adecuado a la tangente indefinida del régimen postcrítico); al empezar \texttt{solve} se rechaza un mecanismo rígido (\texttt{MechanismError}). Dentro del trazado no se rechaza ningún sistema casi singular: cerca de un punto límite es parte del algoritmo.
 \end{itemize}
 
 
@@ -10479,7 +10588,8 @@ parameters:
   - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
-  - { name: linear_algebra,           type: str,   required: false, default: "auto" }
+  - { name: linear_algebra,           type: str,   required: false, default: "auto",
+      desc: "Heredado de ArcLengthSolver: 'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018)" }
 
   # Específicos de esta variante:
   - { name: initial_tau,              type: float, required: true,
@@ -10622,6 +10732,11 @@ Recomendación: dejar esta validación como deuda técnica priorizada en STATUS.
   \item ¿El switching automático cilíndrico\ensuremath{\leftrightarrow}disipación es deseable, o prefieres dos solvers separados (\texttt{CylindricalArcLengthSolver} y \texttt{DissipationArcLengthSolver} puros) que el usuario elige según el caso? El switching es estándar en Verhoosel et al. 2009; dos solvers separados son más predecibles pero exigen que el usuario diagnostique cuándo cambiar.
   \item ¿Sign-of-pivot tracking se aborda en esta spec o se difiere a una spec independiente (\texttt{PivotTracker})? Está acoplado al backend algebraico (ADR 0003) --- si el LDL\ensuremath{^{\top}} Bunch-Kaufman se introduce como helper compartido, otros solvers se beneficiarían. Mi propuesta es \textbf{abordarlo aquí en versión "signo del determinante LU"} (aproximación válida para indefinitud simple) y dejar el LDL\ensuremath{^{\top}} verdadero como deuda técnica del proyecto.
 \end{enumerate}
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: hereda la reestructuración del corrector y los metadatos de trazado de \texttt{ArcLengthSolver} (ensamblaje único por iteración, estado committed coherente, \texttt{reached\_max\_lambda}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} ADR 0015: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_DissipationArcProblem}: sobreescribe \texttt{constraint} con la restricción lineal de Gutiérrez para el modo de disipación y hereda los modos cilíndrico y de cierre exacto; \texttt{\ensuremath{\alpha} \ensuremath{\approx} 0} \ensuremath{\to} \texttt{CorrectionAborted}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+  \item \textbf{2026-09-23} \ensuremath{\cdot} ADR 0017-0019: hereda de \texttt{ArcLengthSolver} los valores nuevos de \texttt{linear\_algebra} y la comprobación de mecanismo rígido al empezar \texttt{solve}.
+\end{itemize}
 
 
 \newpage
@@ -10664,7 +10779,7 @@ Apoyos Dirichlet (homogéneos $u_s = 0$ o no homogéneos $u_s = g$) eliminados d
   \item Vector de desplazamientos global $\mathbf U \in \mathbb R^{n_{\text{dof}}}$ (libres + prescritos consistentes).
   \item Reacciones se recuperan a posteriori vía \texttt{domain.reactions(U)}.
   \item Esfuerzos en puntos de Gauss vía \texttt{domain.recompute\_gauss\_state(U)}.
-  \item El resultado se envuelve en \texttt{SolveResult} por la capa pública (\texttt{solidum.run\_static}).
+  \item El resultado se envuelve en \texttt{SolveResult} por la capa pública (\texttt{solidum.run}).
 \end{itemize}
 
 
@@ -10697,15 +10812,17 @@ ADR 0004 fase 1 (eliminación directa de apoyos) y fase 2 (transformación $\mat
 
 \subsection{8. Backend algebraico}
 
-Despacho automático ADR 0003:
+Despacho automático (ADR 0003, ampliado por ADR 0017):
 
 \begin{itemize}
-  \item Si el dominio es \textbf{simétrico} (todos los materiales con tangente simétrica) \ensuremath{\Rightarrow} se asume PD y se factoriza con \textbf{Cholesky} (\texttt{scipy.sparse.linalg.splu} con \texttt{options=\{'SymmetricMode': True\}} o equivalente Cholesky sparse).
-  \item Si Cholesky reporta no-positividad (puede ocurrir con casi-singular o mal condicionado) \ensuremath{\Rightarrow} \textbf{fallback automático} a LU.
-  \item Si el dominio declara material \textbf{no simétrico} \ensuremath{\Rightarrow} LU directo.
+  \item Si el dominio es \textbf{simétrico} (todos los materiales con tangente simétrica) \ensuremath{\Rightarrow} se asume PD y se factoriza con \textbf{Cholesky} (CHOLMOD) si \texttt{scikit-sparse} está instalado.
+  \item Si no, o si el dominio declara material \textbf{no simétrico} \ensuremath{\Rightarrow} \textbf{Pardiso} (Intel MKL, multihilo) si \texttt{pypardiso} está instalado; si no, \textbf{LU} (SuperLU).
+  \item Si Cholesky reporta no-positividad (casi-singular o mal condicionado) \ensuremath{\Rightarrow} \textbf{fallback automático} al siguiente backend.
 \end{itemize}
 
-Override manual: parámetro \texttt{linear\_algebra \ensuremath{\in} \{"auto", "cholesky", "lu"\}}.
+Override manual: parámetro \texttt{linear\_algebra \ensuremath{\in} \{"auto", "cholesky", "pardiso", "lu", "iterative[:amg|jacobi|none]"\}}. El iterativo (ADR 0018) nunca se elige de forma automática; sobre una matriz no simétrica cae al directo con aviso.
+
+\textbf{Red de seguridad (ADR 0019)}. Antes de factorizar se comprueba que el modelo no es un \textbf{mecanismo rígido} (\texttt{MechanismError}, con el movimiento libre descrito). Tras resolver se exige el \textbf{equilibrio} \texttt{\ensuremath{\|}F − K\ensuremath{\cdot}u\ensuremath{\|} \ensuremath{\le} 1e-8\ensuremath{\cdot}\ensuremath{\|}F\ensuremath{\|}} y una factorización \textbf{sin pivotes numéricamente nulos} (\texttt{IllPosedSystemError}). Antes de esta red, un modelo mal apoyado devolvía en silencio desplazamientos de miles de kilómetros.
 
 \textbf{Cache de factorización (ADR 0003 fase 2)}: la primera llamada a \texttt{solve} ensambla $\mathbf K$, reduce y factoriza; la factorización se guarda en el solver. Llamadas posteriores con un $\mathbf F$ distinto reutilizan el factor sin reensamblaje --- el coste se reduce a una resolución triangular barata. Si el usuario modifica el modelo entre llamadas (nuevos elementos, BCs, materiales) debe invocar \texttt{invalidate\_cache()} explícitamente.
 
@@ -10716,6 +10833,7 @@ No aplica.
 \subsection{10. Caveats numéricos}
 
 \begin{itemize}
+  \item \textbf{Modelos mal planteados}: un mecanismo rígido se rechaza antes de resolver y uno interno tras resolver (ADR 0019). Queda sin detectar el mal condicionamiento sin singularidad (rigideces muy desproporcionadas): un directo es estable hacia atrás y el residuo sale pequeño aunque el error de la solución pueda no serlo.
   \item \textbf{Suposición de PD por simetría}: el despachador asume que un dominio con materiales simétricos tiene $\mathbf K$ positiva definida. Es cierto para elasticidad estándar con suficientes apoyos; falso para casos degenerados (apoyos insuficientes, modos rígidos no restringidos, casi-singularidad geométrica). El fallback Cholesky\ensuremath{\to}LU cubre estos casos.
   \item \textbf{Cache desactualizado}: si el modelo se modifica entre \texttt{solve} calls sin llamar a \texttt{invalidate\_cache}, los resultados serán inconsistentes. La política deliberada es \textbf{cache silenciosa} (no se detectan modificaciones del modelo automáticamente) por velocidad --- la responsabilidad de invalidar es del usuario.
   \item \textbf{No es no lineal}: si el problema es no lineal (material plástico, geometría corotacional con cargas significativas) usar \texttt{NonlinearSolver}. Este solver evaluará la tangente en estado virgen ($\mathbf U = 0$) y producirá una respuesta lineal incorrecta sin avisar.
@@ -10736,7 +10854,7 @@ interface:
 
 parameters:
   - { name: linear_algebra, type: str, required: false, default: "auto",
-      desc: "Selección del backend algebraico: 'auto' (Cholesky→LU según simetría), 'cholesky', 'lu'" }
+      desc: "Selección del backend algebraico: 'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018)" }
 
 requirements:
   - "Modelo lineal: materiales con tangente constante, geometría no corotacional o cargas suficientemente pequeñas"
@@ -10803,7 +10921,8 @@ references:
   \item \textbf{Clase}: \texttt{LinearSolver}, registrada vía \texttt{@SolverRegistry.register} con \texttt{PIPELINE\_KIND = "static"}.
   \item \textbf{Cache}: atributos \texttt{\_factor}, \texttt{\_T}, \texttt{\_g\_full}, \texttt{\_F\_dir}, \texttt{\_n\_free} se rellenan lazy en la primera llamada a \texttt{solve}. Método público \texttt{invalidate\_cache()} los pone a \texttt{None} para forzar reensamblaje.
   \item \textbf{Fallback Cholesky\ensuremath{\to}LU}: capturado en \texttt{\_build\_cache} vía \texttt{CholeskyNotPositiveDefiniteError} (ADR 0003 §5); registra un warning y reintenta con LU.
-  \item \textbf{Entrypoint público}: \texttt{solidum.run\_static(model, solver="linear", ...)} (despacho declarativo por \texttt{PIPELINE\_KIND}, regla C de la auditoría).
+  \item \textbf{Red de seguridad (ADR 0019)}: \texttt{ensure\_statically\_restrained} en \texttt{\_build\_cache} antes de factorizar; \texttt{check\_linear\_solution} tras cada \texttt{solve} (equilibrio y \texttt{n\_zero\_pivots} del factor). Ambas en \texttt{solidum/math/solvers/model\_checks.py}.
+  \item \textbf{Entrypoint público}: \texttt{solidum.run(domain, solver=LinearSolver(assembler), F\_applied=...)} o \texttt{solidum.run\_yaml(path)}, que despacha por \texttt{PIPELINE\_KIND} (regla C de la auditoría).
   \item \textbf{Tests}: cobertura masiva implícita --- prácticamente todos los tests del pipeline estático lineal lo usan. Tests específicos del cache: \texttt{tests/test\_solver\_robustness.py::test\_linear\_solver\_cache\_reuse}.
 \end{itemize}
 
@@ -10812,6 +10931,8 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs validadas. La cache de factorización se añadió en la sesión de saneamiento post-auditoría (commit \texttt{b517718}, H-4.2); esta spec recoge ese comportamiento como parte del contrato actual.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{invalidate\_cache()} invalida también las cachés del \texttt{Assembler}; además el \texttt{ConstraintSet} se reconstruye solo por huella de las restricciones, así que un apoyo añadido tras el primer \texttt{solve} surte efecto (antes se ignoraba en silencio). \texttt{solidum.run} comitea el estado final.
+  \item \textbf{2026-09-23} \ensuremath{\cdot} ADR 0017, 0018 y 0019: el despacho automático incluye Pardiso entre Cholesky y LU; \texttt{linear\_algebra} admite \texttt{pardiso} e \texttt{iterative[:amg|jacobi|none]}; red de seguridad (mecanismo rígido antes de factorizar, equilibrio y pivotes nulos tras resolver). Corregidas dos inexactitudes previas de esta spec: Cholesky nunca se hizo con \texttt{splu} en modo simétrico (es CHOLMOD, opcional) y el entrypoint \texttt{solidum.run\_static} no existe (es \texttt{solidum.run}).
 \end{itemize}
 
 
@@ -10909,7 +11030,9 @@ Idéntica a \texttt{LinearSolver} --- ADR 0004. La carga Dirichlet no homogénea
 
 \subsection{8. Backend algebraico}
 
-Despacho automático ADR 0003 idéntico a \texttt{LinearSolver}. Fallback Cholesky\ensuremath{\to}LU activado.
+Despacho automático idéntico a \texttt{LinearSolver} (Cholesky \ensuremath{\to} Pardiso \ensuremath{\to} LU; iterativo sólo a petición, ADR 0017-0018). Fallback Cholesky\ensuremath{\to}LU activado.
+
+\textbf{Red de seguridad (ADR 0019)}: antes del primer paso se rechaza un \textbf{mecanismo rígido} (\texttt{MechanismError}, con el movimiento libre descrito). Dentro del Newton no se rechaza ningún sistema ---cerca de un punto límite resolver uno casi singular es legítimo---, pero el corrector registra el residuo relativo de cada resolución lineal y, si el paso fracasa con un sistema mal resuelto, la divergencia se clasifica como \texttt{SingularTangentError} con la causa.
 
 \textbf{Newton modificado (ADR 0003 fase 2)}: parámetro opcional \texttt{freeze\_tangent\_after\_iter}. Si es \texttt{int N}, el solver factoriza fresca durante las primeras $N$ iteraciones del paso y reutiliza la factorización en las siguientes iteraciones del mismo paso (no entre pasos --- la tangente cambia con $\mathbf U$). Default \texttt{None} = Newton estándar (factoriza cada iter).
 
@@ -10956,7 +11079,7 @@ parameters:
   - { name: min_delta_lambda,            type: float, required: false, default: NEWTON_DEFAULT_MIN_DELTA_LAMBDA,
       desc: "Cota inferior para Δλ; por debajo se aborta con SolverDivergedError (keyword-only)" }
   - { name: linear_algebra,              type: str,   required: false, default: "auto",
-      desc: "'auto' (Cholesky→LU según simetría), 'cholesky', 'lu' (keyword-only)" }
+      desc: "'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018) (keyword-only)" }
   - { name: freeze_tangent_after_iter,   type: int|None, required: false, default: null,
       desc: "Newton modificado: factoriza fresca primeras N iter, congela después (keyword-only)" }
   - { name: line_search,                 type: bool,  required: false, default: false,
@@ -11032,7 +11155,7 @@ references:
   \item \textbf{Clase}: \texttt{NonlinearSolver}, registrada vía \texttt{@SolverRegistry.register} con \texttt{PIPELINE\_KIND = "static"}.
   \item \textbf{Argumentos keyword-only}: todos menos \texttt{assembler} y \texttt{convergence} son keyword-only (auditoría H-1.5, sesión 2026-05-19, commit \texttt{4e4ed54}).
   \item \textbf{Bisección y clasificación}: en \texttt{solve}, al fallar \texttt{\ensuremath{\Delta}\ensuremath{\lambda} < min\_delta\_lambda} se llama a \texttt{classify\_divergence(residual\_history, delta\_history, singular\_tangent\_detected)} que devuelve la subclase apropiada de \texttt{SolverDivergedError} con métricas tipadas.
-  \item \textbf{Entrypoint público}: \texttt{solidum.run\_static(model, solver="nonlinear", ...)}.
+  \item \textbf{Entrypoint público}: \texttt{solidum.run(domain, solver=NonlinearSolver(assembler, ...), F\_applied=...)} o \texttt{solidum.run\_yaml(path)}.
   \item \textbf{Tests}: cobertura amplísima --- todos los tests de plasticidad/daño/corotacional/embedded del pipeline estático lo ejercitan. Tests específicos del comportamiento adaptativo y de divergencia tipada en \texttt{tests/test\_solver\_robustness.py} y \texttt{tests/test\_solver\_diagnostics.py}.
 \end{itemize}
 
@@ -11041,6 +11164,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs. Comportamiento documenta el estado tras la sesión de saneamiento post-auditoría (commits \texttt{4e4ed54} para keyword-only, ADR 0011 ya integrado).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: un ensamblaje por iteración: la convergencia se evalúa al inicio de la iteración con (\ensuremath{\|}R(U\_k)\ensuremath{\|}, \ensuremath{\|}\ensuremath{\delta}U\_{k−1}\ensuremath{\|}) y el estado trial que se comitea es el del propio ensamblaje en U\_k (antes cada iteración ensamblaba dos veces para la misma secuencia de decisiones). \texttt{max\_iter} es el número máximo de resoluciones por paso. La iteración 0 no evalúa convergencia porque el incremento de Dirichlet \ensuremath{\lambda}\ensuremath{\cdot}g entra en la primera resolución (con control en desplazamiento el residuo en DOFs libres era nulo y declaraba convergencia sin mover el apoyo): todo paso hace al menos una resolución. Expone \texttt{steps\_done} y \texttt{lambda\_final}, que \texttt{solidum.run} vuelca en \texttt{SolveResult.num\_steps} (antes siempre 1).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} ADR 0015: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_IncrementalProblem}: residuo \texttt{\ensuremath{\lambda}\ensuremath{\cdot}F\_ext − F\_int}, reducción con el incremento de Dirichlet del paso, sin evaluación en la iteración 0; retirados \texttt{\_armijo\_step} y \texttt{\_solve\_reduced}, ahora \texttt{corrector.line\_search\_step} y \texttt{corrector.solve}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+  \item \textbf{2026-09-23} \ensuremath{\cdot} ADR 0017-0019: despacho con Pardiso e iterativo a petición; comprobación de mecanismo rígido al empezar \texttt{solve}; diagnóstico de tangente singular a partir del residuo lineal (sólo diagnóstico, sin cambio del algoritmo).
 \end{itemize}
 
 
@@ -11281,6 +11407,8 @@ Notas de traducción: ninguna --- la convención de signos del proyecto (Reglas 
 
 \begin{itemize}
   \item \textit{2026-05-18}: regla C aplicada al introducir este solver. Antes de él, \texttt{run\_yaml::isinstance(NewmarkSolver)} capturaba HHT-\ensuremath{\alpha} por subclasificación; CentralDifference no podía heredar de NewmarkSolver (flujo radicalmente distinto, sin sistema lineal en cada paso, estabilidad condicional). En lugar de añadir una tercera rama \texttt{isinstance}, se refactorizó el dispatch a \texttt{PIPELINE\_KIND} declarativo --- futuros solvers no clásicos (Harmonic, ResponseSpectrum, \ldots{}) no requieren tocar \texttt{entry.py}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: con \texttt{nonlinear=True} el estado de los elementos se comitea en cada paso (antes \textbf{nunca}: los materiales con historia se reevaluaban desde el estado virgen y el oscilador elastoplástico conservaba la energía). \texttt{M\_red} ya no se densifica (\texttt{toarray()} costaba O(n\ensuremath{^{2}}) de memoria). Documentado sin corregir: con amortiguamiento Rayleigh la fuerza viscosa se evalúa en v\_{n+1/2} (Belytschko) y el orden observado cae a 1; sin amortiguamiento es 2.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_internal\_forces=True} (deuda \#15): registra \texttt{elem.internal\_forces(u\_k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.element\_forces\_history}; \texttt{internal\_forces\_history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/test\_transient\_forces\_history.py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
 \end{itemize}
 
 
@@ -11519,6 +11647,8 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-18} \ensuremath{\cdot} Decisión sobre auto-derivación de \ensuremath{\beta}, \ensuremath{\gamma}: por defecto sí, desde \texttt{alpha}. Override explícito posible pero no recomendado (combinaciones \ensuremath{\alpha}, \ensuremath{\beta}, \ensuremath{\gamma} arbitrarias pueden perder estabilidad incondicional u orden 2). El parámetro de la API es \textbf{el} \ensuremath{\alpha}, no la terna; \ensuremath{\beta}, \ensuremath{\gamma} son consecuencia matemática de \ensuremath{\alpha} salvo experimentación expresa. Esto simplifica el uso típico y centraliza la responsabilidad: si el usuario solo conoce \ensuremath{\alpha}, el solver hace el resto.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: mismos diagnósticos que \texttt{NewmarkSolver} (masa singular, conteo de pasos).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_internal\_forces=True} (deuda \#15): registra \texttt{elem.internal\_forces(u\_k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.element\_forces\_history}; \texttt{internal\_forces\_history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/test\_transient\_forces\_history.py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
 \end{itemize}
 
 
@@ -11940,6 +12070,7 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-13} \ensuremath{\cdot} Validado. Los 13 tests de \texttt{tests/test\_modal.py} cubren los criterios de \texttt{acceptance} (verificación analítica + propiedades algebraicas + contrato de errores + pipeline YAML) y pasan con las tolerancias declaradas. Promovido \texttt{status: validated}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{K} singular con \ensuremath{\sigma} = 0 (estructura free-free) fallaba según la malla ("Factor is exactly singular" con 1, 2 o 4 elementos, éxito por redondeo con 3 o 10): reintento automático con un shift negativo relativo a tr(K)/tr(M). \texttt{ArpackNoConvergence} \ensuremath{\to} \texttt{converged=False} con los modos obtenidos (\texttt{n\_modes} reales); antes el flag estaba cableado a \texttt{True}. Modelos con n\_free \ensuremath{\le} 32 o n\_modes \ensuremath{\ge} n\_free − 1 usan \texttt{scipy.linalg.eigh} denso (M-ortonormal), así que un modelo de 1 GDL admite análisis modal.
 \end{itemize}
 
 
@@ -12172,6 +12303,8 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-13} \ensuremath{\cdot} Validado. Los 14 tests de \texttt{tests/test\_newmark.py} cubren \texttt{acceptance.verification} (osciladores 1 GDL no amortiguado / amortiguado / step / orden de convergencia) y \texttt{acceptance.specific} (calibración Rayleigh). Promovido \texttt{status: validated}.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: masa reducida singular (DOF libre sin masa, \texttt{density = 0.0}) \ensuremath{\to} \texttt{ValueError} que nombra la causa, en vez de un historial de \texttt{NaN} con un simple warning de scipy. \texttt{number\_of\_steps} evita el paso espurio cuando \texttt{t\_end = n\ensuremath{\cdot}dt} acumula redondeo (t\_final = t\_end + dt en el 5 \% de los pares).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_internal\_forces=True} (deuda \#15): registra \texttt{elem.internal\_forces(u\_k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.element\_forces\_history}; \texttt{internal\_forces\_history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/test\_transient\_forces\_history.py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
 \end{itemize}
 
 
@@ -12390,6 +12523,9 @@ references:
 
 \begin{itemize}
   \item \textbf{2026-05-19} \ensuremath{\cdot} Spec corta tipo extensión creada para cerrar el hueco H-5.3 (variante de \texttt{HHTSolver}/\texttt{NewtonNewmarkSolver} por Reglas §4). Sin ADR nuevo: reúsa ADR 0009 (formulación temporal HHT) y ADR 0011 (Newton + diagnóstico). El comportamiento no se modifica.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: misma reestructuración que \texttt{NewtonNewmarkSolver} (un ensamblaje por iteración, \texttt{g} antes de ensamblar, MPC vía \texttt{T}, \texttt{prepare\_all\_steps}); el line search opcional evalúa ahora el residuo HHT-\ensuremath{\alpha} propio, no el de Newmark.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_internal\_forces=True} (deuda \#15): registra \texttt{elem.internal\_forces(u\_k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.element\_forces\_history}; \texttt{internal\_forces\_history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/test\_transient\_forces\_history.py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} ADR 0015: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_DynamicNewtonProblem} con residuo HHT-\ensuremath{\alpha} y factor \texttt{1+\ensuremath{\alpha}} en el jacobiano; \texttt{F\_int\_n} se toma del estado del ensamblaje convergido) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 \end{itemize}
 
 
@@ -12590,6 +12726,9 @@ references:
   \item \textbf{2026-05-14} \ensuremath{\cdot} Spec creada como \textbf{variante} de \texttt{NewmarkSolver} aplicando la nueva regla §4 (registrada en el mismo commit que esta spec). Sin ADR nuevo: reusa las decisiones de ADR 0009 fase 4 (residuo, jacobiano, conmutar Newton dentro del paso). Sin entrada propia en el manual estructural --- la subclase es invisible al usuario API (excepto por el \texttt{type} en YAML y los parámetros extra).
   \item \textbf{2026-05-14} \ensuremath{\cdot} Decisión: \textbf{subclase} sobre \texttt{NewmarkSolver} en lugar de bandera \texttt{nonlinear=True} en la misma clase. Razones: (i) más explícito en el código y en el YAML (\texttt{type} distinto para análisis distinto); (ii) evita condicionales que ensucian el flujo lineal de la fase 3; (iii) deja sitio para variantes adicionales (HHT-\ensuremath{\alpha} no lineal, generalized-\ensuremath{\alpha}) por composición. El ADR 0009 fila "Fase 4" decía "\texttt{NewmarkSolver} (mismo, con \texttt{nonlinear=True})" --- interpretación textualista vs. arquitectural: la regla §4 nueva legitima la elección de subclase, y el patrón conserva el espíritu (mismo análisis, mismas decisiones, mismo entrypoint) sin la implementación literal.
   \item \textbf{2026-05-14} \ensuremath{\cdot} Amortiguamiento Rayleigh queda fijado con $\mathbf K_0$ (rigidez elástica de referencia) y constante en el tiempo. Alternativa rechazada: Rayleigh con $\mathbf K_\text{t}$ corriente --- no es la convención estándar y crea coupling artificial entre la disipación viscosa y la plástica. Documentado en sección "Amortiguamiento Rayleigh --- heredado".
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: un ensamblaje por iteración: la convergencia se evalúa al inicio de la iteración con (\ensuremath{\|}R(U\_k)\ensuremath{\|}, \ensuremath{\|}\ensuremath{\delta}U\_{k−1}\ensuremath{\|}) y el estado trial que se comitea es el del propio ensamblaje en U\_k (antes cada iteración ensamblaba dos veces para la misma secuencia de decisiones). \texttt{max\_iter} es el número máximo de resoluciones por paso. \texttt{g} se impone en u\ensuremath{_{0}} \textbf{antes} de ensamblar F\_int(u\ensuremath{_{0}}) (la aceleración inicial era inconsistente con apoyos prescritos no nulos: ü\ensuremath{_{0}} = 0 en vez de K(g\ensuremath{_{0}} − u\ensuremath{_{0}})/M). La incógnita reducida se reconstruye con \texttt{T} (\texttt{ü = T\ensuremath{\cdot}ü\_free}), así que las restricciones lineales con maestros funcionan (antes el esclavo quedaba congelado y el Newton divergía). \texttt{prepare\_all\_steps} por paso (hook ADR 0010 §5, antes ausente en dinámica). Masa reducida singular \ensuremath{\to} \texttt{ValueError} accionable.
+  \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_internal\_forces=True} (deuda \#15): registra \texttt{elem.internal\_forces(u\_k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.element\_forces\_history}; \texttt{internal\_forces\_history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/test\_transient\_forces\_history.py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} ADR 0015: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_DynamicNewtonProblem}: iterado \texttt{(u, u̇, ü, ü\_libre)}, residuo dinámico inyectado, jacobiano \texttt{M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_t}, norma \texttt{\ensuremath{\|}T\ensuremath{^{\top}}R\ensuremath{\|}}; retirado \texttt{\_armijo\_step\_dynamic}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 \end{itemize}
 
 
@@ -12819,6 +12958,7 @@ references:
 \begin{itemize}
   \item \textit{2026-05-18}: regla D aplicada al introducir este solver --- segundo método de cómputo sobre \texttt{ModalResult} (el primero fue \texttt{free\_vibration}). El algoritmo de free\_vibration se movió a \texttt{solidum/math/modal\_response.py}; \texttt{ModalResult.free\_vibration} queda como wrapper delgado de 3 líneas, preservando la API histórica. Los nuevos \texttt{response\_spectrum\_srss} y \texttt{response\_spectrum\_cqc} viven en el mismo módulo. \texttt{ResponseSpectrumSolver} orquesta \texttt{ModalSolver} interno + delegación a \texttt{modal\_response}.
   \item \textit{2026-05-18}: el cuarto valor de \texttt{PIPELINE\_KIND} (\texttt{"spectrum"}) extiende el despacho declarativo de \texttt{run\_yaml} introducido en D2. Cierra el ADR 0009 completo (fases 1-7 + variante HHT-\ensuremath{\alpha}).
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{cumulative\_effective\_mass\_ratio} normaliza por la masa total en la dirección de excitación \texttt{r\ensuremath{^{\top}}\ensuremath{\cdot}M\ensuremath{\cdot}r} (nuevo campo \texttt{total\_mass} del resultado); antes dividía por la suma de los modos calculados, que vale siempre 1.0 en el último modo y volvía trivial el criterio del 90 \%.
 \end{itemize}
 
 
@@ -13180,6 +13320,9 @@ El mensaje accionable correcto ya existía en \texttt{ThermalMaterial.volumetric
    \textbf{El default no encierra a nadie}: Crank-Nicolson queda a un parámetro de distancia para quien sepa que su problema es suave y busque orden 2.
 
    \textbf{Requisito añadido con la decisión}: el solver \textbf{reporta el orden efectivo del esquema} según el $\theta$ en uso, para que el coste en precisión del default sea visible y no una penalización silenciosa. Es la contrapartida honesta de elegir robustez.
+\begin{itemize}
+  \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: el aviso de estabilidad condicional (\ensuremath{\theta} < 0.5) cita el límite correcto \texttt{\ensuremath{\Delta}t \ensuremath{\le} 2/((1 − 2\ensuremath{\theta})\ensuremath{\cdot}\ensuremath{\lambda}\_max)}, que sólo coincide con \texttt{2/\ensuremath{\lambda}\_max} en \ensuremath{\theta} = 0.
+\end{itemize}
 
 
 \newpage
@@ -13189,6 +13332,8 @@ El mensaje accionable correcto ya existía en \texttt{ThermalMaterial.volumetric
 
 
 \textit{Referencia rápida de los elementos implementados. Una entrada por elemento. Para detalles físicos/numéricos \ensuremath{\to} código fuente.}
+
+\textit{> \textbf{Ensamblaje por lotes (ADR 0014)}: los sólidos isoparamétricos 2D/3D y los térmicos declaran \texttt{BATCH\_KINEMATICS} (la misma cinemática compilada que usa \texttt{compute\_element\_state}; \textbf{no lanza}: devuelve \texttt{det J \ensuremath{\le} 0} si el jacobiano degenera y el ensamblador lanza el \texttt{ValueError} con el id), los planos \texttt{BATCH\_SCALE = "thickness"} y, para el post-proceso por familia, las funciones de forma (\texttt{BATCH\_SHAPE\_FUNCTIONS} en los lineales; las bases de orden superior y térmica las toman de \texttt{\_SHAPE\_FN} / \texttt{\_shape\_functions}); el \texttt{Assembler} los agrupa en familias y los evalúa en un único kernel, serie o paralelo. Los estructurales 1D y \texttt{CST\_Embedded2D} siguen el camino por elemento.}
 
 \textit{> \textbf{Convenciones}: \texttt{STRAIN\_DIM} = dimensión Voigt esperada del material asociado (1 = axial escalar, 3 = 2D \texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\gamma}\_xy]}, 6 = 3D). DOFs por nodo = \texttt{DOF\_NAMES}.}
 
@@ -13981,6 +14126,9 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt
 \end{enumerate}
 
 
+\textbf{Nota 2026-09-22 (auditoría global).} En todos los sólidos el argumento \texttt{quadrature} acepta la clave del registro (\texttt{"2x2"}, \texttt{"hex\_3x3x3"}, \ldots{}) o una tupla \texttt{(points, weights)}; la regla se valida contra la familia del elemento (\texttt{resolve\_quadrature}). La masa consistente y la capacidad térmica se integran siempre con la regla completa aunque \texttt{K} use integración reducida. La tolerancia del jacobiano es relativa y adimensional (\texttt{JACOBIAN\_RTOL}). Los elementos estructurales 1D devuelven en \texttt{internal\_forces} las fuerzas internas de extremo \texttt{F\_int − f\_eq} cuando hay carga distribuida (\texttt{solidum.run} pasa la carga nodal equivalente).
+
+
 \newpage
 
 \chapter{Modelos constitutivos — catálogo}
@@ -13990,6 +14138,8 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt
 \textit{Referencia rápida de los modelos constitutivos implementados. Una entrada por material. Para detalles del algoritmo \ensuremath{\to} código fuente.}
 
 \textit{> \textbf{Convenciones}: \texttt{STRAIN\_DIM} = dimensión Voigt de la deformación de entrada (1 = escalar, 3 = 2D \texttt{[\ensuremath{\varepsilon}\_xx, \ensuremath{\varepsilon}\_yy, \ensuremath{\gamma}\_xy]}, 6 = 3D). \texttt{PRIMARY\_STATE\_VAR} = variable interna que el \texttt{VtkExporter} lleva al output.}
+
+\textit{> \textbf{Estado interno (ADR 0014)}: todo material declara \texttt{STATE\_SCHEMA = \{nombre: forma\}} con sus variables internas (\texttt{\{\}} sin historia); de ahí se deriva el almacenamiento por arreglos del ensamblaje por lotes. Los materiales de sólidos y el térmico declaran además un kernel puntual \texttt{@njit} (\texttt{BATCH\_KERNEL}) que llama a su propio return mapping, de modo que el camino por lotes y el camino por elemento son la misma física. Los materiales 2D con plane strain aportan además \texttt{batch\_out\_of\_plane\_stress(sigma, S)}, la versión por arreglos de \texttt{out\_of\_plane\_stress} que usa el post-proceso por familia (el default de la base evalúa punto a punto).}
 
 \textit{> \textbf{Densidad (ADR 0008)}: todos los materiales aceptan un parámetro opcional \texttt{density} (kg/m\ensuremath{^{3}} en las unidades del problema). No requerido al construir --- análisis estáticos sin peso propio funcionan sin declararla. Cuando un consumidor que requiere masa la pide (\texttt{Assembler.assemble\_self\_weight(g)} y futuras \texttt{assemble\_mass\_matrix}, etc.) y la encuentra como \texttt{None}, \textbf{falla con \texttt{ValueError}} listando los materiales sin densidad. Valor \texttt{0.0} declarado explícitamente cubre el caso legítimo de material sin masa física (penalty, restricción) y emite warning informativo.}
 
@@ -14017,7 +14167,8 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt
   \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{hypothesis \ensuremath{\in} \{'plane\_stress', 'plane\_strain'\}}.
   \item \textbf{Variables internas}: ninguna.
   \item \textbf{Tangente}: constante = \texttt{C}.
-  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}).
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}). Compatibilidad \textbf{verificada en los cinco}: patch test con constitutiva llena y constantes aparentes de Jones medidas sobre modelo FEM.
+  \item \textbf{Validación}: constantes aparentes contra Jones (1999) §2.8 sobre los cinco elementos; patch test de MacNeal-Harder a \ensuremath{\theta} \ensuremath{\in} {0\ensuremath{^{\circ}}, 30\ensuremath{^{\circ}}, 45\ensuremath{^{\circ}}, 90\ensuremath{^{\circ}}} con \ensuremath{\sigma} verificado en cada punto de Gauss; regresión del ejemplo publicado vía YAML. 78 tests + 370 subtests.
   \item \textbf{Spec}: docs/specs/Elastic2D.md
   \item \textbf{Archivo}: solidum/materials/elastic\_2d.py
 \end{itemize}
@@ -14037,7 +14188,8 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt
   \item \textbf{Variables internas}: ninguna.
   \item \textbf{Tangente}: constante = \texttt{C\_glob}, simétrica y definida positiva para todo \texttt{theta}.
   \item \textbf{Caveat}: \texttt{plane\_strain} \textbf{fuera de alcance} --- requiere \texttt{E3}, \texttt{nu13}, \texttt{nu23}; el problema plano no cierra sin datos 3D.
-  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}).
+  \item \textbf{Compatible con}: \texttt{Quad4}, \texttt{Tri3}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (todos los sólidos 2D con \texttt{STRAIN\_DIM = 3}). Compatibilidad \textbf{verificada en los cinco}: patch test con constitutiva llena y constantes aparentes de Jones medidas sobre modelo FEM.
+  \item \textbf{Validación}: constantes aparentes contra Jones (1999) §2.8 sobre los cinco elementos; patch test de MacNeal-Harder a \ensuremath{\theta} \ensuremath{\in} {0\ensuremath{^{\circ}}, 30\ensuremath{^{\circ}}, 45\ensuremath{^{\circ}}, 90\ensuremath{^{\circ}}} con \ensuremath{\sigma} verificado en cada punto de Gauss; regresión del ejemplo publicado vía YAML. 78 tests + 370 subtests.
   \item \textbf{ADR}: docs/adr/0013-orientacion-material-y-ortotropia.md
   \item \textbf{Spec}: docs/specs/Orthotropic2D.md
   \item \textbf{Archivo}: solidum/materials/orthotropic\_2d.py
@@ -14331,14 +14483,17 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
 
 \textit{Referencia rápida de los métodos de solución implementados. Una entrada por solver. Para detalles del algoritmo \ensuremath{\to} código fuente.}
 
+\textit{> \textbf{Corrector compartido (ADR 0015)}: los cinco solvers iterativos (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{DissipationArcLengthSolver}, \texttt{NewtonNewmarkSolver}, \texttt{NewtonHHTSolver}) ejecutan el mismo bucle de Newton, \texttt{NewtonCorrector} (\texttt{solidum/math/solvers/corrector.py}): un ensamblaje por iteración, criterio dual (ADR 0007), backend con preferencia Cholesky \ensuremath{\to} Pardiso \ensuremath{\to} LU (ADR 0003, ADR 0017), solver iterativo CG/MINRES + AMG a petición con \texttt{linear\_algebra: iterative} (ADR 0018) y Newton modificado, line search y excepciones tipadas (ADR 0011). Cada uno aporta un \texttt{NewtonProblem} por paso con su residuo, su sistema tangente y su actualización, y conserva su control de paso. \texttt{solver.corrector} es la superficie de instrumentación.}
+
 
 
 \section{LinearSolver --- solución lineal directa en un paso}
 
 \begin{itemize}
-  \item \textbf{Propósito}: resolver \texttt{K \ensuremath{\cdot} U = F} en un único \texttt{spsolve}.
-  \item \textbf{Esquema}: ensamblaje único \ensuremath{\to} eliminación directa de DOFs prescritos (ADR 0004) \ensuremath{\to} \texttt{scipy.sparse.linalg.spsolve}.
-  \item \textbf{Parámetros}: \texttt{linear\_algebra} (default \texttt{auto}; ADR 0003 §4).
+  \item \textbf{Propósito}: resolver \texttt{K \ensuremath{\cdot} U = F} con una sola factorización.
+  \item \textbf{Esquema}: comprobación de mecanismo rígido (ADR 0019) \ensuremath{\to} ensamblaje único \ensuremath{\to} eliminación directa de DOFs prescritos (ADR 0004) \ensuremath{\to} factorización por el despachador (Cholesky \ensuremath{\to} Pardiso \ensuremath{\to} LU; ADR 0003, 0017) \ensuremath{\to} comprobación de equilibrio y de pivotes nulos (ADR 0019).
+  \item \textbf{Parámetros}: \texttt{linear\_algebra} (default \texttt{auto}; también \texttt{lu}, \texttt{pardiso}, \texttt{cholesky}, \texttt{iterative[:amg|jacobi|none]}, ADR 0018).
+  \item \textbf{Errores de planteamiento}: \texttt{MechanismError} (apoyos insuficientes, con el movimiento libre descrito) e \texttt{IllPosedSystemError} (mecanismo interno o matriz singular), en vez de devolver desplazamientos absurdos.
   \item \textbf{Cuándo usarlo}: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
   \item \textbf{No converge / no aplica}: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
   \item \textbf{Spec}: docs/specs/LinearSolver.md
@@ -14359,6 +14514,7 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
 \begin{itemize}
   \item \textbf{Adaptatividad} (\texttt{adaptive=True}): si converge en < 5 iteraciones, agranda el siguiente paso (\ensuremath{\times}1.5); si no converge, biseca (÷2). Falla si \texttt{\ensuremath{\Delta}\ensuremath{\lambda} < min\_delta\_lambda}.
   \item Tras converger un paso \ensuremath{\to} \texttt{assembler.commit\_all\_states()} (trial \ensuremath{\to} committed en todos los elementos).
+  \item El bucle interno es el \texttt{NewtonCorrector} compartido (ADR 0015) con el problema \texttt{\_IncrementalProblem} (residuo \texttt{\ensuremath{\lambda}\ensuremath{\cdot}F\_ext − F\_int}, reducción con el incremento de Dirichlet del paso); la convergencia no se evalúa en la iteración 0 (todo paso hace al menos una resolución).
   \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{num\_steps}, \texttt{adaptive}, \texttt{min\_delta\_lambda}, \texttt{linear\_algebra}, \texttt{freeze\_tangent\_after\_iter}, \textbf{\texttt{line\_search}} (default \texttt{False}, ADR 0011).
   \item \textbf{Cuándo usarlo}: la opción por defecto para no-linealidad material o geométrica suave (sin snap-back).
   \item \textbf{Cuándo activar \texttt{line\_search=True}}: cuando se observe oscilación del residuo entre iteraciones (síntoma clásico: ratios alternados sin descenso monótono). Caso documentado: plasticidad perfecta con carga cerca/sobre la capacidad. \textbf{Default \texttt{False}} porque en problemas con tangente consistente cuasi-cuadrática (daño activo, plasticidad estándar) el line search rechaza pasos correctos del Newton donde el residuo sube transitoriamente --- ver ADR 0011 §"Enmiendas".
@@ -14384,9 +14540,9 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
   \item \textbf{Caso especial --- final\_step}: si el predictor sobrepasaría \texttt{max\_lambda}, fija \ensuremath{\lambda} exactamente a \texttt{max\_lambda} y resuelve solo desplazamientos (Newton-Raphson puro).
   \item \textbf{Auto-ajuste de \texttt{dl}}: < 4 iter \ensuremath{\to} ampliar (\ensuremath{\times}1.5, tope \texttt{5\ensuremath{\cdot}dl\_initial}); > 8 iter \ensuremath{\to} reducir (\ensuremath{\times}0.6); no converge \ensuremath{\to} biseca (÷2).
   \item Convergencia: mismo criterio dual que \texttt{NonlinearSolver}.
-  \item \textbf{Parámetros}: \texttt{tol}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_grow\_iter\_threshold}, \texttt{dl\_shrink\_iter\_threshold}.
+  \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_grow\_iter\_threshold}, \texttt{dl\_shrink\_iter\_threshold}, \texttt{linear\_algebra}.
   \item \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite.
-  \item \textbf{Limitación}: más caro por paso (dos \texttt{spsolve} por iteración); requiere ajuste de \texttt{initial\_dl} para problemas nuevos.
+  \item \textbf{Limitación}: más caro por paso (dos resoluciones del sistema por iteración); requiere ajuste de \texttt{initial\_dl} para problemas nuevos.
   \item \textbf{Referencia}: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers \& Structures, 1981); Crisfield vol. 1, cap. 9.
   \item \textbf{Spec}: docs/specs/ArcLengthSolver.md
   \item \textbf{Archivo}: solidum/math/solvers/arclength.py
@@ -14620,6 +14776,7 @@ Convenciones de interfaz:
 
 \begin{itemize}
   \item \textbf{Solvers estáticos} (lineales, no lineales, arc-length): \texttt{PIPELINE\_KIND = "static"}. Constructor recibe \texttt{assembler} + parámetros; método \texttt{solve(F\_ext\_global, step\_callback=None) \ensuremath{\to} U\_final}. Comprometen los estados internos vía \texttt{assembler.commit\_all\_states()} al converger cada paso. Retornan el campo de desplazamientos completo.
+  \item \textbf{Solvers iterativos (Newton)}: no escribir el bucle. Construir un \texttt{NewtonCorrector(convergence, max\_iter=\ldots{}, is\_symmetric=domain\_is\_symmetric(domain), is\_positive\_definite=\ldots{}, linear\_algebra=\ldots{}, freeze\_tangent\_after\_iter=\ldots{}, line\_search=\ldots{})} en el constructor y, por paso, un objeto con el protocolo \texttt{NewtonProblem} (\texttt{assemble}, \texttt{residual}, \texttt{residual\_norm}, \texttt{calibration\_scales}, \texttt{reference\_force}, \texttt{x\_norm}, \texttt{correction}, \texttt{apply}, \texttt{on\_converged}); \texttt{corrector.run(problem, x0)} devuelve un \texttt{CorrectorResult} con \texttt{converged}, \texttt{x}, \texttt{n\_solves} y \texttt{divergence\_error(...)} para lanzar la excepción tipada. Ver \texttt{nonlinear.py} (el caso más simple) y ADR 0015.
   \item \textbf{Solvers modales / autovalor} (modal --- ADR 0009 --- y futuros pandeo lineal): \texttt{PIPELINE\_KIND = "modal"}. Constructor recibe \texttt{assembler} + parámetros; método \texttt{solve() \ensuremath{\to} ModalResult} (u otro tipo específico). No consumen vector de cargas. \texttt{run\_yaml} despacha a \texttt{run\_modal}.
   \item \textbf{Solvers transitorios} (Newmark, HHT, central differences): \texttt{PIPELINE\_KIND = "transient"}. Constructor recibe \texttt{assembler}, \texttt{t\_end}, \texttt{dt} + parámetros; método \texttt{solve() \ensuremath{\to} TransientResult}. \texttt{run\_yaml} despacha a \texttt{run\_transient}.
   \item \textbf{Solvers térmicos transitorios} (\ensuremath{\theta}-method): \texttt{PIPELINE\_KIND = "thermal\_transient"}. Constructor recibe \texttt{assembler}, \texttt{dt}, \texttt{n\_steps}, \texttt{T\_initial} + parámetros; método \texttt{solve() \ensuremath{\to} ThermalTransientResult}. \texttt{run\_yaml} despacha a \texttt{run\_thermal\_transient}. Integran la ecuación de \textbf{primer orden} \texttt{C\ensuremath{\cdot}Ṫ + K\ensuremath{\cdot}T = F}, no la de segundo orden mecánica: no admiten \texttt{rayleigh} ni condición inicial de velocidad.
@@ -14660,12 +14817,14 @@ El despachador (\texttt{solidum.math.linalg.dispatcher.select\_solver}) elige el
 \hline
 \textbf{Régimen de \texttt{K}} & \textbf{Backend elegido} & \textbf{Notas} \\
 \hline
-Simétrica + positiva definida & \textbf{Cholesky} (CHOLMOD) & \textasciitilde{}2\ensuremath{\times} más rápido y \textasciitilde{}2\ensuremath{\times} menos memoria que LU. Requiere la dependencia opcional \texttt{scikit-sparse}. Si falta, degrada a LU con un \textit{warning} una sola vez. \\
-Simétrica indefinida & LU general (placeholder LDL\ensuremath{^{\top}}) & Ideal para LDL\ensuremath{^{\top}} con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo, se usa LU sin pérdida de corrección, solo sin diagnóstico de bifurcación. \\
-No simétrica & \textbf{LU general} (SuperLU) & Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. \\
+Simétrica + positiva definida & \textbf{Cholesky} (CHOLMOD) & \textasciitilde{}2\ensuremath{\times} más rápido y \textasciitilde{}2\ensuremath{\times} menos memoria que LU. Requiere la dependencia opcional \texttt{scikit-sparse}. Si falta, se pasa al siguiente disponible. \\
+Simétrica indefinida & \textbf{Pardiso} si está; si no, LU (placeholder LDL\ensuremath{^{\top}}) & Ideal para LDL\ensuremath{^{\top}} con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo se resuelve sin pérdida de corrección, solo sin diagnóstico de bifurcación. \\
+No simétrica & \textbf{Pardiso} si está; si no, \textbf{LU general} (SuperLU) & Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. \\
 \hline
 \end{tabularx}
 \end{center}
+El orden de preferencia es \textbf{Cholesky \ensuremath{\to} Pardiso \ensuremath{\to} LU}: Cholesky sólo aplica al caso SPD, pero ahí explota la simetría y es la mejor opción; Pardiso cubre el mismo terreno que LU ---cualquier matriz real--- y lo sustituye cuando está instalado (ADR 0017), porque es multihilo y reordena por disección anidada. LU (SuperLU, en SciPy) es el suelo que siempre está disponible.
+
 \textbf{Origen de los flags}, todos derivables del modelo:
 \begin{itemize}
   \item \texttt{is\_symmetric}: AND lógico de \texttt{material.IS\_SYMMETRIC} y \texttt{element.PRESERVES\_SYMMETRY} sobre todos los componentes del dominio. Defaults \texttt{True}.
@@ -14676,6 +14835,18 @@ No simétrica & \textbf{LU general} (SuperLU) & Backend universal. Cubre plastic
 Ningún flag se pide al usuario.
 
 \textbf{\texttt{EigenSolver} (ADR 0009, problema generalizado)}. La capa algebraica incluye además \texttt{solidum.math.linalg.eigen.EigenSolver}, que resuelve el problema generalizado simétrico \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}} envolviendo \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). No comparte el \texttt{Protocol} \texttt{LinearAlgebraSolver} de los backends de \texttt{K\ensuremath{\cdot}x = b} porque su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}. El \texttt{ModalSolver} lo invoca para el análisis modal; los cálculos internos de shift-invert generan una factorización de \texttt{(K − \ensuremath{\sigma} \ensuremath{\cdot} M)} reutilizada en cada iteración Lanczos, así que la palanca de optimización es la misma --- Cholesky enchufado en lugar de SuperLU bajaría 2\ensuremath{\times} el coste del modal en problemas SPD (pendiente, ver memoria de cierre).
+
+\section{Red de seguridad del análisis estático (ADR 0019)}
+
+Un solver directo ante una matriz singular no avisa: SuperLU devuelve desplazamientos absurdos y Pardiso perturba los pivotes nulos y continúa. Como el usuario no elige el solver ni tiene por qué conocer ese comportamiento, Solidum comprueba tres cosas en todo análisis estático:
+
+\begin{enumerate}
+  \item \textbf{Antes de resolver}: que los apoyos impidan todo movimiento de sólido rígido. Si no, se detiene y dice qué movimiento queda libre (\textit{"traslación en la dirección x"}, \textit{"giro alrededor del eje z que pasa por (0, 0.5)"}).
+  \item \textbf{Después de resolver} (estático lineal): que la solución satisface el equilibrio, \texttt{\ensuremath{\|}F − K\ensuremath{\cdot}u\ensuremath{\|} \ensuremath{\le} 10\ensuremath{^{-}}⁸\ensuremath{\cdot}\ensuremath{\|}F\ensuremath{\|}}.
+  \item \textbf{Después de resolver} (estático lineal): que la factorización no tiene pivotes numéricamente nulos, con el mismo criterio en SuperLU y Pardiso.
+\end{enumerate}
+
+En un análisis no lineal las dos últimas no se aplican ---cerca de un punto límite resolver un sistema casi singular es legítimo---; el Newton ya exige equilibrio real, y si el paso fracasa con un sistema tangente mal resuelto la causa se reporta como tangente singular. Detalle y mensajes en el capítulo de diagnóstico del manual de usuario.
 
 \section{Fallback automático SPD \ensuremath{\to} LU}
 
@@ -14713,6 +14884,8 @@ solver:
   type: LinearSolver
   linear_algebra: auto         # default; el despachador decide
   # linear_algebra: cholesky   # forzar Cholesky (requiere scikit-sparse)
+  # linear_algebra: pardiso    # forzar Pardiso (requiere pypardiso)
+  # linear_algebra: iterative  # solver iterativo; ver sección propia
   # linear_algebra: lu         # forzar LU (siempre disponible)
   # linear_algebra: ldlt       # placeholder; degrada a LU con warning
 
@@ -14728,14 +14901,103 @@ solver:
 
 \textbf{Cuándo NO usarlo}: como parte del setup habitual de un caso de análisis. No es decisión de modelado; el default \texttt{auto} cubre todos los regímenes correctamente.
 
-\section{Activación de Cholesky (opcional)}
+\section{Backends opcionales: por qué importan}
+
+En un análisis grande, \textbf{la factorización del sistema es el cuello de botella}, no el ensamblaje. Medido sobre un análisis no lineal completo de \texttt{Hex8 15\ensuremath{^{3}}} (12 288 grados de libertad): el 97 \% del tiempo se va en factorizar y el 1 \% en ensamblar (ADR 0017). La razón de fondo es el \textbf{relleno} (\textit{fill-in}): al factorizar, \texttt{L+U} tiene muchos más no-ceros que \texttt{K}, y la proporción empeora con la talla --- de \ensuremath{\times}10 a 4 000 grados de libertad a \ensuremath{\times}42 a 53 000 ---, llevándose por delante tiempo y memoria.
+
+Los backends opcionales atacan exactamente eso. Sin ellos Solidum funciona igual, con SuperLU; con ellos los modelos grandes dejan de ser inviables.
+
+\subsection{Pardiso --- recomendado (\texttt{pip install solidum-fem[fast]})}
+
+\begin{lstlisting}[language=bash]
+pip install solidum-fem[fast]
+
+\end{lstlisting}
+
+Intel MKL Pardiso: factorización \textbf{multihilo} con reordenamiento por \textbf{disección anidada}. Trae binarios para Windows, Linux y macOS, así que no necesita compilador. Medido (16 hilos), resolviendo el sistema de \texttt{Hex8 n\ensuremath{^{3}}}:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Malla} & \textbf{Grados de libertad} & \textbf{SuperLU} & \textbf{Pardiso} & \textbf{Aceleración} \\
+\hline
+Hex8 10\ensuremath{^{3}} & 3 993 & 0,47 s & 0,10 s & \ensuremath{\times}4,7 \\
+Hex8 15\ensuremath{^{3}} & 12 288 & 3,24 s & 0,27 s & \ensuremath{\times}12 \\
+Hex8 20\ensuremath{^{3}} & 27 783 & 18,32 s & 0,78 s & \ensuremath{\times}23,5 \\
+Hex8 25\ensuremath{^{3}} & 52 728 & 110,10 s & 1,97 s & \ensuremath{\times}56 \\
+\hline
+\end{tabularx}
+\end{center}
+La aceleración \textbf{crece con el tamaño}, que es donde hace falta. Sobre el análisis no lineal completo de \texttt{Hex8 20\ensuremath{^{3}}} (5 pasos): 212 s \ensuremath{\to} 9,8 s. La solución es la misma a precisión de máquina (\texttt{1e-16} relativo en el campo de desplazamientos).
+
+\subsection{Cholesky / CHOLMOD (\texttt{scikit-sparse})}
 
 \begin{lstlisting}[language=bash]
 conda install -c conda-forge scikit-sparse
 
 \end{lstlisting}
 
-Una vez instalado, los problemas estáticos lineales y los Newton estables empiezan a usar Cholesky automáticamente --- sin tocar YAML, sin recompilar, sin reescribir specs. Si la dependencia no está disponible, Solidum funciona idéntico con LU.
+Sólo aplica a matrices simétricas y positivas definidas, pero ahí explota la simetría y es la mejor opción. En Windows requiere Visual Studio para compilar, de ahí que la vía práctica sea \texttt{conda} y no \texttt{pip}.
+
+Instalado cualquiera de los dos, el despachador empieza a usarlo automáticamente --- sin tocar YAML, sin recompilar, sin reescribir specs.
+
+\section{Solver iterativo --- a petición (ADR 0018)}
+
+Los tres backends anteriores son \textbf{directos}: factorizan la matriz y resuelven por sustitución. El cuarto es \textbf{iterativo}: no factoriza, sino que aproxima la solución por iteraciones de Krylov hasta una tolerancia. Es la misma división que ofrecen ANSYS (\texttt{SPARSE} frente a \texttt{PCG}) y Abaqus (\textit{direct} frente a \textit{iterative}), y con el mismo criterio de uso: el directo por defecto, el iterativo como opción que se pide expresamente.
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: NonlinearSolver
+  linear_algebra: iterative          # precondicionador automático (AMG si hay pyamg)
+  # linear_algebra: iterative:amg    # multimalla algebraico (requiere pyamg)
+  # linear_algebra: iterative:jacobi # diagonal (diagnóstico)
+  # linear_algebra: iterative:none   # sin precondicionador
+
+\end{lstlisting}
+
+\textbf{Para qué sirve.} No para ir más rápido en modelos medianos: por debajo de \textasciitilde{}10⁵ grados de libertad Pardiso gana. Sirve para que \textbf{quepan los modelos grandes}. Un directo guarda los factores de la matriz, que ocupan un múltiplo creciente de ella (\ensuremath{\times}14 a 26 000 grados de libertad, \ensuremath{\times}25 a 200 000); el iterativo ocupa un múltiplo constante (\ensuremath{\times}4,2). Medido sobre \texttt{Hex8 n\ensuremath{^{3}}}:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Grados de libertad} & \textbf{Pardiso} & \textbf{Iterativo (CG + AMG)} & \textbf{Memoria pico Pardiso} & \textbf{Memoria pico iterativo} \\
+\hline
+26 460 & \textbf{0,70 s} & 1,43 s & 313 MB & \textasciitilde{}92 MB \\
+86 490 & 4,29 s & 4,55 s & 1,46 GB & \textasciitilde{}312 MB \\
+201 720 & 17,6 s & \textbf{10,2 s} & 4,43 GB & \textbf{\textasciitilde{}740 MB} \\
+\hline
+\end{tabularx}
+\end{center}
+\textbf{Cómo elige el método.} Automáticamente, según la matriz:
+
+\begin{itemize}
+  \item \textbf{CG} (gradiente conjugado) si es simétrica y definida positiva --- el caso habitual.
+  \item \textbf{MINRES} si es simétrica pero indefinida (arc-length cerca de un punto límite, ablandamiento). El cambio es automático: CG detecta la curvatura negativa y cede el paso.
+  \item \textbf{Solver directo} si no es simétrica (Drucker-Prager no asociado, cargas seguidoras), con un aviso. CG y MINRES exigen simetría, igual que en los programas comerciales.
+\end{itemize}
+
+\textbf{El precondicionador AMG} (multimalla algebraico) es lo que hace útil al iterativo: el número de iteraciones queda en 10-15 \textbf{sin importar el tamaño del modelo}. Para funcionar en elasticidad necesita los \textbf{modos de cuerpo rígido} del modelo (traslaciones y rotaciones), que Solidum calcula a partir de las coordenadas y los grados de libertad, sin que el usuario haga nada. Sin ellos AMG es peor que no precondicionar.
+
+\textbf{Precisión.} El iterativo se detiene cuando el residuo verdadero \texttt{\ensuremath{\|}b − K\ensuremath{\cdot}x\ensuremath{\|}} baja de \texttt{10\ensuremath{^{-}}¹⁰\ensuremath{\cdot}\ensuremath{\|}b\ensuremath{\|}}, cinco órdenes por debajo de la tolerancia del Newton. En un análisis no lineal el resultado coincide con el del directo; en uno lineal, la diferencia medida es del orden de 10\ensuremath{^{-}}¹¹. Si no alcanza la tolerancia, \textbf{el análisis se detiene con un mensaje que dice por qué} (iteraciones, residuo alcanzado, qué hacer): nunca devuelve una solución a medias.
+
+\textbf{Cuándo no usarlo.} Igual que advierten los manuales de ANSYS y Abaqus: en modelos mal condicionados ---láminas, vigas muy esbeltas, elementos muy distorsionados, penalizaciones rígidas (discontinuidades embebidas, cohesivos)--- el iterativo converge mal o no converge. Ahí el directo es la herramienta.
+
+\subsection{Instalar AMG (\texttt{pyamg})}
+
+\begin{lstlisting}[language=bash]
+pip install solidum-fem[iterative]
+
+\end{lstlisting}
+
+Trae binarios para Python 3.10--3.12. En \textbf{Python 3.14 sobre Windows} no hay binarios y pip lo compila, lo que requiere Visual Studio con el toolset de C++. Si aun teniéndolo pip responde \textit{"Unable to find a compatible Visual Studio installation"}, la causa suele ser que la carpeta del instalador de Visual Studio no está en el \texttt{PATH}; añadirla durante la instalación lo resuelve:
+
+\begin{lstlisting}[language=bash]
+PATH="/c/Program Files (x86)/Microsoft Visual Studio/Installer:$PATH" pip install pyamg
+
+\end{lstlisting}
+
+Sin \texttt{pyamg}, el iterativo funciona sin precondicionador (del orden de cientos de iteraciones por resolución en elasticidad) y avisa una vez.
+
 
 
 \newpage

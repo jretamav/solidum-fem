@@ -2,6 +2,14 @@
 
 % Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
 \usepackage{fontspec}
+% Respaldo de glifos: ver FONT_SETUP en build_reference_manual.py.
+\directlua{
+  luaotfload.add_fallback("solidumserif", {"DejaVuSerif:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+  luaotfload.add_fallback("solidummono", {"DejaVuSansMono:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+}
+\setmainfont{Latin Modern Roman}[RawFeature={fallback=solidumserif}]
+\setsansfont{Latin Modern Sans}[RawFeature={fallback=solidumserif}]
+\setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]
 \usepackage[spanish,es-tabla]{babel}
 \usepackage[margin=2.5cm, headheight=15pt]{geometry}
 \usepackage{listings}
@@ -334,6 +342,8 @@ El solver toma el control. Su comportamiento depende del tipo seleccionado (line
   \item Se evalúa la convergencia mediante un criterio dual: norma del residuo de fuerza y norma del incremento de desplazamientos, ambas comparadas contra una tolerancia de la forma \texttt{atol + rtol \ensuremath{\cdot} escala(estado)} con la escala adaptativa al estado corriente del problema (\hyperref[adr:0007]{ADR 0007}). Los términos absolutos \texttt{atol} se autoderivan de las escalas del primer ensamblaje, lo que garantiza invariancia bajo cambio de unidades: el mismo problema planteado en N/m, kN/mm o MN/m converge en el mismo número de iteraciones hasta paridad de bits. El residuo de fuerza se evalúa únicamente sobre los DOF libres, dado que en los DOF prescritos el residuo contiene la reacción física, no un fallo de equilibrio. La convergencia del paso requiere que ambos criterios se cumplan simultáneamente (semántica AND, no OR).
 \end{enumerate}
 
+Esta secuencia interna ---ensamblar una vez en el iterado, evaluar la convergencia con el residuo de ese ensamblaje y el incremento que lo produjo, resolver, avanzar--- es el corrector de Newton compartido (\texttt{NewtonCorrector}, \hyperref[adr:0015]{ADR 0015}). Los solvers iterativos no la reescriben: le entregan un objeto que describe su problema (residuo, sistema tangente, actualización) y se quedan con la estrategia del paso.
+
 \section{5. Cierre del paso}
 
 Tras la convergencia de un paso, el solver invoca \texttt{commit\_state()} sobre cada elemento. Esta operación promueve el estado \textit{trial} a estado comprometido: las variables internas (deformaciones plásticas, daño, historia) que los puntos de Gauss han recorrido durante las iteraciones se consolidan. Si el paso no convergiera y se redujese el incremento, el estado \textit{trial} se descartaría sin contaminar el estado comprometido.
@@ -630,6 +640,8 @@ Disponibles en la versión actual:
   \item \texttt{ResponseSpectrumSolver} (\hyperref[adr:0009]{ADR 0009} fase 7) --- análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta \texttt{ModalSolver} interno y delega los algoritmos en \texttt{solidum.math.modal\_response} (centralización por regla D de auditoría). Devuelve \texttt{ResponseSpectrumResult} con respuesta envolvente, factores de participación y masas efectivas.
 \end{itemize}
 
+Los cinco solvers iterativos (\texttt{NonlinearSolver}, los dos arc-length, \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}) no escriben su propio bucle de Newton: lo ejecuta el corrector compartido \texttt{NewtonCorrector} (\texttt{solidum/math/solvers/corrector.py}, \hyperref[adr:0015]{ADR 0015}), que posee el backend algebraico con su degradación a LU, el Newton modificado, el line search y el historial que alimenta las excepciones tipadas. Cada solver construye por paso un objeto \texttt{NewtonProblem} con lo que le es propio ---cómo ensambla, cómo forma el residuo, cómo reduce y resuelve el sistema tangente, cómo aplica la corrección y qué comitea--- y conserva su control de paso (bisección de la carga, longitud de arco y su restricción, predictores de Newmark). Un solver iterativo nuevo aporta su problema y su control de paso y hereda todo lo demás.
+
 Espacio natural de extensión:
 
 \begin{itemize}
@@ -650,15 +662,18 @@ Por debajo del solver no lineal, dentro de cada iteración, se requiere la resol
 Algoritmos disponibles:
 
 \begin{itemize}
-  \item \texttt{LUSolver} --- factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
-  \item \texttt{CholeskySolver} --- factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando \texttt{K} es simétrica y definida positiva.
+  \item \texttt{LUSolver} --- factorización LU mediante SuperLU (SciPy). Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no. Siempre disponible; es el suelo del despachador.
+  \item \texttt{CholeskySolver} --- factorización de Cholesky mediante CHOLMOD (dependencia opcional \texttt{scikit-sparse}). Aprovecha la simetría, pero es aplicable únicamente cuando \texttt{K} es simétrica y definida positiva.
+  \item \texttt{PardisoSolver} (\hyperref[adr:0017]{ADR 0017}) --- factorización directa \textbf{multihilo} con reordenamiento por disección anidada, mediante Intel MKL Pardiso (dependencia opcional \texttt{pypardiso}). Mismo dominio que LU, al que sustituye cuando está instalado. La factorización, y no el ensamblaje, domina el tiempo de un análisis grande: de \ensuremath{\times}5 a \ensuremath{\times}56 más rápido que SuperLU según la talla.
+  \item \texttt{IterativeSolver} (\hyperref[adr:0018]{ADR 0018}) --- gradiente conjugado (matrices simétricas definidas positivas) o MINRES (simétricas indefinidas), precondicionados con un multimalla algebraico que recibe los modos de cuerpo rígido del modelo. \textbf{Sólo a petición}: su ventaja es la memoria, proporcional al modelo, en problemas por encima de unos 10⁵ grados de libertad.
   \item \texttt{EigenSolver} (\hyperref[adr:0009]{ADR 0009}) --- algoritmo de autovalor generalizado simétrico para el problema \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Envuelve \texttt{scipy.sparse.linalg.eigsh} (ARPACK Lanczos con shift-invert centrado en \texttt{\ensuremath{\sigma}}). Vive en \texttt{solidum/math/linalg/eigen.py} y no comparte la interfaz \texttt{solve(K, b)} de los anteriores --- su firma natural es \texttt{solve(K, M, n\_modes) \ensuremath{\to} (\ensuremath{\lambda}, \ensuremath{\varphi})}.
-  \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} para el caso simétrico no definido positivo, reservada para la fase 2 del \hyperref[adr:0003]{ADR 0003}.}
-  \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
-  \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
+  \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} con conteo de inercia para el caso simétrico indefinido (deuda técnica \#7). Pardiso puede aportarla, pero exige el triángulo superior de la matriz.}
+  \item \pendiente{solver iterativo para matrices no simétricas (GMRES o BiCGSTAB); hoy esas matrices van siempre a un solver directo.}
 \end{itemize}
 
-\textbf{Despachador.} La función \texttt{select\_solver(props)} inspecciona las propiedades de la matriz (encapsuladas en \texttt{StiffnessProperties}: simetría, definición positiva) y selecciona el algoritmo adecuado de forma automática. El usuario puede forzar un algoritmo específico desde el archivo YAML mediante el campo opcional \texttt{linear\_algebra} en calidad de herramienta de diagnóstico, no como decisión de modelado.
+\textbf{Despachador.} La función \texttt{select\_solver(props)} inspecciona las propiedades de la matriz (encapsuladas en \texttt{StiffnessProperties}: simetría, definición positiva) y selecciona el algoritmo de forma automática, en el orden Cholesky (si la matriz es simétrica definida positiva y CHOLMOD está instalado), Pardiso (si está instalado) y LU. El iterativo nunca se elige de forma automática. El usuario puede forzar un algoritmo desde el archivo YAML con el campo opcional \texttt{linear\_algebra} (\texttt{auto}, \texttt{lu}, \texttt{cholesky}, \texttt{pardiso}, \texttt{iterative[:amg|jacobi|none]}) en calidad de herramienta de diagnóstico, no como decisión de modelado.
+
+\textbf{Red de seguridad.} Un solver directo ante una matriz singular no avisa. Por eso el análisis estático comprueba antes de resolver que el modelo no es un mecanismo, y después, en el caso lineal, que la solución satisface el equilibrio y que la factorización no tiene pivotes nulos (\hyperref[adr:0019]{ADR 0019}; ver el capítulo de mecanismos transversales).
 
 \textbf{Justificación de la separación en dos niveles.} El solver no lineal y el subsistema algebraico resuelven cuestiones distintas. El primero decide cómo recorrer la respuesta del sistema (incrementos, iteraciones, longitud de arco). El segundo decide con qué método resolver cada sistema lineal individual. Esta separación permite, por ejemplo, mejorar el rendimiento del paso elástico sin afectar al método de Newton-Raphson, o introducir longitud de arco sin reescribir el código del subsistema algebraico.
 
@@ -733,9 +748,19 @@ El componente \texttt{YamlParser} no contiene ramificaciones del tipo \texttt{if
 
 Cada elemento mantiene un objeto \texttt{ElementState} con dos copias de las variables internas: una copia \textit{trial} (la que se explora durante las iteraciones del solver) y una copia comprometida (la que corresponde al último paso convergido). El solver invoca \texttt{commit\_state()} solo cuando un paso converge, lo que evita la contaminación del historial plástico o de daño con tentativas posteriormente descartadas. Esta semántica es crítica para problemas con plasticidad o daño: en su ausencia, una iteración no convergida que casualmente quedase dentro de tolerancia contaminaría el historial de forma irreversible.
 
-\section{Ensamblaje disperso con caché en formato Coordinate}
+\section{Ensamblaje disperso con topología cacheada}
 
-El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental y los almacena en formato Coordinate (COO). En las iteraciones siguientes, se reescribe únicamente el vector de datos sobre la misma topología, sin recalculo de índices. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre \texttt{scipy.sparse}.
+El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de cada contribución elemental en formato Coordinate (COO), deriva de ellos la estructura comprimida por filas (CSR) de la matriz y un mapa que lleva cada entrada COO a su posición CSR. En las iteraciones siguientes se reescribe únicamente el vector de datos sobre la misma topología (las matrices elementales de cada familia se escriben directamente en su bloque) y se reduce a CSR con un kernel compilado sobre el mapa inverso ---las entradas COO que alimentan cada posición CSR, en orden estable---, serie o paralelo, sin recalcular índices ni reordenar: la conversión COO a CSR que \texttt{scipy} rehacía en cada ensamblaje (unos 115 ms para 8 000 hexaedros) desaparece. Se trata del patrón "calcular una vez, reutilizar" típico en programas de MEF compilados, implementado aquí sobre \texttt{scipy.sparse} (\hyperref[adr:0014]{ADR 0014}).
+
+\section{Ensamblaje por lotes: familias y un único kernel compilado}
+
+Los elementos que comparten clase, instancia de material, regla de cuadratura y número de nodos forman una \textit{familia de lote} (\texttt{solidum/math/batch/}). La clave se deriva de atributos que ya existen; un elemento nuevo cae en su propia familia sin tocar el ensamblador. Cada familia guarda su estado interno como arreglos (\texttt{FamilyState}: variables internas y esfuerzos, committed y trial, una fila por punto de Gauss) y se evalúa completa dentro de un único bucle compilado, \texttt{solid\_family\_kernel}, que recibe la cinemática del elemento (\texttt{BATCH\_KINEMATICS}) y la constitutiva del material (\texttt{BATCH\_KERNEL}) como funciones tipadas por su firma. Esa tipificación (\texttt{numba.types.FunctionType}) es lo que permite compilar el kernel una sola vez para todas las parejas elemento \ensuremath{\times} material y reutilizarlo desde el caché en disco: un despachador tiene identidad propia por proceso y obligaría a recompilar por pareja en cada ejecución.
+
+El camino por elemento (\texttt{compute\_element\_state}, \texttt{compute\_state}) sigue siendo el contrato obligatorio y la referencia física. El camino por lotes es una capacidad que el componente declara: los elementos sin cinemática compilada (estructurales 1D, discontinuidad embebida) y los materiales sin esquema de estado se ensamblan como siempre dentro del mismo \texttt{Assembler}. Ambos caminos ejecutan las mismas funciones compiladas por punto de Gauss; el barrido de contratos exige que \texttt{K} y \texttt{F\_int} coincidan a precisión de máquina en toda combinación registrada. El kernel recibe siempre coordenadas de referencia y desplazamientos y recomputa jacobiano y \texttt{B} en cada evaluación: nada derivado de la configuración deformada se cachea, de modo que el diseño vale para elementos lineales, corotacionales y formulaciones lagrangianas futuras. Medido sobre 10 000 Quad4 con plasticidad J2: 157 \ensuremath{\to} 5,7 µs por elemento y ensamblaje con el kernel serie, y 1,4 µs con el paralelo (\hyperref[adr:0014]{ADR 0014}).
+
+El kernel de familia existe en dos variantes con la misma aritmética: serie y paralela (\texttt{prange} sobre bloques de elementos, con espacio de trabajo por bloque y sin estado compartido entre hilos). Como cada elemento suma en el mismo orden, el resultado es bit a bit el mismo con cualquier número de hilos, cosa que el barrido de contratos exige. Una limitación de Numba condiciona el contrato de la cinemática: una excepción lanzada dentro de una región paralela se pierde en silencio, así que las cinemáticas por lotes no lanzan sino que devuelven un jacobiano no positivo, el kernel marca el punto y el ensamblador convierte la marca en la excepción de siempre, ahora con el identificador del elemento. El mismo protocolo rige la variante serie.
+
+El post-proceso sigue el mismo camino. Cada familia deja en sus elementos una referencia a sí misma al adoptar sus estados, de modo que el exportador VTK y \texttt{gauss\_states(domain, U)}, que sólo ven el dominio, evalúan por familia ---un kernel que devuelve deformación y esfuerzo por punto de Gauss desde el estado committed, sin tocar el trial--- y caen al \texttt{compute\_gauss\_state} de cada elemento sólo en los que no pertenecen a ninguna familia. La rigidez inicial (\texttt{assemble\_system}, \texttt{compute\_global\_stiffness}) es una evaluación auxiliar y restaura el estado trial previo al salir.
 
 \section{Eliminación directa de condiciones de frontera}
 
@@ -745,7 +770,7 @@ La forma afín cubre con la misma maquinaria los casos de empotramiento, asentam
 
 \section{Compilación Just-In-Time mediante Numba}
 
-Las funciones críticas (ensamblaje elemento\ensuremath{\to}global, núcleo del algoritmo de retorno radial) se decoran con \texttt{@njit} y se compilan a código nativo en su primera invocación. La primera ejecución asume el coste de compilación; las invocaciones siguientes se ejecutan a velocidad cercana a la de un programa Fortran compilado. La restricción consiste en que el código compilado solo admite tipos primitivos y arreglos NumPy, no objetos arbitrarios de Python.
+Las funciones críticas (cinemática de los elementos, núcleos de los algoritmos de retorno, el kernel de familia del ensamblaje por lotes) se decoran con \texttt{@njit(cache=True)} y se compilan a código nativo en su primera invocación; el binario se guarda en \texttt{\_\_pycache\_\_} y las ejecuciones siguientes lo cargan en centésimas de segundo. Lo que se compila es el procedimiento, no los datos: la configuración deformada, los parámetros y las variables internas entran como argumentos en cada llamada, así que un cambio de geometría o de estado nunca exige recompilar. La restricción consiste en que el código compilado solo admite tipos primitivos y arreglos NumPy, no objetos arbitrarios de Python; por eso los materiales exponen su estado como filas de arreglo (\texttt{STATE\_SCHEMA}) y sus constantes como un vector de parámetros (\texttt{batch\_params}).
 
 \section{Variable principal de visualización}
 
@@ -771,6 +796,27 @@ El patrón vive centralizado por subsistema, no replicado: la admisibilidad cons
 Adicionalmente, los términos absolutos \texttt{atol} se autoderivan de las escalas del problema en su primer ensamblaje, no se codifican como constantes globales con unidades. Las constantes globales del proyecto que rigen esta política son adimensionales (\texttt{CONVERGENCE\_RTOL\_FORCE}, \texttt{CONVERGENCE\_ATOL\_FORCE\_FACTOR}, \texttt{ADMISSIBILITY\_TOL\_REL}, etc.), lo que mantiene el código independiente del sistema de unidades elegido por el usuario.
 
 La importancia de este mecanismo es estructural: la convergencia es lo que marca el éxito de un análisis numérico, y la diferencia entre un código robusto y uno frágil está en la disciplina con que se construyen estas comparaciones. Toda extensión futura que introduzca un nuevo criterio de comparación contra cero adopta este patrón.
+
+\section{Modos de cuerpo rígido derivados del nombre de los grados de libertad}
+
+Los modos de cuerpo rígido de un modelo ---traslaciones, giros infinitesimales y, para un campo escalar como la temperatura, el vector constante--- se derivan \textbf{sólo del nombre de los grados de libertad} (\texttt{ux}, \texttt{uy}, \texttt{uz}, \texttt{rx}, \texttt{ry}, \texttt{rz}, \texttt{T}) y de las coordenadas nodales, sin información del tipo de elemento (\texttt{solidum/math/linalg/nullspace.py}). Por eso cubren cualquier combinación del catálogo, incluidos los dominios mixtos, y un elemento nuevo los hereda sin hacer nada. Son el núcleo exacto de la matriz de rigidez de un modelo sin apoyos, verificado en todas las familias.
+
+Los consumen dos piezas: el precondicionador multimalla del solver iterativo, que sin ellos converge peor que sin precondicionar (\hyperref[adr:0018]{ADR 0018}), y la detección de mecanismos del análisis estático (\hyperref[adr:0019]{ADR 0019}). El ensamblador los calcula una vez y los cachea mientras no cambie la topología.
+
+\section{Red de seguridad del análisis estático}
+
+El usuario de Solidum no elige el solver algebraico ni tiene por qué conocer cómo falla. Un solver directo ante una matriz singular devuelve resultados absurdos sin avisar (medido: desplazamientos de miles de kilómetros). El análisis estático interpone tres capas (\hyperref[adr:0019]{ADR 0019}, \texttt{solidum/math/solvers/model\_checks.py}):
+
+\begin{enumerate}
+  \item \textbf{Antes de resolver}: los modos de cuerpo rígido que las restricciones no impiden son un \textbf{mecanismo}. Se calculan como el núcleo de la matriz que evalúa cada modo sobre las restricciones ---incluidas las lineales, que entran por el operador de reducción del \hyperref[adr:0004]{ADR 0004}--- y se describen en términos del modelo: \textit{"traslación en la dirección x"}, \textit{"giro alrededor del eje z que pasa por (0, 0.5)"}, \textit{"el campo 'T' no tiene ningún valor prescrito"}. No se aplica a análisis modales o dinámicos, donde un modelo libre es legítimo.
+  \item \textbf{Después de resolver} (estático lineal): la solución debe satisfacer el equilibrio, \texttt{\ensuremath{\|}F − K\ensuremath{\cdot}u\ensuremath{\|} \ensuremath{\le} 10\ensuremath{^{-}}⁸\ensuremath{\cdot}\ensuremath{\|}F\ensuremath{\|}}.
+  \item \textbf{Después de resolver} (estático lineal): la factorización no debe tener pivotes numéricamente nulos, con el mismo criterio en SuperLU y en Pardiso. Delata un mecanismo interno aunque ninguna carga lo active.
+\end{enumerate}
+
+Dentro de un Newton no se rechaza nada: cerca de un punto límite resolver un sistema casi singular es parte del algoritmo, y la garantía la da el propio Newton, que exige equilibrio real. Allí el residuo del sistema lineal sólo se usa para diagnosticar mejor la divergencia.
+
+El principio que el mecanismo materializa es general: \textbf{un problema mal planteado lo detecta el sistema y lo explica en el lenguaje del modelo}, no lo diagnostica el usuario a partir de un síntoma numérico.
+
 
 
 \newpage
@@ -854,7 +900,7 @@ Los capítulos anteriores describen el estado actual del programa. Este capítul
 \hline
 Material & \texttt{solidum/materials/<snake>.py} & \texttt{@MaterialRegistry.register} & No \\
 Elemento & \texttt{solidum/elements/<snake>.py} & \texttt{@ElementRegistry.register} & No \\
-Solver & \texttt{solidum/math/solver\_<snake>.py} & \texttt{@SolverRegistry.register} & No \\
+Solver & \texttt{solidum/math/solvers/<snake>.py} & \texttt{@SolverRegistry.register} & No \\
 \hline
 \end{tabularx}
 \end{center}
@@ -1052,13 +1098,123 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Consecuencia.} El subsistema modal/dinámico/espectral queda \textbf{completo en su totalidad}. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, \ensuremath{\Delta}t adaptativo, generalized-\ensuremath{\alpha}) requieren caso de uso específico --- no son piezas del ADR pendientes. La clase \texttt{Node} conserva su semántica original.
 
+\section{ADR 0010 --- Discontinuidades interiores embebidas}
+\label{adr:0010}
+
+\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; fases 1, 2, 3 y 3b implementadas, fases 4 (curva de Van Vliet) y 5 diferidas con justificación.
+
+\textbf{Contexto.} Abrir la línea de fractura computacional. Entre las alternativas (fisura difusa, elementos cohesivos de interfaz, XFEM, discontinuidades embebidas) se elige la que el autor domina a nivel doctoral: discontinuidades interiores embebidas en aproximación discreta (Retama, 2010).
+
+\textbf{Decisión.} Cinco abstracciones transversales: (1) una familia \texttt{CohesiveMaterial} \textbf{paralela} a \texttt{Material}, no subclase, porque relaciona tracción con salto de desplazamiento y no esfuerzo con deformación; (2) elementos con \textbf{grados de libertad enriquecidos a nivel elemental}, invisibles para el ensamblador; (3) \textbf{condensación estática local} del salto dentro del elemento, de modo que el sistema global no cambia de tamaño; (4) un \texttt{DiscontinuityState} que guarda la orientación y la historia de la discontinuidad; (5) una semántica de \textbf{elemento que cambia de modo} (continuo a agrietado), cuya activación se decide entre pasos con el hook \texttt{prepare\_step} y no dentro del Newton, para evitar oscilaciones sobre el umbral. Se fija además la longitud de discontinuidad \texttt{l\_d = (A/h)\ensuremath{\cdot}cos(\ensuremath{\theta}−\ensuremath{\alpha})}, aportación del \hyperref[cap:6]{capítulo 6} de la tesis, validada numéricamente por primera vez.
+
+\textbf{Consecuencia.} Fractura computacional sin tocar el ensamblador, el despachador algebraico, el Newton ni el parser. Las cuatro abstracciones son reutilizables para modelos cohesivos clásicos, modos incompatibles o EAS. El límite conocido es el solver para ablandamiento severo con penalización cohesiva rígida (deuda técnica).
+
+\section{ADR 0011 --- Robustez del Newton: line search y diagnóstico de divergencia}
+\label{adr:0011}
+
+\textbf{Fecha}: 18 de mayo de 2026. \textbf{Estado}: aceptado con una enmienda.
+
+\textbf{Contexto.} Los solvers no lineales divergían con un \texttt{RuntimeError} genérico que no distinguía entre causas cualitativamente distintas, y no tenían globalización.
+
+\textbf{Decisión.} Dos mejoras coordinadas: un \textbf{line search} de backtracking con condición de descenso sobre el residuo, y una \textbf{familia de excepciones tipadas} que clasifica la divergencia (oscilación del Newton, tangente singular, carga por encima de la capacidad, modo desconocido) con métricas y una pista textual. \textbf{Enmienda}: el line search, previsto activo por defecto, quedó \textbf{desactivado por defecto} al comprobarse que rompía casos de daño que convergían sin él; con Newton completo y tangente consistente el backtracking apenas aporta (de Borst y Sluys, tabla 3.1).
+
+\textbf{Consecuencia.} Un fallo de convergencia se reporta con su causa probable y la acción típica, no con un mensaje genérico.
+
+\section{ADR 0012 --- Sólidos 3D y notación de Voigt en seis componentes}
+\label{adr:0012}
+
+\textbf{Fecha}: 19 de mayo de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Abrir la familia de elementos sólidos 3D obligaba a fijar la notación de Voigt tridimensional y a decidir qué hace el contrato de fuerzas internas en un sólido.
+
+\textbf{Decisión.} (1) Voigt 3D con orden \texttt{[xx, yy, zz, xy, yz, xz]} y deformaciones angulares \textit{engineering}, extensión natural del orden 2D (difiere de ABAQUS en la permutación \texttt{yz \ensuremath{\leftrightarrow} xz}); (2) el contrato \texttt{internal\_forces()} \textbf{no se aplica a sólidos}: un continuo no tiene resultantes seccionales, su salida canónica es el campo de esfuerzos por punto de Gauss; (3) una API de tracciones y caras 3D paralela a la de bordes 2D.
+
+\textbf{Consecuencia.} Especificaciones de sólidos 3D sin ambigüedad de notación, y el contrato de resultados del \hyperref[adr:0002]{ADR 0002} cerrado por dominio explícito en vez de quedar como deuda.
+
+\section{ADR 0013 --- Orientación material y ortotropía}
+\label{adr:0013}
+
+\textbf{Fecha}: 9 de septiembre de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} El primer material anisótropo (\texttt{Orthotropic2D}, para la investigación con bambú) plantea dónde vive el ángulo de fibra: en el material, en el elemento, o en un campo sobre la malla.
+
+\textbf{Decisión.} El ángulo va \textbf{en el material}, como atajo consciente y desechable: es una entrega puramente aditiva que no toca los contratos \texttt{Material} ni \texttt{Element}, y resuelve el caso real (probetas a ángulo constante). Se declara explícitamente que la orientación es conceptualmente una propiedad del elemento, y se escribe la condición de migración: cuando aparezca un caso real con orientación variable en la malla. Se fijan también la validación de admisibilidad propia de la ortotropía (\texttt{|\ensuremath{\nu}\ensuremath{_{1}}\ensuremath{_{2}}| < \ensuremath{\surd}(E\ensuremath{_{1}}/E\ensuremath{_{2}})}, no la de \texttt{Elastic2D}) y la convención de subíndices de Poisson.
+
+\textbf{Consecuencia.} Calibración experimental desbloqueada sin riesgo de regresión. El isótropo queda como caso particular verificable.
+
+\section{ADR 0014 --- Ensamblaje por lotes}
+\label{adr:0014}
+
+\textbf{Fecha}: 22 de septiembre de 2026. \textbf{Estado}: aceptado; fases 1-3 implementadas el mismo día.
+
+\textbf{Contexto.} El ensamblaje recorría los elementos uno a uno en Python y, dentro de cada uno, los puntos de Gauss uno a uno: más del 90 \% del tiempo era sobrecarga de despacho, no aritmética (120--170 µs por Quad4 y ensamblaje; 0,4 s por commit copiando diccionarios), y el estado interno como diccionarios ocupaba más que la matriz global. La solución conocida desde los supercomputadores vectoriales es invertir el bucle y evaluar por lotes los elementos que comparten receta, pero el proyecto exige que la agrupación no fije hipótesis que un componente futuro tenga que deshacer.
+
+\textbf{Decisión.} (1) La \textit{familia} se deriva de los contratos declarativos ---clase de elemento, instancia de material, cuadratura, número de nodos---, nunca de listas. (2) El camino por elemento sigue siendo el contrato obligatorio y la referencia física; el camino por lotes es una capacidad que el componente declara (\texttt{BATCH\_KINEMATICS} en el elemento, \texttt{STATE\_SCHEMA} + \texttt{BATCH\_KERNEL} en el material) con fallback automático dentro del mismo ensamblador. (3) Un único kernel de familia, compilado una vez y cacheado en disco, recibe la cinemática y la constitutiva como funciones tipadas por su firma. (4) Ambos caminos ejecutan las mismas funciones compiladas por punto de Gauss, y el barrido de contratos exige equivalencia a precisión de máquina. (5) El estado interno se declara (\texttt{STATE\_SCHEMA}, obligatorio) y se almacena por arreglos con vistas compatibles con \texttt{ElementState}. (6) Nada derivado de la configuración deformada se cachea. (7) Trozos con presupuesto de memoria y mapa COO \ensuremath{\to} CSR cacheado. (8) Cierre del mismo día: kernel paralelo con \texttt{prange} bit a bit igual al serie, señalización del jacobiano degenerado por bandera (una excepción dentro de una región paralela se pierde) y post-proceso por familia con el mismo kernel de cinemática y constitutiva.
+
+\textbf{Consecuencia.} Quad4 + J2 \ensuremath{\times}27 y Hex8 + J2 \ensuremath{\times}13 en el ensamblaje con el kernel serie, \ensuremath{\times}110 y \ensuremath{\times}84 con el paralelo en 16 hilos; la exportación VTK \ensuremath{\times}6--8; el commit pasa de cientos de milisegundos a una copia de arreglo; el estado interno ocupa 80 B por punto de Gauss en vez de 462. Un material nuevo declara \texttt{STATE\_SCHEMA} (una línea) y, si quiere acelerarse, un adaptador de diez líneas sobre su propio return mapping; un elemento nuevo escribe su cinemática compilada con las mismas funciones que su \texttt{compute\_element\_state}. Diferidos: los elementos estructurales 1D y los adaptadores sin asignaciones de Drucker-Prager y daño.
+
+\section{ADR 0015 --- Corrector de Newton compartido}
+\label{adr:0015}
+
+\textbf{Fecha}: 22 de septiembre de 2026. \textbf{Estado}: aceptado; los cinco solvers migrados el mismo día.
+
+\textbf{Contexto.} Los cinco solvers iterativos escribían el mismo bucle de corrección cinco veces (ensamblaje, residuo, criterio dual, backend con degradación a LU, Newton modificado, line search, historial de divergencia, commit), con dos variantes del line search y tres gestiones del backend. La auditoría de esa mañana tuvo que aplicar la misma corrección semántica en los cinco, y todo lo previsto (cargas con historia, acoplamiento, backend multihilo) los tocaría de nuevo.
+
+\textbf{Decisión.} Un solo \texttt{NewtonCorrector} posee el bucle y lo que persiste entre pasos (backend, degradación a LU, factor congelado); cada solver construye por paso un \texttt{NewtonProblem} ---ensamblar, residuo y su norma, escalas del criterio, corrección con el \texttt{solve} del corrector, actualización, commit--- y conserva su control de paso. El iterado es opaco (\texttt{U}; \texttt{(U, \ensuremath{\lambda}, \ensuremath{\Delta}U)}; \texttt{(u, u̇, ü, ü\_libre)}). La restricción del arc-length es un método del problema que la variante por disipación sobreescribe. \texttt{CorrectionAborted} permite abandonar un paso sin marcarlo como tangente singular.
+
+\textbf{Consecuencia.} Ningún resultado cambia (las 1 447 pruebas de entonces, sin tocar un valor esperado). Un solver iterativo nuevo escribe su problema y su control de paso; un cambio del bucle, del backend o de la globalización se hace una vez. Retirados los ayudantes privados duplicados; \texttt{solver.corrector} es la superficie de instrumentación.
+
+\section{ADR 0016 --- Acoplamiento termomecánico (estudio de viabilidad)}
+\label{adr:0016}
+
+\textbf{Fecha}: 22 de septiembre de 2026. \textbf{Estado}: aceptado; sin código.
+
+\textbf{Contexto.} El acoplamiento termomecánico era la decisión pendiente que el problema térmico (Etapa 8) había dejado abierta: acoplamiento débil o monolítico, y cómo entra en el contrato de material.
+
+\textbf{Decisión.} Una verificación previa sobre el código mostró que la infraestructura ya admite nodos con desplazamiento y temperatura a la vez: numeración, ensamblaje en una sola matriz, condiciones mixtas, masa y capacidad por el mismo operador y resolución estática completa. Lo que falta es sólo la física de los bloques fuera de la diagonal. Se decide: \textbf{acoplamiento débil unidireccional primero}, con el monolítico como extensión aditiva; una \textbf{deformación propia genérica} \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}}} con \texttt{\ensuremath{\sigma} = C:(\ensuremath{\varepsilon} − \ensuremath{\varepsilon}\ensuremath{_{0}})}, de la que la térmica es un caso particular (la higroscópica, formalmente idéntica, domina en madera y bambú); \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}}} almacenada \textbf{por punto de Gauss}; y sin familia de elementos acoplados.
+
+\textbf{Consecuencia.} El acoplamiento deja de ser una decisión pendiente y pasa a ser una etapa de trabajo acotada que no necesita solver nuevo.
+
+\section{ADR 0017 --- Backend algebraico multihilo}
+\label{adr:0017}
+
+\textbf{Fecha}: 22 de septiembre de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Medido con un perfilado de extremo a extremo, cerrado el \hyperref[adr:0014]{ADR 0014} la factorización del sistema se llevaba el 97 \% del tiempo de un análisis y el ensamblaje el 1 \%. La causa es el relleno de los factores, que crece con la talla.
+
+\textbf{Decisión.} Un backend opcional sobre Intel MKL Pardiso (factorización multihilo con reordenamiento por disección anidada), con el patrón de Cholesky: si la dependencia falta, el sistema funciona igual con SuperLU. Ocupa el lugar de LU en la regla automática (Cholesky, luego Pardiso, luego LU). Un único manejador de la MKL por proceso, y una factorización invalidada falla de forma ruidosa en lugar de devolver la solución de otro sistema.
+
+\textbf{Consecuencia.} Aceleraciones de \ensuremath{\times}5 a \ensuremath{\times}56 según la talla, crecientes con ella, con la misma solución a precisión de máquina.
+
+\section{ADR 0018 --- Solver iterativo}
+\label{adr:0018}
+
+\textbf{Fecha}: 23 de septiembre de 2026. \textbf{Estado}: aceptado; la tolerancia, pendiente de validación.
+
+\textbf{Contexto.} Los programas comerciales ofrecen un solver directo por defecto y uno iterativo para modelos grandes. La ventaja del iterativo no es la velocidad sino la memoria: la del directo crece más deprisa que el modelo.
+
+\textbf{Decisión.} Un backend iterativo \textbf{sólo a petición} (\texttt{linear\_algebra: iterative}): gradiente conjugado para matrices simétricas definidas positivas, MINRES para simétricas indefinidas (el cambio es automático al detectar curvatura negativa) y solver directo para las no simétricas. El precondicionador es un multimalla algebraico que recibe los \textbf{modos de cuerpo rígido} del modelo, derivados del nombre de los grados de libertad; sin ellos rinde peor que no precondicionar. Tolerancia sobre el residuo verdadero cinco órdenes por debajo de la del Newton, de modo que el método de Newton no cambia; si no se alcanza, el análisis se detiene con la causa.
+
+\textbf{Consecuencia.} Número de iteraciones casi independiente de la talla y memoria proporcional al modelo; por encima de unos 10⁵ grados de libertad gana también en tiempo.
+
+\section{ADR 0019 --- Red de seguridad del análisis estático}
+\label{adr:0019}
+
+\textbf{Fecha}: 23 de septiembre de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} El usuario de Solidum no elige el solver algebraico ni tiene por qué conocer sus fallos. Medido: con un modelo mal apoyado, los solvers directos devolvían en silencio desplazamientos de miles de kilómetros.
+
+\textbf{Decisión.} Tres capas en el análisis estático: antes de resolver, los \textbf{mecanismos rígidos} se detectan a partir de los modos de cuerpo rígido que las restricciones dejan libres y se describen en términos del modelo (traslación, giro alrededor de un eje por un punto, campo escalar sin valor prescrito); después de resolver, en el análisis lineal, se verifican el \textbf{equilibrio} y la ausencia de \textbf{pivotes nulos}. Dentro de un Newton no se rechaza nada ---cerca de un punto límite resolver un sistema casi singular es legítimo---, sólo se mejora el diagnóstico.
+
+\textbf{Consecuencia.} Un modelo mal planteado se detiene con una explicación en vez de devolver resultados absurdos, sin falsos positivos en toda la batería de pruebas.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
 
 \begin{itemize}
-  \item El problema térmico se incorporó en la Etapa 8 \textbf{sin ADR propio}, a diferencia de lo previsto aquí. La razón es que no rompió contrato alguno ni exigió la generalización del concepto de grado de libertad que se anticipaba: la infraestructura resultó ya agnóstica al campo físico, y la familia térmica reutilizó el patrón de familia paralela con registro propio que el \hyperref[adr:0010]{ADR 0010} había establecido para los materiales cohesivos. Las convenciones específicas ---signo del flujo de frontera saliente, ausencia de notación de Voigt en el problema escalar--- se registraron en \texttt{Reglas.md} §5. Un ADR quedaría justificado si se incorpora el acoplamiento, que sí obliga a decidir sobre el contrato de material.
-  \item \pendiente{ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.}
+  \item El problema térmico se incorporó en la Etapa 8 \textbf{sin ADR propio}, a diferencia de lo previsto aquí. La razón es que no rompió contrato alguno ni exigió la generalización del concepto de grado de libertad que se anticipaba: la infraestructura resultó ya agnóstica al campo físico, y la familia térmica reutilizó el patrón de familia paralela con registro propio que el \hyperref[adr:0010]{ADR 0010} había establecido para los materiales cohesivos. Las convenciones específicas ---signo del flujo de frontera saliente, ausencia de notación de Voigt en el problema escalar--- se registraron en \texttt{Reglas.md} §5.
+  \item El acoplamiento termomecánico, que sí obliga a decidir sobre el contrato de material, tiene ya su ADR (0016): estrategia decidida, implementación pendiente.
 \end{itemize}
 
 
@@ -1071,9 +1227,9 @@ Cada decisión de arquitectura de gran calado --- refactor transversal, subsiste
 
 Este capítulo presenta la trayectoria prevista de la arquitectura de Solidum FEM. Su función es preservar la imagen de la arquitectura del programa a medida que crece: cada fase incorpora un nuevo tipo de análisis con sus contratos propios, sus variables de estado y, eventualmente, capas o subsistemas adicionales. La diferencia con los pendientes del \hyperref[cap:4]{capítulo 4} es de granularidad: aquellos enumeran componentes individuales; este capítulo describe los \textbf{estados sucesivos de la arquitectura} del programa, cada uno con su mapa de capas correspondiente.
 
-Las fases posteriores a la actual están marcadas como pendientes y se materializarán mediante los Architecture Decision Records (ADR) anunciados en el \hyperref[cap:8]{capítulo 8}. La estructura de cada fase se redefinirá en su ADR de apertura; lo aquí descrito constituye una hipótesis razonada de partida.
+Las fases aún no implementadas están marcadas como pendientes y se materializarán mediante los Architecture Decision Records (ADR) anunciados en el \hyperref[cap:8]{capítulo 8}. La estructura de cada fase se redefinirá en su ADR de apertura; lo aquí descrito constituye una hipótesis razonada de partida.
 
-\section{Fase 1 (actual) --- Estática lineal y no lineal}
+\section{Fase 1 --- Estática lineal y no lineal}
 
 \textbf{Estado}: implementado.
 
@@ -1253,31 +1409,23 @@ Resultó \textbf{bajo}, frente al riesgo medio estimado. La infraestructura exis
 
 \section{Fase 6 --- Acoplamiento termo-mecánico}
 
-\textbf{Estado}: \pendiente{Implementación de la fase 6 --- acoplamiento termo-mecánico.}
+\textbf{Estado}: estrategia decidida en el \hyperref[adr:0016]{ADR 0016} (22 de septiembre de 2026), sin implementar.
 
-\textbf{Cambios respecto a la fase 5}:
+\textbf{Lo que ya existe.} Antes de decidir se verificó sobre el código que la infraestructura admite nodos con desplazamiento y temperatura a la vez: la numeración de ecuaciones itera los grados de libertad por nombre, el ensamblador reúne ambos campos en una sola matriz, la reducción acepta condiciones mixtas sobre un mismo nodo, masa y capacidad calorífica se ensamblan con el mismo operador y un análisis estático de dos campos se resuelve de extremo a extremo. La previsión que figuraba aquí ---una nueva infraestructura de ensamblaje multifísico--- resultó innecesaria.
+
+\textbf{Lo que falta} es la física de los bloques fuera de la diagonal: la dilatación térmica (el campo de temperatura induce fuerzas mecánicas, efecto de primer orden) y el calor de deformación (efecto de segundo orden salvo en régimen adiabático).
+
+\textbf{Decisiones del \hyperref[adr:0016]{ADR 0016}}:
 
 \begin{itemize}
-  \item Aparece la interacción entre los campos térmico y mecánico: dilatación térmica que induce deformaciones, disipación mecánica que genera calor.
-  \item Dos estrategias distintas en términos de arquitectura, a decidir en el ADR de apertura:
-  \item \textit{Estrategia desacoplada (staggered)}: en cada paso, se resuelve primero el problema térmico con los desplazamientos de la última iteración, después el problema mecánico con las temperaturas recién calculadas. Cada subsistema mantiene su propia matriz; el acoplamiento se realiza mediante intercambio de campos. Implementación de bajo riesgo de arquitectura pero convergencia limitada en problemas de fuerte interacción.
-  \item \textit{Estrategia monolítica}: se ensambla un sistema único \texttt{K\_acoplada} que combina los DOF mecánicos y térmicos. Convergencia robusta pero exige una nueva infraestructura de ensamblaje multifísico.
-  \item Aparece una nueva familia de materiales acoplados con interfaz extendida: \texttt{compute\_response(strain, T, grad\_T, state)}.
+  \item \textit{Acoplamiento débil unidireccional primero}: se resuelve el problema térmico y su campo entra en el mecánico, sin retroalimentación. El monolítico queda como extensión aditiva cuando exista el caso real, sobre la misma infraestructura.
+  \item \textit{Deformación propia genérica} \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}}}, con \texttt{\ensuremath{\sigma} = C:(\ensuremath{\varepsilon} − \ensuremath{\varepsilon}\ensuremath{_{0}})}: la térmica es el caso particular \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}} = \ensuremath{\alpha}\ensuremath{\cdot}\ensuremath{\Delta}T}, y la higroscópica ---dominante en madera y bambú--- entra por el mismo canal sin volver a tocar el contrato de material.
+  \item \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}}} vive \textbf{por punto de Gauss}, no en el material (compartido por todos los elementos de una familia de lote) ni en el elemento (varía dentro de él).
+  \item \textit{Sin familia de elementos acoplados}: el elemento mecánico interpola el campo de temperatura con sus propias funciones de forma, con mallas conformes.
 \end{itemize}
 
-\textbf{Topología prevista (estrategia monolítica)}:
-
-\begin{lstlisting}
-[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K_acoplada, M_acoplada, solvers] - [Salida]
-                                                  |
-                                       [Materiales termo-mec.]
-                                       [Elementos termo-mec.]
-                                       [Solver acoplado]
-
-\end{lstlisting}
-
 \begin{infobox}{Riesgo de arquitectura}
-Alto. Es la primera fase con auténtica multifísica. Requiere generalización del subsistema algebraico para manejar matrices con bloques no homogéneos (un bloque mecánico simétrico positivo definido y un bloque térmico no simétrico, en la formulación habitual); generalización del concepto de prueba de validación, ya que no basta una solución analítica monodisciplinaria y los problemas de referencia deben tener acoplamiento conocido; posible introducción de precondicionadores específicos para sistemas acoplados (precondicionamiento por bloques, complemento de Schur).
+Bajo, tras la verificación del \hyperref[adr:0016]{ADR 0016}. El cambio de contrato se limita a un canal aditivo para \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}}} con valor por defecto cero, que deja los materiales existentes intactos.
 \end{infobox}
 
 \section{Mantenimiento de este capítulo}
@@ -1401,6 +1549,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Capa algebraica}. Subsistema en \texttt{solidum/math/linalg/} responsable de resolver el sistema lineal \texttt{K \ensuremath{\cdot} x = b} que aparece dentro de cada iteración del solver no lineal. Está separada del solver no lineal y selecciona automáticamente el algoritmo de factorización adecuado mediante un despachador. Ver \hyperref[cap:4]{capítulo 4} y \hyperref[adr:0003]{ADR 0003}.
 
+\textbf{Corrector de Newton}. Bucle de corrección compartido por los solvers iterativos (\texttt{NewtonCorrector}, \hyperref[adr:0015]{ADR 0015}): ensambla una vez en el iterado, evalúa el criterio dual con el residuo de ese ensamblaje y el incremento previo, resuelve con el backend algebraico (degradación a LU, factorización congelada opcional), aplica el line search opcional y comitea al converger. Cada solver le entrega un \texttt{NewtonProblem} con su residuo, su sistema tangente y su actualización, y conserva su propio control de paso. Ver capítulos 3 y 4.
+
 \textbf{Catálogo}. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers) con sus parámetros, validez y referencias. Reside en \texttt{docs/catalogo\_<categoría>.md}. Es índice y resumen; el detalle vive en las especificaciones.
 
 \textbf{Contrato declarativo}. Mecanismo por el cual una clase declara, mediante atributos de clase como \texttt{STRAIN\_DIM}, \texttt{DOF\_NAMES}, \texttt{N\_INTEGRATION\_POINTS} o \texttt{PRIMARY\_STATE\_VAR}, las propiedades fijas que el sistema necesita conocer de ella. La clase base lee estos atributos y se autoconfigura, sustituyendo métodos de inicialización repetitivos en cada subclase. Ver \hyperref[cap:5]{capítulo 5}.
@@ -1417,7 +1567,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{\texttt{ElementState}}. Objeto que encapsula las dos copias de las variables internas de cada elemento: una copia \textit{trial} (la que se explora durante las iteraciones del solver) y otra comprometida (la del último paso convergido). Ver \hyperref[cap:5]{capítulo 5}.
 
-\textbf{Ensamblaje con caché Coordinate (COO)}. Estrategia de ensamblaje en la que la primera invocación calcula los pares de índices \texttt{(i, j)} de cada contribución elemental y los almacena en formato Coordinate; las invocaciones siguientes reescriben únicamente el vector de datos sobre la misma topología, sin recalcular índices. Ver \hyperref[cap:5]{capítulo 5}.
+\textbf{Ensamblaje con topología cacheada}. Estrategia de ensamblaje en la que la primera invocación calcula los pares de índices \texttt{(i, j)} de cada contribución elemental en formato Coordinate (COO), deriva la estructura CSR de la matriz y un mapa COO \ensuremath{\to} CSR; las invocaciones siguientes reescriben únicamente el vector de datos y lo acumulan sobre la misma estructura, sin recalcular índices ni reordenar. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0014]{ADR 0014}.
+
+\textbf{Ensamblaje por lotes}. Evaluación de todos los puntos de Gauss de una familia de lote dentro de un único kernel compilado (\texttt{solid\_family\_kernel}, con variante paralela \texttt{solid\_family\_kernel\_parallel} bit a bit equivalente), que recibe la cinemática del elemento y la constitutiva del material como funciones tipadas por su firma. El post-proceso por familia (\texttt{Family.gauss\_state}) usa las mismas funciones. Coexiste con el camino por elemento, que sigue siendo el contrato obligatorio y la referencia física. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0014]{ADR 0014}.
 
 \textbf{Especificación (spec)}. Documento que describe un componente físico nuevo antes de su implementación: especificación física, formulación numérica, contrato YAML y criterios de aceptación. Reside en \texttt{docs/specs/<Nombre>.md}. Es a la vez orden de trabajo y referencia detallada del componente. Ver \hyperref[cap:7]{capítulo 7}.
 
@@ -1425,13 +1577,23 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Familia de elementos}. Conjunto de elementos que comparten la cinemática esencial: armaduras, cables, marcos (vigas), sólidos 2D, sólidos 3D, cáscaras. Ver \hyperref[cap:4]{capítulo 4}.
 
+\textbf{Familia de lote}. Conjunto de elementos de un dominio que comparten clase de elemento, instancia de material, regla de cuadratura y número de nodos, y que el ensamblador evalúa juntos en un kernel compilado. Su estado interno vive en un \texttt{FamilyState} (arreglos por punto de Gauss) del que \texttt{elem.state} es una vista (\texttt{BatchedElementState}). Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0014]{ADR 0014}.
+
+\textbf{Gradiente conjugado (CG) y MINRES}. Métodos iterativos de Krylov para sistemas lineales simétricos: CG para matrices definidas positivas, MINRES para indefinidas. El solver iterativo de Solidum pasa de uno a otro de forma automática al detectar curvatura negativa. Capítulo 4, \hyperref[adr:0018]{ADR 0018}.
+
 \textbf{Grado de libertad (DOF)}. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el \texttt{Domain}.
 
 \textbf{Longitud de arco (método de Crisfield)}. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
 
 \textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en \texttt{solidum/materials/}. Ver \hyperref[cap:4]{capítulo 4}.
 
+\textbf{Mecanismo}. Modelo cuyos apoyos o cuya conectividad permiten un movimiento sin deformación: la matriz de rigidez es singular y el problema estático no tiene solución única. Si el movimiento es de sólido rígido del conjunto, Solidum lo detecta antes de resolver y lo describe; si es interno (una rótula de más), lo detecta tras resolver. Capítulo 5, \hyperref[adr:0019]{ADR 0019}.
+
 \textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Solidum FEM trabaja en aproximación de desplazamientos.
+
+\textbf{Modos de cuerpo rígido}. Movimientos de un modelo sin apoyos que no producen deformación: traslaciones y giros infinitesimales, y el valor constante en un campo escalar. En Solidum se derivan del nombre de los grados de libertad y los usan el precondicionador multimalla y la detección de mecanismos. Capítulo 5.
+
+\textbf{Multimalla algebraico (AMG)}. Precondicionador que resuelve el sistema en una jerarquía de problemas cada vez más pequeños construidos a partir de la propia matriz. Con los modos de cuerpo rígido como casi-núcleo, el número de iteraciones apenas depende del tamaño del modelo. \hyperref[adr:0018]{ADR 0018}.
 
 \textbf{Multipoint constraint (MPC)}. Restricción afín lineal que liga el desplazamiento de un grado de libertad esclavo a una combinación lineal de los desplazamientos de uno o varios grados de libertad maestros, posiblemente con un término independiente. Modelan apoyos en plano oblicuo, periodicidad de celda unitaria, uniones rígidas entre nodos y simetrías no alineadas con los ejes globales. Se declaran mediante \texttt{Domain.add\_linear\_constraint} o desde el bloque \texttt{linear\_constraints} del archivo YAML, y se imponen por eliminación directa con la misma maquinaria que las condiciones de Dirichlet. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0004]{ADR 0004}.
 
@@ -1439,13 +1601,19 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Numba (compilación Just-In-Time, JIT)}. Decorador \texttt{@njit} que compila a código nativo, en la primera invocación, las funciones a las que se aplica. La primera ejecución asume el coste de compilación; las siguientes corren a velocidad cercana a Fortran. Restringido a tipos primitivos y arreglos NumPy.
 
+\textbf{Pivote nulo}. Valor de la diagonal de la factorización numéricamente igual a cero: indica una matriz singular. Solidum lo considera nulo por debajo de 10\ensuremath{^{-}}¹\ensuremath{^{3}} veces la mayor entrada de la matriz, el mismo criterio con que MKL Pardiso los perturba. \hyperref[adr:0019]{ADR 0019}.
+
 \textbf{\texttt{PRIMARY\_STATE\_VAR}}. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
 \textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) que mapea el nombre de cada componente con su clase. Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver \hyperref[cap:5]{capítulo 5}.
 
 \textbf{Regla de la mano derecha (RHR)}. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver \hyperref[cap:6]{capítulo 6}.
 
-\textbf{Retorno radial (return mapping)}. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si la tensión predictora lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
+\textbf{Relleno (fill-in)}. Entradas no nulas que aparecen en los factores de una factorización directa donde la matriz tenía ceros. Crece con el tamaño del modelo y domina el tiempo y la memoria de un solver directo: de \ensuremath{\times}10 a \ensuremath{\times}42 la matriz original entre 4 000 y 53 000 grados de libertad. \hyperref[adr:0017]{ADR 0017}.
+
+\textbf{Retorno radial (return mapping)}. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si el esfuerzo predictor lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
+
+\textbf{Solver directo / solver iterativo}. El directo factoriza la matriz y resuelve por sustitución: robusto ante cualquier condicionamiento, pero su memoria crece más deprisa que el modelo. El iterativo aproxima la solución hasta una tolerancia sin factorizar: memoria proporcional al modelo, pero sensible al condicionamiento. Capítulo 4, \hyperref[adr:0017]{ADR 0017} y 0018.
 
 \textbf{\texttt{SolveResult}}. Agregado inmutable que el \texttt{Domain} construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y las fuerzas internas (N, V, M, T) por elemento. Es la interfaz pública para consumidores externos. Ver \hyperref[adr:0002]{ADR 0002}.
 
@@ -1559,11 +1727,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
   \item \pendiente{\ensuremath{\Delta}t adaptativo para transitorios.}
 
-  \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} para el caso simétrico no definido positivo, reservada para la fase 2 del \hyperref[adr:0003]{ADR 0003}.}
+  \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} con conteo de inercia para el caso simétrico indefinido (deuda técnica \#7). Pardiso puede aportarla, pero exige el triángulo superior de la matriz.}
 
-  \item \pendiente{Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.}
-
-  \item \pendiente{Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).}
+  \item \pendiente{solver iterativo para matrices no simétricas (GMRES o BiCGSTAB); hoy esas matrices van siempre a un solver directo.}
 
   \item \pendiente{Conducción no lineal --- conductividad dependiente de la temperatura, radiación y cambio de fase; los tres exigen iteraciones de Newton dentro de cada paso, que el esquema actual evita por hipótesis de linealidad.}
 
@@ -1578,24 +1744,11 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \end{itemize}
 
 
-\section*{Decisiones de arquitectura (ADR)}
-
-\addcontentsline{toc}{section}{Decisiones de arquitectura (ADR)}
-
-\begin{itemize}
-
-  \item \pendiente{ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.}
-
-\end{itemize}
-
-
 \section*{Evolución de la arquitectura}
 
 \addcontentsline{toc}{section}{Evolución de la arquitectura}
 
 \begin{itemize}
-
-  \item \pendiente{Implementación de la fase 6 --- acoplamiento termo-mecánico.}
 
   \item \pendiente{...}
 
@@ -1611,8 +1764,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 09 de septiembre de 2026, 19:59\\[0.5em]
-Commit Git: \texttt{2a98165}\\[1em]
+Compilado el 23 de septiembre de 2026, 09:25\\[0.5em]
+Commit Git: \texttt{17d0d3c}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
