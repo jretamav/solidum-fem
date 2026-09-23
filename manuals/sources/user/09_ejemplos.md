@@ -1,5 +1,9 @@
 # Ejemplos Completos
 
+```callout Nota
+Este capítulo muestra la sintaxis de modelos completos. Los **problemas resueltos y verificados contra solución analítica**, con la explicación de cada paso, la lectura de resultados y la discusión de los errores, están en el *Manual de Ejemplos* (`manuals/Example_manual.pdf`).
+```
+
 ## Marco 2D — Viga en Voladizo
 
 Combinación de un tramo Euler-Bernoulli y un tramo Timoshenko, empotrada en el extremo y cargada en la punta.

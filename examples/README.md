@@ -27,6 +27,7 @@ examples/
 ├── README.md                  ← este índice
 ├── ejecutar_yaml.py           ← runner genérico, transversal a todos
 ├── api_resultados_minimal.py  ← demo mínima de la API de resultados
+├── ejemplos_comun.py          ← utilidades de los ejemplos del manual de ejemplos
 │
 ├── basicos/                   ← un archivo = un ejemplo
 │   └── modelo_*.yaml
@@ -62,9 +63,35 @@ igual que las referencias en [`docs/ONBOARDING.md`](../docs/ONBOARDING.md) y en
 (`tests/test_entry.py` recorre el directorio con `os.walk`, así que ése ya
 soporta subdirectorios sin cambios.)
 
+### Ejemplos del manual de ejemplos
+
+Las carpetas que alimentan `manuals/Example_manual.pdf` siguen, además, un
+contrato propio (2026-09-23). Su `run.py` expone:
+
+- `calcular() -> dict`: resuelve y devuelve las cifras que el capítulo cita,
+  con su referencia analítica y su error. El manual **no lleva cifras escritas
+  a mano**: las lee de `resultados.json` al compilarse.
+- `TOLERANCIAS`: las cotas de lo que el capítulo afirma.
+- `figuras(res, carpeta)` y `main()`, que guarda `resultados.json` y las
+  figuras en PDF (para el manual) y PNG (para GitHub).
+
+[`tests/test_examples_manual.py`](../tests/test_examples_manual.py) ejecuta
+`calcular()`, comprueba las tolerancias y que `resultados.json` corresponde al
+código actual. Tras un cambio que mueva una cifra:
+`python manuals/build_example_manual.py --recalcular`.
+
 ---
 
 ## Índice de ejemplos
+
+### Del manual de ejemplos
+
+| Ejemplo | Qué demuestra |
+|---|---|
+| [`voladizo_marco/`](voladizo_marco/) | Voladizo desde YAML con `Frame2DEuler`: desplazamientos, reacciones y fuerzas internas exactos y su convención de signos; `Frame2DTimoshenko` frente a Euler-Bernoulli según la esbeltez. |
+| [`placa_agujero_kirsch/`](placa_agujero_kirsch/) | Concentración de esfuerzos de Kirsch con malla de Gmsh y condiciones por grupo físico; error de discretización frente a error de modelo. |
+| [`cilindro_lame/`](cilindro_lame/) | Estudio de convergencia con el API (Tri3, Quad4, Tri6, Quad8) contra Lamé; órdenes en desplazamientos y esfuerzos. |
+| [`cilindro_elastoplastico/`](cilindro_elastoplastico/) | Plasticidad J2 hasta el colapso con longitud de arco; presión límite analítica y bloqueo volumétrico del Quad4. |
 
 ### Compuestos
 

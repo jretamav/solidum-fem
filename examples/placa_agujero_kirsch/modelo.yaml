@@ -1,0 +1,23 @@
+# SOLIDUM FEM — Manual de ejemplos, ejemplo 2
+# Placa con agujero circular a tracción: concentración de esfuerzos (Kirsch)
+# Unidades: m, N, Pa
+#
+# Cuarto de placa por doble simetría: agujero de radio a = 10 mm, placa de
+# 200 mm × 200 mm (20a × 20a), espesor 10 mm, acero en esfuerzo plano.
+# La carga se aplica como desplazamiento impuesto en x = W; el esfuerzo
+# nominal σ∞ se obtiene después de la reacción total en ese borde.
+
+mesh: placa_agujero.msh      # generada por malla.py (Gmsh), Quad4
+mesh_material: 1
+mesh_thickness: 0.01
+
+materials:
+  - {id: 1, type: Elastic2D, E: 200.0e9, nu: 0.3, hypothesis: plane_stress}
+
+boundary_conditions_by_group:
+  - {group_name: "Simetria_X", ux: 0.0}      # x = 0: simetría respecto al eje y
+  - {group_name: "Simetria_Y", uy: 0.0}      # y = 0: simetría respecto al eje x
+  - {group_name: "Borde_Carga", ux: 1.0e-4}  # x = W: alargamiento impuesto de 0.1 mm
+
+solver:
+  type: LinearSolver

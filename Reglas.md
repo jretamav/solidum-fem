@@ -118,7 +118,7 @@ Justificación: sale directamente de la forma débil, donde el término de front
   | Capa | Idioma | Artefactos |
   |---|---|---|
   | Externa pública | **Inglés** | `README.md`, `CITATION.cff`, `CONTRIBUTING.md`, `paper.md` (JOSS), manuscritos de SoftwareX y posteriores, descripción de `pyproject.toml`, mensajes de issues/PRs públicos |
-  | Manuales (los 3) | **Bilingüe**: español canónico + inglés generado | `Reference_manual_{es,en}.pdf`, `User_manual_{es,en}.pdf`, `Architecture_manual_{es,en}.pdf` |
+  | Manuales (los 4) | **Bilingüe**: español canónico + inglés generado | `Reference_manual_{es,en}.pdf`, `User_manual_{es,en}.pdf`, `Architecture_manual_{es,en}.pdf`, `Example_manual_{es,en}.pdf` (este último desde 2026-09-23) |
   | Documental navegacional | **Español** | `docs/STATUS.md`, `docs/ROADMAP.md`, `docs/ONBOARDING.md`, `docs/MATRIZ.md`, catálogos `docs/catalogo_*.md` |
   | Interna técnica | **Español** | Specs (fuente canónica en `docs/specs/`), ADRs (`docs/adr/`), docstrings, comentarios, commit messages, `CLAUDE.md`, `Reglas.md` |
   | Código | **Inglés** | Identificadores de código (clases, funciones, variables, archivos) |

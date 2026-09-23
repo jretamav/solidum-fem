@@ -45,7 +45,7 @@ with an architecture optimized for extension via AI-assisted development.
   meaningless displacements.
 - **19 accepted ADRs** documenting architectural decisions.
 - **50 validated specs** with quantitative acceptance criteria.
-- **1496 tests** green, including 8 published canonical benchmarks (Lamé 2D and
+- **1510 tests** green, including 8 published canonical benchmarks (Lamé 2D and
   3D, NAFEMS LE1 and LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation,
   Hill 1950, Carslaw-Jaeger semi-infinite solid).
 
@@ -154,12 +154,12 @@ The project documentation follows a layered language policy:
 | Layer | Language | Artifacts |
 |---|---|---|
 | Public-facing | **English** | This README, `CITATION.cff`, JOSS paper, contributor docs |
-| Manuals | **Spanish today; bilingual planned** | Reference, User, Architecture. English versions are to be generated from the Spanish source via a controlled glossary; **neither the glossary nor the English PDFs exist yet** |
+| Manuals | **Spanish today; bilingual planned** | Reference, User, Architecture, Examples. English versions are to be generated from the Spanish source via a controlled glossary; **neither the glossary nor the English PDFs exist yet** |
 | Navigational | **Spanish** | `docs/STATUS.md`, `docs/ROADMAP.md`, `docs/ONBOARDING.md`, `docs/MATRIZ.md`, catalogs |
 | Internal / technical | **Spanish** | Component specs, ADRs, docstrings, code comments, governance docs |
 | Code identifiers | **English** | Classes, functions, variables, file names |
 
-The three manuals (in `manuals/`):
+The four manuals (in `manuals/`):
 
 - **Reference manual** — formal specification of each component: equations,
   $\mathbf{B}$ matrices, YAML contracts, acceptance criteria.
@@ -167,6 +167,11 @@ The three manuals (in `manuals/`):
   complete examples.
 - **Architecture manual** — architectural overview: layers, functional blocks,
   ADRs, planned evolution.
+- **Examples manual** — worked problems verified against analytical
+  solutions (cantilever frames, Kirsch plate, Lamé convergence study,
+  elastoplastic collapse). No number in it is typed by hand: each example's
+  `examples/<folder>/run.py` produces the numbers and plots the manual quotes,
+  and `tests/test_examples_manual.py` checks them on every CI run.
 
 Component catalogs (short navigational entries):
 

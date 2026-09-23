@@ -67,7 +67,7 @@ solidum_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 1496 verdes + 9 skipped (pytest; 1487 + 18 sin pypardiso ni pyamg, como en el CI base); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
+├── tests/                        ← 1510 verdes + 9 skipped (pytest; 1501 + 18 sin pypardiso ni pyamg, como en el CI base); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
 ├── docs/
 │   ├── adr/                      ← 0001-0019: decisiones arquitecturales
 │   ├── specs/                    ← una por componente: contrato + acceptance
@@ -76,11 +76,12 @@ solidum_fem/
 │   ├── ROADMAP.md, STATUS.md,
 │   ├── MATRIZ.md, ONBOARDING.md  ← documentos navegacionales (este set)
 ├── manuals/
-│   ├── sources/{reference,user,architecture}/  ← markdown fuente
-│   ├── build_*_manual.py         ← un builder por manual; salida en LaTeX/PDF
+│   ├── sources/{reference,user,architecture,examples}/  ← markdown fuente
+│   ├── build_*_manual.py         ← un builder por manual (Reference, User, Architecture, Example); salida en LaTeX/PDF
 │   └── glossary.md               ← (pendiente) glosario ES↔EN para regenerar manuales en inglés
 ├── paper/joss/                   ← paper.md + paper.bib para JOSS (skeleton)
-├── examples/                     ← YAMLs de ejemplo (estático, modal, transitorio)
+├── examples/                     ← YAMLs de ejemplo (estático, modal, transitorio) y, en carpetas propias,
+│                                    los ejemplos del manual de ejemplos (run.py → resultados.json + figuras)
 ├── README.md, CONTRIBUTING.md, CITATION.cff, LICENSE, LICENSE.GPL
 └── pyproject.toml
 ```
@@ -98,6 +99,8 @@ python -m pytest tests/test_modal.py -q   # un solo módulo
 python manuals/build_reference_manual.py
 python manuals/build_user_manual.py
 python manuals/build_architecture_manual.py
+python manuals/build_example_manual.py              # usa los resultados guardados
+python manuals/build_example_manual.py --recalcular  # re-ejecuta antes los ejemplos
 
 # Pipeline YAML end-to-end
 python -c "import solidum; print(solidum.run_yaml('examples/<archivo>.yaml'))"
@@ -153,7 +156,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ## 8. Antes de commitear
 
-1. `python -m pytest tests/ -q` verde (1496 pasan y 9 skipped con los extras `fast` e `iterative` instalados; sin ellos, 1487 y 18 skipped: los tests de Pardiso y AMG se saltan solos).
+1. `python -m pytest tests/ -q` verde (1510 pasan y 9 skipped con los extras `fast` e `iterative` instalados; sin ellos, 1501 y 18 skipped: los tests de Pardiso y AMG se saltan solos).
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
 4. **Hooks**: el repo no define hooks de pre-commit; la puerta de calidad es la suite completa del punto 1 más el CI de GitHub Actions. Si en el futuro se añaden hooks, no usar `--no-verify`.
