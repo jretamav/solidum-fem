@@ -68,12 +68,12 @@ class TestOneAssemblyPerIteration(unittest.TestCase):
         inst = _Instrumented(asm)
         solves = {"n": 0}
         solver = NonlinearSolver(asm, num_steps=5, adaptive=False)
-        orig = solver._solve_reduced
+        orig = solver.corrector.solve
 
-        def counted(K, R, iteration=0):
+        def counted(A, b, iteration=0):
             solves["n"] += 1
-            return orig(K, R, iteration=iteration)
-        solver._solve_reduced = counted
+            return orig(A, b, iteration=iteration)
+        solver.corrector.solve = counted
         solver.solve(F)
         # Un ensamblaje inicial por paso + uno por cada resolución.
         self.assertEqual(inst.n_assemblies, 5 + solves["n"])

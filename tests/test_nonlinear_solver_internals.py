@@ -16,7 +16,7 @@ ejercitadas por los tests de robustez de `test_solver_robustness.py`
    helper de descenso no monótono (Grippo-Lampariello-Lucidi) implementado
    en la fase C del ADR no estaba ejercitado por ningún test. Este bloque
    cubre el smoke test del code path activado + verificación directa de
-   que `_armijo_step` hace backtracking cuando el paso completo aumenta
+   que el line search del corrector compartido (ADR 0015) hace backtracking cuando el paso completo aumenta
    el residuo.
 
 3. **Paso adaptativo**: bisección automática cuando un intento no
@@ -247,7 +247,7 @@ class TestLineSearch(unittest.TestCase):
                     "en un problema bien comportado.")
 
     def test_armijo_step_backtracks_when_full_step_increases_residual(self):
-        """`_armijo_step` con `line_search=True` reduce α cuando ``α=1``
+        """El line search con `line_search=True` reduce α cuando ``α=1``
         aumenta el residuo.
 
         Construye manualmente un escenario: truss elástico 1D con
@@ -277,10 +277,12 @@ class TestLineSearch(unittest.TestCase):
         R_norm_current = float(np.linalg.norm(F_ext_step[free_dofs]))
 
         solver = NonlinearSolver(asm, line_search=True)
-        # Devuelve (alpha, K, F_int) del punto aceptado; el residuo se
-        # reconstruye desde F_int (un ensamblaje por iteracion).
-        alpha, _, F_int_after = solver._armijo_step(
-            U_iter, delta_U, R_norm_current, F_ext_step, free_dofs,
+        # El corrector compartido (ADR 0015) devuelve (alpha, U, (K, F_int),
+        # |incremento|) del punto aceptado; el residuo se reconstruye desde
+        # F_int (un ensamblaje por iteracion).
+        problem = solver.make_problem(F_ext_step, 1.0)
+        alpha, _, (_, F_int_after), _ = solver.corrector.line_search_step(
+            problem, U_iter, delta_U, R_norm_current,
         )
         R_after = float(np.linalg.norm((F_ext_step - F_int_after)[free_dofs]))
 
@@ -292,7 +294,7 @@ class TestLineSearch(unittest.TestCase):
             f"R_after={R_after:.3e}, R_current={R_norm_current:.3e}.")
 
     def test_armijo_step_disabled_takes_full_step(self):
-        """Con `line_search=False`, `_armijo_step` siempre devuelve α=1
+        """Con `line_search=False`, el line search siempre devuelve α=1
         sin importar el efecto sobre el residuo (semántica pre-ADR 0011).
         """
         dom = Domain()
@@ -309,8 +311,9 @@ class TestLineSearch(unittest.TestCase):
         delta_U = np.zeros(ndof); delta_U[n2.dofs['ux']] = 1.0e-2  # 10× exagerado
 
         solver = NonlinearSolver(asm, line_search=False)
-        alpha, _, _ = solver._armijo_step(
-            np.zeros(ndof), delta_U, 100.0, F_ext_step, free_dofs,
+        problem = solver.make_problem(F_ext_step, 1.0)
+        alpha, _, _, _ = solver.corrector.line_search_step(
+            problem, np.zeros(ndof), delta_U, 100.0,
         )
         self.assertEqual(alpha, 1.0,
             f"Con line_search=False, α debe ser exactamente 1.0; obtuvo {alpha}.")

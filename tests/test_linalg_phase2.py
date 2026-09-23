@@ -153,7 +153,7 @@ class TestNewtonModificado(unittest.TestCase):
                                  num_steps=2,
                                  freeze_tangent_after_iter=1)
         solver.solve(F)
-        self.assertIsNone(solver._frozen_factor)
+        self.assertIsNone(solver.corrector.frozen_factor)
 
 
 class TestSPDFallback(unittest.TestCase):
@@ -216,7 +216,7 @@ class TestSPDFallback(unittest.TestCase):
 
     def test_nonlinear_solver_falls_back_to_lu(self):
         from solidum.math import solvers as solvers_module
-        from solidum.math.solvers import nonlinear as nonlinear_module
+        from solidum.math.solvers import corrector as corrector_module
         from solidum.math.assembly import Assembler
         from solidum.math.linalg.lu import LUSolver as RealLU
 
@@ -233,8 +233,9 @@ class TestSPDFallback(unittest.TestCase):
 
         # ``NonlinearSolver`` lo importa en su propio submódulo (ver
         # ``test_linear_solver_falls_back_to_lu`` para la lógica).
-        original = nonlinear_module.select_solver
-        nonlinear_module.select_solver = _patched
+        # El backend lo crea el corrector compartido (ADR 0015).
+        original = corrector_module.select_solver
+        corrector_module.select_solver = _patched
         try:
             dom, n2, F = self._cantilever_axial()
             from solidum.math.convergence import ConvergenceCriterion
@@ -244,7 +245,7 @@ class TestSPDFallback(unittest.TestCase):
             # Tras eliminación directa (ADR 0004) la imposición es exacta a redondeo.
             np.testing.assert_allclose(U[n2.dofs["ux"]], expected, rtol=1e-12)
         finally:
-            nonlinear_module.select_solver = original
+            corrector_module.select_solver = original
 
 
 if __name__ == "__main__":

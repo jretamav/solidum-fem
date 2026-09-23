@@ -11,6 +11,11 @@ iteración con el par ``(‖R(U_k)‖, ‖δU_{k−1}‖)``: si se cumple, el es
 trial que acaba de dejar el ensamblaje es exactamente el de ``U_k`` y se
 comitea sin reensamblar. Si no, se resuelve ``δU_k`` y se avanza.
 
+Ese bucle es el :class:`~solidum.math.solvers.corrector.NewtonCorrector`
+compartido (ADR 0015); este módulo aporta lo propio del control de carga
+incremental: el residuo ``λ·F_ext − F_int``, la reducción por Dirichlet
+con el incremento ``λ·g`` del paso, y el paso adaptativo con bisección.
+
 La alternativa —ensamblar en ``U_k`` para resolver y otra vez en
 ``U_k + δU_k`` para evaluar el residuo— duplicaba el coste por iteración
 (auditoría 2026-09-22) para producir la misma secuencia de decisiones,
@@ -23,25 +28,66 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.constants import (
-    LINE_SEARCH_MAX_BACKTRACKS,
-    LINE_SEARCH_RHO,
     NEWTON_ADAPTIVE_GROWTH_FACTOR,
     NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD,
     NEWTON_DEFAULT_MIN_DELTA_LAMBDA,
     NEWTON_LOAD_FACTOR_EPSILON,
 )
-from solidum.math.convergence import (
-    ConvergenceCriterion,
-    stiffness_diag_scale,
-)
-from solidum.math.linalg import StiffnessProperties, select_solver
-from solidum.math.solvers._shared import (
-    CholeskyNotPositiveDefiniteError,
-    _log,
-    domain_is_symmetric,
-)
-from solidum.math.solvers.diagnostics import classify_divergence
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers._shared import _log, domain_is_symmetric
+from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
 from solidum.registry import SolverRegistry
+
+
+class _IncrementalProblem:
+    """Paso de carga del Newton incremental, en el protocolo ``NewtonProblem``.
+
+    El iterado ``x`` es el vector global ``U``; el estado es ``(K, F_int)``.
+    """
+
+    def __init__(self, assembler, F_ext_step: np.ndarray, F_ext_global: np.ndarray,
+                 load_factor: float, free_dofs: np.ndarray):
+        self.assembler = assembler
+        self.F_ext_step = F_ext_step
+        self.F_ext_global = F_ext_global
+        self.load_factor = float(load_factor)
+        self.free_dofs = free_dofs
+
+    def assemble(self, U):
+        return self.assembler.assemble_non_linear_system(U)
+
+    def residual(self, U, state):
+        return self.F_ext_step - state[1]
+
+    def residual_norm(self, R):
+        return float(np.linalg.norm(R[self.free_dofs]))
+
+    def calibration_scales(self, U, state):
+        # La escala de fuerza es la carga total de la corrida, no la del
+        # paso: así las tolerancias no dependen del número de pasos.
+        return default_calibration_scales(self.F_ext_global, state[1], state[0])
+
+    def reference_force(self, U, state):
+        return max(float(np.linalg.norm(self.F_ext_step)), float(np.linalg.norm(state[1])))
+
+    def x_norm(self, U):
+        return float(np.linalg.norm(U))
+
+    def correction(self, U, state, R, solve):
+        # Reducción con el incremento de Dirichlet ``λ·g`` del paso: en DOF
+        # libres se anula y en esclavos corrige la restricción (ADR 0004).
+        K_red, R_red, T_op, g_inc = self.assembler.reduce(
+            state[0], R, U_current=U, load_factor=self.load_factor,
+        )
+        return self.assembler.expand(solve(K_red, R_red), T_op, g_inc)
+
+    def apply(self, U, dU, alpha):
+        step = alpha * dU
+        return U + step, float(np.linalg.norm(step))
+
+    def on_converged(self, U, state):
+        # El estado trial es el del ensamblaje en U: coherente.
+        self.assembler.commit_all_states()
 
 
 @SolverRegistry.register
@@ -84,10 +130,17 @@ class NonlinearSolver:
         # plasticidad cerca de la rama postcrítica). Activar explícitamente
         # cuando se observe oscilación.
         self.line_search = bool(line_search)
-        # Se inicializa al comienzo de solve(); se degrada a LU si Cholesky aborta.
-        self._linalg = None
-        self._is_pd = True
-        self._frozen_factor = None  # FactorizedSolver | None
+        # Corrector compartido (ADR 0015): bucle de Newton, backend
+        # algebraico con degradación a LU, Newton modificado y line search.
+        self.corrector = NewtonCorrector(
+            self.convergence,
+            max_iter=self.max_iter,
+            is_symmetric=domain_is_symmetric(assembler.domain),
+            is_positive_definite=True,
+            linear_algebra=self.linear_algebra,
+            freeze_tangent_after_iter=self.freeze_tangent_after_iter,
+            line_search=self.line_search,
+        )
         # Metadatos del último análisis (los lee ``solidum.run``): pasos
         # convergidos y factor de carga alcanzado (siempre 1.0 si ``solve``
         # retorna; en caso contrario lanza una excepción tipada).
@@ -95,98 +148,14 @@ class NonlinearSolver:
         self.lambda_final: float = 0.0
         self.reached_max_lambda: bool = False
 
-    def _make_linalg(self, ndof: int):
-        props = StiffnessProperties(
-            is_symmetric=domain_is_symmetric(self.assembler.domain),
-            is_positive_definite=self._is_pd,
-            size=ndof,
+    def make_problem(self, F_ext_global: np.ndarray, load_factor: float) -> _IncrementalProblem:
+        """Problema de Newton del paso con factor de carga ``load_factor``
+        (lo usa ``solve``; expuesto para los tests de los internos)."""
+        ndof = self.assembler.domain.total_dofs
+        free_dofs = self.assembler.constraint_set.free_dofs(ndof)
+        return _IncrementalProblem(
+            self.assembler, F_ext_global * load_factor, F_ext_global, load_factor, free_dofs,
         )
-        return select_solver(props, override=self.linear_algebra)
-
-    def _solve_reduced(self, K_red, R_red, iteration: int = 0):
-        """Resuelve K_red·δU_red = R_red con fallback SPD→LU y Newton modificado.
-
-        Si ``freeze_tangent_after_iter`` está activo, factoriza fresca solo
-        durante las primeras N iteraciones del paso y reusa la factorización
-        cacheada en las siguientes (ADR 0003 §5 + fase 2).
-        """
-        if self.freeze_tangent_after_iter is None:
-            try:
-                return self._linalg.solve(K_red, R_red)
-            except CholeskyNotPositiveDefiniteError:
-                return self._fallback_to_lu_and_solve(K_red, R_red)
-
-        threshold = self.freeze_tangent_after_iter
-        if iteration < threshold or self._frozen_factor is None:
-            try:
-                self._frozen_factor = self._linalg.factorize(K_red)
-            except CholeskyNotPositiveDefiniteError:
-                self._is_pd = False
-                self._linalg = self._make_linalg(K_red.shape[0])
-                _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
-                self._frozen_factor = self._linalg.factorize(K_red)
-        return self._frozen_factor.solve(R_red)
-
-    def _fallback_to_lu_and_solve(self, K_red, R_red):
-        _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
-        self._is_pd = False
-        self._linalg = self._make_linalg(K_red.shape[0])
-        return self._linalg.solve(K_red, R_red)
-
-    def _armijo_step(self, U_iter: np.ndarray, delta_U: np.ndarray,
-                     R_norm_current: float, F_ext_step: np.ndarray,
-                     free_dofs):
-        """Line search por descenso no monótono (ADR 0011, variante GLL).
-
-        Devuelve ``(α, K_after, F_int_after)`` donde ``α ∈ (0, 1]`` es el
-        primer factor que satisface ``‖R(U + α·δU)‖ ≤ ‖R(U)‖`` (condición
-        Grippo-Lampariello-Lucidi 1986 simplificada — descenso no
-        monótono) y ``K_after``, ``F_int_after`` son la tangente y las
-        fuerzas internas **ensambladas en el punto aceptado**, para que el
-        bucle exterior las reutilice sin reensamblar. Más permisiva que
-        Armijo puro: acepta ``α = 1`` cuando Newton baja el residuo, sin
-        exigir suficiente decrecimiento al modo Wolfe. Solo hace
-        backtracking cuando el paso completo de Newton produce ``R`` mayor.
-
-        Justificación: Armijo puro con ``c₁ > 0`` puede rechazar pasos de
-        Newton correctos en problemas FEM no lineales (daño activo,
-        plasticidad cerca de la rama postcrítica) donde el residuo a veces
-        sube transitoriamente antes de converger. La condición de
-        descenso no monótono preserva la velocidad cuadrática del Newton
-        estándar y solo interviene cuando hay un rebote claro.
-
-        Si el backtracking se agota sin encontrar un α que baje el
-        residuo, devuelve los valores del último α probado y delega al
-        control externo (oscillation, bisección del paso).
-
-        Tras esta llamada, el ``state.vars_trial`` de los elementos
-        corresponde al ensamblaje en ``U_iter + α·δU``.
-
-        Cuando ``self.line_search=False`` ensambla una vez con α=1 (misma
-        semántica que el paso de Newton estándar).
-        """
-        rho = LINE_SEARCH_RHO
-        max_bt = LINE_SEARCH_MAX_BACKTRACKS
-        # `LINE_SEARCH_C1` no se usa en esta variante (GLL no exige
-        # suficiente decrecimiento). Se conserva en constants.py por
-        # legibilidad y por si se introduce una variante Wolfe en futuro.
-
-        if not self.line_search:
-            K_trial, F_int_trial = self.assembler.assemble_non_linear_system(U_iter + delta_U)
-            return 1.0, K_trial, F_int_trial
-
-        alpha = 1.0
-        K_trial = F_int_trial = None
-        for _ in range(max_bt + 1):
-            U_trial = U_iter + alpha * delta_U
-            K_trial, F_int_trial = self.assembler.assemble_non_linear_system(U_trial)
-            R_trial = F_ext_step - F_int_trial
-            R_trial_norm = float(np.linalg.norm(R_trial[free_dofs]))
-            if R_trial_norm <= R_norm_current:
-                return alpha, K_trial, F_int_trial
-            alpha *= rho
-
-        return alpha, K_trial, F_int_trial
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
@@ -194,12 +163,6 @@ class NonlinearSolver:
         U_current = np.zeros(ndof)
 
         _log.info("--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
-
-        # Tras reducción el solver algebraico opera sobre n_libre, no sobre ndof.
-        cs = self.assembler.constraint_set
-        n_free = ndof - len(cs)
-        free_dofs = cs.free_dofs(ndof)
-        self._linalg = self._make_linalg(n_free)
 
         load_factor = 0.0
         target_load = 1.0
@@ -219,10 +182,6 @@ class NonlinearSolver:
             next_load_factor = load_factor + delta_lambda
             _log.info(f"[PASO {step}] Intentando Factor de Carga: {next_load_factor:.4f} (Incremento: {delta_lambda:.4f})")
 
-            F_ext_step = F_ext_global * next_load_factor
-            U_iter = U_current.copy()
-            converged = False
-
             # ADR 0010 §5: hook de preparación de paso. Evaluado con el estado
             # convergido del paso anterior para evitar chattering por
             # predictores lineales dentro del Newton. No-op para elementos
@@ -230,164 +189,60 @@ class NonlinearSolver:
             # (CST_Embedded2D) para chequear activación.
             self.assembler.prepare_all_steps(U_current)
 
-            # Historial de residuos del paso para clasificación de divergencia
-            # (ADR 0011). Se resetea al inicio de cada intento de paso.
-            residual_history: list[float] = []
-            delta_history: list[float] = []
-            singular_tangent_seen = False
-            last_alpha = 1.0
-            last_residual = float("inf")
-            last_delta = 0.0
+            # Corrector del paso. No se evalúa la convergencia en la
+            # iteración 0: el iterado inicial es el convergido del paso
+            # anterior y aún no incorpora el incremento de Dirichlet ``λ·g``
+            # del paso nuevo (entra por ``reduce`` en la primera
+            # resolución). Con control en desplazamiento su residuo en DOF
+            # libres es nulo y el criterio daría convergencia sin haber
+            # movido el apoyo. Todo paso hace, por tanto, al menos una
+            # resolución.
+            problem = self.make_problem(F_ext_global, next_load_factor)
+            res = self.corrector.run(problem, U_current.copy(), check_initial=False)
 
-            # Ensamblaje inicial del paso en U_current (estado committed).
-            K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-            delta_U_norm = 0.0  # no hay incremento previo en la iteración 0
-            n_solves = 0
+            if res.converged:
+                _log.info("  -> CONVERGENCIA ALCANZADA.")
+                U_current = res.x
+                load_factor = next_load_factor
+                self.steps_done += 1
 
-            for iteration in range(self.max_iter + 1):
-                R = F_ext_step - F_int_global
-
-                # Calibración del criterio en el primer ensamblaje de la corrida
-                # (ADR 0007). Las escalas se derivan del estado inicial real:
-                # ‖F_ext_global‖ para fuerza, ‖F_ext‖/max|diag(K)| para
-                # desplazamiento. Si ‖F_ext_global‖ = 0 (control en desplazamiento
-                # puro), usar la reacción interna del primer paso o fallback 1.0.
-                if not self.convergence.is_calibrated:
-                    force_scale = max(
-                        np.linalg.norm(F_ext_global),
-                        np.linalg.norm(F_int_global),
-                        1.0,
+                if (self.adaptive
+                        and res.n_solves < NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD
+                        and delta_lambda < (1.0 / self.num_steps)):
+                    delta_lambda = min(
+                        delta_lambda * NEWTON_ADAPTIVE_GROWTH_FACTOR,
+                        1.0 / self.num_steps,
                     )
-                    K_diag = stiffness_diag_scale(K_global)
-                    disp_scale = force_scale / K_diag
-                    self.convergence.calibrate(force_scale, disp_scale)
+                    _log.info(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
 
-                # Criterio dual fuerza + desplazamiento (ADR 0007) sobre el
-                # iterado corriente: residuo de ESTE ensamblaje y norma del
-                # incremento que lo produjo. Residuo en DOFs libres.
-                #
-                # No se evalúa en la iteración 0: el iterado inicial del paso
-                # es el convergido del paso anterior y aún no incorpora el
-                # incremento de Dirichlet ``λ·g`` del paso nuevo (entra por
-                # ``reduce`` en la primera resolución). Con control en
-                # desplazamiento su residuo en DOFs libres es nulo y el
-                # criterio daría convergencia sin haber movido el apoyo.
-                # Todo paso hace, por tanto, al menos una resolución.
-                R_norm = float(np.linalg.norm(R[free_dofs]))
-                state = None
-                if iteration > 0:
-                    ref_force = max(np.linalg.norm(F_ext_step), np.linalg.norm(F_int_global))
-                    state = self.convergence.evaluate(
-                        residual_norm=R_norm,
-                        ref_force=ref_force,
-                        delta_u_norm=delta_U_norm,
-                        u_norm=np.linalg.norm(U_iter),
-                    )
-                    residual_history.append(R_norm)
-                    delta_history.append(delta_U_norm)
-                    last_residual = R_norm
-                    last_delta = delta_U_norm
+                if step_callback:
+                    step_callback(step, U_current, load_factor)
+                continue
 
-                    alpha_tag = f" | α={last_alpha:.3f}" if last_alpha < 1.0 else ""
-                    _log.info(
-                        f"  Iteración {n_solves:2d} | "
-                        f"R/tol_F: {state.ratio_force:.4e} | "
-                        f"dU/tol_d: {state.ratio_disp:.4e}{alpha_tag}"
-                    )
-
-                if state is not None and state.converged:
-                    _log.info("  -> CONVERGENCIA ALCANZADA.")
-                    # El estado trial es el del ensamblaje en U_iter: coherente.
-                    self.assembler.commit_all_states()
-
-                    U_current = U_iter
-                    load_factor = next_load_factor
-                    converged = True
-                    self.steps_done += 1
-
-                    if (self.adaptive
-                            and n_solves < NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD
-                            and delta_lambda < (1.0 / self.num_steps)):
-                        delta_lambda = min(
-                            delta_lambda * NEWTON_ADAPTIVE_GROWTH_FACTOR,
-                            1.0 / self.num_steps,
-                        )
-                        _log.info(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
-
-                    if step_callback:
-                        step_callback(step, U_current, load_factor)
-
-                    break
-
-                if iteration == self.max_iter:
-                    break  # presupuesto de resoluciones agotado
-
-                K_red, R_red, T_op, g_inc = self.assembler.reduce(
-                    K_global, R, U_current=U_iter, load_factor=next_load_factor
-                )
-
-                try:
-                    delta_U_red = self._solve_reduced(K_red, R_red, iteration=iteration)
-                except RuntimeError:
-                    _log.error("Matriz Singular detectada.")
-                    singular_tangent_seen = True
-                    break
-                n_solves += 1
-
-                delta_U = self.assembler.expand(delta_U_red, T_op, g_inc)
-
-                # Paso de Newton (con line search opcional, ADR 0011). El
-                # helper ensambla en el punto aceptado y devuelve K y F_int
-                # de ese punto: es el único ensamblaje de la iteración.
-                alpha, K_global, F_int_global = self._armijo_step(
-                    U_iter, delta_U, R_norm, F_ext_step, free_dofs,
-                )
-                last_alpha = alpha
-                U_iter = U_iter + alpha * delta_U
-                delta_U_norm = float(np.linalg.norm(alpha * delta_U))
-
-            # Cierre de paso (converja o no): la K_t cambia con U_current,
-            # así que la factorización congelada deja de ser válida para el
-            # siguiente paso (Newton modificado, ADR 0003 fase 2).
-            self._frozen_factor = None
-
-            if not converged:
-                if self.adaptive:
-                    delta_lambda /= 2.0
-                    n_bisections += 1
-                    _log.warning(f"NO CONVERGIÓ. Bisección: reduciendo incremento a {delta_lambda:.4f}")
-                    if delta_lambda < self.min_delta_lambda:
-                        # Clasificar el modo y lanzar excepción tipada (ADR 0011).
-                        err_cls = classify_divergence(
-                            residual_history, delta_history,
-                            singular_tangent_detected=singular_tangent_seen,
-                        )
-                        raise err_cls(
-                            last_residual=last_residual,
-                            last_delta=last_delta,
-                            last_load_factor=next_load_factor,
-                            n_bisections=n_bisections,
-                            extra_message=(
-                                f"Δλ={delta_lambda:.2e} < min={self.min_delta_lambda:.2e}; "
-                                f"line_search={'on' if self.line_search else 'off'}; "
-                                f"último α={last_alpha:.3f}."
-                            ),
-                        )
-                else:
-                    err_cls = classify_divergence(
-                        residual_history, delta_history,
-                        singular_tangent_detected=singular_tangent_seen,
-                    )
-                    raise err_cls(
-                        last_residual=last_residual,
-                        last_delta=last_delta,
+            if self.adaptive:
+                delta_lambda /= 2.0
+                n_bisections += 1
+                _log.warning(f"NO CONVERGIÓ. Bisección: reduciendo incremento a {delta_lambda:.4f}")
+                if delta_lambda < self.min_delta_lambda:
+                    # Clasificar el modo y lanzar excepción tipada (ADR 0011).
+                    raise res.divergence_error(
                         last_load_factor=next_load_factor,
                         n_bisections=n_bisections,
                         extra_message=(
-                            f"Paso {step} no convergió en {self.max_iter} iter; "
-                            f"adaptive=False; line_search={'on' if self.line_search else 'off'}."
+                            f"Δλ={delta_lambda:.2e} < min={self.min_delta_lambda:.2e}; "
+                            f"line_search={'on' if self.line_search else 'off'}; "
+                            f"último α={res.last_alpha:.3f}."
                         ),
                     )
+            else:
+                raise res.divergence_error(
+                    last_load_factor=next_load_factor,
+                    n_bisections=n_bisections,
+                    extra_message=(
+                        f"Paso {step} no convergió en {self.max_iter} iter; "
+                        f"adaptive=False; line_search={'on' if self.line_search else 'off'}."
+                    ),
+                )
 
         self.lambda_final = load_factor
         self.reached_max_lambda = True
