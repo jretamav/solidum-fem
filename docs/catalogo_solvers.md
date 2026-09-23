@@ -2,7 +2,7 @@
 
 > Referencia rápida de los métodos de solución implementados. Una entrada por solver. Para detalles del algoritmo → código fuente.
 >
-> **Corrector compartido (ADR 0015)**: los cinco solvers iterativos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) ejecutan el mismo bucle de Newton, `NewtonCorrector` (`solidum/math/solvers/corrector.py`): un ensamblaje por iteración, criterio dual (ADR 0007), backend con degradación Cholesky → LU y Newton modificado (ADR 0003), line search y excepciones tipadas (ADR 0011). Cada uno aporta un `NewtonProblem` por paso con su residuo, su sistema tangente y su actualización, y conserva su control de paso. `solver.corrector` es la superficie de instrumentación.
+> **Corrector compartido (ADR 0015)**: los cinco solvers iterativos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) ejecutan el mismo bucle de Newton, `NewtonCorrector` (`solidum/math/solvers/corrector.py`): un ensamblaje por iteración, criterio dual (ADR 0007), backend con preferencia Cholesky → Pardiso → LU (ADR 0003, ADR 0017) y Newton modificado, line search y excepciones tipadas (ADR 0011). Cada uno aporta un `NewtonProblem` por paso con su residuo, su sistema tangente y su actualización, y conserva su control de paso. `solver.corrector` es la superficie de instrumentación.
 
 ---
 

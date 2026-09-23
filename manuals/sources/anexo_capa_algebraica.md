@@ -17,9 +17,11 @@ El despachador (`solidum.math.linalg.dispatcher.select_solver`) elige el backend
 
 | Régimen de `K` | Backend elegido | Notas |
 |---|---|---|
-| Simétrica + positiva definida | **Cholesky** (CHOLMOD) | ~2× más rápido y ~2× menos memoria que LU. Requiere la dependencia opcional `scikit-sparse`. Si falta, degrada a LU con un *warning* una sola vez. |
-| Simétrica indefinida | LU general (placeholder LDLᵀ) | Ideal para LDLᵀ con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo, se usa LU sin pérdida de corrección, solo sin diagnóstico de bifurcación. |
-| No simétrica | **LU general** (SuperLU) | Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. |
+| Simétrica + positiva definida | **Cholesky** (CHOLMOD) | ~2× más rápido y ~2× menos memoria que LU. Requiere la dependencia opcional `scikit-sparse`. Si falta, se pasa al siguiente disponible. |
+| Simétrica indefinida | **Pardiso** si está; si no, LU (placeholder LDLᵀ) | Ideal para LDLᵀ con conteo de pivotes negativos (Sturm sequence) en pandeo y snap-through. La interfaz está reservada; mientras no haya backend nativo se resuelve sin pérdida de corrección, solo sin diagnóstico de bifurcación. |
+| No simétrica | **Pardiso** si está; si no, **LU general** (SuperLU) | Backend universal. Cubre plasticidad no asociada, follower loads, contacto con fricción. |
+
+El orden de preferencia es **Cholesky → Pardiso → LU**: Cholesky sólo aplica al caso SPD, pero ahí explota la simetría y es la mejor opción; Pardiso cubre el mismo terreno que LU —cualquier matriz real— y lo sustituye cuando está instalado (ADR 0017), porque es multihilo y reordena por disección anidada. LU (SuperLU, en SciPy) es el suelo que siempre está disponible.
 
 **Origen de los flags**, todos derivables del modelo:
 - `is_symmetric`: AND lógico de `material.IS_SYMMETRIC` y `element.PRESERVES_SYMMETRY` sobre todos los componentes del dominio. Defaults `True`.
@@ -63,6 +65,7 @@ solver:
   type: LinearSolver
   linear_algebra: auto         # default; el despachador decide
   # linear_algebra: cholesky   # forzar Cholesky (requiere scikit-sparse)
+  # linear_algebra: pardiso    # forzar Pardiso (requiere pypardiso)
   # linear_algebra: lu         # forzar LU (siempre disponible)
   # linear_algebra: ldlt       # placeholder; degrada a LU con warning
 ```
@@ -75,10 +78,35 @@ solver:
 
 **Cuándo NO usarlo**: como parte del setup habitual de un caso de análisis. No es decisión de modelado; el default `auto` cubre todos los regímenes correctamente.
 
-## Activación de Cholesky (opcional)
+## Backends opcionales: por qué importan
+
+En un análisis grande, **la factorización del sistema es el cuello de botella**, no el ensamblaje. Medido sobre un análisis no lineal completo de `Hex8 15³` (12 288 grados de libertad): el 97 % del tiempo se va en factorizar y el 1 % en ensamblar (ADR 0017). La razón de fondo es el **relleno** (*fill-in*): al factorizar, `L+U` tiene muchos más no-ceros que `K`, y la proporción empeora con la talla — de ×10 a 4 000 grados de libertad a ×42 a 53 000 —, llevándose por delante tiempo y memoria.
+
+Los backends opcionales atacan exactamente eso. Sin ellos Solidum funciona igual, con SuperLU; con ellos los modelos grandes dejan de ser inviables.
+
+### Pardiso — recomendado (`pip install solidum-fem[fast]`)
+
+```bash
+pip install solidum-fem[fast]
+```
+
+Intel MKL Pardiso: factorización **multihilo** con reordenamiento por **disección anidada**. Trae binarios para Windows, Linux y macOS, así que no necesita compilador. Medido (16 hilos), resolviendo el sistema de `Hex8 n³`:
+
+| Malla | Grados de libertad | SuperLU | Pardiso | Aceleración |
+|---|---:|---:|---:|---:|
+| Hex8 10³ | 3 993 | 0,47 s | 0,10 s | ×4,7 |
+| Hex8 15³ | 12 288 | 3,24 s | 0,27 s | ×12 |
+| Hex8 20³ | 27 783 | 18,32 s | 0,78 s | ×23,5 |
+| Hex8 25³ | 52 728 | 110,10 s | 1,97 s | ×56 |
+
+La aceleración **crece con el tamaño**, que es donde hace falta. Sobre el análisis no lineal completo de `Hex8 20³` (5 pasos): 212 s → 9,8 s. La solución es la misma a precisión de máquina (`1e-16` relativo en el campo de desplazamientos).
+
+### Cholesky / CHOLMOD (`scikit-sparse`)
 
 ```bash
 conda install -c conda-forge scikit-sparse
 ```
 
-Una vez instalado, los problemas estáticos lineales y los Newton estables empiezan a usar Cholesky automáticamente — sin tocar YAML, sin recompilar, sin reescribir specs. Si la dependencia no está disponible, Solidum funciona idéntico con LU.
+Sólo aplica a matrices simétricas y positivas definidas, pero ahí explota la simetría y es la mejor opción. En Windows requiere Visual Studio para compilar, de ahí que la vía práctica sea `conda` y no `pip`.
+
+Instalado cualquiera de los dos, el despachador empieza a usarlo automáticamente — sin tocar YAML, sin recompilar, sin reescribir specs.
