@@ -42,7 +42,7 @@ import numpy as np
 
 from solidum.constants import LINE_SEARCH_MAX_BACKTRACKS, LINE_SEARCH_RHO
 from solidum.math.convergence import ConvergenceCriterion, ConvergenceState
-from solidum.math.linalg import StiffnessProperties, select_solver
+from solidum.math.linalg import IterativeNotConvergedError, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError, _log
 from solidum.math.solvers.diagnostics import SolverDivergedError, classify_divergence
 
@@ -116,6 +116,11 @@ class CorrectorResult:
     residual_history: list[float] = field(default_factory=list)
     delta_history: list[float] = field(default_factory=list)
     singular_tangent: bool = False
+    # Diagnóstico del backend algebraico cuando el sistema tangente no se
+    # pudo resolver por una causa distinta de la singularidad (solver
+    # iterativo sin convergencia, ADR 0018). Se añade al mensaje de la
+    # excepción tipada para que el usuario vea la causa real.
+    linear_solver_note: str = ""
     aborted: bool = False
     last_alpha: float = 1.0
     last_residual: float = float("inf")
@@ -130,6 +135,8 @@ class CorrectorResult:
             self.residual_history, self.delta_history,
             singular_tangent_detected=self.singular_tangent,
         )
+        if self.linear_solver_note:
+            extra_message = (f"{extra_message}; " if extra_message else "") + self.linear_solver_note
         return err_cls(
             last_residual=self.last_residual,
             last_delta=self.last_delta,
@@ -154,7 +161,8 @@ class NewtonCorrector:
         (ADR 0003). Si Cholesky reporta no-positividad el corrector
         degrada a LU para el resto del análisis.
     linear_algebra
-        Override del backend (``"auto"``, ``"cholesky"``, ``"lu"``).
+        Override del backend (``"auto"``, ``"cholesky"``, ``"pardiso"``,
+        ``"lu"``, ``"iterative[:precondicionador]"``).
     freeze_tangent_after_iter
         Newton modificado (ADR 0003 fase 2): factoriza fresca las primeras
         ``N`` iteraciones del paso y reusa la factorización después.
@@ -165,13 +173,18 @@ class NewtonCorrector:
     verbose
         Registra una línea por iteración evaluada (INFO). Los solvers
         transitorios lo desactivan y registran una línea por paso.
+    near_nullspace
+        Proveedor perezoso del casi-núcleo del sistema reducido
+        (``Assembler.near_nullspace``) para el precondicionador AMG del
+        backend iterativo (ADR 0018). Lo ignoran los demás backends.
     """
 
     def __init__(self, convergence: ConvergenceCriterion, *, max_iter: int,
                  is_symmetric: bool, is_positive_definite: bool = True,
                  linear_algebra: str = "auto",
                  freeze_tangent_after_iter: int | None = None,
-                 line_search: bool = False, verbose: bool = True):
+                 line_search: bool = False, verbose: bool = True,
+                 near_nullspace=None):
         self.convergence = convergence
         self.max_iter = int(max_iter)
         self.is_symmetric = bool(is_symmetric)
@@ -180,6 +193,7 @@ class NewtonCorrector:
         self.line_search = bool(line_search)
         self.verbose = bool(verbose)
         self._is_pd = bool(is_positive_definite)
+        self.near_nullspace = near_nullspace
         self._linalg = None
         self._linalg_size: int | None = None
         self._frozen_factor = None
@@ -204,6 +218,7 @@ class NewtonCorrector:
                 is_symmetric=self.is_symmetric,
                 is_positive_definite=self._is_pd,
                 size=n,
+                near_nullspace=self.near_nullspace,
             )
             self._linalg = select_solver(props, override=self.linear_algebra)
             self._linalg_size = n
@@ -313,6 +328,13 @@ class NewtonCorrector:
             except CorrectionAborted as exc:
                 _log.error(str(exc))
                 result.aborted = True
+                break
+            except IterativeNotConvergedError as exc:
+                # El sistema tangente no se resolvió, pero no por
+                # singularidad: se registra la causa real (ADR 0018 §5).
+                _log.error(str(exc))
+                result.singular_tangent = True
+                result.linear_solver_note = str(exc)
                 break
             except RuntimeError:
                 _log.error("Matriz singular detectada.")

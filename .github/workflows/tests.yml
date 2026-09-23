@@ -31,3 +31,35 @@ jobs:
 
       - name: Run test suite
         run: pytest -q --tb=short
+
+  # Backends algebraicos opcionales (ADR 0017, ADR 0018). El job anterior
+  # corre sin ellos a propósito —garantiza que el camino base, SciPy puro,
+  # sigue siendo correcto—, así que sin este job Pardiso y AMG nunca se
+  # ejecutarían en Linux. Con Pardiso instalado el despachador lo usa por
+  # defecto, de modo que la suite completa pasa por él.
+  test-optional-backends:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package with optional backends
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev,fast,iterative]
+
+      # Si la instalación fallara en silencio, los tests de estos backends
+      # se saltarían (skipUnless) y el job saldría verde sin probar nada.
+      - name: Verify optional backends are active
+        run: |
+          python -c "from solidum.math.linalg.dispatcher import _HAS_PARDISO; from solidum.math.linalg.iterative import HAS_PYAMG; assert _HAS_PARDISO and HAS_PYAMG, ('pardiso', _HAS_PARDISO, 'pyamg', HAS_PYAMG)"
+
+      - name: Run test suite
+        run: pytest -q --tb=short

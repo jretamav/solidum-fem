@@ -83,6 +83,7 @@ class LinearSolver:
             is_symmetric=is_sym,
             is_positive_definite=is_sym,
             size=K_red.shape[0],
+            near_nullspace=self.assembler.near_nullspace,
         )
         linalg = select_solver(props, override=self.linear_algebra)
         try:

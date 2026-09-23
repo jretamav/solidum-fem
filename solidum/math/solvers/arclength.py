@@ -189,6 +189,7 @@ class ArcLengthSolver:
             is_symmetric=domain_is_symmetric(assembler.domain),
             is_positive_definite=False,
             linear_algebra=self.linear_algebra,
+            near_nullspace=assembler.near_nullspace,
         )
         # Estado del último trazado (ver docstring de la clase).
         self.lambda_final: float = 0.0

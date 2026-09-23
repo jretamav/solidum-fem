@@ -417,11 +417,13 @@ class YamlParser:
             # decisión de modelado. Validamos contra el registro del despachador.
             la = solver_cfg.get('linear_algebra')
             if la is not None:
-                from solidum.math.linalg.dispatcher import _REGISTRY as _LA_REGISTRY
-                if la != 'auto' and la not in _LA_REGISTRY:
+                from solidum.math.linalg.dispatcher import (
+                    available_overrides, is_valid_override,
+                )
+                if not is_valid_override(la):
                     errors.append(
-                        f"solver: 'linear_algebra' desconocido: '{la}'. "
-                        f"Disponibles: {['auto'] + sorted(_LA_REGISTRY)}."
+                        f"solver: 'linear_algebra' desconocido o no disponible: "
+                        f"'{la}'. Disponibles: {available_overrides()}."
                     )
 
         return errors

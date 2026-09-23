@@ -9,6 +9,11 @@ from __future__ import annotations
 import warnings
 
 from solidum.math.linalg.base import LinearAlgebraSolver, StiffnessProperties
+from solidum.math.linalg.iterative import (
+    HAS_PYAMG as _HAS_PYAMG,
+    PRECONDITIONERS as _ITERATIVE_PRECONDITIONERS,
+    IterativeSolver,
+)
 from solidum.math.linalg.ldlt import LDLTSolver
 from solidum.math.linalg.lu import LUSolver
 
@@ -29,11 +34,64 @@ except ImportError:
     PardisoSolver = None  # type: ignore[assignment,misc]
 
 
-_REGISTRY: dict[str, type] = {"lu": LUSolver, "ldlt": LDLTSolver}
+# El backend iterativo (ADR 0018) no tiene dependencia obligatoria —sin
+# ``pyamg`` funciona sin precondicionador AMG—, así que siempre se registra.
+_REGISTRY: dict[str, type] = {"lu": LUSolver, "ldlt": LDLTSolver,
+                              "iterative": IterativeSolver}
 if _HAS_CHOLESKY:
     _REGISTRY["cholesky"] = CholeskySolver  # type: ignore[assignment]
 if _HAS_PARDISO:
     _REGISTRY["pardiso"] = PardisoSolver  # type: ignore[assignment]
+
+
+def _parse_override(override: str) -> tuple[str, dict]:
+    """``'iterative:amg'`` → ``('iterative', {'preconditioner': 'amg'})``.
+
+    Sólo el backend iterativo admite opción (su precondicionador); el resto
+    de nombres se aceptan sin sufijo. Lanza ``ValueError`` con la lista de
+    valores válidos ante cualquier otra forma."""
+    key, sep, option = override.lower().partition(":")
+    if key not in _REGISTRY:
+        raise ValueError(
+            f"Backend algebraico desconocido: '{override}'. "
+            f"Disponibles: {available_overrides()}."
+        )
+    if not sep:
+        return key, {}
+    if key != "iterative" or option not in _ITERATIVE_PRECONDITIONERS:
+        raise ValueError(
+            f"Backend algebraico desconocido: '{override}'. Sólo 'iterative' "
+            f"admite sufijo, y el precondicionador debe ser uno de "
+            f"{list(_ITERATIVE_PRECONDITIONERS)}. Disponibles: "
+            f"{available_overrides()}."
+        )
+    if option == "amg" and not _HAS_PYAMG:
+        raise ValueError(
+            "linear_algebra 'iterative:amg' requiere pyamg, que no está "
+            "instalado (`pip install solidum-fem[iterative]`). Alternativas: "
+            "'iterative:none', 'iterative:jacobi' o 'auto'."
+        )
+    return key, {"preconditioner": option}
+
+
+def available_overrides() -> list[str]:
+    """Valores válidos de ``linear_algebra`` en este entorno."""
+    names = ["auto"] + sorted(_REGISTRY)
+    names += [f"iterative:{p}" for p in _ITERATIVE_PRECONDITIONERS
+              if p != "auto" and (p != "amg" or _HAS_PYAMG)]
+    return names
+
+
+def is_valid_override(override: str | None) -> bool:
+    """``True`` si ``override`` es un valor aceptable de ``linear_algebra``
+    (lo usa el parser YAML para fallar al leer, no al resolver)."""
+    if override is None or override == "auto":
+        return True
+    try:
+        _parse_override(str(override))
+    except ValueError:
+        return False
+    return True
 
 
 # LDLᵀ todavía no está implementado en fase 2 (decisión documentada en
@@ -56,13 +114,16 @@ def select_solver(
         ``None`` o ``'auto'``, se aplica la regla automática.
     """
     if override is not None and override != "auto":
-        key = override.lower()
-        if key not in _REGISTRY:
-            available = sorted(_REGISTRY)
-            raise ValueError(
-                f"Backend algebraico desconocido: '{override}'. "
-                f"Disponibles: {available}."
-            )
+        key, options = _parse_override(override)
+        if key == "iterative":
+            # CG y MINRES exigen simetría. Una tangente no simétrica
+            # (plasticidad no asociada, cargas seguidoras) va a un solver
+            # directo, que es lo que hacen ANSYS y Abaqus con sus solvers
+            # iterativos (ADR 0018 §2).
+            if not props.is_symmetric:
+                _warn_iterative_nonsymmetric_once()
+                return select_solver(props, override=None)
+            return IterativeSolver(props, **options)
         # Override 'ldlt' con el placeholder no implementado: aviso y degrada.
         if key == "ldlt" and not _LDLT_AVAILABLE:
             LDLTSolver._warn_once()
@@ -111,6 +172,23 @@ def _warn_cholesky_unavailable_once() -> None:
         "scikit-sparse no está instalado: el despachador degrada a LU para una "
         "matriz que sería ideal para Cholesky. Para activar Cholesky:\n"
         "    conda install -c conda-forge scikit-sparse",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+
+
+_iterative_nonsym_warned = False
+
+
+def _warn_iterative_nonsymmetric_once() -> None:
+    global _iterative_nonsym_warned
+    if _iterative_nonsym_warned:
+        return
+    _iterative_nonsym_warned = True
+    warnings.warn(
+        "linear_algebra 'iterative' pedido sobre una matriz no simétrica "
+        "(plasticidad no asociada, cargas seguidoras...). CG y MINRES exigen "
+        "simetría: se usa el solver directo automático para este sistema.",
         RuntimeWarning,
         stacklevel=3,
     )

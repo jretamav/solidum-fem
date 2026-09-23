@@ -125,3 +125,26 @@ BATCH_MEMORY_BUDGET_BYTES = 64 * 1024 * 1024
 # variable de entorno ``NUMBA_NUM_THREADS``); el resultado es bit a bit el
 # mismo con cualquier número de hilos y que la variante serie.
 BATCH_PARALLEL_DEFAULT = True
+
+# --- Solver algebraico iterativo (ADR 0018) ---
+# Tolerancia sobre el residuo relativo VERDADERO del sistema lineal,
+# ``‖b − K·x‖ ≤ ITERATIVE_RTOL · ‖b‖``, recalculado al terminar (no el
+# residuo recursivo de CG, que deriva del verdadero por redondeo). Cinco
+# órdenes por debajo de ``CONVERGENCE_RTOL_FORCE`` (1e-5): dentro de un
+# Newton es un forzado η = 1e-10 constante, de modo que la contracción del
+# residuo no lineal ‖R_{k+1}‖ ≲ η‖R_k‖ + C‖R_k‖² queda dominada por el
+# término cuadrático en todo el rango útil y la sucesión de iterados es la
+# del Newton exacto a efectos prácticos. No es Newton inexacto: no se
+# relaja con el residuo.
+ITERATIVE_RTOL = 1.0e-10
+# Cota de iteraciones de Krylov por resolución. Con AMG y modos de cuerpo
+# rígido bastan 10-20 (medido); sin precondicionador, del orden de cientos
+# a 2·10⁵ DOF. Agotarla es un fallo explícito, nunca una solución parcial.
+ITERATIVE_MAX_ITER = 10_000
+# Reinicios con el residuo verdadero ("residual replacement"): si al
+# converger el residuo recursivo el verdadero no cumple la tolerancia, CG
+# se reinicia desde el iterado actual con el residuo recalculado.
+ITERATIVE_MAX_RESTARTS = 3
+# Tamaño del nivel más grueso de la jerarquía AMG, resuelto de forma
+# directa. 500 incógnitas mantienen barato ese solve y acortan el setup.
+AMG_MAX_COARSE = 500

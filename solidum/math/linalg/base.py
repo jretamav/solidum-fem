@@ -1,8 +1,8 @@
 """Interfaz común y propiedades declarativas de ``K`` (ADR 0003)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from typing import Callable, Protocol, runtime_checkable
 
 import numpy as np
 import scipy.sparse as sp
@@ -15,11 +15,20 @@ class StiffnessProperties:
     Las usa ``select_solver`` para escoger el backend algebraico adecuado.
     Todos los flags son derivables del modelo (materiales, elementos, tipo de
     análisis) y no se piden al usuario.
+
+    ``near_nullspace`` es un **proveedor perezoso** del casi-núcleo del
+    sistema reducido (los modos de cuerpo rígido restringidos a los DOF
+    libres, ``Assembler.near_nullspace``). Sólo lo consulta el precondicionador
+    AMG del backend iterativo (ADR 0018); el resto de backends lo ignoran y,
+    al ser perezoso, no pagan su cálculo. No interviene en la igualdad.
     """
 
     is_symmetric: bool
     is_positive_definite: bool
     size: int
+    near_nullspace: Callable[[], np.ndarray] | None = field(
+        default=None, compare=False, repr=False,
+    )
 
 
 @runtime_checkable

@@ -444,6 +444,7 @@ class ThetaMethodSolver:
             # para θ ≥ 0. Con θ = 0 se reduce a C, que sigue siendo SPD.
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         linalg = select_solver(props, override=self.linear_algebra)
         try:

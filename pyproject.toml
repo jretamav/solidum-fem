@@ -58,6 +58,12 @@ fast = [
     # Wheels para Windows/Linux/macOS, sin compilador.
     "pypardiso>=0.4",
 ]
+# Precondicionador AMG para el solver iterativo (ADR 0018). Wheels para
+# Linux/macOS/Windows hasta Python 3.12; en Python 3.14/Windows se compila
+# (necesita Visual Studio con C++; ver anexo de la capa algebraica).
+iterative = [
+    "pyamg>=5.0",
+]
 # CHOLMOD (Cholesky disperso para matrices SPD) va aparte porque en
 # Windows exige compilar: `conda install -c conda-forge scikit-sparse`.
 cholmod = [

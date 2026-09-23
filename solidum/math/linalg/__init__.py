@@ -12,6 +12,8 @@ from solidum.math.linalg.base import (
 )
 from solidum.math.linalg.dispatcher import select_solver
 from solidum.math.linalg.eigen import EigenSolver
+from solidum.math.linalg.iterative import IterativeNotConvergedError, IterativeSolver
+from solidum.math.linalg.nullspace import rigid_body_modes
 from solidum.math.linalg.ldlt import LDLTNotAvailableError, LDLTSolver
 from solidum.math.linalg.lu import LUFactorized, LUSolver
 
@@ -46,6 +48,9 @@ __all__ = [
     "LDLTSolver",
     "LDLTNotAvailableError",
     "EigenSolver",
+    "IterativeSolver",
+    "IterativeNotConvergedError",
+    "rigid_body_modes",
 ]
 if _HAS_CHOLESKY:
     __all__ += ["CholeskySolver", "CholeskyFactorized", "CholeskyNotPositiveDefiniteError"]

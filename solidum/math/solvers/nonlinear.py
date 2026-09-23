@@ -140,6 +140,7 @@ class NonlinearSolver:
             linear_algebra=self.linear_algebra,
             freeze_tangent_after_iter=self.freeze_tangent_after_iter,
             line_search=self.line_search,
+            near_nullspace=assembler.near_nullspace,
         )
         # Metadatos del último análisis (los lee ``solidum.run``): pasos
         # convergidos y factor de carga alcanzado (siempre 1.0 si ``solve``

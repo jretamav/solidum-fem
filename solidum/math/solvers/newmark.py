@@ -159,6 +159,7 @@ class NewmarkSolver:
             is_symmetric=domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
@@ -172,6 +173,7 @@ class NewmarkSolver:
             is_symmetric=domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         A_solver = select_solver(props_A, override=self.linear_algebra)
         A_factor = A_solver.factorize(A_eff)
@@ -410,6 +412,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             freeze_tangent_after_iter=self.freeze_tangent_after_iter,
             line_search=self.line_search,
             verbose=False,
+            near_nullspace=assembler.near_nullspace,
         )
 
     def solve(self) -> TransientResult:
@@ -472,6 +475,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             is_symmetric=domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
@@ -718,6 +722,7 @@ class HHTSolver(NewmarkSolver):
             is_symmetric=domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
@@ -736,6 +741,7 @@ class HHTSolver(NewmarkSolver):
             is_symmetric=domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         A_solver = select_solver(props_A, override=self.linear_algebra)
         A_factor = A_solver.factorize(A_eff)
@@ -954,6 +960,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             is_symmetric=domain_is_symmetric(self.assembler.domain),
             is_positive_definite=True,
             size=n_free,
+            near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)

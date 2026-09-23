@@ -84,6 +84,12 @@ class Assembler:
         # Caché del ConstraintSet (ADR 0004 fase 1).
         self._constraint_set: ConstraintSet | None = None
 
+        # Casi-núcleo del sistema reducido para el precondicionador AMG
+        # (ADR 0018), con la huella (topología, restricciones) con que se
+        # calculó.
+        self._near_nullspace: np.ndarray | None = None
+        self._near_nullspace_key: tuple | None = None
+
         # Caché de la matriz de masa global (ADR 0009). M es lineal y no
         # cambia entre llamadas: se ensambla una vez por análisis y se reusa.
         self._M_global: sp.csr_matrix | None = None
@@ -530,6 +536,33 @@ class Assembler:
         self._M_global = self._to_csr(data)
         self._M_lumping = lumping
         return self._M_global
+
+    def near_nullspace(self) -> np.ndarray:
+        """Modos de cuerpo rígido restringidos a los DOF libres (ADR 0018).
+
+        Casi-núcleo del sistema reducido ``K_red = TᵀKT`` para el
+        precondicionador AMG del backend iterativo. Se derivan de
+        coordenadas y nombres de DOF (:func:`rigid_body_modes`) y se
+        restringen a los DOF libres en el orden de las columnas de ``T``:
+        con restricciones afines el valor en un esclavo lo reconstruye
+        ``T`` a partir de sus maestros, así que basta la restricción.
+
+        Se calcula sólo si alguien lo pide —los solvers lo pasan como
+        proveedor perezoso en ``StiffnessProperties.near_nullspace`` y sólo
+        AMG lo invoca— y se cachea mientras no cambien la topología ni las
+        restricciones.
+        """
+        from solidum.math.linalg.nullspace import rigid_body_modes
+
+        self._ensure_topology()
+        cs = self.constraint_set
+        key = (self._topology_key, self._constraint_fp)
+        if self._near_nullspace is None or self._near_nullspace_key != key:
+            B = rigid_body_modes(self.domain)
+            free = cs.free_dofs(self.ndof)
+            self._near_nullspace = np.ascontiguousarray(B[free])
+            self._near_nullspace_key = key
+        return self._near_nullspace
 
     def reduce_pair(
         self,
