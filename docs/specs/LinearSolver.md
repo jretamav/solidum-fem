@@ -29,7 +29,7 @@ $$\mathbf K_{\text{red}} = \mathbf T^\top \mathbf K\,\mathbf T, \qquad \mathbf F
 - Vector de desplazamientos global $\mathbf U \in \mathbb R^{n_{\text{dof}}}$ (libres + prescritos consistentes).
 - Reacciones se recuperan a posteriori vía `domain.reactions(U)`.
 - Esfuerzos en puntos de Gauss vía `domain.recompute_gauss_state(U)`.
-- El resultado se envuelve en `SolveResult` por la capa pública (`solidum.run_static`).
+- El resultado se envuelve en `SolveResult` por la capa pública (`solidum.run`).
 
 ---
 
