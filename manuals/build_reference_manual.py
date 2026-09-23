@@ -739,9 +739,20 @@ def md_to_latex(md: str) -> str:
     for ch, cmd in UNICODE_MAP.items():
         md = md.replace(ch, cmd)
 
-    # 5. Restaurar placeholders verbatim
-    for key, val in placeholders.items():
-        md = md.replace(key, val)
+    # 5. Restaurar placeholders verbatim. Hay marcadores anidados (un enlace
+    #    cuyo texto es código en línea: [`Tri3`](Tri3.md)), así que se repite
+    #    hasta que no quede ninguno; un marcador superviviente aparecería
+    #    literalmente en el PDF ("@@ICODE24@@"), de modo que se aborta.
+    for _ in range(8):
+        before = md
+        for key, val in placeholders.items():
+            md = md.replace(key, val)
+        if md == before:
+            break
+    leftover = re.findall(r"@@[A-Z]+\d+@@", md)
+    leftover = [k for k in leftover if k in placeholders]
+    if leftover:
+        raise RuntimeError(f"md_to_latex: marcadores sin restaurar {leftover[:5]}")
 
     return md
 
