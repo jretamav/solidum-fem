@@ -26,6 +26,12 @@ El parser no contiene un `if material_type == "Elastic1D":` por cada material. M
 ### 6. Skill `/solidum-new` (`.claude/skills/solidum-new/SKILL.md`)
 Skill versionada con el repo que la IA invoca cuando el usuario pide un material/elemento/solver nuevo. Genera el archivo en su carpeta canónica, con el decorador correcto y un test esqueleto. Cierra el ciclo: la arquitectura optimizada para extensión + la herramienta que materializa la extensión.
 
+### 6b. Ensamblaje por lotes: familias y un solo kernel compilado (ADR 0014)
+Los elementos que comparten clase, instancia de material, cuadratura y número de nodos forman una **familia**; cada familia se evalúa entera dentro de un único kernel Numba —en serie o repartido entre hilos— en vez de elemento por elemento, y su estado interno vive en arreglos. El resultado es idéntico al del camino por elemento, que sigue siendo el contrato obligatorio; un componente que no declara kernel simplemente sigue ese camino. Medido: hasta ×110 en el ensamblaje.
+
+### 6c. Corrector de Newton compartido (ADR 0015)
+Los cinco solvers iterativos no escriben su bucle de Newton: lo ejecuta `NewtonCorrector`, que posee el backend algebraico, el Newton modificado, el line search y el diagnóstico de divergencia. Cada solver aporta sólo su física por paso (residuo, sistema tangente, actualización) en un objeto `NewtonProblem`, y conserva su control de paso. Un solver nuevo hereda todo lo demás.
+
 ---
 
 ## Zona gris (clases base y semántica que el usuario debe reconocer)
@@ -41,6 +47,12 @@ Cada elemento tiene un objeto `ElementState` con dos copias de las variables int
 
 ### 10. `PRIMARY_STATE_VAR` (zona gris materiales ↔ exporter)
 Cada material declara cuál de sus variables internas es la "principal" para visualización (`'damage'`, `'alpha'`, etc.). El `VtkExporter` la lee genéricamente sin saber de qué material proviene. Permite añadir materiales nuevos con visualización automática.
+
+### 10b. `STATE_SCHEMA`: las variables internas declaradas (ADR 0014)
+Cada material declara sus variables internas como `{nombre: forma}` (p. ej. `{"eps_p": (4,), "alpha": ()}`; `{}` si no tiene memoria). Con esa declaración el estado se guarda en arreglos por familia y el commit deja de copiar diccionarios. Es obligatorio en todo material del catálogo: lo exige el barrido de contratos.
+
+### 10c. Familias paralelas de materiales
+No todo "material" relaciona esfuerzo con deformación. Los **cohesivos** (`CohesiveMaterial`, ADR 0010) relacionan tracción con salto de desplazamiento, y los **térmicos** (`ThermalMaterial`, Etapa 8) flujo de calor con gradiente de temperatura (declaran `FLUX_DIM`, no `STRAIN_DIM`, y no usan notación de Voigt). Cada familia tiene clase base y registro propios, para que el parser y los elementos no tengan que distinguir el tipo en cada uso.
 
 ---
 
@@ -75,10 +87,19 @@ Funciones críticas (ensamblaje elemento→global, return mapping interior) deco
 
 ### 20. Capa algebraica vs. solver de análisis (ADR 0003)
 Hay **dos capas de "solver"** y conviene no confundirlas:
-- **Solver de análisis** (los 11 del catálogo: `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`, `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`): orquesta la estrategia de paso, iteraciones de Newton, criterios de convergencia, longitud de arco, integración temporal, barrido en frecuencia o combinación modal. Lo que el usuario elige en el YAML con `solver.type`. El despacho a entrypoints es declarativo por atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18).
-- **Capa algebraica** (`solidum/math/linalg/`): resuelve el sistema lineal `K·δU = R` (o `Z(ω)·û = F̂` en complejos, o `K·φ = ω²M·φ` en autovalor) que aparece dentro de cada iteración del solver de análisis. Tiene varios backends (Cholesky, LU, ARPACK, …) y un **despachador interno** que elige el adecuado según las propiedades del operador (simétrica, positiva definida, …).
+- **Solver de análisis** (los 13 del catálogo: `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`, `ThetaMethodSolver`): orquesta la estrategia de paso, las iteraciones de Newton, los criterios de convergencia, la longitud de arco, la integración temporal o el barrido en frecuencia.
+- **Capa algebraica** (`solidum/math/linalg/`): resuelve el sistema lineal `K·δU = R` (o `Z(ω)·û = F̂` en complejos, o `K·φ = ω²M·φ` en autovalor) que aparece dentro de cada iteración del solver de análisis. Tiene varios backends (Cholesky, Pardiso, LU, el iterativo CG/MINRES, ARPACK para autovalores) y un **despachador interno** que elige el adecuado según las propiedades del operador (simétrica, positiva definida, …).
 
 El usuario solo ve la primera capa; la segunda es plumbing automático. Solo se expone el campo opcional `linear_algebra` en YAML como herramienta de diagnóstico — no como decisión de modelado.
+
+### 21. Solver directo frente a solver iterativo (ADR 0017, 0018)
+Un solver **directo** factoriza la matriz y resuelve por sustitución: robusto ante cualquier condicionamiento, pero sus factores tienen muchos más no nulos que la matriz (*relleno*), así que su tiempo y su memoria crecen más deprisa que el modelo. Un solver **iterativo** aproxima la solución hasta una tolerancia sin factorizar: memoria proporcional al modelo, pero sensible al condicionamiento. Solidum usa siempre un directo por defecto (Pardiso multihilo si está instalado) y ofrece el iterativo a petición para modelos grandes, igual que ANSYS y Abaqus.
+
+### 22. Modos de cuerpo rígido derivados del nombre de los DOF (ADR 0018, 0019)
+Los movimientos que un modelo sin apoyos puede hacer sin deformarse —traslaciones y giros, y el valor constante de un campo escalar— se calculan a partir de `DOF_NAMES` y las coordenadas, sin saber qué elementos hay. Son el núcleo exacto de `K` sin apoyos. Los usa el multimalla del solver iterativo (sin ellos converge peor que sin precondicionar) y la detección de mecanismos.
+
+### 23. Red de seguridad del análisis estático (ADR 0019)
+Un solver directo ante una matriz singular devuelve resultados absurdos sin avisar. Por eso el análisis estático comprueba, antes de resolver, que los apoyos impiden todo movimiento de sólido rígido —y si no, dice cuál queda libre en términos del modelo—, y después, en el caso lineal, que la solución está en equilibrio y que la matriz no tiene pivotes nulos. Dentro de un Newton no rechaza nada: cerca de un punto límite resolver un sistema casi singular es legítimo.
 
 ---
 

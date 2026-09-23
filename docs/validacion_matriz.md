@@ -1,6 +1,8 @@
 # Matriz de validación — Solidum FEM
 
 > Artefacto vivo de la Fase A del plan de validación y verificación (sesión 2026-05-19). Cruza cada componente con sus criterios `acceptance` declarados en la spec y el tipo de cobertura real en `tests/`.
+>
+> ⚠️ **Alcance (revisado 2026-09-23).** Esta matriz cubre los **36 componentes** que existían en mayo de 2026. Faltan 15 especificados después, cuya cobertura no se ha clasificado aquí criterio por criterio: `Elastic3D`, `VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`, `Hex8`, `Hex20`, `Hex27`, `Tet4`, `Tet10` (Etapa 7 y sub-etapas A.bis/A.ter), `ThermalConduction`, `Quad4Thermal`, `Hex8Thermal`, `ThetaMethodSolver` (Etapa 8), `Orthotropic2D` (ADR 0013) y `DissipationArcLengthSolver`. Para ellos, la referencia vigente son los criterios `acceptance` de cada spec en `docs/specs/`, el recuento de specs validadas de `docs/STATUS.md` y los benchmarks de `tests/validation/README.md`. Ponerla al día exige clasificar cada criterio (analítica, benchmark, sanidad): es una auditoría de validación pendiente, no una actualización de texto.
 
 **Leyenda de cobertura**
 

@@ -183,7 +183,8 @@ parameters:
   - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
-  - { name: linear_algebra,           type: str,   required: false, default: "auto" }
+  - { name: linear_algebra,           type: str,   required: false, default: "auto",
+      desc: "Heredado de ArcLengthSolver: 'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018)" }
 
   # Específicos de esta variante:
   - { name: initial_tau,              type: float, required: true,
@@ -315,3 +316,4 @@ Recomendación: dejar esta validación como deuda técnica priorizada en STATUS.
   3. ¿Sign-of-pivot tracking se aborda en esta spec o se difiere a una spec independiente (`PivotTracker`)? Está acoplado al backend algebraico (ADR 0003) — si el LDLᵀ Bunch-Kaufman se introduce como helper compartido, otros solvers se beneficiarían. Mi propuesta es **abordarlo aquí en versión "signo del determinante LU"** (aproximación válida para indefinitud simple) y dejar el LDLᵀ verdadero como deuda técnica del proyecto.
 - **2026-09-22** · Auditoría global: hereda la reestructuración del corrector y los metadatos de trazado de `ArcLengthSolver` (ensamblaje único por iteración, estado committed coherente, `reached_max_lambda`).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_DissipationArcProblem`: sobreescribe `constraint` con la restricción lineal de Gutiérrez para el modo de disipación y hereda los modos cilíndrico y de cierre exacto; `α ≈ 0` → `CorrectionAborted`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+- **2026-09-23** · ADR 0017-0019: hereda de `ArcLengthSolver` los valores nuevos de `linear_algebra` y la comprobación de mecanismo rígido al empezar `solve`.

@@ -225,6 +225,16 @@ solver:
 
 Los solvers disponibles y sus parámetros se documentan en los capítulos *Esquemas de Solución* y *Análisis Dinámico*.
 
+El solver del sistema lineal que cada uno resuelve internamente **lo elige Solidum** según las propiedades de la matriz; no hace falta declararlo. El campo opcional `linear_algebra` sirve para diagnóstico o para pedir el solver iterativo en modelos muy grandes:
+
+```yaml
+solver:
+  type: LinearSolver
+  linear_algebra: iterative    # auto (default), lu, pardiso, cholesky, iterative[:amg|jacobi|none]
+```
+
+Un valor desconocido, o `iterative:amg` sin `pyamg` instalado, se rechaza al leer el archivo.
+
 ### Bloque `convergence`
 
 Los solvers no lineales (`NonlinearSolver`, `ArcLengthSolver`) aceptan un bloque `convergence` que configura el criterio de parada de las iteraciones de Newton. La política sigue el patrón estándar de tolerancias mixtas absoluta + relativa, separado por dos criterios físicos: *fuerza* (residuo de equilibrio) y *desplazamiento* (incremento del iterado). La forma exacta de la comparación es:

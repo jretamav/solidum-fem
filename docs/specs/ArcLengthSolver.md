@@ -145,7 +145,7 @@ parameters:
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
   - { name: linear_algebra,           type: str,   required: false, default: "auto",
-      desc: "'auto' (LU para postcrítico), 'cholesky', 'lu'. En arc-length el default fuerza LU por indefinitud potencial" }
+      desc: "'auto' (Pardiso si está instalado, si no LU: el solver declara la tangente potencialmente indefinida y no usa Cholesky), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (CG que pasa a MINRES al detectar curvatura negativa)" }
 
 requirements:
   - "Modelo con potencial snap-through/snap-back (geometría inestable, softening del material)"
@@ -231,3 +231,4 @@ references:
 - **2026-05-19** · Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs. La spec recoge la implementación tal como está al cierre de la sesión de saneamiento post-auditoría.
 - **2026-09-22** · Auditoría global: corrector con un ensamblaje por iteración y convergencia evaluada antes de resolver: el estado committed corresponde exactamente a `U_current` (antes se evaluaba R en U_k, se comiteaba el trial de U_k y se guardaba U_{k+1}: un iterado de desfase, del orden de la tolerancia). La parada por `max_steps` sin alcanzar `max_lambda` emite WARNING y se expone en `reached_max_lambda`, `lambda_final` y `steps_done`; `solidum.run` escala `F_applied` por λ_final (reacciones coherentes) y reporta `converged`/`num_steps` reales (antes siempre `True`/1).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_ArcProblem`: iterado `(U, λ, ΔU)`, dos resoluciones por iteración y restricción cilíndrica como método `constraint`; raíces imaginarias → `CorrectionAborted`; predictor tangente en `_tangent_predictor`; retirados `_solve` y `_make_linalg`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+- **2026-09-23** · ADR 0017-0019: `linear_algebra` admite `pardiso` e `iterative` (CG → MINRES automático ante curvatura negativa, adecuado a la tangente indefinida del régimen postcrítico); al empezar `solve` se rechaza un mecanismo rígido (`MechanismError`). Dentro del trazado no se rechaza ningún sistema casi singular: cerca de un punto límite es parte del algoritmo.

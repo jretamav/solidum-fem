@@ -82,7 +82,8 @@
 
 **Infraestructura común**
 - Auto-registro vía decoradores en `ElementRegistry`, `MaterialRegistry`, `SolverRegistry`.
-- Despachador algebraico automático Cholesky/LU según simetría/SPD (ADR 0003).
+- Despachador algebraico automático Cholesky → Pardiso → LU según simetría/SPD y dependencias instaladas (ADR 0003, 0017); solver iterativo CG/MINRES + AMG a petición (ADR 0018).
+- Red de seguridad del análisis estático (ADR 0019): mecanismos rígidos detectados y descritos antes de resolver; equilibrio y pivotes nulos verificados tras resolver en el estático lineal.
 - Caché de topología COO compartida entre `K`, `M`, masa, peso propio.
 - Tolerancias adimensionales con escala física por material (ADR 0006) y convergencia dual desplazamiento + residuo (ADR 0007).
 - Parser YAML con despacho automático estático / modal / transitorio.

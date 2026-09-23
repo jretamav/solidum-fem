@@ -43,6 +43,7 @@ Si faltan argumentos, pídelos al usuario.
 - Material: hereda de `solidum.core.material.Material`. Decora con `@MaterialRegistry.register`. Implementa `compute_state(strain, state_vars=None) -> (stress, tangent, new_state_vars)` y declara `STATE_SCHEMA` (el barrido de contratos comprueba que coincide con el estado devuelto). El kernel por lotes (`BATCH_KERNEL`, `batch_params`, `batch_matrix`) es opcional; ver ADR 0014.
 - Element: hereda de `solidum.core.element.Element`. Decora con `@ElementRegistry.register`. Implementa `compute_element_state(u_e) -> (K_e, F_int_e)`. La base se encarga de `commit_state`, `state_vars`, validación STRAIN_DIM, registro de DOFs y creación de `ElementState`.
 - Solver: clase normal (no abstracta). Decora con `@SolverRegistry.register`. Constructor recibe `assembler` como primer arg. Implementa `solve(F_ext_global, step_callback=None) -> U_global`.
+  - Si construye `StiffnessProperties` a mano (en vez de usar el corrector), pasa `near_nullspace=assembler.near_nullspace` (ADR 0018). Si resuelve un estático lineal sin corrector, verifica la solución con `check_linear_solution` de `solidum/math/solvers/model_checks.py` (ADR 0019).
 - Comentarios: solo cuando el "por qué" no sea obvio (sigue las reglas del proyecto). No documentar el "qué" — los nombres ya lo dicen.
 - Idioma: docstrings y mensajes al usuario en español; código en inglés.
 
@@ -131,7 +132,7 @@ class {{Name}}(Element):
         raise NotImplementedError
 ```
 
-### solver — `solidum/math/solver_<snake>.py`
+### solver — `solidum/math/solvers/<snake>.py`
 
 ```python
 from typing import Optional
@@ -143,6 +144,7 @@ from solidum.constants import ZERO_TOL
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
+from solidum.math.solvers.model_checks import ensure_statically_restrained
 from solidum.registry import SolverRegistry
 
 
@@ -162,6 +164,9 @@ class {{Name}}:
             self.convergence, max_iter=20,
             is_symmetric=domain_is_symmetric(assembler.domain),
             is_positive_definite=True, linear_algebra=linear_algebra,
+            # Modos de cuerpo rígido para el AMG del solver iterativo
+            # (ADR 0018); perezoso: sólo se calcula si se pide 'iterative'.
+            near_nullspace=assembler.near_nullspace,
         )
         # TODO: parámetros adicionales. Imposición de Dirichlet: usa
         # assembler.reduce(K, F, U_current=..., load_factor=...) y
@@ -171,6 +176,11 @@ class {{Name}}:
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U = np.zeros(ndof)
+        # Red de seguridad (ADR 0019) — SÓLO si el solver es ESTÁTICO: un
+        # mecanismo rígido no tiene equilibrio y se rechaza aquí con el
+        # movimiento libre descrito. En un solver dinámico o modal NO se
+        # llama: un modelo libre es legítimo cuando hay masa o capacidad.
+        ensure_statically_restrained(self.assembler, type(self).__name__)
         # Por paso: construir un objeto con el protocolo NewtonProblem
         # (assemble, residual, residual_norm, calibration_scales,
         # reference_force, x_norm, correction, apply, on_converged) y

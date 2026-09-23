@@ -21,24 +21,24 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 **Materiales 1D y 2D**:
 
-| Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | CohesiveDamageIsotropic |
-|------------------------------|:---------:|:---------------:|:-----------------:|:---------------:|:---------:|:----------:|:---------------:|:-----------------:|:-----------------------:|
-| `Truss2D`                    | ✓         | ✓               | ○                 |                 |           |            |                 |                   |                         |
-| `Truss2DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |                         |
-| `Truss3D`                    | ✓         | ○               | ○                 |                 |           |            |                 |                   |                         |
-| `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |                         |
-| `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |                         |
-| `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |                         |
-| `Frame2DEuler`               | ✓         | (a) ○           |                   |                 |           |            |                 |                   |                         |
-| `Frame2DTimoshenko`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |                         |
-| `Frame2DEulerCorot`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |                         |
-| `Frame3D`                    | ✓         | (a) ○           |                   |                 |           |            |                 |                   |                         |
-| `Quad4`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 |                         |
-| `Tri3`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 |                         |
-| `Quad8`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 |                         |
-| `Quad9`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 |                         |
-| `Tri6`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 |                         |
-| `CST_Embedded2D`             |           |                 |                   |                 | (c) ✓     | (c) ○      | (c) ○           | (c) ○             | (c) ✓                   |
+| Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | Orthotropic2D | CohesiveDamageIsotropic |
+|------------------------------|:---------:|:---------------:|:-----------------:|:---------------:|:---------:|:----------:|:---------------:|:-----------------:|:-------------:|:-----------------------:|
+| `Truss2D`                    | ✓         | ✓               | ○                 |                 |           |            |                 |                   |               |                         |
+| `Truss2DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |                         |
+| `Truss3D`                    | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |                         |
+| `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |                         |
+| `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |                         |
+| `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |                         |
+| `Frame2DEuler`               | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
+| `Frame2DTimoshenko`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
+| `Frame2DEulerCorot`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
+| `Frame3D`                    | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
+| `Quad4`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
+| `Tri3`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
+| `Quad8`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
+| `Quad9`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
+| `Tri6`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
+| `CST_Embedded2D`             |           |                 |                   |                 | (c) ✓     |            |                 |                   |               | (c) ✓                   |
 
 **Materiales 3D** (sub-etapa A.bis + Etapa 7):
 
@@ -54,8 +54,9 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 - **(a)** Frames + plasticidad 1D: válido, pero la plasticidad se aplica **sólo al esfuerzo axial $\sigma$**. La fluencia por flexión no está modelada (espera `FiberSection`, ver deuda técnica de STATUS.md).
 - **(b)** `DruckerPrager2D` está validado únicamente en `plane_strain`. `plane_stress` declarado out-of-scope (proyección con σ_zz=0 acoplada a flujo dilatante es notoriamente delicada).
-- **(c)** `CST_Embedded2D` requiere **dos materiales**: un *bulk* 2D estándar (Elastic2D, VonMises2D, DruckerPrager2D, IsotropicDamage2D) que gobierna el continuo, y un *cohesivo* de la familia `CohesiveMaterial` (hoy sólo `CohesiveDamageIsotropic`) que gobierna el salto en la discontinuidad embebida. La fila refleja la compatibilidad con cada uno por separado; la combinación válida se especifica en YAML con dos campos (`bulk_material`, `cohesive_material`). Validado con Elastic2D + CohesiveDamageIsotropic (Etapa 5, ADR 0010).
+- **(c)** `CST_Embedded2D` requiere **dos materiales**: un *bulk* que gobierna el continuo y un *cohesivo* de la familia `CohesiveMaterial` (hoy sólo `CohesiveDamageIsotropic`). En la fase 1 el bulk **sólo puede ser `Elastic2D`** (lista blanca `_ACCEPTED_BULKS` en `embedded_cst.py`; cualquier otro se rechaza al construir): la aproximación discreta concentra toda la disipación en la discontinuidad (ADR 0010). *Corregido 2026-09-23: esta nota y la tabla daban por válidos como bulk `VonMises2D`, `DruckerPrager2D` e `IsotropicDamage2D`, que el código veta.*
 - **(d)** `DruckerPrager3D` se ofrece con variantes `outer`/`inner` del cono; el ajuste `plane_strain_matched` del `DruckerPrager2D` **no aplica en 3D** y se rechaza explícitamente. La cobertura de los cuadráticos (`Hex20`, `Hex27`, `Tet10`) con materiales 3D no lineales quedó cerrada en la sub-fase 5 de A.ter: las 20 celdas de la tabla están en ✓.
+- **(e)** `Orthotropic2D` es **sólo plane stress** (el plane strain ortótropo necesita `E3`, `nu13`, `nu23`; diferido en el ADR 0013) y lleva la orientación de fibra `theta` en el material, como atajo consciente del ADR 0013. Cubierto sobre los cinco sólidos 2D por patch test con constitutiva llena y validación contra Jones §2.8 (2026-09-10).
 
 **Casillas ○ (válidas no testeadas)**: los corotacionales (`Truss2DCorot`, `Truss3DCorot`) aceptan `IsotropicDamage1D` por contrato (`STRAIN_DIM=1`) pero los tests existentes lo combinan sólo con materiales lineales y plásticos. Cubrir si entra un caso de uso o si se decide cerrar el catálogo formalmente.
 
@@ -243,6 +244,8 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 
 ---
 
-*Última actualización: 2026-08-25 — **Etapa 8 (análisis térmico)**: añadidas §1.b (elementos × materiales térmicos, compatibilidad por `FLUX_DIM` en vez de `STRAIN_DIM`) y §2.b (solver térmico, con la tabla de defaults invertidos respecto a la dinámica estructural y las combinaciones vetadas por incompatibilidad física). La familia térmica va en secciones propias y no como filas de la tabla mecánica porque el campo es escalar y el gradiente no se comprime en notación Voigt. Cuatro filas nuevas en §3, hueco #7 (validación sobre geometría curva, diferida por falta de mallador de corona circular) y tres no-huecos nuevos en §4.*
+*Última actualización: 2026-09-23 — columna `Orthotropic2D` (✓ en los cinco sólidos 2D, nota (e)) y **corrección de `CST_Embedded2D`**: sólo admite `Elastic2D` como bulk (lista blanca del código), no los tres materiales no lineales que la tabla daba por válidos.*
+
+*Anterior: 2026-08-25 — **Etapa 8 (análisis térmico)**: añadidas §1.b (elementos × materiales térmicos, compatibilidad por `FLUX_DIM` en vez de `STRAIN_DIM`) y §2.b (solver térmico, con la tabla de defaults invertidos respecto a la dinámica estructural y las combinaciones vetadas por incompatibilidad física). La familia térmica va en secciones propias y no como filas de la tabla mecánica porque el campo es escalar y el gradiente no se comprime en notación Voigt. Cuatro filas nuevas en §3, hueco #7 (validación sobre geometría curva, diferida por falta de mallador de corona circular) y tres no-huecos nuevos en §4.*
 
 *Anterior 2026-05-27 — **A.ter sub-fases 1, 2 y 3**: añade filas `Hex20`, `Hex27` y `Tet10` a la tabla 3D; centralización en `_HigherOrderSolid3D` aplicada al entrar el `Hex27` (regla de los dos casos reales) y reutilizada por `Tet10` con cara triangular Tri6 + cuadraturas `tet_4`/`tet_15` nuevas. Las columnas 3D se triplicaron con `VonMises3D`/`DruckerPrager3D`/`IsotropicDamage3D` (✓ para `Hex8`/`Tet4`). Anterior 2026-05-18: cierre Etapa 6 (ADR 0009 completo).*

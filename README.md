@@ -15,10 +15,11 @@ with an architecture optimized for extension via AI-assisted development.
   frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9, Tri6), 2D solids with embedded
   discontinuity (CST\_Embedded2D), 3D solids linear (Hex8, Tet4) and quadratic
   (Hex20, Hex27, Tet10), and thermal conduction elements (Quad4Thermal, Hex8Thermal).
-- **14 materials** across three parallel families: elastic 1D/2D/3D, unilateral
-  cable, J2 plasticity (1D, plane strain, plane stress, 3D), Drucker-Prager (2D
-  and 3D), isotropic continuum damage 1D/2D/3D, isotropic cohesive damage
-  (traction-jump), and Fourier thermal conduction with tensor conductivity.
+- **15 materials** across three parallel families: elastic 1D/2D/3D, orthotropic
+  2D elasticity, unilateral cable, J2 plasticity (1D, plane strain, plane stress,
+  3D), Drucker-Prager (2D and 3D), isotropic continuum damage 1D/2D/3D, isotropic
+  cohesive damage (traction-jump), and Fourier thermal conduction with tensor
+  conductivity.
 - **13 solvers**: linear and nonlinear static, cylindrical arc-length (Crisfield)
   and dissipation arc-length (Gutiérrez 2004 with automatic switching), modal
   via shift-invert ARPACK, linear and nonlinear Newmark/HHT time integration,
@@ -29,9 +30,22 @@ with an architecture optimized for extension via AI-assisted development.
   regime needs no dedicated solver — the existing linear solver handles it
   unchanged, since assembly, constraint elimination and algebraic dispatch make
   no assumption about the physical meaning of a degree of freedom.
-- **12 accepted ADRs** documenting architectural decisions.
-- **49 validated specs** with quantitative acceptance criteria.
-- **1317 tests** green, including 8 published canonical benchmarks (Lamé 2D and
+- **Performance**: batched element assembly in a single Numba kernel, serial or
+  multithreaded (up to ×110 over the element-by-element path); optional
+  multithreaded sparse direct solver (Intel MKL Pardiso, ×5 to ×56 over SuperLU
+  depending on size); optional iterative solver (CG/MINRES with algebraic
+  multigrid seeded with the rigid-body modes) for models too large for a direct
+  factorization.
+- **Safety net for users who are not numerical specialists**: the algebraic
+  solver is chosen automatically, and a static analysis checks, before solving,
+  that the model is sufficiently supported — reporting the free rigid-body motion
+  in plain terms, e.g. *"rotation about the z axis through (0, 0.5)"* — and,
+  after solving, that the solution satisfies equilibrium and the matrix has no
+  zero pivots. An ill-posed model stops with an explanation instead of returning
+  meaningless displacements.
+- **19 accepted ADRs** documenting architectural decisions.
+- **50 validated specs** with quantitative acceptance criteria.
+- **1496 tests** green, including 8 published canonical benchmarks (Lamé 2D and
   3D, NAFEMS LE1 and LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation,
   Hill 1950, Carslaw-Jaeger semi-infinite solid).
 
@@ -48,6 +62,16 @@ pip install -e .
 
 Requires Python ≥ 3.10. Dependencies: `numpy`, `scipy`, `numba`, `pyyaml`,
 `meshio`.
+
+Optional extras, which the solver uses automatically when present:
+
+```bash
+pip install -e .[fast]        # Intel MKL Pardiso: multithreaded direct solver (recommended)
+pip install -e .[iterative]   # pyamg: preconditioner for the iterative solver
+```
+
+Solidum runs fully without them. `pyamg` has no Windows wheels for Python 3.14
+yet and is then built from source, which needs Visual Studio with the C++ tools.
 
 To run the test suite:
 

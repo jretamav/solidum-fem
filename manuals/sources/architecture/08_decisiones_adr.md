@@ -130,6 +130,46 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** El subsistema modal/dinámico/espectral queda **completo en su totalidad**. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, Δt adaptativo, generalized-α) requieren caso de uso específico — no son piezas del ADR pendientes. La clase `Node` conserva su semántica original.
 
+## ADR 0010 — Discontinuidades interiores embebidas
+
+**Fecha**: 13 de mayo de 2026. **Estado**: aceptado; fases 1, 2, 3 y 3b implementadas, fases 4 (curva de Van Vliet) y 5 diferidas con justificación.
+
+**Contexto.** Abrir la línea de fractura computacional. Entre las alternativas (fisura difusa, elementos cohesivos de interfaz, XFEM, discontinuidades embebidas) se elige la que el autor domina a nivel doctoral: discontinuidades interiores embebidas en aproximación discreta (Retama, 2010).
+
+**Decisión.** Cinco abstracciones transversales: (1) una familia `CohesiveMaterial` **paralela** a `Material`, no subclase, porque relaciona tracción con salto de desplazamiento y no esfuerzo con deformación; (2) elementos con **grados de libertad enriquecidos a nivel elemental**, invisibles para el ensamblador; (3) **condensación estática local** del salto dentro del elemento, de modo que el sistema global no cambia de tamaño; (4) un `DiscontinuityState` que guarda la orientación y la historia de la discontinuidad; (5) una semántica de **elemento que cambia de modo** (continuo a agrietado), cuya activación se decide entre pasos con el hook `prepare_step` y no dentro del Newton, para evitar oscilaciones sobre el umbral. Se fija además la longitud de discontinuidad `l_d = (A/h)·cos(θ−α)`, aportación del capítulo 6 de la tesis, validada numéricamente por primera vez.
+
+**Consecuencia.** Fractura computacional sin tocar el ensamblador, el despachador algebraico, el Newton ni el parser. Las cuatro abstracciones son reutilizables para modelos cohesivos clásicos, modos incompatibles o EAS. El límite conocido es el solver para ablandamiento severo con penalización cohesiva rígida (deuda técnica).
+
+## ADR 0011 — Robustez del Newton: line search y diagnóstico de divergencia
+
+**Fecha**: 18 de mayo de 2026. **Estado**: aceptado con una enmienda.
+
+**Contexto.** Los solvers no lineales divergían con un `RuntimeError` genérico que no distinguía entre causas cualitativamente distintas, y no tenían globalización.
+
+**Decisión.** Dos mejoras coordinadas: un **line search** de backtracking con condición de descenso sobre el residuo, y una **familia de excepciones tipadas** que clasifica la divergencia (oscilación del Newton, tangente singular, carga por encima de la capacidad, modo desconocido) con métricas y una pista textual. **Enmienda**: el line search, previsto activo por defecto, quedó **desactivado por defecto** al comprobarse que rompía casos de daño que convergían sin él; con Newton completo y tangente consistente el backtracking apenas aporta (de Borst y Sluys, tabla 3.1).
+
+**Consecuencia.** Un fallo de convergencia se reporta con su causa probable y la acción típica, no con un mensaje genérico.
+
+## ADR 0012 — Sólidos 3D y notación de Voigt en seis componentes
+
+**Fecha**: 19 de mayo de 2026. **Estado**: aceptado.
+
+**Contexto.** Abrir la familia de elementos sólidos 3D obligaba a fijar la notación de Voigt tridimensional y a decidir qué hace el contrato de fuerzas internas en un sólido.
+
+**Decisión.** (1) Voigt 3D con orden `[xx, yy, zz, xy, yz, xz]` y deformaciones angulares *engineering*, extensión natural del orden 2D (difiere de ABAQUS en la permutación `yz ↔ xz`); (2) el contrato `internal_forces()` **no se aplica a sólidos**: un continuo no tiene resultantes seccionales, su salida canónica es el campo de esfuerzos por punto de Gauss; (3) una API de tracciones y caras 3D paralela a la de bordes 2D.
+
+**Consecuencia.** Especificaciones de sólidos 3D sin ambigüedad de notación, y el contrato de resultados del ADR 0002 cerrado por dominio explícito en vez de quedar como deuda.
+
+## ADR 0013 — Orientación material y ortotropía
+
+**Fecha**: 9 de septiembre de 2026. **Estado**: aceptado.
+
+**Contexto.** El primer material anisótropo (`Orthotropic2D`, para la investigación con bambú) plantea dónde vive el ángulo de fibra: en el material, en el elemento, o en un campo sobre la malla.
+
+**Decisión.** El ángulo va **en el material**, como atajo consciente y desechable: es una entrega puramente aditiva que no toca los contratos `Material` ni `Element`, y resuelve el caso real (probetas a ángulo constante). Se declara explícitamente que la orientación es conceptualmente una propiedad del elemento, y se escribe la condición de migración: cuando aparezca un caso real con orientación variable en la malla. Se fijan también la validación de admisibilidad propia de la ortotropía (`|ν₁₂| < √(E₁/E₂)`, no la de `Elastic2D`) y la convención de subíndices de Poisson.
+
+**Consecuencia.** Calibración experimental desbloqueada sin riesgo de regresión. El isótropo queda como caso particular verificable.
+
 ## ADR 0014 — Ensamblaje por lotes
 
 **Fecha**: 22 de septiembre de 2026. **Estado**: aceptado; fases 1-3 implementadas el mismo día.
@@ -148,11 +188,51 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Decisión.** Un solo `NewtonCorrector` posee el bucle y lo que persiste entre pasos (backend, degradación a LU, factor congelado); cada solver construye por paso un `NewtonProblem` —ensamblar, residuo y su norma, escalas del criterio, corrección con el `solve` del corrector, actualización, commit— y conserva su control de paso. El iterado es opaco (`U`; `(U, λ, ΔU)`; `(u, u̇, ü, ü_libre)`). La restricción del arc-length es un método del problema que la variante por disipación sobreescribe. `CorrectionAborted` permite abandonar un paso sin marcarlo como tangente singular.
 
-**Consecuencia.** Ningún resultado cambia (1 447 tests sin tocar un valor esperado). Un solver iterativo nuevo escribe su problema y su control de paso; un cambio del bucle, del backend o de la globalización se hace una vez. Retirados los ayudantes privados duplicados; `solver.corrector` es la superficie de instrumentación.
+**Consecuencia.** Ningún resultado cambia (las 1 447 pruebas de entonces, sin tocar un valor esperado). Un solver iterativo nuevo escribe su problema y su control de paso; un cambio del bucle, del backend o de la globalización se hace una vez. Retirados los ayudantes privados duplicados; `solver.corrector` es la superficie de instrumentación.
+
+## ADR 0016 — Acoplamiento termomecánico (estudio de viabilidad)
+
+**Fecha**: 22 de septiembre de 2026. **Estado**: aceptado; sin código.
+
+**Contexto.** El acoplamiento termomecánico era la decisión pendiente que el problema térmico (Etapa 8) había dejado abierta: acoplamiento débil o monolítico, y cómo entra en el contrato de material.
+
+**Decisión.** Una verificación previa sobre el código mostró que la infraestructura ya admite nodos con desplazamiento y temperatura a la vez: numeración, ensamblaje en una sola matriz, condiciones mixtas, masa y capacidad por el mismo operador y resolución estática completa. Lo que falta es sólo la física de los bloques fuera de la diagonal. Se decide: **acoplamiento débil unidireccional primero**, con el monolítico como extensión aditiva; una **deformación propia genérica** `ε₀` con `σ = C:(ε − ε₀)`, de la que la térmica es un caso particular (la higroscópica, formalmente idéntica, domina en madera y bambú); `ε₀` almacenada **por punto de Gauss**; y sin familia de elementos acoplados.
+
+**Consecuencia.** El acoplamiento deja de ser una decisión pendiente y pasa a ser una etapa de trabajo acotada que no necesita solver nuevo.
+
+## ADR 0017 — Backend algebraico multihilo
+
+**Fecha**: 22 de septiembre de 2026. **Estado**: aceptado.
+
+**Contexto.** Medido con un perfilado de extremo a extremo, cerrado el ADR 0014 la factorización del sistema se llevaba el 97 % del tiempo de un análisis y el ensamblaje el 1 %. La causa es el relleno de los factores, que crece con la talla.
+
+**Decisión.** Un backend opcional sobre Intel MKL Pardiso (factorización multihilo con reordenamiento por disección anidada), con el patrón de Cholesky: si la dependencia falta, el sistema funciona igual con SuperLU. Ocupa el lugar de LU en la regla automática (Cholesky, luego Pardiso, luego LU). Un único manejador de la MKL por proceso, y una factorización invalidada falla de forma ruidosa en lugar de devolver la solución de otro sistema.
+
+**Consecuencia.** Aceleraciones de ×5 a ×56 según la talla, crecientes con ella, con la misma solución a precisión de máquina.
+
+## ADR 0018 — Solver iterativo
+
+**Fecha**: 23 de septiembre de 2026. **Estado**: aceptado; la tolerancia, pendiente de validación.
+
+**Contexto.** Los programas comerciales ofrecen un solver directo por defecto y uno iterativo para modelos grandes. La ventaja del iterativo no es la velocidad sino la memoria: la del directo crece más deprisa que el modelo.
+
+**Decisión.** Un backend iterativo **sólo a petición** (`linear_algebra: iterative`): gradiente conjugado para matrices simétricas definidas positivas, MINRES para simétricas indefinidas (el cambio es automático al detectar curvatura negativa) y solver directo para las no simétricas. El precondicionador es un multimalla algebraico que recibe los **modos de cuerpo rígido** del modelo, derivados del nombre de los grados de libertad; sin ellos rinde peor que no precondicionar. Tolerancia sobre el residuo verdadero cinco órdenes por debajo de la del Newton, de modo que el método de Newton no cambia; si no se alcanza, el análisis se detiene con la causa.
+
+**Consecuencia.** Número de iteraciones casi independiente de la talla y memoria proporcional al modelo; por encima de unos 10⁵ grados de libertad gana también en tiempo.
+
+## ADR 0019 — Red de seguridad del análisis estático
+
+**Fecha**: 23 de septiembre de 2026. **Estado**: aceptado.
+
+**Contexto.** El usuario de Solidum no elige el solver algebraico ni tiene por qué conocer sus fallos. Medido: con un modelo mal apoyado, los solvers directos devolvían en silencio desplazamientos de miles de kilómetros.
+
+**Decisión.** Tres capas en el análisis estático: antes de resolver, los **mecanismos rígidos** se detectan a partir de los modos de cuerpo rígido que las restricciones dejan libres y se describen en términos del modelo (traslación, giro alrededor de un eje por un punto, campo escalar sin valor prescrito); después de resolver, en el análisis lineal, se verifican el **equilibrio** y la ausencia de **pivotes nulos**. Dentro de un Newton no se rechaza nada —cerca de un punto límite resolver un sistema casi singular es legítimo—, sólo se mejora el diagnóstico.
+
+**Consecuencia.** Un modelo mal planteado se detiene con una explicación en vez de devolver resultados absurdos, sin falsos positivos en toda la batería de pruebas.
 
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
 
-- El problema térmico se incorporó en la Etapa 8 **sin ADR propio**, a diferencia de lo previsto aquí. La razón es que no rompió contrato alguno ni exigió la generalización del concepto de grado de libertad que se anticipaba: la infraestructura resultó ya agnóstica al campo físico, y la familia térmica reutilizó el patrón de familia paralela con registro propio que el ADR 0010 había establecido para los materiales cohesivos. Las convenciones específicas —signo del flujo de frontera saliente, ausencia de notación de Voigt en el problema escalar— se registraron en `Reglas.md` §5. Un ADR quedaría justificado si se incorpora el acoplamiento, que sí obliga a decidir sobre el contrato de material.
-- [PENDIENTE: ADR para el acoplamiento termo-mecánico, incluyendo la elección entre estrategia desacoplada y monolítica.]
+- El problema térmico se incorporó en la Etapa 8 **sin ADR propio**, a diferencia de lo previsto aquí. La razón es que no rompió contrato alguno ni exigió la generalización del concepto de grado de libertad que se anticipaba: la infraestructura resultó ya agnóstica al campo físico, y la familia térmica reutilizó el patrón de familia paralela con registro propio que el ADR 0010 había establecido para los materiales cohesivos. Las convenciones específicas —signo del flujo de frontera saliente, ausencia de notación de Voigt en el problema escalar— se registraron en `Reglas.md` §5.
+- El acoplamiento termomecánico, que sí obliga a decidir sobre el contrato de material, tiene ya su ADR (0016): estrategia decidida, implementación pendiente.

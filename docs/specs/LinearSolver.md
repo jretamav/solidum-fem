@@ -60,13 +60,15 @@ ADR 0004 fase 1 (eliminación directa de apoyos) y fase 2 (transformación $\mat
 
 ### 8. Backend algebraico
 
-Despacho automático ADR 0003:
+Despacho automático (ADR 0003, ampliado por ADR 0017):
 
-- Si el dominio es **simétrico** (todos los materiales con tangente simétrica) ⇒ se asume PD y se factoriza con **Cholesky** (`scipy.sparse.linalg.splu` con `options={'SymmetricMode': True}` o equivalente Cholesky sparse).
-- Si Cholesky reporta no-positividad (puede ocurrir con casi-singular o mal condicionado) ⇒ **fallback automático** a LU.
-- Si el dominio declara material **no simétrico** ⇒ LU directo.
+- Si el dominio es **simétrico** (todos los materiales con tangente simétrica) ⇒ se asume PD y se factoriza con **Cholesky** (CHOLMOD) si `scikit-sparse` está instalado.
+- Si no, o si el dominio declara material **no simétrico** ⇒ **Pardiso** (Intel MKL, multihilo) si `pypardiso` está instalado; si no, **LU** (SuperLU).
+- Si Cholesky reporta no-positividad (casi-singular o mal condicionado) ⇒ **fallback automático** al siguiente backend.
 
-Override manual: parámetro `linear_algebra ∈ {"auto", "cholesky", "lu"}`.
+Override manual: parámetro `linear_algebra ∈ {"auto", "cholesky", "pardiso", "lu", "iterative[:amg|jacobi|none]"}`. El iterativo (ADR 0018) nunca se elige de forma automática; sobre una matriz no simétrica cae al directo con aviso.
+
+**Red de seguridad (ADR 0019)**. Antes de factorizar se comprueba que el modelo no es un **mecanismo rígido** (`MechanismError`, con el movimiento libre descrito). Tras resolver se exige el **equilibrio** `‖F − K·u‖ ≤ 1e-8·‖F‖` y una factorización **sin pivotes numéricamente nulos** (`IllPosedSystemError`). Antes de esta red, un modelo mal apoyado devolvía en silencio desplazamientos de miles de kilómetros.
 
 **Cache de factorización (ADR 0003 fase 2)**: la primera llamada a `solve` ensambla $\mathbf K$, reduce y factoriza; la factorización se guarda en el solver. Llamadas posteriores con un $\mathbf F$ distinto reutilizan el factor sin reensamblaje — el coste se reduce a una resolución triangular barata. Si el usuario modifica el modelo entre llamadas (nuevos elementos, BCs, materiales) debe invocar `invalidate_cache()` explícitamente.
 
@@ -76,6 +78,7 @@ No aplica.
 
 ### 10. Caveats numéricos
 
+- **Modelos mal planteados**: un mecanismo rígido se rechaza antes de resolver y uno interno tras resolver (ADR 0019). Queda sin detectar el mal condicionamiento sin singularidad (rigideces muy desproporcionadas): un directo es estable hacia atrás y el residuo sale pequeño aunque el error de la solución pueda no serlo.
 - **Suposición de PD por simetría**: el despachador asume que un dominio con materiales simétricos tiene $\mathbf K$ positiva definida. Es cierto para elasticidad estándar con suficientes apoyos; falso para casos degenerados (apoyos insuficientes, modos rígidos no restringidos, casi-singularidad geométrica). El fallback Cholesky→LU cubre estos casos.
 - **Cache desactualizado**: si el modelo se modifica entre `solve` calls sin llamar a `invalidate_cache`, los resultados serán inconsistentes. La política deliberada es **cache silenciosa** (no se detectan modificaciones del modelo automáticamente) por velocidad — la responsabilidad de invalidar es del usuario.
 - **No es no lineal**: si el problema es no lineal (material plástico, geometría corotacional con cargas significativas) usar `NonlinearSolver`. Este solver evaluará la tangente en estado virgen ($\mathbf U = 0$) y producirá una respuesta lineal incorrecta sin avisar.
@@ -96,7 +99,7 @@ interface:
 
 parameters:
   - { name: linear_algebra, type: str, required: false, default: "auto",
-      desc: "Selección del backend algebraico: 'auto' (Cholesky→LU según simetría), 'cholesky', 'lu'" }
+      desc: "Selección del backend algebraico: 'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018)" }
 
 requirements:
   - "Modelo lineal: materiales con tangente constante, geometría no corotacional o cargas suficientemente pequeñas"
@@ -162,7 +165,8 @@ references:
 - **Clase**: `LinearSolver`, registrada vía `@SolverRegistry.register` con `PIPELINE_KIND = "static"`.
 - **Cache**: atributos `_factor`, `_T`, `_g_full`, `_F_dir`, `_n_free` se rellenan lazy en la primera llamada a `solve`. Método público `invalidate_cache()` los pone a `None` para forzar reensamblaje.
 - **Fallback Cholesky→LU**: capturado en `_build_cache` vía `CholeskyNotPositiveDefiniteError` (ADR 0003 §5); registra un warning y reintenta con LU.
-- **Entrypoint público**: `solidum.run_static(model, solver="linear", ...)` (despacho declarativo por `PIPELINE_KIND`, regla C de la auditoría).
+- **Red de seguridad (ADR 0019)**: `ensure_statically_restrained` en `_build_cache` antes de factorizar; `check_linear_solution` tras cada `solve` (equilibrio y `n_zero_pivots` del factor). Ambas en `solidum/math/solvers/model_checks.py`.
+- **Entrypoint público**: `solidum.run(domain, solver=LinearSolver(assembler), F_applied=...)` o `solidum.run_yaml(path)`, que despacha por `PIPELINE_KIND` (regla C de la auditoría).
 - **Tests**: cobertura masiva implícita — prácticamente todos los tests del pipeline estático lineal lo usan. Tests específicos del cache: `tests/test_solver_robustness.py::test_linear_solver_cache_reuse`.
 
 ---
@@ -171,3 +175,4 @@ references:
 
 - **2026-05-19** · Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs validadas. La cache de factorización se añadió en la sesión de saneamiento post-auditoría (commit `b517718`, H-4.2); esta spec recoge ese comportamiento como parte del contrato actual.
 - **2026-09-22** · Auditoría global: `invalidate_cache()` invalida también las cachés del `Assembler`; además el `ConstraintSet` se reconstruye solo por huella de las restricciones, así que un apoyo añadido tras el primer `solve` surte efecto (antes se ignoraba en silencio). `solidum.run` comitea el estado final.
+- **2026-09-23** · ADR 0017, 0018 y 0019: el despacho automático incluye Pardiso entre Cholesky y LU; `linear_algebra` admite `pardiso` e `iterative[:amg|jacobi|none]`; red de seguridad (mecanismo rígido antes de factorizar, equilibrio y pivotes nulos tras resolver). Corregidas dos inexactitudes previas de esta spec: Cholesky nunca se hizo con `splu` en modo simétrico (es CHOLMOD, opcional) y el entrypoint `solidum.run_static` no existe (es `solidum.run`).

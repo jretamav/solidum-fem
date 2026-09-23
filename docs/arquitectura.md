@@ -38,27 +38,36 @@
 │              └── ElementState (trial/commit, stresses,        │
 │                                state_vars, history)           │
 │      └── Material (base abstracta, STRAIN_DIM,                │
-│              PRIMARY_STATE_VAR)                               │
+│              PRIMARY_STATE_VAR, STATE_SCHEMA)                 │
+│      └── familias paralelas: CohesiveMaterial (ADR 0010),     │
+│              ThermalMaterial (FLUX_DIM, Etapa 8)              │
 └───────────────────────────────┬───────────────────────────────┘
                                 │
 ┌───────────────────────────────▼───────────────────────────────┐
-│  CAPA DE MATEMÁTICA  —  solidum/math/                           │
-│   assembly.py     →  ensamblaje sparse con cache COO          │
+│  CAPA DE MATEMÁTICA  —  solidum/math/                         │
+│   assembly.py     →  ensamblaje sparse con cache COO; modos   │
+│                      de cuerpo rígido (rigid_basis)           │
+│   batch/          →  ensamblaje por lotes: familias + un      │
+│                      kernel Numba (serie / prange) ADR 0014   │
 │   integration.py  →  cuadraturas de Gauss                     │
-│   solvers/       →  paquete (un módulo por solver):           │
-│                      linear, nonlinear, arclength, modal,     │
-│                      newmark + _shared (todos registrados)    │
+│   solvers/        →  un módulo por solver (13 registrados)    │
+│       corrector.py   →  NewtonCorrector compartido (ADR 0015) │
+│       model_checks.py→  red de seguridad estática (ADR 0019)  │
+│       diagnostics.py →  errores tipados (ADR 0011, 0019)      │
 │   linalg/         →  capa algebraica K·x = b (ADR 0003)       │
 │       base.py        →  Protocol + StiffnessProperties        │
-│       lu.py          →  LUSolver (SuperLU, fallback universal)│
+│       lu.py          →  LUSolver (SuperLU, siempre)           │
 │       cholesky.py    →  CholeskySolver (CHOLMOD, opcional)    │
-│       ldlt.py        →  LDLTSolver (placeholder fase 2)       │
+│       pardiso.py     →  PardisoSolver (MKL, opcional; 0017)   │
+│       iterative.py   →  CG/MINRES + AMG, a petición (0018)    │
+│       nullspace.py   →  modos de cuerpo rígido por DOF_NAMES  │
+│       ldlt.py        →  LDLTSolver (placeholder, deuda #7)    │
 │       dispatcher.py  →  select_solver(props, override)        │
 └───────────────────────────────┬───────────────────────────────┘
                                 │
 ┌───────────────────────────────▼───────────────────────────────┐
-│  CAPA DE SALIDA  —  solidum/utils/vtk_exporter.py               │
-│  Exporta U, σ, y la PRIMARY_STATE_VAR del material a VTK.     │
+│  CAPA DE SALIDA  —  solidum/utils/vtk_exporter.py             │
+│  Exporta U, σ, T, flujo y la PRIMARY_STATE_VAR a VTK.         │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -87,7 +96,8 @@
 |---|---|---|---|
 | Material nuevo | `solidum/materials/<snake>.py` | `@MaterialRegistry.register` | No |
 | Elemento nuevo | `solidum/elements/<snake>.py` | `@ElementRegistry.register` | No |
-| Solver nuevo | `solidum/math/solver_<snake>.py` | `@SolverRegistry.register` | No |
+| Backend algebraico nuevo | `solidum/math/linalg/<snake>.py` | entrada en `_REGISTRY` del despachador (import opcional absorbido si falta la dependencia) | Sólo `dispatcher.py` y `linalg/__init__.py` |
+| Solver nuevo | `solidum/math/solvers/<snake>.py` | `@SolverRegistry.register` | No |
 
 El skill `/solidum-new <kind> <Name>` (`.claude/skills/solidum-new/`) genera el esqueleto completo (archivo + decorador + test).
 

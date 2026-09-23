@@ -13,18 +13,31 @@ Toda la orquestación de un análisis se concentra en un archivo `.yaml` legible
 
 ## Requisitos del Sistema
 
-Solidum FEM se ejecuta sobre Python 3.8 o superior en Windows, Linux y macOS sin compilación nativa.
+Solidum FEM se ejecuta sobre Python 3.10 o superior en Windows, Linux y macOS sin compilación nativa.
 
 ### Dependencias
 
 ```bash
-pip install numpy scipy pyyaml meshio numba
+pip install -e .            # desde la carpeta del proyecto: instala Solidum y sus dependencias
 ```
 
-- **`numpy` / `scipy`**: álgebra lineal densa y dispersa; `spsolve` sobre matrices CSR.
+- **`numpy` / `scipy`**: álgebra lineal densa y dispersa; SuperLU como solver directo disponible siempre.
 - **`pyyaml`**: análisis sintáctico del archivo de entrada.
 - **`meshio`**: importación de mallas Gmsh y exportación a VTK.
 - **`numba`**: compilación JIT de los kernels críticos en elementos sólidos 2D y 3D y en los modelos de plasticidad.
+
+### Dependencias opcionales
+
+Solidum funciona completo sin ellas; con ellas, los modelos grandes se resuelven mucho más rápido o caben en memoria. Se instalan como *extras*:
+
+```bash
+pip install -e .[fast]         # Intel MKL Pardiso: solver directo multihilo (recomendado)
+pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
+```
+
+- **`pypardiso`** (`[fast]`): con él, el solver del sistema lineal —que en un análisis grande se lleva la mayor parte del tiempo— pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML.
+- **`pyamg`** (`[iterative]`): sólo lo usa el solver iterativo, que se pide expresamente (`linear_algebra: iterative`) para modelos demasiado grandes para la memoria. En Python 3.14 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
+- **`scikit-sparse`** (`[cholmod]`): factorización de Cholesky; en Windows se instala con `conda`, no con `pip`.
 
 ## Herramientas Externas Recomendadas
 

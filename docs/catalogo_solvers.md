@@ -8,9 +8,10 @@
 
 ## LinearSolver — solución lineal directa en un paso
 
-- **Propósito**: resolver `K · U = F` en un único `spsolve`.
-- **Esquema**: ensamblaje único → eliminación directa de DOFs prescritos (ADR 0004) → `scipy.sparse.linalg.spsolve`.
-- **Parámetros**: `linear_algebra` (default `auto`; ADR 0003 §4).
+- **Propósito**: resolver `K · U = F` con una sola factorización.
+- **Esquema**: comprobación de mecanismo rígido (ADR 0019) → ensamblaje único → eliminación directa de DOFs prescritos (ADR 0004) → factorización por el despachador (Cholesky → Pardiso → LU; ADR 0003, 0017) → comprobación de equilibrio y de pivotes nulos (ADR 0019).
+- **Parámetros**: `linear_algebra` (default `auto`; también `lu`, `pardiso`, `cholesky`, `iterative[:amg|jacobi|none]`, ADR 0018).
+- **Errores de planteamiento**: `MechanismError` (apoyos insuficientes, con el movimiento libre descrito) e `IllPosedSystemError` (mecanismo interno o matriz singular), en vez de devolver desplazamientos absurdos.
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **No converge / no aplica**: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).
 - **Spec**: [docs/specs/LinearSolver.md](specs/LinearSolver.md)
@@ -51,9 +52,9 @@
   - **Caso especial — final_step**: si el predictor sobrepasaría `max_lambda`, fija λ exactamente a `max_lambda` y resuelve solo desplazamientos (Newton-Raphson puro).
   - **Auto-ajuste de `dl`**: < 4 iter → ampliar (×1.5, tope `5·dl_initial`); > 8 iter → reducir (×0.6); no converge → biseca (÷2).
   - Convergencia: mismo criterio dual que `NonlinearSolver`.
-- **Parámetros**: `tol`, `max_iter`, `max_lambda`, `initial_dl`, `max_steps`, `dl_grow_factor`, `dl_max_factor`, `dl_shrink_factor`, `dl_grow_iter_threshold`, `dl_shrink_iter_threshold`.
+- **Parámetros**: `convergence`, `max_iter`, `max_lambda`, `initial_dl`, `max_steps`, `dl_grow_factor`, `dl_max_factor`, `dl_shrink_factor`, `dl_grow_iter_threshold`, `dl_shrink_iter_threshold`, `linear_algebra`.
 - **Cuándo usarlo**: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando `NonlinearSolver` diverge cerca de un punto límite.
-- **Limitación**: más caro por paso (dos `spsolve` por iteración); requiere ajuste de `initial_dl` para problemas nuevos.
+- **Limitación**: más caro por paso (dos resoluciones del sistema por iteración); requiere ajuste de `initial_dl` para problemas nuevos.
 - **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (Computers & Structures, 1981); Crisfield vol. 1, cap. 9.
 - **Spec**: [docs/specs/ArcLengthSolver.md](specs/ArcLengthSolver.md)
 - **Archivo**: [solidum/math/solvers/arclength.py](../solidum/math/solvers/arclength.py)

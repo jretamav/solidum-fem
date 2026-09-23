@@ -217,14 +217,17 @@ Por debajo del solver no lineal, dentro de cada iteración, se requiere la resol
 
 Algoritmos disponibles:
 
-- `LUSolver` — factorización LU mediante SuperLU. Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no.
-- `CholeskySolver` — factorización de Cholesky mediante CHOLMOD. Significativamente más rápido y con menor consumo de memoria, pero aplicable únicamente cuando `K` es simétrica y definida positiva.
+- `LUSolver` — factorización LU mediante SuperLU (SciPy). Algoritmo universal: aplicable a cualquier matriz no singular, simétrica o no, definida o no. Siempre disponible; es el suelo del despachador.
+- `CholeskySolver` — factorización de Cholesky mediante CHOLMOD (dependencia opcional `scikit-sparse`). Aprovecha la simetría, pero es aplicable únicamente cuando `K` es simétrica y definida positiva.
+- `PardisoSolver` (ADR 0017) — factorización directa **multihilo** con reordenamiento por disección anidada, mediante Intel MKL Pardiso (dependencia opcional `pypardiso`). Mismo dominio que LU, al que sustituye cuando está instalado. La factorización, y no el ensamblaje, domina el tiempo de un análisis grande: de ×5 a ×56 más rápido que SuperLU según la talla.
+- `IterativeSolver` (ADR 0018) — gradiente conjugado (matrices simétricas definidas positivas) o MINRES (simétricas indefinidas), precondicionados con un multimalla algebraico que recibe los modos de cuerpo rígido del modelo. **Sólo a petición**: su ventaja es la memoria, proporcional al modelo, en problemas por encima de unos 10⁵ grados de libertad.
 - `EigenSolver` (ADR 0009) — algoritmo de autovalor generalizado simétrico para el problema `K · φ = ω² · M · φ`. Envuelve `scipy.sparse.linalg.eigsh` (ARPACK Lanczos con shift-invert centrado en `σ`). Vive en `solidum/math/linalg/eigen.py` y no comparte la interfaz `solve(K, b)` de los anteriores — su firma natural es `solve(K, M, n_modes) → (λ, φ)`.
-- [PENDIENTE: `LDLTSolver` — factorización LDLᵀ para el caso simétrico no definido positivo, reservada para la fase 2 del ADR 0003.]
-- [PENDIENTE: Algoritmos algebraicos directos paralelos (Pardiso, MUMPS) para problemas de gran tamaño.]
-- [PENDIENTE: Algoritmos algebraicos iterativos con precondicionamiento (gradiente conjugado precondicionado, GMRES, multimalla algebraica).]
+- [PENDIENTE: `LDLTSolver` — factorización LDLᵀ con conteo de inercia para el caso simétrico indefinido (deuda técnica #7). Pardiso puede aportarla, pero exige el triángulo superior de la matriz.]
+- [PENDIENTE: solver iterativo para matrices no simétricas (GMRES o BiCGSTAB); hoy esas matrices van siempre a un solver directo.]
 
-**Despachador.** La función `select_solver(props)` inspecciona las propiedades de la matriz (encapsuladas en `StiffnessProperties`: simetría, definición positiva) y selecciona el algoritmo adecuado de forma automática. El usuario puede forzar un algoritmo específico desde el archivo YAML mediante el campo opcional `linear_algebra` en calidad de herramienta de diagnóstico, no como decisión de modelado.
+**Despachador.** La función `select_solver(props)` inspecciona las propiedades de la matriz (encapsuladas en `StiffnessProperties`: simetría, definición positiva) y selecciona el algoritmo de forma automática, en el orden Cholesky (si la matriz es simétrica definida positiva y CHOLMOD está instalado), Pardiso (si está instalado) y LU. El iterativo nunca se elige de forma automática. El usuario puede forzar un algoritmo desde el archivo YAML con el campo opcional `linear_algebra` (`auto`, `lu`, `cholesky`, `pardiso`, `iterative[:amg|jacobi|none]`) en calidad de herramienta de diagnóstico, no como decisión de modelado.
+
+**Red de seguridad.** Un solver directo ante una matriz singular no avisa. Por eso el análisis estático comprueba antes de resolver que el modelo no es un mecanismo, y después, en el caso lineal, que la solución satisface el equilibrio y que la factorización no tiene pivotes nulos (ADR 0019; ver el capítulo de mecanismos transversales).
 
 **Justificación de la separación en dos niveles.** El solver no lineal y el subsistema algebraico resuelven cuestiones distintas. El primero decide cómo recorrer la respuesta del sistema (incrementos, iteraciones, longitud de arco). El segundo decide con qué método resolver cada sistema lineal individual. Esta separación permite, por ejemplo, mejorar el rendimiento del paso elástico sin afectar al método de Newton-Raphson, o introducir longitud de arco sin reescribir el código del subsistema algebraico.
 

@@ -80,7 +80,9 @@ Idéntica a `LinearSolver` — ADR 0004. La carga Dirichlet no homogénea $\math
 
 ### 8. Backend algebraico
 
-Despacho automático ADR 0003 idéntico a `LinearSolver`. Fallback Cholesky→LU activado.
+Despacho automático idéntico a `LinearSolver` (Cholesky → Pardiso → LU; iterativo sólo a petición, ADR 0017-0018). Fallback Cholesky→LU activado.
+
+**Red de seguridad (ADR 0019)**: antes del primer paso se rechaza un **mecanismo rígido** (`MechanismError`, con el movimiento libre descrito). Dentro del Newton no se rechaza ningún sistema —cerca de un punto límite resolver uno casi singular es legítimo—, pero el corrector registra el residuo relativo de cada resolución lineal y, si el paso fracasa con un sistema mal resuelto, la divergencia se clasifica como `SingularTangentError` con la causa.
 
 **Newton modificado (ADR 0003 fase 2)**: parámetro opcional `freeze_tangent_after_iter`. Si es `int N`, el solver factoriza fresca durante las primeras $N$ iteraciones del paso y reutiliza la factorización en las siguientes iteraciones del mismo paso (no entre pasos — la tangente cambia con $\mathbf U$). Default `None` = Newton estándar (factoriza cada iter).
 
@@ -126,7 +128,7 @@ parameters:
   - { name: min_delta_lambda,            type: float, required: false, default: NEWTON_DEFAULT_MIN_DELTA_LAMBDA,
       desc: "Cota inferior para Δλ; por debajo se aborta con SolverDivergedError (keyword-only)" }
   - { name: linear_algebra,              type: str,   required: false, default: "auto",
-      desc: "'auto' (Cholesky→LU según simetría), 'cholesky', 'lu' (keyword-only)" }
+      desc: "'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018) (keyword-only)" }
   - { name: freeze_tangent_after_iter,   type: int|None, required: false, default: null,
       desc: "Newton modificado: factoriza fresca primeras N iter, congela después (keyword-only)" }
   - { name: line_search,                 type: bool,  required: false, default: false,
@@ -211,3 +213,4 @@ references:
 - **2026-05-19** · Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs. Comportamiento documenta el estado tras la sesión de saneamiento post-auditoría (commits `4e4ed54` para keyword-only, ADR 0011 ya integrado).
 - **2026-09-22** · Auditoría global: un ensamblaje por iteración: la convergencia se evalúa al inicio de la iteración con (‖R(U_k)‖, ‖δU_{k−1}‖) y el estado trial que se comitea es el del propio ensamblaje en U_k (antes cada iteración ensamblaba dos veces para la misma secuencia de decisiones). `max_iter` es el número máximo de resoluciones por paso. La iteración 0 no evalúa convergencia porque el incremento de Dirichlet λ·g entra en la primera resolución (con control en desplazamiento el residuo en DOFs libres era nulo y declaraba convergencia sin mover el apoyo): todo paso hace al menos una resolución. Expone `steps_done` y `lambda_final`, que `solidum.run` vuelca en `SolveResult.num_steps` (antes siempre 1).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_IncrementalProblem`: residuo `λ·F_ext − F_int`, reducción con el incremento de Dirichlet del paso, sin evaluación en la iteración 0; retirados `_armijo_step` y `_solve_reduced`, ahora `corrector.line_search_step` y `corrector.solve`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+- **2026-09-23** · ADR 0017-0019: despacho con Pardiso e iterativo a petición; comprobación de mecanismo rígido al empezar `solve`; diagnóstico de tangente singular a partir del residuo lineal (sólo diagnóstico, sin cambio del algoritmo).

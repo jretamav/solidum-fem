@@ -2,9 +2,9 @@
 
 Este capítulo presenta la trayectoria prevista de la arquitectura de Solidum FEM. Su función es preservar la imagen de la arquitectura del programa a medida que crece: cada fase incorpora un nuevo tipo de análisis con sus contratos propios, sus variables de estado y, eventualmente, capas o subsistemas adicionales. La diferencia con los pendientes del capítulo 4 es de granularidad: aquellos enumeran componentes individuales; este capítulo describe los **estados sucesivos de la arquitectura** del programa, cada uno con su mapa de capas correspondiente.
 
-Las fases posteriores a la actual están marcadas como pendientes y se materializarán mediante los Architecture Decision Records (ADR) anunciados en el capítulo 8. La estructura de cada fase se redefinirá en su ADR de apertura; lo aquí descrito constituye una hipótesis razonada de partida.
+Las fases aún no implementadas están marcadas como pendientes y se materializarán mediante los Architecture Decision Records (ADR) anunciados en el capítulo 8. La estructura de cada fase se redefinirá en su ADR de apertura; lo aquí descrito constituye una hipótesis razonada de partida.
 
-## Fase 1 (actual) — Estática lineal y no lineal
+## Fase 1 — Estática lineal y no lineal
 
 **Estado**: implementado.
 
@@ -167,28 +167,21 @@ Resultó **bajo**, frente al riesgo medio estimado. La infraestructura existente
 
 ## Fase 6 — Acoplamiento termo-mecánico
 
-**Estado**: [PENDIENTE: Implementación de la fase 6 — acoplamiento termo-mecánico.]
+**Estado**: estrategia decidida en el ADR 0016 (22 de septiembre de 2026), sin implementar.
 
-**Cambios respecto a la fase 5**:
+**Lo que ya existe.** Antes de decidir se verificó sobre el código que la infraestructura admite nodos con desplazamiento y temperatura a la vez: la numeración de ecuaciones itera los grados de libertad por nombre, el ensamblador reúne ambos campos en una sola matriz, la reducción acepta condiciones mixtas sobre un mismo nodo, masa y capacidad calorífica se ensamblan con el mismo operador y un análisis estático de dos campos se resuelve de extremo a extremo. La previsión que figuraba aquí —una nueva infraestructura de ensamblaje multifísico— resultó innecesaria.
 
-- Aparece la interacción entre los campos térmico y mecánico: dilatación térmica que induce deformaciones, disipación mecánica que genera calor.
-- Dos estrategias distintas en términos de arquitectura, a decidir en el ADR de apertura:
-  - *Estrategia desacoplada (staggered)*: en cada paso, se resuelve primero el problema térmico con los desplazamientos de la última iteración, después el problema mecánico con las temperaturas recién calculadas. Cada subsistema mantiene su propia matriz; el acoplamiento se realiza mediante intercambio de campos. Implementación de bajo riesgo de arquitectura pero convergencia limitada en problemas de fuerte interacción.
-  - *Estrategia monolítica*: se ensambla un sistema único `K_acoplada` que combina los DOF mecánicos y térmicos. Convergencia robusta pero exige una nueva infraestructura de ensamblaje multifísico.
-- Aparece una nueva familia de materiales acoplados con interfaz extendida: `compute_response(strain, T, grad_T, state)`.
+**Lo que falta** es la física de los bloques fuera de la diagonal: la dilatación térmica (el campo de temperatura induce fuerzas mecánicas, efecto de primer orden) y el calor de deformación (efecto de segundo orden salvo en régimen adiabático).
 
-**Topología prevista (estrategia monolítica)**:
+**Decisiones del ADR 0016**:
 
-```
-[Entrada] - [Inicializacion] - [Interprete] - [Dominio] - [Numerica: K_acoplada, M_acoplada, solvers] - [Salida]
-                                                  |
-                                       [Materiales termo-mec.]
-                                       [Elementos termo-mec.]
-                                       [Solver acoplado]
-```
+- *Acoplamiento débil unidireccional primero*: se resuelve el problema térmico y su campo entra en el mecánico, sin retroalimentación. El monolítico queda como extensión aditiva cuando exista el caso real, sobre la misma infraestructura.
+- *Deformación propia genérica* `ε₀`, con `σ = C:(ε − ε₀)`: la térmica es el caso particular `ε₀ = α·ΔT`, y la higroscópica —dominante en madera y bambú— entra por el mismo canal sin volver a tocar el contrato de material.
+- `ε₀` vive **por punto de Gauss**, no en el material (compartido por todos los elementos de una familia de lote) ni en el elemento (varía dentro de él).
+- *Sin familia de elementos acoplados*: el elemento mecánico interpola el campo de temperatura con sus propias funciones de forma, con mallas conformes.
 
 ```callout Riesgo de arquitectura
-Alto. Es la primera fase con auténtica multifísica. Requiere generalización del subsistema algebraico para manejar matrices con bloques no homogéneos (un bloque mecánico simétrico positivo definido y un bloque térmico no simétrico, en la formulación habitual); generalización del concepto de prueba de validación, ya que no basta una solución analítica monodisciplinaria y los problemas de referencia deben tener acoplamiento conocido; posible introducción de precondicionadores específicos para sistemas acoplados (precondicionamiento por bloques, complemento de Schur).
+Bajo, tras la verificación del ADR 0016. El cambio de contrato se limita a un canal aditivo para `ε₀` con valor por defecto cero, que deja los materiales existentes intactos.
 ```
 
 ## Mantenimiento de este capítulo

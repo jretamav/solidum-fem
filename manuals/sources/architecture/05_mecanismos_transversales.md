@@ -73,3 +73,22 @@ El patrón vive centralizado por subsistema, no replicado: la admisibilidad cons
 Adicionalmente, los términos absolutos `atol` se autoderivan de las escalas del problema en su primer ensamblaje, no se codifican como constantes globales con unidades. Las constantes globales del proyecto que rigen esta política son adimensionales (`CONVERGENCE_RTOL_FORCE`, `CONVERGENCE_ATOL_FORCE_FACTOR`, `ADMISSIBILITY_TOL_REL`, etc.), lo que mantiene el código independiente del sistema de unidades elegido por el usuario.
 
 La importancia de este mecanismo es estructural: la convergencia es lo que marca el éxito de un análisis numérico, y la diferencia entre un código robusto y uno frágil está en la disciplina con que se construyen estas comparaciones. Toda extensión futura que introduzca un nuevo criterio de comparación contra cero adopta este patrón.
+
+## Modos de cuerpo rígido derivados del nombre de los grados de libertad
+
+Los modos de cuerpo rígido de un modelo —traslaciones, giros infinitesimales y, para un campo escalar como la temperatura, el vector constante— se derivan **sólo del nombre de los grados de libertad** (`ux`, `uy`, `uz`, `rx`, `ry`, `rz`, `T`) y de las coordenadas nodales, sin información del tipo de elemento (`solidum/math/linalg/nullspace.py`). Por eso cubren cualquier combinación del catálogo, incluidos los dominios mixtos, y un elemento nuevo los hereda sin hacer nada. Son el núcleo exacto de la matriz de rigidez de un modelo sin apoyos, verificado en todas las familias.
+
+Los consumen dos piezas: el precondicionador multimalla del solver iterativo, que sin ellos converge peor que sin precondicionar (ADR 0018), y la detección de mecanismos del análisis estático (ADR 0019). El ensamblador los calcula una vez y los cachea mientras no cambie la topología.
+
+## Red de seguridad del análisis estático
+
+El usuario de Solidum no elige el solver algebraico ni tiene por qué conocer cómo falla. Un solver directo ante una matriz singular devuelve resultados absurdos sin avisar (medido: desplazamientos de miles de kilómetros). El análisis estático interpone tres capas (ADR 0019, `solidum/math/solvers/model_checks.py`):
+
+1. **Antes de resolver**: los modos de cuerpo rígido que las restricciones no impiden son un **mecanismo**. Se calculan como el núcleo de la matriz que evalúa cada modo sobre las restricciones —incluidas las lineales, que entran por el operador de reducción del ADR 0004— y se describen en términos del modelo: *"traslación en la dirección x"*, *"giro alrededor del eje z que pasa por (0, 0.5)"*, *"el campo 'T' no tiene ningún valor prescrito"*. No se aplica a análisis modales o dinámicos, donde un modelo libre es legítimo.
+2. **Después de resolver** (estático lineal): la solución debe satisfacer el equilibrio, `‖F − K·u‖ ≤ 10⁻⁸·‖F‖`.
+3. **Después de resolver** (estático lineal): la factorización no debe tener pivotes numéricamente nulos, con el mismo criterio en SuperLU y en Pardiso. Delata un mecanismo interno aunque ninguna carga lo active.
+
+Dentro de un Newton no se rechaza nada: cerca de un punto límite resolver un sistema casi singular es parte del algoritmo, y la garantía la da el propio Newton, que exige equilibrio real. Allí el residuo del sistema lineal sólo se usa para diagnosticar mejor la divergencia.
+
+El principio que el mecanismo materializa es general: **un problema mal planteado lo detecta el sistema y lo explica en el lenguaje del modelo**, no lo diagnostica el usuario a partir de un síntoma numérico.
+

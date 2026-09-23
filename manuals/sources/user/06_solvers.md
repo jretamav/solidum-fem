@@ -4,10 +4,11 @@ Este capítulo cubre los **solvers estáticos** del catálogo: lineal, no lineal
 
 ## `LinearSolver` — solución directa lineal
 
-Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ en un único `spsolve`. Las condiciones de Dirichlet se imponen por eliminación directa (ADR 0004): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.
+Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ con una sola factorización del sistema (el backend lo elige Solidum: Cholesky, Pardiso o LU según la matriz y lo instalado). Las condiciones de Dirichlet se imponen por eliminación directa (ADR 0004): el sistema entregado al backend algebraico es ya el reducido $\mathbf K_{\text{red}} \cdot \mathbf U_{\text{libre}} = \mathbf F_{\text{red}}$.
 
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
-- **Parámetros**: `linear_algebra` (default `auto`; ADR 0003 §4).
+- **Parámetros**: `linear_algebra` (default `auto`; ver *Solver* en el capítulo del YAML).
+- **Comprobaciones automáticas** (ADR 0019): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver *Diagnóstico de Problemas*).
 - **No aplica**: cualquier no-linealidad material (daño, plasticidad, cable) o geométrica (corotacional). Producirá resultados inconsistentes.
 
 ```yaml

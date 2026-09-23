@@ -47,3 +47,25 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo, `solidum.math.batch.gauss_states(domain, U)` devuelve `{id: compute_gauss_state(U)}` evaluando cada familia de una vez (las entradas son vistas sobre arreglos) y llamando a `compute_gauss_state` sólo en los elementos sin familia; el exportador VTK hace lo mismo por dentro.
 
 El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`), así que funciona igual tras `LinearSolver.solve` directo, tras `solidum.run` o en un paso intermedio del `step_callback`. Si el modelo lleva peso propio o fuerza de cuerpo, usar `solidum.run(...)` en vez de `solver.solve(...)` para que `SolveResult.element_forces` reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
+
+## Errores tipados
+
+Desde un script conviene capturar los errores por su tipo, porque cada uno indica una causa y una salida distintas:
+
+```python
+from solidum.math.solvers.diagnostics import (
+    MechanismError,          # el modelo no está suficientemente apoyado (antes de resolver)
+    IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
+    SolverDivergedError,     # familia del Newton: oscilación, tangente singular, capacidad...
+)
+from solidum.math.linalg import IterativeNotConvergedError   # sólo con linear_algebra: iterative
+
+try:
+    U = solver.solve(F_ext)
+except MechanismError as err:
+    print(err.motions)       # p. ej. ['traslación en la dirección x']
+```
+
+`MechanismError.motions` lista los movimientos libres ya descritos en palabras. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
+
+El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. `LinearSolver(assembler, linear_algebra="iterative")`.
