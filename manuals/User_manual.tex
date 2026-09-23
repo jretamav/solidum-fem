@@ -99,7 +99,7 @@
 \renewcommand{\footrulewidth}{0.4pt}
 
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda},
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda},
   keywordstyle=\color{yamlkey}\bfseries,
   ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6},
   ndkeywordstyle=\color{yamlval}\bfseries,
@@ -1331,8 +1331,9 @@ Traza curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de
 \begin{itemize}
   \item \textbf{Predictor tangente}: $\Delta\mathbf U_t = \mathbf K_t^{-1} \cdot \mathbf F_{\text{ext}}^{\text{ref}}$; $\Delta\lambda = \pm\,dl / \lVert\Delta\mathbf U_t\rVert$. Signo elegido por proyección con el incremento previo.
   \item \textbf{Corrector iterativo}: en cada iteración resuelve dos sistemas ($\mathbf K \cdot \Delta\mathbf U_R = \mathbf R$ y $\mathbf K \cdot \Delta\mathbf U_t = \mathbf F_{\text{ext}}$) y aplica la restricción cuadrática cilíndrica $\lVert\delta\mathbf U\rVert^2 = dl^2$.
-  \item \textbf{Auto-ajuste de \texttt{dl}}: se agranda en convergencias rápidas, se reduce en lentas, biseca al fallar.
-  \item \textbf{Caso especial \texttt{final\_step}}: si el predictor sobrepasaría \texttt{max\_lambda}, fija $\lambda$ a ese valor y resuelve solo desplazamientos (Newton-Raphson puro).
+  \item \textbf{Primer paso}: se declara con \texttt{initial\_dlambda}, como \textbf{fracción de la carga de referencia} (0.1 si no se declara, es decir, el 10 \% de la carga). El solver lo convierte en longitud de arco con una resolución elástica, $dl_1 = \Delta\lambda_1\,\lVert\mathbf K^{-1}\mathbf F_{\text{ext}}^{\text{ref}}\rVert$, así que no hace falta conocer de antemano los desplazamientos del modelo y el valor significa lo mismo en cualquier sistema de unidades. La alternativa \texttt{initial\_dl} fija la longitud de arco directamente, en unidades de desplazamiento; sólo tiene sentido si se conoce la escala del problema, y no puede declararse junto con \texttt{initial\_dlambda}.
+  \item \textbf{Auto-ajuste de \texttt{dl}}: se agranda en convergencias rápidas (hasta \texttt{dl\_max\_factor} veces la del primer paso), se reduce en lentas, biseca al fallar.
+  \item \textbf{Llegada a \texttt{max\_lambda}}: todos los pasos siguen la curva. Si uno la cruza, se repite desde el estado anterior hasta llegar exactamente a \texttt{max\_lambda}. El solver nunca impone la carga máxima sin haber recorrido la curva hasta ella; si hay un colapso antes, el trazado se detiene por \texttt{max\_steps} y lo avisa.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
@@ -1340,7 +1341,7 @@ solver:
   type: ArcLengthSolver
   max_iter: 15
   max_lambda: 1.0
-  initial_dl: 0.05
+  initial_dlambda: 0.05      # primer paso: 5 % de la carga de referencia
   max_steps: 200
   convergence:
     rtol_force: 1.0e-5
@@ -1375,7 +1376,7 @@ es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrátic
 solver:
   type: DissipationArcLengthSolver
   max_lambda: 1.0
-  initial_dl: 0.05
+  initial_dlambda: 0.05
   initial_tau: 1.0e-4
   max_steps: 300
 
@@ -2378,8 +2379,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 11:47\\[0.5em]
-Commit Git: \texttt{b8d73af}\\[1em]
+Compilado el 23 de septiembre de 2026, 14:44\\[0.5em]
+Commit Git: \texttt{5d9becd}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

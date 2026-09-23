@@ -11076,11 +11076,13 @@ Idénticas a \texttt{NonlinearSolver}: Dirichlet (homogéneo / no homogéneo) y 
 
 \begin{lstlisting}
 λ = 0
-dl = initial_dl
+dl = (sin fijar)
 mientras λ < max_lambda y step < max_steps:
     # Predictor tangente
     K_t, F_int = assemble_non_linear_system(U_iter)
     δu_t = K_t^{-1} · F_ext^ref          # desplazamiento tangente unitario
+    si dl sin fijar:                     # primer paso (§5)
+        dl = Δl₁ = initial_dl  ó  initial_dlambda · ‖δu_t‖
     sign = sign(δU_prev · δu_t)          # evitar revertir dirección
     Δλ_pred = sign · dl / ‖δu_t‖
     ΔU_pred = Δλ_pred · δu_t
@@ -11100,12 +11102,16 @@ mientras λ < max_lambda y step < max_steps:
         Δλ += ddλ
         U_iter = U_current + ΔU
         si converge (ADR 0007):
+            si λ + Δλ > max_lambda:              # cruzó el objetivo (§10)
+                no consolidar; llegada exacta:
+                Newton puro con λ = max_lambda desde (U_current, λ),
+                arrancando de la interpolación lineal del tramo recorrido
             commit_all_states()
             λ += Δλ
             ajustar_dl_adaptativamente(iter)
             break
-    si no converge:
-        dl /= dl_shrink_factor
+    si no converge (o falla la llegada):
+        dl /= 2
 
 \end{lstlisting}
 
@@ -11114,6 +11120,14 @@ mientras λ < max_lambda y step < max_steps:
 \addcontentsline{toc}{subsubsection}{5. Predictor / corrector}
 
 \textbf{Predictor tangente}: $\delta\mathbf u_t = \mathbf K_t^{-1}\,\mathbf F_{\text{ext}}^{\text{ref}}$ (vector que mide la pendiente local del camino de equilibrio). $\Delta\lambda_{\text{pred}} = \pm dl / \lVert\delta\mathbf u_t\rVert$ con signo determinado por el producto escalar contra el incremento previo $\Delta\mathbf U^{\text{paso prev}}$ --- así no se retrocede en el camino tras pasar un punto límite.
+
+\textbf{Primer paso (2026-09-23).} $dl$ es una longitud en unidades de desplazamiento, y quien plantea el modelo no conoce de antemano sus desplazamientos. El primer paso se declara, por omisión, como \textbf{fracción de la carga de referencia} $\Delta\lambda_1$ (\texttt{initial\_dlambda}, 0.1 si no se declara) y la longitud de arco se deriva del predictor elástico del primer paso (Crisfield 1991, cap. 9):
+
+\[
+\Delta l_1 = \Delta\lambda_1\,\lVert\mathbf K_0^{-1}\,\mathbf F_{\text{ext}}^{\text{ref}}\rVert .
+\]
+
+En régimen elástico el primer paso lleva exactamente $\Delta\lambda_1$, en cualquier sistema de unidades. \texttt{initial\_dl} fija $\Delta l_1$ directamente (longitud explícita) y es excluyente con \texttt{initial\_dlambda}. $\Delta l_1$ queda en \texttt{dl\_reference} y es la referencia de \texttt{dl\_max\_factor} y del umbral de aborto. Una carga de referencia que no produce desplazamiento ($\lVert\delta\mathbf u_t\rVert = 0$) no da escala al primer paso y es un error explícito. La norma mezcla todos los grados de libertad; en marcos, giros y desplazamientos, cuyo peso relativo depende de las unidades (deuda \#22): el primer paso es invariante, los siguientes heredan esa mezcla.
 
 \textbf{Corrector} (Newton modificado para arc-length, Crisfield): cada iteración resuelve dos sistemas (residuo y tangente), combina con $dd\lambda$ que satisface la restricción cuadrática:
 
@@ -11148,10 +11162,10 @@ Régimen \textbf{postcrítico}: $\mathbf K_t$ puede ser indefinida (autovalores 
 Política de auto-ajuste basada en iteraciones del paso:
 
 \begin{itemize}
-  \item Converge en $<$ \texttt{dl\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold} iteraciones \ensuremath{\Rightarrow} $dl \to dl \cdot $ \texttt{dl\_grow\_factor} (cota: \texttt{initial\_\allowbreak{}dl \ensuremath{\cdot} dl\_\allowbreak{}max\_\allowbreak{}factor}).
+  \item Converge en $<$ \texttt{dl\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold} iteraciones \ensuremath{\Rightarrow} $dl \to dl \cdot $ \texttt{dl\_grow\_factor} (cota: $\Delta l_1 \cdot$ \texttt{dl\_max\_factor}).
   \item Converge en $>$ \texttt{dl\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold} iteraciones \ensuremath{\Rightarrow} $dl \to dl \cdot $ \texttt{dl\_shrink\_factor}.
   \item No converge en \texttt{max\_iter} \ensuremath{\Rightarrow} $dl /= 2$ y reintentar el paso.
-  \item Cota inferior: $dl < $ \texttt{ARCLENGTH\_\allowbreak{}MIN\_\allowbreak{}DL\_\allowbreak{}FACTOR \ensuremath{\cdot} initial\_\allowbreak{}dl} \ensuremath{\Rightarrow} aborto.
+  \item Cota inferior: $dl < $ \texttt{ARCLENGTH\_\allowbreak{}MIN\_\allowbreak{}DL\_\allowbreak{}FACTOR} $\cdot\,\Delta l_1$ \ensuremath{\Rightarrow} aborto.
 \end{itemize}
 
 \phantomsection
@@ -11161,7 +11175,7 @@ Política de auto-ajuste basada en iteraciones del paso:
 \begin{itemize}
   \item \textbf{Cancelación o bifurcación verdadera}: en bifurcaciones simétricas múltiples, la selección de raíz por menor ángulo puede saltar a un camino paralelo. Para análisis de bifurcación auténtica usar perturbación + post-procesado modal.
   \item \textbf{Raíces imaginarias}: si el discriminante de la cuadrática es negativo (paso demasiado grande, mal condicionamiento severo), el solver aborta el paso y bisecta $dl$.
-  \item \textbf{Último paso}: cuando $\lambda + \Delta\lambda_{\text{pred}} \ge \lambda_{\max}$, el solver fija $\Delta\lambda = \lambda_{\max} - \lambda$ y corrige solo en desplazamientos (Newton puro), sin restricción cuadrática. Permite cerrar exactamente en el target.
+  \item \textbf{Llegada a $\lambda_{\max}$ (2026-09-23)}: todos los pasos llevan la restricción cilíndrica. Si uno converge con $\lambda > \lambda_{\max}$, su estado no se consolida y el paso se repite desde el último estado convergido con $\lambda = \lambda_{\max}$ fijo (Newton puro), arrancando de la interpolación lineal del tramo recién recorrido; como ese tramo cruza $\lambda_{\max}$, el equilibrio existe y está cerca. Si la llegada no converge, se biseca $dl$. Sustituye al \textquotedbl{}último paso\textquotedbl{} anterior, que se decidía extrapolando la tangente ($\lambda + \Delta\lambda_{\text{pred}} \ge \lambda_{\max}$) e imponía $\lambda_{\max}$ en control de carga sin recorrer la curva: podía saltar un punto límite, y un paso de arco que convergía por encima de $\lambda_{\max}$ terminaba el trazado ahí (medido: arco de von Mises, $\lambda_{\text{final}} = 0.398$ con $\lambda_{\max} = 0.39$).
   \item \textbf{Softening con penalty cohesivo stiff} (CST\_Embedded2D): no se atraviesa la transición elástico\ensuremath{\to}softening por la quasi-singularidad de $\mathbf K_t$ cerca de $\kappa_0$. Limitación específica al embedded.
   \item \textbf{Diagnóstico de bifurcación por inercia} (Sturm sequence): placeholder en \texttt{\_\allowbreak{}negative\_\allowbreak{}pivots()} --- retorna \texttt{None} hasta que se implemente un backend LDL\ensuremath{^{\top}} verdadero (Bunch-Kaufman) con conteo de pivots negativos.
 \end{itemize}
@@ -11186,13 +11200,15 @@ parameters:
       desc: "Iteraciones Newton (corrector) máximas por paso" }
   - { name: max_lambda,               type: float, required: false, default: 1.0,
       desc: "Factor de carga objetivo" }
-  - { name: initial_dl,               type: float, required: false, default: 0.1,
-      desc: "Longitud de arco inicial" }
+  - { name: initial_dlambda,          type: float, required: false, default: 0.1,
+      desc: "Fracción de la carga de referencia del primer paso (adimensional, keyword-only); Δl₁ = Δλ₁·‖K₀⁻¹F_ref‖. Excluyente con initial_dl" }
+  - { name: initial_dl,               type: float, required: false, default: null,
+      desc: "Longitud de arco del primer paso en unidades de desplazamiento; sólo si se conoce la escala del problema. Excluyente con initial_dlambda" }
   - { name: max_steps,                type: int,   required: false, default: 100,
       desc: "Cota dura sobre el número de pasos" }
   - { name: dl_grow_factor,           type: float, required: false, default: 1.5 }
   - { name: dl_max_factor,            type: float, required: false, default: 5.0,
-      desc: "dl máximo = initial_dl · dl_max_factor" }
+      desc: "dl máximo = Δl₁ · dl_max_factor" }
   - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
@@ -11202,7 +11218,7 @@ parameters:
 requirements:
   - "Modelo con potencial snap-through/snap-back (geometría inestable, softening del material)"
   - "Apoyos suficientes; sin modos rígidos"
-  - "dl inicial razonable (orden de magnitud del desplazamiento característico del primer paso)"
+  - "Carga de referencia que produzca desplazamiento (escala del primer paso)"
 
 conventions:
   units: "heredadas del modelo (ADR 0008)"
@@ -11246,6 +11262,21 @@ acceptance:
       expect: "λ_final = 0.7 exacto (no por overshoot)"
       tol_abs: 1.0e-12
 
+    - name: primer_paso_fraccion_de_carga
+      setup: "placa elástica; sin declarar el primer paso, y con initial_dlambda = 0.25"
+      expect: "λ del primer paso = 0.1 y 0.25 respectivamente"
+      tol_abs: 1.0e-12
+
+    - name: trazado_invariante_ante_unidades
+      setup: "misma placa J2 en m y en mm (longitudes ×1000, módulos /10⁶), primer paso por omisión"
+      expect: "misma secuencia de λ, U_mm = 1000·U_m, dl_reference ×1000; con una longitud explícita igual en ambos, primeros λ distintos"
+      tol_rel: 1.0e-8
+
+    - name: llegada_exacta_dentro_del_tramo
+      setup: "arco de von Mises h/L = 0.1, max_lambda = 0.39 (sobre el pico, 0.385), initial_dl = 0.2 y 1.0"
+      expect: "λ_final = 0.39 exacto y equilibrio en ese estado (antes: 0.398 y 0.440)"
+      tol_abs: 1.0e-12
+
   specific:
     - name: seleccion_raiz_no_revierte
       setup: "paso tras un snap-back con dos raíces de signos opuestos"
@@ -11276,6 +11307,7 @@ references:
   \item \textbf{Tests}:
   \item \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_solver_robustness.py}{tests/test\_solver\_robustness.py} (\texttt{TestArcLengthRobustness}: punto límite, snap-back, recuperación lineal), \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_snap_through_corot.py}{tests/test\_snap\_through\_corot.py} (armadura de von Mises contra la solución cerrada) y \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_integration.py}{tests/test\_integration.py} (\texttt{test\_\allowbreak{}arclength\_\allowbreak{}solver\_\allowbreak{}elastoplastic}).
   \item \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_solver_robustness.py}{tests/test\_solver\_robustness.py} \ensuremath{\cdot} \texttt{test\_\allowbreak{}arc\_\allowbreak{}length\_\allowbreak{}traverses\_\allowbreak{}damage\_\allowbreak{}softening}.
+  \item \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_arclength_paso_inicial.py}{tests/test\_arclength\_paso\_inicial.py} --- primer paso como fracción de carga, invariancia ante las unidades, declaración inválida, carga de referencia nula, clave YAML y llegada exacta a \texttt{max\_lambda}.
 \end{itemize}
 
 
@@ -11287,6 +11319,7 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0015-corrector-de-newton-compartido.md}{ADR 0015}: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_ArcProblem}: iterado \texttt{(U, \ensuremath{\lambda}, \ensuremath{\Delta}U)}, dos resoluciones por iteración y restricción cilíndrica como método \texttt{constraint}; raíces imaginarias \ensuremath{\to} \texttt{CorrectionAborted}; predictor tangente en \texttt{\_\allowbreak{}tangent\_\allowbreak{}predictor}; retirados \texttt{\_solve} y \texttt{\_make\_linalg}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
   \item \textbf{2026-09-23} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0017-backend-algebraico-pardiso.md}{ADR 0017}-0019: \texttt{linear\_algebra} admite \texttt{pardiso} e \texttt{iterative} (CG \ensuremath{\to} MINRES automático ante curvatura negativa, adecuado a la tangente indefinida del régimen postcrítico); al empezar \texttt{solve} se rechaza un mecanismo rígido (\texttt{MechanismError}). Dentro del trazado no se rechaza ningún sistema casi singular: cerca de un punto límite es parte del algoritmo.
   \item \textbf{2026-09-23} \ensuremath{\cdot} Revisión documental: \texttt{tests/\allowbreak{}test\_\allowbreak{}arclength.\allowbreak{}py} ya no existe; la cobertura está repartida en \texttt{test\_\allowbreak{}solver\_\allowbreak{}robustness.\allowbreak{}py}, \texttt{test\_\allowbreak{}snap\_\allowbreak{}through\_\allowbreak{}corot.\allowbreak{}py} y \texttt{test\_\allowbreak{}integration.\allowbreak{}py}.
+  \item \textbf{2026-09-23} \ensuremath{\cdot} \textbf{Cambio de formulación validado por el usuario} (deuda \#26, destapada en el ejemplo 4 del manual de ejemplos). (1) Primer paso adimensional: \texttt{initial\_dlambda} (0.1 por omisión) y $\Delta l_1 = \Delta\lambda_1\lVert\mathbf K_0^{-1}\mathbf F_{\text{ref}}\rVert$; \texttt{initial\_dl} pasa a ser una longitud explícita opcional, excluyente, sin valor por omisión. Antes el valor por omisión era \texttt{initial\_dl = 0.1}, una longitud: en el cilindro J2 del ejemplo 4 pedía $\Delta\lambda = 86$ en el primer paso, el predictor rebasaba \texttt{max\_lambda} y el solver imponía $\lambda = 1.5$ en control de carga, por encima del colapso, sobre un equilibrio espurio del modelo discreto (0,98 m de desplazamiento). (2) Llegada exacta a \texttt{max\_lambda} dentro del tramo recorrido, en lugar del paso final decidido por el predictor (§10). Los 84 tests existentes de los dos solvers de arco pasan sin cambiar ningún valor esperado; los nuevos fallan con el código anterior (9 de 11).
 \end{itemize}
 
 
@@ -11510,8 +11543,10 @@ parameters:
   - { name: max_iter,                 type: int,   required: false, default: 20 }
   - { name: max_lambda,               type: float, required: false, default: 1.0 }
   - { name: max_steps,                type: int,   required: false, default: 100 }
-  - { name: initial_dl,               type: float, required: false, default: 0.1,
-      desc: "Longitud de arco inicial — usado en modo cilíndrico (régimen elástico)" }
+  - { name: initial_dlambda,          type: float, required: false, default: 0.1,
+      desc: "Heredado: fracción de la carga de referencia del primer paso (modo cilíndrico); Δl₁ = Δλ₁·‖K₀⁻¹F_ref‖. Excluyente con initial_dl" }
+  - { name: initial_dl,               type: float, required: false, default: null,
+      desc: "Heredado: longitud de arco explícita del primer paso, en unidades de desplazamiento. Excluyente con initial_dlambda" }
   - { name: dl_grow_factor,           type: float, required: false, default: 1.5 }
   - { name: dl_max_factor,            type: float, required: false, default: 5.0 }
   - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
@@ -11609,7 +11644,7 @@ references:
   \item \textbf{Clase}: \texttt{DissipationArcLengthSolver(ArcLengthSolver)} --- subclase. Reusa predictor, corrector, ajuste de paso, manejo de Dirichlet/MPC y backend del padre. Override completo de \texttt{solve()} con bifurcación por \texttt{self.\_mode}.
   \item \textbf{Atributo \texttt{self.\_mode}}: \texttt{\textquotedbl{}cylindrical\textquotedbl{} | \textquotedbl{}dissipation\textquotedbl{}}. Transición tras commit según umbral `\texttt{dissipation\_\allowbreak{}threshold\ensuremath{\cdot}\ensuremath{\|}F\_\allowbreak{}ref\ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}U\ensuremath{\|}}`.
   \item \textbf{Sign-of-pivot tracking}: \texttt{\_\allowbreak{}negative\_\allowbreak{}pivots()} implementado vía signo del \texttt{slogdet} de \texttt{K\_t}. Aproximación válida para distinguir indefinitud simple (0 vs número impar de pivots negativos) --- base para detección de paso por punto límite simple. \textbf{LDL\ensuremath{^{\top}} Bunch-Kaufman queda como deuda técnica} para tracking exacto del conteo.
-  \item **Salvaguarda contra `\texttt{final\_step}\texttt{ prematuro**: si }\texttt{|d\ensuremath{\lambda}\_pred|}\texttt{ excede }\texttt{3 \ensuremath{\times} (max\_\allowbreak{}lambda − lambda\_\allowbreak{}curr)}`, se bisecta dl o \ensuremath{\tau} antes de aceptar el paso. Esencial en pasos iniciales sin calibrar y tras switch cilíndrico\ensuremath{\to}disipación donde \ensuremath{\alpha} puede ser pequeño.
+  \item \textbf{Llegada a \texttt{max\_lambda}} (desde 2026-09-23, la del padre): todos los pasos llevan su restricción (cilíndrica o de disipación); el que converge por encima de \texttt{max\_lambda} no se consolida y se repite con \ensuremath{\lambda} = \texttt{max\_lambda} fijo desde el estado anterior (\texttt{ArcLengthSolver.\allowbreak{}\_\allowbreak{}land}). Si la llegada falla se biseca dl o \ensuremath{\tau} según el modo del paso. Sustituye a la salvaguarda anterior contra el \texttt{final\_step} prematuro, que bisecaba cuando el predictor rebasaba \texttt{max\_lambda} más de 3 veces lo que faltaba y, por debajo de ese factor, imponía \texttt{max\_lambda} en control de carga.
   \item \textbf{Detección de \ensuremath{\alpha}\ensuremath{\approx}0 vía threshold relativo}: `\texttt{|\ensuremath{\alpha}| \textless{} 1e-6\ensuremath{\cdot}½\ensuremath{\cdot}|\ensuremath{\lambda}\_\allowbreak{}n\ensuremath{\cdot}F\ensuremath{\cdot}du\_\allowbreak{}t|}` reverte a cilíndrico --- para problemas lineales monotónicos \ensuremath{\alpha}≡0 exactamente, no es un error sino la matemática del régimen sin disipación física.
   \item \textbf{Entrypoint público}: registrado vía \texttt{@SolverRegistry.\allowbreak{}register}, expuesto como \texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}DissipationArcLengthSolver}.
 \end{itemize}
@@ -11665,6 +11700,7 @@ Recomendación: dejar esta validación como deuda técnica priorizada en STATUS.
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: hereda la reestructuración del corrector y los metadatos de trazado de \texttt{ArcLengthSolver} (ensamblaje único por iteración, estado committed coherente, \texttt{reached\_\allowbreak{}max\_\allowbreak{}lambda}).
   \item \textbf{2026-09-22} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0015-corrector-de-newton-compartido.md}{ADR 0015}: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_\allowbreak{}DissipationArcProblem}: sobreescribe \texttt{constraint} con la restricción lineal de Gutiérrez para el modo de disipación y hereda los modos cilíndrico y de cierre exacto; \texttt{\ensuremath{\alpha} \ensuremath{\approx} 0} \ensuremath{\to} \texttt{CorrectionAborted}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
   \item \textbf{2026-09-23} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0017-backend-algebraico-pardiso.md}{ADR 0017}-0019: hereda de \texttt{ArcLengthSolver} los valores nuevos de \texttt{linear\_algebra} y la comprobación de mecanismo rígido al empezar \texttt{solve}.
+  \item \textbf{2026-09-23} \ensuremath{\cdot} Hereda el cambio de formulación del padre validado por el usuario: primer paso como fracción de carga (\texttt{initial\_dlambda}, 0.1 por omisión; \texttt{initial\_dl} explícito y excluyente) y llegada exacta a \texttt{max\_lambda} dentro del tramo recorrido, que sustituye a la salvaguarda del \texttt{final\_step}. Ver el Diálogo de \hyperref[spec:ArcLengthSolver]{\texttt{ArcLengthSolver}}. Los tests de esta variante pasan sin cambiar ningún valor esperado (todos declaran \texttt{initial\_dl} explícito).
 \end{itemize}
 
 
@@ -15641,17 +15677,18 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
   \item \textbf{Propósito}: trazar curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de carga, controlando simultáneamente desplazamientos y factor de carga.
   \item \textbf{Esquema}:
   \item \textbf{Predictor tangente}: \texttt{du\_\allowbreak{}t = K\_\allowbreak{}t\ensuremath{^{-}}¹ \ensuremath{\cdot} F\_\allowbreak{}ext\_\allowbreak{}ref}; \texttt{d\ensuremath{\lambda} = sign \ensuremath{\cdot} dl /\allowbreak{} \ensuremath{\|}du\_\allowbreak{}t\ensuremath{\|}}.
+  \item \textbf{Primer paso} (2026-09-23): se declara como fracción de la carga de referencia, \texttt{initial\_dlambda} (0.1 por omisión), y el solver deriva la longitud de arco \texttt{\ensuremath{\Delta}l\ensuremath{_{1}} = \ensuremath{\Delta}\ensuremath{\lambda}\ensuremath{_{1}}\ensuremath{\cdot}\ensuremath{\|}K\ensuremath{_{0}}\ensuremath{^{-}}¹\ensuremath{\cdot}F\_\allowbreak{}ref\ensuremath{\|}} con el predictor elástico: el primer paso lleva esa fracción de la carga en cualquier sistema de unidades. \texttt{initial\_dl} fija \texttt{\ensuremath{\Delta}l\ensuremath{_{1}}} como longitud explícita (excluyente).
 \end{itemize}
     El \texttt{sign} se elige por proyección con el incremento del paso anterior (evitar regresar).
 \begin{itemize}
   \item \textbf{Corrector iterativo}: en cada iteración resuelve dos sistemas (\texttt{du\_R = K\ensuremath{^{-}}¹\ensuremath{\cdot}R} y \texttt{du\_t = K\ensuremath{^{-}}¹\ensuremath{\cdot}F\_ext}) y aplica la restricción cuadrática cilíndrica de Crisfield: \texttt{\ensuremath{\|}dU\ensuremath{\|}\ensuremath{^{2}} = dl\ensuremath{^{2}}}.
   \item De las dos raíces se elige la que mantiene el ángulo positivo con el incremento previo.
-  \item \textbf{Caso especial --- final\_step}: si el predictor sobrepasaría \texttt{max\_lambda}, fija \ensuremath{\lambda} exactamente a \texttt{max\_lambda} y resuelve solo desplazamientos (Newton-Raphson puro).
-  \item \textbf{Auto-ajuste de \texttt{dl}}: \textless{} 4 iter \ensuremath{\to} ampliar (\ensuremath{\times}1.5, tope \texttt{5\ensuremath{\cdot}dl\_initial}); \textgreater{} 8 iter \ensuremath{\to} reducir (\ensuremath{\times}0.6); no converge \ensuremath{\to} biseca (÷2).
+  \item \textbf{Llegada a \texttt{max\_lambda}} (2026-09-23): todos los pasos llevan la restricción; el que converge por encima de \texttt{max\_lambda} no se consolida y se repite desde el estado anterior con \ensuremath{\lambda} = \texttt{max\_lambda} fijo (Newton puro), dentro del tramo recién recorrido. Nunca impone \texttt{max\_lambda} sin haber seguido la curva hasta él (antes el paso final se decidía extrapolando la tangente, en control de carga).
+  \item \textbf{Auto-ajuste de \texttt{dl}}: \textless{} 4 iter \ensuremath{\to} ampliar (\ensuremath{\times}1.5, tope \texttt{5\ensuremath{\cdot}\ensuremath{\Delta}l\ensuremath{_{1}}}); \textgreater{} 8 iter \ensuremath{\to} reducir (\ensuremath{\times}0.6); no converge \ensuremath{\to} biseca (÷2).
   \item Convergencia: mismo criterio dual que \texttt{NonlinearSolver}.
-  \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dl\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{linear\_algebra}.
+  \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dlambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dl\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{linear\_algebra}.
   \item \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite.
-  \item \textbf{Limitación}: más caro por paso (dos resoluciones del sistema por iteración); requiere ajuste de \texttt{initial\_dl} para problemas nuevos.
+  \item \textbf{Limitación}: más caro por paso (dos resoluciones del sistema por iteración). La norma de la restricción mezcla todos los grados de libertad (en marcos, giros y desplazamientos: deuda \#22).
   \item \textbf{Referencia}: Crisfield, \textquotedbl{}A fast incremental/iterative solution procedure that handles snap-through\textquotedbl{} (Computers \& Structures, 1981); Crisfield vol. 1, cap. 9.
   \item \textbf{Spec}: \hyperref[spec:ArcLengthSolver]{docs/specs/ArcLengthSolver.md}
   \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/solvers/arclength.py}{solidum/math/solvers/arclength.py}
@@ -15667,9 +15704,9 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
   \item \textbf{Restricción de paso}: \texttt{g(\ensuremath{\Delta}U, \ensuremath{\Delta}\ensuremath{\lambda}) = ½\ensuremath{\cdot}(\ensuremath{\lambda}\_\allowbreak{}n\ensuremath{\cdot}F\ensuremath{\cdot}\ensuremath{\Delta}U − \ensuremath{\Delta}\ensuremath{\lambda}\ensuremath{\cdot}F\ensuremath{\cdot}U\_\allowbreak{}n) = \ensuremath{\tau}}. \textbf{Lineal} en \texttt{(\ensuremath{\Delta}U, \ensuremath{\Delta}\ensuremath{\lambda})} \ensuremath{\Rightarrow} corrector con una sola raíz en \texttt{dd\ensuremath{\lambda}}, sin selección por menor ángulo ni patología de raíces imaginarias.
   \item \textbf{Switching automático cilíndrico\ensuremath{\leftrightarrow}disipación} según se detecte disipación neta sobre el umbral relativo \texttt{dissipation\_\allowbreak{}threshold\ensuremath{\cdot}\ensuremath{\|}F\_\allowbreak{}ref\ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}U\ensuremath{\|}}. Arranque obligado en cilíndrico (\texttt{\ensuremath{\alpha} = ½\ensuremath{\cdot}(\ensuremath{\lambda}\_\allowbreak{}n\ensuremath{\cdot}F\ensuremath{\cdot}du\_\allowbreak{}t − F\ensuremath{\cdot}U\_\allowbreak{}n)} es 0 cuando \texttt{\ensuremath{\lambda}\_n = U\_n = 0}).
   \item \textbf{Sign-of-pivot tracking aproximado} vía signo del \texttt{slogdet(K\_t)}. Distingue 0 vs número impar de pivots negativos --- diagnóstico de paso por punto límite simple. Tracking exacto requiere LDL\ensuremath{^{\top}} Bunch-Kaufman (deuda técnica \#7 STATUS.md).
-  \item \textbf{Salvaguarda contra \texttt{final\_step} prematuro}: si \texttt{|d\ensuremath{\lambda}\_\allowbreak{}pred| \textgreater{} 3\ensuremath{\cdot}(max\_\allowbreak{}lambda − \ensuremath{\lambda}\_\allowbreak{}curr)}, bisecta dl o \ensuremath{\tau} antes de aceptar el paso.
+  \item \textbf{Llegada a \texttt{max\_lambda}}: la del padre (paso que cruza, no consolidado, repetido con \ensuremath{\lambda} fijo dentro del tramo). Sustituye desde 2026-09-23 a la salvaguarda contra el \texttt{final\_step} prematuro.
   \item \textbf{Detección de \ensuremath{\alpha}\ensuremath{\approx}0}: threshold relativo \texttt{|\ensuremath{\alpha}| \textless{} 1e-6\ensuremath{\cdot}escala}; revierte temporalmente a cilíndrico (en problemas lineales monotónicos \texttt{\ensuremath{\alpha} ≡ 0} exactamente por construcción).
-  \item \textbf{Parámetros heredados}: todos los de \texttt{ArcLengthSolver} (\texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dl}, \texttt{max\_steps}, factores \texttt{dl\_*}, \texttt{linear\_algebra}). \textbf{Nuevos}: \texttt{initial\_tau} (obligatorio), \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_\allowbreak{}threshold}.
+  \item \textbf{Parámetros heredados}: todos los de \texttt{ArcLengthSolver} (\texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dlambda}, \texttt{initial\_dl}, \texttt{max\_steps}, factores \texttt{dl\_*}, \texttt{linear\_algebra}). \textbf{Nuevos}: \texttt{initial\_tau} (obligatorio), \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_\allowbreak{}threshold}.
   \item \textbf{Cuándo usarlo}: problemas con softening continuo donde \texttt{ArcLengthSolver} cilíndrico bisecta excesivamente cerca del pico --- daño bulk 1D/2D, plasticidad con localización progresiva, post-pandeo con descarga elástica.
   \item \textbf{Cuándo NO usarlo (limitación documentada)}: cohesivo+embedded discontinuity con \texttt{K\_e} stiff (\texttt{\textasciitilde{}1e13}). La activación discreta del Rankine introduce un salto en \texttt{F\_int}/\texttt{K\_t} que el \texttt{sign} por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDL\ensuremath{^{\top}} Bunch-Kaufman real (item \#7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con \texttt{ArcLengthSolver} cilíndrico a paridad de bits (regresión validada).
   \item \textbf{Referencias}: Gutiérrez (2004), \textit{Communications in Numerical Methods in Engineering} 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), \textit{IJNME} 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
