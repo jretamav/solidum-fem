@@ -28,7 +28,13 @@ OUT_PDF = OUT_DIR / "User_manual.pdf"
 
 # Reutilizar md_to_latex del builder de referencia.
 sys.path.insert(0, str(OUT_DIR))
-from build_reference_manual import md_to_latex, with_font_setup  # noqa: E402
+from build_reference_manual import (  # noqa: E402
+    md_to_latex,
+    report_broken_links,
+    set_link_context,
+    with_font_setup,
+    with_screen_setup,
+)
 
 
 PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
@@ -210,6 +216,11 @@ Este manual se regenera con:
 
 """
 PREAMBLE = with_font_setup(PREAMBLE)  # respaldo de glifos, ver build_reference_manual
+PREAMBLE = with_screen_setup(
+    PREAMBLE,
+    subject="Guía de uso de Solidum FEM: YAML, análisis, resultados y diagnóstico",
+    keywords="elementos finitos, mecánica de sólidos, manual de usuario, YAML, Solidum FEM",
+)
 
 POSTAMBLE = r"""
 \end{document}
@@ -248,9 +259,11 @@ def assemble() -> str:
     if not sources:
         raise SystemExit(f"[!] No hay fuentes en {SRC_DIR}")
 
+    set_link_context(manual="user", internal_specs=set(), internal_adrs=set())
     for idx, src in enumerate(sources, start=1):
         title = chapter_title(src.stem)
         md = src.read_text(encoding="utf-8")
+        set_link_context(source=src)
         ltx = md_to_latex(md)
         ltx = reroute_advertencia_boxes(ltx)
         parts.append(f"\\chapter{{{title}}}\n\\label{{cap:{idx}}}\n")
@@ -258,6 +271,7 @@ def assemble() -> str:
         parts.append("\n\\newpage\n")
 
     parts.append(build_colofon())
+    report_broken_links()
     return "\n".join(parts) + POSTAMBLE
 
 

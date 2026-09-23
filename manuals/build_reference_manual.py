@@ -20,7 +20,9 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -317,6 +319,136 @@ LATEX_ESCAPE_TEXT = {
 }
 
 
+
+# ----------------------------------------------------------------------
+# Enlaces vivos (2026-09-23). Los manuales se leen SÓLO en pantalla, así que
+# las referencias de las fuentes Markdown deben poder pulsarse. Hasta ahora el
+# conversor descartaba todos los enlaces y dejaba sólo el texto (288 enlaces
+# perdidos, más 431 menciones "ADR NNNN" sin vínculo en el Reference).
+#
+# Reglas:
+#   - URL web              -> \href a la URL.
+#   - Spec incluida en el manual que se compila -> enlace interno a su sección.
+#   - ADR con sección en el manual (el de arquitectura) -> enlace interno.
+#   - Cualquier otro archivo del repositorio -> su página en GitHub (rama
+#     `main`, que muestra siempre la versión vigente).
+#   - Ruta que no existe -> texto sin enlace y aviso al terminar el build.
+# ----------------------------------------------------------------------
+GITHUB_BLOB = "https://github.com/jretamav/solidum-fem/blob/main/"
+GITHUB_TREE = "https://github.com/jretamav/solidum-fem/tree/main/"
+
+_LINK_CTX: dict = {"source_dir": ROOT, "manual": None,
+                   "internal_specs": set(), "internal_adrs": set()}
+BROKEN_LINKS: list[tuple[str, str]] = []  # (archivo fuente, destino)
+_ADR_FILES: dict[str, str] = {}
+
+
+def set_link_context(*, source: Path | None = None, manual: str | None = None,
+                     internal_specs=None, internal_adrs=None,
+                     heading_offset: int | None = None) -> None:
+    """Fija el contexto con el que ``md_to_latex`` resuelve los enlaces.
+
+    ``source`` es el archivo Markdown que se convierte (para resolver las rutas
+    relativas); ``manual`` es ``"reference"``, ``"user"`` o ``"architecture"``;
+    ``internal_specs`` / ``internal_adrs`` son los destinos que existen dentro
+    del manual que se compila (el resto va a GitHub)."""
+    if source is not None:
+        _LINK_CTX["source_dir"] = Path(source).resolve().parent
+        _LINK_CTX["source_name"] = Path(source).name
+    if manual is not None:
+        _LINK_CTX["manual"] = manual
+    if internal_specs is not None:
+        _LINK_CTX["internal_specs"] = set(internal_specs)
+    if internal_adrs is not None:
+        _LINK_CTX["internal_adrs"] = set(internal_adrs)
+    if heading_offset is not None:
+        _LINK_CTX["heading_offset"] = int(heading_offset)
+
+
+def _adr_file(num: str) -> str | None:
+    if not _ADR_FILES:
+        for f in (ROOT / "docs" / "adr").glob("[0-9][0-9][0-9][0-9]-*.md"):
+            _ADR_FILES[f.name[:4]] = f"docs/adr/{f.name}"
+    return _ADR_FILES.get(num)
+
+
+def _href(url: str, text: str) -> str:
+    return "\\href{" + url.replace("%", "\\%").replace("#", "\\#") + "}{" + text + "}"
+
+
+def _unescape_url(url: str) -> str:
+    """Deshace el escape LaTeX que el conversor ya aplicó a la URL."""
+    for esc, ch in (("\\textasciicircum{}", "^"), ("\\textasciitilde{}", "~"),
+                    ("\\_", "_"), ("\\#", "#"), ("\\%", "%"), ("\\&", "&"), ("\\$", "$")):
+        url = url.replace(esc, ch)
+    return url.strip()
+
+
+def _link_latex(text: str, url: str) -> str:
+    raw = _unescape_url(url)
+    if raw.startswith(("http://", "https://", "mailto:")):
+        return _href(raw, text)
+    path, _, frag = raw.partition("#")
+    if not path:  # ancla dentro del mismo documento: sin destino fiable
+        return text
+    target = (_LINK_CTX["source_dir"] / path).resolve()
+    try:
+        rel = target.relative_to(ROOT)
+    except ValueError:
+        BROKEN_LINKS.append((_LINK_CTX.get("source_name", "?"), raw))
+        return text
+    if not target.exists():
+        BROKEN_LINKS.append((_LINK_CTX.get("source_name", "?"), raw))
+        return text
+    rel_posix = rel.as_posix()
+    manual = _LINK_CTX["manual"]
+    if (rel_posix.startswith("docs/specs/") and target.suffix == ".md"
+            and target.stem in _LINK_CTX["internal_specs"]):
+        return f"\\hyperref[spec:{target.stem}]{{{text}}}"
+    if rel_posix.startswith("docs/adr/") and target.name[:4] in _LINK_CTX["internal_adrs"]:
+        return f"\\hyperref[adr:{target.name[:4]}]{{{text}}}"
+    base = GITHUB_TREE if target.is_dir() else GITHUB_BLOB
+    url_out = base + quote(rel_posix, safe="/-_.~")
+    if frag:
+        url_out += "#" + frag
+    return _href(url_out, text)
+
+
+_ADR_MENTION = re.compile(r"\bADR (\d{4})\b")
+_NO_LINK_LINE = ("\\section", "\\subsection", "\\subsubsection", "\\chapter",
+                 "\\label", "\\caption", "\\paragraph")
+
+
+def _link_adr_mentions(md: str) -> str:
+    """Convierte cada "ADR NNNN" del texto corriente en enlace: interno si el
+    manual tiene la sección del ADR, a GitHub si no. No toca los títulos (un
+    enlace dentro de un título rompe marcadores e índice) ni el código, las
+    matemáticas o las tablas, que en esta fase ya son marcadores de posición."""
+    internal = _LINK_CTX["internal_adrs"]
+
+    def _repl(m: re.Match) -> str:
+        num = m.group(1)
+        if num in internal:
+            return f"\\hyperref[adr:{num}]{{{m.group(0)}}}"
+        f = _adr_file(num)
+        return _href(GITHUB_BLOB + f, m.group(0)) if f else m.group(0)
+
+    out = []
+    for line in md.split("\n"):
+        if line.lstrip().startswith(_NO_LINK_LINE):
+            out.append(line)
+        else:
+            out.append(_ADR_MENTION.sub(_repl, line))
+    return "\n".join(out)
+
+
+def report_broken_links() -> None:
+    if BROKEN_LINKS:
+        print(f"  [!] {len(BROKEN_LINKS)} enlace(s) a rutas inexistentes (quedan como texto):")
+        for src, dst in BROKEN_LINKS:
+            print(f"      {src}: {dst}")
+
+
 def _save(content: str, prefix: str, store: dict, counter: list[int]) -> str:
     key = f"@@{prefix}{counter[0]}@@"
     counter[0] += 1
@@ -415,6 +547,13 @@ def md_to_latex(md: str) -> str:
         # Sustituir Unicode dentro del inline code (no llega la fase 4)
         for ch, cmd in UNICODE_MAP.items():
             body = body.replace(ch, cmd)
+        # Rutas y nombres largos (``solidum/math/linalg/iterative.py``,
+        # ``ITERATIVE_MAX_RESTARTS``) no tienen dónde partirse y desbordaban
+        # el margen. Se permite cortar tras '/', '.' y '_' sólo en los largos.
+        if len(m.group(1)) > 22:
+            body = (body.replace("/", "/\\allowbreak{}")
+                        .replace(".", ".\\allowbreak{}")
+                        .replace("\\_", "\\_\\allowbreak{}"))
         return _save(f"\\texttt{{{body}}}", "ICODE", placeholders, counter)
 
     md = re.sub(r"`([^`\n]+?)`", _inline_code, md)
@@ -524,17 +663,44 @@ def md_to_latex(md: str) -> str:
     # Encabezados (# H1 lo descartamos: el título lo provee el ensamblador)
     # IMPORTANTE: el escape previo convirtió '#' → '\#'. Restauramos la sintaxis
     # MD para los encabezados: una línea que empiece por uno o más '\#' es un header.
-    md = re.sub(r"^\\#\\#\\#\\#\s+(.+)$", r"\\subsubsection{\1}", md, flags=re.MULTILINE)
-    md = re.sub(r"^\\#\\#\\#\s+(.+)$", r"\\subsection{\1}", md, flags=re.MULTILINE)
-    md = re.sub(r"^\\#\\#\s+(.+)$", r"\\section{\1}", md, flags=re.MULTILINE)
+    # Nivel LaTeX de cada encabezado Markdown. `heading_offset` lo baja un
+    # nivel cuando el documento ya vive dentro de una \section (las specs del
+    # Reference manual): así sus partes cuelgan de la spec en el índice y en
+    # los marcadores, en vez de quedar al mismo nivel que ella.
+    #
+    # Un título que ya trae su propio número ("1. Problema físico", "4.2 …")
+    # se emite sin numerar por LaTeX, con entrada manual en el índice: LaTeX
+    # le añadía otro número delante ("15.19.1" + "0." se leía "15.19.10.") y
+    # las referencias del texto (§7) dejaban de coincidir con lo visible.
+    _levels = ("section", "subsection", "subsubsection", "paragraph", "subparagraph")
+    _offset = _LINK_CTX.get("heading_offset", 0)
+
+    def _heading(m: re.Match) -> str:
+        depth = len(m.group(1)) // 2 - 2          # '\#\#' -> 0, '\#\#\#' -> 1 ...
+        cmd = _levels[min(depth + _offset, len(_levels) - 1)]
+        title = m.group(2).strip()
+        if re.match(r"^\d+(\.\d+)*\.?\s", title):
+            return (f"\\phantomsection\n\\{cmd}*{{{title}}}\n"
+                    f"\\addcontentsline{{toc}}{{{cmd}}}{{{title}}}")
+        return f"\\{cmd}{{{title}}}"
+
+    md = re.sub(r"^((?:\\#){2,4})\s+(.+)$", _heading, md, flags=re.MULTILINE)
     md = re.sub(r"^\\#\s+.+$", "", md, flags=re.MULTILINE)  # descartar H1
 
     # Negritas y cursivas
     md = re.sub(r"\*\*([^*\n]+?)\*\*", r"\\textbf{\1}", md)
     md = re.sub(r"(?<![*\\])\*([^*\n]+?)\*(?!\*)", r"\\textit{\1}", md)
 
-    # Enlaces [texto](url) — preservamos solo el texto
-    md = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1", md)
+    # Enlaces [texto](url): vivos (ver _link_latex). Se guardan como
+    # marcadores para que el enlazado de "ADR NNNN" no los anide.
+    def _md_link(m: re.Match) -> str:
+        text = m.group(1)
+        for ch, cmd in UNICODE_MAP.items():
+            text = text.replace(ch, cmd)
+        return _save(_link_latex(text, m.group(2)), "LINK", placeholders, counter)
+
+    md = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _md_link, md)
+    md = _link_adr_mentions(md)
 
     # Reglas horizontales
     md = re.sub(r"^---+\s*$", "", md, flags=re.MULTILINE)
@@ -600,6 +766,93 @@ FONT_SETUP = r"""\usepackage{fontspec}
 \setsansfont{Latin Modern Sans}[RawFeature={fallback=solidumserif}]
 \setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]
 """
+
+
+
+# Maquetación para pantalla (2026-09-23). El usuario fijó que los manuales se
+# leen SÓLO en formato digital. Página más estrecha que carta con márgenes de
+# pantalla y el MISMO ancho de texto (16,6 cm, que necesitan tablas y código):
+# al ajustar al ancho de la ventana el texto se ve ~12 % mayor sin alargar las
+# líneas. microtype (protrusión + expansión, completo sólo en LuaLaTeX y
+# pdfLaTeX) y \emergencystretch evitan que el texto desborde el margen, que
+# con márgenes estrechos llegaría al borde. El PDF abre con el panel de
+# marcadores, ajustado al ancho, y cada página enlaza al índice.
+SCREEN_GEOMETRY = (r"\usepackage[paperwidth=19.2cm, paperheight=25.6cm, hmargin=1.3cm, "
+                   r"top=2.1cm, bottom=1.7cm, headheight=15pt, headsep=0.45cm, "
+                   r"footskip=0.75cm]{geometry}")
+
+
+def code_block_characters() -> list[str]:
+    """Caracteres no ASCII que aparecen dentro de bloques ``` de todas las
+    fuentes de los tres manuales (specs, catálogos, anexos, capítulos)."""
+    files = (list((ROOT / "docs" / "specs").glob("*.md"))
+             + list((ROOT / "docs").glob("catalogo_*.md"))
+             + list((ROOT / "manuals" / "sources").rglob("*.md")))
+    chars: set[str] = set()
+    for f in files:
+        for block in re.findall(r"```[^\n]*\n(.*?)```", f.read_text(encoding="utf-8"), flags=re.DOTALL):
+            # Sin marcas combinantes (categoría Mn): declaradas como un carácter
+            # de una columna se separarían de la letra a la que acentúan.
+            chars.update(c for c in block if ord(c) > 127 and not c.isspace()
+                         and unicodedata.category(c) != "Mn")
+    return sorted(chars)
+
+
+def with_screen_setup(preamble: str, *, subject: str, keywords: str) -> str:
+    """Adapta un preámbulo pensado para papel a lectura en pantalla."""
+    for old, new in (
+        ("\\documentclass[11pt,letterpaper,oneside]{report}", "\\documentclass[11pt,oneside]{report}"),
+        ("\\usepackage[margin=2.5cm, headheight=15pt]{geometry}", SCREEN_GEOMETRY),
+    ):
+        assert preamble.count(old) == 1, old
+        preamble = preamble.replace(old, new, 1)
+    mono = "\\setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]\n"
+    assert preamble.count(mono) == 1
+    preamble = preamble.replace(
+        mono, mono + "\\usepackage[protrusion=true,expansion=true]{microtype}\n", 1)
+    # Caracteres no ASCII en bloques de código: sin declararlos en `literate`,
+    # listings no sabe que ocupan una columna y los recoloca (medido:
+    # "(|ε| ≲ 1e-2)" salía "ε(|| ≲ 1e-2)"). Se declaran todos los que
+    # aparecen en las fuentes, salvo los que el preámbulo ya declara.
+    lit_start = preamble.find("literate=")
+    assert lit_start >= 0
+    declared = set(re.findall(r"\{(.)\}\{\{", preamble[lit_start:]))
+    extra = [c for c in code_block_characters() if c not in declared]
+    if extra:
+        entries = " ".join("{" + c + "}{{" + c + "}}1" for c in extra)
+        preamble = preamble.replace("literate=", "literate=" + entries + "\n           ", 1)
+    screen = (
+        "% --- Lectura en pantalla: ver with_screen_setup en build_reference_manual.py\n"
+        "% Índice: columnas de número anchas (numeraciones de 2-3 niveles se\n"
+        "% montaban sobre el título), índice compacto y marcadores profundos.\n"
+        "\\makeatletter\n"
+        "\\renewcommand*\\l@section{\\@dottedtocline{1}{1.5em}{3.3em}}\n"
+        "\\renewcommand*\\l@subsection{\\@dottedtocline{2}{4.8em}{4.2em}}\n"
+        "\\renewcommand*\\l@subsubsection{\\@dottedtocline{3}{9.0em}{5.0em}}\n"
+        "\\makeatother\n"
+        "\\setcounter{tocdepth}{2}\n"
+        "\\definecolor{enlaceinterno}{RGB}{0, 84, 166}\n"
+        "\\definecolor{enlaceexterno}{RGB}{0, 128, 110}\n"
+        "\\hypersetup{\n"
+        "    colorlinks=true,\n"
+        "    linkcolor=enlaceinterno, citecolor=enlaceinterno,\n"
+        "    urlcolor=enlaceexterno, filecolor=enlaceexterno,\n"
+        "    bookmarksopen=true, bookmarksopenlevel=0, bookmarksnumbered=true, bookmarksdepth=3,\n"
+        "    pdfpagemode=UseOutlines, pdfstartview=FitH, pdfdisplaydoctitle=true,\n"
+        "    pdflang=es-ES,\n"
+        f"    pdfsubject={{{subject}}},\n"
+        f"    pdfkeywords={{{keywords}}},\n"
+        "}\n"
+        "\\setlength{\\emergencystretch}{3em}\n"
+        "\\fancyfoot[L]{\\hyperlink{indice}{\\footnotesize Índice}}\n"
+    )
+    begin = "\\begin{document}\n"
+    assert preamble.count(begin) == 1
+    # El ancla del índice va como primera línea del .toc, así queda al
+    # principio de la lista (bajo el título) y no en la página anterior.
+    preamble = preamble.replace(
+        begin, screen + begin + "\\addtocontents{toc}{\\protect\\hypertarget{indice}{}}\n", 1)
+    return preamble
 
 
 def with_font_setup(preamble: str) -> str:
@@ -762,6 +1015,11 @@ Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-proc
 
 """
 PREAMBLE = with_font_setup(PREAMBLE)
+PREAMBLE = with_screen_setup(
+    PREAMBLE,
+    subject="Especificación de cada elemento, material y solver de Solidum FEM",
+    keywords="elementos finitos, mecánica de sólidos, especificaciones, Solidum FEM",
+)
 
 POSTAMBLE = r"""
 \end{document}
@@ -781,7 +1039,11 @@ def _escape_title(text: str) -> str:
 
 def assemble() -> str:
     parts = [PREAMBLE]
-    for chapter_name, components in build_groups():
+    groups = build_groups()
+    set_link_context(manual="reference", internal_adrs=set(),
+                     internal_specs={c for _, comps in groups for c in comps
+                                     if (SPECS_DIR / f"{c}.md").exists()})
+    for chapter_name, components in groups:
         parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
         for comp in components:
             spec_path = SPECS_DIR / f"{comp}.md"
@@ -789,8 +1051,9 @@ def assemble() -> str:
                 print(f"  [!] Spec no encontrada: {spec_path}")
                 continue
             md = spec_path.read_text(encoding="utf-8")
+            set_link_context(source=spec_path, heading_offset=1)
             ltx = md_to_latex(md)
-            parts.append(f"\\section{{{_escape_title(comp)}}}\n")
+            parts.append(f"\\section{{{_escape_title(comp)}}}\n\\label{{spec:{comp}}}\n")
             parts.append(ltx)
             parts.append("\n\\newpage\n")
 
@@ -801,12 +1064,14 @@ def assemble() -> str:
             print(f"  [!] Anexo no encontrado: {source_path}")
             continue
         md = source_path.read_text(encoding="utf-8")
+        set_link_context(source=source_path, heading_offset=0)
         ltx = md_to_latex(md)
         parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
         parts.append(ltx)
         parts.append("\n\\newpage\n")
 
     parts.append(POSTAMBLE)
+    report_broken_links()
     return "\n".join(parts)
 
 

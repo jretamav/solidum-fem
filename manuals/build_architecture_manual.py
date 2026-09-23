@@ -29,7 +29,13 @@ OUT_PDF = OUT_DIR / "Architecture_manual.pdf"
 
 # Reutilizar md_to_latex del builder de referencia.
 sys.path.insert(0, str(OUT_DIR))
-from build_reference_manual import md_to_latex, with_font_setup  # noqa: E402
+from build_reference_manual import (  # noqa: E402
+    md_to_latex,
+    report_broken_links,
+    set_link_context,
+    with_font_setup,
+    with_screen_setup,
+)
 
 
 PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
@@ -195,6 +201,11 @@ Este manual se regenera con:
 
 """
 PREAMBLE = with_font_setup(PREAMBLE)  # respaldo de glifos, ver build_reference_manual
+PREAMBLE = with_screen_setup(
+    PREAMBLE,
+    subject="Arquitectura de Solidum FEM: capas, bloques, mecanismos, decisiones (ADR) y evolución",
+    keywords="elementos finitos, arquitectura de software, ADR, Solidum FEM",
+)
 
 POSTAMBLE = r"""
 \end{document}
@@ -262,9 +273,16 @@ def assemble() -> str:
 
     pendientes_globales: list[tuple[str, str]] = []  # (capítulo, texto)
 
+    # Los ADR con sección propia en este manual (capítulo de decisiones) se
+    # enlazan internamente; el resto de menciones van al ADR en GitHub.
+    adr_src = "\n".join(src.read_text(encoding="utf-8") for src in sources)
+    internal_adrs = set(re.findall(r"^## ADR (\d{4})\b", adr_src, flags=re.MULTILINE))
+    set_link_context(manual="architecture", internal_specs=set(), internal_adrs=internal_adrs)
+
     for idx, src in enumerate(sources, start=1):
         title = chapter_title(src.stem)
         md = src.read_text(encoding="utf-8")
+        set_link_context(source=src)
         md_clean, pendientes = extract_pendientes(md, title)
         for p in pendientes:
             pendientes_globales.append((title, p))
@@ -289,6 +307,7 @@ def assemble() -> str:
     # Pasada final de hipervínculos cruzados sobre todo el cuerpo.
     body = link_cross_references(body)
 
+    report_broken_links()
     return body + POSTAMBLE
 
 
@@ -318,12 +337,11 @@ def inject_adr_labels(ltx: str) -> str:
 
 # Mapa de capítulos por número (1..N) → label.
 CHAPTER_REF_RE = re.compile(r"cap[íi]tulo\s+(\d{1,2})")
-# ADR mencionado en el cuerpo del texto.
-ADR_REF_RE = re.compile(r"\bADR\s+(\d{4})\b")
 
 
 def link_cross_references(ltx: str) -> str:
-    """Sustituye menciones a "capítulo N" y "ADR NNNN" por hipervínculos.
+    """Sustituye menciones a "capítulo N" por hipervínculos (las de "ADR NNNN"
+    las resuelve ``md_to_latex``, que distingue código y títulos).
 
     No toca las apariciones dentro de comandos de etiquetado o de definición
     (\\label, \\chapter, \\section), ni los nombres en los títulos
@@ -345,12 +363,9 @@ def link_cross_references(ltx: str) -> str:
             n = m.group(1)
             return f"\\hyperref[cap:{n}]{{{m.group(0)}}}"
 
-        def _repl_adr(m: re.Match) -> str:
-            n = m.group(1)
-            return f"\\hyperref[adr:{n}]{{{m.group(0)}}}"
-
         line = CHAPTER_REF_RE.sub(_repl_cap, line)
-        line = ADR_REF_RE.sub(_repl_adr, line)
+        # Los "ADR NNNN" ya los enlaza md_to_latex (con el código, las
+        # matemáticas y los títulos protegidos); aquí sólo los capítulos.
         out_lines.append(line)
     return "\n".join(out_lines)
 
