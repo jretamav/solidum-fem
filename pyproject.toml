@@ -49,6 +49,20 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+# Backends algebraicos opcionales (ADR 0003, ADR 0017). Sin ellos el
+# despachador usa SuperLU (SciPy) y todo funciona; con ellos, la
+# factorización —que domina el tiempo de un análisis grande— es multihilo
+# y con mejor reordenamiento.
+fast = [
+    # Intel MKL Pardiso: solver directo multihilo con disección anidada.
+    # Wheels para Windows/Linux/macOS, sin compilador.
+    "pypardiso>=0.4",
+]
+# CHOLMOD (Cholesky disperso para matrices SPD) va aparte porque en
+# Windows exige compilar: `conda install -c conda-forge scikit-sparse`.
+cholmod = [
+    "scikit-sparse>=0.4",
+]
 
 [project.urls]
 Homepage = "https://github.com/jretamav/solidum-fem"

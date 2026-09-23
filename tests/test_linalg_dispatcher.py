@@ -18,7 +18,7 @@ import scipy.sparse.linalg as spla
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
-from solidum.math.linalg.dispatcher import _HAS_CHOLESKY
+from solidum.math.linalg.dispatcher import _HAS_CHOLESKY, _HAS_PARDISO
 
 
 def _build_spd_matrix(n: int = 50, seed: int = 0) -> sp.csr_matrix:
@@ -87,16 +87,19 @@ class TestDispatcher(unittest.TestCase):
         solver = select_solver(props)
         self.assertEqual(solver.name, "cholesky")
 
-    def test_dispatcher_picks_lu_for_nonsymmetric(self):
+    def test_dispatcher_picks_direct_for_nonsymmetric(self):
         props = StiffnessProperties(is_symmetric=False, is_positive_definite=True, size=100)
         solver = select_solver(props)
-        self.assertEqual(solver.name, "lu")
+        # Pardiso ocupa el lugar de LU cuando está instalado (ADR 0017):
+        # mismo dominio de aplicación y misma solución, multihilo.
+        self.assertEqual(solver.name, "pardiso" if _HAS_PARDISO else "lu")
 
-    def test_dispatcher_picks_lu_for_indefinite(self):
+    def test_dispatcher_picks_direct_for_indefinite(self):
         props = StiffnessProperties(is_symmetric=True, is_positive_definite=False, size=100)
         solver = select_solver(props)
-        # En fase 1 todavía no existe LDLᵀ, así que indefinida-simétrica → LU.
-        self.assertEqual(solver.name, "lu")
+        # Sigue sin existir LDLᵀ, así que indefinida-simétrica → solver
+        # directo general (Pardiso si está, LU si no).
+        self.assertEqual(solver.name, "pardiso" if _HAS_PARDISO else "lu")
 
     def test_override_forces_lu_even_when_spd(self):
         props = StiffnessProperties(is_symmetric=True, is_positive_definite=True, size=100)
@@ -240,6 +243,87 @@ class TestLinearSolverFactorizationCache(unittest.TestCase):
             solver.invalidate_cache()
             solver.solve(F)               # 3ª: factoriza de nuevo
             self.assertEqual(mock_factorize.call_count, 2)
+
+
+@unittest.skipUnless(_HAS_PARDISO, "pypardiso no instalado; omitiendo Pardiso")
+class TestPardisoSolver(unittest.TestCase):
+    """Backend Pardiso (ADR 0017): misma solución que LU, factorización
+    reutilizable, y fallo ruidoso —nunca silencioso— en los dos casos en
+    que el handle compartido de la MKL puede engañar."""
+
+    def test_pardiso_matches_lu_on_spd(self):
+        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+
+        K = _build_spd_matrix(n=120)
+        b = np.linspace(-1.0, 3.0, 120)
+        x_lu = LUSolver().solve(K, b)
+        x_pd = PardisoSolver().solve(K, b)
+        np.testing.assert_allclose(x_pd, x_lu, rtol=1e-10, atol=1e-12)
+
+    def test_pardiso_matches_lu_on_nonsymmetric(self):
+        """El dominio de Pardiso es el de LU: no asume simetría."""
+        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+
+        K = _build_nonsymmetric_matrix(n=90)
+        b = np.linspace(1.0, 2.0, 90)
+        x_lu = LUSolver().solve(K, b)
+        x_pd = PardisoSolver().solve(K, b)
+        np.testing.assert_allclose(x_pd, x_lu, rtol=1e-10, atol=1e-12)
+
+    def test_factorization_is_reusable(self):
+        """``factorize`` separa la fase cara de la barata: varios ``solve``
+        sobre la misma factorización, cada uno con su propio término
+        independiente."""
+        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+
+        K = _build_spd_matrix(n=100)
+        fact = PardisoSolver().factorize(K)
+        for scale in (1.0, -2.0, 7.5):
+            b = scale * np.linspace(1.0, 2.0, 100)
+            np.testing.assert_allclose(fact.solve(b), LUSolver().solve(K, b),
+                                       rtol=1e-10, atol=1e-12)
+
+    def test_accepts_csc_input(self):
+        """El ensamblador entrega CSR, pero ``reduce``/otros backends pueden
+        entregar CSC; la conversión es responsabilidad del backend."""
+        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+
+        K = _build_spd_matrix(n=60)
+        b = np.linspace(1.0, 2.0, 60)
+        x = PardisoSolver().solve(K.tocsc(), b)
+        np.testing.assert_allclose(x, LUSolver().solve(K, b), rtol=1e-10, atol=1e-12)
+
+    def test_stale_factorization_raises_instead_of_lying(self):
+        """El handle de MKL guarda **una** factorización. Si otra la
+        reemplaza, la vieja debe fallar de forma ruidosa: devolver la
+        solución del otro sistema sería un error silencioso."""
+        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+
+        K1 = _build_spd_matrix(n=40, seed=1)
+        K2 = _build_spd_matrix(n=40, seed=2)
+        b = np.linspace(1.0, 2.0, 40)
+
+        f1 = PardisoSolver().factorize(K1)
+        np.testing.assert_allclose(f1.solve(b), LUSolver().solve(K1, b),
+                                   rtol=1e-10, atol=1e-12)
+
+        f2 = PardisoSolver().factorize(K2)      # invalida f1
+        with self.assertRaises(RuntimeError):
+            f1.solve(b)
+        # La factorización vigente sigue siendo correcta.
+        np.testing.assert_allclose(f2.solve(b), LUSolver().solve(K2, b),
+                                   rtol=1e-10, atol=1e-12)
+
+    def test_singular_matrix_raises(self):
+        """Una matriz singular debe lanzar, no devolver NaN en silencio —
+        es la señal que los solvers no lineales capturan como tangente
+        singular (ADR 0011)."""
+        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+
+        K = sp.diags([1.0, 2.0, 0.0, 3.0], format="csr")  # fila nula
+        b = np.ones(4)
+        with self.assertRaises(RuntimeError):
+            PardisoSolver().solve(K, b)
 
 
 if __name__ == "__main__":

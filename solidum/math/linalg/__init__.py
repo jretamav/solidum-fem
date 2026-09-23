@@ -26,6 +26,16 @@ try:
 except ImportError:
     _HAS_CHOLESKY = False
 
+# Pardiso (Intel MKL) es opcional: depende de pypardiso.
+try:
+    from solidum.math.linalg.pardiso import (  # noqa: F401
+        PardisoFactorized,
+        PardisoSolver,
+    )
+    _HAS_PARDISO = True
+except ImportError:
+    _HAS_PARDISO = False
+
 __all__ = [
     "FactorizedSolver",
     "LinearAlgebraSolver",
@@ -39,3 +49,5 @@ __all__ = [
 ]
 if _HAS_CHOLESKY:
     __all__ += ["CholeskySolver", "CholeskyFactorized", "CholeskyNotPositiveDefiniteError"]
+if _HAS_PARDISO:
+    __all__ += ["PardisoSolver", "PardisoFactorized"]

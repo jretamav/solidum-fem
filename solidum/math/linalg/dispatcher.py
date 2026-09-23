@@ -20,10 +20,20 @@ except ImportError:
     _HAS_CHOLESKY = False
     CholeskySolver = None  # type: ignore[assignment,misc]
 
+# PardisoSolver es opcional: depende de ``pypardiso`` (Intel MKL).
+try:
+    from solidum.math.linalg.pardiso import PardisoSolver
+    _HAS_PARDISO = True
+except ImportError:
+    _HAS_PARDISO = False
+    PardisoSolver = None  # type: ignore[assignment,misc]
+
 
 _REGISTRY: dict[str, type] = {"lu": LUSolver, "ldlt": LDLTSolver}
 if _HAS_CHOLESKY:
     _REGISTRY["cholesky"] = CholeskySolver  # type: ignore[assignment]
+if _HAS_PARDISO:
+    _REGISTRY["pardiso"] = PardisoSolver  # type: ignore[assignment]
 
 
 # LDLᵀ todavía no está implementado en fase 2 (decisión documentada en
@@ -65,9 +75,19 @@ def select_solver(
 
     # Si la dependencia opcional falta y el caso era ideal para Cholesky,
     # avisamos una sola vez por sesión para que el usuario sepa por qué no
-    # está obteniendo el speedup esperado.
-    if props.is_symmetric and props.is_positive_definite and not _HAS_CHOLESKY:
+    # está obteniendo el speedup esperado. Con Pardiso instalado el aviso
+    # sobra: hay un backend mejor que LU disponible justo debajo.
+    if (props.is_symmetric and props.is_positive_definite
+            and not _HAS_CHOLESKY and not _HAS_PARDISO):
         _warn_cholesky_unavailable_once()
+
+    # Pardiso ocupa el lugar de LU: mismo dominio de aplicación (real, sin
+    # hipótesis de simetría ni positividad) y misma solución, pero multihilo
+    # y con disección anidada. La ventaja crece con la talla — de ×7 a 4 000
+    # DOF a ×60 a 53 000 (ADR 0017) — porque ataca el relleno, que es lo que
+    # degrada el escalado de un solver directo.
+    if _HAS_PARDISO:
+        return _REGISTRY["pardiso"]()
 
     # Simétrica indefinida sería ideal para LDLᵀ (Sturm sequence en pandeo y
     # snap-through). Mientras LDLᵀ no esté implementado, LU resuelve
