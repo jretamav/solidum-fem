@@ -98,7 +98,11 @@ Por tanto `PardisoFactorized.n_negative_pivots` es `None`, y el `sign-of-pivot t
 
 `pip install solidum-fem[fast]` instala `pypardiso`, que trae wheels para Windows, Linux y macOS y no requiere compilador. Se añade además el extra `cholmod` para `scikit-sparse`, que en Windows sí exige Visual Studio (`conda install -c conda-forge scikit-sparse` es la vía práctica) — distinción que antes sólo vivía en el texto de un warning.
 
-El CI **no** instala ninguno de los dos: es la garantía de que el camino sin dependencias opcionales sigue siendo correcto. Verificado ejecutando la suite completa con `pypardiso` bloqueado: **1 453 pasan, 9 skipped**, idéntico a con él instalado (los 6 tests del backend se saltan solos vía `skipUnless`).
+El CI **no** instala ninguno de los dos: es la garantía de que el camino sin dependencias opcionales sigue siendo correcto. La evidencia es el **CI en verde** (Linux × 3 Pythons, sin `pypardiso`) sobre el commit de este ADR.
+
+> **Corrección (2026-09-23, ADR 0018).** La versión original de este párrafo afirmaba además una verificación local "con `pypardiso` bloqueado: 1 453 pasan, 9 skipped, idéntico a con él instalado". Esa verificación **no fue válida**: el bloqueador usaba `find_module`/`load_module`, que Python 3.12+ ya no consulta en `sys.meta_path`, así que no bloqueaba nada — de ahí que el recuento saliera idéntico cuando debían saltarse los 6 tests del backend. Con un bloqueador por `find_spec`, la suite sin `pypardiso` da el recuento esperado (los 6 tests de Pardiso saltados). La conclusión se sostenía por el CI; la afirmación local era falsa. Desde el ADR 0018, además, el CI tiene un job que instala los backends opcionales y comprueba que están activos antes de correr la suite.
+>
+> El benchmark `bench_linear_algebra.py` se rehízo en el ADR 0018: ahora mide sistemas **con apoyos reales** en vez de `K + 10⁶·I` regularizada, y añade el backend iterativo y la memoria. Las cifras de la tabla de arriba corresponden a la versión regularizada; con apoyos son del mismo orden (Hex8 20³: 0,70 s con Pardiso frente a 0,78 s).
 
 ## Consecuencias
 

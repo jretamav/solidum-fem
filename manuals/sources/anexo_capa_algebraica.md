@@ -66,6 +66,7 @@ solver:
   linear_algebra: auto         # default; el despachador decide
   # linear_algebra: cholesky   # forzar Cholesky (requiere scikit-sparse)
   # linear_algebra: pardiso    # forzar Pardiso (requiere pypardiso)
+  # linear_algebra: iterative  # solver iterativo; ver sección propia
   # linear_algebra: lu         # forzar LU (siempre disponible)
   # linear_algebra: ldlt       # placeholder; degrada a LU con warning
 ```
@@ -110,3 +111,51 @@ conda install -c conda-forge scikit-sparse
 Sólo aplica a matrices simétricas y positivas definidas, pero ahí explota la simetría y es la mejor opción. En Windows requiere Visual Studio para compilar, de ahí que la vía práctica sea `conda` y no `pip`.
 
 Instalado cualquiera de los dos, el despachador empieza a usarlo automáticamente — sin tocar YAML, sin recompilar, sin reescribir specs.
+
+## Solver iterativo — a petición (ADR 0018)
+
+Los tres backends anteriores son **directos**: factorizan la matriz y resuelven por sustitución. El cuarto es **iterativo**: no factoriza, sino que aproxima la solución por iteraciones de Krylov hasta una tolerancia. Es la misma división que ofrecen ANSYS (`SPARSE` frente a `PCG`) y Abaqus (*direct* frente a *iterative*), y con el mismo criterio de uso: el directo por defecto, el iterativo como opción que se pide expresamente.
+
+```yaml
+solver:
+  type: NonlinearSolver
+  linear_algebra: iterative          # precondicionador automático (AMG si hay pyamg)
+  # linear_algebra: iterative:amg    # multimalla algebraico (requiere pyamg)
+  # linear_algebra: iterative:jacobi # diagonal (diagnóstico)
+  # linear_algebra: iterative:none   # sin precondicionador
+```
+
+**Para qué sirve.** No para ir más rápido en modelos medianos: por debajo de ~10⁵ grados de libertad Pardiso gana. Sirve para que **quepan los modelos grandes**. Un directo guarda los factores de la matriz, que ocupan un múltiplo creciente de ella (×14 a 26 000 grados de libertad, ×25 a 200 000); el iterativo ocupa un múltiplo constante (×4,2). Medido sobre `Hex8 n³`:
+
+| Grados de libertad | Pardiso | Iterativo (CG + AMG) | Memoria pico Pardiso | Memoria pico iterativo |
+|---:|---:|---:|---:|---:|
+| 26 460 | **0,70 s** | 1,43 s | 313 MB | ~92 MB |
+| 86 490 | 4,29 s | 4,55 s | 1,46 GB | ~312 MB |
+| 201 720 | 17,6 s | **10,2 s** | 4,43 GB | **~740 MB** |
+
+**Cómo elige el método.** Automáticamente, según la matriz:
+
+- **CG** (gradiente conjugado) si es simétrica y definida positiva — el caso habitual.
+- **MINRES** si es simétrica pero indefinida (arc-length cerca de un punto límite, ablandamiento). El cambio es automático: CG detecta la curvatura negativa y cede el paso.
+- **Solver directo** si no es simétrica (Drucker-Prager no asociado, cargas seguidoras), con un aviso. CG y MINRES exigen simetría, igual que en los programas comerciales.
+
+**El precondicionador AMG** (multimalla algebraico) es lo que hace útil al iterativo: el número de iteraciones queda en 10-15 **sin importar el tamaño del modelo**. Para funcionar en elasticidad necesita los **modos de cuerpo rígido** del modelo (traslaciones y rotaciones), que Solidum calcula a partir de las coordenadas y los grados de libertad, sin que el usuario haga nada. Sin ellos AMG es peor que no precondicionar.
+
+**Precisión.** El iterativo se detiene cuando el residuo verdadero `‖b − K·x‖` baja de `10⁻¹⁰·‖b‖`, cinco órdenes por debajo de la tolerancia del Newton. En un análisis no lineal el resultado coincide con el del directo; en uno lineal, la diferencia medida es del orden de 10⁻¹¹. Si no alcanza la tolerancia, **el análisis se detiene con un mensaje que dice por qué** (iteraciones, residuo alcanzado, qué hacer): nunca devuelve una solución a medias.
+
+**Cuándo no usarlo.** Igual que advierten los manuales de ANSYS y Abaqus: en modelos mal condicionados —láminas, vigas muy esbeltas, elementos muy distorsionados, penalizaciones rígidas (discontinuidades embebidas, cohesivos)— el iterativo converge mal o no converge. Ahí el directo es la herramienta.
+
+### Instalar AMG (`pyamg`)
+
+```bash
+pip install solidum-fem[iterative]
+```
+
+Trae binarios para Python 3.10–3.12. En **Python 3.14 sobre Windows** no hay binarios y pip lo compila, lo que requiere Visual Studio con el toolset de C++. Si aun teniéndolo pip responde *"Unable to find a compatible Visual Studio installation"*, la causa suele ser que la carpeta del instalador de Visual Studio no está en el `PATH`; añadirla durante la instalación lo resuelve:
+
+```bash
+PATH="/c/Program Files (x86)/Microsoft Visual Studio/Installer:$PATH" pip install pyamg
+```
+
+Sin `pyamg`, el iterativo funciona sin precondicionador (del orden de cientos de iteraciones por resolución en elasticidad) y avisa una vez.
+
