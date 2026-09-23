@@ -29,7 +29,7 @@ OUT_PDF = OUT_DIR / "Architecture_manual.pdf"
 
 # Reutilizar md_to_latex del builder de referencia.
 sys.path.insert(0, str(OUT_DIR))
-from build_reference_manual import md_to_latex  # noqa: E402
+from build_reference_manual import md_to_latex, with_font_setup  # noqa: E402
 
 
 PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
@@ -194,6 +194,7 @@ Este manual se regenera con:
 \setcounter{page}{1}
 
 """
+PREAMBLE = with_font_setup(PREAMBLE)  # respaldo de glifos, ver build_reference_manual
 
 POSTAMBLE = r"""
 \end{document}

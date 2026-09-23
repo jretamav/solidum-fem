@@ -580,6 +580,34 @@ def md_to_latex(md: str) -> str:
     return md
 
 
+# Fuentes de los tres manuales (2026-09-23). Latin Modern sigue siendo la
+# fuente principal, pero su variante monoespaciada no tiene griego ni la
+# mayoría de símbolos matemáticos, y lualatex descartaba esos glifos EN
+# SILENCIO: el Reference manual perdía ~6 200 caracteres (σ, ε, α, ≤, ⇒, ∈…),
+# casi todos en los contratos YAML de las specs, donde el PDF mostraba un
+# hueco en lugar de la letra. Con la cadena de respaldo de luaotfload, cada
+# glifo que Latin Modern no tiene se toma de DejaVu (instalada con la
+# distribución TeX) o, para dingbats como ✅, de Segoe UI Symbol/Emoji. El
+# resto del texto no cambia de aspecto. Definido aquí una vez y reutilizado
+# por los builders de User y Architecture.
+FONT_SETUP = r"""\usepackage{fontspec}
+% Respaldo de glifos: ver FONT_SETUP en build_reference_manual.py.
+\directlua{
+  luaotfload.add_fallback("solidumserif", {"DejaVuSerif:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+  luaotfload.add_fallback("solidummono", {"DejaVuSansMono:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+}
+\setmainfont{Latin Modern Roman}[RawFeature={fallback=solidumserif}]
+\setsansfont{Latin Modern Sans}[RawFeature={fallback=solidumserif}]
+\setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]
+"""
+
+
+def with_font_setup(preamble: str) -> str:
+    """Sustituye el ``\\usepackage{fontspec}`` del preámbulo por FONT_SETUP."""
+    assert preamble.count("\\usepackage{fontspec}\n") == 1
+    return preamble.replace("\\usepackage{fontspec}\n", FONT_SETUP, 1)
+
+
 PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 % Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
@@ -733,6 +761,7 @@ Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-proc
 \setcounter{page}{1}
 
 """
+PREAMBLE = with_font_setup(PREAMBLE)
 
 POSTAMBLE = r"""
 \end{document}
