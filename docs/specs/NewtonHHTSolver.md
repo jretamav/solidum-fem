@@ -72,14 +72,14 @@ Todo lo heredado de `NewtonNewmarkSolver`:
 
 Con $\alpha = 0$: $\beta = 1/4$, $\gamma = 1/2$, el residuo HHT colapsa al
 de Newmark estándar. Verificado en tests:
-`tests/test_dynamic_nonlinear_hht.py::test_alpha_zero_recovers_newton_newmark`.
+`tests/test_hht.py::TestNewtonHHT::test_alpha_zero_recovers_NewtonNewmark`.
 
 ### Recuperación de `HHTSolver` con materiales lineales
 
 Con materiales lineales ($\mathbf F_{\text{int}}(\mathbf u) = \mathbf K\,\mathbf u$),
 el residuo de Newton se anula en una iteración y el solver reproduce
 exactamente `HHTSolver`. Tangente constante = rigidez secante. Verificado:
-`tests/test_dynamic_nonlinear_hht.py::test_linear_material_matches_hht_solver`.
+`tests/test_hht.py::TestNewtonHHT::test_linear_material_recovers_HHT_lineal`.
 
 ---
 
@@ -181,7 +181,7 @@ references:
 - **Validación temprana** en `__init__`: `alpha ∈ [-1/3, 0]`, warning si override de β/γ.
 - **Entrypoint público**: `solidum.run_transient(model, solver="newton_hht", ...)` (despacho por `PIPELINE_KIND = "transient"`).
 - **Tests**:
-  - [tests/test_dynamic_nonlinear_hht.py](../../tests/test_dynamic_nonlinear_hht.py) — incluye recuperación de `NewtonNewmark` con α=0, recuperación de `HHTSolver` con materiales lineales, respuesta plástica dinámica.
+  - [tests/test_hht.py](../../tests/test_hht.py) (clase `TestNewtonHHT`) — incluye recuperación de `NewtonNewmark` con α=0, recuperación de `HHTSolver` con materiales lineales, respuesta plástica dinámica.
 
 ---
 
@@ -191,3 +191,4 @@ references:
 - **2026-09-22** · Auditoría global: misma reestructuración que `NewtonNewmarkSolver` (un ensamblaje por iteración, `g` antes de ensamblar, MPC vía `T`, `prepare_all_steps`); el line search opcional evalúa ahora el residuo HHT-α propio, no el de Newmark.
 - **2026-09-22** · `record_internal_forces=True` (deuda #15): registra `elem.internal_forces(u_k)` en cada paso con el estado interno de ese paso (`TransientResult.element_forces_history`; `internal_forces_history(domain)` lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en `t_k` con plasticidad (`tests/test_transient_forces_history.py`). Además `assemble_system` ya no deja el estado trial evaluado en `u = 0` (deuda #18).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_DynamicNewtonProblem` con residuo HHT-α y factor `1+α` en el jacobiano; `F_int_n` se toma del estado del ensamblaje convergido) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
+- **2026-09-23** · Revisión documental: las referencias a `tests/test_dynamic_nonlinear_hht.py` y a sus dos tests apuntaban a nombres que ya no existen; la cobertura vive en `tests/test_hht.py::TestNewtonHHT` (`test_alpha_zero_recovers_NewtonNewmark`, `test_linear_material_recovers_HHT_lineal`, `test_plastic_oscillator_converges_with_alpha_negative`).

@@ -221,7 +221,7 @@ references:
 - **`_make_linalg`**: fuerza `is_positive_definite=False` independientemente de la simetría del dominio (régimen postcrítico).
 - **Entrypoint público**: `solidum.run(domain, solver=ArcLengthSolver(assembler, ...), F_applied=...)` o `solidum.run_yaml(path)`.
 - **Tests**:
-  - [tests/test_arclength.py](../../tests/test_arclength.py) · snap-through Lee frame, snap-back truss, recuperación lineal.
+  - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) (`TestArcLengthRobustness`: punto límite, snap-back, recuperación lineal), [tests/test_snap_through_corot.py](../../tests/test_snap_through_corot.py) (armadura de von Mises contra la solución cerrada) y [tests/test_integration.py](../../tests/test_integration.py) (`test_arclength_solver_elastoplastic`).
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) · `test_arc_length_traverses_damage_softening`.
 
 ---
@@ -232,3 +232,4 @@ references:
 - **2026-09-22** · Auditoría global: corrector con un ensamblaje por iteración y convergencia evaluada antes de resolver: el estado committed corresponde exactamente a `U_current` (antes se evaluaba R en U_k, se comiteaba el trial de U_k y se guardaba U_{k+1}: un iterado de desfase, del orden de la tolerancia). La parada por `max_steps` sin alcanzar `max_lambda` emite WARNING y se expone en `reached_max_lambda`, `lambda_final` y `steps_done`; `solidum.run` escala `F_applied` por λ_final (reacciones coherentes) y reporta `converged`/`num_steps` reales (antes siempre `True`/1).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_ArcProblem`: iterado `(U, λ, ΔU)`, dos resoluciones por iteración y restricción cilíndrica como método `constraint`; raíces imaginarias → `CorrectionAborted`; predictor tangente en `_tangent_predictor`; retirados `_solve` y `_make_linalg`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 - **2026-09-23** · ADR 0017-0019: `linear_algebra` admite `pardiso` e `iterative` (CG → MINRES automático ante curvatura negativa, adecuado a la tangente indefinida del régimen postcrítico); al empezar `solve` se rechaza un mecanismo rígido (`MechanismError`). Dentro del trazado no se rechaza ningún sistema casi singular: cerca de un punto límite es parte del algoritmo.
+- **2026-09-23** · Revisión documental: `tests/test_arclength.py` ya no existe; la cobertura está repartida en `test_solver_robustness.py`, `test_snap_through_corot.py` y `test_integration.py`.

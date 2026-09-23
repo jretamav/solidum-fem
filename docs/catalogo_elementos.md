@@ -41,8 +41,8 @@ F_int = σ·A · d
 - Cargas exclusivamente axiales. Si la carga transversal sobre la barra no es despreciable → `Frame2DEuler` / `Frame2DTimoshenko`.
 
 ### Validación
-- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss2D`.
-- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss2D`.
+- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss2D`.
+- Archivo fuente: [solidum/elements/truss.py](../solidum/elements/truss.py) · clase `Truss2D`.
 - Spec: [docs/specs/Truss2D.md](specs/Truss2D.md).
 - Referencia: Bathe, *Finite Element Procedures*, §4.2.1.
 
@@ -76,8 +76,8 @@ F_int = N · d
 - **Fuera de alcance**: pandeo por bifurcación (se capta ablandamiento precrítico pero no el punto crítico; para snap-through usar arc-length).
 
 ### Validación
-- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss2DCorot` (3 tests, uno por criterio de aceptación).
-- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss2DCorot`.
+- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss2DCorot` (3 tests, uno por criterio de aceptación).
+- Archivo fuente: [solidum/elements/truss.py](../solidum/elements/truss.py) · clase `Truss2DCorot`.
 - Spec: [docs/specs/Truss2DCorot.md](specs/Truss2DCorot.md).
 - Referencias: Crisfield §3.3, Belytschko §4.5.
 
@@ -119,8 +119,8 @@ F_int = σ·A · d
 - Para grandes rotaciones en 3D → `Truss3DCorot`.
 
 ### Validación
-- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss3D`.
-- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss3D`.
+- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss3D`.
+- Archivo fuente: [solidum/elements/truss.py](../solidum/elements/truss.py) · clase `Truss3D`.
 - Spec: [docs/specs/Truss3D.md](specs/Truss3D.md).
 - Referencias: Bathe §4.2.1; Cook §2.3.
 
@@ -155,8 +155,8 @@ F_int = N · d
 - Cargas exclusivamente axiales.
 
 ### Validación
-- Tests: [tests/test_truss.py](tests/test_truss.py) · `TestTruss3DCorot` (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
-- Archivo fuente: [solidum/elements/truss.py](solidum/elements/truss.py) · clase `Truss3DCorot`.
+- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss3DCorot` (3 tests, uno por criterio de aceptación; el de rigidez geométrica verifica dos direcciones transversas independientes del plano perpendicular).
+- Archivo fuente: [solidum/elements/truss.py](../solidum/elements/truss.py) · clase `Truss3DCorot`.
 - Spec: [docs/specs/Truss3DCorot.md](specs/Truss3DCorot.md).
 - Referencias: Crisfield §3.3; Belytschko §4.5.
 
@@ -194,8 +194,8 @@ F_int = N · d                         (0 si N = 0)
 El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se implementa dentro de la clase para que futuras modificaciones de las armaduras no afecten a los cables, y viceversa.
 
 ### Validación
-- Tests: [tests/test_cable_elements.py](tests/test_cable_elements.py) · `TestCable2DCorot` (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
-- Archivo fuente: [solidum/elements/cable.py](solidum/elements/cable.py) · clase `Cable2DCorot`.
+- Tests: [tests/test_cable_elements.py](../tests/test_cable_elements.py) · `TestCable2DCorot` (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
+- Archivo fuente: [solidum/elements/cable.py](../solidum/elements/cable.py) · clase `Cable2DCorot`.
 - Spec: [docs/specs/Cable2DCorot.md](specs/Cable2DCorot.md).
 - Referencias: Crisfield §3.3; Irvine §1.2.
 
@@ -233,8 +233,8 @@ F_int = N · d                            (0 si N = 0)
 No hereda de `Cable2DCorot` ni de `Truss3DCorot`. La maquinaria cinemática 3D se implementa íntegra dentro de la clase.
 
 ### Validación
-- Tests: [tests/test_cable_elements.py](tests/test_cable_elements.py) · `TestCable3DCorot` (4 tests de aceptación).
-- Archivo fuente: [solidum/elements/cable.py](solidum/elements/cable.py) · clase `Cable3DCorot`.
+- Tests: [tests/test_cable_elements.py](../tests/test_cable_elements.py) · `TestCable3DCorot` (4 tests de aceptación).
+- Archivo fuente: [solidum/elements/cable.py](../solidum/elements/cable.py) · clase `Cable3DCorot`.
 - Spec: [docs/specs/Cable3DCorot.md](specs/Cable3DCorot.md).
 - Referencias: Crisfield §3.3; Belytschko §4.5; Irvine §1.2.
 
@@ -274,8 +274,8 @@ F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del mate
 Vive en el paquete `solidum/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `solidum/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
 
 ### Validación
-- Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
-- Archivo fuente: [solidum/elements/frame/euler.py](solidum/elements/frame/euler.py) · clase `Frame2DEuler`.
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
+- Archivo fuente: [solidum/elements/frame/euler.py](../solidum/elements/frame/euler.py) · clase `Frame2DEuler`.
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
 
@@ -325,8 +325,8 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 Vive en el paquete `solidum/elements/frame/`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en `solidum/elements/frame/_shared.py` — la construcción de la matriz de transformación 6×6 ya no se duplica.
 
 ### Validación
-- Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
-- Archivo fuente: [solidum/elements/frame/timoshenko.py](solidum/elements/frame/timoshenko.py) · clase `Frame2DTimoshenko`.
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
+- Archivo fuente: [solidum/elements/frame/timoshenko.py](../solidum/elements/frame/timoshenko.py) · clase `Frame2DTimoshenko`.
 - Spec: [docs/specs/Frame2DTimoshenko.md](specs/Frame2DTimoshenko.md).
 - Referencias: Reddy cap. 5; Bathe §5.4.
 
@@ -371,8 +371,8 @@ Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, br
 Vive en el paquete `solidum/elements/frame/` junto a las otras vigas 2D, **sin herencia**: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye `T` desde `alpha0` en lugar de usar `build_geometry_2d` compartido). Sí comparte con `Frame2DEuler` y `Frame2DTimoshenko` los helpers libres de `_shared.py` para carga de cuerpo (`_frame2d_consistent_body_load`), masa (`_frame2d_consistent_mass_local`) y traducción a `ElementForces` (`_frame2d_forces_from_local`).
 
 ### Validación
-- Tests: [tests/test_frame.py](tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro).
-- Archivo fuente: [solidum/elements/frame/euler_corot.py](solidum/elements/frame/euler_corot.py) · clase `Frame2DEulerCorot`.
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro).
+- Archivo fuente: [solidum/elements/frame/euler_corot.py](../solidum/elements/frame/euler_corot.py) · clase `Frame2DEulerCorot`.
 - Spec: [docs/specs/Frame2DEulerCorot.md](specs/Frame2DEulerCorot.md).
 - Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
 
@@ -424,8 +424,8 @@ La masa lumped es estrictamente diagonal en ejes locales (`ρAL/2` traslacional,
 Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimoshenko`, ni con los trusses 3D.
 
 ### Validación
-- Tests: [tests/test_frame3d.py](tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro).
-- Archivo fuente: [solidum/elements/frame3d.py](solidum/elements/frame3d.py) · clase `Frame3D`.
+- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro).
+- Archivo fuente: [solidum/elements/frame3d.py](../solidum/elements/frame3d.py) · clase `Frame3D`.
 - Spec: [docs/specs/Frame3D.md](specs/Frame3D.md).
 - Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
 
