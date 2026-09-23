@@ -1,0 +1,1020 @@
+\documentclass[11pt,oneside]{report}
+
+% Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
+\usepackage{fontspec}
+% Respaldo de glifos: ver FONT_SETUP en build_reference_manual.py.
+\directlua{
+  luaotfload.add_fallback("solidumserif", {"DejaVuSerif:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+  luaotfload.add_fallback("solidummono", {"DejaVuSansMono:mode=node;", "DejaVuSans:mode=node;", "SegoeUISymbol:mode=node;", "SegoeUIEmoji:mode=node;"})
+}
+\setmainfont{Latin Modern Roman}[RawFeature={fallback=solidumserif}]
+\setsansfont{Latin Modern Sans}[RawFeature={fallback=solidumserif}]
+\setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]
+\usepackage[protrusion=true,expansion=true]{microtype}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[spanish,es-tabla,es-nodecimaldot]{babel}
+\usepackage[paperwidth=19.2cm, paperheight=25.6cm, hmargin=1.3cm, top=2.1cm, bottom=1.7cm, headheight=15pt, headsep=0.45cm, footskip=0.75cm]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+% Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
+% desplazamientos en discontinuidades embebidas y materiales cohesivos
+% (ADR 0010). No están en amssymb.
+\usepackage{stmaryrd}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage[most]{tcolorbox}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash\footnotesize}X}
+
+\definecolor{yamlkey}{RGB}{0, 102, 204}
+\definecolor{yamlval}{RGB}{204, 0, 0}
+\definecolor{yamlcomment}{RGB}{120, 120, 120}
+\definecolor{bglight}{RGB}{245, 245, 245}
+\definecolor{darkgray}{RGB}{50, 50, 50}
+\definecolor{notebackground}{RGB}{240, 248, 255}
+\definecolor{noteborder}{RGB}{0, 102, 204}
+\definecolor{warnbackground}{RGB}{255, 245, 230}
+\definecolor{warnborder}{RGB}{204, 102, 0}
+
+% Cuadro de informacion: usado por los bloques `callout Nota`.
+\newtcolorbox{infobox}[1]{
+  enhanced,
+  colback=notebackground, colframe=noteborder, colbacktitle=notebackground,
+  coltitle=noteborder, fonttitle=\bfseries,
+  title=#1, attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={colback=white, colframe=white, sharp corners},
+  boxrule=0.4pt, arc=2pt,
+  left=4mm, right=4mm, top=2mm, bottom=2mm,
+  before skip=8pt, after skip=8pt,
+}
+
+% Cuadro de advertencia: usado por los bloques `callout Advertencia`.
+% Comparte el comando ``\begin{infobox}{Advertencia}'' del conversor; los
+% bloques marcados con titulo "Advertencia" reciben el color naranja via
+% redefinicion local de las claves de color (ver macro \warnbox abajo).
+\newtcolorbox{warnbox}[1]{
+  enhanced,
+  colback=warnbackground, colframe=warnborder, colbacktitle=warnbackground,
+  coltitle=warnborder, fonttitle=\bfseries,
+  title=#1, attach boxed title to top left={yshift=-2mm, xshift=4mm},
+  boxed title style={colback=white, colframe=white, sharp corners},
+  boxrule=0.4pt, arc=2pt,
+  left=4mm, right=4mm, top=2mm, bottom=2mm,
+  before skip=8pt, after skip=8pt,
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=yamlkey,
+    urlcolor=yamlkey,
+    pdftitle={Manual de Ejemplos - Solidum FEM},
+    pdfauthor={Jaime Retama Velasco}
+}
+
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{yamlkey}}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titleformat{\section}{\Large\bfseries\color{darkgray}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkgray}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{darkgray}}{\thesubsubsection}{1em}{}
+
+\renewcommand{\chaptermark}[1]{\markboth{Cap.\ \thechapter\ ---\ #1}{}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Ejemplos}}
+\fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\fancyfoot[R]{\footnotesize\color{darkgray}FF-ME}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\lstdefinelanguage{yaml}{
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda},
+  keywordstyle=\color{yamlkey}\bfseries,
+  ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6},
+  ndkeywordstyle=\color{yamlval}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=false,
+  comment=[l]{\#},
+  commentstyle=\color{yamlcomment}\ttfamily,
+  stringstyle=\color{yamlval}\ttfamily,
+  morestring=[b]',
+  morestring=[b]"
+}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{bglight},
+  frame=single,
+  rulecolor=\color{lightgray},
+  breaklines=true,
+  showstringspaces=false,
+  extendedchars=true,
+  captionpos=b,
+  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+           {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+           {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+           {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
+           {ε}{{$\varepsilon$}}1 {σ}{{$\sigma$}}1 {α}{{$\alpha$}}1
+           {β}{{$\beta$}}1 {γ}{{$\gamma$}}1 {δ}{{$\delta$}}1
+           {θ}{{$\theta$}}1 {κ}{{$\kappa$}}1 {λ}{{$\lambda$}}1
+           {μ}{{$\mu$}}1 {ν}{{$\nu$}}1 {π}{{$\pi$}}1
+           {ρ}{{$\rho$}}1 {τ}{{$\tau$}}1 {φ}{{$\varphi$}}1
+           {ω}{{$\omega$}}1 {Δ}{{$\Delta$}}1 {Ω}{{$\Omega$}}1
+           {⇔}{{$\Leftrightarrow$}}1 {⇒}{{$\Rightarrow$}}1
+           {→}{{$\to$}}1 {←}{{$\leftarrow$}}1
+           {≤}{{$\le$}}1 {≥}{{$\ge$}}1 {≠}{{$\neq$}}1
+           {·}{{$\cdot$}}1 {×}{{$\times$}}1 {±}{{$\pm$}}1
+           {°}{{$^{\circ}$}}1 {²}{{$^{2}$}}1 {³}{{$^{3}$}}1
+           {—}{{---}}1 {–}{{--}}1
+           {“}{{``}}1 {”}{{''}}1
+}
+
+% --- Lectura en pantalla: ver with_screen_setup en build_reference_manual.py
+% Índice: columnas de número anchas (numeraciones de 2-3 niveles se
+% montaban sobre el título), índice compacto y marcadores profundos.
+\makeatletter
+\renewcommand*\l@section{\@dottedtocline{1}{1.5em}{3.3em}}
+\renewcommand*\l@subsection{\@dottedtocline{2}{4.8em}{4.2em}}
+\renewcommand*\l@subsubsection{\@dottedtocline{3}{9.0em}{5.0em}}
+\makeatother
+\setcounter{tocdepth}{2}
+\definecolor{enlaceinterno}{RGB}{0, 84, 166}
+\definecolor{enlaceexterno}{RGB}{0, 128, 110}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=enlaceinterno, citecolor=enlaceinterno,
+    urlcolor=enlaceexterno, filecolor=enlaceexterno,
+    bookmarksopen=true, bookmarksopenlevel=0, bookmarksnumbered=true, bookmarksdepth=3,
+    pdfpagemode=UseOutlines, pdfstartview=FitH, pdfdisplaydoctitle=true,
+    pdflang=es-ES,
+    pdfsubject={Problemas resueltos con Solidum FEM, verificados contra soluciones analíticas},
+    pdfkeywords={elementos finitos, mecánica de sólidos, ejemplos, verificación, Solidum FEM},
+}
+\setlength{\emergencystretch}{3em}
+\fancyfoot[L]{\hyperlink{indice}{\footnotesize Índice}}
+\begin{document}
+\addtocontents{toc}{\protect\hypertarget{indice}{}}
+
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    {\Huge\bfseries\color{yamlkey} Solidum FEM \par}
+    \vspace{1cm}
+    {\LARGE Plataforma de Análisis por Elementos Finitos en Python \par}
+    \vspace{0.3cm}
+    {\normalsize\color{darkgray} Sigla: \texttt{FF-ME} \par}
+    \vspace{0.5cm}
+    \rule{\linewidth}{0.5mm} \par
+    \vspace{2cm}
+    {\huge\bfseries Manual de Ejemplos \par}
+    \vspace{2cm}
+    {\large Problemas resueltos y verificados contra\\
+            soluciones analíticas y de referencia\par}
+    \vspace{1cm}
+    {\Large \textbf{Autor:} Jaime Retama Velasco \par}
+    \vspace{0.5cm}
+    {\large Facultad de Estudios Superiores Aragón \\ Universidad Nacional Autónoma de México \par}
+    \vfill
+    {\large \today \par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\setcounter{page}{1}
+\tableofcontents
+\newpage
+
+\chapter*{Sobre este manual}
+\addcontentsline{toc}{chapter}{Sobre este manual}
+\noindent Este manual reúne \textbf{problemas resueltos} con Solidum FEM. Cada capítulo plantea un problema de mecánica de sólidos, lo modela paso a paso ---con el archivo \texttt{.yaml} o con el API de Python---, compara los resultados con una solución analítica o de referencia publicada y comenta qué enseña el ejemplo sobre el método o sobre el programa.
+
+\textbf{Ninguna cifra ni figura está escrita a mano.} Cada ejemplo tiene una carpeta en \texttt{examples/} con su modelo y un script \texttt{run.py} que resuelve el problema, guarda los resultados en \texttt{resultados.json} y dibuja las figuras; el manual los lee de ahí al compilarse. Un test de la suite (\texttt{tests/test\_examples\_manual.py}) ejecuta los mismos scripts y comprueba que los errores citados siguen dentro de su tolerancia: lo que este manual afirma se verifica en cada cambio del código.
+
+Para reproducir un ejemplo basta con
+\begin{center}\texttt{python examples/\textit{carpeta}/run.py}\end{center}
+
+Para la sintaxis completa del archivo de entrada, consultar el \emph{Manual de Usuario} (\texttt{manuals/User\_manual.pdf}); para la formulación de cada elemento, material y solver, el \emph{Manual de Referencia} (\texttt{manuals/Reference\_manual.pdf}).
+
+Este manual se regenera con:
+\begin{center}\texttt{python manuals/build\_example\_manual.py}\end{center}
+
+\noindent No editar este PDF manualmente; cualquier corrección debe hacerse sobre los capítulos en \texttt{manuals/sources/examples/} o sobre los scripts de \texttt{examples/}.
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+
+\chapter{Voladizo con carga en el extremo: marcos de Euler-Bernoulli y de Timoshenko}
+\chaptermark{Voladizo con carga en el extremo}
+\label{cap:voladizo_marco}
+
+
+
+
+
+El voladizo con carga puntual en el extremo es el problema más sencillo con solución cerrada, y por eso es el primero. Sirve para tres cosas: comprobar que el modelo reproduce la teoría de vigas a precisión de máquina, aprender a leer los resultados (desplazamientos, reacciones y fuerzas internas) con la convención de signos de Solidum, y medir cuánto aporta la deformación por cortante según la esbeltez.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Escribir un modelo YAML de marco 2D: nodos, material, elementos, apoyos y cargas.
+  \item Leer desplazamientos, giros, reacciones y fuerzas internas $N$, $V$, $M$ del resultado.
+  \item Interpretar el signo de las fuerzas internas 2D según la convención de viga del programa.
+  \item Por qué la interpolación hermítica cúbica da la solución exacta con cargas nodales.
+  \item Cuándo importa la deformación por cortante, y por qué el elemento de Timoshenko de Solidum no sufre bloqueo por cortante.
+\end{itemize}
+
+\section{Planteamiento}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\linewidth]{../examples/voladizo_marco/fig_esquema.pdf}
+\caption{Voladizo empotrado en $x = 0$ con carga puntual $P$ en el extremo libre. Los círculos marcan los cinco nodos del modelo.}
+\label{fig:voladizo_marco:esquema}
+\end{figure}
+
+La viga de \hyperref[fig:voladizo_marco:esquema]{figura~\ref*{fig:voladizo_marco:esquema}} tiene longitud $L = 4$ m, está empotrada en $x = 0$ y libre en $x = L$. La sección es cuadrada, $b = h = 0.1$ m, con área $A = 0.01$ m\ensuremath{^{2}} y momento de inercia $I = bh^3/12 = 8.\overline{3}\times10^{-6}$ m⁴. El material es acero, $E = 200$ GPa. En el extremo libre actúa una carga $P = 1$ kN hacia abajo, es decir, en $-y$. Todas las magnitudes se dan en unidades SI coherentes: m, N y Pa.
+
+\section{Solución analítica}
+
+Con $+y$ hacia arriba y giro antihorario positivo, la teoría de Euler-Bernoulli da la deformada y el giro
+
+\[
+u_y(x) = -\frac{P\,x^2\,(3L - x)}{6EI}, \qquad
+\theta(x) = \frac{du_y}{dx} = -\frac{P\,x\,(2L - x)}{2EI},
+\]
+
+de modo que en el extremo libre la flecha es $\delta = PL^3/(3EI)$ y el giro $\theta_L = -PL^2/(2EI)$, negativo porque la sección gira en sentido horario.
+
+Las fuerzas internas se obtienen cortando la viga en $x$ y aislando el tramo derecho. En la convención de viga del programa, la cara izquierda de ese tramo (normal saliente $-x$) lleva $V$ positivo hacia $+y$ y $M$ positivo en sentido horario. El equilibrio vertical del tramo da $V - P = 0$, y el de momentos respecto al corte da $M = -P(L - x)$:
+
+\[
+N(x) = 0, \qquad V(x) = +P, \qquad M(x) = -P\,(L - x).
+\]
+
+El cortante es positivo porque tiende a girar el diferencial en sentido horario. El flector es negativo en toda la viga, lo que indica tracción en la fibra superior, como corresponde a un voladizo cargado hacia abajo. El empotramiento reacciona con $R_y = +P$ hacia arriba y con un momento $M_z = +PL$ antihorario.
+
+\section{Modelo en Solidum}
+
+El modelo completo es el archivo \texttt{examples/\allowbreak{}voladizo\_\allowbreak{}marco/\allowbreak{}modelo.\allowbreak{}yaml}:
+
+\begin{lstlisting}[language=yaml]
+# SOLIDUM FEM — Manual de ejemplos, ejemplo 1
+# Voladizo con carga puntual en el extremo libre (marco 2D, Euler-Bernoulli)
+# Unidades: m, N, Pa
+#
+# L = 4 m, sección cuadrada 0.1 m × 0.1 m, acero E = 200 GPa, P = 1 kN hacia abajo.
+# Cuatro elementos de 1 m: con carga sólo en los nodos, la interpolación
+# hermítica cúbica es la solución exacta de la ecuación de la viga, así que
+# los valores nodales deben coincidir con la solución analítica a precisión
+# de máquina.
+
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [2.0, 0.0]}
+  - {id: 4, coords: [3.0, 0.0]}
+  - {id: 5, coords: [4.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastic1D, E: 200.0e9}
+
+# A = b·h, I = b·h³/12 (m², m⁴)
+elements:
+  - {id: 1, type: Frame2DEuler, material: 1, nodes: [1, 2],
+     A: 0.01, I: 8.333333333333e-6}
+  - {id: 2, type: Frame2DEuler, material: 1, nodes: [2, 3],
+     A: 0.01, I: 8.333333333333e-6}
+  - {id: 3, type: Frame2DEuler, material: 1, nodes: [3, 4],
+     A: 0.01, I: 8.333333333333e-6}
+  - {id: 4, type: Frame2DEuler, material: 1, nodes: [4, 5],
+     A: 0.01, I: 8.333333333333e-6}
+
+# Empotramiento: desplazamientos y giro impedidos en x = 0
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, rz: 0.0}
+
+# P = 1 kN hacia abajo (−y) en el extremo libre
+point_loads_by_node:
+  - {node_id: 5, uy: -1000.0}
+
+solver:
+  type: LinearSolver
+
+\end{lstlisting}
+
+Los puntos que conviene notar:
+
+\begin{itemize}
+  \item \textbf{Nodos y grados de libertad.} Cada nodo de un elemento \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Frame2DEuler.md}{Frame2DEuler} tiene tres grados de libertad: \texttt{ux}, \texttt{uy} y \texttt{rz}. Los declara el elemento; el YAML sólo da coordenadas.
+  \item \textbf{Material.} \texttt{Elastic1D} sólo necesita $E$. El área y la inercia son propiedades de la sección y van en cada elemento.
+  \item \textbf{Empotramiento.} Fijar \texttt{ux}, \texttt{uy} y \texttt{rz} del nodo 1 impide los dos desplazamientos y el giro.
+  \item \textbf{Carga.} \texttt{uy: -1000.0} en el nodo 5 es una fuerza de 1 kN en $-y$. Las cargas nodales se dan en ejes globales.
+  \item \textbf{Solver.} \texttt{LinearSolver} resuelve $\mathbf K\,\mathbf u = \mathbf F$ una sola vez. Antes de factorizar comprueba que el modelo no sea un mecanismo, y después verifica el equilibrio de la solución.
+\end{itemize}
+
+El script \texttt{run.py} resuelve este YAML con el mismo proceso que \texttt{solidum.run\_yaml}, pero conserva el dominio para poder indexar el vector de desplazamientos por nodo (\texttt{node.dofs[\textquotedbl{}uy\textquotedbl{}]}). Las reacciones y las fuerzas internas vienen en el resultado: \texttt{res.\allowbreak{}reactions\_\allowbreak{}by\_\allowbreak{}node[1]} es un diccionario \texttt{\{\textquotedbl{}ux\textquotedbl{}: \ldots{}, \textquotedbl{}uy\textquotedbl{}: \ldots{}, \textquotedbl{}rz\textquotedbl{}: \ldots{}\}} y \texttt{res.\allowbreak{}element\_\allowbreak{}forces[e].\allowbreak{}components[\textquotedbl{}M\textquotedbl{}]} contiene el flector en los dos extremos del elemento \texttt{e}, en sus ejes locales.
+
+\section{Resultados}
+
+\begin{table}[h]
+\centering
+\caption{Voladizo de Euler-Bernoulli: Solidum frente a la solución analítica.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Magnitud} & \textbf{Solidum} & \textbf{Analítica} \\
+\hline
+Flecha en el extremo $\delta$ [mm] & 12.800000 & 12.800000 \\
+Giro en el extremo $\theta_L$ [rad] & $-4.800000\times 10^{-3}$ & $-4.800000\times 10^{-3}$ \\
+Reacción $R_y$ [N] & 1000.000000 & 1000.000000 \\
+Momento de reacción $M_z$ [N\ensuremath{\cdot}m] & 4000.000000 & $PL = 4000$ \\
+Flector en el empotramiento $M(0)$ [N\ensuremath{\cdot}m] & $-4000.000000$ & $-PL = -4000$ \\
+Cortante $V$ [N] & 1000.000000 & 1000.000000 \\
+\hline
+\end{tabularx}
+\end{table}
+La mayor discrepancia relativa entre todas las magnitudes comparadas, incluidos los desplazamientos de los cinco nodos y las fuerzas internas en los dos extremos de cada elemento, es menor que $10^{-13}$: el redondeo de la aritmética de doble precisión.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\linewidth]{../examples/voladizo_marco/fig_diagramas.pdf}
+\caption{Deformada, cortante y flector del voladizo. Línea: solución analítica. Marcadores: Solidum, en los nodos (deformada) y en los dos extremos de cada elemento (fuerzas internas).}
+\label{fig:voladizo_marco:diagramas}
+\end{figure}
+
+La \hyperref[fig:voladizo_marco:diagramas]{figura~\ref*{fig:voladizo_marco:diagramas}} muestra que la coincidencia no se limita al extremo. El resultado exacto tiene una explicación precisa: sin carga entre nodos, la ecuación de la viga $EI\,u_y'''' = 0$ tiene por solución un polinomio cúbico en cada tramo, y las funciones de forma hermíticas del elemento son justamente cúbicas. El método de elementos finitos reproduce entonces la solución exacta en los nodos, con cualquier número de elementos; los cuatro de este modelo sólo sirven para dibujar la deformada. Con una carga distribuida la solución exacta pasa a ser de cuarto grado y deja de estar contenida en el espacio de interpolación: los valores nodales siguen siendo exactos en el caso de la viga, pero la deformada entre nodos ya no.
+
+Los signos de la tabla confirman la convención: el cortante sale positivo, el flector negativo (tracción arriba) y la reacción de momento positiva (antihoraria).
+
+\section{Deformación por cortante: Timoshenko frente a Euler-Bernoulli}
+
+La teoría de Euler-Bernoulli supone que las secciones planas permanecen perpendiculares al eje deformado y desprecia la deformación por cortante. La de Timoshenko la incluye, y la flecha en el extremo del voladizo gana un término:
+
+\[
+\delta_T = \frac{PL^3}{3EI} + \frac{PL}{\kappa G A}, \qquad
+\frac{\delta_T}{\delta_{EB}} = 1 + \frac{3EI}{\kappa G A L^2},
+\]
+
+donde $\kappa A$ es el área efectiva de cortante (parámetro \texttt{As} del elemento). Para una sección rectangular, con $I/A = h^2/12$, $G = E/[2(1+\nu)]$ y $\kappa = 5/6$, el cociente depende sólo de la esbeltez:
+
+\[
+\frac{\delta_T}{\delta_{EB}} = 1 + \frac{1+\nu}{2\kappa}\left(\frac{h}{L}\right)^2
+= 1 + 0.78\left(\frac{h}{L}\right)^2 \quad (\nu = 0.3).
+\]
+
+El script repite el voladizo con una sección de $0.1\times0.2$ m y esbelteces $L/h$ de 1 a 1000, cada vez con \textbf{un solo elemento} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Frame2DTimoshenko.md}{Frame2DTimoshenko} y un solo Frame2DEuler. Este ejemplo usa el API de Python en vez del YAML: el modelo se construye nodo a nodo.
+
+\begin{lstlisting}[language=Python]
+def _flecha_punta(cls, L_h: float) -> float:
+    """Flecha en la punta de un voladizo de un solo elemento, sección b × h = 0.1 × 0.2 m."""
+    h = 0.2
+    b = 0.1
+    Lb = L_h * h
+    A = b * h
+    Ib = b * h**3 / 12.0
+    domain = Domain()
+    mat = Elastic1D(E=E)
+    n1 = domain.add_node(1, [0.0, 0.0])
+    n2 = domain.add_node(2, [Lb, 0.0])
+    if cls is Frame2DTimoshenko:
+        el = Frame2DTimoshenko(1, [n1, n2], mat, A=A, I=Ib, As=KAPPA * A, nu=NU)
+    else:
+        el = Frame2DEuler(1, [n1, n2], mat, A=A, I=Ib)
+    domain.add_element(el)
+    for d in ("ux", "uy", "rz"):
+        n1.fix_dof(d, 0.0)
+    domain.generate_equation_numbers()
+    F = np.zeros(domain.total_dofs)
+    F[n2.dofs["uy"]] = -P
+    U = LinearSolver(Assembler(domain)).solve(F)
+    return -U[n2.dofs["uy"]]
+
+\end{lstlisting}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/voladizo_marco/fig_timoshenko.pdf}
+\caption{Cociente de flechas Timoshenko / Euler-Bernoulli en función de la esbeltez. Cada punto de Solidum es un modelo de un solo elemento.}
+\label{fig:voladizo_marco:timoshenko}
+\end{figure}
+
+La \hyperref[fig:voladizo_marco:timoshenko]{figura~\ref*{fig:voladizo_marco:timoshenko}} compara el cociente calculado con la expresión analítica. La discrepancia máxima es menor que $10^{-14}$. Dos lecturas prácticas:
+
+\begin{itemize}
+  \item \textbf{Cuándo importa el cortante.} En $L/h = 10$ el cortante añade un 0.78 \% a la flecha; en $L/h = 5$, un 3.12 \%; en una viga tan corta como peraltada, $L/h = 1$, la flecha es 1.78 veces la de Euler-Bernoulli. La regla habitual de usar Timoshenko por debajo de $L/h \approx 10$ sale directamente de esta curva.
+  \item \textbf{Sin bloqueo por cortante.} En $L/h = 1000$ el cociente excede la unidad en $7.8\times 10^{-7}$, como predice la teoría. Un elemento de Timoshenko con interpolación lineal independiente de flecha y giro, integrado de forma completa, se bloquea en ese límite: su rigidez a cortante domina y la flecha tiende a cero en vez de tender a la de Euler-Bernoulli. Frame2DTimoshenko usa la rigidez exacta de la viga de Timoshenko, escrita con el factor $\Phi = 12EI/(\kappa G A L^2)$; equivale a funciones de forma que dependen de $\Phi$ y se reducen a las hermíticas cuando $\Phi \to 0$. Por eso un elemento basta a cualquier esbeltez.
+\end{itemize}
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Cambiar un elemento del YAML por \texttt{Frame2DTimoshenko}, con \texttt{As: 0.00833333} y \texttt{nu: 0.3}. Como el cortante es constante, la flecha en el extremo debe crecer en $P\ell/(\kappa G A)$, con $\ell = 1$ m la longitud del tramo cambiado.
+  \item Añadir peso propio con el bloque \texttt{gravity} y la \texttt{density} del material. La carga distribuida hace que el flector entre nodos sea parabólico; los valores de extremo de \texttt{element\_forces} descuentan la carga nodal equivalente y siguen siendo exactos.
+  \item El mismo voladizo modelado con sólidos 2D de cuatro nodos muestra el bloqueo por cortante que aquí no aparece. Lo documenta el benchmark de MacNeal-Harder en \texttt{tests/\allowbreak{}validation/\allowbreak{}test\_\allowbreak{}slender\_\allowbreak{}cantilever.\allowbreak{}py}.
+\end{itemize}
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}voladizo\_\allowbreak{}marco/\allowbreak{}} contiene el modelo \texttt{modelo.yaml}, el script \texttt{run.py}, los resultados en \texttt{resultados.json} y las figuras. Para regenerar resultados y figuras basta con ejecutar el script.
+
+
+\newpage
+
+\chapter{Placa con agujero a tracción: concentración de esfuerzos de Kirsch}
+\chaptermark{Placa con agujero a tracción}
+\label{cap:placa_agujero_kirsch}
+
+
+
+
+
+Un agujero circular en una placa traccionada multiplica por tres el esfuerzo en su borde. Es el caso clásico de concentración de esfuerzos, resuelto por Kirsch en 1898 para una placa infinita, y el primer problema bidimensional de este manual. A diferencia del voladizo, aquí la solución de elementos finitos ya no es exacta: el ejemplo enseña a medir cuánto se aparta de la analítica, dónde y por qué.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Resolver una malla de Gmsh desde el YAML y aplicar condiciones de contorno por grupo físico.
+  \item Aprovechar la doble simetría para modelar sólo un cuarto de la placa.
+  \item Cargar con desplazamiento impuesto y obtener el esfuerzo nominal a partir de la reacción.
+  \item Leer esfuerzos en los puntos de Gauss y recuperarlos en los nodos.
+  \item Graduar la malla hacia el concentrador de esfuerzos.
+  \item Distinguir el error de discretización, que baja al refinar, del error de modelo, que no.
+\end{itemize}
+
+\section{Planteamiento}
+
+Una placa de acero con un agujero de radio $a = 10$ mm se tracciona en la dirección $x$. Lejos del agujero el esfuerzo es uniaxial y uniforme, $\sigma_{xx} = \sigma_\infty$. La placa es delgada, con espesor de 10 mm, y trabaja en esfuerzo plano, con $E = 200$ GPa y $\nu = 0.3$.
+
+El problema es simétrico respecto a los ejes $x$ e $y$, así que basta con el cuarto $x \ge 0$, $y \ge 0$. En los bordes de simetría se impone desplazamiento normal nulo: $u_x = 0$ sobre $x = 0$ y $u_y = 0$ sobre $y = 0$. El cuarto de placa mide $W = H = 20a$, lo bastante grande para que los bordes apenas perturben el campo del agujero.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/placa_agujero_kirsch/fig_malla.pdf}
+\caption{Cuarto de placa modelado: malla estructurada de cuadriláteros, condiciones de simetría (azul) y desplazamiento impuesto (naranja). A la derecha, el detalle marcado junto al agujero.}
+\label{fig:placa_agujero_kirsch:malla}
+\end{figure}
+
+\section{Solución analítica}
+
+Para una placa infinita con un agujero libre de tracción, en coordenadas polares $(r, \theta)$ con $\theta$ medido desde el eje $x$, Kirsch obtuvo
+
+\[
+\begin{aligned}
+\sigma_{rr} &= \frac{\sigma_\infty}{2}\left(1 - \frac{a^2}{r^2}\right)
+ + \frac{\sigma_\infty}{2}\left(1 - \frac{4a^2}{r^2} + \frac{3a^4}{r^4}\right)\cos 2\theta,\\
+\sigma_{\theta\theta} &= \frac{\sigma_\infty}{2}\left(1 + \frac{a^2}{r^2}\right)
+ - \frac{\sigma_\infty}{2}\left(1 + \frac{3a^4}{r^4}\right)\cos 2\theta,\\
+\sigma_{r\theta} &= -\frac{\sigma_\infty}{2}\left(1 + \frac{2a^2}{r^2} - \frac{3a^4}{r^4}\right)\sin 2\theta .
+\end{aligned}
+\]
+
+En el borde del agujero sólo queda el esfuerzo circunferencial, $\sigma_{\theta\theta}(a, \theta) = \sigma_\infty\,(1 - 2\cos 2\theta)$. Vale $3\sigma_\infty$ en $\theta = 90°$, el punto $(0, a)$, y $-\sigma_\infty$ en $\theta = 0$: el borde del agujero se comprime en la dirección transversal a la carga. Sobre el eje $x = 0$,
+
+\[
+\sigma_{xx}(0, y) = \sigma_\infty\left(1 + \frac{a^2}{2y^2} + \frac{3a^4}{2y^4}\right),
+\]
+
+que decae de $3\sigma_\infty$ a $\sigma_\infty$ en pocos radios. El factor de concentración de esfuerzos es $K_t = \sigma_{xx}(0, a)/\sigma_\infty = 3$, independiente del tamaño del agujero y del material.
+
+\section{Modelo en Solidum}
+
+\textbf{La malla.} El script \texttt{malla.py} genera la malla con el API de Python de Gmsh y la guarda en \texttt{placa\_\allowbreak{}agujero.\allowbreak{}msh}, que se versiona junto al ejemplo; resolverlo no requiere Gmsh. La malla es estructurada y tiene dos zonas. Hasta $r = 5a$ es un anillo polar: líneas radiales rectas y circunferencias concéntricas, con elementos que crecen en progresión geométrica desde el agujero, donde el gradiente de esfuerzos es fuerte. De ahí al contorno, dos parches de transición. Todos los elementos son cuadriláteros \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Quad4.md}{Quad4}. La malla define grupos físicos con nombre (\texttt{Simetria\_X}, \texttt{Simetria\_Y}, \texttt{Borde\_Carga}, \texttt{Agujero}), y el YAML los usa para aplicar las condiciones de contorno.
+
+\textbf{La carga.} El YAML de Solidum todavía no admite tracciones distribuidas sobre un borde; el API de Python sí, con el método \texttt{compute\_\allowbreak{}edge\_\allowbreak{}traction} de los elementos sólidos. Aquí la carga es un desplazamiento impuesto $\bar u = 0.1$ mm en todo el borde $x = W$, como el que aplican las mordazas de una máquina de ensayo. El esfuerzo nominal lejano se obtiene después: $\sigma_\infty = R_x/(H\,t)$, con $R_x$ la reacción total en ese borde.
+
+\begin{lstlisting}[language=yaml]
+# SOLIDUM FEM — Manual de ejemplos, ejemplo 2
+# Placa con agujero circular a tracción: concentración de esfuerzos (Kirsch)
+# Unidades: m, N, Pa
+#
+# Cuarto de placa por doble simetría: agujero de radio a = 10 mm, placa de
+# 200 mm × 200 mm (20a × 20a), espesor 10 mm, acero en esfuerzo plano.
+# La carga se aplica como desplazamiento impuesto en x = W; el esfuerzo
+# nominal σ∞ se obtiene después de la reacción total en ese borde.
+
+mesh: placa_agujero.msh      # generada por malla.py (Gmsh), Quad4
+mesh_material: 1
+mesh_thickness: 0.01
+
+materials:
+  - {id: 1, type: Elastic2D, E: 200.0e9, nu: 0.3, hypothesis: plane_stress}
+
+boundary_conditions_by_group:
+  - {group_name: "Simetria_X", ux: 0.0}      # x = 0: simetría respecto al eje y
+  - {group_name: "Simetria_Y", uy: 0.0}      # y = 0: simetría respecto al eje x
+  - {group_name: "Borde_Carga", ux: 1.0e-4}  # x = W: alargamiento impuesto de 0.1 mm
+
+solver:
+  type: LinearSolver
+
+\end{lstlisting}
+
+\textbf{Los esfuerzos.} El método de desplazamientos da los esfuerzos con más precisión en los puntos de Gauss que en los nodos. El script los evalúa en los cuatro puntos de Gauss de cada elemento con \texttt{gauss\_states} y compara cada uno con el campo de Kirsch en ese mismo punto. Para los valores en la frontera, como $K_t$ o el esfuerzo en el borde del agujero, los extrapola a los nodos con el campo bilineal que pasa por los cuatro valores de Gauss y promedia entre los elementos que comparten el nodo. Es la recuperación nodal habitual de los programas comerciales. La función \texttt{calcular} de \texttt{run.py} hace todo el recorrido:
+
+\begin{lstlisting}[language=Python]
+def calcular() -> dict:
+    domain, _, res = resolver_yaml_estatico(AQUI / "modelo.yaml")
+
+    # Esfuerzo nominal lejano: reacción total en el borde cargado / área.
+    grupo = domain.physical_groups
+    rx = sum(res.reactions_by_node[n]["ux"] for n in grupo["Borde_Carga"])
+    s_inf = rx / (H * ESPESOR)
+
+    # Puntos de Gauss: Solidum frente a Kirsch en el mismo punto.
+    estados = gauss_states(domain, res.U)
+    pts = np.vstack([gs["points_global"] for gs in estados.values()])
+    sig = np.vstack([gs["stress"] for gs in estados.values()])
+    sk = np.column_stack(kirsch(pts[:, 0], pts[:, 1], s_inf))
+    err_pg = np.abs(sig - sk).max(axis=1) / s_inf
+    r_pg = np.hypot(pts[:, 0], pts[:, 1])
+    cercano = r_pg <= R_CERCANO
+    lejano = r_pg > R_LEJANO
+
+    # Esfuerzos nodales recuperados: línea x = 0 y borde del agujero.
+    nodal = esfuerzos_nodales(domain, estados)
+    coords = {nid: np.asarray(domain.nodes[nid].coordinates) for nid in nodal}
+
+    eje = sorted(grupo["Simetria_X"], key=lambda n: coords[n][1])
+    y_eje = np.array([coords[n][1] for n in eje])
+    sxx_eje = np.array([nodal[n][0] for n in eje])
+
+    borde = sorted(grupo["Agujero"], key=lambda n: np.arctan2(coords[n][1], coords[n][0]))
+    th = np.array([np.arctan2(coords[n][1], coords[n][0]) for n in borde])
+    s_b = np.array([nodal[n] for n in borde])
+    c, s = np.cos(th), np.sin(th)
+    stt_b = s_b[:, 0] * s**2 + s_b[:, 1] * c**2 - 2 * s_b[:, 2] * s * c
+    stt_k = s_inf * (1 - 2 * np.cos(2 * th))
+
+    kt = sxx_eje[0] / s_inf        # nodo (0, a): primero de la línea x = 0
+    return {
+        "a": A, "W": W, "H": H, "espesor": ESPESOR,
+        "n_elementos": len(domain.elements), "n_nodos": len(domain.nodes),
+        "n_puntos_gauss": int(len(pts)), "n_puntos_cercanos": int(cercano.sum()),
+        "reaccion_total": rx, "sigma_inf": s_inf, "sigma_inf_MPa": s_inf / 1e6,
+        "Kt": kt, "error_Kt": error_relativo(kt, 3.0),
+        "error_Kt_pct": 100 * (kt - 3.0) / 3.0,
+        "sigma_min_borde": float(stt_b.min() / s_inf),
+        "error_borde_max": float(np.abs(stt_b - stt_k).max() / s_inf),
+        "error_borde_max_pct": float(100 * np.abs(stt_b - stt_k).max() / s_inf),
+        "error_gauss_cercano": float(err_pg[cercano].max()),
+        "error_gauss_cercano_pct": float(100 * err_pg[cercano].max()),
+        "rms_gauss_cercano": float(np.sqrt(np.mean(err_pg[cercano] ** 2))),
+        "rms_gauss_cercano_pct": float(100 * np.sqrt(np.mean(err_pg[cercano] ** 2))),
+        "error_gauss_lejano": float(err_pg[lejano].max()),
+        "error_gauss_lejano_pct": float(100 * err_pg[lejano].max()),
+        "primer_elemento_radial_sobre_a": float(
+            (np.sort(np.hypot(*np.array([domain.nodes[n].coordinates
+                                         for n in grupo["Simetria_Y"]]).T))[1] - A) / A),
+        "eje_y": y_eje, "eje_sxx": sxx_eje,
+        "borde_theta": th, "borde_stt": stt_b,
+    }
+
+\end{lstlisting}
+
+\section{Resultados}
+
+La reacción da $\sigma_\infty =$ 99.41 MPa, algo menos que los 100 MPa de $E\,\bar u/W$, porque el agujero hace a la placa ligeramente más flexible.
+
+\begin{table}[h]
+\centering
+\caption{Placa con agujero: Solidum frente a Kirsch. Errores relativos a $\sigma_\infty$.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Magnitud} & \textbf{Solidum} & \textbf{Kirsch} \\
+\hline
+Factor de concentración $K_t$ & 3.026 & 3 \\
+Mínimo de $\sigma_{\theta\theta}/\sigma_\infty$ en el borde & $-1.011$ & $-1$ \\
+Error máximo de $\sigma_{\theta\theta}$ en el borde & 2.6 \% & --- \\
+Error máximo en puntos de Gauss con $r \le 2a$ & 7.5 \% & --- \\
+Error medio cuadrático en puntos de Gauss con $r \le 2a$ & 2.2 \% & --- \\
+Error máximo en puntos de Gauss con $r > 5a$ & 1.0 \% & --- \\
+\hline
+\end{tabularx}
+\end{table}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/placa_agujero_kirsch/fig_kirsch.pdf}
+\caption{Izquierda: $\sigma_{xx}$ sobre el eje $x = 0$. Derecha: esfuerzo circunferencial en el borde del agujero. Marcadores: valores nodales recuperados de Solidum.}
+\label{fig:placa_agujero_kirsch:kirsch}
+\end{figure}
+
+La \hyperref[fig:placa_agujero_kirsch:kirsch]{figura~\ref*{fig:placa_agujero_kirsch:kirsch}} muestra las dos distribuciones que interesan en diseño. El esfuerzo sobre el eje de simetría decae de tres veces el nominal a prácticamente el nominal en unos cuatro radios, y la concentración es local. En el borde, el esfuerzo circunferencial recorre la curva $1 - 2\cos 2\theta$ entre la compresión en $\theta = 0$ y el máximo en $\theta = 90°$. El factor de concentración calculado, 3.026, está un 0.9 \% por encima de 3.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.58\linewidth]{../examples/placa_agujero_kirsch/fig_campo.pdf}
+\caption{Campo de $\sigma_{xx}/\sigma_\infty$ cerca del agujero, promedio por elemento.}
+\label{fig:placa_agujero_kirsch:campo}
+\end{figure}
+
+\section{Dos fuentes de error}
+
+Los errores de la tabla no tienen un solo origen, y separarlos es lo que este ejemplo enseña.
+
+\begin{itemize}
+  \item \textbf{Error de discretización.} Es el mayor, y se concentra junto al agujero, donde el esfuerzo varía más rápido. Un Quad4 representa los esfuerzos sólo de forma aproximadamente lineal dentro de cada elemento, y junto al agujero $\sigma_{xx}$ cae a la mitad en medio radio. Por eso el primer anillo de elementos tiene un espesor radial de sólo 0.034$\,a$. Este error baja al refinar: al duplicar la densidad de la malla, el error en los puntos de Gauss cercanos se reduce a la mitad y $K_t$ se acerca a 3. El ejemplo 3 estudia esa convergencia en detalle.
+  \item \textbf{Error de modelo.} Lejos del agujero el error se estanca en torno al 1 \%, y refinar no lo reduce. Kirsch supone una placa infinita traccionada por un esfuerzo uniforme; el modelo es una placa finita de $20a \times 20a$ cuyo borde se desplaza uniformemente. Un desplazamiento uniforme no produce una tracción uniforme cuando el agujero perturba el campo. Las dos soluciones responden a problemas distintos, y la diferencia no es un error del programa.
+\end{itemize}
+
+La calidad de la malla también cuenta. Una primera versión de este ejemplo usaba dos parches transfinitos desde el agujero hasta el contorno, sin anillo polar. Sus líneas circunferenciales quedaban quebradas sobre la diagonal y los errores junto a ella eran bastante mayores. El anillo polar mantiene los elementos casi rectangulares donde más importa.
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Refinar la malla cambiando \texttt{N\_ARCO}, \texttt{N\_ANILLO} y \texttt{N\_EXT} en \texttt{malla.py}, regenerarla y volver a resolver: $K_t$ debe acercarse a 3 y el error junto al agujero debe bajar a la mitad con cada duplicación.
+  \item Agrandar la placa, con \texttt{W} y \texttt{H}, para ver cómo baja el error lejano.
+  \item Cambiar el agujero por una elipse de semiejes $b$ en $x$ y $c$ en $y$, y comparar con la solución de Inglis, $K_t = 1 + 2c/b$.
+\end{itemize}
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}placa\_\allowbreak{}agujero\_\allowbreak{}kirsch/\allowbreak{}} contiene el generador de malla \texttt{malla.py}, la malla \texttt{placa\_\allowbreak{}agujero.\allowbreak{}msh}, el modelo \texttt{modelo.yaml}, el script \texttt{run.py}, los resultados en \texttt{resultados.json} y las figuras.
+
+
+\newpage
+
+\chapter{Cilindro de pared gruesa: estudio de convergencia con el API de Python}
+\chaptermark{Cilindro de pared gruesa}
+\label{cap:cilindro_lame}
+
+
+
+
+
+Un modelo de elementos finitos converge a la solución exacta cuando la malla se refina, y lo hace con una rapidez que la teoría predice para cada elemento. Este ejemplo lo comprueba en el cilindro de pared gruesa bajo presión interna, cuya solución cerrada se debe a Lamé. El modelo se construye con el API de Python, sin YAML, lo que permite generar las mallas y repetir el cálculo en un bucle.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Construir un modelo sólido 2D con el API: nodos, elementos, material y apoyos.
+  \item Aplicar una presión sobre un contorno curvo con su vector de cargas consistente.
+  \item Medir errores contra una solución analítica y estimar el orden de convergencia.
+  \item Por qué el esfuerzo converge un orden más despacio que el desplazamiento.
+  \item Cuánto más rinden los elementos cuadráticos que los lineales por grado de libertad.
+\end{itemize}
+
+\section{Planteamiento}
+
+Un tubo largo de acero, con radio interior $R_i = 100$ mm y exterior $R_e = 200$ mm, soporta una presión interna $p = 10$ MPa. Por ser largo y estar impedido axialmente, trabaja en deformación plana. El material tiene $E = 200$ GPa y $\nu = 0.3$. Por simetría se modela un cuarto de la sección, con $u_y = 0$ sobre el eje $x$ y $u_x = 0$ sobre el eje $y$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.55\linewidth]{../examples/cilindro_lame/fig_esquema.pdf}
+\caption{Cuarto de sección modelado, con una malla de $6 \times 6$ cuadriláteros. La presión actúa sobre el contorno interior.}
+\label{fig:cilindro_lame:esquema}
+\end{figure}
+
+\section{Solución analítica}
+
+La solución de Lamé en coordenadas polares es
+
+\[
+\sigma_{rr} = A - \frac{B}{r^2}, \qquad
+\sigma_{\theta\theta} = A + \frac{B}{r^2}, \qquad
+A = \frac{p R_i^2}{R_e^2 - R_i^2}, \quad B = \frac{p R_i^2 R_e^2}{R_e^2 - R_i^2},
+\]
+
+y, en deformación plana,
+
+\[
+u_r = \frac{1+\nu}{E}\left[(1 - 2\nu)\,A\,r + \frac{B}{r}\right], \qquad
+\sigma_{zz} = \nu\,(\sigma_{rr} + \sigma_{\theta\theta}) = 2\nu A .
+\]
+
+El esfuerzo circunferencial es máximo en la cara interior, $\sigma_{\theta\theta}(R_i) =$ 16.67 MPa, y el desplazamiento radial allí vale 9.533 \ensuremath{\mu}m. El esfuerzo axial $\sigma_{zz}$ es constante: Solidum lo calcula en el material, aunque el modelo 2D no lo muestra entre sus tres componentes.
+
+\section{Modelo con el API de Python}
+
+La función \texttt{modelo} construye el cuarto de corona con $n \times n$ celdas en $(r, \theta)$ y cualquiera de los cuatro elementos del estudio: \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Tri3.md}{Tri3} y Quad4, lineales, y Tri6 y \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Quad8.md}{Quad8}, cuadráticos. Los nodos intermedios de los elementos cuadráticos quedan sobre las circunferencias, así que su contorno interior es curvo; el de los lineales es un polígono inscrito.
+
+\begin{lstlisting}[language=Python]
+def modelo(nombre: str, n: int, material=None, cuadratura: str | None = None):
+    """Cuarto de corona con n × n celdas de ``nombre``. Devuelve el dominio,
+    las aristas cargadas ``[(elemento, arista)]`` y los nodos. Por omisión,
+    acero elástico en deformación plana y la cuadratura propia de cada
+    elemento (el ejemplo 4 pasa un material plástico y, para el Quad8,
+    integración reducida ``"2x2"``)."""
+    cls = CLASES[nombre]
+    cuadratico = nombre in ("Tri6", "Quad8")
+    k = 2 if cuadratico else 1          # nodos por celda en cada dirección
+    ni = nj = k * n + 1
+    if material is None:
+        material = Elastic2D(E=E, nu=NU, hypothesis="plane_strain")
+    domain = Domain()
+    nodo = {}
+    for j in range(nj):
+        th = 0.5 * np.pi * j / (nj - 1)
+        for i in range(ni):
+            if nombre == "Quad8" and i % 2 == 1 and j % 2 == 1:
+                continue                    # Quad8 no tiene nodo central
+            r = RI + (RE - RI) * i / (ni - 1)
+            nodo[i, j] = domain.add_node(len(nodo) + 1, [r * np.cos(th), r * np.sin(th)])
+
+    aristas = []
+    for cj in range(n):
+        for ci in range(n):
+            i, j = k * ci, k * cj
+            c1, c2, c3, c4 = nodo[i, j], nodo[i + k, j], nodo[i + k, j + k], nodo[i, j + k]
+            eid = len(domain.elements) + 1
+            if nombre == "Quad4":
+                el = [cls(eid, [c1, c2, c3, c4], material, thickness=1.0,
+                          quadrature=cuadratura)]
+                cara = (el[0], 3)                          # arista c4 → c1, en r = RI
+            elif nombre == "Quad8":
+                m = [nodo[i + 1, j], nodo[i + 2, j + 1], nodo[i + 1, j + 2], nodo[i, j + 1]]
+                el = [cls(eid, [c1, c2, c3, c4] + m, material, thickness=1.0,
+                          quadrature=cuadratura)]
+                cara = (el[0], 3)
+            elif nombre == "Tri3":
+                el = [cls(eid, [c1, c2, c3], material, thickness=1.0),
+                      cls(eid + 1, [c1, c3, c4], material, thickness=1.0)]
+                cara = (el[1], 2)                          # arista c4 → c1
+            else:                                          # Tri6
+                cen = nodo[i + 1, j + 1]
+                el = [cls(eid, [c1, c2, c3, nodo[i + 1, j], nodo[i + 2, j + 1], cen],
+                          material, thickness=1.0),
+                      cls(eid + 1, [c1, c3, c4, cen, nodo[i + 1, j + 2], nodo[i, j + 1]],
+                          material, thickness=1.0)]
+                cara = (el[1], 2)
+            for e in el:
+                domain.add_element(e)
+            if ci == 0:
+                aristas.append(cara)
+
+    for i in range(ni):                    # simetría
+        if (i, 0) in nodo:
+            nodo[i, 0].fix_dof("uy", 0.0)
+        if (i, nj - 1) in nodo:
+            nodo[i, nj - 1].fix_dof("ux", 0.0)
+    domain.generate_equation_numbers()
+    return domain, aristas, nodo
+
+\end{lstlisting}
+
+\textbf{La presión.} El método \texttt{compute\_\allowbreak{}edge\_\allowbreak{}traction} de los elementos sólidos integra una tracción de dirección constante sobre una arista. Una presión no lo es: empuja en la dirección normal al contorno, que cambia a lo largo de una arista curva. La función \texttt{carga\_de\_presion} integra $\int_\Gamma \mathbf N^\top (-p\,\mathbf n)\,d\Gamma$ con tres puntos de Gauss sobre la geometría de cada arista, recta o parabólica:
+
+\begin{lstlisting}[language=Python]
+def carga_de_presion(domain, aristas, p: float) -> np.ndarray:
+    """Vector de cargas consistente con una presión ``p`` sobre las aristas.
+
+    La presión empuja contra la cara: t = −p n, con n la normal exterior del
+    sólido. Se integra ∫ Nᵀ t dΓ sobre la geometría discretizada de cada
+    arista (recta o parabólica), con tres puntos de Gauss: n varía a lo largo
+    de una arista curva, así que no sirve una tracción constante.
+    """
+    F = np.zeros(domain.total_dofs)
+    xg, wg = np.polynomial.legendre.leggauss(3)
+    for el, arista in aristas:
+        loc = el.EDGE_NODES[arista]
+        X = np.array([el.nodes[q].coordinates[:2] for q in loc], dtype=float)
+        dofs = el.get_global_dof_indices()
+        for s, w in zip(xg, wg):
+            if len(loc) == 2:
+                N = np.array([(1 - s) / 2, (1 + s) / 2])
+                dN = np.array([-0.5, 0.5])
+            else:                                          # (extremo, medio, extremo)
+                N = np.array([s * (s - 1) / 2, 1 - s**2, s * (s + 1) / 2])
+                dN = np.array([s - 0.5, -2 * s, s + 0.5])
+            dx, dy = dN @ X
+            # Recorriendo la arista en el sentido del elemento (antihorario), la
+            # normal exterior multiplicada por |J| es (dy, −dx).
+            t = -p * np.array([dy, -dx])
+            for a, q in enumerate(loc):
+                for d in range(2):
+                    g = dofs[2 * q + d]
+                    if g >= 0:
+                        F[g] += w * N[a] * t[d] * el.thickness
+    return F
+
+\end{lstlisting}
+
+Con el dominio y la carga, resolver es una línea: \texttt{LinearSolver(Assembler(domain)).\allowbreak{}solve(F)} devuelve el vector de desplazamientos.
+
+\section{Estudio de convergencia}
+
+Cada elemento se resuelve en mallas de $2 \times 2$ a $64 \times 64$ celdas para los lineales, y hasta $32 \times 32$ para los cuadráticos, que llegan antes a errores muy pequeños. Se miden dos errores relativos:
+
+\begin{itemize}
+  \item en desplazamientos, la media cuadrática del error de $u_r$ en todos los nodos;
+  \item en esfuerzos, la media cuadrática del error de $(\sigma_{rr}, \sigma_{\theta\theta})$ en todos los puntos de Gauss.
+\end{itemize}
+
+Si el error se comporta como $e \approx C\,h^k$, en escala logarítmica es una recta de pendiente $k$, el \textbf{orden de convergencia}. La teoría del método predice, para una interpolación de grado $p$, orden $p+1$ en desplazamientos y $p$ en esfuerzos: los esfuerzos salen de derivar los desplazamientos y pierden un orden.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/cilindro_lame/fig_convergencia.pdf}
+\caption{Error relativo frente al tamaño radial del elemento. Entre paréntesis, la pendiente medida entre las dos mallas más finas.}
+\label{fig:cilindro_lame:convergencia}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Órdenes de convergencia medidos entre las dos mallas más finas y órdenes teóricos.}
+\begin{tabularx}{\textwidth}{YYYYYY}
+\hline
+\textbf{Elemento} & \textbf{$p$} & \textbf{Desplazamiento, medido} & \textbf{Desplazamiento, teórico} & \textbf{Esfuerzo, medido} & \textbf{Esfuerzo, teórico} \\
+\hline
+Tri3 & 1 & 2.01 & 2 & 0.99 & 1 \\
+Quad4 & 1 & 2.00 & 2 & 1.00 & 1 \\
+Tri6 & 2 & 3.48 & 3 & 1.93 & 2 \\
+Quad8 & 2 & 3.99 & 3 & 2.00 & 2 \\
+\hline
+\end{tabularx}
+\end{table}
+Los esfuerzos convergen con el orden teórico en los cuatro elementos. Los desplazamientos lo alcanzan o lo superan. El Quad8 llega a orden 4: en mallas regulares, los valores nodales de algunos elementos convergen más rápido que el campo en su conjunto, un fenómeno conocido como \textbf{superconvergencia}. La teoría garantiza el orden $p+1$; lo que se mide por encima es un regalo de la regularidad de la malla, con el que no conviene contar en mallas arbitrarias.
+
+\section{Lineales frente a cuadráticos}
+
+La \hyperref[fig:cilindro_lame:convergencia]{figura~\ref*{fig:cilindro_lame:convergencia}} muestra la diferencia práctica. Con la malla de $8 \times 8$ celdas, el error en esfuerzos del Quad4 es 7.2 \% y el del Quad8 0.29 \%. Con la malla más fina, de 8450 grados de libertad, el Quad4 todavía queda en 0.90 \%, peor que el Quad8 de $8 \times 8$ con sólo 450 grados de libertad. Cuando el campo de esfuerzos es suave, los elementos cuadráticos alcanzan una precisión dada con muchos menos grados de libertad.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/cilindro_lame/fig_perfiles.pdf}
+\caption{Esfuerzos en los puntos de Gauss con una malla de $4 \times 4$ celdas.}
+\label{fig:cilindro_lame:perfiles}
+\end{figure}
+
+La \hyperref[fig:cilindro_lame:perfiles]{figura~\ref*{fig:cilindro_lame:perfiles}} explica el motivo. Con cuatro Quad4 en el espesor, el esfuerzo de cada elemento no puede seguir la variación $1/r^2$: sus puntos se dispersan alrededor de la curva, sobre todo en $\sigma_{rr}$ cerca de la cara interior. El Quad8, cuyo esfuerzo varía linealmente dentro del elemento, reproduce la solución con la misma malla.
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Repetir el estudio con $\nu = 0.4999$. En deformación plana, casi incompresible, los elementos lineales con integración completa sufren \textbf{bloqueo volumétrico}: el error en desplazamientos crece mucho y la solución sale demasiado rígida.
+  \item Adaptar la función \texttt{modelo} al Quad9, que añade al Quad8 el nodo central de cada celda, y comparar ambos.
+  \item Distorsionar la malla desplazando al azar los nodos interiores. ¿Se mantienen los órdenes medidos? ¿Y la superconvergencia del Quad8?
+\end{itemize}
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}cilindro\_\allowbreak{}lame/\allowbreak{}} contiene el script \texttt{run.py}, que genera las mallas, los resultados en \texttt{resultados.json} y las figuras.
+
+
+\newpage
+
+\chapter{Cilindro elastoplástico: primera fluencia, colapso y bloqueo volumétrico}
+\chaptermark{Cilindro elastoplástico}
+\label{cap:cilindro_elastoplastico}
+
+
+
+
+
+El cilindro del ejemplo anterior, ahora de un material que fluye. Al aumentar la presión, la cara interior plastifica primero; la zona plástica avanza hacia fuera y, cuando alcanza la cara exterior, el tubo ya no admite más presión: ha llegado al colapso plástico. Las dos presiones que marcan ese recorrido tienen expresión cerrada, y el ejemplo las usa para verificar el material de von Mises, el solver de longitud de arco y el comportamiento de cinco elementos en régimen plástico.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Usar un material elastoplástico (\texttt{VonMises2D}) en deformación plana.
+  \item Trazar una curva presión-desplazamiento con el método de longitud de arco, que puede seguir la meseta del colapso.
+  \item Elegir la longitud de arco inicial en la escala del problema.
+  \item Reconocer el \textbf{bloqueo volumétrico} en plasticidad y evitarlo con la elección del elemento.
+\end{itemize}
+
+\section{Planteamiento}
+
+La geometría, la malla y la carga son las del ejemplo 3: radio interior $a = 100$ mm, exterior $b = 200$ mm, un cuarto de sección por simetría y presión interna $p$. El acero es ahora elastoplástico perfecto, sin endurecimiento: $E = 200$ GPa, $\nu = 0.3$ y esfuerzo de fluencia $\sigma_y =$ 240 MPa, con el criterio de von Mises. El tubo trabaja en deformación plana.
+
+\section{Soluciones analíticas}
+
+\textbf{Primera fluencia.} Mientras el material es elástico vale la solución de Lamé. El esfuerzo equivalente de von Mises es máximo en la cara interior, donde, con $\sigma_{zz} = \nu(\sigma_{rr} + \sigma_{\theta\theta})$,
+
+\[
+\sigma_{eq}(a) = \frac{p}{b^2 - a^2}\sqrt{3\,b^4 + (1 - 2\nu)^2\,a^4},
+\qquad
+p_e = \sigma_y\,\frac{b^2 - a^2}{\sqrt{3\,b^4 + (1 - 2\nu)^2\,a^4}} .
+\]
+
+Con los datos del ejemplo, $p_e =$ 103.75 MPa.
+
+\textbf{Colapso.} En el colapso toda la pared fluye y el flujo plástico no cambia el volumen. En deformación plana eso impone $\sigma_{zz} = (\sigma_{rr} + \sigma_{\theta\theta})/2$, y el criterio de von Mises se reduce a $\sigma_{\theta\theta} - \sigma_{rr} = 2\sigma_y/\sqrt 3$. Integrando el equilibrio radial, $d\sigma_{rr}/dr = (\sigma_{\theta\theta} - \sigma_{rr})/r$, entre la cara interior, con $\sigma_{rr} = -p$, y la exterior, libre, resulta
+
+\[
+p_{\mathrm{lim}} = \frac{2}{\sqrt 3}\,\sigma_y \ln\frac{b}{a} .
+\]
+
+Vale 192.09 MPa. Es una carga límite en sentido estricto: por encima de ella no existe equilibrio, y por los teoremas del análisis límite no depende de $E$ ni de $\nu$. La primera fluencia ocurre a una fracción 0.540 de ella.
+
+\section{Modelo en Solidum}
+
+El modelo reutiliza las funciones \texttt{modelo} y \texttt{carga\_de\_presion} del ejemplo 3, con el material plástico:
+
+\begin{lstlisting}[language=Python]
+def trazar(elemento: str, n: int, cuadratura, dl: float = DL, pasos: int = PASOS):
+    """Curva (λ, u_b) con p = λ·p_lim, u_b = desplazamiento radial exterior.
+
+    Devuelve también el esfuerzo medio de los puntos de Gauss en el primer
+    paso con u_b ≥ 1 mm (``None`` si no se llega): un punto fijo del recorrido,
+    comparable entre elementos."""
+    material = VonMises2D(E=E, nu=NU, sigma_y=SY, H=0.0, hypothesis="plane_strain")
+    domain, aristas, nodo = modelo(elemento, n, material=material, cuadratura=cuadratura)
+    F = carga_de_presion(domain, aristas, P_LIM)          # λ = 1 ⇔ presión de colapso
+    assembler = Assembler(domain)
+    solver = ArcLengthSolver(assembler, max_iter=30, max_lambda=1.5,
+                             initial_dl=dl, max_steps=pasos)
+    exterior = nodo[max(i for i, _ in nodo), 0]           # (b, 0)
+    curva, medio = [], []
+
+    def al_converger(paso, U, lam):
+        # El solver llama aquí con el estado ya consolidado (commit).
+        curva.append((lam, U[exterior.dofs["ux"]]))
+        if not medio and curva[-1][1] >= U_LECTURA[1]:
+            medio.append(presion_media(domain))
+
+    solidum.run(domain, assembler=assembler, solver=solver, F_applied=F,
+                step_callback=al_converger)
+    lam, ub = np.array(curva).T
+    return domain, lam, ub, (medio[0] if medio else None)
+
+\end{lstlisting}
+
+La carga de referencia es la presión de colapso, de modo que el factor de carga $\lambda$ que devuelve el solver es directamente $p/p_{\mathrm{lim}}$.
+
+\textbf{Por qué longitud de arco.} El solver de Newton con control de carga (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/NonlinearSolver.md}{NonlinearSolver}) impone el valor de $\lambda$ en cada paso. Cerca del colapso la curva se vuelve horizontal y más allá no hay equilibrio, así que ese esquema no puede recorrerla. El \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/ArcLengthSolver.md}{ArcLengthSolver} convierte $\lambda$ en una incógnita más y avanza una distancia fija, la longitud de arco, en el espacio de desplazamientos y carga. Así sigue la meseta con la carga prácticamente constante y el desplazamiento creciente. Como la meseta nunca llega a \texttt{max\_lambda}, el recorrido termina al agotar \texttt{max\_steps}, y el solver lo avisa.
+
+\begin{warnbox}{Advertencia}
+La longitud de arco inicial \texttt{initial\_dl} es una longitud en las unidades del desplazamiento. Aquí se usa $2\times 10^{-5}$ m, del orden del desplazamiento elástico del tubo. Con el valor por omisión, 0.1 m, el primer paso pide un avance del orden de mil veces ese desplazamiento: el solver aterriza en $\lambda =$ 1.50, por encima del colapso, con un desplazamiento exterior de 0.98 m, 8389 veces el elástico en el colapso. Es un equilibrio del modelo discreto sostenido por esfuerzos hidrostáticos espurios, sin significado físico. Conviene elegir \texttt{initial\_dl} a partir del desplazamiento elástico esperado.
+\end{warnbox}
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/cilindro_elastoplastico/fig_curvas.pdf}
+\caption{Presión frente al desplazamiento radial exterior. Izquierda: curva completa. Derecha: detalle de la meseta de colapso, con la escala vertical ampliada.}
+\label{fig:cilindro_elastoplastico:curvas}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Cilindro elastoplástico. Error de la flexibilidad elástica frente a Lamé y carga relativa $p/p_{\mathrm{lim}}$ con desplazamientos exteriores de 0.5 y 1 mm.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Elemento} & \textbf{Grados de libertad} & \textbf{Error elástico} & \textbf{$p/p_{\mathrm{lim}}$ a 0.5 mm} & \textbf{$p/p_{\mathrm{lim}}$ a 1 mm} \\
+\hline
+Tri3, $8 \times 8$ & 162 & $1.8\times 10^{-2}$ & 1.0036 & 1.0057 \\
+Quad4, $8 \times 8$ & 162 & $4.3\times 10^{-3}$ & 1.0127 & 1.0234 \\
+Tri6, $4 \times 4$ & 162 & $3.0\times 10^{-5}$ & 0.9990 & 1.0000 \\
+Quad8, $4 \times 4$ & 130 & $5.3\times 10^{-5}$ & 1.0000 & 1.0005 \\
+Quad8 con 2\ensuremath{\times}2, $4 \times 4$ & 130 & $5.0\times 10^{-5}$ & 0.9997 & 1.0000 \\
+\hline
+\end{tabularx}
+\end{table}
+La \hyperref[fig:cilindro_elastoplastico:curvas]{figura~\ref*{fig:cilindro_elastoplastico:curvas}} y la tabla muestran tres tramos:
+
+\begin{itemize}
+  \item \textbf{Elástico.} Todas las curvas arrancan sobre la recta de Lamé. Los elementos cuadráticos reproducen su pendiente con un error del orden de $10^{-5}$; el Tri3, el más rígido, la sobrestima un $1.8\times 10^{-2}$.
+  \item \textbf{Elastoplástico.} Las curvas se separan de la recta a partir de $p_e$, cuando la cara interior empieza a fluir, y se curvan a medida que la zona plástica avanza.
+  \item \textbf{Colapso.} Tri6 y los dos Quad8 se aplanan sobre $p_{\mathrm{lim}}$: a 1 mm de desplazamiento la presión está a menos de $10^{-3}$ de la analítica. El Tri3 también forma una meseta, un $5.7\times 10^{-3}$ por encima. El Quad4 no la forma: gana un $1.1\times 10^{-2}$ de carga entre 0.5 y 1 mm, y sigue subiendo hasta el final del recorrido.
+\end{itemize}
+
+\section{Bloqueo volumétrico}
+
+La deformación plástica no cambia el volumen. En el colapso, el mecanismo del tubo es un flujo radial isocórico, y el modelo sólo puede seguirlo si sus funciones de forma admiten un campo de desplazamiento sin cambio de volumen en los puntos de integración que fluyen. El Quad4 con integración completa impone esa condición en sus cuatro puntos de Gauss, más de las que su interpolación bilineal puede satisfacer, y el mecanismo discreto resulta más rígido que el real. Es el \textbf{bloqueo volumétrico}, descrito por Nagtegaal, Parks y Rice en 1974 precisamente para el régimen totalmente plástico.
+
+El síntoma se ve en el esfuerzo medio, $(\sigma_{xx} + \sigma_{yy} + \sigma_{zz})/3$. En el colapso exacto vale $\sigma_{rr} + \sigma_y/\sqrt3$, entre $-54$ MPa en la cara interior y 139 MPa en la exterior. Con 1 mm de desplazamiento exterior, el Quad4 tiene puntos de Gauss entre $-224$ y 171 MPa: una presión espuria, que el criterio de von Mises no limita porque sólo acota la parte desviadora del esfuerzo. El Tri6 y los dos Quad8 quedan dentro del intervalo exacto, salvo el error de discretización.
+
+El bloqueo no es un error del programa ni del material: el mapeo de retorno respeta la superficie de fluencia en todos los puntos y el equilibrio se cumple. Es una propiedad del elemento, y se evita eligiéndolo bien:
+
+\begin{itemize}
+  \item Los elementos cuadráticos, Tri6 y Quad8, no muestran bloqueo apreciable en este problema.
+  \item El Quad8 con integración reducida 2\ensuremath{\times}2, que impone la condición en cuatro puntos en vez de nueve, da la meseta más plana. En el API se elige con el argumento \texttt{quadrature=\textquotedbl{}2x2\textquotedbl{}} del elemento, y en un YAML con elementos declarados uno a uno, con la clave \texttt{quadrature} de cada elemento.
+  \item Solidum no tiene todavía formulaciones contra el bloqueo para el Quad4, como la B-barra o las mixtas desplazamiento-presión. Para plasticidad en deformación plana, o para materiales casi incompresibles, conviene usar elementos cuadráticos.
+\end{itemize}
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Añadir endurecimiento, \texttt{H \textgreater{} 0} en \texttt{VonMises2D}, y observar que la meseta se inclina: $p_{\mathrm{lim}}$ deja de ser una carga límite.
+  \item Intentar superar $p_{\mathrm{lim}}$ con \texttt{NonlinearSolver} y control de carga. ¿Qué hace el solver cuando no hay equilibrio?
+  \item Refinar la malla del Quad4. ¿Desaparece el bloqueo?
+\end{itemize}
+
+\textbf{Referencias.} R. Hill, \textit{The Mathematical Theory of Plasticity}, Oxford, 1950, cap. V. J. C. Nagtegaal, D. M. Parks y J. R. Rice, \textquotedbl{}On numerically accurate finite element solutions in the fully plastic range\textquotedbl{}, \textit{Computer Methods in Applied Mechanics and Engineering} 4 (1974) 153-177. E. A. de Souza Neto, D. Perić y D. R. J. Owen, \textit{Computational Methods for Plasticity}, Wiley, 2008, §7.5.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}cilindro\_\allowbreak{}elastoplastico/\allowbreak{}} contiene el script \texttt{run.py}, que construye el modelo con las funciones del ejemplo 3, los resultados en \texttt{resultados.json} y la figura.
+
+
+\newpage
+
+\clearpage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{center}
+\rule{0.4\textwidth}{0.4pt}\\[1em]
+{\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
+Sigla del manual: \texttt{FF-ME}\\[0.5em]
+Compilado el 23 de septiembre de 2026, 11:49\\[0.5em]
+Commit Git: \texttt{b8d73af}\\[1em]
+\rule{0.4\textwidth}{0.4pt}\\[2em]
+\parbox{0.75\textwidth}{\small\itshape\centering
+Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
+\end{center}
+\vspace*{\fill}
+
+\end{document}
