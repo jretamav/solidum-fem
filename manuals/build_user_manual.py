@@ -37,7 +37,10 @@ from build_reference_manual import (  # noqa: E402
 )
 
 
-PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
+# Plantilla compartida con el manual de ejemplos (build_example_manual.py):
+# mismo aspecto, distinta portada. Los marcadores <<…>> se sustituyen en
+# build_preamble(); no se usa str.format porque las llaves de LaTeX chocarían.
+PREAMBLE_TEMPLATE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 % Motor: lualatex (Unicode nativo, sin necesidad de inputenc/fontenc).
 \usepackage{fontspec}
@@ -105,7 +108,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
     colorlinks=true,
     linkcolor=yamlkey,
     urlcolor=yamlkey,
-    pdftitle={Manual de Usuario - Solidum FEM},
+    pdftitle={<<TITULO>> - Solidum FEM},
     pdfauthor={Jaime Retama Velasco}
 }
 
@@ -119,10 +122,10 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- Usuario}}
+\fancyhead[L]{\textbf{\color{darkgray}Solidum FEM --- <<CABECERA>>}}
 \fancyhead[R]{\color{darkgray}\nouppercase{\leftmark}}
 \fancyfoot[C]{\thepage}
-\fancyfoot[R]{\footnotesize\color{darkgray}FF-MU}
+\fancyfoot[R]{\footnotesize\color{darkgray}<<SIGLA>>}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0.4pt}
 
@@ -176,14 +179,13 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
     \vspace{1cm}
     {\LARGE Plataforma de Análisis por Elementos Finitos en Python \par}
     \vspace{0.3cm}
-    {\normalsize\color{darkgray} Sigla: \texttt{FF-MU} \par}
+    {\normalsize\color{darkgray} Sigla: \texttt{<<SIGLA>>} \par}
     \vspace{0.5cm}
     \rule{\linewidth}{0.5mm} \par
     \vspace{2cm}
-    {\huge\bfseries Manual de Usuario \par}
+    {\huge\bfseries <<TITULO>> \par}
     \vspace{2cm}
-    {\large Sintaxis del archivo YAML, catálogos de componentes,\\
-            ejemplos completos y workflow de ejecución\par}
+    {\large <<SUBTITULO>>\par}
     \vspace{1cm}
     {\Large \textbf{Autor:} Jaime Retama Velasco \par}
     \vspace{0.5cm}
@@ -199,7 +201,27 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \chapter*{Sobre este manual}
 \addcontentsline{toc}{chapter}{Sobre este manual}
-\noindent Este manual está dirigido al \textbf{usuario final} de Solidum FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
+<<SOBRE>>\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+"""
+
+
+def build_preamble(*, titulo: str, sigla: str, cabecera: str, subtitulo: str,
+                   sobre: str, subject: str, keywords: str) -> str:
+    """Preámbulo completo (portada, índice y página "Sobre este manual")."""
+    pre = PREAMBLE_TEMPLATE
+    for marker, value in (("<<TITULO>>", titulo), ("<<SIGLA>>", sigla),
+                          ("<<CABECERA>>", cabecera), ("<<SUBTITULO>>", subtitulo),
+                          ("<<SOBRE>>", sobre)):
+        assert marker in pre, marker
+        pre = pre.replace(marker, value)
+    pre = with_font_setup(pre)  # respaldo de glifos, ver build_reference_manual
+    return with_screen_setup(pre, subject=subject, keywords=keywords)
+
+
+SOBRE_USUARIO = r"""\noindent Este manual está dirigido al \textbf{usuario final} de Solidum FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
 
 Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
 
@@ -210,14 +232,15 @@ Este manual se regenera con:
 
 \noindent No editar este PDF manualmente; cualquier corrección debe hacerse sobre los archivos fuente en \texttt{manuals/sources/user/}.
 
-\newpage
-\pagenumbering{arabic}
-\setcounter{page}{1}
-
 """
-PREAMBLE = with_font_setup(PREAMBLE)  # respaldo de glifos, ver build_reference_manual
-PREAMBLE = with_screen_setup(
-    PREAMBLE,
+
+PREAMBLE = build_preamble(
+    titulo="Manual de Usuario",
+    sigla="FF-MU",
+    cabecera="Usuario",
+    subtitulo="Sintaxis del archivo YAML, catálogos de componentes,\\\\\n"
+              "            ejemplos completos y workflow de ejecución",
+    sobre=SOBRE_USUARIO,
     subject="Guía de uso de Solidum FEM: YAML, análisis, resultados y diagnóstico",
     keywords="elementos finitos, mecánica de sólidos, manual de usuario, YAML, Solidum FEM",
 )
@@ -320,7 +343,9 @@ def get_git_dirty() -> bool:
     return False
 
 
-def build_colofon() -> str:
+def build_colofon(*, titulo: str = "Manual de Usuario", sigla: str = "FF-MU",
+                  fuentes: str = "los archivos fuente en \\texttt{manuals/sources/user/}",
+                  script: str = "build\\_user\\_manual.py") -> str:
     """Página final con metadatos: commit, fecha, sigla."""
     commit = get_git_commit()
     dirty = " (con cambios sin confirmar)" if get_git_dirty() else ""
@@ -340,15 +365,14 @@ def build_colofon() -> str:
         "\\vspace*{\\fill}\n"
         "\\begin{center}\n"
         "\\rule{0.4\\textwidth}{0.4pt}\\\\[1em]\n"
-        "{\\bfseries\\color{yamlkey} Solidum FEM --- Manual de Usuario}\\\\[0.5em]\n"
-        f"Sigla del manual: \\texttt{{FF-MU}}\\\\[0.5em]\n"
+        f"{{\\bfseries\\color{{yamlkey}} Solidum FEM --- {titulo}}}\\\\[0.5em]\n"
+        f"Sigla del manual: \\texttt{{{sigla}}}\\\\[0.5em]\n"
         f"Compilado el {fecha}\\\\[0.5em]\n"
         f"Commit Git: \\texttt{{{commit}}}{dirty}\\\\[1em]\n"
         "\\rule{0.4\\textwidth}{0.4pt}\\\\[2em]\n"
         "\\parbox{0.75\\textwidth}{\\small\\itshape\\centering\n"
-        "Documento generado automáticamente desde los archivos fuente en "
-        "\\texttt{manuals/sources/user/} mediante "
-        "\\texttt{python manuals/build\\_user\\_manual.py}. "
+        f"Documento generado automáticamente desde {fuentes} mediante "
+        f"\\texttt{{python manuals/{script}}}. "
         "No editar directamente el PDF: cualquier corrección debe realizarse "
         "sobre el archivo fuente correspondiente y regenerar el manual.}\n"
         "\\end{center}\n"

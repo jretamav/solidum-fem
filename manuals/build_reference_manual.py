@@ -16,6 +16,7 @@ Salida:
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -316,6 +317,14 @@ LATEX_ESCAPE_TEXT = {
     # compilación con "Missing $ inserted".
     "^": r"\textasciicircum{}",
     "~": r"\textasciitilde{}",
+    # `"`, `<` y `>` son atajos activos de babel en español ("a, "e, <<, >>).
+    # Medido 2026-09-23: `frequency: "all_steps"` salía `.all_steps"` y
+    # `"Elastic1D"` salía `.Elastic1D"` en los PDF, sin error de compilación;
+    # dentro de \texttt, `{"ux": …}` abortaba ("Bad character code") y
+    # `<carpeta>` pasaba el resto del párrafo a versalitas.
+    '"': r"\textquotedbl{}",
+    "<": r"\textless{}",
+    ">": r"\textgreater{}",
 }
 
 
@@ -345,13 +354,16 @@ _ADR_FILES: dict[str, str] = {}
 
 def set_link_context(*, source: Path | None = None, manual: str | None = None,
                      internal_specs=None, internal_adrs=None,
-                     heading_offset: int | None = None) -> None:
+                     heading_offset: int | None = None,
+                     label_prefix: str | None = None) -> None:
     """Fija el contexto con el que ``md_to_latex`` resuelve los enlaces.
 
     ``source`` es el archivo Markdown que se convierte (para resolver las rutas
-    relativas); ``manual`` es ``"reference"``, ``"user"`` o ``"architecture"``;
-    ``internal_specs`` / ``internal_adrs`` son los destinos que existen dentro
-    del manual que se compila (el resto va a GitHub)."""
+    relativas); ``manual`` es ``"reference"``, ``"user"``, ``"architecture"`` o
+    ``"examples"``; ``internal_specs`` / ``internal_adrs`` son los destinos que
+    existen dentro del manual que se compila (el resto va a GitHub).
+    ``label_prefix`` separa las etiquetas de figura de cada capítulo: dos
+    ejemplos pueden llamar ``diagramas`` a su figura sin chocar."""
     if source is not None:
         _LINK_CTX["source_dir"] = Path(source).resolve().parent
         _LINK_CTX["source_name"] = Path(source).name
@@ -363,6 +375,8 @@ def set_link_context(*, source: Path | None = None, manual: str | None = None,
         _LINK_CTX["internal_adrs"] = set(internal_adrs)
     if heading_offset is not None:
         _LINK_CTX["heading_offset"] = int(heading_offset)
+    if label_prefix is not None:
+        _LINK_CTX["label_prefix"] = label_prefix
 
 
 def _adr_file(num: str) -> str | None:
@@ -379,6 +393,7 @@ def _href(url: str, text: str) -> str:
 def _unescape_url(url: str) -> str:
     """Deshace el escape LaTeX que el conversor ya aplicó a la URL."""
     for esc, ch in (("\\textasciicircum{}", "^"), ("\\textasciitilde{}", "~"),
+                    ("\\textquotedbl{}", '"'), ("\\textless{}", "<"), ("\\textgreater{}", ">"),
                     ("\\_", "_"), ("\\#", "#"), ("\\%", "%"), ("\\&", "&"), ("\\$", "$")):
         url = url.replace(esc, ch)
     return url.strip()
@@ -449,6 +464,11 @@ def report_broken_links() -> None:
             print(f"      {src}: {dst}")
 
 
+def _fig_label(name: str) -> str:
+    prefix = _LINK_CTX.get("label_prefix") or ""
+    return f"fig:{prefix}:{name}" if prefix else f"fig:{name}"
+
+
 def _save(content: str, prefix: str, store: dict, counter: list[int]) -> str:
     key = f"@@{prefix}{counter[0]}@@"
     counter[0] += 1
@@ -515,6 +535,40 @@ def md_to_latex(md: str) -> str:
     # el bloque y el callout cayese al fallback de `lstlisting` generico.
     md = re.sub(r"```([^\n]*)\n(.*?)```", _code_block, md, flags=re.DOTALL)
 
+    # 1a'. Figuras (2026-09-23, manual de ejemplos). Una línea sola
+    #      ``![pie](ruta){#fig:nombre width=80%}`` — sintaxis de
+    #      pandoc-crossref; el bloque {…} es opcional. La ruta es relativa a la
+    #      fuente Markdown, y si apunta a un .png con un .pdf hermano se usa el
+    #      PDF (vectorial, nítido a cualquier zoom en pantalla); así la misma
+    #      fuente se ve en GitHub (PNG) y en el manual (PDF). Una figura que no
+    #      existe aborta aquí: LaTeX abortaría igual, con un mensaje peor.
+    def _figure(m: re.Match) -> str:
+        caption, path, attrs = m.group(1).strip(), m.group(2), m.group(3) or ""
+        target = (_LINK_CTX["source_dir"] / path).resolve()
+        if target.suffix.lower() == ".png" and target.with_suffix(".pdf").exists():
+            target = target.with_suffix(".pdf")
+        if not target.exists():
+            raise FileNotFoundError(
+                f"md_to_latex: figura inexistente {path!r} en {_LINK_CTX.get('source_name', '?')}")
+        rel = os.path.relpath(target, OUT_DIR).replace(os.sep, "/")
+        width = re.search(r"width=(\d+(?:\.\d+)?)%", attrs)
+        frac = float(width.group(1)) / 100 if width else 0.9
+        label = re.search(r"#fig:([\w-]+)", attrs)
+        # [H]: la figura va donde la cita el texto. En pantalla se lee en
+        # scroll continuo, así que un hueco al pie de página molesta menos que
+        # una figura que flota a la página siguiente.
+        out = ["\\begin{figure}[H]", "\\centering",
+               f"\\includegraphics[width={frac:g}\\linewidth]{{{rel}}}"]
+        if caption:
+            out.append(f"\\caption{{{md_to_latex(caption).strip()}}}")
+        if label:
+            out.append(f"\\label{{{_fig_label(label.group(1))}}}")
+        out.append("\\end{figure}")
+        return _save("\n".join(out), "FIG", placeholders, counter)
+
+    md = re.sub(r"^!\[([^\]]*)\]\(([^)\s]+)\)(\{[^}\n]*\})?[ \t]*$", _figure, md,
+                flags=re.MULTILINE)
+
     # 1b. Math display $$...$$
     def _math_display(m: re.Match) -> str:
         body = m.group(1).strip()
@@ -544,19 +598,34 @@ def md_to_latex(md: str) -> str:
         # glifos ASCII normales sin entrar en modo matemático.
         body = body.replace("^", r"\textasciicircum{}")
         body = body.replace("~", r"\textasciitilde{}")
+        # Atajos activos de babel en español: ver LATEX_ESCAPE_TEXT.
+        body = body.replace('"', r"\textquotedbl{}")
+        body = body.replace("<", r"\textless{}").replace(">", r"\textgreater{}")
         # Sustituir Unicode dentro del inline code (no llega la fase 4)
         for ch, cmd in UNICODE_MAP.items():
             body = body.replace(ch, cmd)
         # Rutas y nombres largos (``solidum/math/linalg/iterative.py``,
         # ``ITERATIVE_MAX_RESTARTS``) no tienen dónde partirse y desbordaban
         # el margen. Se permite cortar tras '/', '.' y '_' sólo en los largos.
-        if len(m.group(1)) > 22:
+        # Umbral 16 (antes 22): varias rutas medianas seguidas
+        # ("placa_agujero.msh", "resultados.json") también desbordaban.
+        if len(m.group(1)) > 16:
             body = (body.replace("/", "/\\allowbreak{}")
                         .replace(".", ".\\allowbreak{}")
                         .replace("\\_", "\\_\\allowbreak{}"))
         return _save(f"\\texttt{{{body}}}", "ICODE", placeholders, counter)
 
     md = re.sub(r"`([^`\n]+?)`", _inline_code, md)
+
+    # 1d'. Referencias a figura: ``@fig:nombre`` → "figura N" enlazada (con
+    #      ``@Fig:`` → "Figura N", para principio de frase).
+    def _fig_ref(m: re.Match) -> str:
+        word = "Figura" if m.group(1) == "Fig" else "figura"
+        label = _fig_label(m.group(2))
+        return _save(f"\\hyperref[{label}]{{{word}~\\ref*{{{label}}}}}", "FREF",
+                     placeholders, counter)
+
+    md = re.sub(r"(?<![@\w])@(fig|Fig):([\w-]+)", _fig_ref, md)
 
     # 1e. Tablas estilo pipe Markdown.
     #     Patron: una linea de cabecera "| a | b |", separador "|---|---|"
@@ -705,8 +774,8 @@ def md_to_latex(md: str) -> str:
     # Reglas horizontales
     md = re.sub(r"^---+\s*$", "", md, flags=re.MULTILINE)
 
-    # Blockquotes simples (> texto)
-    md = re.sub(r"^>\s*(.+)$", r"\\textit{\1}\n", md, flags=re.MULTILINE)
+    # Blockquotes simples (> texto); el `>` ya llega escapado.
+    md = re.sub(r"^\\textgreater\{\}\s*(.+)$", r"\\textit{\1}\n", md, flags=re.MULTILINE)
 
     # Listas con viñeta — bloque de líneas consecutivas iniciadas por `- ` o `* `
     def _itemize(match: re.Match) -> str:
@@ -795,17 +864,24 @@ SCREEN_GEOMETRY = (r"\usepackage[paperwidth=19.2cm, paperheight=25.6cm, hmargin=
 
 def code_block_characters() -> list[str]:
     """Caracteres no ASCII que aparecen dentro de bloques ``` de todas las
-    fuentes de los tres manuales (specs, catálogos, anexos, capítulos)."""
+    fuentes de los manuales (specs, catálogos, anexos, capítulos), más los
+    archivos de ``examples/`` que el manual de ejemplos incrusta enteros como
+    listado (``{{yaml:…}}``, ``{{py:…}}``)."""
     files = (list((ROOT / "docs" / "specs").glob("*.md"))
              + list((ROOT / "docs").glob("catalogo_*.md"))
              + list((ROOT / "manuals" / "sources").rglob("*.md")))
+    embedded = (list((ROOT / "examples").glob("*/*.yaml"))
+                + list((ROOT / "examples").glob("*/*.py")))
     chars: set[str] = set()
-    for f in files:
-        for block in re.findall(r"```[^\n]*\n(.*?)```", f.read_text(encoding="utf-8"), flags=re.DOTALL):
-            # Sin marcas combinantes (categoría Mn): declaradas como un carácter
-            # de una columna se separarían de la letra a la que acentúan.
-            chars.update(c for c in block if ord(c) > 127 and not c.isspace()
-                         and unicodedata.category(c) != "Mn")
+    blocks = [b for f in files
+              for b in re.findall(r"```[^\n]*\n(.*?)```", f.read_text(encoding="utf-8"),
+                                  flags=re.DOTALL)]
+    blocks += [f.read_text(encoding="utf-8") for f in embedded]
+    for block in blocks:
+        # Sin marcas combinantes (categoría Mn): declaradas como un carácter
+        # de una columna se separarían de la letra a la que acentúan.
+        chars.update(c for c in block if ord(c) > 127 and not c.isspace()
+                     and unicodedata.category(c) != "Mn")
     return sorted(chars)
 
 
@@ -814,13 +890,23 @@ def with_screen_setup(preamble: str, *, subject: str, keywords: str) -> str:
     for old, new in (
         ("\\documentclass[11pt,letterpaper,oneside]{report}", "\\documentclass[11pt,oneside]{report}"),
         ("\\usepackage[margin=2.5cm, headheight=15pt]{geometry}", SCREEN_GEOMETRY),
+        # es-nodecimaldot: babel en español cambia el punto decimal por coma
+        # sólo dentro de las fórmulas, y el texto, las tablas y el código usan
+        # punto. Medido 2026-09-23: "0.78 %" en el texto y "1 + 0,78 (h/L)²"
+        # en la ecuación del mismo párrafo.
+        ("\\usepackage[spanish,es-tabla]{babel}",
+         "\\usepackage[spanish,es-tabla,es-nodecimaldot]{babel}"),
     ):
         assert preamble.count(old) == 1, old
         preamble = preamble.replace(old, new, 1)
     mono = "\\setmonofont{Latin Modern Mono}[RawFeature={fallback=solidummono}]\n"
     assert preamble.count(mono) == 1
+    # graphicx + float: las figuras que emite md_to_latex (`![…](…)`) usan
+    # \includegraphics y la colocación [H]; cargados en todos los manuales
+    # para que el conversor no dependa de qué preámbulo lo invoca.
     preamble = preamble.replace(
-        mono, mono + "\\usepackage[protrusion=true,expansion=true]{microtype}\n", 1)
+        mono, mono + "\\usepackage[protrusion=true,expansion=true]{microtype}\n"
+              "\\usepackage{graphicx}\n\\usepackage{float}\n", 1)
     # Caracteres no ASCII en bloques de código: sin declararlos en `literate`,
     # listings no sabe que ocupan una columna y los recoloca (medido:
     # "(|ε| ≲ 1e-2)" salía "ε(|| ≲ 1e-2)"). Se declaran todos los que
