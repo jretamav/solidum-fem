@@ -24,13 +24,43 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
-from solidum.math.convergence import (
-    ConvergenceCriterion,
-    stiffness_diag_scale,
-)
+from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log
-from solidum.math.solvers.arclength import ArcLengthSolver
+from solidum.math.solvers.arclength import ArcLengthSolver, _ArcProblem
+from solidum.math.solvers.corrector import CorrectionAborted
 from solidum.registry import SolverRegistry
+
+
+class _DissipationArcProblem(_ArcProblem):
+    """``_ArcProblem`` con el modo ``"dissipation"``: restricción lineal de
+    Gutiérrez en ``ddλ`` (ver :class:`DissipationArcLengthSolver`). Los
+    modos ``"newton"`` y ``"cylindrical"`` se heredan del padre."""
+
+    def __init__(self, *args, tau: float, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tau = float(tau)
+
+    def constraint(self, x, du_R, du_t):
+        if self.mode != "dissipation":
+            return super().constraint(x, du_R, du_t)
+        _, lambda_iter, dU_iter = x
+        F_ext_ref = self.F_ext_ref
+        # Restricción lineal Gutiérrez en ddλ:
+        #   g(ΔU + du_R + ddλ·du_t, Δλ_pre + ddλ) = τ
+        # ⇒ ddλ = (τ − g_partial) / α
+        d_lambda_pre = lambda_iter - self.lambda_curr
+        alpha = 0.5 * (
+            self.lambda_curr * float(F_ext_ref @ du_t)
+            - float(F_ext_ref @ self.U_current)
+        )
+        g_partial = 0.5 * (
+            self.lambda_curr * float(F_ext_ref @ (dU_iter + du_R))
+            - d_lambda_pre * float(F_ext_ref @ self.U_current)
+        )
+        if abs(alpha) < ZERO_TOL:
+            raise CorrectionAborted("α ≈ 0 en corrector de disipación. Aborto del paso.")
+        ddlambda = (self.tau - g_partial) / alpha
+        return du_R + ddlambda * du_t, ddlambda
 
 
 @SolverRegistry.register
@@ -189,9 +219,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         )
 
         cs = self.assembler.constraint_set
-        n_free = ndof - len(cs)
         free_dofs = cs.free_dofs(ndof)
-        self._linalg = self._make_linalg(n_free)
         steps_done = 0
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
@@ -200,42 +228,17 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 f"[PASO {step}] modo={self._mode!s} dl={dl:.4e} tau={self._tau:.4e}"
             )
 
-            U_iter = U_current.copy()
-            lambda_iter = lambda_curr
-            converged = False
-
             # ADR 0010 §5: hook de preparación de paso.
             self.assembler.prepare_all_steps(U_current)
 
             # --- 1. PREDICTOR ---
-            K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-
-            if not self.convergence.is_calibrated:
-                force_scale = max(
-                    np.linalg.norm(F_ext_ref),
-                    np.linalg.norm(F_int_global),
-                    1.0,
-                )
-                K_diag = stiffness_diag_scale(K_global)
-                disp_scale = force_scale / K_diag
-                self.convergence.calibrate(force_scale, disp_scale)
-
-            K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
-                K_global, F_ext_ref.copy(),
-            )
-            try:
-                du_t_red = self._solve(K_t_red, F_t_red)
-            except RuntimeError:
+            pred = self._tangent_predictor(U_current, F_ext_ref, delta_U_step, step)
+            if pred is None:
                 _log.error("Matriz singular en predictor. Bisección...")
                 dl /= 2.0
                 self._tau /= 2.0
                 continue
-            du_t = self.assembler.expand(du_t_red, T_t, g_t)
-
-            # Sentido del avance.
-            sign = 1.0
-            if step > 1 and np.dot(delta_U_step, du_t) < 0:
-                sign = -1.0
+            du_t, sign = pred
 
             # dlambda según modo activo.
             mode_predictor = self._mode
@@ -303,191 +306,109 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             if final_step:
                 dlambda = self.max_lambda - lambda_curr
 
-            lambda_iter += dlambda
             dU_iter = dlambda * du_t
-            U_iter += dU_iter
-            dU_update = dU_iter.copy()  # incremento que produjo el iterado corriente
-            n_solves = 0
+            x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
             # --- 2. CORRECTOR ITERATIVO ---
-            # Un ensamblaje por iteración y convergencia evaluada ANTES de
-            # resolver (misma estructura que el padre): al converger, el
-            # estado trial es el del ensamblaje en U_iter y se comitea
-            # coherente con (U_current, lambda_curr).
-            for iteration in range(self.max_iter + 1):
-                K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-                R = lambda_iter * F_ext_ref - F_int_global
+            # Mismo corrector compartido que el padre; sólo cambia la
+            # restricción del modo activo (cierre exacto: Newton puro).
+            problem = _DissipationArcProblem(
+                self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+                mode="newton" if final_step else mode_predictor, dl=dl, tau=self._tau,
+            )
+            res = self.corrector.run(
+                problem, x0, check_initial=True,
+                initial_delta_norm=float(np.linalg.norm(dU_iter)),
+            )
 
-                ref_force = max(
-                    np.linalg.norm(F_ext_ref) * abs(lambda_iter),
-                    np.linalg.norm(F_int_global),
-                )
-                state = self.convergence.evaluate(
-                    residual_norm=np.linalg.norm(R[free_dofs]),
-                    ref_force=ref_force,
-                    delta_u_norm=np.linalg.norm(dU_update),
-                    u_norm=np.linalg.norm(U_iter),
+            if res.converged:
+                U_iter, lambda_iter, dU_iter = res.x
+                # Disipación del paso completo (post-corrección).
+                dU_step_total = U_iter - U_current
+                dlambda_step_total = lambda_iter - lambda_curr
+                dE_d = self._dissipation_increment(
+                    lambda_curr, U_current, F_ext_ref,
+                    dU_step_total, dlambda_step_total,
                 )
                 _log.info(
-                    f"  Iter. {n_solves:2d} | lam={lambda_iter:.4f} | "
-                    f"R/tol_F: {state.ratio_force:.4e} | "
-                    f"dU/tol_d: {state.ratio_disp:.4e}"
+                    f"  -> CONV. lam={lambda_iter:.4f} ΔE_d={dE_d:.4e}"
                 )
 
-                if state.converged:
-                    # Disipación del paso completo (post-corrección).
-                    dU_step_total = U_iter - U_current
-                    dlambda_step_total = lambda_iter - lambda_curr
-                    dE_d = self._dissipation_increment(
-                        lambda_curr, U_current, F_ext_ref,
-                        dU_step_total, dlambda_step_total,
-                    )
-                    _log.info(
-                        f"  -> CONV. lam={lambda_iter:.4f} ΔE_d={dE_d:.4e}"
-                    )
-
-                    self.assembler.commit_all_states()
-
-                    # Switching cilíndrico ↔ disipación tras commit.
-                    ref_energy = max(
-                        np.linalg.norm(F_ext_ref) * np.linalg.norm(U_iter),
-                        1.0,
-                    )
-                    dE_threshold = self.dissipation_threshold * ref_energy
-                    if self._mode == "cylindrical":
-                        if dE_d > dE_threshold:
-                            _log.info(
-                                f"  Switch cilíndrico→disipación "
-                                f"(ΔE_d={dE_d:.3e} > {dE_threshold:.3e})"
-                            )
-                            self._mode = "dissipation"
-                            # Inicializa τ con la disipación recién observada
-                            # para continuidad del primer paso disipativo.
-                            self._tau = max(dE_d, self.initial_tau)
-                    else:  # _mode == "dissipation"
-                        if dE_d < dE_threshold:
-                            _log.info(
-                                f"  Switch disipación→cilíndrico "
-                                f"(ΔE_d={dE_d:.3e} < {dE_threshold:.3e})"
-                            )
-                            self._mode = "cylindrical"
-
-                    # Adaptatividad según el modo del **siguiente** paso.
-                    if self._mode == "cylindrical":
-                        if n_solves < self.dl_grow_iter_threshold:
-                            dl = min(
-                                dl * self.dl_grow_factor,
-                                self.dl * self.dl_max_factor,
-                            )
-                        elif n_solves > self.dl_shrink_iter_threshold:
-                            dl *= self.dl_shrink_factor
-                    else:
-                        if n_solves < self.tau_grow_iter_threshold:
-                            self._tau = min(
-                                self._tau * self.tau_grow_factor,
-                                self.initial_tau * self.tau_max_factor,
-                            )
-                        elif n_solves > self.tau_shrink_iter_threshold:
-                            self._tau *= self.tau_shrink_factor
-
-                    U_current = U_iter
-                    lambda_curr = lambda_iter
-                    delta_U_step = dU_iter
-                    converged = True
-                    steps_done += 1
-
-                    if step_callback is not None:
-                        step_callback(step, U_current, lambda_curr)
-                    break
-
-                if iteration == self.max_iter:
-                    break  # presupuesto de resoluciones agotado
-
-                K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
-                    K_global, F_ext_ref.copy(),
+                # Switching cilíndrico ↔ disipación tras commit.
+                ref_energy = max(
+                    np.linalg.norm(F_ext_ref) * np.linalg.norm(U_iter),
+                    1.0,
                 )
-                K_red, R_red, T_R, g_R = self.assembler.reduce(
-                    K_global, R, U_current=U_iter, load_factor=lambda_iter,
-                )
-                try:
-                    du_R_red = self._solve(K_red, R_red)
-                    du_t_red = self._solve(K_t_red, F_t_red)
-                except RuntimeError:
-                    _log.error("Matriz singular en corrector.")
-                    break
-                n_solves += 1
-                du_R = self.assembler.expand(du_R_red, T_R, g_R)
-                du_t = self.assembler.expand(du_t_red, T_t, g_t)
-
-                if final_step:
-                    # Cierre exacto: lambda fijo, corrección puramente Newton.
-                    ddlambda = 0.0
-                    dU_update = du_R
-                    dU_iter = dU_iter + dU_update
-                elif mode_predictor == "cylindrical":
-                    # Restricción cuadrática (idéntica al padre).
-                    dU_new = dU_iter + du_R
-                    a = np.dot(du_t, du_t)
-                    b = 2.0 * np.dot(dU_new, du_t)
-                    c = np.dot(dU_new, dU_new) - dl**2
-                    det = b**2 - 4.0 * a * c
-                    if det < 0:
-                        _log.error("Raíces imaginarias en cilíndrico.")
-                        break
-                    ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
-                    ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
-                    theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
-                    theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
-                    ddlambda = ddl1 if theta1 > theta2 else ddl2
-                    dU_update = du_R + ddlambda * du_t
-                    dU_iter = dU_new + ddlambda * du_t
-                else:  # mode_predictor == "dissipation"
-                    # Restricción lineal Gutiérrez en ddλ:
-                    #   g(ΔU + du_R + ddλ·du_t, Δλ_pre + ddλ) = τ
-                    # ⇒ ddλ = (τ − g_partial) / α
-                    d_lambda_pre = lambda_iter - lambda_curr
-                    alpha = 0.5 * (
-                        lambda_curr * float(F_ext_ref @ du_t)
-                        - float(F_ext_ref @ U_current)
-                    )
-                    g_partial = 0.5 * (
-                        lambda_curr * float(F_ext_ref @ (dU_iter + du_R))
-                        - d_lambda_pre * float(F_ext_ref @ U_current)
-                    )
-                    if abs(alpha) < ZERO_TOL:
-                        _log.error("α ≈ 0 en corrector de disipación. Aborto del paso.")
-                        break
-                    ddlambda = (self._tau - g_partial) / alpha
-                    dU_update = du_R + ddlambda * du_t
-                    dU_iter = dU_iter + dU_update
-
-                lambda_iter += ddlambda
-                U_iter = U_current + dU_iter
-
-            if not converged:
-                # Bisección por modo del paso fallido.
-                if mode_predictor == "cylindrical":
-                    dl *= 0.5
-                    _log.warning(
-                        f"Bisección cilíndrica: dl → {dl:.4e}"
-                    )
-                    if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
-                        raise RuntimeError(
-                            "DissipationArcLengthSolver: dl bajó del umbral "
-                            f"({ARCLENGTH_MIN_DL_FACTOR * self.dl:.4e}). "
-                            "Aborto irreparable."
+                dE_threshold = self.dissipation_threshold * ref_energy
+                if self._mode == "cylindrical":
+                    if dE_d > dE_threshold:
+                        _log.info(
+                            f"  Switch cilíndrico→disipación "
+                            f"(ΔE_d={dE_d:.3e} > {dE_threshold:.3e})"
                         )
+                        self._mode = "dissipation"
+                        # Inicializa τ con la disipación recién observada
+                        # para continuidad del primer paso disipativo.
+                        self._tau = max(dE_d, self.initial_tau)
+                else:  # _mode == "dissipation"
+                    if dE_d < dE_threshold:
+                        _log.info(
+                            f"  Switch disipación→cilíndrico "
+                            f"(ΔE_d={dE_d:.3e} < {dE_threshold:.3e})"
+                        )
+                        self._mode = "cylindrical"
+
+                # Adaptatividad según el modo del **siguiente** paso.
+                n_solves = res.n_solves
+                if self._mode == "cylindrical":
+                    if n_solves < self.dl_grow_iter_threshold:
+                        dl = min(
+                            dl * self.dl_grow_factor,
+                            self.dl * self.dl_max_factor,
+                        )
+                    elif n_solves > self.dl_shrink_iter_threshold:
+                        dl *= self.dl_shrink_factor
                 else:
-                    self._tau *= 0.5
-                    _log.warning(
-                        f"Bisección disipación: τ → {self._tau:.4e}"
-                    )
-                    if self._tau < ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:
-                        raise RuntimeError(
-                            "DissipationArcLengthSolver: τ bajó del umbral "
-                            f"({ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:.4e}). "
-                            "Aborto irreparable."
+                    if n_solves < self.tau_grow_iter_threshold:
+                        self._tau = min(
+                            self._tau * self.tau_grow_factor,
+                            self.initial_tau * self.tau_max_factor,
                         )
+                    elif n_solves > self.tau_shrink_iter_threshold:
+                        self._tau *= self.tau_shrink_factor
+
+                U_current = U_iter
+                lambda_curr = lambda_iter
+                delta_U_step = dU_iter
+                steps_done += 1
+
+                if step_callback is not None:
+                    step_callback(step, U_current, lambda_curr)
+                continue
+
+            # Bisección por modo del paso fallido.
+            if mode_predictor == "cylindrical":
+                dl *= 0.5
+                _log.warning(
+                    f"Bisección cilíndrica: dl → {dl:.4e}"
+                )
+                if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
+                    raise RuntimeError(
+                        "DissipationArcLengthSolver: dl bajó del umbral "
+                        f"({ARCLENGTH_MIN_DL_FACTOR * self.dl:.4e}). "
+                        "Aborto irreparable."
+                    )
+            else:
+                self._tau *= 0.5
+                _log.warning(
+                    f"Bisección disipación: τ → {self._tau:.4e}"
+                )
+                if self._tau < ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:
+                    raise RuntimeError(
+                        "DissipationArcLengthSolver: τ bajó del umbral "
+                        f"({ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:.4e}). "
+                        "Aborto irreparable."
+                    )
 
         self._finish(lambda_curr, steps_done)
         return U_current

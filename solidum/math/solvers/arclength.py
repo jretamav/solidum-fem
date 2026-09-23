@@ -11,6 +11,12 @@ es exactamente el del ensamblaje en ``U_k`` y se comitea junto con
 residuo en ``U_k`` pero almacenaba ``U_{k+1}``: el estado committed iba
 un iterado por detrás del desplazamiento guardado (auditoría 2026-09-22).
 
+El bucle es el :class:`~solidum.math.solvers.corrector.NewtonCorrector`
+compartido (ADR 0015). Lo propio del arc-length —predictor tangente,
+las dos resoluciones por iteración (``du_R`` y ``du_t``) y la restricción
+que fija ``ddλ``— vive en :class:`_ArcProblem`; la variante por
+disipación sólo redefine la restricción.
+
 Fin del trazado
 ---------------
 El bucle termina al alcanzar ``max_lambda`` o al agotar ``max_steps``. En
@@ -25,17 +31,111 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
-from solidum.math.convergence import (
-    ConvergenceCriterion,
-    stiffness_diag_scale,
-)
-from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
-from solidum.math.solvers._shared import (
-    CholeskyNotPositiveDefiniteError,
-    _log,
-    domain_is_symmetric,
+from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers._shared import _log, domain_is_symmetric
+from solidum.math.solvers.corrector import (
+    CorrectionAborted,
+    NewtonCorrector,
+    default_calibration_scales,
 )
 from solidum.registry import SolverRegistry
+
+
+class _ArcProblem:
+    """Paso del arc-length en el protocolo ``NewtonProblem``.
+
+    El iterado ``x`` es ``(U_iter, λ_iter, dU_iter)`` con ``dU_iter`` el
+    incremento acumulado del paso (``U_iter = U_current + dU_iter``); el
+    estado es ``(K, F_int)``. La corrección ``dx`` es ``(dU_update, ddλ)``.
+
+    ``mode`` fija la restricción que determina ``ddλ``:
+
+    - ``"newton"`` — último paso: ``λ`` fijo, corrección de Newton pura;
+    - ``"cylindrical"`` — cuadrática de Crisfield ``‖ΔU‖² = dl²`` con
+      selección de raíz por menor ángulo con el incremento previo.
+    """
+
+    def __init__(self, assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+                 *, mode: str, dl: float):
+        self.assembler = assembler
+        self.U_current = U_current
+        self.lambda_curr = float(lambda_curr)
+        self.F_ext_ref = F_ext_ref
+        self.free_dofs = free_dofs
+        self.mode = mode
+        self.dl = float(dl)
+
+    # --- protocolo ----------------------------------------------------------
+
+    def assemble(self, x):
+        return self.assembler.assemble_non_linear_system(x[0])
+
+    def residual(self, x, state):
+        return x[1] * self.F_ext_ref - state[1]
+
+    def residual_norm(self, R):
+        return float(np.linalg.norm(R[self.free_dofs]))
+
+    def calibration_scales(self, x, state):
+        # La carga de referencia es la escala natural del arc-length (λ
+        # varía, F_ext_ref es fijo).
+        return default_calibration_scales(self.F_ext_ref, state[1], state[0])
+
+    def reference_force(self, x, state):
+        return max(float(np.linalg.norm(self.F_ext_ref)) * abs(x[1]),
+                   float(np.linalg.norm(state[1])))
+
+    def x_norm(self, x):
+        return float(np.linalg.norm(x[0]))
+
+    def log_context(self, x):
+        return f" | lam={x[1]:.4f}"
+
+    def correction(self, x, state, R, solve):
+        U_iter, lambda_iter, dU_iter = x
+        K_global = state[0]
+        K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, self.F_ext_ref.copy())
+        K_red, R_red, T_R, g_R = self.assembler.reduce(
+            K_global, R, U_current=U_iter, load_factor=lambda_iter,
+        )
+        du_R = self.assembler.expand(solve(K_red, R_red), T_R, g_R)
+        du_t = self.assembler.expand(solve(K_t_red, F_t_red), T_t, g_t)
+        return self.constraint(x, du_R, du_t)
+
+    def apply(self, x, dx, alpha):
+        U_iter, lambda_iter, dU_iter = x
+        dU_update, ddlambda = dx
+        dU_new = dU_iter + alpha * dU_update
+        return ((self.U_current + dU_new, lambda_iter + alpha * ddlambda, dU_new),
+                float(np.linalg.norm(alpha * dU_update)))
+
+    def on_converged(self, x, state):
+        # Estado trial del ensamblaje en U_iter: coherente con lo guardado.
+        self.assembler.commit_all_states()
+
+    # --- restricción --------------------------------------------------------
+
+    def constraint(self, x, du_R, du_t):
+        """``(dU_update, ddλ)`` según ``mode``."""
+        _, _, dU_iter = x
+        if self.mode == "newton":
+            return du_R, 0.0
+        if self.mode == "cylindrical":
+            dU_new = dU_iter + du_R
+            a = np.dot(du_t, du_t)
+            b = 2.0 * np.dot(dU_new, du_t)
+            c = np.dot(dU_new, dU_new) - self.dl ** 2
+            det = b ** 2 - 4.0 * a * c
+            if det < 0:
+                raise CorrectionAborted("Raíces imaginarias. La solución diverge del arco.")
+            ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
+            ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
+            # Raíz que produce el menor ángulo con el incremento previo.
+            theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
+            theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
+            ddlambda = ddl1 if theta1 > theta2 else ddl2
+            return du_R + ddlambda * du_t, ddlambda
+        raise ValueError(f"_ArcProblem: modo desconocido {self.mode!r}.")
 
 
 @SolverRegistry.register
@@ -79,35 +179,21 @@ class ArcLengthSolver:
         self.dl_grow_iter_threshold = dl_grow_iter_threshold
         self.dl_shrink_iter_threshold = dl_shrink_iter_threshold
         self.linear_algebra = linear_algebra
-        self._linalg = None
+        # Corrector compartido (ADR 0015). Régimen postcrítico: K_t puede
+        # ser indefinida → no asumir SPD. Si el usuario fuerza
+        # ``linear_algebra: cholesky`` y K_t se vuelve indefinida, el
+        # corrector degrada a LU para que el override no rompa el análisis.
+        self.corrector = NewtonCorrector(
+            self.convergence,
+            max_iter=self.max_iter,
+            is_symmetric=domain_is_symmetric(assembler.domain),
+            is_positive_definite=False,
+            linear_algebra=self.linear_algebra,
+        )
         # Estado del último trazado (ver docstring de la clase).
         self.lambda_final: float = 0.0
         self.reached_max_lambda: bool = False
         self.steps_done: int = 0
-
-    def _make_linalg(self, ndof: int):
-        # Régimen postcrítico: K_t puede ser indefinida → no asumir SPD.
-        props = StiffnessProperties(
-            is_symmetric=domain_is_symmetric(self.assembler.domain),
-            is_positive_definite=False,
-            size=ndof,
-        )
-        return select_solver(props, override=self.linear_algebra)
-
-    def _solve(self, K, b):
-        """Resuelve K·x = b con fallback Cholesky→LU.
-
-        El default ``auto`` ya elige LU para régimen postcrítico, pero si el
-        usuario fuerza ``linear_algebra: cholesky`` desde YAML para
-        diagnóstico y ``K_t`` se vuelve indefinida en algún paso, degradamos
-        limpiamente a LU para que el override no rompa el análisis.
-        """
-        try:
-            return self._linalg.solve(K, b)
-        except CholeskyNotPositiveDefiniteError:
-            _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
-            self._linalg = LUSolver()
-            return self._linalg.solve(K, b)
 
     def _negative_pivots(self, K) -> int | None:
         """Diagnóstico de bifurcación vía Sturm sequence (ADR 0003 fase 2).
@@ -136,6 +222,30 @@ class ArcLengthSolver:
                 f"convergido; aumente max_steps o initial_dl para completar."
             )
 
+    # ------------------------------------------------------------------
+    # Predictor tangente (común a las variantes)
+    # ------------------------------------------------------------------
+
+    def _tangent_predictor(self, U_current, F_ext_ref, delta_U_step, step):
+        """Ensambla en ``U_current``, calibra el criterio si hace falta y
+        devuelve ``(du_t, sign)`` con ``du_t = K⁻¹·F_ref`` y el sentido de
+        avance (para no regresar por donde se vino). Devuelve ``None`` si la
+        tangente es singular (el llamador biseca la longitud de paso)."""
+        K_global, F_int_global = self.assembler.assemble_non_linear_system(U_current)
+        if not self.convergence.is_calibrated:
+            self.convergence.calibrate(
+                *default_calibration_scales(F_ext_ref, F_int_global, K_global))
+        K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
+        try:
+            du_t_red = self.corrector.solve(K_t_red, F_t_red)
+        except RuntimeError:
+            return None
+        du_t = self.assembler.expand(du_t_red, T_t, g_t)
+        sign = 1.0
+        if step > 1 and np.dot(delta_U_step, du_t) < 0:
+            sign = -1.0
+        return du_t, sign
+
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
         ndof = domain.total_dofs
@@ -151,17 +261,11 @@ class ArcLengthSolver:
         _log.info("--- INICIANDO SOLVER NO LINEAL (MÉTODO ARC-LENGTH) ---")
 
         cs = self.assembler.constraint_set
-        n_free = ndof - len(cs)
         free_dofs = cs.free_dofs(ndof)
-        self._linalg = self._make_linalg(n_free)
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
             _log.info(f"[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
-
-            U_iter = U_current.copy()
-            lambda_iter = lambda_curr
-            converged = False
 
             # ADR 0010 §5: hook de preparación de paso (activación de
             # discontinuidades embebidas, etc.). Evaluado con el estado
@@ -169,36 +273,12 @@ class ArcLengthSolver:
             self.assembler.prepare_all_steps(U_current)
 
             # --- 1. PREDICTOR ---
-            K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-
-            # Calibración del criterio en el primer ensamblaje (ADR 0007).
-            # La carga de referencia F_ext_ref es la escala natural en arc-length
-            # (el factor de carga lambda se irá ajustando, pero F_ext_ref es fijo).
-            if not self.convergence.is_calibrated:
-                force_scale = max(
-                    np.linalg.norm(F_ext_ref),
-                    np.linalg.norm(F_int_global),
-                    1.0,
-                )
-                K_diag = stiffness_diag_scale(K_global)
-                disp_scale = force_scale / K_diag
-                self.convergence.calibrate(force_scale, disp_scale)
-
-            K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
-
-            try:
-                du_t_red = self._solve(K_t_red, F_t_red)
-            except RuntimeError:
+            pred = self._tangent_predictor(U_current, F_ext_ref, delta_U_step, step)
+            if pred is None:
                 _log.error("Matriz singular en predictor. Bisección de dl...")
                 dl /= 2.0
                 continue
-
-            du_t = self.assembler.expand(du_t_red, T_t, g_t)
-
-            # Determinar el sentido del avance (evitar regresar por donde vinimos)
-            sign = 1.0
-            if step > 1 and np.dot(delta_U_step, du_t) < 0:
-                sign = -1.0
+            du_t, sign = pred
 
             dlambda = sign * dl / (np.linalg.norm(du_t) + ZERO_TOL)
 
@@ -207,107 +287,39 @@ class ArcLengthSolver:
             if final_step:
                 dlambda = self.max_lambda - lambda_curr
 
-            lambda_iter += dlambda
             dU_iter = dlambda * du_t
-            U_iter += dU_iter
-            dU_update = dU_iter.copy()  # incremento que produjo el iterado corriente
-            n_solves = 0
+            x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
             # --- 2. CORRECTOR ITERATIVO ---
-            for iteration in range(self.max_iter + 1):
-                K_global, F_int_global = self.assembler.assemble_non_linear_system(U_iter)
-                R = lambda_iter * F_ext_ref - F_int_global
+            # Último paso: lambda fijo, solo corrección de desplazamientos
+            # (Newton-Raphson puro); en el resto, restricción cilíndrica.
+            problem = _ArcProblem(
+                self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+                mode="newton" if final_step else "cylindrical", dl=dl,
+            )
+            res = self.corrector.run(
+                problem, x0, check_initial=True,
+                initial_delta_norm=float(np.linalg.norm(dU_iter)),
+            )
 
-                ref_force = max(
-                    np.linalg.norm(F_ext_ref) * abs(lambda_iter),
-                    np.linalg.norm(F_int_global),
-                )
-                state = self.convergence.evaluate(
-                    residual_norm=np.linalg.norm(R[free_dofs]),
-                    ref_force=ref_force,
-                    delta_u_norm=np.linalg.norm(dU_update),
-                    u_norm=np.linalg.norm(U_iter),
-                )
-                _log.info(
-                    f"  Iter. {n_solves:2d} | lam={lambda_iter:.4f} | "
-                    f"R/tol_F: {state.ratio_force:.4e} | "
-                    f"dU/tol_d: {state.ratio_disp:.4e}"
-                )
+            if res.converged:
+                U_current, lambda_curr, delta_U_step = res.x
+                _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_curr:.4f})")
+                steps_done += 1
+                # Auto-ajuste de longitud de arco
+                if res.n_solves < self.dl_grow_iter_threshold:
+                    dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
+                elif res.n_solves > self.dl_shrink_iter_threshold:
+                    dl *= self.dl_shrink_factor
 
-                if state.converged:
-                    _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_iter:.4f})")
-                    # Estado trial del ensamblaje en U_iter: coherente con lo guardado.
-                    self.assembler.commit_all_states()
+                if step_callback:
+                    step_callback(step, U_current, lambda_curr)
+                continue
 
-                    U_current = U_iter; lambda_curr = lambda_iter; delta_U_step = dU_iter
-                    converged = True
-                    steps_done += 1
-                    # Auto-ajuste de longitud de arco
-                    if n_solves < self.dl_grow_iter_threshold:
-                        dl = min(dl * self.dl_grow_factor, self.dl * self.dl_max_factor)
-                    elif n_solves > self.dl_shrink_iter_threshold:
-                        dl *= self.dl_shrink_factor
-
-                    if step_callback:
-                        step_callback(step, U_current, lambda_curr)
-
-                    break
-
-                if iteration == self.max_iter:
-                    break  # presupuesto de resoluciones agotado
-
-                K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
-                K_red, R_red, T_R, g_R = self.assembler.reduce(
-                    K_global, R, U_current=U_iter, load_factor=lambda_iter
-                )
-
-                try:
-                    du_R_red = self._solve(K_red, R_red)
-                    du_t_red = self._solve(K_t_red, F_t_red)
-                except RuntimeError:
-                    _log.error("Matriz Singular en corrector.")
-                    break
-                n_solves += 1
-
-                du_R = self.assembler.expand(du_R_red, T_R, g_R)
-                du_t = self.assembler.expand(du_t_red, T_t, g_t)
-
-                if final_step:
-                    # Último paso: lambda fijo, solo corrección de desplazamientos (Newton-Raphson puro)
-                    ddlambda = 0.0
-                    dU_update = du_R
-                    dU_iter = dU_iter + dU_update
-                else:
-                    # Ecuación cuadrática de restricción de Crisfield
-                    dU_new = dU_iter + du_R
-                    a = np.dot(du_t, du_t)
-                    b = 2.0 * np.dot(dU_new, du_t)
-                    c = np.dot(dU_new, dU_new) - dl**2
-
-                    det = b**2 - 4.0 * a * c
-                    if det < 0:
-                        _log.error("Raíces imaginarias. La solución diverge del arco.")
-                        break
-
-                    ddl1 = (-b + np.sqrt(det)) / (2.0 * a)
-                    ddl2 = (-b - np.sqrt(det)) / (2.0 * a)
-
-                    # Elegir la raíz que produzca el menor ángulo con el incremento previo
-                    theta1 = np.dot(dU_iter, dU_new + ddl1 * du_t)
-                    theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
-                    ddlambda = ddl1 if theta1 > theta2 else ddl2
-                    dU_update = du_R + ddlambda * du_t
-                    dU_iter = dU_new + ddlambda * du_t
-
-                # Actualizar iteraciones
-                lambda_iter += ddlambda
-                U_iter = U_current + dU_iter
-
-            if not converged:
-                dl *= 0.5
-                _log.warning(f"Bisección: reduciendo longitud de arco a {dl:.4e}")
-                if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
-                    raise RuntimeError("Arc-Length fracasó irreparablemente.")
+            dl *= 0.5
+            _log.warning(f"Bisección: reduciendo longitud de arco a {dl:.4e}")
+            if dl < ARCLENGTH_MIN_DL_FACTOR * self.dl:
+                raise RuntimeError("Arc-Length fracasó irreparablemente.")
 
         self._finish(lambda_curr, steps_done)
         return U_current
