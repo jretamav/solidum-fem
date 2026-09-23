@@ -28,6 +28,7 @@ from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log
 from solidum.math.solvers.arclength import ArcLengthSolver, _ArcProblem
 from solidum.math.solvers.corrector import CorrectionAborted
+from solidum.math.solvers.model_checks import ensure_statically_restrained
 from solidum.registry import SolverRegistry
 
 
@@ -217,6 +218,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         _log.info(
             "--- INICIANDO DISSIPATION-ARCLENGTH SOLVER (Gutiérrez 2004) ---"
         )
+        # Red de seguridad, capa 1 (ADR 0019): ver ArcLengthSolver.solve.
+        ensure_statically_restrained(self.assembler, type(self).__name__)
 
         cs = self.assembler.constraint_set
         free_dofs = cs.free_dofs(ndof)

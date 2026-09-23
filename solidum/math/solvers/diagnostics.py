@@ -108,8 +108,9 @@ class SingularTangentError(SolverDivergedError):
     mode = "singular_tangent"
     hint = (
         "La rigidez tangente perdió rango. Probable bifurcación, punto "
-        "límite o problema mal planteado. Considera ArcLengthSolver para "
-        "atravesar puntos críticos."
+        "límite, un mecanismo (apoyos insuficientes, una rótula o nudo sin "
+        "rigidez suficiente) o problema mal planteado. Considera "
+        "ArcLengthSolver para atravesar puntos críticos."
     )
 
 
@@ -212,3 +213,73 @@ def classify_divergence(residual_history: list[float],
             return LoadExceedsCapacityError
 
     return UnknownDivergenceError
+
+
+# ----------------------------------------------------------------------
+# Errores de planteamiento del modelo (ADR 0019)
+# ----------------------------------------------------------------------
+
+class MechanismError(ValueError):
+    """El modelo puede moverse como sólido rígido: los apoyos no bastan para
+    un análisis estático (ADR 0019, capa 1).
+
+    Se detecta **antes** de resolver, comprobando qué modos de cuerpo rígido
+    dejan libres las restricciones. Es un error de modelado, no numérico, así
+    que es ``ValueError`` y el mensaje describe el movimiento libre en
+    términos del modelo (traslación, giro alrededor de un eje por un punto,
+    campo escalar sin valor prescrito), no en términos de pivotes.
+
+    Attributes
+    ----------
+    motions : list[str]
+        Descripción de cada movimiento rígido libre.
+    """
+
+    def __init__(self, motions: list[str], solver: str = ""):
+        self.motions = list(motions)
+        quien = f" ({solver})" if solver else ""
+        lista = "\n".join(f"  - {m}" for m in self.motions)
+        super().__init__(
+            f"El modelo no está suficientemente apoyado para un análisis "
+            f"estático{quien}: puede moverse como sólido rígido sin "
+            f"deformarse, así que la matriz de rigidez es singular y el "
+            f"equilibrio no tiene solución única. Movimientos libres:\n"
+            f"{lista}\n"
+            f"Añade apoyos (o restricciones lineales) que impidan esos "
+            f"movimientos. Un modelo libre sí es válido en un análisis modal "
+            f"o dinámico, pero no en uno estático."
+        )
+
+
+class IllPosedSystemError(RuntimeError):
+    """La solución de un análisis estático lineal no es fiable (ADR 0019,
+    capas 2 y 3): no satisface el equilibrio, o la factorización directa
+    tiene pivotes numéricamente nulos.
+
+    Cubre lo que la detección de mecanismos rígidos no ve: mecanismos
+    **internos** (una rótula de más, una barra suelta, un nudo sin rigidez)
+    y matrices tan mal condicionadas que el resultado carece de sentido.
+    """
+
+    def __init__(self, *, relative_residual: float | None = None,
+                 zero_pivots: int | None = None, rtol: float | None = None):
+        self.relative_residual = relative_residual
+        self.zero_pivots = zero_pivots
+        if zero_pivots:
+            causa = (f"el solver directo encontró {zero_pivots} pivote(s) "
+                     f"numéricamente nulo(s), así que la matriz es singular "
+                     f"aunque los desplazamientos parezcan razonables")
+        else:
+            causa = (f"la solución no satisface el equilibrio (residuo "
+                     f"relativo ‖F − K·u‖/‖F‖ = {relative_residual:.1e}, "
+                     f"tolerancia {rtol:.0e})")
+        super().__init__(
+            f"Resultado descartado: {causa}. La matriz de rigidez es singular "
+            f"o está tan mal condicionada que los desplazamientos no son "
+            f"fiables. Causas habituales: un mecanismo interno (una rótula o "
+            f"articulación de más, una barra o elemento suelto, dos partes "
+            f"unidas por un solo nodo que pueden girar entre sí), o rigideces "
+            f"muy desproporcionadas entre partes del modelo (penalizaciones, "
+            f"unidades mezcladas). Revisa la conectividad y los apoyos."
+        )
+

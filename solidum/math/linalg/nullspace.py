@@ -34,13 +34,22 @@ no linealidad o apoyos son un casi-núcleo, que es lo que AMG necesita.
 Las coordenadas se centran en el centroide y cada modo de rotación se divide
 por la dimensión característica del modelo, para que todas las columnas
 tengan magnitud comparable con independencia de las unidades del usuario.
+
+Además de AMG, los modos alimentan la detección de **mecanismos** antes de un
+análisis estático (ADR 0019): un modo rígido que los apoyos no restringen
+significa que la rigidez es singular. Por eso :func:`rigid_body_basis` guarda
+junto a la matriz qué es cada columna (traslación, giro o campo escalar), el
+centro y la escala, para poder describir el movimiento libre en palabras.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import numpy as np
 
 _TRANSLATIONS = ("ux", "uy", "uz")
 _ROTATIONS = ("rx", "ry", "rz")
+_AXES = ("x", "y", "z")
 
 # Rotación alrededor de cada eje: (DOF de giro, [(DOF de traslación, signo,
 # índice de la coordenada que multiplica)]). Sale de u = e_a × r:
@@ -52,6 +61,106 @@ _ROTATION_FIELDS = {
     "y": ("ry", (("ux", +1.0, 2), ("uz", -1.0, 0))),
     "z": ("rz", (("ux", -1.0, 1), ("uy", +1.0, 0))),
 }
+
+
+@dataclass(frozen=True)
+class RigidBasis:
+    """Modos de cuerpo rígido y lo necesario para interpretarlos.
+
+    Attributes
+    ----------
+    B : np.ndarray, shape ``(total_dofs, m)``
+        Una columna por modo.
+    labels : tuple[tuple[str, str], ...]
+        Qué es cada columna: ``("translation", "x")``, ``("rotation", "z")``
+        o ``("scalar", "T")``.
+    center : np.ndarray, shape ``(3,)``
+        Centroide de los nodos: punto respecto al que giran los modos.
+    length : float
+        Dimensión característica por la que se dividen los modos de giro.
+    """
+
+    B: np.ndarray
+    labels: tuple
+    center: np.ndarray
+    length: float
+
+
+def _dof_arrays(nodes) -> dict:
+    """``{nombre: (índices de ecuación, posición del nodo)}`` en una sola
+    pasada por los nodos."""
+    eq: dict[str, list[int]] = {}
+    idx: dict[str, list[int]] = {}
+    for i, node in enumerate(nodes):
+        for name, k in node.dofs.items():
+            eq.setdefault(name, []).append(k)
+            idx.setdefault(name, []).append(i)
+    return {name: (np.asarray(eq[name], dtype=np.int64), np.asarray(idx[name], dtype=np.int64))
+            for name in eq}
+
+
+def rigid_body_basis(domain) -> RigidBasis:
+    """Modos de cuerpo rígido del dominio en el espacio **completo** de DOF,
+    con sus etiquetas, centro y escala (ver el docstring del módulo).
+
+    Parameters
+    ----------
+    domain
+        Dominio con la numeración de ecuaciones ya generada. Se usan sólo
+        ``node.coordinates`` y ``node.dofs``.
+    """
+    ndof = int(domain.total_dofs)
+    nodes = [n for n in domain.nodes.values() if n.dofs]
+    if ndof == 0 or not nodes:
+        return RigidBasis(np.zeros((ndof, 0)), (), np.zeros(3), 1.0)
+
+    coords = np.zeros((len(nodes), 3))
+    for i, node in enumerate(nodes):
+        c = np.asarray(node.coordinates, dtype=float).ravel()[:3]
+        coords[i, : c.size] = c
+    center = coords.mean(axis=0)
+    rel = coords - center
+    length = float(np.max(np.linalg.norm(rel, axis=1)))
+    if length <= 0.0:
+        length = 1.0
+
+    arrays = _dof_arrays(nodes)
+    present = set(arrays)
+
+    columns: list[np.ndarray] = []
+    labels: list[tuple[str, str]] = []
+
+    for axis, name in zip(_AXES, _TRANSLATIONS):
+        if name in present:
+            col = np.zeros(ndof)
+            col[arrays[name][0]] = 1.0
+            columns.append(col)
+            labels.append(("translation", axis))
+
+    for axis in _AXES:
+        rot_dof, parts = _ROTATION_FIELDS[axis]
+        leaves_trace = rot_dof in present or all(p[0] in present for p in parts)
+        if not leaves_trace:
+            continue
+        col = np.zeros(ndof)
+        for dof_name, sign, coord_idx in parts:
+            if dof_name in present:
+                eq, idx = arrays[dof_name]
+                col[eq] = sign * rel[idx, coord_idx] / length
+        if rot_dof in present:
+            col[arrays[rot_dof][0]] = 1.0 / length
+        columns.append(col)
+        labels.append(("rotation", axis))
+
+    mechanical = set(_TRANSLATIONS) | set(_ROTATIONS)
+    for name in sorted(present - mechanical):
+        col = np.zeros(ndof)
+        col[arrays[name][0]] = 1.0
+        columns.append(col)
+        labels.append(("scalar", name))
+
+    B = np.column_stack(columns) if columns else np.zeros((ndof, 0))
+    return RigidBasis(B, tuple(labels), center, length)
 
 
 def rigid_body_modes(domain) -> np.ndarray:
@@ -69,55 +178,4 @@ def rigid_body_modes(domain) -> np.ndarray:
     np.ndarray, shape ``(total_dofs, m)``
         Una columna por modo; ``m = 0`` si el dominio no tiene DOF.
     """
-    ndof = int(domain.total_dofs)
-    nodes = [n for n in domain.nodes.values() if n.dofs]
-    if ndof == 0 or not nodes:
-        return np.zeros((ndof, 0))
-
-    present: set[str] = set()
-    for node in nodes:
-        present.update(node.dofs)
-
-    coords = np.zeros((len(nodes), 3))
-    for i, node in enumerate(nodes):
-        c = np.asarray(node.coordinates, dtype=float).ravel()[:3]
-        coords[i, : c.size] = c
-    center = coords.mean(axis=0)
-    rel = coords - center
-    length = float(np.max(np.linalg.norm(rel, axis=1)))
-    if length <= 0.0:
-        length = 1.0
-
-    columns: list[np.ndarray] = []
-
-    for name in _TRANSLATIONS:
-        if name in present:
-            col = np.zeros(ndof)
-            for node in nodes:
-                if name in node.dofs:
-                    col[node.dofs[name]] = 1.0
-            columns.append(col)
-
-    for axis in ("x", "y", "z"):
-        rot_dof, parts = _ROTATION_FIELDS[axis]
-        leaves_trace = rot_dof in present or all(p[0] in present for p in parts)
-        if not leaves_trace:
-            continue
-        col = np.zeros(ndof)
-        for i, node in enumerate(nodes):
-            for dof_name, sign, coord_idx in parts:
-                if dof_name in node.dofs:
-                    col[node.dofs[dof_name]] = sign * rel[i, coord_idx] / length
-            if rot_dof in node.dofs:
-                col[node.dofs[rot_dof]] = 1.0 / length
-        columns.append(col)
-
-    mechanical = set(_TRANSLATIONS) | set(_ROTATIONS)
-    for name in sorted(present - mechanical):
-        col = np.zeros(ndof)
-        for node in nodes:
-            if name in node.dofs:
-                col[node.dofs[name]] = 1.0
-        columns.append(col)
-
-    return np.column_stack(columns) if columns else np.zeros((ndof, 0))
+    return rigid_body_basis(domain).B

@@ -77,3 +77,19 @@ class LinearAlgebraSolver(Protocol):
         triangular) habilita Newton modificado y reuso entre pasos.
         """
         ...
+
+
+def out_of_memory_error(n: int, backend: str) -> MemoryError:
+    """Error de memoria del solver directo con la salida para el usuario
+    (ADR 0019). La memoria de un directo crece más deprisa que el modelo
+    (relleno de los factores: ×14 sobre ``K`` a 26k DOF, ×25 a 200k); la de
+    un iterativo es un múltiplo fijo de ``K`` (ADR 0018)."""
+    return MemoryError(
+        f"Memoria insuficiente para factorizar el sistema de {n} incógnitas "
+        f"con el solver directo ({backend}). La memoria de un solver directo "
+        f"crece más deprisa que el tamaño del modelo. Para modelos grandes "
+        f"usa `linear_algebra: iterative` en el bloque `solver` (solver "
+        f"iterativo con AMG, memoria proporcional al modelo; ver el anexo de "
+        f"la capa algebraica del manual)."
+    )
+

@@ -40,7 +40,7 @@ from typing import Any, Callable, Protocol
 
 import numpy as np
 
-from solidum.constants import LINE_SEARCH_MAX_BACKTRACKS, LINE_SEARCH_RHO
+from solidum.constants import EQUILIBRIUM_RTOL, LINE_SEARCH_MAX_BACKTRACKS, LINE_SEARCH_RHO
 from solidum.math.convergence import ConvergenceCriterion, ConvergenceState
 from solidum.math.linalg import IterativeNotConvergedError, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError, _log
@@ -121,6 +121,12 @@ class CorrectorResult:
     # iterativo sin convergencia, ADR 0018). Se añade al mensaje de la
     # excepción tipada para que el usuario vea la causa real.
     linear_solver_note: str = ""
+    # Mayor residuo relativo ‖b − A·x‖/‖b‖ de las resoluciones del paso con
+    # factorización fresca (ADR 0019). Sólo diagnóstico: el algoritmo no lo
+    # usa (resolver sistemas casi singulares es legítimo cerca de un punto
+    # límite), pero si el paso fracasa y es grande, la causa probable es una
+    # tangente singular —p. ej. un mecanismo— y así se informa.
+    max_linear_residual: float = 0.0
     aborted: bool = False
     last_alpha: float = 1.0
     last_residual: float = float("inf")
@@ -131,12 +137,18 @@ class CorrectorResult:
                          extra_message: str = "") -> SolverDivergedError:
         """Excepción tipada del modo de divergencia observado (ADR 0011),
         lista para lanzar."""
+        bad_linear = self.max_linear_residual > EQUILIBRIUM_RTOL
         err_cls = classify_divergence(
             self.residual_history, self.delta_history,
-            singular_tangent_detected=self.singular_tangent,
+            singular_tangent_detected=self.singular_tangent or bad_linear,
         )
-        if self.linear_solver_note:
-            extra_message = (f"{extra_message}; " if extra_message else "") + self.linear_solver_note
+        note = self.linear_solver_note
+        if bad_linear and not note:
+            note = (f"el sistema tangente no se pudo resolver con precisión "
+                    f"(residuo lineal relativo {self.max_linear_residual:.1e}): "
+                    f"la tangente es singular o casi singular")
+        if note:
+            extra_message = (f"{extra_message}; " if extra_message else "") + note
         return err_cls(
             last_residual=self.last_residual,
             last_delta=self.last_delta,
@@ -197,6 +209,7 @@ class NewtonCorrector:
         self._linalg = None
         self._linalg_size: int | None = None
         self._frozen_factor = None
+        self._max_linear_residual = 0.0
 
     # ------------------------------------------------------------------
     # Backend algebraico
@@ -240,15 +253,32 @@ class NewtonCorrector:
         linalg = self._backend(n)
         if self.freeze_tangent_after_iter is None:
             try:
-                return linalg.solve(A, b)
+                x = linalg.solve(A, b)
             except CholeskyNotPositiveDefiniteError:
-                return self._degrade_to_lu(n).solve(A, b)
+                x = self._degrade_to_lu(n).solve(A, b)
+            self._record_linear_residual(A, b, x)
+            return x
         if iteration < self.freeze_tangent_after_iter or self._frozen_factor is None:
             try:
                 self._frozen_factor = linalg.factorize(A)
             except CholeskyNotPositiveDefiniteError:
                 self._frozen_factor = self._degrade_to_lu(n).factorize(A)
+            x = self._frozen_factor.solve(b)
+            self._record_linear_residual(A, b, x)
+            return x
+        # Tangente congelada: se resuelve con la matriz de una iteración
+        # anterior a propósito, así que el residuo frente a A no significa nada.
         return self._frozen_factor.solve(b)
+
+    def _record_linear_residual(self, A, b: np.ndarray, x: np.ndarray) -> None:
+        """Telemetría del ADR 0019: residuo relativo de la resolución (un
+        producto matriz-vector). No interviene en el algoritmo."""
+        b_norm = float(np.linalg.norm(b))
+        if b_norm > 0.0:
+            rel = float(np.linalg.norm(b - A @ x)) / b_norm
+            if not np.isfinite(rel):
+                rel = np.inf
+            self._max_linear_residual = max(self._max_linear_residual, rel)
 
     def reset_step(self) -> None:
         """Descarta la factorización congelada: la tangente cambia con el
@@ -279,6 +309,7 @@ class NewtonCorrector:
         x = x0
         state = problem.assemble(x)
         result = CorrectorResult(converged=False, x=x, state=state, n_solves=0)
+        self._max_linear_residual = 0.0
         delta_norm = float(initial_delta_norm)
         R_norm = float("inf")
 
@@ -348,6 +379,7 @@ class NewtonCorrector:
         self.reset_step()
         result.x = x
         result.state = state
+        result.max_linear_residual = self._max_linear_residual
         return result
 
     def line_search_step(self, problem: NewtonProblem, x, dx, R_norm_current: float):

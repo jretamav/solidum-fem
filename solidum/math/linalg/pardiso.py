@@ -51,6 +51,8 @@ import scipy.sparse as sp
 
 from pypardiso import PyPardisoSolver as _PyPardisoSolver  # type: ignore[import-not-found]
 
+from solidum.math.linalg.base import out_of_memory_error
+
 
 class PardisoFactorized:
     """Factorización numérica de Pardiso retenida y reutilizable.
@@ -67,10 +69,17 @@ class PardisoFactorized:
 
     n_negative_pivots: int | None = None
 
-    def __init__(self, solver: _PyPardisoSolver, K: sp.csr_matrix, token: int):
+    def __init__(self, solver: _PyPardisoSolver, K: sp.csr_matrix, token: int,
+                 n_zero_pivots: int = 0):
         self._solver = solver
         self._K = K
         self._token = token
+        # Pivotes numéricamente nulos, que la MKL sustituyó por un valor
+        # pequeño para poder seguir (``iparm(14)``, criterio |p| < 1e-13·‖A‖).
+        # En una matriz regular es 0; > 0 delata una matriz singular aunque la
+        # solución "parezca" buena, y el análisis estático lineal la rechaza
+        # (ADR 0019, capa 3). Mismo nombre y criterio que en LUFactorized.
+        self.n_zero_pivots = int(n_zero_pivots)
 
     def solve(self, b: np.ndarray) -> np.ndarray:
         # El handle de la MKL es único por proceso y guarda **una sola**
@@ -166,10 +175,16 @@ class PardisoSolver:
         solver = self._handle()
         try:
             solver.factorize(K_csr)
+        except MemoryError:
+            raise out_of_memory_error(K_csr.shape[0], "Pardiso") from None
         except Exception as exc:  # la MKL señala el fallo con su propio error
+            # Código -2 de la MKL: memoria insuficiente.
+            if getattr(exc, "value", None) == -2:
+                raise out_of_memory_error(K_csr.shape[0], "Pardiso") from exc
             raise RuntimeError(
                 f"PardisoSolver: la factorización falló ({exc}). La matriz "
                 "puede ser singular."
             ) from exc
         type(self)._token += 1
-        return PardisoFactorized(solver, K_csr, type(self)._token)
+        return PardisoFactorized(solver, K_csr, type(self)._token,
+                                 n_zero_pivots=solver.get_iparm(14))

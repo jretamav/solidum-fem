@@ -36,6 +36,7 @@ from solidum.constants import (
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
+from solidum.math.solvers.model_checks import ensure_statically_restrained
 from solidum.registry import SolverRegistry
 
 
@@ -164,6 +165,10 @@ class NonlinearSolver:
         U_current = np.zeros(ndof)
 
         _log.info("--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
+        # Red de seguridad, capa 1 (ADR 0019): un mecanismo rígido no tiene
+        # equilibrio estático; se rechaza antes de iterar con el movimiento
+        # libre en palabras, en vez de agotar bisecciones.
+        ensure_statically_restrained(self.assembler, type(self).__name__)
 
         load_factor = 0.0
         target_load = 1.0

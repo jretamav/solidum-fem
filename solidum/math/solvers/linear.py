@@ -20,6 +20,10 @@ from solidum.math.solvers._shared import (
     _log,
     domain_is_symmetric,
 )
+from solidum.math.solvers.model_checks import (
+    check_linear_solution,
+    ensure_statically_restrained,
+)
 from solidum.registry import SolverRegistry
 
 
@@ -63,6 +67,9 @@ class LinearSolver:
         """
         _log.info("--- LINEARSOLVER · ensamblando y factorizando (1ª llamada) ---")
         self.assembler.assemble_system()
+        # Red de seguridad, capa 1 (ADR 0019): un mecanismo rígido se
+        # rechaza antes de factorizar, con el movimiento libre en palabras.
+        ensure_statically_restrained(self.assembler, type(self).__name__)
         K_global = self.assembler.K_global.copy()
 
         # Reducir con F dummy: sólo necesitamos K_red, T y g_full aquí.
@@ -94,6 +101,7 @@ class LinearSolver:
             factor = LUSolver().factorize(K_red)
 
         self._factor = factor
+        self._K_red = K_red
         self._T = T
         self._g_full = g_full
         self._F_dir = F_dir
@@ -108,6 +116,10 @@ class LinearSolver:
         # F_red = T.T · (F − K · g) = T.T · F − F_dir, con F_dir cacheado.
         F_red = self._T.T @ F_ext_global - self._F_dir
         u_red = self._factor.solve(F_red)
+        # Red de seguridad, capas 2 y 3 (ADR 0019): equilibrio verificado y
+        # factorización sin pivotes perturbados. Un solver directo ante una
+        # matriz singular devuelve basura sin avisar; aquí no pasa.
+        check_linear_solution(self._K_red, u_red, F_red, self._factor)
         U = self.assembler.expand(u_red, self._T, self._g_full)
         _log.info("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U

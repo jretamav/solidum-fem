@@ -89,6 +89,10 @@ class Assembler:
         # calculó.
         self._near_nullspace: np.ndarray | None = None
         self._near_nullspace_key: tuple | None = None
+        # Modos de cuerpo rígido en el espacio completo, con sus etiquetas
+        # (ADR 0019): los comparten AMG y la detección de mecanismos.
+        self._rigid_basis = None
+        self._rigid_basis_key: tuple | None = None
 
         # Caché de la matriz de masa global (ADR 0009). M es lineal y no
         # cambia entre llamadas: se ensambla una vez por análisis y se reusa.
@@ -537,6 +541,18 @@ class Assembler:
         self._M_lumping = lumping
         return self._M_global
 
+    def rigid_basis(self):
+        """Modos de cuerpo rígido del dominio en el espacio completo, con qué
+        es cada columna (:class:`~solidum.math.linalg.nullspace.RigidBasis`).
+        Cacheado mientras no cambie la topología."""
+        from solidum.math.linalg.nullspace import rigid_body_basis
+
+        self._ensure_topology()
+        if self._rigid_basis is None or self._rigid_basis_key != self._topology_key:
+            self._rigid_basis = rigid_body_basis(self.domain)
+            self._rigid_basis_key = self._topology_key
+        return self._rigid_basis
+
     def near_nullspace(self) -> np.ndarray:
         """Modos de cuerpo rígido restringidos a los DOF libres (ADR 0018).
 
@@ -552,13 +568,11 @@ class Assembler:
         AMG lo invoca— y se cachea mientras no cambien la topología ni las
         restricciones.
         """
-        from solidum.math.linalg.nullspace import rigid_body_modes
-
         self._ensure_topology()
         cs = self.constraint_set
         key = (self._topology_key, self._constraint_fp)
         if self._near_nullspace is None or self._near_nullspace_key != key:
-            B = rigid_body_modes(self.domain)
+            B = self.rigid_basis().B
             free = cs.free_dofs(self.ndof)
             self._near_nullspace = np.ascontiguousarray(B[free])
             self._near_nullspace_key = key

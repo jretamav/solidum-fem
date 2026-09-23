@@ -148,3 +148,22 @@ ITERATIVE_MAX_RESTARTS = 3
 # Tamaño del nivel más grueso de la jerarquía AMG, resuelto de forma
 # directa. 500 incógnitas mantienen barato ese solve y acortan el setup.
 AMG_MAX_COARSE = 500
+
+# --- Red de seguridad del análisis estático (ADR 0019) ---
+# Residuo de equilibrio relativo máximo aceptable tras resolver un sistema
+# lineal estático: ‖F − K·u‖ ≤ EQUILIBRIUM_RTOL · ‖F‖. Medido: un sistema
+# bien planteado queda en ~1e-13 con cualquier solver directo y en ≤ 1e-10
+# con el iterativo; un mecanismo cargado da ~1. El umbral deja cinco órdenes
+# de margen hacia cada lado.
+EQUILIBRIUM_RTOL = 1.0e-8
+# Umbral relativo de rango para decidir si los apoyos restringen un modo de
+# cuerpo rígido: valores singulares de la matriz "modo × restricción"
+# (columnas normalizadas a máximo 1) por debajo de este múltiplo del mayor
+# se consideran nulos ⇒ movimiento rígido libre ⇒ mecanismo.
+MECHANISM_RANK_RTOL = 1.0e-8
+# Un pivote de la factorización directa se considera numéricamente nulo si
+# |pivote| < ZERO_PIVOT_RTOL · max|K|. Es el mismo criterio con el que MKL
+# Pardiso decide perturbar un pivote (iparm(10) = 13 por defecto), aplicado
+# también a SuperLU para que ambos detecten la singularidad igual. Medido:
+# modelo bien planteado 3e-3; mecanismo interno 1.6e-16.
+ZERO_PIVOT_RTOL = 1.0e-13
