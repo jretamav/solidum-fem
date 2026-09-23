@@ -135,7 +135,8 @@ BATCH_PARALLEL_DEFAULT = True
 # residuo no lineal ‖R_{k+1}‖ ≲ η‖R_k‖ + C‖R_k‖² queda dominada por el
 # término cuadrático en todo el rango útil y la sucesión de iterados es la
 # del Newton exacto a efectos prácticos. No es Newton inexacto: no se
-# relaja con el residuo.
+# relaja con el residuo. Validado por el usuario el 2026-09-23 (ADR 0018
+# §4): fijo, deliberadamente no configurable desde el YAML.
 ITERATIVE_RTOL = 1.0e-10
 # Cota de iteraciones de Krylov por resolución. Con AMG y modos de cuerpo
 # rígido bastan 10-20 (medido); sin precondicionador, del orden de cientos

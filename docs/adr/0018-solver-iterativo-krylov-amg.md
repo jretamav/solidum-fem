@@ -1,6 +1,6 @@
 # ADR 0018 — Solver algebraico iterativo: CG / MINRES con AMG y modos de cuerpo rígido
 
-- **Estado**: aceptado. **La política de tolerancia del §4 queda pendiente de validación del usuario** (es la parte matemática del ADR; el resto es plumbing).
+- **Estado**: aceptado. La política de tolerancia del §4 —la parte matemática del ADR; el resto es plumbing— **validada por el usuario el 2026-09-23**.
 - **Fecha**: 2026-09-23
 - **Alcance**: `solidum/math/linalg/iterative.py` y `nullspace.py` (nuevos); `StiffnessProperties.near_nullspace` y el despachador (ADR 0003); `Assembler.near_nullspace`; el corrector de Newton (ADR 0015) y los sitios que construyen propiedades de matriz (`LinearSolver`, familia Newmark, `ThetaMethodSolver`); validación YAML de `linear_algebra`; `pyproject.toml` (extra `iterative`); CI (job con backends opcionales); `examples/benchmarks/bench_linear_algebra.py`. **No cambia** el backend por defecto, ninguna formulación ni ningún contrato de elemento o material.
 
@@ -53,7 +53,7 @@ Dos ajustes de `pyamg`, ambos por medición:
 - **Nivel grueso con `splu`**, no con la pseudoinversa densa por defecto. Con seis modos cada agregado aporta seis incógnitas gruesas y la jerarquía puede detenerse con miles de incógnitas en el último nivel (2 058 en `Hex8 20³`); su pseudoinversa es una SVD densa O(n³) que costaba ~3 s frente a ~0,1 s.
 - **Construcción completa en `factorize`**: `pyamg` factoriza el nivel grueso en la primera aplicación; se fuerza con una aplicación de calentamiento para que todo el coste quede donde el contrato del ADR 0003 lo pone (el Newton modificado reutiliza la "factorización") y no aparezca escondido en la primera resolución. Detectado por una anomalía: 12 iteraciones a 26k DOF tardaban 3,4 s y 15 a 86k tardaban 1,6 s.
 
-### 4. Criterio de parada — *pendiente de validación del usuario*
+### 4. Criterio de parada — *validado por el usuario (2026-09-23)*
 
 ```
 ‖b − K·x‖  ≤  ITERATIVE_RTOL · ‖b‖,      ITERATIVE_RTOL = 1e-10
@@ -65,6 +65,14 @@ Dos ajustes de `pyamg`, ambos por medición:
 - `ITERATIVE_MAX_ITER = 10 000` por resolución. Agotarlo es un fallo explícito (§5).
 
 La elección de `1e-10` frente al `1e-8` de ANSYS es deliberadamente conservadora: el coste de dos órdenes más de tolerancia con AMG son unas pocas iteraciones (la convergencia es geométrica), y a cambio el iterativo no introduce una fuente de error por encima del orden del directo en ningún caso práctico.
+
+**Validado por el usuario el 2026-09-23**, con tres decisiones asociadas:
+
+- **Se mantiene `1e-10`** y no el `1e-8` de ANSYS. Medido con AMG: pasar de 10⁻⁸ a 10⁻¹⁰ cuesta unas 3 iteraciones (9/12/11 → 12/15/14 a 26k/86k/202k DOF), y a cambio el iterativo no aporta un error propio por encima del orden del directo. En un código de investigación prima que el resultado no dependa del solver algebraico elegido.
+- **No se expone en el YAML.** Pensando en el usuario no experto en numérica (ADR 0019), una perilla de tolerancia invita a relajarla para "que converja". Queda configurable desde Python (`IterativeSolver(rtol=...)`); se expondrá si un caso real lo pide (`Reglas.md` §1).
+- **Sin forzado de Eisenstat-Walker** (Newton inexacto propiamente dicho): cambiaría la sucesión de iterados y hoy no hay caso que lo justifique.
+
+**Caveat heredado, registrado como mejora**: `‖b‖` es una norma euclídea que mezcla unidades (fuerzas y momentos en marcos; fuerzas y flujos de calor en un dominio mixto), así que el criterio relativo depende de la elección de unidades. Es la misma limitación del criterio del Newton (ADR 0007) y debe resolverse en ambos a la vez, midiendo el residuo escalado por la diagonal de `K` (deuda #22 de `docs/STATUS.md`).
 
 ### 5. Nunca falla en silencio
 

@@ -212,7 +212,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 ## ADR 0018 — Solver iterativo
 
-**Fecha**: 23 de septiembre de 2026. **Estado**: aceptado; la tolerancia, pendiente de validación.
+**Fecha**: 23 de septiembre de 2026. **Estado**: aceptado; la tolerancia (10⁻¹⁰ sobre el residuo verdadero, fija y no configurable desde el YAML), validada por el usuario.
 
 **Contexto.** Los programas comerciales ofrecen un solver directo por defecto y uno iterativo para modelos grandes. La ventaja del iterativo no es la velocidad sino la memoria: la del directo crece más deprisa que el modelo.
 
