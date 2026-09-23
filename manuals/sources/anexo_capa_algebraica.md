@@ -32,6 +32,16 @@ Ningún flag se pide al usuario.
 
 **`EigenSolver` (ADR 0009, problema generalizado)**. La capa algebraica incluye además `solidum.math.linalg.eigen.EigenSolver`, que resuelve el problema generalizado simétrico `K · φ = ω² · M · φ` envolviendo `scipy.sparse.linalg.eigsh` (ARPACK Lanczos con shift-invert centrado en `σ`). No comparte el `Protocol` `LinearAlgebraSolver` de los backends de `K·x = b` porque su firma natural es `solve(K, M, n_modes) → (λ, φ)`. El `ModalSolver` lo invoca para el análisis modal; los cálculos internos de shift-invert generan una factorización de `(K − σ · M)` reutilizada en cada iteración Lanczos, así que la palanca de optimización es la misma — Cholesky enchufado en lugar de SuperLU bajaría 2× el coste del modal en problemas SPD (pendiente, ver memoria de cierre).
 
+## Red de seguridad del análisis estático (ADR 0019)
+
+Un solver directo ante una matriz singular no avisa: SuperLU devuelve desplazamientos absurdos y Pardiso perturba los pivotes nulos y continúa. Como el usuario no elige el solver ni tiene por qué conocer ese comportamiento, Solidum comprueba tres cosas en todo análisis estático:
+
+1. **Antes de resolver**: que los apoyos impidan todo movimiento de sólido rígido. Si no, se detiene y dice qué movimiento queda libre (*"traslación en la dirección x"*, *"giro alrededor del eje z que pasa por (0, 0.5)"*).
+2. **Después de resolver** (estático lineal): que la solución satisface el equilibrio, `‖F − K·u‖ ≤ 10⁻⁸·‖F‖`.
+3. **Después de resolver** (estático lineal): que la factorización no tiene pivotes numéricamente nulos, con el mismo criterio en SuperLU y Pardiso.
+
+En un análisis no lineal las dos últimas no se aplican —cerca de un punto límite resolver un sistema casi singular es legítimo—; el Newton ya exige equilibrio real, y si el paso fracasa con un sistema tangente mal resuelto la causa se reporta como tangente singular. Detalle y mensajes en el capítulo de diagnóstico del manual de usuario.
+
 ## Fallback automático SPD → LU
 
 Si en algún paso `K` deja de ser positiva definida (paso a régimen postcrítico, daño con reblandecimiento), Cholesky lanza `CholeskyNotPositiveDefiniteError`. Los tres solvers no lineales lo capturan y reinstancian el backend con LU general para el resto del análisis. La transición es silenciosa — solo se imprime un mensaje informativo en stdout.
