@@ -379,3 +379,4 @@ references:
   - **F — Tolerancia `1e-14` (bit-exact)** en `estado_intacto_reproduce_Tri3`. Si en la implementación emerge un desliz numérico documentado (por canceladas algebraicas tipo `G·G^T = I`), se relaja con razón explícita en el Diálogo. Empezar estricta es mejor que pre-laxar.
 - **2026-05-18** · Status → en draft hasta que el código + tests cierren; se promoverá a `validated` cuando los `acceptance` pasen. La IA arranca implementación.
 - **2026-09-22** · Auditoría global: tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
+- **2026-09-22** · Deuda #18 (estado): `compute_global_stiffness` restaura al salir el trial del material y el del salto (`jump_trial`, `cohesive_state_trial`), que el Newton local escribía al evaluar en `u = 0` (`tests/test_trial_isolation.py`).

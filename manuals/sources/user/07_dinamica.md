@@ -62,7 +62,7 @@ Integra en el tiempo $\mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} + \ma
 
 **Parámetros**: `t_end`, `dt` (obligatorios); `beta` (default 0.25), `gamma` (default 0.5), `rayleigh` (opcional), `u0`, `u0_dot` (condiciones iniciales, default ceros), `F_func` (callback Python $t \to \mathbf F(t)$; default vibración libre). Desde YAML, las cargas del archivo (puntuales + peso propio / fuerza de cuerpo) se inyectan automáticamente como escalón constante en el tiempo; para una historia $\mathbf F(t)$ arbitraria, pasar `F_func` desde Python.
 
-**Salida**: `TransientResult` con `t_history`, `u_history`, `udot_history`, `uddot_history` (forma $(n_{\text{dof}}, n_{\text{steps}} + 1)$) y los $\alpha_{\text{Rayleigh}}, \beta_{\text{Rayleigh}}$ efectivos.
+**Salida**: `TransientResult` con `t_history`, `u_history`, `udot_history`, `uddot_history` (forma $(n_{\text{dof}}, n_{\text{steps}} + 1)$) y los $\alpha_{\text{Rayleigh}}, \beta_{\text{Rayleigh}}$ efectivos. `result.internal_forces_history(domain)` da las fuerzas internas $(N, V, M, T)$ de los elementos estructurales 1D en cada paso: con `record_internal_forces: true` (parámetro común a los cinco solvers transitorios, también desde YAML) se registran **durante** el análisis con el estado interno de cada paso y quedan en `result.element_forces_history`; sin él se reconstruyen a posteriori desde `u_history` con el estado final, lo que sólo es exacto sin historia (materiales elásticos, elementos geométricamente lineales) y avisa por log en caso contrario.
 
 ```yaml
 solver:

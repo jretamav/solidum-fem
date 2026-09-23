@@ -109,7 +109,8 @@ class {{Name}}(Element):
     N_INTEGRATION_POINTS = {{int}}
     # Opcional (ADR 0014): cinemática compilada `detJ = kin(pt, coords, B)` con firma
     # KIN_SIG, la misma que use compute_element_state, para entrar en el camino por lotes.
-    # BATCH_KINEMATICS = _batch_kin_{{snake}}
+    # BATCH_KINEMATICS = _batch_kin_{{snake}}      # firma KIN_SIG; NO lanza: devuelve det J <= 0 si degenera
+    # BATCH_SHAPE_FUNCTIONS = staticmethod(_N_{{snake}})   # N(xi, eta[, zeta]) para points_global del post-proceso
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  {{params_extra}}):

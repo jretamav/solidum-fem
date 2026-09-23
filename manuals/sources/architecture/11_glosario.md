@@ -30,7 +30,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Ensamblaje con topología cacheada**. Estrategia de ensamblaje en la que la primera invocación calcula los pares de índices `(i, j)` de cada contribución elemental en formato Coordinate (COO), deriva la estructura CSR de la matriz y un mapa COO → CSR; las invocaciones siguientes reescriben únicamente el vector de datos y lo acumulan sobre la misma estructura, sin recalcular índices ni reordenar. Ver capítulo 5 y ADR 0014.
 
-**Ensamblaje por lotes**. Evaluación de todos los puntos de Gauss de una familia de lote dentro de un único kernel compilado (`solid_family_kernel`), que recibe la cinemática del elemento y la constitutiva del material como funciones tipadas por su firma. Coexiste con el camino por elemento, que sigue siendo el contrato obligatorio y la referencia física. Ver capítulo 5 y ADR 0014.
+**Ensamblaje por lotes**. Evaluación de todos los puntos de Gauss de una familia de lote dentro de un único kernel compilado (`solid_family_kernel`, con variante paralela `solid_family_kernel_parallel` bit a bit equivalente), que recibe la cinemática del elemento y la constitutiva del material como funciones tipadas por su firma. El post-proceso por familia (`Family.gauss_state`) usa las mismas funciones. Coexiste con el camino por elemento, que sigue siendo el contrato obligatorio y la referencia física. Ver capítulo 5 y ADR 0014.
 
 **Especificación (spec)**. Documento que describe un componente físico nuevo antes de su implementación: especificación física, formulación numérica, contrato YAML y criterios de aceptación. Reside en `docs/specs/<Nombre>.md`. Es a la vez orden de trabajo y referencia detallada del componente. Ver capítulo 7.
 

@@ -64,6 +64,7 @@ interface:
   is_symmetric: true     # tangente algorítmica simétrica? (afecta al despachador algebraico ADR 0003)
   state_schema: {}       # {nombre: forma} de las variables internas, en el orden de almacenamiento (ADR 0014); {} sin historia
   batch_kernel: false    # ¿declara kernel puntual @njit con firma MAT_SIG para el ensamblaje por lotes? (opcional)
+  batch_out_of_plane_stress: false   # sólo 2D plane strain: ¿versión por arreglos de out_of_plane_stress para el post-proceso por familia? (opcional)
 
 parameters:
   - { name: , type: , required: true, desc:  }
