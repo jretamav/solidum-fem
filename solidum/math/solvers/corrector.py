@@ -41,7 +41,7 @@ from typing import Any, Callable, Protocol
 import numpy as np
 
 from solidum.constants import LINE_SEARCH_MAX_BACKTRACKS, LINE_SEARCH_RHO
-from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.convergence import ConvergenceCriterion, ConvergenceState
 from solidum.math.linalg import StiffnessProperties, select_solver
 from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError, _log
 from solidum.math.solvers.diagnostics import SolverDivergedError, classify_divergence
@@ -120,6 +120,7 @@ class CorrectorResult:
     last_alpha: float = 1.0
     last_residual: float = float("inf")
     last_delta: float = 0.0
+    last_conv: ConvergenceState | None = None
 
     def divergence_error(self, *, last_load_factor: float, n_bisections: int = 0,
                          extra_message: str = "") -> SolverDivergedError:
@@ -286,6 +287,7 @@ class NewtonCorrector:
                 result.delta_history.append(delta_norm)
                 result.last_residual = R_norm
                 result.last_delta = delta_norm
+                result.last_conv = conv
                 if self.verbose:
                     context = getattr(problem, "log_context", None)
                     ctx = context(x) if context is not None else ""
