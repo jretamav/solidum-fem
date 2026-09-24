@@ -2,7 +2,6 @@
 from solidum.core.domain import Domain
 from solidum.logging import get_logger
 from solidum.registry import ElementRegistry
-from solidum.core.material import Material
 
 try:
     import meshio
@@ -27,11 +26,25 @@ class GmshParser:
         self.filepath = filepath
         self.domain = Domain()
 
-    def parse(self, default_material: Material, default_thickness: float = 1.0, physical_props: dict = None, default_quadrature: tuple = None) -> Domain:
+    def parse(self, default_spec: dict, group_specs: dict | None = None) -> Domain:
+        """Lee el archivo de malla y retorna un objeto Domain poblado.
+
+        Cada *Physical Group* puede llevar su propia receta de elemento; las
+        celdas sin grupo con receta usan ``default_spec``. Una receta es un
+        dict (ADR 0020, P7):
+
+        ``element``
+            Tipo registrado, o ``None`` para el que corresponde a la celda
+            gmsh (``GMSH_TYPE_MAP``: ``quad`` → Quad4, ``triangle`` → Tri3).
+        ``kwargs``
+            Argumentos del constructor que el elemento debe aceptar
+            (``material`` ya resuelto, parámetros propios del elemento).
+        ``optional``
+            Argumentos que se pasan sólo si el constructor los acepta
+            (``thickness``, ``quadrature``: ``Tri3`` no tiene cuadratura).
         """
-        Lee el archivo de malla y retorna un objeto Domain poblado.
-        Permite mapear Physical Groups a diferentes materiales y espesores.
-        """
+        from solidum.utils.yaml_parser import _constructor_kwargs
+        group_specs = group_specs or {}
         _log.info(f"Leyendo malla Gmsh desde: {self.filepath} ...")
         mesh = meshio.read(self.filepath, file_format="gmsh")
         
@@ -74,38 +87,31 @@ class GmshParser:
             tags = mesh.cell_data["gmsh:physical"][i] if ("gmsh:physical" in mesh.cell_data) else None
             
             if block.type in GMSH_TYPE_MAP:
-                fenix_name, node_map_indices = GMSH_TYPE_MAP[block.type]
+                cell_default, node_map_indices = GMSH_TYPE_MAP[block.type]
 
                 for j, connectivity in enumerate(block.data):
                     # Mapeo de nodos basado en GMSH_TYPE_MAP
                     nodes = [self.domain.get_node(connectivity[k] + 1) for k in node_map_indices]
-                    
-                    # Resolver propiedades a asignar
-                    mat, thick, quad = default_material, default_thickness, default_quadrature
-                    if tags is not None and physical_props is not None:
-                        tag = int(tags[j])
-                        if tag in tag_to_name:
-                            group_name = tag_to_name[tag]
-                            if group_name in physical_props:
-                                # Tri3 no usa cuadratura, así que la ignoramos si no está
-                                mat_prop, thick_prop, quad_prop = physical_props[group_name]
-                                mat = mat_prop
-                                thick = thick_prop
-                                if fenix_name != 'Tri3':
-                                    quad = quad_prop
 
-                    # Argumentos para el constructor del elemento
-                    elem_args = {
-                        'element_id': elem_id_counter,
-                        'nodes': nodes,
-                        'material': mat,
-                        'thickness': thick,
-                    }
-                    if fenix_name != 'Tri3':
-                        elem_args['quadrature'] = quad
+                    spec, group_name = default_spec, None
+                    if tags is not None and int(tags[j]) in tag_to_name:
+                        group_name = tag_to_name[int(tags[j])]
+                        spec = group_specs.get(group_name, default_spec)
 
+                    name = spec.get('element') or cell_default
+                    cls = ElementRegistry.get(name)
+                    n_nodes = getattr(cls, 'N_NODES', None)
+                    if n_nodes is not None and n_nodes != len(nodes):
+                        raise ValueError(
+                            f"Grupo {group_name!r}: el elemento '{name}' tiene "
+                            f"{n_nodes} nodos y la celda gmsh '{block.type}', {len(nodes)}."
+                        )
+                    accepted, var_kw = _constructor_kwargs(cls)
+                    kwargs = dict(spec.get('kwargs', {}))
+                    kwargs.update({k: v for k, v in spec.get('optional', {}).items()
+                                   if var_kw or k in accepted})
                     element = ElementRegistry.create(
-                        fenix_name, **elem_args
+                        name, element_id=elem_id_counter, nodes=nodes, **kwargs,
                     )
                     self.domain.add_element(element)
                     elem_id_counter += 1

@@ -47,11 +47,14 @@ mesh_quadrature: "2x2"
 | `mesh` | Ruta al archivo `.msh` de Gmsh, relativa al YAML. |
 | `mesh_material` | ID del material por defecto que se asocia a toda la malla. |
 | `mesh_thickness` | Espesor por defecto (estado plano 2D). |
-| `mesh_quadrature` | Regla de Gauss: `"2x2"` (completa, recomendada) o `"1x1"` (reducida; produce *hourglassing*). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de `K`. |
+| `mesh_quadrature` | Regla de Gauss: `"2x2"` (completa, recomendada) o `"1x1"` (reducida; produce *hourglassing*). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de `K`. Los elementos sin cuadratura (`Tri3`) la ignoran. |
+| `mesh_element` | Opcional. Tipo de elemento de toda la malla, p. ej. `Quad4Thermal` para un modelo térmico. Sin él, cada celda gmsh da el elemento estándar: `quad` → `Quad4`, `triangle` → `Tri3`. El número de nodos del elemento debe coincidir con el de la celda. |
+
+`mesh_material` se busca en la familia de material del elemento: en `materials` para los mecánicos, en `thermal_materials` para los térmicos.
 
 ### Mapeo Avanzado: `mesh_physical_groups`
 
-Si la geometría tiene zonas con materiales o espesores distintos definidos como *Physical Groups* en Gmsh, se mapean explícitamente:
+Si la geometría tiene zonas con materiales, espesores o elementos distintos definidos como *Physical Groups* en Gmsh, se mapean explícitamente:
 
 ```yaml
 mesh_physical_groups:
@@ -63,6 +66,8 @@ mesh_physical_groups:
     material: 2
     thickness: 0.05
 ```
+
+Un grupo también puede elegir su propio `element`, con cualquier parámetro que acepte ese elemento. Sin `element`, un grupo sólo admite `material`, `thickness` y `quadrature`: cualquier otra clave es un error, no se ignora.
 
 ## Materiales
 

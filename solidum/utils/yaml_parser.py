@@ -5,6 +5,7 @@ import yaml
 import os
 import numpy as np
 from solidum.core.domain import Domain
+from solidum.core.element import Element
 from solidum.autodiscover import initialize as _ensure_registries_initialized
 from solidum.logging import get_logger
 from solidum.user import available_user_modules, load_user_module
@@ -101,7 +102,7 @@ class YamlParser:
     # Secciones de primer nivel propias del lector. Las de las familias de
     # material las declara cada registro (``Registry.YAML_SECTION``).
     _TOP_LEVEL_KEYS = frozenset({
-        'nodes', 'elements', 'mesh', 'mesh_material', 'mesh_thickness',
+        'nodes', 'elements', 'mesh', 'mesh_element', 'mesh_material', 'mesh_thickness',
         'mesh_quadrature', 'mesh_physical_groups',
         'boundary_conditions', 'boundary_conditions_by_node',
         'boundary_conditions_by_coord', 'boundary_conditions_by_group',
@@ -483,33 +484,24 @@ class YamlParser:
                 if os.path.exists(mesh_path_sin_ext):
                     mesh_path = mesh_path_sin_ext
             
-            default_mat_id = data.get('mesh_material', 1)
-            default_thickness = float(data.get('mesh_thickness', 1.0))
-            default_quad_str = data.get('mesh_quadrature', '2x2')
-            
-            if default_mat_id not in self.materials:
-                raise YamlValidationError([
-                    f"mesh_material={default_mat_id!r} no existe en 'materials' "
-                    f"(ids declarados: {sorted(self.materials)})."
-                ])
-            default_material = self.materials[default_mat_id]
-            default_quadrature = self._get_quadrature(default_quad_str)
-            
-            physical_props = {}
-            for group_name, props in data.get('mesh_physical_groups', {}).items():
-                mat_id = props.get('material', default_mat_id)
-                if mat_id not in self.materials:
-                    raise YamlValidationError([
-                        f"mesh_physical_groups[{group_name!r}]: material {mat_id!r} no "
-                        f"existe en 'materials' (ids declarados: {sorted(self.materials)})."
-                    ])
-                mat = self.materials[mat_id]
-                thick = float(props.get('thickness', default_thickness))
-                quad = self._get_quadrature(props.get('quadrature', default_quad_str))
-                physical_props[group_name] = (mat, thick, quad)
-            
+            defaults = {
+                'element': data.get('mesh_element'),
+                'material': data.get('mesh_material', 1),
+                'thickness': data.get('mesh_thickness', 1.0),
+                'quadrature': data.get('mesh_quadrature', '2x2'),
+            }
+            errors = []
+            default_spec = self._mesh_spec({}, defaults, 'mesh', errors)
+            group_specs = {
+                name: self._mesh_spec(props or {}, defaults,
+                                      f"mesh_physical_groups[{name!r}]", errors)
+                for name, props in (data.get('mesh_physical_groups') or {}).items()
+            }
+            if errors:
+                raise YamlValidationError(errors)
+
             gmsh_parser = GmshParser(mesh_path)
-            self.domain = gmsh_parser.parse(default_material, default_thickness, physical_props, default_quadrature)
+            self.domain = gmsh_parser.parse(default_spec, group_specs)
         else:
             elements_data = data.get('elements', [])
             if isinstance(elements_data, list):
@@ -531,6 +523,69 @@ class YamlParser:
                         e_type, element_id=elem_dict['id'], nodes=nodes, **kwargs))
             elif elements_data:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios.")
+
+    # Claves de un grupo físico que no son argumentos estrictos del elemento.
+    _MESH_OPTIONAL = ('thickness', 'quadrature')
+
+    def _mesh_spec(self, props: dict, defaults: dict, ctx: str, errors: list) -> dict:
+        """Receta de elemento para las celdas gmsh de un grupo físico, o de la
+        malla entera (ADR 0020, P7).
+
+        ``element`` elige el tipo (por omisión, el de la celda gmsh: Quad4 o
+        Tri3); sus referencias (``REFERENCE_KWARGS``) se buscan en la familia
+        que el elemento declara, con ``mesh_material`` como ``material`` por
+        omisión; ``thickness`` y ``quadrature`` se pasan sólo si el
+        constructor los acepta; el resto de claves son parámetros del
+        elemento y se validan contra su firma."""
+        element = props.get('element', defaults['element'])
+        cls = None
+        if element is not None:
+            if element not in ElementRegistry.names():
+                errors.append(
+                    f"{ctx}: tipo de elemento desconocido '{element}'. "
+                    f"Disponibles: {ElementRegistry.names()}."
+                )
+                return {}
+            cls = ElementRegistry.get(element)
+        refs = cls.REFERENCE_KWARGS if cls is not None else Element.REFERENCE_KWARGS
+
+        kwargs = {}
+        for kw, fam in refs.items():
+            ident = props.get(kw, defaults['material'] if kw == 'material' else None)
+            if ident is None:
+                if cls is not None and _required_kwarg(cls, kw):
+                    errors.append(f"{ctx}: falta '{kw}' para el elemento '{element}'.")
+                continue
+            objects = self.family_objects.get(fam.YAML_SECTION, {})
+            if ident not in objects:
+                errors.append(
+                    f"{ctx}: {kw}={ident!r} no existe en '{fam.YAML_SECTION}' "
+                    f"(ids declarados: {sorted(objects)})."
+                )
+                continue
+            kwargs[kw] = objects[ident]
+
+        strict = {k: v for k, v in props.items()
+                  if k != 'element' and k not in refs and k not in self._MESH_OPTIONAL}
+        if strict and cls is None:
+            errors.append(
+                f"{ctx}: parámetros {sorted(strict)} sin 'element'. Sin él sólo se "
+                f"admiten {sorted(('element', *refs, *self._MESH_OPTIONAL))}."
+            )
+        elif strict:
+            unknown, advertised = _unknown_kwargs(cls, set(strict), set())
+            for kw in unknown:
+                errors.append(
+                    f"{ctx}: parámetro '{kw}' no aceptado por '{element}'. "
+                    f"Admitidos: {advertised}."
+                )
+        kwargs.update(strict)
+
+        quadrature = props.get('quadrature', defaults['quadrature'])
+        self._get_quadrature(quadrature)            # valida la clave y avisa del 1x1
+        optional = {'thickness': float(props.get('thickness', defaults['thickness'])),
+                    'quadrature': quadrature}
+        return {'element': element, 'kwargs': kwargs, 'optional': optional}
 
     def _parse_boundary_conditions(self, data: dict):
         bcs_data = data.get('boundary_conditions', []) or []
