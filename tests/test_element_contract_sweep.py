@@ -63,7 +63,7 @@ from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.materials.elastic_3d import Elastic3D
 from solidum.materials.thermal_conduction import ThermalConduction
-from solidum.registry import CohesiveMaterialRegistry, ElementRegistry
+from solidum.registry import ElementRegistry
 
 
 def nombres_programa_principal(registry) -> list:
@@ -83,9 +83,6 @@ MAT_3D = Elastic3D(E=2.0e11, nu=0.3, density=RHO)
 MAT_CABLE = CableMaterial1D(E=2.0e11, density=RHO)
 MAT_TERM_2D = ThermalConduction(k=50.0, c=460.0, density=RHO, dim=2)
 MAT_TERM_3D = ThermalConduction(k=50.0, c=460.0, density=RHO, dim=3)
-MAT_COHESIVO = CohesiveMaterialRegistry.create(
-    'CohesiveDamageIsotropic', sigma_t0=3.0e6, G_f=100.0, K_e=1.0e13,
-    softening='exponential')
 
 ESPESOR = 0.01
 AREA = 0.01
@@ -167,9 +164,6 @@ FABRICAS = {
     'Quad4Thermal': (lambda c: c(1, _nodos(_QUAD), MAT_TERM_2D,
                                  thickness=ESPESOR), None),
     'Hex8Thermal':  (lambda c: c(1, _nodos(_HEX_VERTICES), MAT_TERM_3D), None),
-    'CST_Embedded2D': (
-        lambda c: c(1, _nodos(_TRI), MAT_2D, cohesive_material=MAT_COHESIVO,
-                    thickness=ESPESOR), None),
 }
 
 # Elementos térmicos: sus DOFs son temperaturas, no desplazamientos. Las
@@ -219,7 +213,7 @@ class TestRegistroCompleto(unittest.TestCase):
 
     def test_el_registro_no_esta_vacio(self):
         """Si el autodiscover se rompiera, el barrido pasaría por vacuidad."""
-        self.assertGreaterEqual(len(nombres_programa_principal(ElementRegistry)), 23)
+        self.assertGreaterEqual(len(nombres_programa_principal(ElementRegistry)), 22)
 
     def test_todos_construyen(self):
         for nombre in nombres_programa_principal(ElementRegistry):

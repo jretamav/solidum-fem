@@ -31,11 +31,11 @@ import unittest
 
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
-from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
+from solidum.user.discontinuities import CohesiveDamageIsotropic
 from solidum.core.node import Node
-from solidum.elements.solid_2d.embedded_cst import CST_Embedded2D, _compute_ld
+from solidum.user.discontinuities.embedded_cst import CST_Embedded2D, _compute_ld
 from solidum.materials.elastic_2d import Elastic2D
 
 

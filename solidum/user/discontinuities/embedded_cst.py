@@ -2,7 +2,7 @@
 
 Fase 2 del ADR 0010. Cinemática enriquecida fiel al Cap. 2, 5, 7 de Retama
 (2010); longitud efectiva ``l_d = (A_e/h)·cos(θ−α)`` del Cap. 6. Ver
-``docs/specs/CST_Embedded2D.md`` para la formulación completa.
+``docs/user/discontinuities/specs/CST_Embedded2D.md`` para la formulación completa.
 """
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ from typing import List
 
 import numpy as np
 
-from solidum.core.cohesive_material import CohesiveMaterial
-from solidum.core.discontinuity_state import DiscontinuityState
 from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
@@ -19,16 +17,17 @@ from solidum.elements.solid_2d._shared import (
     compute_integrands,
     compute_kinematics_tri3,
 )
-from solidum.registry import CohesiveMaterialRegistry, ElementRegistry, MaterialRegistry
+from solidum.registry import ElementRegistry, MaterialRegistry
+from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
+from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL
+from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
+from solidum.user.discontinuities.registry import CohesiveMaterialRegistry
 
 
-# Tolerancias del Newton local del salto (algoritmo de condensación).
-# Centralizadas en ``solidum.constants`` (auditoría H-1.9) — re-exportadas
-# como alias de módulo para preservar imports históricos.
-from solidum.constants import (
-    EMBEDDED_LOCAL_JUMP_MAX_ITER as _LOCAL_JUMP_MAX_ITER,
-    EMBEDDED_LOCAL_JUMP_RTOL as _LOCAL_JUMP_RTOL,
-)
+# Tolerancias del Newton local del salto (algoritmo de condensación), en
+# las constantes del módulo; alias con guion bajo para los imports históricos.
+_LOCAL_JUMP_MAX_ITER = LOCAL_JUMP_MAX_ITER
+_LOCAL_JUMP_RTOL = LOCAL_JUMP_RTOL
 
 # Bulks aceptados en fase 1 (ver punto abierto A de la spec, decisión cerrada
 # 2026-05-18: la discrete approach presupone bulk elástico).

@@ -1,7 +1,7 @@
 """Tests de aceptación de ``CohesiveDamageIsotropic`` (ADR 0010, fase 1).
 
 Cubre los criterios de ``acceptance`` declarados en
-``docs/specs/CohesiveDamageIsotropic.md``: verificación física (respuesta
+``docs/user/discontinuities/specs/CohesiveDamageIsotropic.md``: verificación física (respuesta
 elástica, inicio del daño, integral ``∫t·d[[u_n]] = G_F``, descarga,
 recarga, saturación), tests específicos (simetría de la tangente,
 consistencia por diferencias finitas, comportamiento en tangencial y
@@ -17,10 +17,10 @@ import unittest
 
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
-from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from solidum.registry import CohesiveMaterialRegistry
+from solidum.user.discontinuities import CohesiveDamageIsotropic
+from solidum.user.discontinuities import CohesiveMaterialRegistry
 
 
 # --- Parámetros tipo hormigón para los casos de validación ---------------

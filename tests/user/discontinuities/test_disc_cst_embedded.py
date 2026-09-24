@@ -1,7 +1,7 @@
 """Tests de aceptación de ``CST_Embedded2D`` (ADR 0010, fase 2).
 
 Cubre los criterios de ``acceptance`` declarados en
-``docs/specs/CST_Embedded2D.md``: verificación física (estado intacto
+``docs/user/discontinuities/specs/CST_Embedded2D.md``: verificación física (estado intacto
 bit-exact con Tri3, activación Rankine, descarga elástica del bulk
 post-activación, simetría KOS de la condensada, fórmula `l_d` del Cap. 6,
 recuperación local del salto), tests específicos (rechazo de bulks no
@@ -18,13 +18,13 @@ import unittest
 
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
-from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
-from solidum.core.discontinuity_state import DiscontinuityState
+from solidum.user.discontinuities import CohesiveDamageIsotropic
+from solidum.user.discontinuities import DiscontinuityState
 from solidum.core.element import Element
 from solidum.core.node import Node
-from solidum.elements.solid_2d.embedded_cst import (
+from solidum.user.discontinuities.embedded_cst import (
     CST_Embedded2D,
     _compute_ld,
     _max_principal_stress_2d,
@@ -511,7 +511,7 @@ class TestConstructorValidations(unittest.TestCase):
         nodes = _triangle_nodes(coords)
 
         # Cohesivo falso con JUMP_DIM=3 (subclase mínima para el test)
-        from solidum.core.cohesive_material import CohesiveMaterial
+        from solidum.user.discontinuities import CohesiveMaterial
 
         class Fake3D(CohesiveMaterial):
             JUMP_DIM = 3
@@ -637,6 +637,7 @@ nodes:
 materials:
   - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_strain}
 
+user_modules: [discontinuities]
 cohesive_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
@@ -678,6 +679,7 @@ nodes:
 materials:
   - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_strain}
 
+user_modules: [discontinuities]
 cohesive_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}

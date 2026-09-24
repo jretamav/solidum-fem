@@ -170,7 +170,7 @@ Esta fórmula es **decisión cerrada en el ADR 0010** (§6); no se relitiga aqu�
 
 ### 12. Estado de la discontinuidad — `DiscontinuityState`
 
-Dataclass paralela a `ElementState` (ADR 0010 §4), específica de la discontinuidad. Vive en `solidum/core/discontinuity_state.py`:
+Dataclass paralela a `ElementState` (ADR 0010 §4), específica de la discontinuidad. Vive en `solidum/user/discontinuities/discontinuity_state.py`:
 
 ```python
 @dataclass
@@ -202,13 +202,13 @@ ADR 0010 §5 fija que la activación se evalúa **al inicio de cada paso de carg
 
 ## Caveats numéricos
 
-- **Invertibilidad de `K_{[[u]][[u]]}` en ablandamiento**. La tangente cohesiva es `diag(dT_soft/dκ, 0)`: negativa en el ablandamiento, nula con la grieta totalmente abierta y nula siempre en la dirección tangencial (Modo-I). La matriz 2×2 sigue siendo invertible por el término del bulk `G^T·(B^φ)^T·C_e·B^φ·G·vol`, definido positivo, mientras el elemento no sea tan grande que el ablandamiento lo supere (aproximadamente `l_d·|dT_soft/dκ| < E/h`). Por eso el cohesivo no necesita ninguna rigidez residual; la que tuvo hasta el 2026-09-23 (`(1 − DAMAGE_MAX)·K_e`) daba a la tangente condensada errores del 26 al 45 % en el ablandamiento ([`TestCondensedTangentInSoftening`](../../tests/test_cst_embedded.py)).
+- **Invertibilidad de `K_{[[u]][[u]]}` en ablandamiento**. La tangente cohesiva es `diag(dT_soft/dκ, 0)`: negativa en el ablandamiento, nula con la grieta totalmente abierta y nula siempre en la dirección tangencial (Modo-I). La matriz 2×2 sigue siendo invertible por el término del bulk `G^T·(B^φ)^T·C_e·B^φ·G·vol`, definido positivo, mientras el elemento no sea tan grande que el ablandamiento lo supere (aproximadamente `l_d·|dT_soft/dκ| < E/h`). Por eso el cohesivo no necesita ninguna rigidez residual; la que tuvo hasta el 2026-09-23 (`(1 − DAMAGE_MAX)·K_e`) daba a la tangente condensada errores del 26 al 45 % en el ablandamiento ([`TestCondensedTangentInSoftening`](../../tests/user/discontinuities/test_disc_cst_embedded.py)).
 - **Mecanismo de deslizamiento**. Con rigidez de modo II nula (Retama 2010, p. 67), una grieta que atraviesa todo el sólido deja deslizar sin resistencia una parte respecto de la otra en la dirección de la grieta. Las condiciones de apoyo tienen que impedir ese movimiento; si no, el Newton global deriva sin converger en desplazamientos aunque el residuo sea nulo.
 - **Activación al principio del paso**. Si el incremento es muy grande, `σ_I` puede saltar muy por encima de `σ_t0` antes de la activación, generando un Δ[[u]] grande en el primer Newton. Mitigación: pasos suficientemente pequeños o `ArcLengthSolver` cerca del pico.
 - **Bulk descarga elástica**. Por la cinemática KOS, el bulk evalúa `ε^bulk = B_std·d − B^φ·G·[[u]]` — descarga conforme `[[u]]` crece. Esto es físicamente correcto (la disipación va a `Γ_d`) y consistente con la discrete approach de Retama 2010. El bulk **no acumula daño** propio (out_of_scope fase 1).
 - **`Γ_d` paralelo a un lado**. Caso degenerado: `cos(θ−α) = 1`, `l_d = A_e/h`. La fórmula del Cap. 6 sigue siendo correcta, pero numéricamente el nodo solitario debe identificarse con tolerancia para evitar oscilación entre dos nodos casi en el mismo plano.
 - **`Γ_d` casi vertical en CST con jacobiano malacondicionado**. Sin patología nueva: hereda los caveats del CST padre. El test `det J > tol` de `Tri3` cubre el caso.
-- **Stress locking**. La fase 3 del ADR 0010 valida numéricamente que `l_d = (A_e/h)·cos(θ−α)` evita el locking que aparece con `l_d = A_e/h` ingenuo. Test cubierto en `tests/test_ld_chapter_6_validation.py`: con `Γ_d` oblicua respecto al lado opuesto al nodo solitario (`cos(θ−α) = √3/2` en el setup), la versión correcta produce una apertura `[[u_n]]` ≈ 5.45 % mayor que la versión ingenua para una misma carga, en rama de softening exponencial activo. La versión ingenua "infla" la rigidez cohesiva (`l_d · T_coh`) por un factor `1/cos(θ−α) > 1`, restringe la apertura y el elemento se comporta como si fuera más rígido — eso es el *stress locking*. Cuando `Γ_d` es paralela al lado opuesto (`cos(θ−α) = ±1`), las dos fórmulas coinciden exactamente y no hay locking.
+- **Stress locking**. La fase 3 del ADR 0010 valida numéricamente que `l_d = (A_e/h)·cos(θ−α)` evita el locking que aparece con `l_d = A_e/h` ingenuo. Test cubierto en `tests/user/discontinuities/test_disc_ld_chapter_6_validation.py`: con `Γ_d` oblicua respecto al lado opuesto al nodo solitario (`cos(θ−α) = √3/2` en el setup), la versión correcta produce una apertura `[[u_n]]` ≈ 5.45 % mayor que la versión ingenua para una misma carga, en rama de softening exponencial activo. La versión ingenua "infla" la rigidez cohesiva (`l_d · T_coh`) por un factor `1/cos(θ−α) > 1`, restringe la apertura y el elemento se comporta como si fuera más rígido — eso es el *stress locking*. Cuando `Γ_d` es paralela al lado opuesto (`cos(θ−α) = ±1`), las dos fórmulas coinciden exactamente y no hay locking.
 
 ---
 
@@ -347,15 +347,15 @@ references:
 
 ## Implementación
 
-- Archivo: `solidum/elements/solid_2d/embedded_cst.py`
+- Archivo: `solidum/user/discontinuities/embedded_cst.py`
 - Clase: `CST_Embedded2D` (registrada en `ElementRegistry`)
-- Estado de la discontinuidad: `solidum/core/discontinuity_state.py` (`DiscontinuityState`)
+- Estado de la discontinuidad: `solidum/user/discontinuities/discontinuity_state.py` (`DiscontinuityState`)
 - Hook de paso en clase base: `Element.prepare_step(U_committed)` (no-op por defecto)
 - Integración en solvers:
   - `NonlinearSolver`: invoca `self.assembler.prepare_all_steps(U_current)` al inicio de cada paso, antes del Newton.
   - `ArcLengthSolver`: idem, antes del predictor.
 - Parser YAML: nueva sección `cohesive_materials:` + campo `cohesive_material:` por elemento.
-- Tests: `tests/test_cst_embedded.py` — 24 tests cubriendo `acceptance` completo (verification, specific, arch) + integración end-to-end del YAML.
+- Tests: `tests/user/discontinuities/test_disc_cst_embedded.py` — 24 tests cubriendo `acceptance` completo (verification, specific, arch) + integración end-to-end del YAML.
 - Notas de traducción:
   - Estado intacto (`discontinuity_state is None`) → bit-exact con `Tri3` (mismo `B`, mismo `_compute_integrands`).
   - Estado agrietado: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`, después condensación estática local cerrada (`K_jj` es 2×2). Tolerancia interna: `_LOCAL_JUMP_RTOL = 1e-10`, `_LOCAL_JUMP_MAX_ITER = 30`.

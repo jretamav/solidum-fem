@@ -3,14 +3,14 @@
 
 Traducción a código de Retama (2010), Cap. 3: daño escalar isótropo activado
 por tracción (Rankine), softening lineal o exponencial gobernado por la
-energía de fractura ``G_f``. Ver ``docs/specs/CohesiveDamageIsotropic.md``.
+energía de fractura ``G_f``. Ver ``docs/user/discontinuities/specs/CohesiveDamageIsotropic.md``.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from solidum.core.cohesive_material import CohesiveMaterial
-from solidum.registry import CohesiveMaterialRegistry
+from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
+from solidum.user.discontinuities.registry import CohesiveMaterialRegistry
 
 
 @CohesiveMaterialRegistry.register
@@ -72,7 +72,7 @@ class CohesiveDamageIsotropic(CohesiveMaterial):
     en esa componente.
 
     Para deducción física, condiciones de Kuhn-Tucker, validación energética
-    y benchmarks, ver ``docs/specs/CohesiveDamageIsotropic.md``.
+    y benchmarks, ver ``docs/user/discontinuities/specs/CohesiveDamageIsotropic.md``.
     """
     JUMP_DIM = 2
     PRIMARY_STATE_VAR = 'damage'

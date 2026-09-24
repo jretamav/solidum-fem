@@ -211,26 +211,6 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
                     f"{spec.path}: {attr}={code_val!r} (código) vs "
                     f"{key}={spec_val!r} (spec)"
                 )
-    elif spec.kind == "cohesive_material":
-        cls = registry._items[spec.name]
-        iface = spec.contract["interface"]
-        for attr, key in (
-            ("JUMP_DIM", "jump_dim"),
-            ("PRIMARY_STATE_VAR", "primary_state_var"),
-            ("IS_SYMMETRIC", "is_symmetric"),
-        ):
-            if key not in iface:
-                continue  # campos opcionales en la spec; lo declarado debe coincidir
-            if not hasattr(cls, attr):
-                errors.append(f"{spec.path}: {cls.__name__} no declara {attr}")
-                continue
-            code_val = getattr(cls, attr)
-            spec_val = iface[key]
-            if code_val != spec_val:
-                errors.append(
-                    f"{spec.path}: {attr}={code_val!r} (código) vs "
-                    f"{key}={spec_val!r} (spec)"
-                )
     return errors
 
 

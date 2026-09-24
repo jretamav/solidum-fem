@@ -14,7 +14,6 @@ import unittest
 import numpy as np
 
 import solidum  # noqa: F401
-from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 from solidum.core.domain import Domain
 from solidum.elements.frame import Frame2DTimoshenko
 from solidum.materials.drucker_prager_2d import DruckerPrager2D
@@ -63,14 +62,6 @@ class TestDruckerPragerApex(unittest.TestCase):
         sig_chk = np.array([lam * tr + 2 * m2.G * a[0], lam * tr + 2 * m2.G * a[1], 2 * m2.G * a[3]])
         np.testing.assert_allclose(sig, sig_chk, rtol=1e-8, atol=1e-10)
         self.assertLess(st["alpha"], 1.0)
-
-
-class TestCohesiveLinearValidation(unittest.TestCase):
-
-    def test_linear_requires_wc_greater_than_kappa0(self):
-        with self.assertRaises(ValueError):
-            CohesiveDamageIsotropic(K_e=10.0, sigma_t0=3.0, G_f=0.1, softening="linear")
-        CohesiveDamageIsotropic(K_e=1e6, sigma_t0=3.0, G_f=0.1, softening="linear")
 
 
 class TestJ2PlaneStressLocalNewton(unittest.TestCase):

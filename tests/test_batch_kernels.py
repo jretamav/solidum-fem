@@ -27,7 +27,9 @@ import solidum  # noqa: F401
 from solidum.math.batch import StateSchema, element_is_batchable, material_is_batchable
 from solidum.registry import ElementRegistry, MaterialRegistry, ThermalMaterialRegistry
 
-from test_element_contract_sweep import ESPESOR, FABRICAS, TERMICOS, _construir
+from test_element_contract_sweep import (
+    ESPESOR, FABRICAS, TERMICOS, _construir, nombres_programa_principal,
+)
 from test_material_contract_sweep import MUESTRAS
 
 RNG = np.random.default_rng(20260922)
@@ -167,18 +169,17 @@ class TestCinematicaDeElementos(unittest.TestCase):
 
     def test_elementos_batchables(self):
         """Todos los sólidos isoparamétricos y los térmicos declaran
-        cinemática; los 1D y el embebido no (quedan en el camino por
-        elemento)."""
-        esperados_no = {'CST_Embedded2D', 'Truss2D', 'Truss2DCorot', 'Truss3D',
+        cinemática; los 1D no (quedan en el camino por elemento)."""
+        esperados_no = {'Truss2D', 'Truss2DCorot', 'Truss3D',
                         'Truss3DCorot', 'Cable2DCorot', 'Cable3DCorot', 'Frame2DEuler',
                         'Frame2DEulerCorot', 'Frame2DTimoshenko', 'Frame3D'}
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elem = _construir(nombre)
                 self.assertEqual(element_is_batchable(elem), nombre not in esperados_no)
 
     def test_cinematica_integra_el_volumen_y_anula_traslaciones(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             elem = _construir(nombre)
             if not element_is_batchable(elem):
                 continue
@@ -212,7 +213,7 @@ class TestCinematicaDeElementos(unittest.TestCase):
     def test_cinematica_por_lotes_coincide_con_compute_gauss_state(self):
         """Deformación por punto de Gauss: ``B_batch · u_e`` == la que reporta
         ``compute_gauss_state`` (camino por elemento), en geometría perturbada."""
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             if nombre in TERMICOS:
                 continue
             elem = _construir(nombre)

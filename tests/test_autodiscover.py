@@ -2,7 +2,7 @@
 
 Regresión de la auditoría H-1.1: el autodiscover usaba ``pkgutil.iter_modules``
 no recursivo, así que módulos dentro de subpaquetes (p. ej.
-``solidum/elements/solid_2d/embedded_cst.py``) sólo se registraban si alguien
+``solidum/elements/solid_2d/quad8.py``) sólo se registraban si alguien
 los re-exportaba manualmente desde un ``__init__.py``. El fix migra a
 ``pkgutil.walk_packages`` (recursivo); este test asegura que toda clase con
 decorador ``@<Registry>.register`` en el árbol ``solidum/`` aparece en el
@@ -17,7 +17,6 @@ from pathlib import Path
 import solidum  # dispara autodiscover
 
 from solidum.registry import (
-    CohesiveMaterialRegistry,
     ElementRegistry,
     MaterialRegistry,
     SolverRegistry,
@@ -32,7 +31,6 @@ _FENIX_ROOT = Path(solidum.__file__).resolve().parent
 _REGISTRY_BY_NAME = {
     "ElementRegistry": ElementRegistry,
     "MaterialRegistry": MaterialRegistry,
-    "CohesiveMaterialRegistry": CohesiveMaterialRegistry,
     "SolverRegistry": SolverRegistry,
 }
 
@@ -53,7 +51,12 @@ def _scan_decorated_classes(root: Path) -> dict[str, set[str]]:
     decoradores. Salta archivos privados (``_*.py``)."""
     found: dict[str, set[str]] = {name: set() for name in _REGISTRY_BY_NAME}
     for py_file in root.rglob("*.py"):
-        if any(p.startswith("_") for p in py_file.relative_to(root).parts):
+        partes = py_file.relative_to(root).parts
+        if any(p.startswith("_") for p in partes):
+            continue
+        # Los módulos de usuario (ADR 0020) no se autodescubren: los carga
+        # el modelo que los pide. Su registro lo prueban sus propios tests.
+        if partes[0] == "user":
             continue
         try:
             tree = ast.parse(py_file.read_text(encoding="utf-8"))

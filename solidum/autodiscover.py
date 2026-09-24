@@ -65,6 +65,5 @@ def initialize() -> None:
     subpaquete anidado.
     """
     _discover_package("solidum.materials")
-    _discover_package("solidum.cohesive_materials")
     _discover_package("solidum.elements")
     _discover_package("solidum.math")

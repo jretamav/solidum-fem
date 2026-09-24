@@ -175,19 +175,6 @@ class MaterialRegistry(Registry):
     YAML_LABEL = "material"
 
 
-class CohesiveMaterialRegistry(Registry):
-    """Registry paralelo a ``MaterialRegistry`` para materiales cohesivos
-    traction-jump (ADR 0010). Separado intencionalmente: los cohesivos
-    operan sobre ``[[u]]`` y devuelven ``t`` sobre ``Γ_d``, no sobre Voigt
-    de ``ε`` en el bulk. Mezclarlos forzaría al parser YAML a discriminar
-    por tipo en cada uso."""
-    _items: Dict[str, Type] = {}
-    _kind = "MaterialCohesivo"
-    SPEC_KIND = "cohesive_material"
-    YAML_SECTION = "cohesive_materials"
-    YAML_LABEL = "material cohesivo"
-
-
 class ThermalMaterialRegistry(Registry):
     """Registry paralelo a ``MaterialRegistry`` para materiales térmicos
     (Etapa 8). Separado intencionalmente por la misma razón que el cohesivo:

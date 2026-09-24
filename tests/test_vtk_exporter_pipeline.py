@@ -157,13 +157,15 @@ class TestVtkExporterPipeline(unittest.TestCase):
         from solidum.registry import ElementRegistry
         esperado = {
             "Tri3": "triangle", "Quad4": "quad", "Tri6": "triangle6",
-            "Quad8": "quad8", "Quad9": "quad9", "CST_Embedded2D": "triangle",
+            "Quad8": "quad8", "Quad9": "quad9",
             "Hex8": "hexahedron", "Tet4": "tetra", "Tet10": "tetra10",
             "Hex20": "hexahedron20", "Hex27": "hexahedron27",
             "Quad4Thermal": "quad", "Hex8Thermal": "hexahedron",
         }
         for name in ElementRegistry.names():
             cls = ElementRegistry.get(name)
+            if cls.__module__.startswith("solidum.user."):
+                continue        # módulos de usuario: los prueban sus tests
 
             class _Stub:
                 pass

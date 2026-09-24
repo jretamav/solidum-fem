@@ -338,14 +338,14 @@ references:
 
 ## Implementación
 
-- Archivo: `solidum/cohesive_materials/damage_isotropic.py`
+- Archivo: `solidum/user/discontinuities/damage_isotropic.py`
 - Clase: `CohesiveDamageIsotropic` (registrada en `CohesiveMaterialRegistry`)
-- Base abstracta: `solidum/core/cohesive_material.py` (`CohesiveMaterial`)
-- Registry: `solidum/registry.py` (`CohesiveMaterialRegistry`, paralelo a `MaterialRegistry`)
+- Base abstracta: `solidum/user/discontinuities/cohesive_material.py` (`CohesiveMaterial`)
+- Registry: `solidum/user/discontinuities/registry.py` (`CohesiveMaterialRegistry`, familia de material del módulo de usuario, paralela a `MaterialRegistry`)
 - Autodiscover: `solidum.autodiscover.initialize()` descubre `solidum.cohesive_materials` automáticamente.
 - Tests:
-  - `tests/test_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
-  - `tests/test_cst_embedded.py::TestCondensedTangentInSoftening` y `tests/validation/test_embedded_uniaxial_softening.py` — el material dentro del elemento: tangente condensada frente a diferencias finitas y tracción uniaxial hasta la separación completa frente a la solución exacta.
+  - `tests/user/discontinuities/test_disc_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
+  - `tests/user/discontinuities/test_disc_cst_embedded.py::TestCondensedTangentInSoftening` y `tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py` — el material dentro del elemento: tangente condensada frente a diferencias finitas y tracción uniaxial hasta la separación completa frente a la solución exacta.
 - Notas de traducción:
   - El algoritmo §8 es explícito (sin Newton local); no se usa `is_admissible` en este material.
   - `JUMP_DIM = 2`, `PRIMARY_STATE_VAR = 'damage'`, `IS_SYMMETRIC = True`.

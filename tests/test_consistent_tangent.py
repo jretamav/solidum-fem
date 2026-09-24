@@ -34,7 +34,6 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 from solidum.materials.drucker_prager_2d import DruckerPrager2D
 from solidum.materials.von_mises_2d import VonMises2D
 
@@ -218,48 +217,6 @@ class TestDruckerPrager2DConsistentTangent(unittest.TestCase):
             f"≥ 1e-2.\nC_alg=\n{C_alg}\nC_fd=\n{C_fd}")
 
 
-# =============================================================================
-# CohesiveDamageIsotropic
-# =============================================================================
-
-class TestCohesiveConsistentTangent(unittest.TestCase):
-    """Consistent tangent del cohesivo Modo-I (rank-1 sobre n⊗n)."""
-
-    def _do_fd_test(self, softening: str):
-        sigma_t0 = 2.0e6
-        G_f = 100.0
-        # K_e suficientemente grande para que el softening exponencial
-        # cumpla ``K_e > σ_t0²/(2·G_F) = 2e10``.
-        K_e = 5.0e10
-        mat = CohesiveDamageIsotropic(
-            sigma_t0=sigma_t0, G_f=G_f, K_e=K_e, softening=softening,
-        )
-
-        # Jump normal en régimen carga activa: > κ_0 pero MUY por debajo
-        # de la apertura crítica `w_c = 2·G_F/σ_t0` (lineal: tracción
-        # física se anula en w_c y la tangente analítica se reporta como
-        # rigidez residual artificial, by design — no comparable con FD).
-        # `u_n = 1.5·κ_0` está claramente activo y << w_c en este setup.
-        u_n = 1.5 * mat.kappa_0
-        jump = np.array([u_n, 0.0])
-        anchor = {'kappa': u_n * 0.9, 'damage': 0.0}
-
-        _, T_alg, _ = mat.compute_traction(jump, anchor)
-        # delta relativo razonable: 1e-6 × u_n produce diferencias de
-        # tracción del orden K_e × delta ≈ 6, captables sin perder a
-        # precisión máquina (jump base ~6e-6, tracción base ~K_e×u_n ~3e5).
-        T_fd = _tangent_fd(mat.compute_traction, jump, anchor, delta=1.0e-6 * u_n)
-
-        err = _rel_error(T_alg, T_fd)
-        self.assertLess(err, 1.0e-4,
-            f"Cohesive {softening}: ‖T_alg − T_fd‖/‖T_alg‖ = {err:.3e} "
-            f"≥ 1e-4.\nT_alg=\n{T_alg}\nT_fd=\n{T_fd}")
-
-    def test_linear_softening_loading(self):
-        self._do_fd_test('linear')
-
-    def test_exponential_softening_loading(self):
-        self._do_fd_test('exponential')
 
 
 if __name__ == '__main__':

@@ -46,7 +46,8 @@ genéricos por olvido.
 
 Registros paralelos
 -------------------
-`CohesiveMaterialRegistry` y `ThermalMaterialRegistry` son deliberadamente
+Las demás familias de material (`ThermalMaterialRegistry`, las de los
+módulos de usuario) son deliberadamente
 distintos (ADR 0010 y Etapa 8): un cohesivo relaciona tracción con salto de
 desplazamiento y un térmico flujo con gradiente, ninguno σ con ε en Voigt. No
 comparten este contrato y por eso no se barren aquí; sí se comprueba que no
@@ -63,8 +64,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import solidum  # noqa: F401  — dispara el autodiscover que puebla el registro
 from solidum.core.material import Material
-from solidum.registry import (CohesiveMaterialRegistry, MaterialRegistry,
-                              ThermalMaterialRegistry)
+from solidum.registry import MaterialRegistry, Registry
 
 
 def nombres_programa_principal(registry) -> list:
@@ -147,15 +147,18 @@ class TestRegistroCompleto(unittest.TestCase):
         self.assertGreaterEqual(len(nombres_programa_principal(MaterialRegistry)), 13)
 
     def test_los_registros_paralelos_no_se_mezclan(self):
-        """Cohesivos y térmicos viven en registros propios (ADR 0010, Etapa 8).
+        """Cada familia de material vive en su registro (ADR 0020): la
+        térmica y las de los módulos de usuario que estén cargados.
 
         Un material traspapelado al registro principal llegaría al parser YAML
         como si fuera un material de bulk y fallaría de forma críptica al
         construir un elemento sólido.
         """
         principal = set(nombres_programa_principal(MaterialRegistry))
-        for otro_registro, etiqueta in ((CohesiveMaterialRegistry, 'cohesivo'),
-                                        (ThermalMaterialRegistry, 'térmico')):
+        for otro_registro in Registry.families():
+            if otro_registro is MaterialRegistry:
+                continue
+            etiqueta = otro_registro.YAML_LABEL
             solapamiento = principal & set(otro_registro.names())
             self.assertFalse(
                 solapamiento,

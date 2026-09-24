@@ -99,13 +99,6 @@ MODAL_EIGENVALUE_ZERO_RTOL = 1.0e-12
 # se rechaza el ensamble lumped (típico: Frame3D oblicuo).
 LUMPED_MASS_OFF_DIAGONAL_RTOL = 1.0e-12
 
-# --- Newton local del salto cohesivo en CST_Embedded2D (ADR 0010) ---
-# Tolerancia relativa del Newton local sobre ``[[u]]`` (residuo r_jump).
-# Más estricta que la del Newton global porque típicamente converge en
-# 1-3 iteraciones gracias al penalty stiff K_e ≈ 1e15.
-EMBEDDED_LOCAL_JUMP_RTOL = 1.0e-10
-EMBEDDED_LOCAL_JUMP_MAX_ITER = 30
-
 # --- Return mapping J2 plane stress (Simó-Hughes §3.4.1) ---
 # Newton local sobre ``Δγ`` con función de fluencia proyectada
 # ``f̄ = ½·σ·P·σ − R²/3``. Converge típicamente en 3-6 iteraciones por

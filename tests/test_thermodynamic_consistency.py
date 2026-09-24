@@ -35,7 +35,6 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 from solidum.materials.damage_1d import IsotropicDamage1D
 from solidum.materials.damage_2d import IsotropicDamage2D
 from solidum.materials.drucker_prager_2d import DruckerPrager2D
@@ -230,53 +229,6 @@ class TestIsotropicDamageMonotonicity(unittest.TestCase):
         self.assertGreater(n_active, 5)
 
 
-# =============================================================================
-# Cohesivo: κ y ω monótonas bajo apertura monótona
-# =============================================================================
-
-class TestCohesiveMonotonicity(unittest.TestCase):
-
-    def _run(self, softening: str):
-        sigma_t0 = 2.0e6; G_f = 100.0; K_e = 5.0e10
-        mat = CohesiveDamageIsotropic(
-            sigma_t0=sigma_t0, G_f=G_f, K_e=K_e, softening=softening,
-        )
-
-        state = None
-        kappa_prev = mat.kappa_0
-        d_prev = 0.0
-        n_active = 0
-
-        # Apertura normal creciente desde 0 hasta 5·κ_0 (lejos del cap
-        # residual para que el régimen activo sea claro).
-        n_steps = 20
-        for k in range(1, n_steps + 1):
-            u_n = 5.0 * mat.kappa_0 * k / n_steps
-            jump = np.array([u_n, 0.0])
-            _, _, state_new = mat.compute_traction(jump, state)
-            kappa_new = state_new['kappa']
-            d_new = state_new['damage']
-
-            self.assertGreaterEqual(kappa_new, kappa_prev - 1.0e-14,
-                f"{softening} paso {k}: κ decreció.")
-            self.assertGreaterEqual(d_new, d_prev - 1.0e-14,
-                f"{softening} paso {k}: ω decreció.")
-
-            if d_new > d_prev + 1.0e-14:
-                n_active += 1
-
-            kappa_prev = float(kappa_new)
-            d_prev = float(d_new)
-            state = state_new
-
-        self.assertGreater(n_active, 5,
-            f"{softening}: sólo {n_active} pasos con daño activo.")
-
-    def test_linear(self):
-        self._run('linear')
-
-    def test_exponential(self):
-        self._run('exponential')
 
 
 if __name__ == '__main__':
