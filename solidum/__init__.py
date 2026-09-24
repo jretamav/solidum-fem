@@ -12,6 +12,10 @@ from solidum.logging import get_logger, set_log_level
 from solidum.autodiscover import initialize as _initialize_registries
 _initialize_registries()
 
+# Módulos de usuario (ADR 0020): formulaciones no estándar en solidum/user/,
+# que el programa principal no importa. Se cargan sólo si un modelo lo pide.
+from solidum.user import available_user_modules, load_user_module
+
 from solidum.registry import (
     MaterialRegistry,
     CohesiveMaterialRegistry,

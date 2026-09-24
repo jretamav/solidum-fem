@@ -7,6 +7,7 @@ import numpy as np
 from solidum.core.domain import Domain
 from solidum.autodiscover import initialize as _ensure_registries_initialized
 from solidum.logging import get_logger
+from solidum.user import available_user_modules, load_user_module
 from solidum.registry import (
     ElementRegistry,
     QuadratureRegistry,
@@ -106,7 +107,7 @@ class YamlParser:
         'boundary_conditions_by_coord', 'boundary_conditions_by_group',
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
         'point_loads_by_group', 'linear_constraints', 'body_force', 'gravity',
-        'thermal_loads', 'solver', 'output',
+        'thermal_loads', 'solver', 'output', 'user_modules',
     })
 
     def __init__(self, filepath: str):
@@ -148,6 +149,12 @@ class YamlParser:
         if not isinstance(data, dict) or not data:
             raise YamlValidationError(["El archivo YAML está vacío o no tiene formato de mapa clave-valor."])
 
+        # Los módulos de usuario se cargan antes de validar: aportan tipos de
+        # elemento, materiales y secciones que la validación debe conocer.
+        errors = self._load_user_modules(data)
+        if errors:
+            raise YamlValidationError(errors)
+
         errors = self._validate(data)
         if errors:
             raise YamlValidationError(errors)
@@ -164,6 +171,34 @@ class YamlParser:
         self.output_config = data.get('output', {})
         self.solver_config = data.get('solver', {})
         return self.domain
+
+    @staticmethod
+    def _load_user_modules(data: dict) -> list:
+        """Carga los módulos de usuario de ``user_modules`` (ADR 0020, P4)."""
+        requested = data.get('user_modules') or []
+        if isinstance(requested, str):
+            requested = [requested]
+        if not isinstance(requested, list) or not all(isinstance(m, str) for m in requested):
+            return ["'user_modules' debe ser una lista de nombres de módulos de usuario."]
+        errors = []
+        for name in requested:
+            try:
+                load_user_module(name)
+            except ValueError as exc:
+                errors.append(f"user_modules: {exc}")
+        return errors
+
+    @staticmethod
+    def _user_module_hint(data: dict) -> str:
+        """Pista para un tipo o una sección desconocidos: pueden venir de un
+        módulo de usuario que el YAML no declara."""
+        if data.get('user_modules'):
+            return ""
+        disponibles = available_user_modules()
+        if not disponibles:
+            return ""
+        return (f" Si pertenece a un módulo de usuario, decláralo en 'user_modules' "
+                f"(disponibles: {disponibles}).")
 
     def _validate(self, data: dict) -> list:
         """Valida la estructura del YAML y retorna una lista de errores encontrados.
@@ -184,7 +219,7 @@ class YamlParser:
         if unknown_keys:
             errors.append(
                 f"Secciones desconocidas: {unknown_keys}. "
-                f"Admitidas: {sorted(allowed)}."
+                f"Admitidas: {sorted(allowed)}." + self._user_module_hint(data)
             )
 
         if not has_mesh and not has_nodes:
@@ -279,6 +314,7 @@ class YamlParser:
                     errors.append(
                         f"{ctx}: tipo de elemento desconocido '{elem['type']}'. "
                         f"Disponibles: {sorted(registered_elements)}."
+                        + self._user_module_hint(data)
                     )
                 else:
                     e_cls = ElementRegistry.get(elem['type'])

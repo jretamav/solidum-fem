@@ -29,7 +29,10 @@ def _is_external_dependency_missing(exc: ModuleNotFoundError) -> bool:
     descubrimiento del resto. Pero un ``ModuleNotFoundError`` con
     ``name='solidum.algo_que_no_existe'`` SÍ debe propagar (bug real).
     """
-    return exc.name is not None and not exc.name.startswith("solidum")
+    # Prefijo exacto: un paquete externo cuyo nombre empiece por "solidum"
+    # (``solidum_algo``) es externo, no parte de Solidum.
+    return (exc.name is not None and exc.name != "solidum"
+            and not exc.name.startswith("solidum."))
 
 
 def _discover_package(package_name: str) -> None:
