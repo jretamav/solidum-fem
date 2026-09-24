@@ -1348,6 +1348,172 @@ Es el mismo fenómeno que el bloqueo volumétrico del ejemplo 4: el elemento lin
 
 \newpage
 
+\chapter{Edificio de cinco niveles: análisis modal y espectro de respuesta}
+\chaptermark{Edificio de cinco niveles}
+\label{cap:edificio_espectro}
+
+
+
+
+
+El análisis sísmico por espectro de respuesta es la herramienta de diseño habitual de la ingeniería de edificios: se calculan los modos de vibrar de la estructura, se lee en el espectro la respuesta máxima de cada uno y se combinan. Este ejemplo lo hace sobre un marco de cinco niveles cuya versión idealizada, el edificio de cortante, tiene solución cerrada, y repite la combinación a mano con los modos analíticos para comprobar cada paso.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Modelar un marco con \texttt{Frame2DEuler}, con la masa concentrada en las losas.
+  \item Calcular frecuencias y modos con \texttt{ModalSolver}.
+  \item Hacer un análisis espectral con \texttt{ResponseSpectrumSolver}: masas efectivas, combinación SRSS y CQC.
+  \item Combinar correctamente las respuestas: las derivas de entrepiso se combinan modo a modo.
+\end{itemize}
+
+\section{Planteamiento}
+
+Un marco de concreto de 5 niveles y un vano, con entrepisos de $h =$ 3 m y claro de 6 m. Las columnas son de 40 \ensuremath{\times} 40 cm, con $E =$ 25 GPa, y cada nivel tiene una masa $m =$ 30 t.
+
+Se adoptan las hipótesis del \textbf{edificio de cortante}: losas infinitamente rígidas y columnas inextensibles. En el modelo, las losas son vigas con una rigidez a flexión $10^{4}$ veces la de una columna, las columnas tienen un área $10^{4}$ veces la real, y toda la masa está en las losas. Así cada columna trabaja biempotrada, y la rigidez lateral de cada entrepiso es
+
+\[
+k = 2\,\frac{12\,E\,I}{h^3} = \text{ 47.4 MN/m} .
+\]
+
+El sismo se representa con un espectro de diseño simplificado de aceleración, para un amortiguamiento del 5 \%: una rampa desde la aceleración del terreno $a_0 =$ 0.30 $g$ hasta una meseta de $2.5\,a_0$ entre $T_B =$ 0.1 s y $T_C =$ 0.5 s, y una caída proporcional a $1/T$ después.
+
+\section{Solución analítica}
+
+El edificio de cortante es una cadena de masas $m$ y resortes $k$ iguales, empotrada en la base. Sus frecuencias y modos tienen expresión cerrada:
+
+\[
+\omega_j = 2\sqrt{\frac{k}{m}}\,\sin\frac{(2j-1)\,\pi}{2(2n+1)},
+\qquad
+\phi_j(i) = \sin\frac{(2j-1)\,i\,\pi}{2n+1},
+\qquad i, j = 1, \dots, n .
+\]
+
+Con ellos se calculan a mano, sin Solidum, el factor de participación y la masa efectiva de cada modo,
+
+\[
+\Gamma_j = \frac{\sum_i m\,\phi_j(i)}{\sum_i m\,\phi_j(i)^2},
+\qquad
+M_j^* = \frac{\left(\sum_i m\,\phi_j(i)\right)^2}{\sum_i m\,\phi_j(i)^2},
+\]
+
+el desplazamiento máximo de cada modo, $u_j(i) = \Gamma_j\,\phi_j(i)\,S_a(T_j)/\omega_j^2$, y el cortante basal modal, $V_j = M_j^*\,S_a(T_j)$. La combinación SRSS toma la raíz de la suma de los cuadrados de las respuestas modales.
+
+\section{Modelo en Solidum}
+
+El marco se construye con dos columnas y una losa por nivel. Las columnas usan un material con densidad nula; la densidad de la losa se elige para que su masa sea la del piso:
+
+\begin{lstlisting}[language=Python]
+def marco(rigidez: float = RIGIDEZ):
+    """Marco de ``N`` niveles y un vano. Columnas ``Frame2DEuler`` sin masa;
+    cada losa es una viga ``rigidez`` veces más rígida que una columna, con
+    la masa del piso. Las columnas tienen área ``rigidez`` veces la real
+    (inextensibles). Devuelve el dominio y los nodos por ``(nivel, lado)``."""
+    dom = Domain()
+    columna = Elastic1D(E=E, density=0.0)
+    A_losa = rigidez * A_COL
+    losa = Elastic1D(E=E, density=M_PISO / (A_losa * CLARO))
+    nodos = {}
+    for i in range(N + 1):
+        for lado, x in enumerate((0.0, CLARO)):
+            nodos[(i, lado)] = dom.add_node(len(nodos) + 1, [x, i * H])
+    for i in range(N):
+        for lado in (0, 1):
+            dom.add_element(Frame2DEuler(len(dom.elements) + 1,
+                                         [nodos[(i, lado)], nodos[(i + 1, lado)]],
+                                         columna, A=rigidez * A_COL, I=I_COL))
+        dom.add_element(Frame2DEuler(len(dom.elements) + 1,
+                                     [nodos[(i + 1, 0)], nodos[(i + 1, 1)]],
+                                     losa, A=A_losa, I=rigidez * I_COL))
+    for lado in (0, 1):
+        for dof in ("ux", "uy", "rz"):
+            nodos[(0, lado)].fix_dof(dof, 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    return dom, nodos
+
+\end{lstlisting}
+
+El análisis espectral calcula internamente los modos, los combina y devuelve la respuesta máxima:
+
+\begin{lstlisting}[language=Python]
+def espectral(combinacion: str = "SRSS"):
+    """Análisis espectral con Solidum; devuelve el resultado y los nodos."""
+    dom, nodos = marco()
+    solver = ResponseSpectrumSolver(
+        Assembler(dom), n_modes=N, direction={"dof_name": "ux"},
+        spectrum=lambda w: Sa(2 * np.pi / w) / w**2,       # S_d = S_a/ω²
+        combination=combinacion, damping=0.05)
+    return solver.solve(), nodos
+
+\end{lstlisting}
+
+La dirección del sismo se declara por el nombre del grado de libertad (\texttt{ux} en todos los nodos), y el espectro como una función de la frecuencia que devuelve el desplazamiento espectral, $S_d = S_a/\omega^2$. También se puede dar como tabla de periodos y valores, que es lo habitual desde el YAML.
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/edificio_espectro/fig_modos.pdf}
+\caption{Izquierda: los tres primeros modos, Solidum (puntos) sobre los analíticos (bandas). Derecha: el espectro de diseño con los periodos de los cinco modos.}
+\label{fig:edificio_espectro:modos}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Periodos, masas efectivas y aceleración espectral de cada modo.}
+\begin{tabularx}{\textwidth}{YYYYYY}
+\hline
+\textbf{Modo} & \textbf{$T$ exacto [s]} & \textbf{$T$ Solidum [s]} & \textbf{Masa efectiva} & \textbf{Acumulada} & \textbf{$S_a/g$} \\
+\hline
+1 & 0.5553 & 0.5554 & 88.0 \% & 88.0 \% & 0.675 \\
+2 & 0.1902 & 0.1903 & 8.7 \% & 96.7 \% & 0.750 \\
+3 & 0.1207 & 0.1207 & 2.4 \% & 99.1 \% & 0.750 \\
+4 & 0.0939 & 0.0939 & 0.8 \% & 99.8 \% & 0.723 \\
+5 & 0.0824 & 0.0824 & 0.2 \% & 100.0 \% & 0.671 \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Modos.} Los periodos coinciden con los de la solución cerrada con una diferencia relativa de $1.7\times 10^{-4}$, y las formas modales con $3\times 10^{-4}$. Esa pequeña diferencia es la rigidez finita de losas y columnas: con las losas diez veces más rígidas baja a $1.7\times 10^{-5}$. El edificio de cortante es el límite del marco cuando las losas se vuelven rígidas. El primer modo concentra el 88 \% de la masa; con tres modos se supera el 99 \%. Los reglamentos piden incluir modos hasta reunir al menos el 90 \%.
+
+\begin{table}[h]
+\centering
+\caption{Desplazamiento máximo de cada nivel con SRSS y deriva de entrepiso combinada de dos maneras.}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Nivel} & \textbf{$u$ Solidum [mm]} & \textbf{$u$ a mano [mm]} & \textbf{Deriva, modo a modo [mm]} & \textbf{Deriva, restando desplazamientos [mm]} \\
+\hline
+1 & 18.56 & 18.56 & 18.56 & 18.56 \\
+2 & 35.48 & 35.48 & 16.97 & 16.93 \\
+3 & 49.49 & 49.48 & 14.15 & 14.00 \\
+4 & 59.54 & 59.53 & 10.32 & 10.05 \\
+5 & 64.83 & 64.82 & 5.57 & 5.29 \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Respuesta espectral.} Los desplazamientos SRSS de Solidum coinciden con los combinados a mano con los modos analíticos a $1.7\times 10^{-4}$. El cortante basal, combinando los cortantes modales, vale 879.5 kN (879.7 kN a mano): 0.598 veces el peso del edificio.
+
+\textbf{SRSS y CQC.} La combinación cuadrática completa (CQC) tiene en cuenta la correlación entre modos de frecuencias cercanas. Aquí los modos están bien separados y los desplazamientos CQC quedan entre 0.9997 y 1.0011 veces los SRSS. La diferencia importa cuando hay modos próximos, por ejemplo en edificios con torsión.
+
+\begin{warnbox}{Advertencia}
+Las respuestas máximas de los modos no ocurren a la vez y la combinación pierde su signo, así que \textbf{cada magnitud de diseño se combina por separado}. La deriva de un entrepiso se calcula en cada modo y después se combina; restar los desplazamientos ya combinados de dos niveles consecutivos da otro valor. En este edificio subestima la deriva del último entrepiso: 5.29 mm en lugar de 5.57 mm. Lo mismo vale para los esfuerzos y las fuerzas internas de los elementos.
+\end{warnbox}
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Dar a las losas la rigidez de una viga real, por ejemplo de 30 \ensuremath{\times} 60 cm. Los nodos giran, las columnas dejan de estar biempotradas y los periodos crecen: el marco deja de ser un edificio de cortante.
+  \item Calcular sólo dos modos (\texttt{n\_modes=2}). ¿Qué fracción del cortante basal se pierde? ¿Y de la deriva del último entrepiso?
+  \item Declarar el mismo espectro en un YAML como tabla de periodos y valores, y resolverlo con \texttt{solidum.run\_yaml}.
+\end{itemize}
+
+\textbf{Referencias.} A. K. Chopra, \textit{Dynamics of Structures}, 4.ª ed., Pearson, 2012. E. L. Wilson, A. Der Kiureghian y E. P. Bayo, \textquotedbl{}A replacement for the SRSS method in seismic analysis\textquotedbl{}, \textit{Earthquake Engineering and Structural Dynamics} 9 (1981) 187-194.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}edificio\_\allowbreak{}espectro/\allowbreak{}} contiene el script \texttt{run.py}, los resultados en \texttt{resultados.json} y la figura.
+
+
+\newpage
+
 \clearpage
 \thispagestyle{empty}
 \vspace*{\fill}
@@ -1355,8 +1521,8 @@ Es el mismo fenómeno que el bloqueo volumétrico del ejemplo 4: el elemento lin
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 06:34\\[0.5em]
-Commit Git: \texttt{33aa872}\\[1em]
+Compilado el 24 de septiembre de 2026, 07:13\\[0.5em]
+Commit Git: \texttt{715e936}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
