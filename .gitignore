@@ -35,3 +35,7 @@ dist/
 # consulta local y quedan fuera de git deliberadamente.
 docs/referencias/**/*.pdf
 docs/referencias/*.pdf
+
+# Papers (JOSS, SoftwareX, …): sólo en local, nunca en el repositorio
+# público (decisión del usuario, 2026-09-24).
+paper/

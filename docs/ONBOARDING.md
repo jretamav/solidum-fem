@@ -22,12 +22,7 @@ Lo que **no** resuelve aún: placas/láminas, contacto, Mohr-Coulomb, FiberSecti
 
 El repo es **público en GitHub** bajo `https://github.com/jretamav/solidum-fem` con licencia **LGPL-3.0** (ver `LICENSE` y `LICENSE.GPL`). Apertura efectiva: primer commit el **2026-04-08**.
 
-- **Paper 1a → JOSS**. Refundido al formato JOSS 2024-2025 en sesión larga 2026-05-20. **~1880 palabras** (dentro del rango oficial 750-1750, queda algo al alza por el snippet de código y captions) con las 6 secciones obligatorias: Summary, Statement of need, State of the field, Software design (con sub-`Current limitations`), Research impact statement, Acknowledgement of generative AI use. **21 entradas bib** verificadas vía Crossref. **2 figuras**: mosaico de validación (4 paneles: Lamé, NAFEMS LE1, MacNeal-Harder, Hill J2) + diagrama de arquitectura Graphviz. **1 snippet de código** Python en *Software design* mostrando Tri3 real. **16 commits de la sesión ya pusheados** a `origin/main`. **Bloqueante restante**: el repo cumple casi todos los pre-requisitos JOSS (LICENSE, README, CONTRIBUTING, CODE_OF_CONDUCT, CITATION, CI Actions verde, ORCID) **excepto** la regla de ≥6 meses de historia pública con actividad distribuida — hoy son ~6 semanas, riesgo real de desk-reject si se somete ahora. Checklist operativo de submission en `[[project_paper_joss_estado]]`; requisitos endurecidos JOSS 2024-2025 documentados en `[[reference_joss_requirements]]`.
-- **Paper 1b → SoftwareX** (software paper integral). Manuscrito vivirá fuera de Solidum (Overleaf o repo separado). Pendiente sesión dedicada tras cerrar el JOSS.
-- **Papers 2+ → metodológicos** en IJNME / Computational Mechanics / Engineering Fracture Mechanics / AES / Computer Physics Communications (embedded KOS, dissipation arc-length, etc.).
-- AES fue evaluada y **descartada como destino del paper 1** tras consulta del scope real (la revista viró hacia PINN/ML; ya no publica framework papers).
-
-Estrategia detallada en `[[project_estrategia_publicaciones]]`; estado vivo del paper JOSS en `[[project_paper_joss_estado]]`; estado del repo público en `[[project_repo_publico_decidido]]`; columna vertebral conceptual del proyecto para futuras comunicaciones en `[[project_solidum_motivacion_fundacional]]`.
+- **Papers**: los manuscritos (JOSS, SoftwareX y posteriores) viven **sólo en local**, en `paper/`, fuera de git (`.gitignore`); nunca se suben al repositorio público. Plan de publicaciones y estado de cada paper en la memoria local del agente (`[[project_estrategia_publicaciones]]`, `[[project_paper_joss_estado]]`).
 
 ---
 
@@ -84,7 +79,6 @@ solidum_fem/
 │   ├── sources/{reference,user,architecture,examples}/  ← markdown fuente
 │   ├── build_*_manual.py         ← un builder por manual (Reference, User, Architecture, Example); salida en LaTeX/PDF
 │   └── glossary.md               ← (pendiente) glosario ES↔EN para regenerar manuales en inglés
-├── paper/joss/                   ← paper.md + paper.bib para JOSS (skeleton)
 ├── examples/                     ← YAMLs de ejemplo (estático, modal, transitorio) y, en carpetas propias,
 │                                    los ejemplos del manual de ejemplos (run.py → resultados.json + figuras)
 ├── README.md, CONTRIBUTING.md, CITATION.cff, LICENSE, LICENSE.GPL

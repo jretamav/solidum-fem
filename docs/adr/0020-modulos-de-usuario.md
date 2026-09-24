@@ -60,7 +60,7 @@ Cada pieza se justifica por casos reales ajenos a la embebida.
 - Specs del módulo en `docs/user/discontinuities/specs/`; entrada propia «Módulos de usuario» en los catálogos; apéndice «Módulos de usuario» en el manual de referencia.
 - El ADR 0010 se conserva como registro histórico de la formulación, con una nota que remite a éste para su ubicación.
 - Reglas.md §4, CLAUDE.md y la skill `solidum-new` incorporan el módulo de usuario como destino, para que el siguiente componente no estándar no acabe en el programa principal.
-- `paper.md` (público, en inglés) deja de presentar la embebida como parte del programa y presenta Solidum como extensible por módulos de usuario, con la embebida como primero. El texto lo valida el usuario.
+- `paper.md` (en inglés; desde el 2026-09-24 sólo en local, fuera del repositorio) deja de presentar la embebida como parte del programa y presenta Solidum como extensible por módulos de usuario, con la embebida como primero. El texto lo valida el usuario.
 
 ### 4. Verificación de que el programa principal queda limpio
 
