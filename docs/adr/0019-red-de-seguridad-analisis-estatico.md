@@ -84,6 +84,7 @@ Mecanismo interno (dos bloques unidos por un nodo):
 ## Lo que queda sin cubrir
 
 - **Iterativo con un mecanismo interno sin carga que lo active**: un método de Krylov no tiene pivotes que inspeccionar, y sobre un sistema singular consistente converge a una solución, en la práctica razonable pero de un modelo inestable. El iterativo solo se activa a petición, así que el usuario no experto no llega a él por defecto.
+- **Backend Cholesky (extra opcional `cholmod`)**: `CholeskyFactorized` no expone `n_zero_pivots`, así que la capa 3 no actúa con él. Hallado el 2026-09-24 al verificar el ejemplo 11 del manual de ejemplos; sin comprobar con CHOLMOD real. Deuda #28 en [STATUS](../STATUS.md).
 - **Mal condicionamiento sin singularidad** (κ de 10¹⁰ a 10¹³): un directo es estable hacia atrás, así que el residuo sale pequeño aunque el error de la solución pueda ser grande. No hay estimador de condición. Es la advertencia que ANSYS y Abaqus hacen con penalizaciones y rigideces desproporcionadas.
 - **Cambio de backend por tamaño**: deliberadamente no automático (ver §Memoria).
 - **Nodo y DOF concretos** de un mecanismo interno: ANSYS y Abaqus los reportan a partir del pivote. Aquí se dice qué pasa, no dónde, para los internos; para los rígidos sí se dice el movimiento. Extensión posible: mapear el pivote nulo a su DOF a través de la permutación de la factorización.

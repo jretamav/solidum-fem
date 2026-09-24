@@ -1,0 +1,419 @@
+{
+  "P_kN": 100.0,
+  "panel_m": 3.0,
+  "alto_m": 3.0,
+  "E_GPa": 200.0,
+  "A_cm2": 20.0,
+  "n_nudos": 10,
+  "n_barras": 17,
+  "casos": {
+    "correcto": {
+      "dos_j": 20,
+      "m_mas_r": 20,
+      "deficit": 0,
+      "mecanismos": 0,
+      "con_equilibrio": 1,
+      "equilibrio_txt": "sí",
+      "mensaje": "",
+      "rechazado": 0,
+      "resultado": "solución",
+      "movimiento": "",
+      "pivotes_nulos": 0
+    },
+    "dos_rodillos": {
+      "dos_j": 20,
+      "m_mas_r": 19,
+      "deficit": 1,
+      "mecanismos": 1,
+      "con_equilibrio": 1,
+      "equilibrio_txt": "sí",
+      "mensaje": "El modelo no está suficientemente apoyado para un análisis estático (LinearSolver):\n    puede moverse como sólido rígido sin deformarse, así que la matriz de rigidez es\n    singular y el equilibrio no tiene solución única. Movimientos libres:\n  - traslación en la dirección x\nAñade apoyos (o restricciones lineales) que impidan esos movimientos. Un modelo\n    libre sí es válido en un análisis modal o dinámico, pero no en uno estático.",
+      "rechazado": 1,
+      "resultado": "MechanismError",
+      "movimiento": "traslación en la dirección x",
+      "pivotes_nulos": 0
+    },
+    "rodillo_girado": {
+      "dos_j": 20,
+      "m_mas_r": 20,
+      "deficit": 0,
+      "mecanismos": 1,
+      "con_equilibrio": 0,
+      "equilibrio_txt": "no",
+      "mensaje": "El modelo no está suficientemente apoyado para un análisis estático (LinearSolver):\n    puede moverse como sólido rígido sin deformarse, así que la matriz de rigidez es\n    singular y el equilibrio no tiene solución única. Movimientos libres:\n  - giro alrededor del eje z que pasa por (0, 0)\nAñade apoyos (o restricciones lineales) que impidan esos movimientos. Un modelo\n    libre sí es válido en un análisis modal o dinámico, pero no en uno estático.",
+      "rechazado": 1,
+      "resultado": "MechanismError",
+      "movimiento": "giro alrededor del eje z que pasa por (0, 0)",
+      "pivotes_nulos": 0
+    },
+    "sin_diagonal": {
+      "dos_j": 20,
+      "m_mas_r": 19,
+      "deficit": 1,
+      "mecanismos": 1,
+      "con_equilibrio": 0,
+      "equilibrio_txt": "no",
+      "mensaje": "Resultado descartado: el solver directo encontró 1 pivote(s) numéricamente nulo(s),\n    así que la matriz es singular aunque los desplazamientos parezcan razonables. La\n    matriz de rigidez es singular o está tan mal condicionada que los\n    desplazamientos no son fiables. Causas habituales: un mecanismo interno (una\n    rótula o articulación de más, una barra o elemento suelto, dos partes unidas por\n    un solo nodo que pueden girar entre sí), o rigideces muy desproporcionadas entre\n    partes del modelo (penalizaciones, unidades mezcladas). Revisa la conectividad y\n    los apoyos.",
+      "rechazado": 1,
+      "resultado": "IllPosedSystemError",
+      "movimiento": "",
+      "pivotes_nulos": 1
+    },
+    "sin_diagonal_H": {
+      "dos_j": 20,
+      "m_mas_r": 19,
+      "deficit": 1,
+      "mecanismos": 1,
+      "con_equilibrio": 1,
+      "equilibrio_txt": "sí",
+      "mensaje": "Resultado descartado: el solver directo encontró 1 pivote(s) numéricamente nulo(s),\n    así que la matriz es singular aunque los desplazamientos parezcan razonables. La\n    matriz de rigidez es singular o está tan mal condicionada que los\n    desplazamientos no son fiables. Causas habituales: un mecanismo interno (una\n    rótula o articulación de más, una barra o elemento suelto, dos partes unidas por\n    un solo nodo que pueden girar entre sí), o rigideces muy desproporcionadas entre\n    partes del modelo (penalizaciones, unidades mezcladas). Revisa la conectividad y\n    los apoyos.",
+      "rechazado": 1,
+      "resultado": "IllPosedSystemError",
+      "movimiento": "",
+      "pivotes_nulos": 1
+    }
+  },
+  "correcto": {
+    "error_N": 3.978706402395593e-15,
+    "error_flecha": 3.9968028886505635e-15,
+    "flecha_mm": 10.992640687119312,
+    "N_max_kN": 212.1320343559648,
+    "N_min_kN": -200.0000000000005,
+    "N": [
+      -1.4418961473583505e-10,
+      150000.0000000003,
+      150000.0000000003,
+      4.336808689942018e-11,
+      -150000.00000000038,
+      -200000.0000000005,
+      -200000.0000000005,
+      -150000.00000000035,
+      -150000.00000000044,
+      -50000.00000000022,
+      0.0,
+      -50000.00000000022,
+      -150000.00000000035,
+      212132.03435596474,
+      70710.67811865493,
+      70710.67811865493,
+      212132.0343559648
+    ],
+    "error_N_max": 2.4424906541753444e-15,
+    "error_N_min": 2.4424906541753444e-15
+  },
+  "unidades": {
+    "cambio_N": 4.664690264877592e-15,
+    "razon_flecha": 9.99999999999996e-05,
+    "flecha_um": 1.0992640687119268
+  },
+  "backends_discrepantes": 0,
+  "modos": {
+    "correcto": {
+      "d": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "dos_rodillos": {
+      "d": [
+        0.31622776601683794,
+        -5.83246324808021e-17,
+        0.316227766016838,
+        3.6143751076316984e-17,
+        0.3162277660168379,
+        -7.443528672642864e-17,
+        0.3162277660168382,
+        -3.123203013444647e-16,
+        0.3162277660168382,
+        -2.6020852139652106e-16,
+        0.31622776601683783,
+        7.658016692097395e-18,
+        0.3162277660168379,
+        2.1838062656912808e-16,
+        0.3162277660168381,
+        -2.341308502696419e-16,
+        0.316227766016838,
+        -2.220446049250313e-16,
+        0.31622776601683805,
+        -2.848741208205663e-16
+      ]
+    },
+    "rodillo_girado": {
+      "d": [
+        0.0,
+        -1.1331712591796574e-16,
+        0.0,
+        0.12403473458920836,
+        -3.3761283257733264e-16,
+        0.24806946917841682,
+        9.71445146547012e-17,
+        0.3721042037676246,
+        1.249000902703301e-16,
+        0.4961389383568344,
+        -0.12403473458920772,
+        -3.675831561458535e-17,
+        -0.12403473458920805,
+        0.1240347345892092,
+        -0.12403473458920884,
+        0.24806946917841755,
+        -0.12403473458920852,
+        0.3721042037676242,
+        -0.12403473458920847,
+        0.49613893835683415
+      ]
+    },
+    "sin_diagonal": {
+      "d": [
+        -1.6735432733260344e-17,
+        2.134931917765803e-17,
+        -1.6735432733260344e-17,
+        -0.24253562503633294,
+        -2.6588960929540643e-17,
+        0.48507125007266577,
+        -2.4397962469484473e-16,
+        0.24253562503633308,
+        -2.7755575615628914e-17,
+        -2.0383000842727483e-17,
+        0.24253562503633325,
+        2.787071722892218e-16,
+        0.24253562503633286,
+        -0.2425356250363328,
+        0.242535625036333,
+        0.48507125007266594,
+        0.24253562503633308,
+        0.24253562503633308,
+        0.24253562503633272,
+        7.632783294297951e-17
+      ]
+    },
+    "sin_diagonal_H": {
+      "d": [
+        -1.6735432733260344e-17,
+        2.134931917765803e-17,
+        -1.6735432733260344e-17,
+        -0.24253562503633294,
+        -2.6588960929540643e-17,
+        0.48507125007266577,
+        -2.4397962469484473e-16,
+        0.24253562503633308,
+        -2.7755575615628914e-17,
+        -2.0383000842727483e-17,
+        0.24253562503633325,
+        2.787071722892218e-16,
+        0.24253562503633286,
+        -0.2425356250363328,
+        0.242535625036333,
+        0.48507125007266594,
+        0.24253562503633308,
+        0.24253562503633308,
+        0.24253562503633272,
+        7.632783294297951e-17
+      ]
+    }
+  },
+  "modal": {
+    "frecuencias_nulas": 1,
+    "f1_hz": 39.40996879294855,
+    "coseno_con_estatica": 1.0000000000000002
+  },
+  "limites": {
+    "acepta_iterativo": 1,
+    "acepta_no_lineal": 1
+  },
+  "xy": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      3.0,
+      0.0
+    ],
+    [
+      6.0,
+      0.0
+    ],
+    [
+      9.0,
+      0.0
+    ],
+    [
+      12.0,
+      0.0
+    ],
+    [
+      0.0,
+      3.0
+    ],
+    [
+      3.0,
+      3.0
+    ],
+    [
+      6.0,
+      3.0
+    ],
+    [
+      9.0,
+      3.0
+    ],
+    [
+      12.0,
+      3.0
+    ]
+  ],
+  "conexiones": [
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      3,
+      4
+    ],
+    [
+      5,
+      6
+    ],
+    [
+      6,
+      7
+    ],
+    [
+      7,
+      8
+    ],
+    [
+      8,
+      9
+    ],
+    [
+      0,
+      5
+    ],
+    [
+      1,
+      6
+    ],
+    [
+      2,
+      7
+    ],
+    [
+      3,
+      8
+    ],
+    [
+      4,
+      9
+    ],
+    [
+      5,
+      1
+    ],
+    [
+      6,
+      2
+    ],
+    [
+      2,
+      8
+    ],
+    [
+      3,
+      9
+    ]
+  ],
+  "conexiones_sin_diagonal": [
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      3,
+      4
+    ],
+    [
+      5,
+      6
+    ],
+    [
+      6,
+      7
+    ],
+    [
+      7,
+      8
+    ],
+    [
+      8,
+      9
+    ],
+    [
+      0,
+      5
+    ],
+    [
+      1,
+      6
+    ],
+    [
+      2,
+      7
+    ],
+    [
+      3,
+      8
+    ],
+    [
+      4,
+      9
+    ],
+    [
+      5,
+      1
+    ],
+    [
+      2,
+      8
+    ],
+    [
+      3,
+      9
+    ]
+  ]
+}
