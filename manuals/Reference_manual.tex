@@ -3479,7 +3479,8 @@ Un único punto de Gauss central, peso \texttt{A\_e\ensuremath{\cdot}t} --- idé
 \subsection{Caveats numéricos}
 
 \begin{itemize}
-  \item \textbf{Singularidad de \texttt{K\_\{[[u]][[u]]\}} en Modo-I puro saturado}. Cuando \texttt{\ensuremath{\omega} \ensuremath{\to} 1} en el cohesivo, la rigidez tangente cohesiva \texttt{T\_coh} se aproxima a la diagonal \texttt{[(1−DAMAGE\_\allowbreak{}MAX)\ensuremath{\cdot}K\_\allowbreak{}e, 0]} (la componente tangencial es cero por construcción del Modo-I). La suma con la contribución del bulk \texttt{G\textasciicircum{}T\ensuremath{\cdot}(B\textasciicircum{}\ensuremath{\varphi})\textasciicircum{}T\ensuremath{\cdot}C\_\allowbreak{}e\ensuremath{\cdot}B\textasciicircum{}\ensuremath{\varphi}\ensuremath{\cdot}G} introduce rigidez en la dirección tangencial vía el bulk; la matriz 2\ensuremath{\times}2 sigue siendo invertible. Verificable analíticamente.
+  \item \textbf{Invertibilidad de \texttt{K\_\{[[u]][[u]]\}} en ablandamiento}. La tangente cohesiva es \texttt{diag(dT\_\allowbreak{}soft/\allowbreak{}d\ensuremath{\kappa}, 0)}: negativa en el ablandamiento, nula con la grieta totalmente abierta y nula siempre en la dirección tangencial (Modo-I). La matriz 2\ensuremath{\times}2 sigue siendo invertible por el término del bulk \texttt{G\textasciicircum{}T\ensuremath{\cdot}(B\textasciicircum{}\ensuremath{\varphi})\textasciicircum{}T\ensuremath{\cdot}C\_\allowbreak{}e\ensuremath{\cdot}B\textasciicircum{}\ensuremath{\varphi}\ensuremath{\cdot}G\ensuremath{\cdot}vol}, definido positivo, mientras el elemento no sea tan grande que el ablandamiento lo supere (aproximadamente \texttt{l\_\allowbreak{}d\ensuremath{\cdot}|dT\_\allowbreak{}soft/\allowbreak{}d\ensuremath{\kappa}| \textless{} E/\allowbreak{}h}). Por eso el cohesivo no necesita ninguna rigidez residual; la que tuvo hasta el 2026-09-23 (\texttt{(1 − DAMAGE\_\allowbreak{}MAX)\ensuremath{\cdot}K\_\allowbreak{}e}) daba a la tangente condensada errores del 26 al 45 \% en el ablandamiento (\href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_cst_embedded.py}{\texttt{TestCondensedTangentInSoftening}}).
+  \item \textbf{Mecanismo de deslizamiento}. Con rigidez de modo II nula (Retama 2010, p. 67), una grieta que atraviesa todo el sólido deja deslizar sin resistencia una parte respecto de la otra en la dirección de la grieta. Las condiciones de apoyo tienen que impedir ese movimiento; si no, el Newton global deriva sin converger en desplazamientos aunque el residuo sea nulo.
   \item \textbf{Activación al principio del paso}. Si el incremento es muy grande, \texttt{\ensuremath{\sigma}\_I} puede saltar muy por encima de \texttt{\ensuremath{\sigma}\_t0} antes de la activación, generando un \ensuremath{\Delta}[[u]] grande en el primer Newton. Mitigación: pasos suficientemente pequeños o \texttt{ArcLengthSolver} cerca del pico.
   \item \textbf{Bulk descarga elástica}. Por la cinemática KOS, el bulk evalúa \texttt{\ensuremath{\varepsilon}\textasciicircum{}bulk = B\_\allowbreak{}std\ensuremath{\cdot}d − B\textasciicircum{}\ensuremath{\varphi}\ensuremath{\cdot}G\ensuremath{\cdot}[[u]]} --- descarga conforme \texttt{[[u]]} crece. Esto es físicamente correcto (la disipación va a \texttt{Γ\_d}) y consistente con la discrete approach de Retama 2010. El bulk \textbf{no acumula daño} propio (out\_of\_scope fase 1).
   \item \textbf{\texttt{Γ\_d} paralelo a un lado}. Caso degenerado: \texttt{cos(\ensuremath{\theta}−\ensuremath{\alpha}) = 1}, \texttt{l\_d = A\_e/h}. La fórmula del Cap. 6 sigue siendo correcta, pero numéricamente el nodo solitario debe identificarse con tolerancia para evitar oscilación entre dos nodos casi en el mismo plano.
@@ -3536,7 +3537,7 @@ out_of_scope:
   - "Modo mixto I-II en el cohesivo (fase G del ADR 0010)."
   - "Reorientación de n tras la activación (tracking no trivial, fase F)."
   - "Múltiples discontinuidades por elemento."
-  - "Contacto unilateral en compresión (cierre rígido)."
+  - "Contacto con fricción en la grieta cerrada (el cohesivo sólo recupera la penalización normal K_e en compresión)."
   - "Elementos de orden superior con discontinuidad embebida (Tri6_Embedded, Quad8_Embedded; fase J)."
   - "3D (fase I)."
 
@@ -10220,7 +10221,7 @@ references:
 
 
 
-\textit{Orden de trabajo. Pre-redactada por la IA como borrador para validación del usuario (autor de la formulación, Retama 2010). La física y la formulación numérica son traducción directa del Cap. 3 de la tesis; la mecánica de implementación (Voigt, registry, signatura, tests) sigue las convenciones del proyecto. El usuario revisa, corrige donde proceda, y aprueba antes de que la IA toque código.}
+\textit{Orden de trabajo. Pre-redactada por la IA como borrador para validación del usuario (autor de la formulación, Retama 2010). La física sigue el Cap. 3 de la tesis, que adopta el modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys (2002, ecs. 8-17): de esa referencia, y no de la tesis, vienen \texttt{K\_e}, \texttt{\ensuremath{\kappa}\_0} y las leyes \texttt{\ensuremath{\omega}(\ensuremath{\kappa})} (revisión del 2026-09-23); la mecánica de implementación (Voigt, registry, signatura, tests) sigue las convenciones del proyecto. El usuario revisa, corrige donde proceda, y aprueba antes de que la IA toque código.}
 
 
 
@@ -10305,7 +10306,7 @@ Codifica:
 \begin{itemize}
   \item \textbf{Carga activa} (\texttt{\ensuremath{\langle}[[u\_n]]\ensuremath{\rangle} \textgreater{} \ensuremath{\kappa}\_n}): \texttt{\ensuremath{\kappa}} crece; el daño puede aumentar.
   \item \textbf{Descarga / recarga elástica} (\texttt{\ensuremath{\langle}[[u\_n]]\ensuremath{\rangle} \ensuremath{\le} \ensuremath{\kappa}\_n}): \texttt{\ensuremath{\kappa}} queda congelado; daño no cambia (secante respecto al origen con rigidez reducida \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e}).
-  \item \textbf{Compresión} (\texttt{[[u\_n]] \textless{} 0}): \texttt{\ensuremath{\langle}[[u\_\allowbreak{}n]]\ensuremath{\rangle} = 0 \ensuremath{\le} \ensuremath{\kappa}\_\allowbreak{}n}, \texttt{\ensuremath{\kappa}} congelado. El daño no crece. \textit{Caveat de cierre}: la rigidez efectiva en compresión sigue siendo \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e}, no se recupera el contacto rígido --- limitación documentada en §12.
+  \item \textbf{Compresión} (\texttt{[[u\_n]] \textless{} 0}): \texttt{\ensuremath{\langle}[[u\_\allowbreak{}n]]\ensuremath{\rangle} = 0 \ensuremath{\le} \ensuremath{\kappa}\_\allowbreak{}n}, \texttt{\ensuremath{\kappa}} congelado. El daño no crece. Se recupera la relación elástica inicial \texttt{t\_\allowbreak{}n = K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]}, sin daño: la penalización impide la interpenetración de las caras (Alfaiate et al. 2002, p. 667, \textit{\textquotedbl{}if crack closure occurs, the initial elastic constitutive relation is recovered\textquotedbl{}}).
   \item \textbf{Irreversibilidad}: \texttt{\ensuremath{\kappa}} monótono no decreciente; \texttt{\ensuremath{\omega}(\ensuremath{\kappa})} monótono no decreciente.
 \end{itemize}
 
@@ -10333,7 +10334,7 @@ con \texttt{\ensuremath{\kappa} \ensuremath{\ge} \ensuremath{\kappa}\_0}. Para \
 T_\text{soft}(\kappa) = \sigma_{t0}\left(1 - \frac{\kappa - \kappa_0}{w_c - \kappa_0}\right) = \frac{\sigma_{t0}\,(w_c - \kappa)}{w_c - \kappa_0}, \qquad w_c = \frac{2\,G_F}{\sigma_{t0}}
 \]
 
-válida en \texttt{\ensuremath{\kappa} \ensuremath{\in} [\ensuremath{\kappa}\_0, w\_c]}. Para \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}: \texttt{T\_\allowbreak{}\textbackslash\{\}text\{soft\} = 0}, \texttt{\ensuremath{\omega} = 1} (saturada a \texttt{DAMAGE\_MAX}). Forma cerrada de \texttt{\ensuremath{\omega}(\ensuremath{\kappa})}:
+válida en \texttt{\ensuremath{\kappa} \ensuremath{\in} [\ensuremath{\kappa}\_0, w\_c]}. Para \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}: \texttt{T\_\allowbreak{}\textbackslash\{\}text\{soft\} = 0}, \texttt{\ensuremath{\omega} = 1} (grieta totalmente abierta). Forma cerrada de \texttt{\ensuremath{\omega}(\ensuremath{\kappa})}:
 
 \[
 \omega(\kappa) = 1 - \frac{\sigma_{t0}\,(w_c - \kappa)}{K_e\,\kappa\,(w_c - \kappa_0)} \qquad (\kappa \in [\kappa_0,\,w_c])
@@ -10347,7 +10348,7 @@ Verificación en los extremos: \texttt{\ensuremath{\omega}(\ensuremath{\kappa}\_
 T_\text{soft}(\kappa) = \sigma_{t0}\,\exp\left(-\frac{\sigma_{t0}\,(\kappa - \kappa_0)}{H}\right), \qquad H = G_F - \frac{\sigma_{t0}\,\kappa_0}{2}
 \]
 
-asintótica a cero; \texttt{\ensuremath{\omega}(\ensuremath{\kappa}) \ensuremath{\to} 1} cuando \texttt{\ensuremath{\kappa} \ensuremath{\to} \ensuremath{\infty}}, saturada a \texttt{DAMAGE\_MAX} en la práctica. \texttt{H} se deriva imponiendo que la integral total de tracción a lo largo de la curva sea \texttt{G\_F} (consistencia energética).
+asintótica a cero; \texttt{\ensuremath{\omega}(\ensuremath{\kappa}) \ensuremath{\to} 1} cuando \texttt{\ensuremath{\kappa} \ensuremath{\to} \ensuremath{\infty}}. \texttt{H} se deriva imponiendo que la integral total de tracción a lo largo de la curva sea \texttt{G\_F} (consistencia energética).
 
 La validez de la rama exponencial exige \texttt{G\_\allowbreak{}F \textgreater{} \ensuremath{\sigma}\_\allowbreak{}\{t0\}\ensuremath{\cdot}\ensuremath{\kappa}\_\allowbreak{}0/\allowbreak{}2}, es decir \texttt{K\_\allowbreak{}e \textgreater{} \ensuremath{\sigma}\_\allowbreak{}\{t0\}\ensuremath{^{2}}/\allowbreak{}(2\ensuremath{\cdot}G\_\allowbreak{}F)} --- condición geométrica trivial cuando \texttt{K\_e} se elige como penalty.
 
@@ -10357,7 +10358,7 @@ La validez de la rama exponencial exige \texttt{G\_\allowbreak{}F \textgreater{}
 
 \begin{itemize}
   \item \texttt{\ensuremath{\kappa} : float} --- historial del salto equivalente máximo. \textbf{PRIMARY\_STATE\_VAR alternativa} (más fundamental, controla todo el resto).
-  \item \texttt{\ensuremath{\omega} : float \ensuremath{\in} [0, DAMAGE\_\allowbreak{}MAX]} --- daño escalar. \textbf{PRIMARY\_STATE\_VAR adoptada} (más interpretable físicamente; se exporta al post-proceso).
+  \item \texttt{\ensuremath{\omega} : float \ensuremath{\in} [0, 1]} --- daño escalar. \textbf{PRIMARY\_STATE\_VAR adoptada} (más interpretable físicamente; se exporta al post-proceso).
   \item \texttt{\ensuremath{\omega}} es función determinista de \texttt{\ensuremath{\kappa}} (ec. §5); se cachea en el estado para evitar recálculo y para diagnóstico.
 \end{itemize}
 
@@ -10388,8 +10389,8 @@ Dado \texttt{\ensuremath{\kappa}\_n} y \texttt{[[u]]\_\{n+1\}} (en ejes locales)
 \begin{enumerate}
   \item Calcular \texttt{[[u]]\_\allowbreak{}eq = \ensuremath{\langle}[[u\_\allowbreak{}n]]\ensuremath{\rangle} = max(0, [[u]]\ensuremath{\cdot}n\_\allowbreak{}local)}. \textit{(En el frame local, \texttt{n\_local = (1, 0)} y \texttt{[[u\_\allowbreak{}n]] = [[u]][0]}. Se mantiene la notación abstracta por claridad física.)}
   \item Si \texttt{[[u]]\_eq \textgreater{} \ensuremath{\kappa}\_n} y \texttt{[[u]]\_eq \textgreater{} \ensuremath{\kappa}\_0}: \textbf{carga activa}, \texttt{\ensuremath{\kappa}\_\allowbreak{}\{n+1\} = [[u]]\_\allowbreak{}eq}. Si no: \textbf{descarga / no daño}, \texttt{\ensuremath{\kappa}\_\{n+1\} = \ensuremath{\kappa}\_n}.
-  \item Aplicar \texttt{\ensuremath{\omega}(\ensuremath{\kappa}\_\{n+1\})} por la fórmula §5; saturar a \texttt{DAMAGE\_MAX}.
-  \item Tracción: \texttt{t\_\allowbreak{}n = (1 − \ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]}, \texttt{t\_s = 0}.
+  \item Aplicar \texttt{\ensuremath{\omega}(\ensuremath{\kappa}\_\{n+1\})} por la fórmula §5.
+  \item Tracción: \texttt{t\_\allowbreak{}n = (1 − \ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]} si \texttt{[[u\_n]] \ensuremath{\ge} 0} (en carga activa, \texttt{t\_n = T\_soft(\ensuremath{\kappa})} evaluada directamente, sin pasar por \texttt{1 − \ensuremath{\omega}}, que con \texttt{K\_e} de penalización está a \texttt{\textasciitilde{}\ensuremath{\kappa}\_0/\ensuremath{\kappa}} de cero); \texttt{t\_\allowbreak{}n = K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]} si \texttt{[[u\_n]] \textless{} 0}; \texttt{t\_s = 0}.
   \item Tangente: ver §9.
 \end{enumerate}
 
@@ -10424,7 +10425,7 @@ Derivando \texttt{t = (1−\ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{
 (secante reducida; \texttt{\ensuremath{\partial}\ensuremath{\kappa}/\ensuremath{\partial}[[u]] = 0} anula el segundo término).
 
 \begin{itemize}
-  \item \textbf{Carga activa} (\texttt{[[u]]\_eq \textgreater{} \ensuremath{\kappa}\_n}, \texttt{\ensuremath{\kappa} \textgreater{} \ensuremath{\kappa}\_0}, \texttt{\ensuremath{\omega} \textless{} DAMAGE\_MAX}):
+  \item \textbf{Carga activa} (\texttt{[[u]]\_eq \textgreater{} \ensuremath{\kappa}\_n}, \texttt{\ensuremath{\kappa} \textgreater{} \ensuremath{\kappa}\_0}), en toda la rama de ablandamiento:
 \end{itemize}
 
 \[
@@ -10435,15 +10436,13 @@ Derivando \texttt{t = (1−\ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{
 = \left[(1-\omega) - \frac{d\omega}{d\kappa}\,\llbracket u_n\rrbracket\right]\,K_e\,(\mathbf n \otimes \mathbf n)
 \]
 
+Es la pendiente de la envolvente, \texttt{dT\_soft/d\ensuremath{\kappa}}: \texttt{−\ensuremath{\sigma}\_\allowbreak{}\{t0\}/\allowbreak{}(w\_\allowbreak{}c − \ensuremath{\kappa}\_\allowbreak{}0)} en lineal y \texttt{−(\ensuremath{\sigma}\_\allowbreak{}\{t0\}/\allowbreak{}H)\ensuremath{\cdot}T\_\allowbreak{}soft(\ensuremath{\kappa})} en exponencial. Negativa en toda la rama y nula con la grieta totalmente abierta (lineal, \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}). Se evalúa así, directamente, y no por la expresión de arriba, que con \texttt{K\_e} de penalización resta dos números casi iguales.
+
 \begin{itemize}
-  \item \textbf{Cap numérico de la tangente} (\texttt{\ensuremath{\omega} \ensuremath{\ge} DAMAGE\_MAX}, o \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c} en lineal):
+  \item \textbf{Cierre} (\texttt{[[u\_n]] \textless{} 0}): \texttt{T\textasciicircum{}alg = K\_\allowbreak{}e\ensuremath{\cdot}(n⊗n)}, la rigidez inicial sin daño.
 \end{itemize}
 
-\[
-\mathbf T^\text{alg} = (1-\text{DAMAGE\_MAX})\,K_e\,(\mathbf n \otimes \mathbf n)
-\]
-
-El cap se aplica \textbf{sólo a la rigidez tangente} para evitar singularidad del Newton cuando \texttt{\ensuremath{\omega} \ensuremath{\to} 1}. La tracción se calcula con el \texttt{\ensuremath{\omega}} físico (que llega a \texttt{1.0} exacto en lineal con \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}, asintóticamente en exponencial) y por tanto \texttt{t\_n = 0} cuando la grieta está totalmente abierta, sin residuo numérico contaminando la energía disipada.
+\textbf{Sin rigidez residual.} No se aplica ningún tope a la tangente. El sistema local del salto no se vuelve singular aunque \texttt{T\textasciicircum{}alg\_nn} sea nula o negativa, porque la \texttt{K\_jj} del elemento (Retama 2010, ec. 6.12) incluye el término del volumen \texttt{G\ensuremath{^{\top}}\ensuremath{\cdot}B\_\allowbreak{}c\ensuremath{^{\top}}\ensuremath{\cdot}C\ensuremath{\cdot}B\_\allowbreak{}c\ensuremath{\cdot}G\ensuremath{\cdot}vol}, definido positivo mientras el elemento no sea tan grande que el ablandamiento lo supere (condición de tamaño, aproximadamente \texttt{l\_\allowbreak{}d\ensuremath{\cdot}|dT\_\allowbreak{}soft/\allowbreak{}d\ensuremath{\kappa}| \textless{} E/\allowbreak{}h}). Hasta el 2026-09-23 un tope \texttt{\ensuremath{\omega} \ensuremath{\ge} DAMAGE\_MAX} sustituía la tangente de carga por \texttt{+1e-3\ensuremath{\cdot}K\_e}: como \texttt{1 − \ensuremath{\omega} = T\_\allowbreak{}soft/\allowbreak{}(K\_\allowbreak{}e\ensuremath{\cdot}\ensuremath{\kappa})}, con \texttt{K\_e} de penalización el tope actuaba desde \texttt{\ensuremath{\kappa} \ensuremath{\approx} 0.026\ensuremath{\cdot}w\_c} (tracción al 97 \% de \texttt{\ensuremath{\sigma}\_\{t0\}}), es decir, en casi todo el ablandamiento, con el signo cambiado y el elemento presentándose al solver como si endureciera.
 
 Las derivadas \texttt{d\ensuremath{\omega}/d\ensuremath{\kappa}} cerradas:
 
@@ -10492,8 +10491,8 @@ Dentro de una iteración del Newton global, el material recibe \texttt{[[u]]\_tr
 
 \begin{itemize}
   \item \textbf{Elección de \texttt{K\_e} (penalty)}. Si \texttt{K\_e} muy pequeño: \texttt{\ensuremath{\kappa}\_0 = \ensuremath{\sigma}\_\{t0\}/K\_e} no es despreciable y la respuesta elástica deforma significativamente la curva (la grieta \textquotedbl{}se abre\textquotedbl{} antes del pico). Si \texttt{K\_e} muy grande: condicionamiento del sistema empeora (\texttt{K\_e ≫ E\_bulk\ensuremath{\cdot}L\_e} introduce diferencia de magnitudes en \texttt{K\_\{ũũ\}}). Regla práctica: \texttt{K\_\allowbreak{}e \ensuremath{\approx} 10\ensuremath{\cdot}E\_\allowbreak{}bulk/\allowbreak{}ℓ\_\allowbreak{}c} con \texttt{ℓ\_c} la longitud característica del elemento (su lado más corto). El usuario lo declara explícitamente en YAML; no hay default automático.
-  \item \textbf{Cierre en compresión}. Cuando \texttt{[[u\_n]] \textless{} 0} el modelo devuelve \texttt{t\_\allowbreak{}n = (1−\ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]} (compresión reducida). Físicamente, la grieta cerrada debería transmitir compresión a rigidez completa \texttt{K\_e} (contacto unilateral). En fase 1 esta limitación se acepta tal cual --- los benchmarks de la tesis (Van Vliet, viga SEN) son traccionados puros. Un modelo con corrección de cierre se contempla como \textbf{deuda explícita} para casos con cambio de signo en la grieta.
-  \item \textbf{Cap numérico de la rigidez tangente}. \texttt{DAMAGE\_MAX \textless{} 1} se aplica \textbf{sólo} sobre \texttt{T\_tan} para evitar singularidad del Newton (\texttt{stiffness = max(1−\ensuremath{\omega}, 1−DAMAGE\_\allowbreak{}MAX)\ensuremath{\cdot}K\_\allowbreak{}e}). El \texttt{\ensuremath{\omega}} reportado en el estado y usado en \texttt{t\_\allowbreak{}n = (1−\ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]} es físico (puede valer exactamente 1.0 en lineal con \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}). Diferencia respecto al patrón en \texttt{IsotropicDamage2D}: allí \texttt{K\_e ≡ E} es moderado y truncar \ensuremath{\omega} no introduce residuo significativo en \ensuremath{\sigma}; aquí \texttt{K\_e} es penalty (≫E) y \texttt{u\_n} recorre rangos macroscópicos, así que truncar \ensuremath{\omega} contaminaría la energía disipada en \textasciitilde{}10--30 \%.
+  \item \textbf{Cierre en compresión}. Con \texttt{[[u\_n]] \textless{} 0} se recupera \texttt{t\_\allowbreak{}n = K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]} sin daño (§4): la penalización impide la interpenetración aunque la grieta esté totalmente abierta. No hay fricción: la componente tangencial sigue sin rigidez.
+  \item \textbf{Sin tope sobre \texttt{\ensuremath{\omega}} ni sobre la tangente}. \texttt{\ensuremath{\omega}} es físico (1.0 exacto en lineal con \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}) y la tangente es la consistente en toda la rama (§9). Truncar \texttt{\ensuremath{\omega}} contaminaría la energía disipada en \textasciitilde{}10-30 \% (\texttt{K\_e} de penalización y \texttt{u\_n} macroscópico), y truncar la tangente le daba el signo contrario en casi todo el ablandamiento. Diferencia con \texttt{IsotropicDamage2D}, donde \texttt{K\_e ≡ E} es moderado y el tope \texttt{DAMAGE\_MAX} sí es inocuo.
   \item \textbf{Sensibilidad de malla} en régimen de softening. Sin regularización, el patrón de fallo localiza en función del tamaño y orientación de elementos. La integración con el elemento \texttt{CST\_Embedded2D} (fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}) y con el \texttt{l\_\allowbreak{}d = (A/\allowbreak{}h)\ensuremath{\cdot}cos(\ensuremath{\theta}−\ensuremath{\alpha})} de Cap. 6 da objetividad parcial respecto a la longitud de la grieta --- pero la dirección de propagación sigue dependiendo de la dirección de tensiones principales en el elemento. Mitigación a nivel del \textit{elemento}, no del material.
   \item \textbf{Validación energética}. Por construcción \texttt{\ensuremath{\int}\_\allowbreak{}0\textasciicircum{}\{w\_\allowbreak{}c\} t(w)\ensuremath{\cdot}dw = G\_\allowbreak{}F}. Esto se verifica en los tests (§acceptance). Si la curva implementada no integra a \texttt{G\_F}, hay error en \texttt{w\_c} o en \texttt{H}.
 \end{itemize}
@@ -10523,7 +10522,7 @@ signature:
 
 state_schema:
   kappa: "float ≥ κ_0 — historial del salto equivalente máximo"
-  damage: "float ∈ [0, DAMAGE_MAX] — variable de daño escalar"
+  damage: "float ∈ [0, 1] — variable de daño escalar (1 − S(κ)/K_e, S la secante)"
 
 conventions:
   sign: "[[u_n]] > 0 ⇔ apertura (tracción); el modelo daña sólo en apertura (Modo-I)"
@@ -10538,7 +10537,7 @@ validity:
 
 out_of_scope:
   - "Modo mixto I-II (cizalla acoplada al daño); diferido a fase G del ADR 0010"
-  - "Contacto / cierre unilateral en compresión; el modelo reduce rigidez al estar dañado, no recupera contacto rígido"
+  - "Fricción en la grieta cerrada; en compresión sólo se recupera la penalización normal K_e"
   - "Anisotropía del daño (tensor de daño D vs escalar ω)"
   - "Acoplamiento viscoso (rate-dependent); rate-independent puro en fase 1"
   - "Fatiga / acumulación cíclica del daño"
@@ -10546,10 +10545,10 @@ out_of_scope:
 
 numerical_caveats:
   - "Penalty K_e: balance entre κ_0 despreciable (K_e grande) y condicionamiento (K_e moderado). Guía: K_e ≈ 10·E_bulk/ℓ_c. Declarado por el usuario en YAML, sin default automático."
-  - "Cierre en compresión: rigidez reducida (1−ω)·K_e, no recuperación de contacto rígido. Aceptable para benchmarks puramente traccionados; deuda explícita para casos con cambio de signo."
-  - "Cap por DAMAGE_MAX aplicado sólo a la rigidez tangente (stiffness = max(1−ω, 1−DAMAGE_MAX)·K_e) para evitar singularidad del Newton. La tracción se calcula con ω físico (1.0 exacto en lineal con κ≥w_c) y por tanto t_n = 0 cuando la grieta está totalmente abierta, sin sesgo en la energía disipada."
+  - "Cierre en compresión: t_n = K_e·[[u_n]] sin daño (Alfaiate et al. 2002, p. 667); sin fricción."
+  - "Sin tope DAMAGE_MAX: ω físico y tangente consistente en toda la rama; la K_jj del elemento no se vuelve singular por el término del volumen (ver §9)."
   - "Régimen elastic↔softening discontinuo en la tangente al cruzar κ_0; régimen loading↔unloading discontinuo al cruzar κ_n committed. Mismo patrón que IsotropicDamage2D."
-  - "En la zona ω ≥ DAMAGE_MAX la tangente colapsa a la secante reducida (1−DAMAGE_MAX)·K_e, no a la consistente; el Newton degrada de convergencia cuadrática a lineal en esa rama (típicamente irrelevante porque la rama corresponde a un elemento prácticamente roto)."
+  - "Con K_e de penalización, 1 − ω está a ~κ_0/κ de cero: t_n y la tangente de carga se evalúan desde T_soft(κ), no desde (1 − ω)·K_e, para no perder cifras por cancelación."
 
 acceptance:
   verification:
@@ -10600,6 +10599,11 @@ acceptance:
       expect: "‖T_tan_FD − T_tan_analitica‖ / ‖T_tan‖ < 1e-5"
       tol_rel: 1.0e-5
 
+    - name: tangente_consistente_en_todo_el_ablandamiento
+      setup: "K_e = 1e15 (penalización real, κ_0/w_c ~ 3e-5), carga activa en κ/w_ref ∈ {0.01, 0.05, 0.3, 0.7, 0.95}, lineal y exponencial; y descarga a la mitad de κ"
+      expect: "carga: T_tan < 0 e igual a la diferencia finita centrada; descarga: T_tan = secante T_soft(κ)/κ"
+      tol_rel: 1.0e-6
+
     - name: tangencial_no_dana_ni_transmite
       setup: "[[u_s]] arbitrario, [[u_n]] = 0"
       expect: "t_s = 0; t_n = 0; ω no cambia"
@@ -10607,12 +10611,12 @@ acceptance:
 
     - name: compresion_no_dana
       setup: "[[u_n]] < 0 puro (penetración)"
-      expect: "⟨[[u_n]]⟩ = 0 ⇒ f = −κ ≤ 0 ⇒ ω no cambia. t_n = (1−ω_previo)·K_e·[[u_n]] (caveat de cierre, §12)"
+      expect: "⟨[[u_n]]⟩ = 0 ⇒ f = −κ ≤ 0 ⇒ ω y κ no cambian. t_n = K_e·[[u_n]] y T_tan = K_e·(n⊗n) aunque la grieta esté parcial o totalmente abierta; t_n continua a través de [[u_n]] = 0"
       tol_rel: 1.0e-12
 
     - name: saturacion_en_w_c_softening_lineal
       setup: "[[u_n]] = w_c·1.01 con softening='linear'"
-      expect: "ω = 1.0 exacto, t_n = 0 exacto (grieta totalmente abierta). T_tan = (1−DAMAGE_MAX)·K_e (cap numérico sólo sobre la rigidez)."
+      expect: "ω = 1.0 exacto, t_n = 0 exacto y T_tan = 0 (pendiente de la envolvente; grieta totalmente abierta)."
       tol_rel: 1.0e-10
 
     - name: degeneracion_a_elasticidad_intacta
@@ -10629,6 +10633,7 @@ acceptance:
 
 references:
   - "Retama Velasco, J. (2010). Formulation and Approximation to Problems in Solids by Embedded Discontinuity Models. Tesis Doctoral, UNAM. **Cap. 3 — Discrete damage models**. Fórmulas §3.1 (energía libre, ec. 3.1–3.4); §3.1.1 (tensor tangente, ec. 3.7–3.12); §3.1.2 (función de fluencia, ec. 3.13–3.14); §3.1.3 (Kuhn-Tucker, ec. 3.15–3.16)."
+  - "Alfaiate, J., Wells, G.N., Sluys, L.J. (2002). On the use of embedded discontinuity elements with crack path continuity for mode-I and mixed-mode fracture. *Engineering Fracture Mechanics* 69, 661-686. **Modelo de daño isótropo con penalización que sigue la tesis** (su cita [4] en la ec. 3.2): ecs. 8-17 (ω(κ) exponencial, κ₀ ≈ 0, D_el = f_t0/κ₀·I, condiciones de arranque) y p. 667 (recuperación de la rigidez inicial al cerrarse la grieta)."
   - "Hillerborg, A., Modéer, M., Petersson, P.-E. (1976). Analysis of crack formation and crack growth in concrete by means of fracture mechanics and finite elements. *Cement and Concrete Research* 6, 773-782. **Origen del modelo cohesivo con energía de fractura G_F**."
   - "Barenblatt, G.I. (1962). The mathematical theory of equilibrium cracks in brittle fracture. *Advances in Applied Mechanics* 7, 55-129."
   - "Simó, J.C., Ju, J.W. (1987). Strain- and stress-based continuum damage models — I. Formulation. *Int. J. Solids Struct.* 23, 821-840."
@@ -10648,6 +10653,7 @@ references:
   \item Autodiscover: \texttt{solidum.\allowbreak{}autodiscover.\allowbreak{}initialize()} descubre \texttt{solidum.\allowbreak{}cohesive\_\allowbreak{}materials} automáticamente.
   \item Tests:
   \item \texttt{tests/\allowbreak{}test\_\allowbreak{}cohesive\_\allowbreak{}damage\_\allowbreak{}isotropic.\allowbreak{}py} --- todos los casos de \texttt{acceptance} (verification + specific + arch).
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}cst\_\allowbreak{}embedded.\allowbreak{}py::TestCondensedTangentInSoftening} y \texttt{tests/\allowbreak{}validation/\allowbreak{}test\_\allowbreak{}embedded\_\allowbreak{}uniaxial\_\allowbreak{}softening.\allowbreak{}py} --- el material dentro del elemento: tangente condensada frente a diferencias finitas y tracción uniaxial hasta la separación completa frente a la solución exacta.
   \item Notas de traducción:
   \item El algoritmo §8 es explícito (sin Newton local); no se usa \texttt{is\_admissible} en este material.
   \item \texttt{JUMP\_DIM = 2}, \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR = 'damage'}, \texttt{IS\_\allowbreak{}SYMMETRIC = True}.
@@ -10668,6 +10674,7 @@ references:
   \item \textbf{2026-05-18} \ensuremath{\cdot} Status \ensuremath{\to} \texttt{validated}. La IA arranca implementación.
   \item \textbf{2026-05-18} \ensuremath{\cdot} \textit{Nota tras implementación}: durante los tests el corte por \texttt{DAMAGE\_MAX} aplicado a \ensuremath{\omega} introducía \textasciitilde{}10 \% de exceso en \texttt{\ensuremath{\int}t\ensuremath{\cdot}d[[u\_n]]} respecto a \texttt{G\_F} (vs \textasciitilde{}0.001 esperado). Razón física: en cohesivos \texttt{K\_e} es penalty (≫ E\_bulk) y \texttt{u\_n} recorre rango macroscópico, así que \texttt{(1−DAMAGE\_\allowbreak{}MAX)\ensuremath{\cdot}K\_\allowbreak{}e\ensuremath{\cdot}u\_\allowbreak{}n} no es despreciable. Fix arquitectural: el cap por \texttt{DAMAGE\_MAX} se aplica \textbf{sólo a la rigidez tangente} (para mantener el Newton no singular), no al \texttt{\ensuremath{\omega}} reportado ni a \texttt{t\_n}. Actualizadas §9, §12 y \texttt{acceptance.\allowbreak{}saturacion\_\allowbreak{}en\_\allowbreak{}w\_\allowbreak{}c\_\allowbreak{}softening\_\allowbreak{}lineal} consecuentemente. Distinto del patrón en \texttt{IsotropicDamage2D} por la diferencia en escalas de \texttt{K\_e} y de la variable de entrada.
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: el softening lineal exige \texttt{w\_c \textgreater{} \ensuremath{\kappa}\ensuremath{_{0}}} (\texttt{K\_\allowbreak{}e \textgreater{} \ensuremath{\sigma}\_\allowbreak{}t0\ensuremath{^{2}}/\allowbreak{}(2\ensuremath{\cdot}G\_\allowbreak{}F)}), la misma condición que el exponencial; antes sólo validaba el exponencial y con \texttt{w\_c \ensuremath{\le} \ensuremath{\kappa}\ensuremath{_{0}}} \ensuremath{\omega} saltaba a 1 en cuanto \ensuremath{\kappa} \textgreater{} \ensuremath{\kappa}\ensuremath{_{0}}, disipando ½\ensuremath{\cdot}\ensuremath{\sigma}\_t0\ensuremath{\cdot}\ensuremath{\kappa}\ensuremath{_{0}} \textgreater{} G\_F sin aviso.
+  \item \textbf{2026-09-23} \ensuremath{\cdot} \textit{Revisión contra la tesis} (pedida por el usuario antes de usar la formulación en el manual de ejemplos). La tesis no escribe \texttt{K\_e}, \texttt{\ensuremath{\kappa}\_0} ni \texttt{\ensuremath{\omega}(\ensuremath{\kappa})}: en la ec. 3.2 cita a Alfaiate, Wells y Sluys (2002) y reproduce casi literalmente su modelo de daño isótropo con penalización (ecs. 8-17), que es el implementado. El usuario confirmó mantener la penalización. Dos correcciones, ambas siguiendo esa referencia y validadas por el usuario: (1) se elimina el tope \texttt{DAMAGE\_MAX} de la tangente, que en carga activa devolvía \texttt{+1e-3\ensuremath{\cdot}K\_e} en casi todo el ablandamiento (desde \texttt{\ensuremath{\kappa} \ensuremath{\approx} 0.026\ensuremath{\cdot}w\_c} con \texttt{K\_e = 1e15}) en lugar de la pendiente negativa, de modo que la tangente condensada del elemento erraba del 26 al 45 \%; (2) en compresión se recupera la rigidez inicial \texttt{K\_e} sin daño, en vez de \texttt{(1 − \ensuremath{\omega})\ensuremath{\cdot}K\_e}, que dejaba atravesarse las caras de una grieta abierta. Tests nuevos: barrido de la tangente en toda la rama, compresión con grieta abierta, tangente condensada frente a diferencias finitas (los tres fallan con el código anterior) y tracción uniaxial hasta la separación completa frente a la solución exacta.
 \end{itemize}
 
 
@@ -12930,6 +12937,184 @@ references:
 
 \begin{itemize}
   \item \textit{2026-05-18}: nuevo \texttt{PIPELINE\_\allowbreak{}KIND = \textquotedbl{}harmonic\textquotedbl{}} añadido al despacho declarativo de \texttt{run\_yaml} (regla C, ya aplicada en D2). Tercer valor del literal junto a \texttt{\textquotedbl{}modal\textquotedbl{}}, \texttt{\textquotedbl{}transient\textquotedbl{}}, \texttt{\textquotedbl{}static\textquotedbl{}}. El parser YAML inyecta automáticamente las \texttt{point\_loads} del bloque estándar como \texttt{F\_amplitude} real cuando el usuario no la especifica explícitamente --- convención coherente con el uso de \texttt{external\_forces} en análisis estáticos.
+\end{itemize}
+
+
+\newpage
+
+\section{IndirectDisplacementSolver}
+\label{spec:IndirectDisplacementSolver}
+
+
+
+\textit{\textbf{Spec corta tipo extensión} (Reglas.md §4). Variante de \hyperref[spec:ArcLengthSolver]{\texttt{ArcLengthSolver}} que \textbf{sólo cambia la restricción del paso}: en lugar de fijar la norma del incremento de todos los grados de libertad ($\lVert\Delta\mathbf U\rVert = \Delta l$), fija el incremento de una \textbf{combinación elegida} de ellos ($\mathbf c^\top\Delta\mathbf U = \Delta l$). Reusa el predictor tangente, el corrector de Newton compartido (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0015-corrector-de-newton-compartido.md}{ADR 0015}), el primer paso adimensional (deuda \#26), la llegada exacta a \texttt{max\_lambda}, Dirichlet/MPC y el backend algebraico. Sin ADR nuevo.}
+
+\textit{\textgreater{} Motivación (medida el 2026-09-23 al preparar el ejemplo 5 del manual de ejemplos): en una barra con daño que se localiza en un elemento, el retroceso (\textit{snap-back}) empieza en el propio pico. Ahí el incremento de la parte que se descarga apunta casi al revés que el del paso anterior, y ni el \texttt{ArcLengthSolver} cilíndrico (su selección de raíz por menor ángulo elige la rama equivocada o no converge) ni el \texttt{DissipationArcLengthSolver} (ver deuda \#27) siguen la curva. Controlar el alargamiento del elemento que se daña, como un ensayo de fractura controlado por la apertura de la boca de fisura (CMOD), la sigue exacta. Es también el control que el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010} dejó previsto para la fase 4 (Van Vliet).}
+
+
+
+\subsection{Especificación física}
+
+\phantomsection
+\subsubsection*{0. Descripción general}
+\addcontentsline{toc}{subsubsection}{0. Descripción general}
+
+Solver estático no lineal que traza la curva de equilibrio $\mathbf F_\text{int}(\mathbf U) = \lambda\,\mathbf F_\text{ref}$ avanzando en cada paso un incremento fijo $\Delta l$ de una \textbf{magnitud cinemática elegida por el usuario}: una combinación lineal de grados de libertad, típicamente el alargamiento de la zona que se ablanda o la apertura de una grieta. La carga $\lambda$ es incógnita y puede bajar, así que la curva se sigue a través de puntos límite y de retrocesos, \textbf{siempre que la magnitud controlada crezca monótonamente} a lo largo del camino físico.
+
+\phantomsection
+\subsubsection*{1. Restricción del paso}
+\addcontentsline{toc}{subsubsection}{1. Restricción del paso}
+
+\[
+g(\Delta\mathbf U) = \mathbf c^\top\Delta\mathbf U - \Delta l = 0,
+\qquad
+\mathbf c^\top\mathbf U = \sum_k c_k\,u_{(n_k,\,d_k)}
+\]
+
+con $\mathbf c$ el vector de coeficientes sobre los grados de libertad controlados. Para el alargamiento entre los nodos $a$ y $b$ en $x$: $c_{b,x} = +1$, $c_{a,x} = -1$.
+
+\phantomsection
+\subsubsection*{2. Predictor}
+\addcontentsline{toc}{subsubsection}{2. Predictor}
+
+Con $\mathbf{du}_t = \mathbf K_t^{-1}\mathbf F_\text{ref}$:
+
+\[
+\Delta\lambda = \frac{\Delta l}{\mathbf c^\top\mathbf{du}_t}, \qquad \Delta\mathbf U = \Delta\lambda\,\mathbf{du}_t .
+\]
+
+\textbf{Sin regla de signo}: el signo de $\Delta\lambda$ sale de la propia restricción (negativo en un retroceso, donde la tangente hace bajar la carga mientras la magnitud controlada sigue creciendo). El arco cilíndrico, en cambio, necesita decidir el sentido con el producto escalar con el incremento anterior.
+
+\phantomsection
+\subsubsection*{3. Corrector}
+\addcontentsline{toc}{subsubsection}{3. Corrector}
+
+En cada iteración, con $\mathbf{du}_R = \mathbf K^{-1}\mathbf R$ y $\mathbf{du}_t = \mathbf K^{-1}\mathbf F_\text{ref}$:
+
+\[
+\delta\lambda = \frac{\Delta l - \mathbf c^\top(\Delta\mathbf U + \mathbf{du}_R)}{\mathbf c^\top\mathbf{du}_t},
+\qquad
+\delta\mathbf U = \mathbf{du}_R + \delta\lambda\,\mathbf{du}_t .
+\]
+
+Es \textbf{lineal} en $\delta\lambda$: no hay raíces que elegir ni discriminantes negativos. Tras converger, $\mathbf c^\top\Delta\mathbf U = \Delta l$ se cumple a precisión de máquina.
+
+\phantomsection
+\subsubsection*{4. Primer paso y tamaño de paso}
+\addcontentsline{toc}{subsubsection}{4. Primer paso y tamaño de paso}
+
+\begin{itemize}
+  \item \textbf{Primer paso adimensional} (deuda \#26): \texttt{initial\_dlambda} (0.1 por omisión) es la fracción de la carga de referencia; $\Delta l_1 = \Delta\lambda_1\,\mathbf c^\top\mathbf K_0^{-1}\mathbf F_\text{ref}$. \texttt{initial\_dl} fija $\Delta l_1$ explícito, en las unidades de la magnitud controlada.
+  \item \textbf{Sin crecimiento por omisión} (\texttt{dl\_\allowbreak{}max\_\allowbreak{}factor = 1.\allowbreak{}0}, frente a 5.0 del padre): la magnitud avanza a ritmo constante, como en un ensayo a velocidad de CMOD constante. La razón es física, ver §5.
+  \item Se conserva la reducción por iteraciones y la bisección del padre.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{5. No unicidad del problema incremental con ablandamiento}
+\addcontentsline{toc}{subsubsection}{5. No unicidad del problema incremental con ablandamiento}
+
+Con ablandamiento local, el problema de un paso (equilibrio con la historia $\kappa$ del paso anterior) admite varios equilibrios: además del físico, en que sólo se ablanda la zona debilitada, otros en que también se ablandan zonas que en el camino continuo se habrían descargado. El Newton converge a uno u otro según la estimación inicial. \textbf{Un paso que sobrepasa el pico más que la imperfección que localiza el daño puede converger a otro equilibrio.} Medido en la barra de 10 elementos con uno debilitado un 5 \%: con pasos del 2 \% o el 5 \% de la carga el trazado es exacto; con el 10 \%, o con el crecimiento \ensuremath{\times}5 del padre, se dañan los diez elementos. El control por desplazamiento del extremo (\texttt{NonlinearSolver}) hace lo mismo con pasos grandes: no es una propiedad del solver sino del problema discreto. De ahí el valor por omisión sin crecimiento y la recomendación de pasos menores que el margen de la imperfección cerca del pico.
+
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: IndirectDisplacementSolver
+kind: solver
+status: validated
+
+parent_spec: ArcLengthSolver
+
+interface:
+  yaml_type: IndirectDisplacementSolver
+  output: SolveResult
+  pipeline_kind: static
+
+parameters:
+  # Específico de esta variante:
+  - { name: control,                  type: list,  required: true,
+      desc: "Combinación controlada Σ coef·u(nodo, dof): lista de (nodo, dof, coef) o de {node, dof, coef} (coef = 1 si se omite); nodo = Node o id. Grados de libertad libres; la combinación debe crecer con la carga de referencia" }
+  # Heredados del padre, con la semántica de la magnitud controlada:
+  - { name: convergence,              type: ConvergenceCriterion, required: false, default: "ConvergenceCriterion()" }
+  - { name: max_iter,                 type: int,   required: false, default: 20 }
+  - { name: max_lambda,               type: float, required: false, default: 1.0 }
+  - { name: max_steps,                type: int,   required: false, default: 100 }
+  - { name: initial_dlambda,          type: float, required: false, default: 0.1,
+      desc: "Fracción de la carga de referencia del primer paso; Δl₁ = Δλ₁·cᵀK₀⁻¹F_ref. Excluyente con initial_dl" }
+  - { name: initial_dl,               type: float, required: false, default: null,
+      desc: "Incremento explícito de la magnitud controlada en el primer paso, en sus unidades. Excluyente con initial_dlambda" }
+  - { name: dl_grow_factor,           type: float, required: false, default: 1.5 }
+  - { name: dl_max_factor,            type: float, required: false, default: 1.0,
+      desc: "Sin crecimiento por omisión (ver §5)" }
+  - { name: dl_shrink_factor,         type: float, required: false, default: 0.6 }
+  - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
+  - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
+  - { name: linear_algebra,           type: str,   required: false, default: "auto" }
+
+requirements:
+  - "La magnitud controlada crece monótonamente a lo largo del camino físico (apertura de una grieta, alargamiento de la zona que se ablanda). Si decrece con la carga de referencia al empezar, el solver lo rechaza con un error que lo explica"
+  - "Los grados de libertad controlados son libres (sin apoyo ni restricción multipunto). Para controlar un nodo respecto de un apoyo fijo basta con el nodo solo"
+  - "Heredados del padre: F_ref no nulo; modelo sin mecanismos (ADR 0019)"
+
+conventions:
+  units: "Δl en las unidades de la magnitud controlada (longitud para desplazamientos con coeficientes adimensionales)"
+  sign: "la magnitud controlada crece Δl > 0 en cada paso; λ puede crecer o decrecer"
+
+out_of_scope:
+  - "Elección automática de la magnitud controlada (control local adaptativo, p. ej. el mayor alargamiento de la malla en cada paso)"
+  - "Magnitudes que cambian de signo de crecimiento a lo largo del camino (descarga global): el control exige monotonía"
+  - "Análisis dinámico (régimen cuasiestático)"
+
+acceptance:
+  verification:
+    - name: retroceso_barra_con_dano_localizado
+      setup: "Barra de 10 Truss2D con IsotropicDamage1D (α·κ₀w = 0.475), elemento central con κ₀ un 5 % menor; control del alargamiento del elemento débil, initial_dlambda = 0.02"
+      expect: "Sólo se daña el elemento débil; los puntos tras el pico están sobre la curva exacta (distancia normalizada < 1e-3); el desplazamiento del extremo retrocede hasta el mínimo exacto 0.616·u_pico"
+      tol_rel: 2.0e-3
+
+    - name: rama_descendente_sin_retroceso
+      setup: "La misma barra con 2 elementos ((n − 1)·α·κ₀w < 1)"
+      expect: "Rama elástica exacta y rama descendente sobre la curva exacta"
+      tol_rel: 2.0e-3
+
+    - name: restriccion_satisfecha
+      setup: "Barra de 10 elementos del primer caso"
+      expect: "El alargamiento controlado crece exactamente Δl por paso"
+      tol_rel: 1.0e-8
+
+  specific:
+    - name: primer_paso_como_fraccion_de_carga
+      setup: "Barra elástica, control del desplazamiento del extremo, initial_dlambda = 0.25"
+      expect: "λ₁ = 0.25 exacto; Δλ = 0.25 en cada paso; solución lineal exacta en λ = 1"
+    - name: errores_claros
+      setup: "control vacío o mal formado, nodo o dof inexistentes, dof restringido, términos que se anulan, magnitud que decrece con la carga"
+      expect: "ValueError con un mensaje que explica el problema"
+    - name: desde_yaml
+      setup: "solver: {type: IndirectDisplacementSolver, control: [{node, dof, coef}, …]}"
+      expect: "Se construye y resuelve"
+
+references:
+  - "de Borst R. (1987). Computation of post-bifurcation and post-failure behavior of strain-softening solids. *Computers & Structures* 25(2), 211-224. (Control indirecto de desplazamiento.)"
+  - "Crisfield M.A. (1991). *Non-linear Finite Element Analysis of Solids and Structures*, Vol. 1, Wiley, cap. 9. (Métodos de continuación y restricciones alternativas.)"
+  - "de Borst R., Sluys L.J. (1999). *Computational Methods in Non-linear Solid Mechanics*, TU Delft, §3."
+  - "Spec padre: ArcLengthSolver.md. ADR 0015 (corrector de Newton compartido)."
+
+\end{lstlisting}
+
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}math/\allowbreak{}solvers/\allowbreak{}indirect\_\allowbreak{}displacement.\allowbreak{}py} --- \texttt{\_IndirectProblem} (restricción lineal sobre el \texttt{\_ArcProblem} del padre) e \texttt{IndirectDisplacementSolver} (registrado en \texttt{SolverRegistry}, \texttt{PIPELINE\_\allowbreak{}KIND = \textquotedbl{}static\textquotedbl{}}).
+  \item El padre expone cuatro puntos de extensión que usa esta variante: \texttt{\_control\_measure} (magnitud que fija la restricción: norma en el padre, $\mathbf c^\top\mathbf{du}$ aquí), \texttt{\_\allowbreak{}predictor\_\allowbreak{}dlambda}, \texttt{\_step\_problem} y \texttt{\_on\_solve\_start} (construye $\mathbf c$ sobre la numeración de ecuaciones). Sin cambio de comportamiento del padre.
+  \item Tests: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_indirect_displacement.py}{\texttt{tests/\allowbreak{}test\_\allowbreak{}indirect\_\allowbreak{}displacement.\allowbreak{}py}} --- todos los \texttt{acceptance}.
+\end{itemize}
+
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-09-23} \ensuremath{\cdot} Formulación propuesta por la IA y validada por el usuario al descubrir, preparando el ejemplo 5 del manual de ejemplos, que ninguno de los dos solvers de arco seguía el retroceso de una barra con daño localizado. Diagnóstico registrado como deuda \#27 (arco por disipación) y en §5 (no unicidad del problema incremental).
 \end{itemize}
 
 
@@ -15574,13 +15759,14 @@ Los materiales cohesivos son una \textbf{jerarquía paralela e independiente} de
   \item \textbf{Modelo}: daño escalar \texttt{\ensuremath{\omega} \ensuremath{\in} [0, 1]} sobre el salto. Tracción \texttt{t\_\allowbreak{}n = (1 − \ensuremath{\omega})\ensuremath{\cdot}K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]} en dirección normal, \texttt{t\_s = 0} en tangencial (Modo-I puro). Activación tipo Rankine (\texttt{f = \ensuremath{\langle}[[u\_\allowbreak{}n]]\ensuremath{\rangle} − \ensuremath{\kappa}}); historial monótono \texttt{\ensuremath{\kappa}\_\allowbreak{}\{n+1\} = max(\ensuremath{\kappa}\_\allowbreak{}n, \ensuremath{\langle}[[u\_\allowbreak{}n]]\ensuremath{\rangle})} con \texttt{\ensuremath{\kappa}\_0 = \ensuremath{\sigma}\_t0/K\_e}. Energía de fractura \texttt{G\_f} cierra la curva analíticamente:
   \item \textbf{Lineal}: \texttt{T\_\allowbreak{}soft(\ensuremath{\kappa}) = \ensuremath{\sigma}\_\allowbreak{}t0\ensuremath{\cdot}(w\_\allowbreak{}c − \ensuremath{\kappa})/\allowbreak{}(w\_\allowbreak{}c − \ensuremath{\kappa}\_\allowbreak{}0)} con apertura crítica \texttt{w\_c = 2\ensuremath{\cdot}G\_f/\ensuremath{\sigma}\_t0}. \texttt{\ensuremath{\omega}(\ensuremath{\kappa}) = 1 − \ensuremath{\sigma}\_\allowbreak{}t0\ensuremath{\cdot}(w\_\allowbreak{}c − \ensuremath{\kappa})/\allowbreak{}[K\_\allowbreak{}e\ensuremath{\cdot}\ensuremath{\kappa}\ensuremath{\cdot}(w\_\allowbreak{}c − \ensuremath{\kappa}\_\allowbreak{}0)]}. \texttt{\ensuremath{\omega} = 1} en \texttt{\ensuremath{\kappa} \ensuremath{\ge} w\_c}.
   \item \textbf{Exponencial}: \texttt{T\_\allowbreak{}soft(\ensuremath{\kappa}) = \ensuremath{\sigma}\_\allowbreak{}t0\ensuremath{\cdot}exp[−\ensuremath{\sigma}\_\allowbreak{}t0\ensuremath{\cdot}(\ensuremath{\kappa} − \ensuremath{\kappa}\_\allowbreak{}0)/\allowbreak{}H]} con \texttt{H = G\_\allowbreak{}f − \ensuremath{\sigma}\_\allowbreak{}t0\ensuremath{\cdot}\ensuremath{\kappa}\_\allowbreak{}0/\allowbreak{}2}. \texttt{\ensuremath{\omega}(\ensuremath{\kappa}) = 1 − T\_\allowbreak{}soft(\ensuremath{\kappa})/\allowbreak{}(K\_\allowbreak{}e\ensuremath{\cdot}\ensuremath{\kappa})}. Asintótica a 1.
-  \item \textbf{Tangente}: simétrica por construcción (rank-1 sobre \texttt{n⊗n}). Algorítmica consistente en carga activa: \texttt{T\_\allowbreak{}tan = K\_\allowbreak{}e\ensuremath{\cdot}[(1−\ensuremath{\omega}) − [[u\_\allowbreak{}n]]\ensuremath{\cdot}d\ensuremath{\omega}/\allowbreak{}d\ensuremath{\kappa}]\ensuremath{\cdot}(n⊗n)}. Secante reducida \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e\ensuremath{\cdot}(n⊗n)} en descarga y sin daño. Cap por \texttt{DAMAGE\_MAX} aplicado \textbf{sólo a la rigidez tangente} cuando \texttt{\ensuremath{\omega} \ensuremath{\ge} DAMAGE\_MAX}; el valor de \texttt{\ensuremath{\omega}} reportado y la tracción usan el valor físico (puede llegar a 1.0 exacto) --- esto distingue al material de \texttt{IsotropicDamage2D}, donde \texttt{K\_e ≡ E} permite truncar \ensuremath{\omega} sin sesgo.
+  \item \textbf{Tangente}: simétrica por construcción (rank-1 sobre \texttt{n⊗n}). Algorítmica consistente en carga activa: \texttt{T\_\allowbreak{}tan = K\_\allowbreak{}e\ensuremath{\cdot}[(1−\ensuremath{\omega}) − [[u\_\allowbreak{}n]]\ensuremath{\cdot}d\ensuremath{\omega}/\allowbreak{}d\ensuremath{\kappa}]\ensuremath{\cdot}(n⊗n)}. Se evalúa como la pendiente de la envolvente, \texttt{dT\_soft/d\ensuremath{\kappa}}, negativa en todo el ablandamiento y nula con la grieta totalmente abierta; sin tope \texttt{DAMAGE\_MAX} (hasta el 2026-09-23 el tope le cambiaba el signo en casi toda la rama). Secante reducida \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e\ensuremath{\cdot}(n⊗n)} en descarga y sin daño. En compresión (\texttt{[[u\_n]] \textless{} 0}) se recupera la rigidez inicial: \texttt{t\_\allowbreak{}n = K\_\allowbreak{}e\ensuremath{\cdot}[[u\_\allowbreak{}n]]}, sin daño. \texttt{\ensuremath{\omega}} y la tracción usan el valor físico (puede llegar a 1.0 exacto).
   \item \textbf{JUMP\_DIM}: 2 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'} \ensuremath{\cdot} \textbf{IS\_SYMMETRIC}: \texttt{True}.
   \item \textbf{Parámetros}: \texttt{sigma\_t0} (resistencia a tracción, Pa), \texttt{G\_f} (energía de fractura, N/m), \texttt{K\_e} (rigidez del salto / penalty, Pa/m; sin default automático, ver §12 de la spec para guía \texttt{K\_\allowbreak{}e \ensuremath{\approx} 10\ensuremath{\cdot}E\_\allowbreak{}bulk/\allowbreak{}ℓ\_\allowbreak{}c}), \texttt{softening \ensuremath{\in} \{'linear', 'exponential'\}}.
   \item \textbf{Variables internas}: \texttt{kappa} (historial del salto equivalente, [m]), \texttt{damage} (\ensuremath{\omega}).
   \item \textbf{Validación energética}: por construcción \texttt{\ensuremath{\int}\_\allowbreak{}0\textasciicircum{}\{w\_\allowbreak{}c\} t\ensuremath{\cdot}d[[u\_\allowbreak{}n]] = G\_\allowbreak{}f} (lineal) o \texttt{\ensuremath{\int}\_0\textasciicircum{}\ensuremath{\infty} \ensuremath{\approx} G\_f} (exponencial); cubierto por tests con cuadratura trapezoidal.
-  \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): sólo Modo-I (mixto I--II diferido a fase G del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}), sin contacto unilateral en compresión (la grieta dañada transmite compresión con rigidez \texttt{(1−\ensuremath{\omega})\ensuremath{\cdot}K\_e}, no rígida), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento \texttt{CST\_Embedded2D}, no del material).
-  \item \textbf{Compatible con}: pendiente de fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010} (elemento \texttt{CST\_Embedded2D}). En aislamiento, testeable con historial prescrito de \texttt{[[u]]}.
+  \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): sólo Modo-I (mixto I--II diferido a fase G del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}), contacto en compresión sólo por la penalización normal \texttt{K\_e} (sin fricción), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento \texttt{CST\_Embedded2D}, no del material).
+  \item \textbf{Origen}: modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys (2002, ecs. 8-17), que Retama (2010) adopta en las ecs. 3.2-3.16.
+  \item \textbf{Compatible con}: elemento \texttt{CST\_Embedded2D} (fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}). Validado dentro del elemento hasta la separación completa en \href{https://github.com/jretamav/solidum-fem/blob/main/tests/validation/test_embedded_uniaxial_softening.py}{\texttt{tests/\allowbreak{}validation/\allowbreak{}test\_\allowbreak{}embedded\_\allowbreak{}uniaxial\_\allowbreak{}softening.\allowbreak{}py}}.
   \item \textbf{Referencia}: ver \texttt{docs/\allowbreak{}specs/\allowbreak{}CohesiveDamageIsotropic.\allowbreak{}md}. Retama (2010) Cap. 3; Hillerborg, Modéer \& Petersson (1976); Simó \& Ju (1987).
   \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/cohesive_materials/damage_isotropic.py}{solidum/cohesive\_materials/damage\_isotropic.py}
 \end{itemize}
@@ -15712,6 +15898,24 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
   \item \textbf{Referencias}: Gutiérrez (2004), \textit{Communications in Numerical Methods in Engineering} 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), \textit{IJNME} 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
   \item \textbf{Spec}: \hyperref[spec:DissipationArcLengthSolver]{docs/specs/DissipationArcLengthSolver.md} (status \texttt{implemented}, validación parcial).
   \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/solvers/dissipation_arclength.py}{solidum/math/solvers/dissipation\_arclength.py}
+  \item \textbf{Limitación medida (2026-09-23, deuda \#27)}: no sigue el retroceso de una barra con daño localizado. El predictor del modo de disipación se ensambla en el estado convergido, donde el material de daño está en descarga y devuelve la secante; con ella \texttt{\ensuremath{\alpha} = 0} exactamente y el solver vuelve al modo cilíndrico. Además el paso que cruza el pico, cilíndrico y con predictor elástico, puede converger a un equilibrio con varias zonas ablandadas. Para retrocesos por localización usar \texttt{IndirectDisplacementSolver}.
+\end{itemize}
+
+
+\section{IndirectDisplacementSolver --- control indirecto de desplazamiento (de Borst 1987)}
+
+\begin{itemize}
+  \item \textbf{Propósito}: trazar ramas con \textbf{retroceso} (\textit{snap-back}) por localización, controlando el incremento de una magnitud cinemática elegida ---el alargamiento de la zona que se ablanda, la apertura de una grieta (CMOD)--- en lugar de la longitud de arco de todos los grados de libertad. Es como se controla en laboratorio un ensayo de fractura.
+  \item \textbf{Esquema}:
+  \item Subclase de \texttt{ArcLengthSolver}; sólo cambia la restricción del paso: \texttt{c\ensuremath{^{\top}}\ensuremath{\cdot}\ensuremath{\Delta}U = \ensuremath{\Delta}l}, con \texttt{c} los coeficientes de la combinación controlada.
+  \item Predictor \texttt{\ensuremath{\Delta}\ensuremath{\lambda} = \ensuremath{\Delta}l/\allowbreak{}(c\ensuremath{^{\top}}\ensuremath{\cdot}du\_\allowbreak{}t)} \textbf{sin regla de signo} (sale negativo en un retroceso) y corrector lineal \texttt{\ensuremath{\delta}\ensuremath{\lambda} = [\ensuremath{\Delta}l − c\ensuremath{^{\top}}(\ensuremath{\Delta}U + du\_\allowbreak{}R)]/\allowbreak{}(c\ensuremath{^{\top}}\ensuremath{\cdot}du\_\allowbreak{}t)}: sin selección de raíz.
+  \item Primer paso adimensional (\texttt{initial\_dlambda}, \ensuremath{\Delta}l\ensuremath{_{1}} = \ensuremath{\Delta}\ensuremath{\lambda}\ensuremath{_{1}}\ensuremath{\cdot}c\ensuremath{^{\top}}K\ensuremath{_{0}}\ensuremath{^{-}}¹F\_ref) y \textbf{sin crecimiento del paso por omisión} (\texttt{dl\_\allowbreak{}max\_\allowbreak{}factor = 1.\allowbreak{}0}): con ablandamiento local el problema incremental admite varios equilibrios y un paso grande puede saltar a otro (spec §5).
+  \item \textbf{Parámetros}: \texttt{control} (obligatorio; lista de \texttt{(nodo, dof, coef)} o \texttt{\{node, dof, coef\}}), más todos los de \texttt{ArcLengthSolver}.
+  \item \textbf{Cuándo usarlo}: retrocesos por localización (daño o cohesivo), ensayos controlados por CMOD/CTOD. Exige que la magnitud controlada crezca monótonamente; si decrece con la carga de referencia al empezar, el solver lo rechaza con un error explicativo.
+  \item \textbf{Validación}: barra con daño localizado en un elemento, frente a la solución exacta: sigue el retroceso hasta el mínimo exacto (0.616\ensuremath{\cdot}u\_pico) con sólo el elemento débil dañado; el cilíndrico y el de disipación no.
+  \item \textbf{Referencias}: de Borst (1987), \textit{Computers \& Structures} 25, 211-224; Crisfield (1991) vol. 1 cap. 9.
+  \item \textbf{Spec}: \hyperref[spec:IndirectDisplacementSolver]{docs/specs/IndirectDisplacementSolver.md} (status \texttt{validated}).
+  \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/solvers/indirect_displacement.py}{solidum/math/solvers/indirect\_displacement.py}
 \end{itemize}
 
 

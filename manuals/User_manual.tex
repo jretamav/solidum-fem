@@ -1324,7 +1324,7 @@ solver:
 
 \section{\texttt{ArcLengthSolver} --- longitud de arco cilíndrico (Crisfield)}
 
-Traza curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de carga, controlando simultáneamente desplazamientos y factor de carga $\lambda$.
+Traza curvas de equilibrio con puntos límite de carga (snap-through, colapso), controlando simultáneamente desplazamientos y factor de carga $\lambda$. \textbf{No sigue los retrocesos (snap-back) por localización}, en los que el desplazamiento también disminuye tras el pico: para ellos, \texttt{IndirectDisplacementSolver}.
 
 \textbf{Esquema}:
 
@@ -1369,6 +1369,7 @@ es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrátic
   \item \textbf{Switching automático}: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
   \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_\allowbreak{}threshold}.
   \item \textbf{Cuándo usarlo}: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
+  \item \textbf{Limitación medida}: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda \#27). Para retrocesos, \texttt{IndirectDisplacementSolver}.
   \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
 \end{itemize}
 
@@ -1383,6 +1384,34 @@ solver:
 \end{lstlisting}
 
 \textbf{Referencia}: Gutiérrez, \textquotedbl{}Energy release control for numerical simulations of failure in quasi-brittle solids\textquotedbl{} (\textit{Communications in Numerical Methods in Engineering}, 2004); switching a la Verhoosel et al. (2009).
+
+\section{\texttt{IndirectDisplacementSolver} --- control indirecto de desplazamiento}
+
+Variante de \texttt{ArcLengthSolver} que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de \textbf{una magnitud elegida}: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los \textbf{retrocesos} (snap-back) por localización, que los otros dos solvers de arco no siguen.
+
+\[
+\mathbf c^\top \Delta\mathbf U = \Delta l
+\]
+
+\begin{itemize}
+  \item \textbf{\texttt{control}} (obligatorio): la magnitud, como lista de términos \texttt{\{node, dof, coef\}}. El alargamiento entre los nodos 6 y 7 en $x$ es \texttt{[\{node: 7, dof: ux, coef: 1.\allowbreak{}0\}, \{node: 6, dof: ux, coef: -1.\allowbreak{}0\}]}. Los grados de libertad deben ser libres, y la magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
+  \item \textbf{Primer paso}: \texttt{initial\_dlambda}, fracción de la carga de referencia, como en \texttt{ArcLengthSolver}.
+  \item \textbf{Sin crecimiento del paso por omisión} (\texttt{dl\_\allowbreak{}max\_\allowbreak{}factor: 1.\allowbreak{}0}). Con ablandamiento local, un paso que sobrepasa el pico más que la imperfección que localiza el daño puede converger a otro equilibrio, con más zonas ablandadas de las que el camino físico produciría. Esto le pasa a cualquier solver, también al control por desplazamiento; la defensa es un paso pequeño cerca del pico.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: IndirectDisplacementSolver
+  initial_dlambda: 0.02
+  max_lambda: 1.2
+  max_steps: 300
+  control:
+    - {node: 7, dof: ux, coef: 1.0}
+    - {node: 6, dof: ux, coef: -1.0}
+
+\end{lstlisting}
+
+\textbf{Referencia}: R. de Borst, \textquotedbl{}Computation of post-bifurcation and post-failure behavior of strain-softening solids\textquotedbl{} (\textit{Computers \& Structures}, 1987).
 
 
 \newpage
@@ -2379,8 +2408,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 14:44\\[0.5em]
-Commit Git: \texttt{5d9becd}\\[1em]
+Compilado el 23 de septiembre de 2026, 19:14\\[0.5em]
+Commit Git: \texttt{b93034d}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

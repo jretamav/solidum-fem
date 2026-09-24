@@ -8,7 +8,7 @@ Una barra a tracción de un material que se ablanda: pasado el máximo, cuanto m
 
 - Usar un material de daño con ablandamiento (`IsotropicDamage1D`).
 - Por qué el control de carga se detiene en el pico, y el de desplazamiento en un retroceso.
-- Seguir el retroceso con el **control indirecto de desplazamiento** (`IndirectDisplacementSolver`).
+- Seguir el retroceso con `IndirectDisplacementSolver`, el **control indirecto de desplazamiento**.
 - Que con ablandamiento un paso demasiado grande puede llevar a otro equilibrio.
 
 ## Planteamiento

@@ -1008,6 +1008,171 @@ El bloqueo no es un error del programa ni del material: el mapeo de retorno resp
 
 \newpage
 
+\chapter{Barra con daño: localización, retroceso y control indirecto}
+\chaptermark{Barra con daño}
+\label{cap:barra_dano_localizado}
+
+
+
+
+
+Una barra a tracción de un material que se ablanda: pasado el máximo, cuanto más se estira, menos fuerza soporta. Es el comportamiento del hormigón, de la roca o de la madera cuando se fisuran. El ejemplo muestra por qué ese tramo descendente no se puede recorrer controlando la carga, cómo el daño se concentra en una sola zona mientras el resto se descarga, y por qué una barra larga puede \textbf{retroceder}: desplazarse hacia atrás mientras la carga cae. Todo se compara con la solución exacta.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Usar un material de daño con ablandamiento (\texttt{IsotropicDamage1D}).
+  \item Por qué el control de carga se detiene en el pico, y el de desplazamiento en un retroceso.
+  \item Seguir el retroceso con \texttt{IndirectDisplacementSolver}, el \textbf{control indirecto de desplazamiento}.
+  \item Que con ablandamiento un paso demasiado grande puede llevar a otro equilibrio.
+\end{itemize}
+
+\section{Planteamiento}
+
+Una barra de sección $A =$ 100 cm\ensuremath{^{2}} empotrada en un extremo y cargada con una fuerza $F$ en el otro, dividida en elementos \texttt{Truss2D} de longitud $h =$ 0.1 m. El material tiene $E =$ 30 GPa y un daño isótropo que empieza cuando la deformación alcanza $\kappa_0 =$ $10^{-4}$, es decir, con un esfuerzo $\sigma_t = E\kappa_0 =$ 3.0 MPa. El elemento central es un 5 \% menos resistente: es la imperfección que decide dónde se localiza el daño, como en un ensayo real decide la zona más débil de la probeta.
+
+Se estudian dos barras con el mismo tamaño de elemento: una \textbf{corta}, de 0.2 m (2 elementos), y una \textbf{larga}, de 1 m (10 elementos).
+
+\section{Solución analítica}
+
+\textbf{El material.} Con la variable de historia $\kappa$, la deformación máxima alcanzada, el daño y el esfuerzo son
+
+\[
+d(\kappa) = 1 - \frac{\kappa_0}{\kappa}\,e^{-\alpha(\kappa - \kappa_0)} \quad (\kappa > \kappa_0),
+\qquad
+\sigma = (1 - d)\,E\,\varepsilon ,
+\]
+
+con $\alpha =$ 5000. En carga, $\sigma = E\kappa_0\,e^{-\alpha(\varepsilon - \kappa_0)}$: el esfuerzo cae exponencialmente desde $\sigma_t$. En descarga, el material vuelve al origen por la secante, sin más daño.
+
+\textbf{Localización.} Sin fuerzas de volumen, el equilibrio impone el mismo esfuerzo en toda la barra. La carga máxima la fija el elemento débil, $F_{\mathrm{pico}} = A\,E\,\kappa_{0w} =$ 28.5 kN, con $\kappa_{0w}$ su umbral. Pasado el pico el esfuerzo baja; el elemento débil sigue dañándose, pero los demás, que nunca llegaron a su umbral, se descargan elásticamente. Con la deformación del elemento débil $\varepsilon_w$ como parámetro, la respuesta exacta es
+
+\[
+F = A\,\sigma(\varepsilon_w),
+\qquad
+u = h\,\varepsilon_w + (L - h)\,\frac{\sigma(\varepsilon_w)}{E} .
+\]
+
+\textbf{Retroceso.} Justo después del pico, $d\sigma/d\varepsilon_w = -\alpha\,\sigma$, y el desplazamiento del extremo cambia a razón de
+
+\[
+\frac{du}{d\varepsilon_w} = h - (L - h)\,\alpha\,\kappa_{0w} .
+\]
+
+Si es negativa, el desplazamiento \textbf{disminuye} mientras la carga cae: la curva retrocede (\textit{snap-back}). Ocurre cuando $(L/h - 1)\,\alpha\,\kappa_{0w} > 1$. Ese producto vale 0.475 en la barra corta y 4.275 en la larga: la corta baja sin más; la larga retrocede hasta $u =$ 0.616 $u_{\mathrm{pico}}$ antes de volver a avanzar.
+
+El balance de energía lo explica. El elemento débil disipa en toda su rotura 0.705 J, lo mismo en las dos barras porque tiene el mismo tamaño. En el pico, la barra corta tiene almacenados 0.271 J de energía elástica y la larga 1.354 J. Al romperse, toda esa energía elástica se libera, y la parte que el elemento no puede disipar tiene que devolverse a la carga exterior. Para eso el trabajo de la fuerza tiene que ser negativo, y con la fuerza a tracción eso sólo ocurre si el extremo retrocede. La barra corta no tiene exceso que devolver.
+
+\section{Modelo en Solidum}
+
+La barra se construye elemento a elemento, con el central debilitado:
+
+\begin{lstlisting}[language=Python]
+def barra(L: float):
+    """Barra de ``L/H`` elementos ``Truss2D`` con el central debilitado,
+    empotrada en ``x = 0``. Devuelve el dominio, el nodo del extremo libre y
+    el elemento débil; cada control añade su carga o su apoyo."""
+    n = round(L / H)
+    dom = Domain()
+    nodos = [dom.add_node(i + 1, [i * H, 0.0]) for i in range(n + 1)]
+    for k in range(n):
+        umbral = K0W if k == n // 2 else KAPPA_0
+        material = IsotropicDamage1D(E=E, kappa_0=umbral, alpha=ALPHA)
+        dom.add_element(Truss2D(k + 1, [nodos[k], nodos[k + 1]], material, A=A))
+    nodos[0].fix_dof("ux", 0.0)
+    for nodo in nodos:
+        nodo.fix_dof("uy", 0.0)
+    extremo, debil = nodos[-1], dom.elements[n // 2 + 1]
+    return dom, extremo, debil
+
+\end{lstlisting}
+
+Se resuelve con tres controles distintos:
+
+\begin{itemize}
+  \item \textbf{Control de carga} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/NonlinearSolver.md}{NonlinearSolver} con una fuerza creciente hasta 1.2 veces la de pico). Impone la carga de cada paso, y por encima de $F_{\mathrm{pico}}$ no hay equilibrio.
+  \item \textbf{Control de desplazamiento} (el mismo solver con el desplazamiento del extremo impuesto). La carga es ahora la reacción, y puede bajar; pero el desplazamiento impuesto sólo crece.
+  \item \textbf{Control indirecto} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/IndirectDisplacementSolver.md}{IndirectDisplacementSolver}). Hace crecer en cada paso una magnitud elegida, aquí el alargamiento del elemento débil, y deja libres a la vez la carga y el desplazamiento del extremo. Es como se controla en laboratorio un ensayo de fractura, con la apertura de la fisura:
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+def control_indirecto(L: float, dlambda: float = DLAMBDA, pasos: int = 500):
+    """Control indirecto sobre el alargamiento del elemento débil."""
+    dom, extremo, debil = barra(L)
+    dom.generate_equation_numbers(verbose=False)
+    F = np.zeros(dom.total_dofs)
+    F[extremo.dofs["ux"]] = F_PICO
+    a, b = debil.nodes
+    solver = IndirectDisplacementSolver(
+        Assembler(dom), control=[(b, "ux", 1.0), (a, "ux", -1.0)],
+        initial_dlambda=dlambda, max_lambda=1.2, max_steps=pasos, max_iter=30)
+    curva: list = []
+    solver.solve(F, step_callback=_registro(dom, extremo, debil, curva,
+                                            lambda U, lam: lam * F_PICO))
+    return np.array(curva)
+
+\end{lstlisting}
+
+La magnitud controlada se declara como una combinación de grados de libertad, $\mathbf c^\top\mathbf U$: aquí, $u_b - u_a$ entre los dos nodos del elemento débil. El primer paso es un 2 \% de la carga de pico, y el solver mantiene constante ese incremento de alargamiento en todo el trazado.
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/barra_dano_localizado/fig_curvas.pdf}
+\caption{Carga frente al desplazamiento del extremo, normalizados con el pico. La curva exacta en gris.}
+\label{fig:barra_dano_localizado:curvas}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Qué consigue cada control en cada barra. El error se mide frente a la solución exacta con la misma deformación del elemento débil.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Control} & \textbf{Barra corta} & \textbf{Barra larga} \\
+\hline
+Carga & se detiene en el pico & se detiene en el pico \\
+Desplazamiento del extremo & curva completa, error menor que $10^{-12}$ & se detiene en el pico, $u =$ 1.000 $u_{\mathrm{pico}}$ \\
+Indirecto & curva completa, error menor que $10^{-12}$ & curva completa, error menor que $10^{-12}$; retrocede hasta 0.616 $u_{\mathrm{pico}}$ \\
+\hline
+\end{tabularx}
+\end{table}
+La \hyperref[fig:barra_dano_localizado:curvas]{figura~\ref*{fig:barra_dano_localizado:curvas}} resume los tres comportamientos:
+
+\begin{itemize}
+  \item \textbf{El control de carga} llega hasta $F_{\mathrm{pico}}$ en las dos barras y ahí termina con un error de divergencia (\texttt{UnknownDivergenceError}): el solver reduce el paso sin encontrar equilibrio por encima.
+  \item \textbf{El control de desplazamiento} recorre toda la rama descendente de la barra corta, sobre la curva exacta. En la larga se detiene en el pico: a partir de ahí el camino de equilibrio sigue con desplazamientos \textit{menores}. Con un desplazamiento impuesto mayor que el del pico, el único equilibrio que queda en el camino físico está al otro lado del lazo, con la carga casi nula, y el solver no llega a él.
+  \item \textbf{El control indirecto} sigue las dos curvas exactas, incluido el retroceso de la larga, con un solo elemento dañado en todo el trazado. En las dos barras llega a una carga de 0.014 veces la de pico en 500 pasos.
+\end{itemize}
+
+El arco cilíndrico de \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/ArcLengthSolver.md}{ArcLengthSolver}, con el mismo primer paso, tampoco sigue el retroceso: en la barra larga termina en el pico con un error (\texttt{RuntimeError}) sin haber retrocedido. Tras el pico, la parte de la barra que se descarga invierte casi por completo el sentido de su desplazamiento, y el criterio con que ese solver elige la solución, la más alineada con el paso anterior, la descarta.
+
+\begin{warnbox}{Advertencia}
+Con ablandamiento, el problema de cada paso puede tener más de una solución. Además de la física, en la que sólo se daña el elemento débil, hay otras en las que también se dañan elementos que en realidad se habrían descargado. Cuál encuentra el solver depende de su punto de partida. Si un paso sobrepasa el pico más que la imperfección que localiza el daño, aquí un 5 \%, el solver puede converger a otra. Con pasos del 10 \% de la carga, el control indirecto de la barra larga acaba con los 10 elementos dañados y un desplazamiento que se aparta hasta 9 veces $u_{\mathrm{pico}}$ de la solución exacta (\hyperref[fig:barra_dano_localizado:salto]{figura~\ref*{fig:barra_dano_localizado:salto}}). No es propio de este solver: el control de desplazamiento de la barra corta con 12 pasos termina con sus 2 elementos dañados. La defensa es un paso pequeño cerca del pico; por eso \texttt{IndirectDisplacementSolver} no agranda el paso por omisión.
+\end{warnbox}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/barra_dano_localizado/fig_salto.pdf}
+\caption{Barra larga con control indirecto: con pasos del 2 \% se sigue la curva exacta; con pasos del 10 \% el solver salta a otro equilibrio, con todos los elementos dañados.}
+\label{fig:barra_dano_localizado:salto}
+\end{figure}
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Refinar la malla de la barra larga, con $h$ más pequeño. ¿Qué pasa con el retroceso? Con daño local la zona que se rompe mide siempre un elemento, y la energía disipada es proporcional a $h$: el resultado depende de la malla. Los modelos regularizados, o los de fisura cohesiva, que disipan una energía de fractura por unidad de área, corrigen esa dependencia.
+  \item Reducir la imperfección del elemento débil al 1 \% y repetir la advertencia. ¿Qué paso hace falta ahora?
+  \item Controlar con el control indirecto el desplazamiento del extremo en vez del alargamiento del elemento débil. ¿Hasta dónde llega en la barra larga?
+\end{itemize}
+
+\textbf{Referencias.} R. de Borst, \textquotedbl{}Computation of post-bifurcation and post-failure behavior of strain-softening solids\textquotedbl{}, \textit{Computers \& Structures} 25 (1987) 211-224. M. A. Crisfield, \textit{Non-linear Finite Element Analysis of Solids and Structures}, vol. 1, Wiley, 1991, cap. 9. Z. P. Bažant y J. Planas, \textit{Fracture and Size Effect in Concrete and Other Quasibrittle Materials}, CRC Press, 1998.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}barra\_\allowbreak{}dano\_\allowbreak{}localizado/\allowbreak{}} contiene el script \texttt{run.py}, los resultados en \texttt{resultados.json} y las dos figuras.
+
+
+\newpage
+
 \clearpage
 \thispagestyle{empty}
 \vspace*{\fill}
@@ -1015,8 +1180,8 @@ El bloqueo no es un error del programa ni del material: el mapeo de retorno resp
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 14:45\\[0.5em]
-Commit Git: \texttt{5d9becd}\\[1em]
+Compilado el 23 de septiembre de 2026, 19:18\\[0.5em]
+Commit Git: \texttt{b93034d} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
