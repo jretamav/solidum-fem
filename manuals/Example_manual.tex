@@ -1639,6 +1639,143 @@ HHT-\ensuremath{\alpha}, $\alpha = -0.3$ & 4 & 100 & 0.068 & 0.262 & $1.9\times 
 
 \newpage
 
+\chapter{Muro calentado bruscamente: conducción transitoria y el método θ}
+\chaptermark{Muro calentado bruscamente}
+\label{cap:muro_termico}
+
+
+
+
+
+Un muro a temperatura ambiente recibe de pronto calor por una de sus caras: un fluido caliente, un incendio, el sol después de una noche fría. El calor penetra poco a poco y la temperatura de cada punto sube suavemente, sin pasarse nunca del valor de la cara. Este ejemplo resuelve ese choque térmico con el método \ensuremath{\theta} y lo compara con la solución exacta. Enseña dos cosas que no se ven en los ejemplos estáticos: el esquema temporal más preciso no siempre es el más seguro, y un resultado numérico puede ser físicamente imposible aunque el cálculo no avise de nada.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Resolver un transitorio térmico con \texttt{ThetaMethodSolver} y elementos \texttt{Quad4Thermal}.
+  \item Elegir el parámetro \ensuremath{\theta}: Euler implícito frente a Crank-Nicolson.
+  \item Reconocer las oscilaciones de Crank-Nicolson y la violación del principio del máximo.
+  \item Elegir entre capacidad concentrada y consistente.
+\end{itemize}
+
+\section{Planteamiento}
+
+Un muro de concreto de 20 cm de espesor, con conductividad $k =$ 1.4 W/(m\ensuremath{\cdot}K), densidad 2400 kg/m\ensuremath{^{3}} y calor específico 900 J/(kg\ensuremath{\cdot}K), está a $T_0 =$ 20 \ensuremath{^{\circ}}C. En $t = 0$ su cara interior pasa bruscamente a $T_s =$ 80 \ensuremath{^{\circ}}C; la exterior no intercambia calor (adiabática). El muro se modela como una franja de 40 elementos \texttt{Quad4Thermal} de $h =$ 5 mm: los bordes sin condición son adiabáticos, así que la franja representa cualquier porción del muro.
+
+La difusividad es $\alpha = k/(\rho c) =$ $6.48\times 10^{-7}$ m\ensuremath{^{2}}/s. El tiempo característico del muro entero es $L^2/\alpha =$ 17.1 h; el de un elemento, $h^2/\alpha =$ 38.6 s.
+
+\section{Solución analítica}
+
+La serie de Carslaw y Jaeger para una placa con una cara a temperatura impuesta y la otra adiabática es
+
+\[
+\frac{T - T_s}{T_0 - T_s} = \sum_{n=0}^{\infty} \frac{4}{(2n+1)\,\pi}\,\sin(\lambda_n x)\,e^{-\alpha\lambda_n^2 t},
+\qquad
+\lambda_n = \frac{(2n+1)\,\pi}{2L} .
+\]
+
+Además, la ecuación del calor cumple el \textbf{principio del máximo}: sin fuentes internas, la temperatura de cualquier punto queda siempre entre la mínima y la máxima de los datos, aquí entre 20 y 80 \ensuremath{^{\circ}}C. Un valor fuera de ese intervalo no es impreciso: es imposible.
+
+\section{Modelo en Solidum}
+
+El muro y la temperatura impuesta:
+
+\begin{lstlisting}[language=Python]
+def muro():
+    """Franja de ``N`` elementos ``Quad4Thermal`` a lo ancho del muro; los
+    bordes sin condición son adiabáticos. Temperatura ``T_s`` en ``x = 0``."""
+    dom = Domain()
+    concreto = ThermalConduction(k=K, c=CP, density=RHO)
+    nodos = {}
+    for j in range(2):
+        for i in range(N + 1):
+            nodos[(i, j)] = dom.add_node(len(nodos) + 1, [i * H, j * H])
+    for i in range(N):
+        dom.add_element(Quad4Thermal(i + 1, [nodos[(i, 0)], nodos[(i + 1, 0)],
+                                             nodos[(i + 1, 1)], nodos[(i, 1)]], concreto))
+    for j in range(2):
+        nodos[(0, j)].fix_dof("T", TS)
+    dom.generate_equation_numbers(verbose=False)
+    return dom, nodos
+
+\end{lstlisting}
+
+La integración en el tiempo, con el esquema y la forma de la capacidad como parámetros:
+
+\begin{lstlisting}[language=Python]
+def integrar(theta: float, dt: float, t_fin: float, capacidad: str = "lumped"):
+    """Temperatura en la línea ``y = 0`` en todos los instantes."""
+    dom, nodos = muro()
+    solver = ThetaMethodSolver(Assembler(dom), dt=dt, n_steps=int(round(t_fin / dt)),
+                               T_initial=T0, theta=theta, lumping=capacidad)
+    resultado = solver.solve()
+    filas = [nodos[(i, 0)].dofs["T"] for i in range(N + 1)]
+    x = np.array([nodos[(i, 0)].coordinates[0] for i in range(N + 1)])
+    return np.asarray(resultado.t_history), np.asarray(resultado.T_history)[filas], x
+
+\end{lstlisting}
+
+La condición inicial, 20 \ensuremath{^{\circ}}C, contradice la temperatura impuesta en la cara. Solidum lo avisa y lo acepta: es un choque térmico, una discontinuidad en $t = 0$ que el modelo puede representar.
+
+\textbf{El método \ensuremath{\theta}.} Con la capacidad $\mathbf C$ y la conductividad $\mathbf K$ de la malla, cada paso resuelve
+
+\[
+\frac{\mathbf C}{\Delta t}\left(\mathbf T_{n+1} - \mathbf T_n\right) + \mathbf K\left[\theta\,\mathbf T_{n+1} + (1-\theta)\,\mathbf T_n\right] = \mathbf F .
+\]
+
+Con $\theta = 1$ es \textbf{Euler implícito}: de primer orden, pero L-estable, es decir, amortigua por completo en cada paso los modos de temperatura más rápidos. Con $\theta = 1/2$ es \textbf{Crank-Nicolson}: de segundo orden, pero no L-estable; esos modos rápidos no se amortiguan, cambian de signo en cada paso. El valor por omisión de Solidum es $\theta = 1$.
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/muro_termico/fig_muro.pdf}
+\caption{Izquierda: perfiles de temperatura a 0.25, 1, 4 y 12 h con Euler implícito y \ensuremath{\Delta}t = 1 min, sobre la solución exacta (gris). Centro: temperatura a 5 mm de la cara con \ensuremath{\Delta}t = 10 min. Derecha: error temporal a las 4 h frente al paso, y error de la malla.}
+\label{fig:muro_termico:muro}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Error temporal a las 4 h (máximo a lo ancho del muro, relativo a $T_s - T_0$), frente a una solución con $\Delta t = 1$ s en la misma malla.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{$\Delta t$} & \textbf{Euler implícito} & \textbf{Crank-Nicolson} \\
+\hline
+20 min & $9.2\times 10^{-3}$ & $2.0\times 10^{-1}$ \\
+10 min & $4.5\times 10^{-3}$ & $2.3\times 10^{-2}$ \\
+5 min & $2.2\times 10^{-3}$ & $7.6\times 10^{-5}$ \\
+2.5 min & $1.1\times 10^{-3}$ & $3.6\times 10^{-6}$ \\
+1.25 min & $5.6\times 10^{-4}$ & $9.1\times 10^{-7}$ \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Euler implícito sigue la solución exacta} a todas las horas (\hyperref[fig:muro_termico:muro]{figura~\ref*{fig:muro_termico:muro}}, izquierda), y nunca sale del intervalo físico. Su error temporal se reduce a la mitad cada vez que el paso se divide por dos: orden 1.00.
+
+\textbf{Crank-Nicolson es mucho más preciso con pasos pequeños.} Su error baja con el cuadrado del paso, orden 2.00, y con 2.5 minutos ya es mucho menor que el error de la malla, $5\times 10^{-5}$: afinar más el paso no serviría sin afinar también la malla.
+
+\textbf{Pero con pasos grandes oscila.} Con $\Delta t = 10$ min, el primer paso lleva el punto situado a 5 mm de la cara a 104 \ensuremath{^{\circ}}C, por encima de los 80 \ensuremath{^{\circ}}C de la cara (\hyperref[fig:muro_termico:muro]{figura~\ref*{fig:muro_termico:muro}}, centro). A partir de ahí la temperatura alterna por encima y por debajo de la solución durante horas. Es el modo rápido que el choque térmico excita y que Crank-Nicolson no amortigua. A las 4 h todavía no se ha extinguido, y con 10 y 20 minutos de paso Crank-Nicolson resulta peor que Euler implícito. Euler implícito, con el mismo paso, queda entre 20 y 80 \ensuremath{^{\circ}}C.
+
+\begin{warnbox}{Advertencia}
+Ante un cambio brusco ---un choque térmico, una temperatura impuesta que salta--- Crank-Nicolson necesita pasos pequeños frente al tiempo característico de un elemento, $h^2/\alpha$. En este muro, con 5 minutos (8 veces $h^2/\alpha$) todavía llega a 92.7 \ensuremath{^{\circ}}C; con 2.5 minutos (4 veces) ya no sale del rango. Con pasos mayores produce temperaturas imposibles sin que el cálculo falle ni avise. Euler implícito es menos preciso pero nunca oscila, y por eso es el valor por omisión.
+\end{warnbox}
+
+\textbf{Capacidad concentrada o consistente.} La capacidad consistente reparte la inercia térmica entre nodos vecinos, y con pasos muy pequeños eso también viola el principio del máximo. Con $\Delta t = 1$ s, menor que $h^2/(6\alpha) =$ 6.4 s, el muro se \textbf{enfría} junto a la cara antes de calentarse: llega a 19.07 \ensuremath{^{\circ}}C, por debajo de su temperatura inicial. Con $\Delta t = 8$ s el efecto desaparece, y con la capacidad concentrada no aparece con ningún paso. Es la razón de que la concentrada sea el valor por omisión.
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Probar \ensuremath{\theta} = 2/3 (Galerkin). ¿Oscila con $\Delta t = 10$ min?
+  \item Integrar con el esquema explícito, \ensuremath{\theta} = 0, y $\Delta t = 30$ s. Su límite de estabilidad con capacidad concentrada es $h^2/(2\alpha)$.
+  \item Imponer en la cara un ciclo diario de temperatura con el argumento \texttt{dirichlet\_func} del solver, y medir hasta qué profundidad llega la oscilación.
+\end{itemize}
+
+\textbf{Referencias.} H. S. Carslaw y J. C. Jaeger, \textit{Conduction of Heat in Solids}, 2.ª ed., Oxford, 1959, §3.3. T. J. R. Hughes, \textit{The Finite Element Method}, Dover, 2000, cap. 8.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}muro\_\allowbreak{}termico/\allowbreak{}} contiene el script \texttt{run.py}, los resultados en \texttt{resultados.json} y la figura.
+
+
+\newpage
+
 \clearpage
 \thispagestyle{empty}
 \vspace*{\fill}
@@ -1646,8 +1783,8 @@ HHT-\ensuremath{\alpha}, $\alpha = -0.3$ & 4 & 100 & 0.068 & 0.262 & $1.9\times 
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 07:22\\[0.5em]
-Commit Git: \texttt{3eec98c}\\[1em]
+Compilado el 24 de septiembre de 2026, 07:33\\[0.5em]
+Commit Git: \texttt{b46cd62}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
