@@ -48,7 +48,7 @@ solver:
 
 ## `ArcLengthSolver` — longitud de arco cilíndrico (Crisfield)
 
-Traza curvas de equilibrio con snap-through, snap-back o pérdida de unicidad de carga, controlando simultáneamente desplazamientos y factor de carga $\lambda$.
+Traza curvas de equilibrio con puntos límite de carga (snap-through, colapso), controlando simultáneamente desplazamientos y factor de carga $\lambda$. **No sigue los retrocesos (snap-back) por localización**, en los que el desplazamiento también disminuye tras el pico: para ellos, `IndirectDisplacementSolver`.
 
 **Esquema**:
 
@@ -87,6 +87,7 @@ es **lineal** en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del
 - **Switching automático**: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
 - **Parámetros**: todos los de `ArcLengthSolver`, más `initial_tau` (obligatorio) y la familia `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
 - **Cuándo usarlo**: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
+- **Limitación medida**: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda #27). Para retrocesos, `IndirectDisplacementSolver`.
 - **Limitación conocida**: **no** resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
 
 ```yaml
@@ -99,3 +100,26 @@ solver:
 ```
 
 **Referencia**: Gutiérrez, "Energy release control for numerical simulations of failure in quasi-brittle solids" (*Communications in Numerical Methods in Engineering*, 2004); switching a la Verhoosel et al. (2009).
+
+## `IndirectDisplacementSolver` — control indirecto de desplazamiento
+
+Variante de `ArcLengthSolver` que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de **una magnitud elegida**: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los **retrocesos** (snap-back) por localización, que los otros dos solvers de arco no siguen.
+
+$$\mathbf c^\top \Delta\mathbf U = \Delta l$$
+
+- **`control`** (obligatorio): la magnitud, como lista de términos `{node, dof, coef}`. El alargamiento entre los nodos 6 y 7 en $x$ es `[{node: 7, dof: ux, coef: 1.0}, {node: 6, dof: ux, coef: -1.0}]`. Los grados de libertad deben ser libres, y la magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
+- **Primer paso**: `initial_dlambda`, fracción de la carga de referencia, como en `ArcLengthSolver`.
+- **Sin crecimiento del paso por omisión** (`dl_max_factor: 1.0`). Con ablandamiento local, un paso que sobrepasa el pico más que la imperfección que localiza el daño puede converger a otro equilibrio, con más zonas ablandadas de las que el camino físico produciría. Esto le pasa a cualquier solver, también al control por desplazamiento; la defensa es un paso pequeño cerca del pico.
+
+```yaml
+solver:
+  type: IndirectDisplacementSolver
+  initial_dlambda: 0.02
+  max_lambda: 1.2
+  max_steps: 300
+  control:
+    - {node: 7, dof: ux, coef: 1.0}
+    - {node: 6, dof: ux, coef: -1.0}
+```
+
+**Referencia**: R. de Borst, "Computation of post-bifurcation and post-failure behavior of strain-softening solids" (*Computers & Structures*, 1987).

@@ -78,6 +78,23 @@
 - **Referencias**: Gutiérrez (2004), *Communications in Numerical Methods in Engineering* 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), *IJNME* 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
 - **Spec**: [docs/specs/DissipationArcLengthSolver.md](specs/DissipationArcLengthSolver.md) (status `implemented`, validación parcial).
 - **Archivo**: [solidum/math/solvers/dissipation_arclength.py](../solidum/math/solvers/dissipation_arclength.py)
+- **Limitación medida (2026-09-23, deuda #27)**: no sigue el retroceso de una barra con daño localizado. El predictor del modo de disipación se ensambla en el estado convergido, donde el material de daño está en descarga y devuelve la secante; con ella `α = 0` exactamente y el solver vuelve al modo cilíndrico. Además el paso que cruza el pico, cilíndrico y con predictor elástico, puede converger a un equilibrio con varias zonas ablandadas. Para retrocesos por localización usar `IndirectDisplacementSolver`.
+
+---
+
+## IndirectDisplacementSolver — control indirecto de desplazamiento (de Borst 1987)
+
+- **Propósito**: trazar ramas con **retroceso** (*snap-back*) por localización, controlando el incremento de una magnitud cinemática elegida —el alargamiento de la zona que se ablanda, la apertura de una grieta (CMOD)— en lugar de la longitud de arco de todos los grados de libertad. Es como se controla en laboratorio un ensayo de fractura.
+- **Esquema**:
+  - Subclase de `ArcLengthSolver`; sólo cambia la restricción del paso: `cᵀ·ΔU = Δl`, con `c` los coeficientes de la combinación controlada.
+  - Predictor `Δλ = Δl/(cᵀ·du_t)` **sin regla de signo** (sale negativo en un retroceso) y corrector lineal `δλ = [Δl − cᵀ(ΔU + du_R)]/(cᵀ·du_t)`: sin selección de raíz.
+  - Primer paso adimensional (`initial_dlambda`, Δl₁ = Δλ₁·cᵀK₀⁻¹F_ref) y **sin crecimiento del paso por omisión** (`dl_max_factor = 1.0`): con ablandamiento local el problema incremental admite varios equilibrios y un paso grande puede saltar a otro (spec §5).
+- **Parámetros**: `control` (obligatorio; lista de `(nodo, dof, coef)` o `{node, dof, coef}`), más todos los de `ArcLengthSolver`.
+- **Cuándo usarlo**: retrocesos por localización (daño o cohesivo), ensayos controlados por CMOD/CTOD. Exige que la magnitud controlada crezca monótonamente; si decrece con la carga de referencia al empezar, el solver lo rechaza con un error explicativo.
+- **Validación**: barra con daño localizado en un elemento, frente a la solución exacta: sigue el retroceso hasta el mínimo exacto (0.616·u_pico) con sólo el elemento débil dañado; el cilíndrico y el de disipación no.
+- **Referencias**: de Borst (1987), *Computers & Structures* 25, 211-224; Crisfield (1991) vol. 1 cap. 9.
+- **Spec**: [docs/specs/IndirectDisplacementSolver.md](specs/IndirectDisplacementSolver.md) (status `validated`).
+- **Archivo**: [solidum/math/solvers/indirect_displacement.py](../solidum/math/solvers/indirect_displacement.py)
 
 ---
 

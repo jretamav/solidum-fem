@@ -7,6 +7,10 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
 - ``linear`` — :class:`LinearSolver` (un paso, sistema algebraico lineal).
 - ``nonlinear`` — :class:`NonlinearSolver` (Newton-Raphson con paso adaptativo).
 - ``arclength`` — :class:`ArcLengthSolver` (Crisfield cilíndrico, post-crítico).
+- ``dissipation_arclength`` — :class:`DissipationArcLengthSolver` (restricción
+  de disipación, Gutiérrez 2004).
+- ``indirect_displacement`` — :class:`IndirectDisplacementSolver` (control
+  indirecto de desplazamiento, de Borst 1987: retrocesos por localización).
 - ``modal`` — :class:`ModalSolver` (problema de valores característicos
   ``K·φ = ω²·M·φ``; ADR 0009 fase 1).
 - ``newmark`` — :class:`NewmarkSolver` (integración Newmark-β lineal para
@@ -53,6 +57,7 @@ from solidum.math.solvers.linear import LinearSolver
 from solidum.math.solvers.nonlinear import NonlinearSolver
 from solidum.math.solvers.arclength import ArcLengthSolver
 from solidum.math.solvers.dissipation_arclength import DissipationArcLengthSolver
+from solidum.math.solvers.indirect_displacement import IndirectDisplacementSolver
 from solidum.math.solvers.modal import ModalSolver
 from solidum.math.solvers.newmark import (
     HHTSolver,
@@ -71,6 +76,7 @@ __all__ = [
     "NonlinearSolver",
     "ArcLengthSolver",
     "DissipationArcLengthSolver",
+    "IndirectDisplacementSolver",
     "ModalSolver",
     "NewmarkSolver",
     "NewtonNewmarkSolver",

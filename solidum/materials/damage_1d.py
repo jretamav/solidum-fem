@@ -43,10 +43,14 @@ class IsotropicDamage1D(Material):
     Cap ``DAMAGE_MAX`` aplica al daño escalar ``d`` y, por construcción, al
     esfuerzo nominal ``σ = (1-d)·E·ε`` — semántica de daño **continuo**. Esto
     contrasta con la familia paralela ``CohesiveMaterial`` (cohesivos
-    traction-jump), donde el cap se aplica **sólo a la rigidez tangente** y
-    no a ``ω`` ni a la tracción física, porque la escala del penalty ``K_e``
-    haría que un cap global desaparezca la tracción cohesiva real. Ver memoria
-    ``feedback_damage_max_cohesivos.md`` para la justificación.
+    traction-jump), donde no se aplica ningún tope: con la penalización
+    ``K_e`` el daño está a ``~κ_0/κ`` de 1 casi desde el pico, y truncarlo
+    (o truncar la tangente) falsea la energía o el signo de la rigidez. Ver
+    ``docs/specs/CohesiveDamageIsotropic.md`` §9.
+
+    Con deformaciones muy grandes el tope deja una rigidez residual
+    ``(1 − DAMAGE_MAX)·E``: la carga vuelve a crecer lentamente al final de
+    la rama de ablandamiento.
 
     Compatible con ``Truss2D`` y ``Truss3D``. Para seguir la rama post-pico de
     softening en problemas globales se requiere ``ArcLengthSolver``.

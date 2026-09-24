@@ -291,13 +291,37 @@ class ArcLengthSolver:
             raise ValueError(f"{name}: initial_dlambda={initial_dlambda} debe ser > 0.")
         return None, dlam
 
+    # ------------------------------------------------------------------
+    # Puntos de extensión de la restricción (variantes que sólo cambian la
+    # magnitud controlada, p. ej. IndirectDisplacementSolver)
+    # ------------------------------------------------------------------
+
+    def _control_measure(self, du: np.ndarray) -> float:
+        """Magnitud que la restricción del paso fija en ``Δl``, evaluada en
+        un incremento ``du``: aquí su norma euclídea (arco cilíndrico)."""
+        return float(np.linalg.norm(du))
+
+    def _predictor_dlambda(self, du_t: np.ndarray, sign: float, dl: float) -> float:
+        """Incremento de carga del predictor tangente ``ΔU = Δλ·du_t``."""
+        return sign * dl / (self._control_measure(du_t) + ZERO_TOL)
+
+    def _step_problem(self, U_current, lambda_curr, F_ext_ref, free_dofs, dl):
+        """Problema de Newton del paso con la restricción del solver."""
+        return _ArcProblem(
+            self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+            mode="cylindrical", dl=dl, max_lambda=self.max_lambda,
+        )
+
+    def _on_solve_start(self) -> None:
+        """Preparación dependiente de la numeración de ecuaciones (no-op)."""
+
     def _first_dl(self, du_t: np.ndarray) -> float:
         """Longitud de arco del primer paso a partir del predictor elástico
-        ``du_t = K⁻¹·F_ref`` (misma norma que la restricción cilíndrica)."""
+        ``du_t = K⁻¹·F_ref`` (misma magnitud que la restricción del paso)."""
         if self.initial_dl is not None:
             dl = self.initial_dl
         else:
-            norm = float(np.linalg.norm(du_t))
+            norm = self._control_measure(du_t)
             if not np.isfinite(norm) or norm == 0.0:
                 raise ValueError(
                     f"{type(self).__name__}: la carga de referencia no produce "
@@ -396,6 +420,7 @@ class ArcLengthSolver:
 
         cs = self.assembler.constraint_set
         free_dofs = cs.free_dofs(ndof)
+        self._on_solve_start()
 
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
@@ -417,15 +442,12 @@ class ArcLengthSolver:
                 dl = dl_ref = self._first_dl(du_t)
             _log.info(f"[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
 
-            dlambda = sign * dl / (np.linalg.norm(du_t) + ZERO_TOL)
+            dlambda = self._predictor_dlambda(du_t, sign, dl)
             dU_iter = dlambda * du_t
             x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
-            # --- 2. CORRECTOR ITERATIVO (restricción cilíndrica) ---
-            problem = _ArcProblem(
-                self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-                mode="cylindrical", dl=dl, max_lambda=self.max_lambda,
-            )
+            # --- 2. CORRECTOR ITERATIVO (restricción del solver) ---
+            problem = self._step_problem(U_current, lambda_curr, F_ext_ref, free_dofs, dl)
             res = self.corrector.run(
                 problem, x0, check_initial=True,
                 initial_delta_norm=float(np.linalg.norm(dU_iter)),
