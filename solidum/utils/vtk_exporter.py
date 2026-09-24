@@ -7,8 +7,8 @@ clases: número de nodos y dimensión espacial (``'uz' in DOF_NAMES`` en los
 mecánicos, ``FLUX_DIM`` en los térmicos).
 
 - 2D: 3 → ``triangle``, 4 → ``quad``, 6 → ``triangle6``, 8 → ``quad8``,
-  9 → ``quad9``. Cubre Tri3, Quad4, Tri6, Quad8, Quad9, ``CST_Embedded2D``
-  y ``Quad4Thermal``.
+  9 → ``quad9``. Cubre Tri3, Quad4, Tri6, Quad8, Quad9 y ``Quad4Thermal``
+  (y cualquier elemento de un módulo de usuario con esos nodos).
 - 3D: 4 → ``tetra``, 8 → ``hexahedron``, 10 → ``tetra10``,
   20 → ``hexahedron20``, 27 → ``hexahedron27``. Cubre Tet4, Hex8, Tet10,
   Hex20, Hex27 y ``Hex8Thermal``. La numeración de nodos medios del

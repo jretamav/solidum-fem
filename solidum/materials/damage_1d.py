@@ -41,12 +41,10 @@ class IsotropicDamage1D(Material):
     y degrada a LU si Cholesky falla.
 
     Cap ``DAMAGE_MAX`` aplica al daño escalar ``d`` y, por construcción, al
-    esfuerzo nominal ``σ = (1-d)·E·ε`` — semántica de daño **continuo**. Esto
-    contrasta con la familia paralela ``CohesiveMaterial`` (cohesivos
-    traction-jump), donde no se aplica ningún tope: con la penalización
-    ``K_e`` el daño está a ``~κ_0/κ`` de 1 casi desde el pico, y truncarlo
-    (o truncar la tangente) falsea la energía o el signo de la rigidez. Ver
-    ``docs/specs/CohesiveDamageIsotropic.md`` §9.
+    esfuerzo nominal ``σ = (1-d)·E·ε`` — semántica de daño **continuo**. Una
+    ley cohesiva tracción-salto con penalización ``K_e`` no admite ese tope:
+    su daño está a ``~κ_0/κ`` de 1 casi desde el pico, y truncarlo (o
+    truncar la tangente) falsea la energía o el signo de la rigidez.
 
     Con deformaciones muy grandes el tope deja una rigidez residual
     ``(1 − DAMAGE_MAX)·E``: la carga vuelve a crecer lentamente al final de

@@ -9,10 +9,10 @@ Dirichlet/MPC, backend algebraico) y solo redefine la lógica de paso.
 Está diseñado para atravesar:
 
 - Régimen elástico inicial (modo `"cylindrical"` heredado del padre).
-- Transición elástico→softening con penalty stiff ``K_e`` del embedded
-  discontinuity (ADR 0010 fase 4), donde el cilíndrico falla por
-  cuasi-degeneración del discriminante de la cuadrática cerca del pico.
-- Rama post-pico estable de daño/cohesivos (modo `"dissipation"`).
+- Transición elástico→ablandamiento con una rigidez de penalización
+  alta, donde el cilíndrico falla por cuasi-degeneración del discriminante
+  de la cuadrática cerca del pico.
+- Rama post-pico estable de daño (modo `"dissipation"`).
 - Descarga global con grieta saturada (volver a `"cylindrical"`).
 
 El switching cilíndrico↔disipación es **automático** según se detecte

@@ -188,11 +188,10 @@ class NonlinearSolver:
             next_load_factor = load_factor + delta_lambda
             _log.info(f"[PASO {step}] Intentando Factor de Carga: {next_load_factor:.4f} (Incremento: {delta_lambda:.4f})")
 
-            # ADR 0010 §5: hook de preparación de paso. Evaluado con el estado
+            # Gancho de inicio de paso (ADR 0020, P5). Evaluado con el estado
             # convergido del paso anterior para evitar chattering por
             # predictores lineales dentro del Newton. No-op para elementos
-            # estándar; lo usan elementos con discontinuidad embebida
-            # (CST_Embedded2D) para chequear activación.
+            # estándar; lo usan los que toman decisiones discretas entre pasos.
             self.assembler.prepare_all_steps(U_current)
 
             # Corrector del paso. No se evalúa la convergencia en la

@@ -221,14 +221,16 @@ class Element(ABC):
     def prepare_step(self, U_committed: np.ndarray) -> None:
         """Prepara el elemento al inicio de un paso de carga, antes del Newton.
 
-        Hook invocado por los solvers no lineales una vez por paso, con el
+        Parte del contrato genérico de un elemento (ADR 0020, P5), como la
+        tarea de inicio de paso de un elemento de usuario de FEAP. Lo invocan
+        los solvers que avanzan por pasos una vez por intento de paso, con el
         campo de desplazamientos **convergido** del paso anterior. La
         implementación base es no-op; lo sobreescriben los elementos que
-        necesitan tomar decisiones discretas estables entre pasos (p. ej.
-        activación de discontinuidad embebida en ``CST_Embedded2D``, ADR
-        0010 §5) y que se romperían si las hicieran dentro del Newton (donde
-        los predictores lineales oscilan sobre el umbral y producen
-        chattering).
+        toman decisiones discretas entre pasos (activar una grieta o un
+        contacto) y que se romperían si las tomaran dentro del Newton, donde
+        los predictores lineales oscilan sobre el umbral (chattering).
+        Debe ser idempotente para el mismo ``U_committed``: tras una
+        bisección el solver repite la llamada.
 
         Parameters
         ----------
@@ -313,7 +315,7 @@ class Element(ABC):
         -------
         ElementForces | None
             ``None`` para **sólidos 2D y 3D** (Tri3, Quad4, Tri6, Quad8,
-            Quad9, CST_Embedded2D, Hex8, Tet4). En un sólido continuo el
+            Quad9, Hex8, Tet4). En un sólido continuo el
             equivalente de "fuerza interna seccional" es el campo tensorial
             ``σ(x)``, accesible vía :meth:`compute_gauss_state(U)`. La
             conversión a un único valor representativo por elemento

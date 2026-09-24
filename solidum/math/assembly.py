@@ -28,8 +28,8 @@ class Assembler:
       su estado interno vive en arreglos (``FamilyState``) y ``elem.state``
       pasa a ser una vista sobre ellos.
     - **por elemento**: el bucle de siempre sobre ``compute_element_state``.
-      Lo siguen los elementos sin kernel (1D, embebido, materiales sin
-      esquema) y todo el modelo cuando ``batch=False``.
+      Lo siguen los elementos sin kernel (1D, elementos con estado propio,
+      materiales sin esquema) y todo el modelo cuando ``batch=False``.
 
     Ambos caminos ejecutan las mismas funciones compiladas por punto de
     Gauss y producen ``K`` y ``F_int`` idénticos a precisión de máquina; lo
@@ -622,11 +622,12 @@ class Assembler:
     def prepare_all_steps(self, U_committed: np.ndarray) -> None:
         """Invoca ``prepare_step(U_committed)`` en todos los elementos del dominio.
 
-        Hook de preparación de paso (ADR 0010 §5). Lo llaman los solvers no
-        lineales una vez por paso, con el campo convergido del paso anterior,
-        antes del primer ensamblaje del Newton. La implementación base de
-        ``Element.prepare_step`` es no-op; los elementos con discontinuidad
-        embebida lo sobreescriben para chequear activación.
+        Gancho de inicio de paso (ADR 0020, P5). Lo llaman los solvers que
+        avanzan por pasos, una vez por intento de paso, con el campo
+        convergido del paso anterior y antes del primer ensamblaje del
+        Newton. La implementación base de ``Element.prepare_step`` es no-op;
+        la sobreescriben los elementos que toman decisiones discretas entre
+        pasos.
         """
         for elem in self.domain.elements.values():
             elem.prepare_step(U_committed)

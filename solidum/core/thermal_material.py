@@ -6,9 +6,9 @@ Familia paralela a ``Material``: relaciona el vector de flujo de calor
 físico— en vez de ``σ`` con ``ε`` en notación Voigt. Ni el gradiente ni el
 flujo son tensores simétricos, así que la maquinaria de Voigt no aplica.
 
-Es la misma razón que motivó separar ``CohesiveMaterial`` (ADR 0010):
-compartir registro y clase base obligaría al parser YAML y a los elementos
-a discriminar por tipo en cada uso.
+Por eso cada familia de material tiene su propio registro y su propia
+sección YAML (ADR 0020): compartir registro y clase base obligaría al
+parser YAML y a los elementos a discriminar por tipo en cada uso.
 """
 from __future__ import annotations
 

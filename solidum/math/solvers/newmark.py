@@ -509,9 +509,9 @@ class NewtonNewmarkSolver(NewmarkSolver):
         for step in range(n_steps):
             t_next = t_history[step + 1]
 
-            # ADR 0010 §5: hook de preparación de paso con el estado
-            # convergido del paso anterior (activación de discontinuidades
-            # embebidas). Mismo protocolo que los solvers estáticos.
+            # Gancho de inicio de paso (ADR 0020, P5) con el estado
+            # convergido del paso anterior. Mismo protocolo que los solvers
+            # estáticos.
             self.assembler.prepare_all_steps(u_total)
 
             # Predictores Newmark.

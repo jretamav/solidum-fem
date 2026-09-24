@@ -177,8 +177,7 @@ class MaterialRegistry(Registry):
 
 class ThermalMaterialRegistry(Registry):
     """Registry paralelo a ``MaterialRegistry`` para materiales térmicos
-    (Etapa 8). Separado intencionalmente por la misma razón que el cohesivo:
-    un material térmico relaciona el flujo de calor ``q`` con el gradiente
+    (Etapa 8). Separado intencionalmente: un material térmico relaciona el flujo de calor ``q`` con el gradiente
     ``∇T`` —dos vectores del espacio físico, sin notación Voigt ni tensor
     simétrico de por medio— en vez de ``σ`` con ``ε``. Compartir registro
     obligaría al parser YAML y a los elementos a discriminar por tipo en

@@ -425,8 +425,7 @@ class ArcLengthSolver:
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
 
-            # ADR 0010 §5: hook de preparación de paso (activación de
-            # discontinuidades embebidas, etc.). Evaluado con el estado
+            # Gancho de inicio de paso (ADR 0020, P5). Evaluado con el estado
             # convergido del paso anterior para evitar chattering.
             self.assembler.prepare_all_steps(U_current)
 

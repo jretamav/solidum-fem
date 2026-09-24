@@ -8,7 +8,7 @@ de imports.
 
 El paseo es recursivo (``pkgutil.walk_packages``) para que componentes
 que viven dentro de subpaquetes (p. ej.
-``solidum/elements/solid_2d/embedded_cst.py``) se registren sin depender
+``solidum/elements/solid_2d/quad8.py``) se registren sin depender
 de re-exports manuales en el ``__init__.py`` del subpaquete o de
 ``solidum/__init__.py``. Se saltan los módulos cuyo último componente
 empieza con ``_`` (convención del proyecto para módulos privados

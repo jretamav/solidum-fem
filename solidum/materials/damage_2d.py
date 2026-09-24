@@ -125,12 +125,9 @@ class IsotropicDamage2D(Material):
     global (ADR 0003).
 
     Cap ``DAMAGE_MAX`` aplica al daño escalar ``d`` y al esfuerzo nominal
-    ``σ = (1-d)·C_e·ε`` — semántica de daño **continuo**. Esto contrasta con
-    la familia paralela ``CohesiveMaterial`` (cohesivos traction-jump), donde
-    el cap se aplica **sólo a la rigidez tangente** y no a ``ω`` ni a la
-    tracción física, porque la escala del penalty ``K_e`` haría que un cap
-    global desaparezca la tracción cohesiva real. Ver memoria
-    ``feedback_damage_max_cohesivos.md`` para la justificación.
+    ``σ = (1-d)·C_e·ε`` — semántica de daño **continuo**. Una ley cohesiva
+    tracción-salto con penalización ``K_e`` no lo admite: con esa escala un
+    tope haría desaparecer la tracción cohesiva real.
     """
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'damage'
