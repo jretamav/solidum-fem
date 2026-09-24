@@ -3,8 +3,8 @@
 Cuatro grupos:
 
 1. **Kinematics Numba** para los elementos lineales (Quad4, Tri3):
-   :func:`_compute_kinematics`, :func:`_compute_kinematics_tri3`,
-   :func:`_compute_integrands`, :func:`_shape_functions_quad4`,
+   :func:`_compute_kinematics`, :func:`compute_kinematics_tri3`,
+   :func:`compute_integrands`, :func:`_shape_functions_quad4`,
    :func:`_det_jacobian_quad4`.
 2. **Funciones de forma y derivadas en numpy puro** para los elementos
    de orden superior (Quad8, Quad9, Tri6): :func:`_N_quad8`,
@@ -198,7 +198,7 @@ def _batch_grad_quad4(pt, coords, B):
 
 
 @njit(cache=True)
-def _compute_integrands(B, C_alg, sigma, detJ, weight, thickness):
+def compute_integrands(B, C_alg, sigma, detJ, weight, thickness):
     dV = detJ * weight * thickness
 
     # Descomponer el triple producto tensorial evita errores de Numba
@@ -245,7 +245,7 @@ _DN_TRI3 = np.array([[-1.0, 1.0, 0.0],
 
 
 @njit(cache=True)
-def _compute_kinematics_tri3(coords):
+def compute_kinematics_tri3(coords):
     """``(B, detJ)`` del Tri3, constantes sobre el elemento."""
     B = np.empty((3, 6), dtype=np.float64)
     detJ = _kin2d_from_dN(_DN_TRI3, coords, B)
@@ -497,7 +497,7 @@ class _HigherOrderSolid2D(Element):
             sigma, C, new_state = self.material.compute_state(strain, self.state.vars[idx])
             self.state.vars_trial[idx] = new_state
             self.state.stresses_trial[idx] = sigma
-            K_contrib, F_contrib = _compute_integrands(B, C, sigma, detJ, w, self.thickness)
+            K_contrib, F_contrib = compute_integrands(B, C, sigma, detJ, w, self.thickness)
             K_e += K_contrib
             F_int_e += F_contrib
         return K_e, F_int_e

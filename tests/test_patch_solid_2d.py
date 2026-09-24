@@ -37,7 +37,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from solidum.core.domain import Domain
 from solidum.core.material import Material
-from solidum.elements.solid_2d import Quad4, Tri3, _compute_kinematics, _compute_kinematics_tri3
+from solidum.elements.solid_2d import Quad4, Tri3, _compute_kinematics, compute_kinematics_tri3
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import LinearSolver
 
@@ -222,7 +222,7 @@ class TestPatchTri3(unittest.TestCase):
         for elem in self.domain.elements.values():
             u_e = elem.get_local_displacements(U)
             coords = elem.get_coordinate_matrix(ndim=2)
-            B, _ = _compute_kinematics_tri3(coords)
+            B, _ = compute_kinematics_tri3(coords)
             strain = B @ u_e
             np.testing.assert_allclose(strain, EXPECTED_STRAIN, atol=1e-12,
                                        err_msg=f"ε elem {elem.id}")

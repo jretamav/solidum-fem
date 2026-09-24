@@ -57,18 +57,33 @@ class Registry:
     ``YAML_LABEL``
         Nombre de un objeto de la familia en los mensajes de error
         (``"material térmico"``).
+
+    Y, para cualquier registro, ``SPEC_KIND``: el ``kind`` de las specs
+    (``docs/specs/*.md``) cuyos componentes viven en él. ``tools/spec.py``
+    localiza el registro por este valor, sin lista fija.
     """
 
     _items: Dict[str, Type] = {}
     _kind: str = "ítem"
     YAML_SECTION: ClassVar[str | None] = None
     YAML_LABEL: ClassVar[str] = "objeto"
+    SPEC_KIND: ClassVar[str | None] = None
     _families: ClassVar[list] = []
+    _spec_kinds: ClassVar[dict] = {}
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if "_items" not in cls.__dict__:
             cls._items = {}
+        kind = cls.__dict__.get("SPEC_KIND")
+        if kind is not None:
+            other = Registry._spec_kinds.get(kind)
+            if other is not None and other.__qualname__ != cls.__qualname__:
+                raise ValueError(
+                    f"Tipo de spec '{kind}' ya declarado por "
+                    f"{other.__module__}.{other.__qualname__}."
+                )
+            Registry._spec_kinds[kind] = cls
         section = cls.__dict__.get("YAML_SECTION")
         if section is not None:
             for other in Registry._families:
@@ -87,6 +102,16 @@ class Registry:
         """Familias de material (registros con ``YAML_SECTION``), en orden de
         definición."""
         return list(Registry._families)
+
+    @staticmethod
+    def for_spec_kind(kind: str):
+        """Registro cuyo ``SPEC_KIND`` es ``kind``, o ``None``."""
+        return Registry._spec_kinds.get(kind)
+
+    @staticmethod
+    def spec_kinds() -> list:
+        """Todos los ``kind`` de spec declarados por algún registro."""
+        return sorted(Registry._spec_kinds)
 
     @classmethod
     def register(cls, name_or_class: str | Type | None = None,
@@ -145,6 +170,7 @@ class Registry:
 class MaterialRegistry(Registry):
     _items: Dict[str, Type] = {}
     _kind = "Material"
+    SPEC_KIND = "material"
     YAML_SECTION = "materials"
     YAML_LABEL = "material"
 
@@ -157,6 +183,7 @@ class CohesiveMaterialRegistry(Registry):
     por tipo en cada uso."""
     _items: Dict[str, Type] = {}
     _kind = "MaterialCohesivo"
+    SPEC_KIND = "cohesive_material"
     YAML_SECTION = "cohesive_materials"
     YAML_LABEL = "material cohesivo"
 
@@ -171,6 +198,7 @@ class ThermalMaterialRegistry(Registry):
     cada uso."""
     _items: Dict[str, Type] = {}
     _kind = "MaterialTermico"
+    SPEC_KIND = "thermal_material"
     YAML_SECTION = "thermal_materials"
     YAML_LABEL = "material térmico"
 
@@ -178,11 +206,13 @@ class ThermalMaterialRegistry(Registry):
 class ElementRegistry(Registry):
     _items: Dict[str, Type] = {}
     _kind = "Elemento"
+    SPEC_KIND = "element"
 
 
 class SolverRegistry(Registry):
     _items: Dict[str, Type] = {}
     _kind = "Solucionador"
+    SPEC_KIND = "solver"
 
 
 class QuadratureRegistry:

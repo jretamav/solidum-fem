@@ -13,21 +13,16 @@ from typing import Any, Dict, List
 
 import yaml
 
-VALID_KINDS = {
-    "element",
-    "material",
-    "cohesive_material",
-    "thermal_material",
-    "solver",
-}
 VALID_STATUSES = {"draft", "implemented", "validated"}
 
-# Familias de material: comparten el rol de "ley constitutiva" pero no la
-# semántica de su interfaz. `material` relaciona σ con ε en Voigt;
-# `cohesive_material` relaciona la tracción con el salto ⟦u⟧ sobre Γ_d
-# (ADR 0010); `thermal_material` relaciona el flujo de calor con ∇T sin
-# notación Voigt (Etapa 8). Cada una tiene su propio registro paralelo.
-MATERIAL_KINDS = {"material", "cohesive_material", "thermal_material"}
+
+def valid_kinds() -> set:
+    """``kind`` admitidos: el ``SPEC_KIND`` de cada registro (ADR 0020). Un
+    módulo de usuario que declare su propio registro añade el suyo; para
+    validar sus specs hay que cargarlo antes."""
+    import solidum  # noqa: F401 — dispara autodiscover
+    from solidum.registry import Registry
+    return set(Registry.spec_kinds())
 
 # Campo físico que gobierna un elemento. Determina qué declara su interfaz:
 # un elemento mecánico tiene `strain_dim` (dimensión Voigt de la deformación
@@ -100,9 +95,10 @@ def validate_schema(spec: Spec) -> None:
         if field not in c:
             raise SpecError(f"{spec.path}: falta campo obligatorio '{field}'")
 
-    if c["kind"] not in VALID_KINDS:
+    kinds = valid_kinds()
+    if c["kind"] not in kinds:
         raise SpecError(
-            f"{spec.path}: kind='{c['kind']}' inválido (esperado {sorted(VALID_KINDS)})"
+            f"{spec.path}: kind='{c['kind']}' inválido (esperado {sorted(kinds)})"
         )
     if c["status"] not in VALID_STATUSES:
         raise SpecError(
@@ -174,21 +170,9 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
         )
 
     import solidum  # noqa: F401 — dispara autodiscover
-    from solidum.registry import (
-        CohesiveMaterialRegistry,
-        ElementRegistry,
-        MaterialRegistry,
-        SolverRegistry,
-        ThermalMaterialRegistry,
-    )
+    from solidum.registry import Registry
 
-    registry = {
-        "element": ElementRegistry,
-        "material": MaterialRegistry,
-        "cohesive_material": CohesiveMaterialRegistry,
-        "thermal_material": ThermalMaterialRegistry,
-        "solver": SolverRegistry,
-    }[spec.kind]
+    registry = Registry.for_spec_kind(spec.kind)
 
     errors: List[str] = list(errors_pre)
     if spec.name not in registry._items:

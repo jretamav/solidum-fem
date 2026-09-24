@@ -202,8 +202,8 @@ class TestBulkElasticUnloadingAfterActivation(unittest.TestCase):
         emb.compute_element_state(u_e)
         # σ trial = el de la última iteración. La ε neta = ε_total − B^φ·G·[[u]].
         # Verificamos numéricamente: σ_trial debe ser C_e · ε_neta.
-        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
-        B, _ = _compute_kinematics_tri3(coords)
+        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
+        B, _ = compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
         B_phi = B[:, 2 * i_star:2 * i_star + 2]
@@ -350,8 +350,8 @@ class TestLocalRecovery(unittest.TestCase):
         # Reconstruir R^{[[u]]} con el jump_trial obtenido. El término
         # cohesivo debe incluir el factor ``thickness`` para que el
         # balance dimensional sea consistente con el del bulk.
-        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
-        B, detJ = _compute_kinematics_tri3(coords)
+        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
+        B, detJ = compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
         B_phi = B[:, 2 * i_star:2 * i_star + 2]
@@ -414,9 +414,9 @@ class TestThicknessDimensionalConsistency(unittest.TestCase):
         emb = self._build_loaded_emb(thickness=0.1)
         ds = emb.discontinuity_state
 
-        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
+        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
         coords = emb.get_coordinate_matrix(ndim=2)
-        B, _ = _compute_kinematics_tri3(coords)
+        B, _ = compute_kinematics_tri3(coords)
         i_star = ds.solitary_node
         B_phi = B[:, 2 * i_star:2 * i_star + 2]
         G = np.column_stack([ds.normal, ds.tangent])
@@ -446,9 +446,9 @@ class TestThicknessDimensionalConsistency(unittest.TestCase):
         emb = self._build_loaded_emb(thickness=0.1)
         ds = emb.discontinuity_state
 
-        from solidum.elements.solid_2d._shared import _compute_kinematics_tri3
+        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
         coords = emb.get_coordinate_matrix(ndim=2)
-        B, detJ = _compute_kinematics_tri3(coords)
+        B, detJ = compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
         B_phi = B[:, 2 * i_star:2 * i_star + 2]

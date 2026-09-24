@@ -2,7 +2,7 @@
 
 La auditoría 2026-05-18 destacó que ~27 ocurrencias de ``thickness=1.0`` en
 los tests dejaban un agujero: el factor ``thickness`` dentro de
-``_compute_integrands`` se cancela contra 1.0 y una omisión accidental
+``compute_integrands`` se cancela contra 1.0 y una omisión accidental
 pasaría inadvertida. Memoria del proyecto:
 ``feedback_tests_con_coeficientes_unitarios.md`` — *los coeficientes
 unitarios esconden bugs dimensionales*. El bug histórico del ``thickness``
@@ -71,7 +71,7 @@ def _build_single_element(elem_cls, coords, thickness: float):
 
 class TestStiffnessScalesWithThickness(unittest.TestCase):
     """``K_e ∝ thickness`` para los 5 sólidos 2D — fail-fast contra omisión
-    accidental del factor en ``_compute_integrands`` o equivalente.
+    accidental del factor en ``compute_integrands`` o equivalente.
     """
 
     def test_K_e_scales_linearly_with_thickness(self):
@@ -90,7 +90,7 @@ class TestStiffnessScalesWithThickness(unittest.TestCase):
                 # Norma de Frobenius como invariante intrínseco —
                 # captura escalamiento uniforme sin sensibilidad al ruido
                 # numérico en los ceros estructurales del array. Una
-                # omisión del factor en _compute_integrands rompería
+                # omisión del factor en compute_integrands rompería
                 # la relación lineal de la norma.
                 norm_unit = np.linalg.norm(K_unit)
                 self.assertGreater(norm_unit, 0.0)

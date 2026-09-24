@@ -8,7 +8,7 @@ from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
     _batch_kin_quad4,
-    _compute_integrands,
+    compute_integrands,
     _compute_kinematics,
     _det_jacobian_quad4,
     _expand_scalar_mass,
@@ -78,7 +78,7 @@ class Quad4(Element):
             self.state.vars_trial[idx] = new_state
             self.state.stresses_trial[idx] = sigma
 
-            K_contrib, F_contrib = _compute_integrands(B, C_tangent, sigma, detJ, w, self.thickness)
+            K_contrib, F_contrib = compute_integrands(B, C_tangent, sigma, detJ, w, self.thickness)
             K_e += K_contrib
             F_int_e += F_contrib
 

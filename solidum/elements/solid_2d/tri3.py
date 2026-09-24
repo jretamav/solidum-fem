@@ -8,8 +8,8 @@ from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
     _batch_kin_tri3,
-    _compute_integrands,
-    _compute_kinematics_tri3,
+    compute_integrands,
+    compute_kinematics_tri3,
     _expand_scalar_mass,
     _shape_functions_tri3,
 )
@@ -46,7 +46,7 @@ class Tri3(Element):
     def compute_element_state(self, u_e: np.ndarray):
         coords = self.get_coordinate_matrix(ndim=2)
 
-        B, detJ = _compute_kinematics_tri3(coords)
+        B, detJ = compute_kinematics_tri3(coords)
         strain = B @ u_e
 
         sigma, C_tangent, new_state = self.material.compute_state(strain, self.state.vars[0])
@@ -54,7 +54,7 @@ class Tri3(Element):
         self.state.stresses_trial[0] = sigma
 
         # 1 punto central, peso 0.5 (área del triángulo en coordenadas naturales)
-        K_e, F_int_e = _compute_integrands(B, C_tangent, sigma, detJ, 0.5, self.thickness)
+        K_e, F_int_e = compute_integrands(B, C_tangent, sigma, detJ, 0.5, self.thickness)
         return K_e, F_int_e
 
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
@@ -71,7 +71,7 @@ class Tri3(Element):
         u_e = self.get_local_displacements(U_global)
         coords = self.get_coordinate_matrix(ndim=2)
 
-        B, _ = _compute_kinematics_tri3(coords)
+        B, _ = compute_kinematics_tri3(coords)
         strain = B @ u_e
         stress, _, _ = self.material.compute_state(strain, self.state.vars[0])
 

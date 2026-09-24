@@ -23,7 +23,7 @@ esos imports sin cambios.
 # evita un re-cableado de tests sin valor.
 from solidum.elements.solid_2d._shared import (
     _compute_kinematics,
-    _compute_kinematics_tri3,
+    compute_kinematics_tri3,
     _dN_quad8,
     _dN_quad9,
     _dN_tri6,

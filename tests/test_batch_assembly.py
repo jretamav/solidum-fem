@@ -382,6 +382,27 @@ class TestDominiosMixtosYTrozos(unittest.TestCase):
             if type(elem).__name__ == 'Truss2D':
                 self.assertEqual(type(elem.state), ElementState)
 
+    def test_elemento_con_estado_propio_no_va_por_lotes(self):
+        """ADR 0020, P8: una subclase de un sólido por lotes que redefine el
+        cálculo o el commit tiene estado propio que el kernel de familia no
+        conoce. Antes heredaba ``BATCH_KINEMATICS`` y el camino por lotes se
+        saltaba sus redefiniciones en silencio."""
+        quad4 = ElementRegistry.get('Quad4')
+
+        class ConHistoria(quad4):                      # sin registrar
+            def commit_state(self):
+                self.commits = getattr(self, 'commits', 0) + 1
+                super().commit_state()
+
+        class SinCambios(quad4):
+            pass
+
+        mat = MaterialRegistry.create('Elastic2D', E=2.0e11, nu=0.3)
+        nodos = [Node(i + 1, c) for i, c in enumerate([[0, 0], [1, 0], [1, 1], [0, 1]])]
+        self.assertFalse(element_is_batchable(ConHistoria(1, nodos, mat)))
+        nodos = [Node(i + 1, c) for i, c in enumerate([[0, 0], [1, 0], [1, 1], [0, 1]])]
+        self.assertTrue(element_is_batchable(SinCambios(1, nodos, mat)))
+
     def test_presupuesto_de_memoria_minimo_fuerza_trozos_de_un_elemento(self):
         mat = MaterialRegistry.create('IsotropicDamage2D', E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=200.0)
         dom, _ = self._quad_mesh(4, 4, mat)

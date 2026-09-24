@@ -46,9 +46,31 @@ def material_is_batchable(material) -> bool:
     return callable(kernel) and kernel() is not None
 
 
+_OWN_STATE_METHODS = ("compute_element_state", "commit_state")
+
+
+def _has_own_state(cls) -> bool:
+    """La clase redefine el cálculo o el commit por debajo de la clase que
+    declaró ``BATCH_KINEMATICS`` (ADR 0020, P8).
+
+    Es el caso de un elemento con **estado propio** fuera de ``ElementState``
+    (p. ej. uno de usuario que hereda de ``Tri3`` y añade historia). El camino
+    por lotes no llamaría a sus redefiniciones: calcularía como la clase base
+    y haría el commit sin ellas, en silencio."""
+    for klass in cls.__mro__:
+        if klass.__dict__.get("BATCH_KINEMATICS") is not None:
+            return False
+        if any(m in klass.__dict__ for m in _OWN_STATE_METHODS):
+            return True
+    return False
+
+
 def element_is_batchable(elem) -> bool:
-    """El elemento declara cinemática compilada y su material es batchable."""
+    """El elemento declara cinemática compilada, no tiene estado propio y su
+    material es batchable."""
     if getattr(type(elem), "BATCH_KINEMATICS", None) is None:
+        return False
+    if _has_own_state(type(elem)):
         return False
     if getattr(elem, "points", None) is None:
         return False

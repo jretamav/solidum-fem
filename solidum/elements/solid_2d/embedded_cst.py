@@ -16,8 +16,8 @@ from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
-    _compute_integrands,
-    _compute_kinematics_tri3,
+    compute_integrands,
+    compute_kinematics_tri3,
 )
 from solidum.registry import CohesiveMaterialRegistry, ElementRegistry, MaterialRegistry
 
@@ -125,7 +125,7 @@ class CST_Embedded2D(Element):
 
         u_e = self.get_local_displacements(U_committed)
         coords = self.get_coordinate_matrix(ndim=2)
-        B, _ = _compute_kinematics_tri3(coords)
+        B, _ = compute_kinematics_tri3(coords)
         strain = B @ u_e
         sigma, _, _ = self.material.compute_state(strain, self.state.vars[0])
 
@@ -185,7 +185,7 @@ class CST_Embedded2D(Element):
 
     def compute_element_state(self, u_e: np.ndarray):
         coords = self.get_coordinate_matrix(ndim=2)
-        B, detJ = _compute_kinematics_tri3(coords)
+        B, detJ = compute_kinematics_tri3(coords)
 
         if self.discontinuity_state is None:
             return self._element_state_intact(u_e, B, detJ)
@@ -197,7 +197,7 @@ class CST_Embedded2D(Element):
         sigma, C_tan, new_state = self.material.compute_state(strain, self.state.vars[0])
         self.state.vars_trial[0] = new_state
         self.state.stresses_trial[0] = sigma
-        K_e, F_int_e = _compute_integrands(B, C_tan, sigma, detJ, 0.5, self.thickness)
+        K_e, F_int_e = compute_integrands(B, C_tan, sigma, detJ, 0.5, self.thickness)
         return K_e, F_int_e
 
     def _element_state_cracked(self, u_e, B_std, detJ):
@@ -315,7 +315,7 @@ class CST_Embedded2D(Element):
         """
         u_e = self.get_local_displacements(U_global)
         coords = self.get_coordinate_matrix(ndim=2)
-        B, _ = _compute_kinematics_tri3(coords)
+        B, _ = compute_kinematics_tri3(coords)
 
         if self.discontinuity_state is None:
             strain = B @ u_e

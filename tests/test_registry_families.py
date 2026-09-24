@@ -83,6 +83,15 @@ class TestRegistro:
                    "declarar_la_misma_seccion.<locals>.Duplicada"
                    for f in Registry.families())
 
+    def test_cada_registro_declara_su_tipo_de_spec(self):
+        """``tools/spec.py`` localiza el registro por ``SPEC_KIND``, sin lista fija."""
+        assert Registry.for_spec_kind("element") is ElementRegistry
+        assert Registry.for_spec_kind("thermal_material") is ThermalMaterialRegistry
+        assert {"element", "material", "thermal_material", "solver"} <= set(Registry.spec_kinds())
+        with pytest.raises(ValueError, match="Tipo de spec 'element' ya declarado"):
+            class Otra(Registry):
+                SPEC_KIND = "element"
+
     def test_una_familia_nueva_la_recorre_el_lector_sin_tocarlo(self, tmp_path):
         """Un registro declarado fuera del lector YAML (como haría un módulo de
         usuario) aporta su sección y sus objetos."""
