@@ -131,7 +131,7 @@ def traccion_libre(theta: float, L: float = 2 * W, nx: int = 4, ny: int = 2) -> 
         return U[nodos[(i, j)].dofs[d]]
     eps_x = u(2 * nx, 0, "ux") / L
     eps_y = u(0, 2 * ny, "uy") / W
-    gamma = u(2 * nx, 0, "uy") / L            # u_x = 0 en x = 0 ⇒ γ = ∂u_y/∂x
+    gamma = u(2 * nx, 0, "uy") / L            # u_x = 0 en x = 0: gamma = du_y/dx
     return {"E": SIGMA / eps_x, "nu": -eps_y / eps_x, "eta": gamma / eps_x,
             "deformada": _deformada(nodos, U, nx, ny)}
 

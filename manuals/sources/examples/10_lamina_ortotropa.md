@@ -60,7 +60,7 @@ La tira libre usa 4 × 2 elementos `Quad8`, porque el estado es uniforme. La tir
 
 ## Resultados
 
-![Izquierda: módulo aparente y coeficiente de influencia mutua frente al ángulo de las fibras; curvas de la teoría de láminas y puntos de Solidum. Derecha: tira de longitud 4w con las fibras a 45°, libre y con mordazas; las dos deformadas amplificadas hasta el mismo alargamiento.](../../../examples/lamina_ortotropa/fig_lamina.png){#fig:lamina}
+![Izquierda: módulo aparente y coeficiente de influencia mutua frente al ángulo de las fibras; curvas de la teoría de láminas y puntos de Solidum. Derecha: tira de longitud $4w$ con las fibras a 45°, libre y con mordazas; las dos deformadas amplificadas hasta el mismo alargamiento.](../../../examples/lamina_ortotropa/fig_lamina.png){#fig:lamina}
 
 [TABLA: Constantes aparentes de la tira libre calculadas con Solidum. Todas coinciden con la teoría de láminas con una diferencia menor que $10^{-9}$.]
 | $\theta$ | $E_x$ [GPa] | $\nu_{xy}$ | $\eta_{xy,x}$ |

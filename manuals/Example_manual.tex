@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -1776,6 +1776,228 @@ Ante un cambio brusco ---un choque térmico, una temperatura impuesta que salta-
 
 \newpage
 
+\chapter{Lámina ortótropa fuera de ejes: acoplamiento tracción-cortante}
+\chaptermark{Lámina ortótropa fuera de ejes}
+\label{cap:lamina_ortotropa}
+
+
+
+
+
+Las fibras de un material compuesto dan mucha rigidez en su dirección y poca en las demás. Cuando la carga no sigue las fibras pasan dos cosas: la rigidez cae mucho más de lo que sugiere el ángulo, y una tracción pura distorsiona la pieza, un acoplamiento que ningún material isótropo tiene. Este ejemplo mide los dos efectos en una lámina de carbono-epoxi y los compara con la teoría clásica de láminas. Después muestra una consecuencia práctica: en el ensayo de tracción, las mordazas impiden esa distorsión y alteran el módulo que se mide.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Definir un material ortótropo con \texttt{Orthotropic2D} y orientar sus fibras con \texttt{theta}.
+  \item Calcular las constantes aparentes de una lámina con las fibras a un ángulo cualquiera.
+  \item Reconocer el acoplamiento tracción-cortante.
+  \item Por qué la probeta de un ensayo fuera de ejes debe ser larga.
+\end{itemize}
+
+\section{Planteamiento}
+
+Una lámina unidireccional de carbono-epoxi tiene $E_1 =$ 181 GPa en la dirección de las fibras (eje 1), $E_2 =$ 10.3 GPa en la transversal (eje 2), $G_{12} =$ 7.17 GPa y $\nu_{12} =$ 0.28, valores típicos de un T300/5208. Es delgada, así que trabaja en esfuerzo plano. De ella se corta una tira de ancho $w =$ 20 mm con las fibras a un ángulo $\theta$ del eje $x$, que es el eje de carga.
+
+El caso se resuelve dos veces:
+
+\begin{enumerate}
+  \item \textbf{Tira libre.} Se tracciona con $\sigma_x =$ 10 MPa aplicada como tracción en el borde derecho. El borde izquierdo sólo tiene impedido $u_x$ (y $u_y$ en una esquina), así que la tira puede estrecharse y distorsionarse sin restricción.
+  \item \textbf{Tira con mordazas.} Los dos extremos están sujetos: $u_y = 0$, y $u_x$ uniforme, nulo en un extremo y $\delta$ en el otro. Es lo que hacen las mordazas rígidas de una máquina de ensayos.
+\end{enumerate}
+
+\section{Solución analítica}
+
+En los ejes del material la flexibilidad de esfuerzo plano es diagonal por bloques, sin acoplamiento entre alargamientos y distorsión:
+
+\[
+\mathbf S = \begin{bmatrix} 1/E_1 & -\nu_{12}/E_1 & 0 \\ -\nu_{12}/E_1 & 1/E_2 & 0 \\ 0 & 0 & 1/G_{12} \end{bmatrix},
+\qquad
+\frac{\nu_{21}}{E_2} = \frac{\nu_{12}}{E_1} .
+\]
+
+La segunda igualdad es la reciprocidad de Maxwell-Betti ($\mathbf S$ es simétrica). Da $\nu_{21} = \nu_{12}E_2/E_1 =$ 0.0159: con la carga transversal a las fibras, la lámina casi no se estrecha.
+
+En los ejes de carga, la flexibilidad es $\bar{\mathbf S} = \mathbf T^{-1}\,\mathbf S\,\mathbf T^{-\top}$, con $\mathbf T$ la matriz que pasa las deformaciones de ingeniería de los ejes $x, y$ a los ejes $1, 2$. Una tracción $\sigma_x$ sola produce $\varepsilon_x = \bar S_{11}\sigma_x$, $\varepsilon_y = \bar S_{12}\sigma_x$ y $\gamma_{xy} = \bar S_{16}\sigma_x$. De ahí salen las tres constantes aparentes de la lámina:
+
+\[
+E_x = \frac{1}{\bar S_{11}}, \qquad
+\nu_{xy} = -\frac{\bar S_{12}}{\bar S_{11}}, \qquad
+\eta_{xy,x} = \frac{\gamma_{xy}}{\varepsilon_x} = \frac{\bar S_{16}}{\bar S_{11}} .
+\]
+
+El \textbf{coeficiente de influencia mutua} $\eta_{xy,x}$ mide el acoplamiento: la distorsión que produce una tracción, por unidad de alargamiento. Es nulo con las fibras a 0\ensuremath{^{\circ}} o a 90\ensuremath{^{\circ}} y en cualquier material isótropo. Con la tira libre el estado es uniforme, así que el cálculo debe reproducir estas fórmulas sin error de discretización.
+
+\section{Modelo en Solidum}
+
+La tira, con el material orientado por \texttt{theta} en grados:
+
+\begin{lstlisting}[language=Python]
+def tira(theta: float, L: float, nx: int, ny: int):
+    """Tira ``L × W`` de ``nx × ny`` elementos ``Quad8`` con las fibras a
+    ``theta`` grados del eje ``x``."""
+    dom = Domain()
+    lamina = Orthotropic2D(E1=E1, E2=E2, G12=G12, nu12=NU12, theta=theta)
+    nodos = {}
+    for j in range(2 * ny + 1):
+        for i in range(2 * nx + 1):
+            if i % 2 and j % 2:
+                continue                       # centro: no es nodo del Quad8
+            nodos[(i, j)] = dom.add_node(len(nodos) + 1, [L * i / (2 * nx), W * j / (2 * ny)])
+    elementos = []
+    for j in range(ny):
+        for i in range(nx):
+            a, b = 2 * i, 2 * j
+            conectividad = [nodos[(a, b)], nodos[(a + 2, b)], nodos[(a + 2, b + 2)], nodos[(a, b + 2)],
+                            nodos[(a + 1, b)], nodos[(a + 2, b + 1)], nodos[(a + 1, b + 2)], nodos[(a, b + 1)]]
+            el = Quad8(len(dom.elements) + 1, conectividad, lamina)
+            dom.add_element(el)
+            elementos.append((el, i, j))
+    return dom, nodos, elementos
+
+\end{lstlisting}
+
+La tracción libre. \texttt{compute\_\allowbreak{}edge\_\allowbreak{}traction} convierte la tracción del borde en fuerzas nodales equivalentes:
+
+\begin{lstlisting}[language=Python]
+def traccion_libre(theta: float, L: float = 2 * W, nx: int = 4, ny: int = 2) -> dict:
+    """Tracción ``SIGMA`` en el borde derecho; el izquierdo sólo impide ``u_x``
+    (y ``u_y`` en una esquina), así que la tira puede estrecharse y
+    distorsionarse libremente: el estado es uniforme."""
+    dom, nodos, elementos = tira(theta, L, nx, ny)
+    for (i, j), nodo in nodos.items():
+        if i == 0:
+            nodo.fix_dof("ux", 0.0)
+    nodos[(0, 0)].fix_dof("uy", 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    F = np.zeros(dom.total_dofs)
+    for el, i, j in elementos:
+        if i == nx - 1:                       # arista derecha del Quad8: índice 1
+            f = el.compute_edge_traction(1, np.array([SIGMA, 0.0]))
+            F[el.get_global_dof_indices()] += f
+    U = LinearSolver(Assembler(dom)).solve(F)
+
+    def u(i, j, d):
+        return U[nodos[(i, j)].dofs[d]]
+    eps_x = u(2 * nx, 0, "ux") / L
+    eps_y = u(0, 2 * ny, "uy") / W
+    gamma = u(2 * nx, 0, "uy") / L            # u_x = 0 en x = 0: gamma = du_y/dx
+    return {"E": SIGMA / eps_x, "nu": -eps_y / eps_x, "eta": gamma / eps_x,
+            "deformada": _deformada(nodos, U, nx, ny)}
+
+\end{lstlisting}
+
+Las mordazas. Se impone el desplazamiento $\delta$ y la fuerza $P$ es la suma de las fuerzas internas en los nodos del extremo derecho. El módulo aparente es el que calcularía el laboratorio, $E_{\mathrm{ap}} = (P/w)/(\delta/L)$:
+
+\begin{lstlisting}[language=Python]
+def traccion_mordazas(theta: float, esbeltez: float, nx_por_w: int = 16, ny: int = 16) -> dict:
+    """Mordazas rígidas: en los dos extremos ``u_y = 0`` y ``u_x`` uniforme
+    (0 y δ). El módulo aparente es la fuerza de reacción entre ``w·δ/L``."""
+    L = esbeltez * W
+    nx = int(nx_por_w * esbeltez)
+    dom, nodos, _ = tira(theta, L, nx, ny)
+    delta = 1.0e-4 * L
+    derecha = []
+    for (i, j), nodo in nodos.items():
+        if i == 0:
+            nodo.fix_dof("ux", 0.0)
+            nodo.fix_dof("uy", 0.0)
+        elif i == 2 * nx:
+            nodo.fix_dof("ux", delta)
+            nodo.fix_dof("uy", 0.0)
+            derecha.append(nodo)
+    dom.generate_equation_numbers(verbose=False)
+    asm = Assembler(dom)
+    U = LinearSolver(asm).solve(np.zeros(dom.total_dofs))
+    _, F_int = asm.assemble_non_linear_system(U)
+    P = sum(F_int[nodo.dofs["ux"]] for nodo in derecha)
+    return {"E": (P / W) / (delta / L), "deformada": _deformada(nodos, U, nx, ny)}
+
+\end{lstlisting}
+
+La tira libre usa 4 \ensuremath{\times} 2 elementos \texttt{Quad8}, porque el estado es uniforme. La tira con mordazas usa 16 elementos por ancho y se repite con 8 para comprobar la convergencia.
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/lamina_ortotropa/fig_lamina.pdf}
+\caption{Izquierda: módulo aparente y coeficiente de influencia mutua frente al ángulo de las fibras; curvas de la teoría de láminas y puntos de Solidum. Derecha: tira de longitud $4w$ con las fibras a 45\ensuremath{^{\circ}}, libre y con mordazas; las dos deformadas amplificadas hasta el mismo alargamiento.}
+\label{fig:lamina_ortotropa:lamina}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Constantes aparentes de la tira libre calculadas con Solidum. Todas coinciden con la teoría de láminas con una diferencia menor que $10^{-9}$.}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{$\theta$} & \textbf{$E_x$ [GPa]} & \textbf{$\nu_{xy}$} & \textbf{$\eta_{xy,x}$} \\
+\hline
+0\ensuremath{^{\circ}} & 181.0 & 0.280 & 0 \\
+10\ensuremath{^{\circ}} & 107.8 & 0.273 & $-2.274$ \\
+20\ensuremath{^{\circ}} & 50.7 & 0.255 & $-1.913$ \\
+30\ensuremath{^{\circ}} & 28.8 & 0.227 & $-1.351$ \\
+45\ensuremath{^{\circ}} & 16.7 & 0.167 & $-0.766$ \\
+60\ensuremath{^{\circ}} & 12.4 & 0.098 & $-0.402$ \\
+75\ensuremath{^{\circ}} & 10.7 & 0.039 & $-0.167$ \\
+90\ensuremath{^{\circ}} & 10.3 & 0.016 & 0 \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{La tira libre es exacta.} Con el estado uniforme, los \texttt{Quad8} reproducen la teoría de láminas a precisión de máquina en los ocho ángulos (\hyperref[fig:lamina_ortotropa:lamina]{figura~\ref*{fig:lamina_ortotropa:lamina}}, izquierda). A 90\ensuremath{^{\circ}} el Poisson aparente es $\nu_{21}$, la reciprocidad en acción.
+
+\textbf{La rigidez cae deprisa.} Basta girar las fibras 10\ensuremath{^{\circ}} para que $E_x$ baje de 181 a 108 GPa. A 45\ensuremath{^{\circ}} queda en 16.7 GPa, el 9.2 \% de $E_1$, cuando el promedio de $E_1$ y $E_2$ sugeriría cerca de la mitad. La causa es el cortante: fuera de ejes, buena parte del alargamiento viene de distorsionar la matriz de resina, y $G_{12}$ es el menor de los tres módulos.
+
+\textbf{Una tracción produce distorsión.} A 45\ensuremath{^{\circ}}, cada unidad de alargamiento viene acompañada de $-0.77$ unidades de distorsión angular, y a 10\ensuremath{^{\circ}} el acoplamiento pasa de 2. El signo tiene una lectura sencilla. Con las fibras a +45\ensuremath{^{\circ}}, la tira se alarga menos en la dirección de las fibras, que es rígida, que en la perpendicular; esa diferencia es precisamente $\gamma_{xy}$, que resulta negativa. La tira se convierte en un paralelogramo (\hyperref[fig:lamina_ortotropa:lamina]{figura~\ref*{fig:lamina_ortotropa:lamina}}, derecha).
+
+\begin{warnbox}{Advertencia}
+En Solidum, \texttt{nu12} es $-\varepsilon_2/\varepsilon_1$ con la carga en la dirección 1, la de las fibras. Algunas fuentes llaman $\nu_{12}$ al cociente contrario, que aquí vale 0.016. Si se copia ese valor, el cálculo no falla y el material resultante es otro: su contracción transversal es $E_1/E_2$ veces menor que la real.
+\end{warnbox}
+
+\textbf{Las mordazas impiden la distorsión.} Con los extremos sujetos, la tira no puede convertirse en paralelogramo. Junto a las mordazas no puede distorsionarse; lejos de ellas sí, y para hacer compatibles las dos zonas se flexiona en su plano: se deforma en S (\hyperref[fig:lamina_ortotropa:lamina]{figura~\ref*{fig:lamina_ortotropa:lamina}}, derecha). Impedir una deformación rigidiza, así que el módulo aparente crece.
+
+\begin{table}[h]
+\centering
+\caption{Módulo aparente con mordazas, relativo al de la tira libre $E_x$. La última fila es la cota superior $\bar Q_{11}/E_x$.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{$L/w$} & \textbf{$\theta = 30°$} & \textbf{$\theta = 45°$} \\
+\hline
+2 & 1.61 & 1.19 \\
+4 & 1.15 & 1.05 \\
+8 & 1.04 & 1.01 \\
+Cota superior & 3.80 & 3.39 \\
+\hline
+\end{tabularx}
+\end{table}
+Este resultado es numérico, sin solución cerrada. Pasar de 8 a 16 elementos por ancho cambia el módulo aparente como mucho en $10^{-2}$ (30\ensuremath{^{\circ}}, $L/w = 2$), así que las cifras de la tabla son fiables al 1 \%. Además, los teoremas de energía lo acotan por los dos lados:
+
+\begin{itemize}
+  \item \textbf{Por abajo, $E_x$.} El esfuerzo uniforme de la tira libre está en equilibrio y es compatible con las mordazas. El teorema de la mínima energía complementaria da $E_{\mathrm{ap}} \ge E_x$.
+  \item \textbf{Por arriba, $\bar Q_{11}$.} El desplazamiento uniforme $\varepsilon_x = \delta/L$, $\varepsilon_y = \gamma_{xy} = 0$ cumple las condiciones de las mordazas. El teorema de la mínima energía potencial da $E_{\mathrm{ap}} \le \bar Q_{11}$, con $\bar{\mathbf Q} = \bar{\mathbf S}^{-1}$ la rigidez de la lámina en ejes de carga. Es el módulo de una tira infinitamente corta, sujeta en toda su longitud.
+\end{itemize}
+
+Los seis casos caen dentro de las cotas. Cuanto más corta es la tira, más rígida resulta: con $L/w = 2$ el módulo medido a 45\ensuremath{^{\circ}} excede a $E_x$ en un 19 \%, y a 30\ensuremath{^{\circ}} en un 61 \%. A 30\ensuremath{^{\circ}} el efecto es mayor porque el acoplamiento es mayor, $\eta_{xy,x} =$ $-1.35$ frente a $-0.77$: hay más distorsión que impedir.
+
+\begin{warnbox}{Advertencia}
+Un ensayo de tracción fuera de ejes con una probeta corta sobreestima el módulo y no avisa: la curva fuerza-desplazamiento sale perfectamente lineal. Aun con $L/w = 8$, el error es del 1.2 \% a 45\ensuremath{^{\circ}} y del 3.6 \% a 30\ensuremath{^{\circ}}. Por eso las probetas fuera de ejes se hacen largas y esbeltas.
+\end{warnbox}
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Repetir la tira con mordazas a 10\ensuremath{^{\circ}}, cerca del ángulo de mayor acoplamiento. ¿Cuánto crece el módulo aparente con $L/w = 8$?
+  \item Medir el alargamiento con un extensómetro virtual: la diferencia de $u_x$ entre dos puntos del centro de la tira, en vez de $\delta/L$. ¿Se recupera $E_x$?
+  \item Cambiar el material por uno de vidrio-epoxi, con $E_1/E_2$ mucho menor. ¿Qué pasa con $\eta_{xy,x}$?
+\end{itemize}
+
+\textbf{Referencias.} R. M. Jones, \textit{Mechanics of Composite Materials}, 2.ª ed., Taylor \& Francis, 1999, cap. 2. N. J. Pagano y J. C. Halpin, \textquotedbl{}Influence of end constraint in the testing of anisotropic bodies\textquotedbl{}, \textit{Journal of Composite Materials} 2 (1968) 18-31.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}lamina\_\allowbreak{}ortotropa/\allowbreak{}} contiene el script \texttt{run.py}, los resultados en \texttt{resultados.json} y la figura.
+
+
+\newpage
+
 \clearpage
 \thispagestyle{empty}
 \vspace*{\fill}
@@ -1783,8 +2005,8 @@ Ante un cambio brusco ---un choque térmico, una temperatura impuesta que salta-
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 07:33\\[0.5em]
-Commit Git: \texttt{b46cd62}\\[1em]
+Compilado el 24 de septiembre de 2026, 08:04\\[0.5em]
+Commit Git: \texttt{7c5e48f} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
