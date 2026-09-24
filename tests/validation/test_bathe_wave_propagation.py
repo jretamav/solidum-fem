@@ -47,8 +47,11 @@ Setup
 -----
 L = 10, N_elem = 100 → L_elem = 0.1.
 E = 1, ρ = 1, A = 1 → c = 1.
-Δt_crit (truss 1D, masa lumped) = L_elem · √(2ρ/E) ≈ 0.1414.
-Δt = 0.05 (≈ 35% del CFL) — ligeramente debajo del óptimo para
+Δt_crit (truss 1D, masa lumped) = 2/ω_max = L_elem/c = 0.1 (ω_max = 2c/L_elem;
+hasta el 2026-09-24 este docstring decía L_elem·√(2ρ/E) ≈ 0.1414, que no es
+el límite: con Δt = 1.005·L_elem/c el esquema ya diverge, medido en el
+ejemplo 8 del manual de ejemplos).
+Δt = 0.05 (50 % del límite) — por debajo del óptimo para
 minimizar dispersión sin reducir tiempo de simulación.
 
 t_end = 12, suficiente para que la onda recorra una vez (t = 10), se
@@ -267,13 +270,13 @@ def test_wave_round_trip_period():
 
 def test_wave_dispersion_decreases_with_finer_mesh():
     """Mallas más finas reducen el error de dispersión en la velocidad."""
-    dt_factor = 0.5   # mismo Δt/Δt_crit en cada malla para mantener comparable.
+    dt_factor = 0.7   # mismo Δt/Δt_crit en cada malla para mantener comparable.
     t_end = 12.0
 
     errors = []
     for N in (50, 100, 200):
         L_elem = L_BAR / N
-        dt_crit = L_elem * math.sqrt(2.0 * RHO / E_YOUNG)
+        dt_crit = L_elem * math.sqrt(RHO / E_YOUNG)      # L_elem/c: 2/ω_max, masa lumped
         dt = dt_factor * dt_crit
         t_hist, u_hist, nodes = _solve_step_load(L_BAR, N, F0_TIP, dt, t_end)
 
