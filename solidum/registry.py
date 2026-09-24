@@ -13,10 +13,15 @@ Soporta tres formas de registro:
 Las clases se descubren automáticamente al importar `solidum` gracias a
 `solidum.autodiscover.initialize()`, eliminando la necesidad de mantener
 listas de imports en `registry_initialization.py`.
+
+Un registro que declara ``YAML_SECTION`` es una **familia de material**: el
+lector YAML construye sus objetos a partir de esa sección sin conocerla por
+nombre (ADR 0020, P1). Así un módulo de usuario declara su propia familia
+sin tocar el programa principal.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, ClassVar, Dict, Type
 
 
 def _store(items: Dict[str, Type], name: str, klass: Type, kind: str) -> None:
@@ -36,15 +41,52 @@ def _store(items: Dict[str, Type], name: str, klass: Type, kind: str) -> None:
     items[name] = klass
 
 
-class _BaseRegistry:
+class Registry:
     """Base genérica para registries con decorador.
 
-    Cada subclase debe declarar su propio dict `_items` para no compartir
-    almacenamiento.  El método `register` admite tres formas (ver módulo).
+    Cada subclase recibe su propio dict ``_items`` (``__init_subclass__``): si
+    lo heredara, compartiría en silencio el almacenamiento de la base. El
+    método ``register`` admite tres formas (ver módulo).
+
+    Metadatos de familia (ADR 0020, P1), opcionales:
+
+    ``YAML_SECTION``
+        Sección de primer nivel del YAML con los objetos de la familia (lista
+        de ``{id, type, …}``). Declararla convierte al registro en una familia
+        de material que el lector YAML recorre sin conocerla por nombre.
+    ``YAML_LABEL``
+        Nombre de un objeto de la familia en los mensajes de error
+        (``"material térmico"``).
     """
 
     _items: Dict[str, Type] = {}
     _kind: str = "ítem"
+    YAML_SECTION: ClassVar[str | None] = None
+    YAML_LABEL: ClassVar[str] = "objeto"
+    _families: ClassVar[list] = []
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "_items" not in cls.__dict__:
+            cls._items = {}
+        section = cls.__dict__.get("YAML_SECTION")
+        if section is not None:
+            for other in Registry._families:
+                if other.YAML_SECTION == section and other.__qualname__ != cls.__qualname__:
+                    raise ValueError(
+                        f"Sección YAML '{section}' ya declarada por "
+                        f"{other.__module__}.{other.__qualname__}."
+                    )
+            # Recargar el módulo que define la familia la sustituye.
+            Registry._families[:] = [f for f in Registry._families
+                                     if f.__qualname__ != cls.__qualname__]
+            Registry._families.append(cls)
+
+    @staticmethod
+    def families() -> list:
+        """Familias de material (registros con ``YAML_SECTION``), en orden de
+        definición."""
+        return list(Registry._families)
 
     @classmethod
     def register(cls, name_or_class: str | Type | None = None,
@@ -100,12 +142,14 @@ class _BaseRegistry:
         return cls._items[name]
 
 
-class MaterialRegistry(_BaseRegistry):
+class MaterialRegistry(Registry):
     _items: Dict[str, Type] = {}
     _kind = "Material"
+    YAML_SECTION = "materials"
+    YAML_LABEL = "material"
 
 
-class CohesiveMaterialRegistry(_BaseRegistry):
+class CohesiveMaterialRegistry(Registry):
     """Registry paralelo a ``MaterialRegistry`` para materiales cohesivos
     traction-jump (ADR 0010). Separado intencionalmente: los cohesivos
     operan sobre ``[[u]]`` y devuelven ``t`` sobre ``Γ_d``, no sobre Voigt
@@ -113,9 +157,11 @@ class CohesiveMaterialRegistry(_BaseRegistry):
     por tipo en cada uso."""
     _items: Dict[str, Type] = {}
     _kind = "MaterialCohesivo"
+    YAML_SECTION = "cohesive_materials"
+    YAML_LABEL = "material cohesivo"
 
 
-class ThermalMaterialRegistry(_BaseRegistry):
+class ThermalMaterialRegistry(Registry):
     """Registry paralelo a ``MaterialRegistry`` para materiales térmicos
     (Etapa 8). Separado intencionalmente por la misma razón que el cohesivo:
     un material térmico relaciona el flujo de calor ``q`` con el gradiente
@@ -125,14 +171,16 @@ class ThermalMaterialRegistry(_BaseRegistry):
     cada uso."""
     _items: Dict[str, Type] = {}
     _kind = "MaterialTermico"
+    YAML_SECTION = "thermal_materials"
+    YAML_LABEL = "material térmico"
 
 
-class ElementRegistry(_BaseRegistry):
+class ElementRegistry(Registry):
     _items: Dict[str, Type] = {}
     _kind = "Elemento"
 
 
-class SolverRegistry(_BaseRegistry):
+class SolverRegistry(Registry):
     _items: Dict[str, Type] = {}
     _kind = "Solucionador"
 

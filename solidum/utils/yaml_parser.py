@@ -8,12 +8,10 @@ from solidum.core.domain import Domain
 from solidum.autodiscover import initialize as _ensure_registries_initialized
 from solidum.logging import get_logger
 from solidum.registry import (
-    CohesiveMaterialRegistry,
     ElementRegistry,
-    MaterialRegistry,
     QuadratureRegistry,
+    Registry,
     SolverRegistry,
-    ThermalMaterialRegistry,
 )
 
 _log = get_logger("parsers.yaml")
@@ -93,12 +91,25 @@ class YamlParser:
     # Claves de control de una entrada ``*_by_coord`` (el resto son DOFs).
     _COORD_KEYS = ('tol', 'coord', 'val', 'loc')
     _COORD_LOCS = ('x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max')
+    # Secciones de primer nivel propias del lector. Las de las familias de
+    # material las declara cada registro (``Registry.YAML_SECTION``).
+    _TOP_LEVEL_KEYS = frozenset({
+        'nodes', 'elements', 'mesh', 'mesh_material', 'mesh_thickness',
+        'mesh_quadrature', 'mesh_physical_groups',
+        'boundary_conditions', 'boundary_conditions_by_node',
+        'boundary_conditions_by_coord', 'boundary_conditions_by_group',
+        'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
+        'point_loads_by_group', 'linear_constraints', 'body_force', 'gravity',
+        'thermal_loads', 'solver', 'output',
+    })
+
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.domain = Domain()
-        self.materials = {}
-        self.cohesive_materials = {}    # ADR 0010 — familia paralela
-        self.thermal_materials = {}     # Etapa 8 — familia paralela
+        # Objetos de cada familia de material, por sección YAML y por id
+        # (ADR 0020, P2). ``parser.materials``, ``parser.thermal_materials``…
+        # los devuelve ``__getattr__``.
+        self.family_objects = {f.YAML_SECTION: {} for f in Registry.families()}
         self.thermal_body_sources = []  # Etapa 8 — fuente volumétrica Q
         self.thermal_boundary_fluxes = []  # Etapa 8 — flujo prescrito q̄
         self.solver_config = {}
@@ -109,6 +120,12 @@ class YamlParser:
         self.body_force = None  # np.ndarray (2,) o (3,) o None si no se especificó
         self.gravity = None     # np.ndarray (2,) o (3,) o None (ADR 0008)
         self.output_config = {}
+
+    def __getattr__(self, name: str):
+        objects = self.__dict__.get('family_objects')
+        if objects is not None and name in objects:
+            return objects[name]
+        raise AttributeError(f"{type(self).__name__!r} no tiene el atributo {name!r}")
 
     def _get_quadrature(self, rule: str) -> tuple:
         """Convierte un string del YAML a una regla de cuadratura inyectable."""
@@ -130,9 +147,7 @@ class YamlParser:
             raise YamlValidationError(errors)
 
         self._parse_nodes(data)
-        self._parse_materials(data)
-        self._parse_cohesive_materials(data)
-        self._parse_thermal_materials(data)
+        self._parse_families(data)
         self._parse_mesh_or_elements(data)
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
@@ -156,15 +171,23 @@ class YamlParser:
         has_elements = bool(data.get('elements'))
 
         # --- Estructura top-level ---
+        families = Registry.families()
+        sections = [f.YAML_SECTION for f in families]
+        allowed = self._TOP_LEVEL_KEYS | set(sections)
+        unknown_keys = sorted(str(k) for k in data if k not in allowed)
+        if unknown_keys:
+            errors.append(
+                f"Secciones desconocidas: {unknown_keys}. "
+                f"Admitidas: {sorted(allowed)}."
+            )
+
         if not has_mesh and not has_nodes:
             errors.append("Falta el bloque 'nodes' (o 'mesh'). El modelo no tiene geometría definida.")
 
-        if (not has_mesh and has_elements
-                and not data.get('materials')
-                and not data.get('thermal_materials')):
+        if not has_mesh and has_elements and not any(data.get(s) for s in sections):
             errors.append(
-                "Falta el bloque 'materials' (o 'thermal_materials' para un "
-                "modelo térmico). Se definieron elementos pero no hay materiales."
+                f"Falta un bloque de materiales (uno de {sections}). "
+                f"Se definieron elementos pero no hay materiales."
             )
 
         # --- Nodos ---
@@ -192,74 +215,40 @@ class YamlParser:
         elif nodes_data:
             errors.append("El bloque 'nodes' debe ser una lista de diccionarios.")
 
-        # --- Materiales ---
-        known_mat_ids = set()
-        registered_materials = set(MaterialRegistry.names())
-        for i, mat in enumerate(data.get('materials', [])):
-            ctx = f"materials[{i}]"
-            if not isinstance(mat, dict):
-                errors.append(f"{ctx}: cada material debe ser un diccionario.")
-                continue
-            if 'id' not in mat:
-                errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
-            else:
-                known_mat_ids.add(mat['id'])
-            if 'type' not in mat:
-                errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
-            elif registered_materials and mat['type'] not in registered_materials:
-                errors.append(
-                    f"{ctx} (id={mat.get('id', '?')}): tipo de material desconocido '{mat['type']}'. "
-                    f"Disponibles: {sorted(registered_materials)}."
-                )
-            else:
-                unknown, advertised = _unknown_kwargs(
-                    MaterialRegistry.get(mat['type']), set(mat), {'id', 'type'},
-                )
-                for kw in unknown:
+        # --- Familias de material (ADR 0020, P2): una sección por registro ---
+        known_ids = {}
+        for fam in families:
+            section, label = fam.YAML_SECTION, fam.YAML_LABEL
+            ids = known_ids[section] = set()
+            registered = set(fam.names())
+            for i, mat in enumerate(data.get(section, []) or []):
+                ctx = f"{section}[{i}]"
+                if not isinstance(mat, dict):
+                    errors.append(f"{ctx}: cada {label} debe ser un diccionario.")
+                    continue
+                if 'id' not in mat:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+                else:
+                    ids.add(mat['id'])
+                if 'type' not in mat:
+                    errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
+                elif mat['type'] not in registered:
                     errors.append(
-                        f"{ctx} (id={mat.get('id', '?')}): parámetro '{kw}' no aceptado "
-                        f"por '{mat['type']}'. Admitidos: {advertised}."
+                        f"{ctx} (id={mat.get('id', '?')}): tipo de {label} desconocido "
+                        f"'{mat['type']}'. Disponibles: {sorted(registered)}."
                     )
-
-        # --- Materiales cohesivos (ADR 0010 — sección paralela) ---
-        known_cohesive_ids = set()
-        registered_cohesives = set(CohesiveMaterialRegistry.names())
-        for i, mat in enumerate(data.get('cohesive_materials', []) or []):
-            ctx = f"cohesive_materials[{i}]"
-            if not isinstance(mat, dict):
-                errors.append(f"{ctx}: cada material cohesivo debe ser un diccionario.")
-                continue
-            if 'id' not in mat:
-                errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
-            else:
-                known_cohesive_ids.add(mat['id'])
-            if 'type' not in mat:
-                errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
-            elif registered_cohesives and mat['type'] not in registered_cohesives:
-                errors.append(
-                    f"{ctx} (id={mat.get('id', '?')}): tipo de cohesivo desconocido "
-                    f"'{mat['type']}'. Disponibles: {sorted(registered_cohesives)}."
-                )
-
-        # --- Materiales térmicos (Etapa 8 — sección paralela) ---
-        known_thermal_ids = set()
-        registered_thermals = set(ThermalMaterialRegistry.names())
-        for i, mat in enumerate(data.get('thermal_materials', []) or []):
-            ctx = f"thermal_materials[{i}]"
-            if not isinstance(mat, dict):
-                errors.append(f"{ctx}: cada material térmico debe ser un diccionario.")
-                continue
-            if 'id' not in mat:
-                errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
-            else:
-                known_thermal_ids.add(mat['id'])
-            if 'type' not in mat:
-                errors.append(f"{ctx} (id={mat.get('id', '?')}): falta el campo obligatorio 'type'.")
-            elif registered_thermals and mat['type'] not in registered_thermals:
-                errors.append(
-                    f"{ctx} (id={mat.get('id', '?')}): tipo de material térmico desconocido "
-                    f"'{mat['type']}'. Disponibles: {sorted(registered_thermals)}."
-                )
+                else:
+                    unknown, advertised = _unknown_kwargs(
+                        fam.get(mat['type']), set(mat), {'id', 'type'},
+                    )
+                    for kw in unknown:
+                        errors.append(
+                            f"{ctx} (id={mat.get('id', '?')}): parámetro '{kw}' no aceptado "
+                            f"por '{mat['type']}'. Admitidos: {advertised}."
+                        )
+        known_mat_ids = known_ids.get('materials', set())
+        known_thermal_ids = known_ids.get('thermal_materials', set())
+        known_cohesive_ids = known_ids.get('cohesive_materials', set())
 
         # --- Elementos (bloque inline, no mesh) ---
         registered_elements = set(ElementRegistry.names())
@@ -437,40 +426,16 @@ class YamlParser:
         else:
             raise ValueError("El bloque 'nodes' debe ser una lista de diccionarios.")
 
-    def _parse_materials(self, data: dict):
-        for mat_data in data.get('materials', []):
-            mat_id = mat_data['id']
-            mat_type = mat_data['type']
-            kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
-            self.materials[mat_id] = MaterialRegistry.create(mat_type, **kwargs)
-
-    def _parse_cohesive_materials(self, data: dict):
-        """Materiales cohesivos *traction-jump* (ADR 0010, sección paralela a
-        ``materials``). Se construyen con :class:`CohesiveMaterialRegistry`
-        para que el contrato del parser YAML no se mezcle con los continuos.
-        """
-        for mat_data in data.get('cohesive_materials', []) or []:
-            mat_id = mat_data['id']
-            mat_type = mat_data['type']
-            kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
-            self.cohesive_materials[mat_id] = CohesiveMaterialRegistry.create(mat_type, **kwargs)
-
-    def _parse_thermal_materials(self, data: dict):
-        """Materiales térmicos (Etapa 8, sección paralela a ``materials``).
-
-        Familia con registro propio, igual que los cohesivos (ADR 0010): el
-        contrato es ``compute_flux(∇T)``, no ``compute_stress(ε)``, y la
-        compatibilidad con el elemento la fija ``FLUX_DIM``, no ``STRAIN_DIM``.
-        Separar los bloques evita que un material térmico y uno mecánico
-        compartan espacio de nombres de ``type``.
-        """
-        for mat_data in data.get('thermal_materials', []) or []:
-            mat_id = mat_data['id']
-            mat_type = mat_data['type']
-            kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
-            self.thermal_materials[mat_id] = ThermalMaterialRegistry.create(
-                mat_type, **kwargs,
-            )
+    def _parse_families(self, data: dict):
+        """Construye los objetos de cada familia de material a partir de su
+        sección (ADR 0020, P2). Cada familia tiene registro propio porque su
+        contrato difiere (``compute_stress(ε)``, ``compute_flux(∇T)``…) y así
+        dos familias no comparten el espacio de nombres de ``type``."""
+        for fam in Registry.families():
+            objects = self.family_objects.setdefault(fam.YAML_SECTION, {})
+            for mat_data in data.get(fam.YAML_SECTION, []) or []:
+                kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
+                objects[mat_data['id']] = fam.create(mat_data['type'], **kwargs)
 
     def _parse_mesh_or_elements(self, data: dict):
         mesh_file = data.get('mesh', None)
