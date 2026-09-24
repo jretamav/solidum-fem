@@ -8,7 +8,7 @@ El caso se lanza desde un *script* de usuario o desde la interfaz pública de en
 
 ## 2. Lectura del caso
 
-El intérprete del caso abre el archivo YAML y construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado.
+El intérprete del caso abre el archivo YAML y, si el caso declara módulos de usuario (`user_modules`), los carga antes de validar nada: sus elementos, materiales y familias quedan inscritos en los registros como los del programa principal (ADR 0020). Después construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado.
 
 En esta etapa se ejecuta la primera comprobación de consistencia: cuando un elemento se construye, su clase base verifica que el material recibido sea dimensionalmente compatible. Un elemento `Truss2D` con material `Elastic2D` produce un error en la fase de construcción del caso, no doscientas iteraciones después en forma de fallo opaco durante la solución.
 

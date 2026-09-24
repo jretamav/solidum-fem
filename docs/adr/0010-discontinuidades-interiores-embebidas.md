@@ -1,5 +1,7 @@
 # ADR 0010 — Discontinuidades interiores embebidas
 
+> **Ubicación**: desde el [ADR 0020](0020-modulos-de-usuario.md) la formulación vive en el módulo de usuario `solidum/user/discontinuities/` (specs en `docs/user/discontinuities/specs/`, tests en `tests/user/discontinuities/`), fuera del programa principal, y se carga con `user_modules: [discontinuities]`. Este ADR se conserva como registro de la formulación; las rutas de tests que cita son las de su fecha (hoy `tests/user/discontinuities/test_disc_*.py`).
+
 - **Estado**: Aceptado
 - **Fecha**: 2026-05-13
 - **Alcance**: nueva familia paralela `CohesiveMaterial` (clase base independiente de `Material`); nueva subjerarquía de elementos con DOFs enriquecidos a nivel elemental y condensación estática local; nueva semántica de "elemento que cambia de modo" durante la simulación; catálogos de elementos y materiales; manuales.

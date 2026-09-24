@@ -8,7 +8,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Architecture Decision Record (ADR)**. Documento breve que registra una decisión de arquitectura junto con su contexto, alternativas consideradas y consecuencias. Reside en `docs/adr/000N-titulo.md`. Ver capítulo 8.
 
-**Autodiscover (descubrimiento automático)**. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores `@register` y, con ello, la inscripción de cada componente en su registro. Ver capítulo 5.
+**Autodiscover (descubrimiento automático)**. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores `@register` y, con ello, la inscripción de cada componente en su registro. No recorre `solidum/user/`: los módulos de usuario sólo se cargan cuando un caso los pide. Ver capítulo 5.
 
 **Capa algebraica**. Subsistema en `solidum/math/linalg/` responsable de resolver el sistema lineal `K · x = b` que aparece dentro de cada iteración del solver no lineal. Está separada del solver no lineal y selecciona automáticamente el algoritmo de factorización adecuado mediante un despachador. Ver capítulo 4 y ADR 0003.
 
@@ -42,19 +42,23 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Familia de lote**. Conjunto de elementos de un dominio que comparten clase de elemento, instancia de material, regla de cuadratura y número de nodos, y que el ensamblador evalúa juntos en un kernel compilado. Su estado interno vive en un `FamilyState` (arreglos por punto de Gauss) del que `elem.state` es una vista (`BatchedElementState`). Ver capítulo 5 y ADR 0014.
 
+**Familia de material**. Registro que declara la sección de primer nivel del YAML con sus objetos (`YAML_SECTION`): `materials` para los mecánicos, `thermal_materials` para los térmicos y, con el módulo de usuario `discontinuities` cargado, `cohesive_materials`. `Registry.families()` las enumera y el intérprete del YAML las recorre sin conocerlas por nombre; un elemento declara a qué familia pertenecen sus materiales con `REFERENCE_KWARGS`. Ver capítulo 5 y ADR 0020.
+
 **Gradiente conjugado (CG) y MINRES**. Métodos iterativos de Krylov para sistemas lineales simétricos: CG para matrices definidas positivas, MINRES para indefinidas. El solver iterativo de Solidum pasa de uno a otro de forma automática al detectar curvatura negativa. Capítulo 4, ADR 0018.
 
 **Grado de libertad (DOF)**. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el `Domain`.
 
 **Longitud de arco (método de Crisfield)**. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, λ). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con *snap-back* o *snap-through*.
 
-**Material**. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en `solidum/materials/`. Ver capítulo 4.
+**Material**. Ley constitutiva que, dada una deformación y un estado interno, devuelve el esfuerzo y el módulo tangente consistente. Su contrato declarativo está en `solidum/materials/`. Ver capítulo 4.
 
 **Mecanismo**. Modelo cuyos apoyos o cuya conectividad permiten un movimiento sin deformación: la matriz de rigidez es singular y el problema estático no tiene solución única. Si el movimiento es de sólido rígido del conjunto, Solidum lo detecta antes de resolver y lo describe; si es interno (una rótula de más), lo detecta tras resolver. Capítulo 5, ADR 0019.
 
 **Método de Elementos Finitos (MEF)**. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Solidum FEM trabaja en aproximación de desplazamientos.
 
 **Modos de cuerpo rígido**. Movimientos de un modelo sin apoyos que no producen deformación: traslaciones y giros infinitesimales, y el valor constante en un campo escalar. En Solidum se derivan del nombre de los grados de libertad y los usan el precondicionador multimalla y la detección de mecanismos. Capítulo 5.
+
+**Módulo de usuario**. Formulación no estándar que vive fuera del programa principal, en su propia carpeta `solidum/user/<nombre>/`, a la manera de los elementos y materiales de usuario de FEAP. El programa principal no la importa ni la nombra: un caso la carga con `user_modules: [<nombre>]` en el YAML o con `solidum.load_user_module` en Python. El primero es `discontinuities` (discontinuidad interior embebida). Ver capítulo 5 y ADR 0020.
 
 **Multimalla algebraico (AMG)**. Precondicionador que resuelve el sistema en una jerarquía de problemas cada vez más pequeños construidos a partir de la propia matriz. Con los modos de cuerpo rígido como casi-núcleo, el número de iteraciones apenas depende del tamaño del modelo. ADR 0018.
 
@@ -68,7 +72,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **`PRIMARY_STATE_VAR`**. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
-**Registro (registry)**. Diccionario global por categoría (`MaterialRegistry`, `ElementRegistry`, `SolverRegistry`) que mapea el nombre de cada componente con su clase. Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver capítulo 5.
+**Programa principal**. Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo `solidum/` salvo `solidum/user/`. No conoce los módulos de usuario; un test de pureza (`tests/test_main_program_purity.py`) lo vigila. Ver capítulo 5 y ADR 0020.
+
+**Registro (registry)**. Diccionario global por categoría (`MaterialRegistry`, `ThermalMaterialRegistry`, `ElementRegistry`, `SolverRegistry`) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica `Registry`, que puede declarar además metadatos de familia (`YAML_SECTION`, `YAML_LABEL`) y el tipo de spec de sus componentes (`SPEC_KIND`). Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver capítulo 5.
 
 **Regla de la mano derecha (RHR)**. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver capítulo 6.
 

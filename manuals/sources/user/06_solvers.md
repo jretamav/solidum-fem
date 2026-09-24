@@ -88,7 +88,7 @@ es **lineal** en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del
 - **Parámetros**: todos los de `ArcLengthSolver`, más `initial_tau` (obligatorio) y la familia `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
 - **Cuándo usarlo**: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
 - **Limitación medida**: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda #27). Para retrocesos, `IndirectDisplacementSolver`.
-- **Limitación conocida**: **no** resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
+- **Limitación conocida**: **no** resuelve el caso de discontinuidad embebida (`CST_Embedded2D`, módulo de usuario `discontinuities`) con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
 
 ```yaml
 solver:

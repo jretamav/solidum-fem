@@ -1,6 +1,8 @@
 # Catálogo de Elementos Finitos
 
-El motor expone varias familias de elementos: **1D** (estructuras reticulares: armaduras, cables, marcos), **2D** (continuo plano: cuadrilátero y triángulo), **3D** (continuo tridimensional: hexaedros y tetraedros, lineales y cuadráticos), **discontinuidades embebidas** (fractura con salto interior) y **térmicos** (conducción de calor, con un grado de libertad escalar por nodo; se documentan en el capítulo «Análisis Térmico»). Todos se referencian desde el YAML por su nombre exacto en `type:`.
+El programa principal expone varias familias de elementos: **1D** (estructuras reticulares: armaduras, cables, marcos), **2D** (continuo plano: cuadrilátero y triángulo), **3D** (continuo tridimensional: hexaedros y tetraedros, lineales y cuadráticos) y **térmicos** (conducción de calor, con un grado de libertad escalar por nodo; se documentan en el capítulo «Análisis Térmico»). Todos se referencian desde el YAML por su nombre exacto en `type:`.
+
+Las formulaciones no estándar viven fuera del programa principal, en **módulos de usuario** que el modelo carga de forma explícita (ADR 0020). El elemento con discontinuidad embebida (fractura con salto interior) pertenece al módulo de usuario `discontinuities` y se documenta en la última sección de este capítulo.
 
 ## Elementos 1D
 
@@ -173,33 +175,6 @@ elements:
   - {id: 3, type: Tri6,  material: 1, thickness: 0.1, nodes: [1, 2, 3, 4, 5, 6]}
 ```
 
-## Elementos 2D con discontinuidad embebida
-
-Subfamilia dedicada a **fractura computacional**: el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son **elementales**: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
-
-### Triángulo CST con Discontinuidad Interior: `CST_Embedded2D`
-
-CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
-
-- **DOFs/nodo**: `ux, uy` ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
-- **Cuadratura**: 1 punto (hereda del `Tri3`).
-- **Parámetros**: `thickness`, `material` (bulk), `cohesive_material`, `activation_criterion` (opcional, default `rankine`).
-- **Dos materiales**: a diferencia del resto del catálogo, requiere **un material de bulk** que gobierna el continuo y **uno cohesivo** que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos.
-- **Estado intacto**: idéntico al `Tri3` hasta que la discontinuidad se activa.
-- **Activación**: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior. Es **irreversible**: una vez activada persiste aunque el paso siguiente descargue.
-- **Bulk aceptado**: sólo `Elastic2D` en la fase actual — la *discrete approach* presupone bulk elástico (ADR 0010).
-- **Post-proceso**: `compute_gauss_state(U)` añade la clave `'discontinuity'` con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
-- **Limitación operativa**: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver el capítulo de diagnóstico.
-
-```yaml
-cohesive_materials:
-  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
-     K_e: 1.0e13, softening: linear}
-elements:
-  - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
-     material: 1, cohesive_material: 1}
-```
-
 ## Elementos 3D
 
 Sólidos tridimensionales isoparamétricos (ADR 0012). Todos comparten DOFs `ux, uy, uz` y $\texttt{STRAIN\_DIM} = 6$ sobre la convención Voigt 3D del proyecto, $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$, y exigen un material 3D (`Elastic3D`, `VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`).
@@ -260,3 +235,41 @@ elements:
                                               11, 12, 13, 14, 15, 16, 17, 18, 19, 20]}
   - {id: 4, type: Tet10, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
 ```
+
+## Módulo de usuario `discontinuities`: elemento con discontinuidad embebida
+
+Formulación de **fractura computacional** de Retama (2010): el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son **elementales**: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
+
+No es un elemento finito estándar, así que no forma parte del programa principal: vive en el **módulo de usuario** `discontinuities` (`solidum/user/discontinuities/`), junto con su familia de materiales cohesivos (ADR 0020). `import solidum` no lo carga; el YAML que use `CST_Embedded2D` o la sección `cohesive_materials` debe declararlo:
+
+```yaml
+user_modules: [discontinuities]
+```
+
+Sin esa línea, la lectura se detiene con un error que nombra el tipo o la sección desconocidos y lista los módulos de usuario disponibles.
+
+### Triángulo CST con Discontinuidad Interior: `CST_Embedded2D`
+
+CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
+
+- **DOFs/nodo**: `ux, uy` ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
+- **Cuadratura**: 1 punto (hereda del `Tri3`).
+- **Parámetros**: `material` (bulk), `cohesive_material` y `thickness` (opcional, default `1.0`).
+- **Dos materiales**: a diferencia del resto del catálogo, requiere **un material de bulk** que gobierna el continuo y **uno cohesivo** que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos: `material` se busca en `materials` y `cohesive_material` en `cohesive_materials`.
+- **Estado intacto**: idéntico al `Tri3` hasta que la discontinuidad se activa.
+- **Activación**: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior; es el único criterio y no se declara en el YAML. Es **irreversible**: una vez activada persiste aunque el paso siguiente descargue.
+- **Bulk aceptado**: sólo `Elastic2D` en la fase actual — la *discrete approach* presupone bulk elástico (ADR 0010).
+- **Post-proceso**: `compute_gauss_state(U)` añade la clave `'discontinuity'` con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
+- **Limitación operativa**: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver la limitación conocida de `DissipationArcLengthSolver` en el capítulo «Esquemas de Solución».
+
+```yaml
+user_modules: [discontinuities]
+cohesive_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+     K_e: 1.0e13, softening: linear}
+elements:
+  - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+     material: 1, cohesive_material: 1}
+```
+
+La formulación completa (cinemática KOS, condensación, longitud $l_d$) está en la spec del elemento, en el apéndice «Módulos de usuario» del Manual de Referencia.

@@ -140,6 +140,8 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Fractura computacional sin tocar el ensamblador, el despachador algebraico, el Newton ni el parser. Las cuatro abstracciones son reutilizables para modelos cohesivos clásicos, modos incompatibles o EAS. El límite conocido es el solver para ablandamiento severo con penalización cohesiva rígida (deuda técnica).
 
+**Ubicación.** Desde el ADR 0020 la formulación completa vive fuera del programa principal, en el módulo de usuario `discontinuities` (`solidum/user/discontinuities/`), y un modelo la carga con `user_modules: [discontinuities]`. El ADR se conserva como registro de la formulación.
+
 ## ADR 0011 — Robustez del Newton: line search y diagnóstico de divergencia
 
 **Fecha**: 18 de mayo de 2026. **Estado**: aceptado con una enmienda.
@@ -229,6 +231,16 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 **Decisión.** Tres capas en el análisis estático: antes de resolver, los **mecanismos rígidos** se detectan a partir de los modos de cuerpo rígido que las restricciones dejan libres y se describen en términos del modelo (traslación, giro alrededor de un eje por un punto, campo escalar sin valor prescrito); después de resolver, en el análisis lineal, se verifican el **equilibrio** y la ausencia de **pivotes nulos**. Dentro de un Newton no se rechaza nada —cerca de un punto límite resolver un sistema casi singular es legítimo—, sólo se mejora el diagnóstico.
 
 **Consecuencia.** Un modelo mal planteado se detiene con una explicación en vez de devolver resultados absurdos, sin falsos positivos en toda la batería de pruebas.
+
+## ADR 0020 — Módulos de usuario: las formulaciones no estándar fuera del programa principal
+
+**Fecha**: 24 de septiembre de 2026. **Estado**: aceptado.
+
+**Contexto.** Al decidir completar su formulación de discontinuidades interiores, el usuario fijó que un elemento no estándar no debe contaminar el programa principal, como en FEAP, que ofrece formulaciones estándar y deja al usuario añadir las suyas sin tocarlo. La discontinuidad embebida (ADR 0010) sí lo contaminaba: su familia cohesiva y su estado vivían en `core/`, su registro en `registry.py`, el lector YAML la trataba como caso especial (una sección y una clave propias) y la nombraban también la raíz del paquete, el descubrimiento automático, la herramienta de specs y el manual de referencia. La familia térmica sufría la misma rigidez: el lector repetía tres veces el mismo bloque, y los elementos térmicos resolvían su material con una heurística y no podían salir de gmsh.
+
+**Decisión.** Dos términos, los de FEAP: **programa principal** (Solidum estándar, todo `solidum/` salvo `solidum/user/`) y **módulo de usuario** (una formulación no estándar en `solidum/user/<nombre>/`, análoga a los elementos y materiales de usuario de FEAP). La embebida pasa íntegra al módulo `discontinuities`. La carga es explícita, nunca automática: `user_modules: [discontinuities]` en el YAML o `solidum.load_user_module("discontinuities")` en Python; `import solidum` no carga nada de `solidum/user/`. El programa principal ofrece a los módulos piezas genéricas, cada una justificada por casos reales ajenos a la embebida: un `Registry` público con metadatos de familia (`YAML_SECTION`, `YAML_LABEL`, `SPEC_KIND`) y `Registry.families()`; un lector YAML con un solo bucle sobre las familias, en el que una sección de primer nivel desconocida es un error; `Element.REFERENCE_KWARGS` para las referencias de un elemento a otras familias; la carga de módulos; el gancho `prepare_step`, documentado como contrato genérico e idempotente; la cinemática pública (`compute_kinematics_tri3`, `compute_integrands`); la receta de elemento por grupo físico de gmsh; y la exclusión del camino por lotes de los elementos con estado propio. Quedan fuera a propósito, sin un segundo caso real, el servicio de seguimiento de trayectoria, un bus de eventos y la carga automática por *entry points*. Se descartaron un paquete Python aparte (dos instalaciones en cada PC y un nombre que sugiere otro programa), un repositorio aparte y la carga automática al importar Solidum (el YAML dejaría de decir qué formulación necesita).
+
+**Consecuencia.** El programa principal no conoce la embebida, y un test de pureza (`tests/test_main_program_purity.py`) lo vigila: ningún archivo del programa principal nombra al módulo, y tras `import solidum` no hay ningún módulo de usuario cargado ni ninguna de sus clases registrada. Un módulo de usuario nuevo no toca el lector YAML, gmsh ni la herramienta de specs; la familia térmica gana validación de parámetros y referencias y puede salir de gmsh. Ningún resultado cambia. En contra: `from solidum import CST_Embedded2D` deja de funcionar, sin transición (el import es `from solidum.user.discontinuities import CST_Embedded2D`), los YAML de la embebida necesitan `user_modules`, y las piezas genéricas pasan a ser contrato estable del programa principal.
 
 ## Evolución de esta lista
 

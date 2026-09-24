@@ -1,5 +1,9 @@
 """Genera Reference_manual.pdf a partir de docs/specs/*.md.
 
+Las specs de los módulos de usuario (``docs/user/<módulo>/specs/*.md``, ADR
+0020) no entran al cuerpo del manual, que describe el programa principal:
+van a un apéndice «Módulos de usuario», agrupadas por módulo.
+
 Prototipo autónomo (sin dependencias externas más allá de la stdlib).
 Convierte un subconjunto controlado de Markdown a LaTeX y compila con
 lualatex (motor con soporte nativo de Unicode). Si en el futuro pandoc
@@ -34,6 +38,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 SPECS_DIR = ROOT / "docs" / "specs"
+# Specs de los módulos de usuario: una carpeta ``<módulo>/specs/`` por módulo.
+USER_DOCS_DIR = ROOT / "docs" / "user"
 SOURCES_DIR = ROOT / "manuals" / "sources"
 OUT_DIR = ROOT / "manuals"
 OUT_TEX = OUT_DIR / "Reference_manual.tex"
@@ -59,6 +65,12 @@ OUT_PDF = OUT_DIR / "Reference_manual.pdf"
 # Una spec que no encaje en ningún capítulo ABORTA el build nombrándola. El
 # fallo silencioso era el defecto real; añadir un componente en el futuro debe
 # propagarse solo o detenerse ruidosamente.
+#
+# Los capítulos son los del PROGRAMA PRINCIPAL. Las specs de los módulos de
+# usuario (ADR 0020) no se clasifican aquí: van al apéndice «Módulos de
+# usuario», agrupadas por módulo (``build_user_groups``). Por eso no hay
+# capítulos de discontinuidades embebidas ni de materiales cohesivos: desde el
+# ADR 0020 son del módulo de usuario ``discontinuities``.
 # ---------------------------------------------------------------------------
 
 # Orden editorial de los capítulos. Cada entrada es la etiqueta que aparece
@@ -68,14 +80,12 @@ CHAPTER_ORDER: list[str] = [
     "Elementos 1D — Cables",
     "Elementos 1D — Marcos / Vigas",
     "Elementos 2D — Sólidos",
-    "Elementos 2D — Discontinuidades embebidas",
     "Elementos 3D — Sólidos",
     "Elementos Térmicos — 2D",
     "Elementos Térmicos — 3D",
     "Modelos Constitutivos — 1D",
     "Modelos Constitutivos — 2D",
     "Modelos Constitutivos — 3D",
-    "Modelos Constitutivos — Cohesivos",
     "Modelos Constitutivos — Térmicos",
     "Esquemas de Solución — Estáticos",
     "Esquemas de Solución — Modal y dinámicos",
@@ -106,9 +116,6 @@ def _classify(spec) -> str:
     strain_dim = iface.get("strain_dim")
     dof_names = iface.get("dof_names") or []
     name = spec.name
-
-    if kind == "cohesive_material":
-        return "Modelos Constitutivos — Cohesivos"
 
     if kind == "thermal_material":
         return "Modelos Constitutivos — Térmicos"
@@ -151,12 +158,6 @@ def _classify(spec) -> str:
         if strain_dim == 6:
             return "Elementos 3D — Sólidos"
         if strain_dim == 3:
-            # El embebido se distingue por exigir DOS materiales: el bulk del
-            # continuo y uno cohesivo que gobierna el salto en Gamma_d. Ese
-            # segundo contrato sólo lo declaran los elementos con
-            # discontinuidad interior, y ya está en el YAML de la spec.
-            if "cohesive" in (spec.contract.get("material_contract") or {}):
-                return "Elementos 2D — Discontinuidades embebidas"
             return "Elementos 2D — Sólidos"
         if strain_dim == 1:
             # Dentro de los 1D, las rotaciones nodales separan vigas de barras,
@@ -212,6 +213,127 @@ def build_groups() -> list[tuple[str, list[str]]]:
         return (n_nodes if isinstance(n_nodes, int) else 0, name)
 
     return [(ch, sorted(buckets[ch], key=_sort_key)) for ch in CHAPTER_ORDER if buckets[ch]]
+
+
+# ---------------------------------------------------------------------------
+# Apéndice «Módulos de usuario» (ADR 0020).
+#
+# Un módulo de usuario es una formulación no estándar en solidum/user/<módulo>/
+# que el programa principal no carga por sí solo; sus specs viven en
+# docs/user/<módulo>/specs/. Se agrupan por módulo, sin clasificar por
+# capítulos del cuerpo: un módulo puede declarar familias (``kind``) que el
+# programa principal no conoce. Para validar sus specs el builder carga el
+# módulo, igual que haría un modelo con ``user_modules``. Mismo principio que
+# el cuerpo: una carpeta de specs sin módulo, o una spec inválida, aborta el
+# build nombrándola en vez de quedar fuera del manual en silencio.
+# ---------------------------------------------------------------------------
+
+# Orden dentro de un módulo: elementos, después las familias de material (del
+# programa principal o del módulo, alfabético por ``kind``), solvers al final.
+_USER_KIND_RANK = {"element": 0, "solver": 2}
+
+
+def user_spec_path(module: str, name: str) -> Path:
+    """Ruta de la spec ``name`` del módulo de usuario ``module``."""
+    return USER_DOCS_DIR / module / "specs" / f"{name}.md"
+
+
+def build_user_groups() -> list[tuple[str, list[str]]]:
+    """Specs de los módulos de usuario, agrupadas por módulo y ordenadas.
+
+    Recorre ``docs/user/*/specs/`` completo. Cada módulo se carga
+    (``solidum.load_user_module``) antes de validar sus specs, porque el
+    ``kind`` de una familia propia del módulo sólo existe con él cargado.
+    """
+    import solidum
+    from solidum.tools.spec import SpecError, collect_specs, parse_spec, validate_schema
+
+    main_names = {parse_spec(p).name for p in collect_specs(SPECS_DIR)}
+    available = solidum.available_user_modules()
+    groups: list[tuple[str, list[str]]] = []
+    problems: list[str] = []
+
+    for specs_dir in sorted(p for p in USER_DOCS_DIR.glob("*/specs") if p.is_dir()):
+        module = specs_dir.parent.name
+        paths = collect_specs(specs_dir)
+        if not paths:
+            continue
+        if module not in available:
+            problems.append(
+                f"docs/user/{module}/specs/: no hay módulo de usuario '{module}' "
+                f"en solidum/user/. Disponibles: {available}."
+            )
+            continue
+        solidum.load_user_module(module)
+
+        specs = []
+        for path in paths:
+            spec = parse_spec(path)
+            try:
+                validate_schema(spec)
+            except SpecError as exc:
+                problems.append(f"{module}: {exc}")
+                continue
+            if spec.name != path.stem:
+                problems.append(
+                    f"{module}: {path.name} declara name={spec.name!r}; el nombre "
+                    f"de la spec debe coincidir con el del archivo."
+                )
+                continue
+            if spec.name in main_names:
+                problems.append(
+                    f"{module}: {spec.name} ya tiene spec en docs/specs/ (programa "
+                    f"principal); las etiquetas del manual chocarían."
+                )
+                continue
+            specs.append(spec)
+
+        def _key(spec):
+            n_nodes = (spec.contract.get("interface") or {}).get("n_nodes")
+            return (_USER_KIND_RANK.get(spec.kind, 1), spec.kind,
+                    n_nodes if isinstance(n_nodes, int) else 0, spec.name)
+
+        if specs:
+            groups.append((module, [s.name for s in sorted(specs, key=_key)]))
+
+    if problems:
+        raise SystemExit(
+            "[!] Specs de módulos de usuario que no pueden entrar al manual:\n  "
+            + "\n  ".join(problems)
+        )
+    return groups
+
+
+def _user_module_summary(module: str) -> str:
+    """Primera línea de la docstring del paquete del módulo, sin el prefijo
+    «Módulo de usuario:» (p. ej. «discontinuidades interiores embebidas (ADR
+    0010, ADR 0020).»). Cadena vacía si el módulo no tiene docstring."""
+    import importlib
+    doc = (importlib.import_module(f"solidum.user.{module}").__doc__ or "").strip()
+    first = doc.splitlines()[0].strip() if doc else ""
+    return re.sub(r"^M[óo]dulo de usuario\s*:\s*", "", first, flags=re.IGNORECASE)
+
+
+def user_module_intro(module: str) -> str:
+    """Texto Markdown con que abre el capítulo de un módulo en el apéndice."""
+    summary = _user_module_summary(module)
+    lines = [
+        "Este apéndice recoge las specs de los **módulos de usuario**: "
+        "formulaciones no estándar que viven fuera del programa principal, en "
+        "`solidum/user/<módulo>/`, a la manera de los elementos y materiales de "
+        "usuario de FEAP (ADR 0020). El programa principal no las carga por sí "
+        "solo: un modelo las pide con `user_modules: [<módulo>]` en el YAML o "
+        "con `solidum.load_user_module(\"<módulo>\")` en Python.",
+        "",
+        f"**Módulo `{module}`**" + (f": {summary}" if summary else "."),
+        "",
+        f"- Código: `solidum/user/{module}/`.",
+        f"- Specs: `docs/user/{module}/specs/`.",
+        f"- Carga en YAML: `user_modules: [{module}]`.",
+        f"- Carga en Python: `solidum.load_user_module(\"{module}\")`.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 # Capítulos finales que NO derivan de specs (referencia técnica de plumbing
@@ -417,7 +539,12 @@ def _link_latex(text: str, url: str) -> str:
         return text
     rel_posix = rel.as_posix()
     manual = _LINK_CTX["manual"]
-    if (rel_posix.startswith("docs/specs/") and target.suffix == ".md"
+    # Specs del programa principal (docs/specs/) y de los módulos de usuario
+    # (docs/user/<módulo>/specs/, ADR 0020): enlace interno si el manual que
+    # se compila las incluye.
+    is_spec_dir = (rel_posix.startswith("docs/specs/")
+                   or re.match(r"docs/user/[^/]+/specs/[^/]+$", rel_posix))
+    if (is_spec_dir and target.suffix == ".md"
             and target.stem in _LINK_CTX["internal_specs"]):
         return f"\\hyperref[spec:{target.stem}]{{{text}}}"
     if rel_posix.startswith("docs/adr/") and target.name[:4] in _LINK_CTX["internal_adrs"]:
@@ -868,6 +995,7 @@ def code_block_characters() -> list[str]:
     archivos de ``examples/`` que el manual de ejemplos incrusta enteros como
     listado (``{{yaml:…}}``, ``{{py:…}}``)."""
     files = (list((ROOT / "docs" / "specs").glob("*.md"))
+             + list((ROOT / "docs" / "user").glob("*/specs/*.md"))
              + list((ROOT / "docs").glob("catalogo_*.md"))
              + list((ROOT / "manuals" / "sources").rglob("*.md")))
     embedded = (list((ROOT / "examples").glob("*/*.yaml"))
@@ -973,8 +1101,9 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \usepackage{amsfonts}
 % Corchetes dobles \llbracket ⟦u⟧ \rrbracket: notación del salto de
 % desplazamientos en las specs de discontinuidad embebida y material cohesivo
-% (ADR 0010). No están en amssymb; sin stmaryrd la compilación aborta con
-% "Undefined control sequence".
+% (ADR 0010; apéndice del módulo de usuario discontinuities, ADR 0020). No
+% están en amssymb; sin stmaryrd la compilación aborta con "Undefined control
+% sequence".
 \usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -1083,7 +1212,8 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
     {\large Especificaciones físicas, formulaciones numéricas y contratos\\
             de los componentes del programa\par}
     \vspace{2cm}
-    {\large Generado automáticamente desde \texttt{docs/specs/}\par}
+    {\large Generado automáticamente desde \texttt{docs/specs/}\\
+            y \texttt{docs/user/*/specs/}\par}
     \vspace{1cm}
     {\Large \textbf{Autor:} Jaime Retama Velasco \par}
     \vspace{0.5cm}
@@ -1101,7 +1231,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \addcontentsline{toc}{chapter}{Sobre este Manual}
 \noindent Este manual contiene la \textbf{referencia formal} de los componentes de Solidum FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
 
-El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
+El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. El cuerpo del manual describe el \textbf{programa principal}; las specs de los \textbf{módulos de usuario} (formulaciones no estándar, en \texttt{docs/user/*/specs/*.md}) se recogen en el apéndice \emph{Módulos de usuario}, agrupadas por módulo. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
 \begin{center}\texttt{python manuals/build\_reference\_manual.py}\end{center}
 
 Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-procesamiento), consulte el \textbf{Manual de Usuario} en \texttt{manuals/User\_manual.pdf}.
@@ -1134,12 +1264,24 @@ def _escape_title(text: str) -> str:
     return text.replace("\\", r"\textbackslash{}").replace("_", r"\_")
 
 
+def _append_spec(parts: list[str], name: str, spec_path: Path) -> None:
+    """Una spec como \\section con su etiqueta ``spec:<nombre>``."""
+    md = spec_path.read_text(encoding="utf-8")
+    set_link_context(source=spec_path, heading_offset=1)
+    ltx = md_to_latex(md)
+    parts.append(f"\\section{{{_escape_title(name)}}}\n\\label{{spec:{name}}}\n")
+    parts.append(ltx)
+    parts.append("\n\\newpage\n")
+
+
 def assemble() -> str:
     parts = [PREAMBLE]
     groups = build_groups()
-    set_link_context(manual="reference", internal_adrs=set(),
-                     internal_specs={c for _, comps in groups for c in comps
-                                     if (SPECS_DIR / f"{c}.md").exists()})
+    user_groups = build_user_groups()
+    internal = {c for _, comps in groups for c in comps if (SPECS_DIR / f"{c}.md").exists()}
+    internal |= {c for mod, comps in user_groups for c in comps
+                 if user_spec_path(mod, c).exists()}
+    set_link_context(manual="reference", internal_adrs=set(), internal_specs=internal)
     for chapter_name, components in groups:
         parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
         for comp in components:
@@ -1147,12 +1289,7 @@ def assemble() -> str:
             if not spec_path.exists():
                 print(f"  [!] Spec no encontrada: {spec_path}")
                 continue
-            md = spec_path.read_text(encoding="utf-8")
-            set_link_context(source=spec_path, heading_offset=1)
-            ltx = md_to_latex(md)
-            parts.append(f"\\section{{{_escape_title(comp)}}}\n\\label{{spec:{comp}}}\n")
-            parts.append(ltx)
-            parts.append("\n\\newpage\n")
+            _append_spec(parts, comp, spec_path)
 
     # Anexos (no derivan de specs; rutas relativas a la raíz del repo).
     for chapter_name, source_rel in APPENDIX_CHAPTERS:
@@ -1166,6 +1303,20 @@ def assemble() -> str:
         parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
         parts.append(ltx)
         parts.append("\n\\newpage\n")
+
+    # Apéndice «Módulos de usuario» (ADR 0020): al final, con numeración de
+    # apéndice (A, B…), un capítulo por módulo. Las specs llevan el mismo
+    # nivel de encabezados que en el cuerpo (\section por spec).
+    if user_groups:
+        parts.append("\\appendix\n")
+    for module, components in user_groups:
+        intro_src = USER_DOCS_DIR / module / "specs"
+        set_link_context(source=intro_src / "_intro.md", heading_offset=0)
+        parts.append(f"\\chapter{{Módulos de usuario --- {_escape_title(module)}}}\n"
+                     f"\\label{{usermod:{module}}}\n")
+        parts.append(md_to_latex(user_module_intro(module)))
+        for comp in components:
+            _append_spec(parts, comp, user_spec_path(module, comp))
 
     parts.append(POSTAMBLE)
     report_broken_links()
@@ -1201,7 +1352,7 @@ def compile_pdf(tex_path: Path) -> bool:
 
 
 def main() -> int:
-    print(f"Leyendo specs desde: {SPECS_DIR}")
+    print(f"Leyendo specs desde: {SPECS_DIR} y {USER_DOCS_DIR / '*' / 'specs'}")
     tex_content = assemble()
     OUT_TEX.write_text(tex_content, encoding="utf-8")
     print(f"  -> .tex escrito en: {OUT_TEX} ({len(tex_content):,} chars)")

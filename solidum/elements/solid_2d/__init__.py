@@ -18,11 +18,12 @@ helpers privados directamente (``test_patch_solid_2d``,
 ``test_higher_order_solid_2d``); el paquete los reexporta para preservar
 esos imports sin cambios.
 """
-# Helpers privados expuestos para tests existentes (test_patch_solid_2d,
-# test_higher_order_solid_2d). Reexports estables; mantenerlos al partir
-# evita un re-cableado de tests sin valor.
+# Helpers expuestos: los privados, para tests existentes (test_patch_solid_2d,
+# test_higher_order_solid_2d); compute_kinematics_tri3 y compute_integrands son
+# API pública para elementos de usuario (ADR 0020, P6).
 from solidum.elements.solid_2d._shared import (
     _compute_kinematics,
+    compute_integrands,
     compute_kinematics_tri3,
     _dN_quad8,
     _dN_quad9,

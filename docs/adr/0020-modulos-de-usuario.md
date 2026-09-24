@@ -40,7 +40,7 @@ Cada pieza se justifica por casos reales ajenos a la embebida.
 | P1 | `Registry` público (hoy `_BaseRegistry`) con metadatos de familia: `YAML_SECTION`, `YAML_LABEL`, `SPEC_KIND`; `Registry.families()`. `__init_subclass__` crea `_items` (hoy olvidarlo comparte el dict de la base en silencio) y rechaza secciones o tipos de spec duplicados | Familias mecánica y térmica |
 | P2 | Lector YAML genérico: un solo bucle sobre `Registry.families()` en vez de tres copias. Claves de primer nivel desconocidas pasan a ser error (hoy se ignoran en silencio) | Mecánica y térmica; la térmica gana la validación de parámetros que hoy sólo tiene la mecánica |
 | P3 | `Element.REFERENCE_KWARGS`: qué parámetros del elemento son referencias a otra familia, p. ej. `{"material": MaterialRegistry}`. El lector valida y resuelve las referencias sin heurística | Elementos térmicos (`{"material": ThermalMaterialRegistry}`) |
-| P4 | `solidum.load_user_module(nombre)` y la clave YAML `user_modules` | Puerta de carga de cualquier módulo |
+| P4 | `solidum.load_user_module(nombre)` y la clave YAML `user_modules` | Carga de cualquier módulo |
 | P5 | Gancho de inicio de paso `Element.prepare_step(U_committed)`, **ya existe**. Se documenta como contrato genérico: idempotente para el mismo `U_committed`, porque tras una bisección el solver lo repite. Un test del programa principal, con una subclase de `Element` sin registrar, comprueba que lo llaman los cinco solvers que deben | Equivale a la tarea de inicio de paso de un elemento de usuario de FEAP |
 | P6 | Funciones de cinemática públicas (`compute_kinematics_tri3`, `compute_integrands`) | API para elementos de usuario; hoy las usan Tri3 y Quad4 |
 | P7 | Ruta gmsh con tipo de elemento, referencias y parámetros por grupo físico | Los elementos térmicos tampoco pueden salir de gmsh hoy |
@@ -96,3 +96,27 @@ Estimación: dos o tres sesiones.
 
 - **A favor**: el programa principal no conoce la embebida; un módulo de usuario nuevo no toca el lector YAML, gmsh ni la herramienta de specs; desaparecen tres copias de código; la familia térmica gana validación de parámetros y referencias, y puede salir de gmsh; la embebida se convierte en el primer ejemplo real de cómo se escribe un módulo de usuario.
 - **En contra**: `from solidum import CST_Embedded2D` deja de funcionar; los YAML de la embebida necesitan `user_modules`; P1-P8 pasan a ser contrato estable del programa principal y cambiarlos afecta a todo módulo de usuario.
+
+## Resultado
+
+Migración hecha el 2026-09-24, con la suite en verde en cada paso y sin cambio de formulación ni de resultados. Los pasos 6 y 7 se partieron en dos commits.
+
+| Paso | Commit | Contenido | Suite (pasan / skipped) |
+|---|---|---|---|
+| 1 | `d1908a0` | P1 y P2: `Registry` público con familias; un solo bucle en el lector YAML; sección de primer nivel desconocida = error | 1568 / 9 |
+| 2 | `5aa514b` | P3: `Element.REFERENCE_KWARGS`; fuera la heurística de material y el caso especial `cohesive_material` | 1570 / 9 |
+| 3 | `80f5233` | P6 (cinemática pública), P8 (`element_is_batchable`) y specs localizadas por `SPEC_KIND` | 1572 / 9 |
+| 4 | `831a0f8` | P4: `solidum/user/`, `load_user_module`, `available_user_modules` y clave `user_modules`, probados con un módulo de juguete en subproceso | 1574 / 9 |
+| 5 | `e0367a2` | P7: ruta gmsh con `mesh_element` y `element` por grupo físico | 1581 / 9 |
+| 6a | `7777d1e` | Test de P5 (`tests/test_prepare_step_hook.py`); barridos de contrato restringidos a las clases del programa principal | 1589 / 9 |
+| 6b | `a2ab23f` | La embebida pasa a `solidum/user/discontinuities/`; fuera reexports, autodescubrimiento, registro y constantes del programa principal; tests a `tests/user/discontinuities/test_disc_*.py`, specs a `docs/user/discontinuities/specs/` | 1610 / 10 |
+| 7a | `5e4b84b` | Test de pureza `tests/test_main_program_purity.py`; docstrings del programa principal sin nombrar la embebida | 1613 / 10 |
+
+El resto del paso 7 (Reglas.md, CLAUDE.md, skill `solidum-new`, catálogos, manuales y `paper.md`) acompaña a esta sección.
+
+Diferencias con el texto de la decisión, sin cambiarla:
+
+- **P5**: el gancho lo invocan **seis** solvers, no cinco: `NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, `DissipationArcLengthSolver`, `NewtonNewmarkSolver` y `NewtonHHTSolver`. `LinearSolver` no lo invoca.
+- **§4, test de pureza**: además de los nombres listados, vigila la ruta `solidum.user.discontinuities` y la palabra «embebida»/«embedded», y comprueba que tras `import solidum` sólo existen las familias `materials` y `thermal_materials`.
+
+Recuento tras la migración. Programa principal: 22 elementos, 13 materiales mecánicos, 1 material térmico y 14 solvers. Módulo de usuario `discontinuities`: 1 elemento (`CST_Embedded2D`) y 1 material cohesivo (`CohesiveDamageIsotropic`, familia `cohesive_materials`). Suite completa: 1613 pasan / 10 skipped.

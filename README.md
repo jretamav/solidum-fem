@@ -9,22 +9,29 @@
 A displacement-based finite element framework for research in solid mechanics,
 with an architecture optimized for extension via AI-assisted development.
 
+The main program contains standard finite element formulations. Non-standard
+formulations are written as user modules, as with FEAP's user elements and
+materials: each one lives in `solidum/user/<name>/` and is loaded explicitly by
+the model that needs it. The embedded discontinuity model is the first one.
+
 ## Current capabilities
 
-- **23 elements**: 1D structural (truss, cable, frame 2D Euler/Timoshenko/corotational,
-  frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9, Tri6), 2D solids with embedded
-  discontinuity (CST\_Embedded2D), 3D solids linear (Hex8, Tet4) and quadratic
-  (Hex20, Hex27, Tet10), and thermal conduction elements (Quad4Thermal, Hex8Thermal).
-- **15 materials** across three parallel families: elastic 1D/2D/3D, orthotropic
+Main program:
+
+- **22 elements**: 1D structural (truss, cable, frame 2D Euler/Timoshenko/corotational,
+  frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9, Tri6), 3D solids linear (Hex8,
+  Tet4) and quadratic (Hex20, Hex27, Tet10), and thermal conduction elements
+  (Quad4Thermal, Hex8Thermal).
+- **14 materials** in two families: 13 mechanical (elastic 1D/2D/3D, orthotropic
   2D elasticity, unilateral cable, J2 plasticity (1D, plane strain, plane stress,
-  3D), Drucker-Prager (2D and 3D), isotropic continuum damage 1D/2D/3D, isotropic
-  cohesive damage (traction-jump), and Fourier thermal conduction with tensor
-  conductivity.
-- **13 solvers**: linear and nonlinear static, cylindrical arc-length (Crisfield)
-  and dissipation arc-length (Gutiérrez 2004 with automatic switching), modal
-  via shift-invert ARPACK, linear and nonlinear Newmark/HHT time integration,
-  central difference, harmonic response, response spectrum (SRSS, CQC), and
-  θ-method integration for transient heat conduction.
+  3D), Drucker-Prager (2D and 3D), isotropic continuum damage 1D/2D/3D) and
+  Fourier thermal conduction with tensor conductivity.
+- **14 solvers**: linear and nonlinear static, cylindrical arc-length (Crisfield),
+  dissipation arc-length (Gutiérrez 2004 with automatic switching) and indirect
+  displacement control (de Borst 1987), modal via shift-invert ARPACK, linear and
+  nonlinear Newmark/HHT time integration, central difference, harmonic response,
+  response spectrum (SRSS, CQC), and θ-method integration for transient heat
+  conduction.
 - **Thermal analysis** (uncoupled): steady-state and transient heat conduction
   in 2D and 3D, with Dirichlet and Neumann boundary conditions. The steady-state
   regime needs no dedicated solver — the existing linear solver handles it
@@ -43,11 +50,29 @@ with an architecture optimized for extension via AI-assisted development.
   after solving, that the solution satisfies equilibrium and the matrix has no
   zero pivots. An ill-posed model stops with an explanation instead of returning
   meaningless displacements.
-- **19 accepted ADRs** documenting architectural decisions.
-- **50 validated specs** with quantitative acceptance criteria.
-- **1519 tests** green, including 8 published canonical benchmarks (Lamé 2D and
-  3D, NAFEMS LE1 and LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation,
-  Hill 1950, Carslaw-Jaeger semi-infinite solid).
+
+User modules (in `solidum/user/`; `import solidum` loads none of them):
+
+- **`discontinuities`**: constant-strain triangle with an embedded strong
+  discontinuity (CST\_Embedded2D, KOS kinematics, Retama 2010) and a mode I
+  isotropic cohesive damage law, traction–jump, with linear or exponential
+  softening (CohesiveDamageIsotropic, in its own material family
+  `cohesive_materials`). A model loads it with `user_modules: [discontinuities]`
+  in YAML or `solidum.load_user_module("discontinuities")` in Python; its
+  classes are imported from `solidum.user.discontinuities`.
+- A user module registers its classes with the same decorators as the main
+  program and may declare its own material family with its own YAML section;
+  the YAML reader, the gmsh reader and the spec tooling need no change.
+
+Documentation and tests:
+
+- **20 accepted ADRs** documenting architectural decisions.
+- **51 validated specs** with quantitative acceptance criteria (49 for the main
+  program, 2 for the `discontinuities` user module).
+- **1613 tests** green (97 of them for the `discontinuities` user module),
+  including 8 published canonical benchmarks (Lamé 2D and 3D, NAFEMS LE1 and
+  LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation, Hill 1950,
+  Carslaw-Jaeger semi-infinite solid).
 
 Project status in [docs/STATUS.md](docs/STATUS.md) (in Spanish; see the
 [Documentation](#documentation) section for the language policy).
@@ -179,8 +204,10 @@ Component catalogs (short navigational entries):
 - [docs/catalogo\_materiales.md](docs/catalogo_materiales.md) (materials)
 - [docs/catalogo\_solvers.md](docs/catalogo_solvers.md) (solvers)
 
-ADRs live in [docs/adr/](docs/adr/). Per-component specs in
-[docs/specs/](docs/specs/).
+ADRs live in [docs/adr/](docs/adr/); [ADR 0020](docs/adr/0020-modulos-de-usuario.md)
+defines the split between main program and user modules. Per-component specs in
+[docs/specs/](docs/specs/); those of a user module in `docs/user/<name>/specs/`
+(e.g. [docs/user/discontinuities/specs/](docs/user/discontinuities/specs/)).
 
 ## Validation
 

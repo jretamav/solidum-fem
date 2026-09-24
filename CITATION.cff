@@ -13,14 +13,18 @@ abstract: >-
   A displacement-based finite element framework for research in solid
   mechanics: simulation of mechanical and thermal problems, coupled or
   decoupled, with an architecture optimized for extension via AI-assisted
-  development. Provides 1D structural elements (truss, cable, frame), 2D
-  and 3D solid elements (including embedded discontinuity), elastic, J2
-  and Drucker-Prager plasticity, continuum damage, and cohesive damage
+  development. The main program provides 1D structural elements (truss,
+  cable, frame), 2D and 3D solid elements, elastic (isotropic and
+  orthotropic), J2 and Drucker-Prager plasticity, and continuum damage
   materials, linear and nonlinear static solvers, cylindrical and
-  dissipation arc-length, modal analysis, Newmark and HHT time integration,
-  central difference, harmonic response, and response spectrum analysis.
-  Heat conduction is supported in steady state and transient regimes, in 2D
-  and 3D, currently uncoupled from the mechanical field.
+  dissipation arc-length, indirect displacement control, modal analysis,
+  Newmark and HHT time integration, central difference, harmonic response,
+  and response spectrum analysis. Heat conduction is supported in steady
+  state and transient regimes, in 2D and 3D, currently uncoupled from the
+  mechanical field. Non-standard formulations are written as user modules,
+  in solidum/user/<name>/, and loaded explicitly by the model that needs
+  them; the first one is an embedded strong discontinuity element with a
+  cohesive traction-jump law.
 
 authors:
   - family-names: "Retama-Velasco"

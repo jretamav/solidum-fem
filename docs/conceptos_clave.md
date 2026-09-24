@@ -9,10 +9,10 @@
 ## Plumbing de software (idioms Python que estructuran el proyecto)
 
 ### 1. Registry + decorador `@register`
-Diccionario global por categoría (materiales, elementos, solvers) que mapea nombre → clase. Cada clase, al definirse, se autorregistra mediante un decorador que la añade al diccionario sin tocar listas centrales. Permite que el `YamlParser` instancie cualquier clase por su nombre sin conocerla en compile-time.
+Diccionario global por categoría (materiales, materiales térmicos, elementos, solvers) que mapea nombre → clase. Cada clase, al definirse, se autorregistra mediante un decorador que la añade al diccionario sin tocar listas centrales. Permite que el `YamlParser` instancie cualquier clase por su nombre sin conocerla en compile-time. Un registro que declara su sección YAML (`YAML_SECTION`) es una **familia de material** (`Registry.families()`, ADR 0020): el parser recorre todas las familias con el mismo código.
 
 ### 2. Autodiscover (`solidum/autodiscover.py`)
-Al hacer `import solidum`, un solo recorrido (`pkgutil.iter_modules`) importa todos los módulos de `solidum/materials`, `solidum/elements`, `solidum/math`. Como los decoradores se ejecutan al importar el módulo, esto basta para poblar los Registry. Equivalente conceptual al `INCLUDE` automático en Fortran moderno, pero en runtime.
+Al hacer `import solidum`, un solo recorrido (`pkgutil.iter_modules`) importa todos los módulos de `solidum/materials`, `solidum/elements`, `solidum/math`. Como los decoradores se ejecutan al importar el módulo, esto basta para poblar los Registry. Equivalente conceptual al `INCLUDE` automático en Fortran moderno, pero en runtime. No recorre `solidum/user/`: los módulos de usuario sólo se cargan cuando un modelo los pide (entrada 10d).
 
 ### 3. Contrato declarativo vía `ClassVar` (`STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `PRIMARY_STATE_VAR`)
 Cada elemento y material declara como atributos de clase qué espera y qué produce. La base abstracta los lee y se autoconfigura: registra DOFs, valida compatibilidad material↔elemento (mismo `STRAIN_DIM`), inicializa el `ElementState` con la forma correcta. Sustituye métodos `setup()` repetitivos en cada subclase.
@@ -21,7 +21,7 @@ Cada elemento y material declara como atributos de clase qué espera y qué prod
 Al instanciar un elemento, el `__init__` de la base verifica que el material sea dimensionalmente compatible (un `Truss2D` con `Elastic2D` falla aquí, no a 200 iteraciones después con un crash críptico). Coste: una comprobación; beneficio: errores físicos imposibles de cometer sin verlos al construir el caso.
 
 ### 5. Generic `YamlParser` por introspección de `kwargs`
-El parser no contiene un `if material_type == "Elastic1D":` por cada material. Mira el `__init__` de la clase del Registry, extrae sus kwargs, y pasa lo que el YAML provee. Añadir un material nuevo no toca el parser nunca.
+El parser no contiene un `if material_type == "Elastic1D":` por cada material. Mira el `__init__` de la clase del Registry, extrae sus kwargs, y pasa lo que el YAML provee. Añadir un material nuevo no toca el parser nunca. Tampoco una familia de material nueva ni una referencia nueva entre objetos: la sección YAML la declara el registro, y qué parámetros de un elemento son el id de un objeto de otra familia lo declara el elemento (`REFERENCE_KWARGS`, p. ej. `{"material": ThermalMaterialRegistry}` en los térmicos). Una sección de primer nivel desconocida es error, no se ignora.
 
 ### 6. Skill `/solidum-new` (`.claude/skills/solidum-new/SKILL.md`)
 Skill versionada con el repo que la IA invoca cuando el usuario pide un material/elemento/solver nuevo. Genera el archivo en su carpeta canónica, con el decorador correcto y un test esqueleto. Cierra el ciclo: la arquitectura optimizada para extensión + la herramienta que materializa la extensión.
@@ -52,7 +52,10 @@ Cada material declara cuál de sus variables internas es la "principal" para vis
 Cada material declara sus variables internas como `{nombre: forma}` (p. ej. `{"eps_p": (4,), "alpha": ()}`; `{}` si no tiene memoria). Con esa declaración el estado se guarda en arreglos por familia y el commit deja de copiar diccionarios. Es obligatorio en todo material del catálogo: lo exige el barrido de contratos.
 
 ### 10c. Familias paralelas de materiales
-No todo "material" relaciona esfuerzo con deformación. Los **cohesivos** (`CohesiveMaterial`, ADR 0010) relacionan tracción con salto de desplazamiento, y los **térmicos** (`ThermalMaterial`, Etapa 8) flujo de calor con gradiente de temperatura (declaran `FLUX_DIM`, no `STRAIN_DIM`, y no usan notación de Voigt). Cada familia tiene clase base y registro propios, para que el parser y los elementos no tengan que distinguir el tipo en cada uso.
+No todo "material" relaciona esfuerzo con deformación. Los **térmicos** (`ThermalMaterial`, Etapa 8) relacionan flujo de calor con gradiente de temperatura (declaran `FLUX_DIM`, no `STRAIN_DIM`, y no usan notación de Voigt). Cada familia tiene clase base, registro y sección YAML propios, para que el parser y los elementos no tengan que distinguir el tipo en cada uso. El programa principal tiene dos, mecánica y térmica; un módulo de usuario puede declarar la suya, como la **cohesiva** del módulo `discontinuities` (`CohesiveMaterial`, ADR 0010), que relaciona tracción con salto de desplazamiento.
+
+### 10d. Programa principal y módulos de usuario (ADR 0020)
+Dos términos, los de FEAP. El **programa principal** es Solidum estándar: elementos, materiales y solvers de elementos finitos clásicos. Un **módulo de usuario** es una formulación no estándar en su propia carpeta, `solidum/user/<nombre>/` (hoy `discontinuities`, la discontinuidad embebida), que el programa principal no importa ni nombra: el modelo la pide con `user_modules: [<nombre>]` en el YAML o `solidum.load_user_module("<nombre>")`. El módulo se conecta por piezas genéricas —registros y familias, `REFERENCE_KWARGS`, el gancho de inicio de paso `prepare_step` que los solvers llaman una vez por paso con el estado convergido—, y cambiar esas piezas afecta a todo módulo de usuario.
 
 ---
 
@@ -87,7 +90,7 @@ Funciones críticas (ensamblaje elemento→global, return mapping interior) deco
 
 ### 20. Capa algebraica vs. solver de análisis (ADR 0003)
 Hay **dos capas de "solver"** y conviene no confundirlas:
-- **Solver de análisis** (los 13 del catálogo: `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`, `ThetaMethodSolver`): orquesta la estrategia de paso, las iteraciones de Newton, los criterios de convergencia, la longitud de arco, la integración temporal o el barrido en frecuencia.
+- **Solver de análisis** (los 14 del catálogo: `LinearSolver`, `NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `IndirectDisplacementSolver`, `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`, `ThetaMethodSolver`): orquesta la estrategia de paso, las iteraciones de Newton, los criterios de convergencia, la longitud de arco, la integración temporal o el barrido en frecuencia.
 - **Capa algebraica** (`solidum/math/linalg/`): resuelve el sistema lineal `K·δU = R` (o `Z(ω)·û = F̂` en complejos, o `K·φ = ω²M·φ` en autovalor) que aparece dentro de cada iteración del solver de análisis. Tiene varios backends (Cholesky, Pardiso, LU, el iterativo CG/MINRES, ARPACK para autovalores) y un **despachador interno** que elige el adecuado según las propiedades del operador (simétrica, positiva definida, …).
 
 El usuario solo ve la primera capa; la segunda es plumbing automático. Solo se expone el campo opcional `linear_algebra` en YAML como herramienta de diagnóstico — no como decisión de modelado.

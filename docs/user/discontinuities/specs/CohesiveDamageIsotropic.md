@@ -331,7 +331,7 @@ references:
   - "Barenblatt, G.I. (1962). The mathematical theory of equilibrium cracks in brittle fracture. *Advances in Applied Mechanics* 7, 55-129."
   - "Simó, J.C., Ju, J.W. (1987). Strain- and stress-based continuum damage models — I. Formulation. *Int. J. Solids Struct.* 23, 821-840."
   - "ADR 0010 — Discontinuidades interiores embebidas (familia CohesiveMaterial, hoja de ruta)."
-  - "Spec [IsotropicDamage2D](IsotropicDamage2D.md) — patrón análogo de daño isótropo escalar para el caso continuo."
+  - "Spec [IsotropicDamage2D](../../../specs/IsotropicDamage2D.md) — patrón análogo de daño isótropo escalar para el caso continuo."
 ```
 
 ---

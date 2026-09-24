@@ -1,6 +1,6 @@
 # Roadmap de Solidum FEM
 
-> Documento navegacional de alto nivel. **El detalle vive en ADRs** (`docs/adr/`) y **specs** (`docs/specs/`); este archivo es el índice temporal que las articula.
+> Documento navegacional de alto nivel. **El detalle vive en ADRs** (`docs/adr/`) y **specs** (`docs/specs/` para el programa principal, `docs/user/<módulo>/specs/` para cada módulo de usuario); este archivo es el índice temporal que las articula.
 >
 > **Para el usuario** — describe en una página el camino recorrido y las decisiones de bifurcación pendientes.
 > **Para la IA** — en cada sesión, este es el primer documento que sitúa "dónde estamos" antes de auditar arquitectura o proponer trabajo nuevo.
@@ -13,7 +13,9 @@
 
 ## Estado a fecha del último commit
 
-Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad, plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D), daño isótropo (1D/2D/3D) y cohesivo traction-jump**. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. **1519 tests verdes + 9 skipped intencionales**. Desde la Etapa 8, sin capacidad física nueva, la línea de trabajo ha sido de arquitectura y rendimiento: ensamblaje por lotes (ADR 0014), corrector de Newton compartido (ADR 0015), estudio del acoplamiento termomecánico (ADR 0016), backends algebraicos multihilo e iterativo (ADR 0017, 0018) y red de seguridad del análisis estático (ADR 0019).
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad (isótropa y ortótropa), plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D) y daño isótropo (1D/2D/3D)**. La fractura por **discontinuidades interiores embebidas** con ley cohesiva tracción-salto (Etapa 5) es desde el 2026-09-24 el primer **módulo de usuario**, `discontinuities`, fuera del programa principal ([ADR 0020](adr/0020-modulos-de-usuario.md)). Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. La suite está en verde (recuento vigente en [`STATUS.md`](STATUS.md)). Desde la Etapa 8, sin capacidad física nueva, la línea de trabajo ha sido de arquitectura y rendimiento: ensamblaje por lotes (ADR 0014), corrector de Newton compartido (ADR 0015), estudio del acoplamiento termomecánico (ADR 0016), backends algebraicos multihilo e iterativo (ADR 0017, 0018), red de seguridad del análisis estático (ADR 0019) y módulos de usuario para las formulaciones no estándar (ADR 0020).
+
+**En curso (decisión del usuario, 2026-09-24): completar la formulación de discontinuidades interiores** hasta reproducir la tesis (Retama 2010), dentro del módulo de usuario `discontinuities`; el ADR 0020 fue su paso previo. Ver [`STATUS.md`](STATUS.md) §"Próximo hito".
 
 **Próximo hito: elección de la Etapa 9.** Cerrada la opción C en su núcleo mínimo, quedan abiertas **B** (placas y láminas) y **E** (Mohr-Coulomb 2D + `FiberSection`), más la continuación de la propia línea térmica —convección, acoplamiento termomecánico o no linealidad térmica—. Es una decisión del usuario; el argumentario está en §"Opciones diferidas", donde se registran también **G** (elementos isogeométricos) y **H** (apoyos elásticos tipo Winkler), evaluadas el 2026-08-25 y no candidatas a Etapa 9.
 
@@ -120,6 +122,8 @@ Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) s
 - Material `CohesiveDamageIsotropic` y elemento `CST_Embedded2D` registrados, con specs `validated` y entradas en catálogos.
 - 56 + 4 tests específicos del subsistema; 420 tests verdes en la suite global.
 - Bug arquitectural cazado durante el bring-up: factor `thickness` faltante en el balance bulk↔cohesivo del Newton local, invisible mientras todos los tests usasen `thickness = 1.0`. Documentado en el ADR §"Caveats y lecciones aprendidas" y blindado con cuatro tests de regresión `TestThicknessDimensionalConsistency`.
+
+> **Ubicación desde el 2026-09-24** ([ADR 0020](adr/0020-modulos-de-usuario.md)): todo lo entregado en esta etapa —elemento, familia cohesiva con su registro, `DiscontinuityState`, specs y tests— salió del programa principal al **módulo de usuario `discontinuities`**: código en [`solidum/user/discontinuities/`](../solidum/user/discontinuities/), specs en [`docs/user/discontinuities/specs/`](user/discontinuities/specs/), tests en [`tests/user/discontinuities/`](../tests/user/discontinuities/), y entradas en la sección «Módulos de usuario» al final de cada catálogo. Se carga con `user_modules: [discontinuities]` en el YAML o `solidum.load_user_module("discontinuities")`; el import es `from solidum.user.discontinuities import CST_Embedded2D`. Sin cambio de formulación ni de resultados. El texto de esta sección describe la etapa tal como se cerró.
 
 **Lo diferido y por qué**:
 - **Fase 4 — benchmark Van Vliet faithful**: el modelo físico (elemento + cohesivo + condensación) está verificado en aislamiento por los tests del subsistema. Pero los solvers actuales (`NonlinearSolver` Newton-Raphson, `ArcLengthSolver` cilíndrico) no atraviesan la rama post-pico — la transición elástico→softening con penalty cohesivo stiff (`K_e ≈ 1e15 N/m³`) hace `K_t` casi singular en `κ_0`. Es dificultad numérica conocida del campo, no defecto del modelo. Retoma vía un **mini-ADR 0011 de "solvers para softening severo"** (dissipation arc-length de Gutiérrez/de Borst, control por CMOD/CTOD vía MPC con reacción correctamente leída en el cabezal, indicador de sign-of-pivot vía LDLᵀ con inercia de Sylvester) cuando se priorice. **Sin solver no se justifica reabrir el benchmark.**
@@ -264,7 +268,7 @@ Suite 959 → 970 (+11 tests verdes; +2 skip Tet10).
 
 ### Componentes
 
-- **`ThermalMaterial`** — familia con registro propio (`ThermalMaterialRegistry`), paralela a `CohesiveMaterial` (ADR 0010). Contrato `compute_flux(∇T) → (q, k)` en lugar de `compute_stress(ε)`. `FLUX_DIM` como **propiedad de instancia**, no `ClassVar`: la dimensión la fija el tensor `k` con que se construyó el material, no la clase.
+- **`ThermalMaterial`** — familia con registro propio (`ThermalMaterialRegistry`), paralela a `CohesiveMaterial` (ADR 0010; la familia cohesiva está desde el ADR 0020 en el módulo de usuario `discontinuities`, y el programa principal conserva las familias mecánica y térmica). Contrato `compute_flux(∇T) → (q, k)` en lugar de `compute_stress(ε)`. `FLUX_DIM` como **propiedad de instancia**, no `ClassVar`: la dimensión la fija el tensor `k` con que se construyó el material, no la clase.
 - **`ThermalConduction`** — ley de Fourier `q = −k·∇T`. Valida simetría de `k` con tolerancia **escalada** a `1e-12·max|k|` y definición positiva por autovalores (no por determinante, que no la garantiza en 3D). `ρ` y `c` opcionales: sólo el transitorio los exige.
 - **`Quad4Thermal`**, **`Hex8Thermal`** — un DOF escalar `T` por nodo, sobre base común `_ThermalSolid`. Comparten los kernels de forma y jacobiano de sus gemelos mecánicos. La base se introdujo con el **primer** elemento y no con el segundo, contra la regla habitual de los dos casos reales, porque la ecuación discretizada `C·Ṫ + K·T = F` es idéntica en 2D y 3D — la dimensión sólo cambia el tamaño de `B`. La decisión se validó a posteriori: el `Hex8Thermal` no necesitó tocar la base.
 - **`ThetaMethodSolver`** — integración θ del sistema de **primer orden**. Familia propia con spec completa, **no variante de `NewmarkSolver`**: la familia Newmark integra la ecuación de segundo orden mediante hipótesis sobre la aceleración, y en conducción no existe segunda derivada temporal sobre la que aplicarlas. Resultado `ThermalTransientResult` propio.
@@ -333,7 +337,7 @@ Lo que el proyecto **previsiblemente** abrirá tras la Etapa 8, sin orden cerrad
 - **Optimización topológica y de forma** (SIMP, level-set).
 - **Análisis estocástico / fiabilidad** (FORM, Monte Carlo sobre el modelo determinista).
 
-Todos comparten un patrón: **incrementales sobre lo existente, no refactor estructural**. La arquitectura actual (contratos declarativos + registries + capa algebraica + caché de topología) está diseñada para soportarlos sin reabrir decisiones.
+Todos comparten un patrón: **incrementales sobre lo existente, no refactor estructural**. La arquitectura actual (contratos declarativos + registries + capa algebraica + caché de topología) está diseñada para soportarlos sin reabrir decisiones. Lo que no sea elemento finito estándar (una formulación de investigación: seguimiento de trayectoria de grieta, otra ley cohesiva, XFEM) entra como **módulo de usuario** en `solidum/user/<nombre>/`, no en el programa principal ([ADR 0020](adr/0020-modulos-de-usuario.md)).
 
 ---
 
@@ -344,7 +348,7 @@ Todos comparten un patrón: **incrementales sobre lo existente, no refactor estr
 Al cierre de la sub-etapa A.ter quedan **6 items abiertos**, ninguno bloqueante (numeración de STATUS):
 
 - **#2 — `FiberSection` para frames no-lineales**: los frames 2D/3D plastifican sólo en axial; la fluencia por flexión espera este componente. Entraría con la opción E.
-- **#4 — Solver para softening severo con embedded discontinuity**: parcialmente cerrado por `DissipationArcLengthSolver` (funciona para daño continuo 1D/2D); el caso cohesivo+embedded con penalty `K_e` rígido sigue abierto y depende del #7.
+- **#4 — Solver para softening severo con embedded discontinuity** (módulo de usuario `discontinuities`): parcialmente cerrado por `DissipationArcLengthSolver` (funciona para daño continuo 1D/2D); el caso cohesivo+embedded con penalty `K_e` rígido sigue abierto y depende del #7.
 - **#5 — Stress recovery superconvergente (SPR)**: NAFEMS LE1 da σ_yy(D) = 90.1 frente a 92.7 canónico, diferencia atribuible al recovery sin SPR.
 - **#6 — B-bar / F-bar para Quad4/Quad8**: locking volumétrico documentado y blindado por test; espera caso de uso con material casi-incompresible.
 - **#7 — LDLᵀ Bunch-Kaufman como backend algebraico**: habilitaría el *sign-of-pivot tracking* exacto que hoy se aproxima por el signo del determinante.
@@ -370,7 +374,7 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ## Cómo se cierra una etapa
 
-1. Todos los componentes nuevos tienen spec en `docs/specs/` con `status: validated`.
+1. Todos los componentes nuevos tienen spec con `status: validated`: en `docs/specs/` los del programa principal, en `docs/user/<módulo>/specs/` los de un módulo de usuario.
 2. Tests verdes (unitarios + acceptance + smoke YAML representativo).
 3. Catálogos (`docs/catalogo_*.md`) y manuales (`manuals/sources/*/`) actualizados.
 4. ADR(s) de la fase en estado `Aceptado`.
@@ -379,7 +383,9 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ---
 
-*Última actualización: 2026-09-23 — **Arquitectura y rendimiento tras la Etapa 8** (ADR 0014 a 0019, sin capacidad física nueva): ensamblaje por lotes, corrector de Newton compartido, estudio del acoplamiento termomecánico (estrategia decidida en el ADR 0016, que actualiza el horizonte largo), backends algebraicos multihilo e iterativo (la opción I, evaluada y diferida por la mañana, se implementó el mismo día) y red de seguridad del análisis estático. El próximo hito sigue siendo la elección de la Etapa 9.*
+*Última actualización: 2026-09-24 — **ADR 0020: módulos de usuario.** La discontinuidad embebida de la Etapa 5 sale del programa principal al módulo de usuario `discontinuities` (nota de ubicación en la Etapa 5, sin reescribir su registro); el estado de cabecera deja de copiar el recuento de tests (autoridad: STATUS) y registra la decisión del usuario de completar la formulación dentro del módulo; el horizonte largo y el cierre de etapa distinguen programa principal y módulos de usuario.*
+
+*Anterior 2026-09-23 — **Arquitectura y rendimiento tras la Etapa 8** (ADR 0014 a 0019, sin capacidad física nueva): ensamblaje por lotes, corrector de Newton compartido, estudio del acoplamiento termomecánico (estrategia decidida en el ADR 0016, que actualiza el horizonte largo), backends algebraicos multihilo e iterativo (la opción I, evaluada y diferida por la mañana, se implementó el mismo día) y red de seguridad del análisis estático. El próximo hito sigue siendo la elección de la Etapa 9.*
 
 *Anterior: 2026-08-25 — **Etapa 8 cerrada: análisis térmico (núcleo mínimo C1)**. Nueva sección de etapa con el alcance decidido por el usuario punto por punto, los cuatro componentes entregados, el hallazgo arquitectural (la infraestructura resultó agnóstica al campo — el estacionario no necesitó solver nuevo) y la tabla de validación. Actualizado el estado de cabecera (1148 tests), cerrada la **opción C** de la bifurcación en su núcleo mínimo dejando constancia de que la termomecánica acoplada de `Reglas.md §0` sigue sin existir, y desbloqueado el acoplamiento en el horizonte largo (deja de estar condicionado a "si C entró antes"). El próximo hito pasa a ser la elección de la Etapa 9 entre B, E y la continuación de la línea térmica.*
 

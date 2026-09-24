@@ -153,7 +153,7 @@ solver:
 
 **Precisión.** El iterativo se detiene cuando el residuo verdadero `‖b − K·x‖` baja de `10⁻¹⁰·‖b‖`, cinco órdenes por debajo de la tolerancia del Newton. En un análisis no lineal el resultado coincide con el del directo; en uno lineal, la diferencia medida es del orden de 10⁻¹¹. Si no alcanza la tolerancia, **el análisis se detiene con un mensaje que dice por qué** (iteraciones, residuo alcanzado, qué hacer): nunca devuelve una solución a medias.
 
-**Cuándo no usarlo.** Igual que advierten los manuales de ANSYS y Abaqus: en modelos mal condicionados —láminas, vigas muy esbeltas, elementos muy distorsionados, penalizaciones rígidas (discontinuidades embebidas, cohesivos)— el iterativo converge mal o no converge. Ahí el directo es la herramienta.
+**Cuándo no usarlo.** Igual que advierten los manuales de ANSYS y Abaqus: en modelos mal condicionados —láminas, vigas muy esbeltas, elementos muy distorsionados, penalizaciones rígidas (discontinuidades embebidas como las del módulo de usuario `discontinuities`, cohesivos)— el iterativo converge mal o no converge. Ahí el directo es la herramienta.
 
 ### Instalar AMG (`pyamg`)
 

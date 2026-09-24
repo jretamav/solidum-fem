@@ -224,9 +224,11 @@ materials:
   - {id: 2, type: VonMises3D,  E: 210.0e9, nu: 0.3, sigma_y: 250.0e6, H: 1.0e9}
 ```
 
-## Materiales Cohesivos (salto de desplazamientos)
+## Módulo de usuario `discontinuities`: materiales cohesivos (salto de desplazamientos)
 
-Familia **paralela** al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la **tracción** $\mathbf{t}$ con el **salto de desplazamientos** $\llbracket u \rrbracket$ a través de una discontinuidad. Viven en su propio registro y se declaran en el bloque `cohesive_materials` del YAML, no en `materials`. Sólo los consumen elementos con discontinuidad embebida como `CST_Embedded2D`.
+Familia **paralela** al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la **tracción** $\mathbf{t}$ con el **salto de desplazamientos** $\llbracket u \rrbracket$ a través de una discontinuidad. Sólo los consumen elementos con discontinuidad embebida como `CST_Embedded2D`.
+
+No pertenecen al programa principal: la familia, su registro (`CohesiveMaterialRegistry`) y su sección YAML `cohesive_materials` los aporta el **módulo de usuario** `discontinuities` (ADR 0020). Se declaran en el bloque `cohesive_materials`, no en `materials`, y el YAML debe cargar antes el módulo con `user_modules: [discontinuities]`; sin él, `cohesive_materials` es una sección desconocida y la lectura se detiene.
 
 ### `CohesiveDamageIsotropic` — daño cohesivo Modo-I
 
@@ -237,6 +239,7 @@ Daño escalar $\omega \in [0, 1]$ sobre el salto normal: $t_n = (1-\omega)K_e \l
 - **Variables internas**: `kappa` (historial del salto) y `damage` ($\omega$).
 
 ```yaml
+user_modules: [discontinuities]
 cohesive_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}

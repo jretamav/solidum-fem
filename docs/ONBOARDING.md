@@ -12,8 +12,8 @@ Solidum FEM es un programa de elementos finitos en aproximación de desplazamien
 
 - Estática lineal y no lineal (material y geométrica) sobre **1D estructural**, **sólidos 2D** y **sólidos 3D** (Hex8, Tet4 — Etapa 7 cerrada 2026-05-19 con ADR 0012; sub-etapa **A.bis cerrada 2026-05-21** con materiales 3D no lineales; sub-etapa **A.ter cerrada 2026-05-27** con Hex20, Hex27 y Tet10 cuadráticos sobre base centralizada `_HigherOrderSolid3D`).
 - **Subsistema modal/dinámico/espectral completo** (ADR 0009 cerrado 2026-05-18): modal por autovalores generalizados, transitorio implícito Newmark/HHT-α (lineal y no lineal con Newton), transitorio explícito por diferencias centradas, respuesta forzada armónica en frecuencia y análisis sísmico por combinación modal espectral (SRSS/CQC).
-- Catálogo de materiales con plasticidad J2 en 1D/2D/3D, Drucker-Prager en 2D/3D, daño isótropo en 1D/2D/3D, y cohesivo traction-jump. Elásticos en 1D, 2D y 3D. **Paridad funcional 3D↔2D en materiales no lineales tras A.bis.**
-- Fractura computacional vía discontinuidades embebidas (CST_Embedded2D con condensación local).
+- Catálogo de materiales con plasticidad J2 en 1D/2D/3D, Drucker-Prager en 2D/3D y daño isótropo en 1D/2D/3D. Elásticos en 1D, 2D y 3D, y ortótropo en 2D (`Orthotropic2D`). **Paridad funcional 3D↔2D en materiales no lineales tras A.bis.**
+- Fractura computacional vía discontinuidades embebidas (`CST_Embedded2D` con condensación local y la ley cohesiva `CohesiveDamageIsotropic`) como **módulo de usuario** `discontinuities`, fuera del programa principal ([ADR 0020](adr/0020-modulos-de-usuario.md)): se carga con `user_modules: [discontinuities]` en el YAML o `solidum.load_user_module("discontinuities")`; `import solidum` no lo carga.
 - **Conducción de calor** estacionaria y transitoria, 2D y 3D (**Etapa 8 cerrada 2026-08-25**): elementos `Quad4Thermal`/`Hex8Thermal`, material `ThermalConduction` (Fourier con conductividad tensorial) y `ThetaMethodSolver` para el transitorio. **Sin acoplamiento con el campo mecánico** — es el núcleo mínimo C1 que el usuario acotó explícitamente.
 
 Lo que **no** resuelve aún: placas/láminas, contacto, Mohr-Coulomb, FiberSection, y —dentro de la línea térmica— convección (Robin), radiación, `k(T)`, cambio de fase y **acoplamiento termomecánico**. Ver [STATUS.md](STATUS.md) §"Limitaciones declaradas".
@@ -39,9 +39,9 @@ Para arrancar sin contexto previo, lee en este orden — **no necesitas más par
 2. **[STATUS.md](STATUS.md)** (~2 min): foto del estado actual. Métricas, capacidades, deuda técnica, próximo hito.
 3. **[ROADMAP.md](ROADMAP.md)** (~5 min): etapas cerradas y bifurcación pendiente. Hoy: Etapas 1-8 cerradas + sub-etapas A.bis y A.ter. La **Etapa 8** cerró la opción C (térmico) en su núcleo mínimo; la Etapa 9 queda abierta entre **B** (placas/láminas), **E** (Mohr-Coulomb + FiberSection) y la continuación de la línea térmica (convección, acoplamiento o no linealidad).
 4. **[MATRIZ.md](MATRIZ.md)** (~3 min): qué combinaciones elemento × material son válidas y testeadas.
-5. **Último ADR aceptado** ([ADR 0019 — Red de seguridad del análisis estático](adr/0019-red-de-seguridad-analisis-estatico.md)): un modelo mal apoyado ya no devuelve basura en silencio — mecanismos rígidos detectados y descritos antes de resolver, equilibrio y pivotes nulos verificados tras resolver en el estático lineal, diagnóstico de tangente singular en el no lineal. Anterior: [ADR 0018 — Solver iterativo](adr/0018-solver-iterativo-krylov-amg.md): CG / MINRES con AMG a petición (`linear_algebra: iterative`), con los modos de cuerpo rígido derivados del nombre de los DOF como casi-núcleo; nunca automático, nunca falla en silencio; útil por memoria por encima de ~10⁵ DOF. Anterior: [ADR 0017 — Backend algebraico multihilo](adr/0017-backend-algebraico-pardiso.md): medido que **la factorización se lleva el 97 % del tiempo de un análisis y el ensamblaje el 1 %** (el ADR 0014 ya está amortizado); `PardisoSolver` opcional (`pip install solidum-fem[fast]`) con preferencia Cholesky → Pardiso → LU, ×4,7 a ×56 según talla y misma solución a 1e-16. Anterior: [ADR 0016 — Acoplamiento termomecánico](adr/0016-acoplamiento-termomecanico.md): estudio de viabilidad **sin código**. Verifica que la infraestructura ya admite nodos con `u` y `T` simultáneos (numeración por nombre de DOF, una sola `K`, BCs mixtas, masa y capacidad por el mismo operador, pipeline estático completo, VTK) y decide **acoplamiento débil unidireccional primero**, **deformación propia genérica `ε₀`** (`σ = C:(ε − ε₀)`, térmica como caso particular) almacenada **por punto de Gauss**, y **sin familia de elementos acoplados**. Anterior: [ADR 0015 — Corrector de Newton compartido](adr/0015-corrector-de-newton-compartido.md): un solo bucle de corrección (`NewtonCorrector`, con backend algebraico, Newton modificado, line search y telemetría) para los cinco solvers iterativos, que aportan su física en un `NewtonProblem` por paso; sin cambio de resultados. Anterior: [ADR 0014 — Ensamblaje por lotes](adr/0014-vectorizacion-por-lotes.md): familias derivadas de los contratos, estado interno por arreglos (`STATE_SCHEMA`) y un único kernel Numba cacheado (serie o paralelo con `prange`, bit a bit iguales) que recibe la cinemática y la constitutiva como funciones tipadas; el camino por elemento sigue siendo el contrato obligatorio y ambos coinciden a precisión de máquina; el post-proceso (`gauss_state`, VTK) también va por familia. Anteriores: [ADR 0013](adr/0013-orientacion-material-y-ortotropia.md) (orientación material), [ADR 0012 — Sólidos 3D y Voigt 6D](adr/0012-solidos-3d-y-voigt-6d.md) (convención Voigt 3D, cierre del contrato `internal_forces` por dominio explícito, API de caras 3D), [ADR 0011](adr/0011-robustez-newton-line-search.md) (robustez Newton), [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md) (embedded discontinuities), [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (subsistema dinámico).
+5. **Último ADR aceptado** ([ADR 0020 — Módulos de usuario](adr/0020-modulos-de-usuario.md)): dos términos, los de FEAP — **programa principal** (Solidum estándar: elementos, materiales y solvers de elementos finitos clásicos) y **módulo de usuario** (una formulación no estándar en `solidum/user/<nombre>/`, que el programa principal no importa ni nombra y que el modelo carga explícitamente). La discontinuidad embebida es el primero, `discontinuities`. El programa principal sólo ofrece piezas genéricas (familias de material con sección YAML, `REFERENCE_KWARGS`, gancho `prepare_step`, carga de módulos, cinemática pública) y `tests/test_main_program_purity.py` vigila que no nombre ningún módulo. Anterior: [ADR 0019 — Red de seguridad del análisis estático](adr/0019-red-de-seguridad-analisis-estatico.md): un modelo mal apoyado ya no devuelve basura en silencio — mecanismos rígidos detectados y descritos antes de resolver, equilibrio y pivotes nulos verificados tras resolver en el estático lineal, diagnóstico de tangente singular en el no lineal. Anterior: [ADR 0018 — Solver iterativo](adr/0018-solver-iterativo-krylov-amg.md): CG / MINRES con AMG a petición (`linear_algebra: iterative`), con los modos de cuerpo rígido derivados del nombre de los DOF como casi-núcleo; nunca automático, nunca falla en silencio; útil por memoria por encima de ~10⁵ DOF. Anterior: [ADR 0017 — Backend algebraico multihilo](adr/0017-backend-algebraico-pardiso.md): medido que **la factorización se lleva el 97 % del tiempo de un análisis y el ensamblaje el 1 %** (el ADR 0014 ya está amortizado); `PardisoSolver` opcional (`pip install solidum-fem[fast]`) con preferencia Cholesky → Pardiso → LU, ×4,7 a ×56 según talla y misma solución a 1e-16. Anterior: [ADR 0016 — Acoplamiento termomecánico](adr/0016-acoplamiento-termomecanico.md): estudio de viabilidad **sin código**. Verifica que la infraestructura ya admite nodos con `u` y `T` simultáneos (numeración por nombre de DOF, una sola `K`, BCs mixtas, masa y capacidad por el mismo operador, pipeline estático completo, VTK) y decide **acoplamiento débil unidireccional primero**, **deformación propia genérica `ε₀`** (`σ = C:(ε − ε₀)`, térmica como caso particular) almacenada **por punto de Gauss**, y **sin familia de elementos acoplados**. Anterior: [ADR 0015 — Corrector de Newton compartido](adr/0015-corrector-de-newton-compartido.md): un solo bucle de corrección (`NewtonCorrector`, con backend algebraico, Newton modificado, line search y telemetría) para los cinco solvers iterativos, que aportan su física en un `NewtonProblem` por paso; sin cambio de resultados. Anterior: [ADR 0014 — Ensamblaje por lotes](adr/0014-vectorizacion-por-lotes.md): familias derivadas de los contratos, estado interno por arreglos (`STATE_SCHEMA`) y un único kernel Numba cacheado (serie o paralelo con `prange`, bit a bit iguales) que recibe la cinemática y la constitutiva como funciones tipadas; el camino por elemento sigue siendo el contrato obligatorio y ambos coinciden a precisión de máquina; el post-proceso (`gauss_state`, VTK) también va por familia. Anteriores: [ADR 0013](adr/0013-orientacion-material-y-ortotropia.md) (orientación material), [ADR 0012 — Sólidos 3D y Voigt 6D](adr/0012-solidos-3d-y-voigt-6d.md) (convención Voigt 3D, cierre del contrato `internal_forces` por dominio explícito, API de caras 3D), [ADR 0011](adr/0011-robustez-newton-line-search.md) (robustez Newton), [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md) (embedded discontinuities; formulación del módulo de usuario `discontinuities`), [ADR 0009](adr/0009-analisis-modal-y-dinamico.md) (subsistema dinámico).
 
-Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/specs/<Nombre>.md` y su entrada en `docs/catalogo_<elementos|materiales|solvers>.md`.
+Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/specs/<Nombre>.md` (o `docs/user/<módulo>/specs/<Nombre>.md` si es de un módulo de usuario) y su entrada en `docs/catalogo_<elementos|materiales|solvers>.md` (los módulos de usuario, en la sección «Módulos de usuario» al final de cada catálogo).
 
 ---
 
@@ -50,13 +50,16 @@ Si la sesión va sobre un componente concreto: ir directo a su spec en `docs/spe
 ```
 solidum_fem/
 ├── Reglas.md, CLAUDE.md          ← Contrato y guía operativa
-├── solidum/                        ← Código fuente
-│   ├── core/                     ← Domain, Node, Element base, Material base, Assembler
-│   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/, solid_3d/ (hex8/hex20/hex27/tet4/tet10 + base _HigherOrderSolid3D)
-│   ├── materials/                ← elastic, elastic_2d, elastic_3d, plastic_1d, von_mises_{2d,3d}, drucker_prager_{2d,3d}, damage_{1d,2d,3d}
+├── solidum/                        ← Código fuente (todo es programa principal salvo solidum/user/)
+│   ├── core/                     ← Domain, Node, Element base, Material base, ThermalMaterial base
+│   ├── elements/                 ← truss, cable, frame/, frame3d, solid_2d/, solid_3d/ (hex8/hex20/hex27/tet4/tet10 + base _HigherOrderSolid3D), thermal/
+│   ├── materials/                ← elastic, elastic_2d, elastic_3d, orthotropic_2d, plastic_1d, von_mises_{2d,3d}, drucker_prager_{2d,3d}, damage_{1d,2d,3d}, cable_1d, thermal_conduction
+│   ├── user/                     ← módulos de usuario (ADR 0020), carga explícita; hoy discontinuities/
+│   │                                (CST_Embedded2D, familia cohesiva con su registro, DiscontinuityState, constantes)
 │   ├── math/
 │   │   ├── solvers/              ← corrector (bucle de Newton compartido, ADR 0015), linear, nonlinear,
-│   │   │                            arclength, modal, newmark (+HHT), central_difference, harmonic, response_spectrum
+│   │   │                            arclength, dissipation_arclength, indirect_displacement, modal, newmark (+HHT),
+│   │   │                            central_difference, harmonic, response_spectrum, theta_method
 │   │   ├── linalg/               ← dispatcher, eigen
 │   │   ├── mass_lumping.py       ← HRZ canónico (ADR 0009 fase 2)
 │   │   ├── modal_response.py     ← free_vibration + SRSS/CQC + helpers de espectros
@@ -67,10 +70,12 @@ solidum_fem/
 │   │                                HarmonicResult, ResponseSpectrumResult
 │   ├── registry.py, constants.py, logging.py
 │   └── utils/                    ← YAML parser, gmsh parser, VTK exporter
-├── tests/                        ← 1519 verdes + 9 skipped (pytest; 1510 + 18 sin pypardiso ni pyamg, como en el CI base); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
+├── tests/                        ← pytest, recuento vigente en STATUS.md; tests/user/<módulo>/ para cada módulo de usuario
+│                                    (hoy tests/user/discontinuities/test_disc_*); tests/validation/ contra benchmarks publicados o analítico cerrado: 2D (Lamé, NAFEMS LE1, MacNeal-Harder, Bathe wave, Hill J2) + 3D lineales (cubo Lamé 3D, MacNeal 3D) + 3D no lineales A.bis (DP3D vs cono, Damage3D uniaxial, VM3D cilindro Hill 3D) + 3D cuadráticos A.ter (cubo Lamé Hex20/Hex27/Tet10 exacto, MacNeal Hex20 6×1×1 → 97% u_EB, patch triquadrático Hex27 exacto, cross-check 9 smoke tests elemento × material 3D no lineal)
 ├── docs/
-│   ├── adr/                      ← 0001-0019: decisiones arquitecturales
-│   ├── specs/                    ← una por componente: contrato + acceptance
+│   ├── adr/                      ← 0001-0020: decisiones arquitecturales
+│   ├── specs/                    ← una por componente del programa principal: contrato + acceptance
+│   ├── user/<módulo>/specs/      ← specs de cada módulo de usuario (hoy user/discontinuities/specs/)
 │   ├── referencias/              ← PDFs/papers citados desde ADRs y specs (tesis Retama 2010, etc.)
 │   ├── catalogo_*.md             ← índices navegables por dominio
 │   ├── ROADMAP.md, STATUS.md,
@@ -92,7 +97,7 @@ solidum_fem/
 
 ```bash
 # Tests
-python -m pytest tests/ -q                # suite completa (~30 s en Windows)
+python -m pytest tests/ -q                # suite completa, incluidos tests/user/ (~3 min en Windows, ver STATUS.md)
 python -m pytest tests/test_modal.py -q   # un solo módulo
 
 # Manuales (regenerar tras cambios en sources/)
@@ -113,7 +118,7 @@ python -c "import solidum; print(solidum.run_yaml('examples/<archivo>.yaml'))"
 Hay dos memorias que persisten entre sesiones:
 
 - **`.claude/memory/MEMORY.md`** (dentro del repo) y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque siguiendo el índice**. Tipos: `user`, `feedback`, `project`, `reference`. Vive en el repo —sincronizada por Drive entre las varias PCs del usuario— y está excluida de git por `.gitignore`. **No crear memoria del agente en `~/.claude/projects/.../memory/`**: ese directorio existe pero está vacío y no se sincroniza. Protocolo en [CLAUDE.md](../CLAUDE.md).
-- **`docs/specs/<Nombre>.md`**: memoria *física* y *numérica* de cada componente. Donde se guarda la formulación rigurosa.
+- **`docs/specs/<Nombre>.md`** (y `docs/user/<módulo>/specs/<Nombre>.md` en los módulos de usuario): memoria *física* y *numérica* de cada componente. Donde se guarda la formulación rigurosa.
 
 **Antes de actuar**: si la memoria menciona una decisión, **verificar que sigue vigente** consultando el código (los memos envejecen).
 
@@ -138,7 +143,8 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 | Plumbing pequeño                                        | Una frase en el commit.                                         |
 | Refactor zonal (centralización, renombre estructural)   | Diff + rationale en commit + actualización de specs/manuales.   |
 | Cambio físico sobre componente existente                | Ecuaciones + diff + test analítico. Visto bueno antes de commit si toca formulación. |
-| Componente nuevo (elemento / material / solver)         | Spec primero (`docs/specs/<Nombre>.md`) → implementación → catálogo. |
+| Componente nuevo estándar (elemento / material / solver) | Spec primero (`docs/specs/<Nombre>.md`) → implementación → catálogo. |
+| Componente no estándar (formulación que no es FEM clásico) | Módulo de usuario (ADR 0020): código en `solidum/user/<nombre>/`, spec en `docs/user/<nombre>/specs/`, tests en `tests/user/<nombre>/`, sección «Módulos de usuario» del catálogo; scaffolding con `/solidum-new <kind> <Name> --user <nombre>`. El programa principal sólo gana piezas genéricas. Ante la duda sobre si es estándar, preguntar. |
 | Variante de componente existente                        | Spec corta (solo lo que cambia) + nota en catálogo si es seleccionable por YAML. Sin ADR. |
 | Cambio arquitectural grande                             | ADR en `docs/adr/000N-titulo.md` antes o junto al commit.       |
 
@@ -156,7 +162,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ## 8. Antes de commitear
 
-1. `python -m pytest tests/ -q` verde (1519 pasan y 9 skipped con los extras `fast` e `iterative` instalados; sin ellos, 1510 y 18 skipped: los tests de Pardiso y AMG se saltan solos).
+1. `python -m pytest tests/ -q` verde (recuento vigente en [STATUS.md](STATUS.md), medido con los extras `fast` e `iterative` instalados; sin ellos, los tests de Pardiso y AMG se saltan solos). Si el cambio toca un módulo de usuario o una pieza genérica que usa, incluir `tests/test_main_program_purity.py`: el programa principal no debe nombrar ningún módulo.
 2. Si el cambio afecta a un componente con spec: actualizar la spec en el mismo commit si la formulación cambió, o subir `status: validated` si el componente se acaba de validar.
 3. Si el cambio renombra/elimina símbolos públicos: barrer specs, catálogos y manuales que los mencionen, en el mismo commit.
 4. **Hooks**: el repo no define hooks de pre-commit; la puerta de calidad es la suite completa del punto 1 más el CI de GitHub Actions. Si en el futuro se añaden hooks, no usar `--no-verify`.
@@ -182,7 +188,9 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 ---
 
-*Última actualización: 2026-08-25 — **Etapa 8 cerrada: análisis térmico (núcleo mínimo C1)**. §0 recoge la nueva capacidad —conducción estacionaria y transitoria, 2D y 3D— y acota lo que sigue fuera de alcance dentro de esa línea (convección, radiación, `k(T)`, cambio de fase, acoplamiento). §7 añade las convenciones térmicas críticas: signo del flujo saliente, ausencia de notación Voigt (`∇T` es un vector, no un tensor comprimido) y los dos defaults invertidos respecto a la dinámica estructural —capacidad `lumped` y `θ = 1`—, ambos por el principio del máximo de la ecuación de difusión. Recuentos actualizados a 1148 tests.*
+*Última actualización: 2026-09-24 — **ADR 0020: módulos de usuario.** §0 presenta la discontinuidad embebida como módulo de usuario `discontinuities`, con su carga explícita, y el catálogo de materiales del programa principal sin el cohesivo; §1 apunta al ADR 0020 como último aceptado y a las specs de los módulos; §2 añade `solidum/user/`, `docs/user/<módulo>/specs/` y `tests/user/`, y completa las listas de materiales y solvers; §6 añade el componente no estándar como destino propio; §3 y §8 dejan de copiar recuentos de tests (autoridad: STATUS) y §8 incorpora el test de pureza del programa principal.*
+
+*Anterior 2026-08-25 — **Etapa 8 cerrada: análisis térmico (núcleo mínimo C1)**. §0 recoge la nueva capacidad —conducción estacionaria y transitoria, 2D y 3D— y acota lo que sigue fuera de alcance dentro de esa línea (convección, radiación, `k(T)`, cambio de fase, acoplamiento). §7 añade las convenciones térmicas críticas: signo del flujo saliente, ausencia de notación Voigt (`∇T` es un vector, no un tensor comprimido) y los dos defaults invertidos respecto a la dinámica estructural —capacidad `lumped` y `θ = 1`—, ambos por el principio del máximo de la ecuación de difusión. Recuentos actualizados a 1148 tests.*
 
 *Anterior 2026-08-25 — **Saneamiento de la capa de manuales**. Los tres PDFs llevaban desde el 20-mayo sin regenerarse, anteriores a A.bis y A.ter. Causa raíz: `build_reference_manual.py` enumeraba a mano las specs que entraban al PDF, y esa lista dejaba fuera 23 de 46 specs (todo el subsistema 3D, la fractura embebida y 8 solvers) **sin producir error alguno**, mientras la portada afirmaba estar generada automáticamente desde `docs/specs/`. Ahora la agrupación se deriva del contrato de cada spec (`kind`, `strain_dim`, `dof_names`, `material_contract`) vía `collect_specs()`, y una spec no clasificable **aborta el build nombrándola**; [`tests/test_manual_coverage.py`](../tests/test_manual_coverage.py) blinda el invariante. Reference manual 175 → 340 páginas con 46/46 specs. En el User manual se escribieron desde cero las secciones de **elementos 3D** (Hex8, Tet4, Hex20, Hex27, Tet10), **materiales 3D** y **cohesivos**, **discontinuidades embebidas** y `DissipationArcLengthSolver`. Corregidas dos afirmaciones falsas por antigüedad: "3D no implementado todavía" (02_arquitectura) y "análisis dinámicos transitorios no implementados" (manual de arquitectura). Suite 970 → 973. Fuera de alcance deliberado: `manuals/glossary.md` y la generación en inglés, que merecen sesión propia.*
 

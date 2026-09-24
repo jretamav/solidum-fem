@@ -18,27 +18,28 @@
 Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[ε_xx, ε_yy, γ_xy]`, 6 = 3D Voigt `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]` — ADR 0012) y por la semántica del elemento.
 
 > Los **elementos y materiales térmicos** (Etapa 8) no aparecen en esta tabla: forman una familia paralela cuya compatibilidad la fija `FLUX_DIM`, no `STRAIN_DIM`. Ver §1.b.
+>
+> Tampoco los componentes de los **módulos de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)), que no forman parte del programa principal: `CST_Embedded2D` y la ley cohesiva `CohesiveDamageIsotropic` (módulo `discontinuities`) están en §1.c.
 
 **Materiales 1D y 2D**:
 
-| Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | Orthotropic2D | CohesiveDamageIsotropic |
-|------------------------------|:---------:|:---------------:|:-----------------:|:---------------:|:---------:|:----------:|:---------------:|:-----------------:|:-------------:|:-----------------------:|
-| `Truss2D`                    | ✓         | ✓               | ○                 |                 |           |            |                 |                   |               |                         |
-| `Truss2DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |                         |
-| `Truss3D`                    | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |                         |
-| `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |                         |
-| `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |                         |
-| `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |                         |
-| `Frame2DEuler`               | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
-| `Frame2DTimoshenko`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
-| `Frame2DEulerCorot`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
-| `Frame3D`                    | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |                         |
-| `Quad4`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
-| `Tri3`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
-| `Quad8`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
-| `Quad9`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
-| `Tri6`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |                         |
-| `CST_Embedded2D`             |           |                 |                   |                 | (c) ✓     |            |                 |                   |               | (c) ✓                   |
+| Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | Orthotropic2D |
+|------------------------------|:---------:|:---------------:|:-----------------:|:---------------:|:---------:|:----------:|:---------------:|:-----------------:|:-------------:|
+| `Truss2D`                    | ✓         | ✓               | ○                 |                 |           |            |                 |                   |               |
+| `Truss2DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
+| `Truss3D`                    | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
+| `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
+| `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
+| `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
+| `Frame2DEuler`               | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
+| `Frame2DTimoshenko`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
+| `Frame2DEulerCorot`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
+| `Frame3D`                    | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
+| `Quad4`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Tri3`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Quad8`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Quad9`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Tri6`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
 
 **Materiales 3D** (sub-etapa A.bis + Etapa 7):
 
@@ -54,7 +55,7 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 - **(a)** Frames + plasticidad 1D: válido, pero la plasticidad se aplica **sólo al esfuerzo axial $\sigma$**. La fluencia por flexión no está modelada (espera `FiberSection`, ver deuda técnica de STATUS.md).
 - **(b)** `DruckerPrager2D` está validado únicamente en `plane_strain`. `plane_stress` declarado out-of-scope (proyección con σ_zz=0 acoplada a flujo dilatante es notoriamente delicada).
-- **(c)** `CST_Embedded2D` requiere **dos materiales**: un *bulk* que gobierna el continuo y un *cohesivo* de la familia `CohesiveMaterial` (hoy sólo `CohesiveDamageIsotropic`). En la fase 1 el bulk **sólo puede ser `Elastic2D`** (lista blanca `_ACCEPTED_BULKS` en `embedded_cst.py`; cualquier otro se rechaza al construir): la aproximación discreta concentra toda la disipación en la discontinuidad (ADR 0010). *Corregido 2026-09-23: esta nota y la tabla daban por válidos como bulk `VonMises2D`, `DruckerPrager2D` e `IsotropicDamage2D`, que el código veta.*
+- **(c)** Nota trasladada a §1.c (módulo de usuario `discontinuities`).
 - **(d)** `DruckerPrager3D` se ofrece con variantes `outer`/`inner` del cono; el ajuste `plane_strain_matched` del `DruckerPrager2D` **no aplica en 3D** y se rechaza explícitamente. La cobertura de los cuadráticos (`Hex20`, `Hex27`, `Tet10`) con materiales 3D no lineales quedó cerrada en la sub-fase 5 de A.ter: las 20 celdas de la tabla están en ✓.
 - **(e)** `Orthotropic2D` es **sólo plane stress** (el plane strain ortótropo necesita `E3`, `nu13`, `nu23`; diferido en el ADR 0013) y lleva la orientación de fibra `theta` en el material, como atajo consciente del ADR 0013. Cubierto sobre los cinco sólidos 2D por patch test con constitutiva llena y validación contra Jones §2.8 (2026-09-10).
 
@@ -71,7 +72,8 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `LinearSolver`               | `static`       | Estático lineal (`K·U = F` en un paso).                           | Todos los materiales con tangente constante; sin corotacional; sin cable. |
 | `NonlinearSolver`            | `static`       | Estático no lineal con control de carga (Newton-Raphson).         | Cualquier no-linealidad material o geométrica suave (sin snap-back).  |
 | `ArcLengthSolver`            | `static`       | Estático no lineal con snap-through / snap-back / softening.      | Igual que `NonlinearSolver`, además captura puntos límite.            |
-| `DissipationArcLengthSolver` | `static`       | Estático no lineal con softening severo, controlando la disipación de energía por paso (Gutiérrez 2004). Restricción lineal en vez de cuadrática; switching automático cilíndrico↔disipación. | Igual que `ArcLengthSolver` (es subclase). Validado para daño continuo bulk 1D/2D; **no** para cohesivo+embedded con penalty `K_e` rígido (deuda técnica #4). |
+| `DissipationArcLengthSolver` | `static`       | Estático no lineal con softening severo, controlando la disipación de energía por paso (Gutiérrez 2004). Restricción lineal en vez de cuadrática; switching automático cilíndrico↔disipación. | Igual que `ArcLengthSolver` (es subclase). Validado para daño continuo bulk 1D/2D; **no** para cohesivo+embedded con penalty `K_e` rígido (módulo de usuario `discontinuities`; deuda técnica #4). |
+| `IndirectDisplacementSolver` | `static`       | Estático no lineal con retroceso (*snap-back*) por localización, controlando el incremento de una combinación de desplazamientos elegida (control indirecto de desplazamiento, de Borst 1987). | Igual que `ArcLengthSolver` (es subclase); parámetro `control` obligatorio; la magnitud controlada debe crecer monótonamente. |
 | `ModalSolver`                | `modal`        | Autovalor generalizado `K·φ = ω²M·φ` (frecuencias y modos).       | Todos los materiales (lineales en `u = 0`); `density` declarada; `compute_mass_matrix`. |
 | `NewmarkSolver`              | `transient`    | Transitorio lineal `M·ü + C·u̇ + K·u = F(t)`.                      | Mismas restricciones que `LinearSolver` + `density` declarada.        |
 | `HHTSolver`                  | `transient`    | Variante de Newmark con disipación numérica controlada (HHT-α).   | Idénticas a `NewmarkSolver` (es subclase).                            |
@@ -81,7 +83,7 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `HarmonicSolver`             | `harmonic`     | Respuesta forzada armónica `(-ω²M + iωC + K)·û = F̂` con barrido en `ω`. | Lineal; `density` declarada.                                          |
 | `ResponseSpectrumSolver`     | `spectrum`     | Análisis sísmico por combinación modal SRSS/CQC contra espectro.  | Lineal; `density` declarada; suficientes modos (verificar `cumulative_effective_mass_ratio`). |
 
-**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento **mecánico** es compatible con los 12 solvers anteriores siempre que el material declare `density`. Los elementos térmicos van por su propia vía (§2.b). **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
+**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento **mecánico** es compatible con los 13 solvers anteriores siempre que el material declare `density`. Los elementos térmicos van por su propia vía (§2.b). **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
 
 ---
 
@@ -97,6 +99,21 @@ Familia **paralela**, no una fila más de la tabla anterior. La compatibilidad n
 - **(t1)** El mismo material `ThermalConduction` cubre el caso isótropo y el anisótropo: el constructor acepta un escalar `k` y lo expande a `k·I`, o un tensor completo. **La anisotropía no requiere un material nuevo** — decisión de alcance del usuario en la Etapa 8.
 - **(t2)** La dimensión del material la fija el tensor con que se construyó, no la clase: `FLUX_DIM` es **propiedad de instancia**, no `ClassVar`. Construir el material con `dim=2` y pasarlo a un `Hex8Thermal` se rechaza con `ValueError` nombrando ambas dimensiones.
 - **(t3)** `ρ` y `c` son **opcionales**. Sólo el análisis transitorio los exige; el estacionario funciona sin ellos, y el mensaje de error lo dice explícitamente cuando faltan.
+
+---
+
+### 1.c Módulo de usuario `discontinuities` × materiales
+
+Componentes de un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)), fuera del programa principal: sólo existen en un modelo que carga el módulo (`user_modules: [discontinuities]` en el YAML, o `solidum.load_user_module("discontinuities")` en Python). Formulación en el [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md); specs en [`docs/user/discontinuities/specs/`](user/discontinuities/specs/).
+
+| Elemento | `STRAIN_DIM` | Bulk `Elastic2D` | Cohesivo `CohesiveDamageIsotropic` |
+|---|---|---|---|
+| `CST_Embedded2D` | 3 | (c) ✓ | (c) ✓ |
+
+- **(c)** `CST_Embedded2D` requiere **dos materiales**: un *bulk* que gobierna el continuo y un *cohesivo* de la familia `CohesiveMaterial` del módulo (hoy sólo `CohesiveDamageIsotropic`). En la fase 1 el bulk **sólo puede ser `Elastic2D`** (lista blanca `_ACCEPTED_BULKS` en [`solidum/user/discontinuities/embedded_cst.py`](../solidum/user/discontinuities/embedded_cst.py); cualquier otro se rechaza al construir): la aproximación discreta concentra toda la disipación en la discontinuidad (ADR 0010). *Corregido 2026-09-23: esta nota y la tabla daban por válidos como bulk `VonMises2D`, `DruckerPrager2D` e `IsotropicDamage2D`, que el código veta.*
+- El cohesivo se declara en la sección YAML `cohesive_materials`, que aporta el módulo, y el elemento lo recibe por `cohesive_material: <id>` (referencia declarada en `REFERENCE_KWARGS` y resuelta contra esa sección).
+- **Solvers**: la grieta se activa en el gancho `prepare_step`, que invocan los seis solvers que avanzan por pasos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`); `LinearSolver` no lo invoca. Límite con penalización `K_e` rígida: deuda técnica #4 de [STATUS.md](STATUS.md).
+- **Tests de sistema**: [`test_disc_cst_embedded_integration.py`](../tests/user/discontinuities/test_disc_cst_embedded_integration.py) y [`test_disc_embedded_uniaxial_softening.py`](../tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py) (tracción uniaxial con `NonlinearSolver` hasta la separación completa, frente a la solución exacta).
 
 ---
 
@@ -118,7 +135,7 @@ Familia **paralela**, no una fila más de la tabla anterior. La compatibilidad n
 | `lumping` de la matriz de masa/capacidad | `"consistent"` | **`"lumped"`** |
 | Esquema temporal | Newmark β=1/4, γ=1/2 (sin disipación numérica) | **`θ = 1`** (Euler implícito, L-estable) |
 
-**Combinaciones vetadas**: los solvers `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver` y `ResponseSpectrumSolver` **no aplican** a elementos térmicos: todos integran o diagonalizan la ecuación de segundo orden. Los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`) tampoco tienen uso hoy porque el único material térmico es lineal; lo tendrán cuando entre `k(T)` o radiación.
+**Combinaciones vetadas**: los solvers `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver` y `ResponseSpectrumSolver` **no aplican** a elementos térmicos: todos integran o diagonalizan la ecuación de segundo orden. Los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `IndirectDisplacementSolver`) tampoco tienen uso hoy porque el único material térmico es lineal; lo tendrán cuando entre `k(T)` o radiación.
 
 ---
 
@@ -237,14 +254,16 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 
 ## Cómo se mantiene este documento
 
-- **Componente nuevo**: añadir su columna o fila; marcar celdas con ✓ donde haya test y ○ donde sea compatible sin test. Si una compatibilidad requiere restricción, añadirla como nota al pie.
+- **Componente nuevo**: añadir su columna o fila; marcar celdas con ✓ donde haya test y ○ donde sea compatible sin test. Si una compatibilidad requiere restricción, añadirla como nota al pie. Un componente de un **módulo de usuario** va en la sección de su módulo (hoy §1.c), no en las tablas del programa principal.
 - **Test nuevo que cubre celda ○**: cambiar a ✓.
 - **Combinación que se descubre incompatible** (durante implementación): marcar como nota explícita, no como ✓ ni vacío.
 - **Etapa cerrada**: barrer la matriz para asegurar que todas las nuevas combinaciones quedaron reflejadas.
 
 ---
 
-*Última actualización: 2026-09-23 — columna `Orthotropic2D` (✓ en los cinco sólidos 2D, nota (e)) y **corrección de `CST_Embedded2D`**: sólo admite `Elastic2D` como bulk (lista blanca del código), no los tres materiales no lineales que la tabla daba por válidos.*
+*Última actualización: 2026-09-24 — **ADR 0020**: `CST_Embedded2D` y `CohesiveDamageIsotropic` salen de la tabla del programa principal a §1.c (módulo de usuario `discontinuities`), con la nota (c) y sus tests; añadido `IndirectDisplacementSolver` a la tabla de solvers de §2, que lo omitía (13 solvers mecánicos).*
+
+*Anterior 2026-09-23 — columna `Orthotropic2D` (✓ en los cinco sólidos 2D, nota (e)) y **corrección de `CST_Embedded2D`**: sólo admite `Elastic2D` como bulk (lista blanca del código), no los tres materiales no lineales que la tabla daba por válidos.*
 
 *Anterior: 2026-08-25 — **Etapa 8 (análisis térmico)**: añadidas §1.b (elementos × materiales térmicos, compatibilidad por `FLUX_DIM` en vez de `STRAIN_DIM`) y §2.b (solver térmico, con la tabla de defaults invertidos respecto a la dinámica estructural y las combinaciones vetadas por incompatibilidad física). La familia térmica va en secciones propias y no como filas de la tabla mecánica porque el campo es escalar y el gradiente no se comprime en notación Voigt. Cuatro filas nuevas en §3, hueco #7 (validación sobre geometría curva, diferida por falta de mallador de corona circular) y tres no-huecos nuevos en §4.*
 

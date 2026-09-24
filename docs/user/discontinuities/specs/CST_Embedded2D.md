@@ -12,7 +12,7 @@ Elemento finito sólido 2D triangular de tres nodos (CST padre) **enriquecido** 
 
 Estructura del elemento:
 
-- **Estado intacto** (`discontinuity_state is None`): se comporta exactamente como un [`Tri3`](Tri3.md) estándar — CST con un único punto de Gauss, B constante, integración exacta del bulk con peso `A_e·t`.
+- **Estado intacto** (`discontinuity_state is None`): se comporta exactamente como un [`Tri3`](../../../specs/Tri3.md) estándar — CST con un único punto de Gauss, B constante, integración exacta del bulk con peso `A_e·t`.
 - **Estado agrietado** (`discontinuity_state is not None`): el campo de desplazamientos del bulk se enriquece con un salto `[[u]] ∈ ℝ²` localizado en `Γ_d`. El bulk vecino descarga elásticamente; la disipación se concentra en `Γ_d` y la gobierna un material cohesivo (`CohesiveMaterial`, ADR 0010 §1).
 
 Aproximación adoptada: **discrete approach** (Retama 2010), **KOS** (Kinematically Optimal Symmetric) según la clasificación de Jirásek (2000). Tracking trivial: la normal `n` y la posición de `Γ_d` se fijan al activar el elemento (perpendicular a `σ_I` por criterio Rankine; `Γ_d` pasa por el centroide) y no se reorientan después. Modo-I puro (consistente con `CohesiveDamageIsotropic` fase 1); modo mixto y KSON quedan diferidos (fases G y H del ADR 0010).
@@ -27,7 +27,7 @@ $$\mathbf u(\mathbf x) = \underbrace{\sum_{i=1}^{3} N_i(\mathbf x)\,\mathbf d_i}
 
 donde:
 
-- `N_i(x)` son las funciones de forma estándar del CST (coordenadas baricéntricas; ver [`Tri3`](Tri3.md) §7).
+- `N_i(x)` son las funciones de forma estándar del CST (coordenadas baricéntricas; ver [`Tri3`](../../../specs/Tri3.md) §7).
 - `d_i ∈ ℝ²` son los desplazamientos nodales estándar (DOFs globales del modelo, 2 por nodo).
 - `[[u]] ∈ ℝ²` es el salto de desplazamientos a través de `Γ_d`, expresado en el **frame local** `(n, s)` de la discontinuidad. Es un **DOF enriquecido elemental** — vive en el elemento, no se ensambla al sistema global (ADR 0010 §2).
 - `H_{Γ_d}(x)` es la función escalón de Heaviside relativa a `Γ_d` (0 en `Ω⁻`, 1 en `Ω⁺`). `Ω⁺` es el subdominio del lado al que apunta `n`.
@@ -44,7 +44,7 @@ Deformación en el bulk (parte regular del campo):
 
 $$\boldsymbol\varepsilon^{\text{bulk}}(\mathbf x) = \mathbf B_{\text{std}}\,\mathbf d \;-\; \mathbf B^\varphi(\mathbf x)\,\mathbf G\,\llbracket\mathbf u\rrbracket$$
 
-donde `B_std` es la matriz `B` del CST estándar (Voigt 2D, 3×6, constante, ver [`Tri3`](Tri3.md) §8) y `B^φ(x)` es la matriz Voigt construida con `∇φ`:
+donde `B_std` es la matriz `B` del CST estándar (Voigt 2D, 3×6, constante, ver [`Tri3`](../../../specs/Tri3.md) §8) y `B^φ(x)` es la matriz Voigt construida con `∇φ`:
 
 $$\mathbf B^\varphi = \begin{bmatrix} \partial\varphi/\partial x & 0 \\ 0 & \partial\varphi/\partial y \\ \partial\varphi/\partial y & \partial\varphi/\partial x \end{bmatrix}$$
 
@@ -88,13 +88,13 @@ con `l_d` la longitud efectiva de `Γ_d` dentro del elemento (ver §11). El prim
 
 ### 6. Discretización del CST padre
 
-Idéntica a [`Tri3`](Tri3.md): tres nodos en orden antihorario, mapeo isoparamétrico desde el triángulo de referencia con vértices `(0,0)`, `(1,0)`, `(0,1)`. Jacobiano constante; aborta con error si `det J ≤ tol`.
+Idéntica a [`Tri3`](../../../specs/Tri3.md): tres nodos en orden antihorario, mapeo isoparamétrico desde el triángulo de referencia con vértices `(0,0)`, `(1,0)`, `(0,1)`. Jacobiano constante; aborta con error si `det J ≤ tol`.
 
 **Identificación del nodo solitario.** Cuando `Γ_d` corta dos lados del triángulo, exactamente un nodo queda aislado en `Ω⁺` (lado al que apunta `n`); los otros dos quedan en `Ω⁻`. El nodo solitario es el **único** que tiene `φ = 1`; los otros dos tienen `φ = 0`. La identificación se hace al activar el elemento, comparando el producto `(x_i − x_c)·n` para cada nodo (`x_c` = centroide), donde el signo del producto determina el lado.
 
 ### 7. Funciones de forma + función `φ`
 
-`N_i(x)` idénticas a [`Tri3`](Tri3.md) §7. Para `φ`:
+`N_i(x)` idénticas a [`Tri3`](../../../specs/Tri3.md) §7. Para `φ`:
 
 $$\varphi(\mathbf x) = N_{i^*}(\mathbf x)$$
 
@@ -102,7 +102,7 @@ donde `i*` es el índice del nodo solitario. Es lineal y `C^0` continua, vale 1 
 
 ### 8. Matrices B estándar + B^φ
 
-`B_std` es la matriz B clásica del CST (constante, 3×6); ver [`Tri3`](Tri3.md) §8.
+`B_std` es la matriz B clásica del CST (constante, 3×6); ver [`Tri3`](../../../specs/Tri3.md) §8.
 
 `B^φ` es la matriz Voigt 3×2 construida con `(∂φ/∂x, ∂φ/∂y)`:
 
@@ -202,7 +202,7 @@ ADR 0010 §5 fija que la activación se evalúa **al inicio de cada paso de carg
 
 ## Caveats numéricos
 
-- **Invertibilidad de `K_{[[u]][[u]]}` en ablandamiento**. La tangente cohesiva es `diag(dT_soft/dκ, 0)`: negativa en el ablandamiento, nula con la grieta totalmente abierta y nula siempre en la dirección tangencial (Modo-I). La matriz 2×2 sigue siendo invertible por el término del bulk `G^T·(B^φ)^T·C_e·B^φ·G·vol`, definido positivo, mientras el elemento no sea tan grande que el ablandamiento lo supere (aproximadamente `l_d·|dT_soft/dκ| < E/h`). Por eso el cohesivo no necesita ninguna rigidez residual; la que tuvo hasta el 2026-09-23 (`(1 − DAMAGE_MAX)·K_e`) daba a la tangente condensada errores del 26 al 45 % en el ablandamiento ([`TestCondensedTangentInSoftening`](../../tests/user/discontinuities/test_disc_cst_embedded.py)).
+- **Invertibilidad de `K_{[[u]][[u]]}` en ablandamiento**. La tangente cohesiva es `diag(dT_soft/dκ, 0)`: negativa en el ablandamiento, nula con la grieta totalmente abierta y nula siempre en la dirección tangencial (Modo-I). La matriz 2×2 sigue siendo invertible por el término del bulk `G^T·(B^φ)^T·C_e·B^φ·G·vol`, definido positivo, mientras el elemento no sea tan grande que el ablandamiento lo supere (aproximadamente `l_d·|dT_soft/dκ| < E/h`). Por eso el cohesivo no necesita ninguna rigidez residual; la que tuvo hasta el 2026-09-23 (`(1 − DAMAGE_MAX)·K_e`) daba a la tangente condensada errores del 26 al 45 % en el ablandamiento ([`TestCondensedTangentInSoftening`](../../../../tests/user/discontinuities/test_disc_cst_embedded.py)).
 - **Mecanismo de deslizamiento**. Con rigidez de modo II nula (Retama 2010, p. 67), una grieta que atraviesa todo el sólido deja deslizar sin resistencia una parte respecto de la otra en la dirección de la grieta. Las condiciones de apoyo tienen que impedir ese movimiento; si no, el Newton global deriva sin converger en desplazamientos aunque el residuo sea nulo.
 - **Activación al principio del paso**. Si el incremento es muy grande, `σ_I` puede saltar muy por encima de `σ_t0` antes de la activación, generando un Δ[[u]] grande en el primer Newton. Mitigación: pasos suficientemente pequeños o `ArcLengthSolver` cerca del pico.
 - **Bulk descarga elástica**. Por la cinemática KOS, el bulk evalúa `ε^bulk = B_std·d − B^φ·G·[[u]]` — descarga conforme `[[u]]` crece. Esto es físicamente correcto (la disipación va a `Γ_d`) y consistente con la discrete approach de Retama 2010. El bulk **no acumula daño** propio (out_of_scope fase 1).
@@ -340,7 +340,7 @@ references:
   - "Linder, C., Armero, F. (2007). Finite elements with embedded strong discontinuities. IJNME 72, 1391-1433."
   - "ADR 0010 — Discontinuidades interiores embebidas (hoja de ruta; fase 2 = este elemento)."
   - "Spec [CohesiveDamageIsotropic](CohesiveDamageIsotropic.md) — material cohesivo consumido en Γ_d."
-  - "Spec [Tri3](Tri3.md) — CST padre del elemento; mismo bulk en estado intacto."
+  - "Spec [Tri3](../../../specs/Tri3.md) — CST padre del elemento; mismo bulk en estado intacto."
 ```
 
 ---

@@ -11,7 +11,7 @@ con la fuente oficial donde obtenerla.
 - **Institución**: Universidad Nacional Autónoma de México (UNAM), Programa de Maestría y Doctorado en Ingeniería
 - **Año**: 2010
 - **Contenido relevante para Solidum**: formulación KOS / KSON, modelos cohesivos $t$–$[[u]]$, condensación estática del salto, expresión `l_d = (A_e/h)·cos(θ−α)` (Cap. 6), criterio de activación Rankine.
-- **Vinculado a**: ADR 0010 (discontinuidades interiores embebidas), `solidum/elements/cst_embedded2d.py`, `solidum/materials/cohesive_damage_isotropic.py`.
+- **Vinculado a**: ADR 0010 (discontinuidades interiores embebidas) y ADR 0020 (módulos de usuario): la formulación es el módulo de usuario `discontinuities`, fuera del programa principal — [`solidum/user/discontinuities/embedded_cst.py`](../../solidum/user/discontinuities/embedded_cst.py) (`CST_Embedded2D`), [`solidum/user/discontinuities/damage_isotropic.py`](../../solidum/user/discontinuities/damage_isotropic.py) (`CohesiveDamageIsotropic`) y sus specs en [`docs/user/discontinuities/specs/`](../user/discontinuities/specs/).
 - **Fuente oficial**: Repositorio de Tesis Digitales UNAM, [tesiunam.dgb.unam.mx](https://tesiunam.dgb.unam.mx/) (búsqueda por autor).
 
 ## de Borst & Sluys (1999) — Métodos computacionales en mecánica de sólidos no lineal
@@ -26,4 +26,4 @@ con la fuente oficial donde obtenerla.
 
 ## Otras referencias citadas en ADRs y specs
 
-Los ADRs (`docs/adr/000N-titulo.md`) y las specs (`docs/specs/`) citan referencias bibliográficas adicionales en línea. Cada cita lleva información suficiente (autor, año, revista o editorial) para localizar la fuente original a través de buscadores académicos (Google Scholar, Scopus, Web of Science) o catálogos institucionales. No se mantiene un listado consolidado de todas ellas para evitar duplicación con las citas en contexto.
+Los ADRs (`docs/adr/000N-titulo.md`) y las specs (`docs/specs/` en el programa principal, `docs/user/<módulo>/specs/` en los módulos de usuario) citan referencias bibliográficas adicionales en línea. Cada cita lleva información suficiente (autor, año, revista o editorial) para localizar la fuente original a través de buscadores académicos (Google Scholar, Scopus, Web of Science) o catálogos institucionales. No se mantiene un listado consolidado de todas ellas para evitar duplicación con las citas en contexto.

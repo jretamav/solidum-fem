@@ -9,6 +9,9 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
 - `point_loads_by_node` / `_by_coord` / `_by_group` — cargas de Neumann puntuales.
 - `solver` — tipo de solver y sus parámetros.
 - `output` — frecuencia y formato de exportación de resultados.
+- `user_modules` — módulos de usuario que el modelo necesita (sólo si usa una formulación no estándar).
+
+Una sección de primer nivel que el lector no conoce es un error, no se ignora: una errata en el nombre de un bloque detiene la lectura en vez de dejar el modelo sin ese bloque.
 
 ## Geometría: `nodes` y `elements`
 
@@ -90,6 +93,18 @@ materials:
 ```
 
 Los parámetros aceptados dependen del material; consulte el capítulo *Catálogo de Modelos Constitutivos* para el catálogo completo.
+
+## Módulos de usuario: `user_modules`
+
+El **programa principal** de Solidum contiene los elementos, materiales y solvers de elementos finitos estándar. Las formulaciones no estándar viven aparte, en **módulos de usuario** (`solidum/user/<nombre>/`), a la manera de los elementos y materiales de usuario de FEAP (ADR 0020). Un módulo de usuario puede aportar tipos de elemento, materiales y secciones de primer nivel propias, pero el programa principal no lo carga por sí solo: el modelo que lo necesita lo declara.
+
+```yaml
+user_modules: [discontinuities]
+```
+
+Los módulos declarados se cargan al principio de la lectura, antes de validar el resto del archivo, de modo que sus tipos y secciones se validan como los del programa principal. La carga es explícita a propósito: el archivo dice qué formulación necesita, y el mismo modelo no funciona en una sesión y falla en otra según lo que se haya importado antes. Si el YAML usa un tipo o una sección de un módulo sin declararlo, el error lo dice y lista los módulos disponibles; un nombre de módulo inexistente también es un error.
+
+Hoy existe un módulo de usuario, `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D` y su familia de materiales cohesivos, con la sección `cohesive_materials` (capítulos *Catálogo de Elementos Finitos* y *Catálogo de Modelos Constitutivos*).
 
 ## Condiciones de Frontera
 

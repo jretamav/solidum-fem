@@ -24,7 +24,7 @@
 \usepackage{amsfonts}
 % Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
 % desplazamientos en discontinuidades embebidas y materiales cohesivos
-% (ADR 0010). No están en amssymb.
+% (ADR 0010; módulo de usuario discontinuities, ADR 0020). No están en amssymb.
 \usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -198,7 +198,7 @@
 \addcontentsline{toc}{chapter}{Sobre este manual}
 \noindent Este manual está dirigido al \textbf{usuario final} de Solidum FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
 
-Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
+Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/} (programa principal) y \texttt{docs/user/*/specs/} (apéndice \emph{Módulos de usuario}).
 
 Para la \emph{visión arquitectural} del programa (capas, bloques funcionales, mecanismos transversales y dirección de evolución), consultar \texttt{manuals/Architecture\_manual.pdf}.
 
@@ -323,7 +323,7 @@ class Truss2D(Element):
 
 \end{lstlisting}
 
-Esto permite que el archivo YAML los referencie por nombre (\texttt{type: Truss2D}) sin que el usuario tenga que importar nada manualmente. El módulo \texttt{solidum.\allowbreak{}autodiscover} recorre los paquetes \texttt{elements/}, \texttt{materials/} y \texttt{math/solvers/} en la primera importación y puebla los registries.
+Esto permite que el archivo YAML los referencie por nombre (\texttt{type: Truss2D}) sin que el usuario tenga que importar nada manualmente. El módulo \texttt{solidum.\allowbreak{}autodiscover} recorre los paquetes \texttt{elements/}, \texttt{materials/} y \texttt{math/solvers/} en la primera importación y puebla los registries. Los módulos de usuario (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con \texttt{user\_modules} (capítulo \textit{Archivo de Entrada YAML}).
 
 \section{Validación Temprana del Input}
 
@@ -355,7 +355,10 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
   \item \texttt{point\_\allowbreak{}loads\_\allowbreak{}by\_\allowbreak{}node} / \texttt{\_by\_coord} / \texttt{\_by\_group} --- cargas de Neumann puntuales.
   \item \texttt{solver} --- tipo de solver y sus parámetros.
   \item \texttt{output} --- frecuencia y formato de exportación de resultados.
+  \item \texttt{user\_modules} --- módulos de usuario que el modelo necesita (sólo si usa una formulación no estándar).
 \end{itemize}
+
+Una sección de primer nivel que el lector no conoce es un error, no se ignora: una errata en el nombre de un bloque detiene la lectura en vez de dejar el modelo sin ese bloque.
 
 \section{Geometría: \texttt{nodes} y \texttt{elements}}
 
@@ -399,13 +402,16 @@ mesh_quadrature: "2x2"
 \texttt{mesh} & Ruta al archivo \texttt{.msh} de Gmsh, relativa al YAML. \\
 \texttt{mesh\_material} & ID del material por defecto que se asocia a toda la malla. \\
 \texttt{mesh\_thickness} & Espesor por defecto (estado plano 2D). \\
-\texttt{mesh\_quadrature} & Regla de Gauss: \texttt{\textquotedbl{}2x2\textquotedbl{}} (completa, recomendada) o \texttt{\textquotedbl{}1x1\textquotedbl{}} (reducida; produce \textit{hourglassing}). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de \texttt{K}. \\
+\texttt{mesh\_quadrature} & Regla de Gauss: \texttt{\textquotedbl{}2x2\textquotedbl{}} (completa, recomendada) o \texttt{\textquotedbl{}1x1\textquotedbl{}} (reducida; produce \textit{hourglassing}). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de \texttt{K}. Los elementos sin cuadratura (\texttt{Tri3}) la ignoran. \\
+\texttt{mesh\_element} & Opcional. Tipo de elemento de toda la malla, p. ej. \texttt{Quad4Thermal} para un modelo térmico. Sin él, cada celda gmsh da el elemento estándar: \texttt{quad} \ensuremath{\to} \texttt{Quad4}, \texttt{triangle} \ensuremath{\to} \texttt{Tri3}. El número de nodos del elemento debe coincidir con el de la celda. \\
 \hline
 \end{tabularx}
 \end{center}
+\texttt{mesh\_material} se busca en la familia de material del elemento: en \texttt{materials} para los mecánicos, en \texttt{thermal\_\allowbreak{}materials} para los térmicos.
+
 \subsection{Mapeo Avanzado: \texttt{mesh\_\allowbreak{}physical\_\allowbreak{}groups}}
 
-Si la geometría tiene zonas con materiales o espesores distintos definidos como \textit{Physical Groups} en Gmsh, se mapean explícitamente:
+Si la geometría tiene zonas con materiales, espesores o elementos distintos definidos como \textit{Physical Groups} en Gmsh, se mapean explícitamente:
 
 \begin{lstlisting}[language=yaml]
 mesh_physical_groups:
@@ -418,6 +424,8 @@ mesh_physical_groups:
     thickness: 0.05
 
 \end{lstlisting}
+
+Un grupo también puede elegir su propio \texttt{element}, con cualquier parámetro que acepte ese elemento. Sin \texttt{element}, un grupo sólo admite \texttt{material}, \texttt{thickness} y \texttt{quadrature}: cualquier otra clave es un error, no se ignora.
 
 \section{Materiales}
 
@@ -441,6 +449,19 @@ materials:
 \end{lstlisting}
 
 Los parámetros aceptados dependen del material; consulte el capítulo \textit{Catálogo de Modelos Constitutivos} para el catálogo completo.
+
+\section{Módulos de usuario: \texttt{user\_modules}}
+
+El \textbf{programa principal} de Solidum contiene los elementos, materiales y solvers de elementos finitos estándar. Las formulaciones no estándar viven aparte, en \textbf{módulos de usuario} (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}), a la manera de los elementos y materiales de usuario de FEAP (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). Un módulo de usuario puede aportar tipos de elemento, materiales y secciones de primer nivel propias, pero el programa principal no lo carga por sí solo: el modelo que lo necesita lo declara.
+
+\begin{lstlisting}[language=yaml]
+user_modules: [discontinuities]
+
+\end{lstlisting}
+
+Los módulos declarados se cargan al principio de la lectura, antes de validar el resto del archivo, de modo que sus tipos y secciones se validan como los del programa principal. La carga es explícita a propósito: el archivo dice qué formulación necesita, y el mismo modelo no funciona en una sesión y falla en otra según lo que se haya importado antes. Si el YAML usa un tipo o una sección de un módulo sin declararlo, el error lo dice y lista los módulos disponibles; un nombre de módulo inexistente también es un error.
+
+Hoy existe un módulo de usuario, \texttt{discontinuities}: el elemento con discontinuidad embebida \texttt{CST\_Embedded2D} y su familia de materiales cohesivos, con la sección \texttt{cohesive\_\allowbreak{}materials} (capítulos \textit{Catálogo de Elementos Finitos} y \textit{Catálogo de Modelos Constitutivos}).
 
 \section{Condiciones de Frontera}
 
@@ -665,7 +686,9 @@ Cuando \texttt{frequency: \textquotedbl{}all\_\allowbreak{}steps\textquotedbl{}}
 
 
 
-El motor expone varias familias de elementos: \textbf{1D} (estructuras reticulares: armaduras, cables, marcos), \textbf{2D} (continuo plano: cuadrilátero y triángulo), \textbf{3D} (continuo tridimensional: hexaedros y tetraedros, lineales y cuadráticos), \textbf{discontinuidades embebidas} (fractura con salto interior) y \textbf{térmicos} (conducción de calor, con un grado de libertad escalar por nodo; se documentan en el capítulo «Análisis Térmico»). Todos se referencian desde el YAML por su nombre exacto en \texttt{type:}.
+El programa principal expone varias familias de elementos: \textbf{1D} (estructuras reticulares: armaduras, cables, marcos), \textbf{2D} (continuo plano: cuadrilátero y triángulo), \textbf{3D} (continuo tridimensional: hexaedros y tetraedros, lineales y cuadráticos) y \textbf{térmicos} (conducción de calor, con un grado de libertad escalar por nodo; se documentan en el capítulo «Análisis Térmico»). Todos se referencian desde el YAML por su nombre exacto en \texttt{type:}.
+
+Las formulaciones no estándar viven fuera del programa principal, en \textbf{módulos de usuario} que el modelo carga de forma explícita (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). El elemento con discontinuidad embebida (fractura con salto interior) pertenece al módulo de usuario \texttt{discontinuities} y se documenta en la última sección de este capítulo.
 
 \section{Elementos 1D}
 
@@ -865,36 +888,6 @@ elements:
 
 \end{lstlisting}
 
-\section{Elementos 2D con discontinuidad embebida}
-
-Subfamilia dedicada a \textbf{fractura computacional}: el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son \textbf{elementales}: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
-
-\subsection{Triángulo CST con Discontinuidad Interior: \texttt{CST\_Embedded2D}}
-
-CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
-
-\begin{itemize}
-  \item \textbf{DOFs/nodo}: \texttt{ux, uy} ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
-  \item \textbf{Cuadratura}: 1 punto (hereda del \texttt{Tri3}).
-  \item \textbf{Parámetros}: \texttt{thickness}, \texttt{material} (bulk), \texttt{cohesive\_\allowbreak{}material}, \texttt{activation\_\allowbreak{}criterion} (opcional, default \texttt{rankine}).
-  \item \textbf{Dos materiales}: a diferencia del resto del catálogo, requiere \textbf{un material de bulk} que gobierna el continuo y \textbf{uno cohesivo} que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos.
-  \item \textbf{Estado intacto}: idéntico al \texttt{Tri3} hasta que la discontinuidad se activa.
-  \item \textbf{Activación}: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior. Es \textbf{irreversible}: una vez activada persiste aunque el paso siguiente descargue.
-  \item \textbf{Bulk aceptado}: sólo \texttt{Elastic2D} en la fase actual --- la \textit{discrete approach} presupone bulk elástico (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}).
-  \item \textbf{Post-proceso}: \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state(U)} añade la clave \texttt{'discontinuity'} con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
-  \item \textbf{Limitación operativa}: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver el capítulo de diagnóstico.
-\end{itemize}
-
-\begin{lstlisting}[language=yaml]
-cohesive_materials:
-  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
-     K_e: 1.0e13, softening: linear}
-elements:
-  - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
-     material: 1, cohesive_material: 1}
-
-\end{lstlisting}
-
 \section{Elementos 3D}
 
 Sólidos tridimensionales isoparamétricos (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0012-solidos-3d-y-voigt-6d.md}{ADR 0012}). Todos comparten DOFs \texttt{ux, uy, uz} y $\texttt{STRAIN\_DIM} = 6$ sobre la convención Voigt 3D del proyecto, $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$, y exigen un material 3D (\texttt{Elastic3D}, \texttt{VonMises3D}, \texttt{DruckerPrager3D}, \texttt{IsotropicDamage3D}).
@@ -966,6 +959,48 @@ elements:
   - {id: 4, type: Tet10, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
 
 \end{lstlisting}
+
+\section{Módulo de usuario \texttt{discontinuities}: elemento con discontinuidad embebida}
+
+Formulación de \textbf{fractura computacional} de Retama (2010): el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son \textbf{elementales}: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
+
+No es un elemento finito estándar, así que no forma parte del programa principal: vive en el \textbf{módulo de usuario} \texttt{discontinuities} (\texttt{solidum/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}}), junto con su familia de materiales cohesivos (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). \texttt{import solidum} no lo carga; el YAML que use \texttt{CST\_Embedded2D} o la sección \texttt{cohesive\_\allowbreak{}materials} debe declararlo:
+
+\begin{lstlisting}[language=yaml]
+user_modules: [discontinuities]
+
+\end{lstlisting}
+
+Sin esa línea, la lectura se detiene con un error que nombra el tipo o la sección desconocidos y lista los módulos de usuario disponibles.
+
+\subsection{Triángulo CST con Discontinuidad Interior: \texttt{CST\_Embedded2D}}
+
+CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
+
+\begin{itemize}
+  \item \textbf{DOFs/nodo}: \texttt{ux, uy} ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
+  \item \textbf{Cuadratura}: 1 punto (hereda del \texttt{Tri3}).
+  \item \textbf{Parámetros}: \texttt{material} (bulk), \texttt{cohesive\_\allowbreak{}material} y \texttt{thickness} (opcional, default \texttt{1.0}).
+  \item \textbf{Dos materiales}: a diferencia del resto del catálogo, requiere \textbf{un material de bulk} que gobierna el continuo y \textbf{uno cohesivo} que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos: \texttt{material} se busca en \texttt{materials} y \texttt{cohesive\_\allowbreak{}material} en \texttt{cohesive\_\allowbreak{}materials}.
+  \item \textbf{Estado intacto}: idéntico al \texttt{Tri3} hasta que la discontinuidad se activa.
+  \item \textbf{Activación}: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior; es el único criterio y no se declara en el YAML. Es \textbf{irreversible}: una vez activada persiste aunque el paso siguiente descargue.
+  \item \textbf{Bulk aceptado}: sólo \texttt{Elastic2D} en la fase actual --- la \textit{discrete approach} presupone bulk elástico (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}).
+  \item \textbf{Post-proceso}: \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state(U)} añade la clave \texttt{'discontinuity'} con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
+  \item \textbf{Limitación operativa}: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver la limitación conocida de \texttt{DissipationArcLengthSolver} en el capítulo «Esquemas de Solución».
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+user_modules: [discontinuities]
+cohesive_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+     K_e: 1.0e13, softening: linear}
+elements:
+  - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+     material: 1, cohesive_material: 1}
+
+\end{lstlisting}
+
+La formulación completa (cinemática KOS, condensación, longitud $l_d$) está en la spec del elemento, en el apéndice «Módulos de usuario» del Manual de Referencia.
 
 
 \newpage
@@ -1239,9 +1274,11 @@ materials:
 
 \end{lstlisting}
 
-\section{Materiales Cohesivos (salto de desplazamientos)}
+\section{Módulo de usuario \texttt{discontinuities}: materiales cohesivos (salto de desplazamientos)}
 
-Familia \textbf{paralela} al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la \textbf{tracción} $\mathbf{t}$ con el \textbf{salto de desplazamientos} $\llbracket u \rrbracket$ a través de una discontinuidad. Viven en su propio registro y se declaran en el bloque \texttt{cohesive\_\allowbreak{}materials} del YAML, no en \texttt{materials}. Sólo los consumen elementos con discontinuidad embebida como \texttt{CST\_Embedded2D}.
+Familia \textbf{paralela} al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la \textbf{tracción} $\mathbf{t}$ con el \textbf{salto de desplazamientos} $\llbracket u \rrbracket$ a través de una discontinuidad. Sólo los consumen elementos con discontinuidad embebida como \texttt{CST\_Embedded2D}.
+
+No pertenecen al programa principal: la familia, su registro (\texttt{CohesiveMaterialRegistry}) y su sección YAML \texttt{cohesive\_\allowbreak{}materials} los aporta el \textbf{módulo de usuario} \texttt{discontinuities} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). Se declaran en el bloque \texttt{cohesive\_\allowbreak{}materials}, no en \texttt{materials}, y el YAML debe cargar antes el módulo con \texttt{user\_\allowbreak{}modules: [discontinuities]}; sin él, \texttt{cohesive\_\allowbreak{}materials} es una sección desconocida y la lectura se detiene.
 
 \subsection{\texttt{CohesiveDamageIsotropic} --- daño cohesivo Modo-I}
 
@@ -1254,6 +1291,7 @@ Daño escalar $\omega \in [0, 1]$ sobre el salto normal: $t_n = (1-\omega)K_e \l
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
+user_modules: [discontinuities]
 cohesive_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
@@ -1370,7 +1408,7 @@ es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrátic
   \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_\allowbreak{}threshold}.
   \item \textbf{Cuándo usarlo}: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
   \item \textbf{Limitación medida}: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda \#27). Para retrocesos, \texttt{IndirectDisplacementSolver}.
-  \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
+  \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida (\texttt{CST\_Embedded2D}, módulo de usuario \texttt{discontinuities}) con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
@@ -2067,7 +2105,7 @@ Mediante \texttt{meshio}, Solidum FEM exporta los resultados en archivos \texttt
 \begin{itemize}
   \item \texttt{Von\_Mises}: esfuerzo equivalente J2, calculado como invariante 3D con las seis componentes; en plane strain incluye $\sigma_{zz}$ (que aporta el material vía \texttt{out\_\allowbreak{}of\_\allowbreak{}plane\_\allowbreak{}stress}), en plane stress $\sigma_{zz} = 0$.
   \item \texttt{Internal\_State}: variable principal del material según su \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR} (acumulada equivalente $\alpha$ en plasticidad, $d$ en daño, etc.).
-  \item \texttt{Sigma\_XX}, \texttt{Sigma\_YY}, \texttt{Sigma\_ZZ}, \texttt{Tau\_XY}, \texttt{Tau\_YZ}, \texttt{Tau\_XZ}: las seis componentes del tensor de esfuerzos (en 2D las tres últimas son $\sigma_{zz}$ del material y ceros). Se evalúan en el campo \texttt{U} exportado vía \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state} y se promedian por elemento: el exportador no depende de qué solver produjo \texttt{U} ni de que el estado esté comiteado. Cubre sólidos 2D y 3D (\texttt{quad}, \texttt{triangle}, \texttt{quad8}, \texttt{quad9}, \texttt{triangle6}, \texttt{hexahedron}, \texttt{tetra}, \texttt{hexahedron20}, \texttt{hexahedron27}, \texttt{tetra10}), elementos térmicos (campo nodal \texttt{Temperature} y \texttt{Flux} por celda) y \texttt{CST\_Embedded2D}.
+  \item \texttt{Sigma\_XX}, \texttt{Sigma\_YY}, \texttt{Sigma\_ZZ}, \texttt{Tau\_XY}, \texttt{Tau\_YZ}, \texttt{Tau\_XZ}: las seis componentes del tensor de esfuerzos (en 2D las tres últimas son $\sigma_{zz}$ del material y ceros). Se evalúan en el campo \texttt{U} exportado vía \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state} y se promedian por elemento: el exportador no depende de qué solver produjo \texttt{U} ni de que el estado esté comiteado. Cubre sólidos 2D y 3D (\texttt{quad}, \texttt{triangle}, \texttt{quad8}, \texttt{quad9}, \texttt{triangle6}, \texttt{hexahedron}, \texttt{tetra}, \texttt{hexahedron20}, \texttt{hexahedron27}, \texttt{tetra10}), elementos térmicos (campo nodal \texttt{Temperature} y \texttt{Flux} por celda) y los elementos de los módulos de usuario, como el \texttt{CST\_Embedded2D} del módulo \texttt{discontinuities}: el exportador deriva la celda VTK del número de nodos (o de \texttt{VTK\_CELL\_TYPE}, si el elemento lo declara), sin conocer la clase.
 \end{itemize}
 
 \section{Animación con Archivo PVD}
@@ -2316,11 +2354,32 @@ VtkExporter(domain).export("resultados.vtu", U=U, F_ext=F_ext)
 
 \end{lstlisting}
 
-\texttt{Assembler(domain)} ensambla \textbf{por lotes} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014}): agrupa los elementos que comparten clase, material y cuadratura en familias y los evalúa en un kernel compilado, con el mismo resultado que el bucle elemento a elemento a precisión de máquina. \texttt{Assembler(domain, batch=False)} fuerza el camino por elemento en todo el modelo (útil para comparar o diagnosticar); \texttt{parallel=False} usa el kernel serie en vez del paralelo (el resultado es bit a bit el mismo; el número de hilos lo fija Numba con la variable de entorno \texttt{NUMBA\_\allowbreak{}NUM\_\allowbreak{}THREADS} o \texttt{numba.\allowbreak{}set\_\allowbreak{}num\_\allowbreak{}threads}); \texttt{batch\_\allowbreak{}memory\_\allowbreak{}budget=} acota, en bytes, los temporales por trozo. Los elementos sin kernel por lotes (1D, discontinuidad embebida) se ensamblan como siempre dentro del mismo \texttt{Assembler}. Si se sustituye el material o el espesor de un elemento después del primer ensamblaje, llamar a \texttt{assembler.\allowbreak{}invalidate()}. Un elemento con nodos en orden incorrecto (jacobiano negativo) detiene el ensamblaje con \texttt{ValueError} que nombra su \texttt{id}.
+\texttt{Assembler(domain)} ensambla \textbf{por lotes} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014}): agrupa los elementos que comparten clase, material y cuadratura en familias y los evalúa en un kernel compilado, con el mismo resultado que el bucle elemento a elemento a precisión de máquina. \texttt{Assembler(domain, batch=False)} fuerza el camino por elemento en todo el modelo (útil para comparar o diagnosticar); \texttt{parallel=False} usa el kernel serie en vez del paralelo (el resultado es bit a bit el mismo; el número de hilos lo fija Numba con la variable de entorno \texttt{NUMBA\_\allowbreak{}NUM\_\allowbreak{}THREADS} o \texttt{numba.\allowbreak{}set\_\allowbreak{}num\_\allowbreak{}threads}); \texttt{batch\_\allowbreak{}memory\_\allowbreak{}budget=} acota, en bytes, los temporales por trozo. Los elementos sin kernel por lotes (1D) y los que guardan estado propio fuera de \texttt{ElementState} (como el \texttt{CST\_Embedded2D} del módulo de usuario \texttt{discontinuities}) se ensamblan como siempre dentro del mismo \texttt{Assembler}. Si se sustituye el material o el espesor de un elemento después del primer ensamblaje, llamar a \texttt{assembler.\allowbreak{}invalidate()}. Un elemento con nodos en orden incorrecto (jacobiano negativo) detiene el ensamblaje con \texttt{ValueError} que nombra su \texttt{id}.
 
 Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo, \texttt{solidum.\allowbreak{}math.\allowbreak{}batch.\allowbreak{}gauss\_\allowbreak{}states(domain, U)} devuelve \texttt{\{id: compute\_\allowbreak{}gauss\_\allowbreak{}state(U)\}} evaluando cada familia de una vez (las entradas son vistas sobre arreglos) y llamando a \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state} sólo en los elementos sin familia; el exportador VTK hace lo mismo por dentro.
 
 El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state}), así que funciona igual tras \texttt{LinearSolver.\allowbreak{}solve} directo, tras \texttt{solidum.run} o en un paso intermedio del \texttt{step\_callback}. Si el modelo lleva peso propio o fuerza de cuerpo, usar \texttt{solidum.run(...)} en vez de \texttt{solver.\allowbreak{}solve(.\allowbreak{}.\allowbreak{}.\allowbreak{})} para que \texttt{SolveResult.\allowbreak{}element\_\allowbreak{}forces} reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
+
+\section{Módulos de usuario}
+
+La raíz del paquete sólo reexporta el programa principal. Las formulaciones no estándar viven en módulos de usuario (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}) que \texttt{import solidum} no carga; en Python se cargan importándolos directamente o con \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module}, el equivalente de \texttt{user\_modules} en el YAML:
+
+\begin{lstlisting}[language=Python]
+import solidum
+from solidum import Domain, Elastic2D
+from solidum.user.discontinuities import CST_Embedded2D, CohesiveDamageIsotropic
+
+solidum.available_user_modules()                # ['discontinuities']
+solidum.load_user_module("discontinuities")     # equivalente; cargarlo dos veces no hace nada
+
+bulk = Elastic2D(E=30e9, nu=0.2, hypothesis="plane_strain")
+cohesivo = CohesiveDamageIsotropic(sigma_t0=2.5e6, G_f=100.0, K_e=1.0e13, softening="linear")
+grieta = CST_Embedded2D(element_id=1, nodes=[n1, n2, n3], material=bulk,
+                        cohesive_material=cohesivo, thickness=1.0)
+
+\end{lstlisting}
+
+\texttt{from solidum import CST\_\allowbreak{}Embedded2D} ya no funciona: el elemento, la ley cohesiva (\texttt{CohesiveDamageIsotropic}), su clase base (\texttt{CohesiveMaterial}), su registro (\texttt{CohesiveMaterialRegistry}) y \texttt{DiscontinuityState} se importan de \texttt{solidum.\allowbreak{}user.\allowbreak{}discontinuities}.
 
 \section{Errores tipados}
 
@@ -2408,8 +2467,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 19:14\\[0.5em]
-Commit Git: \texttt{b93034d}\\[1em]
+Compilado el 24 de septiembre de 2026, 12:18\\[0.5em]
+Commit Git: \texttt{5e4b84b} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

@@ -55,7 +55,7 @@ PREAMBLE_TEMPLATE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \usepackage{amsfonts}
 % Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
 % desplazamientos en discontinuidades embebidas y materiales cohesivos
-% (ADR 0010). No están en amssymb.
+% (ADR 0010; módulo de usuario discontinuities, ADR 0020). No están en amssymb.
 \usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -223,7 +223,7 @@ def build_preamble(*, titulo: str, sigla: str, cabecera: str, subtitulo: str,
 
 SOBRE_USUARIO = r"""\noindent Este manual está dirigido al \textbf{usuario final} de Solidum FEM: cubre la sintaxis del archivo de entrada \texttt{.yaml}, el catálogo completo de elementos, materiales y solvers, ejemplos de uso y el workflow de post-procesamiento. No entra al detalle de la implementación interna ni a la formulación matemática completa de cada componente.
 
-Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
+Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/} (programa principal) y \texttt{docs/user/*/specs/} (apéndice \emph{Módulos de usuario}).
 
 Para la \emph{visión arquitectural} del programa (capas, bloques funcionales, mecanismos transversales y dirección de evolución), consultar \texttt{manuals/Architecture\_manual.pdf}.
 

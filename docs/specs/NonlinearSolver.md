@@ -40,7 +40,7 @@ Idénticas a `LinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC vía A
 mientras λ < 1:
     intentar avanzar λ → λ + Δλ:
         U_iter = U_current
-        prepare_all_steps(U_current)              # hook ADR 0010 (embedded)
+        prepare_all_steps(U_current)              # gancho de inicio de paso (ADR 0020, P5)
         para iter en range(max_iter):
             K_t, F_int = assemble_non_linear_system(U_iter)
             R = (λ+Δλ)·F_ext - F_int

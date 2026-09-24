@@ -2,7 +2,7 @@
 
 > Referencia rápida de los elementos implementados. Una entrada por elemento. Para detalles físicos/numéricos → código fuente.
 >
-> **Ensamblaje por lotes (ADR 0014)**: los sólidos isoparamétricos 2D/3D y los térmicos declaran `BATCH_KINEMATICS` (la misma cinemática compilada que usa `compute_element_state`; **no lanza**: devuelve `det J ≤ 0` si el jacobiano degenera y el ensamblador lanza el `ValueError` con el id), los planos `BATCH_SCALE = "thickness"` y, para el post-proceso por familia, las funciones de forma (`BATCH_SHAPE_FUNCTIONS` en los lineales; las bases de orden superior y térmica las toman de `_SHAPE_FN` / `_shape_functions`); el `Assembler` los agrupa en familias y los evalúa en un único kernel, serie o paralelo. Los estructurales 1D y `CST_Embedded2D` siguen el camino por elemento.
+> **Ensamblaje por lotes (ADR 0014)**: los sólidos isoparamétricos 2D/3D y los térmicos declaran `BATCH_KINEMATICS` (la misma cinemática compilada que usa `compute_element_state`; **no lanza**: devuelve `det J ≤ 0` si el jacobiano degenera y el ensamblador lanza el `ValueError` con el id), los planos `BATCH_SCALE = "thickness"` y, para el post-proceso por familia, las funciones de forma (`BATCH_SHAPE_FUNCTIONS` en los lineales; las bases de orden superior y térmica las toman de `_SHAPE_FN` / `_shape_functions`); el `Assembler` los agrupa en familias y los evalúa en un único kernel, serie o paralelo. Los estructurales 1D siguen el camino por elemento, igual que todo elemento con estado propio (`element_is_batchable` lo excluye, ADR 0020) y el elemento del módulo de usuario `discontinuities` (al final del catálogo).
 >
 > **Convenciones**: `STRAIN_DIM` = dimensión Voigt esperada del material asociado (1 = axial escalar, 3 = 2D `[ε_xx, ε_yy, γ_xy]`, 6 = 3D). DOFs por nodo = `DOF_NAMES`.
 
@@ -605,36 +605,6 @@ por dominio explícito).
 
 ---
 
-# Elementos con discontinuidad embebida (ADR 0010)
-
-Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación estática local**: el ensamblador no ve los grados de libertad del salto. Cuando se cumple un criterio de activación (Rankine en fase 1), el elemento materializa una discontinuidad interna `Γ_d` y enriquece su cinemática con un salto `[[u]]` gobernado por un material cohesivo (`CohesiveMaterial`, ver el [catálogo de materiales](catalogo_materiales.md) §"Materiales cohesivos"). La activación se evalúa en el hook `Element.prepare_step(U_committed)` que los solvers no lineales invocan **una vez por paso**, antes del Newton (anti-chattering, ADR 0010 §5).
-
-## CST_Embedded2D — triángulo CST con discontinuidad interior embebida (KOS)
-
-- **Propósito**: introducir fractura computacional en aproximación discreta sobre el CST padre. Fiel a Retama (2010), Caps. 2, 5, 6 y 7: cinemática KOS, condensación estática local, longitud efectiva `l_d = (A_e/h)·cos(θ−α)`.
-- **DOFs por nodo**: `['ux', 'uy']` · 3 nodos · `STRAIN_DIM = 3` · `N_INTEGRATION_POINTS = 1`.
-- **DOFs enriquecidos (elementales, no globales)**: `[[u]] ∈ ℝ²` en frame local `(n, s)` de `Γ_d`. Se condensan dentro de `compute_element_state` y nunca llegan al ensamblador.
-- **Estado intacto**: bit-exact con [Tri3](#tri3--triángulo-lineal-2d-cst) (mismo `B`, mismo material, misma cuadratura).
-- **Estado agrietado**: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`; después la condensación `K_cond = K_dd − K_du · K_{[[u]][[u]]}⁻¹ · K_du^T` se devuelve al ensamblador. El bulk descarga elásticamente conforme `[[u]]` crece (discrete approach); la disipación va al cohesivo en `Γ_d`.
-- **Activación**: criterio Rankine (`σ_I > σ_t0` del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. **Irreversible**: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
-- **Materiales aceptados**: bulk **solo `Elastic2D`** en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier `CohesiveMaterial` con `JUMP_DIM = 2`.
-- **Estado de la discontinuidad**: `DiscontinuityState` (en [solidum/core/discontinuity_state.py](../solidum/core/discontinuity_state.py)) — paralela a `ElementState`, semántica trial/commit.
-- **YAML**:
-  ```yaml
-  cohesive_materials:
-    - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
-       K_e: 1.0e13, softening: linear}
-  elements:
-    - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
-       material: 1, cohesive_material: 1}
-  ```
-- **Post-procesamiento**: `compute_gauss_state(U)` añade clave `'discontinuity'` con `{normal, tangent, centroid, solitary_node, l_d, jump, traction, damage}` cuando el elemento está agrietado.
-- **Limitaciones declaradas** (`out_of_scope` en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de `n` tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (`Tri6_Embedded`), 3D (`Tet4_Embedded`).
-- **Spec**: [docs/specs/CST_Embedded2D.md](specs/CST_Embedded2D.md).
-- **Archivo**: [solidum/elements/solid_2d/embedded_cst.py](../solidum/elements/solid_2d/embedded_cst.py).
-
----
-
 # Elementos térmicos (Etapa 8)
 
 Familia de **conducción de calor**: un DOF escalar `T` por nodo, matriz de conductividad `K_e = ∫ Bᵀ k B dΩ` en vez de rigidez, y capacidad calorífica `C_e = ∫ ρc Nᵀ N dΩ` en vez de masa. La ecuación semidiscreta `C·Ṫ + K·T = F` es de **primer orden** en el tiempo — por eso el transitorio no usa Newmark sino un θ-method propio; el estacionario `K·T = F` lo resuelve el `LinearSolver` existente sin modificación.
@@ -688,6 +658,46 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la `B` té
 3. **Implementación + validación** — la IA codifica contra la spec; los tests cubren los casos de `acceptance` declarados.
 4. **Catálogo** — cuando la spec pasa a `status: validated`, se añade aquí una entrada breve siguiendo el formato de arriba (la spec sigue siendo la referencia detallada).
 
+Un elemento **no estándar** (formulación de investigación que no es FEM clásico) no entra en el programa principal: va a un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md), Reglas.md §4), con código en `solidum/user/<módulo>/` (scaffolding con `/solidum-new element <Nombre> --user <módulo>`), spec en `docs/user/<módulo>/specs/`, tests en `tests/user/<módulo>/` y entrada en una sección «Módulos de usuario — <módulo>» al final de este catálogo. Si guarda historia fuera de `ElementState`, es un elemento con estado propio: sobrescribe `commit_state` y `compute_global_stiffness` y no va por el camino por lotes (modelo: `CST_Embedded2D`).
+
 ---
 
 **Nota 2026-09-22 (auditoría global).** En todos los sólidos el argumento `quadrature` acepta la clave del registro (`"2x2"`, `"hex_3x3x3"`, …) o una tupla `(points, weights)`; la regla se valida contra la familia del elemento (`resolve_quadrature`). La masa consistente y la capacidad térmica se integran siempre con la regla completa aunque `K` use integración reducida. La tolerancia del jacobiano es relativa y adimensional (`JACOBIAN_RTOL`). Los elementos estructurales 1D devuelven en `internal_forces` las fuerzas internas de extremo `F_int − f_eq` cuando hay carga distribuida (`solidum.run` pasa la carga nodal equivalente).
+
+---
+
+# Módulos de usuario — discontinuities
+
+> **Módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)): formulación no estándar, fuera del programa principal, en [`solidum/user/discontinuities/`](../solidum/user/discontinuities/), como un elemento de usuario de FEAP. Formulación: [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md), Retama (2010). `import solidum` no la carga.
+>
+> **Carga**: en YAML, `user_modules: [discontinuities]` en el primer nivel (sin esa clave, y si nada lo ha cargado antes en la sesión, `CST_Embedded2D` y la sección `cohesive_materials` son un error que sugiere declararla); en Python, `solidum.load_user_module("discontinuities")` o `from solidum.user.discontinuities import CST_Embedded2D`. `from solidum import CST_Embedded2D` ya no funciona.
+>
+> Specs en [`docs/user/discontinuities/specs/`](user/discontinuities/specs/), tests en [`tests/user/discontinuities/`](../tests/user/discontinuities/). La ley cohesiva está en el [catálogo de materiales](catalogo_materiales.md), sección «Módulos de usuario — discontinuities».
+
+Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación estática local**: el ensamblador no ve los grados de libertad del salto. Cuando se cumple un criterio de activación (Rankine en fase 1), el elemento materializa una discontinuidad interna `Γ_d` y enriquece su cinemática con un salto `[[u]]` gobernado por un material cohesivo (`CohesiveMaterial`, familia propia del módulo). La activación se evalúa en el gancho de inicio de paso `Element.prepare_step(U_committed)`, que los solvers que avanzan por pasos invocan **una vez por paso**, antes del Newton (anti-chattering, ADR 0010 §5); es un contrato genérico del programa principal (ADR 0020, P5).
+
+## CST_Embedded2D — triángulo CST con discontinuidad interior embebida (KOS)
+
+- **Propósito**: introducir fractura computacional en aproximación discreta sobre el CST padre. Fiel a Retama (2010), Caps. 2, 5, 6 y 7: cinemática KOS, condensación estática local, longitud efectiva `l_d = (A_e/h)·cos(θ−α)`.
+- **DOFs por nodo**: `['ux', 'uy']` · 3 nodos · `STRAIN_DIM = 3` · `N_INTEGRATION_POINTS = 1`.
+- **DOFs enriquecidos (elementales, no globales)**: `[[u]] ∈ ℝ²` en frame local `(n, s)` de `Γ_d`. Se condensan dentro de `compute_element_state` y nunca llegan al ensamblador.
+- **Estado intacto**: bit-exact con [Tri3](#tri3--triángulo-lineal-2d-cst) (mismo `B`, mismo material, misma cuadratura); la cinemática del CST es la pública del programa principal (`compute_kinematics_tri3`, ADR 0020).
+- **Estado agrietado**: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`; después la condensación `K_cond = K_dd − K_du · K_{[[u]][[u]]}⁻¹ · K_du^T` se devuelve al ensamblador. El bulk descarga elásticamente conforme `[[u]]` crece (discrete approach); la disipación va al cohesivo en `Γ_d`. Tolerancias del Newton local: `LOCAL_JUMP_RTOL` y `LOCAL_JUMP_MAX_ITER` en el [`constants.py`](../solidum/user/discontinuities/constants.py) del módulo.
+- **Activación**: criterio Rankine (`σ_I > σ_t0` del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. **Irreversible**: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
+- **Materiales aceptados**: bulk **solo `Elastic2D`** en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier `CohesiveMaterial` con `JUMP_DIM = 2`. Las dos referencias las declara `REFERENCE_KWARGS = {"material": MaterialRegistry, "cohesive_material": CohesiveMaterialRegistry}`: el lector YAML busca `material` en `materials` y `cohesive_material` en `cohesive_materials`.
+- **Estado de la discontinuidad**: `DiscontinuityState` (en [solidum/user/discontinuities/discontinuity_state.py](../solidum/user/discontinuities/discontinuity_state.py)) — paralela a `ElementState`, semántica trial/commit. Es un **elemento con estado propio**: sobrescribe `commit_state` y `compute_global_stiffness`, y no declara `BATCH_KINEMATICS`, así que va siempre por el camino por elemento.
+- **YAML**:
+  ```yaml
+  user_modules: [discontinuities]
+  cohesive_materials:
+    - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
+       K_e: 1.0e13, softening: linear}
+  elements:
+    - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
+       material: 1, cohesive_material: 1}
+  ```
+- **Post-procesamiento**: `compute_gauss_state(U)` añade clave `'discontinuity'` con `{normal, tangent, centroid, solitary_node, l_d, jump, traction, damage}` cuando el elemento está agrietado.
+- **Limitaciones declaradas** (`out_of_scope` en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de `n` tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (`Tri6_Embedded`), 3D (`Tet4_Embedded`).
+- **Spec**: [docs/user/discontinuities/specs/CST_Embedded2D.md](user/discontinuities/specs/CST_Embedded2D.md).
+- **Archivo**: [solidum/user/discontinuities/embedded_cst.py](../solidum/user/discontinuities/embedded_cst.py).
+- **Tests**: [`test_disc_cst_embedded.py`](../tests/user/discontinuities/test_disc_cst_embedded.py), [`test_disc_cst_embedded_integration.py`](../tests/user/discontinuities/test_disc_cst_embedded_integration.py), [`test_disc_ld_chapter_6_validation.py`](../tests/user/discontinuities/test_disc_ld_chapter_6_validation.py), [`test_disc_embedded_uniaxial_softening.py`](../tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py) y el barrido de contrato del módulo, [`test_disc_contratos.py`](../tests/user/discontinuities/test_disc_contratos.py).

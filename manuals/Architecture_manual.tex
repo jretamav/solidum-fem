@@ -24,7 +24,7 @@
 \usepackage{amsfonts}
 % Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
 % desplazamientos en discontinuidades embebidas y materiales cohesivos
-% (ADR 0010). No están en amssymb.
+% (ADR 0010; módulo de usuario discontinuities, ADR 0020). No están en amssymb.
 \usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -101,7 +101,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -182,7 +182,7 @@
 \addcontentsline{toc}{chapter}{Sobre este manual}
 \noindent Este manual ofrece una \textbf{visión arquitectural} de Solidum FEM. Su objetivo es que el lector pueda reconstruir mentalmente cómo está organizado el programa, qué piezas tiene y cómo encajan, sin entrar al detalle de la formulación de cada elemento ni al algoritmo concreto de cada solver.
 
-Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, contratos YAML, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/}.
+Para la \emph{referencia formal} de cada componente (ecuaciones, matrices $\mathbf B$, contratos YAML, criterios de aceptación), consultar \texttt{manuals/Reference\_manual.pdf}, generado automáticamente desde \texttt{docs/specs/} (programa principal) y \texttt{docs/user/*/specs/} (apéndice \emph{Módulos de usuario}).
 
 Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-procesamiento), consultar \texttt{manuals/User\_manual.pdf}.
 
@@ -320,9 +320,9 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 \textbf{Entrada del usuario.} Un caso de Solidum FEM se describe de forma declarativa en un archivo en formato YAML (acrónimo recursivo de \textit{YAML Ain't Markup Language}): nodos, materiales, elementos, condiciones de contorno, cargas y solver. La malla puede embeberse en el YAML o leerse desde un archivo \texttt{.msh} generado por Gmsh. El YAML constituye contrato público; cualquier consumidor externo (Interfaz Gráfica de Usuario o GUI, \textit{scripts} de automatización) opera contra él.
 
-\textbf{Capa de inicialización.} Su única responsabilidad consiste en poblar los registros (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas; los decoradores \texttt{@register} se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente.
+\textbf{Capa de inicialización.} Su única responsabilidad consiste en poblar los registros (\texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas; los decoradores \texttt{@register} se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente. Los módulos de usuario (\texttt{solidum/user/}) no se importan aquí: pertenecen a formulaciones no estándar que el programa principal sólo carga cuando un caso las pide (\hyperref[adr:0020]{ADR 0020}).
 
-\textbf{Capa de interpretación del caso.} Traduce el archivo YAML en objetos. No contiene ramificaciones del tipo \texttt{if material\_\allowbreak{}type == \textquotedbl{}Elastic1D\textquotedbl{}} por cada material: introspecciona los argumentos formales del constructor de la clase recuperada del registro y le transmite los campos del YAML. La incorporación de un material nuevo no requiere modificación del intérprete.
+\textbf{Capa de interpretación del caso.} Traduce el archivo YAML en objetos. No contiene ramificaciones del tipo \texttt{if material\_\allowbreak{}type == \textquotedbl{}Elastic1D\textquotedbl{}} por cada material: introspecciona los argumentos formales del constructor de la clase recuperada del registro y le transmite los campos del YAML. Tampoco conoce las familias de material por nombre: recorre las que declaran los registros (\texttt{Registry.\allowbreak{}families()}). Antes de validar, carga los módulos de usuario que el caso declara en \texttt{user\_modules}. La incorporación de un material nuevo no requiere modificación del intérprete.
 
 \textbf{Capa de dominio.} El objeto \texttt{Domain} mantiene la numeración global de grados de libertad (DOF) y la conectividad. Las clases base \texttt{Element} y \texttt{Material} definen el contrato que cumple cada componente concreto. El objeto \texttt{ElementState} encapsula las dos copias de las variables internas (tensiones, variables de estado, historia) sobre las que opera el solver no lineal: una copia \textit{trial} y otra comprometida.
 
@@ -354,7 +354,7 @@ El caso se lanza desde un \textit{script} de usuario o desde la interfaz públic
 \section*{2. Lectura del caso}
 \addcontentsline{toc}{section}{2. Lectura del caso}
 
-El intérprete del caso abre el archivo YAML y construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado.
+El intérprete del caso abre el archivo YAML y, si el caso declara módulos de usuario (\texttt{user\_modules}), los carga antes de validar nada: sus elementos, materiales y familias quedan inscritos en los registros como los del programa principal (\hyperref[adr:0020]{ADR 0020}). Después construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado.
 
 En esta etapa se ejecuta la primera comprobación de consistencia: cuando un elemento se construye, su clase base verifica que el material recibido sea dimensionalmente compatible. Un elemento \texttt{Truss2D} con material \texttt{Elastic2D} produce un error en la fase de construcción del caso, no doscientas iteraciones después en forma de fallo opaco durante la solución.
 
@@ -766,11 +766,35 @@ Los patrones que se describen a continuación estructuran el código de Solidum 
 
 \section{Registros con auto-registro}
 
-Cada categoría de componente dispone de su propio diccionario global: \texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}. Cada clase concreta se inscribe en su diccionario mediante un decorador (\texttt{@MaterialRegistry.\allowbreak{}register} y análogos) que se ejecuta en el momento de definición de la clase. El intérprete del archivo YAML no requiere conocimiento \textit{a priori} de los materiales o elementos existentes: consulta el registro por el nombre que aparece en el archivo. La incorporación de un componente nuevo no exige la modificación de listas centrales.
+Cada categoría de componente dispone de su propio registro: \texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}, todos subclases de la clase genérica \texttt{Registry} (\texttt{solidum/\allowbreak{}registry.\allowbreak{}py}). Cada clase concreta se inscribe en su registro mediante un decorador (\texttt{@MaterialRegistry.\allowbreak{}register} y análogos) que se ejecuta en el momento de definición de la clase. El intérprete del archivo YAML no requiere conocimiento \textit{a priori} de los materiales o elementos existentes: consulta el registro por el nombre que aparece en el archivo. La incorporación de un componente nuevo no exige la modificación de listas centrales.
+
+\section{Familias de material declaradas por el registro}
+
+Un registro puede declarar tres metadatos de familia (\hyperref[adr:0020]{ADR 0020}): \texttt{YAML\_SECTION}, la sección de primer nivel del YAML que contiene sus objetos (\texttt{materials}, \texttt{thermal\_\allowbreak{}materials}); \texttt{YAML\_LABEL}, el nombre de un objeto de la familia en los mensajes de error (\texttt{\textquotedbl{}material térmico\textquotedbl{}}); y \texttt{SPEC\_KIND}, el \texttt{kind} de las specs cuyos componentes viven en él. Un registro con \texttt{YAML\_SECTION} es una \textbf{familia de material}, y \texttt{Registry.\allowbreak{}families()} las enumera. El intérprete del YAML recorre esa lista en un solo bucle, sin conocer ninguna familia por nombre; la herramienta de specs (\texttt{solidum/\allowbreak{}tools/\allowbreak{}spec.\allowbreak{}py}) localiza el registro de cada spec por su \texttt{SPEC\_KIND}. Una familia nueva, del programa principal o de un módulo de usuario, se declara con una subclase de \texttt{Registry} y no toca el intérprete. Cada subclase recibe su propio diccionario de clases (heredarlo compartiría en silencio el de la base) y declarar una sección o un tipo de spec que otro registro ya declaró es un error.
+
+Los elementos declaran a qué familia pertenecen sus materiales con \texttt{Element.\allowbreak{}REFERENCE\_\allowbreak{}KWARGS}: qué parámetros del constructor son, en el YAML, el \texttt{id} de un objeto de otra familia, y de cuál. El valor por defecto es \texttt{\{\textquotedbl{}material\textquotedbl{}: MaterialRegistry\}}; los elementos térmicos declaran \texttt{\{\textquotedbl{}material\textquotedbl{}: ThermalMaterialRegistry\}}, y un elemento con dos materiales declara las dos referencias. El intérprete valida que cada \texttt{id} exista en la sección de su familia y pasa al constructor el objeto ya construido, sin heurística sobre el tipo de elemento.
 
 \section{Descubrimiento automático}
 
-El módulo \texttt{solidum/\allowbreak{}autodiscover.\allowbreak{}py} se invoca una sola vez durante la importación del paquete. Recorre, mediante \texttt{pkgutil.\allowbreak{}iter\_\allowbreak{}modules}, las carpetas canónicas (\texttt{solidum/\allowbreak{}materials}, \texttt{solidum/elements}, \texttt{solidum/math}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución.
+El módulo \texttt{solidum/\allowbreak{}autodiscover.\allowbreak{}py} se invoca una sola vez durante la importación del paquete. Recorre de forma recursiva, mediante \texttt{pkgutil.\allowbreak{}walk\_\allowbreak{}packages}, las carpetas canónicas (\texttt{solidum/\allowbreak{}materials}, \texttt{solidum/elements}, \texttt{solidum/math}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución. La carpeta \texttt{solidum/user/} queda fuera a propósito: un módulo de usuario sólo se carga cuando un modelo lo pide.
+
+\section{Programa principal y módulos de usuario}
+
+Solidum distingue dos partes, con los términos de FEAP (\hyperref[adr:0020]{ADR 0020}). El \textbf{programa principal} es Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo \texttt{solidum/} salvo \texttt{solidum/user/}. Un \textbf{módulo de usuario} es una formulación no estándar en su propia carpeta, \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, análoga a los elementos (\texttt{elmtNN}), materiales (\texttt{umati}) y macros (\texttt{umacr}) de usuario de FEAP. El primero es \texttt{discontinuities}, la discontinuidad interior embebida del \hyperref[adr:0010]{ADR 0010}: el elemento \texttt{CST\_Embedded2D}, la familia de materiales cohesivos con su sección \texttt{cohesive\_\allowbreak{}materials} y el estado de la discontinuidad.
+
+El programa principal no conoce los módulos de usuario hasta que un modelo los pide: \texttt{import solidum} no los importa. La carga es explícita, con la clave \texttt{user\_\allowbreak{}modules: [\textless{}nombre\textgreater{}]} del YAML, procesada al principio de la lectura y antes de validar, o con \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module(\textquotedbl{}\textless{}nombre\textgreater{}\textquotedbl{})} en Python; \texttt{solidum.\allowbreak{}available\_\allowbreak{}user\_\allowbreak{}modules()} lista los instalados. Cargar un módulo importa sus submódulos con el mismo recorrido del descubrimiento automático, de modo que sus decoradores inscriben elementos, materiales y familias en los registros del programa principal.
+
+Un módulo de usuario se conecta sólo a través de piezas genéricas del programa principal, cada una justificada por casos reales ajenos a él:
+
+\begin{itemize}
+  \item los registros con metadatos de familia, \texttt{Registry.\allowbreak{}families()} y las referencias \texttt{REFERENCE\_KWARGS} de los elementos (ver «Familias de material declaradas por el registro»);
+  \item el gancho de inicio de paso \texttt{Element.\allowbreak{}prepare\_\allowbreak{}step(U\_\allowbreak{}committed)}, no-op por defecto, que los solvers que avanzan por pasos invocan con el campo convergido del paso anterior; debe ser idempotente, porque tras una bisección se repite;
+  \item las funciones de cinemática públicas (\texttt{compute\_\allowbreak{}kinematics\_\allowbreak{}tri3}, \texttt{compute\_\allowbreak{}integrands}), las mismas que usan \texttt{Tri3} y \texttt{Quad4};
+  \item la receta de elemento por grupo físico de gmsh (\texttt{mesh\_element}, y \texttt{element} dentro de \texttt{mesh\_\allowbreak{}physical\_\allowbreak{}groups});
+  \item el contrato del elemento con estado propio, fuera de \texttt{ElementState}: \texttt{element\_\allowbreak{}is\_\allowbreak{}batchable} lo excluye del camino por lotes si la clase redefine \texttt{compute\_\allowbreak{}element\_\allowbreak{}state} o \texttt{commit\_state} por debajo de la que declaró \texttt{BATCH\_KINEMATICS}, para que el kernel de familia no calcule ni consolide en silencio sin sus redefiniciones.
+\end{itemize}
+
+La separación la vigila un test, \texttt{tests/\allowbreak{}test\_\allowbreak{}main\_\allowbreak{}program\_\allowbreak{}purity.\allowbreak{}py}: ningún archivo del programa principal menciona los nombres de un módulo de usuario (clases, constantes, claves YAML, ruta de importación), y en un proceso limpio \texttt{import solidum} no carga ningún \texttt{solidum.user.*} y toda clase registrada pertenece al programa principal. Las specs de un módulo viven en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}specs/\allowbreak{}} y sus pruebas en \texttt{tests/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}.
 
 \section{Contratos declarativos mediante atributos de clase}
 
@@ -782,7 +806,7 @@ Durante la instanciación de un elemento, su método \texttt{\_\_init\_\_} verif
 
 \section{Intérprete genérico por introspección de argumentos}
 
-El componente \texttt{YamlParser} no contiene ramificaciones del tipo \texttt{if material\_\allowbreak{}type == \textquotedbl{}Elastic1D\textquotedbl{}} por cada material. Inspecciona los argumentos del constructor de la clase recuperada del registro y le transmite los campos del archivo YAML. La incorporación de un material nuevo no requiere modificación del intérprete; es suficiente con que el constructor declare los parámetros con nombres compatibles con el archivo YAML.
+El componente \texttt{YamlParser} no contiene ramificaciones del tipo \texttt{if material\_\allowbreak{}type == \textquotedbl{}Elastic1D\textquotedbl{}} por cada material. Inspecciona los argumentos del constructor de la clase recuperada del registro y le transmite los campos del archivo YAML. La incorporación de un material nuevo no requiere modificación del intérprete; es suficiente con que el constructor declare los parámetros con nombres compatibles con el archivo YAML. Las secciones de primer nivel admitidas son las propias del intérprete más las que declaran las familias registradas; cualquier otra es un error, no se ignora.
 
 \section{Estados \textit{trial} y comprometido en \texttt{ElementState}}
 
@@ -796,7 +820,7 @@ El primer ensamblaje de la matriz global calcula los pares de índices (i, j) de
 
 Los elementos que comparten clase, instancia de material, regla de cuadratura y número de nodos forman una \textit{familia de lote} (\texttt{solidum/\allowbreak{}math/\allowbreak{}batch/\allowbreak{}}). La clave se deriva de atributos que ya existen; un elemento nuevo cae en su propia familia sin tocar el ensamblador. Cada familia guarda su estado interno como arreglos (\texttt{FamilyState}: variables internas y esfuerzos, committed y trial, una fila por punto de Gauss) y se evalúa completa dentro de un único bucle compilado, \texttt{solid\_\allowbreak{}family\_\allowbreak{}kernel}, que recibe la cinemática del elemento (\texttt{BATCH\_KINEMATICS}) y la constitutiva del material (\texttt{BATCH\_KERNEL}) como funciones tipadas por su firma. Esa tipificación (\texttt{numba.\allowbreak{}types.\allowbreak{}FunctionType}) es lo que permite compilar el kernel una sola vez para todas las parejas elemento \ensuremath{\times} material y reutilizarlo desde el caché en disco: un despachador tiene identidad propia por proceso y obligaría a recompilar por pareja en cada ejecución.
 
-El camino por elemento (\texttt{compute\_\allowbreak{}element\_\allowbreak{}state}, \texttt{compute\_state}) sigue siendo el contrato obligatorio y la referencia física. El camino por lotes es una capacidad que el componente declara: los elementos sin cinemática compilada (estructurales 1D, discontinuidad embebida) y los materiales sin esquema de estado se ensamblan como siempre dentro del mismo \texttt{Assembler}. Ambos caminos ejecutan las mismas funciones compiladas por punto de Gauss; el barrido de contratos exige que \texttt{K} y \texttt{F\_int} coincidan a precisión de máquina en toda combinación registrada. El kernel recibe siempre coordenadas de referencia y desplazamientos y recomputa jacobiano y \texttt{B} en cada evaluación: nada derivado de la configuración deformada se cachea, de modo que el diseño vale para elementos lineales, corotacionales y formulaciones lagrangianas futuras. Medido sobre 10 000 Quad4 con plasticidad J2: 157 \ensuremath{\to} 5,7 µs por elemento y ensamblaje con el kernel serie, y 1,4 µs con el paralelo (\hyperref[adr:0014]{ADR 0014}).
+El camino por elemento (\texttt{compute\_\allowbreak{}element\_\allowbreak{}state}, \texttt{compute\_state}) sigue siendo el contrato obligatorio y la referencia física. El camino por lotes es una capacidad que el componente declara: los elementos sin cinemática compilada (estructurales 1D), los elementos con estado propio (como el de discontinuidad embebida del módulo de usuario \texttt{discontinuities}) y los materiales sin esquema de estado se ensamblan como siempre dentro del mismo \texttt{Assembler}. Ambos caminos ejecutan las mismas funciones compiladas por punto de Gauss; el barrido de contratos exige que \texttt{K} y \texttt{F\_int} coincidan a precisión de máquina en toda combinación registrada. El kernel recibe siempre coordenadas de referencia y desplazamientos y recomputa jacobiano y \texttt{B} en cada evaluación: nada derivado de la configuración deformada se cachea, de modo que el diseño vale para elementos lineales, corotacionales y formulaciones lagrangianas futuras. Medido sobre 10 000 Quad4 con plasticidad J2: 157 \ensuremath{\to} 5,7 µs por elemento y ensamblaje con el kernel serie, y 1,4 µs con el paralelo (\hyperref[adr:0014]{ADR 0014}).
 
 El kernel de familia existe en dos variantes con la misma aritmética: serie y paralela (\texttt{prange} sobre bloques de elementos, con espacio de trabajo por bloque y sin estado compartido entre hilos). Como cada elemento suma en el mismo orden, el resultado es bit a bit el mismo con cualquier número de hilos, cosa que el barrido de contratos exige. Una limitación de Numba condiciona el contrato de la cinemática: una excepción lanzada dentro de una región paralela se pierde en silencio, así que las cinemáticas por lotes no lanzan sino que devuelven un jacobiano no positivo, el kernel marca el punto y el ensamblador convierte la marca en la excepción de siempre, ahora con el identificador del elemento. El mismo protocolo rige la variante serie.
 
@@ -946,9 +970,11 @@ Solver & \texttt{solidum/\allowbreak{}math/\allowbreak{}solvers/\allowbreak{}\te
 \end{center}
 La columna \textquotedbl{}modifica otros archivos\textquotedbl{} es deliberadamente \textquotedbl{}No\textquotedbl{}. Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
 
+La tabla vale para los componentes \textbf{estándar}, que van al programa principal. Un componente \textbf{no estándar} (una formulación de investigación que no es de elementos finitos clásicos: discontinuidades embebidas, seguimiento de trayectoria, XFEM) va a un \textbf{módulo de usuario} (\hyperref[adr:0020]{ADR 0020}): código en \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, con los mismos decoradores y, si lo necesita, una familia de material propia declarada con una subclase de \texttt{Registry}; specs en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}specs/\allowbreak{}} y pruebas en \texttt{tests/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}. El módulo no modifica ningún archivo del programa principal ni se carga solo: el caso lo pide con \texttt{user\_\allowbreak{}modules: [\textless{}nombre\textgreater{}]}. Si le hace falta una pieza que el programa principal no ofrece, esa pieza entra en el programa principal como mecanismo genérico, justificado por casos reales ajenos al módulo, nunca como un caso especial que lo nombre; el test de pureza (\texttt{tests/\allowbreak{}test\_\allowbreak{}main\_\allowbreak{}program\_\allowbreak{}purity.\allowbreak{}py}) lo vigila.
+
 \section{Skill \texttt{/solidum-new}}
 
-Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una \textit{skill} versionada (\texttt{.\allowbreak{}claude/\allowbreak{}skills/\allowbreak{}solidum-new/\allowbreak{}}) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es \texttt{/\allowbreak{}solidum-new material|element|solver \textless{}Name\textgreater{}} y produce automáticamente:
+Para reducir también la fricción ergonómica de la incorporación, el repositorio incluye una \textit{skill} versionada (\texttt{.\allowbreak{}claude/\allowbreak{}skills/\allowbreak{}solidum-new/\allowbreak{}}) que el asistente invoca cuando el usuario solicita un material, elemento o solver nuevo. La invocación es \texttt{/\allowbreak{}solidum-new material|element|solver \textless{}Name\textgreater{}}, con \texttt{--user \textless{}modulo\textgreater{}} para generar el componente dentro de un módulo de usuario, y produce automáticamente:
 
 \begin{itemize}
   \item El archivo en su carpeta canónica con la plantilla del tipo correspondiente.
@@ -969,7 +995,7 @@ Cuando el componente a incorporar es físico (no infraestructura), el flujo es:
   \item \textit{Cierre.} Tras la validación (todas las pruebas verdes contra los criterios), el asistente actualiza \texttt{status: validated} en la especificación e inserta una entrada en el catálogo correspondiente (\texttt{docs/\allowbreak{}catalogo\_\allowbreak{}\textless{}elementos|materiales|solvers\textgreater{}.\allowbreak{}md}).
 \end{enumerate}
 
-La relación es: la especificación constituye la orden de trabajo y la referencia detallada por componente; el catálogo constituye el índice navegable del conjunto. El manual de referencia (\texttt{Reference\_\allowbreak{}manual.\allowbreak{}pdf}) se genera de forma automática a partir de las especificaciones.
+La relación es: la especificación constituye la orden de trabajo y la referencia detallada por componente; el catálogo constituye el índice navegable del conjunto. El manual de referencia (\texttt{Reference\_\allowbreak{}manual.\allowbreak{}pdf}) se genera de forma automática a partir de las especificaciones. Un componente de un módulo de usuario sigue el mismo ciclo con su spec en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}specs/\allowbreak{}}, su entrada en la sección «Módulos de usuario» del catálogo y su capítulo en el apéndice «Módulos de usuario» del manual de referencia.
 
 \section{Architecture Decision Records: memoria de arquitectura persistente}
 
@@ -1149,6 +1175,8 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Consecuencia.} Fractura computacional sin tocar el ensamblador, el despachador algebraico, el Newton ni el parser. Las cuatro abstracciones son reutilizables para modelos cohesivos clásicos, modos incompatibles o EAS. El límite conocido es el solver para ablandamiento severo con penalización cohesiva rígida (deuda técnica).
 
+\textbf{Ubicación.} Desde el \hyperref[adr:0020]{ADR 0020} la formulación completa vive fuera del programa principal, en el módulo de usuario \texttt{discontinuities} (\texttt{solidum/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}}), y un modelo la carga con \texttt{user\_\allowbreak{}modules: [discontinuities]}. El ADR se conserva como registro de la formulación.
+
 \section{ADR 0011 --- Robustez del Newton: line search y diagnóstico de divergencia}
 \label{adr:0011}
 
@@ -1247,6 +1275,17 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 \textbf{Decisión.} Tres capas en el análisis estático: antes de resolver, los \textbf{mecanismos rígidos} se detectan a partir de los modos de cuerpo rígido que las restricciones dejan libres y se describen en términos del modelo (traslación, giro alrededor de un eje por un punto, campo escalar sin valor prescrito); después de resolver, en el análisis lineal, se verifican el \textbf{equilibrio} y la ausencia de \textbf{pivotes nulos}. Dentro de un Newton no se rechaza nada ---cerca de un punto límite resolver un sistema casi singular es legítimo---, sólo se mejora el diagnóstico.
 
 \textbf{Consecuencia.} Un modelo mal planteado se detiene con una explicación en vez de devolver resultados absurdos, sin falsos positivos en toda la batería de pruebas.
+
+\section{ADR 0020 --- Módulos de usuario: las formulaciones no estándar fuera del programa principal}
+\label{adr:0020}
+
+\textbf{Fecha}: 24 de septiembre de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Al decidir completar su formulación de discontinuidades interiores, el usuario fijó que un elemento no estándar no debe contaminar el programa principal, como en FEAP, que ofrece formulaciones estándar y deja al usuario añadir las suyas sin tocarlo. La discontinuidad embebida (\hyperref[adr:0010]{ADR 0010}) sí lo contaminaba: su familia cohesiva y su estado vivían en \texttt{core/}, su registro en \texttt{registry.py}, el lector YAML la trataba como caso especial (una sección y una clave propias) y la nombraban también la raíz del paquete, el descubrimiento automático, la herramienta de specs y el manual de referencia. La familia térmica sufría la misma rigidez: el lector repetía tres veces el mismo bloque, y los elementos térmicos resolvían su material con una heurística y no podían salir de gmsh.
+
+\textbf{Decisión.} Dos términos, los de FEAP: \textbf{programa principal} (Solidum estándar, todo \texttt{solidum/} salvo \texttt{solidum/user/}) y \textbf{módulo de usuario} (una formulación no estándar en \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, análoga a los elementos y materiales de usuario de FEAP). La embebida pasa íntegra al módulo \texttt{discontinuities}. La carga es explícita, nunca automática: \texttt{user\_\allowbreak{}modules: [discontinuities]} en el YAML o \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module(\textquotedbl{}discontinuities\textquotedbl{})} en Python; \texttt{import solidum} no carga nada de \texttt{solidum/user/}. El programa principal ofrece a los módulos piezas genéricas, cada una justificada por casos reales ajenos a la embebida: un \texttt{Registry} público con metadatos de familia (\texttt{YAML\_SECTION}, \texttt{YAML\_LABEL}, \texttt{SPEC\_KIND}) y \texttt{Registry.\allowbreak{}families()}; un lector YAML con un solo bucle sobre las familias, en el que una sección de primer nivel desconocida es un error; \texttt{Element.\allowbreak{}REFERENCE\_\allowbreak{}KWARGS} para las referencias de un elemento a otras familias; la carga de módulos; el gancho \texttt{prepare\_step}, documentado como contrato genérico e idempotente; la cinemática pública (\texttt{compute\_\allowbreak{}kinematics\_\allowbreak{}tri3}, \texttt{compute\_\allowbreak{}integrands}); la receta de elemento por grupo físico de gmsh; y la exclusión del camino por lotes de los elementos con estado propio. Quedan fuera a propósito, sin un segundo caso real, el servicio de seguimiento de trayectoria, un bus de eventos y la carga automática por \textit{entry points}. Se descartaron un paquete Python aparte (dos instalaciones en cada PC y un nombre que sugiere otro programa), un repositorio aparte y la carga automática al importar Solidum (el YAML dejaría de decir qué formulación necesita).
+
+\textbf{Consecuencia.} El programa principal no conoce la embebida, y un test de pureza (\texttt{tests/\allowbreak{}test\_\allowbreak{}main\_\allowbreak{}program\_\allowbreak{}purity.\allowbreak{}py}) lo vigila: ningún archivo del programa principal nombra al módulo, y tras \texttt{import solidum} no hay ningún módulo de usuario cargado ni ninguna de sus clases registrada. Un módulo de usuario nuevo no toca el lector YAML, gmsh ni la herramienta de specs; la familia térmica gana validación de parámetros y referencias y puede salir de gmsh. Ningún resultado cambia. En contra: \texttt{from solidum import CST\_\allowbreak{}Embedded2D} deja de funcionar, sin transición (el import es \texttt{from solidum.\allowbreak{}user.\allowbreak{}discontinuities import CST\_\allowbreak{}Embedded2D}), los YAML de la embebida necesitan \texttt{user\_modules}, y las piezas genéricas pasan a ser contrato estable del programa principal.
 
 \section{Evolución de esta lista}
 
@@ -1585,7 +1624,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Architecture Decision Record (ADR)}. Documento breve que registra una decisión de arquitectura junto con su contexto, alternativas consideradas y consecuencias. Reside en \texttt{docs/\allowbreak{}adr/\allowbreak{}000N-titulo.\allowbreak{}md}. Ver \hyperref[cap:8]{capítulo 8}.
 
-\textbf{Autodiscover (descubrimiento automático)}. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores \texttt{@register} y, con ello, la inscripción de cada componente en su registro. Ver \hyperref[cap:5]{capítulo 5}.
+\textbf{Autodiscover (descubrimiento automático)}. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores \texttt{@register} y, con ello, la inscripción de cada componente en su registro. No recorre \texttt{solidum/user/}: los módulos de usuario sólo se cargan cuando un caso los pide. Ver \hyperref[cap:5]{capítulo 5}.
 
 \textbf{Capa algebraica}. Subsistema en \texttt{solidum/\allowbreak{}math/\allowbreak{}linalg/\allowbreak{}} responsable de resolver el sistema lineal \texttt{K \ensuremath{\cdot} x = b} que aparece dentro de cada iteración del solver no lineal. Está separada del solver no lineal y selecciona automáticamente el algoritmo de factorización adecuado mediante un despachador. Ver \hyperref[cap:4]{capítulo 4} y \hyperref[adr:0003]{ADR 0003}.
 
@@ -1619,19 +1658,23 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Familia de lote}. Conjunto de elementos de un dominio que comparten clase de elemento, instancia de material, regla de cuadratura y número de nodos, y que el ensamblador evalúa juntos en un kernel compilado. Su estado interno vive en un \texttt{FamilyState} (arreglos por punto de Gauss) del que \texttt{elem.state} es una vista (\texttt{BatchedElementState}). Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0014]{ADR 0014}.
 
+\textbf{Familia de material}. Registro que declara la sección de primer nivel del YAML con sus objetos (\texttt{YAML\_SECTION}): \texttt{materials} para los mecánicos, \texttt{thermal\_\allowbreak{}materials} para los térmicos y, con el módulo de usuario \texttt{discontinuities} cargado, \texttt{cohesive\_\allowbreak{}materials}. \texttt{Registry.\allowbreak{}families()} las enumera y el intérprete del YAML las recorre sin conocerlas por nombre; un elemento declara a qué familia pertenecen sus materiales con \texttt{REFERENCE\_KWARGS}. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0020]{ADR 0020}.
+
 \textbf{Gradiente conjugado (CG) y MINRES}. Métodos iterativos de Krylov para sistemas lineales simétricos: CG para matrices definidas positivas, MINRES para indefinidas. El solver iterativo de Solidum pasa de uno a otro de forma automática al detectar curvatura negativa. Capítulo 4, \hyperref[adr:0018]{ADR 0018}.
 
 \textbf{Grado de libertad (DOF)}. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el \texttt{Domain}.
 
 \textbf{Longitud de arco (método de Crisfield)}. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
 
-\textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve la tensión y el módulo tangente consistente. Su contrato declarativo está en \texttt{solidum/\allowbreak{}materials/\allowbreak{}}. Ver \hyperref[cap:4]{capítulo 4}.
+\textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve el esfuerzo y el módulo tangente consistente. Su contrato declarativo está en \texttt{solidum/\allowbreak{}materials/\allowbreak{}}. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{Mecanismo}. Modelo cuyos apoyos o cuya conectividad permiten un movimiento sin deformación: la matriz de rigidez es singular y el problema estático no tiene solución única. Si el movimiento es de sólido rígido del conjunto, Solidum lo detecta antes de resolver y lo describe; si es interno (una rótula de más), lo detecta tras resolver. Capítulo 5, \hyperref[adr:0019]{ADR 0019}.
 
 \textbf{Método de Elementos Finitos (MEF)}. Técnica de discretización para resolver ecuaciones diferenciales parciales mediante la subdivisión del dominio en elementos sobre los que se interpolan los campos incógnita. Solidum FEM trabaja en aproximación de desplazamientos.
 
 \textbf{Modos de cuerpo rígido}. Movimientos de un modelo sin apoyos que no producen deformación: traslaciones y giros infinitesimales, y el valor constante en un campo escalar. En Solidum se derivan del nombre de los grados de libertad y los usan el precondicionador multimalla y la detección de mecanismos. Capítulo 5.
+
+\textbf{Módulo de usuario}. Formulación no estándar que vive fuera del programa principal, en su propia carpeta \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, a la manera de los elementos y materiales de usuario de FEAP. El programa principal no la importa ni la nombra: un caso la carga con \texttt{user\_\allowbreak{}modules: [\textless{}nombre\textgreater{}]} en el YAML o con \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module} en Python. El primero es \texttt{discontinuities} (discontinuidad interior embebida). Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0020]{ADR 0020}.
 
 \textbf{Multimalla algebraico (AMG)}. Precondicionador que resuelve el sistema en una jerarquía de problemas cada vez más pequeños construidos a partir de la propia matriz. Con los modos de cuerpo rígido como casi-núcleo, el número de iteraciones apenas depende del tamaño del modelo. \hyperref[adr:0018]{ADR 0018}.
 
@@ -1645,7 +1688,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{\texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}}. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
-\textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) que mapea el nombre de cada componente con su clase. Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver \hyperref[cap:5]{capítulo 5}.
+\textbf{Programa principal}. Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo \texttt{solidum/} salvo \texttt{solidum/user/}. No conoce los módulos de usuario; un test de pureza (\texttt{tests/\allowbreak{}test\_\allowbreak{}main\_\allowbreak{}program\_\allowbreak{}purity.\allowbreak{}py}) lo vigila. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0020]{ADR 0020}.
+
+\textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica \texttt{Registry}, que puede declarar además metadatos de familia (\texttt{YAML\_SECTION}, \texttt{YAML\_LABEL}) y el tipo de spec de sus componentes (\texttt{SPEC\_KIND}). Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver \hyperref[cap:5]{capítulo 5}.
 
 \textbf{Regla de la mano derecha (RHR)}. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver \hyperref[cap:6]{capítulo 6}.
 
@@ -1804,8 +1849,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 23 de septiembre de 2026, 11:48\\[0.5em]
-Commit Git: \texttt{b8d73af}\\[1em]
+Compilado el 24 de septiembre de 2026, 12:18\\[0.5em]
+Commit Git: \texttt{5e4b84b} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
