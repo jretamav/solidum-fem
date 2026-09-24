@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from solidum.constants import DAMAGE_MAX
 from solidum.core.cohesive_material import CohesiveMaterial
 from solidum.registry import CohesiveMaterialRegistry
 
@@ -55,9 +54,22 @@ class CohesiveDamageIsotropic(CohesiveMaterial):
         ω(κ) = 1 − T_soft(κ) / (K_e·κ)
         dω/dκ = (1 − ω)·(1/κ + σ_{t0}/H)
 
-    Tangente algorítmica en frame local (Modo-I) ``T_tan = α·(n⊗n)``, simétrica.
-    Por construcción ``T_tan[1,1] = 0`` (rigidez tangencial nula): la grieta
-    desliza libre en ``s``. Modo mixto introducirá rigidez en esa componente.
+    Es el modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys
+    (2002, ecs. 8-17), que Retama (2010) sigue en las ecs. 3.2-3.16; la única
+    diferencia es ``H`` en lugar de ``G_F`` en el exponente, para que la
+    energía disipada sea exactamente ``G_F``.
+
+    Tangente en frame local (Modo-I) ``T_tan = α·(n⊗n)``, simétrica:
+
+    - carga activa: ``α = dT_soft/dκ`` (tangente consistente, negativa en
+      todo el ablandamiento y nula con la grieta totalmente abierta);
+    - rama elástica, descarga y recarga: secante ``α = (1 − ω)·K_e``;
+    - cierre (``[[u_n]] < 0``): ``t_n = K_e·[[u_n]]``, sin daño; la
+      penalización impide la interpenetración (Alfaiate et al. 2002, p. 667).
+
+    Por construcción ``T_tan[1,1] = 0`` (rigidez tangencial nula, Retama 2010,
+    p. 67): la grieta desliza libre en ``s``. Modo mixto introducirá rigidez
+    en esa componente.
 
     Para deducción física, condiciones de Kuhn-Tucker, validación energética
     y benchmarks, ver ``docs/specs/CohesiveDamageIsotropic.md``.
@@ -127,80 +139,63 @@ class CohesiveDamageIsotropic(CohesiveMaterial):
 
         # Frame local: n = (1, 0). [[u_n]] es la componente 0 del salto.
         u_n = float(jump[0])
-        u_n_pos = u_n if u_n > 0.0 else 0.0  # ⟨[[u_n]]⟩ (McAuley)
 
-        # Régimen carga / descarga (Kuhn-Tucker)
-        if u_n_pos > kappa_old:
-            kappa_new = u_n_pos
-            loading = True
-        else:
+        if u_n < 0.0:
+            # Cierre de la grieta: se recupera la relación elástica inicial,
+            # sin daño, y la penalización K_e impide la interpenetración de
+            # las caras (Alfaiate, Wells y Sluys 2002, p. 667: "if crack
+            # closure occurs, the initial elastic constitutive relation is
+            # recovered"). El daño no evoluciona en compresión.
             kappa_new = kappa_old
-            loading = False
-
-        # ω físico (puede llegar a 1.0 exacto en lineal con κ ≥ w_c, o
-        # asintóticamente en exponencial); cap_tangent señala al llamador que
-        # debe imponer la rigidez residual numérica en la tangente para evitar
-        # singularidad del Newton, pero la tracción se calcula con ω real.
-        omega, domega_dkappa, cap_tangent = self._damage(kappa_new)
-
-        # Tracción: t_n = (1 − ω)·K_e·[[u_n]]; t_s = 0 en Modo-I.
-        # ω = 1 ⇒ t_n = 0 exactamente (grieta totalmente abierta, físico).
-        traction = np.array([(1.0 - omega) * self.K_e * u_n, 0.0])
-
-        # Tangente algorítmica en frame local (rank-1 sobre n⊗n). Cap residual
-        # ``(1 − DAMAGE_MAX)·K_e`` sólo en la *tangente*, para mantener el
-        # sistema lineal de Newton no singular cuando ω → 1. No contamina la
-        # tracción ni la energía disipada (ver caveat numérico §12 de la spec).
-        # En carga activa fuera de la zona capada se usa la consistente:
-        # ``K_e·[(1 − ω) − u_n·dω/dκ]`` con dκ/d[[u_n]] = 1 (κ_new = u_n > 0).
-        consistent = loading and (omega > 0.0) and (not cap_tangent)
-        if consistent:
-            stiffness_nn = self.K_e * ((1.0 - omega) - u_n * domega_dkappa)
+            traction_n = self.K_e * u_n
+            stiffness_nn = self.K_e
         else:
-            stiffness_factor = max(1.0 - omega, 1.0 - DAMAGE_MAX)
-            stiffness_nn = stiffness_factor * self.K_e
+            # Kuhn-Tucker sobre ⟨[[u_n]]⟩ (Retama 2010, ec. 3.13-3.15).
+            loading = u_n > kappa_old
+            kappa_new = u_n if loading else kappa_old
+            T_soft, dT_soft = self._envelope(kappa_new)
+            if loading and kappa_new > self.kappa_0:
+                # Carga sobre la envolvente de ablandamiento: t_n = T_soft(κ)
+                # con κ = [[u_n]], y la tangente consistente es su pendiente
+                # (ec. 3.11 con ∂κ/∂[[u_n]] = 1). Es negativa en toda la rama
+                # y se usa hasta la apertura total, donde vale 0: el sistema
+                # local del elemento no se vuelve singular porque su K_jj
+                # incluye el término del volumen.
+                traction_n = T_soft
+                stiffness_nn = dT_soft
+            else:
+                # Rama elástica (κ = κ_0) o descarga/recarga por debajo de κ:
+                # secante al origen S(κ) = T_soft(κ)/κ = (1 − ω)·K_e (ec. 3.12).
+                secant = T_soft / kappa_new
+                traction_n = secant * u_n
+                stiffness_nn = secant
 
+        # ω físico, sólo informativo (estado y exportación): 1 − S(κ)/K_e.
+        omega = 1.0 - self._envelope(kappa_new)[0] / (self.K_e * kappa_new)
+
+        traction = np.array([traction_n, 0.0])     # t_s = 0: Modo I puro
         tangent = np.zeros((2, 2))
         tangent[0, 0] = stiffness_nn
 
         new_state = {'kappa': kappa_new, 'damage': omega}
         return traction, tangent, new_state
 
-    def _damage(self, kappa: float):
-        """Devuelve ``(ω(κ), dω/dκ, cap_tangent)`` para el ``κ`` corriente.
+    def _envelope(self, kappa: float):
+        """Envolvente ``(T_soft(κ), dT_soft/dκ)`` de la tracción normal.
 
-        ``ω`` es el valor *físico* (sin truncar por ``DAMAGE_MAX``). El flag
-        ``cap_tangent`` indica que ``ω ≥ DAMAGE_MAX`` (zona numéricamente
-        singular en rigidez) y el llamador debe usar la rigidez residual.
-        ``dω/dκ`` es respecto al historial; el llamador la compone con
-        ``∂κ/∂[[u_n]] = 1`` (carga activa) al construir la tangente.
+        Para ``κ ≤ κ_0`` es la rama elástica ``K_e·κ`` (pendiente ``K_e``);
+        para ``κ > κ_0`` la de ablandamiento, que empieza en ``σ_t0`` y
+        encierra con la rama elástica un área ``G_F``. Se evalúa sin pasar
+        por ``1 − ω``: con ``K_e`` de penalización, ``ω`` está a ``~κ_0/κ``
+        de 1 y la resta perdería cifras.
         """
-        if kappa <= self.kappa_0:
-            return 0.0, 0.0, False
+        s, k0 = self.sigma_t0, self.kappa_0
+        if kappa <= k0:
+            return self.K_e * kappa, self.K_e
         if self.softening == self.SOFTENING_LINEAR:
-            return self._damage_linear(kappa)
-        return self._damage_exponential(kappa)
-
-    def _damage_linear(self, kappa: float):
-        # Saturación geométrica: por encima de la apertura crítica la grieta
-        # está totalmente abierta (ω = 1.0 exacto, sin residuo).
-        if kappa >= self.w_c:
-            return 1.0, 0.0, True
-
-        s = self.sigma_t0
-        wc = self.w_c
-        k0 = self.kappa_0
-        Ke = self.K_e
-        omega = 1.0 - s * (wc - kappa) / (Ke * kappa * (wc - k0))
-        domega = s * wc / (Ke * kappa * kappa * (wc - k0))
-        return omega, domega, omega >= DAMAGE_MAX
-
-    def _damage_exponential(self, kappa: float):
-        s = self.sigma_t0
-        k0 = self.kappa_0
-        Ke = self.K_e
-        H = self.H
-        T_soft = s * np.exp(-s * (kappa - k0) / H)
-        omega = 1.0 - T_soft / (Ke * kappa)
-        domega = (1.0 - omega) * (1.0 / kappa + s / H)
-        return omega, domega, omega >= DAMAGE_MAX
+            if kappa >= self.w_c:
+                return 0.0, 0.0          # grieta totalmente abierta
+            slope = -s / (self.w_c - k0)
+            return s + slope * (kappa - k0), slope
+        T_soft = s * np.exp(-s * (kappa - k0) / self.H)
+        return T_soft, -(s / self.H) * T_soft

@@ -19,7 +19,6 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from solidum.constants import DAMAGE_MAX
 from solidum.cohesive_materials.damage_isotropic import CohesiveDamageIsotropic
 from solidum.registry import CohesiveMaterialRegistry
 
@@ -278,29 +277,93 @@ class TestTangentialDoesNotDamage(unittest.TestCase):
         self.assertEqual(T[1, 1], 0.0)
 
 
-class TestCompressionDoesNotDamage(unittest.TestCase):
-    """acceptance.compresion_no_dana"""
+class TestTangentAlongWholeSoftening(unittest.TestCase):
+    """acceptance.tangente_consistente_en_todo_el_ablandamiento
 
-    def test_pure_compression_keeps_damage_unchanged(self):
+    Con ``K_e`` de penalización (``κ_0/w_c ~ 3e-5``) el daño ``ω`` queda a
+    ``~κ_0/κ`` de 1 casi desde el pico. Hasta la revisión del 2026-09-23 un
+    tope ``ω ≥ DAMAGE_MAX`` sustituía ahí la tangente de carga por
+    ``+1e-3·K_e``: signo y magnitud erróneos desde ``κ ≈ 0.026·w_c`` (tracción
+    aún al 97 % de ``σ_t0``), y el elemento se le presentaba al solver como si
+    endureciera. Se barre la rama completa contra diferencias finitas.
+    """
+
+    K_PENALTY = 1.0e15
+
+    def _fd(self, m, u, state, h):
+        tp, _, _ = m.compute_traction(np.array([u + h, 0.0]), state)
+        tm, _, _ = m.compute_traction(np.array([u - h, 0.0]), state)
+        return (tp[0] - tm[0]) / (2.0 * h)
+
+    def test_loading_tangent_negative_and_consistent(self):
+        for make in (make_linear, make_exponential):
+            m = make(self.K_PENALTY)
+            w_ref = 2.0 * G_F / SIGMA_T0
+            for frac in (0.01, 0.05, 0.3, 0.7, 0.95):
+                u = frac * w_ref
+                # Estado comprometido justo por debajo: el punto está en carga
+                # y la perturbación centrada no sale de la rama.
+                state = {'kappa': 0.5 * u}
+                t, T, _ = m.compute_traction(np.array([u, 0.0]), state)
+                T_fd = self._fd(m, u, state, 1e-6 * u)
+                with self.subTest(softening=m.softening, frac=frac):
+                    self.assertLess(T[0, 0], 0.0)
+                    self.assertAlmostEqual(T[0, 0], T_fd, delta=1e-6 * abs(T_fd))
+
+    def test_unloading_tangent_is_secant(self):
+        for make in (make_linear, make_exponential):
+            m = make(self.K_PENALTY)
+            w_ref = 2.0 * G_F / SIGMA_T0
+            kappa = 0.4 * w_ref
+            t_env, _, state = m.compute_traction(np.array([kappa, 0.0]))
+            u = 0.5 * kappa
+            t, T, st2 = m.compute_traction(np.array([u, 0.0]), state)
+            secant = t_env[0] / kappa
+            with self.subTest(softening=m.softening):
+                self.assertAlmostEqual(T[0, 0], secant, delta=1e-12 * secant)
+                self.assertAlmostEqual(t[0], secant * u, delta=1e-12 * t_env[0])
+                self.assertEqual(st2['kappa'], kappa)
+
+
+class TestCompressionRecoversInitialStiffness(unittest.TestCase):
+    """acceptance.compresion_no_dana
+
+    Con la grieta cerrándose (``[[u_n]] < 0``) se recupera la relación
+    elástica inicial ``t_n = K_e·[[u_n]]``, sin daño: la penalización impide la
+    interpenetración de las caras aunque la grieta esté totalmente abierta
+    (Alfaiate, Wells y Sluys 2002, p. 667). Antes se aplicaba ``(1 − ω)·K_e`` y
+    con ``ω = 1`` las caras se atravesaban sin resistencia.
+    """
+
+    def test_compression_uses_undamaged_penalty(self):
+        for u_open in (0.5, 1.5):               # parcial y totalmente abierta
+            m = make_linear()
+            _, _, st = m.compute_traction(np.array([u_open * m.w_c, 0.0]))
+            u_n = -m.kappa_0
+            t, T, st2 = m.compute_traction(np.array([u_n, 0.0]), st)
+            with self.subTest(u_open=u_open):
+                self.assertEqual(st2['kappa'], st['kappa'])
+                self.assertEqual(st2['damage'], st['damage'])
+                self.assertAlmostEqual(t[0], K_E * u_n, delta=1e-12 * abs(K_E * u_n))
+                self.assertEqual(T[0, 0], K_E)
+
+    def test_traction_continuous_through_closure(self):
         m = make_linear()
-        # Primero dañar parcialmente
         _, _, st = m.compute_traction(np.array([0.5 * m.w_c, 0.0]))
-        omega_before = st['damage']
-
-        # Aplicar penetración pura
-        t, _, st2 = m.compute_traction(np.array([-m.kappa_0, 0.0]), st)
-        self.assertAlmostEqual(st2['damage'], omega_before, places=14)
-        # Caveat de cierre: t_n = (1-omega)·K_e·u_n con u_n < 0
-        expected = (1.0 - omega_before) * K_E * (-m.kappa_0)
-        self.assertAlmostEqual(t[0], expected, delta=1e-9 * abs(expected))
+        eps = 1e-18
+        t_plus, _, _ = m.compute_traction(np.array([+eps, 0.0]), st)
+        t_minus, _, _ = m.compute_traction(np.array([-eps, 0.0]), st)
+        self.assertAlmostEqual(t_plus[0], 0.0, delta=K_E * 2 * eps)
+        self.assertAlmostEqual(t_minus[0], 0.0, delta=K_E * 2 * eps)
 
 
 class TestSaturationLinear(unittest.TestCase):
     """acceptance.saturacion_en_w_c_softening_lineal
 
-    El cap por ``DAMAGE_MAX`` se aplica sólo a la rigidez tangente (para
-    mantener el Newton no-singular). El ``ω`` reportado y ``t_n`` reflejan
-    el valor físico: ``ω = 1`` exacto y ``t_n = 0`` cuando ``κ ≥ w_c``.
+    Con ``κ ≥ w_c`` la grieta está totalmente abierta: ``ω = 1``, ``t_n = 0`` y
+    tangente 0 (la pendiente de la envolvente). No hace falta ninguna rigidez
+    residual: el sistema local del elemento no es singular porque su ``K_jj``
+    incluye el término del volumen.
     """
 
     def test_above_w_c_saturates(self):
@@ -309,8 +372,7 @@ class TestSaturationLinear(unittest.TestCase):
         t, T, state = m.compute_traction(np.array([u_n, 0.0]))
         self.assertEqual(state['damage'], 1.0)
         self.assertEqual(t[0], 0.0)
-        self.assertAlmostEqual(T[0, 0], (1.0 - DAMAGE_MAX) * K_E,
-                               delta=1e-10 * K_E)
+        self.assertEqual(T[0, 0], 0.0)
 
 
 class TestDegenerateToElastic(unittest.TestCase):

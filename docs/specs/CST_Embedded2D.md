@@ -202,7 +202,8 @@ ADR 0010 §5 fija que la activación se evalúa **al inicio de cada paso de carg
 
 ## Caveats numéricos
 
-- **Singularidad de `K_{[[u]][[u]]}` en Modo-I puro saturado**. Cuando `ω → 1` en el cohesivo, la rigidez tangente cohesiva `T_coh` se aproxima a la diagonal `[(1−DAMAGE_MAX)·K_e, 0]` (la componente tangencial es cero por construcción del Modo-I). La suma con la contribución del bulk `G^T·(B^φ)^T·C_e·B^φ·G` introduce rigidez en la dirección tangencial vía el bulk; la matriz 2×2 sigue siendo invertible. Verificable analíticamente.
+- **Invertibilidad de `K_{[[u]][[u]]}` en ablandamiento**. La tangente cohesiva es `diag(dT_soft/dκ, 0)`: negativa en el ablandamiento, nula con la grieta totalmente abierta y nula siempre en la dirección tangencial (Modo-I). La matriz 2×2 sigue siendo invertible por el término del bulk `G^T·(B^φ)^T·C_e·B^φ·G·vol`, definido positivo, mientras el elemento no sea tan grande que el ablandamiento lo supere (aproximadamente `l_d·|dT_soft/dκ| < E/h`). Por eso el cohesivo no necesita ninguna rigidez residual; la que tuvo hasta el 2026-09-23 (`(1 − DAMAGE_MAX)·K_e`) daba a la tangente condensada errores del 26 al 45 % en el ablandamiento ([`TestCondensedTangentInSoftening`](../../tests/test_cst_embedded.py)).
+- **Mecanismo de deslizamiento**. Con rigidez de modo II nula (Retama 2010, p. 67), una grieta que atraviesa todo el sólido deja deslizar sin resistencia una parte respecto de la otra en la dirección de la grieta. Las condiciones de apoyo tienen que impedir ese movimiento; si no, el Newton global deriva sin converger en desplazamientos aunque el residuo sea nulo.
 - **Activación al principio del paso**. Si el incremento es muy grande, `σ_I` puede saltar muy por encima de `σ_t0` antes de la activación, generando un Δ[[u]] grande en el primer Newton. Mitigación: pasos suficientemente pequeños o `ArcLengthSolver` cerca del pico.
 - **Bulk descarga elástica**. Por la cinemática KOS, el bulk evalúa `ε^bulk = B_std·d − B^φ·G·[[u]]` — descarga conforme `[[u]]` crece. Esto es físicamente correcto (la disipación va a `Γ_d`) y consistente con la discrete approach de Retama 2010. El bulk **no acumula daño** propio (out_of_scope fase 1).
 - **`Γ_d` paralelo a un lado**. Caso degenerado: `cos(θ−α) = 1`, `l_d = A_e/h`. La fórmula del Cap. 6 sigue siendo correcta, pero numéricamente el nodo solitario debe identificarse con tolerancia para evitar oscilación entre dos nodos casi en el mismo plano.
@@ -259,7 +260,7 @@ out_of_scope:
   - "Modo mixto I-II en el cohesivo (fase G del ADR 0010)."
   - "Reorientación de n tras la activación (tracking no trivial, fase F)."
   - "Múltiples discontinuidades por elemento."
-  - "Contacto unilateral en compresión (cierre rígido)."
+  - "Contacto con fricción en la grieta cerrada (el cohesivo sólo recupera la penalización normal K_e en compresión)."
   - "Elementos de orden superior con discontinuidad embebida (Tri6_Embedded, Quad8_Embedded; fase J)."
   - "3D (fase I)."
 

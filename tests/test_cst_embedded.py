@@ -237,6 +237,59 @@ class TestCondensedSymmetry(unittest.TestCase):
         self.assertLess(frob / ref, 1e-12)
 
 
+class TestCondensedTangentInSoftening(unittest.TestCase):
+    """acceptance.tangente_condensada_consistente_en_ablandamiento
+
+    La tangente condensada ``K_uu − K_uj·K_jj⁻¹·K_ju`` (Retama 2010, ec. 7.14)
+    frente a diferencias finitas centradas de la fuerza interna condensada,
+    con el Newton local del salto reconvergido en cada perturbación. Se usa
+    ``K_e`` de penalización real (``κ_0/w_c ~ 5e-5``), en plena rama de
+    ablandamiento, con grieta paralela al lado opuesto al solitario y
+    oblicua, y espesor ≠ 1. Con el tope ``DAMAGE_MAX`` que tenía la tangente
+    del cohesivo hasta el 2026-09-23 el error era del 26 al 45 %.
+    """
+
+    GEOMETRIES = (
+        (np.array([[0.0, 0.0], [0.1, 0.0], [0.1, 0.05]]), np.array([1.0, 0.0])),
+        (np.array([[0.0, 0.0], [0.1, 0.01], [0.03, 0.06]]), np.array([0.95, 0.31])),
+    )
+
+    def test_matches_finite_difference(self):
+        import copy
+        for softening in ('linear', 'exponential'):
+            for coords, n in self.GEOMETRIES:
+                cohesive = _make_cohesive(sigma_t0=3.0e6, G_f=100.0, K_e=1.0e15,
+                                          softening=softening)
+                emb = CST_Embedded2D(1, _triangle_nodes(coords), _make_bulk(),
+                                     cohesive, thickness=0.02)
+                emb._activate(n / np.linalg.norm(n), coords)
+                ds = emb.discontinuity_state
+                w_c = 2.0 * 100.0 / 3.0e6
+                for frac in (0.3, 0.7):
+                    # Separación del nodo solitario y κ comprometido por
+                    # debajo: el punto está en carga sobre el ablandamiento.
+                    u = np.full(6, 1.0e-6)
+                    i = ds.solitary_node
+                    u[2 * i:2 * i + 2] += frac * w_c * ds.normal
+                    ds.cohesive_state_committed = {'kappa': 0.5 * frac * w_c}
+                    ds.jump_trial = np.array([frac * w_c, 0.0])
+
+                    def f_int(v):
+                        return copy.deepcopy(emb).compute_element_state(v)
+
+                    K, _ = f_int(u)
+                    h = 1.0e-7 * frac * w_c
+                    K_fd = np.zeros((6, 6))
+                    for j in range(6):
+                        up, um = u.copy(), u.copy()
+                        up[j] += h
+                        um[j] -= h
+                        K_fd[:, j] = (f_int(up)[1] - f_int(um)[1]) / (2.0 * h)
+                    err = np.linalg.norm(K - K_fd) / np.linalg.norm(K_fd)
+                    with self.subTest(softening=softening, normal=tuple(n), frac=frac):
+                        self.assertLess(err, 1e-7)
+
+
 # =========================================================================
 # Fórmula cerrada de l_d (Cap. 6 Retama 2010)
 # =========================================================================

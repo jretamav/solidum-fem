@@ -1,6 +1,6 @@
 # COHESIVE DAMAGE ISOTROPIC — material cohesivo traction-jump con daño escalar Modo-I
 
-> Orden de trabajo. Pre-redactada por la IA como borrador para validación del usuario (autor de la formulación, Retama 2010). La física y la formulación numérica son traducción directa del Cap. 3 de la tesis; la mecánica de implementación (Voigt, registry, signatura, tests) sigue las convenciones del proyecto. El usuario revisa, corrige donde proceda, y aprueba antes de que la IA toque código.
+> Orden de trabajo. Pre-redactada por la IA como borrador para validación del usuario (autor de la formulación, Retama 2010). La física sigue el Cap. 3 de la tesis, que adopta el modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys (2002, ecs. 8-17): de esa referencia, y no de la tesis, vienen `K_e`, `κ_0` y las leyes `ω(κ)` (revisión del 2026-09-23); la mecánica de implementación (Voigt, registry, signatura, tests) sigue las convenciones del proyecto. El usuario revisa, corrige donde proceda, y aprueba antes de que la IA toque código.
 
 ---
 
@@ -60,7 +60,7 @@ Codifica:
 
 - **Carga activa** (`⟨[[u_n]]⟩ > κ_n`): `κ` crece; el daño puede aumentar.
 - **Descarga / recarga elástica** (`⟨[[u_n]]⟩ ≤ κ_n`): `κ` queda congelado; daño no cambia (secante respecto al origen con rigidez reducida `(1−ω)·K_e`).
-- **Compresión** (`[[u_n]] < 0`): `⟨[[u_n]]⟩ = 0 ≤ κ_n`, `κ` congelado. El daño no crece. *Caveat de cierre*: la rigidez efectiva en compresión sigue siendo `(1−ω)·K_e`, no se recupera el contacto rígido — limitación documentada en §12.
+- **Compresión** (`[[u_n]] < 0`): `⟨[[u_n]]⟩ = 0 ≤ κ_n`, `κ` congelado. El daño no crece. Se recupera la relación elástica inicial `t_n = K_e·[[u_n]]`, sin daño: la penalización impide la interpenetración de las caras (Alfaiate et al. 2002, p. 667, *"if crack closure occurs, the initial elastic constitutive relation is recovered"*).
 - **Irreversibilidad**: `κ` monótono no decreciente; `ω(κ)` monótono no decreciente.
 
 Condiciones de Kuhn-Tucker estándar (Eq. 3.15):
@@ -79,7 +79,7 @@ con `κ ≥ κ_0`. Para `κ ≤ κ_0`, `ω = 0` por definición.
 
 $$T_\text{soft}(\kappa) = \sigma_{t0}\left(1 - \frac{\kappa - \kappa_0}{w_c - \kappa_0}\right) = \frac{\sigma_{t0}\,(w_c - \kappa)}{w_c - \kappa_0}, \qquad w_c = \frac{2\,G_F}{\sigma_{t0}}$$
 
-válida en `κ ∈ [κ_0, w_c]`. Para `κ ≥ w_c`: `T_\text{soft} = 0`, `ω = 1` (saturada a `DAMAGE_MAX`). Forma cerrada de `ω(κ)`:
+válida en `κ ∈ [κ_0, w_c]`. Para `κ ≥ w_c`: `T_\text{soft} = 0`, `ω = 1` (grieta totalmente abierta). Forma cerrada de `ω(κ)`:
 
 $$\omega(\kappa) = 1 - \frac{\sigma_{t0}\,(w_c - \kappa)}{K_e\,\kappa\,(w_c - \kappa_0)} \qquad (\kappa \in [\kappa_0,\,w_c])$$
 
@@ -89,14 +89,14 @@ Verificación en los extremos: `ω(κ_0) = 1 − σ_{t0}/(K_e·κ_0) = 0` (por `
 
 $$T_\text{soft}(\kappa) = \sigma_{t0}\,\exp\left(-\frac{\sigma_{t0}\,(\kappa - \kappa_0)}{H}\right), \qquad H = G_F - \frac{\sigma_{t0}\,\kappa_0}{2}$$
 
-asintótica a cero; `ω(κ) → 1` cuando `κ → ∞`, saturada a `DAMAGE_MAX` en la práctica. `H` se deriva imponiendo que la integral total de tracción a lo largo de la curva sea `G_F` (consistencia energética).
+asintótica a cero; `ω(κ) → 1` cuando `κ → ∞`. `H` se deriva imponiendo que la integral total de tracción a lo largo de la curva sea `G_F` (consistencia energética).
 
 La validez de la rama exponencial exige `G_F > σ_{t0}·κ_0/2`, es decir `K_e > σ_{t0}²/(2·G_F)` — condición geométrica trivial cuando `K_e` se elige como penalty.
 
 ### 6. Variables internas
 
 - `κ : float` — historial del salto equivalente máximo. **PRIMARY_STATE_VAR alternativa** (más fundamental, controla todo el resto).
-- `ω : float ∈ [0, DAMAGE_MAX]` — daño escalar. **PRIMARY_STATE_VAR adoptada** (más interpretable físicamente; se exporta al post-proceso).
+- `ω : float ∈ [0, 1]` — daño escalar. **PRIMARY_STATE_VAR adoptada** (más interpretable físicamente; se exporta al post-proceso).
 - `ω` es función determinista de `κ` (ec. §5); se cachea en el estado para evitar recálculo y para diagnóstico.
 
 ### 7. Frame local y notación
@@ -120,8 +120,8 @@ Dado `κ_n` y `[[u]]_{n+1}` (en ejes locales):
 
 1. Calcular `[[u]]_eq = ⟨[[u_n]]⟩ = max(0, [[u]]·n_local)`. *(En el frame local, `n_local = (1, 0)` y `[[u_n]] = [[u]][0]`. Se mantiene la notación abstracta por claridad física.)*
 2. Si `[[u]]_eq > κ_n` y `[[u]]_eq > κ_0`: **carga activa**, `κ_{n+1} = [[u]]_eq`. Si no: **descarga / no daño**, `κ_{n+1} = κ_n`.
-3. Aplicar `ω(κ_{n+1})` por la fórmula §5; saturar a `DAMAGE_MAX`.
-4. Tracción: `t_n = (1 − ω)·K_e·[[u_n]]`, `t_s = 0`.
+3. Aplicar `ω(κ_{n+1})` por la fórmula §5.
+4. Tracción: `t_n = (1 − ω)·K_e·[[u_n]]` si `[[u_n]] ≥ 0` (en carga activa, `t_n = T_soft(κ)` evaluada directamente, sin pasar por `1 − ω`, que con `K_e` de penalización está a `~κ_0/κ` de cero); `t_n = K_e·[[u_n]]` si `[[u_n]] < 0`; `t_s = 0`.
 5. Tangente: ver §9.
 
 El algoritmo es **explícito**: no requiere Newton local. La actualización de `κ` y `ω` es directa. Mismo patrón que `IsotropicDamage2D`.
@@ -142,17 +142,17 @@ $$\mathbf T^\text{alg} = (1-\omega)\,K_e\,(\mathbf n \otimes \mathbf n)$$
 
 (secante reducida; `∂κ/∂[[u]] = 0` anula el segundo término).
 
-- **Carga activa** (`[[u]]_eq > κ_n`, `κ > κ_0`, `ω < DAMAGE_MAX`):
+- **Carga activa** (`[[u]]_eq > κ_n`, `κ > κ_0`), en toda la rama de ablandamiento:
 
 $$\mathbf T^\text{alg} = (1-\omega)\,K_e\,(\mathbf n \otimes \mathbf n) - \frac{d\omega}{d\kappa}\,K_e\,\llbracket u_n\rrbracket\,(\mathbf n \otimes \mathbf n)$$
 
 $$= \left[(1-\omega) - \frac{d\omega}{d\kappa}\,\llbracket u_n\rrbracket\right]\,K_e\,(\mathbf n \otimes \mathbf n)$$
 
-- **Cap numérico de la tangente** (`ω ≥ DAMAGE_MAX`, o `κ ≥ w_c` en lineal):
+Es la pendiente de la envolvente, `dT_soft/dκ`: `−σ_{t0}/(w_c − κ_0)` en lineal y `−(σ_{t0}/H)·T_soft(κ)` en exponencial. Negativa en toda la rama y nula con la grieta totalmente abierta (lineal, `κ ≥ w_c`). Se evalúa así, directamente, y no por la expresión de arriba, que con `K_e` de penalización resta dos números casi iguales.
 
-$$\mathbf T^\text{alg} = (1-\text{DAMAGE\_MAX})\,K_e\,(\mathbf n \otimes \mathbf n)$$
+- **Cierre** (`[[u_n]] < 0`): `T^alg = K_e·(n⊗n)`, la rigidez inicial sin daño.
 
-El cap se aplica **sólo a la rigidez tangente** para evitar singularidad del Newton cuando `ω → 1`. La tracción se calcula con el `ω` físico (que llega a `1.0` exacto en lineal con `κ ≥ w_c`, asintóticamente en exponencial) y por tanto `t_n = 0` cuando la grieta está totalmente abierta, sin residuo numérico contaminando la energía disipada.
+**Sin rigidez residual.** No se aplica ningún tope a la tangente. El sistema local del salto no se vuelve singular aunque `T^alg_nn` sea nula o negativa, porque la `K_jj` del elemento (Retama 2010, ec. 6.12) incluye el término del volumen `Gᵀ·B_cᵀ·C·B_c·G·vol`, definido positivo mientras el elemento no sea tan grande que el ablandamiento lo supere (condición de tamaño, aproximadamente `l_d·|dT_soft/dκ| < E/h`). Hasta el 2026-09-23 un tope `ω ≥ DAMAGE_MAX` sustituía la tangente de carga por `+1e-3·K_e`: como `1 − ω = T_soft/(K_e·κ)`, con `K_e` de penalización el tope actuaba desde `κ ≈ 0.026·w_c` (tracción al 97 % de `σ_{t0}`), es decir, en casi todo el ablandamiento, con el signo cambiado y el elemento presentándose al solver como si endureciera.
 
 Las derivadas `dω/dκ` cerradas:
 
@@ -184,8 +184,8 @@ Dentro de una iteración del Newton global, el material recibe `[[u]]_trial` y d
 ### 12. Caveats numéricos
 
 - **Elección de `K_e` (penalty)**. Si `K_e` muy pequeño: `κ_0 = σ_{t0}/K_e` no es despreciable y la respuesta elástica deforma significativamente la curva (la grieta "se abre" antes del pico). Si `K_e` muy grande: condicionamiento del sistema empeora (`K_e ≫ E_bulk·L_e` introduce diferencia de magnitudes en `K_{ũũ}`). Regla práctica: `K_e ≈ 10·E_bulk/ℓ_c` con `ℓ_c` la longitud característica del elemento (su lado más corto). El usuario lo declara explícitamente en YAML; no hay default automático.
-- **Cierre en compresión**. Cuando `[[u_n]] < 0` el modelo devuelve `t_n = (1−ω)·K_e·[[u_n]]` (compresión reducida). Físicamente, la grieta cerrada debería transmitir compresión a rigidez completa `K_e` (contacto unilateral). En fase 1 esta limitación se acepta tal cual — los benchmarks de la tesis (Van Vliet, viga SEN) son traccionados puros. Un modelo con corrección de cierre se contempla como **deuda explícita** para casos con cambio de signo en la grieta.
-- **Cap numérico de la rigidez tangente**. `DAMAGE_MAX < 1` se aplica **sólo** sobre `T_tan` para evitar singularidad del Newton (`stiffness = max(1−ω, 1−DAMAGE_MAX)·K_e`). El `ω` reportado en el estado y usado en `t_n = (1−ω)·K_e·[[u_n]]` es físico (puede valer exactamente 1.0 en lineal con `κ ≥ w_c`). Diferencia respecto al patrón en `IsotropicDamage2D`: allí `K_e ≡ E` es moderado y truncar ω no introduce residuo significativo en σ; aquí `K_e` es penalty (≫E) y `u_n` recorre rangos macroscópicos, así que truncar ω contaminaría la energía disipada en ~10–30 %.
+- **Cierre en compresión**. Con `[[u_n]] < 0` se recupera `t_n = K_e·[[u_n]]` sin daño (§4): la penalización impide la interpenetración aunque la grieta esté totalmente abierta. No hay fricción: la componente tangencial sigue sin rigidez.
+- **Sin tope sobre `ω` ni sobre la tangente**. `ω` es físico (1.0 exacto en lineal con `κ ≥ w_c`) y la tangente es la consistente en toda la rama (§9). Truncar `ω` contaminaría la energía disipada en ~10-30 % (`K_e` de penalización y `u_n` macroscópico), y truncar la tangente le daba el signo contrario en casi todo el ablandamiento. Diferencia con `IsotropicDamage2D`, donde `K_e ≡ E` es moderado y el tope `DAMAGE_MAX` sí es inocuo.
 - **Sensibilidad de malla** en régimen de softening. Sin regularización, el patrón de fallo localiza en función del tamaño y orientación de elementos. La integración con el elemento `CST_Embedded2D` (fase 2 del ADR 0010) y con el `l_d = (A/h)·cos(θ−α)` de Cap. 6 da objetividad parcial respecto a la longitud de la grieta — pero la dirección de propagación sigue dependiendo de la dirección de tensiones principales en el elemento. Mitigación a nivel del *elemento*, no del material.
 - **Validación energética**. Por construcción `∫_0^{w_c} t(w)·dw = G_F`. Esto se verifica en los tests (§acceptance). Si la curva implementada no integra a `G_F`, hay error en `w_c` o en `H`.
 
@@ -215,7 +215,7 @@ signature:
 
 state_schema:
   kappa: "float ≥ κ_0 — historial del salto equivalente máximo"
-  damage: "float ∈ [0, DAMAGE_MAX] — variable de daño escalar"
+  damage: "float ∈ [0, 1] — variable de daño escalar (1 − S(κ)/K_e, S la secante)"
 
 conventions:
   sign: "[[u_n]] > 0 ⇔ apertura (tracción); el modelo daña sólo en apertura (Modo-I)"
@@ -230,7 +230,7 @@ validity:
 
 out_of_scope:
   - "Modo mixto I-II (cizalla acoplada al daño); diferido a fase G del ADR 0010"
-  - "Contacto / cierre unilateral en compresión; el modelo reduce rigidez al estar dañado, no recupera contacto rígido"
+  - "Fricción en la grieta cerrada; en compresión sólo se recupera la penalización normal K_e"
   - "Anisotropía del daño (tensor de daño D vs escalar ω)"
   - "Acoplamiento viscoso (rate-dependent); rate-independent puro en fase 1"
   - "Fatiga / acumulación cíclica del daño"
@@ -238,10 +238,10 @@ out_of_scope:
 
 numerical_caveats:
   - "Penalty K_e: balance entre κ_0 despreciable (K_e grande) y condicionamiento (K_e moderado). Guía: K_e ≈ 10·E_bulk/ℓ_c. Declarado por el usuario en YAML, sin default automático."
-  - "Cierre en compresión: rigidez reducida (1−ω)·K_e, no recuperación de contacto rígido. Aceptable para benchmarks puramente traccionados; deuda explícita para casos con cambio de signo."
-  - "Cap por DAMAGE_MAX aplicado sólo a la rigidez tangente (stiffness = max(1−ω, 1−DAMAGE_MAX)·K_e) para evitar singularidad del Newton. La tracción se calcula con ω físico (1.0 exacto en lineal con κ≥w_c) y por tanto t_n = 0 cuando la grieta está totalmente abierta, sin sesgo en la energía disipada."
+  - "Cierre en compresión: t_n = K_e·[[u_n]] sin daño (Alfaiate et al. 2002, p. 667); sin fricción."
+  - "Sin tope DAMAGE_MAX: ω físico y tangente consistente en toda la rama; la K_jj del elemento no se vuelve singular por el término del volumen (ver §9)."
   - "Régimen elastic↔softening discontinuo en la tangente al cruzar κ_0; régimen loading↔unloading discontinuo al cruzar κ_n committed. Mismo patrón que IsotropicDamage2D."
-  - "En la zona ω ≥ DAMAGE_MAX la tangente colapsa a la secante reducida (1−DAMAGE_MAX)·K_e, no a la consistente; el Newton degrada de convergencia cuadrática a lineal en esa rama (típicamente irrelevante porque la rama corresponde a un elemento prácticamente roto)."
+  - "Con K_e de penalización, 1 − ω está a ~κ_0/κ de cero: t_n y la tangente de carga se evalúan desde T_soft(κ), no desde (1 − ω)·K_e, para no perder cifras por cancelación."
 
 acceptance:
   verification:
@@ -292,6 +292,11 @@ acceptance:
       expect: "‖T_tan_FD − T_tan_analitica‖ / ‖T_tan‖ < 1e-5"
       tol_rel: 1.0e-5
 
+    - name: tangente_consistente_en_todo_el_ablandamiento
+      setup: "K_e = 1e15 (penalización real, κ_0/w_c ~ 3e-5), carga activa en κ/w_ref ∈ {0.01, 0.05, 0.3, 0.7, 0.95}, lineal y exponencial; y descarga a la mitad de κ"
+      expect: "carga: T_tan < 0 e igual a la diferencia finita centrada; descarga: T_tan = secante T_soft(κ)/κ"
+      tol_rel: 1.0e-6
+
     - name: tangencial_no_dana_ni_transmite
       setup: "[[u_s]] arbitrario, [[u_n]] = 0"
       expect: "t_s = 0; t_n = 0; ω no cambia"
@@ -299,12 +304,12 @@ acceptance:
 
     - name: compresion_no_dana
       setup: "[[u_n]] < 0 puro (penetración)"
-      expect: "⟨[[u_n]]⟩ = 0 ⇒ f = −κ ≤ 0 ⇒ ω no cambia. t_n = (1−ω_previo)·K_e·[[u_n]] (caveat de cierre, §12)"
+      expect: "⟨[[u_n]]⟩ = 0 ⇒ f = −κ ≤ 0 ⇒ ω y κ no cambian. t_n = K_e·[[u_n]] y T_tan = K_e·(n⊗n) aunque la grieta esté parcial o totalmente abierta; t_n continua a través de [[u_n]] = 0"
       tol_rel: 1.0e-12
 
     - name: saturacion_en_w_c_softening_lineal
       setup: "[[u_n]] = w_c·1.01 con softening='linear'"
-      expect: "ω = 1.0 exacto, t_n = 0 exacto (grieta totalmente abierta). T_tan = (1−DAMAGE_MAX)·K_e (cap numérico sólo sobre la rigidez)."
+      expect: "ω = 1.0 exacto, t_n = 0 exacto y T_tan = 0 (pendiente de la envolvente; grieta totalmente abierta)."
       tol_rel: 1.0e-10
 
     - name: degeneracion_a_elasticidad_intacta
@@ -321,6 +326,7 @@ acceptance:
 
 references:
   - "Retama Velasco, J. (2010). Formulation and Approximation to Problems in Solids by Embedded Discontinuity Models. Tesis Doctoral, UNAM. **Cap. 3 — Discrete damage models**. Fórmulas §3.1 (energía libre, ec. 3.1–3.4); §3.1.1 (tensor tangente, ec. 3.7–3.12); §3.1.2 (función de fluencia, ec. 3.13–3.14); §3.1.3 (Kuhn-Tucker, ec. 3.15–3.16)."
+  - "Alfaiate, J., Wells, G.N., Sluys, L.J. (2002). On the use of embedded discontinuity elements with crack path continuity for mode-I and mixed-mode fracture. *Engineering Fracture Mechanics* 69, 661-686. **Modelo de daño isótropo con penalización que sigue la tesis** (su cita [4] en la ec. 3.2): ecs. 8-17 (ω(κ) exponencial, κ₀ ≈ 0, D_el = f_t0/κ₀·I, condiciones de arranque) y p. 667 (recuperación de la rigidez inicial al cerrarse la grieta)."
   - "Hillerborg, A., Modéer, M., Petersson, P.-E. (1976). Analysis of crack formation and crack growth in concrete by means of fracture mechanics and finite elements. *Cement and Concrete Research* 6, 773-782. **Origen del modelo cohesivo con energía de fractura G_F**."
   - "Barenblatt, G.I. (1962). The mathematical theory of equilibrium cracks in brittle fracture. *Advances in Applied Mechanics* 7, 55-129."
   - "Simó, J.C., Ju, J.W. (1987). Strain- and stress-based continuum damage models — I. Formulation. *Int. J. Solids Struct.* 23, 821-840."
@@ -339,6 +345,7 @@ references:
 - Autodiscover: `solidum.autodiscover.initialize()` descubre `solidum.cohesive_materials` automáticamente.
 - Tests:
   - `tests/test_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
+  - `tests/test_cst_embedded.py::TestCondensedTangentInSoftening` y `tests/validation/test_embedded_uniaxial_softening.py` — el material dentro del elemento: tangente condensada frente a diferencias finitas y tracción uniaxial hasta la separación completa frente a la solución exacta.
 - Notas de traducción:
   - El algoritmo §8 es explícito (sin Newton local); no se usa `is_admissible` en este material.
   - `JUMP_DIM = 2`, `PRIMARY_STATE_VAR = 'damage'`, `IS_SYMMETRIC = True`.
@@ -358,3 +365,4 @@ references:
 - **2026-05-18** · Status → `validated`. La IA arranca implementación.
 - **2026-05-18** · *Nota tras implementación*: durante los tests el corte por `DAMAGE_MAX` aplicado a ω introducía ~10 % de exceso en `∫t·d[[u_n]]` respecto a `G_F` (vs ~0.001 esperado). Razón física: en cohesivos `K_e` es penalty (≫ E_bulk) y `u_n` recorre rango macroscópico, así que `(1−DAMAGE_MAX)·K_e·u_n` no es despreciable. Fix arquitectural: el cap por `DAMAGE_MAX` se aplica **sólo a la rigidez tangente** (para mantener el Newton no singular), no al `ω` reportado ni a `t_n`. Actualizadas §9, §12 y `acceptance.saturacion_en_w_c_softening_lineal` consecuentemente. Distinto del patrón en `IsotropicDamage2D` por la diferencia en escalas de `K_e` y de la variable de entrada.
 - **2026-09-22** · Auditoría global: el softening lineal exige `w_c > κ₀` (`K_e > σ_t0²/(2·G_F)`), la misma condición que el exponencial; antes sólo validaba el exponencial y con `w_c ≤ κ₀` ω saltaba a 1 en cuanto κ > κ₀, disipando ½·σ_t0·κ₀ > G_F sin aviso.
+- **2026-09-23** · *Revisión contra la tesis* (pedida por el usuario antes de usar la formulación en el manual de ejemplos). La tesis no escribe `K_e`, `κ_0` ni `ω(κ)`: en la ec. 3.2 cita a Alfaiate, Wells y Sluys (2002) y reproduce casi literalmente su modelo de daño isótropo con penalización (ecs. 8-17), que es el implementado. El usuario confirmó mantener la penalización. Dos correcciones, ambas siguiendo esa referencia y validadas por el usuario: (1) se elimina el tope `DAMAGE_MAX` de la tangente, que en carga activa devolvía `+1e-3·K_e` en casi todo el ablandamiento (desde `κ ≈ 0.026·w_c` con `K_e = 1e15`) en lugar de la pendiente negativa, de modo que la tangente condensada del elemento erraba del 26 al 45 %; (2) en compresión se recupera la rigidez inicial `K_e` sin daño, en vez de `(1 − ω)·K_e`, que dejaba atravesarse las caras de una grieta abierta. Tests nuevos: barrido de la tangente en toda la rama, compresión con grieta abierta, tangente condensada frente a diferencias finitas (los tres fallan con el código anterior) y tracción uniaxial hasta la separación completa frente a la solución exacta.
