@@ -103,14 +103,14 @@ Migración hecha el 2026-09-24, con la suite en verde en cada paso y sin cambio 
 
 | Paso | Commit | Contenido | Suite (pasan / skipped) |
 |---|---|---|---|
-| 1 | `d1908a0` | P1 y P2: `Registry` público con familias; un solo bucle en el lector YAML; sección de primer nivel desconocida = error | 1568 / 9 |
-| 2 | `5aa514b` | P3: `Element.REFERENCE_KWARGS`; fuera la heurística de material y el caso especial `cohesive_material` | 1570 / 9 |
-| 3 | `80f5233` | P6 (cinemática pública), P8 (`element_is_batchable`) y specs localizadas por `SPEC_KIND` | 1572 / 9 |
-| 4 | `831a0f8` | P4: `solidum/user/`, `load_user_module`, `available_user_modules` y clave `user_modules`, probados con un módulo de juguete en subproceso | 1574 / 9 |
-| 5 | `e0367a2` | P7: ruta gmsh con `mesh_element` y `element` por grupo físico | 1581 / 9 |
-| 6a | `7777d1e` | Test de P5 (`tests/test_prepare_step_hook.py`); barridos de contrato restringidos a las clases del programa principal | 1589 / 9 |
-| 6b | `a2ab23f` | La embebida pasa a `solidum/user/discontinuities/`; fuera reexports, autodescubrimiento, registro y constantes del programa principal; tests a `tests/user/discontinuities/test_disc_*.py`, specs a `docs/user/discontinuities/specs/` | 1610 / 10 |
-| 7a | `5e4b84b` | Test de pureza `tests/test_main_program_purity.py`; docstrings del programa principal sin nombrar la embebida | 1613 / 10 |
+| 1 | `9f49c6e` | P1 y P2: `Registry` público con familias; un solo bucle en el lector YAML; sección de primer nivel desconocida = error | 1568 / 9 |
+| 2 | `47565a1` | P3: `Element.REFERENCE_KWARGS`; fuera la heurística de material y el caso especial `cohesive_material` | 1570 / 9 |
+| 3 | `1f69c47` | P6 (cinemática pública), P8 (`element_is_batchable`) y specs localizadas por `SPEC_KIND` | 1572 / 9 |
+| 4 | `953e211` | P4: `solidum/user/`, `load_user_module`, `available_user_modules` y clave `user_modules`, probados con un módulo de juguete en subproceso | 1574 / 9 |
+| 5 | `ad95ad4` | P7: ruta gmsh con `mesh_element` y `element` por grupo físico | 1581 / 9 |
+| 6a | `cdd8125` | Test de P5 (`tests/test_prepare_step_hook.py`); barridos de contrato restringidos a las clases del programa principal | 1589 / 9 |
+| 6b | `67fcef7` | La embebida pasa a `solidum/user/discontinuities/`; fuera reexports, autodescubrimiento, registro y constantes del programa principal; tests a `tests/user/discontinuities/test_disc_*.py`, specs a `docs/user/discontinuities/specs/` | 1610 / 10 |
+| 7a | `eca7ec9` | Test de pureza `tests/test_main_program_purity.py`; docstrings del programa principal sin nombrar la embebida | 1613 / 10 |
 
 El resto del paso 7 (Reglas.md, CLAUDE.md, skill `solidum-new`, catálogos, manuales y `paper.md`) acompaña a esta sección.
 

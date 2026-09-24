@@ -1,6 +1,6 @@
 # Revisión arquitectural — 2026-05-28
 
-> Auditoría exhaustiva de arquitectura y programación de Solidum FEM ejecutada el 2026-05-28 mediante orquestación multi-agente (workflow `solidum-arch-review` con 10 dimensiones revisadas en paralelo, 137 hallazgos propuestos, 110 confirmados tras verificación adversarial). Baseline del repositorio: commit `1bc2add` (sub-fase 4 A.ter cerrada).
+> Auditoría exhaustiva de arquitectura y programación de Solidum FEM ejecutada el 2026-05-28 mediante orquestación multi-agente (workflow `solidum-arch-review` con 10 dimensiones revisadas en paralelo, 137 hallazgos propuestos, 110 confirmados tras verificación adversarial). Baseline del repositorio: commit `53fc10b` (sub-fase 4 A.ter cerrada).
 
 ## Metodología
 
@@ -344,4 +344,4 @@ Agrupados por dimensión (detalle disponible en transcripts del workflow `wf_a5a
 
 ---
 
-*Generado el 2026-05-28 mediante workflow `solidum-arch-review` (run `wf_a5a52ebc-b2f`). Baseline: commit `1bc2add`. 148 agentes (10 reviewers + 138 verificadores), 11.1 M tokens.*
+*Generado el 2026-05-28 mediante workflow `solidum-arch-review` (run `wf_a5a52ebc-b2f`). Baseline: commit `53fc10b`. 148 agentes (10 reviewers + 138 verificadores), 11.1 M tokens.*
