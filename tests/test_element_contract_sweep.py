@@ -65,6 +65,17 @@ from solidum.materials.elastic_3d import Elastic3D
 from solidum.materials.thermal_conduction import ThermalConduction
 from solidum.registry import CohesiveMaterialRegistry, ElementRegistry
 
+
+def nombres_programa_principal(registry) -> list:
+    """Nombres registrados cuya clase pertenece al programa principal.
+
+    Los módulos de usuario (``solidum/user/``, ADR 0020) se cargan en la
+    misma sesión de pytest cuando corren sus propios tests, y sus clases
+    quedan en los registros globales. Cada módulo trae su propio barrido;
+    éste cubre sólo el programa principal."""
+    return [n for n in registry.names()
+            if not registry.get(n).__module__.startswith("solidum.user.")]
+
 RHO = 7850.0
 MAT_1D = Elastic1D(E=2.0e11, density=RHO)
 MAT_2D = Elastic2D(E=2.0e11, nu=0.3, density=RHO)
@@ -191,7 +202,7 @@ class TestRegistroCompleto(unittest.TestCase):
         que es exactamente lo que le pasó a `Orthotropic2D` entre los
         materiales.
         """
-        registrados = set(ElementRegistry.names())
+        registrados = set(nombres_programa_principal(ElementRegistry))
         cubiertos = set(FABRICAS)
 
         sin_cubrir = registrados - cubiertos
@@ -208,10 +219,10 @@ class TestRegistroCompleto(unittest.TestCase):
 
     def test_el_registro_no_esta_vacio(self):
         """Si el autodiscover se rompiera, el barrido pasaría por vacuidad."""
-        self.assertGreaterEqual(len(ElementRegistry.names()), 23)
+        self.assertGreaterEqual(len(nombres_programa_principal(ElementRegistry)), 23)
 
     def test_todos_construyen(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 self.assertEqual(elemento.id, 1)
@@ -221,7 +232,7 @@ class TestContratoDeclarativo(unittest.TestCase):
     """Atributos de clase exigidos por `solidum/core/element.py`."""
 
     def test_hereda_de_element(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 self.assertTrue(issubclass(ElementRegistry.get(nombre), Element))
 
@@ -231,7 +242,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         Un duplicado produciría dos ecuaciones para el mismo DOF y una matriz
         singular mucho más adelante, sin señal en el punto de origen.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 dofs = clase.DOF_NAMES
@@ -249,7 +260,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         un vector genuino, no un tensor simétrico comprimido en Voigt, así que
         el elemento térmico no tiene `STRAIN_DIM` que declarar.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 strain = getattr(clase, 'STRAIN_DIM', None)
@@ -268,7 +279,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         Si no coincidiera con los puntos que el elemento recorre de verdad, el
         estado interno se desalinearía silenciosamente entre iteraciones.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 n = elemento.N_INTEGRATION_POINTS
@@ -283,7 +294,7 @@ class TestContratoDeclarativo(unittest.TestCase):
                         f"len(points)={len(puntos)}")
 
     def test_banderas_son_booleanas(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 self.assertIsInstance(clase.PRESERVES_SYMMETRY, bool)
@@ -294,7 +305,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         la matriz global cuando la rigidez colapsa a cero. La base lo valida al
         construir; aquí se comprueba que la bandera dice la verdad.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 material = getattr(elemento, 'material', None)
@@ -311,7 +322,7 @@ class TestRigidezElemental(unittest.TestCase):
     """Propiedades que toda `K` elemental debe cumplir."""
 
     def test_forma_coherente_con_dofs(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 esperado = len(elemento.nodes) * len(elemento.DOF_NAMES)
@@ -319,7 +330,7 @@ class TestRigidezElemental(unittest.TestCase):
                 self.assertEqual(K.shape, (esperado, esperado))
 
     def test_valores_finitos(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 self.assertTrue(np.all(np.isfinite(_rigidez(_construir(nombre)))))
 
@@ -330,7 +341,7 @@ class TestRigidezElemental(unittest.TestCase):
         para elegir backend: declararla con una `K` asimétrica llevaría a
         factorizar por Cholesky una matriz que no lo admite.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 if not elemento.PRESERVES_SYMMETRY:
@@ -360,7 +371,7 @@ class TestRigidezElemental(unittest.TestCase):
         lineales pero sólo infinitesimalmente en formulaciones corotacionales,
         así que exigirla aquí mezclaría contrato con formulación.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             if nombre in TERMICOS:
                 continue    # sus DOFs son temperaturas: no hay traslación
             with self.subTest(elemento=nombre):
@@ -388,7 +399,7 @@ class TestRigidezElemental(unittest.TestCase):
     def test_semidefinida_positiva(self):
         """Sin material en régimen degradante, la energía de deformación no
         puede ser negativa: `K` es semidefinida positiva."""
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 K = _rigidez(_construir(nombre))
                 K_sim = 0.5 * (K + K.T)
@@ -416,7 +427,7 @@ class TestMasa(unittest.TestCase):
         return bloque.sum()
 
     def test_masa_total_consistente(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             volumen = _volumen(nombre)
             if volumen is None or nombre in TERMICOS:
                 continue
@@ -439,7 +450,7 @@ class TestMasa(unittest.TestCase):
         una misma estructura tendría frecuencias propias distintas por un
         detalle de implementación de la masa.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             volumen = _volumen(nombre)
             if volumen is None or nombre in TERMICOS:
                 continue
@@ -458,7 +469,7 @@ class TestMasa(unittest.TestCase):
                     msg=f"{nombre}: lumped no conserva la masa total")
 
     def test_lumped_es_diagonal(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 try:
@@ -473,7 +484,7 @@ class TestMasa(unittest.TestCase):
                     f"{nombre}: la masa lumped no es diagonal")
 
     def test_masa_simetrica_y_definida_no_negativa(self):
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 try:
@@ -502,7 +513,7 @@ class TestValidacionDefensiva(unittest.TestCase):
         el barrido comprueba que ninguna subclase se lo salte con una
         implementación propia.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elemento = _construir(nombre)
                 with self.assertRaises(
@@ -516,7 +527,7 @@ class TestValidacionDefensiva(unittest.TestCase):
         Un elemento que declare soportar `lumped` y lance al pedirlo dejaría el
         análisis dinámico roto sólo para él, sin señal hasta ejecutarlo.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             elemento = _construir(nombre)
             for esquema in sorted(SUPPORTED_LUMPING):
                 with self.subTest(elemento=nombre, lumping=esquema):
@@ -533,7 +544,7 @@ class TestValidacionDefensiva(unittest.TestCase):
         varias iteraciones del solver, lejos de su causa. Es el ejemplo que la
         propia base cita al documentar `_validate_material_compatibility`.
         """
-        for nombre in ElementRegistry.names():
+        for nombre in nombres_programa_principal(ElementRegistry):
             if nombre in TERMICOS:
                 continue    # los térmicos validan contra FLUX_DIM, no STRAIN_DIM
             with self.subTest(elemento=nombre):

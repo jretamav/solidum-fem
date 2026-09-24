@@ -14,7 +14,7 @@ registrados eso ya dejó de ocurrir: el docstring de `test_materials_unit.py`
 todavía habla de "los seis materiales registrados". `Orthotropic2D` estuvo
 ausente de doce barridos genéricos hasta que se auditó explícitamente.
 
-Este archivo invierte la carga de la prueba. Recorre `MaterialRegistry.names()`
+Este archivo invierte la carga de la prueba. Recorre `nombres_programa_principal(MaterialRegistry)`
 y exige a cada material cumplir el contrato de `solidum/core/material.py`. El
 material número 14 queda cubierto el día que se registra, sin que nadie tenga
 que acordarse — que es exactamente el criterio de `Reglas.md §1`: cada decisión
@@ -66,6 +66,17 @@ from solidum.core.material import Material
 from solidum.registry import (CohesiveMaterialRegistry, MaterialRegistry,
                               ThermalMaterialRegistry)
 
+
+def nombres_programa_principal(registry) -> list:
+    """Nombres registrados cuya clase pertenece al programa principal.
+
+    Los módulos de usuario (``solidum/user/``, ADR 0020) se cargan en la
+    misma sesión de pytest cuando corren sus propios tests, y sus clases
+    quedan en los registros globales. Cada módulo trae su propio barrido;
+    éste cubre sólo el programa principal."""
+    return [n for n in registry.names()
+            if not registry.get(n).__module__.startswith("solidum.user.")]
+
 # Parámetros válidos y físicamente razonables para construir cada material.
 # Sólo los obligatorios: los opcionales se dejan en su default a propósito,
 # porque el contrato debe cumplirse también en la construcción mínima.
@@ -115,7 +126,7 @@ class TestRegistroCompleto(unittest.TestCase):
         que falta en `MUESTRAS`. Ese es todo el mecanismo que impide que el
         material N+1 vuelva a quedarse fuera de los barridos genéricos.
         """
-        registrados = set(MaterialRegistry.names())
+        registrados = set(nombres_programa_principal(MaterialRegistry))
         cubiertos = set(MUESTRAS)
 
         sin_cubrir = registrados - cubiertos
@@ -133,7 +144,7 @@ class TestRegistroCompleto(unittest.TestCase):
 
     def test_el_registro_no_esta_vacio(self):
         """Si el autodiscover se rompiera, el barrido pasaría por vacuidad."""
-        self.assertGreaterEqual(len(MaterialRegistry.names()), 13)
+        self.assertGreaterEqual(len(nombres_programa_principal(MaterialRegistry)), 13)
 
     def test_los_registros_paralelos_no_se_mezclan(self):
         """Cohesivos y térmicos viven en registros propios (ADR 0010, Etapa 8).
@@ -142,7 +153,7 @@ class TestRegistroCompleto(unittest.TestCase):
         como si fuera un material de bulk y fallaría de forma críptica al
         construir un elemento sólido.
         """
-        principal = set(MaterialRegistry.names())
+        principal = set(nombres_programa_principal(MaterialRegistry))
         for otro_registro, etiqueta in ((CohesiveMaterialRegistry, 'cohesivo'),
                                         (ThermalMaterialRegistry, 'térmico')):
             solapamiento = principal & set(otro_registro.names())
@@ -156,7 +167,7 @@ class TestContratoDeclarativo(unittest.TestCase):
     """Atributos de clase exigidos por `solidum/core/material.py`."""
 
     def test_hereda_de_material(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 clase = MaterialRegistry.get(nombre)
                 self.assertTrue(
@@ -170,7 +181,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         No tiene default en la base a propósito: declararlo es obligatorio, y
         omitirlo debe romper aquí y no en un `matmul` críptico en runtime.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 clase = MaterialRegistry.get(nombre)
                 self.assertTrue(
@@ -185,7 +196,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         hardcodear nombres: un nombre que no exista produce una exportación
         vacía sin error visible.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 clave = material.PRIMARY_STATE_VAR
@@ -206,7 +217,7 @@ class TestContratoDeclarativo(unittest.TestCase):
                     f"del estado devuelto: {sorted(estado)}")
 
     def test_banderas_son_booleanas(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 clase = MaterialRegistry.get(nombre)
                 self.assertIsInstance(clase.IS_SYMMETRIC, bool)
@@ -218,7 +229,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         Un material que la hiciera obligatoria rompería todo análisis estático
         que no la declara.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 self.assertIsNone(
@@ -228,7 +239,7 @@ class TestContratoDeclarativo(unittest.TestCase):
                     f"explícito (ADR 0008)")
 
     def test_density_se_acepta_cuando_se_declara(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 firma = inspect.signature(MaterialRegistry.get(nombre).__init__)
                 self.assertIn(
@@ -251,7 +262,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         orientación material al elemento. Que el segundo parámetro tenga
         default es lo que hace esa migración aditiva y no ruptura.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 firma = inspect.signature(
                     MaterialRegistry.get(nombre).compute_state)
@@ -263,7 +274,7 @@ class TestContratoDeComputeState(unittest.TestCase):
                     f"{nombre}: el estado debe ser opcional")
 
     def test_devuelve_terna_con_formas_correctas(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 dim = material.STRAIN_DIM
@@ -284,7 +295,7 @@ class TestContratoDeComputeState(unittest.TestCase):
     def test_valores_finitos(self):
         """Ni NaN ni inf: un valor no finito envenena el ensamblaje entero y
         aparece mucho después como una factorización fallida."""
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 sigma, C, _ = material.compute_state(
@@ -300,7 +311,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         esto legítimamente — y entonces este test es el sitio donde documentar
         la excepción, no un obstáculo que sortear.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 dim = material.STRAIN_DIM
@@ -315,7 +326,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         """El elemento reutiliza el array de deformación entre puntos de Gauss;
         mutarlo in situ corrompería los siguientes de forma difícil de rastrear.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 eps = _deformacion_pequena(material.STRAIN_DIM)
@@ -334,7 +345,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         punto a punto. Aquí se sondea el régimen elástico, donde todas
         coinciden, y por eso la comprobación es incondicional.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 _, C, _ = material.compute_state(
@@ -358,7 +369,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         simétrico sólo renuncia a una optimización—, así que sólo se exige la
         dirección que puede romper algo.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 if not material.IS_SYMMETRIC:
@@ -378,7 +389,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         """El primer `compute_state` de un análisis llega con `state_vars=None`
         porque aún no hay historia. Ningún material puede exigir estado previo.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 material.compute_state(
@@ -390,7 +401,7 @@ class TestContratoDeComputeState(unittest.TestCase):
         Es el ciclo que el solver ejecuta en cada iteración de Newton: el
         `state_vars` trial de una iteración entra como estado de la siguiente.
         """
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = _construir(nombre)
                 eps = _deformacion_pequena(material.STRAIN_DIM)
@@ -415,7 +426,7 @@ class TestLinealidadDeLosElasticos(unittest.TestCase):
     """
 
     def test_homogeneidad(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             material = _construir(nombre)
             if material.PRIMARY_STATE_VAR is not None:
                 continue
@@ -436,7 +447,7 @@ class TestLinealidadDeLosElasticos(unittest.TestCase):
                                 f"variables internas (factor {k})")
 
     def test_tangente_constante(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             material = _construir(nombre)
             if material.PRIMARY_STATE_VAR is not None:
                 continue
@@ -484,7 +495,7 @@ class TestValidacionDefensiva(unittest.TestCase):
     """
 
     def test_rechaza_modulo_no_positivo(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 muestra = dict(MUESTRAS[nombre])
                 clave = 'E' if 'E' in muestra else 'E1'
@@ -495,7 +506,7 @@ class TestValidacionDefensiva(unittest.TestCase):
                     MaterialRegistry.create(nombre, **muestra)
 
     def test_rechaza_densidad_negativa(self):
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 with self.assertRaises(
                         ValueError,
@@ -507,7 +518,7 @@ class TestValidacionDefensiva(unittest.TestCase):
         """Un `ValueError` que no diga qué material ni qué parámetro obliga a
         rastrear el modelo entero. `Reglas.md §1` pide mensajes claros, no sólo
         el rechazo."""
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 with self.assertRaises(ValueError) as ctx:
                     MaterialRegistry.create(nombre, **MUESTRAS[nombre],
@@ -520,7 +531,7 @@ class TestValidacionDefensiva(unittest.TestCase):
         """Cero no es negativo: un material sin peso es un modelo legítimo
         (análisis estático donde la masa no interviene). La guarda debe
         rechazar lo negativo, no lo nulo."""
-        for nombre in MaterialRegistry.names():
+        for nombre in nombres_programa_principal(MaterialRegistry):
             with self.subTest(material=nombre):
                 material = MaterialRegistry.create(
                     nombre, **MUESTRAS[nombre], density=0.0)
