@@ -1514,6 +1514,131 @@ Las respuestas máximas de los modos no ocurren a la vez y la combinación pierd
 
 \newpage
 
+\chapter{Onda en una barra: integración explícita e implícita}
+\chaptermark{Onda en una barra}
+\label{cap:onda_barra}
+
+
+
+
+
+Cuando una estructura recibe un golpe, la perturbación no llega a todas partes a la vez: viaja como una onda. Este ejemplo lanza una onda de esfuerzo por una barra y la sigue con tres integradores temporales. La solución exacta tiene frentes discontinuos, la prueba más exigente para un integrador, y muestra tres ideas prácticas: el límite de estabilidad del esquema explícito, por qué ese límite es también el paso más preciso, y qué hace la disipación numérica de los esquemas implícitos.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Resolver un problema transitorio con \texttt{CentralDifferenceSolver}, \texttt{NewmarkSolver} y \texttt{HHTSolver}.
+  \item Calcular el límite de estabilidad del esquema explícito.
+  \item Por qué, en propagación de ondas, un paso menor que el límite puede empeorar el resultado.
+  \item Qué corrige, y qué no, la disipación numérica de HHT-\ensuremath{\alpha}.
+\end{itemize}
+
+\section{Planteamiento}
+
+Una barra de acero de longitud $L =$ 1 m y sección de 1 cm\ensuremath{^{2}}, con $E =$ 200 GPa y $\rho =$ 7850 kg/m\ensuremath{^{3}}, está empotrada en $x = 0$. En $t = 0$ se aplica en el extremo libre una fuerza en escalón $F_0 =$ 1 kN, es decir, un esfuerzo $\sigma_0 = F_0/A =$ 10 MPa. La barra se divide en 100 elementos \texttt{Truss2D} de $h =$ 1 cm y se integra una vuelta completa de la onda.
+
+\section{Solución analítica}
+
+La onda viaja a $c = \sqrt{E/\rho} =$ 5047.5 m/s y tarda $L/c =$ 198.1 µs en recorrer la barra. El escalón lanza hacia el empotramiento un frente de tracción $\sigma_0$; al reflejarse en el extremo fijo, el esfuerzo se duplica. Según la solución de d'Alembert:
+
+\begin{itemize}
+  \item \textbf{El esfuerzo en el empotramiento} es una onda cuadrada: nulo hasta $t = L/c$, $2\sigma_0$ hasta $3L/c$, nulo hasta $5L/c$, y así sucesivamente.
+  \item \textbf{El extremo libre} avanza a velocidad constante hasta $2\,u_{\mathrm{est}}$ en $t = 2L/c$ y vuelve a cero en $4L/c$, con $u_{\mathrm{est}} = F_0 L/(EA) =$ 50 µm el desplazamiento estático: el conocido factor dinámico 2 de una carga súbita.
+\end{itemize}
+
+\section{Modelo en Solidum}
+
+La barra y la carga:
+
+\begin{lstlisting}[language=Python]
+def barra():
+    """Barra de ``N`` elementos ``Truss2D`` empotrada en ``x = 0``. Devuelve el
+    dominio, los nodos y el vector de la fuerza en el extremo libre."""
+    dom = Domain()
+    acero = Elastic1D(E=E, density=RHO)
+    nodos = [dom.add_node(i + 1, [i * H, 0.0]) for i in range(N + 1)]
+    for k in range(N):
+        dom.add_element(Truss2D(k + 1, [nodos[k], nodos[k + 1]], acero, A=A))
+    nodos[0].fix_dof("ux", 0.0)
+    for nodo in nodos:
+        nodo.fix_dof("uy", 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    F = np.zeros(dom.total_dofs)
+    F[nodos[-1].dofs["ux"]] = F0
+    return dom, nodos, F
+
+\end{lstlisting}
+
+Los tres integradores comparten la firma: ensamblador, tiempo final, paso $\Delta t$ y la carga como función del tiempo, \texttt{F\_func(t)}, que aquí devuelve siempre el mismo vector (escalón):
+
+\begin{lstlisting}[language=Python]
+def integrar(solver_cls, fraccion_cfl: float, **opciones):
+    """Integra una vuelta completa de la onda (``4L/c``) con Δt = fracción·h/c."""
+    dom, nodos, F = barra()
+    solver = solver_cls(Assembler(dom), 4 * L / C, fraccion_cfl * PASO_CFL,
+                        F_func=lambda t: F, **opciones)
+    resultado = solver.solve()
+    t = np.asarray(resultado.t_history)
+    U = np.asarray(resultado.u_history)
+    u_libre = U[nodos[-1].dofs["ux"]]
+    # Esfuerzo del primer elemento: E·(u₁ − u₀)/h, con u₀ = 0.
+    sigma_empotramiento = E * U[nodos[1].dofs["ux"]] / H
+    return t, u_libre, sigma_empotramiento
+
+\end{lstlisting}
+
+El esquema de \textbf{diferencias centradas} es explícito: con la masa concentrada, cada paso sólo divide por la diagonal de la matriz de masas, sin resolver ningún sistema. Es \textbf{condicionalmente estable}: el paso tiene que cumplir $\Delta t \le 2/\omega_{\max}$, con $\omega_{\max}$ la mayor frecuencia de la malla. En una barra con masa concentrada, $\omega_{\max} \approx 2c/h$, y el límite es $\Delta t \approx h/c$: \textbf{el tiempo que tarda la onda en cruzar un elemento} (condición de Courant-Friedrichs-Lewy). Calculado con los autovalores de la malla, $\Delta t_{\mathrm{crit}} =$ 1.000031 $h/c$ = 1.981 µs. Con $\Delta t = 1.005\,h/c$ el cálculo diverge, y el solver se detiene con un error que lo explica.
+
+Los esquemas implícitos de \textbf{Newmark} (regla trapezoidal) y \textbf{HHT-\ensuremath{\alpha}} resuelven un sistema con la rigidez en cada paso, son \textbf{incondicionalmente estables} y usan la masa consistente. HHT-\ensuremath{\alpha} añade una disipación numérica controlada por $\alpha$ que actúa sobre las frecuencias altas.
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/onda_barra/fig_onda.pdf}
+\caption{Esfuerzo en el empotramiento durante una vuelta de la onda. Izquierda: diferencias centradas con el paso límite y con la mitad. Derecha: Newmark y HHT-\ensuremath{\alpha} con el paso límite.}
+\label{fig:onda_barra:onda}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Error máximo del desplazamiento del extremo libre (relativo a $u_{\mathrm{est}}$), sobrepaso del esfuerzo en el empotramiento sobre $2\sigma_0$, y oscilación de la cola lejos de los frentes (media cuadrática entre $1.5$ y $2.8\,L/c$, relativa a $2\sigma_0$).}
+\begin{tabularx}{\textwidth}{YYYYYY}
+\hline
+\textbf{Integrador} & \textbf{$\Delta t/(h/c)$} & \textbf{Pasos} & \textbf{Error en $u$} & \textbf{Sobrepaso de $\sigma$} & \textbf{Oscilación de la cola} \\
+\hline
+Diferencias centradas & 1 & 400 & $< 10^{-10}$ & $< 10^{-10}$ & $< 10^{-10}$ \\
+Diferencias centradas & 0.5 & 800 & 0.017 & 0.260 & $1.5\times 10^{-2}$ \\
+Newmark & 1 & 400 & 0.019 & 0.254 & $1.5\times 10^{-2}$ \\
+HHT-\ensuremath{\alpha}, $\alpha = -0.3$ & 1 & 400 & 0.024 & 0.237 & $1.2\times 10^{-5}$ \\
+Newmark & 4 & 100 & 0.062 & 0.280 & $8.0\times 10^{-2}$ \\
+HHT-\ensuremath{\alpha}, $\alpha = -0.3$ & 4 & 100 & 0.068 & 0.262 & $1.9\times 10^{-2}$ \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{El paso límite es exacto.} Con diferencias centradas, masa concentrada y $\Delta t = h/c$, los desplazamientos nodales coinciden con la solución exacta a precisión de máquina, y el esfuerzo del primer elemento sube a $2\sigma_0$ sin sobrepasarlo. No es casualidad: la masa concentrada hace que la malla vibre con frecuencias algo menores que las reales, las diferencias centradas producen el error contrario, y con ese paso los dos se cancelan exactamente. La onda discreta avanza justo un elemento por paso.
+
+\textbf{Un paso menor es peor.} Con la mitad del paso, el frente llega a tiempo pero arrastra oscilaciones y el esfuerzo se pasa un 26 \% del valor exacto. Es la \textbf{dispersión numérica}: las componentes de alta frecuencia del frente viajan en la malla más despacio que $c$ y se quedan atrás. Reducir el paso elimina el error temporal pero no el espacial, que ya no queda compensado.
+
+\textbf{Los implícitos oscilan igual.} Newmark con el mismo paso da un sobrepaso parecido, del 25 \%. La disipación de HHT-\ensuremath{\alpha} casi no cambia el primer sobrepaso, pero apaga la cola de oscilaciones: su media cuadrática baja de $1.5\times 10^{-2}$ a $1.2\times 10^{-5}$. La disipación actúa sobre las frecuencias más altas, las que forman la cola; el sobrepaso del frente lo producen sobre todo frecuencias más bajas, que HHT está diseñado para respetar. Con un paso cuatro veces mayor los implícitos siguen siendo estables, pero el error en el desplazamiento crece hasta un 6 \%.
+
+\textbf{Cuándo usar cada uno.} Para ondas e impactos, el explícito cerca de su límite es a la vez el más preciso y el más barato por paso. Los implícitos compensan cuando la respuesta la dominan los modos bajos, como la de un edificio ante un sismo (ejemplo 7): entonces el paso puede ser mucho mayor que el límite del explícito, que lo impondría el elemento más pequeño de la malla.
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Refinar la malla a 200 elementos manteniendo el mismo $\Delta t$. ¿Qué le pasa al esquema explícito?
+  \item Repetir el caso de Newmark con masa concentrada (\texttt{lumping=\textquotedbl{}lumped\textquotedbl{}}). ¿Mejora o empeora el sobrepaso?
+  \item Sustituir el escalón por un pulso suave, por ejemplo medio seno de duración $20\,h/c$. ¿Qué queda de la dispersión?
+\end{itemize}
+
+\textbf{Referencias.} K.-J. Bathe, \textit{Finite Element Procedures}, 2.ª ed., 2014, cap. 9. T. J. R. Hughes, \textit{The Finite Element Method}, Dover, 2000, cap. 9. T. Belytschko, W. K. Liu y B. Moran, \textit{Nonlinear Finite Elements for Continua and Structures}, 2.ª ed., Wiley, 2014, cap. 6. H. M. Hilber, T. J. R. Hughes y R. L. Taylor, \textquotedbl{}Improved numerical dissipation for time integration algorithms in structural dynamics\textquotedbl{}, \textit{Earthquake Engineering and Structural Dynamics} 5 (1977) 283-292.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}onda\_\allowbreak{}barra/\allowbreak{}} contiene el script \texttt{run.py}, los resultados en \texttt{resultados.json} y la figura.
+
+
+\newpage
+
 \clearpage
 \thispagestyle{empty}
 \vspace*{\fill}
@@ -1521,8 +1646,8 @@ Las respuestas máximas de los modos no ocurren a la vez y la combinación pierd
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 07:13\\[0.5em]
-Commit Git: \texttt{715e936}\\[1em]
+Compilado el 24 de septiembre de 2026, 07:22\\[0.5em]
+Commit Git: \texttt{3eec98c}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
