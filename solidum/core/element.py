@@ -10,6 +10,7 @@ from solidum.core.element_forces import ElementForces
 from solidum.core.element_state import ElementState
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.registry import MaterialRegistry
 
 
 # Valores válidos del kwarg ``lumping`` de :meth:`Element.compute_mass_matrix`
@@ -64,6 +65,15 @@ class Element(ABC):
         K_G no degenerado) deben sobreescribir a ``True``. Validado en
         construcción para evitar que un truss ordinario acepte un material
         de cable.
+    REFERENCE_KWARGS : ClassVar[dict], default={"material": MaterialRegistry}
+        Parámetros del constructor que, en el YAML, son el ``id`` de un
+        objeto de una familia de material, y el registro de esa familia
+        (ADR 0020, P3). El lector YAML valida que el ``id`` exista en la
+        sección de la familia (``Registry.YAML_SECTION``) y pasa el objeto
+        construido. Un elemento térmico declara
+        ``{"material": ThermalMaterialRegistry}``; un elemento con dos
+        materiales declara las dos referencias. La referencia es obligatoria
+        si el constructor no le da valor por defecto.
     BATCH_KINEMATICS : ClassVar[callable | None], default=None
         Contrato **opcional** del camino por lotes (ADR 0014): función
         ``@njit`` con la firma ``KIN_SIG`` de
@@ -112,6 +122,7 @@ class Element(ABC):
     N_INTEGRATION_POINTS: ClassVar[int] = 1
     PRESERVES_SYMMETRY: ClassVar[bool] = True
     ACCEPTS_UNILATERAL: ClassVar[bool] = False
+    REFERENCE_KWARGS: ClassVar[dict] = {"material": MaterialRegistry}
     BATCH_KINEMATICS: ClassVar = None
     BATCH_SCALE: ClassVar[str | None] = None
     BATCH_SHAPE_FUNCTIONS: ClassVar = None

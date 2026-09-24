@@ -75,6 +75,12 @@ def _constructor_kwargs(cls) -> tuple[set, bool]:
     return accepted, has_var_keyword
 
 
+def _required_kwarg(cls, name: str) -> bool:
+    """``True`` si el constructor de ``cls`` exige ``name`` (sin valor por defecto)."""
+    param = inspect.signature(cls.__init__).parameters.get(name)
+    return param is not None and param.default is inspect.Parameter.empty
+
+
 def _unknown_kwargs(cls, given: set, reserved: set) -> tuple[list, list]:
     """Claves de ``given`` que el constructor de ``cls`` no acepta, y la lista
     de admitidas para el mensaje. Vacío si el constructor toma ``**kwargs``."""
@@ -246,9 +252,6 @@ class YamlParser:
                             f"{ctx} (id={mat.get('id', '?')}): parámetro '{kw}' no aceptado "
                             f"por '{mat['type']}'. Admitidos: {advertised}."
                         )
-        known_mat_ids = known_ids.get('materials', set())
-        known_thermal_ids = known_ids.get('thermal_materials', set())
-        known_cohesive_ids = known_ids.get('cohesive_materials', set())
 
         # --- Elementos (bloque inline, no mesh) ---
         registered_elements = set(ElementRegistry.names())
@@ -269,33 +272,29 @@ class YamlParser:
                     known_elem_ids.add(eid)
 
                 ctx = f"elements[{i}] (id={eid or '?'})"
+                e_cls = None
                 if 'type' not in elem:
                     errors.append(f"{ctx}: falta el campo obligatorio 'type'.")
-                elif registered_elements and elem['type'] not in registered_elements:
+                elif elem['type'] not in registered_elements:
                     errors.append(
                         f"{ctx}: tipo de elemento desconocido '{elem['type']}'. "
                         f"Disponibles: {sorted(registered_elements)}."
                     )
-                if 'material' not in elem:
-                    errors.append(f"{ctx}: falta el campo obligatorio 'material'.")
-                elif (elem['material'] not in known_mat_ids
-                      and elem['material'] not in known_thermal_ids):
-                    # Un elemento térmico referencia un id de `thermal_materials`;
-                    # uno mecánico, uno de `materials`. El campo es el mismo y la
-                    # familia se resuelve por el bloque donde se declaró el id, de
-                    # modo que el YAML no obliga al usuario a saber a qué registro
-                    # pertenece cada material.
-                    errors.append(
-                        f"{ctx}: referencia a material inexistente (id={elem['material']}). "
-                        f"Declarado ni en 'materials' ni en 'thermal_materials'."
-                    )
-                # ADR 0010 — referencia a cohesivo opcional, sólo si el elemento
-                # la admite. Si se declara, validar contra `cohesive_materials`.
-                if 'cohesive_material' in elem and elem['cohesive_material'] not in known_cohesive_ids:
-                    errors.append(
-                        f"{ctx}: referencia a cohesive_material inexistente "
-                        f"(id={elem['cohesive_material']})."
-                    )
+                else:
+                    e_cls = ElementRegistry.get(elem['type'])
+                # Referencias a familias de material que declara el elemento
+                # (ADR 0020, P3): el id debe existir en la sección de SU
+                # familia. Un elemento térmico que apunta a un material
+                # mecánico falla aquí, no al construirse.
+                for kw, fam in (e_cls.REFERENCE_KWARGS if e_cls else {}).items():
+                    if kw not in elem:
+                        if _required_kwarg(e_cls, kw):
+                            errors.append(f"{ctx}: falta el campo obligatorio '{kw}'.")
+                    elif elem[kw] not in known_ids.get(fam.YAML_SECTION, set()):
+                        errors.append(
+                            f"{ctx}: referencia a {fam.YAML_LABEL} inexistente "
+                            f"({kw}={elem[kw]}): no está declarado en '{fam.YAML_SECTION}'."
+                        )
                 if 'nodes' not in elem:
                     errors.append(f"{ctx}: falta el campo obligatorio 'nodes'.")
                 else:
@@ -309,15 +308,14 @@ class YamlParser:
 
                 # Validación de kwargs: los campos extra del YAML deben existir
                 # en la firma del constructor del elemento registrado.
-                e_type = elem.get('type')
-                if e_type in registered_elements:
+                if e_cls is not None:
                     unknown, advertised = _unknown_kwargs(
-                        ElementRegistry.get(e_type), set(elem),
-                        {'id', 'type', 'material', 'nodes', 'cohesive_material', 'element_id'},
+                        e_cls, set(elem),
+                        {'id', 'type', 'nodes', 'element_id'} | set(e_cls.REFERENCE_KWARGS),
                     )
                     for kw in unknown:
                         errors.append(
-                            f"{ctx}: parámetro '{kw}' no aceptado por '{e_type}'. "
+                            f"{ctx}: parámetro '{kw}' no aceptado por '{elem['type']}'. "
                             f"Admitidos: {advertised}."
                         )
 
@@ -480,32 +478,21 @@ class YamlParser:
             elements_data = data.get('elements', [])
             if isinstance(elements_data, list):
                 for elem_dict in elements_data:
-                    elem_id = elem_dict['id']
                     e_type = elem_dict['type']
-                    mat_id = elem_dict['material']
-                    node_ids = elem_dict['nodes']
-                    
-                    nodes = [self.domain.get_node(nid) for nid in node_ids]
-                    # El id se busca en las dos familias: el bloque donde se
-                    # declaró determina cuál. `materials` tiene prioridad para
-                    # que un modelo puramente mecánico no cambie de comportamiento.
-                    if mat_id in self.materials:
-                        material = self.materials[mat_id]
-                        es_termico = False
-                    else:
-                        material = self.thermal_materials[mat_id]
-                        es_termico = True
-
-                    kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'material', 'nodes', 'cohesive_material')}
+                    nodes = [self.domain.get_node(nid) for nid in elem_dict['nodes']]
                     # `quadrature` viaja como CLAVE del registro: todos los
                     # elementos (2D, 3D y térmicos) la resuelven en su
                     # constructor vía ``resolve_quadrature`` y guardan
                     # ``quadrature_key`` para diagnósticos. Materializarla aquí
                     # como tupla rompía los sólidos 3D (auditoría 2026-09-22).
-                    # ADR 0010 — resolver referencia a material cohesivo si está declarada.
-                    if 'cohesive_material' in elem_dict:
-                        kwargs['cohesive_material'] = self.cohesive_materials[elem_dict['cohesive_material']]
-                    self.domain.add_element(ElementRegistry.create(e_type, element_id=elem_id, nodes=nodes, material=material, **kwargs))
+                    kwargs = {k: v for k, v in elem_dict.items() if k not in ('id', 'type', 'nodes')}
+                    # Cada referencia declarada por el elemento se sustituye
+                    # por el objeto de su familia (ADR 0020, P3).
+                    for kw, fam in ElementRegistry.get(e_type).REFERENCE_KWARGS.items():
+                        if kw in kwargs:
+                            kwargs[kw] = self.family_objects[fam.YAML_SECTION][kwargs[kw]]
+                    self.domain.add_element(ElementRegistry.create(
+                        e_type, element_id=elem_dict['id'], nodes=nodes, **kwargs))
             elif elements_data:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios.")
 

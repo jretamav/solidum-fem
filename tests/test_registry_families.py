@@ -119,6 +119,23 @@ class TestLectorYaml:
         with pytest.raises(YamlValidationError, match="parámetro 'kk' no aceptado por 'ThermalConduction'"):
             _parsear(tmp_path, _PARED_TERMICA.replace("k: 50.0", "k: 50.0, kk: 1.0"))
 
+    def test_elemento_termico_con_material_mecanico_falla_al_validar(self, tmp_path):
+        """Cada elemento declara a qué familia apunta su ``material`` (P3).
+        Antes el id se buscaba en las dos familias y un elemento térmico
+        podía recibir un material mecánico con el mismo id."""
+        texto = _PARED_TERMICA.replace(
+            "thermal_materials:\n  - {id: 1, type: ThermalConduction, k: 50.0}\n",
+            "materials:\n  - {id: 1, type: Elastic2D, E: 1.0, nu: 0.3}\n",
+        )
+        with pytest.raises(YamlValidationError,
+                           match=r"referencia a material térmico inexistente \(material=1\): "
+                                 r"no está declarado en 'thermal_materials'"):
+            _parsear(tmp_path, texto)
+
+    def test_falta_la_referencia_obligatoria(self, tmp_path):
+        with pytest.raises(YamlValidationError, match="falta el campo obligatorio 'material'"):
+            _parsear(tmp_path, _BARRA.replace(", material: 1", ""))
+
     def test_los_objetos_se_leen_por_el_nombre_de_su_seccion(self, tmp_path):
         parser = _parsear(tmp_path, _BARRA)
         assert parser.materials[1].E == 200.0e9

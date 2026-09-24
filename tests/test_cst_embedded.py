@@ -695,7 +695,8 @@ elements:
         try:
             with self.assertRaises(YamlValidationError) as cm:
                 YamlParser(path).parse()
-            self.assertIn('cohesive_material inexistente', str(cm.exception))
+            self.assertIn('material cohesivo inexistente (cohesive_material=999)',
+                          str(cm.exception))
         finally:
             os.unlink(path)
 

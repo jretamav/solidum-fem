@@ -19,7 +19,7 @@ from solidum.elements.solid_2d._shared import (
     _compute_integrands,
     _compute_kinematics_tri3,
 )
-from solidum.registry import ElementRegistry
+from solidum.registry import CohesiveMaterialRegistry, ElementRegistry, MaterialRegistry
 
 
 # Tolerancias del Newton local del salto (algoritmo de condensación).
@@ -73,6 +73,8 @@ class CST_Embedded2D(Element):
 
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
+    REFERENCE_KWARGS = {"material": MaterialRegistry,
+                        "cohesive_material": CohesiveMaterialRegistry}
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node],

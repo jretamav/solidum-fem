@@ -24,6 +24,7 @@ import numpy as np
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.node import Node
 from solidum.core.thermal_material import ThermalMaterial
+from solidum.registry import ThermalMaterialRegistry
 from solidum.math.mass_lumping import lump_hrz
 
 
@@ -51,6 +52,7 @@ class _ThermalSolid(Element):
 
     DOF_NAMES: ClassVar[List[str]] = ["T"]
     STRAIN_DIM = None            # no aplica: el campo es escalar
+    REFERENCE_KWARGS: ClassVar[dict] = {"material": ThermalMaterialRegistry}
     FLUX_DIM: ClassVar[int]
     N_NODES: ClassVar[int]
     DEFAULT_QUADRATURE: ClassVar[str]
