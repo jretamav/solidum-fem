@@ -1998,6 +1998,210 @@ Un ensayo de tracción fuera de ejes con una probeta corta sobreestima el módul
 
 \newpage
 
+\chapter{Un modelo mal planteado: la red de seguridad del análisis estático}
+\chaptermark{Un modelo mal planteado}
+\label{cap:modelo_mal_planteado}
+
+
+
+
+
+A un modelo le puede faltar un apoyo o una barra. Entonces la estructura es un mecanismo: su solución no es única, o para ciertas cargas no existe. El solver algebraico no se da cuenta. Ante una matriz de rigidez singular, un solver directo devuelve números sin avisar: a veces desplazamientos absurdos, de miles de kilómetros o más, y a veces valores que parecen razonables. En el análisis estático lineal, Solidum no deja que esos números lleguen al usuario. Comprueba el modelo antes y después de resolver, y si es un mecanismo lo rechaza con un mensaje que explica qué pasa. Este ejemplo comete a propósito los errores de apoyo y de conectividad más habituales en una armadura, muestra qué responde Solidum y lo contrasta con la estática, que llega a la misma conclusión sin usar ninguna rigidez.
+
+\textbf{Qué se aprende}
+
+\begin{itemize}
+  \item Distinguir un mecanismo rígido (apoyos insuficientes o mal orientados) de uno interno (una barra de menos).
+  \item Leer los mensajes de \texttt{MechanismError} e \texttt{IllPosedSystemError} y corregir el modelo.
+  \item Encontrar un mecanismo interno con un análisis modal.
+  \item Por qué contar barras y apoyos no basta, y qué no detectan estas comprobaciones.
+\end{itemize}
+
+\section{Planteamiento}
+
+Una armadura Pratt de cuatro paneles de 3 m y 3 m de altura, con 10 nudos y 17 barras de acero ($E =$ 200 GPa, $A =$ 20 cm\ensuremath{^{2}}) modeladas con elementos \texttt{Truss2D}. Soporta $P =$ 100 kN en cada uno de los tres nudos inferiores interiores. Bien apoyada, tiene un pasador en el extremo izquierdo y un rodillo en el derecho que impide el desplazamiento vertical.
+
+Sobre ella se prueban cuatro variantes erróneas:
+
+\begin{enumerate}
+  \item \textbf{Dos rodillos}: los dos apoyos sólo impiden el desplazamiento vertical.
+  \item \textbf{Rodillo horizontal}: el rodillo impide el desplazamiento horizontal en vez del vertical.
+  \item \textbf{Sin diagonal}: falta la diagonal del segundo panel.
+  \item \textbf{Sin diagonal, con carga horizontal}: el mismo modelo, cargado sólo con 100 kN horizontales en el rodillo.
+\end{enumerate}
+
+\section{Solución analítica}
+
+Cada nudo aporta dos ecuaciones de equilibrio: $2j =$ 20 en total. Las incógnitas son las $m$ fuerzas axiales y las $r$ reacciones. Escritas juntas, forman el \textbf{método de los nudos} en forma matricial,
+
+\[
+\mathbf A\,\mathbf s = -\mathbf F ,
+\]
+
+con $\mathbf s$ las fuerzas axiales (tracción positiva) y las reacciones, y $\mathbf A$ la matriz de equilibrio, que sólo depende de la geometría. Su traspuesta $\mathbf A^\top$ es, salvo el signo, la matriz de compatibilidad: relaciona los desplazamientos de los nudos con el alargamiento de las barras y el movimiento de los apoyos. De ahí salen dos conclusiones:
+
+\begin{itemize}
+  \item Si el rango de $\mathbf A$ es menor que $2j$, hay $2j - \operatorname{rango}(\mathbf A)$ \textbf{mecanismos}: movimientos que no alargan ninguna barra ni mueven ningún apoyo. Son el núcleo de $\mathbf A^\top$. Para ciertas cargas el equilibrio es imposible.
+  \item Una condición necesaria para evitarlo es la \textbf{cuenta de Maxwell}: $m + r \ge 2j$. Pero no es suficiente: las barras o los apoyos pueden estar mal colocados.
+\end{itemize}
+
+La armadura bien apoyada tiene $m + r = 2j$ y $\mathbf A$ de rango completo: es \textbf{isostática}. Sus fuerzas axiales salen sólo del equilibrio, sin intervenir $E$ ni $A$. Su flecha en el centro sale del teorema de los trabajos virtuales, $\delta = \sum N\,n\,L/(EA)$, con $n$ las fuerzas axiales que produce una carga unidad en ese punto.
+
+\section{Modelo en Solidum}
+
+La armadura de cada caso:
+
+\begin{lstlisting}[language=Python]
+def armadura(caso: str, area: float = A, densidad: float | None = None):
+    """Modelo de Solidum del caso: dominio, nudos y vector de cargas."""
+    apoyos, sin_diagonal, carga = CASOS[caso]
+    xy, barras = geometria(sin_diagonal)
+    dom = Domain()
+    acero = Elastic1D(E=E, density=densidad)
+    nodos = [dom.add_node(k + 1, list(p)) for k, p in enumerate(xy)]
+    for a, b in barras:
+        dom.add_element(Truss2D(len(dom.elements) + 1, [nodos[a], nodos[b]], acero, A=area))
+    inferiores = nodos[:N_PANELES + 1]
+    for k, dof in APOYOS[apoyos]:
+        inferiores[k].fix_dof(dof, 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    F = np.zeros(dom.total_dofs)
+    if carga == "vertical":                    # P hacia abajo en los nudos inferiores interiores
+        for nodo in inferiores[1:-1]:
+            F[nodo.dofs["uy"]] = -P
+    else:                                      # P horizontal en el rodillo
+        F[inferiores[-1].dofs["ux"]] = P
+    return dom, nodos, F
+
+\end{lstlisting}
+
+El análisis, con los dos errores que Solidum puede lanzar:
+
+\begin{lstlisting}[language=Python]
+def analizar(caso: str, area: float = A, linear_algebra: str = "auto") -> dict:
+    """Resuelve el caso. Si el modelo está mal planteado, Solidum lo rechaza
+    con una excepción que explica el problema; aquí se captura para verla."""
+    dom, nodos, F = armadura(caso, area)
+    try:
+        U = LinearSolver(Assembler(dom), linear_algebra=linear_algebra).solve(F)
+    except MechanismError as e:            # antes de resolver: mecanismo rígido
+        return {"resultado": "MechanismError", "movimiento": e.motions[0],
+                "n_movimientos": len(e.motions), "mensaje": str(e)}
+    except IllPosedSystemError as e:       # después de factorizar: mecanismo interno
+        return {"resultado": "IllPosedSystemError", "pivotes_nulos": e.zero_pivots or 0,
+                "mensaje": str(e)}
+    N = [el.internal_forces(U).components["N"][0] for el in dom.elements.values()]
+    return {"resultado": "solución", "N": np.array(N),
+            "flecha": -U[nodos[N_PANELES // 2].dofs["uy"]]}
+
+\end{lstlisting}
+
+\texttt{LinearSolver} comprueba el modelo en dos momentos:
+
+\begin{itemize}
+  \item \textbf{Antes de resolver}: qué movimientos de sólido rígido dejan libres los apoyos. No factoriza nada. Si queda alguno, lanza \texttt{MechanismError} y lo describe en términos del modelo: una traslación, o un giro alrededor de un punto.
+  \item \textbf{Después de factorizar}: si la factorización encontró pivotes numéricamente nulos, la matriz es singular. Además, la solución tiene que cumplir el equilibrio, $\lVert\mathbf F - \mathbf K\mathbf u\rVert \le 10^{-8}\,\lVert\mathbf F\rVert$. Si falla cualquiera de las dos cosas, lanza \texttt{IllPosedSystemError}. Es lo que atrapa los mecanismos internos, que los apoyos no pueden delatar.
+\end{itemize}
+
+El usuario no elige el solver algebraico: por omisión Solidum usa un solver directo, SuperLU o Pardiso según lo que esté instalado, y con los dos el diagnóstico es el mismo en los cinco casos.
+
+\section{Resultados}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\linewidth]{../examples/modelo_mal_planteado/fig_armadura.pdf}
+\caption{(a) Armadura bien apoyada: el grosor de cada barra crece con su fuerza axial; en gris, las barras sin fuerza. (b) a (d): los mecanismos de los tres modelos mal apoyados o mal conectados, calculados con la estática (el núcleo de la matriz de compatibilidad); en gris la geometría inicial y en color el mecanismo, amplificado.}
+\label{fig:modelo_mal_planteado:armadura}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Los cinco casos. $m + r$ frente a $2j =$ 20 es la cuenta de Maxwell; los mecanismos y la existencia de equilibrio salen del rango de la matriz de equilibrio de los nudos.}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{Caso} & \textbf{$m + r$ / mecanismos} & \textbf{¿Equilibrio?} & \textbf{Respuesta de Solidum} \\
+\hline
+Bien apoyada & 20 / 0 & sí & solución \\
+Dos rodillos & 19 / 1 & sí & \texttt{MechanismError} \\
+Rodillo horizontal & 20 / 1 & no & \texttt{MechanismError} \\
+Sin diagonal & 19 / 1 & no & \texttt{IllPosedSystemError} \\
+Sin diagonal, carga horizontal & 19 / 1 & sí & \texttt{IllPosedSystemError} \\
+\hline
+\end{tabularx}
+\end{table}
+\textbf{Bien apoyada.} Las 17 fuerzas axiales coinciden con el método de los nudos con una diferencia relativa menor que $10^{-10}$, y la flecha en el centro, 10.99 mm, con los trabajos virtuales (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} a). La mayor tracción, 212.1 kN, la lleva la diagonal de cada panel extremo, que transmite todo el cortante del panel, la reacción $1.5P$: $1.5\sqrt 2\,P$. La mayor compresión, $-200$ kN, la lleva la cuerda superior de los paneles centrales: el momento flector en el centro dividido entre la altura, $-M/h = -2P$.
+
+\textbf{Dos rodillos.} Faltan reacciones: $m + r =$ 19, menos que $2j$, y la cuenta ya lo delata. Nada impide que la armadura se deslice en horizontal (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} b). Con estas cargas, todas verticales, la estática sí tiene solución, porque nada empuja la armadura hacia un lado. Pero el viento o una imperfección del montaje la desplazarían sin límite. Solidum la rechaza antes de resolver. Su diagnóstico: \textit{traslación en la dirección x}.
+
+\textbf{Rodillo horizontal.} Aquí la cuenta se cumple, $m + r = 2j$, y aun así hay un mecanismo. Las tres reacciones pasan por el pasador: las dos del pasador, y la del rodillo, que es horizontal y actúa a lo largo de la cuerda inferior. Tres fuerzas que pasan por un mismo punto no pueden equilibrar un momento respecto de él, y la armadura gira alrededor del pasador (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} c). Con las cargas verticales ni siquiera hay equilibrio. Solidum encuentra el giro y dice dónde está su centro:
+
+\begin{lstlisting}
+El modelo no está suficientemente apoyado para un análisis estático (LinearSolver):
+    puede moverse como sólido rígido sin deformarse, así que la matriz de rigidez es
+    singular y el equilibrio no tiene solución única. Movimientos libres:
+  - giro alrededor del eje z que pasa por (0, 0)
+Añade apoyos (o restricciones lineales) que impidan esos movimientos. Un modelo
+    libre sí es válido en un análisis modal o dinámico, pero no en uno estático.
+
+\end{lstlisting}
+
+\textbf{Sin diagonal.} Los apoyos son correctos y la armadura no puede moverse como sólido rígido, así que la comprobación previa pasa. Pero sin su diagonal el segundo panel es un cuadrilátero articulado, que se distorsiona sin alargar ninguna barra. Las partes de la armadura a cada lado del panel giran lo mismo y se desplazan en vertical una respecto de la otra (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} d). Las cuerdas del panel siguen resistiendo el momento flector; lo que el panel no puede transmitir es el cortante, y con estas cargas lo tiene. Es un mecanismo interno. Solidum lo detecta al factorizar, con 1 pivote nulo, y el mensaje apunta a las causas habituales:
+
+\begin{lstlisting}
+Resultado descartado: el solver directo encontró 1 pivote(s) numéricamente nulo(s),
+    así que la matriz es singular aunque los desplazamientos parezcan razonables. La
+    matriz de rigidez es singular o está tan mal condicionada que los
+    desplazamientos no son fiables. Causas habituales: un mecanismo interno (una
+    rótula o articulación de más, una barra o elemento suelto, dos partes unidas por
+    un solo nodo que pueden girar entre sí), o rigideces muy desproporcionadas entre
+    partes del modelo (penalizaciones, unidades mezcladas). Revisa la conectividad y
+    los apoyos.
+
+\end{lstlisting}
+
+\textbf{Dónde está el mecanismo.} El mensaje dice qué pasa, pero no dónde. Para encontrar un mecanismo interno basta un análisis modal del mismo modelo, con densidad en el material. Cada mecanismo aparece como una frecuencia nula, porque se mueve sin deformar nada, y su forma modal muestra qué parte se mueve:
+
+\begin{lstlisting}[language=Python]
+def buscar_mecanismo(caso: str, n_modos: int = 4):
+    """Análisis modal del mismo modelo, con densidad: cada frecuencia nula es
+    un mecanismo, y su forma modal muestra qué parte se mueve sin deformarse."""
+    dom, nodos, _ = armadura(caso, densidad=RHO)
+    modal = ModalSolver(Assembler(dom), n_modes=n_modos).solve()
+    f = modal.frequencies_hz
+    nulas = f < 1e-6 * f.max()
+    modos = [np.array([modal.modes[nodo.dofs[d], k] for nodo in nodos for d in ("ux", "uy")])
+             for k in np.flatnonzero(nulas)]
+    return f, modos
+
+\end{lstlisting}
+
+Aquí \texttt{ModalSolver} da 1 frecuencia nula, seguida de una de 39.4 Hz, y su forma modal coincide con el mecanismo de la estática (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} d).
+
+\textbf{Sin diagonal, con carga horizontal.} Esta carga no activa el mecanismo: la cuerda inferior la lleva hasta el pasador y la estática tiene solución. El residuo del equilibrio no delataría nada, porque existe un campo de desplazamientos que lo cumple. El pivote nulo sí lo delata, y Solidum rechaza el modelo igual que antes. Tiene razón: esa armadura sólo resiste las cargas que no activan el mecanismo, y cualquier carga vertical en un nudo del vano la derrumbaría.
+
+\begin{warnbox}{Advertencia}
+Estas comprobaciones protegen de los modelos mal planteados, no de los bien planteados con datos equivocados. Si el área se escribe en cm\ensuremath{^{2}} en unas unidades que la esperan en m\ensuremath{^{2}}, $A = 20$ en vez de $20\cdot 10^{-4}$, la armadura es $10^4$ veces más rígida. Las fuerzas axiales no cambian, porque en una armadura isostática sólo dependen del equilibrio, pero la flecha pasa de 10.99 mm a 1.10 µm. El modelo está bien planteado y Solidum no avisa. Comprobar el orden de magnitud de los desplazamientos sigue siendo trabajo del usuario.
+\end{warnbox}
+
+\begin{warnbox}{Advertencia}
+La comprobación después de factorizar sólo se hace en el análisis estático lineal con un solver directo. Con \texttt{linear\_\allowbreak{}algebra: iterative}, o con \texttt{NonlinearSolver}, el último caso, el del mecanismo que la carga no activa, pasa sin aviso: el resultado cumple el equilibrio, pero sus desplazamientos incluyen una parte arbitraria del mecanismo. En un análisis no lineal no puede ser de otro modo, porque cerca de un punto límite la matriz tangente es casi singular por naturaleza y rechazarla impediría seguir la curva. Ante la duda, resolver primero el modelo con \texttt{LinearSolver}.
+\end{warnbox}
+
+\section{Para seguir}
+
+\begin{itemize}
+  \item Quitar todos los apoyos y calcular los modos de vibración. ¿Cuántas frecuencias nulas aparecen, y a qué movimientos corresponden? En un análisis modal, un modelo libre es legítimo.
+  \item Poner el rodillo horizontal en el nudo superior derecho en vez del inferior. ¿Sigue siendo un mecanismo?
+  \item Añadir en un panel una segunda diagonal, cruzada con la primera. Ahora $m + r > 2j$. ¿Dependen las fuerzas axiales del área de esa barra?
+\end{itemize}
+
+\textbf{Referencias.} J. C. Maxwell, \textquotedbl{}On the calculation of the equilibrium and stiffness of frames\textquotedbl{}, \textit{Philosophical Magazine} 27 (1864) 294-299. S. Pellegrino y C. R. Calladine, \textquotedbl{}Matrix analysis of statically and kinematically indeterminate frameworks\textquotedbl{}, \textit{International Journal of Solids and Structures} 22 (1986) 409-428.
+
+\textbf{Archivos del ejemplo.} La carpeta \texttt{examples/\allowbreak{}modelo\_\allowbreak{}mal\_\allowbreak{}planteado/\allowbreak{}} contiene el script \texttt{run.py}, los resultados en \texttt{resultados.json} y la figura.
+
+
+\newpage
+
 \clearpage
 \thispagestyle{empty}
 \vspace*{\fill}
@@ -2005,8 +2209,8 @@ Un ensayo de tracción fuera de ejes con una probeta corta sobreestima el módul
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 08:04\\[0.5em]
-Commit Git: \texttt{7c5e48f} (con cambios sin confirmar)\\[1em]
+Compilado el 24 de septiembre de 2026, 08:41\\[0.5em]
+Commit Git: \texttt{325db35}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
