@@ -15657,7 +15657,7 @@ donde \texttt{F\_\allowbreak{}int\textasciicircum{}d = B\_\allowbreak{}std\texta
 
 \textbf{Inversión de \texttt{K\_\{[[u]][[u]]\}} (2\ensuremath{\times}2)}: cerrada analíticamente. El despachador algebraico (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003}) no participa al ser una matriz elemental densa de 2\ensuremath{\times}2.
 
-\textbf{Recuperación local} tras converger el Newton global: \texttt{[[u]]\_\allowbreak{}committed += \ensuremath{\Delta}[[u]]} con la fórmula de arriba aplicada a \texttt{\ensuremath{\Delta}d = d\_n+1 − d\_n}. Esta recuperación se hace en \texttt{commit\_state()}, no en \texttt{compute\_\allowbreak{}element\_\allowbreak{}state()}.
+\textbf{Sin recuperación posterior} (corregido 2026-09-29): el salto se resuelve con un Newton local dentro de \texttt{compute\_\allowbreak{}element\_\allowbreak{}state()} para cada \texttt{d} (Retama 2010, §7.2), y la condensación conserva el residuo local. \texttt{commit\_state()} sólo copia \texttt{trial \ensuremath{\to} committed}.
 
 \phantomsection
 \subsubsection*{11. Activación: criterio Rankine + dirección \texttt{n} + \texttt{l\_d} del Cap. 6}
@@ -15715,7 +15715,7 @@ class DiscontinuityState:
 
 \end{lstlisting}
 
-Semántica \textbf{trial / commit} consistente con \texttt{ElementState}: \texttt{jump\_trial} y \texttt{cohesive\_\allowbreak{}state\_\allowbreak{}trial} evolucionan en cada iteración del Newton global; al converger el paso, \texttt{commit\_state()} copia \texttt{trial \ensuremath{\to} committed} y aplica la recuperación local de \texttt{\ensuremath{\Delta}[[u]]} (§10).
+Semántica \textbf{trial / commit} consistente con \texttt{ElementState}: \texttt{jump\_trial} y \texttt{cohesive\_\allowbreak{}state\_\allowbreak{}trial} evolucionan en cada iteración del Newton global; al converger el paso, \texttt{commit\_state()} copia \texttt{trial \ensuremath{\to} committed} (el salto ya lo resolvió el Newton local, §10).
 
 \phantomsection
 \subsubsection*{13. Cuadratura}
@@ -15729,7 +15729,7 @@ Un único punto de Gauss central, peso \texttt{A\_e\ensuremath{\cdot}t} --- idé
 
 \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010} §5 fija que la activación se evalúa \textbf{al inicio de cada paso de carga, no dentro del Newton}. Razón: dentro del Newton, \texttt{\ensuremath{\sigma}\_I} oscila por el predictor lineal y puede cruzar/descruzar el umbral varias veces antes de converger --- \textit{chattering}.
 
-\textbf{Implementación propuesta} (a validar --- punto abierto en §Diálogo): añadir al contrato de \texttt{Element} un método opcional \texttt{prepare\_\allowbreak{}step(U\_\allowbreak{}committed)} que el \texttt{NonlinearSolver}/\texttt{ArcLengthSolver} invoca \textbf{una vez por paso} antes del primer Newton. La base lo hace no-op (la mayoría de elementos no necesitan preparación); \texttt{CST\_Embedded2D} lo sobreescribe para evaluar la activación con el estado convergido del paso anterior. Una vez activado, el elemento queda agrietado \textbf{irreversiblemente} (no revierte si el siguiente paso lo descarga).
+\textbf{Implementación} (en uso; desde el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020} es el gancho genérico P5 del programa principal): el método opcional de \texttt{Element} \texttt{prepare\_\allowbreak{}step(U\_\allowbreak{}committed)} que el \texttt{NonlinearSolver}/\texttt{ArcLengthSolver} invoca \textbf{una vez por paso} antes del primer Newton. La base lo hace no-op (la mayoría de elementos no necesitan preparación); \texttt{CST\_Embedded2D} lo sobreescribe para evaluar la activación con el estado convergido del paso anterior. Una vez activado, el elemento queda agrietado \textbf{irreversiblemente} (no revierte si el siguiente paso lo descarga).
 
 
 \subsection{Caveats numéricos}
@@ -15763,8 +15763,6 @@ parameters:
       desc: "Espesor para estado plano (idéntico a Tri3)." }
   - { name: cohesive_material, type: str,   required: true,
       desc: "Nombre (en CohesiveMaterialRegistry) del material cohesivo que gobierna Γ_d cuando se activa." }
-  - { name: activation_criterion, type: str, required: false, default: rankine,
-      desc: "Criterio de activación: 'rankine' (única opción fase 1)." }
 
 material_contract:
   bulk:
@@ -15918,6 +15916,8 @@ references:
   \item \textbf{2026-05-18} \ensuremath{\cdot} Status \ensuremath{\to} en draft hasta que el código + tests cierren; se promoverá a \texttt{validated} cuando los \texttt{acceptance} pasen. La IA arranca implementación.
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: tolerancia del jacobiano ahora \textbf{relativa} (\texttt{det J \ensuremath{\le} JACOBIAN\_\allowbreak{}RTOL \ensuremath{\cdot} Π\ensuremath{\|}fila\_\allowbreak{}i(J)\ensuremath{\|}}, cota de Hadamard, adimensional): la absoluta \texttt{1e-10} sobre \texttt{det J} rechazaba mallas finas en metros sin distorsión.
   \item \textbf{2026-09-22} \ensuremath{\cdot} Deuda \#18 (estado): \texttt{compute\_\allowbreak{}global\_\allowbreak{}stiffness} restaura al salir el trial del material y el del salto (\texttt{jump\_trial}, \texttt{cohesive\_\allowbreak{}state\_\allowbreak{}trial}), que el Newton local escribía al evaluar en \texttt{u = 0} (\texttt{tests/\allowbreak{}test\_\allowbreak{}trial\_\allowbreak{}isolation.\allowbreak{}py}).
+  \item \textbf{2026-09-29} \ensuremath{\cdot} Correcciones documentales: §10 y §12 describían una recuperación del salto en \texttt{commit\_state()} que el código no hace (Newton local de la §7.2); §14 ya no es punto abierto; se retira el parámetro \texttt{activation\_\allowbreak{}criterion} del contrato, que el constructor no acepta (la activación es siempre Rankine).
+  \item \textbf{2026-09-29} \ensuremath{\cdot} \textbf{Validación: ensayo de Van Vliet con grieta prescrita} (Retama 2010, §8.1), \texttt{tests/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}test\_\allowbreak{}disc\_\allowbreak{}van\_\allowbreak{}vliet.\allowbreak{}py}, figura en \texttt{docs/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}validacion/\allowbreak{}van\_\allowbreak{}vliet\_\allowbreak{}fase1.\allowbreak{}png}. Probeta en hueso de perro con carga excéntrica; banda de \texttt{CST\_Embedded2D} a media altura; \texttt{NonlinearSolver} con desplazamiento impuesto en pasos de 0.5 µm (convergidos: 0.25 y 0.125 µm cambian el pico \textless{} 0.1 kN). Frente a la fig. 8.3 de la tesis (valores leídos): exponencial, pico 26.6 kN (tesis 27.0) a 7.1 µm, P(20/50/100 µm) = 17.8 / 8.3 / 3.3 kN (19.1 / 8.3 / 3.1); lineal, pico 27.4 kN (27.4), 22.0 / 8.5 / 3.0 kN (22.4 / 8.5 / 2.4). Criterio de aceptación validado por el usuario: pico \ensuremath{\pm}0.8 kN, \ensuremath{\delta} en el pico entre 5 y 9 µm, P(20) \ensuremath{\pm}1.5, P(50) \ensuremath{\pm}1.0, P(100) \ensuremath{\pm}0.7 kN. \texttt{K\_e} = 1e13 o 1e14 da lo mismo. Diferencias abiertas: (a) más allá de \textasciitilde{}100 µm la carga queda alta (exponencial 1.5 kN a 200 µm frente a 0.8): las mitades giran sobre el borde de la banda opuesto a la carga, ese elemento queda comprimido (\ensuremath{\sigma}\_yy \ensuremath{\approx} −31 MPa) y nunca se activa, y la cola depende de la malla (1.19 kN con banda más fina); (b) con pasos de 1 µm el pico sube \textasciitilde{}0.9 kN por el sobrepaso de la activación con el estado del paso anterior (fase 2 del plan de 2026-09-24). Supuestos no fijados por la tesis: acero E = 210 GPa, rótulas sin desplazamiento lateral (reacción horizontal nula).
 \end{itemize}
 
 

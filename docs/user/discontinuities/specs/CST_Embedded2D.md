@@ -141,7 +141,7 @@ donde `F_int^d = B_std^T · σ · A_e · t` es la fuerza interna estándar antes
 
 **Inversión de `K_{[[u]][[u]]}` (2×2)**: cerrada analíticamente. El despachador algebraico (ADR 0003) no participa al ser una matriz elemental densa de 2×2.
 
-**Recuperación local** tras converger el Newton global: `[[u]]_committed += Δ[[u]]` con la fórmula de arriba aplicada a `Δd = d_n+1 − d_n`. Esta recuperación se hace en `commit_state()`, no en `compute_element_state()`.
+**Sin recuperación posterior** (corregido 2026-09-29): el salto se resuelve con un Newton local dentro de `compute_element_state()` para cada `d` (Retama 2010, §7.2), y la condensación conserva el residuo local. `commit_state()` sólo copia `trial → committed`.
 
 ### 11. Activación: criterio Rankine + dirección `n` + `l_d` del Cap. 6
 
@@ -186,7 +186,7 @@ class DiscontinuityState:
     cohesive_state_trial: dict      # estado interno del CohesiveMaterial (trial)
 ```
 
-Semántica **trial / commit** consistente con `ElementState`: `jump_trial` y `cohesive_state_trial` evolucionan en cada iteración del Newton global; al converger el paso, `commit_state()` copia `trial → committed` y aplica la recuperación local de `Δ[[u]]` (§10).
+Semántica **trial / commit** consistente con `ElementState`: `jump_trial` y `cohesive_state_trial` evolucionan en cada iteración del Newton global; al converger el paso, `commit_state()` copia `trial → committed` (el salto ya lo resolvió el Newton local, §10).
 
 ### 13. Cuadratura
 
@@ -196,7 +196,7 @@ Un único punto de Gauss central, peso `A_e·t` — idéntico a `Tri3`. Las matr
 
 ADR 0010 §5 fija que la activación se evalúa **al inicio de cada paso de carga, no dentro del Newton**. Razón: dentro del Newton, `σ_I` oscila por el predictor lineal y puede cruzar/descruzar el umbral varias veces antes de converger — *chattering*.
 
-**Implementación propuesta** (a validar — punto abierto en §Diálogo): añadir al contrato de `Element` un método opcional `prepare_step(U_committed)` que el `NonlinearSolver`/`ArcLengthSolver` invoca **una vez por paso** antes del primer Newton. La base lo hace no-op (la mayoría de elementos no necesitan preparación); `CST_Embedded2D` lo sobreescribe para evaluar la activación con el estado convergido del paso anterior. Una vez activado, el elemento queda agrietado **irreversiblemente** (no revierte si el siguiente paso lo descarga).
+**Implementación** (en uso; desde el ADR 0020 es el gancho genérico P5 del programa principal): el método opcional de `Element` `prepare_step(U_committed)` que el `NonlinearSolver`/`ArcLengthSolver` invoca **una vez por paso** antes del primer Newton. La base lo hace no-op (la mayoría de elementos no necesitan preparación); `CST_Embedded2D` lo sobreescribe para evaluar la activación con el estado convergido del paso anterior. Una vez activado, el elemento queda agrietado **irreversiblemente** (no revierte si el siguiente paso lo descarga).
 
 ---
 
@@ -230,8 +230,6 @@ parameters:
       desc: "Espesor para estado plano (idéntico a Tri3)." }
   - { name: cohesive_material, type: str,   required: true,
       desc: "Nombre (en CohesiveMaterialRegistry) del material cohesivo que gobierna Γ_d cuando se activa." }
-  - { name: activation_criterion, type: str, required: false, default: rankine,
-      desc: "Criterio de activación: 'rankine' (única opción fase 1)." }
 
 material_contract:
   bulk:
@@ -381,3 +379,5 @@ references:
 - **2026-05-18** · Status → en draft hasta que el código + tests cierren; se promoverá a `validated` cuando los `acceptance` pasen. La IA arranca implementación.
 - **2026-09-22** · Auditoría global: tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Deuda #18 (estado): `compute_global_stiffness` restaura al salir el trial del material y el del salto (`jump_trial`, `cohesive_state_trial`), que el Newton local escribía al evaluar en `u = 0` (`tests/test_trial_isolation.py`).
+- **2026-09-29** · Correcciones documentales: §10 y §12 describían una recuperación del salto en `commit_state()` que el código no hace (Newton local de la §7.2); §14 ya no es punto abierto; se retira el parámetro `activation_criterion` del contrato, que el constructor no acepta (la activación es siempre Rankine).
+- **2026-09-29** · **Validación: ensayo de Van Vliet con grieta prescrita** (Retama 2010, §8.1), `tests/user/discontinuities/test_disc_van_vliet.py`, figura en `docs/user/discontinuities/validacion/van_vliet_fase1.png`. Probeta en hueso de perro con carga excéntrica; banda de `CST_Embedded2D` a media altura; `NonlinearSolver` con desplazamiento impuesto en pasos de 0.5 µm (convergidos: 0.25 y 0.125 µm cambian el pico < 0.1 kN). Frente a la fig. 8.3 de la tesis (valores leídos): exponencial, pico 26.6 kN (tesis 27.0) a 7.1 µm, P(20/50/100 µm) = 17.8 / 8.3 / 3.3 kN (19.1 / 8.3 / 3.1); lineal, pico 27.4 kN (27.4), 22.0 / 8.5 / 3.0 kN (22.4 / 8.5 / 2.4). Criterio de aceptación validado por el usuario: pico ±0.8 kN, δ en el pico entre 5 y 9 µm, P(20) ±1.5, P(50) ±1.0, P(100) ±0.7 kN. `K_e` = 1e13 o 1e14 da lo mismo. Diferencias abiertas: (a) más allá de ~100 µm la carga queda alta (exponencial 1.5 kN a 200 µm frente a 0.8): las mitades giran sobre el borde de la banda opuesto a la carga, ese elemento queda comprimido (σ_yy ≈ −31 MPa) y nunca se activa, y la cola depende de la malla (1.19 kN con banda más fina); (b) con pasos de 1 µm el pico sube ~0.9 kN por el sobrepaso de la activación con el estado del paso anterior (fase 2 del plan de 2026-09-24). Supuestos no fijados por la tesis: acero E = 210 GPa, rótulas sin desplazamiento lateral (reacción horizontal nula).

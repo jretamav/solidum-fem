@@ -13,6 +13,7 @@ import numpy as np
 from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.logging import get_logger
 from solidum.elements.solid_2d._shared import (
     compute_integrands,
     compute_kinematics_tri3,
@@ -22,6 +23,8 @@ from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
 from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL
 from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
 from solidum.user.discontinuities.registry import CohesiveMaterialRegistry
+
+_log = get_logger("user.discontinuities")
 
 
 # Tolerancias del Newton local del salto (algoritmo de condensación), en
@@ -106,6 +109,10 @@ class CST_Embedded2D(Element):
         self.thickness = thickness
         self.cohesive_material = cohesive_material
         self.discontinuity_state: DiscontinuityState | None = None
+        # Deuda #12: evaluaciones en que el Newton local del salto agotó sus
+        # iteraciones (diagnóstico; el cálculo sigue).
+        self.local_newton_failures = 0
+        self._local_newton_warned = False
         super().__init__(element_id, nodes, material)
 
     # ------------------------------------------------------------------
@@ -249,6 +256,25 @@ class CST_Embedded2D(Element):
                 break
 
             jump = jump - np.linalg.solve(K_jj, R_jump)
+
+        # Deuda #12: agotar las iteraciones no detiene el cálculo (como en la
+        # tesis, §7.2: la condensación conserva el residuo local y el Newton
+        # global lo ve como desequilibrio), pero ya no pasa en silencio. Un
+        # aviso por elemento hasta que vuelva a converger, para no inundar el
+        # registro en un ciclo de periodo 2.
+        if converged:
+            self._local_newton_warned = False
+        else:
+            self.local_newton_failures += 1
+            if not self._local_newton_warned:
+                _log.warning(
+                    f"CST_Embedded2D(id={self.id}): el Newton local del salto no "
+                    f"convergió en {_LOCAL_JUMP_MAX_ITER} iteraciones (‖R‖ = "
+                    f"{np.linalg.norm(R_jump):.2e} N, tolerancia "
+                    f"{_LOCAL_JUMP_RTOL * scale:.2e} N). Se sigue con el residuo "
+                    f"local en la fuerza interna; si se repite, reducir el paso."
+                )
+                self._local_newton_warned = True
 
         # Persistir trial
         ds.jump_trial = jump

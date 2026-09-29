@@ -219,5 +219,48 @@ class TestTrialIsolation(unittest.TestCase):
         np.testing.assert_array_equal(emb.state.stresses_trial[0], stress_trial)
 
 
+class TestNewtonLocalNoConvergido(unittest.TestCase):
+    """Deuda #12: agotar las iteraciones del Newton local del salto ya no pasa
+    en silencio (aviso único por elemento y contador), aunque el cálculo siga
+    como en la tesis."""
+
+    def _elemento_agrietado(self):
+        coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+        nodes = [Node(i, list(coords[i])) for i in range(3)]
+        for k, nd in enumerate(nodes):
+            nd.add_dof('ux')
+            nd.add_dof('uy')
+            nd.dofs['ux'] = 2 * k
+            nd.dofs['uy'] = 2 * k + 1
+        bulk = Elastic2D(E=30.0e9, nu=0.2, hypothesis='plane_strain')
+        coh = CohesiveDamageIsotropic(sigma_t0=2.5e6, G_f=100.0, K_e=1.0e13, softening='linear')
+        emb = CST_Embedded2D(1, nodes, bulk, coh)
+        U = np.array([0.0, 0.0, 2.0 * 2.5e6 / 30.0e9, 0.0, 0.0, 0.0])
+        emb.compute_element_state(U)
+        emb.commit_state()
+        emb.prepare_step(U)
+        return emb, U
+
+    def test_con_iteraciones_suficientes_no_avisa(self):
+        emb, U = self._elemento_agrietado()
+        emb.compute_element_state(1.5 * U)
+        self.assertEqual(emb.local_newton_failures, 0)
+
+    def test_sin_convergencia_avisa_una_vez_y_cuenta(self):
+        import solidum.user.discontinuities.embedded_cst as modulo
+        emb, U = self._elemento_agrietado()
+        original = modulo._LOCAL_JUMP_MAX_ITER
+        modulo._LOCAL_JUMP_MAX_ITER = 1
+        try:
+            with self.assertLogs("solidum.user.discontinuities", level="WARNING") as registro:
+                emb.compute_element_state(1.5 * U)
+                emb.compute_element_state(1.6 * U)
+        finally:
+            modulo._LOCAL_JUMP_MAX_ITER = original
+        self.assertEqual(emb.local_newton_failures, 2)
+        self.assertEqual(len(registro.records), 1)
+        self.assertIn("no convergió", registro.output[0])
+
+
 if __name__ == '__main__':
     unittest.main()

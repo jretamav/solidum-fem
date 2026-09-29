@@ -61,23 +61,23 @@ class CohesiveMaterial(ABC):
 
 ### 2. Elementos con DOFs enriquecidos elementales
 
-Los DOFs del salto `[[u]] ∈ ℝ²` viven como **atributo del elemento**, no como nodos del modelo global. El contrato del `Element` se preserva: el ensamblador llama a `compute_stiffness_and_internal_forces()` y recibe `(K_e, f_e)` de dimensiones estándar (`n_nodos · n_DOFs_por_nodo`); el elemento se encarga internamente de la condensación.
+Los DOFs del salto `[[u]] ∈ ℝ²` viven como **atributo del elemento**, no como nodos del modelo global. El contrato del `Element` se preserva: el ensamblador llama a `compute_element_state(u_e)` y recibe `(K_e, f_e)` de dimensiones estándar (`n_nodos · n_DOFs_por_nodo`); el elemento se encarga internamente de la condensación.
 
 ```python
 class CST_Embedded2D(Element):
     discontinuity_state: DiscontinuityState | None  # None = elemento intacto
 
-    def compute_stiffness_and_internal_forces(self):
+    def compute_element_state(self, u_e):
         if self.discontinuity_state is None:
-            return self._compute_standard()        # CST regular
-        return self._compute_enriched_condensed()  # con condensación local
+            ...                                    # CST regular
+        ...                                        # con condensación local
 ```
 
 **Justificación**: el ensamblador no necesita saber que el elemento tiene modos enriquecidos. Esta es exactamente la promesa de la condensación estática local (Retama 2010 Cap. 7): los modos elementales no llegan al sistema global. Preserva todas las invariantes del `Assembler` actual — topología COO cacheada, despachador algebraico, expansión Dirichlet — sin tocar nada.
 
 ### 3. Condensación estática local en el elemento
 
-Implementación canónica (Retama 2010 §7.1):
+Condensación (Retama 2010, ecs. 7.13-7.14), con el algoritmo de la §7.2 (ver la nota tras el bloque):
 
 ```
 Sistema local antes de condensar:
@@ -91,7 +91,7 @@ Tras resolución global y obtener dû:
   dũ = K_ũũ^{-1} · (R_ũ - K_ũũ^T · dû)              ← recuperación local
 ```
 
-La variante alternativa de Retama 2010 §7.2 (almacenar sólo `ũ` actual, re-evaluar `K_ũũ` por iteración) queda **diferida**. La elegirá una optimización posterior si la memoria del estado se vuelve problema en mallas grandes — no es decisión arquitectural sino implementacional.
+**Corrección (2026-09-29).** El código implementa la variante de la §7.2, no la recuperación posterior al sistema global que describe el bloque: en cada evaluación del elemento un Newton local resuelve el salto con `dû` fijo, se guarda sólo `ũ` y la condensación conserva el residuo local, `R_cond = R_û − K_ûũ·K_ũũ⁻¹·R_ũ`. Como en la tesis, el Newton local sale al agotar sus iteraciones (deuda #12 de STATUS).
 
 ### 4. `DiscontinuityState` — estado del elemento agrietado
 
@@ -100,13 +100,15 @@ Dataclass paralela a `ElementState`, específica de la discontinuidad:
 ```python
 @dataclass
 class DiscontinuityState:
-    normal: np.ndarray        # n ∈ ℝ², perpendicular a σ_I al activarse
-    centroid: np.ndarray      # punto por el que pasa Γ_d (centroide en CST)
-    l_d: float                # (A/h)·cos(θ−α), Cap. 6 Retama 2010
+    normal: np.ndarray           # n ∈ ℝ², dirección de σ_I al activarse
+    tangent: np.ndarray          # s ⊥ n
+    centroid: np.ndarray         # punto por el que pasa Γ_d (centroide en CST)
+    solitary_node: int           # nodo que queda solo al otro lado de Γ_d
+    l_d: float                   # (A/h)·cos(θ−α), Cap. 6 Retama 2010
     jump_committed: np.ndarray   # [[u]] al cierre del último paso convergido
     jump_trial: np.ndarray       # [[u]] dentro de la iteración Newton
-    kappa: float              # max ⟨[[u]]_eq⟩ histórico
-    damage: float             # ω(κ) actual
+    cohesive_state_committed: dict   # variables del cohesivo: {'kappa', 'damage'}
+    cohesive_state_trial: dict
 ```
 
 Semántica **trial / commit** consistente con `ElementState` actual: `jump_trial` evoluciona en cada iteración Newton; `jump_committed` se actualiza sólo cuando el paso converge. Mismo patrón que en plasticidad J2 actual.
@@ -139,39 +141,29 @@ La longitud de la discontinuidad se calcula con la fórmula de Retama (2010) §6
 l_d = (A / h) · cos(θ − α)
 ```
 
-donde `A` es el área del CST, `h` la altura desde el nodo solitario, `θ` el ángulo de la grieta con respecto a `x` global, `α` el ángulo del lado opuesto al nodo solitario. La derivación geométrica está en la tesis y demuestra que ésta es **la única longitud que satisface continuidad fuerte de tracciones** sobre `Γ_d` para CST con KOS.
+donde `A` es el área del CST, `h` la altura desde el nodo solitario, `θ` el ángulo de la grieta con respecto a `x` global, `α` el ángulo del lado opuesto al nodo solitario. La derivación geométrica está en la tesis: con `l_d` así, el equilibrio del nodo solitario (ec. 6.16) impone `t_n = σ_I` sobre `Γ_d` cuando `n` es la dirección principal. **Corrección (2026-09-29):** sólo se impone la componente normal; la tangencial queda `t_s = σ_II·tan(α − θ)`, nula sólo si `θ = α`, así que la continuidad de tracción no es «fuerte» en sentido completo. El código usa `|cos(θ − α)|`; en un triángulo con ángulo obtuso junto al lado opuesto al nodo solitario, `cos(θ − α) ≤ 0` y ese valor absoluto invierte el signo de `t_n` (grieta que se abre en compresión). Es un punto abierto de la fase 2 del plan de 2026-09-24.
 
 Esta fórmula es **decisión cerrada en el ADR** — no se relitiga en specs ni en fases posteriores. La alternativa ingenua `l_d = A/h` (paralela al lado opuesto) sólo coincide cuando la grieta cae exactamente paralela a un lado; en cualquier otra orientación introduce stress locking. Esto se verifica numéricamente en la fase 3 (ver hoja de ruta) como test de aceptación del elemento — el experimento que la tesis no incluyó.
 
 ### 7. Tratamiento en YAML
 
 ```yaml
-# Material continuo del bulk (existente)
+# Sintaxis real (corregida 2026-09-29; desde el ADR 0020 el módulo se declara)
+user_modules: [discontinuities]
+
 materials:
-  - name: hormigon_elastico
-    type: Elastic2D
-    parameters: { E: 39.8e9, nu: 0.2, mode: plane_stress }
+  - {id: 1, type: Elastic2D, E: 39.8e9, nu: 0.2, hypothesis: plane_stress}
 
-# Material cohesivo de la discontinuidad (nuevo)
 cohesive_materials:
-  - name: concreto_cohesivo
-    type: CohesiveDamageIsotropic
-    parameters:
-      sigma_t0: 2.57e6      # Pa, resistencia a tracción
-      G_f: 121.9            # N/m, energía de fractura
-      softening: exponential  # linear | exponential
-      penalty_stiffness: 1.0e15  # rigidez elástica del salto, Retama 2010 §3.1
+  - {id: 10, type: CohesiveDamageIsotropic, sigma_t0: 2.57e6, G_f: 121.9,
+     K_e: 1.0e14, softening: exponential}     # K_e: rigidez de penalización [Pa/m]
 
-# Elemento con discontinuidad embebida (nuevo)
 elements:
-  - type: CST_Embedded2D
-    nodes: [...]
-    bulk_material: hormigon_elastico
-    cohesive_material: concreto_cohesivo
-    activation_criterion: rankine  # único soportado fase 1
+  - {id: 1, type: CST_Embedded2D, nodes: [...], material: 1,
+     cohesive_material: 10, thickness: 0.1}   # activación: Rankine, fija
 ```
 
-Decisión: `bulk_material` y `cohesive_material` se declaran por separado en el elemento. El bulk se evalúa siempre; el cohesivo entra al sistema sólo tras activación. El parser YAML acepta una sección nueva `cohesive_materials` para no mezclar con la lista de continuos (consecuencia directa de la decisión 1).
+Decisión: `material` (el bulk) y `cohesive_material` se declaran por separado en el elemento. El bulk se evalúa siempre; el cohesivo entra al sistema sólo tras activación. El parser YAML acepta una sección nueva `cohesive_materials` para no mezclar con la lista de continuos (consecuencia directa de la decisión 1).
 
 ## Hoja de ruta — fases
 
@@ -181,7 +173,7 @@ Decisión: `bulk_material` y `cohesive_material` se declaran por separado en el 
 | 2 | Spec + implementación `CST_Embedded2D` (KOS, fiel a Retama 2010 Caps. 2, 5, 7) | Elemento aislado en tracción uniaxial reproduce curva σ–ε esperada | Completado (commit `2e85a70`, 2026-05-18) |
 | 3 | Validación del Cap. 6 — test `l_d ingenuo` vs `l_d = (A/h)·cos(θ−α)` | Test integrado en spec del elemento documenta stress locking en la versión ingenua | Completado (`tests/test_ld_chapter_6_validation.py`, 2026-05-18) |
 | 3b | Bring-up de integración end-to-end + caza del bug dimensional `thickness` en términos cohesivos | 4 tests de cableado + 4 tests de regresión dimensional (`TestThicknessDimensionalConsistency`); ADR §"Caveats y lecciones aprendidas" | Completado (commit `e54b5ce`, 2026-05-18) |
-| 4 | Benchmark Van Vliet faithful (Retama 2010 §8.1) — comparativa con la curva experimental | Test end-to-end, ambas leyes de softening, rama de descarga completa contra experimental | **Diferida**. Bloqueante: los solvers actuales (`NonlinearSolver`, `ArcLengthSolver` cilíndrico) no atraviesan la rama post-pico del embedded discontinuity con penalty `K_e` stiff (transición elástico→softening abrupta hace `K_t` indefinida). El modelo físico está verificado en aislamiento por los tests del subsistema (incluido el blindaje dimensional). El límite es solver, no formulación. Retoma: cuando se priorice el mini-ADR 0011 de solvers para softening severo (dissipation arc-length, CMOD/CTOD control vía MPC con reacción en el cabezal, sign-of-pivot tracking). |
+| 4 | Benchmark Van Vliet faithful (Retama 2010 §8.1) — comparativa con la curva experimental | Test end-to-end, ambas leyes de softening, rama de descarga completa contra experimental | **Validada con grieta prescrita (2026-09-29)**, `tests/user/discontinuities/test_disc_van_vliet.py`: `NonlinearSolver` con control por desplazamiento atraviesa el pico y el ablandamiento (el bloqueo que se atribuía al solver venía de la tangente cohesiva, corregida el 2026-09-23). Pico, deformación en el pico y carga a 20, 50 y 100 µm dentro de la lectura de la fig. 8.3 para las dos leyes. Abierto: más allá de ~100 µm la carga queda por encima de la tesis (pivote comprimido en el borde de la banda). Figura en `docs/user/discontinuities/validacion/`. |
 | 5 | Catálogos + manuales | Entradas en `catalogo_elementos.md` y `catalogo_materiales.md` añadidas en fases 1 y 2; manuales auto-regeneran del MD existente | Cubierto parcialmente; regeneración explícita de manuales con la sección "Materiales cohesivos / Elementos embedded" diferida con la fase 4. |
 | F | Cracking-elements-style sin crack tracking (Brank 2021, Zhang 2018+) | Variante del elemento que elimina la necesidad de tracking trivial | Diferida |
 | G | Modo mixto I-II | Extensión del material cohesivo con componente tangencial | Diferida |
