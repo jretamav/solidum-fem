@@ -16,6 +16,43 @@ from solidum.math.batch.kernels import coo_to_csr_reduce, coo_to_csr_reduce_para
 _log = get_logger("assembly")
 
 
+def _constraint_cycles(masters_of: dict) -> list[list]:
+    """Ciclos de las cadenas maestro-esclavo de las restricciones lineales.
+
+    ``masters_of`` asocia cada esclavo con sus maestros (en cualquier
+    identificación hashable: número de ecuación o par ``(nodo, dof)``). Sólo
+    cuentan los maestros que son a su vez esclavos; la autorreferencia directa
+    (``s`` entre sus propios maestros) no se informa aquí. Devuelve cada ciclo
+    como ``[s₀, s₁, …, s₀]``, con ``s_{k+1}`` maestro de ``s_k``.
+
+    La usan el lector YAML, que valida el bloque ``linear_constraints`` al
+    leer, y el ``Assembler``, que nombra los grados de libertad del ciclo
+    cuando el cierre transitivo del ``ConstraintSet`` falla: ese cierre no
+    detecta como autorreferencia un ciclo de tres o más esclavos, que rota
+    sin cerrarse, y su mensaje no dice qué grados de libertad lo forman."""
+    graph = {s: [m for m in masters if m in masters_of and m != s]
+             for s, masters in masters_of.items()}
+    state = dict.fromkeys(graph, 0)        # 0 sin visitar, 1 en curso, 2 hecho
+    cycles = []
+    for root in graph:
+        if state[root]:
+            continue
+        path, stack = [root], [iter(graph[root])]
+        state[root] = 1
+        while stack:
+            nxt = next(stack[-1], None)
+            if nxt is None:
+                state[path.pop()] = 2
+                stack.pop()
+            elif state[nxt] == 0:
+                state[nxt] = 1
+                path.append(nxt)
+                stack.append(iter(graph[nxt]))
+            elif state[nxt] == 1:
+                cycles.append(path[path.index(nxt):] + [nxt])
+    return cycles
+
+
 class Assembler:
     """Ensambla las matrices y vectores globales del dominio.
 
@@ -371,7 +408,10 @@ class Assembler:
         El ``ConstraintSet`` trabaja con números de ecuación globales; sus
         errores se traducen aquí a pares (nodo, dof) del esclavo y de los
         maestros, con la corrección probable cuando se conoce (un esclavo que
-        tiene además un apoyo: quitar el apoyo del esclavo)."""
+        tiene además un apoyo: quitar el apoyo del esclavo). Un ciclo de las
+        cadenas maestro-esclavo se nombra por sus pares (nodo, dof), también
+        cuando tiene tres o más esclavos y el cierre sólo dice que no
+        converge."""
         self._ensure_topology()
         cs = ConstraintSet()
         for node in self.domain.nodes.values():
@@ -402,6 +442,19 @@ class Assembler:
         try:
             cs.build(self.domain.total_dofs)
         except ValueError as exc:
+            cycles = _constraint_cycles({
+                tuple(spec["slave"]): [tuple(m) for m in spec["masters"]]
+                for spec in getattr(self.domain, "linear_constraints", [])
+            })
+            if cycles:
+                raise ValueError(
+                    "Restricciones lineales cíclicas: "
+                    + "; ".join(" ← ".join(f"(nodo {n}, '{d}')" for n, d in cycle)
+                                for cycle in cycles)
+                    + ". Cada esclavo acaba dependiendo de sí mismo, y las cadenas "
+                    "maestro-esclavo deben terminar en grados de libertad libres "
+                    "o prescritos."
+                ) from exc
             raise ValueError(
                 "Restricciones lineales incoherentes: "
                 + self._with_dof_labels(str(exc))
@@ -435,7 +488,9 @@ class Assembler:
             f"Restricción lineal con esclavo (nodo {slave_id}, '{slave_dof}') y "
             f"maestros [{', '.join(f'(nodo {n}, {d!r})' for n, d in spec['masters'])}]: "
         )
-        if slave_dof in slave_node.boundary_conditions:
+        if (slave_id, slave_dof) in [tuple(m) for m in spec["masters"]]:
+            body = "el esclavo figura entre sus propios maestros."
+        elif slave_dof in slave_node.boundary_conditions:
             body = (
                 f"el esclavo tiene además un apoyo ({slave_dof} = "
                 f"{slave_node.boundary_conditions[slave_dof]}), y un grado de libertad "

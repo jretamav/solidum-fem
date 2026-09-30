@@ -410,3 +410,32 @@ class TestMensajesDelAssembler:
         dom.add_linear_constraint((M, 'T'), [(S, 'T')], [1.0])
         with pytest.raises(ValueError, match=rf"\(nodo ({S}|{M}), 'T'\)"):
             Assembler(dom).constraint_set
+
+    def test_ciclo_de_tres_con_la_api_python(self):
+        """Con tres o más esclavos el cierre transitivo del ``ConstraintSet``
+        no llega a la autorreferencia: rota hasta agotar las iteraciones y
+        sólo dice «posible ciclo», sin grados de libertad. El ``Assembler``
+        nombra el ciclo por (nodo, dof)."""
+        dom, _ = _placa('termica')
+        dom.linear_constraints.clear()
+        dom.add_linear_constraint((S, 'T'), [(M, 'T')], [1.0])
+        dom.add_linear_constraint((M, 'T'), [(M2, 'T')], [1.0])
+        dom.add_linear_constraint((M2, 'T'), [(S, 'T')], [1.0])
+        with pytest.raises(ValueError) as info:
+            Assembler(dom).constraint_set
+        msg = str(info.value)
+        assert "cíclicas" in msg
+        for n in (S, M, M2):
+            assert f"(nodo {n}, 'T')" in msg
+
+    def test_autorreferencia_de_un_esclavo_con_apoyo(self):
+        """El mensaje describe el error que ocurre (el esclavo entre sus
+        maestros), no el apoyo del esclavo."""
+        dom, _ = _placa('termica')
+        dom.linear_constraints.clear()
+        dom.add_linear_constraint((1, 'T'), [(1, 'T')], [1.0])
+        with pytest.raises(ValueError) as info:
+            Assembler(dom).constraint_set
+        msg = str(info.value)
+        assert "el esclavo figura entre sus propios maestros" in msg
+        assert "Quita el apoyo" not in msg

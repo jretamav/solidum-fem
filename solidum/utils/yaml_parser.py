@@ -8,6 +8,7 @@ from solidum.core.domain import Domain
 from solidum.core.element import Element
 from solidum.autodiscover import initialize as _ensure_registries_initialized
 from solidum.logging import get_logger
+from solidum.math.assembly import _constraint_cycles
 from solidum.user import available_user_modules, load_user_module
 from solidum.registry import (
     ElementRegistry,
@@ -933,35 +934,18 @@ class YamlParser:
         """Ciclos de las cadenas maestro-esclavo (``a ← b``, ``b ← a``): la
         eliminación directa exige que toda cadena termine en grados de
         libertad libres o prescritos. La autorreferencia directa se informa
-        aparte."""
-        graph = {s: [m for m in spec[1] if m in declared and m != s]
-                 for s, spec in declared.items()}
-        state = dict.fromkeys(graph, 0)        # 0 sin visitar, 1 en curso, 2 hecho
+        aparte. La búsqueda de ciclos es la misma que usa el ``Assembler``
+        con la API Python."""
         errors = []
-        for root in graph:
-            if state[root]:
-                continue
-            path, stack = [root], [iter(graph[root])]
-            state[root] = 1
-            while stack:
-                nxt = next(stack[-1], None)
-                if nxt is None:
-                    state[path.pop()] = 2
-                    stack.pop()
-                elif state[nxt] == 0:
-                    state[nxt] = 1
-                    path.append(nxt)
-                    stack.append(iter(graph[nxt]))
-                elif state[nxt] == 1:
-                    cycle = path[path.index(nxt):] + [nxt]
-                    entries = sorted({declared[s][0] for s in cycle})
-                    errors.append(
-                        "linear_constraints: restricción cíclica "
-                        + " ← ".join(cls._dof_label(s) for s in cycle)
-                        + f" (entradas {entries}): cada esclavo acaba dependiendo de "
-                        "sí mismo, y las cadenas maestro-esclavo deben terminar en "
-                        "grados de libertad libres o prescritos."
-                    )
+        for cycle in _constraint_cycles({s: spec[1] for s, spec in declared.items()}):
+            entries = sorted({declared[s][0] for s in cycle})
+            errors.append(
+                "linear_constraints: restricción cíclica "
+                + " ← ".join(cls._dof_label(s) for s in cycle)
+                + f" (entradas {entries}): cada esclavo acaba dependiendo de "
+                "sí mismo, y las cadenas maestro-esclavo deben terminar en "
+                "grados de libertad libres o prescritos."
+            )
         return errors
 
     def _parse_thermal_loads_config(self, data: dict):
