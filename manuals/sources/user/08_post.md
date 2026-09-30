@@ -9,6 +9,12 @@ Mediante `meshio`, Solidum FEM exporta los resultados en archivos `.vtu` compati
 - `Displacements`: campo vectorial $(u_x, u_y, u_z)$ por nodo.
 - `External_Forces`: distribución nodal del vector de cargas aplicado en el paso actual.
 - `Supports`: indicador booleano de DOFs restringidos.
+- `Temperature`: temperatura nodal, sólo si algún nodo tiene el DOF `T`.
+- `Sigma_XX_nodal` … `Tau_XZ_nodal`, `Von_Mises_nodal`: suavizado nodal de orden 0 de los esfuerzos por celda (media simple sobre las celdas adyacentes a cada nodo). Sólo promedian las celdas de **sólidos mecánicos**: las barras, cables y marcos (celdas `line`) y los elementos térmicos no participan, tampoco cuando un elemento térmico se superpone a un sólido sobre los mismos nodos en un dominio multicampo $(u_x, u_y, T)$. Un modelo sin sólidos mecánicos (sólo térmico o sólo estructural 1D) no exporta estos campos.
+
+#### Restricciones multipunto y suavizado nodal
+
+Con restricciones multipunto (bloque `linear_constraints` en YAML, `add_linear_constraint` en Python) el archivo recibe la solución completa, con los DOF esclavos ya recuperados: `Displacements`, `Temperature` y todos los campos por celda son los del modelo resuelto también en los nodos esclavos. El suavizado nodal tiene una limitación: dos nodos coincidentes atados por una restricción ($u_s = u_m$, p. ej. para unir mallas no conformes) siguen siendo dos nodos distintos, y cada uno promedia sólo las celdas de su lado. En la interfaz, `Sigma_*_nodal` del nodo maestro y del esclavo difieren entre sí y del valor que daría la malla con el nodo fundido (que, si cada lado aporta el mismo número de celdas, es la media de las dos copias). Para leer el esfuerzo en la interfaz, use los campos por celda o promedie las dos copias.
 
 ### Datos de Elemento (Cell Data)
 

@@ -77,6 +77,26 @@ Campos nodales
 - ``External_Forces``: fuerzas nodales aplicadas ``(fx, fy, fz)``.
 - ``Sigma_XX_nodal`` … ``Von_Mises_nodal``: suavizado nodal de orden 0
   (media simple sobre las celdas adyacentes) de los campos anteriores.
+  Sólo promedia las celdas de **sólidos mecánicos**: ni las líneas ni los
+  elementos térmicos, tampoco cuando un térmico se superpone a un sólido con
+  los mismos nodos (dominio multicampo ``(ux, uy, T)``, ADR 0016). Un modelo
+  sin ningún sólido mecánico (sólo térmico, sólo estructural 1D) no exporta
+  estos campos.
+
+Restricciones multipunto (ADR 0004)
+-----------------------------------
+El exportador recibe el ``U`` completo, con los DOF esclavos ya expandidos
+(``u = T·u_libre + g``), así que ``Displacements``, ``Temperature``, los
+campos por celda (``Sigma_*``, ``Flux``…) y las fuerzas internas son los del
+modelo resuelto también en los nodos esclavos. **Limitación del suavizado
+nodal**: dos nodos coincidentes atados por una MPC (``u_s = u_m``, p. ej.
+para unir mallas no conformes o pegar dos partes) siguen siendo nodos
+distintos, y cada uno promedia sólo las celdas de su lado. En la interfaz
+``Sigma_*_nodal`` del maestro y del esclavo difieren entre sí y del valor
+del modelo con el nodo fundido (que, con el mismo número de celdas a cada
+lado, es su media). Los valores por celda no se ven afectados; para leer el
+esfuerzo en la interfaz, use los campos por celda o promedie a mano las dos
+copias.
 """
 from __future__ import annotations
 
@@ -446,6 +466,9 @@ class VtkExporter:
         # --- Celdas agrupadas por tipo -----------------------------------------
         elements = list(self.domain.elements.values())
         conn_by_type: dict[str, list[list[int]]] = {}
+        # Por celda, si es un sólido mecánico: sólo esas celdas entran en el
+        # suavizado nodal de σ (un térmico superpuesto comparte tipo de celda).
+        solid_by_type: dict[str, list[bool]] = {}
         slot: list[tuple[str, int] | None] = []      # (tipo, índice en su bloque)
         for elem in elements:
             cell_type = cell_type_for(elem)
@@ -460,6 +483,7 @@ class VtkExporter:
                 continue
             block = conn_by_type.setdefault(cell_type, [])
             block.append([node_map[n.id] for n in elem.nodes])
+            solid_by_type.setdefault(cell_type, []).append(_is_mechanical_solid(elem))
             slot.append((cell_type, len(block) - 1))
 
         if not conn_by_type:
@@ -526,8 +550,10 @@ class VtkExporter:
         if want_nodal("External_Forces"):
             point_data["External_Forces"] = forces
 
-        # Suavizado nodal de orden 0: media simple de los sólidos adyacentes.
-        nodal = _smooth_stress_to_nodes(n_nodes, conn_by_type, stress_by_type)
+        # Suavizado nodal de orden 0: media simple de los sólidos mecánicos
+        # adyacentes.
+        nodal = _smooth_stress_to_nodes(n_nodes, conn_by_type, stress_by_type,
+                                        solid_by_type)
         if nodal is not None:
             for k, name in enumerate(STRESS_COMPONENT_NAMES):
                 if want_nodal(f"{name}_nodal"):
@@ -561,19 +587,31 @@ class VtkExporter:
         mesh.write(filepath)
 
 
-def _smooth_stress_to_nodes(n_nodes: int, conn_by_type: dict, stress_by_type: dict):
-    """Promedio nodal de las seis componentes de σ sobre las celdas sólidas
-    adyacentes. Devuelve ``(n_nodes, 6)`` o ``None`` si no hay sólidos
-    mecánicos con esfuerzo no nulo (las líneas y los térmicos no participan)."""
+def _smooth_stress_to_nodes(n_nodes: int, conn_by_type: dict, stress_by_type: dict,
+                            solid_by_type: dict):
+    """Promedio nodal de las seis componentes de σ sobre las celdas de
+    sólidos mecánicos adyacentes (``solid_by_type[tipo][k]`` verdadero).
+
+    Devuelve ``(n_nodes, 6)``, o ``None`` si el dominio no tiene ninguna
+    celda de sólido mecánico. Las líneas (barras, cables, marcos) y los
+    elementos térmicos no participan, tampoco cuando un térmico comparte el
+    tipo de celda y los nodos con un sólido mecánico (dominio multicampo
+    ``(ux, uy, T)`` del ADR 0016): su ``σ`` es nulo por construcción y
+    promediarlo dividiría el esfuerzo nodal por el número de capas. Un nodo
+    sin ningún sólido mecánico adyacente vale cero.
+    """
     acc = np.zeros((n_nodes, 6))
     cnt = np.zeros(n_nodes, dtype=np.int64)
     has_data = False
     for cell_type, conn_list in conn_by_type.items():
-        if cell_type == "line" or not conn_list:
+        solid = np.asarray(solid_by_type.get(cell_type, ()), dtype=bool)
+        if not solid.any():
             continue
         has_data = True
         conn = np.asarray(conn_list, dtype=np.int64)          # (n_cells, n_por_celda)
         s = np.asarray(stress_by_type[cell_type], dtype=float)  # (n_cells, 6)
+        if not solid.all():
+            conn, s = conn[solid], s[solid]
         n_per = conn.shape[1]
         np.add.at(acc, conn.ravel(), np.repeat(s, n_per, axis=0))
         cnt += np.bincount(conn.ravel(), minlength=n_nodes)
