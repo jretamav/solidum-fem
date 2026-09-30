@@ -117,7 +117,8 @@ interface:
 
 admission:                # criterio de admisión al programa principal (Reglas.md §1)
   textbooks:
-    - bathe: "§9.3 (superposición modal, base del método); SRSS y CQC no se localizaron en los textos de la lista"
+    - bathe: "§9.3 (superposición modal, base del método)"
+    - chopra: "cap. 13 (análisis por espectro de respuesta, combinación modal SRSS y CQC); texto añadido a la lista de Reglas §1 por el usuario el 2026-09-30"
   general_codes:
     - abaqus: "*RESPONSE SPECTRUM (SRSS, CQC)"
     - ansys: "SPRS con SRSS / CQC"

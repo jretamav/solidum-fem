@@ -219,6 +219,7 @@
 ## ResponseSpectrumSolver — análisis sísmico por combinación modal (ADR 0009 fase 7)
 
 - **Propósito**: combinar las respuestas máximas de los primeros `n_modes` modos del sistema bajo un espectro de respuesta dado (`S_d(ω)` o `S_a(ω)`) en una envolvente máxima. Análisis estadístico, no temporal — apropiado para diseño sísmico normativo (ASCE 7, Eurocódigo 8, NCh 433, NTC-DS).
+- **Clasificación (Reglas §1)**: estándar. El 2026-09-30 el criterio no decidía, porque la combinación modal SRSS/CQC no está en los textos de MEF de la lista; el usuario lo clasificó estándar y añadió Chopra (*Dynamics of Structures*, cap. 13) a la lista de textos. Está en Abaqus, ANSYS, OpenSees, Code_Aster y DIANA.
 - **Esquema**:
   - Análisis modal interno vía `ModalSolver` para obtener `(modes, frequencies)`.
   - Factores de participación `Γ_n = φ_nᵀ·M·r` con `r` el vector de excitación rígida en la dirección sísmica.

@@ -164,6 +164,7 @@
 ## CableMaterial1D — cable axial 1D con elasticidad unilateral
 
 - **Ley**: `σ = E·ε` si `ε > 0`; `σ = 0` si `ε ≤ 0` (sin rigidez en compresión).
+- **Clasificación (Reglas §1)**: estándar, por decisión del usuario del 2026-09-30. El criterio no decidía: los textos de la lista sólo cubren la barra elástica base, pero el material de sólo tracción está en ANSYS (`LINK180`), Abaqus (`*NO COMPRESSION`) y OpenSees (`Elastic` con `Eneg = 0`).
 - **STRAIN_DIM**: 1.
 - **Parámetros**: `E` (módulo de Young en tracción, estrictamente positivo).
 - **Variables internas**: ninguna (respuesta memoryless: la rigidez depende solo del signo instantáneo de `ε`).

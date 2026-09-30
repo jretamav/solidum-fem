@@ -44,7 +44,7 @@ interface:
 
 admission:                # criterio de admisión al programa principal (Reglas.md §1)
   textbooks:
-    - bathe: "cap. 4-5 (barra con σ = E·ε): formulación base; la anulación en compresión no aparece como tal en los textos de la lista"
+    - bathe: "cap. 4-5 (barra con σ = E·ε): formulación base; la anulación en compresión no aparece como tal en los textos de la lista. Clasificado estándar por el usuario el 2026-09-30 (el criterio no decidía; está en los tres códigos)"
   general_codes:
     - ansys: "LINK180 con SECCONTROL de sólo tracción"
     - abaqus: "*ELASTIC + *NO COMPRESSION"

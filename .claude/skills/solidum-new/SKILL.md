@@ -22,12 +22,12 @@ Disparadores típicos: "añade un material …", "crea un elemento …", "implem
 
 Lo decide la IA aplicando el **criterio de admisión** de Reglas.md §1 (ADR 0020). Una formulación es **estándar** si cumple las dos condiciones:
 
-1. aparece en los textos de referencia del área: Zienkiewicz-Taylor, Hughes, Bathe, Belytschko-Liu-Moran, de Souza Neto-Perić-Owen, de Borst-Crisfield-Remmers-Verhoosel;
+1. aparece en los textos de referencia del área: Zienkiewicz-Taylor, Hughes, Bathe, Belytschko-Liu-Moran, de Souza Neto-Perić-Owen, de Borst-Crisfield-Remmers-Verhoosel, Chopra;
 2. está implementada en al menos un código general establecido: Abaqus, ANSYS, DIANA, Code_Aster, OpenSees.
 
 Estándar → **programa principal** (sin `--user`). Si no cumple las dos → **módulo de usuario** (`--user <modulo>`, ver *Dentro de un módulo de usuario*). Sólo si el criterio no decide, pregunta al usuario antes de generar nada, con una pregunta y tu recomendación justificada: es un juicio sobre la literatura del área (Reglas.md §3). La clasificación queda anotada con su justificación en la entrada del catálogo (Reglas.md §1) y en la spec: en un componente estándar, en el bloque `admission` del contrato (`textbooks` y `general_codes`, al menos una entrada en cada uno; Reglas.md §4); en uno de módulo, con la condición que no cumple.
 
-Las entradas de `admission` se escriben con los **identificadores canónicos** de `solidum/tools/spec.py`, no con los nombres de arriba: `textbooks` ∈ `ADMISSION_TEXTBOOKS` (`zienkiewicz_taylor`, `hughes`, `bathe`, `belytschko_liu_moran`, `de_souza_neto`, `de_borst_crisfield`) y `general_codes` ∈ `ADMISSION_GENERAL_CODES` (`abaqus`, `ansys`, `diana`, `code_aster`, `opensees`). Cada entrada es el identificador solo o `identificador: "nota breve"` (capítulo o apartado del texto; comando, elemento u opción en el código). La plantilla de spec lo recuerda y el validador rechaza un nombre que no esté en la lista, enumerando los válidos.
+Las entradas de `admission` se escriben con los **identificadores canónicos** de `solidum/tools/spec.py`, no con los nombres de arriba: `textbooks` ∈ `ADMISSION_TEXTBOOKS` (`zienkiewicz_taylor`, `hughes`, `bathe`, `belytschko_liu_moran`, `de_souza_neto`, `de_borst_crisfield`, `chopra`) y `general_codes` ∈ `ADMISSION_GENERAL_CODES` (`abaqus`, `ansys`, `diana`, `code_aster`, `opensees`). Cada entrada es el identificador solo o `identificador: "nota breve"` (capítulo o apartado del texto; comando, elemento u opción en el código). La plantilla de spec lo recuerda y el validador rechaza un nombre que no esté en la lista, enumerando los válidos.
 
 Ejemplos según el criterio:
 

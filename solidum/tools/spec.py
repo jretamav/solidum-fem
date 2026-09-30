@@ -35,6 +35,10 @@ ADMISSION_TEXTBOOKS: Dict[str, str] = {
     "belytschko_liu_moran": "Belytschko-Liu-Moran",
     "de_souza_neto": "de Souza Neto-Perić-Owen",
     "de_borst_crisfield": "de Borst-Crisfield-Remmers-Verhoosel",
+    # Dinámica estructural (Chopra, Dynamics of Structures): añadido por el
+    # usuario el 2026-09-30 para cubrir la combinación modal y los
+    # integradores temporales, que los textos de MEF sólo tratan en parte.
+    "chopra": "Chopra",
 }
 ADMISSION_GENERAL_CODES: Dict[str, str] = {
     "abaqus": "Abaqus",

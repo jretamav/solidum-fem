@@ -102,7 +102,7 @@ The project follows strict conventions documented in [Reglas.md](Reglas.md)
 - **Admission criterion** (Reglas.md §1): a formulation belongs to the main
   program (standard Solidum) only if (i) it appears in the reference texts of
   the field (Zienkiewicz-Taylor, Hughes, Bathe, Belytschko-Liu-Moran,
-  de Souza Neto-Perić-Owen, de Borst-Crisfield-Remmers-Verhoosel) and (ii) it
+  de Souza Neto-Perić-Owen, de Borst-Crisfield-Remmers-Verhoosel, Chopra) and (ii) it
   is implemented in at least one established general-purpose code (Abaqus,
   ANSYS, DIANA, Code_Aster, OpenSees). When the criterion is inconclusive,
   the maintainer decides.
