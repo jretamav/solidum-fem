@@ -31,8 +31,7 @@
 - **Esquema**:
   - Bucle externo: incrementar factor de carga `λ` desde 0 hasta 1 en `num_steps` pasos.
   - Bucle interno: Newton-Raphson con `K_t · ΔU = R = λ·F_ext − F_int`.
-  - **Criterio de convergencia dual**: `max(err_disp, err_force) < tol`, con
-    `err_disp = ‖ΔU‖ / (‖U‖ + ε)` y `err_force = ‖R‖ / max(‖λ·F_ext‖, ‖F_int‖, ε)`.
+  - **Criterio de convergencia dual** (ADR 0007, los dos a la vez): `‖TᵀR‖ ≤ atol_force + rtol_force·max(‖F_ext‖, ‖F_int‖)` y `‖ΔU‖ ≤ atol_disp + rtol_disp·‖U‖`, con `TᵀR` el residuo reducido del ADR 0004 (con sólo Dirichlet, el residuo en los DOF libres) y las tolerancias absolutas autoderivadas de las escalas del primer ensamblaje.
   - **Adaptatividad** (`adaptive=True`): si converge en < 5 iteraciones, agranda el siguiente paso (×1.5); si no converge, biseca (÷2). Falla si `Δλ < min_delta_lambda`.
   - Tras converger un paso → `assembler.commit_all_states()` (trial → committed en todos los elementos).
   - El bucle interno es el `NewtonCorrector` compartido (ADR 0015) con el problema `_IncrementalProblem` (residuo `λ·F_ext − F_int`, reducción con el incremento de Dirichlet del paso); la convergencia no se evalúa en la iteración 0 (todo paso hace al menos una resolución).

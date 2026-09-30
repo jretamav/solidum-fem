@@ -289,6 +289,8 @@ linear_constraints:
 
 Las restricciones se imponen por eliminación directa (no por penalización), de modo que la imposición es exacta a redondeo y preserva la simetría y la positividad definida del sistema. Las cadenas master-slave se resuelven automáticamente por cierre transitivo; los ciclos y las redeclaraciones inconsistentes se detectan en construcción y abortan el análisis con un mensaje específico.
 
+En los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`) el término independiente `g` se aplica proporcionalmente al factor de carga, como $\lambda\,g$, igual que un desplazamiento prescrito: en un trazado de arco sigue a $\lambda$ también cuando la carga baja.
+
 ## Cargas Puntuales
 
 Misma estructura que las condiciones de frontera, en bloques `point_loads_by_node`, `point_loads_by_coord` y `point_loads_by_group`. Los valores son fuerzas nodales (en las unidades del modelo, típicamente Newtons):
@@ -381,9 +383,11 @@ Un valor desconocido, o `iterative:amg` sin `pyamg` instalado, se rechaza al lee
 Los solvers no lineales (`NonlinearSolver`, `ArcLengthSolver`) aceptan un bloque `convergence` que configura el criterio de parada de las iteraciones de Newton. La política sigue el patrón estándar de tolerancias mixtas absoluta + relativa, separado por dos criterios físicos: *fuerza* (residuo de equilibrio) y *desplazamiento* (incremento del iterado). La forma exacta de la comparación es:
 
 ```
-||R[libres]|| <= atol_force + rtol_force * max(||F_ext||, ||F_int||)
-||dU||       <= atol_disp  + rtol_disp  * ||U||
+||R_red|| <= atol_force + rtol_force * max(||F_ext||, ||F_int||)
+||dU||    <= atol_disp  + rtol_disp  * ||U||
 ```
+
+`R_red` es el residuo de equilibrio en los grados de libertad libres: las reacciones de los apoyos no cuentan y, con restricciones multipunto, el residuo de cada grado de libertad esclavo se suma a sus maestros multiplicado por su coeficiente ($\mathbf T^\top\mathbf R$, ADR 0004).
 
 Ambos criterios deben cumplirse **simultáneamente** (semántica AND) para dar el paso por convergido.
 

@@ -24,9 +24,11 @@ $$\lVert\Delta\mathbf U^{\text{paso}}\rVert^2 \;=\; dl^2$$
 
 (versión **cilíndrica**: no incluye $\Delta\lambda^2$, equivalente a tomar $\psi = 0$ en el parámetro de escala carga-desplazamiento; la versión esférica $\lVert\Delta\mathbf U\rVert^2 + \psi^2\Delta\lambda^2\lVert\mathbf F_{\text{ext}}^{\text{ref}}\rVert^2 = dl^2$ no está implementada).
 
+La norma $\lVert\Delta\mathbf U\rVert$ se evalúa sobre el vector completo de desplazamientos: DOF libres, esclavos de las MPC y prescritos (estos con $\Delta\lambda\,\mathbf g$). Los puntos trazados dependen de esa métrica. Con MPC no coinciden paso a paso con los de un modelo equivalente sin ellas, aunque todos son de equilibrio; con materiales dependientes de la trayectoria la diferencia queda dentro del error de discretización de la trayectoria de carga (auditoría de las MPC, 2026-09-30). Un desplazamiento prescrito grande frente a la deformación acerca el paso a un control por carga.
+
 ### 2. Condiciones de contorno
 
-Idénticas a `NonlinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC vía ADR 0004. Las condiciones Dirichlet no homogéneas se aplican proporcionalmente a $\lambda$.
+Idénticas a `NonlinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC vía ADR 0004. Los desplazamientos prescritos no nulos (Dirichlet no homogéneo y término $g$ de las MPC) se aplican proporcionalmente a $\lambda$ y lo siguen también cuando la carga baja.
 
 ### 3. Salidas físicas
 
@@ -285,3 +287,4 @@ references:
 - **2026-09-29** · Frontera del programa principal (ADR 0020): el caveat del softening con penalización cohesiva rígida (§10) pasa a nombrar el módulo de usuario `discontinuities` y a declarar que su diagnóstico es anterior a la corrección de la tangente cohesiva (`597f3d9`) y no se ha vuelto a comprobar con este solver. Sin cambio de formulación ni de resultados.
 - **2026-09-30** · Red de seguridad del ADR 0019 sobre la tangente inicial (decisión física del usuario; ver la entrada del mismo día en la spec de `NonlinearSolver`): el predictor del primer paso inspecciona sus pivotes nulos; error si el modelo es geométricamente lineal, aviso si tiene elementos geométricamente no lineales o materiales unilaterales; con el backend iterativo, aviso. Sin cambio de resultados en modelos bien planteados.
 - **2026-09-29** · Retirado `_negative_pivots()`, el marcador del diagnóstico por inercia que devolvía `None` y que nadie llamaba; §10 y `out_of_scope` lo recogen: no hay diagnóstico por inercia hasta que exista LDLᵀ (deuda #7). El problema por paso (`_ArcProblem` en el código) se exporta con nombre público, `solidum.math.solvers.ArcProblem`, porque lo extienden `IndirectDisplacementSolver` y `DissipationArcLengthSolver`, este último trasladado hoy al módulo de usuario `dissipation_control`. Sin cambio de formulación ni de resultados.
+- **2026-09-30** · Misma corrección que en `NonlinearSolver` (deuda #31, entrada del mismo día en su spec): el problema por paso mide `‖TᵀR‖` en vez de `‖R[libres]‖`, que con restricciones multipunto no se anulaba en la solución y hacía fallar todos los pasos. La heredan `IndirectDisplacementSolver` y, por `ArcProblem`, el solver del módulo `dissipation_control`. Sin cambio con sólo Dirichlet. La auditoría de las MPC del mismo día documentó en §1 y §2 que la métrica del arco incluye los DOF esclavos y prescritos y que el término `g` de las MPC sigue a λ; no se cambia la métrica, porque alteraría la secuencia de pasos de los modelos existentes sin corregir ningún error.

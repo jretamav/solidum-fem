@@ -76,11 +76,13 @@ class ConvergenceCriterion:
 
     .. code-block:: text
 
-        ‖R[free_dofs]‖ ≤ atol_force + rtol_force · max(‖F_ext‖, ‖F_int‖)
-        ‖δU‖           ≤ atol_disp  + rtol_disp  · ‖U_iter‖
+        ‖TᵀR‖ ≤ atol_force + rtol_force · max(‖F_ext‖, ‖F_int‖)
+        ‖δU‖  ≤ atol_disp  + rtol_disp  · ‖U_iter‖
 
-    con semántica AND (ambos criterios simultáneamente). Ver ADR 0007 para
-    la justificación de los defaults y de la elección AND vs OR.
+    con semántica AND (ambos criterios simultáneamente) y ``TᵀR`` el
+    residuo reducido (ADR 0004), que con sólo condiciones de Dirichlet es
+    ``R`` en los DOF libres. Ver ADR 0007 para la justificación de los
+    defaults y de la elección AND vs OR.
     """
 
     def __init__(self,
@@ -150,9 +152,10 @@ class ConvergenceCriterion:
         Parameters
         ----------
         residual_norm : float
-            ``‖R[free_dofs]‖`` — norma L2 del residuo en DOFs libres. En DOFs
-            prescritos el residuo contiene la reacción física, no un fallo
-            de equilibrio.
+            ``‖TᵀR‖`` — norma L2 del residuo reducido (ADR 0004). Excluye los
+            DOF prescritos, donde el residuo contiene la reacción física y no
+            un fallo de equilibrio, y suma a sus maestros el residuo de los
+            esclavos de restricciones multipunto.
         ref_force : float
             Escala corriente de fuerza, típicamente
             ``max(‖F_ext_step‖, ‖F_int‖)``. Se reevalúa cada iteración para

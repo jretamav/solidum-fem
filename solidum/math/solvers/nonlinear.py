@@ -56,6 +56,10 @@ class _IncrementalProblem:
         self.F_ext_global = F_ext_global
         self.load_factor = float(load_factor)
         self.free_dofs = free_dofs
+        # Operador ``u = T·u_libre + g`` (ADR 0004): el equilibrio reducido es
+        # ``TᵀR = 0``. Con una restricción multipunto la fuerza del esclavo
+        # pasa a sus maestros y ``R[libres]`` no se anula en la solución.
+        self._T = assembler.constraint_set.build(assembler.domain.total_dofs)[0]
 
     def assemble(self, U):
         return self.assembler.assemble_non_linear_system(U)
@@ -64,7 +68,7 @@ class _IncrementalProblem:
         return self.F_ext_step - state[1]
 
     def residual_norm(self, R):
-        return float(np.linalg.norm(R[self.free_dofs]))
+        return float(np.linalg.norm(self._T.T @ R))
 
     def calibration_scales(self, U, state):
         # La escala de fuerza es la carga total de la corrida, no la del

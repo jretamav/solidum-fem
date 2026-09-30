@@ -108,6 +108,9 @@ class _ArcProblem:
         self.dl = float(dl)
         self.max_lambda = max_lambda
         self.overshoot = False
+        # Equilibrio reducido ``TᵀR = 0`` (ADR 0004): con una restricción
+        # multipunto ``R[libres]`` no se anula en la solución.
+        self._T = assembler.constraint_set.build(assembler.domain.total_dofs)[0]
 
     # --- protocolo ----------------------------------------------------------
 
@@ -118,7 +121,7 @@ class _ArcProblem:
         return x[1] * self.F_ext_ref - state[1]
 
     def residual_norm(self, R):
-        return float(np.linalg.norm(R[self.free_dofs]))
+        return float(np.linalg.norm(self._T.T @ R))
 
     def calibration_scales(self, x, state):
         # La carga de referencia es la escala natural del arc-length (λ

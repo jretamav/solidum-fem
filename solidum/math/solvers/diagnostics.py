@@ -34,7 +34,8 @@ class SolverDivergedError(RuntimeError):
     mode : str
         Identificador simbólico del modo de divergencia.
     last_residual : float
-        ``‖R[free_dofs]‖`` en la última iteración antes de abandonar.
+        ``‖TᵀR‖`` (residuo reducido, ADR 0004) en la última iteración antes
+        de abandonar.
     last_delta : float
         ``‖δU‖`` de la última iteración (norma L2 del incremento de Newton).
     last_load_factor : float

@@ -20,11 +20,13 @@ solver:
 
 Bucle externo de incrementos del factor de carga $\lambda \in [0, 1]$; bucle interno Newton-Raphson sobre $\mathbf K_t \cdot \Delta\mathbf U = \mathbf R = \lambda\,\mathbf F_{\text{ext}} - \mathbf F_{\text{int}}$.
 
-**Criterio de convergencia dual**:
+**Criterio de convergencia dual** (se exigen los dos a la vez):
 
-$$\max(\text{err}_{\text{disp}}, \text{err}_{\text{force}}) < \text{tol}$$
+$$\lVert\mathbf T^\top\mathbf R\rVert \le \texttt{atol\_force} + \texttt{rtol\_force}\cdot\max(\lVert\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert), \qquad \lVert\Delta\mathbf U\rVert \le \texttt{atol\_disp} + \texttt{rtol\_disp}\cdot\lVert\mathbf U\rVert$$
 
-con $\text{err}_{\text{disp}} = \lVert\Delta\mathbf U\rVert / (\lVert\mathbf U\rVert + \epsilon)$ y $\text{err}_{\text{force}} = \lVert\mathbf R\rVert / \max(\lVert\lambda\,\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert, \epsilon)$.
+donde $\mathbf T^\top\mathbf R$ es el residuo de equilibrio en los grados de libertad libres: las reacciones de los apoyos no cuentan y, con restricciones multipunto, el residuo de cada esclavo se suma a sus maestros multiplicado por su coeficiente. Las tolerancias se configuran en el bloque `convergence` (capítulo «Archivo de Entrada YAML»).
+
+**Desplazamientos prescritos**: los valores de Dirichlet no nulos y el término independiente $g$ de las restricciones multipunto se aplican proporcionalmente al factor de carga, como $\lambda\,g$, igual que las cargas.
 
 **Adaptatividad** (`adaptive: true`):
 
@@ -55,6 +57,7 @@ Traza curvas de equilibrio con puntos límite de carga (snap-through, colapso), 
 - **Predictor tangente**: $\Delta\mathbf U_t = \mathbf K_t^{-1} \cdot \mathbf F_{\text{ext}}^{\text{ref}}$; $\Delta\lambda = \pm\,dl / \lVert\Delta\mathbf U_t\rVert$. Signo elegido por proyección con el incremento previo.
 - **Corrector iterativo**: en cada iteración resuelve dos sistemas ($\mathbf K \cdot \Delta\mathbf U_R = \mathbf R$ y $\mathbf K \cdot \Delta\mathbf U_t = \mathbf F_{\text{ext}}$) y aplica la restricción cuadrática cilíndrica $\lVert\delta\mathbf U\rVert^2 = dl^2$.
 - **Primer paso**: se declara con `initial_dlambda`, como **fracción de la carga de referencia** (0.1 si no se declara, es decir, el 10 % de la carga). El solver lo convierte en longitud de arco con una resolución elástica, $dl_1 = \Delta\lambda_1\,\lVert\mathbf K^{-1}\mathbf F_{\text{ext}}^{\text{ref}}\rVert$, así que no hace falta conocer de antemano los desplazamientos del modelo y el valor significa lo mismo en cualquier sistema de unidades. La alternativa `initial_dl` fija la longitud de arco directamente, en unidades de desplazamiento; sólo tiene sentido si se conoce la escala del problema, y no puede declararse junto con `initial_dlambda`.
+- **Métrica del arco**: $\lVert\delta\mathbf U\rVert$ se mide sobre todos los grados de libertad, también los esclavos de las restricciones multipunto y los prescritos. Un desplazamiento prescrito grande frente a la deformación consume casi toda la longitud de arco y el paso se comporta como un control por carga. Un modelo con nodos atados recorre una secuencia de pasos distinta de la del modelo con los nodos fundidos: todos los puntos son de equilibrio, y con plasticidad o daño los resultados difieren dentro del error de discretización de la trayectoria de carga, como al cambiar el tamaño de paso.
 - **Auto-ajuste de `dl`**: se agranda en convergencias rápidas (hasta `dl_max_factor` veces la del primer paso), se reduce en lentas, biseca al fallar.
 - **Llegada a `max_lambda`**: todos los pasos siguen la curva. Si uno la cruza, se repite desde el estado anterior hasta llegar exactamente a `max_lambda`. El solver nunca impone la carga máxima sin haber recorrido la curva hasta ella; si hay un colapso antes, el trazado se detiene por `max_steps` y lo avisa.
 

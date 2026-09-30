@@ -48,7 +48,7 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 ## ADR 0004 — Imposición de condiciones de Dirichlet por eliminación directa
 
-**Fecha**: 4 de mayo de 2026. **Estado**: aceptado; fases 1 (Dirichlet nodal) y 2 (restricciones lineales afines) implementadas.
+**Fecha**: 30 de abril de 2026. **Estado**: aceptado; fases 1 (Dirichlet nodal) y 2 (restricciones lineales afines) implementadas. Queda abierta la interpretación de las reacciones con restricciones multipunto (punto 10 de la fase 2).
 
 **Contexto.** Las condiciones de contorno de Dirichlet, tanto los empotramientos nodales clásicos como las restricciones multipunto (MPC: asentamientos prescritos, apoyos en plano oblicuo, periodicidad de celda unitaria, unión rígida master-slave), se imponían previamente por método de penalidad: añadir términos diagonales muy grandes al sistema. Dicho método introduce condicionamiento numérico artificialmente malo, contamina la simetría y la positividad de la matriz de rigidez y no es exacto a redondeo.
 

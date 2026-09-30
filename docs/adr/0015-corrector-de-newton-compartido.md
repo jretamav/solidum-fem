@@ -21,7 +21,7 @@ La restricción (`Reglas.md` §1, memoria `feedback_consistencia_arquitectural`)
 | Método | Qué aporta el solver |
 |---|---|
 | `assemble(x)` | el único ensamblaje de la iteración; devuelve el estado (`(K, F_int)`) |
-| `residual(x, state)`, `residual_norm(R)` | forma del residuo y norma que entra al criterio (DOF libres o `‖TᵀR‖`) |
+| `residual(x, state)`, `residual_norm(R)` | forma del residuo y norma que entra al criterio: `‖TᵀR‖`, equilibrio reducido del ADR 0004 (con sólo Dirichlet coincide con `‖R[libres]‖`; con restricciones multipunto ésta no se anula en la solución: deuda #31, 2026-09-30) |
 | `calibration_scales`, `reference_force`, `x_norm` | escalas del criterio dual (ADR 0007) |
 | `correction(x, state, R, solve)` | reducción, sistema tangente y corrección `dx`, resolviendo con el `solve` del corrector |
 | `apply(x, dx, α)` | iterado avanzado y norma del incremento |

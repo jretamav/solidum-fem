@@ -1,7 +1,7 @@
 # ADR 0004 — Imposición de condiciones de Dirichlet por eliminación directa con `ConstraintSet` afín
 
 **Fecha**: 2026-04-30
-**Estado**: Aceptado (2026-04-30)
+**Estado**: Aceptado (2026-04-30). Fases 1 y 2 (MPC) implementadas; el punto 10 de la fase 2, la interpretación de las reacciones con MPC, sigue abierto (deuda #32 de `docs/STATUS.md`).
 
 ## Resumen ejecutivo
 
@@ -139,7 +139,7 @@ Coherente con Reglas.md §1 (validación en construcción, no en runtime):
 - **DOF prescrito dos veces** con valores distintos → error.
 - **Ciclo master-slave** (`s ← m`, `m ← s`) → error.
 - **Cadena master-slave** (`s ← m`, `m ← m'`) → cierre transitivo automático para que el sistema reducido contenga solo DOFs verdaderamente libres, replicando el algoritmo `closure` de `AffineConstraints` de deal.II.
-- **Restricción redundante** (dos restricciones sobre el mismo esclavo, consistentes) → warning + deduplicación.
+- **Restricción redundante** (la misma restricción redeclarada sobre el mismo esclavo) → deduplicación silenciosa: redeclarar es idempotente. *(Nota 2026-09-30: el texto original decía «warning + deduplicación»; el código nunca avisó.)*
 - **Restricción inconsistente** (igualdades incompatibles) → error.
 
 Para Dirichlet pura los tres últimos casos son triviales o no aparecen; la validación entra en juego cuando se activen MPC.
@@ -149,6 +149,8 @@ Para Dirichlet pura los tres últimos casos son triviales o no aparecen; la vali
 **Decisión**: el solver devuelve `u_libre`; un componente externo (el `Assembler`, vía un método `expand(u_libre)`) compone `u = T · u_libre + g` antes de poblar `SolveResult`.
 
 Razón: mantiene los solvers en su rol de pura álgebra lineal, sin conocer `ConstraintSet`. La capa algebraica del ADR 0003 sigue recibiendo un sistema más pequeño y mejor condicionado, sin saber por qué.
+
+> **Nota 2026-09-30.** Los problemas de Newton de los solvers iterativos sí usan `T`: miden la convergencia con el equilibrio reducido `‖TᵀR‖` (deuda #31; `NewtonNewmarkSolver` lo hacía desde la auditoría del 2026-09-22). Con una MPC, `R` no se anula en los DOF libres en la solución, porque la fuerza de cada esclavo pasa a sus maestros. La capa algebraica sigue sin conocer `ConstraintSet`.
 
 ### 7. Lo que se elimina del código existente
 

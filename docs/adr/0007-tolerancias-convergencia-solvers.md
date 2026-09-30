@@ -37,6 +37,8 @@ Convergencia simultánea de los dos criterios (AND, como hoy — no OR):
 ‖δU‖          ≤ atol_disp  + rtol_disp  · ref_disp(U_iter)
 ```
 
+> **Nota 2026-09-30 (deuda #31).** `R[free_dofs]` se escribió pensando en condiciones de Dirichlet. La norma que entra al criterio es la del equilibrio reducido del ADR 0004, `‖TᵀR‖`, que con sólo Dirichlet coincide con `‖R[free_dofs]‖`; con restricciones multipunto la fuerza de cada esclavo pasa a sus maestros y `R[free_dofs]` no se anula en la solución. Los solvers estáticos la usan desde esta fecha, como ya hacía `NewtonNewmarkSolver`. La escala `max(‖F_ext‖, ‖F_int‖)` sigue usando `F_int` completo, que incluye las fuerzas de las restricciones —reacciones de Dirichlet y fuerzas de las MPC sobre esclavos y maestros—, igual que aquí se decidió para las reacciones; sólo afecta a la tolerancia (auditoría de las MPC del mismo día).
+
 con las escalas evaluadas en el estado corriente de la iteración:
 
 - `ref_force = max(‖F_ext_step‖, ‖F_int‖)`. Sin `ZERO_TOL` añadido — `atol_force` ya es el piso absoluto.

@@ -81,8 +81,11 @@ class NewtonProblem(Protocol):
         """Residuo completo (todos los DOF) en ``x``."""
 
     def residual_norm(self, R: np.ndarray) -> float:
-        """Norma del residuo que entra al criterio: en DOF libres
-        (``‖R[libres]‖``) o reducida (``‖TᵀR‖``)."""
+        """Norma del residuo que entra al criterio: la del equilibrio
+        reducido, ``‖TᵀR‖`` con ``u = T·u_libre + g`` (ADR 0004). Con sólo
+        condiciones de Dirichlet coincide con ``‖R[libres]‖``; con
+        restricciones multipunto ``R[libres]`` no se anula en la solución,
+        porque la fuerza de cada esclavo pasa a sus maestros."""
 
     def calibration_scales(self, x, state) -> tuple[float, float]:
         """``(escala de fuerza, escala de desplazamiento)`` para calibrar el
