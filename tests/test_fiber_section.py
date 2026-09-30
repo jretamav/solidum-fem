@@ -79,6 +79,28 @@ def _fd_jacobian(fun, x, d):
 
 class TestConstruccion:
 
+    def test_seccion_solo_de_fibras_unilaterales_se_rechaza(self):
+        """Decisión del usuario (2026-09-30): sin ninguna fibra bilateral la
+        sección pierde toda la rigidez al comprimirse y K queda singular."""
+        from solidum.materials.cable_1d import CableMaterial1D
+        cable = CableMaterial1D(E=E_S, density=RHO_S)
+        with pytest.raises(ValueError, match="unilateral"):
+            FiberSection(patches=[_rect(cable, ny=4)])
+        with pytest.raises(ValueError, match="unilateral"):
+            FiberSection(fibers=[Fiber(0.1, 0.0, 1e-4, cable), Fiber(-0.1, 0.0, 1e-4, cable)])
+
+    def test_fibras_unilaterales_mezcladas_se_admiten(self):
+        """Tirantes o tendones dentro de una sección de concreto: uso legítimo."""
+        from solidum.materials.cable_1d import CableMaterial1D
+        cable = CableMaterial1D(E=E_S, density=RHO_S)
+        concreto = Elastic1D(E=E_C, density=RHO_C)
+        sec = FiberSection(patches=[_rect(concreto, ny=4)],
+                           fibers=[Fiber(-0.2, 0.0, 1e-4, cable)])
+        assert sec.n_fibers == 5
+        # Con la sección entera comprimida, el concreto sigue aportando rigidez.
+        _, k_s, _ = sec.response_2d(np.array([-1e-4, 0.0]), sec.initial_states())
+        assert k_s[0, 0] > 0.0
+
     def test_registro_y_contrato(self):
         assert SectionRegistry.get("FiberSection") is FiberSection
         assert SectionRegistry.YAML_SECTION == "sections"

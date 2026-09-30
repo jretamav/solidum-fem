@@ -355,6 +355,23 @@ class FiberSection(Section):
         self._groups = [(mat, list(idx)) for mat, idx in groups]
         self._materials = [mat for mat, _ in groups]
 
+        # Fibras unilaterales (decisión del usuario, 2026-09-30): se admiten
+        # mezcladas con fibras bilaterales (tirantes o tendones en una sección
+        # de acero o concreto), pero no una sección hecha sólo de ellas: al
+        # invertirse el signo de la deformación perdería toda la rigidez y la
+        # matriz global quedaría singular, lo mismo que la base impide a un
+        # marco con material unilateral (Element._validate_material_compatibility).
+        if all(getattr(m, "IS_UNILATERAL", False) for m in self._materials):
+            nombres = sorted({type(m).__name__ for m in self._materials})
+            raise ValueError(
+                f"FiberSection: todas las fibras son de material unilateral "
+                f"({', '.join(nombres)}): la sección no tendría rigidez cuando la "
+                f"deformación cambie de signo y la matriz global quedaría "
+                f"singular. Combínelas con fibras de un material bilateral "
+                f"(acero, concreto) o use un elemento que admita materiales "
+                f"unilaterales (Cable2DCorot, Cable3DCorot)."
+            )
+
         # Matrices W de la spec §4: ε = W·e, s = Wᵀ(σ∘A), k_s = Wᵀ diag(E_t∘A) W.
         ones = np.ones(self.n_fibers)
         self._W2 = np.ascontiguousarray(np.column_stack([ones, -self.y]))

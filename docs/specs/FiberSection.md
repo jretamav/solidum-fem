@@ -25,7 +25,7 @@ Coordenadas $(y, z)$ de la fibra $i$ en los ejes locales del elemento, medidas d
 - 3D: $\ \varepsilon_i = \varepsilon_0 - y_i\,\kappa_z + z_i\,\kappa_y$, con $\mathbf e = [\varepsilon_0,\ \kappa_y,\ \kappa_z]^\top$.
 
 ### 3. Constitutiva por fibra
-$(\sigma_i,\ E_{t,i},\ \text{estado}_i') = \text{material}_i.\text{compute\_state}(\varepsilon_i,\ \text{estado}_i)$, con cualquier material de `STRAIN_DIM = 1`.
+$(\sigma_i,\ E_{t,i},\ \text{estado}_i') = \text{material}_i.\text{compute\_state}(\varepsilon_i,\ \text{estado}_i)$, con cualquier material de `STRAIN_DIM = 1`. Las fibras de material unilateral (`IS_UNILATERAL`, p. ej. `CableMaterial1D`) se admiten mezcladas con fibras bilaterales; una sección hecha sólo de ellas se rechaza al construir, porque al invertirse el signo de la deformación no tendría rigidez y la matriz global quedaría singular (decisión del usuario, 2026-09-30).
 
 ### 4. Fuerzas internas y tangente de la sección
 2D:
