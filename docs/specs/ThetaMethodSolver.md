@@ -64,7 +64,7 @@ El campo $\mathbf T_0$ debe declararse. Dos formas admitidas:
 
 A diferencia del mecánico, **no hay velocidad inicial**: la ecuación es de primer orden y $\mathbf T_0$ la determina por completo.
 
-**Consistencia con Dirichlet**: si $\mathbf T_0$ contradice una temperatura impuesta en un nodo con Dirichlet, existe una discontinuidad en $t=0$. Es físicamente legítimo (un choque térmico es exactamente eso) pero es la situación que más excita las oscilaciones descritas en §3. El solver **avisa** cuando lo detecta, sin abortar: es modelización válida, no error.
+**Consistencia con Dirichlet**: si $\mathbf T_0$ contradice una temperatura impuesta en un nodo con Dirichlet, existe una discontinuidad en $t=0$. Es físicamente legítimo (un choque térmico es exactamente eso) pero es la situación que más excita las oscilaciones descritas en §3. El solver **avisa** cuando lo detecta, sin abortar: es modelización válida, no error. La comparación se hace sólo en los DOF con Dirichlet declarado y contra el valor prescrito en $t=0$ (el de `dirichlet_func(0)` si se da); los esclavos de las restricciones multipunto (MPC) no entran, porque su término independiente no es una temperatura impuesta.
 
 ### 5. Selección del paso de tiempo
 
@@ -104,6 +104,12 @@ para cada paso n:
 ### 8. Dirichlet dependiente del tiempo
 
 Una temperatura impuesta puede variar en el tiempo, $\bar T(t)$ — es un caso de uso central (una superficie sometida a un ciclo térmico). La eliminación del ADR 0004 se aplica en cada paso con el valor correspondiente; el término de acoplamiento $\mathbf K_{fp}\bar{\mathbf T}_p$ se recalcula, la factorización de $\mathbf A_{ff}$ **no**.
+
+**Con restricciones multipunto.** El modelo afín del ADR 0004 es $\mathbf T = \mathbf T_{op}\,\mathbf T_{\text{libre}} + \mathbf g$, y $\mathbf g$ reúne dos cosas distintas: el valor prescrito $\bar T_d(t)$ en cada DOF con Dirichlet declarado y, en cada esclavo $s$ de una MPC, el término independiente que resulta del cierre transitivo,
+
+$$g_s(t) = g_{\text{mpc},s} + \sum_d \alpha_{sd}\,\bar T_d(t),$$
+
+con $g_{\text{mpc},s}$ la parte propia de las MPC de su cadena y $\alpha_{sd}$ el peso con que el Dirichlet $d$ le llega a través de ella (un esclavo atado a un maestro con Dirichlet hereda su valor). `dirichlet_func(t)` da sólo los $\bar T_d(t)$; el solver lee sus entradas en los DOF con Dirichlet declarado y reconstruye las filas esclavas con la MPC (`ConstraintSet.build_g`). El conjunto de DOF prescritos lo fija el modelo: un valor no nulo en un DOF libre se rechaza. La condición inicial almacenada en $t=0$ usa $\mathbf g(0)$.
 
 ### 9. Resultado
 
@@ -173,7 +179,8 @@ conventions:
 validity:
   - "sistema lineal de primer orden: C·Ṫ + K·T = F"
   - "θ ∈ [0, 1]; dt > 0; n_steps ≥ 1"
-  - "el modelo debe imponer al menos un Dirichlet de temperatura"
+  - "el modelo debe imponer al menos un Dirichlet de temperatura declarado;
+     las restricciones multipunto no cuentan (no fijan el nivel absoluto)"
   - "material con c y density declaradas (ThermalConduction §4)"
 
 out_of_scope:
@@ -245,6 +252,17 @@ acceptance:
       setup: "T_initial contradice un Dirichlet impuesto en un nodo"
       expect: "el solver AVISA identificando los nodos, y continúa: un choque
                térmico es modelización legítima, no un error"
+    - name: restricciones_multipunto
+      setup: "oráculo del nodo fundido: modelo atado con T_s = T_m en una
+             columna interior frente a la malla conforme, 2D Quad4Thermal y
+             3D Hex8Thermal; θ ∈ {1, 1/2, 0}, capacidad lumped y consistent;
+             estacionario con LinearSolver; Dirichlet variable sobre un maestro
+             de MPC y MPC con término independiente g"
+      expect: "misma historia de temperaturas hasta el redondeo; el esclavo
+               sigue al maestro con Dirichlet y conserva el salto g; el aviso de
+               T_initial y la guarda sin Dirichlet cuentan sólo el Dirichlet
+               declarado"
+      tol_abs: 1.0e-11
     - name: reporte_del_orden_efectivo
       setup: "construir el solver con θ = 1, 0.5 y 2/3"
       expect: "reporta orden 1, 2 y 1 respectivamente. Hace visible el coste en
@@ -269,7 +287,7 @@ references:
 - **Clase**: `ThetaMethodSolver` (`@SolverRegistry.register`, `PIPELINE_KIND = "thermal_transient"`)
 - **Resultado**: `ThermalTransientResult` en `solidum/results.py`
 - **Entrypoint**: `solidum.entry.run_thermal_transient`
-- **Tests**: `tests/test_theta_method.py` (79 tests)
+- **Tests**: `tests/test_theta_method.py` (79 tests); restricciones multipunto en `tests/test_theta_method_mpc.py`
 
 ### Resultados medidos
 
@@ -335,3 +353,4 @@ El mensaje accionable correcto ya existía en `ThermalMaterial.volumetric_capaci
 
    **Requisito añadido con la decisión**: el solver **reporta el orden efectivo del esquema** según el $\theta$ en uso, para que el coste en precisión del default sea visible y no una penalización silenciosa. Es la contrapartida honesta de elegir robustez.
 - **2026-09-22** · Auditoría global: el aviso de estabilidad condicional (θ < 0.5) cita el límite correcto `Δt ≤ 2/((1 − 2θ)·λ_max)`, que sólo coincide con `2/λ_max` en θ = 0.
+- **2026-09-30** · Auditoría de las restricciones multipunto (MPC). El solver trataba como Dirichlet todo DOF eliminado del sistema reducido, esclavos de MPC incluidos. Cuatro consecuencias, corregidas: (i) `dirichlet_func` sustituía el $\mathbf g$ completo, así que un esclavo atado a un maestro con Dirichlet quedaba a 0 y una MPC con término independiente perdía su salto, sin aviso; ahora `dirichlet_func` sólo da los valores de los DOF con Dirichlet declarado y las filas esclavas se reconstruyen con la MPC, $g_s(t) = g_{\text{mpc},s} + \sum_d \alpha_{sd}\bar T_d(t)$ (§8); (ii) el aviso de `T_initial` citaba los esclavos como Dirichlet contradichos; (iii) la guarda «sin Dirichlet» dejaba pasar un modelo con sólo MPC, que es tan indeterminado en el estacionario como el fundido; (iv) el instante inicial almacenado y el aviso de `T_initial` usaban el valor declarado y no `dirichlet_func(0)` (esto último también sin MPC). El aviso de choque inicial ya no llama «A-estable» a θ < 1/2: dice que la estabilidad es condicional. Sin MPC y sin `dirichlet_func` los resultados son idénticos; con `dirichlet_func` sin MPC también, salvo el instante inicial almacenado cuando `dirichlet_func(0)` difiere del valor declarado. Blindado por `tests/test_theta_method_mpc.py` (oráculo del nodo fundido en 2D y 3D, transitorio y estacionario). **Pregunta abierta para el usuario**: la guarda se mantiene en el transitorio, donde $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva sin Dirichlet (para $\theta \ge 0$ con $\mathbf C$ definida positiva) y un cuerpo aislado calentado por una fuente es un problema bien planteado (el del criterio `balance_energetico_transitorio`), que hoy se rechaza. Recomendación de la IA: levantarla en el transitorio y mantenerla en el estacionario, donde $\mathbf K$ sí es singular.

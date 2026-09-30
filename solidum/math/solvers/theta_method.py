@@ -110,7 +110,9 @@ class ThetaMethodSolver:
     ----------
     assembler : Assembler
         Vinculación al modelo. El dominio debe estar mallado con elementos
-        térmicos y tener **al menos un Dirichlet** de temperatura.
+        térmicos y tener **al menos un Dirichlet** de temperatura. Las
+        restricciones multipunto (MPC) no cuentan como tal: relacionan
+        temperaturas entre sí sin fijar su nivel absoluto.
     dt : float
         Paso temporal constante [s]. No limitado por estabilidad si
         ``θ ≥ 0.5``, sí por precisión: contrastar con el ``Δt``
@@ -134,11 +136,23 @@ class ThetaMethodSolver:
         ensamblados) en el instante ``t``. ``None`` ⇒ sin carga aplicada,
         el transitorio lo mueven las condiciones iniciales y Dirichlet.
     dirichlet_func : callable or None
-        ``dirichlet_func(t) -> np.ndarray`` de shape ``(ndof,)``: vector de
-        valores prescritos en el instante ``t``, en la misma disposición
-        que el ``g`` del ``ConstraintSet``. Permite una temperatura impuesta
-        variable en el tiempo (un ciclo térmico sobre una superficie).
-        ``None`` ⇒ los valores declarados en el modelo, constantes.
+        ``dirichlet_func(t) -> np.ndarray`` de shape ``(ndof,)``: valores
+        prescritos en el instante ``t``, en la posición global de cada DOF.
+        Permite una temperatura impuesta variable en el tiempo (un ciclo
+        térmico sobre una superficie). Sólo se leen las entradas de los DOF
+        con Dirichlet declarado en el modelo (``fix_dof``, o una restricción
+        lineal sin maestros): el conjunto de DOF prescritos lo fija el
+        modelo y la función sólo da su valor. Las filas de los esclavos de
+        restricciones multipunto (MPC) se reconstruyen con la propia MPC,
+        ``g_s(t) = g_mpc,s + Σ α·ḡ_d(t)`` (``ConstraintSet.build_g``): un
+        esclavo atado a un maestro con Dirichlet sigue su valor y el salto
+        ``g`` propio de la MPC se conserva, así que la entrada del esclavo
+        en el vector no se usa. Un valor no nulo en un DOF libre (ni
+        Dirichlet ni esclavo de MPC) se rechaza con ``ValueError``: prescribirlo exige
+        declararlo en el modelo. Se evalúa también en ``t = 0``, que es el
+        valor que se almacena en el instante inicial y contra el que se
+        compara ``T_initial``. ``None`` ⇒ los valores declarados en el
+        modelo, constantes.
     output_every : int, default 1
         Almacenar el campo cada ``N`` pasos. Limita la memoria en corridas
         largas; **no** afecta a la integración, que recorre todos los pasos.
@@ -323,7 +337,12 @@ class ThetaMethodSolver:
         Es una discontinuidad en ``t = 0``, físicamente legítima: un choque
         térmico es exactamente eso, y es un caso de uso central. Pero es
         también la situación que más excita las oscilaciones espurias de un
-        esquema A-estable no L-estable, así que merece señalarse.
+        esquema no L-estable, así que merece señalarse.
+
+        ``prescribed`` son sólo los DOF con Dirichlet declarado
+        (``ConstraintSet.dirichlet_dofs``) y ``g`` el vector en ``t = 0``.
+        Los esclavos de las MPC no entran: su ``g`` es el término
+        independiente de la restricción, no una temperatura impuesta.
         """
         if prescribed.size == 0:
             return
@@ -340,13 +359,25 @@ class ThetaMethodSolver:
         muestra = ", ".join(str(int(d)) for d in bad[:8])
         if bad.size > 8:
             muestra += f", … (+{bad.size - 8})"
+        # El riesgo que se añade depende de θ: ninguno con θ = 1 (L-estable),
+        # oscilación amortiguada con 1/2 ≤ θ < 1 (A-estable), y estabilidad
+        # sólo condicional con θ < 1/2.
         extra = ""
-        if not self.is_l_stable:
+        if not self.is_l_stable and self.is_unconditionally_stable:
             extra = (
                 f" Con theta={self.theta:g} el esquema es A-estable pero no "
                 "L-estable: este escalón puede producir oscilación amortiguada "
                 "en los primeros pasos, con temperaturas fuera del rango de "
                 "los datos. Usa theta=1.0 si necesitas monotonía garantizada."
+            )
+        elif not self.is_unconditionally_stable:
+            extra = (
+                f" Con theta={self.theta:g} < 0.5 el esquema es sólo "
+                "condicionalmente estable (ni A-estable ni L-estable): aun "
+                "dentro de su límite de Δt, este escalón puede producir "
+                "oscilación en los primeros pasos, con temperaturas fuera del "
+                "rango de los datos. Usa theta=1.0 si necesitas monotonía "
+                "garantizada."
             )
         _log.warning(
             "%s: T_initial contradice el valor Dirichlet impuesto en %d DOF(s) "
@@ -393,18 +424,21 @@ class ThetaMethodSolver:
         T_op, g0 = cs.build(ndof)
         free_dofs = cs.free_dofs(ndof)
         n_free = T_op.shape[1]
+        # Sólo el Dirichlet declarado: los esclavos de las MPC también salen
+        # del sistema reducido, pero no prescriben ninguna temperatura.
+        prescribed = cs.dirichlet_dofs
 
-        if n_free == ndof:
+        if prescribed.size == 0:
             raise ValueError(
                 f"{cls}: el modelo no impone ningún Dirichlet de temperatura. "
                 "La matriz de conductividad es semidefinida —tiene el modo de "
                 "temperatura uniforme, que no produce gradiente ni flujo, "
                 "análogo térmico de un modo de sólido rígido— y el problema "
-                "queda indeterminado en el nivel absoluto de temperatura. "
+                "queda indeterminado en el nivel absoluto de temperatura. Las "
+                "restricciones multipunto (MPC) no lo fijan: relacionan "
+                "temperaturas entre sí, y el modo uniforme las cumple. "
                 "Fija la temperatura en al menos un nodo (`fix_dof(\"T\", ...)`)."
             )
-
-        prescribed = np.setdiff1d(np.arange(ndof), free_dofs)
 
         # Diagnóstico de Δt: información, no restricción.
         dt_car = self.characteristic_dt()
@@ -427,8 +461,11 @@ class ThetaMethodSolver:
 
         # --- Condición inicial ---
         T_full = self._expand_initial(ndof)
-        self._warn_initial_dirichlet_mismatch(T_full, g0, prescribed)
-        # El valor prescrito manda desde t=0: el DOF no es incógnita.
+        # g en t = 0: con `dirichlet_func` es su valor inicial, no el declarado.
+        g_init = self._g_at(0.0, g0, cs, free_dofs)
+        self._warn_initial_dirichlet_mismatch(T_full, g_init, prescribed)
+        # El valor prescrito manda desde t=0: el DOF no es incógnita. Los
+        # esclavos de las MPC se reconstruyen con su restricción.
         T_free = T_full[free_dofs].copy()
 
         # --- Matrices reducidas y factorización única ---
@@ -471,20 +508,20 @@ class ThetaMethodSolver:
         def _ensamblar_global(T_f: np.ndarray, g: np.ndarray) -> np.ndarray:
             return T_op @ T_f + g
 
-        T_history[:, 0] = _ensamblar_global(T_free, g0)
+        T_history[:, 0] = _ensamblar_global(T_free, g_init)
 
         # --- Estado en t = 0 para el primer paso ---
         F_prev = self._F_at(0.0, ndof)
-        g_prev = self._g_at(0.0, g0)
+        g_prev = g_init
         converged = True
         # Rango de referencia para detectar explosión numérica.
         ref = max(float(np.max(np.abs(T_history[:, 0]))),
-                   float(np.max(np.abs(g0))), 1.0)
+                   float(np.max(np.abs(g_init))), 1.0)
 
         for step in range(n_steps):
             t_next = (step + 1) * dt
             F_next = self._F_at(t_next, ndof)
-            g_next = self._g_at(t_next, g0)
+            g_next = self._g_at(t_next, g0, cs, free_dofs)
 
             # rhs = B·T_n + Δt·[θ·F_{n+1} + (1−θ)·F_n] − acoplamiento Dirichlet.
             rhs = B @ T_free + dt * (
@@ -558,14 +595,35 @@ class ThetaMethodSolver:
             )
         return F
 
-    def _g_at(self, t: float, g0: np.ndarray) -> np.ndarray:
+    def _g_at(self, t: float, g0: np.ndarray, cs, free_dofs: np.ndarray) -> np.ndarray:
+        """Vector ``g`` del modelo afín ``T = T_op·T_libre + g`` en el instante ``t``.
+
+        Sin ``dirichlet_func`` es el ``g0`` declarado. Con ella, sus valores
+        en los DOF con Dirichlet declarado entran en
+        ``ConstraintSet.build_g``, que reconstruye las filas esclavas de las
+        MPC (``g_s = g_mpc,s + Σ α·ḡ_d``); el resto de entradas no se lee,
+        salvo para rechazar un valor no nulo en un DOF libre.
+        """
         if self.dirichlet_func is None:
             return g0
-        g = np.asarray(self.dirichlet_func(t), dtype=float).ravel()
-        if g.size != g0.size:
+        cls = type(self).__name__
+        values = np.asarray(self.dirichlet_func(t), dtype=float).ravel()
+        if values.size != g0.size:
             raise ValueError(
-                f"{type(self).__name__}: dirichlet_func({t}) devolvió un "
-                f"vector de tamaño {g.size}; se esperaban {g0.size} (un valor "
-                "por DOF, no nulo sólo en los DOFs prescritos)."
+                f"{cls}: dirichlet_func({t}) devolvió un vector de tamaño "
+                f"{values.size}; se esperaban {g0.size} (un valor por DOF, "
+                "no nulo sólo en los DOF con Dirichlet declarado)."
             )
-        return g
+        libres_con_valor = free_dofs[values[free_dofs] != 0.0]
+        if libres_con_valor.size:
+            muestra = ", ".join(str(int(d)) for d in libres_con_valor[:8])
+            if libres_con_valor.size > 8:
+                muestra += f", … (+{libres_con_valor.size - 8})"
+            raise ValueError(
+                f"{cls}: dirichlet_func({t}) da un valor no nulo en "
+                f"{libres_con_valor.size} DOF(s) sin Dirichlet declarado "
+                f"[{muestra}]. La función sólo da el valor de los DOF que el "
+                "modelo prescribe: declara el Dirichlet con "
+                "`fix_dof(\"T\", valor)` para que el DOF sea prescrito."
+            )
+        return cs.build_g(g0.size, values)

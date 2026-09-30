@@ -85,7 +85,22 @@ boundary_conditions:
   - {node_id: 2, T: 20.0}
 ```
 
-**Todo modelo térmico necesita al menos un Dirichlet.** Sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico.
+**Todo modelo térmico necesita al menos un Dirichlet.** Sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico. Las restricciones multipunto no cuentan como Dirichlet: relacionan temperaturas entre sí y el campo uniforme las cumple. Una restricción lineal sin maestros (`masters: []`, `T_s = g`) sí es un Dirichlet.
+
+### Restricciones multipunto sobre `T`
+
+El bloque `linear_constraints` (ver el capítulo del formato YAML) admite también el DOF `T`: $T_s = g + \sum_i \alpha_i\,T_{m_i}$. El caso típico es atar dos nodos coincidentes de mallas distintas con $T_s = T_m$ (continuidad de temperatura en una interfaz), la periodicidad, o un salto constante con $g \ne 0$. Atar dos nodos coincidentes da el mismo campo que fundirlos en uno, en el estacionario y en el transitorio.
+
+```yaml
+linear_constraints:
+  # Continuidad de temperatura entre el nodo 105 y el nodo 5, coincidentes.
+  - slave: {node: 105, dof: T}
+    masters:
+      - {node: 5, dof: T}
+    coefficients: [1.0]
+```
+
+Con una temperatura impuesta variable en el tiempo (argumento `dirichlet_func` del `ThetaMethodSolver`, sólo desde Python), la función da los valores de los nodos con Dirichlet declarado; los esclavos de las restricciones los reconstruye el solver con la propia restricción, así que un esclavo atado a un nodo con temperatura impuesta la sigue y el salto $g$ se conserva. Un valor no nulo en un nodo sin Dirichlet declarado se rechaza: el conjunto de nodos prescritos lo fija el modelo.
 
 ### Neumann — flujo prescrito
 
@@ -242,7 +257,7 @@ solver:
 
 Con estos valores el nodo central llega a $59.998$, frente al $60$ exacto del perfil lineal estacionario. La diferencia **no es error del esquema**: con $\Delta t = 2000$ s y 200 pasos el análisis cubre $4\times10^5$ s, mientras el tiempo de difusión global de esta pared es $L^2/\alpha \approx 3.2\times10^5$ s — el transitorio está terminando pero aún no ha terminado. Es exactamente el efecto descrito en «Elección de $\Delta t$»: alargando el análisis, el campo converge al perfil lineal $100 \to 20$ que da el `LinearSolver` sobre el mismo modelo, a precisión de máquina.
 
-Como la condición inicial (20 °C) contradice el Dirichlet impuesto (100 °C) en la cara izquierda, el solver **avisa** de la discontinuidad en $t=0$ sin abortar: un choque térmico es modelización legítima, y es precisamente el caso que motiva el default $\theta = 1$.
+Como la condición inicial (20 °C) contradice el Dirichlet impuesto (100 °C) en la cara izquierda, el solver **avisa** de la discontinuidad en $t=0$ sin abortar: un choque térmico es modelización legítima, y es precisamente el caso que motiva el default $\theta = 1$. El aviso compara sólo los nodos con Dirichlet declarado, no los esclavos de restricciones multipunto.
 
 ## Limitaciones actuales
 
