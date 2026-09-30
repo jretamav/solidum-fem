@@ -8,7 +8,8 @@ posterior:
   elemento estructural 1D, evaluadas en los nodos i, j. Convenciones de signo
   definidas en ``Reglas.md §5``.
 - :class:`SolveResult`: agregado de un análisis estático — desplazamientos,
-  reacciones, fuerzas internas. Producido por ``LinearSolver``,
+  reacciones de los apoyos, fuerzas de restricción de las uniones multipunto
+  (ADR 0004 §3), fuerzas internas. Producido por ``LinearSolver``,
   ``NonlinearSolver``, ``ArcLengthSolver``.
 - :class:`ModalResult`: frecuencias propias y modos M-ortonormales del problema
   ``K·φ = ω²·M·φ`` (ADR 0009 fase 1). Expone ``free_vibration`` como wrapper
@@ -498,12 +499,20 @@ class SolveResult:
         (``λ_final · F_ref`` en arc-length; ``λ = 1`` en los demás). Shape
         ``(n_dof,)``. No incluye reacciones.
     R
-        Reacciones globales, shape ``(n_dof,)``. Ceros en DOF libres; valor no
-        nulo solo en DOF restringidos. Se expone redundantemente con
-        ``reactions_by_node`` por conveniencia (vector para GUIs, dict para scripts).
+        Reacciones globales, shape ``(n_dof,)``: la fuerza que los **apoyos**
+        ejercen sobre la estructura (ADR 0004 §3, convención decidida el
+        2026-09-30). Son apoyos los DOF con Dirichlet —que reportan su
+        reacción completa, incluida la parte que les llega por nodos atados a
+        ellos— y las restricciones multipunto (MPC) que impiden un movimiento
+        de sólido rígido, como un rodillo oblicuo ``u_y = tanθ·u_x``: su
+        fuerza entra en los DOF de su esclavo y de sus maestros (la reacción
+        del rodillo es normal al plano de rodadura). Cero en los demás DOF.
+        Las MPC de unión no aportan: su fuerza va a ``constraint_forces``. Se
+        expone redundantemente con ``reactions_by_node`` por conveniencia
+        (vector para GUIs, dict para scripts).
     reactions_by_node
-        Vista ``{node_id: {dof_name: valor}}`` filtrada a nodos con al menos un
-        DOF restringido.
+        Vista ``{node_id: {dof_name: valor}}`` de ``R``: los nodos con algún
+        Dirichlet (sus DOF prescritos) y los DOF de las MPC de apoyo.
     element_forces
         ``{elem_id: ElementForces}`` con las fuerzas internas de cada elemento
         que implementa ``internal_forces``. Elementos sólidos pueden omitirse.
@@ -515,6 +524,21 @@ class SolveResult:
     num_steps
         Número de pasos convergidos. ``1`` para solver lineal; ``N`` para
         Newton-Raphson / arc-length.
+    constraint_forces
+        Fuerzas de restricción de las MPC de **unión** (atado de mallas, nodo
+        colgante, periodicidad, unión rígida), shape ``(n_dof,)``: la fuerza
+        que cada unión ejerce sobre la estructura en los DOF de su esclavo y
+        de sus maestros. Transmiten fuerza entre partes de la estructura, no
+        la toman del exterior: no son reacciones, y por dirección suman cero.
+        Una MPC es de unión si una traslación rígida de toda la estructura (o
+        un campo escalar uniforme, como una temperatura uniforme) la cumple.
+        Con ``R`` cumple ``F_int − F_applied = R + constraint_forces`` en todos
+        los DOF, salvo el residuo de equilibrio del solver en los libres.
+        ``build_solve_result`` lo rellena siempre (ceros sin uniones); ``None``
+        sólo en un ``SolveResult`` construido a mano sin él.
+    constraint_forces_by_node
+        Vista ``{node_id: {dof_name: valor}}`` de ``constraint_forces`` en los
+        DOF de las MPC de unión.
     """
 
     U: np.ndarray
@@ -524,6 +548,78 @@ class SolveResult:
     element_forces: dict[int, ElementForces] = field(default_factory=dict)
     converged: bool = True
     num_steps: int = 1
+    constraint_forces: np.ndarray | None = None
+    constraint_forces_by_node: dict[int, dict[str, float]] = field(default_factory=dict)
+
+
+# Tolerancia relativa del criterio de unión: |C_k·b| ≤ tol·Σ_j |C_kj·b_j|.
+_JOINT_RTOL = 1e-10
+
+
+def _is_joint(constraint, B: np.ndarray) -> bool:
+    """``True`` si la MPC es de unión: toda columna ``b`` de ``B`` (las
+    traslaciones rígidas y los campos escalares uniformes de la base rígida)
+    la cumple, ``|C_k·b| ≤ tol·Σ_j |C_kj·b_j|``.
+
+    Un DOF de giro vale cero en una traslación, así que una unión rígida
+    ``u_s = u_m + d·θ_m`` es de unión.
+    """
+    dofs = [constraint.slave_dof, *constraint.masters]
+    coefs = np.array([1.0, *(-a for a in constraint.coefficients)])
+    rows = B[dofs]                               # (len(dofs), m)
+    value = coefs @ rows
+    scale = np.abs(coefs) @ np.abs(rows)
+    return bool(np.all(np.abs(value) <= _JOINT_RTOL * scale))
+
+
+def _dof_labels_of_constraints(domain: "Domain") -> dict[int, tuple[int, str]]:
+    """Número de ecuación → ``(node_id, dof_name)`` de los DOF que aparecen en
+    las restricciones lineales del dominio. Recorre sólo las restricciones,
+    no todos los nodos."""
+    labels: dict[int, tuple[int, str]] = {}
+    for spec in getattr(domain, "linear_constraints", []):
+        for nid, dof_name in [tuple(spec["slave"]), *(tuple(m) for m in spec["masters"])]:
+            labels[domain.nodes[nid].dofs[dof_name]] = (nid, dof_name)
+    return labels
+
+
+def _split_constraint_forces(assembler, residual):
+    """Reparte el residuo entre reacciones de apoyo y fuerzas de unión.
+
+    Devuelve ``(R, F_c, support_dofs, joint_dofs)``: los vectores de
+    reacciones y de fuerzas de restricción y los DOF (con MPC) de las
+    restricciones de apoyo y de unión. Ver ``build_solve_result``.
+    """
+    cs = assembler.constraint_set
+    ndof = residual.shape[0]
+    dofs, mu = cs.multiplier_arrays(residual)
+    declared = cs.declared
+    is_dirichlet = np.fromiter((c.is_dirichlet() for c in declared), dtype=bool,
+                               count=len(declared))
+    R = np.zeros(ndof)
+    F_c = np.zeros(ndof)
+    R[dofs[is_dirichlet]] = mu[is_dirichlet]
+
+    basis = assembler.rigid_basis()
+    cols = [j for j, (kind, _) in enumerate(basis.labels)
+            if kind in ("translation", "scalar")]
+    B = basis.B[:, cols]
+
+    support_dofs: list[int] = []
+    joint_dofs: list[int] = []
+    for i in np.flatnonzero(~is_dirichlet):
+        c = declared[i]
+        if _is_joint(c, B):
+            target, bucket = F_c, joint_dofs
+        else:
+            target, bucket = R, support_dofs
+        m_k = mu[i]
+        target[c.slave_dof] += m_k
+        for m, alpha in zip(c.masters, c.coefficients):
+            target[m] -= alpha * m_k
+        bucket.append(c.slave_dof)
+        bucket.extend(c.masters)
+    return R, F_c, support_dofs, joint_dofs
 
 
 def build_solve_result(
@@ -539,10 +635,25 @@ def build_solve_result(
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
     Calcula:
-    - Reacciones ``R`` globales: ``F_int(U) − F_applied`` en DOFs restringidos,
-      cero en DOFs libres (por equilibrio al convergir).
-    - ``reactions_by_node``: vista filtrada a nodos con al menos un DOF con
-      condición de Dirichlet.
+    - Reacciones ``R`` y fuerzas de restricción ``constraint_forces`` a partir
+      del residuo ``r = F_int(U) − F_applied`` (ADR 0004 §3). Con ``C`` las
+      restricciones declaradas sin cerrar (fila ``e_dᵀ`` de un Dirichlet,
+      ``(e_s − Σ α_i·e_mi)ᵀ`` de una MPC), los multiplicadores ``μ`` de
+      ``Cᵀ·μ = r`` (:meth:`ConstraintSet.multipliers`) dan la fuerza
+      ``μ_k·C_kᵀ`` de cada restricción sobre la estructura. ``R`` suma las de
+      los Dirichlet y las de las MPC de apoyo; ``constraint_forces``, las de
+      las MPC de unión. Una MPC es de unión si ``|C_k·b| ≤ 1e-10·Σ_j |C_kj·b_j|``
+      para toda columna ``b`` de traslación o de campo escalar de la base
+      rígida del dominio (``Assembler.rigid_basis``); si no, es de apoyo.
+      Así ``F_int − F_applied = R + constraint_forces`` en todos los DOF,
+      salvo el residuo de equilibrio del solver en los libres, y un apoyo
+      cuyo nodo es maestro de una MPC recibe su reacción completa.
+      Sin MPC, ``R = F_int − F_applied`` en los DOF prescritos, exactamente
+      como antes de la convención (sin recorrer los DOF en Python).
+    - ``reactions_by_node``: nodos con algún Dirichlet (sus DOF prescritos,
+      también los declarados como restricción lineal sin maestros) más los DOF
+      de las MPC de apoyo.
+    - ``constraint_forces_by_node``: los DOF de las MPC de unión.
     - ``element_forces``: ``element.internal_forces(U)`` para cada elemento
       que implemente el contrato (los que devuelvan ``None`` se omiten).
 
@@ -553,14 +664,20 @@ def build_solve_result(
 
     _, F_int = assembler.assemble_non_linear_system(U)
 
-    # Reacciones por residuo en DOFs prescritos (ADR 0004 §3). En equilibrio
-    # F_int[free] = F_applied[free]; en DOFs restringidos la diferencia es la
-    # reacción que el apoyo ejerce sobre el sistema.
-    bc_dofs = assembler.constraint_set.slave_dofs
-
-    R = np.zeros(ndof)
-    if bc_dofs.size > 0:
-        R[bc_dofs] = F_int[bc_dofs] - F_applied[bc_dofs]
+    cs = assembler.constraint_set
+    support_dofs: list[int] = []
+    joint_dofs: list[int] = []
+    if not cs.has_multipoint:
+        # Sólo Dirichlet: la reacción es el residuo en los DOF prescritos (en
+        # equilibrio F_int[libres] = F_applied[libres]).
+        bc_dofs = cs.slave_dofs
+        R = np.zeros(ndof)
+        if bc_dofs.size > 0:
+            R[bc_dofs] = F_int[bc_dofs] - F_applied[bc_dofs]
+        F_c = np.zeros(ndof)
+    else:
+        R, F_c, support_dofs, joint_dofs = _split_constraint_forces(
+            assembler, F_int - F_applied)
 
     reactions_by_node: dict[int, dict[str, float]] = {}
     for node_id, node in domain.nodes.items():
@@ -573,6 +690,21 @@ def build_solve_result(
         }
         if per_dof:
             reactions_by_node[node_id] = per_dof
+
+    constraint_forces_by_node: dict[int, dict[str, float]] = {}
+    linear_constraints = getattr(domain, "linear_constraints", [])
+    if linear_constraints:
+        labels = _dof_labels_of_constraints(domain)
+        # Un Dirichlet declarado como restricción lineal sin maestros es un
+        # apoyo como cualquier otro.
+        extra_support = [domain.nodes[spec["slave"][0]].dofs[spec["slave"][1]]
+                         for spec in linear_constraints if not spec["masters"]]
+        for dof in (*support_dofs, *extra_support):
+            nid, dof_name = labels[dof]
+            reactions_by_node.setdefault(nid, {})[dof_name] = float(R[dof])
+        for dof in joint_dofs:
+            nid, dof_name = labels[dof]
+            constraint_forces_by_node.setdefault(nid, {})[dof_name] = float(F_c[dof])
 
     # Cargas nodales equivalentes de la carga distribuida (peso propio /
     # fuerza de cuerpo) por elemento, escaladas por el factor de carga: las
@@ -595,4 +727,6 @@ def build_solve_result(
         element_forces=element_forces,
         converged=converged,
         num_steps=num_steps,
+        constraint_forces=F_c,
+        constraint_forces_by_node=constraint_forces_by_node,
     )

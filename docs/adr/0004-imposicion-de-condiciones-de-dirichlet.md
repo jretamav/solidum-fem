@@ -1,7 +1,7 @@
 # ADR 0004 — Imposición de condiciones de Dirichlet por eliminación directa con `ConstraintSet` afín
 
 **Fecha**: 2026-04-30
-**Estado**: Aceptado (2026-04-30). Fases 1 y 2 (MPC) implementadas; el punto 10 de la fase 2, la interpretación de las reacciones con MPC, sigue abierto (deuda #32 de `docs/STATUS.md`).
+**Estado**: Aceptado (2026-04-30). Fases 1 y 2 (MPC) implementadas; la convención de las reacciones con MPC (punto 10 de la fase 2) la decidió el usuario el 2026-09-30 (§3).
 
 ## Resumen ejecutivo
 
@@ -92,6 +92,33 @@ R_full  =  K_full · u_full  −  F_full
 ```
 
 evaluado solo en los DOFs prescritos. No depende de ningún parámetro de penalización. Sustituye la rama actual de [solidum/results.py:155-161](../../solidum/results.py#L155-L161). Es exacta a redondeo, simétrica para sistemas simétricos, y transparente para MPC futuros (la "reacción" en un nodo maestro de un MPC es la suma ponderada de las contribuciones esclavas — caso que se documentará cuando entren MPC).
+
+#### Reacciones con restricciones multipunto — decisión del usuario (2026-09-30)
+
+Con MPC el residuo en los DOF prescritos no basta: la fuerza de un esclavo pasa a sus maestros, y un apoyo en un maestro, un rodillo oblicuo impuesto con una MPC o una unión interna quedaban mal reportados (deuda #32 de `docs/STATUS.md`). El usuario fijó la convención física:
+
+- **Reacción** = fuerza que un **apoyo** ejerce sobre la estructura. Un apoyo Dirichlet reporta su reacción completa, incluida la parte que le llega por nodos atados a él.
+- Una MPC que impide un movimiento de sólido rígido **cuenta como apoyo**: su fuerza entra en las reacciones de los DOF de su esclavo y de sus maestros. Es el caso del rodillo oblicuo `u_y = tanθ·u_x` en un nodo, cuya reacción es normal al plano de rodadura.
+- Las MPC de **unión** (atado de mallas, nodo colgante, periodicidad, unión rígida) transmiten una **fuerza de restricción** entre partes de la estructura: no son reacciones y se exponen aparte.
+- **Criterio**: una MPC es de unión si una traslación rígida de toda la estructura (o un campo escalar uniforme, p. ej. una temperatura uniforme) la cumple; si no, es de apoyo. Los casos mixtos (`u_s = 2·u_m` entre nodos distintos) cuentan como apoyo, lo que conserva el equilibrio global.
+
+**Formulación.** Con las restricciones declaradas **sin cerrar** —fila `e_dᵀ` de un Dirichlet, `(e_s − Σ α_i·e_mi)ᵀ` de una MPC— reunidas en `C`, y `r = F_int(U) − F_applied` en todos los DOF, los multiplicadores cumplen
+
+```
+Cᵀ · μ = r
+```
+
+`C` tiene rango completo por filas (cada fila tiene su esclavo propio y las cadenas son acíclicas), y el sistema se resuelve por sustitución en orden de dependencia: `μ_k = r̃_{s_k}`, con `r̃` el residuo más las transferencias `α·μ` de las restricciones en las que `s_k` es maestro, procesadas antes; después `r̃_m += α_{k,m}·μ_k` para cada maestro `m` de `k`. Entonces
+
+```
+R    = Σ_Dirichlet μ_d · e_d  +  Σ_{MPC de apoyo} μ_k · C_kᵀ
+F_c  = Σ_{MPC de unión} μ_k · C_kᵀ
+F_int − F_applied = R + F_c      (salvo el residuo de equilibrio del solver en los DOF libres)
+```
+
+Un apoyo Dirichlet cuyo nodo es maestro de una MPC recibe así su reacción completa, la del modelo con los nodos fundidos. En código, la MPC `k` es de unión si `|C_k·b| ≤ 1e-10·Σ_j |C_kj·b_j|` para toda columna `b` de la base rígida del dominio (`rigid_body_basis`, cacheada en `Assembler.rigid_basis()`) etiquetada `translation` o `scalar`. Un DOF de giro no cambia con una traslación, así que una unión rígida `u_s = u_m + d·θ_m` es de unión. Límite conocido: una MPC sólo entre giros de nodos distintos con coeficiente distinto de uno (`θ_s = 2·θ_m`) también cuenta como unión y entonces no conserva el equilibrio global de momentos. No se amplía el criterio a los giros rígidos porque los atados entre nodos separados por una holgura pequeña, que son habituales, pasarían a contar como apoyos.
+
+**Implementación.** `ConstraintSet.declared` (restricciones sin cerrar, en orden de declaración) y `ConstraintSet.multipliers(r)` (`μ` por DOF esclavo, con el algoritmo de sustitución; sin MPC, `μ_d = r_d` exactamente y por un camino vectorizado). `build_solve_result` clasifica las MPC y reparte: `SolveResult.R` y `reactions_by_node` llevan sólo los apoyos (Dirichlet y MPC de apoyo; la vista por nodo, los nodos con algún Dirichlet más los DOF de las MPC de apoyo), y los campos nuevos `constraint_forces` y `constraint_forces_by_node`, las fuerzas de restricción de las uniones. Sin MPC, `R` y `reactions_by_node` son bit a bit los de antes. Tests: `tests/test_mpc_reactions.py` (oráculo del nodo fundido en placas Quad4 lineal y con plasticidad, armadura, marco, sólido Hex8 y térmico; maestro con apoyo; rodillo oblicuo; uniones; identidad `F_int − F_applied = R + F_c`; periodicidad con salto por YAML; MPC mixta; sin MPC bit a bit; unitarios de `multipliers`).
 
 ### 4. Estructura del módulo
 
@@ -203,7 +230,7 @@ Razón: mantiene los solvers en su rol de pura álgebra lineal, sin conocer `Con
    - Periodicidad en celda unitaria 2D bajo carga uniaxial: comparar con solución de homogeneización analítica.
    - Apoyo en plano oblicuo (45°) en armadura: comparar con la misma armadura rotada y empotrada en eje global.
    - Unión rígida master-slave entre dos nodos: comprobar que la cinemática se preserva exactamente.
-10. Documentar la interpretación de reacciones en nodos maestro de un MPC.
+10. Documentar la interpretación de reacciones en nodos maestro de un MPC. *(Cerrado el 2026-09-30 con la decisión del usuario sobre la convención de las reacciones, §3.)*
 
 ### Fase 3 — Lagrange aumentado para contacto
 

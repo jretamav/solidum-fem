@@ -48,6 +48,23 @@ Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo,
 
 El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`), así que funciona igual tras `LinearSolver.solve` directo, tras `solidum.run` o en un paso intermedio del `step_callback`. Si el modelo lleva peso propio o fuerza de cuerpo, usar `solidum.run(...)` en vez de `solver.solve(...)` para que `SolveResult.element_forces` reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
 
+## Resultado de un análisis estático: `SolveResult`
+
+`solidum.run(...)` (y `solidum.run_yaml(...)` con un solver estático) devuelve un `SolveResult` inmutable, que queda también en `domain.last_result`:
+
+| Campo | Contenido |
+|---|---|
+| `U` | Solución global (desplazamientos y giros, o temperaturas), shape `(n_dof,)`. |
+| `F_applied` | Cargas que ve el sistema (nodales más equivalentes de elemento), escaladas por el factor de carga final. |
+| `R` | Reacciones de los **apoyos**, shape `(n_dof,)`: los grados de libertad con valor prescrito y las restricciones multipunto que actúan como apoyo (un rodillo oblicuo). Ceros en el resto. |
+| `reactions_by_node` | `{nodo: {dof: valor}}` de `R`: los nodos con algún valor prescrito y los grados de libertad de las restricciones multipunto de apoyo. |
+| `constraint_forces` | Fuerzas de restricción de las restricciones multipunto de **unión** (atado de mallas, periodicidad, unión rígida), shape `(n_dof,)`; ceros si no hay. |
+| `constraint_forces_by_node` | `{nodo: {dof: valor}}` de `constraint_forces` en los grados de libertad de esas uniones. |
+| `element_forces` | `{elemento: ElementForces}` con las fuerzas internas (N, V, M, T) de los elementos estructurales. |
+| `converged`, `num_steps` | Si el análisis llegó al final y cuántos pasos convergidos dio. |
+
+Las reacciones y las fuerzas de restricción cumplen `F_int − F_applied = R + constraint_forces`: el equilibrio global es `ΣR + ΣF_applied = 0` por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección `linear_constraints` del capítulo «Archivo de Entrada YAML». En el problema térmico `R` es el flujo de calor nodal en los nodos con temperatura impuesta.
+
 ## Secciones por fibras
 
 El bloque `sections` del YAML tiene su equivalente directo en Python (ADR 0021): las primitivas generan las fibras y la sección se pasa al marco con `section`, en lugar de `material` y las propiedades geométricas.

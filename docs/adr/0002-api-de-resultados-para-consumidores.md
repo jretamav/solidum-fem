@@ -77,6 +77,8 @@ Decisiones:
 - `R` se da como vector global con ceros en libres, y `reactions_by_node` como vista conveniente filtrada a nodos restringidos. Ambos redundantes a propósito: barato de dar ambos, GUIs grandes prefieren vector, scripts prefieren dict.
 - `frozen=True` para evitar que un consumidor modifique resultados y sorprenda a otro consumidor posterior.
 
+> **Nota 2026-09-30 (deuda #32, convención de las reacciones con MPC del [ADR 0004](0004-imposicion-de-condiciones-de-dirichlet.md) §3).** `R` y `reactions_by_node` llevan sólo las reacciones de los apoyos: los Dirichlet, con su reacción completa, y las restricciones multipunto que impiden un movimiento de sólido rígido (un rodillo oblicuo). Dos campos nuevos al final, con valor por omisión para no romper a quien construya `SolveResult` a mano: `constraint_forces` (vector `(n_dof,)` con las fuerzas de restricción de las MPC de unión —atado de mallas, periodicidad, unión rígida—, ceros si no hay; `None` sólo en un resultado construido a mano) y `constraint_forces_by_node` (vista `node_id -> {dof: valor}` en los DOF de esas uniones). Se cumple `F_int − F_applied = R + constraint_forces`. Sin MPC, `R` y `reactions_by_node` no cambian.
+
 ### 3. Entrypoints públicos — `solidum.run` y `solidum.run_yaml`
 
 Dos funciones, no una con unión de tipos:

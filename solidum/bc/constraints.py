@@ -17,6 +17,13 @@ distinguir el Dirichlet declarado de las MPC: :attr:`ConstraintSet.dirichlet_dof
 (los DOF con valor prescrito tal como se declararon) y
 :meth:`ConstraintSet.build_g` (el ``g`` completo para unos valores de Dirichlet
 dados, con la composición del cierre ``g_s = g_mpc,s + Σ α·ḡ_d``).
+
+Para el post-proceso, :attr:`ConstraintSet.declared` expone las restricciones
+sin cerrar y :meth:`ConstraintSet.multipliers` recupera sus multiplicadores
+``μ`` a partir del residuo ``r = F_int − F_applied`` (``Cᵀ·μ = r``): la fuerza
+que cada restricción ejerce sobre la estructura, con la que
+``build_solve_result`` separa las reacciones de los apoyos de las fuerzas de
+restricción de las uniones (ADR 0004 §3).
 """
 
 from __future__ import annotations
@@ -59,6 +66,9 @@ class ConstraintSet:
     def __init__(self) -> None:
         # Restricciones tal como se declararon; el cierre no las modifica.
         self._declared: dict[int, AffineConstraint] = {}
+        # Cuántas de las declaradas tienen maestros (MPC): ``has_multipoint``
+        # sin recorrer las restricciones.
+        self._n_multipoint: int = 0
         # Restricciones vigentes: las declaradas hasta el cierre, las cerradas
         # después (mismas claves en ambos diccionarios).
         self._constraints: dict[int, AffineConstraint] = {}
@@ -148,6 +158,8 @@ class ConstraintSet:
         )
         self._declared[slave_dof] = constraint
         self._constraints[slave_dof] = constraint
+        if masters:
+            self._n_multipoint += 1
         self._closed = False
         self._cache = None
         self._g_cache = None
@@ -357,6 +369,111 @@ class ConstraintSet:
             sorted(s for s, c in self._declared.items() if c.is_dirichlet()),
             dtype=np.int64,
         )
+
+    @property
+    def declared(self) -> tuple[AffineConstraint, ...]:
+        """Restricciones tal como se declararon, en orden de declaración.
+
+        El cierre transitivo no las modifica: una MPC conserva sus maestros
+        declarados aunque alguno sea esclavo de otra restricción. Cada una es
+        una fila de la matriz de restricciones sin cerrar ``C``: ``e_dᵀ`` para
+        un Dirichlet y ``(e_s − Σ α_i·e_mi)ᵀ`` para una MPC (ver
+        :meth:`multipliers`).
+        """
+        return tuple(self._declared.values())
+
+    @property
+    def has_multipoint(self) -> bool:
+        """``True`` si alguna restricción declarada tiene maestros (una MPC)."""
+        return self._n_multipoint > 0
+
+    def multipliers(self, r: np.ndarray) -> dict[int, float]:
+        """Multiplicadores ``μ`` de las restricciones declaradas para el residuo ``r``.
+
+        Con ``C`` la matriz de las restricciones declaradas **sin cerrar** —la
+        fila de un Dirichlet es ``e_dᵀ`` y la de una MPC
+        ``u_s = g + Σ α_i·u_mi`` es ``(e_s − Σ α_i·e_mi)ᵀ``— y
+        ``r = F_int(U) − F_applied`` en todos los DOF, los multiplicadores
+        cumplen ``Cᵀ·μ = r`` en los DOF esclavos. ``μ_k·C_kᵀ`` es la fuerza
+        que la restricción ``k`` ejerce sobre la estructura: la reacción de
+        un apoyo o la fuerza de restricción de una unión. En los DOF libres
+        ``Cᵀ·μ = r`` se cumple salvo el residuo de equilibrio del solver
+        (``Tᵀ·r = 0`` en la solución).
+
+        ``C`` tiene rango completo por filas —cada fila tiene su esclavo
+        propio y las cadenas maestro-esclavo son acíclicas—, así que el
+        sistema se resuelve por sustitución en orden de dependencia: una
+        restricción se procesa después de todas aquellas de las que su
+        esclavo es maestro. Para la restricción ``k`` de esclavo ``s_k``,
+        ``μ_k = r̃_{s_k}``, con ``r̃`` el residuo más las transferencias
+        ``α·μ`` ya acumuladas; después ``r̃_m += α_{k,m}·μ_k`` para cada
+        maestro ``m`` de ``k``. Un Dirichlet cuyo DOF es maestro de una MPC
+        recibe así su reacción completa, la del modelo con los nodos
+        fundidos. Sin MPC, ``μ_d = r_d`` exactamente.
+
+        Parameters
+        ----------
+        r : array-like, shape ``(ndof,)``
+            Residuo ``F_int(U) − F_applied`` en todos los DOF.
+
+        Returns
+        -------
+        dict[int, float]
+            ``{DOF esclavo: μ}`` para cada restricción declarada, en orden
+            de declaración.
+        """
+        dofs, mu = self.multiplier_arrays(r)
+        return dict(zip(dofs.tolist(), mu.tolist()))
+
+    def multiplier_arrays(self, r: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Los multiplicadores de :meth:`multipliers` como dos arreglos
+        alineados ``(DOF esclavo, μ)``, en orden de declaración.
+
+        Es la forma que usa el post-proceso de un modelo grande: sin MPC el
+        cálculo es una sola indexación vectorizada, ``μ = r[dofs]``, y con
+        MPC el bucle recorre sólo las restricciones con maestros.
+        """
+        r = np.asarray(r, dtype=np.float64).ravel()
+        declared = list(self._declared.values())
+        dofs = np.fromiter((c.slave_dof for c in declared), dtype=np.int64,
+                           count=len(declared))
+        if not self.has_multipoint:
+            return dofs, r[dofs]
+
+        mpcs = {c.slave_dof: c for c in declared if not c.is_dirichlet()}
+        # Orden de dependencia (Kahn): la restricción k espera a toda MPC l
+        # que tenga a s_k entre sus maestros, porque μ_l le transfiere α·μ_l.
+        # Los Dirichlet no tienen maestros: no transfieren nada y se procesan
+        # al final, todos de una vez.
+        pending = {s: 0 for s in mpcs}
+        for c in mpcs.values():
+            for m in c.masters:
+                if m in pending:
+                    pending[m] += 1
+        ready = [s for s, n in pending.items() if n == 0]
+        r_tilde = r.copy()
+        n_done = 0
+        while ready:
+            s = ready.pop()
+            c = mpcs[s]
+            mu = float(r_tilde[s])
+            n_done += 1
+            for m, alpha in zip(c.masters, c.coefficients):
+                r_tilde[m] += alpha * mu
+                if m in pending:
+                    pending[m] -= 1
+                    if pending[m] == 0:
+                        ready.append(m)
+        if n_done != len(mpcs):
+            raise ValueError(
+                "multipliers: las restricciones multipunto forman un ciclo "
+                "maestro-esclavo; no hay orden de dependencia."
+            )
+        # r̃ ya no cambia en un esclavo procesado (quienes lo tienen por
+        # maestro se procesaron antes), así que r̃[s] es su μ; en un Dirichlet,
+        # r̃[d] lleva r_d más lo que le transfieren las MPC de las que es
+        # maestro.
+        return dofs, r_tilde[dofs]
 
     @property
     def slave_dofs(self) -> np.ndarray:

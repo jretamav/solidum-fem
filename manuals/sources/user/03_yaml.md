@@ -300,6 +300,13 @@ Todos los problemas se informan juntos, cada uno con su entrada (`linear_constra
 
 En los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`) el término independiente `g` se aplica proporcionalmente al factor de carga, como $\lambda\,g$, igual que un desplazamiento prescrito: en un trazado de arco sigue a $\lambda$ también cuando la carga baja.
 
+**Reacciones y fuerzas de restricción.** Una restricción multipunto ejerce una fuerza sobre la estructura en los grados de libertad de su esclavo y de sus maestros. Solidum distingue dos papeles:
+
+- **Apoyo**: la restricción impide un movimiento de sólido rígido. Es el caso del apoyo a 45 grados del ejemplo ($u_y = u_x$ en un mismo nodo): su fuerza es una **reacción**, normal al plano de rodadura, y aparece en `R` y en `reactions_by_node` con las componentes `ux` y `uy` del nodo. Una relación con coeficiente distinto de uno entre nodos distintos ($u_s = 2\,u_m$) también cuenta como apoyo.
+- **Unión**: una traslación rígida de toda la estructura (o una temperatura uniforme, en el problema térmico) la cumple. Son uniones el atado de mallas, la periodicidad (también con `g` distinto de cero) y la unión rígida del ejemplo. Su fuerza es una **fuerza de restricción**, que transmite fuerza entre partes de la estructura y no la toma del exterior: aparece en `constraint_forces` y `constraint_forces_by_node` del resultado, con valores iguales y opuestos en los nodos atados, y no en las reacciones.
+
+Un apoyo con valor prescrito reporta su reacción completa, incluida la fuerza que le llega por los nodos atados a él: atar dos nodos coincidentes con $u_s = u_m$ en todos sus grados de libertad da las mismas reacciones que fundirlos en uno. Con esta convención se cumple el equilibrio global $\sum R + \sum F = 0$ por dirección.
+
 ## Cargas Puntuales
 
 Misma estructura que las condiciones de frontera, en bloques `point_loads_by_node`, `point_loads_by_coord` y `point_loads_by_group`. Los valores son fuerzas nodales (en las unidades del modelo, típicamente Newtons):
