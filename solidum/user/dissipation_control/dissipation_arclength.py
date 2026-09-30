@@ -263,7 +263,14 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             if mode_predictor == "cylindrical":
                 dlambda = sign * dl / (np.linalg.norm(du_t) + ZERO_TOL)
             else:  # dissipation
-                dlambda = sign * abs(self._tau / alpha)
+                # La restricción es lineal: con ΔU = Δλ·du_t, g = Δλ·α. Exigir
+                # g = τ > 0 (disipación positiva) fija el valor Y el signo de
+                # Δλ, sin regla de signo (Gutiérrez 2004; Verhoosel et al.
+                # 2009). Con α < 0 el paso reduce la carga: es lo que permite
+                # seguir un retroceso. Hasta el 2026-09-29 el signo venía de la
+                # regla del arco cilíndrico (sign·|τ/α|) y, cuando discrepaba
+                # del de α, el predictor arrancaba con g = −τ.
+                dlambda = self._tau / alpha
 
             # Llegada a max_lambda (2026-09-23): sin paso final decidido por el
             # predictor. Todos los pasos llevan su restricción; el que cruza
@@ -311,11 +318,12 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     f"  -> CONV. lam={lambda_iter:.4f} ΔE_d={dE_d:.4e}"
                 )
 
-                # Switching cilíndrico ↔ disipación tras commit.
-                ref_energy = max(
-                    np.linalg.norm(F_ext_ref) * np.linalg.norm(U_iter),
-                    1.0,
-                )
+                # Switching cilíndrico ↔ disipación tras commit. Umbral relativo
+                # a la escala energética del estado, ‖F_ref‖·‖U‖, sin piso
+                # absoluto: el max(·, 1) anterior (hasta el 2026-09-29) estaba
+                # en unidades de energía y hacía el umbral dependiente del
+                # sistema de unidades del modelo (ADR 0006).
+                ref_energy = np.linalg.norm(F_ext_ref) * np.linalg.norm(U_iter)
                 dE_threshold = self.dissipation_threshold * ref_energy
                 if self._mode == "cylindrical":
                     if dE_d > dE_threshold:
