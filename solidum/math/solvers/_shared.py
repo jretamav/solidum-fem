@@ -10,8 +10,12 @@
 - :class:`CholeskyNotPositiveDefiniteError`: alias del error real cuando
   ``scikit-sparse`` está instalado; placeholder inerte si no lo está
   (así los ``except`` no fallan en imports). ADR 0003 §5.
+- :func:`warn_initial_conditions_off_constraints`: aviso de log de los
+  solvers transitorios cuando ``u0`` o ``u̇0`` incumplen una restricción
+  multipunto con maestros (ADR 0004).
 """
 import numpy as np
+import scipy.sparse as sp
 
 from solidum.logging import get_logger
 
@@ -119,6 +123,97 @@ class ElementForcesRecorder:
         if not self.enabled:
             return None
         return {k: list(v) for k, v in self._history.items()}
+
+
+# Tolerancia relativa (sobre el mayor valor absoluto del vector de
+# condiciones iniciales o de su reconstrucción) por encima de la cual un DOF
+# esclavo de una MPC con maestros se considera incoherente con ella. Holgada
+# frente al redondeo de coeficientes tecleados por el usuario (tan30°·u_x).
+_INITIAL_CONDITION_MPC_RTOL = 1.0e-8
+
+
+def _dof_labels(domain, dofs) -> list[str]:
+    """Etiquetas ``"nodo <id> (<dof>)"`` para los DOFs globales dados."""
+    wanted = {int(d) for d in dofs}
+    names: dict[int, str] = {}
+    if domain is not None:
+        for node in domain.nodes.values():
+            for dof_name, idx in node.dofs.items():
+                if int(idx) in wanted:
+                    names[int(idx)] = f"nodo {node.id} ({dof_name})"
+    return [names.get(int(d), f"DOF {int(d)}") for d in dofs]
+
+
+def warn_initial_conditions_off_constraints(
+    T, g, free_dofs, u0, u0_dot, solver_name: str, domain=None,
+) -> None:
+    """Avisa (log, no error) si ``u0`` o ``u̇0`` incumplen una MPC con maestros.
+
+    Los solvers transitorios conservan sólo las componentes libres de las
+    condiciones iniciales y reconstruyen los DOFs esclavos con el operador
+    de eliminación directa (ADR 0004): ``u0 ← T·u0[libres] + g`` y
+    ``u̇0 ← T·u̇0[libres]``. El valor que el usuario dé en un esclavo se
+    descarta. Si es coherente con la restricción no cambia nada; si no lo es,
+    la respuesta depende de qué DOF se declaró esclavo, y
+    ``ModalResult.free_vibration`` —que proyecta en norma M— daría otra.
+    Este aviso lo hace visible sin cambiar la conducta.
+
+    Sólo se examinan las filas esclavas con maestros (al menos un
+    coeficiente no nulo en ``T``). Las filas Dirichlet (sin maestros) quedan
+    fuera: su proyección sobre el valor prescrito es deliberada y tiene test
+    propio.
+
+    Parameters
+    ----------
+    T, g : operador y término independiente de ``ConstraintSet.build``.
+    free_dofs : DOFs libres (``ConstraintSet.free_dofs``).
+    u0, u0_dot : condiciones iniciales globales dadas por el usuario, o
+        ``None`` (no se examina).
+    solver_name : nombre del solver para el mensaje.
+    domain : opcional, para nombrar nodo y DOF en el mensaje.
+    """
+    if u0 is None and u0_dot is None:
+        return
+    T_csr = sp.csr_matrix(T, copy=True)
+    T_csr.eliminate_zeros()
+    ndof = T_csr.shape[0]
+    slaves = np.setdiff1d(np.arange(ndof), np.asarray(free_dofs, dtype=np.int64))
+    if slaves.size == 0:
+        return
+    with_masters = slaves[np.diff(T_csr.indptr)[slaves] > 0]
+    if with_masters.size == 0:
+        return
+    free_dofs = np.asarray(free_dofs, dtype=np.int64)
+    g = np.asarray(g, dtype=float)
+    checks = (
+        ("u0", u0, g, "T·u0[libres] + g"),
+        ("u0_dot", u0_dot, np.zeros_like(g), "T·u0_dot[libres]"),
+    )
+    for label, vec, offset, formula in checks:
+        if vec is None:
+            continue
+        vec = np.asarray(vec, dtype=float).reshape(ndof)
+        recon = np.asarray(T_csr @ vec[free_dofs], dtype=float) + offset
+        scale = max(float(np.max(np.abs(vec))), float(np.max(np.abs(recon))))
+        if scale == 0.0:
+            continue
+        diff = np.abs(vec[with_masters] - recon[with_masters])
+        bad = with_masters[diff > _INITIAL_CONDITION_MPC_RTOL * scale]
+        if bad.size == 0:
+            continue
+        labels = _dof_labels(domain, bad[:8])
+        muestra = ", ".join(labels)
+        if bad.size > 8:
+            muestra += f", … (+{bad.size - 8})"
+        _log.warning(
+            "%s: la condición inicial %s incumple la restricción multipunto en "
+            "%d DOF esclavo(s) [%s]. El valor dado en el esclavo se descarta y "
+            "se reconstruye desde sus maestros como %s (ADR 0004): la "
+            "respuesta depende de qué DOF se declaró esclavo, y "
+            "ModalResult.free_vibration, que proyecta en norma M, daría otra. "
+            "Da condiciones iniciales coherentes con las restricciones.",
+            solver_name, label, int(bad.size), muestra, formula,
+        )
 
 
 def solve_mass_system(M_solver, M_red, rhs, solver_name: str):

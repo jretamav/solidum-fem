@@ -136,6 +136,11 @@ acceptance:
       setup: "Barra empotrada-libre; nodo x=0 con ux=0."
       expect: "Componente del modo en el DOF prescrito = 0 exacto."
       tol_abs: 1.0e-14
+    - name: mpc_tie_matches_merged_node
+      setup: "ménsula de Frame2DEuler inclinada 30° partida en su nodo central y atada con u_s = u_m en ux, uy y rz, con el esclavo a cada lado del corte; masa consistente y concentrada"
+      expect: "Frecuencias y modos expandidos Φ = T·Φ_red (también en el nodo duplicado) = los del modelo de nodo fundido; ΦᵀMΦ = I con la masa global del modelo atado"
+      tol_rel: 1.0e-8
+      ref: "tests/test_mpc_dynamic.py::test_modal_reproduce_el_nodo_fundido"
     - name: density_faltante_lanza_value_error
       setup: "Material sin density declarada en el modelo."
       expect: "ModalSolver.solve() lanza ValueError listando los materiales afectados (mismo patrón que assemble_self_weight, ADR 0008)."
@@ -181,3 +186,4 @@ references:
 
 - **2026-05-13** · Validado. Los 13 tests de `tests/test_modal.py` cubren los criterios de `acceptance` (verificación analítica + propiedades algebraicas + contrato de errores + pipeline YAML) y pasan con las tolerancias declaradas. Promovido `status: validated`.
 - **2026-09-22** · Auditoría global: `K` singular con σ = 0 (estructura free-free) fallaba según la malla ("Factor is exactly singular" con 1, 2 o 4 elementos, éxito por redondeo con 3 o 10): reintento automático con un shift negativo relativo a tr(K)/tr(M). `ArpackNoConvergence` → `converged=False` con los modos obtenidos (`n_modes` reales); antes el flag estaba cableado a `True`. Modelos con n_free ≤ 32 o n_modes ≥ n_free − 1 usan `scipy.linalg.eigh` denso (M-ortonormal), así que un modelo de 1 GDL admite análisis modal.
+- **2026-09-30** · Auditoría de las MPC (ADR 0004): las restricciones multipunto entran por `Assembler.reduce_pair` con el mismo `T` que los apoyos (`K_red = TᵀKT`, `M_red = TᵀMT`, `Φ = T·Φ_red`). Primer test con MPC: el oráculo del nodo fundido se cumple hasta el redondeo en frecuencias y modos, y los modos expandidos son M-ortonormales con la masa global (`tests/test_mpc_dynamic.py`). Nota sobre `ModalResult.free_vibration(M, u0, u0_dot, t)`: proyecta las condiciones iniciales en norma M (`a = ΦᵀM·u0`), así que su resultado no depende de qué nodo se declaró esclavo; los solvers transitorios, en cambio, conservan las componentes libres y reconstruyen los esclavos como `T·u0[libres] + g`. Con condiciones iniciales coherentes con las MPC ambos caminos coinciden; con incoherentes difieren (los transitorios lo avisan en el log). Unificar las dos proyecciones cambiaría resultados con condiciones iniciales incoherentes: queda como decisión física pendiente del usuario. Sin cambio de código.

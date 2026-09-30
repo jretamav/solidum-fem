@@ -12,6 +12,11 @@ Solidum FEM expone el subsistema modal/dinámico/espectral **completo** (ADR 000
 
 Todos los solvers consumen la masa global que cada elemento devuelve por `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` y la densidad declarada en el material (`density`; obligatoria para cualquier análisis dinámico, ADR 0008).
 
+**Restricciones multipunto.** Los ocho solvers admiten las restricciones lineales `linear_constraints` ($u_s = g_s + \sum_i \alpha_{si}\,u_{m_i}$, ADR 0004) por el mismo operador de eliminación directa que los apoyos: $\mathbf M_{\text{red}} = \mathbf T^\top\mathbf M\,\mathbf T$, $\mathbf C_{\text{red}} = \mathbf T^\top\mathbf C\,\mathbf T$, $\mathbf K_{\text{red}} = \mathbf T^\top\mathbf K\,\mathbf T$, y los resultados (historias, modos, amplitudes armónicas, respuesta espectral) se expanden con $\mathbf T$. En el armónico y el espectral el término $g$ no interviene, como el valor de un apoyo. Dos precisiones:
+
+- En los transitorios, de `u0` y `u0_dot` sólo cuentan las componentes libres: los DOFs esclavos se reconstruyen como $\mathbf T\,\mathbf u_0[\text{libres}] + \mathbf g$ y $\mathbf T\,\dot{\mathbf u}_0[\text{libres}]$. Si el valor dado en un esclavo incumple su restricción, se descarta con un aviso en el log y la respuesta depende de qué DOF se declaró esclavo; `ModalResult.free_vibration`, que proyecta en norma $\mathbf M$, daría otra. Conviene dar condiciones iniciales coherentes con las restricciones.
+- `CentralDifferenceSolver` exige $\mathbf T^\top\mathbf M\,\mathbf T$ diagonal: admite un solo maestro por esclavo (atado de nodos, periodicidad, apoyo oblicuo) y rechaza una restricción con varios maestros cuyo esclavo tiene masa (nodo colgante), con un mensaje que nombra los DOFs.
+
 ## `ModalSolver` — análisis modal por autovalores generalizados
 
 Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf M \boldsymbol\phi$ con $\mathbf K$ evaluada en $\mathbf u = 0$ (régimen lineal) y $\mathbf M$ ensamblada por cuadratura consistente sobre todos los elementos. La capa algebraica (`EigenSolver`) envuelve `scipy.sparse.linalg.eigsh` con *shift-invert* en $\sigma$ (ARPACK Lanczos), de modo que basta una sola factorización de $\mathbf K - \sigma\mathbf M$ para extraer las $n$ frecuencias más bajas.
@@ -159,7 +164,7 @@ Una sola clase cubre lineal y no lineal con parámetro `nonlinear`: con `False` 
 
 **Condición de estabilidad CFL**: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta divergencia exponencial a posteriori y aborta con `RuntimeError` informativo si la condición se viola.
 
-**Requisitos**: `lumping="lumped"` obligatorio (`"consistent"` rechazado con `ValueError` — el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). Frame3D con eje oblicuo a los ejes globales también rechazado (la rotación rompe la diagonalidad estricta — limitación documentada estándar, Cook-Malkus-Plesha §11.4).
+**Requisitos**: `lumping="lumped"` obligatorio (`"consistent"` rechazado con `ValueError` — el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). La masa reducida $\mathbf T^\top\mathbf M\,\mathbf T$ debe ser estrictamente diagonal (umbral relativo a su mayor término diagonal, independiente de las unidades); se rechazan con `ValueError` dos casos: Frame3D con eje oblicuo a los ejes globales (la rotación rompe la diagonalidad estricta — limitación documentada estándar, Cook-Malkus-Plesha §11.4) y una restricción multipunto con varios maestros cuyo esclavo tiene masa (el nodo colgante $u_h = \tfrac12 u_a + \tfrac12 u_b$ acopla a sus maestros; usar `NewmarkSolver` o `HHTSolver` con `lumping: lumped`).
 
 ```yaml
 solver:

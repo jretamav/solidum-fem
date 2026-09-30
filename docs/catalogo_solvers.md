@@ -90,9 +90,9 @@
 - **Propósito**: calcular frecuencias naturales `ω_n` y modos `φ_n` de vibración no amortiguados resolviendo `K · φ = ω² · M · φ`.
 - **Esquema**:
   - Ensamblaje de `K` (rigidez lineal en `u = 0`) y `M` (masa consistente, ADR 0009 §1) reusando la topología COO cacheada del `Assembler`.
-  - Reducción simultánea por Dirichlet `Assembler.reduce_pair(K, M)` → `K_red, M_red, T`.
+  - Reducción simultánea por Dirichlet y restricciones multipunto (ADR 0004) `Assembler.reduce_pair(K, M)` → `K_red = TᵀKT, M_red = TᵀMT, T`.
   - `EigenSolver` envuelve `scipy.sparse.linalg.eigsh` con **shift-invert** en `sigma` (`sigma=0` → frecuencias más bajas) y `which="LM"`. ARPACK factoriza `(K_red − σ·M_red)` una sola vez y la reusa en todas las iteraciones Lanczos.
-  - Expansión de modos al espacio completo: `φ = T · φ_red`. En DOFs prescritos por Dirichlet la componente es 0.
+  - Expansión de modos al espacio completo: `φ = T · φ_red`. En DOFs prescritos por Dirichlet la componente es 0; en el esclavo de una MPC, la combinación de sus maestros (oráculo del nodo fundido en `tests/test_mpc_dynamic.py`). `ModalResult.free_vibration` proyecta las condiciones iniciales en norma M (`a = ΦᵀM·u0`), a diferencia de los transitorios, que reconstruyen los esclavos como `T·u0[libres] + g`: con condiciones iniciales incoherentes con las MPC ambos caminos difieren.
   - Salida en `ModalResult`: `frequencies_rad`, `frequencies_hz`, `periods`, `modes` (M-ortonormales), `n_modes`, `converged`.
 - **Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0), `which` (default `"LM"`), `tolerance` (default 1.0e-9), `lumping` (default `"consistent"`; fase 1 solo admite ese valor), `linear_algebra` (reservado; ADR 0003).
 - **Firma del solver**: `solve()` sin argumentos (no consume `F_applied`). El entrypoint público es `solidum.run_modal(domain, n_modes=N)` o YAML con `solver: type: ModalSolver`. `solidum.run_yaml` despacha automáticamente al detectar el tipo.
@@ -106,13 +106,14 @@
 
 ## NewmarkSolver — análisis dinámico transitorio lineal (ADR 0009 fase 3)
 
-- **Propósito**: integrar en el tiempo la ecuación de movimiento semidiscreta `M·ü + C·u̇ + K·u = F(t)` con amortiguamiento Rayleigh `C = α·M + β·K` y apoyos Dirichlet constantes.
+- **Propósito**: integrar en el tiempo la ecuación de movimiento semidiscreta `M·ü + C·u̇ + K·u = F(t)` con amortiguamiento Rayleigh `C = α·M + β·K`, apoyos Dirichlet constantes y restricciones multipunto (ADR 0004).
 - **Esquema**:
   - Familia Newmark-β con `(β, γ)` parametrizables; default `(1/4, 1/2)` — average acceleration, incondicionalmente estable, sin amortiguamiento numérico, error `O(Δt²)`.
   - **Predictores**: `ũ = u_n + Δt·u̇_n + (Δt²/2)(1−2β)·ü_n`, `ũ̇ = u̇_n + Δt·(1−γ)·ü_n`.
   - **Sistema efectivo**: `A_eff·ü_{n+1} = F_{n+1} − C·ũ̇ − K·ũ` con `A_eff = M + γΔt·C + βΔt²·K`.
   - **Correctores**: `u_{n+1} = ũ + βΔt²·ü_{n+1}`, `u̇_{n+1} = ũ̇ + γΔt·ü_{n+1}`.
-  - Reducción por Dirichlet (operador `T`) aplicada a `(K, M, C)` simultáneamente; factorización única de `A_eff_red` reusada en todos los pasos.
+  - Reducción por Dirichlet y MPC (operador `T`, `u = T·u_libre + g`) aplicada a `(K, M, C)` simultáneamente; factorización única de `A_eff_red` reusada en todos los pasos.
+  - Condiciones iniciales: se conservan las componentes libres de `u0`, `u0_dot` y los esclavos se reconstruyen como `T·u0[libres] + g` y `T·u0_dot[libres]`; si el valor dado en el esclavo de una MPC con maestros la incumple, se descarta con un aviso de log (común a los cinco transitorios).
   - Aceleración inicial consistente con la ecuación de movimiento en `t=0`.
 - **Parámetros**: `t_end`, `dt` (obligatorios), `beta` (default 0.25), `gamma` (default 0.5), `rayleigh` (None | `{alpha, beta}` directos | `{xi1, omega1, xi2, omega2}` para calibración modal), `u0`, `u0_dot` (default ceros), `F_func` (callback Python `t → F(t)`; default vibración libre), `linear_algebra`, `lumping`.
 - **Firma del solver**: `solve()` sin argumentos, retorna `TransientResult` con historiales `t_history`, `u_history`, `udot_history`, `uddot_history` (shape `(n_dof, n_steps + 1)`).
@@ -198,7 +199,8 @@
 - **Estabilidad condicional CFL**: `Δt < 2/ω_max`. Para barras: `Δt < L_el/c_p = L_el·√(ρ/E)`. Si se excede, el solver detecta la explosión exponencial a posteriori y aborta con `RuntimeError` informativo. **El solver no calcula `Δt_crit` automáticamente** — responsabilidad del usuario en esta versión inicial (power iteration sobre `M⁻¹K` queda diferida).
 - **Parámetros**: `t_end`, `dt`, `nonlinear` (default `False`), `rayleigh`, `u0`, `u0_dot`, `F_func`, `lumping` (default `"lumped"`; `"consistent"` rechazado), `divergence_threshold` (default `1e8`).
 - **Cuándo usarlo**: wave propagation, impacto, dinámica de respuesta rápida — situaciones donde el `Δt` natural del problema cae por debajo del paso de estabilidad incondicional de Newmark. Para problemas con plasticidad transitoria de respuesta moderadamente rápida, sigue siendo competitivo frente a Newton-Newmark por evitar la factorización de la tangente cada iteración.
-- **Rechazos defensivos**: `lumping="consistent"` → `ValueError` (la inversión de M consistente cada paso anula la ventaja); Frame3D con eje oblicuo a globales → `ValueError` (M_red no es estrictamente diagonal; ADR 0009 fase 2 documenta la bloque-diagonalidad inherente).
+- **Restricciones multipunto**: admitidas mientras `M_red = TᵀMT` siga siendo diagonal, es decir, con un solo maestro por esclavo tras el cierre transitivo (atado de nodos, periodicidad, apoyo oblicuo `u_y = tanθ·u_x`) o con esclavo sin masa. Oráculo del nodo fundido en `tests/test_mpc_dynamic.py`.
+- **Rechazos defensivos**: `lumping="consistent"` → `ValueError` (la inversión de M consistente cada paso anula la ventaja); `M_red` no estrictamente diagonal (umbral relativo `LUMPED_MASS_OFF_DIAGONAL_RTOL·max|diag|`, independiente de las unidades desde el 2026-09-30) → `ValueError` con dos diagnósticos: una MPC con varios maestros cuyo esclavo tiene masa (nodo colgante; el mensaje nombra los DOFs y recomienda `NewmarkSolver`/`HHTSolver` con masa concentrada) o Frame3D con eje oblicuo a globales (ADR 0009 fase 2 documenta la bloque-diagonalidad inherente).
 - **Despacho YAML**: `solver.type: CentralDifferenceSolver`. Vía atributo `PIPELINE_KIND="transient"` → `run_transient`. **Primer solver fuera de la jerarquía de Newmark**, lo que disparó la regla C de refactor (atributo declarativo en lugar de cadena de isinstance).
 - **Spec**: [docs/specs/CentralDifferenceSolver.md](specs/CentralDifferenceSolver.md).
 - **Archivo**: [solidum/math/solvers/central_difference.py](../solidum/math/solvers/central_difference.py).
@@ -208,7 +210,7 @@
 ## HarmonicSolver — respuesta forzada armónica en el dominio de la frecuencia (ADR 0009 fase 6)
 
 - **Propósito**: resolver `(−ω²M + iωC + K)·û = F̂` para un barrido de frecuencias y devolver la amplitud compleja `û(ω)` en cada frecuencia. Lineal, en estado estacionario — sin transitorio. Apropiado para FRFs, diagnóstico de resonancias y respuesta forzada periódica.
-- **Esquema**: ensamble único de `K`, `M`, `C = α·M + β·K`; reducción de Dirichlet; barrido `for ω in omega: spsolve(Z(ω), F_red)` con `Z(ω) = -ω²M + iωC + K` compleja. Factorización LU compleja por frecuencia (no se cachea — `Z` cambia con `ω`).
+- **Esquema**: ensamble único de `K`, `M`, `C = α·M + β·K`; reducción de Dirichlet y MPC (`û = T·û_libre`; `g` no interviene, el problema es homogéneo); barrido `for ω in omega: spsolve(Z(ω), F_red)` con `Z(ω) = -ω²M + iωC + K` compleja. Factorización LU compleja por frecuencia (no se cachea — `Z` cambia con `ω`).
 - **Barrido configurable**: lineal (`scale="linear"`), logarítmico (`scale="log"`), o vector explícito (`omega=array`). Default `n_omega=100`.
 - **Parámetros**: `omega` o (`omega_min`, `omega_max`, `n_omega`, `scale`); `F_amplitude` (default ceros; YAML inyecta automáticamente las `point_loads`); `rayleigh`; `lumping`.
 - **Cuándo usarlo**: diagnóstico de resonancias, FRFs, respuesta forzada armónica de máquinas rotantes, viento turbulento descompuesto en armónicos. Si el problema requiere no linealidad (geométrica o material), usar `NewtonNewmarkSolver` con excitación armónica.
@@ -230,6 +232,7 @@
   - Combinación SRSS (default) o CQC con coeficientes de correlación de Der Kiureghian.
 - **Parámetros**: `n_modes`, `direction` (ndarray o `{"dof_name": "ux"}`), `spectrum` (callable o dict tabulado/constante), `combination` (`"SRSS"`/`"CQC"`), `damping` (sólo CQC, default 0.05), `sigma`, `lumping`.
 - **Cuándo usarlo**: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
+- **Restricciones multipunto**: heredadas del `ModalSolver` interno (`φ = T·φ_red`); oráculo del nodo fundido en `tests/test_mpc_dynamic.py`. Si `r` no cumple una MPC (apoyo oblicuo excitado en otra dirección), esa parte de `rᵀMr` no participa, igual que la masa de los DOFs apoyados: la suma de masas efectivas no alcanza `total_mass`.
 - **Caveats**: precisión depende del número de modos incluidos — verifica `cumulative_effective_mass_ratio` ≥ 0.9. CQC requerido con modos cercanos en frecuencia (cociente < 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
 - **Despacho YAML**: `solver.type: ResponseSpectrumSolver`. Vía atributo `PIPELINE_KIND="spectrum"` → `run_response_spectrum`. Cuarto valor del literal (después de `"static"`, `"modal"`, `"transient"`, `"harmonic"`).
 - **Algoritmos centralizados**: `solidum/math/modal_response.py` — `response_spectrum_srss`, `response_spectrum_cqc`, `participation_factors`, `spectrum_from_sa`, `spectrum_tabulated`. Compartido con `ModalResult.free_vibration` (wrapper delgado tras regla D 2026-05-18).

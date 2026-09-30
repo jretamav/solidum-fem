@@ -23,6 +23,7 @@ from solidum.math.solvers._shared import (
     domain_is_symmetric,
     number_of_steps,
     solve_mass_system,
+    warn_initial_conditions_off_constraints,
 )
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
 from solidum.registry import SolverRegistry
@@ -60,8 +61,16 @@ class NewmarkSolver:
           calibración modal automática.
     u0, u0_dot : np.ndarray or None
         Condiciones iniciales globales (shape ``(ndof,)``). Cero por
-        defecto. Si se pasan, deben ser consistentes con los apoyos
-        Dirichlet en los DOFs prescritos.
+        defecto. Sólo se conservan sus componentes en los DOFs libres; los
+        DOFs esclavos se reconstruyen con el operador de eliminación
+        directa (ADR 0004): ``u0 ← T·u0[libres] + g`` y
+        ``u̇0 ← T·u̇0[libres]``. En un apoyo Dirichlet eso impone el valor
+        prescrito (``u̇0 = 0``); en el esclavo de una restricción multipunto,
+        la combinación de sus maestros. El valor dado en un esclavo se
+        descarta: si incumple una MPC con maestros, el solver lo avisa en el
+        log y la respuesta depende de qué DOF se declaró esclavo
+        (``ModalResult.free_vibration``, que proyecta en norma M, daría
+        otra). Deben darse coherentes con las restricciones.
     F_func : callable or None
         ``F_func(t: float) -> np.ndarray`` devuelve el vector global de
         fuerzas externas en el instante ``t``. ``None`` ⇒ vibración libre.
@@ -70,6 +79,15 @@ class NewmarkSolver:
     lumping : str, default "consistent"
         Discretización de masa. ``"consistent"`` (default) o ``"lumped"``
         (ADR 0009 fase 2).
+
+    Notes
+    -----
+    Las restricciones multipunto (``Domain.add_linear_constraint``) entran
+    por el mismo operador ``T`` que los apoyos: ``M_red = TᵀMT``,
+    ``C_red = TᵀCT``, ``K_red = TᵀKT``, ``F_red = TᵀF`` y los historiales se
+    expanden con ``T`` (``u = T·u_libre + g``, ``u̇ = T·u̇_libre``,
+    ``ü = T·ü_libre``). Verificado con el oráculo del nodo fundido en
+    ``tests/test_mpc_dynamic.py`` (auditoría de las MPC, 2026-09-30).
     """
 
     PIPELINE_KIND = "transient"
@@ -124,8 +142,9 @@ class NewmarkSolver:
         )
         C = alpha_r * M + beta_r * K
 
-        # Reducción por Dirichlet (ADR 0004). T selecciona DOFs libres;
-        # g recoge valores prescritos constantes en el tiempo.
+        # Reducción por Dirichlet y MPC (ADR 0004): u = T·u_libre + g. T
+        # selecciona los DOFs libres y combina los maestros en las filas
+        # esclavas; g recoge valores prescritos constantes en el tiempo.
         cs = self.assembler.constraint_set
         T, g = cs.build(self.assembler.ndof)
         free_dofs = cs.free_dofs(self.assembler.ndof)
@@ -147,6 +166,10 @@ class NewmarkSolver:
                           else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
         u_free = u0_global[free_dofs].copy()
         udot_free = u0_dot_global[free_dofs].copy()
+        warn_initial_conditions_off_constraints(
+            T, g, free_dofs, self.u0, self.u0_dot, type(self).__name__,
+            self.assembler.domain,
+        )
 
         # F(0) reducido.
         F0_global = (np.zeros(ndof) if self.F_func is None
@@ -439,7 +462,8 @@ class NewtonNewmarkSolver(NewmarkSolver):
         # Condiciones iniciales del usuario proyectadas sobre la variedad de
         # restricciones ANTES de cualquier ensamblaje: se conservan sus
         # componentes libres y los DOFs no libres se reconstruyen (apoyo
-        # constante ⇒ g; esclavo ⇒ combinación de maestros). Ensamblar
+        # constante ⇒ g; esclavo ⇒ combinación de maestros; si el valor dado
+        # en un esclavo incumple su MPC, se avisa en el log). Ensamblar
         # ``F_int(u₀)`` antes de imponer ``g`` daba ü₀ inconsistente con
         # apoyos prescritos no nulos.
         u0_global = (np.zeros(ndof) if self.u0 is None
@@ -448,6 +472,10 @@ class NewtonNewmarkSolver(NewmarkSolver):
                         else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
         u_total = np.asarray(T_op @ u0_global[free_dofs] + g_vec, dtype=float)
         udot_total = np.asarray(T_op @ udot0_global[free_dofs], dtype=float)
+        warn_initial_conditions_off_constraints(
+            T_op, g_vec, free_dofs, self.u0, self.u0_dot, type(self).__name__,
+            self.assembler.domain,
+        )
 
         # Masa (constante).
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
@@ -710,6 +738,10 @@ class HHTSolver(NewmarkSolver):
                           else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
         u_free = u0_global[free_dofs].copy()
         udot_free = u0_dot_global[free_dofs].copy()
+        warn_initial_conditions_off_constraints(
+            T, g, free_dofs, self.u0, self.u0_dot, type(self).__name__,
+            self.assembler.domain,
+        )
 
         F0_global = (np.zeros(ndof) if self.F_func is None
                       else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
@@ -937,6 +969,10 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                         else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
         u_total = np.asarray(T_op @ u0_global[free_dofs] + g_vec, dtype=float)
         udot_total = np.asarray(T_op @ udot0_global[free_dofs], dtype=float)
+        warn_initial_conditions_off_constraints(
+            T_op, g_vec, free_dofs, self.u0, self.u0_dot, type(self).__name__,
+            self.assembler.domain,
+        )
 
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 

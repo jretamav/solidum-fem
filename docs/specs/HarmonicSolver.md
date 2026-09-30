@@ -24,10 +24,10 @@ para cada `ω` del barrido. `C = α·M + β·K` Rayleigh.
 
 ### 2. Condiciones iniciales / de contorno
 
-- Apoyos Dirichlet constantes (eliminación directa, ADR 0004).
+- Apoyos Dirichlet constantes y restricciones multipunto (eliminación directa, ADR 0004).
 - `F̂` ∈ ℂ^ndof. Real puro si la carga lleva fase cero; complejo si lleva fase.
 - **No** hay condiciones iniciales — el estado estacionario es independiente de ellas (el transitorio se descarta por definición).
-- MPC no soportado en esta fase.
+- Restricciones multipunto por el mismo operador `T`: `û = T·û_libre`. El término independiente `g` no interviene (el problema armónico es homogéneo), igual que el valor de un apoyo.
 
 ### 3. Salidas físicas
 
@@ -67,7 +67,10 @@ algebraico (`scipy.sparse.linalg.spsolve` LU complejo).
 ### 7. Imposición de Dirichlet y MPC
 
 Eliminación directa idéntica a `NewmarkSolver`. En DOFs prescritos
-`û = 0` (el apoyo no oscila). MPC fuera de alcance.
+`û = 0` (el apoyo no oscila). Las restricciones multipunto entran por
+el mismo operador: `Z_red(ω) = Tᵀ·Z(ω)·T`, `F̂_red = Tᵀ·F̂` y
+`û = T·û_libre` (sin `g`). Verificado con el oráculo del nodo fundido
+(`tests/test_mpc_dynamic.py`).
 
 ### 8. Backend algebraico
 
@@ -151,7 +154,6 @@ conventions:
 
 out_of_scope:
   - "Superposición modal — diferida; el barrido directo es más simple y suficiente para los tamaños actuales del catálogo."
-  - "MPC (restricciones lineales multipunto) — diferido."
   - "No linealidad (geométrica o material) — usar NewtonNewmarkSolver con excitación armónica."
   - "Cargas con fase declaradas desde YAML — usar construcción desde código."
 
@@ -178,6 +180,11 @@ acceptance:
       setup: "scale='log', omega_min=1, omega_max=1000, n_omega=4"
       expect: "omega = geomspace(1, 1000, 4) = [1, 10, 100, 1000]"
       tol_rel: 1.0e-12
+    - name: mpc_tie_matches_merged_node
+      setup: "ménsula de Frame2DEuler inclinada 30° partida en su nodo central y atada con u_s = u_m en ux, uy y rz, con el esclavo a cada lado del corte; masa consistente y concentrada, con y sin Rayleigh"
+      expect: "û del modelo atado (también en el nodo duplicado) = û del modelo de nodo fundido"
+      tol_rel: 1.0e-10
+      ref: "tests/test_mpc_dynamic.py::test_armonico_reproduce_el_nodo_fundido"
 
 references:
   - "Bathe, K.-J. (2014). *Finite Element Procedures*, §9.5."
@@ -200,3 +207,4 @@ references:
 ## Diálogo
 
 - *2026-05-18*: nuevo `PIPELINE_KIND = "harmonic"` añadido al despacho declarativo de `run_yaml` (regla C, ya aplicada en D2). Tercer valor del literal junto a `"modal"`, `"transient"`, `"static"`. El parser YAML inyecta automáticamente las `point_loads` del bloque estándar como `F_amplitude` real cuando el usuario no la especifica explícitamente — convención coherente con el uso de `external_forces` en análisis estáticos.
+- **2026-09-30** · Auditoría de las MPC (ADR 0004): la spec declaraba las restricciones multipunto «no soportadas» y «diferidas», pero el solver ya reduce con el `T` completo (`TᵀKT`, `TᵀMT`, `TᵀCT`, `TᵀF̂`, expansión con `T`) y reproduce el oráculo del nodo fundido hasta el redondeo, con masa consistente y concentrada y con y sin Rayleigh (`tests/test_mpc_dynamic.py`). Se documentan como admitidas; `g` no interviene, como el valor de un apoyo. Sin cambio de código ni de física.

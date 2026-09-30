@@ -63,7 +63,13 @@ import scipy.sparse as sp
 
 from solidum.constants import LUMPED_MASS_OFF_DIAGONAL_RTOL
 from solidum.math.damping import resolve_rayleigh_config
-from solidum.math.solvers._shared import ElementForcesRecorder, _log, number_of_steps
+from solidum.math.solvers._shared import (
+    ElementForcesRecorder,
+    _dof_labels,
+    _log,
+    number_of_steps,
+    warn_initial_conditions_off_constraints,
+)
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
 
@@ -91,7 +97,11 @@ class CentralDifferenceSolver:
         ligeramente — responsabilidad del usuario.
     u0, u0_dot : np.ndarray or None
         Condiciones iniciales globales (shape ``(ndof,)``). Cero por
-        defecto.
+        defecto. Sólo se conservan sus componentes libres; los DOFs
+        esclavos se reconstruyen como ``T·u0[libres] + g`` y
+        ``T·u̇0[libres]`` (ADR 0004), igual que en :class:`NewmarkSolver`:
+        un valor en un esclavo que incumpla su MPC se descarta con un aviso
+        de log.
     F_func : callable or None
         ``F_func(t) -> np.ndarray`` evaluado en cada paso. ``None`` ⇒
         vibración libre.
@@ -110,10 +120,25 @@ class CentralDifferenceSolver:
     El solver no calcula ``Δt_crit`` automáticamente. Una estimación
     canónica por elemento es ``Δt_crit_el = L_el / c_p`` con
     ``c_p = √(E/ρ)`` (barras y sólidos 2D); el ``Δt_crit`` del sistema es
-    el mínimo entre elementos. Para Frame3D con lumped bloque-diagonal,
-    cada paso requiere invertir bloques 6×6 nodales (no implementado en
-    esta versión inicial): el solver acepta solamente lumped estrictamente
-    diagonal — Frame3D oblicuo se rechaza con ``ValueError``.
+    el mínimo entre elementos.
+
+    El esquema exige que la masa reducida ``M_red = TᵀMT`` sea
+    estrictamente diagonal (umbral relativo
+    ``max|fuera de la diagonal| ≤ LUMPED_MASS_OFF_DIAGONAL_RTOL · max|diagonal|``,
+    independiente de las unidades). Dos causas la rompen y se rechazan con
+    ``ValueError``:
+
+    - **Restricción multipunto con varios maestros** cuyo esclavo tiene masa
+      (nodo colgante ``u_h = ½·u_a + ½·u_b``, unión rígida con giro): con M
+      concentrada ``TᵀMT = Σ_s m_s·T_sᵀT_s``, y una fila ``T_s`` con dos o
+      más coeficientes (tras el cierre transitivo) acopla a esos maestros.
+      El mensaje nombra los DOFs esclavos; usa ``NewmarkSolver`` o
+      ``HHTSolver``. Las MPC de un solo maestro por esclavo (atado de nodos,
+      periodicidad, apoyo oblicuo ``u_y = tanθ·u_x``) mantienen la diagonal
+      y se admiten, igual que un esclavo multimaestro sin masa.
+    - **Frame3D con eje oblicuo** a los globales: su masa concentrada es
+      bloque-diagonal por nodo e invertir bloques 6×6 cada paso no está
+      implementado.
     """
 
     PIPELINE_KIND = "transient"
@@ -161,14 +186,39 @@ class CentralDifferenceSolver:
         self.record_internal_forces = bool(record_internal_forces)
 
     @staticmethod
-    def _invert_diagonal_mass(M_red: sp.spmatrix) -> np.ndarray:
+    def _multi_master_slaves_with_mass(T, M) -> np.ndarray:
+        """DOFs esclavos cuya fila de ``T`` tiene varios maestros y masa propia.
+
+        Con M concentrada (diagonal), ``(TᵀMT)_jk = Σ_s M_ss·T_sj·T_sk``: sólo
+        una fila de ``T`` con dos o más coeficientes no nulos (tras el cierre
+        transitivo de ``ConstraintSet.build``) y ``M_ss ≠ 0`` genera términos
+        fuera de la diagonal. Se usa sólo para elegir el mensaje de error.
+        """
+        T_csr = sp.csr_matrix(T, copy=True)
+        T_csr.eliminate_zeros()
+        rows = np.flatnonzero(np.diff(T_csr.indptr) >= 2)
+        if rows.size == 0:
+            return rows
+        M_abs = abs(sp.csr_matrix(M))
+        row_mass = np.asarray(M_abs.sum(axis=1)).ravel()
+        return rows[row_mass[rows] > 0.0]
+
+    @staticmethod
+    def _invert_diagonal_mass(M_red: sp.spmatrix, *, T=None, M=None,
+                              domain=None) -> np.ndarray:
         """Devuelve el vector ``1/diag(M_red)`` si M_red es diagonal pura.
 
         El esquema explícito sólo es eficiente con M estrictamente diagonal
         (ADR 0009 fase 2 garantiza esto para todos los elementos excepto
-        Frame3D oblicuo). Si M_red tiene off-diagonals no nulos, el coste
-        de invertir un bloque 6×6 nodal cada paso anula la ventaja del
-        explícito frente a Newmark — se rechaza con ``ValueError``.
+        Frame3D oblicuo). Si ``M_red`` tiene términos fuera de la diagonal
+        por encima de ``LUMPED_MASS_OFF_DIAGONAL_RTOL · max|diag|`` (umbral
+        puramente relativo: vale igual en un modelo a escala de 10 µm que a
+        escala de metros), se rechaza con ``ValueError``.
+
+        ``T`` y ``M`` (masa global), opcionales, sólo sirven para
+        diagnosticar la causa en el mensaje: una restricción multipunto con
+        varios maestros cuyo esclavo tiene masa, o, si no hay ninguna,
+        Frame3D con eje oblicuo. ``domain`` permite nombrar nodo y DOF.
         """
         # Sin densificar: ``M_red`` puede tener decenas de miles de DOFs en
         # propagación de ondas y ``toarray()`` costaría O(n²) de memoria.
@@ -176,8 +226,29 @@ class CentralDifferenceSolver:
         diag = np.asarray(M_sp.diagonal()).ravel()
         off = M_sp - sp.diags(diag, format="csr")
         off_max = float(np.max(np.abs(off.data))) if off.nnz else 0.0
-        diag_max = float(np.max(np.abs(diag))) if diag.size else 1.0
-        if off_max > LUMPED_MASS_OFF_DIAGONAL_RTOL * max(diag_max, 1.0):
+        diag_max = float(np.max(np.abs(diag))) if diag.size else 0.0
+        # Umbral relativo puro. Con ``diag_max = 0`` cualquier término fuera
+        # de la diagonal se rechaza; sin ninguno actúa la comprobación de
+        # diagonal no positiva de abajo.
+        if off_max > LUMPED_MASS_OFF_DIAGONAL_RTOL * diag_max:
+            multi = (np.empty(0, dtype=np.int64) if T is None or M is None
+                     else CentralDifferenceSolver._multi_master_slaves_with_mass(T, M))
+            if multi.size:
+                muestra = ", ".join(_dof_labels(domain, multi[:8]))
+                if multi.size > 8:
+                    muestra += f", … (+{multi.size - 8})"
+                raise ValueError(
+                    "CentralDifferenceSolver: la masa reducida TᵀMT no es "
+                    "estrictamente diagonal porque hay restricciones "
+                    "multipunto con varios maestros cuyo DOF esclavo tiene "
+                    f"masa ({multi.size} DOF esclavo(s): {muestra}). Con masa "
+                    "concentrada, la inercia de cada uno de esos esclavos "
+                    "acopla a sus maestros, y el esquema explícito exige un "
+                    "solo maestro por esclavo (tras el cierre transitivo). "
+                    "Usa NewmarkSolver o HHTSolver con lumping='lumped'. "
+                    f"Fuera de la diagonal max = {off_max:.3e} vs diagonal "
+                    f"max = {diag_max:.3e}."
+                )
             raise ValueError(
                 "CentralDifferenceSolver: M_lumped no es estrictamente "
                 "diagonal tras reducir Dirichlet — probablemente Frame3D "
@@ -207,7 +278,7 @@ class CentralDifferenceSolver:
             self.rayleigh_cfg, source=type(self).__name__,
         )
 
-        # Reducción por Dirichlet.
+        # Reducción por Dirichlet y MPC (ADR 0004): u = T·u_libre + g.
         cs = self.assembler.constraint_set
         T, g = cs.build(self.assembler.ndof)
         free_dofs = cs.free_dofs(self.assembler.ndof)
@@ -218,7 +289,9 @@ class CentralDifferenceSolver:
         F_dir = T.T @ (K @ g)
 
         # M⁻¹ diagonal — vector denso, multiplicación trivial.
-        M_inv_diag = self._invert_diagonal_mass(M_red)
+        M_inv_diag = self._invert_diagonal_mass(
+            M_red, T=T, M=M, domain=self.assembler.domain,
+        )
 
         ndof = self.assembler.ndof
         n_free = K_red.shape[0]
@@ -230,6 +303,10 @@ class CentralDifferenceSolver:
                           else np.asarray(self.u0_dot, dtype=float).reshape(ndof))
         u_free = u0_global[free_dofs].copy()
         v_free = u0_dot_global[free_dofs].copy()
+        warn_initial_conditions_off_constraints(
+            T, g, free_dofs, self.u0, self.u0_dot, type(self).__name__,
+            self.assembler.domain,
+        )
 
         # F_int(u_0) y a_0.
         F0_global = (np.zeros(ndof) if self.F_func is None

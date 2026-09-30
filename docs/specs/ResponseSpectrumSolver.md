@@ -36,7 +36,7 @@ Cuando $\xi \to 0$ o $r \to 0$: $\rho_{ij} \to \delta_{ij}$ y CQC degenera a SRS
 
 ### 2. Condiciones iniciales / de contorno
 
-- Apoyos Dirichlet constantes (eliminación directa, ADR 0004).
+- Apoyos Dirichlet constantes y restricciones multipunto (eliminación directa, ADR 0004), heredados del `ModalSolver` interno.
 - **Dirección de excitación rígida** `r` (vector unitario o por DOF name): vector `r` con valor 1 en los DOFs traslacionales en la dirección sísmica, 0 en el resto.
 - **No** hay condiciones iniciales — la respuesta es envolvente máxima.
 
@@ -84,7 +84,16 @@ No aplica como Newton — pero la calidad del análisis depende del número de m
 
 ### 7. Imposición de Dirichlet y MPC
 
-Eliminación directa heredada del `ModalSolver` interno. MPC fuera de alcance.
+Eliminación directa heredada del `ModalSolver` interno, también para las
+restricciones multipunto: los modos son `φ_n = T·φ_red,n` (sin `g`) y los
+factores de participación `Γ_n = φ_nᵀ·M·r` se calculan con la masa global,
+de modo que la masa de un nodo duplicado y atado entra una sola vez.
+Verificado con el oráculo del nodo fundido (`tests/test_mpc_dynamic.py`).
+La suma de las masas efectivas de todos los modos es la parte de `rᵀ·M·r`
+compatible con las restricciones (`rᵀM·T·M_red⁻¹·Tᵀ·M·r`): igual que la masa
+de los DOFs apoyados, la de la parte de `r` que incumple una MPC (apoyo
+oblicuo excitado en otra dirección) no participa. Con MPC de atado de nodos o
+de periodicidad, `r` las cumple y no resta nada.
 
 ### 8. Backend algebraico
 
@@ -144,7 +153,7 @@ conventions:
 out_of_scope:
   - "Excitación multi-direccional simultánea (CQC3) — usuario combina afuera."
   - "Espectros con dependencia explícita de ξ por modo (ξ_n distinto) — `damping` es global."
-  - "MPC y no linealidad."
+  - "No linealidad."
 
 acceptance:
   verification:
@@ -190,6 +199,11 @@ acceptance:
       setup: "Regla D aplicada — ModalResult.free_vibration sigue funcionando"
       expect: "Resultado idéntico a llamada directa a modal_response.free_vibration"
       tol_rel: 1.0e-12
+    - name: mpc_tie_matches_merged_node
+      setup: "ménsula de Frame2DEuler inclinada 30° partida en su nodo central y atada con u_s = u_m en ux, uy y rz, con el esclavo a cada lado del corte; SRSS y CQC, dirección ux y uy"
+      expect: "u_combined, u_per_mode, |Γ|, masas efectivas y total_mass del modelo atado = los del modelo de nodo fundido"
+      tol_rel: 1.0e-9
+      ref: "tests/test_mpc_dynamic.py::test_espectral_reproduce_el_nodo_fundido"
 
 references:
   - "Chopra, A. K. (2017). *Dynamics of Structures*, cap. 13."
@@ -215,3 +229,4 @@ references:
 - *2026-05-18*: regla D aplicada al introducir este solver — segundo método de cómputo sobre `ModalResult` (el primero fue `free_vibration`). El algoritmo de free_vibration se movió a `solidum/math/modal_response.py`; `ModalResult.free_vibration` queda como wrapper delgado de 3 líneas, preservando la API histórica. Los nuevos `response_spectrum_srss` y `response_spectrum_cqc` viven en el mismo módulo. `ResponseSpectrumSolver` orquesta `ModalSolver` interno + delegación a `modal_response`.
 - *2026-05-18*: el cuarto valor de `PIPELINE_KIND` (`"spectrum"`) extiende el despacho declarativo de `run_yaml` introducido en D2. Cierra el ADR 0009 completo (fases 1-7 + variante HHT-α).
 - **2026-09-22** · Auditoría global: `cumulative_effective_mass_ratio` normaliza por la masa total en la dirección de excitación `rᵀ·M·r` (nuevo campo `total_mass` del resultado); antes dividía por la suma de los modos calculados, que vale siempre 1.0 en el último modo y volvía trivial el criterio del 90 %.
+- **2026-09-30** · Auditoría de las MPC (ADR 0004): la spec declaraba las restricciones multipunto fuera de alcance, pero el `ModalSolver` interno ya las reduce con `T` y la combinación reproduce el oráculo del nodo fundido hasta el redondeo (SRSS y CQC, dirección ux y uy: `u_combined`, `u_per_mode`, `Γ`, masas efectivas y `total_mass`; `tests/test_mpc_dynamic.py`). Se documentan como admitidas, con la nota de §7 sobre la masa efectiva cuando `r` no cumple las restricciones. Sin cambio de código ni de física.
