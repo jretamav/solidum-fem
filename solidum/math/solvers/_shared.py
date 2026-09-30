@@ -17,6 +17,7 @@
 import numpy as np
 import scipy.sparse as sp
 
+from solidum.constants import INITIAL_CONDITION_MPC_RTOL
 from solidum.logging import get_logger
 
 
@@ -125,13 +126,6 @@ class ElementForcesRecorder:
         return {k: list(v) for k, v in self._history.items()}
 
 
-# Tolerancia relativa (sobre el mayor valor absoluto del vector de
-# condiciones iniciales o de su reconstrucción) por encima de la cual un DOF
-# esclavo de una MPC con maestros se considera incoherente con ella. Holgada
-# frente al redondeo de coeficientes tecleados por el usuario (tan30°·u_x).
-_INITIAL_CONDITION_MPC_RTOL = 1.0e-8
-
-
 def _dof_labels(domain, dofs) -> list[str]:
     """Etiquetas ``"nodo <id> (<dof>)"`` para los DOFs globales dados."""
     wanted = {int(d) for d in dofs}
@@ -198,7 +192,7 @@ def warn_initial_conditions_off_constraints(
         if scale == 0.0:
             continue
         diff = np.abs(vec[with_masters] - recon[with_masters])
-        bad = with_masters[diff > _INITIAL_CONDITION_MPC_RTOL * scale]
+        bad = with_masters[diff > INITIAL_CONDITION_MPC_RTOL * scale]
         if bad.size == 0:
             continue
         labels = _dof_labels(domain, bad[:8])

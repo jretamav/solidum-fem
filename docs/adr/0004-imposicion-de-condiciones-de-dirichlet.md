@@ -150,6 +150,8 @@ Para Dirichlet pura los tres últimos casos son triviales o no aparecen; la vali
 
 Razón: mantiene los solvers en su rol de pura álgebra lineal, sin conocer `ConstraintSet`. La capa algebraica del ADR 0003 sigue recibiendo un sistema más pequeño y mejor condicionado, sin saber por qué.
 
+> **Nota 2026-09-30 (auditoría de las MPC).** El cierre parte siempre de las restricciones declaradas, que el `ConstraintSet` conserva (antes las sobrescribía, y redeclarar una restricción tras un `build` daba un falso «incompatible»). Dos inspecciones nuevas, independientes del cierre: `dirichlet_dofs` (DOF con Dirichlet declarado: `add_dirichlet` o `add_linear` sin maestros; no incluye los esclavos de las MPC) y `build_g(ndof, valores)` (el `g` para unos valores de Dirichlet dados, con la composición del cierre `g_s = g_mpc,s + Σ α·ḡ_d`), que usa `ThetaMethodSolver` con temperatura impuesta variable en el tiempo.
+
 > **Nota 2026-09-30.** Los problemas de Newton de los solvers iterativos sí usan `T`: miden la convergencia con el equilibrio reducido `‖TᵀR‖` (deuda #31; `NewtonNewmarkSolver` lo hacía desde la auditoría del 2026-09-22). Con una MPC, `R` no se anula en los DOF libres en la solución, porque la fuerza de cada esclavo pasa a sus maestros. La capa algebraica sigue sin conocer `ConstraintSet`.
 
 ### 7. Lo que se elimina del código existente

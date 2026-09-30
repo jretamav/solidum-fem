@@ -94,10 +94,21 @@ MODAL_ARPACK_TOLERANCE = 1.0e-9
 MODAL_EIGENVALUE_ZERO_RTOL = 1.0e-12
 
 # --- Tolerancias internas del solver explícito (ADR 0009 fase 5) ---
-# Umbral relativo para considerar diagonal "estrictamente" en
-# ``CentralDifferenceSolver._invert_diagonal_mass``. Por encima de este,
-# se rechaza el ensamble lumped (típico: Frame3D oblicuo).
+# Umbral relativo para considerar diagonal "estrictamente" la masa reducida
+# TᵀMT en ``CentralDifferenceSolver._invert_diagonal_mass``: se compara
+# max|fuera de la diagonal| con este factor por max|diagonal| (relativo puro,
+# independiente de las unidades desde el 2026-09-30). Por encima, se rechaza:
+# Frame3D con eje oblicuo, o una restricción multipunto con varios maestros
+# cuyo esclavo tiene masa.
 LUMPED_MASS_OFF_DIAGONAL_RTOL = 1.0e-12
+
+# --- Aviso de condiciones iniciales incoherentes con una MPC (ADR 0004) ---
+# Tolerancia relativa (sobre el mayor valor absoluto del vector de condiciones
+# iniciales o de su reconstrucción) por encima de la cual un DOF esclavo de una
+# MPC con maestros se considera incoherente con ella en los solvers
+# transitorios. Holgada frente al redondeo de coeficientes tecleados por el
+# usuario (tan30°·u_x). Sólo gobierna un aviso de log, no un resultado.
+INITIAL_CONDITION_MPC_RTOL = 1.0e-8
 
 # --- Return mapping J2 plane stress (Simó-Hughes §3.4.1) ---
 # Newton local sobre ``Δγ`` con función de fluencia proyectada

@@ -360,7 +360,9 @@ class ConstraintSet:
 
     @property
     def slave_dofs(self) -> np.ndarray:
-        """DOFs prescritos en orden ascendente."""
+        """DOFs esclavos en orden ascendente: los Dirichlet y los esclavos de las
+        MPC, es decir, todos los que salen del sistema reducido. Para sólo el
+        Dirichlet declarado, :attr:`dirichlet_dofs`."""
         return np.array(sorted(self._constraints.keys()), dtype=np.int64)
 
     @property

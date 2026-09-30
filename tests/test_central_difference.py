@@ -16,7 +16,8 @@ Cubre:
    plástica como cualquier integrador transitorio).
 6. **Rechazos defensivos** — ``lumping="consistent"`` lanza ``ValueError``;
    Frame3D con eje oblicuo lanza ``ValueError`` por M no estrictamente
-   diagonal.
+   diagonal (el rechazo de las MPC con varios maestros cuyo esclavo tiene
+   masa está en ``test_mpc_dynamic.py``).
 7. **Cableado YAML** end-to-end con ``solver: type: CentralDifferenceSolver``.
 """
 import math
