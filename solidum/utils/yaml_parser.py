@@ -391,31 +391,11 @@ class YamlParser:
                 errors.append(f"point_loads: 'node_id={nid}' no existe en el bloque 'nodes'.")
 
         # --- Restricciones afines lineales (MPC, ADR 0004 fase 2) ---
-        for i, lc in enumerate(data.get('linear_constraints', []) or []):
-            ctx = f"linear_constraints[{i}]"
-            if not isinstance(lc, dict):
-                errors.append(f"{ctx}: cada entrada debe ser un diccionario.")
-                continue
-            slave = lc.get('slave')
-            if not isinstance(slave, dict) or 'node' not in slave or 'dof' not in slave:
-                errors.append(f"{ctx}: 'slave' debe ser {{node: <id>, dof: <name>}}.")
-            elif known_node_ids and slave['node'] not in known_node_ids:
-                errors.append(f"{ctx}: 'slave.node={slave['node']}' no existe en el bloque 'nodes'.")
-            masters = lc.get('masters', [])
-            coefficients = lc.get('coefficients', [])
-            if not isinstance(masters, list) or not isinstance(coefficients, list):
-                errors.append(f"{ctx}: 'masters' y 'coefficients' deben ser listas.")
-            elif len(masters) != len(coefficients):
-                errors.append(
-                    f"{ctx}: 'masters' ({len(masters)}) y 'coefficients' "
-                    f"({len(coefficients)}) deben tener la misma longitud."
-                )
-            else:
-                for j, m in enumerate(masters):
-                    if not isinstance(m, dict) or 'node' not in m or 'dof' not in m:
-                        errors.append(f"{ctx}.masters[{j}]: debe ser {{node: <id>, dof: <name>}}.")
-                    elif known_node_ids and m['node'] not in known_node_ids:
-                        errors.append(f"{ctx}.masters[{j}]: 'node={m['node']}' no existe en el bloque 'nodes'.")
+        # Forma y tipos aquí; lo que exige el modelo construido (DOF
+        # existente en el nodo, esclavo sin apoyo, ciclos) lo comprueba
+        # ``_parse_linear_constraints``, que también ve las mallas gmsh.
+        errors.extend(self._validate_linear_constraints_shape(
+            data.get('linear_constraints'), known_node_ids))
 
         # --- Solver ---
         solver_cfg = data.get('solver', {})
@@ -769,6 +749,96 @@ class YamlParser:
             )
         F_ext[node.dofs[dof]] += float(value)
 
+    # Claves de una entrada de ``linear_constraints`` y de sus referencias
+    # a grados de libertad. Una clave fuera de estas listas es casi siempre
+    # una errata (``G: 5`` por ``g: 5``) que dejaría correr el modelo con el
+    # valor por omisión: se rechaza.
+    _LC_KEYS = ('slave', 'masters', 'coefficients', 'g')
+    _LC_REF_KEYS = ('node', 'dof')
+
+    @staticmethod
+    def _is_finite_number(value) -> bool:
+        return (isinstance(value, (int, float, np.integer, np.floating))
+                and not isinstance(value, bool) and bool(np.isfinite(value)))
+
+    @classmethod
+    def _validate_linear_constraints_shape(cls, block, known_node_ids: set) -> list:
+        """Errores de forma y de tipo del bloque ``linear_constraints``.
+
+        Comprueba que el bloque sea una lista de entradas con las claves
+        ``slave``, ``masters``, ``coefficients`` y ``g`` (ninguna otra), que
+        las referencias sean ``{node, dof}``, que los coeficientes y ``g`` sean
+        números finitos y, si el YAML declara ``nodes``, que los nodos
+        existan. Lo que depende del modelo construido lo comprueba
+        :meth:`_parse_linear_constraints`."""
+        if block is None:
+            return []
+        if not isinstance(block, list):
+            return [
+                "'linear_constraints' debe ser una lista de restricciones, cada una "
+                "de la forma '- slave: {node: <id>, dof: <nombre>}' con 'masters', "
+                f"'coefficients' y, opcionalmente, 'g'; se encontró {type(block).__name__}."
+            ]
+        errors = []
+        for i, lc in enumerate(block):
+            ctx = f"linear_constraints[{i}]"
+            if not isinstance(lc, dict):
+                errors.append(f"{ctx}: cada entrada debe ser un diccionario.")
+                continue
+            unknown = sorted(str(k) for k in lc if k not in cls._LC_KEYS)
+            if unknown:
+                errors.append(
+                    f"{ctx}: claves desconocidas {unknown}. Admitidas: {list(cls._LC_KEYS)}."
+                )
+            if 'slave' not in lc:
+                errors.append(f"{ctx}: falta el campo obligatorio 'slave'.")
+            else:
+                errors.extend(cls._check_dof_ref(lc['slave'], f"{ctx}.slave", known_node_ids))
+            masters = lc.get('masters', [])
+            coefficients = lc.get('coefficients', [])
+            if not isinstance(masters, list) or not isinstance(coefficients, list):
+                errors.append(f"{ctx}: 'masters' y 'coefficients' deben ser listas.")
+            else:
+                if len(masters) != len(coefficients):
+                    errors.append(
+                        f"{ctx}: 'masters' ({len(masters)}) y 'coefficients' "
+                        f"({len(coefficients)}) deben tener la misma longitud."
+                    )
+                for j, m in enumerate(masters):
+                    errors.extend(cls._check_dof_ref(m, f"{ctx}.masters[{j}]", known_node_ids))
+                for j, c in enumerate(coefficients):
+                    if not cls._is_finite_number(c):
+                        errors.append(
+                            f"{ctx}.coefficients[{j}]: debe ser un número finito, "
+                            f"se encontró {c!r}."
+                        )
+            if 'g' in lc and not cls._is_finite_number(lc['g']):
+                errors.append(f"{ctx}: 'g' debe ser un número finito, se encontró {lc['g']!r}.")
+        return errors
+
+    @classmethod
+    def _check_dof_ref(cls, ref, ctx: str, known_node_ids: set) -> list:
+        """Errores de una referencia ``{node, dof}`` de ``linear_constraints``."""
+        if not isinstance(ref, dict) or 'node' not in ref or 'dof' not in ref:
+            return [f"{ctx}: debe ser {{node: <id>, dof: <nombre>}}, se encontró {ref!r}."]
+        errors = []
+        unknown = sorted(str(k) for k in ref if k not in cls._LC_REF_KEYS)
+        if unknown:
+            errors.append(
+                f"{ctx}: claves desconocidas {unknown}. Admitidas: {list(cls._LC_REF_KEYS)}."
+            )
+        if not isinstance(ref['dof'], str):
+            errors.append(
+                f"{ctx}: 'dof' debe ser el nombre de un grado de libertad ('ux', 'T'…), "
+                f"se encontró {ref['dof']!r}."
+            )
+        node = ref['node']
+        if isinstance(node, (list, dict, set)):
+            errors.append(f"{ctx}: 'node' debe ser un id de nodo, se encontró {node!r}.")
+        elif known_node_ids and node not in known_node_ids:
+            errors.append(f"{ctx}: 'node={node}' no existe en el bloque 'nodes'.")
+        return errors
+
     def _parse_linear_constraints(self, data: dict):
         """Restricciones afines lineales MPC (ADR 0004 fase 2).
 
@@ -784,18 +854,115 @@ class YamlParser:
 
         Casos de uso típicos: apoyo en plano oblicuo, periodicidad, unión
         rígida master-slave, simetrías no alineadas con ejes globales.
+
+        Se ejecuta con los elementos y los apoyos ya construidos (también
+        desde una malla gmsh) y valida lo que la forma del YAML no puede
+        decir: que cada nodo exista y tenga el grado de libertad nombrado,
+        que el esclavo no tenga además un apoyo, que no figure entre sus
+        propios maestros, que no se declare dos veces con restricciones
+        distintas y que las cadenas maestro-esclavo no formen ciclos. Todos
+        los errores se acumulan en un único ``YamlValidationError`` que
+        nombra la entrada y el par (nodo, dof); antes aparecían de uno en
+        uno al ensamblar, con números de ecuación internos.
         """
-        for lc in data.get('linear_constraints', []) or []:
-            slave = lc['slave']
+        errors = []
+        entries = []
+        declared = {}   # esclavo (nodo, dof) → (índice, maestros, coeficientes, g)
+        for i, lc in enumerate(data.get('linear_constraints') or []):
+            ctx = f"linear_constraints[{i}]"
+            slave = (lc['slave']['node'], lc['slave']['dof'])
             masters = [(m['node'], m['dof']) for m in lc.get('masters', [])]
-            coefficients = list(lc.get('coefficients', []))
+            coefficients = [float(c) for c in lc.get('coefficients', [])]
             g = float(lc.get('g', 0.0))
+            errors.extend(self._check_constraint_dofs(ctx, slave, masters))
+            if slave in masters:
+                errors.append(
+                    f"{ctx}: el esclavo {self._dof_label(slave)} figura entre sus "
+                    f"propios maestros."
+                )
+            previous = declared.get(slave)
+            if previous is None:
+                declared[slave] = (i, masters, coefficients, g)
+            elif previous[1:] != (masters, coefficients, g):
+                errors.append(
+                    f"{ctx}: el esclavo {self._dof_label(slave)} ya está declarado en "
+                    f"linear_constraints[{previous[0]}] con otra restricción; un grado "
+                    f"de libertad sólo puede ser esclavo de una restricción."
+                )
+            entries.append((slave, masters, coefficients, g))
+        errors.extend(self._constraint_cycles(declared))
+        if errors:
+            raise YamlValidationError(errors)
+
+        for slave, masters, coefficients, g in entries:
             self.domain.add_linear_constraint(
-                slave=(slave['node'], slave['dof']),
-                masters=masters,
-                coefficients=coefficients,
-                g=g,
+                slave=slave, masters=masters, coefficients=coefficients, g=g,
             )
+
+    @staticmethod
+    def _dof_label(ref: tuple) -> str:
+        return f"(nodo {ref[0]}, '{ref[1]}')"
+
+    def _check_constraint_dofs(self, ctx: str, slave: tuple, masters: list) -> list:
+        """Errores de existencia de los grados de libertad de una restricción
+        y del apoyo redundante en el esclavo, sobre el modelo construido."""
+        errors = []
+        for role, ref in [('esclavo', slave)] + [('maestro', m) for m in masters]:
+            node = self.domain.get_node(ref[0])
+            if node is None:
+                errors.append(f"{ctx}: el {role} {self._dof_label(ref)} no existe: "
+                              f"no hay ningún nodo {ref[0]} en el modelo.")
+            elif ref[1] not in node.dofs:
+                errors.append(
+                    f"{ctx}: el {role} {self._dof_label(ref)} no existe: el nodo "
+                    f"{ref[0]} tiene los grados de libertad {sorted(node.dofs)}."
+                )
+            elif role == 'esclavo' and ref[1] in node.boundary_conditions:
+                errors.append(
+                    f"{ctx}: el esclavo {self._dof_label(ref)} tiene además un apoyo "
+                    f"({ref[1]} = {node.boundary_conditions[ref[1]]}), y un grado de "
+                    f"libertad no puede ser esclavo de dos restricciones (eliminación "
+                    f"directa, ADR 0004). Quita el apoyo del esclavo: si sus maestros "
+                    f"están prescritos, la restricción le transmite su valor "
+                    f"(u_s = g + Σ α·u_m)."
+                )
+        return errors
+
+    @classmethod
+    def _constraint_cycles(cls, declared: dict) -> list:
+        """Ciclos de las cadenas maestro-esclavo (``a ← b``, ``b ← a``): la
+        eliminación directa exige que toda cadena termine en grados de
+        libertad libres o prescritos. La autorreferencia directa se informa
+        aparte."""
+        graph = {s: [m for m in spec[1] if m in declared and m != s]
+                 for s, spec in declared.items()}
+        state = dict.fromkeys(graph, 0)        # 0 sin visitar, 1 en curso, 2 hecho
+        errors = []
+        for root in graph:
+            if state[root]:
+                continue
+            path, stack = [root], [iter(graph[root])]
+            state[root] = 1
+            while stack:
+                nxt = next(stack[-1], None)
+                if nxt is None:
+                    state[path.pop()] = 2
+                    stack.pop()
+                elif state[nxt] == 0:
+                    state[nxt] = 1
+                    path.append(nxt)
+                    stack.append(iter(graph[nxt]))
+                elif state[nxt] == 1:
+                    cycle = path[path.index(nxt):] + [nxt]
+                    entries = sorted({declared[s][0] for s in cycle})
+                    errors.append(
+                        "linear_constraints: restricción cíclica "
+                        + " ← ".join(cls._dof_label(s) for s in cycle)
+                        + f" (entradas {entries}): cada esclavo acaba dependiendo de "
+                        "sí mismo, y las cadenas maestro-esclavo deben terminar en "
+                        "grados de libertad libres o prescritos."
+                    )
+        return errors
 
     def _parse_thermal_loads_config(self, data: dict):
         """Bloque ``thermal_loads`` (Etapa 8), con dos sub-bloques opcionales.

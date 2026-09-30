@@ -83,7 +83,7 @@ Variante de `ArcLengthSolver` que controla, en vez de la longitud de arco de tod
 
 $$\mathbf c^\top \Delta\mathbf U = \Delta l$$
 
-- **`control`** (obligatorio): la magnitud, como lista de términos `{node, dof, coef}`. El alargamiento entre los nodos 6 y 7 en $x$ es `[{node: 7, dof: ux, coef: 1.0}, {node: 6, dof: ux, coef: -1.0}]`. Los grados de libertad deben ser libres, y la magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
+- **`control`** (obligatorio): la magnitud, como lista de términos `{node, dof, coef}`. El alargamiento entre los nodos 6 y 7 en $x$ es `[{node: 7, dof: ux, coef: 1.0}, {node: 6, dof: ux, coef: -1.0}]`. Los grados de libertad no pueden estar prescritos: un apoyo, o el esclavo de una restricción multipunto cuyos maestros están todos apoyados, tiene un movimiento que no depende del equilibrio. El esclavo de una restricción multipunto con maestros libres sí vale, porque sus maestros fijan su incremento. La magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
 - **Primer paso**: `initial_dlambda`, fracción de la carga de referencia, como en `ArcLengthSolver`.
 - **Sin crecimiento del paso por omisión** (`dl_max_factor: 1.0`). Con ablandamiento local, un paso que sobrepasa el pico más que la imperfección que localiza el daño puede converger a otro equilibrio, con más zonas ablandadas de las que el camino físico produciría. Esto le pasa a cualquier solver, también al control por desplazamiento; la defensa es un paso pequeño cerca del pico.
 

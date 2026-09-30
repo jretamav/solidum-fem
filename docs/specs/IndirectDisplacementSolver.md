@@ -22,6 +22,16 @@ $$
 
 con $\mathbf c$ el vector de coeficientes sobre los grados de libertad controlados. Para el alargamiento entre los nodos $a$ y $b$ en $x$: $c_{b,x} = +1$, $c_{a,x} = -1$.
 
+**Grados de libertad admisibles.** $\mathbf c$ actúa sobre el incremento completo, que con las restricciones del modelo (ADR 0004) es $\Delta\mathbf U = \mathbf T\,\Delta\mathbf u_\text{libre} + \Delta\lambda\,\mathbf g$ e incluye los esclavos reconstruidos por $\mathbf T$. Por tanto
+
+$$
+\mathbf c^\top\Delta\mathbf U = (\mathbf T^\top\mathbf c)^\top\Delta\mathbf u_\text{libre} + \Delta\lambda\,\mathbf c^\top\mathbf g .
+$$
+
+- Un grado de libertad **libre**, o el **esclavo de una restricción multipunto con maestros** (fila de $\mathbf T$ no vacía: $u_s = g_s + \sum_i\alpha_i\,u_{m_i}$), se puede controlar: su incremento lo fijan los grados de libertad libres.
+- Un grado de libertad **prescrito** (fila de $\mathbf T$ vacía: apoyo declarado, o esclavo cuyos maestros están todos prescritos, que hereda el apoyo por el cierre transitivo) se rechaza: su incremento $\Delta\lambda\,g_s$ no depende del equilibrio (con $g_s = 0$ la restricción no determina $\Delta\lambda$; con $g_s \neq 0$ degeneraría en control de carga).
+- Una combinación con $\mathbf T^\top\mathbf c = \mathbf 0$ (p. ej. $u_s - u_m$ con $u_s = u_m + g$) se rechaza por la misma razón.
+
 ### 2. Predictor
 
 Con $\mathbf{du}_t = \mathbf K_t^{-1}\mathbf F_\text{ref}$:
@@ -79,7 +89,7 @@ admission:                # criterio de admisión al programa principal (Reglas.
 parameters:
   # Específico de esta variante:
   - { name: control,                  type: list,  required: true,
-      desc: "Combinación controlada Σ coef·u(nodo, dof): lista de (nodo, dof, coef) o de {node, dof, coef} (coef = 1 si se omite); nodo = Node o id. Grados de libertad libres; la combinación debe crecer con la carga de referencia" }
+      desc: "Combinación controlada Σ coef·u(nodo, dof): lista de (nodo, dof, coef) o de {node, dof, coef} (coef = 1 si se omite); nodo = Node o id. Grados de libertad no prescritos (libres o esclavos de una restricción multipunto con maestros libres); la combinación debe crecer con la carga de referencia" }
   # Heredados del padre, con la semántica de la magnitud controlada:
   - { name: convergence,              type: ConvergenceCriterion, required: false, default: "ConvergenceCriterion()" }
   - { name: max_iter,                 type: int,   required: false, default: 20 }
@@ -99,7 +109,7 @@ parameters:
 
 requirements:
   - "La magnitud controlada crece monótonamente a lo largo del camino físico (apertura de una grieta, alargamiento de la zona que se ablanda). Si decrece con la carga de referencia al empezar, el solver lo rechaza con un error que lo explica"
-  - "Los grados de libertad controlados son libres (sin apoyo ni restricción multipunto). Para controlar un nodo respecto de un apoyo fijo basta con el nodo solo"
+  - "Los grados de libertad controlados no están prescritos: son libres o esclavos de una restricción multipunto con maestros libres (§1). Un apoyo, o un esclavo cuyos maestros están todos prescritos, se rechaza. Para controlar un nodo respecto de un apoyo fijo basta con el nodo solo"
   - "Heredados del padre: F_ref no nulo; modelo sin mecanismos rígidos (ADR 0019) ni mecanismos internos en la tangente inicial si es geométricamente lineal (ADR 0019, 2026-09-30)"
 
 conventions:
@@ -133,8 +143,12 @@ acceptance:
       setup: "Barra elástica, control del desplazamiento del extremo, initial_dlambda = 0.25"
       expect: "λ₁ = 0.25 exacto; Δλ = 0.25 en cada paso; solución lineal exacta en λ = 1"
     - name: errores_claros
-      setup: "control vacío o mal formado, nodo o dof inexistentes, dof restringido, términos que se anulan, magnitud que decrece con la carga"
+      setup: "control vacío o mal formado, nodo o dof inexistentes, dof prescrito (apoyo, o esclavo de una restricción multipunto con el maestro apoyado), términos que se anulan (también tras aplicar las restricciones multipunto, Tᵀc = 0), magnitud que decrece con la carga"
       expect: "ValueError con un mensaje que explica el problema"
+    - name: control_de_un_esclavo_de_mpc
+      setup: "Barra de 10 elementos del primer caso con el nodo derecho del elemento débil duplicado y atado por una restricción multipunto ux_s = ux_m; el control usa el esclavo (y, aparte, el maestro)"
+      expect: "Trazado idéntico al de la barra fundida (oráculo del nodo fundido), con el esclavo o con el maestro en el control"
+      tol_rel: 1.0e-8
     - name: desde_yaml
       setup: "solver: {type: IndirectDisplacementSolver, control: [{node, dof, coef}, …]}"
       expect: "Se construye y resuelve"
@@ -164,3 +178,4 @@ references:
 - **2026-09-23** · Formulación propuesta por la IA y validada por el usuario al descubrir, preparando el ejemplo 5 del manual de ejemplos, que ninguno de los dos solvers de arco seguía el retroceso de una barra con daño localizado. Diagnóstico registrado como deuda #27 (arco por disipación) y en §5 (no unicidad del problema incremental).
 - **2026-09-30** · Hereda del padre la comprobación de la tangente inicial de la red de seguridad (ADR 0019): el predictor del primer paso inspecciona sus pivotes nulos; error si el modelo es geométricamente lineal, aviso si no. Sin cambio de formulación ni de resultados en modelos bien planteados.
 - **2026-09-29** · Frontera del programa principal (ADR 0020 y criterio de admisión de Reglas.md §1): `DissipationArcLengthSolver`, uno de los «dos solvers de arco» de la entrada anterior, se trasladó al módulo de usuario `dissipation_control` (spec en [`docs/user/dissipation_control/specs/DissipationArcLengthSolver.md`](../user/dissipation_control/specs/DissipationArcLengthSolver.md); se carga con `user_modules: [dissipation_control]`). En el programa principal quedan `ArcLengthSolver` y esta variante. El problema por paso del padre, que esta variante extiende, se exporta con nombre público como `solidum.math.solvers.ArcProblem`. Sin cambio de formulación ni de resultados.
+- **2026-09-30** · Auditoría de las restricciones multipunto (EST-10): el solver rechazaba controlar el esclavo de una restricción multipunto aunque su incremento está determinado, porque exigía grados de libertad libres. Ahora el criterio es la fila de $\mathbf T$ (§1): se admite el esclavo con maestros y se rechaza el grado de libertad prescrito (apoyo, o esclavo que hereda el apoyo de sus maestros por el cierre transitivo); la comprobación de términos que se anulan pasa de $\mathbf c = \mathbf 0$ a $\mathbf T^\top\mathbf c = \mathbf 0$, que sin restricciones multipunto es lo mismo. El mensaje de rechazo dice «prescrito» en lugar de «restringido» y ya no da la pista del apoyo fijo en el caso de la restricción multipunto. La restricción del paso, el predictor y el corrector no cambian: $\mathbf{du}_t$ y $\mathbf{du}_R$ ya incluían los esclavos reconstruidos por $\mathbf T$ ($\mathbf{du}_t = \mathbf T\,(\mathbf T^\top\mathbf K\mathbf T)^{-1}\mathbf T^\top(\mathbf F_\text{ref} - \mathbf K\mathbf g) + \mathbf g$). Los modelos sin restricciones multipunto dan los mismos resultados. Test nuevo `control_de_un_esclavo_de_mpc` contra el oráculo del nodo fundido.

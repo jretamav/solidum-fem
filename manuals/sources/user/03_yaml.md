@@ -287,7 +287,16 @@ linear_constraints:
     g: 0.0
 ```
 
-Las restricciones se imponen por eliminación directa (no por penalización), de modo que la imposición es exacta a redondeo y preserva la simetría y la positividad definida del sistema. Las cadenas master-slave se resuelven automáticamente por cierre transitivo; los ciclos y las redeclaraciones inconsistentes se detectan en construcción y abortan el análisis con un mensaje específico.
+Las restricciones se imponen por eliminación directa (no por penalización), de modo que la imposición es exacta a redondeo y preserva la simetría y la positividad definida del sistema. Las cadenas master-slave se resuelven automáticamente por cierre transitivo: un maestro puede ser a su vez esclavo de otra restricción, o tener un apoyo, y entonces el esclavo hereda su valor prescrito.
+
+Cada entrada admite sólo las claves `slave`, `masters`, `coefficients` y `g`, y cada referencia sólo `node` y `dof`; una clave con errata (`G: 5` por `g: 5`) es un error, no se ignora. Los coeficientes y `g` deben ser números. Al leer el archivo, antes de ensamblar nada y también con malla gmsh, se comprueba además que:
+
+- cada nodo existe y tiene el grado de libertad nombrado (`ux` no existe en un nodo térmico);
+- el esclavo no tiene además un apoyo: un grado de libertad no puede ser esclavo de dos restricciones. Si el apoyo es coherente con la restricción (por ejemplo, los dos nodos coincidentes de una interfaz atada tomados por un mismo apoyo por coordenada o por grupo), basta con quitarlo del esclavo, porque la restricción le transmite el valor del maestro;
+- el esclavo no figura entre sus propios maestros ni se declara dos veces con restricciones distintas (declarar dos veces la misma es inofensivo);
+- las cadenas master-slave no forman ciclos ($a \leftarrow b$, $b \leftarrow a$).
+
+Todos los problemas se informan juntos, cada uno con su entrada (`linear_constraints[i]`) y el par (nodo, dof) afectado. Con la API Python (`Domain.add_linear_constraint`) el ensamblador detecta los mismos errores al construir las restricciones, de uno en uno, y su mensaje también nombra el esclavo y los maestros por (nodo, dof).
 
 En los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`) el término independiente `g` se aplica proporcionalmente al factor de carga, como $\lambda\,g$, igual que un desplazamiento prescrito: en un trazado de arco sigue a $\lambda$ también cuando la carga baja.
 

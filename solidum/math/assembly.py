@@ -1,4 +1,5 @@
 # solidum_fem/solidum/math/assembly.py
+import re
 from typing import Callable
 
 import numpy as np
@@ -364,6 +365,13 @@ class Assembler:
         return self._constraint_set
 
     def _build_constraint_set(self) -> ConstraintSet:
+        """``ConstraintSet`` con los apoyos y las restricciones lineales del
+        dominio, ya cerrado (cierre transitivo de las cadenas maestro-esclavo).
+
+        El ``ConstraintSet`` trabaja con números de ecuación globales; sus
+        errores se traducen aquí a pares (nodo, dof) del esclavo y de los
+        maestros, con la corrección probable cuando se conoce (un esclavo que
+        tiene además un apoyo: quitar el apoyo del esclavo)."""
         self._ensure_topology()
         cs = ConstraintSet()
         for node in self.domain.nodes.values():
@@ -387,8 +395,63 @@ class Assembler:
                         f"'{dn}' inexistente."
                     )
                 masters.append(node.dofs[dn])
-            cs.add_linear(slave, masters, spec["coefficients"], spec.get("g", 0.0))
+            try:
+                cs.add_linear(slave, masters, spec["coefficients"], spec.get("g", 0.0))
+            except ValueError as exc:
+                raise ValueError(self._linear_constraint_error(spec, exc)) from exc
+        try:
+            cs.build(self.domain.total_dofs)
+        except ValueError as exc:
+            raise ValueError(
+                "Restricciones lineales incoherentes: "
+                + self._with_dof_labels(str(exc))
+            ) from exc
         return cs
+
+    def _dof_labels(self) -> dict[int, str]:
+        """Número de ecuación → ``"(nodo N, 'dof')"``. Sólo para mensajes de
+        error: se construye cuando hace falta."""
+        return {
+            index: f"(nodo {node.id}, '{dof}')"
+            for node in self.domain.nodes.values()
+            for dof, index in node.dofs.items()
+        }
+
+    def _with_dof_labels(self, message: str) -> str:
+        """Añade el par (nodo, dof) a cada ``DOF <n>`` de ``message``."""
+        labels = self._dof_labels()
+        return re.sub(
+            r"\bDOF (\d+)",
+            lambda m: f"DOF {m.group(1)} {labels.get(int(m.group(1)), '')}".rstrip(),
+            message,
+        )
+
+    def _linear_constraint_error(self, spec: dict, exc: ValueError) -> str:
+        """Mensaje de un ``ValueError`` de ``ConstraintSet.add_linear`` en
+        términos de (nodo, dof)."""
+        slave_id, slave_dof = spec["slave"]
+        slave_node = self.domain.get_node(slave_id)
+        head = (
+            f"Restricción lineal con esclavo (nodo {slave_id}, '{slave_dof}') y "
+            f"maestros [{', '.join(f'(nodo {n}, {d!r})' for n, d in spec['masters'])}]: "
+        )
+        if slave_dof in slave_node.boundary_conditions:
+            body = (
+                f"el esclavo tiene además un apoyo ({slave_dof} = "
+                f"{slave_node.boundary_conditions[slave_dof]}), y un grado de libertad "
+                f"no puede ser esclavo de dos restricciones (eliminación directa, "
+                f"ADR 0004). Quita el apoyo del esclavo: si sus maestros están "
+                f"prescritos, la restricción le transmite su valor (u_s = g + Σ α·u_m)."
+            )
+        elif sum(1 for other in self.domain.linear_constraints
+                 if tuple(other["slave"]) == (slave_id, slave_dof)) > 1:
+            body = (
+                "el esclavo está declarado en otra restricción lineal distinta; un "
+                "grado de libertad sólo puede ser esclavo de una restricción."
+            )
+        else:
+            body = "restricción no admitida."
+        return f"{head}{body} Detalle: {self._with_dof_labels(str(exc))}"
 
     def reduce(
         self,

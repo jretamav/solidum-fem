@@ -98,6 +98,50 @@ def _trace(n: int, **kw):
     return solver, np.array(hist)
 
 
+DUP_ID = 1000     # id del nodo duplicado de la barra partida
+
+
+def _split_bar(n: int, uy_by_mpc: bool = False):
+    """La barra de :func:`_bar` con el nodo derecho ``b`` del elemento débil
+    duplicado: el elemento siguiente arranca en ``b'`` (id ``DUP_ID``), atado
+    con la restricción multipunto ``ux_b' = ux_b``. Con ``g = 0`` equivale a
+    fundir los nodos (oráculo del nodo fundido). ``uy_by_mpc``: el ``uy`` de
+    ``b'`` no se apoya directamente sino con ``uy_b' = uy_b``, y como ``uy_b``
+    está apoyado, ``b'`` hereda el apoyo por el cierre transitivo."""
+    dom = Domain()
+    nodes = [dom.add_node(i + 1, [i * L / n, 0.0]) for i in range(n + 1)]
+    k_weak = n // 2
+    b = nodes[k_weak + 1]
+    b_dup = dom.add_node(DUP_ID, list(b.coordinates))
+    for k in range(n):
+        kappa_0 = K0W if k == k_weak else K0
+        mat = IsotropicDamage1D(E=E, kappa_0=kappa_0, alpha=ALPHA)
+        left = b_dup if k == k_weak + 1 else nodes[k]
+        dom.add_element(Truss2D(k + 1, [left, nodes[k + 1]], mat, A=A))
+    nodes[0].fix_dof('ux', 0.0)
+    for node in nodes:
+        node.fix_dof('uy', 0.0)
+    dom.add_linear_constraint((DUP_ID, 'ux'), [(b.id, 'ux')], [1.0])
+    if uy_by_mpc:
+        dom.add_linear_constraint((DUP_ID, 'uy'), [(b.id, 'uy')], [1.0])
+    else:
+        b_dup.fix_dof('uy', 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    F = np.zeros(dom.total_dofs)
+    F[nodes[-1].dofs['ux']] = F_PEAK
+    return dom, Assembler(dom), F, nodes[-1], dom.elements[k_weak + 1]
+
+
+def _history(dom, asm, F, end, a_id, b_id, max_steps):
+    """(u_extremo, λ) de cada paso con el control ``u_b − u_a`` en ``x``."""
+    solver = IndirectDisplacementSolver(
+        asm, max_iter=30, max_lambda=1.2, max_steps=max_steps, initial_dlambda=0.02,
+        control=[(b_id, 'ux', 1.0), (a_id, 'ux', -1.0)])
+    hist = []
+    solver.solve(F, step_callback=lambda k, U, lam: hist.append((U[end.dofs['ux']], lam)))
+    return np.array(hist)
+
+
 class _Quiet(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -158,6 +202,39 @@ class TestNoSnapBackBar(_Quiet):
         np.testing.assert_allclose(pre[:, 1], E * A * pre[:, 0] / L, rtol=1e-10)
 
 
+class TestControlOfAnMpcSlave(_Quiet):
+    """El control puede usar el esclavo de una restricción multipunto
+    (auditoría de las MPC, EST-10): su incremento lo fija el maestro por
+    ``T``. Oráculo del nodo fundido: la barra partida por el nodo derecho del
+    elemento débil y atada con ``ux_b' = ux_b`` sigue el mismo retroceso que
+    la barra conforme, controlando ``u_b' − u_a`` (esclavo) o ``u_b − u_a``
+    (maestro)."""
+
+    STEPS = 90          # pasa el pico y entra en el retroceso
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        dom, asm, F, end, weak = _bar(10)
+        a, b = weak.nodes
+        cls.fused = _history(dom, asm, F, end, a.id, b.id, cls.STEPS)
+
+    def _tied(self, control_node):
+        dom, asm, F, end, weak = _split_bar(10)
+        a, b = weak.nodes
+        b_id = DUP_ID if control_node == 'slave' else b.id
+        return _history(dom, asm, F, end, a.id, b_id, self.STEPS)
+
+    def test_slave_in_control_matches_fused_bar(self):
+        H = self._tied('slave')
+        self.assertEqual(H.shape, self.fused.shape)
+        self.assertLess(self.fused[-1, 1], self.fused[:, 1].max() - 1e-3)   # tras el pico
+        np.testing.assert_allclose(H, self.fused, rtol=1e-8, atol=1e-14)
+
+    def test_master_in_control_matches_fused_bar(self):
+        np.testing.assert_allclose(self._tied('master'), self.fused, rtol=1e-8, atol=1e-14)
+
+
 class TestLinearAndFirstStep(_Quiet):
 
     def _elastic_bar(self):
@@ -214,8 +291,23 @@ class TestValidation(_Quiet):
 
     def test_constrained_dof_is_rejected(self):
         dom, asm, F, end = self._asm()
-        with self.assertRaisesRegex(ValueError, "restringido"):
+        with self.assertRaisesRegex(ValueError, "está prescrito"):
             IndirectDisplacementSolver(asm, control=[(1, 'ux', 1.0)]).solve(F)
+
+    def test_slave_that_inherits_a_support_is_rejected(self):
+        """Esclavo de una restricción multipunto cuyo único maestro está
+        apoyado: el cierre transitivo lo deja prescrito (fila de T vacía)."""
+        dom, asm, F, end, weak = _split_bar(4, uy_by_mpc=True)
+        with self.assertRaisesRegex(ValueError, f"'uy' del nodo {DUP_ID} está prescrito"):
+            IndirectDisplacementSolver(asm, control=[(DUP_ID, 'uy', 1.0)]).solve(F)
+
+    def test_terms_that_cancel_through_the_mpc(self):
+        """``u_b' − u_b`` con ``u_b' = u_b``: c ≠ 0 pero Tᵀc = 0."""
+        dom, asm, F, end, weak = _split_bar(4)
+        b = weak.nodes[1]
+        with self.assertRaisesRegex(ValueError, "se anulan"):
+            IndirectDisplacementSolver(
+                asm, control=[(DUP_ID, 'ux', 1.0), (b.id, 'ux', -1.0)]).solve(F)
 
     def test_cancelling_terms(self):
         dom, asm, F, end = self._asm()

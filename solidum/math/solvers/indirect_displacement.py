@@ -68,8 +68,11 @@ class IndirectDisplacementSolver(ArcLengthSolver):
         ``{node, dof, coef}`` (``coef`` vale 1 si se omite); ``nodo`` es un
         :class:`Node` o su id. El alargamiento entre los nodos ``a`` y ``b``
         en ``x`` es ``[(b, 'ux', 1.0), (a, 'ux', -1.0)]``. Los grados de
-        libertad deben ser libres (sin apoyo ni restricción multipunto), y la
-        combinación debe crecer al aplicar la carga de referencia.
+        libertad no pueden estar prescritos (con apoyo, o esclavos de una
+        restricción multipunto cuyos maestros están todos prescritos); el
+        esclavo de una restricción multipunto con maestros libres sí se
+        admite, porque su incremento lo fijan sus maestros. La combinación
+        debe crecer al aplicar la carga de referencia.
     initial_dlambda, initial_dl
         Primer paso, como en :class:`ArcLengthSolver`: fracción de la carga de
         referencia (por omisión 0.1), con ``Δl₁ = Δλ₁·cᵀ·K₀⁻¹·F_ref``, o
@@ -143,10 +146,21 @@ class IndirectDisplacementSolver(ArcLengthSolver):
     # --- puntos de extensión del padre ---------------------------------------
 
     def _on_solve_start(self) -> None:
-        """Vector ``c`` sobre la numeración de ecuaciones vigente."""
+        """Vector ``c`` sobre la numeración de ecuaciones vigente.
+
+        ``c`` actúa sobre el incremento completo ``ΔU = T·Δu_libre + Δλ·g``
+        (ADR 0004), que incluye los esclavos reconstruidos por ``T``: el
+        esclavo de una restricción multipunto con maestros (fila de ``T`` no
+        vacía) se puede controlar, porque su incremento lo fijan sus maestros.
+        Un grado de libertad prescrito (fila de ``T`` vacía: apoyo declarado, o
+        esclavo cuyos maestros están todos prescritos, que hereda el apoyo por
+        el cierre transitivo) se rechaza: su incremento es ``Δλ·g_s``, no
+        depende del equilibrio. También se rechaza una combinación cuya
+        proyección ``Tᵀ·c`` sobre los grados de libertad libres se anula (p.
+        ej. ``u_s − u_m`` con ``u_s = u_m + g``)."""
         domain = self.assembler.domain
         ndof = domain.total_dofs
-        free = set(int(i) for i in self.assembler.constraint_set.free_dofs(ndof))
+        T = self.assembler.constraint_set.build(ndof)[0].tocsr()
         c = np.zeros(ndof)
         for node, dof, coef in self.control:
             if not hasattr(node, 'dofs'):
@@ -161,18 +175,25 @@ class IndirectDisplacementSolver(ArcLengthSolver):
                     f"IndirectDisplacementSolver: el nodo {node.id} no tiene el grado "
                     f"de libertad {dof!r}; tiene {sorted(node.dofs)}.")
             index = node.dofs[dof]
-            if index not in free:
+            row = T.data[T.indptr[index]:T.indptr[index + 1]]
+            if not np.any(row):
                 raise ValueError(
                     f"IndirectDisplacementSolver: el grado de libertad {dof!r} del "
-                    f"nodo {node.id} está restringido (apoyo o restricción "
-                    f"multipunto); la magnitud controlada sólo puede combinar "
-                    f"grados de libertad libres. Para controlar el desplazamiento "
-                    f"de un nodo respecto de un apoyo fijo basta con el nodo solo.")
+                    f"nodo {node.id} está prescrito (apoyo, o esclavo de una "
+                    f"restricción multipunto cuyos maestros están todos prescritos): "
+                    f"su incremento no depende del equilibrio y no puede formar parte "
+                    f"de la magnitud controlada. Para controlar el desplazamiento de "
+                    f"un nodo respecto de un apoyo fijo basta con el nodo solo.")
             c[index] += coef
-        if not np.any(c):
+        # Proyección sobre los grados de libertad libres: cᵀ·ΔU = (Tᵀc)ᵀ·Δu_libre
+        # + Δλ·cᵀg. Sin restricciones multipunto, Tᵀc = 0 sólo si c = 0.
+        c_free = T.T @ c
+        scale = abs(T).T @ np.abs(c)
+        if np.linalg.norm(c_free) <= _INSENSITIVE_RTOL * np.linalg.norm(scale):
             raise ValueError(
                 "IndirectDisplacementSolver: los términos de 'control' se anulan "
-                "entre sí (c = 0).")
+                "entre sí (Tᵀ·c = 0: tras aplicar las restricciones multipunto, la "
+                "combinación no depende de ningún grado de libertad libre).")
         self._c = c
 
     def _control_measure(self, du: np.ndarray) -> float:
