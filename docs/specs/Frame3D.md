@@ -101,6 +101,34 @@ $$\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf 
 ### 11. Cuadratura
 Camino con material: no aplica (forma cerrada; integración analítica de los polinomios de Hermite). Camino con sección: Gauss-Legendre de `n_ip` puntos a lo largo del elemento (3 por defecto, mínimo 2), con `N_INTEGRATION_POINTS = n_ip` como atributo de instancia.
 
+### 12. Matriz de masa
+Cuatro bloques desacoplados en ejes locales, como la rigidez. La flexión **no lleva inercia rotatoria** de la sección (hipótesis de Euler-Bernoulli); la torsión sí lleva la inercia del giro de la sección alrededor del eje, $\rho J_p$ con $J_p = I_y + I_z$ (momento polar geométrico, no la constante de Saint-Venant $J$, que rige la rigidez). Con sección, $\rho A = \sum_i\rho_iA_i$ y $\rho J_p = \rho I_y + \rho I_z$ ([FiberSection](FiberSection.md) §6).
+
+**Consistente** (`lumping="consistent"`, por defecto):
+
+- Axial $(u_1, u_2)$: $\tfrac{\rho A L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$.
+- Torsión $(\theta_{x1}, \theta_{x2})$: $\tfrac{\rho J_p L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$.
+- Flexión en el plano $xy$, $(v_1, \theta_{z1}, v_2, \theta_{z2})$ con $v' = \theta_z$: la hermítica de [Frame2DEuler](Frame2DEuler.md) §13,
+$$\mathbf M_{xy} = \frac{\rho A L}{420}\begin{bmatrix}
+156 & 22L & 54 & -13L \\
+22L & 4L^2 & 13L & -3L^2 \\
+54 & 13L & 156 & -22L \\
+-13L & -3L^2 & -22L & 4L^2
+\end{bmatrix}.$$
+- Flexión en el plano $xz$, $(w_1, \theta_{y1}, w_2, \theta_{y2})$: por $w' = -\theta_y$, los términos de acoplamiento traslación-giro cambian de signo, $\mathbf M_{xz} = \mathbf S\,\mathbf M_{xy}\,\mathbf S$ con $\mathbf S = \operatorname{diag}(1, -1, 1, -1)$:
+$$\mathbf M_{xz} = \frac{\rho A L}{420}\begin{bmatrix}
+156 & -22L & 54 & 13L \\
+-22L & 4L^2 & -13L & -3L^2 \\
+54 & -13L & 156 & 22L \\
+13L & -3L^2 & 22L & 4L^2
+\end{bmatrix}.$$
+
+Reproduce exactamente la energía cinética de un giro rígido de velocidad angular $\boldsymbol\omega$ alrededor de un extremo: $\tfrac12\,\rho A\,\tfrac{L^3}{3}\,|\boldsymbol\omega_\perp|^2 + \tfrac12\,\rho J_p L\,\omega_\parallel^2$, con $\omega_\parallel$ la componente sobre el eje de la barra.
+
+**Concentrada** (`lumping="lumped"`): por nodo, $\rho A L/2$ en $u_x, u_y, u_z$, $\rho J_p L/2$ en $\theta_x$ y la HRZ de la flexión, $\rho A L^3/78$, en $\theta_y$ y $\theta_z$. Diagonal en locales; en globales sólo lo es si el eje del elemento coincide con un eje global: con eje oblicuo el bloque rotacional $\operatorname{diag}(\rho J_p L/2,\ \rho AL^3/78,\ \rho AL^3/78)$ no es escalar y la matriz queda diagonal por bloques por nodo (`CentralDifferenceSolver` la rechaza).
+
+En globales, $\mathbf M_{\text{global}} = \mathbf T^\top\,\mathbf M_{\text{local}}\,\mathbf T$. Hasta el 2026-09-29 la flexión sumaba la inercia rotatoria $\tfrac{\rho I L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ en $\theta_y$ ($I_y$) y $\theta_z$ ($I_z$), y la concentrada usaba $\rho I_y L/2$ y $\rho I_z L/2$ (ver *Diálogo*); la torsión no cambia.
+
 ---
 
 ## Contrato de implementación
@@ -200,10 +228,21 @@ acceptance:
     setup: "section = FiberSection; casos de acceptance de docs/specs/FiberSection.md"
     expect: "reproducción elástica con n_ip = 2 (elemento oblicuo, sección rectangular y mixta), M–κ en los dos ejes, interacción N–M, sección circular a 45°, signos"
 
+  - name: matrices de masa consistente y concentrada   # añadido 2026-09-29
+    setup: "elemento oblicuo con ref_vector genérico, caminos con material y con sección; M_local = T·M·Tᵀ"
+    expect: "consistente = axial + torsión ρJ_pL/6·[[2,1],[1,2]] (J_p = I_y + I_z) + hermítica en xy y, en xz, la hermítica con los acoplamientos traslación-giro de signo opuesto; sin inercia rotatoria de flexión. Concentrada = diag(ρAL/2 ×3, ρJ_pL/2, ρAL³/78, ρAL³/78) por nodo"
+    tol_rel: 1.0e-12
+
+  - name: energía cinética de movimientos rígidos        # añadido 2026-09-29
+    setup: "traslación v; giro ω oblicuo alrededor de un extremo"
+    expect: "½u̇ᵀMu̇ = ρAL|v|²/2 (consistente y concentrada); ½·ρA·L³/3·|ω⊥|² + ½·ρJ_p·L·ω∥² (consistente)"
+    tol_rel: 1.0e-12
+
 references:
   - "Przemieniecki J.S., Theory of Matrix Structural Analysis, Tabla 11.3"
   - "Cook R.D., Concepts and Applications of FEA, §2.8"
   - "Bathe K.-J., Finite Element Procedures, cap. 5"
+  - "Hinton E., Rock T., Zienkiewicz O.C. (1976). A note on mass lumping and related processes in the finite element method. Earthquake Eng. Struct. Dyn. 4, 245-249 (masa concentrada HRZ)"
 ```
 
 ---
@@ -211,7 +250,7 @@ references:
 ## Implementación
 
 - **Archivo**: [solidum/elements/frame3d.py](../../solidum/elements/frame3d.py) — archivo propio, sin dependencia de ningún otro elemento.
-- **Clase**: `Frame3D(FrameSectionMixin, Element)`. Métodos privados `_build_local_frame` (longitud, matriz $\boldsymbol{\lambda}$ 3×3 y $\mathbf T$ 12×12), `_build_local_stiffness` (matriz $\mathbf K_{\text{local}}$ 12×12 con bloques axial, torsión y flexión en ambos planos, camino con material), `_build_section_B` y `_section_element_state` (camino con sección). Comparte con los marcos planos sólo la constitutiva genérica de `FrameSectionMixin` ([solidum/elements/frame/_section.py](../../solidum/elements/frame/_section.py), ADR 0021). `REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}`.
+- **Clase**: `Frame3D(FrameSectionMixin, Element)`. Métodos privados `_build_local_frame` (longitud, matriz $\boldsymbol{\lambda}$ 3×3 y $\mathbf T$ 12×12), `_build_local_stiffness` (matriz $\mathbf K_{\text{local}}$ 12×12 con bloques axial, torsión y flexión en ambos planos, camino con material), `_build_section_B` y `_section_element_state` (camino con sección), `_build_local_mass`, `_build_local_mass_lumped` y `_mass_properties` (masa, §12). Comparte con los marcos planos la constitutiva genérica de `FrameSectionMixin` ([solidum/elements/frame/_section.py](../../solidum/elements/frame/_section.py), ADR 0021) y los bloques de masa de la flexión de [solidum/elements/frame/_shared.py](../../solidum/elements/frame/_shared.py) (`hermite_consistent_mass`, `hrz_rotational_mass`). `REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}`.
 - **Tests**: [tests/test_frame3d.py](../../tests/test_frame3d.py) · `TestFrame3DAcceptance` — cubre los 5 criterios + validación de `ref_vector` paralelo al eje + registro:
   - `test_acceptance_respuesta_axial_pura`
   - `test_acceptance_flexion_xy_coincide_con_frame2d`
@@ -222,12 +261,14 @@ references:
   - `test_registro_en_registry`
   - Criterio 6 (guarda): [tests/test_fiber_section.py](../../tests/test_fiber_section.py) · `TestGuardas` (`test_material_inelastico_remite_a_la_seccion`, `test_exactamente_un_camino`, `test_frame3d_exige_GJ`).
   - Criterio 7 (camino con sección): [tests/validation/test_fiber_section_validation.py](../../tests/validation/test_fiber_section_validation.py) (casos 1, 2, 3, 6 y 7 de la spec FiberSection) y, en `tests/test_fiber_section.py`, `TestTangente.test_frame3d_con_torsion`, `TestMarcosConSeccion.test_torsion_elastica_desacoplada`, `TestMasa`, `TestPesoPropio` y `TestYaml.test_frame3d_torsion_con_GJ_del_yaml`.
+  - Criterios 8 y 9 (masa): [tests/test_frame_mass.py](../../tests/test_frame_mass.py) · `TestFrame3D` (consistente en los dos planos y torsión, signo del plano $xz$, HRZ, $I_y$ e $I_z$ sólo en la torsión), `TestCaminoConSeccion.test_frame3d_con_rho_A_y_rho_Jp_de_las_fibras`, `test_traslacion_rigida_3d`, `test_giro_rigido_3d_consistente` y `test_giro_rigido_por_plano_local_3d`. Diagonalidad por bloques en orientación oblicua: [tests/test_mass_lumping.py](../../tests/test_mass_lumping.py) · `TestLumpedFrame3D`.
 - **Notas de traducción**:
   - La matriz $\boldsymbol{\lambda}$ 3×3 se construye como $[\hat{\mathbf x}^\top; \hat{\mathbf y}^\top; \hat{\mathbf z}^\top]$ — las filas son los ejes locales expresados en coordenadas globales. $\mathbf T$ 12×12 es un `blkdiag` de cuatro copias de $\boldsymbol{\lambda}$ (traslaciones y rotaciones transforman como vectores en 3D infinitesimal).
   - El default de `ref_vector` es `[0, 0, 1]`; el fallback `[1, 0, 0]` se activa cuando $|\hat{\mathbf x} \cdot \hat{\mathbf z}_{\text{global}}| > 0.99$ (barra cercanamente vertical). Ambas rutas emiten advertencia por consola la primera vez que se usan con default.
   - La matriz $\mathbf K_{\text{local}}$ se construye rellenando entradas no nulas en sus 4 bloques desacoplados (axial, torsión, flexión $xy$, flexión $xz$). Los signos de la flexión $xz$ están invertidos respecto a la flexión $xy$ porque la pareja $(u_z, r_y)$ tiene orientación dextrógira opuesta a $(u_y, r_z)$: este punto se verifica explícitamente en `test_acceptance_flexion_xz`.
   - `compute_internal_forces` devuelve cortantes, torsión y momentos en ambos extremos separados — útil para post-proceso estructural (diagramas de fuerzas internas). Con sección añade `section_deformations` y `section_forces` `(n_ip, 3)` = $[\varepsilon_0, \kappa_y, \kappa_z]$ y $[N, M_y, M_z]$ en los puntos de Gauss; como `internal_forces`, evalúa sobre una instantánea del trial y la restaura.
-  - Camino con sección: sin `nu` (`self.nu = None`); la torsión la da `section.GJ`, y una sección sin `GJ` se rechaza al construir. Masa con $(\rho A, \rho I_y, \rho I_z)$ de la sección y $\rho J_p = \rho I_y + \rho I_z$, en las mismas funciones de masa consistente y concentrada; peso propio con $\rho A$ y fuerza de cuerpo con el área bruta $\sum A_i$.
+  - Camino con sección: sin `nu` (`self.nu = None`); la torsión la da `section.GJ`, y una sección sin `GJ` se rechaza al construir. Masa con $\rho A$ de la sección y $\rho J_p = \rho I_y + \rho I_z$ para la torsión, en las mismas funciones de masa consistente y concentrada; peso propio con $\rho A$ y fuerza de cuerpo con el área bruta $\sum A_i$.
+  - Masa (§12): `_mass_properties` devuelve $(\rho A, \rho J_p)$; el plano $xz$ se obtiene de la hermítica del plano $xy$ con $\mathbf S = \operatorname{diag}(1, -1, 1, -1)$ (`_XZ_SIGNS`), el mismo cambio de signo que la rigidez.
 
 ---
 
@@ -238,3 +279,4 @@ references:
 - **2026-04-21** · Verificación cruzada con `Frame2DEuler`: el criterio 2 aplica una viga alineada con el eje $x$ global bajo carga en $y$; los desplazamientos resultantes deben coincidir con la solución 2D clásica $v = PL^3/(3EI_z)$, $\theta = PL^2/(2EI_z)$. El test lo verifica a 8 decimales. Esto blinda la coherencia dimensional: el 3D se reduce al 2D sin error acumulado cuando el problema es efectivamente plano.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
 - **2026-09-29** · Sección por fibras, etapa 1 ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md), [FiberSection](FiberSection.md)). El modelo no lineal anterior —la $E_t$ de la deformación axial escalando toda la matriz local, con $G = E_t/[2(1+\nu)]$— desaparece: con fluencia axial anulaba flectores y torsor, con ablandamiento les cambiaba el signo. Dos caminos excluyentes: `material` + `A`, `Iy`, `Iz`, `J` (+ `nu`), la forma cerrada, sin cambio de resultados, sólo con materiales `IS_LINEAR_ELASTIC = True`; y `section` + `n_ip`, con $\mathbf e = [\varepsilon_0, \kappa_y, \kappa_z]$ integrado en Gauss-Legendre y torsión elástica desacoplada con el `GJ` de la sección (obligatorio). Contrato: parámetros `section` y `n_ip`; `A`, `Iy`, `Iz`, `J` obligatorios sólo con material; criterios 6 (guarda) y 7 (camino con sección). Corrección de notación en §3, sin efecto en código ni resultados: $\kappa_y = -d^2w/ds^2$ (antes $+d^2w/ds^2$), la definición coherente con $M_y = EI_y\,\kappa_y$, con $M_y > 0$ ⇒ tracción en $z > 0$ (Reglas.md §5) y con la matriz de §8, que ya usaba $w' = -\theta_y$.
+- **2026-09-29** · Masa de flexión sin inercia rotatoria (hallazgo clas-4 de la auditoría; **cambio físico aprobado por el usuario**). La consistente sumaba $\tfrac{\rho I L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ en $\theta_y$ (con $I_y$) y en $\theta_z$ (con $I_z$): cinemática de Timoshenko, mientras que Euler-Bernoulli desprecia la inercia rotatoria por hipótesis. Se retira, por los dos caminos: flexión con la hermítica clásica en los dos planos (en $xz$, con $w' = -\theta_y$, los acoplamientos traslación-giro de signo opuesto) y concentrada HRZ $\rho A L^3/78$ en $\theta_y$ y $\theta_z$ en lugar de $\rho I_y L/2$ y $\rho I_z L/2$. La torsión no cambia ($\rho J_p L/6$ y $\rho J_p L/2$, $J_p = I_y + I_z$). Consecuencia: $I_y$ e $I_z$ ya sólo entran en la masa a través de $J_p$. Contrato: §12 y criterios 8 y 9. Los bloques de flexión se comparten ahora con los marcos planos (`_shared.py`).

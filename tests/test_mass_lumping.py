@@ -177,8 +177,10 @@ def _build_frame2d_segment(elem_cls, *, length=2.0, A=1.5e-4, I=8.33e-10,
 
 
 class TestLumpedFrame2D(unittest.TestCase):
-    """Frame 2D: ``lumping="lumped"`` = ``ρAL/2`` traslacional + ``ρIL/2``
-    rotacional por DOF nodal. Diagonal en global para cualquier orientación.
+    """Frame 2D, ``lumping="lumped"``: ``ρAL/2`` traslacional por nodo y,
+    en rotación, la HRZ de la flexión ``ρAL³/78`` en los marcos
+    Euler-Bernoulli (sin inercia rotatoria) o ``ρIL/2`` en Timoshenko (con
+    inercia rotatoria). Diagonal en global para cualquier orientación.
     """
 
     def _check_frame2d(self, elem_cls):
@@ -186,7 +188,10 @@ class TestLumpedFrame2D(unittest.TestCase):
             elem, length = _build_frame2d_segment(elem_cls, angle=angle)
             M_l = elem.compute_mass_matrix(lumping="lumped")
             m_e = elem.material.density * elem.A * length
-            m_r_total = elem.material.density * elem.I * length
+            # HRZ de la flexión hermítica: diagonal consistente
+            # ρAL/420·(156, 4L², 156, 4L²) escalada por 420/312 para que la
+            # traslación sume ρAL ⇒ m_θ = 4L²·ρAL/312 = ρAL³/78 por nodo.
+            m_theta = m_e * 4.0 * length**2 / 312.0
             # Diagonalidad estricta tras rotación.
             off = M_l - np.diag(np.diag(M_l))
             self.assertLess(np.max(np.abs(off)), 1e-12,
@@ -200,11 +205,11 @@ class TestLumpedFrame2D(unittest.TestCase):
                 msg=f"{elem_cls.__name__}: masa traslacional ≠ ρAL "
                     f"@ angle={angle}"
             )
-            # Inercia rotacional total = ρIL.
-            self.assertAlmostEqual(
-                np.sum(diag[rot_idx]), m_r_total,
-                msg=f"{elem_cls.__name__}: inercia rot ≠ ρIL @ angle={angle}"
-            )
+            # Masa rotacional HRZ, independiente de I.
+            np.testing.assert_allclose(
+                diag[rot_idx], m_theta, rtol=1e-13,
+                err_msg=f"{elem_cls.__name__}: masa rotacional ≠ ρAL³/78 "
+                        f"@ angle={angle}")
             # Entradas positivas.
             self.assertTrue(np.all(diag > 0.0))
 
@@ -230,6 +235,9 @@ class TestLumpedFrame2D(unittest.TestCase):
             self.assertAlmostEqual(
                 (M_l[0, 0] + M_l[1, 1] + M_l[3, 3] + M_l[4, 4]) / 2.0, m_e
             )
+            # Inercia rotatoria de la sección repartida: ρIL/2 por nodo.
+            np.testing.assert_allclose(
+                [M_l[2, 2], M_l[5, 5]], 7850.0 * 8.33e-10 * 2.0 / 2.0, rtol=1e-13)
 
     def test_frame2d_euler_corot(self):
         self._check_frame2d(Frame2DEulerCorot)
@@ -246,11 +254,10 @@ class TestLumpedFrame3D(unittest.TestCase):
     un eje global (la rotación T no mezcla DOFs rotacionales locales con
     globales). En orientación oblicua queda **bloque-diagonal** por nodo:
     bloque traslacional 3×3 diagonal (m_t·I_3 es invariante a SO(3)) +
-    bloque rotacional 3×3 lleno (porque ``ρ·Jp·L`` ≠ ``ρ·Iy·L`` ≠
-    ``ρ·Iz·L`` en general — la torsional usa el momento polar y las dos
-    flexionales el geométrico, valores siempre distintos para sección
-    real). Es la limitación estándar del lumped en frames 3D (Cook-
-    Malkus-Plesha §11.4).
+    bloque rotacional 3×3 lleno, porque la masa torsional ``ρJ_pL/2`` y la
+    flexional HRZ ``ρAL³/78`` sólo coincidirían con ``J_p/A = L²/39``,
+    imposible en una barra esbelta. Es la limitación estándar del lumped
+    en frames 3D (Cook-Malkus-Plesha §11.4).
     """
 
     def _build(self, *, Iy, Iz, A=1.5e-4, length=2.0, axis="x"):

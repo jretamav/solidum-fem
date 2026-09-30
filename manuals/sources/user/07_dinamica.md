@@ -3,7 +3,7 @@
 Solidum FEM expone el subsistema modal/dinámico/espectral **completo** (ADR 0009 cerrado en su totalidad 2026-05-18). Cubre los siete regímenes canónicos de la mecánica computacional clásica:
 
 1. **Modal**: autovalores generalizados $\mathbf K \boldsymbol\phi = \omega^2\mathbf M\boldsymbol\phi$ (`ModalSolver`).
-2. **Mass lumping**: matriz de masa diagonal vía HRZ canónico (sólidos) o nodal directo (frames). Disponible en todos los elementos vía `compute_mass_matrix(lumping="lumped")`.
+2. **Mass lumping**: matriz de masa diagonal vía HRZ canónico (sólidos y marcos Euler-Bernoulli) o nodal directo (barras, cables y `Frame2DTimoshenko`). Disponible en todos los elementos vía `compute_mass_matrix(lumping="lumped")`.
 3. **Transitorio implícito lineal**: Newmark-$\beta$ (`NewmarkSolver`) y variante HHT-$\alpha$ con disipación numérica (`HHTSolver`).
 4. **Transitorio implícito no lineal**: Newton-Newmark (`NewtonNewmarkSolver`) y Newton-HHT (`NewtonHHTSolver`).
 5. **Transitorio explícito**: diferencias centradas leapfrog (`CentralDifferenceSolver`).
@@ -16,7 +16,7 @@ Todos los solvers consumen la masa global que cada elemento devuelve por `comput
 
 Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf M \boldsymbol\phi$ con $\mathbf K$ evaluada en $\mathbf u = 0$ (régimen lineal) y $\mathbf M$ ensamblada por cuadratura consistente sobre todos los elementos. La capa algebraica (`EigenSolver`) envuelve `scipy.sparse.linalg.eigsh` con *shift-invert* en $\sigma$ (ARPACK Lanczos), de modo que basta una sola factorización de $\mathbf K - \sigma\mathbf M$ para extraer las $n$ frecuencias más bajas.
 
-**Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0; `sigma=0` extrae las frecuencias más bajas), `which` (default `"LM"`), `tolerance` (default `1.0e-9`), `lumping` (default `"consistent"`; la masa concentrada queda diferida a fase 2 del ADR 0009).
+**Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0; `sigma=0` extrae las frecuencias más bajas), `which` (default `"LM"`), `tolerance` (default `1.0e-9`), `lumping` (default `"consistent"`; `"lumped"` para la masa concentrada, ver *Mass lumping* al final del capítulo).
 
 **Salida**: instancia de `ModalResult` con `frequencies_rad`, `frequencies_hz`, `periods`, `modes` (M-ortonormales). El método `ModalResult.free_vibration(M, u0, u0_dot, t)` reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
 
@@ -266,6 +266,10 @@ solver:
 Independiente de cualquier solver: todos los elementos del catálogo soportan `compute_mass_matrix(lumping="lumped")`. El esquema se elige por familia:
 
 - **Sólidos isoparamétricos** (Tri3, Quad4, Tri6, Quad8, Quad9): **HRZ canónico** (Hinton-Rock-Zienkiewicz 1976) centralizado en `solidum.math.mass_lumping.lump_hrz`. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
-- **Vigas y marcos** (Truss, Cable, Frame2D Euler/Timoshenko/EulerCorot, Frame3D): **lumping nodal directo** — $\rho AL/2$ traslacional + $\rho I L/2$ rotacional por nodo. Único esquema que sobrevive a la rotación local→global manteniendo $\mathbf M$ diagonal.
+- **Barras y cables** (Truss, Cable): $\rho AL/2$ por grado de libertad traslacional y nodo.
+- **Marcos Euler-Bernoulli** (`Frame2DEuler`, `Frame2DEulerCorot`, `Frame3D`): **HRZ** de la masa consistente — $\rho AL/2$ traslacional y $\rho AL^3/78$ en cada giro de flexión por nodo; en `Frame3D`, además, $\rho J_p L/2$ en el giro de torsión ($J_p = I_y + I_z$). Como la hipótesis de Euler-Bernoulli desprecia la inercia rotatoria de la sección, ni la masa consistente ni la concentrada dependen de $I$ (salvo la torsión de `Frame3D`).
+- **`Frame2DTimoshenko`**: $\rho AL/2$ traslacional y $\rho I L/2$ rotacional por nodo — conserva la inercia rotatoria, porque en Timoshenko el giro es independiente de la pendiente.
+
+En los marcos 2D el bloque traslacional por nodo es $m\,\mathbf I_2$, así que la matriz sigue siendo diagonal tras la rotación local→global.
 
 **Diagonalidad en globales**: garantizada en todos los elementos excepto Frame3D con eje oblicuo (queda **bloque-diagonal** por nodo — limitación documentada estándar; `CentralDifferenceSolver` rechaza este caso explícitamente).

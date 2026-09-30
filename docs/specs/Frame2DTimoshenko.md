@@ -90,6 +90,14 @@ $$\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf 
 ### 12. Cuadratura
 No aplica (forma cerrada).
 
+### 13. Matriz de masa
+**Con inercia rotatoria** de la sección: el giro $\theta$ es independiente de la pendiente (§1) y su energía cinética $\tfrac12\rho I\dot\theta^2$ no se desprecia, a diferencia de los marcos Euler-Bernoulli ([Frame2DEuler](Frame2DEuler.md) §13).
+
+- **Consistente**: axial $\tfrac{\rho A L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$, flexión hermítica $\tfrac{\rho A L}{420}\mathbf H$ en $(v_1, \theta_1, v_2, \theta_2)$ (la de Euler-Bernoulli; la interpolación dependiente de $\Phi$ añadiría términos de orden $\Phi$ que se desprecian) e inercia rotatoria $\tfrac{\rho I L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ en $(\theta_1, \theta_2)$.
+- **Concentrada**: $\rho A L/2$ traslacional y $\rho I L/2$ rotacional por nodo.
+
+Se conserva hasta la etapa 2 de la sección por fibras ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md)).
+
 ---
 
 ## Contrato de implementación
@@ -182,6 +190,7 @@ references:
   - El Poisson $\nu$ se toma de `material.nu` si el material lo expone; en su defecto, del parámetro `nu` del elemento con default 0.3 y una advertencia por consola la primera vez que se construye con ese default — atajo a errores silenciosos de usuarios que olvidan especificarlo.
   - La matriz $\mathbf T$ se calcula una sola vez en `__init__` y se guarda como atributo (régimen geométricamente lineal).
   - El factor $\Phi = 24(1+\nu)\,I/(A_s L^2)$ no depende del módulo del material (auditoría 2026-09-22) y, con material elástico lineal, tampoco la matriz local cambia con el estado.
+  - Masa (§13): las funciones de `_shared.py` compartidas con los marcos Euler-Bernoulli, con el argumento `rotary_inertia` $= \rho I$ que sólo pasa este elemento. Verificada en [tests/test_frame_mass.py](../../tests/test_frame_mass.py) · `TestTimoshenkoSinCambio` y en la energía cinética del giro rígido (`test_giro_rigido_2d_consistente`, que suma $\tfrac12\rho I L\omega^2$).
 
 ---
 
@@ -193,3 +202,4 @@ references:
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
 - **2026-09-22** · Auditoría global: `Φ = 24(1+ν)·I/(A_s·L²)`, independiente de E_t: con `E_t = 0` (plasticidad perfecta plastificada) la forma `12·E_t·I/(G·A_s·L²)` dividía 0/0.
 - **2026-09-29** · Sólo material elástico lineal hasta la etapa 2 del [ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md). La auditoría de pureza verificó que el modelo no lineal anterior —la $E_t$ de la deformación axial escalando toda la matriz local, flexión y cortante incluidos— daba fuerzas internas incorrectas en silencio (nulas con fluencia axial, de signo cambiado con ablandamiento). Desaparece: un material con `IS_LINEAR_ELASTIC = False` se rechaza al construir, con un mensaje que remite a los marcos Euler-Bernoulli con sección por fibras. La sección por fibras de este elemento necesita su propia cinemática con cortante (qué hacer con $\gamma$ en las fibras, integración del cortante, tratamiento del bloqueo) y es una decisión física pendiente del usuario (etapa 2). Contrato: criterio de aceptación 4 (guarda); `nonlinearity_model` y `out_of_scope` actualizados.
+- **2026-09-29** · Aclaración, sin cambio de resultados: los marcos Euler-Bernoulli pierden la inercia rotatoria de su masa (cambio aprobado por el usuario, [Frame2DEuler](Frame2DEuler.md) *Diálogo*); este elemento la **conserva** (§13), porque en Timoshenko el giro es independiente, hasta la etapa 2 de las fibras. La matriz es idéntica bit a bit a la anterior; las funciones compartidas de `_shared.py` la reciben ahora como argumento explícito.

@@ -93,6 +93,9 @@ La parte $(N/l)\mathbf z\mathbf z^\top$ es análoga al $\mathbf K_G$ de `Truss2D
 ### 9. Cuadratura
 Camino con material: no aplica (forma cerrada con Hermite cúbicos). Camino con sección: Gauss-Legendre de `n_ip` puntos (3 por defecto, mínimo 2), con `N_INTEGRATION_POINTS = n_ip` como atributo de instancia.
 
+### 10. Matriz de masa
+La de [Frame2DEuler](Frame2DEuler.md) §13, evaluada en la configuración de referencia ($L_0$, $\alpha_0$; Lagrangeano total): **sin inercia rotatoria** de la sección (Euler-Bernoulli), consistente $\tfrac{\rho A L_0}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ axial más la hermítica $\tfrac{\rho A L_0}{420}\mathbf H$ en $(v_1, \theta_1, v_2, \theta_2)$, y concentrada HRZ $\rho A L_0/2$ traslacional y $\rho A L_0^3/78$ rotacional por nodo. Depende sólo de $\rho A$ ($\sum_i \rho_i A_i$ con sección). Hasta el 2026-09-29 llevaba además la inercia rotatoria $\rho I$ (ver *Diálogo*).
+
 ---
 
 ## Contrato de implementación
@@ -187,6 +190,11 @@ acceptance:
     expect: "K_T y F_int iguales; misma solución del arco"
     tol_rel: 1.0e-10
 
+  - name: matrices de masa                                    # añadido 2026-09-29
+    setup: "elemento oblicuo, caminos con material y con sección"
+    expect: "las de Frame2DEuler §13 en la configuración de referencia: consistente axial + hermítica sin inercia rotatoria, concentrada HRZ diag(ρAL₀/2, ρAL₀/2, ρAL₀³/78); ½u̇ᵀMu̇ exacta en traslación y, con la consistente, en giro rígido alrededor de un extremo"
+    tol_rel: 1.0e-12
+
 references:
   - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §7.3 (corotational beams)"
   - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.11"
@@ -208,12 +216,14 @@ references:
   - Bathe-Bolourchi (criterios 5 y 6): `TestFrame2DEulerCorotBatheBolourchi` en el mismo archivo.
   - Guarda (criterio 7): [tests/test_fiber_section.py](../../tests/test_fiber_section.py) · `TestGuardas`.
   - Camino con sección (criterio 8): [tests/validation/test_fiber_section_validation.py](../../tests/validation/test_fiber_section_validation.py) · `test_caso1_reproduccion_elastica_marcos_2d`, `test_caso8_corotacional_elemento_giro_grande`, `test_caso8_corotacional_arco_de_Bathe_Bolourchi`; tangente frente a diferencias finitas con plasticidad y giro de sólido rígido grande en `tests/test_fiber_section.py` · `TestTangente.test_frame2d_euler_corot_con_giro_grande`.
+  - Masa (criterio 9): [tests/test_frame_mass.py](../../tests/test_frame_mass.py) · `TestMarco2DEulerBernoulli` (parametrizado con los dos marcos, incluye `test_corrotacional_igual_al_lineal`), `TestCaminoConSeccion`, `test_traslacion_rigida_2d` y `test_giro_rigido_2d_consistente`.
 - **Notas de traducción**:
   - La formulación se basa en 3 DOFs deformacionales $[u, \bar\theta_1, \bar\theta_2]$ y una matriz $\mathbf B$ $3\times 6$ que los relaciona con los DOFs globales. Evaluada en configuración corriente.
   - **Signo de la contribución de momentos en $\mathbf K_\sigma$**: tras derivar $\partial(\mathbf z/l)/\partial\mathbf u_e$ analíticamente se obtiene $-(1/l^2)(\mathbf r\mathbf z^\top + \mathbf z\mathbf r^\top)$. El signo es **negativo** — un error común es ponerlo positivo. El test de diferencias finitas lo cazó en la primera implementación.
   - `compute_internal_forces` proyecta $\mathbf F_{\text{int}}$ al sistema local corriente para reportar axial/cortante separados, utilizando la submatriz $2\times 2$ de rotación del eje corriente.
   - `_unwrap` lleva los ángulos al intervalo $(-\pi, \pi]$; la formulación es válida mientras la rotación acumulada por paso sea menor que $\pi$.
-  - Camino con sección: $\mathbf B_g$ (2×3) del sistema básico se precalcula al construir (`_build_basic_B`); `_basic_response` devuelve $[N, M_1, M_2]$ y $\mathbf K_{ll}$ integrados, y el resto de `compute_element_state` (matriz $\mathbf B$ 3×6, $\mathbf K_\sigma$) no distingue el camino. `internal_forces` y `compute_internal_forces` evalúan sobre una instantánea del trial y la restauran; el diccionario legado añade `section_deformations` y `section_forces` `(n_ip, 2)`. Masa y peso propio en la configuración de referencia con $(\rho A, \rho I_z)$ de la sección.
+  - Camino con sección: $\mathbf B_g$ (2×3) del sistema básico se precalcula al construir (`_build_basic_B`); `_basic_response` devuelve $[N, M_1, M_2]$ y $\mathbf K_{ll}$ integrados, y el resto de `compute_element_state` (matriz $\mathbf B$ 3×6, $\mathbf K_\sigma$) no distingue el camino. `internal_forces` y `compute_internal_forces` evalúan sobre una instantánea del trial y la restauran; el diccionario legado añade `section_deformations` y `section_forces` `(n_ip, 2)`. Masa y peso propio en la configuración de referencia con $\rho A$ de la sección.
+  - Masa (§10): las mismas funciones de `_shared.py` que `Frame2DEuler` (`_frame2d_consistent_mass_local`, `_frame2d_lumped_mass_local`) con la densidad lineal de `_linear_density` y la $\mathbf T$ de referencia reconstruida desde `alpha0`.
 
 ---
 
@@ -225,3 +235,4 @@ references:
 - **2026-04-21** · El test del límite lineal usa $P=10$ N para obtener $v/L \sim 10^{-4}$: suficientemente pequeño para estar en régimen lineal pero suficientemente grande para que el residuo del solver converja por debajo de `tol=1e-8` (cargas menores producen desplazamientos del orden del ruido numérico y el Newton oscila en la tolerancia relativa).
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
 - **2026-09-29** · Sección por fibras, etapa 1 ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md), [FiberSection](FiberSection.md)). El modelo no lineal anterior —$E_t$ de la deformación axial escalando toda $\mathbf K_{ll}$— desaparece: con fluencia axial anulaba el flector y con ablandamiento le cambiaba el signo. Dos caminos excluyentes: `material` + `A`, `I` (forma cerrada, sin cambio de resultados, sólo materiales con `IS_LINEAR_ELASTIC = True`) y `section` + `n_ip` (la sección se integra en el sistema básico corrotado; la cinemática corrotacional y $\mathbf K_\sigma$ no cambian). Contrato: parámetros `section` y `n_ip`; `A` e `I` obligatorios sólo con material; criterios 7 (guarda) y 8 (camino con sección, verificado a 1e-10 con giros de hasta 150° y en el arco de Bathe-Bolourchi hasta θ = π/2).
+- **2026-09-29** · Masa sin inercia rotatoria (hallazgo clas-4 de la auditoría; **cambio físico aprobado por el usuario**), igual que en [Frame2DEuler](Frame2DEuler.md): se retira el bloque $\tfrac{\rho I L_0}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ de los giros (cinemática de Timoshenko; Euler-Bernoulli desprecia la inercia rotatoria) y la concentrada pasa de $\rho I L_0/2$ a la HRZ $\rho A L_0^3/78$ por giro. Por los dos caminos; la masa ya no depende de $I$. Contrato: §10 y criterio 9.

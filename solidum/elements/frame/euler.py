@@ -204,29 +204,28 @@ class Frame2DEuler(FrameSectionMixin, Element):
         rhoA = self.section.mass_properties()["rhoA"]
         return _frame2d_consistent_body_load(g, rhoA, self.L0, self.T)
 
-    def _mass_arguments(self):
-        """``(ρ, A, I)`` para las funciones de masa de ``_shared``: con sección,
-        ``(1, ρA, ρI_z)`` de la sección (spec §6)."""
+    def _linear_density(self) -> float:
+        """Densidad lineal ``ρA``: ``ρ·A`` con material; ``Σρ_i A_i`` de
+        ``section.mass_properties()`` con sección (spec FiberSection §6)."""
         if self.section is None:
-            return self.material.density, self.A, self.I
-        mp = self.section.mass_properties()
-        return 1.0, mp["rhoA"], mp["rhoIz"]
+            return self.material.density * self.A
+        return self.section.mass_properties()["rhoA"]
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa del Frame2DEuler en ejes globales (ADR 0009).
 
-        **Consistente** (default, fase 1): axial lineal + flexional
-        Hermitiana cúbica + inercia rotacional de sección ``ρI``. Ver
+        Sin inercia rotatoria de la sección: Euler-Bernoulli la desprecia por
+        hipótesis, así que la masa sólo depende de ``ρA`` (no de ``I``).
+
+        **Consistente** (defecto): axial lineal ``ρAL/6·[[2,1],[1,2]]`` y
+        flexión hermítica ``ρAL/420·H``. Ver
         :func:`_frame2d_consistent_mass_local`.
 
-        **Lumped** (fase 2): nodal directo ``ρAL/2`` traslacional + ``ρIL/2``
-        rotacional por nodo. Ver :func:`_frame2d_lumped_mass_local`.
+        **Concentrada** (``"lumped"``): HRZ, ``ρAL/2`` traslacional y
+        ``ρAL³/78`` rotacional por nodo. Ver :func:`_frame2d_lumped_mass_local`.
 
-        Con sección, ``ρA`` y ``ρI`` son los de ``section.mass_properties()``.
-
-        Ambos casos pasan por ``T^T · M_local · T``. Para el lumped, T es
-        ortogonal por bloques compatibles con la diagonalidad: el resultado
-        global también es diagonal.
+        Ambos casos pasan por ``Tᵀ · M_local · T``; la concentrada sigue
+        siendo diagonal en globales.
 
         Returns
         -------
@@ -237,9 +236,9 @@ class Frame2DEuler(FrameSectionMixin, Element):
                 f"Frame2DEuler.compute_mass_matrix: lumping='{lumping}' no "
                 f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        rho, A, I = self._mass_arguments()
+        rhoA = self._linear_density()
         if lumping == "lumped":
-            M_local = _frame2d_lumped_mass_local(rho, A, I, self.L0)
+            M_local = _frame2d_lumped_mass_local(rhoA, self.L0)
         else:
-            M_local = _frame2d_consistent_mass_local(rho, A, I, self.L0)
+            M_local = _frame2d_consistent_mass_local(rhoA, self.L0)
         return self.T.T @ M_local @ self.T

@@ -167,19 +167,27 @@ class Frame2DTimoshenko(FrameSectionMixin, Element):
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa del Frame2DTimoshenko en ejes globales (ADR 0009).
 
-        **Consistente**: idéntica en forma a la de Frame2DEuler — la
-        densidad lineal ``ρA`` no depende de ``As`` ni de ``Φ``; la versión
-        Hermite-blended introduce términos ``O(Φ²)`` despreciables. Ver
+        Con **inercia rotatoria** de la sección: en Timoshenko el giro es
+        independiente de la pendiente y su energía cinética ``½ρIθ̇²`` no se
+        desprecia (a diferencia de los marcos Euler-Bernoulli, que no la
+        llevan). Se conserva esta masa hasta la etapa 2 de las fibras
+        (ADR 0021).
+
+        **Consistente**: axial lineal + flexión hermítica ``ρAL/420·H`` (la
+        versión con interpolación dependiente de ``Φ`` añadiría términos
+        ``O(Φ)`` que aquí se desprecian) + inercia rotatoria
+        ``ρIL/6·[[2,1],[1,2]]`` en ``(rz_i, rz_j)``. Ver
         :func:`_frame2d_consistent_mass_local`.
 
-        **Lumped** (fase 2): nodal directo ``ρAL/2`` traslacional + ``ρIL/2``
+        **Concentrada** (``"lumped"``): ``ρAL/2`` traslacional + ``ρIL/2``
         rotacional por nodo. Ver :func:`_frame2d_lumped_mass_local`.
         """
         rho = self.material.density
+        rhoA, rhoI = rho * self.A, rho * self.I
         if lumping == "lumped":
-            M_local = _frame2d_lumped_mass_local(rho, self.A, self.I, self.L0)
+            M_local = _frame2d_lumped_mass_local(rhoA, self.L0, rotary_inertia=rhoI)
         elif lumping == "consistent":
-            M_local = _frame2d_consistent_mass_local(rho, self.A, self.I, self.L0)
+            M_local = _frame2d_consistent_mass_local(rhoA, self.L0, rotary_inertia=rhoI)
         else:
             raise NotImplementedError(
                 f"Frame2DTimoshenko.compute_mass_matrix: lumping='{lumping}' "

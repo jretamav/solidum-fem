@@ -4,9 +4,11 @@
 Implementación **independiente** del resto de elementos: no hereda de
 ningún otro elemento; la construcción de ejes locales, la matriz de
 transformación 12×12 y la rigidez local se generan íntegramente dentro de
-la clase. Comparte con los marcos planos sólo la constitutiva genérica de
+la clase. Comparte con los marcos planos la constitutiva genérica de
 ``solidum.elements.frame._section`` (ADR 0021: forma cerrada con material
-elástico lineal o integración de una sección). Ver docs/specs/Frame3D.md.
+elástico lineal o integración de una sección) y los bloques de masa de la
+flexión de ``solidum.elements.frame._shared`` (masa hermítica y masa
+rotacional HRZ). Ver docs/specs/Frame3D.md.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from solidum.elements.frame._section import (
     FrameSectionMixin,
     hermite_second_derivatives,
 )
+from solidum.elements.frame._shared import hermite_consistent_mass, hrz_rotational_mass
 from solidum.logging import get_logger
 from solidum.registry import ElementRegistry, MaterialRegistry, SectionRegistry
 from solidum.results import ElementForces
@@ -378,42 +381,39 @@ class Frame3D(FrameSectionMixin, Element):
             },
         )
 
-    def _build_local_mass(self, rhoA: float, rhoIy: float, rhoIz: float,
-                          rhoJp: float) -> np.ndarray:
+    # Signos de la flexión en el plano xz: con (w, θ_y) y w' = −θ_y, la masa
+    # hermítica del plano xy (v, θ_z con v' = θ_z) cambia de signo en los
+    # términos que llevan exactamente un giro: H_xz = S·H_xy·S.
+    _XZ_SIGNS = np.diag([1.0, -1.0, 1.0, -1.0])
+    _IDX_XY = [1, 5, 7, 11]     # (uy_i, rz_i, uy_j, rz_j)
+    _IDX_XZ = [2, 4, 8, 10]     # (uz_i, ry_i, uz_j, ry_j)
+
+    def _build_local_mass(self, rhoA: float, rhoJp: float) -> np.ndarray:
         """Matriz de masa consistente 12×12 en ejes locales del elemento.
 
-        Recibe las propiedades másicas por unidad de longitud: ``ρA``,
-        ``ρI_y``, ``ρI_z`` y ``ρJ_p`` (con material, ``ρ`` por las
-        propiedades geométricas; con sección, las de
-        ``section.mass_properties()`` y ``ρJ_p = ρI_y + ρI_z``).
-
-        Contribuciones desacopladas, ensambladas en el layout local
+        Recibe las propiedades másicas por unidad de longitud ``ρA`` y
+        ``ρJ_p`` (ver :meth:`_mass_properties`). Contribuciones desacopladas
+        en el layout local
         ``[ux_i, uy_i, uz_i, rx_i, ry_i, rz_i, ux_j, uy_j, uz_j, rx_j, ry_j, rz_j]``:
 
-        - **Axial** (ux_i, ux_j): ``(ρAL/6) · [[2,1],[1,2]]``.
-        - **Torsión** (rx_i, rx_j): ``(ρ·Jp·L/6) · [[2,1],[1,2]]`` con
-          ``Jp = Iy + Iz`` (momento polar geométrico de área, no la constante
-          torsional de Saint-Venant ``J`` — esa rige la rigidez, no la inercia).
-        - **Flexión xy** (uy_i, rz_i, uy_j, rz_j): masa Hermitiana cúbica
-          ``(ρAL/420) · H`` con la convención sign-aware ``θ_z = +dw_y/dx``.
-        - **Flexión xz** (uz_i, ry_i, uz_j, ry_j): masa Hermitiana con
-          ``θ_y = −dw_z/dx`` (signo opuesto al de la flexión xy en todos los
-          términos que llevan una rotación una sola vez). Coherente con la
-          construcción de la rigidez ``K_local`` en este mismo elemento.
-        - **Inercia rotacional propia de sección** en flexión (ADR 0009 §1):
-          ``ρ·Iz·L/6 · [[2,1],[1,2]]`` para los DOFs ``rz_i, rz_j`` y
-          ``ρ·Iy·L/6 · [[2,1],[1,2]]`` para los DOFs ``ry_i, ry_j``. Recoge
-          la energía cinética de rotación de la sección alrededor de cada
-          eje local. La componente torsional ``rx`` ya está cubierta por el
-          término torsional (con ``Jp = Iy + Iz``).
+        - **Axial** ``(ux_i, ux_j)``: ``(ρAL/6)·[[2,1],[1,2]]``.
+        - **Torsión** ``(rx_i, rx_j)``: ``(ρJ_pL/6)·[[2,1],[1,2]]`` con
+          ``J_p = I_y + I_z`` (momento polar geométrico de área, no la
+          constante torsional de Saint-Venant ``J``, que rige la rigidez).
+        - **Flexión xy** ``(uy_i, rz_i, uy_j, rz_j)``: masa hermítica
+          ``ρAL/420·H`` (:func:`hermite_consistent_mass`) con ``v' = θ_z``.
+        - **Flexión xz** ``(uz_i, ry_i, uz_j, ry_j)``: la misma con
+          ``w' = −θ_y``: ``S·H·S`` con ``S = diag(1, −1, 1, −1)``, es decir,
+          los términos de acoplamiento traslación-giro cambian de signo.
+          Coherente con la rigidez ``K_local`` de este elemento.
+
+        Sin inercia rotatoria de flexión: Euler-Bernoulli la desprecia por
+        hipótesis (antes de 2026-09-29 se sumaba ``ρI·L/6·[[2,1],[1,2]]`` en
+        ``ry`` y ``rz``, cinemática de Timoshenko).
         """
         L = self.L0
-        L2 = L * L
         c_ax = rhoA * L / 6.0
-        c_tr = rhoA * L / 420.0
         c_tor = rhoJp * L / 6.0
-        c_rot_y = rhoIy * L / 6.0
-        c_rot_z = rhoIz * L / 6.0
 
         M = np.zeros((12, 12))
 
@@ -425,69 +425,34 @@ class Frame3D(FrameSectionMixin, Element):
         M[3, 3]  = 2.0 * c_tor; M[3, 9]  = 1.0 * c_tor
         M[9, 3]  = 1.0 * c_tor; M[9, 9]  = 2.0 * c_tor
 
-        # Flexión xy: idx_xy = [uy_i=1, rz_i=5, uy_j=7, rz_j=11]
-        H_xy = c_tr * np.array([
-            [156.0,   22.0 * L,   54.0,  -13.0 * L],
-            [22.0 * L,  4.0 * L2,  13.0 * L, -3.0 * L2],
-            [54.0,    13.0 * L,  156.0,  -22.0 * L],
-            [-13.0 * L, -3.0 * L2, -22.0 * L,  4.0 * L2],
-        ])
-        idx_xy = [1, 5, 7, 11]
-        for i, gi in enumerate(idx_xy):
-            for j, gj in enumerate(idx_xy):
-                M[gi, gj] = H_xy[i, j]
-
-        # Flexión xz: idx_xz = [uz_i=2, ry_i=4, uz_j=8, ry_j=10]. Mismos
-        # coeficientes que H_xy, pero con signo invertido en los términos
-        # que involucran exactamente una rotación (filas/columnas 1 y 3).
-        S = np.diag([1.0, -1.0, 1.0, -1.0])
-        H_xz = S @ H_xy @ S
-        idx_xz = [2, 4, 8, 10]
-        for i, gi in enumerate(idx_xz):
-            for j, gj in enumerate(idx_xz):
-                M[gi, gj] = H_xz[i, j]
-
-        # Inercia rotacional propia de sección sobre ry (5,11) y rz (4,10)
-        # son los DOFs de rotación; idx_ry = [4, 10], idx_rz = [5, 11].
-        M[5, 5]  += 2.0 * c_rot_z; M[5, 11] += 1.0 * c_rot_z
-        M[11, 5] += 1.0 * c_rot_z; M[11, 11] += 2.0 * c_rot_z
-        M[4, 4]  += 2.0 * c_rot_y; M[4, 10] += 1.0 * c_rot_y
-        M[10, 4] += 1.0 * c_rot_y; M[10, 10] += 2.0 * c_rot_y
-
+        # Flexión en los dos planos.
+        H_xy = hermite_consistent_mass(rhoA, L)
+        S = self._XZ_SIGNS
+        M[np.ix_(self._IDX_XY, self._IDX_XY)] = H_xy
+        M[np.ix_(self._IDX_XZ, self._IDX_XZ)] = S @ H_xy @ S
         return M
 
-    def _build_local_mass_lumped(self, rhoA: float, rhoIy: float, rhoIz: float,
-                                 rhoJp: float) -> np.ndarray:
-        """Matriz de masa lumped 12×12 en ejes locales (ADR 0009 fase 2).
+    def _build_local_mass_lumped(self, rhoA: float, rhoJp: float) -> np.ndarray:
+        """Matriz de masa concentrada 12×12 en ejes locales (ADR 0009).
 
         Mismas propiedades másicas por unidad de longitud que
-        :meth:`_build_local_mass`.
+        :meth:`_build_local_mass`. Por nodo:
 
-        Esquema nodal directo:
+        - Traslacional ``m_t = ρAL/2`` en ``ux``, ``uy``, ``uz``.
+        - Torsional ``m_rx = ρJ_pL/2`` con ``J_p = I_y + I_z``.
+        - Flexional HRZ ``m_ry = m_rz = ρAL³/78`` (:func:`hrz_rotational_mass`),
+          sin inercia rotatoria de la sección (Euler-Bernoulli).
 
-        - Traslacional ``m_t = ρAL/2`` por DOF (``ux``, ``uy``, ``uz``).
-        - Rotacional torsional ``m_rx = ρ·Jp·L/2`` con ``Jp = Iy + Iz``
-          (momento polar geométrico).
-        - Rotacional flexional ``m_ry = ρ·Iy·L/2``, ``m_rz = ρ·Iz·L/2``.
-
-        Diagonal en local. **En global la diagonalidad se preserva sólo
-        cuando el eje del elemento coincide con un eje global** (la
-        rotación T no mezcla DOFs locales con globales en los grados
-        rotacionales). En orientación oblicua, el bloque traslacional 3×3
-        por nodo permanece diagonal porque ``m_t·I_3`` es invariante a
-        SO(3); el bloque rotacional 3×3 por nodo no es escalar porque
-        ``m_rx = ρJp·L/2``, ``m_ry = ρIy·L/2``, ``m_rz = ρIz·L/2`` son
-        valores siempre distintos para una sección real (la torsional usa
-        el momento polar geométrico ``Jp = Iy + Iz``, las flexionales sólo
-        ``Iy`` o ``Iz``), de modo que tras rotar T el bloque rotacional
-        queda lleno. M_global resulta entonces **bloque-diagonal** por
-        nodo. Es la limitación estándar del lumping en frames 3D
-        (Cook-Malkus-Plesha §11.4): aceptable para Newmark/HHT
-        (factorización requerida igualmente) y para diferencias centradas
-        con inversión local de bloques 6×6 baratos por nodo.
-
-        Layout local: ``[ux_i, uy_i, uz_i, rx_i, ry_i, rz_i,
-        ux_j, uy_j, uz_j, rx_j, ry_j, rz_j]``.
+        Diagonal en locales. **En globales la diagonalidad sólo se conserva
+        cuando el eje del elemento coincide con un eje global.** En
+        orientación oblicua el bloque traslacional 3×3 por nodo sigue siendo
+        diagonal (``m_t·I₃`` es invariante ante SO(3)), pero el rotacional
+        ``diag(m_rx, m_θ, m_θ)`` no es escalar: ``m_rx = ρJ_pL/2`` y
+        ``m_θ = ρAL³/78`` coincidirían sólo si ``J_p/A = L²/39``, imposible
+        en una barra esbelta. Tras rotar queda lleno y ``M_global`` es
+        **diagonal por bloques** por nodo: la limitación estándar de la masa
+        concentrada en marcos 3D, aceptable para Newmark/HHT;
+        ``CentralDifferenceSolver`` la rechaza.
 
         Returns
         -------
@@ -496,25 +461,23 @@ class Frame3D(FrameSectionMixin, Element):
         L = self.L0
         m_t = rhoA * L / 2.0
         m_rx = rhoJp * L / 2.0
-        m_ry = rhoIy * L / 2.0
-        m_rz = rhoIz * L / 2.0
-        return np.diag([m_t, m_t, m_t, m_rx, m_ry, m_rz,
-                        m_t, m_t, m_t, m_rx, m_ry, m_rz])
+        m_th = hrz_rotational_mass(rhoA, L)
+        return np.diag([m_t, m_t, m_t, m_rx, m_th, m_th,
+                        m_t, m_t, m_t, m_rx, m_th, m_th])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa del Frame3D en ejes globales (ADR 0009).
 
-        **Consistente** (fase 1): :meth:`_build_local_mass` (axial +
-        Hermitiana cúbica en los dos planos de flexión + inercia
-        rotacional de sección ``ρI`` en ambos ejes locales + torsión
-        ``ρJp``).
+        **Consistente**: :meth:`_build_local_mass` (axial, torsión ``ρJ_p``
+        y flexión hermítica en los dos planos, sin inercia rotatoria de
+        flexión).
 
-        **Lumped** (fase 2): :meth:`_build_local_mass_lumped`. Ver allí la
-        nota sobre Iy ≠ Iz y bloque-diagonalidad en global.
+        **Concentrada** (``"lumped"``): :meth:`_build_local_mass_lumped`
+        (HRZ en la flexión). Ver allí la nota sobre la diagonalidad por
+        bloques en orientación oblicua.
 
-        Con sección, las propiedades másicas son las de
-        ``section.mass_properties()`` (spec ``FiberSection`` §6), con la
-        inercia torsional ``ρJ_p = ρI_y + ρI_z``.
+        Con sección, las propiedades másicas salen de
+        ``section.mass_properties()`` (spec ``FiberSection`` §6).
 
         Returns
         -------
@@ -533,15 +496,14 @@ class Frame3D(FrameSectionMixin, Element):
         return self.T.T @ M_local @ self.T
 
     def _mass_properties(self):
-        """``(ρA, ρI_y, ρI_z, ρJ_p)`` por unidad de longitud. Con material,
-        ``ρ`` por ``A``, ``I_y``, ``I_z`` y el momento polar geométrico
-        ``J_p = I_y + I_z``; con sección, ``section.mass_properties()``."""
+        """``(ρA, ρJ_p)`` por unidad de longitud. Con material, ``ρ·A`` y
+        ``ρ·(I_y + I_z)``; con sección, ``ρA`` y ``ρI_y + ρI_z`` de
+        ``section.mass_properties()``. ``ρJ_p`` sólo entra en la torsión."""
         if self.section is None:
             rho = self.material.density
-            return (rho * self.A, rho * self.Iy, rho * self.Iz,
-                    rho * (self.Iy + self.Iz))
+            return rho * self.A, rho * (self.Iy + self.Iz)
         mp = self.section.mass_properties()
-        return mp["rhoA"], mp["rhoIy"], mp["rhoIz"], mp["rhoIy"] + mp["rhoIz"]
+        return mp["rhoA"], mp["rhoIy"] + mp["rhoIz"]
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con ∫NᵀbA dx para marco 3D (peso propio).

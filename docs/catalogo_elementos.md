@@ -269,6 +269,19 @@ F_int    = Tᵀ · F_int_local    (componente axial con σ·A del material)
 ### Cargas distribuidas
 - `compute_body_load(b)` distribuye `q = A · b` (carga por unidad de longitud; con sección, `A = Σ A_i`) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal `q·L/2` en fuerza y `±q·L²/12` en momento (signo positivo en nodo i, negativo en j). Transformación local↔global vía la misma `T` del elemento. El peso propio usa `ρA` (con sección, `Σ ρ_i A_i`).
 
+### Masa
+**Sin inercia rotatoria** de la sección (Euler-Bernoulli la desprecia por hipótesis): sólo depende de `ρA` (`ρ·A`; con sección, `Σ ρ_i A_i`), no de `I`.
+```
+Consistente:  axial  ρAL/6 · [[2,1],[1,2]]                         en (u₁, u₂)
+              flexión ρAL/420 · [[ 156,  22L,   54, −13L],
+                                 [ 22L,  4L²,  13L, −3L²],
+                                 [  54,  13L,  156, −22L],
+                                 [−13L, −3L², −22L,  4L²]]           en (v₁, θ₁, v₂, θ₂)
+Concentrada (HRZ): ρAL/2 en ux y uy, ρAL³/78 en rz, por nodo (diagonal también en globales)
+M_global = Tᵀ · M_local · T
+```
+La consistente reproduce exactamente la energía cinética de la traslación y del giro rígidos. Hasta el 2026-09-29 sumaba la inercia rotatoria `ρIL/6·[[2,1],[1,2]]` en los giros y la concentrada usaba `ρIL/2` (cinemática de Timoshenko; cambio aprobado por el usuario, spec §13).
+
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`); peraltadas → `Frame2DTimoshenko`.
 - Pequeños desplazamientos, pequeñas rotaciones.
@@ -278,7 +291,7 @@ F_int    = Tᵀ · F_int_local    (componente axial con σ·A del material)
 Vive en el paquete `solidum/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `solidum/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
 
 ### Validación
-- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$). Camino con sección y guarda: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica, M–κ, interacción N–M, colapso del voladizo y de la viga biempotrada) y [tests/test_fiber_section.py](../tests/test_fiber_section.py).
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$). Camino con sección y guarda: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica, M–κ, interacción N–M, colapso del voladizo y de la viga biempotrada) y [tests/test_fiber_section.py](../tests/test_fiber_section.py). Masa: [tests/test_frame_mass.py](../tests/test_frame_mass.py) (matrices frente a las fórmulas, energía cinética de movimientos rígidos, frecuencias como cotas superiores de Euler-Bernoulli; también `Frame2DEulerCorot` y `Frame2DTimoshenko`).
 - Archivo fuente: [solidum/elements/frame/euler.py](../solidum/elements/frame/euler.py) · clase `Frame2DEuler`; constitutiva común de los marcos en [solidum/elements/frame/_section.py](../solidum/elements/frame/_section.py) (`FrameSectionMixin`).
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
@@ -319,6 +332,9 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 
 ### Cargas distribuidas
 - `compute_body_load(b)` usa la misma fórmula consistente Hermite cúbica que `Frame2DEuler` (idéntica para carga uniforme — la diferencia entre formulaciones aparece solo con cargas no uniformes o concentradas).
+
+### Masa
+**Con inercia rotatoria** de la sección (el giro es independiente de la pendiente): la consistente de `Frame2DEuler` más `ρIL/6·[[2,1],[1,2]]` en `(rz_i, rz_j)`; la concentrada, `ρAL/2` traslacional y `ρIL/2` rotacional por nodo. Se conserva hasta la etapa 2 de las fibras (ADR 0021).
 
 ### Régimen de validez
 - Vigas gruesas/peraltadas (`L/h ≲ 10`); para esbeltas → `Frame2DEuler` (más simple y sin shear locking).
@@ -365,6 +381,9 @@ con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
 
 ### Cargas distribuidas
 - `compute_body_load(b)` evalúa la integral consistente en la configuración de referencia (misma fórmula Hermite cúbica que `Frame2DEuler`). Para grandes rotaciones con cargas conservadoras (gravedad) la diferencia frente a la integración sobre la geometría corriente es de segundo orden y se asume aceptable.
+
+### Masa
+La de `Frame2DEuler` en la configuración de referencia (`L₀`, `α₀`): sin inercia rotatoria, consistente axial + hermítica y concentrada HRZ (`ρAL₀/2`, `ρAL₀³/78`).
 
 ### Régimen de validez
 - `|ε_axial| ≲ 10⁻²`.
@@ -428,14 +447,25 @@ K_global = Tᵀ K_local T
 - Sin alabeo (secciones macizas o cerradas).
 - Para grandes rotaciones en 3D: pendiente `Frame3DCorot`.
 
+### Masa
+Bloques desacoplados en ejes locales. La flexión **no lleva inercia rotatoria** (Euler-Bernoulli); la torsión sí, con el momento polar geométrico `J_p = I_y + I_z` (no la `J` de Saint-Venant). Con sección, `ρA = Σ ρ_i A_i` y `ρJ_p = ρI_y + ρI_z`.
+```
+Consistente:  axial      ρAL/6  · [[2,1],[1,2]]            en (u₁, u₂)
+              torsión    ρJ_pL/6 · [[2,1],[1,2]]           en (θx₁, θx₂)
+              flexión xy ρAL/420 · H                       en (v₁, θz₁, v₂, θz₂)   (H de Frame2DEuler)
+              flexión xz ρAL/420 · S·H·S, S = diag(1,−1,1,−1)  en (w₁, θy₁, w₂, θy₂)
+Concentrada:  ρAL/2 en ux, uy, uz; ρJ_pL/2 en rx; ρAL³/78 (HRZ) en ry y rz, por nodo
+```
+En el plano `xz`, por `w' = −θ_y`, los términos de acoplamiento traslación-giro tienen el signo opuesto al del plano `xy`, como en la rigidez. Hasta el 2026-09-29 la flexión sumaba la inercia rotatoria `ρI_yL/6`, `ρI_zL/6` (concentrada `ρI_yL/2`, `ρI_zL/2`); la torsión no cambió.
+
 ### Masa lumped: limitación en orientación oblicua
-La masa lumped es estrictamente diagonal en ejes locales (`ρAL/2` traslacional, `ρI·L/2` rotacional con `I` específica por DOF). Tras la rotación `T^T·M·T` a globales, el bloque traslacional 3×3 por nodo permanece diagonal porque `m_t·I₃` es invariante bajo SO(3), pero el bloque rotacional 3×3 queda **lleno** porque `m_rx = ρJp·L/2`, `m_ry = ρIy·L/2`, `m_rz = ρIz·L/2` son valores distintos para una sección real. `M_global` resulta entonces **bloque-diagonal por nodo** (no estrictamente diagonal). Es la limitación estándar del lumping en frames 3D (Cook-Malkus-Plesha §11.4); aceptable para Newmark/HHT pero `CentralDifferenceSolver` rechaza con `ValueError` y orienta al usuario hacia Newmark o hacia un eje del elemento alineado con un eje global.
+La masa concentrada es estrictamente diagonal en ejes locales. Tras la rotación `T^T·M·T` a globales, el bloque traslacional 3×3 por nodo permanece diagonal porque `m_t·I₃` es invariante bajo SO(3), pero el bloque rotacional 3×3 queda **lleno** porque `diag(ρJ_pL/2, ρAL³/78, ρAL³/78)` no es escalar (los dos valores sólo coincidirían con `J_p/A = L²/39`, imposible en una barra esbelta). `M_global` resulta entonces **bloque-diagonal por nodo** (no estrictamente diagonal). Es la limitación estándar del lumping en frames 3D (Cook-Malkus-Plesha §11.4); aceptable para Newmark/HHT pero `CentralDifferenceSolver` rechaza con `ValueError` y orienta al usuario hacia Newmark o hacia un eje del elemento alineado con un eje global.
 
 ### Independencia del diseño
-Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimoshenko`, ni con los trusses 3D.
+Archivo propio. No hereda de `Frame2DEuler`, `Frame2DTimoshenko` ni de los trusses 3D. Comparte con los marcos planos la constitutiva genérica de `solidum/elements/frame/_section.py` (ADR 0021) y los bloques de masa de la flexión de `solidum/elements/frame/_shared.py` (`hermite_consistent_mass`, `hrz_rotational_mass`).
 
 ### Validación
-- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro). Camino con sección: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica en elemento oblicuo, M–κ en los dos ejes, interacción N–M, sección circular a 45°) y [tests/test_fiber_section.py](../tests/test_fiber_section.py) (tangente con torsión frente a diferencias finitas, torsión desacoplada, `GJ` desde el YAML).
+- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro). Camino con sección: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica en elemento oblicuo, M–κ en los dos ejes, interacción N–M, sección circular a 45°) y [tests/test_fiber_section.py](../tests/test_fiber_section.py) (tangente con torsión frente a diferencias finitas, torsión desacoplada, `GJ` desde el YAML). Masa: [tests/test_frame_mass.py](../tests/test_frame_mass.py) · `TestFrame3D` y energía cinética del giro rígido oblicuo.
 - Archivo fuente: [solidum/elements/frame3d.py](../solidum/elements/frame3d.py) · clase `Frame3D`.
 - Spec: [docs/specs/Frame3D.md](specs/Frame3D.md).
 - Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
@@ -456,7 +486,7 @@ La consumen `Frame2DEuler`, `Frame2DEulerCorot` y `Frame3D` con su parámetro `s
 - **Materiales de fibra**: cualquiera con `STRAIN_DIM = 1` (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`, `CableMaterial1D`); un material 2D o 3D se rechaza al construir.
 - **Discretización** (primitivas con la API de OpenSees): `RectangularPatch` (rejilla `ny × nz`, fibra en el centro de cada celda; `n` capas integran `EI = E·b·h³/12·(1 − 1/n²)`), `CircularPatch` (corona maciza o hueca en `n_rad × n_circ` sectores, fibra en el centroide del sector con su área exacta; ángulos desde `+y` hacia `+z`, primer sector en 0), `BarLayer` (`n` barras equiespaciadas de `start` a `end` inclusive), `Fiber` (fibra suelta).
 - **Torsión** (3D): elástica y desacoplada, `T = GJ·θₓ'` con `GJ` declarado en la sección; obligatorio sólo si la usa un `Frame3D`. No se degrada cuando las fibras fluyen.
-- **Masa y peso propio**: `ρA = Σ ρ_i A_i`, `ρI_z = Σ ρ_i y_i² A_i`, `ρI_y = Σ ρ_i z_i² A_i`, con las fórmulas de masa consistente y concentrada de los marcos elásticos. Una fibra sin `density` da el error agregado de siempre.
+- **Masa y peso propio**: `ρA = Σ ρ_i A_i`, `ρI_z = Σ ρ_i y_i² A_i`, `ρI_y = Σ ρ_i z_i² A_i`, con las fórmulas de masa consistente y concentrada de los marcos elásticos. Sin inercia rotatoria de flexión (Euler-Bernoulli), la masa sólo usa `ρA`; `ρI_y + ρI_z` entra en la inercia torsional de `Frame3D`. Una fibra sin `density` da el error agregado de siempre.
 - **Elemento**: en desplazamientos, Gauss-Legendre con `n_ip` puntos (3 por defecto, mínimo 2; con 2 se reproduce exactamente el marco elástico en forma cerrada).
 - **YAML**:
   ```yaml

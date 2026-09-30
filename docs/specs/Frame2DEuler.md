@@ -97,6 +97,28 @@ Camino con material: no aplica (forma cerrada; integración analítica de los po
 
 Camino con sección: Gauss-Legendre de `n_ip` puntos a lo largo del elemento (3 por defecto, mínimo 2). El elemento fija `N_INTEGRATION_POINTS = n_ip` como atributo de instancia; el atributo de clase sigue en 1.
 
+### 13. Matriz de masa
+**Sin inercia rotatoria de la sección.** La hipótesis de Euler-Bernoulli ($\theta = dv/ds$, §1) la desprecia: la energía cinética es la de la traslación del eje, $T = \tfrac12\int_0^L \rho A\,(\dot u^2 + \dot v^2)\,ds$. La masa depende sólo de la densidad lineal $\rho A$ ($\rho\cdot A$ con material; $\sum_i \rho_i A_i$ con sección, [FiberSection](FiberSection.md) §6), no de $I$.
+
+**Consistente** (`lumping="consistent"`, por defecto), $\int_0^L \rho A\,\mathbf N^\top\mathbf N\,ds$ con las funciones de forma del §8:
+$$\mathbf M_{\text{axial}} = \frac{\rho A L}{6}\begin{bmatrix}2 & 1\\ 1 & 2\end{bmatrix}\ \text{en}\ (u_1, u_2), \qquad
+\mathbf M_{\text{flex}} = \frac{\rho A L}{420}\begin{bmatrix}
+156 & 22L & 54 & -13L \\
+22L & 4L^2 & 13L & -3L^2 \\
+54 & 13L & 156 & -22L \\
+-13L & -3L^2 & -22L & 4L^2
+\end{bmatrix}\ \text{en}\ (v_1, \theta_1, v_2, \theta_2).$$
+
+Reproduce exactamente la energía cinética de los movimientos rígidos, que la interpolación contiene: $\rho A L\,|\mathbf v|^2/2$ en una traslación y $\tfrac12\,\rho A\,\tfrac{L^3}{3}\,\omega^2$ en un giro alrededor de un extremo. Con ella las frecuencias discretas son cotas superiores de las de Euler-Bernoulli (Rayleigh-Ritz conforme).
+
+**Concentrada** (`lumping="lumped"`), HRZ (Hinton, Rock y Zienkiewicz 1976): la diagonal consistente escalada para que los términos traslacionales de cada dirección sumen $\rho A L$. En la flexión la diagonal es $\tfrac{\rho A L}{420}(156, 4L^2, 156, 4L^2)$ y el factor $420/312$:
+$$m_u = m_v = \frac{\rho A L}{2}, \qquad m_\theta = \frac{\rho A L^3}{78} \quad \text{por nodo}.$$
+El bloque traslacional por nodo es $m\,\mathbf I_2$, invariante ante la rotación: la matriz es diagonal también en globales, requisito de `CentralDifferenceSolver`.
+
+En globales, $\mathbf M_{\text{global}} = \mathbf T^\top\,\mathbf M_{\text{local}}\,\mathbf T$.
+
+Hasta el 2026-09-29 la consistente sumaba $\tfrac{\rho I L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ en $(\theta_1, \theta_2)$ y la concentrada usaba $\rho I L/2$ por giro: inercia rotatoria de la cinemática de Timoshenko, no de Euler-Bernoulli (ver *Diálogo*).
+
 ---
 
 ## Contrato de implementación
@@ -173,9 +195,20 @@ acceptance:
     setup: "section = FiberSection; casos de acceptance de docs/specs/FiberSection.md"
     expect: "reproducción elástica con n_ip = 2, momento–curvatura, interacción N–M, colapso del voladizo y de la viga biempotrada, signos"
 
+  - name: matrices de masa consistente y concentrada   # añadido 2026-09-29
+    setup: "elemento oblicuo, caminos con material y con sección (ρA = Σρ_i A_i); M_local = T·M·Tᵀ"
+    expect: "consistente = axial ρAL/6·[[2,1],[1,2]] + hermítica ρAL/420·H, sin inercia rotatoria (independiente de I); concentrada HRZ = diag(ρAL/2, ρAL/2, ρAL³/78) por nodo, diagonal también en globales"
+    tol_rel: 1.0e-12
+
+  - name: energía cinética de movimientos rígidos        # añadido 2026-09-29
+    setup: "traslación v y giro ω alrededor de un extremo"
+    expect: "½u̇ᵀMu̇ = ρAL|v|²/2 (consistente y concentrada) y ½·ρA·L³/3·ω² (consistente)"
+    tol_rel: 1.0e-12
+
 references:
   - "Bathe K.-J., Finite Element Procedures, §4.2 (formulación isoparamétrica) y cap. 5 (vigas)"
   - "Cook R.D., Concepts and Applications of FEA, §2.7 (elementos de viga)"
+  - "Hinton E., Rock T., Zienkiewicz O.C. (1976). A note on mass lumping and related processes in the finite element method. Earthquake Eng. Struct. Dyn. 4, 245-249 (masa concentrada HRZ)"
 ```
 
 ---
@@ -191,10 +224,12 @@ references:
   - `test_registro_en_registry` — autodiscover.
   - Criterio 4 (guarda): [tests/test_fiber_section.py](../../tests/test_fiber_section.py) · `TestGuardas` (`test_material_inelastico_remite_a_la_seccion`, `test_exactamente_un_camino`, `test_n_ip_invalido`, `test_n_ip_solo_con_seccion`).
   - Criterio 5 (camino con sección): [tests/validation/test_fiber_section_validation.py](../../tests/validation/test_fiber_section_validation.py) (casos 1-5 y 7 de la spec FiberSection) y `TestMarcosConSeccion`, `TestTangente`, `TestMasa`, `TestPesoPropio`, `TestYaml` de `tests/test_fiber_section.py`.
+  - Criterios 6 y 7 (masa): [tests/test_frame_mass.py](../../tests/test_frame_mass.py) · `TestMarco2DEulerBernoulli` (consistente, HRZ, independencia de $I$), `TestCaminoConSeccion`, `test_traslacion_rigida_2d`, `test_giro_rigido_2d_consistente` y `test_frecuencias_biapoyada_cota_superior_de_euler_bernoulli`; la hermítica se contrasta además con la integral $\int\rho A\,\mathbf N^\top\mathbf N$ (`test_hermitica_es_la_integral_de_las_funciones_de_hermite`). Diagonalidad y masa total de la concentrada en [tests/test_mass_lumping.py](../../tests/test_mass_lumping.py) · `TestLumpedFrame2D`.
 - **Notas de traducción**:
   - La matriz $\mathbf T$ se calcula una sola vez en `__init__` sobre la configuración inicial y se guarda como atributo — coherente con el régimen geométricamente lineal.
   - Camino con material: la componente axial de $\mathbf F_{\text{int,local}}$ se escribe con el $\sigma A$ que devuelve el material; con material elástico lineal (el único admitido) coincide con la fila axial de $\mathbf K_{\text{local}}\mathbf u_{\text{local}}$.
-  - Camino con sección: $\mathbf B_g$ (2×6) se precalcula al construir (`_build_section_B`) con $N_1''\ldots N_4''$ de `hermite_second_derivatives`; los pesos ya llevan la longitud ($w_g L$ con la regla sobre $(0, 1)$). `internal_forces` y `compute_internal_forces` evalúan sobre una instantánea del trial y la restauran; el diccionario legado añade `section_deformations` y `section_forces` `(n_ip, 2)`. Masa con $(\rho A, \rho I_z)$ de la sección; peso propio con $\rho A$ y fuerza de cuerpo con el área bruta $\sum A_i$.
+  - Camino con sección: $\mathbf B_g$ (2×6) se precalcula al construir (`_build_section_B`) con $N_1''\ldots N_4''$ de `hermite_second_derivatives`; los pesos ya llevan la longitud ($w_g L$ con la regla sobre $(0, 1)$). `internal_forces` y `compute_internal_forces` evalúan sobre una instantánea del trial y la restauran; el diccionario legado añade `section_deformations` y `section_forces` `(n_ip, 2)`. Masa con $\rho A$ de la sección; peso propio con $\rho A$ y fuerza de cuerpo con el área bruta $\sum A_i$.
+  - Masa (§13): `_frame2d_consistent_mass_local` y `_frame2d_lumped_mass_local` de `_shared.py`, que reciben la densidad lineal $\rho A$ (`_linear_density`). Los bloques de la flexión (`hermite_consistent_mass` y la masa rotacional HRZ `hrz_rotational_mass`) los comparten los tres marcos Euler-Bernoulli; el argumento opcional `rotary_inertia` $= \rho I$ sólo lo pasa `Frame2DTimoshenko`.
 
 ---
 
@@ -205,3 +240,4 @@ references:
 - **2026-05-13** · `frame.py` se parte en paquete `solidum/elements/frame/{euler,timoshenko,euler_corot,_shared}.py`. La duplicación de `_build_geometry` entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (`build_geometry_2d` en `_shared.py`), pero esta vez sin función helper externa flotante — pertenece al paquete `frame/`. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde `alpha0` porque su cinemática corotacional no se beneficia del helper común.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
 - **2026-09-29** · Sección por fibras, etapa 1 ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md), [FiberSection](FiberSection.md)). La auditoría de pureza verificó que el modelo no lineal anterior —evaluar el material con la deformación axial y escalar **toda** la matriz local con su $E_t$— daba flectores incorrectos en silencio: nulos con fluencia axial, de signo cambiado con ablandamiento. Desaparece. El elemento tiene ahora dos caminos excluyentes: `material` + `A`, `I`, la forma cerrada de siempre, sin cambio de resultados, que sólo admite materiales con `IS_LINEAR_ELASTIC = True` (un material inelástico se rechaza al construir y el mensaje remite a la sección por fibras); y `section` + `n_ip` (3 por defecto, mínimo 2), elemento en desplazamientos que integra la sección en Gauss-Legendre. Contrato: parámetros `section` y `n_ip`; `A` e `I` pasan a ser obligatorios sólo con material; criterios de aceptación 4 (guarda) y 5 (camino con sección). Un modelo que antes corría con material inelástico ahora falla al construir: antes daba resultados incorrectos.
+- **2026-09-29** · Masa sin inercia rotatoria (hallazgo clas-4 de la auditoría; **cambio físico aprobado por el usuario**). La consistente sumaba $\tfrac{\rho I L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ en $(\theta_1, \theta_2)$: la energía cinética $\tfrac12\rho I\dot\theta^2$ de un giro de sección interpolado linealmente e independiente de la flecha, que es cinemática de Timoshenko; la hipótesis de Euler-Bernoulli desprecia la inercia rotatoria. Se retira, por los dos caminos: la consistente es la clásica (axial lineal + hermítica) y la concentrada pasa de $\rho I L/2$ por giro (su justificación por OpenSees/SAP2000 no se sostenía) a la HRZ, $\rho AL/2$ traslacional y $m_\theta = \rho A L^3/78$ (§13). Consecuencias: la masa ya no depende de $I$; las frecuencias de marcos esbeltos cambian poco, porque la inercia rotatoria escala con $(r/L)^2$, y con la consistente vuelven a ser cotas superiores de las de Euler-Bernoulli. Contrato: §13 y criterios 6 y 7. `Frame2DTimoshenko` conserva su masa con inercia rotatoria.

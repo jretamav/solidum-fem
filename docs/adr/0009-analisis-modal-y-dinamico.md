@@ -162,6 +162,8 @@ Piezas concretas entregadas:
 
 ## Fase 2 — Mass lumping (implementada 2026-05-18)
 
+> **Sustitución parcial (2026-09-29, aprobada por el usuario; hallazgo clas-4 de la auditoría de pureza).** En los marcos Euler-Bernoulli (`Frame2DEuler`, `Frame2DEulerCorot` y la flexión de `Frame3D`) la masa **consistente** pasa a ser la clásica sin inercia rotatoria (axial `ρAL/6·[[2,1],[1,2]]` + hermítica `ρAL/420·H`): el bloque `ρIL/6·[[2,1],[1,2]]` que se sumaba en los giros era cinemática de Timoshenko, no de Euler-Bernoulli, y la hermítica ya hace M no singular en los giros. La **concentrada** pasa a ser HRZ (`ρAL/2` traslacional y `ρAL³/78` por giro de flexión) en lugar del esquema nodal directo con `ρIL/2`, cuya justificación por OpenSees/SAP2000 no se sostenía. `Frame2DTimoshenko` y la torsión de `Frame3D` no cambian. Lo que sigue en esta sección y en «Contexto» sobre la inercia rotatoria de los marcos Euler-Bernoulli es registro histórico. Validación: `tests/test_frame_mass.py` y `tests/validation/test_frame_mass_validation.py`.
+
 La fase 1 dejó el parámetro `lumping` en la firma del método y rechazaba `"lumped"` con `NotImplementedError`. La fase 2 lo habilita siguiendo dos estrategias distintas según la familia de elemento.
 
 ### Decisiones de esquema

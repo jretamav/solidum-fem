@@ -7,9 +7,12 @@
 - :func:`_frame2d_consistent_body_load` — vector nodal consistente con
   carga distribuida uniforme; idéntico para Euler, Timoshenko (Hermite
   blended bajo carga uniforme) y EulerCorot (config de referencia).
-- :func:`_frame2d_consistent_mass_local` — matriz de masa 6×6 en ejes
-  locales: axial lineal + Hermitiana cúbica + inercia rotacional de
-  sección (ADR 0009).
+- :func:`hermite_consistent_mass` y :func:`hrz_rotational_mass` — bloques
+  de masa de la flexión con los cúbicos de Hermite (consistente 4×4 y la
+  masa rotacional concentrada HRZ), compartidos con ``Frame3D``.
+- :func:`_frame2d_consistent_mass_local` y :func:`_frame2d_lumped_mass_local`
+  — matrices de masa 6×6 en ejes locales (ADR 0009): Euler-Bernoulli sin
+  inercia rotatoria por defecto; Timoshenko pasa su inercia rotatoria ``ρI``.
 - :func:`_frame2d_forces_from_local` — traduce el vector local
   ``[Fx_i, Fy_i, Mz_i, Fx_j, Fy_j, Mz_j]`` a ``ElementForces`` en la
   convención de viga estructural de Reglas.md §5.
@@ -118,115 +121,133 @@ def _frame2d_consistent_body_load(b: np.ndarray, A: float, L: float,
     return T.T @ f_local
 
 
-def _frame2d_consistent_mass_local(rho: float, A: float, I: float,
-                                     L: float) -> np.ndarray:
-    """Matriz de masa consistente 6×6 en ejes locales del elemento 2D (ADR 0009).
+def hermite_consistent_mass(rhoA: float, L: float) -> np.ndarray:
+    """Masa consistente 4×4 de la flexión, ``∫₀ᴸ ρA NᵀN dx`` con los cúbicos
+    de Hermite, en ``(v₁, θ₁, v₂, θ₂)`` con ``θ = dv/dx`` (plano ``xy``
+    local; Cook-Malkus-Plesha, masa consistente de viga)::
 
-    Tres contribuciones:
+        ρAL/420 · [[ 156,   22L,   54,  −13L],
+                   [ 22L,   4L²,  13L,  −3L²],
+                   [  54,   13L,  156,  −22L],
+                   [−13L,  −3L², −22L,   4L²]]
 
-    - **Axial** (ux_i, ux_j): masa traslacional lineal ``(ρAL/6)·[[2,1],[1,2]]``.
-    - **Flexión transversal** (uy_i, rz_i, uy_j, rz_j): masa Hermitiana cúbica
-      ``(ρAL/420)·H``, idéntica para Euler-Bernoulli y Timoshenko (la
-      densidad lineal ``ρA`` no depende ni de ``I`` ni de ``As/Φ``).
-    - **Inercia rotacional propia de sección** (rz_i, rz_j): masa rotacional
-      ``(ρIL/6)·[[2,1],[1,2]]`` que recoge la energía cinética asociada a la
-      rotación de la sección alrededor del nodo. Estándar en vigas peraltadas
-      (Timoshenko) y mejora pequeña pero correcta en Bernoulli. Sin esta
-      contribución, M sería rotacionalmente "singular" en ausencia de inercia
-      a través de la deflexión Hermitiana — patrón consistente con la
-      rigidez ``K_local`` que sí tiene términos rotacionales puros.
+    Es la energía cinética de la traslación transversal ``v(x)`` y nada más:
+    no contiene inercia rotatoria de la sección. Reproduce exactamente la
+    energía cinética de los movimientos rígidos (traslación y giro), que la
+    interpolación cúbica contiene.
+
+    Parameters
+    ----------
+    rhoA : float
+        Densidad lineal ``ρA`` (masa por unidad de longitud).
+    L : float
+        Longitud del elemento.
+    """
+    L2 = L * L
+    return (rhoA * L / 420.0) * np.array([
+        [156.0,      22.0 * L,   54.0,      -13.0 * L],
+        [22.0 * L,    4.0 * L2,  13.0 * L,   -3.0 * L2],
+        [54.0,       13.0 * L,  156.0,      -22.0 * L],
+        [-13.0 * L,  -3.0 * L2, -22.0 * L,    4.0 * L2],
+    ])
+
+
+def hrz_rotational_mass(rhoA: float, L: float) -> float:
+    """Masa rotacional concentrada por nodo de la flexión, ``m_θ = ρAL³/78``.
+
+    Lumping HRZ (Hinton, Rock y Zienkiewicz 1976; Cook-Malkus-Plesha):
+    cada término de la diagonal consistente de :func:`hermite_consistent_mass`
+    se escala por el factor que hace que los términos traslacionales sumen
+    la masa ``ρAL``. La diagonal es ``ρAL/420·(156, 4L², 156, 4L²)`` y el
+    factor ``α = ρAL/(312·ρAL/420) = 420/312``, de modo que ``m_v = ρAL/2``
+    y ``m_θ = 4L²·ρAL/420·420/312 = ρAL³/78``.
+    """
+    return rhoA * L**3 / 78.0
+
+
+def _frame2d_consistent_mass_local(rhoA: float, L: float,
+                                   rotary_inertia: float | None = None) -> np.ndarray:
+    """Matriz de masa consistente 6×6 en ejes locales del marco 2D (ADR 0009).
+
+    - **Axial** ``(ux_i, ux_j)``: masa de barra lineal ``(ρAL/6)·[[2,1],[1,2]]``.
+    - **Flexión** ``(uy_i, rz_i, uy_j, rz_j)``: masa hermítica
+      :func:`hermite_consistent_mass`.
+    - **Inercia rotatoria de la sección** ``(rz_i, rz_j)``, sólo si se pasa
+      ``rotary_inertia = ρI``: ``(ρIL/6)·[[2,1],[1,2]]``, la energía cinética
+      del giro de la sección interpolado linealmente. Es cinemática de
+      Timoshenko (giro independiente de la pendiente) y la usa sólo
+      ``Frame2DTimoshenko``; Euler-Bernoulli la desprecia por hipótesis y
+      no pasa el argumento.
 
     Layout local: ``[ux_i, uy_i, rz_i, ux_j, uy_j, rz_j]``.
 
     Parameters
     ----------
-    rho : float
-        Densidad del material.
-    A : float
-        Área de la sección.
-    I : float
-        Momento de inercia de la sección respecto al eje perpendicular al
-        plano de flexión (``Iz`` en convención 3D). Mismo parámetro usado
-        en la rigidez.
+    rhoA : float
+        Densidad lineal ``ρA`` (``ρ·A`` con material; ``Σρ_i A_i`` con
+        sección).
     L : float
-        Longitud del elemento (en configuración de referencia para
-        formulaciones corotacionales — Lagrangeano total, ADR 0009).
+        Longitud del elemento (en la configuración de referencia en las
+        formulaciones corrotacionales, ADR 0009).
+    rotary_inertia : float, optional
+        ``ρI`` por unidad de longitud de la inercia rotatoria de la sección;
+        ``None`` (defecto) la desprecia (Euler-Bernoulli).
     """
-    c_ax = rho * A * L / 6.0
-    c_tr = rho * A * L / 420.0
-    c_rot = rho * I * L / 6.0
-    L2 = L * L
+    c_ax = rhoA * L / 6.0
     M = np.zeros((6, 6))
     # Axial (ux_i, ux_j): masa de barra lineal 1D.
     M[0, 0] = 2.0 * c_ax;  M[0, 3] = 1.0 * c_ax
     M[3, 0] = 1.0 * c_ax;  M[3, 3] = 2.0 * c_ax
-    # Flexional (uy_i, rz_i, uy_j, rz_j): masa Hermitiana cúbica.
-    H = c_tr * np.array([
-        [156.0,   22.0 * L,   54.0,  -13.0 * L],
-        [22.0 * L,  4.0 * L2,  13.0 * L, -3.0 * L2],
-        [54.0,    13.0 * L,  156.0,  -22.0 * L],
-        [-13.0 * L, -3.0 * L2, -22.0 * L,  4.0 * L2],
-    ])
+    # Flexión (uy_i, rz_i, uy_j, rz_j): masa hermítica.
     idx = [1, 2, 4, 5]
-    for i, gi in enumerate(idx):
-        for j, gj in enumerate(idx):
-            M[gi, gj] = H[i, j]
-    # Inercia rotacional propia de sección (rz_i, rz_j): ρI·L masa rotacional.
-    M[2, 2] += 2.0 * c_rot;  M[2, 5] += 1.0 * c_rot
-    M[5, 2] += 1.0 * c_rot;  M[5, 5] += 2.0 * c_rot
+    M[np.ix_(idx, idx)] = hermite_consistent_mass(rhoA, L)
+    if rotary_inertia is not None:
+        # Inercia rotatoria de la sección (Timoshenko): ρI·L/6·[[2,1],[1,2]].
+        c_rot = rotary_inertia * L / 6.0
+        M[2, 2] += 2.0 * c_rot;  M[2, 5] += 1.0 * c_rot
+        M[5, 2] += 1.0 * c_rot;  M[5, 5] += 2.0 * c_rot
     return M
 
 
-def _frame2d_lumped_mass_local(rho: float, A: float, I: float,
-                                 L: float) -> np.ndarray:
-    """Matriz de masa lumped 6×6 en ejes locales del frame 2D (ADR 0009 fase 2).
+def _frame2d_lumped_mass_local(rhoA: float, L: float,
+                               rotary_inertia: float | None = None) -> np.ndarray:
+    """Matriz de masa concentrada 6×6 en ejes locales del marco 2D (ADR 0009).
 
-    Esquema **nodal directo**: la masa se distribuye en partes iguales entre
-    los dos nodos del elemento, con la misma magnitud en cada dirección
-    traslacional y una inercia rotacional proporcional al momento de
-    inercia geométrico de la sección:
+    Masa traslacional ``m_t = ρAL/2`` por nodo en ``ux`` y en ``uy`` (el HRZ
+    de la axial lineal y de la flexión hermítica da el mismo valor). Masa
+    rotacional por nodo:
 
-    .. math::
-
-        m_t = \\rho A L / 2 \\quad \\text{(por DOF traslacional)}
-
-        m_r = \\rho I L / 2 \\quad \\text{(por DOF rotacional)}
+    - Euler-Bernoulli (``rotary_inertia=None``, defecto): la HRZ de la
+      flexión, ``m_θ = ρAL³/78`` (:func:`hrz_rotational_mass`). Sin inercia
+      rotatoria de la sección, coherente con la masa consistente.
+    - Timoshenko (``rotary_inertia = ρI``): ``m_r = ρIL/2``, la inercia
+      rotatoria de la sección repartida entre los nodos.
 
     Layout local: ``[ux_i, uy_i, rz_i, ux_j, uy_j, rz_j]``.
 
     Propiedades:
 
-    - Preserva la masa total ``ρAL`` exactamente (suma sobre nodos en
-      cada dirección).
-    - Preserva la inercia rotacional propia total ``ρIL`` (suma sobre
-      nodos).
-    - **Diagonal en global** tras la rotación ``T^T·M·T``: el bloque
-      traslacional 2×2 por nodo es ``m_t·I_2``, invariante a rotación 2D;
-      el bloque rotacional 1×1 es escalar. Esta diagonalidad en global es
-      la condición que vuelve trivial la inversión ``M⁻¹`` requerida por
+    - Conserva la masa total ``ρAL`` en cada dirección traslacional.
+    - **Diagonal también en globales** tras ``Tᵀ·M·T``: el bloque
+      traslacional por nodo es ``m_t·I₂``, invariante ante la rotación 2D,
+      y el rotacional es escalar. Es lo que vuelve trivial ``M⁻¹`` en
       diferencias centradas (ADR 0009 fase 5).
-
-    Frente al lumping HRZ canónico (Hinton-Rock-Zienkiewicz 1976) aplicado
-    a la diagonal consistente: el HRZ daría masas distintas en los DOFs
-    ``ux_local`` (lineal) y ``uy_local`` (Hermitiana) — diagonal en local
-    pero **no** en global tras rotar. El esquema nodal directo sacrifica
-    la "fidelidad a la diagonal consistente" a cambio de la diagonalidad
-    global, que es la propiedad operacional relevante para integradores
-    explícitos. Es el esquema lumped estándar en frames (SAP2000, OpenSees,
-    Cook-Malkus-Plesha §11.4).
 
     Parameters
     ----------
-    rho, A, I, L
-        Mismos parámetros físicos que :func:`_frame2d_consistent_mass_local`.
+    rhoA, L, rotary_inertia
+        Como en :func:`_frame2d_consistent_mass_local`.
 
     Returns
     -------
     np.ndarray, shape (6, 6)
-        Diagonal, positiva definida.
+        Diagonal, definida positiva.
     """
-    m_t = rho * A * L / 2.0
-    m_r = rho * I * L / 2.0
+    m_t = rhoA * L / 2.0
+    if rotary_inertia is None:
+        m_r = hrz_rotational_mass(rhoA, L)
+    else:
+        m_r = rotary_inertia * L / 2.0
     return np.diag([m_t, m_t, m_r, m_t, m_t, m_r])
 
 

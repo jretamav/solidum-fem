@@ -200,7 +200,7 @@ sections:
 
 **Validación al leer el archivo.** Una clave desconocida en un parche, una `shape` inexistente, un material de fibra inexistente o de dimensión distinta de 1, y una sección sin fibras son errores con el contexto de la entrada (p. ej. `sections[0] (id=7), patches[0].material: referencia a material inexistente (9)`). Un marco que declara a la vez `section` y `material` (o `A`, `I`…) también es un error.
 
-**Masa y peso propio.** Salen de las fibras: $\rho A = \sum \rho_i A_i$ y los momentos de inercia másicos $\sum \rho_i y_i^2 A_i$, $\sum \rho_i z_i^2 A_i$. Cada material de fibra necesita `density` si el análisis usa `gravity` o la matriz de masa.
+**Masa y peso propio.** Salen de las fibras: $\rho A = \sum \rho_i A_i$ y los momentos de inercia másicos $\sum \rho_i y_i^2 A_i$, $\sum \rho_i z_i^2 A_i$. Los marcos Euler-Bernoulli desprecian la inercia rotatoria de flexión, así que su masa sólo usa $\rho A$; los momentos de inercia másicos entran únicamente en la inercia torsional de `Frame3D` ($\sum \rho_i (y_i^2 + z_i^2) A_i$). Cada material de fibra necesita `density` si el análisis usa `gravity` o la matriz de masa.
 
 ```callout Advertencia
 **Límites de la sección por fibras.** (1) La curvatura es lineal dentro del elemento: una rótula plástica se reparte sobre el elemento y la carga de colapso **converge por arriba** al refinar (en una viga biempotrada, +35 % con 4 elementos en el vano y +3.5 % con 32). Use varios elementos por miembro cerca de las rótulas. (2) Con fibras en **ablandamiento** (`IsotropicDamage1D`) el daño se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla y de `n_ip`: no hay regularización. (3) Sin deformación por cortante: `Frame2DTimoshenko` no admite sección todavía.

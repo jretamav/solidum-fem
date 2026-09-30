@@ -267,36 +267,36 @@ class Frame2DEulerCorot(FrameSectionMixin, Element):
             [ 0,  0, 0, 0, 0, 1],
         ])
 
-    def _mass_arguments(self):
-        """``(ρ, A, I)`` para las funciones de masa de ``_shared``: con sección,
-        ``(1, ρA, ρI_z)`` de la sección (spec §6)."""
+    def _linear_density(self) -> float:
+        """Densidad lineal ``ρA``: ``ρ·A`` con material; ``Σρ_i A_i`` de
+        ``section.mass_properties()`` con sección (spec FiberSection §6)."""
         if self.section is None:
-            return self.material.density, self.A, self.I
-        mp = self.section.mass_properties()
-        return 1.0, mp["rhoA"], mp["rhoIz"]
+            return self.material.density * self.A
+        return self.section.mass_properties()["rhoA"]
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa del Frame2DEulerCorot en ejes globales (ADR 0009).
 
-        Evaluada en la configuración de referencia (Lagrangeano total).
-        Análoga a Frame2DEuler pero la matriz de transformación se
-        reconstruye desde ``alpha0`` ya que el corotacional no almacena
-        ``self.T`` precalculada. Con sección, ``ρA`` y ``ρI`` son los de
-        ``section.mass_properties()``.
+        Evaluada en la configuración de referencia (Lagrangeano total), con
+        la matriz de transformación reconstruida desde ``alpha0``. La misma
+        de ``Frame2DEuler``: sin inercia rotatoria de la sección
+        (Euler-Bernoulli), sólo depende de ``ρA``.
 
-        **Consistente**: :func:`_frame2d_consistent_mass_local`.
+        **Consistente**: axial lineal y flexión hermítica,
+        :func:`_frame2d_consistent_mass_local`.
 
-        **Lumped** (fase 2): :func:`_frame2d_lumped_mass_local`.
+        **Concentrada** (``"lumped"``): HRZ, ``ρAL/2`` traslacional y
+        ``ρAL³/78`` rotacional por nodo, :func:`_frame2d_lumped_mass_local`.
         """
         if lumping not in ("lumped", "consistent"):
             raise NotImplementedError(
                 f"Frame2DEulerCorot.compute_mass_matrix: lumping='{lumping}' "
                 f"no soportado. Valores admitidos: 'consistent', 'lumped'."
             )
-        rho, A, I = self._mass_arguments()
+        rhoA = self._linear_density()
         if lumping == "lumped":
-            M_local = _frame2d_lumped_mass_local(rho, A, I, self.L0)
+            M_local = _frame2d_lumped_mass_local(rhoA, self.L0)
         else:
-            M_local = _frame2d_consistent_mass_local(rho, A, I, self.L0)
+            M_local = _frame2d_consistent_mass_local(rhoA, self.L0)
         T = self._reference_transform()
         return T.T @ M_local @ T
