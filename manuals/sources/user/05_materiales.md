@@ -131,12 +131,14 @@ $$d = 1 - \frac{\kappa_0}{\kappa}\,\exp\bigl(-\alpha(\kappa - \kappa_0)\bigr) \q
 
 ### `IsotropicDamage2D` — daño isótropo 2D
 
-Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$. Deformación equivalente simétrica:
+Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$. Deformación equivalente: la norma del tensor de deformaciones completo, con la componente fuera del plano $\varepsilon_{zz} = c_{zz}(\varepsilon_{xx} + \varepsilon_{yy})$, donde $c_{zz} = -\nu/(1-\nu)$ en tensión plana y $c_{zz} = 0$ en deformación plana:
 
-$$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2}$$
+$$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\gamma_{xy}^2}$$
+
+Así el 2D es la restricción exacta de `IsotropicDamage3D` en las dos hipótesis.
 
 - **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (`plane_stress` default o `plane_strain`), `density` (opcional).
-- **Tangente algorítmica consistente**: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes (\mathbf M\boldsymbol\varepsilon)$ con $\mathbf M = \mathrm{diag}(1, 1, 1/2)$ en carga activa. **No simétrica** ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales); el atributo `IS_SYMMETRIC = False` hace que el despachador algebraico ADR 0003 elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
+- **Tangente algorítmica consistente**: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes \mathbf n_{eq}$ con $\mathbf n_{eq} = [\varepsilon_{xx} + c_{zz}\varepsilon_{zz},\ \varepsilon_{yy} + c_{zz}\varepsilon_{zz},\ \tfrac12\gamma_{xy}]^\top$ en carga activa. **No simétrica** ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf n_{eq}$ no son proporcionales); el atributo `IS_SYMMETRIC = False` hace que el despachador algebraico ADR 0003 elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
 - **Limitación**: $\varepsilon_{eq}$ simétrica no distingue daño en tracción frente a compresión; para hormigón se requiere modelo de Mazars o separación tracción/compresión (no implementado). Sin regularización por longitud característica $\to$ *mesh-dependency* en régimen de ablandamiento.
 
 ```yaml

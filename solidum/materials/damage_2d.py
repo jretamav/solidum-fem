@@ -18,17 +18,24 @@ from solidum.registry import MaterialRegistry
 
 
 @njit(cache=True)
-def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap):
+def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap, c_zz):
     """Actualización del daño isótropo 2D en un punto de Gauss.
 
     Devuelve ``(σ, C_tan, κ_new, d)``. ``tol`` es la tolerancia de
-    admisibilidad ya evaluada (ADR 0006) y ``cap`` el techo del daño
-    (``DAMAGE_MAX``). Es el único sitio donde vive la física del modelo:
-    lo llaman ``compute_state`` (camino por elemento) y el adaptador por
-    lotes ``_damage_2d_batch`` (ADR 0014).
+    admisibilidad ya evaluada (ADR 0006), ``cap`` el techo del daño
+    (``DAMAGE_MAX``) y ``c_zz`` el coeficiente de la deformación fuera del
+    plano, ``ε_zz = c_zz·(ε_xx + ε_yy)``: ``−ν/(1−ν)`` en tensión plana y
+    ``0`` en deformación plana. Es el único sitio donde vive la física del
+    modelo: lo llaman ``compute_state`` (camino por elemento) y el adaptador
+    por lotes ``_damage_2d_batch`` (ADR 0014).
     """
-    # Deformación equivalente simétrica
-    eps_eq = math.sqrt(strain[0] ** 2 + strain[1] ** 2 + 0.5 * strain[2] ** 2)
+    # Deformación equivalente: norma del tensor de deformaciones, con la
+    # componente fuera del plano ε_zz, para que el 2D sea la restricción
+    # exacta de IsotropicDamage3D. En tensión plana ε_zz no depende del
+    # daño: σ_zz = (1−d)·(λ·tr ε + 2μ·ε_zz) = 0 ⇒ ε_zz = −ν/(1−ν)·(ε_xx + ε_yy).
+    eps_zz = c_zz * (strain[0] + strain[1])
+    eps_eq = math.sqrt(strain[0] ** 2 + strain[1] ** 2 + eps_zz ** 2
+                       + 0.5 * strain[2] ** 2)
 
     # Régimen de carga vs descarga (Kuhn-Tucker)
     if eps_eq > kappa_old:
@@ -56,13 +63,13 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap):
     if consistent_branch:
         # C_alg = (1-d)·C_e - (∂d/∂κ)(∂κ/∂ε)·σ_eff^T
         # ∂d/∂κ = (1-d)·(1/κ + α)
-        # ∂κ/∂ε = (1/ε_eq)·M·ε  con M = diag(1, 1, 1/2)
+        # ∂κ/∂ε = (1/ε_eq)·[ε_xx + c_zz·ε_zz, ε_yy + c_zz·ε_zz, ½γ_xy]
         # σ_eff = C_e·ε
         dd_dkappa = (1.0 - d) * (1.0 / kappa_new + alpha)
         sigma_eff = Ce @ strain
         depseq_deps = np.array([
-            strain[0] / eps_eq,
-            strain[1] / eps_eq,
+            (strain[0] + c_zz * eps_zz) / eps_eq,
+            (strain[1] + c_zz * eps_zz) / eps_eq,
             0.5 * strain[2] / eps_eq,
         ])
         C_tan = C_sec - dd_dkappa * np.outer(sigma_eff, depseq_deps)
@@ -74,13 +81,13 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap):
 @njit(cache=True)
 def _damage_2d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, α, tol_abs,
-    tol_rel, DAMAGE_MAX]``; ``C`` = ``C_e`` del medio intacto; estado
+    tol_rel, DAMAGE_MAX, c_zz]``; ``C`` = ``C_e`` del medio intacto; estado
     ``[κ, d]``."""
     E = params[0]
     kappa_0 = params[1]
     tol = params[3] + params[4] * (E * kappa_0)
     sig, C_tan, kappa_new, d = _compute_damage_2d(
-        strain, S_old[0], E, kappa_0, params[2], C, tol, params[5]
+        strain, S_old[0], E, kappa_0, params[2], C, tol, params[5], params[6]
     )
     for i in range(3):
         sigma[i] = sig[i]
@@ -114,13 +121,18 @@ class IsotropicDamage2D(Material):
 
     Notes
     -----
-    Deformación equivalente simétrica ``ε_eq = √(ε_xx² + ε_yy² + ½γ_xy²)``: no
-    distingue tracción de compresión. Para hormigón con resistencia diferente en
-    tracción/compresión se necesitaría un split tipo Mazars o de Vree (out-of-scope).
+    Deformación equivalente = norma del tensor de deformaciones,
+    ``ε_eq = √(ε_xx² + ε_yy² + ε_zz² + ½γ_xy²)``, con ``ε_zz = −ν/(1−ν)·(ε_xx +
+    ε_yy)`` en tensión plana y ``ε_zz = 0`` en deformación plana: el 2D es la
+    restricción exacta de ``IsotropicDamage3D`` en ambas hipótesis (hasta el
+    2026-09-29 la tensión plana omitía ``ε_zz`` y retrasaba el inicio del daño
+    un factor ``√(1+2ν²)/√(1+ν²)``). No distingue tracción de compresión; para
+    hormigón con resistencia diferente en tracción/compresión se necesitaría
+    una medida tipo Mazars o de Vree (out-of-scope).
 
     La tangente algorítmica consistente no es simétrica en estados generales de
-    deformación porque el producto externo ``(C_e·ε) ⊗ (M·ε)`` con
-    ``M = diag(1,1,1/2)`` no produce una matriz simétrica. Esto fuerza
+    deformación porque el producto externo ``(C_e·ε) ⊗ ∂ε_eq/∂ε`` no produce
+    una matriz simétrica. Esto fuerza
     ``IS_SYMMETRIC = False`` y el despachador algebraico usa LU para el sistema
     global (ADR 0003).
 
@@ -150,6 +162,9 @@ class IsotropicDamage2D(Material):
         self.kappa_0 = kappa_0
         self.alpha = alpha
         self.density = density
+        # ε_zz = c_zz·(ε_xx + ε_yy) en la deformación equivalente.
+        self.c_zz = (-float(nu) / (1.0 - float(nu))
+                     if self.elastic_base.hypothesis == 'plane_stress' else 0.0)
 
     def admissibility_scale(self, state_vars=None) -> float:
         """Esfuerzo umbral inicial ``E·κ_0`` (ADR 0006).
@@ -171,6 +186,7 @@ class IsotropicDamage2D(Material):
         sigma, C_tan, kappa_new, d = _compute_damage_2d(
             strain, float(kappa_old), self.E, self.kappa_0, self.alpha,
             self.elastic_base.C, self.admissibility_tol(state_vars), DAMAGE_MAX,
+            self.c_zz,
         )
         new_state = {'kappa': kappa_new, 'damage': d}
         return sigma, C_tan, new_state
@@ -180,7 +196,8 @@ class IsotropicDamage2D(Material):
 
     def batch_params(self) -> np.ndarray:
         return np.array([self.E, self.kappa_0, self.alpha,
-                         ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, DAMAGE_MAX],
+                         ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, DAMAGE_MAX,
+                         self.c_zz],
                         dtype=np.float64)
 
     def batch_matrix(self) -> np.ndarray:

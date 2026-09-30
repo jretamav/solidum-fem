@@ -318,7 +318,10 @@ class TestIsotropicDamage2D(unittest.TestCase):
     def test_damage_evolves_above_threshold(self):
         eps = np.array([2.0 * self.kappa_0, 0.0, 0.0])
         _, _, state = self.mat.compute_state(eps)
-        eps_eq = math.sqrt(eps[0] ** 2 + eps[1] ** 2 + 0.5 * eps[2] ** 2)
+        # Norma del tensor de deformaciones con ε_zz de tensión plana
+        # (hipótesis por defecto): ε_zz = −ν/(1−ν)·(ε_xx + ε_yy).
+        eps_zz = -self.nu / (1.0 - self.nu) * (eps[0] + eps[1])
+        eps_eq = math.sqrt(eps[0] ** 2 + eps[1] ** 2 + eps_zz ** 2 + 0.5 * eps[2] ** 2)
         d_expected = 1.0 - (self.kappa_0 / eps_eq) * math.exp(
             -self.alpha * (eps_eq - self.kappa_0)
         )

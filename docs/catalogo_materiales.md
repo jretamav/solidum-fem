@@ -103,7 +103,7 @@
   - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ (M·ε)`.
   - Derivación: idéntica al 2D extendida a 6D. `∂d/∂κ = (1-d)·(1/κ + α)`; `∂κ/∂ε = M·ε/ε_eq` en carga activa, 0 en descarga.
   - **No simétrica en general**: `(C_e·ε)` y `(M·ε)` no son proporcionales salvo en estados de deformación muy particulares (uniaxial puro alineado con ejes). Recupera convergencia cuadrática del Newton global frente a la secante (Simó-Ju 1987).
-- **Relación con `IsotropicDamage2D` plane_strain**: bajo restricción `ε_zz = γ_yz = γ_xz = 0`, Damage3D se reduce **exactamente** a Damage2D plane_strain (misma `C_e`, misma `ε_eq`, misma ley centralizada). Test cruzado `TestIsotropicDamage3DvsPlaneStrain` blindado a **14 decimales en `d` y `κ`**, 10 decimales en σ. Plane stress 2D usa un `C_e` proyectado distinto y no es comparable bajo restricción cinemática.
+- **Relación con `IsotropicDamage2D` plane_strain**: bajo restricción `ε_zz = γ_yz = γ_xz = 0`, Damage3D se reduce **exactamente** a Damage2D plane_strain (misma `C_e`, misma `ε_eq`, misma ley centralizada). Test cruzado `TestIsotropicDamage3DvsPlaneStrain` blindado a **14 decimales en `d` y `κ`**, 10 decimales en σ. En tensión plana, desde el 2026-09-29, Damage2D también es la restricción exacta de Damage3D con `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)`: mismo `d`, mismo `κ`, mismas componentes en el plano y `σ_zz = 0` en toda una historia de carga, descarga y recarga ([`test_damage_2d_3d_consistency.py`](../tests/test_damage_2d_3d_consistency.py)).
 - **STRAIN_DIM**: 6 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU para el sistema global).
 - **Parámetros**: `E` (>0), `nu` ∈ (-1, 0.5), `kappa_0` (>0), `alpha` (>0), `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`. **Sin variables tensoriales** (a diferencia de los modelos plásticos): el daño es escalar, el historial es escalar.
@@ -118,12 +118,12 @@
 ## IsotropicDamage2D — daño isótropo 2D con softening exponencial
 
 - **Modelo**: extensión 2D de `IsotropicDamage1D`. Esfuerzo nominal `σ = (1 − d) · C_e · ε`; daño escalar `d ∈ [0, DAMAGE_MAX]`.
-- **Deformación equivalente**: `ε_eq = √(ε_xx² + ε_yy² + ½·γ_xy²)` (norma simple sin distinguir tracción/compresión).
+- **Deformación equivalente**: norma del tensor de deformaciones completo, `ε_eq = √(ε_xx² + ε_yy² + ε_zz² + ½·γ_xy²)`, con `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)` en tensión plana y `ε_zz = 0` en deformación plana: el 2D es la restricción exacta de `IsotropicDamage3D` en ambas hipótesis (hasta el 2026-09-29 la tensión plana omitía `ε_zz`). No distingue tracción de compresión.
 - **Evolución**: κ máxima histórica (Kuhn-Tucker `κ_n+1 = max(κ_n, ε_eq)`), ley exponencial `d(κ) = 1 - (κ_0/κ)·exp(-α(κ-κ_0))` para `κ > κ_0`, saturado a `DAMAGE_MAX`.
 - **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·C_e` en descarga, sin daño activo (`κ ≤ κ_0`) o al saturar.
-  - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ (M·ε)` con `M = diag(1, 1, 1/2)`.
-  - Derivación: `∂d/∂κ = (1-d)·(1/κ + α)` por la ley exponencial; `∂κ/∂ε = M·ε/ε_eq` en carga activa, 0 en descarga.
-  - **No simétrica en general** (`(C_e·ε)` y `(M·ε)` no son proporcionales). Recupera convergencia cuadrática del Newton global frente a la secante (que daba convergencia lineal).
+  - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ n_eq`, con `n_eq = [ε_xx + c_zz·ε_zz, ε_yy + c_zz·ε_zz, ½γ_xy]` y `c_zz = −ν/(1−ν)` (tensión plana) o `0` (deformación plana).
+  - Derivación: `∂d/∂κ = (1-d)·(1/κ + α)` por la ley exponencial; `∂κ/∂ε = n_eq/ε_eq` en carga activa, 0 en descarga.
+  - **No simétrica en general** (`(C_e·ε)` y `n_eq` no son proporcionales). Recupera convergencia cuadrática del Newton global frente a la secante (que daba convergencia lineal).
 - **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU en lugar de Cholesky para el sistema global).
 - **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis ∈ {'plane_stress' (default), 'plane_strain'}`, `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`.

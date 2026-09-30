@@ -26,11 +26,14 @@ El esfuerzo efectivo $\boldsymbol\sigma^\text{eff}$ es el que el material intact
 
 ### 3. Deformación equivalente
 
-Cantidad escalar que cuantifica la "intensidad" de la deformación. Convención del proyecto, norma simétrica simple en notación Voigt $[\varepsilon_{xx}, \varepsilon_{yy}, \gamma_{xy}]$ con $\gamma_{xy} = 2\varepsilon_{xy}$:
+Cantidad escalar que cuantifica la "intensidad" de la deformación: la **norma del tensor de deformaciones completo** (convención del proyecto, la misma de `IsotropicDamage3D`), en notación Voigt $[\varepsilon_{xx}, \varepsilon_{yy}, \gamma_{xy}]$ con $\gamma_{xy} = 2\varepsilon_{xy}$ y la componente fuera del plano $\varepsilon_{zz}$:
 
-$$\varepsilon_\text{eq}(\boldsymbol\varepsilon) = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2} = \sqrt{\boldsymbol\varepsilon^\top \mathbf M\,\boldsymbol\varepsilon}$$
+$$\varepsilon_\text{eq}(\boldsymbol\varepsilon) = \sqrt{\boldsymbol\varepsilon : \boldsymbol\varepsilon} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\gamma_{xy}^2},
+\qquad
+\varepsilon_{zz} = c_{zz}\,(\varepsilon_{xx} + \varepsilon_{yy}),\quad
+c_{zz} = \begin{cases} -\dfrac{\nu}{1-\nu} & \text{tensión plana} \\[4pt] 0 & \text{deformación plana} \end{cases}$$
 
-con $\mathbf M = \operatorname{diag}(1, 1, 1/2)$. Equivalente a la norma de Frobenius del tensor deformación 2D plana ($\boldsymbol\varepsilon : \boldsymbol\varepsilon$ con $\varepsilon_{xy} = \gamma_{xy}/2$).
+En tensión plana $\varepsilon_{zz}$ no depende del daño: con daño escalar isótropo, $\sigma_{zz} = (1-d)\,(\lambda\,\mathrm{tr}\,\boldsymbol\varepsilon + 2\mu\,\varepsilon_{zz}) = 0$ para cualquier $d$. Con esta definición el 2D es la **restricción exacta** de `IsotropicDamage3D` en las dos hipótesis. Hasta el 2026-09-29 la tensión plana omitía $\varepsilon_{zz}$: con el mismo estado de esfuerzo que el 3D, retrasaba el inicio del daño un factor $\sqrt{1+2\nu^2}/\sqrt{1+\nu^2}$ (en tracción uniaxial de esfuerzo; ver *Diálogo*).
 
 **Limitación**: no distingue tracción de compresión. Para hormigón a compresión se necesitaría un split tipo Mazars o de Vree; aquí se diferencia explícitamente como *out-of-scope*.
 
@@ -66,7 +69,7 @@ Propiedades:
 
 Dado $\{\kappa_n\}$ y $\boldsymbol\varepsilon_{n+1}$:
 
-1. $\varepsilon_\text{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2}$.
+1. $\varepsilon_{zz} = c_{zz}(\varepsilon_{xx} + \varepsilon_{yy})$ y $\varepsilon_\text{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\gamma_{xy}^2}$.
 2. Si $\varepsilon_\text{eq} > \kappa_n$: **carga activa**, $\kappa_{n+1} = \varepsilon_\text{eq}$. Si no: **descarga**, $\kappa_{n+1} = \kappa_n$.
 3. Aplicar ley de daño con $\kappa_{n+1}$; saturar a $d_\text{max}$.
 4. $\boldsymbol\sigma_{n+1} = (1 - d)\,\mathbf C_e\,\boldsymbol\varepsilon_{n+1}$.
@@ -92,7 +95,7 @@ donde:
 
 - $\dfrac{\partial \kappa}{\partial \boldsymbol\varepsilon}$ depende del régimen:
   - **Carga activa** ($\varepsilon_\text{eq} > \kappa_n$, $\kappa = \varepsilon_\text{eq}$):
-    $$\dfrac{\partial \kappa}{\partial \boldsymbol\varepsilon} = \dfrac{\partial \varepsilon_\text{eq}}{\partial \boldsymbol\varepsilon} = \dfrac{1}{\varepsilon_\text{eq}}\begin{bmatrix}\varepsilon_{xx} \\ \varepsilon_{yy} \\ \tfrac{1}{2}\gamma_{xy}\end{bmatrix}$$
+    $$\dfrac{\partial \kappa}{\partial \boldsymbol\varepsilon} = \dfrac{\partial \varepsilon_\text{eq}}{\partial \boldsymbol\varepsilon} = \dfrac{1}{\varepsilon_\text{eq}}\begin{bmatrix}\varepsilon_{xx} + c_{zz}\,\varepsilon_{zz} \\ \varepsilon_{yy} + c_{zz}\,\varepsilon_{zz} \\ \tfrac{1}{2}\gamma_{xy}\end{bmatrix} \equiv \dfrac{\mathbf n_\text{eq}}{\varepsilon_\text{eq}}$$
   - **Descarga** ($\varepsilon_\text{eq} \leq \kappa_n$): $\partial \kappa / \partial \boldsymbol\varepsilon = 0$.
 
 **Tangente final**:
@@ -100,15 +103,15 @@ donde:
 $$\mathbf C^\text{alg} = \begin{cases}
 \mathbf C_e & \kappa \leq \kappa_0 \;(\text{sin daño}) \\
 (1-d)\,\mathbf C_e & \text{descarga} \\
-(1-d)\,\mathbf C_e \;-\; \dfrac{(1-d)(1/\kappa + \alpha)}{\varepsilon_\text{eq}}\,(\mathbf C_e\boldsymbol\varepsilon)(\mathbf M\boldsymbol\varepsilon)^\top & \text{carga activa, } d < d_\text{max} \\
+(1-d)\,\mathbf C_e \;-\; \dfrac{(1-d)(1/\kappa + \alpha)}{\varepsilon_\text{eq}}\,(\mathbf C_e\boldsymbol\varepsilon)\,\mathbf n_\text{eq}^\top & \text{carga activa, } d < d_\text{max} \\
 (1-d_\text{max})\,\mathbf C_e & d = d_\text{max} \;(\text{saturación})
 \end{cases}$$
 
-con $\mathbf M = \operatorname{diag}(1, 1, 1/2)$.
+con $\mathbf n_\text{eq}$ el vector de §7 (en deformación plana, $\mathbf n_\text{eq} = \mathbf M\boldsymbol\varepsilon$ con $\mathbf M = \operatorname{diag}(1, 1, 1/2)$).
 
 ### 8. Pérdida de simetría
 
-El producto externo $(\mathbf C_e\boldsymbol\varepsilon)(\mathbf M\boldsymbol\varepsilon)^\top$ es una matriz $3\times 3$ que **no es simétrica en general**. $\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales salvo en estados de deformación muy particulares (e.g. uniaxial puro alineado con ejes).
+El producto externo $(\mathbf C_e\boldsymbol\varepsilon)\,\mathbf n_\text{eq}^\top$ es una matriz $3\times 3$ que **no es simétrica en general**. $\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf n_\text{eq}$ no son proporcionales salvo en estados de deformación muy particulares (e.g. uniaxial puro alineado con ejes).
 
 Esto rompe la simetría heredada de la tangente secante $(1-d)\mathbf C_e$:
 
@@ -160,7 +163,7 @@ state_schema:
 
 conventions:
   sign: "σ > 0 ⇔ tracción; el modelo no distingue tracción de compresión en la activación del daño"
-  voigt: "γ_xy = 2·ε_xy en deformación; ε_eq usa norma M=diag(1,1,1/2)"
+  voigt: "γ_xy = 2·ε_xy en deformación; ε_eq = √(ε:ε) con ε_zz = c_zz·(ε_xx + ε_yy): c_zz = −ν/(1−ν) en tensión plana, 0 en deformación plana"
   damage_irreversibility: "κ monótono no decreciente vía max(κ_old, ε_eq); d(κ) creciente"
 
 validity:
@@ -212,7 +215,7 @@ acceptance:
 
     - name: tangent_consistent_term_on_loading
       setup: "carga activa con κ > κ_0 y d < DAMAGE_MAX"
-      expect: "C_tan ≠ (1-d)·C_e — incluye el término rank-1 -(1-d)(1/κ+α)/ε_eq · (Ce·ε) ⊗ (M·ε)"
+      expect: "C_tan ≠ (1-d)·C_e — incluye el término rank-1 -(1-d)(1/κ+α)/ε_eq · (Ce·ε) ⊗ n_eq (§7)"
       verification: "compara contra fórmula explícita evaluada en el mismo estado"
       tol_rel: 1.0e-9
 
@@ -271,3 +274,4 @@ references:
 - **2026-09-22** · Auditoría global: nuevo `out_of_plane_stress` delegado al elástico base (σ = (1−d)·C_e·ε escala todas las componentes, así que σ_zz = ν(σ_xx + σ_yy) sigue valiendo).
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la física de `compute_state` se movió a un núcleo `@njit` (`_compute_damage_2d`) que consumen el camino por elemento y el adaptador por lotes; `evaluate_exponential_damage` se compila y recibe el cap como argumento. Sin cambio de formulación; `STATE_SCHEMA = {kappa, damage}` con estado inicial `κ = κ₀`.
 - **2026-09-22** · Cierre del ADR 0014 (§9): `batch_out_of_plane_stress(sigma, S)`, versión por arreglos de `out_of_plane_stress` para el post-proceso por familia (exportador VTK); misma fórmula, `ε^p_zz` leída de la fila de estado cuando aplica. Verificado archivo VTK idéntico por ambos caminos.
+- **2026-09-29** · Cambio de formulación aprobado por el usuario (hallazgo clas-3 de la auditoría de pureza): en tensión plana $\varepsilon_\text{eq}$ incluye $\varepsilon_{zz} = -\nu/(1-\nu)\,(\varepsilon_{xx}+\varepsilon_{yy})$, que con daño escalar isótropo no depende de $d$. Antes se omitía y, con el mismo estado de esfuerzo, el 2D retrasaba el inicio del daño respecto de `IsotropicDamage3D` (con $E = 30$ GPa, $\nu = 0{,}2$, $\kappa_0 = 10^{-4}$: $d = 0$ en 2D frente a $d = 1{,}4\,\%$ en 3D). La tangente consistente incluye el término de $\varepsilon_{zz}$ en $\partial\varepsilon_\text{eq}/\partial\boldsymbol\varepsilon$ (verificada por diferencias finitas). Blindado en `tests/test_damage_2d_3d_consistency.py`: el 2D reproduce al 3D en toda una historia de carga, descarga y recarga, en tensión y en deformación plana, y el test falla si se retira el término. Queda abierta la otra mitad del hallazgo: si la norma del tensor es la medida adecuada o conviene una de la literatura (Mazars, von Mises modificado); pendiente del usuario.

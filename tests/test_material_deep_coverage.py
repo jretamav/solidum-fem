@@ -192,8 +192,11 @@ class TestIsotropicDamage2DNonProportional(unittest.TestCase):
     rota mientras `ε_eq` (escalar invariante histórico) crece o no.
 
     Para `IsotropicDamage2D` el daño depende SÓLO de la historia de
-    `ε_eq = √(εᵀ·M·ε)` (escalar invariante). Bajo rotación de la dirección
-    principal:
+    `ε_eq = √(ε:ε)`, la norma del tensor de deformaciones con su componente
+    fuera del plano (en tensión plana `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)`, desde
+    el 2026-09-29). Es un invariante: una rotación de las direcciones
+    principales con valores principales fijos lo conserva. Bajo rotación de
+    la dirección principal:
     - Si `ε_eq` no decrece, κ no debe decrecer (irreversibilidad).
     - Si `ε_eq` permanece constante, κ y ω se congelan.
     - Si `ε_eq` aumenta, κ y ω crecen monotónicamente.
@@ -206,33 +209,43 @@ class TestIsotropicDamage2DNonProportional(unittest.TestCase):
         )
 
     def _eps_eq(self, eps: np.ndarray) -> float:
-        """ε_eq como lo computa el material: ‖ε‖_M con M=diag(1,1,½) para
-        Voigt con engineering shear."""
-        return math.sqrt(eps[0] ** 2 + eps[1] ** 2 + 0.5 * eps[2] ** 2)
+        """ε_eq de la física del modelo: norma del tensor de deformaciones,
+        con ε_zz de tensión plana y γ_xy = 2ε_xy (Voigt engineering)."""
+        nu = self.mat.elastic_base.nu
+        eps_zz = -nu / (1.0 - nu) * (eps[0] + eps[1])
+        return math.sqrt(eps[0] ** 2 + eps[1] ** 2 + eps_zz ** 2 + 0.5 * eps[2] ** 2)
+
+    @staticmethod
+    def _girado(e1: float, e2: float, theta: float) -> np.ndarray:
+        """Estado con deformaciones principales (e1, e2) cuya dirección
+        principal forma el ángulo ``theta`` con x, en Voigt engineering."""
+        m, r = 0.5 * (e1 + e2), 0.5 * (e1 - e2)
+        return np.array([m + r * math.cos(2.0 * theta),
+                         m - r * math.cos(2.0 * theta),
+                         2.0 * r * math.sin(2.0 * theta)])
 
     def test_rotation_at_constant_eps_eq_freezes_damage(self):
-        """Trayectoria circular en (εxx, εyy) con ε_eq constante: κ y ω
-        no deben cambiar tras el primer punto de la trayectoria.
+        """Rotación de las direcciones principales con valores principales
+        fijos: ε_eq es constante, así que κ y ω no deben cambiar tras el
+        primer punto de la trayectoria.
 
-        Trayectoria: ε = ε_eq·(cos θ, sin θ, 0). ε_eq invariante.
-        """
-        eps_eq_target = 3.0 * self.mat.kappa_0
+        Hasta el 2026-09-29 la trayectoria era la circunferencia
+        ε = ε_eq·(cos θ, sin θ, 0), que conservaba la norma en el plano pero
+        no es una rotación del tensor (cambia la traza y, en tensión plana,
+        ε_zz)."""
+        e1, e2 = 3.0 * self.mat.kappa_0, -1.0 * self.mat.kappa_0
+        eps0 = self._girado(e1, e2, 0.0)
+        eps_eq_target = self._eps_eq(eps0)
         # Anclar el estado en el primer punto θ=0.
-        eps0 = np.array([eps_eq_target, 0.0, 0.0])
         _, _, state = self.mat.compute_state(eps0, None)
         kappa0 = state['kappa']
         d0 = state['damage']
+        self.assertGreater(d0, 0.0)
 
-        # Recorrer la circunferencia ε_eq constante en (εxx, εyy).
         for theta_deg in (30.0, 60.0, 90.0, 120.0, 180.0, 270.0, 359.0):
-            theta = math.radians(theta_deg)
-            eps = np.array([
-                eps_eq_target * math.cos(theta),
-                eps_eq_target * math.sin(theta),
-                0.0,
-            ])
+            eps = self._girado(e1, e2, math.radians(theta_deg))
             # Verificar que ε_eq es invariante.
-            self.assertAlmostEqual(self._eps_eq(eps), eps_eq_target, places=12)
+            self.assertAlmostEqual(self._eps_eq(eps) / eps_eq_target, 1.0, places=12)
             _, _, state_new = self.mat.compute_state(eps, state)
             # κ no debe crecer (ε_eq no aumenta).
             self.assertAlmostEqual(state_new['kappa'], kappa0, places=12,
