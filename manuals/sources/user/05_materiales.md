@@ -167,7 +167,7 @@ materials:
     alpha: 800.0
     hypothesis: plane_strain
     equivalent_strain: mazars
-  # von Mises modificado: exige k = f_c/f_t.
+  # von Mises modificado: exige k = f_c/f_t ≥ 1.
   - id: 5
     type: IsotropicDamage2D
     E: 30.0e9

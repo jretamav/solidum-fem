@@ -118,7 +118,7 @@ class IsotropicDamage3D(Material):
         1987), ``'mazars'`` (Mazars 1986) o ``'modified_von_mises'`` (de Vree,
         Brekelmans y van Gils 1995).
     k : float, optional
-        ``f_c/f_t`` (> 0). Obligatorio con ``'modified_von_mises'`` y no
+        ``f_c/f_t`` (≥ 1; con k < 1 el material no dañaría en tracción triaxial). Obligatorio con ``'modified_von_mises'`` y no
         admitido con las otras dos medidas.
     density : float, optional
         Densidad (ADR 0008). Opcional al construir; obligatoria si se ensambla

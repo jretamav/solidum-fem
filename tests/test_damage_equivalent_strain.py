@@ -386,11 +386,25 @@ class TestValidacionDelConstructor:
             self._crear(nombre, equivalent_strain=medida, k=10.0)
         assert nombre in str(exc.value)
 
-    @pytest.mark.parametrize("k", [0.0, -3.0, float("nan"), float("inf"), "diez", True])
-    def test_k_debe_ser_positivo_y_finito(self, nombre, k):
+    @pytest.mark.parametrize("k", [0.0, -3.0, 0.5, 0.999, float("nan"), float("inf"), "diez", True])
+    def test_k_debe_ser_finito_y_al_menos_uno(self, nombre, k):
+        """k ≥ 1 (decisión del usuario, 2026-09-30): con k < 1 el material no
+        dañaría en tracción triaxial y sí en compresión hidrostática."""
         with pytest.raises(ValueError) as exc:
             self._crear(nombre, equivalent_strain="modified_von_mises", k=k)
         assert nombre in str(exc.value)
+
+    def test_k_igual_a_uno_es_la_medida_desviadora(self, nombre):
+        """k = 1: ε_eq = √3·√J₂/(1+ν), sin daño en ningún estado hidrostático."""
+        m = self._crear(nombre, equivalent_strain="modified_von_mises", k=1.0)
+        assert m.k == 1.0
+        if nombre != "IsotropicDamage3D":
+            return  # un estado hidrostático sólo es representable en 3D
+        e = 5.0 * KAPPA_0
+        hidro = np.array([e, e, e, 0.0, 0.0, 0.0])
+        for signo in (1.0, -1.0):
+            _, _, st = m.compute_state(signo * hidro, m.initial_state())
+            assert st["damage"] == 0.0
 
     def test_k_entero_se_admite(self, nombre):
         m = self._crear(nombre, equivalent_strain="modified_von_mises", k=12)

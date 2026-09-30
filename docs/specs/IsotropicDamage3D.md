@@ -146,7 +146,7 @@ parameters:
   - { name: kappa_0, type: float, required: true,  desc: "Umbral de deformación equivalente; daño nulo mientras κ ≤ κ_0 (>0). Con las tres medidas κ_0 = f_t/E" }
   - { name: alpha,   type: float, required: true,  desc: "Velocidad de degradación exponencial (>0). α mayor → ablandamiento más abrupto" }
   - { name: equivalent_strain, type: str, required: false, default: "energy", desc: "energy (Simó-Ju 1987) | mazars (Mazars 1986) | modified_von_mises (de Vree et al. 1995)" }
-  - { name: k,       type: float, required: false, default: null, desc: "f_c/f_t (>0); obligatorio con modified_von_mises y no admitido con las otras medidas" }
+  - { name: k,       type: float, required: false, default: null, desc: "f_c/f_t (≥ 1); obligatorio con modified_von_mises y no admitido con las otras medidas" }
   - { name: density, type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
 signature:
@@ -167,7 +167,7 @@ validity:
   - "E > 0, κ_0 > 0, α > 0"
   - "ν ∈ (-1, 0.5) estricto"
   - "equivalent_strain ∈ {'energy', 'mazars', 'modified_von_mises'}"
-  - "k > 0 finito, sólo con equivalent_strain = 'modified_von_mises' (obligatorio ahí)"
+  - "k ≥ 1 finito, sólo con equivalent_strain = 'modified_von_mises' (obligatorio ahí); con k < 1 no dañaría en tracción triaxial y sí en compresión hidrostática (decisión del usuario, 2026-09-30)"
 
 out_of_scope:
   - "modelo de Mazars completo con dos daños (d_t, d_c) ponderados por α_t, α_c; aquí sólo su medida de deformación equivalente con un único daño escalar"

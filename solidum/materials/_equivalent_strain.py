@@ -90,14 +90,30 @@ def parse_equivalent_strain(owner: str, equivalent_strain, k) -> tuple[str, int,
         raise ValueError(
             f"{owner}: equivalent_strain='modified_von_mises' exige el parámetro "
             f"k = f_c/f_t (cociente entre las resistencias uniaxiales a compresión "
-            f"y a tracción), k > 0."
+            f"y a tracción), k ≥ 1."
         )
     try:
         k_val = float(k)
     except (TypeError, ValueError):
-        raise ValueError(f"{owner}: k={k!r} debe ser un número > 0.") from None
-    if isinstance(k, bool) or not math.isfinite(k_val) or k_val <= 0.0:
-        raise ValueError(f"{owner}: k debe ser un número finito > 0 (recibido {k!r}).")
+        raise ValueError(f"{owner}: k={k!r} debe ser un número ≥ 1.") from None
+    if isinstance(k, bool) or not math.isfinite(k_val):
+        raise ValueError(f"{owner}: k debe ser un número finito ≥ 1 (recibido {k!r}).")
+    # k ≥ 1 (decisión del usuario, 2026-09-30). En estado hidrostático J₂ = 0 y
+    # ε_eq depende sólo de I₁ y del signo de k − 1: con k > 1 daña en tracción
+    # triaxial y no en compresión hidrostática (materiales cuasi frágiles, el
+    # régimen de de Vree et al. 1995); con k = 1 la medida es puramente
+    # desviadora (von Mises en deformación); con k < 1 nunca dañaría en
+    # tracción triaxial y sí en compresión hidrostática, al revés que un
+    # material real. Las calibraciones uniaxiales valen con cualquier k, así
+    # que sólo esta validación lo impide.
+    if k_val < 1.0:
+        raise ValueError(
+            f"{owner}: k = f_c/f_t = {k_val} < 1 no se admite con "
+            f"'modified_von_mises': el material no dañaría en tracción triaxial y "
+            f"sí en compresión hidrostática. Use k ≥ 1 (k = 1: medida desviadora "
+            f"de von Mises; k > 1: materiales cuasi frágiles, p. ej. k ≈ 10 en "
+            f"concreto)."
+        )
     return equivalent_strain, code, k_val
 
 

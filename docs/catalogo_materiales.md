@@ -100,7 +100,7 @@
 - **Deformación equivalente** (parámetro `equivalent_strain`, desde el 2026-09-29; Voigt 6D del proyecto). Las tres medidas dan `ε_eq = ε` en tracción uniaxial de esfuerzo, así que `κ_0 = f_t/E`:
   - `energy` (por defecto; Simó y Ju 1987): `ε_eq = √(εᵀ·C_e·ε / E)`. No distingue tracción de compresión.
   - `mazars` (Mazars 1986): `ε_eq = √(Σ⟨ε_i⟩₊²)` sobre las deformaciones principales. Sólo dañan las extensiones: compresión uniaxial de esfuerzo `ε_eq = √2·ν·|ε|`; compresión hidrostática, sin daño.
-  - `modified_von_mises` (de Vree, Brekelmans y van Gils 1995), con `k = f_c/f_t` obligatorio: `ε_eq = (k−1)/(2k(1−2ν))·I₁ + 1/(2k)·√(((k−1)/(1−2ν))²·I₁² + 12k/(1+ν)²·J₂)`. Compresión uniaxial de esfuerzo `ε_eq = |ε|/k`.
+  - `modified_von_mises` (de Vree, Brekelmans y van Gils 1995), con `k = f_c/f_t ≥ 1` obligatorio (con k < 1 no dañaría en tracción triaxial): `ε_eq = (k−1)/(2k(1−2ν))·I₁ + 1/(2k)·√(((k−1)/(1−2ν))²·I₁² + 12k/(1+ν)²·J₂)`. Compresión uniaxial de esfuerzo `ε_eq = |ε|/k`.
   - Hasta el 2026-09-29 era la norma del tensor `√(ε:ε)`, retirada por no estándar y mal calibrada (`ε_eq = ε·√(1+2ν²)` en tracción uniaxial).
 - **Evolución**: κ máxima histórica (Kuhn-Tucker `κ_{n+1} = max(κ_n, ε_eq)`); ley exponencial centralizada en `solidum.materials._softening.evaluate_exponential_damage` (compartida con `IsotropicDamage1D` e `IsotropicDamage2D`); saturación a `DAMAGE_MAX`.
 - **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·C_e` en descarga, sin daño activo (`κ ≤ κ_0`) o al saturar.
