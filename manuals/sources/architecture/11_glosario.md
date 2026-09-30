@@ -4,9 +4,11 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Ajuste de paso (incremento de carga)**. División de la carga total en fracciones que se aplican sucesivamente en problemas no lineales. Permite que el método de Newton-Raphson converja a partir de una aproximación cercana a la solución del paso anterior.
 
-**Ardura corrotacional (formulación)**. Descomposición del movimiento de un elemento en una rotación de cuerpo rígido más una deformación local pequeña. La ley constitutiva trabaja en la configuración local; la cinemática del elemento absorbe las grandes rotaciones. Aplicable a armaduras, cables y marcos en régimen geométricamente no lineal con deformación pequeña.
+**Corrotacional (formulación)**. Descomposición del movimiento de un elemento en una rotación de cuerpo rígido más una deformación local pequeña. La ley constitutiva trabaja en la configuración local; la cinemática del elemento absorbe las grandes rotaciones. Aplicable a armaduras, cables y marcos en régimen geométricamente no lineal con deformación pequeña.
 
 **Architecture Decision Record (ADR)**. Documento breve que registra una decisión de arquitectura junto con su contexto, alternativas consideradas y consecuencias. Reside en `docs/adr/000N-titulo.md`. Ver capítulo 8.
+
+**`ArcProblem`**. Problema de Newton por paso del arc-length (iterado `(U, λ, ΔU)`, dos resoluciones por iteración y la restricción del paso como método `constraint`), exportado con nombre público en `solidum.math.solvers`. Una variante de arco que sólo cambia la restricción lo hereda y redefine `constraint`: así lo hacen `IndirectDisplacementSolver` en el programa principal y `DissipationArcLengthSolver` en el módulo de usuario `dissipation_control`. Ver capítulo 5, ADR 0015 (protocolo `NewtonProblem`) y ADR 0020.
 
 **Autodiscover (descubrimiento automático)**. Procedimiento que recorre las carpetas canónicas del proyecto e importa todos sus módulos al inicio del programa, lo que dispara la ejecución de los decoradores `@register` y, con ello, la inscripción de cada componente en su registro. No recorre `solidum/user/`: los módulos de usuario sólo se cargan cuando un caso los pide. Ver capítulo 5.
 
@@ -34,6 +36,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Ensamblaje por lotes**. Evaluación de todos los puntos de Gauss de una familia de lote dentro de un único kernel compilado (`solid_family_kernel`, con variante paralela `solid_family_kernel_parallel` bit a bit equivalente), que recibe la cinemática del elemento y la constitutiva del material como funciones tipadas por su firma. El post-proceso por familia (`Family.gauss_state`) usa las mismas funciones. Coexiste con el camino por elemento, que sigue siendo el contrato obligatorio y la referencia física. Ver capítulo 5 y ADR 0014.
 
+**Esfuerzo plano / deformación plana**. Hipótesis de modelado para problemas bidimensionales. El esfuerzo plano asume que el esfuerzo perpendicular al plano es nulo (placas delgadas); la deformación plana asume que la deformación perpendicular es nula (cuerpos extensos en una dimensión, secciones de tuberías largas).
+
 **Especificación (spec)**. Documento que describe un componente físico nuevo antes de su implementación: especificación física, formulación numérica, contrato YAML y criterios de aceptación. Reside en `docs/specs/<Nombre>.md`. Es a la vez orden de trabajo y referencia detallada del componente. Ver capítulo 7.
 
 **Estado *trial* y estado comprometido**. Las dos copias de las variables internas de cada elemento. El estado *trial* se explora durante las iteraciones del solver no lineal; al converger un paso, el solver invoca `commit_state()` y promueve el *trial* a estado comprometido. Esta semántica es indispensable en problemas con plasticidad o daño para no contaminar el historial con tentativas posteriormente descartadas.
@@ -58,7 +62,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Modos de cuerpo rígido**. Movimientos de un modelo sin apoyos que no producen deformación: traslaciones y giros infinitesimales, y el valor constante en un campo escalar. En Solidum se derivan del nombre de los grados de libertad y los usan el precondicionador multimalla y la detección de mecanismos. Capítulo 5.
 
-**Módulo de usuario**. Formulación no estándar que vive fuera del programa principal, en su propia carpeta `solidum/user/<nombre>/`, a la manera de los elementos y materiales de usuario de FEAP. El programa principal no la importa ni la nombra: un caso la carga con `user_modules: [<nombre>]` en el YAML o con `solidum.load_user_module` en Python. El primero es `discontinuities` (discontinuidad interior embebida). Ver capítulo 5 y ADR 0020.
+**Módulo de usuario**. Formulación no estándar que vive fuera del programa principal, en su propia carpeta `solidum/user/<nombre>/`, a la manera de los elementos y materiales de usuario de FEAP. El programa principal no la importa ni la nombra: un caso la carga con `user_modules: [<nombre>]` en el YAML o con `solidum.load_user_module` en Python. El primero es `discontinuities` (discontinuidad interior embebida); el segundo, `dissipation_control` (arco por disipación de energía, un solver). Ver capítulo 5 y ADR 0020.
 
 **Multimalla algebraico (AMG)**. Precondicionador que resuelve el sistema en una jerarquía de problemas cada vez más pequeños construidos a partir de la propia matriz. Con los modos de cuerpo rígido como casi-núcleo, el número de iteraciones apenas depende del tamaño del modelo. ADR 0018.
 
@@ -72,9 +76,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **`PRIMARY_STATE_VAR`**. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
-**Programa principal**. Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo `solidum/` salvo `solidum/user/`. No conoce los módulos de usuario; un test de pureza (`tests/test_main_program_purity.py`) lo vigila. Ver capítulo 5 y ADR 0020.
+**Programa principal**. Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo `solidum/` salvo `solidum/user/`. Admite un componente según el criterio de admisión de Reglas.md §1 (textos de referencia y código general establecido). No conoce los módulos de usuario; el test de pureza (`tests/test_main_program_purity.py`) lo vigila con tres controles: estructural (ningún import de un módulo de usuario), léxico (ninguna mención de lo que un módulo registra, con los nombres derivados automáticamente) y en ejecución (`import solidum` no carga ningún módulo). Ver capítulo 5 y ADR 0020.
 
-**Registro (registry)**. Diccionario global por categoría (`MaterialRegistry`, `ThermalMaterialRegistry`, `ElementRegistry`, `SolverRegistry`) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica `Registry`, que puede declarar además metadatos de familia (`YAML_SECTION`, `YAML_LABEL`) y el tipo de spec de sus componentes (`SPEC_KIND`). Cada clase se inscribe automáticamente en su registro mediante un decorador. Ver capítulo 5.
+**Registro (registry)**. Diccionario global por categoría (`MaterialRegistry`, `ThermalMaterialRegistry`, `ElementRegistry`, `SolverRegistry`) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica `Registry` y declaran sus metadatos con atributos públicos de clase: `YAML_LABEL`, la etiqueta de un objeto del registro en los mensajes de error, que tiene todo registro (`"elemento"`, `"solver"`, `"material térmico"`) y sustituye al antiguo atributo privado `_kind`, ya retirado; `SPEC_KIND`, el tipo de spec de sus componentes; y, sólo en las familias de material, `YAML_SECTION`. Cada clase se inscribe automáticamente en su registro mediante un decorador. Un módulo de usuario sólo puede añadir entradas: reasignar una existente hace fallar y deshacer su carga. Ver capítulo 5.
 
 **Regla de la mano derecha (RHR)**. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver capítulo 6.
 
@@ -86,11 +90,9 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **`SolveResult`**. Agregado inmutable que el `Domain` construye al final de la solución. Contiene los desplazamientos globales, las cargas aplicadas, las reacciones y las fuerzas internas (N, V, M, T) por elemento. Es la interfaz pública para consumidores externos. Ver ADR 0002.
 
-**Solver no lineal**. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En Solidum FEM están implementados `LinearSolver`, `NonlinearSolver` y `ArcLengthSolver`. Es nivel estratégico, distinto del subsistema algebraico. Ver capítulo 4.
+**Solver no lineal**. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En el programa principal de Solidum FEM, los estáticos no lineales son `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver`, y los transitorios no lineales `NewtonNewmarkSolver` y `NewtonHHTSolver`; el módulo de usuario `dissipation_control` añade `DissipationArcLengthSolver`. Es nivel estratégico, distinto del subsistema algebraico. Ver capítulo 4.
 
 **`STRAIN_DIM`**. Atributo de clase de cada material y elemento que declara la dimensión del vector de deformación que manejan: 1 (escalar axial), 3 (Voigt-3 bidimensional), 6 (Voigt-6 tridimensional). El sistema lo usa para validar la compatibilidad material↔elemento en el momento de construcción.
-
-**Tensión plana / deformación plana**. Hipótesis de modelado para problemas bidimensionales. La tensión plana asume que la tensión perpendicular al plano es nula (placas delgadas); la deformación plana asume que la deformación perpendicular es nula (cuerpos extensos en una dimensión, secciones de tuberías largas).
 
 **Validación temprana en construcción**. Comprobación que la clase base de elemento ejecuta cuando se le asigna un material: verifica que la dimensión de deformación del material coincida con la del elemento. Errores físicos de combinación se detectan en la construcción del caso, no doscientas iteraciones después.
 

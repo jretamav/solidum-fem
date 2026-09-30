@@ -6,13 +6,13 @@ A lo largo del capítulo se utilizan las denominaciones abreviadas habituales pa
 
 ## Materiales
 
-Un material en Solidum FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo `STRAIN_DIM`) y un estado interno, devuelve la tensión y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo `STRAIN_DIM` y la interfaz `compute_stress_and_tangent(strain, state)`.
+Un material en Solidum FEM es una ley constitutiva: dada una deformación (escalar para problemas 1D, en notación de Voigt-3 para problemas 2D, o en notación de Voigt-6 para problemas 3D, según el atributo `STRAIN_DIM`) y un estado interno, devuelve el esfuerzo y el módulo tangente consistente para el solver. El material no posee información sobre el elemento que lo utiliza; el elemento no accede al interior del material. El acoplamiento se establece mediante el contrato declarativo `STRAIN_DIM` y la interfaz `compute_state(strain, state_vars)`, que devuelve `(σ, C_tangente, estado nuevo)`.
 
 Familias actualmente implementadas:
 
-- *Elásticos lineales*: `Elastic1D` para deformación axial escalar; `Elastic2D` para problemas planos (tensión plana o deformación plana) en notación de Voigt 3.
+- *Elásticos lineales*: `Elastic1D` para deformación axial escalar; `Elastic2D` para problemas planos (esfuerzo plano o deformación plana) en notación de Voigt 3.
 - *Plásticos 1D*: `Elastoplastic1D` con criterio J2 axial, endurecimiento isótropo lineal y tangente algorítmica consistente.
-- *Plásticos 2D — J2*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y tensión plana (*plane stress projected algorithm*, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
+- *Plásticos 2D — J2*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y esfuerzo plano (*plane stress projected algorithm*, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
 - *Plásticos 2D — friccional*: `DruckerPrager2D` con criterio cohesivo-friccional (cono circular suave de Mohr-Coulomb), plasticidad no asociada por defecto y dos ramas cerradas de return (regular sobre el cono y al ápice). Tres calibraciones con Mohr-Coulomb (`plane_strain_matched`, `outer_cone`, `inner_cone`). `IS_SYMMETRIC = False` cuando `ψ ≠ φ`; el despachador algebraico (ADR 0003) degrada Cholesky→LU automáticamente.
 - *Daño isótropo*: `IsotropicDamage1D` y `IsotropicDamage2D`, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa (negativa en 1D durante softening; asimétrica en 2D porque `(C_e·ε) ⊗ (M·ε)` no es simétrica). Secante en descarga.
 - *Cables*: `CableMaterial1D`, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
@@ -24,7 +24,7 @@ Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse c
 - [PENDIENTE: Hiperelasticidad isótropa (Neo-Hooke, Mooney-Rivlin, Ogden).]
 - [PENDIENTE: Viscoplasticidad de Perzyna y Duvaut-Lions.]
 - [PENDIENTE: Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.]
-- [PENDIENTE: Drucker-Prager en tensión plana (la proyección con `σ_zz=0` acoplada a flujo dilatante queda fuera del alcance de la versión actual).]
+- [PENDIENTE: Drucker-Prager en esfuerzo plano (la proyección con `σ_zz=0` acoplada a flujo dilatante queda fuera del alcance de la versión actual).]
 
 En todos los casos basta declarar el `STRAIN_DIM` apropiado y el atributo `PRIMARY_STATE_VAR` para visualización.
 
@@ -64,7 +64,7 @@ Elemento de tracción exclusiva en formulación corrotacional. Material consumid
 | Régimen | 2D · material lineal a tracción | 2D · material no lineal a tracción | 3D · material lineal a tracción | 3D · material no lineal a tracción |
 |---|---|---|---|---|
 | Linealidad geométrica | — | — | — | — |
-| No linealidad geométrica | ✓ `Cable2DCorot` | [PENDIENTE: Cable 2D corrotacional con ley constitutiva no lineal a tracción (relajación, fluencia, daño tensional).] | ✓ `Cable3DCorot` | [PENDIENTE: Cable 3D corrotacional con ley constitutiva no lineal a tracción.] |
+| No linealidad geométrica | ✓ `Cable2DCorot` | [PENDIENTE: Cable 2D corrotacional con ley constitutiva no lineal a tracción (relajación, fluencia, daño a tracción).] | ✓ `Cable3DCorot` | [PENDIENTE: Cable 3D corrotacional con ley constitutiva no lineal a tracción.] |
 
 La fila "Linealidad geom." se marca como no aplicable: un cable es, por su naturaleza física, un elemento de grandes desplazamientos (la rigidez axial es la única que aporta y depende de la configuración corriente).
 
@@ -103,7 +103,7 @@ Elemento con flexión y, en su caso, cortante y torsión. Material consumido: 1D
 
 ### Familia sólido 2D
 
-Elemento de medio continuo bidimensional bajo hipótesis de tensión plana o deformación plana. Material consumido: 2D en notación de Voigt 3 (`Elastic2D`, `VonMises2D`, `IsotropicDamage2D`, `DruckerPrager2D`).
+Elemento de medio continuo bidimensional bajo hipótesis de esfuerzo plano o deformación plana. Material consumido: 2D en notación de Voigt 3 (`Elastic2D`, `VonMises2D`, `IsotropicDamage2D`, `DruckerPrager2D`).
 
 **Primer orden**
 
@@ -198,7 +198,7 @@ Disponibles en la versión actual:
 - `HarmonicSolver` (ADR 0009 fase 6) — respuesta forzada armónica en el dominio de la frecuencia. Aritmética compleja con `scipy.sparse.linalg.spsolve` complejo; factorización LU compleja por frecuencia (no se cachea). Barrido lineal/logarítmico/explícito. Devuelve `HarmonicResult` con métodos `.amplitude()` y `.phase()`.
 - `ResponseSpectrumSolver` (ADR 0009 fase 7) — análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta `ModalSolver` interno y delega los algoritmos en `solidum.math.modal_response` (centralización por regla D de auditoría). Devuelve `ResponseSpectrumResult` con respuesta envolvente, factores de participación y masas efectivas.
 
-Los cinco solvers iterativos (`NonlinearSolver`, los dos arc-length, `NewtonNewmarkSolver` y `NewtonHHTSolver`) no escriben su propio bucle de Newton: lo ejecuta el corrector compartido `NewtonCorrector` (`solidum/math/solvers/corrector.py`, ADR 0015), que posee el backend algebraico con su degradación a LU, el Newton modificado, el line search y el historial que alimenta las excepciones tipadas. Cada solver construye por paso un objeto `NewtonProblem` con lo que le es propio —cómo ensambla, cómo forma el residuo, cómo reduce y resuelve el sistema tangente, cómo aplica la corrección y qué comitea— y conserva su control de paso (bisección de la carga, longitud de arco y su restricción, predictores de Newmark). Un solver iterativo nuevo aporta su problema y su control de paso y hereda todo lo demás.
+Los cinco solvers iterativos del programa principal (`NonlinearSolver`, `ArcLengthSolver` y su variante `IndirectDisplacementSolver`, `NewtonNewmarkSolver` y `NewtonHHTSolver`) no escriben su propio bucle de Newton: lo ejecuta el corrector compartido `NewtonCorrector` (`solidum/math/solvers/corrector.py`, ADR 0015), que posee el backend algebraico con su degradación a LU, el Newton modificado, el line search y el historial que alimenta las excepciones tipadas. Cada solver construye por paso un objeto `NewtonProblem` con lo que le es propio —cómo ensambla, cómo forma el residuo, cómo reduce y resuelve el sistema tangente, cómo aplica la corrección y qué comitea— y conserva su control de paso (bisección de la carga, longitud de arco y su restricción, predictores de Newmark). Un solver iterativo nuevo aporta su problema y su control de paso y hereda todo lo demás.
 
 Espacio natural de extensión:
 

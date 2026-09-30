@@ -5,7 +5,9 @@ description: Genera scaffolding para nuevos materiales, elementos o solvers de S
 
 # solidum-new
 
-Skill de scaffolding para Solidum FEM. Reduce el coste de incorporar nuevos componentes a la arquitectura: tú escribes la física, esta skill se encarga del boilerplate, del registro y del test esqueleto.
+Skill de scaffolding para Solidum FEM. Reduce el coste de incorporar nuevos componentes a la arquitectura: la física la fija el usuario (en la spec), esta skill se encarga del boilerplate, del registro y del test esqueleto.
+
+**Reparto de decisiones** (Reglas.md §2 y §3, desde el 2026-09-29): la arquitectura y la programación las decide la IA por completo. Al usuario sólo se le pregunta lo que cambia una ecuación o un resultado físico. No le presentes decisiones de software (carpeta, registro, estado propio, piezas genéricas): tómalas, documéntalas y repórtalas en una frase.
 
 ## Cuándo invocar
 
@@ -16,7 +18,23 @@ Activar siempre que el usuario pida añadir un nuevo:
 
 Disparadores típicos: "añade un material …", "crea un elemento …", "implementa un solver …", "/solidum-new …".
 
-**Destino** (Reglas.md §4, ADR 0020): un componente **estándar** (FEM clásico) va al programa principal; uno **no estándar** (formulación de investigación que no es FEM clásico: discontinuidades embebidas, seguimiento de trayectoria, XFEM…) va a un **módulo de usuario** con `--user <modulo>` (ver la sección *Dentro de un módulo de usuario*). Si el usuario no lo indica y hay duda, pregunta antes de generar nada.
+## Destino: programa principal o módulo de usuario
+
+Lo decide la IA aplicando el **criterio de admisión** de Reglas.md §1 (ADR 0020). Una formulación es **estándar** si cumple las dos condiciones:
+
+1. aparece en los textos de referencia del área: Zienkiewicz-Taylor, Hughes, Bathe, Belytschko-Liu-Moran, de Souza Neto-Perić-Owen, de Borst-Crisfield-Remmers-Verhoosel;
+2. está implementada en al menos un código general establecido: Abaqus, ANSYS, DIANA, Code_Aster, OpenSees.
+
+Estándar → **programa principal** (sin `--user`). Si no cumple las dos → **módulo de usuario** (`--user <modulo>`, ver *Dentro de un módulo de usuario*). Sólo si el criterio no decide, pregunta al usuario antes de generar nada, con una pregunta y tu recomendación justificada: es un juicio sobre la literatura del área (Reglas.md §3). La clasificación queda anotada con su justificación en la entrada del catálogo (Reglas.md §1) y en la spec: en un componente estándar, en el bloque `admission` del contrato (`textbooks` y `general_codes`, al menos una entrada en cada uno; Reglas.md §4); en uno de módulo, con la condición que no cumple.
+
+Las entradas de `admission` se escriben con los **identificadores canónicos** de `solidum/tools/spec.py`, no con los nombres de arriba: `textbooks` ∈ `ADMISSION_TEXTBOOKS` (`zienkiewicz_taylor`, `hughes`, `bathe`, `belytschko_liu_moran`, `de_souza_neto`, `de_borst_crisfield`) y `general_codes` ∈ `ADMISSION_GENERAL_CODES` (`abaqus`, `ansys`, `diana`, `code_aster`, `opensees`). Cada entrada es el identificador solo o `identificador: "nota breve"` (capítulo o apartado del texto; comando, elemento u opción en el código). La plantilla de spec lo recuerda y el validador rechaza un nombre que no esté en la lista, enumerando los válidos.
+
+Ejemplos según el criterio:
+
+- **Estándar**: XFEM (Belytschko-Liu-Moran, 2.ª ed.; Abaqus); leyes cohesivas tracción-salto genéricas con elementos de interfaz (de Borst-Crisfield-Remmers-Verhoosel; elementos cohesivos de Abaqus).
+- **No estándar**: la discontinuidad embebida con cinemática KOS de Retama (2010) (módulo `discontinuities`); el seguimiento de trayectoria de grieta; el control del paso por liberación de energía de Gutiérrez (2004) (módulo `dissipation_control`: ningún código general lo implementa de forma nativa).
+
+Una pieza estándar que hoy sólo consume un módulo sigue en él. Es el caso de la familia de materiales cohesivos de `discontinuities`, cuyo único consumidor es el elemento embebido: mientras el programa principal no tenga un elemento de interfaz, una ley cohesiva nueva va a ese módulo. Cuando entre un elemento de interfaz estándar, la familia pasa con él al programa principal, sin física nueva, y el módulo la reutiliza.
 
 ## Argumentos
 
@@ -24,20 +42,23 @@ Disparadores típicos: "añade un material …", "crea un elemento …", "implem
 
 - `kind` ∈ {`material`, `element`, `solver`}
 - `Name`: PascalCase (`HyperelasticOgden`, `Shell4`, `DynamicNewmark`).
-- `--user <modulo>`: genera el componente dentro del módulo de usuario `solidum/user/<modulo>/` (lo crea si no existe). `<modulo>` en snake_case y sin `_` inicial (`available_user_modules()` ignora esos subpaquetes).
+- `--user <modulo>`: genera el componente dentro del módulo de usuario `solidum/user/<modulo>/` (lo crea si no existe). `<modulo>` en snake_case y sin `_` inicial (`available_user_modules()` ignora esos subpaquetes). Lo decides tú con el criterio de admisión (sección *Destino*), aunque el usuario no lo escriba.
 
-Si faltan argumentos, pídelos al usuario.
+Si faltan `kind` o `Name`, dedúcelos de la petición o de la spec; pregunta sólo si no se deducen.
 
 ## Flujo
 
-1. **Recoge metadatos mínimos** preguntando al usuario lo estrictamente necesario (no satures):
-   - **material**: `STRAIN_DIM` (1, 3 ó 6) · `PRIMARY_STATE_VAR` (str o `None`) · `STATE_SCHEMA` (`{nombre: forma}` de las variables internas, `{}` sin historia — obligatorio, ADR 0014) · parámetros del constructor (lista `nombre: tipo`).
-   - **element**: `DOF_NAMES` (lista) · `STRAIN_DIM` (1, 3 ó 6) · `N_INTEGRATION_POINTS` · número exacto de nodos requeridos · parámetros adicionales (`A`, `I`, `thickness`, etc.) · si guarda **estado propio** fuera de `ElementState` o toma decisiones discretas entre pasos (ver Convenciones).
-   - **solver**: tipo (`lineal` / `no-lineal` / `path-following` / `otro`) · parámetros del constructor con sus defaults.
+0. **Clasifica** el componente con el criterio de admisión (sección *Destino*) y localiza su spec, que es la orden de trabajo (Reglas.md §4): `docs/specs/<Name>.md` en el programa principal, `docs/user/<modulo>/specs/<Name>.md` en un módulo. El esqueleto puede generarse antes, pero la física no se escribe hasta que la spec está completa.
+1. **Recoge los datos físicos** de la spec y pregunta al usuario sólo lo que falte, y sólo física (no satures):
+   - **material**: dimensión de la deformación (1, 3 ó 6 componentes en Voigt) · parámetros físicos del constructor, con unidades · variables internas con significado físico (κ, ω, εᵖ…), y cuál gobierna el estado si hay una principal.
+   - **element**: grados de libertad por nodo · número de nodos · dimensión de la deformación · regla de integración · parámetros geométricos (`A`, `I`, `thickness`…).
+   - **solver**: algoritmo (lineal, Newton, control de carga o de desplazamiento, longitud de arco, dinámico…) · parámetros con significado físico y sus valores por omisión (tolerancias, incrementos).
+
+   Los atributos declarativos los deduce la IA de esos datos, sin preguntarlos: `STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `PRIMARY_STATE_VAR` y `STATE_SCHEMA` (`{nombre: forma}` de las variables internas, `{}` sin historia — obligatorio, ADR 0014). Lo mismo con el carácter del elemento: si la formulación guarda historia fuera de los puntos de Gauss (un salto, una grieta, un contacto) es un **elemento con estado propio**, y si activa algo entre pasos toma **decisiones discretas** (ver Convenciones).
 2. **Genera el archivo** en su carpeta canónica (ver Templates; con `--user`, en `solidum/user/<modulo>/`) usando `snake_case(Name)` como nombre de archivo.
 3. **Genera el test esqueleto** en `tests/test_<snake>.py` (con `--user`, en `tests/user/<modulo>/test_<pref>_<snake>.py`) con un test mínimo de "se construye + compute_state/compute_element_state/solve devuelve shapes correctas".
-4. **Verifica**: ejecuta `pytest tests/test_<snake>.py -x` (con `--user`: `pytest tests/user/<modulo>/ tests/test_main_program_purity.py -x`) y confirma que el esqueleto pasa.
-5. **Comunica al usuario**: lista los archivos creados, marca dónde queda el `# TODO: implementar la física aquí`, y dale el ejemplo YAML mínimo para usarlo (si aplica a material/element; con `--user`, incluye `user_modules: [<modulo>]`).
+4. **Verifica**: ejecuta `pytest tests/test_<snake>.py -x` (con `--user`: `pytest tests/user/<modulo>/ tests/test_main_program_purity.py tests/test_user_module_public_imports.py -x`) y confirma que el esqueleto pasa.
+5. **Comunica al usuario**: la clasificación (estándar / módulo de usuario) con su justificación en una línea, los archivos creados, dónde queda el `# TODO: implementar la física aquí`, y el ejemplo YAML mínimo para usarlo (si aplica a material/element; con `--user`, incluye `user_modules: [<modulo>]`).
 
 **No hace falta** tocar `__init__.py`, `registry.py` ni `yaml_parser.py` del programa principal: el decorador y el autodescubrimiento (o `load_user_module`, en un módulo de usuario) hacen el resto.
 
@@ -46,16 +67,21 @@ Si faltan argumentos, pídelos al usuario.
 - Material: hereda de `solidum.core.material.Material`. Decora con `@MaterialRegistry.register`. Implementa `compute_state(strain, state_vars=None) -> (stress, tangent, new_state_vars)` y declara `STATE_SCHEMA` (el barrido de contratos comprueba que coincide con el estado devuelto). El kernel por lotes (`BATCH_KERNEL`, `batch_params`, `batch_matrix`) es opcional; ver ADR 0014.
 - Element: hereda de `solidum.core.element.Element`. Decora con `@ElementRegistry.register`. Implementa `compute_element_state(u_e) -> (K_e, F_int_e)`. La base se encarga de `state_vars`, validación STRAIN_DIM, registro de DOFs, creación de `ElementState` y del `commit_state` **de lo que vive en `ElementState`** (variables internas y esfuerzos por punto de Gauss).
   - **Elemento con estado propio** (historia fuera de `ElementState`: un salto, una grieta, un contacto; ADR 0020, P8): la base no lo conoce. El elemento sobrescribe `commit_state` (llama a `super().commit_state()` y confirma su propio estado) y `compute_global_stiffness` (la evaluación auxiliar en `u = 0` no debe dejar huella en su trial propio: lo guarda y lo restaura al salir). No va por el camino por lotes: `element_is_batchable` lo excluye si la clase redefine `compute_element_state` o `commit_state` por debajo de la que declaró `BATCH_KINEMATICS`, así que **no declares `BATCH_KINEMATICS` en la propia clase con estado propio** (la protección dejaría de verla). Modelo: `solidum/user/discontinuities/embedded_cst.py`.
-  - **Decisiones discretas entre pasos** (activar una grieta o un contacto): sobrescribe `prepare_step(U_committed)` en vez de decidir dentro del Newton; debe ser idempotente para el mismo `U_committed` (tras una bisección el solver repite la llamada). ADR 0020, P5.
+  - **Decisiones discretas entre pasos** (activar una grieta o un contacto): sobrescribe `prepare_step(U_committed)` en vez de decidir dentro del Newton; debe ser idempotente para el mismo `U_committed` (tras una bisección, los solvers estáticos que bisecan repiten la llamada con el mismo campo). ADR 0020, P5.
   - **Referencias a otras familias**: `REFERENCE_KWARGS` declara qué parámetros del constructor son el `id` de un objeto de una familia de material (por omisión `{"material": MaterialRegistry}`; un elemento térmico declara `ThermalMaterialRegistry`; uno con dos materiales declara las dos). El lector YAML valida y resuelve la referencia. ADR 0020, P3.
 - Solver: clase normal (no abstracta). Decora con `@SolverRegistry.register`. Constructor recibe `assembler` como primer arg. Implementa `solve(F_ext_global, step_callback=None) -> U_global`.
+  - Si avanza por pasos, invoca `self.assembler.prepare_all_steps(U_committed)` al empezar cada intento de paso, con el campo convergido del paso anterior y antes del primer ensamblaje, también al repetir un paso tras una bisección (ADR 0020, P5).
+  - Si es una variante de arco que sólo cambia la restricción del paso, hereda de `ArcLengthSolver` y extiende `ArcProblem` redefiniendo `constraint` (`from solidum.math.solvers import ArcLengthSolver, ArcProblem`), como `IndirectDisplacementSolver`.
   - Si construye `StiffnessProperties` a mano (en vez de usar el corrector), pasa `near_nullspace=assembler.near_nullspace` (ADR 0018). Si resuelve un estático lineal sin corrector, verifica la solución con `check_linear_solution` de `solidum/math/solvers/model_checks.py` (ADR 0019).
 - Comentarios: solo cuando el "por qué" no sea obvio (sigue las reglas del proyecto). No documentar el "qué" — los nombres ya lo dicen.
 - Idioma: docstrings y mensajes al usuario en español; código en inglés.
 
 ## Templates
 
-Con `--user <modulo>`, cada plantilla va en `solidum/user/<modulo>/<snake>.py` y no cambia en nada más. La excepción es un material de una familia propia del módulo: hereda de la clase base de esa familia (no de `Material`) y se decora con su registro (ver *Dentro de un módulo de usuario*).
+Con `--user <modulo>`, cada plantilla va en `solidum/user/<modulo>/<snake>.py` con dos diferencias:
+
+- Un material de una familia propia del módulo hereda de la clase base de esa familia (no de `Material`) y se decora con su registro (ver *Dentro de un módulo de usuario*).
+- Del programa principal sólo se importan rutas y nombres públicos, sin guion bajo; `tests/test_user_module_public_imports.py` lo comprueba. La plantilla de solver importa de `solidum.math.solvers._shared`, que sólo vale dentro del programa principal: en un módulo, el logger sale de `solidum.logging.get_logger("user.<modulo>")`, y una utilidad que sólo exista en un módulo privado (hoy `domain_is_symmetric`) se hace pública en el programa principal antes de usarla (reexport en el `__init__.py` del paquete y en su `__all__`), como pieza genérica.
 
 ### material — `solidum/materials/<snake>.py`
 
@@ -270,7 +296,7 @@ def test_{{snake}}_resuelve_caso_trivial():
 
 ## Dentro de un módulo de usuario (`--user <modulo>`)
 
-Un módulo de usuario es una formulación no estándar en su propia carpeta, que el programa principal no importa ni nombra, como los elementos y materiales de usuario de FEAP (ADR 0020). Modelo completo: el módulo `discontinuities` (`solidum/user/discontinuities/`).
+Un módulo de usuario es una formulación no estándar (no cumple el criterio de admisión, sección *Destino*) en su propia carpeta, que el programa principal no importa ni nombra, como los elementos, materiales y macros de usuario de FEAP (ADR 0020). Modelos: `discontinuities` (`solidum/user/discontinuities/`: elemento con estado propio y familia de material propia) y `dissipation_control` (`solidum/user/dissipation_control/`: un solver, variante de arco).
 
 **Rutas**
 
@@ -279,21 +305,22 @@ Un módulo de usuario es una formulación no estándar en su propia carpeta, que
 | Código | `solidum/materials/`, `solidum/elements/<familia>/`, `solidum/math/solvers/` | `solidum/user/<modulo>/<snake>.py` |
 | Test | `tests/test_<snake>.py` | `tests/user/<modulo>/test_<pref>_<snake>.py` |
 | Spec | `docs/specs/<Name>.md` | `docs/user/<modulo>/specs/<Name>.md` |
-| Catálogo | `docs/catalogo_<elementos\|materiales\|solvers>.md` | sección «Módulos de usuario» del mismo catálogo |
+| Catálogo | `docs/catalogo_<elementos\|materiales\|solvers>.md` | sección con H1 exacto «# Módulos de usuario — <modulo>» al final del mismo catálogo (el build del manual de referencia la lleva al apéndice del módulo; sin el nombre del módulo, el build aborta) |
 
 `<pref>` es un prefijo propio del módulo (`disc` en `discontinuities`): los nombres de archivo de test deben ser únicos en toda la suite, porque pytest los importa por nombre de archivo y los tests se importan entre sí por ese nombre.
 
 **Carga explícita, nunca automática.** `import solidum` no carga nada de `solidum/user/`. El modelo que lo necesita lo pide:
-- YAML: `user_modules: [<modulo>]` en el primer nivel. Sin esa clave, un tipo de elemento o una sección YAML del módulo son un error que sugiere declararla.
+- YAML: `user_modules: [<modulo>]` en el primer nivel. Sin esa clave, un tipo de elemento, un tipo de solver o una sección YAML del módulo son un error que sugiere declararla.
 - Python y tests: `solidum.load_user_module("<modulo>")` (importa recursivamente el módulo para que sus decoradores registren) o importar desde `solidum.user.<modulo>`.
 
 **Pasos propios del módulo**
 1. Si el módulo no existe, crea `solidum/user/<modulo>/__init__.py` (docstring con la formulación, la referencia bibliográfica, el contenido y el uso; reexports con `__all__`), `docs/user/<modulo>/specs/` y `tests/user/<modulo>/`.
-2. **Registro.** Los registros del programa principal (`MaterialRegistry`, `ElementRegistry`, `SolverRegistry`) valen tal cual. Si el módulo necesita una **familia de material propia** (una ley que no relaciona σ con ε, como la cohesiva `t`–`[[u]]`), la declara en `solidum/user/<modulo>/registry.py` como subclase de `solidum.registry.Registry` con `_kind`, `SPEC_KIND`, `YAML_SECTION` y `YAML_LABEL` (ADR 0020, P1): el lector YAML recorre su sección sin conocerla y `tools/spec.py` acepta su `kind`. Sus materiales se decoran con ese registro, y su plantilla de spec va en `docs/user/<modulo>/specs/_template_<SPEC_KIND>.md`. Modelo: `solidum/user/discontinuities/registry.py`.
+2. **Registro.** Los registros del programa principal (`MaterialRegistry`, `ElementRegistry`, `SolverRegistry`) valen tal cual. Si el módulo necesita una **familia de material propia** (una ley que no relaciona σ con ε, como la cohesiva `t`–`[[u]]`), la declara en `solidum/user/<modulo>/registry.py` como subclase de `solidum.registry.Registry` con sólo atributos públicos: `SPEC_KIND`, `YAML_SECTION` y `YAML_LABEL` (ADR 0020, P1). El almacén `_items` lo crea la base; no declares atributos con guion bajo. El lector YAML recorre su sección sin conocerla, `tools/spec.py` acepta su `kind` y los mensajes de error la nombran por su `YAML_LABEL`. Sus materiales se decoran con ese registro, y su plantilla de spec va en `docs/user/<modulo>/specs/_template_<SPEC_KIND>.md`. Modelo: `solidum/user/discontinuities/registry.py`.
 3. **Constantes** del módulo en `solidum/user/<modulo>/constants.py`, no en `solidum/constants.py`.
-4. **Del programa principal, sólo su API pública**: `Element`, `Material`, `Registry` y los registros, `prepare_step`, `REFERENCE_KWARGS`, la cinemática `compute_kinematics_tri3` / `compute_integrands` (`solidum.elements.solid_2d._shared`)… **No edites el programa principal para nombrar el módulo.** Si falta una pieza genérica, proponla al usuario con los casos reales ajenos al módulo que la justifican (Reglas.md §1 y §4); nunca un caso especial.
-5. **Tests.** Empiezan con `solidum.load_user_module("<modulo>")`. Los barridos de contrato del programa principal sólo recorren sus propias clases: el módulo trae el suyo (modelo: `tests/user/discontinuities/test_disc_contratos.py`, que reutiliza `test_element_contract_sweep` restringido a sus clases) y valida sus specs (modelo: `test_disc_specs.py`).
-6. **Pureza.** Añade los nombres característicos del módulo (clases, constantes, claves YAML, `solidum\.user\.<modulo>`) a `NOMBRES_POR_MODULO` en `tests/test_main_program_purity.py`, que comprueba que el programa principal no los menciona y que `import solidum` no carga el módulo.
+4. **Del programa principal, sólo su contrato público**: `Element`, `Material` y `Node` (`solidum.core`), `Registry` y los registros (`solidum.registry`), `prepare_step`, `REFERENCE_KWARGS`, la cinemática `compute_kinematics_tri3` / `compute_integrands` (`from solidum.elements.solid_2d import …`), `ArcLengthSolver` y su problema por paso `ArcProblem` para una variante de arco que sólo cambia la restricción (`from solidum.math.solvers import …`; modelo: `solidum/user/dissipation_control/dissipation_arclength.py`), `get_logger` (`solidum.logging`)… Nunca una ruta ni un nombre con guion bajo (`_shared`, `_kind`): `tests/test_user_module_public_imports.py` lo rechaza. **No edites el programa principal para nombrar el módulo.** Si falta una pieza genérica, la IA la decide y la añade al programa principal, justificada por casos reales ajenos al módulo (Reglas.md §1 y §4), y la documenta (en el ADR 0020, o en un ADR nuevo si el cambio es grande). No se le presenta al usuario como decisión. Nunca un caso especial.
+5. **Tests.** Empiezan con `solidum.load_user_module("<modulo>")`. Los barridos de contrato del programa principal sólo recorren sus propias clases: el módulo trae el suyo y valida sus specs (modelo: `test_disc_specs.py`). Para los elementos, reutiliza la batería de `tests/test_element_contract_sweep.py` con un arnés propio, `arnes(nombres, fabricas, …)`, puesto delante en la herencia de cada clase `Test*` (modelo: `tests/user/discontinuities/test_disc_contratos.py`). No parchees variables globales de aquel archivo ni uses sus nombres con guion bajo.
+6. **Pureza.** `tests/test_main_program_purity.py` aplica tres controles: (1) estructural, por análisis sintáctico: el programa principal no importa el módulo de ninguna forma (absoluta, relativa, perezosa, por cadena ni con `load_user_module` y nombre literal); de `solidum.user` sólo usa el cargador genérico; (2) léxico: no menciona lo que aporta el módulo, con los nombres derivados al cargarlo (lo que añade a los registros, sus familias con su `YAML_SECTION` y `SPEC_KIND`, sus referencias nuevas, su `__all__` y su ruta); (3) en ejecución: `import solidum` no lo carga y toda clase registrada es del programa principal. No hay que dar de alta el módulo. Un nombre característico que la derivación no vea (p. ej. una constante que no reexporta) va, si se quiere, a `NOMBRES_ADICIONALES` de ese archivo.
+7. **Sólo añadir.** Un módulo añade entradas a los registros; nunca reasigna una existente (p. ej. otra clase como `Elastic2D` o un solver con el nombre de uno del programa principal). Si lo hace, `load_user_module` lanza `ValueError` y deshace la carga entera. Da a sus clases nombres propios.
 
 Test esqueleto en un módulo de usuario (cabecera; el cuerpo, como en las plantillas de arriba):
 ```python
@@ -307,6 +334,7 @@ from solidum.user.{{modulo}}.{{snake}} import {{Name}}  # noqa: E402
 ## Recordatorios al cerrar
 
 Tras generar y validar el esqueleto, comunica al usuario:
+- La clasificación (estándar / módulo de usuario) y su justificación en una línea.
 - Lista de archivos creados con paths clickables.
 - Que el componente ya está **automáticamente registrado y disponible en YAML** sin tocar otros archivos (en un módulo de usuario, en cuanto el YAML declara `user_modules: [<modulo>]`).
 - Dónde está el `TODO: implementar la física`.
@@ -314,7 +342,7 @@ Tras generar y validar el esqueleto, comunica al usuario:
 
 ## Actualizar el catálogo
 
-Una vez el usuario implemente la física y los tests pasen, **añadir una entrada** al catálogo correspondiente (un componente de módulo de usuario, en su sección «Módulos de usuario»):
+Una vez implementada la física de la spec y en verde los tests de `acceptance`, **añadir una entrada** al catálogo correspondiente (un componente de módulo de usuario, en su sección «Módulos de usuario — <modulo>»), con la clasificación del criterio de admisión y su justificación (Reglas.md §1):
 - material → [docs/catalogo_materiales.md](../../../docs/catalogo_materiales.md)
 - element → [docs/catalogo_elementos.md](../../../docs/catalogo_elementos.md)
 - solver → [docs/catalogo_solvers.md](../../../docs/catalogo_solvers.md)

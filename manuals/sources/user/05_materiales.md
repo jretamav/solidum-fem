@@ -137,7 +137,7 @@ $$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2
 
 - **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (`plane_stress` default o `plane_strain`), `density` (opcional).
 - **Tangente algorítmica consistente**: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes (\mathbf M\boldsymbol\varepsilon)$ con $\mathbf M = \mathrm{diag}(1, 1, 1/2)$ en carga activa. **No simétrica** ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales); el atributo `IS_SYMMETRIC = False` hace que el despachador algebraico ADR 0003 elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
-- **Limitación**: $\varepsilon_{eq}$ simétrica no distingue daño en tensión vs compresión; para hormigón se requiere modelo de Mazars o split tensión/compresión (no implementado). Sin regularización por longitud característica $\to$ *mesh-dependency* en régimen de ablandamiento.
+- **Limitación**: $\varepsilon_{eq}$ simétrica no distingue daño en tracción frente a compresión; para hormigón se requiere modelo de Mazars o separación tracción/compresión (no implementado). Sin regularización por longitud característica $\to$ *mesh-dependency* en régimen de ablandamiento.
 
 ```yaml
 materials:
@@ -153,7 +153,7 @@ materials:
 
 ## Elasticidad Unilateral (Cable)
 
-### `CableMaterial1D` — cable lineal en tensión, nulo en compresión
+### `CableMaterial1D` — cable lineal en tracción, nulo en compresión
 
 Material 1D *memoryless* que captura la propiedad esencial del cable: solo transmite esfuerzo cuando está tensado.
 
@@ -161,7 +161,7 @@ $$\sigma(\varepsilon) = E\,\langle\varepsilon\rangle^+ = \begin{cases} E\,\varep
 
 con $\langle \cdot \rangle^+$ el operador de MacAuley (parte positiva). Tangente discontinua en $\varepsilon = 0$ (asignación al régimen compresivo por convención).
 
-- **Parámetros**: `E` (módulo de Young en tensión).
+- **Parámetros**: `E` (módulo de Young en tracción).
 - **Sin variables internas** (la respuesta depende sólo de $\varepsilon$ instantánea).
 - **Caveats numéricos**: en transiciones tensado ↔ destensado Newton-Raphson puede oscilar. Mitigación: usar `ArcLengthSolver` o pasos finos con `adaptive`.
 

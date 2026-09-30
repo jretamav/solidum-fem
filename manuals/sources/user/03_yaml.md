@@ -96,7 +96,7 @@ Los parámetros aceptados dependen del material; consulte el capítulo *Catálog
 
 ## Módulos de usuario: `user_modules`
 
-El **programa principal** de Solidum contiene los elementos, materiales y solvers de elementos finitos estándar. Las formulaciones no estándar viven aparte, en **módulos de usuario** (`solidum/user/<nombre>/`), a la manera de los elementos y materiales de usuario de FEAP (ADR 0020). Un módulo de usuario puede aportar tipos de elemento, materiales y secciones de primer nivel propias, pero el programa principal no lo carga por sí solo: el modelo que lo necesita lo declara.
+El **programa principal** de Solidum contiene los elementos, materiales y solvers de elementos finitos estándar. Las formulaciones no estándar viven aparte, en **módulos de usuario** (`solidum/user/<nombre>/`), a la manera de los elementos, materiales y macros de usuario de FEAP (ADR 0020). Un módulo de usuario puede aportar tipos de elemento, materiales, solvers y secciones de primer nivel propias, pero el programa principal no lo carga por sí solo: el modelo que lo necesita lo declara.
 
 ```yaml
 user_modules: [discontinuities]
@@ -104,7 +104,12 @@ user_modules: [discontinuities]
 
 Los módulos declarados se cargan al principio de la lectura, antes de validar el resto del archivo, de modo que sus tipos y secciones se validan como los del programa principal. La carga es explícita a propósito: el archivo dice qué formulación necesita, y el mismo modelo no funciona en una sesión y falla en otra según lo que se haya importado antes. Si el YAML usa un tipo o una sección de un módulo sin declararlo, el error lo dice y lista los módulos disponibles; un nombre de módulo inexistente también es un error.
 
-Hoy existe un módulo de usuario, `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D` y su familia de materiales cohesivos, con la sección `cohesive_materials` (capítulos *Catálogo de Elementos Finitos* y *Catálogo de Modelos Constitutivos*).
+Hoy existen dos módulos de usuario:
+
+- `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D` y su familia de materiales cohesivos, con la sección `cohesive_materials` (capítulos *Catálogo de Elementos Finitos* y *Catálogo de Modelos Constitutivos*).
+- `dissipation_control`: el solver de arco por disipación de energía `DissipationArcLengthSolver` (capítulo *Esquemas de Solución*).
+
+Un modelo puede declarar varios: `user_modules: [discontinuities, dissipation_control]`.
 
 ## Condiciones de Frontera
 

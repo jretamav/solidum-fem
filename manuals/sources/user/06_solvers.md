@@ -1,6 +1,6 @@
 # Esquemas de Solución
 
-Este capítulo cubre los **solvers estáticos** del catálogo: lineal, no lineal (Newton-Raphson) y arc-length (Crisfield cilíndrico). Los solvers de análisis modal, dinámico (Newmark, HHT-α, central differences) y de análisis en frecuencia / espectral (Harmonic, Response Spectrum) se documentan en el siguiente capítulo, "Análisis Dinámico".
+Este capítulo cubre los **solvers estáticos** del catálogo: lineal, no lineal (Newton-Raphson), arc-length (Crisfield cilíndrico) y control indirecto de desplazamiento; al final, el arc-length por disipación de energía del módulo de usuario `dissipation_control`. Los solvers de análisis modal, dinámico (Newmark, HHT-α, central differences) y de análisis en frecuencia / espectral (Harmonic, Response Spectrum) se documentan en el siguiente capítulo, "Análisis Dinámico".
 
 ## `LinearSolver` — solución directa lineal
 
@@ -74,36 +74,9 @@ solver:
 
 **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (*Computers & Structures*, 1981).
 
-## `DissipationArcLengthSolver` — arc-length por disipación de energía
-
-Variante de `ArcLengthSolver` que controla la **disipación incremental de energía** por paso en lugar de la longitud de arco euclídea. Es la herramienta indicada cuando la curva $\mathbf U$–$\lambda$ tiene tramos casi verticales, donde la restricción cilíndrica se vuelve mal condicionada.
-
-**Diferencia esencial**: la restricción de paso
-
-$$g(\Delta\mathbf U, \Delta\lambda) = \tfrac{1}{2}\left(\lambda_n \mathbf F \cdot \Delta\mathbf U - \Delta\lambda\, \mathbf F \cdot \mathbf U_n\right) = \tau$$
-
-es **lineal** en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del cilíndrico. El corrector tiene por tanto una sola raíz: desaparecen la selección de raíz por menor ángulo y la patología de raíces imaginarias.
-
-- **Switching automático**: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
-- **Parámetros**: todos los de `ArcLengthSolver`, más `initial_tau` (obligatorio) y la familia `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
-- **Cuándo usarlo**: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
-- **Limitación medida**: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda #27). Para retrocesos, `IndirectDisplacementSolver`.
-- **Limitación conocida**: **no** resuelve el caso de discontinuidad embebida (`CST_Embedded2D`, módulo de usuario `discontinuities`) con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
-
-```yaml
-solver:
-  type: DissipationArcLengthSolver
-  max_lambda: 1.0
-  initial_dlambda: 0.05
-  initial_tau: 1.0e-4
-  max_steps: 300
-```
-
-**Referencia**: Gutiérrez, "Energy release control for numerical simulations of failure in quasi-brittle solids" (*Communications in Numerical Methods in Engineering*, 2004); switching a la Verhoosel et al. (2009).
-
 ## `IndirectDisplacementSolver` — control indirecto de desplazamiento
 
-Variante de `ArcLengthSolver` que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de **una magnitud elegida**: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los **retrocesos** (snap-back) por localización, que los otros dos solvers de arco no siguen.
+Variante de `ArcLengthSolver` que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de **una magnitud elegida**: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los **retrocesos** (snap-back) por localización, que `ArcLengthSolver` no sigue (tampoco el arc-length por disipación del módulo de usuario `dissipation_control`).
 
 $$\mathbf c^\top \Delta\mathbf U = \Delta l$$
 
@@ -123,3 +96,44 @@ solver:
 ```
 
 **Referencia**: R. de Borst, "Computation of post-bifurcation and post-failure behavior of strain-softening solids" (*Computers & Structures*, 1987).
+
+## Módulo de usuario `dissipation_control`: arc-length por disipación de energía
+
+No es un solver estándar según el criterio de admisión del proyecto: ningún código general establecido implementa esta restricción de forma nativa. Por eso no forma parte del programa principal: vive en el **módulo de usuario** `dissipation_control` (`solidum/user/dissipation_control/`, ADR 0020). `import solidum` no lo carga; el YAML que lo use debe declararlo:
+
+```yaml
+user_modules: [dissipation_control]
+```
+
+Sin esa línea, la lectura se detiene con un error que nombra el solver desconocido y lista los módulos de usuario disponibles. En Python, `solidum.load_user_module("dissipation_control")` o `from solidum.user.dissipation_control import DissipationArcLengthSolver`.
+
+### `DissipationArcLengthSolver` — arc-length por disipación de energía
+
+Variante de `ArcLengthSolver` que controla la **disipación incremental de energía** por paso en lugar de la longitud de arco euclídea. Es la herramienta indicada cuando la curva $\mathbf U$–$\lambda$ tiene tramos casi verticales, donde la restricción cilíndrica se vuelve mal condicionada.
+
+**Diferencia esencial**: la restricción de paso
+
+$$g(\Delta\mathbf U, \Delta\lambda) = \tfrac{1}{2}\left(\lambda_n \mathbf F \cdot \Delta\mathbf U - \Delta\lambda\, \mathbf F \cdot \mathbf U_n\right) = \tau$$
+
+es **lineal** en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del cilíndrico. El corrector tiene por tanto una sola raíz: desaparecen la selección de raíz por menor ángulo y la patología de raíces imaginarias.
+
+- **Switching automático**: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
+- **Parámetros**: todos los de `ArcLengthSolver`, más `initial_tau` (obligatorio) y la familia `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
+- **Cuándo usarlo**: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
+- **Limitación medida**: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda #27). Para retrocesos, `IndirectDisplacementSolver`.
+- **Limitación conocida**: **no** resuelve el caso de discontinuidad embebida (`CST_Embedded2D`, módulo de usuario `discontinuities`) con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que la regla de signo del predictor (producto escalar con el paso anterior) no maneja. Es una limitación documentada del solver, no un error de configuración. El diagnóstico es anterior a la corrección de la tangente cohesiva del 2026-09-23 y no se ha vuelto a comprobar; con desplazamiento impuesto, `NonlinearSolver` sí recorre hoy esa rama. Un modelo que combine los dos módulos los declara juntos: `user_modules: [discontinuities, dissipation_control]`.
+- **Puntos abiertos**: la spec del solver registra tres cuestiones físicas pendientes de decisión (el signo del predictor en modo de disipación, el piso de la escala del umbral de conmutación y el alcance en plasticidad). Mientras no se cierren, conviene limitar su uso al daño continuo validado.
+
+```yaml
+user_modules: [dissipation_control]
+solver:
+  type: DissipationArcLengthSolver
+  max_lambda: 1.0
+  initial_dlambda: 0.05
+  initial_tau: 1.0e-4
+  max_steps: 300
+```
+
+**Referencia**: Gutiérrez, "Energy release control for numerical simulations of failure in quasi-brittle solids" (*Communications in Numerical Methods in Engineering*, 2004); switching a la Verhoosel et al. (2009).
+
+La formulación completa está en la spec del solver, en el apéndice «Módulos de usuario» del Manual de Referencia.

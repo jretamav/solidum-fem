@@ -72,7 +72,6 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `LinearSolver`               | `static`       | Estático lineal (`K·U = F` en un paso).                           | Todos los materiales con tangente constante; sin corotacional; sin cable. |
 | `NonlinearSolver`            | `static`       | Estático no lineal con control de carga (Newton-Raphson).         | Cualquier no-linealidad material o geométrica suave (sin snap-back).  |
 | `ArcLengthSolver`            | `static`       | Estático no lineal con snap-through / snap-back / softening.      | Igual que `NonlinearSolver`, además captura puntos límite.            |
-| `DissipationArcLengthSolver` | `static`       | Estático no lineal con softening severo, controlando la disipación de energía por paso (Gutiérrez 2004). Restricción lineal en vez de cuadrática; switching automático cilíndrico↔disipación. | Igual que `ArcLengthSolver` (es subclase). Validado para daño continuo bulk 1D/2D; **no** para cohesivo+embedded con penalty `K_e` rígido (módulo de usuario `discontinuities`; deuda técnica #4). |
 | `IndirectDisplacementSolver` | `static`       | Estático no lineal con retroceso (*snap-back*) por localización, controlando el incremento de una combinación de desplazamientos elegida (control indirecto de desplazamiento, de Borst 1987). | Igual que `ArcLengthSolver` (es subclase); parámetro `control` obligatorio; la magnitud controlada debe crecer monótonamente. |
 | `ModalSolver`                | `modal`        | Autovalor generalizado `K·φ = ω²M·φ` (frecuencias y modos).       | Todos los materiales (lineales en `u = 0`); `density` declarada; `compute_mass_matrix`. |
 | `NewmarkSolver`              | `transient`    | Transitorio lineal `M·ü + C·u̇ + K·u = F(t)`.                      | Mismas restricciones que `LinearSolver` + `density` declarada.        |
@@ -83,7 +82,7 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | `HarmonicSolver`             | `harmonic`     | Respuesta forzada armónica `(-ω²M + iωC + K)·û = F̂` con barrido en `ω`. | Lineal; `density` declarada.                                          |
 | `ResponseSpectrumSolver`     | `spectrum`     | Análisis sísmico por combinación modal SRSS/CQC contra espectro.  | Lineal; `density` declarada; suficientes modos (verificar `cumulative_effective_mass_ratio`). |
 
-**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento **mecánico** es compatible con los 13 solvers anteriores siempre que el material declare `density`. Los elementos térmicos van por su propia vía (§2.b). **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
+**Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento **mecánico** es compatible con los 12 solvers anteriores siempre que el material declare `density` (y con el `DissipationArcLengthSolver` del módulo de usuario `dissipation_control`, §2.d). Los elementos térmicos van por su propia vía (§2.b). **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar).
 
 ---
 
@@ -112,7 +111,7 @@ Componentes de un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario
 
 - **(c)** `CST_Embedded2D` requiere **dos materiales**: un *bulk* que gobierna el continuo y un *cohesivo* de la familia `CohesiveMaterial` del módulo (hoy sólo `CohesiveDamageIsotropic`). En la fase 1 el bulk **sólo puede ser `Elastic2D`** (lista blanca `_ACCEPTED_BULKS` en [`solidum/user/discontinuities/embedded_cst.py`](../solidum/user/discontinuities/embedded_cst.py); cualquier otro se rechaza al construir): la aproximación discreta concentra toda la disipación en la discontinuidad (ADR 0010). *Corregido 2026-09-23: esta nota y la tabla daban por válidos como bulk `VonMises2D`, `DruckerPrager2D` e `IsotropicDamage2D`, que el código veta.*
 - El cohesivo se declara en la sección YAML `cohesive_materials`, que aporta el módulo, y el elemento lo recibe por `cohesive_material: <id>` (referencia declarada en `REFERENCE_KWARGS` y resuelta contra esa sección).
-- **Solvers**: la grieta se activa en el gancho `prepare_step`, que invocan los seis solvers que avanzan por pasos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`); `LinearSolver` no lo invoca. Límite con penalización `K_e` rígida: deuda técnica #4 de [STATUS.md](STATUS.md).
+- **Solvers**: la grieta se activa en el gancho `prepare_step`, que invocan los cinco solvers del programa principal que avanzan por pasos (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) y el `DissipationArcLengthSolver` del módulo de usuario `dissipation_control` (§2.d; el modelo declara `user_modules: [discontinuities, dissipation_control]`); `LinearSolver` no lo invoca. Límite con penalización `K_e` rígida: deuda técnica #4 de [STATUS.md](STATUS.md).
 - **Tests de sistema**: [`test_disc_cst_embedded_integration.py`](../tests/user/discontinuities/test_disc_cst_embedded_integration.py) y [`test_disc_embedded_uniaxial_softening.py`](../tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py) (tracción uniaxial con `NonlinearSolver` hasta la separación completa, frente a la solución exacta).
 
 ---
@@ -135,7 +134,7 @@ Componentes de un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario
 | `lumping` de la matriz de masa/capacidad | `"consistent"` | **`"lumped"`** |
 | Esquema temporal | Newmark β=1/4, γ=1/2 (sin disipación numérica) | **`θ = 1`** (Euler implícito, L-estable) |
 
-**Combinaciones vetadas**: los solvers `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver` y `ResponseSpectrumSolver` **no aplican** a elementos térmicos: todos integran o diagonalizan la ecuación de segundo orden. Los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `IndirectDisplacementSolver`) tampoco tienen uso hoy porque el único material térmico es lineal; lo tendrán cuando entre `k(T)` o radiación.
+**Combinaciones vetadas**: los solvers `ModalSolver`, `NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver` y `ResponseSpectrumSolver` **no aplican** a elementos térmicos: todos integran o diagonalizan la ecuación de segundo orden. Los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, y el `DissipationArcLengthSolver` del módulo de usuario `dissipation_control`) tampoco tienen uso hoy porque el único material térmico es lineal; lo tendrán cuando entre `k(T)` o radiación.
 
 ---
 
@@ -177,6 +176,18 @@ solver:
 **Limitación de salida**: el `VtkExporter` escribe únicamente campos mecánicos (desplazamientos y rotaciones) y **no exporta el campo de temperatura**. Es la deuda práctica más visible del subsistema térmico; el resultado se consulta hoy desde `SolveResult.U` o `ThermalTransientResult.T_history`.
 
 **Carga variable en el tiempo**: el YAML deriva un `F_func` constante de `thermal_loads`. Para una carga o un Dirichlet que varíen en el tiempo hay que construir el solver desde código y pasar `F_func` o `dirichlet_func` propios.
+
+---
+
+### 2.d Módulo de usuario `dissipation_control` × tipo de problema
+
+Solver de un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)), fuera del programa principal desde el 2026-09-29 (criterio de admisión, Reglas.md §1: ningún código general establecido implementa la restricción de forma nativa). Sólo existe en un modelo que carga el módulo (`user_modules: [dissipation_control]` en el YAML, o `solidum.load_user_module("dissipation_control")` en Python). Spec en [`docs/user/dissipation_control/specs/`](user/dissipation_control/specs/).
+
+| Solver                       | Pipeline kind  | Tipo de problema                                                  | Pre-condición sobre materiales/elementos                              |
+|------------------------------|----------------|-------------------------------------------------------------------|------------------------------------------------------------------------|
+| `DissipationArcLengthSolver` | `static`       | Estático no lineal con softening severo, controlando la disipación de energía por paso (Gutiérrez 2004). Restricción lineal en vez de cuadrática; switching automático cilíndrico↔disipación. | Igual que `ArcLengthSolver` (es subclase). Validado para daño continuo bulk 1D/2D; **no** para cohesivo+embedded con penalty `K_e` rígido (módulo de usuario `discontinuities`; deuda técnica #4). No sigue el retroceso por localización (deuda #27). |
+
+- **Tests de sistema**: [`test_dctl_dissipation_arclength.py`](../tests/user/dissipation_control/test_dctl_dissipation_arclength.py) (`Truss2D` + `IsotropicDamage1D`, `Quad4` + `IsotropicDamage2D`, `Truss2D` + `Elastic1D` frente al `ArcLengthSolver`).
 
 ---
 
@@ -254,14 +265,16 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 
 ## Cómo se mantiene este documento
 
-- **Componente nuevo**: añadir su columna o fila; marcar celdas con ✓ donde haya test y ○ donde sea compatible sin test. Si una compatibilidad requiere restricción, añadirla como nota al pie. Un componente de un **módulo de usuario** va en la sección de su módulo (hoy §1.c), no en las tablas del programa principal.
+- **Componente nuevo**: añadir su columna o fila; marcar celdas con ✓ donde haya test y ○ donde sea compatible sin test. Si una compatibilidad requiere restricción, añadirla como nota al pie. Un componente de un **módulo de usuario** va en la sección de su módulo (hoy §1.c y §2.d), no en las tablas del programa principal.
 - **Test nuevo que cubre celda ○**: cambiar a ✓.
 - **Combinación que se descubre incompatible** (durante implementación): marcar como nota explícita, no como ✓ ni vacío.
 - **Etapa cerrada**: barrer la matriz para asegurar que todas las nuevas combinaciones quedaron reflejadas.
 
 ---
 
-*Última actualización: 2026-09-24 — **ADR 0020**: `CST_Embedded2D` y `CohesiveDamageIsotropic` salen de la tabla del programa principal a §1.c (módulo de usuario `discontinuities`), con la nota (c) y sus tests; añadido `IndirectDisplacementSolver` a la tabla de solvers de §2, que lo omitía (13 solvers mecánicos).*
+*Última actualización: 2026-09-29 — **`DissipationArcLengthSolver` al módulo de usuario `dissipation_control`** (criterio de admisión, Reglas.md §1): sale de la tabla de solvers del programa principal de §2 (12 solvers mecánicos + `ThetaMethodSolver` = 13 en el programa principal) a §2.d; §1.c y §2.b lo citan como solver del módulo.*
+
+*Anterior 2026-09-24 — **ADR 0020**: `CST_Embedded2D` y `CohesiveDamageIsotropic` salen de la tabla del programa principal a §1.c (módulo de usuario `discontinuities`), con la nota (c) y sus tests; añadido `IndirectDisplacementSolver` a la tabla de solvers de §2, que lo omitía (13 solvers mecánicos).*
 
 *Anterior 2026-09-23 — columna `Orthotropic2D` (✓ en los cinco sólidos 2D, nota (e)) y **corrección de `CST_Embedded2D`**: sólo admite `Elastic2D` como bulk (lista blanca del código), no los tres materiales no lineales que la tabla daba por válidos.*
 

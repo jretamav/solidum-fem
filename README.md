@@ -12,7 +12,10 @@ with an architecture optimized for extension via AI-assisted development.
 The main program contains standard finite element formulations. Non-standard
 formulations are written as user modules, as with FEAP's user elements and
 materials: each one lives in `solidum/user/<name>/` and is loaded explicitly by
-the model that needs it. The embedded discontinuity model is the first one.
+the model that needs it. A formulation is standard if it appears in the
+reference texts of the field and is implemented in at least one established
+general-purpose code. There are two user modules today: the embedded
+discontinuity model and the dissipation-based arc-length control.
 
 ## Current capabilities
 
@@ -26,9 +29,9 @@ Main program:
   2D elasticity, unilateral cable, J2 plasticity (1D, plane strain, plane stress,
   3D), Drucker-Prager (2D and 3D), isotropic continuum damage 1D/2D/3D) and
   Fourier thermal conduction with tensor conductivity.
-- **14 solvers**: linear and nonlinear static, cylindrical arc-length (Crisfield),
-  dissipation arc-length (Gutiérrez 2004 with automatic switching) and indirect
-  displacement control (de Borst 1987), modal via shift-invert ARPACK, linear and
+- **13 solvers**: linear and nonlinear static, cylindrical arc-length (Crisfield)
+  and indirect displacement control (de Borst 1987), modal via shift-invert
+  ARPACK, linear and
   nonlinear Newmark/HHT time integration, central difference, harmonic response,
   response spectrum (SRSS, CQC), and θ-method integration for transient heat
   conduction.
@@ -60,16 +63,29 @@ User modules (in `solidum/user/`; `import solidum` loads none of them):
   `cohesive_materials`). A model loads it with `user_modules: [discontinuities]`
   in YAML or `solidum.load_user_module("discontinuities")` in Python; its
   classes are imported from `solidum.user.discontinuities`.
+- **`dissipation_control`**: dissipation arc-length (DissipationArcLengthSolver,
+  Gutiérrez 2004, with automatic switching between the cylindrical and the
+  dissipation constraints after Verhoosel, Remmers and Gutiérrez 2009), a
+  variant of the cylindrical arc-length solver that controls the incremental
+  dissipated energy. It left the main program on 2026-09-29 because no
+  established general-purpose code implements this constraint natively. A
+  model loads it with `user_modules: [dissipation_control]` in YAML or
+  `solidum.load_user_module("dissipation_control")` in Python.
 - A user module registers its classes with the same decorators as the main
   program and may declare its own material family with its own YAML section;
-  the YAML reader, the gmsh reader and the spec tooling need no change.
+  the YAML reader, the gmsh reader and the spec tooling need no change. A user
+  module may only add registry entries, never replace existing ones, and uses
+  only the public API of the main program; tests check the boundary in both
+  directions.
 
 Documentation and tests:
 
 - **20 accepted ADRs** documenting architectural decisions.
 - **51 validated specs** with quantitative acceptance criteria (49 for the main
-  program, 2 for the `discontinuities` user module).
-- **1613 tests** green (97 of them for the `discontinuities` user module),
+  program, 2 for the `discontinuities` user module; the spec of the
+  `dissipation_control` module is implemented and partially validated).
+- **1756 tests** green (110 of them for the `discontinuities` user module and
+  19 for `dissipation_control`),
   including 8 published canonical benchmarks (Lamé 2D and 3D, NAFEMS LE1 and
   LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation, Hill 1950,
   Carslaw-Jaeger semi-infinite solid).

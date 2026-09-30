@@ -22,7 +22,7 @@ La analogía operativa es la de una calculadora científica: se conoce qué repr
 
 **Mecanismos de transparencia conceptual.** El sistema mantiene tres artefactos vivos para preservar la comprensión del usuario a medida que el código crece: un mapa de arquitectura (este manual y `docs/arquitectura.md`), un inventario explícito de los conceptos sostenedores (`docs/conceptos_clave.md`) y un protocolo conversacional para profundizar bajo demanda. Estos mecanismos se formalizan en el Architecture Decision Record (ADR) 0001.
 
-**Validación física mediante pruebas.** Las sutilezas físicas (signos en notación de Voigt, factores de un medio, hipótesis de tensión plana frente a deformación plana) no se manifiestan en errores de compilación. Toda formulación nueva se acompaña de una prueba de validación contra solución analítica o frente a un caso de referencia conocido.
+**Validación física mediante pruebas.** Las sutilezas físicas (signos en notación de Voigt, factores de un medio, hipótesis de esfuerzo plano frente a deformación plana) no se manifiestan en errores de compilación. Toda formulación nueva se acompaña de una prueba de validación contra solución analítica o frente a un caso de referencia conocido.
 
 **Convención de signos única.** Toda formulación, prueba, interfaz pública y documentación utiliza la misma convención de signos. Si una referencia bibliográfica adopta otra, la traducción se realiza al implementar y se anota en la prueba correspondiente. Esta convención se detalla en el capítulo dedicado.
 

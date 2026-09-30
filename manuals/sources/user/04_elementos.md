@@ -33,7 +33,7 @@ elements:
 
 ### Cables: `Cable2DCorot` / `Cable3DCorot`
 
-Elemento 1D que transmite *únicamente* fuerza axial de tensión (no resiste compresión). La unilateralidad la aporta el material (típicamente `CableMaterial1D`, ver capítulo *Catálogo de Modelos Constitutivos*); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
+Elemento 1D que transmite *únicamente* fuerza axial de tracción (no resiste compresión). La unilateralidad la aporta el material (típicamente `CableMaterial1D`, ver capítulo *Catálogo de Modelos Constitutivos*); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
 
 - **DOFs/nodo**: `ux, uy` (2D); `ux, uy, uz` (3D).
 - **Parámetros**: `A`.
@@ -260,7 +260,7 @@ CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
 - **Activación**: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior; es el único criterio y no se declara en el YAML. Es **irreversible**: una vez activada persiste aunque el paso siguiente descargue.
 - **Bulk aceptado**: sólo `Elastic2D` en la fase actual — la *discrete approach* presupone bulk elástico (ADR 0010).
 - **Post-proceso**: `compute_gauss_state(U)` añade la clave `'discontinuity'` con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
-- **Limitación operativa**: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver la limitación conocida de `DissipationArcLengthSolver` en el capítulo «Esquemas de Solución».
+- **Solver para la rama post-pico**: con desplazamiento impuesto, `NonlinearSolver` recorre el ablandamiento hasta la separación completa con penalización cohesiva rígida (tracción uniaxial frente a la solución exacta y ensayo de Van Vliet con grieta prescrita, en `tests/user/discontinuities/`). Las limitaciones registradas de `ArcLengthSolver` y de `DissipationArcLengthSolver` (módulo de usuario `dissipation_control`, al final del capítulo «Esquemas de Solución») con esa penalización son anteriores a la corrección de la tangente cohesiva del 2026-09-23 y no se han vuelto a comprobar.
 
 ```yaml
 user_modules: [discontinuities]

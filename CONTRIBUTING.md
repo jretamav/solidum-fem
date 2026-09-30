@@ -95,7 +95,43 @@ The project follows strict conventions documented in [Reglas.md](Reglas.md)
 - **Spec-first workflow**: new elements, materials, or solvers require a spec
   in `docs/specs/` before implementation. The spec sets the physical contract
   (equations, parameters, acceptance criteria) and is validated against the
-  resulting tests.
+  resulting tests. Its first step is the admission criterion below, declared
+  in the spec's `admission` block (`textbooks` and `general_codes`, written
+  with the canonical identifiers of `ADMISSION_TEXTBOOKS` and
+  `ADMISSION_GENERAL_CODES` in `solidum/tools/spec.py`).
+- **Admission criterion** (Reglas.md §1): a formulation belongs to the main
+  program (standard Solidum) only if (i) it appears in the reference texts of
+  the field (Zienkiewicz-Taylor, Hughes, Bathe, Belytschko-Liu-Moran,
+  de Souza Neto-Perić-Owen, de Borst-Crisfield-Remmers-Verhoosel) and (ii) it
+  is implemented in at least one established general-purpose code (Abaqus,
+  ANSYS, DIANA, Code_Aster, OpenSees). When the criterion is inconclusive,
+  the maintainer decides.
+- **User modules** (ADR 0020, `docs/adr/0020-modulos-de-usuario.md`): a
+  research formulation that does not meet the criterion (for example, an
+  embedded strong discontinuity with KOS kinematics, crack-path tracking, or
+  Gutiérrez's energy-release path-following control) goes to a user module,
+  in the spirit of FEAP's user elements, materials and macros:
+  code in `solidum/user/<name>/`, specs in `docs/user/<name>/specs/`, tests in
+  `tests/user/<name>/`. A user module is never loaded automatically: a model
+  requests it with `user_modules: [<name>]` in its YAML file, or with
+  `solidum.load_user_module("<name>")` in Python. The main program never
+  imports or names a user module; if a module needs something the main
+  program lacks, it is added as a generic mechanism, never as a special case.
+  `tests/test_main_program_purity.py` enforces this boundary with three
+  checks: a structural one (no main-program file imports a user module in any
+  form, whether absolute, relative, lazy, by string, or through
+  `load_user_module` with a literal name; only the generic loader
+  `load_user_module` / `available_user_modules` is allowed), a lexical one (no
+  main-program file mentions what a module provides; the watched names are
+  derived automatically from what each module registers when loaded, so a new
+  module does not have to be listed in the test) and a runtime one
+  (`import solidum` loads no user module and every registered class belongs to
+  the main program). A user module may only add registry entries: if it
+  reassigns an existing one, `load_user_module` raises `ValueError` and undoes
+  the whole load. In the other direction,
+  `tests/test_user_module_public_imports.py` checks that a user module uses
+  only the public API of the main program (no module path or name with a
+  leading underscore).
 - **ADRs for architectural decisions**: cross-cutting changes require an
   Architecture Decision Record in `docs/adr/`. See [Reglas.md §4](Reglas.md).
 
