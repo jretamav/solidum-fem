@@ -175,6 +175,8 @@ class Truss2DCorot(Truss2D):
     se proyectan sobre la dirección corriente del eje de la barra.
     """
 
+    GEOMETRICALLY_NONLINEAR = True
+
     def _axis_direction(self, u_e: np.ndarray) -> np.ndarray:
         _, c_t, s_t = self._current_geometry(u_e)
         return np.array([c_t, s_t])
@@ -379,6 +381,8 @@ class Truss3DCorot(Truss3D):
     proyector perpendicular al eje corriente); fuerzas internas proyectadas
     sobre la dirección actual de la barra.
     """
+
+    GEOMETRICALLY_NONLINEAR = True
 
     def _axis_direction(self, u_e: np.ndarray) -> np.ndarray:
         _, cx, cy, cz = self._current_geometry(u_e)

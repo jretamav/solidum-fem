@@ -109,9 +109,11 @@ class _EmptyFactorized:
     """Factorización de un sistema ``0×0``: ``solve`` devuelve el vector vacío.
 
     No toca la MKL, así que tampoco invalida la factorización vigente.
+    Sin incógnitas no hay pivotes, ni nulos (``n_zero_pivots = 0``).
     """
 
     n_negative_pivots: int | None = 0
+    n_zero_pivots: int = 0
 
     def solve(self, b: np.ndarray) -> np.ndarray:
         return np.zeros(0)

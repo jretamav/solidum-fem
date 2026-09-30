@@ -54,7 +54,7 @@ Si faltan `kind` o `Name`, dedúcelos de la petición o de la spec; pregunta só
    - **element**: grados de libertad por nodo · número de nodos · dimensión de la deformación · regla de integración · parámetros geométricos (`A`, `I`, `thickness`…).
    - **solver**: algoritmo (lineal, Newton, control de carga o de desplazamiento, longitud de arco, dinámico…) · parámetros con significado físico y sus valores por omisión (tolerancias, incrementos).
 
-   Los atributos declarativos los deduce la IA de esos datos, sin preguntarlos: `STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `PRIMARY_STATE_VAR` y `STATE_SCHEMA` (`{nombre: forma}` de las variables internas, `{}` sin historia — obligatorio, ADR 0014). Lo mismo con el carácter del elemento: si la formulación guarda historia fuera de los puntos de Gauss (un salto, una grieta, un contacto) es un **elemento con estado propio**, y si activa algo entre pasos toma **decisiones discretas** (ver Convenciones).
+   Los atributos declarativos los deduce la IA de esos datos, sin preguntarlos: `STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `GEOMETRICALLY_NONLINEAR` (elementos: `True` sólo si la cinemática es corrotacional o de grandes desplazamientos; la red de seguridad del ADR 0019 lo usa y el barrido de contrato lo contrasta con la rigidez tras un giro rígido), `PRIMARY_STATE_VAR` y `STATE_SCHEMA` (`{nombre: forma}` de las variables internas, `{}` sin historia — obligatorio, ADR 0014). Lo mismo con el carácter del elemento: si la formulación guarda historia fuera de los puntos de Gauss (un salto, una grieta, un contacto) es un **elemento con estado propio**, y si activa algo entre pasos toma **decisiones discretas** (ver Convenciones).
 2. **Genera el archivo** en su carpeta canónica (ver Templates; con `--user`, en `solidum/user/<modulo>/`) usando `snake_case(Name)` como nombre de archivo.
 3. **Genera el test esqueleto** en `tests/test_<snake>.py` (con `--user`, en `tests/user/<modulo>/test_<pref>_<snake>.py`) con un test mínimo de "se construye + compute_state/compute_element_state/solve devuelve shapes correctas".
 4. **Verifica**: ejecuta `pytest tests/test_<snake>.py -x` (con `--user`: `pytest tests/user/<modulo>/ tests/test_main_program_purity.py tests/test_user_module_public_imports.py -x`) y confirma que el esqueleto pasa.
@@ -144,6 +144,8 @@ class {{Name}}(Element):
     DOF_NAMES = {{['ux', 'uy', ...]}}
     STRAIN_DIM = {{1|3|6}}
     N_INTEGRATION_POINTS = {{int}}
+    # GEOMETRICALLY_NONLINEAR = True   # sólo si la cinemática es corrotacional o de grandes
+    #                                  # desplazamientos (ADR 0019): su rigidez puede crecer al deformarse
     # Opcional (ADR 0014): cinemática compilada `detJ = kin(pt, coords, B)` con firma
     # KIN_SIG, la misma que use compute_element_state, para entrar en el camino por lotes.
     # BATCH_KINEMATICS = _batch_kin_{{snake}}      # firma KIN_SIG; NO lanza: devuelve det J <= 0 si degenera

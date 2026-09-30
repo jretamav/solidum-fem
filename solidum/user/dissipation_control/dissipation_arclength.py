@@ -44,7 +44,10 @@ from solidum.logging import get_logger
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers import ArcLengthSolver, ArcProblem
 from solidum.math.solvers.corrector import CorrectionAborted
-from solidum.math.solvers.model_checks import ensure_statically_restrained
+from solidum.math.solvers.model_checks import (
+    check_initial_tangent,
+    ensure_statically_restrained,
+)
 from solidum.registry import SolverRegistry
 
 # Mismo logger que los solvers del programa principal ("solvers"): los filtros
@@ -300,8 +303,11 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         _log.info(
             "--- INICIANDO DISSIPATION-ARCLENGTH SOLVER (Gutiérrez 2004) ---"
         )
-        # Red de seguridad, capa 1 (ADR 0019): ver ArcLengthSolver.solve.
+        # Red de seguridad (ADR 0019): mecanismos rígidos antes de resolver y
+        # pivotes nulos de la tangente inicial, que factoriza el predictor
+        # del primer paso. Ver ArcLengthSolver.solve.
         ensure_statically_restrained(self.assembler, type(self).__name__)
+        check_initial_tangent(self.assembler, self.corrector, type(self).__name__)
 
         cs = self.assembler.constraint_set
         free_dofs = cs.free_dofs(ndof)

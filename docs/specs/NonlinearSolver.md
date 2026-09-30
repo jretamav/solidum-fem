@@ -84,6 +84,8 @@ Despacho automático idéntico a `LinearSolver` (Cholesky → Pardiso → LU; it
 
 **Red de seguridad (ADR 0019)**: antes del primer paso se rechaza un **mecanismo rígido** (`MechanismError`, con el movimiento libre descrito). Dentro del Newton no se rechaza ningún sistema —cerca de un punto límite resolver uno casi singular es legítimo—, pero el corrector registra el residuo relativo de cada resolución lineal y, si el paso fracasa con un sistema mal resuelto, la divergencia se clasifica como `SingularTangentError` con la causa.
 
+**Tangente inicial (ADR 0019, 2026-09-30; decisión física del usuario)**: la primera factorización del análisis —la de la tangente en $\mathbf U = \mathbf 0$, que el Newton factoriza de todos modos en la primera iteración del primer paso— se inspecciona antes de usarla (`model_checks.check_initial_tangent`; no se factoriza dos veces). Si tiene pivotes numéricamente nulos (`|pivote| < 1e-13·max|K|`, el criterio del estático lineal) y ningún componente del modelo puede ganar rigidez al deformarse —ningún elemento con `GEOMETRICALLY_NONLINEAR = True` ni material con `IS_UNILATERAL = True`—, el análisis se rechaza con `IllPosedSystemError`: en pequeños desplazamientos la matriz $\mathbf B$ es constante y la no linealidad del material sólo reduce la rigidez, así que un mecanismo en $\mathbf U = \mathbf 0$ lo es durante todo el análisis, lo active la carga o no. Si hay elementos corrotacionales o materiales unilaterales (una red de cables sin pretensado se rigidiza al tensarse), sólo se avisa en el log. Con el backend iterativo, que no tiene pivotes, se avisa de que la comprobación no se hace. Las tangentes posteriores no se inspeccionan: cerca de un punto límite una tangente casi singular es legítima.
+
 **Newton modificado (ADR 0003 fase 2)**: parámetro opcional `freeze_tangent_after_iter`. Si es `int N`, el solver factoriza fresca durante las primeras $N$ iteraciones del paso y reutiliza la factorización en las siguientes iteraciones del mismo paso (no entre pasos — la tangente cambia con $\mathbf U$). Default `None` = Newton estándar (factoriza cada iter).
 
 ### 9. Adaptatividad / control de paso
@@ -98,7 +100,7 @@ Despacho automático idéntico a `LinearSolver` (Cholesky → Pardiso → LU; it
 
 - **Snap-through / snap-back**: NO soportado — `NonlinearSolver` con control de carga falla en puntos límite con $dU/d\lambda \to \infty$ o $d\lambda/dU < 0$. Usar `ArcLengthSolver`. Excepción: el solver atraviesa puntos límite *suaves* (sin cambio de signo en $d\lambda$) con bisección + cinemática corotacional, hallazgo empírico de la auditoría 2026-05-18.
 - **Plasticidad perfecta con line search off**: puede oscilar (residuo periódico, no diverge ni converge). Mitigación: activar `line_search=True`.
-- **Tangente singular**: lanza `SingularTangentError` con el último estado.
+- **Tangente singular**: lanza `SingularTangentError` con el último estado. Un mecanismo interno de un modelo geométricamente lineal no llega hasta aquí: se rechaza en la tangente inicial (§8).
 - **Newton modificado**: con `freeze_tangent_after_iter` no nulo, la convergencia cuadrática se degrada a lineal en las iteraciones congeladas. Útil cuando el coste de factorizar domina (`K_t` grande, materiales con tangente cara de evaluar).
 
 ---
@@ -186,6 +188,10 @@ acceptance:
       setup: "trayectoria con tramos elásticos rápidos y zona plástica lenta"
       expect: "Δλ crece en tramos fáciles y bisecta en zonas duras; alcanza λ=1"
 
+    - name: mecanismo_interno_en_la_tangente_inicial
+      setup: "armadura Pratt del ejemplo 11 sin la diagonal del segundo panel, carga horizontal que no activa el mecanismo (ADR 0019, 2026-09-30)"
+      expect: "Truss2D ⇒ IllPosedSystemError antes de iterar; Truss2DCorot ⇒ un aviso y convergencia; con la diagonal, o con material no lineal bien apoyado, ni aviso ni error; mismo número de factorizaciones con la comprobación que sin ella"
+
   specific:
     - name: newton_modificado_factoriza_menos
       setup: "freeze_tangent_after_iter=2, 5 iter típicas por paso"
@@ -212,7 +218,8 @@ references:
 - **Argumentos keyword-only**: todos menos `assembler` y `convergence` son keyword-only (auditoría H-1.5, sesión 2026-05-19, commit `4e4ed54`).
 - **Bisección y clasificación**: en `solve`, al fallar `Δλ < min_delta_lambda` se llama a `classify_divergence(residual_history, delta_history, singular_tangent_detected)` que devuelve la subclase apropiada de `SolverDivergedError` con métricas tipadas.
 - **Entrypoint público**: `solidum.run(domain, solver=NonlinearSolver(assembler, ...), F_applied=...)` o `solidum.run_yaml(path)`.
-- **Tests**: cobertura amplísima — todos los tests de plasticidad/daño/corotacional del pipeline estático lo ejercitan. Tests específicos del comportamiento adaptativo y de divergencia tipada en `tests/test_solver_robustness.py` y `tests/test_solver_diagnostics.py`.
+- **Red de seguridad (ADR 0019)**: `ensure_statically_restrained` y `check_initial_tangent(assembler, corrector, …)` al empezar `solve`; la segunda pide al corrector su próxima factorización fresca (`NewtonCorrector.inspect_next_factorization`), que es la de la tangente en $\mathbf U = \mathbf 0$.
+- **Tests**: cobertura amplísima — todos los tests de plasticidad/daño/corotacional del pipeline estático lo ejercitan. Tests específicos del comportamiento adaptativo y de divergencia tipada en `tests/test_solver_robustness.py` y `tests/test_solver_diagnostics.py`; de la tangente inicial y del aviso del iterativo en [`tests/test_safety_net_initial_tangent.py`](../../tests/test_safety_net_initial_tangent.py).
 
 ---
 
@@ -222,4 +229,5 @@ references:
 - **2026-09-22** · Auditoría global: un ensamblaje por iteración: la convergencia se evalúa al inicio de la iteración con (‖R(U_k)‖, ‖δU_{k−1}‖) y el estado trial que se comitea es el del propio ensamblaje en U_k (antes cada iteración ensamblaba dos veces para la misma secuencia de decisiones). `max_iter` es el número máximo de resoluciones por paso. La iteración 0 no evalúa convergencia porque el incremento de Dirichlet λ·g entra en la primera resolución (con control en desplazamiento el residuo en DOFs libres era nulo y declaraba convergencia sin mover el apoyo): todo paso hace al menos una resolución. Expone `steps_done` y `lambda_final`, que `solidum.run` vuelca en `SolveResult.num_steps` (antes siempre 1).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_IncrementalProblem`: residuo `λ·F_ext − F_int`, reducción con el incremento de Dirichlet del paso, sin evaluación en la iteración 0; retirados `_armijo_step` y `_solve_reduced`, ahora `corrector.line_search_step` y `corrector.solve`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 - **2026-09-23** · ADR 0017-0019: despacho con Pardiso e iterativo a petición; comprobación de mecanismo rígido al empezar `solve`; diagnóstico de tangente singular a partir del residuo lineal (sólo diagnóstico, sin cambio del algoritmo).
+- **2026-09-30** · **Decisión física del usuario** (red de seguridad, ADR 0019): un mecanismo interno que la carga no activa pasaba sin aviso (Pardiso perturba el pivote nulo y el Newton converge). Ahora se cuentan los pivotes nulos de la tangente inicial: error si el modelo es geométricamente lineal, aviso si tiene elementos geométricamente no lineales (contrato nuevo `Element.GEOMETRICALLY_NONLINEAR`) o materiales unilaterales —esto último, refinamiento de la IA sobre la decisión, pendiente de confirmar por el usuario—. Reutiliza la primera factorización del Newton. Con el backend iterativo, aviso una vez por análisis. Sin cambio de resultados en modelos bien planteados (suite completa); el único test existente afectado modelaba de verdad un mecanismo interno (`test_model_safety_net.py`, bloques unidos por un nudo).
 - **2026-09-29** · Frontera del programa principal (ADR 0020): la discontinuidad embebida es un módulo de usuario (`discontinuities`) y deja de figurar en la cobertura de esta spec. Retirado el caveat «softening severo con penalización cohesiva rígida»: lo desmiente `tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py`, donde este solver, con control por desplazamiento y $K_e = 10^{15}$, recorre el ablandamiento hasta la separación completa frente a la solución exacta. El fallo antiguo venía de la tangente cohesiva de signo erróneo, corregida el 2026-09-23 (`597f3d9`). Sin cambio de formulación ni de resultados.

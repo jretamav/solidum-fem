@@ -235,8 +235,13 @@
     "coseno_con_estatica": 1.0000000000000002
   },
   "limites": {
+    "no_lineal": "IllPosedSystemError",
+    "rechaza_no_lineal": 1,
+    "acepta_no_lineal_corot": 1,
+    "avisos_no_lineal_corot": 1,
     "acepta_iterativo": 1,
-    "acepta_no_lineal": 1
+    "avisos_iterativo": 1,
+    "aviso_iterativo": "LinearSolver: con el solver algebraico iterativo (linear_algebra: iterative) no se\n    comprueba si el modelo tiene un mecanismo interno que la carga no activa: un\n    método de Krylov no factoriza la matriz y no tiene pivotes que inspeccionar. Si\n    lo tuviera, la solución cumpliría el equilibrio, pero sus desplazamientos\n    incluirían una parte arbitraria del mecanismo. Para comprobarlo, haz un análisis\n    modal del mismo modelo con densidad en los materiales (cada mecanismo aparece\n    como una frecuencia nula) o resuélvelo una vez con el solver directo\n    (linear_algebra: auto)."
   },
   "xy": [
     [

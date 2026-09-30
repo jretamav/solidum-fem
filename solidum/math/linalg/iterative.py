@@ -216,9 +216,11 @@ def _pcg(K: sp.csr_matrix, r0: np.ndarray, apply_M, tol_abs: float,
 
 
 class _EmptyIterative:
-    """Sistema ``0×0`` (todos los DOF prescritos): vector vacío."""
+    """Sistema ``0×0`` (todos los DOF prescritos): vector vacío. Sin
+    incógnitas no hay mecanismo posible: ``n_zero_pivots = 0``."""
 
     n_negative_pivots: int | None = None
+    n_zero_pivots: int | None = 0
 
     def solve(self, b: np.ndarray) -> np.ndarray:
         return np.zeros(0)
@@ -234,9 +236,13 @@ class IterativeFactorized:
     CG puede estancarse sin llegar a exhibir ``pᵀKp ≤ 0``.
 
     ``n_negative_pivots`` es ``None``: un método de Krylov no da la inercia.
+    ``n_zero_pivots`` también: no factoriza, así que no tiene pivotes que
+    inspeccionar, y la red de seguridad del ADR 0019 lo dice en vez de leer
+    un cero (``model_checks.warn_if_pivots_unavailable``).
     """
 
     n_negative_pivots: int | None = None
+    n_zero_pivots: int | None = None
 
     def __init__(self, K: sp.csr_matrix, apply_M, preconditioner: str,
                  rtol: float, max_iter: int, method: str = "cg"):

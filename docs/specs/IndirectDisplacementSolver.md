@@ -100,7 +100,7 @@ parameters:
 requirements:
   - "La magnitud controlada crece monótonamente a lo largo del camino físico (apertura de una grieta, alargamiento de la zona que se ablanda). Si decrece con la carga de referencia al empezar, el solver lo rechaza con un error que lo explica"
   - "Los grados de libertad controlados son libres (sin apoyo ni restricción multipunto). Para controlar un nodo respecto de un apoyo fijo basta con el nodo solo"
-  - "Heredados del padre: F_ref no nulo; modelo sin mecanismos (ADR 0019)"
+  - "Heredados del padre: F_ref no nulo; modelo sin mecanismos rígidos (ADR 0019) ni mecanismos internos en la tangente inicial si es geométricamente lineal (ADR 0019, 2026-09-30)"
 
 conventions:
   units: "Δl en las unidades de la magnitud controlada (longitud para desplazamientos con coeficientes adimensionales)"
@@ -138,6 +138,9 @@ acceptance:
     - name: desde_yaml
       setup: "solver: {type: IndirectDisplacementSolver, control: [{node, dof, coef}, …]}"
       expect: "Se construye y resuelve"
+    - name: mecanismo_interno_en_la_tangente_inicial
+      setup: "armadura Pratt del ejemplo 11 sin diagonal, carga horizontal, control sobre ux del rodillo (heredado del padre, ADR 0019, 2026-09-30)"
+      expect: "Truss2D ⇒ IllPosedSystemError; Truss2DCorot ⇒ un aviso; con la diagonal, nada"
 
 references:
   - "de Borst R. (1987). Computation of post-bifurcation and post-failure behavior of strain-softening solids. *Computers & Structures* 25(2), 211-224. (Control indirecto de desplazamiento.)"
@@ -152,11 +155,12 @@ references:
 
 - Archivo: `solidum/math/solvers/indirect_displacement.py` — `_IndirectProblem` (restricción lineal sobre el `_ArcProblem` del padre, el mismo problema por paso que `solidum.math.solvers` exporta con nombre público como `ArcProblem`) e `IndirectDisplacementSolver` (registrado en `SolverRegistry`, `PIPELINE_KIND = "static"`).
 - El padre expone cuatro puntos de extensión que usa esta variante: `_control_measure` (magnitud que fija la restricción: norma en el padre, $\mathbf c^\top\mathbf{du}$ aquí), `_predictor_dlambda`, `_step_problem` y `_on_solve_start` (construye $\mathbf c$ sobre la numeración de ecuaciones). Sin cambio de comportamiento del padre.
-- Tests: [`tests/test_indirect_displacement.py`](../../tests/test_indirect_displacement.py) — todos los `acceptance`.
+- Tests: [`tests/test_indirect_displacement.py`](../../tests/test_indirect_displacement.py) — todos los `acceptance` salvo el de la tangente inicial, que está en [`tests/test_safety_net_initial_tangent.py`](../../tests/test_safety_net_initial_tangent.py) junto con los de los otros dos solvers estáticos no lineales.
 
 ---
 
 ## Diálogo
 
 - **2026-09-23** · Formulación propuesta por la IA y validada por el usuario al descubrir, preparando el ejemplo 5 del manual de ejemplos, que ninguno de los dos solvers de arco seguía el retroceso de una barra con daño localizado. Diagnóstico registrado como deuda #27 (arco por disipación) y en §5 (no unicidad del problema incremental).
+- **2026-09-30** · Hereda del padre la comprobación de la tangente inicial de la red de seguridad (ADR 0019): el predictor del primer paso inspecciona sus pivotes nulos; error si el modelo es geométricamente lineal, aviso si no. Sin cambio de formulación ni de resultados en modelos bien planteados.
 - **2026-09-29** · Frontera del programa principal (ADR 0020 y criterio de admisión de Reglas.md §1): `DissipationArcLengthSolver`, uno de los «dos solvers de arco» de la entrada anterior, se trasladó al módulo de usuario `dissipation_control` (spec en [`docs/user/dissipation_control/specs/DissipationArcLengthSolver.md`](../user/dissipation_control/specs/DissipationArcLengthSolver.md); se carga con `user_modules: [dissipation_control]`). En el programa principal quedan `ArcLengthSolver` y esta variante. El problema por paso del padre, que esta variante extiende, se exporta con nombre público como `solidum.math.solvers.ArcProblem`. Sin cambio de formulación ni de resultados.

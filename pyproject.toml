@@ -64,8 +64,11 @@ fast = [
 iterative = [
     "pyamg>=5.0",
 ]
-# CHOLMOD (Cholesky disperso para matrices SPD) va aparte porque en
-# Windows exige compilar: `conda install -c conda-forge scikit-sparse`.
+# CHOLMOD (Cholesky disperso para matrices SPD) va aparte porque
+# scikit-sparse sólo se distribuye como fuente: en Linux pip lo compila
+# contra la SuiteSparse del sistema (`apt-get install libsuitesparse-dev`;
+# la 0.5 exige SuiteSparse >= 7.4); en Windows, `conda install -c
+# conda-forge scikit-sparse`. El backend admite las API 0.4 y 0.5.
 cholmod = [
     "scikit-sparse>=0.4",
 ]

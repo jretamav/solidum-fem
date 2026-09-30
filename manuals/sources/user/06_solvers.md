@@ -8,7 +8,7 @@ Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ con una sola factorización del
 
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **Parámetros**: `linear_algebra` (default `auto`; ver *Solver* en el capítulo del YAML).
-- **Comprobaciones automáticas** (ADR 0019): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver *Diagnóstico de Problemas*).
+- **Comprobaciones automáticas** (ADR 0019): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver *Diagnóstico de Problemas*). Con `linear_algebra: iterative` la matriz no se factoriza y no se puede comprobar si es singular: Solidum lo avisa en el log, una vez por análisis.
 - **No aplica**: cualquier no-linealidad material (daño, plasticidad, cable) o geométrica (corotacional). Producirá resultados inconsistentes.
 
 ```yaml

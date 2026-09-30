@@ -65,6 +65,16 @@ class Element(ABC):
         K_G no degenerado) deben sobreescribir a ``True``. Validado en
         construcción para evitar que un truss ordinario acepte un material
         de cable.
+    GEOMETRICALLY_NONLINEAR : ClassVar[bool], default=False
+        ``True`` si la cinemática del elemento es geométricamente no lineal
+        (corrotacional, grandes desplazamientos): su rigidez tangente depende
+        de la configuración deformada y de las fuerzas internas (rigidez
+        geométrica), así que puede crecer respecto de la de ``U = 0``.
+        ``False`` en pequeños desplazamientos: la matriz ``B`` es constante y,
+        con un material que sólo pierde rigidez, un mecanismo de la tangente
+        inicial lo es en todo el análisis. Lo consulta la red de seguridad de
+        los solvers estáticos no lineales (ADR 0019, 2026-09-30) para decidir
+        si un pivote nulo de la tangente inicial es un error o sólo un aviso.
     REFERENCE_KWARGS : ClassVar[dict], default={"material": MaterialRegistry}
         Parámetros del constructor que, en el YAML, son el ``id`` de un
         objeto de una familia (de materiales, de secciones…), y el registro
@@ -133,6 +143,7 @@ class Element(ABC):
     N_INTEGRATION_POINTS: ClassVar[int] = 1
     PRESERVES_SYMMETRY: ClassVar[bool] = True
     ACCEPTS_UNILATERAL: ClassVar[bool] = False
+    GEOMETRICALLY_NONLINEAR: ClassVar[bool] = False
     REFERENCE_KWARGS: ClassVar[dict] = {"material": MaterialRegistry}
     BATCH_KINEMATICS: ClassVar = None
     BATCH_SCALE: ClassVar[str | None] = None

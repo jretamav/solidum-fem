@@ -13,8 +13,11 @@ sigue). Estas pruebas fijan el comportamiento nuevo:
 2. **Capas 2 y 3 — equilibrio y pivotes, después de resolver** (sólo
    ``LinearSolver``): un mecanismo interno se rechaza, cargado o no, con
    SuperLU y con Pardiso.
-3. **Diagnóstico del no lineal**: un mecanismo interno se reporta como
-   tangente singular, no como "modo no clasificado".
+3. **Diagnóstico del no lineal**: un mecanismo interno de un modelo
+   geométricamente lineal se rechaza en la tangente inicial (2026-09-30,
+   detalle en ``test_safety_net_initial_tangent.py``); una tangente que el
+   paso no logra resolver se reporta como tangente singular, no como "modo
+   no clasificado".
 4. **Memoria**: un solver directo sin memoria sugiere el iterativo.
 """
 import logging
@@ -334,17 +337,38 @@ class TestLinearSolutionChecks(unittest.TestCase):
 
 class TestNonlinearDiagnosis(unittest.TestCase):
 
-    def test_internal_mechanism_reported_as_singular_tangent(self):
-        """Antes: ``UnknownDivergenceError`` ("modo no clasificado"). Ahora el
-        corrector registra que el sistema tangente no se resolvió con
-        precisión y la divergencia se clasifica como tangente singular."""
+    def test_internal_mechanism_rejected_at_the_initial_tangent(self):
+        """Geométricamente lineal (Quad4): desde el 2026-09-30 el mecanismo
+        interno se rechaza al factorizar la tangente inicial, con
+        ``IllPosedSystemError``, antes de iterar (decisión del usuario; ver
+        ``test_safety_net_initial_tangent.py``). Del 2026-09-23 al
+        2026-09-30 el Newton bisecaba hasta ``SingularTangentError``, y antes
+        acababa en ``UnknownDivergenceError`` ("modo no clasificado")."""
         for la in DIRECT:
             with self.subTest(backend=la):
                 d, ids = hinged_blocks()
-                with self.assertRaises(SingularTangentError) as cm:
+                with self.assertRaises(IllPosedSystemError) as cm:
                     run_static(d, [(ids[(4.0, 2.0)], "uy", -1e3)],
                                lambda a: NonlinearSolver(a, num_steps=1, linear_algebra=la))
+                self.assertTrue(cm.exception.initial_tangent)
                 self.assertIn("mecanismo", str(cm.exception))
+
+    def test_singular_tangent_reported_as_such(self):
+        """El diagnóstico del corrector sigue para lo que la tangente inicial
+        no rechaza: con barras corrotacionales (sólo aviso en U = 0) y una
+        carga que activa el mecanismo, el paso fracasa con un residuo lineal
+        grande y la divergencia se clasifica como tangente singular, no como
+        "modo no clasificado". Armadura del ejemplo 11 sin diagonal."""
+        sys.path.insert(0, os.path.dirname(__file__))
+        from _armadura_pratt import armadura
+        Truss2DCorot = EL("Truss2DCorot")
+        for la in DIRECT:
+            with self.subTest(backend=la):
+                d, F = armadura(sin_diagonal=True, carga="vertical", elemento=Truss2DCorot)
+                with self.assertRaises(SingularTangentError) as cm:
+                    NonlinearSolver(Assembler(d), num_steps=1, linear_algebra=la).solve(F)
+                self.assertIn("mecanismo", str(cm.exception))
+                self.assertIn("singular", str(cm.exception))
 
 
 # ----------------------------------------------------------------------

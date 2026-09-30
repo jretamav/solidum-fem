@@ -13,9 +13,13 @@ queda cubierto el día que se registra.
 Qué se verifica y por qué
 -------------------------
 1. **Contrato declarativo**: `DOF_NAMES`, `STRAIN_DIM`/`FLUX_DIM`,
-   `N_INTEGRATION_POINTS`, `PRESERVES_SYMMETRY`, `ACCEPTS_UNILATERAL`. Es lo
-   que consumen el registro de DOFs, la validación material/elemento y el
-   despachador algebraico (ADR 0003).
+   `N_INTEGRATION_POINTS`, `PRESERVES_SYMMETRY`, `ACCEPTS_UNILATERAL`,
+   `GEOMETRICALLY_NONLINEAR`. Es lo que consumen el registro de DOFs, la
+   validación material/elemento, el despachador algebraico (ADR 0003) y la
+   red de seguridad de los solvers estáticos no lineales (ADR 0019). La
+   última se contrasta además con la cinemática: con material elástico
+   lineal, la rigidez de un elemento geométricamente lineal no depende del
+   desplazamiento, y la de uno corrotacional sí.
 
 2. **Simetría de la rigidez**: todo elemento derivado de un funcional de
    energía con cargas conservativas la tiene. Una `K` asimétrica con
@@ -374,6 +378,48 @@ class TestContratoDeclarativo(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
                 clase = ElementRegistry.get(nombre)
                 self.assertIsInstance(clase.PRESERVES_SYMMETRY, bool)
                 self.assertIsInstance(clase.ACCEPTS_UNILATERAL, bool)
+                self.assertIsInstance(clase.GEOMETRICALLY_NONLINEAR, bool)
+
+    def test_no_linealidad_geometrica_declarada_dice_la_verdad(self):
+        """`GEOMETRICALLY_NONLINEAR` decide si un pivote nulo de la tangente
+        inicial es un error o un aviso (ADR 0019, 2026-09-30): un elemento
+        corrotacional que olvidara declararlo convertiría en error un modelo
+        que la rigidez geométrica puede estabilizar.
+
+        Se evalúa la rigidez en ``u = 0`` y tras un giro rígido pequeño con un
+        alargamiento uniforme (θ = 1e-3 rad, 1e-6; el alargamiento tensa los
+        cables, que sin deformar no tienen rigidez). Con los materiales
+        elásticos de las fábricas, la de un elemento geométricamente lineal
+        no cambia: su matriz ``B`` es constante. La de uno corrotacional sí:
+        gira con el elemento y suma la rigidez geométrica. Las deformaciones
+        son del orden de 1e-6, bajo cualquier umbral de daño o fluencia.
+        """
+        theta, stretch = 1.0e-3, 1.0e-6
+        c, s = np.cos(theta), np.sin(theta)
+        for nombre in self.nombres_barrido():
+            with self.subTest(elemento=nombre):
+                elemento = self.construir(nombre)
+                u = []
+                for nodo in elemento.nodes:
+                    x = np.zeros(3)
+                    coords = np.asarray(nodo.coordinates, dtype=float)
+                    x[:coords.size] = coords
+                    giro = (1.0 + stretch) * np.array([c * x[0] - s * x[1],
+                                                       s * x[0] + c * x[1], x[2]])
+                    d = giro - x
+                    valores = {'ux': d[0], 'uy': d[1], 'uz': d[2], 'rz': theta,
+                               'rx': 0.0, 'ry': 0.0, 'T': 1.0}
+                    u.extend(valores[dof] for dof in elemento.DOF_NAMES)
+                u = np.asarray(u)
+                K0 = np.asarray(elemento.compute_element_state(np.zeros_like(u))[0], float)
+                K1 = np.asarray(elemento.compute_element_state(u)[0], float)
+                escala = max(np.abs(K0).max(), np.abs(K1).max())
+                cambia = not np.allclose(K1, K0, rtol=0.0, atol=1e-9 * escala)
+                self.assertEqual(
+                    elemento.GEOMETRICALLY_NONLINEAR, cambia,
+                    f"{nombre}: GEOMETRICALLY_NONLINEAR="
+                    f"{elemento.GEOMETRICALLY_NONLINEAR}, pero su rigidez "
+                    f"{'cambia' if cambia else 'no cambia'} con un giro rígido")
 
     def test_solo_los_preparados_aceptan_material_unilateral(self):
         """Un material unilateral (cable) en un elemento no preparado degenera

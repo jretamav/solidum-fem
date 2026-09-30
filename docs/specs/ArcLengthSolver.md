@@ -108,6 +108,8 @@ Idéntico al `NonlinearSolver` — `Assembler.reduce(...)` con `U_current` y `lo
 
 Régimen **postcrítico**: $\mathbf K_t$ puede ser indefinida (autovalores negativos tras bifurcación). El solver fuerza `is_positive_definite=False` al construir el `linalg`, así el despachador ADR 0003 elige LU automáticamente. Si el usuario fuerza `linear_algebra="cholesky"` desde YAML y $\mathbf K_t$ se vuelve indefinida en algún paso, hay fallback automático a LU con warning.
 
+**Tangente inicial (ADR 0019, 2026-09-30; decisión física del usuario)**: la primera factorización del análisis —la de la tangente en $\mathbf U = \mathbf 0$, que el predictor del primer paso factoriza de todos modos para calcular $\mathbf K_0^{-1}\mathbf F_{\text{ref}}$— se inspecciona antes de usarla (`model_checks.check_initial_tangent`; no se factoriza dos veces). Si tiene pivotes numéricamente nulos (`|pivote| < 1e-13·max|K|`, el criterio del estático lineal) y ningún componente del modelo puede ganar rigidez al deformarse —ningún elemento con `GEOMETRICALLY_NONLINEAR = True` ni material con `IS_UNILATERAL = True`—, el análisis se rechaza con `IllPosedSystemError`: en pequeños desplazamientos la matriz $\mathbf B$ es constante y la no linealidad del material sólo reduce la rigidez, así que un mecanismo en $\mathbf U = \mathbf 0$ lo es durante todo el análisis, lo active la carga o no. Si hay elementos corrotacionales o materiales unilaterales (una red de cables sin pretensado se rigidiza al tensarse), sólo se avisa en el log. Con el backend iterativo, que no tiene pivotes, se avisa de que la comprobación no se hace. Las tangentes posteriores no se inspeccionan: cerca de un punto límite una tangente casi singular es legítima. La heredan las variantes que sólo cambian la restricción (`IndirectDisplacementSolver`); una variante que redefina `solve` debe llamar a `check_initial_tangent` justo después de `ensure_statically_restrained`, como hace `DissipationArcLengthSolver`.
+
 ### 9. Adaptatividad — ajuste de $dl$
 
 Política de auto-ajuste basada en iteraciones del paso:
@@ -241,6 +243,10 @@ acceptance:
       setup: "linear_algebra='cholesky' forzado, modelo con punto límite"
       expect: "warning + LU al detectar no-PD; análisis continúa"
 
+    - name: mecanismo_interno_en_la_tangente_inicial
+      setup: "armadura Pratt del ejemplo 11 sin la diagonal del segundo panel, carga horizontal (ADR 0019, 2026-09-30)"
+      expect: "Truss2D ⇒ IllPosedSystemError en el predictor del primer paso, sin bisecar; Truss2DCorot ⇒ un aviso; con la diagonal, nada"
+
 references:
   - "Crisfield M.A. (1981). A fast incremental/iterative solution procedure that handles snap-through. Computers and Structures 13, 55-62."
   - "Crisfield M.A. (1991). Non-linear Finite Element Analysis of Solids and Structures, Vol. 1. Wiley. §9 (arc-length cilíndrico)."
@@ -263,6 +269,8 @@ references:
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) (`TestArcLengthRobustness`: punto límite, snap-back, recuperación lineal), [tests/test_snap_through_corot.py](../../tests/test_snap_through_corot.py) (armadura de von Mises contra la solución cerrada) y [tests/test_integration.py](../../tests/test_integration.py) (`test_arclength_solver_elastoplastic`).
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) · `test_arc_length_traverses_damage_softening`.
   - [tests/test_arclength_paso_inicial.py](../../tests/test_arclength_paso_inicial.py) — primer paso como fracción de carga, invariancia ante las unidades, declaración inválida, carga de referencia nula, clave YAML y llegada exacta a `max_lambda`.
+  - [tests/test_safety_net_initial_tangent.py](../../tests/test_safety_net_initial_tangent.py) — tangente inicial y aviso del backend iterativo (ADR 0019, 2026-09-30).
+- **Red de seguridad (ADR 0019)**: `ensure_statically_restrained` y `check_initial_tangent` al empezar `solve`. `_tangent_predictor` deja pasar `IllPosedSystemError` (el veredicto sobre la tangente inicial) en vez de tratarlo como tangente singular que bisecar.
 
 ---
 
@@ -275,4 +283,5 @@ references:
 - **2026-09-23** · Revisión documental: `tests/test_arclength.py` ya no existe; la cobertura está repartida en `test_solver_robustness.py`, `test_snap_through_corot.py` y `test_integration.py`.
 - **2026-09-23** · **Cambio de formulación validado por el usuario** (deuda #26, destapada en el ejemplo 4 del manual de ejemplos). (1) Primer paso adimensional: `initial_dlambda` (0.1 por omisión) y $\Delta l_1 = \Delta\lambda_1\lVert\mathbf K_0^{-1}\mathbf F_{\text{ref}}\rVert$; `initial_dl` pasa a ser una longitud explícita opcional, excluyente, sin valor por omisión. Antes el valor por omisión era `initial_dl = 0.1`, una longitud: en el cilindro J2 del ejemplo 4 pedía $\Delta\lambda = 86$ en el primer paso, el predictor rebasaba `max_lambda` y el solver imponía $\lambda = 1.5$ en control de carga, por encima del colapso, sobre un equilibrio espurio del modelo discreto (0,98 m de desplazamiento). (2) Llegada exacta a `max_lambda` dentro del tramo recorrido, en lugar del paso final decidido por el predictor (§10). Los 84 tests existentes de los dos solvers de arco pasan sin cambiar ningún valor esperado; los nuevos fallan con el código anterior (9 de 11).
 - **2026-09-29** · Frontera del programa principal (ADR 0020): el caveat del softening con penalización cohesiva rígida (§10) pasa a nombrar el módulo de usuario `discontinuities` y a declarar que su diagnóstico es anterior a la corrección de la tangente cohesiva (`597f3d9`) y no se ha vuelto a comprobar con este solver. Sin cambio de formulación ni de resultados.
+- **2026-09-30** · Red de seguridad del ADR 0019 sobre la tangente inicial (decisión física del usuario; ver la entrada del mismo día en la spec de `NonlinearSolver`): el predictor del primer paso inspecciona sus pivotes nulos; error si el modelo es geométricamente lineal, aviso si tiene elementos geométricamente no lineales o materiales unilaterales; con el backend iterativo, aviso. Sin cambio de resultados en modelos bien planteados.
 - **2026-09-29** · Retirado `_negative_pivots()`, el marcador del diagnóstico por inercia que devolvía `None` y que nadie llamaba; §10 y `out_of_scope` lo recogen: no hay diagnóstico por inercia hasta que exista LDLᵀ (deuda #7). El problema por paso (`_ArcProblem` en el código) se exporta con nombre público, `solidum.math.solvers.ArcProblem`, porque lo extienden `IndirectDisplacementSolver` y `DissipationArcLengthSolver`, este último trasladado hoy al módulo de usuario `dissipation_control`. Sin cambio de formulación ni de resultados.

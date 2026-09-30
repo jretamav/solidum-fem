@@ -63,3 +63,44 @@ jobs:
 
       - name: Run test suite
         run: pytest -q --tb=short
+
+  # Backend Cholesky (CHOLMOD, extra opcional `cholmod`; ADR 0003, ADR 0019).
+  # Job propio y no dentro del anterior: el despachador prefiere Cholesky a
+  # Pardiso para toda matriz simétrica definida positiva (Cholesky → Pardiso
+  # → LU), así que instalarlo allí sacaría a Pardiso de la mayor parte de la
+  # suite. Aquí la suite pasa por CHOLMOD en los sistemas SPD y por SuperLU en
+  # el resto. scikit-sparse sólo se distribuye como fuente: se compila contra
+  # la SuiteSparse del sistema (la 0.5 exige SuiteSparse >= 7.4).
+  test-cholmod:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install SuiteSparse
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsuitesparse-dev
+
+      - name: Install package with CHOLMOD
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev,cholmod]
+
+      # Como en el job anterior: si CHOLMOD no quedara activo, sus pruebas se
+      # saltarían (skipUnless) y el job saldría verde sin probar nada. Además
+      # se factoriza una matriz de prueba, para que una API de scikit-sparse
+      # que el backend no conozca falle aquí y no en mitad de la suite.
+      - name: Verify CHOLMOD is active
+        run: |
+          python -c "import numpy as np, scipy.sparse as sp; from importlib.metadata import version; from solidum.math.linalg.dispatcher import _HAS_CHOLESKY; assert _HAS_CHOLESKY, 'CHOLMOD no activo'; from solidum.math.linalg import CholeskySolver; K = sp.csc_matrix(np.array([[4.0, 1.0], [1.0, 3.0]])); f = CholeskySolver().factorize(K); x = f.solve(np.array([1.0, 2.0])); assert np.allclose(K @ x, [1.0, 2.0]) and f.n_zero_pivots == 0; print('scikit-sparse', version('scikit-sparse'))"
+
+      - name: Run test suite
+        run: pytest -q --tb=short

@@ -70,6 +70,8 @@ Override manual: parámetro `linear_algebra ∈ {"auto", "cholesky", "pardiso", 
 
 **Red de seguridad (ADR 0019)**. Antes de factorizar se comprueba que el modelo no es un **mecanismo rígido** (`MechanismError`, con el movimiento libre descrito). Tras resolver se exige el **equilibrio** `‖F − K·u‖ ≤ 1e-8·‖F‖` y una factorización **sin pivotes numéricamente nulos** (`IllPosedSystemError`). Antes de esta red, un modelo mal apoyado devolvía en silencio desplazamientos de miles de kilómetros.
 
+Los pivotes nulos, `|pivote| < 1e-13·max|K|`, los cuentan con el mismo criterio los tres backends directos: SuperLU (diagonal de `U`), Pardiso (`iparm(14)`) y, desde el 2026-09-30, Cholesky (pivotes de `LDLᵀ`, deuda #28). Una factorización directa que no llega a completarse (pivote exactamente nulo o fila vacía: un nudo o grado de libertad sin rigidez) da también `IllPosedSystemError`, y no el `RuntimeError` del backend. El backend iterativo no tiene pivotes que inspeccionar: el solver avisa en el log, una vez por análisis, de que un mecanismo interno que la carga no active no se comprueba, y de cómo comprobarlo (análisis modal con densidad, o el solver directo).
+
 **Cache de factorización (ADR 0003 fase 2)**: la primera llamada a `solve` ensambla $\mathbf K$, reduce y factoriza; la factorización se guarda en el solver. Llamadas posteriores con un $\mathbf F$ distinto reutilizan el factor sin reensamblaje — el coste se reduce a una resolución triangular barata. Si el usuario modifica el modelo entre llamadas (nuevos elementos, BCs, materiales) debe invocar `invalidate_cache()` explícitamente.
 
 ### 9. Adaptatividad / control de paso
@@ -78,7 +80,7 @@ No aplica.
 
 ### 10. Caveats numéricos
 
-- **Modelos mal planteados**: un mecanismo rígido se rechaza antes de resolver y uno interno tras resolver (ADR 0019). Queda sin detectar el mal condicionamiento sin singularidad (rigideces muy desproporcionadas): un directo es estable hacia atrás y el residuo sale pequeño aunque el error de la solución pueda no serlo.
+- **Modelos mal planteados**: un mecanismo rígido se rechaza antes de resolver y uno interno tras resolver (ADR 0019). Queda sin detectar el mal condicionamiento sin singularidad (rigideces muy desproporcionadas): un directo es estable hacia atrás y el residuo sale pequeño aunque el error de la solución pueda no serlo. Con `linear_algebra: iterative`, un mecanismo interno que la carga no activa tampoco se detecta; se avisa.
 - **Suposición de PD por simetría**: el despachador asume que un dominio con materiales simétricos tiene $\mathbf K$ positiva definida. Es cierto para elasticidad estándar con suficientes apoyos; falso para casos degenerados (apoyos insuficientes, modos rígidos no restringidos, casi-singularidad geométrica). El fallback Cholesky→LU cubre estos casos.
 - **Cache desactualizado**: si el modelo se modifica entre `solve` calls sin llamar a `invalidate_cache`, los resultados serán inconsistentes. La política deliberada es **cache silenciosa** (no se detectan modificaciones del modelo automáticamente) por velocidad — la responsabilidad de invalidar es del usuario.
 - **No es no lineal**: si el problema es no lineal (material plástico, geometría corotacional con cargas significativas) usar `NonlinearSolver`. Este solver evaluará la tangente en estado virgen ($\mathbf U = 0$) y producirá una respuesta lineal incorrecta sin avisar.
@@ -121,7 +123,8 @@ out_of_scope:
   - "Análisis no lineal ⇒ usar NonlinearSolver"
   - "Snap-through / snap-back ⇒ usar ArcLengthSolver"
   - "Análisis dinámico ⇒ usar NewmarkSolver, HHTSolver, etc."
-  - "Detección automática de modos rígidos (apoyos insuficientes)"
+  - "Mal condicionamiento sin singularidad: no hay estimador de condición (ADR 0019)"
+  - "Mecanismo interno que la carga no activa con el backend iterativo: sin pivotes que inspeccionar; sólo aviso (ADR 0019)"
 
 acceptance:
   verification:
@@ -156,6 +159,12 @@ acceptance:
       setup: "Quad4 con MPC u_2 = u_1 (master/slave)"
       expect: "u_2 = u_1 en la solución, equilibrio respetado"
       tol_abs: 1.0e-12
+    - name: mecanismo_interno_no_activado
+      setup: "armadura Pratt del ejemplo 11 sin la diagonal del segundo panel, carga horizontal que no activa el mecanismo; backends lu, pardiso y cholesky"
+      expect: "IllPosedSystemError por pivote nulo con los tres backends directos (ADR 0019, capa 3; Cholesky desde el 2026-09-30)"
+    - name: aviso_backend_iterativo
+      setup: "misma armadura con linear_algebra: iterative"
+      expect: "solución con un único aviso por análisis de que el mecanismo interno no se comprueba"
 
 references:
   - "Bathe K.J. (2014). Finite Element Procedures. Prentice Hall. §2."
@@ -172,7 +181,7 @@ references:
 - **Clase**: `LinearSolver`, registrada vía `@SolverRegistry.register` con `PIPELINE_KIND = "static"`.
 - **Cache**: atributos `_factor`, `_T`, `_g_full`, `_F_dir`, `_n_free` se rellenan lazy en la primera llamada a `solve`. Método público `invalidate_cache()` los pone a `None` para forzar reensamblaje.
 - **Fallback Cholesky→LU**: capturado en `_build_cache` vía `CholeskyNotPositiveDefiniteError` (ADR 0003 §5); registra un warning y reintenta con LU.
-- **Red de seguridad (ADR 0019)**: `ensure_statically_restrained` en `_build_cache` antes de factorizar; `check_linear_solution` tras cada `solve` (equilibrio y `n_zero_pivots` del factor). Ambas en `solidum/math/solvers/model_checks.py`.
+- **Red de seguridad (ADR 0019)**: `ensure_statically_restrained` en `_build_cache` antes de factorizar; una factorización que falla se traduce a `IllPosedSystemError(factorization_error=...)`; `warn_if_pivots_unavailable` sobre el factor (aviso del backend iterativo, una vez por factorización); `check_linear_solution` tras cada `solve` (equilibrio y `n_zero_pivots` del factor). Todas en `solidum/math/solvers/model_checks.py`. Pruebas: [`test_model_safety_net.py`](../../tests/test_model_safety_net.py), [`test_safety_net_initial_tangent.py`](../../tests/test_safety_net_initial_tangent.py) (aviso del iterativo, factorización imposible) y [`test_linalg_cholesky.py`](../../tests/test_linalg_cholesky.py) (Cholesky).
 - **Entrypoint público**: `solidum.run(domain, solver=LinearSolver(assembler), F_applied=...)` o `solidum.run_yaml(path)`, que despacha por `PIPELINE_KIND` (regla C de la auditoría).
 - **Tests**: cobertura masiva implícita — prácticamente todos los tests del pipeline estático lineal lo usan. Tests específicos del cache: `tests/test_solver_robustness.py::test_linear_solver_cache_reuse`.
 
@@ -182,4 +191,5 @@ references:
 
 - **2026-05-19** · Spec creada retroactivamente para cerrar el hueco H-5.3. Solver anterior a la convención de specs validadas. La cache de factorización se añadió en la sesión de saneamiento post-auditoría (commit `b517718`, H-4.2); esta spec recoge ese comportamiento como parte del contrato actual.
 - **2026-09-22** · Auditoría global: `invalidate_cache()` invalida también las cachés del `Assembler`; además el `ConstraintSet` se reconstruye solo por huella de las restricciones, así que un apoyo añadido tras el primer `solve` surte efecto (antes se ignoraba en silencio). `solidum.run` comitea el estado final.
+- **2026-09-30** · Cierres del ADR 0019: el backend Cholesky cuenta sus pivotes nulos (deuda #28) y la capa 3 actúa con los tres directos; una factorización que no se completa da `IllPosedSystemError` en vez del error del backend; con el backend iterativo, aviso explícito una vez por análisis. Sin cambio de resultados en modelos bien planteados. Corregido en `out_of_scope` un punto obsoleto desde el 2026-09-23 (la detección de modos rígidos existe).
 - **2026-09-23** · ADR 0017, 0018 y 0019: el despacho automático incluye Pardiso entre Cholesky y LU; `linear_algebra` admite `pardiso` e `iterative[:amg|jacobi|none]`; red de seguridad (mecanismo rígido antes de factorizar, equilibrio y pivotes nulos tras resolver). Corregidas dos inexactitudes previas de esta spec: Cholesky nunca se hizo con `splu` en modo simétrico (es CHOLMOD, opcional) y el entrypoint `solidum.run_static` no existe (es `solidum.run`).

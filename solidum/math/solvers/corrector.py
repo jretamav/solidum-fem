@@ -44,7 +44,11 @@ from solidum.constants import EQUILIBRIUM_RTOL, LINE_SEARCH_MAX_BACKTRACKS, LINE
 from solidum.math.convergence import ConvergenceCriterion, ConvergenceState
 from solidum.math.linalg import IterativeNotConvergedError, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError, _log
-from solidum.math.solvers.diagnostics import SolverDivergedError, classify_divergence
+from solidum.math.solvers.diagnostics import (
+    IllPosedSystemError,
+    SolverDivergedError,
+    classify_divergence,
+)
 
 SolveFn = Callable[[Any, np.ndarray], np.ndarray]
 
@@ -211,6 +215,7 @@ class NewtonCorrector:
         self._linalg_size: int | None = None
         self._frozen_factor = None
         self._max_linear_residual = 0.0
+        self._factor_inspector: Callable[[Any], None] | None = None
 
     # ------------------------------------------------------------------
     # Backend algebraico
@@ -245,6 +250,40 @@ class NewtonCorrector:
         self._frozen_factor = None
         return self._backend(n)
 
+    def inspect_next_factorization(self, inspector: Callable[[Any], None]) -> None:
+        """Entrega a ``inspector`` la próxima factorización fresca, antes de
+        usarla, y lo olvida.
+
+        Lo usa la red de seguridad del ADR 0019
+        (:func:`~solidum.math.solvers.model_checks.check_initial_tangent`)
+        para contar los pivotes nulos de la tangente inicial sin factorizar
+        dos veces. ``inspector(factor)`` recibe el objeto factorizado (con
+        ``n_zero_pivots``) o ``None`` si la factorización directa falló por
+        un pivote exactamente nulo; en ese caso el ``RuntimeError`` del
+        backend se propaga después, como siempre. Si ``inspector`` lanza
+        :class:`IllPosedSystemError`, el corrector no la toma por una tangente
+        singular: se propaga hasta el usuario."""
+        self._factor_inspector = inspector
+
+    def _factorize(self, linalg, A, n: int):
+        """``linalg.factorize(A)`` con el fallback Cholesky → LU."""
+        try:
+            return linalg.factorize(A)
+        except CholeskyNotPositiveDefiniteError:
+            return self._degrade_to_lu(n).factorize(A)
+
+    def _inspected_factorize(self, linalg, A, n: int):
+        """Factoriza y entrega el factor al inspector pendiente (ver
+        :meth:`inspect_next_factorization`)."""
+        inspector, self._factor_inspector = self._factor_inspector, None
+        try:
+            factor = self._factorize(linalg, A, n)
+        except RuntimeError:
+            inspector(None)          # pivote exactamente nulo
+            raise
+        inspector(factor)
+        return factor
+
     def solve(self, A, b: np.ndarray, iteration: int = 0) -> np.ndarray:
         """``A·x = b`` con la política del corrector: fallback Cholesky → LU
         y, con ``freeze_tangent_after_iter``, factorización congelada a
@@ -253,17 +292,27 @@ class NewtonCorrector:
         n = A.shape[0]
         linalg = self._backend(n)
         if self.freeze_tangent_after_iter is None:
-            try:
-                x = linalg.solve(A, b)
-            except CholeskyNotPositiveDefiniteError:
-                x = self._degrade_to_lu(n).solve(A, b)
+            if self._factor_inspector is not None:
+                # Misma operación que ``linalg.solve`` (factorizar y resolver),
+                # con el factor a la vista del inspector. La vigilancia de una
+                # solución no finita es la de ``LUSolver.solve``.
+                x = self._inspected_factorize(linalg, A, n).solve(b)
+                if not np.all(np.isfinite(x)):
+                    raise RuntimeError(
+                        "La solución del sistema tangente no es finita (matriz "
+                        "singular o casi singular).")
+            else:
+                try:
+                    x = linalg.solve(A, b)
+                except CholeskyNotPositiveDefiniteError:
+                    x = self._degrade_to_lu(n).solve(A, b)
             self._record_linear_residual(A, b, x)
             return x
         if iteration < self.freeze_tangent_after_iter or self._frozen_factor is None:
-            try:
-                self._frozen_factor = linalg.factorize(A)
-            except CholeskyNotPositiveDefiniteError:
-                self._frozen_factor = self._degrade_to_lu(n).factorize(A)
+            if self._factor_inspector is not None:
+                self._frozen_factor = self._inspected_factorize(linalg, A, n)
+            else:
+                self._frozen_factor = self._factorize(linalg, A, n)
             x = self._frozen_factor.solve(b)
             self._record_linear_residual(A, b, x)
             return x
@@ -368,6 +417,11 @@ class NewtonCorrector:
                 result.singular_tangent = True
                 result.linear_solver_note = str(exc)
                 break
+            except IllPosedSystemError:
+                # Veredicto de la red de seguridad sobre la tangente inicial
+                # (ADR 0019): un error de planteamiento del modelo, no una
+                # tangente singular que bisecar.
+                raise
             except RuntimeError:
                 _log.error("Matriz singular detectada.")
                 result.singular_tangent = True

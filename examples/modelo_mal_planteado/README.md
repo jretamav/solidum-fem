@@ -10,7 +10,11 @@ sólo en horizontal. `LinearSolver` rechaza las cuatro. Los mecanismos rígidos
 lanzan `MechanismError` antes de resolver, con el movimiento libre descrito
 ("giro alrededor del eje z que pasa por (0, 0)"). Los internos lanzan
 `IllPosedSystemError` al factorizar, por un pivote nulo, aunque la carga no
-active el mecanismo. Todo se contrasta con la estática sin rigideces: el
+active el mecanismo. Los solvers no lineales hacen esa comprobación sobre
+la tangente inicial: con `Truss2D` rechazan el último caso, y con barras
+corrotacionales (`Truss2DCorot`) sólo avisan; el solver iterativo, que no
+tiene pivotes, lo deja pasar con un aviso que dice cómo comprobarlo. Todo se
+contrasta con la estática sin rigideces: el
 rango de la matriz de equilibrio de los nudos y el núcleo de la de
 compatibilidad (Maxwell; Pellegrino y Calladine). Incluye el error que
 ninguna comprobación ve: el área en cm² tecleada como m².
@@ -23,6 +27,7 @@ python examples/modelo_mal_planteado/run.py
 
 **Qué esperar.** Bien apoyada: fuerzas axiales entre −200 y 212.1 kN, flecha
 de 10.99 mm, ambas iguales a la estática a precisión de máquina (< 10⁻¹⁰). Un mecanismo en cada
-variante errónea, y el mismo diagnóstico con SuperLU y con Pardiso.
+variante errónea, y el mismo diagnóstico con todos los solvers directos
+instalados (SuperLU, Pardiso, CHOLMOD).
 
 ![Armadura y mecanismos](fig_armadura.png)

@@ -36,7 +36,10 @@ from solidum.constants import (
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
-from solidum.math.solvers.model_checks import ensure_statically_restrained
+from solidum.math.solvers.model_checks import (
+    check_initial_tangent,
+    ensure_statically_restrained,
+)
 from solidum.registry import SolverRegistry
 
 
@@ -169,6 +172,11 @@ class NonlinearSolver:
         # equilibrio estático; se rechaza antes de iterar con el movimiento
         # libre en palabras, en vez de agotar bisecciones.
         ensure_statically_restrained(self.assembler, type(self).__name__)
+        # Capa 3 sobre la tangente inicial (ADR 0019, 2026-09-30): la primera
+        # iteración factoriza K(U = 0); sus pivotes nulos delatan un mecanismo
+        # interno aunque la carga no lo active (el Newton lo resolvería en
+        # silencio con los pivotes perturbados de Pardiso).
+        check_initial_tangent(self.assembler, self.corrector, type(self).__name__)
 
         load_factor = 0.0
         target_load = 1.0

@@ -68,6 +68,7 @@ class Frame2DEulerCorot(FrameSectionMixin, Element):
     DOF_NAMES = ['ux', 'uy', 'rz']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
+    GEOMETRICALLY_NONLINEAR = True
     REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}
     SECTION_DIM = 2
     SECTION_RESPONSE = "response_2d"

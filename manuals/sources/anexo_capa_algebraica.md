@@ -38,9 +38,11 @@ Un solver directo ante una matriz singular no avisa: SuperLU devuelve desplazami
 
 1. **Antes de resolver**: que los apoyos impidan todo movimiento de sólido rígido. Si no, se detiene y dice qué movimiento queda libre (*"traslación en la dirección x"*, *"giro alrededor del eje z que pasa por (0, 0.5)"*).
 2. **Después de resolver** (estático lineal): que la solución satisface el equilibrio, `‖F − K·u‖ ≤ 10⁻⁸·‖F‖`.
-3. **Después de resolver** (estático lineal): que la factorización no tiene pivotes numéricamente nulos, con el mismo criterio en SuperLU y Pardiso.
+3. **Después de resolver** (estático lineal): que la factorización no tiene pivotes numéricamente nulos, `|pivote| < 10⁻¹³·max|K|`, con el mismo criterio en SuperLU (diagonal de `U`), Pardiso (`iparm(14)`) y Cholesky (pivotes de `LDLᵀ`; desde el 2026-09-30, deuda #28). Una factorización que no llega a completarse (pivote exactamente nulo) también se explica.
 
-En un análisis no lineal las dos últimas no se aplican —cerca de un punto límite resolver un sistema casi singular es legítimo—; el Newton ya exige equilibrio real, y si el paso fracasa con un sistema tangente mal resuelto la causa se reporta como tangente singular. Detalle y mensajes en el capítulo de diagnóstico del manual de usuario.
+En un análisis no lineal las dos últimas no se aplican a lo largo del trazado —cerca de un punto límite resolver un sistema casi singular es legítimo—; el Newton ya exige equilibrio real, y si el paso fracasa con un sistema tangente mal resuelto la causa se reporta como tangente singular. La excepción es la **tangente inicial** (`U = 0`, desde el 2026-09-30): su factorización, la primera que hace el solver, se inspecciona antes de usarla. Con pivotes nulos y un modelo geométricamente lineal, el análisis se rechaza (un mecanismo en `U = 0` lo es durante todo el análisis); con elementos geométricamente no lineales o materiales unilaterales, que pueden ganar rigidez al deformarse, sólo se avisa. Detalle y mensajes en el capítulo de diagnóstico del manual de usuario.
+
+**Con el backend iterativo** la tercera comprobación no es posible: un método de Krylov no factoriza y no tiene pivotes, y distinguir un autovalor nulo de uno muy pequeño exigiría una precisión que no da de forma fiable. El análisis estático lo avisa una vez, con la manera de comprobarlo (análisis modal con densidad, o el solver directo).
 
 ## Fallback automático SPD → LU
 
@@ -118,7 +120,7 @@ La aceleración **crece con el tamaño**, que es donde hace falta. Sobre el aná
 conda install -c conda-forge scikit-sparse
 ```
 
-Sólo aplica a matrices simétricas y positivas definidas, pero ahí explota la simetría y es la mejor opción. En Windows requiere Visual Studio para compilar, de ahí que la vía práctica sea `conda` y no `pip`.
+Sólo aplica a matrices simétricas y positivas definidas, pero ahí explota la simetría y es la mejor opción. En Windows requiere Visual Studio para compilar, de ahí que la vía práctica sea `conda` y no `pip`. En Linux, `pip install solidum-fem[cholmod]` lo compila contra la SuiteSparse del sistema (`apt-get install libsuitesparse-dev`; la versión 0.5 de scikit-sparse exige SuiteSparse 7.4 o posterior). El backend admite las dos generaciones de su API, la 0.4 y la 0.5, que cambió la interfaz de la factorización.
 
 Instalado cualquiera de los dos, el despachador empieza a usarlo automáticamente — sin tocar YAML, sin recompilar, sin reescribir specs.
 

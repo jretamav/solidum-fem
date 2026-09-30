@@ -70,7 +70,11 @@ from solidum.math.solvers.corrector import (
     NewtonCorrector,
     default_calibration_scales,
 )
-from solidum.math.solvers.model_checks import ensure_statically_restrained
+from solidum.math.solvers.diagnostics import IllPosedSystemError
+from solidum.math.solvers.model_checks import (
+    check_initial_tangent,
+    ensure_statically_restrained,
+)
 from solidum.registry import SolverRegistry
 
 
@@ -378,6 +382,10 @@ class ArcLengthSolver:
         K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
         try:
             du_t_red = self.corrector.solve(K_t_red, F_t_red)
+        except IllPosedSystemError:
+            # Veredicto de la red de seguridad sobre la tangente inicial
+            # (ADR 0019): el modelo está mal planteado; bisecar no lo arregla.
+            raise
         except RuntimeError:
             return None
         du_t = self.assembler.expand(du_t_red, T_t, g_t)
@@ -405,6 +413,10 @@ class ArcLengthSolver:
         # equilibrio estático; se rechaza antes de iterar con el movimiento
         # libre en palabras, en vez de agotar bisecciones.
         ensure_statically_restrained(self.assembler, type(self).__name__)
+        # Capa 3 sobre la tangente inicial (ADR 0019, 2026-09-30): el
+        # predictor del primer paso factoriza K(U = 0); sus pivotes nulos
+        # delatan un mecanismo interno aunque la carga no lo active.
+        check_initial_tangent(self.assembler, self.corrector, type(self).__name__)
 
         cs = self.assembler.constraint_set
         free_dofs = cs.free_dofs(ndof)

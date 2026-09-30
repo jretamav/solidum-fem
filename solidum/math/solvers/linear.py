@@ -20,9 +20,11 @@ from solidum.math.solvers._shared import (
     _log,
     domain_is_symmetric,
 )
+from solidum.math.solvers.diagnostics import IllPosedSystemError
 from solidum.math.solvers.model_checks import (
     check_linear_solution,
     ensure_statically_restrained,
+    warn_if_pivots_unavailable,
 )
 from solidum.registry import SolverRegistry
 
@@ -94,11 +96,23 @@ class LinearSolver:
         )
         linalg = select_solver(props, override=self.linear_algebra)
         try:
-            factor = linalg.factorize(K_red)
-        except CholeskyNotPositiveDefiniteError:
-            # Fallback automático SPD→LU (ADR 0003 §5).
-            _log.warning("Cholesky reportó no-positividad. Degradando a LU.")
-            factor = LUSolver().factorize(K_red)
+            try:
+                factor = linalg.factorize(K_red)
+            except CholeskyNotPositiveDefiniteError:
+                # Fallback automático SPD→LU (ADR 0003 §5).
+                _log.warning("Cholesky reportó no-positividad. Degradando a LU.")
+                factor = LUSolver().factorize(K_red)
+        except RuntimeError as exc:
+            # Red de seguridad, capa 3 (ADR 0019): una factorización directa
+            # que no se completa (pivote exactamente nulo, fila vacía: un
+            # nudo o un grado de libertad sin rigidez) es la forma extrema de
+            # un pivote nulo; se explica en vez de dejar salir el error del
+            # backend ("Factor is exactly singular").
+            raise IllPosedSystemError(factorization_error=str(exc)) from exc
+        # Capa 3 sin pivotes (backend iterativo, ADR 0019, 2026-09-30): se
+        # avisa una vez por factorización —una por análisis— de que un
+        # mecanismo interno que la carga no active no se comprueba.
+        warn_if_pivots_unavailable(factor, type(self).__name__)
 
         self._factor = factor
         self._K_red = K_red

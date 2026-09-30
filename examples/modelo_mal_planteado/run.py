@@ -30,7 +30,7 @@ from ejemplos_comun import (  # noqa: E402
 )
 
 from solidum.core.domain import Domain  # noqa: E402
-from solidum.elements.truss import Truss2D  # noqa: E402
+from solidum.elements.truss import Truss2D, Truss2DCorot  # noqa: E402
 from solidum.materials.elastic import Elastic1D  # noqa: E402
 from solidum.math.assembly import Assembler  # noqa: E402
 from solidum.math.linalg.dispatcher import available_overrides  # noqa: E402
@@ -89,10 +89,15 @@ TOLERANCIAS = {
     # con la forma del mecanismo de la estática.
     "modal.frecuencias_nulas": (1, 1),
     "modal.coseno_con_estatica": (0.999, 1.0 + 1e-9),
-    # Fuera del alcance de la red: el iterativo y el no lineal aceptan el
-    # mecanismo interno que la carga no activa.
+    # El mecanismo interno que la carga no activa, fuera del estático lineal
+    # con solver directo (2026-09-30): el no lineal lo rechaza con barras
+    # geométricamente lineales y sólo avisa con barras corrotacionales; el
+    # iterativo no puede detectarlo, pero lo dice.
+    "limites.rechaza_no_lineal": (1, 1),
+    "limites.acepta_no_lineal_corot": (1, 1),
+    "limites.avisos_no_lineal_corot": (1, 1),
     "limites.acepta_iterativo": (1, 1),
-    "limites.acepta_no_lineal": (1, 1),
+    "limites.avisos_iterativo": (1, 1),
 }
 
 
@@ -112,7 +117,7 @@ def geometria(sin_diagonal: bool = False):
     return np.array(nudos), barras
 
 
-def armadura(caso: str, area: float = A, densidad: float | None = None):
+def armadura(caso: str, area: float = A, densidad: float | None = None, barra=Truss2D):
     """Modelo de Solidum del caso: dominio, nudos y vector de cargas."""
     apoyos, sin_diagonal, carga = CASOS[caso]
     xy, barras = geometria(sin_diagonal)
@@ -120,7 +125,7 @@ def armadura(caso: str, area: float = A, densidad: float | None = None):
     acero = Elastic1D(E=E, density=densidad)
     nodos = [dom.add_node(k + 1, list(p)) for k, p in enumerate(xy)]
     for a, b in barras:
-        dom.add_element(Truss2D(len(dom.elements) + 1, [nodos[a], nodos[b]], acero, A=area))
+        dom.add_element(barra(len(dom.elements) + 1, [nodos[a], nodos[b]], acero, A=area))
     inferiores = nodos[:N_PANELES + 1]
     for k, dof in APOYOS[apoyos]:
         inferiores[k].fix_dof(dof, 0.0)
@@ -163,14 +168,36 @@ def buscar_mecanismo(caso: str, n_modos: int = 4):
     return f, modos
 
 
-def no_lineal(caso: str) -> str:
+def no_lineal(caso: str, barra=Truss2D) -> str:
     """El mismo caso con ``NonlinearSolver``: ¿lo acepta?"""
-    dom, _, F = armadura(caso)
+    dom, _, F = armadura(caso, barra=barra)
     try:
         NonlinearSolver(Assembler(dom)).solve(F)
     except Exception as e:                 # noqa: BLE001 — sólo se registra el tipo
         return type(e).__name__
     return "solución"
+
+
+def con_avisos(analisis):
+    """``(resultado, avisos)``: ejecuta ``analisis()`` y recoge los avisos
+    que Solidum deja en el log de los solvers, sin imprimirlos."""
+    avisos = []
+
+    class _Lista(logging.Handler):
+        def emit(self, record):
+            avisos.append(record.getMessage())
+
+    log = logging.getLogger("solidum.solvers")
+    lista, previo = _Lista(level=logging.WARNING), logging.root.manager.disable
+    log.addHandler(lista)
+    log.propagate = False                  # sólo a la lista, no a la consola
+    logging.disable(logging.INFO)          # deja pasar los avisos
+    try:
+        return analisis(), avisos
+    finally:
+        logging.disable(previo)
+        log.propagate = True
+        log.removeHandler(lista)
 
 
 def estatica(caso: str) -> dict:
@@ -253,12 +280,22 @@ def calcular() -> dict:
         modal = {"frecuencias_nulas": len(modos_nulos), "f1_hz": float(f[len(modos_nulos)]),
                  "coseno_con_estatica": float(abs(modos_nulos[0] @ d)
                                               / (np.linalg.norm(modos_nulos[0]) * np.linalg.norm(d)))}
+        # El mecanismo que la carga no activa, fuera del estático lineal con
+        # solver directo: no lineal con barras lineales y corrotacionales, e
+        # iterativo.
+        no_lin = no_lineal("sin_diagonal_H")
+        corot, avisos_corot = con_avisos(lambda: no_lineal("sin_diagonal_H", barra=Truss2DCorot))
+        iterativo, avisos_it = con_avisos(
+            lambda: analizar("sin_diagonal_H", linear_algebra="iterative")["resultado"])
+        aviso_it = [a for a in avisos_it if "iterativo" in a]
         limites = {
-            "acepta_iterativo": int(analizar("sin_diagonal_H", linear_algebra="iterative")["resultado"]
-                                    == "solución"),
-            "acepta_no_lineal": int(no_lineal("sin_diagonal_H") == "solución")}
+            "no_lineal": no_lin, "rechaza_no_lineal": int(no_lin == "IllPosedSystemError"),
+            "acepta_no_lineal_corot": int(corot == "solución"),
+            "avisos_no_lineal_corot": sum("matriz tangente inicial" in a for a in avisos_corot),
+            "acepta_iterativo": int(iterativo == "solución"), "avisos_iterativo": len(aviso_it),
+            "aviso_iterativo": _partir(aviso_it[0] if aviso_it else "")}
         # El diagnóstico no depende del solver directo que elija el despachador.
-        directos = [b for b in ("lu", "pardiso") if b in available_overrides()]
+        directos = [b for b in ("lu", "pardiso", "cholesky") if b in available_overrides()]
         discrepantes = sum(
             analizar(c, linear_algebra=b)["resultado"] != casos[c]["resultado"]
             for b in directos for c in CASOS)
@@ -349,6 +386,11 @@ def main() -> dict:
     u = res["unidades"]
     print(f"área ×10⁴: cambio de N = {u['cambio_N']:.1e}, flecha ×{u['razon_flecha']:.2e}")
     print(f"backends discrepantes: {res['backends_discrepantes']}")
+    li = res["limites"]
+    print(f"sin diagonal, carga horizontal: NonlinearSolver → {li['no_lineal']}; con "
+          f"Truss2DCorot, solución = {li['acepta_no_lineal_corot']} y avisos = "
+          f"{li['avisos_no_lineal_corot']}; iterativo, solución = {li['acepta_iterativo']} "
+          f"y avisos = {li['avisos_iterativo']}")
     return res
 
 
