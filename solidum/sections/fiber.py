@@ -38,6 +38,18 @@ Primitivas de discretización (con la API de OpenSees: *patch*, *layer*,
   ``start`` a ``end`` inclusive (``n = 1``: una barra en ``start``).
 - :class:`Fiber` — una fibra suelta.
 
+Barras dentro de un parche (spec §3, decisión del usuario 2026-09-30): las
+fibras de un parche cubren toda su área, también el sitio que ocupan las
+barras, así que sin más en la posición de cada barra el área cuenta dos
+veces, ``N_b = (σ_s(ε_b) + σ_c(ε_b))·A_b`` (práctica de OpenSees; es el
+comportamiento por defecto). Una :class:`BarLayer` o una :class:`Fiber` puede
+declarar el material que **desplaza** (``displaces``): la sección añade
+entonces en la misma posición una **fibra de compensación** de área
+``−A_b`` con el material desplazado, evaluada con su propia ley y su propia
+historia. El descuento es exacto también en régimen inelástico, no sólo con
+``E_s − E_c``. Las fibras de compensación van al final de los arreglos, tras
+las fibras declaradas (``is_compensation`` las marca).
+
 La sección evalúa sus fibras **agrupadas por material** (ADR 0021 §6): el
 bucle sobre las fibras de un mismo material reutiliza el método ligado del
 material y deja la puerta abierta a una evaluación vectorizada por grupo
@@ -59,21 +71,42 @@ from solidum.registry import MaterialRegistry, SectionRegistry
 # Validación de datos de entrada (mensajes que nombran la primitiva)
 # ---------------------------------------------------------------------------
 
-def _check_material(material, where: str) -> None:
-    """Material de fibra: un objeto con ``compute_state`` y ``STRAIN_DIM = 1``."""
+def _check_material(material, where: str, name: str = "material") -> None:
+    """Material de fibra: un objeto con ``compute_state`` y ``STRAIN_DIM = 1``.
+    ``name`` es el parámetro que lo recibe (``material`` o ``displaces``)."""
     if material is None or not callable(getattr(material, "compute_state", None)):
         raise ValueError(
-            f"{where}: 'material' debe ser un material con compute_state; se "
+            f"{where}: '{name}' debe ser un material con compute_state; se "
             f"recibió {type(material).__name__}."
         )
     dim = getattr(material, "STRAIN_DIM", None)
     if dim != 1:
         raise ValueError(
-            f"{where}: el material {type(material).__name__} declara "
+            f"{where}: el material {type(material).__name__} ('{name}') declara "
             f"STRAIN_DIM={dim}; una fibra es uniaxial (sólo σ_xx) y requiere un "
             f"material 1D (STRAIN_DIM = 1), p. ej. Elastic1D, Elastoplastic1D o "
             f"IsotropicDamage1D."
         )
+
+
+def _check_displaces(displaces, material, where: str):
+    """Material desplazado por una barra o fibra (opcional, spec §3).
+
+    ``None``: la barra no descuenta nada (el área cuenta dos veces, como en
+    OpenSees). Si no, un material 1D distinto del de la propia barra: con el
+    mismo material la fibra de compensación anularía la barra
+    (``σ(ε)·A − σ(ε)·A = 0``)."""
+    if displaces is None:
+        return None
+    _check_material(displaces, where, name="displaces")
+    if displaces is material:
+        raise ValueError(
+            f"{where}: 'displaces' es el mismo material de la barra "
+            f"({type(material).__name__}); la fibra de compensación anularía su "
+            f"área (σ·A − σ·A = 0). Declare en 'displaces' el material del parche "
+            f"que contiene la barra (p. ej. el concreto)."
+        )
+    return displaces
 
 
 def _as_count(value, name: str, where: str) -> int:
@@ -220,9 +253,14 @@ class CircularPatch:
 class BarLayer:
     """Capa de ``n`` barras iguales de área ``area`` equiespaciadas sobre el
     segmento de ``start`` a ``end``, ambos extremos incluidos. Con ``n = 1``
-    hay una sola barra, en ``start``."""
+    hay una sola barra, en ``start``.
 
-    def __init__(self, material, start, end, n, area):
+    ``displaces`` (opcional): material del parche que contiene las barras.
+    La sección añade en la posición de cada barra una fibra de compensación
+    de área ``−area`` con ese material, para no contar dos veces el área que
+    ocupa la barra (spec §3). Por defecto ``None``: sin descuento."""
+
+    def __init__(self, material, start, end, n, area, displaces=None):
         where = "BarLayer"
         _check_material(material, where)
         self.material = material
@@ -230,6 +268,7 @@ class BarLayer:
         self.end = _as_point(end, "end", where)
         self.n = _as_count(n, "n", where)
         self.area = _as_positive(area, "area", where)
+        self.displaces = _check_displaces(displaces, material, where)
 
     def discretize(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """``(y, z, A)`` de las barras."""
@@ -239,15 +278,19 @@ class BarLayer:
 
 
 class Fiber:
-    """Fibra suelta en ``(y, z)`` con área ``area``."""
+    """Fibra suelta en ``(y, z)`` con área ``area``.
 
-    def __init__(self, y, z, area, material):
+    ``displaces`` (opcional): material que la fibra desplaza, como en
+    :class:`BarLayer`."""
+
+    def __init__(self, y, z, area, material, displaces=None):
         where = "Fiber"
         _check_material(material, where)
         self.material = material
         self.y = _as_number(y, "y", where)
         self.z = _as_number(z, "z", where)
         self.area = _as_positive(area, "area", where)
+        self.displaces = _check_displaces(displaces, material, where)
 
     def discretize(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """``(y, z, A)`` de la fibra."""
@@ -266,6 +309,14 @@ def _accepted_kwargs(cls) -> set:
     """Parámetros del constructor de una primitiva, salvo ``material``."""
     params = inspect.signature(cls.__init__).parameters
     return {n for n in params if n not in ("self", "material")}
+
+
+def _distinct(materials) -> list:
+    """Materiales distintos (por identidad), en orden de aparición."""
+    seen: dict[int, object] = {}
+    for mat in materials:
+        seen.setdefault(id(mat), mat)
+    return list(seen.values())
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +341,18 @@ class FiberSection(Section):
     Atributos
     ---------
     y, z, area : np.ndarray (n_fibers,)
-        Coordenadas locales (desde el eje del elemento) y área de cada fibra,
-        en el orden de declaración: primero los parches y después las fibras
-        sueltas.
+        Coordenadas locales (desde el eje del elemento) y área de cada fibra.
+        Primero las fibras declaradas, en el orden de declaración (los
+        parches y después las fibras sueltas); al final, las fibras de
+        compensación de las barras con ``displaces`` (área negativa), en el
+        orden de las fibras que compensan.
+    is_compensation : np.ndarray (n_fibers,) de bool
+        ``True`` en las fibras de compensación.
+    compensated_index : np.ndarray (n_compensation,) de int
+        Índice de la fibra declarada que compensa cada fibra de compensación
+        (misma posición ``(y, z)`` y área opuesta).
     n_fibers : int
+        Todas las fibras, las de compensación incluidas.
     GJ : float | None
 
     Notes
@@ -301,7 +360,8 @@ class FiberSection(Section):
     Sin estado (ADR 0021 §1): el estado de cada fibra en cada punto de
     Gauss lo guarda el elemento. ``initial_states()`` devuelve una lista de
     ``None`` (estado virgen de cada material) y ``response_*`` devuelve la
-    lista de estados trial sin modificar la recibida.
+    lista de estados trial sin modificar la recibida. Cada fibra de
+    compensación tiene su propio estado, como cualquier otra fibra.
     """
 
     def __init__(self, patches=None, fibers=None, GJ=None):
@@ -323,27 +383,97 @@ class FiberSection(Section):
                     )
                 primitives.append(prim)
 
-        ys, zs, areas, fiber_materials = [], [], [], []
+        ys, zs, areas, fiber_materials, displaced = [], [], [], [], []
         for prim in primitives:
             y, z, a = prim.discretize()
             ys.append(np.asarray(y, dtype=float))
             zs.append(np.asarray(z, dtype=float))
             areas.append(np.asarray(a, dtype=float))
             fiber_materials.extend([prim.material] * len(y))
+            displaced.extend([getattr(prim, "displaces", None)] * len(y))
         if not fiber_materials:
             raise ValueError(
                 "FiberSection: la sección no tiene fibras; declare al menos un "
                 "parche ('patches') o una fibra ('fibers')."
             )
 
-        self.y = np.ascontiguousarray(np.concatenate(ys))
-        self.z = np.ascontiguousarray(np.concatenate(zs))
-        self.area = np.ascontiguousarray(np.concatenate(areas))
-        if not np.all(self.area > 0.0):
+        y = np.concatenate(ys)
+        z = np.concatenate(zs)
+        area = np.concatenate(areas)
+        # Sólo las fibras declaradas: las áreas negativas existen únicamente
+        # en las fibras de compensación que se generan a continuación.
+        if not np.all(area > 0.0):
             raise ValueError("FiberSection: todas las fibras deben tener área > 0.")
+        declared_materials = _distinct(fiber_materials)
+
+        # Fibras unilaterales (decisión del usuario, 2026-09-30): se admiten
+        # mezcladas con fibras bilaterales (tirantes o tendones en una sección
+        # de acero o concreto), pero no una sección hecha sólo de ellas: al
+        # invertirse el signo de la deformación perdería toda la rigidez y la
+        # matriz global quedaría singular, lo mismo que la base impide a un
+        # marco con material unilateral (Element._validate_material_compatibility).
+        # Cuentan sólo las fibras declaradas: una fibra de compensación resta
+        # rigidez, no la aporta.
+        if all(getattr(m, "IS_UNILATERAL", False) for m in declared_materials):
+            nombres = sorted({type(m).__name__ for m in declared_materials})
+            raise ValueError(
+                f"FiberSection: todas las fibras son de material unilateral "
+                f"({', '.join(nombres)}): la sección no tendría rigidez cuando la "
+                f"deformación cambie de signo y la matriz global quedaría "
+                f"singular. Combínelas con fibras de un material bilateral "
+                f"(acero, concreto) o use un elemento que admita materiales "
+                f"unilaterales (Cable2DCorot, Cable3DCorot)."
+            )
+
+        # Fibras de compensación (spec §3): una por cada fibra declarada con
+        # 'displaces', en su misma posición, con área −A_i y el material
+        # desplazado. Van al final, tras todas las fibras declaradas.
+        comp = [i for i, d in enumerate(displaced) if d is not None]
+        declared_ids = {id(m) for m in declared_materials}
+        ausentes = sorted({type(displaced[i]).__name__ for i in comp
+                           if id(displaced[i]) not in declared_ids})
+        if ausentes:
+            raise ValueError(
+                f"FiberSection: el material desplazado ('displaces') "
+                f"{', '.join(ausentes)} no es el de ninguna fibra declarada de la "
+                f"sección: no hay área suya que descontar, y la fibra de "
+                f"compensación restaría un área inexistente. 'displaces' debe ser "
+                f"el mismo material del parche que contiene la barra (en el YAML, "
+                f"el mismo id)."
+            )
+        # El área desplazada de cada material no puede superar el área
+        # declarada de ese material: si la superara, la sección quedaría con
+        # área neta negativa de ese material (p. ej. rigidez axial negativa).
+        # Es una comprobación global, no de pertenencia de cada barra a su
+        # parche (eso sigue siendo responsabilidad del modelo; spec §3).
+        for m in _distinct([displaced[i] for i in comp]):
+            a_decl = float(sum(area[j] for j, fm in enumerate(fiber_materials) if fm is m))
+            a_desp = float(sum(area[i] for i in comp if displaced[i] is m))
+            if a_desp > a_decl:
+                raise ValueError(
+                    f"FiberSection: las barras y fibras desplazan {a_desp:.6g} de área "
+                    f"de {type(m).__name__}, más que los {a_decl:.6g} declarados de ese "
+                    f"material: la sección quedaría con área neta negativa. Revise "
+                    f"'displaces' o las áreas de las barras."
+                )
+        if comp:
+            idx = np.array(comp, dtype=int)
+            y = np.concatenate([y, y[idx]])
+            z = np.concatenate([z, z[idx]])
+            area = np.concatenate([area, -area[idx]])
+            fiber_materials = fiber_materials + [displaced[i] for i in comp]
+        self.y = np.ascontiguousarray(y)
+        self.z = np.ascontiguousarray(z)
+        self.area = np.ascontiguousarray(area)
+        self._n_declared = self.area.shape[0] - len(comp)
+        self.is_compensation = np.zeros(self.area.shape[0], dtype=bool)
+        self.is_compensation[self._n_declared:] = True
+        self.compensated_index = np.array(comp, dtype=int)
         self._fiber_materials = tuple(fiber_materials)
 
-        # Grupos por material (identidad), en orden de aparición.
+        # Grupos por material (identidad), en orden de aparición. El material
+        # desplazado ya es el de alguna fibra declarada: sus fibras de
+        # compensación entran en ese grupo.
         position: dict[int, int] = {}
         groups: list[tuple] = []
         for i, mat in enumerate(fiber_materials):
@@ -354,23 +484,6 @@ class FiberSection(Section):
             groups[position[key]][1].append(i)
         self._groups = [(mat, list(idx)) for mat, idx in groups]
         self._materials = [mat for mat, _ in groups]
-
-        # Fibras unilaterales (decisión del usuario, 2026-09-30): se admiten
-        # mezcladas con fibras bilaterales (tirantes o tendones en una sección
-        # de acero o concreto), pero no una sección hecha sólo de ellas: al
-        # invertirse el signo de la deformación perdería toda la rigidez y la
-        # matriz global quedaría singular, lo mismo que la base impide a un
-        # marco con material unilateral (Element._validate_material_compatibility).
-        if all(getattr(m, "IS_UNILATERAL", False) for m in self._materials):
-            nombres = sorted({type(m).__name__ for m in self._materials})
-            raise ValueError(
-                f"FiberSection: todas las fibras son de material unilateral "
-                f"({', '.join(nombres)}): la sección no tendría rigidez cuando la "
-                f"deformación cambie de signo y la matriz global quedaría "
-                f"singular. Combínelas con fibras de un material bilateral "
-                f"(acero, concreto) o use un elemento que admita materiales "
-                f"unilaterales (Cable2DCorot, Cable3DCorot)."
-            )
 
         # Matrices W de la spec §4: ε = W·e, s = Wᵀ(σ∘A), k_s = Wᵀ diag(E_t∘A) W.
         ones = np.ones(self.n_fibers)
@@ -396,10 +509,13 @@ class FiberSection(Section):
             patches:
               - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 50, nz: 1}
               - {shape: circle, material: 1, r_outer: 0.2, r_inner: 0.0, center: [0.0, 0.0], n_rad: 20, n_circ: 32}
-              - {shape: layer, material: 2, start: [-0.2, -0.1], end: [-0.2, 0.1], n: 3, area: 3.1e-4}
+              - {shape: layer, material: 2, start: [-0.2, -0.1], end: [-0.2, 0.1], n: 3, area: 3.1e-4, displaces: 1}
             fibers:
-              - {y: 0.1, z: 0.0, area: 1.0e-4, material: 2}
+              - {y: 0.1, z: 0.0, area: 1.0e-4, material: 2, displaces: 1}
             GJ: 1.0e6
+
+        ``displaces`` (sólo en ``layer`` y en las fibras sueltas) es, como
+        ``material``, un id de ``materials``.
         """
         data = dict(data)
         patches_data = data.pop("patches", None) or []
@@ -449,6 +565,10 @@ class FiberSection(Section):
                 f"{ctx}: parámetros {unknown} no aceptados por "
                 f"{prim_cls.__name__}. Admitidos: {sorted(accepted | {'material'})}."
             )
+        # El material desplazado es otra referencia a 'materials' (spec §3).
+        if entry.get("displaces") is not None:
+            entry["displaces"] = resolve(MaterialRegistry, entry["displaces"],
+                                         f"{ctx}.displaces")
         try:
             return prim_cls(material=material, **entry)
         except (TypeError, ValueError) as exc:
@@ -460,6 +580,7 @@ class FiberSection(Section):
 
     @property
     def n_fibers(self) -> int:
+        """Número de fibras, las de compensación incluidas."""
         return int(self.area.shape[0])
 
     def materials(self) -> list:
@@ -467,19 +588,31 @@ class FiberSection(Section):
         return list(self._materials)
 
     def initial_states(self) -> list:
-        """Estado virgen de cada fibra (``None``: el material parte de su
-        estado natural en la primera evaluación)."""
+        """Estado virgen de cada fibra, las de compensación incluidas
+        (``None``: el material parte de su estado natural en la primera
+        evaluación)."""
         return [None] * self.n_fibers
 
+    def material_point_states(self, states) -> list:
+        """Estados de las fibras declaradas: sin los de las fibras de
+        compensación, que no son puntos materiales sino un descuento (van al
+        final de la lista)."""
+        return list(states[:self._n_declared])
+
     def total_area(self) -> float:
+        """``Σ A_i`` sobre todas las fibras. Con ``displaces`` las fibras de
+        compensación (``−A_b``) quitan el área que las barras cuentan dos
+        veces, y el resultado es el área bruta de la sección."""
         return float(self.area.sum())
 
     def strains_2d(self, e) -> np.ndarray:
-        """``ε_i = ε₀ − y_i·κ_z`` para ``e = [ε₀, κ_z]``."""
+        """``ε_i = ε₀ − y_i·κ_z`` para ``e = [ε₀, κ_z]`` (todas las fibras; una
+        fibra de compensación tiene la deformación de la que compensa)."""
         return self._W2 @ self._check_e(e, 2)
 
     def strains_3d(self, e) -> np.ndarray:
-        """``ε_i = ε₀ − y_i·κ_z + z_i·κ_y`` para ``e = [ε₀, κ_y, κ_z]``."""
+        """``ε_i = ε₀ − y_i·κ_z + z_i·κ_y`` para ``e = [ε₀, κ_y, κ_z]`` (todas
+        las fibras)."""
         return self._W3 @ self._check_e(e, 3)
 
     def response_2d(self, e, states):
@@ -493,7 +626,9 @@ class FiberSection(Section):
 
     def mass_properties(self) -> dict:
         """``ρA = Σρ_i A_i``, ``ρI_y = Σρ_i z_i² A_i``, ``ρI_z = Σρ_i y_i² A_i``
-        (spec §6), respecto del eje del elemento."""
+        (spec §6), respecto del eje del elemento. Las sumas incluyen las
+        fibras de compensación (``−ρ_c A_b``): con ``displaces`` la barra
+        sustituye al concreto que desplaza en vez de sumarse a él."""
         missing = sorted({type(m).__name__ for m in self._materials
                           if getattr(m, "density", None) is None})
         if missing:
@@ -552,5 +687,7 @@ class FiberSection(Section):
         return s, k, new_states
 
     def __repr__(self) -> str:
-        return (f"FiberSection(n_fibers={self.n_fibers}, "
+        n_comp = self.n_fibers - self._n_declared
+        comp = f", compensation={n_comp}" if n_comp else ""
+        return (f"FiberSection(n_fibers={self.n_fibers}{comp}, "
                 f"materials={[type(m).__name__ for m in self._materials]}, GJ={self.GJ})")

@@ -60,7 +60,8 @@ concreto = Elastic1D(E=3.0e10, density=2400.0)
 acero = Elastoplastic1D(E=2.0e11, sigma_y=4.2e8, H=2.0e9, density=7850.0)
 sec = FiberSection(
     patches=[RectangularPatch(concreto, y=(-0.25, 0.25), z=(-0.15, 0.15), ny=40, nz=1),
-             BarLayer(acero, start=(-0.21, -0.11), end=(-0.21, 0.11), n=3, area=5.1e-4)],
+             BarLayer(acero, start=(-0.21, -0.11), end=(-0.21, 0.11), n=3, area=5.1e-4,
+                      displaces=concreto)],   # opcional: descuenta el concreto que ocupan
     GJ=None,                        # obligatorio sólo si la usa un Frame3D
 )
 
@@ -70,7 +71,7 @@ n2 = domain.add_node(2, [3.0, 0.0])
 domain.add_element(Frame2DEuler(1, [n1, n2], section=sec, n_ip=3))
 ```
 
-`CircularPatch(material, r_outer=..., r_inner=0.0, center=(0.0, 0.0), n_rad=..., n_circ=...)` y `Fiber(y, z, area, material)` completan las primitivas. La sección expone `sec.y`, `sec.z`, `sec.area` (arreglos por fibra), `sec.n_fibers`, `sec.materials()` y `sec.mass_properties()`; su respuesta a nivel de sección, `sec.response_2d([eps0, kappa_z], estados)` y `sec.response_3d([eps0, kappa_y, kappa_z], estados)`, devuelve las fuerzas internas, su tangente y los estados nuevos de las fibras (con `sec.initial_states()` como estado virgen), útil para trazar diagramas momento–curvatura sin montar un modelo. Tras resolver, `elem.compute_internal_forces(U)` añade `section_deformations` y `section_forces` en los puntos de Gauss.
+`CircularPatch(material, r_outer=..., r_inner=0.0, center=(0.0, 0.0), n_rad=..., n_circ=...)` y `Fiber(y, z, area, material, displaces=None)` completan las primitivas. Con `displaces` (el mismo objeto material del parche que contiene la barra), la sección añade al final de sus arreglos una fibra de compensación de área negativa por barra, marcada en `sec.is_compensation` (ver `displaces` en el bloque `sections` del capítulo del YAML). La sección expone `sec.y`, `sec.z`, `sec.area` (arreglos por fibra), `sec.n_fibers`, `sec.materials()` y `sec.mass_properties()`; su respuesta a nivel de sección, `sec.response_2d([eps0, kappa_z], estados)` y `sec.response_3d([eps0, kappa_y, kappa_z], estados)`, devuelve las fuerzas internas, su tangente y los estados nuevos de las fibras (con `sec.initial_states()` como estado virgen), útil para trazar diagramas momento–curvatura sin montar un modelo. Tras resolver, `elem.compute_internal_forces(U)` añade `section_deformations` y `section_forces` en los puntos de Gauss.
 
 ## Módulos de usuario
 

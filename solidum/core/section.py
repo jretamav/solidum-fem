@@ -52,10 +52,14 @@ class Section(ABC):
     response_3d(e, states) -> (s, k_s, states')
         Ídem en 3D con ``e = [ε₀, κ_y, κ_z]``, ``s = [N, M_y, M_z]``.
     strains_2d(e), strains_3d(e)
-        Deformación axial de cada punto material de la sección para ``e``.
+        Deformación axial de cada punto de evaluación de la sección para
+        ``e`` (los mismos puntos, y en el mismo orden, que los estados).
     initial_states()
-        Lista de estados iniciales (uno por punto material de la sección)
-        que el elemento guarda en cada punto de Gauss.
+        Lista de estados iniciales que el elemento guarda en cada punto de
+        Gauss: uno por punto de evaluación de la sección, es decir, sus
+        puntos materiales y, si la sección los tiene, puntos auxiliares
+        (las fibras de compensación de ``FiberSection``; ver
+        ``material_point_states``).
     materials()
         Materiales distintos que usa la sección, en orden de aparición.
     mass_properties()
@@ -67,6 +71,12 @@ class Section(ABC):
         Área bruta ``∫ dA`` de la sección: la usa la carga de una fuerza de
         cuerpo uniforme ``b`` (fuerza por unidad de volumen), cuya carga por
         unidad de longitud es ``A·b``.
+    material_point_states(states)
+        Opcional (por defecto, todos): de la lista de estados de un punto de
+        Gauss, los de los puntos materiales físicos, los que promedia el
+        post-proceso (``Internal_State`` del VTK). Una sección que guarda
+        estados auxiliares (las fibras de compensación de ``FiberSection``)
+        los excluye aquí.
     """
 
     GJ: float | None = None
@@ -81,15 +91,16 @@ class Section(ABC):
 
     @abstractmethod
     def strains_2d(self, e) -> np.ndarray:
-        """Deformación axial de cada punto material para ``e = [ε₀, κ_z]``."""
+        """Deformación axial de cada punto de evaluación para ``e = [ε₀, κ_z]``."""
 
     @abstractmethod
     def strains_3d(self, e) -> np.ndarray:
-        """Deformación axial de cada punto material para ``e = [ε₀, κ_y, κ_z]``."""
+        """Deformación axial de cada punto de evaluación para ``e = [ε₀, κ_y, κ_z]``."""
 
     @abstractmethod
     def initial_states(self) -> list:
-        """Estados iniciales, uno por punto material (lista nueva en cada llamada)."""
+        """Estados iniciales, uno por punto de evaluación (lista nueva en cada
+        llamada)."""
 
     @abstractmethod
     def materials(self) -> list:
@@ -102,3 +113,8 @@ class Section(ABC):
     @abstractmethod
     def total_area(self) -> float:
         """Área bruta de la sección."""
+
+    def material_point_states(self, states) -> list:
+        """Estados de los puntos materiales físicos de ``states`` (la lista de
+        un punto de Gauss). Por defecto, todos."""
+        return list(states)

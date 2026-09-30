@@ -5,7 +5,8 @@ Cubren la implementación: construcción y validaciones de la sección y de sus
 primitivas, cinemática y signos a nivel de sección, tangente frente a
 diferencias finitas en régimen inelástico (sección y elementos), guardas de
 los marcos, estado por punto de Gauss, masa y peso propio, simetría agregada,
-YAML de extremo a extremo y exportación VTK.
+YAML de extremo a extremo, exportación VTK y barras que desplazan el material
+del parche (``displaces``, spec §3).
 
 Los ocho casos de validación del contrato de la spec (``acceptance``) viven
 aparte, en ``tests/validation/test_fiber_section_validation.py``.
@@ -14,6 +15,7 @@ Coeficientes físicos distintos de 1 a propósito (acero y concreto en
 unidades SI): un error dimensional no se esconde tras ``E = A = 1``.
 """
 import math
+import re
 import textwrap
 
 import numpy as np
@@ -1217,3 +1219,520 @@ class TestVtk:
         VtkExporter(dom).export(ruta, U=U)
         m_i = meshio.read(ruta).cell_data["M_i"][0]
         assert np.isfinite(m_i[0]) and np.isnan(m_i[1])
+
+
+# ---------------------------------------------------------------------------
+# Barras que desplazan el material del parche: displaces (spec §3, decisión
+# del usuario 2026-09-30)
+# ---------------------------------------------------------------------------
+#
+# Sin displaces, las fibras del parche cubren también el sitio de las barras
+# y en la posición de cada barra el área cuenta dos veces:
+# N_b = (σ_s(ε_b) + σ_c(ε_b))·A_b. Con displaces, la sección añade en esa
+# posición una fibra de compensación de área −A_b con el material desplazado,
+# con su propia ley y su propia historia.
+#
+# Tolerancias: las comparaciones frente a sumas escritas a mano difieren sólo
+# en el orden de las sumas y en el redondeo de cada producto. Para n
+# sumandos, |fl(Σx_i) − Σx_i| ≤ γ_(n+3)·Σ|x_i| con γ_m ≈ m·ε (Higham, §4.2;
+# los +3 son los productos σ·A·w); con n ≤ 400 y ε = 2.2e-16, γ < 1e-13.
+# De ahí _GAMMA, que multiplica siempre la suma de los valores absolutos de
+# los términos, entrada a entrada, nunca el resultado.
+
+_GAMMA = 1.0e-13
+
+_NY, _NZ = 10, 4
+# Capas de barras fuera de los centros de celda (caso general): (y, z0, z1, n, área).
+_CAPAS = [(-0.21, -0.11, 0.11, 3, 5.1e-4),
+          (0.22, -0.11, 0.11, 2, 3.1e-4)]
+_SUELTA = (0.03, 0.07, 2.0e-4)          # fibra suelta (y, z, área)
+
+# Historia de carga, descarga, recarga más allá e inversión, e = [ε₀, κ_y, κ_z]:
+# en el primer estado el concreto se daña y el acero fluye en tracción
+# (y = −0.21) y en compresión (y = 0.22).
+_TRAYECTORIA_3D = [np.array(e) for e in ([2.0e-4, -3.0e-3, 1.2e-2],
+                                         [1.0e-4, -1.5e-3, 5.0e-3],
+                                         [3.0e-4, -5.0e-3, 1.8e-2],
+                                         [-2.0e-4, 4.0e-3, -1.4e-2])]
+
+
+def _materiales_inelasticos():
+    """Concreto con daño (ablandamiento) y acero elastoplástico."""
+    concreto = IsotropicDamage1D(E=E_C, kappa_0=1.0e-4, alpha=0.99, density=RHO_C)
+    acero = Elastoplastic1D(E=E_S, sigma_y=420e6, H=0.01 * E_S, density=RHO_S)
+    return concreto, acero
+
+
+def _seccion_armada(concreto, acero, displaces=True, GJ=2.0e7):
+    """Parche de concreto ``_NY × _NZ`` con dos capas de barras y una fibra
+    suelta de acero; con ``displaces`` todas desplazan el concreto."""
+    d = concreto if displaces else None
+    return FiberSection(
+        patches=[_rect(concreto, ny=_NY, nz=_NZ)]
+        + [BarLayer(acero, start=(y, z0), end=(y, z1), n=n, area=a, displaces=d)
+           for y, z0, z1, n, a in _CAPAS],
+        fibers=[Fiber(*_SUELTA, acero, displaces=d)],
+        GJ=GJ,
+    )
+
+
+def _barras() -> np.ndarray:
+    """``(y, z, A)`` de cada barra de :func:`_seccion_armada`, en el orden de
+    declaración (misma fórmula de posición que ``BarLayer``)."""
+    filas = []
+    for y, z0, z1, n, a in _CAPAS:
+        for t in np.linspace(0.0, 1.0, n):
+            filas.append((y, z0 + t * (z1 - z0), a))
+    filas.append(_SUELTA)
+    return np.array(filas)
+
+
+class _SeccionSinDobleConteoAMano:
+    """La sección de :func:`_seccion_armada` sin doble conteo, evaluada a mano
+    fibra a fibra con los materiales::
+
+        s = Σ_celdas σ_c(ε_k) A_k w_k + Σ_barras [σ_s(ε_b) − σ_c(ε_b)] A_b w_b
+
+    con ``w = [1, z, −y]`` y ``ε = ε₀ + z κ_y − y κ_z``. El concreto restado en
+    cada barra lleva su propia historia (la de un punto de concreto en esa
+    posición). ``evaluar`` guarda los estados como committed (la trayectoria
+    se recorre paso a paso) y devuelve también ``Σ|términos|`` para la cota de
+    redondeo."""
+
+    def __init__(self, concreto, acero):
+        yc, zc, ac = _rect(concreto, ny=_NY, nz=_NZ).discretize()
+        barras = _barras()
+        self.celdas = [(y, z, a, concreto) for y, z, a in zip(yc, zc, ac)]
+        self.barras = [(y, z, a, acero) for y, z, a in barras]
+        self.desplazado = [(y, z, -a, concreto) for y, z, a in barras]
+        self.puntos = self.celdas + self.barras + self.desplazado
+        self.estados = [None] * len(self.puntos)
+
+    def evaluar(self, e):
+        s, k = np.zeros(3), np.zeros((3, 3))
+        cota_s, cota_k = np.zeros(3), np.zeros((3, 3))
+        s_desplazado = np.zeros(3)
+        nuevos = []
+        for j, ((y, z, a, mat), st) in enumerate(zip(self.puntos, self.estados)):
+            w = np.array([1.0, z, -y])
+            sig, et, st_n = mat.compute_state(e[0] + z * e[1] - y * e[2], st)
+            s += sig * a * w
+            k += et * a * np.outer(w, w)
+            cota_s += abs(sig * a) * np.abs(w)
+            cota_k += abs(et * a) * np.outer(np.abs(w), np.abs(w))
+            if j >= len(self.celdas) + len(self.barras):
+                s_desplazado -= sig * a * w       # σ_c(ε_b)·A_b·w_b
+            nuevos.append(st_n)
+        self.estados = nuevos
+        return s, k, cota_s, cota_k, s_desplazado
+
+
+def _bits_iguales(a, b) -> bool:
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    return a.shape == b.shape and a.tobytes() == b.tobytes()
+
+
+class TestDisplaces:
+
+    def test_area_desplazada_mayor_que_la_declarada_se_rechaza(self):
+        """El área desplazada de un material no puede superar su área
+        declarada: la sección quedaría con área neta negativa (hallazgo de
+        la revisión del 2026-09-30: una inclusión de 0.2 m² en 0.15 m² de
+        concreto daba EA < 0 sin aviso)."""
+        concreto = Elastic1D(E=E_C, density=RHO_C)
+        blando = Elastic1D(E=1.0e9, density=1000.0)
+        with pytest.raises(ValueError, match="área neta negativa"):
+            FiberSection(patches=[_rect(concreto, ny=4)],
+                         fibers=[Fiber(0.0, 0.0, 0.2, blando, displaces=concreto)])
+        # Justo por debajo del área declarada (B·H = 0.15 m²) se admite.
+        FiberSection(patches=[_rect(concreto, ny=4)],
+                     fibers=[Fiber(0.0, 0.0, 0.149, blando, displaces=concreto)])
+
+    def test_fibras_de_compensacion(self):
+        concreto, acero = Elastic1D(E=E_C, density=RHO_C), _acero()
+        sec = _seccion_armada(concreto, acero)
+        barras = _barras()
+        nc, nb = _NY * _NZ, len(barras)
+        assert sec.n_fibers == nc + 2 * nb
+        assert sec.materials() == [concreto, acero]
+        assert len(sec.initial_states()) == sec.n_fibers
+        # Al final, tras las fibras declaradas; misma posición, área opuesta.
+        np.testing.assert_array_equal(sec.is_compensation, [False] * (nc + nb) + [True] * nb)
+        np.testing.assert_array_equal(sec.compensated_index, np.arange(nc, nc + nb))
+        comp = sec.is_compensation
+        np.testing.assert_array_equal(sec.y[comp], sec.y[nc:nc + nb])
+        np.testing.assert_array_equal(sec.z[comp], sec.z[nc:nc + nb])
+        np.testing.assert_array_equal(sec.area[comp], -barras[:, 2])
+        np.testing.assert_allclose(sec.y[nc:nc + nb], barras[:, 0], rtol=0, atol=1e-16)
+        np.testing.assert_allclose(sec.z[nc:nc + nb], barras[:, 1], rtol=0, atol=1e-16)
+        # Una fibra de compensación tiene la deformación de la barra.
+        eps = sec.strains_3d([1.0e-4, -2.0e-3, 3.0e-3])
+        np.testing.assert_allclose(eps[comp], eps[sec.compensated_index], rtol=1e-15)
+        # Sólo las primitivas con displaces generan compensación.
+        mixta = FiberSection(
+            patches=[_rect(concreto),
+                     BarLayer(acero, start=(-0.2, -0.1), end=(-0.2, 0.1), n=2, area=1e-4,
+                              displaces=concreto)],
+            fibers=[Fiber(0.2, 0.0, 1e-4, acero)])
+        assert mixta.is_compensation.sum() == 2 and mixta.n_fibers == 20 + 3 + 2
+        assert "compensation=2" in repr(mixta)
+        assert "compensation" not in repr(FiberSection(patches=[_rect(concreto)]))
+
+    def test_rigidez_elastica_sin_doble_conteo(self):
+        """``k_s`` con displaces = la forma a mano con el concreto neto: el
+        parche de concreto más ``(E_s − E_c)·A_b`` en cada barra. En particular
+        ``EA = E_c·(A_c − ΣA_b) + E_s·ΣA_b`` y
+        ``EI_z = E_c·b h³/12·(1 − 1/n_y²) + (E_s − E_c)·ΣA_b y_b²``."""
+        concreto, acero = Elastic1D(E=E_C, density=RHO_C), _acero()
+        sec = _seccion_armada(concreto, acero)
+        yb, zb, ab = _barras().T
+        dE = E_S - E_C
+        EA = E_C * (B * H - ab.sum()) + E_S * ab.sum()
+        EIz = E_C * B * H**3 / 12 * (1 - 1 / _NY**2) + dE * (ab * yb**2).sum()
+        EIy = E_C * H * B**3 / 12 * (1 - 1 / _NZ**2) + dE * (ab * zb**2).sum()
+        # El parche es simétrico respecto del eje: los acoplamientos los dan
+        # sólo las barras (k₀₁ = ΣE A z, k₀₂ = −ΣE A y, k₁₂ = −ΣE A y z).
+        Sz, Sy, Syz = dE * (ab * zb).sum(), dE * (ab * yb).sum(), dE * (ab * yb * zb).sum()
+        k3_ref = np.array([[EA, Sz, -Sy], [Sz, EIy, -Syz], [-Sy, -Syz, EIz]])
+        _, k3, _ = sec.response_3d([0.0, 0.0, 0.0], sec.initial_states())
+        _, k2, _ = sec.response_2d([0.0, 0.0], sec.initial_states())
+        # Cota de redondeo: Σ|E_i A_i| |w_i||w_i|ᵀ (E por fibra: concreto,
+        # acero de las barras y concreto de las compensaciones).
+        E_i = np.array([E_C] * (_NY * _NZ) + [E_S] * len(ab) + [E_C] * len(ab))
+        W_abs = np.abs(np.column_stack([np.ones(sec.n_fibers), sec.z, -sec.y]))
+        cota = W_abs.T @ (W_abs * np.abs(E_i * sec.area)[:, None])
+        assert np.all(np.abs(k3 - k3_ref) <= _GAMMA * cota)
+        idx = np.ix_([0, 2], [0, 2])
+        assert np.all(np.abs(k2 - k3_ref[idx]) <= _GAMMA * cota[idx])
+        # Sin displaces, la diferencia es exactamente el concreto contado dos
+        # veces: E_c·ΣA_b w_b w_bᵀ.
+        sin = _seccion_armada(concreto, acero, displaces=False)
+        _, k3_sin, _ = sin.response_3d([0.0, 0.0, 0.0], None)
+        Wb = np.column_stack([np.ones(len(ab)), zb, -yb])
+        doble = E_C * Wb.T @ (Wb * ab[:, None])
+        assert np.all(np.abs(k3_sin - k3 - doble) <= 2 * _GAMMA * cota)
+
+    def test_inelastica_igual_a_la_suma_a_mano_fibra_a_fibra(self):
+        """Carga, descarga, recarga e inversión con concreto dañado y acero
+        plastificado: ``s`` y ``k_s`` con displaces (2D y 3D) son los de la
+        sección sin doble conteo evaluada a mano, y la diferencia con la
+        sección sin displaces es exactamente el concreto contado dos veces,
+        ``Σ σ_c(ε_b)·A_b·w_b`` con la historia propia de cada barra."""
+        for dim in (2, 3):
+            concreto, acero = _materiales_inelasticos()
+            sec = _seccion_armada(concreto, acero)
+            sin = _seccion_armada(concreto, acero, displaces=False)
+            mano = _SeccionSinDobleConteoAMano(concreto, acero)
+            resp = sec.response_3d if dim == 3 else sec.response_2d
+            resp_sin = sin.response_3d if dim == 3 else sin.response_2d
+            sel = [0, 1, 2] if dim == 3 else [0, 2]
+            st, st_sin = sec.initial_states(), sin.initial_states()
+            for paso, e3 in enumerate(_TRAYECTORIA_3D):
+                e = e3 if dim == 3 else e3[[0, 2]]
+                if dim == 2:
+                    e3 = np.array([e3[0], 0.0, e3[2]])
+                s, k, st = resp(e, st)
+                s_sin, _, st_sin = resp_sin(e, st_sin)
+                s_m, k_m, cota_s, cota_k, s_desp = mano.evaluar(e3)
+                s_m, k_m, s_desp = s_m[sel], k_m[np.ix_(sel, sel)], s_desp[sel]
+                cota_s, cota_k = cota_s[sel], cota_k[np.ix_(sel, sel)]
+                assert np.all(np.abs(s - s_m) <= _GAMMA * cota_s), (dim, paso)
+                assert np.all(np.abs(k - k_m) <= _GAMMA * cota_k), (dim, paso)
+                assert np.all(np.abs(s_sin - s - s_desp) <= 2 * _GAMMA * cota_s), (dim, paso)
+                # Régimen realmente inelástico, también en el concreto restado.
+                danos = [st[i]["damage"] for i in np.flatnonzero(sec.is_compensation)]
+                assert min(danos) > 0.0 and max(danos) > 0.5
+                assert max(st[i]["alpha"] for i in range(_NY * _NZ, sec.n_fibers)
+                           if "alpha" in st[i]) > 0.0
+
+    def test_inelastica_igual_a_la_seccion_sin_la_zona_de_las_barras(self):
+        """2D, barras en el centro de una capa del parche: la sección con
+        displaces es la que discretiza el concreto sin la zona de las barras
+        (esa capa con área ``A_capa − n·A_b``), porque el concreto de la capa
+        y las fibras de compensación comparten deformación e historia."""
+        concreto, acero = _materiales_inelasticos()
+        ny = 20
+        yc, _, ac = _rect(concreto, ny=ny).discretize()
+        capas = {1: (3, 5.1e-4), ny - 2: (2, 3.1e-4)}         # capa: (n, A_b)
+        sec = FiberSection(patches=[_rect(concreto, ny=ny)] + [
+            BarLayer(acero, start=(yc[k], -0.11), end=(yc[k], 0.11), n=n, area=a,
+                     displaces=concreto) for k, (n, a) in capas.items()])
+        fibras = [Fiber(yc[k], 0.0, ac[k] - capas.get(k, (0, 0.0))[0] * capas.get(k, (0, 0.0))[1],
+                        concreto) for k in range(ny)]
+        for k, (n, a) in capas.items():
+            fibras += [Fiber(yc[k], 0.0, a, acero) for _ in range(n)]
+        neta = FiberSection(fibers=fibras)
+        # Cota de redondeo con |σ| ≤ σ_y + H·α (acero, α < 5e-2 aquí) y |E_t| ≤ E_s,
+        # que acotan también al concreto (|σ_c| ≤ E_c·κ₀, |E_t,c| ≤ E_c).
+        sig_max, E_max = 420e6 + 0.01 * E_S * 5e-2, E_S
+        W_abs = np.abs(np.column_stack([np.ones(sec.n_fibers), -sec.y]))
+        cota_s = sig_max * (W_abs.T @ np.abs(sec.area))
+        cota_k = E_max * (W_abs.T @ (W_abs * np.abs(sec.area)[:, None]))
+        st, st_n = sec.initial_states(), neta.initial_states()
+        for e3 in _TRAYECTORIA_3D:
+            e = e3[[0, 2]]
+            s, k, st = sec.response_2d(e, st)
+            s_n, k_n, st_n = neta.response_2d(e, st_n)
+            assert np.all(np.abs(s - s_n) <= 2 * _GAMMA * cota_s)
+            assert np.all(np.abs(k - k_n) <= 2 * _GAMMA * cota_k)
+        assert max(d["alpha"] for d in st if "alpha" in d) < 5e-2
+
+    def test_tangente_con_compensacion_frente_a_diferencias_finitas(self):
+        concreto, acero = _materiales_inelasticos()
+        sec = _seccion_armada(concreto, acero)
+        e1 = _TRAYECTORIA_3D[0]
+        _, _, st = sec.response_3d(e1, sec.initial_states())
+        e2 = 1.07 * e1
+        _, k, _ = sec.response_3d(e2, st)
+        J = _fd_jacobian(lambda e: sec.response_3d(e, st)[0], e2, 1e-7 * np.abs(e2).max())
+        np.testing.assert_allclose(k, J, rtol=0, atol=1e-6 * np.abs(k).max())
+        np.testing.assert_array_equal(k, k.T)
+
+    def test_masa_y_area_bruta(self):
+        concreto, acero = Elastic1D(E=E_C, density=RHO_C), _acero()
+        sec = _seccion_armada(concreto, acero)
+        sin = _seccion_armada(concreto, acero, displaces=False)
+        yb, zb, ab = _barras().T
+        # Área bruta: la del rectángulo; sin displaces las barras se suman.
+        # Redondeo: ~50 sumandos positivos, γ·Σ|A_i|/A < 1e-14.
+        np.testing.assert_allclose(sec.total_area(), B * H, rtol=1e-14)
+        np.testing.assert_allclose(sin.total_area(), B * H + ab.sum(), rtol=1e-14)
+        mp = sec.mass_properties()
+        dr = RHO_S - RHO_C
+        np.testing.assert_allclose(mp["rhoA"], RHO_C * (B * H - ab.sum()) + RHO_S * ab.sum(),
+                                   rtol=1e-13)
+        np.testing.assert_allclose(
+            mp["rhoIz"], RHO_C * B * H**3 / 12 * (1 - 1 / _NY**2) + dr * (ab * yb**2).sum(),
+            rtol=1e-13)
+        np.testing.assert_allclose(
+            mp["rhoIy"], RHO_C * H * B**3 / 12 * (1 - 1 / _NZ**2) + dr * (ab * zb**2).sum(),
+            rtol=1e-13)
+        # En el marco: masa total ρA·L y fuerza de cuerpo con el área bruta.
+        el = Frame2DEuler(1, _nodos_2d(), section=sec)
+        for lumping in ("consistent", "lumped"):
+            M = el.compute_mass_matrix(lumping)
+            t = np.zeros(6)
+            t[0::3] = 1.0
+            np.testing.assert_allclose(t @ M @ t, mp["rhoA"] * el.L0, rtol=1e-12)
+        b = np.array([0.0, -5.0e3])
+        ref = Frame2DEuler(1, _nodos_2d(), _acero(), A=B * H, I=1e-3)
+        np.testing.assert_allclose(el.compute_body_load(b), ref.compute_body_load(b), rtol=1e-14)
+
+    def test_sin_displaces_nada_cambia_bit_a_bit(self):
+        """Sin displaces (omitido o ``None``) la sección es la de antes: las
+        fibras declaradas tal cual y la misma aritmética de spec §4
+        (``s = Wᵀ(σ∘A)``, ``k_s = Wᵀ diag(E_t∘A) W`` simetrizada), bit a bit."""
+        concreto, acero = _materiales_inelasticos()
+        prims = ([_rect(concreto, ny=_NY, nz=_NZ)]
+                 + [BarLayer(acero, start=(y, z0), end=(y, z1), n=n, area=a)
+                    for y, z0, z1, n, a in _CAPAS])
+        suelta = Fiber(*_SUELTA, acero)
+        omitido = FiberSection(patches=prims, fibers=[suelta], GJ=2.0e7)
+        con_none = _seccion_armada(concreto, acero, displaces=False)
+        partes = [p.discretize() for p in prims + [suelta]]
+        y, z, A = (np.concatenate([p[j] for p in partes]) for j in range(3))
+        mats = [p.material for p, d in zip(prims + [suelta], partes) for _ in d[0]]
+        for sec in (omitido, con_none):
+            assert _bits_iguales(sec.y, y) and _bits_iguales(sec.z, z) and _bits_iguales(sec.area, A)
+            assert not sec.is_compensation.any() and sec.compensated_index.size == 0
+            assert sec.materials() == [concreto, acero]
+            assert sec.total_area() == float(A.sum())
+            rho_a = np.array([m.density for m in mats]) * A
+            assert sec.mass_properties() == {"rhoA": float(rho_a.sum()),
+                                             "rhoIy": float((rho_a * z * z).sum()),
+                                             "rhoIz": float((rho_a * y * y).sum())}
+            for dim in (2, 3):
+                W = (np.column_stack([np.ones(len(A)), -y]) if dim == 2
+                     else np.column_stack([np.ones(len(A)), z, -y]))
+                resp = sec.response_2d if dim == 2 else sec.response_3d
+                st = st_ref = sec.initial_states()
+                for e3 in _TRAYECTORIA_3D:
+                    e = e3[[0, 2]] if dim == 2 else e3
+                    s, k, st = resp(e, st)
+                    eps = (W @ e).tolist()
+                    out = [m.compute_state(eps[i], st_ref[i]) for i, m in enumerate(mats)]
+                    sig = np.array([o[0] for o in out])
+                    tan = np.array([o[1] for o in out])
+                    st_ref = [o[2] for o in out]
+                    s_ref = W.T @ (sig * A)
+                    k_ref = W.T @ (W * (tan * A)[:, None])
+                    k_ref = 0.5 * (k_ref + k_ref.T)
+                    assert _bits_iguales(s, s_ref) and _bits_iguales(k, k_ref)
+                    assert st == st_ref
+
+    def test_guarda_de_unilaterales_no_cuenta_las_fibras_de_compensacion(self):
+        """Las fibras de compensación restan rigidez, no la aportan: una
+        sección de fibras declaradas unilaterales se rechaza aunque desplacen
+        un material bilateral."""
+        from solidum.materials.cable_1d import CableMaterial1D
+        cable = CableMaterial1D(E=E_S, density=RHO_S)
+        otro_cable = CableMaterial1D(E=1.5e11, density=RHO_S)
+        concreto = Elastic1D(E=E_C, density=RHO_C)
+        with pytest.raises(ValueError, match="unilateral"):
+            FiberSection(fibers=[Fiber(0.1, 0.0, 1e-4, cable, displaces=concreto),
+                                 Fiber(-0.1, 0.0, 1e-4, cable)])
+        with pytest.raises(ValueError, match="unilateral"):
+            FiberSection(patches=[_rect(cable, ny=4),
+                                  BarLayer(otro_cable, start=(-0.2, 0.0), end=(0.2, 0.0),
+                                           n=2, area=1e-4, displaces=cable)])
+        # Tendones unilaterales dentro de concreto, con descuento: se admiten.
+        # Comprimida, el tendón no aporta y su hueco no tiene concreto; en
+        # tracción el tendón sustituye al concreto. Redondeo: 8 sumandos.
+        a_t = 4.0e-4
+        sec = FiberSection(patches=[_rect(concreto, ny=4),
+                                    BarLayer(cable, start=(-0.2, -0.1), end=(-0.2, 0.1), n=2,
+                                             area=a_t, displaces=concreto)])
+        _, k_c, _ = sec.response_2d([-1e-4, 0.0], sec.initial_states())
+        np.testing.assert_allclose(k_c[0, 0], E_C * (B * H - 2 * a_t), rtol=1e-14)
+        _, k_t, _ = sec.response_2d([1e-4, 0.0], sec.initial_states())
+        np.testing.assert_allclose(k_t[0, 0], E_C * (B * H - 2 * a_t) + E_S * 2 * a_t, rtol=1e-14)
+
+    @pytest.mark.parametrize("fabrica, patron", [
+        (lambda s: BarLayer(s, start=(0, 0), end=(0, 1), n=2, area=1e-4, displaces=s),
+         "mismo material"),
+        (lambda s: Fiber(0.0, 0.0, 1e-4, s, displaces=s), "mismo material"),
+        (lambda s: BarLayer(s, start=(0, 0), end=(0, 1), n=2, area=1e-4,
+                            displaces=Elastic2D(E=E_C, nu=0.2)), r"\('displaces'\) declara STRAIN_DIM=3"),
+        (lambda s: Fiber(0.0, 0.0, 1e-4, s, displaces=object()),
+         "'displaces' debe ser un material con compute_state"),
+    ])
+    def test_displaces_invalido(self, fabrica, patron):
+        with pytest.raises(ValueError, match=patron):
+            fabrica(_acero())
+
+    def test_material_desplazado_ausente_de_la_seccion(self):
+        """``displaces`` debe ser el material (el mismo objeto) de alguna fibra
+        declarada: si no, restaría un área que no existe."""
+        concreto = Elastic1D(E=E_C, density=RHO_C)
+        otro = Elastic1D(E=E_C, density=RHO_C)          # igual, pero otro objeto
+        with pytest.raises(ValueError, match="ninguna fibra declarada"):
+            FiberSection(patches=[_rect(concreto),
+                                  BarLayer(_acero(), start=(-0.2, -0.1), end=(-0.2, 0.1), n=2,
+                                           area=1e-4, displaces=otro)])
+
+    def test_vtk_internal_state_sin_las_fibras_de_compensacion(self):
+        """``Internal_State`` promedia sólo las fibras declaradas: una fibra de
+        compensación no es un punto material."""
+        from solidum.utils.vtk_exporter import _state_var_avg
+        concreto, acero = _materiales_inelasticos()
+        sec = _seccion_armada(concreto, acero)
+        L, kappa = 2.0, 1.2e-2
+        el = Frame2DEuler(1, _nodos_2d((0.0, 0.0), (L, 0.0)), section=sec, n_ip=3)
+        el.compute_element_state(np.array([0.0, 0.0, -kappa * L / 2, 2e-4 * L, 0.0, kappa * L / 2]))
+        el.commit_state()
+        n_decl = int((~sec.is_compensation).sum())
+
+        def escalar(st):
+            return st["damage"] if "damage" in st else st["alpha"]
+
+        declaradas = [escalar(st) for sv in el.state.vars for st in sv[:n_decl] if st is not None]
+        todas = [escalar(st) for sv in el.state.vars for st in sv if st is not None]
+        assert _state_var_avg(el) == pytest.approx(np.mean(declaradas), rel=1e-14)
+        assert np.mean(todas) != pytest.approx(np.mean(declaradas), rel=1e-6)
+        assert sec.material_point_states(el.state.vars[0]) == el.state.vars[0][:n_decl]
+
+
+_ARMADA_YAML = """\
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [2.0, 0.0]}
+  - {id: 3, coords: [4.0, 0.0]}
+materials:
+  - {id: 1, type: Elastic1D, E: 3.0e10, density: 2400.0}
+  - {id: 2, type: Elastic1D, E: 2.0e11, density: 7850.0}
+sections:
+  - id: 7
+    type: FiberSection
+    patches:
+      - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 20, nz: 1}
+      - {shape: layer, material: 2, start: [-0.2, -0.1], end: [-0.2, 0.1], n: 3, area: 5.1e-4, displaces: 1}
+      - {shape: layer, material: 2, start: [0.2, -0.1], end: [0.2, 0.1], n: 3, area: 5.1e-4}
+    fibers:
+      - {y: 0.0, z: 0.0, area: 2.0e-4, material: 2, displaces: 1}
+elements:
+  - {id: 1, type: Frame2DEuler, nodes: [1, 2], section: 7}
+  - {id: 2, type: Frame2DEuler, nodes: [2, 3], section: 7}
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, rz: 0.0}
+point_loads:
+  - {node_id: 3, ux: 1.0e6, uy: -1.0e5}
+solver:
+  type: LinearSolver
+"""
+
+
+class TestDisplacesYaml:
+
+    def _simetrico(self):
+        """Las dos capas desplazan el concreto: sección simétrica, sin
+        acoplamiento axial–flexión."""
+        return _ARMADA_YAML.replace("n: 3, area: 5.1e-4}", "n: 3, area: 5.1e-4, displaces: 1}")
+
+    def test_voladizo_con_displaces(self, tmp_path):
+        """Flecha y alargamiento de punta con ``EI`` y ``EA`` del concreto neto
+        (elementos cúbicos: nodalmente exactos para carga en la punta)."""
+        dom, res = _resolver_yaml(_escribir(tmp_path, self._simetrico()))
+        sec = next(iter(dom.elements.values())).section
+        assert sec.is_compensation.sum() == 7
+        assert [m.E for m in sec.materials()] == [E_C, E_S]
+        A_s = 6 * 5.1e-4 + 2.0e-4
+        EA = E_C * (B * H - A_s) + E_S * A_s
+        EI = E_C * B * H**3 / 12 * (1 - 1 / 20**2) + (E_S - E_C) * 6 * 5.1e-4 * 0.2**2
+        L = 4.0
+        np.testing.assert_allclose(res.U[dom.nodes[3].dofs["ux"]], 1.0e6 * L / EA, rtol=1e-10)
+        np.testing.assert_allclose(res.U[dom.nodes[3].dofs["uy"]], -1.0e5 * L**3 / (3 * EI),
+                                   rtol=1e-10)
+
+    def test_displaces_es_opcional_por_primitiva(self, tmp_path):
+        parser = YamlParser(str(_escribir(tmp_path, _ARMADA_YAML)))
+        parser.parse()
+        sec = parser.sections[7]
+        # La primera capa y la fibra suelta desplazan; la segunda capa no.
+        assert sec.is_compensation.sum() == 4
+        np.testing.assert_array_equal(sec.compensated_index, [20, 21, 22, 26])
+
+    @pytest.mark.parametrize("cambio, contexto", [
+        (("area: 5.1e-4, displaces: 1}", "area: 5.1e-4, displaces: true}"),
+         r"patches\[1\]\.displaces"),
+        (("material: 2, displaces: 1}", "material: 2, displaces: true}"), r"fibers\[0\]\.displaces"),
+        (("{shape: rectangle, material: 1,", "{shape: rectangle, material: true,"),
+         r"patches\[0\]\.material"),
+    ])
+    def test_un_booleano_no_es_un_id(self, tmp_path, cambio, contexto):
+        """``displaces: true`` (leído como bandera) no puede resolver en silencio
+        al material de id 1 por ``True == 1``: es un error que nombra el
+        contexto. Revisión adversaria 2026-09-30: sin la guarda del lector la
+        sección se construía con 4 fibras de compensación del material 1."""
+        texto = _ARMADA_YAML.replace(*cambio, 1)
+        assert texto != _ARMADA_YAML
+        with pytest.raises(YamlValidationError) as exc:
+            YamlParser(str(_escribir(tmp_path, texto))).parse()
+        msg = str(exc.value)
+        assert re.search(contexto, msg), msg
+        assert "True no es un id de material" in msg, msg
+
+    @pytest.mark.parametrize("cambio, patrones", [
+        (("area: 5.1e-4, displaces: 1}", "area: 5.1e-4, displaces: 9}"),
+         [r"sections\[0\] \(id=7\), patches\[1\]\.displaces",
+          r"referencia a material inexistente \(9\)"]),
+        (("material: 2, displaces: 1}", "material: 2, displaces: 9}"),
+         [r"fibers\[0\]\.displaces", r"referencia a material inexistente \(9\)"]),
+        (("area: 5.1e-4, displaces: 1}", "area: 5.1e-4, displaces: 2}"),
+         [r"patches\[1\]: BarLayer: 'displaces' es el mismo material"]),
+        (("area: 5.1e-4, displaces: 1}", "area: 5.1e-4, displaces: 3}"),
+         [r"patches\[1\]: BarLayer: el material Elastic2D \('displaces'\) declara STRAIN_DIM=3"]),
+        (("area: 5.1e-4, displaces: 1}", "area: 5.1e-4, displaces: 4}"),
+         ["no es el de ninguna fibra declarada"]),
+        (("ny: 20, nz: 1}", "ny: 20, nz: 1, displaces: 1}"),
+         [r"parámetros \['displaces'\] no aceptados por RectangularPatch"]),
+    ])
+    def test_errores_de_displaces(self, tmp_path, cambio, patrones):
+        texto = _ARMADA_YAML.replace(*cambio, 1).replace(
+            "  - {id: 2, type: Elastic1D, E: 2.0e11, density: 7850.0}\n",
+            "  - {id: 2, type: Elastic1D, E: 2.0e11, density: 7850.0}\n"
+            "  - {id: 3, type: Elastic2D, E: 3.0e10, nu: 0.2}\n"
+            "  - {id: 4, type: Elastic1D, E: 3.0e10, density: 2400.0}\n")
+        with pytest.raises(YamlValidationError) as exc:
+            YamlParser(str(_escribir(tmp_path, texto))).parse()
+        for patron in patrones:
+            assert re.search(patron, str(exc.value)), (patron, str(exc.value))

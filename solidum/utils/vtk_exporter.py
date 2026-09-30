@@ -64,7 +64,9 @@ locales, nodo i y nodo j, convención de Reglas.md §5. ``NaN`` en las celdas
 sin esa componente. Con carga distribuida, pase
 ``element_forces=SolveResult.element_forces`` para que descuenten la carga
 equivalente. ``Internal_State`` de un marco con sección por fibras promedia la
-``PRIMARY_STATE_VAR`` sobre fibras y puntos de Gauss.
+``PRIMARY_STATE_VAR`` sobre fibras y puntos de Gauss; las fibras de
+compensación de las barras con ``displaces`` no entran
+(``Section.material_point_states``).
 
 Campos nodales
 --------------
@@ -81,6 +83,7 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.core.domain import Domain
+from solidum.core.section import Section
 from solidum.logging import get_logger
 from solidum.math.batch.postprocess import group_by_family
 
@@ -262,6 +265,11 @@ def _state_var_avg(elem) -> float:
     state_vars_list = getattr(getattr(elem, "state", None), "vars", None)
     if state_vars_list is None:
         return 0.0
+    # Con sección, sólo los puntos materiales físicos: sin los estados
+    # auxiliares (fibras de compensación de una FiberSection con displaces).
+    section = getattr(elem, "section", None)
+    if isinstance(section, Section):
+        state_vars_list = [section.material_point_states(sv) for sv in state_vars_list]
     materials = elem.materials() if hasattr(elem, "materials") else []
     keys = [k for k in (getattr(m, "PRIMARY_STATE_VAR", None) for m in materials) if k]
     vals = [_extract_state_scalar(sv, keys) for sv in _flatten_states(state_vars_list)]

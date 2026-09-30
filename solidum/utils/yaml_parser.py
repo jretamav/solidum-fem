@@ -525,6 +525,15 @@ class YamlParser:
                     f"se pueden referenciar familias definidas antes."
                 ])
             objects = self.family_objects.get(section, {})
+            # Un booleano no es un id, aunque en Python True == 1: sin esta
+            # guarda 'displaces: true' (leído como una bandera) resolvería en
+            # silencio al objeto de id 1.
+            if isinstance(ident, bool):
+                raise YamlValidationError([
+                    f"{ctx}: {ident!r} no es un id de {registry.YAML_LABEL}: se "
+                    f"esperaba el id de un objeto declarado en '{section}' (ids "
+                    f"declarados: {sorted(objects, key=str)})."
+                ])
             try:
                 found = ident in objects
             except TypeError:

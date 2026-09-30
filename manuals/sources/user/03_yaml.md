@@ -106,8 +106,8 @@ Una sección se declara una vez en el bloque `sections` y la comparten los marco
 |---|---|---|
 | `shape: rectangle` | `material`, `y: [y_min, y_max]`, `z: [z_min, z_max]`, `ny`, `nz` | Rejilla de `ny × nz` celdas iguales, una fibra en el centro de cada celda con el área de la celda. |
 | `shape: circle` | `material`, `r_outer`, `r_inner` (default `0.0`, maciza), `center: [y, z]` (default `[0.0, 0.0]`), `n_rad`, `n_circ` | Corona dividida en `n_rad` anillos y `n_circ` sectores; una fibra en el centroide de cada sector, con su área exacta. Ángulos desde `+y` hacia `+z`; el primer sector empieza en 0. |
-| `shape: layer` | `material`, `start: [y, z]`, `end: [y, z]`, `n`, `area` | `n` barras de área `area` equiespaciadas de `start` a `end`, extremos incluidos (`n: 1`: una barra en `start`). |
-| fibra suelta (en `fibers`) | `y`, `z`, `area`, `material` | Una fibra. |
+| `shape: layer` | `material`, `start: [y, z]`, `end: [y, z]`, `n`, `area`, `displaces` (opcional) | `n` barras de área `area` equiespaciadas de `start` a `end`, extremos incluidos (`n: 1`: una barra en `start`). |
+| fibra suelta (en `fibers`) | `y`, `z`, `area`, `material`, `displaces` (opcional) | Una fibra. |
 
 Además, `GJ` (opcional): rigidez torsional elástica $G J$ de la sección, **obligatoria si la usa un `Frame3D`**. La torsión es elástica y no interactúa con la flexión ni se degrada cuando las fibras fluyen.
 
@@ -184,23 +184,27 @@ solver:
 
 En el empotramiento resultan $M_y = +P L = 3.0\times 10^5$ N·m (tracción en las fibras con $z > 0$, por encima del momento de primera fluencia del tubo, $2.89\times 10^5$ N·m) y $T = 10^4$ N·m.
 
-Una sección de concreto reforzado combina un parche de concreto y capas de barras de acero en la misma sección:
+**Concreto armado: barras que desplazan el concreto.** Una sección de concreto armado combina un parche de concreto y capas de barras de acero dentro de él. Las fibras del parche cubren toda la sección, también el sitio que ocupan las barras, así que, si no se indica otra cosa, en la posición de cada barra el área cuenta dos veces: la fuerza axial de la barra es $(\sigma_s + \sigma_c)\,A_b$ en lugar de $\sigma_s A_b$, y lo mismo la rigidez, la masa y el peso propio. Es la práctica de OpenSees y el comportamiento por defecto. El error suele ser pequeño (cuantía de acero del 1 al 3 %), pero es sistemático. Para descontarlo, cada capa de barras o fibra suelta declara con `displaces` el material que desplaza, el del parche que la contiene:
 
 ```yaml
+materials:
+  - {id: 1, type: IsotropicDamage1D, E: 3.0e10, kappa_0: 1.0e-4, alpha: 0.99, density: 2400.0}   # concreto
+  - {id: 2, type: Elastoplastic1D, E: 2.0e11, sigma_y: 4.2e8, H: 2.0e9, density: 7850.0}        # acero
+
 sections:
   - id: 2
     type: FiberSection
     patches:
       - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 40, nz: 1}
-      - {shape: layer, material: 2, start: [-0.21, -0.11], end: [-0.21, 0.11], n: 3, area: 5.1e-4}
-      - {shape: layer, material: 2, start: [0.21, -0.11], end: [0.21, 0.11], n: 2, area: 3.1e-4}
+      - {shape: layer, material: 2, start: [-0.21, -0.11], end: [-0.21, 0.11], n: 3, area: 5.1e-4, displaces: 1}
+      - {shape: layer, material: 2, start: [0.21, -0.11], end: [0.21, 0.11], n: 2, area: 3.1e-4, displaces: 1}
 ```
 
-(las barras no descuentan el concreto que ocupan: la sección suma fibras).
+En la posición de cada barra con `displaces`, la sección añade una **fibra de compensación** de área $-A_b$ con el material desplazado. Esta fibra se evalúa con la ley de ese material y con su propia historia (daño, fluencia), así que el concreto queda con su área neta $A_c - \sum A_b$ en las fuerzas internas, en la rigidez, en la masa y en el área bruta, también en régimen inelástico. `displaces` es opcional en cada primitiva (sólo `layer` y las fibras sueltas lo admiten) y es un id de `materials`: el del material de alguna fibra declarada de la sección, distinto del de la propia barra. Sin `displaces`, las barras se suman al concreto.
 
-**Validación al leer el archivo.** Una clave desconocida en un parche, una `shape` inexistente, un material de fibra inexistente o de dimensión distinta de 1, y una sección sin fibras son errores con el contexto de la entrada (p. ej. `sections[0] (id=7), patches[0].material: referencia a material inexistente (9)`). Un marco que declara a la vez `section` y `material` (o `A`, `I`…) también es un error.
+**Validación al leer el archivo.** Son errores, con el contexto de la entrada (p. ej. `sections[0] (id=7), patches[0].material: referencia a material inexistente (9)`): una clave desconocida en un parche, una `shape` inexistente, un material de fibra inexistente o de dimensión distinta de 1, y una sección sin fibras. También lo son un `displaces` que nombre un material inexistente, de dimensión distinta de 1, igual al de la barra o que no sea el de ninguna fibra de la sección, y un `displaces: true`: no es una bandera sino el id del material desplazado. Un marco que declara a la vez `section` y `material` (o `A`, `I`…) también es un error.
 
-**Masa y peso propio.** Salen de las fibras: $\rho A = \sum \rho_i A_i$ y los momentos de inercia másicos $\sum \rho_i y_i^2 A_i$, $\sum \rho_i z_i^2 A_i$. Los marcos Euler-Bernoulli desprecian la inercia rotatoria de flexión, así que su masa sólo usa $\rho A$; los momentos de inercia másicos entran únicamente en la inercia torsional de `Frame3D` ($\sum \rho_i (y_i^2 + z_i^2) A_i$). Cada material de fibra necesita `density` si el análisis usa `gravity` o la matriz de masa.
+**Masa y peso propio.** Salen de las fibras: $\rho A = \sum \rho_i A_i$ y los momentos de inercia másicos $\sum \rho_i y_i^2 A_i$, $\sum \rho_i z_i^2 A_i$, con las fibras de compensación incluidas (con `displaces`, $\rho A = \rho_c (A_c - \sum A_b) + \rho_s \sum A_b$). Los marcos Euler-Bernoulli desprecian la inercia rotatoria de flexión, así que su masa sólo usa $\rho A$; los momentos de inercia másicos entran únicamente en la inercia torsional de `Frame3D` ($\sum \rho_i (y_i^2 + z_i^2) A_i$). Cada material de fibra necesita `density` si el análisis usa `gravity` o la matriz de masa.
 
 ```callout Advertencia
 **Límites de la sección por fibras.** (1) La curvatura es lineal dentro del elemento: una rótula plástica se reparte sobre el elemento y la carga de colapso **converge por arriba** al refinar (en una viga biempotrada, +35 % con 4 elementos en el vano y +3.5 % con 32). Use varios elementos por miembro cerca de las rótulas. (2) Con fibras en **ablandamiento** (`IsotropicDamage1D`) el daño se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla y de `n_ip`: no hay regularización. (3) Sin deformación por cortante: `Frame2DTimoshenko` no admite sección todavía.
