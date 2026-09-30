@@ -14,10 +14,16 @@ Las clases se descubren automáticamente al importar `solidum` gracias a
 `solidum.autodiscover.initialize()`, eliminando la necesidad de mantener
 listas de imports en `registry_initialization.py`.
 
-Un registro que declara ``YAML_SECTION`` es una **familia de material**: el
-lector YAML construye sus objetos a partir de esa sección sin conocerla por
-nombre (ADR 0020, P1). Así un módulo de usuario declara su propia familia
-sin tocar el programa principal.
+Un registro que declara ``YAML_SECTION`` es una **familia**: el lector YAML
+construye sus objetos a partir de esa sección sin conocerla por nombre (ADR
+0020, P1). Así un módulo de usuario declara su propia familia sin tocar el
+programa principal. Las familias del programa principal son las de
+materiales (mecánicos y térmicos) y la de secciones de marco (ADR 0021).
+
+Un objeto de familia se construye con ``cls(**datos)``; si su clase declara
+el método de clase ``from_yaml(data, resolve)``, el lector lo usa en su
+lugar y le pasa ``resolve(registro, id, contexto)`` para las referencias a
+objetos de otras familias ya construidas (ADR 0021 §2).
 """
 from __future__ import annotations
 
@@ -61,10 +67,9 @@ class Registry:
         en él. ``tools/spec.py`` localiza el registro por este valor, sin
         lista fija.
     ``YAML_SECTION``
-        Sólo en una familia de material: sección de primer nivel del YAML con
-        sus objetos (lista de ``{id, type, …}``). Declararla convierte al
-        registro en una familia que el lector YAML recorre sin conocerla por
-        nombre.
+        Sólo en una familia: sección de primer nivel del YAML con sus objetos
+        (lista de ``{id, type, …}``). Declararla convierte al registro en una
+        familia que el lector YAML recorre sin conocerla por nombre.
     """
 
     _items: Dict[str, Type] = {}
@@ -102,8 +107,8 @@ class Registry:
 
     @staticmethod
     def families() -> list:
-        """Familias de material (registros con ``YAML_SECTION``), en orden de
-        definición."""
+        """Familias (registros con ``YAML_SECTION``), en orden de definición:
+        el orden en que el lector YAML las construye."""
         return list(Registry._families)
 
     @staticmethod
@@ -191,6 +196,20 @@ class ThermalMaterialRegistry(Registry):
     SPEC_KIND = "thermal_material"
     YAML_SECTION = "thermal_materials"
     YAML_LABEL = "material térmico"
+
+
+class SectionRegistry(Registry):
+    """Familia de secciones de marco (ADR 0021).
+
+    Una sección se declara una vez en la sección YAML ``sections`` y la
+    comparten muchos marcos, como un material. Sus objetos referencian
+    materiales dentro de sus parches: por eso se define **después** de
+    ``MaterialRegistry`` (las familias se construyen en orden de definición)
+    y su clase construye el objeto con el gancho genérico
+    ``from_yaml(data, resolve)`` del lector YAML."""
+    SPEC_KIND = "section"
+    YAML_SECTION = "sections"
+    YAML_LABEL = "sección"
 
 
 class ElementRegistry(Registry):

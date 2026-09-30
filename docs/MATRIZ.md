@@ -15,7 +15,7 @@
 
 ## 1. Elemento × Material
 
-Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[ε_xx, ε_yy, γ_xy]`, 6 = 3D Voigt `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]` — ADR 0012) y por la semántica del elemento.
+Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[ε_xx, ε_yy, γ_xy]`, 6 = 3D Voigt `[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]` — ADR 0012) y por la semántica del elemento. En los **marcos**, además, por el camino constitutivo ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)): con `material` + propiedades geométricas sólo un material elástico lineal; con `section` (`FiberSection`), cualquier material 1D en las fibras — ver nota (a).
 
 > Los **elementos y materiales térmicos** (Etapa 8) no aparecen en esta tabla: forman una familia paralela cuya compatibilidad la fija `FLUX_DIM`, no `STRAIN_DIM`. Ver §1.b.
 >
@@ -31,10 +31,10 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 | `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
 | `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
 | `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
-| `Frame2DEuler`               | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
-| `Frame2DTimoshenko`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
-| `Frame2DEulerCorot`          | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
-| `Frame3D`                    | ✓         | (a) ○           |                   |                 |           |            |                 |                   |               |
+| `Frame2DEuler`               | ✓         | (a) ✓           | (a) ○             | (a) ○           |           |            |                 |                   |               |
+| `Frame2DTimoshenko`          | ✓         |                 |                   |                 |           |            |                 |                   |               |
+| `Frame2DEulerCorot`          | ✓         | (a) ○           | (a) ○             | (a) ○           |           |            |                 |                   |               |
+| `Frame3D`                    | ✓         | (a) ○           | (a) ○             | (a) ○           |           |            |                 |                   |               |
 | `Quad4`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
 | `Tri3`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
 | `Quad8`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
@@ -53,7 +53,7 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 **Notas semánticas**:
 
-- **(a)** Frames + plasticidad 1D: válido, pero la plasticidad se aplica **sólo al esfuerzo axial $\sigma$**. La fluencia por flexión no está modelada (espera `FiberSection`, ver deuda técnica de STATUS.md).
+- **(a)** Marcos + material 1D inelástico ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md), 2026-09-29): **sólo como material de fibra de una `FiberSection`** (`section`), en los tres marcos Euler-Bernoulli. Con `material` + propiedades geométricas los cuatro marcos admiten únicamente materiales elásticos lineales (`IS_LINEAR_ELASTIC = True`: `Elastic1D`) y rechazan el resto al construir; hasta esa fecha lo aceptaban y la `E_t` axial escalaba toda la rigidez local (flector nulo con fluencia axial, de signo cambiado con ablandamiento). `Frame2DTimoshenko` no admite sección todavía (etapa 2 del ADR 0021): sus celdas inelásticas quedan vacías. ✓ en `Frame2DEuler` + `Elastoplastic1D`: colapso del voladizo y de la viga biempotrada con `NonlinearSolver` ([`test_fiber_section_validation.py`](../tests/validation/test_fiber_section_validation.py)) y voladizo elastoplástico por YAML ([`test_fiber_section.py`](../tests/test_fiber_section.py)). Las ○ tienen pruebas a nivel de elemento sin solver (momento–curvatura en los dos ejes de `Frame3D`, tangente frente a diferencias finitas con daño en ablandamiento en `Frame3D` y con plasticidad en `Frame2DEulerCorot`), no de sistema. `IsotropicDamage1D` en fibras: ablandamiento sin regularizar, dependiente de la malla (deuda #29 de STATUS.md). `CableMaterial1D` en fibras (fibra sin rigidez en compresión) es válido por contrato, sin prueba.
 - **(b)** `DruckerPrager2D` está validado únicamente en `plane_strain`. `plane_stress` declarado out-of-scope (proyección con σ_zz=0 acoplada a flujo dilatante es notoriamente delicada).
 - **(c)** Nota trasladada a §1.c (módulo de usuario `discontinuities`).
 - **(d)** `DruckerPrager3D` se ofrece con variantes `outer`/`inner` del cono; el ajuste `plane_strain_matched` del `DruckerPrager2D` **no aplica en 3D** y se rechaza explícitamente. La cobertura de los cuadráticos (`Hex20`, `Hex27`, `Tet10`) con materiales 3D no lineales quedó cerrada en la sub-fase 5 de A.ter: las 20 celdas de la tabla están en ✓.
@@ -206,6 +206,8 @@ Selección de tests "canónicos" que cubren combinaciones clave. La intención n
 | `Frame2DTimoshenko` + `Elastic1D`                              | [`test_frame.py`](../tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance`       |
 | `Frame2DEulerCorot` + `Elastic1D`                              | [`test_frame.py`](../tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance`       |
 | `Frame3D` + `Elastic1D`                                        | [`test_frame3d.py`](../tests/test_frame3d.py) · `TestFrame3DAcceptance`             |
+| Marcos Euler-Bernoulli + `FiberSection` (fibras `Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`) | [`test_fiber_section_validation.py`](../tests/validation/test_fiber_section_validation.py) (ocho casos de la spec: reproducción elástica, M–κ, interacción N–M, colapsos con `NonlinearSolver`, sección circular a 45°, signos, corrotacional) · [`test_fiber_section.py`](../tests/test_fiber_section.py) (tangentes frente a diferencias finitas, guardas, masa, peso propio, YAML, VTK) |
+| Guarda de material elástico lineal en los cuatro marcos        | [`test_fiber_section.py`](../tests/test_fiber_section.py) · `TestGuardas`           |
 | Fuerzas internas `Frame2D` / `Frame3D`                         | [`test_frame2d_internal_forces.py`](../tests/test_frame2d_internal_forces.py) · [`test_frame3d_internal_forces.py`](../tests/test_frame3d_internal_forces.py) |
 | `Quad4` / `Tri3` + `Elastic2D`                                 | [`test_solid_2d.py`](../tests/test_solid_2d.py)                                     |
 | `Quad8` / `Quad9` / `Tri6` + `Elastic2D`                       | [`test_higher_order_solid_2d.py`](../tests/test_higher_order_solid_2d.py) (patch cuadrático, isoparametría, traction de borde) |
@@ -247,7 +249,7 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 2. **Truss/Frame + plasticidad 1D acoplada con dinámica no lineal**: hoy `test_newmark_nonlinear.py` lo cubre sobre un sistema 1DOF; falta integración con elementos `Frame*` reales.
 3. **Corotacional 1D + `IsotropicDamage1D`** (`Truss2DCorot`, `Truss3DCorot`): válido por contrato, sin test. **Coste**: bajo.
 4. **`Truss3D` / `Truss3DCorot` + `Elastoplastic1D`**: hoy sólo `Truss2D` lo cubre (`test_integration.py`). **Coste**: bajo.
-5. **Frames + `Elastoplastic1D`** (los 4 frames): válido sólo axialmente (nota a), sin test específico que ejercite plasticidad en un frame. **Coste**: bajo. La plasticidad por flexión es hueco *físico* que espera `FiberSection` (deuda #3 de STATUS.md) — no se confunde con este.
+5. ~~**Frames + `Elastoplastic1D`**: válido sólo axialmente, sin test; la plasticidad por flexión esperaba `FiberSection`.~~ — **cerrado el 2026-09-29** por el [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md): la combinación con `material` + propiedades geométricas pasa a estar vetada (se rechaza al construir) y la plasticidad entra por la sección por fibras, con ✓ en `Frame2DEuler`. Quedan ○ las celdas con sección de `Frame2DEulerCorot` y `Frame3D` con plasticidad o daño en un análisis con solver, y `IsotropicDamage1D` en fibras en cualquier marco (nota a). **Coste**: bajo; el daño en fibras necesita además la regularización genérica (deuda #29 de STATUS.md) para que el resultado sea objetivo respecto de la malla.
 6. ~~**Sólidos 3D**: no figuran porque no existen aún.~~ — **abierto el 2026-05-19** con la Etapa 7 (ADR 0012). **A.bis cerrado 2026-05-21**: `VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D` (✓ para `Hex8`/`Tet4`). **A.ter cerrada por completo 2026-05-27**: filas `Hex20`, `Hex27` y `Tet10` con ✓ contra todos los materiales 3D (Elastic + tres no lineales). Matriz §1 sección 3D cerrada con ✓ en las 15 celdas. **Sub-fase 4 (validación externa NAFEMS 3D) cerrada 2026-05-27**: NAFEMS LE10 thick plate pressure (Hex20+Hex27 vs σ_yy(D) canónico) y Lamé thick cylinder 3D (Hex20+Hex27 vs solución analítica cerrada en cada Gauss; primera demostración cuantitativa de capacidad isoparamétrica curva). Tet10 sobre superficie curva diferido (descomposición hex→5tets diverge; deuda técnica #8).
 
 7. **Validación térmica sobre geometría curva** (Etapa 8): el cilindro hueco con perfil logarítmico —2D y 3D— y el balance energético global quedaron **diferidos** por requerir mallar una corona circular, capacidad que el proyecto aún no tiene. Es la misma carencia que difirió NAFEMS LE10 en su momento y que hoy bloquea también al `Tet10` sobre superficie curva (deuda técnica #8). La validación térmica vigente se apoya en pared plana analítica, sólido semi-infinito de Carslaw-Jaeger, convergencia al estacionario del `LinearSolver` y cross-check 2D↔3D. **Coste**: medio — el mallador desbloquearía tres frentes a la vez.
@@ -257,6 +259,7 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 - **`DruckerPrager2D` en plane_stress**: declarado out-of-scope.
 - **`Cable*` + plasticidad o daño**: extensión futura, no hueco del catálogo actual.
 - **Frames + materiales 2D**: incompatibilidad estructural por `STRAIN_DIM`, no hueco.
+- **Marcos con `material` + propiedades geométricas + material inelástico**: vetado desde el 2026-09-29 (ADR 0021); la combinación física equivalente es el marco con `section`. **`Frame2DTimoshenko` + material inelástico**: vetado hasta la etapa 2 del ADR 0021 (sección por fibras con cortante, decisión física pendiente).
 - **Elementos térmicos × solvers dinámicos** (`ModalSolver`, `NewmarkSolver`, `HHTSolver`, `CentralDifferenceSolver`, `HarmonicSolver`, `ResponseSpectrumSolver`): incompatibilidad **física**, no hueco — todos integran o diagonalizan la ecuación de segundo orden, y la conducción es de primer orden. Ver §2.b.
 - **Elementos térmicos × solvers estáticos no lineales**: sin uso *hoy* porque el único material térmico es lineal. Dejará de ser un no-hueco cuando entre `k(T)` o radiación.
 - **Materiales térmicos × elementos mecánicos** (y viceversa): rechazado en construcción con `TypeError` explícito. Son familias con contratos distintos (`compute_flux` vs `compute_stress`), no una celda vacía.
@@ -272,7 +275,9 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 
 ---
 
-*Última actualización: 2026-09-29 — **`DissipationArcLengthSolver` al módulo de usuario `dissipation_control`** (criterio de admisión, Reglas.md §1): sale de la tabla de solvers del programa principal de §2 (12 solvers mecánicos + `ThetaMethodSolver` = 13 en el programa principal) a §2.d; §1.c y §2.b lo citan como solver del módulo.*
+*Última actualización: 2026-09-29 — **Sección por fibras de los marcos, etapa 1 ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md))**: las filas de los marcos distinguen el camino constitutivo (nota (a) reescrita). Con `material` + propiedades geométricas, sólo `Elastic1D`; los materiales 1D inelásticos entran como fibras de una `FiberSection` en los tres marcos Euler-Bernoulli (✓ `Frame2DEuler` + `Elastoplastic1D`, resto ○); `Frame2DTimoshenko` queda sólo elástico hasta la etapa 2. Hueco 5 cerrado; nuevos no-huecos para las combinaciones vetadas.*
+
+*Anterior 2026-09-29 — **`DissipationArcLengthSolver` al módulo de usuario `dissipation_control`** (criterio de admisión, Reglas.md §1): sale de la tabla de solvers del programa principal de §2 (12 solvers mecánicos + `ThetaMethodSolver` = 13 en el programa principal) a §2.d; §1.c y §2.b lo citan como solver del módulo.*
 
 *Anterior 2026-09-24 — **ADR 0020**: `CST_Embedded2D` y `CohesiveDamageIsotropic` salen de la tabla del programa principal a §1.c (módulo de usuario `discontinuities`), con la nota (c) y sus tests; añadido `IndirectDisplacementSolver` a la tabla de solvers de §2, que lo omitía (13 solvers mecánicos).*
 

@@ -62,6 +62,7 @@ class Orthotropic2D(Material):
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = None
     IS_SYMMETRIC = True
+    IS_LINEAR_ELASTIC = True
     STATE_SCHEMA = {}
     BATCH_KERNEL = linear_material_kernel
 

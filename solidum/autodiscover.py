@@ -57,13 +57,16 @@ def _discover_package(package_name: str) -> None:
 
 
 def initialize() -> None:
-    """Carga todos los materiales, elementos, solvers y cuadraturas registrables.
+    """Carga todos los materiales, secciones, elementos, solvers y cuadraturas
+    registrables.
 
     `solidum.math` se descubre como paquete completo: cubre `solvers/`,
     `integration.py`, `assembly.py` y cualquier solver futuro que el
     usuario añada con su propio decorador, incluso si vive en un
-    subpaquete anidado.
+    subpaquete anidado. `solidum.sections` aloja las secciones de marco
+    (ADR 0021).
     """
     _discover_package("solidum.materials")
+    _discover_package("solidum.sections")
     _discover_package("solidum.elements")
     _discover_package("solidum.math")

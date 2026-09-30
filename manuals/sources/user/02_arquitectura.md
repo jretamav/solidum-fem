@@ -19,7 +19,7 @@ Un material declara igualmente su `STRAIN_DIM`; el dominio rechaza al construir 
 
 ## Auto-Registro de Componentes
 
-Elementos, materiales y solvers se registran automáticamente al arrancar el programa mediante decoradores:
+Elementos, materiales, secciones de marco y solvers se registran automáticamente al arrancar el programa mediante decoradores:
 
 ```python
 @ElementRegistry.register
@@ -29,7 +29,7 @@ class Truss2D(Element):
     ...
 ```
 
-Esto permite que el archivo YAML los referencie por nombre (`type: Truss2D`) sin que el usuario tenga que importar nada manualmente. El módulo `solidum.autodiscover` recorre los paquetes `elements/`, `materials/` y `math/solvers/` en la primera importación y puebla los registries. Los módulos de usuario (`solidum/user/<nombre>/`, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con `user_modules` (capítulo *Archivo de Entrada YAML*).
+Esto permite que el archivo YAML los referencie por nombre (`type: Truss2D`) sin que el usuario tenga que importar nada manualmente. El módulo `solidum.autodiscover` recorre los paquetes `elements/`, `materials/`, `sections/` y `math/solvers/` en la primera importación y puebla los registries. Los módulos de usuario (`solidum/user/<nombre>/`, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con `user_modules` (capítulo *Archivo de Entrada YAML*).
 
 ## Validación Temprana del Input
 

@@ -14,7 +14,7 @@ Familias actualmente implementadas:
 - *Plásticos 1D*: `Elastoplastic1D` con criterio J2 axial, endurecimiento isótropo lineal y tangente algorítmica consistente.
 - *Plásticos 2D — J2*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y esfuerzo plano (*plane stress projected algorithm*, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
 - *Plásticos 2D — friccional*: `DruckerPrager2D` con criterio cohesivo-friccional (cono circular suave de Mohr-Coulomb), plasticidad no asociada por defecto y dos ramas cerradas de return (regular sobre el cono y al ápice). Tres calibraciones con Mohr-Coulomb (`plane_strain_matched`, `outer_cone`, `inner_cone`). `IS_SYMMETRIC = False` cuando `ψ ≠ φ`; el despachador algebraico (ADR 0003) degrada Cholesky→LU automáticamente.
-- *Daño isótropo*: `IsotropicDamage1D` y `IsotropicDamage2D`, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa (negativa en 1D durante softening; asimétrica en 2D porque `(C_e·ε) ⊗ (M·ε)` no es simétrica). Secante en descarga.
+- *Daño isótropo*: `IsotropicDamage1D` y `IsotropicDamage2D`, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa: negativa en 1D durante softening; en 2D y 3D es `(1−d)·C_e − (∂d/∂κ)·(C_e·ε) ⊗ ∂ε_eq/∂ε`, simétrica con la deformación equivalente energética (por defecto) y asimétrica con Mazars o von Mises modificado. Secante en descarga.
 - *Cables*: `CableMaterial1D`, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
 
 Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse como una función `(strain, state) → (stress, tangent)` se incorpora sin modificación del resto del programa. Candidatos directos:
@@ -77,29 +77,44 @@ La fila "Linealidad geom." se marca como no aplicable: un cable es, por su natur
 
 ### Familia marco / viga
 
-Elemento con flexión y, en su caso, cortante y torsión. Material consumido: 1D escalar. La no linealidad material se introduce mediante el módulo tangente `E_t` del material, que escala uniformemente la sección; **la plasticidad distribuida en la sección (formulación fibra a fibra) no está implementada** y se marca como pendiente independiente.
+Elemento con flexión y, en su caso, cortante y torsión. Material consumido: 1D escalar. Desde el ADR 0021 la constitutiva de un marco se declara por **uno de dos caminos**, excluyentes al construir: `material` + propiedades geométricas (forma cerrada; sólo materiales con `IS_LINEAR_ELASTIC = True`) o `section` + `n_ip`, una **sección de marco** de la familia `SectionRegistry` que el elemento integra en `n_ip` puntos de Gauss-Legendre. La no linealidad material entra sólo por el segundo: la sección por fibras (`FiberSection`) evalúa el material 1D de cada fibra, y la plasticidad o el daño quedan **distribuidos en la sección**. La ley anterior, en la que la `E_t` de la deformación axial escalaba toda la rigidez local, daba flectores nulos con fluencia axial y de signo cambiado con ablandamiento, y desapareció. Lo común de los dos caminos (validación de argumentos, guarda de material elástico lineal, estado por punto de Gauss, integración `K = Σ w_g Bᵀ k_s B`) vive en `FrameSectionMixin` (`solidum/elements/frame/_section.py`); cada marco aporta sólo su cinemática.
 
 **Primer orden, formulación Euler-Bernoulli**
 
 [TABLA: Cobertura de la familia marco — primer orden, formulación Euler-Bernoulli.]
-| Régimen | 2D · material lineal | 2D · material no lineal (sección uniforme) | 3D · material lineal | 3D · material no lineal (sección uniforme) |
+| Régimen | 2D · material lineal | 2D · material no lineal (sección por fibras) | 3D · material lineal | 3D · material no lineal (sección por fibras) |
 |---|---|---|---|---|
-| Linealidad geométrica | ✓ `Frame2DEuler` | ✓ `Frame2DEuler` con `Elastoplastic1D` o `IsotropicDamage1D` | ✓ `Frame3D` | ✓ `Frame3D` con material 1D no lineal |
-| No linealidad geométrica | ✓ `Frame2DEulerCorot` | ✓ `Frame2DEulerCorot` con material 1D no lineal | [PENDIENTE: Marco 3D Euler-Bernoulli corrotacional con grandes rotaciones.] | [PENDIENTE: Marco 3D Euler-Bernoulli corrotacional con material no lineal.] |
+| Linealidad geométrica | ✓ `Frame2DEuler` | ✓ `Frame2DEuler` con `section` (fibras `Elastoplastic1D`, `IsotropicDamage1D`…) | ✓ `Frame3D` | ✓ `Frame3D` con `section` (flexión biaxial; torsión elástica con el `GJ` de la sección) |
+| No linealidad geométrica | ✓ `Frame2DEulerCorot` | ✓ `Frame2DEulerCorot` con `section` (sección en el sistema básico corrotado) | [PENDIENTE: Marco 3D Euler-Bernoulli corrotacional con grandes rotaciones.] | [PENDIENTE: Marco 3D Euler-Bernoulli corrotacional con material no lineal.] |
 
 **Primer orden, formulación Timoshenko (con deformación por cortante)**
 
 [TABLA: Cobertura de la familia marco — primer orden, formulación Timoshenko.]
-| Régimen | 2D · material lineal | 2D · material no lineal (sección uniforme) | 3D · material lineal | 3D · material no lineal |
+| Régimen | 2D · material lineal | 2D · material no lineal | 3D · material lineal | 3D · material no lineal |
 |---|---|---|---|---|
-| Linealidad geométrica | ✓ `Frame2DTimoshenko` | ✓ `Frame2DTimoshenko` con material 1D no lineal | [PENDIENTE: Marco 3D Timoshenko con deformación por cortante.] | [PENDIENTE: Marco 3D Timoshenko con material no lineal.] |
+| Linealidad geométrica | ✓ `Frame2DTimoshenko` | [PENDIENTE: Sección por fibras de `Frame2DTimoshenko`, etapa 2 del ADR 0021; hoy un material inelástico se rechaza al construir.] | [PENDIENTE: Marco 3D Timoshenko con deformación por cortante.] | [PENDIENTE: Marco 3D Timoshenko con material no lineal.] |
 | No linealidad geométrica | [PENDIENTE: Marco 2D Timoshenko corrotacional.] | [PENDIENTE: Marco 2D Timoshenko corrotacional con material no lineal.] | [PENDIENTE: Marco 3D Timoshenko corrotacional.] | [PENDIENTE: Marco 3D Timoshenko corrotacional con material no lineal.] |
 
 **Segundo orden y formulaciones avanzadas**
 
 - [PENDIENTE: Marco de segundo orden (interpolación cuadrática) en cualquiera de las formulaciones anteriores.]
-- [PENDIENTE: Plasticidad distribuida fibra a fibra en marcos 2D y 3D, con discretización transversal de la sección.]
+- [PENDIENTE: Elemento en fuerzas con sección por fibras (Spacone, Filippou y Taucer 1996), un elemento por miembro; descartado en la etapa 1 del ADR 0021 a favor del elemento en desplazamientos.]
+- [PENDIENTE: Regularización del ablandamiento en las fibras (deuda #29 de STATUS).]
 - [PENDIENTE: Marco con sección variable a lo largo del eje (sección no prismática).]
+
+### Familia de secciones de marco
+
+No es una familia de elementos sino de **leyes de sección** (ADR 0021), con registro propio (`SectionRegistry`), sección YAML propia (`sections`) y `kind: section` en las specs. Una sección recibe las deformaciones generalizadas del eje en un punto de Gauss, $\mathbf e = [\varepsilon_0,\ \kappa_z]$ en 2D o $[\varepsilon_0,\ \kappa_y,\ \kappa_z]$ en 3D, y devuelve las fuerzas internas $\mathbf s = [N,\ M_z]$ o $[N,\ M_y,\ M_z]$ con su tangente $\mathbf k_s = \partial\mathbf s/\partial\mathbf e$: es a un marco lo que un material es a un sólido, pero con otro contrato, y por eso no vive en la familia de materiales (mezclar los contratos obligaría a casos especiales en el barrido de materiales y en el exportador). La base abstracta `Section` (`solidum/core/section.py`) fija `response_2d`, `response_3d`, `strains_2d`, `strains_3d`, `initial_states`, `materials`, `mass_properties`, `total_area` y el atributo `GJ`.
+
+Una sección **no guarda estado**: se declara una vez y la comparten muchos elementos, como un material. La historia de cada fibra en cada punto de Gauss vive en el `ElementState` del elemento (`vars[g]` es la lista de estados de las fibras del punto `g`; `stresses[g]`, las fuerzas internas de la sección), con la semántica *trial*/comprometido de siempre; en el camino con sección `N_INTEGRATION_POINTS = n_ip` es atributo de instancia.
+
+[TABLA: Cobertura de la familia de secciones de marco.]
+| Sección | Consumidores | Materiales de fibra | Primitivas |
+|---|---|---|---|
+| ✓ `FiberSection` | `Frame2DEuler`, `Frame2DEulerCorot`, `Frame3D` | cualquiera con `STRAIN_DIM = 1`, mezclables | parche rectangular, parche circular (macizo o hueco), capa de barras, fibra suelta |
+
+- [PENDIENTE: Consumo por `Frame2DTimoshenko` (etapa 2 del ADR 0021, con su cinemática de cortante).]
+- [PENDIENTE: Evaluación vectorizada de las fibras por material y marcos por el camino por lotes del ADR 0014, cuando la medición lo justifique.]
 
 ### Familia sólido 2D
 
@@ -179,7 +194,7 @@ La familia expone `compute_gauss_state(T)`, que devuelve el gradiente y el flujo
 
 ### Contrato común y convención de signos
 
-Todos los elementos tipo armadura, cable o marco implementan el contrato `internal_forces(U)` y devuelven las fuerzas internas (N, V, M, T) en la convención de signos del proyecto (ADR 0002).
+Todos los elementos tipo armadura, cable o marco implementan el contrato `internal_forces(U)` y devuelven las fuerzas internas (N, V, M, T) en la convención de signos del proyecto (ADR 0002), también con sección por fibras.
 
 ## Solvers no lineales
 

@@ -1,6 +1,6 @@
 # Catálogo de elementos
 
-> Referencia rápida de los elementos implementados. Una entrada por elemento. Para detalles físicos/numéricos → código fuente.
+> Referencia rápida de los elementos implementados. Una entrada por elemento y, tras los marcos, la familia de **secciones de marco** que estos consumen (`FiberSection`, [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)). Para detalles físicos/numéricos → código fuente.
 >
 > **Ensamblaje por lotes (ADR 0014)**: los sólidos isoparamétricos 2D/3D y los térmicos declaran `BATCH_KINEMATICS` (la misma cinemática compilada que usa `compute_element_state`; **no lanza**: devuelve `det J ≤ 0` si el jacobiano degenera y el ensamblador lanza el `ValueError` con el id), los planos `BATCH_SCALE = "thickness"` y, para el post-proceso por familia, las funciones de forma (`BATCH_SHAPE_FUNCTIONS` en los lineales; las bases de orden superior y térmica las toman de `_SHAPE_FN` / `_shape_functions`); el `Assembler` los agrupa en familias y los evalúa en un único kernel, serie o paralelo. Los estructurales 1D siguen el camino por elemento, igual que todo elemento con estado propio (`element_is_batchable` lo excluye, ADR 0020) y el elemento del módulo de usuario `discontinuities` (al final del catálogo).
 >
@@ -259,23 +259,27 @@ K_local = [[ EA/L,       0,       0, -EA/L,       0,       0 ],
            [    0,-12EI/L³, -6EI/L²,     0, 12EI/L³, -6EI/L²],
            [    0,  6EI/L²,   2EI/L,     0, -6EI/L²,   4EI/L]]
 K_global = Tᵀ · K_local · T
-F_int    = Tᵀ · F_int_local    (componente axial corregida con σ·A del material)
+F_int    = Tᵀ · F_int_local    (componente axial con σ·A del material)
 ```
 
+### Constitutiva: dos caminos ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md))
+- **`material` + `A`, `I`**: la forma cerrada de arriba. Sólo materiales elásticos lineales (`IS_LINEAR_ELASTIC = True`: `Elastic1D`); un material inelástico se rechaza al construir con un mensaje que remite a la sección por fibras.
+- **`section` + `n_ip`** (3 por defecto, ≥ 2): elemento en desplazamientos que integra la sección ([`FiberSection`](#fibersection--sección-por-fibras-de-los-marcos-euler-bernoulli)) en `n_ip` puntos de Gauss-Legendre: `K_local = Σ w_g L B_gᵀ k_s B_g`, `F_local = Σ w_g L B_gᵀ s_g` (pesos sobre `(0, 1)`), con `e_g = [ε₀, κ_z(x_g)]` de la interpolación de Hermite. Plasticidad y daño distribuidos fibra a fibra, con cualquier material 1D. Con fibras elásticas y `n_ip ≥ 2` reproduce la forma cerrada exactamente.
+
 ### Cargas distribuidas
-- `compute_body_load(b)` distribuye `q = A · b` (carga por unidad de longitud) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal `q·L/2` en fuerza y `±q·L²/12` en momento (signo positivo en nodo i, negativo en j). Transformación local↔global vía la misma `T` del elemento. Útil para peso propio.
+- `compute_body_load(b)` distribuye `q = A · b` (carga por unidad de longitud; con sección, `A = Σ A_i`) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal `q·L/2` en fuerza y `±q·L²/12` en momento (signo positivo en nodo i, negativo en j). Transformación local↔global vía la misma `T` del elemento. El peso propio usa `ρA` (con sección, `Σ ρ_i A_i`).
 
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`); peraltadas → `Frame2DTimoshenko`.
 - Pequeños desplazamientos, pequeñas rotaciones.
-- No captura **plasticidad por flexión** distribuida en la sección: `E_tangent` escala toda la matriz de rigidez por igual. La fluencia que ocurre primero en la fibra inferior bajo flexión no se modela hasta que entre `FiberSection` (deuda técnica documentada).
+- Con sección, la curvatura es lineal y `ε₀` constante en el elemento: una rótula plástica se reparte sobre el elemento y la carga de colapso converge por arriba, en primer orden del tamaño del elemento (hacen falta varios elementos por miembro cerca de las rótulas; ver `FiberSection`).
 
 ### Independencia del diseño
 Vive en el paquete `solidum/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `solidum/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
 
 ### Validación
-- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$).
-- Archivo fuente: [solidum/elements/frame/euler.py](../solidum/elements/frame/euler.py) · clase `Frame2DEuler`.
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$). Camino con sección y guarda: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica, M–κ, interacción N–M, colapso del voladizo y de la viga biempotrada) y [tests/test_fiber_section.py](../tests/test_fiber_section.py).
+- Archivo fuente: [solidum/elements/frame/euler.py](../solidum/elements/frame/euler.py) · clase `Frame2DEuler`; constitutiva común de los marcos en [solidum/elements/frame/_section.py](../solidum/elements/frame/_section.py) (`FrameSectionMixin`).
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
 
@@ -319,7 +323,7 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 ### Régimen de validez
 - Vigas gruesas/peraltadas (`L/h ≲ 10`); para esbeltas → `Frame2DEuler` (más simple y sin shear locking).
 - Pequeños desplazamientos, pequeñas rotaciones.
-- No captura plasticidad distribuida: `E_tangent` escala toda la matriz.
+- **Sólo material elástico lineal** (`IS_LINEAR_ELASTIC = True`, [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)): un material inelástico se rechaza al construir. La sección por fibras con cortante es la etapa 2 del ADR 0021, pendiente; para plasticidad distribuida, los marcos Euler-Bernoulli con `section`.
 
 ### Independencia del diseño
 Vive en el paquete `solidum/elements/frame/`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en `solidum/elements/frame/_shared.py` — la construcción de la matriz de transformación 6×6 ya no se duplica.
@@ -355,6 +359,10 @@ Rigidez tangente:
 con r = [−c,−s,0,c,s,0], z = [−s,c,0,s,−c,0].
 ```
 
+### Constitutiva: dos caminos ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md))
+- **`material` + `A`, `I`**: `K_ll` y fuerzas básicas `[N, M₁, M₂]` en forma cerrada. Sólo materiales elásticos lineales; un material inelástico se rechaza al construir.
+- **`section` + `n_ip`**: la sección ([`FiberSection`](#fibersection--sección-por-fibras-de-los-marcos-euler-bernoulli)) se integra en el sistema básico corrotado, con `ε₀ = Δl/L₀` y `κ_z(x) = [(6x/L₀ − 4)·θ̄₁ + (6x/L₀ − 2)·θ̄₂]/L₀`; `[N, M₁, M₂]` y `K_ll` integrados entran en la misma cinemática corrotacional, `K_σ` incluida. Verificado a 1e-10 contra la forma cerrada con giros de sólido rígido de hasta 150° y en el arco de Bathe-Bolourchi.
+
 ### Cargas distribuidas
 - `compute_body_load(b)` evalúa la integral consistente en la configuración de referencia (misma fórmula Hermite cúbica que `Frame2DEuler`). Para grandes rotaciones con cargas conservadoras (gravedad) la diferencia frente a la integración sobre la geometría corriente es de segundo orden y se asume aceptable.
 
@@ -371,7 +379,7 @@ Pandeo por flexión de columnas esbeltas, post-pandeo, snap-through de arcos, br
 Vive en el paquete `solidum/elements/frame/` junto a las otras vigas 2D, **sin herencia**: la cinemática corotacional se implementa íntegra dentro de la clase (reconstruye `T` desde `alpha0` en lugar de usar `build_geometry_2d` compartido). Sí comparte con `Frame2DEuler` y `Frame2DTimoshenko` los helpers libres de `_shared.py` para carga de cuerpo (`_frame2d_consistent_body_load`), masa (`_frame2d_consistent_mass_local`) y traducción a `ElementForces` (`_frame2d_forces_from_local`).
 
 ### Validación
-- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro).
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerCorotAcceptance` (4 criterios físicos + **chequeo por diferencias finitas de $\mathbf K_T$ contra $\mathbf F_{\text{int}}$** + registro). Camino con sección: caso 8 de [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) y tangente con plasticidad y giro grande en [tests/test_fiber_section.py](../tests/test_fiber_section.py).
 - Archivo fuente: [solidum/elements/frame/euler_corot.py](../solidum/elements/frame/euler_corot.py) · clase `Frame2DEulerCorot`.
 - Spec: [docs/specs/Frame2DEulerCorot.md](specs/Frame2DEulerCorot.md).
 - Referencias: Crisfield §7.3; Belytschko §4.11; Wriggers cap. 4.
@@ -402,14 +410,17 @@ Flexión xz (4×4) : 12EIy/L³, 6EIy/L², 4EIy/L, 2EIy/L  (signos invertidos)
 K_global = Tᵀ K_local T
 ```
 
+### Constitutiva: dos caminos ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md))
+- **`material` + `A`, `Iy`, `Iz`, `J`** (+ `nu`): la forma cerrada de arriba. Sólo materiales elásticos lineales; un material inelástico se rechaza al construir.
+- **`section` + `n_ip`**: la sección ([`FiberSection`](#fibersection--sección-por-fibras-de-los-marcos-euler-bernoulli)) se integra en `n_ip` puntos de Gauss-Legendre con `e = [ε₀, κ_y, κ_z]`, `κ_y = −w''` (`w' = −θ_y` por la regla de la mano derecha); la torsión es elástica y desacoplada, `T = GJ·θₓ'` con el `GJ` de la sección, obligatorio. Flexión biaxial y acoplamiento `N`–`My`–`Mz` salen de las fibras.
+
 ### Parámetros
-- `A`, `Iy`, `Iz` (área y momentos de inercia respecto a ejes locales y, z).
-- `J` (constante torsional de Saint-Venant).
-- `nu` (opcional, del material si lo expone, sino del elemento con default 0.3).
-- `ref_vector` (opcional, default `[0, 0, 1]`).
+- Camino con material: `A`, `Iy`, `Iz` (área y momentos de inercia respecto a ejes locales y, z), `J` (constante torsional de Saint-Venant) y `nu` (opcional, del material si lo expone, sino del elemento con default 0.3).
+- Camino con sección: `section` (id del bloque `sections`, con `GJ`) y `n_ip` (default 3, ≥ 2).
+- `ref_vector` (opcional, default `[0, 0, 1]`), en los dos caminos: fija también la orientación de los ejes `y`, `z` en que se declaran las fibras.
 
 ### Cargas distribuidas
-- `compute_body_load(b)` proyecta `q = A · b` sobre los ejes locales y reparte con la fórmula Hermite cúbica en ambos planos de flexión: `q · L / 2` en fuerzas, `±q · L² / 12` en momentos (con signos `+` en nodo i y `−` en nodo j para `Mz`, y signos opuestos para `My` por la regla de la mano derecha). No genera torsión (carga uniforme sin excentricidad respecto al centro de cortadura). Útil para peso propio: `b = (0, 0, -ρ·g)`.
+- `compute_body_load(b)` proyecta `q = A · b` (con sección, `A = Σ A_i`; el peso propio usa `Σ ρ_i A_i`) sobre los ejes locales y reparte con la fórmula Hermite cúbica en ambos planos de flexión: `q · L / 2` en fuerzas, `±q · L² / 12` en momentos (con signos `+` en nodo i y `−` en nodo j para `Mz`, y signos opuestos para `My` por la regla de la mano derecha). No genera torsión (carga uniforme sin excentricidad respecto al centro de cortadura). Útil para peso propio: `b = (0, 0, -ρ·g)`.
 
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`).
@@ -424,12 +435,58 @@ La masa lumped es estrictamente diagonal en ejes locales (`ρAL/2` traslacional,
 Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimoshenko`, ni con los trusses 3D.
 
 ### Validación
-- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro).
+- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro). Camino con sección: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica en elemento oblicuo, M–κ en los dos ejes, interacción N–M, sección circular a 45°) y [tests/test_fiber_section.py](../tests/test_fiber_section.py) (tangente con torsión frente a diferencias finitas, torsión desacoplada, `GJ` desde el YAML).
 - Archivo fuente: [solidum/elements/frame3d.py](../solidum/elements/frame3d.py) · clase `Frame3D`.
 - Spec: [docs/specs/Frame3D.md](specs/Frame3D.md).
 - Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.
 
 ---
+
+# Secciones de marco (ADR 0021)
+
+Familia propia, **no** de elementos: una sección es la ley constitutiva de un marco a nivel de sección transversal. Recibe las deformaciones generalizadas del eje en un punto de Gauss, `e = [ε₀, κ_z]` (2D) o `[ε₀, κ_y, κ_z]` (3D), y devuelve las fuerzas internas `s = [N, M_z]` o `[N, M_y, M_z]` y su tangente `k_s = ∂s/∂e`. Es a un marco lo que un material es a un sólido, con otro contrato. Registro `SectionRegistry`, sección YAML `sections`, base abstracta `Section` ([solidum/core/section.py](../solidum/core/section.py)); las specs declaran `kind: section` y el manual de referencia las reúne en el capítulo «Secciones de marco». Se declara una vez y la comparten muchos elementos; **no guarda estado**: la historia de cada punto de la sección en cada punto de Gauss vive en el elemento, con la semántica trial/commit de siempre.
+
+La consumen `Frame2DEuler`, `Frame2DEulerCorot` y `Frame3D` con su parámetro `section`. `Frame2DTimoshenko` no la admite todavía (etapa 2 del ADR 0021).
+
+## FiberSection — sección por fibras de los marcos Euler-Bernoulli
+
+- **Propósito**: plasticidad y daño **distribuidos en la sección**: cada fibra es un punto material uniaxial con su propio material 1D del catálogo y su propia historia, y la fluencia o el daño avanzan fibra a fibra desde las fibras extremas hacia el eje neutro. Secciones mixtas (concreto y acero) en una misma sección.
+- **Cinemática** (Reglas.md §5): `ε_i = ε₀ − y_i·κ_z` (2D), `ε_i = ε₀ − y_i·κ_z + z_i·κ_y` (3D). `M_z > 0` tracciona `y < 0`; `M_y > 0` tracciona `z > 0`. Coordenadas `(y, z)` en los ejes locales del elemento, medidas **desde el eje del elemento** (la línea de nodos), no desde el centroide: una sección excéntrica acopla `N` y `M`.
+- **Fuerzas internas y tangente**: `s = Σ σ_i A_i w_i`, `k_s = Σ E_t,i A_i w_i w_iᵀ` con `w_i = [1, −y_i]` o `[1, z_i, −y_i]` (regla del punto medio sobre las fibras). `k_s` es exacta respecto de esa aproximación y simétrica para cualquier `E_t,i`, también negativa.
+- **Materiales de fibra**: cualquiera con `STRAIN_DIM = 1` (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`, `CableMaterial1D`); un material 2D o 3D se rechaza al construir.
+- **Discretización** (primitivas con la API de OpenSees): `RectangularPatch` (rejilla `ny × nz`, fibra en el centro de cada celda; `n` capas integran `EI = E·b·h³/12·(1 − 1/n²)`), `CircularPatch` (corona maciza o hueca en `n_rad × n_circ` sectores, fibra en el centroide del sector con su área exacta; ángulos desde `+y` hacia `+z`, primer sector en 0), `BarLayer` (`n` barras equiespaciadas de `start` a `end` inclusive), `Fiber` (fibra suelta).
+- **Torsión** (3D): elástica y desacoplada, `T = GJ·θₓ'` con `GJ` declarado en la sección; obligatorio sólo si la usa un `Frame3D`. No se degrada cuando las fibras fluyen.
+- **Masa y peso propio**: `ρA = Σ ρ_i A_i`, `ρI_z = Σ ρ_i y_i² A_i`, `ρI_y = Σ ρ_i z_i² A_i`, con las fórmulas de masa consistente y concentrada de los marcos elásticos. Una fibra sin `density` da el error agregado de siempre.
+- **Elemento**: en desplazamientos, Gauss-Legendre con `n_ip` puntos (3 por defecto, mínimo 2; con 2 se reproduce exactamente el marco elástico en forma cerrada).
+- **YAML**:
+  ```yaml
+  sections:
+    - id: 1
+      type: FiberSection
+      GJ: 1.0e6                  # sólo si la usa un Frame3D
+      patches:
+        - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 50, nz: 1}
+        - {shape: layer, material: 2, start: [-0.2, -0.1], end: [-0.2, 0.1], n: 3, area: 3.1e-4}
+      fibers:
+        - {y: 0.1, z: 0.0, area: 1.0e-4, material: 2}
+  elements:
+    - {id: 1, type: Frame2DEuler, nodes: [1, 2], section: 1, n_ip: 3}
+  ```
+- **Limitaciones declaradas** (spec §7-§8):
+  - Curvatura lineal y `ε₀` constante en el elemento: una rótula plástica se reparte sobre el elemento, y la carga de colapso converge **por arriba y en primer orden del tamaño del elemento** (medido: voladizo +7.1 % con 4 elementos y +0.9 % con 32; biempotrada +35 % con 4 y +3.5 % con 32). Hacen falta varios elementos por miembro cerca de las rótulas.
+  - Sin deformación por cortante (etapa 2, `Frame2DTimoshenko`) y torsión no degradada.
+  - **Ablandamiento sin regularizar**: con fibras en ablandamiento (`IsotropicDamage1D`) el daño se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla y de `n_ip`; deuda #29 de [STATUS.md](STATUS.md) (regularización genérica).
+  - Rendimiento: evaluación agrupada por material con un bucle escalar sobre las fibras; los marcos no van por el camino por lotes del ADR 0014.
+- **Validación**: los ocho casos del contrato en [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) — reproducción elástica a 1e-10 en los tres marcos; M–κ de la sección rectangular elastoplástica frente a Neal (error 1.7e-5 `M_p` con 200 capas, cota `(5/3)/n²`); interacción `M → M_p[1 − (N/N_p)²]`; colapso del voladizo (`P_c = M_p/L`) y de la biempotrada (`P_c = 8M_p/L`) con mallas de 4 a 32 elementos, decreciente y dentro de la cota de análisis de límite del modelo discreto; sección circular a 45° idéntica a la uniaxial; signos de Reglas.md §5; corrotacional elástico a 1e-10 con giros grandes. Pruebas unitarias en [tests/test_fiber_section.py](../tests/test_fiber_section.py) (tangentes frente a diferencias finitas con daño en ablandamiento y plasticidad, YAML, masa, VTK).
+- **Spec**: [docs/specs/FiberSection.md](specs/FiberSection.md). **ADR**: [0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md).
+- **Archivo**: [solidum/sections/fiber.py](../solidum/sections/fiber.py); constitutiva de los marcos en [solidum/elements/frame/_section.py](../solidum/elements/frame/_section.py).
+- **Referencias**: Spacone, Filippou y Taucer (1996); Bathe (2014) cap. 6; Neal (1977).
+
+---
+
+# Elementos sólidos 2D
+
+Continuo plano isoparamétrico, lineal y cuadrático, con convención Voigt 2D del proyecto (`Reglas.md §5`) y `STRAIN_DIM = 3`.
 
 ## Quad4 — cuadrilátero bilineal 2D
 

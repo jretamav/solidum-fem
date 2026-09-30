@@ -81,6 +81,7 @@ CHAPTER_ORDER: list[str] = [
     "Elementos 1D — Armaduras",
     "Elementos 1D — Cables",
     "Elementos 1D — Marcos / Vigas",
+    "Secciones de marco",
     "Elementos 2D — Sólidos",
     "Elementos 3D — Sólidos",
     "Elementos Térmicos — 2D",
@@ -92,6 +93,15 @@ CHAPTER_ORDER: list[str] = [
     "Esquemas de Solución — Estáticos",
     "Esquemas de Solución — Modal y dinámicos",
 ]
+
+# Familias (``kind``) que ocupan un capítulo entero, sin subdivisión por
+# dimensión ni por campo: el ``kind`` basta para ubicar la spec. Una familia
+# nueva de este tipo se añade aquí y en ``CHAPTER_ORDER``; si se olvida, su
+# primera spec aborta el build nombrándola.
+KIND_CHAPTERS: dict[str, str] = {
+    "thermal_material": "Modelos Constitutivos — Térmicos",
+    "section": "Secciones de marco",          # ADR 0021
+}
 
 # Solvers: la partición estático/dinámico sale del contrato declarativo del
 # propio solver, ``PIPELINE_KIND`` (regla C del ADR 0009): ``"static"`` va al
@@ -114,8 +124,8 @@ def _classify(spec) -> str:
     dof_names = iface.get("dof_names") or []
     name = spec.name
 
-    if kind == "thermal_material":
-        return "Modelos Constitutivos — Térmicos"
+    if kind in KIND_CHAPTERS:
+        return KIND_CHAPTERS[kind]
 
     if kind == "material":
         by_dim = {

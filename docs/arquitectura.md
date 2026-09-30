@@ -15,11 +15,11 @@
 │  CAPA DE INICIALIZACIÓN  —  solidum/__init__.py               │
 │  Al hacer `import solidum` se dispara, una sola vez:          │
 │    autodiscover.initialize()                                  │
-│      └─ recorre solidum/materials, solidum/elements y         │
-│         solidum/math e importa cada módulo; los decoradores   │
-│         @*Registry registran las clases en MaterialRegistry,  │
-│         ThermalMaterialRegistry, ElementRegistry,             │
-│         SolverRegistry.                                       │
+│      └─ recorre solidum/materials, solidum/sections,          │
+│         solidum/elements y solidum/math e importa cada        │
+│         módulo; los decoradores @*Registry registran las      │
+│         clases en MaterialRegistry, ThermalMaterialRegistry,  │
+│         SectionRegistry, ElementRegistry, SolverRegistry.     │
 │  NO recorre solidum/user/ (módulos de usuario, ADR 0020):     │
 │  cada uno se carga sólo si el modelo lo pide —                │
 │  `user_modules:` en el YAML o solidum.load_user_module().     │
@@ -30,9 +30,12 @@
 │  Lee el YAML y construye objetos consultando los Registry.    │
 │  Generic: introspecciona kwargs del constructor → no necesita │
 │  saber qué materiales/elementos/solvers existen. Las familias │
-│  de material (Registry.families(), cada una con su sección    │
-│  YAML) se recorren en un solo bucle; las referencias de un    │
-│  elemento a otra familia las declara Element.REFERENCE_KWARGS.│
+│  (Registry.families(): materiales, materiales térmicos y      │
+│  secciones, cada una con su sección YAML) se recorren en un   │
+│  solo bucle, en orden de definición; un objeto de familia con │
+│  referencias anidadas se construye con su from_yaml(data,     │
+│  resolve) (ADR 0021). Las referencias de un elemento a otra   │
+│  familia las declara Element.REFERENCE_KWARGS.                │
 │  Una sección de primer nivel desconocida es error.            │
 └───────────────────────────────┬───────────────────────────────┘
                                 │
@@ -108,6 +111,7 @@
 |---|---|---|---|
 | Material nuevo | `solidum/materials/<snake>.py` | `@MaterialRegistry.register` (térmico: `@ThermalMaterialRegistry.register`) | No |
 | Elemento nuevo | `solidum/elements/<snake>.py` | `@ElementRegistry.register` | No |
+| Sección de marco nueva (ley de sección, ADR 0021) | `solidum/sections/<snake>.py`, subclase de `Section` | `@SectionRegistry.register`; con referencias anidadas a otras familias, método de clase `from_yaml(data, resolve)` | No. La consumen los marcos con `section` |
 | Backend algebraico nuevo | `solidum/math/linalg/<snake>.py` | entrada en `_REGISTRY` del despachador (import opcional absorbido si falta la dependencia) | Sólo `dispatcher.py` y `linalg/__init__.py` |
 | Solver nuevo | `solidum/math/solvers/<snake>.py` | `@SolverRegistry.register` | No |
 | Componente no estándar (formulación de investigación) | módulo de usuario `solidum/user/<nombre>/<snake>.py` (ADR 0020) | los mismos registros; una familia de material propia, con `Registry` y su `YAML_SECTION` en el `registry.py` del módulo | No: ni el programa principal ni el lector YAML. El modelo lo carga con `user_modules` o `solidum.load_user_module` |

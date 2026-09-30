@@ -31,13 +31,17 @@ def domain_is_symmetric(domain) -> bool:
     constructor (p. ej. ``DruckerPrager2D`` asociado con ``ψ=φ`` tiene
     tangente simétrica; con ψ≠φ no). La instancia hereda del ClassVar
     cuando no hay override, así que el caso clásico sigue funcionando.
+
+    Se recorren **todos** los materiales de cada elemento
+    (``element.materials()``, ADR 0021 §4): un marco con sección por fibras
+    tiene los de sus fibras.
     """
     for elem in domain.elements.values():
         if not getattr(elem, "PRESERVES_SYMMETRY", True):
             return False
-        material = getattr(elem, "material", None)
-        if material is not None and not getattr(material, "IS_SYMMETRIC", True):
-            return False
+        for material in elem.materials():
+            if not getattr(material, "IS_SYMMETRIC", True):
+                return False
     return True
 
 

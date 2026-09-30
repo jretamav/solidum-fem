@@ -13,11 +13,13 @@
 
 ## Estado a fecha del último commit
 
-Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad (isótropa y ortótropa), plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D) y daño isótropo (1D/2D/3D)**. La fractura por **discontinuidades interiores embebidas** con ley cohesiva tracción-salto (Etapa 5) es desde el 2026-09-24 el primer **módulo de usuario**, `discontinuities`, fuera del programa principal ([ADR 0020](adr/0020-modulos-de-usuario.md)); el segundo, desde el 2026-09-29, es `dissipation_control`, con el arc-length por disipación de energía (`DissipationArcLengthSolver`), que no cumple el criterio de admisión de Reglas.md §1. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. La suite está en verde (recuento vigente en [`STATUS.md`](STATUS.md)). Desde la Etapa 8, sin capacidad física nueva, la línea de trabajo ha sido de arquitectura y rendimiento: ensamblaje por lotes (ADR 0014), corrector de Newton compartido (ADR 0015), estudio del acoplamiento termomecánico (ADR 0016), backends algebraicos multihilo e iterativo (ADR 0017, 0018), red de seguridad del análisis estático (ADR 0019) y módulos de usuario para las formulaciones no estándar (ADR 0020).
+Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) sobre **estructuras 1D (truss/cable/frame 2D y 3D)**, **sólidos 2D (Quad4/Quad8/Quad9/Tri3/Tri6)** y **sólidos 3D lineales + cuadráticos (Hex8/Hex20/Hex27/Tet4/Tet10)**, con un catálogo de materiales que cubre **elasticidad (isótropa y ortótropa), plasticidad J2 (1D/2D/3D), Drucker-Prager (2D/3D) y daño isótropo (1D/2D/3D)**. Desde el 2026-09-29 los tres marcos Euler-Bernoulli admiten **sección por fibras** (`FiberSection`, [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)): plasticidad y daño distribuidos en la sección con cualquier material 1D. La fractura por **discontinuidades interiores embebidas** con ley cohesiva tracción-salto (Etapa 5) es desde el 2026-09-24 el primer **módulo de usuario**, `discontinuities`, fuera del programa principal ([ADR 0020](adr/0020-modulos-de-usuario.md)); el segundo, desde el 2026-09-29, es `dissipation_control`, con el arc-length por disipación de energía (`DissipationArcLengthSolver`), que no cumple el criterio de admisión de Reglas.md §1. Sobre la misma maquinaria está abierta la línea **dinámica** completa: modal, transitorio implícito (Newmark/HHT lineal y no lineal), transitorio explícito (diferencias centradas), armónico en frecuencia y espectro sísmico. Desde la **Etapa 8** (2026-08-25) resuelve además **conducción de calor** —estacionaria y transitoria, 2D y 3D— sobre la misma infraestructura, sin acoplamiento con el campo mecánico. La suite está en verde (recuento vigente en [`STATUS.md`](STATUS.md)). Desde la Etapa 8, sin capacidad física nueva, la línea de trabajo ha sido de arquitectura y rendimiento: ensamblaje por lotes (ADR 0014), corrector de Newton compartido (ADR 0015), estudio del acoplamiento termomecánico (ADR 0016), backends algebraicos multihilo e iterativo (ADR 0017, 0018), red de seguridad del análisis estático (ADR 0019) y módulos de usuario para las formulaciones no estándar (ADR 0020). La excepción es la sección por fibras (ADR 0021), que corrige un defecto físico de los marcos hallado en la auditoría de pureza.
 
 **En curso (decisión del usuario, 2026-09-24): completar la formulación de discontinuidades interiores** hasta reproducir la tesis (Retama 2010), dentro del módulo de usuario `discontinuities`; el ADR 0020 fue su paso previo. Ver [`STATUS.md`](STATUS.md) §"Próximo hito".
 
-**Próximo hito: elección de la Etapa 9.** Cerrada la opción C en su núcleo mínimo, quedan abiertas **B** (placas y láminas) y **E** (Mohr-Coulomb 2D + `FiberSection`), más la continuación de la propia línea térmica —convección, acoplamiento termomecánico o no linealidad térmica—. Es una decisión del usuario; el argumentario está en §"Opciones diferidas", donde se registran también **G** (elementos isogeométricos) y **H** (apoyos elásticos tipo Winkler), evaluadas el 2026-08-25 y no candidatas a Etapa 9.
+**Priorizada por el usuario el 2026-09-29: sección por fibras de los marcos.** Etapa 1 (tres marcos Euler-Bernoulli) cerrada el mismo día; **etapa 2 pendiente**: `Frame2DTimoshenko` con sección por fibras, que empieza por la decisión física de su cinemática con cortante. Ver §"Sección por fibras de los marcos".
+
+**Próximo hito: elección de la Etapa 9.** Cerrada la opción C en su núcleo mínimo, quedan abiertas **B** (placas y láminas) y **E** (Mohr-Coulomb 2D; su otra mitad, `FiberSection`, quedó hecha con la etapa 1 del ADR 0021), más la continuación de la propia línea térmica —convección, acoplamiento termomecánico o no linealidad térmica—. Es una decisión del usuario; el argumentario está en §"Opciones diferidas", donde se registran también **G** (elementos isogeométricos) y **H** (apoyos elásticos tipo Winkler), evaluadas el 2026-08-25 y no candidatas a Etapa 9.
 
 > Para una foto más detallada del estado actual (métricas, deuda técnica, próximos hitos) ver [`docs/STATUS.md`](STATUS.md). Para combinaciones validadas: [`docs/MATRIZ.md`](MATRIZ.md). Para arranque en frío: [`docs/ONBOARDING.md`](ONBOARDING.md). Ver §"Documentos complementarios" al final para una guía del sistema.
 
@@ -65,7 +67,7 @@ Solidum resuelve hoy **estática lineal y no lineal** (material y geométrica) s
 
 **Componentes**:
 - Sólidos 2D cuadráticos: `Quad8`, `Quad9`, `Tri6` (los tres comparten la base interna `_HigherOrderSolid2D`).
-- Materiales 2D no lineales: `VonMises2D` (plane strain + plane stress en kernels especializados), `DruckerPrager2D` (plane strain, con detección automática regular ↔ apex), `IsotropicDamage2D` (tangente algorítmica consistente, asimétrica en general).
+- Materiales 2D no lineales: `VonMises2D` (plane strain + plane stress en kernels especializados), `DruckerPrager2D` (plane strain, con detección automática regular ↔ apex), `IsotropicDamage2D` (tangente algorítmica consistente; desde el 2026-09-29 simétrica con la deformación equivalente energética por defecto y asimétrica con Mazars o von Mises modificado).
 
 **ADRs que la articulan**:
 - [ADR 0006 — Tolerancias de admisibilidad](adr/0006-tolerancias-admisibilidad.md): patrón `f ≤ atol + rtol · escala` con escala física por material (`σ_y + H·α`, `E·κ_0`, `k(α)`).
@@ -138,7 +140,7 @@ Las opciones A-E identificadas anteriormente quedan **diferidas como etapas futu
 - **B. Placas y láminas** (Mindlin, Kirchhoff, MITC): formulación shell con cortante transversal y drilling DOFs. Desbloquearía además los benchmarks NAFEMS de placas y cáscaras (LE3 hemisferio, FV1/FV5, FV2/FV12/FV32), hoy inalcanzables por falta del componente.
 - ~~**C. Análisis térmico desacoplado**~~ **Cerrada en su núcleo mínimo**: Etapa 8 (2026-08-25) — conducción de Fourier pura, estacionaria y transitoria, 2D y 3D, con Dirichlet y Neumann. El salto a problema escalar confirmó que la infraestructura es agnóstica al campo (el estacionario no necesitó solver nuevo). **La termomecánica acoplada de `Reglas.md §0` sigue sin existir**: era el C2 explícitamente excluido del alcance, y es ahora la continuación natural de esta línea junto con la convección (Robin). Su **estrategia quedó decidida** en el [ADR 0016](adr/0016-acoplamiento-termomecanico.md) (2026-09-22, sin código), que además verificó que la infraestructura ya admite dominios de campos mixtos: el mismo hallazgo de agnosticismo al campo, confirmado ahora con `u` y `T` sobre los mismos nodos.
 - ~~**D. Completar ADR 0009**~~ **Cerrada 2026-05-18 como Etapa 6 in extenso** (HHT-α, mass lumping fase 2, diferencias centradas, harmonic, response spectrum + reglas C y D de auditoría arquitectural aplicadas).
-- **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames). La más acotada de las tres abiertas; salda de paso el item #2 de deuda técnica.
+- **E. Mohr-Coulomb 2D + FiberSection**: cierra dos huecos puntuales del catálogo 2D (geotecnia + plasticidad por flexión en frames). La más acotada de las tres abiertas; salda de paso el item #2 de deuda técnica. *Al día 2026-09-29*: la mitad `FiberSection` se adelantó fuera de la bifurcación, priorizada por el usuario tras la auditoría de pureza (etapa 1 del [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md): los tres marcos Euler-Bernoulli; deuda #2 cerrada). Queda Mohr-Coulomb 2D y, como continuación de la sección por fibras, su etapa 2 con `Frame2DTimoshenko`.
 
 ### Opciones identificadas después (fuera de la bifurcación original A-E)
 
@@ -327,6 +329,38 @@ Convección (Robin), radiación, conductividad `k(T)`, cambio de fase, paso de t
 
 ---
 
+## Sección por fibras de los marcos (ADR 0021) · etapa 1 cerrada (2026-09-29) · etapa 2 pendiente
+
+No es la Etapa 9 del proyecto: la priorizó el usuario el 2026-09-29, fuera de la bifurcación, porque la auditoría de pureza verificó un defecto físico silencioso en los cuatro marcos. Evaluaban el material con la deformación axial y construían **toda** la rigidez local con la $E_t$ resultante: con fluencia axial el flector se anulaba aunque la sección estuviera curvada, con ablandamiento cambiaba de signo, y `Frame3D` perdía además el torsor. «Etapa» es aquí la palabra del ADR 0021 para sus fases internas.
+
+**Decisiones del usuario**, una por vez (física, [spec `FiberSection`](specs/FiberSection.md)): (1) sección por fibras en lugar de restringir los marcos a material elástico; (2) elemento en desplazamientos, no en fuerzas; (3) etapa 1 con los tres marcos Euler-Bernoulli y Timoshenko en una etapa 2 con su propia cinemática; (4) Gauss-Legendre, 3 puntos por defecto y mínimo 2; (5) torsión elástica desacoplada con `GJ` de la sección; (6) sin regularización del ablandamiento, con la regularización genérica como deuda (#29); (7) ocho casos de validación.
+
+**Etapa 1 entregada**:
+
+- **Componentes**: familia nueva de **secciones de marco** (`SectionRegistry`, sección YAML `sections`, base sin estado `Section`) con `FiberSection` y sus primitivas (`RectangularPatch`, `CircularPatch`, `BarLayer`, `Fiber`); camino con sección en `Frame2DEuler`, `Frame2DEulerCorot` (sistema básico corrotado) y `Frame3D` (flexión biaxial y torsión desacoplada).
+- **Guarda**: con `material` + propiedades geométricas, los cuatro marcos sólo admiten materiales con `IS_LINEAR_ELASTIC = True`; `Frame2DTimoshenko` queda sólo elástico hasta la etapa 2. Un modelo que antes corría con material inelástico ahora falla al construir: antes daba resultados incorrectos.
+- **Piezas genéricas**: `Material.IS_LINEAR_ELASTIC`, `Element.materials()` (las comprobaciones agregadas de masa, peso propio y simetría recorren todos los materiales del elemento, las fibras incluidas) y el gancho `from_yaml(data, resolve)` del lector YAML.
+
+**Validación** (los ocho casos del contrato, [`test_fiber_section_validation.py`](../tests/validation/test_fiber_section_validation.py), escritos a ciegas desde la spec):
+
+| Criterio | Resultado |
+|---|---|
+| Reproducción elástica de los tres marcos con `n_ip` = 2 y 3 | `K` y `F_int` iguales a la forma cerrada a **1e-10** |
+| M–κ de la sección rectangular elastoplástica (200 capas) frente a Neal (1977) | error **1.7e-5** `M_p` (cota `(5/3)/n²` = 4.2e-5) |
+| Interacción `M_p[1 − (N/N_p)²]` | error **1.7e-5** `M_p` (cota 6.7e-5) |
+| Colapso del voladizo, `P_max/P_c` con 4, 8, 16, 32 elementos | **1.071, 1.035, 1.018, 1.009** |
+| Colapso de la viga biempotrada, ídem | **1.348, 1.150, 1.071, 1.035** |
+| Sección circular a 45° frente a uniaxial | idéntica a **1e-9** `M_p`; error frente a la analítica 7.2e-4 `M_p` |
+| Corrotacional elástico con giros grandes y arco de Bathe-Bolourchi | iguales a **1e-10** |
+
+Los colapsos convergen por arriba y en primer orden del tamaño del elemento: es el límite declarado del elemento en desplazamientos (la rótula se reparte sobre el elemento), no un defecto, y quedan dentro de la cota de análisis de límite del modelo discreto que deriva el propio test.
+
+**Etapa 2 pendiente**: sección por fibras de `Frame2DTimoshenko`. Empieza por una decisión física del usuario —su cinemática con cortante—, con su propio ciclo de spec y validación.
+
+**Fuera de alcance, con rationale** (spec §7-§8): ablandamiento sin regularizar (deuda #29), torsión no degradada, curvatura lineal por elemento (varios elementos por miembro cerca de las rótulas) y marcos fuera del camino por lotes del ADR 0014 (se medirá antes de vectorizar).
+
+---
+
 ## Etapa 8+ — Horizonte largo
 
 Lo que el proyecto **previsiblemente** abrirá tras la Etapa 8, sin orden cerrado:
@@ -348,15 +382,16 @@ Todos comparten un patrón: **incrementales sobre lo existente, no refactor estr
 
 Al cierre de la sub-etapa A.ter quedan **6 items abiertos**, ninguno bloqueante (numeración de STATUS):
 
-- **#2 — `FiberSection` para frames no-lineales**: los frames 2D/3D plastifican sólo en axial; la fluencia por flexión espera este componente. Entraría con la opción E.
 - **#4 — Solver para softening severo con embedded discontinuity** (módulo de usuario `discontinuities`): parcialmente cerrado por `DissipationArcLengthSolver` (desde el 2026-09-29 en el módulo de usuario `dissipation_control`; funciona para daño continuo 1D/2D); el caso cohesivo+embedded con penalty `K_e` rígido sigue abierto y depende del #7.
 - **#5 — Stress recovery superconvergente (SPR)**: NAFEMS LE1 da σ_yy(D) = 90.1 frente a 92.7 canónico, diferencia atribuible al recovery sin SPR.
 - **#6 — B-bar / F-bar para Quad4/Quad8**: locking volumétrico documentado y blindado por test; espera caso de uso con material casi-incompresible.
 - **#7 — LDLᵀ Bunch-Kaufman como backend algebraico**: habilitaría el *sign-of-pivot tracking* exacto. Hoy ningún solver sigue la inercia de `K_t`: la aproximación por el signo del determinante del `DissipationArcLengthSolver`, que ningún `solve` llamaba, se retiró el 2026-09-29.
 - **#8 — Validación del `Tet10` sobre superficie curva**: limitación de la malla (descomposición hex→5tets deja mid-edges rectos sobre la frontera curva), no del elemento.
-- **#29 — Regularización genérica del ablandamiento** (añadido 2026-09-29): ningún material con ablandamiento del programa principal tiene longitud característica, así que la respuesta posterior al pico depende de la malla. Solución prevista: una longitud característica que cada elemento entrega a todo material con ablandamiento, como el ancho de banda de fisura de DIANA o el daño plástico del concreto de Abaqus.
+- **#29 — Regularización genérica del ablandamiento** (añadido 2026-09-29): ningún material con ablandamiento del programa principal tiene longitud característica, así que la respuesta posterior al pico depende de la malla. Solución prevista: una longitud característica que cada elemento entrega a todo material con ablandamiento, como el ancho de banda de fisura de DIANA o el daño plástico del concreto de Abaqus. Afecta también a las fibras con daño de la sección por fibras (ADR 0021, spec §8).
 
 **Cerrados** (se listan para que no se reabran por inercia):
+
+- ~~**#2 — `FiberSection` para frames no-lineales**~~ ✅ **Cerrado 2026-09-29 por el [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)** (etapa 1, tres marcos Euler-Bernoulli). La descripción anterior («los frames plastifican sólo en axial») era optimista: la $E_t$ axial escalaba toda la rigidez local. Queda la etapa 2, `Frame2DTimoshenko`, como trabajo pendiente, no como deuda.
 
 - ~~**ADR 0002 incompleto para sólidos**~~ ✅ **Cerrado 2026-05-19 por el [ADR 0012](adr/0012-solidos-3d-y-voigt-6d.md)**: cierre por dominio explícito. `internal_forces` aplica sólo a elementos estructurales 1D; los sólidos 2D y 3D exponen `compute_gauss_state(U)` como API canónica. Es una decisión arquitectural tomada, no deuda pendiente.
 - ~~**Reglas de disparo C y D**~~ ✅ **Ambas aplicadas 2026-05-18**: C con el despacho declarativo `PIPELINE_KIND`; D con `solidum/math/modal_response.py` agrupando el cómputo sobre modos. No quedan reglas de disparo arquitecturales activas.
@@ -385,7 +420,9 @@ El presente ROADMAP es uno de cuatro documentos navegacionales que escalan con e
 
 ---
 
-*Última actualización: 2026-09-29 (segunda entrada del día) — **Correcciones tras la auditoría de pureza.** Horizonte largo: los ejemplos de formulación no estándar siguen ahora el criterio de admisión de Reglas.md §1 (XFEM y las leyes cohesivas genéricas con elementos de interfaz son estándar; no estándar: la embebida KOS, el seguimiento de trayectoria, el control por liberación de energía). Etapa 5: nota fechada que corrige la afirmación de que `NonlinearSolver` no atraviesa la rama post-pico con `K_e ≈ 1e15` (lo desmiente `test_disc_embedded_uniaxial_softening.py`). Deuda: resumen del #29, regularización genérica del ablandamiento.*
+*Última actualización: 2026-09-29 (tercera entrada del día) — **Sección por fibras de los marcos, etapa 1 cerrada ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)).** Sección nueva con las decisiones del usuario, lo entregado, la tabla de validación y la etapa 2 pendiente (`Frame2DTimoshenko`); estado de cabecera con la capacidad y la prioridad; opción E reducida a Mohr-Coulomb 2D; deuda #2 a cerrados y #29 ampliada a las fibras.*
+
+*Anterior 2026-09-29 (segunda entrada del día) — **Correcciones tras la auditoría de pureza.** Horizonte largo: los ejemplos de formulación no estándar siguen ahora el criterio de admisión de Reglas.md §1 (XFEM y las leyes cohesivas genéricas con elementos de interfaz son estándar; no estándar: la embebida KOS, el seguimiento de trayectoria, el control por liberación de energía). Etapa 5: nota fechada que corrige la afirmación de que `NonlinearSolver` no atraviesa la rama post-pico con `K_e ≈ 1e15` (lo desmiente `test_disc_embedded_uniaxial_softening.py`). Deuda: resumen del #29, regularización genérica del ablandamiento.*
 
 *Anterior 2026-09-29 — **`DissipationArcLengthSolver` al módulo de usuario `dissipation_control`**, por el criterio de admisión de Reglas.md §1 (ningún código general establecido implementa la restricción de Gutiérrez de forma nativa). Estado de cabecera con el segundo módulo de usuario; deuda #4 y #7 al día (el diagnóstico de pivotes por signo del determinante, sin llamadas, se retiró).*
 

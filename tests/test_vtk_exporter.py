@@ -51,6 +51,9 @@ class _Elastic2D(Material):
 
 class _Elastic1D(Material):
     STRAIN_DIM = 1
+    # Elástico lineal: los marcos con material + propiedades geométricas
+    # sólo admiten materiales que lo declaran (ADR 0021).
+    IS_LINEAR_ELASTIC = True
 
     def __init__(self, E=1000.0, nu=0.3, density: float = 0.0):
         self.E = E

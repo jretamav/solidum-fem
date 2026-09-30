@@ -4,6 +4,7 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
 
 - `nodes` *o* `mesh` — geometría.
 - `materials` — catálogo de leyes constitutivas instanciadas.
+- `sections` — secciones de marco (sección por fibras), sólo si algún marco usa `section`; sus fibras referencian materiales de `materials`.
 - `elements` — conectividad (omisible si se importa malla Gmsh).
 - `boundary_conditions_by_node` / `_by_coord` / `_by_group` — restricciones de Dirichlet.
 - `point_loads_by_node` / `_by_coord` / `_by_group` — cargas de Neumann puntuales.
@@ -93,6 +94,117 @@ materials:
 ```
 
 Los parámetros aceptados dependen del material; consulte el capítulo *Catálogo de Modelos Constitutivos* para el catálogo completo.
+
+## Secciones de marco: `sections`
+
+Una **sección de marco** es la ley constitutiva de un marco a nivel de sección transversal: recibe la deformación axial y las curvaturas del eje en cada punto de Gauss y devuelve las fuerzas internas de la sección ($N$, $M_z$ en 2D; $N$, $M_y$, $M_z$ en 3D). Hoy existe un tipo, `FiberSection` (ADR 0021): la sección se discretiza en **fibras**, cada una con su propio material 1D y su propia historia, de modo que la fluencia o el daño avanzan fibra a fibra. Es la forma de modelar **plasticidad o daño en un marco**: con `material` + `A`, `I`, los marcos sólo admiten un material elástico lineal.
+
+Una sección se declara una vez en el bloque `sections` y la comparten los marcos que la citan con `section: <id>` (`Frame2DEuler`, `Frame2DEulerCorot` y `Frame3D`; ver el capítulo *Catálogo de Elementos Finitos*). Las fibras se generan con **parches** y **fibras sueltas**:
+
+[TABLA: Primitivas de una FiberSection.]
+| Primitiva | Claves | Fibras que genera |
+|---|---|---|
+| `shape: rectangle` | `material`, `y: [y_min, y_max]`, `z: [z_min, z_max]`, `ny`, `nz` | Rejilla de `ny × nz` celdas iguales, una fibra en el centro de cada celda con el área de la celda. |
+| `shape: circle` | `material`, `r_outer`, `r_inner` (default `0.0`, maciza), `center: [y, z]` (default `[0.0, 0.0]`), `n_rad`, `n_circ` | Corona dividida en `n_rad` anillos y `n_circ` sectores; una fibra en el centroide de cada sector, con su área exacta. Ángulos desde `+y` hacia `+z`; el primer sector empieza en 0. |
+| `shape: layer` | `material`, `start: [y, z]`, `end: [y, z]`, `n`, `area` | `n` barras de área `area` equiespaciadas de `start` a `end`, extremos incluidos (`n: 1`: una barra en `start`). |
+| fibra suelta (en `fibers`) | `y`, `z`, `area`, `material` | Una fibra. |
+
+Además, `GJ` (opcional): rigidez torsional elástica $G J$ de la sección, **obligatoria si la usa un `Frame3D`**. La torsión es elástica y no interactúa con la flexión ni se degrada cuando las fibras fluyen.
+
+**Coordenadas y signos.** `y`, `z` son coordenadas en los **ejes locales del elemento**, medidas desde el **eje del elemento** (la línea que une sus nodos), no desde el centroide: una sección excéntrica acopla axial y flexión. En 2D, $y$ es la dirección transversal del plano ($z$ sólo da el ancho); en 3D los ejes locales los fija `ref_vector`. $M_z > 0$ tracciona las fibras con $y < 0$ y $M_y > 0$ las fibras con $z > 0$. Materiales de fibra admitidos: cualquiera de `STRAIN_DIM = 1` (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`…); una misma sección puede mezclarlos (concreto y acero).
+
+**Ejemplo 2D mínimo** — voladizo de acero elastoplástico, sección rectangular de 0.3 m × 0.5 m en 20 capas, llevado más allá de la primera fluencia ($M(0) = 3.9$ MN·m entre $M_y = 3.125$ MN·m y $M_p = 4.6875$ MN·m):
+
+```yaml
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [2.0, 0.0]}
+  - {id: 4, coords: [3.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastoplastic1D, E: 2.0e11, sigma_y: 2.5e8, H: 2.0e9, density: 7850.0}
+
+sections:
+  - id: 1
+    type: FiberSection
+    patches:
+      - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 20, nz: 1}
+
+elements:
+  - {id: 1, type: Frame2DEuler, nodes: [1, 2], section: 1}
+  - {id: 2, type: Frame2DEuler, nodes: [2, 3], section: 1}
+  - {id: 3, type: Frame2DEuler, nodes: [3, 4], section: 1, n_ip: 4}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, rz: 0.0}
+
+point_loads_by_node:
+  - {node_id: 4, uy: -1.3e6}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+```
+
+Con `nz: 1` el parche es una pila de capas: basta para la flexión en el plano. `n_ip` (puntos de Gauss a lo largo del elemento) vale 3 si no se declara.
+
+**Ejemplo 3D con `GJ`** — voladizo de un tubo de acero (radios 0.15 m y 0.13 m) con carga transversal en $z$ y un momento torsor en la punta; `ref_vector: [0, 1, 0]` hace coincidir los ejes locales con los globales:
+
+```yaml
+nodes:
+  - {id: 1, coords: [0.0, 0.0, 0.0]}
+  - {id: 2, coords: [1.5, 0.0, 0.0]}
+  - {id: 3, coords: [3.0, 0.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastoplastic1D, E: 2.0e11, sigma_y: 2.5e8, H: 2.0e9}
+
+sections:
+  - id: 1
+    type: FiberSection
+    GJ: 2.67e7                  # obligatoria con Frame3D
+    patches:
+      - {shape: circle, material: 1, r_outer: 0.15, r_inner: 0.13, n_rad: 2, n_circ: 32}
+
+elements:
+  - {id: 1, type: Frame3D, nodes: [1, 2], section: 1, ref_vector: [0.0, 1.0, 0.0]}
+  - {id: 2, type: Frame3D, nodes: [2, 3], section: 1, ref_vector: [0.0, 1.0, 0.0]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, uz: 0.0, rx: 0.0, ry: 0.0, rz: 0.0}
+
+point_loads_by_node:
+  - {node_id: 3, uz: -1.0e5, rx: 1.0e4}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+```
+
+En el empotramiento resultan $M_y = +P L = 3.0\times 10^5$ N·m (tracción en las fibras con $z > 0$, por encima del momento de primera fluencia del tubo, $2.89\times 10^5$ N·m) y $T = 10^4$ N·m.
+
+Una sección de concreto reforzado combina un parche de concreto y capas de barras de acero en la misma sección:
+
+```yaml
+sections:
+  - id: 2
+    type: FiberSection
+    patches:
+      - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 40, nz: 1}
+      - {shape: layer, material: 2, start: [-0.21, -0.11], end: [-0.21, 0.11], n: 3, area: 5.1e-4}
+      - {shape: layer, material: 2, start: [0.21, -0.11], end: [0.21, 0.11], n: 2, area: 3.1e-4}
+```
+
+(las barras no descuentan el concreto que ocupan: la sección suma fibras).
+
+**Validación al leer el archivo.** Una clave desconocida en un parche, una `shape` inexistente, un material de fibra inexistente o de dimensión distinta de 1, y una sección sin fibras son errores con el contexto de la entrada (p. ej. `sections[0] (id=7), patches[0].material: referencia a material inexistente (9)`). Un marco que declara a la vez `section` y `material` (o `A`, `I`…) también es un error.
+
+**Masa y peso propio.** Salen de las fibras: $\rho A = \sum \rho_i A_i$ y los momentos de inercia másicos $\sum \rho_i y_i^2 A_i$, $\sum \rho_i z_i^2 A_i$. Cada material de fibra necesita `density` si el análisis usa `gravity` o la matriz de masa.
+
+```callout Advertencia
+**Límites de la sección por fibras.** (1) La curvatura es lineal dentro del elemento: una rótula plástica se reparte sobre el elemento y la carga de colapso **converge por arriba** al refinar (en una viga biempotrada, +35 % con 4 elementos en el vano y +3.5 % con 32). Use varios elementos por miembro cerca de las rótulas. (2) Con fibras en **ablandamiento** (`IsotropicDamage1D`) el daño se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla y de `n_ip`: no hay regularización. (3) Sin deformación por cortante: `Frame2DTimoshenko` no admite sección todavía.
+```
 
 ## Módulos de usuario: `user_modules`
 

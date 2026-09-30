@@ -7,6 +7,7 @@ import numpy as np
 from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.elements.frame._section import FrameSectionMixin
 from solidum.elements.frame._shared import (
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
@@ -20,7 +21,7 @@ from solidum.results import ElementForces
 
 
 @ElementRegistry.register
-class Frame2DTimoshenko(Element):
+class Frame2DTimoshenko(FrameSectionMixin, Element):
     """Marco/viga 2D basado en Timoshenko.
 
     Dos nodos rígidamente conectados, 3 DOFs por nodo (ux, uy, rz). Incluye
@@ -34,9 +35,13 @@ class Frame2DTimoshenko(Element):
     nodes : List[Node]
         Exactamente 2 nodos extremos.
     material : Material
-        Material 1D (STRAIN_DIM=1). Si expone atributo `nu`, se usa ese
+        Material 1D elástico lineal (``STRAIN_DIM = 1``,
+        ``IS_LINEAR_ELASTIC = True``). Si expone atributo `nu`, se usa ese
         valor para el módulo de corte; en su defecto se usa el parámetro
-        nu del elemento.
+        nu del elemento. Un material inelástico se rechaza al construir: la
+        forma cerrada escalaría toda la rigidez con la ``E_t`` axial, y la
+        sección por fibras de este elemento (con su cinemática de cortante)
+        es la etapa 2 del ADR 0021.
     A : float
         Área de la sección transversal.
     I : float
@@ -110,11 +115,9 @@ class Frame2DTimoshenko(Element):
         ])
 
         F_int_local = K_local @ u_local
-        # Materiales no lineales sólo capturan el axial uniforme; los
-        # términos transversales/flexionales se quedan en ``K_local @ u_local``
-        # con ``E_tangent`` global — sin plasticidad por flexión hasta que
-        # entre ``FiberSection`` (auditoría H-2.5, ver memoria
-        # ``project_pendiente_fiber_section.md``).
+        # Componente axial con el σ del material. Con material elástico lineal
+        # (única opción admitida, ADR 0021) coincide con la fila axial de
+        # ``K_local @ u_local``.
         F_int_local[0] = -sigma * self.A
         F_int_local[3] =  sigma * self.A
 

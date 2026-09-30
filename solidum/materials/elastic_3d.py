@@ -29,6 +29,7 @@ class Elastic3D(Material):
     """
 
     STRAIN_DIM = 6
+    IS_LINEAR_ELASTIC = True
     STATE_SCHEMA = {}
     BATCH_KERNEL = linear_material_kernel
 

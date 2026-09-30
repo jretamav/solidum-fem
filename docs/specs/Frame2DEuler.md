@@ -27,13 +27,15 @@ Válido solo para vigas **esbeltas** ($L/h \gtrsim 10$). En vigas peraltadas la 
 - Axial: $\varepsilon_{axial}(s) = du/ds$ (constante para interpolación lineal en $u$).
 - Curvatura: $\kappa(s) = d^2v/ds^2$.
 
-La deformación axial en un punto genérico de la sección es $\varepsilon(s, y) = \varepsilon_{axial}(s) - y\,\kappa(s)$; al integrar sobre la sección se obtienen axial ($N$) y momento flector ($M$) desacoplados.
+La deformación axial en un punto genérico de la sección es $\varepsilon(s, y) = \varepsilon_{axial}(s) - y\,\kappa(s)$; al integrar sobre la sección elástica y simétrica respecto del eje se obtienen axial ($N$) y momento flector ($M$) desacoplados.
 
 ### 4. Ecuaciones constitutivas
-- Axial: $N = EA\,\varepsilon_{axial}$ (o $N = A\,\sigma$ con $\sigma$ del material).
-- Flexión: $M = EI\,\kappa$.
+Dos caminos excluyentes, elegidos al construir el elemento ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md)):
 
-El material delega la respuesta axial; la rigidez a flexión escala con el **módulo tangente** $E_t$ devuelto por el material (aproximación: toda la sección entra en régimen no-elástico simultáneamente — no hay plasticidad distribuida).
+- **Con `material` + `A`, `I`** (forma cerrada): $N = EA\,\varepsilon_{axial}$, $M = EI\,\kappa$. Sólo admite materiales **elásticos lineales** (`IS_LINEAR_ELASTIC = True`); un material inelástico se rechaza al construir con un mensaje que remite a la sección por fibras.
+- **Con `section`** (+ `n_ip`): $N$ y $M$ son los de la ley de sección, que integra el esfuerzo $\sigma_{xx}$ de cada fibra con su propio material 1D ([FiberSection](FiberSection.md) §2-§4). Plasticidad y daño distribuidos en la sección.
+
+Hasta el 2026-09-29 el camino con material admitía materiales inelásticos y escalaba toda la rigidez local con la $E_t$ de la deformación axial: con fluencia axial el flector se anulaba y con ablandamiento cambiaba de signo. Esa ley desapareció (ver *Diálogo*).
 
 ### 5. Equilibrio — forma débil
 Principio de trabajos virtuales. El elemento calcula solo el lado interno:
@@ -79,19 +81,21 @@ $$\mathbf K_{\text{local}} = \begin{bmatrix}
  0 & \tfrac{6EI}{L^2} & \tfrac{2EI}{L} & 0 & -\tfrac{6EI}{L^2} & \tfrac{4EI}{L}
 \end{bmatrix}.$$
 
-En no-linealidad material, $E \to E_t(\varepsilon_{axial})$ devuelto por el material — escala **todos** los términos de la matriz por igual. Esta es una aproximación: supone que la plasticidad/daño afecta uniformemente a la sección.
+Es la forma cerrada del camino con material elástico lineal. En el camino con sección la matriz local se integra numéricamente, $\mathbf K_{\text{local}} = \sum_g w_g\,\tfrac{L}{2}\,\mathbf B_g^\top\,\mathbf k_{s,g}\,\mathbf B_g$ con $\mathbf e_g = [\varepsilon_0,\ \kappa_z(x_g)]^\top = \mathbf B_g\,\mathbf u_{\text{local}}$, las mismas funciones de forma del §8 y la tangente de la sección $\mathbf k_s$ ([FiberSection](FiberSection.md) §5); con fibras elásticas y `n_ip` ≥ 2 reproduce esta matriz exactamente.
 
 ### 10. Fuerzas internas
-En el sistema local:
+En el sistema local, camino con material:
 $$\mathbf F_{\text{int,local}} = \mathbf K_{\text{local}}\,\mathbf u_{\text{local}}.$$
 
-La componente axial se **corrige** con el esfuerzo axial verdadero del material: $F_1 = -\sigma A$, $F_4 = +\sigma A$. Esto permite que el material aporte $\sigma$ no-lineal sin que la formulación de flexión interfiera.
+La componente axial se escribe con el esfuerzo que devuelve el material, $F_1 = -\sigma A$, $F_4 = +\sigma A$; con material elástico lineal coincide con la fila axial del producto. Camino con sección: $\mathbf F_{\text{int,local}} = \sum_g w_g\,\tfrac{L}{2}\,\mathbf B_g^\top\,\mathbf s_g$, con $\mathbf s_g = [N,\ M_z]$ de la sección en cada punto de Gauss.
 
 ### 11. Ensamblaje global
 $$\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf T, \qquad \mathbf F_{\text{int}} = \mathbf T^\top\,\mathbf F_{\text{int,local}}.$$
 
 ### 12. Cuadratura
-No aplica (forma cerrada para la matriz; integración analítica de los polinomios de Hermite). El campo `n_integration_points: 1` se refiere al único estado material conceptual del elemento (la deformación axial media).
+Camino con material: no aplica (forma cerrada; integración analítica de los polinomios de Hermite). El campo `n_integration_points: 1` se refiere al único estado material conceptual del elemento (la deformación axial media).
+
+Camino con sección: Gauss-Legendre de `n_ip` puntos a lo largo del elemento (3 por defecto, mínimo 2). El elemento fija `N_INTEGRATION_POINTS = n_ip` como atributo de instancia; el atributo de clase sigue en 1.
 
 ---
 
@@ -106,7 +110,7 @@ interface:
   dof_names: [ux, uy, rz]
   n_nodes: 2
   strain_dim: 1
-  n_integration_points: 1
+  n_integration_points: 1   # camino con material; con section, N_INTEGRATION_POINTS = n_ip (atributo de instancia)
 
 admission:                # criterio de admisión al programa principal (Reglas.md §1)
   textbooks:
@@ -117,13 +121,15 @@ admission:                # criterio de admisión al programa principal (Reglas.
     - abaqus: "B23"
 
 parameters:
-  - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
-  - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano (z)" }
+  - { name: A, type: float, required: false, desc: "Área de la sección transversal. Obligatoria con material; no se declara con section" }
+  - { name: I, type: float, required: false, desc: "Momento de inercia respecto al eje perpendicular al plano (z). Obligatorio con material; no se declara con section" }
+  - { name: section, type: "id de sections", required: false, desc: "Sección de marco (FiberSection). Excluyente con material, A e I (ADR 0021)" }
+  - { name: n_ip, type: int, required: false, default: 3, desc: "Puntos de Gauss-Legendre a lo largo del elemento, ≥ 2. Sólo con section" }
 
 material_contract:
   signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
   strain_kind: "axial escalar (deformación media axial ε = (u_2 - u_1)/L en sistema local)"
-  nonlinearity_model: "E_tangent escala toda la matriz local — no hay distinción axial vs flexión en régimen no-elástico"
+  nonlinearity_model: "camino con material: sólo materiales elásticos lineales (IS_LINEAR_ELASTIC = True; un material inelástico se rechaza al construir). La no linealidad material entra por section (FiberSection): cada fibra evalúa su material 1D con ε = ε₀ − y·κ_z"
 
 conventions:
   sign: "σ > 0 ⇔ ε > 0 (elongación) en el eje axial"
@@ -138,8 +144,8 @@ validity:
 
 out_of_scope:
   - vigas peraltadas con deformación por cortante significativa (usar Frame2DTimoshenko)
-  - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
-  - plasticidad distribuida en la sección (fibras); el modelo escala rigidez global por E_t
+  - grandes rotaciones o desplazamientos (usar Frame2DEulerCorot)
+  - material inelástico con material + A, I (se rechaza al construir; la plasticidad y el daño entran por section, FiberSection)
   - pandeo (requiere rigidez geométrica, no implementada en esta viga lineal)
   - "fuerzas de cuerpo no uniformes (trapezoidales, puntuales en el vano): sólo b uniforme vía compute_body_load"
 
@@ -159,6 +165,14 @@ acceptance:
     expect: "K_global = K_globalᵀ (elemento conservativo en régimen elástico)"
     tol_abs: 1.0e-12
 
+  - name: guarda de material elástico lineal            # añadido 2026-09-29 (ADR 0021)
+    setup: "material Elastoplastic1D o IsotropicDamage1D con A e I"
+    expect: "ValueError al construir, con un mensaje que nombra IS_LINEAR_ELASTIC y remite a FiberSection con 'section'"
+
+  - name: camino con sección                            # añadido 2026-09-29 (ADR 0021)
+    setup: "section = FiberSection; casos de acceptance de docs/specs/FiberSection.md"
+    expect: "reproducción elástica con n_ip = 2, momento–curvatura, interacción N–M, colapso del voladizo y de la viga biempotrada, signos"
+
 references:
   - "Bathe K.-J., Finite Element Procedures, §4.2 (formulación isoparamétrica) y cap. 5 (vigas)"
   - "Cook R.D., Concepts and Applications of FEA, §2.7 (elementos de viga)"
@@ -169,16 +183,18 @@ references:
 ## Implementación
 
 - **Archivo**: [solidum/elements/frame/euler.py](../../solidum/elements/frame/euler.py) — submódulo del paquete `solidum/elements/frame/` que aloja también `Frame2DTimoshenko` y `Frame2DEulerCorot`.
-- **Clase**: `Frame2DEuler` — hereda directamente de `Element`. La construcción de la matriz de transformación $\mathbf T$ se delega a `build_geometry_2d` en [solidum/elements/frame/_shared.py](../../solidum/elements/frame/_shared.py), compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye $\mathbf T$ desde `alpha0` por su lógica propia).
+- **Clase**: `Frame2DEuler(FrameSectionMixin, Element)`. La construcción de la matriz de transformación $\mathbf T$ se delega a `build_geometry_2d` en [solidum/elements/frame/_shared.py](../../solidum/elements/frame/_shared.py), compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye $\mathbf T$ desde `alpha0` por su lógica propia). La constitutiva de los dos caminos (validación de argumentos, guarda de material elástico lineal, estado por punto de Gauss, integración de la sección) vive en `FrameSectionMixin`, [solidum/elements/frame/_section.py](../../solidum/elements/frame/_section.py), compartida con `Frame2DEulerCorot` y `Frame3D` (ADR 0021). `REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}`.
 - **Tests**: [tests/test_frame.py](../../tests/test_frame.py) · `TestFrame2DEulerAcceptance` — los tres criterios físicos y el registro:
   - `test_acceptance_respuesta_axial_pura` (criterio 1) — resuelve el voladizo con solver, verifica $u_x(L) = FL/(EA)$.
   - `test_acceptance_voladizo_carga_transversal` (criterio 2) — carga transversal $P$, verifica flecha $v = PL^3/(3EI)$ y rotación $\theta = PL^2/(2EI)$.
   - `test_acceptance_simetria_K` (criterio 3) — viga oblicua (c=0.6, s=0.8) para evitar ejes canónicos, verifica $\mathbf K = \mathbf K^\top$.
   - `test_registro_en_registry` — autodiscover.
+  - Criterio 4 (guarda): [tests/test_fiber_section.py](../../tests/test_fiber_section.py) · `TestGuardas` (`test_material_inelastico_remite_a_la_seccion`, `test_exactamente_un_camino`, `test_n_ip_invalido`, `test_n_ip_solo_con_seccion`).
+  - Criterio 5 (camino con sección): [tests/validation/test_fiber_section_validation.py](../../tests/validation/test_fiber_section_validation.py) (casos 1-5 y 7 de la spec FiberSection) y `TestMarcosConSeccion`, `TestTangente`, `TestMasa`, `TestPesoPropio`, `TestYaml` de `tests/test_fiber_section.py`.
 - **Notas de traducción**:
   - La matriz $\mathbf T$ se calcula una sola vez en `__init__` sobre la configuración inicial y se guarda como atributo — coherente con el régimen geométricamente lineal.
-  - En `compute_element_state`, la componente axial de $\mathbf F_{\text{int,local}}$ se sobrescribe tras el producto $\mathbf K_{\text{local}}\mathbf u_{\text{local}}$ con el valor $\sigma A$ devuelto por el material. Esto permite usar materiales no-lineales en la rama axial sin que la parte lineal de flexión interfiera.
-  - La aproximación del modelo no-lineal es que $E_t$ escala **toda** la matriz local: no hay distinción entre rigidez axial y de flexión en régimen no-elástico. Documentado en `material_contract.nonlinearity_model`.
+  - Camino con material: la componente axial de $\mathbf F_{\text{int,local}}$ se escribe con el $\sigma A$ que devuelve el material; con material elástico lineal (el único admitido) coincide con la fila axial de $\mathbf K_{\text{local}}\mathbf u_{\text{local}}$.
+  - Camino con sección: $\mathbf B_g$ (2×6) se precalcula al construir (`_build_section_B`) con $N_1''\ldots N_4''$ de `hermite_second_derivatives`; los pesos ya llevan la longitud ($w_g L$ con la regla sobre $(0, 1)$). `internal_forces` y `compute_internal_forces` evalúan sobre una instantánea del trial y la restauran; el diccionario legado añade `section_deformations` y `section_forces` `(n_ip, 2)`. Masa con $(\rho A, \rho I_z)$ de la sección; peso propio con $\rho A$ y fuerza de cuerpo con el área bruta $\sum A_i$.
 
 ---
 
@@ -188,3 +204,4 @@ references:
 - **2026-04-21** · Tests de aceptación cubren la flecha analítica del voladizo a 8 decimales ($v = PL^3/(3EI)$) usando el solver completo del proyecto — validan no solo la cinemática del elemento sino también su integración con ensamblador y solver.
 - **2026-05-13** · `frame.py` se parte en paquete `solidum/elements/frame/{euler,timoshenko,euler_corot,_shared}.py`. La duplicación de `_build_geometry` entre Euler y Timoshenko se elimina: la construcción de $\mathbf T$ vuelve a vivir en un único lugar (`build_geometry_2d` en `_shared.py`), pero esta vez sin función helper externa flotante — pertenece al paquete `frame/`. Frame2DEulerCorot mantiene su propia reconstrucción de $\mathbf T$ desde `alpha0` porque su cinemática corotacional no se beneficia del helper común.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
+- **2026-09-29** · Sección por fibras, etapa 1 ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md), [FiberSection](FiberSection.md)). La auditoría de pureza verificó que el modelo no lineal anterior —evaluar el material con la deformación axial y escalar **toda** la matriz local con su $E_t$— daba flectores incorrectos en silencio: nulos con fluencia axial, de signo cambiado con ablandamiento. Desaparece. El elemento tiene ahora dos caminos excluyentes: `material` + `A`, `I`, la forma cerrada de siempre, sin cambio de resultados, que sólo admite materiales con `IS_LINEAR_ELASTIC = True` (un material inelástico se rechaza al construir y el mensaje remite a la sección por fibras); y `section` + `n_ip` (3 por defecto, mínimo 2), elemento en desplazamientos que integra la sección en Gauss-Legendre. Contrato: parámetros `section` y `n_ip`; `A` e `I` pasan a ser obligatorios sólo con material; criterios de aceptación 4 (guarda) y 5 (camino con sección). Un modelo que antes corría con material inelástico ahora falla al construir: antes daba resultados incorrectos.

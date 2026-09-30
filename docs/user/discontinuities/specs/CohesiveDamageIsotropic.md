@@ -169,7 +169,7 @@ Las derivadas `dω/dκ` cerradas:
 
 ### 10. Simetría de la tangente
 
-A diferencia de `IsotropicDamage2D` (donde el producto externo `(C_e·ε) ⊗ (M·ε)` rompe la simetría), aquí ambos vectores que entran al rank-1 colapsan a `n`:
+A diferencia de `IsotropicDamage2D` con Mazars o von Mises modificado (donde el producto externo `(C_e·ε) ⊗ ∂ε_eq/∂ε` rompe la simetría; con la medida energética, la de por defecto desde el 2026-09-29, es simétrico), aquí ambos vectores que entran al rank-1 colapsan a `n`:
 
 $$\mathbf T^\text{alg} = \alpha(\kappa, \omega, \llbracket u_n\rrbracket)\,K_e\,(\mathbf n \otimes \mathbf n)$$
 

@@ -67,13 +67,14 @@ class Element(ABC):
         de cable.
     REFERENCE_KWARGS : ClassVar[dict], default={"material": MaterialRegistry}
         Parámetros del constructor que, en el YAML, son el ``id`` de un
-        objeto de una familia de material, y el registro de esa familia
-        (ADR 0020, P3). El lector YAML valida que el ``id`` exista en la
-        sección de la familia (``Registry.YAML_SECTION``) y pasa el objeto
-        construido. Un elemento térmico declara
-        ``{"material": ThermalMaterialRegistry}``; un elemento con dos
-        materiales declara las dos referencias. La referencia es obligatoria
-        si el constructor no le da valor por defecto.
+        objeto de una familia (de materiales, de secciones…), y el registro
+        de esa familia (ADR 0020, P3). El lector YAML valida que el ``id``
+        exista en la sección de la familia (``Registry.YAML_SECTION``) y
+        pasa el objeto construido. Un elemento térmico declara
+        ``{"material": ThermalMaterialRegistry}``; un marco con sección por
+        fibras, ``{"material": MaterialRegistry, "section": SectionRegistry}``
+        (ADR 0021). La referencia es obligatoria si el constructor no le da
+        valor por defecto.
     BATCH_KINEMATICS : ClassVar[callable | None], default=None
         Contrato **opcional** del camino por lotes (ADR 0014): función
         ``@njit`` con la firma ``KIN_SIG`` de
@@ -110,6 +111,16 @@ class Element(ABC):
         ``"hrz"``, ...) para que la extensión sea aditiva.
     compute_body_load(b), compute_edge_traction(edge, t_vec)
         Cargas distribuidas consistentes. Opcionales según el tipo.
+    compute_self_weight(g)
+        Peso propio consistente para la aceleración ``g``. La base lo
+        deriva de ``compute_body_load(ρ·g)`` con la densidad del material
+        del elemento; lo sobreescribe el elemento cuya masa no viene de un
+        único material (un marco con sección por fibras usa ``ρA`` de la
+        sección).
+    materials()
+        Materiales que usa el elemento (por defecto ``[self.material]``).
+        Lo recorren las comprobaciones agregadas del ensamblador (densidad
+        para masa y peso propio) y de los solvers (simetría).
 
     Métodos heredados (no sobreescribir salvo necesidad)
     ----------------------------------------------------
@@ -198,6 +209,20 @@ class Element(ABC):
         """
         self.state.commit()
 
+    def materials(self) -> list:
+        """Materiales que usa el elemento (ADR 0021 §4).
+
+        Por defecto ``[self.material]`` (lista vacía si el elemento no tiene
+        material). Lo sobreescribe un elemento que usa varios materiales o
+        ninguno directamente: un marco con sección por fibras devuelve los
+        materiales de sus fibras. Las comprobaciones agregadas del
+        ensamblador (``density`` para masa y peso propio) y de los solvers
+        (``IS_SYMMETRIC``, ADR 0003) recorren esta lista en vez de leer
+        ``element.material``, así que ven todos los materiales del elemento.
+        """
+        material = getattr(self, "material", None)
+        return [] if material is None else [material]
+
     # ------------------------------------------------------------------
     # Contrato abstracto
     # ------------------------------------------------------------------
@@ -276,6 +301,24 @@ class Element(ABC):
             f"de masa elemental. Implementa el método en la subclase o "
             f"retira este elemento del modelo."
         )
+
+    # ------------------------------------------------------------------
+    # Peso propio (ADR 0008)
+    # ------------------------------------------------------------------
+
+    def compute_self_weight(self, g: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente del peso propio para la aceleración ``g``
+        (ejes globales, 2 ó 3 componentes según el elemento).
+
+        Por defecto es la fuerza de cuerpo ``b = ρ·g`` con la densidad del
+        material del elemento: ``compute_body_load(ρ·g)``. Sólo aplica a
+        elementos que implementan ``compute_body_load``. Un elemento cuya
+        masa no viene de un único material lo sobreescribe (un marco con
+        sección por fibras integra ``ρA = Σ ρ_i A_i``). La comprobación de
+        que las densidades existen la hace antes, agregada, el ensamblador
+        (``Assembler.assemble_self_weight``).
+        """
+        return self.compute_body_load(self.material.density * np.asarray(g, dtype=float))
 
     # ------------------------------------------------------------------
     # API pública de resultados (ADR 0002)

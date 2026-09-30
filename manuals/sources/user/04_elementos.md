@@ -63,14 +63,19 @@ elements:
 
 Elementos viga 2D que transmiten axial, cortante y momento flector. Tres variantes:
 
-- **`Frame2DEuler`**: vigas esbeltas ($L/h \gtrsim 10$), Euler-Bernoulli, régimen geométricamente lineal. Parámetros: `A`, `I`.
-- **`Frame2DTimoshenko`**: vigas peraltadas o cortas ($L/h \lesssim 10$). Incluye deformación por cortante; corrige automáticamente *shear locking* en el límite esbelto. Parámetros: `A`, `I`, `As` (área efectiva de cortante), `nu` (opcional si el material expone `nu`).
-- **`Frame2DEulerCorot`**: variante corotacional de Euler-Bernoulli. Captura grandes desplazamientos y grandes rotaciones rígidas del elemento (rotaciones deformacionales nodales moderadas, $|\bar\theta| \lesssim 30°$). Parámetros: `A`, `I`.
+- **`Frame2DEuler`**: vigas esbeltas ($L/h \gtrsim 10$), Euler-Bernoulli, régimen geométricamente lineal. Parámetros: `A`, `I` (con `material`) o `section`, `n_ip`.
+- **`Frame2DTimoshenko`**: vigas peraltadas o cortas ($L/h \lesssim 10$). Incluye deformación por cortante; corrige automáticamente *shear locking* en el límite esbelto. Parámetros: `A`, `I`, `As` (área efectiva de cortante), `nu` (opcional si el material expone `nu`). **Sólo material elástico lineal**; todavía no admite `section`.
+- **`Frame2DEulerCorot`**: variante corotacional de Euler-Bernoulli. Captura grandes desplazamientos y grandes rotaciones rígidas del elemento (rotaciones deformacionales nodales moderadas, $|\bar\theta| \lesssim 30°$). Parámetros: `A`, `I` (con `material`) o `section`, `n_ip`; con sección, ésta trabaja en el sistema corrotado del elemento.
 
 DOFs/nodo: `ux, uy, rz`. Convención: $\sigma > 0 \Leftrightarrow \varepsilon > 0$ (elongación) en el eje axial; $r_z$ positivo antihorario.
 
+**Dos formas de dar la constitutiva** (ADR 0021), excluyentes entre sí:
+
+- **`material` + propiedades geométricas** (`A`, `I`): rigidez de forma cerrada. Sólo admite un material **elástico lineal** (`Elastic1D`); un material con plasticidad o daño se rechaza al construir el modelo, con un mensaje que remite a la sección por fibras.
+- **`section`** (id de una sección del bloque `sections`, capítulo *Archivo de Entrada YAML*) **+ `n_ip`** (puntos de Gauss a lo largo del elemento, 3 por defecto, mínimo 2): el elemento integra la sección por fibras en cada punto de Gauss. Cada fibra lleva su material 1D y su historia, de modo que se forman **rótulas plásticas por flexión** y el daño avanza fibra a fibra. Con fibras elásticas y `n_ip ≥ 2` se obtiene exactamente la misma rigidez que con `A` e `I`. Con `section` no se declaran `material`, `A` ni `I`: rigidez, masa y peso propio salen de las fibras.
+
 ```callout Advertencia
-**Plasticidad por flexión.** Los elementos marco pasan al material únicamente la deformación axial centroidal $(u_j - u_i)/L$; el módulo tangente $E_t$ devuelto escala toda la matriz local (axial y flexión por igual). Esto significa que los marcos reproducen correctamente *plasticidad axial pura* pero *no* forman rótulas plásticas por flexión: la fluencia por momento requiere integración de $\sigma(y)$ sobre la sección, característica que se incorporará en una clase `FiberSection` futura.
+**Cambio desde el 2026-09-29.** Hasta esa fecha los marcos aceptaban un material inelástico con `A` e `I`, le pasaban sólo la deformación axial y escalaban toda la matriz local con su módulo tangente: con fluencia axial el momento flector se anulaba y con ablandamiento cambiaba de signo, sin aviso. Un modelo así ahora falla al construirse; su equivalente físico es el mismo marco con `section`. Con la sección por fibras, la carga de colapso converge por arriba al refinar la malla: use varios elementos por miembro cerca de las rótulas.
 ```
 
 ```yaml
@@ -89,19 +94,25 @@ elements:
     A: 0.01
     I: 8.33e-6
     As: 0.00833
+
+  - id: 3                     # con sección por fibras (bloque sections)
+    type: Frame2DEuler
+    nodes: [3, 4]
+    section: 1
+    n_ip: 3
 ```
 
 ### Marco 3D: `Frame3D`
 
 Viga 3D Euler-Bernoulli con 6 DOFs/nodo (`ux, uy, uz, rx, ry, rz`). Transmite axial, cortantes en dos planos, flexiones en dos planos y torsión de Saint-Venant pura. Régimen geométricamente lineal (la variante corotacional 3D queda como pendiente).
 
-**Parámetros**:
+**Parámetros**, con las mismas dos formas excluyentes de dar la constitutiva que los marcos 2D:
 
-- `A` — área de la sección.
-- `Iy`, `Iz` — momentos de inercia respecto a los ejes locales $y$, $z$.
-- `J` — constante torsional de Saint-Venant.
-- `nu` — coeficiente de Poisson (opcional; se toma del material si lo expone).
-- `ref_vector` — vector de referencia (opcional, default `[0,0,1]`) que fija la orientación de los ejes locales $y$, $z$ de la sección. Para barras casi-verticales se sugiere fijarlo explícitamente.
+- Con `material` (sólo elástico lineal): `A` — área de la sección; `Iy`, `Iz` — momentos de inercia respecto a los ejes locales $y$, $z$; `J` — constante torsional de Saint-Venant; `nu` — coeficiente de Poisson (opcional; se toma del material si lo expone).
+- Con `section` (sección por fibras con `GJ` declarado) y `n_ip` (default 3, mínimo 2): flexión en los dos planos y fuerza axial salen de las fibras, con su interacción; la torsión es elástica, $T = GJ\,\theta_x'$, con el `GJ` de la sección. Sin `nu`.
+- `ref_vector` — vector de referencia (opcional, default `[0,0,1]`) que fija la orientación de los ejes locales $y$, $z$ de la sección, que son también los ejes en que se declaran las fibras. Para barras casi-verticales se sugiere fijarlo explícitamente.
+
+Convención de fuerzas internas (Reglas.md §5): $M_y > 0$ tracciona las fibras con $z > 0$; $M_z > 0$, las fibras con $y < 0$.
 
 ```yaml
 elements:
@@ -114,6 +125,8 @@ elements:
     Iz: 8.33e-6
     J: 1.66e-5
     ref_vector: [0.0, 0.0, 1.0]
+
+  - {id: 2, type: Frame3D, nodes: [2, 3], section: 1, n_ip: 3, ref_vector: [0.0, 0.0, 1.0]}
 ```
 
 ## Elementos 2D

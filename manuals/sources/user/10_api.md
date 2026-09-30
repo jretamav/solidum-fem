@@ -48,6 +48,30 @@ Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo,
 
 El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`), así que funciona igual tras `LinearSolver.solve` directo, tras `solidum.run` o en un paso intermedio del `step_callback`. Si el modelo lleva peso propio o fuerza de cuerpo, usar `solidum.run(...)` en vez de `solver.solve(...)` para que `SolveResult.element_forces` reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
 
+## Secciones por fibras
+
+El bloque `sections` del YAML tiene su equivalente directo en Python (ADR 0021): las primitivas generan las fibras y la sección se pasa al marco con `section`, en lugar de `material` y las propiedades geométricas.
+
+```python
+from solidum import Domain, Elastic1D, Elastoplastic1D, Frame2DEuler
+from solidum.sections import FiberSection, RectangularPatch, BarLayer
+
+concreto = Elastic1D(E=3.0e10, density=2400.0)
+acero = Elastoplastic1D(E=2.0e11, sigma_y=4.2e8, H=2.0e9, density=7850.0)
+sec = FiberSection(
+    patches=[RectangularPatch(concreto, y=(-0.25, 0.25), z=(-0.15, 0.15), ny=40, nz=1),
+             BarLayer(acero, start=(-0.21, -0.11), end=(-0.21, 0.11), n=3, area=5.1e-4)],
+    GJ=None,                        # obligatorio sólo si la usa un Frame3D
+)
+
+domain = Domain()
+n1 = domain.add_node(1, [0.0, 0.0])
+n2 = domain.add_node(2, [3.0, 0.0])
+domain.add_element(Frame2DEuler(1, [n1, n2], section=sec, n_ip=3))
+```
+
+`CircularPatch(material, r_outer=..., r_inner=0.0, center=(0.0, 0.0), n_rad=..., n_circ=...)` y `Fiber(y, z, area, material)` completan las primitivas. La sección expone `sec.y`, `sec.z`, `sec.area` (arreglos por fibra), `sec.n_fibers`, `sec.materials()` y `sec.mass_properties()`; su respuesta a nivel de sección, `sec.response_2d([eps0, kappa_z], estados)` y `sec.response_3d([eps0, kappa_y, kappa_z], estados)`, devuelve las fuerzas internas, su tangente y los estados nuevos de las fibras (con `sec.initial_states()` como estado virgen), útil para trazar diagramas momento–curvatura sin montar un modelo. Tras resolver, `elem.compute_internal_forces(U)` añade `section_deformations` y `section_forces` en los puntos de Gauss.
+
 ## Módulos de usuario
 
 La raíz del paquete sólo reexporta el programa principal. Las formulaciones no estándar viven en módulos de usuario (`solidum/user/<nombre>/`, ADR 0020) que `import solidum` no carga; en Python se cargan importándolos directamente o con `solidum.load_user_module`, el equivalente de `user_modules` en el YAML:

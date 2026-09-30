@@ -8,6 +8,7 @@ from solidum.registry import MaterialRegistry
 @MaterialRegistry.register
 class Elastic2D(Material):
     STRAIN_DIM = 3
+    IS_LINEAR_ELASTIC = True
     STATE_SCHEMA = {}
     BATCH_KERNEL = linear_material_kernel
 

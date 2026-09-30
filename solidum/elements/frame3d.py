@@ -1,10 +1,12 @@
 # solidum_fem/solidum/elements/frame3d.py
 """Elemento de marco/viga 3D Euler-Bernoulli.
 
-Implementación **independiente** del resto de elementos. No hereda de
-ningún otro elemento ni comparte helpers: la construcción de ejes
-locales, la matriz de transformación 12×12 y la rigidez local se generan
-íntegramente dentro de la clase. Ver docs/specs/Frame3D.md.
+Implementación **independiente** del resto de elementos: no hereda de
+ningún otro elemento; la construcción de ejes locales, la matriz de
+transformación 12×12 y la rigidez local se generan íntegramente dentro de
+la clase. Comparte con los marcos planos sólo la constitutiva genérica de
+``solidum.elements.frame._section`` (ADR 0021: forma cerrada con material
+elástico lineal o integración de una sección). Ver docs/specs/Frame3D.md.
 """
 from __future__ import annotations
 
@@ -16,45 +18,75 @@ import numpy as np
 from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.core.section import Section
+from solidum.elements.frame._section import (
+    DEFAULT_N_IP,
+    FrameSectionMixin,
+    hermite_second_derivatives,
+)
 from solidum.logging import get_logger
-from solidum.registry import ElementRegistry
+from solidum.registry import ElementRegistry, MaterialRegistry, SectionRegistry
 from solidum.results import ElementForces
 
 _log = get_logger("elements.frame3d")
 
 
 @ElementRegistry.register
-class Frame3D(Element):
+class Frame3D(FrameSectionMixin, Element):
     """Marco/viga 3D basado en Euler-Bernoulli.
 
     Dos nodos rígidamente conectados, 6 DOFs por nodo (ux, uy, uz, rx, ry, rz).
     Transmite axial + cortante y flexión en dos planos + torsión. Régimen de
     linealidad geométrica.
 
+    Dos caminos excluyentes para la constitutiva (ADR 0021):
+
+    - ``material`` + ``A``, ``Iy``, ``Iz``, ``J`` (+ ``nu``): forma cerrada
+      elástica. Sólo materiales elásticos lineales.
+    - ``section`` (+ ``n_ip``): elemento en desplazamientos que integra la
+      sección en ``n_ip`` puntos de Gauss-Legendre (spec ``FiberSection``
+      §5) con ``e = [ε₀, κ_y, κ_z]``: ``ε₀ = (u₂ − u₁)/L``,
+      ``κ_z = N₁''v₁ + N₂''θ_z1 + N₃''v₂ + N₄''θ_z2`` y, como ``w' = −θ_y``
+      por la regla de la mano derecha,
+      ``κ_y = −w'' = −N₁''w₁ + N₂''θ_y1 − N₃''w₂ + N₄''θ_y2``. Torsión
+      elástica desacoplada ``T = GJ·θₓ'`` con el ``GJ`` de la sección
+      (obligatorio).
+
     Parameters
     ----------
     element_id : int
     nodes : List[Node]
         Exactamente 2 nodos extremos. Acepta nodos con 3 coordenadas.
-    material : Material
-        Material 1D (STRAIN_DIM=1). Si expone `nu`, se usa ese valor.
-    A : float
-        Área de la sección transversal.
-    Iy, Iz : float
-        Momentos de inercia respecto a los ejes locales y, z de la sección.
-    J : float
-        Constante torsional de Saint-Venant.
+    material : Material, optional
+        Material 1D elástico lineal (``STRAIN_DIM = 1``). Si expone `nu`, se
+        usa ese valor.
+    A : float, optional
+        Área de la sección transversal (camino con material).
+    Iy, Iz : float, optional
+        Momentos de inercia respecto a los ejes locales y, z de la sección
+        (camino con material).
+    J : float, optional
+        Constante torsional de Saint-Venant (camino con material).
     nu : float, optional
-        Coeficiente de Poisson si el material no lo expone. Default 0.3.
+        Coeficiente de Poisson si el material no lo expone. Default 0.3
+        (camino con material).
     ref_vector : list[float] | None, optional
         Vector de referencia 3D para fijar la orientación de los ejes
         locales y, z. Default `[0, 0, 1]`; con fallback `[1, 0, 0]` si
         la barra es cercanamente vertical.
+    section : Section, optional
+        Sección de marco con ``GJ`` declarado; excluyente con ``material``,
+        ``A``, ``Iy``, ``Iz``, ``J`` y ``nu``.
+    n_ip : int, default 3
+        Puntos de Gauss-Legendre (≥ 2); sólo con ``section``.
     """
 
     DOF_NAMES = ['ux', 'uy', 'uz', 'rx', 'ry', 'rz']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
+    REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}
+    SECTION_DIM = 3
+    SECTION_RESPONSE = "response_3d"
 
     _VERTICAL_COS_TOL = 0.99  # umbral para detectar barras casi-verticales
     # Flag de clase para emitir el warning de fallback ref_vector sólo una vez
@@ -63,35 +95,77 @@ class Frame3D(Element):
     # emisión basta para alertar al usuario.
     _vertical_warning_emitted: bool = False
 
-    def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 A: float, Iy: float, Iz: float, J: float,
+    def __init__(self, element_id: int, nodes: List[Node], material: Material | None = None,
+                 A: float | None = None, Iy: float | None = None,
+                 Iz: float | None = None, J: float | None = None,
                  nu: float | None = None,
-                 ref_vector: List[float] | None = None):
+                 ref_vector: List[float] | None = None, *,
+                 section: Section | None = None, n_ip: int = DEFAULT_N_IP):
         if len(nodes) != 2:
             raise ValueError("El elemento Frame3D requiere exactamente 2 nodos.")
 
+        self._setup_constitution(element_id, material, section, n_ip,
+                                 geometry={"A": A, "Iy": Iy, "Iz": Iz, "J": J},
+                                 material_only={"nu": nu})
+        if self.section is not None and self.section.GJ is None:
+            raise ValueError(
+                f"Frame3D(id={element_id}): la sección no declara GJ. Frame3D "
+                f"necesita la rigidez torsional elástica de la sección (torsión "
+                f"desacoplada T = GJ·θx'); declárela con GJ en la sección."
+            )
         self.A = A
         self.Iy = Iy
         self.Iz = Iz
         self.J = J
         super().__init__(element_id, nodes, material)
 
-        # Poisson: material.nu si existe, si no el parámetro. `None` distingue
-        # "no declarado" de un 0.3 declarado a propósito: antes se comparaba
-        # contra 0.3 y el aviso salía también cuando el usuario lo escribía.
-        if hasattr(material, 'nu'):
-            self.nu = material.nu
+        if self.section is None:
+            # Poisson: material.nu si existe, si no el parámetro. `None`
+            # distingue "no declarado" de un 0.3 declarado a propósito: antes
+            # se comparaba contra 0.3 y el aviso salía también cuando el
+            # usuario lo escribía.
+            if hasattr(material, 'nu'):
+                self.nu = material.nu
+            else:
+                if nu is None:
+                    nu = 0.3
+                    _log.warning(
+                        f"Frame3D (id={element_id}): el material no expone 'nu'. "
+                        f"Se usará nu={nu} (default). Especifique 'nu' en el YAML si esto es incorrecto."
+                    )
+                self.nu = float(nu)
         else:
-            if nu is None:
-                nu = 0.3
-                _log.warning(
-                    f"Frame3D (id={element_id}): el material no expone 'nu'. "
-                    f"Se usará nu={nu} (default). Especifique 'nu' en el YAML si esto es incorrecto."
-                )
-            self.nu = float(nu)
+            # La torsión la da el GJ de la sección: no hace falta Poisson.
+            self.nu = None
 
         self.L0, self.lam, self.T = self._build_local_frame(self.nodes, ref_vector,
                                                              element_id)
+        if self.section is not None:
+            self._B = self._build_section_B()
+            self._wL = self._gauss_w * self.L0
+
+    def _build_section_B(self) -> np.ndarray:
+        """``B_g`` (3×12) en ejes locales: ``e_g = [ε₀, κ_y, κ_z](x_g) = B_g·u_local``.
+
+        Layout local ``[u₁, v₁, w₁, θx₁, θy₁, θz₁, u₂, v₂, w₂, θx₂, θy₂, θz₂]``.
+        """
+        L = self.L0
+        B = np.zeros((self.n_ip, 3, 12))
+        for g, xi in enumerate(self._gauss_xi):
+            d1, d2, d3, d4 = hermite_second_derivatives(xi, L)
+            B[g, 0, 0] = -1.0 / L
+            B[g, 0, 6] = 1.0 / L
+            # κ_y = −w'' (plano xz, w' = −θ_y).
+            B[g, 1, 2] = -d1
+            B[g, 1, 4] = d2
+            B[g, 1, 8] = -d3
+            B[g, 1, 10] = d4
+            # κ_z = v'' (plano xy, v' = θ_z).
+            B[g, 2, 1] = d1
+            B[g, 2, 5] = d2
+            B[g, 2, 7] = d3
+            B[g, 2, 11] = d4
+        return B
 
     @classmethod
     def _build_local_frame(cls, nodes: List[Node],
@@ -199,6 +273,8 @@ class Frame3D(Element):
         return K
 
     def compute_element_state(self, u_e: np.ndarray):
+        if self.section is not None:
+            return self._section_element_state(u_e)
         u_local = self.T @ u_e
         L = self.L0
 
@@ -211,7 +287,9 @@ class Frame3D(Element):
         K_local = self._build_local_stiffness(E_t, G)
 
         F_int_local = K_local @ u_local
-        # Componente axial: usar sigma directo del material
+        # Componente axial con el σ del material. Con material elástico lineal
+        # (única opción admitida en este camino, ADR 0021) coincide con la
+        # fila axial de ``K_local @ u_local``.
         F_int_local[0] = -sigma * self.A
         F_int_local[6] =  sigma * self.A
 
@@ -219,16 +297,36 @@ class Frame3D(Element):
         F_int_e = self.T.T @ F_int_local
         return K_global, F_int_e
 
+    def _section_element_state(self, u_e: np.ndarray):
+        """Camino con sección (spec §5): flexión y axial integrados en los
+        puntos de Gauss más la torsión elástica ``GJ/L`` en los DOFs θx."""
+        u_local = self.T @ u_e
+        K_local, F_int_local = self._integrate_section(self._B, self._wL, u_local)
+        GJ_L = self.section.GJ / self.L0
+        K_local[3, 3] += GJ_L
+        K_local[3, 9] -= GJ_L
+        K_local[9, 3] -= GJ_L
+        K_local[9, 9] += GJ_L
+        torque = GJ_L * (u_local[9] - u_local[3])     # T = GJ·θx'
+        F_int_local[3] -= torque
+        F_int_local[9] += torque
+        return self.T.T @ K_local @ self.T, self.T.T @ F_int_local
+
     def compute_internal_forces(self, U_global: np.ndarray) -> dict:
+        """Diccionario legado de post-proceso (no es el contrato del ADR 0002).
+
+        Con material, además ``stress`` y ``strain`` axiales del material;
+        con sección, ``strain`` (``ε₀`` del eje), ``section_deformations``
+        ``(n_ip, 3)`` = ``[ε₀, κ_y, κ_z]`` y ``section_forces`` ``(n_ip, 3)``
+        = ``[N, M_y, M_z]`` en los puntos de Gauss.
+        """
         u_e = self.get_local_displacements(U_global)
-        _, F_int = self.compute_element_state(u_e)
+        _, F_int = self._evaluate_without_trace(u_e)
         F_local = self.T @ F_int
 
         u_local = self.T @ u_e
         epsilon = (u_local[6] - u_local[0]) / self.L0
-        sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
-
-        return {
+        out = {
             'axial_force': F_local[0],
             'shear_y': F_local[1],
             'shear_z': F_local[2],
@@ -237,9 +335,16 @@ class Frame3D(Element):
             'moment_z_i': F_local[5],
             'moment_y_j': F_local[10],
             'moment_z_j': F_local[11],
-            'stress': sigma,
             'strain': epsilon,
         }
+        if self.section is None:
+            sigma, _, _ = self.material.compute_state(epsilon, self.state.vars[0])
+            out['stress'] = sigma
+        else:
+            e, s = self._section_forces_at(self._B, u_local)
+            out['section_deformations'] = e
+            out['section_forces'] = s
+        return out
 
     def internal_forces(self, U_global: np.ndarray,
                         equivalent_load: np.ndarray | None = None) -> ElementForces:
@@ -256,7 +361,7 @@ class Frame3D(Element):
         (T=[+T,+T]).
         """
         u_e = self.get_local_displacements(U_global)
-        _, F_int = self.compute_element_state(u_e)
+        _, F_int = self._evaluate_without_trace(u_e)
         if equivalent_load is not None:
             # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
             F_int = F_int - np.asarray(equivalent_load, dtype=float)
@@ -273,8 +378,14 @@ class Frame3D(Element):
             },
         )
 
-    def _build_local_mass(self, rho: float) -> np.ndarray:
+    def _build_local_mass(self, rhoA: float, rhoIy: float, rhoIz: float,
+                          rhoJp: float) -> np.ndarray:
         """Matriz de masa consistente 12×12 en ejes locales del elemento.
+
+        Recibe las propiedades másicas por unidad de longitud: ``ρA``,
+        ``ρI_y``, ``ρI_z`` y ``ρJ_p`` (con material, ``ρ`` por las
+        propiedades geométricas; con sección, las de
+        ``section.mass_properties()`` y ``ρJ_p = ρI_y + ρI_z``).
 
         Contribuciones desacopladas, ensambladas en el layout local
         ``[ux_i, uy_i, uz_i, rx_i, ry_i, rz_i, ux_j, uy_j, uz_j, rx_j, ry_j, rz_j]``:
@@ -298,12 +409,11 @@ class Frame3D(Element):
         """
         L = self.L0
         L2 = L * L
-        c_ax = rho * self.A * L / 6.0
-        c_tr = rho * self.A * L / 420.0
-        Jp = self.Iy + self.Iz
-        c_tor = rho * Jp * L / 6.0
-        c_rot_y = rho * self.Iy * L / 6.0
-        c_rot_z = rho * self.Iz * L / 6.0
+        c_ax = rhoA * L / 6.0
+        c_tr = rhoA * L / 420.0
+        c_tor = rhoJp * L / 6.0
+        c_rot_y = rhoIy * L / 6.0
+        c_rot_z = rhoIz * L / 6.0
 
         M = np.zeros((12, 12))
 
@@ -346,8 +456,12 @@ class Frame3D(Element):
 
         return M
 
-    def _build_local_mass_lumped(self, rho: float) -> np.ndarray:
+    def _build_local_mass_lumped(self, rhoA: float, rhoIy: float, rhoIz: float,
+                                 rhoJp: float) -> np.ndarray:
         """Matriz de masa lumped 12×12 en ejes locales (ADR 0009 fase 2).
+
+        Mismas propiedades másicas por unidad de longitud que
+        :meth:`_build_local_mass`.
 
         Esquema nodal directo:
 
@@ -380,11 +494,10 @@ class Frame3D(Element):
         np.ndarray, shape (12, 12)
         """
         L = self.L0
-        m_t = rho * self.A * L / 2.0
-        Jp = self.Iy + self.Iz
-        m_rx = rho * Jp * L / 2.0
-        m_ry = rho * self.Iy * L / 2.0
-        m_rz = rho * self.Iz * L / 2.0
+        m_t = rhoA * L / 2.0
+        m_rx = rhoJp * L / 2.0
+        m_ry = rhoIy * L / 2.0
+        m_rz = rhoIz * L / 2.0
         return np.diag([m_t, m_t, m_t, m_rx, m_ry, m_rz,
                         m_t, m_t, m_t, m_rx, m_ry, m_rz])
 
@@ -399,43 +512,43 @@ class Frame3D(Element):
         **Lumped** (fase 2): :meth:`_build_local_mass_lumped`. Ver allí la
         nota sobre Iy ≠ Iz y bloque-diagonalidad en global.
 
+        Con sección, las propiedades másicas son las de
+        ``section.mass_properties()`` (spec ``FiberSection`` §6), con la
+        inercia torsional ``ρJ_p = ρI_y + ρI_z``.
+
         Returns
         -------
         np.ndarray, shape (12, 12)
         """
-        rho = self.material.density
-        if lumping == "lumped":
-            M_local = self._build_local_mass_lumped(rho)
-        elif lumping == "consistent":
-            M_local = self._build_local_mass(rho)
-        else:
+        if lumping not in ("lumped", "consistent"):
             raise NotImplementedError(
                 f"Frame3D.compute_mass_matrix: lumping='{lumping}' no "
                 f"soportado. Valores admitidos: 'consistent', 'lumped'."
             )
+        props = self._mass_properties()
+        if lumping == "lumped":
+            M_local = self._build_local_mass_lumped(*props)
+        else:
+            M_local = self._build_local_mass(*props)
         return self.T.T @ M_local @ self.T
+
+    def _mass_properties(self):
+        """``(ρA, ρI_y, ρI_z, ρJ_p)`` por unidad de longitud. Con material,
+        ``ρ`` por ``A``, ``I_y``, ``I_z`` y el momento polar geométrico
+        ``J_p = I_y + I_z``; con sección, ``section.mass_properties()``."""
+        if self.section is None:
+            rho = self.material.density
+            return (rho * self.A, rho * self.Iy, rho * self.Iz,
+                    rho * (self.Iy + self.Iz))
+        mp = self.section.mass_properties()
+        return mp["rhoA"], mp["rhoIy"], mp["rhoIz"], mp["rhoIy"] + mp["rhoIz"]
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con ∫NᵀbA dx para marco 3D (peso propio).
 
-        La carga distribuida por unidad de longitud ``q = A · b`` se proyecta
-        sobre los ejes locales mediante la matriz λ (3×3). En local, cada
-        componente reparte (forma Hermite cúbica para transversales, lineal
-        para axial):
-
-        - Axial ``q_x_local``: mitad-mitad por nodo, sin momentos.
-        - Transversal ``q_y_local``: ``q_y · L/2`` por nodo en F_y;
-          ``+q_y · L²/12`` en Mz_i y ``-q_y · L²/12`` en Mz_j.
-        - Transversal ``q_z_local``: ``q_z · L/2`` por nodo en F_z;
-          ``-q_z · L²/12`` en My_i y ``+q_z · L²/12`` en My_j (signo
-          opuesto a ``M_z`` por la regla de la mano derecha aplicada al
-          eje de flexión y_local).
-        - Sin torsión (sin excentricidad de la carga respecto al centro de
-          cortadura).
-
-        Los signos de los momentos siguen la convención stress-resultant /
-        RHR pura del proyecto (Reglas.md §5) y son consistentes con la
-        matriz ``K_local`` del elemento.
+        La carga distribuida por unidad de longitud ``q = A · b`` (``A`` el
+        área bruta: ``Σ A_i`` con sección) se reparte con
+        :meth:`_line_load_vector`.
 
         Parameters
         ----------
@@ -450,8 +563,38 @@ class Frame3D(Element):
             ``[Fx_i, Fy_i, Fz_i, Mx_i, My_i, Mz_i, Fx_j, ..., Mz_j]``.
         """
         b = np.asarray(b, dtype=float).reshape(3)
-        # Carga distribuida por unidad de longitud en globales.
-        q_global = self.A * b
+        return self._line_load_vector(self._axial_area() * b)
+
+    def compute_self_weight(self, g: np.ndarray) -> np.ndarray:
+        """Peso propio: carga por unidad de longitud ``ρA·g`` (``ρA = Σ ρ_i A_i``
+        con sección, spec §6)."""
+        if self.section is None:
+            return super().compute_self_weight(g)
+        g = np.asarray(g, dtype=float).reshape(3)
+        return self._line_load_vector(self.section.mass_properties()["rhoA"] * g)
+
+    def _line_load_vector(self, q_global: np.ndarray) -> np.ndarray:
+        """Vector nodal consistente de una carga uniforme por unidad de
+        longitud ``q_global`` (ejes globales).
+
+        ``q`` se proyecta sobre los ejes locales mediante la matriz λ (3×3).
+        En local, cada componente reparte (forma Hermite cúbica para
+        transversales, lineal para axial):
+
+        - Axial ``q_x_local``: mitad-mitad por nodo, sin momentos.
+        - Transversal ``q_y_local``: ``q_y · L/2`` por nodo en F_y;
+          ``+q_y · L²/12`` en Mz_i y ``-q_y · L²/12`` en Mz_j.
+        - Transversal ``q_z_local``: ``q_z · L/2`` por nodo en F_z;
+          ``-q_z · L²/12`` en My_i y ``+q_z · L²/12`` en My_j (signo
+          opuesto a ``M_z`` por la regla de la mano derecha aplicada al
+          eje de flexión y_local).
+        - Sin torsión (sin excentricidad de la carga respecto al centro de
+          cortadura).
+
+        Los signos de los momentos siguen la convención stress-resultant /
+        RHR pura del proyecto (Reglas.md §5) y son consistentes con la
+        matriz ``K_local`` del elemento.
+        """
         # Proyección a ejes locales: λ es la rotación 3×3 global→local.
         q_local = self.lam @ q_global  # (q_axial, q_y_local, q_z_local)
         qa, qy, qz = q_local[0], q_local[1], q_local[2]

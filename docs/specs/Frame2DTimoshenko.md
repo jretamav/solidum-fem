@@ -30,9 +30,11 @@ Apropiado para vigas **gruesas, cortas o peraltadas** ($L/h \lesssim 10$) donde 
 - Cortante: $\gamma(s) = dv/ds - \theta(s)$.
 
 ### 4. Ecuaciones constitutivas
-- Axial: $N = EA\,\varepsilon_{axial}$ (el material entrega $\sigma$ y $E_t$).
+- Axial: $N = EA\,\varepsilon_{axial}$.
 - Flexión: $M = EI\,\kappa$.
-- Cortante: $V = G A_s\,\gamma$, con $G = E/[2(1+\nu)]$ (módulo de corte) y $A_s$ el **área efectiva de cortante** (menor que $A$ por la distribución no uniforme de la tensión tangencial en la sección).
+- Cortante: $V = G A_s\,\gamma$, con $G = E/[2(1+\nu)]$ (módulo de corte) y $A_s$ el **área efectiva de cortante** (menor que $A$ por la distribución no uniforme del esfuerzo cortante $\sigma_{xy}$ en la sección).
+
+**Sólo material elástico lineal** (`IS_LINEAR_ELASTIC = True`; [ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md)). Un material inelástico se rechaza al construir. Hasta el 2026-09-29 se admitía y su $E_t$ axial escalaba toda la matriz local (flector y cortante nulos con fluencia axial, de signo cambiado con ablandamiento). La sección por fibras de este elemento, que necesita su propia cinemática con cortante, es la **etapa 2** del ADR 0021 y está pendiente; mientras tanto, la plasticidad distribuida en la sección está disponible en los marcos Euler-Bernoulli (`Frame2DEuler`, `Frame2DEulerCorot`, `Frame3D`) con `section`.
 
 ### 5. Factor de Phi (shear locking)
 La formulación estándar con interpolaciones lineales de $v$ y $\theta$ sufre **shear locking** para vigas esbeltas (la rigidez por cortante domina numéricamente aunque $\gamma$ físicamente sea pequeño). La matriz local incorpora un factor correctivo:
@@ -80,7 +82,7 @@ Para $\Phi \to 0$: $a \to 12EI/L^3$, $b \to 6EI/L^2$, $c_m \to 4EI/L$, $d \to 2E
 ### 10. Fuerzas internas
 $$\mathbf F_{\text{int,local}} = \mathbf K_{\text{local}}\,\mathbf u_{\text{local}}.$$
 
-La componente axial se corrige con el esfuerzo axial del material: $F_1 = -\sigma A$, $F_4 = +\sigma A$ (permite materiales no-lineales en la rama axial).
+La componente axial se escribe con el esfuerzo axial del material, $F_1 = -\sigma A$, $F_4 = +\sigma A$; con material elástico lineal (el único admitido) coincide con la fila axial del producto.
 
 ### 11. Ensamblaje global
 $$\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf T, \qquad \mathbf F_{\text{int}} = \mathbf T^\top\,\mathbf F_{\text{int,local}}.$$
@@ -118,7 +120,7 @@ parameters:
 material_contract:
   signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
   strain_kind: "axial escalar (deformación media ε = (u_2 − u_1)/L en sistema local)"
-  nonlinearity_model: "E_tangent escala toda la matriz local (axial, flexión y cortante por igual)"
+  nonlinearity_model: "sólo materiales elásticos lineales (IS_LINEAR_ELASTIC = True; un material inelástico se rechaza al construir). Sección por fibras con cortante: etapa 2 del ADR 0021, pendiente"
   poisson_source: "si material.nu existe, se usa; en su defecto el parámetro `nu` del elemento con default 0.3 y advertencia por consola"
 
 conventions:
@@ -134,7 +136,7 @@ validity:
 
 out_of_scope:
   - grandes rotaciones o desplazamientos (no hay variante corotacional en el catálogo actual)
-  - plasticidad distribuida en la sección
+  - material inelástico y plasticidad distribuida en la sección (sección por fibras de Timoshenko: etapa 2 del ADR 0021; hoy se rechaza al construir)
   - pandeo
   - "fuerzas de cuerpo no uniformes (trapezoidales, puntuales en el vano): sólo b uniforme vía compute_body_load"
 
@@ -154,6 +156,10 @@ acceptance:
     expect: "K_global = K_globalᵀ"
     tol_abs: 1.0e-12
 
+  - name: guarda de material elástico lineal            # añadido 2026-09-29 (ADR 0021)
+    setup: "material Elastoplastic1D"
+    expect: "ValueError al construir, con un mensaje que dice que el elemento todavía no admite sección por fibras y nombra los marcos que sí la admiten"
+
 references:
   - "Reddy J.N., An Introduction to the Finite Element Method, cap. 5 (vigas de Timoshenko)"
   - "Bathe K.-J., Finite Element Procedures, §5.4 (formulación con factor Φ)"
@@ -164,17 +170,18 @@ references:
 ## Implementación
 
 - **Archivo**: [solidum/elements/frame/timoshenko.py](../../solidum/elements/frame/timoshenko.py) — submódulo del paquete `solidum/elements/frame/` que aloja también `Frame2DEuler` y `Frame2DEulerCorot`.
-- **Clase**: `Frame2DTimoshenko` — hereda directamente de `Element`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en [solidum/elements/frame/_shared.py](../../solidum/elements/frame/_shared.py); además, los helpers libres de carga de cuerpo, masa consistente y traducción a `ElementForces` también viven en `_shared.py`.
+- **Clase**: `Frame2DTimoshenko(FrameSectionMixin, Element)`, sin herencia con las otras vigas 2D. Del mixin ([solidum/elements/frame/_section.py](../../solidum/elements/frame/_section.py), ADR 0021) sólo usa la guarda de material elástico lineal: no declara `section` en `REFERENCE_KWARGS` (sigue siendo `{"material": MaterialRegistry}`), así que su mensaje de rechazo dice que todavía no admite sección por fibras y nombra los marcos que sí. Comparte `build_geometry_2d` con `Frame2DEuler` en [solidum/elements/frame/_shared.py](../../solidum/elements/frame/_shared.py); además, los helpers libres de carga de cuerpo, masa consistente y traducción a `ElementForces` también viven en `_shared.py`.
 - **Tests**: [tests/test_frame.py](../../tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance`:
   - `test_acceptance_convergencia_euler_en_viga_esbelta` (criterio 1) — viga con $L/h$ muy grande, verifica que la flecha tiende a $PL^3/(3EI)$ con tolerancia relativa $10^{-3}$.
   - `test_acceptance_respuesta_axial_pura` (criterio 2) — carga axial pura, verifica $u_x = FL/(EA)$.
   - `test_acceptance_simetria_K` (criterio 3) — viga oblicua, verifica $\mathbf K = \mathbf K^\top$.
   - `test_registro_en_registry` — autodiscover.
+  - Criterio 4 (guarda): [tests/test_fiber_section.py](../../tests/test_fiber_section.py) · `TestGuardas.test_timoshenko_solo_elastico`.
 - **Notas de traducción**:
   - Para no colisionar con la variable cinemática $c$ (coseno director) dentro de `compute_element_state`, el coeficiente $c_m$ de la matriz local se llama `c_coef` en el código y `d_coef` su análogo (antes eran `c` y `d` inline, ambiguos).
   - El Poisson $\nu$ se toma de `material.nu` si el material lo expone; en su defecto, del parámetro `nu` del elemento con default 0.3 y una advertencia por consola la primera vez que se construye con ese default — atajo a errores silenciosos de usuarios que olvidan especificarlo.
   - La matriz $\mathbf T$ se calcula una sola vez en `__init__` y se guarda como atributo (régimen geométricamente lineal).
-  - El factor $\Phi$ se recalcula en cada llamada porque depende de $E_t$ devuelto por el material (en régimen no-lineal $\Phi$ cambia con el estado).
+  - El factor $\Phi = 24(1+\nu)\,I/(A_s L^2)$ no depende del módulo del material (auditoría 2026-09-22) y, con material elástico lineal, tampoco la matriz local cambia con el estado.
 
 ---
 
@@ -185,3 +192,4 @@ references:
 - **2026-05-13** · `frame.py` se parte en paquete `solidum/elements/frame/`. La duplicación de `_build_geometry` ya no se justifica: ambas vigas comparten `build_geometry_2d` en `_shared.py`, helper interno al paquete (no flotante). Las clases siguen sin herencia entre sí.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
 - **2026-09-22** · Auditoría global: `Φ = 24(1+ν)·I/(A_s·L²)`, independiente de E_t: con `E_t = 0` (plasticidad perfecta plastificada) la forma `12·E_t·I/(G·A_s·L²)` dividía 0/0.
+- **2026-09-29** · Sólo material elástico lineal hasta la etapa 2 del [ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md). La auditoría de pureza verificó que el modelo no lineal anterior —la $E_t$ de la deformación axial escalando toda la matriz local, flexión y cortante incluidos— daba fuerzas internas incorrectas en silencio (nulas con fluencia axial, de signo cambiado con ablandamiento). Desaparece: un material con `IS_LINEAR_ELASTIC = False` se rechaza al construir, con un mensaje que remite a los marcos Euler-Bernoulli con sección por fibras. La sección por fibras de este elemento necesita su propia cinemática con cortante (qué hacer con $\gamma$ en las fibras, integración del cortante, tratamiento del bloqueo) y es una decisión física pendiente del usuario (etapa 2). Contrato: criterio de aceptación 4 (guarda); `nonlinearity_model` y `out_of_scope` actualizados.

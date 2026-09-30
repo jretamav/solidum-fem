@@ -4,7 +4,8 @@
   y se rechaza con ``ValueError`` (antes: α ≈ 1e30 y σ inconsistente).
 - J2 plane stress: el Newton local converge también con predictores muy
   lejanos (warm start + tolerancia relativa a ``R_curr``).
-- Timoshenko con ``E_t = 0`` no divide por cero.
+- Timoshenko con material inelástico: desde el ADR 0021 se rechaza al
+  construir (antes: comprobación de que ``E_t = 0`` no dividía por cero).
 """
 import logging
 import unittest
@@ -101,18 +102,27 @@ class TestJ2PlaneStressLocalNewton(unittest.TestCase):
 
 
 class TestTimoshenkoPerfectPlasticity(unittest.TestCase):
+    """Antes (auditoría 2026-09-22) este test comprobaba que Timoshenko con
+    ``E_t = 0`` no dividía por cero. Desde el ADR 0021 el camino con material
+    de los marcos sólo admite materiales elásticos lineales: con un material
+    inelástico la forma cerrada escalaba toda la rigidez con la ``E_t`` axial
+    y daba flectores incorrectos en silencio (auditoría 2026-09-29). La
+    plasticidad perfecta en Timoshenko espera a su sección por fibras
+    (etapa 2); hoy se rechaza al construir."""
 
-    def test_zero_tangent_modulus_does_not_divide_by_zero(self):
+    def test_material_inelastico_se_rechaza_al_construir(self):
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0]); n2 = dom.add_node(2, [2.0, 0.0])
         mat = Elastoplastic1D(E=200e9, sigma_y=250e6, H=0.0)
-        el = Frame2DTimoshenko(1, [n1, n2], mat, A=1e-2, I=1e-4, As=8e-3, nu=0.3)
-        dom.add_element(el); dom.generate_equation_numbers()
-        u = np.zeros(6)
-        u[3] = 0.01     # ε = 0.005 ≫ ε_y = 1.25e-3 → E_t = 0
-        K, F = el.compute_element_state(u)
-        self.assertTrue(np.all(np.isfinite(K)))
-        self.assertAlmostEqual(F[3], 250e6 * 1e-2, places=3)
+        with self.assertRaises(ValueError) as ctx:
+            Frame2DTimoshenko(1, [n1, n2], mat, A=1e-2, I=1e-4, As=8e-3, nu=0.3)
+        mensaje = str(ctx.exception)
+        self.assertIn("Frame2DTimoshenko", mensaje)
+        self.assertIn("Elastoplastic1D", mensaje)
+        self.assertIn("IS_LINEAR_ELASTIC", mensaje)
+        # Remite a los marcos que sí admiten sección por fibras.
+        self.assertIn("Frame2DEuler", mensaje)
+        self.assertIn("FiberSection", mensaje)
 
 
 if __name__ == "__main__":

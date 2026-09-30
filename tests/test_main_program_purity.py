@@ -355,4 +355,6 @@ def test_import_solidum_no_carga_modulos_de_usuario():
     cargados, ajenos, secciones = eval(r.stdout.strip().splitlines()[-1])
     assert cargados == [], f"import solidum cargó módulos de usuario: {cargados}"
     assert ajenos == [], f"Clases de módulos de usuario registradas: {ajenos}"
-    assert secciones == ["materials", "thermal_materials"]
+    # Familias del programa principal, en orden de definición (ADR 0021:
+    # las secciones de marco van después de los materiales que referencian).
+    assert secciones == ["materials", "thermal_materials", "sections"]

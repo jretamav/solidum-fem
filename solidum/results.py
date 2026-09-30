@@ -222,8 +222,9 @@ class TransientResult:
         if self.element_forces_history is not None:
             return {k: list(v) for k, v in self.element_forces_history.items()}
         with_history = sorted({
-            type(e.material).__name__ for e in domain.elements.values()
-            if getattr(getattr(e, 'material', None), 'PRIMARY_STATE_VAR', None)
+            type(m).__name__ for e in domain.elements.values()
+            for m in e.materials()
+            if getattr(m, 'PRIMARY_STATE_VAR', None)
         })
         if with_history:
             from solidum.logging import get_logger

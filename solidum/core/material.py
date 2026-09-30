@@ -130,6 +130,17 @@ class Material(BatchMaterialHooks, ABC):
         — habitualmente formulaciones corotacionales preparadas para
         manejar rigidez nula sin degenerar la matriz global.
 
+    IS_LINEAR_ELASTIC : ClassVar[bool]
+        ``True`` sólo si el material es elástico lineal: ``σ = C·ε`` con
+        ``C`` constante, sin variables internas y bilateral (ADR 0021).
+        Lo exigen los elementos cuya formulación con ``material`` es una
+        forma cerrada elástica que escala toda su rigidez con un único
+        módulo —los marcos con ``material`` + propiedades geométricas—, y
+        que darían resultados incorrectos en silencio con un material
+        inelástico. Default ``False``: un material nuevo no pasa esa guarda
+        hasta que lo declara expresamente. El barrido de contrato de
+        materiales comprueba que la declaración es veraz.
+
     STATE_SCHEMA : ClassVar[dict]
         Variables internas como ``{nombre: forma}`` (ADR 0014). Obligatorio;
         ``{}`` si el material no tiene historia. Ver
@@ -142,6 +153,7 @@ class Material(BatchMaterialHooks, ABC):
     PRIMARY_STATE_VAR: ClassVar[str | None] = None
     IS_SYMMETRIC: ClassVar[bool] = True
     IS_UNILATERAL: ClassVar[bool] = False
+    IS_LINEAR_ELASTIC: ClassVar[bool] = False
 
     # Densidad física del medio continuo (kg/m³, en las unidades del usuario).
     # Opcional al construir: análisis que no invocan peso propio o matriz de

@@ -14,8 +14,9 @@ mecánicos, ``FLUX_DIM`` en los térmicos).
   Hex20, Hex27 y ``Hex8Thermal``. La numeración de nodos medios del
   proyecto coincide con la de VTK (verificado contra meshio).
 - Cualquier elemento de 2 nodos (trusses, cables, frames 2D/3D) → ``line``.
-  No aportan campos de esfuerzo; sus fuerzas internas se consumen vía
-  ``SolveResult.element_forces`` (ADR 0002).
+  No aportan campos de esfuerzo; sí sus **fuerzas internas** de extremo
+  (ADR 0002), como campos por celda ``<comp>_i`` / ``<comp>_j`` (ver
+  "Fuerzas internas por celda").
 - Un elemento puede forzar su celda declarando ``VTK_CELL_TYPE`` como
   atributo de clase (p. ej. una cuña de 6 nodos en 3D, que la tabla
   confundiría con ``triangle6``).
@@ -54,6 +55,16 @@ Campos por celda (térmicos)
 ---------------------------
 ``Flux``: vector ``q`` [W/m²] promediado sobre los puntos de Gauss,
 completado con ceros a 3 componentes.
+
+Fuerzas internas por celda (estructurales 1D)
+---------------------------------------------
+``N_i``, ``N_j``, ``V_i``, ``M_i``… (``Vy``, ``Vz``, ``T``, ``My``, ``Mz`` en
+3D): fuerzas internas de extremo de ``internal_forces`` (ADR 0002) en ejes
+locales, nodo i y nodo j, convención de Reglas.md §5. ``NaN`` en las celdas
+sin esa componente. Con carga distribuida, pase
+``element_forces=SolveResult.element_forces`` para que descuenten la carga
+equivalente. ``Internal_State`` de un marco con sección por fibras promedia la
+``PRIMARY_STATE_VAR`` sobre fibras y puntos de Gauss.
 
 Campos nodales
 --------------
@@ -213,34 +224,97 @@ def _element_average_flux(elem, U: np.ndarray | None) -> np.ndarray:
     return out
 
 
-def _extract_state_scalar(sv: dict, primary_key: str | None = None) -> float:
+def _extract_state_scalar(sv: dict, primary_key=None) -> float:
     """Escalar representativo del dict de variables de estado de un punto.
 
-    Prioriza ``primary_key``; si no está, el primer escalar numérico.
+    Prioriza ``primary_key`` (un nombre o una secuencia de nombres, en orden
+    de preferencia); si no está, el primer escalar numérico.
     """
     if not isinstance(sv, dict):
         return 0.0
-    if primary_key and primary_key in sv:
-        v = sv[primary_key]
-        if isinstance(v, (int, float, np.floating, np.integer)) and not isinstance(v, bool):
-            return float(v)
+    keys = (primary_key,) if isinstance(primary_key, str) else tuple(primary_key or ())
+    for key in keys:
+        if key and key in sv:
+            v = sv[key]
+            if isinstance(v, (int, float, np.floating, np.integer)) and not isinstance(v, bool):
+                return float(v)
     for v in sv.values():
         if isinstance(v, (int, float, np.floating, np.integer)) and not isinstance(v, bool):
             return float(v)
     return 0.0
 
 
+def _flatten_states(entries):
+    """Estados de punto material de ``state.vars``: los de un sólido son un
+    dict por punto de Gauss; los de un marco con sección, una lista (un
+    estado por fibra) por punto de Gauss."""
+    for sv in entries:
+        if isinstance(sv, (list, tuple)):
+            yield from _flatten_states(sv)
+        elif sv is not None:
+            yield sv
+
+
 def _state_var_avg(elem) -> float:
-    """Promedio de la ``PRIMARY_STATE_VAR`` del material sobre el estado committed."""
+    """Promedio de la ``PRIMARY_STATE_VAR`` de los materiales del elemento
+    sobre el estado committed de todos sus puntos materiales (puntos de
+    Gauss; en un marco con sección, además, sus fibras)."""
     state_vars_list = getattr(getattr(elem, "state", None), "vars", None)
     if state_vars_list is None:
         return 0.0
-    primary_key = getattr(getattr(elem, "material", None), "PRIMARY_STATE_VAR", None)
-    vals = [_extract_state_scalar(sv, primary_key)
-            for sv in state_vars_list if sv is not None]
+    materials = elem.materials() if hasattr(elem, "materials") else []
+    keys = [k for k in (getattr(m, "PRIMARY_STATE_VAR", None) for m in materials) if k]
+    vals = [_extract_state_scalar(sv, keys) for sv in _flatten_states(state_vars_list)]
     if not vals:
         return 0.0
     return sum(vals) / len(vals)
+
+
+def _internal_force_fields(elements, slot, conn_by_type: dict,
+                           U: np.ndarray | None,
+                           element_forces: dict | None) -> dict:
+    """Fuerzas internas de extremo de los elementos estructurales 1D como
+    campos por celda: ``{nombre: {tipo_de_celda: (n_celdas,)}}``.
+
+    Por cada componente de :class:`~solidum.core.element_forces.ElementForces`
+    (``N``, ``V``, ``M`` en los marcos 2D; ``N``, ``Vy``, ``Vz``, ``T``,
+    ``My``, ``Mz`` en los 3D; ``N`` en barras y cables) hay dos campos,
+    ``<comp>_i`` y ``<comp>_j``: el valor en el nodo i y en el j, en ejes
+    locales y con la convención de Reglas.md §5. Las celdas que no tienen
+    esa componente (sólidos, una barra en el campo ``M_i``…) valen ``NaN``,
+    no cero: "no aplica" no es "vale cero".
+
+    Fuente: ``element_forces`` (p. ej. ``SolveResult.element_forces``, que ya
+    descuenta la carga distribuida) si se pasa; si no, ``internal_forces(U)``
+    de cada elemento que lo implementa, sin carga equivalente (fuerzas
+    nodales ``K·u``: exactas sin carga distribuida sobre el elemento).
+    """
+    from solidum.core.element import Element
+
+    if element_forces is None and U is None:
+        return {}
+    fields: dict[str, dict[str, np.ndarray]] = {}
+    for p, elem in enumerate(elements):
+        if slot[p] is None:
+            continue
+        if element_forces is not None:
+            forces = element_forces.get(elem.id)
+        elif type(elem).internal_forces is Element.internal_forces:
+            forces = None
+        else:
+            forces = elem.internal_forces(U)
+        if forces is None:
+            continue
+        cell_type, idx = slot[p]
+        for comp, values in forces.components.items():
+            values = np.asarray(values, dtype=float).reshape(-1)
+            for k, end in enumerate(("i", "j")):
+                name = f"{comp}_{end}"
+                per_type = fields.setdefault(name, {})
+                if cell_type not in per_type:
+                    per_type[cell_type] = np.full(len(conn_by_type[cell_type]), np.nan)
+                per_type[cell_type][idx] = values[k]
+    return fields
 
 
 def _family_cell_fields(fam, U: np.ndarray | None):
@@ -284,7 +358,8 @@ class VtkExporter:
 
     def export(self, filepath: str, U: np.ndarray | None = None,
                F_ext: np.ndarray | None = None,
-               nodal_vars: list | None = None, elem_vars: list | None = None):
+               nodal_vars: list | None = None, elem_vars: list | None = None,
+               element_forces: dict | None = None):
         """Escribe ``filepath`` (``.vtu``, ``.vtk``… según extensión).
 
         Parameters
@@ -295,6 +370,12 @@ class VtkExporter:
         nodal_vars, elem_vars
             Filtro opcional de nombres de campos nodales / por celda. ``None``
             exporta todos los disponibles.
+        element_forces
+            ``{id de elemento: ElementForces}`` de los elementos
+            estructurales 1D, p. ej. ``SolveResult.element_forces``, que
+            descuenta la carga distribuida (peso propio, fuerza de cuerpo).
+            ``None`` ⇒ se evalúa ``internal_forces(U)`` de cada elemento,
+            exacto cuando no hay carga distribuida sobre él.
         """
         if meshio is None:
             _log.warning("La librería 'meshio' no está instalada. Omitiendo exportación VTK.")
@@ -457,6 +538,14 @@ class VtkExporter:
             cell_data["Von_Mises"] = vm_arrays
         if any_temperature and want_cell("Flux"):
             cell_data["Flux"] = flux_arrays
+        force_fields = _internal_force_fields(elements, slot, conn_by_type,
+                                              U_eval, element_forces)
+        for name, per_type in force_fields.items():
+            if want_cell(name):
+                cell_data[name] = [
+                    per_type.get(ct, np.full(len(conn), np.nan))
+                    for ct, conn in conn_by_type.items()
+                ]
         if not cell_data:
             cell_data = None
 

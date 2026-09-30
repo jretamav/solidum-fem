@@ -18,6 +18,7 @@ from solidum.user import available_user_modules, load_user_module
 
 from solidum.registry import (
     MaterialRegistry,
+    SectionRegistry,
     ElementRegistry,
     SolverRegistry,
     QuadratureRegistry,
@@ -45,6 +46,8 @@ from solidum.materials.damage_2d import IsotropicDamage2D
 from solidum.materials.cable_1d import CableMaterial1D
 
 from solidum.materials.thermal_conduction import ThermalConduction
+
+from solidum.sections import FiberSection
 
 from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from solidum.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot

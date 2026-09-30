@@ -20,7 +20,7 @@ Régimen de **linealidad geométrica** (pequeños desplazamientos y rotaciones).
 - Secciones planas y perpendiculares al eje neutro deformado (igual que Frame2DEuler).
 - Flexiones en los dos planos **desacopladas** entre sí (ejes principales de inercia).
 - Torsión de Saint-Venant pura (sin alabeo). Válida para secciones macizas o cerradas; abiertas de pared delgada requerirían formulación con alabeo (fuera de alcance).
-- Material isótropo 1D; $G = E/[2(1+\nu)]$.
+- Camino con material: material isótropo 1D elástico lineal; $G = E/[2(1+\nu)]$. Camino con sección: la torsión es elástica y desacoplada, con el $GJ$ que declara la sección ([FiberSection](FiberSection.md) §1).
 
 ### 2. Sistema de ejes locales
 Tres ejes ortonormales en cada elemento:
@@ -29,11 +29,18 @@ Tres ejes ortonormales en cada elemento:
 
 La orientación de $\hat{\mathbf y}, \hat{\mathbf z}$ no está determinada solo por la dirección del eje — hace falta un **vector de referencia** proporcionado por el usuario (o un default). Es la diferencia estructural respecto al caso 2D, donde el plano era único.
 
-### 3. Medidas de deformación / acciones internas
-- Axial: $\varepsilon_{axial} = du/ds$, tensión $N = EA\,\varepsilon_{axial}$ (o $N = A\,\sigma$ con $\sigma$ del material).
+### 3. Medidas de deformación / fuerzas internas
+- Axial: $\varepsilon_{axial} = du/ds$, fuerza axial $N = EA\,\varepsilon_{axial}$ (o $N = A\,\sigma$ con $\sigma$ del material).
 - Flexión en plano $xy$: curvatura $\kappa_z = d^2v/ds^2$, momento $M_z = EI_z\,\kappa_z$.
-- Flexión en plano $xz$: curvatura $\kappa_y = d^2w/ds^2$, momento $M_y = EI_y\,\kappa_y$.
+- Flexión en plano $xz$: curvatura $\kappa_y = -d^2w/ds^2$ (con $w' = -\theta_y$ por la regla de la mano derecha), momento $M_y = EI_y\,\kappa_y$.
 - Torsión: $d\theta_x/ds$, momento torsor $M_x = GJ\,d\theta_x/ds$.
+
+**Constitutiva: dos caminos excluyentes** ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md)):
+
+- **Con `material` + `A`, `Iy`, `Iz`, `J`** (+ `nu`): las leyes anteriores en forma cerrada. Sólo materiales **elásticos lineales** (`IS_LINEAR_ELASTIC = True`); un material inelástico se rechaza al construir con un mensaje que remite a la sección por fibras.
+- **Con `section`** (+ `n_ip`): $N$, $M_y$, $M_z$ los da la ley de sección, que integra el esfuerzo $\sigma_{xx}$ de cada fibra con su material 1D ([FiberSection](FiberSection.md) §2-§4); la torsión es $T = GJ\,\theta_x'$ con el `GJ` de la sección, obligatorio.
+
+Hasta el 2026-09-29 el camino con material admitía materiales inelásticos y escalaba toda la matriz local con la $E_t$ axial, torsión incluida ($G = E_t/[2(1+\nu)]$); esa ley desapareció (ver *Diálogo*).
 
 ### 4. Equilibrio — forma débil
 PTV. El elemento calcula solo el lado interno:
@@ -82,13 +89,17 @@ Forma concreta en términos de los 12 DOFs locales (la matriz completa vive en l
 
 ### 9. Fuerzas internas
 $$\mathbf F_{\text{int,local}} = \mathbf K_{\text{local}}\,\mathbf u_{\text{local}},$$
-con la componente axial corregida por el $\sigma$ que devuelve el material: $F_1 = -\sigma A$, $F_7 = +\sigma A$. El resto de componentes viene del producto lineal (permite materiales no-lineales en la rama axial).
+con la componente axial escrita con el $\sigma$ que devuelve el material, $F_1 = -\sigma A$, $F_7 = +\sigma A$; con material elástico lineal (el único admitido en este camino) coincide con la fila axial del producto.
+
+Camino con sección: con $\mathbf e_g = [\varepsilon_0,\ \kappa_y,\ \kappa_z]^\top(x_g) = \mathbf B_g\,\mathbf u_{\text{local}}$, donde la fila de $\kappa_z$ es $[N_1'', N_2'', N_3'', N_4'']$ sobre $(v_1, \theta_{z1}, v_2, \theta_{z2})$ y la de $\kappa_y$ es $[-N_1'', N_2'', -N_3'', N_4'']$ sobre $(w_1, \theta_{y1}, w_2, \theta_{y2})$ ([FiberSection](FiberSection.md) §5),
+$$\mathbf F_{\text{int,local}} = \sum_g w_g\,\tfrac{L}{2}\,\mathbf B_g^\top\,\mathbf s_g, \qquad \mathbf K_{\text{local}} = \sum_g w_g\,\tfrac{L}{2}\,\mathbf B_g^\top\,\mathbf k_{s,g}\,\mathbf B_g,$$
+más la torsión elástica: $GJ/L$ en el bloque $(\theta_{x1}, \theta_{x2})$ de $\mathbf K_{\text{local}}$ y $\mp T$ con $T = GJ\,(\theta_{x2} - \theta_{x1})/L$ en $\mathbf F_{\text{int,local}}$. Con fibras elásticas y `n_ip` ≥ 2 reproduce la matriz de §8 exactamente.
 
 ### 10. Ensamblaje global
 $$\mathbf K_{\text{global}} = \mathbf T^\top\,\mathbf K_{\text{local}}\,\mathbf T, \qquad \mathbf F_{\text{int}} = \mathbf T^\top\,\mathbf F_{\text{int,local}}.$$
 
 ### 11. Cuadratura
-No aplica (forma cerrada; integración analítica de los polinomios de Hermite).
+Camino con material: no aplica (forma cerrada; integración analítica de los polinomios de Hermite). Camino con sección: Gauss-Legendre de `n_ip` puntos a lo largo del elemento (3 por defecto, mínimo 2), con `N_INTEGRATION_POINTS = n_ip` como atributo de instancia.
 
 ---
 
@@ -103,7 +114,7 @@ interface:
   dof_names: [ux, uy, uz, rx, ry, rz]
   n_nodes: 2
   strain_dim: 1
-  n_integration_points: 1
+  n_integration_points: 1   # camino con material; con section, N_INTEGRATION_POINTS = n_ip (atributo de instancia)
 
 admission:                # criterio de admisión al programa principal (Reglas.md §1)
   textbooks:
@@ -114,19 +125,21 @@ admission:                # criterio de admisión al programa principal (Reglas.
     - abaqus: "B33"
 
 parameters:
-  - { name: A,  type: float, required: true, desc: "Área de la sección transversal" }
-  - { name: Iy, type: float, required: true, desc: "Momento de inercia alrededor del eje local y" }
-  - { name: Iz, type: float, required: true, desc: "Momento de inercia alrededor del eje local z" }
-  - { name: J,  type: float, required: true, desc: "Constante torsional de Saint-Venant" }
-  - { name: nu, type: float, required: false, default: 0.3, desc: "Coeficiente de Poisson (si el material no lo expone)" }
+  - { name: A,  type: float, required: false, desc: "Área de la sección transversal. Obligatoria con material; no se declara con section" }
+  - { name: Iy, type: float, required: false, desc: "Momento de inercia alrededor del eje local y. Obligatorio con material; no se declara con section" }
+  - { name: Iz, type: float, required: false, desc: "Momento de inercia alrededor del eje local z. Obligatorio con material; no se declara con section" }
+  - { name: J,  type: float, required: false, desc: "Constante torsional de Saint-Venant. Obligatoria con material; con section la torsión usa el GJ de la sección" }
+  - { name: nu, type: float, required: false, default: 0.3, desc: "Coeficiente de Poisson (si el material no lo expone). Sólo con material" }
   - { name: ref_vector, type: list, required: false, default: "[0, 0, 1]",
       desc: "Vector 3D de referencia que fija la orientación de los ejes locales y, z de la sección. Default: eje z global." }
+  - { name: section, type: "id de sections", required: false, desc: "Sección de marco (FiberSection) con GJ declarado. Excluyente con material, A, Iy, Iz, J y nu (ADR 0021)" }
+  - { name: n_ip, type: int, required: false, default: 3, desc: "Puntos de Gauss-Legendre a lo largo del elemento, ≥ 2. Sólo con section" }
 
 material_contract:
   signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
   strain_kind: "axial escalar (ε = (u_2 − u_1)/L en sistema local)"
-  nonlinearity_model: "E_tangent escala toda la matriz local; G se recalcula como E_t/[2(1+ν)]"
-  poisson_source: "material.nu si existe; en su defecto parámetro `nu` del elemento"
+  nonlinearity_model: "camino con material: sólo materiales elásticos lineales (IS_LINEAR_ELASTIC = True; un material inelástico se rechaza al construir). La no linealidad material entra por section (FiberSection): cada fibra evalúa su material 1D con ε = ε₀ − y·κ_z + z·κ_y; torsión elástica desacoplada con el GJ de la sección"
+  poisson_source: "material.nu si existe; en su defecto parámetro `nu` del elemento (sólo camino con material)"
 
 conventions:
   sign: "σ > 0 ⇔ ε > 0 (elongación); momentos siguen regla de la mano derecha respecto a los ejes locales"
@@ -143,7 +156,8 @@ validity:
 out_of_scope:
   - grandes rotaciones espaciales (requeriría Frame3DCorot; pendiente)
   - torsión con alabeo restringido (secciones abiertas de pared delgada)
-  - plasticidad distribuida en la sección (fibras)
+  - material inelástico con material + A, Iy, Iz, J (se rechaza al construir; la plasticidad y el daño entran por section, FiberSection)
+  - degradación de la torsión y su interacción con N, My, Mz en el camino con sección (torsión elástica desacoplada, FiberSection §7)
   - pandeo por bifurcación
   - deformación por cortante transversal significativa (Timoshenko 3D, fuera de alcance)
   - "fuerzas de cuerpo distribuidas: el usuario reparte carga a los nodos"
@@ -178,6 +192,14 @@ acceptance:
     expect: "K_global = K_globalᵀ"
     tol_abs: 1.0e-8
 
+  - name: guarda de material elástico lineal            # añadido 2026-09-29 (ADR 0021)
+    setup: "material Elastoplastic1D o IsotropicDamage1D con A, Iy, Iz, J"
+    expect: "ValueError al construir, con un mensaje que nombra IS_LINEAR_ELASTIC y remite a FiberSection con 'section'; una sección sin GJ también se rechaza"
+
+  - name: camino con sección                            # añadido 2026-09-29 (ADR 0021)
+    setup: "section = FiberSection; casos de acceptance de docs/specs/FiberSection.md"
+    expect: "reproducción elástica con n_ip = 2 (elemento oblicuo, sección rectangular y mixta), M–κ en los dos ejes, interacción N–M, sección circular a 45°, signos"
+
 references:
   - "Przemieniecki J.S., Theory of Matrix Structural Analysis, Tabla 11.3"
   - "Cook R.D., Concepts and Applications of FEA, §2.8"
@@ -189,7 +211,7 @@ references:
 ## Implementación
 
 - **Archivo**: [solidum/elements/frame3d.py](../../solidum/elements/frame3d.py) — archivo propio, sin dependencia de ningún otro elemento.
-- **Clase**: `Frame3D` — hereda directamente de `Element`. Métodos privados `_build_local_frame` (longitud, matriz $\boldsymbol{\lambda}$ 3×3 y $\mathbf T$ 12×12) y `_build_local_stiffness` (matriz $\mathbf K_{\text{local}}$ 12×12 con bloques axial, torsión y flexión en ambos planos).
+- **Clase**: `Frame3D(FrameSectionMixin, Element)`. Métodos privados `_build_local_frame` (longitud, matriz $\boldsymbol{\lambda}$ 3×3 y $\mathbf T$ 12×12), `_build_local_stiffness` (matriz $\mathbf K_{\text{local}}$ 12×12 con bloques axial, torsión y flexión en ambos planos, camino con material), `_build_section_B` y `_section_element_state` (camino con sección). Comparte con los marcos planos sólo la constitutiva genérica de `FrameSectionMixin` ([solidum/elements/frame/_section.py](../../solidum/elements/frame/_section.py), ADR 0021). `REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}`.
 - **Tests**: [tests/test_frame3d.py](../../tests/test_frame3d.py) · `TestFrame3DAcceptance` — cubre los 5 criterios + validación de `ref_vector` paralelo al eje + registro:
   - `test_acceptance_respuesta_axial_pura`
   - `test_acceptance_flexion_xy_coincide_con_frame2d`
@@ -198,11 +220,14 @@ references:
   - `test_acceptance_simetria_K`
   - `test_rechazo_ref_vector_paralelo`
   - `test_registro_en_registry`
+  - Criterio 6 (guarda): [tests/test_fiber_section.py](../../tests/test_fiber_section.py) · `TestGuardas` (`test_material_inelastico_remite_a_la_seccion`, `test_exactamente_un_camino`, `test_frame3d_exige_GJ`).
+  - Criterio 7 (camino con sección): [tests/validation/test_fiber_section_validation.py](../../tests/validation/test_fiber_section_validation.py) (casos 1, 2, 3, 6 y 7 de la spec FiberSection) y, en `tests/test_fiber_section.py`, `TestTangente.test_frame3d_con_torsion`, `TestMarcosConSeccion.test_torsion_elastica_desacoplada`, `TestMasa`, `TestPesoPropio` y `TestYaml.test_frame3d_torsion_con_GJ_del_yaml`.
 - **Notas de traducción**:
   - La matriz $\boldsymbol{\lambda}$ 3×3 se construye como $[\hat{\mathbf x}^\top; \hat{\mathbf y}^\top; \hat{\mathbf z}^\top]$ — las filas son los ejes locales expresados en coordenadas globales. $\mathbf T$ 12×12 es un `blkdiag` de cuatro copias de $\boldsymbol{\lambda}$ (traslaciones y rotaciones transforman como vectores en 3D infinitesimal).
   - El default de `ref_vector` es `[0, 0, 1]`; el fallback `[1, 0, 0]` se activa cuando $|\hat{\mathbf x} \cdot \hat{\mathbf z}_{\text{global}}| > 0.99$ (barra cercanamente vertical). Ambas rutas emiten advertencia por consola la primera vez que se usan con default.
   - La matriz $\mathbf K_{\text{local}}$ se construye rellenando entradas no nulas en sus 4 bloques desacoplados (axial, torsión, flexión $xy$, flexión $xz$). Los signos de la flexión $xz$ están invertidos respecto a la flexión $xy$ porque la pareja $(u_z, r_y)$ tiene orientación dextrógira opuesta a $(u_y, r_z)$: este punto se verifica explícitamente en `test_acceptance_flexion_xz`.
-  - `compute_internal_forces` devuelve cortantes, torsión y momentos en ambos extremos separados — útil para post-proceso estructural (diagramas de fuerzas internas).
+  - `compute_internal_forces` devuelve cortantes, torsión y momentos en ambos extremos separados — útil para post-proceso estructural (diagramas de fuerzas internas). Con sección añade `section_deformations` y `section_forces` `(n_ip, 3)` = $[\varepsilon_0, \kappa_y, \kappa_z]$ y $[N, M_y, M_z]$ en los puntos de Gauss; como `internal_forces`, evalúa sobre una instantánea del trial y la restaura.
+  - Camino con sección: sin `nu` (`self.nu = None`); la torsión la da `section.GJ`, y una sección sin `GJ` se rechaza al construir. Masa con $(\rho A, \rho I_y, \rho I_z)$ de la sección y $\rho J_p = \rho I_y + \rho I_z$, en las mismas funciones de masa consistente y concentrada; peso propio con $\rho A$ y fuerza de cuerpo con el área bruta $\sum A_i$.
 
 ---
 
@@ -212,3 +237,4 @@ references:
 - **2026-04-21** · Decisión sobre `ref_vector` vs "tercer nodo de orientación". Se optó por `ref_vector` (vector 3D proyectado al plano perpendicular al eje) por ser más compacto en YAML y no requerir nodos fantasma en la malla. El default `[0, 0, 1]` cubre la mayoría de casos de ingeniería estructural (estructuras terrestres con gravedad en $-z$); el fallback para barras verticales usa `[1, 0, 0]` con advertencia explícita.
 - **2026-04-21** · Verificación cruzada con `Frame2DEuler`: el criterio 2 aplica una viga alineada con el eje $x$ global bajo carga en $y$; los desplazamientos resultantes deben coincidir con la solución 2D clásica $v = PL^3/(3EI_z)$, $\theta = PL^2/(2EI_z)$. El test lo verifica a 8 decimales. Esto blinda la coherencia dimensional: el 3D se reduce al 2D sin error acumulado cuando el problema es efectivamente plano.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones.
+- **2026-09-29** · Sección por fibras, etapa 1 ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md), [FiberSection](FiberSection.md)). El modelo no lineal anterior —la $E_t$ de la deformación axial escalando toda la matriz local, con $G = E_t/[2(1+\nu)]$— desaparece: con fluencia axial anulaba flectores y torsor, con ablandamiento les cambiaba el signo. Dos caminos excluyentes: `material` + `A`, `Iy`, `Iz`, `J` (+ `nu`), la forma cerrada, sin cambio de resultados, sólo con materiales `IS_LINEAR_ELASTIC = True`; y `section` + `n_ip`, con $\mathbf e = [\varepsilon_0, \kappa_y, \kappa_z]$ integrado en Gauss-Legendre y torsión elástica desacoplada con el `GJ` de la sección (obligatorio). Contrato: parámetros `section` y `n_ip`; `A`, `Iy`, `Iz`, `J` obligatorios sólo con material; criterios 6 (guarda) y 7 (camino con sección). Corrección de notación en §3, sin efecto en código ni resultados: $\kappa_y = -d^2w/ds^2$ (antes $+d^2w/ds^2$), la definición coherente con $M_y = EI_y\,\kappa_y$, con $M_y > 0$ ⇒ tracción en $z > 0$ (Reglas.md §5) y con la matriz de §8, que ya usaba $w' = -\theta_y$.

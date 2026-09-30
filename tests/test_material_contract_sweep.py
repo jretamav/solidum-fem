@@ -216,6 +216,54 @@ class TestContratoDeclarativo(unittest.TestCase):
                 clase = MaterialRegistry.get(nombre)
                 self.assertIsInstance(clase.IS_SYMMETRIC, bool)
                 self.assertIsInstance(clase.IS_UNILATERAL, bool)
+                self.assertIsInstance(clase.IS_LINEAR_ELASTIC, bool)
+
+    def test_is_linear_elastic_no_sobredeclara(self):
+        """`IS_LINEAR_ELASTIC = True` es una promesa que los marcos creen.
+
+        Con ella admiten el material en su forma cerrada elástica (ADR 0021),
+        que escala toda la rigidez local con el módulo del material: un
+        material con historia, unilateral o no lineal que la declarase daría
+        flectores incorrectos en silencio. Se exige lo que la promesa
+        implica: sin variables internas (`PRIMARY_STATE_VAR` y
+        `STATE_SCHEMA` vacíos), bilateral, σ homogénea de grado 1 y tangente
+        constante e igual a la secante. Declarar `False` siendo elástico sólo
+        cierra una puerta, así que no se comprueba esa dirección.
+        """
+        for nombre in nombres_programa_principal(MaterialRegistry):
+            material = _construir(nombre)
+            if not material.IS_LINEAR_ELASTIC:
+                continue
+            with self.subTest(material=nombre):
+                self.assertIsNone(material.PRIMARY_STATE_VAR)
+                self.assertEqual(material.STATE_SCHEMA, {})
+                self.assertFalse(material.IS_UNILATERAL)
+                dim = material.STRAIN_DIM
+                rng = np.random.default_rng(7)
+                _, C0, _ = material.compute_state(np.zeros(dim), None)
+                C0 = np.atleast_2d(np.asarray(C0, dtype=float))
+                for escala in (1.0e-6, 1.0e-3, -2.0e-2):
+                    eps = escala * rng.standard_normal(dim)
+                    eps_in = eps[0] if dim == 1 else eps
+                    sigma, C, _ = material.compute_state(eps_in, None)
+                    sigma = np.atleast_1d(np.asarray(sigma, dtype=float))
+                    np.testing.assert_allclose(
+                        np.atleast_2d(np.asarray(C, float)), C0, rtol=1e-12,
+                        err_msg=f"{nombre}: tangente no constante pese a "
+                                f"declarar IS_LINEAR_ELASTIC")
+                    np.testing.assert_allclose(
+                        sigma, C0 @ np.atleast_1d(eps), rtol=1e-12,
+                        atol=1e-12 * np.abs(C0).max() * np.abs(eps).max(),
+                        err_msg=f"{nombre}: σ ≠ C·ε pese a declarar "
+                                f"IS_LINEAR_ELASTIC")
+
+    def test_los_elasticos_del_catalogo_declaran_is_linear_elastic(self):
+        """Los cuatro elásticos lineales del catálogo lo declaran (ADR 0021
+        §4): si uno lo perdiera, dejaría de poder usarse en los marcos con
+        propiedades geométricas."""
+        for nombre in ('Elastic1D', 'Elastic2D', 'Elastic3D', 'Orthotropic2D'):
+            with self.subTest(material=nombre):
+                self.assertTrue(MaterialRegistry.get(nombre).IS_LINEAR_ELASTIC)
 
     def test_density_es_opcional_en_el_constructor(self):
         """ADR 0008: sólo peso propio y masa la exigen.

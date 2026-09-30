@@ -490,8 +490,14 @@ class Assembler:
         missing_density: list[str] = []
         missing_method: list[str] = []
         for element in self.domain.elements.values():
-            mat = element.material
-            if mat is None or getattr(mat, "density", None) is None:
+            # Todos los materiales del elemento (ADR 0021 §4): un marco con
+            # sección por fibras tiene uno por fibra.
+            mats = element.materials()
+            if not mats:
+                missing_density.append("<sin material>")
+            for mat in mats:
+                if getattr(mat, "density", None) is not None:
+                    continue
                 # Un material que sabe explicar su propio requisito lo hace
                 # él mismo. El mensaje genérico de abajo está escrito para el
                 # dominio mecánico —donde `density = 0.0` es legítimo en un
@@ -505,9 +511,7 @@ class Assembler:
                 explicar = getattr(mat, "volumetric_capacity", None)
                 if callable(explicar):
                     explicar(consumer="el ensamblaje de la matriz de capacidad")
-                missing_density.append(
-                    type(mat).__name__ if mat is not None else "<sin material>"
-                )
+                missing_density.append(type(mat).__name__)
             if type(element).compute_mass_matrix is Element.compute_mass_matrix:
                 missing_method.append(type(element).__name__)
 
@@ -650,24 +654,27 @@ class Assembler:
             f"{name}: dimensión inesperada ({arr.size}). Esperado 2 ó 3 componentes."
         )
 
-    def _iterate_body_force(self, get_b_for_element: Callable) -> np.ndarray:
+    @staticmethod
+    def _vector_for_element(element, v3: np.ndarray) -> np.ndarray:
+        """Componentes 2D ó 3D de un vector de R³ según la dimensión del
+        elemento (``'uz' in DOF_NAMES`` ⇒ 3D)."""
+        return v3 if 'uz' in element.DOF_NAMES else v3[:2]
+
+    def _iterate_body_force(self, load_for_element: Callable) -> np.ndarray:
         """Recorrido interno común a `assemble_body_load` y `assemble_self_weight`.
 
         Itera sobre todos los elementos que declaran `compute_body_load` y
-        delega en `get_b_for_element(element) -> np.ndarray` la obtención del
-        vector de fuerza de cuerpo apropiado para cada uno (en sus
-        componentes 2D ó 3D según `'uz' in element.DOF_NAMES`).
+        delega en `load_for_element(element) -> np.ndarray` el vector nodal
+        consistente de cada uno (fuerza de cuerpo o peso propio).
         """
         self._ensure_topology()
 
         F_body = np.zeros(self.ndof)
         equivalent_loads: dict[int, np.ndarray] = {}
         for i, element in enumerate(self.domain.elements.values()):
-            method = getattr(element, "compute_body_load", None)
-            if method is None:
+            if getattr(element, "compute_body_load", None) is None:
                 continue
-            b_elem = get_b_for_element(element)
-            f_e = np.asarray(method(b_elem), dtype=float)
+            f_e = np.asarray(load_for_element(element), dtype=float)
             F_body[self._elem_dof_indices[i]] += f_e
             equivalent_loads[element.id] = f_e
         self.equivalent_loads = equivalent_loads
@@ -702,17 +709,19 @@ class Assembler:
             Vector global de fuerzas nodales consistentes con `∫NᵀbA dx`.
         """
         b3 = self._promote_to_3d(b, "assemble_body_load")
-
-        def _b_for_element(element):
-            return b3 if 'uz' in element.DOF_NAMES else b3[:2]
-
-        return self._iterate_body_force(_b_for_element)
+        return self._iterate_body_force(
+            lambda element: element.compute_body_load(self._vector_for_element(element, b3)))
 
     def assemble_self_weight(self, g) -> np.ndarray:
-        """Acumula peso propio usando `material.density` de cada elemento (ADR 0008).
+        """Acumula peso propio usando la `density` de los materiales de cada
+        elemento (ADR 0008).
 
-        Cada elemento ve `b_element = material.density · g`. Comportamiento
-        según el valor de `density` del material asignado:
+        Cada elemento calcula su vector con ``compute_self_weight(g)``: por
+        defecto la fuerza de cuerpo ``b = material.density · g``; un marco
+        con sección por fibras usa ``ρA = Σ ρ_i A_i`` de su sección (ADR
+        0021). Antes de calcular se comprueban, agregadas, las densidades de
+        **todos** los materiales de cada elemento (``element.materials()``).
+        Comportamiento según el valor de `density` de cada material:
 
         - `density is None` (no declarado al construir el material): el
           cálculo no puede completarse físicamente — falta información de
@@ -747,24 +756,21 @@ class Assembler:
         warned_materials: set[int] = set()
 
         missing: list[str] = []
-
-        def _b_for_element(element):
-            density = element.material.density
-            if density is None:
-                missing.append(type(element.material).__name__)
-                return 0.0 * (g3 if 'uz' in element.DOF_NAMES else g3[:2])  # placeholder; falla más abajo
-            if density == 0.0 and id(element.material) not in warned_materials:
-                warned_materials.add(id(element.material))
-                _log.warning(
-                    f"assemble_self_weight: material '{type(element.material).__name__}' "
-                    f"declara density=0.0 explícitamente; su aporte al peso propio "
-                    f"es nulo. Caso legítimo si el material representa restricción/penalty "
-                    f"sin masa física; revísalo si esperabas peso propio aquí."
-                )
-            g_elem = g3 if 'uz' in element.DOF_NAMES else g3[:2]
-            return density * g_elem
-
-        F = self._iterate_body_force(_b_for_element)
+        for element in self.domain.elements.values():
+            if getattr(element, "compute_body_load", None) is None:
+                continue
+            for mat in element.materials():
+                density = getattr(mat, "density", None)
+                if density is None:
+                    missing.append(type(mat).__name__)
+                elif density == 0.0 and id(mat) not in warned_materials:
+                    warned_materials.add(id(mat))
+                    _log.warning(
+                        f"assemble_self_weight: material '{type(mat).__name__}' "
+                        f"declara density=0.0 explícitamente; su aporte al peso propio "
+                        f"es nulo. Caso legítimo si el material representa restricción/penalty "
+                        f"sin masa física; revísalo si esperabas peso propio aquí."
+                    )
         if missing:
             unique = sorted(set(missing))
             raise ValueError(
@@ -775,4 +781,5 @@ class Assembler:
                 "masa física (penalty/restricción), declarar `density=0.0` "
                 "explícitamente para silenciar este error."
             )
-        return F
+        return self._iterate_body_force(
+            lambda element: element.compute_self_weight(self._vector_for_element(element, g3)))

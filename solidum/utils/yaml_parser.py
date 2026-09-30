@@ -257,7 +257,8 @@ class YamlParser:
         elif nodes_data:
             errors.append("El bloque 'nodes' debe ser una lista de diccionarios.")
 
-        # --- Familias de material (ADR 0020, P2): una sección por registro ---
+        # --- Familias (ADR 0020, P2; secciones de marco, ADR 0021): una
+        # sección por registro, con su propio espacio de ids ---
         known_ids = {}
         for fam in families:
             section, label = fam.YAML_SECTION, fam.YAML_LABEL
@@ -270,6 +271,11 @@ class YamlParser:
                     continue
                 if 'id' not in mat:
                     errors.append(f"{ctx}: falta el campo obligatorio 'id'.")
+                elif mat['id'] in ids:
+                    # Un id repetido reemplazaría en silencio al objeto
+                    # anterior, y los elementos (o las secciones) que lo
+                    # referencian tomarían otro distinto del declarado.
+                    errors.append(f"{ctx}: id de {label} duplicado ({mat['id']}).")
                 else:
                     ids.add(mat['id'])
                 if 'type' not in mat:
@@ -463,15 +469,74 @@ class YamlParser:
             raise ValueError("El bloque 'nodes' debe ser una lista de diccionarios.")
 
     def _parse_families(self, data: dict):
-        """Construye los objetos de cada familia de material a partir de su
-        sección (ADR 0020, P2). Cada familia tiene registro propio porque su
-        contrato difiere (``compute_stress(ε)``, ``compute_flux(∇T)``…) y así
-        dos familias no comparten el espacio de nombres de ``type``."""
+        """Construye los objetos de cada familia a partir de su sección (ADR
+        0020, P2). Cada familia tiene registro propio porque su contrato
+        difiere (``compute_stress(ε)``, ``compute_flux(∇T)``, ley de
+        sección…) y así dos familias no comparten el espacio de nombres de
+        ``type``.
+
+        Las familias se construyen **en orden de definición**. Un objeto cuya
+        clase declara el método de clase ``from_yaml(data, resolve)`` se
+        construye con él (ADR 0021 §2): así resuelve las referencias a
+        objetos de familias ya construidas que lleva anidadas (una sección
+        por fibras referencia materiales dentro de sus parches). El resto se
+        construye con ``cls(**datos)``. Los errores de las referencias y de
+        los datos de los objetos con ``from_yaml`` se acumulan y se lanzan
+        juntos como :class:`YamlValidationError`, con el contexto de cada uno.
+        """
+        errors: list = []
+        self._built_families: set = set()
         for fam in Registry.families():
             objects = self.family_objects.setdefault(fam.YAML_SECTION, {})
-            for mat_data in data.get(fam.YAML_SECTION, []) or []:
+            for i, mat_data in enumerate(data.get(fam.YAML_SECTION, []) or []):
                 kwargs = {k: v for k, v in mat_data.items() if k not in ('id', 'type')}
-                objects[mat_data['id']] = fam.create(mat_data['type'], **kwargs)
+                builder = getattr(fam.get(mat_data['type']), 'from_yaml', None)
+                if not callable(builder):
+                    objects[mat_data['id']] = fam.create(mat_data['type'], **kwargs)
+                    continue
+                where = f"{fam.YAML_SECTION}[{i}] (id={mat_data['id']})"
+                try:
+                    objects[mat_data['id']] = builder(kwargs, self._resolver(where))
+                except YamlValidationError as exc:
+                    errors.extend(exc.errors)
+                except (ValueError, TypeError) as exc:
+                    errors.append(f"{where}: {exc}")
+            self._built_families.add(fam.YAML_SECTION)
+        if errors:
+            raise YamlValidationError(errors)
+
+    def _resolver(self, where: str):
+        """Función ``resolve(registro, id, contexto)`` que recibe
+        ``from_yaml``: devuelve el objeto de id ``id`` de la familia
+        ``registro``, que debe estar ya construida, o lanza
+        :class:`YamlValidationError` con un mensaje que nombra el objeto que
+        la pide (``where``) y el ``contexto`` de la referencia dentro de él."""
+        def resolve(registry, ident, context: str):
+            section = getattr(registry, 'YAML_SECTION', None)
+            ctx = f"{where}, {context}"
+            if section is None:
+                raise YamlValidationError([
+                    f"{ctx}: {getattr(registry, '__name__', registry)} no es una "
+                    f"familia con sección YAML; no se puede referenciar por id."
+                ])
+            if section not in self._built_families:
+                raise YamlValidationError([
+                    f"{ctx}: la familia '{section}' todavía no está construida; sólo "
+                    f"se pueden referenciar familias definidas antes."
+                ])
+            objects = self.family_objects.get(section, {})
+            try:
+                found = ident in objects
+            except TypeError:
+                found = False
+            if not found:
+                raise YamlValidationError([
+                    f"{ctx}: referencia a {registry.YAML_LABEL} inexistente "
+                    f"({ident!r}): no está declarado en '{section}' (ids "
+                    f"declarados: {sorted(objects, key=str)})."
+                ])
+            return objects[ident]
+        return resolve
 
     def _parse_mesh_or_elements(self, data: dict):
         mesh_file = data.get('mesh', None)

@@ -16,6 +16,12 @@ unos pocos helpers libres en :mod:`_shared`:
 6×6) y los integradores nodales de masa, carga de cuerpo y traducción
 ``F_local → ElementForces``.
 
+La constitutiva común a los marcos (también a ``Frame3D``, fuera de este
+paquete) vive en :mod:`_section` (ADR 0021): forma cerrada con material
+elástico lineal o integración de una sección (``FiberSection``) en puntos
+de Gauss-Legendre, y la guarda que rechaza materiales inelásticos en el
+camino con material.
+
 Los reexports a nivel de paquete preservan los imports históricos
 ``from solidum.elements.frame import Frame2DEuler`` sin alterar al
 consumidor. La importación del paquete dispara el
