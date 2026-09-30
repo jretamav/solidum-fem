@@ -17,11 +17,13 @@ con cifras citables contra referencias externas.
 | 6 | Cubo de Lamé 3D — uniaxial + hidrostático | `test_cube_lame_3d.py` | Hex8, Tet4 + Elastic3D + LinearSolver | 3/3 |
 | 7 | MacNeal-Harder cantilever en 3D | `test_macneal_beam_3d.py` | Hex8 + Elastic3D + LinearSolver | 2/2 |
 | 8 | **Triaxial Drucker-Prager 3D** — superficie del cono | `test_triaxial_drucker_prager_3d.py` | Hex8 + DruckerPrager3D + NonlinearSolver | 5/5 |
-| 9 | **Uniaxial softening Damage3D** — curva σ-ε analítica | `test_uniaxial_softening_damage_3d.py` | Hex8 + IsotropicDamage3D + NonlinearSolver | 3/3 |
+| 9 | **Uniaxial softening Damage3D** — curva σ-ε analítica | `test_uniaxial_softening_damage_3d.py` | Hex8 + IsotropicDamage3D (energética, Mazars, von Mises modificado) + NonlinearSolver | 9/9 |
 | 10 | **Cilindro de Hill 3D** — J2 perfecta vía pipeline 3D | `test_hollow_cylinder_j2_3d.py` | Hex8 + VonMises3D + NonlinearSolver | 3/3 |
 | 11 | **Lámina ortótropa fuera de eje** — constantes aparentes vs Jones §2.8 | `test_off_axis_orthotropic.py` | Quad4, Tri3, Quad8, Quad9, Tri6 + Orthotropic2D + solución cerrada | 20/20 |
+| 12 | **Deformación equivalente del daño 2D/3D** — formas cerradas, restricción 2D↔3D, tangente | `test_damage_equivalent_strain_validation.py` | IsotropicDamage2D (esfuerzo plano y deformación plana) e IsotropicDamage3D en el punto de Gauss (energética, Mazars, von Mises modificado) | 181/181 |
+| 13 | **Sección por fibras de los marcos** — M–κ, interacción N–M y colapsos de Neal (1977), sección circular a 45°, corrotacional | `test_fiber_section_validation.py` | Frame2DEuler, Frame2DEulerCorot, Frame3D + FiberSection (Elastic1D, Elastoplastic1D) + NonlinearSolver | 43/43 |
 
-**Total: 74/74 tests verde**. Última actualización: 2026-09-10 (benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
+**Total: 304/304 tests verde**. Última actualización: 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
 
 ## Resultados cuantitativos por benchmark
 
@@ -166,9 +168,14 @@ del tangente algorítmica rank-1 en force control.
 
 1 elemento `Hex8` con confinamiento transversal total (`u_y=u_z=0` en
 todos los nodos) y desplazamiento `u_x` prescrito en la cara `x=1`.
-Bajo confinamiento, ε_eq = |ε_xx| y el componente activo de σ es
-σ_xx = (1−d)·C_e^{xx,xx}·ε_xx con C_e^{xx,xx} = E(1−ν)/[(1+ν)(1−2ν)]
-(módulo confinado axial). Parámetros: E=2·10⁴, ν=0.2, κ_0=1e-4, α=500.
+El componente activo de σ es σ_xx = (1−d)·C_e^{xx,xx}·ε_xx con
+C_e^{xx,xx} = E(1−ν)/[(1+ν)(1−2ν)] (módulo confinado axial) y `d` sale de la
+deformación equivalente de la medida elegida (`equivalent_strain`, desde el
+2026-09-29), que bajo confinamiento vale: energética
+ε_eq = ε_xx·√((1−ν)/[(1+ν)(1−2ν)]); Mazars ε_eq = ε_xx; von Mises modificado
+ε_eq = [b·ε_xx + √(b²ε_xx² + 4kε_xx²/(1+ν)²)]/(2k) con b = (k−1)/(1−2ν).
+Cada test se ejecuta con las tres medidas (hasta esa fecha, norma del tensor:
+ε_eq = |ε_xx|). Parámetros: E=2·10⁴, ν=0.2, κ_0=1e-4, α=500, k=10.
 
 | Test | Verificación | Tolerancia |
 |------|--------------|------------|
@@ -267,6 +274,57 @@ invalida —detecta errores del elemento: B mal armada, Voigt desordenado,
 ensamblaje— pero delimita su alcance: quien ancla `C` contra una referencia
 externa es este benchmark, no aquél. Los dos son complementarios y ninguno
 sustituye al otro.
+
+### 12. Deformación equivalente del daño 2D/3D — formas cerradas
+
+Test escrito a ciegas (sin leer la implementación) a partir de la física
+aprobada el 2026-09-29, con una referencia propia en numpy sobre el tensor
+3D. Trabaja en el punto de Gauss: `compute_state` de `IsotropicDamage3D` y de
+`IsotropicDamage2D` en esfuerzo plano (ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)) y en
+deformación plana (ε_zz = 0), con las tres medidas (`equivalent_strain`).
+Parámetros: E = 30 GPa, ν = 0.2, κ_0 = 1e-4, α = 1e3, k = 10.
+
+| Test (casos) | Verificación | Tolerancia |
+|------|--------------|------------|
+| `uniaxial_tension_onset_at_kappa0` (6) | tracción uniaxial de esfuerzo: ε_eq = ε con las tres medidas; d = 0 en 0.999·κ_0 y d > 0 en 1.001·κ_0 | rtol 1e-12 (κ) |
+| `uniaxial_tension_monotonic_curve` (6) | carga monótona hasta 60·κ_0 (llega a DAMAGE_MAX): κ = ε, d(ε) analítico y σ_xx = (1−d)·E·ε | rtol 1e-12 (κ, d), 1e-10 (σ) |
+| `uniaxial_compression_onset` (6) | umbral en compresión uniaxial de esfuerzo: energética κ_0; Mazars κ_0/(√2·ν) = 3.54·κ_0; von Mises modificado k·κ_0 | rtol 1e-12 (κ, d), 1e-10 (σ) |
+| `pure_shear` (15) | cortante puro en cada componente y con ambos signos: ε_eq = f·\|γ\| con f = 1/√(2(1+ν)) (energética), 1/2 (Mazars), √(3/k)/(2(1+ν)) (von Mises modificado) | rtol 1e-12 (κ, d), 1e-10 (σ) |
+| `hydrostatic_expansion_and_contraction_3d` (3), `mazars_plane_strain_biaxial_contraction_never_damages` (1) | sólo la energética daña en contracción hidrostática; Mazars en deformación plana con las dos principales del plano negativas no daña (en esfuerzo plano sí, por ε_zz > 0) | rtol 1e-12 |
+| `2d_is_exact_restriction_of_3d` (36) | historia carga-descarga-recarga en 6 direcciones × 3 medidas × 2 hipótesis: mismo κ y d que el 3D con la ε_zz de cada hipótesis, mismas σ del plano y σ_zz = 0 en esfuerzo plano | rtol 1e-12 (κ, d) |
+| `rotation_invariance_3d` (3), `rotation_invariance_2d` (6) | κ y d invariantes ante rotaciones | rtol 1e-12 |
+| `general_state_matches_reference` (27) | estados generales normalizados a ε_eq = 2.3·κ_0 frente a la referencia | rtol 1e-12 (κ, d) |
+| `consistent_tangent_vs_central_differences` (27) | tangente consistente frente a diferencias centradas (h = 1e-9), con término de ablandamiento no despreciable | atol 1e-6·max\|C\| |
+| `active_tangent_symmetry` (27) | energética simétrica; Mazars y von Mises modificado con parte antisimétrica apreciable | ≤ 1e-12·max\|C\| / > 1e-3·max\|C\| |
+| `elastic_and_unloading_secant` (9), `default_measure_is_energy` (3), `parameter_contract` (3), `reference_reproduces_closed_forms` (3) | rama elástica y descarga con C = (1−d)·C_e; medida por defecto energética; `ValueError` con k ausente, k ≤ 0, k sobrante o medida desconocida; la referencia reproduce las formas cerradas | — |
+
+Complementa al benchmark 9 (campo uniforme en un Hex8 resuelto con el
+solver) con la cobertura de las tres medidas a nivel del material. Las
+cifras que se derivan de las formas cerradas (umbrales, factores de
+cortante e hidrostáticos, d(κ)) están en el docstring del test.
+
+### 13. Sección por fibras de los marcos — Neal (1977)
+
+Test escrito a ciegas desde la spec [`FiberSection`](../../docs/specs/FiberSection.md)
+(ADR 0021): los ocho casos de su bloque `acceptance`. Datos: E = 200 GPa,
+σ_y = 250 MPa, sección b × h = 0.3 × 0.5 m, L = 3 m; `Elastoplastic1D` con
+H = 0. Las tolerancias se derivan en el docstring del test (regla del punto
+medio sobre las fibras, análisis de límite del elemento raíz).
+
+| Caso | Verificación | Resultado |
+|------|--------------|-----------|
+| 1. Reproducción elástica | K y F_int de los tres marcos (oblicuos, sección rectangular y mixta, n_ip = 2 y 3) frente a la forma cerrada con EA, EI integrados | iguales a 1e-10 |
+| 2. M–κ rectangular | 200 capas, 2D y los dos ejes de Frame3D, frente a M = M_p[1 − (κ_y/κ)²/3]; descarga elástica | error 1.7e-5·M_p (cota (5/3)/n²) |
+| 3. Interacción N–M | N/N_p ∈ {0.3, 0.6, −0.5, 0.4, −0.3}, M → M_p[1 − (N/N_p)²] | error 1.7e-5·M_p (cota (8/3)/n²) |
+| 4. Colapso del voladizo | P_max/P_c con 4, 8, 16, 32 elementos (P_c = M_p/L) | 1.0710, 1.0351, 1.0176, 1.0088 |
+| 5. Colapso de la biempotrada | ídem, P_c = 8M_p/L | 1.3475, 1.1496, 1.0710, 1.0351 |
+| 6. Sección circular a 45° | 20 × 64 sectores; M–κ a 45° frente a uniaxial y frente a la analítica | idéntica a 1e-9·M_p; error 7.2e-4·M_p |
+| 7. Signos | M_z > 0 tracciona y < 0; M_y > 0 tracciona z > 0; fibra excéntrica | exactos |
+| 8. Corrotacional elástico | giros de 60°, 150°, −120° y arco de Bathe-Bolourchi hasta θ = π/2 | iguales a 1e-10 |
+
+Los colapsos convergen por arriba y en primer orden del tamaño del elemento
+(límite del elemento en desplazamientos, spec §7) y quedan por debajo de la
+cota de análisis de límite del modelo discreto que deriva el test.
 
 ## Decisiones de diseño
 

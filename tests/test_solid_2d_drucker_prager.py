@@ -339,7 +339,7 @@ class TestDruckerPrager2DAnalyticalBenchmarks(unittest.TestCase):
                                    msg=f"gp={gp}: σ_xx≠σ_yy")
             self.assertAlmostEqual(sigma[2], 0.0, delta=abs(sigma[0]) * 1e-9,
                                    msg=f"gp={gp}: σ_xy no nulo en ápice")
-            k_alpha = mat.k0 + mat.H * sv['alpha']
+            k_alpha = mat.k0 + mat.Hk * sv["alpha"]  # H_k = ξ²·H (test_drucker_prager_hardening)
             expected_p = k_alpha / (3.0 * mat.eta_f)
             self.assertAlmostEqual(sigma[0], expected_p,
                                    delta=abs(expected_p) * 1e-6,

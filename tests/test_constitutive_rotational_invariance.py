@@ -19,7 +19,8 @@ El test caza bugs en el ensamblaje del operador `B`, en el return mapping
 plane strain/stress, o en transformaciones cuando algún componente
 introduce una dependencia espuria de los ejes globales.
 
-Cubre `Elastic2D` (plane strain + plane stress), `IsotropicDamage2D` y
+Cubre `Elastic2D` (plane strain + plane stress), `IsotropicDamage2D` (las
+tres medidas de deformación equivalente, en ambas hipótesis) y
 `VonMises2D` (plane strain + plane stress).
 """
 import math
@@ -92,28 +93,47 @@ class TestElastic2DRotationalInvariance(unittest.TestCase):
 # =============================================================================
 
 class TestIsotropicDamage2DRotationalInvariance(unittest.TestCase):
-    """El daño depende de `κ = ε_eq`, escalar invariante bajo rotación, por
-    lo que la invariancia debe valer también con daño activo."""
+    """El daño depende de `κ = ε_eq`, escalar invariante bajo rotación con
+    las tres medidas de deformación equivalente (energética, Mazars y von
+    Mises modificado), por lo que la invariancia debe valer también con daño
+    activo. Se recorren las dos hipótesis y dos estados: uno con las dos
+    deformaciones principales del plano positivas y otro con signos mixtos
+    (en Mazars, la rama que construye el proyector de la extensión)."""
+
+    MEDIDAS = (('energy', {}), ('mazars', {}), ('modified_von_mises', {'k': 10.0}))
+    DEFORMACIONES = (np.array([2.5e-4, 0.7e-4, 0.4e-4]),
+                     np.array([2.5e-4, -1.2e-4, 0.8e-4]))
 
     def test_loading_active(self):
-        mat = IsotropicDamage2D(
-            E=2.0e5, nu=0.3, kappa_0=1.0e-4, alpha=100.0,
-        )
-        eps = np.array([2.5e-4, 0.7e-4, 0.4e-4])
-        # Anchor con κ ligeramente por debajo del ε_eq actual, para
-        # garantizar que tanto el caso original como las rotaciones
-        # caigan en carga activa (κ_eq es invariante rotacional).
-        eps_eq = math.sqrt(eps[0] ** 2 + eps[1] ** 2 + 0.5 * eps[2] ** 2)
-        anchor = {'kappa': eps_eq * 0.95, 'damage': 0.0}
+        for medida, kw in self.MEDIDAS:
+            for hypothesis in ('plane_stress', 'plane_strain'):
+                mat = IsotropicDamage2D(
+                    E=2.0e5, nu=0.3, kappa_0=1.0e-4, alpha=100.0,
+                    hypothesis=hypothesis, equivalent_strain=medida, **kw,
+                )
+                for eps in self.DEFORMACIONES:
+                    with self.subTest(medida=medida, hypothesis=hypothesis,
+                                      eps=eps.tolist()):
+                        # ε_eq del propio material: un paso desde κ = 0 deja
+                        # κ = ε_eq. El ancla, con κ ligeramente por debajo,
+                        # garantiza que el caso original y las rotaciones
+                        # caigan en carga activa (ε_eq es invariante).
+                        _, _, probe = mat.compute_state(eps, {'kappa': 0.0, 'damage': 0.0})
+                        anchor = {'kappa': 0.95 * probe['kappa'], 'damage': 0.0}
 
-        sigma_ref, _, _ = mat.compute_state(eps, anchor)
-        for theta in THETAS:
-            eps_rot = _T_eps(theta) @ eps
-            sigma_rot, _, _ = mat.compute_state(eps_rot, anchor)
-            sigma_expected = _T_sig(theta) @ sigma_ref
-            err = np.linalg.norm(sigma_rot - sigma_expected) / np.linalg.norm(sigma_ref)
-            self.assertLess(err, 1.0e-10,
-                f"IsotropicDamage2D θ={math.degrees(theta):.0f}°: err rel {err:.3e}.")
+                        sigma_ref, _, st_ref = mat.compute_state(eps, anchor)
+                        self.assertGreater(st_ref['damage'], 0.0)
+                        for theta in THETAS:
+                            eps_rot = _T_eps(theta) @ eps
+                            sigma_rot, _, st_rot = mat.compute_state(eps_rot, anchor)
+                            self.assertAlmostEqual(st_rot['kappa'] / st_ref['kappa'], 1.0,
+                                                   places=12)
+                            sigma_expected = _T_sig(theta) @ sigma_ref
+                            err = (np.linalg.norm(sigma_rot - sigma_expected)
+                                   / np.linalg.norm(sigma_ref))
+                            self.assertLess(err, 1.0e-10,
+                                f"IsotropicDamage2D {medida} {hypothesis} "
+                                f"θ={math.degrees(theta):.0f}°: err rel {err:.3e}.")
 
 
 # =============================================================================

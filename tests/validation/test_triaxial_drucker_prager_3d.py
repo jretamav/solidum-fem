@@ -212,9 +212,10 @@ def test_yield_onset_uniaxial_tension_outer_cone():
         )
 
     # Estimación analítica de α tras equilibrar 1.05·σ_yield:
-    # σ_1 = (k_0 + H·α)/(1/√3 + η_f) ⇒ α = [σ_1·(1/√3+η_f) - k_0] / H
+    # σ_1 = (k_0 + H_k·α)/(1/√3 + η_f) ⇒ α = [σ_1·(1/√3+η_f) - k_0] / H_k,
+    # con H_k = ξ²·H el módulo del radio del cono (test_drucker_prager_hardening)
     alpha_expected = (1.05 * sigma_yield_analytical
-                      * (1.0 / math.sqrt(3.0) + mat.eta_f) - mat.k0) / mat.H
+                      * (1.0 / math.sqrt(3.0) + mat.eta_f) - mat.k0) / mat.Hk
     alpha_fem = np.mean([s['alpha'] for s in elem_above.state.vars])
     rel_err = abs(alpha_fem - alpha_expected) / alpha_expected
     assert rel_err < 0.05, (
@@ -275,7 +276,7 @@ def test_apex_pressure_formula_via_displacement_control():
     for k, state in enumerate(elem.state.vars):
         alpha = state['alpha']
         assert alpha > 0.0, f"GP {k}: α = {alpha:.3e} debe ser > 0 en apex"
-        k_curr = mat.k0 + mat.H * alpha
+        k_curr = mat.k0 + mat.Hk * alpha  # H_k = ξ²·H
         sigma_apex_expected = k_curr / (3.0 * mat.eta_f)
         sigma_gp_avg = (gs['stress'][k][0] + gs['stress'][k][1] + gs['stress'][k][2]) / 3.0
         rel_err = abs(sigma_gp_avg - sigma_apex_expected) / sigma_apex_expected

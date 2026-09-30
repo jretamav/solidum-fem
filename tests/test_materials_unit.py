@@ -274,10 +274,10 @@ class TestIsotropicDamage1DConsistentTangent(unittest.TestCase):
     def test_consistent_with_2D_uniaxial_first_component(self):
         """Reducción del modelo 2D plane stress con ν=0 y ε=[eps,0,0] coincide con 1D.
 
-        Con ν=0 el material 2D plane stress se vuelve diagonal en la entrada
-        [0,0]: σ_xx = E·ε_xx y el operador M = diag(1,1,1/2) deja ∂κ/∂ε_xx =
-        sign(ε_xx)·ε_xx/ε_eq = sign(ε_xx) cuando ε_eq=|ε_xx|. Las fórmulas se
-        reducen exactamente al caso escalar.
+        Con ν=0 la C_e de tensión plana es E·diag(1, 1, 1/2): σ_xx = E·ε_xx y la
+        medida energética por defecto da ε_eq = √(εᵀ·C_e·ε/E) = |ε_xx|, con
+        ∂κ/∂ε_xx = (C_e·ε)_xx/(E·ε_eq) = sign(ε_xx). Las fórmulas se reducen
+        exactamente al caso escalar (el 1D mide ε_eq = |ε|).
         """
         from solidum.materials.damage_2d import IsotropicDamage2D
         mat_2d = IsotropicDamage2D(
@@ -318,10 +318,10 @@ class TestIsotropicDamage2D(unittest.TestCase):
     def test_damage_evolves_above_threshold(self):
         eps = np.array([2.0 * self.kappa_0, 0.0, 0.0])
         _, _, state = self.mat.compute_state(eps)
-        # Norma del tensor de deformaciones con ε_zz de tensión plana
-        # (hipótesis por defecto): ε_zz = −ν/(1−ν)·(ε_xx + ε_yy).
-        eps_zz = -self.nu / (1.0 - self.nu) * (eps[0] + eps[1])
-        eps_eq = math.sqrt(eps[0] ** 2 + eps[1] ** 2 + eps_zz ** 2 + 0.5 * eps[2] ** 2)
+        # Medida energética por defecto, ε_eq = √(εᵀ·C_e·ε/E), con la C_e de
+        # tensión plana (hipótesis por defecto): para ε = [ε_xx, 0, 0],
+        # εᵀ·C_e·ε = E·ε_xx²/(1−ν²) ⇒ ε_eq = ε_xx/√(1−ν²).
+        eps_eq = eps[0] / math.sqrt(1.0 - self.nu ** 2)
         d_expected = 1.0 - (self.kappa_0 / eps_eq) * math.exp(
             -self.alpha * (eps_eq - self.kappa_0)
         )
@@ -348,10 +348,17 @@ class TestIsotropicDamage2DConsistentTangent(unittest.TestCase):
         )
         self.Ce = self.mat.elastic_base.C
 
-    def test_is_symmetric_attribute_is_false(self):
-        """Material declara IS_SYMMETRIC=False (tangente consistente asimétrica)."""
+    def test_is_symmetric_attribute(self):
+        """``IS_SYMMETRIC``: ``False`` en la clase (cota conservadora); la
+        instancia lo pone a ``True`` con la medida energética (por defecto),
+        cuya tangente consistente es simétrica, y lo deja en ``False`` con
+        Mazars y von Mises modificado."""
         self.assertFalse(IsotropicDamage2D.IS_SYMMETRIC)
-        self.assertFalse(self.mat.IS_SYMMETRIC)
+        self.assertTrue(self.mat.IS_SYMMETRIC)
+        for medida, kw in (('mazars', {}), ('modified_von_mises', {'k': 10.0})):
+            mat = IsotropicDamage2D(E=self.E, nu=self.nu, kappa_0=self.kappa_0,
+                                    alpha=self.alpha, equivalent_strain=medida, **kw)
+            self.assertFalse(mat.IS_SYMMETRIC, medida)
 
     def test_tangent_equals_C_e_below_threshold(self):
         """Sin daño activo (κ ≤ κ_0): C_tan = C_e (rama elástica pura)."""
@@ -399,15 +406,21 @@ class TestIsotropicDamage2DConsistentTangent(unittest.TestCase):
         diff = np.linalg.norm(C_tan - C_sec) / np.linalg.norm(C_tan)
         self.assertGreater(diff, 1.0e-3)
 
-    def test_tangent_not_symmetric_on_loading(self):
-        """En carga activa con estado no degenerado, C_tan asimétrica."""
-        # Estado con γ_xy ≠ 0 y ε_xx ≠ ε_yy → producto exterior asimétrico
+    def test_tangent_symmetry_on_loading(self):
+        """En carga activa con estado no degenerado (γ_xy ≠ 0, ε_xx ≠ ε_yy):
+        simétrica con la medida energética, porque ∂ε_eq/∂ε = C_e·ε/(E·ε_eq)
+        es paralelo a C_e·ε; asimétrica con Mazars y von Mises modificado."""
         eps = np.array([3.0 * self.kappa_0, 1.0 * self.kappa_0, 0.5 * self.kappa_0])
         _, C_tan, state = self.mat.compute_state(eps)
         self.assertGreater(state["damage"], 0.0)
-        # Asimetría medible
-        asym = np.linalg.norm(C_tan - C_tan.T) / np.linalg.norm(C_tan)
-        self.assertGreater(asym, 1.0e-3)
+        np.testing.assert_array_equal(C_tan, C_tan.T)
+        for medida, kw in (('mazars', {}), ('modified_von_mises', {'k': 10.0})):
+            mat = IsotropicDamage2D(E=self.E, nu=self.nu, kappa_0=self.kappa_0,
+                                    alpha=self.alpha, equivalent_strain=medida, **kw)
+            _, C_tan, state = mat.compute_state(eps)
+            self.assertGreater(state["damage"], 0.0)
+            asym = np.linalg.norm(C_tan - C_tan.T) / np.linalg.norm(C_tan)
+            self.assertGreater(asym, 1.0e-3, medida)
 
     def test_tangent_matches_finite_difference(self):
         """C_tan analítica coincide con diferencia finita centrada.
@@ -424,8 +437,9 @@ class TestIsotropicDamage2DConsistentTangent(unittest.TestCase):
         # diferencia finita evalúa el material en estados ε ± h·e_i; para
         # que todas estas perturbaciones caigan en la misma rama de carga
         # con el mismo κ_ref, pasamos un state_vars previo con κ exactamente
-        # igual al ε_eq del estado de referencia menos un margen.
-        eps_eq = np.linalg.norm([eps[0], eps[1], eps[2] / np.sqrt(2)])
+        # igual al ε_eq del estado de referencia menos un margen. Medida
+        # energética por defecto: ε_eq = √(εᵀ·C_e·ε/E).
+        eps_eq = math.sqrt(eps @ self.Ce @ eps / self.E)
         # Un state previo cuya κ esté justo por debajo del ε_eq actual
         # (todas las perturbaciones h⁻⁶ caerán también por encima → loading)
         state_anchor = {'kappa': eps_eq * 0.9, 'damage': 0.0}
@@ -851,7 +865,7 @@ class TestDruckerPrager2D(unittest.TestCase):
         self.assertAlmostEqual(sigma[0], sigma[1], delta=abs(sigma[0]) * 1e-10)
         self.assertAlmostEqual(sigma[2], 0.0, places=10)
         # σ_xx ≈ k(α)/(3·η_f)
-        k_new = self.mat.k0 + self.mat.H * state['alpha']
+        k_new = self.mat.k0 + self.mat.Hk * state["alpha"]  # H_k = ξ²·H (test_drucker_prager_hardening)
         expected_p = k_new / (3.0 * self.mat.eta_f)
         self.assertAlmostEqual(sigma[0], expected_p, delta=abs(expected_p) * 1e-6)
 
@@ -1320,7 +1334,7 @@ class TestDruckerPrager3D(unittest.TestCase):
         for k in range(3, 6):
             self.assertAlmostEqual(sigma[k], 0.0, places=10)
         # σ_xx ≈ k(α)/(3·η_f)
-        k_new = self.mat.k0 + self.mat.H * state['alpha']
+        k_new = self.mat.k0 + self.mat.Hk * state["alpha"]  # H_k = ξ²·H (test_drucker_prager_hardening)
         expected_p = k_new / (3.0 * self.mat.eta_f)
         self.assertAlmostEqual(sigma[0], expected_p, delta=abs(expected_p) * 1e-6)
 
@@ -1545,12 +1559,17 @@ class TestIsotropicDamage3D(unittest.TestCase):
 
     def test_damage_evolution_exponential(self):
         """Carga grande activa daño según la ley exponencial."""
-        # eps_eq ~ 4·kappa_0
-        eps_target_eq = 4.0 * self.kappa_0
-        # ε uniaxial puro alineado con xx: ε_eq = |ε_xx|
-        eps = np.array([eps_target_eq, 0.0, 0.0, 0.0, 0.0, 0.0])
+        eps_xx = 4.0 * self.kappa_0
+        # Deformación uniaxial alineada con xx y medida energética por
+        # defecto: εᵀ·C_e·ε/E = C_xxxx·ε_xx²/E con
+        # C_xxxx = E(1−ν)/[(1+ν)(1−2ν)] ⇒ ε_eq = ε_xx·√((1−ν)/[(1+ν)(1−2ν)]).
+        eps = np.array([eps_xx, 0.0, 0.0, 0.0, 0.0, 0.0])
         _, _, state = self.mat.compute_state(eps)
         self.assertGreater(state['damage'], 0.0)
+        nu = self.nu
+        self.assertAlmostEqual(
+            state['kappa'] / (eps_xx * math.sqrt((1.0 - nu) / ((1.0 + nu) * (1.0 - 2.0 * nu)))),
+            1.0, places=13)
         # Comparar con la fórmula directa
         expected_d = 1.0 - (self.kappa_0 / state['kappa']) * math.exp(
             -self.alpha * (state['kappa'] - self.kappa_0)
@@ -1588,14 +1607,21 @@ class TestIsotropicDamage3D(unittest.TestCase):
         expected_secant = (1.0 - DAMAGE_MAX) * self.mat.elastic_base.C
         np.testing.assert_allclose(C_tan, expected_secant, rtol=1e-12)
 
-    def test_tangent_not_symmetric_in_loading(self):
-        """Carga activa con estado no degenerado ⇒ tangente asimétrica."""
-        # Componentes diagonales distintas + cortantes activos
+    def test_tangent_symmetry_in_loading(self):
+        """Carga activa con estado no degenerado (diagonales distintas y
+        cortantes activos): simétrica con la medida energética (por defecto),
+        asimétrica con Mazars y von Mises modificado."""
         eps = np.array([3.0e-4, 1.5e-4, -1.0e-4, 2.0e-4, 1.0e-4, -1.5e-4])
         _, C_tan, state = self.mat.compute_state(eps)
         self.assertGreater(state['damage'], 0.0)
-        asym = np.linalg.norm(C_tan - C_tan.T) / np.linalg.norm(C_tan)
-        self.assertGreater(asym, 0.01, msg=f"Asimetría relativa = {asym:.3e}")
+        np.testing.assert_array_equal(C_tan, C_tan.T)
+        for medida, kw in (('mazars', {}), ('modified_von_mises', {'k': 10.0})):
+            mat = IsotropicDamage3D(E=self.E, nu=self.nu, kappa_0=self.kappa_0,
+                                    alpha=self.alpha, equivalent_strain=medida, **kw)
+            _, C_tan, state = mat.compute_state(eps)
+            self.assertGreater(state['damage'], 0.0)
+            asym = np.linalg.norm(C_tan - C_tan.T) / np.linalg.norm(C_tan)
+            self.assertGreater(asym, 0.01, msg=f"{medida}: asimetría relativa = {asym:.3e}")
 
     def test_tangent_finite_difference_consistency(self):
         """C_tan cerrada coincide con diferencia finita centrada en carga activa."""
@@ -1695,8 +1721,15 @@ class TestIsotropicDamage3D(unittest.TestCase):
         with self.assertRaises(ValueError):
             IsotropicDamage3D(E=1.0, nu=0.2, kappa_0=1e-4, alpha=500.0, density=-1.0)
 
-    def test_is_symmetric_attribute_is_false(self):
+    def test_is_symmetric_attribute(self):
+        """``False`` en la clase; ``True`` en la instancia con la medida
+        energética (por defecto); ``False`` con Mazars y von Mises modificado."""
         self.assertFalse(IsotropicDamage3D.IS_SYMMETRIC)
+        self.assertTrue(self.mat.IS_SYMMETRIC)
+        for medida, kw in (('mazars', {}), ('modified_von_mises', {'k': 10.0})):
+            mat = IsotropicDamage3D(E=self.E, nu=self.nu, kappa_0=self.kappa_0,
+                                    alpha=self.alpha, equivalent_strain=medida, **kw)
+            self.assertFalse(mat.IS_SYMMETRIC, medida)
 
 
 class TestIsotropicDamage3DvsPlaneStrain(unittest.TestCase):
@@ -1705,9 +1738,11 @@ class TestIsotropicDamage3DvsPlaneStrain(unittest.TestCase):
     Damage2D plane_strain es la restricción de Damage3D bajo
     ``ε_zz = γ_yz = γ_xz = 0``. Ambos comparten:
     - matriz elástica C_e (3D restringida a ε_zz=0 input = 2D plane_strain),
-    - fórmula de ε_eq (M=diag(1,1,1,1/2,1/2,1/2) restringida = diag(1,1,1/2) 2D),
+    - deformación equivalente (medida energética por defecto: εᵀ·C_e·ε con la
+      C_e 3D restringida a ε_zz = 0 es la de deformación plana 2D),
     - ley de daño exponencial (centralizada en _softening.py).
-    Resultado: σ_xx, σ_yy, σ_xy, κ, d idénticos a precisión máquina.
+    Resultado: σ_xx, σ_yy, σ_xy, κ, d idénticos a precisión máquina. Las tres
+    medidas y la tensión plana se cubren en ``test_damage_2d_3d_consistency.py``.
     """
 
     def setUp(self):
@@ -1720,7 +1755,7 @@ class TestIsotropicDamage3DvsPlaneStrain(unittest.TestCase):
     def test_equivalencia_plane_strain_path(self):
         """Path multi-paso con carga, descarga, recarga; resultados coinciden."""
         path_2d = [
-            np.array([1.0e-4, 0.0, 0.0]),                  # elástico
+            np.array([0.9e-4, 0.0, 0.0]),                  # elástico (ε_eq ≈ 0.95·κ_0)
             np.array([3.0e-4, -0.5e-4, 1.0e-4]),           # carga activa
             np.array([5.0e-4, -1.0e-4, 2.0e-4]),           # carga mayor
             np.array([2.0e-4, -0.5e-4, 1.0e-4]),           # descarga

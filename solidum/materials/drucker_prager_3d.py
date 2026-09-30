@@ -6,9 +6,9 @@ proyecto (ADR 0012). Mismas características que ``DruckerPrager2D``:
 
 - **Plasticidad no asociada por defecto** (ángulo de dilatancia ψ ≠ ángulo de
   fricción φ); cuando ψ = φ es asociada y la tangente es simétrica.
-- **Endurecimiento isótropo lineal del radio del cono** ``k(α) = k_0 + H·α``,
-  con ``α`` el multiplicador plástico acumulado ``γ`` (no la cohesión ``c`` ni
-  la deformación plástica equivalente; ver el parámetro ``H`` de la clase).
+- **Endurecimiento isótropo lineal de la cohesión** ``c(ε̄ᵖ) = c_0 + H·ε̄ᵖ``
+  con ``ε̄ᵖ = ξ·γ`` (de Souza Neto et al. 2008, §8.3); el return mapping
+  endurece el radio del cono con ``H_k = ξ²·H`` respecto de ``γ``.
 - **Return mapping** con dos ramas cerradas: regular (cone surface) y al ápice
   (vértice hidrostático). Detección automática del régimen.
 
@@ -284,9 +284,10 @@ def _dp_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
 class DruckerPrager3D(Material):
     """
     Modelo Drucker-Prager 3D con plasticidad no asociada y endurecimiento
-    isótropo lineal ``k(α) = k₀ + H·α`` sobre el radio del cono ``k``, con
-    ``α`` el multiplicador plástico acumulado ``γ`` (misma parametrización
-    que ``DruckerPrager2D``, que documenta la conversión desde ``c(ε̄ᵖ)``).
+    isótropo lineal de la cohesión ``c(ε̄ᵖ) = c₀ + H·ε̄ᵖ``, ``ε̄ᵖ = ξ·γ``
+    (de Souza Neto et al. 2008, §8.3; misma parametrización que
+    ``DruckerPrager2D``). El return mapping endurece el radio del cono con
+    ``H_k = ξ²·H`` respecto del multiplicador plástico acumulado ``α = γ``.
 
     Parameters
     ----------
@@ -301,11 +302,11 @@ class DruckerPrager3D(Material):
         ``ψ = φ`` (asociada). Para suelos no asociado típico ψ = 0 o ψ = φ/2.
         Debe cumplir ``0 ≤ ψ ≤ φ``.
     H : float, optional
-        Módulo de endurecimiento isótropo lineal ``dk/dγ`` del radio del cono
-        respecto del multiplicador plástico acumulado (``≥ 0``, unidades de
-        esfuerzo). Default 0 (perfectamente plástico). Desde ``H_c = dc/dε̄ᵖ``
-        de de Souza Neto et al. (2008, §8.3, ``ε̄ᵖ = ξ·γ``): ``H = ξ²·H_c``
-        con ``ξ = k₀/c₀``.
+        Módulo de endurecimiento isótropo lineal de la cohesión,
+        ``H = dc/dε̄ᵖ`` (``≥ 0``, unidades de esfuerzo), como en de Souza Neto
+        et al. (2008, §8.3, ``ε̄ᵖ = ξ·γ``). Internamente el radio del cono se
+        endurece con ``H_k = ξ²·H`` respecto de ``γ`` (``ξ = k₀/c₀``).
+        Default 0 (perfectamente plástico).
     variant : str, optional
         Calibración Drucker-Prager con Mohr-Coulomb (3D):
         ``'outer_cone'`` (default, circunscribe MC en el meridiano de compresión)
@@ -416,6 +417,11 @@ class DruckerPrager3D(Material):
         self.eta_f, self.k0, self.eta_g = _calibrate_drucker_prager(
             cohesion, phi_rad, psi_rad, variant
         )
+        # Endurecimiento de la referencia (de Souza Neto et al. 2008, §8.3):
+        # c(ε̄ᵖ) = c₀ + H_c·ε̄ᵖ con ε̄ᵖ = ξ·γ y k = ξ·c ⇒ dk/dγ = ξ²·H_c. El
+        # usuario da H = H_c; el return mapping trabaja con H_k = ξ²·H_c.
+        self.xi = self.k0 / cohesion
+        self.Hk = self.xi ** 2 * self.H
         if self.eta_g == 0.0:
             from solidum.logging import get_logger
             get_logger("materials").warning(
@@ -435,7 +441,7 @@ class DruckerPrager3D(Material):
         Escala con unidades de esfuerzo (idéntica a la cantidad ``f`` del criterio).
         """
         alpha = 0.0 if state_vars is None else state_vars.get('alpha', 0.0)
-        return self.k0 + self.H * alpha
+        return self.k0 + self.Hk * alpha
 
     def compute_state(self, strain: np.ndarray, state_vars=None):
         """Devuelve ``(σ, C_tangent, new_state)``.
@@ -451,7 +457,7 @@ class DruckerPrager3D(Material):
 
         sigma, C_alg, eps_p_new, alpha_new, _branch = _compute_drucker_prager_3d(
             strain, eps_p_old, alpha_old,
-            self.eta_f, self.eta_g, self.k0, self.H,
+            self.eta_f, self.eta_g, self.k0, self.Hk,
             self.K, self.G, self.C_e, yield_tol,
         )
 
@@ -462,7 +468,7 @@ class DruckerPrager3D(Material):
     BATCH_KERNEL = _dp_3d_batch
 
     def batch_params(self) -> np.ndarray:
-        return np.array([self.eta_f, self.eta_g, self.k0, self.H, self.K, self.G,
+        return np.array([self.eta_f, self.eta_g, self.k0, self.Hk, self.K, self.G,
                          ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL], dtype=np.float64)
 
     def batch_matrix(self) -> np.ndarray:

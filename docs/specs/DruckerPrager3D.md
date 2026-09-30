@@ -90,7 +90,7 @@ $$\dot\alpha = \dot\gamma$$
 
 con $\alpha$ el **multiplicador plástico acumulado** $\gamma$ (convención del proyecto para Drucker-Prager). La superficie crece manteniendo eje y abertura, solo $k$ aumenta linealmente. Endurecimiento por fricción/dilatancia (cambio de $\eta_f$ o $\eta_g$ con $\alpha$) queda fuera de esta spec.
 
-$H_k = dk/d\alpha$ endurece el **radio del cono** $k$ respecto de $\gamma$; no la cohesión $c$ respecto de una deformación plástica equivalente. La parametrización de de Souza Neto, Perić y Owen (2008, §8.3) es $c(\bar\varepsilon^p)$ con $\bar\varepsilon^p = \xi\,\gamma$ y $k = \xi\,c$, donde $\xi = k_0/c_0$ es el factor de la calibración (§3); un $H_c = dc/d\bar\varepsilon^p$ tomado de esa parametrización equivale a
+**Parámetro del usuario (desde el 2026-09-29): la parametrización de de Souza Neto, Perić y Owen (2008, §8.3).** La cohesión se endurece con la deformación plástica equivalente, $c(\bar\varepsilon^p) = c_0 + H\,\bar\varepsilon^p$, con $\bar\varepsilon^p = \xi\,\gamma$ y $k = \xi\,c$, donde $\xi = k_0/c_0$ es el factor de la calibración (§3). El parámetro `H` que escribe el usuario es $H = H_c = dc/d\bar\varepsilon^p$. El return mapping trabaja con el módulo del radio del cono respecto del multiplicador acumulado, $H_k = dk/d\alpha$, que es
 
 $$H_k = \xi^2\,H_c .$$
 
@@ -260,7 +260,7 @@ parameters:
   - { name: psi_deg,    type: float, required: false, default: null,
       desc: "Ángulo de dilatancia en grados. Default = phi_deg (asociada). Típico no asociada: ψ < φ, e.g. 0 o φ/2." }
   - { name: H,          type: float, required: false, default: 0.0,
-      desc: "Módulo de endurecimiento isótropo lineal H_k = dk/dα del radio del cono respecto del multiplicador plástico acumulado (≥0). Desde H_c = dc/dε̄ᵖ de de Souza Neto et al. (2008): H_k = ξ²·H_c con ξ = k_0/c_0 (§5). H=0 ⇒ perfectamente plástico." }
+      desc: "Módulo de endurecimiento isótropo lineal de la cohesión H = dc/dε̄ᵖ (≥0), parametrización de de Souza Neto et al. (2008, §8.3); internamente H_k = ξ²·H con ξ = k_0/c_0 (§5). H=0 ⇒ perfectamente plástico." }
   - { name: variant,    type: str,   required: false, default: "outer_cone",
       desc: "outer_cone (default, circunscribe MC en compresión) | inner_cone (inscribe MC en extensión)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
@@ -408,7 +408,7 @@ references:
 - **Kernel Numba** `_compute_drucker_prager_3d`: predictor elástico desviador-volumétrico en Voigt 6D tensorial (sustracción de $\boldsymbol\varepsilon^p_n$ antes del desviador — *necesario* en DP por la dilatancia plástica), detección automática regular/apex, tangente cerrada para cada rama.
 - **Calibración**: reusa la función `_calibrate_drucker_prager` de `drucker_prager_2d.py` por composición (mismas fórmulas para outer/inner; `plane_strain_matched` queda filtrada por el validador de variant antes de llegar a la función compartida).
 - **State schema**: `eps_p` ndarray(6,) `[xx, yy, zz, xy, yz, xz]` con cortantes tensoriales, `alpha` escalar. **No es incompresible**: `tr(eps_p) = 3·η_g·α` por construcción del flujo.
-- **`admissibility_scale`**: `k(α) = k_0 + H·α` (radio corriente del cono).
+- **`admissibility_scale`**: `k(α) = k_0 + H_k·α` con `H_k = ξ²·H` (radio corriente del cono).
 - **Tests**:
   - [tests/test_materials_unit.py](../../tests/test_materials_unit.py) · `TestDruckerPrager3D` (17 tests unitarios) + `TestDruckerPrager3DvsPlaneStrain` (1 cruzado contra DP2D outer_cone plane_strain).
   - [tests/test_solid_3d_plasticity.py](../../tests/test_solid_3d_plasticity.py) · 4 tests de integración: `TestHex8DruckerPrager3DElastic` (1 — respuesta elástica), `TestHex8DruckerPrager3DRegularPlastic` (1 — cortante puro + tangente asimétrica activa LU + invariante $\operatorname{tr}(\boldsymbol\varepsilon^p) = 3\eta_g\alpha$), `TestHex8DruckerPrager3DApex` (1 — expansión hidrostática a 8 GP en rama ápice), `TestTet4DruckerPrager3DBasic` (1 — smoke test Tet4).
@@ -438,3 +438,4 @@ references:
 - **2026-09-22** · Auditoría global: misma corrección del ápice que `DruckerPrager2D`: con η_g = 0 (ψ = 0) la rama del ápice lanza `ValueError` y el constructor avisa; antes se clampaba `A_apex` a 1e-30.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): declara `STATE_SCHEMA` y un adaptador `@njit` con firma `MAT_SIG` que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que `admissibility_tol`. Formulación sin cambios; equivalencia con `compute_state` exacta en esfuerzo, tangente y estado (`tests/test_batch_kernels.py`).
 - **2026-09-29** · Revisión documental (sin cambio de código ni de resultados), la misma que en `DruckerPrager2D`: (1) $\alpha$ es el multiplicador plástico acumulado $\gamma$, no una deformación plástica equivalente, y $H$ endurece el radio del cono $k$ respecto de $\gamma$, no la cohesión; conversión desde la parametrización $c(\bar\varepsilon^p)$ de de Souza Neto et al. (2008), $H_k = \xi^2 H_c$ con $\xi = k_0/c_0$ (§5). (2) El piso $K\cdot 10^{-6}$ de la tangente en el ápice actúa en todo retorno al ápice con $H_k = 0$, no sólo con $\psi = 0$, caso que desde el 2026-09-22 lanza `ValueError` (§14 y `numerical_caveats`).
+- **2026-09-29** · Cambio del significado del parámetro `H`, aprobado por el usuario (hallazgo clas-6 de la auditoría): pasa a ser $H_c = dc/d\bar\varepsilon^p$, la parametrización de de Souza Neto et al. (2008, §8.3), y el material calcula $H_k = \xi^2 H_c$ con $\xi = k_0/c_0$. Antes `H` era directamente $H_k$: un $H_c$ tomado de un ensayo o de la literatura daba un endurecimiento distinto por el factor $\xi^2$, sin aviso. Con endurecimiento lineal la física es la misma; cambia sólo el número que se escribe. El return mapping, la tangente y los resultados con `H = 0` no cambian. Blindado en `tests/test_drucker_prager_hardening.py` ($k(\gamma) = \xi\,c(\xi\gamma)$ en las tres calibraciones y estado final sobre la superficie endurecida con $H_k$); los tests con `H > 0` pasan a usar $H_k$ en sus expresiones analíticas.

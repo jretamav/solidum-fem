@@ -9,8 +9,14 @@ derivada por diferenciación finita central
 
 Cobertura existente fuera de este archivo:
 
-- `IsotropicDamage1D` ([tests/test_materials_unit.py:238](tests/test_materials_unit.py))
-- `IsotropicDamage2D` ([tests/test_materials_unit.py:392](tests/test_materials_unit.py))
+- `IsotropicDamage1D` ([tests/test_materials_unit.py](tests/test_materials_unit.py),
+  `TestIsotropicDamage1DConsistentTangent`)
+- `IsotropicDamage2D` e `IsotropicDamage3D`, con las tres medidas de
+  deformación equivalente (energética, Mazars, von Mises modificado) en
+  tensión plana, deformación plana y 3D
+  ([tests/test_damage_equivalent_strain.py](tests/test_damage_equivalent_strain.py)),
+  además de `TestIsotropicDamage2DConsistentTangent` y `TestIsotropicDamage3D`
+  en `test_materials_unit.py`.
 
 Este archivo completa la familia con `VonMises2D` (plane strain + plane
 stress) y `DruckerPrager2D` (régimen regular + apex).

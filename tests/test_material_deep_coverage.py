@@ -191,16 +191,20 @@ class TestIsotropicDamage2DNonProportional(unittest.TestCase):
     """Trayectoria de carga no proporcional: la dirección principal de ε
     rota mientras `ε_eq` (escalar invariante histórico) crece o no.
 
-    Para `IsotropicDamage2D` el daño depende SÓLO de la historia de
-    `ε_eq = √(ε:ε)`, la norma del tensor de deformaciones con su componente
-    fuera del plano (en tensión plana `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)`, desde
-    el 2026-09-29). Es un invariante: una rotación de las direcciones
-    principales con valores principales fijos lo conserva. Bajo rotación de
-    la dirección principal:
+    Para `IsotropicDamage2D` el daño depende SÓLO de la historia de la
+    deformación equivalente `ε_eq`. Desde el 2026-09-29 es configurable
+    (`equivalent_strain`); las tres medidas (energética por defecto,
+    `ε_eq = √(εᵀ·C_e·ε/E)`; Mazars; von Mises modificado) son funciones
+    isótropas del tensor de deformaciones, así que una rotación de las
+    direcciones principales con valores principales fijos las conserva
+    (hasta esa fecha la medida era la norma del tensor `√(ε:ε)`, también
+    invariante). Bajo rotación de la dirección principal:
     - Si `ε_eq` no decrece, κ no debe decrecer (irreversibilidad).
     - Si `ε_eq` permanece constante, κ y ω se congelan.
     - Si `ε_eq` aumenta, κ y ω crecen monotónicamente.
     """
+
+    MEDIDAS = (('energy', {}), ('mazars', {}), ('modified_von_mises', {'k': 10.0}))
 
     def setUp(self):
         self.mat = IsotropicDamage2D(
@@ -209,11 +213,14 @@ class TestIsotropicDamage2DNonProportional(unittest.TestCase):
         )
 
     def _eps_eq(self, eps: np.ndarray) -> float:
-        """ε_eq de la física del modelo: norma del tensor de deformaciones,
-        con ε_zz de tensión plana y γ_xy = 2ε_xy (Voigt engineering)."""
+        """ε_eq de la física del modelo con la medida por defecto (energética):
+        ``√(εᵀ·C_e·ε/E)`` con la C_e de tensión plana, en Voigt engineering.
+        Para ``ε = [ε_xx, ε_yy, γ_xy]``:
+        ``εᵀ·C_e·ε = E/(1−ν²)·(ε_xx² + ε_yy² + 2ν·ε_xx·ε_yy) + E/(2(1+ν))·γ_xy²``."""
         nu = self.mat.elastic_base.nu
-        eps_zz = -nu / (1.0 - nu) * (eps[0] + eps[1])
-        return math.sqrt(eps[0] ** 2 + eps[1] ** 2 + eps_zz ** 2 + 0.5 * eps[2] ** 2)
+        w = (eps[0] ** 2 + eps[1] ** 2 + 2.0 * nu * eps[0] * eps[1]) / (1.0 - nu ** 2) \
+            + eps[2] ** 2 / (2.0 * (1.0 + nu))
+        return math.sqrt(w)
 
     @staticmethod
     def _girado(e1: float, e2: float, theta: float) -> np.ndarray:
@@ -232,26 +239,34 @@ class TestIsotropicDamage2DNonProportional(unittest.TestCase):
         Hasta el 2026-09-29 la trayectoria era la circunferencia
         ε = ε_eq·(cos θ, sin θ, 0), que conservaba la norma en el plano pero
         no es una rotación del tensor (cambia la traza y, en tensión plana,
-        ε_zz)."""
+        ε_zz). Se recorre con las tres medidas de deformación equivalente."""
         e1, e2 = 3.0 * self.mat.kappa_0, -1.0 * self.mat.kappa_0
         eps0 = self._girado(e1, e2, 0.0)
         eps_eq_target = self._eps_eq(eps0)
-        # Anclar el estado en el primer punto θ=0.
-        _, _, state = self.mat.compute_state(eps0, None)
-        kappa0 = state['kappa']
-        d0 = state['damage']
-        self.assertGreater(d0, 0.0)
-
         for theta_deg in (30.0, 60.0, 90.0, 120.0, 180.0, 270.0, 359.0):
+            # La trayectoria es una rotación: la ε_eq energética no cambia.
             eps = self._girado(e1, e2, math.radians(theta_deg))
-            # Verificar que ε_eq es invariante.
             self.assertAlmostEqual(self._eps_eq(eps) / eps_eq_target, 1.0, places=12)
-            _, _, state_new = self.mat.compute_state(eps, state)
-            # κ no debe crecer (ε_eq no aumenta).
-            self.assertAlmostEqual(state_new['kappa'], kappa0, places=12,
-                msg=f"θ={theta_deg}°: κ cambió {kappa0:.6e} → {state_new['kappa']:.6e}.")
-            self.assertAlmostEqual(state_new['damage'], d0, places=12,
-                msg=f"θ={theta_deg}°: ω cambió {d0:.6e} → {state_new['damage']:.6e}.")
+
+        for medida, kw in self.MEDIDAS:
+            mat = IsotropicDamage2D(E=2.0e5, nu=0.3, kappa_0=1.0e-4, alpha=100.0,
+                                    hypothesis='plane_stress', equivalent_strain=medida, **kw)
+            # Anclar el estado en el primer punto θ=0.
+            _, _, state = mat.compute_state(eps0, None)
+            kappa0 = state['kappa']
+            d0 = state['damage']
+            self.assertGreater(d0, 0.0, medida)
+            if medida == 'energy':
+                self.assertAlmostEqual(kappa0 / eps_eq_target, 1.0, places=12)
+
+            for theta_deg in (30.0, 60.0, 90.0, 120.0, 180.0, 270.0, 359.0):
+                eps = self._girado(e1, e2, math.radians(theta_deg))
+                _, _, state_new = mat.compute_state(eps, state)
+                # κ no debe crecer (ε_eq no aumenta).
+                self.assertAlmostEqual(state_new['kappa'], kappa0, places=12,
+                    msg=f"{medida}, θ={theta_deg}°: κ cambió {kappa0:.6e} → {state_new['kappa']:.6e}.")
+                self.assertAlmostEqual(state_new['damage'], d0, places=12,
+                    msg=f"{medida}, θ={theta_deg}°: ω cambió {d0:.6e} → {state_new['damage']:.6e}.")
 
     def test_non_proportional_path_with_eps_eq_increasing(self):
         """Trayectoria 1: ε se mueve de (ε_a, 0, 0) a (0, ε_b, 0) pasando
@@ -271,7 +286,7 @@ class TestIsotropicDamage2DNonProportional(unittest.TestCase):
         eps2 = np.array([eps_a, eps_b, 0.0])
         _, _, state = self.mat.compute_state(eps2, state)
         kappa2 = state['kappa']
-        # ε_eq creció (ε_eq² = εxx² + εyy²); κ debe seguirlo.
+        # ε_eq creció (ε_eq² = (εxx² + εyy² + 2ν·εxx·εyy)/(1−ν²)); κ debe seguirlo.
         self.assertAlmostEqual(kappa2, self._eps_eq(eps2), places=10)
         self.assertGreater(kappa2, kappa1)
 

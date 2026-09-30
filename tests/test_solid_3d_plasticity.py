@@ -559,17 +559,28 @@ class TestHex8IsotropicDamage3DElastic(unittest.TestCase):
 
 class TestHex8IsotropicDamage3DActiveLoad(unittest.TestCase):
     """Hex8 + IsotropicDamage3D bajo carga uniaxial activa con daño + tangente
-    algorítmica consistente que activa LU.
+    algorítmica consistente.
 
     Aplicamos un desplazamiento prescrito ux en la cara +x de magnitud suficiente
     para superar κ_0; el resto de la cinemática se ajusta por equilibrio
-    (confinamiento transversal libre con Poisson activo).
+    (confinamiento transversal libre con Poisson activo). Se recorre con las
+    tres medidas de deformación equivalente (2026-09-29): con la energética
+    (por defecto) la tangente consistente es simétrica y la instancia declara
+    ``IS_SYMMETRIC = True``; con Mazars y von Mises modificado es asimétrica y
+    el despachador algebraico elige LU.
     """
 
     def test_loading_activates_damage_and_converges(self):
+        for medida, kw in (('energy', {}), ('mazars', {}),
+                           ('modified_von_mises', {'k': 10.0})):
+            with self.subTest(medida=medida):
+                self._cargar(medida, kw)
+
+    def _cargar(self, medida, kw):
         E, nu, kappa_0, alpha = 2.0e4, 0.2, 1.0e-4, 500.0
-        mat = IsotropicDamage3D(E=E, nu=nu, kappa_0=kappa_0, alpha=alpha)
-        self.assertFalse(mat.IS_SYMMETRIC)   # tangente consistente asimétrica → LU
+        mat = IsotropicDamage3D(E=E, nu=nu, kappa_0=kappa_0, alpha=alpha,
+                                equivalent_strain=medida, **kw)
+        self.assertEqual(mat.IS_SYMMETRIC, medida == 'energy')
 
         dom, elem, nodes = _build_hex8_unit_cube(mat)
         # Rodillos en tres planos de simetría

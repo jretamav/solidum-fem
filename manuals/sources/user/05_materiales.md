@@ -4,7 +4,7 @@
 
 ### `Elastic1D` — elasticidad lineal axial
 
-Ley de Hooke escalar $\sigma = E \cdot \varepsilon$. Sin variables internas. Compatible con todos los elementos 1D (armaduras y marcos).
+Ley de Hooke escalar $\sigma = E \cdot \varepsilon$. Sin variables internas. Compatible con todos los elementos 1D (armaduras y marcos) y como material de fibra de una sección por fibras. Es el único material 1D que los marcos admiten con `material` + `A`, `I` (elástico lineal).
 
 ```yaml
 materials:
@@ -38,7 +38,7 @@ Plasticidad asociativa con criterio $f = |\sigma_{\text{trial}}| - (\sigma_y + H
 
 - **Parámetros**: `E`, `sigma_y` (fluencia inicial), `H` (módulo de endurecimiento; `H=0` = perfectamente plástico).
 - **Variables internas**: $\varepsilon_p$ (deformación plástica), $\alpha$ (acumulada equivalente).
-- **Compatible con**: armaduras y marcos 1D (en marcos solo se aplica al esfuerzo axial; ver advertencia en el capítulo *Catálogo de Elementos Finitos*).
+- **Compatible con**: armaduras y, en los marcos, **sólo como material de fibra** de una sección por fibras (`section`, bloque `sections` del capítulo *Archivo de Entrada YAML*): así se forman rótulas plásticas por flexión. Un marco con `material` + `A`, `I` lo rechaza al construir.
 
 ```yaml
 materials:
@@ -128,29 +128,54 @@ $$d = 1 - \frac{\kappa_0}{\kappa}\,\exp\bigl(-\alpha(\kappa - \kappa_0)\bigr) \q
 - **Parámetros**: `E`, `kappa_0` (umbral elástico), `alpha` (velocidad de softening), `density` (opcional).
 - **Variables internas**: $\kappa$ (máxima histórica), $d$ (daño).
 - **Tangente**: **algorítmica consistente** en carga activa con daño no saturado: $E_{\text{tan}} = -(1 - d)\,E\,\alpha\,\kappa$ — negativa, refleja la pendiente descendente $\sigma$-$\varepsilon$ post-pico. En descarga, sin daño activo o al saturar, vuelve a la secante $(1-d)E$.
+- **Compatible con**: armaduras y, en los marcos, sólo como material de fibra de una sección por fibras. En fibras, el ablandamiento se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla (sin regularización).
 
 ### `IsotropicDamage2D` — daño isótropo 2D
 
-Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$. Deformación equivalente: la norma del tensor de deformaciones completo, con la componente fuera del plano $\varepsilon_{zz} = c_{zz}(\varepsilon_{xx} + \varepsilon_{yy})$, donde $c_{zz} = -\nu/(1-\nu)$ en tensión plana y $c_{zz} = 0$ en deformación plana:
+Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$, con el daño gobernado por una deformación equivalente $\varepsilon_{eq}$ que se elige con el parámetro `equivalent_strain`. Las tres medidas disponibles dan $\varepsilon_{eq} = \varepsilon$ en tracción uniaxial de esfuerzo, así que el umbral es siempre $\kappa_0 = f_t/E$:
 
-$$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\gamma_{xy}^2}$$
+| `equivalent_strain` | Definición | Compresión uniaxial de esfuerzo |
+|---|---|---|
+| `energy` (por defecto; Simó y Ju 1987) | $\varepsilon_{eq} = \sqrt{\boldsymbol\varepsilon^\top\mathbf C_e\,\boldsymbol\varepsilon/E}$ | daña igual que en tracción: $\varepsilon_{eq} = \lvert\varepsilon\rvert$ |
+| `mazars` (Mazars 1986) | $\varepsilon_{eq} = \sqrt{\sum_i\langle\varepsilon_i\rangle_+^2}$, sólo extensiones principales | daña por la extensión lateral: $\varepsilon_{eq} = \sqrt2\,\nu\,\lvert\varepsilon\rvert$ |
+| `modified_von_mises` (de Vree et al. 1995) | función de $I_1$ y $J_2$ con $k = f_c/f_t$ | $\varepsilon_{eq} = \lvert\varepsilon\rvert/k$: empieza a dañar con $\lvert\varepsilon\rvert = k\,\kappa_0$ |
 
-Así el 2D es la restricción exacta de `IsotropicDamage3D` en las dos hipótesis.
+Con von Mises modificado, $\varepsilon_{eq} = \frac{k-1}{2k(1-2\nu)}\,I_1 + \frac{1}{2k}\sqrt{\left(\frac{k-1}{1-2\nu}\right)^2 I_1^2 + \frac{12k}{(1+\nu)^2}\,J_2}$. Mazars y von Mises modificado se evalúan sobre el tensor 3D con la componente fuera del plano $\varepsilon_{zz} = c_{zz}(\varepsilon_{xx} + \varepsilon_{yy})$, donde $c_{zz} = -\nu/(1-\nu)$ en tensión plana y $c_{zz} = 0$ en deformación plana; la energética usa la $\mathbf C_e$ plana del material, que ya la incluye. Con cualquiera de las tres el 2D es la restricción exacta de `IsotropicDamage3D` en las dos hipótesis.
 
-- **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (`plane_stress` default o `plane_strain`), `density` (opcional).
-- **Tangente algorítmica consistente**: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes \mathbf n_{eq}$ con $\mathbf n_{eq} = [\varepsilon_{xx} + c_{zz}\varepsilon_{zz},\ \varepsilon_{yy} + c_{zz}\varepsilon_{zz},\ \tfrac12\gamma_{xy}]^\top$ en carga activa. **No simétrica** ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf n_{eq}$ no son proporcionales); el atributo `IS_SYMMETRIC = False` hace que el despachador algebraico ADR 0003 elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
-- **Limitación**: $\varepsilon_{eq}$ simétrica no distingue daño en tracción frente a compresión; para hormigón se requiere modelo de Mazars o separación tracción/compresión (no implementado). Sin regularización por longitud característica $\to$ *mesh-dependency* en régimen de ablandamiento.
+- **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis` (`plane_stress` default o `plane_strain`), `equivalent_strain` (`energy` default, `mazars` o `modified_von_mises`), `k` ($f_c/f_t > 0$: obligatorio con `modified_von_mises` y no admitido con las otras dos), `density` (opcional).
+- **Tangente algorítmica consistente**: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - (1-d)\left(\frac1\kappa + \alpha\right)(\mathbf C_e\boldsymbol\varepsilon) \otimes \frac{\partial\varepsilon_{eq}}{\partial\boldsymbol\varepsilon}$ en carga activa. Con `energy` es **simétrica** y el material se declara simétrico ante el despachador algebraico (ADR 0003); con `mazars` y `modified_von_mises` no lo es y el despachador elige LU. Recupera convergencia cuadrática del Newton global frente a la secante.
+- **Cambio del 2026-09-29**: hasta esa fecha la medida era la norma del tensor $\sqrt{\boldsymbol\varepsilon:\boldsymbol\varepsilon}$, que en tracción uniaxial daba $\varepsilon_{eq} = \varepsilon\sqrt{1+2\nu^2}$ (el daño empezaba en $\varepsilon = \kappa_0/\sqrt{1+2\nu^2}$). Un YAML existente pasa a la medida energética sin tocarlo, y sus resultados cambian porque la calibración es otra: ahora $\kappa_0 = f_t/E$ directamente.
+- **Limitación**: un único daño escalar (el modelo de Mazars completo, con daños de tracción y compresión separados, no está implementado; aquí sólo su medida) y sin restitución de rigidez al cerrar fisuras. Sin regularización por longitud característica $\to$ *mesh-dependency* en régimen de ablandamiento.
 
 ```yaml
 materials:
+  # Medida energética (por defecto): no hace falta declararla.
   - id: 3
     type: IsotropicDamage2D
     E: 30.0e9
     nu: 0.2
-    kappa_0: 1.5e-4
+    kappa_0: 1.0e-4       # f_t/E = 3 MPa / 30 GPa
     alpha: 800.0
     hypothesis: plane_stress
-    density: 2500.0   # hormigón
+    density: 2500.0       # hormigón
+  # Mazars: sólo las extensiones principales dañan.
+  - id: 4
+    type: IsotropicDamage2D
+    E: 30.0e9
+    nu: 0.2
+    kappa_0: 1.0e-4
+    alpha: 800.0
+    hypothesis: plane_strain
+    equivalent_strain: mazars
+  # von Mises modificado: exige k = f_c/f_t.
+  - id: 5
+    type: IsotropicDamage2D
+    E: 30.0e9
+    nu: 0.2
+    kappa_0: 1.0e-4
+    alpha: 800.0
+    equivalent_strain: modified_von_mises
+    k: 10.0               # f_c = 30 MPa, f_t = 3 MPa
 ```
 
 ## Elasticidad Unilateral (Cable)
@@ -211,19 +236,27 @@ Cono circular suave de Mohr-Coulomb, criterio $f = \sqrt{J_2} + \eta_f I_1 - k(\
 
 ### `IsotropicDamage3D` — daño isótropo 3D con softening exponencial
 
-$\boldsymbol\sigma = (1-d)\,\mathbf{C}_e\,\boldsymbol\varepsilon$ con daño escalar $d$ gobernado por la deformación equivalente
+$\boldsymbol\sigma = (1-d)\,\mathbf{C}_e\,\boldsymbol\varepsilon$ con daño escalar $d$ gobernado por la deformación equivalente $\varepsilon_{eq}$, que se elige con `equivalent_strain` entre las mismas tres medidas que `IsotropicDamage2D` (tabla de la sección anterior), ahora sobre el tensor 3D completo:
 
-$$\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\left(\gamma_{xy}^2 + \gamma_{yz}^2 + \gamma_{xz}^2\right)}$$
+- `energy` (por defecto): $\varepsilon_{eq} = \sqrt{\boldsymbol\varepsilon^\top\mathbf C_e\,\boldsymbol\varepsilon/E}$;
+- `mazars`: $\varepsilon_{eq} = \sqrt{\sum_i\langle\varepsilon_i\rangle_+^2}$ sobre las tres deformaciones principales (sin daño en compresión hidrostática);
+- `modified_von_mises`: función de $I_1 = \varepsilon_{xx} + \varepsilon_{yy} + \varepsilon_{zz}$ y de $J_2 = \tfrac16\left[(\varepsilon_{xx}-\varepsilon_{yy})^2 + (\varepsilon_{yy}-\varepsilon_{zz})^2 + (\varepsilon_{zz}-\varepsilon_{xx})^2\right] + \tfrac14(\gamma_{xy}^2 + \gamma_{yz}^2 + \gamma_{xz}^2)$, con $k = f_c/f_t$.
 
-que es la norma de Frobenius del tensor de deformación y extiende de forma natural la convención 2D. Historial $\kappa$ máximo con condiciones de Kuhn-Tucker y ley de softening exponencial compartida con las versiones 1D y 2D.
+Las tres dan $\varepsilon_{eq} = \varepsilon$ en tracción uniaxial de esfuerzo ($\kappa_0 = f_t/E$). Historial $\kappa$ máximo con condiciones de Kuhn-Tucker y ley de softening exponencial compartida con las versiones 1D y 2D. Hasta el 2026-09-29 la medida era la norma del tensor $\sqrt{\boldsymbol\varepsilon:\boldsymbol\varepsilon}$ (retirada; ver `IsotropicDamage2D`).
 
-- **Parámetros**: `E`, `nu`, `kappa_0` (umbral de daño), `alpha` (parámetro de la ley de softening), `density` (opcional).
-- **Tangente**: algorítmica consistente en carga activa (no simétrica en general), secante en descarga y al saturar.
+- **Parámetros**: `E`, `nu`, `kappa_0` (umbral de daño), `alpha` (parámetro de la ley de softening), `equivalent_strain` (`energy` default, `mazars` o `modified_von_mises`), `k` ($f_c/f_t > 0$, sólo y obligatorio con `modified_von_mises`), `density` (opcional).
+- **Tangente**: algorítmica consistente en carga activa (simétrica con `energy`, no simétrica en general con `mazars` y `modified_von_mises`), secante en descarga y al saturar.
 
 ```yaml
 materials:
   - {id: 1, type: Elastic3D,   E: 210.0e9, nu: 0.3, density: 7850.0}
   - {id: 2, type: VonMises3D,  E: 210.0e9, nu: 0.3, sigma_y: 250.0e6, H: 1.0e9}
+  # Daño 3D con cada medida de deformación equivalente (hormigón, f_t = 3 MPa):
+  - {id: 3, type: IsotropicDamage3D, E: 30.0e9, nu: 0.2, kappa_0: 1.0e-4, alpha: 800.0}
+  - {id: 4, type: IsotropicDamage3D, E: 30.0e9, nu: 0.2, kappa_0: 1.0e-4, alpha: 800.0,
+     equivalent_strain: mazars}
+  - {id: 5, type: IsotropicDamage3D, E: 30.0e9, nu: 0.2, kappa_0: 1.0e-4, alpha: 800.0,
+     equivalent_strain: modified_von_mises, k: 10.0}
 ```
 
 ## Módulo de usuario `discontinuities`: materiales cohesivos (salto de desplazamientos)

@@ -17,7 +17,7 @@
 - **Parámetros**: `E` (módulo de Young).
 - **Variables internas**: ninguna (sin historia).
 - **Tangente**: constante = `E`.
-- **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko`.
+- **Compatible con**: `Truss2D`, `Truss3D` (y sus corotacionales), los cuatro marcos con `material` + propiedades geométricas (declara `IS_LINEAR_ELASTIC = True`, [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)) y como material de fibra de `FiberSection`.
 - **Spec**: [docs/specs/Elastic1D.md](specs/Elastic1D.md)
 - **Archivo**: [solidum/materials/elastic.py](../solidum/materials/elastic.py)
 
@@ -88,7 +88,7 @@
 - **Variables internas**: `kappa`, `damage`.
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — esfuerzo umbral inicial. Garantiza invariancia bajo cambio de unidades del check `f ≤ atol + rtol · escala`.
 - **Limitaciones**: no distingue tracción/compresión en la activación del daño; control de carga global puede ser inestable tras el pico (requiere `ArcLengthSolver` para seguir la rama de softening).
-- **Compatible con**: `Truss2D`, `Truss3D`.
+- **Compatible con**: `Truss2D`, `Truss3D`, y como material de fibra de `FiberSection` (marcos Euler-Bernoulli con `section`, [ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md); en fibras, el ablandamiento se localiza en los puntos de Gauss sin regularizar, deuda #29 de STATUS). Los marcos con `material` + propiedades geométricas lo rechazan al construir (`IS_LINEAR_ELASTIC = False`).
 - **Referencia**: ver `docs/specs/IsotropicDamage1D.md` y la hermana 2D para derivación detallada. Lemaitre & Chaboche, *Mechanics of Solid Materials*. Simó & Ju (1987, IJSS 23) marco de tangente consistente.
 - **Archivo**: [solidum/materials/damage_1d.py](../solidum/materials/damage_1d.py)
 
@@ -97,41 +97,49 @@
 ## IsotropicDamage3D — daño isótropo 3D con softening exponencial
 
 - **Modelo**: extensión 3D de `IsotropicDamage2D`. Esfuerzo nominal `σ = (1 − d) · C_e · ε` con `C_e` 6×6 isótropa 3D; daño escalar `d ∈ [0, DAMAGE_MAX]`. **Sin variantes de hipótesis** — en 3D todas las componentes son activas.
-- **Deformación equivalente** (Voigt 6D del proyecto): `ε_eq = √(ε_xx² + ε_yy² + ε_zz² + ½(γ_xy² + γ_yz² + γ_xz²))` con `M = diag(1, 1, 1, 1/2, 1/2, 1/2)`. Equivale a la norma de Frobenius del tensor deformación 3D y es la extensión natural de la convención 2D (`M_2D = diag(1, 1, 1/2)`).
+- **Deformación equivalente** (parámetro `equivalent_strain`, desde el 2026-09-29; Voigt 6D del proyecto). Las tres medidas dan `ε_eq = ε` en tracción uniaxial de esfuerzo, así que `κ_0 = f_t/E`:
+  - `energy` (por defecto; Simó y Ju 1987): `ε_eq = √(εᵀ·C_e·ε / E)`. No distingue tracción de compresión.
+  - `mazars` (Mazars 1986): `ε_eq = √(Σ⟨ε_i⟩₊²)` sobre las deformaciones principales. Sólo dañan las extensiones: compresión uniaxial de esfuerzo `ε_eq = √2·ν·|ε|`; compresión hidrostática, sin daño.
+  - `modified_von_mises` (de Vree, Brekelmans y van Gils 1995), con `k = f_c/f_t` obligatorio: `ε_eq = (k−1)/(2k(1−2ν))·I₁ + 1/(2k)·√(((k−1)/(1−2ν))²·I₁² + 12k/(1+ν)²·J₂)`. Compresión uniaxial de esfuerzo `ε_eq = |ε|/k`.
+  - Hasta el 2026-09-29 era la norma del tensor `√(ε:ε)`, retirada por no estándar y mal calibrada (`ε_eq = ε·√(1+2ν²)` en tracción uniaxial).
 - **Evolución**: κ máxima histórica (Kuhn-Tucker `κ_{n+1} = max(κ_n, ε_eq)`); ley exponencial centralizada en `solidum.materials._softening.evaluate_exponential_damage` (compartida con `IsotropicDamage1D` e `IsotropicDamage2D`); saturación a `DAMAGE_MAX`.
 - **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·C_e` en descarga, sin daño activo (`κ ≤ κ_0`) o al saturar.
-  - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ (M·ε)`.
-  - Derivación: idéntica al 2D extendida a 6D. `∂d/∂κ = (1-d)·(1/κ + α)`; `∂κ/∂ε = M·ε/ε_eq` en carga activa, 0 en descarga.
-  - **No simétrica en general**: `(C_e·ε)` y `(M·ε)` no son proporcionales salvo en estados de deformación muy particulares (uniaxial puro alineado con ejes). Recupera convergencia cuadrática del Newton global frente a la secante (Simó-Ju 1987).
-- **Relación con `IsotropicDamage2D` plane_strain**: bajo restricción `ε_zz = γ_yz = γ_xz = 0`, Damage3D se reduce **exactamente** a Damage2D plane_strain (misma `C_e`, misma `ε_eq`, misma ley centralizada). Test cruzado `TestIsotropicDamage3DvsPlaneStrain` blindado a **14 decimales en `d` y `κ`**, 10 decimales en σ. En tensión plana, desde el 2026-09-29, Damage2D también es la restricción exacta de Damage3D con `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)`: mismo `d`, mismo `κ`, mismas componentes en el plano y `σ_zz = 0` en toda una historia de carga, descarga y recarga ([`test_damage_2d_3d_consistency.py`](../tests/test_damage_2d_3d_consistency.py)).
-- **STRAIN_DIM**: 6 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU para el sistema global).
-- **Parámetros**: `E` (>0), `nu` ∈ (-1, 0.5), `kappa_0` (>0), `alpha` (>0), `density` (opcional, ADR 0008).
+  - Fórmula consistente: `C_alg = (1-d)·C_e − (1-d)·(1/κ + α) · (C_e·ε) ⊗ ∂ε_eq/∂ε`.
+  - `∂ε_eq/∂ε`: energética `C_e·ε/(E·ε_eq)`; Mazars `ε₊/ε_eq` (parte positiva del tensor, `Σ⟨ε_i⟩₊·n_i⊗n_i`, en Voigt con componentes tensoriales; bien definida con principales repetidas); von Mises modificado por `∂I₁/∂ε` y `∂J₂/∂ε` (ver spec §7).
+  - **Simétrica con `energy`** (`∂ε_eq/∂ε ∥ C_e·ε`, bit a bit en la implementación); no simétrica en general con `mazars` y `modified_von_mises`.
+- **Relación con `IsotropicDamage2D`**: con cualquiera de las tres medidas, Damage2D es la **restricción exacta** de Damage3D — en deformación plana bajo `ε_zz = γ_yz = γ_xz = 0` y en tensión plana con `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)`: mismo `d`, mismo `κ`, mismas componentes en el plano y `σ_zz = 0` en tensión plana, en toda una historia de carga, descarga y recarga ([`test_damage_2d_3d_consistency.py`](../tests/test_damage_2d_3d_consistency.py)). Test cruzado `TestIsotropicDamage3DvsPlaneStrain` a **14 decimales en `d` y `κ`**, 10 decimales en σ.
+- **STRAIN_DIM**: 6 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` en la clase (cota conservadora); la **instancia** lo pone a `True` con `energy` (el despachador algebraico ADR 0003 lo lee de la instancia; con `mazars` y `modified_von_mises` elige LU/Pardiso).
+- **Parámetros**: `E` (>0), `nu` ∈ (-1, 0.5), `kappa_0` (>0), `alpha` (>0), `equivalent_strain` ∈ {`energy` (default), `mazars`, `modified_von_mises`}, `k` (>0, sólo y obligatorio con `modified_von_mises`), `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`. **Sin variables tensoriales** (a diferencia de los modelos plásticos): el daño es escalar, el historial es escalar.
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D/2D, constante respecto al estado.
-- **Limitaciones** (idénticas al 2D): la `ε_eq` simétrica no distingue daño en tracción vs compresión; sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (localización en una banda de elementos). Para hormigón con resistencia diferente en tracción/compresión usar split tipo Mazars o de Vree (out-of-scope). Locking volumétrico en `Hex8`/`Tet4` con `ν` cercano a 0.5 → mismo régimen ya documentado para los demás materiales 3D, blindado por test del elemento.
+- **Validación**: curva σ-ε analítica bajo confinamiento con las tres medidas ([`tests/validation/test_uniaxial_softening_damage_3d.py`](../tests/validation/test_uniaxial_softening_damage_3d.py)); valores de `ε_eq` frente a una referencia independiente, tangente por diferencias finitas y camino por lotes bit a bit ([`test_damage_equivalent_strain.py`](../tests/test_damage_equivalent_strain.py)).
+- **Limitaciones**: un único daño escalar (el modelo de Mazars completo, con daños de tracción y compresión ponderados, queda fuera; aquí sólo su medida); sin restitución de rigidez al cerrar fisuras; sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (localización en una banda de elementos). Locking volumétrico en `Hex8`/`Tet4` con `ν` cercano a 0.5 → mismo régimen ya documentado para los demás materiales 3D, blindado por test del elemento.
 - **Compatible con**: `Hex8`, `Tet4`.
-- **Referencia**: ver `docs/specs/IsotropicDamage3D.md`. Simó & Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre & Chaboche (1990) marco de continuum damage mechanics. de Souza Neto, Perić & Owen (2008) §12.
-- **Archivo**: [solidum/materials/damage_3d.py](../solidum/materials/damage_3d.py)
+- **Referencia**: ver `docs/specs/IsotropicDamage3D.md`. Simó & Ju (1987, IJSS 23) medida energética y tangente consistente; Mazars (1986, Eng. Fract. Mech. 25); de Vree, Brekelmans & van Gils (1995, Comput. Struct. 55); Lemaitre & Chaboche (1990); de Souza Neto, Perić & Owen (2008) §12.
+- **Archivo**: [solidum/materials/damage_3d.py](../solidum/materials/damage_3d.py) (medidas en [solidum/materials/_equivalent_strain.py](../solidum/materials/_equivalent_strain.py))
 
 ---
 
 ## IsotropicDamage2D — daño isótropo 2D con softening exponencial
 
 - **Modelo**: extensión 2D de `IsotropicDamage1D`. Esfuerzo nominal `σ = (1 − d) · C_e · ε`; daño escalar `d ∈ [0, DAMAGE_MAX]`.
-- **Deformación equivalente**: norma del tensor de deformaciones completo, `ε_eq = √(ε_xx² + ε_yy² + ε_zz² + ½·γ_xy²)`, con `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)` en tensión plana y `ε_zz = 0` en deformación plana: el 2D es la restricción exacta de `IsotropicDamage3D` en ambas hipótesis (hasta el 2026-09-29 la tensión plana omitía `ε_zz`). No distingue tracción de compresión.
+- **Deformación equivalente** (parámetro `equivalent_strain`, desde el 2026-09-29): las mismas tres medidas que `IsotropicDamage3D`, evaluadas sobre el estado 3D asociado `[ε_xx, ε_yy, ε_zz, γ_xy, 0, 0]` con `ε_zz = −ν/(1−ν)·(ε_xx + ε_yy)` en tensión plana y `ε_zz = 0` en deformación plana:
+  - `energy` (por defecto): `ε_eq = √(εᵀ·C_e·ε / E)` con la `C_e` plana del material (en tensión plana es `σ:ε` del 3D con `σ_zz = 0`).
+  - `mazars`: `√(Σ⟨ε_i⟩₊²)` sobre las dos principales del plano (forma cerrada) y `ε_zz`.
+  - `modified_von_mises` (con `k = f_c/f_t`): función de `I₁` y `J₂` del estado 3D asociado.
+  - Las tres dan `ε_eq = ε` en tracción uniaxial de esfuerzo (`κ_0 = f_t/E`) y el 2D es la restricción exacta de `IsotropicDamage3D` en ambas hipótesis. Hasta el 2026-09-29 era la norma del tensor `√(ε:ε)` (retirada).
 - **Evolución**: κ máxima histórica (Kuhn-Tucker `κ_n+1 = max(κ_n, ε_eq)`), ley exponencial `d(κ) = 1 - (κ_0/κ)·exp(-α(κ-κ_0))` para `κ > κ_0`, saturado a `DAMAGE_MAX`.
 - **Tangente**: **algorítmica consistente** en carga activa con daño no saturado; **secante** `(1-d)·C_e` en descarga, sin daño activo (`κ ≤ κ_0`) o al saturar.
-  - Fórmula consistente: `C_alg = (1-d)·C_e - [(1-d)·(1/κ + α)/ε_eq] · (C_e·ε) ⊗ n_eq`, con `n_eq = [ε_xx + c_zz·ε_zz, ε_yy + c_zz·ε_zz, ½γ_xy]` y `c_zz = −ν/(1−ν)` (tensión plana) o `0` (deformación plana).
-  - Derivación: `∂d/∂κ = (1-d)·(1/κ + α)` por la ley exponencial; `∂κ/∂ε = n_eq/ε_eq` en carga activa, 0 en descarga.
-  - **No simétrica en general** (`(C_e·ε)` y `n_eq` no son proporcionales). Recupera convergencia cuadrática del Newton global frente a la secante (que daba convergencia lineal).
-- **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` (la tangente consistente no es simétrica; el despachador algebraico ADR 0003 elige LU en lugar de Cholesky para el sistema global).
-- **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis ∈ {'plane_stress' (default), 'plane_strain'}`, `density` (opcional, ADR 0008).
+  - Fórmula consistente: `C_alg = (1-d)·C_e − (1-d)·(1/κ + α) · (C_e·ε) ⊗ ∂ε_eq/∂ε`; en Mazars y von Mises modificado la regla de la cadena por `ε_zz` añade `c_zz·∂ε_eq/∂ε_zz` a las componentes `xx` e `yy` (`c_zz = −ν/(1−ν)` o `0`).
+  - **Simétrica con `energy`**; no simétrica en general con `mazars` y `modified_von_mises`. Recupera convergencia cuadrática del Newton global frente a la secante (que daba convergencia lineal).
+- **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `False` en la clase; `True` en la instancia con `energy` (ADR 0003).
+- **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis ∈ {'plane_stress' (default), 'plane_strain'}`, `equivalent_strain` ∈ {`energy` (default), `mazars`, `modified_von_mises`}, `k` (>0, sólo y obligatorio con `modified_von_mises`), `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`.
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D, el criterio de daño tiene el mismo umbral característico independientemente de la dimensión.
-- **Limitación**: la `ε_eq` simétrica no distingue daño en tracción vs compresión; para hormigón usar modelo de Mazars o split tracción/compresión (out-of-scope). Sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
+- **Limitación**: un único daño escalar (sin los daños separados de tracción y compresión del modelo de Mazars completo) y sin restitución de rigidez al cerrar fisuras. Sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9`.
-- **Referencia**: ver `docs/specs/IsotropicDamage2D.md`. Simó & Ju (1987, IJSS 23) tangente consistente para daño isótropo. Lemaitre & Chaboche (1990) marco de continuum damage mechanics.
-- **Archivo**: [solidum/materials/damage_2d.py](../solidum/materials/damage_2d.py)
+- **Referencia**: ver `docs/specs/IsotropicDamage2D.md`. Simó & Ju (1987, IJSS 23) medida energética y tangente consistente; Mazars (1986); de Vree, Brekelmans & van Gils (1995); Lemaitre & Chaboche (1990).
+- **Archivo**: [solidum/materials/damage_2d.py](../solidum/materials/damage_2d.py) (medidas en [solidum/materials/_equivalent_strain.py](../solidum/materials/_equivalent_strain.py))
 
 ---
 
@@ -146,7 +154,7 @@
 - **Parámetros**: `E`, `sigma_y` (fluencia inicial), `H` (módulo de endurecimiento; 0 = perfectamente plástico).
 - **Variables internas**: `eps_p` (deformación plástica), `alpha` (acumulada equivalente).
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = σ_y + H · α` — fluencia corriente (adaptativa al endurecimiento). El check `f ≤ atol + rtol · escala` se hace contra la superficie de fluencia *en el estado de entrada del paso*.
-- **Compatible con**: `Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko` (en estos últimos solo se aplica al esfuerzo axial $\sigma$).
+- **Compatible con**: `Truss2D`, `Truss3D` (y sus corotacionales), y como material de fibra de `FiberSection`: plasticidad distribuida en la sección de los marcos Euler-Bernoulli con `section` ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md)). Los marcos con `material` + propiedades geométricas lo rechazan al construir (`IS_LINEAR_ELASTIC = False`); hasta el 2026-09-29 lo aceptaban y su `E_t` axial escalaba toda la rigidez local, con flectores incorrectos.
 - **Referencia**: Simo & Hughes, *Computational Inelasticity*, cap. 1.
 - **Spec**: [docs/specs/Elastoplastic1D.md](specs/Elastoplastic1D.md)
 - **Archivo**: [solidum/materials/plastic_1d.py](../solidum/materials/plastic_1d.py)
