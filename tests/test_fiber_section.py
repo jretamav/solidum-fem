@@ -1516,7 +1516,12 @@ class TestDisplaces:
             np.testing.assert_allclose(t @ M @ t, mp["rhoA"] * el.L0, rtol=1e-12)
         b = np.array([0.0, -5.0e3])
         ref = Frame2DEuler(1, _nodos_2d(), _acero(), A=B * H, I=1e-3)
-        np.testing.assert_allclose(el.compute_body_load(b), ref.compute_body_load(b), rtol=1e-14)
+        f_ref = ref.compute_body_load(b)
+        # La componente axial es nula: queda el redondeo, del orden de ε·max|f|,
+        # que cambia con la BLAS de cada plataforma (en el CI de Linux 5.6e-14
+        # frente a 3.3e-14): tolerancia absoluta escalada, no sólo relativa.
+        np.testing.assert_allclose(el.compute_body_load(b), f_ref, rtol=1e-14,
+                                   atol=1e-12 * np.abs(f_ref).max())
 
     def test_sin_displaces_nada_cambia_bit_a_bit(self):
         """Sin displaces (omitido o ``None``) la sección es la de antes: las
