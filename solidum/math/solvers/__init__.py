@@ -6,9 +6,8 @@ extensiones futuras (Reglas.md §1). Cada solver vive en su módulo:
 
 - ``linear`` — :class:`LinearSolver` (un paso, sistema algebraico lineal).
 - ``nonlinear`` — :class:`NonlinearSolver` (Newton-Raphson con paso adaptativo).
-- ``arclength`` — :class:`ArcLengthSolver` (Crisfield cilíndrico, post-crítico).
-- ``dissipation_arclength`` — :class:`DissipationArcLengthSolver` (restricción
-  de disipación, Gutiérrez 2004).
+- ``arclength`` — :class:`ArcLengthSolver` (Crisfield cilíndrico, post-crítico)
+  y :class:`ArcProblem`, su problema de Newton por paso (ver abajo).
 - ``indirect_displacement`` — :class:`IndirectDisplacementSolver` (control
   indirecto de desplazamiento, de Borst 1987: retrocesos por localización).
 - ``modal`` — :class:`ModalSolver` (problema de valores característicos
@@ -51,12 +50,24 @@ solver declara su pipeline (``"static"``, ``"modal"``, ``"transient"``) y
 ``run_yaml`` despacha por valor literal. Nuevos solvers no clásicos no
 requieren tocar ``entry.py`` (regla C de auditoría arquitectural 2026-05-13,
 aplicada 2026-05-18 al añadir :class:`CentralDifferenceSolver`).
+
+Punto de extensión del arc-length: :class:`ArcProblem`
+-------------------------------------------------------
+Es el problema de Newton por paso de :class:`ArcLengthSolver` (protocolo
+``NewtonProblem`` del corrector compartido, ADR 0015): iterado
+``(U, λ, ΔU)``, las dos resoluciones por iteración (``du_R`` y ``du_t``) y la
+restricción que fija ``ddλ`` como método ``constraint``. Una variante de arco
+que sólo cambia la restricción del paso lo hereda y redefine ese método,
+como hace :class:`IndirectDisplacementSolver` en el programa principal. El
+paquete lo exporta con nombre público para que también lo hagan las
+variantes de fuera, como las de un módulo de usuario (ADR 0020), sin
+depender de un nombre interno de ``arclength``.
 """
 from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError
 from solidum.math.solvers.linear import LinearSolver
 from solidum.math.solvers.nonlinear import NonlinearSolver
 from solidum.math.solvers.arclength import ArcLengthSolver
-from solidum.math.solvers.dissipation_arclength import DissipationArcLengthSolver
+from solidum.math.solvers.arclength import _ArcProblem as ArcProblem
 from solidum.math.solvers.indirect_displacement import IndirectDisplacementSolver
 from solidum.math.solvers.modal import ModalSolver
 from solidum.math.solvers.newmark import (
@@ -75,7 +86,7 @@ __all__ = [
     "LinearSolver",
     "NonlinearSolver",
     "ArcLengthSolver",
-    "DissipationArcLengthSolver",
+    "ArcProblem",
     "IndirectDisplacementSolver",
     "ModalSolver",
     "NewmarkSolver",

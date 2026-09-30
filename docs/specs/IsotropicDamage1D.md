@@ -71,6 +71,13 @@ interface:
   primary_state_var: damage
   is_symmetric: true       # tangente escalar ⇒ contribución elemento simétrica (puede ser indefinida pero simétrica)
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§6.2 (daño isótropo basado en elasticidad, ablandamiento exponencial)"
+    - de_souza_neto: "cap. 12 (mecánica del daño)"
+  general_codes:
+    - code_aster: "MAZARS, ENDO_ISOT_BETON (daño escalar isótropo; leyes de ablandamiento propias)"
+
 parameters:
   - { name: E,        type: float, required: true,  desc: "Módulo de Young intacto" }
   - { name: kappa_0,  type: float, required: true,  desc: "Umbral de deformación equivalente |ε|" }

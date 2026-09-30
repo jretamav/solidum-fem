@@ -164,7 +164,7 @@ F_int = N · d
 
 ## Cable2DCorot — cable 2D corotacional
 
-Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite solo tensión. Cinemática corotacional; la unilateralidad la aporta el material (típicamente `CableMaterial1D`).
+Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite sólo fuerza axial de tracción. Cinemática corotacional; la unilateralidad la aporta el material (típicamente `CableMaterial1D`).
 
 ### Cinemática
 - Idéntica a una barra corotacional: longitud y cosenos directores se recalculan en configuración corriente en cada evaluación.
@@ -203,7 +203,7 @@ El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se impl
 
 ## Cable3DCorot — cable 3D corotacional
 
-Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite solo tensión, puede rotar libremente en el espacio. Cinemática corotacional 3D; unilateralidad aportada por el material (típicamente `CableMaterial1D`).
+Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite sólo fuerza axial de tracción, puede rotar libremente en el espacio. Cinemática corotacional 3D; unilateralidad aportada por el material (típicamente `CableMaterial1D`).
 
 ### Cinemática
 - Idéntica en filosofía a una barra corotacional 3D: longitud y cosenos directores se recalculan en configuración corriente.
@@ -440,7 +440,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Parámetros**: `thickness` (espesor para estado plano), `quadrature` (opcional).
 - **Cargas distribuidas**: `compute_body_load(b)` integra $\int \mathbf N^\top \mathbf b\, dV$ sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve σ, ε y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (`Sigma_*_nodal`).
-- **Implementación**: kernels `_compute_kinematics` y `_compute_integrands` con `@njit` (Numba) — JIT en primera llamada. Viven en `solidum/elements/solid_2d/_shared.py`, compartidos con Tri3.
+- **Implementación**: kernels `_compute_kinematics` (interno del Quad4) y `compute_integrands` (compartido con Tri3) con `@njit` (Numba) — JIT en primera llamada. Viven en `solidum/elements/solid_2d/_shared.py`; `compute_integrands` es API pública de cinemática para elementos de usuario (ADR 0020, P6) y se importa desde `solidum.elements.solid_2d`.
 - **Limitaciones**: bloqueo volumétrico con materiales casi-incompresibles (ν → 0.5); en ese régimen usar formulación mixta (no implementada).
 - **Archivo**: [solidum/elements/solid_2d/quad4.py](../solidum/elements/solid_2d/quad4.py)
 
@@ -456,7 +456,7 @@ Archivo propio. No hereda ni comparte helpers con `Frame2DEuler`, `Frame2DTimosh
 - **Cargas distribuidas**: `compute_body_load(b)` reparte 1/3 a cada nodo (exacto para b uniforme); `compute_edge_traction(edge, t̄)` reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve el único σ, ε y centroide del elemento (mismo formato que Quad4).
 - **Limitaciones**: shear locking severo; convergencia lenta. **Preferir `Quad4`** salvo en transiciones donde Quad4 no encaja geométricamente.
-- **Implementación**: kernel `_compute_kinematics_tri3` con `@njit` en `solidum/elements/solid_2d/_shared.py`.
+- **Implementación**: kernels `compute_kinematics_tri3` y `compute_integrands` con `@njit` en `solidum/elements/solid_2d/_shared.py`. Son API pública de cinemática para elementos de usuario (ADR 0020, P6): se importan desde `solidum.elements.solid_2d`, no desde `_shared`, que es interno.
 - **Archivo**: [solidum/elements/solid_2d/tri3.py](../solidum/elements/solid_2d/tri3.py)
 
 ---
@@ -681,7 +681,7 @@ Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación 
 - **Propósito**: introducir fractura computacional en aproximación discreta sobre el CST padre. Fiel a Retama (2010), Caps. 2, 5, 6 y 7: cinemática KOS, condensación estática local, longitud efectiva `l_d = (A_e/h)·cos(θ−α)`.
 - **DOFs por nodo**: `['ux', 'uy']` · 3 nodos · `STRAIN_DIM = 3` · `N_INTEGRATION_POINTS = 1`.
 - **DOFs enriquecidos (elementales, no globales)**: `[[u]] ∈ ℝ²` en frame local `(n, s)` de `Γ_d`. Se condensan dentro de `compute_element_state` y nunca llegan al ensamblador.
-- **Estado intacto**: bit-exact con [Tri3](#tri3--triángulo-lineal-2d-cst) (mismo `B`, mismo material, misma cuadratura); la cinemática del CST es la pública del programa principal (`compute_kinematics_tri3`, ADR 0020).
+- **Estado intacto**: bit-exact con [Tri3](#tri3--triángulo-lineal-2d-cst) (mismo `B`, mismo material, misma cuadratura); la cinemática del CST es la pública del programa principal (`compute_kinematics_tri3` y `compute_integrands`, importadas de `solidum.elements.solid_2d`; ADR 0020, P6).
 - **Estado agrietado**: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`; después la condensación `K_cond = K_dd − K_du · K_{[[u]][[u]]}⁻¹ · K_du^T` se devuelve al ensamblador. El bulk descarga elásticamente conforme `[[u]]` crece (discrete approach); la disipación va al cohesivo en `Γ_d`. Tolerancias del Newton local: `LOCAL_JUMP_RTOL` y `LOCAL_JUMP_MAX_ITER` en el [`constants.py`](../solidum/user/discontinuities/constants.py) del módulo.
 - **Activación**: criterio Rankine (`σ_I > σ_t0` del cohesivo) en el centroide del CST, con el estado convergido del paso anterior. **Irreversible**: una vez activada, la discontinuidad persiste aunque el siguiente paso descargue.
 - **Materiales aceptados**: bulk **solo `Elastic2D`** en fase 1 (la discrete approach presupone bulk elástico, ADR 0010); cohesivo cualquier `CohesiveMaterial` con `JUMP_DIM = 2`. Las dos referencias las declara `REFERENCE_KWARGS = {"material": MaterialRegistry, "cohesive_material": CohesiveMaterialRegistry}`: el lector YAML busca `material` en `materials` y `cohesive_material` en `cohesive_materials`.
@@ -698,6 +698,7 @@ Subfamilia de elementos con **DOFs enriquecidos elementales** y **condensación 
   ```
 - **Post-procesamiento**: `compute_gauss_state(U)` añade clave `'discontinuity'` con `{normal, tangent, centroid, solitary_node, l_d, jump, traction, damage}` cuando el elemento está agrietado.
 - **Limitaciones declaradas** (`out_of_scope` en la spec): modo mixto I-II (fase G del ADR 0010), reorientación de `n` tras activación (tracking no trivial, fase F), múltiples discontinuidades por elemento, contacto unilateral en compresión, bulks no elásticos, orden superior (`Tri6_Embedded`), 3D (`Tet4_Embedded`).
+- **Solvers** (2026-09-29): con desplazamiento impuesto, `NonlinearSolver` atraviesa el ablandamiento hasta la separación con penalización cohesiva rígida (`test_disc_embedded_uniaxial_softening.py`, y el ensayo de Van Vliet de `test_disc_van_vliet.py`). El fallo registrado de `ArcLengthSolver` con esa penalización es anterior a la corrección de la tangente cohesiva (`597f3d9`) y no se ha vuelto a comprobar.
 - **Spec**: [docs/user/discontinuities/specs/CST_Embedded2D.md](user/discontinuities/specs/CST_Embedded2D.md).
 - **Archivo**: [solidum/user/discontinuities/embedded_cst.py](../solidum/user/discontinuities/embedded_cst.py).
 - **Tests**: [`test_disc_cst_embedded.py`](../tests/user/discontinuities/test_disc_cst_embedded.py), [`test_disc_cst_embedded_integration.py`](../tests/user/discontinuities/test_disc_cst_embedded_integration.py), [`test_disc_ld_chapter_6_validation.py`](../tests/user/discontinuities/test_disc_ld_chapter_6_validation.py), [`test_disc_embedded_uniaxial_softening.py`](../tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py) y el barrido de contrato del módulo, [`test_disc_contratos.py`](../tests/user/discontinuities/test_disc_contratos.py).

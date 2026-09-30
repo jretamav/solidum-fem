@@ -9,31 +9,42 @@ Dirichlet/MPC, backend algebraico) y solo redefine la lógica de paso.
 Está diseñado para atravesar:
 
 - Régimen elástico inicial (modo `"cylindrical"` heredado del padre).
-- Transición elástico→ablandamiento con una rigidez de penalización
-  alta, donde el cilíndrico falla por cuasi-degeneración del discriminante
-  de la cuadrática cerca del pico.
-- Rama post-pico estable de daño (modo `"dissipation"`).
-- Descarga global con grieta saturada (volver a `"cylindrical"`).
+- Transición elástico→ablandamiento con una rigidez tangente casi singular
+  en el pico, donde el cilíndrico falla por cuasi-degeneración del
+  discriminante de la cuadrática.
+- Rama post-pico estable de ablandamiento (modo `"dissipation"`).
+- Descarga global una vez agotado el ablandamiento (volver a
+  `"cylindrical"`).
 
 El switching cilíndrico↔disipación es **automático** según se detecte
 disipación neta por encima de un umbral relativo. La spec completa en
-``docs/specs/DissipationArcLengthSolver.md``.
+``docs/user/dissipation_control/specs/DissipationArcLengthSolver.md``.
+
+Módulo de usuario ``dissipation_control`` (ADR 0020): se conecta al programa
+principal por su parte pública —:class:`ArcLengthSolver` y el problema de
+Newton por paso :class:`ArcProblem`, cuyo método ``constraint`` redefine— y
+por los métodos que la clase de arco ofrece a sus variantes (predictor
+tangente, primer paso, llegada a ``max_lambda`` y cierre del trazado).
 """
 from __future__ import annotations
 
 import numpy as np
 
 from solidum.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
+from solidum.logging import get_logger
 from solidum.math.convergence import ConvergenceCriterion
-from solidum.math.solvers._shared import _log
-from solidum.math.solvers.arclength import ArcLengthSolver, _ArcProblem
+from solidum.math.solvers import ArcLengthSolver, ArcProblem
 from solidum.math.solvers.corrector import CorrectionAborted
 from solidum.math.solvers.model_checks import ensure_statically_restrained
 from solidum.registry import SolverRegistry
 
+# Mismo logger que los solvers del programa principal ("solvers"): los filtros
+# y la captura de registros no distinguen la procedencia del solver.
+_log = get_logger("solvers")
 
-class _DissipationArcProblem(_ArcProblem):
-    """``_ArcProblem`` con el modo ``"dissipation"``: restricción lineal de
+
+class _DissipationArcProblem(ArcProblem):
+    """``ArcProblem`` con el modo ``"dissipation"``: restricción lineal de
     Gutiérrez en ``ddλ`` (ver :class:`DissipationArcLengthSolver`). Los
     modos ``"newton"`` y ``"cylindrical"`` se heredan del padre."""
 
@@ -76,7 +87,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
     ----------
     initial_tau : float
         Incremento de disipación objetivo (unidades de energía: F·U).
-        Calibrar al orden de ``G_F · l_d / n_pasos_post_pico``.
+        Calibrar como fracción de la disipación total esperada en la rama
+        post-pico: del orden de ``E_d,total / n_pasos_post_pico``.
     tau_grow_factor, tau_max_factor, tau_shrink_factor : float
         Análogos a ``dl_*_factor`` del padre pero sobre τ.
     tau_grow_iter_threshold, tau_shrink_iter_threshold : int
@@ -171,39 +183,6 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             - dlambda_step * float(F_ref @ U_n)
         )
 
-    def _negative_pivots(self, K) -> int | None:
-        """Aproximación inicial al sign-of-pivot tracking vía signo del
-        determinante.
-
-        Por la ley de inercia de Sylvester, el número de pivots negativos
-        en una factorización LDLᵀ es invariante bajo congruencia, pero LU
-        no preserva inercia. El signo del **determinante** sí distingue
-        entre "número par" y "número impar" de pivots negativos, lo cual
-        basta para detectar el paso por un punto límite simple
-        (transición ``0 → 1 → 0 → ...``).
-
-        Para tracking exacto se requiere LDLᵀ Bunch-Kaufman (deuda técnica
-        documentada en la spec).
-
-        Returns
-        -------
-        int | None
-            ``0`` si el determinante es positivo (asume PD inicial → 0
-            pivots negativos), ``1`` si el determinante es negativo
-            (número impar de pivots negativos), ``None`` si la matriz es
-            singular o el cómputo falla.
-        """
-        try:
-            K_dense = K.toarray() if hasattr(K, "toarray") else np.asarray(K)
-            sign, _ = np.linalg.slogdet(K_dense)
-        except Exception:
-            return None
-        if sign > 0:
-            return 0
-        if sign < 0:
-            return 1
-        return None
-
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
         ndof = domain.total_dofs
@@ -232,7 +211,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         while lambda_curr < self.max_lambda and step < self.max_steps:
             step += 1
 
-            # ADR 0010 §5: hook de preparación de paso.
+            # Gancho de inicio de paso (ADR 0020, P5). Evaluado con el estado
+            # convergido del paso anterior, como en ArcLengthSolver.solve.
             self.assembler.prepare_all_steps(U_current)
 
             # --- 1. PREDICTOR ---

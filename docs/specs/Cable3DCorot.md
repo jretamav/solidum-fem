@@ -74,6 +74,14 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§3.1, cinemática de la armadura corrotacional; la unilateralidad la aporta CableMaterial1D"
+  general_codes:
+    - ansys: "LINK180 con SECCONTROL de sólo tracción"
+    - abaqus: "T3D2 + *NO COMPRESSION, NLGEOM"
+    - opensees: "corotTruss (ndm = 3) + uniaxialMaterial Elastic con Eneg = 0"
+
 parameters:
   - { name: A, type: float, required: true, desc: "Área de la sección transversal del cable" }
 

@@ -83,6 +83,14 @@ interface:
   flux_dim: 3                   # ∇T y q en 3D
   n_integration_points: 8       # default Gauss 2×2×2
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 2-3 (conducción de calor con elementos isoparamétricos)"
+    - zienkiewicz_taylor: "vol. 1: problemas de campo (conducción de calor)"
+  general_codes:
+    - abaqus: "DC3D8"
+    - ansys: "SOLID70"
+
 parameters:
   - { name: quadrature, type: str, required: false, default: "hex_2x2x2",
       desc: "Regla desde QuadratureRegistry. hex_1x1x1 disponible pero deja 4

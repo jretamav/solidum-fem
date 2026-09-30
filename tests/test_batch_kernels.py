@@ -28,7 +28,7 @@ from solidum.math.batch import StateSchema, element_is_batchable, material_is_ba
 from solidum.registry import ElementRegistry, MaterialRegistry, ThermalMaterialRegistry
 
 from test_element_contract_sweep import (
-    ESPESOR, FABRICAS, TERMICOS, _construir, nombres_programa_principal,
+    ARNES_PROGRAMA_PRINCIPAL, ESPESOR, FABRICAS, TERMICOS, nombres_programa_principal,
 )
 from test_material_contract_sweep import MUESTRAS
 
@@ -175,12 +175,12 @@ class TestCinematicaDeElementos(unittest.TestCase):
                         'Frame2DEulerCorot', 'Frame2DTimoshenko', 'Frame3D'}
         for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
-                elem = _construir(nombre)
+                elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
                 self.assertEqual(element_is_batchable(elem), nombre not in esperados_no)
 
     def test_cinematica_integra_el_volumen_y_anula_traslaciones(self):
         for nombre in nombres_programa_principal(ElementRegistry):
-            elem = _construir(nombre)
+            elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
             if not element_is_batchable(elem):
                 continue
             with self.subTest(elemento=nombre):
@@ -216,7 +216,7 @@ class TestCinematicaDeElementos(unittest.TestCase):
         for nombre in nombres_programa_principal(ElementRegistry):
             if nombre in TERMICOS:
                 continue
-            elem = _construir(nombre)
+            elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
             if not element_is_batchable(elem):
                 continue
             with self.subTest(elemento=nombre):
@@ -248,7 +248,7 @@ class TestCinematicaDeElementos(unittest.TestCase):
         lanza es el ensamblador (``test_batch_assembly``)."""
         for nombre, dim, n_sig in (('Quad4', 2, 3), ('Hex8', 3, 6), ('Tet10', 3, 6), ('Tri6', 2, 3)):
             with self.subTest(elemento=nombre):
-                elem = _construir(nombre)
+                elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
                 kin = type(elem).BATCH_KINEMATICS
                 pts, _ = elem.batch_quadrature()
                 coords = elem.batch_reference_coordinates(dim)

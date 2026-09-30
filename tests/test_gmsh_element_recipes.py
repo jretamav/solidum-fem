@@ -5,6 +5,10 @@ modelo térmico, o cualquier elemento que no fuera el de la celda, no podía
 salir de gmsh. Ahora ``mesh_element`` (toda la malla) o ``element`` (un grupo
 físico) eligen el tipo; sus referencias se buscan en la familia que declara
 el elemento, y sus parámetros se validan contra su constructor.
+
+Aquí sólo aparece la referencia ``material``. Un elemento con una segunda
+referencia, a una familia declarada fuera del programa principal, se prueba
+por esta ruta en ``test_element_references.py``.
 """
 import textwrap
 from pathlib import Path

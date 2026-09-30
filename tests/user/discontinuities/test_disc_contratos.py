@@ -4,8 +4,8 @@ El programa principal prueba sus propias clases; cada módulo de usuario trae
 su barrido. Aquí:
 
 - la batería de contrato de elementos del programa principal
-  (``test_element_contract_sweep``), reutilizada y restringida a
-  ``CST_Embedded2D``;
+  (``test_element_contract_sweep``), reutilizada con un arnés propio que
+  recorre los elementos del módulo, sin tocar el estado de aquel archivo;
 - que el elemento no va por el camino por lotes (tiene estado propio);
 - la ley cohesiva: tangente consistente frente a diferencias finitas,
   monotonía de κ y ω, validación de la rama lineal;
@@ -43,54 +43,45 @@ MAT_COHESIVO = CohesiveMaterialRegistry.create(
     'CohesiveDamageIsotropic', sigma_t0=3.0e6, G_f=100.0, K_e=1.0e13,
     softening='exponential')
 
-FABRICA = (lambda c: c(1, barrido._nodos(barrido._TRI), barrido.MAT_2D,
+# Sin volumen: el elemento no implementa masa, y la batería lo acepta.
+FABRICA = (lambda c: c(1, barrido.nodos(barrido.TRI), barrido.MAT_2D,
                        cohesive_material=MAT_COHESIVO, thickness=barrido.ESPESOR), None)
 
 
+def _rechazo_por_bulk_no_admitido(mensaje, material):
+    """``CST_Embedded2D`` sólo admite bulks elásticos (la discrete approach
+    concentra la disipación en Γ_d, ADR 0010): su lista de bulks admitidos
+    rechaza el material antes que la validación dimensional de la base."""
+    return f"bulk '{type(material).__name__}' no admitido" in mensaje
+
+
 # =========================================================================
-# Batería de contrato del programa principal, restringida al módulo
+# Batería de contrato del programa principal, con el arnés del módulo
 # =========================================================================
 
-
-class _SoloElModulo:
-    """Hace que la batería del programa principal recorra sólo
-    ``CST_Embedded2D`` durante cada prueba."""
-
-    def setUp(self):
-        super().setUp()
-        self._original = barrido.nombres_programa_principal
-        barrido.nombres_programa_principal = (
-            lambda reg: ['CST_Embedded2D'] if reg is ElementRegistry else self._original(reg))
-        barrido.FABRICAS['CST_Embedded2D'] = FABRICA
-
-    def tearDown(self):
-        barrido.nombres_programa_principal = self._original
-        barrido.FABRICAS.pop('CST_Embedded2D', None)
-        super().tearDown()
+ArnesDisc = barrido.arnes(
+    lambda: barrido.nombres_de_paquete(ElementRegistry, 'solidum.user.discontinuities'),
+    {'CST_Embedded2D': FABRICA},
+    rechazo_de_material=_rechazo_por_bulk_no_admitido)
 
 
-class TestDiscRegistro(_SoloElModulo, barrido.TestRegistroCompleto):
-
-    def test_todo_elemento_registrado_tiene_fabrica(self):
-        self.skipTest("guardián del registro del programa principal")
-
-    def test_el_registro_no_esta_vacio(self):
-        self.assertIn('CST_Embedded2D', ElementRegistry.names())
-
-
-class TestDiscContratoDeclarativo(_SoloElModulo, barrido.TestContratoDeclarativo):
+class TestDiscRegistro(ArnesDisc, barrido.TestRegistroCompleto):
     pass
 
 
-class TestDiscRigidezElemental(_SoloElModulo, barrido.TestRigidezElemental):
+class TestDiscContratoDeclarativo(ArnesDisc, barrido.TestContratoDeclarativo):
     pass
 
 
-class TestDiscMasa(_SoloElModulo, barrido.TestMasa):
+class TestDiscRigidezElemental(ArnesDisc, barrido.TestRigidezElemental):
     pass
 
 
-class TestDiscValidacionDefensiva(_SoloElModulo, barrido.TestValidacionDefensiva):
+class TestDiscMasa(ArnesDisc, barrido.TestMasa):
+    pass
+
+
+class TestDiscValidacionDefensiva(ArnesDisc, barrido.TestValidacionDefensiva):
     pass
 
 

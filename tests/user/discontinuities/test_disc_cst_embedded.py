@@ -202,7 +202,7 @@ class TestBulkElasticUnloadingAfterActivation(unittest.TestCase):
         emb.compute_element_state(u_e)
         # σ trial = el de la última iteración. La ε neta = ε_total − B^φ·G·[[u]].
         # Verificamos numéricamente: σ_trial debe ser C_e · ε_neta.
-        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
+        from solidum.elements.solid_2d import compute_kinematics_tri3
         B, _ = compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
@@ -350,7 +350,7 @@ class TestLocalRecovery(unittest.TestCase):
         # Reconstruir R^{[[u]]} con el jump_trial obtenido. El término
         # cohesivo debe incluir el factor ``thickness`` para que el
         # balance dimensional sea consistente con el del bulk.
-        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
+        from solidum.elements.solid_2d import compute_kinematics_tri3
         B, detJ = compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
         i_star = ds.solitary_node
@@ -414,7 +414,7 @@ class TestThicknessDimensionalConsistency(unittest.TestCase):
         emb = self._build_loaded_emb(thickness=0.1)
         ds = emb.discontinuity_state
 
-        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
+        from solidum.elements.solid_2d import compute_kinematics_tri3
         coords = emb.get_coordinate_matrix(ndim=2)
         B, _ = compute_kinematics_tri3(coords)
         i_star = ds.solitary_node
@@ -446,7 +446,7 @@ class TestThicknessDimensionalConsistency(unittest.TestCase):
         emb = self._build_loaded_emb(thickness=0.1)
         ds = emb.discontinuity_state
 
-        from solidum.elements.solid_2d._shared import compute_kinematics_tri3
+        from solidum.elements.solid_2d import compute_kinematics_tri3
         coords = emb.get_coordinate_matrix(ndim=2)
         B, detJ = compute_kinematics_tri3(coords)
         G = np.column_stack([ds.normal, ds.tangent])
@@ -598,8 +598,8 @@ class TestPrincipalStressHelper(unittest.TestCase):
 
 class TestArchitecture(unittest.TestCase):
     def test_registered_in_element_registry(self):
-        self.assertIn('CST_Embedded2D', ElementRegistry._items)
-        self.assertIs(ElementRegistry._items['CST_Embedded2D'], CST_Embedded2D)
+        self.assertIn('CST_Embedded2D', ElementRegistry.names())
+        self.assertIs(ElementRegistry.get('CST_Embedded2D'), CST_Embedded2D)
 
     def test_declarative_contract(self):
         self.assertEqual(CST_Embedded2D.DOF_NAMES, ['ux', 'uy'])

@@ -124,6 +124,13 @@ interface:
   yaml_type: HarmonicSolver
   output: HarmonicResult
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), §16.7: respuesta periódica forzada"
+  general_codes:
+    - abaqus: "*STEADY STATE DYNAMICS, DIRECT"
+    - ansys: "HROPT,FULL"
+
 parameters:
   - { name: omega, type: array-like | null, required: false, desc: "vector explícito (rad/s); excluye omega_min/omega_max/n_omega/scale" }
   - { name: omega_min, type: float, required: false, desc: "límite inferior del barrido (rad/s)" }

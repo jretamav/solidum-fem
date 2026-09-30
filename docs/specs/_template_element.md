@@ -61,6 +61,23 @@ interface:
   strain_dim: 0          # 1 axial · 3 plano (ε_xx, ε_yy, γ_xy) · 6 3D
   n_integration_points: 0
 
+admission:
+  # Criterio de admisión al programa principal (Reglas.md §1), primer paso de
+  # todo componente estándar: la formulación aparece en un texto de referencia
+  # del área Y está implementada en un código general establecido. Al menos
+  # una entrada en cada lista, con los identificadores de las listas cerradas
+  # (solidum/tools/spec.py). Cada entrada es el identificador solo o
+  # `identificador: "nota breve"` (capítulo o apartado; nombre del elemento en
+  # el código). Si no se pueden rellenar las dos listas, el componente no es
+  # estándar: va a un módulo de usuario (ADR 0020).
+  #   textbooks:     zienkiewicz_taylor · hughes · bathe · belytschko_liu_moran
+  #                  · de_souza_neto · de_borst_crisfield
+  #   general_codes: abaqus · ansys · diana · code_aster · opensees
+  textbooks:
+    - <id>: ""
+  general_codes:
+    - <id>: ""
+
 parameters:
   - { name: , type: , required: true, desc:  }
 

@@ -31,7 +31,7 @@ from solidum.materials.elastic_2d import Elastic2D
 from solidum.materials.von_mises_2d import VonMises2D
 from solidum.math.assembly import Assembler
 from solidum.math.convergence import ConvergenceCriterion
-from solidum.math.solvers import ArcLengthSolver, DissipationArcLengthSolver
+from solidum.math.solvers import ArcLengthSolver
 from solidum.utils.yaml_parser import YamlParser
 
 
@@ -142,9 +142,6 @@ class TestPrimerPasoAdimensional(unittest.TestCase):
             ArcLengthSolver(asm, initial_dlambda=0.0)
         with self.assertRaises(ValueError):
             ArcLengthSolver(asm, initial_dl=-1.0)
-        with self.assertRaises(ValueError):
-            DissipationArcLengthSolver(asm, initial_tau=0.01, initial_dl=0.1,
-                                       initial_dlambda=0.1)
 
     def test_carga_de_referencia_nula_es_error_claro(self):
         dom, F, _ = _placa(_elastico)

@@ -3,10 +3,9 @@ materiales no lineales que no tenían cobertura directa.
 
 Verificación canónica (Simo & Hughes 1998 §3.4, Neto-Perić-Owen §6.2):
 para cada material, en un estado committed plástico/dañado, la tangente
-algorítmica ``C_t`` devuelta por `compute_state` (o `compute_traction`
-en cohesivos) debe coincidir con la derivada por diferenciación finita
-central ``[σ(ε+δ·e_i) − σ(ε−δ·e_i)] / (2δ)``, dentro de tolerancia
-``O(δ²)``.
+algorítmica ``C_t`` devuelta por `compute_state` debe coincidir con la
+derivada por diferenciación finita central
+``[σ(ε+δ·e_i) − σ(ε−δ·e_i)] / (2δ)``, dentro de tolerancia ``O(δ²)``.
 
 Cobertura existente fuera de este archivo:
 
@@ -14,16 +13,14 @@ Cobertura existente fuera de este archivo:
 - `IsotropicDamage2D` ([tests/test_materials_unit.py:392](tests/test_materials_unit.py))
 
 Este archivo completa la familia con `VonMises2D` (plane strain + plane
-stress), `DruckerPrager2D` (régimen regular + apex) y
-`CohesiveDamageIsotropic` (modo I activo).
+stress) y `DruckerPrager2D` (régimen regular + apex).
 
 Patrón común: el `state_vars` que se pasa a cada perturbación es el
 **committed antes del paso** — la consistent tangent se define como la
 derivada del retorno mapping respecto a ε con `state_committed` fijo.
 Para garantizar que todas las perturbaciones caen en la misma rama de
 carga (sin saltar entre branches y romper la diferenciabilidad), se usa
-un anchor state con `alpha` (o `kappa`) ligeramente por debajo del
-estado actual.
+un anchor state con `alpha` ligeramente por debajo del estado actual.
 """
 import math
 import os

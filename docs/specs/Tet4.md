@@ -138,6 +138,13 @@ interface:
   strain_dim: 6                 # Voigt 3D [ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (tetraedro lineal)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: tetraedros"
+  general_codes:
+    - abaqus: "C3D4"
+
 parameters: []
 
 material_contract:

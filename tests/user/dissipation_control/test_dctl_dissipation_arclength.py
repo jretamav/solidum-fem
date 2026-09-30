@@ -1,7 +1,11 @@
 """Tests de ``DissipationArcLengthSolver`` — variante por disipación del arc-length.
 
-Cubre los ``acceptance`` de la spec ``docs/specs/DissipationArcLengthSolver.md``
-que la **primera implementación** alcanza:
+Módulo de usuario ``dissipation_control`` (ADR 0020). Hasta el 2026-09-29 este
+archivo era ``tests/test_dissipation_arclength.py``, en el programa principal.
+
+Cubre los ``acceptance`` de la spec
+``docs/user/dissipation_control/specs/DissipationArcLengthSolver.md`` que la
+**primera implementación** alcanza:
 
 1. **Recuperación cilíndrica** en régimen elástico puro — el solver coincide
    con :class:`ArcLengthSolver` a paridad de bits porque su modo permanece
@@ -13,40 +17,42 @@ que la **primera implementación** alcanza:
 4. **Daño 2D continuo (Quad4 + IsotropicDamage2D)** — análogo 2D del test
    3 con cinemática completa de Voigt.
 5. **Balance energético cualitativo** sobre la historia con daño 1D.
-6. **Sign-of-pivot tracking** vía signo del determinante (aproximación
-   para indefinitud simple).
 
 **No cubierto en esta primera implementación** (deuda técnica documentada
 en la spec):
 
-- *Cohesivo + embedded discontinuity con K_e stiff*: la activación
-  discreta del cohesivo (Rankine onset) introduce un salto en F_int/K_t
-  que el `sign` por producto escalar no maneja graciosamente. Requiere
-  sign-of-pivot tracking real (LDLᵀ Bunch-Kaufman, no aproximación por
-  determinante) o control por CMOD/CTOD del salto en lugar de τ global.
-  Trabajo pendiente para una futura iteración del solver.
+- *Cohesivo + embedded discontinuity con K_e stiff* (componentes del módulo
+  de usuario ``discontinuities``): la activación discreta del cohesivo
+  (Rankine onset) introduce un salto en F_int/K_t que el `sign` por producto
+  escalar no maneja graciosamente. Requiere sign-of-pivot tracking con una
+  factorización LDLᵀ de Bunch-Kaufman (el solver no sigue hoy la inercia de
+  K_t) o control por CMOD/CTOD del salto en lugar de τ global. Trabajo
+  pendiente para una futura iteración del solver.
+
+El diagnóstico ``_negative_pivots`` (signo del determinante de K_t) y sus dos
+tests se retiraron el 2026-09-29: ningún solver lo llamaba.
 """
-import math
 import os
 import sys
 import unittest
 
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
-from solidum.core.domain import Domain
-from solidum.elements.solid_2d import Quad4
-from solidum.elements.truss import Truss2D
-from solidum.materials.damage_1d import IsotropicDamage1D
-from solidum.materials.damage_2d import IsotropicDamage2D
-from solidum.materials.elastic import Elastic1D
-from solidum.math.assembly import Assembler
-from solidum.math.convergence import ConvergenceCriterion
-from solidum.math.solvers import (
-    ArcLengthSolver,
-    DissipationArcLengthSolver,
-)
+import solidum  # noqa: E402
+from solidum.core.domain import Domain  # noqa: E402
+from solidum.elements.solid_2d import Quad4  # noqa: E402
+from solidum.elements.truss import Truss2D  # noqa: E402
+from solidum.materials.damage_1d import IsotropicDamage1D  # noqa: E402
+from solidum.materials.damage_2d import IsotropicDamage2D  # noqa: E402
+from solidum.materials.elastic import Elastic1D  # noqa: E402
+from solidum.math.assembly import Assembler  # noqa: E402
+from solidum.math.convergence import ConvergenceCriterion  # noqa: E402
+from solidum.math.solvers import ArcLengthSolver  # noqa: E402
+
+solidum.load_user_module("dissipation_control")
+from solidum.user.dissipation_control import DissipationArcLengthSolver  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -296,16 +302,20 @@ class TestDamage2DSofteningPostPeak(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — balance energético G_F integrado sobre historia
+# Test 5 — balance energético cualitativo sobre la historia de daño 1D
 # ---------------------------------------------------------------------------
 
-class TestBalanceEnergeticoGF(unittest.TestCase):
-    """Σ ΔE_d ≈ trabajo cohesivo total integrado sobre la historia de la grieta.
+class TestBalanceEnergeticoCualitativo(unittest.TestCase):
+    """Disipación acumulada Σ ΔE_d sobre la historia de una barra de daño
+    continuo 1D (``IsotropicDamage1D``, un elemento, tracción monótona).
 
-    Setup más controlado: barra de daño 1D con G_F bien definido
-    (`G_F = E·κ_0²/(2·alpha)` aproximado para softening exponencial al
-    saturación). Comprueba que la disipación numérica acumulada por el
-    solver coincide con la energía disipada integrada en el material.
+    No hay grieta ni ley cohesiva: el balance ``Σ ΔE_d ≈ G_F · l_d`` del caso
+    cohesivo + embebido (acceptance ``balance_energetico_GF`` de la spec)
+    sigue sin cubrir. Aquí se reconstruye ``ΔE_d`` paso a paso desde la
+    historia ``(λ, u)`` del callback y se comprueba que la disipación
+    acumulada es positiva y que el solver da varios pasos en modo de
+    disipación tras el pico. No se compara con la energía disipada integrada
+    en el material.
     """
 
     def test_dissipacion_acumulada_consistente_con_trabajo_externo(self):
@@ -359,48 +369,6 @@ class TestBalanceEnergeticoGF(unittest.TestCase):
         lam_finales = [lam for (lam, _, is_d) in history if is_d]
         self.assertGreater(len(lam_finales), 5,
             "Pocos pasos en régimen disipativo — historia insuficiente")
-
-
-# ---------------------------------------------------------------------------
-# Test 6 — sign-of-pivot tracking (aproximación inicial)
-# ---------------------------------------------------------------------------
-
-class TestSignOfPivotTracking(unittest.TestCase):
-    """``_negative_pivots`` reemplaza el placeholder del padre y devuelve
-    0 para K positiva-definida, 1 para K con determinante negativo
-    (aproximación válida para indefinitud simple)."""
-
-    def test_negative_pivots_pd_matrix(self):
-        dom, asm, dof_ux = _build_elastic_bar()
-        F_ref = np.zeros(dom.total_dofs); F_ref[dof_ux] = 100.0
-
-        solver = DissipationArcLengthSolver(
-            asm, convergence=ConvergenceCriterion(),
-            max_lambda=1.0, initial_dl=0.5, max_steps=2, max_iter=20,
-            initial_tau=0.01,
-        )
-        # Ensamblar para tener K_t y verificar el tracking en estado PD.
-        K_global, _ = asm.assemble_non_linear_system(np.zeros(dom.total_dofs))
-        K_red, _, _, _ = asm.reduce(K_global, F_ref)
-        n_neg = solver._negative_pivots(K_red)
-        self.assertEqual(n_neg, 0,
-            "K positiva definida debería reportar 0 pivots negativos")
-
-    def test_negative_pivots_indefinite_matrix(self):
-        """K con autovalor negativo debe reportar n_neg=1 vía signo det."""
-        # Construir una matriz 2×2 indefinida directamente.
-        # Diag(2, -3) tiene det=-6<0, signo del det = -1 ⇒ n_neg=1 reportado.
-        from scipy import sparse
-        K_indef = sparse.csr_matrix(np.array([[2.0, 0.0], [0.0, -3.0]]))
-        dom, asm, _ = _build_elastic_bar()
-        solver = DissipationArcLengthSolver(
-            asm, convergence=ConvergenceCriterion(),
-            max_lambda=1.0, max_steps=2,
-            initial_tau=0.01,
-        )
-        n_neg = solver._negative_pivots(K_indef)
-        self.assertEqual(n_neg, 1,
-            "K indefinida (det<0) debería reportar 1 pivot negativo")
 
 
 if __name__ == '__main__':

@@ -93,6 +93,13 @@ interface:
   strain_dim: 3                 # Voigt 2D [ε_xx, ε_yy, γ_xy]
   n_integration_points: 4       # default Gauss 2×2
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (cuadrilátero bilineal isoparamétrico)"
+    - bathe: "§5.3 (elementos continuos isoparamétricos)"
+  general_codes:
+    - abaqus: "CPS4 / CPE4 (integración completa)"
+
 parameters:
   - { name: thickness, type: float, required: false, default: 1.0, desc: Espesor para estado plano }
   - { name: quadrature, type: tuple, required: false, default: "2x2", desc: Regla de cuadratura desde QuadratureRegistry }
@@ -102,7 +109,7 @@ material_contract:
   strain_kind: "Voigt 2D [ε_xx, ε_yy, γ_xy]"
 
 conventions:
-  sign: "tensión positiva = tracción"
+  sign: "esfuerzo positivo = tracción"
   voigt: "[xx, yy, xy] con γ_xy = 2·ε_xy (engineering shear strain)"
   node_orientation: "antihorario (asegura det J > 0)"
 
@@ -157,7 +164,7 @@ references:
 
 - **Archivo**: [solidum/elements/solid_2d/quad4.py](../../solidum/elements/solid_2d/quad4.py)
 - **Clase**: `Quad4` (registrada vía `@ElementRegistry.register`)
-- **Funciones núcleo**: `_compute_kinematics(xi, eta, coords)` y `_compute_integrands(B, C, σ, detJ, w, t)`, ambas decoradas con `@njit` (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran. Viven en [solidum/elements/solid_2d/_shared.py](../../solidum/elements/solid_2d/_shared.py) y se comparten con Tri3.
+- **Funciones núcleo**: `_compute_kinematics(xi, eta, coords)` y `compute_integrands(B, C, σ, detJ, w, t)`, ambas decoradas con `@njit` (Numba) para evaluar $\mathbf{B}$, $\det \mathbf{J}$ y los integrandos a velocidad cercana a Fortran. Viven en [solidum/elements/solid_2d/_shared.py](../../solidum/elements/solid_2d/_shared.py). `_compute_kinematics` es interna del Quad4; `compute_integrands` se comparte con Tri3 y es API pública de cinemática (ADR 0020, P6), con ruta pública `solidum.elements.solid_2d`.
 - **Tests**:
   - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
   - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V&V).
@@ -173,3 +180,4 @@ references:
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). La masa consistente se integra siempre con la regla completa 2×2 aunque K use integración reducida (con la regla del elemento y 1 punto, M quedaba de rango 2/8 y el problema modal era singular). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-09-29** · Cinemática pública para elementos de usuario (ADR 0020, P6): `_compute_integrands` pasa a llamarse `compute_integrands`, con ruta pública `solidum.elements.solid_2d`. Sólo cambia el nombre; formulación sin cambios.

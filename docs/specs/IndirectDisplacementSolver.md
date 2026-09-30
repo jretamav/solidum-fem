@@ -2,7 +2,7 @@
 
 > **Spec corta tipo extensión** (Reglas.md §4). Variante de [`ArcLengthSolver`](ArcLengthSolver.md) que **sólo cambia la restricción del paso**: en lugar de fijar la norma del incremento de todos los grados de libertad ($\lVert\Delta\mathbf U\rVert = \Delta l$), fija el incremento de una **combinación elegida** de ellos ($\mathbf c^\top\Delta\mathbf U = \Delta l$). Reusa el predictor tangente, el corrector de Newton compartido (ADR 0015), el primer paso adimensional (deuda #26), la llegada exacta a `max_lambda`, Dirichlet/MPC y el backend algebraico. Sin ADR nuevo.
 >
-> Motivación (medida el 2026-09-23 al preparar el ejemplo 5 del manual de ejemplos): en una barra con daño que se localiza en un elemento, el retroceso (*snap-back*) empieza en el propio pico. Ahí el incremento de la parte que se descarga apunta casi al revés que el del paso anterior, y ni el `ArcLengthSolver` cilíndrico (su selección de raíz por menor ángulo elige la rama equivocada o no converge) ni el `DissipationArcLengthSolver` (ver deuda #27) siguen la curva. Controlar el alargamiento del elemento que se daña, como un ensayo de fractura controlado por la apertura de la boca de fisura (CMOD), la sigue exacta. Es también el control que el ADR 0010 dejó previsto para la fase 4 (Van Vliet).
+> Motivación (medida el 2026-09-23 al preparar el ejemplo 5 del manual de ejemplos): en una barra con daño que se localiza en un elemento, el retroceso (*snap-back*) empieza en el propio pico. Ahí el incremento de la parte que se descarga apunta casi al revés que el del paso anterior, y ni el `ArcLengthSolver` cilíndrico (su selección de raíz por menor ángulo elige la rama equivocada o no converge) ni el `DissipationArcLengthSolver` (ver deuda #27; desde el 2026-09-29 está en el módulo de usuario `dissipation_control`, ADR 0020, y no en el programa principal) siguen la curva. Controlar el alargamiento del elemento que se daña, como un ensayo de fractura controlado por la apertura de la boca de fisura (CMOD), la sigue exacta. Es también el control que el ADR 0010 dejó previsto para la fase 4 (Van Vliet).
 
 ---
 
@@ -69,6 +69,12 @@ interface:
   yaml_type: IndirectDisplacementSolver
   output: SolveResult
   pipeline_kind: static
+
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§4.2 (seguimiento de trayectoria; 1.ª ed.: Crisfield 1991, cap. 9)"
+  general_codes:
+    - diana: "indirect displacement control (p. ej. CMOD)"
 
 parameters:
   # Específico de esta variante:
@@ -144,7 +150,7 @@ references:
 
 ## Implementación
 
-- Archivo: `solidum/math/solvers/indirect_displacement.py` — `_IndirectProblem` (restricción lineal sobre el `_ArcProblem` del padre) e `IndirectDisplacementSolver` (registrado en `SolverRegistry`, `PIPELINE_KIND = "static"`).
+- Archivo: `solidum/math/solvers/indirect_displacement.py` — `_IndirectProblem` (restricción lineal sobre el `_ArcProblem` del padre, el mismo problema por paso que `solidum.math.solvers` exporta con nombre público como `ArcProblem`) e `IndirectDisplacementSolver` (registrado en `SolverRegistry`, `PIPELINE_KIND = "static"`).
 - El padre expone cuatro puntos de extensión que usa esta variante: `_control_measure` (magnitud que fija la restricción: norma en el padre, $\mathbf c^\top\mathbf{du}$ aquí), `_predictor_dlambda`, `_step_problem` y `_on_solve_start` (construye $\mathbf c$ sobre la numeración de ecuaciones). Sin cambio de comportamiento del padre.
 - Tests: [`tests/test_indirect_displacement.py`](../../tests/test_indirect_displacement.py) — todos los `acceptance`.
 
@@ -153,3 +159,4 @@ references:
 ## Diálogo
 
 - **2026-09-23** · Formulación propuesta por la IA y validada por el usuario al descubrir, preparando el ejemplo 5 del manual de ejemplos, que ninguno de los dos solvers de arco seguía el retroceso de una barra con daño localizado. Diagnóstico registrado como deuda #27 (arco por disipación) y en §5 (no unicidad del problema incremental).
+- **2026-09-29** · Frontera del programa principal (ADR 0020 y criterio de admisión de Reglas.md §1): `DissipationArcLengthSolver`, uno de los «dos solvers de arco» de la entrada anterior, se trasladó al módulo de usuario `dissipation_control` (spec en [`docs/user/dissipation_control/specs/DissipationArcLengthSolver.md`](../user/dissipation_control/specs/DissipationArcLengthSolver.md); se carga con `user_modules: [dissipation_control]`). En el programa principal quedan `ArcLengthSolver` y esta variante. El problema por paso del padre, que esta variante extiende, se exporta con nombre público como `solidum.math.solvers.ArcProblem`. Sin cambio de formulación ni de resultados.

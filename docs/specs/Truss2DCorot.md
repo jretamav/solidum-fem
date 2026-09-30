@@ -72,6 +72,13 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§3.1, armadura corrotacional (1.ª ed.: Crisfield 1991, §3.3)"
+  general_codes:
+    - opensees: "element corotTruss"
+    - abaqus: "T2D2 con NLGEOM"
+
 parameters:
   - { name: A, type: float, required: true, desc: Área de la sección transversal }
 

@@ -10,7 +10,7 @@
 
 ### 0. Descripción general
 
-Modelo elastoplástico **friccional** independiente de la velocidad. Suelos, hormigón, granulares, materiales cuasi-frágiles cohesivo-friccionales en régimen 3D completo. Suaviza la pirámide hexagonal de Mohr-Coulomb a un **cono circular** en el espacio de tensiones principales, eliminando las aristas que complican el return mapping. Formulado íntegramente en Voigt 6D del proyecto (ADR 0012).
+Modelo elastoplástico **friccional** independiente de la velocidad. Suelos, hormigón, granulares, materiales cuasi-frágiles cohesivo-friccionales en régimen 3D completo. Suaviza la pirámide hexagonal de Mohr-Coulomb a un **cono circular** en el espacio de esfuerzos principales, eliminando las aristas que complican el return mapping. Formulado íntegramente en Voigt 6D del proyecto (ADR 0012).
 
 Diferencias clave con J2 3D (`VonMises3D`):
 
@@ -44,7 +44,7 @@ con:
 - $J_2 = \tfrac{1}{2}\,\mathbf s : \mathbf s$, segundo invariante del desviador.
 - $I_1 = \operatorname{tr}(\boldsymbol\sigma) = \sigma_{xx} + \sigma_{yy} + \sigma_{zz}$, primer invariante.
 - $\eta_f$, coeficiente friccional del cono (adimensional, $\geq 0$).
-- $k(\alpha) = k_0 + H_k\,\alpha$, parámetro cohesivo con endurecimiento isótropo lineal.
+- $k(\alpha) = k_0 + H_k\,\alpha$, radio del cono (el parámetro de cohesión del criterio: $k_0$ sale de $c_0$ según la calibración, §3) con endurecimiento isótropo lineal en el multiplicador plástico acumulado $\alpha$ (§5).
 
 La superficie es un **cono circular** con eje en la línea hidrostática ($\sigma_{xx} = \sigma_{yy} = \sigma_{zz}$), vértice en $I_1 = k/\eta_f$, abertura controlada por $\eta_f$.
 
@@ -65,7 +65,7 @@ Los parámetros $(\eta_f, k_0)$ se derivan de los parámetros físicos $(c_0, \p
 
 El default `outer_cone` se elige porque la compresión triaxial es el modo dominante en problemas geotécnicos típicos (cimentaciones, muros de contención, taludes). Si la aplicación prioriza la extensión (e.g. excavaciones), `inner_cone` es la elección segura.
 
-**Caveat fundamental**: el cono no captura efectos de ángulo de Lode (la pirámide hexagonal de MC sí). Para problemas donde el modo de tensión rota fuera de los meridianos puros, considerar Mohr-Coulomb 3D directo (out-of-scope) o variantes con dependencia explícita del Lode angle (e.g. Matsuoka-Nakai, también out-of-scope).
+**Caveat fundamental**: el cono no captura efectos de ángulo de Lode (la pirámide hexagonal de MC sí). Para problemas donde el estado de esfuerzo rota fuera de los meridianos puros, considerar Mohr-Coulomb 3D directo (out-of-scope) o variantes con dependencia explícita del Lode angle (e.g. Matsuoka-Nakai, también out-of-scope).
 
 **No se incluye `plane_strain_matched`** (variante 2D de DP2D): es un artefacto matemático que coincide con MC exactamente solo cuando $\varepsilon_{zz} = 0$ está impuesto cinemáticamente; no tiene análogo 3D porque MC en 3D depende del Lode angle activo.
 
@@ -88,7 +88,11 @@ Si $\psi = \phi$ (i.e. $\eta_g = \eta_f$) el modelo se vuelve **asociado**; tang
 
 $$\dot\alpha = \dot\gamma$$
 
-con $\alpha$ la **deformación plástica equivalente** (convención del proyecto para Drucker-Prager). La superficie crece manteniendo eje y abertura, solo $k$ aumenta linealmente. Endurecimiento por fricción/dilatancia (cambio de $\eta_f$ o $\eta_g$ con $\alpha$) queda fuera de esta spec.
+con $\alpha$ el **multiplicador plástico acumulado** $\gamma$ (convención del proyecto para Drucker-Prager). La superficie crece manteniendo eje y abertura, solo $k$ aumenta linealmente. Endurecimiento por fricción/dilatancia (cambio de $\eta_f$ o $\eta_g$ con $\alpha$) queda fuera de esta spec.
+
+$H_k = dk/d\alpha$ endurece el **radio del cono** $k$ respecto de $\gamma$; no la cohesión $c$ respecto de una deformación plástica equivalente. La parametrización de de Souza Neto, Perić y Owen (2008, §8.3) es $c(\bar\varepsilon^p)$ con $\bar\varepsilon^p = \xi\,\gamma$ y $k = \xi\,c$, donde $\xi = k_0/c_0$ es el factor de la calibración (§3); un $H_c = dc/d\bar\varepsilon^p$ tomado de esa parametrización equivale a
+
+$$H_k = \xi^2\,H_c .$$
 
 ### 6. Condiciones de Kuhn-Tucker
 
@@ -99,7 +103,7 @@ $$\dot\gamma \geq 0,\qquad f \leq 0,\qquad \dot\gamma\,f = 0$$
 | Símbolo | Tipo | Significado |
 |---|---|---|
 | $\boldsymbol\varepsilon^p$ | tensor 6 componentes `[xx, yy, zz, xy, yz, xz]` (cortantes tensoriales) | deformación plástica |
-| $\alpha$ | escalar $\geq 0$ | deformación plástica equivalente (acumulado de $\Delta\gamma$) |
+| $\alpha$ | escalar $\geq 0$ | multiplicador plástico acumulado (acumulado de $\Delta\gamma$; no es una deformación plástica equivalente, §5) |
 
 `alpha` es la variable principal exportable (`PRIMARY_STATE_VAR = 'alpha'`). $\boldsymbol\varepsilon^p$ **no es incompresible** en este modelo (a diferencia de J2): $\operatorname{tr}(\boldsymbol\varepsilon^p) = 3\eta_g\,\alpha$ en cualquier estado, lo que es un invariante cinemático verificable por test.
 
@@ -215,11 +219,13 @@ con:
 
 $$\mathbf C^\text{alg}_\text{apex} = \frac{K\,H_k}{9K\eta_f\eta_g + H_k}\,\mathbf v\otimes\mathbf v$$
 
-Rigidez puramente volumétrica reducida; sin rigidez desviadora alguna. Con $H_k = 0$ y $\eta_g > 0$ la rigidez tangente colapsa por completo — el código devuelve un escalado mínimo de $K$ (idéntico patrón al 2D) para evitar matriz globalmente singular hasta que el siguiente paso salga del ápice.
+Rigidez puramente volumétrica reducida; sin rigidez desviadora alguna. Con $H_k = 0$ y $\eta_g > 0$ la rigidez tangente colapsa por completo.
+
+**Piso de la tangente en el ápice** (idéntico al 2D). Si $K H_k/(9K\eta_f\eta_g + H_k) < 10^{-6} K$, el código devuelve $10^{-6} K\,\mathbf v\otimes\mathbf v$ en lugar de la tangente exacta, para no dejar la matriz global singular mientras el punto siga en el ápice. Actúa en **todo retorno al ápice con $H_k = 0$** (perfectamente plástico, el caso más común, donde la tangente exacta es nula) y, en general, siempre que $H_k/(9K\eta_f\eta_g + H_k) < 10^{-6}$; con $\psi = 0$ el retorno al ápice no tiene solución y el kernel lanza `ValueError` antes de llegar aquí (Diálogo, 2026-09-22). Es una regularización de la tangente, no la tangente consistente: no cambia $\boldsymbol\sigma$ ni el estado convergido, sólo la convergencia del Newton global.
 
 ### 15. Tolerancia de fluencia
 
-ADR 0006: `admissibility_scale = k(α) = k_0 + H_k·α` (escala cohesiva corriente del cono). Tiene unidades de esfuerzo, igual que $f$.
+ADR 0006: `admissibility_scale = k(α) = k_0 + H_k·α` (radio corriente del cono). Tiene unidades de esfuerzo, igual que $f$.
 
 ---
 
@@ -238,6 +244,14 @@ interface:
                            # patrón que DP2D — el despachador algebraico ADR
                            # 0003 elige Cholesky/LDLᵀ en problemas asociados).
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_souza_neto: "§8.3 (Drucker-Prager: retorno al cono y al ápice, tangentes)"
+  general_codes:
+    - abaqus: "*DRUCKER PRAGER (lineal)"
+    - code_aster: "DRUCK_PRAGER / DRUCK_PRAG_N_A"
+    - opensees: "nDMaterial DruckerPrager"
+
 parameters:
   - { name: E,          type: float, required: true,  desc: "Módulo de Young (>0)" }
   - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson ∈ (-1, 0.5)" }
@@ -246,7 +260,7 @@ parameters:
   - { name: psi_deg,    type: float, required: false, default: null,
       desc: "Ángulo de dilatancia en grados. Default = phi_deg (asociada). Típico no asociada: ψ < φ, e.g. 0 o φ/2." }
   - { name: H,          type: float, required: false, default: 0.0,
-      desc: "Endurecimiento isótropo lineal en cohesión H_k (≥0). H=0 ⇒ perfectamente plástico." }
+      desc: "Módulo de endurecimiento isótropo lineal H_k = dk/dα del radio del cono respecto del multiplicador plástico acumulado (≥0). Desde H_c = dc/dε̄ᵖ de de Souza Neto et al. (2008): H_k = ξ²·H_c con ξ = k_0/c_0 (§5). H=0 ⇒ perfectamente plástico." }
   - { name: variant,    type: str,   required: false, default: "outer_cone",
       desc: "outer_cone (default, circunscribe MC en compresión) | inner_cone (inscribe MC en extensión)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
@@ -257,7 +271,7 @@ signature:
 
 state_schema:
   eps_p: "ndarray(6,) — [ε^p_xx, ε^p_yy, ε^p_zz, ε^p_xy, ε^p_yz, ε^p_xz] (cortantes tensoriales, sin factor 2). tr(ε^p) = 3·η_g·α invariante cinemático."
-  alpha: "float ≥ 0 — multiplicador plástico acumulado (= deformación plástica equivalente)"
+  alpha: "float ≥ 0 — multiplicador plástico acumulado γ (no es una deformación plástica equivalente, §5)"
 
 conventions:
   sign:  "σ > 0 ⇔ tracción (Reglas §5)"
@@ -284,7 +298,7 @@ out_of_scope:
 numerical_caveats:
   - "Tangente algorítmica asimétrica si ψ ≠ φ → IS_SYMMETRIC=False, el despachador algebraico usa LU (ADR 0003). Cuando ψ = φ se vuelve simétrica y el override por instancia activa Cholesky/LDLᵀ."
   - "Modos de carga muy traccionantes pueden caer en la rama de ápice. La detección automática del régimen (regular vs apex) está en el algoritmo."
-  - "Con ψ = 0 (sin dilatancia) y H_k = 0, en la rama de ápice la tangente volumétrica se anula → singularidad. El código devuelve un valor de respaldo (rigidez volumétrica reducida no nula, K·1e-6) para evitar matriz singular; típicamente sale del ápice en el siguiente paso."
+  - "Con H_k = 0 (perfectamente plástico), en la rama de ápice la tangente volumétrica exacta se anula → singularidad. El código la sustituye por el piso K·1e-6·v⊗v en todo retorno al ápice con H_k/(9Kη_fη_g + H_k) < 1e-6 (§14): regularización de la tangente, sin efecto sobre σ; típicamente sale del ápice en el siguiente paso. Con ψ = 0 el retorno al ápice no tiene solución y el kernel lanza ValueError."
   - "Locking volumétrico en Hex8/Tet4 cuando ψ > 0 (flujo dilatante) combinado con ν moderado-alto. Mismo régimen documentado para Elastic3D/VonMises3D; mitigaciones B-bar/F-bar diferidas."
   - "El cono circular DP es independiente del ángulo de Lode. Para trayectorias de carga donde el modo rota fuera del meridiano de calibración (compresión triaxial → cortante → extensión triaxial), la diferencia DP vs MC puede ser hasta el 15-20% en la frontera. Es limitación inherente del modelo, no del algoritmo."
 
@@ -394,7 +408,7 @@ references:
 - **Kernel Numba** `_compute_drucker_prager_3d`: predictor elástico desviador-volumétrico en Voigt 6D tensorial (sustracción de $\boldsymbol\varepsilon^p_n$ antes del desviador — *necesario* en DP por la dilatancia plástica), detección automática regular/apex, tangente cerrada para cada rama.
 - **Calibración**: reusa la función `_calibrate_drucker_prager` de `drucker_prager_2d.py` por composición (mismas fórmulas para outer/inner; `plane_strain_matched` queda filtrada por el validador de variant antes de llegar a la función compartida).
 - **State schema**: `eps_p` ndarray(6,) `[xx, yy, zz, xy, yz, xz]` con cortantes tensoriales, `alpha` escalar. **No es incompresible**: `tr(eps_p) = 3·η_g·α` por construcción del flujo.
-- **`admissibility_scale`**: `k(α) = k_0 + H·α` (cohesión efectiva corriente).
+- **`admissibility_scale`**: `k(α) = k_0 + H·α` (radio corriente del cono).
 - **Tests**:
   - [tests/test_materials_unit.py](../../tests/test_materials_unit.py) · `TestDruckerPrager3D` (17 tests unitarios) + `TestDruckerPrager3DvsPlaneStrain` (1 cruzado contra DP2D outer_cone plane_strain).
   - [tests/test_solid_3d_plasticity.py](../../tests/test_solid_3d_plasticity.py) · 4 tests de integración: `TestHex8DruckerPrager3DElastic` (1 — respuesta elástica), `TestHex8DruckerPrager3DRegularPlastic` (1 — cortante puro + tangente asimétrica activa LU + invariante $\operatorname{tr}(\boldsymbol\varepsilon^p) = 3\eta_g\alpha$), `TestHex8DruckerPrager3DApex` (1 — expansión hidrostática a 8 GP en rama ápice), `TestTet4DruckerPrager3DBasic` (1 — smoke test Tet4).
@@ -403,7 +417,7 @@ references:
   - Convención mixta engineering/tensorial idéntica a VM3D: entrada `strain` engineering (`γ_ij = 2·ε_ij`), salida `sigma` con cortantes tensoriales, estado `eps_p` con cortantes tensoriales. Conversión engineering→tensorial una sola vez al construir el desviador (`strain[3..5]/2`).
   - El predictor construye el desviador como $\mathbf s^\text{trial} = 2G\,\operatorname{dev}(\boldsymbol\varepsilon^\text{tens} - \boldsymbol\varepsilon^p_n)$, **no** como $2G\,(\operatorname{dev}(\boldsymbol\varepsilon^\text{tens}) - \boldsymbol\varepsilon^p_n)$. A diferencia de J2, $\boldsymbol\varepsilon^p$ en DP tiene parte volumétrica no nula (dilatancia plástica si $\eta_g > 0$), así que la sustracción debe hacerse *antes* del operador desviador para que la parte volumétrica del flujo se contabilice correctamente.
   - Tangente regular usa $\mathbf I_\text{dev}$ 6×6 con $1/2$ en los cortantes (mapea engineering input a tensorial output), idéntica estructura al I_dev de VM3D.
-  - Tangente apex: rigidez puramente volumétrica reducida con escalado mínimo $K \cdot 10^{-6}$ cuando $H_k = 0$ y $\eta_g$ pequeño (mismo patrón que DP2D para evitar matriz globalmente singular en el paso degenerado).
+  - Tangente apex: rigidez puramente volumétrica reducida con piso $K \cdot 10^{-6}$ cuando $H_k/(9K\eta_f\eta_g + H_k) < 10^{-6}$, es decir, en todo retorno al ápice con $H_k = 0$ (mismo patrón que DP2D para evitar matriz globalmente singular; §14).
   - Validación de parámetros en constructor: `E > 0`, `c_0 > 0`, `0 ≤ φ < 90°`, `0 ≤ ψ ≤ φ`, `H ≥ 0`, `ν ∈ (-1, 0.5)`, `variant ∈ {outer_cone, inner_cone}`, `density ≥ 0`. Mensajes en español; rechazo explícito de `plane_strain_matched` con explicación de por qué es 2D-only.
 
 ---
@@ -423,3 +437,4 @@ references:
 - **2026-05-21** · **Implementación completa, status `validated`**. Kernel + clase + 17 tests unitarios + 1 test cruzado + 4 tests de integración (Hex8 elástico, Hex8 rama regular con tangente asimétrica + invariante $\operatorname{tr}(\boldsymbol\varepsilon^p) = 3\eta_g\alpha$, Hex8 rama ápice bajo expansión hidrostática, Tet4 smoke test). **24 tests añadidos a la suite (824 → 848 verdes; suite global sin regresiones).** Todos los tests pasaron a la primera, incluyendo el cruzado DP3D ↔ DP2D outer_cone plane_strain a 10 decimales — señal fuerte de que la convención Voigt 6D, la calibración compartida y la sustracción de $\boldsymbol\varepsilon^p_n$ antes del desviador son correctas. La integración Hex8 con cortante puro y tangente asimétrica ($\psi \neq \phi$) confirma que el despachador algebraico (ADR 0003) selecciona LU correctamente vía el flag declarativo `IS_SYMMETRIC = False`. Validación contra solución analítica cerrada (cilindro con falla DP, esfera hueca bajo presión interna, etc.) **diferida a la campaña 3D consolidada** que se hará al final de la sub-etapa A.bis (tras completar `IsotropicDamage3D`).
 - **2026-09-22** · Auditoría global: misma corrección del ápice que `DruckerPrager2D`: con η_g = 0 (ψ = 0) la rama del ápice lanza `ValueError` y el constructor avisa; antes se clampaba `A_apex` a 1e-30.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): declara `STATE_SCHEMA` y un adaptador `@njit` con firma `MAT_SIG` que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que `admissibility_tol`. Formulación sin cambios; equivalencia con `compute_state` exacta en esfuerzo, tangente y estado (`tests/test_batch_kernels.py`).
+- **2026-09-29** · Revisión documental (sin cambio de código ni de resultados), la misma que en `DruckerPrager2D`: (1) $\alpha$ es el multiplicador plástico acumulado $\gamma$, no una deformación plástica equivalente, y $H$ endurece el radio del cono $k$ respecto de $\gamma$, no la cohesión; conversión desde la parametrización $c(\bar\varepsilon^p)$ de de Souza Neto et al. (2008), $H_k = \xi^2 H_c$ con $\xi = k_0/c_0$ (§5). (2) El piso $K\cdot 10^{-6}$ de la tangente en el ápice actúa en todo retorno al ápice con $H_k = 0$, no sólo con $\psi = 0$, caso que desde el 2026-09-22 lanza `ValueError` (§14 y `numerical_caveats`).

@@ -51,8 +51,9 @@ SolveFn = Callable[[Any, np.ndarray], np.ndarray]
 
 class CorrectionAborted(Exception):
     """El problema no puede producir la corrección de esta iteración
-    (raíces imaginarias del arco, ``α ≈ 0`` en la restricción de
-    disipación, …). El corrector abandona el paso como *no convergido*
+    (raíces imaginarias del arco, denominador nulo en la restricción del
+    control indirecto de desplazamiento, …). El corrector abandona el paso
+    como *no convergido*
     sin marcarlo como tangente singular."""
 
 

@@ -1,6 +1,6 @@
 # NonlinearSolver — Análisis estático no lineal incremental-iterativo (Newton-Raphson con paso adaptativo)
 
-> Spec **retroactiva**: el solver existe desde la primera fase del proyecto y está validado por tests de plasticidad, daño, corotacional, embedded. Esta spec lo documenta sin cambiar comportamiento — H-5.3 de la auditoría 2026-05-18.
+> Spec **retroactiva**: el solver existe desde la primera fase del proyecto y está validado por tests de plasticidad, daño y corotacional. Esta spec lo documenta sin cambiar comportamiento — H-5.3 de la auditoría 2026-05-18.
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 0. Descripción general
 
-Análisis estático **no lineal** con **control de carga** (load-controlled) en una estructura discretizada por FEM. La no-linealidad puede provenir de la geometría (formulación corotacional, grandes desplazamientos pequeñas deformaciones) o del material (plasticidad, daño, embedded discontinuity). Esquema **incremental-iterativo**: la carga objetivo se aplica por incrementos $\Delta\lambda$, y en cada incremento se resuelve el equilibrio por **Newton-Raphson** con tangente reensamblada y paso bisectado al fallar.
+Análisis estático **no lineal** con **control de carga** (load-controlled) en una estructura discretizada por FEM. La no-linealidad puede provenir de la geometría (formulación corotacional, grandes desplazamientos pequeñas deformaciones) o del material (plasticidad, daño). Esquema **incremental-iterativo**: la carga objetivo se aplica por incrementos $\Delta\lambda$, y en cada incremento se resuelve el equilibrio por **Newton-Raphson** con tangente reensamblada y paso bisectado al fallar.
 
 ### 1. Ecuación de equilibrio resuelta
 
@@ -97,7 +97,6 @@ Despacho automático idéntico a `LinearSolver` (Cholesky → Pardiso → LU; it
 ### 10. Caveats numéricos
 
 - **Snap-through / snap-back**: NO soportado — `NonlinearSolver` con control de carga falla en puntos límite con $dU/d\lambda \to \infty$ o $d\lambda/dU < 0$. Usar `ArcLengthSolver`. Excepción: el solver atraviesa puntos límite *suaves* (sin cambio de signo en $d\lambda$) con bisección + cinemática corotacional, hallazgo empírico de la auditoría 2026-05-18.
-- **Softening severo con penalty cohesivo stiff** (embedded): el solver no atraviesa la transición elástico→softening con $K_t$ casi singular en $\kappa_0$. Limitación específica al embedded; el daño bulk continuo (1D/2D) sí se atraviesa.
 - **Plasticidad perfecta con line search off**: puede oscilar (residuo periódico, no diverge ni converge). Mitigación: activar `line_search=True`.
 - **Tangente singular**: lanza `SingularTangentError` con el último estado.
 - **Newton modificado**: con `freeze_tangent_after_iter` no nulo, la convergencia cuadrática se degrada a lineal en las iteraciones congeladas. Útil cuando el coste de factorizar domina (`K_t` grande, materiales con tangente cara de evaluar).
@@ -115,6 +114,15 @@ interface:
   yaml_type: nonlinear
   output: SolveResult
   pipeline_kind: static
+
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§2.4 (Newton-Raphson incremental-iterativo) y §4.1 (búsqueda lineal)"
+    - bathe: "§8.4 (Newton-Raphson)"
+  general_codes:
+    - abaqus: "Abaqus/Standard (Newton con incremento automático)"
+    - ansys: "NROPT,FULL con bisección"
+    - opensees: "algorithm Newton / NewtonLineSearch"
 
 parameters:
   - { name: convergence,                 type: ConvergenceCriterion, required: false, default: "ConvergenceCriterion()",
@@ -204,7 +212,7 @@ references:
 - **Argumentos keyword-only**: todos menos `assembler` y `convergence` son keyword-only (auditoría H-1.5, sesión 2026-05-19, commit `4e4ed54`).
 - **Bisección y clasificación**: en `solve`, al fallar `Δλ < min_delta_lambda` se llama a `classify_divergence(residual_history, delta_history, singular_tangent_detected)` que devuelve la subclase apropiada de `SolverDivergedError` con métricas tipadas.
 - **Entrypoint público**: `solidum.run(domain, solver=NonlinearSolver(assembler, ...), F_applied=...)` o `solidum.run_yaml(path)`.
-- **Tests**: cobertura amplísima — todos los tests de plasticidad/daño/corotacional/embedded del pipeline estático lo ejercitan. Tests específicos del comportamiento adaptativo y de divergencia tipada en `tests/test_solver_robustness.py` y `tests/test_solver_diagnostics.py`.
+- **Tests**: cobertura amplísima — todos los tests de plasticidad/daño/corotacional del pipeline estático lo ejercitan. Tests específicos del comportamiento adaptativo y de divergencia tipada en `tests/test_solver_robustness.py` y `tests/test_solver_diagnostics.py`.
 
 ---
 
@@ -214,3 +222,4 @@ references:
 - **2026-09-22** · Auditoría global: un ensamblaje por iteración: la convergencia se evalúa al inicio de la iteración con (‖R(U_k)‖, ‖δU_{k−1}‖) y el estado trial que se comitea es el del propio ensamblaje en U_k (antes cada iteración ensamblaba dos veces para la misma secuencia de decisiones). `max_iter` es el número máximo de resoluciones por paso. La iteración 0 no evalúa convergencia porque el incremento de Dirichlet λ·g entra en la primera resolución (con control en desplazamiento el residuo en DOFs libres era nulo y declaraba convergencia sin mover el apoyo): todo paso hace al menos una resolución. Expone `steps_done` y `lambda_final`, que `solidum.run` vuelca en `SolveResult.num_steps` (antes siempre 1).
 - **2026-09-22** · ADR 0015: el bucle de Newton pasa al corrector compartido `NewtonCorrector`; este solver aporta su problema por paso (`_IncrementalProblem`: residuo `λ·F_ext − F_int`, reducción con el incremento de Dirichlet del paso, sin evaluación en la iteración 0; retirados `_armijo_step` y `_solve_reduced`, ahora `corrector.line_search_step` y `corrector.solve`) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
 - **2026-09-23** · ADR 0017-0019: despacho con Pardiso e iterativo a petición; comprobación de mecanismo rígido al empezar `solve`; diagnóstico de tangente singular a partir del residuo lineal (sólo diagnóstico, sin cambio del algoritmo).
+- **2026-09-29** · Frontera del programa principal (ADR 0020): la discontinuidad embebida es un módulo de usuario (`discontinuities`) y deja de figurar en la cobertura de esta spec. Retirado el caveat «softening severo con penalización cohesiva rígida»: lo desmiente `tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py`, donde este solver, con control por desplazamiento y $K_e = 10^{15}$, recorre el ablandamiento hasta la separación completa frente a la solución exacta. El fallo antiguo venía de la tangente cohesiva de signo erróneo, corregida el 2026-09-23 (`597f3d9`). Sin cambio de formulación ni de resultados.

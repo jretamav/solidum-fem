@@ -61,6 +61,23 @@ interface:
   yaml_type: <Nombre>             # cómo se referencia desde el YAML del usuario
   output: ""                       # tipo de resultado: SolveResult, ModalResult, TransientResult, …
 
+admission:
+  # Criterio de admisión al programa principal (Reglas.md §1), primer paso de
+  # todo componente estándar: el algoritmo aparece en un texto de referencia
+  # del área Y está implementado en un código general establecido. Al menos
+  # una entrada en cada lista, con los identificadores de las listas cerradas
+  # (solidum/tools/spec.py). Cada entrada es el identificador solo o
+  # `identificador: "nota breve"` (capítulo o apartado; comando u opción en
+  # el código). Si no se pueden rellenar las dos listas, el componente no es
+  # estándar: va a un módulo de usuario (ADR 0020).
+  #   textbooks:     zienkiewicz_taylor · hughes · bathe · belytschko_liu_moran
+  #                  · de_souza_neto · de_borst_crisfield
+  #   general_codes: abaqus · ansys · diana · code_aster · opensees
+  textbooks:
+    - <id>: ""
+  general_codes:
+    - <id>: ""
+
 parameters:
   - { name: , type: , required: true, desc:  }
 

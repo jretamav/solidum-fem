@@ -8,7 +8,7 @@
 
 ### 0. Descripción general
 
-Modelo elastoplástico **friccional** independiente de la velocidad. Suelos, hormigón, granulares, materiales cuasi-frágiles cohesivo-friccionales. Suaviza la pirámide hexagonal de Mohr-Coulomb a un **cono circular** en el espacio de tensiones principales, eliminando las aristas que complican el return mapping.
+Modelo elastoplástico **friccional** independiente de la velocidad. Suelos, hormigón, granulares, materiales cuasi-frágiles cohesivo-friccionales. Suaviza la pirámide hexagonal de Mohr-Coulomb a un **cono circular** en el espacio de esfuerzos principales, eliminando las aristas que complican el return mapping.
 
 Diferencia clave con J2:
 
@@ -31,7 +31,7 @@ con:
 - $J_2 = \tfrac{1}{2}\,\mathbf s : \mathbf s$, segundo invariante del desviador.
 - $I_1 = \operatorname{tr}(\boldsymbol\sigma) = \sigma_{xx} + \sigma_{yy} + \sigma_{zz}$, primer invariante.
 - $\eta_f$, coeficiente friccional del cono (adimensional, $\geq 0$).
-- $k(\alpha) = k_0 + H_k\,\alpha$, parámetro cohesivo con endurecimiento isótropo lineal.
+- $k(\alpha) = k_0 + H_k\,\alpha$, radio del cono (el parámetro de cohesión del criterio: $k_0$ sale de $c_0$ según la calibración, §3) con endurecimiento isótropo lineal en el multiplicador plástico acumulado $\alpha$ (§5).
 
 La superficie es un cono con eje en la línea hidrostática ($\sigma_{xx} = \sigma_{yy} = \sigma_{zz}$), vértice en $I_1 = k/\eta_f$, abertura controlada por $\eta_f$.
 
@@ -65,7 +65,11 @@ Si $\psi = \phi$ (i.e. $\eta_g = \eta_f$) el modelo se vuelve **asociado**; tang
 
 $$\dot\alpha = \dot\gamma$$
 
-con $\alpha$ la **deformación plástica equivalente** (convención del proyecto para Drucker-Prager). La superficie crece manteniendo eje y abertura, solo $k$ aumenta linealmente.
+con $\alpha$ el **multiplicador plástico acumulado** $\gamma$ (convención del proyecto para Drucker-Prager). La superficie crece manteniendo eje y abertura, solo $k$ aumenta linealmente.
+
+$H_k = dk/d\alpha$ endurece el **radio del cono** $k$ respecto de $\gamma$; no la cohesión $c$ respecto de una deformación plástica equivalente. La parametrización de de Souza Neto, Perić y Owen (2008, §8.3) es $c(\bar\varepsilon^p)$ con $\bar\varepsilon^p = \xi\,\gamma$ y $k = \xi\,c$, donde $\xi = k_0/c_0$ es el factor de la calibración (§3); un $H_c = dc/d\bar\varepsilon^p$ tomado de esa parametrización equivale a
+
+$$H_k = \xi^2\,H_c .$$
 
 Endurecimiento por fricción/dilatancia (cambio de $\eta_f$ o $\eta_g$ con $\alpha$) queda fuera de esta spec — escenario que no necesitamos hoy y que añade no-linealidad fuerte al return mapping.
 
@@ -78,7 +82,7 @@ $$\dot\gamma \geq 0,\qquad f \leq 0,\qquad \dot\gamma\,f = 0$$
 | Símbolo | Tipo | Significado |
 |---|---|---|
 | $\boldsymbol\varepsilon^p$ | tensor 4 componentes `[xx, yy, zz, xy_tensorial]` | deformación plástica |
-| $\alpha$ | escalar $\geq 0$ | deformación plástica equivalente (= acumulado de $\Delta\gamma$) |
+| $\alpha$ | escalar $\geq 0$ | multiplicador plástico acumulado (= acumulado de $\Delta\gamma$; no es una deformación plástica equivalente, §5) |
 
 `alpha` es la variable principal exportable (`PRIMARY_STATE_VAR = 'alpha'`).
 
@@ -102,7 +106,7 @@ Si $f^\text{trial} \leq \text{tol}$ → paso elástico. Si no, intentar **return
 
 ### 9. Return regular (cone surface)
 
-La dirección desviadora $\hat{\mathbf n} = \mathbf s^\text{trial}/\sqrt{2 J_2^\text{trial}} = \mathbf s/\sqrt{2 J_2}$ es invariante bajo carga radial. Las actualizaciones son lineales en $\Delta\gamma$:
+La dirección desviadora $\hat{\mathbf n} = \mathbf s^\text{trial}/(2\sqrt{J_2^\text{trial}}) = \mathbf s^{n+1}/(2\sqrt{J_2^{n+1}})$ es invariante bajo carga radial ($\hat{\mathbf n} = \partial\sqrt{J_2}/\partial\boldsymbol\sigma$, de norma tensorial $1/\sqrt 2$; es la misma que usa la tangente de §12). Las actualizaciones son lineales en $\Delta\gamma$:
 
 $$\sqrt{J_2^{n+1}} = \sqrt{J_2^\text{trial}} - G\,\Delta\gamma$$
 $$p^{n+1} = p^\text{trial} - 3K\,\eta_g\,\Delta\gamma, \qquad I_1^{n+1} = 3\,p^{n+1}$$
@@ -114,7 +118,7 @@ $$\boxed{\;\Delta\gamma = \frac{f^\text{trial}}{G + 9K\,\eta_f\,\eta_g + H_k}\;}
 **Forma cerrada** — sin Newton local. Cada término del denominador:
 - $G$: cambio en $\sqrt{J_2}$ por la parte desviadora del flujo.
 - $9K\,\eta_f\,\eta_g$: cambio en $\eta_f I_1$ por la parte volumétrica dilatante del flujo (multiplicado por $\eta_f$ del criterio y $\eta_g$ del potencial).
-- $H_k$: endurecimiento.
+- $H_k$: endurecimiento del radio del cono, $dk/d\alpha$ (§5).
 
 **Actualizaciones**:
 
@@ -130,29 +134,33 @@ $$\boldsymbol\varepsilon^p_{n+1} = \boldsymbol\varepsilon^p_n + \Delta\gamma\,\l
 
 Cuando el estado de prueba cae en zona puramente hidrostática extrema (p_trial muy traccionante respecto a la cohesión), la proyección al cono cae en su vértice, donde $\mathbf s = 0$ y la dirección desviadora $\hat{\mathbf n}$ no está definida.
 
-En el ápice: $\boldsymbol\sigma^{n+1} = (k_{n+1}/\eta_f)\,\mathbf I$ (puramente hidrostático), $\sqrt{J_2^{n+1}} = 0$.
+En el ápice: $\boldsymbol\sigma^{n+1} = \bigl(k_{n+1}/(3\eta_f)\bigr)\,\mathbf I$ (puramente hidrostático; $I_1^{n+1} = k_{n+1}/\eta_f$ es el vértice del cono de §2), $\sqrt{J_2^{n+1}} = 0$.
 
 Por conservación volumétrica:
 
 $$p^{n+1} = p^\text{trial} - 3K\,\eta_g\,\Delta\gamma = \frac{k_{n+1}}{3\,\eta_f}$$
 
-con $k_{n+1} = k_0 + H_k(\alpha_n + \Delta\gamma)$. Despejando:
+con $k_{n+1} = k_0 + H_k(\alpha_n + \Delta\gamma)$. Multiplicando por $3\eta_f$:
 
-$$\boxed{\;\Delta\gamma_\text{apex} = \frac{p^\text{trial}\,\eta_f - k(\alpha_n)/3 \cdot \eta_f \cdot 3}{3K\,\eta_f\,\eta_g + H_k} = \frac{3 p^\text{trial}\,\eta_f - k(\alpha_n)}{3K \cdot 3\eta_f\,\eta_g + H_k}\;}$$
+$$3\eta_f\,p^\text{trial} - 9K\,\eta_f\,\eta_g\,\Delta\gamma = k(\alpha_n) + H_k\,\Delta\gamma$$
 
-Reordeno: $3p^\text{trial}\,\eta_f - k(\alpha_n) = I_1^\text{trial}\,\eta_f - k(\alpha_n)$. Denominador: $9K\,\eta_f\,\eta_g + H_k$. (Equivalente a la fórmula regular sin el término $G$, porque la rama de apex es puramente volumétrica.)
+y, con $I_1^\text{trial} = 3\,p^\text{trial}$, despejando:
 
-$$\Delta\gamma_\text{apex} = \frac{I_1^\text{trial}\,\eta_f - k(\alpha_n)}{9K\,\eta_f\,\eta_g + H_k}$$
+$$\boxed{\;\Delta\gamma_\text{apex} = \frac{I_1^\text{trial}\,\eta_f - k(\alpha_n)}{9K\,\eta_f\,\eta_g + H_k}\;}$$
+
+Es la fórmula regular sin la parte desviadora, porque la rama de apex es puramente volumétrica: el numerador es $f^\text{trial} - \sqrt{J_2^\text{trial}}$ y el denominador pierde el término $G$.
 
 **Actualizaciones (apex)**:
 
-$$\mathbf s^{n+1} = 0,\qquad p^{n+1} = K(\operatorname{tr}(\boldsymbol\varepsilon_{n+1}) - 3\,\eta_g\,\Delta\gamma) \;\equiv\; \frac{k_{n+1}}{3\,\eta_f}$$
+$$\mathbf s^{n+1} = 0,\qquad p^{n+1} = p^\text{trial} - 3K\,\eta_g\,\Delta\gamma_\text{apex} \;\equiv\; \frac{k_{n+1}}{3\,\eta_f}, \qquad p^\text{trial} = K\operatorname{tr}(\boldsymbol\varepsilon_{n+1} - \boldsymbol\varepsilon^p_n)$$
+
+(el código evalúa directamente $p^{n+1} = k_{n+1}/(3\eta_f)$.)
 
 $$\boldsymbol\sigma^{n+1} = p^{n+1}\,\mathbf I$$
 
-$$\boldsymbol\varepsilon^p_{n+1} = \boldsymbol\varepsilon^p_n + \Delta\gamma\,\eta_g\,\mathbf I + \boldsymbol\varepsilon^{p,\text{dev}}_\text{trial}$$
+$$\boldsymbol\varepsilon^p_{n+1} = \boldsymbol\varepsilon^p_n + \Delta\gamma_\text{apex}\,\eta_g\,\mathbf I + \mathbf e^\text{trial}_\text{dev}$$
 
-(la parte desviadora plástica absorbe completamente el desviador de prueba, ya que $\mathbf s^{n+1} = 0$.)
+con $\mathbf e^\text{trial}_\text{dev}$ el desviador de la deformación de prueba de §8 (la parte desviadora plástica absorbe completamente el desviador de prueba, ya que $\mathbf s^{n+1} = 0$).
 
 ### 11. Detección del régimen de retorno
 
@@ -166,34 +174,34 @@ El criterio es geométricamente: el predictor cae más allá del ápice si la pr
 
 ### 12. Tangente algorítmica consistente
 
-**Return regular** ($\sqrt{J_2^{n+1}} > 0$):
+**Return regular** ($\sqrt{J_2^{n+1}} > 0$). Linealización del algoritmo de §9, forma compacta (de Souza Neto §8.3.4) en Voigt 3 plane strain; es la que implementa el código y la verifica `tests/test_consistent_tangent.py` por diferencias finitas:
 
-Por linealización del algoritmo:
+$$\mathbf C^\text{alg} = K\,\mathbf v\otimes\mathbf v + 2G\,(1 - \beta)\,\mathbf I_\text{dev} + 4G\,\beta\,\hat{\mathbf n}\otimes\hat{\mathbf n} - \frac{1}{A}\,\mathbf b_g \otimes \mathbf b_f$$
 
-$$\mathbf C^\text{alg} = K\,\mathbf 1\otimes\mathbf 1 + 2G\left(1 - \frac{G\,\Delta\gamma}{\sqrt{J_2^\text{trial}}}\right)\mathbf I_\text{dev} + 2G\,\Theta\,\hat{\mathbf n}\otimes\hat{\mathbf n} - 3K\,\eta_g\,\mathbf 1\otimes \mathbf a_f - 3K\,\eta_f\,\mathbf a_g\otimes\mathbf 1 + \text{corrección}$$
+con:
 
-donde:
-- $\hat{\mathbf n} = \mathbf s^{n+1}/(2\sqrt{J_2^{n+1}})$ (dirección de flujo desviador, normalizada por convención).
-- $\mathbf 1 = (1,1,1,0)$ en notación 4 componentes (hidrostática).
-- $\Theta$, $\mathbf a_f$, $\mathbf a_g$: términos cruzados que recogen el acoplamiento entre cambio de $\sqrt{J_2}$ y endurecimiento.
+- $\mathbf v = [1, 1, 0]$ (gradiente de $I_1$ respecto de la deformación en Voigt 3 *engineering*).
+- $\mathbf I_\text{dev}$: bloque en plano $3\times 3$ del proyector desviador, $\begin{bmatrix} 2/3 & -1/3 & 0 \\ -1/3 & 2/3 & 0 \\ 0 & 0 & 1/2 \end{bmatrix}$ (el $1/2$ del cortante lleva $\gamma_{xy}$ a $\varepsilon_{xy}$ tensorial).
+- $\hat{\mathbf n} = [s_{xx}, s_{yy}, s_{xy}]^\text{trial}/(2\sqrt{J_2^\text{trial}})$, con el cortante tensorial (sin factor 2); coincide con $\mathbf s^{n+1}/(2\sqrt{J_2^{n+1}})$ (§9).
+- $\beta = G\,\Delta\gamma/\sqrt{J_2^\text{trial}}$.
+- $\mathbf b_f = 2G\,\hat{\mathbf n} + 3K\,\eta_f\,\mathbf v$, $\mathbf b_g = 2G\,\hat{\mathbf n} + 3K\,\eta_g\,\mathbf v$.
+- $A = G + 9K\,\eta_f\,\eta_g + H_k$ (denominador de $\Delta\gamma$, §9).
 
-Forma compacta (de Souza Neto §8.3.4):
-
-$$\mathbf C^\text{alg} = K\,\mathbf 1\otimes\mathbf 1 + 2G\,\Big(1 - \tfrac{G\Delta\gamma}{\sqrt{J_2^\text{trial}}}\Big)\,\mathbf I_\text{dev} - \frac{1}{G + 9K\eta_f\eta_g + H_k}\,\mathbf b_g \otimes \mathbf b_f$$
-
-con $\mathbf b_g = G\hat{\mathbf n} + 3K\eta_g\,\mathbf 1$, $\mathbf b_f = G\hat{\mathbf n} + 3K\eta_f\,\mathbf 1$. **Asimétrica si $\eta_f \neq \eta_g$** (no asociada).
+El término $+4G\beta\,\hat{\mathbf n}\otimes\hat{\mathbf n}$ recoge el cambio de la dirección de flujo con $\boldsymbol\varepsilon$ a través de $\mathbf s^\text{trial}$ (no sólo el de su magnitud); sin él la tangente cierra mal en las componentes de cortante alineadas con el flujo (lo detecta la diferencia finita). Con $\mathbf N = \sqrt 2\,\hat{\mathbf n}$ (normal unitaria del desviador) es $2G\beta\,\mathbf N\otimes\mathbf N$, y el conjunto es la forma de de Souza Neto et al. (2008, §8.3) con $\eta = 3\eta_f$, $\bar\eta = 3\eta_g$ (su criterio usa $p$, éste $I_1 = 3p$) y $\xi^2 H_c = H_k$. **Asimétrica si $\eta_f \neq \eta_g$** (no asociada): $\mathbf b_g \otimes \mathbf b_f$ sólo es simétrico con $\mathbf b_g = \mathbf b_f$.
 
 **Return al ápice** ($\sqrt{J_2^{n+1}} = 0$):
 
-$$\mathbf C^\text{alg} = K\,\Big(1 - \frac{3K\eta_f\eta_g}{3K\eta_f\eta_g + H_k/3}\Big)\,\mathbf 1\otimes\mathbf 1$$
+$$\mathbf C^\text{alg} = K\,\Big(1 - \frac{3K\eta_f\eta_g}{3K\eta_f\eta_g + H_k/3}\Big)\,\mathbf v\otimes\mathbf v$$
 
-— rigidez puramente volumétrica reducida (el material en el ápice se comporta como un fluido con compresibilidad finita; sin rigidez desviadora alguna).
+— rigidez puramente volumétrica reducida (el material en el ápice se comporta como un fluido con compresibilidad finita; sin rigidez desviadora alguna), con $\mathbf v = [1, 1, 0]$ como en el return regular.
 
-Forma equivalente más limpia: $\mathbf C^\text{alg}_\text{apex} = \dfrac{K\,H_k}{9K\eta_f\eta_g + H_k}\,\mathbf 1\otimes\mathbf 1$ (con $H_k=0$, el ápice se vuelve completamente plástico volumétrico y la tangente colapsa; este caso queda manejado en el código devolviendo un escalar pequeño $>0$ para evitar singularidad).
+Forma equivalente más limpia: $\mathbf C^\text{alg}_\text{apex} = \dfrac{K\,H_k}{9K\eta_f\eta_g + H_k}\,\mathbf v\otimes\mathbf v$ (con $H_k=0$, el ápice se vuelve completamente plástico volumétrico y la tangente colapsa).
+
+**Piso de la tangente en el ápice.** Si $K H_k/(9K\eta_f\eta_g + H_k) < 10^{-6} K$, el código devuelve $10^{-6} K\,\mathbf v\otimes\mathbf v$ en lugar de la tangente exacta, para no dejar la matriz global singular mientras el punto siga en el ápice. Actúa en **todo retorno al ápice con $H_k = 0$** (perfectamente plástico, el caso más común, donde la tangente exacta es nula) y, en general, siempre que $H_k/(9K\eta_f\eta_g + H_k) < 10^{-6}$; con $\psi = 0$ el retorno al ápice no tiene solución y el kernel lanza `ValueError` antes de llegar aquí (Diálogo, 2026-09-22). Es una regularización de la tangente, no la tangente consistente: no cambia $\boldsymbol\sigma$ ni el estado convergido, sólo la convergencia del Newton global.
 
 ### 13. Tolerancia de fluencia
 
-ADR 0006: `admissibility_scale = k(α) = k_0 + H_k·α` (escala cohesiva corriente del cono). Tiene unidades de esfuerzo, igual que $f$.
+ADR 0006: `admissibility_scale = k(α) = k_0 + H_k·α` (radio corriente del cono). Tiene unidades de esfuerzo, igual que $f$.
 
 ---
 
@@ -209,13 +217,21 @@ interface:
   primary_state_var: alpha
   is_symmetric: false      # tangente asimétrica si no asociada (ψ ≠ φ)
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_souza_neto: "§8.3 (Drucker-Prager: retorno al cono y al ápice, tangentes)"
+  general_codes:
+    - abaqus: "*DRUCKER PRAGER (lineal) en CPE*"
+    - code_aster: "DRUCK_PRAGER / DRUCK_PRAG_N_A"
+    - opensees: "nDMaterial DruckerPrager"
+
 parameters:
   - { name: E,          type: float, required: true,  desc: "Módulo de Young" }
   - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson" }
   - { name: cohesion,   type: float, required: true,  desc: "Cohesión c_0 inicial (esfuerzo)" }
   - { name: phi_deg,    type: float, required: true,  desc: "Ángulo de fricción interna en grados; típico suelos 20-40°, hormigón 30-37°" }
   - { name: psi_deg,    type: float, required: false, default: null, desc: "Ángulo de dilatancia en grados. Default = phi_deg (asociada). Típico no asociada: ψ < φ, e.g. 0 o φ/2." }
-  - { name: H,          type: float, required: false, default: 0.0, desc: "Endurecimiento isótropo lineal en cohesión H_k (≥0). H=0 ⇒ perfectamente plástico." }
+  - { name: H,          type: float, required: false, default: 0.0, desc: "Módulo de endurecimiento isótropo lineal H_k = dk/dα del radio del cono respecto del multiplicador plástico acumulado (≥0). Desde H_c = dc/dε̄ᵖ de de Souza Neto et al. (2008): H_k = ξ²·H_c con ξ = k_0/c_0 (§5). H=0 ⇒ perfectamente plástico." }
   - { name: hypothesis, type: str,   required: false, default: "plane_strain", desc: "plane_strain (único soportado)" }
   - { name: variant,    type: str,   required: false, default: "plane_strain_matched", desc: "plane_strain_matched | outer_cone | inner_cone — calibración con Mohr-Coulomb" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
@@ -251,7 +267,7 @@ out_of_scope:
 numerical_caveats:
   - "Tangente algorítmica asimétrica si ψ ≠ φ → IS_SYMMETRIC=False, el despachador algebraico usa LU (ADR 0003)."
   - "Modos de carga muy traccionantes pueden caer en la rama de ápice. La detección automática del régimen (regular vs apex) está en el algoritmo; si en el futuro aparece oscilación entre ramas en pasos cerca de la transición, considerar smoothing con vertex regularization."
-  - "Con ψ = 0 (sin dilatancia) y H_k = 0, en la rama de ápice la tangente volumétrica se anula → singularidad. El código devuelve un valor de respaldo (rigidez volumétrica reducida no nula) para evitar matriz singular; típicamente sale del ápice en el siguiente paso."
+  - "Con H_k = 0 (perfectamente plástico), en la rama de ápice la tangente volumétrica exacta se anula → singularidad. El código la sustituye por el piso K·1e-6·1⊗1 en todo retorno al ápice con H_k/(9Kη_fη_g + H_k) < 1e-6 (§12): regularización de la tangente, sin efecto sobre σ; típicamente sale del ápice en el siguiente paso. Con ψ = 0 el retorno al ápice no tiene solución y el kernel lanza ValueError."
   - "El return regular puede generar α creciente con incrementos pequeños cerca de la transición regular↔apex. Newton global converge igual; si en problema concreto se detecta oscilación, usar arc-length."
 
 acceptance:
@@ -268,7 +284,7 @@ acceptance:
 
     - name: regular_return_under_shear
       setup: "ε cortante puro suficiente para fluir (ε_xy = γ/2, sin parte hidrostática)"
-      expect: "return regular activo, α > 0, √J₂ del estado final = √(2/3)·k - η_f·I₁ ≥ 0 (cumple criterio)"
+      expect: "return regular activo, α > 0, √J₂ del estado final = k(α) − η_f·I₁ ≥ 0 (f = 0, cumple criterio)"
       tol_rel: 1.0e-8
 
     - name: apex_return_under_pure_tension
@@ -348,11 +364,14 @@ references:
   4. Si no: intentar $\Delta\gamma_\text{reg}$ cerrado; comprobar $\sqrt{J_2^{n+1}} \geq 0$.
   5. Si regular válido: actualizar σ, $\boldsymbol\varepsilon^p$, $\alpha$, tangente regular (de Souza Neto §8.3.4).
   6. Si regular inválido: rama de ápice — $\Delta\gamma_\text{apex}$ cerrado, σ puramente hidrostático, tangente volumétrica reducida.
+- **Tangente regular** (§12): `C_alg = K·v⊗v + 2G·(1−β)·I_dev + 4G·β·n̂⊗n̂ − (1/A)·b_g⊗b_f` con `b = 2G·n̂ + 3K·η·v`.
+- **Piso de la tangente en el ápice** (§12): `K_apex_eff < K·1e-6` ⇒ `K·1e-6`; actúa en todo retorno al ápice con `H = 0`.
 - **Cálculo de $(\eta_f, k_0, \eta_g)$**: en `__init__` desde $(c_0, \phi, \psi, \text{variant})$ — sin coste runtime. Se valida $\psi \leq \phi$ (físicamente sensato).
 - **`admissibility_scale`**: $k(\alpha) = k_0 + H \cdot \alpha$.
 - **Tests**:
   - [tests/test_materials_unit.py](../../tests/test_materials_unit.py) · `TestDruckerPrager2D`.
   - [tests/test_solid_2d_drucker_prager.py](../../tests/test_solid_2d_drucker_prager.py).
+  - [tests/test_consistent_tangent.py](../../tests/test_consistent_tangent.py) · `TestDruckerPrager2DConsistentTangent` — tangente regular y de ápice frente a diferencias finitas.
 
 ---
 
@@ -368,3 +387,5 @@ references:
 - **2026-09-22** · Auditoría global: retorno al ápice con ψ = 0: sin componente volumétrica del flujo no existe solución consistente con σ = C_e:(ε − ε^p) (con H = 0 se clampaba `A_apex` a 1e-30 y salía Δγ ≈ 1e30; con H > 0 se devolvía el σ del ápice sin la ε^p volumétrica que lo justifica). Ahora el kernel lanza `ValueError` al entrar en la rama del ápice con η_g = 0 y el constructor avisa al construir con ψ = 0. Aclarado que el endurecimiento actúa sobre `k(α) = k₀ + H·α` (radio del cono), no sobre la cohesión `c` (dk/dc vale 0.83–1.2 según la calibración). Nuevo `out_of_plane_stress(σ, state)`: σ_zz de plane strain desde ε^p_zz (helper `materials/_plane_strain.py`), validado contra `DruckerPrager3D` con ε_zz = 0.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): declara `STATE_SCHEMA` y un adaptador `@njit` con firma `MAT_SIG` que llama al mismo return mapping; la tolerancia de admisibilidad (ADR 0006) se evalúa dentro del kernel con las mismas operaciones que `admissibility_tol`. Formulación sin cambios; equivalencia con `compute_state` exacta en esfuerzo, tangente y estado (`tests/test_batch_kernels.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): `batch_out_of_plane_stress(sigma, S)`, versión por arreglos de `out_of_plane_stress` para el post-proceso por familia (exportador VTK); misma fórmula, `ε^p_zz` leída de la fila de estado cuando aplica. Verificado archivo VTK idéntico por ambos caminos.
+- **2026-09-29** · Revisión documental (sin cambio de código ni de resultados): (1) $\alpha$ es el multiplicador plástico acumulado $\gamma$, no una deformación plástica equivalente, y $H$ endurece el radio del cono $k$ respecto de $\gamma$; conversión desde la parametrización $c(\bar\varepsilon^p)$ de de Souza Neto et al. (2008), $H_k = \xi^2 H_c$ con $\xi = k_0/c_0$ (§5). Sustituye a la cota «dk/dc vale 0.83–1.2» de la entrada anterior, que sólo vale para $\phi = 30°$. (2) El piso $K\cdot 10^{-6}$ de la tangente en el ápice actúa en todo retorno al ápice con $H_k = 0$, no sólo con $\psi = 0$, caso que desde el 2026-09-22 lanza `ValueError` (§12 y `numerical_caveats`).
+- **2026-09-29** · Erratas de la spec frente al código, que es correcto (tangente regular y de ápice verificadas por diferencias finitas en `tests/test_consistent_tangent.py`; ápice contra `k/(3η_f)` en `tests/test_materials_unit.py`). Sólo cambia el texto; ni el código ni la formulación implementada cambian. (a) §10: el esfuerzo en el ápice es $\boldsymbol\sigma^{n+1} = (k_{n+1}/(3\eta_f))\,\mathbf I$, no $(k_{n+1}/\eta_f)\,\mathbf I$; es la presión $p = k/(3\eta_f)$ de la línea siguiente, del código (`p_new = k_new/(3η_f)`) y de la spec 3D. (b) §10: la primera expresión del $\Delta\gamma_\text{apex}$ encuadrado, con numerador $\eta_f(p^\text{trial} - k)$ y denominador $3K\eta_f\eta_g + H_k$, no era igual a la final; queda sólo la correcta, $(I_1^\text{trial}\eta_f - k)/(9K\eta_f\eta_g + H_k)$, con el paso intermedio del despeje. (c) §12: la forma compacta de la tangente regular usaba $\mathbf b = G\hat{\mathbf n} + 3K\eta\,\mathbf 1$ con $\hat{\mathbf n} = \mathbf s/(2\sqrt{J_2})$ y omitía el término $+4G\beta\,\hat{\mathbf n}\otimes\hat{\mathbf n}$; el código usa $2G\hat{\mathbf n}$ y lleva ese término, como documenta la spec `DruckerPrager3D` §14. Se retira además la forma «por linealización» previa, con términos $\Theta$, $\mathbf a_f$, $\mathbf a_g$ y «corrección» sin definir. Erratas menores encontradas al hacerlo, en el mismo sentido: la actualización del ápice escribía $p^{n+1} = K(\operatorname{tr}\boldsymbol\varepsilon_{n+1} - 3\eta_g\Delta\gamma)$ sin restar $\boldsymbol\varepsilon^p_n$ (ahora $p^\text{trial} - 3K\eta_g\Delta\gamma$ con $p^\text{trial}$ de §8); el desviador que absorbe $\boldsymbol\varepsilon^p$ en el ápice es $\mathbf e^\text{trial}_\text{dev}$ de §8; §9 definía $\hat{\mathbf n} = \mathbf s/\sqrt{2J_2}$ (normal unitaria) y §12 $\mathbf s/(2\sqrt{J_2})$, ahora ambas la segunda, como el código; las tangentes de ápice usan $\mathbf v = [1,1,0]$ en Voigt 3, y el `expect` de `regular_return_under_shear` decía $\sqrt{J_2} = \sqrt{2/3}\,k - \eta_f I_1$, cuando el criterio de §2 da $\sqrt{J_2} = k - \eta_f I_1$ (el test comprueba $\alpha > 0$ y el cortante, no ese valor).

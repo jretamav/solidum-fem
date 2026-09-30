@@ -105,6 +105,14 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "cap. 5 (elementos de viga)"
+    - zienkiewicz_taylor: "vol. 2 (6.ª ed.), cap. 10: barras (formulación base, material elástico)"
+  general_codes:
+    - opensees: "elasticBeamColumn (3D)"
+    - abaqus: "B33"
+
 parameters:
   - { name: A,  type: float, required: true, desc: "Área de la sección transversal" }
   - { name: Iy, type: float, required: true, desc: "Momento de inercia alrededor del eje local y" }

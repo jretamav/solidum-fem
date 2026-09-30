@@ -102,6 +102,13 @@ interface:
   primary_state_var: null
   is_symmetric: true
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 2 (elastostática 3D en notación de Voigt)"
+  general_codes:
+    - abaqus: "*ELASTIC en C3D*"
+    - opensees: "nDMaterial ElasticIsotropic"
+
 parameters:
   - { name: E,       type: float, required: true,  desc: "Módulo de Young (>0)" }
   - { name: nu,      type: float, required: true,  desc: "Coeficiente de Poisson ∈ (-1, 0.5)" }

@@ -205,6 +205,13 @@ interface:
   strain_dim: 6                 # Voigt 3D [ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]
   n_integration_points: 27      # default Gauss 3×3×3
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (elementos serendípitos)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: familia serendípita 3D"
+  general_codes:
+    - abaqus: "C3D20 / C3D20R (integración reducida 2×2×2)"
+
 parameters:
   - { name: quadrature, type: str, required: false, default: "hex_3x3x3",
       desc: "Regla de cuadratura desde QuadratureRegistry (hex_3x3x3 default,

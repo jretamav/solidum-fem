@@ -105,6 +105,15 @@ interface:
   yaml_type: CentralDifferenceSolver
   output: TransientResult
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - belytschko_liu_moran: "§6.2 (diferencias centradas explícitas)"
+    - hughes: "cap. 9 (diferencias centradas: Newmark con β = 0)"
+    - bathe: "§9.2 (diferencias centradas)"
+  general_codes:
+    - abaqus: "Abaqus/Explicit"
+    - opensees: "integrator CentralDifference"
+
 parameters:
   - { name: t_end, type: float, required: true, desc: "tiempo final (s)" }
   - { name: dt, type: float, required: true, desc: "paso temporal constante (s); debe satisfacer Δt < Δt_crit" }

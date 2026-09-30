@@ -17,7 +17,7 @@
 `NewtonNewmarkSolver` integra `M·ü + C·u̇ + F_int(u) = F(t)` con Newmark-β
 clásico (β=1/4, γ=1/2 default, sin amortiguamiento numérico). Cada paso
 abre un bucle Newton porque `F_int(u)` es no lineal en `u` (plasticidad,
-daño, corotacional, embedded).
+daño, corotacional).
 
 `NewtonHHTSolver` reemplaza el residuo Newmark por el residuo HHT-α: las
 **fuerzas internas, viscosas y externas** se evalúan en un instante
@@ -97,6 +97,14 @@ interface:
   yaml_type: newton_hht
   output: TransientResult
   pipeline_kind: transient
+
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 9 (método α de Hilber-Hughes-Taylor)"
+    - de_borst_crisfield: "§5.4 (integración implícita en dinámica no lineal)"
+  general_codes:
+    - abaqus: "*DYNAMIC no lineal (HHT-α + Newton)"
+    - opensees: "integrator HHT + algorithm Newton"
 
 parameters:
   # Solo se listan los parámetros propios o con default distinto al padre.

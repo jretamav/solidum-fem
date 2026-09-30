@@ -76,6 +76,13 @@ interface:
   strain_dim: 3
   n_integration_points: 9       # default Gauss 3×3
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (elementos serendípitos)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: familia serendípita"
+  general_codes:
+    - abaqus: "CPS8 / CPE8"
+
 parameters:
   - { name: thickness, type: float, required: false, default: 1.0 }
   - { name: quadrature, type: tuple, required: false, default: "3x3" }

@@ -45,7 +45,7 @@ from solidum.registry import ElementRegistry, MaterialRegistry, ThermalMaterialR
 from solidum.utils.vtk_exporter import element_average_stress
 
 from test_element_contract_sweep import (
-    _HEX20, _HEX27, _HEX_VERTICES, _QUAD, _QUAD8, _QUAD9, _TET, _TET10, _TRI, _TRI6,
+    HEX20, HEX27, HEX_VERTICES, QUAD, QUAD8, QUAD9, TET, TET10, TRI, TRI6,
 )
 
 RNG = np.random.default_rng(2026)
@@ -53,9 +53,9 @@ ESPESOR = 0.01
 
 # Geometría de referencia y factor de tamaño de cada elemento batchable.
 _GEOM = {
-    'Quad4': _QUAD, 'Tri3': _TRI, 'Quad8': _QUAD8, 'Quad9': _QUAD9, 'Tri6': _TRI6,
-    'Hex8': _HEX_VERTICES, 'Hex20': _HEX20, 'Hex27': _HEX27, 'Tet4': _TET, 'Tet10': _TET10,
-    'Quad4Thermal': _QUAD, 'Hex8Thermal': _HEX_VERTICES,
+    'Quad4': QUAD, 'Tri3': TRI, 'Quad8': QUAD8, 'Quad9': QUAD9, 'Tri6': TRI6,
+    'Hex8': HEX_VERTICES, 'Hex20': HEX20, 'Hex27': HEX27, 'Tet4': TET, 'Tet10': TET10,
+    'Quad4Thermal': QUAD, 'Hex8Thermal': HEX_VERTICES,
 }
 
 # Materiales con historia o sin ella para cada dimensión Voigt. Parámetros

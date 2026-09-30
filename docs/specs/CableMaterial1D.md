@@ -42,6 +42,14 @@ interface:
   strain_dim: 1
   primary_state_var: null      # memoryless, no exporta variable principal
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "cap. 4-5 (barra con σ = E·ε): formulación base; la anulación en compresión no aparece como tal en los textos de la lista"
+  general_codes:
+    - ansys: "LINK180 con SECCONTROL de sólo tracción"
+    - abaqus: "*ELASTIC + *NO COMPRESSION"
+    - opensees: "uniaxialMaterial Elastic con Eneg = 0"
+
 parameters:
   - { name: E, type: float, required: true, desc: "Módulo de Young (en tensión)" }
 

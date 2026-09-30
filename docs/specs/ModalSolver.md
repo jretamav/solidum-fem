@@ -67,6 +67,15 @@ interface:
   yaml_type: modal      # solver: { type: modal }
   output: ModalResult   # campos: frequencies_hz, frequencies_rad, periods, modes, n_modes
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "cap. 10-11 (autoproblemas generalizados)"
+    - hughes: "cap. 10 (métodos para autoproblemas)"
+  general_codes:
+    - abaqus: "*FREQUENCY (Lanczos)"
+    - ansys: "MODOPT,LANB"
+    - opensees: "eigen"
+
 parameters:
   - { name: n_modes,   type: int,   required: true,  desc: "Número de modos a calcular" }
   - { name: sigma,     type: float, required: false, default: 0.0,     desc: "Shift (rad²/s²) para shift-invert; 0 → frecuencias más bajas" }

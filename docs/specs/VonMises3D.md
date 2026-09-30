@@ -197,6 +197,15 @@ interface:
   primary_state_var: alpha     # deformación plástica acumulada equivalente
   is_symmetric: true           # tangente algorítmica simétrica (J2 asociado)
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_souza_neto: "cap. 7 (von Mises con endurecimiento isótropo: retorno radial y tangente consistente)"
+    - de_borst_crisfield: "§7.2-7.4 (J2: retorno y tangente consistente)"
+  general_codes:
+    - abaqus: "*PLASTIC (Mises)"
+    - ansys: "TB,BISO"
+    - opensees: "nDMaterial J2Plasticity"
+
 parameters:
   - { name: E,       type: float, required: true,  desc: "Módulo de Young (>0)" }
   - { name: nu,      type: float, required: true,  desc: "Coeficiente de Poisson ∈ (-1, 0.5)" }

@@ -12,7 +12,7 @@
 
 Modelo constitutivo de **conducción de calor** según la ley de Fourier. Relaciona el vector de flujo de calor $\mathbf q$ con el gradiente de temperatura $\nabla T$. Es el análogo térmico de `Elastic2D`/`Elastic3D`: lineal, sin variables internas, con "tangente" constante.
 
-No pertenece a la familia `Material` mecánica. Los materiales mecánicos relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ en notación Voigt; éste relaciona dos vectores en el espacio físico, sin notación Voigt y sin tensor simétrico de por medio. Vive en una **familia paralela** `ThermalMaterial` con su propio registro, exactamente como `CohesiveMaterial` (ADR 0010) resolvió el mismo tipo de incompatibilidad semántica.
+No pertenece a la familia `Material` mecánica. Los materiales mecánicos relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ en notación Voigt; éste relaciona dos vectores en el espacio físico, sin notación Voigt y sin tensor simétrico de por medio. Vive en una **familia paralela** `ThermalMaterial` con su propio registro y su sección YAML (`thermal_materials`), la pieza genérica de familias de material del registro (ADR 0020, P1) que resuelve este tipo de incompatibilidad semántica.
 
 ### 1. Ley constitutiva — Fourier
 
@@ -123,6 +123,13 @@ interface:
                          # construir (escalar + dim, o tamaño del tensor k)
   primary_state_var: null
   is_symmetric: true
+
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 2 (conducción de calor con conductividad tensorial)"
+    - zienkiewicz_taylor: "vol. 1: problemas de campo cuasi-armónicos (conducción anisótropa)"
+  general_codes:
+    - abaqus: "*CONDUCTIVITY, TYPE=ANISO"
 
 parameters:
   - { name: k,       type: float | array-like, required: true,

@@ -66,16 +66,7 @@ import solidum  # noqa: F401  — dispara el autodiscover que puebla el registro
 from solidum.core.material import Material
 from solidum.registry import MaterialRegistry, Registry
 
-
-def nombres_programa_principal(registry) -> list:
-    """Nombres registrados cuya clase pertenece al programa principal.
-
-    Los módulos de usuario (``solidum/user/``, ADR 0020) se cargan en la
-    misma sesión de pytest cuando corren sus propios tests, y sus clases
-    quedan en los registros globales. Cada módulo trae su propio barrido;
-    éste cubre sólo el programa principal."""
-    return [n for n in registry.names()
-            if not registry.get(n).__module__.startswith("solidum.user.")]
+from _programa_principal import nombres_programa_principal
 
 # Parámetros válidos y físicamente razonables para construir cada material.
 # Sólo los obligatorios: los opcionales se dejan en su default a propósito,

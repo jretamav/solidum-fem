@@ -1008,7 +1008,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         for step in range(n_steps):
             t_next = t_history[step + 1]
 
-            # ADR 0010 §5: hook de preparación de paso.
+            # Gancho de inicio de paso (ADR 0020, P5) con el estado
+            # convergido del paso anterior, como en NewtonNewmarkSolver.
             self.assembler.prepare_all_steps(u_total)
 
             u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total

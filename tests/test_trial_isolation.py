@@ -6,9 +6,7 @@ dinámico). Antes sobrescribían el trial con el estado en ``u = 0``: si se
 llamaban a mitad de un análisis no lineal, un ``commit`` posterior
 consolidaba un estado falso. Ahora el trial previo se restaura al salir,
 por los dos caminos (por elemento con ``ElementState`` clásico y por
-lotes con vistas sobre la familia), en sólidos, en barras 1D y en el
-elemento con discontinuidad embebida (que además guarda el trial del
-salto).
+lotes con vistas sobre la familia), en sólidos y en barras 1D.
 """
 import copy
 import os

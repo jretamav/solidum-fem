@@ -103,6 +103,12 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - zienkiewicz_taylor: "vol. 2 (6.ª ed.), cap. 10: barras de Timoshenko (formulación base, material elástico)"
+  general_codes:
+    - opensees: "ElasticTimoshenkoBeam (2D)"
+
 parameters:
   - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
   - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano" }

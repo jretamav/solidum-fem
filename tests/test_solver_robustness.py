@@ -299,10 +299,11 @@ class TestArcLengthRobustness(unittest.TestCase):
         Barra empotrada con ``IsotropicDamage1D``, ``alpha=500`` (softening
         pronunciado), carga axial 2× el pico elástico. El control de carga
         puro no puede llegar (la curva F-u tiene tramo con dF/du < 0);
-        arc-length sí. Documenta que el límite descrito en STATUS.md
-        ("solvers no atraviesan la transición elástico→softening") aplica
-        específicamente al penalty cohesivo stiff del embedded, **no** al
-        daño continuo bulk con softening exponencial.
+        arc-length sí. Documenta que el daño continuo con softening
+        exponencial se atraviesa: el límite antiguo de STATUS.md ("solvers
+        no atraviesan la transición elástico→softening") se refería a la
+        penalización cohesiva rígida del elemento con discontinuidad
+        embebida, hoy en el módulo de usuario ``discontinuities`` (ADR 0020).
         """
         E = 1.0e5; A = 1.0; L = 1.0
         kappa_0 = 1.0e-3; alpha = 500.0  # softening pronunciado

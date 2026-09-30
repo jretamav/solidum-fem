@@ -113,6 +113,13 @@ interface:
   strain_dim: 6
   n_integration_points: 4       # default Stroud tet_4
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (tetraedro cuadrático)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: tetraedros"
+  general_codes:
+    - abaqus: "C3D10"
+
 parameters:
   - { name: quadrature, type: str, required: false, default: "tet_4",
       desc: "Cuadratura tetraédrica desde QuadratureRegistry. Default

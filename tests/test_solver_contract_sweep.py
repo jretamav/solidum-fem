@@ -43,6 +43,11 @@ import solidum  # noqa: F401  — dispara el autodiscover que puebla el registro
 from solidum.entry import _KNOWN_PIPELINE_KINDS
 from solidum.registry import SolverRegistry
 
+# Sólo los solvers del programa principal: los de un módulo de usuario (ADR
+# 0020) quedan registrados si sus tests corren en la misma sesión, y cada
+# módulo trae su propio barrido.
+from _programa_principal import nombres_programa_principal
+
 # Parámetros que cada familia de pipeline exige más allá del assembler.
 # Es la clasificación que `entry.py` presupone al despachar: un solver
 # transitorio sin `dt` no podría invocarse desde `run_transient`.
@@ -75,7 +80,7 @@ class TestRegistroCompleto(unittest.TestCase):
 
     def test_el_registro_no_esta_vacio(self):
         """Si el autodiscover se rompiera, el barrido pasaría por vacuidad."""
-        self.assertGreaterEqual(len(SolverRegistry.names()), 13)
+        self.assertGreaterEqual(len(nombres_programa_principal(SolverRegistry)), 13)
 
     def test_toda_familia_de_pipeline_tiene_al_menos_un_solver(self):
         """Un `PIPELINE_KIND` canónico sin solver que lo implemente señala un
@@ -83,7 +88,7 @@ class TestRegistroCompleto(unittest.TestCase):
         """
         declarados = {
             getattr(SolverRegistry.get(n), 'PIPELINE_KIND', None)
-            for n in SolverRegistry.names()
+            for n in nombres_programa_principal(SolverRegistry)
         }
         huerfanas = _KNOWN_PIPELINE_KINDS - declarados
         self.assertFalse(
@@ -97,7 +102,7 @@ class TestContratoDeclarativo(unittest.TestCase):
 
     def test_pipeline_kind_declarado(self):
         """Sin él, `run_yaml` no sabe por qué entrypoint despachar el solver."""
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             with self.subTest(solver=nombre):
                 clase = SolverRegistry.get(nombre)
                 self.assertTrue(
@@ -112,7 +117,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         solver — lo deja inaccesible, que es un fallo mucho más difícil de
         diagnosticar que una excepción.
         """
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             with self.subTest(solver=nombre):
                 kind = SolverRegistry.get(nombre).PIPELINE_KIND
                 self.assertIn(
@@ -122,7 +127,7 @@ class TestContratoDeclarativo(unittest.TestCase):
 
     def test_primer_parametro_es_el_assembler(self):
         """Todos los entrypoints construyen `Solver(assembler, ...)`."""
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             with self.subTest(solver=nombre):
                 params = [p for p in _firma_init(nombre).parameters
                           if p != 'self']
@@ -138,7 +143,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         por `run_transient`; uno marcado `static` que exija `t_end` tampoco lo
         es por `run`. La discrepancia sólo aparecería al ejecutar el YAML.
         """
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             with self.subTest(solver=nombre):
                 clase = SolverRegistry.get(nombre)
                 # Un PIPELINE_KIND fuera del canon ya lo caza el test anterior;
@@ -159,7 +164,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         """Un solver estático que exigiera `dt` revelaría una clasificación
         equivocada — y quedaría inconstruible desde el entrypoint estático."""
         temporales = {'dt', 't_end', 'n_steps'}
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             clase = SolverRegistry.get(nombre)
             if clase.PIPELINE_KIND != 'static':
                 continue
@@ -174,7 +179,7 @@ class TestContratoDeSolve(unittest.TestCase):
     """`solve` es el método que todos los entrypoints invocan."""
 
     def test_expone_solve(self):
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             with self.subTest(solver=nombre):
                 clase = SolverRegistry.get(nombre)
                 self.assertTrue(
@@ -190,7 +195,7 @@ class TestContratoDeSolve(unittest.TestCase):
         presupone al despachar; romperla dejaría el solver inalcanzable desde
         su entrypoint.
         """
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             clase = SolverRegistry.get(nombre)
             if clase.PIPELINE_KIND != 'static':
                 continue
@@ -212,7 +217,7 @@ class TestContratoDeSolve(unittest.TestCase):
         parámetro adicional de `solve` debe tener default; si no, el
         entrypoint —que lo llama sin argumentos— fallaría.
         """
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             clase = SolverRegistry.get(nombre)
             if clase.PIPELINE_KIND == 'static':
                 continue
@@ -245,7 +250,7 @@ class TestContratoDeSolve(unittest.TestCase):
         self.assertTrue(tipos, "no se encontraron dataclasses de resultado")
 
         nombres_validos = {t.__name__ for t in tipos}
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             clase = SolverRegistry.get(nombre)
             if clase.PIPELINE_KIND == 'static':
                 continue
@@ -267,7 +272,7 @@ class TestContratoDeSolve(unittest.TestCase):
         Un solver que lo declarase obligatorio rompería ese despacho: el
         entrypoint lo llama sin él cuando no hay callback que pasar.
         """
-        for nombre in SolverRegistry.names():
+        for nombre in nombres_programa_principal(SolverRegistry):
             with self.subTest(solver=nombre):
                 firma = inspect.signature(SolverRegistry.get(nombre).solve)
                 if 'step_callback' not in firma.parameters:

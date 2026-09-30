@@ -74,6 +74,13 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "cap. 4-5 (elemento de barra)"
+  general_codes:
+    - abaqus: "T3D2"
+    - opensees: "element truss (ndm = 3)"
+
 parameters:
   - { name: A, type: float, required: true, desc: Área de la sección transversal }
 

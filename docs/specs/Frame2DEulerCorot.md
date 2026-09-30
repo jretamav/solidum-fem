@@ -100,6 +100,12 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§9.3, elementos corrotacionales (formulación base, material elástico; 1.ª ed.: Crisfield 1991, §7.3)"
+  general_codes:
+    - opensees: "elasticBeamColumn + geomTransf Corotational"
+
 parameters:
   - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
   - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano" }

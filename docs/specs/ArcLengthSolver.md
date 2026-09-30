@@ -122,8 +122,8 @@ Política de auto-ajuste basada en iteraciones del paso:
 - **Cancelación o bifurcación verdadera**: en bifurcaciones simétricas múltiples, la selección de raíz por menor ángulo puede saltar a un camino paralelo. Para análisis de bifurcación auténtica usar perturbación + post-procesado modal.
 - **Raíces imaginarias**: si el discriminante de la cuadrática es negativo (paso demasiado grande, mal condicionamiento severo), el solver aborta el paso y bisecta $dl$.
 - **Llegada a $\lambda_{\max}$ (2026-09-23)**: todos los pasos llevan la restricción cilíndrica. Si uno converge con $\lambda > \lambda_{\max}$, su estado no se consolida y el paso se repite desde el último estado convergido con $\lambda = \lambda_{\max}$ fijo (Newton puro), arrancando de la interpolación lineal del tramo recién recorrido; como ese tramo cruza $\lambda_{\max}$, el equilibrio existe y está cerca. Si la llegada no converge, se biseca $dl$. Sustituye al "último paso" anterior, que se decidía extrapolando la tangente ($\lambda + \Delta\lambda_{\text{pred}} \ge \lambda_{\max}$) e imponía $\lambda_{\max}$ en control de carga sin recorrer la curva: podía saltar un punto límite, y un paso de arco que convergía por encima de $\lambda_{\max}$ terminaba el trazado ahí (medido: arco de von Mises, $\lambda_{\text{final}} = 0.398$ con $\lambda_{\max} = 0.39$).
-- **Softening con penalty cohesivo stiff** (CST_Embedded2D): no se atraviesa la transición elástico→softening por la quasi-singularidad de $\mathbf K_t$ cerca de $\kappa_0$. Limitación específica al embedded.
-- **Diagnóstico de bifurcación por inercia** (Sturm sequence): placeholder en `_negative_pivots()` — retorna `None` hasta que se implemente un backend LDLᵀ verdadero (Bunch-Kaufman) con conteo de pivots negativos.
+- **Softening con penalización cohesiva rígida** (elemento con discontinuidad embebida del módulo de usuario `discontinuities`, ADR 0020): se registró que no se atravesaba la transición elástico→softening por la casi-singularidad de $\mathbf K_t$ cerca de $\kappa_0$. El diagnóstico es anterior a la corrección de la tangente cohesiva del 2026-09-23 (`597f3d9`), que presentaba al solver una tangente de signo contrario en casi toda la rama, y no se ha vuelto a comprobar con este solver; con control por desplazamiento, `NonlinearSolver` sí recorre hoy esa rama (`tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py`).
+- **Diagnóstico de bifurcación por inercia** (Sturm sequence): no implementado. El solver no sigue la inercia de $\mathbf K_t$; el predictor se orienta sólo por el producto escalar con el incremento previo (§5). El método `_negative_pivots()`, un marcador que devolvía `None` y que ningún `solve` llamaba, se retiró el 2026-09-29. No habrá diagnóstico por inercia hasta que exista un backend LDLᵀ verdadero (Bunch-Kaufman) con conteo de pivotes negativos (deuda técnica #7 de [STATUS](../STATUS.md)).
 
 ---
 
@@ -138,6 +138,15 @@ interface:
   yaml_type: arclength
   output: SolveResult
   pipeline_kind: static
+
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§4.2 (longitud de arco; 1.ª ed.: Crisfield 1991, cap. 9)"
+    - bathe: "§8.4 (métodos con restricción carga-desplazamiento)"
+  general_codes:
+    - ansys: "ARCLEN"
+    - opensees: "integrator ArcLength (α = 0: cilíndrico)"
+    - abaqus: "*STATIC, RIKS"
 
 parameters:
   - { name: convergence,              type: ConvergenceCriterion, required: false, default: "ConvergenceCriterion()",
@@ -175,7 +184,7 @@ out_of_scope:
   - "Análisis dinámico ⇒ usar NewmarkSolver y derivados"
   - "Continuación de bifurcaciones múltiples — requiere perturbación explícita por el usuario"
   - "Buckling lineal (eigenproblema) ⇒ futuro BucklingSolver"
-  - "Sign-of-pivot tracking (Sturm sequence) — placeholder hasta LDLᵀ verdadero"
+  - "Sign-of-pivot tracking (Sturm sequence) — no implementado hasta que exista un LDLᵀ verdadero (deuda #7)"
 
 acceptance:
   verification:
@@ -248,6 +257,7 @@ references:
 - **Clase**: `ArcLengthSolver`, registrada vía `@SolverRegistry.register` con `PIPELINE_KIND = "static"`.
 - **Restricción cuadrática y selección de raíz**: implementada en `solve`. Comparación de ángulos `theta1 = ΔU_iter · (ΔU_new + ddl1·δu_t)`, idem `theta2`, seleccionar el mayor → menor ángulo con la dirección previa.
 - **`_make_linalg`**: fuerza `is_positive_definite=False` independientemente de la simetría del dominio (régimen postcrítico).
+- **Problema de Newton por paso**: `ArcProblem`, exportado con nombre público en `solidum.math.solvers` (en el código de `arclength.py` sigue llamándose `_ArcProblem`). Lleva el iterado `(U, λ, ΔU)`, las dos resoluciones por iteración y la restricción que fija $dd\lambda$ como método `constraint`. Una variante de arco que sólo cambia la restricción del paso lo hereda y redefine ese método: así lo hacen `IndirectDisplacementSolver` en el programa principal y `DissipationArcLengthSolver` en el módulo de usuario `dissipation_control` (ADR 0020).
 - **Entrypoint público**: `solidum.run(domain, solver=ArcLengthSolver(assembler, ...), F_applied=...)` o `solidum.run_yaml(path)`.
 - **Tests**:
   - [tests/test_solver_robustness.py](../../tests/test_solver_robustness.py) (`TestArcLengthRobustness`: punto límite, snap-back, recuperación lineal), [tests/test_snap_through_corot.py](../../tests/test_snap_through_corot.py) (armadura de von Mises contra la solución cerrada) y [tests/test_integration.py](../../tests/test_integration.py) (`test_arclength_solver_elastoplastic`).
@@ -264,3 +274,5 @@ references:
 - **2026-09-23** · ADR 0017-0019: `linear_algebra` admite `pardiso` e `iterative` (CG → MINRES automático ante curvatura negativa, adecuado a la tangente indefinida del régimen postcrítico); al empezar `solve` se rechaza un mecanismo rígido (`MechanismError`). Dentro del trazado no se rechaza ningún sistema casi singular: cerca de un punto límite es parte del algoritmo.
 - **2026-09-23** · Revisión documental: `tests/test_arclength.py` ya no existe; la cobertura está repartida en `test_solver_robustness.py`, `test_snap_through_corot.py` y `test_integration.py`.
 - **2026-09-23** · **Cambio de formulación validado por el usuario** (deuda #26, destapada en el ejemplo 4 del manual de ejemplos). (1) Primer paso adimensional: `initial_dlambda` (0.1 por omisión) y $\Delta l_1 = \Delta\lambda_1\lVert\mathbf K_0^{-1}\mathbf F_{\text{ref}}\rVert$; `initial_dl` pasa a ser una longitud explícita opcional, excluyente, sin valor por omisión. Antes el valor por omisión era `initial_dl = 0.1`, una longitud: en el cilindro J2 del ejemplo 4 pedía $\Delta\lambda = 86$ en el primer paso, el predictor rebasaba `max_lambda` y el solver imponía $\lambda = 1.5$ en control de carga, por encima del colapso, sobre un equilibrio espurio del modelo discreto (0,98 m de desplazamiento). (2) Llegada exacta a `max_lambda` dentro del tramo recorrido, en lugar del paso final decidido por el predictor (§10). Los 84 tests existentes de los dos solvers de arco pasan sin cambiar ningún valor esperado; los nuevos fallan con el código anterior (9 de 11).
+- **2026-09-29** · Frontera del programa principal (ADR 0020): el caveat del softening con penalización cohesiva rígida (§10) pasa a nombrar el módulo de usuario `discontinuities` y a declarar que su diagnóstico es anterior a la corrección de la tangente cohesiva (`597f3d9`) y no se ha vuelto a comprobar con este solver. Sin cambio de formulación ni de resultados.
+- **2026-09-29** · Retirado `_negative_pivots()`, el marcador del diagnóstico por inercia que devolvía `None` y que nadie llamaba; §10 y `out_of_scope` lo recogen: no hay diagnóstico por inercia hasta que exista LDLᵀ (deuda #7). El problema por paso (`_ArcProblem` en el código) se exporta con nombre público, `solidum.math.solvers.ArcProblem`, porque lo extienden `IndirectDisplacementSolver` y `DissipationArcLengthSolver`, este último trasladado hoy al módulo de usuario `dissipation_control`. Sin cambio de formulación ni de resultados.

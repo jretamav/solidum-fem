@@ -42,6 +42,13 @@ interface:
   strain_dim: 3
   n_integration_points: 9
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (elementos lagrangianos)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: familia lagrangiana"
+  general_codes:
+    - code_aster: "QUAD9 en las modelizaciones D_PLAN / C_PLAN"
+
 acceptance:
   verification:
     - name: patch_cuadratico

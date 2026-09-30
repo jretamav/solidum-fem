@@ -9,7 +9,9 @@ no-op.
 
 La prueba usa un elemento de juguete sin registrar (un ``Truss2D`` que anota
 cada llamada), para no depender de ninguna formulación concreta ni añadir
-clases a los barridos de contrato.
+clases a los barridos de contrato. Una variante hace fracasar un intento de
+paso para comprobar que, tras la bisección, el gancho se repite con el mismo
+campo convergido: es la razón de exigirle idempotencia.
 """
 import numpy as np
 import pytest
@@ -20,7 +22,6 @@ from solidum.materials.elastic import Elastic1D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import (
     ArcLengthSolver,
-    DissipationArcLengthSolver,
     IndirectDisplacementSolver,
     LinearSolver,
     NonlinearSolver,
@@ -41,11 +42,32 @@ class _BarraEspia(Truss2D):
         self.llamadas.append(np.array(U_committed, copy=True))
 
 
-def _barra():
+class _BarraQueFallaUnIntento(_BarraEspia):
+    """Hace fracasar el primer intento del segundo paso.
+
+    Mientras dura ese intento, su fuerza interna lleva un término espurio
+    ``±P`` en el DOF libre que cambia de signo en cada ensamblaje: el residuo
+    no baja de ``2P`` y el Newton agota sus iteraciones sin valores no finitos.
+    El solver biseca y repite el paso, que ya converge."""
+
+    def prepare_step(self, U_committed):
+        super().prepare_step(U_committed)
+        self.envenenado = len(self.llamadas) == 2
+        self.signo = 1.0
+
+    def compute_element_state(self, u_e):
+        K_e, F_int_e = super().compute_element_state(u_e)
+        if getattr(self, "envenenado", False):
+            self.signo = -self.signo
+            F_int_e = F_int_e + self.signo * P * np.array([0.0, 0.0, 1.0, 0.0])
+        return K_e, F_int_e
+
+
+def _barra(cls=_BarraEspia):
     dom = Domain()
     n1 = dom.add_node(1, [0.0, 0.0])
     n2 = dom.add_node(2, [L, 0.0])
-    barra = _BarraEspia(1, [n1, n2], Elastic1D(E=E, density=7850.0), A=A)
+    barra = cls(1, [n1, n2], Elastic1D(E=E, density=7850.0), A=A)
     dom.add_element(barra)
     n1.fix_dof("ux", 0.0)
     n1.fix_dof("uy", 0.0)
@@ -62,8 +84,6 @@ def _estaticos():
         "ArcLengthSolver": lambda asm, n2: ArcLengthSolver(asm, initial_dlambda=0.4),
         "IndirectDisplacementSolver": lambda asm, n2: IndirectDisplacementSolver(
             asm, initial_dlambda=0.4, control=[(n2, "ux", 1.0)]),
-        "DissipationArcLengthSolver": lambda asm, n2: DissipationArcLengthSolver(
-            asm, initial_dlambda=0.4, initial_tau=1.0e-3),
     }
 
 
@@ -75,6 +95,23 @@ def test_los_solvers_estaticos_por_pasos_llaman_al_gancho(nombre):
     # El primer paso parte del estado inicial; los siguientes, del convergido.
     np.testing.assert_array_equal(barra.llamadas[0], 0.0)
     assert barra.llamadas[1][n2.dofs["ux"]] > 0.0
+
+
+@pytest.mark.parametrize("nombre", list(_estaticos()))
+def test_tras_una_biseccion_el_gancho_se_repite_con_el_mismo_campo(nombre):
+    """La razón de exigir idempotencia al gancho: tras un intento fallido el
+    solver reduce el paso y vuelve a llamarlo con el mismo ``U_committed``.
+    Los dinámicos no bisecan (un paso que no converge aborta el análisis), así
+    que no tienen repetición que probar."""
+    dom, barra, n2, F = _barra(_BarraQueFallaUnIntento)
+    U = _estaticos()[nombre](Assembler(dom), n2).solve(F)
+    assert len(barra.llamadas) >= 3, f"{nombre}: {len(barra.llamadas)} llamadas"
+    # 2ª llamada: intento fallido del paso 2; 3ª: su repetición tras la
+    # bisección. Las dos con el campo convergido del paso 1.
+    assert barra.llamadas[1][n2.dofs["ux"]] > 0.0
+    np.testing.assert_array_equal(barra.llamadas[2], barra.llamadas[1])
+    # Superado el intento fallido, el análisis llega al final: u = PL/(EA).
+    assert U[n2.dofs["ux"]] == pytest.approx(P * L / (E * A), rel=1.0e-6)
 
 
 @pytest.mark.parametrize("solver_cls", [NewtonNewmarkSolver, NewtonHHTSolver])

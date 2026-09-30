@@ -215,7 +215,7 @@ class Element(ABC):
         """
 
     # ------------------------------------------------------------------
-    # Hook de preparación de paso (ADR 0010 §5)
+    # Gancho de inicio de paso (ADR 0020, P5)
     # ------------------------------------------------------------------
 
     def prepare_step(self, U_committed: np.ndarray) -> None:

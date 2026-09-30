@@ -191,6 +191,14 @@ interface:
   strain_dim: 3
   primary_state_var: alpha   # deformación plástica acumulada equivalente
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_souza_neto: "cap. 7 (deformación plana) y cap. 9 (esfuerzo plano)"
+    - de_borst_crisfield: "§7.2-7.4 (J2: retorno y tangente consistente)"
+  general_codes:
+    - abaqus: "*PLASTIC (Mises) en CPE* / CPS*"
+    - ansys: "TB,BISO"
+
 parameters:
   - { name: E,          type: float, required: true,  desc: "Módulo de Young" }
   - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson" }

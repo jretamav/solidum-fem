@@ -66,6 +66,23 @@ interface:
   batch_kernel: false    # ¿declara kernel puntual @njit con firma MAT_SIG para el ensamblaje por lotes? (opcional)
   batch_out_of_plane_stress: false   # sólo 2D plane strain: ¿versión por arreglos de out_of_plane_stress para el post-proceso por familia? (opcional)
 
+admission:
+  # Criterio de admisión al programa principal (Reglas.md §1), primer paso de
+  # todo componente estándar: la formulación aparece en un texto de referencia
+  # del área Y está implementada en un código general establecido. Al menos
+  # una entrada en cada lista, con los identificadores de las listas cerradas
+  # (solidum/tools/spec.py). Cada entrada es el identificador solo o
+  # `identificador: "nota breve"` (capítulo o apartado; nombre del modelo en
+  # el código). Si no se pueden rellenar las dos listas, el componente no es
+  # estándar: va a un módulo de usuario (ADR 0020).
+  #   textbooks:     zienkiewicz_taylor · hughes · bathe · belytschko_liu_moran
+  #                  · de_souza_neto · de_borst_crisfield
+  #   general_codes: abaqus · ansys · diana · code_aster · opensees
+  textbooks:
+    - <id>: ""
+  general_codes:
+    - <id>: ""
+
 parameters:
   - { name: , type: , required: true, desc:  }
 

@@ -86,6 +86,13 @@ interface:
   primary_state_var: null    # sin variables internas
   is_symmetric: true
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "cap. 4-5 (barra con σ = E·ε)"
+  general_codes:
+    - abaqus: "*ELASTIC en T2D2 / T3D2"
+    - opensees: "uniaxialMaterial Elastic"
+
 parameters:
   - { name: E,       type: float, required: true,  desc: "Módulo de Young (>0)" }
   - { name: density, type: float, required: false, default: null,

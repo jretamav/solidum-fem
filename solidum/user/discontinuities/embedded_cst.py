@@ -14,10 +14,7 @@ from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.logging import get_logger
-from solidum.elements.solid_2d._shared import (
-    compute_integrands,
-    compute_kinematics_tri3,
-)
+from solidum.elements.solid_2d import compute_integrands, compute_kinematics_tri3
 from solidum.registry import ElementRegistry, MaterialRegistry
 from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
 from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL

@@ -77,6 +77,14 @@ interface:
   yaml_type: NewmarkSolver
   output: TransientResult   # campos: t_history, u_history, udot_history, uddot_history
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 9 (familia de Newmark)"
+    - bathe: "§9.2 (método de Newmark)"
+  general_codes:
+    - opensees: "integrator Newmark"
+    - ansys: "TRNOPT,FULL (Newmark)"
+
 parameters:
   - { name: t_end,     type: float, required: true,                desc: "Tiempo final del análisis (s)" }
   - { name: dt,        type: float, required: true,                desc: "Paso temporal constante (s)" }

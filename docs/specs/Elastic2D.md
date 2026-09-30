@@ -95,6 +95,14 @@ interface:
   primary_state_var: null
   is_symmetric: true
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 2 (elastostática: esfuerzo plano y deformación plana)"
+    - zienkiewicz_taylor: "vol. 1: elasticidad plana"
+  general_codes:
+    - abaqus: "*ELASTIC en CPS* / CPE*"
+    - opensees: "nDMaterial ElasticIsotropic"
+
 parameters:
   - { name: E,          type: float, required: true,  desc: "Módulo de Young (>0)" }
   - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson ∈ (-1, 0.5)" }

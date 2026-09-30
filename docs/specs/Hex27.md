@@ -126,6 +126,13 @@ interface:
   strain_dim: 6
   n_integration_points: 27      # default Gauss 3×3×3
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (elementos lagrangianos)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: familia lagrangiana 3D"
+  general_codes:
+    - abaqus: "C3D27"
+
 parameters:
   - { name: quadrature, type: str, required: false, default: "hex_3x3x3",
       desc: "Regla de cuadratura desde QuadratureRegistry; hex_2x2x2

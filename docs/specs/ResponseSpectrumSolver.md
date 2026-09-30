@@ -115,6 +115,14 @@ interface:
   yaml_type: ResponseSpectrumSolver
   output: ResponseSpectrumResult
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "§9.3 (superposición modal, base del método); SRSS y CQC no se localizaron en los textos de la lista"
+  general_codes:
+    - abaqus: "*RESPONSE SPECTRUM (SRSS, CQC)"
+    - ansys: "SPRS con SRSS / CQC"
+    - code_aster: "COMB_SISM_MODAL (SRSS, CQC)"
+
 parameters:
   - { name: n_modes, type: int, required: true, desc: "Número de modos a calcular y combinar" }
   - { name: direction, type: "ndarray | dict", required: true, desc: "Vector r o {'dof_name': 'ux'}" }

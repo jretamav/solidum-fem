@@ -9,13 +9,11 @@ módulo centraliza la fórmula del daño y deja a cada material la
 responsabilidad del resto.
 
 Si en el futuro entra un cuarto modelo (Mazars con split tracción/compresión,
-o un daño con softening lineal estilo cohesivo), se añade su variante aquí.
+o un daño con softening lineal), se añade su variante aquí.
 
 Convención: ``kappa`` y ``kappa_0`` son escalares; la función NO conoce
 nada de Voigt ni de esfuerzo. El cap ``DAMAGE_MAX`` aplica directamente
-al valor de ``ω`` devuelto (semántica de daño continuo — distinto del
-cohesivo, donde el cap sólo afecta a la tangente; ver memoria
-``feedback_damage_max_cohesivos.md``).
+al valor de ``ω`` devuelto (semántica de daño continuo).
 
 Compilada con Numba (ADR 0014) para que los kernels 2D/3D de daño, que
 también son ``@njit``, la llamen directamente; desde Python (daño 1D) se

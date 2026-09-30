@@ -13,14 +13,22 @@ clase vive en su módulo:
 Los helpers libres (funciones de forma, derivadas, kinematics Numba para
 los lineales, ``_expand_scalar_mass``, ``_quadratic_edge_traction`` y la
 base interna ``_HigherOrderSolid2D`` compartida por Quad8, Quad9 y Tri6)
-viven en :mod:`_shared`. Algunos tests del repositorio importan estos
-helpers privados directamente (``test_patch_solid_2d``,
-``test_higher_order_solid_2d``); el paquete los reexporta para preservar
-esos imports sin cambios.
+viven en :mod:`_shared`.
+
+API pública de cinemática (ADR 0020, P6): :func:`compute_kinematics_tri3`
+(matriz ``B`` y ``det J`` del triángulo lineal) y :func:`compute_integrands`
+(contribuciones ``Bᵀ·C·B·dV`` y ``Bᵀ·σ·dV`` de un punto de Gauss, con
+``dV = det J · w · espesor``). Las usan Tri3 y Quad4, y un elemento de
+usuario las importa desde aquí, no desde :mod:`_shared`, que es interno y
+puede reorganizarse.
+
+El paquete reexporta además algunos helpers privados que importan tests del
+repositorio (``test_patch_solid_2d``, ``test_higher_order_solid_2d``); no
+forman parte del contrato y quedan fuera de ``__all__``.
 """
-# Helpers expuestos: los privados, para tests existentes (test_patch_solid_2d,
-# test_higher_order_solid_2d); compute_kinematics_tri3 y compute_integrands son
-# API pública para elementos de usuario (ADR 0020, P6).
+# Privados: sólo para tests existentes (test_patch_solid_2d,
+# test_higher_order_solid_2d). compute_kinematics_tri3 y compute_integrands
+# son API pública (ADR 0020, P6) y figuran en __all__.
 from solidum.elements.solid_2d._shared import (
     _compute_kinematics,
     compute_integrands,
@@ -44,4 +52,6 @@ __all__ = [
     "Quad9",
     "Tri3",
     "Tri6",
+    "compute_integrands",
+    "compute_kinematics_tri3",
 ]

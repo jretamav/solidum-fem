@@ -401,8 +401,8 @@ class TestRegistryAndClassAttributes(unittest.TestCase):
     """acceptance.registry_kind_es_cohesive + is_symmetric_attribute"""
 
     def test_registered_in_cohesive_registry(self):
-        self.assertIn('CohesiveDamageIsotropic', CohesiveMaterialRegistry._items)
-        cls = CohesiveMaterialRegistry._items['CohesiveDamageIsotropic']
+        self.assertIn('CohesiveDamageIsotropic', CohesiveMaterialRegistry.names())
+        cls = CohesiveMaterialRegistry.get('CohesiveDamageIsotropic')
         self.assertIs(cls, CohesiveDamageIsotropic)
 
     def test_is_symmetric_true(self):

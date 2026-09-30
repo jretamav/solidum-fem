@@ -19,9 +19,13 @@ Cuatro grupos:
    ``_SHAPE_FN``/``_GRAD_FN``, y cuadratura específica para masa cuando
    la del elemento subintegra el producto cuadrático×cuadrático).
 
-Todos los símbolos llevan guion bajo: son privados al paquete. Los tres
-o cuatro que tests existentes importan se reexportan desde
-``__init__.py`` para preservar compatibilidad.
+El módulo es interno al paquete y puede reorganizarse. Los símbolos con guion
+bajo son privados; los pocos que importan tests existentes se reexportan desde
+``__init__.py`` sin entrar en ``__all__``. Las dos excepciones sin guion bajo,
+:func:`compute_kinematics_tri3` y :func:`compute_integrands`, son API pública
+para elementos de usuario (ADR 0020, P6) y se definen aquí porque las
+comparten Tri3 y Quad4; su ruta pública es ``solidum.elements.solid_2d``, no
+este módulo.
 """
 from typing import List
 

@@ -6,8 +6,8 @@ los tests dejaban un agujero: el factor ``thickness`` dentro de
 pasaría inadvertida. Memoria del proyecto:
 ``feedback_tests_con_coeficientes_unitarios.md`` — *los coeficientes
 unitarios esconden bugs dimensionales*. El bug histórico del ``thickness``
-en ``CST_Embedded2D`` se descubrió precisamente por un benchmark con
-``thickness=0.1``.
+del elemento embebido (hoy en el módulo de usuario ``discontinuities``) se
+descubrió precisamente por un benchmark con ``thickness=0.1``.
 
 Este archivo añade tests fail-fast que comparan ``K_e`` con varios valores
 de ``thickness`` y exigen el escalamiento lineal ``K_e ∝ thickness``.

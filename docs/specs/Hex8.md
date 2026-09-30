@@ -160,6 +160,13 @@ interface:
   strain_dim: 6                 # Voigt 3D [ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz]
   n_integration_points: 8       # default Gauss 2×2×2
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (hexaedro trilineal)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: hexaedros"
+  general_codes:
+    - abaqus: "C3D8"
+
 parameters:
   - { name: quadrature, type: str, required: false, default: "hex_2x2x2",
       desc: "Regla de cuadratura desde QuadratureRegistry (hex_2x2x2 default, hex_3x3x3 alternativa)" }

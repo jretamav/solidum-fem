@@ -161,6 +161,13 @@ interface:
   primary_state_var: null
   is_symmetric: true
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - zienkiewicz_taylor: "vol. 1: elasticidad plana anisótropa (matriz D y cambio de ejes)"
+  general_codes:
+    - abaqus: "*ELASTIC, TYPE=LAMINA + *ORIENTATION"
+    - ansys: "MP: EX, EY, PRXY, GXY"
+
 parameters:
   - { name: E1,    type: float, required: true,  desc: "Módulo de Young en la dirección 1 (fibra). > 0" }
   - { name: E2,    type: float, required: true,  desc: "Módulo de Young en la dirección 2 (transversal). > 0" }

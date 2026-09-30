@@ -423,6 +423,7 @@ class YamlParser:
                     errors.append(
                         f"solver: tipo desconocido '{s_type}'. "
                         f"Disponibles: {sorted(registered_solvers)}."
+                        + self._user_module_hint(data)
                     )
                 else:
                     # `convergence` se materializa aparte; `F_amplitude` y

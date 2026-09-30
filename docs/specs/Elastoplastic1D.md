@@ -109,6 +109,13 @@ interface:
   primary_state_var: alpha   # deformación plástica acumulada equivalente
   is_symmetric: true
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_souza_neto: "§6.2 (modelo uniaxial) y cap. 7 (integración implícita)"
+  general_codes:
+    - opensees: "uniaxialMaterial Hardening"
+    - abaqus: "*PLASTIC (Mises) en T2D2 / T3D2"
+
 parameters:
   - { name: E,       type: float, required: true,  desc: "Módulo de Young (>0)" }
   - { name: sigma_y, type: float, required: true,  desc: "Esfuerzo de fluencia inicial (>0)" }

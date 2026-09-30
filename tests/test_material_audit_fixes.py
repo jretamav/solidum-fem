@@ -2,8 +2,6 @@
 
 - Drucker-Prager con ψ = 0 y H = 0: el retorno al ápice no tiene solución
   y se rechaza con ``ValueError`` (antes: α ≈ 1e30 y σ inconsistente).
-- Cohesivo lineal: ``w_c > κ_0`` obligatorio (misma condición que el
-  exponencial).
 - J2 plane stress: el Newton local converge también con predictores muy
   lejanos (warm start + tolerancia relativa a ``R_curr``).
 - Timoshenko con ``E_t = 0`` no divide por cero.

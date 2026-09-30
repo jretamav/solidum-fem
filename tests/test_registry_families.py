@@ -5,6 +5,10 @@ lector YAML construye y valida sus objetos a partir de esa sección sin
 conocerla por nombre. Es lo que permite a un módulo de usuario declarar su
 propia familia sin tocar el programa principal, y lo que ya usan las
 familias mecánica y térmica.
+
+Las referencias de un elemento a varias familias (P3), en el bloque
+``elements`` y en la receta gmsh (P7), se prueban en
+``test_element_references.py``.
 """
 import textwrap
 
@@ -100,7 +104,6 @@ class TestRegistro:
                 self.k = k
 
         class FamiliaDePrueba(Registry):
-            _kind = "Resorte"
             YAML_SECTION = "springs_de_prueba"
             YAML_LABEL = "resorte"
 

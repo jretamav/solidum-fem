@@ -108,6 +108,14 @@ interface:
   strain_dim: 1
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - zienkiewicz_taylor: "vol. 2 (6.ª ed.), cap. 10: barras de Euler-Bernoulli (formulación base, material elástico)"
+    - bathe: "cap. 4-5 (elementos de viga)"
+  general_codes:
+    - opensees: "elasticBeamColumn (2D)"
+    - abaqus: "B23"
+
 parameters:
   - { name: A, type: float, required: true, desc: "Área de la sección transversal" }
   - { name: I, type: float, required: true, desc: "Momento de inercia respecto al eje perpendicular al plano (z)" }

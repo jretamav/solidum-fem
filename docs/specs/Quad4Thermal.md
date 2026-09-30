@@ -132,6 +132,14 @@ interface:
   flux_dim: 2                   # dimensión de ∇T y de q en 2D (no hay strain_dim)
   n_integration_points: 4       # default Gauss 2×2
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 2-3 (conducción de calor con elementos isoparamétricos)"
+    - zienkiewicz_taylor: "vol. 1: problemas de campo (conducción de calor)"
+  general_codes:
+    - abaqus: "DC2D4"
+    - ansys: "PLANE55"
+
 parameters:
   - { name: thickness,  type: float, required: false, default: 1.0,
       desc: "Espesor de la rebanada plana [m]; el flujo total escala con él" }

@@ -105,6 +105,14 @@ interface:
   type_yaml: NewtonNewmarkSolver
   pipeline_kind: transient    # mismo que NewmarkSolver
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 9 (familia de Newmark)"
+    - de_borst_crisfield: "§5.4 (integración implícita en dinámica no lineal)"
+  general_codes:
+    - opensees: "integrator Newmark + algorithm Newton"
+    - ansys: "transitorio no lineal (Newmark + Newton-Raphson)"
+
 parameters_extra_to_NewmarkSolver:
   - { name: convergence,                type: ConvergenceCriterion, required: false, desc: "Política ADR 0007. Default: ConvergenceCriterion() con rtols de solidum.constants." }
   - { name: max_iter,                   type: int,                 required: false, default: 20, desc: "Máximo iteraciones Newton por paso temporal." }

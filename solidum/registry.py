@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any, Callable, ClassVar, Dict, Type
 
 
-def _store(items: Dict[str, Type], name: str, klass: Type, kind: str) -> None:
+def _store(items: Dict[str, Type], name: str, klass: Type, label: str) -> None:
     """Inscribe ``klass`` bajo ``name`` avisando si pisa a otra clase distinta.
 
     Con el descubrimiento recursivo el ganador de una colisión dependía del
@@ -34,7 +34,7 @@ def _store(items: Dict[str, Type], name: str, klass: Type, kind: str) -> None:
     if previous is not None and previous is not klass:
         from solidum.logging import get_logger
         get_logger("registry").warning(
-            f"{kind} '{name}' ya estaba registrado ({previous.__module__}."
+            f"{label} '{name}' ya estaba registrado ({previous.__module__}."
             f"{previous.__qualname__}); lo sustituye {klass.__module__}."
             f"{klass.__qualname__}."
         )
@@ -45,26 +45,29 @@ class Registry:
     """Base genérica para registries con decorador.
 
     Cada subclase recibe su propio dict ``_items`` (``__init_subclass__``): si
-    lo heredara, compartiría en silencio el almacenamiento de la base. El
-    método ``register`` admite tres formas (ver módulo).
+    lo heredara, compartiría en silencio el almacenamiento de la base. Por eso
+    una subclase no lo declara. El método ``register`` admite tres formas (ver
+    módulo).
 
-    Metadatos de familia (ADR 0020, P1), opcionales:
+    Una subclase declara sólo atributos públicos (ADR 0020, P1); son todo lo
+    que un módulo de usuario necesita para definir su propio registro:
 
-    ``YAML_SECTION``
-        Sección de primer nivel del YAML con los objetos de la familia (lista
-        de ``{id, type, …}``). Declararla convierte al registro en una familia
-        de material que el lector YAML recorre sin conocerla por nombre.
     ``YAML_LABEL``
-        Nombre de un objeto de la familia en los mensajes de error
-        (``"material térmico"``).
-
-    Y, para cualquier registro, ``SPEC_KIND``: el ``kind`` de las specs
-    (``docs/specs/*.md``) cuyos componentes viven en él. ``tools/spec.py``
-    localiza el registro por este valor, sin lista fija.
+        Nombre de un objeto del registro en los mensajes de error, tanto del
+        lector YAML como del propio registro (``"material térmico"``). En
+        minúscula: los mensajes lo insertan a media frase.
+    ``SPEC_KIND``
+        El ``kind`` de las specs (``docs/specs/*.md``) cuyos componentes viven
+        en él. ``tools/spec.py`` localiza el registro por este valor, sin
+        lista fija.
+    ``YAML_SECTION``
+        Sólo en una familia de material: sección de primer nivel del YAML con
+        sus objetos (lista de ``{id, type, …}``). Declararla convierte al
+        registro en una familia que el lector YAML recorre sin conocerla por
+        nombre.
     """
 
     _items: Dict[str, Type] = {}
-    _kind: str = "ítem"
     YAML_SECTION: ClassVar[str | None] = None
     YAML_LABEL: ClassVar[str] = "objeto"
     SPEC_KIND: ClassVar[str | None] = None
@@ -114,22 +117,27 @@ class Registry:
         return sorted(Registry._spec_kinds)
 
     @classmethod
+    def _label(cls) -> str:
+        """``YAML_LABEL`` con mayúscula inicial, para abrir un mensaje."""
+        return cls.YAML_LABEL[:1].upper() + cls.YAML_LABEL[1:]
+
+    @classmethod
     def register(cls, name_or_class: str | Type | None = None,
                  klass: Type | None = None) -> Type | Callable[[Type], Type]:
         # Forma legacy: register("Foo", FooClass)
         if klass is not None:
-            _store(cls._items, name_or_class, klass, cls._kind)
+            _store(cls._items, name_or_class, klass, cls._label())
             return klass
 
         # Forma decorador-sin-paréntesis: @register
         if isinstance(name_or_class, type):
-            _store(cls._items, name_or_class.__name__, name_or_class, cls._kind)
+            _store(cls._items, name_or_class.__name__, name_or_class, cls._label())
             return name_or_class
 
         # Forma decorador-con-paréntesis: @register("Alias") o @register()
         def decorator(target: Type) -> Type:
             registered_name = name_or_class if isinstance(name_or_class, str) else target.__name__
-            _store(cls._items, registered_name, target, cls._kind)
+            _store(cls._items, registered_name, target, cls._label())
             return target
         return decorator
 
@@ -137,7 +145,7 @@ class Registry:
     def create(cls, name: str, **kwargs) -> Any:
         if name not in cls._items:
             raise ValueError(
-                f"{cls._kind} '{name}' no registrado. "
+                f"{cls._label()} '{name}' no registrado. "
                 f"Disponibles: {sorted(cls._items.keys())}"
             )
         return cls._items[name](**kwargs)
@@ -161,15 +169,13 @@ class Registry:
         """
         if name not in cls._items:
             raise KeyError(
-                f"{cls._kind} '{name}' no registrado. "
+                f"{cls._label()} '{name}' no registrado. "
                 f"Disponibles: {sorted(cls._items.keys())}"
             )
         return cls._items[name]
 
 
 class MaterialRegistry(Registry):
-    _items: Dict[str, Type] = {}
-    _kind = "Material"
     SPEC_KIND = "material"
     YAML_SECTION = "materials"
     YAML_LABEL = "material"
@@ -182,23 +188,19 @@ class ThermalMaterialRegistry(Registry):
     simétrico de por medio— en vez de ``σ`` con ``ε``. Compartir registro
     obligaría al parser YAML y a los elementos a discriminar por tipo en
     cada uso."""
-    _items: Dict[str, Type] = {}
-    _kind = "MaterialTermico"
     SPEC_KIND = "thermal_material"
     YAML_SECTION = "thermal_materials"
     YAML_LABEL = "material térmico"
 
 
 class ElementRegistry(Registry):
-    _items: Dict[str, Type] = {}
-    _kind = "Elemento"
     SPEC_KIND = "element"
+    YAML_LABEL = "elemento"
 
 
 class SolverRegistry(Registry):
-    _items: Dict[str, Type] = {}
-    _kind = "Solucionador"
     SPEC_KIND = "solver"
+    YAML_LABEL = "solver"
 
 
 class QuadratureRegistry:

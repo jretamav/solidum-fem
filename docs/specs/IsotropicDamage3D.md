@@ -137,6 +137,13 @@ interface:
   primary_state_var: damage
   is_symmetric: false      # tangente consistente no simétrica (ver §8)
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "§6.2 (formulación base: daño isótropo escalar con ablandamiento exponencial)"
+    - de_souza_neto: "cap. 12 (mecánica del daño)"
+  general_codes:
+    - code_aster: "MAZARS, ENDO_ISOT_BETON (daño escalar isótropo; leyes de ablandamiento propias)"
+
 parameters:
   - { name: E,       type: float, required: true,  desc: "Módulo de Young intacto (>0)" }
   - { name: nu,      type: float, required: true,  desc: "Coeficiente de Poisson ∈ (-1, 0.5)" }

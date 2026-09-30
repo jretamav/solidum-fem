@@ -3,17 +3,51 @@
 Una spec es la única entrada del usuario al desarrollo: declara el contrato
 físico de un elemento/material/solver. Este módulo extrae el bloque ```yaml
 de la spec, valida su schema y lo confronta con la clase registrada.
+
+Las specs del programa principal (``docs/specs/``) declaran además el bloque
+``admission``: el criterio de admisión de Reglas.md §1 aplicado al componente,
+con sus referencias en las listas cerradas de textos y de códigos generales.
+Las de un módulo de usuario (``docs/user/<módulo>/specs/``, ADR 0020) no están
+obligadas a declararlo.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 VALID_STATUSES = {"draft", "implemented", "validated"}
+
+# Criterio de admisión al programa principal (Reglas.md §1): una formulación
+# es estándar si aparece en un texto de referencia del área y está
+# implementada en un código general establecido. Listas cerradas:
+# identificador canónico (el que se escribe en la spec) → nombre con que
+# Reglas.md §1 lo enumera. tests/test_specs.py comprueba que los nombres
+# coinciden con Reglas.md; ampliar una lista es decisión del usuario y se hace
+# primero allí.
+ADMISSION_TEXTBOOKS: Dict[str, str] = {
+    "zienkiewicz_taylor": "Zienkiewicz-Taylor",
+    "hughes": "Hughes",
+    "bathe": "Bathe",
+    "belytschko_liu_moran": "Belytschko-Liu-Moran",
+    "de_souza_neto": "de Souza Neto-Perić-Owen",
+    "de_borst_crisfield": "de Borst-Crisfield-Remmers-Verhoosel",
+}
+ADMISSION_GENERAL_CODES: Dict[str, str] = {
+    "abaqus": "Abaqus",
+    "ansys": "ANSYS",
+    "diana": "DIANA",
+    "code_aster": "Code_Aster",
+    "opensees": "OpenSees",
+}
+# Clave del bloque ``admission`` → lista cerrada que la gobierna.
+ADMISSION_LISTS: Dict[str, Dict[str, str]] = {
+    "textbooks": ADMISSION_TEXTBOOKS,
+    "general_codes": ADMISSION_GENERAL_CODES,
+}
 
 
 def valid_kinds() -> set:
@@ -89,7 +123,23 @@ def parse_spec(path: Path) -> Spec:
     return Spec(path=Path(path), contract=contract, implementation_filled=filled)
 
 
-def validate_schema(spec: Spec) -> None:
+def is_user_module_spec(path: Path) -> bool:
+    """¿Es ``path`` la spec de un módulo de usuario? Viven bajo
+    ``docs/user/<módulo>/specs/`` (ADR 0020); el resto son del programa
+    principal."""
+    parts = Path(path).resolve().parts
+    return any(a == "docs" and b == "user" for a, b in zip(parts, parts[1:]))
+
+
+def validate_schema(spec: Spec, *, main_program: Optional[bool] = None) -> None:
+    """Valida el schema del contrato.
+
+    ``main_program`` indica si la spec es del programa principal, que exige
+    el bloque ``admission``; por omisión se deduce de la ruta
+    (:func:`is_user_module_spec`). En una spec de módulo de usuario el bloque
+    es opcional —una pieza estándar puede vivir en un módulo mientras sólo él
+    la consuma (Reglas.md §4)—, pero si se declara se valida igual.
+    """
     c = spec.contract
     for field in ("name", "kind", "status", "interface"):
         if field not in c:
@@ -106,8 +156,84 @@ def validate_schema(spec: Spec) -> None:
             f"(esperado {sorted(VALID_STATUSES)})"
         )
 
+    if main_program is None:
+        main_program = not is_user_module_spec(spec.path)
+    _validate_admission(spec, required=main_program)
+
     if c["kind"] == "element":
         _validate_element_interface(spec)
+
+
+def admission_entries(spec: Spec) -> Dict[str, List[Tuple[str, Optional[str]]]]:
+    """Bloque ``admission`` normalizado: ``{lista: [(identificador, nota)]}``.
+
+    Cada entrada de la spec es el identificador solo (``- hughes``) o un
+    mapping de una clave con su nota breve (``- hughes: "§9.3"``); la nota
+    sale ``None`` si falta. Lanza :class:`SpecError` si el formato o algún
+    identificador no son válidos; ``{}`` si la spec no declara el bloque.
+    """
+    block = spec.contract.get("admission")
+    if block is None:
+        return {}
+    where = f"{spec.path}: admission"
+    if not isinstance(block, dict):
+        raise SpecError(f"{where} debe ser un mapping con {sorted(ADMISSION_LISTS)}")
+    unknown = sorted(set(block) - set(ADMISSION_LISTS))
+    if unknown:
+        raise SpecError(
+            f"{where}: claves desconocidas {unknown} (esperadas {sorted(ADMISSION_LISTS)})"
+        )
+
+    result: Dict[str, List[Tuple[str, Optional[str]]]] = {}
+    for key, closed in ADMISSION_LISTS.items():
+        entries = block.get(key)
+        valid = ", ".join(f"{k} ({v})" for k, v in closed.items())
+        if not isinstance(entries, list) or not entries:
+            raise SpecError(
+                f"{where}.{key} debe ser una lista con al menos una entrada de la "
+                f"lista cerrada de Reglas.md §1: {valid}"
+            )
+        normalized: List[Tuple[str, Optional[str]]] = []
+        for entry in entries:
+            if isinstance(entry, str):
+                ref, note = entry, None
+            elif isinstance(entry, dict) and len(entry) == 1:
+                (ref, note), = entry.items()
+                if note is not None and not isinstance(note, str):
+                    raise SpecError(
+                        f"{where}.{key}: la nota de '{ref}' debe ser texto, "
+                        f"no {type(note).__name__}"
+                    )
+            else:
+                raise SpecError(
+                    f"{where}.{key}: entrada {entry!r} inválida; se espera "
+                    f"'identificador' o 'identificador: \"nota\"'"
+                )
+            if ref not in closed:
+                raise SpecError(
+                    f"{where}.{key}: '{ref}' no está en la lista cerrada de "
+                    f"Reglas.md §1. Válidos: {valid}"
+                )
+            if any(ref == seen for seen, _ in normalized):
+                raise SpecError(f"{where}.{key}: '{ref}' repetido")
+            normalized.append((ref, note or None))
+        result[key] = normalized
+    return result
+
+
+def _validate_admission(spec: Spec, *, required: bool) -> None:
+    """Criterio de admisión de Reglas.md §1: al menos un texto de referencia
+    y un código general, de las listas cerradas. Obligatorio en el programa
+    principal: si no se pueden rellenar las dos listas, el componente no es
+    estándar y va a un módulo de usuario (ADR 0020)."""
+    if required and spec.contract.get("admission") is None:
+        raise SpecError(
+            f"{spec.path}: falta el bloque 'admission' (criterio de admisión al "
+            "programa principal, Reglas.md §1): declara 'textbooks' y "
+            "'general_codes' con referencias de las listas cerradas. Si no se "
+            "pueden rellenar las dos, el componente va a un módulo de usuario."
+        )
+    admission_entries(spec)
 
 
 def _validate_element_interface(spec: Spec) -> None:

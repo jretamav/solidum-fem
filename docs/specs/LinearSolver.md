@@ -97,6 +97,13 @@ interface:
   output: SolveResult
   pipeline_kind: static
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - bathe: "cap. 8 (solución de K·U = R en análisis estático)"
+  general_codes:
+    - abaqus: "*STATIC (lineal)"
+    - opensees: "integrator LoadControl + algorithm Linear"
+
 parameters:
   - { name: linear_algebra, type: str, required: false, default: "auto",
       desc: "Selección del backend algebraico: 'auto' (Cholesky → Pardiso → LU según simetría y dependencias instaladas), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (ADR 0003, 0017, 0018)" }

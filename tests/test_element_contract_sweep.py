@@ -46,6 +46,17 @@ Los elementos térmicos (`Quad4Thermal`, `Hex8Thermal`) participan en lo que les
 aplica: tienen `FLUX_DIM` en vez de `STRAIN_DIM` y su "masa" es la matriz de
 capacidad, con unidades distintas. Se les exime de las comprobaciones que
 presuponen DOFs de desplazamiento, no de las estructurales.
+
+Arnés público para módulos de usuario
+-------------------------------------
+La batería recorre sólo las clases del programa principal; cada módulo de
+usuario (ADR 0020) trae su barrido y la reutiliza sin tocar este archivo. Las
+clases ``Test*`` no leen variables globales: piden los nombres, las fábricas y
+las exenciones a un arnés, que se construye con :func:`arnes` y se pone delante
+en la herencia. Piezas públicas: :func:`arnes`, :func:`nombres_de_paquete`,
+:func:`rechazo_dimensional`, :func:`nodos`, las geometrías de referencia
+(``TRI``, ``QUAD``, ``HEX_VERTICES``…), los materiales ``MAT_*`` y ``ESPESOR``
+/ ``AREA``. Modelo: ``tests/user/discontinuities/test_disc_contratos.py``.
 """
 import os
 import sys
@@ -65,16 +76,7 @@ from solidum.materials.elastic_3d import Elastic3D
 from solidum.materials.thermal_conduction import ThermalConduction
 from solidum.registry import ElementRegistry
 
-
-def nombres_programa_principal(registry) -> list:
-    """Nombres registrados cuya clase pertenece al programa principal.
-
-    Los módulos de usuario (``solidum/user/``, ADR 0020) se cargan en la
-    misma sesión de pytest cuando corren sus propios tests, y sus clases
-    quedan en los registros globales. Cada módulo trae su propio barrido;
-    éste cubre sólo el programa principal."""
-    return [n for n in registry.names()
-            if not registry.get(n).__module__.startswith("solidum.user.")]
+from _programa_principal import nombres_programa_principal  # noqa: F401 — público para los arneses
 
 RHO = 7850.0
 MAT_1D = Elastic1D(E=2.0e11, density=RHO)
@@ -88,7 +90,8 @@ ESPESOR = 0.01
 AREA = 0.01
 
 
-def _nodos(coords):
+def nodos(coords):
+    """Nodos numerados desde 1 con las coordenadas dadas."""
     return [Node(i + 1, list(p)) for i, p in enumerate(coords)]
 
 
@@ -96,74 +99,76 @@ def _nodos(coords):
 # Elementos rectos y bien formados: el barrido comprueba contrato, no
 # robustez ante distorsión (eso es competencia de los patch tests).
 
-_LINEA_2D = ((0.0, 0.0), (1.0, 0.0))
-_LINEA_3D = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
-_TRI = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))
-_QUAD = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
-_QUAD8 = ((0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0),
-          (1.0, 0.0), (2.0, 1.0), (1.0, 2.0), (0.0, 1.0))
-_QUAD9 = _QUAD8 + ((1.0, 1.0),)
-_TRI6 = ((0.0, 0.0), (2.0, 0.0), (0.0, 2.0),
-         (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+LINEA_2D = ((0.0, 0.0), (1.0, 0.0))
+LINEA_3D = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+TRI = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))
+QUAD = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+QUAD8 = ((0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0),
+         (1.0, 0.0), (2.0, 1.0), (1.0, 2.0), (0.0, 1.0))
+QUAD9 = QUAD8 + ((1.0, 1.0),)
+TRI6 = ((0.0, 0.0), (2.0, 0.0), (0.0, 2.0),
+        (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
 
-_HEX_VERTICES = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0),
-                 (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 1.0),
-                 (1.0, 1.0, 1.0), (0.0, 1.0, 1.0))
-_HEX_ARISTAS = ((0.5, 0.0, 0.0), (1.0, 0.5, 0.0), (0.5, 1.0, 0.0),
-                (0.0, 0.5, 0.0), (0.5, 0.0, 1.0), (1.0, 0.5, 1.0),
-                (0.5, 1.0, 1.0), (0.0, 0.5, 1.0), (0.0, 0.0, 0.5),
-                (1.0, 0.0, 0.5), (1.0, 1.0, 0.5), (0.0, 1.0, 0.5))
+HEX_VERTICES = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0),
+                (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 1.0),
+                (1.0, 1.0, 1.0), (0.0, 1.0, 1.0))
+HEX_ARISTAS = ((0.5, 0.0, 0.0), (1.0, 0.5, 0.0), (0.5, 1.0, 0.0),
+               (0.0, 0.5, 0.0), (0.5, 0.0, 1.0), (1.0, 0.5, 1.0),
+               (0.5, 1.0, 1.0), (0.0, 0.5, 1.0), (0.0, 0.0, 0.5),
+               (1.0, 0.0, 0.5), (1.0, 1.0, 0.5), (0.0, 1.0, 0.5))
 # Centros de cara en orden VTK_TRIQUADRATIC_HEXAHEDRON: (-x, +x, -y, +y, -z, +z).
-_HEX_CARAS = ((0.0, 0.5, 0.5), (1.0, 0.5, 0.5), (0.5, 0.0, 0.5),
-              (0.5, 1.0, 0.5), (0.5, 0.5, 0.0), (0.5, 0.5, 1.0))
-_HEX20 = _HEX_VERTICES + _HEX_ARISTAS
-_HEX27 = _HEX20 + _HEX_CARAS + ((0.5, 0.5, 0.5),)
+HEX_CARAS = ((0.0, 0.5, 0.5), (1.0, 0.5, 0.5), (0.5, 0.0, 0.5),
+             (0.5, 1.0, 0.5), (0.5, 0.5, 0.0), (0.5, 0.5, 1.0))
+HEX20 = HEX_VERTICES + HEX_ARISTAS
+HEX27 = HEX20 + HEX_CARAS + ((0.5, 0.5, 0.5),)
 
-_TET = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
-_TET10 = _TET + ((0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),
-                 (0.0, 0.0, 0.5), (0.5, 0.0, 0.5), (0.0, 0.5, 0.5))
+TET = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+TET10 = TET + ((0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),
+               (0.0, 0.0, 0.5), (0.5, 0.0, 0.5), (0.0, 0.5, 0.5))
 
 # Volumen (o área×espesor, o longitud×área) de cada geometría, para contrastar
 # la masa total contra ρ·V sin depender de la implementación del elemento.
-_V_LINEA = 1.0 * AREA
-_V_TRI = 0.5 * ESPESOR
-_V_QUAD = 1.0 * ESPESOR
-_V_QUAD8 = 4.0 * ESPESOR
-_V_TRI6 = 2.0 * ESPESOR
-_V_HEX = 1.0
-_V_TET = 1.0 / 6.0
+V_LINEA = 1.0 * AREA
+V_TRI = 0.5 * ESPESOR
+V_QUAD = 1.0 * ESPESOR
+V_QUAD8 = 4.0 * ESPESOR
+V_TRI6 = 2.0 * ESPESOR
+V_HEX = 1.0
+V_TET = 1.0 / 6.0
 
-# Fábrica por elemento: (constructor, volumen esperado). El volumen es None
-# cuando la comprobación de masa no aplica (elementos térmicos: su matriz de
-# capacidad es ρ·c·V, otra magnitud; embedded: sin masa implementada).
+# Fábrica por elemento: (constructor, volumen esperado). El constructor recibe
+# la clase y pasa el material como tercer argumento posicional (lo exige
+# `TestValidacionDefensiva`). El volumen es None cuando la comprobación de
+# masa total no aplica: en los elementos térmicos la "masa" es la matriz de
+# capacidad, ρ·c·V, otra magnitud.
 FABRICAS = {
-    'Quad4':        (lambda c: c(1, _nodos(_QUAD), MAT_2D, thickness=ESPESOR), _V_QUAD),
-    'Tri3':         (lambda c: c(1, _nodos(_TRI), MAT_2D, thickness=ESPESOR), _V_TRI),
-    'Quad8':        (lambda c: c(1, _nodos(_QUAD8), MAT_2D, thickness=ESPESOR), _V_QUAD8),
-    'Quad9':        (lambda c: c(1, _nodos(_QUAD9), MAT_2D, thickness=ESPESOR), _V_QUAD8),
-    'Tri6':         (lambda c: c(1, _nodos(_TRI6), MAT_2D, thickness=ESPESOR), _V_TRI6),
-    'Hex8':         (lambda c: c(1, _nodos(_HEX_VERTICES), MAT_3D), _V_HEX),
-    'Hex20':        (lambda c: c(1, _nodos(_HEX20), MAT_3D), _V_HEX),
-    'Hex27':        (lambda c: c(1, _nodos(_HEX27), MAT_3D), _V_HEX),
-    'Tet4':         (lambda c: c(1, _nodos(_TET), MAT_3D), _V_TET),
-    'Tet10':        (lambda c: c(1, _nodos(_TET10), MAT_3D), _V_TET),
-    'Truss2D':      (lambda c: c(1, _nodos(_LINEA_2D), MAT_1D, A=AREA), _V_LINEA),
-    'Truss2DCorot': (lambda c: c(1, _nodos(_LINEA_2D), MAT_1D, A=AREA), _V_LINEA),
-    'Truss3D':      (lambda c: c(1, _nodos(_LINEA_3D), MAT_1D, A=AREA), _V_LINEA),
-    'Truss3DCorot': (lambda c: c(1, _nodos(_LINEA_3D), MAT_1D, A=AREA), _V_LINEA),
-    'Cable2DCorot': (lambda c: c(1, _nodos(_LINEA_2D), MAT_CABLE, A=AREA), _V_LINEA),
-    'Cable3DCorot': (lambda c: c(1, _nodos(_LINEA_3D), MAT_CABLE, A=AREA), _V_LINEA),
-    'Frame2DEuler': (lambda c: c(1, _nodos(_LINEA_2D), MAT_1D, A=AREA, I=1.0e-5), _V_LINEA),
+    'Quad4':        (lambda c: c(1, nodos(QUAD), MAT_2D, thickness=ESPESOR), V_QUAD),
+    'Tri3':         (lambda c: c(1, nodos(TRI), MAT_2D, thickness=ESPESOR), V_TRI),
+    'Quad8':        (lambda c: c(1, nodos(QUAD8), MAT_2D, thickness=ESPESOR), V_QUAD8),
+    'Quad9':        (lambda c: c(1, nodos(QUAD9), MAT_2D, thickness=ESPESOR), V_QUAD8),
+    'Tri6':         (lambda c: c(1, nodos(TRI6), MAT_2D, thickness=ESPESOR), V_TRI6),
+    'Hex8':         (lambda c: c(1, nodos(HEX_VERTICES), MAT_3D), V_HEX),
+    'Hex20':        (lambda c: c(1, nodos(HEX20), MAT_3D), V_HEX),
+    'Hex27':        (lambda c: c(1, nodos(HEX27), MAT_3D), V_HEX),
+    'Tet4':         (lambda c: c(1, nodos(TET), MAT_3D), V_TET),
+    'Tet10':        (lambda c: c(1, nodos(TET10), MAT_3D), V_TET),
+    'Truss2D':      (lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA), V_LINEA),
+    'Truss2DCorot': (lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA), V_LINEA),
+    'Truss3D':      (lambda c: c(1, nodos(LINEA_3D), MAT_1D, A=AREA), V_LINEA),
+    'Truss3DCorot': (lambda c: c(1, nodos(LINEA_3D), MAT_1D, A=AREA), V_LINEA),
+    'Cable2DCorot': (lambda c: c(1, nodos(LINEA_2D), MAT_CABLE, A=AREA), V_LINEA),
+    'Cable3DCorot': (lambda c: c(1, nodos(LINEA_3D), MAT_CABLE, A=AREA), V_LINEA),
+    'Frame2DEuler': (lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA, I=1.0e-5), V_LINEA),
     'Frame2DEulerCorot': (
-        lambda c: c(1, _nodos(_LINEA_2D), MAT_1D, A=AREA, I=1.0e-5), _V_LINEA),
+        lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA, I=1.0e-5), V_LINEA),
     'Frame2DTimoshenko': (
-        lambda c: c(1, _nodos(_LINEA_2D), MAT_1D, A=AREA, I=1.0e-5, As=0.008,
-                    nu=0.3), _V_LINEA),
-    'Frame3D':      (lambda c: c(1, _nodos(_LINEA_3D), MAT_1D, A=AREA, Iy=1.0e-5,
-                                 Iz=1.0e-5, J=2.0e-5, nu=0.3), _V_LINEA),
-    'Quad4Thermal': (lambda c: c(1, _nodos(_QUAD), MAT_TERM_2D,
+        lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA, I=1.0e-5, As=0.008,
+                    nu=0.3), V_LINEA),
+    'Frame3D':      (lambda c: c(1, nodos(LINEA_3D), MAT_1D, A=AREA, Iy=1.0e-5,
+                                 Iz=1.0e-5, J=2.0e-5, nu=0.3), V_LINEA),
+    'Quad4Thermal': (lambda c: c(1, nodos(QUAD), MAT_TERM_2D,
                                  thickness=ESPESOR), None),
-    'Hex8Thermal':  (lambda c: c(1, _nodos(_HEX_VERTICES), MAT_TERM_3D), None),
+    'Hex8Thermal':  (lambda c: c(1, nodos(HEX_VERTICES), MAT_TERM_3D), None),
 }
 
 # Elementos térmicos: sus DOFs son temperaturas, no desplazamientos. Las
@@ -171,13 +176,88 @@ FABRICAS = {
 TERMICOS = frozenset({'Quad4Thermal', 'Hex8Thermal'})
 
 
-def _construir(nombre):
-    fabrica, _ = FABRICAS[nombre]
-    return fabrica(ElementRegistry.get(nombre))
+# --- Arnés de la batería --------------------------------------------------
 
 
-def _volumen(nombre):
-    return FABRICAS[nombre][1]
+def nombres_de_paquete(registry, paquete: str) -> list:
+    """Nombres registrados cuya clase vive en ``paquete`` o en un subpaquete
+    suyo (p. ej. ``'solidum.user.discontinuities'``)."""
+    return [n for n in registry.names()
+            if (registry.get(n).__module__ + ".").startswith(paquete + ".")]
+
+
+def rechazo_dimensional(mensaje: str, material) -> bool:
+    """El ``ValueError`` viene de la validación dimensional de la base
+    (``Element._validate_material_compatibility``), que nombra ``STRAIN_DIM``."""
+    return 'STRAIN_DIM' in mensaje
+
+
+def arnes(nombres, fabricas, termicos=frozenset(), minimo=1,
+          rechazo_de_material=rechazo_dimensional):
+    """Mixin que fija qué elementos recorre la batería de contrato y cómo los
+    construye.
+
+    Las clases ``Test*`` de este archivo no leen variables globales: piden al
+    arnés los nombres, las fábricas y las exenciones. El programa principal
+    usa :data:`ARNES_PROGRAMA_PRINCIPAL`. Un módulo de usuario reutiliza la
+    batería con su propio arnés, puesto delante en la herencia::
+
+        ArnesModulo = arnes(lambda: nombres_de_paquete(ElementRegistry, 'solidum.user.<m>'),
+                            {'MiElemento': (fabrica, volumen)})
+
+        class TestMiContratoDeclarativo(ArnesModulo, TestContratoDeclarativo):
+            pass
+
+    Parameters
+    ----------
+    nombres : callable sin argumentos, o secuencia
+        Nombres registrados que recorre la batería. Si es invocable, se evalúa
+        en cada prueba: el registro puede crecer durante la sesión de pytest.
+    fabricas : dict
+        ``{nombre: (constructor, volumen)}``, como :data:`FABRICAS`. El
+        constructor recibe la clase y le pasa el material como tercer
+        argumento posicional; ``volumen`` es ``None`` si la comprobación de
+        masa total no aplica.
+    termicos : conjunto de nombres
+        Elementos cuyos DOFs son temperaturas (``FLUX_DIM`` en vez de
+        ``STRAIN_DIM``).
+    minimo : int
+        Número mínimo de nombres; protege contra un barrido que pase por
+        vacuidad si el registro no se poblara.
+    rechazo_de_material : callable ``(mensaje, material) -> bool``
+        Reconoce el ``ValueError`` legítimo al construir con un material de
+        dimensión incompatible. Por omisión, el de la validación dimensional
+        de la base.
+    """
+    class Arnes:
+        def nombres_barrido(self):
+            return list(nombres() if callable(nombres) else nombres)
+
+        def fabricas_barrido(self):
+            return fabricas
+
+        def minimo_barrido(self):
+            return minimo
+
+        def es_termico(self, nombre):
+            return nombre in termicos
+
+        def construir(self, nombre, clase=None):
+            fabrica, _ = fabricas[nombre]
+            return fabrica(clase if clase is not None else ElementRegistry.get(nombre))
+
+        def volumen(self, nombre):
+            return fabricas[nombre][1]
+
+        def rechaza_por_el_material(self, mensaje, material):
+            return rechazo_de_material(mensaje, material)
+
+    return Arnes
+
+
+ARNES_PROGRAMA_PRINCIPAL = arnes(
+    lambda: nombres_programa_principal(ElementRegistry), FABRICAS, TERMICOS,
+    minimo=22)
 
 
 def _rigidez(elemento):
@@ -185,7 +265,7 @@ def _rigidez(elemento):
     return K
 
 
-class TestRegistroCompleto(unittest.TestCase):
+class TestRegistroCompleto(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
     """El barrido se mantiene sincronizado con el registro por construcción."""
 
     def test_todo_elemento_registrado_tiene_fabrica(self):
@@ -196,37 +276,38 @@ class TestRegistroCompleto(unittest.TestCase):
         que es exactamente lo que le pasó a `Orthotropic2D` entre los
         materiales.
         """
-        registrados = set(nombres_programa_principal(ElementRegistry))
-        cubiertos = set(FABRICAS)
+        registrados = set(self.nombres_barrido())
+        cubiertos = set(self.fabricas_barrido())
 
         sin_cubrir = registrados - cubiertos
         self.assertFalse(
             sin_cubrir,
             f"Elementos registrados sin fábrica: {sorted(sin_cubrir)}. "
-            f"Añádelos a FABRICAS para que entren en el barrido.")
+            f"Añádelos a las fábricas del arnés (FABRICAS en el programa "
+            f"principal) para que entren en el barrido.")
 
         sobrantes = cubiertos - registrados
         self.assertFalse(
             sobrantes,
-            f"FABRICAS tiene entradas de elementos que ya no se registran: "
-            f"{sorted(sobrantes)}. Elimínalas.")
+            f"Las fábricas del arnés tienen entradas de elementos que ya no se "
+            f"registran: {sorted(sobrantes)}. Elimínalas.")
 
     def test_el_registro_no_esta_vacio(self):
         """Si el autodiscover se rompiera, el barrido pasaría por vacuidad."""
-        self.assertGreaterEqual(len(nombres_programa_principal(ElementRegistry)), 22)
+        self.assertGreaterEqual(len(self.nombres_barrido()), self.minimo_barrido())
 
     def test_todos_construyen(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 self.assertEqual(elemento.id, 1)
 
 
-class TestContratoDeclarativo(unittest.TestCase):
+class TestContratoDeclarativo(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
     """Atributos de clase exigidos por `solidum/core/element.py`."""
 
     def test_hereda_de_element(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
                 self.assertTrue(issubclass(ElementRegistry.get(nombre), Element))
 
@@ -236,7 +317,7 @@ class TestContratoDeclarativo(unittest.TestCase):
         Un duplicado produciría dos ecuaciones para el mismo DOF y una matriz
         singular mucho más adelante, sin señal en el punto de origen.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 dofs = clase.DOF_NAMES
@@ -254,13 +335,13 @@ class TestContratoDeclarativo(unittest.TestCase):
         un vector genuino, no un tensor simétrico comprimido en Voigt, así que
         el elemento térmico no tiene `STRAIN_DIM` que declarar.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 strain = getattr(clase, 'STRAIN_DIM', None)
                 flux = getattr(clase, 'FLUX_DIM', None)
 
-                if nombre in TERMICOS:
+                if self.es_termico(nombre):
                     self.assertIn(flux, (2, 3),
                                   f"{nombre}: FLUX_DIM debe ser 2 ó 3")
                 else:
@@ -273,9 +354,9 @@ class TestContratoDeclarativo(unittest.TestCase):
         Si no coincidiera con los puntos que el elemento recorre de verdad, el
         estado interno se desalinearía silenciosamente entre iteraciones.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 n = elemento.N_INTEGRATION_POINTS
                 self.assertIsInstance(n, int)
                 self.assertGreaterEqual(n, 1)
@@ -288,7 +369,7 @@ class TestContratoDeclarativo(unittest.TestCase):
                         f"len(points)={len(puntos)}")
 
     def test_banderas_son_booleanas(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 self.assertIsInstance(clase.PRESERVES_SYMMETRY, bool)
@@ -299,9 +380,9 @@ class TestContratoDeclarativo(unittest.TestCase):
         la matriz global cuando la rigidez colapsa a cero. La base lo valida al
         construir; aquí se comprueba que la bandera dice la verdad.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 material = getattr(elemento, 'material', None)
                 if material is None or not getattr(material, 'IS_UNILATERAL',
                                                    False):
@@ -312,21 +393,21 @@ class TestContratoDeclarativo(unittest.TestCase):
                     f"ACCEPTS_UNILATERAL")
 
 
-class TestRigidezElemental(unittest.TestCase):
+class TestRigidezElemental(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
     """Propiedades que toda `K` elemental debe cumplir."""
 
     def test_forma_coherente_con_dofs(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 esperado = len(elemento.nodes) * len(elemento.DOF_NAMES)
                 K = _rigidez(elemento)
                 self.assertEqual(K.shape, (esperado, esperado))
 
     def test_valores_finitos(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                self.assertTrue(np.all(np.isfinite(_rigidez(_construir(nombre)))))
+                self.assertTrue(np.all(np.isfinite(_rigidez(self.construir(nombre)))))
 
     def test_simetria_cuando_se_declara(self):
         """`PRESERVES_SYMMETRY = True` es una promesa que el despachador cree.
@@ -335,9 +416,9 @@ class TestRigidezElemental(unittest.TestCase):
         para elegir backend: declararla con una `K` asimétrica llevaría a
         factorizar por Cholesky una matriz que no lo admite.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 if not elemento.PRESERVES_SYMMETRY:
                     continue
                 material = getattr(elemento, 'material', None)
@@ -365,11 +446,11 @@ class TestRigidezElemental(unittest.TestCase):
         lineales pero sólo infinitesimalmente en formulaciones corotacionales,
         así que exigirla aquí mezclaría contrato con formulación.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
-            if nombre in TERMICOS:
+        for nombre in self.nombres_barrido():
+            if self.es_termico(nombre):
                 continue    # sus DOFs son temperaturas: no hay traslación
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 dofs = elemento.DOF_NAMES
                 K = _rigidez(elemento)
                 # Un cable sin pretensión tiene K idénticamente nula (no
@@ -393,9 +474,9 @@ class TestRigidezElemental(unittest.TestCase):
     def test_semidefinida_positiva(self):
         """Sin material en régimen degradante, la energía de deformación no
         puede ser negativa: `K` es semidefinida positiva."""
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                K = _rigidez(_construir(nombre))
+                K = _rigidez(self.construir(nombre))
                 K_sim = 0.5 * (K + K.T)
                 autovalores = np.linalg.eigvalsh(K_sim)
                 escala = max(np.abs(autovalores).max(), 1.0)
@@ -404,7 +485,7 @@ class TestRigidezElemental(unittest.TestCase):
                     f"{nombre}: K tiene un autovalor negativo")
 
 
-class TestMasa(unittest.TestCase):
+class TestMasa(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
     """Contrato de `compute_mass_matrix` (ADR 0009)."""
 
     def _masa_total(self, elemento, M):
@@ -421,12 +502,12 @@ class TestMasa(unittest.TestCase):
         return bloque.sum()
 
     def test_masa_total_consistente(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
-            volumen = _volumen(nombre)
-            if volumen is None or nombre in TERMICOS:
+        for nombre in self.nombres_barrido():
+            volumen = self.volumen(nombre)
+            if volumen is None or self.es_termico(nombre):
                 continue
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 try:
                     M = elemento.compute_mass_matrix('consistent')
                 except NotImplementedError:
@@ -444,12 +525,12 @@ class TestMasa(unittest.TestCase):
         una misma estructura tendría frecuencias propias distintas por un
         detalle de implementación de la masa.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
-            volumen = _volumen(nombre)
-            if volumen is None or nombre in TERMICOS:
+        for nombre in self.nombres_barrido():
+            volumen = self.volumen(nombre)
+            if volumen is None or self.es_termico(nombre):
                 continue
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 try:
                     M_c = elemento.compute_mass_matrix('consistent')
                     M_l = elemento.compute_mass_matrix('lumped')
@@ -463,9 +544,9 @@ class TestMasa(unittest.TestCase):
                     msg=f"{nombre}: lumped no conserva la masa total")
 
     def test_lumped_es_diagonal(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 try:
                     M = np.asarray(elemento.compute_mass_matrix('lumped'),
                                    dtype=float)
@@ -478,9 +559,9 @@ class TestMasa(unittest.TestCase):
                     f"{nombre}: la masa lumped no es diagonal")
 
     def test_masa_simetrica_y_definida_no_negativa(self):
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 try:
                     M = np.asarray(elemento.compute_mass_matrix('consistent'),
                                    dtype=float)
@@ -497,7 +578,7 @@ class TestMasa(unittest.TestCase):
                     f"{nombre}: masa con autovalor negativo")
 
 
-class TestValidacionDefensiva(unittest.TestCase):
+class TestValidacionDefensiva(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
     """Errores del usuario atrapados al construir, no en runtime."""
 
     def test_lumping_no_soportado_es_rechazado(self):
@@ -507,9 +588,9 @@ class TestValidacionDefensiva(unittest.TestCase):
         el barrido comprueba que ninguna subclase se lo salte con una
         implementación propia.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
+        for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
-                elemento = _construir(nombre)
+                elemento = self.construir(nombre)
                 with self.assertRaises(
                         NotImplementedError,
                         msg=f"{nombre} acepta un lumping inexistente"):
@@ -521,8 +602,8 @@ class TestValidacionDefensiva(unittest.TestCase):
         Un elemento que declare soportar `lumped` y lance al pedirlo dejaría el
         análisis dinámico roto sólo para él, sin señal hasta ejecutarlo.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
-            elemento = _construir(nombre)
+        for nombre in self.nombres_barrido():
+            elemento = self.construir(nombre)
             for esquema in sorted(SUPPORTED_LUMPING):
                 with self.subTest(elemento=nombre, lumping=esquema):
                     try:
@@ -538,8 +619,8 @@ class TestValidacionDefensiva(unittest.TestCase):
         varias iteraciones del solver, lejos de su causa. Es el ejemplo que la
         propia base cita al documentar `_validate_material_compatibility`.
         """
-        for nombre in nombres_programa_principal(ElementRegistry):
-            if nombre in TERMICOS:
+        for nombre in self.nombres_barrido():
+            if self.es_termico(nombre):
                 continue    # los térmicos validan contra FLUX_DIM, no STRAIN_DIM
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
@@ -554,21 +635,17 @@ class TestValidacionDefensiva(unittest.TestCase):
                     self._reconstruir_con_material(nombre, incompatible)
 
                 # Debe fallar por el material, no por un error casual de la
-                # reconstrucción: sin esto el test pasaría por accidente.
-                # Se acepta cualquiera de las dos validaciones legítimas: la
-                # dimensional de la base, o una whitelist más estricta como la
-                # de `CST_Embedded2D`, que sólo admite bulks elásticos porque
-                # la discrete approach concentra la disipación en Γ_d (ADR
-                # 0010). Ambas atrapan el error al construir, que es lo que
-                # este test protege.
+                # reconstrucción: sin esto el test pasaría por accidente. En
+                # el programa principal, la validación dimensional de la base,
+                # que nombra STRAIN_DIM; un módulo de usuario con una
+                # validación propia más estricta la declara en su arnés.
                 mensaje = str(ctx.exception)
                 self.assertTrue(
-                    'STRAIN_DIM' in mensaje or type(incompatible).__name__ in mensaje,
-                    f"{nombre}: el ValueError no identifica el material "
-                    f"incompatible: {mensaje}")
+                    self.rechaza_por_el_material(mensaje, incompatible),
+                    f"{nombre}: el ValueError no viene de la validación del "
+                    f"material incompatible: {mensaje}")
 
-    @staticmethod
-    def _reconstruir_con_material(nombre, material):
+    def _reconstruir_con_material(self, nombre, material):
         """Reconstruye el elemento cambiando sólo el material.
 
         Se apoya en que todas las fábricas pasan el material como tercer
@@ -582,8 +659,7 @@ class TestValidacionDefensiva(unittest.TestCase):
                          *args, **kwargs):
                 super().__init__(element_id, nodes, material, *args, **kwargs)
 
-        fabrica, _ = FABRICAS[nombre]
-        return fabrica(_ConMaterialCambiado)
+        return self.construir(nombre, clase=_ConMaterialCambiado)
 
 
 if __name__ == '__main__':

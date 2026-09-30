@@ -75,7 +75,7 @@ $\bar{\mathbf t}$ se especifica en coordenadas globales $(t_x, t_y)$. Tracción 
 
 ## Limitación crítica — *shear locking*
 
-El Tri3 es notoriamente rígido en flexión: tres DOFs de desplazamiento no bastan para representar el modo de flexión puro de una viga discretizada en triángulos, por lo que el elemento responde con cortante espurio (*shear locking*) y subestima sistemáticamente la deflexión. La severidad crece con la relación $L/h$ del problema. Recomendación operativa: usar `Quad4` por defecto; reservar `Tri3` para zonas de transición de malla en regiones donde el campo de tensiones varía suavemente.
+El Tri3 es notoriamente rígido en flexión: tres DOFs de desplazamiento no bastan para representar el modo de flexión puro de una viga discretizada en triángulos, por lo que el elemento responde con cortante espurio (*shear locking*) y subestima sistemáticamente la deflexión. La severidad crece con la relación $L/h$ del problema. Recomendación operativa: usar `Quad4` por defecto; reservar `Tri3` para zonas de transición de malla en regiones donde el campo de esfuerzos varía suavemente.
 
 ---
 
@@ -92,6 +92,13 @@ interface:
   strain_dim: 3                 # Voigt 2D [ε_xx, ε_yy, γ_xy]
   n_integration_points: 1
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 2: triángulo lineal en elasticidad plana"
+    - hughes: "cap. 3 (triángulo lineal)"
+  general_codes:
+    - abaqus: "CPS3 / CPE3"
+
 parameters:
   - { name: thickness, type: float, required: false, default: 1.0, desc: Espesor para estado plano }
 
@@ -100,13 +107,13 @@ material_contract:
   strain_kind: "Voigt 2D [ε_xx, ε_yy, γ_xy]"
 
 conventions:
-  sign: "tensión positiva = tracción"
+  sign: "esfuerzo positivo = tracción"
   voigt: "[xx, yy, xy] con γ_xy = 2·ε_xy"
   node_orientation: "antihorario (asegura det J > 0)"
 
 validity:
   - "pequeños desplazamientos y deformaciones"
-  - "campos de tensión que varían suavemente sobre el elemento"
+  - "campos de esfuerzo que varían suavemente sobre el elemento"
 
 out_of_scope:
   - "flexión dominante (shear locking severo)"
@@ -129,7 +136,7 @@ acceptance:
       tol_rel: 1.0e-12
     - name: jacobiano degenerado abortado
       setup: "tres nodos colineales"
-      expect: "ValueError en _compute_kinematics_tri3"
+      expect: "ValueError en compute_kinematics_tri3"
     - name: cargas consistentes — body load uniforme
       setup: "Tri3 con b uniforme"
       expect: "cada nodo recibe (1/3)·b·A_e·t; Σ = b·A_e·t"
@@ -150,7 +157,7 @@ references:
 
 - **Archivo**: [solidum/elements/solid_2d/tri3.py](../../solidum/elements/solid_2d/tri3.py)
 - **Clase**: `Tri3` (registrada vía `@ElementRegistry.register`)
-- **Función núcleo**: `_compute_kinematics_tri3(coords)`, decorada con `@njit`, en [_shared.py](../../solidum/elements/solid_2d/_shared.py). Reutiliza `_compute_integrands` (también en `_shared`, compartido con Quad4) con peso $w = 0{.}5$.
+- **Función núcleo**: `compute_kinematics_tri3(coords)`, decorada con `@njit`. Reutiliza `compute_integrands` (compartida con Quad4) con peso $w = 0{.}5$. Ambas son API pública de cinemática (ADR 0020, P6): se importan desde `solidum.elements.solid_2d`, que las reexporta; su código vive en [_shared.py](../../solidum/elements/solid_2d/_shared.py), módulo interno que puede reorganizarse.
 - **Tests**:
   - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — patch test sobre malla triangular regular y modos de cuerpo rígido.
   - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder con nodo interior libre (NAFEMS, V&V).
@@ -166,3 +173,4 @@ references:
 - **2026-09-22** · Auditoría global: tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-09-29** · Cinemática pública para elementos de usuario (ADR 0020, P6): `_compute_kinematics_tri3` y `_compute_integrands` pasan a llamarse `compute_kinematics_tri3` y `compute_integrands`, y su ruta pública es `solidum.elements.solid_2d` (el módulo `_shared` sigue siendo interno). Sólo cambia el nombre; formulación sin cambios.

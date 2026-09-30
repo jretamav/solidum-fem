@@ -2,9 +2,11 @@
 
 > Referencia rápida de los métodos de solución implementados. Una entrada por solver. Para detalles del algoritmo → código fuente.
 >
-> **Corrector compartido (ADR 0015)**: los cinco solvers iterativos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) ejecutan el mismo bucle de Newton, `NewtonCorrector` (`solidum/math/solvers/corrector.py`): un ensamblaje por iteración, criterio dual (ADR 0007), backend con preferencia Cholesky → Pardiso → LU (ADR 0003, ADR 0017), solver iterativo CG/MINRES + AMG a petición con `linear_algebra: iterative` (ADR 0018) y Newton modificado, line search y excepciones tipadas (ADR 0011). Cada uno aporta un `NewtonProblem` por paso con su residuo, su sistema tangente y su actualización, y conserva su control de paso. `solver.corrector` es la superficie de instrumentación.
+> **Corrector compartido (ADR 0015)**: los cinco solvers iterativos del programa principal (`NonlinearSolver`, `ArcLengthSolver` y su variante `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) ejecutan el mismo bucle de Newton, `NewtonCorrector` (`solidum/math/solvers/corrector.py`): un ensamblaje por iteración, criterio dual (ADR 0007), backend con preferencia Cholesky → Pardiso → LU (ADR 0003, ADR 0017), solver iterativo CG/MINRES + AMG a petición con `linear_algebra: iterative` (ADR 0018) y Newton modificado, line search y excepciones tipadas (ADR 0011). Cada uno aporta un `NewtonProblem` por paso con su residuo, su sistema tangente y su actualización, y conserva su control de paso. `solver.corrector` es la superficie de instrumentación. Las variantes de arco que sólo cambian la restricción del paso heredan su problema por paso, exportado como `solidum.math.solvers.ArcProblem`, y redefinen su método `constraint`.
 >
-> **Gancho de inicio de paso (ADR 0020, P5)**: los seis solvers que avanzan por pasos (`NonlinearSolver`, `ArcLengthSolver`, `DissipationArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) invocan `Element.prepare_step(U_committed)` en cada elemento, una vez por intento de paso, con el campo convergido del paso anterior y antes del primer ensamblaje; tras una bisección lo repiten, así que el gancho debe ser idempotente. Es no-op salvo en los elementos que toman decisiones discretas entre pasos (hoy, la activación de la grieta en el módulo de usuario `discontinuities`). `LinearSolver` no lo invoca. Lo prueba [`test_prepare_step_hook.py`](../tests/test_prepare_step_hook.py).
+> **Gancho de inicio de paso (ADR 0020, P5)**: los cinco solvers del programa principal que avanzan por pasos (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) invocan `Element.prepare_step(U_committed)` en cada elemento, una vez por intento de paso, con el campo convergido del paso anterior y antes del primer ensamblaje. Tras una bisección lo repiten con el mismo campo los solvers estáticos que bisecan (`NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver` en el programa principal, y `DissipationArcLengthSolver` en su módulo), así que el gancho debe ser idempotente; los dinámicos (`NewtonNewmarkSolver`, `NewtonHHTSolver`) no bisecan: un paso que no converge aborta el análisis con la excepción tipada. Es no-op salvo en los elementos que toman decisiones discretas entre pasos (hoy, la activación de la grieta en el módulo de usuario `discontinuities`). `LinearSolver` no lo invoca. Lo prueba [`test_prepare_step_hook.py`](../tests/test_prepare_step_hook.py). Un solver de un módulo de usuario que avance por pasos debe invocarlo igual (lo hace el de `dissipation_control`, al final de este catálogo).
+>
+> **Solvers de los módulos de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)): van en la sección «Módulos de usuario — <módulo>» al final del catálogo. Hoy, `DissipationArcLengthSolver` (módulo `dissipation_control`).
 
 ---
 
@@ -64,26 +66,6 @@
 
 ---
 
-## DissipationArcLengthSolver — variante de arc-length por disipación (Gutiérrez 2004)
-
-- **Propósito**: trazar la rama post-pico de problemas con **softening severo** controlando la disipación incremental de energía por paso en lugar de la longitud de arco euclídea. Más robusto que el cilíndrico cuando la curva U-λ tiene tramos casi-verticales en el plano (U, λ).
-- **Esquema**:
-  - Subclase de `ArcLengthSolver`; reusa predictor tangente, corrector Newton, ajuste de paso, Dirichlet/MPC y backend algebraico.
-  - **Restricción de paso**: `g(ΔU, Δλ) = ½·(λ_n·F·ΔU − Δλ·F·U_n) = τ`. **Lineal** en `(ΔU, Δλ)` ⇒ corrector con una sola raíz en `ddλ`, sin selección por menor ángulo ni patología de raíces imaginarias.
-  - **Switching automático cilíndrico↔disipación** según se detecte disipación neta sobre el umbral relativo `dissipation_threshold·‖F_ref‖·‖U‖`. Arranque obligado en cilíndrico (`α = ½·(λ_n·F·du_t − F·U_n)` es 0 cuando `λ_n = U_n = 0`).
-  - **Sign-of-pivot tracking aproximado** vía signo del `slogdet(K_t)`. Distingue 0 vs número impar de pivots negativos — diagnóstico de paso por punto límite simple. Tracking exacto requiere LDLᵀ Bunch-Kaufman (deuda técnica #7 STATUS.md).
-  - **Llegada a `max_lambda`**: la del padre (paso que cruza, no consolidado, repetido con λ fijo dentro del tramo). Sustituye desde 2026-09-23 a la salvaguarda contra el `final_step` prematuro.
-  - **Detección de α≈0**: threshold relativo `|α| < 1e-6·escala`; revierte temporalmente a cilíndrico (en problemas lineales monotónicos `α ≡ 0` exactamente por construcción).
-- **Parámetros heredados**: todos los de `ArcLengthSolver` (`max_iter`, `max_lambda`, `initial_dlambda`, `initial_dl`, `max_steps`, factores `dl_*`, `linear_algebra`). **Nuevos**: `initial_tau` (obligatorio), `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
-- **Cuándo usarlo**: problemas con softening continuo donde `ArcLengthSolver` cilíndrico bisecta excesivamente cerca del pico — daño bulk 1D/2D, plasticidad con localización progresiva, post-pandeo con descarga elástica.
-- **Cuándo NO usarlo (limitación documentada)**: cohesivo+embedded discontinuity (módulo de usuario `discontinuities`) con `K_e` stiff (`~1e13`). La activación discreta del Rankine introduce un salto en `F_int`/`K_t` que el `sign` por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDLᵀ Bunch-Kaufman real (item #7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con `ArcLengthSolver` cilíndrico a paridad de bits (regresión validada).
-- **Referencias**: Gutiérrez (2004), *Communications in Numerical Methods in Engineering* 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), *IJNME* 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
-- **Spec**: [docs/specs/DissipationArcLengthSolver.md](specs/DissipationArcLengthSolver.md) (status `implemented`, validación parcial).
-- **Archivo**: [solidum/math/solvers/dissipation_arclength.py](../solidum/math/solvers/dissipation_arclength.py)
-- **Limitación medida (2026-09-23, deuda #27)**: no sigue el retroceso de una barra con daño localizado. El predictor del modo de disipación se ensambla en el estado convergido, donde el material de daño está en descarga y devuelve la secante; con ella `α = 0` exactamente y el solver vuelve al modo cilíndrico. Además el paso que cruza el pico, cilíndrico y con predictor elástico, puede converger a un equilibrio con varias zonas ablandadas. Para retrocesos por localización usar `IndirectDisplacementSolver`.
-
----
-
 ## IndirectDisplacementSolver — control indirecto de desplazamiento (de Borst 1987)
 
 - **Propósito**: trazar ramas con **retroceso** (*snap-back*) por localización, controlando el incremento de una magnitud cinemática elegida —el alargamiento de la zona que se ablanda, la apertura de una grieta (CMOD)— en lugar de la longitud de arco de todos los grados de libertad. Es como se controla en laboratorio un ensayo de fractura.
@@ -93,7 +75,7 @@
   - Primer paso adimensional (`initial_dlambda`, Δl₁ = Δλ₁·cᵀK₀⁻¹F_ref) y **sin crecimiento del paso por omisión** (`dl_max_factor = 1.0`): con ablandamiento local el problema incremental admite varios equilibrios y un paso grande puede saltar a otro (spec §5).
 - **Parámetros**: `control` (obligatorio; lista de `(nodo, dof, coef)` o `{node, dof, coef}`), más todos los de `ArcLengthSolver`.
 - **Cuándo usarlo**: retrocesos por localización (daño o cohesivo), ensayos controlados por CMOD/CTOD. Exige que la magnitud controlada crezca monótonamente; si decrece con la carga de referencia al empezar, el solver lo rechaza con un error explicativo.
-- **Validación**: barra con daño localizado en un elemento, frente a la solución exacta: sigue el retroceso hasta el mínimo exacto (0.616·u_pico) con sólo el elemento débil dañado; el cilíndrico y el de disipación no.
+- **Validación**: barra con daño localizado en un elemento, frente a la solución exacta: sigue el retroceso hasta el mínimo exacto (0.616·u_pico) con sólo el elemento débil dañado; el cilíndrico no (tampoco el arco por disipación del módulo de usuario `dissipation_control`, deuda #27).
 - **Referencias**: de Borst (1987), *Computers & Structures* 25, 211-224; Crisfield (1991) vol. 1 cap. 9.
 - **Spec**: [docs/specs/IndirectDisplacementSolver.md](specs/IndirectDisplacementSolver.md) (status `validated`).
 - **Archivo**: [solidum/math/solvers/indirect_displacement.py](../solidum/math/solvers/indirect_displacement.py)
@@ -297,3 +279,45 @@ Convenciones de interfaz:
 El **dispatch en `run_yaml`** se hace por el atributo de clase `PIPELINE_KIND` (regla C, 2026-05-18). Solvers nuevos no clásicos (que no hereden de los existentes) sólo declaran su `PIPELINE_KIND` y quedan automáticamente cableados — no requieren tocar `entry.py`.
 
 Tras implementar, **añadir una entrada a este catálogo** siguiendo el formato de arriba y promover la spec a `status: validated`.
+
+Un solver **no estándar** (una formulación que no cumple el criterio de admisión de Reglas.md §1: no aparece en los textos de referencia del área o ningún código general establecido la implementa) no entra en el programa principal: va a un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md), Reglas.md §4), con código en `solidum/user/<módulo>/` (scaffolding con `/solidum-new solver <Nombre> --user <módulo>`), spec en `docs/user/<módulo>/specs/`, tests en `tests/user/<módulo>/` y entrada en una sección «Módulos de usuario — <módulo>» al final de este catálogo. Se conecta por la parte pública del programa principal: `@SolverRegistry.register`, `PIPELINE_KIND` y, si es una variante de arco que sólo cambia la restricción del paso, `ArcLengthSolver` y `solidum.math.solvers.ArcProblem` (modelo: `DissipationArcLengthSolver`). Si avanza por pasos, invoca el gancho `assembler.prepare_all_steps(U_committed)` al empezar cada intento de paso.
+
+---
+
+# Módulos de usuario — dissipation_control
+
+> **Módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)): formulación no estándar, fuera del programa principal, en [`solidum/user/dissipation_control/`](../solidum/user/dissipation_control/), como un macro de usuario de FEAP. `import solidum` no la carga. Estuvo en el programa principal del 2026-05-19 al 2026-09-29.
+>
+> **Clasificación** (criterio de admisión, Reglas.md §1, 2026-09-29): **no estándar**, porque no cumple la condición (ii). Ningún código general establecido implementa de forma nativa el control por liberación de energía de Gutiérrez (2004) y Verhoosel, Remmers y Gutiérrez (2009): DIANA ofrece como restricciones del arco el *Spherical Path* y el *Updated Normal Plane*, y su método «energy based» es una regla de tamaño de paso, no esta restricción; el `PILOTAGE` de Code_Aster no la incluye entre sus tipos; en Abaqus sólo existen implementaciones de investigación mediante subrutinas de usuario.
+>
+> **Carga**: en YAML, `user_modules: [dissipation_control]` en el primer nivel (sin esa clave, y si nada lo ha cargado antes en la sesión, `solver: {type: DissipationArcLengthSolver}` es un error que sugiere declararla y lista los módulos disponibles); en Python, `solidum.load_user_module("dissipation_control")` o `from solidum.user.dissipation_control import DissipationArcLengthSolver`. `from solidum.math.solvers import DissipationArcLengthSolver` ya no funciona.
+>
+> Spec en [`docs/user/dissipation_control/specs/`](user/dissipation_control/specs/), tests en [`tests/user/dissipation_control/`](../tests/user/dissipation_control/). Los benchmarks cohesivos de su spec usan además el módulo de usuario `discontinuities` (`user_modules: [discontinuities, dissipation_control]`).
+
+## DissipationArcLengthSolver — variante de arc-length por disipación (Gutiérrez 2004)
+
+- **Propósito**: trazar la rama post-pico de problemas con **softening severo** controlando la disipación incremental de energía por paso en lugar de la longitud de arco euclídea. Más robusto que el cilíndrico cuando la curva U-λ tiene tramos casi-verticales en el plano (U, λ).
+- **Esquema**:
+  - Subclase de `ArcLengthSolver` (programa principal); reusa predictor tangente, corrector Newton, ajuste de paso, Dirichlet/MPC y backend algebraico. Su problema por paso hereda de `solidum.math.solvers.ArcProblem` y sólo redefine la restricción.
+  - **Restricción de paso**: `g(ΔU, Δλ) = ½·(λ_n·F·ΔU − Δλ·F·U_n) = τ`. **Lineal** en `(ΔU, Δλ)` ⇒ corrector con una sola raíz en `ddλ`, sin selección por menor ángulo ni patología de raíces imaginarias.
+  - **Switching automático cilíndrico↔disipación** según se detecte disipación neta sobre el umbral `dissipation_threshold·max(‖F_ref‖·‖U‖, 1)` (el piso absoluto 1 depende de las unidades: cuestión física abierta, pendiente del usuario, junto con el signo del predictor y el alcance en plasticidad; ver la spec). Arranque obligado en cilíndrico (`α = ½·(λ_n·F·du_t − F·U_n)` es 0 cuando `λ_n = U_n = 0`).
+  - **Orientación del predictor**: la del padre, por el signo del producto escalar con el incremento del paso anterior. **Sin seguimiento de inercia** de `K_t`: el diagnóstico por signo del determinante (`_negative_pivots`), que ningún solver llamaba, se retiró el 2026-09-29; un seguimiento exacto requiere LDLᵀ Bunch-Kaufman (deuda técnica #7 STATUS.md).
+  - **Llegada a `max_lambda`**: la del padre (paso que cruza, no consolidado, repetido con λ fijo dentro del tramo). Sustituye desde 2026-09-23 a la salvaguarda contra el `final_step` prematuro.
+  - **Detección de α≈0**: threshold relativo `|α| < 1e-6·escala`; revierte temporalmente a cilíndrico (en problemas lineales monotónicos `α ≡ 0` exactamente por construcción).
+- **Parámetros heredados**: todos los de `ArcLengthSolver` (`max_iter`, `max_lambda`, `initial_dlambda`, `initial_dl`, `max_steps`, factores `dl_*`, `linear_algebra`). **Nuevos**: `initial_tau` (obligatorio), `tau_grow_factor`, `tau_max_factor`, `tau_shrink_factor`, `tau_grow_iter_threshold`, `tau_shrink_iter_threshold`, `dissipation_threshold`.
+- **YAML**:
+  ```yaml
+  user_modules: [dissipation_control]
+  solver:
+    type: DissipationArcLengthSolver
+    initial_dlambda: 0.05
+    initial_tau: 1.0e-4
+    max_steps: 300
+  ```
+- **Cuándo usarlo**: problemas con softening continuo donde `ArcLengthSolver` cilíndrico bisecta excesivamente cerca del pico — daño bulk 1D/2D, plasticidad con localización progresiva, post-pandeo con descarga elástica.
+- **Cuándo NO usarlo (limitación documentada)**: cohesivo+embedded discontinuity (módulo de usuario `discontinuities`) con `K_e` stiff (`~1e13`). La activación discreta del Rankine introduce un salto en `F_int`/`K_t` que el `sign` por producto escalar no maneja graciosamente; el predictor del paso siguiente reorienta hacia descarga. Resolverlo requiere LDLᵀ Bunch-Kaufman real (item #7 deuda STATUS.md) o control por CMOD/CTOD del salto (spec separada). En problemas lineales puramente elásticos coincide con `ArcLengthSolver` cilíndrico a paridad de bits (regresión validada).
+- **Limitación medida (2026-09-23, deuda #27)**: no sigue el retroceso de una barra con daño localizado. El predictor del modo de disipación se ensambla en el estado convergido, donde el material de daño está en descarga y devuelve la secante; con ella `α = 0` exactamente y el solver vuelve al modo cilíndrico. Además el paso que cruza el pico, cilíndrico y con predictor elástico, puede converger a un equilibrio con varias zonas ablandadas. Para retrocesos por localización usar `IndirectDisplacementSolver` (programa principal).
+- **Referencias**: Gutiérrez (2004), *Communications in Numerical Methods in Engineering* 20, 19-29; Verhoosel, Remmers, Gutiérrez (2009), *IJNME* 77, 1290-1321; Crisfield (1991) vol. 1 §9.4.
+- **Spec**: [docs/user/dissipation_control/specs/DissipationArcLengthSolver.md](user/dissipation_control/specs/DissipationArcLengthSolver.md) (status `implemented`, validación parcial).
+- **Archivo**: [solidum/user/dissipation_control/dissipation_arclength.py](../solidum/user/dissipation_control/dissipation_arclength.py).
+- **Tests**: [`test_dctl_dissipation_arclength.py`](../tests/user/dissipation_control/test_dctl_dissipation_arclength.py), el barrido de contrato del módulo (solver, gancho de inicio de paso, carga YAML), [`test_dctl_contratos.py`](../tests/user/dissipation_control/test_dctl_contratos.py), y la validación de la spec, [`test_dctl_specs.py`](../tests/user/dissipation_control/test_dctl_specs.py).

@@ -132,6 +132,14 @@ interface:
   field: temperature
   equation_order: 1      # primer orden en el tiempo (Newmark integra segundo)
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 8 (familia trapezoidal generalizada)"
+    - zienkiewicz_taylor: "vol. 1: aproximación discreta en el tiempo, esquemas de un paso de primer orden"
+  general_codes:
+    - code_aster: "THER_LINEAIRE con PARM_THETA"
+    - ansys: "TINTP con THETA (transitorio térmico)"
+
 parameters:
   - { name: theta, type: float, required: false, default: 1.0,
       desc: "Peso del esquema ∈ [0,1]. 1.0 Euler implícito (L-estable, default);

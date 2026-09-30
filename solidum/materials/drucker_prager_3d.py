@@ -6,7 +6,9 @@ proyecto (ADR 0012). Mismas características que ``DruckerPrager2D``:
 
 - **Plasticidad no asociada por defecto** (ángulo de dilatancia ψ ≠ ángulo de
   fricción φ); cuando ψ = φ es asociada y la tangente es simétrica.
-- **Endurecimiento isótropo lineal en cohesión** ``c(α) = c_0 + H·α``.
+- **Endurecimiento isótropo lineal del radio del cono** ``k(α) = k_0 + H·α``,
+  con ``α`` el multiplicador plástico acumulado ``γ`` (no la cohesión ``c`` ni
+  la deformación plástica equivalente; ver el parámetro ``H`` de la clase).
 - **Return mapping** con dos ramas cerradas: regular (cone surface) y al ápice
   (vértice hidrostático). Detección automática del régimen.
 
@@ -245,9 +247,13 @@ def _compute_drucker_prager_3d(strain, eps_p_old, alpha_old,
     else:
         K_apex_eff = 0.0
 
-    # Si la rigidez tangente colapsa por completo (apex con Hk=0 y η_g=0),
-    # añadir un escalado mínimo de K para evitar matriz globalmente singular
-    # hasta que el siguiente paso salga del ápice (mismo patrón que DP2D).
+    # Piso de la tangente (mismo patrón que DP2D): si K_apex_eff < K·1e-6 se
+    # sustituye por K·1e-6 para no dejar la matriz global singular mientras
+    # el punto siga en el ápice. Actúa en todo retorno al ápice con Hk = 0
+    # (perfectamente plástico, el caso más común, donde la tangente exacta
+    # K·Hk/A_apex es nula) y, en general, siempre que Hk/A_apex < 1e-6; con
+    # η_g = 0 no se llega aquí (ValueError arriba). Es una regularización de
+    # la tangente, no la tangente consistente: no cambia σ ni el estado.
     if K_apex_eff < K * 1.0e-6:
         K_apex_eff = K * 1.0e-6
     C_alg = K_apex_eff * np.outer(v, v)
@@ -278,7 +284,9 @@ def _dp_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
 class DruckerPrager3D(Material):
     """
     Modelo Drucker-Prager 3D con plasticidad no asociada y endurecimiento
-    isótropo lineal en cohesión.
+    isótropo lineal ``k(α) = k₀ + H·α`` sobre el radio del cono ``k``, con
+    ``α`` el multiplicador plástico acumulado ``γ`` (misma parametrización
+    que ``DruckerPrager2D``, que documenta la conversión desde ``c(ε̄ᵖ)``).
 
     Parameters
     ----------
@@ -293,8 +301,11 @@ class DruckerPrager3D(Material):
         ``ψ = φ`` (asociada). Para suelos no asociado típico ψ = 0 o ψ = φ/2.
         Debe cumplir ``0 ≤ ψ ≤ φ``.
     H : float, optional
-        Módulo de endurecimiento isótropo lineal en cohesión (``≥ 0``). Default 0
-        (perfectamente plástico).
+        Módulo de endurecimiento isótropo lineal ``dk/dγ`` del radio del cono
+        respecto del multiplicador plástico acumulado (``≥ 0``, unidades de
+        esfuerzo). Default 0 (perfectamente plástico). Desde ``H_c = dc/dε̄ᵖ``
+        de de Souza Neto et al. (2008, §8.3, ``ε̄ᵖ = ξ·γ``): ``H = ξ²·H_c``
+        con ``ξ = k₀/c₀``.
     variant : str, optional
         Calibración Drucker-Prager con Mohr-Coulomb (3D):
         ``'outer_cone'`` (default, circunscribe MC en el meridiano de compresión)
@@ -419,7 +430,7 @@ class DruckerPrager3D(Material):
         self.IS_SYMMETRIC = self.associated
 
     def admissibility_scale(self, state_vars=None) -> float:
-        """Cohesión efectiva corriente ``k(α) = k_0 + H·α`` (ADR 0006).
+        """Radio corriente del cono ``k(α) = k_0 + H·α`` (ADR 0006).
 
         Escala con unidades de esfuerzo (idéntica a la cantidad ``f`` del criterio).
         """

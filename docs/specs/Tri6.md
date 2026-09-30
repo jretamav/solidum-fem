@@ -37,6 +37,13 @@ interface:
   strain_dim: 3
   n_integration_points: 3
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 3 (triángulos de orden superior)"
+    - zienkiewicz_taylor: "vol. 1 (6.ª ed.), cap. 4: triángulos cuadráticos"
+  general_codes:
+    - abaqus: "CPS6 / CPE6"
+
 acceptance:
   verification:
     - name: patch_cuadratico

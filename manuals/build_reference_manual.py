@@ -2,7 +2,9 @@
 
 Las specs de los módulos de usuario (``docs/user/<módulo>/specs/*.md``, ADR
 0020) no entran al cuerpo del manual, que describe el programa principal:
-van a un apéndice «Módulos de usuario», agrupadas por módulo.
+van a un apéndice «Módulos de usuario», agrupadas por módulo. Las secciones
+«Módulos de usuario — <módulo>» de los catálogos van al mismo capítulo del
+apéndice.
 
 Prototipo autónomo (sin dependencias externas más allá de la stdlib).
 Convierte un subconjunto controlado de Markdown a LaTeX y compila con
@@ -91,16 +93,11 @@ CHAPTER_ORDER: list[str] = [
     "Esquemas de Solución — Modal y dinámicos",
 ]
 
-# Solvers: la partición estático/dinámico no es inferible del contrato (no hay
-# campo que la declare), así que se declara aquí por nombre. Es la única
-# clasificación que permanece enumerada; cualquier solver no listado cae al
-# capítulo de estáticos sólo si su spec lo permite — si no, el build aborta.
-_STATIC_SOLVERS = {
-    "LinearSolver",
-    "NonlinearSolver",
-    "ArcLengthSolver",
-    "DissipationArcLengthSolver",
-}
+# Solvers: la partición estático/dinámico sale del contrato declarativo del
+# propio solver, ``PIPELINE_KIND`` (regla C del ADR 0009): ``"static"`` va al
+# capítulo de estáticos y cualquier otro valor al de modal y dinámicos. Antes
+# era una lista por nombre, que dejaba a IndirectDisplacementSolver en el
+# capítulo equivocado y nombraba solvers ya trasladados a un módulo de usuario.
 
 
 def _classify(spec) -> str:
@@ -134,7 +131,13 @@ def _classify(spec) -> str:
         )
 
     if kind == "solver":
-        if name in _STATIC_SOLVERS:
+        from solidum.registry import SolverRegistry
+        if name not in SolverRegistry.names():
+            raise SpecError(
+                f"{name}: spec de solver sin clase registrada; no se puede "
+                f"leer su PIPELINE_KIND para ubicarla."
+            )
+        if SolverRegistry.get(name).PIPELINE_KIND == "static":
             return "Esquemas de Solución — Estáticos"
         return "Esquemas de Solución — Modal y dinámicos"
 
@@ -184,9 +187,11 @@ def build_groups() -> list[tuple[str, list[str]]]:
 
     buckets: dict[str, list[str]] = {ch: [] for ch in CHAPTER_ORDER}
     unclassified: list[str] = []
+    parsed: dict[str, object] = {}
 
     for path in collect_specs(SPECS_DIR):
         spec = parse_spec(path)
+        parsed[spec.name] = spec
         try:
             chapter = _classify(spec)
         except SpecError as exc:
@@ -206,9 +211,10 @@ def build_groups() -> list[tuple[str, list[str]]]:
         )
 
     # Orden estable dentro de cada capítulo: por número de nodos cuando el
-    # contrato lo declara (Quad4 antes que Quad8), alfabético en el resto.
+    # contrato lo declara (Quad4 antes que Quad8), alfabético en el resto. Las
+    # specs ya leídas se reutilizan: releerlas duplicaba el coste del build.
     def _sort_key(name: str):
-        spec = parse_spec(SPECS_DIR / f"{name}.md")
+        spec = parsed[name]
         n_nodes = (spec.contract.get("interface") or {}).get("n_nodes")
         return (n_nodes if isinstance(n_nodes, int) else 0, name)
 
@@ -318,12 +324,13 @@ def user_module_intro(module: str) -> str:
     """Texto Markdown con que abre el capítulo de un módulo en el apéndice."""
     summary = _user_module_summary(module)
     lines = [
-        "Este apéndice recoge las specs de los **módulos de usuario**: "
+        "Este apéndice recoge los **módulos de usuario**: "
         "formulaciones no estándar que viven fuera del programa principal, en "
         "`solidum/user/<módulo>/`, a la manera de los elementos y materiales de "
         "usuario de FEAP (ADR 0020). El programa principal no las carga por sí "
         "solo: un modelo las pide con `user_modules: [<módulo>]` en el YAML o "
-        "con `solidum.load_user_module(\"<módulo>\")` en Python.",
+        "con `solidum.load_user_module(\"<módulo>\")` en Python. Cada capítulo "
+        "reúne las entradas de catálogo de un módulo y sus specs.",
         "",
         f"**Módulo `{module}`**" + (f": {summary}" if summary else "."),
         "",
@@ -338,13 +345,116 @@ def user_module_intro(module: str) -> str:
 
 # Capítulos finales que NO derivan de specs (referencia técnica de plumbing
 # arquitectural o catálogos transversales). Cada entrada: (título_capítulo,
-# ruta del archivo fuente relativa a la raíz del repositorio).
+# ruta del archivo fuente relativa a la raíz del repositorio). Sus secciones
+# «Módulos de usuario — <módulo>» no entran en estos capítulos: van al
+# apéndice (``build_catalog_chapters``).
 APPENDIX_CHAPTERS: list[tuple[str, str]] = [
     ("Elementos — catálogo", "docs/catalogo_elementos.md"),
     ("Modelos constitutivos — catálogo", "docs/catalogo_materiales.md"),
     ("Solvers — catálogo", "docs/catalogo_solvers.md"),
     ("Anexos técnicos", "manuals/sources/anexo_capa_algebraica.md"),
 ]
+
+
+# ---------------------------------------------------------------------------
+# Secciones de los módulos de usuario dentro de los catálogos (ADR 0020).
+#
+# Los catálogos (docs/catalogo_*.md) son del programa principal, pero cada
+# módulo de usuario añade al final del catálogo que le corresponde una sección
+# encabezada por el H1 «# Módulos de usuario — <módulo>» (Reglas.md §4). Esa
+# sección no puede entrar en los capítulos de catálogo del cuerpo: md_to_latex
+# descarta los H1, y sus entradas quedarían como \section al mismo nivel que
+# las del programa principal (así ocurrió hasta 2026-09-29). El builder la
+# separa del catálogo y la lleva al capítulo del módulo en el apéndice. El
+# reparto sale del encabezado, no de una lista de módulos: un módulo nuevo se
+# reparte solo. Un H1 «Módulos de usuario» sin nombre de módulo, o que nombra
+# un módulo inexistente en solidum/user/, aborta el build nombrando el archivo.
+# ---------------------------------------------------------------------------
+
+_USER_SECTION_H1 = re.compile(
+    r"^#[ \t]+m[óo]dulos de usuario[ \t]*[—–-]+[ \t]*"
+    r"`?([A-Za-z_][A-Za-z0-9_]*)`?(?:[ \t]+.*)?[ \t]*$",
+    re.IGNORECASE,
+)
+_USER_H1_PREFIX = re.compile(r"^#[ \t]+m[óo]dulos? de usuario\b", re.IGNORECASE)
+_MD_H1 = re.compile(r"^#[ \t]+\S")
+
+
+def split_user_module_sections(md: str, source: str = "?") -> tuple[str, dict[str, str]]:
+    """Separa de un Markdown sus secciones «Módulos de usuario — <módulo>».
+
+    Devuelve ``(cuerpo, secciones)``: ``cuerpo`` es el Markdown sin esas
+    secciones y ``secciones`` asocia a cada módulo el Markdown de la suya sin
+    el H1, cuyo papel pasa al título del capítulo del apéndice. Cada sección
+    llega hasta el siguiente H1 o hasta el final del archivo. Las líneas
+    dentro de bloques ``` no son encabezados: un comentario ``# …`` de un
+    listado no parte el catálogo. ``source`` sólo sirve para el mensaje de
+    error.
+    """
+    body: list[str] = []
+    sections: dict[str, list[str]] = {}
+    target = body
+    in_fence = False
+    for line in md.split("\n"):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and _MD_H1.match(line):
+            m = _USER_SECTION_H1.match(line)
+            if m:
+                target = sections.setdefault(m.group(1), [])
+                continue
+            if _USER_H1_PREFIX.match(line):
+                raise SystemExit(
+                    f"[!] {source}: encabezado {line.strip()!r} sin nombre de módulo. "
+                    "La sección de un módulo de usuario se titula "
+                    "«# Módulos de usuario — <módulo>»."
+                )
+            target = body
+        target.append(line)
+    return ("\n".join(body),
+            {mod: "\n".join(lines).strip("\n") + "\n" for mod, lines in sections.items()})
+
+
+def build_catalog_chapters() -> tuple[list[tuple[str, Path, str]],
+                                      dict[str, list[tuple[str, Path, str]]]]:
+    """Reparte los capítulos de ``APPENDIX_CHAPTERS`` entre cuerpo y apéndice.
+
+    Devuelve ``(cuerpo, por_módulo)``. ``cuerpo`` es la lista ``(título,
+    archivo, markdown)`` de los capítulos del cuerpo, ya sin las secciones de
+    módulo de usuario. ``por_módulo`` asocia a cada módulo, en orden
+    alfabético, la lista ``(título, archivo, markdown)`` de sus secciones, en
+    el orden de ``APPENDIX_CHAPTERS``.
+    """
+    import solidum
+
+    available = solidum.available_user_modules()
+    body: list[tuple[str, Path, str]] = []
+    by_module: dict[str, list[tuple[str, Path, str]]] = {}
+    problems: list[str] = []
+
+    for chapter_name, source_rel in APPENDIX_CHAPTERS:
+        source_path = ROOT / source_rel
+        if not source_path.exists():
+            print(f"  [!] Anexo no encontrado: {source_path}")
+            continue
+        md, sections = split_user_module_sections(
+            source_path.read_text(encoding="utf-8"), source_rel)
+        body.append((chapter_name, source_path, md))
+        for module, section_md in sections.items():
+            if module not in available:
+                problems.append(
+                    f"{source_rel}: sección «Módulos de usuario — {module}» sin módulo "
+                    f"de usuario '{module}' en solidum/user/. Disponibles: {available}."
+                )
+                continue
+            by_module.setdefault(module, []).append((chapter_name, source_path, section_md))
+
+    if problems:
+        raise SystemExit(
+            "[!] Secciones de catálogo que no pueden entrar al manual:\n  "
+            + "\n  ".join(problems)
+        )
+    return body, dict(sorted(by_module.items()))
 
 UNICODE_MAP: dict[str, str] = {
     "✓": r"\ensuremath{\checkmark}",
@@ -901,8 +1011,12 @@ def md_to_latex(md: str) -> str:
     # Reglas horizontales
     md = re.sub(r"^---+\s*$", "", md, flags=re.MULTILINE)
 
-    # Blockquotes simples (> texto); el `>` ya llega escapado.
-    md = re.sub(r"^\\textgreater\{\}\s*(.+)$", r"\\textit{\1}\n", md, flags=re.MULTILINE)
+    # Blockquotes simples (> texto); el `>` ya llega escapado. Sólo espacios
+    # horizontales tras el `>`: con `\s*` una línea `>` vacía se tragaba la
+    # siguiente y dejaba un `>` literal en el PDF. Las líneas `>` vacías
+    # separan párrafos de la cita.
+    md = re.sub(r"^\\textgreater\{\}[ \t]*$", "", md, flags=re.MULTILINE)
+    md = re.sub(r"^\\textgreater\{\}[ \t]*(.+)$", r"\\textit{\1}\n", md, flags=re.MULTILINE)
 
     # Listas con viñeta — bloque de líneas consecutivas iniciadas por `- ` o `* `
     def _itemize(match: re.Match) -> str:
@@ -1143,7 +1257,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \renewcommand{\footrulewidth}{0.4pt}
 
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, name, kind, status, interface, parameters, signature, conventions, validity, out_of_scope, acceptance, references, material_contract, dof_names, n_nodes, strain_dim, n_integration_points, type, required, desc, sign, voigt, node_orientation, configuration, expected_behaviour, strain_kind, primary_state_var, state_passthrough, numerical_caveats, setup, expect, tol_rel, tol_abs},
+  keywords={nodes, materials, elements, mesh, name, kind, status, interface, parameters, signature, conventions, validity, out_of_scope, acceptance, references, material_contract, dof_names, n_nodes, strain_dim, n_integration_points, type, required, desc, sign, voigt, node_orientation, configuration, expected_behaviour, strain_kind, primary_state_var, state_passthrough, numerical_caveats, setup, expect, tol_rel, tol_abs, admission, textbooks, general_codes},
   keywordstyle=\color{yamlkey}\bfseries,
   ndkeywords={true, false, null},
   ndkeywordstyle=\color{yamlval}\bfseries,
@@ -1231,7 +1345,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \addcontentsline{toc}{chapter}{Sobre este Manual}
 \noindent Este manual contiene la \textbf{referencia formal} de los componentes de Solidum FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
 
-El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. El cuerpo del manual describe el \textbf{programa principal}; las specs de los \textbf{módulos de usuario} (formulaciones no estándar, en \texttt{docs/user/*/specs/*.md}) se recogen en el apéndice \emph{Módulos de usuario}, agrupadas por módulo. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
+El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. El cuerpo del manual describe el \textbf{programa principal}; las specs de los \textbf{módulos de usuario} (formulaciones no estándar, en \texttt{docs/user/*/specs/*.md}) y sus entradas de los catálogos se recogen en el apéndice \emph{Módulos de usuario}, un capítulo por módulo. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
 \begin{center}\texttt{python manuals/build\_reference\_manual.py}\end{center}
 
 Para una guía orientada al uso del programa (sintaxis YAML, ejemplos, post-procesamiento), consulte el \textbf{Manual de Usuario} en \texttt{manuals/User\_manual.pdf}.
@@ -1278,6 +1392,7 @@ def assemble() -> str:
     parts = [PREAMBLE]
     groups = build_groups()
     user_groups = build_user_groups()
+    body_catalogs, user_catalogs = build_catalog_chapters()
     internal = {c for _, comps in groups for c in comps if (SPECS_DIR / f"{c}.md").exists()}
     internal |= {c for mod, comps in user_groups for c in comps
                  if user_spec_path(mod, c).exists()}
@@ -1291,13 +1406,8 @@ def assemble() -> str:
                 continue
             _append_spec(parts, comp, spec_path)
 
-    # Anexos (no derivan de specs; rutas relativas a la raíz del repo).
-    for chapter_name, source_rel in APPENDIX_CHAPTERS:
-        source_path = ROOT / source_rel
-        if not source_path.exists():
-            print(f"  [!] Anexo no encontrado: {source_path}")
-            continue
-        md = source_path.read_text(encoding="utf-8")
+    # Anexos (no derivan de specs), ya sin las secciones de módulo de usuario.
+    for chapter_name, source_path, md in body_catalogs:
         set_link_context(source=source_path, heading_offset=0)
         ltx = md_to_latex(md)
         parts.append(f"\\chapter{{{_escape_title(chapter_name)}}}\n")
@@ -1305,17 +1415,28 @@ def assemble() -> str:
         parts.append("\n\\newpage\n")
 
     # Apéndice «Módulos de usuario» (ADR 0020): al final, con numeración de
-    # apéndice (A, B…), un capítulo por módulo. Las specs llevan el mismo
-    # nivel de encabezados que en el cuerpo (\section por spec).
-    if user_groups:
+    # apéndice (A, B…), un capítulo por módulo con specs o con secciones de
+    # catálogo. Primero sus entradas de catálogo, una \section por catálogo con
+    # las entradas un nivel por debajo; después las specs, con el mismo nivel
+    # de encabezados que en el cuerpo (\section por spec).
+    specs_by_module = dict(user_groups)
+    modules = sorted(set(specs_by_module) | set(user_catalogs))
+    if modules:
         parts.append("\\appendix\n")
-    for module, components in user_groups:
+    for module in modules:
         intro_src = USER_DOCS_DIR / module / "specs"
         set_link_context(source=intro_src / "_intro.md", heading_offset=0)
         parts.append(f"\\chapter{{Módulos de usuario --- {_escape_title(module)}}}\n"
                      f"\\label{{usermod:{module}}}\n")
         parts.append(md_to_latex(user_module_intro(module)))
-        for comp in components:
+        catalogs = user_catalogs.get(module, [])
+        for chapter_name, source_path, md in catalogs:
+            set_link_context(source=source_path, heading_offset=1)
+            parts.append(f"\\section{{{_escape_title(chapter_name)}}}\n")
+            parts.append(md_to_latex(md))
+        if catalogs:
+            parts.append("\n\\newpage\n")
+        for comp in specs_by_module.get(module, []):
             _append_spec(parts, comp, user_spec_path(module, comp))
 
     parts.append(POSTAMBLE)

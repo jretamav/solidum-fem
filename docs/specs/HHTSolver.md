@@ -115,6 +115,13 @@ interface:
   type_yaml: HHTSolver
   pipeline_kind: transient    # mismo que NewmarkSolver
 
+admission:                # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - hughes: "cap. 9 (método α de Hilber-Hughes-Taylor)"
+  general_codes:
+    - abaqus: "*DYNAMIC (HHT-α, Abaqus/Standard)"
+    - opensees: "integrator HHT"
+
 parameters_extra_to_NewmarkSolver:
   - { name: alpha,  type: float, required: false, default: -0.05,
       desc: "Parámetro HHT en [-1/3, 0]. α=0 recupera Newmark trapezoidal.

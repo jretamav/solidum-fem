@@ -14,8 +14,10 @@ un iterado por detrás del desplazamiento guardado (auditoría 2026-09-22).
 El bucle es el :class:`~solidum.math.solvers.corrector.NewtonCorrector`
 compartido (ADR 0015). Lo propio del arc-length —predictor tangente,
 las dos resoluciones por iteración (``du_R`` y ``du_t``) y la restricción
-que fija ``ddλ``— vive en :class:`_ArcProblem`; la variante por
-disipación sólo redefine la restricción.
+que fija ``ddλ``— vive en :class:`_ArcProblem`; una variante que sólo
+cambia la magnitud controlada redefine su método ``constraint`` (p. ej.
+:class:`IndirectDisplacementSolver`). El paquete lo exporta con nombre
+público, ``solidum.math.solvers.ArcProblem``, para las variantes de fuera.
 
 Primer paso (2026-09-23)
 ------------------------
@@ -256,20 +258,6 @@ class ArcLengthSolver:
         self.lambda_final: float = 0.0
         self.reached_max_lambda: bool = False
         self.steps_done: int = 0
-
-    def _negative_pivots(self, K) -> int | None:
-        """Diagnóstico de bifurcación vía Sturm sequence (ADR 0003 fase 2).
-
-        Cuando ``LDLTSolver`` esté implementado (backend con LDLᵀ verdadero
-        de Bunch-Kaufman, p. ej. pypardiso), este método factoriza ``K_t`` y
-        retorna ``factor.n_negative_pivots``. Por la ley de inercia de
-        Sylvester equivale al número de autovalores negativos: 0 antes de
-        bifurcación, 1 tras el primer punto crítico, etc.
-
-        En fase 2 retorna ``None`` (LDLᵀ es placeholder; LU general no
-        preserva inercia y dar un conteo aproximado sería engañoso).
-        """
-        return None
 
     @classmethod
     def _first_step_spec(cls, initial_dl, initial_dlambda):
