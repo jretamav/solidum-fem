@@ -122,9 +122,10 @@ Hay dos memorias que persisten entre sesiones:
 
 Resumen ágil de Reglas.md §3 (no la sustituye; léela entera al menos una vez).
 
-- **Decide el agente, reporta una frase**: plumbing puro — registry, decoradores, scaffolding, type hints, refactor zonal, vectorización, caché, manejo sparse.
+- **Decide el agente, reporta una frase**: plumbing y arquitectura — registry, decoradores, scaffolding, type hints, refactor zonal, vectorización, caché, manejo sparse, clases base, semántica trial/commit, API pública (`SolveResult`, `solidum.run*`), contrato de los módulos de usuario. Desde el 2026-09-29 el usuario delega por completo la arquitectura: **no se le presenta ninguna decisión de software** y sólo se le explica si lo pide.
 - **Decide el usuario, el agente propone con ecuaciones + test analítico**: formulación física-matemática — matriz `B`, return mapping, criterios de convergencia, constantes con significado físico, traducción de convenciones bibliográficas.
-- **Zona gris (el agente propone, el usuario valida concepto)**: clases base, semántica trial/commit, API pública (`SolveResult`, `solidum.run*`), decisiones con ADR en curso. **Ante la duda, eleva a zona gris**.
+- **Estándar o módulo de usuario**: el agente aplica el criterio de admisión de Reglas.md §1; sólo si no decide, pregunta al usuario.
+- **Prueba para clasificar**: ¿cambia alguna ecuación o algún resultado físico? Sí → usuario. No → agente.
 
 ---
 
@@ -138,7 +139,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 | Refactor zonal (centralización, renombre estructural)   | Diff + rationale en commit + actualización de specs/manuales.   |
 | Cambio físico sobre componente existente                | Ecuaciones + diff + test analítico. Visto bueno antes de commit si toca formulación. |
 | Componente nuevo estándar (elemento / material / solver) | Spec primero (`docs/specs/<Nombre>.md`) → implementación → catálogo. |
-| Componente no estándar (formulación que no es FEM clásico) | Módulo de usuario (ADR 0020): código en `solidum/user/<nombre>/`, spec en `docs/user/<nombre>/specs/`, tests en `tests/user/<nombre>/`, sección «Módulos de usuario» del catálogo; scaffolding con `/solidum-new <kind> <Name> --user <nombre>`. El programa principal sólo gana piezas genéricas. Ante la duda sobre si es estándar, preguntar. |
+| Componente no estándar (formulación que no es FEM clásico) | Módulo de usuario (ADR 0020): código en `solidum/user/<nombre>/`, spec en `docs/user/<nombre>/specs/`, tests en `tests/user/<nombre>/`, sección «Módulos de usuario» del catálogo; scaffolding con `/solidum-new <kind> <Name> --user <nombre>`. El programa principal sólo gana piezas genéricas. Si es estándar lo decide el criterio de admisión (Reglas.md §1); si no decide, preguntar. |
 | Variante de componente existente                        | Spec corta (solo lo que cambia) + nota en catálogo si es seleccionable por YAML. Sin ADR. |
 | Cambio arquitectural grande                             | ADR en `docs/adr/000N-titulo.md` antes o junto al commit.       |
 
@@ -167,9 +168,9 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 ## 9. Si te bloqueas
 
 - **Falta contexto sobre un componente**: ir a su spec, no a chat con el usuario.
-- **Falta contexto histórico sobre una decisión**: buscar en `docs/adr/`. Si no está, es señal de que la decisión no se ha tomado formalmente (zona gris).
+- **Falta contexto histórico sobre una decisión**: buscar en `docs/adr/`. Si no está, es señal de que la decisión no se ha tomado formalmente: si es de arquitectura, tomarla y registrarla; si toca física, preguntar al usuario.
 - **El usuario delega "decide tú"**: **responsabilidad amplificada, no descarga**. Aplicar reglas + memoria + juicio arquitectural. Saltarse cualquiera produce decisiones plausibles pero mal alineadas. Ver memoria `feedback-rol-experto-arquitectura`.
-- **Una decisión sale del catálogo de los 6 tipos del §6**: probablemente es zona gris — proponer en chat antes de actuar.
+- **Una decisión sale del catálogo de los tipos del §6**: aplicar la prueba del §5 (¿cambia alguna ecuación o algún resultado físico?). Si no, decidir, documentar y reportar en una frase.
 
 ---
 

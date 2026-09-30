@@ -34,7 +34,7 @@ Los cinco solvers iterativos no escriben su bucle de Newton: lo ejecuta `NewtonC
 
 ---
 
-## Zona gris (clases base y semántica que el usuario debe reconocer)
+## Clases base y semántica (referencia opcional: desde el 2026-09-29 la arquitectura está delegada en la IA)
 
 ### 7. `Element` base con boilerplate compartido
 Toda la lógica común (registro de DOFs, validación de material, creación de `ElementState`, ensamblaje local→global, extracción de desplazamientos por nodo) vive en la base. Las subclases solo aportan **lo que es físicamente específico**: matriz B, integración, ley de comportamiento llamada al material.
@@ -45,7 +45,7 @@ La base define la interfaz `compute_stress_and_tangent(strain, state)`. El `STRA
 ### 9. `ElementState` con semántica trial/commit
 Cada elemento tiene un objeto `ElementState` con dos copias de las variables internas: **trial** (en exploración durante la iteración) y **committed** (último paso convergido). El solver llama `commit_state()` solo cuando el paso converge — esto evita corromper el historial plástico/de daño con tentativas no convergidas.
 
-### 10. `PRIMARY_STATE_VAR` (zona gris materiales ↔ exporter)
+### 10. `PRIMARY_STATE_VAR` (contrato materiales ↔ exporter)
 Cada material declara cuál de sus variables internas es la "principal" para visualización (`'damage'`, `'alpha'`, etc.). El `VtkExporter` la lee genéricamente sin saber de qué material proviene. Permite añadir materiales nuevos con visualización automática.
 
 ### 10b. `STATE_SCHEMA`: las variables internas declaradas (ADR 0014)
