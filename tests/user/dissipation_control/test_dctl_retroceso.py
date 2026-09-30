@@ -17,47 +17,46 @@ retroceso: el desplazamiento del extremo baja hasta 0.616·u_pico.
 
 Se comprueba, con las tolerancias del test de ``IndirectDisplacementSolver``,
 que los puntos posteriores al pico caen sobre la curva exacta y que el
-desplazamiento retrocede hasta el mínimo exacto.
+desplazamiento retrocede hasta el mínimo exacto; y, con el espía de
+``_dctl_espia.py``, que la rama de ablandamiento se resuelve de verdad con la
+restricción de disipación (el modo del problema de Newton, no sólo el
+``_mode`` que ve el callback).
 
-Estado (2026-09-29): **no lo sigue** (deuda #27 de ``docs/STATUS.md``); los dos
-tests van con ``xfail(strict=True)``. El cambio del predictor a Δλ = τ/α no
-basta, porque ese predictor no llega a ejecutarse:
+Historia. Hasta el 2026-09-29 el solver no seguía el retroceso (deuda #27 de
+``docs/STATUS.md``) y los dos tests de la curva iban con ``xfail(strict=True)``:
+el predictor del modo de disipación se ensamblaba en el estado consolidado,
+donde ``IsotropicDamage1D`` devuelve la secante ``K_s`` y el denominador de la
+restricción queda en ``α = −½·F·K_s⁻¹·r_n ≈ 0`` (sólo el residuo de
+equilibrio), y el arco cilíndrico se atascaba en la esquina del pico sin dar un
+paso con ``ΔE_d`` sobre el umbral de conmutación. El 2026-09-30 el usuario
+aprobó el cambio de formulación (spec, §5): (a) el predictor usa la tangente de
+carga ``K_L`` del último iterado convergido y (b) el modo de disipación
+arranca cuando ``|α_L| > 1e-3·½·|λ_n·F·δu_L|``. Con ello los tests pasan sin
+marca y sin tocar tolerancias.
 
-1. El predictor del modo de disipación se ensambla en el estado consolidado,
-   donde ``IsotropicDamage1D`` no está en carga activa (ε_eq = κ) y devuelve la
-   rigidez secante ``K_s``. Como en daño con descarga secante
-   ``F_int(U_n) = K_s·U_n``, el denominador de la restricción resulta
-   ``α = ½(λ_n·F·K_s⁻¹F − F·U_n) = −½·F·K_s⁻¹·r_n`` (no confundir con el
-   ``ALPHA`` del material), es decir, sólo el residuo de equilibrio: la salvaguarda
-   ``|α| < 1e-6·escala`` devuelve el paso al modo cilíndrico. En esta barra (y
-   en la de un elemento de ``test_dctl_dissipation_arclength.py``) ningún
-   problema de Newton se construye en modo de disipación.
-2. El pico es una esquina de la curva (la tangente del elemento débil salta de
-   ``E`` a ``−ALPHA·κ₀w·E = −0.475·E``, con ``ALPHA`` el parámetro de
-   ablandamiento del material) y el retroceso empieza en él. El arco cilíndrico se
-   atasca allí: biseca hasta pasos de ~1e-10 m, cuya disipación
-   (ΔE_d ≤ 1.1e-12 J) no supera el umbral de conmutación
-   (1e-12·‖F‖‖U‖ ≈ 5.3e-12 J), y aborta al llegar a la longitud de arco mínima.
-   Con pasos iniciales mayores (Δλ₁ = 0.1) salta el retroceso y converge a
-   otro equilibrio con los diez elementos dañados.
+Revisión adversaria del 2026-09-30: todos los puntos con daño, también los de
+la rama de rigidez residual tras la saturación, sobre la solución exacta en su
+propia ``ε_w``; y el trazado, idéntico con el modelo en otras unidades
+(``test_el_trazado_no_depende_de_las_unidades``).
 
-Un prototipo de diagnóstico (fuera del repositorio), con la tangente del último
-iterado convergido en el predictor y la conmutación decidida por ese α, sigue
-el retroceso con estas mismas tolerancias (distancia máxima 3.2e-4,
-u_min/u_pico = 0.616376). Es un cambio de formulación pendiente de decisión del
-usuario. Cuando se resuelva, ``strict=True`` hará fallar estos tests hasta que
-se retire la marca.
+Límite conocido (``test_limite_conocido_con_un_primer_paso_grande``): con
+``initial_dlambda = 0.1`` el paso cilíndrico que cruza el pico converge a otro
+equilibrio, con los diez elementos ablandándose. No es un fallo del solver sino
+la no unicidad del problema incremental con ablandamiento; el test lo deja
+fijado como caso conocido.
 """
 from __future__ import annotations
 
 import logging
 import os
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
+sys.path.insert(0, os.path.dirname(__file__))
 
 import solidum  # noqa: E402
 from solidum.constants import DAMAGE_MAX  # noqa: E402
@@ -65,6 +64,8 @@ from solidum.core.domain import Domain  # noqa: E402
 from solidum.elements.truss import Truss2D  # noqa: E402
 from solidum.materials.damage_1d import IsotropicDamage1D  # noqa: E402
 from solidum.math.assembly import Assembler  # noqa: E402
+
+from _dctl_espia import espiar_problemas_de_newton  # noqa: E402
 
 solidum.load_user_module("dissipation_control")
 from solidum.user.dissipation_control import DissipationArcLengthSolver  # noqa: E402
@@ -85,32 +86,33 @@ EW_MAX = 60.0 * K0W
 # (el test pide más de 100 puntos post-pico).
 INITIAL_TAU = 1.0e-3
 
-XFAIL_27 = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Deuda #27: el predictor del modo de disipación usa la tangente del estado "
-        "consolidado, que en daño con descarga secante es la secante (α ≈ 0 ⇒ vuelta "
-        "al modo cilíndrico), y el arco cilíndrico se atasca en la esquina del pico "
-        "sin dar un paso con ΔE_d sobre el umbral de conmutación. Cambio de "
-        "formulación pendiente del usuario (2026-09-29)."
-    ),
-)
+# Columnas de la historia por paso convergido.
+U_END, FORCE, N_DAMAGED, EPS_W, D_W = range(5)
 
 
-def _bar():
-    """Barra con el elemento central debilitado; carga de referencia = pico."""
+def _bar(f_long: float = 1.0, f_fuerza: float = 1.0):
+    """Barra con el elemento central debilitado; carga de referencia = pico.
+
+    ``f_long`` y ``f_fuerza`` cambian las unidades de longitud y de fuerza
+    (número en las unidades nuevas = número en SI × factor): ``E`` escala con
+    ``f_fuerza/f_long²``, ``A`` con ``f_long²`` y las longitudes con
+    ``f_long``; las deformaciones, ``κ₀`` y ``α`` no cambian. Con los factores
+    por omisión el modelo es el de SI, bit a bit."""
+    E_u = E * f_fuerza / f_long ** 2
+    A_u = A * f_long ** 2
+    h_u = H_ELEM * f_long
     dom = Domain()
-    nodes = [dom.add_node(i + 1, [i * H_ELEM, 0.0]) for i in range(N_ELEM + 1)]
+    nodes = [dom.add_node(i + 1, [i * h_u, 0.0]) for i in range(N_ELEM + 1)]
     for k in range(N_ELEM):
         kappa_0 = K0W if k == N_ELEM // 2 else K0
-        mat = IsotropicDamage1D(E=E, kappa_0=kappa_0, alpha=ALPHA)
-        dom.add_element(Truss2D(k + 1, [nodes[k], nodes[k + 1]], mat, A=A))
+        mat = IsotropicDamage1D(E=E_u, kappa_0=kappa_0, alpha=ALPHA)
+        dom.add_element(Truss2D(k + 1, [nodes[k], nodes[k + 1]], mat, A=A_u))
     nodes[0].fix_dof('ux', 0.0)
     for node in nodes:
         node.fix_dof('uy', 0.0)
     dom.generate_equation_numbers(verbose=False)
     F = np.zeros(dom.total_dofs)
-    F[nodes[-1].dofs['ux']] = F_PEAK
+    F[nodes[-1].dofs['ux']] = F_PEAK * f_fuerza
     weak = dom.elements[N_ELEM // 2 + 1]
     return dom, Assembler(dom), F, nodes[-1], weak
 
@@ -124,26 +126,35 @@ def _exact_curve():
     return H_ELEM * ew + (L - H_ELEM) * sigma / E, A * sigma
 
 
-@pytest.fixture(scope="module")
-def traza():
-    """Historia ``(u_extremo, F, n_dañados, ε_w)`` por paso convergido.
+def _trazar(initial_dlambda: float, max_steps: int, *, f_long: float = 1.0,
+            f_fuerza: float = 1.0) -> SimpleNamespace:
+    """Traza la barra y devuelve la historia por paso convergido.
 
-    Si el solver aborta (``RuntimeError`` por longitud de paso mínima), la
-    historia llega hasta el último paso convergido y el error se guarda para
-    los mensajes de los tests.
+    - ``H``: columnas ``(u_extremo, F, n_dañados, ε_w, d_w)`` (ver ``U_END`` …
+      ``D_W``), con ``d_w`` el daño del elemento débil, siempre en SI aunque
+      el modelo se resuelva en otras unidades (``f_long``, ``f_fuerza``: ver
+      ``_bar``; ``τ₀`` escala con la energía, ``f_fuerza·f_long``);
+    - ``modos``: modo del problema de Newton que produjo cada paso;
+    - ``intentos``: ``(modo, convergió)`` de todos los intentos de paso,
+      fallidos incluidos;
+    - ``error``: el ``RuntimeError`` si el solver aborta (longitud de paso
+      mínima); la historia llega entonces hasta el último paso convergido.
     """
-    dom, asm, F, end, weak = _bar()
+    dom, asm, F, end, weak = _bar(f_long, f_fuerza)
     a, b = weak.nodes
     solver = DissipationArcLengthSolver(
-        asm, max_iter=30, max_lambda=1.2, max_steps=400,
-        initial_dlambda=0.02, initial_tau=INITIAL_TAU,
+        asm, max_iter=30, max_lambda=1.2, max_steps=max_steps,
+        initial_dlambda=initial_dlambda, initial_tau=INITIAL_TAU * f_fuerza * f_long,
     )
-    hist = []
+    intentos = espiar_problemas_de_newton(solver)
+    hist, modos = [], []
 
     def cb(step, U, lam):
         damaged = sum(1 for el in dom.elements.values() if el.state.vars[0]['damage'] > 0.0)
-        hist.append((U[end.dofs['ux']], lam * F_PEAK, damaged,
-                     (U[b.dofs['ux']] - U[a.dofs['ux']]) / H_ELEM))
+        hist.append((U[end.dofs['ux']] / f_long, lam * F_PEAK, damaged,
+                     (U[b.dofs['ux']] - U[a.dofs['ux']]) / (H_ELEM * f_long),
+                     weak.state.vars[0]['damage']))
+        modos.append(intentos[-1][0])
 
     logging.disable(logging.CRITICAL)
     error = None
@@ -153,43 +164,221 @@ def traza():
         error = exc
     finally:
         logging.disable(logging.NOTSET)
-    return np.array(hist), error
+    return SimpleNamespace(H=np.array(hist), modos=np.array(modos), intentos=list(intentos),
+                           error=error)
+
+
+@pytest.fixture(scope="module")
+def traza():
+    """Trazado con el primer paso del caso de validación (Δλ₁ = 0.02)."""
+    return _trazar(initial_dlambda=0.02, max_steps=400)
 
 
 def _post_peak(H, F_ex):
     """Puntos con daño en la rama de ablandamiento, dentro del tramo muestreado.
 
     Mismo filtro que el test de ``IndirectDisplacementSolver`` (daño y
-    ``F > 1.5·min F_exacta``) más ``ε_w ≤ 60·κ₀w``: pasada la saturación
-    (``d = DAMAGE_MAX``) este solver sigue en modo cilíndrico por la rama de
-    rigidez residual ``(1 − DAMAGE_MAX)·E`` y sale del tramo en que está
-    muestreada la curva exacta.
+    ``F > 1.5·min F_exacta``) más ``ε_w ≤ 60·κ₀w``: el paso de disipación que
+    cruza la saturación (``d = DAMAGE_MAX``) salta por la rama de rigidez
+    residual ``(1 − DAMAGE_MAX)·E`` hasta ``ε_w ≈ 46·κ₀w``, el solver sigue
+    después en modo cilíndrico y sale del tramo en que está muestreada la
+    curva exacta.
     """
-    return H[(H[:, 2] >= 1) & (H[:, 1] > 1.5 * F_ex.min()) & (H[:, 3] <= EW_MAX)]
+    return H[(H[:, N_DAMAGED] >= 1) & (H[:, FORCE] > 1.5 * F_ex.min())
+             & (H[:, EPS_W] <= EW_MAX)]
 
 
 def test_solo_se_dana_el_elemento_debil(traza):
-    H, _ = traza
-    assert int(H[:, 2].max()) == 1
+    assert int(traza.H[:, N_DAMAGED].max()) == 1
 
 
-@XFAIL_27
 def test_puntos_post_pico_sobre_la_curva_exacta(traza):
-    H, error = traza
+    H, error = traza.H, traza.error
     u_ex, F_ex = _exact_curve()
     u_pk = u_ex[0]
     post = _post_peak(H, F_ex)
     assert len(post) > 100, f"{len(post)} puntos post-pico (solver: {error})"
-    dist = [np.min(np.hypot((u_ex - u) / u_pk, (F_ex - f) / F_PEAK)) for u, f in post[:, :2]]
+    dist = [np.min(np.hypot((u_ex - u) / u_pk, (F_ex - f) / F_PEAK))
+            for u, f in post[:, [U_END, FORCE]]]
     assert max(dist) < 1e-3
 
 
-@XFAIL_27
+def test_todos_los_puntos_con_dano_sobre_la_rama_exacta_en_su_eps_w(traza):
+    """Complemento del anterior sin el filtro ``ε_w ≤ 60·κ₀w`` (revisión
+    adversaria del 2026-09-30): cada punto con daño se compara con la
+    solución exacta evaluada en su propia ``ε_w``, sin muestreo, así que
+    entran también los ~190 pasos cilíndricos de la rama de rigidez residual
+    tras el salto de saturación (hasta ``ε_w ≈ 230·κ₀w``), que el filtro deja
+    fuera del test anterior.
+
+    Tolerancia: la del test de ``IndirectDisplacementSolver`` (1e-3). Cota
+    del criterio de convergencia (``rtol_force = 1e-5``): la fuerza axial de
+    cada elemento difiere de ``λ·F`` en ``√n·‖R‖ ≤ √10·1e-5·λ·F``; en la rama
+    residual (rigidez ``(1 − DAMAGE_MAX)·E``) eso da ``δε_w ≤ √10·1e-5·ε_w`` y
+    ``δu/u_pico ≤ h·√10·1e-5·ε_w/(κ₀w·L) ≤ 7.2e-4`` con ``ε_w = 229·κ₀w``; en
+    la rama de ablandamiento, 6.7e-5 (ver el test del primer paso grande).
+    Medido: 7.0e-6 en ``u`` y 7.7e-6 en ``F``.
+    """
+    H = traza.H[traza.H[:, N_DAMAGED] >= 1]
+    ew = H[:, EPS_W]
+    d = np.minimum(1.0 - (K0W / ew) * np.exp(-ALPHA * (ew - K0W)), DAMAGE_MAX)
+    sigma = (1.0 - d) * E * ew
+    u_ex = H_ELEM * ew + (L - H_ELEM) * sigma / E
+    u_pico = K0W * L
+    assert H[:, EPS_W].max() > 100.0 * K0W       # la rama residual está incluida
+    np.testing.assert_array_less(np.abs(H[:, U_END] - u_ex) / u_pico, 1e-3)
+    np.testing.assert_array_less(np.abs(H[:, FORCE] - A * sigma) / F_PEAK, 1e-3)
+
+
 def test_el_desplazamiento_retrocede_hasta_el_minimo_exacto(traza):
-    H, error = traza
+    H, error = traza.H, traza.error
     u_ex, F_ex = _exact_curve()
     u_pk = u_ex[0]
     u_min_exact = u_ex[F_ex < 0.999 * F_PEAK].min()
-    u_min = H[H[:, 2] >= 1, 0].min()
+    u_min = H[H[:, N_DAMAGED] >= 1, U_END].min()
     assert u_min < 0.7 * u_pk, f"u_min/u_pico = {u_min / u_pk:.5f} (solver: {error})"
     assert abs(u_min / u_pk - u_min_exact / u_pk) < 2e-3
+
+
+def test_la_rama_de_ablandamiento_se_resuelve_con_la_restriccion_de_disipacion(traza):
+    """Los pasos de la rama de ablandamiento salen de problemas de Newton en
+    modo de disipación, no sólo del ``_mode`` que ve el callback.
+
+    Secuencia esperada (acceptance ``switching_cilindrico_a_disipacion_en_pico``):
+
+    - rama elástica y paso en que empieza el daño: cilíndricos. El arranque
+      del modo de disipación necesita un paso convergido con daño en
+      crecimiento, cuya tangente de carga ``K_L`` se separe de la secante;
+    - desde el paso siguiente y mientras el elemento débil se ablanda
+      (``0 < d_w < DAMAGE_MAX``): todos en modo de disipación, sin oscilar;
+    - tras la saturación del daño la tangente de carga vuelve a ser la
+      secante (``α_L ≈ 0``) y el solver vuelve al modo cilíndrico.
+    """
+    H, modos = traza.H, traza.modos
+    d_w = H[:, D_W]
+    ablandando = np.flatnonzero((d_w > 0.0) & (d_w < DAMAGE_MAX))
+    saturados = np.flatnonzero(d_w >= DAMAGE_MAX)
+    assert len(ablandando) > 100, f"{len(ablandando)} pasos con el elemento débil ablandándose"
+    inicio = ablandando[0]
+    assert set(modos[:inicio + 1]) == {"cylindrical"}, modos[:inicio + 1]
+    assert set(modos[ablandando[1:]]) == {"dissipation"}, (
+        f"modos en la rama de ablandamiento: {sorted(set(modos[ablandando[1:]]))}")
+    assert np.array_equal(ablandando, np.arange(inicio, ablandando[-1] + 1)), (
+        "la rama de ablandamiento del elemento débil no es un tramo contiguo")
+    # El paso que cruza la saturación es aún de disipación; los siguientes, no.
+    assert len(saturados) > 1
+    assert saturados[0] == ablandando[-1] + 1
+    assert set(modos[saturados[1:]]) == {"cylindrical"}, sorted(set(modos[saturados[1:]]))
+
+
+# ---------------------------------------------------------------------------
+# Invariancia frente a las unidades
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("f_long, f_fuerza", [
+    pytest.param(1.0e3, 1.0, id="mm"),           # energías × 1e3
+    pytest.param(1.0e-6, 1.0e-6, id="micro"),    # energías × 1e-12
+])
+def test_el_trazado_no_depende_de_las_unidades(traza, f_long, f_fuerza):
+    """El mismo trazado con el modelo en otras unidades (revisión adversaria
+    del 2026-09-30).
+
+    Todo lo que el solver compara es adimensional: el arranque por
+    ``|α_L|/(½·|λ_n·F·δu_L|)``, la permanencia por ``|α|/escala``, la vuelta
+    por ``ΔE_d/(‖F‖·‖U‖)``, la guarda de ``α`` nulo (relativa a los dos
+    términos de ``α``) y el criterio de convergencia. Los dos modelos hacen
+    las mismas operaciones con números reescalados por potencias de diez, así
+    que la secuencia de intentos (modo y convergencia) debe ser idéntica y los
+    puntos deben coincidir salvo redondeo.
+
+    ``mm`` es el cambio de unidades de un factor 1e3. ``micro`` lleva las
+    energías a ~1e-12 (el orden de una probeta de micras en SI): hasta esta
+    revisión, la guarda ``|α| < ZERO_TOL`` en unidades de energía devolvía el
+    paso de ablandamiento a cilíndrico en la esquina del pico y el solver
+    abortaba en el paso 24.
+
+    Tolerancia: la única operación no covariante que queda en el camino es el
+    ``+ ZERO_TOL`` del ``Δλ`` del predictor cilíndrico (la misma fórmula que
+    ``ArcLengthSolver``), que en ``micro`` (``‖K⁻¹·F‖ ≈ 1e-10``) mueve un 1 %
+    el punto de partida de Newton; el punto convergido lo fijan la
+    restricción y el equilibrio (medido: 1.5e-10 en ``micro``, 4e-13 en
+    ``mm``). 1e-8 separa ese redondeo de un umbral dependiente de las
+    unidades, que aparecería como otra secuencia de modos o al nivel de la
+    tolerancia de convergencia (``rtol_force = 1e-5``). Ochenta intentos
+    cubren la rama elástica, los cilíndricos fallidos de la esquina, el
+    arranque del modo de disipación y unos cincuenta pasos de ablandamiento.
+    """
+    otra = _trazar(initial_dlambda=0.02, max_steps=80, f_long=f_long, f_fuerza=f_fuerza)
+    assert otra.error is None, f"el solver abortó: {otra.error}"
+    n = len(otra.intentos)
+    assert otra.intentos == traza.intentos[:n]
+    assert "dissipation" in set(otra.modos)
+    k = len(otra.H)
+    u_pico = K0W * L
+    np.testing.assert_array_less(np.abs(otra.H[:, U_END] - traza.H[:k, U_END]) / u_pico, 1e-8)
+    np.testing.assert_array_less(np.abs(otra.H[:, FORCE] - traza.H[:k, FORCE]) / F_PEAK, 1e-8)
+
+
+# ---------------------------------------------------------------------------
+# Límite conocido: primer paso grande
+# ---------------------------------------------------------------------------
+
+def _eps_softening(F, kappa_0):
+    """Deformación de un elemento en su rama de ablandamiento bajo la fuerza
+    ``F``: ``F/A = E·κ₀·exp(−α(ε − κ₀))`` (``σ = (1 − d)·E·ε`` con el ``d``
+    exponencial de ``IsotropicDamage1D``, antes del tope ``DAMAGE_MAX``)."""
+    return kappa_0 - np.log(F / (A * E * kappa_0)) / ALPHA
+
+
+@pytest.fixture(scope="module")
+def traza_paso_grande():
+    """Trazado con Δλ₁ = 0.1. Treinta pasos bastan: el salto de rama ocurre
+    en el quinto."""
+    return _trazar(initial_dlambda=0.1, max_steps=30)
+
+
+def test_limite_conocido_con_un_primer_paso_grande(traza_paso_grande):
+    """Con ``initial_dlambda = 0.1`` el trazado no sigue la rama del retroceso.
+
+    Qué pasa: los pasos cilíndricos crecen (×1.5 hasta 5·Δl₁) y el que cruza
+    el pico lleva el predictor elástico, de deformación uniforme, por encima
+    del umbral de los diez elementos a la vez (el margen entre ``κ₀w`` y
+    ``κ₀`` es del 5 %). Newton converge entonces a un equilibrio con los diez
+    elementos en carga activa, ablandándose en serie. Es un equilibrio
+    legítimo: con ablandamiento el problema incremental no tiene solución
+    única (a una misma fuerza, cada elemento puede cargar o descargar), y el
+    arco no tiene cómo elegir la rama localizada. El salto ocurre en un paso
+    cilíndrico, antes de que el criterio de arranque del modo de disipación
+    pueda actuar: éste necesita un paso convergido con daño en crecimiento.
+    Desde ahí el solver sigue, ya en modo de disipación, esa otra rama.
+
+    No es un fallo del solver sino una limitación documentada (spec §10): el
+    primer paso debe ser lo bastante pequeño para que el paso que cruza el
+    pico no rebase el umbral de los elementos que deben descargarse. Si una
+    mejora futura lo evitara, este test fallará y habrá que actualizarlo.
+    """
+    H, modos, error = traza_paso_grande.H, traza_paso_grande.modos, traza_paso_grande.error
+    assert error is None, f"el solver abortó: {error}"
+    con_dano = np.flatnonzero(H[:, N_DAMAGED] >= 1)
+    salto = con_dano[0]
+    # El paso que cruza el pico daña los diez elementos, y es cilíndrico.
+    assert int(H[salto, N_DAMAGED]) == N_ELEM
+    assert modos[salto] == "cylindrical"
+    assert set(modos[salto + 1:]) == {"dissipation"}
+    assert len(modos) - salto - 1 > 10
+    # Los puntos están sobre la rama con los diez elementos ablandándose:
+    #   u(F) = h·ε(F; κ₀w) + (L − h)·ε(F; κ₀).
+    # Tolerancia derivada del criterio de convergencia por omisión
+    # (rtol_force = 1e-5 sobre ‖R‖ en los DOF libres): la fuerza axial de cada
+    # elemento difiere de λ·F en la suma de los residuos nodales desde él
+    # hasta el extremo, así que |σ_i·A − λ·F| ≤ √n·‖R‖ ≤ √10·1e-5·λ·F; en
+    # ablandamiento |dσ/dε| = α·σ, de modo que δε_i ≤ √10·1e-5/α y
+    # δu ≤ L·√10·1e-5/α, es decir, δu/u_pico ≤ √10·1e-5/(α·κ₀w) = 6.7e-5
+    # (u_pico = κ₀w·L). 1e-4 deja 1.5× de margen (medido: 4.5e-13).
+    F = H[salto:, FORCE]
+    u_rama = (H_ELEM * _eps_softening(F, K0W)
+              + (L - H_ELEM) * _eps_softening(F, K0))
+    u_pico = K0W * L
+    np.testing.assert_array_less(np.abs(H[salto:, U_END] - u_rama) / u_pico, 1e-4)
+    # Y no es la rama localizada: el desplazamiento no retrocede.
+    assert H[salto:, U_END].min() > u_pico

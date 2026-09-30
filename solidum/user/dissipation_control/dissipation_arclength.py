@@ -12,19 +12,28 @@ Está diseñado para atravesar:
 - Transición elástico→ablandamiento con una rigidez tangente casi singular
   en el pico, donde el cilíndrico falla por cuasi-degeneración del
   discriminante de la cuadrática.
-- Rama post-pico estable de ablandamiento (modo `"dissipation"`).
+- Rama post-pico estable de ablandamiento (modo `"dissipation"`), incluidos
+  los retrocesos (*snap-back*): la restricción fija el signo de Δλ.
 - Descarga global una vez agotado el ablandamiento (volver a
   `"cylindrical"`).
 
-El switching cilíndrico↔disipación es **automático** según se detecte
-disipación neta por encima de un umbral relativo. La spec completa en
-``docs/user/dissipation_control/specs/DissipationArcLengthSolver.md``.
+El switching cilíndrico↔disipación es **automático**. Desde el 2026-09-30 el
+predictor del modo de disipación y el arranque de ese modo usan la **tangente
+de carga** ``K_L`` —la del último iterado convergido del paso anterior— en
+lugar de la tangente del estado consolidado, que en daño con descarga secante
+es la secante y anula el denominador de la restricción. La spec completa en
+``docs/user/dissipation_control/specs/DissipationArcLengthSolver.md`` (§5).
 
 Módulo de usuario ``dissipation_control`` (ADR 0020): se conecta al programa
 principal por su parte pública —:class:`ArcLengthSolver` y el problema de
 Newton por paso :class:`ArcProblem`, cuyo método ``constraint`` redefine— y
 por los métodos que la clase de arco ofrece a sus variantes (predictor
-tangente, primer paso, llegada a ``max_lambda`` y cierre del trazado).
+tangente, primer paso, llegada a ``max_lambda`` y cierre del trazado). La
+tangente de carga la toma del resultado público del corrector compartido
+(``CorrectorResult.state``, el ``(K, F_int)`` del ensamblaje en el iterado
+convergido) y la resuelve con el backend del corrector (``corrector.solve``)
+y la reducción de Dirichlet/MPC del ensamblador (``reduce``/``expand``), las
+mismas piezas que usa el predictor del padre.
 """
 from __future__ import annotations
 
@@ -41,6 +50,45 @@ from solidum.registry import SolverRegistry
 # Mismo logger que los solvers del programa principal ("solvers"): los filtros
 # y la captura de registros no distinguen la procedencia del solver.
 _log = get_logger("solvers")
+
+# Umbral relativo de ARRANQUE del modo de disipación (decisión del usuario del
+# 2026-09-30, spec §5): se conmuta de cilíndrico a disipación cuando
+#   |α_L| > ALPHA_SWITCH_RTOL · ½·|λ_n·F_ref·δu_L|,   δu_L = K_L⁻¹·F_ref,
+# es decir, cuando la tangente de carga se separa de la secante. Suelo de
+# ruido: en régimen sin disipación K_L = K_s y α_L = −½·F·K⁻¹·r_n, con r_n el
+# residuo de equilibrio del paso anterior, así que |α_L|/escala ≤
+# (‖r_n‖/‖λ_n·F‖)/cos θ, con θ el ángulo entre F y K⁻¹·F: del orden de la
+# tolerancia relativa de fuerza del criterio de convergencia
+# (CONVERGENCE_RTOL_FORCE = 1e-5 por omisión; medido en la barra con
+# retroceso: ≈ 1e-15 en la rama elástica, ≈ 1e-6 con la secante tras el
+# inicio del daño). 1e-3 deja dos órdenes de margen; con daño en
+# crecimiento la razón es O(0.1-1) (0.45 en el paso que conmuta en la barra:
+# α_L = −0.42 J frente a una escala de 0.93 J). Si el usuario afloja el
+# criterio de convergencia hasta rtol ≳ 1e-4, el margen desaparece.
+ALPHA_SWITCH_RTOL = 1.0e-3
+
+# Umbral relativo de PERMANENCIA (anterior al 2026-09-30, sin cambios): en un
+# paso en modo de disipación, |α| < ALPHA_LINEAR_RTOL·escala se toma por
+# régimen sin disipación y el paso vuelve a cilíndrico. Junto con el umbral de
+# arranque forma una histéresis (entrar exige 1e-3, salir 1e-6) que evita que
+# el modo oscile entre pasos contiguos.
+ALPHA_LINEAR_RTOL = 1.0e-6
+
+
+def _alpha_is_null(alpha: float, lambda_n: float, F_du: float, F_U_n: float) -> bool:
+    """``α = ½·(λ_n·F·δu − F·U_n)`` es nulo a precisión de máquina.
+
+    Guarda contra la división por cero en ``Δλ = τ/α`` y ``ddλ = (τ − g)/α``,
+    relativa a los dos términos de los que α es diferencia: ``|α| ≤ ZERO_TOL·
+    ½·(|λ_n·F·δu| + |F·U_n|)``. Adimensional (revisión del 2026-09-30): hasta
+    entonces se comparaba ``|α|`` con ``ZERO_TOL`` en unidades de energía, y en
+    un modelo con energías de ~1e-12 (una probeta de micras en SI, o la barra
+    de validación con longitudes y fuerzas en unidades 1e6 veces mayores) el
+    α de un paso de ablandamiento genuino caía por debajo y el solver volvía a
+    cilíndrico en la esquina del pico. Con ambos términos nulos (λ_n = 0 y
+    U_n = 0) la guarda salta: α = 0 exactamente.
+    """
+    return abs(alpha) <= ZERO_TOL * 0.5 * (abs(lambda_n * F_du) + abs(F_U_n))
 
 
 class _DissipationArcProblem(ArcProblem):
@@ -61,15 +109,14 @@ class _DissipationArcProblem(ArcProblem):
         #   g(ΔU + du_R + ddλ·du_t, Δλ_pre + ddλ) = τ
         # ⇒ ddλ = (τ − g_partial) / α
         d_lambda_pre = lambda_iter - self.lambda_curr
-        alpha = 0.5 * (
-            self.lambda_curr * float(F_ext_ref @ du_t)
-            - float(F_ext_ref @ self.U_current)
-        )
+        F_du_t = float(F_ext_ref @ du_t)
+        F_U_n = float(F_ext_ref @ self.U_current)
+        alpha = 0.5 * (self.lambda_curr * F_du_t - F_U_n)
         g_partial = 0.5 * (
             self.lambda_curr * float(F_ext_ref @ (dU_iter + du_R))
-            - d_lambda_pre * float(F_ext_ref @ self.U_current)
+            - d_lambda_pre * F_U_n
         )
-        if abs(alpha) < ZERO_TOL:
+        if _alpha_is_null(alpha, self.lambda_curr, F_du_t, F_U_n):
             raise CorrectionAborted("α ≈ 0 en corrector de disipación. Aborto del paso.")
         ddlambda = (self.tau - g_partial) / alpha
         return du_R + ddlambda * du_t, ddlambda
@@ -95,8 +142,9 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         Análogos a ``dl_*_iter_threshold`` del padre pero sobre τ.
     dissipation_threshold : float
         Umbral relativo (respecto a ``‖F_ref‖·‖U‖``) bajo el cual la
-        disipación neta del paso se considera 0 — el solver permanece
-        o vuelve a modo cilíndrico.
+        disipación neta de un paso en modo de disipación se considera 0 —
+        el solver vuelve a modo cilíndrico. Desde el 2026-09-30 no decide el
+        arranque del modo de disipación (ver Notes).
     **arclength_kwargs
         Resto de parámetros, idénticos a :class:`ArcLengthSolver`.
 
@@ -117,8 +165,34 @@ class DissipationArcLengthSolver(ArcLengthSolver):
 
     En el primer paso (``λ_n = 0``, ``U_n = 0``) el denominador α de la
     restricción es 0; por eso el solver siempre **arranca en modo
-    cilíndrico** y solo conmuta a disipación tras detectar
-    ``ΔE_d > umbral`` en un paso committed.
+    cilíndrico**.
+
+    **Tangente de carga** (2026-09-30). Con el predictor ``ΔU = Δλ·δu``,
+    ``g = α·Δλ`` con ``α = ½·(λ_n·F·δu − F·U_n)``. Si ``δu`` se calcula con
+    la tangente del estado consolidado ``U_n``, el daño con descarga secante
+    está en descarga y devuelve la secante ``K_s``; como
+    ``K_s·U_n = λ_n·F + r_n``, resulta ``α = −½·F·K_s⁻¹·r_n ≈ 0``. El solver
+    usa en su lugar ``δu_L = K_L⁻¹·F`` con ``K_L`` la tangente del último
+    iterado convergido del paso anterior (prueba de carga de Kuhn-Tucker
+    respecto del estado consolidado anterior):
+
+    .. math::
+        \\alpha_L = \\tfrac12\\,\\lambda_n\\,\\mathbf F^T
+            (\\mathbf K_L^{-1} - \\mathbf K_s^{-1})\\,\\mathbf F
+
+    mide el crecimiento del daño. Con ella:
+
+    - en modo de disipación, el predictor es ``Δλ = τ/α_L`` (negativo en un
+      retroceso) con ``ΔU = Δλ·δu_L``;
+    - en modo cilíndrico, el paso siguiente pasa a disipación cuando
+      ``|α_L| > ALPHA_SWITCH_RTOL·½·|λ_n·F·δu_L|``: la tangente de carga se
+      separa de la secante. Sustituye al criterio anterior
+      (``ΔE_d > dissipation_threshold·‖F‖‖U‖`` tras un paso cilíndrico), que
+      en un pico anguloso no se alcanza porque el arco cilíndrico se atasca
+      con pasos que apenas disipan.
+
+    Vale dentro del alcance de la spec: pequeñas deformaciones y descarga
+    secante. Con no linealidad geométrica ``α_L ≠ 0`` sin disipación.
     """
 
     PIPELINE_KIND = "static"
@@ -164,6 +238,30 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         # restricción de disipación es degenerada en (λ=0, U=0).
         self._mode: str = "cylindrical"
         self._tau: float = self.initial_tau
+        # Tangente de carga K_L: la del último iterado convergido del paso
+        # anterior (ver Notes). None hasta el primer paso convergido.
+        self._K_load = None
+
+    def _load_tangent_direction(self, F_ext_ref: np.ndarray) -> np.ndarray | None:
+        """``δu_L = K_L⁻¹·F_ref`` con la tangente de carga ``K_L``.
+
+        Misma reducción de Dirichlet/MPC y mismo backend que el predictor
+        tangente del padre (``ArcLengthSolver._tangent_predictor``), con la
+        matriz del último iterado convergido en lugar de la ensamblada en el
+        estado consolidado. Devuelve ``None`` si aún no hay paso convergido o
+        si ``K_L`` es singular: el paso sigue entonces con la tangente del
+        estado consolidado, como antes del 2026-09-30.
+        """
+        if self._K_load is None:
+            return None
+        K_red, F_red, T_t, g_t = self.assembler.reduce(self._K_load, F_ext_ref.copy())
+        try:
+            du_red = self.corrector.solve(K_red, F_red)
+        except RuntimeError:
+            _log.warning("  Tangente de carga K_L singular: predictor con la tangente "
+                         "del estado consolidado.")
+            return None
+        return self.assembler.expand(du_red, T_t, g_t)
 
     @staticmethod
     def _dissipation_increment(lambda_n: float, U_n: np.ndarray,
@@ -195,6 +293,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         # Reset del estado adaptativo al inicio de una corrida nueva.
         self._tau = self.initial_tau
         self._mode = "cylindrical"
+        self._K_load = None
 
         delta_U_step = np.zeros(ndof)
 
@@ -230,22 +329,56 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 f"[PASO {step}] modo={self._mode!s} dl={dl:.4e} tau={self._tau:.4e}"
             )
 
+            # Tangente de carga (2026-09-30, ver Notes de la clase): δu_L =
+            # K_L⁻¹·F con K_L la tangente del último iterado convergido. La
+            # tangente ensamblada por el predictor del padre en U_n es, con
+            # daño y descarga secante, la secante K_s, con la que
+            # α = −½·F·K_s⁻¹·r_n ≈ 0; con K_L, α_L mide el crecimiento del daño.
+            du_L = self._load_tangent_direction(F_ext_ref)
+
+            # Arranque del modo de disipación por α_L (criterio (b), spec §5):
+            # la tangente de carga se separa de la secante. Sustituye al umbral
+            # de ΔE_d tras un paso cilíndrico, que no se alcanza en un pico
+            # anguloso (el arco cilíndrico se atasca con pasos que apenas
+            # disipan).
+            if self._mode == "cylindrical" and du_L is not None:
+                alpha_L = 0.5 * (
+                    lambda_curr * float(F_ext_ref @ du_L)
+                    - float(F_ext_ref @ U_current)
+                )
+                scale_L = abs(0.5 * lambda_curr * float(F_ext_ref @ du_L))
+                if scale_L > 0 and abs(alpha_L) > ALPHA_SWITCH_RTOL * scale_L:
+                    _log.info(
+                        f"  Switch cilíndrico→disipación "
+                        f"(|α_L|/escala = {abs(alpha_L) / scale_L:.3e} > "
+                        f"{ALPHA_SWITCH_RTOL:g})"
+                    )
+                    self._mode = "dissipation"
+                    self._tau = self.initial_tau
+
             # dlambda según modo activo.
             mode_predictor = self._mode
+            du_pred = du_t
             if mode_predictor == "dissipation":
-                # α = ½·(λ_n·F·du_t − F·U_n)
+                # Predictor sobre la tangente de carga (criterio (a)); sin K_L
+                # utilizable, la del estado consolidado, que da α ≈ 0 y
+                # devuelve el paso a cilíndrico abajo.
+                if du_L is not None:
+                    du_pred = du_L
+                # α = ½·(λ_n·F·δu − F·U_n)
                 alpha = 0.5 * (
-                    lambda_curr * float(F_ext_ref @ du_t)
+                    lambda_curr * float(F_ext_ref @ du_pred)
                     - float(F_ext_ref @ U_current)
                 )
                 # Para problemas lineales monotónicos, α ≡ 0 exactamente
-                # (U_n = λ_n·K^-1·F_ref ⇒ F·U_n = λ_n·F·K^-1·F = λ_n·F·du_t).
+                # (U_n = λ_n·K^-1·F_ref ⇒ F·U_n = λ_n·F·K^-1·F = λ_n·F·δu).
                 # Por eso necesitamos un threshold **relativo** a la escala
-                # energética del paso: si |α| ≪ ½·λ_n·F·du_t (= energía
+                # energética del paso: si |α| ≪ ½·λ_n·F·δu (= energía
                 # elástica del estado escalada), el modo disipación no es
                 # físicamente significativo y se revierte a cilíndrico.
-                alpha_scale = abs(0.5 * lambda_curr * float(F_ext_ref @ du_t))
-                if alpha_scale > 0 and abs(alpha) < 1.0e-6 * alpha_scale:
+                F_du_pred = float(F_ext_ref @ du_pred)
+                alpha_scale = abs(0.5 * lambda_curr * F_du_pred)
+                if alpha_scale > 0 and abs(alpha) < ALPHA_LINEAR_RTOL * alpha_scale:
                     _log.info(
                         f"  α/escala = {abs(alpha)/alpha_scale:.2e} ≪ 1 "
                         f"⇒ régimen lineal: cilíndrico temporal."
@@ -255,7 +388,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     # re-entrar en disipación en el siguiente paso sin
                     # disipación física genuina.
                     self._mode = "cylindrical"
-                elif abs(alpha) < ZERO_TOL:
+                elif _alpha_is_null(alpha, lambda_curr, F_du_pred,
+                                    float(F_ext_ref @ U_current)):
                     _log.info("  α ≈ 0 estrictamente → cilíndrico temporal.")
                     mode_predictor = "cylindrical"
                     self._mode = "cylindrical"
@@ -263,7 +397,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             if mode_predictor == "cylindrical":
                 dlambda = sign * dl / (np.linalg.norm(du_t) + ZERO_TOL)
             else:  # dissipation
-                # La restricción es lineal: con ΔU = Δλ·du_t, g = Δλ·α. Exigir
+                # La restricción es lineal: con ΔU = Δλ·δu, g = Δλ·α. Exigir
                 # g = τ > 0 (disipación positiva) fija el valor Y el signo de
                 # Δλ, sin regla de signo (Gutiérrez 2004; Verhoosel et al.
                 # 2009). Con α < 0 el paso reduce la carga: es lo que permite
@@ -279,7 +413,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             # salvaguarda anterior, que bisecaba cuando el predictor rebasaba
             # max_lambda más de 3 veces lo que faltaba y, por debajo de ese
             # factor, fijaba λ = max_lambda en control de carga.
-            dU_iter = dlambda * du_t
+            dU_iter = dlambda * du_pred
             x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
             # --- 2. CORRECTOR ITERATIVO ---
@@ -318,30 +452,28 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     f"  -> CONV. lam={lambda_iter:.4f} ΔE_d={dE_d:.4e}"
                 )
 
-                # Switching cilíndrico ↔ disipación tras commit. Umbral relativo
+                # Tangente de carga del paso siguiente: la del ensamblaje en el
+                # iterado convergido (CorrectorResult.state = (K, F_int)),
+                # evaluada con la prueba de carga respecto del estado
+                # consolidado anterior. El ensamblador crea una matriz nueva
+                # en cada ensamblaje, así que guardarla no la expone a
+                # sobrescrituras.
+                self._K_load = res.state[0]
+
+                # Vuelta a cilíndrico tras commit (sin cambios): umbral relativo
                 # a la escala energética del estado, ‖F_ref‖·‖U‖, sin piso
-                # absoluto: el max(·, 1) anterior (hasta el 2026-09-29) estaba
-                # en unidades de energía y hacía el umbral dependiente del
-                # sistema de unidades del modelo (ADR 0006).
+                # absoluto (el max(·, 1) anterior, hasta el 2026-09-29, estaba
+                # en unidades de energía; ADR 0006). El arranque del modo de
+                # disipación ya no se decide aquí con ΔE_d > umbral, sino en el
+                # predictor con α_L (2026-09-30).
                 ref_energy = np.linalg.norm(F_ext_ref) * np.linalg.norm(U_iter)
                 dE_threshold = self.dissipation_threshold * ref_energy
-                if self._mode == "cylindrical":
-                    if dE_d > dE_threshold:
-                        _log.info(
-                            f"  Switch cilíndrico→disipación "
-                            f"(ΔE_d={dE_d:.3e} > {dE_threshold:.3e})"
-                        )
-                        self._mode = "dissipation"
-                        # Inicializa τ con la disipación recién observada
-                        # para continuidad del primer paso disipativo.
-                        self._tau = max(dE_d, self.initial_tau)
-                else:  # _mode == "dissipation"
-                    if dE_d < dE_threshold:
-                        _log.info(
-                            f"  Switch disipación→cilíndrico "
-                            f"(ΔE_d={dE_d:.3e} < {dE_threshold:.3e})"
-                        )
-                        self._mode = "cylindrical"
+                if self._mode == "dissipation" and dE_d < dE_threshold:
+                    _log.info(
+                        f"  Switch disipación→cilíndrico "
+                        f"(ΔE_d={dE_d:.3e} < {dE_threshold:.3e})"
+                    )
+                    self._mode = "cylindrical"
 
                 # Adaptatividad según el modo del **siguiente** paso.
                 n_solves = res.n_solves
