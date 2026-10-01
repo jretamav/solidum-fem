@@ -200,6 +200,47 @@ class TestRigidMechanismDetection(unittest.TestCase):
         d.nodes[1].fix_dof("ux", 0.0)              # un apoyo fijo lo resuelve
         self.assertEqual(self._motions(d), [])
 
+    @staticmethod
+    def _collinear_truss_3d(direction, fixed_nodes):
+        """Tres nodos alineados en 3D unidos por dos Truss3D; ``fixed_nodes``
+        quedan con ux, uy y uz impedidos."""
+        d = Domain()
+        e = np.asarray(direction, dtype=float)
+        e /= np.linalg.norm(e)
+        origin = np.array([0.3, -0.2, 0.5])
+        for i in range(3):
+            d.add_node(i + 1, list(origin + 1.7 * i * e))
+        m = Elastic1D(E=200e9)
+        for k in (1, 2):
+            d.add_element(EL("Truss3D")(k, [d.nodes[k], d.nodes[k + 1]], m, A=1e-4))
+        for n in fixed_nodes:
+            for dof in ("ux", "uy", "uz"):
+                d.nodes[n].fix_dof(dof, 0.0)
+        d.generate_equation_numbers()
+        return d
+
+    def test_collinear_pin_jointed_line_with_fixed_ends_is_supported(self):
+        """El giro alrededor de la recta que contiene todos los nodos de un
+        modelo de barras articuladas no mueve ningún DOF: no es un movimiento
+        del modelo. Antes del 2026-10-01 se denunciaba como mecanismo y
+        bloqueaba, p. ej., una cuerda pretensada recta en 3D."""
+        for direction in ([1.0, 0.0, 0.0], [1.0, 2.0, -0.5]):
+            with self.subTest(direction=direction):
+                d = self._collinear_truss_3d(direction, fixed_nodes=(1, 3))
+                self.assertEqual(self._motions(d), [])
+
+    def test_collinear_line_with_one_fixed_end_still_rotates(self):
+        """La corrección no oculta mecanismos reales: con un solo extremo fijo
+        la línea gira alrededor de ese nodo en dos planos independientes (el
+        giro alrededor de su propia recta sigue sin contar)."""
+        d = self._collinear_truss_3d([1.0, 0.0, 0.0], fixed_nodes=(1,))
+        motions = self._motions(d)
+        self.assertEqual(len(motions), 2)
+        for motion in motions:
+            self.assertIn("giro alrededor del eje", motion)
+            self.assertIn("que pasa por (0.3, -0.2, 0.5)", motion)
+            self.assertNotIn("eje x", motion)
+
     def test_linear_constraints_count_as_supports(self):
         """Una restricción lineal que ata ``ux`` a un DOF prescrito restringe;
         una que ata dos DOF libres entre sí, no."""

@@ -99,6 +99,15 @@ def _nullspace(S: np.ndarray, m: int) -> np.ndarray:
     return Vt[rank:].T
 
 
+def _column_space(M: np.ndarray) -> np.ndarray:
+    """Base ortonormal del espacio columna de ``M`` (pocas filas y columnas)."""
+    if M.size == 0:
+        return M
+    U, sv, _ = np.linalg.svd(M, full_matrices=False)
+    tol = MECHANISM_RANK_RTOL * max(1.0, float(sv.max()) if sv.size else 0.0)
+    return U[:, : int(np.sum(sv > tol))]
+
+
 def unrestrained_rigid_motions(assembler) -> list[str]:
     """Movimientos de cuerpo rígido que las restricciones del modelo dejan
     libres, descritos en palabras. Lista vacía ⇒ el modelo está apoyado.
@@ -119,7 +128,14 @@ def unrestrained_rigid_motions(assembler) -> list[str]:
     cs = assembler.constraint_set
     ndof = assembler.ndof
     scale = np.max(np.abs(B), axis=0)
-    scale[scale == 0.0] = 1.0
+    # Un modo que sólo mueve los DOFs en el ruido de redondeo (el giro
+    # alrededor de la recta de unos nodos alineados fuera del origen) es
+    # nulo: normalizado por su máximo se amplificaría a un movimiento ficticio.
+    negligible = scale <= MECHANISM_RANK_RTOL * max(1.0, float(scale.max()))
+    if negligible.any():
+        B = np.array(B, dtype=float, copy=True)
+        B[:, negligible] = 0.0
+    scale[negligible] = 1.0
     Bn = B / scale
 
     slave = cs.slave_dofs
@@ -139,6 +155,15 @@ def unrestrained_rigid_motions(assembler) -> list[str]:
     motions: list[str] = []
     if mech:
         N = _nullspace(S[:, mech], len(mech))
+        # Una combinación de modos que no mueve ningún DOF (B·c = 0) cumple
+        # S·c = 0 sin que ningún apoyo la impida, pero no es un movimiento
+        # del modelo: el giro alrededor de la recta que contiene todos los
+        # nodos de un modelo de barras articuladas, o un giro alrededor de un
+        # nodo aislado sin DOFs de giro. Se quita del núcleo antes de
+        # describirlo; si B tiene rango completo, N no cambia.
+        Z = _nullspace(Bn[:, mech], len(mech))
+        if Z.shape[1]:
+            N = _column_space(N - Z @ (Z.T @ N))
         for k in range(N.shape[1]):
             a = N[:, k] / scale[mech]  # coeficientes sobre las columnas originales
             t, w = np.zeros(3), np.zeros(3)
