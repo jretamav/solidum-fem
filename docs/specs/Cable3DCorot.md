@@ -12,15 +12,18 @@ Elemento 1D inmerso en el espacio 3D que modela un **cable**: dos nodos articula
 La unilateralidad vive en el **material**; el elemento es la maquinaria cinemática 3D. Para obtener respuesta física de cable, emparejar con `CableMaterial1D`. Con un material elástico clásico, el elemento se comporta como una barra corotacional 3D.
 
 ### 1. Cinemática
-- Referencia: $\mathbf X_1, \mathbf X_2 \in \mathbb{R}^3$, longitud $L_0 = \|\mathbf X_2 - \mathbf X_1\|$.
+- Referencia: $\mathbf X_1, \mathbf X_2 \in \mathbb{R}^3$, longitud geométrica $L = \|\mathbf X_2 - \mathbf X_1\|$.
+- Sin tensión: longitud $L_0$ del cable descargado (parámetro opcional `L0`; por defecto $L_0 = L$).
 - Corriente: $\mathbf x_i = \mathbf X_i + \mathbf u_i$, longitud $l = \|\mathbf x_2 - \mathbf x_1\|$.
 
 Vector unitario del eje corriente:
 $$\hat{\mathbf e} = \frac{\mathbf x_2 - \mathbf x_1}{l} = (c_x, c_y, c_z), \qquad c_x^2 + c_y^2 + c_z^2 = 1.$$
 
 ### 2. Medida de deformación
-Ingenieril corotacional:
+Ingenieril corotacional, respecto de la longitud sin tensión:
 $$\varepsilon = \frac{l - L_0}{L_0}.$$
+
+**Pretensión** (2026-10-01): igual que en `Cable2DCorot`. Con $L_0 < L$ el cable arranca con $\varepsilon_0 = (L - L_0)/L_0$ y, con material elástico en tracción, $N_0 = E\,A\,\varepsilon_0$; con $L_0 > L$ arranca flojo; con $L_0 = L$ (por defecto) nada cambia.
 
 ### 3. Ecuación constitutiva
 Delegada al material con `STRAIN_DIM = 1`. El elemento llama `material.compute_state(ε, state)` y recibe $(\sigma, E_t, \text{nuevo estado})$ sin inspeccionar su naturaleza. La unilateralidad (si la hay) es responsabilidad del material.
@@ -28,6 +31,8 @@ Delegada al material con `STRAIN_DIM = 1`. El elemento llama `material.compute_s
 ### 4. Equilibrio — forma débil incremental
 PTV estándar; el elemento calcula solo el lado interno:
 $$\delta W_{\text{int}} = \delta\mathbf u_e^\top\,\mathbf F_{\text{int}}, \qquad \mathbf K_T = \frac{\partial\mathbf F_{\text{int}}}{\partial\mathbf u_e} = \mathbf K_M + \mathbf K_G.$$
+
+El vector nodal equivalente de una fuerza de cuerpo $\mathbf b$ es $\mathbf b\,A\,L_0/2$ por nodo (`compute_body_load`): $A\,L_0$ es el volumen de material del cable descargado.
 
 ---
 
@@ -52,6 +57,8 @@ $$\mathbf K_M = \frac{E_t\,A}{L_0}\,\mathbf d\,\mathbf d^\top \quad (6\times 6,\
 $$\mathbf K_G = \frac{N}{l}\,\begin{bmatrix}\mathbf P_3 & -\mathbf P_3 \\ -\mathbf P_3 & \mathbf P_3\end{bmatrix} \quad (6\times 6,\ \text{rango 2}), \qquad N = \sigma A.$$
 
 **Caso destensado** (material unilateral con $\varepsilon \leq 0$): el material devuelve $\sigma = 0$, $E_t = 0$, luego $N = 0$ y **ambas contribuciones se anulan** — $\mathbf K_T = \mathbf 0$. El elemento aporta cero al sistema global.
+
+**Caso pretensado** ($L_0 < L$): en la configuración de referencia $N = N_0 > 0$ y $\mathbf K_G$ aporta la rigidez $N_0/L$ en las dos direcciones perpendiculares al eje desde el primer paso.
 
 ### 10. Fuerzas internas
 $$\mathbf F_{\text{int}} = N\,\mathbf d.$$
@@ -84,6 +91,7 @@ admission:                # criterio de admisión al programa principal (Reglas.
 
 parameters:
   - { name: A, type: float, required: true, desc: "Área de la sección transversal del cable" }
+  - { name: L0, type: float, required: false, desc: "Longitud sin tensión (> 0). Por defecto, la longitud geométrica entre nodos; menor ⇒ cable pretensado, mayor ⇒ cable flojo" }
 
 material_contract:
   signature: "compute_state(ε, state) -> (σ, E_tangent, state')"
@@ -103,10 +111,8 @@ validity:
 
 out_of_scope:
   - flexión, cortante, momentos, torsión
-  - dinámica con inercia distribuida (sin matriz de masa)
   - pandeo (irrelevante: el cable no transmite compresión)
-  - "fuerzas de cuerpo distribuidas: el usuario reparte masa/peso a los nodos"
-  - pretensión mediante parámetro del elemento
+  - "catenaria: el cable es recto entre nodos; el peso propio se reparte a los nodos y la flecha se obtiene discretizando en varios elementos"
 
 numerical_caveats:
   - "Cable destensado ⇒ K_T = 0 en los DOFs del elemento. Si otros elementos no garantizan rigidez en esos DOFs, la matriz tangente global puede ser singular."
@@ -133,6 +139,20 @@ acceptance:
     expect: "σ = 0, E_t = 0, F_int = 0, K_T = 0"
     tol_abs: 1.0e-12
 
+  - name: pretensión inicial exacta en un cable oblicuo
+    setup: "CableMaterial1D (E=2e11), A=3e-4, cable oblicuo en el espacio, L0 de la pretensión T0 = 25 kN; u_e = 0"
+    expect: "N = T0, rigidez transversal vᵀ·K_T·v = T0/L para un desplazamiento unitario perpendicular al eje, F_int = T0·d"
+    tol_rel: 1.0e-10
+
+  - name: cuerda pretensada con carga central en 3D
+    setup: "dos cables colineales sobre el eje x con extremos fijos, pretensión T0, carga P = 3 kN según −z en el nodo central; NonlinearSolver"
+    expect: "misma solución analítica que el criterio 6 de Cable2DCorot; desplazamiento según y nulo"
+    tol_rel: 1.0e-9
+
+  - name: L0 inválida
+    setup: "L0 ∈ {0, −1, ∞, NaN}"
+    expect: "ValueError que nombra L0"
+
 references:
   - "Crisfield M.A., Non-linear Finite Element Analysis of Solids and Structures, vol.1, §3.3"
   - "Belytschko T., Nonlinear Finite Elements for Continua and Structures, §4.5"
@@ -151,6 +171,7 @@ references:
   - `test_acceptance_rotacion_rigida_3d` (criterio 3).
   - `test_acceptance_cruce_por_cero` (criterio 4).
   - `test_registro_en_registry` — autodiscover.
+  - `TestPretensionLongitudSinTension` (criterios compartidos con `Cable2DCorot`): `test_pretension_inicial_exacta_3d_oblicuo`, `test_cuerda_pretensada_carga_central_3d` y `test_L0_invalido_se_rechaza`.
 - **Notas de traducción**:
   - La clase duplica la maquinaria corotacional 3D de `Truss3DCorot`. Duplicación deliberada por la misma razón que en 2D: desacoplar la evolución futura de armaduras y cables.
   - El proyector $\mathbf P_3 = \mathbf I_3 - \hat{\mathbf e}\hat{\mathbf e}^\top$ se construye con `solidum.math.geometry.perpendicular_projector(ê)`, helper compartido con `Truss3DCorot` (operación geométrica pura, ortogonal al hecho de que el material sea unilateral o no).
@@ -165,3 +186,4 @@ references:
 - **2026-04-21** · Elemento creado como pieza totalmente autónoma por decisión del usuario: no hereda de `Cable2DCorot` ni de `Truss3DCorot`. Compartir archivo con `Cable2DCorot` (`solidum/elements/cable.py`) es convención temática del proyecto (elementos del mismo dominio conviven en un archivo, como las 4 armaduras y los 2 frames 2D en `structural.py`), no implica dependencia de código.
 - **2026-04-21** · La única diferencia estructural con `Cable2DCorot` es el proyector 3D: en 2D la perpendicular es un vector único ($\mathbf n$); en 3D es un plano (dimensión 2). Esto se refleja en el rango de $\mathbf K_G$: 1 en 2D, 2 en 3D.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (`axial_end_forces`): con carga axial distribuida N_i ≠ N_j.
+- **2026-10-01** · **Pretensión por longitud sin tensión** `L0`, con la misma formulación y justificación que en `Cable2DCorot` (ver su diálogo). La validación del validador es compartida (`_unstressed_length` en `cable.py`). La cuerda pretensada recta destapó un falso positivo de la red de seguridad del ADR 0019: con todos los nodos sobre una recta, el giro alrededor de ella no mueve ningún DOF y se denunciaba como mecanismo. Corregido en `model_checks.py`.

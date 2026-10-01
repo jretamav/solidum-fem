@@ -168,8 +168,13 @@ Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite sólo 
 
 ### Cinemática
 - Idéntica a una barra corotacional: longitud y cosenos directores se recalculan en configuración corriente en cada evaluación.
-- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`.
+- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`, con `L₀` la longitud sin tensión.
 - La respuesta física de cable aparece **solo** si el material devuelve `σ = 0` en compresión.
+
+### Pretensión
+- Parámetro opcional `L0` (longitud sin tensión, > 0); por defecto, la longitud geométrica `L` entre nodos.
+- `L0 < L` ⇒ el cable arranca pretensado con `N₀ = E·A·(L − L₀)/L₀` y rigidez geométrica `N₀/L` desde el primer paso; para una pretensión `N₀` dada, `L₀ = L/(1 + N₀/(E·A))`. `L0 > L` ⇒ arranca flojo.
+- Masa y carga de cuerpo usan `ρ·A·L₀`: el material del cable descargado.
 
 ### Formulación
 ```
@@ -194,7 +199,7 @@ F_int = N · d                         (0 si N = 0)
 El elemento **no hereda** de `Truss2DCorot`. La cinemática corotacional se implementa dentro de la clase para que futuras modificaciones de las armaduras no afecten a los cables, y viceversa.
 
 ### Validación
-- Tests: [tests/test_cable_elements.py](../tests/test_cable_elements.py) · `TestCable2DCorot` (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero).
+- Tests: [tests/test_cable_elements.py](../tests/test_cable_elements.py) · `TestCable2DCorot` (4 tests de aceptación: tensado, destensado, rotación rígida, cruce por cero) y `TestPretensionLongitudSinTension` (pretensión exacta, cuerda pretensada frente a la solución analítica no lineal, cable flojo, `L0` por defecto e inválida, masa y carga de cuerpo, lectura desde YAML).
 - Archivo fuente: [solidum/elements/cable.py](../solidum/elements/cable.py) · clase `Cable2DCorot`.
 - Spec: [docs/specs/Cable2DCorot.md](specs/Cable2DCorot.md).
 - Referencias: Crisfield §3.3; Irvine §1.2.
@@ -207,8 +212,11 @@ Elemento 1D inmerso en el espacio que modela un cable: dos nodos, transmite sól
 
 ### Cinemática
 - Idéntica en filosofía a una barra corotacional 3D: longitud y cosenos directores se recalculan en configuración corriente.
-- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`.
+- Deformación ingenieril corotacional: `ε = (l − L₀)/L₀`, con `L₀` la longitud sin tensión.
 - La dirección perpendicular al eje es un **plano** (dimensión 2).
+
+### Pretensión
+- Parámetro opcional `L0`, con la misma semántica que en `Cable2DCorot`: con `L0 < L` la rigidez geométrica inicial `N₀/L` actúa en las dos direcciones perpendiculares al eje.
 
 ### Formulación
 ```
@@ -233,7 +241,7 @@ F_int = N · d                            (0 si N = 0)
 No hereda de `Cable2DCorot` ni de `Truss3DCorot`. La maquinaria cinemática 3D se implementa íntegra dentro de la clase.
 
 ### Validación
-- Tests: [tests/test_cable_elements.py](../tests/test_cable_elements.py) · `TestCable3DCorot` (4 tests de aceptación).
+- Tests: [tests/test_cable_elements.py](../tests/test_cable_elements.py) · `TestCable3DCorot` (4 tests de aceptación) y la parte 3D de `TestPretensionLongitudSinTension` (pretensión exacta en un cable oblicuo, cuerda pretensada con carga según −z).
 - Archivo fuente: [solidum/elements/cable.py](../solidum/elements/cable.py) · clase `Cable3DCorot`.
 - Spec: [docs/specs/Cable3DCorot.md](specs/Cable3DCorot.md).
 - Referencias: Crisfield §3.3; Belytschko §4.5; Irvine §1.2.

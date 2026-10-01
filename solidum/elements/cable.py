@@ -20,6 +20,28 @@ from solidum.core.element_forces import axial_end_forces
 from solidum.results import ElementForces
 
 
+def _unstressed_length(type_name: str, element_id: int, L_geo: float,
+                       L0: float | None) -> float:
+    """Longitud sin tensión del cable, validada.
+
+    Por defecto es la longitud geométrica entre nodos (cable sin tensión en
+    la configuración inicial). Una ``L0`` menor que la geométrica pretensa
+    el cable: en la geometría inicial ``ε₀ = (L − L₀)/L₀ > 0``. Una mayor lo
+    deja flojo.
+    """
+    if L_geo == 0.0:
+        raise ValueError("La longitud del cable no puede ser cero.")
+    if L0 is None:
+        return L_geo
+    L0 = float(L0)
+    if not (math.isfinite(L0) and L0 > 0.0):
+        raise ValueError(
+            f"{type_name} {element_id}: la longitud sin tensión L0 debe ser "
+            f"positiva y finita (recibido {L0})."
+        )
+    return L0
+
+
 @ElementRegistry.register
 class Cable2DCorot(Element):
     """Cable 2D corotacional — tracción unilateral, grandes rotaciones.
@@ -43,6 +65,11 @@ class Cable2DCorot(Element):
         debe ser unilateral (p. ej. CableMaterial1D).
     A : float
         Área de la sección transversal del cable.
+    L0 : float, optional
+        Longitud sin tensión del cable. Por defecto, la longitud geométrica
+        entre nodos. Si es menor, el cable arranca pretensado con
+        ``ε₀ = (L − L₀)/L₀``; si es mayor, arranca flojo. La deformación,
+        la rigidez material, la masa y la carga de cuerpo usan ``L₀``.
     """
 
     DOF_NAMES = ['ux', 'uy']
@@ -52,7 +79,7 @@ class Cable2DCorot(Element):
     GEOMETRICALLY_NONLINEAR = True
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 A: float):
+                 A: float, L0: float | None = None):
         if len(nodes) != 2:
             raise ValueError("El elemento Cable2DCorot requiere exactamente 2 nodos.")
 
@@ -62,9 +89,8 @@ class Cable2DCorot(Element):
         coords1 = self.nodes[0].coordinates
         coords2 = self.nodes[1].coordinates
         dx0, dy0 = coords2[0] - coords1[0], coords2[1] - coords1[1]
-        self.L0 = math.sqrt(dx0**2 + dy0**2)
-        if self.L0 == 0.0:
-            raise ValueError("La longitud del cable no puede ser cero.")
+        self.L0 = _unstressed_length(
+            "Cable2DCorot", element_id, math.sqrt(dx0**2 + dy0**2), L0)
 
     def _current_geometry(self, u_e: np.ndarray):
         """Longitud y cosenos directores en configuración corriente."""
@@ -136,10 +162,12 @@ class Cable2DCorot(Element):
         """Vector nodal consistente con ∫NᵀbA dx en configuración de referencia.
 
         Reparto exacto ``b · A · L₀ / 2`` por nodo, en cada componente global,
-        evaluado sobre la geometría inicial. Aproximación estándar para
-        cargas de cuerpo en elementos corotacionales: para grandes rotaciones
-        con cargas conservadoras (gravedad), la diferencia frente a la
-        integración sobre la geometría corriente es de segundo orden.
+        evaluado sobre la geometría inicial; ``L₀`` es la longitud sin tensión
+        (el volumen de material del cable), por defecto la geométrica.
+        Aproximación estándar para cargas de cuerpo en elementos
+        corotacionales: para grandes rotaciones con cargas conservadoras
+        (gravedad), la diferencia frente a la integración sobre la geometría
+        corriente es de segundo orden.
 
         Parameters
         ----------
@@ -160,8 +188,10 @@ class Cable2DCorot(Element):
 
         **Consistente**: idéntica en forma a Truss2D
         ``M = (ρAL₀/6) · kron([[2,1],[1,2]], I₂)``, evaluada en configuración
-        de referencia (Lagrangeano total). La unilateralidad del cable
-        afecta a la rigidez, no a la inercia: la masa total siempre es física.
+        de referencia (Lagrangeano total), con ``L₀`` la longitud sin tensión:
+        la masa es la del material del cable descargado. La unilateralidad
+        del cable afecta a la rigidez, no a la inercia: la masa total siempre
+        es física.
 
         **Lumped**: masa nodal uniforme ``ρAL₀/2`` por DOF traslacional
         (HRZ = nodal directo en barras articuladas).
@@ -206,6 +236,9 @@ class Cable3DCorot(Element):
         (p. ej. CableMaterial1D).
     A : float
         Área de la sección transversal del cable.
+    L0 : float, optional
+        Longitud sin tensión del cable; por defecto, la geométrica. Ver
+        Cable2DCorot.
     """
 
     DOF_NAMES = ['ux', 'uy', 'uz']
@@ -215,7 +248,7 @@ class Cable3DCorot(Element):
     GEOMETRICALLY_NONLINEAR = True
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
-                 A: float):
+                 A: float, L0: float | None = None):
         if len(nodes) != 2:
             raise ValueError("El elemento Cable3DCorot requiere exactamente 2 nodos.")
 
@@ -227,9 +260,8 @@ class Cable3DCorot(Element):
         z1_0 = c1[2] if len(c1) > 2 else 0.0
         z2_0 = c2[2] if len(c2) > 2 else 0.0
         dx0, dy0, dz0 = c2[0] - c1[0], c2[1] - c1[1], z2_0 - z1_0
-        self.L0 = math.sqrt(dx0**2 + dy0**2 + dz0**2)
-        if self.L0 == 0.0:
-            raise ValueError("La longitud del cable no puede ser cero.")
+        self.L0 = _unstressed_length(
+            "Cable3DCorot", element_id, math.sqrt(dx0**2 + dy0**2 + dz0**2), L0)
 
     def _current_geometry(self, u_e: np.ndarray):
         """Longitud y cosenos directores en configuración corriente."""

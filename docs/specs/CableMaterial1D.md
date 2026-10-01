@@ -69,7 +69,7 @@ validity:
 out_of_scope:
   - plasticidad, fluencia, fatiga
   - viscoelasticidad / dependencia temporal
-  - pretensión inicial (el usuario la modela con una longitud de referencia ajustada)
+  - "pretensión inicial: no es del material; se modela con la longitud sin tensión L0 de Cable2DCorot y Cable3DCorot (2026-10-01)"
   - regularización numérica en compresión (no hay rigidez residual en ε ≤ 0)
   - anisotropía direccional; la respuesta es puramente axial escalar
 
