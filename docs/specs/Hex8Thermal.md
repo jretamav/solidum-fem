@@ -113,7 +113,8 @@ validity:
   - "conducción lineal; k independiente de T"
   - "material con field='temperature' (familia ThermalMaterial)"
   - "det J > 0 en todos los puntos de Gauss"
-  - "el modelo global debe imponer al menos un Dirichlet de temperatura"
+  - "el estacionario debe imponer al menos un Dirichlet de temperatura (el
+     transitorio admite el cuerpo aislado)"
 
 out_of_scope:
   - "convección (Robin) y radiación en la frontera — Etapa 8 posterior"

@@ -28,6 +28,7 @@ from solidum.elements.thermal.hex8_thermal import Hex8Thermal
 from solidum.elements.thermal.quad4_thermal import Quad4Thermal
 from solidum.materials.thermal_conduction import ThermalConduction
 from solidum.math.assembly import Assembler
+from solidum.math.solvers.diagnostics import MechanismError
 from solidum.math.solvers.linear import LinearSolver
 from solidum.math.solvers.theta_method import ThetaMethodSolver
 from solidum.results import ThermalTransientResult
@@ -668,6 +669,149 @@ class TestCargas:
 
 
 # ----------------------------------------------------------------------
+# Cuerpo aislado: transitorio sin ninguna temperatura impuesta
+# ----------------------------------------------------------------------
+
+#: Fuente volumétrica [W/m³], del orden del calor de hidratación temprano del
+#: concreto. Con la capacidad del acero calienta ~2.8e-4 K/s.
+Q_FUENTE = 1.0e3
+RHO_C_ACERO = RHO_ACERO * C_ACERO
+
+
+def bloque_aislado(dim: int, *, distorsion: float = 0.0):
+    """Placa de ``Quad4Thermal`` (espesor 0.02 m) o prisma de ``Hex8Thermal``
+    sin ninguna temperatura impuesta: todo el contorno es adiabático.
+
+    Con ``distorsion`` los nodos interiores se desplazan al azar (semilla
+    fija) hasta esa fracción del tamaño de celda. El contorno no se mueve, así
+    que el volumen total sigue siendo el del rectángulo o el prisma, que se
+    devuelve calculado con independencia de la malla.
+    """
+    rng = np.random.default_rng(20261020)
+    mat = _material(dim)
+    dom = Domain()
+    if dim == 2:
+        n, lados, espesor = (6, 3), (0.3, 0.15), 0.02
+    else:
+        n, lados, espesor = (4, 2, 2), (0.2, 0.1, 0.1), 1.0
+    h = [lado / ni for lado, ni in zip(lados, n)]
+
+    nid: dict[tuple[int, ...], int] = {}
+    for idx in np.ndindex(*(ni + 1 for ni in reversed(n))):
+        ijk = tuple(reversed(idx))
+        xyz = [i * hi for i, hi in zip(ijk, h)]
+        if all(0 < i < ni for i, ni in zip(ijk, n)):
+            xyz = [x + distorsion * hi * rng.uniform(-1.0, 1.0)
+                   for x, hi in zip(xyz, h)]
+        nid[ijk] = len(nid) + 1
+        dom.add_node(nid[ijk], xyz)
+
+    cara = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    e = 1
+    for idx in np.ndindex(*reversed(n)):
+        base = tuple(reversed(idx))
+        if dim == 2:
+            esquinas = [(base[0] + a, base[1] + b) for a, b in cara]
+            elem = Quad4Thermal(e, [dom.nodes[nid[c]] for c in esquinas], mat,
+                                thickness=espesor)
+        else:
+            esquinas = [(base[0] + a, base[1] + b, base[2] + c)
+                        for c in (0, 1) for a, b in cara]
+            elem = Hex8Thermal(e, [dom.nodes[nid[c]] for c in esquinas], mat)
+        dom.add_element(elem)
+        e += 1
+    dom.generate_equation_numbers()
+    return dom, float(np.prod(lados)) * espesor
+
+
+def fuente_global(dom: Domain, Q: float) -> np.ndarray:
+    F = np.zeros(dom.total_dofs)
+    for el in dom.elements.values():
+        fe = el.compute_body_source(Q)
+        for a, nodo in enumerate(el.nodes):
+            F[nodo.dofs["T"]] += fe[a]
+    return F
+
+
+class TestCuerpoAislado:
+    """Transitorio sin ninguna temperatura impuesta (decisión del usuario,
+    2026-10-20; hasta entonces el solver lo rechazaba).
+
+    ``A = C + θΔt·K`` es definida positiva por ``C`` aunque ``K`` tenga el
+    modo de temperatura uniforme, así que el transitorio está bien planteado:
+    es un cuerpo aislado calentado por una fuente interna. El estacionario
+    ``K·T = F`` no lo está y se sigue rechazando.
+    """
+
+    #: ``(θ, Δt)``. Con ``θ ≥ 1/2``, ``Δt`` ≫ ``h²/α`` (~200 s), lejos de
+    #: cualquier paso que resuelva un transitorio; con ``θ = 0``, dentro del
+    #: límite de estabilidad del explícito.
+    CASOS = [(1.0, 1.0e4), (2.0 / 3.0, 1.0e4), (0.5, 1.0e4), (0.0, 1.0)]
+
+    @pytest.mark.parametrize("dim", [2, 3])
+    @pytest.mark.parametrize("lumping", ["lumped", "consistent"])
+    @pytest.mark.parametrize("theta, dt", CASOS)
+    def test_la_fuente_uniforme_calienta_el_cuerpo_uniformemente(
+        self, dim, lumping, theta, dt,
+    ):
+        """Solución exacta ``T(t) = T_0 + Q·t/(ρc)`` en todos los nodos.
+
+        Es lineal en el tiempo, así que todo esquema θ la reproduce sin error
+        de truncación y con cualquier ``Δt``: sólo cabe el redondeo. El
+        espesor 0.02 de la placa 2D detecta un factor de espesor perdido en
+        la fuente o en la capacidad.
+        """
+        dom, _ = bloque_aislado(dim)
+        F = fuente_global(dom, Q_FUENTE)
+        r = ThetaMethodSolver(
+            Assembler(dom), dt=dt, n_steps=10, T_initial=20.0, theta=theta,
+            lumping=lumping, F_func=lambda t: F,
+        ).solve()
+        assert r.converged
+        exacta = 20.0 + Q_FUENTE * r.t_history / RHO_C_ACERO
+        np.testing.assert_allclose(
+            r.T_history, np.broadcast_to(exacta, r.T_history.shape),
+            rtol=1e-12, atol=0,
+        )
+
+    @pytest.mark.parametrize("dim", [2, 3])
+    @pytest.mark.parametrize("lumping", ["lumped", "consistent"])
+    @pytest.mark.parametrize("theta, dt", CASOS)
+    def test_balance_energetico_transitorio(self, dim, lumping, theta, dt):
+        """Criterio ``balance_energetico_transitorio`` de la spec.
+
+        Con malla distorsionada y campo inicial no uniforme el calor se
+        redistribuye por conducción, pero la energía almacenada ``1ᵀ·C·T``
+        sólo la cambia la fuente: crece exactamente ``Q·V·t``, porque el
+        flujo interno se cancela (``1ᵀ·K = 0``) y ``1ᵀ·F = Q·V``.
+        """
+        dom, V = bloque_aislado(dim, distorsion=0.25)
+        asm = Assembler(dom)
+        F = fuente_global(dom, Q_FUENTE)
+        x = np.zeros(dom.total_dofs)
+        for nodo in dom.nodes.values():
+            x[nodo.dofs["T"]] = nodo.coordinates[0]
+        T0 = 20.0 + 30.0 * x / x.max()
+        r = ThetaMethodSolver(
+            asm, dt=dt, n_steps=10, T_initial=T0, theta=theta,
+            lumping=lumping, F_func=lambda t: F,
+        ).solve()
+        assert r.converged
+        C = asm.assemble_mass_matrix(lumping=lumping)
+        energia = np.ones(dom.total_dofs) @ (C @ r.T_history)
+        np.testing.assert_allclose(
+            energia[1:] - energia[0], Q_FUENTE * V * r.t_history[1:],
+            rtol=1e-10, atol=0,
+        )
+
+    def test_el_estacionario_sigue_rechazando_el_cuerpo_aislado(self):
+        """``K·T = F`` sin temperatura impuesta no tiene solución única."""
+        dom, _ = bloque_aislado(2)
+        with pytest.raises(MechanismError, match="'T'"):
+            LinearSolver(Assembler(dom)).solve(fuente_global(dom, Q_FUENTE))
+
+
+# ----------------------------------------------------------------------
 # Diagnósticos declarativos
 # ----------------------------------------------------------------------
 
@@ -914,20 +1058,6 @@ class TestRechazoDeEntradasInvalidas:
             ThetaMethodSolver(
                 self._asm(), dt=1.0, n_steps=1, T_initial=0.0, output_every=k,
             )
-
-    def test_sin_dirichlet_el_mensaje_nombra_el_modo_de_temperatura_uniforme(self):
-        """Diagnóstico físico, no un fallo algebraico genérico."""
-        mat = _material(2)
-        dom = Domain()
-        for i, xy in enumerate([[0, 0], [1, 0], [1, 1], [0, 1]], start=1):
-            dom.add_node(i, [float(xy[0]), float(xy[1])])
-        dom.add_element(Quad4Thermal(1, list(dom.nodes.values()), mat))
-        dom.generate_equation_numbers()
-        s = ThetaMethodSolver(
-            Assembler(dom), dt=1.0, n_steps=2, T_initial=0.0,
-        )
-        with pytest.raises(ValueError, match="temperatura uniforme"):
-            s.solve()
 
     def test_material_sin_capacidad_falla_ruidosamente(self):
         """Sin ``ρc`` el transitorio debe abortar, no producir basura."""

@@ -15,7 +15,8 @@ comprobaciones:
   MPC incluidos: ``dirichlet_func`` sustituía el ``g`` completo y borraba el
   de los esclavos (la MPC se incumplía sin aviso), el aviso de ``T_initial``
   citaba los esclavos como Dirichlet contradichos, la guarda «sin Dirichlet»
-  dejaba pasar un modelo con sólo MPC, y el instante inicial almacenado usaba
+  dejaba pasar un modelo con sólo MPC (la guarda se retiró del transitorio el
+  2026-10-20), y el instante inicial almacenado usaba
   el valor declarado en vez de ``dirichlet_func(0)``. Ahora el solver usa el
   Dirichlet declarado (``ConstraintSet.dirichlet_dofs``) y reconstruye las
   filas esclavas con ``ConstraintSet.build_g``.
@@ -441,16 +442,15 @@ class TestAvisosYGuarda:
         assert len(avisos[False]) == 1 and f"en {n} DOF(s)" in avisos[False][0]
         assert avisos[True] == avisos[False]
 
-    def test_el_modelo_atado_sin_dirichlet_se_rechaza_como_el_fundido(self):
-        """Las MPC no fijan el nivel absoluto de temperatura. Hasta el
-        2026-09-30 el modelo atado pasaba la guarda y el fundido no."""
-        for atado in (False, True):
-            dom, nid, _ = placa_2d(atado, T_izq=None)
-            F = calor_borde_derecho(dom, nid)
-            s = ThetaMethodSolver(Assembler(dom), dt=5.0, n_steps=2,
-                                  T_initial=20.0, F_func=lambda t, F=F: F)
-            with pytest.raises(ValueError, match="ningún Dirichlet"):
-                s.solve()
+    @pytest.mark.parametrize("theta, lumping", [(1.0, "lumped"), (0.5, "consistent")])
+    def test_el_modelo_atado_sin_dirichlet_coincide_con_el_fundido(self, theta, lumping):
+        """Sin Dirichlet el transitorio está bien planteado (``C`` definida
+        positiva) y el oráculo del nodo fundido se cumple: el calor que entra
+        por el borde derecho calienta igual la placa atada y la conforme. Hasta
+        el 2026-09-30 el atado pasaba la guarda «sin Dirichlet» y el fundido
+        no; hasta el 2026-10-20 ambos se rechazaban."""
+        ref, T_a, _ = _transitorio(placa_2d, theta, lumping, dt=5.0, T_izq=None)
+        np.testing.assert_allclose(T_a, ref, rtol=0, atol=1e-11)
 
     def test_una_restriccion_sin_maestros_cuenta_como_dirichlet(self):
         """``u_s = g`` declarada como restricción lineal sin maestros es un

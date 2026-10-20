@@ -709,7 +709,7 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la `B` té
 
 **Base compartida `_ThermalSolid`** ([solidum/elements/thermal/_shared.py](../solidum/elements/thermal/_shared.py)): centraliza validación del material, bucles de Gauss, capacidad en ambos modos, fuente volumétrica y post-proceso. Las subclases sólo declaran geometría.
 
-**Modo nulo**: `K_e` es **semidefinida positiva** — el campo de temperatura uniforme no produce gradiente ni flujo. Es el análogo térmico de los modos de sólido rígido: el sistema global sólo se vuelve resoluble al imponer al menos un Dirichlet de temperatura. Un modelo sin ninguna temperatura impuesta falla con matriz singular, igual que un modelo mecánico sin apoyos.
+**Modo nulo**: `K_e` es **semidefinida positiva** — el campo de temperatura uniforme no produce gradiente ni flujo. Es el análogo térmico de los modos de sólido rígido: el **estacionario** `K·T = F` sólo es resoluble con al menos un Dirichlet de temperatura, y sin ninguno el `LinearSolver` lo rechaza nombrando el modo, igual que un modelo mecánico sin apoyos. El **transitorio** sí admite el cuerpo aislado: `C + θΔt·K` es definida positiva por la capacidad (ver `ThetaMethodSolver` en el [catálogo de solvers](catalogo_solvers.md)).
 
 ## Quad4Thermal — cuadrilátero bilineal de conducción 2D
 

@@ -30,7 +30,7 @@ Reordenando, el sistema a resolver por paso:
 
 $$\underbrace{\left(\mathbf C + \theta\,\Delta t\,\mathbf K\right)}_{\mathbf A}\,\mathbf T_{n+1} = \left[\mathbf C - (1-\theta)\,\Delta t\,\mathbf K\right]\mathbf T_n + \Delta t\left[\theta\,\mathbf F_{n+1} + (1-\theta)\,\mathbf F_n\right]$$
 
-$\mathbf A$ es **simétrica y definida positiva** para $\theta > 0$ (suma de $\mathbf C$ definida positiva y $\mathbf K$ semidefinida, con Dirichlet impuesto), luego el despachador algebraico (ADR 0003) elige Cholesky. Con $\Delta t$ constante, $\mathbf A$ **se factoriza una sola vez** y se reutiliza en todos los pasos.
+$\mathbf A$ es **simétrica y definida positiva** para todo $\theta \in [0, 1]$ (suma de $\mathbf C$ definida positiva y $\mathbf K$ semidefinida, **con o sin Dirichlet**: el modo de temperatura uniforme anula $\mathbf K$ pero no $\mathbf C$), luego el despachador algebraico (ADR 0003) elige Cholesky. Con $\Delta t$ constante, $\mathbf A$ **se factoriza una sola vez** y se reutiliza en todos los pasos.
 
 ### 2. Casos particulares de θ
 
@@ -119,7 +119,7 @@ Devuelve un `ThermalTransientResult` con `t_history`, `T_history`, `n_steps` y `
 
 ### 10. Caveats numéricos
 
-- **Sin Dirichlet, $\mathbf A$ es singular** en el estacionario y mal condicionada en el transitorio con $\Delta t$ grande. El diagnóstico debe nombrar el modo de temperatura uniforme, no reportar un fallo algebraico genérico.
+- **Sin Dirichlet (cuerpo aislado)**: en el estacionario $\mathbf K$ es singular por el modo de temperatura uniforme y el `LinearSolver` lo rechaza nombrando el campo `T` sin valor prescrito (red de seguridad, ADR 0019). En el transitorio el problema está bien planteado y se admite (desde el 2026-10-20): $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva por $\mathbf C$, el nivel de temperatura lo fijan $\mathbf T_0$ y el calor aportado, y la energía almacenada $\mathbf 1^\top\mathbf C\,\mathbf T$ crece exactamente lo que aportan las fuentes. Con $\Delta t$ muy grande el condicionamiento de $\mathbf A$ empeora como $\theta\Delta t\,\lambda_{\max}(\mathbf K)/\lambda_{\min}(\mathbf C)$, sin perder la definición positiva.
 - **Oscilaciones con Crank-Nicolson ante escalón**: descrito en §3. No es un error del solver; se documenta y se cuantifica con test.
 - **$\theta = 0$ (explícito)**: se admite por completitud pero requiere $\Delta t \le 2/\lambda_{\max}$, y con capacidad consistente $\lambda_{\max}$ es grande. Sin masa lumped es prácticamente inutilizable; se avisa.
 - **Contraste alto de conductividad**: mal condicionamiento heredado del problema, no del esquema.
@@ -179,8 +179,9 @@ conventions:
 validity:
   - "sistema lineal de primer orden: C·Ṫ + K·T = F"
   - "θ ∈ [0, 1]; dt > 0; n_steps ≥ 1"
-  - "el modelo debe imponer al menos un Dirichlet de temperatura declarado;
-     las restricciones multipunto no cuentan (no fijan el nivel absoluto)"
+  - "no exige Dirichlet: sin temperatura impuesta el cuerpo está aislado y
+     A = C + θΔt·K sigue siendo definida positiva (decisión del usuario,
+     2026-10-20); el estacionario K·T = F sí lo exige"
   - "material con c y density declaradas (ThermalConduction §4)"
 
 out_of_scope:
@@ -234,10 +235,20 @@ acceptance:
               alcanza el extremo opuesto (hipótesis de medio semi-infinito)"
       tol_rel: 2.0e-2
     - name: balance_energetico_transitorio
-      setup: "dominio aislado (todo Neumann homogéneo) con fuente Q constante"
-      expect: "la energía acumulada ΣρcVΔT iguala a Q·V·t en cada paso —
-              el esquema conserva la energía introducida"
+      setup: "dominio aislado (todo Neumann homogéneo) con fuente Q constante;
+             malla distorsionada y campo inicial no uniforme; 2D y 3D;
+             θ ∈ {1, 2/3, 1/2, 0}, capacidad lumped y consistent"
+      expect: "la energía acumulada 1ᵀ·C·(T_n − T_0) iguala a Q·V·t_n en cada
+              paso — el esquema conserva la energía introducida"
       tol_rel: 1.0e-10
+    - name: cuerpo_aislado_calentamiento_uniforme
+      setup: "dominio aislado con fuente Q uniforme y T_0 uniforme, sin ninguna
+             temperatura impuesta; 2D (espesor ≠ 1) y 3D; θ ∈ {1, 2/3, 1/2}
+             con Δt ≫ h²/α y θ = 0 dentro de su límite; lumped y consistent"
+      expect: "T(t) = T_0 + Q·t/(ρc) en todos los nodos. Es lineal en el
+              tiempo, así que todo θ la reproduce sin error de truncación.
+              El estacionario sobre el mismo modelo se rechaza (MechanismError)"
+      tol_rel: 1.0e-12
     - name: dirichlet_variable_en_el_tiempo
       setup: "temperatura impuesta con variación sinusoidal en el tiempo"
       expect: "el campo sigue la excitación; la factorización de A_ff se reutiliza
@@ -260,8 +271,8 @@ acceptance:
              de MPC y MPC con término independiente g"
       expect: "misma historia de temperaturas hasta el redondeo; el esclavo
                sigue al maestro con Dirichlet y conserva el salto g; el aviso de
-               T_initial y la guarda sin Dirichlet cuentan sólo el Dirichlet
-               declarado"
+               T_initial cuenta sólo el Dirichlet declarado; sin ningún
+               Dirichlet, el modelo atado y el fundido coinciden"
       tol_abs: 1.0e-11
     - name: reporte_del_orden_efectivo
       setup: "construir el solver con θ = 1, 0.5 y 2/3"
@@ -353,4 +364,5 @@ El mensaje accionable correcto ya existía en `ThermalMaterial.volumetric_capaci
 
    **Requisito añadido con la decisión**: el solver **reporta el orden efectivo del esquema** según el $\theta$ en uso, para que el coste en precisión del default sea visible y no una penalización silenciosa. Es la contrapartida honesta de elegir robustez.
 - **2026-09-22** · Auditoría global: el aviso de estabilidad condicional (θ < 0.5) cita el límite correcto `Δt ≤ 2/((1 − 2θ)·λ_max)`, que sólo coincide con `2/λ_max` en θ = 0.
-- **2026-09-30** · Auditoría de las restricciones multipunto (MPC). El solver trataba como Dirichlet todo DOF eliminado del sistema reducido, esclavos de MPC incluidos. Cuatro consecuencias, corregidas: (i) `dirichlet_func` sustituía el $\mathbf g$ completo, así que un esclavo atado a un maestro con Dirichlet quedaba a 0 y una MPC con término independiente perdía su salto, sin aviso; ahora `dirichlet_func` sólo da los valores de los DOF con Dirichlet declarado y las filas esclavas se reconstruyen con la MPC, $g_s(t) = g_{\text{mpc},s} + \sum_d \alpha_{sd}\bar T_d(t)$ (§8); (ii) el aviso de `T_initial` citaba los esclavos como Dirichlet contradichos; (iii) la guarda «sin Dirichlet» dejaba pasar un modelo con sólo MPC, que es tan indeterminado en el estacionario como el fundido; (iv) el instante inicial almacenado y el aviso de `T_initial` usaban el valor declarado y no `dirichlet_func(0)` (esto último también sin MPC). El aviso de choque inicial ya no llama «A-estable» a θ < 1/2: dice que la estabilidad es condicional. Sin MPC y sin `dirichlet_func` los resultados son idénticos; con `dirichlet_func` sin MPC también, salvo el instante inicial almacenado cuando `dirichlet_func(0)` difiere del valor declarado. Blindado por `tests/test_theta_method_mpc.py` (oráculo del nodo fundido en 2D y 3D, transitorio y estacionario). **Pregunta abierta para el usuario**: la guarda se mantiene en el transitorio, donde $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva sin Dirichlet (para $\theta \ge 0$ con $\mathbf C$ definida positiva) y un cuerpo aislado calentado por una fuente es un problema bien planteado (el del criterio `balance_energetico_transitorio`), que hoy se rechaza. Recomendación de la IA: levantarla en el transitorio y mantenerla en el estacionario, donde $\mathbf K$ sí es singular.
+- **2026-09-30** · Auditoría de las restricciones multipunto (MPC). El solver trataba como Dirichlet todo DOF eliminado del sistema reducido, esclavos de MPC incluidos. Cuatro consecuencias, corregidas: (i) `dirichlet_func` sustituía el $\mathbf g$ completo, así que un esclavo atado a un maestro con Dirichlet quedaba a 0 y una MPC con término independiente perdía su salto, sin aviso; ahora `dirichlet_func` sólo da los valores de los DOF con Dirichlet declarado y las filas esclavas se reconstruyen con la MPC, $g_s(t) = g_{\text{mpc},s} + \sum_d \alpha_{sd}\bar T_d(t)$ (§8); (ii) el aviso de `T_initial` citaba los esclavos como Dirichlet contradichos; (iii) la guarda «sin Dirichlet» dejaba pasar un modelo con sólo MPC, que es tan indeterminado en el estacionario como el fundido; (iv) el instante inicial almacenado y el aviso de `T_initial` usaban el valor declarado y no `dirichlet_func(0)` (esto último también sin MPC). El aviso de choque inicial ya no llama «A-estable» a θ < 1/2: dice que la estabilidad es condicional. Sin MPC y sin `dirichlet_func` los resultados son idénticos; con `dirichlet_func` sin MPC también, salvo el instante inicial almacenado cuando `dirichlet_func(0)` difiere del valor declarado. Blindado por `tests/test_theta_method_mpc.py` (oráculo del nodo fundido en 2D y 3D, transitorio y estacionario). **Pregunta abierta para el usuario**: la guarda se mantiene en el transitorio, donde $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva sin Dirichlet (para $\theta \ge 0$ con $\mathbf C$ definida positiva) y un cuerpo aislado calentado por una fuente es un problema bien planteado (el del criterio `balance_energetico_transitorio`), que hoy se rechaza. Recomendación de la IA: levantarla en el transitorio y mantenerla en el estacionario, donde $\mathbf K$ sí es singular. ✅ **Resuelta el 2026-10-20** (entrada siguiente).
+- **2026-10-20** · **Guarda «sin Dirichlet» retirada del transitorio, con aprobación del usuario.** El solver ya no rechaza un modelo sin temperatura impuesta: es un cuerpo aislado, bien planteado porque $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva por $\mathbf C$; deja una línea informativa en el registro para quien olvidó fijar una temperatura. El estacionario la mantiene, a cargo de la red de seguridad del `LinearSolver` (ADR 0019). Sin cambio de resultados en los modelos con Dirichlet. Esto permite por fin el criterio `balance_energetico_transitorio`, que la guarda hacía imposible y no tenía test, y añade `cuerpo_aislado_calentamiento_uniforme`: ambos en `TestCuerpoAislado` de `tests/test_theta_method.py` (2D y 3D, cuatro θ, las dos capacidades); el oráculo del nodo fundido sin Dirichlet en `tests/test_theta_method_mpc.py`. Con el código anterior fallan 34 de las 35 pruebas (la que pasa es el rechazo del estacionario).

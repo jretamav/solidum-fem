@@ -67,9 +67,11 @@ class ThetaMethodSolver:
         = \\left[\\mathbf C - (1-\\theta)\\Delta t\\,\\mathbf K\\right]\\mathbf T_n
         + \\Delta t\\left[\\theta\\mathbf F_{n+1} + (1-\\theta)\\mathbf F_n\\right]
 
-    ``A`` es simétrica y definida positiva para ``θ > 0`` (suma de ``C``
-    definida positiva y ``K`` semidefinida, con Dirichlet impuesto), luego
-    el despachador algebraico (ADR 0003) elige Cholesky. Con ``Δt``
+    ``A`` es simétrica y definida positiva para todo ``θ ∈ [0, 1]``: suma de
+    ``C`` definida positiva y ``K`` semidefinida, **con o sin Dirichlet**
+    (el modo de temperatura uniforme anula ``K`` pero no ``C``). Por eso el
+    transitorio admite un cuerpo aislado, que el estacionario ``K·T = F``
+    no admite. El despachador algebraico (ADR 0003) elige Cholesky. Con ``Δt``
     constante **se factoriza una sola vez** y se reutiliza en todos los
     pasos: el problema es lineal y sin historia, así que ``K`` y ``C`` se
     ensamblan también una única vez. El coste por paso es una sustitución
@@ -109,10 +111,11 @@ class ThetaMethodSolver:
     Parameters
     ----------
     assembler : Assembler
-        Vinculación al modelo. El dominio debe estar mallado con elementos
-        térmicos y tener **al menos un Dirichlet** de temperatura. Las
-        restricciones multipunto (MPC) no cuentan como tal: relacionan
-        temperaturas entre sí sin fijar su nivel absoluto.
+        Vinculación al modelo, mallado con elementos térmicos. **No exige
+        Dirichlet**: sin temperatura impuesta el cuerpo está aislado, su
+        nivel de temperatura lo fijan ``T_initial`` y el calor aportado, y
+        la energía almacenada crece exactamente lo que aportan las fuentes
+        (un cuerpo aislado calentado por una fuente interna).
     dt : float
         Paso temporal constante [s]. No limitado por estabilidad si
         ``θ ≥ 0.5``, sí por precisión: contrastar con el ``Δt``
@@ -428,16 +431,13 @@ class ThetaMethodSolver:
         # del sistema reducido, pero no prescriben ninguna temperatura.
         prescribed = cs.dirichlet_dofs
 
+        # Sin Dirichlet no hay nada que rechazar (A = C + θΔt·K es definida
+        # positiva por C), pero se deja constancia: quien olvidó fijar una
+        # temperatura obtiene la respuesta de un cuerpo aislado.
         if prescribed.size == 0:
-            raise ValueError(
-                f"{cls}: el modelo no impone ningún Dirichlet de temperatura. "
-                "La matriz de conductividad es semidefinida —tiene el modo de "
-                "temperatura uniforme, que no produce gradiente ni flujo, "
-                "análogo térmico de un modo de sólido rígido— y el problema "
-                "queda indeterminado en el nivel absoluto de temperatura. Las "
-                "restricciones multipunto (MPC) no lo fijan: relacionan "
-                "temperaturas entre sí, y el modo uniforme las cumple. "
-                "Fija la temperatura en al menos un nodo (`fix_dof(\"T\", ...)`)."
+            _log.info(
+                "  Sin temperatura impuesta: cuerpo aislado. El nivel de "
+                "temperatura lo fijan T_initial y el calor aportado."
             )
 
         # Diagnóstico de Δt: información, no restricción.

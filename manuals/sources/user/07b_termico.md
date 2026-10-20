@@ -85,7 +85,7 @@ boundary_conditions:
   - {node_id: 2, T: 20.0}
 ```
 
-**Todo modelo térmico necesita al menos un Dirichlet.** Sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico. Las restricciones multipunto no cuentan como Dirichlet: relacionan temperaturas entre sí y el campo uniforme las cumple. Una restricción lineal sin maestros (`masters: []`, `T_s = g`) sí es un Dirichlet.
+**El estacionario necesita al menos un Dirichlet; el transitorio, no.** En el estacionario, sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico. Las restricciones multipunto no cuentan como Dirichlet: relacionan temperaturas entre sí y el campo uniforme las cumple. Una restricción lineal sin maestros (`masters: []`, `T_s = g`) sí es un Dirichlet. En el transitorio un modelo sin ninguna temperatura impuesta es un **cuerpo aislado** y está bien planteado: la capacidad calorífica fija el nivel de temperatura a partir de `T_initial`, y la energía almacenada crece exactamente lo que aportan las fuentes (un cuerpo aislado con una fuente uniforme $Q$ se calienta como $T(t) = T_0 + Q\,t/(\rho c)$).
 
 ### Restricciones multipunto sobre `T`
 

@@ -48,7 +48,7 @@ En **régimen estacionario** el término $\mathbf C\dot{\mathbf T}$ se anula y q
 
 $$\mathbf K_e = \int_\Omega \mathbf B^\top\,\mathbf k\,\mathbf B\;t\;d\Omega = \sum_{g} \mathbf B_g^\top\,\mathbf k\,\mathbf B_g\;t\;|\mathbf J_g|\,w_g$$
 
-$4\times4$, **simétrica** (por serlo $\mathbf k$) y **semidefinida positiva**: tiene un modo nulo, el campo de temperatura uniforme $\mathbf T = c\,[1,1,1,1]^\top$, que no produce flujo. Es el análogo térmico exacto de los modos de sólido rígido en mecánica, y como allí, el sistema global sólo se vuelve resoluble al imponer al menos una condición de Dirichlet.
+$4\times4$, **simétrica** (por serlo $\mathbf k$) y **semidefinida positiva**: tiene un modo nulo, el campo de temperatura uniforme $\mathbf T = c\,[1,1,1,1]^\top$, que no produce flujo. Es el análogo térmico exacto de los modos de sólido rígido en mecánica, y como allí, el sistema estacionario global sólo se vuelve resoluble al imponer al menos una condición de Dirichlet (en el transitorio la capacidad lo hace resoluble, §10).
 
 El **espesor** $t$ interviene igual que en el mecánico: el problema plano representa una rebanada de profundidad $t$, y el flujo total escala con ella.
 
@@ -111,7 +111,7 @@ La reducción $1\times1$ queda disponible por el mismo parámetro, pero **no se 
 
 ### 10. Caveats numéricos
 
-- **Modo nulo de temperatura uniforme**: $\mathbf K$ global es singular sin Dirichlet. El sistema debe tener al menos un nodo con temperatura impuesta, o el solver falla con matriz singular. Es el análogo exacto de un modelo mecánico sin apoyos, y el diagnóstico debe nombrarlo como tal.
+- **Modo nulo de temperatura uniforme**: $\mathbf K$ global es singular sin Dirichlet. El **estacionario** debe tener al menos un nodo con temperatura impuesta; sin él, el `LinearSolver` lo rechaza nombrando el modo, como un modelo mecánico sin apoyos. El **transitorio** admite el cuerpo aislado (desde el 2026-10-20): $\mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva por la capacidad (spec de [`ThetaMethodSolver`](ThetaMethodSolver.md) §10).
 - **Sin locking**: el problema escalar no tiene el análogo de la incompresibilidad ni del bloqueo por cortante. No aplica ninguna de las limitaciones que arrastra el `Quad4` mecánico.
 - **Número de Péclet**: sin término convectivo en la ecuación (fuera de alcance C1), no hay riesgo de oscilaciones por advección dominante. Se anota porque será la primera consideración a revisar si en el futuro entra convección forzada del medio.
 - **Distorsión de la malla**: como en el mecánico, un jacobiano casi degenerado degrada la solución; se valida $|\mathbf J| > 0$ en todos los puntos de Gauss.
@@ -164,7 +164,8 @@ validity:
   - "conducción lineal; k independiente de T"
   - "material con field='temperature' (familia ThermalMaterial)"
   - "det J > 0 en todos los puntos de Gauss"
-  - "el modelo global debe imponer al menos un Dirichlet de temperatura"
+  - "el estacionario debe imponer al menos un Dirichlet de temperatura (el
+     transitorio admite el cuerpo aislado)"
 
 out_of_scope:
   - "convección (Robin) y radiación en la frontera — Etapa 8 posterior"

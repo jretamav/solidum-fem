@@ -121,7 +121,7 @@ Componentes de un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario
 | Solver | Pipeline kind | Tipo de problema | Pre-condición |
 |---|---|---|---|
 | `LinearSolver` | `static` | **Conducción estacionaria** `K·T = F`. | Ninguna adicional: el solver mecánico existente resuelve el térmico **sin modificación**. No requiere `ρ` ni `c`. |
-| `ThetaMethodSolver` | `thermal_transient` | **Conducción transitoria** `C·Ṫ + K·T = F(t)`, integración θ de primer orden. | `ρ` y `c` declaradas; al menos un Dirichlet de temperatura. |
+| `ThetaMethodSolver` | `thermal_transient` | **Conducción transitoria** `C·Ṫ + K·T = F(t)`, integración θ de primer orden. | `ρ` y `c` declaradas. Admite el cuerpo aislado, sin ninguna temperatura impuesta (el estacionario no). |
 
 **El estacionario no tiene solver propio.** Que el `LinearSolver` resuelva el problema térmico sin un cambio de línea es el hallazgo arquitectural de la Etapa 8: la infraestructura de ensamblaje, imposición de Dirichlet (ADR 0004) y despacho algebraico (ADR 0003) resultó agnóstica al campo físico.
 
