@@ -46,14 +46,17 @@ class FactorizedSolver(Protocol):
       autovalores negativos por la ley de inercia de Sylvester — útil para
       detectar bifurcaciones (pandeo, snap-through). ``None`` si el backend
       no lo expone.
-    - ``n_zero_pivots`` (``int | None``): pivotes numéricamente nulos,
-      ``|pivote| < ZERO_PIVOT_RTOL·max|K|`` (el criterio con el que MKL
-      Pardiso perturba un pivote). > 0 delata una matriz singular aunque la
-      solución parezca razonable: la red de seguridad del ADR 0019 lo usa en
-      el estático lineal y en la tangente inicial de los estáticos no
-      lineales. Lo exponen SuperLU, Pardiso y Cholesky con el mismo
-      criterio; ``None`` si el backend no tiene pivotes que inspeccionar
-      (el iterativo).
+    - ``n_small_pivots`` (``int | None``): pivotes pequeños frente a la
+      diagonal, ``< SUSPECT_PIVOT_RTOL`` (ver :func:`pivot_ratios`). Es el
+      filtro barato de la red de seguridad del ADR 0019 (ampliación del
+      2026-10-20): con alguno, el estático lineal y la tangente inicial de
+      los no lineales buscan un mecanismo interno por la energía del modo de
+      menor energía, que es lo que decide. Un pivote pequeño no basta para
+      declarar un mecanismo: el de un mecanismo real es ruido de redondeo que
+      crece con el tamaño del modelo, y un contraste de rigidez legítimo
+      (zonas rígidas, ν cerca de 1/2) también da pivotes pequeños. Lo
+      exponen SuperLU, Pardiso y Cholesky; ``None`` si el backend no tiene
+      pivotes que inspeccionar (el iterativo).
     """
 
     n_negative_pivots: int | None
@@ -85,6 +88,25 @@ class LinearAlgebraSolver(Protocol):
         triangular) habilita Newton modificado y reuso entre pasos.
         """
         ...
+
+
+def pivot_ratios(pivots: np.ndarray, diag: np.ndarray, rows: np.ndarray,
+                 cols: np.ndarray | None = None) -> np.ndarray:
+    """Cociente de cada pivote con la diagonal de su fila y su columna,
+    ``|p_i| / √(|K_rr|·|K_cc|)`` con ``r = rows[i]``, ``c = cols[i]`` (en una
+    factorización simétrica, ``cols = rows`` y el cociente es ``|d_i|/K_rr``).
+
+    Un cambio de unidades de un tipo de grado de libertad multiplica su fila
+    y su columna por el mismo factor, y el cociente no cambia: es el pivote
+    de la matriz escalada por su diagonal. Un pivote cuya fila o columna
+    tiene diagonal nula da cociente 0 (sospechoso), porque esa matriz no se
+    puede escalar."""
+    cols = rows if cols is None else cols
+    d = np.abs(np.asarray(diag, dtype=float))
+    ref = np.sqrt(d[rows] * d[cols])
+    p = np.abs(np.asarray(pivots, dtype=float))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(ref > 0.0, p / np.where(ref > 0.0, ref, 1.0), 0.0)
 
 
 def out_of_memory_error(n: int, backend: str) -> MemoryError:

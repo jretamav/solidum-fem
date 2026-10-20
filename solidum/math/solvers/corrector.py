@@ -253,19 +253,20 @@ class NewtonCorrector:
         self._frozen_factor = None
         return self._backend(n)
 
-    def inspect_next_factorization(self, inspector: Callable[[Any], None]) -> None:
+    def inspect_next_factorization(self, inspector: Callable[[Any, Any], None]) -> None:
         """Entrega a ``inspector`` la próxima factorización fresca, antes de
         usarla, y lo olvida.
 
         Lo usa la red de seguridad del ADR 0019
         (:func:`~solidum.math.solvers.model_checks.check_initial_tangent`)
-        para contar los pivotes nulos de la tangente inicial sin factorizar
-        dos veces. ``inspector(factor)`` recibe el objeto factorizado (con
-        ``n_zero_pivots``) o ``None`` si la factorización directa falló por
-        un pivote exactamente nulo; en ese caso el ``RuntimeError`` del
-        backend se propaga después, como siempre. Si ``inspector`` lanza
-        :class:`IllPosedSystemError`, el corrector no la toma por una tangente
-        singular: se propaga hasta el usuario."""
+        para buscar mecanismos internos en la tangente inicial sin factorizar
+        dos veces. ``inspector(factor, A)`` recibe el objeto factorizado (con
+        ``n_small_pivots``) y la matriz factorizada, o ``factor = None`` si la
+        factorización directa falló por un pivote exactamente nulo; en ese
+        caso el ``RuntimeError`` del backend se propaga después, como
+        siempre. Si ``inspector`` lanza :class:`IllPosedSystemError`, el
+        corrector no la toma por una tangente singular: se propaga hasta el
+        usuario."""
         self._factor_inspector = inspector
 
     def _factorize(self, linalg, A, n: int):
@@ -282,9 +283,9 @@ class NewtonCorrector:
         try:
             factor = self._factorize(linalg, A, n)
         except RuntimeError:
-            inspector(None)          # pivote exactamente nulo
+            inspector(None, A)       # pivote exactamente nulo
             raise
-        inspector(factor)
+        inspector(factor, A)
         return factor
 
     def solve(self, A, b: np.ndarray, iteration: int = 0) -> np.ndarray:

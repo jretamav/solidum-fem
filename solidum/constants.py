@@ -175,9 +175,20 @@ EQUILIBRIUM_RTOL = 1.0e-8
 # (columnas normalizadas a máximo 1) por debajo de este múltiplo del mayor
 # se consideran nulos ⇒ movimiento rígido libre ⇒ mecanismo.
 MECHANISM_RANK_RTOL = 1.0e-8
-# Un pivote de la factorización directa se considera numéricamente nulo si
-# |pivote| < ZERO_PIVOT_RTOL · max|K|. Es el mismo criterio con el que MKL
-# Pardiso decide perturbar un pivote (iparm(10) = 13 por defecto), aplicado
-# también a SuperLU para que ambos detecten la singularidad igual. Medido:
-# modelo bien planteado 3e-3; mecanismo interno 1.6e-16.
-ZERO_PIVOT_RTOL = 1.0e-13
+# Filtro de la capa 3 (ampliación del 2026-10-20): un pivote es sospechoso si
+# |pivote|/√(|K_rr|·|K_cc|) < SUSPECT_PIVOT_RTOL (relativo a la diagonal, así
+# que no depende de las unidades). No decide nada: con algún pivote
+# sospechoso se busca el modo de menor energía y decide su energía
+# (MECHANISM_ENERGY_RTOL). Medido: el pivote de un mecanismo real es ruido de
+# redondeo que crece con el tamaño del modelo (1e-16 con 100 DOF, 2.4e-11 con
+# 264 000); los modelos bien planteados de la suite quedan en ≥ 3.5e-8. Un
+# filtro holgado sólo cuesta la comprobación en los modelos con contrastes
+# de rigidez extremos, que la pasan.
+SUSPECT_PIVOT_RTOL = 1.0e-8
+# Un modo es un mecanismo si todos los elementos que mueve quedan sin
+# deformar: energía relativa v_eᵀ·K_e·v_e / v_eᵀ·D_e·v_e < MECHANISM_ENERGY_RTOL
+# en cada uno (D_e: diagonal de la K ensamblada en los DOF del elemento).
+# Decisión del usuario (2026-10-20). Medido: ≤ 8e-17 en mecanismos de 17 a
+# 264 000 DOF; ≥ 1e-7 con ν = 0.4999999 y 6.8e-2 en zonas rígidas de
+# cualquier contraste. El umbral deja cuatro órdenes sobre el redondeo.
+MECHANISM_ENERGY_RTOL = 1.0e-12

@@ -347,8 +347,9 @@ class TestLinearSolutionChecks(unittest.TestCase):
 
     def test_internal_mechanism_not_activated_by_loads(self):
         """Carga sólo en el bloque empotrado: el sistema es singular pero
-        consistente y el residuo sale perfecto; lo delatan los pivotes
-        nulos, con el mismo criterio en SuperLU y en Pardiso."""
+        consistente y el residuo sale perfecto; lo delata la capa 3 (modo sin
+        energía de deformación, desde el 2026-10-20), con el mismo veredicto
+        en SuperLU y en Pardiso."""
         d, ids = hinged_blocks()
         for la in DIRECT:
             with self.subTest(backend=la):
@@ -365,11 +366,11 @@ class TestLinearSolutionChecks(unittest.TestCase):
                 self.assertTrue(np.all(np.isfinite(r.U)))
                 self.assertLess(np.abs(r.U).max(), 1e-3)
 
-    def test_lu_zero_pivots_zero_on_regular_matrix(self):
+    def test_lu_small_pivots_zero_on_regular_matrix(self):
         d, _ = plate(clamp)
         a = Assembler(d); a.assemble_system()
         K, _, _, _ = a.reduce(a.K_global.tocsr(), np.zeros(d.total_dofs))
-        self.assertEqual(LUSolver().factorize(K).n_zero_pivots, 0)
+        self.assertEqual(LUSolver().factorize(K).n_small_pivots, 0)
 
 
 # ----------------------------------------------------------------------

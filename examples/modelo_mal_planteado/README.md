@@ -9,8 +9,9 @@ u_x en vez de u_y, una diagonal de menos, y la misma sin diagonal cargada
 sólo en horizontal. `LinearSolver` rechaza las cuatro. Los mecanismos rígidos
 lanzan `MechanismError` antes de resolver, con el movimiento libre descrito
 ("giro alrededor del eje z que pasa por (0, 0)"). Los internos lanzan
-`IllPosedSystemError` al factorizar, por un pivote nulo, aunque la carga no
-active el mecanismo. Los solvers no lineales hacen esa comprobación sobre
+`IllPosedSystemError` al factorizar, aunque la carga no active el mecanismo:
+con la factorización se calcula el modo de menor energía y no deforma
+ninguna barra. Los solvers no lineales hacen esa comprobación sobre
 la tangente inicial: con `Truss2D` rechazan el último caso, y con barras
 corrotacionales (`Truss2DCorot`) sólo avisan; el solver iterativo, que no
 tiene pivotes, lo deja pasar con un aviso que dice cómo comprobarlo. Todo se

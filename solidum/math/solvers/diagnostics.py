@@ -256,15 +256,16 @@ class IllPosedSystemError(RuntimeError):
     """El sistema de un análisis estático no es fiable (ADR 0019).
 
     - **Estático lineal** (capas 2 y 3): la solución no satisface el
-      equilibrio, la factorización directa tiene pivotes numéricamente
-      nulos, o no pudo completarse por un pivote exactamente nulo
-      (``factorization_error``; hasta el 2026-09-30 salía el
+      equilibrio, el modelo tiene un mecanismo interno (desde el 2026-10-20
+      se decide por la energía del modo de menor energía, y se localiza), o
+      la factorización directa no pudo completarse por un pivote exactamente
+      nulo (``factorization_error``; hasta el 2026-09-30 salía el
       ``RuntimeError`` del backend, *Factor is exactly singular*).
     - **Estático no lineal** (``initial_tangent=True``, 2026-09-30): la
-      matriz tangente inicial (``U = 0``) tiene pivotes numéricamente nulos
-      y ningún componente del modelo puede ganar rigidez al deformarse (sin
-      elementos geométricamente no lineales ni materiales unilaterales), así
-      que el mecanismo lo es durante todo el análisis.
+      matriz tangente inicial (``U = 0``) tiene un mecanismo interno y ningún
+      componente del modelo puede ganar rigidez al deformarse (sin elementos
+      geométricamente no lineales ni materiales unilaterales), así que el
+      mecanismo lo es durante todo el análisis.
 
     Cubre lo que la detección de mecanismos rígidos no ve: mecanismos
     **internos** (una rótula de más, una barra suelta, un nudo sin rigidez)
@@ -275,9 +276,14 @@ class IllPosedSystemError(RuntimeError):
     relative_residual : float | None
         Residuo relativo del equilibrio (capa 2), si fue la causa.
     zero_pivots : int | None
-        Pivotes numéricamente nulos. ``None`` si la causa fue el equilibrio o
+        Número de mecanismos internos (capa 3): uno por cada modo que se
+        mueve sin deformar ningún elemento, o el número de pivotes pequeños si
+        su modo no pudo calcularse. ``None`` si la causa fue el equilibrio o
         si la factorización directa no pudo completarse por un pivote
         exactamente nulo.
+    mechanisms : list[str]
+        Cada mecanismo interno en palabras, con los elementos que mueve
+        (vacía si no se pudieron localizar o la causa fue otra).
     initial_tangent : bool
         ``True`` si se detectó en la tangente inicial de un solver no lineal.
     factorization_error : str | None
@@ -287,18 +293,37 @@ class IllPosedSystemError(RuntimeError):
     def __init__(self, *, relative_residual: float | None = None,
                  zero_pivots: int | None = None, rtol: float | None = None,
                  solver: str = "", initial_tangent: bool = False,
-                 factorization_error: str | None = None):
+                 factorization_error: str | None = None,
+                 mechanisms: list[str] | None = None):
         self.relative_residual = relative_residual
         self.zero_pivots = zero_pivots
+        self.mechanisms = list(mechanisms or [])
         self.initial_tangent = bool(initial_tangent)
         self.factorization_error = factorization_error
         if self.initial_tangent:
-            super().__init__(_initial_tangent_message(zero_pivots, solver))
+            super().__init__(_initial_tangent_message(zero_pivots, solver, self.mechanisms))
+            return
+        quien = f" ({solver})" if solver else ""
+        if self.mechanisms:
+            super().__init__(
+                f"Resultado descartado{quien}: el modelo tiene "
+                f"{zero_pivots or len(self.mechanisms)} mecanismo(s) interno(s), partes que "
+                f"pueden moverse sin deformar ningún elemento aunque los apoyos "
+                f"impidan el movimiento de sólido rígido del conjunto:\n"
+                f"{_lista(self.mechanisms)}\n"
+                f"La matriz de rigidez es singular: si la carga no activa el "
+                f"mecanismo, los desplazamientos incluirían una parte arbitraria "
+                f"de él; si lo activa, no hay equilibrio. Causas habituales: una "
+                f"rótula o articulación de más, una barra o elemento suelto, dos "
+                f"partes unidas por un solo nodo o por una sola restricción. "
+                f"Revisa la conectividad de esos elementos."
+            )
             return
         if zero_pivots:
             causa = (f"el solver directo encontró {zero_pivots} pivote(s) "
-                     f"numéricamente nulo(s), así que la matriz es singular "
-                     f"aunque los desplazamientos parezcan razonables")
+                     f"pequeño(s) y no se pudo calcular su modo, así que la "
+                     f"matriz es singular aunque los desplazamientos parezcan "
+                     f"razonables")
         elif factorization_error is not None:
             causa = (f"el solver directo no pudo factorizar la matriz, porque "
                      f"tiene al menos un pivote exactamente nulo o una fila "
@@ -308,7 +333,7 @@ class IllPosedSystemError(RuntimeError):
                      f"relativo ‖F − K·u‖/‖F‖ = {relative_residual:.1e}, "
                      f"tolerancia {rtol:.0e})")
         super().__init__(
-            f"Resultado descartado: {causa}. La matriz de rigidez es singular "
+            f"Resultado descartado{quien}: {causa}. La matriz de rigidez es singular "
             f"o está tan mal condicionada que los desplazamientos no son "
             f"fiables. Causas habituales: un mecanismo interno (una rótula o "
             f"articulación de más, una barra o elemento suelto, dos partes "
@@ -318,13 +343,38 @@ class IllPosedSystemError(RuntimeError):
         )
 
 
-def _initial_tangent_message(zero_pivots: int | None, solver: str) -> str:
+def _lista(lineas: list[str]) -> str:
+    return "\n".join(f"  - {linea}" for linea in lineas)
+
+
+def _initial_tangent_message(zero_pivots: int | None, solver: str,
+                             mechanisms: list[str] | None = None) -> str:
     """Mensaje de :class:`IllPosedSystemError` para la tangente inicial de un
     análisis estático no lineal (ADR 0019, 2026-09-30)."""
     quien = f" ({solver})" if solver else ""
+    consecuencia = (
+        f"Ningún componente del modelo puede ganar rigidez al deformarse (no "
+        f"hay elementos geométricamente no lineales ni materiales "
+        f"unilaterales, y la no linealidad del material sólo la reduce), así "
+        f"que el mecanismo lo es durante todo el análisis: si la carga no lo "
+        f"activa, el análisis podría converger, pero sus desplazamientos "
+        f"incluirían una parte arbitraria del mecanismo; si lo activa, no hay "
+        f"equilibrio."
+    )
+    if mechanisms:
+        return (
+            f"Análisis descartado{quien}: la matriz tangente inicial (U = 0) es "
+            f"singular. El modelo tiene {zero_pivots or len(mechanisms)} mecanismo(s) "
+            f"interno(s), partes que pueden moverse sin deformar ningún "
+            f"elemento aunque los apoyos impidan el movimiento de sólido rígido "
+            f"del conjunto:\n{_lista(mechanisms)}\n{consecuencia} Causas "
+            f"habituales: una rótula o articulación de más, una barra o "
+            f"elemento suelto, dos partes unidas por un solo nodo o por una sola "
+            f"restricción. Revisa la conectividad de esos elementos."
+        )
     if zero_pivots:
-        pivotes = (f"tiene {zero_pivots} pivote(s) numéricamente nulo(s), así "
-                   f"que es singular")
+        pivotes = (f"tiene {zero_pivots} pivote(s) pequeño(s) y no se pudo "
+                   f"calcular su modo, así que es singular")
     else:
         pivotes = ("no se pudo factorizar porque tiene al menos un pivote "
                    "exactamente nulo: es singular")
@@ -336,14 +386,9 @@ def _initial_tangent_message(zero_pivots: int | None, solver: str) -> str:
         f"más, una barra o elemento suelto, dos partes unidas por un solo "
         f"nodo que pueden girar entre sí), o rigideces tan desproporcionadas "
         f"entre partes del modelo (penalizaciones, unidades mezcladas) que la "
-        f"matriz es singular a efectos numéricos. Ningún componente del modelo "
-        f"puede ganar rigidez al deformarse (no hay elementos geométricamente "
-        f"no lineales ni materiales unilaterales, y la no linealidad del "
-        f"material sólo la reduce), así que el mecanismo lo es durante todo el "
-        f"análisis: si la carga no lo activa, el análisis podría converger, "
-        f"pero sus desplazamientos incluirían una parte arbitraria del "
-        f"mecanismo; si lo activa, no hay equilibrio. Para localizarlo, haz un "
-        f"análisis modal del mismo modelo con densidad en los materiales: cada "
-        f"mecanismo aparece como una frecuencia nula y su forma modal muestra "
-        f"qué parte se mueve. Revisa la conectividad y los apoyos."
+        f"matriz es singular a efectos numéricos. {consecuencia} Para "
+        f"localizarlo, haz un análisis modal del mismo modelo con densidad en "
+        f"los materiales: cada mecanismo aparece como una frecuencia nula y su "
+        f"forma modal muestra qué parte se mueve. Revisa la conectividad y los "
+        f"apoyos."
     )

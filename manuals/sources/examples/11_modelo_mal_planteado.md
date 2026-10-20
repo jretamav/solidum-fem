@@ -48,10 +48,11 @@ El análisis, con los dos errores que Solidum puede lanzar:
 
 {{py:run.py#analizar}}
 
-`LinearSolver` comprueba el modelo en dos momentos:
+`LinearSolver` comprueba el modelo en tres momentos:
 
 - **Antes de resolver**: qué movimientos de sólido rígido dejan libres los apoyos. No factoriza nada. Si queda alguno, lanza `MechanismError` y lo describe en términos del modelo: una traslación, o un giro alrededor de un punto.
-- **Después de factorizar**: si la factorización encontró pivotes numéricamente nulos, la matriz es singular. Además, la solución tiene que cumplir el equilibrio, $\lVert\mathbf F - \mathbf K\mathbf u\rVert \le 10^{-8}\,\lVert\mathbf F\rVert$. Si falla cualquiera de las dos cosas, lanza `IllPosedSystemError`. Es lo que atrapa los mecanismos internos, que los apoyos no pueden delatar.
+- **Después de factorizar**: si la factorización tiene pivotes pequeños frente a la diagonal, Solidum calcula con ella el modo de menor energía, el de $\mathbf K\mathbf v = \lambda\,\operatorname{diag}(\mathbf K)\,\mathbf v$, y mira la energía de deformación que ese modo produce en cada elemento que mueve. Si no deforma ninguno, es un mecanismo interno, que los apoyos no pueden delatar, y lanza `IllPosedSystemError` diciendo qué elementos se mueven. El tamaño del pivote no basta para decidirlo: el de un mecanismo real es ruido de redondeo que crece con el tamaño del modelo, y un modelo legítimo con rigideces muy desproporcionadas también da pivotes pequeños, pero su modo sí deforma algún elemento.
+- **Después de resolver**: la solución tiene que cumplir el equilibrio, $\lVert\mathbf F - \mathbf K\mathbf u\rVert \le 10^{-8}\,\lVert\mathbf F\rVert$. Si no lo cumple, también lanza `IllPosedSystemError`.
 
 El usuario no elige el solver algebraico: por omisión Solidum usa un solver directo, SuperLU, Pardiso o CHOLMOD según lo que esté instalado, y con todos el diagnóstico es el mismo en los cinco casos.
 
@@ -78,25 +79,25 @@ El usuario no elige el solver algebraico: por omisión Solidum usa un solver dir
 {{r:casos.rodillo_girado.mensaje}}
 ```
 
-**Sin diagonal.** Los apoyos son correctos y la armadura no puede moverse como sólido rígido, así que la comprobación previa pasa. Pero sin su diagonal el segundo panel es un cuadrilátero articulado, que se distorsiona sin alargar ninguna barra. Las partes de la armadura a cada lado del panel giran lo mismo y se desplazan en vertical una respecto de la otra (@fig:armadura d). Las cuerdas del panel siguen resistiendo el momento flector; lo que el panel no puede transmitir es el cortante, y con estas cargas lo tiene. Es un mecanismo interno. Solidum lo detecta al factorizar, con {{r:casos.sin_diagonal.pivotes_nulos}} pivote nulo, y el mensaje apunta a las causas habituales:
+**Sin diagonal.** Los apoyos son correctos y la armadura no puede moverse como sólido rígido, así que la comprobación previa pasa. Pero sin su diagonal el segundo panel es un cuadrilátero articulado, que se distorsiona sin alargar ninguna barra. Las partes de la armadura a cada lado del panel giran lo mismo y se desplazan en vertical una respecto de la otra (@fig:armadura d). Las cuerdas del panel siguen resistiendo el momento flector; lo que el panel no puede transmitir es el cortante, y con estas cargas lo tiene. Es un mecanismo interno. Solidum lo detecta al factorizar: encuentra {{r:casos.sin_diagonal.mecanismos_internos}} modo que no deforma ninguna barra, y el mensaje dice qué barras se mueven y apunta a las causas habituales:
 
 ```
 {{r:casos.sin_diagonal.mensaje}}
 ```
 
-**Dónde está el mecanismo.** El mensaje dice qué pasa, pero no dónde. Para encontrar un mecanismo interno basta un análisis modal del mismo modelo, con densidad en el material. Cada mecanismo aparece como una frecuencia nula, porque se mueve sin deformar nada, y su forma modal muestra qué parte se mueve:
+**Dónde está el mecanismo.** Aquí el mensaje no puede ser más preciso: el mecanismo mueve toda la armadura, aunque no como un sólido rígido. Cuando una parte del modelo se mueve como un sólido rígido, por ejemplo una placa unida al resto por un solo nodo, el mensaje dice qué elementos la forman y alrededor de qué punto gira. Para ver la forma de un mecanismo basta un análisis modal del mismo modelo, con densidad en el material. Cada mecanismo aparece como una frecuencia nula, porque se mueve sin deformar nada, y su forma modal muestra qué parte se mueve:
 
 {{py:run.py#buscar_mecanismo}}
 
 Aquí `ModalSolver` da {{r:modal.frecuencias_nulas}} frecuencia nula, seguida de una de {{r:modal.f1_hz:.1f}} Hz, y su forma modal coincide con el mecanismo de la estática (@fig:armadura d).
 
-**Sin diagonal, con carga horizontal.** Esta carga no activa el mecanismo: la cuerda inferior la lleva hasta el pasador y la estática tiene solución. El residuo del equilibrio no delataría nada, porque existe un campo de desplazamientos que lo cumple. El pivote nulo sí lo delata, y Solidum rechaza el modelo igual que antes. Tiene razón: esa armadura sólo resiste las cargas que no activan el mecanismo, y cualquier carga vertical en un nudo del vano la derrumbaría.
+**Sin diagonal, con carga horizontal.** Esta carga no activa el mecanismo: la cuerda inferior la lleva hasta el pasador y la estática tiene solución. El residuo del equilibrio no delataría nada, porque existe un campo de desplazamientos que lo cumple. El modo de menor energía sí lo delata, porque no depende de la carga, y Solidum rechaza el modelo igual que antes. Tiene razón: esa armadura sólo resiste las cargas que no activan el mecanismo, y cualquier carga vertical en un nudo del vano la derrumbaría.
 
 ```callout Advertencia
 Estas comprobaciones protegen de los modelos mal planteados, no de los bien planteados con datos equivocados. Si el área se escribe en cm² en unas unidades que la esperan en m², $A = 20$ en vez de $20\cdot 10^{-4}$, la armadura es $10^4$ veces más rígida. Las fuerzas axiales no cambian, porque en una armadura isostática sólo dependen del equilibrio, pero la flecha pasa de {{r:correcto.flecha_mm:.2f}} mm a {{r:unidades.flecha_um:.2f}} µm. El modelo está bien planteado y Solidum no avisa. Comprobar el orden de magnitud de los desplazamientos sigue siendo trabajo del usuario.
 ```
 
-**Con un solver no lineal.** `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver` hacen la misma comprobación de pivotes, pero sólo sobre la matriz tangente inicial, la de $\mathbf u = \mathbf 0$. Más adelante no pueden hacerla: cerca de un punto límite la tangente es casi singular por naturaleza, y rechazarla impediría seguir la curva. Con barras `Truss2D`, el último caso se rechaza igual que con `LinearSolver`, con `{{r:limites.no_lineal}}`. La armadura es geométricamente lineal, y la no linealidad de su material, si la tuviera, sólo podría quitarle rigidez, así que el mecanismo que hay en $\mathbf u = \mathbf 0$ sigue ahí durante todo el análisis. Con barras corrotacionales, `Truss2DCorot`, la respuesta es otra. Al deformarse, la rigidez geométrica puede estabilizar un mecanismo, como pasa con una red de cables sin pretensar, que se rigidiza al tensarse. Por eso Solidum sólo avisa, con el mismo consejo de buscarlo con un análisis modal, y el análisis sigue hasta la solución.
+**Con un solver no lineal.** `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver` hacen la misma comprobación, pero sólo sobre la matriz tangente inicial, la de $\mathbf u = \mathbf 0$. Más adelante no pueden hacerla: cerca de un punto límite la tangente es casi singular por naturaleza, y rechazarla impediría seguir la curva. Con barras `Truss2D`, el último caso se rechaza igual que con `LinearSolver`, con `{{r:limites.no_lineal}}`. La armadura es geométricamente lineal, y la no linealidad de su material, si la tuviera, sólo podría quitarle rigidez, así que el mecanismo que hay en $\mathbf u = \mathbf 0$ sigue ahí durante todo el análisis. Con barras corrotacionales, `Truss2DCorot`, la respuesta es otra. Al deformarse, la rigidez geométrica puede estabilizar un mecanismo, como pasa con una red de cables sin pretensar, que se rigidiza al tensarse. Por eso Solidum sólo avisa, diciendo qué barras forman el mecanismo, y el análisis sigue hasta la solución.
 
 **Con el solver iterativo.** Con `linear_algebra: iterative` el último caso sí pasa, porque un método de Krylov no factoriza la matriz y no tiene pivotes que inspeccionar. Distinguir un mecanismo de un modelo que sólo está mal condicionado exigiría estimar el menor autovalor con una precisión que un método de Krylov no da de forma fiable. Solidum no finge detectarlo: avisa una vez por análisis, y dice cómo comprobarlo:
 

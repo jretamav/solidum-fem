@@ -23,6 +23,7 @@ from solidum.math.solvers._shared import (
 from solidum.math.solvers.diagnostics import IllPosedSystemError
 from solidum.math.solvers.model_checks import (
     check_linear_solution,
+    ensure_no_internal_mechanisms,
     ensure_statically_restrained,
     warn_if_pivots_unavailable,
 )
@@ -113,6 +114,10 @@ class LinearSolver:
         # avisa una vez por factorización —una por análisis— de que un
         # mecanismo interno que la carga no active no se comprueba.
         warn_if_pivots_unavailable(factor, type(self).__name__)
+        # Capa 3 (ADR 0019, ampliación del 2026-10-20): un mecanismo interno
+        # se rechaza antes de resolver, localizado, aunque la carga no lo
+        # active. Decide la energía del modo, no el tamaño del pivote.
+        ensure_no_internal_mechanisms(self.assembler, K_red, factor, type(self).__name__)
 
         self._factor = factor
         self._K_red = K_red
@@ -130,10 +135,10 @@ class LinearSolver:
         # F_red = T.T · (F − K · g) = T.T · F − F_dir, con F_dir cacheado.
         F_red = self._T.T @ F_ext_global - self._F_dir
         u_red = self._factor.solve(F_red)
-        # Red de seguridad, capas 2 y 3 (ADR 0019): equilibrio verificado y
-        # factorización sin pivotes perturbados. Un solver directo ante una
-        # matriz singular devuelve basura sin avisar; aquí no pasa.
-        check_linear_solution(self._K_red, u_red, F_red, self._factor)
+        # Red de seguridad, capa 2 (ADR 0019): equilibrio verificado. Un
+        # solver directo ante una matriz singular devuelve basura sin
+        # avisar; aquí no pasa.
+        check_linear_solution(self._K_red, u_red, F_red)
         U = self.assembler.expand(u_red, self._T, self._g_full)
         _log.info("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U

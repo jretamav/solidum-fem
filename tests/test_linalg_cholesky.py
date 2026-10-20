@@ -1,20 +1,24 @@
 """Pivotes nulos del backend Cholesky (CHOLMOD) — deuda #28, ADR 0019 capa 3.
 
-Hasta el 2026-09-30 ``CholeskyFactorized`` no exponía ``n_zero_pivots``, así
+Hasta el 2026-09-30 ``CholeskyFactorized`` no exponía sus pivotes nulos, así
 que la comprobación de pivotes nulos del estático lineal leía 0 con el extra
 ``cholmod`` instalado: si CHOLMOD factorizaba la matriz singular de un
 mecanismo interno con un pivote positivo del orden del redondeo, la solución
-pasaba sin aviso. Ahora el backend cuenta los pivotes de ``LDLᵀ`` con el
-criterio de SuperLU y Pardiso, ``|d_i| < ZERO_PIVOT_RTOL·max|K|``.
+pasaba sin aviso. Ahora el backend cuenta los pivotes de ``LDLᵀ`` pequeños
+frente a la diagonal de su grado de libertad (``d_i/K_pp < SUSPECT_PIVOT_RTOL``
+con la permutación del factor; desde el 2026-10-20, antes frente a
+``max|K|``), que es el filtro con el que la red de seguridad busca un
+mecanismo interno por la energía del modo.
 
 ``scikit-sparse`` no se puede instalar en la máquina Windows de desarrollo,
 así que hay dos niveles de prueba:
 
 1. **Simulado** (corre siempre): el módulo del backend se carga contra un
    ``sksparse.cholmod`` de pega que imita la API real —la 0.4 (``Factor``,
-   ``factor(b)``, ``factor.D()``) y la 0.5 (``CholeskyFactor``,
-   ``factorize``/``solve``, ``factor.factor``, ``is_ll``, ``rcond``)— con
-   una ``LDLᵀ`` densa sin pivoteo. Imita también lo que motiva la deuda:
+   ``factor(b)``, ``factor.D()``, ``factor.P()``) y la 0.5
+   (``CholeskyFactor``, ``factorize``/``solve``, ``factor.factor``,
+   ``is_ll``, ``rcond``, ``perm``)— con una ``LDLᵀ`` densa sin pivoteo (la
+   permutación es la identidad). Imita también lo que motiva la deuda:
    ante el pivote nulo de una matriz semidefinida, el redondeo lo deja
    positivo y la factorización "tiene éxito".
 2. **Real** (``skipUnless`` CHOLMOD): la armadura del ejemplo 11 sin diagonal
@@ -39,7 +43,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from _armadura_pratt import armadura  # noqa: E402
 
-from solidum.constants import ZERO_PIVOT_RTOL  # noqa: E402
+from solidum.constants import SUSPECT_PIVOT_RTOL  # noqa: E402
 from solidum.math.assembly import Assembler  # noqa: E402
 from solidum.math.linalg import LUSolver  # noqa: E402
 from solidum.math.linalg.dispatcher import _HAS_CHOLESKY  # noqa: E402
@@ -109,6 +113,9 @@ def _api_04():
         def D(self):
             return self.d.copy()
 
+        def P(self):
+            return np.arange(self.d.size)
+
     mod = types.ModuleType("sksparse.cholmod")
     mod.CholmodNotPositiveDefiniteError = _NotPD
     mod.cholesky = lambda A, *a, **k: Factor(A)
@@ -130,6 +137,7 @@ def _api_05(is_ll=True):
             self.rcond = float((s.min() / s.max()) ** 2)
             diag = s if is_ll else self.d
             self.factor = sp.csc_matrix(np.tril(self.L, -1) + np.diag(diag))
+            self.perm = np.arange(self.d.size)
             return self
 
         def solve(self, b, system="A"):
@@ -181,21 +189,37 @@ class TestPivotesNulosSimulados(unittest.TestCase):
         for api, crear in APIS.items():
             with self.subTest(api=api):
                 factor = _backend(crear()).CholeskySolver().factorize(K)
-                self.assertEqual(factor.n_zero_pivots, 0)
+                self.assertEqual(factor.n_small_pivots, 0)
                 self.assertEqual(factor.n_negative_pivots, 0)
                 np.testing.assert_allclose(factor.solve(F), LUSolver().solve(K, F),
                                            rtol=1e-10, atol=1e-16)
 
     def test_umbral_del_pivote(self):
-        """``[[1, 1], [1, 1 + δ]]`` tiene pivotes ``1`` y ``δ``: nulo si
-        ``δ < ZERO_PIVOT_RTOL·max|K|``, no nulo si queda por encima."""
+        """``[[1, 1], [1, 1 + δ]]`` tiene pivotes ``1`` y ``δ`` y diagonal
+        ``(1, 1 + δ)``: pequeño si ``δ/(1 + δ) < SUSPECT_PIVOT_RTOL``, no si
+        queda por encima."""
         for api, crear in APIS.items():
             backend = _backend(crear())
-            for delta, esperado in ((0.1 * ZERO_PIVOT_RTOL, 1), (1e3 * ZERO_PIVOT_RTOL, 0)):
+            for delta, esperado in ((0.1 * SUSPECT_PIVOT_RTOL, 1), (1e3 * SUSPECT_PIVOT_RTOL, 0)):
                 with self.subTest(api=api, delta=delta):
                     K = sp.csc_matrix(np.array([[1.0, 1.0], [1.0, 1.0 + delta]]))
-                    self.assertEqual(backend.CholeskySolver().factorize(K).n_zero_pivots,
+                    self.assertEqual(backend.CholeskySolver().factorize(K).n_small_pivots,
                                      esperado)
+
+    def test_el_filtro_no_depende_de_las_unidades(self):
+        """Cambiar las unidades de un grado de libertad escala su fila y su
+        columna (``S·K·S``); el cociente pivote/diagonal no cambia. Con el
+        criterio anterior (``max|K|``) la matriz escalada daba un pivote
+        pequeño más."""
+        delta = 1e3 * SUSPECT_PIVOT_RTOL
+        K = np.array([[1.0, 1.0, 0.0], [1.0, 1.0 + delta, 0.0], [0.0, 0.0, 1.0]])
+        S = np.diag([1.0, 1.0, 1e9])
+        for api, crear in APIS.items():
+            backend = _backend(crear())
+            with self.subTest(api=api):
+                for M in (K, S @ K @ S):
+                    self.assertEqual(
+                        backend.CholeskySolver().factorize(sp.csc_matrix(M)).n_small_pivots, 0)
 
     def test_mecanismo_interno_da_un_pivote_nulo(self):
         """La matriz de la armadura sin diagonal: CHOLMOD la factorizaría con
@@ -203,7 +227,7 @@ class TestPivotesNulosSimulados(unittest.TestCase):
         K, _ = _K_reducida(sin_diagonal=True)
         for api, crear in APIS.items():
             with self.subTest(api=api):
-                self.assertEqual(_backend(crear()).CholeskySolver().factorize(K).n_zero_pivots, 1)
+                self.assertEqual(_backend(crear()).CholeskySolver().factorize(K).n_small_pivots, 1)
 
     def test_no_positiva_definida_se_traduce(self):
         K = sp.csc_matrix(np.array([[1.0, 2.0], [2.0, 1.0]]))
@@ -230,7 +254,7 @@ class TestPivotesNulosSimulados(unittest.TestCase):
 
     def test_api_05_silencia_el_aviso_de_rcond(self):
         """El aviso "Matrix is nearly singular" de la 0.5 no llega al usuario:
-        la red de seguridad decide con ``n_zero_pivots``."""
+        la red de seguridad decide con su propio criterio."""
         K, F = _K_reducida(sin_diagonal=True)
         factor = _backend(_api_05()).CholeskySolver().factorize(K)
         with warnings.catch_warnings(record=True) as capturados:
@@ -242,12 +266,12 @@ class TestPivotesNulosSimulados(unittest.TestCase):
         for api, crear in APIS.items():
             with self.subTest(api=api):
                 factor = _backend(crear()).CholeskySolver().factorize(sp.csc_matrix((0, 0)))
-                self.assertEqual(factor.n_zero_pivots, 0)
+                self.assertEqual(factor.n_small_pivots, 0)
                 self.assertEqual(factor.solve(np.zeros(0)).shape, (0,))
 
 
 class TestRedDeSeguridadConCholeskySimulado(unittest.TestCase):
-    """Los solvers ven el ``n_zero_pivots`` del backend Cholesky."""
+    """Los solvers ven el ``n_small_pivots`` del backend Cholesky."""
 
     def _con_backend(self, modulo, crear_backend):
         return mock.patch.object(modulo, "select_solver",
@@ -295,7 +319,7 @@ class TestPivotesNulosConCholmodReal(unittest.TestCase):
     def test_linear_solver_cholesky_rechaza_el_mecanismo_no_activado(self):
         """Ejemplo 11, caso "sin diagonal, carga horizontal". CHOLMOD puede
         encontrar el pivote nulo con signo positivo (lo cuenta
-        ``n_zero_pivots``) o no positivo (degrada a LU, que lo cuenta): en
+        ``n_small_pivots``) o no positivo (degrada a LU, que lo cuenta): en
         los dos casos, ``IllPosedSystemError``."""
         dom, F = armadura(sin_diagonal=True, carga="horizontal")
         with self.assertRaises(IllPosedSystemError):
@@ -317,10 +341,10 @@ class TestPivotesNulosConCholmodReal(unittest.TestCase):
         from solidum.math.linalg import CholeskySolver  # type: ignore[attr-defined]
         from solidum.math.linalg.cholesky import CholeskyNotPositiveDefiniteError
         K, _ = _K_reducida(sin_diagonal=False)
-        self.assertEqual(CholeskySolver().factorize(K).n_zero_pivots, 0)
+        self.assertEqual(CholeskySolver().factorize(K).n_small_pivots, 0)
         K, _ = _K_reducida(sin_diagonal=True)
         try:
-            n = CholeskySolver().factorize(K).n_zero_pivots
+            n = CholeskySolver().factorize(K).n_small_pivots
         except CholeskyNotPositiveDefiniteError:
             return          # pivote no positivo: CHOLMOD lo rechaza al factorizar
         self.assertGreaterEqual(n, 1)

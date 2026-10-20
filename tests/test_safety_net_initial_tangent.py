@@ -132,8 +132,11 @@ class TestMecanismoInternoEnLaTangenteInicial(unittest.TestCase):
                     self.assertGreaterEqual(err.zero_pivots, 1)
                     msg = str(err)
                     self.assertIn(nombre, msg)
-                    self.assertIn("mecanismo interno", msg)
-                    self.assertIn("análisis modal", msg)
+                    self.assertIn("mecanismo(s) interno(s)", msg)
+                    # Desde el 2026-10-20 el mensaje localiza el mecanismo
+                    # (antes remitía a un análisis modal para encontrarlo).
+                    self.assertEqual(len(err.mechanisms), 1)
+                    self.assertIn("pueden moverse sin deformarse", err.mechanisms[0])
 
     def test_geometricamente_lineal_con_carga_que_lo_activa(self):
         """Antes: bisecciones hasta ``SingularTangentError``. Ahora el mismo
@@ -212,9 +215,10 @@ class TestMecanismoInternoEnLaTangenteInicial(unittest.TestCase):
         traccionarse) la rigidez de la sección puede crecer al deformarse,
         como la geométrica de un corrotacional: sólo aviso. En un modelo real
         la tangente de este voladizo es regular (el acero ya da EA y EI): el
-        pivote nulo se simula para aislar la decisión del caso que la
-        provoca."""
-        from solidum.math.solvers.model_checks import check_initial_tangent
+        mecanismo se simula (resultado de ``find_internal_mechanisms``) para
+        aislar la decisión del caso que la provoca."""
+        from solidum.math.solvers import model_checks
+        from solidum.math.solvers.model_checks import InternalMechanism, check_initial_tangent
         from solidum.sections import RectangularPatch
 
         def voladizo(con_tendones):
@@ -238,13 +242,19 @@ class TestMecanismoInternoEnLaTangenteInicial(unittest.TestCase):
 
         class _Factor:
             def __init__(self, n):
-                self.n_zero_pivots = n
+                self.n_small_pivots = n
+
+        def mecanismos_simulados(assembler, A, factor):
+            n = factor.n_small_pivots
+            return [InternalMechanism((1,), "la parte formada por los elementos 1 "
+                                      "puede moverse sin deformarse", 0.0)] * n
 
         def veredicto(con_tendones, factor):
             corrector = _Corrector()
             check_initial_tangent(voladizo(con_tendones), corrector, "NonlinearSolver")
-            with avisos() as registros:
-                corrector.inspector(factor)
+            with avisos() as registros, mock.patch.object(
+                    model_checks, "find_internal_mechanisms", mecanismos_simulados):
+                corrector.inspector(factor, None)
             return registros
 
         # Regular: nada, con o sin tendones.
@@ -254,6 +264,8 @@ class TestMecanismoInternoEnLaTangenteInicial(unittest.TestCase):
         with self.assertRaises(IllPosedSystemError) as cm:
             veredicto(False, _Factor(2))
         self.assertEqual(cm.exception.zero_pivots, 2)
+        self.assertEqual(len(cm.exception.mechanisms), 2)
+        self.assertIn("elementos 1", str(cm.exception))
         with self.assertRaises(IllPosedSystemError) as cm:
             veredicto(False, None)                  # pivote exactamente nulo
         self.assertIsNone(cm.exception.zero_pivots)
@@ -412,58 +424,8 @@ from solidum.registry import ElementRegistry, MaterialRegistry  # noqa: E402
 _EL = ElementRegistry.get
 _MAT = MaterialRegistry.get
 
-# Orden local de los nodos en el cuadrado / cubo unidad de referencia.
-_QUAD4 = ((0, 0), (1, 0), (1, 1), (0, 1))
-_HEX8 = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
-         (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))
-
-
-class _Malla:
-    """Nodos por coordenadas (los compartidos se funden) y mallas
-    estructuradas de Quad4/Hex8 sobre cajas."""
-
-    def __init__(self):
-        self.dom = Domain()
-        self._ids = {}
-
-    def nodo(self, x):
-        clave = tuple(round(float(v), 9) for v in x)
-        if clave not in self._ids:
-            nid = len(self.dom.nodes) + 1
-            while nid in self.dom.nodes:
-                nid += 1
-            self._ids[clave] = nid
-            self.dom.add_node(nid, [float(v) for v in x])
-        return self.dom.nodes[self._ids[clave]]
-
-    def elemento(self, tipo, coords, *args, **kwargs):
-        el = _EL(tipo)(len(self.dom.elements) + 1, [self.nodo(c) for c in coords],
-                       *args, **kwargs)
-        self.dom.add_element(el)
-        return el
-
-    def caja(self, tipo, origen, tam, n, material):
-        ref = _QUAD4 if len(n) == 2 else _HEX8
-        h = np.asarray(tam, float) / np.asarray(n, float)
-        for celda in np.ndindex(*n):
-            o = np.asarray(origen, float) + np.asarray(celda) * h
-            self.elemento(tipo, [o + np.asarray(r) * h for r in ref], material)
-
-    def nodos(self, condicion):
-        return [self.dom.nodes[i] for x, i in self._ids.items() if condicion(np.asarray(x))]
-
-    def cerrar(self, cargas=()):
-        self.dom.generate_equation_numbers(verbose=False)
-        F = np.zeros(self.dom.total_dofs)
-        for nodo, dof, valor in cargas:
-            F[nodo.dofs[dof]] += valor
-        return self.dom, F
-
-
-def _empotrar(nodos, dofs):
-    for nodo in nodos:
-        for dof in dofs:
-            nodo.fix_dof(dof, 0.0)
+from _malla_estructurada import Malla as _Malla  # noqa: E402
+from _malla_estructurada import empotrar as _empotrar  # noqa: E402
 
 
 # --- mecanismos internos que la carga no activa -----------------------------

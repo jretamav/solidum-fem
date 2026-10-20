@@ -149,7 +149,7 @@ def analizar(caso: str, area: float = A, linear_algebra: str = "auto") -> dict:
         return {"resultado": "MechanismError", "movimiento": e.motions[0],
                 "n_movimientos": len(e.motions), "mensaje": str(e)}
     except IllPosedSystemError as e:       # después de factorizar: mecanismo interno
-        return {"resultado": "IllPosedSystemError", "pivotes_nulos": e.zero_pivots or 0,
+        return {"resultado": "IllPosedSystemError", "mecanismos_internos": e.zero_pivots or 0,
                 "mensaje": str(e)}
     N = [el.internal_forces(U).components["N"][0] for el in dom.elements.values()]
     return {"resultado": "solución", "N": np.array(N),
@@ -260,7 +260,8 @@ def calcular() -> dict:
                 "equilibrio_txt": "sí" if ref["con_equilibrio"] else "no",
                 "mensaje": _partir(fe.get("mensaje", "")),
                 "rechazado": int(fe["resultado"] != "solución"), "resultado": fe["resultado"],
-                "movimiento": fe.get("movimiento", ""), "pivotes_nulos": fe.get("pivotes_nulos", 0)}
+                "movimiento": fe.get("movimiento", ""),
+                "mecanismos_internos": fe.get("mecanismos_internos", 0)}
             detalle[caso] = (ref, fe)
         ref, fe = detalle["correcto"]
         escala = np.abs(ref["N"]).max()
@@ -379,7 +380,7 @@ def main() -> dict:
     for caso, d in res["casos"].items():
         print(f"{caso:15s} 2j = {d['dos_j']}, m + r = {d['m_mas_r']}, mecanismos = {d['mecanismos']}, "
               f"equilibrio = {d['con_equilibrio']} → {d['resultado']} {d['movimiento']}"
-              f"{' pivotes nulos: ' + str(d['pivotes_nulos']) if d['pivotes_nulos'] else ''}")
+              f"{' mecanismos internos: ' + str(d['mecanismos_internos']) if d['mecanismos_internos'] else ''}")
     c = res["correcto"]
     print(f"correcto: error N = {c['error_N']:.1e}, flecha = {c['flecha_mm']:.3f} mm "
           f"(error {c['error_flecha']:.1e}), N en [{c['N_min_kN']:.1f}, {c['N_max_kN']:.1f}] kN")

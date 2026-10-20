@@ -43,14 +43,32 @@ aparte; queda fuera del alcance de este backend.
 Por tanto :attr:`PardisoFactorized.n_negative_pivots` es ``None``: con
 ``mtype = 11`` la MKL no reporta inercia (``iparm[22]`` queda en cero para
 cualquier matriz, así que leerlo sería *peor* que no exponerlo).
+
+Pivotes pequeños (ADR 0019, ampliación del 2026-10-20)
+------------------------------------------------------
+El handle se inicializa con ``pardisoinit`` (los mismos parámetros que la
+MKL usa por omisión) más ``iparm(56) = 1``, que habilita ``pardiso_getdiag``:
+tras factorizar se leen los pivotes del factor de la matriz escalada y
+emparejada (MC64, ``iparm(11) = iparm(13) = 1`` por omisión), cuya diagonal
+es unitaria, así que el pivote ya está relativo a la diagonal. Medido sobre
+``Hex8`` con 90 000 DOF: factorizar 1,60 s sin la opción y 1,63 s con ella,
+leer la diagonal 0,2 ms, la misma solución a 3e-14. El escalado MC64 no es
+exactamente invariante a un cambio de unidades (el pivote mínimo de un
+pórtico con zonas rígidas cambia ×10 de m a mm), lo que basta para un
+filtro: decide la energía del modo (``model_checks``). Si la MKL no ofrece
+``pardiso_getdiag``, el filtro es el número de pivotes perturbados
+(``iparm(14)``, ``|p| < 1e-13`` en la matriz escalada).
 """
 from __future__ import annotations
+
+import ctypes
 
 import numpy as np
 import scipy.sparse as sp
 
 from pypardiso import PyPardisoSolver as _PyPardisoSolver  # type: ignore[import-not-found]
 
+from solidum.constants import SUSPECT_PIVOT_RTOL
 from solidum.math.linalg.base import out_of_memory_error
 
 
@@ -70,16 +88,13 @@ class PardisoFactorized:
     n_negative_pivots: int | None = None
 
     def __init__(self, solver: _PyPardisoSolver, K: sp.csr_matrix, token: int,
-                 n_zero_pivots: int = 0):
+                 n_small_pivots: int = 0):
         self._solver = solver
         self._K = K
         self._token = token
-        # Pivotes numéricamente nulos, que la MKL sustituyó por un valor
-        # pequeño para poder seguir (``iparm(14)``, criterio |p| < 1e-13·‖A‖).
-        # En una matriz regular es 0; > 0 delata una matriz singular aunque la
-        # solución "parezca" buena, y el análisis estático lineal la rechaza
-        # (ADR 0019, capa 3). Mismo nombre y criterio que en LUFactorized.
-        self.n_zero_pivots = int(n_zero_pivots)
+        # Pivotes pequeños frente a la diagonal (filtro de la capa 3 del ADR
+        # 0019; ver la nota del módulo). Mismo nombre que en LUFactorized.
+        self.n_small_pivots = int(n_small_pivots)
 
     def solve(self, b: np.ndarray) -> np.ndarray:
         # El handle de la MKL es único por proceso y guarda **una sola**
@@ -109,11 +124,11 @@ class _EmptyFactorized:
     """Factorización de un sistema ``0×0``: ``solve`` devuelve el vector vacío.
 
     No toca la MKL, así que tampoco invalida la factorización vigente.
-    Sin incógnitas no hay pivotes, ni nulos (``n_zero_pivots = 0``).
+    Sin incógnitas no hay pivotes, ni pequeños (``n_small_pivots = 0``).
     """
 
     n_negative_pivots: int | None = 0
-    n_zero_pivots: int = 0
+    n_small_pivots: int = 0
 
     def solve(self, b: np.ndarray) -> np.ndarray:
         return np.zeros(0)
@@ -141,12 +156,56 @@ class PardisoSolver:
     _shared_solver: _PyPardisoSolver | None = None
     # Identifica la factorización viva en el handle; ver PardisoFactorized.solve.
     _token: int = 0
+    # ``pardiso_getdiag`` de la MKL, o None si no está disponible.
+    _getdiag = None
 
     @classmethod
     def _handle(cls) -> _PyPardisoSolver:
         if cls._shared_solver is None:
-            cls._shared_solver = _PyPardisoSolver()
+            solver = _PyPardisoSolver()
+            cls._getdiag = cls._enable_diagonal(solver)
+            cls._shared_solver = solver
         return cls._shared_solver
+
+    @staticmethod
+    def _enable_diagonal(solver: _PyPardisoSolver):
+        """Parámetros por omisión de la MKL (``pardisoinit``) más
+        ``iparm(56) = 1``, que habilita ``pardiso_getdiag``. Devuelve esa
+        función, o ``None`` si la MKL no la ofrece (el handle queda entonces
+        con ``iparm`` a cero: los valores por omisión, como siempre)."""
+        try:
+            init = solver.libmkl.pardisoinit
+            getdiag = solver.libmkl.pardiso_getdiag
+        except AttributeError:
+            return None
+        init.restype = None
+        getdiag.restype = None
+        mtype = ctypes.c_int32(solver.mtype)
+        init(solver.pt.ctypes.data_as(ctypes.c_void_p), ctypes.byref(mtype),
+             solver.iparm.ctypes.data_as(ctypes.c_void_p))
+        solver.set_iparm(56, 1)
+        return getdiag
+
+    @classmethod
+    def _small_pivots(cls, solver: _PyPardisoSolver, n: int) -> int:
+        """Pivotes del factor recién calculado por debajo de
+        ``SUSPECT_PIVOT_RTOL`` frente a la diagonal. Con el escalado MC64 por
+        omisión, el pivote ``df`` ya es el de la matriz escalada, de diagonal
+        unitaria; sin escalado se divide por la diagonal ``da``."""
+        if cls._getdiag is not None:
+            df, da = np.zeros(n), np.zeros(n)
+            mnum, err = ctypes.c_int32(1), ctypes.c_int32(0)
+            cls._getdiag(solver.pt.ctypes.data_as(ctypes.c_void_p),
+                         df.ctypes.data_as(ctypes.c_void_p),
+                         da.ctypes.data_as(ctypes.c_void_p),
+                         ctypes.byref(mnum), ctypes.byref(err))
+            if err.value == 0:
+                ratios = np.abs(df)
+                if solver.get_iparm(11) == 0:
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        ratios = np.where(da != 0.0, ratios / np.abs(da), 0.0)
+                return int(np.sum(ratios < SUSPECT_PIVOT_RTOL))
+        return int(solver.get_iparm(14))
 
     @staticmethod
     def _as_csr(K: sp.spmatrix) -> sp.csr_matrix:
@@ -189,4 +248,4 @@ class PardisoSolver:
             ) from exc
         type(self)._token += 1
         return PardisoFactorized(solver, K_csr, type(self)._token,
-                                 n_zero_pivots=solver.get_iparm(14))
+                                 n_small_pivots=self._small_pivots(solver, K_csr.shape[0]))

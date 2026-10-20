@@ -228,7 +228,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Contexto.** El usuario de Solidum no elige el solver algebraico ni tiene por qué conocer sus fallos. Medido: con un modelo mal apoyado, los solvers directos devolvían en silencio desplazamientos de miles de kilómetros.
 
-**Decisión.** Tres capas en el análisis estático: antes de resolver, los **mecanismos rígidos** se detectan a partir de los modos de cuerpo rígido que las restricciones dejan libres y se describen en términos del modelo (traslación, giro alrededor de un eje por un punto, campo escalar sin valor prescrito); después de resolver, en el análisis lineal, se verifican el **equilibrio** y la ausencia de **pivotes nulos**. Dentro de un Newton no se rechaza nada —cerca de un punto límite resolver un sistema casi singular es legítimo—, sólo se mejora el diagnóstico.
+**Decisión.** Tres capas en el análisis estático: antes de resolver, los **mecanismos rígidos** se detectan a partir de los modos de cuerpo rígido que las restricciones dejan libres y se describen en términos del modelo (traslación, giro alrededor de un eje por un punto, campo escalar sin valor prescrito); después de factorizar y de resolver, en el análisis lineal, se verifican la ausencia de **mecanismos internos** (desde el 2026-10-20, por la energía del modo de menor energía y no por el tamaño de un pivote, con los elementos que se mueven nombrados) y el **equilibrio**. Dentro de un Newton no se rechaza nada —cerca de un punto límite resolver un sistema casi singular es legítimo—, sólo se mejora el diagnóstico.
 
 **Consecuencia.** Un modelo mal planteado se detiene con una explicación en vez de devolver resultados absurdos, sin falsos positivos en toda la batería de pruebas.
 

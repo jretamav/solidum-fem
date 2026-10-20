@@ -27,19 +27,17 @@ admite ambas (``scikit-sparse>=0.4``), así que el backend también:
   exactamente 0. Esa comprobación se adelanta aquí a la factorización para
   que el fallback a LU actúe en el mismo sitio con las dos versiones.
 
-Pivotes nulos (ADR 0019, capa 3; deuda #28 saldada el 2026-09-30)
------------------------------------------------------------------
-:attr:`CholeskyFactorized.n_zero_pivots` cuenta los pivotes de ``LDLᵀ`` por
-debajo de ``ZERO_PIVOT_RTOL·max|K|``, la misma regla que SuperLU (la diagonal
-de ``U``). Para una matriz simétrica, los pivotes de ``LDLᵀ`` son los de la
-eliminación gaussiana sin pivoteo con la misma ordenación (``d_i = U_ii``);
-los valores concretos dependen de la ordenación de cada backend, pero el
-número de pivotes nulos de una matriz singular (su defecto de rango) no.
-Pardiso aplica el umbral a la matriz escalada, así que la regla de SuperLU y
-Cholesky no es invariante a un cambio de unidades y la de Pardiso sí (ADR
-0019, «Lo que queda sin cubrir»). Sin este conteo, CHOLMOD factorizaba una
-matriz singular con un pivote positivo diminuto (un mecanismo interno que la
-carga no activa) y la solución pasaba sin aviso.
+Pivotes pequeños (ADR 0019, capa 3; deuda #28 saldada el 2026-09-30)
+--------------------------------------------------------------------
+:attr:`CholeskyFactorized.n_small_pivots` cuenta los pivotes ``d_i`` de
+``LDLᵀ`` pequeños frente a la diagonal de su grado de libertad,
+``d_i/K_pp < SUSPECT_PIVOT_RTOL`` con ``p = perm[i]`` (``L·D·Lᵀ = K[p][:, p]``:
+``Factor.P()`` en la 0.4, ``CholeskyFactor.perm`` en la 0.5). Es el filtro de
+la red de seguridad: con alguno, el análisis estático busca un mecanismo
+interno por la energía del modo (ampliación del 2026-10-20). El cociente no
+depende de las unidades. Sin este conteo, CHOLMOD factorizaba una matriz
+singular con un pivote positivo diminuto (un mecanismo interno que la carga
+no activa) y la solución pasaba sin aviso.
 """
 from __future__ import annotations
 
@@ -48,7 +46,8 @@ import warnings
 import numpy as np
 import scipy.sparse as sp
 
-from solidum.constants import ZERO_PIVOT_RTOL
+from solidum.constants import SUSPECT_PIVOT_RTOL
+from solidum.math.linalg.base import pivot_ratios
 from sksparse.cholmod import (  # type: ignore[import-not-found]
     CholmodNotPositiveDefiniteError,
 )
@@ -82,49 +81,59 @@ class CholeskyFactorized:
     ``K`` es positiva definida; por tanto el conteo de pivotes negativos es
     siempre 0. Los pivotes **nulos** sí pueden aparecer: una matriz singular
     semidefinida puede factorizarse con un pivote positivo del orden del
-    redondeo (ver :attr:`n_zero_pivots`).
+    redondeo (ver :attr:`n_small_pivots`).
 
     Parameters
     ----------
     solve
         ``b ↦ x``: resolución con el factor de CHOLMOD.
     pivots
-        Callable sin argumentos que devuelve los pivotes ``d_i`` de ``LDLᵀ``.
-        Se llama sólo si se pide :attr:`n_zero_pivots`.
-    k_max
-        ``max|K|``, escala del criterio de pivote nulo.
+        Callable sin argumentos que devuelve ``(d, perm)``: los pivotes
+        ``d_i`` de ``LDLᵀ`` y la permutación con ``L·D·Lᵀ = K[perm][:, perm]``.
+        Se llama sólo si se pide :attr:`n_small_pivots`.
+    diag
+        Diagonal de ``K``, escala del cociente de cada pivote.
     """
 
     n_negative_pivots: int | None = 0
 
-    def __init__(self, solve, pivots, k_max: float = 0.0):
+    def __init__(self, solve, pivots, diag: np.ndarray | None = None):
         self._solve = solve
         self._pivots = pivots
-        self._k_max = float(k_max)
-        self._n_zero_pivots: int | None = None
+        self._diag = np.zeros(0) if diag is None else np.abs(np.asarray(diag, dtype=float))
+        self._n_small_pivots: int | None = None
 
     @property
-    def n_zero_pivots(self) -> int:
-        """Pivotes numéricamente nulos: ``|d_i| < ZERO_PIVOT_RTOL·max|K|``
-        con ``d_i`` los pivotes de ``LDLᵀ`` (ADR 0019, capa 3). Se calcula
-        sólo cuando se pide (el análisis estático) y una vez por
-        factorización; leer la diagonal no copia el factor."""
-        if self._n_zero_pivots is None:
-            if self._k_max <= 0.0:
-                self._n_zero_pivots = 0
+    def n_small_pivots(self) -> int:
+        """Pivotes de ``LDLᵀ`` pequeños frente a la diagonal de su grado de
+        libertad, ``|d_i|/K_pp < SUSPECT_PIVOT_RTOL`` con ``p = perm[i]`` (ADR
+        0019, filtro de la capa 3). Se calcula sólo cuando se pide (el
+        análisis estático) y una vez por factorización; leer la diagonal no
+        copia el factor."""
+        if self._n_small_pivots is None:
+            if self._diag.size == 0:
+                self._n_small_pivots = 0
             else:
-                d = np.abs(np.asarray(self._pivots(), dtype=float))
-                self._n_zero_pivots = int(np.sum(d < ZERO_PIVOT_RTOL * self._k_max))
-        return self._n_zero_pivots
+                d, perm = self._pivots()
+                ratios = pivot_ratios(d, self._diag, rows=np.asarray(perm, dtype=np.intp))
+                self._n_small_pivots = int(np.sum(ratios < SUSPECT_PIVOT_RTOL))
+        return self._n_small_pivots
 
     def solve(self, b: np.ndarray) -> np.ndarray:
         return self._solve(b)
 
 
-def _pivots_v05(factor) -> np.ndarray:
-    """Pivotes de ``LDLᵀ`` de un ``CholeskyFactor`` (scikit-sparse 0.5)."""
+def _pivots_v05(factor) -> tuple[np.ndarray, np.ndarray]:
+    """Pivotes de ``LDLᵀ`` y permutación de un ``CholeskyFactor``
+    (scikit-sparse 0.5; ``L·Lᵀ = P·A·Pᵀ`` con ``P = I[perm]``)."""
     d = np.asarray(factor.factor.diagonal(), dtype=float)
-    return d * d if factor.is_ll else d
+    return (d * d if factor.is_ll else d), np.asarray(factor.perm)
+
+
+def _pivots_v04(factor) -> tuple[np.ndarray, np.ndarray]:
+    """Pivotes de ``LDLᵀ`` y permutación de un ``Factor`` (scikit-sparse
+    0.4; la factorización es la de ``A[P[:, None], P[None, :]]``)."""
+    return np.asarray(factor.D(), dtype=float), np.asarray(factor.P())
 
 
 def _solver_v05(factor):
@@ -161,8 +170,9 @@ class CholeskySolver:
         if n == 0:
             # Sistema vacío (todos los DOF prescritos), como en Pardiso: sin
             # incógnitas no hay nada que factorizar ni pivotes que contar.
-            return CholeskyFactorized(lambda b: np.zeros(0), lambda: np.zeros(0))
-        k_max = float(abs(K_csc).max()) if K_csc.nnz else 0.0
+            return CholeskyFactorized(lambda b: np.zeros(0),
+                                      lambda: (np.zeros(0), np.zeros(0, dtype=np.intp)))
+        diag = K_csc.diagonal()
         try:
             if _CholeskyFactor is not None:
                 factor = _CholeskyFactor(K_csc).factorize(K_csc)
@@ -172,8 +182,8 @@ class CholeskySolver:
                     raise CholmodNotPositiveDefiniteError(
                         "Matrix is indefinite or singular to working precision.")
                 return CholeskyFactorized(_solver_v05(factor),
-                                          lambda: _pivots_v05(factor), k_max)
+                                          lambda: _pivots_v05(factor), diag)
             factor = _cholmod_cholesky(K_csc)
         except CholmodNotPositiveDefiniteError as exc:
             raise CholeskyNotPositiveDefiniteError(str(exc)) from exc
-        return CholeskyFactorized(factor, factor.D, k_max)
+        return CholeskyFactorized(factor, lambda: _pivots_v04(factor), diag)
