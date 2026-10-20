@@ -10,9 +10,15 @@ capas entre ese comportamiento y el usuario:
    cuerpo rígido que los apoyos no restringen son un mecanismo. Se detecta
    sin factorizar nada y se describe en términos del modelo ("traslación en
    la dirección x", "giro alrededor del eje z que pasa por (2, 0.5)").
-2. **Después de resolver** — :func:`check_linear_solution`: el equilibrio
-   ``‖F − K·u‖ ≤ EQUILIBRIUM_RTOL·‖F‖``. Atrapa lo que la capa 1 no ve:
-   mecanismos internos cargados y matrices mal condicionadas.
+2. **Después de resolver** — :func:`check_linear_solution`: que el solver
+   resolvió el sistema que se le dio. Desde el 2026-10-20 (decisión del
+   usuario) con el error hacia atrás normado, escalado por la diagonal,
+   ``η ≤ BACKWARD_ERROR_RTOL`` (:func:`backward_error`), y no con el residuo
+   relativo ``‖F − K·u‖/‖F‖``: un solver directo estable garantiza un
+   residuo del orden de ``ε·‖K‖·‖u‖``, no de ``ε·‖F‖``, y con rigideces muy
+   desproporcionadas (zonas rígidas, ν cerca de 1/2) el residuo relativo
+   rechazaba soluciones buenas. Los mecanismos internos cargados, que antes
+   delataba el residuo, los rechaza antes la capa 3.
 3. **Mecanismos internos** — :func:`find_internal_mechanisms`, tras
    factorizar: delata un mecanismo interno aunque ninguna carga lo active y
    el residuo salga perfecto. Desde el 2026-10-20 no decide el tamaño de un
@@ -56,7 +62,7 @@ import scipy.linalg as sla
 import scipy.sparse as sp
 
 from solidum.constants import (
-    EQUILIBRIUM_RTOL,
+    BACKWARD_ERROR_RTOL,
     MECHANISM_ENERGY_RTOL,
     MECHANISM_RANK_RTOL,
 )
@@ -617,20 +623,50 @@ def ensure_no_internal_mechanisms(assembler, K_red, factor, solver: str = "") ->
                   "modo se mueve sin deformar algún elemento.")
 
 
-def check_linear_solution(K, u: np.ndarray, F: np.ndarray) -> float:
-    """Capa 2 del análisis estático lineal.
+def backward_error_scaling(K) -> tuple[np.ndarray, float]:
+    """``(s, ‖K̃‖∞)`` para :func:`backward_error`: la escala ``s = diag(K)^-½``
+    (una diagonal nula cuenta como la mayor) y la norma infinito de
+    ``K̃ = D^-½·K·D^-½``. Depende sólo de ``K``: se calcula una vez por
+    factorización y vale para todas las cargas."""
+    d = np.abs(np.asarray(K.diagonal(), dtype=float))
+    d = np.where(d > 0.0, d, float(d.max()) if d.size and d.max() > 0.0 else 1.0)
+    s = 1.0 / np.sqrt(d)
+    K_norm = float(np.max(s * np.asarray(abs(K) @ s).ravel())) if d.size else 0.0
+    return s, K_norm
 
-    Rechaza con :class:`IllPosedSystemError` una solución que no satisface
-    ``‖F − K·u‖ ≤ EQUILIBRIUM_RTOL·‖F‖``. Devuelve el residuo relativo (0 si
-    ``F = 0``). Los mecanismos internos que la carga no activa los rechaza
-    antes :func:`ensure_no_internal_mechanisms` (capa 3)."""
-    F_norm = float(np.linalg.norm(F))
-    if F_norm == 0.0:
-        return 0.0
-    rel = float(np.linalg.norm(F - K @ u)) / F_norm
-    if not np.isfinite(rel) or rel > EQUILIBRIUM_RTOL:
-        raise IllPosedSystemError(relative_residual=rel, rtol=EQUILIBRIUM_RTOL)
-    return rel
+
+def backward_error(K, u: np.ndarray, F: np.ndarray, scaling=None) -> float:
+    """Error hacia atrás normado de ``u`` como solución de ``K·u = F``,
+    escalado por la diagonal (Rigal y Gaches, 1967; Higham, *Accuracy and
+    Stability of Numerical Algorithms*, cap. 7)::
+
+        η = ‖r̃‖∞ / (‖K̃‖∞·‖ũ‖∞ + ‖F̃‖∞)
+        K̃ = D^-½·K·D^-½,  ũ = D^½·u,  F̃ = D^-½·F,  r̃ = D^-½·(F − K·u),  D = diag(K)
+
+    Es la menor perturbación relativa de ``K`` y ``F`` de la que ``u`` es la
+    solución exacta: un solver estable da ``η`` del orden del redondeo sea
+    cual sea el condicionamiento, y el escalado hace que no dependa de las
+    unidades. ``scaling``: el de :func:`backward_error_scaling`, si ya se
+    calculó para ``K``."""
+    s, K_norm = backward_error_scaling(K) if scaling is None else scaling
+    r = np.abs(s * (F - K @ u))
+    num = float(r.max()) if r.size else 0.0
+    den = K_norm * float(np.abs(u / s).max(initial=0.0)) + float(np.abs(s * F).max(initial=0.0))
+    if den == 0.0:
+        return 0.0 if num == 0.0 else np.inf
+    return num / den
+
+
+def check_linear_solution(K, u: np.ndarray, F: np.ndarray, scaling=None) -> float:
+    """Capa 2 del análisis estático lineal: :class:`IllPosedSystemError` si
+    el error hacia atrás de la solución (:func:`backward_error`) supera
+    ``BACKWARD_ERROR_RTOL``, es decir, si el solver no resolvió el sistema
+    que se le dio. Devuelve ``η``. Los mecanismos internos, cargados o no,
+    los rechaza antes :func:`ensure_no_internal_mechanisms` (capa 3)."""
+    eta = backward_error(K, u, F, scaling)
+    if not np.isfinite(eta) or eta > BACKWARD_ERROR_RTOL:
+        raise IllPosedSystemError(backward_error=eta, rtol=BACKWARD_ERROR_RTOL)
+    return eta
 
 
 def _stiffening_components(domain) -> list[str]:

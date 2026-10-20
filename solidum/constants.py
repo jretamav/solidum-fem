@@ -164,12 +164,22 @@ ITERATIVE_MAX_RESTARTS = 3
 AMG_MAX_COARSE = 500
 
 # --- Red de seguridad del análisis estático (ADR 0019) ---
-# Residuo de equilibrio relativo máximo aceptable tras resolver un sistema
-# lineal estático: ‖F − K·u‖ ≤ EQUILIBRIUM_RTOL · ‖F‖. Medido: un sistema
-# bien planteado queda en ~1e-13 con cualquier solver directo y en ≤ 1e-10
-# con el iterativo; un mecanismo cargado da ~1. El umbral deja cinco órdenes
-# de margen hacia cada lado.
+# Diagnóstico del corrector de Newton (no rechaza nada): si un paso fracasa y
+# alguna resolución dejó un residuo relativo ‖b − A·x‖/‖b‖ por encima de esto,
+# la tangente era singular o casi singular (un sistema singular cargado no se
+# puede satisfacer), y así se informa. Hasta el 2026-10-20 era también el
+# criterio de la capa 2 del estático lineal; ver BACKWARD_ERROR_RTOL.
 EQUILIBRIUM_RTOL = 1.0e-8
+# Capa 2 del estático lineal (decisión del usuario, 2026-10-20): error hacia
+# atrás normado de la solución, escalado por la diagonal,
+# η = ‖r̃‖∞ / (‖K̃‖∞·‖ũ‖∞ + ‖F̃‖∞) con K̃ = D^-½·K·D^-½, ũ = D^½·u,
+# F̃ = D^-½·F, r̃ = D^-½·(F − K·u), D = diag(K). Mide si el solver resolvió el
+# sistema que se le dio, sin depender de las unidades ni del contraste de
+# rigideces. Medido: ≤ 3.6e-16 en la suite y ≤ 5e-12 con zonas rígidas ×1e10
+# en mm, donde el residuo relativo ‖F − K·u‖/‖F‖ llegaba a 1.2e-2 (y a 5.7e-9
+# en la propia suite). Los mecanismos internos, cargados o no, los rechaza
+# antes la capa 3 (MECHANISM_ENERGY_RTOL).
+BACKWARD_ERROR_RTOL = 1.0e-10
 # Umbral relativo de rango para decidir si los apoyos restringen un modo de
 # cuerpo rígido: valores singulares de la matriz "modo × restricción"
 # (columnas normalizadas a máximo 1) por debajo de este múltiplo del mayor

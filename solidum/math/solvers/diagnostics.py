@@ -255,8 +255,9 @@ class MechanismError(ValueError):
 class IllPosedSystemError(RuntimeError):
     """El sistema de un análisis estático no es fiable (ADR 0019).
 
-    - **Estático lineal** (capas 2 y 3): la solución no satisface el
-      equilibrio, el modelo tiene un mecanismo interno (desde el 2026-10-20
+    - **Estático lineal** (capas 2 y 3): la solución no resuelve el
+      sistema (error hacia atrás normado, desde el 2026-10-20), el modelo
+      tiene un mecanismo interno (desde el 2026-10-20
       se decide por la energía del modo de menor energía, y se localiza), o
       la factorización directa no pudo completarse por un pivote exactamente
       nulo (``factorization_error``; hasta el 2026-09-30 salía el
@@ -273,8 +274,9 @@ class IllPosedSystemError(RuntimeError):
 
     Attributes
     ----------
-    relative_residual : float | None
-        Residuo relativo del equilibrio (capa 2), si fue la causa.
+    backward_error : float | None
+        Error hacia atrás normado de la solución (capa 2, desde el
+        2026-10-20), si fue la causa.
     zero_pivots : int | None
         Número de mecanismos internos (capa 3): uno por cada modo que se
         mueve sin deformar ningún elemento, o el número de pivotes pequeños si
@@ -290,12 +292,12 @@ class IllPosedSystemError(RuntimeError):
         Mensaje del backend cuya factorización falló (estático lineal).
     """
 
-    def __init__(self, *, relative_residual: float | None = None,
+    def __init__(self, *, backward_error: float | None = None,
                  zero_pivots: int | None = None, rtol: float | None = None,
                  solver: str = "", initial_tangent: bool = False,
                  factorization_error: str | None = None,
                  mechanisms: list[str] | None = None):
-        self.relative_residual = relative_residual
+        self.backward_error = backward_error
         self.zero_pivots = zero_pivots
         self.mechanisms = list(mechanisms or [])
         self.initial_tangent = bool(initial_tangent)
@@ -330,9 +332,9 @@ class IllPosedSystemError(RuntimeError):
                      f"tiene al menos un pivote exactamente nulo o una fila "
                      f"vacía (backend: {factorization_error})")
         else:
-            causa = (f"la solución no satisface el equilibrio (residuo "
-                     f"relativo ‖F − K·u‖/‖F‖ = {relative_residual:.1e}, "
-                     f"tolerancia {rtol:.0e})")
+            causa = (f"la solución no resuelve el sistema (error hacia atrás "
+                     f"normado {backward_error:.1e}, tolerancia {rtol:.0e}): el "
+                     f"solver no pudo resolverlo con precisión")
         super().__init__(
             f"Resultado descartado{quien}: {causa}. La matriz de rigidez es singular "
             f"o está tan mal condicionada que los desplazamientos no son "

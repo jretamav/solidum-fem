@@ -263,10 +263,9 @@ class TestContrastesQueNoSonMecanismos(unittest.TestCase):
 
     def test_material_casi_incompresible(self):
         """``1 − 2ν = 2e-7``: el modo de menor energía es isócoro y deforma
-        todos los elementos (energía relativa ~1e-7). Sólo la capa 3: la
-        capa 2 (equilibrio, ``‖F − K·u‖ ≤ 1e-8·‖F‖``) rechaza hoy este modelo
-        con un residuo de 3e-8, el falso positivo pendiente de decisión
-        (ADR 0019, «Lo que queda sin cubrir»)."""
+        todos los elementos (energía relativa ~1e-7). La capa 2 también lo
+        deja pasar desde el 2026-10-20 (``test_backward_error.py``); antes lo
+        rechazaba con un residuo relativo de 3e-8."""
         for la in DIRECT:
             with self.subTest(backend=la):
                 dom, _ = placa_casi_incompresible(0.4999999)

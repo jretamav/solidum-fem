@@ -22,6 +22,7 @@ from solidum.math.solvers._shared import (
 )
 from solidum.math.solvers.diagnostics import IllPosedSystemError
 from solidum.math.solvers.model_checks import (
+    backward_error_scaling,
     check_linear_solution,
     ensure_no_internal_mechanisms,
     ensure_statically_restrained,
@@ -127,6 +128,7 @@ class LinearSolver:
 
         self._factor = factor
         self._K_red = K_red
+        self._backward_scaling = backward_error_scaling(K_red)
         self._T = T
         self._g_full = g_full
         self._F_dir = F_dir
@@ -141,10 +143,10 @@ class LinearSolver:
         # F_red = T.T · (F − K · g) = T.T · F − F_dir, con F_dir cacheado.
         F_red = self._T.T @ F_ext_global - self._F_dir
         u_red = self._factor.solve(F_red)
-        # Red de seguridad, capa 2 (ADR 0019): equilibrio verificado. Un
-        # solver directo ante una matriz singular devuelve basura sin
-        # avisar; aquí no pasa.
-        check_linear_solution(self._K_red, u_red, F_red)
+        # Red de seguridad, capa 2 (ADR 0019): la solución resuelve el
+        # sistema (error hacia atrás normado, desde el 2026-10-20; antes el
+        # residuo relativo, que rechazaba contrastes de rigidez legítimos).
+        check_linear_solution(self._K_red, u_red, F_red, self._backward_scaling)
         U = self.assembler.expand(u_red, self._T, self._g_full)
         _log.info("  -> CONVERGENCIA ALCANZADA (1 Iteración).")
         return U
