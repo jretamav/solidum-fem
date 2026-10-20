@@ -64,14 +64,22 @@ class TestContrastesExtremosSeResuelven(unittest.TestCase):
         aquí mismo, para que la prueba demuestre algo.
 
         La coincidencia entre unidades la limita el condicionamiento del
-        modelo, no el solver: con c = 1e8 la solución conserva unas cinco
-        cifras (diferencia medida 2e-5) aunque su error hacia atrás sea del
-        orden del redondeo. Avisar de esa pérdida de cifras es la carencia
-        «mal condicionamiento sin singularidad» del ADR 0019."""
-        for c, rtol in ((1e6, 1e-7), (1e8, 1e-4)):
+        modelo, no el solver: cada solución tiene un error relativo de hasta
+        ``κ̃·ε`` (``κ̃`` el de la matriz escalada por su diagonal, el mismo en
+        las dos unidades), así que la cota de la diferencia es ``2·κ̃·ε``:
+        2.5e-6·2 con c = 1e6 y 2.5e-4·2 con c = 1e8. Medido: 3.3e-7 con
+        Pardiso en Linux y 2e-5 en Windows; una tolerancia fija ajustada a una
+        sola plataforma falló en el CI (2026-10-20). Avisar de esa pérdida de
+        cifras es la carencia «mal condicionamiento sin singularidad» del
+        ADR 0019."""
+        for c in (1e6, 1e8):
             for la in DIRECT:
                 with self.subTest(contraste=c, backend=la):
                     ux = {}
+                    _, K = reducida(portico_cargado(c, "m")[0])
+                    s = 1.0 / np.sqrt(np.abs(K.diagonal()))
+                    kappa = np.linalg.cond(s[:, None] * K.toarray() * s[None, :])
+                    rtol = 2.0 * kappa * np.finfo(float).eps
                     for unidades in ("m", "mm"):
                         dom, F, nudo = portico_cargado(c, unidades)
                         a = Assembler(dom)
