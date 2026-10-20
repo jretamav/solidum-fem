@@ -21,6 +21,11 @@ energía de ese modo en cada elemento que mueve.
    comprobación no cuesta nada.
 5. Pardiso lee sus pivotes (``pardiso_getdiag``): detecta un mecanismo de
    28 560 DOF que su conteo de pivotes perturbados no ve.
+6. Sin factorización utilizable (pivote exactamente nulo, o tan pequeño que
+   la resolución no es finita) el modo se calcula con ``K + σ·diag(K)``: el
+   veredicto y la descripción no dependen de que el redondeo deje el pivote
+   en cero o en 1e-17, que cambia con la versión de SciPy (el CI con Python
+   3.11 lo destapó el 2026-10-20).
 """
 import logging
 import os
@@ -315,6 +320,42 @@ class TestPivotesDePardiso(unittest.TestCase):
         self.assertEqual([m.dimension for m in encontrados], [1])
         self.assertIn("giro alrededor del eje y que pasa por (1, 0.5, 1)",
                       encontrados[0].description)
+
+
+# ----------------------------------------------------------------------
+# 6. Sin factorización utilizable: K + σ·diag(K)
+# ----------------------------------------------------------------------
+
+class _FactorNoFinito:
+    """Factorización con un pivote del orden de 1e-300: resuelve con valores
+    no finitos."""
+    n_small_pivots = 1
+
+    def solve(self, b):
+        return np.full_like(b, np.inf)
+
+
+class TestSinFactorizacionUtilizable(unittest.TestCase):
+
+    CASOS = {
+        "térmica": (placas_termicas_desconectadas,
+                    "la parte formada por los elementos 5–8 no está unida a ningún "
+                    "valor prescrito del campo 'T': su nivel queda indeterminado"),
+        "Quad4": (lambda: placas_unidas_por_un_nodo(8),
+                  "la parte formada por los elementos 65–128 puede moverse sin "
+                  "deformarse: giro alrededor del eje z que pasa por (1, 1)"),
+    }
+
+    def test_mismo_veredicto_sin_factor_y_con_factor_no_finito(self):
+        for nombre, (modelo, descripcion) in self.CASOS.items():
+            dom, _ = modelo()
+            a, K, factor = factorizar(dom, "lu")
+            for etiqueta, f in (("con factor", factor), ("sin factor", None),
+                                ("factor no finito", _FactorNoFinito())):
+                with self.subTest(modelo=nombre, caso=etiqueta):
+                    encontrados = find_internal_mechanisms(a, K, f)
+                    self.assertEqual([(m.dimension, m.description) for m in encontrados],
+                                     [(1, descripcion)])
 
 
 if __name__ == "__main__":

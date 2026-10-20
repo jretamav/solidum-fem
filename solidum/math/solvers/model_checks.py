@@ -53,6 +53,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import scipy.linalg as sla
+import scipy.sparse as sp
 
 from solidum.constants import (
     EQUILIBRIUM_RTOL,
@@ -81,6 +82,14 @@ _MOVED_RTOL = 1.0e-12
 # su λ queda por debajo de ese umbral por el número de elementos que comparten
 # un nodo (≤ 27 en mallas hexaédricas estructuradas): el factor es holgado.
 _CANDIDATE_FACTOR = 1.0e3
+# Desplazamiento relativo σ de K + σ·diag(K), que se factoriza cuando la
+# factorización de K no se puede usar (pivote exactamente nulo): muy por
+# encima del redondeo de un pivote nulo (1e-16–1e-11) y muy por debajo del
+# segundo autovalor de un modelo con un mecanismo (≥ 1e-3 medido), así que la
+# iteración inversa amplifica el mecanismo ×1e7 por iteración.
+_SHIFT = 1.0e-10
+# Sin factorización no se sabe cuántos pivotes son nulos: tamaño del bloque.
+_UNKNOWN_NULLITY_BLOCK = 6
 # El movimiento de una parte se describe como rígido si el ajuste por
 # mínimos cuadrados deja un residuo relativo por debajo de esto.
 _RIGID_FIT_RTOL = 1.0e-6
@@ -325,6 +334,10 @@ def _element_blocks(assembler):
         K_e = np.asarray(elem.compute_global_stiffness(), dtype=float)
         np.add.at(D, idx, np.abs(np.diag(K_e)))
         blocks.append((elem, idx, K_e))
+    # Un DOF sin ninguna rigidez (el nudo libre de una barra colgante, en
+    # transversal) cuenta en la "masa" del modo como el más rígido: si no,
+    # su movimiento no se vería.
+    D = np.where(D > 0.0, D, float(D.max()) if D.size and D.max() > 0.0 else 1.0)
     return blocks, D
 
 
@@ -435,9 +448,13 @@ def _describe_part(elements, modes: list[np.ndarray], D: np.ndarray) -> str:
     moved_nodes = [n for n in nodes if any(d in n.dofs for d in _TRANSLATIONS)]
     fits = [_rigid_motion(moved_nodes, v) for v in modes]
     if any(fit is None for fit in fits):
-        return (f"los elementos {ids} pueden moverse{formas} sin deformarse, "
-                f"aunque no como un sólido rígido: hay articulaciones de más "
-                f"entre ellos")
+        # No es rígido: articulaciones de más o modos de energía nula de los
+        # propios elementos (hourglass con integración reducida), que se
+        # deforman sin energía. "Sin deformarse" sería falso en el segundo.
+        return (f"los elementos {ids} pueden moverse{formas} sin energía de "
+                f"deformación, aunque no como un sólido rígido: hay "
+                f"articulaciones de más entre ellos, o modos de energía nula de "
+                f"los elementos (hourglass, con integración reducida)")
     _, _, c, length, dims = fits[0]
     coefs = np.array([np.concatenate([t, w]) for t, w, *_ in fits])
     motions = _canonical_rigid(coefs, length)
@@ -478,38 +495,13 @@ def _moved_without_strain(blocks, D: np.ndarray, v: np.ndarray):
     return tuple(int(i) for i in moved), energy
 
 
-def find_internal_mechanisms(assembler, K_red, factor) -> list[InternalMechanism] | None:
-    """Capa 3 (ampliación del 2026-10-20, decisión del usuario): mecanismos
-    internos del sistema reducido ``K_red``, ya factorizado en ``factor``.
-
-    1. **Filtro**: sin pivotes pequeños frente a la diagonal
-       (``n_small_pivots == 0``) no hay nada que buscar y no cuesta nada. El
-       backend iterativo (``None``) tampoco busca: no tiene factorización.
-    2. **Modo de menor energía** del problema escalado
-       ``K·v = λ·diag(K)·v``: iteración inversa en bloque con la
-       factorización existente (``_MODE_ITERATIONS`` resoluciones por vector)
-       y Rayleigh-Ritz. ``λ`` no depende de las unidades.
-    3. **Veredicto por elementos**: un modo con ``λ`` pequeño es un mecanismo
-       si todos los elementos que mueve tienen energía relativa
-       ``< MECHANISM_ENERGY_RTOL``. Un contraste de rigidez grande (zonas
-       rígidas, ν cerca de 1/2) da ``λ`` pequeño pero deforma algún
-       elemento.
-
-    Los modos que mueven los mismos elementos se agrupan en un mecanismo de
-    ``dimension`` movimientos independientes. Devuelve los mecanismos (lista
-    vacía si no hay) o ``None`` si hay pivotes pequeños pero el modo no pudo
-    calcularse (solución no finita): el llamador lo trata como singular,
-    igual que antes de esta ampliación.
-    """
-    n_small = small_pivot_count(factor)
-    if not n_small:
-        return []
-    n = K_red.shape[0]
-    D = np.abs(np.asarray(K_red.diagonal(), dtype=float))
-    D = np.where(D > 0.0, D, float(D.max()) if D.size and D.max() > 0.0 else 1.0)
+def _lowest_modes(factor, D: np.ndarray, p: int) -> np.ndarray | None:
+    """Iteración inversa en bloque de ``p`` vectores sobre ``K·v = λ·D·v`` con
+    ``factor`` (de ``K`` o de ``K + σ·D``, que tiene los mismos modos).
+    Devuelve el bloque D-ortonormal, o ``None`` si una resolución falla o no
+    es finita (un pivote del orden de 1e-300)."""
     sD = np.sqrt(D)
-    p = min(n, n_small + 2)
-    X = np.random.default_rng(0).standard_normal((n, p))
+    X = np.random.default_rng(0).standard_normal((D.size, p))
     try:
         for _ in range(_MODE_ITERATIONS):
             X = np.column_stack([factor.solve(D * X[:, j]) for j in range(p)])
@@ -519,6 +511,71 @@ def find_internal_mechanisms(assembler, K_red, factor) -> list[InternalMechanism
             X = Q / sD[:, None]
     except RuntimeError:
         return None
+    return X
+
+
+def _shifted_factor(K_red, D: np.ndarray):
+    """Factorización de ``K + σ·D`` (``σ = _SHIFT``) para cuando la de ``K``
+    no se pudo usar: definida positiva aunque ``K`` sea singular, con los
+    mismos modos que el problema ``K·v = λ·D·v`` (autovalores ``λ + σ``).
+    Con el backend directo general del despachador (Pardiso o LU), o
+    ``None`` si tampoco se puede factorizar."""
+    from solidum.math.linalg import StiffnessProperties, select_solver
+    K_s = (sp.csr_matrix(K_red) + sp.diags(_SHIFT * D)).tocsc()
+    props = StiffnessProperties(is_symmetric=False, is_positive_definite=False,
+                                size=K_s.shape[0])
+    try:
+        return select_solver(props).factorize(K_s)
+    except (RuntimeError, MemoryError):
+        return None
+
+
+def find_internal_mechanisms(assembler, K_red, factor) -> list[InternalMechanism] | None:
+    """Capa 3 (ampliación del 2026-10-20, decisión del usuario): mecanismos
+    internos del sistema reducido ``K_red``, factorizado en ``factor``
+    (``None`` si la factorización no pudo completarse).
+
+    1. **Filtro**: sin pivotes pequeños frente a la diagonal
+       (``n_small_pivots == 0``) no hay nada que buscar y no cuesta nada. El
+       backend iterativo (``n_small_pivots`` es ``None``) tampoco busca: no
+       tiene factorización.
+    2. **Modo de menor energía** del problema escalado
+       ``K·v = λ·diag(K)·v``: iteración inversa en bloque con la
+       factorización existente (``_MODE_ITERATIONS`` resoluciones por vector)
+       y Rayleigh-Ritz. ``λ`` no depende de las unidades. Si no hay
+       factorización (un pivote exactamente nulo, una fila vacía) o la
+       iteración no da valores finitos (un pivote del orden de 1e-300), se
+       factoriza ``K + σ·diag(K)``, que tiene los mismos modos: el veredicto
+       no depende de que el redondeo deje el pivote de un mecanismo en cero o
+       en 1e-17, cosa que cambia con la versión de SciPy.
+    3. **Veredicto por elementos**: un modo con ``λ`` pequeño es un mecanismo
+       si todos los elementos que mueve tienen energía relativa
+       ``< MECHANISM_ENERGY_RTOL``. Un contraste de rigidez grande (zonas
+       rígidas, ν cerca de 1/2) da ``λ`` pequeño pero deforma algún
+       elemento.
+
+    Los modos que mueven los mismos elementos se agrupan en un mecanismo de
+    ``dimension`` movimientos independientes. Devuelve los mecanismos (lista
+    vacía si no hay) o ``None`` si el modo no pudo calcularse ni con el
+    desplazamiento: el llamador lo trata como singular, igual que antes de
+    esta ampliación.
+    """
+    n = K_red.shape[0]
+    if factor is None:
+        p = min(n, _UNKNOWN_NULLITY_BLOCK)
+    else:
+        n_small = small_pivot_count(factor)
+        if not n_small:
+            return []
+        p = min(n, n_small + 2)
+    D = np.abs(np.asarray(K_red.diagonal(), dtype=float))
+    D = np.where(D > 0.0, D, float(D.max()) if D.size and D.max() > 0.0 else 1.0)
+    X = None if factor is None else _lowest_modes(factor, D, p)
+    if X is None:
+        shifted = _shifted_factor(K_red, D)
+        X = None if shifted is None else _lowest_modes(shifted, D, p)
+        if X is None:
+            return None
     A = X.T @ np.asarray(K_red @ X)
     lam, V = sla.eigh(0.5 * (A + A.T))
     candidates = [V[:, k] for k in range(p) if lam[k] < _CANDIDATE_FACTOR * MECHANISM_ENERGY_RTOL]
@@ -609,17 +666,16 @@ def _judge_initial_tangent(assembler, factor, A, solver: str) -> None:
     singular*)."""
     zero_pivots = None
     mechanisms = None
-    if factor is not None:
-        if warn_if_pivots_unavailable(factor, solver):
-            return
-        found = find_internal_mechanisms(assembler, A, factor)
-        if found == []:
-            return
-        if found is None:
-            zero_pivots = small_pivot_count(factor)
-        else:
-            zero_pivots = sum(m.dimension for m in found)
-            mechanisms = [m.description for m in found]
+    if factor is not None and warn_if_pivots_unavailable(factor, solver):
+        return
+    found = find_internal_mechanisms(assembler, A, factor)
+    if factor is not None and found == []:
+        return
+    if found:
+        zero_pivots = sum(m.dimension for m in found)
+        mechanisms = [m.description for m in found]
+    elif factor is not None:
+        zero_pivots = small_pivot_count(factor)
     stiffening = _stiffening_components(assembler.domain)
     if not stiffening:
         raise IllPosedSystemError(zero_pivots=zero_pivots, solver=solver,

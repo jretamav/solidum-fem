@@ -25,6 +25,7 @@ from solidum.math.solvers.model_checks import (
     check_linear_solution,
     ensure_no_internal_mechanisms,
     ensure_statically_restrained,
+    find_internal_mechanisms,
     warn_if_pivots_unavailable,
 )
 from solidum.registry import SolverRegistry
@@ -108,8 +109,13 @@ class LinearSolver:
             # que no se completa (pivote exactamente nulo, fila vacía: un
             # nudo o un grado de libertad sin rigidez) es la forma extrema de
             # un pivote nulo; se explica en vez de dejar salir el error del
-            # backend ("Factor is exactly singular").
-            raise IllPosedSystemError(factorization_error=str(exc)) from exc
+            # backend ("Factor is exactly singular"), y desde el 2026-10-20
+            # se localiza el mecanismo con la factorización de K + σ·diag(K).
+            found = find_internal_mechanisms(self.assembler, K_red, None) or []
+            raise IllPosedSystemError(
+                factorization_error=str(exc), solver=type(self).__name__,
+                zero_pivots=sum(m.dimension for m in found) or None,
+                mechanisms=[m.description for m in found]) from exc
         # Capa 3 sin pivotes (backend iterativo, ADR 0019, 2026-09-30): se
         # avisa una vez por factorización —una por análisis— de que un
         # mecanismo interno que la carga no active no se comprueba.

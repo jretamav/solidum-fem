@@ -100,7 +100,7 @@ jobs:
       # que el backend no conozca falle aquí y no en mitad de la suite.
       - name: Verify CHOLMOD is active
         run: |
-          python -c "import numpy as np, scipy.sparse as sp; from importlib.metadata import version; from solidum.math.linalg.dispatcher import _HAS_CHOLESKY; assert _HAS_CHOLESKY, 'CHOLMOD no activo'; from solidum.math.linalg import CholeskySolver; K = sp.csc_matrix(np.array([[4.0, 1.0], [1.0, 3.0]])); f = CholeskySolver().factorize(K); x = f.solve(np.array([1.0, 2.0])); assert np.allclose(K @ x, [1.0, 2.0]) and f.n_zero_pivots == 0; print('scikit-sparse', version('scikit-sparse'))"
+          python -c "import numpy as np, scipy.sparse as sp; from importlib.metadata import version; from solidum.math.linalg.dispatcher import _HAS_CHOLESKY; assert _HAS_CHOLESKY, 'CHOLMOD no activo'; from solidum.math.linalg import CholeskySolver; K = sp.csc_matrix(np.array([[4.0, 1.0], [1.0, 3.0]])); f = CholeskySolver().factorize(K); x = f.solve(np.array([1.0, 2.0])); assert np.allclose(K @ x, [1.0, 2.0]) and f.n_small_pivots == 0; print('scikit-sparse', version('scikit-sparse'))"
 
       - name: Run test suite
         run: pytest -q --tb=short

@@ -25,7 +25,8 @@ manual de ejemplos (``_armadura_pratt.py``):
 2. **Backend iterativo**: no tiene pivotes que inspeccionar; lo dice con un
    aviso, una vez por análisis, en ``LinearSolver`` y en los no lineales. Con
    un backend directo no hay aviso.
-3. **Factorización imposible** (pivote exactamente nulo, un nudo colgante):
+3. **Factorización imposible** (pivote exactamente nulo, un nudo colgante;
+   desde el 2026-10-20 el mecanismo se localiza factorizando K + σ·diag(K)):
    ``IllPosedSystemError`` también en el estático lineal, en vez del
    ``RuntimeError`` del backend.
 4. **Familias de modelos** (revisión adversaria del 2026-09-30): la
@@ -136,7 +137,7 @@ class TestMecanismoInternoEnLaTangenteInicial(unittest.TestCase):
                     # Desde el 2026-10-20 el mensaje localiza el mecanismo
                     # (antes remitía a un análisis modal para encontrarlo).
                     self.assertEqual(len(err.mechanisms), 1)
-                    self.assertIn("pueden moverse sin deformarse", err.mechanisms[0])
+                    self.assertIn("pueden moverse sin energía de deformación", err.mechanisms[0])
 
     def test_geometricamente_lineal_con_carga_que_lo_activa(self):
         """Antes: bisecciones hasta ``SingularTangentError``. Ahora el mismo
@@ -245,7 +246,7 @@ class TestMecanismoInternoEnLaTangenteInicial(unittest.TestCase):
                 self.n_small_pivots = n
 
         def mecanismos_simulados(assembler, A, factor):
-            n = factor.n_small_pivots
+            n = 0 if factor is None else factor.n_small_pivots
             return [InternalMechanism((1,), "la parte formada por los elementos 1 "
                                       "puede moverse sin deformarse", 0.0)] * n
 
@@ -392,7 +393,10 @@ class TestFactorizacionImposible(unittest.TestCase):
                 with self.assertRaises(IllPosedSystemError) as cm:
                     LinearSolver(Assembler(dom), linear_algebra=la).solve(F)
                 self.assertIsNotNone(cm.exception.factorization_error)
-                self.assertIn("no pudo factorizar", str(cm.exception))
+                # Desde el 2026-10-20, localizado (antes: "no pudo factorizar").
+                self.assertEqual(cm.exception.mechanisms, [
+                    "la parte formada por los elementos 99 puede moverse sin deformarse: "
+                    "giro alrededor del eje z que pasa por (12, 0)"])
 
     def test_no_lineal(self):
         for la in DIRECT:
@@ -401,7 +405,9 @@ class TestFactorizacionImposible(unittest.TestCase):
                 with self.assertRaises(IllPosedSystemError) as cm:
                     NonlinearSolver(Assembler(dom), linear_algebra=la).solve(F)
                 self.assertTrue(cm.exception.initial_tangent)
-                self.assertIn("exactamente nulo", str(cm.exception))
+                self.assertEqual(cm.exception.mechanisms, [
+                    "la parte formada por los elementos 99 puede moverse sin deformarse: "
+                    "giro alrededor del eje z que pasa por (12, 0)"])
 
 
 # ----------------------------------------------------------------------
