@@ -70,11 +70,17 @@ def backend(nombre):
     return PardisoSolver()
 
 
-def factorizar(dom, nombre):
-    """``(assembler, K reducida, factor)`` de la rigidez en ``U = 0``."""
+def reducida(dom):
+    """``(assembler, K reducida)`` de la rigidez en ``U = 0``."""
     a = Assembler(dom)
     a.assemble_system()
     K, _, _, _ = a.reduce(a.K_global.tocsr(), np.zeros(dom.total_dofs))
+    return a, K
+
+
+def factorizar(dom, nombre):
+    """``(assembler, K reducida, factor)`` de la rigidez en ``U = 0``."""
+    a, K = reducida(dom)
     return a, K, backend(nombre).factorize(K)
 
 
@@ -347,11 +353,20 @@ class TestSinFactorizacionUtilizable(unittest.TestCase):
     }
 
     def test_mismo_veredicto_sin_factor_y_con_factor_no_finito(self):
+        """Con la SciPy del CI en Python 3.11 la LU de la parte térmica falla
+        (pivote exactamente nulo): ese caso es justamente "sin factor", y el
+        de "con factor" sólo se comprueba donde la factorización se completa."""
         for nombre, (modelo, descripcion) in self.CASOS.items():
             dom, _ = modelo()
-            a, K, factor = factorizar(dom, "lu")
-            for etiqueta, f in (("con factor", factor), ("sin factor", None),
-                                ("factor no finito", _FactorNoFinito())):
+            a, K = reducida(dom)
+            try:
+                factor = LUSolver().factorize(K)
+            except RuntimeError:            # "Factor is exactly singular"
+                factor = None
+            casos = [("sin factor", None), ("factor no finito", _FactorNoFinito())]
+            if factor is not None:
+                casos.insert(0, ("con factor", factor))
+            for etiqueta, f in casos:
                 with self.subTest(modelo=nombre, caso=etiqueta):
                     encontrados = find_internal_mechanisms(a, K, f)
                     self.assertEqual([(m.dimension, m.description) for m in encontrados],
