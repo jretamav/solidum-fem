@@ -54,6 +54,16 @@ def nodal(f, k):
     return f[2 * k:2 * k + 2]
 
 
+def cerca(actual, esperado, rtol=1e-13):
+    """``assert_allclose`` con tolerancia absoluta escalada a la carga: hay
+    componentes exactamente nulas (los vértices del Tri6 con b constante,
+    ``∫N_vértice dA = 0``) cuyo redondeo cambia con la plataforma, y con
+    tolerancia sólo relativa la prueba falla en Linux (CI, 2026-10-27)."""
+    esperado = np.asarray(esperado)
+    np.testing.assert_allclose(actual, esperado, rtol=rtol,
+                               atol=rtol * np.abs(esperado).max())
+
+
 class TestFuerzaDeCuerpo(unittest.TestCase):
 
     def test_campo_constante_igual_a_la_constante(self):
@@ -61,8 +71,7 @@ class TestFuerzaDeCuerpo(unittest.TestCase):
             with self.subTest(elemento=nombre):
                 el = elemento(nombre)
                 b = np.array([3.0, -7.0])
-                np.testing.assert_allclose(el.compute_body_load(lambda x: b),
-                                           el.compute_body_load(b), rtol=1e-14)
+                cerca(el.compute_body_load(lambda x: b), el.compute_body_load(b))
 
     def test_campo_lineal(self):
         """Resultante ``∫ b dV = b(centroide)·A·e`` en un elemento afín."""
@@ -78,7 +87,7 @@ class TestFuerzaDeCuerpo(unittest.TestCase):
                     area /= 2
                 c = vert.mean(axis=0)
                 f = el.compute_body_load(campo).reshape(-1, 2).sum(axis=0)
-                np.testing.assert_allclose(f, campo(c) * area * E, rtol=1e-13)
+                cerca(f, campo(c) * area * E)
 
     def test_componentes_erroneas(self):
         el = elemento("Quad4")
@@ -96,7 +105,7 @@ class TestFuerzaDeCuerpo(unittest.TestCase):
         G = np.zeros_like(F)
         for el in m.domain.elements.values():
             G[el.get_global_dof_indices()] += el.compute_body_load(lambda x: np.array([x[1], -2.0]))
-        np.testing.assert_allclose(F, G, rtol=1e-14)
+        cerca(F, G)
 
 
 class TestCargaDeBorde(unittest.TestCase):
@@ -115,11 +124,11 @@ class TestCargaDeBorde(unittest.TestCase):
                 f = el.compute_edge_traction(0, t)
                 pesos = (L / 6 - (L - 0.6 * L) / 3, 2 * L / 3, L / 6 + (L - 0.6 * L) / 3)
                 for k, w in zip((a, m, c), pesos):
-                    np.testing.assert_allclose(nodal(f, k), w * t * E, rtol=1e-13)
+                    cerca(nodal(f, k), w * t * E)
                 el.nodes[m].coordinates[:2] = list((X[a] + X[c]) / 2)
                 f = el.compute_edge_traction(0, t)
                 for k, w in zip((a, m, c), (L / 6, 2 * L / 3, L / 6)):
-                    np.testing.assert_allclose(nodal(f, k), w * t * E, rtol=1e-13)
+                    cerca(nodal(f, k), w * t * E)
 
     def test_presion_sobre_borde_curvo(self):
         """Resultante de ``−p·n`` = ``−p·(Δy, −Δx)`` sobre un arco: exacta."""
@@ -159,8 +168,8 @@ class TestCargaDeBorde(unittest.TestCase):
                 campo = lambda x, n: np.array([x[0], 3.0 - x[1]])  # noqa: E731
                 ta, tc = campo(X[a], None), campo(X[c], None)
                 f = el.compute_edge_traction(0, campo)
-                np.testing.assert_allclose(nodal(f, a), L * (2 * ta + tc) / 6 * E, rtol=1e-13)
-                np.testing.assert_allclose(nodal(f, c), L * (ta + 2 * tc) / 6 * E, rtol=1e-13)
+                cerca(nodal(f, a), L * (2 * ta + tc) / 6 * E)
+                cerca(nodal(f, c), L * (ta + 2 * tc) / 6 * E)
 
     def test_borde_fuera_de_rango(self):
         for nombre in REF:
