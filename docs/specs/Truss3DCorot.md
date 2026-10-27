@@ -100,7 +100,7 @@ out_of_scope:
   - flexión, cortante, momentos
   - pandeo por bifurcación
   - plasticidad con grandes deformaciones
-  - "fuerzas de cuerpo distribuidas: el usuario reparte masa a los nodos"
+  - "fuerzas de cuerpo sobre la geometría corriente (se reparten en la de referencia, heredado de Truss3D)"
 
 acceptance:
   - name: equivalencia con Truss3D en régimen lineal
@@ -146,3 +146,4 @@ references:
 - **2026-04-21** · Implementación tras validar el diseño spec-first. Se optó por herencia `Truss3DCorot(Truss3D)` por paralelismo con `Truss2DCorot(Truss2D)` y reutilización del constructor. La diferencia estructural con el caso 2D es el proyector $\mathbf P$: en 2D tenía rango 1 y generaba un $\mathbf K_G$ de rango 1 (vector $\mathbf n$ único); en 3D tiene rango 2 y $\mathbf K_G$ rango 2 (plano perpendicular al eje). Los tests del criterio 3 verifican explícitamente **dos** direcciones transversas linealmente independientes, capturando este cambio dimensional.
 - **2026-04-21** · Test de invariancia bajo rotación rígida 3D: se verifican dos rotaciones distintas (plano x-y y plano x-z) para descartar coincidencias accidentales en ejes canónicos.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (`axial_end_forces`): con carga axial distribuida N_i ≠ N_j.
+- **2026-10-27** · Hereda de `Truss3D` la fuerza de cuerpo como campo `b(x)` (ADR 0022, fase 4), repartida en la geometría de referencia; se corrige la nota desactualizada de `out_of_scope`.

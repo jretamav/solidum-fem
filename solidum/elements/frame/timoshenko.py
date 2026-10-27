@@ -7,8 +7,10 @@ import numpy as np
 from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.elements._line import linear_tangent
 from solidum.elements.frame._section import FrameSectionMixin
 from solidum.elements.frame._shared import (
+    Frame2DLine,
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
@@ -21,7 +23,7 @@ from solidum.results import ElementForces
 
 
 @ElementRegistry.register
-class Frame2DTimoshenko(FrameSectionMixin, Element):
+class Frame2DTimoshenko(Frame2DLine, FrameSectionMixin, Element):
     """Marco/viga 2D basado en Timoshenko.
 
     Dos nodos rígidamente conectados, 3 DOFs por nodo (ux, uy, rz). Incluye
@@ -55,6 +57,7 @@ class Frame2DTimoshenko(FrameSectionMixin, Element):
     DOF_NAMES = ['ux', 'uy', 'rz']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
+    LINE_STRAINS = ("eps", "kappa_z", "gamma_y")
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  A: float, I: float, As: float, nu: float | None = None):
@@ -157,12 +160,60 @@ class Frame2DTimoshenko(FrameSectionMixin, Element):
         return _frame2d_forces_from_local(F_local)
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        """Vector nodal consistente con peso propio uniforme. Para Timoshenko
-        con interpolación Hermite-blended, la fórmula coincide con la de
-        Euler-Bernoulli en el caso de carga uniforme. Ver
-        :func:`_frame2d_consistent_body_load`.
+        """Vector nodal consistente con una fuerza de cuerpo ``b`` (por unidad
+        de volumen), carga por unidad de longitud ``A·b``.
+
+        Se reparte con las funciones de interdependencia del elemento
+        (Friedman y Kosmatka 1993, :meth:`_line_interpolation`), las que dan
+        su rigidez con la corrección ``Φ``: así se conserva la exactitud
+        nodal. Con ``b`` constante coinciden con Hermite (``qL/2`` y
+        ``±qL²/12``, independientes de ``Φ``) y se usa la forma cerrada de
+        :func:`_frame2d_consistent_body_load`; un campo ``b(x)`` (ADR 0022)
+        se integra con 4 puntos de Gauss.
         """
+        if callable(b):
+            return self._field_line_load(b, self.A)
         return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
+
+    def _phi(self) -> float:
+        """``Φ = 12·EI/(G·A_s·L²) = 24(1 + ν)·I/(A_s·L²)``."""
+        return 24.0 * (1.0 + self.nu) * self.I / (self.As * self.L0**2)
+
+    def _line_interpolation(self, xi):
+        """Funciones de interdependencia (Friedman y Kosmatka 1993): ``v``
+        cúbica y ``θ`` cuadrática, solución exacta de la viga de Timoshenko
+        sin carga; con ellas ``½∫(EI·θ'² + G·A_s·γ²) dx`` da exactamente la
+        rigidez del elemento, y ``γ = v' − θ`` es constante en el elemento.
+        Con ``Φ = 0`` son las de Hermite."""
+        L, P = self.L0, self._phi()
+        n = len(xi)
+        k = 1.0 / (1.0 + P)
+        Nv = k * np.column_stack([
+            2 * xi**3 - 3 * xi**2 - P * xi + 1 + P,
+            L * (xi**3 - (2 + P / 2) * xi**2 + (1 + P / 2) * xi),
+            -2 * xi**3 + 3 * xi**2 + P * xi,
+            L * (xi**3 - (1 - P / 2) * xi**2 - (P / 2) * xi)])
+        Nt = k * np.column_stack([
+            6 * (xi**2 - xi) / L, 3 * xi**2 - (4 + P) * xi + 1 + P,
+            6 * (xi - xi**2) / L, 3 * xi**2 - (2 - P) * xi])
+        dNt = k * np.column_stack([
+            (12 * xi - 6) / L**2, (6 * xi - 4 - P) / L,
+            (6 - 12 * xi) / L**2, (6 * xi - 2 + P) / L])
+        gamma = P * k * np.array([-1.0 / L, -0.5, 1.0 / L, -0.5])
+        N = np.zeros((n, 3, 6))
+        B = np.zeros((n, 3, 6))
+        N[:, 0, 0], N[:, 0, 3] = 1.0 - xi, xi
+        N[:, 1, [1, 2, 4, 5]] = Nv
+        N[:, 2, [1, 2, 4, 5]] = Nt
+        B[:, 0, 0], B[:, 0, 3] = -1.0 / L, 1.0 / L
+        B[:, 1, [1, 2, 4, 5]] = dNt
+        B[:, 2, [1, 2, 4, 5]] = gamma
+        return N, B
+
+    def section_rigidities(self) -> np.ndarray:
+        """``[EA, EI, G·A_s]`` con ``G = E/(2(1 + ν))``."""
+        E = linear_tangent(self.material)
+        return np.array([E * self.A, E * self.I, E / (2.0 * (1.0 + self.nu)) * self.As])
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Matriz de masa del Frame2DTimoshenko en ejes globales (ADR 0009).

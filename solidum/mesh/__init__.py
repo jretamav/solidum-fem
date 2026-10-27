@@ -4,6 +4,12 @@
 que declare ``REFERENCE_CELL`` y ``REFERENCE_NODES``. Las geometrías reales se
 mallan con Gmsh y se leen con ``solidum.utils.gmsh_parser``.
 """
-from solidum.mesh.structured import SIDES_2D, SIDES_3D, StructuredMesh, structured_mesh
+from solidum.mesh.structured import (
+    SIDES_1D,
+    SIDES_2D,
+    SIDES_3D,
+    StructuredMesh,
+    structured_mesh,
+)
 
-__all__ = ["SIDES_2D", "SIDES_3D", "StructuredMesh", "structured_mesh"]
+__all__ = ["SIDES_1D", "SIDES_2D", "SIDES_3D", "StructuredMesh", "structured_mesh"]

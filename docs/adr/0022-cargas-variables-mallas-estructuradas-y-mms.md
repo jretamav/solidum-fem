@@ -2,7 +2,7 @@
 
 - **Estado**: aceptado (2026-10-27)
 - **Fecha**: 2026-10-27
-- **Alcance**: `solidum/math/distributed_loads.py`; base `_PlaneSolidLoads` de los cinco sólidos 2D (`Quad4`, `Quad8`, `Quad9`, `Tri3`, `Tri6`); `Assembler.assemble_body_load` con campos; contrato `REFERENCE_CELL` / `REFERENCE_NODES` de `Element`; paquete `solidum.mesh` (`structured_mesh`); paquete `solidum.verification` (soluciones manufacturadas, SymPy opcional); extra `verification` de `pyproject.toml`. Fase 1 de 4 (sólidos 2D). Fase 2 (sólidos 3D, mismo día): base `_SolidLoads3D` de `Hex8`, `Hex20`, `Hex27`, `Tet4` y `Tet10`, celdas `hex` y `tet` del generador, verificación 3D. Fase 3 (conducción de calor, mismo día): fuente y flujo variables en `Quad4Thermal` y `Hex8Thermal`, verificación estacionaria y transitoria (método θ).
+- **Alcance**: `solidum/math/distributed_loads.py`; base `_PlaneSolidLoads` de los cinco sólidos 2D (`Quad4`, `Quad8`, `Quad9`, `Tri3`, `Tri6`); `Assembler.assemble_body_load` con campos; contrato `REFERENCE_CELL` / `REFERENCE_NODES` de `Element`; paquete `solidum.mesh` (`structured_mesh`); paquete `solidum.verification` (soluciones manufacturadas, SymPy opcional); extra `verification` de `pyproject.toml`. Fase 1 de 4 (sólidos 2D). Fase 2 (sólidos 3D, mismo día): base `_SolidLoads3D` de `Hex8`, `Hex20`, `Hex27`, `Tet4` y `Tet10`, celdas `hex` y `tet` del generador, verificación 3D. Fase 3 (conducción de calor, mismo día): fuente y flujo variables en `Quad4Thermal` y `Hex8Thermal`, verificación estacionaria y transitoria (método θ). Fase 4 (barras y marcos, mismo día): contrato de línea (`solidum/elements/_line.py`), fuerza de cuerpo como campo en armaduras y marcos, celda `"line"` del generador, `ManufacturedFrame`.
 
 ## Contexto
 
@@ -171,15 +171,40 @@ Mismas decisiones, extendidas a `Quad4Thermal` y `Hex8Thermal` y al método θ.
 
   Duración: unos 15 s.
 
+## Fase 4 (2026-10-27): barras y marcos
+
+Mismas decisiones, extendidas a los cinco elementos de línea lineales (`Truss2D`, `Truss3D`, `Frame2DEuler`, `Frame2DTimoshenko`, `Frame3D`). El usuario aprobó el plan con dos decisiones físicas (abajo).
+
+- **Lo propio del 1D: la exactitud nodal** (Tong 1969). En barras y vigas de sección constante las funciones de forma son soluciones de la ecuación sin carga, así que los desplazamientos y giros nodales son exactos si la carga se integra exactamente. La verificación tiene por eso dos partes: el error en los nodos, que con cargas polinómicas debe ser de redondeo, y los órdenes de la interpolación entre nodos, componente a componente.
+- **Contrato de línea** (`solidum/elements/_line.py`, `LineElementMixin`). Las armaduras y los marcos declaran `REFERENCE_CELL = "line"` y exponen su campo interior en ejes locales: `line_field(u_e, ξ)` da desplazamientos, giros y deformaciones generalizadas (`LINE_FIELDS`, `LINE_STRAINS`), y `section_rigidities()` las rigideces de la sección. Una prueba sobre el registro exige que `∫ eᵀ·D·e dx` con ese campo sea `uᵀ·K·u` con la rigidez del elemento, lo que comprueba a la vez la interpolación, las rigideces y el paso a ejes locales. Cada elemento aporta su interpolación; los marcos 2D la comparten en `Frame2DLine` (axial lineal, flexión de Hermite).
+- **Cargas.** `compute_body_load(b)` acepta un campo `b(x)` en los cinco y en los corrotacionales que heredan o comparten su carga (`Truss2DCorot`, `Truss3DCorot`, `Frame2DEulerCorot`, en la geometría de referencia). La carga `A·b(x)` se integra con Gauss de 4 puntos, exacto para una carga de grado ≤ 4 sobre los cúbicos de Hermite:
+  - en las armaduras, cada componente global con funciones lineales, como la constante;
+  - en los marcos, proyectada a ejes locales y repartida con las funciones de la rigidez.
+
+  Con `b` constante se conserva la forma cerrada. Los cables rechazan el campo con un mensaje claro, porque reparten la carga con su longitud sin tensión `L₀`.
+- **Decisión física 1: la carga variable del Timoshenko se reparte con sus propias funciones**, las de interdependencia de Friedman y Kosmatka (1993), que dependen de `Φ`. Se dedujeron con SymPy de la solución homogénea de la viga de Timoshenko: dan exactamente la rigidez del elemento con la corrección `Φ`, su `γ` es constante y con carga uniforme reparten `qL/2` y `±qL²/12` como Hermite, así que ningún resultado existente cambia. Con Hermite la carga variable dejaría un error nodal de 12 %, 2.8 % y 0.7 % con 2, 4 y 8 elementos. Con las propias es de redondeo.
+- **Decisión física 2: sin momentos ni torsores distribuidos.** La solución manufacturada del Timoshenko sale de una función `ψ(s)`: `θ = ψ'` y `v = ψ − (EI/(G·A_s))·ψ''`, la pareja que no necesita momento distribuido (`Vy = −EI·ψ'''`, `q_y = EI·ψ''''`). La torsión del `Frame3D` es lineal y queda verificada como exacta, sin estudio de orden.
+- **Generador.** Celda `"line"`: `n` elementos, con la `mapping` que lleva `[0, 1]` a la línea física en 2D o 3D; los lados son los extremos `xmin` y `xmax`, y `boundary` da en cada uno el par (elemento, nodo local).
+- **Verificación.** `ManufacturedFrame(campos, rigideces, área, origen, ejes, dofs)`, o `from_element(campos, elemento, origen)`, deriva en la abscisa `s` de la línea los campos, las deformaciones, las fuerzas internas y la carga de línea `p = −N'`, `q_y = −Vy'`, `q_z = −Vz'`, con `Mz' = −Vy` y `My' = Vz` (convención stress-resultant, Reglas §5). Por un extremo de Dirichlet entran los valores exactos; por el otro, las fuerzas internas por la normal exterior `±e_x` como cargas nodales. En una armadura los nodos libres se restringen a moverse a lo largo del eje con restricciones lineales (la barra no tiene rigidez transversal). Las normas van por componente (`"L2:v"`, `"energy:kappa_z"`...), más `"nodal"`. Los órdenes esperados se pasan al estudio (`expected`), porque en 1D dependen del campo y no de un único grado `p`.
+- **Barrido** (`tests/validation/test_mms_frames.py`). Recorre los elementos de línea lineales del registro y falla si alguno no tiene su caso. Usa una línea inclinada en 2D y orientada al azar en 3D:
+  - **exactitud nodal**: con campos polinómicos, error de redondeo (`< 10⁻¹²` relativo) con 1 y 3 elementos en los cinco. Confirma también todos los signos: uno cambiado en la carga o en las fuerzas de extremo la rompería;
+  - **órdenes entre nodos**, con campos suaves: axial y armaduras, `u` 2 y `ε` 1; Navier-Bernoulli, `v` y `w` 4, giros 3, curvaturas 2; Timoshenko, `θ` 3, `κ` 2, `γ` 1 y `v` 2.
+
+    El 2 de la `v` del Timoshenko es físico. Al refinar, `Φ ∝ 1/h²` crece y la `v` del elemento tiende a una lineal más una burbuja que sale de los giros: aproxima `v''` con `θ'`, que difieren en `γ' ≠ 0`. Con `A_s` enorme (`Φ ≪ 1`) da orden 4, como Navier-Bernoulli;
+  - **nodos con campos suaves**: el error baja como `h⁸`, el error de la cuadratura de la carga, hasta el redondeo.
+
+  Duración: menos de 2 s.
+
 ## Consecuencias
 
 - **Deuda #13 saldada.** La #24 queda cubierta en el API de Python mediante `t(x, n) = −p·n`, en los bordes 2D y en las caras 3D. La declaración en YAML sigue pendiente con la #23.
-- **Coste del componente N+1.** Un sólido o un elemento térmico nuevo, plano o 3D, declara `REFERENCE_CELL` y `REFERENCE_NODES` y obtiene sin más código la malla estructurada y la verificación por MMS.
+- **Coste del componente N+1.** Un sólido o un elemento térmico nuevo, plano o 3D, declara `REFERENCE_CELL` y `REFERENCE_NODES` y obtiene sin más código la malla estructurada y la verificación por MMS. Un elemento de línea nuevo implementa el contrato de línea y añade su caso (campos y órdenes por componente) al barrido 1D, que falla si falta.
 - **Limitaciones:**
-  - la MMS de este módulo es de elasticidad lineal y de conducción lineal (`k` y `ρc` constantes);
+  - la MMS de este módulo es lineal: elasticidad, conducción con `k` y `ρc` constantes, y barras y marcos rectos de sección constante;
   - la pérdida de orden de los serendípitos en mallas que siguen trapezoidales al refinar es teoría conocida y no se prueba;
-  - las fuentes y los flujos variables están en el API de Python; en YAML siguen siendo constantes.
-- **Pendiente:** fase 4, opcional: elementos 1D.
+  - las cargas variables están en el API de Python; en YAML siguen siendo constantes;
+  - sin momentos ni torsores distribuidos: la torsión del `Frame3D` sólo se verifica como exacta.
+- **Plan completo** (las cuatro fases, 2026-10-27).
 
 ## Alternativas descartadas
 
@@ -205,3 +230,8 @@ Verificadas por el bibliotecario el 2026-10-27 contra Crossref, OpenAlex y OSTI.
 Añadida en la fase 3, verificada por la IA el 2026-10-27 contra Crossref (título, editorial, año, serie, ISBN 9783540331216) y OpenAlex (autor):
 
 - V. Thomée, *Galerkin Finite Element Methods for Parabolic Problems*, 2.ª ed., Springer Series in Computational Mathematics, Springer, 2006. DOI [10.1007/3-540-33122-0](https://doi.org/10.1007/3-540-33122-0). Estimaciones de error de la semidiscretización de Galerkin, de los esquemas de un paso en el tiempo (Euler implícito, Crank-Nicolson) y del método de la masa concentrada. En los cuadriláteros y hexaedros distorsionados del barrido la evidencia es la medición.
+
+Añadidas en la fase 4, verificadas por la IA el 2026-10-27 contra Crossref (título, autores, revista, volumen, número y páginas):
+
+- P. Tong, "Exact solution of certain problems by finite-element method", *AIAA Journal* 7(1) (1969) 178–180. DOI [10.2514/3.5067](https://doi.org/10.2514/3.5067). Exactitud nodal del MEF en problemas 1D cuyas funciones de forma resuelven la ecuación homogénea.
+- D. Friedman, J. B. Kosmatka, "An improved two-node Timoshenko beam finite element", *Computers & Structures* 47(3) (1993) 473–481. DOI [10.1016/0045-7949(93)90243-7](https://doi.org/10.1016/0045-7949(93)90243-7). Funciones de interdependencia del elemento de Timoshenko de dos nodos.

@@ -34,14 +34,14 @@ F_int = σ·A · d
 - `A` — área de la sección transversal.
 
 ### Cargas distribuidas
-- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global (forma cerrada exacta para `b` uniforme). Útil para peso propio: `b = (0, -ρ·g)`.
+- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global (forma cerrada exacta para `b` uniforme). Útil para peso propio: `b = (0, -ρ·g)`. Acepta también un campo `b(x)` (ADR 0022), integrado con Gauss de 4 puntos, cada componente global con las funciones lineales.
 
 ### Régimen de validez
 - Pequeñas deformaciones (`|ε| ≲ 10⁻²`) y pequeños desplazamientos.
 - Cargas exclusivamente axiales. Si la carga transversal sobre la barra no es despreciable → `Frame2DEuler` / `Frame2DTimoshenko`.
 
 ### Validación
-- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss2D`.
+- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss2D`; [tests/validation/test_mms_frames.py](../tests/validation/test_mms_frames.py) (soluciones manufacturadas, ADR 0022) y [tests/test_line_elements.py](../tests/test_line_elements.py) (campo interior y carga como campo): con `u*` polinómico el error nodal es de redondeo (exactitud nodal, Tong 1969) y con `u*` suave, orden 2 en L² y 1 en energía.
 - Archivo fuente: [solidum/elements/truss.py](../solidum/elements/truss.py) · clase `Truss2D`.
 - Spec: [docs/specs/Truss2D.md](specs/Truss2D.md).
 - Referencia: Bathe, *Finite Element Procedures*, §4.2.1.
@@ -111,7 +111,7 @@ F_int = σ·A · d
 - `A` — área de la sección transversal.
 
 ### Cargas distribuidas
-- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global (forma cerrada exacta). Útil para peso propio: `b = (0, 0, -ρ·g)`.
+- `compute_body_load(b)` reparte `b · A · L₀ / 2` por nodo en cada componente global (forma cerrada exacta). Útil para peso propio: `b = (0, 0, -ρ·g)`. Acepta también un campo `b(x)` (ADR 0022), integrado con Gauss de 4 puntos, cada componente global con las funciones lineales.
 
 ### Régimen de validez
 - Pequeñas deformaciones (`|ε| ≲ 10⁻²`), pequeños desplazamientos y pequeñas rotaciones.
@@ -119,7 +119,7 @@ F_int = σ·A · d
 - Para grandes rotaciones en 3D → `Truss3DCorot`.
 
 ### Validación
-- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss3D`.
+- Tests: [tests/test_truss.py](../tests/test_truss.py) · `TestTruss3D`; [tests/validation/test_mms_frames.py](../tests/validation/test_mms_frames.py) (soluciones manufacturadas, ADR 0022) y [tests/test_line_elements.py](../tests/test_line_elements.py) (campo interior y carga como campo), con la línea orientada al azar.
 - Archivo fuente: [solidum/elements/truss.py](../solidum/elements/truss.py) · clase `Truss3D`.
 - Spec: [docs/specs/Truss3D.md](specs/Truss3D.md).
 - Referencias: Bathe §4.2.1; Cook §2.3.
@@ -275,7 +275,7 @@ F_int    = Tᵀ · F_int_local    (componente axial con σ·A del material)
 - **`section` + `n_ip`** (3 por defecto, ≥ 2): elemento en desplazamientos que integra la sección ([`FiberSection`](#fibersection--sección-por-fibras-de-los-marcos-euler-bernoulli)) en `n_ip` puntos de Gauss-Legendre: `K_local = Σ w_g L B_gᵀ k_s B_g`, `F_local = Σ w_g L B_gᵀ s_g` (pesos sobre `(0, 1)`), con `e_g = [ε₀, κ_z(x_g)]` de la interpolación de Hermite. Plasticidad y daño distribuidos fibra a fibra, con cualquier material 1D. Con fibras elásticas y `n_ip ≥ 2` reproduce la forma cerrada exactamente.
 
 ### Cargas distribuidas
-- `compute_body_load(b)` distribuye `q = A · b` (carga por unidad de longitud; con sección, `A = Σ A_i`) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal `q·L/2` en fuerza y `±q·L²/12` en momento (signo positivo en nodo i, negativo en j). Transformación local↔global vía la misma `T` del elemento. El peso propio usa `ρA` (con sección, `Σ ρ_i A_i`).
+- `compute_body_load(b)` distribuye `q = A · b` (carga por unidad de longitud; con sección, `A = Σ A_i`) con la fórmula consistente Hermite cúbica: axial mitad-mitad por nodo, transversal `q·L/2` en fuerza y `±q·L²/12` en momento (signo positivo en nodo i, negativo en j). Transformación local↔global vía la misma `T` del elemento. El peso propio usa `ρA` (con sección, `Σ ρ_i A_i`). Acepta también un campo `b(x)` (ADR 0022), integrado con Gauss de 4 puntos, proyectado a ejes locales y repartido con las funciones de la rigidez (axial lineal, flexión de Hermite); lo comparte `Frame2DEulerCorot`, en la geometría de referencia.
 
 ### Masa
 **Sin inercia rotatoria** de la sección (Euler-Bernoulli la desprecia por hipótesis): sólo depende de `ρA` (`ρ·A`; con sección, `Σ ρ_i A_i`), no de `I`.
@@ -299,7 +299,7 @@ La consistente reproduce exactamente la energía cinética de la traslación y d
 Vive en el paquete `solidum/elements/frame/` junto a `Frame2DTimoshenko` y `Frame2DEulerCorot`, sin herencia entre ellas. La construcción de longitud, cosenos directores y matriz de transformación 6×6 se delega a `build_geometry_2d` en `solidum/elements/frame/_shared.py`, compartida con `Frame2DTimoshenko` (la versión corotacional reconstruye T desde `alpha0` por su lógica propia).
 
 ### Validación
-- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$). Camino con sección y guarda: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica, M–κ, interacción N–M, colapso del voladizo y de la viga biempotrada) y [tests/test_fiber_section.py](../tests/test_fiber_section.py). Masa: [tests/test_frame_mass.py](../tests/test_frame_mass.py) (matrices frente a las fórmulas, energía cinética de movimientos rígidos, frecuencias como cotas superiores de Euler-Bernoulli; también `Frame2DEulerCorot` y `Frame2DTimoshenko`).
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DEulerAcceptance` (3 tests de aceptación + registro, incluye flecha analítica del voladizo $PL^3/(3EI)$). Camino con sección y guarda: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica, M–κ, interacción N–M, colapso del voladizo y de la viga biempotrada) y [tests/test_fiber_section.py](../tests/test_fiber_section.py). Masa: [tests/test_frame_mass.py](../tests/test_frame_mass.py) (matrices frente a las fórmulas, energía cinética de movimientos rígidos, frecuencias como cotas superiores de Euler-Bernoulli; también `Frame2DEulerCorot` y `Frame2DTimoshenko`). [tests/validation/test_mms_frames.py](../tests/validation/test_mms_frames.py) (soluciones manufacturadas, ADR 0022) y [tests/test_line_elements.py](../tests/test_line_elements.py) (campo interior y carga como campo): exactitud nodal con campos polinómicos y, con campos suaves, órdenes 2 (`u`), 4 (`v`), 3 (`θ`) en L² y 1 (`ε`), 2 (`κ`) en energía.
 - Archivo fuente: [solidum/elements/frame/euler.py](../solidum/elements/frame/euler.py) · clase `Frame2DEuler`; constitutiva común de los marcos en [solidum/elements/frame/_section.py](../solidum/elements/frame/_section.py) (`FrameSectionMixin`).
 - Spec: [docs/specs/Frame2DEuler.md](specs/Frame2DEuler.md).
 - Referencias: Bathe cap. 5; Cook §2.7.
@@ -339,7 +339,7 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 - `nu` (opcional): se toma de `material.nu` si está disponible; en su defecto, del parámetro del elemento con default 0.3 y aviso por consola.
 
 ### Cargas distribuidas
-- `compute_body_load(b)` usa la misma fórmula consistente Hermite cúbica que `Frame2DEuler` (idéntica para carga uniforme — la diferencia entre formulaciones aparece solo con cargas no uniformes o concentradas).
+- `compute_body_load(b)` con `b` constante usa la misma fórmula que `Frame2DEuler` (`qL/2`, `±qL²/12`), que es también la de sus propias funciones de forma. Un campo `b(x)` (ADR 0022) se reparte con las funciones de interdependencia del elemento (Friedman y Kosmatka 1993), que dependen de `Φ` y dan exactamente su rigidez (**decisión del usuario**, 2026-10-27): conservan la exactitud nodal, que con Hermite se perdería (error nodal de 12 % con 2 elementos en la prueba).
 
 ### Masa
 **Con inercia rotatoria** de la sección (el giro es independiente de la pendiente): la consistente de `Frame2DEuler` más `ρIL/6·[[2,1],[1,2]]` en `(rz_i, rz_j)`; la concentrada, `ρAL/2` traslacional y `ρIL/2` rotacional por nodo. Se conserva hasta la etapa 2 de las fibras (ADR 0021).
@@ -353,7 +353,7 @@ Para `Φ → 0` (viga esbelta) se recupera la matriz Euler-Bernoulli.
 Vive en el paquete `solidum/elements/frame/`, sin herencia con las otras vigas 2D. Comparte `build_geometry_2d` con `Frame2DEuler` en `solidum/elements/frame/_shared.py` — la construcción de la matriz de transformación 6×6 ya no se duplica.
 
 ### Validación
-- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría).
+- Tests: [tests/test_frame.py](../tests/test_frame.py) · `TestFrame2DTimoshenkoAcceptance` (convergencia a Euler en viga esbelta, axial puro, simetría); [tests/validation/test_mms_frames.py](../tests/validation/test_mms_frames.py) (soluciones manufacturadas, ADR 0022) y [tests/test_line_elements.py](../tests/test_line_elements.py) (campo interior y carga como campo): exactitud nodal y órdenes `u` 2, `θ` 3, `v` 2 en L² y `ε` 1, `κ` 2, `γ` 1 en energía. La `v` da orden 2 y no 4 porque al refinar `Φ ∝ 1/h²` crece y el elemento aproxima `v''` con `θ'`, que difieren en `γ'`; con `Φ ≪ 1` da 4.
 - Archivo fuente: [solidum/elements/frame/timoshenko.py](../solidum/elements/frame/timoshenko.py) · clase `Frame2DTimoshenko`.
 - Spec: [docs/specs/Frame2DTimoshenko.md](specs/Frame2DTimoshenko.md).
 - Referencias: Reddy cap. 5; Bathe §5.4.
@@ -447,7 +447,7 @@ K_global = Tᵀ K_local T
 - `ref_vector` (opcional, default `[0, 0, 1]`), en los dos caminos: fija también la orientación de los ejes `y`, `z` en que se declaran las fibras.
 
 ### Cargas distribuidas
-- `compute_body_load(b)` proyecta `q = A · b` (con sección, `A = Σ A_i`; el peso propio usa `Σ ρ_i A_i`) sobre los ejes locales y reparte con la fórmula Hermite cúbica en ambos planos de flexión: `q · L / 2` en fuerzas, `±q · L² / 12` en momentos (con signos `+` en nodo i y `−` en nodo j para `Mz`, y signos opuestos para `My` por la regla de la mano derecha). No genera torsión (carga uniforme sin excentricidad respecto al centro de cortadura). Útil para peso propio: `b = (0, 0, -ρ·g)`.
+- `compute_body_load(b)` proyecta `q = A · b` (con sección, `A = Σ A_i`; el peso propio usa `Σ ρ_i A_i`) sobre los ejes locales y reparte con la fórmula Hermite cúbica en ambos planos de flexión: `q · L / 2` en fuerzas, `±q · L² / 12` en momentos (con signos `+` en nodo i y `−` en nodo j para `Mz`, y signos opuestos para `My` por la regla de la mano derecha). No genera torsión (carga uniforme sin excentricidad respecto al centro de cortadura). Útil para peso propio: `b = (0, 0, -ρ·g)`. Acepta también un campo `b(x)` (ADR 0022), integrado con Gauss de 4 puntos, proyectado a ejes locales y repartido con las funciones de la rigidez.
 
 ### Régimen de validez
 - Vigas esbeltas (`L/h ≳ 10`).
@@ -473,7 +473,7 @@ La masa concentrada es estrictamente diagonal en ejes locales. Tras la rotación
 Archivo propio. No hereda de `Frame2DEuler`, `Frame2DTimoshenko` ni de los trusses 3D. Comparte con los marcos planos la constitutiva genérica de `solidum/elements/frame/_section.py` (ADR 0021) y los bloques de masa de la flexión de `solidum/elements/frame/_shared.py` (`hermite_consistent_mass`, `hrz_rotational_mass`).
 
 ### Validación
-- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro). Camino con sección: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica en elemento oblicuo, M–κ en los dos ejes, interacción N–M, sección circular a 45°) y [tests/test_fiber_section.py](../tests/test_fiber_section.py) (tangente con torsión frente a diferencias finitas, torsión desacoplada, `GJ` desde el YAML). Masa: [tests/test_frame_mass.py](../tests/test_frame_mass.py) · `TestFrame3D` y energía cinética del giro rígido oblicuo.
+- Tests: [tests/test_frame3d.py](../tests/test_frame3d.py) · `TestFrame3DAcceptance` (5 criterios físicos + validación de `ref_vector` + registro). Camino con sección: [tests/validation/test_fiber_section_validation.py](../tests/validation/test_fiber_section_validation.py) (reproducción elástica en elemento oblicuo, M–κ en los dos ejes, interacción N–M, sección circular a 45°) y [tests/test_fiber_section.py](../tests/test_fiber_section.py) (tangente con torsión frente a diferencias finitas, torsión desacoplada, `GJ` desde el YAML). Masa: [tests/test_frame_mass.py](../tests/test_frame_mass.py) · `TestFrame3D` y energía cinética del giro rígido oblicuo. [tests/validation/test_mms_frames.py](../tests/validation/test_mms_frames.py) (soluciones manufacturadas, ADR 0022) y [tests/test_line_elements.py](../tests/test_line_elements.py) (campo interior y carga como campo): exactitud nodal y órdenes `u` 2, `v` y `w` 4, `θy` y `θz` 3 en L² y `ε` 1, `κy` y `κz` 2 en energía; torsión exacta (lineal, sin torsor distribuido).
 - Archivo fuente: [solidum/elements/frame3d.py](../solidum/elements/frame3d.py) · clase `Frame3D`.
 - Spec: [docs/specs/Frame3D.md](specs/Frame3D.md).
 - Referencias: Przemieniecki Tabla 11.3; Cook §2.8; Bathe cap. 5.

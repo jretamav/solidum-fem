@@ -30,7 +30,7 @@ $$\underbrace{\int_V \delta\varepsilon\, \sigma\, dV}_{\delta W_{\text{int}}} \;
 
 El elemento calcula **solo el lado interno**:
 $$\delta W_{\text{int}} = \delta\mathbf u_e^\top \mathbf F_{\text{int}},$$
-con la rigidez tangente consistente separada en parte material y geométrica (ver §9). Las cargas externas (nodales y, si las hubiera, de cuerpo o tracción) las ensambla el solver a partir del input del usuario; este elemento **no** produce vector nodal equivalente de fuerzas de cuerpo distribuidas a lo largo del eje.
+con la rigidez tangente consistente separada en parte material y geométrica (ver §9). Las cargas externas (nodales y, si las hubiera, de cuerpo o tracción) las ensambla el solver a partir del input del usuario; el vector nodal de una fuerza de cuerpo lo hereda de `Truss2D` (`compute_body_load`, constante o campo `b(x)`), repartido en la geometría de referencia.
 
 ---
 
@@ -101,7 +101,7 @@ out_of_scope:
   - flexión, cortante, momentos
   - pandeo por bifurcación (captura de snap-through requiere arc-length)
   - plasticidad con grandes deformaciones
-  - "fuerzas de cuerpo distribuidas (peso propio sobre la barra): el elemento no calcula vector nodal equivalente; el usuario reparte masa a los nodos en el input"
+  - "fuerzas de cuerpo sobre la geometría corriente (se reparten en la de referencia, heredado de Truss2D)"
 
 acceptance:
   - name: equivalencia con Truss2D en régimen lineal
@@ -147,3 +147,4 @@ references:
 - **2026-04-21** · Implementación inicial tras validar el diseño spec-first. Se optó por herencia `Truss2DCorot(Truss2D)` para reutilizar el constructor (L0, cosenos iniciales) y los `ClassVar`s del registro; los métodos que dependen de configuración corriente se sobrescriben. La bandera `large_strains` que tenía `Truss2D` previamente se elimina en el mismo commit — el régimen corotacional vive ahora como elemento independiente.
 - **2026-04-21** · Normalización del autovalor transverso (criterio 3): la fórmula del libro da $N/l$ sobre el **versor** $\hat{\mathbf n} = \mathbf n/\sqrt 2$; sobre el vector $\mathbf n$ directo (norma $\sqrt 2$) el autovalor es $2N/l$. El test verifica la segunda forma para evitar raíces cuadradas y la nota de traducción documenta la equivalencia.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (`axial_end_forces`): con carga axial distribuida N_i ≠ N_j.
+- **2026-10-27** · Hereda de `Truss2D` la fuerza de cuerpo como campo `b(x)` (ADR 0022, fase 4), repartida en la geometría de referencia; se corrigen dos notas desactualizadas que decían que el elemento no calculaba el vector nodal de una fuerza de cuerpo.

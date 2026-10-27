@@ -16,6 +16,8 @@
 - :func:`_frame2d_forces_from_local` — traduce el vector local
   ``[Fx_i, Fy_i, Mz_i, Fx_j, Fy_j, Mz_j]`` a ``ElementForces`` en la
   convención de viga estructural de Reglas.md §5.
+- :class:`Frame2DLine` — campo interior y fuerza de cuerpo como campo de los
+  marcos 2D (ADR 0022, fase 4).
 """
 import math
 from typing import List
@@ -23,6 +25,7 @@ from typing import List
 import numpy as np
 
 from solidum.core.node import Node
+from solidum.elements._line import LineElementMixin, hermite_functions, linear_tangent
 from solidum.logging import get_logger
 from solidum.results import ElementForces
 
@@ -73,6 +76,51 @@ def build_geometry_2d(nodes: List[Node]):
         [ 0,  0, 0, 0, 0, 1],
     ])
     return L0, c, s, T
+
+
+class Frame2DLine(LineElementMixin):
+    """Campo interior de los marcos 2D (ADR 0022, fase 4) en ejes locales:
+    axial lineal y flexión con los cúbicos de Hermite (Euler-Bernoulli,
+    ``θ = v'`` y ``κ = v''``); el ``Frame2DTimoshenko`` sustituye la
+    flexión por su propia interpolación. Con él, la fuerza de cuerpo como
+    campo se reparte con las mismas funciones que dan la rigidez."""
+    LINE_FIELDS = ("u", "v", "theta_z")
+    LINE_STRAINS = ("eps", "kappa_z")
+
+    def _line_transform(self) -> np.ndarray:
+        """``T`` 6×6 global → local de la geometría de referencia."""
+        return self.T
+
+    def _to_local(self, u_e):
+        return self._line_transform() @ u_e
+
+    def _to_global(self, f_local):
+        return self._line_transform().T @ f_local
+
+    def _load_axes(self):
+        return self._line_transform()[0:2, 0:2]
+
+    def _line_interpolation(self, xi):
+        L = self.L0
+        n = len(xi)
+        N = np.zeros((n, 3, 6))
+        B = np.zeros((n, 2, 6))
+        H, dH, d2H = hermite_functions(xi, L)
+        N[:, 0, 0], N[:, 0, 3] = 1.0 - xi, xi
+        N[:, 1, [1, 2, 4, 5]] = H
+        N[:, 2, [1, 2, 4, 5]] = dH
+        B[:, 0, 0], B[:, 0, 3] = -1.0 / L, 1.0 / L
+        B[:, 1, [1, 2, 4, 5]] = d2H
+        return N, B
+
+    def section_rigidities(self) -> np.ndarray:
+        """``[EA, EI]``; sólo con material elástico lineal (con sección por
+        fibras la rigidez no es una constante)."""
+        if getattr(self, "section", None) is not None:
+            raise ValueError(f"{type(self).__name__}(id={self.id}): con sección por fibras "
+                             "las rigideces de la sección no son constantes.")
+        E = linear_tangent(self.material)
+        return np.array([E * self.A, E * self.I])
 
 
 def _frame2d_consistent_body_load(b: np.ndarray, A: float, L: float,

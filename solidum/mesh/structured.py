@@ -14,6 +14,9 @@ paralelogramos (mallas asintóticamente afines).
 
 Celdas (``REFERENCE_CELL`` del elemento):
 
+- ``"line"``: elementos de línea (armaduras, marcos), uno por celda; la
+  ``mapping`` lleva ``[0, 1]`` a la línea física en 2D o 3D (sin ella, el
+  eje ``x`` del plano);
 - ``"quad"``: una por celda; ``"tri"``: dos por celda, separadas por la
   diagonal de ``(0, 0)`` a ``(1, 1)``;
 - ``"hex"``: una por celda; ``"tet"``: seis por celda (subdivisión de Kuhn
@@ -21,9 +24,11 @@ Celdas (``REFERENCE_CELL`` del elemento):
   celdas vecinas porque todas parten sus caras por la misma diagonal).
 
 Los lados del bloque se llaman ``xmin``, ``xmax``, ``ymin``, ``ymax`` (y
-``zmin``, ``zmax`` en 3D). :attr:`StructuredMesh.boundary` da los bordes
-(2D, ``EDGE_NODES``) o caras (3D, ``FACE_NODES``) de elemento sobre cada lado
-y :meth:`StructuredMesh.nodes_on`, sus nodos.
+``zmin``, ``zmax`` en 3D); una línea sólo tiene sus extremos ``xmin`` y
+``xmax``. :attr:`StructuredMesh.boundary` da los bordes (2D, ``EDGE_NODES``)
+o caras (3D, ``FACE_NODES``) de elemento sobre cada lado, o el nodo extremo
+(índice local 0 ó 1) en una línea, y :meth:`StructuredMesh.nodes_on`, sus
+nodos.
 
 Para geometrías reales, Gmsh (``solidum.utils.gmsh_parser``); esto es para
 pruebas, estudios de convergencia y modelos de geometría simple.
@@ -40,8 +45,10 @@ from solidum.core.domain import Domain
 from solidum.core.node import Node
 from solidum.registry import ElementRegistry
 
-SIDES_2D = ("xmin", "xmax", "ymin", "ymax")
+SIDES_1D = ("xmin", "xmax")
+SIDES_2D = SIDES_1D + ("ymin", "ymax")
 SIDES_3D = SIDES_2D + ("zmin", "zmax")
+_SIDES = {1: SIDES_1D, 2: SIDES_2D, 3: SIDES_3D}
 
 
 def _kuhn_tets():
@@ -60,13 +67,16 @@ def _kuhn_tets():
 # en el orden de los vértices del elemento de referencia; en quad y hex sólo
 # importa el origen.
 _CELL_VERTICES = {
+    "line": (((0.0,),),),
     "quad": (((0.0, 0.0),),),
     "tri": (((0.0, 0.0), (1.0, 0.0), (1.0, 1.0)),
             ((0.0, 0.0), (1.0, 1.0), (0.0, 1.0))),
     "hex": (((0.0, 0.0, 0.0),),),
     "tet": _kuhn_tets(),
 }
-_DIM = {"quad": 2, "tri": 2, "hex": 3, "tet": 3}
+_DIM = {"line": 1, "quad": 2, "tri": 2, "hex": 3, "tet": 3}
+# Entidades de contorno de una línea: sus dos nodos extremos.
+_LINE_ENDS = ((0,), (1,))
 
 # Tolerancia para decidir que un nodo está sobre un lado del bloque, en las
 # coordenadas de referencia (que son fracciones exactas de 1/divisions).
@@ -77,13 +87,13 @@ def _in_cell(cell: str, vertices, xi: np.ndarray) -> np.ndarray:
     """Punto de la celda unidad que corresponde a las coordenadas naturales
     ``xi`` del elemento (``[-1, 1]^d`` o coordenadas de volumen/área)."""
     v = np.asarray(vertices)
-    if cell in ("quad", "hex"):
+    if cell in ("line", "quad", "hex"):
         return v[0] + (xi + 1.0) / 2.0
     return v[0] + (v[1:] - v[0]).T @ xi
 
 
 def _side(side: str, dim: int):
-    sides = SIDES_2D if dim == 2 else SIDES_3D
+    sides = _SIDES[dim]
     if side not in sides:
         raise ValueError(f"Lado {side!r} desconocido; lados: {', '.join(sides)}.")
     return "xyz".index(side[0]), (0.0 if side.endswith("min") else 1.0)
@@ -115,7 +125,7 @@ class StructuredMesh:
 
     @property
     def sides(self) -> tuple:
-        return SIDES_2D if self.dim == 2 else SIDES_3D
+        return _SIDES[self.dim]
 
     def nodes_on(self, side: str) -> list[Node]:
         """Nodos sobre el lado ``side`` del bloque, en orden de creación."""
@@ -139,7 +149,8 @@ def structured_mesh(element, divisions, *, size=None, origin=None,
         el bloque unidad.
     mapping : callable, opcional
         ``x = mapping(X)`` de la caja a la geometría física; debe conservar la
-        orientación (jacobiano positivo).
+        orientación (jacobiano positivo). En una línea da las 2 ó 3
+        coordenadas del punto.
     domain : Domain, opcional
         Dominio donde añadir la malla; por omisión uno nuevo. Los nodos y
         elementos se numeran a continuación de los existentes.
@@ -160,7 +171,8 @@ def structured_mesh(element, divisions, *, size=None, origin=None,
     ref_nodes = np.asarray(cls.REFERENCE_NODES, dtype=np.float64)
     size = np.ones(dim) if size is None else np.asarray(size, dtype=np.float64)
     origin = np.zeros(dim) if origin is None else np.asarray(origin, dtype=np.float64)
-    local_entities = cls.EDGE_NODES if dim == 2 else cls.FACE_NODES
+    local_entities = {1: _LINE_ENDS, 2: getattr(cls, "EDGE_NODES", None),
+                      3: getattr(cls, "FACE_NODES", None)}[dim]
     dom = Domain() if domain is None else domain
     mesh = StructuredMesh(dom, n)
     mesh.boundary = {s: [] for s in mesh.sides}
@@ -177,7 +189,11 @@ def structured_mesh(element, divisions, *, size=None, origin=None,
                 if key not in ids:
                     X = origin + ref * size
                     x = X if mapping is None else np.asarray(mapping(X), dtype=np.float64)
-                    dom.add_node(next_node, [float(c) for c in x[:dim]])
+                    if dim > 1:
+                        x = x[:dim]
+                    elif mapping is None:
+                        x = np.array([x[0], 0.0])
+                    dom.add_node(next_node, [float(c) for c in x])
                     ids[key] = next_node
                     mesh.reference[next_node] = ref
                     next_node += 1

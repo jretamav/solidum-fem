@@ -179,6 +179,11 @@ class Cable2DCorot(Element):
         np.ndarray, shape (4,)
             ``[Fx_i, Fy_i, Fx_j, Fy_j]`` en ejes globales.
         """
+        if callable(b):
+            raise ValueError(
+                f"{type(self).__name__}(id={self.id}): la fuerza de cuerpo como campo "
+                "b(x) no está implementada en los cables, que reparten la carga con su "
+                "longitud sin tensión L₀; use un valor constante.")
         b = np.asarray(b, dtype=float).reshape(2)
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
@@ -353,6 +358,11 @@ class Cable3DCorot(Element):
         np.ndarray, shape (6,)
             ``[Fx_i, Fy_i, Fz_i, Fx_j, Fy_j, Fz_j]`` en ejes globales.
         """
+        if callable(b):
+            raise ValueError(
+                f"{type(self).__name__}(id={self.id}): la fuerza de cuerpo como campo "
+                "b(x) no está implementada en los cables, que reparten la carga con su "
+                "longitud sin tensión L₀; use un valor constante.")
         b = np.asarray(b, dtype=float).reshape(3)
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[2],

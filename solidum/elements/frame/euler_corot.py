@@ -12,6 +12,7 @@ from solidum.core.node import Node
 from solidum.core.section import Section
 from solidum.elements.frame._section import DEFAULT_N_IP, FrameSectionMixin
 from solidum.elements.frame._shared import (
+    Frame2DLine,
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
@@ -22,7 +23,7 @@ from solidum.results import ElementForces
 
 
 @ElementRegistry.register
-class Frame2DEulerCorot(FrameSectionMixin, Element):
+class Frame2DEulerCorot(Frame2DLine, FrameSectionMixin, Element):
     """Marco/viga 2D Euler-Bernoulli corotacional (Updated Lagrangian).
 
     Dos nodos, 3 DOFs por nodo (ux, uy, rz). Captura grandes desplazamientos
@@ -243,8 +244,11 @@ class Frame2DEulerCorot(FrameSectionMixin, Element):
         Para grandes rotaciones con cargas conservadoras (gravedad), la
         diferencia frente a la integración sobre la geometría corriente es
         de segundo orden y se acepta como aproximación estándar. Ver
-        :func:`_frame2d_consistent_body_load`.
+        :func:`_frame2d_consistent_body_load`. Un campo ``b(x)`` (ADR 0022)
+        se reparte en la misma configuración con las funciones de Hermite.
         """
+        if callable(b):
+            return self._field_line_load(b, self._axial_area())
         T = self._reference_transform()
         return _frame2d_consistent_body_load(b, self._axial_area(), self.L0, T)
 
@@ -255,6 +259,11 @@ class Frame2DEulerCorot(FrameSectionMixin, Element):
             return super().compute_self_weight(g)
         rhoA = self.section.mass_properties()["rhoA"]
         return _frame2d_consistent_body_load(g, rhoA, self.L0, self._reference_transform())
+
+    def _line_transform(self) -> np.ndarray:
+        """El campo interior y la carga como campo usan la geometría de
+        referencia (ADR 0022)."""
+        return self._reference_transform()
 
     def _reference_transform(self) -> np.ndarray:
         """Matriz de transformación 6×6 en la configuración de referencia."""

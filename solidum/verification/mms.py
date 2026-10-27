@@ -12,7 +12,13 @@ la hacen exacta:
 - conducción de calor (:class:`ManufacturedConduction`), con una temperatura
   ``T*(x)`` o ``T*(x, t)`` y conductividad ``k`` anisótropa o no::
 
-      q* = −k·∇T*,   Q* = ρc·∂T*/∂t + ∇·q*,   q̄*(x, n) = q*·n  (> 0 saliente).
+      q* = −k·∇T*,   Q* = ρc·∂T*/∂t + ∇·q*,   q̄*(x, n) = q*·n  (> 0 saliente);
+
+- barras y marcos rectos (:class:`ManufacturedFrame`), con los campos
+  locales de la línea (axial, flexión de Navier-Bernoulli o de Timoshenko,
+  torsión lineal): la carga de línea como fuerza de cuerpo y las fuerzas
+  internas como cargas nodales en los extremos. En 1D los valores nodales son
+  exactos (Tong 1969) y los órdenes van por componente.
 
 Con la carga de volumen, la de contorno en la parte de Neumann y el campo
 impuesto en los nodos de la parte de Dirichlet, la solución inventada es la
@@ -110,6 +116,12 @@ class _ManufacturedSolution:
     time_dependent = False
     _PRIMARY = _GRADIENT = ""
 
+    @property
+    def mesh_dim(self) -> int:
+        """Dimensión de la malla (de la celda de referencia): la del
+        espacio, salvo en los elementos de línea."""
+        return self.dim
+
     def _compile(self, symbols) -> None:
         sp = _sympy()
         # Dos versiones: con math para un punto (las cargas se evalúan punto a
@@ -120,18 +132,36 @@ class _ManufacturedSolution:
         self._f_point = {k: sp.lambdify(symbols, list(v), "math", cse=True)
                          for k, v in self.expressions.items()}
 
+    def _args(self, x: np.ndarray) -> tuple:
+        """Argumentos espaciales de las expresiones compiladas: las
+        coordenadas ``x``, ``y`` (``z``) de un punto ``(d,)`` o de varios
+        ``(n, d)``."""
+        return tuple(x[..., k] for k in range(self.dim))
+
     def _eval(self, name, x, t: float = 0.0) -> np.ndarray:
         """Valores en un punto ``(d,)`` → ``(m,)`` o en varios ``(n, d)`` →
         ``(n, m)``, en el instante ``t`` si la solución depende del tiempo."""
         x = np.asarray(x, dtype=np.float64)
-        extra = (float(t),) if self.time_dependent else ()
+        args = self._args(x) + ((float(t),) if self.time_dependent else ())
         if x.ndim == 1:
-            return np.array(self._f_point[name](*(float(c) for c in x[:self.dim]), *extra),
-                            dtype=np.float64)
-        pts = x[:, :self.dim]
-        vals = self._f[name](*pts.T, *extra)
-        return np.column_stack([np.broadcast_to(np.asarray(v, dtype=np.float64), (len(pts),))
+            return np.array(self._f_point[name](*(float(a) for a in args)), dtype=np.float64)
+        vals = self._f[name](*args)
+        return np.column_stack([np.broadcast_to(np.asarray(v, dtype=np.float64), (len(x),))
                                 for v in vals])
+
+    def _dof_values(self, x) -> np.ndarray:
+        """Valores de los DOFs (``dofs``) del campo exacto en el nodo ``x``,
+        los que se imponen en la parte de Dirichlet."""
+        return self._eval(self._PRIMARY, x)
+
+    def _constrain(self, mesh, fixed: dict) -> None:
+        """Restricciones adicionales antes de numerar las ecuaciones; ninguna
+        por omisión. ``fixed``: los nodos de Dirichlet por id."""
+
+    def _check_mesh(self, mesh) -> None:
+        """Rechaza una malla cuyos elementos no tengan la constitutiva de la
+        solución (con otra, la solución manufacturada no sería la exacta)."""
+        self._check_material(next(iter(mesh.domain.elements.values())).material)
 
     def _check_material(self, material) -> None:
         raise NotImplementedError
@@ -327,6 +357,262 @@ class ManufacturedConduction(_ManufacturedSolution):
         return F
 
 
+class ManufacturedFrame(_ManufacturedSolution):
+    """Solución manufacturada de barras y marcos rectos, elásticos y lineales
+    (fase 4).
+
+    Los campos se dan en los ejes locales de la línea, como expresiones de la
+    abscisa ``s = (x − origin)·e_x`` a lo largo del eje:
+
+    - ``"u"``: desplazamiento axial; ``ε = u'``, ``N = EA·ε``;
+    - ``"v"``: flexión en el plano ``xy`` (Navier-Bernoulli): ``θz = v'``,
+      ``κz = v''``, ``Mz = EI_z·κz``;
+    - ``"w"``: flexión en el plano ``xz`` (3D): ``θy = −w'`` por la regla de la
+      mano derecha, ``κy = θy'``, ``My = EI_y·κy``;
+    - ``"psi"``: en Timoshenko, la función de la que salen ``θz = ψ'`` y
+      ``v = ψ − (EI/(G·A_s))·ψ''``, la pareja que no necesita momento
+      distribuido: ``Vy = G·A_s·(v' − θz) = −EI·ψ'''``; con cortante rígido
+      ``v = ψ``;
+    - ``"theta_x"``: giro de torsión (3D), lineal, porque no hay torsor
+      distribuido: ``T = GJ·θx'``.
+
+    De la forma débil de cada elemento salen las cargas que hacen exacta la
+    solución: las de línea ``p = −N'``, ``q_y = −Vy'`` y ``q_z = −Vz'``, con
+    ``Vy = −Mz'`` y ``Vz = My'`` en Navier-Bernoulli (``Mz' = −Vy`` y
+    ``My' = Vz``, convención stress-resultant, Reglas §5), que se aplican como
+    la fuerza de cuerpo ``b = λᵀ·q/A``; y en un extremo libre, las fuerzas
+    internas de la sección por la normal exterior ``±e_x`` como cargas
+    nodales.
+
+    Parameters
+    ----------
+    fields : dict
+        Expresiones en ``s`` (cadena o SymPy) de los campos que el elemento
+        admite: ``{"u"}`` en una armadura, ``{"u", "v"}`` en un marco 2D,
+        ``{"u", "psi"}`` en el Timoshenko, ``{"u", "v", "w", "theta_x"}`` en
+        el marco 3D; los que falten valen cero.
+    rigidities : dict
+        Rigidez de la sección por deformación generalizada, con los nombres
+        de ``LINE_STRAINS`` del elemento (``"eps"``: EA, ``"kappa_z"``: EI_z,
+        ``"kappa_y"``: EI_y, ``"gamma_y"``: G·A_s, ``"twist"``: GJ).
+    area : float
+        Área con la que el elemento convierte la fuerza de cuerpo en carga por
+        unidad de longitud.
+    origin : (d,)
+        Punto de ``s = 0``.
+    axes : (d, d)
+        Ejes locales en globales, por filas (``e_x``, ``e_y`` [, ``e_z``]).
+    dofs : sequence
+        ``DOF_NAMES`` del elemento.
+
+    :meth:`from_element` toma todo salvo los campos y el origen de un
+    elemento de la malla.
+    """
+
+    _PRIMARY, _GRADIENT = "state", ""
+    _KINDS = {"bar": {"u"}, "frame2d": {"u", "v"}, "timoshenko": {"u", "psi"},
+              "frame3d": {"u", "v", "w", "theta_x"}}
+
+    def __init__(self, fields: dict, rigidities: dict, area: float, origin, axes, dofs):
+        sp = _sympy()
+        self.axes = np.array(axes, dtype=np.float64)
+        self.dim = d = self.axes.shape[0]
+        self.origin = np.asarray(origin, dtype=np.float64).reshape(d)
+        self.dofs = tuple(dofs)
+        self.rigidities = {k: float(v) for k, v in rigidities.items()}
+        self.area = float(area)
+        kind = ("timoshenko" if "gamma_y" in rigidities else "frame3d" if "kappa_y" in rigidities
+                else "frame2d" if "kappa_z" in rigidities else "bar")
+        self.kind = kind
+        unknown = set(fields) - self._KINDS[kind]
+        if unknown:
+            raise ValueError(f"Campos {sorted(unknown)} no admitidos en un elemento de tipo "
+                             f"{kind}; se admiten {sorted(self._KINDS[kind])}.")
+        s = sp.Symbol("s", real=True)
+        f = {k: _parse([v], (s,), "s")[0] for k, v in fields.items()}
+        zero = sp.Integer(0)
+        R = self.rigidities
+        u = f.get("u", zero)
+        eps = sp.diff(u, s)
+        N = R["eps"] * eps
+        v = w = tx = ty = tz = kz = ky = gy = twist = zero
+        Vy = Vz = T = My = Mz = zero
+        if kind == "timoshenko":
+            psi = f.get("psi", zero)
+            tz = sp.diff(psi, s)
+            v = psi - R["kappa_z"] / R["gamma_y"] * sp.diff(psi, s, 2)
+            kz = sp.diff(tz, s)
+            gy = sp.diff(v, s) - tz
+            Mz, Vy = R["kappa_z"] * kz, R["gamma_y"] * gy
+        elif kind in ("frame2d", "frame3d"):
+            v = f.get("v", zero)
+            tz = sp.diff(v, s)
+            kz = sp.diff(tz, s)
+            Mz = R["kappa_z"] * kz
+            Vy = -sp.diff(Mz, s)
+        if kind == "frame3d":
+            w = f.get("w", zero)
+            ty = -sp.diff(w, s)
+            ky = sp.diff(ty, s)
+            My = R["kappa_y"] * ky
+            Vz = sp.diff(My, s)
+            tx = f.get("theta_x", zero)
+            if sp.simplify(sp.diff(tx, s, 2)) != 0:
+                raise ValueError("theta_x debe ser lineal en s: no hay torsor distribuido.")
+            twist = sp.diff(tx, s)
+            T = R["twist"] * twist
+        strains = {"eps": eps, "twist": twist, "kappa_y": ky, "kappa_z": kz, "gamma_y": gy}
+        self.expressions = {
+            "state": sp.Matrix([u, v, w, tx, ty, tz]),
+            "strains": sp.Matrix([strains[k] for k in rigidities]),
+            "end_forces": sp.Matrix([N, Vy, Vz, T, My, Mz]),
+            "line_load": sp.Matrix([-sp.diff(N, s), -sp.diff(Vy, s), -sp.diff(Vz, s)]),
+        }
+        self._strain_names = tuple(rigidities)
+        self._compile((s,))
+        # Ejes en 3D (en 2D, el plano xy con z = e_z) para pasar de locales a
+        # globales desplazamientos, giros, fuerzas y momentos.
+        self._axes3 = np.eye(3)
+        self._axes3[:d, :d] = self.axes
+
+    @classmethod
+    def from_element(cls, fields: dict, element, origin) -> "ManufacturedFrame":
+        """Con las rigideces, el área, los ejes y los DOFs del elemento."""
+        rig = dict(zip(element.LINE_STRAINS, element.section_rigidities()))
+        area = element._axial_area() if hasattr(element, "_axial_area") else element.A
+        return cls(fields, rig, area, origin, _element_axes(element), element.DOF_NAMES)
+
+    @property
+    def mesh_dim(self) -> int:
+        return 1
+
+    @property
+    def energy_matrix(self) -> np.ndarray:
+        return np.diag([self.rigidities[k] for k in self._strain_names])
+
+    def _args(self, x: np.ndarray) -> tuple:
+        return ((x[..., :self.dim] - self.origin) @ self.axes[0],)
+
+    def local(self, names, x) -> np.ndarray:
+        """Campos (``"u"``, ``"v"``, ``"w"``, ``"theta_x"``, ``"theta_y"``,
+        ``"theta_z"``) o deformaciones (``LINE_STRAINS``) locales en los puntos
+        ``x`` ``(n, d)``, ``(n, len(names))``."""
+        state = ("u", "v", "w", "theta_x", "theta_y", "theta_z")
+        out = []
+        for name in names:
+            if name in state:
+                out.append(self._eval("state", x)[:, state.index(name)])
+            else:
+                out.append(self._eval("strains", x)[:, self._strain_names.index(name)])
+        return np.column_stack(out)
+
+    def _to_dofs(self, local6: np.ndarray) -> np.ndarray:
+        """``[u, v, w, θx, θy, θz]`` (o fuerzas y momentos) locales → valores
+        en los ``dofs`` globales del elemento."""
+        g = np.concatenate([self._axes3.T @ local6[:3], self._axes3.T @ local6[3:]])
+        index = {"ux": 0, "uy": 1, "uz": 2, "rx": 3, "ry": 4, "rz": 5}
+        return np.array([g[index[n]] for n in self.dofs])
+
+    def _dof_values(self, x) -> np.ndarray:
+        return self._to_dofs(self._eval("state", x))
+
+    def body_force(self, x) -> np.ndarray:
+        """``b(x) = λᵀ·q(s)/A``: el campo que se pasa a ``compute_body_load``."""
+        return (self._axes3.T @ self._eval("line_load", x))[:self.dim] / self.area
+
+    def end_loads(self, x, outward: float) -> np.ndarray:
+        """Cargas nodales en un extremo de normal exterior ``outward·e_x``:
+        las fuerzas internas de la sección, en los ``dofs`` globales."""
+        return outward * self._to_dofs(self._eval("end_forces", x))
+
+    def _constrain(self, mesh, fixed: dict) -> None:
+        """Una barra no tiene rigidez transversal: cada nodo libre se mueve sólo
+        a lo largo del eje, ``u_j = (e_j/e_k)·u_k`` con ``k`` la componente
+        mayor de ``e_x``."""
+        if self.kind != "bar":
+            return
+        e = self.axes[0]
+        k = int(np.argmax(np.abs(e)))
+        for node in mesh.domain.nodes.values():
+            if node.id in fixed:
+                continue
+            for j in range(self.dim):
+                if j != k:
+                    mesh.domain.add_linear_constraint((node.id, self.dofs[j]),
+                                                      [(node.id, self.dofs[k])], [e[j] / e[k]])
+
+    def _check_mesh(self, mesh) -> None:
+        for el in mesh.domain.elements.values():
+            rig = dict(zip(el.LINE_STRAINS, el.section_rigidities()))
+            if set(rig) != set(self.rigidities) or not all(
+                    np.isclose(rig[k], self.rigidities[k], rtol=1e-12, atol=0.0) for k in rig):
+                raise ValueError("Las rigideces de la sección no son las de la solución "
+                                 "manufacturada.")
+            if not np.allclose(_element_axes(el), self.axes, rtol=0.0, atol=1e-12):
+                raise ValueError("Los ejes locales del elemento no son los de la solución "
+                                 "manufacturada.")
+
+    def _loads(self, mesh, assembler, dirichlet, t: float = 0.0) -> np.ndarray:
+        F = assembler.assemble_body_load(self.body_force)
+        for side, ends in mesh.boundary.items():
+            if side in dirichlet:
+                continue
+            for el, k in ends:
+                node = el.nodes[k]
+                loads = self.end_loads(node.coordinates, 1.0 if side == "xmax" else -1.0)
+                F[[node.dofs[n] for n in self.dofs]] += loads
+        return F
+
+
+def _element_axes(element) -> np.ndarray:
+    """Ejes locales del elemento por filas: los de su carga en los marcos; en
+    una armadura, ``e_x`` y una base ortonormal cualquiera que lo complete."""
+    if hasattr(element, "_load_axes"):
+        return np.asarray(element._load_axes(), dtype=np.float64)
+    X = element._line_ends()
+    e = (X[1] - X[0]) / element.L0
+    if len(e) == 2:
+        return np.array([e, [-e[1], e[0]]])
+    ref = np.eye(3)[int(np.argmin(np.abs(e)))]
+    y = ref - (ref @ e) * e
+    y /= np.linalg.norm(y)
+    return np.array([e, y, np.cross(e, y)])
+
+
+def _line_error_norms(domain, U: np.ndarray, solution: ManufacturedFrame,
+                      n_points: int | None = None) -> dict:
+    """Normas del error en elementos de línea, por componente local:
+    ``"L2:<campo>"`` = ‖f* − f_h‖_L2 y ``"energy:<deformación>"`` =
+    (∫ D·(e* − e_h)² dx)^½, con sus totales ``"L2"`` (desplazamientos) y
+    ``"energy"``, y ``"nodal"``, el máximo error en los DOFs de los nodos."""
+    xi, w = np.polynomial.legendre.leggauss(8 if n_points is None else n_points)
+    xi, w = 0.5 * (xi + 1.0), 0.5 * w
+    D = solution.rigidities
+    sq: dict = {}
+    for el in domain.elements.values():
+        u_e = np.asarray(el.get_local_displacements(U), dtype=np.float64)
+        f_h, e_h = el.line_field(u_e, xi)
+        X = el._line_ends()
+        x = X[0] + xi[:, None] * (X[1] - X[0])
+        dx = w * el.L0
+        for k, name in enumerate(el.LINE_FIELDS):
+            df = solution.local([name], x)[:, 0] - f_h[:, k]
+            sq["L2:" + name] = sq.get("L2:" + name, 0.0) + dx @ df**2
+        for k, name in enumerate(el.LINE_STRAINS):
+            de = solution.local([name], x)[:, 0] - e_h[:, k]
+            sq["energy:" + name] = sq.get("energy:" + name, 0.0) + D[name] * (dx @ de**2)
+    out = {k: float(np.sqrt(v)) for k, v in sq.items()}
+    out["L2"] = float(np.sqrt(sum(v for k, v in sq.items() if k in ("L2:u", "L2:v", "L2:w"))))
+    out["energy"] = float(np.sqrt(sum(v for k, v in sq.items() if k.startswith("energy:"))))
+    nodal = 0.0
+    for node in domain.nodes.values():
+        exact = solution._dof_values(node.coordinates)
+        fe = U[[node.dofs[n] for n in solution.dofs]]
+        nodal = max(nodal, float(np.max(np.abs(fe - exact))))
+    out["nodal"] = nodal
+    return out
+
+
 def _dirichlet_sides(mesh, dirichlet) -> tuple:
     return (tuple(s for s in mesh.sides if s.endswith("min")) if dirichlet is None
             else tuple(dirichlet))
@@ -337,8 +623,9 @@ def _impose_dirichlet(mesh, solution, dirichlet) -> list:
     ``dirichlet``, numera las ecuaciones y devuelve los nodos fijados."""
     nodes = {node.id: node for side in dirichlet for node in mesh.nodes_on(side)}
     for node in nodes.values():
-        for dof, value in zip(solution.dofs, solution._eval(solution._PRIMARY, node.coordinates)):
+        for dof, value in zip(solution.dofs, solution._dof_values(node.coordinates)):
             node.fix_dof(dof, float(value))
+    solution._constrain(mesh, nodes)
     mesh.domain.generate_equation_numbers(verbose=False)
     return list(nodes.values())
 
@@ -432,7 +719,13 @@ def error_norms(domain, U: np.ndarray, solution, n_points: int | None = None,
     integradas en cada elemento con ``n_points`` puntos de Gauss por
     dirección, más que la regla del elemento porque el error no es
     polinómico. Por omisión ``p + 3``, con ``p`` el grado de la
-    interpolación."""
+    interpolación.
+
+    En los elementos de línea (:class:`ManufacturedFrame`) las normas van por
+    componente local, con Gauss de ``n_points`` (8 por omisión) puntos por
+    elemento: ver :func:`_line_error_norms`."""
+    if isinstance(solution, ManufacturedFrame):
+        return _line_error_norms(domain, U, solution, n_points)
     d = solution.dim
     m = len(solution.dofs)
     D = solution.energy_matrix
@@ -496,10 +789,12 @@ class ConvergenceStudy:
     ``h`` es el parámetro que se refina (``parameter``): el tamaño relativo de
     la malla, ``1/divisions``, o el paso de tiempo ``Δt``, con ``divisions``
     entonces el número de pasos de cada nivel. ``errors``, las normas del
-    error por nivel; ``expected``, los órdenes teóricos cuando no son los de
-    la interpolación (``p + 1`` en L² y ``p`` en energía)."""
+    error por nivel; ``expected``, los órdenes teóricos por norma cuando no
+    son los de la interpolación (``p + 1`` en L² y ``p`` en energía), como en
+    el estudio en el tiempo o en los elementos de línea, cuyos órdenes van por
+    componente (``degree`` es entonces ``None``)."""
     element: str
-    degree: int
+    degree: int | None
     divisions: tuple
     h: np.ndarray
     errors: dict
@@ -517,16 +812,20 @@ class ConvergenceStudy:
         return np.log(e[:-1] / e[1:]) / np.log(self.h[:-1] / self.h[1:])
 
     def table(self) -> str:
-        """Tabla de texto: nivel, parámetro, errores y órdenes observados."""
-        rows = [f"{self.element} (p = {self.degree}; esperado L2 {self.expected_order('L2')}, "
-                f"energia {self.expected_order('energy')})",
-                f"{'n':>4} {self.parameter:>9} {'e_L2':>11} {'orden':>6} {'e_E':>11} {'orden':>6}"]
-        o_l2, o_en = self.orders("L2"), self.orders("energy")
-        for k, n in enumerate(self.divisions):
-            a = f"{o_l2[k - 1]:6.3f}" if k else " " * 6
-            b = f"{o_en[k - 1]:6.3f}" if k else " " * 6
-            rows.append(f"{n:4d} {self.h[k]:9.5f} {self.errors['L2'][k]:11.4e} {a} "
-                        f"{self.errors['energy'][k]:11.4e} {b}")
+        """Tabla de texto: nivel, parámetro y, por norma (las de ``expected``,
+        o L2 y energía), errores y órdenes observados."""
+        norms = list(self.expected) if self.expected is not None else ["L2", "energy"]
+        title = f"{self.element} (p = {self.degree}; esperado " + ", ".join(
+            f"{k} {self.expected_order(k)}" for k in norms) + ")"
+        rows = [title, f"{'n':>4} {self.parameter:>9} " + " ".join(
+            f"{('e_' + k)[:15]:>15} {'orden':>6}" for k in norms)]
+        orders = {k: self.orders(k) for k in norms}
+        for i, n in enumerate(self.divisions):
+            cells = []
+            for k in norms:
+                o = f"{orders[k][i - 1]:6.3f}" if i else " " * 6
+                cells.append(f"{self.errors[k][i]:15.4e} {o}")
+            rows.append(f"{n:4d} {self.h[i]:9.5f} " + " ".join(cells))
         return "\n".join(rows)
 
 
@@ -537,7 +836,8 @@ def _name(element) -> str:
 def convergence_study(element, solution, divisions, *, mapping=None, size=None, origin=None,
                       dirichlet=None, n_points: int | None = None, linear_algebra=None,
                       t_end: float | None = None, n_steps=None, theta: float = 1.0,
-                      lumping: str = "lumped", **element_kwargs) -> ConvergenceStudy:
+                      lumping: str = "lumped", expected: dict | None = None,
+                      **element_kwargs) -> ConvergenceStudy:
     """Estudio de convergencia en mallas estructuradas de ``n`` celdas por
     dirección, ``n`` en ``divisions``, sobre el bloque transformado por
     ``mapping``.
@@ -549,13 +849,15 @@ def convergence_study(element, solution, divisions, *, mapping=None, size=None, 
     que el error en el tiempo no domine (con Crank-Nicolson y ``p = 1``,
     ``Δt ∝ h`` basta).
 
+    En los elementos de línea la malla es una línea de ``n`` elementos y los
+    órdenes esperados, por componente, se pasan en ``expected``
+    (``{"L2:v": 4, "energy:kappa_z": 2, ...}``).
+
     ``element_kwargs`` va al constructor del elemento (``material``,
-    ``thickness``...). Si incluye ``material``, debe ser el de ``solution``
-    (``C``; o ``k`` y, en el transitorio, ``ρ·c``): con otro, la solución
-    manufacturada no sería la exacta."""
-    material = element_kwargs.get("material")
-    if material is not None:
-        solution._check_material(material)
+    ``thickness``...). La constitutiva del elemento debe ser la de
+    ``solution`` (``C``; ``k`` y, en el transitorio, ``ρ·c``; las rigideces
+    de la sección y los ejes en una línea): con otra, la solución manufacturada
+    no sería la exacta."""
     if solution.time_dependent:
         if t_end is None or n_steps is None:
             raise ValueError("Solución transitoria: hacen falta t_end y n_steps.")
@@ -566,8 +868,10 @@ def convergence_study(element, solution, divisions, *, mapping=None, size=None, 
     errors = {"L2": [], "energy": []}
     degree = None
     for k, n in enumerate(divisions):
-        mesh = structured_mesh(element, (n,) * solution.dim, size=size, origin=origin,
+        mesh = structured_mesh(element, (n,) * solution.mesh_dim, size=size, origin=origin,
                                mapping=mapping, **element_kwargs)
+        if k == 0:
+            solution._check_mesh(mesh)
         if solution.time_dependent:
             U = solve_manufactured_transient(mesh, solution, t_end, steps[k], theta=theta,
                                              lumping=lumping, dirichlet=dirichlet,
@@ -575,12 +879,13 @@ def convergence_study(element, solution, divisions, *, mapping=None, size=None, 
         else:
             U = solve_manufactured(mesh, solution, dirichlet, linear_algebra)
         for key, v in error_norms(mesh.domain, U, solution, n_points, t=t_end or 0.0).items():
-            errors[key].append(v)
-        if degree is None:
-            degree = interpolation_degree(next(iter(mesh.domain.elements.values())))
+            errors.setdefault(key, []).append(v)
+        el = next(iter(mesh.domain.elements.values()))
+        if degree is None and el.REFERENCE_CELL != "line":
+            degree = interpolation_degree(el)
     return ConvergenceStudy(_name(element), degree, tuple(divisions),
                             1.0 / np.asarray(divisions, dtype=np.float64),
-                            {k: np.asarray(v) for k, v in errors.items()})
+                            {k: np.asarray(v) for k, v in errors.items()}, expected=expected)
 
 
 def time_convergence_study(element, solution: ManufacturedConduction, divisions: int,

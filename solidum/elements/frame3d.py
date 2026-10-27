@@ -21,6 +21,7 @@ from solidum.core.element import Element
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.core.section import Section
+from solidum.elements._line import LineElementMixin, hermite_functions, linear_tangent
 from solidum.elements.frame._section import (
     DEFAULT_N_IP,
     FrameSectionMixin,
@@ -35,7 +36,7 @@ _log = get_logger("elements.frame3d")
 
 
 @ElementRegistry.register
-class Frame3D(FrameSectionMixin, Element):
+class Frame3D(LineElementMixin, FrameSectionMixin, Element):
     """Marco/viga 3D basado en Euler-Bernoulli.
 
     Dos nodos rígidamente conectados, 6 DOFs por nodo (ux, uy, uz, rx, ry, rz).
@@ -87,6 +88,9 @@ class Frame3D(FrameSectionMixin, Element):
     DOF_NAMES = ['ux', 'uy', 'uz', 'rx', 'ry', 'rz']
     STRAIN_DIM = 1
     N_INTEGRATION_POINTS = 1
+    # Campo interior en ejes locales (ADR 0022, fase 4).
+    LINE_FIELDS = ("u", "v", "w", "theta_x", "theta_y", "theta_z")
+    LINE_STRAINS = ("eps", "twist", "kappa_y", "kappa_z")
     REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}
     SECTION_DIM = 3
     SECTION_RESPONSE = "response_3d"
@@ -510,13 +514,17 @@ class Frame3D(FrameSectionMixin, Element):
 
         La carga distribuida por unidad de longitud ``q = A · b`` (``A`` el
         área bruta: ``Σ A_i`` con sección) se reparte con
-        :meth:`_line_load_vector`.
+        :meth:`_line_load_vector` si es constante. Un campo ``b(x)`` (ADR
+        0022) se proyecta a ejes locales en 4 puntos de Gauss y se reparte
+        con las funciones de la rigidez (axial lineal, flexión de Hermite en
+        los dos planos); centrado en el eje, no produce torsión.
 
         Parameters
         ----------
-        b : np.ndarray, shape (3,)
+        b : np.ndarray, shape (3,), o callable
             Fuerza de cuerpo por unidad de volumen en ejes globales (e.g.
-            ``b = (0, 0, -ρ·g)`` para peso propio con ``+z`` hacia arriba).
+            ``b = (0, 0, -ρ·g)`` para peso propio con ``+z`` hacia arriba), o
+            un campo ``b(x)`` de la posición.
 
         Returns
         -------
@@ -524,8 +532,57 @@ class Frame3D(FrameSectionMixin, Element):
             Vector consistente en ejes globales, layout estándar de Frame3D:
             ``[Fx_i, Fy_i, Fz_i, Mx_i, My_i, Mz_i, Fx_j, ..., Mz_j]``.
         """
+        if callable(b):
+            return self._field_line_load(b, self._axial_area())
         b = np.asarray(b, dtype=float).reshape(3)
         return self._line_load_vector(self._axial_area() * b)
+
+    # ------------------------------------------------------------------
+    # Campo interior (ADR 0022, fase 4)
+    # ------------------------------------------------------------------
+
+    def _to_local(self, u_e):
+        return self.T @ u_e
+
+    def _to_global(self, f_local):
+        return self.T.T @ f_local
+
+    def _load_axes(self):
+        return self.lam
+
+    def _line_interpolation(self, xi):
+        """Axial y torsión lineales; flexión de Hermite en los dos planos:
+        ``v = N·[v₁, θz₁, v₂, θz₂]`` (``θz = v'``) y, por la regla de la mano
+        derecha, ``w = N·[w₁, −θy₁, w₂, −θy₂]`` (``θy = −w'``). Deformaciones
+        ``[ε, θx', κ_y = θy' = −w'', κ_z = v'']``, las de
+        :meth:`_build_section_B`."""
+        L = self.L0
+        n = len(xi)
+        H, dH, d2H = hermite_functions(xi, L)
+        sign = np.array([1.0, -1.0, 1.0, -1.0])
+        N = np.zeros((n, 6, 12))
+        B = np.zeros((n, 4, 12))
+        N[:, 0, 0], N[:, 0, 6] = 1.0 - xi, xi
+        N[:, 1, [1, 5, 7, 11]] = H
+        N[:, 2, [2, 4, 8, 10]] = H * sign
+        N[:, 3, 3], N[:, 3, 9] = 1.0 - xi, xi
+        N[:, 4, [2, 4, 8, 10]] = -dH * sign
+        N[:, 5, [1, 5, 7, 11]] = dH
+        B[:, 0, 0], B[:, 0, 6] = -1.0 / L, 1.0 / L
+        B[:, 1, 3], B[:, 1, 9] = -1.0 / L, 1.0 / L
+        B[:, 2, [2, 4, 8, 10]] = -d2H * sign
+        B[:, 3, [1, 5, 7, 11]] = d2H
+        return N, B
+
+    def section_rigidities(self) -> np.ndarray:
+        """``[EA, GJ, EI_y, EI_z]`` con ``G = E/(2(1 + ν))``; sólo con
+        material elástico lineal."""
+        if self.section is not None:
+            raise ValueError(f"Frame3D(id={self.id}): con sección por fibras las "
+                             "rigideces de la sección no son constantes.")
+        E = linear_tangent(self.material)
+        G = E / (2.0 * (1.0 + self.nu))
+        return np.array([E * self.A, G * self.J, E * self.Iy, E * self.Iz])
 
     def compute_self_weight(self, g: np.ndarray) -> np.ndarray:
         """Peso propio: carga por unidad de longitud ``ρA·g`` (``ρA = Σ ρ_i A_i``

@@ -106,6 +106,10 @@ out_of_scope:
   - "fuerzas de cuerpo distribuidas sobre el eje: el usuario reparte masa a los nodos"
 
 acceptance:
+  - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+    setup: "línea recta inclinada; solución exacta impuesta en un extremo y sus fuerzas internas como cargas nodales en el otro; carga de línea como fuerza de cuerpo b(x); línea orientada al azar en el espacio; u* axial; nodos libres restringidos al eje; n = 4, 8, 16, 32"
+    expect: "con campos polinómicos (carga de grado ≤ 4), error nodal de redondeo con 1 y 3 elementos (exactitud nodal, Tong 1969); con u* suave, orden ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía, error decreciente"
+    tol_abs: 0.1
   - name: barra axial bajo carga puntual (3D)
     setup: "empotrada en s=0, carga F axial en s=L, orientación arbitraria en el espacio"
     expect: "u(L) = F·L / (E·A) proyectado sobre el eje"
@@ -122,7 +126,7 @@ references:
 
 - **Archivo**: [solidum/elements/truss.py](../../solidum/elements/truss.py)
 - **Clase**: `Truss3D` — hereda directamente de `Element` (sin relación de herencia con `Truss2D` ni con `Truss2DCorot`).
-- **Tests**: [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss3D` — verifica `L0`, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
+- **Tests**: [`tests/test_line_elements.py`](../../tests/test_line_elements.py) (campo interior, energía igual a la de la rigidez, carga como campo) y [`tests/validation/test_mms_frames.py`](../../tests/validation/test_mms_frames.py) (soluciones manufacturadas); [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss3D` — verifica `L0`, cosenos directores $(c_x, c_y, c_z)$, entradas de $\mathbf K_e$ (incluyendo simetría, dimensiones $6\times 6$) y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos con geometría de prueba $L=13$, $(c_x,c_y,c_z)=(3/13, 4/13, 12/13)$.
 - **Notas de traducción**:
   - `L0`, `cx`, `cy`, `cz` se calculan una vez en `__init__` sobre la configuración inicial y no se actualizan — coherente con el régimen geométricamente lineal declarado.
   - El constructor tolera nodos con 2 ó 3 coordenadas (completa con $z=0$ si falta), para facilitar transición de problemas planos embebidos.
@@ -135,3 +139,4 @@ references:
 
 - **2026-04-21** · Apertura de spec retroactiva. La clase `Truss3D` preexistía al flujo spec-first; la spec se crea documentando la formulación ya implementada y estableciendo explícitamente su alcance: régimen de linealidad geométrica, sin bandera ni variante corotacional. Los tests unitarios existentes cubren el criterio de `acceptance` (vía los valores de $\mathbf K_e = (EA/L)\mathbf d\mathbf d^\top$ que implican algebraicamente $u(L)=FL/(EA)$). Promovido `status: validated`.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (`axial_end_forces`): con carga axial distribuida N_i ≠ N_j.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 4), como en `Truss2D` (la hereda `Truss3DCorot`). Nueva aceptación «soluciones manufacturadas» con la línea orientada al azar.

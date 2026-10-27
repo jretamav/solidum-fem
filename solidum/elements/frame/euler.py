@@ -14,6 +14,7 @@ from solidum.elements.frame._section import (
     hermite_second_derivatives,
 )
 from solidum.elements.frame._shared import (
+    Frame2DLine,
     _frame2d_consistent_body_load,
     _frame2d_consistent_mass_local,
     _frame2d_forces_from_local,
@@ -25,7 +26,7 @@ from solidum.results import ElementForces
 
 
 @ElementRegistry.register
-class Frame2DEuler(FrameSectionMixin, Element):
+class Frame2DEuler(Frame2DLine, FrameSectionMixin, Element):
     """Marco/viga 2D basado en Euler-Bernoulli.
 
     Dos nodos rígidamente conectados, 3 DOFs por nodo (ux, uy, rz). Transmite
@@ -189,11 +190,15 @@ class Frame2DEuler(FrameSectionMixin, Element):
         return _frame2d_forces_from_local(F_local)
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        """Vector nodal consistente con una fuerza de cuerpo uniforme ``b``
-        (por unidad de volumen): carga por unidad de longitud ``A·b``, con
-        ``A`` el área bruta (``Σ A_i`` con sección). Ver
-        :func:`_frame2d_consistent_body_load`.
+        """Vector nodal consistente con una fuerza de cuerpo ``b`` (por
+        unidad de volumen): carga por unidad de longitud ``A·b``, con ``A`` el
+        área bruta (``Σ A_i`` con sección). Constante: forma cerrada de
+        :func:`_frame2d_consistent_body_load`. Campo ``b(x)`` (ADR 0022):
+        proyectado a ejes locales en 4 puntos de Gauss y repartido con las
+        funciones de la rigidez (axial lineal, flexión de Hermite).
         """
+        if callable(b):
+            return self._field_line_load(b, self._axial_area())
         return _frame2d_consistent_body_load(b, self._axial_area(), self.L0, self.T)
 
     def compute_self_weight(self, g: np.ndarray) -> np.ndarray:

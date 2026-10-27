@@ -98,6 +98,10 @@ out_of_scope:
   - pandeo
 
 acceptance:
+  - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+    setup: "línea recta inclinada; solución exacta impuesta en un extremo y sus fuerzas internas como cargas nodales en el otro; carga de línea como fuerza de cuerpo b(x); u* axial; nodos libres restringidos a moverse a lo largo del eje; n = 4, 8, 16, 32"
+    expect: "con campos polinómicos (carga de grado ≤ 4), error nodal de redondeo con 1 y 3 elementos (exactitud nodal, Tong 1969); con u* suave, orden ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía entre los dos últimos niveles, error decreciente"
+    tol_abs: 0.1
   - name: barra axial bajo carga puntual
     setup: "empotrada en s=0, carga F axial en s=L"
     expect: "u(L) = F·L / (E·A)"
@@ -114,6 +118,7 @@ references:
 - **Archivo**: [solidum/elements/truss.py](../../solidum/elements/truss.py)
 - **Clase**: `Truss2D` (registrada vía `@ElementRegistry.register`)
 - **Tests**:
+  - [`tests/test_line_elements.py`](../../tests/test_line_elements.py) (campo interior, energía igual a la de la rigidez, carga como campo) y [`tests/validation/test_mms_frames.py`](../../tests/validation/test_mms_frames.py) (soluciones manufacturadas).
   - [tests/test_truss.py](../../tests/test_truss.py) · `TestTruss2D` — verifica `L0`, cosenos directores, entradas de $\mathbf K_e$ (incluyendo simetría), y evaluación de $\mathbf F_{\text{int}}$ sobre desplazamientos conocidos. Los valores numéricos esperados coinciden con $\mathbf K_e = (EA/L)\,\mathbf d\mathbf d^\top$ y $\mathbf F_{\text{int}} = N\mathbf d$ para geometría de prueba $L=5$, $c=0.6$, $s=0.8$.
   - [tests/test_integration.py](../../tests/test_integration.py) · `TestSolversIntegration` — resuelve end-to-end el caso de aceptación (barra empotrada en un extremo, carga axial en el otro) con `NonlinearSolver` y `ArcLengthSolver`; en régimen elástico precedente a la fluencia reproduce $u(L)=FL/(EA)$.
 - **Notas de traducción**:
@@ -127,3 +132,4 @@ references:
 
 - **2026-04-21** · Cierre de ciclo retroactivo. La clase `Truss2D` preexistía al flujo spec-first; la spec se creó documentando la formulación ya implementada. Los tests unitarios y de integración satisfacen el único criterio de `acceptance` declarado (analíticamente, vía los valores de $\mathbf K_e$ y end-to-end vía el solver). Promovido `status: validated`.
 - **2026-09-22** · Auditoría global: `internal_forces(U, equivalent_load=None)`: cuando el `Assembler` ensambló peso propio o fuerza de cuerpo, `solidum.run` pasa el vector nodal equivalente del elemento (escalado por λ_final) y las fuerzas internas de extremo son `F_int − f_eq` en ejes locales. Antes se devolvía `K·u`, que con carga distribuida son fuerzas nodales, no fuerzas internas: un voladizo bajo peso propio daba V_i = qL/2 y M_i = −5qL²/12 en vez de qL y −qL²/2, contradiciendo a las reacciones. Para barras y cables se proyectan las fuerzas de extremo netas sobre el eje (`axial_end_forces`): con carga axial distribuida N_i ≠ N_j.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 4). `compute_body_load` acepta un campo `b(x)`, integrado con Gauss de 4 puntos y repartido con las funciones lineales en cada componente global (la heredan `Truss2DCorot`). Declara `REFERENCE_CELL = "line"` y expone su campo interior (`line_field`: `u` axial y `ε`) con `section_rigidities` (`EA`). Nueva aceptación «soluciones manufacturadas»: exactitud nodal y órdenes 2 y 1.

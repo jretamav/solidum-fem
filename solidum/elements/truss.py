@@ -4,14 +4,38 @@ from typing import List
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.node import Node
 from solidum.core.material import Material
+from solidum.elements._line import LineElementMixin, linear_tangent
 from solidum.math.geometry import perpendicular_projector
 from solidum.registry import ElementRegistry
 from solidum.core.element_forces import axial_end_forces
 from solidum.results import ElementForces
 
 
+class _TrussLine(LineElementMixin):
+    """Campo interior de las armaduras lineales (ADR 0022, fase 4): sólo el
+    desplazamiento axial ``u`` y la deformación ``ε``, lineales; la barra no
+    tiene rigidez transversal."""
+    LINE_FIELDS = ("u",)
+    LINE_STRAINS = ("eps",)
+
+    def _line_interpolation(self, xi):
+        n, L = len(xi), self.L0
+        N = np.column_stack([1.0 - xi, xi]).reshape(n, 1, 2)
+        B = np.broadcast_to(np.array([[[-1.0 / L, 1.0 / L]]]), (n, 1, 2))
+        return N, B
+
+    def _to_local(self, u_e):
+        X = self._line_ends()
+        e = (X[1] - X[0]) / self.L0
+        d = len(e)
+        return np.array([e @ u_e[:d], e @ u_e[d:]])
+
+    def section_rigidities(self) -> np.ndarray:
+        return np.array([linear_tangent(self.material) * self.A])
+
+
 @ElementRegistry.register
-class Truss2D(Element):
+class Truss2D(_TrussLine, Element):
     """
     Elemento de armadura 2D, primer orden, formulación lineal infinitesimal.
 
@@ -110,15 +134,19 @@ class Truss2D(Element):
 
         Parameters
         ----------
-        b : np.ndarray, shape (2,)
+        b : np.ndarray, shape (2,), o callable
             Fuerza de cuerpo por unidad de volumen en ejes globales (e.g.
-            ``b = (0, -ρ·g)`` para peso propio con ``+y`` hacia arriba).
+            ``b = (0, -ρ·g)`` para peso propio con ``+y`` hacia arriba), o un
+            campo ``b(x)`` de la posición (ADR 0022), integrado con Gauss de
+            4 puntos sobre la geometría de referencia.
 
         Returns
         -------
         np.ndarray, shape (4,)
             ``[Fx_i, Fy_i, Fx_j, Fy_j]`` en ejes globales.
         """
+        if callable(b):
+            return self._field_load_by_component(b, self.A)
         b = np.asarray(b, dtype=float).reshape(2)
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[0], half * b[1]])
@@ -221,7 +249,7 @@ class Truss2DCorot(Truss2D):
 
 
 @ElementRegistry.register
-class Truss3D(Element):
+class Truss3D(_TrussLine, Element):
     """
     Elemento de armadura 3D, primer orden, formulación lineal infinitesimal.
 
@@ -328,15 +356,19 @@ class Truss3D(Element):
 
         Parameters
         ----------
-        b : np.ndarray, shape (3,)
+        b : np.ndarray, shape (3,), o callable
             Fuerza de cuerpo por unidad de volumen en ejes globales (e.g.
-            ``b = (0, 0, -ρ·g)`` para peso propio con ``+z`` hacia arriba).
+            ``b = (0, 0, -ρ·g)`` para peso propio con ``+z`` hacia arriba), o
+            un campo ``b(x)`` de la posición (ADR 0022), integrado con Gauss
+            de 4 puntos sobre la geometría de referencia.
 
         Returns
         -------
         np.ndarray, shape (6,)
             ``[Fx_i, Fy_i, Fz_i, Fx_j, Fy_j, Fz_j]`` en ejes globales.
         """
+        if callable(b):
+            return self._field_load_by_component(b, self.A)
         b = np.asarray(b, dtype=float).reshape(3)
         half = 0.5 * self.A * self.L0
         return np.array([half * b[0], half * b[1], half * b[2],
