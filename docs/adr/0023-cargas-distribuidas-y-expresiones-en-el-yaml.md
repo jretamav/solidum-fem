@@ -85,7 +85,7 @@ Antes, un `boundary_flux` sin `edge` ni `face` sólo fallaba al ensamblar.
   - sin cargas que varían en el tiempo (variable `t`) en el YAML;
   - sin presión seguidora;
   - `tractions_by_group` sólo en 2D, porque `GmshParser` sólo importa mallas 2D lineales; en 3D se declara cara por cara;
-  - el ejemplo de Kirsch del manual sigue cargado por desplazamiento impuesto: pasarlo a tracción cambiaría el capítulo, y queda para después.
+- **Ejemplo de Kirsch** (el mismo día): el capítulo 2 del manual de ejemplos carga ahora con `tractions_by_group` en `Borde_Carga`, como el planteamiento de Kirsch. El estudio de refinamiento separa la discretización (junto al agujero, baja a la mitad al refinar) del error de modelo de la placa finita (lejos, en torno al 1.4 %, cuatro veces menor con una placa del doble), que con la carga por desplazamiento quedaba confundido con el efecto de las mordazas.
 
 ## Alternativas descartadas
 

@@ -1,9 +1,9 @@
 """Ejemplo 2 del manual de ejemplos — placa con agujero circular (Kirsch).
 
 Cuarto de placa por doble simetría, malla estructurada de Quad4 generada con
-Gmsh (``malla.py``), carga por desplazamiento impuesto. Se compara con la
-solución de Kirsch (1898) para un agujero en una placa infinita sometida a
-tracción uniaxial σ∞:
+Gmsh (``malla.py``), cargada con la tracción uniforme σ∞ en el borde x = W
+(``tractions_by_group`` del YAML). Se compara con la solución de Kirsch (1898)
+para un agujero en una placa infinita sometida a tracción uniaxial σ∞:
 
 - esfuerzos en todos los puntos de Gauss contra el campo de Kirsch evaluado en
   el mismo punto;
@@ -36,21 +36,30 @@ from solidum.math.batch.postprocess import gauss_states  # noqa: E402
 A = 0.01
 W = H = 0.2
 ESPESOR = 0.01
+S_INF = 1.0e8          # tracción en el borde x = W (modelo.yaml)
 R_CERCANO = 2 * A      # zona de gradiente fuerte junto al agujero
 R_LEJANO = 5 * A       # más allá, el error lo domina el modelo, no la malla
 
 # Cotas de lo que el capítulo afirma (errores relativos a σ∞ salvo K_t).
-# Estudio de refinamiento (2026-09-23, mallas con 1/2, 1, 2 y 4 veces la
-# densidad de ésta): K_t = 3.035, 3.026, 3.017, 3.011 → converge hacia 3; el
-# error en los puntos de Gauss con r ≤ 2a baja a la mitad con cada
-# refinamiento (primer orden), y el de r > 5a se estanca en ~1 %: es la
-# diferencia entre el desplazamiento uniforme impuesto y la tracción uniforme
-# en el infinito que supone Kirsch.
+# Estudio de refinamiento con la carga en tracción (2026-10-27, mallas con
+# 1/2, 1, 2 y 4 veces la densidad de ésta, N × f y razones q^(1/f)):
+#   K_t = 3.0512, 3.0425, 3.0335, 3.0278;
+#   error máximo en los puntos de Gauss con r ≤ 2a: 14.6, 7.9, 4.4, 2.9 %
+#   (baja a la mitad con cada refinamiento: discretización);
+#   error máximo con r > 5a: 1.34, 1.37, 1.44, 1.47 %, en σyy junto a la
+#   esquina del borde cargado (no baja: error de modelo).
+# El error de modelo es de placa finita: con W = H = 40a (misma malla del
+# anillo) el error lejano cae a 0.38 % (densidad 1) y 0.36 % (densidad 2),
+# unas cuatro veces, como (a/W)²; y K_t baja a 3.0266 y 3.0175. Con 20a, el
+# exceso de K_t sobre 3 es la mitad de placa finita (~0.7 %) y la mitad de
+# discretización. Con el desplazamiento impuesto que usaba este ejemplo hasta
+# el 2026-10-27, σ∞ salía de la reacción y K_t convergía hacia 3.00.
 TOLERANCIAS = {
-    "error_Kt": 0.015,
+    "error_equilibrio": 1e-10,
+    "error_Kt": 0.02,
     "error_borde_max": 0.05,
-    "error_gauss_cercano": 0.08,
-    "rms_gauss_cercano": 0.025,
+    "error_gauss_cercano": 0.09,
+    "rms_gauss_cercano": 0.03,
     "error_gauss_lejano": 0.02,
 }
 
@@ -75,10 +84,11 @@ def kirsch(x, y, s_inf: float):
 def calcular() -> dict:
     domain, _, res = resolver_yaml_estatico(AQUI / "modelo.yaml")
 
-    # Esfuerzo nominal lejano: reacción total en el borde cargado / área.
+    # Equilibrio: la reacción en el eje de simetría x = 0 equilibra la
+    # resultante de la tracción, σ∞·H·espesor.
     grupo = domain.physical_groups
-    rx = sum(res.reactions_by_node[n]["ux"] for n in grupo["Borde_Carga"])
-    s_inf = rx / (H * ESPESOR)
+    s_inf = S_INF
+    rx = sum(res.reactions_by_node[n]["ux"] for n in grupo["Simetria_X"])
 
     # Puntos de Gauss: Solidum frente a Kirsch en el mismo punto.
     estados = gauss_states(domain, res.U)
@@ -111,6 +121,7 @@ def calcular() -> dict:
         "n_elementos": len(domain.elements), "n_nodos": len(domain.nodes),
         "n_puntos_gauss": int(len(pts)), "n_puntos_cercanos": int(cercano.sum()),
         "reaccion_total": rx, "sigma_inf": s_inf, "sigma_inf_MPa": s_inf / 1e6,
+        "error_equilibrio": abs(rx + s_inf * H * ESPESOR) / (s_inf * H * ESPESOR),
         "Kt": kt, "error_Kt": error_relativo(kt, 3.0),
         "error_Kt_pct": 100 * (kt - 3.0) / 3.0,
         "sigma_min_borde": float(stt_b.min() / s_inf),
@@ -150,7 +161,7 @@ def figuras(res: dict, carpeta: Path) -> None:
     ax.plot([20, 20], [0, 20], color=COLOR_SECUNDARIO, lw=2.2)
     ax.text(-0.8, 10, r"$u_x = 0$", rotation=90, ha="right", va="center", color=COLOR_FE)
     ax.text(10, -0.8, r"$u_y = 0$", ha="center", va="top", color=COLOR_FE)
-    ax.text(20.8, 10, r"$u_x = \bar u$", rotation=90, ha="left", va="center",
+    ax.text(20.8, 10, r"$t_x = \sigma_\infty$", rotation=90, ha="left", va="center",
             color=COLOR_SECUNDARIO)
     ax.add_patch(plt.Rectangle((0, 0), 2.2, 2.2, fill=False, ls="--", lw=0.8, color="0.2"))
     ax.set_xlim(-3, 23.5)

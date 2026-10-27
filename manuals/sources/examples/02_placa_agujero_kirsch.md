@@ -8,7 +8,7 @@ Un agujero circular en una placa traccionada multiplica por tres el esfuerzo en 
 
 - Resolver una malla de Gmsh desde el YAML y aplicar condiciones de contorno por grupo físico.
 - Aprovechar la doble simetría para modelar sólo un cuarto de la placa.
-- Cargar con desplazamiento impuesto y obtener el esfuerzo nominal a partir de la reacción.
+- Cargar con una tracción distribuida sobre un grupo físico y comprobar el equilibrio con la reacción.
 - Leer esfuerzos en los puntos de Gauss y recuperarlos en los nodos.
 - Graduar la malla hacia el concentrador de esfuerzos.
 - Distinguir el error de discretización, que baja al refinar, del error de modelo, que no.
@@ -19,7 +19,7 @@ Una placa de acero con un agujero de radio $a = 10$ mm se tracciona en la direcc
 
 El problema es simétrico respecto a los ejes $x$ e $y$, así que basta con el cuarto $x \ge 0$, $y \ge 0$. En los bordes de simetría se impone desplazamiento normal nulo: $u_x = 0$ sobre $x = 0$ y $u_y = 0$ sobre $y = 0$. El cuarto de placa mide $W = H = 20a$, lo bastante grande para que los bordes apenas perturben el campo del agujero.
 
-![Cuarto de placa modelado: malla estructurada de cuadriláteros, condiciones de simetría (azul) y desplazamiento impuesto (naranja). A la derecha, el detalle marcado junto al agujero.](../../../examples/placa_agujero_kirsch/fig_malla.png){#fig:malla}
+![Cuarto de placa modelado: malla estructurada de cuadriláteros, condiciones de simetría (azul) y tracción (naranja). A la derecha, el detalle marcado junto al agujero.](../../../examples/placa_agujero_kirsch/fig_malla.png){#fig:malla}
 
 ## Solución analítica
 
@@ -45,9 +45,9 @@ que decae de $3\sigma_\infty$ a $\sigma_\infty$ en pocos radios. El factor de co
 
 ## Modelo en Solidum
 
-**La malla.** El script `malla.py` genera la malla con el API de Python de Gmsh y la guarda en `placa_agujero.msh`, que se versiona junto al ejemplo; resolverlo no requiere Gmsh. La malla es estructurada y tiene dos zonas. Hasta $r = 5a$ es un anillo polar: líneas radiales rectas y circunferencias concéntricas, con elementos que crecen en progresión geométrica desde el agujero, donde el gradiente de esfuerzos es fuerte. De ahí al contorno, dos parches de transición. Todos los elementos son cuadriláteros [Quad4](../../../docs/specs/Quad4.md). La malla define grupos físicos con nombre (`Simetria_X`, `Simetria_Y`, `Borde_Carga`, `Agujero`), y el YAML los usa para aplicar las condiciones de contorno.
+**La malla.** El script `malla.py` genera la malla con el API de Python de Gmsh y la guarda en `placa_agujero.msh`, que se versiona junto al ejemplo; resolverlo no requiere Gmsh. La malla es estructurada y tiene dos zonas. Hasta $r = 5a$ es un anillo polar: líneas radiales rectas y circunferencias concéntricas, con elementos que crecen en progresión geométrica desde el agujero, donde el gradiente de esfuerzos es fuerte. De ahí al contorno, dos parches de transición. Todos los elementos son cuadriláteros [Quad4](../../../docs/specs/Quad4.md). La malla define grupos físicos con nombre (`Simetria_X`, `Simetria_Y`, `Borde_Carga`, `Agujero`), y el YAML los usa para aplicar las condiciones de contorno y la carga.
 
-**La carga.** El YAML de Solidum todavía no admite tracciones distribuidas sobre un borde; el API de Python sí, con el método `compute_edge_traction` de los elementos sólidos. Aquí la carga es un desplazamiento impuesto $\bar u = 0.1$ mm en todo el borde $x = W$, como el que aplican las mordazas de una máquina de ensayo. El esfuerzo nominal lejano se obtiene después: $\sigma_\infty = R_x/(H\,t)$, con $R_x$ la reacción total en ese borde.
+**La carga.** La placa se tracciona con $\sigma_\infty = 100$ MPa uniforme sobre el borde $x = W$, el planteamiento de Kirsch. El bloque `tractions_by_group` del YAML la declara sobre el grupo físico `Borde_Carga`. Solidum la integra sobre cada borde de elemento de ese grupo, con la geometría real del borde. Un valor de la tracción también puede ser una expresión de la posición, para una carga que varíe a lo largo del borde (manual de usuario, capítulo del archivo YAML).
 
 {{yaml:modelo.yaml}}
 
@@ -57,7 +57,7 @@ que decae de $3\sigma_\infty$ a $\sigma_\infty$ en pocos radios. El factor de co
 
 ## Resultados
 
-La reacción da $\sigma_\infty =$ {{r:sigma_inf_MPa:.2f}} MPa, algo menos que los 100 MPa de $E\,\bar u/W$, porque el agujero hace a la placa ligeramente más flexible.
+La reacción total en el eje de simetría $x = 0$ equilibra la resultante de la tracción, $\sigma_\infty H\,t$, a precisión de máquina: la carga entra completa.
 
 [TABLA: Placa con agujero: Solidum frente a Kirsch. Errores relativos a $\sigma_\infty$.]
 | Magnitud | Solidum | Kirsch |
@@ -79,15 +79,16 @@ La @fig:kirsch muestra las dos distribuciones que interesan en diseño. El esfue
 
 Los errores de la tabla no tienen un solo origen, y separarlos es lo que este ejemplo enseña.
 
-- **Error de discretización.** Es el mayor, y se concentra junto al agujero, donde el esfuerzo varía más rápido. Un Quad4 representa los esfuerzos sólo de forma aproximadamente lineal dentro de cada elemento, y junto al agujero $\sigma_{xx}$ cae a la mitad en medio radio. Por eso el primer anillo de elementos tiene un espesor radial de sólo {{r:primer_elemento_radial_sobre_a:.3f}}$\,a$. Este error baja al refinar: al duplicar la densidad de la malla, el error en los puntos de Gauss cercanos se reduce a la mitad y $K_t$ se acerca a 3. El ejemplo 3 estudia esa convergencia en detalle.
-- **Error de modelo.** Lejos del agujero el error se estanca en torno al 1 %, y refinar no lo reduce. Kirsch supone una placa infinita traccionada por un esfuerzo uniforme; el modelo es una placa finita de $20a \times 20a$ cuyo borde se desplaza uniformemente. Un desplazamiento uniforme no produce una tracción uniforme cuando el agujero perturba el campo. Las dos soluciones responden a problemas distintos, y la diferencia no es un error del programa.
+- **Error de discretización.** Es el mayor, y se concentra junto al agujero, donde el esfuerzo varía más rápido. Un Quad4 representa los esfuerzos sólo de forma aproximadamente lineal dentro de cada elemento, y junto al agujero $\sigma_{xx}$ cae a la mitad en medio radio. Por eso el primer anillo de elementos tiene un espesor radial de sólo {{r:primer_elemento_radial_sobre_a:.3f}}$\,a$. Este error baja al refinar: al duplicar la densidad de la malla, el error en los puntos de Gauss cercanos se reduce casi a la mitad, y lo mismo la parte de discretización del exceso de $K_t$ sobre 3. El ejemplo 3 estudia esa convergencia en detalle.
+- **Error de modelo.** Lejos del agujero el error se queda en torno al {{r:error_gauss_lejano_pct:.1f}} %, y refinar no lo reduce. Se concentra junto al borde cargado. Kirsch supone una placa infinita; el modelo es una placa finita de $20a \times 20a$. En su borde $x = W$ la tracción es exactamente uniforme, mientras que en la placa infinita, a esa distancia, el agujero todavía perturba el campo en una fracción del orden de $a^2/W^2$. Las dos soluciones responden a problemas distintos, y la diferencia no es un error del programa. Baja con el cuadrado del tamaño de la placa: con una del doble, $40a \times 40a$, el error lejano cae unas cuatro veces. El mismo efecto explica la otra mitad del exceso de $K_t$: con la placa de $20a$, $K_t$ no converge a 3 sino a algo más de 3.02.
 
 La calidad de la malla también cuenta. Una primera versión de este ejemplo usaba dos parches transfinitos desde el agujero hasta el contorno, sin anillo polar. Sus líneas circunferenciales quedaban quebradas sobre la diagonal y los errores junto a ella eran bastante mayores. El anillo polar mantiene los elementos casi rectangulares donde más importa.
 
 ## Para seguir
 
-- Refinar la malla cambiando `N_ARCO`, `N_ANILLO` y `N_EXT` en `malla.py`, regenerarla y volver a resolver: $K_t$ debe acercarse a 3 y el error junto al agujero debe bajar a la mitad con cada duplicación.
-- Agrandar la placa, con `W` y `H`, para ver cómo baja el error lejano.
+- Refinar la malla cambiando `N_ARCO`, `N_ANILLO` y `N_EXT` en `malla.py`, regenerarla y volver a resolver: el error junto al agujero debe bajar a la mitad con cada duplicación, y $K_t$ acercarse al valor de la placa finita, algo más de 3.02.
+- Agrandar la placa, con `W`, `H` y `N_EXT`, para ver cómo bajan el error lejano y el exceso de $K_t$: con el doble de tamaño, unas cuatro veces.
+- Cargar con un desplazamiento impuesto en $x = W$, como el que aplican las mordazas de una máquina de ensayo, y obtener $\sigma_\infty$ de la reacción total en ese borde.
 - Cambiar el agujero por una elipse de semiejes $b$ en $x$ y $c$ en $y$, y comparar con la solución de Inglis, $K_t = 1 + 2c/b$.
 
 **Archivos del ejemplo.** La carpeta `examples/placa_agujero_kirsch/` contiene el generador de malla `malla.py`, la malla `placa_agujero.msh`, el modelo `modelo.yaml`, el script `run.py`, los resultados en `resultados.json` y las figuras.
