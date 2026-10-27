@@ -2703,6 +2703,7 @@ El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute
 \texttt{constraint\_\allowbreak{}forces\_\allowbreak{}by\_\allowbreak{}node} & \texttt{\{nodo: \{dof: valor\}\}} de \texttt{constraint\_\allowbreak{}forces} en los grados de libertad de esas uniones. \\
 \texttt{element\_forces} & \texttt{\{elemento: ElementForces\}} con las fuerzas internas (N, V, M, T) de los elementos estructurales. \\
 \texttt{converged}, \texttt{num\_steps} & Si el análisis llegó al final y cuántos pasos convergidos dio. \\
+\texttt{condition\_\allowbreak{}estimate} & Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). \texttt{None} en los análisis no lineales y con el solver iterativo. \\
 \hline
 \end{tabularx}
 \end{center}
@@ -2807,12 +2808,17 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
   Lo mismo en un análisis no lineal (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver}): la matriz tangente inicial es singular, así que el modelo tiene un mecanismo interno, aunque la carga no lo active, y el mensaje dice qué elementos se mueven. Si ningún elemento es geométricamente no lineal, la rigidez del modelo no puede crecer al deformarse (la no linealidad del material sólo la reduce) y el mecanismo lo es durante todo el análisis: por eso se rechaza antes de iterar. Para ver la forma del mecanismo, hacer un análisis modal del mismo modelo con densidad en los materiales: cada mecanismo aparece como una frecuencia nula y su forma modal muestra qué parte se mueve.
 
 \begin{itemize}
-  \item **Aviso: *la matriz tangente inicial (U = 0) es singular: el modelo tiene N mecanismo(s) interno(s)\ldots{}***
+  \item \textbf{Aviso:} \textit{la matriz tangente inicial (U = 0) es singular: el modelo tiene N mecanismo(s) interno(s)\ldots{}}
 \end{itemize}
   El mismo caso con elementos geométricamente no lineales (corrotacionales, cables) o materiales unilaterales. La rigidez geométrica, o la de un cable al tensarse, puede estabilizar el mecanismo al deformarse ---una red de cables sin pretensado es el ejemplo típico---, así que el análisis sigue. Si el modelo no es de ese tipo, revisar la conectividad de los elementos que nombra el aviso.
 
 \begin{itemize}
-  \item **Aviso: *con el solver algebraico iterativo (linear\_algebra: iterative) no se comprueba si el modelo tiene un mecanismo interno\ldots{}***
+  \item \textbf{Aviso:} \textit{sistema mal condicionado (\ensuremath{\kappa}̃ \ensuremath{\approx} \ldots{}): la solución puede haber perdido hasta N de sus unas 16 cifras significativas\ldots{}}
+\end{itemize}
+  El análisis lineal se resolvió, pero el sistema está tan mal condicionado que la solución puede tener pocas cifras correctas. El ordenador trabaja con unas 16 cifras; con un número de condición \ensuremath{\kappa}, la solución conserva unas $16 - \log_{10}\kappa$, y en la práctica una o dos más. Solidum lo estima en todo análisis lineal estático y térmico estacionario (queda en \texttt{result.\allowbreak{}condition\_\allowbreak{}estimate}) y avisa por encima de $10^{12}$, cuando la solución baja a unas 5 cifras. Causas habituales: rigideces muy desproporcionadas (zonas rígidas de rigidez ficticia enorme, penalizaciones), un coeficiente de Poisson muy cercano a 0.5, o una barra dividida en demasiados elementos: en una viga \ensuremath{\kappa} crece con la cuarta potencia del número de elementos, y un voladizo de 10 000 elementos de Euler-Bernoulli da una flecha errónea en un 50 \%. Remedios: rigideces de zona rígida unas $10^3$--$10^4$ veces la del resto (no $10^8$), una restricción multipunto en vez de una zona rígida, o menos elementos por barra (un elemento de Euler-Bernoulli por tramo ya da los nodos exactos con cargas nodales). Con un material casi incompresible el remedio sería una formulación mixta, que Solidum no implementa todavía: mientras tanto, conviene un $\nu$ no más allá de 0.499. No depende de las unidades.
+
+\begin{itemize}
+  \item \textbf{Aviso:} \textit{con el solver algebraico iterativo (linear\_algebra: iterative) no se comprueba si el modelo tiene un mecanismo interno\ldots{}}
 \end{itemize}
   El solver iterativo no factoriza la matriz y no puede delatar un mecanismo interno que la carga no active: la solución cumpliría el equilibrio, pero con una parte arbitraria del mecanismo. El aviso sale una vez por análisis estático. Para comprobarlo, un análisis modal con densidad o una ejecución con \texttt{linear\_\allowbreak{}algebra: auto}.
 
@@ -2856,8 +2862,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 27 de octubre de 2026, 16:18\\[0.5em]
-Commit Git: \texttt{ae0b2d3}\\[1em]
+Compilado el 27 de octubre de 2026, 17:34\\[0.5em]
+Commit Git: \texttt{2267c10}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
