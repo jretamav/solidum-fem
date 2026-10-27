@@ -109,8 +109,11 @@ class YamlParser:
         'boundary_conditions_by_coord', 'boundary_conditions_by_group',
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
         'point_loads_by_group', 'linear_constraints', 'body_force', 'gravity',
+        'tractions', 'tractions_by_group',
         'thermal_loads', 'solver', 'output', 'user_modules',
     })
+    # Sub-bloques de ``thermal_loads``.
+    _THERMAL_LOAD_KEYS = frozenset({'body_source', 'boundary_flux', 'boundary_flux_by_group'})
 
     def __init__(self, filepath: str):
         self.filepath = filepath
@@ -126,8 +129,13 @@ class YamlParser:
         self.point_loads_by_coord = {}
         self.point_loads_by_group = {}
         self.point_loads_by_node = []
-        self.body_force = None  # np.ndarray (2,) o (3,) o None si no se especificó
+        self.body_force = None  # np.ndarray (2,) o (3,), campo b(x) o None
         self.gravity = None     # np.ndarray (2,) o (3,) o None (ADR 0008)
+        # Cargas distribuidas resueltas tras construir la malla (ADR 0023):
+        # tracciones y presiones, fuentes y flujos térmicos.
+        self.surface_loads = []
+        self.thermal_source_loads = []
+        self.thermal_flux_loads = []
         self.output_config = {}
 
     def __getattr__(self, name: str):
@@ -169,6 +177,7 @@ class YamlParser:
         self._parse_point_loads_config(data)
         self._parse_thermal_loads_config(data)
         self._parse_body_force(data)
+        self._parse_distributed_loads(data)
 
         self.output_config = data.get('output', {})
         self.solver_config = data.get('solver', {})
@@ -963,6 +972,36 @@ class YamlParser:
         self.thermal_boundary_fluxes = cfg.get('boundary_flux', []) or []
         if isinstance(self.thermal_boundary_fluxes, dict):
             self.thermal_boundary_fluxes = [self.thermal_boundary_fluxes]
+        self.thermal_boundary_fluxes_by_group = cfg.get('boundary_flux_by_group') or {}
+        self._thermal_load_keys = set(cfg) if isinstance(cfg, dict) else set()
+
+    def _parse_distributed_loads(self, data: dict):
+        """Resuelve las cargas distribuidas sobre la malla construida (ADR
+        0023): ``tractions`` y ``tractions_by_group`` (tracción ``t`` o presión
+        ``pressure``, ``t = −p·n`` con ``p > 0`` de compresión) y, en
+        ``thermal_loads``, ``body_source``, ``boundary_flux`` y
+        ``boundary_flux_by_group``. Los valores son números o expresiones de
+        ``x``, ``y``, ``z`` (y de la normal ``nx``, ``ny``, ``nz`` en las de
+        contorno). Todos los errores se informan juntos."""
+        from solidum.utils.yaml_loads import resolve_body_sources, resolve_boundary_loads
+        errors = []
+        unknown = self._thermal_load_keys - self._THERMAL_LOAD_KEYS
+        if unknown:
+            errors.append(f"thermal_loads: sub-bloques desconocidos {sorted(unknown)}; se "
+                          f"admiten {sorted(self._THERMAL_LOAD_KEYS)}.")
+        self.surface_loads, e = resolve_boundary_loads(
+            self.domain, data.get('tractions'), data.get('tractions_by_group'),
+            "mechanical", ("tractions", "tractions_by_group"))
+        errors += e
+        self.thermal_flux_loads, e = resolve_boundary_loads(
+            self.domain, self.thermal_boundary_fluxes, self.thermal_boundary_fluxes_by_group,
+            "thermal", ("thermal_loads.boundary_flux", "thermal_loads.boundary_flux_by_group"))
+        errors += e
+        self.thermal_source_loads, e = resolve_body_sources(self.domain,
+                                                            self.thermal_body_sources)
+        errors += e
+        if errors:
+            raise YamlValidationError(errors)
 
     def _parse_point_loads_config(self, data: dict):
         self.point_loads = data.get('point_loads', [])
@@ -988,11 +1027,12 @@ class YamlParser:
             gravity: [0.0, -9.81]            # 2D
             gravity: [0.0, 0.0, -9.81]       # 3D
 
-            # Forma 2: fuerza de cuerpo uniforme arbitraria (útil cuando no
+            # Forma 2: fuerza de cuerpo arbitraria (útil cuando no
             # es peso propio, o para modelos monomaterial donde el usuario
             # ya precalculó ρ·g):
             body_force: [0.0, -78.5e3]       # 2D, N/m³ (acero)
             body_force: [0.0, 0.0, -78.5e3]  # 3D
+            body_force: [0.0, "-78.5e3*(1 + 0.1*y)"]   # campo b(x) (ADR 0023)
 
         Declarar ambas en el mismo archivo es ambigüedad y lanza error.
         """
@@ -1006,7 +1046,17 @@ class YamlParser:
                 "usar 'body_force' solo para cargas de cuerpo que no son peso propio."
             ])
 
-        self.body_force = self._coerce_vector(bf, 'body_force') if bf is not None else None
+        if bf is not None and isinstance(bf, (list, tuple)) and any(isinstance(v, str) for v in bf):
+            from solidum.utils.expressions import ExpressionError, load_field
+            if len(bf) not in (2, 3):
+                raise YamlValidationError(
+                    [f"body_force: longitud {len(bf)}, esperado 2 ó 3 componentes."])
+            try:
+                self.body_force = load_field(list(bf), len(bf), normal=False, context='body_force')
+            except ExpressionError as exc:
+                raise YamlValidationError([str(exc)]) from None
+        else:
+            self.body_force = self._coerce_vector(bf, 'body_force') if bf is not None else None
         self.gravity = self._coerce_vector(gv, 'gravity') if gv is not None else None
 
     @staticmethod
@@ -1052,6 +1102,12 @@ class YamlParser:
                     if dof != 'group_name':
                         self._add_nodal_load(F_ext, node, dof, value, 'point_loads_by_group')
 
+        # Tracciones y presiones (ADR 0023): integradas sobre la geometría
+        # real del borde o de la cara.
+        for load in self.surface_loads:
+            f_e = getattr(load.element, load.method)(load.index, load.value)
+            F_ext[load.element.get_global_dof_indices()] += f_e
+
         return F_ext
 
     def get_body_load(self, assembler) -> np.ndarray:
@@ -1062,7 +1118,7 @@ class YamlParser:
         - ``gravity`` ⇒ ``Assembler.assemble_self_weight(g)`` — peso propio
           físicamente correcto usando ``material.density`` por elemento.
         - ``body_force`` ⇒ ``Assembler.assemble_body_load(b)`` — vector
-          uniforme aplicado a todos los elementos.
+          uniforme o campo ``b(x)`` aplicado a todos los elementos.
         - Ninguno ⇒ vector de ceros.
 
         La exclusividad entre los dos bloques se valida en :meth:`_parse_body_force`.
@@ -1082,9 +1138,13 @@ class YamlParser:
           conjunto de elementos (o a todos). Se integra con
           ``element.compute_body_source(Q)``.
         - ``boundary_flux``: flujo prescrito ``q̄`` [W/m²] sobre bordes (2D) o
-          caras (3D) de elementos concretos. **Convención de signo**
-          (``Reglas.md §5``): ``q̄ > 0`` es flujo **saliente** del dominio
-          (enfriamiento), de modo que el vector resultante es negativo.
+          caras (3D) de elementos concretos; ``boundary_flux_by_group``, sobre
+          las celdas de contorno de un grupo físico de gmsh. **Convención de
+          signo** (``Reglas.md §5``): ``q̄ > 0`` es flujo **saliente** del
+          dominio (enfriamiento), de modo que el vector resultante es negativo.
+
+        ``Q`` y ``q̄`` son números o expresiones (ADR 0023), resueltos al leer
+        el archivo (:meth:`_parse_distributed_loads`).
 
         Un borde o cara sin declarar es **adiabático**, análogo al borde libre
         de tracción en mecánica: no hay que declarar el flujo nulo.
@@ -1095,29 +1155,15 @@ class YamlParser:
         """
         F = np.zeros(self.domain.total_dofs)
 
-        for src in self.thermal_body_sources:
-            Q = float(src.get('Q', src.get('value', 0.0)))
-            elem_ids = src.get('elements')
-            objetivo = (self.domain.elements.values() if elem_ids is None
-                        else [self.domain.elements[e] for e in elem_ids])
-            for elem in objetivo:
+        for elements, Q in self.thermal_source_loads:
+            for elem in elements:
                 f_e = elem.compute_body_source(Q)
                 for a, node in enumerate(elem.nodes):
                     F[node.dofs["T"]] += f_e[a]
 
-        for flux in self.thermal_boundary_fluxes:
-            q_bar = float(flux.get('q', flux.get('value', 0.0)))
-            elem = self.domain.elements[flux['element']]
-            if 'edge' in flux:
-                f_e = elem.compute_edge_flux(int(flux['edge']), q_bar)
-            elif 'face' in flux:
-                f_e = elem.compute_face_flux(int(flux['face']), q_bar)
-            else:
-                raise ValueError(
-                    "boundary_flux: cada entrada necesita 'edge' (elementos 2D) "
-                    "o 'face' (elementos 3D)."
-                )
-            for a, node in enumerate(elem.nodes):
+        for load in self.thermal_flux_loads:
+            f_e = getattr(load.element, load.method)(load.index, load.value)
+            for a, node in enumerate(load.element.nodes):
                 F[node.dofs["T"]] += f_e[a]
 
         return F

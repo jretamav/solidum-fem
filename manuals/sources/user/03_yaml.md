@@ -345,6 +345,14 @@ body_force: [0.0, 0.0, -77008.5]     # 3D: bx, by, bz
 
 Es la forma genérica y la única necesaria para fuerzas de cuerpo que no son peso propio (campos electromagnéticos precalculados, centrífuga estática, etc.). También sirve para peso propio cuando todo el modelo es monomaterial y el usuario prefiere precalcular $\rho\cdot g$.
 
+Cada componente puede ser también una expresión de la posición (ver «Valores Variables: Expresiones»), por ejemplo una fuerza centrífuga $\mathbf b = \rho\,\omega^2\,\mathbf r$:
+
+```yaml
+body_force: ["7850*100*x", "7850*100*y"]   # ρ·ω²·r con ω = 10 rad/s
+```
+
+La admiten los sólidos, las armaduras y los marcos; los cables, no (reparten la carga con su longitud sin tensión).
+
 ### Caso particular — peso propio: `gravity` + `density`
 
 El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial — donde cada elemento debe ver *su propio* $\rho$ — Solidum expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
@@ -368,6 +376,46 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 **Padding 2D↔3D**. Si el modelo mezcla elementos 2D y 3D, declarar el vector con tres componentes; el ensamblador pasa el slice apropiado a cada elemento según la dimensionalidad declarada por su `DOF_NAMES`.
 
 **Reservado para análisis dinámico**. El atributo `density` introducido aquí es la misma magnitud que consume la matriz de masa $\mathbf M_e = \int \rho\,\mathbf N^\top\mathbf N\,dV$ en análisis modales y dinámicos. Declararlo prepara el modelo para esas extensiones sin coste adicional (ADR 0008).
+
+## Cargas Distribuidas de Contorno: `tractions` y `tractions_by_group`
+
+Una *tracción* $\mathbf t$ es una fuerza por unidad de superficie sobre la frontera del sólido (en 2D, por unidad de longitud de borde y de espesor). Se integra con la geometría real del borde o de la cara, $\int_\Gamma \mathbf N^\top\,\mathbf t\;d\Gamma$, también sobre bordes curvos de elementos cuadráticos. La admiten los sólidos 2D y 3D.
+
+**Por grupo físico** (mallas gmsh): las celdas de contorno del grupo (las líneas de gmsh en 2D) son los bordes exactos que se cargan.
+
+```yaml
+tractions_by_group:
+  Borde_Carga: {t: [1.0e6, 0.0]}        # tracción en ejes globales [Pa]
+  Agujero:     {pressure: 2.0e6}         # presión normal [Pa]
+```
+
+**Por elemento** (cualquier malla, también 3D): el borde (`edge`, 2D) o la cara (`face`, 3D) con la numeración local del elemento.
+
+```yaml
+tractions:
+  - {element: 12, edge: 1, t: [1.0e6, 0.0]}
+  - {element: 40, face: 3, pressure: 2.5e3}
+```
+
+Cada entrada lleva **una** de dos formas:
+
+- `t`: el vector de tracción en ejes globales, con 2 ó 3 componentes según la dimensión del elemento.
+- `pressure`: la presión $p$, normal al contorno. **Convención de signo** (Reglas §5): $p > 0$ es **compresión**, la presión empuja hacia el interior del cuerpo, $\mathbf t = -p\,\mathbf n$ con $\mathbf n$ la normal exterior. Una succión se declara con $p < 0$. Es el convenio de Abaqus y ANSYS.
+
+La carga es **muerta**: actúa sobre la geometría de referencia y no sigue la deformación. Un grupo que no sea de contorno (por ejemplo, una superficie de la malla) o un borde compartido por dos elementos se rechazan al leer el archivo.
+
+## Valores Variables: Expresiones
+
+Cualquier valor de `body_force`, `tractions`, `tractions_by_group` y de las cargas térmicas (`body_source`, `boundary_flux`, `boundary_flux_by_group`) puede ser, en vez de un número, una expresión entre comillas de la posición `x`, `y`, `z`; en las cargas de contorno, también de la normal exterior `nx`, `ny`, `nz`:
+
+```yaml
+body_force: [0.0, "-78.5e3*(1 + 0.1*y)"]          # campo b(x)
+tractions_by_group:
+  Agujero: {pressure: "1.0e6*(1 - y/0.2)"}         # presión variable
+  Borde:   {t: ["1.0e6*nx", 0.0]}                  # con la normal
+```
+
+Se admiten números, `+ - * / **`, paréntesis, la constante `pi` y las funciones `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, `abs`, `min` y `max`. Nada más: la expresión no se ejecuta como código Python, así que un archivo ajeno no puede hacer otra cosa que calcular una carga, y una errata (`w` en lugar de `y`, una función que no existe) se detecta al leer el archivo, con la entrada y lo que no se admite. Una expresión que no se puede evaluar en algún punto (`log` de un negativo) se informa con el punto. Las cargas que varían en el tiempo no se declaran en el YAML (ADR 0023).
 
 ## Solver
 

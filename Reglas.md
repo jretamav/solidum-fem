@@ -111,6 +111,11 @@ El orden 3D es extensión natural del 2D: componentes diagonales primero, bloque
 
 Justificación: sale directamente de la forma débil, donde el término de frontera aparece como $-\int_{\Gamma} w\,\bar q\,d\Gamma$. Consecuencia visible en el API: `compute_edge_flux` (2D) y `compute_face_flux` (3D) devuelven **valores negativos** para $\bar q > 0$, porque un flujo saliente extrae energía del sistema.
 
+**Convención de signo de la presión** (decisión del usuario, 2026-10-27, ADR 0023)
+
+- **Presión** $p > 0$ ⇔ **compresión**: empuja hacia el interior del cuerpo, $\mathbf t = -p\,\mathbf n$ con $\mathbf n$ la normal exterior. Una succión se declara con $p < 0$. Es el convenio de Abaqus y ANSYS.
+- En el API de Python, una presión es la tracción `t(x, n) = -p * n`; en el YAML, `pressure: p` en `tractions` o `tractions_by_group`. Es carga muerta: actúa sobre la geometría de referencia.
+
 **Sin notación Voigt en el problema térmico.** El gradiente $\nabla T$ es un vector genuino (2 ó 3 componentes), no un tensor simétrico comprimido: la matriz $\mathbf B$ térmica es el gradiente crudo $\partial N/\partial x$, sin el reordenamiento ni los factores $\gamma = 2\varepsilon$ de Voigt. La distinción es física — no hay componentes cortantes que duplicar. Los elementos térmicos declaran `FLUX_DIM` (2 ó 3) en vez de `STRAIN_DIM`.
 
 

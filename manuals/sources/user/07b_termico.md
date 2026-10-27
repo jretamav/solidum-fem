@@ -115,6 +115,17 @@ thermal_loads:
 
 **Un borde o cara sin declarar es adiabático** ($\bar q = 0$), igual que un borde sin carga es libre de tracción en mecánica. No hay que declarar el flujo nulo.
 
+Con una malla gmsh, el flujo se declara sobre un grupo físico de contorno, cuyas celdas son los bordes exactos que se cargan:
+
+```yaml
+thermal_loads:
+  boundary_flux_by_group:
+    Cara_caliente: {q: -200.0}             # entrante: calentamiento
+    Cara_fria: {q: "50*(1 + x)"}           # variable a lo largo del borde
+```
+
+`q` y `Q` admiten expresiones de la posición `x`, `y`, `z` (y, en el flujo, de la normal exterior `nx`, `ny`, `nz`); la sintaxis está en el capítulo del archivo YAML, «Valores Variables: Expresiones».
+
 Los índices de borde y cara son los mismos que en los elementos mecánicos: `edge: 0` conecta los nodos locales 0-1, `edge: 1` los 1-2, etc.
 
 ### Fuente volumétrica

@@ -386,14 +386,13 @@ class TestCargasTermicas:
         assert np.allclose(transitorio.T_final, estatico.U, rtol=0, atol=1e-6)
 
     def test_flujo_sin_edge_ni_face_es_rechazado(self, escribir):
+        """Desde el 2026-10-27 (ADR 0023) el error sale al leer el archivo, no
+        al ensamblar."""
         ruta = escribir(self._un_elemento(
             "thermal_loads:\n  boundary_flux:\n    - {element: 1, q: 50.0}\n",
         ))
-        parser = YamlParser(ruta)
-        dom = parser.parse()
-        dom.generate_equation_numbers()
-        with pytest.raises(ValueError, match="edge.*face|face.*edge"):
-            parser.get_thermal_loads()
+        with pytest.raises(YamlValidationError, match="edge.*face|face.*edge"):
+            YamlParser(ruta).parse()
 
 
 # ----------------------------------------------------------------------

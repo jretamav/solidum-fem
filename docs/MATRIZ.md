@@ -147,6 +147,9 @@ La familia térmica es accesible desde YAML como cualquier otro componente del c
 | `thermal_materials` | Paralelo a `materials`, con espacio de nombres de `type` propio | Un elemento resuelve su `material: <id>` contra el bloque donde ese id se declaró; no hay que indicar la familia |
 | `thermal_loads.body_source` | Fuente volumétrica `Q` [W/m³] | `elements: [...]` la acota a un subconjunto; sin ese campo va a todo el dominio |
 | `thermal_loads.boundary_flux` | Flujo prescrito `q̄` [W/m²] | `edge:` en 2D, `face:` en 3D. **`q̄ > 0` = saliente** (enfriamiento) |
+| `thermal_loads.boundary_flux_by_group` | Flujo prescrito sobre un grupo físico de gmsh | Las celdas de contorno del grupo son los bordes que se cargan (ADR 0023) |
+
+`Q` y `q̄` admiten expresiones de `x`, `y`, `z` (y de la normal `nx`, `ny`, `nz` en el flujo), como las cargas mecánicas `body_force`, `tractions` y `tractions_by_group` (ADR 0023).
 
 Las condiciones Dirichlet y las fuentes nodales concentradas **no necesitan sintaxis nueva**: `boundary_conditions` y `point_loads` se aplican por *nombre* de DOF, así que `T: <valor>` funciona por el mecanismo genérico ya existente. Fue lo único de la cadena térmica que no hubo que cablear.
 

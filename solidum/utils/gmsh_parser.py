@@ -53,18 +53,27 @@ class GmshParser:
         # `cell_data["gmsh:physical"]` (caso raro pero plausible), el bucle
         # de elementos seguía usándola más abajo y disparaba `UnboundLocalError`.
         self.domain.physical_groups = {}
+        # Las celdas de cada grupo (ids de nodo de cada una), además de sus
+        # nodos: las de un grupo de contorno son los bordes exactos sobre los
+        # que se aplica una carga distribuida (``tractions_by_group``,
+        # ADR 0023). De los nodos solos no se deduce con seguridad qué bordes
+        # cargar.
+        self.domain.physical_group_cells = {}
         tag_to_name: dict[int, str] = {}
         if hasattr(mesh, 'field_data') and hasattr(mesh, 'cell_data') and "gmsh:physical" in mesh.cell_data:
             tag_to_name = {int(data[0]): name for name, data in mesh.field_data.items()}
             for name in tag_to_name.values():
                 self.domain.physical_groups[name] = set()
-                
+                self.domain.physical_group_cells[name] = []
+
             for i, block in enumerate(mesh.cells):
                 tags = mesh.cell_data["gmsh:physical"][i]
                 for j, connectivity in enumerate(block.data):
                     tag = int(tags[j])
                     if tag in tag_to_name:
                         name = tag_to_name[tag]
+                        self.domain.physical_group_cells[name].append(
+                            tuple(int(k) + 1 for k in connectivity))
                         for node_idx in connectivity:
                             self.domain.physical_groups[name].add(node_idx + 1)
                             

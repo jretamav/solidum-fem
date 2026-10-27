@@ -254,6 +254,26 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Los marcos dejan de dar flectores incorrectos en silencio y ganan plasticidad distribuida en la sección con cualquier material 1D, secciones mixtas y flexión biaxial. En contra: un modelo con marcos y material inelástico que antes corría ahora falla al construir, y el ablandamiento en fibras depende de la malla hasta que exista la regularización genérica.
 
+## ADR 0022 — Cargas variables, mallas estructuradas y verificación por soluciones manufacturadas
+
+**Fecha**: 27 de octubre de 2026. **Estado**: aceptado; el plan en cuatro fases y su criterio de aceptación (orden observado ≥ teórico − 0.1), aprobados por el usuario.
+
+**Contexto.** La validación de Solidum se apoyaba en soluciones analíticas y benchmarks publicados, que cubren casos simples y no detectan un error que sólo afecte al orden de convergencia. La carga de borde de los elementos cuadráticos se repartía con pesos fijos sobre la cuerda (deuda #13) y no había presión.
+
+**Decisión.** Las cargas distribuidas de todos los elementos (sólidos, térmicos, armaduras y marcos) aceptan una constante o un campo de la posición (`b(x)`, `t(x, n)` con la normal exterior, `Q(x)`, `q̄(x, n)`), integrado sobre la geometría real. Un contrato declarativo, `REFERENCE_CELL` y `REFERENCE_NODES` (y, en los elementos de línea, su campo interior y las rigideces de la sección), permite un generador de mallas estructuradas (`solidum.mesh`) y la verificación por soluciones manufacturadas con SymPy (`solidum.verification`): se inventa una solución, se derivan las cargas que la hacen exacta y se mide el orden de convergencia al refinar.
+
+**Consecuencia.** Los 17 elementos lineales del programa principal dan el orden teórico; en los de línea, además, los valores nodales son exactos. Los barridos recorren el registro, así que un elemento nuevo queda verificado sin escribir pruebas nuevas.
+
+## ADR 0023 — Cargas distribuidas y expresiones en el YAML
+
+**Fecha**: 27 de octubre de 2026. **Estado**: aceptado; el convenio de signo de la presión ($p > 0$ comprime), decisión del usuario.
+
+**Contexto.** Las cargas variables del ADR 0022 sólo estaban en el API de Python. El YAML no admitía tracciones de borde ni presión (deudas #23 y #24), y los grupos de gmsh se guardaban como conjuntos de nodos, de los que no se deduce con seguridad qué bordes cargar.
+
+**Decisión.** Bloques `tractions` (por elemento) y `tractions_by_group` (por grupo físico de gmsh, con sus celdas de contorno exactas), con tracción `t` o presión `pressure` ($\mathbf t = -p\,\mathbf n$); `boundary_flux_by_group` en el térmico. Todo valor de carga puede ser una expresión de la posición (y de la normal en las de contorno), compilada por un intérprete propio con lista blanca, sin ejecutar el texto como código. Las cargas se resuelven y validan al leer el archivo.
+
+**Consecuencia.** El YAML alcanza al API de Python en cargas distribuidas; un archivo ajeno no puede ejecutar código, y las erratas se detectan antes de resolver.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
