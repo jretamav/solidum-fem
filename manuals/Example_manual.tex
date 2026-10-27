@@ -24,7 +24,7 @@
 \usepackage{amsfonts}
 % Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
 % desplazamientos en discontinuidades embebidas y materiales cohesivos
-% (ADR 0010). No están en amssymb.
+% (ADR 0010; módulo de usuario discontinuities, ADR 0020). No están en amssymb.
 \usepackage{stmaryrd}
 \usepackage{booktabs}
 \usepackage{tabularx}
@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -444,7 +444,7 @@ Un agujero circular en una placa traccionada multiplica por tres el esfuerzo en 
 \begin{itemize}
   \item Resolver una malla de Gmsh desde el YAML y aplicar condiciones de contorno por grupo físico.
   \item Aprovechar la doble simetría para modelar sólo un cuarto de la placa.
-  \item Cargar con desplazamiento impuesto y obtener el esfuerzo nominal a partir de la reacción.
+  \item Cargar con una tracción distribuida sobre un grupo físico y comprobar el equilibrio con la reacción.
   \item Leer esfuerzos en los puntos de Gauss y recuperarlos en los nodos.
   \item Graduar la malla hacia el concentrador de esfuerzos.
   \item Distinguir el error de discretización, que baja al refinar, del error de modelo, que no.
@@ -459,7 +459,7 @@ El problema es simétrico respecto a los ejes $x$ e $y$, así que basta con el c
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.9\linewidth]{../examples/placa_agujero_kirsch/fig_malla.pdf}
-\caption{Cuarto de placa modelado: malla estructurada de cuadriláteros, condiciones de simetría (azul) y desplazamiento impuesto (naranja). A la derecha, el detalle marcado junto al agujero.}
+\caption{Cuarto de placa modelado: malla estructurada de cuadriláteros, condiciones de simetría (azul) y tracción (naranja). A la derecha, el detalle marcado junto al agujero.}
 \label{fig:placa_agujero_kirsch:malla}
 \end{figure}
 
@@ -487,9 +487,9 @@ que decae de $3\sigma_\infty$ a $\sigma_\infty$ en pocos radios. El factor de co
 
 \section{Modelo en Solidum}
 
-\textbf{La malla.} El script \texttt{malla.py} genera la malla con el API de Python de Gmsh y la guarda en \texttt{placa\_\allowbreak{}agujero.\allowbreak{}msh}, que se versiona junto al ejemplo; resolverlo no requiere Gmsh. La malla es estructurada y tiene dos zonas. Hasta $r = 5a$ es un anillo polar: líneas radiales rectas y circunferencias concéntricas, con elementos que crecen en progresión geométrica desde el agujero, donde el gradiente de esfuerzos es fuerte. De ahí al contorno, dos parches de transición. Todos los elementos son cuadriláteros \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Quad4.md}{Quad4}. La malla define grupos físicos con nombre (\texttt{Simetria\_X}, \texttt{Simetria\_Y}, \texttt{Borde\_Carga}, \texttt{Agujero}), y el YAML los usa para aplicar las condiciones de contorno.
+\textbf{La malla.} El script \texttt{malla.py} genera la malla con el API de Python de Gmsh y la guarda en \texttt{placa\_\allowbreak{}agujero.\allowbreak{}msh}, que se versiona junto al ejemplo; resolverlo no requiere Gmsh. La malla es estructurada y tiene dos zonas. Hasta $r = 5a$ es un anillo polar: líneas radiales rectas y circunferencias concéntricas, con elementos que crecen en progresión geométrica desde el agujero, donde el gradiente de esfuerzos es fuerte. De ahí al contorno, dos parches de transición. Todos los elementos son cuadriláteros \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/Quad4.md}{Quad4}. La malla define grupos físicos con nombre (\texttt{Simetria\_X}, \texttt{Simetria\_Y}, \texttt{Borde\_Carga}, \texttt{Agujero}), y el YAML los usa para aplicar las condiciones de contorno y la carga.
 
-\textbf{La carga.} El YAML de Solidum todavía no admite tracciones distribuidas sobre un borde; el API de Python sí, con el método \texttt{compute\_\allowbreak{}edge\_\allowbreak{}traction} de los elementos sólidos. Aquí la carga es un desplazamiento impuesto $\bar u = 0.1$ mm en todo el borde $x = W$, como el que aplican las mordazas de una máquina de ensayo. El esfuerzo nominal lejano se obtiene después: $\sigma_\infty = R_x/(H\,t)$, con $R_x$ la reacción total en ese borde.
+\textbf{La carga.} La placa se tracciona con $\sigma_\infty = 100$ MPa uniforme sobre el borde $x = W$, el planteamiento de Kirsch. El bloque \texttt{tractions\_\allowbreak{}by\_\allowbreak{}group} del YAML la declara sobre el grupo físico \texttt{Borde\_Carga}. Solidum la integra sobre cada borde de elemento de ese grupo, con la geometría real del borde. Un valor de la tracción también puede ser una expresión de la posición, para una carga que varíe a lo largo del borde (manual de usuario, capítulo del archivo YAML).
 
 \begin{lstlisting}[language=yaml]
 # SOLIDUM FEM — Manual de ejemplos, ejemplo 2
@@ -498,8 +498,7 @@ que decae de $3\sigma_\infty$ a $\sigma_\infty$ en pocos radios. El factor de co
 #
 # Cuarto de placa por doble simetría: agujero de radio a = 10 mm, placa de
 # 200 mm × 200 mm (20a × 20a), espesor 10 mm, acero en esfuerzo plano.
-# La carga se aplica como desplazamiento impuesto en x = W; el esfuerzo
-# nominal σ∞ se obtiene después de la reacción total en ese borde.
+# La carga es la tracción uniforme σ∞ = 100 MPa sobre el borde x = W.
 
 mesh: placa_agujero.msh      # generada por malla.py (Gmsh), Quad4
 mesh_material: 1
@@ -511,7 +510,9 @@ materials:
 boundary_conditions_by_group:
   - {group_name: "Simetria_X", ux: 0.0}      # x = 0: simetría respecto al eje y
   - {group_name: "Simetria_Y", uy: 0.0}      # y = 0: simetría respecto al eje x
-  - {group_name: "Borde_Carga", ux: 1.0e-4}  # x = W: alargamiento impuesto de 0.1 mm
+
+tractions_by_group:
+  Borde_Carga: {t: [1.0e8, 0.0]}             # x = W: tracción σ∞ = 100 MPa
 
 solver:
   type: LinearSolver
@@ -524,10 +525,11 @@ solver:
 def calcular() -> dict:
     domain, _, res = resolver_yaml_estatico(AQUI / "modelo.yaml")
 
-    # Esfuerzo nominal lejano: reacción total en el borde cargado / área.
+    # Equilibrio: la reacción en el eje de simetría x = 0 equilibra la
+    # resultante de la tracción, σ∞·H·espesor.
     grupo = domain.physical_groups
-    rx = sum(res.reactions_by_node[n]["ux"] for n in grupo["Borde_Carga"])
-    s_inf = rx / (H * ESPESOR)
+    s_inf = S_INF
+    rx = sum(res.reactions_by_node[n]["ux"] for n in grupo["Simetria_X"])
 
     # Puntos de Gauss: Solidum frente a Kirsch en el mismo punto.
     estados = gauss_states(domain, res.U)
@@ -560,6 +562,7 @@ def calcular() -> dict:
         "n_elementos": len(domain.elements), "n_nodos": len(domain.nodes),
         "n_puntos_gauss": int(len(pts)), "n_puntos_cercanos": int(cercano.sum()),
         "reaccion_total": rx, "sigma_inf": s_inf, "sigma_inf_MPa": s_inf / 1e6,
+        "error_equilibrio": abs(rx + s_inf * H * ESPESOR) / (s_inf * H * ESPESOR),
         "Kt": kt, "error_Kt": error_relativo(kt, 3.0),
         "error_Kt_pct": 100 * (kt - 3.0) / 3.0,
         "sigma_min_borde": float(stt_b.min() / s_inf),
@@ -582,7 +585,7 @@ def calcular() -> dict:
 
 \section{Resultados}
 
-La reacción da $\sigma_\infty =$ 99.41 MPa, algo menos que los 100 MPa de $E\,\bar u/W$, porque el agujero hace a la placa ligeramente más flexible.
+La reacción total en el eje de simetría $x = 0$ equilibra la resultante de la tracción, $\sigma_\infty H\,t$, a precisión de máquina: la carga entra completa.
 
 \begin{table}[h]
 \centering
@@ -591,12 +594,12 @@ La reacción da $\sigma_\infty =$ 99.41 MPa, algo menos que los 100 MPa de $E\,\
 \hline
 \textbf{Magnitud} & \textbf{Solidum} & \textbf{Kirsch} \\
 \hline
-Factor de concentración $K_t$ & 3.026 & 3 \\
-Mínimo de $\sigma_{\theta\theta}/\sigma_\infty$ en el borde & $-1.011$ & $-1$ \\
-Error máximo de $\sigma_{\theta\theta}$ en el borde & 2.6 \% & --- \\
-Error máximo en puntos de Gauss con $r \le 2a$ & 7.5 \% & --- \\
-Error medio cuadrático en puntos de Gauss con $r \le 2a$ & 2.2 \% & --- \\
-Error máximo en puntos de Gauss con $r > 5a$ & 1.0 \% & --- \\
+Factor de concentración $K_t$ & 3.043 & 3 \\
+Mínimo de $\sigma_{\theta\theta}/\sigma_\infty$ en el borde & $-1.025$ & $-1$ \\
+Error máximo de $\sigma_{\theta\theta}$ en el borde & 4.3 \% & --- \\
+Error máximo en puntos de Gauss con $r \le 2a$ & 7.9 \% & --- \\
+Error medio cuadrático en puntos de Gauss con $r \le 2a$ & 2.3 \% & --- \\
+Error máximo en puntos de Gauss con $r > 5a$ & 1.4 \% & --- \\
 \hline
 \end{tabularx}
 \end{table}
@@ -607,7 +610,7 @@ Error máximo en puntos de Gauss con $r > 5a$ & 1.0 \% & --- \\
 \label{fig:placa_agujero_kirsch:kirsch}
 \end{figure}
 
-La \hyperref[fig:placa_agujero_kirsch:kirsch]{figura~\ref*{fig:placa_agujero_kirsch:kirsch}} muestra las dos distribuciones que interesan en diseño. El esfuerzo sobre el eje de simetría decae de tres veces el nominal a prácticamente el nominal en unos cuatro radios, y la concentración es local. En el borde, el esfuerzo circunferencial recorre la curva $1 - 2\cos 2\theta$ entre la compresión en $\theta = 0$ y el máximo en $\theta = 90°$. El factor de concentración calculado, 3.026, está un 0.9 \% por encima de 3.
+La \hyperref[fig:placa_agujero_kirsch:kirsch]{figura~\ref*{fig:placa_agujero_kirsch:kirsch}} muestra las dos distribuciones que interesan en diseño. El esfuerzo sobre el eje de simetría decae de tres veces el nominal a prácticamente el nominal en unos cuatro radios, y la concentración es local. En el borde, el esfuerzo circunferencial recorre la curva $1 - 2\cos 2\theta$ entre la compresión en $\theta = 0$ y el máximo en $\theta = 90°$. El factor de concentración calculado, 3.043, está un 1.4 \% por encima de 3.
 
 \begin{figure}[H]
 \centering
@@ -621,8 +624,8 @@ La \hyperref[fig:placa_agujero_kirsch:kirsch]{figura~\ref*{fig:placa_agujero_kir
 Los errores de la tabla no tienen un solo origen, y separarlos es lo que este ejemplo enseña.
 
 \begin{itemize}
-  \item \textbf{Error de discretización.} Es el mayor, y se concentra junto al agujero, donde el esfuerzo varía más rápido. Un Quad4 representa los esfuerzos sólo de forma aproximadamente lineal dentro de cada elemento, y junto al agujero $\sigma_{xx}$ cae a la mitad en medio radio. Por eso el primer anillo de elementos tiene un espesor radial de sólo 0.034$\,a$. Este error baja al refinar: al duplicar la densidad de la malla, el error en los puntos de Gauss cercanos se reduce a la mitad y $K_t$ se acerca a 3. El ejemplo 3 estudia esa convergencia en detalle.
-  \item \textbf{Error de modelo.} Lejos del agujero el error se estanca en torno al 1 \%, y refinar no lo reduce. Kirsch supone una placa infinita traccionada por un esfuerzo uniforme; el modelo es una placa finita de $20a \times 20a$ cuyo borde se desplaza uniformemente. Un desplazamiento uniforme no produce una tracción uniforme cuando el agujero perturba el campo. Las dos soluciones responden a problemas distintos, y la diferencia no es un error del programa.
+  \item \textbf{Error de discretización.} Es el mayor, y se concentra junto al agujero, donde el esfuerzo varía más rápido. Un Quad4 representa los esfuerzos sólo de forma aproximadamente lineal dentro de cada elemento, y junto al agujero $\sigma_{xx}$ cae a la mitad en medio radio. Por eso el primer anillo de elementos tiene un espesor radial de sólo 0.034$\,a$. Este error baja al refinar: al duplicar la densidad de la malla, el error en los puntos de Gauss cercanos se reduce casi a la mitad, y lo mismo la parte de discretización del exceso de $K_t$ sobre 3. El ejemplo 3 estudia esa convergencia en detalle.
+  \item \textbf{Error de modelo.} Lejos del agujero el error se queda en torno al 1.4 \%, y refinar no lo reduce. Se concentra junto al borde cargado. Kirsch supone una placa infinita; el modelo es una placa finita de $20a \times 20a$. En su borde $x = W$ la tracción es exactamente uniforme, mientras que en la placa infinita, a esa distancia, el agujero todavía perturba el campo en una fracción del orden de $a^2/W^2$. Las dos soluciones responden a problemas distintos, y la diferencia no es un error del programa. Baja con el cuadrado del tamaño de la placa: con una del doble, $40a \times 40a$, el error lejano cae unas cuatro veces. El mismo efecto explica la otra mitad del exceso de $K_t$: con la placa de $20a$, $K_t$ no converge a 3 sino a algo más de 3.02.
 \end{itemize}
 
 La calidad de la malla también cuenta. Una primera versión de este ejemplo usaba dos parches transfinitos desde el agujero hasta el contorno, sin anillo polar. Sus líneas circunferenciales quedaban quebradas sobre la diagonal y los errores junto a ella eran bastante mayores. El anillo polar mantiene los elementos casi rectangulares donde más importa.
@@ -630,8 +633,9 @@ La calidad de la malla también cuenta. Una primera versión de este ejemplo usa
 \section{Para seguir}
 
 \begin{itemize}
-  \item Refinar la malla cambiando \texttt{N\_ARCO}, \texttt{N\_ANILLO} y \texttt{N\_EXT} en \texttt{malla.py}, regenerarla y volver a resolver: $K_t$ debe acercarse a 3 y el error junto al agujero debe bajar a la mitad con cada duplicación.
-  \item Agrandar la placa, con \texttt{W} y \texttt{H}, para ver cómo baja el error lejano.
+  \item Refinar la malla cambiando \texttt{N\_ARCO}, \texttt{N\_ANILLO} y \texttt{N\_EXT} en \texttt{malla.py}, regenerarla y volver a resolver: el error junto al agujero debe bajar a la mitad con cada duplicación, y $K_t$ acercarse al valor de la placa finita, algo más de 3.02.
+  \item Agrandar la placa, con \texttt{W}, \texttt{H} y \texttt{N\_EXT}, para ver cómo bajan el error lejano y el exceso de $K_t$: con el doble de tamaño, unas cuatro veces.
+  \item Cargar con un desplazamiento impuesto en $x = W$, como el que aplican las mordazas de una máquina de ensayo, y obtener $\sigma_\infty$ de la reacción total en ese borde.
   \item Cambiar el agujero por una elipse de semiejes $b$ en $x$ y $c$ en $y$, y comparar con la solución de Inglis, $K_t = 1 + 2c/b$.
 \end{itemize}
 
@@ -758,7 +762,7 @@ def modelo(nombre: str, n: int, material=None, cuadratura: str | None = None):
 
 \end{lstlisting}
 
-\textbf{La presión.} El método \texttt{compute\_\allowbreak{}edge\_\allowbreak{}traction} de los elementos sólidos integra una tracción de dirección constante sobre una arista. Una presión no lo es: empuja en la dirección normal al contorno, que cambia a lo largo de una arista curva. La función \texttt{carga\_de\_presion} integra $\int_\Gamma \mathbf N^\top (-p\,\mathbf n)\,d\Gamma$ con tres puntos de Gauss sobre la geometría de cada arista, recta o parabólica:
+\textbf{La presión.} Una presión empuja en la dirección normal al contorno, que cambia a lo largo de una arista curva. La función \texttt{carga\_de\_presion} integra $\int_\Gamma \mathbf N^\top (-p\,\mathbf n)\,d\Gamma$ con tres puntos de Gauss sobre la geometría de cada arista, recta o parabólica. Desde el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0022-cargas-variables-mallas-estructuradas-y-mms.md}{ADR 0022} (2026-10-27), \texttt{compute\_\allowbreak{}edge\_\allowbreak{}traction} hace la misma integral con un campo de tracción: \texttt{el.\allowbreak{}compute\_\allowbreak{}edge\_\allowbreak{}traction(arista, lambda x, n: -p * n)}. El ejemplo conserva la función explícita porque muestra la integral:
 
 \begin{lstlisting}[language=Python]
 def carga_de_presion(domain, aristas, p: float) -> np.ndarray:
@@ -2014,6 +2018,7 @@ A un modelo le puede faltar un apoyo o una barra. Entonces la estructura es un m
   \item Distinguir un mecanismo rígido (apoyos insuficientes o mal orientados) de uno interno (una barra de menos).
   \item Leer los mensajes de \texttt{MechanismError} e \texttt{IllPosedSystemError} y corregir el modelo.
   \item Encontrar un mecanismo interno con un análisis modal.
+  \item Qué comprueban los solvers no lineales, y qué no puede comprobar el solver iterativo.
   \item Por qué contar barras y apoyos no basta, y qué no detectan estas comprobaciones.
 \end{itemize}
 
@@ -2052,7 +2057,7 @@ La armadura bien apoyada tiene $m + r = 2j$ y $\mathbf A$ de rango completo: es 
 La armadura de cada caso:
 
 \begin{lstlisting}[language=Python]
-def armadura(caso: str, area: float = A, densidad: float | None = None):
+def armadura(caso: str, area: float = A, densidad: float | None = None, barra=Truss2D):
     """Modelo de Solidum del caso: dominio, nudos y vector de cargas."""
     apoyos, sin_diagonal, carga = CASOS[caso]
     xy, barras = geometria(sin_diagonal)
@@ -2060,7 +2065,7 @@ def armadura(caso: str, area: float = A, densidad: float | None = None):
     acero = Elastic1D(E=E, density=densidad)
     nodos = [dom.add_node(k + 1, list(p)) for k, p in enumerate(xy)]
     for a, b in barras:
-        dom.add_element(Truss2D(len(dom.elements) + 1, [nodos[a], nodos[b]], acero, A=area))
+        dom.add_element(barra(len(dom.elements) + 1, [nodos[a], nodos[b]], acero, A=area))
     inferiores = nodos[:N_PANELES + 1]
     for k, dof in APOYOS[apoyos]:
         inferiores[k].fix_dof(dof, 0.0)
@@ -2088,7 +2093,7 @@ def analizar(caso: str, area: float = A, linear_algebra: str = "auto") -> dict:
         return {"resultado": "MechanismError", "movimiento": e.motions[0],
                 "n_movimientos": len(e.motions), "mensaje": str(e)}
     except IllPosedSystemError as e:       # después de factorizar: mecanismo interno
-        return {"resultado": "IllPosedSystemError", "pivotes_nulos": e.zero_pivots or 0,
+        return {"resultado": "IllPosedSystemError", "mecanismos_internos": e.zero_pivots or 0,
                 "mensaje": str(e)}
     N = [el.internal_forces(U).components["N"][0] for el in dom.elements.values()]
     return {"resultado": "solución", "N": np.array(N),
@@ -2096,14 +2101,15 @@ def analizar(caso: str, area: float = A, linear_algebra: str = "auto") -> dict:
 
 \end{lstlisting}
 
-\texttt{LinearSolver} comprueba el modelo en dos momentos:
+\texttt{LinearSolver} comprueba el modelo en tres momentos:
 
 \begin{itemize}
   \item \textbf{Antes de resolver}: qué movimientos de sólido rígido dejan libres los apoyos. No factoriza nada. Si queda alguno, lanza \texttt{MechanismError} y lo describe en términos del modelo: una traslación, o un giro alrededor de un punto.
-  \item \textbf{Después de factorizar}: si la factorización encontró pivotes numéricamente nulos, la matriz es singular. Además, la solución tiene que cumplir el equilibrio, $\lVert\mathbf F - \mathbf K\mathbf u\rVert \le 10^{-8}\,\lVert\mathbf F\rVert$. Si falla cualquiera de las dos cosas, lanza \texttt{IllPosedSystemError}. Es lo que atrapa los mecanismos internos, que los apoyos no pueden delatar.
+  \item \textbf{Después de factorizar}: si la factorización tiene pivotes pequeños frente a la diagonal, Solidum calcula con ella el modo de menor energía, el de $\mathbf K\mathbf v = \lambda\,\operatorname{diag}(\mathbf K)\,\mathbf v$, y mira la energía de deformación que ese modo produce en cada elemento que mueve. Si no deforma ninguno, es un mecanismo interno, que los apoyos no pueden delatar, y lanza \texttt{IllPosedSystemError} diciendo qué elementos se mueven. El tamaño del pivote no basta para decidirlo: el de un mecanismo real es ruido de redondeo que crece con el tamaño del modelo, y un modelo legítimo con rigideces muy desproporcionadas también da pivotes pequeños, pero su modo sí deforma algún elemento.
+  \item \textbf{Después de resolver}: el solver tiene que haber resuelto el sistema que se le dio. Lo mide el error hacia atrás normado, escalado por la diagonal, $\eta = \lVert\tilde{\mathbf r}\rVert / (\lVert\tilde{\mathbf K}\rVert\,\lVert\tilde{\mathbf u}\rVert + \lVert\tilde{\mathbf F}\rVert) \le 10^{-10}$, que no depende de las unidades ni de lo desproporcionadas que sean las rigideces. Si no se cumple, también lanza \texttt{IllPosedSystemError}.
 \end{itemize}
 
-El usuario no elige el solver algebraico: por omisión Solidum usa un solver directo, SuperLU o Pardiso según lo que esté instalado, y con los dos el diagnóstico es el mismo en los cinco casos.
+El usuario no elige el solver algebraico: por omisión Solidum usa un solver directo, SuperLU, Pardiso o CHOLMOD según lo que esté instalado, y con todos el diagnóstico es el mismo en los cinco casos.
 
 \section{Resultados}
 
@@ -2145,21 +2151,24 @@ Añade apoyos (o restricciones lineales) que impidan esos movimientos. Un modelo
 
 \end{lstlisting}
 
-\textbf{Sin diagonal.} Los apoyos son correctos y la armadura no puede moverse como sólido rígido, así que la comprobación previa pasa. Pero sin su diagonal el segundo panel es un cuadrilátero articulado, que se distorsiona sin alargar ninguna barra. Las partes de la armadura a cada lado del panel giran lo mismo y se desplazan en vertical una respecto de la otra (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} d). Las cuerdas del panel siguen resistiendo el momento flector; lo que el panel no puede transmitir es el cortante, y con estas cargas lo tiene. Es un mecanismo interno. Solidum lo detecta al factorizar, con 1 pivote nulo, y el mensaje apunta a las causas habituales:
+\textbf{Sin diagonal.} Los apoyos son correctos y la armadura no puede moverse como sólido rígido, así que la comprobación previa pasa. Pero sin su diagonal el segundo panel es un cuadrilátero articulado, que se distorsiona sin alargar ninguna barra. Las partes de la armadura a cada lado del panel giran lo mismo y se desplazan en vertical una respecto de la otra (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} d). Las cuerdas del panel siguen resistiendo el momento flector; lo que el panel no puede transmitir es el cortante, y con estas cargas lo tiene. Es un mecanismo interno. Solidum lo detecta al factorizar: encuentra 1 modo que no deforma ninguna barra, y el mensaje dice qué barras se mueven y apunta a las causas habituales:
 
 \begin{lstlisting}
-Resultado descartado: el solver directo encontró 1 pivote(s) numéricamente nulo(s),
-    así que la matriz es singular aunque los desplazamientos parezcan razonables. La
-    matriz de rigidez es singular o está tan mal condicionada que los
-    desplazamientos no son fiables. Causas habituales: un mecanismo interno (una
-    rótula o articulación de más, una barra o elemento suelto, dos partes unidas por
-    un solo nodo que pueden girar entre sí), o rigideces muy desproporcionadas entre
-    partes del modelo (penalizaciones, unidades mezcladas). Revisa la conectividad y
-    los apoyos.
+Resultado descartado (LinearSolver): el modelo tiene 1 mecanismo(s) interno(s),
+    partes que pueden moverse sin energía de deformación en ningún elemento aunque
+    los apoyos impidan el movimiento de sólido rígido del conjunto:
+  - los elementos 1–16 pueden moverse sin energía de deformación, aunque no como un
+    sólido rígido: hay articulaciones de más entre ellos, o modos de energía nula de
+    los elementos (hourglass, con integración reducida)
+La matriz de rigidez es singular: si la carga no activa el mecanismo, los
+    desplazamientos incluirían una parte arbitraria de él; si lo activa, no hay
+    equilibrio. Causas habituales: una rótula o articulación de más, una barra o
+    elemento suelto, dos partes unidas por un solo nodo o por una sola restricción.
+    Revisa la conectividad de esos elementos.
 
 \end{lstlisting}
 
-\textbf{Dónde está el mecanismo.} El mensaje dice qué pasa, pero no dónde. Para encontrar un mecanismo interno basta un análisis modal del mismo modelo, con densidad en el material. Cada mecanismo aparece como una frecuencia nula, porque se mueve sin deformar nada, y su forma modal muestra qué parte se mueve:
+\textbf{Dónde está el mecanismo.} Aquí el mensaje no puede ser más preciso: el mecanismo mueve toda la armadura, aunque no como un sólido rígido. Cuando una parte del modelo se mueve como un sólido rígido, por ejemplo una placa unida al resto por un solo nodo, el mensaje dice qué elementos la forman y alrededor de qué punto gira. Para ver la forma de un mecanismo basta un análisis modal del mismo modelo, con densidad en el material. Cada mecanismo aparece como una frecuencia nula, porque se mueve sin deformar nada, y su forma modal muestra qué parte se mueve:
 
 \begin{lstlisting}[language=Python]
 def buscar_mecanismo(caso: str, n_modos: int = 4):
@@ -2177,15 +2186,27 @@ def buscar_mecanismo(caso: str, n_modos: int = 4):
 
 Aquí \texttt{ModalSolver} da 1 frecuencia nula, seguida de una de 39.4 Hz, y su forma modal coincide con el mecanismo de la estática (\hyperref[fig:modelo_mal_planteado:armadura]{figura~\ref*{fig:modelo_mal_planteado:armadura}} d).
 
-\textbf{Sin diagonal, con carga horizontal.} Esta carga no activa el mecanismo: la cuerda inferior la lleva hasta el pasador y la estática tiene solución. El residuo del equilibrio no delataría nada, porque existe un campo de desplazamientos que lo cumple. El pivote nulo sí lo delata, y Solidum rechaza el modelo igual que antes. Tiene razón: esa armadura sólo resiste las cargas que no activan el mecanismo, y cualquier carga vertical en un nudo del vano la derrumbaría.
+\textbf{Sin diagonal, con carga horizontal.} Esta carga no activa el mecanismo: la cuerda inferior la lleva hasta el pasador y la estática tiene solución. El residuo del equilibrio no delataría nada, porque existe un campo de desplazamientos que lo cumple. El modo de menor energía sí lo delata, porque no depende de la carga, y Solidum rechaza el modelo igual que antes. Tiene razón: esa armadura sólo resiste las cargas que no activan el mecanismo, y cualquier carga vertical en un nudo del vano la derrumbaría.
 
 \begin{warnbox}{Advertencia}
 Estas comprobaciones protegen de los modelos mal planteados, no de los bien planteados con datos equivocados. Si el área se escribe en cm\ensuremath{^{2}} en unas unidades que la esperan en m\ensuremath{^{2}}, $A = 20$ en vez de $20\cdot 10^{-4}$, la armadura es $10^4$ veces más rígida. Las fuerzas axiales no cambian, porque en una armadura isostática sólo dependen del equilibrio, pero la flecha pasa de 10.99 mm a 1.10 µm. El modelo está bien planteado y Solidum no avisa. Comprobar el orden de magnitud de los desplazamientos sigue siendo trabajo del usuario.
 \end{warnbox}
 
-\begin{warnbox}{Advertencia}
-La comprobación después de factorizar sólo se hace en el análisis estático lineal con un solver directo. Con \texttt{linear\_\allowbreak{}algebra: iterative}, o con \texttt{NonlinearSolver}, el último caso, el del mecanismo que la carga no activa, pasa sin aviso: el resultado cumple el equilibrio, pero sus desplazamientos incluyen una parte arbitraria del mecanismo. En un análisis no lineal no puede ser de otro modo, porque cerca de un punto límite la matriz tangente es casi singular por naturaleza y rechazarla impediría seguir la curva. Ante la duda, resolver primero el modelo con \texttt{LinearSolver}.
-\end{warnbox}
+\textbf{Con un solver no lineal.} \texttt{NonlinearSolver}, \texttt{ArcLengthSolver} e \texttt{IndirectDisplacementSolver} hacen la misma comprobación, pero sólo sobre la matriz tangente inicial, la de $\mathbf u = \mathbf 0$. Más adelante no pueden hacerla: cerca de un punto límite la tangente es casi singular por naturaleza, y rechazarla impediría seguir la curva. Con barras \texttt{Truss2D}, el último caso se rechaza igual que con \texttt{LinearSolver}, con \texttt{IllPosedSystemError}. La armadura es geométricamente lineal, y la no linealidad de su material, si la tuviera, sólo podría quitarle rigidez, así que el mecanismo que hay en $\mathbf u = \mathbf 0$ sigue ahí durante todo el análisis. Con barras corrotacionales, \texttt{Truss2DCorot}, la respuesta es otra. Al deformarse, la rigidez geométrica puede estabilizar un mecanismo, como pasa con una red de cables sin pretensar, que se rigidiza al tensarse. Por eso Solidum sólo avisa, diciendo qué barras forman el mecanismo, y el análisis sigue hasta la solución.
+
+\textbf{Con el solver iterativo.} Con \texttt{linear\_\allowbreak{}algebra: iterative} el último caso sí pasa, porque un método de Krylov no factoriza la matriz y no tiene pivotes que inspeccionar. Distinguir un mecanismo de un modelo que sólo está mal condicionado exigiría estimar el menor autovalor con una precisión que un método de Krylov no da de forma fiable. Solidum no finge detectarlo: avisa una vez por análisis, y dice cómo comprobarlo:
+
+\begin{lstlisting}
+LinearSolver: con el solver algebraico iterativo (linear_algebra: iterative) no se
+    comprueba si el modelo tiene un mecanismo interno que la carga no activa: un
+    método de Krylov no factoriza la matriz y no tiene pivotes que inspeccionar. Si
+    lo tuviera, la solución cumpliría el equilibrio, pero sus desplazamientos
+    incluirían una parte arbitraria del mecanismo. Para comprobarlo, haz un análisis
+    modal del mismo modelo con densidad en los materiales (cada mecanismo aparece
+    como una frecuencia nula) o resuélvelo una vez con el solver directo
+    (linear_algebra: auto).
+
+\end{lstlisting}
 
 \section{Para seguir}
 
@@ -2209,8 +2230,8 @@ La comprobación después de factorizar sólo se hace en el análisis estático 
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Ejemplos}\\[0.5em]
 Sigla del manual: \texttt{FF-ME}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 08:41\\[0.5em]
-Commit Git: \texttt{325db35}\\[1em]
+Compilado el 27 de octubre de 2026, 16:14\\[0.5em]
+Commit Git: \texttt{fcc564f} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde \texttt{manuals/sources/examples/} y los scripts de \texttt{examples/} mediante \texttt{python manuals/build\_example\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

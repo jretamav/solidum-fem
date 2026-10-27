@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -312,7 +312,7 @@ Un material declara igualmente su \texttt{STRAIN\_DIM}; el dominio rechaza al co
 
 \section{Auto-Registro de Componentes}
 
-Elementos, materiales y solvers se registran automáticamente al arrancar el programa mediante decoradores:
+Elementos, materiales, secciones de marco y solvers se registran automáticamente al arrancar el programa mediante decoradores:
 
 \begin{lstlisting}[language=Python]
 @ElementRegistry.register
@@ -323,7 +323,7 @@ class Truss2D(Element):
 
 \end{lstlisting}
 
-Esto permite que el archivo YAML los referencie por nombre (\texttt{type: Truss2D}) sin que el usuario tenga que importar nada manualmente. El módulo \texttt{solidum.\allowbreak{}autodiscover} recorre los paquetes \texttt{elements/}, \texttt{materials/} y \texttt{math/solvers/} en la primera importación y puebla los registries. Los módulos de usuario (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con \texttt{user\_modules} (capítulo \textit{Archivo de Entrada YAML}).
+Esto permite que el archivo YAML los referencie por nombre (\texttt{type: Truss2D}) sin que el usuario tenga que importar nada manualmente. El módulo \texttt{solidum.\allowbreak{}autodiscover} recorre los paquetes \texttt{elements/}, \texttt{materials/}, \texttt{sections/} y \texttt{math/solvers/} en la primera importación y puebla los registries. Los módulos de usuario (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con \texttt{user\_modules} (capítulo \textit{Archivo de Entrada YAML}).
 
 \section{Validación Temprana del Input}
 
@@ -350,6 +350,7 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
 \begin{itemize}
   \item \texttt{nodes} \textit{o} \texttt{mesh} --- geometría.
   \item \texttt{materials} --- catálogo de leyes constitutivas instanciadas.
+  \item \texttt{sections} --- secciones de marco (sección por fibras), sólo si algún marco usa \texttt{section}; sus fibras referencian materiales de \texttt{materials}.
   \item \texttt{elements} --- conectividad (omisible si se importa malla Gmsh).
   \item \texttt{boundary\_\allowbreak{}conditions\_\allowbreak{}by\_\allowbreak{}node} / \texttt{\_by\_coord} / \texttt{\_by\_group} --- restricciones de Dirichlet.
   \item \texttt{point\_\allowbreak{}loads\_\allowbreak{}by\_\allowbreak{}node} / \texttt{\_by\_coord} / \texttt{\_by\_group} --- cargas de Neumann puntuales.
@@ -450,9 +451,133 @@ materials:
 
 Los parámetros aceptados dependen del material; consulte el capítulo \textit{Catálogo de Modelos Constitutivos} para el catálogo completo.
 
+\section{Secciones de marco: \texttt{sections}}
+
+Una \textbf{sección de marco} es la ley constitutiva de un marco a nivel de sección transversal: recibe la deformación axial y las curvaturas del eje en cada punto de Gauss y devuelve las fuerzas internas de la sección ($N$, $M_z$ en 2D; $N$, $M_y$, $M_z$ en 3D). Hoy existe un tipo, \texttt{FiberSection} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0021-secciones-de-marco-y-seccion-por-fibras.md}{ADR 0021}): la sección se discretiza en \textbf{fibras}, cada una con su propio material 1D y su propia historia, de modo que la fluencia o el daño avanzan fibra a fibra. Es la forma de modelar \textbf{plasticidad o daño en un marco}: con \texttt{material} + \texttt{A}, \texttt{I}, los marcos sólo admiten un material elástico lineal.
+
+Una sección se declara una vez en el bloque \texttt{sections} y la comparten los marcos que la citan con \texttt{section: \textless{}id\textgreater{}} (\texttt{Frame2DEuler}, \texttt{Frame2DEulerCorot} y \texttt{Frame3D}; ver el capítulo \textit{Catálogo de Elementos Finitos}). Las fibras se generan con \textbf{parches} y \textbf{fibras sueltas}:
+
+\begin{table}[h]
+\centering
+\caption{Primitivas de una FiberSection.}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Primitiva} & \textbf{Claves} & \textbf{Fibras que genera} \\
+\hline
+\texttt{shape: rectangle} & \texttt{material}, \texttt{y: [y\_\allowbreak{}min, y\_\allowbreak{}max]}, \texttt{z: [z\_\allowbreak{}min, z\_\allowbreak{}max]}, \texttt{ny}, \texttt{nz} & Rejilla de \texttt{ny \ensuremath{\times} nz} celdas iguales, una fibra en el centro de cada celda con el área de la celda. \\
+\texttt{shape: circle} & \texttt{material}, \texttt{r\_outer}, \texttt{r\_inner} (default \texttt{0.0}, maciza), \texttt{center: [y, z]} (default \texttt{[0.0, 0.0]}), \texttt{n\_rad}, \texttt{n\_circ} & Corona dividida en \texttt{n\_rad} anillos y \texttt{n\_circ} sectores; una fibra en el centroide de cada sector, con su área exacta. Ángulos desde \texttt{+y} hacia \texttt{+z}; el primer sector empieza en 0. \\
+\texttt{shape: layer} & \texttt{material}, \texttt{start: [y, z]}, \texttt{end: [y, z]}, \texttt{n}, \texttt{area}, \texttt{displaces} (opcional) & \texttt{n} barras de área \texttt{area} equiespaciadas de \texttt{start} a \texttt{end}, extremos incluidos (\texttt{n: 1}: una barra en \texttt{start}). \\
+fibra suelta (en \texttt{fibers}) & \texttt{y}, \texttt{z}, \texttt{area}, \texttt{material}, \texttt{displaces} (opcional) & Una fibra. \\
+\hline
+\end{tabularx}
+\end{table}
+Además, \texttt{GJ} (opcional): rigidez torsional elástica $G J$ de la sección, \textbf{obligatoria si la usa un \texttt{Frame3D}}. La torsión es elástica y no interactúa con la flexión ni se degrada cuando las fibras fluyen.
+
+\textbf{Coordenadas y signos.} \texttt{y}, \texttt{z} son coordenadas en los \textbf{ejes locales del elemento}, medidas desde el \textbf{eje del elemento} (la línea que une sus nodos), no desde el centroide: una sección excéntrica acopla axial y flexión. En 2D, $y$ es la dirección transversal del plano ($z$ sólo da el ancho); en 3D los ejes locales los fija \texttt{ref\_vector}. $M_z > 0$ tracciona las fibras con $y < 0$ y $M_y > 0$ las fibras con $z > 0$. Materiales de fibra admitidos: cualquiera de \texttt{STRAIN\_DIM = 1} (\texttt{Elastic1D}, \texttt{Elastoplastic1D}, \texttt{IsotropicDamage1D}\ldots{}); una misma sección puede mezclarlos (concreto y acero).
+
+\textbf{Ejemplo 2D mínimo} --- voladizo de acero elastoplástico, sección rectangular de 0.3 m \ensuremath{\times} 0.5 m en 20 capas, llevado más allá de la primera fluencia ($M(0) = 3.9$ MN\ensuremath{\cdot}m entre $M_y = 3.125$ MN\ensuremath{\cdot}m y $M_p = 4.6875$ MN\ensuremath{\cdot}m):
+
+\begin{lstlisting}[language=yaml]
+nodes:
+  - {id: 1, coords: [0.0, 0.0]}
+  - {id: 2, coords: [1.0, 0.0]}
+  - {id: 3, coords: [2.0, 0.0]}
+  - {id: 4, coords: [3.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastoplastic1D, E: 2.0e11, sigma_y: 2.5e8, H: 2.0e9, density: 7850.0}
+
+sections:
+  - id: 1
+    type: FiberSection
+    patches:
+      - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 20, nz: 1}
+
+elements:
+  - {id: 1, type: Frame2DEuler, nodes: [1, 2], section: 1}
+  - {id: 2, type: Frame2DEuler, nodes: [2, 3], section: 1}
+  - {id: 3, type: Frame2DEuler, nodes: [3, 4], section: 1, n_ip: 4}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, rz: 0.0}
+
+point_loads_by_node:
+  - {node_id: 4, uy: -1.3e6}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+
+\end{lstlisting}
+
+Con \texttt{nz: 1} el parche es una pila de capas: basta para la flexión en el plano. \texttt{n\_ip} (puntos de Gauss a lo largo del elemento) vale 3 si no se declara.
+
+\textbf{Ejemplo 3D con \texttt{GJ}} --- voladizo de un tubo de acero (radios 0.15 m y 0.13 m) con carga transversal en $z$ y un momento torsor en la punta; \texttt{ref\_\allowbreak{}vector: [0, 1, 0]} hace coincidir los ejes locales con los globales:
+
+\begin{lstlisting}[language=yaml]
+nodes:
+  - {id: 1, coords: [0.0, 0.0, 0.0]}
+  - {id: 2, coords: [1.5, 0.0, 0.0]}
+  - {id: 3, coords: [3.0, 0.0, 0.0]}
+
+materials:
+  - {id: 1, type: Elastoplastic1D, E: 2.0e11, sigma_y: 2.5e8, H: 2.0e9}
+
+sections:
+  - id: 1
+    type: FiberSection
+    GJ: 2.67e7                  # obligatoria con Frame3D
+    patches:
+      - {shape: circle, material: 1, r_outer: 0.15, r_inner: 0.13, n_rad: 2, n_circ: 32}
+
+elements:
+  - {id: 1, type: Frame3D, nodes: [1, 2], section: 1, ref_vector: [0.0, 1.0, 0.0]}
+  - {id: 2, type: Frame3D, nodes: [2, 3], section: 1, ref_vector: [0.0, 1.0, 0.0]}
+
+boundary_conditions_by_node:
+  - {node_id: 1, ux: 0.0, uy: 0.0, uz: 0.0, rx: 0.0, ry: 0.0, rz: 0.0}
+
+point_loads_by_node:
+  - {node_id: 3, uz: -1.0e5, rx: 1.0e4}
+
+solver:
+  type: NonlinearSolver
+  num_steps: 10
+
+\end{lstlisting}
+
+En el empotramiento resultan $M_y = +P L = 3.0\times 10^5$ N\ensuremath{\cdot}m (tracción en las fibras con $z > 0$, por encima del momento de primera fluencia del tubo, $2.89\times 10^5$ N\ensuremath{\cdot}m) y $T = 10^4$ N\ensuremath{\cdot}m.
+
+\textbf{Concreto armado: barras que desplazan el concreto.} Una sección de concreto armado combina un parche de concreto y capas de barras de acero dentro de él. Las fibras del parche cubren toda la sección, también el sitio que ocupan las barras, así que, si no se indica otra cosa, en la posición de cada barra el área cuenta dos veces: la fuerza axial de la barra es $(\sigma_s + \sigma_c)\,A_b$ en lugar de $\sigma_s A_b$, y lo mismo la rigidez, la masa y el peso propio. Es la práctica de OpenSees y el comportamiento por defecto. El error suele ser pequeño (cuantía de acero del 1 al 3 \%), pero es sistemático. Para descontarlo, cada capa de barras o fibra suelta declara con \texttt{displaces} el material que desplaza, el del parche que la contiene:
+
+\begin{lstlisting}[language=yaml]
+materials:
+  - {id: 1, type: IsotropicDamage1D, E: 3.0e10, kappa_0: 1.0e-4, alpha: 0.99, density: 2400.0}   # concreto
+  - {id: 2, type: Elastoplastic1D, E: 2.0e11, sigma_y: 4.2e8, H: 2.0e9, density: 7850.0}        # acero
+
+sections:
+  - id: 2
+    type: FiberSection
+    patches:
+      - {shape: rectangle, material: 1, y: [-0.25, 0.25], z: [-0.15, 0.15], ny: 40, nz: 1}
+      - {shape: layer, material: 2, start: [-0.21, -0.11], end: [-0.21, 0.11], n: 3, area: 5.1e-4, displaces: 1}
+      - {shape: layer, material: 2, start: [0.21, -0.11], end: [0.21, 0.11], n: 2, area: 3.1e-4, displaces: 1}
+
+\end{lstlisting}
+
+En la posición de cada barra con \texttt{displaces}, la sección añade una \textbf{fibra de compensación} de área $-A_b$ con el material desplazado. Esta fibra se evalúa con la ley de ese material y con su propia historia (daño, fluencia), así que el concreto queda con su área neta $A_c - \sum A_b$ en las fuerzas internas, en la rigidez, en la masa y en el área bruta, también en régimen inelástico. \texttt{displaces} es opcional en cada primitiva (sólo \texttt{layer} y las fibras sueltas lo admiten) y es un id de \texttt{materials}: el del material de alguna fibra declarada de la sección, distinto del de la propia barra. Sin \texttt{displaces}, las barras se suman al concreto.
+
+\textbf{Validación al leer el archivo.} Son errores, con el contexto de la entrada (p. ej. \texttt{sections[0] (id=7), patches[0].\allowbreak{}material: referencia a material inexistente (9)}): una clave desconocida en un parche, una \texttt{shape} inexistente, un material de fibra inexistente o de dimensión distinta de 1, y una sección sin fibras. También lo son un \texttt{displaces} que nombre un material inexistente, de dimensión distinta de 1, igual al de la barra o que no sea el de ninguna fibra de la sección, y un \texttt{displaces: true}: no es una bandera sino el id del material desplazado. Un marco que declara a la vez \texttt{section} y \texttt{material} (o \texttt{A}, \texttt{I}\ldots{}) también es un error.
+
+\textbf{Masa y peso propio.} Salen de las fibras: $\rho A = \sum \rho_i A_i$ y los momentos de inercia másicos $\sum \rho_i y_i^2 A_i$, $\sum \rho_i z_i^2 A_i$, con las fibras de compensación incluidas (con \texttt{displaces}, $\rho A = \rho_c (A_c - \sum A_b) + \rho_s \sum A_b$). Los marcos Euler-Bernoulli desprecian la inercia rotatoria de flexión, así que su masa sólo usa $\rho A$; los momentos de inercia másicos entran únicamente en la inercia torsional de \texttt{Frame3D} ($\sum \rho_i (y_i^2 + z_i^2) A_i$). Cada material de fibra necesita \texttt{density} si el análisis usa \texttt{gravity} o la matriz de masa.
+
+\begin{warnbox}{Advertencia}
+\textbf{Límites de la sección por fibras.} (1) La curvatura es lineal dentro del elemento: una rótula plástica se reparte sobre el elemento y la carga de colapso \textbf{converge por arriba} al refinar (en una viga biempotrada, +35 \% con 4 elementos en el vano y +3.5 \% con 32). Use varios elementos por miembro cerca de las rótulas. (2) Con fibras en \textbf{ablandamiento} (\texttt{IsotropicDamage1D}) el daño se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla y de \texttt{n\_ip}: no hay regularización. (3) Sin deformación por cortante: \texttt{Frame2DTimoshenko} no admite sección todavía.
+\end{warnbox}
+
 \section{Módulos de usuario: \texttt{user\_modules}}
 
-El \textbf{programa principal} de Solidum contiene los elementos, materiales y solvers de elementos finitos estándar. Las formulaciones no estándar viven aparte, en \textbf{módulos de usuario} (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}), a la manera de los elementos y materiales de usuario de FEAP (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). Un módulo de usuario puede aportar tipos de elemento, materiales y secciones de primer nivel propias, pero el programa principal no lo carga por sí solo: el modelo que lo necesita lo declara.
+El \textbf{programa principal} de Solidum contiene los elementos, materiales y solvers de elementos finitos estándar. Las formulaciones no estándar viven aparte, en \textbf{módulos de usuario} (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}), a la manera de los elementos, materiales y macros de usuario de FEAP (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). Un módulo de usuario puede aportar tipos de elemento, materiales, solvers y secciones de primer nivel propias, pero el programa principal no lo carga por sí solo: el modelo que lo necesita lo declara.
 
 \begin{lstlisting}[language=yaml]
 user_modules: [discontinuities]
@@ -461,7 +586,14 @@ user_modules: [discontinuities]
 
 Los módulos declarados se cargan al principio de la lectura, antes de validar el resto del archivo, de modo que sus tipos y secciones se validan como los del programa principal. La carga es explícita a propósito: el archivo dice qué formulación necesita, y el mismo modelo no funciona en una sesión y falla en otra según lo que se haya importado antes. Si el YAML usa un tipo o una sección de un módulo sin declararlo, el error lo dice y lista los módulos disponibles; un nombre de módulo inexistente también es un error.
 
-Hoy existe un módulo de usuario, \texttt{discontinuities}: el elemento con discontinuidad embebida \texttt{CST\_Embedded2D} y su familia de materiales cohesivos, con la sección \texttt{cohesive\_\allowbreak{}materials} (capítulos \textit{Catálogo de Elementos Finitos} y \textit{Catálogo de Modelos Constitutivos}).
+Hoy existen dos módulos de usuario:
+
+\begin{itemize}
+  \item \texttt{discontinuities}: el elemento con discontinuidad embebida \texttt{CST\_Embedded2D} y su familia de materiales cohesivos, con la sección \texttt{cohesive\_\allowbreak{}materials} (capítulos \textit{Catálogo de Elementos Finitos} y \textit{Catálogo de Modelos Constitutivos}).
+  \item \texttt{dissipation\_\allowbreak{}control}: el solver de arco por disipación de energía \texttt{DissipationArcLengthSolver} (capítulo \textit{Esquemas de Solución}).
+\end{itemize}
+
+Un modelo puede declarar varios: \texttt{user\_\allowbreak{}modules: [discontinuities, dissipation\_\allowbreak{}control]}.
 
 \section{Condiciones de Frontera}
 
@@ -527,7 +659,29 @@ linear_constraints:
 
 \end{lstlisting}
 
-Las restricciones se imponen por eliminación directa (no por penalización), de modo que la imposición es exacta a redondeo y preserva la simetría y la positividad definida del sistema. Las cadenas master-slave se resuelven automáticamente por cierre transitivo; los ciclos y las redeclaraciones inconsistentes se detectan en construcción y abortan el análisis con un mensaje específico.
+Las restricciones se imponen por eliminación directa (no por penalización), de modo que la imposición es exacta a redondeo y preserva la simetría y la positividad definida del sistema. Las cadenas master-slave se resuelven automáticamente por cierre transitivo: un maestro puede ser a su vez esclavo de otra restricción, o tener un apoyo, y entonces el esclavo hereda su valor prescrito.
+
+Cada entrada admite sólo las claves \texttt{slave}, \texttt{masters}, \texttt{coefficients} y \texttt{g}, y cada referencia sólo \texttt{node} y \texttt{dof}; una clave con errata (\texttt{G: 5} por \texttt{g: 5}) es un error, no se ignora. Los coeficientes y \texttt{g} deben ser números. Al leer el archivo, antes de ensamblar nada y también con malla gmsh, se comprueba además que:
+
+\begin{itemize}
+  \item cada nodo existe y tiene el grado de libertad nombrado (\texttt{ux} no existe en un nodo térmico);
+  \item el esclavo no tiene además un apoyo: un grado de libertad no puede ser esclavo de dos restricciones. Si el apoyo es coherente con la restricción (por ejemplo, los dos nodos coincidentes de una interfaz atada tomados por un mismo apoyo por coordenada o por grupo), basta con quitarlo del esclavo, porque la restricción le transmite el valor del maestro;
+  \item el esclavo no figura entre sus propios maestros ni se declara dos veces con restricciones distintas (declarar dos veces la misma es inofensivo);
+  \item las cadenas master-slave no forman ciclos ($a \leftarrow b$, $b \leftarrow a$).
+\end{itemize}
+
+Todos los problemas se informan juntos, cada uno con su entrada (\texttt{linear\_\allowbreak{}constraints[i]}) y el par (nodo, dof) afectado. Con la API Python (\texttt{Domain.\allowbreak{}add\_\allowbreak{}linear\_\allowbreak{}constraint}) el ensamblador detecta los mismos errores al construir las restricciones, de uno en uno, y su mensaje también nombra el esclavo y los maestros por (nodo, dof).
+
+En los solvers estáticos no lineales (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver}) el término independiente \texttt{g} se aplica proporcionalmente al factor de carga, como $\lambda\,g$, igual que un desplazamiento prescrito: en un trazado de arco sigue a $\lambda$ también cuando la carga baja.
+
+\textbf{Reacciones y fuerzas de restricción.} Una restricción multipunto ejerce una fuerza sobre la estructura en los grados de libertad de su esclavo y de sus maestros. Solidum distingue dos papeles:
+
+\begin{itemize}
+  \item \textbf{Apoyo}: la restricción impide un movimiento de sólido rígido. Es el caso del apoyo a 45 grados del ejemplo ($u_y = u_x$ en un mismo nodo): su fuerza es una \textbf{reacción}, normal al plano de rodadura, y aparece en \texttt{R} y en \texttt{reactions\_\allowbreak{}by\_\allowbreak{}node} con las componentes \texttt{ux} y \texttt{uy} del nodo. Una relación con coeficiente distinto de uno entre nodos distintos ($u_s = 2\,u_m$) también cuenta como apoyo.
+  \item \textbf{Unión}: una traslación rígida de toda la estructura (o una temperatura uniforme, en el problema térmico) la cumple. Son uniones el atado de mallas, la periodicidad (también con \texttt{g} distinto de cero) y la unión rígida del ejemplo. Su fuerza es una \textbf{fuerza de restricción}, que transmite fuerza entre partes de la estructura y no la toma del exterior: aparece en \texttt{constraint\_\allowbreak{}forces} y \texttt{constraint\_\allowbreak{}forces\_\allowbreak{}by\_\allowbreak{}node} del resultado, con valores iguales y opuestos en los nodos atados, y no en las reacciones.
+\end{itemize}
+
+Un apoyo con valor prescrito reporta su reacción completa, incluida la fuerza que le llega por los nodos atados a él: atar dos nodos coincidentes con $u_s = u_m$ en todos sus grados de libertad da las mismas reacciones que fundirlos en uno. Con esta convención se cumple el equilibrio global $\sum R + \sum F = 0$ por dirección.
 
 \section{Cargas Puntuales}
 
@@ -570,6 +724,15 @@ body_force: [0.0, 0.0, -77008.5]     # 3D: bx, by, bz
 
 Es la forma genérica y la única necesaria para fuerzas de cuerpo que no son peso propio (campos electromagnéticos precalculados, centrífuga estática, etc.). También sirve para peso propio cuando todo el modelo es monomaterial y el usuario prefiere precalcular $\rho\cdot g$.
 
+Cada componente puede ser también una expresión de la posición (ver «Valores Variables: Expresiones»), por ejemplo una fuerza centrífuga $\mathbf b = \rho\,\omega^2\,\mathbf r$:
+
+\begin{lstlisting}[language=yaml]
+body_force: ["7850*100*x", "7850*100*y"]   # ρ·ω²·r con ω = 10 rad/s
+
+\end{lstlisting}
+
+La admiten los sólidos, las armaduras y los marcos; los cables, no (reparten la carga con su longitud sin tensión).
+
 \subsection{Caso particular --- peso propio: \texttt{gravity} + \texttt{density}}
 
 El peso propio es el caso especial $\mathbf b = \rho\,\mathbf g$. Para problemas multimaterial --- donde cada elemento debe ver \textit{su propio} $\rho$ --- Solidum expone un atajo declarativo: la densidad como propiedad del material, y un vector global de gravedad.
@@ -594,6 +757,51 @@ gravity: [0.0, -9.81]                # m/s^2, +y hacia arriba
 \textbf{Padding 2D\ensuremath{\leftrightarrow}3D}. Si el modelo mezcla elementos 2D y 3D, declarar el vector con tres componentes; el ensamblador pasa el slice apropiado a cada elemento según la dimensionalidad declarada por su \texttt{DOF\_NAMES}.
 
 \textbf{Reservado para análisis dinámico}. El atributo \texttt{density} introducido aquí es la misma magnitud que consume la matriz de masa $\mathbf M_e = \int \rho\,\mathbf N^\top\mathbf N\,dV$ en análisis modales y dinámicos. Declararlo prepara el modelo para esas extensiones sin coste adicional (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}).
+
+\section{Cargas Distribuidas de Contorno: \texttt{tractions} y \texttt{tractions\_\allowbreak{}by\_\allowbreak{}group}}
+
+Una \textit{tracción} $\mathbf t$ es una fuerza por unidad de superficie sobre la frontera del sólido (en 2D, por unidad de longitud de borde y de espesor). Se integra con la geometría real del borde o de la cara, $\int_\Gamma \mathbf N^\top\,\mathbf t\;d\Gamma$, también sobre bordes curvos de elementos cuadráticos. La admiten los sólidos 2D y 3D.
+
+\textbf{Por grupo físico} (mallas gmsh): las celdas de contorno del grupo (las líneas de gmsh en 2D) son los bordes exactos que se cargan.
+
+\begin{lstlisting}[language=yaml]
+tractions_by_group:
+  Borde_Carga: {t: [1.0e6, 0.0]}        # tracción en ejes globales [Pa]
+  Agujero:     {pressure: 2.0e6}         # presión normal [Pa]
+
+\end{lstlisting}
+
+\textbf{Por elemento} (cualquier malla, también 3D): el borde (\texttt{edge}, 2D) o la cara (\texttt{face}, 3D) con la numeración local del elemento.
+
+\begin{lstlisting}[language=yaml]
+tractions:
+  - {element: 12, edge: 1, t: [1.0e6, 0.0]}
+  - {element: 40, face: 3, pressure: 2.5e3}
+
+\end{lstlisting}
+
+Cada entrada lleva \textbf{una} de dos formas:
+
+\begin{itemize}
+  \item \texttt{t}: el vector de tracción en ejes globales, con 2 ó 3 componentes según la dimensión del elemento.
+  \item \texttt{pressure}: la presión $p$, normal al contorno. \textbf{Convención de signo} (Reglas §5): $p > 0$ es \textbf{compresión}, la presión empuja hacia el interior del cuerpo, $\mathbf t = -p\,\mathbf n$ con $\mathbf n$ la normal exterior. Una succión se declara con $p < 0$. Es el convenio de Abaqus y ANSYS.
+\end{itemize}
+
+La carga es \textbf{muerta}: actúa sobre la geometría de referencia y no sigue la deformación. Un grupo que no sea de contorno (por ejemplo, una superficie de la malla) o un borde compartido por dos elementos se rechazan al leer el archivo.
+
+\section{Valores Variables: Expresiones}
+
+Cualquier valor de \texttt{body\_force}, \texttt{tractions}, \texttt{tractions\_\allowbreak{}by\_\allowbreak{}group} y de las cargas térmicas (\texttt{body\_source}, \texttt{boundary\_flux}, \texttt{boundary\_\allowbreak{}flux\_\allowbreak{}by\_\allowbreak{}group}) puede ser, en vez de un número, una expresión entre comillas de la posición \texttt{x}, \texttt{y}, \texttt{z}; en las cargas de contorno, también de la normal exterior \texttt{nx}, \texttt{ny}, \texttt{nz}:
+
+\begin{lstlisting}[language=yaml]
+body_force: [0.0, "-78.5e3*(1 + 0.1*y)"]          # campo b(x)
+tractions_by_group:
+  Agujero: {pressure: "1.0e6*(1 - y/0.2)"}         # presión variable
+  Borde:   {t: ["1.0e6*nx", 0.0]}                  # con la normal
+
+\end{lstlisting}
+
+Se admiten números, \texttt{+ - * / **}, paréntesis, la constante \texttt{pi} y las funciones \texttt{sin}, \texttt{cos}, \texttt{tan}, \texttt{asin}, \texttt{acos}, \texttt{atan}, \texttt{atan2}, \texttt{sinh}, \texttt{cosh}, \texttt{tanh}, \texttt{exp}, \texttt{log}, \texttt{log10}, \texttt{sqrt}, \texttt{abs}, \texttt{min} y \texttt{max}. Nada más: la expresión no se ejecuta como código Python, así que un archivo ajeno no puede hacer otra cosa que calcular una carga, y una errata (\texttt{w} en lugar de \texttt{y}, una función que no existe) se detecta al leer el archivo, con la entrada y lo que no se admite. Una expresión que no se puede evaluar en algún punto (\texttt{log} de un negativo) se informa con el punto. Las cargas que varían en el tiempo no se declaran en el YAML (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0023-cargas-distribuidas-y-expresiones-en-el-yaml.md}{ADR 0023}).
 
 \section{Solver}
 
@@ -627,10 +835,12 @@ Un valor desconocido, o \texttt{iterative:amg} sin \texttt{pyamg} instalado, se 
 Los solvers no lineales (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}) aceptan un bloque \texttt{convergence} que configura el criterio de parada de las iteraciones de Newton. La política sigue el patrón estándar de tolerancias mixtas absoluta + relativa, separado por dos criterios físicos: \textit{fuerza} (residuo de equilibrio) y \textit{desplazamiento} (incremento del iterado). La forma exacta de la comparación es:
 
 \begin{lstlisting}
-||R[libres]|| <= atol_force + rtol_force * max(||F_ext||, ||F_int||)
-||dU||       <= atol_disp  + rtol_disp  * ||U||
+||R_red|| <= atol_force + rtol_force * max(||F_ext||, ||F_int||)
+||dU||    <= atol_disp  + rtol_disp  * ||U||
 
 \end{lstlisting}
+
+\texttt{R\_red} es el residuo de equilibrio en los grados de libertad libres: las reacciones de los apoyos no cuentan y, con restricciones multipunto, el residuo de cada grado de libertad esclavo se suma a sus maestros multiplicado por su coeficiente ($\mathbf T^\top\mathbf R$, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}).
 
 Ambos criterios deben cumplirse \textbf{simultáneamente} (semántica AND) para dar el paso por convergido.
 
@@ -726,7 +936,7 @@ elements:
 
 \subsection{Cables: \texttt{Cable2DCorot} / \texttt{Cable3DCorot}}
 
-Elemento 1D que transmite \textit{únicamente} fuerza axial de tensión (no resiste compresión). La unilateralidad la aporta el material (típicamente \texttt{CableMaterial1D}, ver capítulo \textit{Catálogo de Modelos Constitutivos}); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
+Elemento 1D que transmite \textit{únicamente} fuerza axial de tracción (no resiste compresión). La unilateralidad la aporta el material (típicamente \texttt{CableMaterial1D}, ver capítulo \textit{Catálogo de Modelos Constitutivos}); el elemento implementa la cinemática corotacional y la transferencia de la deformación al material.
 
 \begin{itemize}
   \item \textbf{DOFs/nodo}: \texttt{ux, uy} (2D); \texttt{ux, uy, uz} (3D).
@@ -760,15 +970,22 @@ elements:
 Elementos viga 2D que transmiten axial, cortante y momento flector. Tres variantes:
 
 \begin{itemize}
-  \item \textbf{\texttt{Frame2DEuler}}: vigas esbeltas ($L/h \gtrsim 10$), Euler-Bernoulli, régimen geométricamente lineal. Parámetros: \texttt{A}, \texttt{I}.
-  \item \textbf{\texttt{Frame2DTimoshenko}}: vigas peraltadas o cortas ($L/h \lesssim 10$). Incluye deformación por cortante; corrige automáticamente \textit{shear locking} en el límite esbelto. Parámetros: \texttt{A}, \texttt{I}, \texttt{As} (área efectiva de cortante), \texttt{nu} (opcional si el material expone \texttt{nu}).
-  \item \textbf{\texttt{Frame2DEulerCorot}}: variante corotacional de Euler-Bernoulli. Captura grandes desplazamientos y grandes rotaciones rígidas del elemento (rotaciones deformacionales nodales moderadas, $|\bar\theta| \lesssim 30°$). Parámetros: \texttt{A}, \texttt{I}.
+  \item \textbf{\texttt{Frame2DEuler}}: vigas esbeltas ($L/h \gtrsim 10$), Euler-Bernoulli, régimen geométricamente lineal. Parámetros: \texttt{A}, \texttt{I} (con \texttt{material}) o \texttt{section}, \texttt{n\_ip}.
+  \item \textbf{\texttt{Frame2DTimoshenko}}: vigas peraltadas o cortas ($L/h \lesssim 10$). Incluye deformación por cortante; corrige automáticamente \textit{shear locking} en el límite esbelto. Parámetros: \texttt{A}, \texttt{I}, \texttt{As} (área efectiva de cortante), \texttt{nu} (opcional si el material expone \texttt{nu}). \textbf{Sólo material elástico lineal}; todavía no admite \texttt{section}.
+  \item \textbf{\texttt{Frame2DEulerCorot}}: variante corotacional de Euler-Bernoulli. Captura grandes desplazamientos y grandes rotaciones rígidas del elemento (rotaciones deformacionales nodales moderadas, $|\bar\theta| \lesssim 30°$). Parámetros: \texttt{A}, \texttt{I} (con \texttt{material}) o \texttt{section}, \texttt{n\_ip}; con sección, ésta trabaja en el sistema corrotado del elemento.
 \end{itemize}
 
 DOFs/nodo: \texttt{ux, uy, rz}. Convención: $\sigma > 0 \Leftrightarrow \varepsilon > 0$ (elongación) en el eje axial; $r_z$ positivo antihorario.
 
+\textbf{Dos formas de dar la constitutiva} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0021-secciones-de-marco-y-seccion-por-fibras.md}{ADR 0021}), excluyentes entre sí:
+
+\begin{itemize}
+  \item \textbf{\texttt{material} + propiedades geométricas} (\texttt{A}, \texttt{I}): rigidez de forma cerrada. Sólo admite un material \textbf{elástico lineal} (\texttt{Elastic1D}); un material con plasticidad o daño se rechaza al construir el modelo, con un mensaje que remite a la sección por fibras.
+  \item \textbf{\texttt{section}} (id de una sección del bloque \texttt{sections}, capítulo \textit{Archivo de Entrada YAML}) \textbf{+ \texttt{n\_ip}} (puntos de Gauss a lo largo del elemento, 3 por defecto, mínimo 2): el elemento integra la sección por fibras en cada punto de Gauss. Cada fibra lleva su material 1D y su historia, de modo que se forman \textbf{rótulas plásticas por flexión} y el daño avanza fibra a fibra. Con fibras elásticas y \texttt{n\_ip \ensuremath{\ge} 2} se obtiene exactamente la misma rigidez que con \texttt{A} e \texttt{I}. Con \texttt{section} no se declaran \texttt{material}, \texttt{A} ni \texttt{I}: rigidez, masa y peso propio salen de las fibras.
+\end{itemize}
+
 \begin{warnbox}{Advertencia}
-\textbf{Plasticidad por flexión.} Los elementos marco pasan al material únicamente la deformación axial centroidal $(u_j - u_i)/L$; el módulo tangente $E_t$ devuelto escala toda la matriz local (axial y flexión por igual). Esto significa que los marcos reproducen correctamente \textit{plasticidad axial pura} pero \textit{no} forman rótulas plásticas por flexión: la fluencia por momento requiere integración de $\sigma(y)$ sobre la sección, característica que se incorporará en una clase \texttt{FiberSection} futura.
+\textbf{Cambio desde el 2026-09-29.} Hasta esa fecha los marcos aceptaban un material inelástico con \texttt{A} e \texttt{I}, le pasaban sólo la deformación axial y escalaban toda la matriz local con su módulo tangente: con fluencia axial el momento flector se anulaba y con ablandamiento cambiaba de signo, sin aviso. Un modelo así ahora falla al construirse; su equivalente físico es el mismo marco con \texttt{section}. Con la sección por fibras, la carga de colapso converge por arriba al refinar la malla: use varios elementos por miembro cerca de las rótulas.
 \end{warnbox}
 
 \begin{lstlisting}[language=yaml]
@@ -788,21 +1005,27 @@ elements:
     I: 8.33e-6
     As: 0.00833
 
+  - id: 3                     # con sección por fibras (bloque sections)
+    type: Frame2DEuler
+    nodes: [3, 4]
+    section: 1
+    n_ip: 3
+
 \end{lstlisting}
 
 \subsection{Marco 3D: \texttt{Frame3D}}
 
 Viga 3D Euler-Bernoulli con 6 DOFs/nodo (\texttt{ux, uy, uz, rx, ry, rz}). Transmite axial, cortantes en dos planos, flexiones en dos planos y torsión de Saint-Venant pura. Régimen geométricamente lineal (la variante corotacional 3D queda como pendiente).
 
-\textbf{Parámetros}:
+\textbf{Parámetros}, con las mismas dos formas excluyentes de dar la constitutiva que los marcos 2D:
 
 \begin{itemize}
-  \item \texttt{A} --- área de la sección.
-  \item \texttt{Iy}, \texttt{Iz} --- momentos de inercia respecto a los ejes locales $y$, $z$.
-  \item \texttt{J} --- constante torsional de Saint-Venant.
-  \item \texttt{nu} --- coeficiente de Poisson (opcional; se toma del material si lo expone).
-  \item \texttt{ref\_vector} --- vector de referencia (opcional, default \texttt{[0,0,1]}) que fija la orientación de los ejes locales $y$, $z$ de la sección. Para barras casi-verticales se sugiere fijarlo explícitamente.
+  \item Con \texttt{material} (sólo elástico lineal): \texttt{A} --- área de la sección; \texttt{Iy}, \texttt{Iz} --- momentos de inercia respecto a los ejes locales $y$, $z$; \texttt{J} --- constante torsional de Saint-Venant; \texttt{nu} --- coeficiente de Poisson (opcional; se toma del material si lo expone).
+  \item Con \texttt{section} (sección por fibras con \texttt{GJ} declarado) y \texttt{n\_ip} (default 3, mínimo 2): flexión en los dos planos y fuerza axial salen de las fibras, con su interacción; la torsión es elástica, $T = GJ\,\theta_x'$, con el \texttt{GJ} de la sección. Sin \texttt{nu}.
+  \item \texttt{ref\_vector} --- vector de referencia (opcional, default \texttt{[0,0,1]}) que fija la orientación de los ejes locales $y$, $z$ de la sección, que son también los ejes en que se declaran las fibras. Para barras casi-verticales se sugiere fijarlo explícitamente.
 \end{itemize}
+
+Convención de fuerzas internas (Reglas.md §5): $M_y > 0$ tracciona las fibras con $z > 0$; $M_z > 0$, las fibras con $y < 0$.
 
 \begin{lstlisting}[language=yaml]
 elements:
@@ -815,6 +1038,8 @@ elements:
     Iz: 8.33e-6
     J: 1.66e-5
     ref_vector: [0.0, 0.0, 1.0]
+
+  - {id: 2, type: Frame3D, nodes: [2, 3], section: 1, n_ip: 3, ref_vector: [0.0, 0.0, 1.0]}
 
 \end{lstlisting}
 
@@ -986,7 +1211,7 @@ CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
   \item \textbf{Activación}: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior; es el único criterio y no se declara en el YAML. Es \textbf{irreversible}: una vez activada persiste aunque el paso siguiente descargue.
   \item \textbf{Bulk aceptado}: sólo \texttt{Elastic2D} en la fase actual --- la \textit{discrete approach} presupone bulk elástico (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}).
   \item \textbf{Post-proceso}: \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state(U)} añade la clave \texttt{'discontinuity'} con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
-  \item \textbf{Limitación operativa}: el trazado completo de la rama post-pico requiere un solver capaz de atravesar el softening con penalty cohesivo rígido. Ver la limitación conocida de \texttt{DissipationArcLengthSolver} en el capítulo «Esquemas de Solución».
+  \item \textbf{Solver para la rama post-pico}: con desplazamiento impuesto, \texttt{NonlinearSolver} recorre el ablandamiento hasta la separación completa con penalización cohesiva rígida (tracción uniaxial frente a la solución exacta y ensayo de Van Vliet con grieta prescrita, en \texttt{tests/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}}). Las limitaciones registradas de \texttt{ArcLengthSolver} y de \texttt{DissipationArcLengthSolver} (módulo de usuario \texttt{dissipation\_\allowbreak{}control}, al final del capítulo «Esquemas de Solución») con esa penalización son anteriores a la corrección de la tangente cohesiva del 2026-09-23 y no se han vuelto a comprobar.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
@@ -1014,7 +1239,7 @@ La formulación completa (cinemática KOS, condensación, longitud $l_d$) está 
 
 \subsection{\texttt{Elastic1D} --- elasticidad lineal axial}
 
-Ley de Hooke escalar $\sigma = E \cdot \varepsilon$. Sin variables internas. Compatible con todos los elementos 1D (armaduras y marcos).
+Ley de Hooke escalar $\sigma = E \cdot \varepsilon$. Sin variables internas. Compatible con todos los elementos 1D (armaduras y marcos) y como material de fibra de una sección por fibras. Es el único material 1D que los marcos admiten con \texttt{material} + \texttt{A}, \texttt{I} (elástico lineal).
 
 \begin{lstlisting}[language=yaml]
 materials:
@@ -1051,7 +1276,7 @@ Plasticidad asociativa con criterio $f = |\sigma_{\text{trial}}| - (\sigma_y + H
 \begin{itemize}
   \item \textbf{Parámetros}: \texttt{E}, \texttt{sigma\_y} (fluencia inicial), \texttt{H} (módulo de endurecimiento; \texttt{H=0} = perfectamente plástico).
   \item \textbf{Variables internas}: $\varepsilon_p$ (deformación plástica), $\alpha$ (acumulada equivalente).
-  \item \textbf{Compatible con}: armaduras y marcos 1D (en marcos solo se aplica al esfuerzo axial; ver advertencia en el capítulo \textit{Catálogo de Elementos Finitos}).
+  \item \textbf{Compatible con}: armaduras y, en los marcos, \textbf{sólo como material de fibra} de una sección por fibras (\texttt{section}, bloque \texttt{sections} del capítulo \textit{Archivo de Entrada YAML}): así se forman rótulas plásticas por flexión. Un marco con \texttt{material} + \texttt{A}, \texttt{I} lo rechaza al construir.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
@@ -1154,38 +1379,68 @@ d = 1 - \frac{\kappa_0}{\kappa}\,\exp\bigl(-\alpha(\kappa - \kappa_0)\bigr) \qua
   \item \textbf{Parámetros}: \texttt{E}, \texttt{kappa\_0} (umbral elástico), \texttt{alpha} (velocidad de softening), \texttt{density} (opcional).
   \item \textbf{Variables internas}: $\kappa$ (máxima histórica), $d$ (daño).
   \item \textbf{Tangente}: \textbf{algorítmica consistente} en carga activa con daño no saturado: $E_{\text{tan}} = -(1 - d)\,E\,\alpha\,\kappa$ --- negativa, refleja la pendiente descendente $\sigma$-$\varepsilon$ post-pico. En descarga, sin daño activo o al saturar, vuelve a la secante $(1-d)E$.
+  \item \textbf{Compatible con}: armaduras y, en los marcos, sólo como material de fibra de una sección por fibras. En fibras, el ablandamiento se localiza en uno o dos puntos de Gauss y la respuesta posterior al pico depende de la malla (sin regularización).
 \end{itemize}
 
 \subsection{\texttt{IsotropicDamage2D} --- daño isótropo 2D}
 
-Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$. Deformación equivalente simétrica:
+Extensión 2D del modelo anterior. Esfuerzo nominal $\boldsymbol\sigma = (1-d)\,\mathbf C_e\,\boldsymbol\varepsilon$, con el daño gobernado por una deformación equivalente $\varepsilon_{eq}$ que se elige con el parámetro \texttt{equivalent\_\allowbreak{}strain}. Las tres medidas disponibles dan $\varepsilon_{eq} = \varepsilon$ en tracción uniaxial de esfuerzo, así que el umbral es siempre $\kappa_0 = f_t/E$:
 
-\[
-\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \tfrac{1}{2}\gamma_{xy}^2}
-\]
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{\texttt{equivalent\_\allowbreak{}strain}} & \textbf{Definición} & \textbf{Compresión uniaxial de esfuerzo} \\
+\hline
+\texttt{energy} (por defecto; Simó y Ju 1987) & $\varepsilon_{eq} = \sqrt{\boldsymbol\varepsilon^\top\mathbf C_e\,\boldsymbol\varepsilon/E}$ & daña igual que en tracción: $\varepsilon_{eq} = \lvert\varepsilon\rvert$ \\
+\texttt{mazars} (Mazars 1986) & $\varepsilon_{eq} = \sqrt{\sum_i\langle\varepsilon_i\rangle_+^2}$, sólo extensiones principales & daña por la extensión lateral: $\varepsilon_{eq} = \sqrt2\,\nu\,\lvert\varepsilon\rvert$ \\
+\texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} (de Vree et al. 1995) & función de $I_1$ y $J_2$ con $k = f_c/f_t$ & $\varepsilon_{eq} = \lvert\varepsilon\rvert/k$: empieza a dañar con $\lvert\varepsilon\rvert = k\,\kappa_0$ \\
+\hline
+\end{tabularx}
+\end{center}
+Con von Mises modificado, $\varepsilon_{eq} = \frac{k-1}{2k(1-2\nu)}\,I_1 + \frac{1}{2k}\sqrt{\left(\frac{k-1}{1-2\nu}\right)^2 I_1^2 + \frac{12k}{(1+\nu)^2}\,J_2}$. Mazars y von Mises modificado se evalúan sobre el tensor 3D con la componente fuera del plano $\varepsilon_{zz} = c_{zz}(\varepsilon_{xx} + \varepsilon_{yy})$, donde $c_{zz} = -\nu/(1-\nu)$ en tensión plana y $c_{zz} = 0$ en deformación plana; la energética usa la $\mathbf C_e$ plana del material, que ya la incluye. Con cualquiera de las tres el 2D es la restricción exacta de \texttt{IsotropicDamage3D} en las dos hipótesis.
 
 \begin{itemize}
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis} (\texttt{plane\_stress} default o \texttt{plane\_strain}), \texttt{density} (opcional).
-  \item \textbf{Tangente algorítmica consistente}: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - \frac{(1-d)(1/\kappa + \alpha)}{\varepsilon_{eq}}\,(\mathbf C_e\boldsymbol\varepsilon) \otimes (\mathbf M\boldsymbol\varepsilon)$ con $\mathbf M = \mathrm{diag}(1, 1, 1/2)$ en carga activa. \textbf{No simétrica} ($\mathbf C_e\boldsymbol\varepsilon$ y $\mathbf M\boldsymbol\varepsilon$ no son proporcionales); el atributo \texttt{IS\_\allowbreak{}SYMMETRIC = False} hace que el despachador algebraico \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} elija LU. Recupera convergencia cuadrática del Newton global frente a la secante.
-  \item \textbf{Limitación}: $\varepsilon_{eq}$ simétrica no distingue daño en tensión vs compresión; para hormigón se requiere modelo de Mazars o split tensión/compresión (no implementado). Sin regularización por longitud característica $\to$ \textit{mesh-dependency} en régimen de ablandamiento.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0}, \texttt{alpha}, \texttt{hypothesis} (\texttt{plane\_stress} default o \texttt{plane\_strain}), \texttt{equivalent\_\allowbreak{}strain} (\texttt{energy} default, \texttt{mazars} o \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}), \texttt{k} ($f_c/f_t > 0$: obligatorio con \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} y no admitido con las otras dos), \texttt{density} (opcional).
+  \item \textbf{Tangente algorítmica consistente}: $\mathbf C_{\text{alg}} = (1-d)\,\mathbf C_e - (1-d)\left(\frac1\kappa + \alpha\right)(\mathbf C_e\boldsymbol\varepsilon) \otimes \frac{\partial\varepsilon_{eq}}{\partial\boldsymbol\varepsilon}$ en carga activa. Con \texttt{energy} es \textbf{simétrica} y el material se declara simétrico ante el despachador algebraico (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003}); con \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} no lo es y el despachador elige LU. Recupera convergencia cuadrática del Newton global frente a la secante.
+  \item \textbf{Cambio del 2026-09-29}: hasta esa fecha la medida era la norma del tensor $\sqrt{\boldsymbol\varepsilon:\boldsymbol\varepsilon}$, que en tracción uniaxial daba $\varepsilon_{eq} = \varepsilon\sqrt{1+2\nu^2}$ (el daño empezaba en $\varepsilon = \kappa_0/\sqrt{1+2\nu^2}$). Un YAML existente pasa a la medida energética sin tocarlo, y sus resultados cambian porque la calibración es otra: ahora $\kappa_0 = f_t/E$ directamente.
+  \item \textbf{Limitación}: un único daño escalar (el modelo de Mazars completo, con daños de tracción y compresión separados, no está implementado; aquí sólo su medida) y sin restitución de rigidez al cerrar fisuras. Sin regularización por longitud característica $\to$ \textit{mesh-dependency} en régimen de ablandamiento.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
 materials:
+  # Medida energética (por defecto): no hace falta declararla.
   - id: 3
     type: IsotropicDamage2D
     E: 30.0e9
     nu: 0.2
-    kappa_0: 1.5e-4
+    kappa_0: 1.0e-4       # f_t/E = 3 MPa / 30 GPa
     alpha: 800.0
     hypothesis: plane_stress
-    density: 2500.0   # hormigón
+    density: 2500.0       # hormigón
+  # Mazars: sólo las extensiones principales dañan.
+  - id: 4
+    type: IsotropicDamage2D
+    E: 30.0e9
+    nu: 0.2
+    kappa_0: 1.0e-4
+    alpha: 800.0
+    hypothesis: plane_strain
+    equivalent_strain: mazars
+  # von Mises modificado: exige k = f_c/f_t ≥ 1.
+  - id: 5
+    type: IsotropicDamage2D
+    E: 30.0e9
+    nu: 0.2
+    kappa_0: 1.0e-4
+    alpha: 800.0
+    equivalent_strain: modified_von_mises
+    k: 10.0               # f_c = 30 MPa, f_t = 3 MPa
 
 \end{lstlisting}
 
 \section{Elasticidad Unilateral (Cable)}
 
-\subsection{\texttt{CableMaterial1D} --- cable lineal en tensión, nulo en compresión}
+\subsection{\texttt{CableMaterial1D} --- cable lineal en tracción, nulo en compresión}
 
 Material 1D \textit{memoryless} que captura la propiedad esencial del cable: solo transmite esfuerzo cuando está tensado.
 
@@ -1196,7 +1451,7 @@ Material 1D \textit{memoryless} que captura la propiedad esencial del cable: sol
 con $\langle \cdot \rangle^+$ el operador de MacAuley (parte positiva). Tangente discontinua en $\varepsilon = 0$ (asignación al régimen compresivo por convención).
 
 \begin{itemize}
-  \item \textbf{Parámetros}: \texttt{E} (módulo de Young en tensión).
+  \item \textbf{Parámetros}: \texttt{E} (módulo de Young en tracción).
   \item \textbf{Sin variables internas} (la respuesta depende sólo de $\varepsilon$ instantánea).
   \item \textbf{Caveats numéricos}: en transiciones tensado \ensuremath{\leftrightarrow} destensado Newton-Raphson puede oscilar. Mitigación: usar \texttt{ArcLengthSolver} o pasos finos con \texttt{adaptive}.
 \end{itemize}
@@ -1254,23 +1509,31 @@ Cono circular suave de Mohr-Coulomb, criterio $f = \sqrt{J_2} + \eta_f I_1 - k(\
 
 \subsection{\texttt{IsotropicDamage3D} --- daño isótropo 3D con softening exponencial}
 
-$\boldsymbol\sigma = (1-d)\,\mathbf{C}_e\,\boldsymbol\varepsilon$ con daño escalar $d$ gobernado por la deformación equivalente
-
-\[
-\varepsilon_{eq} = \sqrt{\varepsilon_{xx}^2 + \varepsilon_{yy}^2 + \varepsilon_{zz}^2 + \tfrac{1}{2}\left(\gamma_{xy}^2 + \gamma_{yz}^2 + \gamma_{xz}^2\right)}
-\]
-
-que es la norma de Frobenius del tensor de deformación y extiende de forma natural la convención 2D. Historial $\kappa$ máximo con condiciones de Kuhn-Tucker y ley de softening exponencial compartida con las versiones 1D y 2D.
+$\boldsymbol\sigma = (1-d)\,\mathbf{C}_e\,\boldsymbol\varepsilon$ con daño escalar $d$ gobernado por la deformación equivalente $\varepsilon_{eq}$, que se elige con \texttt{equivalent\_\allowbreak{}strain} entre las mismas tres medidas que \texttt{IsotropicDamage2D} (tabla de la sección anterior), ahora sobre el tensor 3D completo:
 
 \begin{itemize}
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0} (umbral de daño), \texttt{alpha} (parámetro de la ley de softening), \texttt{density} (opcional).
-  \item \textbf{Tangente}: algorítmica consistente en carga activa (no simétrica en general), secante en descarga y al saturar.
+  \item \texttt{energy} (por defecto): $\varepsilon_{eq} = \sqrt{\boldsymbol\varepsilon^\top\mathbf C_e\,\boldsymbol\varepsilon/E}$;
+  \item \texttt{mazars}: $\varepsilon_{eq} = \sqrt{\sum_i\langle\varepsilon_i\rangle_+^2}$ sobre las tres deformaciones principales (sin daño en compresión hidrostática);
+  \item \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}: función de $I_1 = \varepsilon_{xx} + \varepsilon_{yy} + \varepsilon_{zz}$ y de $J_2 = \tfrac16\left[(\varepsilon_{xx}-\varepsilon_{yy})^2 + (\varepsilon_{yy}-\varepsilon_{zz})^2 + (\varepsilon_{zz}-\varepsilon_{xx})^2\right] + \tfrac14(\gamma_{xy}^2 + \gamma_{yz}^2 + \gamma_{xz}^2)$, con $k = f_c/f_t$.
+\end{itemize}
+
+Las tres dan $\varepsilon_{eq} = \varepsilon$ en tracción uniaxial de esfuerzo ($\kappa_0 = f_t/E$). Historial $\kappa$ máximo con condiciones de Kuhn-Tucker y ley de softening exponencial compartida con las versiones 1D y 2D. Hasta el 2026-09-29 la medida era la norma del tensor $\sqrt{\boldsymbol\varepsilon:\boldsymbol\varepsilon}$ (retirada; ver \texttt{IsotropicDamage2D}).
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{kappa\_0} (umbral de daño), \texttt{alpha} (parámetro de la ley de softening), \texttt{equivalent\_\allowbreak{}strain} (\texttt{energy} default, \texttt{mazars} o \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}), \texttt{k} ($f_c/f_t > 0$, sólo y obligatorio con \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}), \texttt{density} (opcional).
+  \item \textbf{Tangente}: algorítmica consistente en carga activa (simétrica con \texttt{energy}, no simétrica en general con \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}), secante en descarga y al saturar.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
 materials:
   - {id: 1, type: Elastic3D,   E: 210.0e9, nu: 0.3, density: 7850.0}
   - {id: 2, type: VonMises3D,  E: 210.0e9, nu: 0.3, sigma_y: 250.0e6, H: 1.0e9}
+  # Daño 3D con cada medida de deformación equivalente (hormigón, f_t = 3 MPa):
+  - {id: 3, type: IsotropicDamage3D, E: 30.0e9, nu: 0.2, kappa_0: 1.0e-4, alpha: 800.0}
+  - {id: 4, type: IsotropicDamage3D, E: 30.0e9, nu: 0.2, kappa_0: 1.0e-4, alpha: 800.0,
+     equivalent_strain: mazars}
+  - {id: 5, type: IsotropicDamage3D, E: 30.0e9, nu: 0.2, kappa_0: 1.0e-4, alpha: 800.0,
+     equivalent_strain: modified_von_mises, k: 10.0}
 
 \end{lstlisting}
 
@@ -1306,7 +1569,7 @@ cohesive_materials:
 
 
 
-Este capítulo cubre los \textbf{solvers estáticos} del catálogo: lineal, no lineal (Newton-Raphson) y arc-length (Crisfield cilíndrico). Los solvers de análisis modal, dinámico (Newmark, HHT-\ensuremath{\alpha}, central differences) y de análisis en frecuencia / espectral (Harmonic, Response Spectrum) se documentan en el siguiente capítulo, \textquotedbl{}Análisis Dinámico\textquotedbl{}.
+Este capítulo cubre los \textbf{solvers estáticos} del catálogo: lineal, no lineal (Newton-Raphson), arc-length (Crisfield cilíndrico) y control indirecto de desplazamiento; al final, el arc-length por disipación de energía del módulo de usuario \texttt{dissipation\_\allowbreak{}control}. Los solvers de análisis modal, dinámico (Newmark, HHT-\ensuremath{\alpha}, central differences) y de análisis en frecuencia / espectral (Harmonic, Response Spectrum) se documentan en el siguiente capítulo, \textquotedbl{}Análisis Dinámico\textquotedbl{}.
 
 \section{\texttt{LinearSolver} --- solución directa lineal}
 
@@ -1315,7 +1578,7 @@ Resuelve $\mathbf K \cdot \mathbf U = \mathbf F$ con una sola factorización del
 \begin{itemize}
   \item \textbf{Cuándo usarlo}: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
   \item \textbf{Parámetros}: \texttt{linear\_algebra} (default \texttt{auto}; ver \textit{Solver} en el capítulo del YAML).
-  \item \textbf{Comprobaciones automáticas} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver \textit{Diagnóstico de Problemas}).
+  \item \textbf{Comprobaciones automáticas} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}): antes de resolver, que el modelo esté suficientemente apoyado; después, que la solución cumpla el equilibrio y que la matriz no sea singular. Si algo falla, el análisis se detiene con una explicación en vez de devolver resultados absurdos (ver \textit{Diagnóstico de Problemas}). Con \texttt{linear\_\allowbreak{}algebra: iterative} la matriz no se factoriza y no se puede comprobar si es singular: Solidum lo avisa en el log, una vez por análisis.
   \item \textbf{No aplica}: cualquier no-linealidad material (daño, plasticidad, cable) o geométrica (corotacional). Producirá resultados inconsistentes.
 \end{itemize}
 
@@ -1329,13 +1592,15 @@ solver:
 
 Bucle externo de incrementos del factor de carga $\lambda \in [0, 1]$; bucle interno Newton-Raphson sobre $\mathbf K_t \cdot \Delta\mathbf U = \mathbf R = \lambda\,\mathbf F_{\text{ext}} - \mathbf F_{\text{int}}$.
 
-\textbf{Criterio de convergencia dual}:
+\textbf{Criterio de convergencia dual} (se exigen los dos a la vez):
 
 \[
-\max(\text{err}_{\text{disp}}, \text{err}_{\text{force}}) < \text{tol}
+\lVert\mathbf T^\top\mathbf R\rVert \le \texttt{atol\_force} + \texttt{rtol\_force}\cdot\max(\lVert\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert), \qquad \lVert\Delta\mathbf U\rVert \le \texttt{atol\_disp} + \texttt{rtol\_disp}\cdot\lVert\mathbf U\rVert
 \]
 
-con $\text{err}_{\text{disp}} = \lVert\Delta\mathbf U\rVert / (\lVert\mathbf U\rVert + \epsilon)$ y $\text{err}_{\text{force}} = \lVert\mathbf R\rVert / \max(\lVert\lambda\,\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert, \epsilon)$.
+donde $\mathbf T^\top\mathbf R$ es el residuo de equilibrio en los grados de libertad libres: las reacciones de los apoyos no cuentan y, con restricciones multipunto, el residuo de cada esclavo se suma a sus maestros multiplicado por su coeficiente. Las tolerancias se configuran en el bloque \texttt{convergence} (capítulo «Archivo de Entrada YAML»).
+
+\textbf{Desplazamientos prescritos}: los valores de Dirichlet no nulos y el término independiente $g$ de las restricciones multipunto se aplican proporcionalmente al factor de carga, como $\lambda\,g$, igual que las cargas.
 
 \textbf{Adaptatividad} (\texttt{adaptive: true}):
 
@@ -1370,6 +1635,7 @@ Traza curvas de equilibrio con puntos límite de carga (snap-through, colapso), 
   \item \textbf{Predictor tangente}: $\Delta\mathbf U_t = \mathbf K_t^{-1} \cdot \mathbf F_{\text{ext}}^{\text{ref}}$; $\Delta\lambda = \pm\,dl / \lVert\Delta\mathbf U_t\rVert$. Signo elegido por proyección con el incremento previo.
   \item \textbf{Corrector iterativo}: en cada iteración resuelve dos sistemas ($\mathbf K \cdot \Delta\mathbf U_R = \mathbf R$ y $\mathbf K \cdot \Delta\mathbf U_t = \mathbf F_{\text{ext}}$) y aplica la restricción cuadrática cilíndrica $\lVert\delta\mathbf U\rVert^2 = dl^2$.
   \item \textbf{Primer paso}: se declara con \texttt{initial\_dlambda}, como \textbf{fracción de la carga de referencia} (0.1 si no se declara, es decir, el 10 \% de la carga). El solver lo convierte en longitud de arco con una resolución elástica, $dl_1 = \Delta\lambda_1\,\lVert\mathbf K^{-1}\mathbf F_{\text{ext}}^{\text{ref}}\rVert$, así que no hace falta conocer de antemano los desplazamientos del modelo y el valor significa lo mismo en cualquier sistema de unidades. La alternativa \texttt{initial\_dl} fija la longitud de arco directamente, en unidades de desplazamiento; sólo tiene sentido si se conoce la escala del problema, y no puede declararse junto con \texttt{initial\_dlambda}.
+  \item \textbf{Métrica del arco}: $\lVert\delta\mathbf U\rVert$ se mide sobre todos los grados de libertad, también los esclavos de las restricciones multipunto y los prescritos. Un desplazamiento prescrito grande frente a la deformación consume casi toda la longitud de arco y el paso se comporta como un control por carga. Un modelo con nodos atados recorre una secuencia de pasos distinta de la del modelo con los nodos fundidos: todos los puntos son de equilibrio, y con plasticidad o daño los resultados difieren dentro del error de discretización de la trayectoria de carga, como al cambiar el tamaño de paso.
   \item \textbf{Auto-ajuste de \texttt{dl}}: se agranda en convergencias rápidas (hasta \texttt{dl\_max\_factor} veces la del primer paso), se reduce en lentas, biseca al fallar.
   \item \textbf{Llegada a \texttt{max\_lambda}}: todos los pasos siguen la curva. Si uno la cruza, se repite desde el estado anterior hasta llegar exactamente a \texttt{max\_lambda}. El solver nunca impone la carga máxima sin haber recorrido la curva hasta ella; si hay un colapso antes, el trazado se detiene por \texttt{max\_steps} y lo avisa.
 \end{itemize}
@@ -1391,48 +1657,16 @@ solver:
 
 \textbf{Referencia}: Crisfield, \textquotedbl{}A fast incremental/iterative solution procedure that handles snap-through\textquotedbl{} (\textit{Computers \& Structures}, 1981).
 
-\section{\texttt{DissipationArcLengthSolver} --- arc-length por disipación de energía}
-
-Variante de \texttt{ArcLengthSolver} que controla la \textbf{disipación incremental de energía} por paso en lugar de la longitud de arco euclídea. Es la herramienta indicada cuando la curva $\mathbf U$--$\lambda$ tiene tramos casi verticales, donde la restricción cilíndrica se vuelve mal condicionada.
-
-\textbf{Diferencia esencial}: la restricción de paso
-
-\[
-g(\Delta\mathbf U, \Delta\lambda) = \tfrac{1}{2}\left(\lambda_n \mathbf F \cdot \Delta\mathbf U - \Delta\lambda\, \mathbf F \cdot \mathbf U_n\right) = \tau
-\]
-
-es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del cilíndrico. El corrector tiene por tanto una sola raíz: desaparecen la selección de raíz por menor ángulo y la patología de raíces imaginarias.
-
-\begin{itemize}
-  \item \textbf{Switching automático}: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
-  \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_\allowbreak{}threshold}.
-  \item \textbf{Cuándo usarlo}: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
-  \item \textbf{Limitación medida}: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda \#27). Para retrocesos, \texttt{IndirectDisplacementSolver}.
-  \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida (\texttt{CST\_Embedded2D}, módulo de usuario \texttt{discontinuities}) con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que el seguimiento de signo aproximado no maneja. Es una limitación documentada del solver, no un error de configuración.
-\end{itemize}
-
-\begin{lstlisting}[language=yaml]
-solver:
-  type: DissipationArcLengthSolver
-  max_lambda: 1.0
-  initial_dlambda: 0.05
-  initial_tau: 1.0e-4
-  max_steps: 300
-
-\end{lstlisting}
-
-\textbf{Referencia}: Gutiérrez, \textquotedbl{}Energy release control for numerical simulations of failure in quasi-brittle solids\textquotedbl{} (\textit{Communications in Numerical Methods in Engineering}, 2004); switching a la Verhoosel et al. (2009).
-
 \section{\texttt{IndirectDisplacementSolver} --- control indirecto de desplazamiento}
 
-Variante de \texttt{ArcLengthSolver} que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de \textbf{una magnitud elegida}: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los \textbf{retrocesos} (snap-back) por localización, que los otros dos solvers de arco no siguen.
+Variante de \texttt{ArcLengthSolver} que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de \textbf{una magnitud elegida}: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los \textbf{retrocesos} (snap-back) por localización, que \texttt{ArcLengthSolver} no sigue (tampoco el arc-length por disipación del módulo de usuario \texttt{dissipation\_\allowbreak{}control}).
 
 \[
 \mathbf c^\top \Delta\mathbf U = \Delta l
 \]
 
 \begin{itemize}
-  \item \textbf{\texttt{control}} (obligatorio): la magnitud, como lista de términos \texttt{\{node, dof, coef\}}. El alargamiento entre los nodos 6 y 7 en $x$ es \texttt{[\{node: 7, dof: ux, coef: 1.\allowbreak{}0\}, \{node: 6, dof: ux, coef: -1.\allowbreak{}0\}]}. Los grados de libertad deben ser libres, y la magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
+  \item \textbf{\texttt{control}} (obligatorio): la magnitud, como lista de términos \texttt{\{node, dof, coef\}}. El alargamiento entre los nodos 6 y 7 en $x$ es \texttt{[\{node: 7, dof: ux, coef: 1.\allowbreak{}0\}, \{node: 6, dof: ux, coef: -1.\allowbreak{}0\}]}. Los grados de libertad no pueden estar prescritos: un apoyo, o el esclavo de una restricción multipunto cuyos maestros están todos apoyados, tiene un movimiento que no depende del equilibrio. El esclavo de una restricción multipunto con maestros libres sí vale, porque sus maestros fijan su incremento. La magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
   \item \textbf{Primer paso}: \texttt{initial\_dlambda}, fracción de la carga de referencia, como en \texttt{ArcLengthSolver}.
   \item \textbf{Sin crecimiento del paso por omisión} (\texttt{dl\_\allowbreak{}max\_\allowbreak{}factor: 1.\allowbreak{}0}). Con ablandamiento local, un paso que sobrepasa el pico más que la imperfección que localiza el daño puede converger a otro equilibrio, con más zonas ablandadas de las que el camino físico produciría. Esto le pasa a cualquier solver, también al control por desplazamiento; la defensa es un paso pequeño cerca del pico.
 \end{itemize}
@@ -1451,6 +1685,53 @@ solver:
 
 \textbf{Referencia}: R. de Borst, \textquotedbl{}Computation of post-bifurcation and post-failure behavior of strain-softening solids\textquotedbl{} (\textit{Computers \& Structures}, 1987).
 
+\section{Módulo de usuario \texttt{dissipation\_\allowbreak{}control}: arc-length por disipación de energía}
+
+No es un solver estándar según el criterio de admisión del proyecto: ningún código general establecido implementa esta restricción de forma nativa. Por eso no forma parte del programa principal: vive en el \textbf{módulo de usuario} \texttt{dissipation\_\allowbreak{}control} (\texttt{solidum/\allowbreak{}user/\allowbreak{}dissipation\_\allowbreak{}control/\allowbreak{}}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}). \texttt{import solidum} no lo carga; el YAML que lo use debe declararlo:
+
+\begin{lstlisting}[language=yaml]
+user_modules: [dissipation_control]
+
+\end{lstlisting}
+
+Sin esa línea, la lectura se detiene con un error que nombra el solver desconocido y lista los módulos de usuario disponibles. En Python, \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module(\textquotedbl{}dissipation\_\allowbreak{}control\textquotedbl{})} o \texttt{from solidum.\allowbreak{}user.\allowbreak{}dissipation\_\allowbreak{}control import DissipationArcLengthSolver}.
+
+\subsection{\texttt{DissipationArcLengthSolver} --- arc-length por disipación de energía}
+
+Variante de \texttt{ArcLengthSolver} que controla la \textbf{disipación incremental de energía} por paso en lugar de la longitud de arco euclídea. Es la herramienta indicada cuando la curva $\mathbf U$--$\lambda$ tiene tramos casi verticales, donde la restricción cilíndrica se vuelve mal condicionada.
+
+\textbf{Diferencia esencial}: la restricción de paso
+
+\[
+g(\Delta\mathbf U, \Delta\lambda) = \tfrac{1}{2}\left(\lambda_n \mathbf F \cdot \Delta\mathbf U - \Delta\lambda\, \mathbf F \cdot \mathbf U_n\right) = \tau
+\]
+
+es \textbf{lineal} en $(\Delta\mathbf U, \Delta\lambda)$, frente a la cuadrática del cilíndrico. El corrector tiene por tanto una sola raíz: desaparecen la selección de raíz por menor ángulo y la patología de raíces imaginarias.
+
+\begin{itemize}
+  \item \textbf{Switching automático}: arranca en modo cilíndrico (la restricción por disipación es idénticamente nula mientras $\lambda_n = \mathbf U_n = 0$) y conmuta a disipación en cuanto detecta disipación neta sobre el umbral. La conmutación es automática en ambos sentidos.
+  \item \textbf{Parámetros}: todos los de \texttt{ArcLengthSolver}, más \texttt{initial\_tau} (obligatorio) y la familia \texttt{tau\_grow\_factor}, \texttt{tau\_max\_factor}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}factor}, \texttt{tau\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{tau\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dissipation\_\allowbreak{}threshold}.
+  \item \textbf{Cuándo usarlo}: softening de daño continuo (1D/2D) con rama post-pico pronunciada, donde el cilíndrico converge mal.
+  \item \textbf{Limitación medida}: tampoco sigue el retroceso de una barra con daño localizado. Su predictor degenera en el régimen de descarga del material y el paso que cruza el pico puede saltar a otro equilibrio (deuda \#27). Para retrocesos, \texttt{IndirectDisplacementSolver}.
+  \item \textbf{Limitación conocida}: \textbf{no} resuelve el caso de discontinuidad embebida (\texttt{CST\_Embedded2D}, módulo de usuario \texttt{discontinuities}) con penalty cohesivo rígido. La activación discreta del criterio de Rankine produce un salto en las fuerzas internas que la regla de signo del predictor (producto escalar con el paso anterior) no maneja. Es una limitación documentada del solver, no un error de configuración. El diagnóstico es anterior a la corrección de la tangente cohesiva del 2026-09-23 y no se ha vuelto a comprobar; con desplazamiento impuesto, \texttt{NonlinearSolver} sí recorre hoy esa rama. Un modelo que combine los dos módulos los declara juntos: \texttt{user\_\allowbreak{}modules: [discontinuities, dissipation\_\allowbreak{}control]}.
+  \item \textbf{Puntos abiertos}: la spec del solver registra tres cuestiones físicas pendientes de decisión (el signo del predictor en modo de disipación, el piso de la escala del umbral de conmutación y el alcance en plasticidad). Mientras no se cierren, conviene limitar su uso al daño continuo validado.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+user_modules: [dissipation_control]
+solver:
+  type: DissipationArcLengthSolver
+  max_lambda: 1.0
+  initial_dlambda: 0.05
+  initial_tau: 1.0e-4
+  max_steps: 300
+
+\end{lstlisting}
+
+\textbf{Referencia}: Gutiérrez, \textquotedbl{}Energy release control for numerical simulations of failure in quasi-brittle solids\textquotedbl{} (\textit{Communications in Numerical Methods in Engineering}, 2004); switching a la Verhoosel et al. (2009).
+
+La formulación completa está en la spec del solver, en el apéndice «Módulos de usuario» del Manual de Referencia.
+
 
 \newpage
 
@@ -1463,7 +1744,7 @@ Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (\h
 
 \begin{enumerate}
   \item \textbf{Modal}: autovalores generalizados $\mathbf K \boldsymbol\phi = \omega^2\mathbf M\boldsymbol\phi$ (\texttt{ModalSolver}).
-  \item \textbf{Mass lumping}: matriz de masa diagonal vía HRZ canónico (sólidos) o nodal directo (frames). Disponible en todos los elementos vía \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping=\textquotedbl{}lumped\textquotedbl{})}.
+  \item \textbf{Mass lumping}: matriz de masa diagonal vía HRZ canónico (sólidos y marcos Euler-Bernoulli) o nodal directo (barras, cables y \texttt{Frame2DTimoshenko}). Disponible en todos los elementos vía \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping=\textquotedbl{}lumped\textquotedbl{})}.
   \item \textbf{Transitorio implícito lineal}: Newmark-$\beta$ (\texttt{NewmarkSolver}) y variante HHT-$\alpha$ con disipación numérica (\texttt{HHTSolver}).
   \item \textbf{Transitorio implícito no lineal}: Newton-Newmark (\texttt{NewtonNewmarkSolver}) y Newton-HHT (\texttt{NewtonHHTSolver}).
   \item \textbf{Transitorio explícito}: diferencias centradas leapfrog (\texttt{CentralDifferenceSolver}).
@@ -1473,11 +1754,18 @@ Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (\h
 
 Todos los solvers consumen la masa global que cada elemento devuelve por \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping)} con \texttt{lumping \ensuremath{\in} \{\textquotedbl{}consistent\textquotedbl{}, \textquotedbl{}lumped\textquotedbl{}\}} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}).
 
+\textbf{Restricciones multipunto.} Los ocho solvers admiten las restricciones lineales \texttt{linear\_\allowbreak{}constraints} ($u_s = g_s + \sum_i \alpha_{si}\,u_{m_i}$, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}) por el mismo operador de eliminación directa que los apoyos: $\mathbf M_{\text{red}} = \mathbf T^\top\mathbf M\,\mathbf T$, $\mathbf C_{\text{red}} = \mathbf T^\top\mathbf C\,\mathbf T$, $\mathbf K_{\text{red}} = \mathbf T^\top\mathbf K\,\mathbf T$, y los resultados (historias, modos, amplitudes armónicas, respuesta espectral) se expanden con $\mathbf T$. En el armónico y el espectral el término $g$ no interviene, como el valor de un apoyo. Dos precisiones:
+
+\begin{itemize}
+  \item En los transitorios, de \texttt{u0} y \texttt{u0\_dot} sólo cuentan las componentes libres: los DOFs esclavos se reconstruyen como $\mathbf T\,\mathbf u_0[\text{libres}] + \mathbf g$ y $\mathbf T\,\dot{\mathbf u}_0[\text{libres}]$. Si el valor dado en un esclavo incumple su restricción, se descarta con un aviso en el log y la respuesta depende de qué DOF se declaró esclavo; \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration}, que proyecta en norma $\mathbf M$, daría otra. Conviene dar condiciones iniciales coherentes con las restricciones.
+  \item \texttt{CentralDifferenceSolver} exige $\mathbf T^\top\mathbf M\,\mathbf T$ diagonal: admite un solo maestro por esclavo (atado de nodos, periodicidad, apoyo oblicuo) y rechaza una restricción con varios maestros cuyo esclavo tiene masa (nodo colgante), con un mensaje que nombra los DOFs.
+\end{itemize}
+
 \section{\texttt{ModalSolver} --- análisis modal por autovalores generalizados}
 
 Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf M \boldsymbol\phi$ con $\mathbf K$ evaluada en $\mathbf u = 0$ (régimen lineal) y $\mathbf M$ ensamblada por cuadratura consistente sobre todos los elementos. La capa algebraica (\texttt{EigenSolver}) envuelve \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}eigsh} con \textit{shift-invert} en $\sigma$ (ARPACK Lanczos), de modo que basta una sola factorización de $\mathbf K - \sigma\mathbf M$ para extraer las $n$ frecuencias más bajas.
 
-\textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0; \texttt{sigma=0} extrae las frecuencias más bajas), \texttt{which} (default \texttt{\textquotedbl{}LM\textquotedbl{}}), \texttt{tolerance} (default \texttt{1.0e-9}), \texttt{lumping} (default \texttt{\textquotedbl{}consistent\textquotedbl{}}; la masa concentrada queda diferida a fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009}).
+\textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0; \texttt{sigma=0} extrae las frecuencias más bajas), \texttt{which} (default \texttt{\textquotedbl{}LM\textquotedbl{}}), \texttt{tolerance} (default \texttt{1.0e-9}), \texttt{lumping} (default \texttt{\textquotedbl{}consistent\textquotedbl{}}; \texttt{\textquotedbl{}lumped\textquotedbl{}} para la masa concentrada, ver \textit{Mass lumping} al final del capítulo).
 
 \textbf{Salida}: instancia de \texttt{ModalResult} con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales). El método \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration(M, u0, u0\_\allowbreak{}dot, t)} reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
 
@@ -1638,7 +1926,7 @@ Una sola clase cubre lineal y no lineal con parámetro \texttt{nonlinear}: con \
 
 \textbf{Condición de estabilidad CFL}: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta divergencia exponencial a posteriori y aborta con \texttt{RuntimeError} informativo si la condición se viola.
 
-\textbf{Requisitos}: \texttt{lumping=\textquotedbl{}lumped\textquotedbl{}} obligatorio (\texttt{\textquotedbl{}consistent\textquotedbl{}} rechazado con \texttt{ValueError} --- el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). Frame3D con eje oblicuo a los ejes globales también rechazado (la rotación rompe la diagonalidad estricta --- limitación documentada estándar, Cook-Malkus-Plesha §11.4).
+\textbf{Requisitos}: \texttt{lumping=\textquotedbl{}lumped\textquotedbl{}} obligatorio (\texttt{\textquotedbl{}consistent\textquotedbl{}} rechazado con \texttt{ValueError} --- el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). La masa reducida $\mathbf T^\top\mathbf M\,\mathbf T$ debe ser estrictamente diagonal (umbral relativo a su mayor término diagonal, independiente de las unidades); se rechazan con \texttt{ValueError} dos casos: Frame3D con eje oblicuo a los ejes globales (la rotación rompe la diagonalidad estricta --- limitación documentada estándar, Cook-Malkus-Plesha §11.4) y una restricción multipunto con varios maestros cuyo esclavo tiene masa (el nodo colgante $u_h = \tfrac12 u_a + \tfrac12 u_b$ acopla a sus maestros; usar \texttt{NewmarkSolver} o \texttt{HHTSolver} con \texttt{lumping: lumped}).
 
 \begin{lstlisting}[language=yaml]
 solver:
@@ -1765,8 +2053,12 @@ Independiente de cualquier solver: todos los elementos del catálogo soportan \t
 
 \begin{itemize}
   \item \textbf{Sólidos isoparamétricos} (Tri3, Quad4, Tri6, Quad8, Quad9): \textbf{HRZ canónico} (Hinton-Rock-Zienkiewicz 1976) centralizado en \texttt{solidum.\allowbreak{}math.\allowbreak{}mass\_\allowbreak{}lumping.\allowbreak{}lump\_\allowbreak{}hrz}. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
-  \item \textbf{Vigas y marcos} (Truss, Cable, Frame2D Euler/Timoshenko/EulerCorot, Frame3D): \textbf{lumping nodal directo} --- $\rho AL/2$ traslacional + $\rho I L/2$ rotacional por nodo. Único esquema que sobrevive a la rotación local\ensuremath{\to}global manteniendo $\mathbf M$ diagonal.
+  \item \textbf{Barras y cables} (Truss, Cable): $\rho AL/2$ por grado de libertad traslacional y nodo.
+  \item \textbf{Marcos Euler-Bernoulli} (\texttt{Frame2DEuler}, \texttt{Frame2DEulerCorot}, \texttt{Frame3D}): \textbf{HRZ} de la masa consistente --- $\rho AL/2$ traslacional y $\rho AL^3/78$ en cada giro de flexión por nodo; en \texttt{Frame3D}, además, $\rho J_p L/2$ en el giro de torsión ($J_p = I_y + I_z$). Como la hipótesis de Euler-Bernoulli desprecia la inercia rotatoria de la sección, ni la masa consistente ni la concentrada dependen de $I$ (salvo la torsión de \texttt{Frame3D}).
+  \item \textbf{\texttt{Frame2DTimoshenko}}: $\rho AL/2$ traslacional y $\rho I L/2$ rotacional por nodo --- conserva la inercia rotatoria, porque en Timoshenko el giro es independiente de la pendiente.
 \end{itemize}
+
+En los marcos 2D el bloque traslacional por nodo es $m\,\mathbf I_2$, así que la matriz sigue siendo diagonal tras la rotación local\ensuremath{\to}global.
 
 \textbf{Diagonalidad en globales}: garantizada en todos los elementos excepto Frame3D con eje oblicuo (queda \textbf{bloque-diagonal} por nodo --- limitación documentada estándar; \texttt{CentralDifferenceSolver} rechaza este caso explícitamente).
 
@@ -1883,7 +2175,23 @@ boundary_conditions:
 
 \end{lstlisting}
 
-\textbf{Todo modelo térmico necesita al menos un Dirichlet.} Sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico.
+\textbf{El estacionario necesita al menos un Dirichlet; el transitorio, no.} En el estacionario, sin ninguno, la matriz de conductividad es singular: un campo de temperatura uniforme no produce gradiente ni flujo, y el nivel absoluto de temperatura queda indeterminado. Es el análogo térmico de un modo de sólido rígido, y el error lo nombra así en vez de reportar un fallo algebraico genérico. Las restricciones multipunto no cuentan como Dirichlet: relacionan temperaturas entre sí y el campo uniforme las cumple. Una restricción lineal sin maestros (\texttt{masters: []}, \texttt{T\_s = g}) sí es un Dirichlet. En el transitorio un modelo sin ninguna temperatura impuesta es un \textbf{cuerpo aislado} y está bien planteado: la capacidad calorífica fija el nivel de temperatura a partir de \texttt{T\_initial}, y la energía almacenada crece exactamente lo que aportan las fuentes (un cuerpo aislado con una fuente uniforme $Q$ se calienta como $T(t) = T_0 + Q\,t/(\rho c)$).
+
+\subsection{Restricciones multipunto sobre \texttt{T}}
+
+El bloque \texttt{linear\_\allowbreak{}constraints} (ver el capítulo del formato YAML) admite también el DOF \texttt{T}: $T_s = g + \sum_i \alpha_i\,T_{m_i}$. El caso típico es atar dos nodos coincidentes de mallas distintas con $T_s = T_m$ (continuidad de temperatura en una interfaz), la periodicidad, o un salto constante con $g \ne 0$. Atar dos nodos coincidentes da el mismo campo que fundirlos en uno, en el estacionario y en el transitorio.
+
+\begin{lstlisting}[language=yaml]
+linear_constraints:
+  # Continuidad de temperatura entre el nodo 105 y el nodo 5, coincidentes.
+  - slave: {node: 105, dof: T}
+    masters:
+      - {node: 5, dof: T}
+    coefficients: [1.0]
+
+\end{lstlisting}
+
+Con una temperatura impuesta variable en el tiempo (argumento \texttt{dirichlet\_func} del \texttt{ThetaMethodSolver}, sólo desde Python), la función da los valores de los nodos con Dirichlet declarado; los esclavos de las restricciones los reconstruye el solver con la propia restricción, así que un esclavo atado a un nodo con temperatura impuesta la sigue y el salto $g$ se conserva. Un valor no nulo en un nodo sin Dirichlet declarado se rechaza: el conjunto de nodos prescritos lo fija el modelo.
 
 \subsection{Neumann --- flujo prescrito}
 
@@ -1898,6 +2206,18 @@ thermal_loads:
 \textbf{Convención de signo}: $\bar q > 0$ es flujo \textbf{saliente} del dominio, es decir \textbf{enfriamiento}. Un flujo entrante (calentamiento) se declara con $\bar q < 0$. El signo sale de la forma débil, donde el término de frontera aparece como $-\int_\Gamma w\,\bar q\,d\Gamma$.
 
 \textbf{Un borde o cara sin declarar es adiabático} ($\bar q = 0$), igual que un borde sin carga es libre de tracción en mecánica. No hay que declarar el flujo nulo.
+
+Con una malla gmsh, el flujo se declara sobre un grupo físico de contorno, cuyas celdas son los bordes exactos que se cargan:
+
+\begin{lstlisting}[language=yaml]
+thermal_loads:
+  boundary_flux_by_group:
+    Cara_caliente: {q: -200.0}             # entrante: calentamiento
+    Cara_fria: {q: "50*(1 + x)"}           # variable a lo largo del borde
+
+\end{lstlisting}
+
+\texttt{q} y \texttt{Q} admiten expresiones de la posición \texttt{x}, \texttt{y}, \texttt{z} (y, en el flujo, de la normal exterior \texttt{nx}, \texttt{ny}, \texttt{nz}); la sintaxis está en el capítulo del archivo YAML, «Valores Variables: Expresiones».
 
 Los índices de borde y cara son los mismos que en los elementos mecánicos: \texttt{edge: 0} conecta los nodos locales 0-1, \texttt{edge: 1} los 1-2, etc.
 
@@ -2068,7 +2388,7 @@ solver:
 
 Con estos valores el nodo central llega a $59.998$, frente al $60$ exacto del perfil lineal estacionario. La diferencia \textbf{no es error del esquema}: con $\Delta t = 2000$ s y 200 pasos el análisis cubre $4\times10^5$ s, mientras el tiempo de difusión global de esta pared es $L^2/\alpha \approx 3.2\times10^5$ s --- el transitorio está terminando pero aún no ha terminado. Es exactamente el efecto descrito en «Elección de $\Delta t$»: alargando el análisis, el campo converge al perfil lineal $100 \to 20$ que da el \texttt{LinearSolver} sobre el mismo modelo, a precisión de máquina.
 
-Como la condición inicial (20 \ensuremath{^{\circ}}C) contradice el Dirichlet impuesto (100 \ensuremath{^{\circ}}C) en la cara izquierda, el solver \textbf{avisa} de la discontinuidad en $t=0$ sin abortar: un choque térmico es modelización legítima, y es precisamente el caso que motiva el default $\theta = 1$.
+Como la condición inicial (20 \ensuremath{^{\circ}}C) contradice el Dirichlet impuesto (100 \ensuremath{^{\circ}}C) en la cara izquierda, el solver \textbf{avisa} de la discontinuidad en $t=0$ sin abortar: un choque térmico es modelización legítima, y es precisamente el caso que motiva el default $\theta = 1$. El aviso compara sólo los nodos con Dirichlet declarado, no los esclavos de restricciones multipunto.
 
 \section{Limitaciones actuales}
 
@@ -2098,7 +2418,13 @@ Mediante \texttt{meshio}, Solidum FEM exporta los resultados en archivos \texttt
   \item \texttt{Displacements}: campo vectorial $(u_x, u_y, u_z)$ por nodo.
   \item \texttt{External\_Forces}: distribución nodal del vector de cargas aplicado en el paso actual.
   \item \texttt{Supports}: indicador booleano de DOFs restringidos.
+  \item \texttt{Temperature}: temperatura nodal, sólo si algún nodo tiene el DOF \texttt{T}.
+  \item \texttt{Sigma\_XX\_nodal} \ldots{} \texttt{Tau\_XZ\_nodal}, \texttt{Von\_Mises\_nodal}: suavizado nodal de orden 0 de los esfuerzos por celda (media simple sobre las celdas adyacentes a cada nodo). Sólo promedian las celdas de \textbf{sólidos mecánicos}: las barras, cables y marcos (celdas \texttt{line}) y los elementos térmicos no participan, tampoco cuando un elemento térmico se superpone a un sólido sobre los mismos nodos en un dominio multicampo $(u_x, u_y, T)$. Un modelo sin sólidos mecánicos (sólo térmico o sólo estructural 1D) no exporta estos campos.
 \end{itemize}
+
+\subsubsection{Restricciones multipunto y suavizado nodal}
+
+Con restricciones multipunto (bloque \texttt{linear\_\allowbreak{}constraints} en YAML, \texttt{add\_\allowbreak{}linear\_\allowbreak{}constraint} en Python) el archivo recibe la solución completa, con los DOF esclavos ya recuperados: \texttt{Displacements}, \texttt{Temperature} y todos los campos por celda son los del modelo resuelto también en los nodos esclavos. El suavizado nodal tiene una limitación: dos nodos coincidentes atados por una restricción ($u_s = u_m$, p. ej. para unir mallas no conformes) siguen siendo dos nodos distintos, y cada uno promedia sólo las celdas de su lado. En la interfaz, \texttt{Sigma\_*\_nodal} del nodo maestro y del esclavo difieren entre sí y del valor que daría la malla con el nodo fundido (que, si cada lado aporta el mismo número de celdas, es la media de las dos copias). Para leer el esfuerzo en la interfaz, use los campos por celda o promedie las dos copias.
 
 \subsection{Datos de Elemento (Cell Data)}
 
@@ -2360,6 +2686,54 @@ Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo,
 
 El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state}), así que funciona igual tras \texttt{LinearSolver.\allowbreak{}solve} directo, tras \texttt{solidum.run} o en un paso intermedio del \texttt{step\_callback}. Si el modelo lleva peso propio o fuerza de cuerpo, usar \texttt{solidum.run(...)} en vez de \texttt{solver.\allowbreak{}solve(.\allowbreak{}.\allowbreak{}.\allowbreak{})} para que \texttt{SolveResult.\allowbreak{}element\_\allowbreak{}forces} reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
 
+\section{Resultado de un análisis estático: \texttt{SolveResult}}
+
+\texttt{solidum.run(...)} (y \texttt{solidum.\allowbreak{}run\_\allowbreak{}yaml(.\allowbreak{}.\allowbreak{}.\allowbreak{})} con un solver estático) devuelve un \texttt{SolveResult} inmutable, que queda también en \texttt{domain.\allowbreak{}last\_\allowbreak{}result}:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Campo} & \textbf{Contenido} \\
+\hline
+\texttt{U} & Solución global (desplazamientos y giros, o temperaturas), shape \texttt{(n\_dof,)}. \\
+\texttt{F\_applied} & Cargas que ve el sistema (nodales más equivalentes de elemento), escaladas por el factor de carga final. \\
+\texttt{R} & Reacciones de los \textbf{apoyos}, shape \texttt{(n\_dof,)}: los grados de libertad con valor prescrito y las restricciones multipunto que actúan como apoyo (un rodillo oblicuo). Ceros en el resto. \\
+\texttt{reactions\_\allowbreak{}by\_\allowbreak{}node} & \texttt{\{nodo: \{dof: valor\}\}} de \texttt{R}: los nodos con algún valor prescrito y los grados de libertad de las restricciones multipunto de apoyo. \\
+\texttt{constraint\_\allowbreak{}forces} & Fuerzas de restricción de las restricciones multipunto de \textbf{unión} (atado de mallas, periodicidad, unión rígida), shape \texttt{(n\_dof,)}; ceros si no hay. \\
+\texttt{constraint\_\allowbreak{}forces\_\allowbreak{}by\_\allowbreak{}node} & \texttt{\{nodo: \{dof: valor\}\}} de \texttt{constraint\_\allowbreak{}forces} en los grados de libertad de esas uniones. \\
+\texttt{element\_forces} & \texttt{\{elemento: ElementForces\}} con las fuerzas internas (N, V, M, T) de los elementos estructurales. \\
+\texttt{converged}, \texttt{num\_steps} & Si el análisis llegó al final y cuántos pasos convergidos dio. \\
+\hline
+\end{tabularx}
+\end{center}
+Las reacciones y las fuerzas de restricción cumplen \texttt{F\_\allowbreak{}int − F\_\allowbreak{}applied = R + constraint\_\allowbreak{}forces}: el equilibrio global es \texttt{\ensuremath{\Sigma}R + \ensuremath{\Sigma}F\_\allowbreak{}applied = 0} por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección \texttt{linear\_\allowbreak{}constraints} del capítulo «Archivo de Entrada YAML». En el problema térmico \texttt{R} es el flujo de calor nodal en los nodos con temperatura impuesta.
+
+\section{Secciones por fibras}
+
+El bloque \texttt{sections} del YAML tiene su equivalente directo en Python (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0021-secciones-de-marco-y-seccion-por-fibras.md}{ADR 0021}): las primitivas generan las fibras y la sección se pasa al marco con \texttt{section}, en lugar de \texttt{material} y las propiedades geométricas.
+
+\begin{lstlisting}[language=Python]
+from solidum import Domain, Elastic1D, Elastoplastic1D, Frame2DEuler
+from solidum.sections import FiberSection, RectangularPatch, BarLayer
+
+concreto = Elastic1D(E=3.0e10, density=2400.0)
+acero = Elastoplastic1D(E=2.0e11, sigma_y=4.2e8, H=2.0e9, density=7850.0)
+sec = FiberSection(
+    patches=[RectangularPatch(concreto, y=(-0.25, 0.25), z=(-0.15, 0.15), ny=40, nz=1),
+             BarLayer(acero, start=(-0.21, -0.11), end=(-0.21, 0.11), n=3, area=5.1e-4,
+                      displaces=concreto)],   # opcional: descuenta el concreto que ocupan
+    GJ=None,                        # obligatorio sólo si la usa un Frame3D
+)
+
+domain = Domain()
+n1 = domain.add_node(1, [0.0, 0.0])
+n2 = domain.add_node(2, [3.0, 0.0])
+domain.add_element(Frame2DEuler(1, [n1, n2], section=sec, n_ip=3))
+
+\end{lstlisting}
+
+\texttt{CircularPatch(material, r\_\allowbreak{}outer=.\allowbreak{}.\allowbreak{}.\allowbreak{}, r\_\allowbreak{}inner=0.\allowbreak{}0, center=(0.\allowbreak{}0, 0.\allowbreak{}0), n\_\allowbreak{}rad=.\allowbreak{}.\allowbreak{}.\allowbreak{}, n\_\allowbreak{}circ=.\allowbreak{}.\allowbreak{}.\allowbreak{})} y \texttt{Fiber(y, z, area, material, displaces=None)} completan las primitivas. Con \texttt{displaces} (el mismo objeto material del parche que contiene la barra), la sección añade al final de sus arreglos una fibra de compensación de área negativa por barra, marcada en \texttt{sec.\allowbreak{}is\_\allowbreak{}compensation} (ver \texttt{displaces} en el bloque \texttt{sections} del capítulo del YAML). La sección expone \texttt{sec.y}, \texttt{sec.z}, \texttt{sec.area} (arreglos por fibra), \texttt{sec.n\_fibers}, \texttt{sec.materials()} y \texttt{sec.\allowbreak{}mass\_\allowbreak{}properties()}; su respuesta a nivel de sección, \texttt{sec.\allowbreak{}response\_\allowbreak{}2d([eps0, kappa\_\allowbreak{}z], estados)} y \texttt{sec.\allowbreak{}response\_\allowbreak{}3d([eps0, kappa\_\allowbreak{}y, kappa\_\allowbreak{}z], estados)}, devuelve las fuerzas internas, su tangente y los estados nuevos de las fibras (con \texttt{sec.\allowbreak{}initial\_\allowbreak{}states()} como estado virgen), útil para trazar diagramas momento--curvatura sin montar un modelo. Tras resolver, \texttt{elem.\allowbreak{}compute\_\allowbreak{}internal\_\allowbreak{}forces(U)} añade \texttt{section\_\allowbreak{}deformations} y \texttt{section\_forces} en los puntos de Gauss.
+
 \section{Módulos de usuario}
 
 La raíz del paquete sólo reexporta el programa principal. Las formulaciones no estándar viven en módulos de usuario (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}) que \texttt{import solidum} no carga; en Python se cargan importándolos directamente o con \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module}, el equivalente de \texttt{user\_modules} en el YAML:
@@ -2425,12 +2799,27 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \begin{itemize}
   \item \textbf{\texttt{IllPosedSystemError: Resultado descartado\ldots{}}}
 \end{itemize}
-  El modelo está bien apoyado en conjunto, pero la solución no es fiable: o no satisface el equilibrio, o la matriz tiene pivotes numéricamente nulos. Casi siempre es un \textbf{mecanismo interno}: una rótula o articulación de más, una barra o elemento suelto, o dos partes unidas por un solo nodo que pueden girar entre sí. Más raramente, rigideces muy desproporcionadas entre partes del modelo (penalizaciones, unidades mezcladas). Revisar la conectividad. Antes de esta comprobación, un modelo así devolvía desplazamientos absurdos sin ningún aviso.
+  El modelo está bien apoyado en conjunto, pero la solución no es fiable: o tiene un \textbf{mecanismo interno}, o el solver no consiguió resolver el sistema (\textit{error hacia atrás normado} por encima de 10\ensuremath{^{-}}¹⁰, algo que no debería pasar con un modelo bien planteado). Un mecanismo interno es una parte que puede moverse sin deformar ningún elemento: una rótula o articulación de más, una barra o elemento suelto, o dos partes unidas por un solo nodo que pueden girar entre sí. El mensaje dice qué elementos se mueven y, si lo hacen como un sólido rígido, cómo: \textit{\textquotedbl{}la parte formada por los elementos 1025--2048 puede moverse sin deformarse: giro alrededor del eje z que pasa por (1, 1)\textquotedbl{}}. Si el modelo es correcto pero tiene rigideces muy desproporcionadas (zonas rígidas, un material casi incompresible), no es un mecanismo: su modo de menor energía deforma algún elemento y no se rechaza por esto. Más raramente, rigideces muy desproporcionadas entre partes del modelo (penalizaciones, unidades mezcladas). Revisar la conectividad. Antes de esta comprobación, un modelo así devolvía desplazamientos absurdos sin ningún aviso. Si el mensaje dice que \textit{el solver directo no pudo factorizar la matriz}, falta rigidez por completo en algún grado de libertad: un nudo al que sólo llega una barra en línea recta, un grado de libertad que ningún elemento usa, un giro sin rigidez.
+
+\begin{itemize}
+  \item \textbf{\texttt{IllPosedSystemError: Análisis descartado (NonlinearSolver): la matriz tangente inicial (U = 0)\ldots{}}}
+\end{itemize}
+  Lo mismo en un análisis no lineal (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver}): la matriz tangente inicial es singular, así que el modelo tiene un mecanismo interno, aunque la carga no lo active, y el mensaje dice qué elementos se mueven. Si ningún elemento es geométricamente no lineal, la rigidez del modelo no puede crecer al deformarse (la no linealidad del material sólo la reduce) y el mecanismo lo es durante todo el análisis: por eso se rechaza antes de iterar. Para ver la forma del mecanismo, hacer un análisis modal del mismo modelo con densidad en los materiales: cada mecanismo aparece como una frecuencia nula y su forma modal muestra qué parte se mueve.
+
+\begin{itemize}
+  \item **Aviso: *la matriz tangente inicial (U = 0) es singular: el modelo tiene N mecanismo(s) interno(s)\ldots{}***
+\end{itemize}
+  El mismo caso con elementos geométricamente no lineales (corrotacionales, cables) o materiales unilaterales. La rigidez geométrica, o la de un cable al tensarse, puede estabilizar el mecanismo al deformarse ---una red de cables sin pretensado es el ejemplo típico---, así que el análisis sigue. Si el modelo no es de ese tipo, revisar la conectividad de los elementos que nombra el aviso.
+
+\begin{itemize}
+  \item **Aviso: *con el solver algebraico iterativo (linear\_algebra: iterative) no se comprueba si el modelo tiene un mecanismo interno\ldots{}***
+\end{itemize}
+  El solver iterativo no factoriza la matriz y no puede delatar un mecanismo interno que la carga no active: la solución cumpliría el equilibrio, pero con una parte arbitraria del mecanismo. El aviso sale una vez por análisis estático. Para comprobarlo, un análisis modal con densidad o una ejecución con \texttt{linear\_\allowbreak{}algebra: auto}.
 
 \begin{itemize}
   \item \textbf{\texttt{SingularTangentError} en un análisis no lineal}
 \end{itemize}
-  La rigidez tangente perdió rango: un punto límite o bifurcación (usar \texttt{ArcLengthSolver}), o un mecanismo (ver los dos puntos anteriores). Si el mensaje añade \textit{\textquotedbl{}el sistema tangente no se pudo resolver con precisión\textquotedbl{}}, la causa más probable es un mecanismo.
+  La rigidez tangente perdió rango: un punto límite o bifurcación (usar \texttt{ArcLengthSolver}), o un mecanismo (ver los puntos anteriores). Si el mensaje añade \textit{\textquotedbl{}el sistema tangente no se pudo resolver con precisión\textquotedbl{}}, la causa más probable es un mecanismo.
 
 \begin{itemize}
   \item \textbf{\texttt{MemoryError: Memoria insuficiente para factorizar\ldots{}}}
@@ -2467,8 +2856,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 24 de septiembre de 2026, 12:18\\[0.5em]
-Commit Git: \texttt{5e4b84b} (con cambios sin confirmar)\\[1em]
+Compilado el 27 de octubre de 2026, 16:09\\[0.5em]
+Commit Git: \texttt{fcc564f} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
