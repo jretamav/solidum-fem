@@ -106,7 +106,7 @@ Por defecto **Gauss–Legendre 2×2×2** (ocho puntos): orden de exactitud 3 en 
 
 $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\,\mathbf b\, dV = \sum_{p=1}^{n_g} \mathbf N(\boldsymbol\xi_p)^\top\,\mathbf b\,\det\mathbf J_p\, w_p,$$
 
-donde $\mathbf N$ es la matriz $3 \times 24$ de funciones de forma. Se reutiliza la cuadratura del elemento (Gauss $2 \times 2 \times 2$ por defecto). Exacto para $\mathbf b$ uniforme y geometría de paralelepípedo.
+donde $\mathbf N$ es la matriz $3 \times 24$ de funciones de forma. Se integra con la regla $2 \times 2 \times 2$ de la masa aunque la rigidez use $1 \times 1 \times 1$ (ADR 0022). $\mathbf b$ es constante o un campo $\mathbf b(\mathbf x)$.
 
 **Tracción de superficie $\bar{\mathbf t}$** sobre una cara $\Gamma_e \subset \partial\Omega_N$. Caras numeradas con normal saliente (ADR 0012):
 
@@ -121,7 +121,7 @@ donde $\mathbf N$ es la matriz $3 \times 24$ de funciones de forma. Se reutiliza
 
 $$\mathbf f_e^{t} = \int_{\Gamma_e} \mathbf N^\top\,\bar{\mathbf t}\, dS.$$
 
-Cuadratura 2D sobre la cara: Gauss $2 \times 2$ (cuatro puntos por cara). Exacto para tracción constante sobre cara plana. $\bar{\mathbf t}$ se especifica en **coordenadas globales** $(t_x, t_y, t_z)$; presiones normales se obtienen multiplicando previamente por la normal exterior de la cara. Tracción variable a lo largo de la cara no soportada en este paso.
+Cuadratura 2D sobre la cara: Gauss $2 \times 2$ (cuatro puntos por cara). Exacto para tracción constante sobre cara plana. $\bar{\mathbf t}$ se especifica en **coordenadas globales**: constante o campo $\bar{\mathbf t}(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria de la cara, que sale de la orientación antihoraria de ``FACE_NODES`` vista desde fuera (ADR 0022); una presión $p$ es $\bar{\mathbf t} = -p\,\mathbf n$. Se integra sobre la geometría real de la cara con sus funciones de forma.
 
 ### 13. Salida por punto de Gauss
 
@@ -195,6 +195,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cubo distorsionado (caras planas con nodos deslizados, elementos interiores curvos) y sector de cilindro hueco con tracción sobre las caras cilíndricas; Elastic3D; mallas n×n×n, n = 4, 8, 16"
+      expect: "orden observado entre los dos últimos niveles ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_test_3d
       setup: "8 Hex8 alrededor de un nodo interior (cubo 2×2×2 partido en
              ocho octantes) con campo lineal u_i = a_ij·x_j impuesto en
@@ -256,6 +260,7 @@ references:
 - **Clase**: `Hex8` (registrada vía `@ElementRegistry.register`).
 - **Funciones núcleo**: `_compute_kinematics_hex8(xi, eta, zeta, coords)`, `_det_jacobian_hex8(...)` y `_shape_functions_hex8(...)` con `@njit` (Numba) en [solidum/elements/solid_3d/_shared.py](../../solidum/elements/solid_3d/_shared.py). Integrandos comunes 3D (`_compute_integrands_3d`) y expansor masa traslacional (`_expand_scalar_mass_3d`) también en `_shared`.
 - **Tests**:
+  - [tests/validation/test_mms_solid_3d.py](../../tests/validation/test_mms_solid_3d.py) (soluciones manufacturadas), [tests/test_distributed_loads_3d.py](../../tests/test_distributed_loads_3d.py) (cargas variables).
   - [tests/test_solid_3d.py](../../tests/test_solid_3d.py) — clase `TestHex8Element` (10 tests: dimensiones/DOFs, simetría K, patch tracción uniaxial, jacobiano negativo abortado, body load, face traction (balance + nodos activos + índice fuera de rango), masa consistente y lumped HRZ, gauss state).
   - [tests/test_rigid_body_modes.py](../../tests/test_rigid_body_modes.py) — `TestRBMHex8` (5 tests: traslación, 3 rotaciones independientes en (x, y, z), rank-deficiency = 6 modos rígidos).
   - [tests/validation/test_cube_lame_3d.py](../../tests/validation/test_cube_lame_3d.py) — `test_uniaxial_traction_hex8_exact`, `test_hydrostatic_compression_hex8` (solución exacta a precisión máquina).
@@ -270,3 +275,4 @@ references:
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). La masa consistente se integra siempre con la regla completa 2×2×2 aunque K use integración reducida (con la regla del elemento y 1 punto, M quedaba de rango 3/24 y el problema modal era singular). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin3d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 2). `compute_body_load` acepta un campo `b(x)` y `compute_face_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria de la cara (una presión es `−p·n`); implementación común en `_SolidLoads3D`. La fuerza de cuerpo se integra con la regla de la masa (2×2×2, también con rigidez 1×1×1); la de cara, sobre la geometría real con las funciones de forma de la cara. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 2 en L² y 1 en energía en el cubo distorsionado y en el cilindro hueco.

@@ -69,9 +69,9 @@ Para problemas con Jacobiano variable (geometría distorsionada, mid-edges fuera
 
 ### 12. Cargas distribuidas consistentes
 
-**Body load**: ``∫ N^T b dV`` con la cuadratura del elemento. Reparto no uniforme entre vértices y medios; suma global ``b·V_e`` exacta para ``b`` uniforme y geometría sin distorsión severa.
+**Body load**: ``∫ N^T b dV`` con la regla ``tet_15`` de la masa (ADR 0022; hasta el 2026-10-27, la ``tet_4`` del elemento); ``b`` constante o campo ``b(x)``. Reparto no uniforme entre vértices y medios; suma global ``b·V_e`` exacta para ``b`` uniforme y geometría sin distorsión severa.
 
-**Face traction**: cada cara del ``Tet10`` tiene **6 nodos** (3 vértices + 3 medios de arista) y se aproxima por funciones cuadráticas Tri6 sobre el triángulo de referencia $(0,0)$-$(1,0)$-$(0,1)$. Cuadratura ``tri_3`` (3 puntos, orden 2) — exacta para tracción uniforme sobre cara plana.
+**Face traction**: cada cara del ``Tet10`` tiene **6 nodos** (3 vértices + 3 medios de arista) y se aproxima por funciones cuadráticas Tri6 sobre el triángulo de referencia $(0,0)$-$(1,0)$-$(0,1)$. Cuadratura ``tri_6`` (Dunavant, orden 4), exacta para $N_k N_l$ de la cara (hasta el 2026-10-27, ``tri_3``, exacta sólo para tracción constante). $\bar{\mathbf t}$ se especifica en **coordenadas globales**: constante o campo $\bar{\mathbf t}(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria de la cara, que sale de la orientación antihoraria de ``FACE_NODES`` vista desde fuera (ADR 0022); una presión $p$ es $\bar{\mathbf t} = -p\,\mathbf n$. Se integra sobre la geometría real de la cara con sus funciones de forma.
 
 | Cara | Vértices Tet10 | Medios Tet10 (en orden Tri6) | Normal saliente   |
 |------|----------------|-------------------------------|-------------------|
@@ -96,7 +96,7 @@ El orden dentro de cada cara reproduce la convención de ``_N_tri6`` del paquete
 
 ### Distorsión severa
 
-Para Tet10 con mid-edges desplazados fuera del centro real de la arista (mid-edges curvos para representar geometría curva), el Jacobiano deja de ser constante y la cuadratura ``tet_4`` puede subintegrar K. Recomendación: usar ``tet_15`` en mallas con curvatura severa.
+Para Tet10 con mid-edges desplazados fuera del centro real de la arista (mid-edges curvos para representar geometría curva), el Jacobiano deja de ser constante y la cuadratura ``tet_4`` puede subintegrar K. Recomendación: usar ``tet_15`` en mallas con curvatura severa. *Medido el 2026-10-27 (ADR 0022)*: con lados curvos, ``tet_4`` no pasa la prueba de la parcela exactamente (queda un error de consistencia que baja como h^3.3: 8·10⁻⁸ y 7·10⁻⁹ con n = 2 y 4 en el cubo distorsionado); con ``tet_15`` es exacta. El orden de convergencia no se resiente: el barrido de soluciones manufacturadas da orden 3 en L² y 2 en energía con ``tet_4``.
 
 ---
 
@@ -153,6 +153,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cubo distorsionado (caras planas con nodos deslizados, elementos interiores curvos) y sector de cilindro hueco con tracción sobre las caras cilíndricas; Elastic3D; mallas n×n×n, n = 2, 4, 8"
+      expect: "orden observado entre los dos últimos niveles ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_test_lineal
       setup: "campo lineal u_i = a_ij·x_j en los 10 nodos del contorno"
       expect: "ε constante = sym(a) en todos los Gauss"
@@ -218,6 +222,7 @@ references:
 - **Funciones núcleo**: `_N_tet10(xi, eta, zeta)`, `_dN_tet10(xi, eta, zeta)` en [solidum/elements/solid_3d/_shared.py](../../solidum/elements/solid_3d/_shared.py). Implementadas en numpy puro vía coordenadas baricéntricas $L_i$.
 - **Cuadraturas registradas**: `tet_4` (Stroud, orden 2) y `tet_15` (Keast, orden 5) en [solidum/math/integration.py](../../solidum/math/integration.py). El `tet_4` cubre la integración de K; el `tet_15` se usa exclusivamente para la masa consistente (declarada en `Tet10._MASS_QUADRATURE`).
 - **Tests**:
+  - [tests/validation/test_mms_solid_3d.py](../../tests/validation/test_mms_solid_3d.py) (soluciones manufacturadas), [tests/test_distributed_loads_3d.py](../../tests/test_distributed_loads_3d.py) (cargas variables).
   - `tests/test_solid_3d_higher_order.py` — `TestTet10Element` (patch lineal + cuadrático, simetría K, body load, face traction, masa consistente con tet_15 y lumped HRZ, gauss state).
   - `tests/test_rigid_body_modes.py` — `TestRBMTet10` (3 trans + 3 rot + rank-deficiency = 6).
   - `tests/validation/test_cube_lame_3d.py` — extensión con malla Tet10 del cubo unitario; uniaxial e hidrostática exactas a precisión máquina.
@@ -231,3 +236,4 @@ references:
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin3d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 2). `compute_body_load` acepta un campo `b(x)` y `compute_face_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria de la cara (una presión es `−p·n`); implementación común en `_SolidLoads3D`. La fuerza de cuerpo se integra con la regla de la masa (`tet_15`; antes `tet_4`, y la cara con `tri_6`, antes `tri_3`); la de cara, sobre la geometría real con las funciones de forma de la cara. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 3 en L² y 2 en energía en el cubo distorsionado y en el cilindro hueco. Las reglas antiguas también daban el orden óptimo (una regla exacta de grado 2p − 2 basta): el cambio mejora la exactitud, no el orden. Con `tet_4` y lados curvos la parcela no es exacta (ver «Distorsión severa»).

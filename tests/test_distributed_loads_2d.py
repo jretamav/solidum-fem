@@ -155,7 +155,7 @@ class TestCargaDeBorde(unittest.TestCase):
                 for lado, n in (("xmax", (1, 0)), ("xmin", (-1, 0)),
                                 ("ymax", (0, 1)), ("ymin", (0, -1))):
                     total = sum(el.compute_edge_traction(e, lambda x, nn: nn).reshape(-1, 2).sum(axis=0)
-                                for el, e in m.boundary_edges[lado])
+                                for el, e in m.boundary[lado])
                     np.testing.assert_allclose(total, np.array(n) * E, atol=1e-14)
 
     def test_traccion_lineal_en_borde_de_dos_nodos(self):

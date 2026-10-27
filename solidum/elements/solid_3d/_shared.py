@@ -16,11 +16,11 @@ Cinco grupos:
    matriz de coordenadas globales.
 4. **Expansor escalar→bloque 3D** para masa traslacional:
    :func:`_expand_scalar_mass_3d`.
-5. **Base interna** :class:`_HigherOrderSolid3D` que comparten los
-   elementos sólidos 3D isoparamétricos de orden superior: Hex20 y Hex27
-   (y Tet10 en sub-fase 3). Comparte los bucles de Gauss para ``K``,
-   ``F_int``, ``gauss_state``, ``body_load``, ``face_traction`` y masa
-   consistente. Cada subclase declara las funciones de forma, la
+5. **Bases internas**: :class:`_SolidLoads3D`, las cargas distribuidas
+   consistentes de los cinco sólidos 3D (constantes o campos, ADR 0022), y
+   :class:`_HigherOrderSolid3D`, que comparten Hex20, Hex27 y Tet10.
+   Comparte los bucles de Gauss para ``K``, ``F_int``, ``gauss_state`` y
+   masa consistente. Cada subclase declara las funciones de forma, la
    cuadratura por defecto, la cuadratura específica de masa (cuando la
    del elemento subintegra), las funciones de forma 2D de cara y la
    cuadratura de cara.
@@ -44,6 +44,7 @@ from solidum.constants import JACOBIAN_RTOL
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.math.distributed_loads import body_load, face_load
 from solidum.math.integration import resolve_quadrature
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import QuadratureRegistry
@@ -755,16 +756,97 @@ def _expand_scalar_mass_3d(M_scalar: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Cargas distribuidas consistentes, comunes a los cinco sólidos 3D (ADR 0022).
+# ---------------------------------------------------------------------------
+
+class _SolidLoads3D:
+    """Fuerza de cuerpo y tracción de cara de los sólidos 3D.
+
+    La fuerza de cuerpo se integra con ``_LOAD_QUADRATURE``, la regla de la
+    masa consistente: integra exactamente ``N_i·N_j``, y por tanto ``N_i·b``
+    con ``b`` del grado de la interpolación, aunque la regla de la rigidez
+    sea reducida. La tracción se integra sobre la geometría real de la cara
+    con sus funciones de forma (``_FACE_N_FN``, ``_FACE_DN_FN``) y la regla
+    ``_FACE_QUADRATURE``, exacta para ``N_k·N_l`` de la cara
+    (:func:`solidum.math.distributed_loads.face_load`). Las dos admiten una
+    constante o un campo de la posición.
+    """
+    _LOAD_QUADRATURE = "hex_2x2x2"
+    _FACE_N_FN = staticmethod(lambda s, t: None)
+    _FACE_DN_FN = staticmethod(lambda s, t: None)
+    _FACE_QUADRATURE = ""
+
+    def compute_body_load(self, b) -> np.ndarray:
+        """Vector nodal consistente ``∫ Nᵀ b dV``.
+
+        Parameters
+        ----------
+        b : array (3,) o callable
+            Fuerza de cuerpo por unidad de volumen en ejes globales:
+            constante (``ρ·g`` para el peso propio) o campo ``b(x)`` de la
+            posición ``x = (x, y, z)``.
+
+        Returns
+        -------
+        ndarray (3·n_nodos,)
+            Cargas equivalentes ``[fx_1, fy_1, fz_1, ...]``.
+        """
+        pts, wts = QuadratureRegistry.get(self._LOAD_QUADRATURE)
+        pts = np.asarray(pts, dtype=np.float64).reshape(len(wts), 3)
+        coords = np.ascontiguousarray(self.get_coordinate_matrix(ndim=3))
+        kin = type(self).BATCH_KINEMATICS
+        B = np.empty((6, 3 * len(self.nodes)))
+        detJ = np.array([kin(p, coords, B) for p in pts])
+        if np.any(detJ <= 0.0):
+            raise ValueError(f"Jacobiano no positivo en {type(self).__name__} id={self.id}.")
+        N = self.batch_shape_functions(pts)
+        return body_load(N, detJ * np.asarray(wts), N @ coords, b)
+
+    def compute_face_traction(self, face: int, t) -> np.ndarray:
+        """Vector nodal consistente ``∫_Γ Nᵀ t dA`` sobre una cara.
+
+        Parameters
+        ----------
+        face : int
+            Índice de la cara en ``FACE_NODES`` (nodos antihorarios vistos
+            desde fuera, ADR 0012).
+        t : array (3,) o callable
+            Tracción en ejes globales: constante o campo ``t(x, n)`` de la
+            posición y de la normal exterior unitaria de la cara. Una
+            presión ``p`` (positiva hacia el interior) es
+            ``lambda x, n: -p * n``.
+
+        Returns
+        -------
+        ndarray (3·n_nodos,)
+            Cargas equivalentes en los DOFs locales (nulas fuera de la cara).
+        """
+        if not 0 <= face < len(self.FACE_NODES):
+            raise ValueError(f"face={face} fuera de rango para {type(self).__name__} "
+                             f"(0..{len(self.FACE_NODES) - 1}).")
+        local = self.FACE_NODES[face]
+        pts, wts = QuadratureRegistry.get(self._FACE_QUADRATURE)
+        N = np.array([np.asarray(self._FACE_N_FN(s, r), dtype=np.float64) for s, r in pts])
+        dN = np.array([np.asarray(self._FACE_DN_FN(s, r), dtype=np.float64) for s, r in pts])
+        X = self.get_coordinate_matrix(ndim=3)[list(local)]
+        f_face = face_load(N, dN, np.asarray(wts, dtype=np.float64), X, t)
+        f = np.zeros(3 * len(self.nodes))
+        for k, i in enumerate(local):
+            f[3 * i:3 * i + 3] = f_face[3 * k:3 * k + 3]
+        return f
+
+
+# ---------------------------------------------------------------------------
 # Base interna compartida por los sólidos 3D isoparamétricos de orden
 # superior: Hex20, Hex27 (sub-etapa A.ter), y Tet10 (sub-fase 3).
 # ---------------------------------------------------------------------------
 
-class _HigherOrderSolid3D(Element):
+class _HigherOrderSolid3D(_SolidLoads3D, Element):
     """Base interna para sólidos 3D isoparamétricos de orden superior.
 
-    Comparte los bucles de Gauss para ``K``, ``F_int``, ``gauss_state``,
-    ``body_load``, ``face_traction`` y masa consistente. Cada subclase
-    declara:
+    Comparte los bucles de Gauss para ``K``, ``F_int``, ``gauss_state`` y
+    masa consistente; las cargas distribuidas vienen de
+    :class:`_SolidLoads3D`. Cada subclase declara:
 
     - ``_SHAPE_FN`` / ``_GRAD_FN`` — funciones de forma y derivadas 3D.
     - ``_DEFAULT_QUADRATURE`` — nombre de la cuadratura por defecto en
@@ -772,6 +854,7 @@ class _HigherOrderSolid3D(Element):
     - ``_MASS_QUADRATURE`` — cuadratura específica para la matriz de masa
       (independiente de la elegida para ``K``). ``None`` = usa la del
       elemento.
+    - ``_LOAD_QUADRATURE`` — la misma, para la fuerza de cuerpo.
     - ``FACE_NODES`` — tupla de tuplas con los nodos locales por cara.
       Cada tupla tiene tantos elementos como nodos por cara (8 en
       Hex20, 9 en Hex27, 6 en Tet10).
@@ -801,9 +884,6 @@ class _HigherOrderSolid3D(Element):
     _DEFAULT_QUADRATURE: str = ""
     _QUADRATURE_FAMILY: str = "hex"
     _MASS_QUADRATURE: str | None = None
-    _FACE_N_FN = staticmethod(lambda s, t: None)
-    _FACE_DN_FN = staticmethod(lambda s, t: None)
-    _FACE_QUADRATURE: str = ""
     FACE_NODES: tuple = ()
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
@@ -887,80 +967,6 @@ class _HigherOrderSolid3D(Element):
             'strain': eps,
             'stress': sig,
         }
-
-    # ------------------------------------------------------------------
-    # Cargas distribuidas consistentes
-    # ------------------------------------------------------------------
-
-    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        """Vector consistente con fuerza de cuerpo uniforme.
-
-        Integra ``∫ N^T b dV`` con la cuadratura del elemento. ``b`` en
-        globales ``(b_x, b_y, b_z)``. Reparto entre nodos no uniforme
-        para elementos de orden superior; suma global ``b·V_e`` exacta
-        para ``b`` uniforme y geometría sin distorsión severa.
-        """
-        b = np.asarray(b, dtype=np.float64).reshape(3)
-        coords = self.get_coordinate_matrix(ndim=3)
-        n = self._n_nodes
-        f = np.zeros(3 * n)
-        for (xi, eta, zeta), w in zip(self.points, self.weights):
-            N = self._SHAPE_FN(xi, eta, zeta)
-            _, detJ = _kinematics_higher_order_3d(
-                self._GRAD_FN, xi, eta, zeta, coords, n
-            )
-            factor = detJ * w
-            for i in range(n):
-                f[3 * i]     += N[i] * b[0] * factor
-                f[3 * i + 1] += N[i] * b[1] * factor
-                f[3 * i + 2] += N[i] * b[2] * factor
-        return f
-
-    def compute_face_traction(self, face: int, t_vec: np.ndarray) -> np.ndarray:
-        """Tracción uniforme sobre la cara ``face`` integrada con la cuadratura
-        2D de cara (``_FACE_QUADRATURE``).
-
-        Cada subclase declara:
-        - ``FACE_NODES[face]`` — índices locales de los nodos de la cara.
-        - ``_FACE_N_FN(s, t)``, ``_FACE_DN_FN(s, t)`` — funciones de forma
-          2D de cara y su gradiente (vector dirección a lo largo de los
-          dos parámetros).
-
-        ``t_vec`` se asume **constante** sobre la cara y se especifica en
-        coordenadas globales ``(t_x, t_y, t_z)``.
-        """
-        if face < 0 or face >= len(self.FACE_NODES):
-            raise ValueError(
-                f"face={face} fuera de rango para "
-                f"{type(self).__name__} (0..{len(self.FACE_NODES) - 1})."
-            )
-        t_vec = np.asarray(t_vec, dtype=np.float64).reshape(3)
-
-        face_local = self.FACE_NODES[face]
-        n_face = len(face_local)
-        X = np.array(
-            [self.nodes[i].coordinates[:3] for i in face_local],
-            dtype=np.float64,
-        )  # n_face × 3
-
-        face_pts, face_wts = QuadratureRegistry.get(self._FACE_QUADRATURE)
-
-        n = self._n_nodes
-        f = np.zeros(3 * n)
-        for (sp, tp), w in zip(face_pts, face_wts):
-            N_face = self._FACE_N_FN(sp, tp)        # (n_face,)
-            dN_face = self._FACE_DN_FN(sp, tp)      # (2, n_face)
-            g_s = dN_face[0] @ X                    # (3,)
-            g_t = dN_face[1] @ X                    # (3,)
-            dA = float(np.linalg.norm(np.cross(g_s, g_t)))
-            factor = dA * w
-            for k, node_local in enumerate(face_local):
-                base = 3 * node_local
-                contrib = N_face[k] * factor
-                f[base]     += contrib * t_vec[0]
-                f[base + 1] += contrib * t_vec[1]
-                f[base + 2] += contrib * t_vec[2]
-        return f
 
     # ------------------------------------------------------------------
     # Masa elemental (ADR 0009)

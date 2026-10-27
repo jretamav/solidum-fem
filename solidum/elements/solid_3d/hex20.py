@@ -60,10 +60,19 @@ class Hex20(_HigherOrderSolid3D):
     # Mass quadrature fijada a 3×3×3 para que la masa siempre quede exacta
     # incluso si el usuario elige reducida para K.
     _MASS_QUADRATURE = "hex_3x3x3"
+    _LOAD_QUADRATURE = "hex_3x3x3"
+
+    REFERENCE_CELL = "hex"
+    REFERENCE_NODES = (
+        (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
+        (-1.0, -1.0, 1.0), (1.0, -1.0, 1.0), (1.0, 1.0, 1.0), (-1.0, 1.0, 1.0),
+        (0.0, -1.0, -1.0), (1.0, 0.0, -1.0), (0.0, 1.0, -1.0), (-1.0, 0.0, -1.0),
+        (0.0, -1.0, 1.0), (1.0, 0.0, 1.0), (0.0, 1.0, 1.0), (-1.0, 0.0, 1.0),
+        (-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (1.0, 1.0, 0.0), (-1.0, 1.0, 0.0),
+    )
 
     # Funciones de forma de cara: Quad8 serendípito 8 nodos (4 vértices +
-    # 4 medios de arista). Cuadratura 3×3 (exacta para tracción uniforme
-    # sobre cara plana con N cuadráticos).
+    # 4 medios de arista). Cuadratura 3×3 (exacta para N_k·N_l de la cara).
     _FACE_N_FN = staticmethod(_N_quad8)
     _FACE_DN_FN = staticmethod(_dN_quad8)
     _FACE_QUADRATURE = "3x3"

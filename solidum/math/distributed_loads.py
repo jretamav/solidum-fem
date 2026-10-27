@@ -7,7 +7,9 @@ geometría real (isoparamétrica):
 - fuerza de cuerpo ``f_i = ∫ N_i b(x) dV``, con ``b(x)`` evaluado en cada
   punto: :func:`body_load`;
 - carga de borde 2D ``f_k = ∫_Γe N_k t(x, n) ds``, con ``n`` la normal
-  exterior unitaria del borde **discreto** en el punto: :func:`edge_load`.
+  exterior unitaria del borde **discreto** en el punto: :func:`edge_load`;
+- carga de cara 3D ``f_k = ∫_Γe N_k t(x, n) dA``, igual sobre la cara:
+  :func:`face_load`.
 
 Que el campo de borde reciba la normal tiene dos usos. Una presión es
 ``t(x, n) = −p·n``, sin un método aparte. Y una solución manufacturada
@@ -108,3 +110,23 @@ def edge_load(X: np.ndarray, t, n_components: int = 2) -> np.ndarray:
     normal = np.column_stack([g[:, 1], -g[:, 0]]) / ds[:, None]
     values = field_values(t, N @ X, n_components, "de borde", normal)
     return ((N * (ds * _EDGE_WEIGHTS)[:, None]).T @ values).reshape(-1)
+
+
+def face_load(N: np.ndarray, dN: np.ndarray, w: np.ndarray, X: np.ndarray, t,
+              n_components: int = 3) -> np.ndarray:
+    """``f_k = ∫ N_k·t(x, n) dA`` sobre una cara 3D.
+
+    ``N`` ``(n_g, k)`` y ``dN`` ``(n_g, 2, k)`` son las funciones de forma de
+    la cara y sus derivadas respecto de sus parámetros ``(s, r)`` en los
+    puntos de la regla de pesos ``w``; ``X`` ``(k, 3)``, las coordenadas de
+    los nodos de la cara en el orden de ``FACE_NODES``, antihorario visto
+    desde fuera, así que ``∂x/∂s × ∂x/∂r`` apunta hacia fuera. ``t`` es una
+    constante o un campo ``t(x, n)``. Devuelve ``(k·n_components,)``.
+    """
+    X = np.asarray(X, dtype=np.float64)[:, :3]
+    c = np.cross(dN[:, 0, :] @ X, dN[:, 1, :] @ X)
+    dA = np.linalg.norm(c, axis=1)
+    if np.any(dA <= 0.0):
+        raise ValueError("Cara degenerada: nodos coincidentes o alineados.")
+    values = field_values(t, N @ X, n_components, "de cara", c / dA[:, None])
+    return ((N * (dA * np.asarray(w))[:, None]).T @ values).reshape(-1)

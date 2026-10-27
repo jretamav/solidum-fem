@@ -66,15 +66,22 @@ class Tet10(_HigherOrderSolid3D):
     # Mass quadrature fijada a tet_15: integra exactamente el producto
     # cuadrático×cuadrático (grado 4) sobre el tetraedro.
     _MASS_QUADRATURE = "tet_15"
+    _LOAD_QUADRATURE = "tet_15"
+
+    REFERENCE_CELL = "tet"
+    REFERENCE_NODES = (
+        (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0),
+        (0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),
+        (0.0, 0.0, 0.5), (0.5, 0.0, 0.5), (0.0, 0.5, 0.5),
+    )
 
     # Funciones de forma de cara: Tri6 cuadrático 6 nodos (3 vértices +
-    # 3 medios de arista). Cuadratura tri_3 (3 puntos, orden 2) — exacta
-    # para tracción uniforme sobre cara plana con N cuadráticos: la
-    # integral de N_i (grado 2) sobre el triángulo se integra
-    # exactamente.
+    # 3 medios de arista). Cuadratura tri_6 (Dunavant, orden 4), exacta
+    # para N_k·N_l de la cara: integra N_k·t con t cuadrático (ADR 0022;
+    # hasta el 2026-10-27, tri_3, exacta sólo para t constante).
     _FACE_N_FN = staticmethod(_N_tri6)
     _FACE_DN_FN = staticmethod(_dN_tri6)
-    _FACE_QUADRATURE = "tri_3"
+    _FACE_QUADRATURE = "tri_6"
 
     # ADR 0012 — 4 caras triangulares con normal saliente, paritarias
     # con Tet4 en los vértices. Cada cara añade 3 medios de arista en

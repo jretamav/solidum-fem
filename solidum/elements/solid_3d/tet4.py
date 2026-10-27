@@ -6,7 +6,9 @@ import numpy as np
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.elements.solid_2d._shared import _dN_tri3, _shape_functions_tri3
 from solidum.elements.solid_3d._shared import (
+    _SolidLoads3D,
     _batch_kin_tet4,
     _compute_integrands_3d,
     _compute_kinematics_tet4,
@@ -18,7 +20,7 @@ from solidum.registry import ElementRegistry
 
 
 @ElementRegistry.register
-class Tet4(Element):
+class Tet4(_SolidLoads3D, Element):
     """Elemento tetraédrico lineal 3D de deformación constante (CST 3D).
 
     1 punto de integración central. Análogo 3D del Tri3. Severo shear locking
@@ -30,6 +32,8 @@ class Tet4(Element):
     N_INTEGRATION_POINTS = 1
     BATCH_KINEMATICS = _batch_kin_tet4
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_tet4)
+    REFERENCE_CELL = "tet"
+    REFERENCE_NODES = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
 
     # ADR 0012 — 4 caras con normal saliente. Cara i opuesta al nodo i.
     FACE_NODES = (
@@ -105,67 +109,13 @@ class Tet4(Element):
         v3 = coords[3] - coords[0]
         return abs(float(np.dot(v1, np.cross(v2, v3)))) / 6.0
 
-    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        """Vector de cargas nodales consistente con una fuerza de cuerpo uniforme.
-
-        Para Tet4 con N lineal y b uniforme la integral es exacta:
-        cada nodo recibe ``b · V_e / 4``.
-
-        Returns
-        -------
-        ndarray (12,)
-            Cargas equivalentes en los DOFs locales.
-        """
-        b = np.asarray(b, dtype=np.float64).reshape(3)
-        V = self._element_volume()
-        share = V / 4.0
-        f = np.zeros(12)
-        for i in range(4):
-            f[3 * i]     = share * b[0]
-            f[3 * i + 1] = share * b[1]
-            f[3 * i + 2] = share * b[2]
-        return f
-
-    def compute_face_traction(self, face: int, t_vec: np.ndarray) -> np.ndarray:
-        """Vector de cargas nodales consistente con una tracción uniforme en una cara.
-
-        Para Tet4 con N lineal sobre la cara triangular y t̄ uniforme el
-        reparto es exacto: ``A_cara · t̄ / 3`` a cada nodo del triángulo,
-        cero al nodo opuesto.
-
-        Parameters
-        ----------
-        face : int
-            Índice de cara según ``FACE_NODES`` (0..3). Cara i opuesta al nodo i.
-        t_vec : ndarray (3,)
-            Tracción uniforme en globales sobre la cara.
-
-        Returns
-        -------
-        ndarray (12,)
-            Cargas equivalentes en los DOFs locales.
-        """
-        if face not in range(4):
-            raise ValueError(f"face={face} fuera de rango para Tet4 (0..3).")
-        t_vec = np.asarray(t_vec, dtype=np.float64).reshape(3)
-
-        face_local = self.FACE_NODES[face]
-        X = np.array(
-            [self.nodes[i].coordinates[:3] for i in face_local],
-            dtype=np.float64,
-        )  # 3×3
-        v1 = X[1] - X[0]
-        v2 = X[2] - X[0]
-        A = 0.5 * float(np.linalg.norm(np.cross(v1, v2)))
-
-        share = A / 3.0
-        f = np.zeros(12)
-        for node_local in face_local:
-            base = 3 * node_local
-            f[base]     = share * t_vec[0]
-            f[base + 1] = share * t_vec[1]
-            f[base + 2] = share * t_vec[2]
-        return f
+    # compute_body_load y compute_face_traction: de _SolidLoads3D (ADR 0022).
+    # La regla de 4 puntos integra exactamente N_i·b con b lineal (con b
+    # constante, b·V_e/4 a cada nodo); las caras, con la de 3 puntos.
+    _LOAD_QUADRATURE = "tet_4"
+    _FACE_N_FN = staticmethod(_shape_functions_tri3)
+    _FACE_DN_FN = staticmethod(_dN_tri3)
+    _FACE_QUADRATURE = "tri_3"
 
     # ------------------------------------------------------------------
     # Masa elemental (ADR 0009)

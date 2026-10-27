@@ -6,7 +6,7 @@ SymPy, que no es dependencia del programa principal
 """
 from solidum.verification.mms import (
     ConvergenceStudy,
-    ManufacturedElasticity2D,
+    ManufacturedElasticity,
     convergence_study,
     error_norms,
     interpolation_degree,
@@ -16,7 +16,7 @@ from solidum.verification.mms import (
 
 __all__ = [
     "ConvergenceStudy",
-    "ManufacturedElasticity2D",
+    "ManufacturedElasticity",
     "convergence_study",
     "error_norms",
     "interpolation_degree",

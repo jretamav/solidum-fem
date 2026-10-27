@@ -2,7 +2,7 @@
 
 - **Estado**: aceptado (2026-10-27)
 - **Fecha**: 2026-10-27
-- **Alcance**: `solidum/math/distributed_loads.py`; base `_PlaneSolidLoads` de los cinco sólidos 2D (`Quad4`, `Quad8`, `Quad9`, `Tri3`, `Tri6`); `Assembler.assemble_body_load` con campos; contrato `REFERENCE_CELL` / `REFERENCE_NODES` de `Element`; paquete `solidum.mesh` (`structured_mesh`); paquete `solidum.verification` (soluciones manufacturadas, SymPy opcional); extra `verification` de `pyproject.toml`. Fase 1 de 4 (sólidos 2D).
+- **Alcance**: `solidum/math/distributed_loads.py`; base `_PlaneSolidLoads` de los cinco sólidos 2D (`Quad4`, `Quad8`, `Quad9`, `Tri3`, `Tri6`); `Assembler.assemble_body_load` con campos; contrato `REFERENCE_CELL` / `REFERENCE_NODES` de `Element`; paquete `solidum.mesh` (`structured_mesh`); paquete `solidum.verification` (soluciones manufacturadas, SymPy opcional); extra `verification` de `pyproject.toml`. Fase 1 de 4 (sólidos 2D). Fase 2 (sólidos 3D, mismo día): base `_SolidLoads3D` de `Hex8`, `Hex20`, `Hex27`, `Tet4` y `Tet10`, celdas `hex` y `tet` del generador, verificación 3D.
 
 ## Contexto
 
@@ -75,20 +75,20 @@ Malla el bloque `[0, 1]^d` en celdas y coloca los nodos de cada elemento a parti
 
 Devuelve:
 - el `Domain`, sin numeración de ecuaciones;
-- los bordes de contorno por lado (`xmin`, `xmax`, `ymin`, `ymax`), como pares (elemento, borde), listos para `compute_edge_traction`;
+- los bordes de contorno por lado (`xmin`, `xmax`, `ymin`, `ymax`), como pares (elemento, borde), listos para `compute_edge_traction`. Desde la fase 2 están en `boundary`, que en 3D guarda las caras;
 - los nodos de cada lado, con `nodes_on(side)`.
 
 Celdas admitidas:
 - `"quad"`;
 - `"tri"`: dos por celda, separadas por la diagonal.
 
-Los hexaedros y los tetraedros llegan en la fase 2.
+Los hexaedros y los tetraedros, en la fase 2 (abajo).
 
 No es un mallador general: las geometrías reales siguen yendo por Gmsh. Los generadores improvisados que ya existen no se migran, porque solo se movería código; las pruebas nuevas usan este.
 
 ### 5. `solidum.verification`
 
-- **`ManufacturedElasticity2D(u*, C)`**: deriva con SymPy, de forma exacta, `ε*` (Voigt del proyecto), `σ* = C·ε*`, `b*` y `t*(x, n)`. Con `from_material` toma la matriz `C` del material y rechaza un material que no sea elástico lineal.
+- **`ManufacturedElasticity(u*, C)`** (`ManufacturedElasticity2D` hasta la fase 2): deriva con SymPy, de forma exacta, `ε*` (Voigt del proyecto), `σ* = C·ε*`, `b*` y `t*(x, n)`. Con `from_material` toma la matriz `C` del material y rechaza un material que no sea elástico lineal.
 - **`solve_manufactured`**: impone `u*` en los nodos de los lados Dirichlet, `t*` en los demás lados y `b*` en el dominio.
 - **`error_norms`**: integra ‖e‖_L2 y ‖e‖_E = (∫(ε*−ε_h)ᵀC(ε*−ε_h) dA)^½. Usa Gauss de 6×6 puntos en el cuadrado o una regla colapsada de Duffy en el triángulo. El campo de elementos finitos se evalúa con el contrato del camino por lotes (`batch_shape_functions`, `BATCH_KINEMATICS`), así que el módulo no conoce ningún elemento concreto.
 - **`interpolation_degree`**: deduce el grado `p` del polinomio completo que reproducen las funciones de forma. De él salen los órdenes teóricos `p + 1` (L²) y `p` (energía), sin un dato nuevo en el elemento.
@@ -112,15 +112,51 @@ Una prueba de la parcela con `u*` lineal exige error de redondeo. Con ella se di
 
 Duración: unos 15 s.
 
+## Fase 2 (2026-10-27): sólidos 3D
+
+Mismas decisiones, extendidas a los cinco sólidos 3D (`Hex8`, `Hex20`, `Hex27`, `Tet4`, `Tet10`).
+
+- **Cargas.** La base `_SolidLoads3D` reúne `compute_body_load(b)` y `compute_face_traction(face, t)` de los cinco elementos:
+  - la carga de cara es una constante o un campo `t(x, n)`, con `n` la normal exterior de la cara discreta, `∂x/∂s × ∂x/∂r` normalizada;
+  - la orientación sale de los `FACE_NODES`, antihorarios vistos desde fuera (ADR 0012);
+  - se integra sobre la geometría real con las funciones de forma de la cara (`face_load` en `distributed_loads.py`).
+
+  La fuerza de cuerpo usa la regla de la masa:
+
+  | Elemento | Fuerza de cuerpo | Caras |
+  |---|---|---|
+  | Hex8 | 2×2×2 | Gauss 2×2 |
+  | Hex20, Hex27 | 3×3×3 | Gauss 3×3 |
+  | Tet4 | `tet_4` | `tri_3` |
+  | Tet10 | `tet_15`, antes `tet_4` | `tri_6`, antes `tri_3` |
+
+  Las reglas antiguas del Tet10 también daban el orden óptimo, porque una regla exacta de grado 2p − 2 basta. El cambio mejora la exactitud, no el orden, y se hace por coherencia con 2D.
+- **Contrato.** Los cinco declaran `REFERENCE_CELL` (`"hex"`, `"tet"`) y `REFERENCE_NODES`. La prueba de contrato comprueba además las caras:
+  - están sobre la frontera de la celda;
+  - con los nodos intermedios en su sitio, la transformación de la cara es la lineal o bilineal de sus vértices;
+  - `∂x/∂s × ∂x/∂r` sale de la celda.
+- **Generador.** Celdas `"hex"` (una por celda) y `"tet"` (seis tetraedros de Kuhn alrededor de la diagonal principal, todos con volumen positivo). Lados `zmin` y `zmax`. Los pares (elemento, cara) del contorno quedan en `StructuredMesh.boundary`, que en 2D tiene los bordes; antes el atributo se llamaba `boundary_edges`.
+- **Verificación.** `ManufacturedElasticity`, antes `ManufacturedElasticity2D`, toma la dimensión del número de componentes de `u*`. Para elasticidad 3D usa el Voigt del proyecto y comprueba el orden de los cortantes (`γ_yz`, `γ_xz`) con una prueba que fallaría si estuvieran permutados. Las normas del error evalúan la solución exacta de una vez en todos los puntos de cada elemento y reutilizan las funciones de forma por clase. Para las cargas, que se evalúan punto a punto, la solución usa una versión compilada con `math`.
+- **Barrido** (`tests/validation/test_mms_solid_3d.py`). Cubre los cinco elementos y el Hex20 con 2×2×2, con `Elastic3D`, en dos geometrías:
+  - un cubo distorsionado: caras planas con nodos deslizados y elementos interiores curvos;
+  - un sector de cilindro hueco, con tracción sobre las caras cilíndricas.
+
+  Todos dan el orden teórico en L² y en energía. Los cuadráticos usan n = 2, 4, 8. Los lineales usan n = 4, 8, 16, porque el Tet4 converge desde abajo y despacio: 1.50, 1.75 y 1.91 en L².
+- **Hallazgo: la prueba de la parcela en lados curvos.**
+  - Con `u*` lineal, todas las combinaciones son exactas en una malla afín.
+  - En las mallas curvas, el Tet10 con su regla por omisión (`tet_4`) y el Hex20 con 2×2×2 dejan un error de consistencia que baja como h^3.3.
+  - La causa: sobre un elemento de lados curvos, el integrando `Bᵀ·detJ` es de grado mayor que el que esas reglas integran exactamente. Con la regla completa (`tet_15`, 3×3×3) la parcela es exacta.
+  - No afecta al orden de convergencia, que el barrido comprueba con esas mismas reglas.
+  - La spec del Tet10 ya recomendaba `tet_15` en mallas muy curvas; ahora el efecto está medido y blindado por la prueba (`SOLO_AFIN`).
+
 ## Consecuencias
 
-- **Deuda #13 saldada.** La #24 queda cubierta en el API de Python mediante `t(x, n) = −p·n`. La declaración en YAML sigue pendiente con la #23.
-- **Coste del componente N+1.** Un sólido plano nuevo declara `REFERENCE_CELL` y `REFERENCE_NODES` y obtiene sin más código la malla estructurada y la verificación por MMS.
+- **Deuda #13 saldada.** La #24 queda cubierta en el API de Python mediante `t(x, n) = −p·n`, en los bordes 2D y en las caras 3D. La declaración en YAML sigue pendiente con la #23.
+- **Coste del componente N+1.** Un sólido nuevo, plano o 3D, declara `REFERENCE_CELL` y `REFERENCE_NODES` y obtiene sin más código la malla estructurada y la verificación por MMS.
 - **Limitaciones:**
   - la MMS de este módulo es de elasticidad lineal;
   - la pérdida de orden de los serendípitos en mallas que siguen trapezoidales al refinar es teoría conocida y no se prueba.
 - **Pendiente:**
-  - fase 2: caras con campos en 3D, celdas `hex` y `tet`;
   - fase 3: `Q(x)` y `q̄(x, n)` en el térmico, transitorio con `T(x, t)`;
   - fase 4, opcional: elementos 1D.
 

@@ -96,6 +96,8 @@ Un punto central (baricentro del tetraedro) con peso $w = 1/6$ sobre el tetraedr
 
 $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\,\mathbf b\, dV \;\Longrightarrow\; \text{cada nodo recibe } \tfrac{1}{4}\,\mathbf b\,V_e.$$
 
+Se integra con la regla de 4 puntos `tet_4` (ADR 0022), exacta también para $\mathbf b$ lineal; $\mathbf b$ es constante o un campo $\mathbf b(\mathbf x)$.
+
 **Tracción de superficie $\bar{\mathbf t}$** sobre una cara triangular. Caras numeradas con normal saliente (ADR 0012):
 
 | Cara | Nodos | Nodo opuesto |
@@ -109,7 +111,7 @@ Sobre una cara triangular con tracción constante el reparto es exacto:
 
 $$\mathbf f_e^{t} = \tfrac{1}{3}\,\bar{\mathbf t}\,A_\text{cara} \text{ por nodo del triángulo}, \qquad 0 \text{ al nodo opuesto}.$$
 
-Cuadratura 1 punto centroide de la cara (suficiente por linealidad de las funciones de forma sobre la cara). $\bar{\mathbf t}$ se especifica en coordenadas globales $(t_x, t_y, t_z)$. Tracción variable o presión normal no soportadas en este paso.
+Cuadratura de 3 puntos sobre la cara (`tri_3`), exacta para tracción lineal. $\bar{\mathbf t}$ se especifica en **coordenadas globales**: constante o campo $\bar{\mathbf t}(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria de la cara, que sale de la orientación antihoraria de ``FACE_NODES`` vista desde fuera (ADR 0022); una presión $p$ es $\bar{\mathbf t} = -p\,\mathbf n$. Se integra sobre la geometría real de la cara con sus funciones de forma.
 
 ### 13. Salida por punto de Gauss
 
@@ -171,6 +173,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cubo distorsionado (caras planas con nodos deslizados, elementos interiores curvos) y sector de cilindro hueco con tracción sobre las caras cilíndricas; Elastic3D; mallas n×n×n, n = 4, 8, 16"
+      expect: "orden observado entre los dos últimos niveles ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_test_3d
       setup: "malla tetraédrica con al menos un nodo interior (e.g.
              división de un cubo en 5 tetraedros con un nodo central
@@ -227,6 +233,7 @@ references:
 - **Función núcleo**: `_compute_kinematics_tet4(coords)` con `@njit` en [solidum/elements/solid_3d/_shared.py](../../solidum/elements/solid_3d/_shared.py). Reutiliza `_compute_integrands_3d` (también en `_shared`, compartido con Hex8) con peso `1/6` (volumen del tet de referencia).
 - **Masa consistente analítica**: ``M_ij = ρ·V_e·(1 + δ_ij)/20`` (matriz escalar 4×4, expandida 3D vía `_expand_scalar_mass_3d`). Evita cuadratura insuficiente en el centroide.
 - **Tests**:
+  - [tests/validation/test_mms_solid_3d.py](../../tests/validation/test_mms_solid_3d.py) (soluciones manufacturadas), [tests/test_distributed_loads_3d.py](../../tests/test_distributed_loads_3d.py) (cargas variables).
   - [tests/test_solid_3d.py](../../tests/test_solid_3d.py) — clase `TestTet4Element` (10 tests: dimensiones/DOFs, simetría exacta de K (no numérica, por fórmula cerrada), volumen, patch tracción uniaxial, jacobiano degenerado abortado, body load, face traction (cara opuesta a nodo recibe cero, reparto A/3 a los 3 nodos restantes), masa consistente y lumped HRZ (reparto equitativo ρV/4 por DOF)).
   - [tests/test_rigid_body_modes.py](../../tests/test_rigid_body_modes.py) — `TestRBMTet4` (5 tests: traslación, 3 rotaciones, rank-deficiency = 6).
   - [tests/validation/test_cube_lame_3d.py](../../tests/validation/test_cube_lame_3d.py) — `test_uniaxial_traction_tet4_mesh_exact` (cubo dividido en 5 tetraedros con tracción uniaxial; solución exacta nodal).
@@ -239,3 +246,4 @@ references:
 - **2026-09-22** · Auditoría global: tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin3d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 2). `compute_body_load` acepta un campo `b(x)` y `compute_face_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria de la cara (una presión es `−p·n`); implementación común en `_SolidLoads3D`. La fuerza de cuerpo se integra con la regla de la masa (`tet_4`; antes el reparto 1/4 exacto sólo para b constante); la de cara, sobre la geometría real con las funciones de forma de la cara. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 2 en L² y 1 en energía en el cubo distorsionado y en el cilindro hueco; el Tet4 converge al orden asintótico desde abajo y despacio (L²: 1.50, 1.75, 1.91 con n = 4, 8, 16).

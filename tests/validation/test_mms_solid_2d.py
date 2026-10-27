@@ -51,7 +51,7 @@ from solidum.materials.orthotropic_2d import Orthotropic2D  # noqa: E402
 from solidum.mesh import structured_mesh  # noqa: E402
 from solidum.registry import ElementRegistry  # noqa: E402
 from solidum.verification import (  # noqa: E402
-    ManufacturedElasticity2D,
+    ManufacturedElasticity,
     convergence_study,
     interpolation_degree,
     linear_elastic_matrix,
@@ -130,7 +130,7 @@ class TestOrdenDeConvergencia(unittest.TestCase):
                     if geo == "corona" and nmat != "deformación plana":
                         continue
                     with self.subTest(elemento=nombre, **kwargs, geometria=geo, material=nmat):
-                        sol = ManufacturedElasticity2D.from_material(U_ESTRELLA, mat)
+                        sol = ManufacturedElasticity.from_material(U_ESTRELLA, mat)
                         st = convergence_study(nombre, sol, niveles, mapping=phi,
                                                dirichlet=dirichlet, material=mat, **kwargs)
                         for norma in ("L2", "energy"):
@@ -147,7 +147,7 @@ class TestPruebaDeLaParcela(unittest.TestCase):
 
     def test_campo_lineal_exacto(self):
         mat = MATERIALES["ortótropo a 30°"]
-        sol = ManufacturedElasticity2D.from_material(U_LINEAL, mat)
+        sol = ManufacturedElasticity.from_material(U_LINEAL, mat)
         for nombre, kwargs in variantes():
             for geo, (phi, dirichlet) in GEOMETRIAS.items():
                 with self.subTest(elemento=nombre, **kwargs, geometria=geo):
@@ -171,7 +171,7 @@ class TestSolucionManufacturada(unittest.TestCase):
         con ``C`` isótropa (``C₁₃ = C₂₃ = 0``)."""
         mat = MATERIALES["esfuerzo plano"]
         C = mat.C
-        sol = ManufacturedElasticity2D.from_material(("x**2", "x*y"), mat)
+        sol = ManufacturedElasticity.from_material(("x**2", "x*y"), mat)
         x = np.array([0.7, -1.3])
         np.testing.assert_allclose(sol.strain(x), [2 * x[0], x[0], x[1]], rtol=1e-14)
         np.testing.assert_allclose(sol.body_force(x),
@@ -192,7 +192,7 @@ class TestSolucionManufacturada(unittest.TestCase):
             linear_elastic_matrix(_NoLineal())
 
     def test_rechaza_material_distinto_del_de_la_solucion(self):
-        sol = ManufacturedElasticity2D.from_material(U_ESTRELLA, MATERIALES["esfuerzo plano"])
+        sol = ManufacturedElasticity.from_material(U_ESTRELLA, MATERIALES["esfuerzo plano"])
         with self.assertRaisesRegex(ValueError, "no es la de la solución"):
             convergence_study("Quad4", sol, (2,), material=MATERIALES["deformación plana"])
 

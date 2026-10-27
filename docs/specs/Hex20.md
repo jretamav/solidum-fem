@@ -149,7 +149,7 @@ Por defecto **Gauss–Legendre 3×3×3** (27 puntos): orden de exactitud 5 en ca
 
 $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\,\mathbf b\, dV = \sum_{p=1}^{n_g} \mathbf N(\boldsymbol\xi_p)^\top\,\mathbf b\,\det\mathbf J_p\, w_p,$$
 
-donde $\mathbf N$ es la matriz $3 \times 60$ de funciones de forma. Se reutiliza la cuadratura del elemento. Para $\mathbf b$ uniforme y geometría regular el resultado es exacto. **Para `Hex20` el reparto no es uniforme entre nodos**: la fórmula serendípita asigna pesos distintos a vértices y medios (los medios reciben más carga total que los vértices, con suma global $\rho\cdot V_e$ correcta).
+donde $\mathbf N$ es la matriz $3 \times 60$ de funciones de forma. Se integra con la regla $3 \times 3 \times 3$ de la masa, también cuando la rigidez usa $2 \times 2 \times 2$; $\mathbf b$ es constante o un campo $\mathbf b(\mathbf x)$ (ADR 0022). Para $\mathbf b$ uniforme y geometría regular el resultado es exacto. **Para `Hex20` el reparto no es uniforme entre nodos**: la fórmula serendípita asigna pesos distintos a vértices y medios (los medios reciben más carga total que los vértices, con suma global $\rho\cdot V_e$ correcta).
 
 **Tracción de superficie $\bar{\mathbf t}$** sobre una cara. Cada cara del `Hex20` tiene **8 nodos** (4 vértices + 4 medios de arista) y se aproxima por funciones serendípitas Quad8 sobre el parámetro 2D $(s, t) \in [-1, 1]^2$. La numeración de caras conserva la convención del `Hex8` (ADR 0012) extendida con los medios:
 
@@ -166,7 +166,7 @@ El orden dentro de cada cara reproduce la convención VTK_QUADRATIC_HEXAHEDRON: 
 
 $$\mathbf f_e^{t} = \int_{\Gamma_e} \mathbf N^\top\,\bar{\mathbf t}\, dS.$$
 
-Cuadratura 2D sobre la cara: Gauss $3 \times 3$ (nueve puntos) — exacta para tracción constante sobre cara plana (integrando degree 2 en $(s,t)$). $\bar{\mathbf t}$ se especifica en **coordenadas globales** $(t_x, t_y, t_z)$; presiones normales se obtienen multiplicando previamente por la normal exterior de la cara. Tracción variable sobre la cara no soportada en este paso. **Para `Hex20` el reparto entre vértices y medios no es trivial** (la integral cuadrática de Quad8 sobre cara plana asigna fracciones específicas: los vértices reciben $-1/12$ de la fuerza total cada uno y los medios $4/12$ cada uno, con suma global exacta — ver test de balance).
+Cuadratura 2D sobre la cara: Gauss $3 \times 3$ (nueve puntos) — exacta para tracción constante sobre cara plana (integrando degree 2 en $(s,t)$). $\bar{\mathbf t}$ se especifica en **coordenadas globales**: constante o campo $\bar{\mathbf t}(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria de la cara, que sale de la orientación antihoraria de ``FACE_NODES`` vista desde fuera (ADR 0022); una presión $p$ es $\bar{\mathbf t} = -p\,\mathbf n$. Se integra sobre la geometría real de la cara con sus funciones de forma. **Para `Hex20` el reparto entre vértices y medios no es trivial** (la integral cuadrática de Quad8 sobre cara plana asigna fracciones específicas: los vértices reciben $-1/12$ de la fuerza total cada uno y los medios $4/12$ cada uno, con suma global exacta — ver test de balance).
 
 ### 13. Salida por punto de Gauss
 
@@ -246,6 +246,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cubo distorsionado (caras planas con nodos deslizados, elementos interiores curvos) y sector de cilindro hueco con tracción sobre las caras cilíndricas; Elastic3D; mallas n×n×n, n = 2, 4, 8"
+      expect: "orden observado entre los dos últimos niveles ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_test_lineal
       setup: "Hex20 con campo lineal u_i = a_ij·x_j impuesto en los 20 nodos
              del contorno; sin nodos interiores libres (todos están en la
@@ -325,6 +329,7 @@ references:
 - **Clase**: `Hex20` (registrada vía `@ElementRegistry.register`); subclase de [`_HigherOrderSolid3D`](../../solidum/elements/solid_3d/_shared.py) desde **sub-fase 2** de A.ter — la entrada del `Hex27` disparó la centralización (regla de los dos casos reales). El cuerpo de `hex20.py` quedó como pura declaración de atributos: funciones de forma, cuadraturas, FACE_NODES y funciones de cara Quad8 (`_N_quad8`/`_dN_quad8` del paquete 2D).
 - **Funciones núcleo**: `_N_hex20(xi, eta, zeta)`, `_dN_hex20(xi, eta, zeta)` en [solidum/elements/solid_3d/_shared.py](../../solidum/elements/solid_3d/_shared.py). Numpy puro (no `@njit`) por la complejidad de la rama por nodo serendipity, paritario con `_N_quad8`/`_dN_quad8` del 2D. El kinematics genérico ``_kinematics_higher_order_3d`` (también en `_shared.py`) es reutilizado por la base con cualquier par ``(shape_fn, grad_fn)`` 3D.
 - **Tests**:
+  - [tests/validation/test_mms_solid_3d.py](../../tests/validation/test_mms_solid_3d.py) (soluciones manufacturadas), [tests/test_distributed_loads_3d.py](../../tests/test_distributed_loads_3d.py) (cargas variables).
   - `tests/test_solid_3d_higher_order.py` — clase `TestHex20Element` (dimensiones/DOFs, patch lineal, patch cuadrático, simetría K, jacobiano degenerado abortado, body load suma, face traction suma + reparto vértice/medio, masa consistente y lumped HRZ, gauss state).
   - `tests/test_rigid_body_modes.py` — `TestRBMHex20` (3 trans + 3 rot + rank-deficiency = 6).
   - `tests/validation/test_cube_lame_3d.py` (extender) — `test_uniaxial_traction_hex20_exact`.
@@ -341,3 +346,4 @@ references:
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin3d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 2). `compute_body_load` acepta un campo `b(x)` y `compute_face_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria de la cara (una presión es `−p·n`); implementación común en `_SolidLoads3D`. La fuerza de cuerpo se integra con la regla de la masa (3×3×3, también con rigidez 2×2×2); la de cara, sobre la geometría real con las funciones de forma de la cara. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 3 en L² y 2 en energía en el cubo distorsionado y en el cilindro hueco, también con 2×2×2. Con 2×2×2 y lados curvos la prueba de la parcela no es exacta (error de consistencia que baja como h^3.3, sin efecto en el orden); con 3×3×3 sí.

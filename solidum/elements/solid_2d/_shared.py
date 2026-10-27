@@ -264,6 +264,12 @@ def _batch_kin_tri3(pt, coords, B):
     return _kin2d_core(_DN_TRI3, coords, B)
 
 
+def _dN_tri3(xi, eta):
+    """Derivadas naturales ``(2, 3)`` del Tri3 (constantes). Las usa la
+    integral de cara del Tet4."""
+    return _DN_TRI3
+
+
 def _shape_functions_tri3(xi, eta):
     """Funciones de forma del Tri3 en coordenadas de área ``(ξ, η)``:
     ``N = [1 − ξ − η, ξ, η]``. Sólo las usa el post-proceso por lotes
