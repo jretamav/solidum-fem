@@ -25,6 +25,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.node import Node
 from solidum.core.thermal_material import ThermalMaterial
 from solidum.registry import ThermalMaterialRegistry
+from solidum.math.distributed_loads import body_load
 from solidum.math.mass_lumping import lump_hrz
 
 
@@ -37,10 +38,14 @@ class _ThermalSolid(Element):
     ``N_NODES`` : número de nodos.
     ``DEFAULT_QUADRATURE`` : clave en ``QuadratureRegistry``.
     ``QUADRATURE_FAMILY`` : familia geométrica ("quad" | "hex") para validar la regla.
-    ``CAPACITY_QUADRATURE`` : regla completa con la que se integra siempre la capacidad.
+    ``CAPACITY_QUADRATURE`` : regla completa con la que se integran siempre
+    la capacidad y la fuente.
+    ``REFERENCE_CELL``, ``REFERENCE_NODES`` : celda y nodos de referencia
+    (ADR 0022), los del sólido mecánico gemelo.
     ``_shape_functions(p)`` : ``N`` en el punto natural ``p``.
     ``_gradient(p, coords)`` : ``(dN_dx, detJ)`` — la matriz ``B`` térmica.
-    ``_boundary_load(index, q_bar)`` : vector nodal del flujo de frontera.
+    ``compute_edge_flux`` (2D) o ``compute_face_flux`` (3D) : vector nodal
+    del flujo de frontera.
 
     Notas
     -----
@@ -242,27 +247,32 @@ class _ThermalSolid(Element):
     # Cargas
     # ------------------------------------------------------------------
 
-    def compute_body_source(self, Q: float) -> np.ndarray:
+    def compute_body_source(self, Q) -> np.ndarray:
         """Vector nodal de la fuente volumétrica ``f = ∫ Q Nᵀ t dΩ``.
 
-        ``Q`` en [W/m³]. Para ``Q`` uniforme la suma de las componentes es
-        exactamente ``Q·V_e`` (``Q·A_e·t`` en 2D), invariante ante
-        distorsión de la geometría.
+        ``Q`` en [W/m³]: constante o campo ``Q(x)`` de la posición
+        ``x = (x, y[, z])`` (ADR 0022). Para ``Q`` uniforme la suma de las
+        componentes es exactamente ``Q·V_e`` (``Q·A_e·t`` en 2D), invariante
+        ante distorsión de la geometría.
+
+        Se integra con la regla de la capacidad (``CAPACITY_QUADRATURE``),
+        no con la de la conductividad: integra ``N_i·N_j`` exactamente, y por
+        tanto ``N_i·Q`` con ``Q`` del grado de la interpolación, aunque la
+        conductividad use la regla reducida. Con la misma regla en la
+        capacidad y en la fuente, un campo ``T(x, t)`` que la interpolación
+        reproduce da ``C·Ṫ`` igual a la fuente ``ρc·∂T/∂t`` punto a punto.
 
         La fuente es carga del elemento y no propiedad del material: la
         generación por hidratación o efecto Joule varía en espacio y
         tiempo, y como propiedad exigiría duplicar materiales.
         """
-        n = self.N_NODES
-        f = np.zeros(n)
+        from solidum.registry import QuadratureRegistry
+        pts, wts = QuadratureRegistry.get(self.CAPACITY_QUADRATURE)
         coords = self.get_coordinate_matrix(ndim=self.FLUX_DIM)
-
-        for p, w in zip(self.points, self.weights):
-            N = self._shape_functions(p)
-            _, detJ = self._gradient(p, coords)
-            f += N * (float(Q) * detJ * w * self.thickness)
-
-        return f
+        detJ = np.array([self._gradient(p, coords)[1] for p in pts])
+        N = self.batch_shape_functions(pts)
+        dV = detJ * np.asarray(wts, dtype=np.float64) * self.thickness
+        return body_load(N, dV, N @ coords, Q, n_components=1)
 
     # ------------------------------------------------------------------
     # Post-proceso

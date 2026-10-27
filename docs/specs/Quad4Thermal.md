@@ -69,7 +69,7 @@ Ambas quedan disponibles con el mismo parámetro `lumping` del resto del catálo
 
 **Dirichlet — temperatura impuesta.** $T = \bar T$ en $\Gamma_T$. Se impone por eliminación directa, con la maquinaria existente del ADR 0004, sin cambios: el mecanismo es agnóstico al significado del DOF.
 
-**Neumann — flujo impuesto.** $\bar q$ [W/m²] normal a un borde. El vector consistente sobre el borde $\Gamma_q$:
+**Neumann — flujo impuesto.** $\bar q$ [W/m²] normal a un borde: constante o campo $\bar q(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria del borde (ADR 0022); un flujo de Fourier conocido es $\bar q = \mathbf q\cdot\mathbf n$. El vector consistente sobre el borde $\Gamma_q$, integrado con Gauss de 3 puntos sobre el borde:
 
 $$\mathbf f^{\bar q}_e = -\int_{\Gamma_q} \bar q\,\mathbf N^\top\,t\;d\Gamma$$
 
@@ -79,7 +79,7 @@ Para $\bar q$ uniforme sobre un borde recto de longitud $L$, la integral da $\ba
 
 Un borde sin condición declarada queda con $\bar q = 0$ — **frontera adiabática**, aislada. Es el default natural de Neumann homogéneo, exactamente como un borde mecánico sin tracción queda libre.
 
-**Fuente volumétrica.** $Q$ [W/m³] se aplica como carga del elemento (decisión de alcance; ver §Diálogo de [`ThermalConduction`](ThermalConduction.md)):
+**Fuente volumétrica.** $Q$ [W/m³], constante o campo $Q(\mathbf x)$, se aplica como carga del elemento (decisión de alcance; ver §Diálogo de [`ThermalConduction`](ThermalConduction.md)). Se integra con la regla de la capacidad ($2\times2$), también con conductividad $1\times1$ (ADR 0022):
 
 $$\mathbf f^{Q}_e = \int_\Omega Q\;\mathbf N^\top\,t\;d\Omega$$
 
@@ -176,6 +176,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "T* suave no polinómica; k anisótropa de tensor lleno; cuadrado distorsionado (lados rectos con nodos deslizados, elementos interiores curvos) y cuarto de corona con flujo q̄*(x, n) sobre los arcos; estacionario con n = 4, 8, 16; transitorio Crank-Nicolson con Δt = h/2, capacidad concentrada y consistente; en el tiempo, T* lineal en x sobre malla 4×4 con θ = 1, 2/3, 1/2 y 0"
+      expect: "orden observado entre los dos últimos niveles ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía (‖e‖_E² = ∫∇e·k·∇e); en el tiempo ≥ orden del esquema − 0.1 (2 con θ = 1/2, 1 con los demás); error decreciente en cada nivel; con T* lineal en x y en t, error de redondeo para todo θ"
+      tol_abs: 0.1
     - name: patch_test_termico_lineal
       setup: "5 Quad4Thermal distorsionados (4 exteriores + 1 interior);
              imponer T = a + b·x + c·y en los nodos del contorno"
@@ -251,7 +255,7 @@ references:
 - Archivo: [`solidum/elements/thermal/quad4_thermal.py`](../../solidum/elements/thermal/quad4_thermal.py)
 - Clase: `Quad4Thermal`, registrada en `ElementRegistry`
 - Base compartida: [`solidum/elements/thermal/_shared.py`](../../solidum/elements/thermal/_shared.py) · `_ThermalSolid`
-- Tests: [`tests/test_quad4_thermal.py`](../../tests/test_quad4_thermal.py) — 31 verdes
+- Tests: [`tests/test_quad4_thermal.py`](../../tests/test_quad4_thermal.py) — 31 verdes; [`tests/test_thermal_loads_fields.py`](../../tests/test_thermal_loads_fields.py) (fuente y flujo variables); [`tests/validation/test_mms_thermal.py`](../../tests/validation/test_mms_thermal.py) (soluciones manufacturadas); [`tests/validation/test_thermal_hollow_cylinder.py`](../../tests/validation/test_thermal_hollow_cylinder.py) (cilindro hueco)
 
 **Notas de implementación:**
 
@@ -271,7 +275,7 @@ references:
 
 **Validación end-to-end confirmada**: el problema de pared plana resuelto con `Assembler` + `LinearSolver` reproduce el perfil lineal analítico con error máximo $1.1\times10^{-13}$, sin ninguna modificación del ensamblador ni de la imposición de Dirichlet (ADR 0004). Confirma que la infraestructura era genuinamente agnóstica al tipo de campo.
 
-**Pendiente de esta spec — benchmark del cilindro hueco.** El caso `cilindro_hueco_logaritmico` del bloque `acceptance` **no está implementado todavía**: requiere mallar una corona circular, y se agrupa con la campaña de validación del cierre de etapa junto al `balance_energetico_estacionario`. Los tests entregados cubren el patch test, el modo nulo, las cargas, la capacidad en ambos modos y la pared plana end-to-end. El estado `validated` refleja que la formulación está verificada contra solución analítica; los dos casos restantes añaden cobertura sobre geometría curva y conservación global, no verifican la formulación básica.
+**Benchmark del cilindro hueco: hecho el 2026-10-27.** El caso `cilindro_hueco_logaritmico` esperaba un mallador de coronas, que ahora da `solidum.mesh.structured_mesh` (ADR 0022). Error nodal relativo a $|T_b - T_a|$: $4.4\times10^{-4}$, $1.2\times10^{-4}$ y $3.0\times10^{-5}$ con 4, 8 y 16 elementos por dirección (orden 2), frente a la tolerancia $5\times10^{-3}$. Sigue pendiente el `balance_energetico_estacionario`. Los tests entregados cubren el patch test, el modo nulo, las cargas, la capacidad en ambos modos y la pared plana end-to-end. El estado `validated` refleja que la formulación está verificada contra solución analítica; los dos casos restantes añaden cobertura sobre geometría curva y conservación global, no verifican la formulación básica.
 
 ---
 
@@ -299,3 +303,4 @@ references:
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). La capacidad se integra siempre con `CAPACITY_QUADRATURE` (regla completa) aunque K use integración reducida (con un punto C_e era de rango 1). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): el gradiente `∂N/∂x` pasa a un núcleo compilado compartido con el elemento mecánico gemelo y se expone como `BATCH_KINEMATICS`; la familia térmica se evalúa en el mismo kernel de familia con `k·∇T` como "esfuerzo", de modo que `∫Bᵀ(k·∇T) dΩ = K_e·T_e`. Sin `ElementState` (no hay historia).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes ya no lanza con jacobiano degenerado (devuelve `det J ≤ 0`; el ensamblador lanza con el id), el kernel de familia tiene variante paralela bit a bit igual a la serie, y el post-proceso por familia devuelve `grad_T` y `flux = −k·∇T` iguales a `compute_gauss_state` (`tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 3). `compute_body_source` acepta un campo `Q(x)` y `compute_edge_flux` un campo `q̄(x, n)`, con `n` la normal exterior unitaria del borde; el flujo se integra con Gauss de 3 puntos sobre el borde y la fuente con la regla de la capacidad (2×2, también con conductividad 1×1). Con flujo y fuente constantes el resultado no cambia salvo, con 1×1, la fuente, que deja de concentrarse en el centro. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas» (estacionario, transitorio en el espacio y en el tiempo, con conductividad anisótropa) y hecho el benchmark del cilindro hueco.

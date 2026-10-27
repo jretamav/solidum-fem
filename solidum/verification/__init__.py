@@ -6,20 +6,26 @@ SymPy, que no es dependencia del programa principal
 """
 from solidum.verification.mms import (
     ConvergenceStudy,
+    ManufacturedConduction,
     ManufacturedElasticity,
     convergence_study,
     error_norms,
     interpolation_degree,
     linear_elastic_matrix,
     solve_manufactured,
+    solve_manufactured_transient,
+    time_convergence_study,
 )
 
 __all__ = [
     "ConvergenceStudy",
+    "ManufacturedConduction",
     "ManufacturedElasticity",
     "convergence_study",
     "error_norms",
     "interpolation_degree",
     "linear_elastic_matrix",
     "solve_manufactured",
+    "solve_manufactured_transient",
+    "time_convergence_study",
 ]

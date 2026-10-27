@@ -818,7 +818,7 @@ class Assembler:
 
         Un campo `b(x)` (ADR 0022) pasa sin cambios a cada elemento, que lo
         evalúa en sus puntos de Gauss con la posición en su dimensión y
-        espera tantas componentes como ella; hoy lo admiten los sólidos 2D.
+        espera tantas componentes como ella; lo admiten los sólidos 2D y 3D.
 
         Parameters
         ----------

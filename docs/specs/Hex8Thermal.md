@@ -55,6 +55,8 @@ $$\mathbf f^{\bar q}_e = -\int_{\Gamma_q} \bar q\,\mathbf N^\top\,d\Gamma$$
 
 Numeración **paritaria con el `Hex8` mecánico** — misma `FACE_NODES`, mismas 6 caras: 0 ($-\zeta$), 1 ($+\zeta$), 2 ($-\eta$), 3 ($+\xi$), 4 ($+\eta$), 5 ($-\xi$). Reutiliza la maquinaria de integración sobre caras que ya existe.
 
+$\bar q$ es constante o un campo $\bar q(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria de la cara, que sale de la orientación antihoraria de `FACE_NODES` vista desde fuera; se integra sobre la geometría bilineal real de la cara, alabeada o no, con Gauss $2\times2$ (ADR 0022). La fuente $Q$ admite también un campo $Q(\mathbf x)$ y se integra con la regla de la capacidad ($2\times2\times2$).
+
 Para $\bar q$ uniforme sobre una cara plana de área $A$, el reparto es $\bar q A/4$ a cada uno de los 4 nodos de la cara y cero a los otros cuatro.
 
 ### 6. Validación específica 3D
@@ -124,6 +126,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "T* suave no polinómica; k anisótropa de tensor lleno; cubo distorsionado (caras planas con nodos deslizados, elementos interiores curvos) y sector de cilindro hueco con flujo q̄*(x, n) sobre las caras cilíndricas; estacionario con n = 4, 8, 16; transitorio Crank-Nicolson con Δt = h/2, capacidad concentrada, cubo; en el tiempo, T* lineal en x sobre malla 2×2×2 con θ = 1 y 1/2"
+      expect: "orden observado entre los dos últimos niveles ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía (‖e‖_E² = ∫∇e·k·∇e); en el tiempo ≥ orden del esquema − 0.1 (2 con θ = 1/2, 1 con los demás); error decreciente en cada nivel; con T* lineal en x y en t, error de redondeo para todo θ"
+      tol_abs: 0.1
     - name: patch_test_termico_lineal_3d
       setup: "malla de Hex8Thermal distorsionados con nodo(s) interior(es);
              imponer T = a + b·x + c·y + d·z en los nodos del contorno"
@@ -214,7 +220,7 @@ references:
 - Archivo: [`solidum/elements/thermal/hex8_thermal.py`](../../solidum/elements/thermal/hex8_thermal.py)
 - Clase: `Hex8Thermal`, registrada en `ElementRegistry`
 - Base compartida: [`solidum/elements/thermal/_shared.py`](../../solidum/elements/thermal/_shared.py) · `_ThermalSolid`
-- Tests: [`tests/test_hex8_thermal.py`](../../tests/test_hex8_thermal.py) — 26 verdes
+- Tests: [`tests/test_hex8_thermal.py`](../../tests/test_hex8_thermal.py) — 26 verdes; [`tests/test_thermal_loads_fields.py`](../../tests/test_thermal_loads_fields.py) (fuente y flujo variables); [`tests/validation/test_mms_thermal.py`](../../tests/validation/test_mms_thermal.py) (soluciones manufacturadas); [`tests/validation/test_thermal_hollow_cylinder.py`](../../tests/validation/test_thermal_hollow_cylinder.py) (cilindro hueco)
 
 **Notas de implementación:**
 
@@ -235,7 +241,7 @@ references:
 
 **Cross-check 2D↔3D — el test central de esta spec.** La misma pared plana resuelta con `Quad4Thermal` y con una capa de `Hex8Thermal` con las caras $z$ adiabáticas da campos **idénticos nodo a nodo con error $9.9\times10^{-14}$**, y ambos coinciden con el perfil lineal analítico. Es el análogo térmico del cross-check 3D↔2D `plane_strain` que en A.bis blindó los materiales, y es la razón por la que el benchmark de la esfera hueca pudo diferirse sin dejar hueco de cobertura: detecta errores en la tercera dimensión sin necesitar mallador.
 
-**Pendiente de esta spec — cilindro hueco 3D y balance energético.** Igual que en el hermano 2D, se agrupan con la campaña de validación del cierre de etapa por requerir mallado de corona circular. El estado `validated` refleja que la formulación está verificada contra solución analítica y contra el elemento 2D.
+**Cilindro hueco 3D: hecho el 2026-10-27** con `solidum.mesh.structured_mesh` (ADR 0022): sector extruido con las caras planas adiabáticas, el mismo error nodal que el 2D ($4.4\times10^{-4}$ con 4 elementos por dirección, tolerancia $5\times10^{-3}$). Sigue pendiente el balance energético. El estado `validated` refleja que la formulación está verificada contra solución analítica y contra el elemento 2D.
 
 ---
 
@@ -257,3 +263,4 @@ references:
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). La capacidad se integra siempre con `CAPACITY_QUADRATURE` (regla completa) aunque K use integración reducida (con un punto C_e era de rango 1). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): el gradiente `∂N/∂x` pasa a un núcleo compilado compartido con el elemento mecánico gemelo y se expone como `BATCH_KINEMATICS`; la familia térmica se evalúa en el mismo kernel de familia con `k·∇T` como "esfuerzo", de modo que `∫Bᵀ(k·∇T) dΩ = K_e·T_e`. Sin `ElementState` (no hay historia).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes ya no lanza con jacobiano degenerado (devuelve `det J ≤ 0`; el ensamblador lanza con el id), el kernel de familia tiene variante paralela bit a bit igual a la serie, y el post-proceso por familia devuelve `grad_T` y `flux = −k·∇T` iguales a `compute_gauss_state` (`tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022, fase 3). `compute_body_source` acepta un campo `Q(x)` y `compute_face_flux` un campo `q̄(x, n)`, con `n` la normal exterior unitaria de la cara; el flujo se integra sobre la geometría real de la cara con sus funciones de forma bilineales (`face_load`, el mismo que la tracción del `Hex8`) y la fuente con la regla de la capacidad. Con flujo y fuente constantes el resultado no cambia. Declara `REFERENCE_CELL`, `REFERENCE_NODES` y las funciones de forma de sus caras. Nueva aceptación «soluciones manufacturadas» y hecho el benchmark del cilindro hueco 3D.

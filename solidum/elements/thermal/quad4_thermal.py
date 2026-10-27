@@ -17,6 +17,7 @@ from solidum.elements.solid_2d._shared import (
     _shape_functions_quad4,
 )
 from solidum.elements.thermal._shared import _ThermalSolid
+from solidum.math.distributed_loads import edge_load
 from solidum.registry import ElementRegistry
 
 
@@ -59,6 +60,9 @@ class Quad4Thermal(_ThermalSolid):
     # Camino por lotes (ADR 0014): B térmica = ∂N/∂x (2×4); el espesor escala dV.
     BATCH_KINEMATICS = _batch_grad_quad4
     BATCH_SCALE = "thickness"
+    # Celda y nodos de referencia, los del Quad4 mecánico (ADR 0022).
+    REFERENCE_CELL: ClassVar[str] = "quad"
+    REFERENCE_NODES: ClassVar[tuple] = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0))
 
     # Bordes del cuadrilátero, paritarios con los del Quad4 mecánico.
     EDGE_NODES: ClassVar[tuple] = ((0, 1), (1, 2), (2, 3), (3, 0))
@@ -95,7 +99,7 @@ class Quad4Thermal(_ThermalSolid):
     # Flujo de frontera
     # ------------------------------------------------------------------
 
-    def compute_edge_flux(self, edge: int, q_bar: float) -> np.ndarray:
+    def compute_edge_flux(self, edge: int, q_bar) -> np.ndarray:
         """Vector nodal del flujo impuesto sobre un borde (Neumann).
 
         Parameters
@@ -103,17 +107,21 @@ class Quad4Thermal(_ThermalSolid):
         edge : int
             Índice según ``EDGE_NODES``: 0=(n0,n1), 1=(n1,n2), 2=(n2,n3),
             3=(n3,n0). Numeración paritaria con el ``Quad4`` mecánico.
-        q_bar : float
-            Flujo normal impuesto [W/m²]. **Positivo = SALIENTE** del
-            dominio (enfriamiento), coherente con la normal exterior y con
-            ``q = -k·∇T``. Un flujo entrante se declara negativo.
+        q_bar : float o callable
+            Flujo normal impuesto [W/m²]: constante o campo ``q̄(x, n)`` de
+            la posición y de la normal exterior unitaria del borde (ADR
+            0022); un flujo de Fourier conocido es ``q̄ = q·n``.
+            **Positivo = SALIENTE** del dominio (enfriamiento), coherente con
+            la normal exterior y con ``q = -k·∇T``. Un flujo entrante se
+            declara negativo.
 
         Returns
         -------
         np.ndarray
-            Vector de 4 componentes. Para ``q_bar`` uniforme sobre un borde
-            recto de longitud ``L``, reparte ``-q_bar·L·t/2`` a cada uno de
-            los dos nodos del borde y cero a los demás.
+            Vector de 4 componentes, ``-∫ N q̄ t ds`` sobre el borde (Gauss
+            de 3 puntos). Para ``q_bar`` uniforme sobre un borde de longitud
+            ``L``, reparte ``-q_bar·L·t/2`` a cada uno de los dos nodos del
+            borde y cero a los demás.
 
         Notes
         -----
@@ -130,13 +138,8 @@ class Quad4Thermal(_ThermalSolid):
                 f"esperado 0..{len(self.EDGE_NODES) - 1}."
             )
 
-        a, c = self.EDGE_NODES[edge]
-        pa = np.asarray(self.nodes[a].coordinates[:2], dtype=float)
-        pc = np.asarray(self.nodes[c].coordinates[:2], dtype=float)
-        L = float(np.linalg.norm(pc - pa))
-
+        local = list(self.EDGE_NODES[edge])
+        X = self.get_coordinate_matrix(ndim=2)[local]
         f = np.zeros(self.N_NODES)
-        contrib = -0.5 * L * float(q_bar) * self.thickness
-        f[a] = contrib
-        f[c] = contrib
+        f[local] = -self.thickness * edge_load(X, q_bar, n_components=1)
         return f

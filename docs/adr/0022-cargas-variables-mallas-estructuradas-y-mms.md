@@ -2,7 +2,7 @@
 
 - **Estado**: aceptado (2026-10-27)
 - **Fecha**: 2026-10-27
-- **Alcance**: `solidum/math/distributed_loads.py`; base `_PlaneSolidLoads` de los cinco sólidos 2D (`Quad4`, `Quad8`, `Quad9`, `Tri3`, `Tri6`); `Assembler.assemble_body_load` con campos; contrato `REFERENCE_CELL` / `REFERENCE_NODES` de `Element`; paquete `solidum.mesh` (`structured_mesh`); paquete `solidum.verification` (soluciones manufacturadas, SymPy opcional); extra `verification` de `pyproject.toml`. Fase 1 de 4 (sólidos 2D). Fase 2 (sólidos 3D, mismo día): base `_SolidLoads3D` de `Hex8`, `Hex20`, `Hex27`, `Tet4` y `Tet10`, celdas `hex` y `tet` del generador, verificación 3D.
+- **Alcance**: `solidum/math/distributed_loads.py`; base `_PlaneSolidLoads` de los cinco sólidos 2D (`Quad4`, `Quad8`, `Quad9`, `Tri3`, `Tri6`); `Assembler.assemble_body_load` con campos; contrato `REFERENCE_CELL` / `REFERENCE_NODES` de `Element`; paquete `solidum.mesh` (`structured_mesh`); paquete `solidum.verification` (soluciones manufacturadas, SymPy opcional); extra `verification` de `pyproject.toml`. Fase 1 de 4 (sólidos 2D). Fase 2 (sólidos 3D, mismo día): base `_SolidLoads3D` de `Hex8`, `Hex20`, `Hex27`, `Tet4` y `Tet10`, celdas `hex` y `tet` del generador, verificación 3D. Fase 3 (conducción de calor, mismo día): fuente y flujo variables en `Quad4Thermal` y `Hex8Thermal`, verificación estacionaria y transitoria (método θ).
 
 ## Contexto
 
@@ -149,16 +149,37 @@ Mismas decisiones, extendidas a los cinco sólidos 3D (`Hex8`, `Hex20`, `Hex27`,
   - No afecta al orden de convergencia, que el barrido comprueba con esas mismas reglas.
   - La spec del Tet10 ya recomendaba `tet_15` en mallas muy curvas; ahora el efecto está medido y blindado por la prueba (`SOLO_AFIN`).
 
+## Fase 3 (2026-10-27): conducción de calor, estacionaria y transitoria
+
+Mismas decisiones, extendidas a `Quad4Thermal` y `Hex8Thermal` y al método θ.
+
+- **Cargas.** En `_ThermalSolid`, `compute_body_source(Q)` acepta un campo `Q(x)`; en `Quad4Thermal`, `compute_edge_flux(edge, q̄)` acepta un campo `q̄(x, n)`, y en `Hex8Thermal` también lo acepta `compute_face_flux(face, q̄)`. Un flujo de Fourier conocido es `q̄ = q·n`. El signo no cambia (Reglas §5): `q̄ > 0` sale del dominio y el vector nodal es negativo.
+  - El flujo se integra con `edge_load` y `face_load`, igual que la tracción: el de borde, antes la cuerda por `−q̄·L·t/2`, y el de cara, antes un Gauss 2×2 escrito a mano. Para un flujo constante el resultado es el mismo.
+  - La fuente pasa de la regla de la conductividad a la de la capacidad (`CAPACITY_QUADRATURE`), como la fuerza de cuerpo en los sólidos. Con la 2×2 por omisión no cambia nada; con la 1×1 reducida, la fuente deja de concentrarse en el centro. Hay además una razón propia del transitorio: con la misma regla en la capacidad y en la fuente, un `T(x, t)` que la interpolación reproduce da `C·Ṫ` igual a la fuente `ρc·∂T/∂t` punto a punto, aunque la regla no sea exacta (Hex8 distorsionado). Es lo que hace exacta la semidiscretización en el estudio en el tiempo.
+- **Contrato.** Los dos declaran `REFERENCE_CELL` y `REFERENCE_NODES`, los de su gemelo mecánico, y el `Hex8Thermal` las funciones de forma de sus caras. La prueba de contrato construye cada elemento con un material de su familia y exige la celda también a los térmicos.
+- **Verificación.** `solidum.verification` separa lo común de lo físico. Una base interna `_ManufacturedSolution` compila y evalúa las expresiones; cada solución declara su campo primario, la medida del gradiente que entra en la norma de energía y la matriz de esa norma (`C` o `k`), y ensambla sus cargas. `solve_manufactured`, `error_norms` y `convergence_study` sirven para las dos físicas sin distinguirlas.
+  - **`ManufacturedConduction(T*, k, ρc)`** deriva `∇T*`, `q* = −k·∇T*`, `Q* = ρc·∂T*/∂t + ∇·q*` y `q̄*(x, n) = q*·n`. Si `T*` depende de `t` el problema es transitorio. `from_material` toma `k` y `ρc` del material. La norma de energía es `(∫ ∇e·k·∇e dΩ)^½`.
+  - **`solve_manufactured_transient`** integra con `ThetaMethodSolver`. La condición inicial es `T*(x, 0)` en todos los nodos; el Dirichlet `T*(x, t)` entra por `dirichlet_func`, y la fuente y el flujo, por `F_func`. Si el esquema diverge, lanza `RuntimeError` en vez de medir un error sin sentido.
+  - **`convergence_study`** con una solución transitoria integra cada nivel hasta `t_end` con `n_steps` pasos por nivel y mide el error en `t_end` con los órdenes del espacio.
+  - **`time_convergence_study`** refina `Δt` sobre una malla fija. Exige un `T*` lineal en `x`, con cualquier dependencia de `t`, y usa la capacidad consistente. Así la semidiscretización en el espacio es exacta y el error en `t_end` es sólo el del método θ, con el orden que el solver declara (2 con Crank-Nicolson, 1 con cualquier otro θ). La capacidad concentrada no deja exacta la semidiscretización (su error en el espacio pondría un suelo al estudio): se verifica en el estudio en el espacio.
+  - `ConvergenceStudy` admite órdenes esperados explícitos (`expected`) y el nombre del parámetro que se refina (`h` o `dt`).
+- **Barrido** (`tests/validation/test_mms_thermal.py`). Recorre los elementos térmicos del registro con conductividad anisótropa de tensor lleno (2×2 y 3×3):
+  - **estacionario**: cuadrado y cubo distorsionados, corona y cilindro hueco; orden 2 en L² y 1 en energía; la parcela con `T*` lineal es exacta en las cuatro;
+  - **transitorio en el espacio**: Crank-Nicolson con `Δt = h/2` hasta `t = 0.5`, con capacidad concentrada y consistente en 2D y concentrada en el cubo; orden 2 y 1;
+  - **transitorio en el tiempo**: orden 1 con θ = 1, 2/3 y 0 (éste dentro de su límite de estabilidad, `Δt_crit ≈ 0.0055` medido en la malla 4×4) y orden 2 con θ = ½; por encima del límite, el explícito diverge y el estudio lo dice;
+  - **parcela en el tiempo**: con `T*` lineal en `x` y en `t`, el método θ es exacto para todo θ, porque la solución exacta cumple la ecuación del paso. Se comprobó que la prueba detecta errores reales del solver: sin el término `C_fp·(ḡ_{n+1} − ḡ_n)` del Dirichlet variable el error sube de 4·10⁻¹⁶ a 3.5·10⁻², y evaluando la carga sólo al final del paso, a 5·10⁻³.
+
+  Duración: unos 15 s.
+
 ## Consecuencias
 
 - **Deuda #13 saldada.** La #24 queda cubierta en el API de Python mediante `t(x, n) = −p·n`, en los bordes 2D y en las caras 3D. La declaración en YAML sigue pendiente con la #23.
-- **Coste del componente N+1.** Un sólido nuevo, plano o 3D, declara `REFERENCE_CELL` y `REFERENCE_NODES` y obtiene sin más código la malla estructurada y la verificación por MMS.
+- **Coste del componente N+1.** Un sólido o un elemento térmico nuevo, plano o 3D, declara `REFERENCE_CELL` y `REFERENCE_NODES` y obtiene sin más código la malla estructurada y la verificación por MMS.
 - **Limitaciones:**
-  - la MMS de este módulo es de elasticidad lineal;
-  - la pérdida de orden de los serendípitos en mallas que siguen trapezoidales al refinar es teoría conocida y no se prueba.
-- **Pendiente:**
-  - fase 3: `Q(x)` y `q̄(x, n)` en el térmico, transitorio con `T(x, t)`;
-  - fase 4, opcional: elementos 1D.
+  - la MMS de este módulo es de elasticidad lineal y de conducción lineal (`k` y `ρc` constantes);
+  - la pérdida de orden de los serendípitos en mallas que siguen trapezoidales al refinar es teoría conocida y no se prueba;
+  - las fuentes y los flujos variables están en el API de Python; en YAML siguen siendo constantes.
+- **Pendiente:** fase 4, opcional: elementos 1D.
 
 ## Alternativas descartadas
 
@@ -180,3 +201,7 @@ Verificadas por el bibliotecario el 2026-10-27 contra Crossref, OpenAlex y OSTI.
   - el bicuadrático de 9 nodos lo conserva siempre.
 
   Las mallas de este barrido tienen lados curvos, un caso que el artículo no trata. Para ellas la evidencia es la medición: Quad8 da orden 3 y 2.
+
+Añadida en la fase 3, verificada por la IA el 2026-10-27 contra Crossref (título, editorial, año, serie, ISBN 9783540331216) y OpenAlex (autor):
+
+- V. Thomée, *Galerkin Finite Element Methods for Parabolic Problems*, 2.ª ed., Springer Series in Computational Mathematics, Springer, 2006. DOI [10.1007/3-540-33122-0](https://doi.org/10.1007/3-540-33122-0). Estimaciones de error de la semidiscretización de Galerkin, de los esquemas de un paso en el tiempo (Euler implícito, Crank-Nicolson) y del método de la masa concentrada. En los cuadriláteros y hexaedros distorsionados del barrido la evidencia es la medición.

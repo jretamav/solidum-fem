@@ -22,8 +22,14 @@ con cifras citables contra referencias externas.
 | 11 | **Lámina ortótropa fuera de eje** — constantes aparentes vs Jones §2.8 | `test_off_axis_orthotropic.py` | Quad4, Tri3, Quad8, Quad9, Tri6 + Orthotropic2D + solución cerrada | 20/20 |
 | 12 | **Deformación equivalente del daño 2D/3D** — formas cerradas, restricción 2D↔3D, tangente | `test_damage_equivalent_strain_validation.py` | IsotropicDamage2D (esfuerzo plano y deformación plana) e IsotropicDamage3D en el punto de Gauss (energética, Mazars, von Mises modificado) | 181/181 |
 | 13 | **Sección por fibras de los marcos** — M–κ, interacción N–M y colapsos de Neal (1977), sección circular a 45°, corrotacional | `test_fiber_section_validation.py` | Frame2DEuler, Frame2DEulerCorot, Frame3D + FiberSection (Elastic1D, Elastoplastic1D) + NonlinearSolver | 43/43 |
+| 14 | **Cilindro hueco térmico** — perfil logarítmico de Carslaw-Jaeger | `test_thermal_hollow_cylinder.py` | Quad4Thermal, Hex8Thermal + ThermalConduction + LinearSolver | 2/2 |
 
-**Total: 304/304 tests verde**. Última actualización: 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
+La verificación por soluciones manufacturadas (ADR 0022) vive en el mismo
+directorio (`test_mms_solid_2d.py`, `test_mms_solid_3d.py`,
+`test_mms_thermal.py`) pero no es un benchmark externo: mide el orden de
+convergencia contra soluciones inventadas, y no entra en el total.
+
+**Total: 306/306 tests verde**. Última actualización: 2026-10-27 (benchmark 14 nuevo, cilindro hueco térmico). Antes, 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
 
 ## Resultados cuantitativos por benchmark
 
@@ -325,6 +331,23 @@ medio sobre las fibras, análisis de límite del elemento raíz).
 Los colapsos convergen por arriba y en primer orden del tamaño del elemento
 (límite del elemento en desplazamientos, spec §7) y quedan por debajo de la
 cota de análisis de límite del modelo discreto que deriva el test.
+
+### 14. Cilindro hueco térmico — perfil logarítmico (Carslaw y Jaeger §7.2)
+
+Caso `cilindro_hueco_logaritmico` de las specs de `Quad4Thermal` y
+`Hex8Thermal`, pendiente desde la Etapa 8 por falta de un mallador de coronas
+(ADR 0022). Cuarto de corona 1 ≤ r ≤ 2 con T(1) = 100 y T(2) = 20, lados
+radiales adiabáticos (en 3D también las caras z), k = 45; camino de
+producción (`Assembler` + `LinearSolver`).
+
+| Elementos por dirección | Error nodal / \|T_b − T_a\| |
+|---|---|
+| 4 | 4.4e-4 |
+| 8 | 1.2e-4 |
+| 16 | 3.0e-5 |
+
+Tolerancia de la spec 5e-3; orden 2 en los nodos; el 3D da el mismo error que
+el 2D a 1e-12.
 
 ## Decisiones de diseño
 

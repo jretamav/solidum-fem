@@ -14,8 +14,9 @@ funciones de forma del borde o de la cara: es lo que suponen la carga de
 borde o de cara (la normal exterior sale de esa orientación) y el generador
 (entidades sobre el contorno del bloque).
 
-Y ningún sólido del programa principal puede quedarse sin declararlos:
-quedaría fuera, sin aviso, del barrido de soluciones manufacturadas. Los
+Y ningún sólido ni elemento térmico del programa principal puede quedarse
+sin declararlos: quedaría fuera, sin aviso, del barrido de soluciones
+manufacturadas. Los
 elementos de los módulos de usuario (ADR 0020) los declaran si quieren usar
 el generador o la verificación; su barrido es suyo.
 """
@@ -30,11 +31,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import solidum  # noqa: F401,E402  — dispara el autodiscover que puebla el registro
 from solidum.materials.elastic_2d import Elastic2D  # noqa: E402
 from solidum.materials.elastic_3d import Elastic3D  # noqa: E402
+from solidum.materials.thermal_conduction import ThermalConduction  # noqa: E402
 from solidum.mesh import structured_mesh  # noqa: E402
 from solidum.registry import ElementRegistry  # noqa: E402
 
 CELDAS = {"quad": 2, "tri": 2, "hex": 3, "tet": 3}
 MAT = {2: Elastic2D(1.0, 0.25), 3: Elastic3D(1.0, 0.25)}
+MAT_TERMICO = {2: ThermalConduction(1.0, dim=2), 3: ThermalConduction(1.0, dim=3)}
 DOFS = {2: ["ux", "uy"], 3: ["ux", "uy", "uz"]}
 STRAIN = {2: 3, 3: 6}
 
@@ -53,9 +56,18 @@ def solidos(dim):
             and getattr(ElementRegistry.get(n), "STRAIN_DIM", None) == STRAIN[dim]]
 
 
+def termicos(dim):
+    """Elementos térmicos del programa principal."""
+    return [ElementRegistry.get(n) for n in ElementRegistry.names()
+            if ElementRegistry.get(n).__module__.startswith("solidum.elements.")
+            and list(getattr(ElementRegistry.get(n), "DOF_NAMES", [])) == ["T"]
+            and getattr(ElementRegistry.get(n), "FLUX_DIM", None) == dim]
+
+
 def un_elemento(cls):
     d = CELDAS[cls.REFERENCE_CELL]
-    m = structured_mesh(cls, (1,) * d, material=MAT[d])
+    material = MAT_TERMICO[d] if list(cls.DOF_NAMES) == ["T"] else MAT[d]
+    m = structured_mesh(cls, (1,) * d, material=material)
     return next(iter(m.domain.elements.values()))
 
 
@@ -80,11 +92,13 @@ class TestNodosDeReferencia(unittest.TestCase):
     def test_hay_elementos_declarados(self):
         self.assertGreaterEqual({c.__name__ for c in declarados()},
                                 {"Quad4", "Quad8", "Quad9", "Tri3", "Tri6",
-                                 "Hex8", "Hex20", "Hex27", "Tet4", "Tet10"})
+                                 "Hex8", "Hex20", "Hex27", "Tet4", "Tet10",
+                                 "Quad4Thermal", "Hex8Thermal"})
 
     def test_todo_solido_declara_su_celda(self):
         for d in (2, 3):
-            for cls in solidos(d):
+            self.assertTrue(termicos(d))
+            for cls in solidos(d) + termicos(d):
                 with self.subTest(elemento=cls.__name__):
                     self.assertEqual(CELDAS.get(cls.REFERENCE_CELL), d)
                     self.assertIsNotNone(cls.REFERENCE_NODES)

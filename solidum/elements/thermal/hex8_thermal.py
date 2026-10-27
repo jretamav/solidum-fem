@@ -11,13 +11,15 @@ import numpy as np
 
 from solidum.core.node import Node
 from solidum.core.thermal_material import ThermalMaterial
+from solidum.elements.solid_2d._shared import _dN_quad4, _shape_functions_quad4
 from solidum.elements.solid_3d._shared import (
     _batch_grad_hex8,
     _compute_gradient_kinematics_hex8,
     _shape_functions_hex8,
 )
 from solidum.elements.thermal._shared import _ThermalSolid
-from solidum.registry import ElementRegistry
+from solidum.math.distributed_loads import face_load
+from solidum.registry import ElementRegistry, QuadratureRegistry
 
 
 @ElementRegistry.register
@@ -55,6 +57,16 @@ class Hex8Thermal(_ThermalSolid):
     # Camino por lotes (ADR 0014): B térmica = ∂N/∂x (3×8); thickness = 1.
     BATCH_KINEMATICS = _batch_grad_hex8
     BATCH_SCALE = "thickness"
+    # Celda y nodos de referencia, los del Hex8 mecánico (ADR 0022).
+    REFERENCE_CELL: ClassVar[str] = "hex"
+    REFERENCE_NODES: ClassVar[tuple] = (
+        (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
+        (-1.0, -1.0, 1.0), (1.0, -1.0, 1.0), (1.0, 1.0, 1.0), (-1.0, 1.0, 1.0),
+    )
+    # Caras bilineales para el flujo de frontera, como en el Hex8 mecánico.
+    _FACE_N_FN = staticmethod(_shape_functions_quad4)
+    _FACE_DN_FN = staticmethod(_dN_quad4)
+    _FACE_QUADRATURE: ClassVar[str] = "2x2"
 
     # Caras con normal saliente, paritarias con las del Hex8 mecánico
     # (ADR 0012): 0(−ζ) 1(+ζ) 2(−η) 3(+ξ) 4(+η) 5(−ξ).
@@ -94,21 +106,26 @@ class Hex8Thermal(_ThermalSolid):
     # Flujo de frontera
     # ------------------------------------------------------------------
 
-    def compute_face_flux(self, face: int, q_bar: float) -> np.ndarray:
+    def compute_face_flux(self, face: int, q_bar) -> np.ndarray:
         """Vector nodal del flujo impuesto sobre una cara (Neumann).
 
-        Integra ``-∫_Γ q̄ Nᵀ dΓ`` sobre la cara cuadrilateral indicada con
-        cuadratura Gauss 2×2 y funciones de forma bilineales. Exacto para
-        cara plana y flujo constante.
+        Integra ``-∫_Γ q̄ Nᵀ dΓ`` sobre la cara cuadrilateral indicada, con
+        su geometría bilineal real (alabeada o no) y cuadratura Gauss 2×2
+        (:func:`solidum.math.distributed_loads.face_load`). Exacto para
+        flujo constante sobre una cara plana y, sobre cualquier cara, para
+        ``q̄ = g·n`` con ``g`` constante, porque ``g·n dA`` es
+        ``g·(∂x/∂s × ∂x/∂r) ds dr``, polinómico.
 
         Parameters
         ----------
         face : int
             Índice según ``FACE_NODES`` (0..5), numeración con normal
             saliente paritaria con el ``Hex8`` mecánico.
-        q_bar : float
-            Flujo normal impuesto [W/m²]. **Positivo = SALIENTE** del
-            dominio (enfriamiento). Un flujo entrante se declara negativo.
+        q_bar : float o callable
+            Flujo normal impuesto [W/m²]: constante o campo ``q̄(x, n)`` de
+            la posición y de la normal exterior unitaria de la cara (ADR
+            0022). **Positivo = SALIENTE** del dominio (enfriamiento). Un
+            flujo entrante se declara negativo.
 
         Returns
         -------
@@ -123,33 +140,12 @@ class Hex8Thermal(_ThermalSolid):
                 f"esperado 0..{len(self.FACE_NODES) - 1}."
             )
 
-        face_local = self.FACE_NODES[face]
-        X = np.array(
-            [self.nodes[i].coordinates[:3] for i in face_local],
-            dtype=np.float64,
-        )
-
-        gp = 1.0 / np.sqrt(3.0)
-        s_pts = (-gp, gp, gp, -gp)
-        t_pts = (-gp, -gp, gp, gp)
-        s_sign = (-1.0, 1.0, 1.0, -1.0)
-        t_sign = (-1.0, -1.0, 1.0, 1.0)
-
+        local = list(self.FACE_NODES[face])
+        pts, wts = QuadratureRegistry.get(self._FACE_QUADRATURE)
+        N = np.array([self._FACE_N_FN(s, r) for s, r in pts], dtype=np.float64)
+        dN = np.array([self._FACE_DN_FN(s, r) for s, r in pts], dtype=np.float64)
+        X = self.get_coordinate_matrix(ndim=3)[local]
         f = np.zeros(self.N_NODES)
-        for sp, tp in zip(s_pts, t_pts):
-            N = np.zeros(4)
-            dN_ds = np.zeros(4)
-            dN_dt = np.zeros(4)
-            for i in range(4):
-                N[i] = 0.25 * (1.0 + s_sign[i] * sp) * (1.0 + t_sign[i] * tp)
-                dN_ds[i] = 0.25 * s_sign[i] * (1.0 + t_sign[i] * tp)
-                dN_dt[i] = 0.25 * t_sign[i] * (1.0 + s_sign[i] * sp)
-
-            g_s = dN_ds @ X
-            g_t = dN_dt @ X
-            dA = float(np.linalg.norm(np.cross(g_s, g_t)))
-
-            for i, node_local in enumerate(face_local):
-                f[node_local] += -N[i] * float(q_bar) * dA
-
+        f[local] = -face_load(N, dN, np.asarray(wts, dtype=np.float64), X, q_bar,
+                              n_components=1)
         return f
