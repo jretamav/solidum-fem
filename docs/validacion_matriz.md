@@ -29,11 +29,11 @@
 | Frame3D | elem | 5 | 5 | — | — | — | test_frame3d |
 | Cable2DCorot | elem | 4 | 3 | — | 1 | — | test_cable_elements |
 | Cable3DCorot | elem | 4 | 3 | — | 1 | — | test_cable_elements |
-| Quad4 | elem | 5 | 5 | — | — | — | test_solid_2d, test_patch_solid_2d |
-| Quad8 | elem | 5 | 4 | 1 | — | — | test_higher_order_solid_2d, test_cooks_membrane (2026-05-19) |
-| Quad9 | elem | 3 | 2 | 1 | — | — | test_higher_order_solid_2d, test_cooks_membrane (2026-05-19) |
-| Tri3 | elem | 4 | 4 | — | — | — | test_solid_2d, test_patch_solid_2d |
-| Tri6 | elem | 4 | 3 | 1 | — | — | test_higher_order_solid_2d, test_cooks_membrane (Bathe/Hughes 4×4 + refinamiento monótono, 2026-05-19) |
+| Quad4 | elem | 6 | 6 | — | — | — | test_solid_2d, test_patch_solid_2d, test_mms_solid_2d (soluciones manufacturadas, ADR 0022, 2026-10-27) |
+| Quad8 | elem | 6 | 5 | 1 | — | — | test_higher_order_solid_2d, test_cooks_membrane (2026-05-19), test_mms_solid_2d (soluciones manufacturadas, ADR 0022, 2026-10-27) |
+| Quad9 | elem | 4 | 3 | 1 | — | — | test_higher_order_solid_2d, test_cooks_membrane (2026-05-19), test_mms_solid_2d (soluciones manufacturadas, ADR 0022, 2026-10-27) |
+| Tri3 | elem | 5 | 5 | — | — | — | test_solid_2d, test_patch_solid_2d, test_mms_solid_2d (soluciones manufacturadas, ADR 0022, 2026-10-27) |
+| Tri6 | elem | 5 | 4 | 1 | — | — | test_higher_order_solid_2d, test_cooks_membrane (Bathe/Hughes 4×4 + refinamiento monótono, 2026-05-19), test_mms_solid_2d (soluciones manufacturadas, ADR 0022, 2026-10-27) |
 | CST_Embedded2D (módulo de usuario) | elem | 7 | 5 | — | 2 | — | test_disc_cst_embedded, test_disc_cst_embedded_integration |
 | Elastic1D | mat | 5 | 5 | — | — | — | test_truss, test_cable_material (implícito) |
 | Elastic2D | mat | 6 | 6 | — | — | — | test_solid_2d (implícito) |

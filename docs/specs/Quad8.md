@@ -48,8 +48,8 @@ Cuadratura Gauss $3 \times 3$ por defecto.
 Gauss–Legendre $3 \times 3$ (9 puntos) — exacta para polinomios hasta grado 5, suficiente para integrar $\mathbf B^\top \mathbf D \mathbf B$ del Quad8 sobre Jacobiano constante. La opción `2x2` queda disponible (reducida) pero introduce modos espurios; emite advertencia.
 
 ### 12. Cargas distribuidas consistentes
-- **Body load**: $\int N^\top \mathbf b\, t\, dA$ con la cuadratura del elemento (3×3).
-- **Edge traction** uniforme: en un borde recto con N cuadráticas la integral analítica reparte $L/6$ a cada nodo extremo y $4L/6$ al nodo medio (regla 1-4-1, Simpson). Bordes:
+- **Body load**: $\int N^\top \mathbf b\, t\, dA$ con la regla 3×3 de la masa, también cuando la rigidez usa 2×2; $\mathbf b$ constante o campo $\mathbf b(\mathbf x)$ (ADR 0022).
+- **Edge traction**: $\int_{\Gamma_e} N_k\, \bar{\mathbf t}(\mathbf x, \mathbf n)\, t\, ds$ sobre la geometría real del borde: interpolación cuadrática de sus tres nodos, Gauss de 3 puntos y jacobiano $|d\mathbf x/ds|$ (ADR 0022). Con $\bar{\mathbf t}$ constante sobre un borde recto con el nodo medio centrado reparte $L/6$, $4L/6$, $L/6$ (regla 1-4-1); con el nodo medio descentrado o el borde curvo el reparto es otro. Hasta el 2026-10-27 se aplicaba siempre el 1-4-1 sobre la cuerda (deuda #13). $\bar{\mathbf t}$ es constante o campo de la posición y de la normal exterior unitaria; una presión es $-p\,\mathbf n$. Bordes:
 
 | Edge | Nodos extremos | Nodo medio |
 |------|----------------|------------|
@@ -105,6 +105,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cuadrado distorsionado (deformación plana, esfuerzo plano, ortótropo a 30°) y cuarto de corona con tracción sobre los arcos; mallas n×n, n = 2, 4, 8, 16"
+      expect: "orden observado entre los dos últimos niveles ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_lineal
       setup: "campo u = a₀ + a₁·x + a₂·y impuesto en el contorno"
       expect: "ε constante en todos los Gauss e igual al gradiente analítico"
@@ -118,7 +122,7 @@ acceptance:
       setup: "Σf = b·A·t (regular y distorsionado)"
       tol_rel: 1.0e-10
     - name: cargas consistentes — tracción uniforme en un borde
-      setup: "Σf = t̄·L·t y reparto 1/6, 4/6, 1/6 en (vértice, medio, vértice)"
+      setup: "Σf = t̄·L·t y reparto 1/6, 4/6, 1/6 en (vértice, medio, vértice) con el nodo medio centrado; con el nodo medio en a_m, (L/6 − (L − 2a_m)/3, 2L/3, L/6 + (L − 2a_m)/3)·t̄·t"
       tol_rel: 1.0e-12
     - name: Cook's membrane (Cook 1974)                              # 2026-05-19
       setup: "trapezoid (0,0)-(48,44)-(48,60)-(0,44), E=1, ν=1/3, plane stress, cortante total F=1 distribuido en borde derecho; malla 4×4 Q8"
@@ -136,10 +140,11 @@ references:
 ## Implementación
 
 - **Archivo**: [solidum/elements/solid_2d/quad8.py](../../solidum/elements/solid_2d/quad8.py) · clase `Quad8` (subclase de la base interna `_HigherOrderSolid2D` en [_shared.py](../../solidum/elements/solid_2d/_shared.py), compartida con Quad9 y Tri6).
-- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).
+- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py), [tests/validation/test_mms_solid_2d.py](../../tests/validation/test_mms_solid_2d.py) (soluciones manufacturadas), [tests/test_distributed_loads_2d.py](../../tests/test_distributed_loads_2d.py) (cargas variables).
 
 ## Diálogo
 
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). `_MASS_QUADRATURE = "3x3"` explícita: la masa se integra con la regla completa aunque K use 2×2 (antes M de rango 8/16). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022). `compute_body_load` acepta un campo `b(x)` y `compute_edge_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria del borde (una presión es `−p·n`). La fuerza de cuerpo se integra con la regla de la masa (3×3, también con rigidez 2×2); la de borde, sobre la geometría real del borde con Gauss de 3 puntos, lo que salda la deuda #13 (1-4-1 sobre la cuerda; con él el orden L² del MMS caía de 3 a 2). Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 3 en L² y 2 en energía en el cuadrado distorsionado y en la corona.

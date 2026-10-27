@@ -7,6 +7,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
+    _PlaneSolidLoads,
     _batch_kin_quad4,
     compute_integrands,
     _compute_kinematics,
@@ -20,7 +21,7 @@ from solidum.registry import ElementRegistry, QuadratureRegistry
 
 
 @ElementRegistry.register
-class Quad4(Element):
+class Quad4(_PlaneSolidLoads, Element):
     """
     Elemento cuadrilátero bilineal 2D isoparamétrico con integración de Gauss.
 
@@ -49,6 +50,8 @@ class Quad4(Element):
     BATCH_KINEMATICS = _batch_kin_quad4
     BATCH_SCALE = "thickness"
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_quad4)
+    REFERENCE_CELL = "quad"
+    REFERENCE_NODES = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0))
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0, quadrature: tuple = None):
@@ -138,79 +141,13 @@ class Quad4(Element):
         }
 
     # ------------------------------------------------------------------
-    # Cargas distribuidas consistentes
+    # Cargas distribuidas consistentes: compute_body_load y
+    # compute_edge_traction de _PlaneSolidLoads (ADR 0022), con la regla
+    # 2×2 de la masa aunque la rigidez sea 1×1.
     # ------------------------------------------------------------------
 
     EDGE_NODES = ((0, 1), (1, 2), (2, 3), (3, 0))
-
-    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        """Vector de cargas nodales consistente con una fuerza de cuerpo uniforme.
-
-        Integra ``∫ N^T b · t dA`` sobre el elemento usando la cuadratura del
-        propio elemento. ``b`` se da en coordenadas globales ``(b_x, b_y)``.
-
-        Parameters
-        ----------
-        b : ndarray (2,)
-            Fuerza de cuerpo por unidad de volumen (e.g. ``ρg`` para peso
-            propio: ``b = (0, -ρg)``).
-
-        Returns
-        -------
-        ndarray (8,)
-            Cargas equivalentes en los DOFs locales del elemento, ordenadas
-            ``[fx_1, fy_1, ..., fx_4, fy_4]``.
-        """
-        b = np.asarray(b, dtype=np.float64).reshape(2)
-        coords = self.get_coordinate_matrix(ndim=2)
-        f = np.zeros(8)
-        for (xi, eta), w in zip(self.points, self.weights):
-            N = _shape_functions_quad4(xi, eta)
-            detJ = _det_jacobian_quad4(xi, eta, coords)
-            if detJ <= 0.0:
-                raise ValueError(f"Jacobiano no positivo en Quad4 id={self.id}.")
-            factor = detJ * w * self.thickness
-            for i in range(4):
-                f[2 * i]     += N[i] * b[0] * factor
-                f[2 * i + 1] += N[i] * b[1] * factor
-        return f
-
-    def compute_edge_traction(self, edge: int, t_vec: np.ndarray) -> np.ndarray:
-        """Vector de cargas nodales consistente con una tracción uniforme en un borde.
-
-        Integra ``∫_Γ N^T t̄ · t dS`` sobre el borde indicado. ``t_vec`` es la
-        tracción ``(t_x, t_y)`` en coordenadas globales y se asume **constante
-        a lo largo del borde**. Para presión normal o tracción variable, el
-        usuario debe descomponer/discretizar manualmente.
-
-        Parameters
-        ----------
-        edge : int
-            Índice del borde según ``EDGE_NODES``: 0=(n0,n1), 1=(n1,n2),
-            2=(n2,n3), 3=(n3,n0).
-        t_vec : ndarray (2,)
-            Tracción uniforme en globales sobre el borde.
-
-        Returns
-        -------
-        ndarray (8,)
-            Cargas equivalentes en los DOFs locales del elemento.
-        """
-        if edge not in (0, 1, 2, 3):
-            raise ValueError(f"edge={edge} fuera de rango para Quad4 (0..3).")
-        t_vec = np.asarray(t_vec, dtype=np.float64).reshape(2)
-        a, c = self.EDGE_NODES[edge]
-        x_a = np.asarray(self.nodes[a].coordinates[:2], dtype=np.float64)
-        x_c = np.asarray(self.nodes[c].coordinates[:2], dtype=np.float64)
-        L = float(np.linalg.norm(x_c - x_a))
-        # Borde recto entre dos nodos: el reparto consistente para tracción
-        # uniforme y N lineales es L/2 en cada nodo, exacto sin cuadratura.
-        f = np.zeros(8)
-        f[2 * a]     = 0.5 * L * t_vec[0] * self.thickness
-        f[2 * a + 1] = 0.5 * L * t_vec[1] * self.thickness
-        f[2 * c]     = 0.5 * L * t_vec[0] * self.thickness
-        f[2 * c + 1] = 0.5 * L * t_vec[1] * self.thickness
-        return f
+    _LOAD_QUADRATURE = "2x2"
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Masa del Quad4 por cuadratura del propio elemento (ADR 0009).

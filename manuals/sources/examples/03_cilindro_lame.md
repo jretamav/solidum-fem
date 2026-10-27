@@ -43,7 +43,7 @@ La función `modelo` construye el cuarto de corona con $n \times n$ celdas en $(
 
 {{py:run.py#modelo}}
 
-**La presión.** El método `compute_edge_traction` de los elementos sólidos integra una tracción de dirección constante sobre una arista. Una presión no lo es: empuja en la dirección normal al contorno, que cambia a lo largo de una arista curva. La función `carga_de_presion` integra $\int_\Gamma \mathbf N^\top (-p\,\mathbf n)\,d\Gamma$ con tres puntos de Gauss sobre la geometría de cada arista, recta o parabólica:
+**La presión.** Una presión empuja en la dirección normal al contorno, que cambia a lo largo de una arista curva. La función `carga_de_presion` integra $\int_\Gamma \mathbf N^\top (-p\,\mathbf n)\,d\Gamma$ con tres puntos de Gauss sobre la geometría de cada arista, recta o parabólica. Desde el ADR 0022 (2026-10-27), `compute_edge_traction` hace la misma integral con un campo de tracción: `el.compute_edge_traction(arista, lambda x, n: -p * n)`. El ejemplo conserva la función explícita porque muestra la integral:
 
 {{py:run.py#carga_de_presion}}
 

@@ -56,6 +56,7 @@ Un punto central (en el baricentro) con peso $w = 1/2$ sobre el triángulo de re
 
 **Fuerza de cuerpo $\mathbf b$**. Con $N_i$ lineales y $\mathbf b$ uniforme la integral es exacta:
 $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA \;\Longrightarrow\; \text{cada nodo recibe } \tfrac{1}{3}\, \mathbf b\, A_e\, t.$$
+Se integra con la regla de 3 puntos `tri_3` (ADR 0022), exacta también para $\mathbf b$ lineal; $\mathbf b$ es constante o un campo $\mathbf b(\mathbf x)$.
 
 **Tracción de superficie $\bar{\mathbf t}$** sobre un borde recto. Con $\bar{\mathbf t}$ constante el reparto es $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ en cada uno de los dos nodos del borde. Bordes numerados según la conectividad:
 
@@ -65,7 +66,7 @@ $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA \;\Longr
 | 1    | (1, 2) |
 | 2    | (2, 0) |
 
-$\bar{\mathbf t}$ se especifica en coordenadas globales $(t_x, t_y)$. Tracción variable o presión normal no soportadas en este paso.
+$\bar{\mathbf t}$ se especifica en **coordenadas globales**: constante o campo $\bar{\mathbf t}(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria del borde (ADR 0022); una presión $p$ es $\bar{\mathbf t} = -p\,\mathbf n$.
 
 ### 13. Salida por punto de Gauss
 
@@ -122,6 +123,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cuadrado distorsionado (deformación plana, esfuerzo plano, ortótropo a 30°) y cuarto de corona con tracción sobre los arcos; mallas n×n, n = 4, 8, 16, 32"
+      expect: "orden observado entre los dos últimos niveles ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_test_macneal_harder
       setup: "4 Tri3 distorsionados alrededor de un nodo interior descentrado
              con campo lineal u = 1e-3·(x + y/2), v = 1e-3·(y + x/2)
@@ -161,6 +166,7 @@ references:
 - **Tests**:
   - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — patch test sobre malla triangular regular y modos de cuerpo rígido.
   - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder con nodo interior libre (NAFEMS, V&V).
+  - [tests/validation/test_mms_solid_2d.py](../../tests/validation/test_mms_solid_2d.py) (soluciones manufacturadas), [tests/test_distributed_loads_2d.py](../../tests/test_distributed_loads_2d.py) (cargas variables).
 
 ---
 
@@ -174,3 +180,4 @@ references:
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
 - **2026-09-29** · Cinemática pública para elementos de usuario (ADR 0020, P6): `_compute_kinematics_tri3` y `_compute_integrands` pasan a llamarse `compute_kinematics_tri3` y `compute_integrands`, y su ruta pública es `solidum.elements.solid_2d` (el módulo `_shared` sigue siendo interno). Sólo cambia el nombre; formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022). `compute_body_load` acepta un campo `b(x)` y `compute_edge_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria del borde (una presión es `−p·n`). La fuerza de cuerpo se integra con la regla de la masa (`tri_3`; antes el reparto 1/3 exacto sólo para b constante); la de borde, sobre la geometría real del borde con Gauss de 3 puntos. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 2 en L² y 1 en energía en el cuadrado distorsionado y en la corona.

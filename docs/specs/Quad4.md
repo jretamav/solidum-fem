@@ -59,11 +59,11 @@ Por defecto Gauss–Legendre $2 \times 2$ (cuatro puntos): orden de exactitud 3 
 
 **Fuerza de cuerpo $\mathbf b$** (e.g. peso propio $\mathbf b = (0, -\rho g)$, fuerza centrífuga). Vector nodal equivalente:
 $$\mathbf f_e^{b} = \int_{\Omega_e} \mathbf N^\top\, \mathbf b\, t\, dA = \sum_{p=1}^{n_g} \mathbf N(\xi_p, \eta_p)^\top\, \mathbf b\, \det\mathbf J_p\, w_p\, t,$$
-donde $\mathbf N$ es la matriz $2 \times 8$ de funciones de forma. Se reutiliza la cuadratura del elemento (Gauss $2 \times 2$ por defecto) — exacta para $\mathbf b$ uniforme y geometrías de paralelogramo, y adecuada para geometrías irregulares moderadas.
+donde $\mathbf N$ es la matriz $2 \times 8$ de funciones de forma. Se integra con la regla $2 \times 2$ de la masa consistente aunque la rigidez use $1 \times 1$ (ADR 0022). $\mathbf b$ es constante o un campo $\mathbf b(\mathbf x)$ evaluado en cada punto de Gauss.
 
 **Tracción de superficie $\bar{\mathbf t}$** sobre un borde $\Gamma_e \subset \partial\Omega_N$:
 $$\mathbf f_e^{t} = \int_{\Gamma_e} \mathbf N^\top\, \bar{\mathbf t}\, t\, dS.$$
-Cada borde es una recta entre dos nodos; sobre él las funciones de forma son lineales y, para $\bar{\mathbf t}$ constante, la integral se reduce a un reparto exacto de $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ a cada uno de los dos nodos del borde, donde $L$ es la longitud del segmento. Bordes numerados según la conectividad nodal:
+Cada borde es una recta entre dos nodos; la integral se evalúa con Gauss de 3 puntos sobre el borde. Para $\bar{\mathbf t}$ constante da el reparto exacto $\tfrac{L}{2}\, \bar{\mathbf t}\, t$ a cada uno de los dos nodos del borde, donde $L$ es la longitud del segmento. Bordes numerados según la conectividad nodal:
 
 | Edge | Nodos |
 |------|-------|
@@ -72,7 +72,7 @@ Cada borde es una recta entre dos nodos; sobre él las funciones de forma son li
 | 2    | (2, 3) |
 | 3    | (3, 0) |
 
-$\bar{\mathbf t}$ se especifica en **coordenadas globales** $(t_x, t_y)$; presiones normales se obtienen multiplicando previamente por la normal exterior del borde. Tracción variable a lo largo del borde no está soportada en este paso.
+$\bar{\mathbf t}$ se especifica en **coordenadas globales**: constante o campo $\bar{\mathbf t}(\mathbf x, \mathbf n)$ de la posición y de la normal exterior unitaria del borde (ADR 0022); una presión $p$ es $\bar{\mathbf t} = -p\,\mathbf n$.
 
 ### 13. Salida por punto de Gauss
 
@@ -125,6 +125,10 @@ out_of_scope:
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cuadrado distorsionado (deformación plana, esfuerzo plano, ortótropo a 30°) y cuarto de corona con tracción sobre los arcos; mallas n×n, n = 4, 8, 16, 32"
+      expect: "orden observado entre los dos últimos niveles ≥ 2 − 0.1 en L² y ≥ 1 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_test_macneal_harder
       setup: "5 Quad4 distorsionados (4 nodos exteriores + 4 interiores)
              con campo lineal u = 1e-3·(x + y/2), v = 1e-3·(y + x/2)
@@ -168,6 +172,7 @@ references:
 - **Tests**:
   - [tests/test_solid_2d.py](../../tests/test_solid_2d.py) — ensamblaje de $\mathbf{B}$, simetría de $\mathbf{K}_e$, modos de cuerpo rígido y tracción uniaxial sobre malla regular.
   - [tests/test_patch_solid_2d.py](../../tests/test_patch_solid_2d.py) — patch test de MacNeal-Harder sobre 5 Quad4 distorsionados (NAFEMS, V&V).
+  - [tests/validation/test_mms_solid_2d.py](../../tests/validation/test_mms_solid_2d.py) (soluciones manufacturadas), [tests/test_distributed_loads_2d.py](../../tests/test_distributed_loads_2d.py) (cargas variables).
 
 ---
 
@@ -181,3 +186,4 @@ references:
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
 - **2026-09-29** · Cinemática pública para elementos de usuario (ADR 0020, P6): `_compute_integrands` pasa a llamarse `compute_integrands`, con ruta pública `solidum.elements.solid_2d`. Sólo cambia el nombre; formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022). `compute_body_load` acepta un campo `b(x)` y `compute_edge_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria del borde (una presión es `−p·n`). La fuerza de cuerpo se integra con la regla de la masa (2×2, también con rigidez 1×1); la de borde, sobre la geometría real del borde con Gauss de 3 puntos. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 2 en L² y 1 en energía en el cuadrado distorsionado y en la corona.

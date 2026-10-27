@@ -7,6 +7,7 @@ from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.elements.solid_2d._shared import (
+    _PlaneSolidLoads,
     _batch_kin_tri3,
     compute_integrands,
     compute_kinematics_tri3,
@@ -18,7 +19,7 @@ from solidum.registry import ElementRegistry
 
 
 @ElementRegistry.register
-class Tri3(Element):
+class Tri3(_PlaneSolidLoads, Element):
     """
     Elemento triangular lineal 2D de deformación constante (CST).
 
@@ -31,6 +32,8 @@ class Tri3(Element):
     BATCH_KINEMATICS = _batch_kin_tri3
     BATCH_SCALE = "thickness"
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_tri3)
+    REFERENCE_CELL = "tri"
+    REFERENCE_NODES = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
                  thickness: float = 1.0):
@@ -86,10 +89,14 @@ class Tri3(Element):
         }
 
     # ------------------------------------------------------------------
-    # Cargas distribuidas consistentes
+    # Cargas distribuidas consistentes: compute_body_load y
+    # compute_edge_traction de _PlaneSolidLoads (ADR 0022). La regla de
+    # 3 puntos integra exactamente N_i·b con b lineal; la del elemento (el
+    # centroide) sólo con b constante.
     # ------------------------------------------------------------------
 
     EDGE_NODES = ((0, 1), (1, 2), (2, 0))
+    _LOAD_QUADRATURE = "tri_3"
 
     def _element_area(self) -> float:
         coords = self.get_coordinate_matrix(ndim=2)
@@ -97,60 +104,6 @@ class Tri3(Element):
         return 0.5 * abs(
             (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0])
         )
-
-    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        """Vector de cargas nodales consistente con una fuerza de cuerpo uniforme.
-
-        Para Tri3 con N lineal y b uniforme la integral es exacta:
-        cada nodo recibe ``b · A_e · t / 3``.
-
-        Parameters
-        ----------
-        b : ndarray (2,)
-            Fuerza de cuerpo por unidad de volumen en globales.
-
-        Returns
-        -------
-        ndarray (6,)
-            Cargas equivalentes ordenadas ``[fx_1, fy_1, ..., fx_3, fy_3]``.
-        """
-        b = np.asarray(b, dtype=np.float64).reshape(2)
-        A = self._element_area()
-        share = A * self.thickness / 3.0
-        f = np.zeros(6)
-        for i in range(3):
-            f[2 * i]     = share * b[0]
-            f[2 * i + 1] = share * b[1]
-        return f
-
-    def compute_edge_traction(self, edge: int, t_vec: np.ndarray) -> np.ndarray:
-        """Vector de cargas nodales consistente con una tracción uniforme en un borde.
-
-        Parameters
-        ----------
-        edge : int
-            Índice del borde según ``EDGE_NODES``: 0=(n0,n1), 1=(n1,n2), 2=(n2,n0).
-        t_vec : ndarray (2,)
-            Tracción uniforme en globales sobre el borde.
-
-        Returns
-        -------
-        ndarray (6,)
-            Cargas equivalentes en los DOFs locales del elemento.
-        """
-        if edge not in (0, 1, 2):
-            raise ValueError(f"edge={edge} fuera de rango para Tri3 (0..2).")
-        t_vec = np.asarray(t_vec, dtype=np.float64).reshape(2)
-        a, c = self.EDGE_NODES[edge]
-        x_a = np.asarray(self.nodes[a].coordinates[:2], dtype=np.float64)
-        x_c = np.asarray(self.nodes[c].coordinates[:2], dtype=np.float64)
-        L = float(np.linalg.norm(x_c - x_a))
-        f = np.zeros(6)
-        f[2 * a]     = 0.5 * L * t_vec[0] * self.thickness
-        f[2 * a + 1] = 0.5 * L * t_vec[1] * self.thickness
-        f[2 * c]     = 0.5 * L * t_vec[0] * self.thickness
-        f[2 * c + 1] = 0.5 * L * t_vec[1] * self.thickness
-        return f
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Masa del Tri3 (CST) por fórmula analítica exacta (ADR 0009).

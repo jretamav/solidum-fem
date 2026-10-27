@@ -534,7 +534,8 @@ Continuo plano isoparamétrico, lineal y cuadrático, con convención Voigt 2D d
 - **Cinemática**: matriz `B(ξ, η)` calculada por mapeo isoparamétrico estándar; deformación Voigt `[ε_xx, ε_yy, γ_xy]`.
 - **Integración**: por defecto Gauss 2×2 (4 puntos). Configurable vía `quadrature` desde `QuadratureRegistry`. **Aviso**: integración reducida 1×1 → riesgo de hourglassing.
 - **Parámetros**: `thickness` (espesor para estado plano), `quadrature` (opcional).
-- **Cargas distribuidas**: `compute_body_load(b)` integra $\int \mathbf N^\top \mathbf b\, dV$ sobre el elemento; `compute_edge_traction(edge, t̄)` reparte una tracción uniforme sobre un borde (índices 0..3 según conectividad nodal). Tracción siempre en globales; sin soporte aún para tracción variable o presión normal.
+- **Cargas distribuidas**: `compute_body_load(b)` integra $\int \mathbf N^\top \mathbf b\, dV$ con la regla 2×2 de la masa (también con rigidez 1×1); `compute_edge_traction(edge, t̄)` integra sobre la geometría real del borde con Gauss de 3 puntos. Las dos aceptan una constante o un campo (`b(x)`, `t(x, n)` con `n` la normal exterior; una presión es `−p·n`; ADR 0022). Tracción en globales. Bordes 0..3 según la conectividad.
+- **Verificación por soluciones manufacturadas** ([ADR 0022](adr/0022-cargas-variables-mallas-estructuradas-y-mms.md)): orden 2 en L² y 1 en energía en un cuadrado distorsionado y en una corona, con deformación plana, esfuerzo plano y ortótropo girado ([`test_mms_solid_2d.py`](../tests/validation/test_mms_solid_2d.py)).
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve σ, ε y coordenadas (naturales y globales) en cada punto de Gauss. Habilita el suavizado nodal del exporter VTK (`Sigma_*_nodal`).
 - **Implementación**: kernels `_compute_kinematics` (interno del Quad4) y `compute_integrands` (compartido con Tri3) con `@njit` (Numba) — JIT en primera llamada. Viven en `solidum/elements/solid_2d/_shared.py`; `compute_integrands` es API pública de cinemática para elementos de usuario (ADR 0020, P6) y se importa desde `solidum.elements.solid_2d`.
 - **Limitaciones**: bloqueo volumétrico con materiales casi-incompresibles (ν → 0.5); en ese régimen usar formulación mixta (no implementada).
@@ -549,7 +550,8 @@ Continuo plano isoparamétrico, lineal y cuadrático, con convención Voigt 2D d
 - **Cinemática**: matriz `B` constante (deformación uniforme dentro del elemento).
 - **Integración**: 1 punto central, peso 0.5 (área triángulo en coordenadas naturales).
 - **Parámetros**: `thickness`.
-- **Cargas distribuidas**: `compute_body_load(b)` reparte 1/3 a cada nodo (exacto para b uniforme); `compute_edge_traction(edge, t̄)` reparte L/2 a cada uno de los 2 nodos del borde (índices 0..2). Tracción en globales.
+- **Cargas distribuidas**: `compute_body_load(b)` integra con la regla `tri_3` (1/3 a cada nodo con b uniforme, exacta también con b lineal); `compute_edge_traction(edge, t̄)` integra sobre la geometría real del borde con Gauss de 3 puntos. Las dos aceptan una constante o un campo (`b(x)`, `t(x, n)` con `n` la normal exterior; una presión es `−p·n`; ADR 0022). Tracción en globales. Bordes 0..2.
+- **Verificación por soluciones manufacturadas** ([ADR 0022](adr/0022-cargas-variables-mallas-estructuradas-y-mms.md)): orden 2 en L² y 1 en energía en un cuadrado distorsionado y en una corona, con deformación plana, esfuerzo plano y ortótropo girado ([`test_mms_solid_2d.py`](../tests/validation/test_mms_solid_2d.py)).
 - **Salida por Gauss**: `compute_gauss_state(U)` devuelve el único σ, ε y centroide del elemento (mismo formato que Quad4).
 - **Limitaciones**: shear locking severo; convergencia lenta. **Preferir `Quad4`** salvo en transiciones donde Quad4 no encaja geométricamente.
 - **Implementación**: kernels `compute_kinematics_tri3` y `compute_integrands` con `@njit` en `solidum/elements/solid_2d/_shared.py`. Son API pública de cinemática para elementos de usuario (ADR 0020, P6): se importan desde `solidum.elements.solid_2d`, no desde `_shared`, que es interno.
@@ -563,7 +565,8 @@ Continuo plano isoparamétrico, lineal y cuadrático, con convención Voigt 2D d
 - **DOFs por nodo**: `['ux', 'uy']` · 8 nodos (4 vértices antihorarios + 4 medios de borde) · `STRAIN_DIM = 3`.
 - **Funciones de forma**: serendípitas (sin término ξ²η²).
 - **Integración**: Gauss 3×3 (9 puntos) por defecto. Reducida 2×2 disponible vía `quadrature` (con riesgo de modos espurios).
-- **Cargas**: body load por cuadratura; tracción de borde uniforme reparte 1/6, 4/6, 1/6 (vértice, medio, vértice).
+- **Cargas**: body load con la regla 3×3 de la masa; `compute_edge_traction(edge, t̄)` integra sobre la geometría real del borde con Gauss de 3 puntos. Las dos aceptan una constante o un campo (`b(x)`, `t(x, n)` con `n` la normal exterior; una presión es `−p·n`; ADR 0022). Tracción en globales. Con tracción uniforme sobre un borde recto con el nodo medio centrado reparte 1/6, 4/6, 1/6; con el nodo descentrado o el borde curvo, lo que da la geometría (hasta el 2026-10-27 se aplicaba siempre el 1-4-1 sobre la cuerda, deuda #13).
+- **Verificación por soluciones manufacturadas** ([ADR 0022](adr/0022-cargas-variables-mallas-estructuradas-y-mms.md)): orden 3 en L² y 2 en energía, también con la regla 2×2, en un cuadrado distorsionado y en una corona, con deformación plana, esfuerzo plano y ortótropo girado ([`test_mms_solid_2d.py`](../tests/validation/test_mms_solid_2d.py)).
 - **Salida por Gauss**: `compute_gauss_state(U)` con 9 puntos por defecto.
 - **Spec**: [docs/specs/Quad8.md](specs/Quad8.md).
 - **Archivo**: [solidum/elements/solid_2d/quad8.py](../solidum/elements/solid_2d/quad8.py) (subclase de la base interna `_HigherOrderSolid2D` definida en `_shared.py`, compartida con Quad9 y Tri6).
@@ -577,6 +580,7 @@ Continuo plano isoparamétrico, lineal y cuadrático, con convención Voigt 2D d
 - **Funciones de forma**: producto tensorial Lagrange 1D-1D.
 - **Integración**: Gauss 3×3.
 - **Cargas y salida por Gauss**: idénticas a Quad8 (el nodo 8 es interior y no participa en bordes).
+- **Verificación por soluciones manufacturadas** ([ADR 0022](adr/0022-cargas-variables-mallas-estructuradas-y-mms.md)): orden 3 en L² y 2 en energía en un cuadrado distorsionado y en una corona, con deformación plana, esfuerzo plano y ortótropo girado ([`test_mms_solid_2d.py`](../tests/validation/test_mms_solid_2d.py)).
 - **Spec**: [docs/specs/Quad9.md](specs/Quad9.md).
 - **Archivo**: [solidum/elements/solid_2d/quad9.py](../solidum/elements/solid_2d/quad9.py) (subclase de la base interna `_HigherOrderSolid2D`, compartida con Quad8 y Tri6).
 
@@ -587,7 +591,8 @@ Continuo plano isoparamétrico, lineal y cuadrático, con convención Voigt 2D d
 - **Propósito**: triángulo isoparamétrico cuadrático que cura el shear locking del Tri3; reproduce campos cuadráticos exactamente.
 - **DOFs por nodo**: `['ux', 'uy']` · 6 nodos (3 vértices + 3 medios de borde) · `STRAIN_DIM = 3`.
 - **Integración**: 3 puntos en los puntos medios (cuadratura `tri_3`).
-- **Cargas**: body load por cuadratura; tracción de borde reparte 1/6, 4/6, 1/6.
+- **Cargas**: body load con la regla `tri_6` de la masa; `compute_edge_traction(edge, t̄)` integra sobre la geometría real del borde con Gauss de 3 puntos. Las dos aceptan una constante o un campo (`b(x)`, `t(x, n)` con `n` la normal exterior; una presión es `−p·n`; ADR 0022). Tracción en globales.
+- **Verificación por soluciones manufacturadas** ([ADR 0022](adr/0022-cargas-variables-mallas-estructuradas-y-mms.md)): orden 3 en L² y 2 en energía en un cuadrado distorsionado y en una corona, con deformación plana, esfuerzo plano y ortótropo girado ([`test_mms_solid_2d.py`](../tests/validation/test_mms_solid_2d.py)).
 - **Spec**: [docs/specs/Tri6.md](specs/Tri6.md).
 - **Archivo**: [solidum/elements/solid_2d/tri6.py](../solidum/elements/solid_2d/tri6.py) (subclase de la base interna `_HigherOrderSolid2D` en `_shared.py`, compartida con Quad8 y Quad9; declara `_MASS_QUADRATURE = "tri_6"` para integrar exactamente la masa consistente, que la cuadratura del elemento subintegraría).
 

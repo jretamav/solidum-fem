@@ -105,6 +105,20 @@ class Element(ABC):
         familia devuelve ``points_global = None``. Las bases que ya tienen
         la función como atributo (``_SHAPE_FN``, ``_shape_functions``)
         sobreescriben :meth:`batch_shape_functions` en su lugar.
+    REFERENCE_CELL : ClassVar[str | None], default=None
+        Celda de referencia del elemento isoparamétrico (ADR 0022):
+        ``"quad"`` (cuadrado ``[-1, 1]²``), ``"tri"`` (triángulo de
+        coordenadas de área ``ξ, η ≥ 0``, ``ξ + η ≤ 1``), ``"hex"`` o
+        ``"tet"``. ``None`` en los elementos sin celda de referencia
+        (estructurales 1D).
+    REFERENCE_NODES : ClassVar[tuple | None], default=None
+        Coordenadas naturales de los nodos en ese orden local, una tupla por
+        nodo. Las funciones de forma valen ``N_i(ξ_j) = δ_ij`` en ellos (lo
+        exige ``tests/test_reference_nodes_contract.py``). Con este dato el
+        generador de mallas estructuradas (``solidum.mesh``) coloca los nodos
+        de cualquier elemento sin código propio, y la verificación por
+        soluciones manufacturadas (``solidum.verification``) deduce su orden
+        de convergencia.
 
     Métodos abstractos a implementar
     --------------------------------
@@ -120,7 +134,9 @@ class Element(ABC):
         uno (fase 1: solo ``"consistent"``; fases futuras: ``"lumped"``,
         ``"hrz"``, ...) para que la extensión sea aditiva.
     compute_body_load(b), compute_edge_traction(edge, t_vec)
-        Cargas distribuidas consistentes. Opcionales según el tipo.
+        Cargas distribuidas consistentes. Opcionales según el tipo. En los
+        sólidos 2D la carga es una constante o un campo de la posición
+        (``b(x)``, ``t(x, n)``; ADR 0022).
     compute_self_weight(g)
         Peso propio consistente para la aceleración ``g``. La base lo
         deriva de ``compute_body_load(ρ·g)`` con la densidad del material
@@ -148,6 +164,8 @@ class Element(ABC):
     BATCH_KINEMATICS: ClassVar = None
     BATCH_SCALE: ClassVar[str | None] = None
     BATCH_SHAPE_FUNCTIONS: ClassVar = None
+    REFERENCE_CELL: ClassVar[str | None] = None
+    REFERENCE_NODES: ClassVar[tuple | None] = None
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material | None = None):

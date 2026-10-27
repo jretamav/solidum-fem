@@ -816,16 +816,23 @@ class Assembler:
         de elementos sin `compute_body_load` es deliberada — el método es
         opcional, no parte del contrato base de `Element`.
 
+        Un campo `b(x)` (ADR 0022) pasa sin cambios a cada elemento, que lo
+        evalúa en sus puntos de Gauss con la posición en su dimensión y
+        espera tantas componentes como ella; hoy lo admiten los sólidos 2D.
+
         Parameters
         ----------
-        b : np.ndarray or list, shape (2,) or (3,)
-            Fuerza de cuerpo por unidad de volumen en ejes globales.
+        b : np.ndarray, list or callable
+            Fuerza de cuerpo por unidad de volumen en ejes globales:
+            constante de 2 ó 3 componentes, o campo `b(x)`.
 
         Returns
         -------
         np.ndarray, shape (ndof,)
             Vector global de fuerzas nodales consistentes con `∫NᵀbA dx`.
         """
+        if callable(b):
+            return self._iterate_body_force(lambda element: element.compute_body_load(b))
         b3 = self._promote_to_3d(b, "assemble_body_load")
         return self._iterate_body_force(
             lambda element: element.compute_body_load(self._vector_for_element(element, b3)))

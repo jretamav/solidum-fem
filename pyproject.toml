@@ -48,6 +48,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "sympy>=1.12",
+]
+# Verificación por soluciones manufacturadas (solidum.verification, ADR
+# 0022): SymPy deriva la fuerza de cuerpo y las tracciones de la solución.
+verification = [
+    "sympy>=1.12",
 ]
 # Backends algebraicos opcionales (ADR 0003, ADR 0017). Sin ellos el
 # despachador usa SuperLU (SciPy) y todo funciona; con ellos, la

@@ -10,14 +10,15 @@ Cuatro grupos:
    de orden superior (Quad8, Quad9, Tri6): :func:`_N_quad8`,
    :func:`_dN_quad8`, :func:`_N_quad9`, :func:`_dN_quad9`,
    :func:`_N_tri6`, :func:`_dN_tri6`.
-3. **Kinematics genérico de orden superior** y reparto consistente de
-   tracciones cuadráticas: :func:`_kinematics_higher_order`,
-   :func:`_quadratic_edge_traction`. Más el expansor escalar→bloque para
-   masa traslacional: :func:`_expand_scalar_mass`.
-4. **Base interna** :class:`_HigherOrderSolid2D` que comparten Quad8,
-   Quad9 y Tri6 (mismo bucle de Gauss, distinto par
-   ``_SHAPE_FN``/``_GRAD_FN``, y cuadratura específica para masa cuando
-   la del elemento subintegra el producto cuadrático×cuadrático).
+3. **Kinematics genérico de orden superior**: :func:`_kinematics_higher_order`.
+   Más el expansor escalar→bloque para masa traslacional:
+   :func:`_expand_scalar_mass`.
+4. **Bases internas**: :class:`_PlaneSolidLoads`, las cargas distribuidas
+   consistentes de los cinco sólidos 2D (constantes o campos, ADR 0022), y
+   :class:`_HigherOrderSolid2D`, que comparten Quad8, Quad9 y Tri6 (mismo
+   bucle de Gauss, distinto par ``_SHAPE_FN``/``_GRAD_FN``, y cuadratura
+   específica para masa cuando la del elemento subintegra el producto
+   cuadrático×cuadrático).
 
 El módulo es interno al paquete y puede reorganizarse. Los símbolos con guion
 bajo son privados; los pocos que importan tests existentes se reexportan desde
@@ -38,6 +39,7 @@ from solidum.constants import JACOBIAN_RTOL
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.math.distributed_loads import body_load, edge_load
 from solidum.math.integration import resolve_quadrature
 from solidum.math.mass_lumping import lump_hrz
 from solidum.registry import QuadratureRegistry
@@ -421,25 +423,78 @@ def _expand_scalar_mass(M_scalar: np.ndarray) -> np.ndarray:
     return M
 
 
-def _quadratic_edge_traction(elem, edge: int, t_vec: np.ndarray, n_dofs: int) -> np.ndarray:
-    """Reparto consistente de tracción uniforme sobre un borde recto con
-    funciones de forma cuadráticas: 1/6 al vértice inicial, 4/6 al medio,
-    1/6 al vértice final (regla 1-4-1, idéntica a Simpson).
+# ---------------------------------------------------------------------------
+# Cargas distribuidas consistentes, comunes a los cinco sólidos 2D (ADR 0022).
+# ---------------------------------------------------------------------------
+
+class _PlaneSolidLoads:
+    """Fuerza de cuerpo y tracción de borde de los sólidos planos.
+
+    La fuerza de cuerpo se integra con ``_LOAD_QUADRATURE``, la regla de la
+    masa consistente del elemento: integra exactamente ``N_i·N_j``, y por
+    tanto ``N_i·b`` con ``b`` del grado de la interpolación, aunque la regla
+    de la rigidez sea reducida. La tracción se integra sobre la geometría
+    real del borde (:func:`solidum.math.distributed_loads.edge_load`). Las
+    dos admiten una constante o un campo de la posición.
     """
-    t_vec = np.asarray(t_vec, dtype=np.float64).reshape(2)
-    a, m, c = elem.EDGE_NODES[edge]
-    x_a = np.asarray(elem.nodes[a].coordinates[:2], dtype=np.float64)
-    x_c = np.asarray(elem.nodes[c].coordinates[:2], dtype=np.float64)
-    L = float(np.linalg.norm(x_c - x_a))
-    f = np.zeros(n_dofs)
-    th = elem.thickness
-    f[2 * a]     = (L / 6.0) * t_vec[0] * th
-    f[2 * a + 1] = (L / 6.0) * t_vec[1] * th
-    f[2 * m]     = (4.0 * L / 6.0) * t_vec[0] * th
-    f[2 * m + 1] = (4.0 * L / 6.0) * t_vec[1] * th
-    f[2 * c]     = (L / 6.0) * t_vec[0] * th
-    f[2 * c + 1] = (L / 6.0) * t_vec[1] * th
-    return f
+    _LOAD_QUADRATURE = "2x2"
+
+    def compute_body_load(self, b) -> np.ndarray:
+        """Vector nodal consistente ``∫ Nᵀ b · espesor dA``.
+
+        Parameters
+        ----------
+        b : array (2,) o callable
+            Fuerza de cuerpo por unidad de volumen en ejes globales:
+            constante (``ρ·g`` para el peso propio) o campo ``b(x)`` de la
+            posición ``x = (x, y)``.
+
+        Returns
+        -------
+        ndarray (2·n_nodos,)
+            Cargas equivalentes ``[fx_1, fy_1, ..., fx_n, fy_n]``.
+        """
+        pts, wts = QuadratureRegistry.get(self._LOAD_QUADRATURE)
+        pts = np.asarray(pts, dtype=np.float64).reshape(len(wts), 2)
+        coords = np.ascontiguousarray(self.get_coordinate_matrix(ndim=2))
+        kin = type(self).BATCH_KINEMATICS
+        B = np.empty((3, 2 * len(self.nodes)))
+        detJ = np.array([kin(p, coords, B) for p in pts])
+        if np.any(detJ <= 0.0):
+            raise ValueError(f"Jacobiano no positivo en {type(self).__name__} id={self.id}.")
+        N = self.batch_shape_functions(pts)
+        return body_load(N, detJ * np.asarray(wts) * self.thickness, N @ coords, b)
+
+    def compute_edge_traction(self, edge: int, t) -> np.ndarray:
+        """Vector nodal consistente ``∫_Γ Nᵀ t · espesor ds`` sobre un borde.
+
+        Parameters
+        ----------
+        edge : int
+            Índice del borde en ``EDGE_NODES``, que recorre el contorno en
+            sentido antihorario (Quad: 0=(n0,n1), 1=(n1,n2), 2=(n2,n3),
+            3=(n3,n0); Tri: 0=(n0,n1), 1=(n1,n2), 2=(n2,n0); los cuadráticos
+            intercalan el nodo medio).
+        t : array (2,) o callable
+            Tracción en ejes globales: constante o campo ``t(x, n)`` de la
+            posición y de la normal exterior unitaria del borde. Una presión
+            ``p`` (positiva hacia el interior) es ``lambda x, n: -p * n``.
+
+        Returns
+        -------
+        ndarray (2·n_nodos,)
+            Cargas equivalentes en los DOFs locales del elemento.
+        """
+        if not 0 <= edge < len(self.EDGE_NODES):
+            raise ValueError(f"edge={edge} fuera de rango para {type(self).__name__} "
+                             f"(0..{len(self.EDGE_NODES) - 1}).")
+        local = self.EDGE_NODES[edge]
+        X = self.get_coordinate_matrix(ndim=2)[list(local)]
+        f_edge = edge_load(X, t) * self.thickness
+        f = np.zeros(2 * len(self.nodes))
+        for k, i in enumerate(local):
+            f[2 * i:2 * i + 2] = f_edge[2 * k:2 * k + 2]
+        return f
 
 
 # ---------------------------------------------------------------------------
@@ -447,14 +502,16 @@ def _quadratic_edge_traction(elem, edge: int, t_vec: np.ndarray, n_dofs: int) ->
 # de orden superior (cuadrático o más): Quad8, Quad9, Tri6.
 # ---------------------------------------------------------------------------
 
-class _HigherOrderSolid2D(Element):
+class _HigherOrderSolid2D(_PlaneSolidLoads, Element):
     """Base interna para sólidos 2D isoparamétricos de orden superior.
 
-    Comparte los bucles de Gauss para K, F_int, gauss state, body load y
-    masa consistente. Cada subclase declara las funciones de forma
-    (``_SHAPE_FN``, ``_GRAD_FN``), la cuadratura por defecto del elemento
-    (``_DEFAULT_QUADRATURE``) y, opcionalmente, una cuadratura
-    independiente para la matriz de masa (``_MASS_QUADRATURE``). El
+    Comparte los bucles de Gauss para K, F_int, gauss state y masa
+    consistente; las cargas distribuidas vienen de :class:`_PlaneSolidLoads`.
+    Cada subclase declara las funciones de forma (``_SHAPE_FN``,
+    ``_GRAD_FN``), la cuadratura por defecto del elemento
+    (``_DEFAULT_QUADRATURE``), una cuadratura independiente para la matriz
+    de masa (``_MASS_QUADRATURE``) y la misma para las cargas
+    (``_LOAD_QUADRATURE``). El
     número de nodos se infiere de ``len(self.nodes)``: la base no
     presupone si la geometría es cuadrilátera o triangular.
     """
@@ -539,20 +596,6 @@ class _HigherOrderSolid2D(Element):
             sig[idx] = stress
         return {'points_natural': nat, 'points_global': glb,
                 'strain': eps, 'stress': sig}
-
-    def compute_body_load(self, b: np.ndarray) -> np.ndarray:
-        b = np.asarray(b, dtype=np.float64).reshape(2)
-        coords = self.get_coordinate_matrix(ndim=2)
-        n = self._n_nodes
-        f = np.zeros(2 * n)
-        for (xi, eta), w in zip(self.points, self.weights):
-            N = self._SHAPE_FN(xi, eta)
-            _, detJ = _kinematics_higher_order(self._GRAD_FN, xi, eta, coords, n)
-            factor = detJ * w * self.thickness
-            for i in range(n):
-                f[2 * i]     += N[i] * b[0] * factor
-                f[2 * i + 1] += N[i] * b[1] * factor
-        return f
 
     def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
         """Masa del elemento sólido 2D de orden superior (ADR 0009).

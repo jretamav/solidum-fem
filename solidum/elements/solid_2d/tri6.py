@@ -1,12 +1,9 @@
 """``Tri6`` — triángulo 2D de 6 nodos (cuadrático completo P₂)."""
-import numpy as np
-
 from solidum.elements.solid_2d._shared import (
     _HigherOrderSolid2D,
     _batch_kin_tri6,
     _dN_tri6,
     _N_tri6,
-    _quadratic_edge_traction,
 )
 from solidum.registry import ElementRegistry
 
@@ -39,14 +36,14 @@ class Tri6(_HigherOrderSolid2D):
     _QUADRATURE_FAMILY = "tri"
     _DEFAULT_QUADRATURE = "tri_3"
     _MASS_QUADRATURE = "tri_6"
+    _LOAD_QUADRATURE = "tri_6"
+
+    REFERENCE_CELL = "tri"
+    REFERENCE_NODES = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0),
+                       (0.5, 0.0), (0.5, 0.5), (0.0, 0.5))
 
     EDGE_NODES = (
         (0, 3, 1),
         (1, 4, 2),
         (2, 5, 0),
     )
-
-    def compute_edge_traction(self, edge: int, t_vec: np.ndarray) -> np.ndarray:
-        if edge not in (0, 1, 2):
-            raise ValueError(f"edge={edge} fuera de rango para Tri6 (0..2).")
-        return _quadratic_edge_traction(self, edge, t_vec, n_dofs=12)

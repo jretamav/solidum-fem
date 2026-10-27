@@ -11,9 +11,10 @@ clase vive en su módulo:
 - ``tri6`` — :class:`Tri6` (triángulo cuadrático completo P₂).
 
 Los helpers libres (funciones de forma, derivadas, kinematics Numba para
-los lineales, ``_expand_scalar_mass``, ``_quadratic_edge_traction`` y la
-base interna ``_HigherOrderSolid2D`` compartida por Quad8, Quad9 y Tri6)
-viven en :mod:`_shared`.
+los lineales, ``_expand_scalar_mass``), la base de cargas distribuidas
+``_PlaneSolidLoads`` de los cinco elementos y la base interna
+``_HigherOrderSolid2D`` compartida por Quad8, Quad9 y Tri6 viven en
+:mod:`_shared`.
 
 API pública de cinemática (ADR 0020, P6): :func:`compute_kinematics_tri3`
 (matriz ``B`` y ``det J`` del triángulo lineal) y :func:`compute_integrands`

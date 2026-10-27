@@ -111,7 +111,7 @@ def compute_face_traction(self, face: int, t_bar: np.ndarray) -> np.ndarray:
 - Hex8 — cuadratura 2D Gauss `2×2` sobre la cara (4 puntos por cara). Exacta para tracción constante sobre cara plana; degrada con tracción variable o cara alabeada, pero esos casos están fuera de alcance hoy.
 - Tet4 — cuadratura 1 punto centroide de la cara (peso `A_cara`). Exacta para tracción constante por linealidad de las funciones de forma.
 
-**Tracción variable y presión normal**: fuera de alcance en este ADR — patrón idéntico al 2D actual (`compute_edge_traction` solo acepta tracción uniforme en globales). Cuando entre presión hidrostática u otro caso real, se decide la API en su propio ADR.
+**Tracción variable y presión normal**: fuera de alcance en este ADR — patrón idéntico al 2D actual (`compute_edge_traction` solo acepta tracción uniforme en globales). Cuando entre presión hidrostática u otro caso real, se decide la API en su propio ADR. *Actualización 2026-10-27*: decidida en el [ADR 0022](0022-cargas-variables-mallas-estructuradas-y-mms.md) para los sólidos 2D (campos `b(x)` y `t(x, n)`, con `n` la normal exterior); las caras 3D, en su fase 2.
 
 ## Consecuencias
 

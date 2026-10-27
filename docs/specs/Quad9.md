@@ -25,7 +25,7 @@ $N_i(\xi, \eta) = L_a(\xi)\,L_b(\eta)$ con $(a, b)$ asociado al nodo $i$ según 
 Gauss $3 \times 3$ por defecto.
 
 ### 12. Cargas distribuidas
-Body load con la cuadratura del elemento. Tracción en bordes idéntica a `Quad8` (1/6, 4/6, 1/6 — el nodo 8 no participa, no toca bordes).
+Body load con la regla 3×3 de la masa. Tracción en bordes como en `Quad8`, sobre la geometría real del borde (el nodo 8 no toca bordes). Cargas constantes o campos (ADR 0022).
 
 ---
 
@@ -51,6 +51,10 @@ admission:                # criterio de admisión al programa principal (Reglas.
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cuadrado distorsionado (deformación plana, esfuerzo plano, ortótropo a 30°) y cuarto de corona con tracción sobre los arcos; mallas n×n, n = 2, 4, 8, 16"
+      expect: "orden observado entre los dos últimos niveles ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_cuadratico
       setup: "u = (x², 0) impuesto en los 9 nodos"
       expect: "ε_xx = 2x exacto en todos los Gauss"
@@ -66,10 +70,11 @@ acceptance:
 ## Implementación
 
 - **Archivo**: [solidum/elements/solid_2d/quad9.py](../../solidum/elements/solid_2d/quad9.py) · clase `Quad9` (subclase de la base interna `_HigherOrderSolid2D` en [_shared.py](../../solidum/elements/solid_2d/_shared.py), compartida con Quad8 y Tri6).
-- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py).
+- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py), [tests/validation/test_mms_solid_2d.py](../../tests/validation/test_mms_solid_2d.py) (soluciones manufacturadas), [tests/test_distributed_loads_2d.py](../../tests/test_distributed_loads_2d.py) (cargas variables).
 
 ## Diálogo
 
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). `_MASS_QUADRATURE = "3x3"` explícita: la masa se integra con la regla completa aunque K use 2×2 (antes M de rango 8/18). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022). `compute_body_load` acepta un campo `b(x)` y `compute_edge_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria del borde (una presión es `−p·n`). La fuerza de cuerpo se integra con la regla de la masa (3×3); la de borde, sobre la geometría real del borde con Gauss de 3 puntos, lo que salda la deuda #13. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 3 en L² y 2 en energía en el cuadrado distorsionado y en la corona.

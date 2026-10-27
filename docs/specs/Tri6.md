@@ -19,8 +19,8 @@ Numeración: 0,1,2 vértices en (0,0), (1,0), (0,1); 3 medio del borde 0-1, 4 me
 Cuadratura triangular de 3 puntos (puntos medios de los lados; peso 1/6 cada uno) — exacta para polinomios hasta grado 2 sobre el triángulo de referencia.
 
 ### 12. Cargas distribuidas
-- Body load con la cuadratura del elemento.
-- Edge traction uniforme: reparto 1/6, 4/6, 1/6 a (vértice, medio, vértice).
+- Body load con la regla `tri_6` de la masa: la `tri_3` del elemento no integra $N_i\,b$ con $b$ cuadrático (ADR 0022).
+- Edge traction como en `Quad8`, sobre la geometría real del borde; 1/6, 4/6, 1/6 sólo con borde recto y nodo medio centrado. Cargas constantes o campos.
 
 ---
 
@@ -46,6 +46,10 @@ admission:                # criterio de admisión al programa principal (Reglas.
 
 acceptance:
   verification:
+    - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
+      setup: "u* suave no polinómico; cuadrado distorsionado (deformación plana, esfuerzo plano, ortótropo a 30°) y cuarto de corona con tracción sobre los arcos; mallas n×n, n = 2, 4, 8, 16"
+      expect: "orden observado entre los dos últimos niveles ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía; error decreciente en cada nivel"
+      tol_abs: 0.1
     - name: patch_cuadratico
       setup: "u = (x², 0) impuesto en los 6 nodos"
       expect: "ε_xx = 2x exacto en cada Gauss"
@@ -65,10 +69,11 @@ acceptance:
 ## Implementación
 
 - **Archivo**: [solidum/elements/solid_2d/tri6.py](../../solidum/elements/solid_2d/tri6.py) · clase `Tri6` (subclase de la base interna `_HigherOrderSolid2D` en [_shared.py](../../solidum/elements/solid_2d/_shared.py), compartida con Quad8 y Quad9). Declara `_MASS_QUADRATURE = "tri_6"` (Dunavant 6 puntos, orden 4) porque la cuadratura del elemento (`tri_3`, orden 2) subintegra el producto cuadrático×cuadrático de la masa consistente.
-- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py) (patch cuadrático), [tests/test_cooks_membrane.py](../../tests/test_cooks_membrane.py) (benchmark Bathe/Hughes con malla triangulada 4×4 + refinamiento monótono, añadido Fase B 2026-05-19).
+- **Tests**: [tests/test_higher_order_solid_2d.py](../../tests/test_higher_order_solid_2d.py) (patch cuadrático), [tests/test_cooks_membrane.py](../../tests/test_cooks_membrane.py) (benchmark Bathe/Hughes con malla triangulada 4×4 + refinamiento monótono, añadido Fase B 2026-05-19), [tests/validation/test_mms_solid_2d.py](../../tests/validation/test_mms_solid_2d.py) (soluciones manufacturadas), [tests/test_distributed_loads_2d.py](../../tests/test_distributed_loads_2d.py) (cargas variables).
 
 ## Diálogo
 
 - **2026-09-22** · Auditoría global: `quadrature` acepta clave del registro o tupla `(points, weights)` en todos los sólidos (`resolve_quadrature` valida la familia por medida de referencia y dimensión). tolerancia del jacobiano ahora **relativa** (`det J ≤ JACOBIAN_RTOL · Π‖fila_i(J)‖`, cota de Hadamard, adimensional): la absoluta `1e-10` sobre `det J` rechazaba mallas finas en metros sin distorsión.
 - **2026-09-22** · Ensamblaje por lotes (ADR 0014): la cinemática del elemento pasa a un núcleo compilado compartido (`_kin2d_from_dN`) y se expone como `BATCH_KINEMATICS`; `compute_element_state` no cambia de formulación. El `Assembler` agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en `K` y `F_int` sobre todos los materiales compatibles (`tests/test_batch_assembly.py`).
 - **2026-09-22** · Cierre del ADR 0014 (§9): la cinemática por lotes (`BATCH_KINEMATICS`) ya **no lanza** con jacobiano degenerado —devuelve `det J ≤ 0` y el ensamblador lanza el `ValueError` con el id del elemento—, porque el kernel de familia tiene ahora variante paralela (`prange`, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (`Family.gauss_state`, mismo resultado que `compute_gauss_state`, verificado en `tests/test_batch_postprocess.py`). Formulación sin cambios.
+- **2026-10-27** · Cargas variables y verificación por soluciones manufacturadas (ADR 0022). `compute_body_load` acepta un campo `b(x)` y `compute_edge_traction` un campo `t(x, n)`, con `n` la normal exterior unitaria del borde (una presión es `−p·n`). La fuerza de cuerpo se integra con la regla de la masa (`tri_6`; antes `tri_3`); la de borde, sobre la geometría real del borde con Gauss de 3 puntos, lo que salda la deuda #13. Declara `REFERENCE_CELL` y `REFERENCE_NODES`. Nueva aceptación «soluciones manufacturadas»: orden 3 en L² y 2 en energía en el cuadrado distorsionado y en la corona.
