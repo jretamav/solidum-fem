@@ -539,6 +539,13 @@ class SolveResult:
     constraint_forces_by_node
         Vista ``{node_id: {dof_name: valor}}`` de ``constraint_forces`` en los
         DOF de las MPC de unión.
+    condition_estimate
+        Número de condición estimado ``κ̃`` de la rigidez reducida y escalada
+        por la diagonal (ADR 0019, capa 4): ``log10(κ̃)`` acota las cifras que
+        la solución puede haber perdido de las ~16 de la doble precisión, y
+        por encima de ``1e12`` el solver avisa. Lo da el ``LinearSolver``
+        (estática lineal y conducción estacionaria) con un backend directo y
+        ``K`` simétrica; ``None`` en el resto.
     """
 
     U: np.ndarray
@@ -550,6 +557,7 @@ class SolveResult:
     num_steps: int = 1
     constraint_forces: np.ndarray | None = None
     constraint_forces_by_node: dict[int, dict[str, float]] = field(default_factory=dict)
+    condition_estimate: float | None = None
 
 
 # Tolerancia relativa del criterio de unión: |C_k·b| ≤ tol·Σ_j |C_kj·b_j|.
@@ -631,6 +639,7 @@ def build_solve_result(
     converged: bool = True,
     num_steps: int = 1,
     load_factor: float = 1.0,
+    condition_estimate: float | None = None,
 ) -> SolveResult:
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
@@ -657,8 +666,9 @@ def build_solve_result(
     - ``element_forces``: ``element.internal_forces(U)`` para cada elemento
       que implemente el contrato (los que devuelvan ``None`` se omiten).
 
-    El llamador (típicamente ``solidum.run``) asigna el resultado a
-    ``domain.last_result``.
+    ``condition_estimate`` se copia tal cual: lo calcula el solver (capa 4
+    del ADR 0019). El llamador (típicamente ``solidum.run``) asigna el
+    resultado a ``domain.last_result``.
     """
     ndof = U.shape[0]
 
@@ -729,4 +739,5 @@ def build_solve_result(
         num_steps=num_steps,
         constraint_forces=F_c,
         constraint_forces_by_node=constraint_forces_by_node,
+        condition_estimate=condition_estimate,
     )

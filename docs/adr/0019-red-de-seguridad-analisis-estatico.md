@@ -1,6 +1,6 @@
 # ADR 0019 — Red de seguridad del análisis estático: mecanismos, equilibrio y pivotes nulos
 
-- **Estado**: aceptado; ampliado el 2026-09-30 (§Cierres del 2026-09-30) y el 2026-10-20 (§Ampliación del 2026-10-20: mecanismos internos por la energía del modo; §Capa 2 por el error hacia atrás)
+- **Estado**: aceptado; ampliado el 2026-09-30 (§Cierres del 2026-09-30) y el 2026-10-20 (§Ampliación del 2026-10-20: mecanismos internos por la energía del modo; §Capa 2 por el error hacia atrás); capa 4, aviso de pérdida de cifras por mal condicionamiento, el 2026-10-27 (§Capa 4)
 - **Fecha**: 2026-09-23
 - **Alcance**: `solidum/math/solvers/model_checks.py` (nuevo); `MechanismError` e `IllPosedSystemError` en `diagnostics.py`; los tres solvers estáticos (`LinearSolver`, `NonlinearSolver`, `ArcLengthSolver` y su variante por disipación); telemetría del residuo lineal en el corrector (ADR 0015); `n_zero_pivots` en SuperLU y Pardiso; mensaje de memoria insuficiente en los backends directos; `rigid_body_basis` y `Assembler.rigid_basis` (reutilizan los modos del ADR 0018). **No cambia** ninguna formulación ni ningún resultado de un modelo bien planteado; cambia qué pasa con los mal planteados.
 
@@ -202,13 +202,49 @@ Es la menor perturbación relativa de `K` y `F` de la que `u` es la solución ex
 
 **Resultado.** `tests/test_backward_error.py`: zonas rígidas ×1e6 y ×1e8 en m y en mm, que el criterio anterior rechazaba (se comprueba en la propia prueba), se resuelven con SuperLU y Pardiso y dan el mismo desplazamiento en las dos unidades, a la precisión que permite el condicionamiento (1e-7 con ×1e6, 1e-4 con ×1e8); ν = 0.4999999 y 0.49999999 se resuelven; η es invariante a un escalado diagonal; una solución perturbada se rechaza. Suite: 2 715 / 13 / 0 con Pardiso y 2 707 / 21 / 0 sólo con SuperLU, sin cambio de resultados.
 
+## Capa 4: aviso de pérdida de cifras por mal condicionamiento (decisión del usuario, 2026-10-27)
+
+### El hueco
+
+Un sistema resuelto correctamente (capa 2) y no singular (capa 3) puede haber perdido cifras: con número de condición κ, la solución conserva unas `16 − log₁₀ κ` de las ~16 cifras de la doble precisión, y un directo, estable hacia atrás, da un residuo pequeño aunque las haya perdido. Medido con soluciones de referencia (nodos exactos de un voladizo de Euler-Bernoulli con carga en la punta; 30 cifras con mpmath en los demás):
+
+| Caso | κ̃ | Cota κ̃·ε | Error real |
+|---|---|---|---|
+| Voladizo, 100 elementos | 9.8·10⁸ | 2·10⁻⁷ | 5·10⁻⁹ |
+| Voladizo, 1 000 elementos | 9.8·10¹² | 2·10⁻³ | 3·10⁻⁵ |
+| Voladizo, 3 000 elementos | 8.0·10¹⁴ | 0.18 | 6.5·10⁻³ |
+| Voladizo, 10 000 elementos | 1.5·10¹⁷ | 34 | **0.51** |
+| Pórtico con zonas rígidas ×10⁶ | 1.3·10¹⁰ | 3·10⁻⁶ | 3·10⁻⁸ |
+| Pórtico con zonas rígidas ×10⁸ | 1.3·10¹² | 3·10⁻⁴ | 1·10⁻⁵ |
+| Pórtico con zonas rígidas ×10¹⁰ | 1.3·10¹⁴ | 3·10⁻² | 1·10⁻³ |
+| Placa con ν = 0.49999999 | 4.2·10¹⁰ | 9·10⁻⁶ | 3·10⁻⁸ |
+
+El voladizo de 10 000 elementos daba una flecha errónea en un 51 % **sin ningún aviso**. En una viga, κ crece con la cuarta potencia del número de elementos; en una malla de sólidos sólo con el cuadrado del tamaño (una placa Quad4 de 256 × 256 da 1.6·10⁶). La cota κ̃·ε es fiable y pesimista: el error real queda de 30 a 100 veces por debajo.
+
+### Decisión
+
+- **Estimación** (`model_checks.condition_estimate`): κ̃ = ‖K̃‖₁·‖K̃⁻¹‖₁ de la rigidez reducida escalada por la diagonal, `K̃ = D^-½·K·D^-½` (el escalado de la capa 2, que la hace independiente de las unidades). ‖K̃‖₁ = ‖K̃‖∞ ya está calculada; ‖K̃⁻¹‖₁ se estima con el algoritmo de Higham y Tisseur (2000) de SciPy (`onenormest`, un vector) con la factorización existente, sin formar la inversa. Comprobado contra κ₁ exacto: razón 1.000 en tres modelos. Coste medido: unas seis resoluciones, el 17-18 % de la factorización con 14 000 y 100 000 grados de libertad (Pardiso); con dos vectores daba el mismo valor y costaba un 41 %.
+- **Dónde**: el `LinearSolver` (estática lineal y conducción estacionaria), tras la capa 3. No en los no lineales (cerca de un punto límite la tangente está mal condicionada por naturaleza), ni en los dinámicos (la masa mejora el condicionamiento), ni con el backend iterativo (cada resolución es un Krylov completo) o con `K` no simétrica (haría falta resolver con la transpuesta): ahí κ̃ es `None`.
+- **Aviso** (`model_checks.warn_if_ill_conditioned`): si κ̃ > `CONDITION_WARNING_THRESHOLD` = **10¹²** (cota del usuario), un aviso en el registro con las cifras que la solución puede haber perdido y las causas habituales (rigideces desproporcionadas, ν cercano a 0.5, una barra dividida en demasiados elementos). No detiene el análisis. Con la cota, el aviso salta cuando la solución baja a unas 5 cifras reales, con dos órdenes de margen antes de que el error se note en ingeniería.
+- **Resultado**: κ̃ queda siempre en `SolveResult.condition_estimate`, haya aviso o no.
+
+### Por qué 10¹²
+
+Medido sobre las 796 factorizaciones lineales de la suite: mediana de κ̃ 10³, el 99 % bajo 1.3·10¹⁰; el modelo legítimo más mal condicionado, la viga de MacNeal con Hex20 refinada, da 1.2·10¹⁰. Con 10¹⁰ el aviso saltaría en modelos razonables (esa viga, un voladizo de unos 300 elementos) y el usuario aprendería a ignorarlo; con 10¹⁴ sólo en resultados ya casi inservibles. Con 10¹² sólo lo da, en la suite, el pórtico con zonas rígidas ×10⁸, extremo a propósito.
+
+### Resultado
+
+`tests/test_condition_warning.py`: el estimador frente a κ₁ exacto, la invariancia a las unidades, el aviso en el voladizo de 1 000 elementos, en las zonas rígidas ×10¹⁰ y en el voladizo de 10 000 elementos (el caso que motivó la capa), el silencio con zonas ×10⁶, ν = 0.4999999 y un voladizo de 100 elementos, κ̃ en el resultado del estático y del térmico estacionario, y `None` con el iterativo y en el no lineal. Suite: 2 852 / 13 / 0.
+
+Fuera de esta decisión: **localizar** los elementos que causan el mal condicionamiento, como hace Oasys GSA con los modos de menor energía (Kannan et al. 2014). Si el aviso resulta útil, es la ampliación natural.
+
 ## Lo que queda sin cubrir
 
 - **Iterativo con un mecanismo interno sin carga que lo active**: sigue sin detectarse (un método de Krylov no tiene pivotes que inspeccionar), pero desde el 2026-09-30 se avisa una vez por análisis. El iterativo solo se activa a petición, así que el usuario no experto no llega a él por defecto.
 - **Modelos que pueden ganar rigidez al deformarse** (corrotacionales, materiales unilaterales): un pivote nulo en la tangente inicial es sólo un aviso, porque la rigidez geométrica puede estabilizarlo; si no lo hace, el Newton fracasa después como tangente singular.
 - **Mecanismos que aparecen durante el análisis** (un material que se ablanda hasta rigidez nula, una rótula plástica que completa un mecanismo): no son errores de planteamiento sino respuesta física (colapso), y no se rechazan; el Newton los reporta como `LoadExceedsCapacityError` o `SingularTangentError`.
 - ~~**CHOLMOD real**~~: cubierto el 2026-09-30. La prueba real corre en el job `test-cholmod` del CI de Linux; en su primera ejecución (scikit-sparse 0.5.0) pasaron la verificación de activación y la suite completa por CHOLMOD.
-- **Mal condicionamiento sin singularidad** (κ de 10¹⁰ a 10¹³): un directo es estable hacia atrás, así que el residuo sale pequeño aunque el error de la solución pueda ser grande. No hay estimador de condición. Es la advertencia que ANSYS y Abaqus hacen con penalizaciones y rigideces desproporcionadas. *Medido el 2026-10-20*: el pórtico con zonas rígidas ×1e8 conserva unas cinco cifras (el mismo modelo en m y en mm difiere en 2e-5) con un error hacia atrás del orden del redondeo. Candidato natural: el estimador de 1-norma de Higham y Tisseur sobre la factorización existente (unas pocas resoluciones), como hace Oasys GSA (Kannan et al. 2014), para avisar de la pérdida de cifras.
+- ~~**Mal condicionamiento sin singularidad**~~: cubierto el 2026-10-27 por la capa 4 (§Capa 4). Texto original: (κ de 10¹⁰ a 10¹³): un directo es estable hacia atrás, así que el residuo sale pequeño aunque el error de la solución pueda ser grande. No hay estimador de condición. Es la advertencia que ANSYS y Abaqus hacen con penalizaciones y rigideces desproporcionadas. *Medido el 2026-10-20*: el pórtico con zonas rígidas ×1e8 conserva unas cinco cifras (el mismo modelo en m y en mm difiere en 2e-5) con un error hacia atrás del orden del redondeo. Candidato natural: el estimador de 1-norma de Higham y Tisseur sobre la factorización existente (unas pocas resoluciones), como hace Oasys GSA (Kannan et al. 2014), para avisar de la pérdida de cifras.
 - **Cambio de backend por tamaño**: deliberadamente no automático (ver §Memoria).
 - ~~**Nodo y DOF concretos** de un mecanismo interno~~: resuelto el 2026-10-20 por el modo de menor energía, que dice qué elementos se mueven y, si lo hacen como un sólido rígido, cómo. Un mecanismo que no es rígido (articulaciones de más, como el panel sin diagonal de una armadura) se describe nombrando todos los elementos que mueve; agruparlos en subpartes rígidas lo haría más preciso.
 - ~~**El criterio de pivote nulo de SuperLU y Cholesky depende de las unidades**~~: resuelto el 2026-10-20; el filtro mide el pivote frente a la diagonal y el veredicto es la energía del modo, que no depende de las unidades. Quedan dos restos menores, porque sólo afectan al filtro: el pivoteo parcial de SuperLU puede elegir otra secuencia de pivotes al cambiar de unidades (el pórtico con zonas rígidas ×1e8 da 6 pivotes pequeños en m y 2 en mm; el filtro salta en los dos), y el escalado MC64 de Pardiso no es exactamente invariante (×10 en el pivote mínimo de ese pórtico entre m y mm). Texto original (revisión adversaria del 2026-09-30): `ZERO_PIVOT_RTOL·max|K|` se aplica a la matriz sin escalar: es invariante a un escalado uniforme (`E × 10³` no cambia nada, medido), pero no a un cambio de unidades que escale distinto traslaciones y giros. En un pórtico, pasar de m a mm baja el menor pivote relativo unas 10⁴ veces (3,1·10⁻⁵ frente a 1,9·10⁻⁹). Pardiso no lo sufre: con `mtype = 11` y los `iparm` por omisión, la MKL escala y empareja la matriz (MC64) y compara con `10⁻¹³·‖A₂‖∞` de la matriz ya escalada. Consecuencia medida: un pórtico con zonas rígidas de 0,3 m (`A·c`, `I·c`) en mm da con `c = 10⁷` dos pivotes nulos con SuperLU, así que el no lineal lanza `IllPosedSystemError` y `LinearSolver` rechaza el modelo, y ninguno con Pardiso. Una `LDLᵀ` sin pivoteo, como la de CHOLMOD (emulada con SuperLU en modo simétrico, no con CHOLMOD real), cuenta ya dos con `c = 10⁶`, y siete con `c = 10⁷`. Escalada por su diagonal, esa matriz tiene un pivote mínimo relativo de 3,5·10⁻⁹. En unidades SI el criterio de pivotes no rechaza ese pórtico ni con `c = 10⁸`. Los mecanismos internos medidos (sólidos 2D y 3D unidos por un nudo o una arista, rótula por MPC, placa atada por una sola MPC) dan entre 10⁻¹⁶ y 10⁻¹⁴ con cualquiera de los dos criterios. Propuesta: medir el pivote respecto de la diagonal de su fila y su columna, `|U_ii|/√(|K_rr|·|K_cc|)` (`d_i/K_pp` en Cholesky), que es el cociente que reportan ANSYS y Abaqus.

@@ -31,7 +31,18 @@ capas entre ese comportamiento y el usuario:
    rigidez legítimo también da pivotes pequeños; la energía por elemento los
    separa por muchos órdenes y dice además dónde está el mecanismo.
 
-La capa 2 del estático **lineal** actúa tras resolver y la 3 tras
+4. **Condicionamiento** — :func:`condition_estimate` y
+   :func:`warn_if_ill_conditioned`, tras factorizar (2026-10-27, decisión del
+   usuario): un sistema resuelto correctamente (capa 2) y no singular (capa 3)
+   puede haber perdido cifras si está mal condicionado, y un solver directo,
+   estable hacia atrás, no lo delata con el residuo. Se estima el número de
+   condición de la matriz escalada por la diagonal con la factorización ya
+   hecha y, por encima de ``CONDITION_WARNING_THRESHOLD``, se avisa de las
+   cifras que pueden haberse perdido. No detiene el análisis. Medido: un
+   voladizo de 10 000 elementos de Euler-Bernoulli daba una flecha errónea en
+   un 51 % sin ningún aviso (κ̃ = 1.5e17).
+
+La capa 2 del estático **lineal** actúa tras resolver y las 3 y 4 tras
 factorizar. Dentro de un Newton o un arc-length resolver un sistema casi
 singular es legítimo (cerca de un punto límite) y la red es el propio
 Newton, que exige equilibrio real; ahí el corrector sólo usa el residuo
@@ -63,6 +74,7 @@ import scipy.sparse as sp
 
 from solidum.constants import (
     BACKWARD_ERROR_RTOL,
+    CONDITION_WARNING_THRESHOLD,
     MECHANISM_ENERGY_RTOL,
     MECHANISM_RANK_RTOL,
 )
@@ -667,6 +679,75 @@ def check_linear_solution(K, u: np.ndarray, F: np.ndarray, scaling=None) -> floa
     if not np.isfinite(eta) or eta > BACKWARD_ERROR_RTOL:
         raise IllPosedSystemError(backward_error=eta, rtol=BACKWARD_ERROR_RTOL)
     return eta
+
+
+def condition_estimate(K, factor, scaling=None, symmetric: bool = True) -> float | None:
+    """Número de condición en norma 1 de la matriz escalada por la diagonal,
+    ``κ̃ = ‖K̃‖₁·‖K̃⁻¹‖₁`` con ``K̃ = D^-½·K·D^-½``, ``D = diag(K)``
+    (capa 4, ADR 0019).
+
+    ``‖K̃⁻¹‖₁`` se estima con el algoritmo por bloques de Higham y Tisseur
+    (2000; ``scipy.sparse.linalg.onenormest``) sin formar la inversa: unas
+    pocas resoluciones con la factorización ``factor`` ya hecha. Es una cota
+    inferior que en la práctica acierta el orden de magnitud. El escalado la
+    hace independiente de las unidades, como el error hacia atrás.
+
+    ``log₁₀(κ̃)`` acota las cifras que la solución puede perder respecto de
+    las ~16 de la aritmética de doble precisión.
+
+    Con un solo vector (``t = 1``, el algoritmo de Hager mejorado) hace unas
+    seis resoluciones: medido, el mismo valor que con dos vectores y un coste
+    del 17-18 % de la factorización con 14 000 y 100 000 grados de libertad
+    (Pardiso), que baja al crecer el modelo porque factorizar crece más
+    deprisa que resolver. Comprobado contra κ₁ exacto en modelos pequeños:
+    razón 1.000.
+
+    Devuelve ``None`` si no se puede estimar a un coste razonable: con el
+    backend iterativo (cada resolución es un Krylov completo) o con ``K`` no
+    simétrica (el estimador necesita resolver con la transpuesta)."""
+    from scipy.sparse.linalg import LinearOperator, onenormest
+
+    # Sin pivotes que inspeccionar ⇔ backend iterativo (``small_pivot_count``).
+    if not symmetric or small_pivot_count(factor) is None:
+        return None
+    n = K.shape[0]
+    if n == 0:
+        return None
+    s, K_norm = backward_error_scaling(K) if scaling is None else scaling
+
+    def inv(v):
+        # K̃⁻¹·v = D^½·K⁻¹·D^½·v (s = D^-½); un bloque de vectores, en una
+        # sola resolución.
+        v = np.asarray(v, dtype=float)
+        w = 1.0 / (s if v.ndim == 1 else s[:, None])
+        return np.asarray(factor.solve(v * w)).reshape(v.shape) * w
+
+    op = LinearOperator((n, n), matvec=inv, rmatvec=inv, matmat=inv, dtype=float)
+    # ‖K̃‖₁ = ‖K̃‖∞ porque K̃ es simétrica.
+    return float(K_norm * onenormest(op, t=1))
+
+
+def warn_if_ill_conditioned(kappa: float | None, solver: str = "") -> bool:
+    """Capa 4 del estático lineal (ADR 0019, decisión del usuario del
+    2026-10-27): si ``κ̃`` (:func:`condition_estimate`) supera
+    ``CONDITION_WARNING_THRESHOLD``, avisa de las cifras que la solución puede
+    haber perdido y de las causas habituales, y devuelve ``True``. No detiene
+    el análisis: el sistema se resolvió (capa 2) y no es singular (capa 3);
+    sólo dice cuánta precisión queda."""
+    if kappa is None or not kappa > CONDITION_WARNING_THRESHOLD:
+        return False
+    quien = f"{solver}: " if solver else ""
+    perdidas = min(16, int(round(np.log10(kappa))))
+    _log.warning(
+        f"{quien}sistema mal condicionado (κ̃ ≈ {kappa:.1e}): la solución puede "
+        f"haber perdido hasta {perdidas} de sus unas 16 cifras significativas (en "
+        f"la práctica suelen perderse una o dos menos). Causas habituales: "
+        f"rigideces muy desproporcionadas (zonas rígidas, penalizaciones), un "
+        f"coeficiente de Poisson muy cercano a 0.5, o una barra dividida en "
+        f"demasiados elementos (en una viga, κ crece con la cuarta potencia del "
+        f"número de elementos). κ̃ se estima sobre la matriz escalada por su "
+        f"diagonal: no depende de las unidades.")
+    return True
 
 
 def _stiffening_components(domain) -> list[str]:

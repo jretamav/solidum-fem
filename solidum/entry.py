@@ -137,6 +137,8 @@ def run(
         converged=bool(getattr(solver, "reached_max_lambda", True)),
         num_steps=int(getattr(solver, "steps_done", 1)),
         load_factor=lambda_final,
+        # Capa 4 del ADR 0019: el LinearSolver estima el condicionamiento.
+        condition_estimate=getattr(solver, "condition_estimate", None),
     )
     # El estado final de un análisis estático es, por definición, convergido:
     # ``build_solve_result`` acaba de ensamblar en ``U`` (estado trial

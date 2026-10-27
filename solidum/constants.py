@@ -202,3 +202,12 @@ SUSPECT_PIVOT_RTOL = 1.0e-8
 # 264 000 DOF; ≥ 1e-7 con ν = 0.4999999 y 6.8e-2 en zonas rígidas de
 # cualquier contraste. El umbral deja cuatro órdenes sobre el redondeo.
 MECHANISM_ENERGY_RTOL = 1.0e-12
+# Capa 4 del estático lineal (decisión del usuario, 2026-10-27): aviso de
+# pérdida de cifras si el número de condición estimado de la matriz escalada
+# por la diagonal, κ̃ = ‖K̃‖₁·‖K̃⁻¹‖₁, supera este valor; log10(κ̃) acota las
+# cifras perdidas de las ~16 de la doble precisión. Medido: el error real
+# queda 30 a 100 veces por debajo de la cota κ̃·ε (voladizo de 1000 elementos:
+# κ̃ = 1e13, error 3e-5; zonas rígidas ×1e8: 1.3e12, 1e-5), así que con este
+# umbral se avisa cuando la solución baja a unas 5 cifras. El modelo legítimo
+# más mal condicionado de la suite (viga de MacNeal con Hex20) da 1.2e10.
+CONDITION_WARNING_THRESHOLD = 1.0e12

@@ -62,6 +62,7 @@ El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`)
 | `constraint_forces_by_node` | `{nodo: {dof: valor}}` de `constraint_forces` en los grados de libertad de esas uniones. |
 | `element_forces` | `{elemento: ElementForces}` con las fuerzas internas (N, V, M, T) de los elementos estructurales. |
 | `converged`, `num_steps` | Si el análisis llegó al final y cuántos pasos convergidos dio. |
+| `condition_estimate` | Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). `None` en los análisis no lineales y con el solver iterativo. |
 
 Las reacciones y las fuerzas de restricción cumplen `F_int − F_applied = R + constraint_forces`: el equilibrio global es `ΣR + ΣF_applied = 0` por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección `linear_constraints` del capítulo «Archivo de Entrada YAML». En el problema térmico `R` es el flujo de calor nodal en los nodos con temperatura impuesta.
 

@@ -232,6 +232,8 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Un modelo mal planteado se detiene con una explicación en vez de devolver resultados absurdos, sin falsos positivos en toda la batería de pruebas.
 
+**Capa 4 (27 de octubre de 2026, decisión del usuario).** Un sistema bien resuelto y no singular puede haber perdido cifras si está mal condicionado, y el residuo no lo delata: un voladizo de 10 000 elementos daba la flecha errónea en un 51 % sin aviso. El análisis lineal estima ahora el número de condición de la rigidez escalada por la diagonal con la factorización ya hecha (Higham y Tisseur; unas seis resoluciones) y avisa de las cifras perdidas por encima de $10^{12}$, cuando la solución baja a unas 5 cifras; el valor queda en el resultado.
+
 ## ADR 0020 — Módulos de usuario: las formulaciones no estándar fuera del programa principal
 
 **Fecha**: 24 de septiembre de 2026. **Estado**: aceptado.

@@ -24,9 +24,11 @@ from solidum.math.solvers.diagnostics import IllPosedSystemError
 from solidum.math.solvers.model_checks import (
     backward_error_scaling,
     check_linear_solution,
+    condition_estimate,
     ensure_no_internal_mechanisms,
     ensure_statically_restrained,
     find_internal_mechanisms,
+    warn_if_ill_conditioned,
     warn_if_pivots_unavailable,
 )
 from solidum.registry import SolverRegistry
@@ -47,6 +49,11 @@ class LinearSolver:
         self._g_full = None
         self._F_dir = None
         self._n_free = None
+        # Número de condición estimado de la K reducida y escalada por la
+        # diagonal (capa 4 del ADR 0019); ``None`` hasta factorizar, con el
+        # backend iterativo o con K no simétrica. Llega a
+        # ``SolveResult.condition_estimate``.
+        self.condition_estimate: float | None = None
 
     def invalidate_cache(self) -> None:
         """Descarta la factorización cacheada.
@@ -61,6 +68,7 @@ class LinearSolver:
         self._g_full = None
         self._F_dir = None
         self._n_free = None
+        self.condition_estimate = None
         # Las cachés del Assembler (topología, restricciones, masa) también.
         self.assembler.invalidate()
 
@@ -129,6 +137,16 @@ class LinearSolver:
         self._factor = factor
         self._K_red = K_red
         self._backward_scaling = backward_error_scaling(K_red)
+        # Capa 4 (ADR 0019, 2026-10-27): número de condición estimado con la
+        # factorización ya hecha, y aviso si la solución puede perder cifras.
+        # La estimación es diagnóstico: si falla, el análisis sigue sin ella.
+        try:
+            self.condition_estimate = condition_estimate(
+                K_red, factor, self._backward_scaling, symmetric=is_sym)
+        except (RuntimeError, ArithmeticError, ValueError) as exc:
+            _log.debug(f"LinearSolver: no se pudo estimar el condicionamiento ({exc}).")
+            self.condition_estimate = None
+        warn_if_ill_conditioned(self.condition_estimate, type(self).__name__)
         self._T = T
         self._g_full = g_full
         self._F_dir = F_dir
