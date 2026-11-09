@@ -345,6 +345,40 @@ class TestIterativeBackend(unittest.TestCase):
             with self.assertRaises(ValueError):
                 IterativeSolver(preconditioner="amg")
 
+    def test_pyamg_que_no_carga_no_impide_importar_solidum(self):
+        """Un pyamg instalado cuyo binario no carga (DLL bloqueada por el
+        control de aplicaciones de Windows, binario de otra versión de
+        Python) lanza ``ImportError``, no ``ModuleNotFoundError``. Antes eso
+        impedía importar Solidum entero; ahora sólo deja AMG sin disponer, y
+        el mensaje dice la causa. Se simula con un paquete ``pyamg`` falso
+        en un subproceso, para no tocar el pyamg real de esta sesión."""
+        import subprocess
+        import textwrap
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "pyamg"))
+            with open(os.path.join(tmp, "pyamg", "__init__.py"), "w", encoding="utf-8") as f:
+                f.write('raise ImportError("DLL load failed while importing smoothed_aggregation")\n')
+            root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            code = textwrap.dedent(f"""
+                import sys
+                sys.path.insert(0, {tmp!r}); sys.path.insert(1, {root!r})
+                import solidum
+                from solidum.math.linalg import iterative
+                from solidum.math.linalg.dispatcher import available_overrides
+                print(iterative.HAS_PYAMG)
+                print(iterative.PYAMG_UNAVAILABLE_REASON)
+                print("iterative:amg" in available_overrides())
+            """)
+            out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                                 text=True, encoding="utf-8", timeout=300,
+                                 env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        has, reason, listed = out.stdout.strip().splitlines()[-3:]
+        self.assertEqual(has, "False")
+        self.assertIn("instalado pero no carga", reason)
+        self.assertIn("smoothed_aggregation", reason)
+        self.assertEqual(listed, "False")
+
 
 # ----------------------------------------------------------------------
 # 3. Despachador y YAML

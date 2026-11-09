@@ -71,12 +71,23 @@ from solidum.constants import (
 )
 from solidum.logging import get_logger
 
-try:  # dependencia opcional: pip install solidum-fem[iterative]
+# Dependencia opcional (pip install solidum-fem[iterative]). Se captura
+# ``ImportError`` y no sólo ``ModuleNotFoundError``: un pyamg instalado cuyo
+# binario no carga (DLL bloqueada por el control de aplicaciones de Windows,
+# binario de otra versión de Python) impedía importar Solidum entero, cuando
+# lo único que falta es un precondicionador. Igual que Pardiso y Cholesky.
+try:
     import pyamg  # type: ignore[import-not-found]
     HAS_PYAMG = True
-except ModuleNotFoundError:
+    PYAMG_UNAVAILABLE_REASON = ""
+except ImportError as _exc:
     pyamg = None  # type: ignore[assignment]
     HAS_PYAMG = False
+    if isinstance(_exc, ModuleNotFoundError) and _exc.name == "pyamg":
+        PYAMG_UNAVAILABLE_REASON = "no está instalado"
+    else:
+        PYAMG_UNAVAILABLE_REASON = f"está instalado pero no carga ({_exc})"
+    del _exc
 
 _log = get_logger("linalg.iterative")
 
@@ -384,7 +395,7 @@ class IterativeSolver:
         if preconditioner == "amg" and not HAS_PYAMG:
             raise ValueError(
                 "IterativeSolver: el precondicionador 'amg' requiere pyamg, que "
-                "no está instalado. Instálalo con `pip install solidum-fem[iterative]` "
+                f"{PYAMG_UNAVAILABLE_REASON}. Instálalo con `pip install solidum-fem[iterative]` "
                 "(en Windows con Python sin binarios de pyamg, ver el anexo de la "
                 "capa algebraica del manual) o usa 'iterative:none'."
             )
@@ -404,7 +415,7 @@ class IterativeSolver:
             return "amg"
         _warn_once(
             "auto-no-pyamg",
-            "pyamg no está instalado: el solver iterativo trabajará sin "
+            f"pyamg {PYAMG_UNAVAILABLE_REASON}: el solver iterativo trabajará sin "
             "precondicionador, y en elasticidad eso cuesta del orden de cientos "
             "de iteraciones por resolución. Para activar AMG: "
             "`pip install solidum-fem[iterative]`.",

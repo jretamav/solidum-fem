@@ -12,6 +12,7 @@ from solidum.math.linalg.base import LinearAlgebraSolver, StiffnessProperties
 from solidum.math.linalg.iterative import (
     HAS_PYAMG as _HAS_PYAMG,
     PRECONDITIONERS as _ITERATIVE_PRECONDITIONERS,
+    PYAMG_UNAVAILABLE_REASON as _PYAMG_UNAVAILABLE_REASON,
     IterativeSolver,
 )
 from solidum.math.linalg.ldlt import LDLTSolver
@@ -67,8 +68,8 @@ def _parse_override(override: str) -> tuple[str, dict]:
         )
     if option == "amg" and not _HAS_PYAMG:
         raise ValueError(
-            "linear_algebra 'iterative:amg' requiere pyamg, que no está "
-            "instalado (`pip install solidum-fem[iterative]`). Alternativas: "
+            f"linear_algebra 'iterative:amg' requiere pyamg, que "
+            f"{_PYAMG_UNAVAILABLE_REASON} (`pip install solidum-fem[iterative]`). Alternativas: "
             "'iterative:none', 'iterative:jacobi' o 'auto'."
         )
     return key, {"preconditioner": option}
