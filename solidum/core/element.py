@@ -1,6 +1,7 @@
 # solidum_fem/solidum/core/element.py
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 from typing import ClassVar, List, Tuple
 
@@ -216,6 +217,43 @@ class Element(ABC):
     def _init_state(self) -> None:
         init_stress = 0.0 if self.STRAIN_DIM == 1 else np.zeros(self.STRAIN_DIM)
         self.state = ElementState(self.N_INTEGRATION_POINTS, init_stress=init_stress)
+
+    def _seed_characteristic_lengths(self, lengths) -> None:
+        """Entrega a cada punto de integración su longitud característica.
+
+        La llama la subclase al terminar de construirse, cuando ya conoce su
+        geometría: ``lengths[g]`` es la longitud ``h`` asociada al punto
+        ``g`` (``L`` en una barra; ``w_g·L`` en un marco con sección). Los
+        materiales con :attr:`~solidum.core.material.Material.uses_characteristic_length`
+        reciben su estado inicial de :meth:`~solidum.core.material.Material.initial_point_state`;
+        los demás no cambian. Con sección, la sección reparte ``h`` entre
+        sus puntos materiales. Un ``h`` inadmisible para el material se
+        rechaza aquí, al construir, nombrando el elemento.
+        """
+        lengths = np.asarray(lengths, dtype=float).reshape(-1)
+        if lengths.shape[0] != self.state.num_ip:
+            raise ValueError(
+                f"{type(self).__name__}(id={self.id}): {lengths.shape[0]} longitudes "
+                f"características para {self.state.num_ip} puntos de integración."
+            )
+        self.characteristic_lengths = lengths
+        section = getattr(self, "section", None)
+        if section is not None:
+            if not any(getattr(m, "uses_characteristic_length", False)
+                       for m in section.materials()):
+                return
+        elif not getattr(self.material, "uses_characteristic_length", False):
+            return
+        for g, h in enumerate(lengths):
+            try:
+                if section is not None:
+                    seeded = section.initial_states(characteristic_length=float(h))
+                else:
+                    seeded = self.material.initial_point_state(float(h))
+            except ValueError as exc:
+                raise ValueError(f"{type(self).__name__}(id={self.id}): {exc}") from exc
+            self.state.vars[g] = copy.deepcopy(seeded)
+            self.state.vars_trial[g] = copy.deepcopy(seeded)
 
     # ------------------------------------------------------------------
     # Acceso al estado interno (heredado por todas las subclases)

@@ -39,6 +39,15 @@
 - **Aviso:** *la carga aplicada es un np.ndarray simple, sin sus cargas equivalentes por elemento…*
   Las fuerzas internas de los elementos con carga distribuida pueden salir mal: la carga perdió sus cargas equivalentes al convertirla con `np.asarray`/`np.array` o al sumarla con `+=` sobre un arreglo de ceros, y se ensambló más de una carga de cuerpo. Combinar las cargas que devuelven `assemble_self_weight` y `assemble_body_load` con `+` y escalares (`F = F1 + λ·F2`). Lo mismo avisa el historial de fuerzas internas de un transitorio cuyo `F_func` devuelve un `np.ndarray` simple.
 
+- **`ValueError`: *la longitud característica h = … supera el límite 2·G_f·E/ft²***
+  Con la energía de fractura `G_f`, la rama de ablandamiento en tracción termina en $\varepsilon_{tu} = 2G_f/(f_t h)$. Si el punto de integración es tan largo que $\varepsilon_{tu}$ quedaría por debajo de la deformación de agrietamiento $f_t/E$, la rama tendría retroceso en el propio material. El elemento lo rechaza al construirse y dice cuál es. Usar elementos más cortos.
+
+- **`ValueError`: *ManderConcrete1D con G_f necesita la longitud característica del punto de integración***
+  El material regularizado se usa en un elemento que no le entrega la longitud de sus puntos. La entregan las barras y los marcos con sección por fibras. Con otro elemento, dar la rama descendente en deformaciones (`eps_tu`, `eps_cu`, `eps_sp`).
+
+- **Un transitorio con concreto deja de converger en la vibración libre.**
+  El cierre de una grieta cambia bruscamente la rigidez de la fibra (de la secante agrietada a la de compresión) y el Newton puede rebotar entre las dos ramas. Activar `line_search: true` en el solver, o reducir `dt`.
+
 - **Niveles del registro.**
   Con el nivel por omisión (`INFO`) cada solver incremental escribe una línea por paso convergido. El detalle por iteración de Newton sale con `solidum.set_log_level("DEBUG")`. Un `WARNING` de bisección («sin convergencia (tangente singular); bisección…») es un evento que el solver resolvió solo; un `ERROR` significa siempre que el análisis se detuvo.
 

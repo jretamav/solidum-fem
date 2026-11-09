@@ -200,6 +200,41 @@ materials:
     density: 7850.0
 ```
 
+## Concreto
+
+### `ManderConcrete1D` — concreto uniaxial con la envolvente de Mander
+
+Material de fibra y de barra para el concreto, simple o confinado. La envolvente de compresión es la de Mander, Priestley y Park (1988) con la ecuación de Popovics; la descarga y la recarga son rectas con la rigidez dañada $(1-d)E$ hacia la deformación plástica de Mander, de modo que el material no puede crear energía. En tracción: lineal hasta $f_t$ y una recta hasta cero, descarga hacia el origen desplazado, recuperación de la rigidez de compresión al cerrarse la grieta y pérdida de resistencia a tracción por la compresión previa (factor de Mander $1 - e_p/\varepsilon_c$). No reproduce los lazos de los ciclos parciales.
+
+- **Parámetros**: `fc`, `eps_c` (resistencia y deformación de pico, en magnitud), `E` (módulo inicial; Mander: $5000\sqrt{f'_c}$ MPa), `eps_cu` (fin de la curva de Popovics); opcionales `eps_sp` (recta hasta cero, desprendimiento del recubrimiento), `ft` (0: sin tracción), `eps_tu` o `G_f` (rama descendente de tracción en deformación o en energía de fractura), `G_fc` (energía de la rama de compresión posterior al pico), `density`.
+- **Confinamiento**: `confinement` calcula `fc`, `eps_c`, `eps_cu` y `E` del núcleo a partir del concreto sin confinar y de los estribos (Mander 1988; Chang y Mander 1994 para presiones distintas en x e y). `k_e` se da o se calcula con la geometría (`{b_c, d_c, s_clear, w_clear, rho_cc}` en la rectangular; `{s_clear, d_s, rho_cc, spiral}` en la circular).
+- **Regularización**: con `G_f` o `G_fc`, la rama descendente se ajusta a la longitud del punto de integración (la de la barra, o la tributaria del punto de Gauss del marco) y el resultado deja de depender de la malla.
+- **Uso**:
+  - En concreto reforzado, dar la tracción con `eps_tu` (de 5 a 20 veces $f_t/E$, la rigidez del concreto entre grietas) y regularizar sólo la compresión con `G_fc`.
+  - `G_f`, para el concreto simple.
+  - En transitorios, `line_search: true`.
+- **Compatible con**: armaduras y fibras de una sección por fibras.
+
+```yaml
+materials:
+  - id: 1            # núcleo confinado
+    type: ManderConcrete1D
+    confinement: {fc0: 30.0e6, f_yh: 420.0e6, eps_su: 0.09, k_e: 0.75, rho_x: 0.01, rho_y: 0.01}
+    ft: 3.0e6
+    eps_tu: 1.1e-3
+    density: 2400.0
+  - id: 2            # recubrimiento
+    type: ManderConcrete1D
+    fc: 30.0e6
+    eps_c: 0.002
+    E: 27.4e9
+    eps_cu: 0.004
+    eps_sp: 0.006
+    ft: 3.0e6
+    eps_tu: 1.1e-3
+    density: 2400.0
+```
+
 ## Materiales 3D
 
 Los materiales 3D operan sobre la convención **Voigt 6D** del proyecto (ADR 0012):

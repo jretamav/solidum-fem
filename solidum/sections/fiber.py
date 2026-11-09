@@ -587,11 +587,23 @@ class FiberSection(Section):
         """Materiales distintos de la sección, en orden de aparición."""
         return list(self._materials)
 
-    def initial_states(self) -> list:
+    def initial_states(self, characteristic_length: float | None = None) -> list:
         """Estado virgen de cada fibra, las de compensación incluidas
         (``None``: el material parte de su estado natural en la primera
-        evaluación)."""
-        return [None] * self.n_fibers
+        evaluación).
+
+        Con ``characteristic_length`` (la longitud ``h`` del punto de Gauss
+        del elemento), las fibras cuyo material la usa reciben su estado
+        inicial de ``material.initial_point_state(h)``; las demás siguen en
+        ``None``."""
+        if characteristic_length is None:
+            return [None] * self.n_fibers
+        seeded = {}
+        for material, _ in self._groups:
+            if getattr(material, "uses_characteristic_length", False):
+                seeded[id(material)] = material.initial_point_state(characteristic_length)
+        return [dict(seeded[id(m)]) if id(m) in seeded else None
+                for m in self._fiber_materials]
 
     def material_point_states(self, states) -> list:
         """Estados de las fibras declaradas: sin los de las fibras de

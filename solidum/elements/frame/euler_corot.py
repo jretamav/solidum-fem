@@ -96,6 +96,7 @@ class Frame2DEulerCorot(Frame2DLine, FrameSectionMixin, Element):
         if self.section is not None:
             self._B_basic = self._build_basic_B()
             self._wL = self._gauss_w * self.L0
+            self._seed_characteristic_lengths(self._wL)
 
     def _build_basic_B(self) -> np.ndarray:
         """``B_g`` (2×3) del sistema básico: ``[ε₀, κ_z(x_g)] = B_g·[Δl, θ̄₁, θ̄₂]``."""

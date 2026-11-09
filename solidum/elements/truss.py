@@ -73,6 +73,8 @@ class Truss2D(_TrussLine, Element):
             raise ValueError("La longitud del elemento no puede ser cero.")
         self.c = dx / self.L0
         self.s = dy / self.L0
+        # Un único punto de integración con deformación uniforme: h = L.
+        self._seed_characteristic_lengths([self.L0])
 
     def compute_element_state(self, u_e: np.ndarray):
         c, s, L = self.c, self.s, self.L0
@@ -296,6 +298,8 @@ class Truss3D(_TrussLine, Element):
         self.cx = dx / self.L0
         self.cy = dy / self.L0
         self.cz = dz / self.L0
+        # Un único punto de integración con deformación uniforme: h = L.
+        self._seed_characteristic_lengths([self.L0])
 
     def compute_element_state(self, u_e: np.ndarray):
         cx, cy, cz, L = self.cx, self.cy, self.cz, self.L0

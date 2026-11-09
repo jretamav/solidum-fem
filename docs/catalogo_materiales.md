@@ -176,6 +176,30 @@
 
 ---
 
+## ManderConcrete1D — concreto uniaxial de daño-plasticidad con datos de Mander
+
+- **Clase de modelo**: fenomenológico, con estructura de daño-plasticidad 1D; nivel material. Los datos son de Mander, Priestley y Park (1988); la descarga y la recarga las da el marco de daño-plasticidad, no las reglas curvas de Mander.
+- **Compresión**: envolvente de Popovics con la resistencia y la deformación de pico del material (`fc`, `eps_c`), hasta `eps_cu`; después, una recta hasta cero en `eps_sp` (recubrimiento) o caída a cero (núcleo, `eps_sp = eps_cu`).
+- **Descarga y recarga**: rectas con rigidez `(1 − d)·E` hacia la deformación plástica del punto focal de Mander (ecs. 31–34); sin lazos en los ciclos parciales. Por construcción, `0 ≤ e_p ≤ e_m` y la rigidez de descarga no supera `E`.
+- **Tracción**: lineal hasta `ft` y recta hasta cero en `eps_tu` (o con `G_f`), medida desde la deformación plástica de compresión; descarga secante; al cerrarse la grieta, la rigidez de compresión se recupera por completo; la compresión previa degrada la tracción por el factor de Mander `φ = max(0, 1 − e_p/eps_c)` (ecs. 42–45, con la errata de la condición corregida).
+- **Regularización opcional** ([ADR 0028](adr/0028-longitud-caracteristica-del-punto-de-integracion.md)): con `G_f` (tracción, `ε_tu = 2·G_f/(ft·h)`) o `G_fc` (compresión: la rama posterior al pico se estira para que su área valga `G_fc/h`), con la longitud característica `h` del punto: `L` en barras, `w_g·L` en marcos con sección. `h ≥ 2·G_f·E/ft²` se rechaza al construir el elemento.
+- **Confinamiento**: `solidum.materials.concrete_confinement` — `mander_confined_concrete` (sección circular con la ec. 29 de Mander; rectangular con la aproximación de Chang y Mander 1994, presiones iguales o distintas), `confinement_effectiveness_circular/rectangular` (`k_e`, ecs. 14, 15, 22), `mander_elastic_modulus` (`5000·√f'c` MPa) y `fib_fracture_energy` (`G_F = 73·f_cm^0.18` N/m). El material acepta `confinement={...}` (también en el YAML).
+- **STRAIN_DIM**: 1 · **PRIMARY_STATE_VAR**: `'eps_cmax'`.
+- **Parámetros**: `fc`, `eps_c`, `E`, `eps_cu` (o `confinement`); opcionales `eps_sp`, `ft` (0: sin tracción), `eps_tu` o `G_f`, `G_fc`, `density`.
+- **Variables internas**: `eps_cmax` (máxima compresión), `eps_tmax` (máxima tracción desde el origen desplazado), `h` (longitud característica, fija).
+- **Uso**:
+  - En concreto reforzado, la rama de tracción representa la rigidez del concreto entre grietas, que fija el refuerzo y no el tamaño del elemento: conviene darla con `eps_tu` (de 5 a 20 veces `ft/E`) y regularizar sólo la compresión con `G_fc`. Con `G_f` la respuesta antes del pico dependería de la malla (medido: 5 % con 4 elementos frente a 16).
+  - `G_f` es para concreto simple o con cuantía menor que la mínima: la barra a tracción regularizada da la misma curva con 2, 4, 8 y 16 elementos, a precisión de máquina.
+  - Con acero de poco endurecimiento, la pérdida de la rigidez entre grietas tras la fluencia puede hacer bajar el momento de la sección y localizar: con elementos cortos, la curva global retrocede y el control de desplazamiento no la sigue.
+  - En transitorios, `line_search=True`: el cierre de una grieta es un quiebre de la rigidez y el Newton puro puede rebotar entre las dos ramas.
+- **Validación**: momento–curvatura contra una integración independiente (< 0.1 %); voladizo de concreto reforzado hasta el pico (≤ 2 % con 16 elementos); objetividad de malla (barra a tracción con `G_f`: exacta; voladizo después del pico con `eps_tu` + `G_fc`: 1.9 % entre 8 y 16 elementos, 7.1 % con 4, malla más gruesa que la rótula plástica); ciclos de amplitud creciente; transitorio con disipación del material no negativa y no decreciente; YAML idéntico a Python. Prueba común de la familia uniaxial (`tests/test_uniaxial_family.py`): energía y tangente de todo material 1D.
+- **Compatible con**: `Truss2D`, `Truss3D` (y sus corrotacionales) y como material de fibra de `FiberSection`.
+- **Clasificación (Reglas §1)**: estándar (usuario, 2026-11-09): Paulay y Priestley (1992, §3.2.2); OpenSees `Concrete04`/`Concrete02`, Abaqus *Concrete Damaged Plasticity*.
+- **Spec**: [docs/specs/ManderConcrete1D.md](specs/ManderConcrete1D.md)
+- **Archivo**: [solidum/materials/concrete_1d.py](../solidum/materials/concrete_1d.py), [solidum/materials/concrete_confinement.py](../solidum/materials/concrete_confinement.py)
+
+---
+
 ## DruckerPrager3D — plasticidad friccional cohesivo-friccional 3D
 
 - **Modelo**: cono circular suave de Mohr-Coulomb 3D con cohesión y fricción interna. Criterio `f = √J₂ + η_f·I₁ − k(α) ≤ 0` con `k(α) = k_0 + H·α` (endurecimiento isótropo lineal del radio del cono `k`, con `α` el multiplicador plástico acumulado `γ`; no de la cohesión `c`). **Sin variantes de hipótesis** — en 3D todas las componentes son activas.

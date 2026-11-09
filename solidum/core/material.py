@@ -203,6 +203,32 @@ class Material(BatchMaterialHooks, ABC):
         pass
 
     # ------------------------------------------------------------------
+    # Longitud característica del punto de integración
+    # ------------------------------------------------------------------
+
+    @property
+    def uses_characteristic_length(self) -> bool:
+        """``True`` si la respuesta depende de la longitud característica
+        ``h`` del punto de integración: un material con ablandamiento
+        regularizado por energía de fractura (banda de fisuración, Bažant y
+        Oh 1983), cuya rama descendente se ajusta para disipar ``G_f/h`` por
+        unidad de volumen. Depende de la instancia (p. ej. sólo si se dio la
+        energía de fractura). Por omisión, ``False``."""
+        return False
+
+    def initial_point_state(self, characteristic_length: float) -> dict | None:
+        """Estado inicial de un punto de integración de longitud
+        característica ``h`` (> 0).
+
+        Lo llama el elemento al terminar de construirse, una vez por punto,
+        cuando :attr:`uses_characteristic_length` es ``True``; el material
+        guarda ``h`` en el estado y lo arrastra en cada ``compute_state``.
+        Debe lanzar ``ValueError`` si ``h`` no es admisible (p. ej. una rama
+        de ablandamiento que tendría retroceso en el propio material). Por
+        omisión, el estado inicial ordinario."""
+        return self.initial_state()
+
+    # ------------------------------------------------------------------
     # Política de tolerancias del criterio de admisibilidad (ADR 0006)
     # ------------------------------------------------------------------
 

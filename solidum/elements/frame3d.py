@@ -150,6 +150,7 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
         if self.section is not None:
             self._B = self._build_section_B()
             self._wL = self._gauss_w * self.L0
+            self._seed_characteristic_lengths(self._wL)
 
     def _build_section_B(self) -> np.ndarray:
         """``B_g`` (3×12) en ejes locales: ``e_g = [ε₀, κ_y, κ_z](x_g) = B_g·u_local``.

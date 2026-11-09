@@ -54,12 +54,14 @@ class Section(ABC):
     strains_2d(e), strains_3d(e)
         Deformación axial de cada punto de evaluación de la sección para
         ``e`` (los mismos puntos, y en el mismo orden, que los estados).
-    initial_states()
+    initial_states(characteristic_length=None)
         Lista de estados iniciales que el elemento guarda en cada punto de
         Gauss: uno por punto de evaluación de la sección, es decir, sus
         puntos materiales y, si la sección los tiene, puntos auxiliares
         (las fibras de compensación de ``FiberSection``; ver
-        ``material_point_states``).
+        ``material_point_states``). Con ``characteristic_length`` (la
+        longitud ``h`` del punto de Gauss), los materiales que la usan
+        reciben su estado de ``material.initial_point_state(h)``.
     materials()
         Materiales distintos que usa la sección, en orden de aparición.
     mass_properties()

@@ -167,13 +167,13 @@ Sobre la envolvente, $e_p$, $d$ y $\phi$ cambian, pero el esfuerzo sólo depende
 ```yaml
 name: ManderConcrete1D
 kind: material
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   strain_dim: 1
   primary_state_var: eps_cmax
   is_symmetric: true
-  state_schema: {eps_cmax: (), eps_tmax: ()}
+  state_schema: {eps_cmax: (), eps_tmax: (), h: ()}   # h: longitud característica del punto, fija (ADR 0028)
 
 admission:                # criterio de admisión (Reglas §1); clasificado estándar por el usuario (2026-11-09)
   textbooks:
@@ -193,10 +193,12 @@ parameters:
   - { name: G_f,     type: float, required: false, default: null, desc: "Energía de fractura en tracción (N/m); regulariza la rama descendente con la longitud característica del punto de integración" }
   - { name: G_fc,    type: float, required: false, default: null, desc: "Energía de fractura en compresión (N/m); regulariza la rama posterior al pico" }
   - { name: density, type: float, required: false, default: null, desc: "Densidad (kg/m³), ADR 0008" }
+  - { name: confinement, type: dict, required: false, default: null, desc: "Argumentos de mander_confined_concrete (§6); calcula fc, eps_c, eps_cu y E del núcleo. Excluye fc, eps_c y eps_cu" }
 
 state_variables:
   - { name: eps_cmax, type: float, shape: (), desc: "Máxima deformación de compresión alcanzada, magnitud ≥ 0" }
   - { name: eps_tmax, type: float, shape: (), desc: "Máxima deformación de tracción alcanzada, medida desde la deformación plástica de compresión" }
+  - { name: h, type: float, shape: (), desc: "Longitud característica del punto de integración, fija; 0 si el elemento no la proporcionó (ADR 0028)" }
 
 conventions:
   sign: "σ > 0 y ε > 0 en tracción; parámetros de compresión en magnitud positiva"
@@ -262,16 +264,16 @@ acceptance:
       expect: "Momento de primera fluencia del acero, momento máximo y curvatura en εcu iguales a los de una integración independiente de la sección (franjas finas, equilibrio por bisección del eje neutro, sin código de Solidum)"
       tol_rel: 2.0e-2
     - name: voladizo_concreto_reforzado
-      setup: "Voladizo de concreto reforzado con carga axial constante (etapa previa, ADR 0026) y empuje lateral, 8 elementos de Frame2DEuler con la sección anterior"
-      expect: "Hasta el pico, la curva fuerza-desplazamiento coincide con la integración de la curvatura de la solución independiente"
+      setup: "Voladizo de concreto reforzado sin carga axial y con carga axial constante (etapa previa, ADR 0026) y empuje lateral, 16 elementos de Frame2DEuler con la sección anterior"
+      expect: "Hasta el pico, la fuerza a desplazamiento dado coincide con la integración de la curvatura de la solución independiente"
       tol_rel: 2.0e-2
     - name: objetividad_de_malla
-      setup: "(a) Barra de concreto simple a tracción con un elemento debilitado, 2, 4, 8 y 16 elementos, con G_f; (b) el voladizo anterior después del pico con 4, 8 y 16 elementos, con G_f y G_fc"
-      expect: "(a) energía disipada = G_f·A con cualquier malla (sin regularizar, proporcional al tamaño del elemento, documentado); (b) energía disipada y curva fuerza-desplazamiento después del pico independientes de la malla con diferencia ≤ 5 %"
+      setup: "(a) Barra de concreto simple a tracción con un elemento debilitado, 2, 4, 8 y 16 elementos, con G_f; (b) el voladizo anterior con N = −0.2·f'c·A_g después del pico, con 8 y 16 elementos, eps_tu en tracción y G_fc en compresión"
+      expect: "(a) curva fuerza-desplazamiento analítica de la banda de fisuración y energía disipada A·G_f·(1 − σ/f_t) con cualquier malla (sin regularizar, proporcional al tamaño del elemento); (b) fuerza a desplazamiento dado después del pico con diferencia ≤ 5 % entre 8 y 16 elementos (decisión del usuario, 2026-11-09). Con 4 elementos, documentado y no exigido: la malla es más gruesa que la rótula plástica"
       tol_rel: 5.0e-2
     - name: respuesta_ciclica_y_dinamica
       setup: "El voladizo anterior con desplazamiento lateral cíclico de amplitud creciente (IndirectDisplacementSolver por etapas) y con un pulso de carga lateral seguido de vibración libre (NewmarkSolver)"
-      expect: "Ciclos estables, sin pérdida de convergencia; balance de energía en el transitorio (trabajo externo = cinética + almacenada + disipada en el material + viscosa) con residuo ≤ 1 % del trabajo externo; disipación del material no decreciente"
+      expect: "Ciclos completos sin pérdida de convergencia, con fuerza residual tras los ciclos plásticos y picos simétricos; en el transitorio, la energía disipada por el material (trabajo de las fuerzas internas, F_ext − M·ü, menos la energía almacenada en las fibras) no negativa y no decreciente"
       tol_rel: 1.0e-2
     - name: yaml_equivalente
       setup: "El voladizo desde el YAML, con el confinamiento calculado por la función auxiliar desde el propio YAML"
@@ -296,7 +298,21 @@ references:
 
 ## Implementación
 
-*(La rellena la IA al implementar.)*
+- Archivo: `solidum/materials/concrete_1d.py` (material) y `solidum/materials/concrete_confinement.py` (confinamiento, `k_e`, módulo de Mander, energía de fractura del Model Code).
+- Clase: `ManderConcrete1D` (registrada en `MaterialRegistry`).
+- Pieza general nueva: la longitud característica del punto de integración ([ADR 0028](../adr/0028-longitud-caracteristica-del-punto-de-integracion.md)): `Material.uses_characteristic_length`, `Material.initial_point_state(h)`, `Element._seed_characteristic_lengths`, `FiberSection.initial_states(characteristic_length=h)`; la siembran las barras (`h = L`) y los marcos con sección (`h = w_g·L`).
+- Tests:
+  - `tests/test_mander_concrete_1d.py` (verificación: 20 casos).
+  - `tests/test_uniaxial_family.py` (prueba común de todo material 1D: trabajo desde el estado virgen ≥ 0, ciclos cerrados con respuesta repetida ≥ 0 —postulado de Ilyushin— y tangente por diferencias finitas fuera de los quiebres).
+  - `tests/validation/test_mander_concrete_validation.py` (validación).
+  - Muestra en `MUESTRAS` de `tests/test_material_contract_sweep.py` (con tracción: sin ella no hay régimen elástico para ε > 0).
+- Notas de implementación:
+  - Actualización explícita, sin ecuación local. `e_p`, `d` y `φ` se recalculan de `eps_cmax` en cada llamada (no se guardan).
+  - `A_post` (área de la rama posterior al pico sin regularizar) se integra una vez al construir, con 64 puntos de Gauss-Legendre.
+  - `compression_envelope(e, h)`, `plastic_strain(e_m, s_m)` y `tension_softening_end(h)` son públicos (los usan las pruebas y el post-proceso de energía).
+- Notas de las pruebas:
+  - La disipación no negativa se integra con la regla del trapecio en pasos finos (tolerancia `1e-6·fc·eps_c`), no de forma exacta por tramos.
+  - El balance de energía del transitorio con `F_int = F_ext − M·ü` se cumple de forma idéntica con la regla del trapecio de Newmark (aceleración media), así que no prueba nada: se sustituyó por la disipación del material, trabajo interno menos energía almacenada en las fibras, en tres instantes.
 
 ---
 
@@ -305,3 +321,12 @@ references:
 - **2026-11-09** · Spec redactada por la IA con las tres decisiones físicas del usuario (compresión de Mander con la forma de Popovics y confinamiento fuera del material; tracción lineal con rama descendente lineal; descarga de Karsan y Jirsa) y su clasificación como estándar. Pendiente de la revisión del usuario, en particular: (a) la cota $E_r \le E$ de la descarga; (b) la deformación de tracción medida desde $-e_p$ y la descarga en tracción por la secante; (c) el confinamiento uniforme en la función auxiliar; (d) la rama lineal de $e_p$ para $\eta \ge 2$.
 - **2026-11-09** · Referencias verificadas por el bibliotecario (`verificacion_bib_2026-11-09.md`, fuera de Git). Paulay y Priestley (1992) presenta el modelo de Mander en su §3.2.2 (pp. 98–104): sirve como texto de la lista de admisión. Karsan y Jirsa: páginas 2543–2564. La expresión de $e_p$ se confirmó en el código de `Concrete04` de OpenSees, que la usa sólo para $\eta < 2$ y una rama lineal para $\eta \ge 2$ (punto (d)).
 - **2026-11-09** · **Reformulación.** El usuario pidió que el material sea una capacidad general de un programa de elementos finitos (carga monótona, cíclica y dinámica; YAML), no a la medida de un caso, y sin parches: el borrador anterior combinaba Karsan y Jirsa, la rama lineal de Taucer et al. (1991) que usa OpenSees y una cota propia ($E_r \le E$), y creaba energía en $\eta = 2$. Decisiones del usuario: (1) forma de daño-plasticidad 1D con la deformación plástica de Mander (ecs. 31–34), que elimina los puntos (a) y (d); (2) descarga y recarga lineales, sin lazos (las reglas curvas de Mander sólo están definidas para ciclos completos y dieron problemas de convergencia en fibras; Chang y Mander tiene unas 15 variables y errores de energía de hasta 47 % por ciclo); (3) tracción con descarga secante, recuperación al cerrar la grieta y degradación de Mander (ecs. 42–45, con la errata corregida), que responde al punto (b); (4) regularización opcional por energía de fractura; (5) confinamiento con presiones distintas por Chang y Mander (1994), que responde al punto (c). El módulo $E_c = 5000\sqrt{f'_c}$ MPa sí está en Mander (1988), ec. 7, p. 1808. Puntos para la revisión del usuario: (i) la regularización de la compresión estirando la rama posterior al pico (§5): Coleman y Spacone la hicieron con la rama lineal de Kent y Park; estirarla conserva la forma de Mander; (ii) $h = w_i L$ en los elementos de marco de Solidum, que son en desplazamientos (Coleman y Spacone lo plantean para elementos en fuerzas): lo decide la prueba `objetividad_de_malla`, y si no se cumple se trae al usuario; (iii) $t_m$ conserva su valor cuando el origen de la tracción se desplaza por compresión posterior (§4).
+- **2026-11-09** · **Implementación y hallazgos.** Las pruebas de verificación pasan. Hallazgos de la validación:
+  - **Momento–curvatura**: coincide con la integración independiente en < 0.1 % (con y sin carga axial). Una primera discrepancia era del programa de prueba (Newton sin salvaguarda en ε₀ cuando ∂N/∂ε₀ < 0 por el aplastamiento del recubrimiento), no del material.
+  - **Voladizo**: hasta F = 0.92·F_pico, error ≤ 0.8 % con 8 elementos. Cerca del pico, con carga axial, el error de δ a fuerza dada converge con la malla (23.6 %, 8 %, 2.5 % con 8, 16 y 32 elementos): es del elemento en desplazamientos en la meseta tras la fluencia, no del material. La prueba compara la fuerza a desplazamiento dado, bien condicionada, con 16 elementos (con 8 da 2.2 %).
+  - **Barra a tracción con `G_f`**: objetividad exacta (2, 4, 8 y 16 elementos dan la curva analítica de la banda de fisuración a precisión de máquina; energía `A·G_f·(1 − σ/f_t)`).
+  - **Rama de tracción en concreto reforzado**: con acero de poco endurecimiento (1 %), la pérdida de la rigidez entre grietas tras la fluencia hace bajar un poco el momento de la sección y la deformación se localiza: con 16 elementos el control de desplazamiento no pasa (retroceso). Corrige la afirmación de la decisión de tracción del 2026-11-09 («en secciones de concreto reforzado no localiza»): también localiza si el acero endurece poco.
+  - **`G_f` en concreto reforzado**: regularizar con `G_f` la rama que representa la rigidez entre grietas hace depender de la malla la respuesta antes del pico (−5.4 % con 4 elementos frente a 16). Recomendación de uso, en el catálogo: en concreto reforzado, `eps_tu` en tracción y `G_fc` en compresión; `G_f` para el concreto simple.
+  - **Objetividad del voladizo después del pico** (punto (ii)), diferencia máxima de la fuerza a desplazamiento dado frente a 16 elementos: sin regularizar, 16 % con 4 elementos y 7.8 % con 8 (y 16 elementos no terminan); con `eps_tu` en tracción y `G_fc` en compresión, 6.6 % con 4 y 3.1 % con 8. Con `h = L` en vez de `w_g·L`: 5.8 % y 3.1 %. La elección de `h` apenas influye; lo que queda con 4 elementos es error de discretización. **Pendiente de la decisión del usuario** el criterio de la prueba con 4 elementos.
+  - **Transitorio**: el cierre de las grietas es un quiebre de la rigidez y el Newton puro rebota entre ramas (con dt = 5 ms falla en t = 0.63 s); con búsqueda lineal o con dt = 2.5 ms pasa. La prueba usa `line_search=True`; recomendado en el catálogo y en el manual.
+- **2026-11-09** · **Decisión del usuario (punto (ii))**: la prueba de objetividad del voladizo exige ≤ 5 % entre 8 y 16 elementos (medido 1.9 % en la configuración de la prueba); el caso de 4 elementos queda documentado y no se exige (7.1 %; 16 % sin regularizar): es error de discretización del elemento en desplazamientos, más largo que la rótula plástica, no de la regularización. **El usuario pide anotar el elemento de marco en fuerzas para implementarlo** (ROADMAP, sección por fibras, etapa 3): es el remedio para mallas gruesas y el elemento para el que Coleman y Spacone (2001) plantearon esta regularización. Con todas las pruebas de `acceptance` verdes, `status: validated`.

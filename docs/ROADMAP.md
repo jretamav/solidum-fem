@@ -357,6 +357,8 @@ Los colapsos convergen por arriba y en primer orden del tamaño del elemento: es
 
 **Etapa 2 pendiente**: sección por fibras de `Frame2DTimoshenko`. Empieza por una decisión física del usuario —su cinemática con cortante—, con su propio ciclo de spec y validación.
 
+**Etapa 3 pendiente — elemento de marco en fuerzas** (pedido del usuario, 2026-11-09, al validar `ManderConcrete1D`). Un elemento en desplazamientos sólo representa curvatura lineal dentro del elemento, así que no concentra la curvatura de una rótula plástica más corta que él: el voladizo de concreto reforzado con 4 elementos de 0.75 m difiere 7.1 % de la malla de 16 después del pico, aun con la regularización por energía de fractura. El elemento en fuerzas interpola las fuerzas internas (momento lineal, exacto sin carga distribuida) y obtiene la curvatura de la sección en cada punto de integración, de modo que un solo elemento por miembro representa la rótula; con integración de Gauss-Lobatto y la longitud del punto extremo como `h` es el elemento para el que Coleman y Spacone (2001) plantearon la regularización (ADR 0028). Revisa la decisión (2) de la etapa 1 («en desplazamientos, no en fuerzas»), que se tomó para la primera entrega. Empieza por el criterio de admisión (Reglas §1) y su spec: formulación de Spacone, Filippou y Taucer (1996), iteración interna del elemento, cargas distribuidas y corrotacional.
+
 **Fuera de alcance, con rationale** (spec §7-§8): ablandamiento sin regularizar (deuda #29), torsión no degradada, curvatura lineal por elemento (varios elementos por miembro cerca de las rótulas) y marcos fuera del camino por lotes del ADR 0014 (se medirá antes de vectorizar).
 
 ---

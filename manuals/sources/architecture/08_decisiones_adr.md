@@ -318,6 +318,12 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** La deuda #35 queda cerrada en estático, por etapas y en el tiempo, sin cambiar la API de las cargas.
 
+## ADR 0028 — Longitud característica del punto de integración
+
+**Fecha**: 2026-11-09 · **Estado**: aceptado.
+
+Un material con ablandamiento regularizado por energía de fractura necesita la longitud `h` de cada punto de integración, que sólo conoce el elemento. `h` viaja en el estado del punto: el material declara si la usa (`uses_characteristic_length`) y construye el estado inicial con `initial_point_state(h)`, donde la valida; el elemento, al terminar de construirse, siembra una longitud por punto con `_seed_characteristic_lengths` (`L` en las barras, `w_g·L` en los marcos con sección, que la reparte a sus fibras con `initial_states(characteristic_length=h)`). Un `h` inadmisible se rechaza al construir el elemento. Se descartó pasar `h` en cada `compute_state` (más de treinta llamadas y validación tardía) y guardarlo en el material (lo comparten puntos de longitudes distintas). Primer consumidor: `ManderConcrete1D`; regularizar los materiales de daño de los sólidos sólo exigirá que sus elementos siembren las longitudes.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

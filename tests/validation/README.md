@@ -23,13 +23,14 @@ con cifras citables contra referencias externas.
 | 12 | **Deformación equivalente del daño 2D/3D** — formas cerradas, restricción 2D↔3D, tangente | `test_damage_equivalent_strain_validation.py` | IsotropicDamage2D (esfuerzo plano y deformación plana) e IsotropicDamage3D en el punto de Gauss (energética, Mazars, von Mises modificado) | 181/181 |
 | 13 | **Sección por fibras de los marcos** — M–κ, interacción N–M y colapsos de Neal (1977), sección circular a 45°, corrotacional | `test_fiber_section_validation.py` | Frame2DEuler, Frame2DEulerCorot, Frame3D + FiberSection (Elastic1D, Elastoplastic1D) + NonlinearSolver | 43/43 |
 | 14 | **Cilindro hueco térmico** — perfil logarítmico de Carslaw-Jaeger | `test_thermal_hollow_cylinder.py` | Quad4Thermal, Hex8Thermal + ThermalConduction + LinearSolver | 2/2 |
+| 15 | **Concreto de Mander** — M–κ de una sección de concreto reforzado frente a una integración independiente, voladizo hasta el pico, objetividad de malla (barra a tracción con banda de fisuración; voladizo después del pico), ciclos, transitorio con disipación, YAML | `test_mander_concrete_validation.py` | Frame2DEuler, Truss2D + FiberSection (ManderConcrete1D, Elastoplastic1D) + IndirectDisplacementSolver, NewtonNewmarkSolver | 8/8 |
 
 La verificación por soluciones manufacturadas (ADR 0022) vive en el mismo
 directorio (`test_mms_solid_2d.py`, `test_mms_solid_3d.py`,
 `test_mms_thermal.py`) pero no es un benchmark externo: mide el orden de
 convergencia contra soluciones inventadas, y no entra en el total.
 
-**Total: 306/306 tests verde**. Última actualización: 2026-10-27 (benchmark 14 nuevo, cilindro hueco térmico). Antes, 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
+**Total: 314/314 tests verde**. Última actualización: 2026-11-09 (benchmark 15 nuevo, concreto de Mander). Antes, 2026-10-27 (benchmark 14 nuevo, cilindro hueco térmico). Antes, 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
 
 ## Resultados cuantitativos por benchmark
 

@@ -82,6 +82,11 @@ MUESTRAS = {
     'IsotropicDamage1D': dict(E=2.0e10, kappa_0=1.0e-4, alpha=0.99),
     'IsotropicDamage2D': dict(E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=0.99),
     'IsotropicDamage3D': dict(E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=0.99),
+    # Con tracción: con ft = 0 (sin tracción, el default) el material no tiene
+    # rigidez para ε > 0, y la sonda del régimen elástico, que usa ε > 0, no
+    # estaría en régimen elástico. El caso ft = 0 lo cubren sus tests propios.
+    'ManderConcrete1D':  dict(fc=3.0e7, eps_c=0.002, E=2.74e10, eps_cu=0.004,
+                              ft=3.0e6, eps_tu=1.0e-3),
     'Orthotropic2D':     dict(E1=15.0e9, E2=0.8e9, G12=0.7e9, nu12=0.35),
     'VonMises2D':        dict(E=2.0e11, nu=0.3, sigma_y=2.5e8),
     'VonMises3D':        dict(E=2.0e11, nu=0.3, sigma_y=2.5e8),
