@@ -42,6 +42,7 @@ from solidum.results import (
     ModalResult,
     ResponseSpectrumResult,
     SolveResult,
+    StagedResult,
     ThermalTransientResult,
     TransientResult,
     build_solve_result,
@@ -483,6 +484,47 @@ def run_response_spectrum(
     return result
 
 
+def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
+    """Etapas del YAML (``stages``): cada una continúa la anterior (ADR 0026
+    para las estáticas, ADR 0029 para las en el tiempo). Una etapa estática
+    hace crecer sus cargas con λ manteniendo constantes las ya aplicadas; una
+    etapa en el tiempo aplica sus cargas como escalón desde su instante
+    inicial, sobre la carga constante de las anteriores."""
+    names, results = [], []
+    previous = None
+    for i, stage in enumerate(parser.stages):
+        sp = parser.for_stage(stage)
+        solver = sp.get_solver(assembler)
+        kind = getattr(solver, "PIPELINE_KIND", "static")
+        where = f"stages[{i}] ({stage['name']!r}, {type(solver).__name__})"
+        if kind == "static":
+            if previous is not None and not isinstance(previous, SolveResult):
+                raise ValueError(
+                    f"{where}: una etapa estática no puede continuar un análisis en el "
+                    f"tiempo (qué carga se mantiene y qué pasa con la velocidad son "
+                    f"decisiones físicas pendientes); sólo continúa otra estática.")
+            F = (sp.get_external_forces() + sp.get_body_load(assembler)
+                 + sp.get_thermal_loads())
+            r = run(domain, assembler=assembler, solver=solver, F_applied=F,
+                    step_callback=step_callback, previous=previous)
+        elif kind == "transient":
+            r = run_transient(domain, assembler=assembler, solver=solver, previous=previous)
+        elif kind == "thermal_transient":
+            r = run_thermal_transient(domain, assembler=assembler, solver=solver,
+                                      previous=previous)
+        else:
+            raise ValueError(
+                f"{where}: las etapas admiten solvers estáticos y en el tiempo; un "
+                f"análisis {kind!r} sobre el estado de una etapa está pendiente de una "
+                f"decisión física (qué rigidez usa).")
+        names.append(stage['name'])
+        results.append(r)
+        previous = r
+    staged = StagedResult(names=tuple(names), results=tuple(results))
+    domain.last_result = staged.final
+    return staged
+
+
 def run_yaml(
     path: str | Path,
     *,
@@ -498,6 +540,10 @@ def run_yaml(
     - ``"harmonic"`` → :func:`run_harmonic`, retorna ``HarmonicResult``.
     - ``"spectrum"`` → :func:`run_response_spectrum`, retorna ``ResponseSpectrumResult``.
     - ``"static"`` (default) → :func:`run`, retorna ``SolveResult``.
+
+    Con un bloque ``stages`` (ADR 0026 y 0029), cada etapa declara sus cargas
+    y su solver y continúa la anterior; retorna un ``StagedResult`` con un
+    resultado por etapa (``result["nombre"]``, ``result.final``).
 
     El despacho declarativo (atributo de clase en lugar de cadena de
     ``isinstance``) permite añadir nuevos solvers no clásicos sin tocar
@@ -518,6 +564,8 @@ def run_yaml(
     # Debe numerarse antes de get_external_forces, que indexa por DOF.
     domain.generate_equation_numbers()
     assembler = Assembler(domain)
+    if parser.stages is not None:
+        return _run_yaml_stages(parser, domain, assembler, step_callback)
     solver = parser.get_solver(assembler)
 
     pipeline_kind = getattr(solver, "PIPELINE_KIND", "static")

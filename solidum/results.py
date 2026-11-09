@@ -502,6 +502,40 @@ class ResponseSpectrumResult:
 
 
 @dataclass(frozen=True)
+class StagedResult:
+    """Resultados de un análisis por etapas declarado en el YAML (``stages``,
+    ADR 0026 y 0029): uno por etapa, en orden.
+
+    ``result[i]`` o ``result["nombre"]`` da el de una etapa; ``final``, el de
+    la última; ``names``, los nombres. Cada etapa continúa la anterior (sus
+    desplazamientos y el estado interno de los elementos; la carga ya
+    aplicada se mantiene constante).
+    """
+
+    names: tuple
+    results: tuple
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            try:
+                return self.results[self.names.index(key)]
+            except ValueError:
+                raise KeyError(f"no hay una etapa {key!r}; etapas: {list(self.names)}") from None
+        return self.results[key]
+
+    def __len__(self) -> int:
+        return len(self.results)
+
+    def __iter__(self):
+        return iter(self.results)
+
+    @property
+    def final(self):
+        """Resultado de la última etapa."""
+        return self.results[-1]
+
+
+@dataclass(frozen=True)
 class SolveResult:
     """Resultado agregado de una solución. Inmutable (shallow); calculado
     eager al final de ``solver.solve``.

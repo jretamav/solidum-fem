@@ -36,6 +36,7 @@ from solidum.results import (
     ModalResult,
     ResponseSpectrumResult,
     SolveResult,
+    StagedResult,
     ThermalTransientResult,
     TransientResult,
     build_solve_result,

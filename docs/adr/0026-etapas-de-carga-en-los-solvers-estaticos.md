@@ -82,10 +82,10 @@ $$\mathbf f_\text{eq} = \mathbf f_\text{eq}^{\,c} + \lambda\,\mathbf f_\text{eq}
 ### 6. Fuera de este ADR
 
 - **`DissipationArcLengthSolver`** (módulo de usuario) rechaza `u0` y `constant_load` con `NotImplementedError`. Su restricción usa el trabajo de la carga de referencia, y con una carga constante la energía disipada del paso cambia. Eso es física por decidir, no un detalle de implementación.
-- **Etapas desde el YAML**: no hay sintaxis todavía (deuda #36).
+- **Etapas desde el YAML**: no había sintaxis (deuda #36). **Resuelto el 2026-11-09**: bloque `stages`, una etapa por entrada con sus `loads` y su `solver`; `run_yaml` devuelve un `StagedResult`.
 - **Dos cargas de cuerpo en una misma etapa.** El registro del ensamblador sólo guarda las cargas equivalentes de la última ensamblada, así que `element_forces` descuenta sólo esa. Es un defecto previo, también en análisis de una etapa (deuda #35). Lo resuelve un modelo de cargas que lleve sus cargas equivalentes (mejora 4 de la lista del 2026-09-22). **Resuelto por el ADR 0027 (2026-11-09).**
 - **Objetivo de la magnitud controlada dentro de una etapa.** Ampliado el 2026-11-09 (ADR 0025, §6): el sentido lo da el objetivo, así que una etapa también puede descargar hasta un valor menor que el de partida.
-- **Etapas en los análisis en el tiempo, en el lineal y en el térmico**: pendiente (fase 2 de la revisión de generalidad del 2026-11-09).
+- **Etapas en los análisis en el tiempo, en el lineal y en el térmico**: las de los análisis en el tiempo (mecánicos y térmico) las resuelve el ADR 0029 (2026-11-09). El `LinearSolver` sobre el estado de una etapa es una perturbación lineal pendiente de una decisión física (qué rigidez usa).
 
 ## Verificación (criterios de aceptación)
 

@@ -491,6 +491,35 @@ Ambos criterios deben cumplirse **simultáneamente** (semántica AND) para dar e
 
 **Nota sobre el solver algebraico interno.** El sistema lineal $\mathbf{K}\,\delta\mathbf{U}=\mathbf{R}$ que aparece dentro de cada iteración se resuelve con un backend algebraico (Cholesky, LU…) seleccionado *automáticamente* según las propiedades de $\mathbf{K}$. Esta elección **no** es decisión de modelado y no requiere configuración. Si por motivos de diagnóstico necesitas forzar un backend específico, consulta el capítulo *Anexos técnicos — Capa algebraica* del Manual de Referencia.
 
+## Etapas: `stages`
+
+Un análisis por etapas encadena análisis que continúan el anterior: la gravedad y después un empuje, una secuencia de cargas, un estático y después una carga dinámica. Cada etapa declara sus cargas (`loads`, con los mismos bloques del nivel raíz: `point_loads…`, `gravity`, `body_force`, `tractions…`, `thermal_loads`) y su `solver`:
+
+```yaml
+stages:
+  - name: gravedad
+    loads:
+      gravity: [0.0, -9.81]
+    solver: {type: NonlinearSolver, num_steps: 4}
+  - name: empuje
+    loads:
+      point_loads:
+        - {node_id: 4, ux: 1.0e5}
+    solver:
+      type: IndirectDisplacementSolver
+      control:
+        - {node: 4, dof: ux, coef: 1.0}
+      control_target: 0.06
+      initial_dl: 0.004
+      max_lambda: 1.0e9
+```
+
+- **Etapa estática**: parte de los desplazamientos y del estado interno de la anterior; la carga ya aplicada se mantiene constante y la de la etapa crece con λ (ADR 0026).
+- **Etapa en el tiempo** (`NewmarkSolver`, `NewtonNewmarkSolver`, HHT, diferencia central, `ThetaMethodSolver`): parte del estado final de la anterior (ADR 0029); sus cargas se aplican como escalón desde su instante inicial, sobre la carga constante de las anteriores. Tras otra etapa en el tiempo, `t_end` es el instante final absoluto.
+- Con `stages`, el `solver` y las cargas van en cada etapa: declararlos también en el nivel raíz es un error.
+- `run_yaml` devuelve un `StagedResult`: `res["empuje"]` o `res[1]` da el resultado de una etapa, `res.final` el de la última y `res.names` los nombres.
+- Pendientes de una decisión física, y por eso rechazados con un error claro: una etapa estática después de una en el tiempo, y una etapa modal, armónica o espectral sobre el estado de las anteriores.
+
 ## Salida: `output`
 
 Configura qué se exporta y cuándo:

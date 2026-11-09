@@ -111,8 +111,15 @@ class YamlParser:
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
         'point_loads_by_group', 'linear_constraints', 'nodal_masses', 'body_force', 'gravity',
         'tractions', 'tractions_by_group',
-        'thermal_loads', 'solver', 'output', 'user_modules',
+        'thermal_loads', 'solver', 'output', 'user_modules', 'stages',
     })
+    # Bloques de carga: los del nivel raíz y los de ``loads`` de cada etapa.
+    _LOAD_KEYS = frozenset({
+        'point_loads', 'point_loads_by_node', 'point_loads_by_coord', 'point_loads_by_group',
+        'body_force', 'gravity', 'tractions', 'tractions_by_group', 'thermal_loads',
+    })
+    # Claves de una etapa (``stages``, ADR 0026 y 0029).
+    _STAGE_KEYS = frozenset({'name', 'loads', 'solver'})
     # Sub-bloques de ``thermal_loads``.
     _THERMAL_LOAD_KEYS = frozenset({'body_source', 'boundary_flux', 'boundary_flux_by_group'})
 
@@ -183,7 +190,30 @@ class YamlParser:
 
         self.output_config = data.get('output', {})
         self.solver_config = data.get('solver', {})
+        self.stages = None
+        if data.get('stages'):
+            self.stages = [
+                {'name': str(st.get('name', f"etapa {i + 1}")),
+                 'loads': dict(st.get('loads') or {}),
+                 'solver': dict(st['solver'])}
+                for i, st in enumerate(data['stages'])
+            ]
         return self.domain
+
+    def for_stage(self, stage: dict) -> "YamlParser":
+        """Lector de una etapa: el mismo modelo, con las cargas y el solver de
+        la etapa (``stages``, ADR 0026 y 0029). Las cargas se resuelven con los
+        mismos lectores que las del nivel raíz."""
+        import copy
+        sp = copy.copy(self)
+        loads = stage['loads']
+        sp._parse_point_loads_config(loads)
+        sp._parse_thermal_loads_config(loads)
+        sp._parse_body_force(loads)
+        sp._parse_distributed_loads(loads)
+        sp.solver_config = stage['solver']
+        sp.stages = None
+        return sp
 
     @staticmethod
     def _load_user_modules(data: dict) -> list:
@@ -414,16 +444,71 @@ class YamlParser:
             data.get('nodal_masses'), known_node_ids))
 
         # --- Solver ---
-        solver_cfg = data.get('solver', {})
+        errors.extend(self._validate_solver_cfg(data.get('solver', {}), 'solver', data))
+
+        # --- Etapas (ADR 0026 y 0029) ---
+        errors.extend(self._validate_stages(data))
+
+        return errors
+
+    def _validate_stages(self, data: dict) -> list:
+        """``stages``: lista de etapas ``{name, loads, solver}``. Con etapas, el
+        solver y las cargas van en cada una: un ``solver`` o un bloque de
+        cargas en el nivel raíz sería ambiguo."""
+        stages = data.get('stages')
+        if stages is None:
+            return []
+        if not isinstance(stages, list) or not stages:
+            return ["stages: debe ser una lista no vacía de etapas {name, loads, solver}."]
+        errors = []
+        clash = sorted(k for k in data if k in self._LOAD_KEYS or k == 'solver')
+        if clash:
+            errors.append(
+                f"stages: con etapas, el solver y las cargas se declaran en cada etapa; "
+                f"quite del nivel raíz {clash} (o páselos a 'loads' y 'solver' de la "
+                f"etapa que corresponda).")
+        names = set()
+        for i, st in enumerate(stages):
+            ctx = f"stages[{i}]"
+            if not isinstance(st, dict):
+                errors.append(f"{ctx}: cada etapa debe ser un diccionario.")
+                continue
+            unknown = sorted(str(k) for k in st if k not in self._STAGE_KEYS)
+            if unknown:
+                errors.append(f"{ctx}: claves desconocidas {unknown}; se admiten "
+                              f"{sorted(self._STAGE_KEYS)}.")
+            name = st.get('name', f"etapa {i + 1}")
+            if name in names:
+                errors.append(f"{ctx}: nombre de etapa repetido ({name!r}).")
+            names.add(name)
+            loads = st.get('loads', {}) or {}
+            if not isinstance(loads, dict):
+                errors.append(f"{ctx}.loads: debe ser un diccionario de bloques de carga.")
+            else:
+                bad = sorted(str(k) for k in loads if k not in self._LOAD_KEYS)
+                if bad:
+                    errors.append(f"{ctx}.loads: bloques desconocidos {bad}; se admiten "
+                                  f"{sorted(self._LOAD_KEYS)}.")
+            if not st.get('solver'):
+                errors.append(f"{ctx}: falta el bloque 'solver'.")
+            else:
+                errors.extend(self._validate_solver_cfg(st['solver'], f"{ctx}.solver", data))
+        return errors
+
+    def _validate_solver_cfg(self, solver_cfg, ctx: str, data: dict) -> list:
+        """Errores de un bloque de solver (el del nivel raíz o el de una etapa)."""
+        errors = []
+        if solver_cfg and not isinstance(solver_cfg, dict):
+            return [f"{ctx}: debe ser un diccionario con 'type'."]
         if solver_cfg:
             s_type = solver_cfg.get('type')
             if not s_type:
-                errors.append("solver: falta el campo 'type'.")
+                errors.append(f"{ctx}: falta el campo 'type'.")
             else:
                 registered_solvers = set(SolverRegistry.names())
                 if registered_solvers and s_type not in registered_solvers:
                     errors.append(
-                        f"solver: tipo desconocido '{s_type}'. "
+                        f"{ctx}: tipo desconocido '{s_type}'. "
                         f"Disponibles: {sorted(registered_solvers)}."
                         + self._user_module_hint(data)
                     )
@@ -436,7 +521,7 @@ class YamlParser:
                     )
                     for kw in unknown:
                         errors.append(
-                            f"solver: parámetro '{kw}' no aceptado por '{s_type}'. "
+                            f"{ctx}: parámetro '{kw}' no aceptado por '{s_type}'. "
                             f"Admitidos: {advertised}."
                         )
 
@@ -449,7 +534,7 @@ class YamlParser:
                 )
                 if not is_valid_override(la):
                     errors.append(
-                        f"solver: 'linear_algebra' desconocido o no disponible: "
+                        f"{ctx}: 'linear_algebra' desconocido o no disponible: "
                         f"'{la}'. Disponibles: {available_overrides()}."
                     )
 
