@@ -89,16 +89,17 @@
 
 - **Propósito**: calcular frecuencias naturales `ω_n` y modos `φ_n` de vibración no amortiguados resolviendo `K · φ = ω² · M · φ`.
 - **Esquema**:
-  - Ensamblaje de `K` (rigidez lineal en `u = 0`) y `M` (masa consistente, ADR 0009 §1) reusando la topología COO cacheada del `Assembler`.
+  - Ensamblaje de `K` (rigidez lineal en `u = 0`) y `M` (masa consistente, ADR 0009 §1) reusando la topología COO cacheada del `Assembler`. `M` incluye las **masas concentradas en nudos** (`Domain.add_nodal_mass`, bloque YAML `nodal_masses`, ADR 0024), sumadas a su diagonal con los dos esquemas.
   - Reducción simultánea por Dirichlet y restricciones multipunto (ADR 0004) `Assembler.reduce_pair(K, M)` → `K_red = TᵀKT, M_red = TᵀMT, T`.
   - `EigenSolver` envuelve `scipy.sparse.linalg.eigsh` con **shift-invert** en `sigma` (`sigma=0` → frecuencias más bajas) y `which="LM"`. ARPACK factoriza `(K_red − σ·M_red)` una sola vez y la reusa en todas las iteraciones Lanczos.
+  - **Grados de libertad sin masa** (masas sólo en algunos nudos, elementos con `density = 0`): se condensan estáticamente de forma exacta (`φ₀ = −K₀₀⁻¹K₀ₘφₘ`, ADR 0024) y sus componentes de los modos se recuperan. Hay tantas frecuencias finitas como grados de libertad con masa; si el problema no tiene solución, `MasslessDofsError` (`solidum.math.solvers.diagnostics`) los nombra como (nodo, dof).
   - Expansión de modos al espacio completo: `φ = T · φ_red`. En DOFs prescritos por Dirichlet la componente es 0; en el esclavo de una MPC, la combinación de sus maestros (oráculo del nodo fundido en `tests/test_mpc_dynamic.py`). `ModalResult.free_vibration` proyecta las condiciones iniciales en norma M (`a = ΦᵀM·u0`), a diferencia de los transitorios, que reconstruyen los esclavos como `T·u0[libres] + g`: con condiciones iniciales incoherentes con las MPC ambos caminos difieren.
   - Salida en `ModalResult`: `frequencies_rad`, `frequencies_hz`, `periods`, `modes` (M-ortonormales), `n_modes`, `converged`.
 - **Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0), `which` (default `"LM"`), `tolerance` (default 1.0e-9), `lumping` (default `"consistent"`; también `"lumped"`, ADR 0009 fase 2), `linear_algebra` (reservado; ADR 0003).
 - **Firma del solver**: `solve()` sin argumentos (no consume `F_applied`). El entrypoint público es `solidum.run_modal(domain, n_modes=N)` o YAML con `solver: type: ModalSolver`. `solidum.run_yaml` despacha automáticamente al detectar el tipo.
 - **Cuándo usarlo**: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
 - **Limitaciones**: lineal (`K` evaluada en `u = 0`); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en `solidum/math/modal_response.py` y los consume `ResponseSpectrumSolver` (ADR 0009 fase 7 cerrada).
-- **Referencia**: Bathe, *Finite Element Procedures*, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, *The Finite Element Method*, cap. 7; ARPACK Users' Guide (Lehoucq–Sorensen–Yang).
+- **Referencia**: Bathe, *Finite Element Procedures*, cap. 9 (masa), §10.3.1 (condensación estática) y cap. 11 (algoritmos de autovalor); Chopra, *Dynamics of Structures*, §9.3; Hughes, *The Finite Element Method*, cap. 7; ARPACK Users' Guide (Lehoucq–Sorensen–Yang).
 - **Spec**: [docs/specs/ModalSolver.md](specs/ModalSolver.md)
 - **Archivos**: [solidum/math/solvers/modal.py](../solidum/math/solvers/modal.py) (clase `ModalSolver`), [solidum/math/linalg/eigen.py](../solidum/math/linalg/eigen.py) (clase `EigenSolver`), [solidum/results.py](../solidum/results.py) (`ModalResult`).
 
@@ -232,6 +233,7 @@
   - Combinación SRSS (default) o CQC con coeficientes de correlación de Der Kiureghian.
 - **Parámetros**: `n_modes`, `direction` (ndarray o `{"dof_name": "ux"}`), `spectrum` (callable o dict tabulado/constante), `combination` (`"SRSS"`/`"CQC"`), `damping` (sólo CQC, default 0.05), `sigma`, `lumping`.
 - **Cuándo usarlo**: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
+- **Masas de nudo y grados de libertad sin masa** (ADR 0024): heredados del `ModalSolver` interno. Con masas de piso y columnas sin masa propia, `total_mass` es la suma de las masas de piso y la suma de las masas efectivas de todos los modos finitos la alcanza (`tests/test_nodal_mass.py`). `n_modes` no puede pasar del número de grados de libertad con masa.
 - **Restricciones multipunto**: heredadas del `ModalSolver` interno (`φ = T·φ_red`); oráculo del nodo fundido en `tests/test_mpc_dynamic.py`. Si `r` no cumple una MPC (apoyo oblicuo excitado en otra dirección), esa parte de `rᵀMr` no participa, igual que la masa de los DOFs apoyados: la suma de masas efectivas no alcanza `total_mass`.
 - **Caveats**: precisión depende del número de modos incluidos — verifica `cumulative_effective_mass_ratio` ≥ 0.9. CQC requerido con modos cercanos en frecuencia (cociente < 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
 - **Despacho YAML**: `solver.type: ResponseSpectrumSolver`. Vía atributo `PIPELINE_KIND="spectrum"` → `run_response_spectrum`. Cuarto valor del literal (después de `"static"`, `"modal"`, `"transient"`, `"harmonic"`).

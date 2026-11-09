@@ -323,6 +323,25 @@ Las cargas son **estrictas**: un `node_id` inexistente se rechaza en la validaci
 
 En los **solvers transitorios mecánicos** (`NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`) las cargas del archivo —puntuales más peso propio o fuerza de cuerpo— se aplican como **escalón constante en el tiempo** desde $t = 0$ (`F_func = cte`). Una historia $\mathbf F(t)$ arbitraria requiere construir el solver desde Python con su propio `F_func` (§10).
 
+## Masas Concentradas en Nudos: `nodal_masses`
+
+La masa que no sale de la densidad de los elementos —en un edificio, la de la losa, los acabados y la fracción de la carga viva de cada nivel— se concentra en los nudos (ADR 0024):
+
+```yaml
+nodal_masses:
+  - {node_id: 5, ux: 12.0e3, uy: 12.0e3}            # masa [kg]
+  - {node_id: 9, ux: 12.0e3, uy: 12.0e3, rz: 4.0e3} # rz: inercia rotacional [kg·m²]
+```
+
+- Cada clave, salvo `node_id`, es un grado de libertad mecánico del nodo: `ux`, `uy`, `uz` llevan una masa; `rx`, `ry`, `rz`, una inercia rotacional (masa·longitud²). Las rotacionales son opcionales.
+- Varias entradas sobre el mismo grado de libertad se suman.
+- La masa entra en la diagonal de la matriz de masa, igual con `lumping: consistent` que con `lumped`, así que la usan el análisis modal, el espectral y los dinámicos.
+- Es **sólo inercia**: `gravity` no genera su peso. Si su peso actúa, declárelo como carga en `point_loads`.
+- Los elementos siguen necesitando `density` en sus materiales (ADR 0008). Un elemento sin masa propia se declara con `density: 0.0`.
+- El bloque se valida al leer: valores finitos no negativos, grados de libertad mecánicos que el nodo tenga y nodos existentes. Todos los errores se informan juntos.
+
+Con masas sólo en algunos nudos, casi todos los grados de libertad quedan sin masa. El análisis modal los condensa de forma exacta (capítulo de dinámica).
+
 ## Fuerzas de Cuerpo
 
 Una *fuerza de cuerpo* es una fuerza por unidad de volumen $\mathbf b$ que actúa sobre todo el dominio material del elemento, no solo sobre su frontera. Cada elemento del catálogo (armaduras, cables, marcos 2D/3D, sólidos 2D) integra la contribución consistente $\int \mathbf{N}^\top \mathbf{b}\,A\,dx$ y la acumula al vector global de fuerzas. Para vigas Hermite cúbicas el reparto incluye fuerza nodal $qL/2$ y momento $\pm qL^2/12$; para barras axiales es mitad-mitad por nodo.

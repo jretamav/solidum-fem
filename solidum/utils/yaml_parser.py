@@ -4,6 +4,7 @@ import re
 import yaml
 import os
 import numpy as np
+from solidum.core.dof_names import MECHANICAL as _MECHANICAL_DOFS
 from solidum.core.domain import Domain
 from solidum.core.element import Element
 from solidum.autodiscover import initialize as _ensure_registries_initialized
@@ -108,7 +109,7 @@ class YamlParser:
         'boundary_conditions', 'boundary_conditions_by_node',
         'boundary_conditions_by_coord', 'boundary_conditions_by_group',
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
-        'point_loads_by_group', 'linear_constraints', 'body_force', 'gravity',
+        'point_loads_by_group', 'linear_constraints', 'nodal_masses', 'body_force', 'gravity',
         'tractions', 'tractions_by_group',
         'thermal_loads', 'solver', 'output', 'user_modules',
     })
@@ -174,6 +175,7 @@ class YamlParser:
         self._parse_mesh_or_elements(data)
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
+        self._parse_nodal_masses(data)
         self._parse_point_loads_config(data)
         self._parse_thermal_loads_config(data)
         self._parse_body_force(data)
@@ -406,6 +408,10 @@ class YamlParser:
         # ``_parse_linear_constraints``, que también ve las mallas gmsh.
         errors.extend(self._validate_linear_constraints_shape(
             data.get('linear_constraints'), known_node_ids))
+
+        # --- Masas de nudo (ADR 0024) ---
+        errors.extend(self._validate_nodal_masses_shape(
+            data.get('nodal_masses'), known_node_ids))
 
         # --- Solver ---
         solver_cfg = data.get('solver', {})
@@ -907,6 +913,77 @@ class YamlParser:
         for slave, masters, coefficients, g in entries:
             self.domain.add_linear_constraint(
                 slave=slave, masters=masters, coefficients=coefficients, g=g,
+            )
+
+    @classmethod
+    def _validate_nodal_masses_shape(cls, block, known_node_ids: set) -> list:
+        """Errores de forma, de nombres y de valores del bloque
+        ``nodal_masses`` (ADR 0024). Que cada nodo tenga el grado de libertad
+        nombrado lo comprueba :meth:`_parse_nodal_masses` sobre el modelo
+        construido."""
+        if block is None:
+            return []
+        forma = "'- {node_id: <id>, ux: <masa>, uy: <masa>, rz: <inercia>}'"
+        if not isinstance(block, list):
+            return [f"'nodal_masses' debe ser una lista de entradas de la forma {forma}; "
+                    f"se encontró {type(block).__name__}."]
+        errors = []
+        for i, entry in enumerate(block):
+            ctx = f"nodal_masses[{i}]"
+            if not isinstance(entry, dict):
+                errors.append(f"{ctx}: cada entrada debe ser un diccionario de la forma {forma}.")
+                continue
+            if 'node_id' not in entry:
+                errors.append(f"{ctx}: falta el campo obligatorio 'node_id'.")
+            elif known_node_ids and entry['node_id'] not in known_node_ids:
+                errors.append(f"{ctx}: 'node_id={entry['node_id']}' no existe en el bloque 'nodes'.")
+            dofs = {k: v for k, v in entry.items() if k != 'node_id'}
+            if not dofs:
+                errors.append(f"{ctx}: no declara ninguna masa; la forma es {forma}.")
+            for dof, value in dofs.items():
+                if dof not in _MECHANICAL_DOFS:
+                    errors.append(
+                        f"{ctx}: '{dof}' no es un grado de libertad mecánico; admitidos: "
+                        f"ux, uy, uz (masa) y rx, ry, rz (inercia rotacional)."
+                    )
+                elif not cls._is_finite_number(value) or float(value) < 0.0:
+                    errors.append(f"{ctx}.{dof}: debe ser un número finito no negativo, "
+                                  f"se encontró {value!r}.")
+        return errors
+
+    def _parse_nodal_masses(self, data: dict):
+        """Masas concentradas en nudos (ADR 0024).
+
+        Sintaxis YAML::
+
+            nodal_masses:
+              - {node_id: 5, ux: 12.0e3, uy: 12.0e3}       # masa [kg]
+              - {node_id: 9, ux: 12.0e3, rz: 4.0e3}        # rz: inercia [kg·m²]
+
+        Se ejecuta con los elementos ya construidos (también desde una malla
+        gmsh) y comprueba lo que la forma no puede decir: que el nodo exista
+        y tenga cada grado de libertad nombrado. Todos los errores juntos.
+        """
+        entries = data.get('nodal_masses') or []
+        errors = []
+        for i, entry in enumerate(entries):
+            ctx = f"nodal_masses[{i}]"
+            node = self.domain.get_node(entry['node_id'])
+            if node is None:
+                errors.append(f"{ctx}: no hay ningún nodo {entry['node_id']} en el modelo.")
+                continue
+            for dof in entry:
+                if dof != 'node_id' and dof not in node.dofs:
+                    errors.append(
+                        f"{ctx}: el nodo {node.id} no tiene el grado de libertad '{dof}' "
+                        f"(tiene {sorted(node.dofs)})."
+                    )
+        if errors:
+            raise YamlValidationError(errors)
+        for entry in entries:
+            self.domain.add_nodal_mass(
+                entry['node_id'],
+                **{dof: float(v) for dof, v in entry.items() if dof != 'node_id'},
             )
 
     @staticmethod

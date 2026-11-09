@@ -10,7 +10,7 @@ Solidum FEM expone el subsistema modal/dinámico/espectral **completo** (ADR 000
 6. **Frecuencia**: respuesta forzada armónica (`HarmonicSolver`).
 7. **Espectral / sísmico**: combinación modal SRSS/CQC contra espectros normativos (`ResponseSpectrumSolver`).
 
-Todos los solvers consumen la masa global que cada elemento devuelve por `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` y la densidad declarada en el material (`density`; obligatoria para cualquier análisis dinámico, ADR 0008).
+Todos los solvers consumen la masa global que cada elemento devuelve por `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` y la densidad declarada en el material (`density`; obligatoria para cualquier análisis dinámico, ADR 0008), más las **masas concentradas en nudos** (`nodal_masses` en el YAML, `Domain.add_nodal_mass` en Python, ADR 0024), que se suman a su diagonal con los dos esquemas.
 
 **Restricciones multipunto.** Los ocho solvers admiten las restricciones lineales `linear_constraints` ($u_s = g_s + \sum_i \alpha_{si}\,u_{m_i}$, ADR 0004) por el mismo operador de eliminación directa que los apoyos: $\mathbf M_{\text{red}} = \mathbf T^\top\mathbf M\,\mathbf T$, $\mathbf C_{\text{red}} = \mathbf T^\top\mathbf C\,\mathbf T$, $\mathbf K_{\text{red}} = \mathbf T^\top\mathbf K\,\mathbf T$, y los resultados (historias, modos, amplitudes armónicas, respuesta espectral) se expanden con $\mathbf T$. En el armónico y el espectral el término $g$ no interviene, como el valor de un apoyo. Dos precisiones:
 
@@ -49,6 +49,30 @@ solver:
 ```callout Nota
 La densidad es *obligatoria* para todo material involucrado en análisis modal o transitorio. La omisión lanza `ValueError` (ADR 0008) listando los materiales afectados por nombre antes de iniciar el cálculo.
 ```
+
+### Masas de nudo y grados de libertad sin masa (ADR 0024)
+
+En un edificio la masa de cada nivel se concentra en sus nudos y las columnas y vigas pueden no aportar masa propia (`density: 0.0`). Entonces sólo los grados de libertad de los nudos de piso tienen masa: los nudos intermedios y los giros, no. La matriz de masa es semidefinida y el problema tiene tantas frecuencias finitas como grados de libertad con masa.
+
+`ModalSolver` condensa estáticamente los grados de libertad sin masa (diagonal de $\mathbf M$ nula). Con $m$ los que tienen masa y $0$ los demás, la ecuación de los grados de libertad sin masa no tiene inercia, y entonces
+
+$$\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\,\boldsymbol\phi_m, \qquad \bigl(\mathbf K_{mm} - \mathbf K_{m0}\mathbf K_{00}^{-1}\mathbf K_{0m}\bigr)\boldsymbol\phi_m = \omega^2\,\mathbf M_{mm}\,\boldsymbol\phi_m .$$
+
+La condensación es **exacta**, no una aproximación: da las mismas frecuencias que el problema completo. Los modos se devuelven completos, también en los grados de libertad sin masa, y $\mathbf M$-ortonormales. El registro lo anota en una línea.
+
+```yaml
+nodal_masses:
+  - {node_id: 3, ux: 40.0e3}
+  - {node_id: 4, ux: 40.0e3}
+
+solver:
+  type: ModalSolver
+  n_modes: 2        # no más que grados de libertad con masa
+```
+
+`n_modes` no puede pasar del número de grados de libertad con masa. Si se piden más, o ninguno tiene masa, o los grados de libertad sin masa forman un mecanismo (pueden moverse sin rigidez ni inercia), el análisis se detiene con `MasslessDofsError`. El mensaje dice la causa y nombra los grados de libertad sin masa como `nodo <id> (<dof>)`. `ResponseSpectrumSolver` hereda todo esto: con masas de piso, `total_mass` es la suma de las masas de piso.
+
+En los **transitorios** los grados de libertad sin masa todavía no se admiten. Newmark y HHT calculan la aceleración inicial resolviendo $\mathbf M\ddot{\mathbf u}_0 = \ldots$, y con grados de libertad sin masa se detienen con un `ValueError` que explica la causa. `CentralDifferenceSolver`, por ser explícito, exige masa en todos.
 
 ## `NewmarkSolver` — transitorio lineal Newmark-$\beta$
 

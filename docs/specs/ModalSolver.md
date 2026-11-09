@@ -22,7 +22,8 @@ Autovalores $\lambda_n = \omega_n^2 \ge 0$; autovectores $\boldsymbol\phi_n$ son
 
 ### 3. Propiedades del par $(\mathbf K, \mathbf M)$
 - $\mathbf K$ simétrica, positiva (semi)definida tras Dirichlet.
-- $\mathbf M$ simétrica, **positiva definida** estrictamente para masa consistente (toda fila/columna tiene aporte de algún elemento con $\rho > 0$).
+- $\mathbf M$ simétrica, **positiva semidefinida**. Es definida cuando todo grado de libertad libre recibe masa (de algún elemento con $\rho > 0$ o de una masa de nudo). Si no, los grados de libertad sin masa se condensan (§6 bis).
+- Fuentes de masa: la densidad del material (ADR 0008) y las **masas concentradas en nudos** (ADR 0024), que se suman a la diagonal de $\mathbf M$ igual con masa consistente que concentrada.
 - Espectro real no negativo: $\omega_n \in \mathbb R_{\ge 0}$.
 
 ### 4. Salidas
@@ -45,6 +46,15 @@ $$\text{eigsh}(\mathbf K_\text{red},\; k = n_\text{modes},\; \mathbf M = \mathbf
 - **Shift-invert** transforma el problema en $\bigl(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red}\bigr)^{-1}\mathbf M_\text{red}\,\boldsymbol\phi = \mu\,\boldsymbol\phi$ con $\mu = 1/(\omega^2 - \sigma)$. Buscar `which="LM"` (mayor magnitud de $\mu$) equivale a buscar autovalores cercanos al shift $\sigma$.
 - $\sigma = 0$ por defecto: las frecuencias más bajas, que son las relevantes en ingeniería estructural.
 - Internamente ARPACK factoriza $(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red})$ una sola vez y la reusa en cada iteración Lanczos.
+
+### 6 bis. Grados de libertad sin masa: condensación estática exacta (ADR 0024)
+Con masas sólo en algunos nudos o elementos de densidad cero, hay grados de libertad libres con diagonal de $\mathbf M_\text{red}$ nula (cero exacto; en una matriz semidefinida positiva eso implica fila y columna nulas). Con $m$ los grados de libertad con masa y $0$ los demás, la fila $0$ no tiene inercia:
+$$\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\,\mathbf K_{0m}\,\boldsymbol\phi_m, \qquad \hat{\mathbf K}\,\boldsymbol\phi_m = \omega^2\,\mathbf M_{mm}\,\boldsymbol\phi_m, \qquad \hat{\mathbf K} = \mathbf K_{mm} - \mathbf K_{m0}\,\mathbf K_{00}^{-1}\,\mathbf K_{0m}.$$
+Es exacta, no una reducción de Guyan aproximada: los valores propios de $\hat{\mathbf K}$ son las frecuencias finitas del problema original, tantas como grados de libertad con masa; las demás son infinitas.
+- Con 32 o menos grados de libertad con masa, o pidiendo casi todos los modos: $\hat{\mathbf K}$ densa y `eigh`.
+- Con más: ARPACK sobre el problema condensado sin formar $\hat{\mathbf K}$. Con $\mathbf A = \mathbf K - \sigma\mathbf M$, el bloque $mm$ de $\mathbf A^{-1}$ es $(\hat{\mathbf K} - \sigma\,\mathbf M_{mm})^{-1}$ (complemento de Schur), así que el operador de desplazamiento e inversión usa la factorización dispersa de $\mathbf A$ del modelo completo, con el producto interno de $\mathbf M_{mm}$, que es definida. Con $\sigma = 0$ y $\mathbf K$ singular se reintenta con desplazamiento negativo, como en el camino sin condensar.
+- $\boldsymbol\phi_0$ se recupera con la factorización de $\mathbf K_{00}$; los modos expandidos son $\mathbf M$-ortonormales.
+- Si no hay solución (más modos que grados de libertad con masa, ninguno con masa, grados de libertad sin masa sin rigidez que los fije, o masa singular más allá de ellos), se lanza `MasslessDofsError`, que los nombra como (nodo, dof).
 
 ### 7. Normalización
 `eigsh` con $\mathbf M$ explícita devuelve autovectores M-ortonormales sin reescalado adicional. Signo arbitrario (autovector definido módulo signo); convención de signo se documenta solo si emerge como preferencia (no parte del contrato).
@@ -85,9 +95,9 @@ parameters:
   - { name: linear_algebra, type: str, required: false, default: "auto", desc: "Backend para la factorización de (K - σM) interna a shift-invert (ADR 0003)" }
 
 requirements:
-  - "Todos los materiales del modelo declaran `density > 0` (ADR 0008). Densidad cero genera M_red singular → eigsh con sigma=0 falla; el solver propaga el error con mensaje físico."
-  - "Al menos un DOF libre tras Dirichlet."
-  - "n_modes < N_libre (ARPACK exige k < n)."
+  - "Todos los materiales del modelo declaran `density` (ADR 0008); `density = 0.0` es válida para elementos sin masa propia."
+  - "Al menos un DOF libre con masa (de la densidad o de una masa de nudo, ADR 0024)."
+  - "n_modes ≤ número de DOF libres con masa: sólo ellos tienen frecuencia finita. Los DOF sin masa se condensan estáticamente (§6 bis); si no se puede, `MasslessDofsError`."
 
 conventions:
   units:        "heredadas del modelo (ADR 0008); ω en rad/s, f en Hz, T en s consistentes con kg/N/m o equivalentes."
@@ -123,6 +133,32 @@ acceptance:
           ω_n = (nπ/L)² · sqrt(E·I / (ρ·A)),    n = 1, 2, 3, …
         Los primeros 3 modos coinciden con la solución analítica.
       tol_rel: 0.02
+    - name: oscilador_un_gdl_masa_de_nudo
+      setup: |
+        Columna en voladizo de Frame2DEuler sin masa propia (density = 0.0),
+        con 1 y 4 elementos; masa m en el ux de la cabeza (ADR 0024).
+        E = 2.0e11 Pa, I = 8.5e-5 m⁴, L = 3.5 m, m = 2.5e4 kg.
+      expect: |
+        T = 2π·√(m/k) con k = 3EI/L³, con masa consistente y concentrada.
+        Los DOF sin masa del modo siguen la elástica de la carga en la punta:
+        v(y)/v(L) = y²(3L − y)/(2L³), θ(L) = −3/(2L)·v(L). Con una inercia J
+        en el rz de la cabeza, T = 2π·√(J/(EI/L)).
+      tol_rel: 1.0e-6
+      ref: "tests/test_nodal_mass.py::TestOsciladorDeUnGradoDeLibertad"
+    - name: edificio_cortante_tres_pisos
+      setup: |
+        Tres niveles, dos columnas biempotradas de Frame2DEuler sin masa por
+        nivel (2 elementos cada una), vigas rígidas impuestas por cinemática
+        (uy = rz = 0 en los nudos de piso y ux del nudo derecho igual al del
+        izquierdo por restricción lineal) y la masa de cada piso repartida
+        por mitades entre sus dos nudos.
+      expect: |
+        Periodos y modos iguales a los del problema 3×3 a mano, rigidez de
+        entrepiso 2·12EI/h³: con pisos iguales, la forma cerrada
+        ω_j = 2·√(k/m)·sin((2j−1)π/14), φ_j(i) ∝ sin(i(2j−1)π/7); con pisos
+        distintos, el 3×3 con sus masas y rigideces.
+      tol_rel: 1.0e-6
+      ref: "tests/test_nodal_mass.py::TestEdificioDeCortante"
   specific:
     - name: ortonormalidad_de_masa
       setup: "Cualquier modelo bien formado tras resolver el problema modal."
@@ -144,6 +180,24 @@ acceptance:
     - name: density_faltante_lanza_value_error
       setup: "Material sin density declarada en el modelo."
       expect: "ModalSolver.solve() lanza ValueError listando los materiales afectados (mismo patrón que assemble_self_weight, ADR 0008)."
+    - name: masa_de_nudo_entrada_exacta
+      setup: "Columna en voladizo de Frame2DEuler con densidad; masa m en el ux del nudo de la cabeza (ADR 0024); masa consistente y concentrada"
+      expect: "M_uxux aumenta exactamente en m y ninguna otra entrada cambia; lo mismo con una inercia rotacional en rz"
+      tol_abs: 0.0
+      ref: "tests/test_nodal_mass.py::TestEnsamblajeDeLaMasaDeNudo"
+    - name: dof_sin_masa_marco_de_un_nivel
+      setup: "Marco de acero de un nivel (h = 3 m, L = 5 m, columnas 0.30 × 0.50 m de 20 fibras y viga 0.40 × 0.70 m de 28 fibras, 4 elementos por miembro, 3 puntos de Gauss) con columnas de densidad cero: 18 de 33 DOF libres sin masa"
+      expect: "T₁ = 0.03097 s y T₂ = 0.01295 s, iguales a la solución densa (valores propios de K⁻¹M); residuo relativo de cada modo ‖Kφ − ω²Mφ‖/‖Kφ‖ ≤ 1e-8; con 12 elementos por miembro (39 DOF con masa) el mismo criterio por el camino ARPACK, con masa consistente y concentrada"
+      tol_rel: 1.0e-6
+      ref: "tests/test_modal_massless_dofs.py::TestMarcoDeUnNivelSinMasaEnColumnas"
+    - name: dof_sin_masa_error_tipado
+      setup: "Voladizo sin masa propia con masa sólo en el ux de la cabeza y n_modes = 2; modelo sin ninguna masa; dos barras alineadas cuyo nudo intermedio no tiene masa ni rigidez transversal"
+      expect: "MasslessDofsError (ValueError) con causa too_many_modes, no_mass y massless_mechanism; el mensaje nombra los DOF sin masa como nodo <id> (<dof>)"
+      ref: "tests/test_modal_massless_dofs.py::TestErrorTipado"
+    - name: masa_en_todos_sin_cambios
+      setup: "Modelos con masa en todos los DOF libres (toda la suite modal y dinámica previa)"
+      expect: "Siguen el camino de siempre, sin condensación, y dan los mismos resultados que antes del ADR 0024"
+      ref: "tests/test_modal_massless_dofs.py::TestMarcoDeUnNivelSinMasaEnColumnas::test_con_masa_en_todos_sigue_el_camino_de_siempre"
 
 references:
   - "Bathe K.-J., Finite Element Procedures (2014), cap. 9 (matriz de masa consistente) y cap. 11 (algoritmos de autovalor)."
@@ -153,6 +207,9 @@ references:
   - "Lehoucq, Sorensen, Yang — ARPACK Users' Guide (Lanczos con shift-invert)."
   - "ADR 0003 — Capa algebraica (factorización reutilizable de (K − σM))."
   - "ADR 0008 — Material.density."
+  - "ADR 0024 — Masas concentradas en nudos y análisis modal con grados de libertad sin masa."
+  - "Bathe K.-J., Finite Element Procedures (2014), §10.3.1 (condensación estática en problemas de valores propios)."
+  - "Chopra A. K., Dynamics of Structures, §9.3 (condensación estática de los grados de libertad sin masa)."
   - "ADR 0009 — Análisis modal y dinámico (este solver es la fase 1: el análisis modal estricto, problema generalizado K·φ = ω²·M·φ; el análisis dinámico transitorio entra en fases 3-7)."
 ```
 
@@ -188,3 +245,4 @@ references:
 - **2026-09-22** · Auditoría global: `K` singular con σ = 0 (estructura free-free) fallaba según la malla ("Factor is exactly singular" con 1, 2 o 4 elementos, éxito por redondeo con 3 o 10): reintento automático con un shift negativo relativo a tr(K)/tr(M). `ArpackNoConvergence` → `converged=False` con los modos obtenidos (`n_modes` reales); antes el flag estaba cableado a `True`. Modelos con n_free ≤ 32 o n_modes ≥ n_free − 1 usan `scipy.linalg.eigh` denso (M-ortonormal), así que un modelo de 1 GDL admite análisis modal.
 - **2026-09-30** · Auditoría de las MPC (ADR 0004): las restricciones multipunto entran por `Assembler.reduce_pair` con el mismo `T` que los apoyos (`K_red = TᵀKT`, `M_red = TᵀMT`, `Φ = T·Φ_red`). Primer test con MPC: el oráculo del nodo fundido se cumple hasta el redondeo en frecuencias y modos, y los modos expandidos son M-ortonormales con la masa global (`tests/test_mpc_dynamic.py`). Nota sobre `ModalResult.free_vibration(M, u0, u0_dot, t)`: proyecta las condiciones iniciales en norma M (`a = ΦᵀM·u0`), así que su resultado no depende de qué nodo se declaró esclavo; los solvers transitorios, en cambio, conservan las componentes libres y reconstruyen los esclavos como `T·u0[libres] + g`. Con condiciones iniciales coherentes con las MPC ambos caminos coinciden; con incoherentes difieren (los transitorios lo avisan en el log). Unificar las dos proyecciones cambiaría resultados con condiciones iniciales incoherentes: queda como decisión física pendiente del usuario. Sin cambio de código.
 - **2026-09-30** · Revisión del paquete dinámico de la auditoría de las MPC: el parámetro `lumping` del contrato aún decía «solo 'consistent' en fase 1», pero `ModalSolver` admite `lumping='lumped'` desde el cierre de la fase 2 del ADR 0009 (lo ejercitan `tests/test_modal.py::test_lumped_runs_after_phase2` y el caso `mpc_tie_matches_merged_node` con masa concentrada). Corregida la descripción aquí y en el catálogo. Sin cambio de código.
+- **2026-11-09** · ADR 0024. Masas concentradas en nudos (`Domain.add_nodal_mass`, bloque YAML `nodal_masses`), sumadas a la diagonal de $\mathbf M$ con los dos esquemas de masa. Con grados de libertad libres sin masa, ARPACK lanzaba `ArpackError -9999` sin causa y el camino denso exigía $\mathbf M$ definida; ahora se condensan estáticamente de forma exacta (§6 bis) y, si el problema no tiene solución, `MasslessDofsError` los nombra. Criterios nuevos: `oscilador_un_gdl_masa_de_nudo`, `edificio_cortante_tres_pisos`, `masa_de_nudo_entrada_exacta`, `dof_sin_masa_marco_de_un_nivel`, `dof_sin_masa_error_tipado`, `masa_en_todos_sin_cambios`. Medido: error relativo de los periodos de 1e-12 a 1e-14 contra la solución densa, residuos de 1e-11. `ResponseSpectrumSolver` lo hereda (masa total y masas efectivas con masas de piso en `tests/test_nodal_mass.py`).

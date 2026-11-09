@@ -1,8 +1,11 @@
 # solidum_fem/solidum/core/domain.py
 from __future__ import annotations
 
+import math
+from numbers import Real
 from typing import Dict, TYPE_CHECKING
 
+from solidum.core.dof_names import MECHANICAL, ROTATIONS, TRANSLATIONS
 from solidum.core.node import Node
 from solidum.logging import get_logger
 
@@ -28,6 +31,65 @@ class Domain:
         # y opcional 'g'. El Assembler las traduce a DOFs globales y las
         # acumula en su ConstraintSet.
         self.linear_constraints: list[dict] = []
+        # Masas concentradas en nudos (ADR 0024): (node_id, dof) → masa [kg]
+        # en un grado de libertad de traslación, inercia rotacional [kg·m²]
+        # en uno de giro. El Assembler las suma a la diagonal de M.
+        self.nodal_masses: dict[tuple[int, str], float] = {}
+
+    def add_nodal_mass(self, node_id: int, **masses: float) -> None:
+        """Masa concentrada en un nudo (ADR 0024).
+
+        Ejemplo::
+
+            domain.add_nodal_mass(5, ux=12.0e3, uy=12.0e3)   # masa [kg]
+            domain.add_nodal_mass(5, rz=4.0e3)               # inercia [kg·m²]
+
+        Cada argumento nombra un grado de libertad mecánico del nodo:
+        ``ux``, ``uy``, ``uz`` reciben una masa; ``rx``, ``ry``, ``rz``, una
+        inercia rotacional (masa·longitud²). La masa entra en la diagonal de
+        la matriz de masa con los dos esquemas (``consistent`` y ``lumped``),
+        así que la ven el análisis modal, el espectral y los dinámicos.
+
+        Es **sólo inercia**: ``gravity`` no genera su peso. Si su peso actúa,
+        declárelo como carga.
+
+        Varias llamadas sobre el mismo grado de libertad se suman. Que el
+        nodo tenga ese grado de libertad se comprueba al ensamblar la matriz
+        de masa, porque los grados de libertad los crean los elementos.
+
+        Raises
+        ------
+        ValueError
+            Si el nodo no existe, si no se da ningún grado de libertad, si
+            alguno no es mecánico (``T``) o si algún valor no es un número
+            finito no negativo. Todos los errores se informan juntos.
+        """
+        if node_id not in self.nodes:
+            raise ValueError(f"add_nodal_mass: no hay ningún nodo {node_id} en el modelo.")
+        if not masses:
+            raise ValueError(
+                "add_nodal_mass: indica al menos un grado de libertad, p. ej. "
+                f"add_nodal_mass({node_id}, ux=1000.0)."
+            )
+        errors = []
+        for dof, value in masses.items():
+            if dof not in MECHANICAL:
+                errors.append(
+                    f"'{dof}' no es un grado de libertad mecánico; admitidos: "
+                    f"{list(TRANSLATIONS)} (masa) y {list(ROTATIONS)} (inercia "
+                    f"rotacional). Un grado de libertad escalar como 'T' no tiene "
+                    f"masa: su análogo es una capacidad calorífica."
+                )
+            if (not isinstance(value, Real) or isinstance(value, bool)
+                    or not math.isfinite(float(value)) or float(value) < 0.0):
+                errors.append(f"{dof}={value!r}: debe ser un número finito no negativo.")
+        if errors:
+            raise ValueError(
+                f"add_nodal_mass (nodo {node_id}):\n" + "\n".join(f"  - {e}" for e in errors)
+            )
+        for dof, value in masses.items():
+            key = (node_id, dof)
+            self.nodal_masses[key] = self.nodal_masses.get(key, 0.0) + float(value)
 
     def add_linear_constraint(
         self,

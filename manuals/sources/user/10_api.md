@@ -111,6 +111,15 @@ grieta = CST_Embedded2D(element_id=1, nodes=[n1, n2, n3], material=bulk,
 
 `from solidum import CST_Embedded2D` ya no funciona: el elemento, la ley cohesiva (`CohesiveDamageIsotropic`), su clase base (`CohesiveMaterial`), su registro (`CohesiveMaterialRegistry`) y `DiscontinuityState` se importan de `solidum.user.discontinuities`.
 
+## Masas concentradas en nudos
+
+```python
+domain.add_nodal_mass(5, ux=12.0e3, uy=12.0e3)   # masa [kg]
+domain.add_nodal_mass(5, rz=4.0e3)               # inercia rotacional [kg·m²]
+```
+
+Equivale al bloque YAML `nodal_masses` (ADR 0024): un grado de libertad mecánico por argumento, valores finitos no negativos, y varias llamadas sobre el mismo grado de libertad se suman. Las masas quedan en `domain.nodal_masses` (`{(nodo, dof): valor}`) y el `Assembler` las suma a la diagonal de la matriz de masa. Son sólo inercia: no generan peso con la gravedad.
+
 ## Errores tipados
 
 Desde un script conviene capturar los errores por su tipo, porque cada uno indica una causa y una salida distintas:
@@ -120,6 +129,7 @@ from solidum.math.solvers.diagnostics import (
     MechanismError,          # el modelo no está suficientemente apoyado (antes de resolver)
     IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
     SolverDivergedError,     # familia del Newton: oscilación, tangente singular, capacidad...
+    MasslessDofsError,       # modal: grados de libertad sin masa que impiden resolver
 )
 from solidum.math.linalg import IterativeNotConvergedError   # sólo con linear_algebra: iterative
 
@@ -129,6 +139,6 @@ except MechanismError as err:
     print(err.motions)       # p. ej. ['traslación en la dirección x']
 ```
 
-`MechanismError.motions` lista los movimientos libres ya descritos en palabras. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
+`MechanismError.motions` lista los movimientos libres ya descritos en palabras. `MasslessDofsError` (análisis modal, ADR 0024) lleva la causa en `cause` (`too_many_modes`, `no_mass`, `massless_mechanism`, `singular_mass`, `indefinite_mass`), los grados de libertad sin masa en `massless_dofs` y cuántos tienen masa en `n_mass`. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
 
 El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. `LinearSolver(assembler, linear_algebra="iterative")`.

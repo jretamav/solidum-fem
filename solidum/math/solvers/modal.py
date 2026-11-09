@@ -6,7 +6,9 @@ import numpy as np
 
 from solidum.constants import MODAL_ARPACK_TOLERANCE, MODAL_EIGENVALUE_ZERO_RTOL
 from solidum.math.linalg import EigenSolver
-from solidum.math.solvers._shared import _log
+from solidum.math.linalg.eigen import SemidefiniteMassError
+from solidum.math.solvers._shared import _dof_labels, _log
+from solidum.math.solvers.diagnostics import MasslessDofsError
 from solidum.registry import SolverRegistry
 from solidum.results import ModalResult
 
@@ -21,6 +23,14 @@ class ModalSolver:
     DOFs libres tras imposición de Dirichlet por eliminación directa. La
     capa algebraica delega en :class:`EigenSolver` (ARPACK Lanczos con
     shift-invert centrado en ``sigma``).
+
+    Grados de libertad sin masa (ADR 0024): masas sólo en algunos nudos o
+    elementos con ``density = 0`` dejan ``M`` semidefinida. Esos grados de
+    libertad se condensan estáticamente, de forma exacta, y sus componentes
+    de los modos se recuperan. Hay tantas frecuencias finitas como grados
+    de libertad con masa; si el problema no tiene solución, se lanza
+    :class:`~solidum.math.solvers.diagnostics.MasslessDofsError`, que los
+    nombra.
 
     Parameters
     ----------
@@ -84,7 +94,23 @@ class ModalSolver:
         eig = EigenSolver(
             sigma=self.sigma, which=self.which, tol=self.tolerance
         )
-        lambdas, phi_red = eig.solve(K_red, M_red, self.n_modes)
+        try:
+            lambdas, phi_red = eig.solve(K_red, M_red, self.n_modes)
+        except SemidefiniteMassError as exc:
+            free = self.assembler.constraint_set.free_dofs(self.assembler.ndof)
+            raise MasslessDofsError(
+                cause=exc.cause,
+                massless=exc.massless,
+                massless_dofs=_dof_labels(self.assembler.domain, free[exc.massless]),
+                n_mass=exc.n_mass,
+                n_modes=self.n_modes,
+            ) from exc
+        if eig.last_massless.size:
+            _log.info(
+                f"  {eig.last_massless.size} grado(s) de libertad libre(s) sin masa: "
+                f"condensación estática exacta (ADR 0024); "
+                f"{K_red.shape[0] - eig.last_massless.size} con masa."
+            )
 
         # Clip de autovalores ligeramente negativos por ruido numérico
         # (modos de cuerpo rígido o casi). El cero exacto produce T = ∞,

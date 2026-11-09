@@ -136,6 +136,9 @@ class Assembler:
         # cambia entre llamadas: se ensambla una vez por análisis y se reusa.
         self._M_global: sp.csr_matrix | None = None
         self._M_lumping: str | None = None
+        # Huella de las masas de nudo con que se ensambló M (ADR 0024): una
+        # masa añadida después del primer ensamblaje no debe ignorarse.
+        self._M_nodal_key: tuple | None = None
 
         # Huellas para detectar cambios en el modelo entre llamadas: sin
         # ellas un apoyo añadido o un elemento nuevo tras el primer
@@ -311,6 +314,7 @@ class Assembler:
         self._constraint_fp = None
         self._M_global = None
         self._M_lumping = None
+        self._M_nodal_key = None
 
     def _elements(self) -> list:
         return list(self.domain.elements.values())
@@ -571,8 +575,12 @@ class Assembler:
         de ``M`` es comparable al de ``K`` por elemento.
 
         La masa lineal es constante en el tiempo y se cachea por análisis:
-        llamadas sucesivas con el mismo ``lumping`` devuelven el resultado
-        previo sin recomputar.
+        llamadas sucesivas con el mismo ``lumping`` y las mismas masas de
+        nudo devuelven el resultado previo sin recomputar.
+
+        Las **masas de nudo** del dominio (``Domain.add_nodal_mass``,
+        ADR 0024) se suman a la entrada diagonal de su grado de libertad,
+        igual con los dos esquemas: una masa puntual es la misma en ambos.
 
         Pre-validación agregada (espíritu de ADR 0008 y del YAML parser):
 
@@ -581,6 +589,8 @@ class Assembler:
         - Elementos cuya subclase no override ``compute_mass_matrix`` (la
           base lanza ``NotImplementedError``) se reportan en la misma
           excepción.
+        - Masas de nudo en un grado de libertad que el nodo no tiene, en la
+          misma excepción.
 
         Parameters
         ----------
@@ -602,7 +612,10 @@ class Assembler:
         """
         self._ensure_topology()
 
-        if self._M_global is not None and self._M_lumping == lumping:
+        nodal_masses = getattr(self.domain, "nodal_masses", None) or {}
+        nodal_key = tuple(sorted(nodal_masses.items()))
+        if (self._M_global is not None and self._M_lumping == lumping
+                and self._M_nodal_key == nodal_key):
             return self._M_global
 
         missing_density: list[str] = []
@@ -633,7 +646,9 @@ class Assembler:
             if type(element).compute_mass_matrix is Element.compute_mass_matrix:
                 missing_method.append(type(element).__name__)
 
-        if missing_density or missing_method:
+        nodal_dofs, nodal_values, missing_nodal = self._nodal_mass_entries(nodal_masses)
+
+        if missing_density or missing_method or missing_nodal:
             parts = ["assemble_mass_matrix: el cálculo no puede completarse."]
             if missing_density:
                 parts.append(
@@ -650,6 +665,11 @@ class Assembler:
                     "debe sobreescribir el método para participar en análisis "
                     "modal o dinámico."
                 )
+            if missing_nodal:
+                parts.append(
+                    "- Masas de nudo (ADR 0024) en grados de libertad que el "
+                    "nodo no tiene: " + "; ".join(missing_nodal) + "."
+                )
             raise ValueError("\n".join(parts))
 
         data = self._data
@@ -659,9 +679,55 @@ class Assembler:
             p0 = self._elem_ptr[i]
             data[p0:p0 + n_idx ** 2] = M_e.ravel()
 
-        self._M_global = self._to_csr(data)
+        M = self._to_csr(data)
+        if nodal_dofs.size:
+            M = self._add_to_diagonal(M, nodal_dofs, nodal_values)
+        self._M_global = M
         self._M_lumping = lumping
+        self._M_nodal_key = nodal_key
         return self._M_global
+
+    def _nodal_mass_entries(self, nodal_masses: dict):
+        """Masas de nudo como (números de ecuación, valores) y la lista de
+        las que piden un grado de libertad que el nodo no tiene (ADR 0024)."""
+        dofs, values, missing = [], [], []
+        for (node_id, dof), value in sorted(nodal_masses.items()):
+            node = self.domain.get_node(node_id)
+            if node is None:
+                missing.append(f"nodo {node_id} (ya no existe en el modelo)")
+            elif dof not in node.dofs:
+                missing.append(
+                    f"(nodo {node_id}, '{dof}'): el nodo sólo tiene {sorted(node.dofs)}"
+                )
+            else:
+                dofs.append(node.dofs[dof])
+                values.append(value)
+        return (np.asarray(dofs, dtype=np.int64), np.asarray(values, dtype=float),
+                missing)
+
+    @staticmethod
+    def _add_to_diagonal(M: sp.csr_matrix, dofs: np.ndarray,
+                         values: np.ndarray) -> sp.csr_matrix:
+        """Suma ``values`` a las entradas diagonales ``(dofs, dofs)`` de ``M``.
+
+        Sobre el patrón existente (índices ordenados por fila, como los deja
+        ``_to_csr``), para que ``M`` conserve el patrón de ``K``. Un grado de
+        libertad sin entrada diagonal en el patrón —un DOF que ningún
+        elemento toca— se añade con una suma dispersa."""
+        indptr, indices, data = M.indptr, M.indices, M.data
+        outside = []
+        for dof, value in zip(dofs, values):
+            lo, hi = indptr[dof], indptr[dof + 1]
+            k = lo + int(np.searchsorted(indices[lo:hi], dof))
+            if k < hi and indices[k] == dof:
+                data[k] += value
+            else:
+                outside.append((dof, value))
+        if outside:
+            rows = np.array([d for d, _ in outside], dtype=np.int64)
+            vals = np.array([v for _, v in outside], dtype=float)
+            M = (M + sp.csr_matrix((vals, (rows, rows)), shape=M.shape)).tocsr()
+        return M
 
     def rigid_basis(self):
         """Modos de cuerpo rígido del dominio en el espacio completo, con qué

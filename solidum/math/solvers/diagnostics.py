@@ -21,6 +21,8 @@ globalización implícita y no requiere line search; ver ADR §"Decisión").
 """
 from __future__ import annotations
 
+from solidum.math.linalg.eigen import SemidefiniteMassError
+
 
 class SolverDivergedError(RuntimeError):
     """Base de los fallos de convergencia con diagnóstico tipado (ADR 0011).
@@ -344,6 +346,78 @@ class IllPosedSystemError(RuntimeError):
             f"muy desproporcionadas entre partes del modelo (penalizaciones, "
             f"unidades mezcladas). Revisa la conectividad y los apoyos."
         )
+
+
+class MasslessDofsError(SemidefiniteMassError):
+    """El análisis modal no tiene solución con los grados de libertad sin
+    masa del modelo (ADR 0024).
+
+    Los grados de libertad sin masa (masas sólo en algunos nudos, elementos
+    con ``density = 0``) se condensan estáticamente, de forma exacta. Este
+    error se lanza sólo cuando eso no basta:
+
+    - ``too_many_modes``: se piden más modos que grados de libertad con
+      masa, y sólo ellos tienen frecuencia finita;
+    - ``no_mass``: ningún grado de libertad libre tiene masa;
+    - ``massless_mechanism``: los grados de libertad sin masa pueden
+      moverse sin rigidez ni inercia, y su frecuencia está indeterminada;
+    - ``singular_mass`` / ``indefinite_mass``: la masa de los grados de
+      libertad que sí la tienen es singular, o la matriz de masa no es
+      semidefinida positiva.
+
+    Es un error de modelado (``ValueError``). Hereda de
+    :class:`~solidum.math.linalg.eigen.SemidefiniteMassError`, la versión
+    algebraica con índices.
+
+    Attributes
+    ----------
+    massless_dofs : list[str]
+        Grados de libertad libres sin masa, como ``"nodo <id> (<dof>)"``.
+    n_modes : int
+        Modos pedidos.
+    """
+
+    _MAX_LISTED = 12
+
+    def __init__(self, *, cause: str, massless, massless_dofs: list[str],
+                 n_mass: int, n_modes: int, solver: str = "ModalSolver"):
+        self.massless_dofs = list(massless_dofs)
+        self.n_modes = int(n_modes)
+        n_zero = len(self.massless_dofs)
+        muestra = ", ".join(self.massless_dofs[:self._MAX_LISTED])
+        if n_zero > self._MAX_LISTED:
+            muestra += f", … (+{n_zero - self._MAX_LISTED})"
+        sin_masa = f"Grados de libertad sin masa ({n_zero}): {muestra}."
+        dar_masa = ("densidad en los materiales (`density`) o masas de nudo "
+                    "(`Domain.add_nodal_mass`, bloque YAML `nodal_masses`)")
+        if cause == "too_many_modes":
+            texto = (
+                f"se pidieron {n_modes} modos, pero sólo {n_mass} grado(s) de "
+                f"libertad libre(s) tienen masa, y sólo ellos tienen frecuencia "
+                f"finita: los demás no tienen inercia y se condensan "
+                f"estáticamente (ADR 0024). Pide n_modes ≤ {n_mass}, o añade "
+                f"{dar_masa}. {sin_masa}"
+            )
+        elif cause == "no_mass":
+            texto = (
+                f"ningún grado de libertad libre tiene masa, así que no hay "
+                f"frecuencias finitas. Declara {dar_masa}."
+            )
+        elif cause == "massless_mechanism":
+            texto = (
+                f"los grados de libertad sin masa forman un mecanismo: pueden "
+                f"moverse sin rigidez que los fije y sin inercia, así que su "
+                f"frecuencia está indeterminada. Revisa la conectividad y los "
+                f"apoyos de esos grados de libertad, o dales masa. {sin_masa}"
+            )
+        else:
+            texto = (
+                f"la matriz de masa de los grados de libertad que sí tienen "
+                f"masa es singular, o la matriz de masa no es semidefinida "
+                f"positiva (¿una densidad o masa negativa?). {sin_masa}"
+            )
+        super().__init__(f"{solver}: {texto}", cause=cause, massless=massless,
+                         n_mass=n_mass)
 
 
 def _lista(lineas: list[str]) -> str:

@@ -276,6 +276,16 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** El YAML alcanza al API de Python en cargas distribuidas; un archivo ajeno no puede ejecutar código, y las erratas se detectan antes de resolver.
 
+## ADR 0024 — Masas concentradas en nudos y análisis modal con grados de libertad sin masa
+
+**Fecha**: 9 de noviembre de 2026. **Estado**: aceptado; las masas rotacionales en los nudos, decisión del usuario.
+
+**Contexto.** La única fuente de masa era la densidad del material (ADR 0008), pero en un edificio la masa de cada nivel viene de la losa, los acabados y la carga viva, y la práctica estándar la concentra en los nudos. Con masas sólo en algunos nudos, o elementos de densidad cero, la matriz de masa es semidefinida y el análisis modal fallaba: ARPACK lanzaba un error sin causa y el camino denso exigía masa definida.
+
+**Decisión.** La masa de nudo es un dato del dominio (`Domain.add_nodal_mass`, bloque YAML `nodal_masses`), por grado de libertad mecánico, traslacional o rotacional. Se suma a la diagonal de la matriz de masa con los dos esquemas, sobre el patrón ya cacheado, así que la ven todos los consumidores de la masa. Es sólo inercia: `gravity` no genera su peso, y si debe generarlo queda para decisión del usuario con las etapas de carga. En el análisis modal, los grados de libertad sin masa se condensan estáticamente de forma exacta ($\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\boldsymbol\phi_m$), sin formar la matriz condensada en los modelos grandes: el operador de desplazamiento e inversión del problema condensado es el bloque de $(\mathbf K - \sigma\mathbf M)^{-1}$ del modelo completo. Si el problema no tiene solución, `MasslessDofsError` nombra los grados de libertad. Se descartaron un elemento de masa puntual (material, rigidez nula y catálogo para una entrada diagonal), la masa ficticia pequeña (frecuencias espurias) y el problema inverso con $\mathbf K$ definida (falla en estructuras libres).
+
+**Consecuencia.** Análisis modal y espectral de edificios con masas de piso, con frecuencias exactas para el modelo discreto; los modelos con masa en todos los grados de libertad no cambian. El transitorio con grados de libertad sin masa queda fuera: la aceleración inicial de esos grados de libertad es una decisión física pendiente.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
