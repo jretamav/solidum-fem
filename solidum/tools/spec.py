@@ -39,6 +39,11 @@ ADMISSION_TEXTBOOKS: Dict[str, str] = {
     # usuario el 2026-09-30 para cubrir la combinación modal y los
     # integradores temporales, que los textos de MEF sólo tratan en parte.
     "chopra": "Chopra",
+    # Diseño sísmico de concreto reforzado (Paulay y Priestley 1992, Seismic
+    # Design of Reinforced Concrete and Masonry Buildings, §3.2.2: modelo de
+    # concreto confinado de Mander): añadido por el usuario el 2026-11-09 para
+    # las leyes de materiales de ingeniería que los textos de MEF no tratan.
+    "paulay_priestley": "Paulay-Priestley",
 }
 ADMISSION_GENERAL_CODES: Dict[str, str] = {
     "abaqus": "Abaqus",
