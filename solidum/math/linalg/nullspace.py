@@ -47,8 +47,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-_TRANSLATIONS = ("ux", "uy", "uz")
-_ROTATIONS = ("rx", "ry", "rz")
+from solidum.core.dof_names import MECHANICAL as _MECHANICAL
+from solidum.core.dof_names import ROTATIONS as _ROTATIONS
+from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONS
+
 _AXES = ("x", "y", "z")
 
 # Rotación alrededor de cada eje: (DOF de giro, [(DOF de traslación, signo,
@@ -152,8 +154,7 @@ def rigid_body_basis(domain) -> RigidBasis:
         columns.append(col)
         labels.append(("rotation", axis))
 
-    mechanical = set(_TRANSLATIONS) | set(_ROTATIONS)
-    for name in sorted(present - mechanical):
+    for name in sorted(present - _MECHANICAL):
         col = np.zeros(ndof)
         col[arrays[name][0]] = 1.0
         columns.append(col)

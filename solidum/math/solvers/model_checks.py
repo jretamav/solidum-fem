@@ -78,6 +78,8 @@ from solidum.constants import (
     MECHANISM_ENERGY_RTOL,
     MECHANISM_RANK_RTOL,
 )
+from solidum.core.dof_names import MECHANICAL as _MECHANICAL
+from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONS
 from solidum.math.solvers._shared import _log
 from solidum.math.solvers.diagnostics import IllPosedSystemError, MechanismError
 
@@ -111,7 +113,6 @@ _UNKNOWN_NULLITY_BLOCK = 6
 # El movimiento de una parte se describe como rígido si el ajuste por
 # mínimos cuadrados deja un residuo relativo por debajo de esto.
 _RIGID_FIT_RTOL = 1.0e-6
-_TRANSLATIONS = ("ux", "uy", "uz")
 
 
 @dataclass(frozen=True)
@@ -454,7 +455,7 @@ def _describe_part(elements, modes: list[np.ndarray], D: np.ndarray) -> str:
                 share[name] = share.get(name, 0.0) + float(D[eq] * v[eq] ** 2)
     total = sum(share.values()) or 1.0
     moving = {name for name, s in share.items() if s > 1.0e-6 * total}
-    mechanical = {name for name in moving if name in _TRANSLATIONS or name in ("rx", "ry", "rz")}
+    mechanical = moving & _MECHANICAL
     if not mechanical:
         campos = ", ".join(f"'{name}'" for name in sorted(moving))
         return (f"la parte formada por los elementos {ids} no está unida a ningún "

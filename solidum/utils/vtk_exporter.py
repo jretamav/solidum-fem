@@ -102,6 +102,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from solidum.core.dof_names import ROTATIONS as _ROTATIONAL_DOFS
+from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONAL_DOFS
 from solidum.core.domain import Domain
 from solidum.core.section import Section
 from solidum.logging import get_logger
@@ -114,8 +116,6 @@ except ImportError:
 
 _log = get_logger("exporters.vtk")
 
-_TRANSLATIONAL_DOFS = ("ux", "uy", "uz")
-_ROTATIONAL_DOFS = ("rx", "ry", "rz")
 _TEMPERATURE_DOF = "T"
 
 # Celda VTK por (dimensión espacial, número de nodos). Los elementos de dos

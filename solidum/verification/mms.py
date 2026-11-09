@@ -53,12 +53,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from solidum.core.dof_names import TRANSLATIONS as _DOFS
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import LinearSolver
 from solidum.math.solvers.theta_method import ThetaMethodSolver
 from solidum.mesh import structured_mesh
 
-_DOFS = ("ux", "uy", "uz")
 _CELL_DIM = {"quad": 2, "tri": 2, "hex": 3, "tet": 3}
 
 
