@@ -101,7 +101,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -1381,6 +1381,17 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Consecuencia.} Análisis modal y espectral de edificios con masas de piso, con frecuencias exactas para el modelo discreto; los modelos con masa en todos los grados de libertad no cambian. El transitorio con grados de libertad sin masa queda fuera: la aceleración inicial de esos grados de libertad es una decisión física pendiente.
 
+\section{ADR 0025 --- Terminación de los solvers estáticos incrementales y registro por omisión}
+\label{adr:0025}
+
+\textbf{Fecha}: 9 de noviembre de 2026. \textbf{Estado}: aceptado; amplía los \hyperref[adr:0005]{ADR 0005} y 0011.
+
+\textbf{Contexto.} Quien usaba los solvers de trayectoria desde Python no sabía, sin leer el registro, si el análisis terminó ni por qué se detuvo. Un trazado que agotaba \texttt{max\_steps} regresaba con normalidad. El fracaso del arco era un \texttt{RuntimeError} genérico con el diagnóstico sólo en el registro, y un solver reutilizado conservaba el estado de la corrida anterior. El control indirecto no podía detenerse en un desplazamiento. El registro escribía las iteraciones en \texttt{INFO}, registraba como \texttt{ERROR} eventos que el solver recuperaba y producía trazas con una consola en cp1252.
+
+\textbf{Decisión.} Atributo \texttt{termination} (\texttt{max\_lambda}, \texttt{control\_target}, \texttt{max\_steps} o \texttt{diverged}) con \texttt{completed}, \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections} y \texttt{U\_final}. Se fijan también tras una excepción, se reinician en cada \texttt{solve} y llegan a \texttt{SolveResult.\allowbreak{}termination}. El fracaso es una \texttt{SolverDivergedError} tipada: \texttt{StepConstraintError} si la restricción del paso no tiene solución. \texttt{IndirectDisplacementSolver} admite \texttt{control\_target}: el último paso se recorta y la llegada es exacta. La base ofrece los puntos de extensión \texttt{\_target\_reached}, \texttt{\_limit\_step} y \texttt{\_step\_summary}. Registro: una línea \texttt{INFO} por paso, iteraciones en \texttt{DEBUG}, lo recuperado en \texttt{WARNING} con su motivo y \texttt{ERROR} sólo al detenerse; un manejador de consola adapta los mensajes a la codificación del flujo.
+
+\textbf{Consecuencia.} Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -1961,8 +1972,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 09 de noviembre de 2026, 09:29\\[0.5em]
-Commit Git: \texttt{d23a1db}\\[1em]
+Compilado el 09 de noviembre de 2026, 11:00\\[0.5em]
+Commit Git: \texttt{349b489}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
