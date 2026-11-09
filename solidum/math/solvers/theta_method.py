@@ -181,7 +181,7 @@ class ThetaMethodSolver(TransientTerminationMixin):
         assembler,
         dt: float,
         n_steps: int,
-        T_initial: float | np.ndarray,
+        T_initial: float | np.ndarray | None = None,
         *,
         theta: float = 1.0,
         lumping: str = "lumped",
@@ -322,6 +322,10 @@ class ThetaMethodSolver(TransientTerminationMixin):
     def _expand_initial(self, ndof: int) -> np.ndarray:
         """Normaliza ``T_initial`` a un vector global de tamaño ``ndof``."""
         T0 = self.T_initial
+        if T0 is None:
+            raise ValueError(
+                f"{type(self).__name__}: falta la temperatura inicial: dé T_initial, o "
+                f"continúe un análisis anterior (previous / continue_from, ADR 0029).")
         if np.isscalar(T0) or (isinstance(T0, np.ndarray) and T0.ndim == 0):
             return np.full(ndof, float(T0))
 
@@ -466,7 +470,7 @@ class ThetaMethodSolver(TransientTerminationMixin):
         # --- Condición inicial ---
         T_full = self._expand_initial(ndof)
         # g en t = 0: con `dirichlet_func` es su valor inicial, no el declarado.
-        g_init = self._g_at(0.0, g0, cs, free_dofs)
+        g_init = self._g_at(self.t_start, g0, cs, free_dofs)
         self._warn_initial_dirichlet_mismatch(T_full, g_init, prescribed)
         # El valor prescrito manda desde t=0: el DOF no es incógnita. Los
         # esclavos de las MPC se reconstruyen con su restricción.
@@ -505,7 +509,7 @@ class ThetaMethodSolver(TransientTerminationMixin):
             stored.append(n_steps)          # el instante final siempre entra
         store_at = set(stored)
 
-        t_history = np.array([k * dt for k in stored], dtype=float)
+        t_history = np.array([self.t_start + k * dt for k in stored], dtype=float)
         col_of = {k: i for i, k in enumerate(stored)}
 
         def build(h, t, n_done, termination, _forces):
@@ -513,7 +517,7 @@ class ThetaMethodSolver(TransientTerminationMixin):
                 t_history=t, T_history=h["T"], n_steps=int(n_done), theta=theta,
                 dt=dt, order=self.order,
                 converged=termination == Termination.T_END.value,
-                termination=termination,
+                termination=termination, F_constant=self.constant_load,
             )
 
         trace = TransientTrace(self, t_history=t_history, n_rows=ndof,
@@ -523,18 +527,18 @@ class ThetaMethodSolver(TransientTerminationMixin):
             return T_op @ T_f + g
 
         T0 = _ensamblar_global(T_free, g_init)
-        trace.converged(0, 0.0, T0)
+        trace.converged(0, self.t_start, T0)
         trace.store(0, T0)
 
         # --- Estado en t = 0 para el primer paso ---
-        F_prev = self._F_at(0.0, ndof)
+        F_prev = self._F_at(self.t_start, ndof)
         g_prev = g_init
         # Rango de referencia para detectar explosión numérica.
         ref = max(float(np.max(np.abs(T0))), float(np.max(np.abs(g_init))), 1.0)
         threshold = _DIVERGENCE_FACTOR * ref
 
         for step in range(n_steps):
-            t_next = (step + 1) * dt
+            t_next = self.t_start + (step + 1) * dt
             F_next = self._F_at(t_next, ndof)
             g_next = self._g_at(t_next, g0, cs, free_dofs)
 
@@ -592,6 +596,13 @@ class ThetaMethodSolver(TransientTerminationMixin):
     # ------------------------------------------------------------------
 
     def _F_at(self, t: float, ndof: int) -> np.ndarray:
+        """Carga en ``t``: la constante del análisis anterior (ADR 0029) más
+        ``F_func(t)``."""
+        if self.constant_load is not None:
+            return np.asarray(self.constant_load, dtype=float).ravel() + self._F_func_at(t, ndof)
+        return self._F_func_at(t, ndof)
+
+    def _F_func_at(self, t: float, ndof: int) -> np.ndarray:
         if self.F_func is None:
             return np.zeros(ndof)
         F = np.asarray(self.F_func(t), dtype=float).ravel()

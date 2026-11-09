@@ -67,10 +67,8 @@ from solidum.math.solvers._shared import (
     TransientTerminationMixin,
     _dof_labels,
     _log,
-    external_load,
     massless_error,
     mechanical_trace,
-    number_of_steps,
     warn_initial_conditions_off_constraints,
 )
 from solidum.math.solvers.diagnostics import TimeIntegrationInstabilityError
@@ -318,12 +316,15 @@ class CentralDifferenceSolver(TransientTerminationMixin):
         )
 
         # F_int(u_0) y a_0.
-        F0_raw, F0_global = external_load(self.F_func, 0.0, ndof)
+        F0_raw, F0_global = self._external_load(self.t_start, ndof)
         F0_red = T.T @ F0_global
 
         F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
+        self._check_initial_equilibrium(T, F_int_red + F_dir)
 
-        a_free = M_inv_diag * (F0_red - F_int_red - C_red @ v_free - F_dir)
+        a_free = self._carried_acceleration(free_dofs)
+        if a_free is None:
+            a_free = M_inv_diag * (F0_red - F_int_red - C_red @ v_free - F_dir)
 
         # Inicialización leapfrog: v_{1/2} = v_0 + (Δt/2)·a_0.
         dt = self.dt
@@ -331,11 +332,11 @@ class CentralDifferenceSolver(TransientTerminationMixin):
         v_half = v_free + half_dt * a_free
 
         # Historiales.
-        n_steps = number_of_steps(self.t_end, dt)
-        t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
+        n_steps = self._number_of_steps(dt)
+        t_history = self.t_start + np.linspace(0.0, n_steps * dt, n_steps + 1)
         trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
         u0_total = T @ u_free + g
-        trace.converged(0, 0.0, u0_total)
+        trace.converged(0, self.t_start, u0_total)
         trace.store(0, u0_total, T @ v_free, T @ a_free, F_ext=F0_raw)
 
         # Escala inicial para detección de divergencia.
@@ -357,7 +358,7 @@ class CentralDifferenceSolver(TransientTerminationMixin):
             F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
 
             # F(t_{n+1}).
-            F_raw, F_global = external_load(self.F_func, t_next, ndof)
+            F_raw, F_global = self._external_load(t_next, ndof)
             F_red = T.T @ F_global
 
             # a_{n+1} = M⁻¹·(F − F_int − C·v_{n+1/2} − F_dir).

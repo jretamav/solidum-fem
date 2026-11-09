@@ -225,6 +225,27 @@ except SolverDivergedError as exc:
 
 **Grados de libertad sin masa.** Los integradores implícitos todavía no los admiten (deuda #34) y la diferencia central exige masa en todos: `MasslessDofsError` los nombra.
 
+## Continuar un análisis (ADR 0029)
+
+Un análisis en el tiempo puede partir del estado final de otro, con el mismo `assembler` (guarda el estado interno de los elementos):
+
+- **Desde un estático** (`SolveResult`): parte en reposo de sus desplazamientos, en $t = 0$, y su carga se mantiene constante, con sus cargas distribuidas; `F_func` añade la que varía. Es el caso de la gravedad aplicada de forma estática y, después, una excitación dinámica. Si el estado no equilibra esa carga (el estático no convergió, o el modelo cambió), Solidum avisa: la diferencia actuaría como una fuerza súbita.
+- **Desde un transitorio**: parte de su estado final (desplazamientos, velocidades y aceleraciones) en su instante final. `F_func` se evalúa en tiempo absoluto y `t_end` es el instante final absoluto. Sirve para cambiar el paso de tiempo o para seguir desde el último paso convergido de un análisis que se detuvo (`exc.partial_result`).
+
+Parar y continuar da lo mismo que no parar.
+
+```python
+from solidum.math.solvers import NewtonNewmarkSolver
+
+asm = solidum.Assembler(dom)
+F_g = asm.assemble_self_weight(np.array([0.0, -9.81]))
+r0 = solidum.run(dom, assembler=asm, F_applied=F_g)              # gravedad estática
+solver = NewtonNewmarkSolver(asm, t_end=10.0, dt=0.01, F_func=F_dinamica)
+r1 = solidum.run_transient(dom, assembler=asm, solver=solver, previous=r0)
+```
+
+`u0`, `u0_dot` y `previous` se excluyen. Con amortiguamiento de Rayleigh proporcional a la rigidez, $\mathbf C$ se forma con la tangente del instante inicial de cada análisis.
+
 ## `HarmonicSolver` — respuesta forzada armónica en frecuencia (ADR 0009 fase 6)
 
 Análisis **lineal en estado estacionario**: dada una excitación armónica $\mathbf F(t) = \text{Re}\{\hat{\mathbf F}\,e^{i\omega t}\}$, calcula la amplitud compleja $\hat{\mathbf u}(\omega)$ de la respuesta estacionaria $\mathbf u(t) = \text{Re}\{\hat{\mathbf u}(\omega)\,e^{i\omega t}\}$ para un barrido de frecuencias.

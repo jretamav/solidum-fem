@@ -18,7 +18,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from solidum.constants import INITIAL_CONDITION_MPC_RTOL
-from solidum.core.load_vector import LoadVector, equivalent_loads_of
+from solidum.core.load_vector import LoadVector, as_load_vector, equivalent_loads_of
 from solidum.logging import get_logger
 from solidum.math.linalg.eigen import massless_dofs
 from solidum.math.solvers.diagnostics import MasslessDofsError, Termination
@@ -42,6 +42,11 @@ class TransientTerminationMixin:
       convergido (también en ``exc.partial_result``); ``None`` si terminó.
 
     ``solve`` lo reinicia al empezar con :meth:`_begin_trace`.
+
+    Continuación (ADR 0029): :meth:`continue_from` hace que el análisis parta
+    del estado final de otro —un estático (``SolveResult``) o un transitorio
+    del mismo tipo—, con su instante (``t_start``) y su carga constante
+    (``constant_load``), que se suma en todo instante a la de ``F_func``.
     """
 
     termination: Termination | None = None
@@ -60,6 +65,142 @@ class TransientTerminationMixin:
     @property
     def completed(self) -> bool:
         return self.termination == Termination.T_END
+
+    # ------------------------------------------------------------------
+    # Continuación de un análisis anterior (ADR 0029)
+    # ------------------------------------------------------------------
+
+    #: Instante en que empieza el análisis (``t_history[0]``).
+    t_start: float = 0.0
+    #: Carga que actúa constante en todo instante, además de ``F_func(t)``.
+    constant_load = None
+    _continues_static: bool = False
+    _continuing: bool = False
+    _carried_uddot = None
+
+    @property
+    def _is_thermal(self) -> bool:
+        return getattr(self, "PIPELINE_KIND", None) == "thermal_transient"
+
+    def continue_from(self, previous) -> None:
+        """Hace que este análisis continúe ``previous`` (ADR 0029).
+
+        - Desde un **estático** (``SolveResult``): parte de sus desplazamientos
+          (o temperaturas) en reposo, en ``t = 0``, y su carga aplicada se
+          mantiene constante (con sus cargas distribuidas, ADR 0027); ``F_func``
+          añade la que varía. Si el estado no está en equilibrio con esa carga,
+          se avisa: la diferencia daría una aceleración inicial espuria.
+        - Desde un **transitorio** del mismo tipo: parte de su estado final
+          (desplazamientos y velocidades, o temperaturas) en su instante final,
+          con la misma carga constante. ``F_func`` se evalúa en tiempo
+          absoluto y ``t_end`` es el instante final absoluto.
+        - Un resultado parcial (análisis detenido) se admite: el nuevo parte
+          del último paso convergido, p. ej. con un paso de tiempo menor.
+
+        El estado interno de los elementos es el que guarda el ensamblador:
+        use el mismo. Las condiciones iniciales del constructor (``u0``,
+        ``u0_dot``, ``T_initial``) y ``previous`` se excluyen.
+        """
+        from solidum.results import (
+            SolveResult, ThermalTransientResult, TransientResult,
+        )
+        name = type(self).__name__
+        rate = None
+        if isinstance(previous, SolveResult):
+            state = np.asarray(previous.U, dtype=float)
+            t0 = 0.0
+            constant = as_load_vector(previous.F_applied, previous.equivalent_loads)
+            static = True
+        elif isinstance(previous, TransientResult) and not self._is_thermal:
+            state = previous.u_history[:, -1]
+            rate = previous.udot_history[:, -1]
+            t0 = float(previous.t_history[-1])
+            constant = previous.F_constant
+            static = False
+            # La aceleración final del anterior, no la del equilibrio
+            # instantáneo: con HHT-α no coinciden (la ecuación del método
+            # promedia con α), y continuar debe ser igual que no parar.
+            self._carried_uddot = np.array(previous.uddot_history[:, -1], dtype=float)
+        elif isinstance(previous, ThermalTransientResult) and self._is_thermal:
+            state = previous.T_history[:, -1]
+            t0 = float(previous.t_history[-1])
+            constant = previous.F_constant
+            static = False
+        else:
+            kind = "térmico" if self._is_thermal else "mecánico"
+            raise TypeError(
+                f"{name}.continue_from: un análisis {kind} en el tiempo continúa un "
+                f"estático (SolveResult) o un transitorio del mismo tipo; se recibió "
+                f"{type(previous).__name__}.")
+        if self._is_thermal:
+            if getattr(self, "T_initial", None) is not None and not self._continuing:
+                raise ValueError(
+                    f"{name}: T_initial y el análisis anterior (previous) se excluyen: "
+                    f"la temperatura inicial es la final de aquél.")
+            self.T_initial = np.array(state, dtype=float)
+        else:
+            if (self.u0 is not None or self.u0_dot is not None) and not self._continuing:
+                raise ValueError(
+                    f"{name}: u0/u0_dot y el análisis anterior (previous) se excluyen: "
+                    f"el estado inicial es el final de aquél.")
+            self.u0 = np.array(state, dtype=float)
+            self.u0_dot = None if rate is None else np.array(rate, dtype=float)
+        self.t_start = t0
+        self.constant_load = constant
+        self._continues_static = static
+        self._continuing = True
+        if not getattr(previous, "converged", True):
+            _log.warning(
+                f"{name}: continúa un análisis que no terminó "
+                f"({getattr(previous, 'termination', None)}); parte de su último "
+                f"estado convergido, en t = {t0:.6g}.")
+
+    def _carried_acceleration(self, free_dofs):
+        """Aceleración inicial heredada de un transitorio anterior (en los
+        grados de libertad libres), o ``None``: entonces se calcula del
+        equilibrio en el instante inicial."""
+        if self._carried_uddot is None:
+            return None
+        return self._carried_uddot[free_dofs].copy()
+
+    def _external_load(self, t: float, ndof: int):
+        """``(F_crudo, F)`` en ``t``: la carga constante más ``F_func(t)``. El
+        crudo conserva las cargas equivalentes por elemento (ADR 0027)."""
+        raw, F = external_load(self.F_func, t, ndof)
+        if self.constant_load is None:
+            return raw, F
+        total = self.constant_load if raw is None else self.constant_load + raw
+        return total, np.asarray(total, dtype=float).reshape(ndof)
+
+    def _number_of_steps(self, dt: float) -> int:
+        """Pasos de ``t_start`` a ``t_end`` (instante final absoluto)."""
+        if not self.t_end > self.t_start:
+            raise ValueError(
+                f"{type(self).__name__}: t_end = {self.t_end:.6g} no es posterior al "
+                f"instante en que empieza el análisis, t_start = {self.t_start:.6g}. "
+                f"Al continuar un transitorio, t_end es el instante final absoluto.")
+        return number_of_steps(self.t_end - self.t_start, dt)
+
+    def _check_initial_equilibrium(self, T_op, F_int_red) -> None:
+        """Al continuar un estático, el estado inicial debe equilibrar la carga
+        constante: ``Tᵀ·F_c − F_int,red(u₀) ≈ 0`` (fuerzas internas reducidas,
+        apoyos prescritos incluidos). Si no, avisa: la diferencia se convierte
+        en una aceleración inicial espuria."""
+        if not self._continues_static or self.constant_load is None:
+            return
+        Fc = T_op.T @ np.asarray(self.constant_load, dtype=float).ravel()
+        Fi = np.asarray(F_int_red, dtype=float).ravel()
+        r = Fc - Fi
+        scale = max(float(np.max(np.abs(Fc), initial=0.0)),
+                    float(np.max(np.abs(Fi), initial=0.0)), 1e-300)
+        rel = float(np.max(np.abs(r), initial=0.0)) / scale
+        if rel > 1e-6:
+            _log.warning(
+                f"{type(self).__name__}: el estado inicial no está en equilibrio con "
+                f"la carga constante del análisis anterior (residuo relativo "
+                f"{rel:.2e}): la diferencia actúa como una fuerza súbita en t = "
+                f"{self.t_start:.6g}. ¿El análisis estático no convergió, o cambió "
+                f"el modelo entre los dos?")
 
 
 def external_load(F_func, t: float, ndof: int):
@@ -83,6 +224,7 @@ def mechanical_trace(solver, t_history, ndof: int, alpha_r: float, beta_r: float
             alpha_rayleigh=alpha_r, beta_rayleigh=beta_r,
             converged=termination == Termination.T_END.value,
             termination=termination, element_forces_history=forces,
+            F_constant=getattr(solver, "constant_load", None),
         )
 
     return TransientTrace(solver, t_history=t_history, n_rows=ndof,

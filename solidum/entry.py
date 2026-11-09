@@ -267,6 +267,7 @@ def run_transient(
     solver: Any | None = None,
     t_end: float | None = None,
     dt: float | None = None,
+    previous: SolveResult | TransientResult | None = None,
     **solver_kwargs,
 ) -> TransientResult:
     """Ejecuta un análisis dinámico transitorio y retorna el resultado.
@@ -286,6 +287,12 @@ def run_transient(
         Instancia de solver transitorio ya vinculada al assembler.
     t_end, dt
         Tiempo final y paso temporal. Requeridos cuando ``solver is None``.
+    previous
+        Análisis del que continúa (ADR 0029): un estático (``SolveResult``,
+        p. ej. la gravedad; parte en reposo de sus desplazamientos y su carga
+        se mantiene constante) o un transitorio (parte de su estado final en
+        su instante final; ``t_end`` es entonces el instante final absoluto).
+        Use el mismo ``assembler``: guarda el estado interno de los elementos.
     **solver_kwargs
         Resto de parámetros del constructor del NewmarkSolver default.
 
@@ -306,6 +313,8 @@ def run_transient(
             )
         solver = NewmarkSolver(assembler, t_end=t_end, dt=dt, **solver_kwargs)
 
+    if previous is not None:
+        solver.continue_from(previous)
     result = solver.solve()
     domain.last_result = result
     return result
@@ -319,6 +328,7 @@ def run_thermal_transient(
     dt: float | None = None,
     n_steps: int | None = None,
     T_initial: float | np.ndarray | None = None,
+    previous: SolveResult | ThermalTransientResult | None = None,
     **solver_kwargs,
 ) -> ThermalTransientResult:
     """Ejecuta un análisis **térmico transitorio** y retorna el resultado.
@@ -344,7 +354,11 @@ def run_thermal_transient(
         Instancia de solver térmico transitorio ya vinculada al assembler.
     dt, n_steps, T_initial
         Paso temporal, número de pasos y condición inicial. Requeridos
-        cuando ``solver is None``.
+        cuando ``solver is None``; ``T_initial`` no, si hay ``previous``.
+    previous
+        Análisis del que continúa (ADR 0029): un estacionario
+        (``SolveResult``; su carga se mantiene) o un transitorio térmico
+        (parte de sus temperaturas finales en su instante final).
     **solver_kwargs
         Resto de parámetros del constructor del ``ThetaMethodSolver``
         (``theta``, ``lumping``, ``F_func``, ``dirichlet_func``,
@@ -361,16 +375,18 @@ def run_thermal_transient(
     if assembler is None:
         assembler = Assembler(domain)
     if solver is None:
-        if dt is None or n_steps is None or T_initial is None:
+        if dt is None or n_steps is None or (T_initial is None and previous is None):
             raise ValueError(
                 "run_thermal_transient: pasar `solver`, o bien `dt`, "
-                "`n_steps` y `T_initial`."
+                "`n_steps` y `T_initial` (o `previous`)."
             )
         solver = ThetaMethodSolver(
             assembler, dt=dt, n_steps=n_steps, T_initial=T_initial,
             **solver_kwargs,
         )
 
+    if previous is not None:
+        solver.continue_from(previous)
     result = solver.solve()
     domain.last_result = result
     return result

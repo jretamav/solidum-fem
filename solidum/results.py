@@ -166,6 +166,10 @@ class TransientResult:
         construyó con ``record_internal_forces=True``; ``None`` si no se
         registró. Es lo que devuelve :meth:`internal_forces_history` cuando
         existe, y la única forma fiel con materiales con historia.
+    F_constant
+        Carga que actuó constante durante todo el análisis, además de la de
+        ``F_func``: la del análisis estático del que continúa (ADR 0029).
+        ``None`` si no continúa uno. Un análisis que continúa éste la hereda.
     """
 
     t_history: np.ndarray
@@ -178,6 +182,7 @@ class TransientResult:
     converged: bool = True
     element_forces_history: dict[int, list["ElementForces"]] | None = None
     termination: str | None = None
+    F_constant: np.ndarray | None = None
 
     def internal_forces_history(
         self, domain: "Domain",
@@ -313,6 +318,10 @@ class ThermalTransientResult:
         ``converged = False``.
     termination
         ``"t_end"`` o ``"diverged"`` (resultado parcial), ADR 0025.
+    F_constant
+        Carga que actuó constante durante todo el análisis, además de la de
+        ``F_func`` (fuentes y flujos): la del análisis estático del que continúa (ADR 0029).
+        ``None`` si no continúa uno. Un análisis que continúa éste la hereda.
     """
 
     t_history: np.ndarray
@@ -323,6 +332,7 @@ class ThermalTransientResult:
     order: int
     converged: bool = True
     termination: str | None = None
+    F_constant: np.ndarray | None = None
 
     @property
     def T_final(self) -> np.ndarray:

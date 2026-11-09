@@ -183,6 +183,10 @@ solver:
 
 **No hay condición inicial de velocidad**: la ecuación es de primer orden y $\mathbf T_0$ determina la evolución por completo. Tampoco existe el parámetro `rayleigh`: el amortiguamiento de Rayleigh modela disipación en la ecuación de segundo orden, y aquí la disipación es la propia conducción, ya contenida en $\mathbf K$.
 
+### Continuar un análisis
+
+`run_thermal_transient(..., previous=r)` parte del estacionario (`r = solidum.run(...)`; su carga se mantiene) o de otro transitorio térmico (sus temperaturas finales en su instante final; `F_func` y `dirichlet_func` en tiempo absoluto). Entonces no se da `T_initial`. Parar y continuar da lo mismo que no parar (ADR 0029).
+
 ### Elección de $\theta$
 
 [TABLA: Casos particulares del esquema $\theta$.]

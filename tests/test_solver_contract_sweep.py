@@ -57,7 +57,9 @@ PARAMETROS_ESPERADOS = {
     'transient': {'t_end', 'dt'},
     'harmonic': set(),
     'spectrum': {'n_modes', 'direction', 'spectrum'},
-    'thermal_transient': {'dt', 'n_steps', 'T_initial'},
+    # T_initial es opcional desde el ADR 0029: puede venir del análisis
+    # anterior (previous); sin él, el solver lo exige al resolver.
+    'thermal_transient': {'dt', 'n_steps'},
 }
 
 
