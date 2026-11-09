@@ -169,11 +169,26 @@ class TestParadaEnDesplazamientoObjetivo(_Quiet):
 
     def test_objetivo_invalido(self):
         dom, tip, _ = cantilever()
-        for bad in (0.0, -1.0e-3, math.nan, math.inf):
+        for bad in (math.nan, math.inf, -math.inf):
             with self.subTest(control_target=bad):
                 with self.assertRaisesRegex(ValueError, "control_target"):
                     IndirectDisplacementSolver(Assembler(dom), control=[(tip.id, "ux", 1.0)],
                                                control_target=bad)
+
+    def test_objetivo_negativo_invierte_la_carga(self):
+        """El objetivo fija el sentido: con la carga de referencia empujando
+        hacia +x, un objetivo negativo se alcanza con λ < 0, exacto."""
+        dom, tip, F = cantilever()
+        solver = IndirectDisplacementSolver(Assembler(dom), control=[(tip.id, "ux", 1.0)],
+                                            control_target=-4.0e-3, max_lambda=1.0e9,
+                                            initial_dl=1.5e-3)
+        U = solver.solve(F)
+        self.assertEqual(solver.termination, Termination.CONTROL_TARGET)
+        self.assertLessEqual(abs(U[tip.dofs["ux"]] + 4.0e-3), 4.0e-3 * 1e-12)
+        self.assertLess(solver.lambda_final, 0.0)
+        # Elástico lineal: λ = u/u_ref con u_ref = F_REF·L³/(3EI).
+        u_ref = F_REF * L ** 3 / (3.0 * E * I_SEC)
+        self.assertAlmostEqual(solver.lambda_final, -4.0e-3 / u_ref, delta=1e-9)
 
     def test_solidum_run_converged_y_termination(self):
         dom, tip, F = cantilever()

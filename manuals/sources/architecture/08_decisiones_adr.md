@@ -296,6 +296,8 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
 
+**Ampliación (9 de noviembre de 2026).** Una auditoría de generalidad del mismo día extendió el contrato a los análisis en el tiempo: `termination = "t_end"` o `"diverged"`, `completed`, `steps_done`, `t_final`, `U_final` y `partial_result`; una línea `ERROR` y una excepción tipada al detenerse (`TimeIntegrationInstabilityError` para la integración inestable), con el historial parcial. El θ-método dejó de devolver un resultado con columnas en cero al divergir. `control_target` toma el sentido del objetivo, así que una etapa también descarga.
+
 ## ADR 0026 — Etapas de carga en los solvers estáticos
 
 **Fecha**: 9 de noviembre de 2026. **Estado**: aceptado.
@@ -304,7 +306,17 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Decisión.** `solve(F_ref, u0=…, constant_load=…)` en `NonlinearSolver` y la familia del arco, con residuo $\mathbf F_c + \lambda\mathbf F_\text{ref} - \mathbf F_\text{int}$ y λ = 0 al empezar. Los valores impuestos crecen desde los de partida, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$. Cada etapa comprueba su equilibrio inicial, y un modelo con historia que empieza en cero lo avisa. `solidum.run(..., previous=resultado)` continúa la etapa anterior con su carga aplicada como constante y sus cargas equivalentes por elemento; el resultado separa `F_constant` de `F_variable`. `DissipationArcLengthSolver` rechaza las etapas: su restricción de disipación es física por decidir.
 
-**Consecuencia.** Gravedad y empuje, P-Δ con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N–M y la superposición elástica. Quedan las etapas desde el YAML (deuda #36) y dos cargas distribuidas en una misma etapa (deuda #35).
+**Consecuencia.** Gravedad y empuje, P-Δ con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N–M y la superposición elástica. Quedan las etapas desde el YAML (deuda #36). Las dos cargas distribuidas en una misma etapa (deuda #35) las resolvió el ADR 0027.
+
+## ADR 0027 — Cargas que llevan sus cargas equivalentes
+
+**Fecha**: 9 de noviembre de 2026. **Estado**: aceptado; sustituye el §5 del ADR 0026.
+
+**Contexto.** Las fuerzas internas de extremo con carga distribuida son $\mathbf F_\text{int} - \mathbf f_\text{eq}$, y el ensamblador recordaba sólo las cargas equivalentes de la última carga de cuerpo ensamblada: dos cargas de cuerpo en una corrida, dos casos de carga con el mismo ensamblador y el historial de los transitorios daban fuerzas internas erróneas sin aviso (deuda #35).
+
+**Decisión.** La carga lleva su propia información: `LoadVector`, un `np.ndarray` con las cargas equivalentes por elemento de su parte distribuida, que la aritmética de las cargas combina linealmente (`F1 ± F2`, `a·F`, `F/a`; cualquier otra operación da un `np.ndarray` simple). Se guardan concatenadas con una disposición compartida por las cargas del mismo ensamblador, así que combinar es una operación vectorizada. Un `np.ndarray` simple que las perdió recurre al registro anterior y avisa si es ambiguo.
+
+**Consecuencia.** La deuda #35 queda cerrada en estático, por etapas y en el tiempo, sin cambiar la API de las cargas.
 
 ## Evolución de esta lista
 

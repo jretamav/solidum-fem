@@ -186,7 +186,7 @@ $$\mathbf v_{n+1} = \mathbf v_{n+1/2} + \tfrac{\Delta t}{2}\mathbf a_{n+1}$$
 
 Una sola clase cubre lineal y no lineal con parámetro `nonlinear`: con `False` usa $\mathbf F_{\text{int}} = \mathbf K\mathbf u$ con $\mathbf K$ constante; con `True` recalcula $\mathbf F_{\text{int}}$ cada paso vía `Assembler.assemble_non_linear_system`.
 
-**Condición de estabilidad CFL**: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta divergencia exponencial a posteriori y aborta con `RuntimeError` informativo si la condición se viola.
+**Condición de estabilidad CFL**: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta la divergencia exponencial a posteriori y, si la condición se viola, lanza `TimeIntegrationInstabilityError` (una `SolverDivergedError`, y por tanto `RuntimeError`) con el historial hasta el último paso estable en `partial_result`.
 
 **Requisitos**: `lumping="lumped"` obligatorio (`"consistent"` rechazado con `ValueError` — el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). La masa reducida $\mathbf T^\top\mathbf M\,\mathbf T$ debe ser estrictamente diagonal (umbral relativo a su mayor término diagonal, independiente de las unidades); se rechazan con `ValueError` dos casos: Frame3D con eje oblicuo a los ejes globales (la rotación rompe la diagonalidad estricta — limitación documentada estándar, Cook-Malkus-Plesha §11.4) y una restricción multipunto con varios maestros cuyo esclavo tiene masa (el nodo colgante $u_h = \tfrac12 u_a + \tfrac12 u_b$ acopla a sus maestros; usar `NewmarkSolver` o `HHTSolver` con `lumping: lumped`).
 
@@ -199,6 +199,31 @@ solver:
   nonlinear: false           # true para materiales con historia
   u0: [0.0, 0.0, 1.0, 0.0]
 ```
+
+## Cómo termina un análisis en el tiempo (ADR 0025)
+
+Todos los integradores (`NewmarkSolver`, `HHTSolver`, sus variantes de Newton, `CentralDifferenceSolver` y el `ThetaMethodSolver` térmico) dejan tras `solve()`:
+
+| Atributo | Significado |
+|---|---|
+| `termination` | `"t_end"` si llegó al instante final; `"diverged"` si se detuvo |
+| `completed` | `True` si llegó al instante final |
+| `steps_done`, `t_final`, `U_final` | último paso convergido, su instante y su campo |
+| `partial_result` | si se detuvo, el resultado hasta el último paso convergido |
+
+Un análisis que se detiene registra una línea `ERROR` y lanza una `SolverDivergedError` tipada: la clasificación del Newton (ADR 0011) en los no lineales, o `TimeIntegrationInstabilityError` si el paso supera el límite de estabilidad (diferencia central, θ < 1/2). El historial calculado no se pierde:
+
+```python
+try:
+    res = solver.solve()
+except SolverDivergedError as exc:
+    res = exc.partial_result          # hasta el último paso convergido
+    print(solver.t_final, res.termination)   # ..., 'diverged'
+```
+
+**Fuerzas internas con carga distribuida.** Con `record_internal_forces=True`, el historial descuenta en cada paso las cargas equivalentes de la carga del instante si `F_func` combina las cargas que devuelven `assemble_self_weight` / `assemble_body_load` (ADR 0027): `F_func=lambda t: F_peso + a(t) * F_viento`.
+
+**Grados de libertad sin masa.** Los integradores implícitos todavía no los admiten (deuda #34) y la diferencia central exige masa en todos: `MasslessDofsError` los nombra.
 
 ## `HarmonicSolver` — respuesta forzada armónica en frecuencia (ADR 0009 fase 6)
 

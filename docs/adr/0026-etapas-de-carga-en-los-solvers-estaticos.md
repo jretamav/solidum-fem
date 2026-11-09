@@ -77,11 +77,15 @@ $$\mathbf f_\text{eq} = \mathbf f_\text{eq}^{\,c} + \lambda\,\mathbf f_\text{eq}
 - La parte de la carga que crece es la del registro del ensamblador **sólo si se ensambló después** de la etapa anterior. Lo dice `Assembler.equivalent_loads_version`, que aumenta con cada carga de cuerpo ensamblada.
 - Así, el peso propio de la etapa 1 entra con factor 1 y una fuerza de cuerpo lateral de la etapa 2, con λ.
 
+> **Sustituido por el ADR 0027 (2026-11-09).** Cada carga lleva sus cargas equivalentes (`LoadVector`) y la aritmética de las cargas las combina, así que $\mathbf F_c + \lambda\,\mathbf F_\text{ref}$ lleva $\mathbf f_\text{eq}^{\,c} + \lambda\,\mathbf f_\text{eq}^{\,\text{ref}}$ por sí misma. El registro con versión queda sólo para un `np.ndarray` simple que perdió las suyas.
+
 ### 6. Fuera de este ADR
 
 - **`DissipationArcLengthSolver`** (módulo de usuario) rechaza `u0` y `constant_load` con `NotImplementedError`. Su restricción usa el trabajo de la carga de referencia, y con una carga constante la energía disipada del paso cambia. Eso es física por decidir, no un detalle de implementación.
 - **Etapas desde el YAML**: no hay sintaxis todavía (deuda #36).
-- **Dos cargas de cuerpo en una misma etapa.** El registro del ensamblador sólo guarda las cargas equivalentes de la última ensamblada, así que `element_forces` descuenta sólo esa. Es un defecto previo, también en análisis de una etapa (deuda #35). Lo resuelve un modelo de cargas que lleve sus cargas equivalentes (mejora 4 de la lista del 2026-09-22).
+- **Dos cargas de cuerpo en una misma etapa.** El registro del ensamblador sólo guarda las cargas equivalentes de la última ensamblada, así que `element_forces` descuenta sólo esa. Es un defecto previo, también en análisis de una etapa (deuda #35). Lo resuelve un modelo de cargas que lleve sus cargas equivalentes (mejora 4 de la lista del 2026-09-22). **Resuelto por el ADR 0027 (2026-11-09).**
+- **Objetivo de la magnitud controlada dentro de una etapa.** Ampliado el 2026-11-09 (ADR 0025, §6): el sentido lo da el objetivo, así que una etapa también puede descargar hasta un valor menor que el de partida.
+- **Etapas en los análisis en el tiempo, en el lineal y en el térmico**: pendiente (fase 2 de la revisión de generalidad del 2026-11-09).
 
 ## Verificación (criterios de aceptación)
 

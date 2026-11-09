@@ -26,6 +26,7 @@ from typing import Any, Callable
 import numpy as np
 
 from solidum.core.domain import Domain
+from solidum.core.load_vector import LoadVector, as_load_vector
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import (  # noqa: F401 — NewmarkSolver default de run_transient
     HarmonicSolver,
@@ -44,9 +45,22 @@ from solidum.results import (
     ThermalTransientResult,
     TransientResult,
     build_solve_result,
+    legacy_equivalent_loads,
 )
 
 _log = get_logger("solidum.entry")
+
+
+def _plain_variable_equivalent_loads(assembler, previous) -> dict:
+    """Cargas equivalentes de una carga aplicada que es un ``np.ndarray``
+    simple (no las lleva, ADR 0027): las del registro heredado del
+    ensamblador, sin escalar. En una etapa, sólo si la carga de cuerpo
+    registrada se ensambló después de la etapa anterior; si no, es de aquélla
+    y ya está en la carga constante."""
+    if previous is not None and (getattr(assembler, "equivalent_loads_version", None)
+                                 == previous._equivalent_loads_version):
+        return {}
+    return legacy_equivalent_loads(assembler, 1.0)
 
 StepCallback = Callable[[int, np.ndarray, float], None]
 
@@ -163,21 +177,20 @@ def run(
     completed = getattr(solver, "completed", None)
     if completed is None:
         completed = getattr(solver, "reached_max_lambda", True)
-    F_total = F_applied * lambda_final
+    # Las cargas llevan sus cargas equivalentes por elemento (``LoadVector``,
+    # ADR 0027) y la aritmética las combina: ``F_total`` lleva las de la
+    # carga constante con factor 1 y las de la que crece con λ.
+    F_variable = F_applied
+    if not isinstance(F_variable, LoadVector):
+        F_variable = as_load_vector(F_variable, _plain_variable_equivalent_loads(
+            assembler, previous))
+    F_total = F_variable * lambda_final
     F_constant = None
     equivalent_loads = None
     if previous is not None:
-        # Etapa (ADR 0026): carga constante = la aplicada en la anterior, con
-        # sus cargas equivalentes por elemento; las de la carga que crece son
-        # las del ensamblador sólo si se ensamblaron después de la anterior.
-        F_constant = np.asarray(previous.F_applied, dtype=float)
+        # Etapa (ADR 0026): carga constante = la aplicada en la anterior.
+        F_constant = as_load_vector(previous.F_applied, previous.equivalent_loads)
         F_total = F_constant + F_total
-        equivalent_loads = {eid: np.array(f, dtype=float)
-                            for eid, f in previous.equivalent_loads.items()}
-        if getattr(assembler, "equivalent_loads_version", None) != previous._equivalent_loads_version:
-            for eid, f in (assembler.equivalent_loads or {}).items():
-                equivalent_loads[eid] = (equivalent_loads.get(eid, 0.0)
-                                         + lambda_final * np.asarray(f, dtype=float))
     result = build_solve_result(
         domain, assembler, U, F_total,
         converged=bool(completed),

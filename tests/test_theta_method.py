@@ -28,7 +28,7 @@ from solidum.elements.thermal.hex8_thermal import Hex8Thermal
 from solidum.elements.thermal.quad4_thermal import Quad4Thermal
 from solidum.materials.thermal_conduction import ThermalConduction
 from solidum.math.assembly import Assembler
-from solidum.math.solvers.diagnostics import MechanismError
+from solidum.math.solvers.diagnostics import MechanismError, TimeIntegrationInstabilityError
 from solidum.math.solvers.linear import LinearSolver
 from solidum.math.solvers.theta_method import ThetaMethodSolver
 from solidum.results import ThermalTransientResult
@@ -337,10 +337,25 @@ class TestEstabilidad:
         dt_car = ThetaMethodSolver(
             asm, dt=1.0, n_steps=1, T_initial=20.0,
         ).characteristic_dt()
-        r = ThetaMethodSolver(
+        solver = ThetaMethodSolver(
             asm, dt=1000.0 * dt_car, n_steps=30, T_initial=20.0, theta=0.0,
-        ).solve()
-        assert not r.converged, "θ=0 debería divergir con este Δt"
+        )
+        # ADR 0025: la divergencia detiene el análisis con una excepción
+        # tipada y el historial hasta el último paso convergido, sin columnas
+        # sin calcular (antes devolvía converged=False con T_final en ceros).
+        with pytest.raises(TimeIntegrationInstabilityError) as info:
+            solver.solve()
+        parcial = info.value.partial_result
+        assert parcial is solver.partial_result
+        assert solver.termination == "diverged" and not solver.completed
+        assert parcial.termination == "diverged" and not parcial.converged
+        assert np.all(np.isfinite(parcial.T_history))
+        assert parcial.t_history.size == parcial.T_history.shape[1]
+        assert parcial.n_steps == solver.steps_done < 30
+        assert parcial.t_history[-1] == pytest.approx(solver.t_final)
+        # La columna final no es de ceros: son las temperaturas calculadas.
+        assert np.max(np.abs(parcial.T_final)) > 0.0
+        assert info.value.last_load_factor > solver.t_final
 
     def test_theta_1_converge_monotonamente_al_estacionario(self):
         nx = 8

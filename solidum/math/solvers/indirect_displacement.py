@@ -35,6 +35,7 @@ import math
 import numpy as np
 
 from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.solvers._shared import _log
 from solidum.math.solvers.arclength import ArcLengthSolver, _ArcProblem
 from solidum.math.solvers.corrector import CorrectionAborted
 from solidum.math.solvers.diagnostics import Termination
@@ -92,13 +93,17 @@ class IndirectDisplacementSolver(ArcLengthSolver):
         unidades.
     control_target : float, opcional
         Valor de la magnitud controlada ``cᵀ·U`` en el que se detiene el
-        trazado (ADR 0025), en sus unidades; debe ser positivo, porque la
-        magnitud parte de cero y crece. El paso que lo alcanzaría se recorta a
-        lo que falta, así que el último punto coincide con el objetivo a
-        precisión de máquina. Deja ``termination = "control_target"`` y
-        ``reached_control_target = True``. Puede combinarse con ``max_lambda``:
-        se detiene en lo que llegue primero (con un objetivo, conviene un
-        ``max_lambda`` holgado).
+        trazado (ADR 0025), en sus unidades. Es un valor **absoluto**: en una
+        etapa (ADR 0026) la magnitud parte de su valor en ``u0``, y el
+        trazado avanza hacia el objetivo, sea mayor o menor (descarga). Si la
+        carga de referencia aleja la magnitud del objetivo, λ se vuelve
+        negativa: la carga que crece se invierte. El paso que lo alcanzaría se
+        recorta a lo que falta, así que el último punto coincide con el
+        objetivo a precisión de máquina. Deja ``termination =
+        "control_target"`` y ``reached_control_target = True``. Puede
+        combinarse con ``max_lambda``: se detiene en lo que llegue primero
+        (con un objetivo, conviene un ``max_lambda`` holgado). Un objetivo
+        igual al valor de partida no traza nada y lo avisa.
 
     dl_max_factor : float, default 1.0
         Como en :class:`ArcLengthSolver`, pero **sin crecimiento por omisión**:
@@ -130,14 +135,19 @@ class IndirectDisplacementSolver(ArcLengthSolver):
             linear_algebra=linear_algebra, initial_dlambda=initial_dlambda,
         )
         self.control = self._normalize_control(control)
+        # ``_c`` es el vector de la restricción, orientado hacia el objetivo
+        # (``_direction`` = ±1); ``_c_raw``, el de la magnitud tal como se
+        # declaró, con el que se reporta.
         self._c: np.ndarray | None = None
+        self._c_raw: np.ndarray | None = None
+        self._direction: float = 1.0
+        self._target_scale: float = 0.0
         if control_target is not None:
             control_target = float(control_target)
-            if not (math.isfinite(control_target) and control_target > 0.0):
+            if not math.isfinite(control_target):
                 raise ValueError(
                     f"IndirectDisplacementSolver: control_target={control_target} debe "
-                    f"ser un número finito positivo: la magnitud controlada parte de "
-                    f"cero y crece.")
+                    f"ser un número finito.")
         self.control_target: float | None = control_target
         # Estado propio del trazado (ADR 0025), además del de ArcLengthSolver.
         self.reached_control_target: bool = False
@@ -184,24 +194,29 @@ class IndirectDisplacementSolver(ArcLengthSolver):
         self.control_final = 0.0
 
     def _control_value(self, U) -> float:
-        return float(self._c @ U)
+        """Magnitud controlada tal como se declaró, ``cᵀ·U``."""
+        return float(self._c_raw @ U)
+
+    def _remaining(self, U) -> float:
+        """Lo que falta hasta el objetivo, medido en el sentido del trazado."""
+        return self._direction * (self.control_target - self._control_value(U))
 
     def _target_reached(self, U) -> bool:
         if self.control_target is None or U is None or self._c is None:
             return False
-        return self._control_value(U) >= self.control_target * (1.0 - _TARGET_RTOL)
+        return self._remaining(U) <= _TARGET_RTOL * self._target_scale
 
     def _limit_step(self, dl: float, U) -> float:
         if self.control_target is None:
             return dl
-        return min(dl, self.control_target - self._control_value(U))
+        return min(dl, self._remaining(U))
 
     def _step_summary(self, U) -> str:
         return f" | control = {self._control_value(U):.6e}"
 
     def _record(self, lambda_curr, steps, U) -> None:
         super()._record(lambda_curr, steps, U)
-        if U is not None and self._c is not None:
+        if U is not None and self._c_raw is not None:
             self.control_final = self._control_value(U)
 
     def _finish(self, lambda_curr, step, U=None) -> None:
@@ -259,7 +274,22 @@ class IndirectDisplacementSolver(ArcLengthSolver):
                 "IndirectDisplacementSolver: los términos de 'control' se anulan "
                 "entre sí (Tᵀ·c = 0: tras aplicar las restricciones multipunto, la "
                 "combinación no depende de ningún grado de libertad libre).")
+        self._c_raw = c
+        self._direction = 1.0
         self._c = c
+        if self.control_target is not None:
+            # Sentido del trazado: del valor de partida (u0 de la etapa, o
+            # cero) hacia el objetivo (ADR 0025, ampliado para etapas).
+            start = float(c @ self._stage.U0)
+            self._target_scale = max(abs(self.control_target), abs(start))
+            gap = self.control_target - start
+            if abs(gap) <= _TARGET_RTOL * self._target_scale:
+                _log.warning(
+                    f"IndirectDisplacementSolver: control_target = "
+                    f"{self.control_target:.6e} es el valor de partida de la "
+                    f"magnitud controlada; no hay nada que trazar.")
+            self._direction = 1.0 if gap >= 0.0 else -1.0
+            self._c = self._direction * c
 
     def _control_measure(self, du: np.ndarray) -> float:
         return float(self._c @ du)
@@ -285,10 +315,25 @@ class IndirectDisplacementSolver(ArcLengthSolver):
 
     def _first_dl(self, du_t: np.ndarray) -> float:
         m = self._control_measure(du_t)
+        if self.control_target is not None and np.isfinite(m) and m < 0.0:
+            # Con objetivo, el sentido lo fija el objetivo: si la carga de
+            # referencia aleja la magnitud de él, λ disminuye (Δλ = Δl/m < 0).
+            _log.info(
+                "  La carga de referencia aleja la magnitud controlada del "
+                "objetivo: el trazado avanza hacia él con λ decreciente.")
+            if self.initial_dl is not None:
+                dl = self.initial_dl
+            else:
+                dl = self.initial_dlambda * abs(m)
+                _log.info(f"  Primer paso: |Δλ₁| = {self.initial_dlambda:g} de la "
+                          f"carga de referencia ⇒ Δl₁ = {dl:.4e}")
+            self.dl_reference = float(dl)
+            return float(dl)
         if not (np.isfinite(m) and m > 0.0):
             raise ValueError(
                 f"IndirectDisplacementSolver: con la carga de referencia la "
                 f"magnitud controlada no crece (cᵀ·K⁻¹·F_ref = {m:.3e}). El control "
                 f"exige una magnitud que aumente al cargar: invertir el signo de "
-                f"los coeficientes o elegir otros grados de libertad.")
+                f"los coeficientes o elegir otros grados de libertad (o dar un "
+                f"control_target, que fija el sentido).")
         return super()._first_dl(du_t)

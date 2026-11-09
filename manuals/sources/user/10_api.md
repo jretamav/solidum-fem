@@ -65,10 +65,23 @@ El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`)
 | `termination` | Por qué se detuvo un solver incremental (ADR 0025): `"max_lambda"`, `"control_target"` o `"max_steps"`. `None` en el `LinearSolver`. |
 | `load_factor` | Factor de carga final λ de la carga que crece en el análisis o en la etapa. |
 | `F_constant`, `F_variable` | En un análisis por etapas (`solidum.run(..., previous=…)`, ADR 0026), la carga ya aplicada que se mantuvo constante y la que creció (`F_applied = F_constant + F_variable`). Fuera de una etapa, `F_constant` es `None`. |
-| `equivalent_loads` | Cargas equivalentes de la carga distribuida restadas, por elemento, para dar `element_forces`; una etapa siguiente las hereda con su carga constante. |
+| `equivalent_loads` | Cargas equivalentes de la carga distribuida restadas, por elemento, para dar `element_forces`: las que lleva la carga aplicada (`LoadVector`, ADR 0027); una etapa siguiente las hereda con su carga constante. |
 | `condition_estimate` | Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). `None` en los análisis no lineales y con el solver iterativo. |
 
 Las reacciones y las fuerzas de restricción cumplen `F_int − F_applied = R + constraint_forces`: el equilibrio global es `ΣR + ΣF_applied = 0` por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección `linear_constraints` del capítulo «Archivo de Entrada YAML». En el problema térmico `R` es el flujo de calor nodal en los nodos con temperatura impuesta.
+
+## Cargas distribuidas y sus cargas equivalentes
+
+`assemble_self_weight` y `assemble_body_load` devuelven un `LoadVector` (ADR 0027): un vector de cargas que se usa como cualquier `np.ndarray`, pero que lleva las cargas nodales equivalentes de su parte distribuida en cada elemento. Las fuerzas internas de extremo descuentan las de la carga aplicada, y la aritmética de las cargas las combina:
+
+```python
+F_peso = asm.assemble_self_weight([0.0, -9.81])
+F_viento = asm.assemble_body_load([2.0e3, 0.0])
+F = 1.2 * F_peso + 1.6 * F_viento + F_puntual     # lleva 1.2·f_eq,peso + 1.6·f_eq,viento
+res = solidum.run(dom, assembler=asm, F_applied=F)
+```
+
+Vale igual para dos casos de carga con el mismo ensamblador, para la carga de una etapa y para la función de carga de un transitorio (`F_func=lambda t: F_peso + a(t) * F_viento`, con `record_internal_forces=True`). Las cargas puntuales en un `np.ndarray` simple no aportan cargas equivalentes. Lo que **pierde** la información es convertir la carga con `np.asarray`/`np.array` o sumarla con `+=` sobre un arreglo de ceros: entonces Solidum supone, como antes, que contiene la última carga de cuerpo ensamblada, y avisa si se ensambló más de una.
 
 ## Secciones por fibras
 
@@ -132,9 +145,10 @@ Desde un script conviene capturar los errores por su tipo, porque cada uno indic
 from solidum.math.solvers.diagnostics import (
     MechanismError,          # el modelo no está suficientemente apoyado (antes de resolver)
     IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
-    SolverDivergedError,     # Newton y arco: oscilación, tangente singular, capacidad...
+    SolverDivergedError,     # Newton, arco y transitorios: el análisis se detuvo
     StepConstraintError,     # arco: la restricción del paso no tiene solución
-    MasslessDofsError,       # modal: grados de libertad sin masa que impiden resolver
+    TimeIntegrationInstabilityError,  # diferencia central o θ < 1/2: paso inestable
+    MasslessDofsError,       # modal o transitorio: grados de libertad sin masa
     Termination,             # motivos de parada: solver.termination == Termination.MAX_STEPS
 )
 from solidum.math.linalg import IterativeNotConvergedError   # sólo con linear_algebra: iterative
@@ -145,6 +159,6 @@ except MechanismError as err:
     print(err.motions)       # p. ej. ['traslación en la dirección x']
 ```
 
-`MechanismError.motions` lista los movimientos libres ya descritos en palabras. Para el fracaso de un trazado (Newton o arco) se captura `SolverDivergedError`, no `RuntimeError`: `IllPosedSystemError`, el veredicto de la red de seguridad, también es un `RuntimeError`. Tras la excepción, `solver.termination == "diverged"` y `solver.U_final`, `lambda_final` y `steps_done` dicen hasta dónde llegó (ADR 0025). `MasslessDofsError` (análisis modal, ADR 0024) lleva la causa en `cause` (`too_many_modes`, `no_mass`, `massless_mechanism`, `singular_mass`, `indefinite_mass`), los grados de libertad sin masa en `massless_dofs` y cuántos tienen masa en `n_mass`. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
+`MechanismError.motions` lista los movimientos libres ya descritos en palabras. Para el fracaso de un trazado (Newton o arco) se captura `SolverDivergedError`, no `RuntimeError`: `IllPosedSystemError`, el veredicto de la red de seguridad, también es un `RuntimeError`. Tras la excepción, `solver.termination == "diverged"` y `solver.U_final`, `lambda_final` y `steps_done` dicen hasta dónde llegó (ADR 0025). En un análisis en el tiempo, `exc.partial_result` (también `solver.partial_result`) es el resultado hasta el último paso convergido, y `solver.t_final` su instante; un transitorio que llega al final deja `solver.termination == "t_end"` y `result.termination == "t_end"`. `MasslessDofsError` (ADR 0024) lleva la causa en `cause` (en el modal, `too_many_modes`, `no_mass`, `massless_mechanism`, `singular_mass`, `indefinite_mass`; en el transitorio, `initial_acceleration` o `explicit_integration`), los grados de libertad sin masa en `massless_dofs` y cuántos tienen masa en `n_mass`. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
 
 El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. `LinearSolver(assembler, linear_algebra="iterative")`.

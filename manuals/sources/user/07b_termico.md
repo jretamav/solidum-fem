@@ -230,8 +230,11 @@ A diferencia del análisis dinámico estructural, donde el default es `consisten
 | `temperature_at(dof)` | Historia temporal de un DOF concreto |
 | `extremes()` | `(T_min, T_max)` sobre todos los nodos e instantes |
 | `n_steps`, `theta`, `dt`, `order` | Parámetros efectivos del análisis |
+| `converged`, `termination` | Si llegó al instante final (`"t_end"`) |
 
 `extremes()` es la herramienta de diagnóstico del principio del máximo: en un problema sin fuente, cualquier valor fuera del rango de los datos señala oscilación espuria del esquema, no un fenómeno físico.
+
+Con $\theta < 0.5$ y un paso por encima del límite de estabilidad, `solve()` **se detiene** con `TimeIntegrationInstabilityError` (ADR 0025): una línea `ERROR` y la excepción, cuyo `partial_result` es el `ThermalTransientResult` hasta el último paso estable. No devuelve un resultado con instantes sin calcular.
 
 ## Ejemplo completo: pared plana en régimen transitorio
 

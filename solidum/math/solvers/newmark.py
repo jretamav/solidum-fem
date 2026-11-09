@@ -18,9 +18,11 @@ from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.linalg import StiffnessProperties, select_solver
 from solidum.math.solvers._shared import (
-    ElementForcesRecorder,
+    TransientTerminationMixin,
     _log,
     domain_is_symmetric,
+    external_load,
+    mechanical_trace,
     number_of_steps,
     solve_mass_system,
     warn_initial_conditions_off_constraints,
@@ -31,7 +33,7 @@ from solidum.results import TransientResult
 
 
 @SolverRegistry.register
-class NewmarkSolver:
+class NewmarkSolver(TransientTerminationMixin):
     """Análisis dinámico transitorio lineal por integración Newmark-β (ADR 0009 fase 3).
 
     Resuelve ``M·ü + C·u̇ + K·u = F(t)`` con amortiguamiento Rayleigh
@@ -129,6 +131,7 @@ class NewmarkSolver:
 
 
     def solve(self) -> TransientResult:
+        self._begin_trace()
         _log.info("--- INICIANDO SOLVER NEWMARK ---")
 
         # Ensamblar K (lineal en u=0) y M (consistente, cacheada).
@@ -172,8 +175,7 @@ class NewmarkSolver:
         )
 
         # F(0) reducido.
-        F0_global = (np.zeros(ndof) if self.F_func is None
-                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        F0_raw, F0_global = external_load(self.F_func, 0.0, ndof)
         F0_red = T.T @ F0_global
 
         # Aceleración inicial: M_red · ü₀ = F₀ − F_dir − C_red·u̇₀ − K_red·u₀.
@@ -185,7 +187,8 @@ class NewmarkSolver:
             near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
+                                       domain=self.assembler.domain, free_dofs=free_dofs)
 
         # Factorización reutilizable de A_eff = M + γΔt·C + βΔt²·K.
         dt = self.dt
@@ -204,15 +207,11 @@ class NewmarkSolver:
         # Historiales en globales. n_steps + 1 columnas (incluye t=0).
         n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
-        u_history = np.zeros((ndof, n_steps + 1))
-        udot_history = np.zeros((ndof, n_steps + 1))
-        uddot_history = np.zeros((ndof, n_steps + 1))
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
         # Estado inicial en globales (con apoyos g).
-        u_history[:, 0] = T @ u_free + g
-        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
-        forces_rec.record(u_history[:, 0])
-        udot_history[:, 0] = T @ udot_free
-        uddot_history[:, 0] = T @ uddot_free
+        u0_total = T @ u_free + g
+        trace.converged(0, 0.0, u0_total)
+        trace.store(0, u0_total, T @ udot_free, T @ uddot_free, F_ext=F0_raw)
 
         # Bucle temporal.
         half_dt2 = 0.5 * dt * dt
@@ -229,8 +228,7 @@ class NewmarkSolver:
             udot_pred = udot_free + dt * one_minus_gamma * uddot_free
 
             # F(t_{n+1}) reducido.
-            F_global = (np.zeros(ndof) if self.F_func is None
-                         else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+            F_raw, F_global = external_load(self.F_func, t_next, ndof)
             F_red = T.T @ F_global
 
             # Sistema efectivo: A_eff · ü_{n+1} = F − F_dir − C·u̇_pred − K·u_pred.
@@ -242,25 +240,14 @@ class NewmarkSolver:
             udot_free = udot_pred + gamma_dt * uddot_free
 
             # Volcado a historial global.
-            u_history[:, step + 1] = T @ u_free + g
-            forces_rec.record(u_history[:, step + 1])
-            udot_history[:, step + 1] = T @ udot_free
-            uddot_history[:, step + 1] = T @ uddot_free
+            u_total = T @ u_free + g
+            trace.converged(step + 1, t_next, u_total)
+            trace.store(step + 1, u_total, T @ udot_free, T @ uddot_free, F_ext=F_raw)
 
         _log.info(f"  -> {n_steps} pasos completados. "
                    f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
 
-        return TransientResult(
-            t_history=t_history,
-            u_history=u_history,
-            udot_history=udot_history,
-            uddot_history=uddot_history,
-            n_steps=n_steps,
-            alpha_rayleigh=alpha_r,
-            beta_rayleigh=beta_r,
-            converged=True,
-            element_forces_history=forces_rec.result(),
-        )
+        return trace.finish()
 
 
 
@@ -439,6 +426,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
         )
 
     def solve(self) -> TransientResult:
+        self._begin_trace()
         _log.info("--- INICIANDO SOLVER NEWMARK NO LINEAL (Newton dentro de Newmark) ---")
 
         # Disparar el build de topología del assembler antes de leer ndof.
@@ -496,8 +484,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             C_red = sp.csr_matrix(M_red.shape)
 
         # Aceleración inicial consistente: M·ü₀ = F_ext(0) - F_int(u₀) - C·u̇₀.
-        F0_global = (np.zeros(ndof) if self.F_func is None
-                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        F0_raw, F0_global = external_load(self.F_func, 0.0, ndof)
         rhs0 = T_op.T @ (F0_global - F_int - C @ udot_total)
         props_M = StiffnessProperties(
             is_symmetric=domain_is_symmetric(self.assembler.domain),
@@ -506,7 +493,8 @@ class NewtonNewmarkSolver(NewmarkSolver):
             near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
+                                       domain=self.assembler.domain, free_dofs=free_dofs)
         uddot_total = np.asarray(T_op @ uddot_free, dtype=float)
 
         # Historiales.
@@ -515,14 +503,9 @@ class NewtonNewmarkSolver(NewmarkSolver):
         gamma = self.gamma
         n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
-        u_history = np.zeros((ndof, n_steps + 1))
-        udot_history = np.zeros((ndof, n_steps + 1))
-        uddot_history = np.zeros((ndof, n_steps + 1))
-        u_history[:, 0] = u_total
-        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
-        forces_rec.record(u_history[:, 0])
-        udot_history[:, 0] = udot_total
-        uddot_history[:, 0] = uddot_total
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        trace.converged(0, 0.0, u_total)
+        trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw)
 
         # Coeficientes Newmark precomputados.
         half_dt2 = 0.5 * dt * dt
@@ -546,8 +529,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
             udot_pred = udot_total + dt * one_minus_gamma * uddot_total
 
-            F_ext_next = (np.zeros(ndof) if self.F_func is None
-                           else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+            F_raw, F_ext_next = external_load(self.F_func, t_next, ndof)
 
             # Corrector compartido (ADR 0015): un ensamblaje por iteración,
             # convergencia evaluada ANTES de resolver con el par
@@ -560,8 +542,9 @@ class NewtonNewmarkSolver(NewmarkSolver):
             res = self.corrector.run(problem, problem.initial_iterate(uddot_free))
 
             if not res.converged:
-                # Clasificar el modo y lanzar excepción tipada (ADR 0011).
-                raise res.divergence_error(
+                # Clasificar el modo y lanzar excepción tipada (ADR 0011),
+                # con el historial hasta el último paso convergido (ADR 0025).
+                raise trace.fail(res.divergence_error(
                     last_load_factor=t_next,
                     extra_message=(
                         f"NewtonNewmarkSolver: paso {step+1} (t={t_next:.4e}) no "
@@ -569,7 +552,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
                         f"line_search={'on' if self.line_search else 'off'}; "
                         f"último α={res.last_alpha:.3f}."
                     ),
-                )
+                ), t_next)
             _log.info(
                 f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
                 f"iter={res.n_solves} | R/tol_F={res.last_conv.ratio_force:.2e}"
@@ -577,25 +560,13 @@ class NewtonNewmarkSolver(NewmarkSolver):
 
             u_total, udot_total, uddot_total, uddot_free = res.x
 
-            u_history[:, step + 1] = u_total
-            forces_rec.record(u_history[:, step + 1])
-            udot_history[:, step + 1] = udot_total
-            uddot_history[:, step + 1] = uddot_total
+            trace.converged(step + 1, t_next, u_total)
+            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw)
 
         _log.info(f"  -> {n_steps} pasos completados (no lineal). "
                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
 
-        return TransientResult(
-            t_history=t_history,
-            u_history=u_history,
-            udot_history=udot_history,
-            uddot_history=uddot_history,
-            n_steps=n_steps,
-            alpha_rayleigh=alpha_r,
-            beta_rayleigh=beta_r,
-            converged=True,
-            element_forces_history=forces_rec.result(),
-        )
+        return trace.finish()
 
 
 def _hht_autoderive_beta_gamma(alpha: float) -> tuple[float, float]:
@@ -708,6 +679,7 @@ class HHTSolver(NewmarkSolver):
         self.alpha = float(alpha)
 
     def solve(self) -> TransientResult:
+        self._begin_trace()
         _log.info(f"--- INICIANDO SOLVER HHT-α (alpha={self.alpha:.4f}) ---")
 
         self.assembler.assemble_system()
@@ -743,8 +715,7 @@ class HHTSolver(NewmarkSolver):
             self.assembler.domain,
         )
 
-        F0_global = (np.zeros(ndof) if self.F_func is None
-                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        F0_raw, F0_global = external_load(self.F_func, 0.0, ndof)
         F0_red = T.T @ F0_global
 
         # Aceleración inicial consistente con la ecuación de movimiento en t=0
@@ -757,7 +728,8 @@ class HHTSolver(NewmarkSolver):
             near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
+                                       domain=self.assembler.domain, free_dofs=free_dofs)
 
         # Sistema efectivo HHT-α: A_eff = M + (1+α)γΔt·C + (1+α)βΔt²·K.
         # Constante en el tiempo → factorización única reutilizable.
@@ -780,14 +752,10 @@ class HHTSolver(NewmarkSolver):
 
         n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
-        u_history = np.zeros((ndof, n_steps + 1))
-        udot_history = np.zeros((ndof, n_steps + 1))
-        uddot_history = np.zeros((ndof, n_steps + 1))
-        u_history[:, 0] = T @ u_free + g
-        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
-        forces_rec.record(u_history[:, 0])
-        udot_history[:, 0] = T @ udot_free
-        uddot_history[:, 0] = T @ uddot_free
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        u0_total = T @ u_free + g
+        trace.converged(0, 0.0, u0_total)
+        trace.store(0, u0_total, T @ udot_free, T @ uddot_free, F_ext=F0_raw)
 
         half_dt2 = 0.5 * dt * dt
         one_minus_2beta = 1.0 - 2.0 * beta
@@ -809,8 +777,7 @@ class HHTSolver(NewmarkSolver):
             u_n = u_free
             udot_n = udot_free
 
-            F_global = (np.zeros(ndof) if self.F_func is None
-                         else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+            F_raw, F_global = external_load(self.F_func, t_next, ndof)
             F_next_red = T.T @ F_global
 
             # RHS HHT-α: (1+α)·F_{n+1} − α·F_n − F_dir
@@ -827,10 +794,9 @@ class HHTSolver(NewmarkSolver):
             u_free = u_pred + beta_dt2 * uddot_free
             udot_free = udot_pred + gamma_dt * uddot_free
 
-            u_history[:, step + 1] = T @ u_free + g
-            forces_rec.record(u_history[:, step + 1])
-            udot_history[:, step + 1] = T @ udot_free
-            uddot_history[:, step + 1] = T @ uddot_free
+            u_total = T @ u_free + g
+            trace.converged(step + 1, t_next, u_total)
+            trace.store(step + 1, u_total, T @ udot_free, T @ uddot_free, F_ext=F_raw)
 
             F_n_red = F_next_red
 
@@ -838,17 +804,7 @@ class HHTSolver(NewmarkSolver):
                    f"alpha={alpha_hht:.4f}, ρ_∞={(one_plus_alpha)/(1.0-alpha_hht):.4f}. "
                    f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
 
-        return TransientResult(
-            t_history=t_history,
-            u_history=u_history,
-            udot_history=udot_history,
-            uddot_history=uddot_history,
-            n_steps=n_steps,
-            alpha_rayleigh=alpha_r,
-            beta_rayleigh=beta_r,
-            converged=True,
-            element_forces_history=forces_rec.result(),
-        )
+        return trace.finish()
 
 
 @SolverRegistry.register
@@ -949,6 +905,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         self.alpha = float(alpha)
 
     def solve(self) -> TransientResult:
+        self._begin_trace()
         _log.info(f"--- INICIANDO SOLVER HHT-α NO LINEAL (alpha={self.alpha:.4f}) ---")
 
         if self.assembler.domain.total_dofs == 0:
@@ -989,8 +946,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         else:
             C_red = sp.csr_matrix(M_red.shape)
 
-        F0_global = (np.zeros(ndof) if self.F_func is None
-                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        F0_raw, F0_global = external_load(self.F_func, 0.0, ndof)
         rhs0 = T_op.T @ (F0_global - F_int - C @ udot_total)
         props_M = StiffnessProperties(
             is_symmetric=domain_is_symmetric(self.assembler.domain),
@@ -999,7 +955,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             near_nullspace=self.assembler.near_nullspace,
         )
         M_solver = select_solver(props_M, override=self.linear_algebra)
-        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__)
+        uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
+                                       domain=self.assembler.domain, free_dofs=free_dofs)
         uddot_total = np.asarray(T_op @ uddot_free, dtype=float)
 
         # Estado del paso anterior (al inicio del análisis: instante 0).
@@ -1015,14 +972,9 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         one_plus_alpha = 1.0 + alpha_hht
         n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
-        u_history = np.zeros((ndof, n_steps + 1))
-        udot_history = np.zeros((ndof, n_steps + 1))
-        uddot_history = np.zeros((ndof, n_steps + 1))
-        u_history[:, 0] = u_total
-        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
-        forces_rec.record(u_history[:, 0])
-        udot_history[:, 0] = udot_total
-        uddot_history[:, 0] = uddot_total
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        trace.converged(0, 0.0, u_total)
+        trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw)
 
         half_dt2 = 0.5 * dt * dt
         one_minus_2beta = 1.0 - 2.0 * beta
@@ -1051,8 +1003,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
             udot_pred = udot_total + dt * one_minus_gamma * uddot_total
 
-            F_ext_next = (np.zeros(ndof) if self.F_func is None
-                           else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+            F_raw, F_ext_next = external_load(self.F_func, t_next, ndof)
 
             # Corrector compartido (ADR 0015); jacobiano
             # J = M + (1+α)·γΔt·C + (1+α)·βΔt²·K_t.
@@ -1064,7 +1015,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             res = self.corrector.run(problem, problem.initial_iterate(uddot_free))
 
             if not res.converged:
-                raise res.divergence_error(
+                raise trace.fail(res.divergence_error(
                     last_load_factor=t_next,
                     extra_message=(
                         f"NewtonHHTSolver (alpha={alpha_hht:.4f}): "
@@ -1072,7 +1023,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                         f"{self.max_iter} iteraciones; "
                         f"line_search={'on' if self.line_search else 'off'}."
                     ),
-                )
+                ), t_next)
             _log.info(
                 f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
                 f"iter={res.n_solves} | R/tol_F={res.last_conv.ratio_force:.2e}"
@@ -1080,10 +1031,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
 
             u_total, udot_total, uddot_total, uddot_free = res.x
 
-            u_history[:, step + 1] = u_total
-            forces_rec.record(u_history[:, step + 1])
-            udot_history[:, step + 1] = udot_total
-            uddot_history[:, step + 1] = uddot_total
+            trace.converged(step + 1, t_next, u_total)
+            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw)
 
             # Cache para el siguiente paso (términos α·X_n). F_int es el del
             # ensamblaje en u_{n+1} convergido.
@@ -1094,14 +1043,4 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         _log.info(f"  -> {n_steps} pasos completados (HHT-α no lineal). "
                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
 
-        return TransientResult(
-            t_history=t_history,
-            u_history=u_history,
-            udot_history=udot_history,
-            uddot_history=uddot_history,
-            n_steps=n_steps,
-            alpha_rayleigh=alpha_r,
-            beta_rayleigh=beta_r,
-            converged=True,
-            element_forces_history=forces_rec.result(),
-        )
+        return trace.finish()

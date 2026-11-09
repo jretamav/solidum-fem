@@ -48,7 +48,7 @@ from solidum.math.solvers import (
     LinearSolver,
     NonlinearSolver,
 )
-from solidum.math.solvers.diagnostics import MechanismError
+from solidum.math.solvers.diagnostics import MechanismError, Termination
 from solidum.sections import FiberSection, RectangularPatch
 
 E, L, B, H, NF, SIGMA_Y = 2.0e11, 3.0, 0.30, 0.50, 20, 250.0e6
@@ -251,6 +251,39 @@ class TestContinuacion(_Quiet):
         np.testing.assert_allclose(staged_path[:, 1], direct[:, 1], rtol=1e-9)
         self.assertLess(s2.initial_residual, 1e-12)
         self.assertAlmostEqual(r2.U[top2.dofs["ux"]], 0.06, delta=1e-15)
+
+
+    def test_descargar_hasta_un_objetivo_menor(self):
+        """El objetivo es absoluto y fija el sentido: tras empujar hasta
+        0.06 m, una etapa con objetivo 0.045 m descarga (λ < 0), llega exacto
+        y, como la descarga es elástica, con la rigidez elástica 3·E·I/L³."""
+        dom, top, F = plastic_cantilever()
+        asm = Assembler(dom)
+        r1 = solidum.run(dom, assembler=asm, solver=_push(asm, top, 0.06), F_applied=F)
+        lams = []
+        s2 = _push(asm, top, 0.045)
+        r2 = solidum.run(dom, assembler=asm, solver=s2, F_applied=F, previous=r1,
+                         step_callback=lambda k, U, lam: lams.append(lam))
+        self.assertEqual(s2.termination, Termination.CONTROL_TARGET)
+        self.assertTrue(r2.converged)
+        self.assertAlmostEqual(r2.U[top.dofs["ux"]], 0.045, delta=1e-15)
+        self.assertTrue(np.all(np.diff([0.0] + lams) < 0.0))
+        k_el = 3.0 * E * I_FIB / L ** 3
+        self.assertAlmostEqual(s2.lambda_final, -k_el * 0.015 / 1.0e6,
+                               delta=1e-8 * k_el * 0.015 / 1.0e6)
+
+    def test_objetivo_igual_al_punto_de_partida(self):
+        dom, top, F = plastic_cantilever()
+        asm = Assembler(dom)
+        r1 = solidum.run(dom, assembler=asm, solver=_push(asm, top, 0.03), F_applied=F)
+        s2 = _push(asm, top, 0.03)
+        logging.disable(logging.NOTSET)
+        with self.assertLogs("solidum", level="WARNING") as logs:
+            r2 = solidum.run(dom, assembler=asm, solver=s2, F_applied=F, previous=r1)
+        self.assertTrue(any("no hay nada que trazar" in m for m in logs.output))
+        self.assertEqual(s2.termination, Termination.CONTROL_TARGET)
+        self.assertEqual(s2.steps_done, 0)
+        np.testing.assert_array_equal(r2.U, r1.U)
 
 
 class TestEquilibrioInicial(_Quiet):

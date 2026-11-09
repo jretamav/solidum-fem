@@ -675,13 +675,15 @@ def solve_manufactured_transient(mesh, solution: ManufacturedConduction, t_end: 
 
     assembler = Assembler(dom)
     kwargs = {} if linear_algebra is None else {"linear_algebra": linear_algebra}
-    result = ThetaMethodSolver(
-        assembler, t_end / n_steps, n_steps, T0, theta=theta, lumping=lumping,
-        F_func=lambda t: solution._loads(mesh, assembler, dirichlet, t),
-        dirichlet_func=prescribed, output_every=n_steps, **kwargs).solve()
-    if not result.converged:
-        raise RuntimeError(f"El método θ (theta={theta}) divergió con Δt = {t_end / n_steps}.")
-    return result
+    from solidum.math.solvers.diagnostics import TimeIntegrationInstabilityError
+    try:
+        return ThetaMethodSolver(
+            assembler, t_end / n_steps, n_steps, T0, theta=theta, lumping=lumping,
+            F_func=lambda t: solution._loads(mesh, assembler, dirichlet, t),
+            dirichlet_func=prescribed, output_every=n_steps, **kwargs).solve()
+    except TimeIntegrationInstabilityError as exc:
+        raise RuntimeError(
+            f"El método θ (theta={theta}) divergió con Δt = {t_end / n_steps}.") from exc
 
 
 def _reference_rule(cell: str, n: int):

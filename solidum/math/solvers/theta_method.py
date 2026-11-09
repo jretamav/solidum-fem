@@ -26,8 +26,11 @@ import numpy as np
 from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import (
     CholeskyNotPositiveDefiniteError,
+    TransientTerminationMixin,
+    TransientTrace,
     _log,
 )
+from solidum.math.solvers.diagnostics import TimeIntegrationInstabilityError, Termination
 from solidum.registry import SolverRegistry
 from solidum.results import ThermalTransientResult
 
@@ -45,7 +48,7 @@ _DIVERGENCE_FACTOR = 1e6
 
 
 @SolverRegistry.register
-class ThetaMethodSolver:
+class ThetaMethodSolver(TransientTerminationMixin):
     """Integración temporal θ para ``C·Ṫ + K·T = F(t)`` (Etapa 8).
 
     Aproxima la ecuación en un punto intermedio del paso, ponderando el
@@ -396,6 +399,7 @@ class ThetaMethodSolver:
 
     def solve(self) -> ThermalTransientResult:
         cls = type(self).__name__
+        self._begin_trace()
         _log.info("--- INICIANDO SOLVER THETA-METHOD (térmico transitorio) ---")
 
         theta, dt, n_steps = self.theta, self.dt, self.n_steps
@@ -502,21 +506,32 @@ class ThetaMethodSolver:
         store_at = set(stored)
 
         t_history = np.array([k * dt for k in stored], dtype=float)
-        T_history = np.zeros((ndof, len(stored)))
         col_of = {k: i for i, k in enumerate(stored)}
+
+        def build(h, t, n_done, termination, _forces):
+            return ThermalTransientResult(
+                t_history=t, T_history=h["T"], n_steps=int(n_done), theta=theta,
+                dt=dt, order=self.order,
+                converged=termination == Termination.T_END.value,
+                termination=termination,
+            )
+
+        trace = TransientTrace(self, t_history=t_history, n_rows=ndof,
+                               fields=("T",), build=build)
 
         def _ensamblar_global(T_f: np.ndarray, g: np.ndarray) -> np.ndarray:
             return T_op @ T_f + g
 
-        T_history[:, 0] = _ensamblar_global(T_free, g_init)
+        T0 = _ensamblar_global(T_free, g_init)
+        trace.converged(0, 0.0, T0)
+        trace.store(0, T0)
 
         # --- Estado en t = 0 para el primer paso ---
         F_prev = self._F_at(0.0, ndof)
         g_prev = g_init
-        converged = True
         # Rango de referencia para detectar explosión numérica.
-        ref = max(float(np.max(np.abs(T_history[:, 0]))),
-                   float(np.max(np.abs(g_init))), 1.0)
+        ref = max(float(np.max(np.abs(T0))), float(np.max(np.abs(g_init))), 1.0)
+        threshold = _DIVERGENCE_FACTOR * ref
 
         for step in range(n_steps):
             t_next = (step + 1) * dt
@@ -542,43 +557,35 @@ class ThetaMethodSolver:
 
             T_free = factor.solve(rhs)
 
-            if step + 1 in store_at:
-                T_history[:, col_of[step + 1]] = _ensamblar_global(
-                    T_free, g_next,
-                )
+            T_norm = float(np.max(np.abs(T_free))) if T_free.size else 0.0
+            if not np.all(np.isfinite(T_free)) or T_norm > threshold:
+                # ADR 0025: la integración se detiene con una excepción
+                # tipada y el historial hasta el último paso convergido; no
+                # se devuelve un resultado con columnas sin calcular.
+                raise trace.fail(TimeIntegrationInstabilityError(
+                    time=t_next, solution_norm=T_norm, threshold=threshold,
+                    extra_message=(
+                        f"{cls}: divergencia detectada en el paso {step + 1}. "
+                        f"Con theta={theta:g} el esquema es "
+                        + ("incondicionalmente estable: revisa los datos del "
+                           "modelo (ρc positiva, conductividad bien condicionada)."
+                           if self.is_unconditionally_stable else
+                           f"condicionalmente estable: reduce Δt o usa theta ≥ 0.5 "
+                           f"(Δt actual: {dt:g} s).")),
+                ), t_next)
 
-            if not np.all(np.isfinite(T_free)) or (
-                np.max(np.abs(T_free)) > _DIVERGENCE_FACTOR * ref
-            ):
-                converged = False
-                _log.error(
-                    "%s: divergencia detectada en el paso %d (t=%.4e s). "
-                    "Con theta=%g el esquema es %s. %s",
-                    cls, step + 1, t_next, theta,
-                    "incondicionalmente estable — revisa los datos del modelo "
-                    "(ρc positiva, conductividad bien condicionada)"
-                    if self.is_unconditionally_stable else
-                    "condicionalmente estable",
-                    "" if self.is_unconditionally_stable else
-                    f"Reduce Δt o usa theta ≥ 0.5 (Δt actual: {dt:g} s).",
-                )
-                break
+            T_step = _ensamblar_global(T_free, g_next)
+            trace.converged(step + 1, t_next, T_step)
+            if step + 1 in store_at:
+                trace.store(col_of[step + 1], T_step)
 
             F_prev, g_prev = F_next, g_next
 
-        n_done = step + 1 if not converged else n_steps
+        T_hist = trace.histories["T"]
         _log.info("  -> %d pasos completados. T ∈ [%.6g, %.6g].",
-                   n_done, float(np.min(T_history)), float(np.max(T_history)))
+                   n_steps, float(np.min(T_hist)), float(np.max(T_hist)))
 
-        return ThermalTransientResult(
-            t_history=t_history,
-            T_history=T_history,
-            n_steps=n_steps,
-            theta=theta,
-            dt=dt,
-            order=self.order,
-            converged=converged,
-        )
+        return trace.finish()
 
     # ------------------------------------------------------------------
     # Evaluación de cargas y Dirichlet en un instante

@@ -64,18 +64,22 @@ import scipy.sparse as sp
 from solidum.constants import LUMPED_MASS_OFF_DIAGONAL_RTOL
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.solvers._shared import (
-    ElementForcesRecorder,
+    TransientTerminationMixin,
     _dof_labels,
     _log,
+    external_load,
+    massless_error,
+    mechanical_trace,
     number_of_steps,
     warn_initial_conditions_off_constraints,
 )
+from solidum.math.solvers.diagnostics import TimeIntegrationInstabilityError
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
 
 
 @SolverRegistry.register
-class CentralDifferenceSolver:
+class CentralDifferenceSolver(TransientTerminationMixin):
     """Integración explícita por diferencias centradas (ADR 0009 fase 5).
 
     Parameters
@@ -205,7 +209,7 @@ class CentralDifferenceSolver:
 
     @staticmethod
     def _invert_diagonal_mass(M_red: sp.spmatrix, *, T=None, M=None,
-                              domain=None) -> np.ndarray:
+                              domain=None, free_dofs=None) -> np.ndarray:
         """Devuelve el vector ``1/diag(M_red)`` si M_red es diagonal pura.
 
         El esquema explícito sólo es eficiente con M estrictamente diagonal
@@ -257,15 +261,20 @@ class CentralDifferenceSolver:
                 f"NewmarkSolver. Off-diagonal max = {off_max:.3e} vs "
                 f"diag max = {diag_max:.3e}."
             )
-        if np.min(diag) <= 0.0:
+        error = massless_error(M_sp, "CentralDifferenceSolver", "explicit_integration",
+                               domain=domain, free_dofs=free_dofs)
+        if error is not None:
+            raise error
+        if np.min(diag) < 0.0:
             raise ValueError(
-                "CentralDifferenceSolver: M_lumped tiene entradas no "
-                f"positivas en la diagonal (min={np.min(diag):.3e}). "
-                "Material sin density o densidad negativa."
+                "CentralDifferenceSolver: M_lumped tiene entradas negativas en "
+                f"la diagonal (min={np.min(diag):.3e}): densidad o masa de nudo "
+                "negativa."
             )
         return 1.0 / diag
 
     def solve(self) -> TransientResult:
+        self._begin_trace()
         _log.info("--- INICIANDO SOLVER CENTRAL DIFFERENCES ---")
 
         # Ensamblar K (lineal) y M (lumped por construcción de este solver).
@@ -290,7 +299,7 @@ class CentralDifferenceSolver:
 
         # M⁻¹ diagonal — vector denso, multiplicación trivial.
         M_inv_diag = self._invert_diagonal_mass(
-            M_red, T=T, M=M, domain=self.assembler.domain,
+            M_red, T=T, M=M, domain=self.assembler.domain, free_dofs=free_dofs,
         )
 
         ndof = self.assembler.ndof
@@ -309,8 +318,7 @@ class CentralDifferenceSolver:
         )
 
         # F_int(u_0) y a_0.
-        F0_global = (np.zeros(ndof) if self.F_func is None
-                      else np.asarray(self.F_func(0.0), dtype=float).reshape(ndof))
+        F0_raw, F0_global = external_load(self.F_func, 0.0, ndof)
         F0_red = T.T @ F0_global
 
         F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
@@ -325,14 +333,10 @@ class CentralDifferenceSolver:
         # Historiales.
         n_steps = number_of_steps(self.t_end, dt)
         t_history = np.linspace(0.0, n_steps * dt, n_steps + 1)
-        u_history = np.zeros((ndof, n_steps + 1))
-        udot_history = np.zeros((ndof, n_steps + 1))
-        uddot_history = np.zeros((ndof, n_steps + 1))
-        u_history[:, 0] = T @ u_free + g
-        udot_history[:, 0] = T @ v_free
-        uddot_history[:, 0] = T @ a_free
-        forces_rec = ElementForcesRecorder(self.assembler.domain, self.record_internal_forces)
-        forces_rec.record(u_history[:, 0])
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        u0_total = T @ u_free + g
+        trace.converged(0, 0.0, u0_total)
+        trace.store(0, u0_total, T @ v_free, T @ a_free, F_ext=F0_raw)
 
         # Escala inicial para detección de divergencia.
         initial_scale = max(
@@ -353,8 +357,7 @@ class CentralDifferenceSolver:
             F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
 
             # F(t_{n+1}).
-            F_global = (np.zeros(ndof) if self.F_func is None
-                         else np.asarray(self.F_func(t_next), dtype=float).reshape(ndof))
+            F_raw, F_global = external_load(self.F_func, t_next, ndof)
             F_red = T.T @ F_global
 
             # a_{n+1} = M⁻¹·(F − F_int − C·v_{n+1/2} − F_dir).
@@ -368,22 +371,22 @@ class CentralDifferenceSolver:
             # Detección de divergencia.
             u_norm = float(np.linalg.norm(u_free))
             if not np.isfinite(u_norm) or u_norm > threshold:
-                raise RuntimeError(
-                    f"CentralDifferenceSolver: divergencia detectada en paso "
-                    f"{step + 1}/{n_steps} (t={t_next:.3e}). "
-                    f"|u| = {u_norm:.3e} > {threshold:.3e}. Probable "
-                    f"violación de la condición CFL Δt < 2/ω_max. "
-                    f"Reduce dt (actual {dt:.3e}) o usa NewmarkSolver "
-                    f"implícito (incondicionalmente estable)."
-                )
+                raise trace.fail(TimeIntegrationInstabilityError(
+                    time=t_next, solution_norm=u_norm, threshold=threshold,
+                    extra_message=(
+                        f"CentralDifferenceSolver: divergencia detectada en el "
+                        f"paso {step + 1}/{n_steps}. Probable violación de la "
+                        f"condición CFL Δt < 2/ω_max. Reduce dt (actual "
+                        f"{dt:.3e}) o usa NewmarkSolver implícito "
+                        f"(incondicionalmente estable)."),
+                ), t_next)
 
-            # Volcado a historial global.
-            u_history[:, step + 1] = T @ u_free + g
-            udot_history[:, step + 1] = T @ v_free
-            uddot_history[:, step + 1] = T @ a_free
-            # El estado del paso ya esta comiteado (rama no lineal) o no
-            # existe (lineal): las fuerzas registradas son las del instante.
-            forces_rec.record(u_history[:, step + 1])
+            # Volcado a historial global. El estado del paso ya está
+            # comiteado (rama no lineal) o no existe (lineal): las fuerzas
+            # registradas son las del instante.
+            u_total = T @ u_free + g
+            trace.converged(step + 1, t_next, u_total)
+            trace.store(step + 1, u_total, T @ v_free, T @ a_free, F_ext=F_raw)
 
         _log.info(
             f"  -> {n_steps} pasos completados. "
@@ -391,16 +394,7 @@ class CentralDifferenceSolver:
             f"Modo: {'no lineal' if self.nonlinear else 'lineal'}."
         )
 
-        return TransientResult(
-            t_history=t_history,
-            u_history=u_history,
-            udot_history=udot_history,
-            uddot_history=uddot_history,
-            n_steps=n_steps,
-            alpha_rayleigh=alpha_r,
-            beta_rayleigh=beta_r,
-            element_forces_history=forces_rec.result(),
-        )
+        return trace.finish()
 
     def _compute_internal_forces_reduced(
         self,

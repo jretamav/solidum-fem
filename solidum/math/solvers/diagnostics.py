@@ -27,13 +27,15 @@ from solidum.math.linalg.eigen import SemidefiniteMassError
 
 
 class Termination(str, Enum):
-    """Motivo por el que terminó un análisis estático incremental (ADR 0025).
+    """Motivo por el que terminó un análisis incremental o en el tiempo
+    (ADR 0025).
 
-    Lo dejan ``NonlinearSolver`` y la familia del arco en su atributo
-    ``termination`` tras ``solve()``, también cuando termina con una
-    excepción, y ``solidum.run`` lo copia en ``SolveResult.termination``. Es
-    una cadena (``Termination.MAX_STEPS == "max_steps"``), así que se puede
-    comparar sin importar la clase.
+    Lo dejan ``NonlinearSolver``, la familia del arco y los solvers
+    transitorios (mecánicos y térmico) en su atributo ``termination`` tras
+    ``solve()``, también cuando termina con una excepción. ``solidum.run``
+    lo copia en ``SolveResult.termination``, y los transitorios en el de su
+    resultado. Es una cadena (``Termination.MAX_STEPS == "max_steps"``), así
+    que se puede comparar sin importar la clase.
 
     - ``MAX_LAMBDA``: alcanzó el factor de carga final (``max_lambda``; en el
       ``NonlinearSolver``, la carga completa λ = 1).
@@ -41,13 +43,16 @@ class Termination(str, Enum):
       (``IndirectDisplacementSolver``, parámetro ``control_target``).
     - ``MAX_STEPS``: agotó ``max_steps`` antes de completar el trazado. El
       resultado es el del último paso convergido, **no** el análisis pedido.
-    - ``DIVERGED``: un paso no convergió ni reduciendo su tamaño al mínimo;
-      ``solve()`` lanzó una :class:`SolverDivergedError`.
+    - ``T_END``: un análisis en el tiempo llegó al instante final.
+    - ``DIVERGED``: un paso no convergió ni reduciendo su tamaño al mínimo,
+      o la integración en el tiempo se volvió inestable; ``solve()`` lanzó
+      una :class:`SolverDivergedError`.
     """
 
     MAX_LAMBDA = "max_lambda"
     CONTROL_TARGET = "control_target"
     MAX_STEPS = "max_steps"
+    T_END = "t_end"
     DIVERGED = "diverged"
 
     def __str__(self) -> str:
@@ -90,6 +95,10 @@ class SolverDivergedError(RuntimeError):
         self.last_delta = float(last_delta)
         self.last_load_factor = float(last_load_factor)
         self.n_bisections = int(n_bisections)
+        self.extra_message = str(extra_message)
+        # Historial hasta el último paso convergido de un análisis en el
+        # tiempo que fracasó (ADR 0025); lo fija el solver transitorio.
+        self.partial_result = None
 
         msg_parts = [
             f"[{self.mode}] Solver divergió.",
@@ -186,6 +195,46 @@ class StepConstraintError(SolverDivergedError):
         "una magnitud que crezca de forma monótona (p. ej. el alargamiento "
         "de la zona que se ablanda) o un primer paso menor (initial_dlambda)."
     )
+
+
+class TimeIntegrationInstabilityError(SolverDivergedError):
+    """La integración en el tiempo se volvió inestable (ADR 0025).
+
+    La solución crece sin límite paso a paso: el paso de tiempo supera el
+    límite de estabilidad de un esquema condicionalmente estable (diferencia
+    central, θ-método con θ < 1/2). No es un fallo de Newton: no hay residuo
+    que reportar, y ``last_residual`` es ``nan``. ``last_delta`` es la norma
+    de la solución en el paso en que se detectó y ``last_load_factor`` el
+    instante.
+    """
+
+    mode = "unstable_time_integration"
+    hint = (
+        "El paso de tiempo supera el límite de estabilidad del esquema. "
+        "Reduce dt o usa un esquema incondicionalmente estable (Newmark con "
+        "β = 1/4, γ = 1/2; HHT-α; θ-método con θ ≥ 1/2)."
+    )
+
+    def __init__(self, *, time: float, solution_norm: float, threshold: float,
+                 extra_message: str = ""):
+        self.threshold = float(threshold)
+        super().__init__(
+            last_residual=float("nan"), last_delta=float(solution_norm),
+            last_load_factor=float(time), n_bisections=0,
+            extra_message=extra_message,
+        )
+
+    def __str__(self) -> str:
+        parts = [
+            f"[{self.mode}] La integración en el tiempo se volvió inestable.",
+            f"  Instante: t = {self.last_load_factor:.6g}",
+            f"  Norma de la solución: {self.last_delta:.3e} "
+            f"(umbral {self.threshold:.3e})",
+            f"  Hint: {self.hint}",
+        ]
+        if self.extra_message:
+            parts.append(f"  Detalle: {self.extra_message}")
+        return "\n".join(parts)
 
 
 class UnknownDivergenceError(SolverDivergedError):
@@ -402,12 +451,20 @@ class IllPosedSystemError(RuntimeError):
 
 
 class MasslessDofsError(SemidefiniteMassError):
-    """El análisis modal no tiene solución con los grados de libertad sin
+    """Un análisis dinámico no tiene solución con los grados de libertad sin
     masa del modelo (ADR 0024).
 
-    Los grados de libertad sin masa (masas sólo en algunos nudos, elementos
-    con ``density = 0``) se condensan estáticamente, de forma exacta. Este
-    error se lanza sólo cuando eso no basta:
+    En el transitorio:
+
+    - ``initial_acceleration``: los integradores implícitos (Newmark, HHT y
+      sus variantes no lineales) aún no condensan los grados de libertad sin
+      masa para la aceleración inicial (deuda #34);
+    - ``explicit_integration``: la diferencia central exige masa en todos
+      los grados de libertad libres.
+
+    En el modal, los grados de libertad sin masa (masas sólo en algunos
+    nudos, elementos con ``density = 0``) se condensan estáticamente, de
+    forma exacta. Este error se lanza sólo cuando eso no basta:
 
     - ``too_many_modes``: se piden más modos que grados de libertad con
       masa, y sólo ellos tienen frecuencia finita;
@@ -433,7 +490,7 @@ class MasslessDofsError(SemidefiniteMassError):
     _MAX_LISTED = 12
 
     def __init__(self, *, cause: str, massless, massless_dofs: list[str],
-                 n_mass: int, n_modes: int, solver: str = "ModalSolver"):
+                 n_mass: int, n_modes: int = 0, solver: str = "ModalSolver"):
         self.massless_dofs = list(massless_dofs)
         self.n_modes = int(n_modes)
         n_zero = len(self.massless_dofs)
@@ -455,6 +512,19 @@ class MasslessDofsError(SemidefiniteMassError):
             texto = (
                 f"ningún grado de libertad libre tiene masa, así que no hay "
                 f"frecuencias finitas. Declara {dar_masa}."
+            )
+        elif cause == "initial_acceleration":
+            texto = (
+                f"la aceleración inicial ü₀ = M⁻¹·(F(0) − F_int(u₀) − C·u̇₀) no "
+                f"está definida con grados de libertad libres sin masa: la "
+                f"integración implícita en el tiempo todavía no los condensa "
+                f"(deuda #34 de docs/STATUS.md). Declara {dar_masa}. {sin_masa}"
+            )
+        elif cause == "explicit_integration":
+            texto = (
+                f"la integración explícita resuelve ü = M⁻¹·(…) en cada paso y "
+                f"exige masa en todos los grados de libertad libres. Declara "
+                f"{dar_masa}, o usa un integrador implícito. {sin_masa}"
             )
         elif cause == "massless_mechanism":
             texto = (

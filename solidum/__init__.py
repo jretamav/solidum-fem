@@ -29,13 +29,26 @@ from solidum.registry import (
 #    esta lista es solo azúcar para uso programático directo.
 from solidum.core.domain import Domain
 from solidum.core.node import Node
+from solidum.core.load_vector import LoadVector
 from solidum.results import (
     ElementForces,
+    HarmonicResult,
+    ModalResult,
+    ResponseSpectrumResult,
     SolveResult,
     ThermalTransientResult,
+    TransientResult,
     build_solve_result,
 )
-from solidum.entry import run, run_thermal_transient, run_yaml
+from solidum.entry import (
+    run,
+    run_harmonic,
+    run_modal,
+    run_response_spectrum,
+    run_thermal_transient,
+    run_transient,
+    run_yaml,
+)
 
 from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_2d import Elastic2D

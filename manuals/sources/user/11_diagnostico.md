@@ -30,6 +30,15 @@
 - **Aviso:** *trazado detenido en λ=… < max_lambda=… tras agotar max_steps*
   El trazado no terminó: el resultado es el del último paso convergido y `solver.termination` vale `"max_steps"` (`SolveResult.converged` es `False`). Aumentar `max_steps` o el tamaño del paso.
 
+- **`TimeIntegrationInstabilityError` en un análisis en el tiempo**
+  El paso de tiempo supera el límite de estabilidad del esquema: diferencia central por encima de la condición CFL ($\Delta t < 2/\omega_{\max}$) o θ-método con $\theta < 1/2$. La solución crece sin límite y el análisis se detiene. Reducir `dt` o usar un esquema incondicionalmente estable (Newmark con $\beta = 1/4$, $\gamma = 1/2$; HHT-α; $\theta \ge 1/2$). El historial hasta el último paso estable está en `exc.partial_result`.
+
+- **`MasslessDofsError` en un transitorio (`initial_acceleration` o `explicit_integration`)**
+  Hay grados de libertad libres sin masa: sin densidad en los elementos que los comparten ni masa de nudo, o sin inercia rotacional. El mensaje los nombra («nodo 2 (ux)»). Los integradores implícitos todavía no los condensan (deuda #34), y la diferencia central exige masa en todos. Dar masa a esos grados de libertad (`density` o `add_nodal_mass`); el análisis modal sí los admite.
+
+- **Aviso:** *la carga aplicada es un np.ndarray simple, sin sus cargas equivalentes por elemento…*
+  Las fuerzas internas de los elementos con carga distribuida pueden salir mal: la carga perdió sus cargas equivalentes al convertirla con `np.asarray`/`np.array` o al sumarla con `+=` sobre un arreglo de ceros, y se ensambló más de una carga de cuerpo. Combinar las cargas que devuelven `assemble_self_weight` y `assemble_body_load` con `+` y escalares (`F = F1 + λ·F2`). Lo mismo avisa el historial de fuerzas internas de un transitorio cuyo `F_func` devuelve un `np.ndarray` simple.
+
 - **Niveles del registro.**
   Con el nivel por omisión (`INFO`) cada solver incremental escribe una línea por paso convergido. El detalle por iteración de Newton sale con `solidum.set_log_level("DEBUG")`. Un `WARNING` de bisección («sin convergencia (tangente singular); bisección…») es un evento que el solver resolvió solo; un `ERROR` significa siempre que el análisis se detuvo.
 

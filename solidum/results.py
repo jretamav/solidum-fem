@@ -45,6 +45,7 @@ import numpy as np
 # ADR 0002). Re-exportado aquí para que la API pública
 # ``from solidum.results import ElementForces`` siga funcionando.
 from solidum.core.element_forces import ElementForces, ElementKind  # noqa: F401
+from solidum.core.load_vector import LoadVector, as_load_vector, equivalent_loads_of
 
 if TYPE_CHECKING:
     from solidum.core.domain import Domain
@@ -151,10 +152,14 @@ class TransientResult:
         Coeficientes Rayleigh efectivos usados en ``C = α·M + β·K``.
         ``(0.0, 0.0)`` si el análisis fue sin amortiguamiento.
     converged
-        ``True`` si el integrador completó todos los pasos. ``False`` solo
-        si se detuvo prematuramente por inestabilidad numérica detectada
-        (no aplica al Newmark incondicionalmente estable con default
-        β=1/4, γ=1/2).
+        ``True`` si el integrador llegó al instante final. Un análisis que
+        se detiene (Newton sin convergencia, integración inestable) lanza
+        una ``SolverDivergedError`` cuyo ``partial_result`` es un
+        ``TransientResult`` hasta el último paso convergido, con
+        ``converged = False`` (ADR 0025).
+    termination
+        ``"t_end"`` (llegó al instante final) o ``"diverged"`` (resultado
+        parcial de un análisis que se detuvo), ADR 0025.
     element_forces_history
         ``{elem_id: [ElementForces por paso]}`` registrado **durante** el
         análisis con el estado interno de cada paso, cuando el solver se
@@ -172,6 +177,7 @@ class TransientResult:
     beta_rayleigh: float = 0.0
     converged: bool = True
     element_forces_history: dict[int, list["ElementForces"]] | None = None
+    termination: str | None = None
 
     def internal_forces_history(
         self, domain: "Domain",
@@ -299,10 +305,14 @@ class ThermalTransientResult:
         precisión del default robusto ``theta = 1`` sea visible al
         consumidor y no una penalización silenciosa.
     converged
-        ``True`` si el integrador completó todos los pasos sin detectar
-        divergencia. Con ``theta >= 0.5`` el esquema es incondicionalmente
-        estable y no debe ser ``False``; con ``theta < 0.5`` puede serlo si
-        se excede el límite condicional de estabilidad.
+        ``True`` si el integrador llegó al instante final. Con
+        ``theta < 0.5`` y un paso que excede el límite condicional de
+        estabilidad, ``solve`` lanza ``TimeIntegrationInstabilityError``
+        (ADR 0025), cuyo ``partial_result`` es un ``ThermalTransientResult``
+        hasta el último instante almacenado antes de la divergencia, con
+        ``converged = False``.
+    termination
+        ``"t_end"`` o ``"diverged"`` (resultado parcial), ADR 0025.
     """
 
     t_history: np.ndarray
@@ -312,6 +322,7 @@ class ThermalTransientResult:
     dt: float
     order: int
     converged: bool = True
+    termination: str | None = None
 
     @property
     def T_final(self) -> np.ndarray:
@@ -663,6 +674,36 @@ def _split_constraint_forces(assembler, residual):
     return R, F_c, support_dofs, joint_dofs
 
 
+def legacy_equivalent_loads(assembler, load_factor: float) -> dict[int, np.ndarray]:
+    """Cargas equivalentes de un vector aplicado que no las lleva (``np.ndarray``
+    simple, ADR 0027): se supone que contiene la última carga de cuerpo
+    ensamblada, escalada por ``load_factor``, como antes del ADR 0027.
+
+    Esa suposición es ambigua si se ensamblaron varias cargas de cuerpo: se
+    avisa, porque las fuerzas internas de extremo pueden salir mal. Las cargas
+    que devuelven ``assemble_self_weight`` y ``assemble_body_load`` llevan las
+    suyas; se pierden al convertirlas con ``np.asarray``/``np.array`` o al
+    sumarlas sobre un arreglo de ceros con ``+=``.
+    """
+    recorded = getattr(assembler, "equivalent_loads", None) or {}
+    if not recorded:
+        return {}
+    if getattr(assembler, "equivalent_loads_version", 0) > 1:
+        from solidum.logging import get_logger
+        get_logger("results").warning(
+            "Fuerzas internas: la carga aplicada es un np.ndarray simple, sin "
+            "sus cargas equivalentes por elemento, y se ensamblaron %d cargas de "
+            "cuerpo. Se descuenta sólo la última (escalada por %.6g), que puede "
+            "no ser la aplicada: los extremos de los elementos con carga "
+            "distribuida pueden salir mal. Combine las cargas que devuelven "
+            "assemble_self_weight/assemble_body_load con + y escalares (F = F1 + "
+            "λ·F2) sin convertirlas con np.asarray ni sumarlas con += sobre un "
+            "arreglo de ceros (ADR 0027).",
+            assembler.equivalent_loads_version, load_factor,
+        )
+    return {eid: load_factor * np.asarray(f, dtype=float) for eid, f in recorded.items()}
+
+
 def build_solve_result(
     domain: "Domain",
     assembler: "Assembler",
@@ -754,13 +795,16 @@ def build_solve_result(
 
     # Cargas nodales equivalentes de la carga distribuida (peso propio /
     # fuerza de cuerpo) por elemento: las fuerzas internas de extremo son
-    # F_int − f_eq, no K·u. Sin ``equivalent_loads`` explícitas, las del
-    # último ensamblaje de carga de cuerpo escaladas por el factor de carga;
-    # en un análisis por etapas las compone ``solidum.run`` (ADR 0026).
+    # F_int − f_eq, no K·u. Las lleva la carga aplicada (``LoadVector``, ADR
+    # 0027), combinadas con la aritmética de las cargas (también la de una
+    # etapa, ADR 0026). Un ``np.ndarray`` simple las perdió: se recurre al
+    # registro heredado del ensamblador (ver ``legacy_equivalent_loads``).
     if equivalent_loads is None:
-        recorded = getattr(assembler, "equivalent_loads", None) or {}
-        equivalent_loads = {eid: load_factor * np.asarray(f, dtype=float)
-                            for eid, f in recorded.items()}
+        carried = equivalent_loads_of(F_applied)
+        if isinstance(F_applied, LoadVector):
+            equivalent_loads = {} if carried is None else carried.as_dict()
+        else:
+            equivalent_loads = legacy_equivalent_loads(assembler, load_factor)
     element_forces: dict[int, ElementForces] = {}
     for elem_id, elem in domain.elements.items():
         f_eq = equivalent_loads.get(elem_id)
@@ -768,6 +812,8 @@ def build_solve_result(
         if ef is not None:
             element_forces[elem_id] = ef
 
+    if not isinstance(F_applied, LoadVector):
+        F_applied = as_load_vector(F_applied, equivalent_loads)
     return SolveResult(
         U=U,
         F_applied=F_applied,
@@ -781,7 +827,9 @@ def build_solve_result(
         condition_estimate=condition_estimate,
         termination=None if termination is None else str(termination),
         load_factor=float(load_factor),
-        F_constant=None if F_constant is None else np.asarray(F_constant, dtype=float),
+        F_constant=(None if F_constant is None else
+                    F_constant if isinstance(F_constant, LoadVector)
+                    else np.asarray(F_constant, dtype=float)),
         equivalent_loads=equivalent_loads,
         _equivalent_loads_version=getattr(assembler, "equivalent_loads_version", None),
     )

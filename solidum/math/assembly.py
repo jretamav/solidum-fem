@@ -9,6 +9,7 @@ from solidum.bc.constraints import ConstraintSet
 from solidum.constants import BATCH_ASSEMBLY_DEFAULT, BATCH_PARALLEL_DEFAULT
 from solidum.core.domain import Domain
 from solidum.core.element import Element
+from solidum.core.load_vector import EquivalentLoadLayout, EquivalentLoads, LoadVector
 from solidum.logging import get_logger
 from solidum.math.batch.family import Family, build_families
 from solidum.math.batch.kernels import coo_to_csr_reduce, coo_to_csr_reduce_parallel
@@ -146,16 +147,17 @@ class Assembler:
         self._topology_key: tuple | None = None
         self._constraint_fp: int | None = None
 
-        # Cargas nodales equivalentes por elemento (ejes globales) del último
-        # ``assemble_body_load`` / ``assemble_self_weight``. Las consume
-        # ``build_solve_result`` para que ``internal_forces`` devuelva las
-        # fuerzas internas de extremo (``F_int − f_eq``) y no ``K·u``.
+        # Registro heredado (anterior al ADR 0027): cargas nodales equivalentes
+        # por elemento del último ``assemble_body_load`` / ``assemble_self_weight``
+        # y su versión, que aumenta con cada carga de cuerpo ensamblada. Desde
+        # el ADR 0027 cada carga lleva las suyas (``LoadVector``); el registro
+        # sólo se usa para un ``np.ndarray`` simple que las perdió, y la
+        # versión delata la ambigüedad de varias cargas de cuerpo.
         self.equivalent_loads: dict[int, np.ndarray] = {}
-        # Versión del registro anterior: aumenta con cada carga de cuerpo
-        # ensamblada. ``solidum.run`` la usa en un análisis por etapas para
-        # saber si las cargas equivalentes registradas son de la etapa nueva
-        # o de la anterior (ADR 0026).
         self.equivalent_loads_version: int = 0
+        # Disposición compartida de las cargas equivalentes de este
+        # ensamblador: combinar dos cargas suyas es una suma vectorizada.
+        self._equivalent_layout: EquivalentLoadLayout | None = None
 
     def _get_element_global_indices(self, element) -> list:
         """Extrae los índices globales de DOFs del elemento en el orden correcto.
@@ -865,26 +867,37 @@ class Assembler:
         elemento (``'uz' in DOF_NAMES`` ⇒ 3D)."""
         return v3 if 'uz' in element.DOF_NAMES else v3[:2]
 
-    def _iterate_body_force(self, load_for_element: Callable) -> np.ndarray:
+    def _iterate_body_force(self, load_for_element: Callable) -> LoadVector:
         """Recorrido interno común a `assemble_body_load` y `assemble_self_weight`.
 
         Itera sobre todos los elementos que declaran `compute_body_load` y
         delega en `load_for_element(element) -> np.ndarray` el vector nodal
-        consistente de cada uno (fuerza de cuerpo o peso propio).
+        consistente de cada uno (fuerza de cuerpo o peso propio). Devuelve un
+        :class:`~solidum.core.load_vector.LoadVector` que lleva esos vectores
+        como sus cargas equivalentes por elemento (ADR 0027).
         """
         self._ensure_topology()
 
         F_body = np.zeros(self.ndof)
-        equivalent_loads: dict[int, np.ndarray] = {}
+        ids: list[int] = []
+        blocks: list[np.ndarray] = []
         for i, element in enumerate(self.domain.elements.values()):
             if getattr(element, "compute_body_load", None) is None:
                 continue
-            f_e = np.asarray(load_for_element(element), dtype=float)
+            f_e = np.asarray(load_for_element(element), dtype=float).ravel()
             F_body[self._elem_dof_indices[i]] += f_e
-            equivalent_loads[element.id] = f_e
-        self.equivalent_loads = equivalent_loads
+            ids.append(element.id)
+            blocks.append(f_e)
+        layout = self._equivalent_layout
+        if layout is None or not layout.same_as(
+                EquivalentLoadLayout(ids, [b.size for b in blocks])):
+            layout = self._equivalent_layout = EquivalentLoadLayout(
+                ids, [b.size for b in blocks])
+        equivalent = (EquivalentLoads(layout, np.concatenate(blocks)) if blocks else None)
+        # Registro heredado (ver __init__).
+        self.equivalent_loads = dict(zip(ids, blocks))
         self.equivalent_loads_version += 1
-        return F_body
+        return LoadVector(F_body, equivalent)
 
     def assemble_body_load(self, b) -> np.ndarray:
         """Acumula la integral consistente de fuerza de cuerpo uniforme.

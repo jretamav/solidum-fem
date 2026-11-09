@@ -4,6 +4,7 @@
 - **Fecha**: 2026-11-09
 - **Alcance**:
   - `ArcLengthSolver`, `IndirectDisplacementSolver` (parámetro `control_target`) y `NonlinearSolver`: el estado de terminación y las excepciones tipadas;
+  - desde el 2026-11-09 (§6), también los solvers transitorios mecánicos y el térmico;
   - `DissipationArcLengthSolver` del módulo de usuario `dissipation_control`, por el contrato de su padre;
   - `NewtonCorrector`, `SolveResult.termination` y `solidum.run`;
   - el registro de `solidum/logging.py`.
@@ -81,6 +82,17 @@ El manejador de consola de `solidum` adapta cada mensaje a la codificación del 
 - letras acentuadas sin acento, si hace falta (ASCII).
 
 Con UTF-8 nada cambia. Se prefirió a reescribir los mensajes en ASCII: los textos siguen siendo legibles en una consola moderna, y la garantía no depende de que cada mensaje futuro respete una regla.
+
+### 6. Ampliación (2026-11-09): análisis en el tiempo y objetivo dentro de una etapa
+
+Una auditoría de generalidad encontró el contrato a medias. Los transitorios no tenían `termination`. Si el Newton de Newmark o de HHT no convergía, se perdía el historial calculado y no había línea `ERROR`. La diferencia central lanzaba un `RuntimeError` genérico. El θ-método térmico registraba `ERROR` pero **devolvía** un resultado con `converged = False`, el número de pasos pedido y las columnas sin calcular en cero. Se extiende el mismo contrato:
+
+- **`NewmarkSolver`, `HHTSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver` y `ThetaMethodSolver`** dejan `termination` (nuevo valor `"t_end"`: llegó al instante final, o `"diverged"`), `completed`, `steps_done`, `t_final` y `U_final`. El estado se fija también cuando `solve` termina con una excepción y se reinicia al empezar. `TransientResult` y `ThermalTransientResult` llevan `termination`.
+- **Un análisis en el tiempo que se detiene** registra una línea `ERROR` y lanza una excepción tipada. El historial hasta el último paso convergido queda en `exc.partial_result` (y en `solver.partial_result`), con `converged = False` y sin columnas sin calcular.
+  - Newton sin convergencia: la clasificación del ADR 0011.
+  - Integración inestable (diferencia central fuera de la condición CFL, θ-método con θ < 1/2 y Δt excesivo): **`TimeIntegrationInstabilityError`** (nueva, subclase de `SolverDivergedError` y por tanto de `RuntimeError`), con el instante y la norma de la solución.
+- **Grados de libertad sin masa en un transitorio**: `MasslessDofsError` (ADR 0024) los nombra, con causa `initial_acceleration` en los integradores implícitos (deuda #34) o `explicit_integration` en la diferencia central. Antes era un `ValueError` sin nombres.
+- **`control_target` dentro de una etapa** (ADR 0026). Es un valor absoluto de la magnitud controlada, y el sentido del trazado sale del objetivo: si es menor que el valor de partida, la etapa descarga (λ < 0) hasta llegar exacto. Un objetivo igual al valor de partida no traza nada y lo avisa. Antes se exigía un objetivo positivo «porque la magnitud parte de cero», y un objetivo ya superado terminaba sin pasos ni aviso.
 
 ## Consecuencias
 
