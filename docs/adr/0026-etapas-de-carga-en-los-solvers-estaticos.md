@@ -90,7 +90,7 @@ $$\mathbf f_\text{eq} = \mathbf f_\text{eq}^{\,c} + \lambda\,\mathbf f_\text{eq}
   - contra la viga-columna con acortamiento axial (δ = 2.045488e-4 m), el error es 3.42e-4 con 16 elementos y el orden observado 2.00.
 - **Interacción N–M.** Acero perfectamente plástico con n = 0.3:
   - el exceso sobre M_p(1 − n²)/L es +11.7 %, +5.9 % y +3.0 % con 4, 8 y 16 elementos (+1.5 % con 32);
-  - es de primer orden y su extrapolación de Richardson da la carga límite (−0.04 %);
+  - es de primer orden y su extrapolación de Richardson da la carga límite (−0.04 %). Ése es el criterio, por decisión del usuario (2026-11-09), en lugar de un exceso ≤ 2 % con 16 elementos, que el error de malla del elemento en desplazamientos no cumple con carga axial;
   - la reacción vertical suma P durante todo el empuje.
 - **Coherencia elástica.** Las etapas reproducen la superposición a 1e-10.
 - **Continuación.** Continuar el empuje de 0.03 a 0.06 m da la misma curva que empujar de una vez hasta 0.06 m, a 1e-9 en la fuerza.
