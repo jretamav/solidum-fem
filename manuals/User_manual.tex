@@ -1695,6 +1695,31 @@ solver:
 
 \textbf{Referencia}: Crisfield, \textquotedbl{}A fast incremental/iterative solution procedure that handles snap-through\textquotedbl{} (\textit{Computers \& Structures}, 1981).
 
+\section{Análisis por etapas: gravedad primero, empuje después}
+
+Un análisis de empuje lateral aplica primero la gravedad, que se queda, y después empuja con una carga que crece (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}). Cada etapa es una llamada a \texttt{solidum.run} con el mismo \texttt{Assembler} ---guarda el estado interno de los elementos--- y el resultado de la etapa anterior en \texttt{previous}:
+
+\begin{lstlisting}[language=Python]
+asm = Assembler(dom)
+F_g = asm.assemble_self_weight([0.0, -9.81])      # o cargas puntuales de piso
+gravedad = solidum.run(dom, assembler=asm, F_applied=F_g,
+                       solver=NonlinearSolver(asm, num_steps=4))
+empuje = solidum.run(dom, assembler=asm, F_applied=F_lateral, previous=gravedad,
+                     solver=IndirectDisplacementSolver(
+                         asm, control=[(12, "ux", 1.0)], initial_dl=2e-3,
+                         max_lambda=1e9, control_target=0.09))
+
+\end{lstlisting}
+
+\begin{itemize}
+  \item La etapa parte de los desplazamientos de la anterior y mantiene \textbf{constante} su carga aplicada, también la distribuida. El residuo es $\mathbf F_c + \lambda\,\mathbf F - \mathbf F_\text{int}$, con $\lambda = 0$ al empezar; \texttt{max\_lambda} y \texttt{control\_target} se refieren a la etapa (\texttt{control\_target} es la magnitud controlada total, así que continúa desde donde quedó).
+  \item Un desplazamiento impuesto que no cambia entre etapas se queda; uno que se cambia antes de la etapa crece con $\lambda$ desde el valor que tenía.
+  \item El resultado separa \texttt{F\_constant} (lo ya aplicado) y \texttt{F\_variable} (lo que creció, \texttt{load\_factor}\ensuremath{\cdot}F); las reacciones son las de la carga total.
+  \item La etapa comprueba que empieza en equilibrio y lo avisa si no. Empezar en $U = 0$ un modelo que conserva el estado plástico de un análisis anterior también se avisa: para continuarlo se usa \texttt{previous}; para un análisis nuevo, se construye el modelo de nuevo.
+  \item Lo admiten \texttt{NonlinearSolver}, \texttt{ArcLengthSolver} e \texttt{IndirectDisplacementSolver}; desde Python también directamente, \texttt{solver.\allowbreak{}solve(F, u0=U\_\allowbreak{}anterior, constant\_\allowbreak{}load=F\_\allowbreak{}anterior)}. Desde el YAML todavía no.
+  \item Con dos cargas distribuidas ensambladas en una misma etapa (por ejemplo, peso propio más una fuerza de cuerpo), las fuerzas internas de los elementos descuentan sólo la última: hay que ensamblarlas en etapas distintas o sumar su efecto aparte.
+\end{itemize}
+
 \section{\texttt{IndirectDisplacementSolver} --- control indirecto de desplazamiento}
 
 Variante de \texttt{ArcLengthSolver} que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de \textbf{una magnitud elegida}: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los \textbf{retrocesos} (snap-back) por localización, que \texttt{ArcLengthSolver} no sigue (tampoco el arc-length por disipación del módulo de usuario \texttt{dissipation\_\allowbreak{}control}).
@@ -2782,6 +2807,9 @@ El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute
 \texttt{element\_forces} & \texttt{\{elemento: ElementForces\}} con las fuerzas internas (N, V, M, T) de los elementos estructurales. \\
 \texttt{converged}, \texttt{num\_steps} & Si el análisis llegó al final y cuántos pasos convergidos dio. \\
 \texttt{termination} & Por qué se detuvo un solver incremental (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): \texttt{\textquotedbl{}max\_lambda\textquotedbl{}}, \texttt{\textquotedbl{}control\_target\textquotedbl{}} o \texttt{\textquotedbl{}max\_steps\textquotedbl{}}. \texttt{None} en el \texttt{LinearSolver}. \\
+\texttt{load\_factor} & Factor de carga final \ensuremath{\lambda} de la carga que crece en el análisis o en la etapa. \\
+\texttt{F\_constant}, \texttt{F\_variable} & En un análisis por etapas (\texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=\ldots{})}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}), la carga ya aplicada que se mantuvo constante y la que creció (\texttt{F\_\allowbreak{}applied = F\_\allowbreak{}constant + F\_\allowbreak{}variable}). Fuera de una etapa, \texttt{F\_constant} es \texttt{None}. \\
+\texttt{equivalent\_loads} & Cargas equivalentes de la carga distribuida restadas, por elemento, para dar \texttt{element\_forces}; una etapa siguiente las hereda con su carga constante. \\
 \texttt{condition\_\allowbreak{}estimate} & Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). \texttt{None} en los análisis no lineales y con el solver iterativo. \\
 \hline
 \end{tabularx}
@@ -2974,8 +3002,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 09 de noviembre de 2026, 11:00\\[0.5em]
-Commit Git: \texttt{349b489}\\[1em]
+Compilado el 09 de noviembre de 2026, 11:34\\[0.5em]
+Commit Git: \texttt{860825b}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

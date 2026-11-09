@@ -1392,6 +1392,17 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Consecuencia.} Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
 
+\section{ADR 0026 --- Etapas de carga en los solvers estáticos}
+\label{adr:0026}
+
+\textbf{Fecha}: 9 de noviembre de 2026. \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Los solvers estáticos arrancaban siempre en \texttt{U = 0} y su residuo no tenía término constante. No se podía aplicar la gravedad y empujar después, y una segunda corrida sobre un modelo plastificado empezaba en \texttt{U = 0} con el estado plástico de la primera.
+
+\textbf{Decisión.} \texttt{solve(F\_\allowbreak{}ref, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})} en \texttt{NonlinearSolver} y la familia del arco, con residuo $\mathbf F_c + \lambda\mathbf F_\text{ref} - \mathbf F_\text{int}$ y \ensuremath{\lambda} = 0 al empezar. Los valores impuestos crecen desde los de partida, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$. Cada etapa comprueba su equilibrio inicial, y un modelo con historia que empieza en cero lo avisa. \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)} continúa la etapa anterior con su carga aplicada como constante y sus cargas equivalentes por elemento; el resultado separa \texttt{F\_constant} de \texttt{F\_variable}. \texttt{DissipationArcLengthSolver} rechaza las etapas: su restricción de disipación es física por decidir.
+
+\textbf{Consecuencia.} Gravedad y empuje, P-\ensuremath{\Delta} con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N--M y la superposición elástica. Quedan las etapas desde el YAML (deuda \#36) y dos cargas distribuidas en una misma etapa (deuda \#35).
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -1972,8 +1983,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 09 de noviembre de 2026, 11:00\\[0.5em]
-Commit Git: \texttt{349b489}\\[1em]
+Compilado el 09 de noviembre de 2026, 11:34\\[0.5em]
+Commit Git: \texttt{860825b}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
