@@ -59,6 +59,7 @@ Es **lineal** en $\delta\lambda$: no hay raíces que elegir ni discriminantes ne
 - **Primer paso adimensional** (deuda #26): `initial_dlambda` (0.1 por omisión) es la fracción de la carga de referencia; $\Delta l_1 = \Delta\lambda_1\,\mathbf c^\top\mathbf K_0^{-1}\mathbf F_\text{ref}$. `initial_dl` fija $\Delta l_1$ explícito, en las unidades de la magnitud controlada.
 - **Sin crecimiento por omisión** (`dl_max_factor = 1.0`, frente a 5.0 del padre): la magnitud avanza a ritmo constante, como en un ensayo a velocidad de CMOD constante. La razón es física, ver §5.
 - Se conserva la reducción por iteraciones y la bisección del padre.
+- **Parada en un valor objetivo** (ADR 0025): con `control_target` $= c > 0$ el trazado se detiene cuando $\mathbf c^\top\mathbf U = c$. Como cada iterado cumple exactamente $\mathbf c^\top\Delta\mathbf U = \Delta l$, el paso que lo rebasaría se recorta a $\Delta l = c - \mathbf c^\top\mathbf U_n$ y la llegada es exacta, a precisión de máquina, con cualquier tamaño de paso. Es la parada natural de un ensayo controlado o de un análisis de empuje lateral, que terminan en un desplazamiento; en una meseta plástica $\lambda$ apenas cambia y `max_lambda` no sirve. Deja `termination = "control_target"`, `reached_control_target = True` y `control_final`; `SolveResult.converged = True`.
 
 ### 5. No unicidad del problema incremental con ablandamiento
 
@@ -106,6 +107,8 @@ parameters:
   - { name: dl_grow_iter_threshold,   type: int,   required: false, default: 4 }
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
   - { name: linear_algebra,           type: str,   required: false, default: "auto" }
+  - { name: control_target,           type: float, required: false, default: null,
+      desc: "Valor de la magnitud controlada cᵀU en que se detiene el trazado, con llegada exacta (ADR 0025); positivo. Se detiene en lo que llegue primero, objetivo o max_lambda" }
 
 requirements:
   - "La magnitud controlada crece monótonamente a lo largo del camino físico (apertura de una grieta, alargamiento de la zona que se ablanda). Si decrece con la carga de referencia al empezar, el solver lo rechaza con un error que lo explica"
@@ -149,6 +152,11 @@ acceptance:
       setup: "Barra de 10 elementos del primer caso con el nodo derecho del elemento débil duplicado y atado por una restricción multipunto ux_s = ux_m; el control usa el esclavo (y, aparte, el maestro)"
       expect: "Trazado idéntico al de la barra fundida (oráculo del nodo fundido), con el esclavo o con el maestro en el control"
       tol_rel: 1.0e-8
+    - name: parada_en_desplazamiento_objetivo
+      setup: "Voladizo elástico de 4 Frame2DEuler (L = 3 m, sección 0.30 × 0.50 m, E = 2e11 Pa) con carga lateral en la cabeza; control de ux de la cabeza, control_target = 7.5e-3 m, initial_dl = 1.1e-3, 2.0e-3, 3.7e-3 y 1.0e-2 m; objetivo múltiplo del paso (2.5e-3 m) (ADR 0025)"
+      expect: "El último punto coincide con el objetivo a precisión de máquina con cualquier paso; el último paso se recorta a lo que falta, sin paso espurio si el objetivo es múltiplo; λ final = 3EI·δ/(F L³); termination = 'control_target', reached_control_target = True, completed = True; también en la meseta de un voladizo de fibras con endurecimiento del 1 %, desde solidum.run (converged = True) y desde YAML"
+      tol_abs: "4·ε·control_target"
+      ref: "tests/test_trace_termination.py::TestParadaEnDesplazamientoObjetivo"
     - name: desde_yaml
       setup: "solver: {type: IndirectDisplacementSolver, control: [{node, dof, coef}, …]}"
       expect: "Se construye y resuelve"
@@ -179,3 +187,4 @@ references:
 - **2026-09-30** · Hereda del padre la comprobación de la tangente inicial de la red de seguridad (ADR 0019): el predictor del primer paso inspecciona sus pivotes nulos; error si el modelo es geométricamente lineal, aviso si no. Sin cambio de formulación ni de resultados en modelos bien planteados.
 - **2026-09-29** · Frontera del programa principal (ADR 0020 y criterio de admisión de Reglas.md §1): `DissipationArcLengthSolver`, uno de los «dos solvers de arco» de la entrada anterior, se trasladó al módulo de usuario `dissipation_control` (spec en [`docs/user/dissipation_control/specs/DissipationArcLengthSolver.md`](../user/dissipation_control/specs/DissipationArcLengthSolver.md); se carga con `user_modules: [dissipation_control]`). En el programa principal quedan `ArcLengthSolver` y esta variante. El problema por paso del padre, que esta variante extiende, se exporta con nombre público como `solidum.math.solvers.ArcProblem`. Sin cambio de formulación ni de resultados.
 - **2026-09-30** · Auditoría de las restricciones multipunto (EST-10): el solver rechazaba controlar el esclavo de una restricción multipunto aunque su incremento está determinado, porque exigía grados de libertad libres. Ahora el criterio es la fila de $\mathbf T$ (§1): se admite el esclavo con maestros y se rechaza el grado de libertad prescrito (apoyo, o esclavo que hereda el apoyo de sus maestros por el cierre transitivo); la comprobación de términos que se anulan pasa de $\mathbf c = \mathbf 0$ a $\mathbf T^\top\mathbf c = \mathbf 0$, que sin restricciones multipunto es lo mismo. El mensaje de rechazo dice «prescrito» en lugar de «restringido» y ya no da la pista del apoyo fijo en el caso de la restricción multipunto. La restricción del paso, el predictor y el corrector no cambian: $\mathbf{du}_t$ y $\mathbf{du}_R$ ya incluían los esclavos reconstruidos por $\mathbf T$ ($\mathbf{du}_t = \mathbf T\,(\mathbf T^\top\mathbf K\mathbf T)^{-1}\mathbf T^\top(\mathbf F_\text{ref} - \mathbf K\mathbf g) + \mathbf g$). Los modelos sin restricciones multipunto dan los mismos resultados. Test nuevo `control_de_un_esclavo_de_mpc` contra el oráculo del nodo fundido.
+- **2026-11-09** · ADR 0025. Parámetro `control_target`: parada en un valor de la magnitud controlada con llegada exacta (§4), por los puntos de extensión del padre (`_target_reached`, `_limit_step`); la línea `INFO` de cada paso incluye la magnitud controlada. Hereda el estado de terminación y las excepciones tipadas del padre. Criterio nuevo: `parada_en_desplazamiento_objetivo`.

@@ -75,6 +75,17 @@ solver:
 
 **Cuándo usarlo**: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando `NonlinearSolver` diverge cerca de un punto límite. Más caro por paso (dos `spsolve` por iteración) pero indispensable en estos casos.
 
+**Cómo terminó el trazado** (ADR 0025). Tras `solve()`, el atributo `termination` dice por qué se detuvo, sin leer el registro:
+
+| `termination` | Significado |
+|---|---|
+| `"max_lambda"` | Llegó a `max_lambda`. |
+| `"control_target"` | Llegó al desplazamiento objetivo (`IndirectDisplacementSolver`, `control_target`). |
+| `"max_steps"` | Agotó `max_steps` antes de terminar. `solve()` devuelve el último paso convergido sin lanzar, pero **no es el análisis pedido**: `completed` es `False` y `SolveResult.converged` también. |
+| `"diverged"` | Un paso no convergió ni reduciendo la longitud al mínimo. `solve()` lanza una `SolverDivergedError` tipada con la causa; `StepConstraintError` si la restricción del paso no tiene solución (raíces imaginarias). |
+
+`lambda_final`, `steps_done`, `n_bisections` y `U_final` dicen hasta dónde llegó (último paso convergido), también tras una excepción, y `solve()` los reinicia al empezar. `solidum.run` copia el motivo en `SolveResult.termination`. `NonlinearSolver` deja los mismos atributos (`"max_lambda"` al completar la carga, `"diverged"` antes de lanzar).
+
 **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (*Computers & Structures*, 1981).
 
 ## `IndirectDisplacementSolver` — control indirecto de desplazamiento
@@ -86,6 +97,18 @@ $$\mathbf c^\top \Delta\mathbf U = \Delta l$$
 - **`control`** (obligatorio): la magnitud, como lista de términos `{node, dof, coef}`. El alargamiento entre los nodos 6 y 7 en $x$ es `[{node: 7, dof: ux, coef: 1.0}, {node: 6, dof: ux, coef: -1.0}]`. Los grados de libertad no pueden estar prescritos: un apoyo, o el esclavo de una restricción multipunto cuyos maestros están todos apoyados, tiene un movimiento que no depende del equilibrio. El esclavo de una restricción multipunto con maestros libres sí vale, porque sus maestros fijan su incremento. La magnitud tiene que crecer al cargar; si no, el solver lo explica con un error.
 - **Primer paso**: `initial_dlambda`, fracción de la carga de referencia, como en `ArcLengthSolver`.
 - **Sin crecimiento del paso por omisión** (`dl_max_factor: 1.0`). Con ablandamiento local, un paso que sobrepasa el pico más que la imperfección que localiza el daño puede converger a otro equilibrio, con más zonas ablandadas de las que el camino físico produciría. Esto le pasa a cualquier solver, también al control por desplazamiento; la defensa es un paso pequeño cerca del pico.
+- **`control_target`** (opcional): valor de la magnitud controlada en el que se detiene el trazado, en sus unidades. El paso que lo rebasaría se recorta a lo que falta, así que el último punto queda **exactamente** en el objetivo, con cualquier tamaño de paso. Es la parada natural de un análisis de empuje lateral o de un ensayo controlado: en la meseta plástica la carga casi no cambia y `max_lambda` no sirve para detenerse. Con un objetivo conviene un `max_lambda` holgado; el trazado se detiene en lo que llegue primero.
+
+```yaml
+solver:
+  type: IndirectDisplacementSolver
+  initial_dl: 2.0e-3          # 2 mm de la magnitud controlada por paso
+  max_lambda: 1.0e9           # sin límite de carga
+  max_steps: 200
+  control_target: 0.09        # se detiene con el desplazamiento de control = 90 mm
+  control:
+    - {node: 12, dof: ux}
+```
 
 ```yaml
 solver:

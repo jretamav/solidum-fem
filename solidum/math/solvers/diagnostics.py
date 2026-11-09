@@ -21,7 +21,37 @@ globalización implícita y no requiere line search; ver ADR §"Decisión").
 """
 from __future__ import annotations
 
+from enum import Enum
+
 from solidum.math.linalg.eigen import SemidefiniteMassError
+
+
+class Termination(str, Enum):
+    """Motivo por el que terminó un análisis estático incremental (ADR 0025).
+
+    Lo dejan ``NonlinearSolver`` y la familia del arco en su atributo
+    ``termination`` tras ``solve()``, también cuando termina con una
+    excepción, y ``solidum.run`` lo copia en ``SolveResult.termination``. Es
+    una cadena (``Termination.MAX_STEPS == "max_steps"``), así que se puede
+    comparar sin importar la clase.
+
+    - ``MAX_LAMBDA``: alcanzó el factor de carga final (``max_lambda``; en el
+      ``NonlinearSolver``, la carga completa λ = 1).
+    - ``CONTROL_TARGET``: alcanzó el valor objetivo de la magnitud controlada
+      (``IndirectDisplacementSolver``, parámetro ``control_target``).
+    - ``MAX_STEPS``: agotó ``max_steps`` antes de completar el trazado. El
+      resultado es el del último paso convergido, **no** el análisis pedido.
+    - ``DIVERGED``: un paso no convergió ni reduciendo su tamaño al mínimo;
+      ``solve()`` lanzó una :class:`SolverDivergedError`.
+    """
+
+    MAX_LAMBDA = "max_lambda"
+    CONTROL_TARGET = "control_target"
+    MAX_STEPS = "max_steps"
+    DIVERGED = "diverged"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class SolverDivergedError(RuntimeError):
@@ -132,6 +162,29 @@ class LoadExceedsCapacityError(SolverDivergedError):
         "ni diverger. Probable carga > capacidad plástica del modelo. "
         "Revisa la magnitud de la carga aplicada o usa endurecimiento "
         "positivo (H > 0)."
+    )
+
+
+class StepConstraintError(SolverDivergedError):
+    """La restricción del paso de un solver de trayectoria no tiene solución
+    con la longitud de paso pedida (ADR 0025).
+
+    En el arco cilíndrico, las raíces de la ecuación de la restricción son
+    imaginarias: el arco de radio Δl no corta la trayectoria de equilibrio.
+    En el control indirecto, la magnitud controlada deja de responder a la
+    carga. El solver reduce el paso y lo reintenta; esta excepción se lanza
+    cuando ni el paso mínimo lo resuelve. La causa concreta va en el
+    ``Detalle`` del mensaje.
+    """
+
+    mode = "step_constraint"
+    hint = (
+        "La restricción del paso no tiene solución aunque se reduzca la "
+        "longitud de paso. Con el arco cilíndrico ocurre en un retroceso "
+        "(snap-back) por localización o tras un punto límite agudo: el arco "
+        "no corta la trayectoria. Considera IndirectDisplacementSolver con "
+        "una magnitud que crezca de forma monótona (p. ej. el alargamiento "
+        "de la zona que se ablanda) o un primer paso menor (initial_dlambda)."
     )
 
 

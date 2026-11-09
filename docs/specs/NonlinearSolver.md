@@ -27,6 +27,7 @@ Idénticas a `LinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC vía A
 - $\mathbf U$ final converged en $\lambda = 1$.
 - Historia disponible vía `step_callback(step, U, load_factor)` que el usuario puede pasar al solver.
 - Diagnóstico de divergencia con excepciones tipadas (ADR 0011): `OscillatingNewtonError`, `SingularTangentError`, `LoadExceedsCapacityError`, `UnknownDivergenceError`, todas subclases de `SolverDivergedError`.
+- Estado de terminación (ADR 0025): `termination` (`max_lambda` al completar la carga, `diverged` antes de lanzar), `completed`, `lambda_final`, `steps_done`, `n_bisections` y `U_final`, reiniciados en cada `solve`. Tras un fracaso, `lambda_final` y `U_final` son los del último paso convergido.
 
 ---
 
@@ -202,11 +203,21 @@ acceptance:
       setup: "Drucker-Prager 2D perfectamente plástico con carga que provoca oscilación"
       expect: "line_search=True converge; line_search=False oscila o requiere bisección extra"
 
+    - name: terminacion_y_ultimo_paso_convergido
+      setup: "Voladizo de 20 fibras de acero perfectamente plástico con carga lateral 5 veces la de referencia, por encima de la capacidad de la sección (ADR 0025)"
+      expect: "SolverDivergedError; termination = 'diverged'; lambda_final, steps_done y U_final iguales a los del último paso convergido; con carga admisible, termination = 'max_lambda' y SolveResult.termination = 'max_lambda'"
+      ref: "tests/test_trace_termination.py::TestNonlinearSolver"
+
+    - name: registro_por_omision
+      setup: "Voladizo de fibras en 20 pasos; tangente singular inyectada en una corrección (ADR 0025)"
+      expect: "INFO: una línea por paso y ninguna de iteración; la tangente singular recuperada por bisección es un WARNING con su motivo, sin ERROR"
+      ref: "tests/test_solver_logging.py"
+
 references:
   - "Crisfield M.A. (1991). Non-linear Finite Element Analysis of Solids and Structures, Vol. 1. Wiley. §1-§9."
   - "Bonet J., Wood R.D. (2008). Nonlinear Continuum Mechanics for Finite Element Analysis. Cambridge. §8-§9."
   - "de Borst R., Sluys L.J. (1999). Computational Methods in Non-linear Solid Mechanics. TU Delft. §3 (Newton-Raphson y variantes)."
-  - "ADR 0003, ADR 0004, ADR 0006, ADR 0007, ADR 0011."
+  - "ADR 0003, ADR 0004, ADR 0006, ADR 0007, ADR 0011, ADR 0025."
 ```
 
 ---
@@ -233,3 +244,4 @@ references:
 - **2026-09-30** · **Decisión física del usuario** (red de seguridad, ADR 0019): un mecanismo interno que la carga no activa pasaba sin aviso (Pardiso perturba el pivote nulo y el Newton converge). Ahora se cuentan los pivotes nulos de la tangente inicial: error si el modelo es geométricamente lineal, aviso si tiene elementos geométricamente no lineales (contrato nuevo `Element.GEOMETRICALLY_NONLINEAR`) o materiales unilaterales —esto último, refinamiento de la IA sobre la decisión, confirmado por el usuario—. Reutiliza la primera factorización del Newton. Con el backend iterativo, aviso una vez por análisis. Sin cambio de resultados en modelos bien planteados (suite completa); el único test existente afectado modelaba de verdad un mecanismo interno (`test_model_safety_net.py`, bloques unidos por un nudo).
 - **2026-09-29** · Frontera del programa principal (ADR 0020): la discontinuidad embebida es un módulo de usuario (`discontinuities`) y deja de figurar en la cobertura de esta spec. Retirado el caveat «softening severo con penalización cohesiva rígida»: lo desmiente `tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py`, donde este solver, con control por desplazamiento y $K_e = 10^{15}$, recorre el ablandamiento hasta la separación completa frente a la solución exacta. El fallo antiguo venía de la tangente cohesiva de signo erróneo, corregida el 2026-09-23 (`597f3d9`). Sin cambio de formulación ni de resultados.
 - **2026-09-30** · Corrección sin cambio de formulación (deuda #31): con restricciones multipunto el criterio medía `‖R[libres]‖`, que en la solución no se anula en los maestros —la fuerza del esclavo pasa a ellos—; el Newton, que ya resolvía el sistema reducido del ADR 0004, llegaba a la solución sin declarar convergencia y el solver acababa en `OscillatingNewtonError`. Ahora mide `‖TᵀR‖` (§6), como `NewtonNewmarkSolver`. Con sólo Dirichlet las dos normas coinciden exactamente: ningún resultado previo cambia. Test `tests/test_mpc_nonlinear_static.py` (apoyo oblicuo y placas atadas: reproduce `LinearSolver` y cumple la restricción).
+- **2026-11-09** · ADR 0025, sin cambio de resultados: estado de terminación como en la familia del arco; registro con una línea `INFO` por paso convergido (el intento y la aceleración del incremento pasan a `DEBUG`), bisecciones en `WARNING` con su motivo y una línea `ERROR` antes de la excepción tipada.

@@ -35,6 +35,7 @@ salvo donde se indique en el ADR.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -47,6 +48,7 @@ from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError, _log
 from solidum.math.solvers.diagnostics import (
     IllPosedSystemError,
     SolverDivergedError,
+    StepConstraintError,
     classify_divergence,
 )
 
@@ -136,15 +138,40 @@ class CorrectorResult:
     # tangente singular —p. ej. un mecanismo— y así se informa.
     max_linear_residual: float = 0.0
     aborted: bool = False
+    # Motivo con que el problema abortó la corrección (``CorrectionAborted``):
+    # p. ej. las raíces imaginarias de la restricción del arco (ADR 0025).
+    abort_reason: str = ""
     last_alpha: float = 1.0
     last_residual: float = float("inf")
     last_delta: float = 0.0
     last_conv: ConvergenceState | None = None
 
+    def failure_reason(self) -> str:
+        """Motivo breve de un paso que no convergió, para el registro del
+        solver que lo reintenta (ADR 0025)."""
+        if self.aborted:
+            return self.abort_reason or "la restricción del paso no tiene solución"
+        if self.linear_solver_note:
+            return self.linear_solver_note
+        if self.singular_tangent:
+            return "tangente singular"
+        return f"sin convergencia en {self.n_solves} resoluciones"
+
     def divergence_error(self, *, last_load_factor: float, n_bisections: int = 0,
                          extra_message: str = "") -> SolverDivergedError:
         """Excepción tipada del modo de divergencia observado (ADR 0011),
-        lista para lanzar."""
+        lista para lanzar. Si el problema abortó porque la restricción del
+        paso no tiene solución, :class:`StepConstraintError` con el motivo
+        (ADR 0025)."""
+        if self.aborted:
+            reason = self.failure_reason()
+            return StepConstraintError(
+                last_residual=self.last_residual,
+                last_delta=self.last_delta,
+                last_load_factor=last_load_factor,
+                n_bisections=n_bisections,
+                extra_message=(f"{extra_message}; " if extra_message else "") + reason,
+            )
         bad_linear = self.max_linear_residual > EQUILIBRIUM_RTOL
         err_cls = classify_divergence(
             self.residual_history, self.delta_history,
@@ -388,11 +415,13 @@ class NewtonCorrector:
                 result.last_residual = R_norm
                 result.last_delta = delta_norm
                 result.last_conv = conv
-                if self.verbose:
+                # Detalle por iteración en DEBUG (ADR 0025): en INFO cada
+                # solver escribe una línea por paso.
+                if self.verbose and _log.isEnabledFor(logging.DEBUG):
                     context = getattr(problem, "log_context", None)
                     ctx = context(x) if context is not None else ""
                     alpha_tag = f" | α={result.last_alpha:.3f}" if result.last_alpha < 1.0 else ""
-                    _log.info(
+                    _log.debug(
                         f"  Iteración {result.n_solves:2d}{ctx} | "
                         f"R/tol_F: {conv.ratio_force:.4e} | "
                         f"dU/tol_d: {conv.ratio_disp:.4e}{alpha_tag}"
@@ -410,14 +439,19 @@ class NewtonCorrector:
                 dx = problem.correction(
                     x, state, R, lambda A, b: self.solve(A, b, iteration=iteration),
                 )
+            # Los fracasos del paso se registran en DEBUG: el solver que llama
+            # decide si el paso se recupera (bisección, WARNING con el motivo
+            # de ``failure_reason``) o termina el análisis (excepción tipada).
+            # ERROR queda para lo que detiene el análisis (ADR 0025).
             except CorrectionAborted as exc:
-                _log.error(str(exc))
+                _log.debug(str(exc))
                 result.aborted = True
+                result.abort_reason = str(exc)
                 break
             except IterativeNotConvergedError as exc:
                 # El sistema tangente no se resolvió, pero no por
                 # singularidad: se registra la causa real (ADR 0018 §5).
-                _log.error(str(exc))
+                _log.debug(str(exc))
                 result.singular_tangent = True
                 result.linear_solver_note = str(exc)
                 break
@@ -427,7 +461,7 @@ class NewtonCorrector:
                 # tangente singular que bisecar.
                 raise
             except RuntimeError:
-                _log.error("Matriz singular detectada.")
+                _log.debug("Matriz singular detectada.")
                 result.singular_tangent = True
                 break
             result.n_solves += 1

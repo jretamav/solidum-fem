@@ -45,14 +45,26 @@ decidía con el predictor: si la extrapolación tangente rebasaba
 que convergía por encima de ``max_lambda`` terminaba el trazado ahí (medido:
 arco de von Mises con ``max_lambda = 0.39`` devolvía λ = 0.398).
 
-Fin del trazado
----------------
-El bucle termina al alcanzar ``max_lambda`` o al agotar ``max_steps``. En
-el segundo caso el solver **no** lanza excepción —trazar "hasta donde se
-pueda" es un uso legítimo del arc-length— pero lo registra con un
-``WARNING`` y lo expone en ``reached_max_lambda``/``lambda_final`` para
-que ``solidum.run`` pueda reflejarlo en ``SolveResult.converged`` y escalar
-``F_applied`` por el factor de carga realmente alcanzado.
+Fin del trazado (ADR 0025)
+--------------------------
+El bucle termina al alcanzar ``max_lambda``, al alcanzar el objetivo de una
+variante que lo tenga (``control_target`` del control indirecto), al agotar
+``max_steps`` o cuando un paso no converge ni con la longitud mínima. El
+motivo queda en ``termination`` (:class:`~solidum.math.solvers.diagnostics.Termination`)
+junto con ``lambda_final``, ``steps_done``, ``n_bisections`` y ``U_final``
+(último estado convergido), también cuando ``solve`` termina con una
+excepción; ``solve`` los reinicia al empezar. Agotar ``max_steps`` **no**
+lanza excepción —trazar "hasta donde se pueda" es un uso legítimo del
+arc-length—, pero deja ``termination = "max_steps"`` y ``completed = False``,
+avisa con un ``WARNING`` y ``solidum.run`` lo refleja en
+``SolveResult.converged`` y ``SolveResult.termination``. El fracaso lanza una
+:class:`~solidum.math.solvers.diagnostics.SolverDivergedError` tipada con su
+causa: :class:`~solidum.math.solvers.diagnostics.StepConstraintError` si la
+restricción del paso no tiene solución (raíces imaginarias).
+
+Registro (ADR 0025): una línea ``INFO`` por paso convergido; el detalle por
+iteración, en ``DEBUG``; una bisección, en ``WARNING`` con su motivo; ``ERROR``
+sólo cuando el análisis se detiene.
 """
 from __future__ import annotations
 
@@ -70,7 +82,12 @@ from solidum.math.solvers.corrector import (
     NewtonCorrector,
     default_calibration_scales,
 )
-from solidum.math.solvers.diagnostics import IllPosedSystemError
+from solidum.math.solvers.diagnostics import (
+    IllPosedSystemError,
+    SingularTangentError,
+    SolverDivergedError,
+    Termination,
+)
 from solidum.math.solvers.model_checks import (
     check_initial_tangent,
     ensure_statically_restrained,
@@ -210,15 +227,29 @@ class ArcLengthSolver:
         Longitud de arco del primer paso, en unidades de desplazamiento.
         Excluyente con ``initial_dlambda``.
 
-    Atributos de estado tras ``solve``
-    ----------------------------------
+    Atributos de estado tras ``solve`` (ADR 0025)
+    ---------------------------------------------
+    ``solve`` los reinicia al empezar y los deja también cuando termina con
+    una excepción.
+
+    termination : Termination or None
+        Motivo de la parada: ``"max_lambda"``, ``"control_target"`` (variantes
+        con objetivo), ``"max_steps"`` o ``"diverged"``. ``None`` antes de
+        trazar o si ``solve`` falló antes del primer paso (modelo mal
+        planteado).
+    completed : bool
+        ``True`` si el trazado llegó a donde se pidió (``max_lambda`` u
+        objetivo); ``False`` con ``max_steps`` agotado o fracaso.
     lambda_final : float
         Factor de carga del último paso convergido.
     reached_max_lambda : bool
-        ``True`` si el trazado alcanzó ``max_lambda``; ``False`` si se detuvo
-        antes por agotar ``max_steps``.
+        ``True`` si el trazado alcanzó ``max_lambda``.
     steps_done : int
         Número de pasos convergidos.
+    n_bisections : int
+        Reducciones de la longitud de paso por pasos que no convergieron.
+    U_final : np.ndarray or None
+        Desplazamientos del último paso convergido (también tras un fracaso).
     dl_reference : float
         Longitud de arco del primer paso (Δl₁) usada en la corrida; es la
         referencia de ``dl_max_factor`` y del umbral de aborto.
@@ -261,10 +292,13 @@ class ArcLengthSolver:
             linear_algebra=self.linear_algebra,
             near_nullspace=assembler.near_nullspace,
         )
-        # Estado del último trazado (ver docstring de la clase).
+        # Estado del último trazado (ver docstring de la clase; ADR 0025).
+        self.termination: Termination | None = None
         self.lambda_final: float = 0.0
         self.reached_max_lambda: bool = False
         self.steps_done: int = 0
+        self.n_bisections: int = 0
+        self.U_final: np.ndarray | None = None
 
     @classmethod
     def _first_step_spec(cls, initial_dl, initial_dlambda):
@@ -342,7 +376,7 @@ class ArcLengthSolver:
         U_over, lambda_over, _ = x_over
         t = (self.max_lambda - lambda_curr) / (lambda_over - lambda_curr)
         dU0 = t * (U_over - U_current)
-        _log.info(
+        _log.debug(
             f"  λ = {lambda_over:.4f} rebasa max_lambda = {self.max_lambda:.4f}: "
             f"llegada exacta dentro del tramo recorrido."
         )
@@ -355,19 +389,89 @@ class ArcLengthSolver:
             initial_delta_norm=float(np.linalg.norm(dU0)),
         )
 
-    def _finish(self, lambda_curr: float, step: int) -> None:
-        """Registra el estado final del trazado y avisa si quedó incompleto."""
+    # ------------------------------------------------------------------
+    # Estado del trazado (ADR 0025)
+    # ------------------------------------------------------------------
+
+    def _begin_trace(self) -> None:
+        """Reinicia el estado del trazado al empezar ``solve``: un solver
+        reutilizado no debe mostrar los valores de la corrida anterior."""
+        self.termination = None
+        self.lambda_final = 0.0
+        self.reached_max_lambda = False
+        self.steps_done = 0
+        self.n_bisections = 0
+        self.U_final = None
+        self.dl_reference = None
+
+    @property
+    def completed(self) -> bool:
+        """``True`` si el trazado llegó a donde se pidió (``max_lambda`` o el
+        objetivo de la variante); ``False`` con ``max_steps`` agotado, tras un
+        fracaso o antes de trazar."""
+        return self.termination in (Termination.MAX_LAMBDA, Termination.CONTROL_TARGET)
+
+    def _target_reached(self, U: np.ndarray | None) -> bool:
+        """Objetivo propio de una variante, además de ``max_lambda`` (ninguno
+        aquí; el control indirecto tiene ``control_target``)."""
+        return False
+
+    def _limit_step(self, dl: float, U: np.ndarray) -> float:
+        """Longitud del paso siguiente: una variante con objetivo la recorta
+        para llegar exactamente a él (aquí, sin cambio)."""
+        return dl
+
+    def _step_summary(self, U: np.ndarray) -> str:
+        """Texto extra de la línea ``INFO`` del paso (la magnitud controlada
+        en el control indirecto)."""
+        return ""
+
+    def _record(self, lambda_curr: float, steps: int, U: np.ndarray | None) -> None:
+        """Hasta dónde llegó el trazado: último paso convergido."""
         self.lambda_final = float(lambda_curr)
-        self.steps_done = int(step)
+        self.steps_done = int(steps)
+        self.U_final = None if U is None else np.array(U, dtype=float, copy=True)
+
+    def _finish(self, lambda_curr: float, step: int, U: np.ndarray | None = None) -> None:
+        """Registra el estado final de un trazado que terminó sin fracaso y
+        avisa si quedó incompleto."""
+        self._record(lambda_curr, step, U)
         self.reached_max_lambda = lambda_curr >= self.max_lambda - ZERO_TOL
-        if not self.reached_max_lambda:
+        if self._target_reached(U):
+            self.termination = Termination.CONTROL_TARGET
+        elif self.reached_max_lambda:
+            self.termination = Termination.MAX_LAMBDA
+        else:
+            self.termination = Termination.MAX_STEPS
+        name = type(self).__name__
+        if self.termination is Termination.MAX_STEPS:
             _log.warning(
-                f"{type(self).__name__}: trazado detenido en λ={lambda_curr:.4f} "
+                f"{name}: trazado detenido en λ={lambda_curr:.4f} "
                 f"< max_lambda={self.max_lambda:.4f} tras agotar max_steps="
-                f"{self.max_steps}. El resultado corresponde al último paso "
-                f"convergido; aumente max_steps o el primer paso "
-                f"(initial_dlambda) para completar."
+                f"{self.max_steps} (termination = 'max_steps'). El resultado "
+                f"corresponde al último paso convergido; aumente max_steps o el "
+                f"primer paso (initial_dlambda) para completar."
             )
+            return
+        bisecciones = f", {self.n_bisections} bisección(es)" if self.n_bisections else ""
+        _log.info(
+            f"{name}: trazado completo (termination = '{self.termination}'): "
+            f"λ = {lambda_curr:.4f} en {step} pasos{bisecciones}."
+        )
+
+    def _fail(self, error: SolverDivergedError, lambda_curr: float, steps: int,
+              U: np.ndarray | None) -> SolverDivergedError:
+        """Deja el estado de un trazado que fracasa (``termination =
+        "diverged"`` y hasta dónde llegó) y devuelve la excepción tipada, lista
+        para lanzar."""
+        self._record(lambda_curr, steps, U)
+        self.reached_max_lambda = False
+        self.termination = Termination.DIVERGED
+        _log.error(
+            f"{type(self).__name__}: análisis detenido ({error.mode}). Último paso "
+            f"convergido: λ = {lambda_curr:.4f} tras {steps} pasos."
+        )
+        return error
 
     # ------------------------------------------------------------------
     # Predictor tangente (común a las variantes)
@@ -398,6 +502,7 @@ class ArcLengthSolver:
         return du_t, sign
 
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
+        self._begin_trace()
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U_current = np.zeros(ndof)
@@ -407,7 +512,6 @@ class ArcLengthSolver:
         steps_done = 0
         dl = None          # Δl₁: se fija con el predictor del primer paso
         dl_ref = None
-        self.dl_reference = None
 
         delta_U_step = np.zeros(ndof)  # Historial del incremento del paso para guiar el arco
 
@@ -425,7 +529,8 @@ class ArcLengthSolver:
         free_dofs = cs.free_dofs(ndof)
         self._on_solve_start()
 
-        while lambda_curr < self.max_lambda and step < self.max_steps:
+        while (lambda_curr < self.max_lambda and step < self.max_steps
+               and not self._target_reached(U_current)):
             step += 1
 
             # Gancho de inicio de paso (ADR 0020, P5). Evaluado con el estado
@@ -435,33 +540,58 @@ class ArcLengthSolver:
             # --- 1. PREDICTOR ---
             pred = self._tangent_predictor(U_current, F_ext_ref, delta_U_step, step)
             if pred is None:
-                _log.error("Matriz singular en predictor. Bisección de dl...")
-                if dl is not None:
-                    dl /= 2.0
+                if dl is None:
+                    # Sin paso previo no hay longitud que reducir, y repetir
+                    # desde el mismo estado daría la misma tangente.
+                    raise self._fail(SingularTangentError(
+                        last_residual=float("nan"), last_delta=0.0,
+                        last_load_factor=lambda_curr, n_bisections=self.n_bisections,
+                        extra_message=("la tangente del estado inicial es singular: "
+                                       "el predictor no tiene dirección de carga"),
+                    ), lambda_curr, steps_done, U_current)
+                dl /= 2.0
+                self.n_bisections += 1
+                _log.warning(f"[PASO {step}] tangente singular en el predictor; "
+                             f"bisección: dl = {dl:.4e}")
+                if dl < ARCLENGTH_MIN_DL_FACTOR * dl_ref:
+                    raise self._fail(SingularTangentError(
+                        last_residual=float("nan"), last_delta=0.0,
+                        last_load_factor=lambda_curr, n_bisections=self.n_bisections,
+                        extra_message=(
+                            f"paso {step}: la tangente del predictor sigue singular "
+                            f"con dl = {dl:.2e} (< {ARCLENGTH_MIN_DL_FACTOR:g}·Δl₁)"),
+                    ), lambda_curr, steps_done, U_current)
                 continue
             du_t, sign = pred
             if dl is None:
                 dl = dl_ref = self._first_dl(du_t)
-            _log.info(f"[PASO {step}] Longitud de Arco (dl): {dl:.4e}")
+            dl_step = self._limit_step(dl, U_current)
+            _log.debug(f"[PASO {step}] longitud de paso dl = {dl_step:.4e}")
 
-            dlambda = self._predictor_dlambda(du_t, sign, dl)
+            dlambda = self._predictor_dlambda(du_t, sign, dl_step)
             dU_iter = dlambda * du_t
             x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
             # --- 2. CORRECTOR ITERATIVO (restricción del solver) ---
-            problem = self._step_problem(U_current, lambda_curr, F_ext_ref, free_dofs, dl)
+            problem = self._step_problem(U_current, lambda_curr, F_ext_ref, free_dofs, dl_step)
             res = self.corrector.run(
                 problem, x0, check_initial=True,
                 initial_delta_norm=float(np.linalg.norm(dU_iter)),
             )
             # Paso que cruza max_lambda: llegada exacta dentro del tramo.
+            landed = False
             if res.converged and problem.overshoot:
                 res = self._land(U_current, lambda_curr, res.x, F_ext_ref, free_dofs)
+                landed = True
 
             if res.converged:
                 U_current, lambda_curr, delta_U_step = res.x
-                _log.info(f"  -> CONVERGENCIA. (Lambda alcanzado: {lambda_curr:.4f})")
                 steps_done += 1
+                _log.info(
+                    f"[PASO {step}] λ = {lambda_curr:.4f} | dl = {dl_step:.3e} | "
+                    f"{res.n_solves} iter{self._step_summary(U_current)}"
+                    + (" | llegada exacta a max_lambda" if landed else "")
+                )
                 # Auto-ajuste de longitud de arco
                 if res.n_solves < self.dl_grow_iter_threshold:
                     dl = min(dl * self.dl_grow_factor, dl_ref * self.dl_max_factor)
@@ -472,10 +602,22 @@ class ArcLengthSolver:
                     step_callback(step, U_current, lambda_curr)
                 continue
 
-            dl *= 0.5
-            _log.warning(f"Bisección: reduciendo longitud de arco a {dl:.4e}")
+            dl = 0.5 * dl_step
+            self.n_bisections += 1
+            reason = res.failure_reason()
+            _log.warning(f"[PASO {step}] sin convergencia ({reason}); "
+                         f"bisección: dl = {dl:.4e}")
             if dl < ARCLENGTH_MIN_DL_FACTOR * dl_ref:
-                raise RuntimeError("Arc-Length fracasó irreparablemente.")
+                raise self._fail(res.divergence_error(
+                    last_load_factor=float(res.x[1]),
+                    n_bisections=self.n_bisections,
+                    extra_message=(
+                        f"paso {step}: la longitud de paso bajó a {dl:.2e} "
+                        f"(< {ARCLENGTH_MIN_DL_FACTOR:g}·Δl₁ = "
+                        f"{ARCLENGTH_MIN_DL_FACTOR * dl_ref:.2e}) sin converger; "
+                        f"último paso convergido: λ = {lambda_curr:.4f} tras "
+                        f"{steps_done} pasos"),
+                ), lambda_curr, steps_done, U_current)
 
-        self._finish(lambda_curr, steps_done)
+        self._finish(lambda_curr, steps_done, U_current)
         return U_current

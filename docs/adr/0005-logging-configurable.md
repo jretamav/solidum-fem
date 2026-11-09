@@ -1,7 +1,7 @@
 # ADR 0005 — Logging configurable en lugar de `print` directo
 
 **Fecha**: 2026-04-30
-**Estado**: Aceptado (2026-04-30)
+**Estado**: Aceptado (2026-04-30). Ampliado por el [ADR 0025](0025-terminacion-de-los-solvers-incrementales-y-registro.md) (2026-11-09): política de niveles (una línea `INFO` por paso, iteraciones en `DEBUG`, lo recuperado en `WARNING`, `ERROR` sólo al detenerse) y manejador de consola que adapta los mensajes a la codificación del flujo (cp1252, ASCII).
 
 ## Resumen ejecutivo
 

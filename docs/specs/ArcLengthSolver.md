@@ -33,6 +33,7 @@ Idénticas a `NonlinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC ví
 ### 3. Salidas físicas
 
 - $\mathbf U$ final en $\lambda \to \lambda_{\max}$ (o cuando se alcance `max_steps`).
+- Estado de terminación (ADR 0025): `termination` ∈ {`max_lambda`, `control_target` (variantes con objetivo), `max_steps`, `diverged`}, `completed`, `lambda_final`, `steps_done`, `n_bisections` y `U_final` (último estado convergido). Se fijan también cuando `solve` termina con una excepción y se reinician al empezar. El fracaso lanza una `SolverDivergedError` tipada: `StepConstraintError` si la restricción del paso no tiene solución (raíces imaginarias), la clasificación del ADR 0011 en el resto.
 - Historia disponible vía `step_callback(step, U, lambda)`.
 - Trazas $\lambda(U_i)$ para visualizar snap-through/snap-back.
 
@@ -79,7 +80,9 @@ mientras λ < max_lambda y step < max_steps:
             ajustar_dl_adaptativamente(iter)
             break
     si no converge (o falla la llegada):
-        dl /= 2
+        dl /= 2                                  # WARNING con el motivo (ADR 0025)
+        si dl < 1e-6·Δl₁: termination = diverged; lanzar SolverDivergedError tipada
+termination = max_lambda | control_target | max_steps   # ADR 0025
 ```
 
 ### 5. Predictor / corrector
@@ -164,7 +167,7 @@ parameters:
   - { name: initial_dl,               type: float, required: false, default: null,
       desc: "Longitud de arco del primer paso en unidades de desplazamiento; sólo si se conoce la escala del problema. Excluyente con initial_dlambda" }
   - { name: max_steps,                type: int,   required: false, default: 100,
-      desc: "Cota dura sobre el número de pasos" }
+      desc: "Cota dura sobre el número de pasos. Agotarla no lanza excepción: deja termination = 'max_steps' y completed = False (ADR 0025)" }
   - { name: dl_grow_factor,           type: float, required: false, default: 1.5 }
   - { name: dl_max_factor,            type: float, required: false, default: 5.0,
       desc: "dl máximo = Δl₁ · dl_max_factor" }
@@ -249,12 +252,32 @@ acceptance:
       setup: "armadura Pratt del ejemplo 11 sin la diagonal del segundo panel, carga horizontal (ADR 0019, 2026-09-30)"
       expect: "Truss2D ⇒ IllPosedSystemError en el predictor del primer paso, sin bisecar; Truss2DCorot ⇒ un aviso; con la diagonal, nada"
 
+    - name: terminacion_legible
+      setup: "Un trazado que agota max_steps y otro que fracasa por longitud mínima de paso (barra de 10 Truss2D con daño localizado, elemento central un 5 % más débil, initial_dlambda = 0.02, max_lambda = 1.2) (ADR 0025)"
+      expect: "termination = 'max_steps' y 'diverged', distinguibles sin interpretar mensajes; SolveResult.converged = False y SolveResult.termination = 'max_steps' en el primero"
+      ref: "tests/test_trace_termination.py::TestEstadoYExcepcionDelArco::test_max_steps_y_fracaso_son_distinguibles"
+
+    - name: fracaso_tipado_con_su_causa
+      setup: "La barra con daño anterior: el arco cilíndrico no pasa el retroceso (ADR 0025)"
+      expect: "StepConstraintError, subclase de SolverDivergedError (y de RuntimeError), con «Raíces imaginarias» en el diagnóstico"
+      ref: "tests/test_trace_termination.py::TestEstadoYExcepcionDelArco::test_fracaso_del_arco_tipado_con_su_causa"
+
+    - name: estado_reiniciado_en_cada_solve
+      setup: "Solver reutilizado: una corrida que termina (max_lambda = 0.5) y otra que fracasa (max_lambda = 1.2); y otra que falla antes del primer paso (mecanismo) (ADR 0025)"
+      expect: "Tras el fracaso, lambda_final, steps_done y U_final son los del último paso convergido de esa corrida, no de la anterior; tras el fallo previo, termination = None y contadores a cero"
+      ref: "tests/test_trace_termination.py::TestEstadoYExcepcionDelArco"
+
+    - name: registro_por_omision
+      setup: "Empuje de 30 pasos de un voladizo de fibras con IndirectDisplacementSolver (hereda el bucle); tangente singular inyectada en el corrector y en el predictor (ADR 0025)"
+      expect: "INFO: una línea por paso y ninguna de iteración (DEBUG las recupera); la tangente singular recuperada es un WARNING con su motivo, sin ERROR; un único ERROR cuando el análisis se detiene"
+      ref: "tests/test_solver_logging.py"
+
 references:
   - "Crisfield M.A. (1981). A fast incremental/iterative solution procedure that handles snap-through. Computers and Structures 13, 55-62."
   - "Crisfield M.A. (1991). Non-linear Finite Element Analysis of Solids and Structures, Vol. 1. Wiley. §9 (arc-length cilíndrico)."
   - "Riks E. (1979). An incremental approach to the solution of snapping and buckling problems. Int. J. Solids and Structures 15, 529-551."
   - "de Borst R., Sluys L.J. (1999). Computational Methods in Non-linear Solid Mechanics. TU Delft. §3.5."
-  - "ADR 0003, ADR 0007."
+  - "ADR 0003, ADR 0007, ADR 0025 (terminación y registro)."
 ```
 
 ---
@@ -288,3 +311,4 @@ references:
 - **2026-09-30** · Red de seguridad del ADR 0019 sobre la tangente inicial (decisión física del usuario; ver la entrada del mismo día en la spec de `NonlinearSolver`): el predictor del primer paso inspecciona sus pivotes nulos; error si el modelo es geométricamente lineal, aviso si tiene elementos geométricamente no lineales o materiales unilaterales; con el backend iterativo, aviso. Sin cambio de resultados en modelos bien planteados.
 - **2026-09-29** · Retirado `_negative_pivots()`, el marcador del diagnóstico por inercia que devolvía `None` y que nadie llamaba; §10 y `out_of_scope` lo recogen: no hay diagnóstico por inercia hasta que exista LDLᵀ (deuda #7). El problema por paso (`_ArcProblem` en el código) se exporta con nombre público, `solidum.math.solvers.ArcProblem`, porque lo extienden `IndirectDisplacementSolver` y `DissipationArcLengthSolver`, este último trasladado hoy al módulo de usuario `dissipation_control`. Sin cambio de formulación ni de resultados.
 - **2026-09-30** · Misma corrección que en `NonlinearSolver` (deuda #31, entrada del mismo día en su spec): el problema por paso mide `‖TᵀR‖` en vez de `‖R[libres]‖`, que con restricciones multipunto no se anulaba en la solución y hacía fallar todos los pasos. La heredan `IndirectDisplacementSolver` y, por `ArcProblem`, el solver del módulo `dissipation_control`. Sin cambio con sólo Dirichlet. La auditoría de las MPC del mismo día documentó en §1 y §2 que la métrica del arco incluye los DOF esclavos y prescritos y que el término `g` de las MPC sigue a λ; no se cambia la métrica, porque alteraría la secuencia de pasos de los modelos existentes sin corregir ningún error.
+- **2026-11-09** · ADR 0025, sin cambio de formulación ni de resultados. Estado de terminación (`termination`, `completed`, `lambda_final`, `steps_done`, `n_bisections`, `U_final`), fijado también tras una excepción y reiniciado en cada `solve`; el fracaso es una `SolverDivergedError` tipada (`StepConstraintError` para las raíces imaginarias; antes, `RuntimeError("Arc-Length fracasó irreparablemente.")` con el diagnóstico sólo en el registro); una tangente singular en el predictor del estado inicial es `SingularTangentError` (antes el bucle repetía el mismo predictor hasta agotar `max_steps`). Registro: una línea `INFO` por paso, iteraciones en `DEBUG`, bisecciones en `WARNING` con su motivo y `ERROR` sólo al detenerse. Puntos de extensión para variantes con objetivo: `_target_reached`, `_limit_step`, `_step_summary`.

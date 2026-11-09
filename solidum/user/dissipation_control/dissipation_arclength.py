@@ -285,6 +285,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         )
 
     def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
+        # Estado del trazado anterior fuera (contrato del padre, ADR 0025).
+        self._begin_trace()
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U_current = np.zeros(ndof)
@@ -292,7 +294,6 @@ class DissipationArcLengthSolver(ArcLengthSolver):
         step = 0
         dl = None          # Δl₁: se fija con el predictor del primer paso (padre)
         dl_ref = None
-        self.dl_reference = None
         # Reset del estado adaptativo al inicio de una corrida nueva.
         self._tau = self.initial_tau
         self._mode = "cylindrical"
@@ -323,7 +324,10 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             # --- 1. PREDICTOR ---
             pred = self._tangent_predictor(U_current, F_ext_ref, delta_U_step, step)
             if pred is None:
-                _log.error("Matriz singular en predictor. Bisección...")
+                # Evento que el solver recupera bisecando: WARNING (ADR 0025).
+                self.n_bisections += 1
+                _log.warning(f"[PASO {step}] tangente singular en el predictor; "
+                             f"bisección de dl y τ.")
                 if dl is not None:
                     dl /= 2.0
                 self._tau /= 2.0
@@ -331,7 +335,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             du_t, sign = pred
             if dl is None:
                 dl = dl_ref = self._first_dl(du_t)
-            _log.info(
+            _log.debug(
                 f"[PASO {step}] modo={self._mode!s} dl={dl:.4e} tau={self._tau:.4e}"
             )
 
@@ -354,7 +358,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 )
                 scale_L = abs(0.5 * lambda_curr * float(F_ext_ref @ du_L))
                 if scale_L > 0 and abs(alpha_L) > ALPHA_SWITCH_RTOL * scale_L:
-                    _log.info(
+                    _log.debug(
                         f"  Switch cilíndrico→disipación "
                         f"(|α_L|/escala = {abs(alpha_L) / scale_L:.3e} > "
                         f"{ALPHA_SWITCH_RTOL:g})"
@@ -385,7 +389,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 F_du_pred = float(F_ext_ref @ du_pred)
                 alpha_scale = abs(0.5 * lambda_curr * F_du_pred)
                 if alpha_scale > 0 and abs(alpha) < ALPHA_LINEAR_RTOL * alpha_scale:
-                    _log.info(
+                    _log.debug(
                         f"  α/escala = {abs(alpha)/alpha_scale:.2e} ≪ 1 "
                         f"⇒ régimen lineal: cilíndrico temporal."
                     )
@@ -396,7 +400,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     self._mode = "cylindrical"
                 elif _alpha_is_null(alpha, lambda_curr, F_du_pred,
                                     float(F_ext_ref @ U_current)):
-                    _log.info("  α ≈ 0 estrictamente → cilíndrico temporal.")
+                    _log.debug("  α ≈ 0 estrictamente → cilíndrico temporal.")
                     mode_predictor = "cylindrical"
                     self._mode = "cylindrical"
 
@@ -438,7 +442,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 landed = self._land(U_current, lambda_curr, res.x, F_ext_ref, free_dofs)
                 if landed.converged:
                     U_current, lambda_curr, delta_U_step = landed.x
-                    _log.info(f"  -> CONV. lam={lambda_curr:.4f} (llegada a max_lambda)")
+                    _log.info(f"[PASO {step}] λ = {lambda_curr:.4f} | modo = "
+                              f"{mode_predictor} | llegada exacta a max_lambda")
                     steps_done += 1
                     if step_callback is not None:
                         step_callback(step, U_current, lambda_curr)
@@ -455,7 +460,8 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     dU_step_total, dlambda_step_total,
                 )
                 _log.info(
-                    f"  -> CONV. lam={lambda_iter:.4f} ΔE_d={dE_d:.4e}"
+                    f"[PASO {step}] λ = {lambda_iter:.4f} | modo = {mode_predictor} | "
+                    f"{res.n_solves} iter | ΔE_d = {dE_d:.4e}"
                 )
 
                 # Tangente de carga del paso siguiente: la del ensamblaje en el
@@ -475,7 +481,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 ref_energy = np.linalg.norm(F_ext_ref) * np.linalg.norm(U_iter)
                 dE_threshold = self.dissipation_threshold * ref_energy
                 if self._mode == "dissipation" and dE_d < dE_threshold:
-                    _log.info(
+                    _log.debug(
                         f"  Switch disipación→cilíndrico "
                         f"(ΔE_d={dE_d:.3e} < {dE_threshold:.3e})"
                     )
@@ -509,29 +515,40 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                     step_callback(step, U_current, lambda_curr)
                 continue
 
-            # Bisección por modo del paso fallido.
+            # Bisección por modo del paso fallido. El fracaso definitivo deja el
+            # estado del trazado y lanza la excepción tipada con su causa
+            # (contrato del padre, ADR 0025).
+            self.n_bisections += 1
+            reason = res.failure_reason()
             if mode_predictor == "cylindrical":
                 dl *= 0.5
                 _log.warning(
-                    f"Bisección cilíndrica: dl → {dl:.4e}"
+                    f"[PASO {step}] sin convergencia ({reason}); bisección "
+                    f"cilíndrica: dl = {dl:.4e}"
                 )
                 if dl < ARCLENGTH_MIN_DL_FACTOR * dl_ref:
-                    raise RuntimeError(
-                        "DissipationArcLengthSolver: dl bajó del umbral "
-                        f"({ARCLENGTH_MIN_DL_FACTOR * dl_ref:.4e}). "
-                        "Aborto irreparable."
-                    )
+                    raise self._fail(res.divergence_error(
+                        last_load_factor=float(res.x[1]),
+                        n_bisections=self.n_bisections,
+                        extra_message=(
+                            f"DissipationArcLengthSolver: dl bajó del umbral "
+                            f"({ARCLENGTH_MIN_DL_FACTOR * dl_ref:.4e}) en el paso {step}"),
+                    ), lambda_curr, steps_done, U_current)
             else:
                 self._tau *= 0.5
                 _log.warning(
-                    f"Bisección disipación: τ → {self._tau:.4e}"
+                    f"[PASO {step}] sin convergencia ({reason}); bisección "
+                    f"de disipación: τ = {self._tau:.4e}"
                 )
                 if self._tau < ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:
-                    raise RuntimeError(
-                        "DissipationArcLengthSolver: τ bajó del umbral "
-                        f"({ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:.4e}). "
-                        "Aborto irreparable."
-                    )
+                    raise self._fail(res.divergence_error(
+                        last_load_factor=float(res.x[1]),
+                        n_bisections=self.n_bisections,
+                        extra_message=(
+                            f"DissipationArcLengthSolver: τ bajó del umbral "
+                            f"({ARCLENGTH_MIN_DL_FACTOR * self.initial_tau:.4e}) en el "
+                            f"paso {step}"),
+                    ), lambda_curr, steps_done, U_current)
 
-        self._finish(lambda_curr, steps_done)
+        self._finish(lambda_curr, steps_done, U_current)
         return U_current

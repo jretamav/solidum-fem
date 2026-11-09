@@ -24,6 +24,18 @@
 - **`SingularTangentError` en un análisis no lineal**
   La rigidez tangente perdió rango: un punto límite o bifurcación (usar `ArcLengthSolver`), o un mecanismo (ver los puntos anteriores). Si el mensaje añade *"el sistema tangente no se pudo resolver con precisión"*, la causa más probable es un mecanismo.
 
+- **`StepConstraintError` en `ArcLengthSolver` (o en las variantes del arco)**
+  La restricción del paso no tiene solución aunque se reduzca la longitud del paso: con el arco cilíndrico, las raíces de su ecuación son imaginarias («Raíces imaginarias» en el detalle) porque el arco no corta la trayectoria de equilibrio. Ocurre en un retroceso (snap-back) por localización o tras un punto límite agudo. Usar `IndirectDisplacementSolver`, con una magnitud que crezca de forma monótona (el alargamiento de la zona que se ablanda, la apertura de la grieta), o un primer paso menor. El detalle del mensaje dice también el último paso convergido; el mismo dato queda en `solver.lambda_final` y `solver.U_final`.
+
+- **Aviso:** *trazado detenido en λ=… < max_lambda=… tras agotar max_steps*
+  El trazado no terminó: el resultado es el del último paso convergido y `solver.termination` vale `"max_steps"` (`SolveResult.converged` es `False`). Aumentar `max_steps` o el tamaño del paso.
+
+- **Niveles del registro.**
+  Con el nivel por omisión (`INFO`) cada solver incremental escribe una línea por paso convergido. El detalle por iteración de Newton sale con `solidum.set_log_level("DEBUG")`. Un `WARNING` de bisección («sin convergencia (tangente singular); bisección…») es un evento que el solver resolvió solo; un `ERROR` significa siempre que el análisis se detuvo.
+
+- **Consola de Windows (cp1252) o ASCII.**
+  Si la consola no tiene un carácter de un mensaje (letras griegas, subíndices, flechas), Solidum lo escribe en texto plano: `Δλ₁` sale como `Deltalambda_1` y `⇒` como `=>`. No es un error. Con una consola UTF-8 (`PYTHONIOENCODING=utf-8`) los mensajes salen tal cual.
+
 - **`MemoryError: Memoria insuficiente para factorizar…`**
   El modelo es demasiado grande para el solver directo, cuya memoria crece más deprisa que el modelo. Usar `linear_algebra: iterative` en el bloque `solver` (ver el anexo de la capa algebraica).
 

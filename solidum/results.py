@@ -518,9 +518,10 @@ class SolveResult:
         que implementa ``internal_forces``. Elementos sólidos pueden omitirse.
     converged
         ``True`` si el solver completó el análisis: siempre para el lineal y
-        el Newton-Raphson (que lanzan excepción si no convergen); ``False``
-        en arc-length cuando el trazado se detuvo por ``max_steps`` antes de
-        alcanzar ``max_lambda``.
+        el Newton-Raphson (que lanzan excepción si no convergen); en la
+        familia del arco, si llegó a ``max_lambda`` o al objetivo de la
+        magnitud controlada (``control_target``), y ``False`` cuando el
+        trazado se detuvo por ``max_steps``.
     num_steps
         Número de pasos convergidos. ``1`` para solver lineal; ``N`` para
         Newton-Raphson / arc-length.
@@ -546,6 +547,11 @@ class SolveResult:
         por encima de ``1e12`` el solver avisa. Lo da el ``LinearSolver``
         (estática lineal y conducción estacionaria) con un backend directo y
         ``K`` simétrica; ``None`` en el resto.
+    termination
+        Motivo de la parada de un solver incremental (ADR 0025):
+        ``"max_lambda"``, ``"control_target"`` o ``"max_steps"`` (un fracaso
+        lanza excepción y no llega a construir el resultado). ``None`` en el
+        ``LinearSolver``, que resuelve en un paso.
     """
 
     U: np.ndarray
@@ -558,6 +564,7 @@ class SolveResult:
     constraint_forces: np.ndarray | None = None
     constraint_forces_by_node: dict[int, dict[str, float]] = field(default_factory=dict)
     condition_estimate: float | None = None
+    termination: str | None = None
 
 
 # Tolerancia relativa del criterio de unión: |C_k·b| ≤ tol·Σ_j |C_kj·b_j|.
@@ -640,6 +647,7 @@ def build_solve_result(
     num_steps: int = 1,
     load_factor: float = 1.0,
     condition_estimate: float | None = None,
+    termination: str | None = None,
 ) -> SolveResult:
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
@@ -740,4 +748,5 @@ def build_solve_result(
         constraint_forces=F_c,
         constraint_forces_by_node=constraint_forces_by_node,
         condition_estimate=condition_estimate,
+        termination=None if termination is None else str(termination),
     )

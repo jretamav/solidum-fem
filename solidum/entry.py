@@ -130,15 +130,22 @@ def run(
     #   detenerse antes de ``max_lambda`` (o terminar en ``max_lambda ≠ 1``),
     #   y las cargas que realmente ve el sistema son ``λ_final · F_applied``;
     #   con ellas las reacciones ``R = F_int − F`` son coherentes.
-    # - ``reached_max_lambda`` → ``converged``; ``steps_done`` → ``num_steps``.
+    # - ``completed`` → ``converged`` (llegó a ``max_lambda`` o al objetivo de
+    #   la magnitud controlada; ``reached_max_lambda`` en un solver sin él);
+    #   ``termination`` → ``termination`` (ADR 0025); ``steps_done`` →
+    #   ``num_steps``.
     lambda_final = float(getattr(solver, "lambda_final", 1.0))
+    completed = getattr(solver, "completed", None)
+    if completed is None:
+        completed = getattr(solver, "reached_max_lambda", True)
     result = build_solve_result(
         domain, assembler, U, F_applied * lambda_final,
-        converged=bool(getattr(solver, "reached_max_lambda", True)),
+        converged=bool(completed),
         num_steps=int(getattr(solver, "steps_done", 1)),
         load_factor=lambda_final,
         # Capa 4 del ADR 0019: el LinearSolver estima el condicionamiento.
         condition_estimate=getattr(solver, "condition_estimate", None),
+        termination=getattr(solver, "termination", None),
     )
     # El estado final de un análisis estático es, por definición, convergido:
     # ``build_solve_result`` acaba de ensamblar en ``U`` (estado trial

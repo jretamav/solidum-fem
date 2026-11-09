@@ -62,6 +62,7 @@ El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`)
 | `constraint_forces_by_node` | `{nodo: {dof: valor}}` de `constraint_forces` en los grados de libertad de esas uniones. |
 | `element_forces` | `{elemento: ElementForces}` con las fuerzas internas (N, V, M, T) de los elementos estructurales. |
 | `converged`, `num_steps` | Si el análisis llegó al final y cuántos pasos convergidos dio. |
+| `termination` | Por qué se detuvo un solver incremental (ADR 0025): `"max_lambda"`, `"control_target"` o `"max_steps"`. `None` en el `LinearSolver`. |
 | `condition_estimate` | Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). `None` en los análisis no lineales y con el solver iterativo. |
 
 Las reacciones y las fuerzas de restricción cumplen `F_int − F_applied = R + constraint_forces`: el equilibrio global es `ΣR + ΣF_applied = 0` por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección `linear_constraints` del capítulo «Archivo de Entrada YAML». En el problema térmico `R` es el flujo de calor nodal en los nodos con temperatura impuesta.
@@ -128,8 +129,10 @@ Desde un script conviene capturar los errores por su tipo, porque cada uno indic
 from solidum.math.solvers.diagnostics import (
     MechanismError,          # el modelo no está suficientemente apoyado (antes de resolver)
     IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
-    SolverDivergedError,     # familia del Newton: oscilación, tangente singular, capacidad...
+    SolverDivergedError,     # Newton y arco: oscilación, tangente singular, capacidad...
+    StepConstraintError,     # arco: la restricción del paso no tiene solución
     MasslessDofsError,       # modal: grados de libertad sin masa que impiden resolver
+    Termination,             # motivos de parada: solver.termination == Termination.MAX_STEPS
 )
 from solidum.math.linalg import IterativeNotConvergedError   # sólo con linear_algebra: iterative
 
@@ -139,6 +142,6 @@ except MechanismError as err:
     print(err.motions)       # p. ej. ['traslación en la dirección x']
 ```
 
-`MechanismError.motions` lista los movimientos libres ya descritos en palabras. `MasslessDofsError` (análisis modal, ADR 0024) lleva la causa en `cause` (`too_many_modes`, `no_mass`, `massless_mechanism`, `singular_mass`, `indefinite_mass`), los grados de libertad sin masa en `massless_dofs` y cuántos tienen masa en `n_mass`. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
+`MechanismError.motions` lista los movimientos libres ya descritos en palabras. Para el fracaso de un trazado (Newton o arco) se captura `SolverDivergedError`, no `RuntimeError`: `IllPosedSystemError`, el veredicto de la red de seguridad, también es un `RuntimeError`. Tras la excepción, `solver.termination == "diverged"` y `solver.U_final`, `lambda_final` y `steps_done` dicen hasta dónde llegó (ADR 0025). `MasslessDofsError` (análisis modal, ADR 0024) lleva la causa en `cause` (`too_many_modes`, `no_mass`, `massless_mechanism`, `singular_mass`, `indefinite_mass`), los grados de libertad sin masa en `massless_dofs` y cuántos tienen masa en `n_mass`. Los mensajes completos y cómo corregir cada caso están en el capítulo *Diagnóstico de Problemas*.
 
 El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. `LinearSolver(assembler, linear_algebra="iterative")`.

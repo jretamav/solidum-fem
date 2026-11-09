@@ -286,6 +286,16 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Análisis modal y espectral de edificios con masas de piso, con frecuencias exactas para el modelo discreto; los modelos con masa en todos los grados de libertad no cambian. El transitorio con grados de libertad sin masa queda fuera: la aceleración inicial de esos grados de libertad es una decisión física pendiente.
 
+## ADR 0025 — Terminación de los solvers estáticos incrementales y registro por omisión
+
+**Fecha**: 9 de noviembre de 2026. **Estado**: aceptado; amplía los ADR 0005 y 0011.
+
+**Contexto.** Quien usaba los solvers de trayectoria desde Python no sabía, sin leer el registro, si el análisis terminó ni por qué se detuvo. Un trazado que agotaba `max_steps` regresaba con normalidad. El fracaso del arco era un `RuntimeError` genérico con el diagnóstico sólo en el registro, y un solver reutilizado conservaba el estado de la corrida anterior. El control indirecto no podía detenerse en un desplazamiento. El registro escribía las iteraciones en `INFO`, registraba como `ERROR` eventos que el solver recuperaba y producía trazas con una consola en cp1252.
+
+**Decisión.** Atributo `termination` (`max_lambda`, `control_target`, `max_steps` o `diverged`) con `completed`, `lambda_final`, `steps_done`, `n_bisections` y `U_final`. Se fijan también tras una excepción, se reinician en cada `solve` y llegan a `SolveResult.termination`. El fracaso es una `SolverDivergedError` tipada: `StepConstraintError` si la restricción del paso no tiene solución. `IndirectDisplacementSolver` admite `control_target`: el último paso se recorta y la llegada es exacta. La base ofrece los puntos de extensión `_target_reached`, `_limit_step` y `_step_summary`. Registro: una línea `INFO` por paso, iteraciones en `DEBUG`, lo recuperado en `WARNING` con su motivo y `ERROR` sólo al detenerse; un manejador de consola adapta los mensajes a la codificación del flujo.
+
+**Consecuencia.** Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

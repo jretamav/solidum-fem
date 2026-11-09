@@ -19,6 +19,14 @@ revés que el del paso anterior, y la selección de raíz por menor ángulo del
 arco cilíndrico elige la rama equivocada o no converge. La restricción
 indirecta es lineal en ``ddλ``: no hay raíces que elegir. Ver
 ``docs/specs/IndirectDisplacementSolver.md``.
+
+Parada en un valor objetivo (ADR 0025): con ``control_target`` el trazado se
+detiene cuando la magnitud controlada ``cᵀ·U`` alcanza ese valor. Como la
+restricción fija exactamente ``cᵀ·ΔU = Δl`` en cada paso, basta recortar el
+último paso a lo que falta: la llegada es exacta, a precisión de máquina, con
+cualquier tamaño de paso. Es la parada natural de un ensayo o de un análisis de
+empuje lateral, que terminan en un desplazamiento y no en un factor de carga
+(en una meseta plástica λ casi no cambia).
 """
 from __future__ import annotations
 
@@ -29,11 +37,15 @@ import numpy as np
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers.arclength import ArcLengthSolver, _ArcProblem
 from solidum.math.solvers.corrector import CorrectionAborted
+from solidum.math.solvers.diagnostics import Termination
 from solidum.registry import SolverRegistry
 
 # |cᵀ·du_t| por debajo de esta fracción de ‖c‖·‖du_t‖: la magnitud
 # controlada no responde a la carga y ``Δλ`` no está determinado.
 _INSENSITIVE_RTOL = 1.0e-12
+# ``control_target`` se da por alcanzado a esta fracción de su valor: la
+# llegada es exacta salvo el redondeo de acumular ``cᵀ·U`` paso a paso.
+_TARGET_RTOL = 1.0e-12
 
 
 class _IndirectProblem(_ArcProblem):
@@ -78,6 +90,15 @@ class IndirectDisplacementSolver(ArcLengthSolver):
         referencia (por omisión 0.1), con ``Δl₁ = Δλ₁·cᵀ·K₀⁻¹·F_ref``, o
         incremento explícito ``Δl₁`` de la magnitud controlada, en sus
         unidades.
+    control_target : float, opcional
+        Valor de la magnitud controlada ``cᵀ·U`` en el que se detiene el
+        trazado (ADR 0025), en sus unidades; debe ser positivo, porque la
+        magnitud parte de cero y crece. El paso que lo alcanzaría se recorta a
+        lo que falta, así que el último punto coincide con el objetivo a
+        precisión de máquina. Deja ``termination = "control_target"`` y
+        ``reached_control_target = True``. Puede combinarse con ``max_lambda``:
+        se detiene en lo que llegue primero (con un objetivo, conviene un
+        ``max_lambda`` holgado).
 
     dl_max_factor : float, default 1.0
         Como en :class:`ArcLengthSolver`, pero **sin crecimiento por omisión**:
@@ -97,7 +118,8 @@ class IndirectDisplacementSolver(ArcLengthSolver):
                  max_steps=100, dl_grow_factor=1.5, dl_max_factor=1.0,
                  dl_shrink_factor=0.6, dl_grow_iter_threshold=4,
                  dl_shrink_iter_threshold=8, linear_algebra: str = "auto", *,
-                 control, initial_dlambda: float | None = None):
+                 control, initial_dlambda: float | None = None,
+                 control_target: float | None = None):
         super().__init__(
             assembler, convergence=convergence, max_iter=max_iter,
             max_lambda=max_lambda, initial_dl=initial_dl, max_steps=max_steps,
@@ -109,6 +131,17 @@ class IndirectDisplacementSolver(ArcLengthSolver):
         )
         self.control = self._normalize_control(control)
         self._c: np.ndarray | None = None
+        if control_target is not None:
+            control_target = float(control_target)
+            if not (math.isfinite(control_target) and control_target > 0.0):
+                raise ValueError(
+                    f"IndirectDisplacementSolver: control_target={control_target} debe "
+                    f"ser un número finito positivo: la magnitud controlada parte de "
+                    f"cero y crece.")
+        self.control_target: float | None = control_target
+        # Estado propio del trazado (ADR 0025), además del de ArcLengthSolver.
+        self.reached_control_target: bool = False
+        self.control_final: float = 0.0
 
     @staticmethod
     def _normalize_control(control) -> list[tuple]:
@@ -142,6 +175,38 @@ class IndirectDisplacementSolver(ArcLengthSolver):
                 raise ValueError(f"{name}: coef={coef} del término {k} debe ser finito y no nulo.")
             terms.append((node, dof, coef))
         return terms
+
+    # --- estado del trazado y parada en el objetivo (ADR 0025) ----------------
+
+    def _begin_trace(self) -> None:
+        super()._begin_trace()
+        self.reached_control_target = False
+        self.control_final = 0.0
+
+    def _control_value(self, U) -> float:
+        return float(self._c @ U)
+
+    def _target_reached(self, U) -> bool:
+        if self.control_target is None or U is None or self._c is None:
+            return False
+        return self._control_value(U) >= self.control_target * (1.0 - _TARGET_RTOL)
+
+    def _limit_step(self, dl: float, U) -> float:
+        if self.control_target is None:
+            return dl
+        return min(dl, self.control_target - self._control_value(U))
+
+    def _step_summary(self, U) -> str:
+        return f" | control = {self._control_value(U):.6e}"
+
+    def _record(self, lambda_curr, steps, U) -> None:
+        super()._record(lambda_curr, steps, U)
+        if U is not None and self._c is not None:
+            self.control_final = self._control_value(U)
+
+    def _finish(self, lambda_curr, step, U=None) -> None:
+        super()._finish(lambda_curr, step, U)
+        self.reached_control_target = self.termination is Termination.CONTROL_TARGET
 
     # --- puntos de extensión del padre ---------------------------------------
 

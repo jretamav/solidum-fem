@@ -36,6 +36,7 @@ from solidum.constants import (
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
+from solidum.math.solvers.diagnostics import Termination
 from solidum.math.solvers.model_checks import (
     check_initial_tangent,
     ensure_statically_restrained,
@@ -150,12 +151,34 @@ class NonlinearSolver:
             line_search=self.line_search,
             near_nullspace=assembler.near_nullspace,
         )
-        # Metadatos del último análisis (los lee ``solidum.run``): pasos
-        # convergidos y factor de carga alcanzado (siempre 1.0 si ``solve``
-        # retorna; en caso contrario lanza una excepción tipada).
+        # Metadatos del último análisis (los lee ``solidum.run``; ADR 0025):
+        # motivo de la parada, pasos convergidos, factor de carga alcanzado
+        # (1.0 si ``solve`` retorna; si lanza una excepción tipada, el del
+        # último paso convergido) y su estado de desplazamientos. ``solve``
+        # los reinicia al empezar.
+        self.termination: Termination | None = None
         self.steps_done: int = 0
         self.lambda_final: float = 0.0
         self.reached_max_lambda: bool = False
+        self.n_bisections: int = 0
+        self.U_final: np.ndarray | None = None
+
+    @property
+    def completed(self) -> bool:
+        """``True`` si el análisis llegó a la carga completa (λ = 1)."""
+        return self.termination is Termination.MAX_LAMBDA
+
+    def _fail(self, error, load_factor: float, U: np.ndarray):
+        """Estado de un análisis que fracasa (``termination = "diverged"``,
+        último paso convergido) y la excepción tipada, lista para lanzar."""
+        self.termination = Termination.DIVERGED
+        self.lambda_final = float(load_factor)
+        self.U_final = np.array(U, dtype=float, copy=True)
+        _log.error(
+            f"{type(self).__name__}: análisis detenido ({error.mode}). Último paso "
+            f"convergido: λ = {load_factor:.4f} tras {self.steps_done} pasos."
+        )
+        return error
 
     def make_problem(self, F_ext_global: np.ndarray, load_factor: float) -> _IncrementalProblem:
         """Problema de Newton del paso con factor de carga ``load_factor``
@@ -167,6 +190,14 @@ class NonlinearSolver:
         )
 
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
+        # Estado del análisis anterior fuera (ADR 0025), antes de cualquier
+        # comprobación que pueda lanzar.
+        self.termination = None
+        self.steps_done = 0
+        self.lambda_final = 0.0
+        self.reached_max_lambda = False
+        self.n_bisections = 0
+        self.U_final = None
         domain = self.assembler.domain
         ndof = domain.total_dofs
         U_current = np.zeros(ndof)
@@ -187,9 +218,6 @@ class NonlinearSolver:
         delta_lambda = 1.0 / self.num_steps
         step = 0
         n_bisections = 0  # contador de bisecciones globales del paso (ADR 0011)
-        self.steps_done = 0
-        self.lambda_final = 0.0
-        self.reached_max_lambda = False
 
         while load_factor < target_load - NEWTON_LOAD_FACTOR_EPSILON:
             step += 1
@@ -198,7 +226,8 @@ class NonlinearSolver:
                 delta_lambda = target_load - load_factor
 
             next_load_factor = load_factor + delta_lambda
-            _log.info(f"[PASO {step}] Intentando Factor de Carga: {next_load_factor:.4f} (Incremento: {delta_lambda:.4f})")
+            _log.debug(f"[PASO {step}] intentando λ = {next_load_factor:.4f} "
+                       f"(Δλ = {delta_lambda:.4f})")
 
             # Gancho de inicio de paso (ADR 0020, P5). Evaluado con el estado
             # convergido del paso anterior para evitar chattering por
@@ -218,7 +247,8 @@ class NonlinearSolver:
             res = self.corrector.run(problem, U_current.copy(), check_initial=False)
 
             if res.converged:
-                _log.info("  -> CONVERGENCIA ALCANZADA.")
+                _log.info(f"[PASO {step}] λ = {next_load_factor:.4f} | "
+                          f"Δλ = {delta_lambda:.4f} | {res.n_solves} iter")
                 U_current = res.x
                 load_factor = next_load_factor
                 self.steps_done += 1
@@ -230,7 +260,7 @@ class NonlinearSolver:
                         delta_lambda * NEWTON_ADAPTIVE_GROWTH_FACTOR,
                         1.0 / self.num_steps,
                     )
-                    _log.info(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
+                    _log.debug(f"  -> Acelerando el próximo incremento a {delta_lambda:.4f}")
 
                 if step_callback:
                     step_callback(step, U_current, load_factor)
@@ -239,10 +269,12 @@ class NonlinearSolver:
             if self.adaptive:
                 delta_lambda /= 2.0
                 n_bisections += 1
-                _log.warning(f"NO CONVERGIÓ. Bisección: reduciendo incremento a {delta_lambda:.4f}")
+                self.n_bisections = n_bisections
+                _log.warning(f"[PASO {step}] sin convergencia con λ = {next_load_factor:.4f} "
+                             f"({res.failure_reason()}); bisección: Δλ = {delta_lambda:.4e}")
                 if delta_lambda < self.min_delta_lambda:
                     # Clasificar el modo y lanzar excepción tipada (ADR 0011).
-                    raise res.divergence_error(
+                    raise self._fail(res.divergence_error(
                         last_load_factor=next_load_factor,
                         n_bisections=n_bisections,
                         extra_message=(
@@ -250,17 +282,22 @@ class NonlinearSolver:
                             f"line_search={'on' if self.line_search else 'off'}; "
                             f"último α={res.last_alpha:.3f}."
                         ),
-                    )
+                    ), load_factor, U_current)
             else:
-                raise res.divergence_error(
+                raise self._fail(res.divergence_error(
                     last_load_factor=next_load_factor,
                     n_bisections=n_bisections,
                     extra_message=(
                         f"Paso {step} no convergió en {self.max_iter} iter; "
                         f"adaptive=False; line_search={'on' if self.line_search else 'off'}."
                     ),
-                )
+                ), load_factor, U_current)
 
         self.lambda_final = load_factor
         self.reached_max_lambda = True
+        self.termination = Termination.MAX_LAMBDA
+        self.U_final = np.array(U_current, dtype=float, copy=True)
+        bisecciones = f", {n_bisections} bisección(es)" if n_bisections else ""
+        _log.info(f"{type(self).__name__}: carga completa (termination = 'max_lambda') "
+                  f"en {self.steps_done} pasos{bisecciones}.")
         return U_current
