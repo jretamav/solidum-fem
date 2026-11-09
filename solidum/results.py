@@ -552,6 +552,18 @@ class SolveResult:
         ``"max_lambda"``, ``"control_target"`` o ``"max_steps"`` (un fracaso
         lanza excepción y no llega a construir el resultado). ``None`` en el
         ``LinearSolver``, que resuelve en un paso.
+    load_factor
+        Factor de carga final ``λ`` de la carga que crece en el análisis (o
+        en la etapa): ``F_applied = F_constant + λ·F_ref``.
+    F_constant
+        Carga constante de un análisis por etapas (ADR 0026): la ya aplicada
+        al empezar la etapa, que actúa completa durante toda ella. ``None``
+        fuera de una etapa. ``F_variable`` da la otra parte, ``λ·F_ref``.
+    equivalent_loads
+        Cargas nodales equivalentes de la carga distribuida (peso propio,
+        fuerza de cuerpo) por elemento, ya multiplicadas por su factor, que
+        se restaron a las fuerzas nodales para dar ``element_forces``. Una
+        etapa siguiente las hereda como parte de su carga constante.
     """
 
     U: np.ndarray
@@ -565,6 +577,20 @@ class SolveResult:
     constraint_forces_by_node: dict[int, dict[str, float]] = field(default_factory=dict)
     condition_estimate: float | None = None
     termination: str | None = None
+    load_factor: float = 1.0
+    F_constant: np.ndarray | None = None
+    equivalent_loads: dict[int, np.ndarray] = field(default_factory=dict)
+    # Versión del registro de cargas equivalentes del ensamblador con que se
+    # construyó el resultado (ADR 0026): una etapa siguiente la compara para
+    # saber si las cargas registradas son suyas o de esta etapa.
+    _equivalent_loads_version: int | None = field(default=None, repr=False)
+
+    @property
+    def F_variable(self) -> np.ndarray:
+        """Parte de la carga que creció con λ: ``F_applied − F_constant``."""
+        if self.F_constant is None:
+            return self.F_applied
+        return self.F_applied - self.F_constant
 
 
 # Tolerancia relativa del criterio de unión: |C_k·b| ≤ tol·Σ_j |C_kj·b_j|.
@@ -648,6 +674,8 @@ def build_solve_result(
     load_factor: float = 1.0,
     condition_estimate: float | None = None,
     termination: str | None = None,
+    F_constant: np.ndarray | None = None,
+    equivalent_loads: dict[int, np.ndarray] | None = None,
 ) -> SolveResult:
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
@@ -725,15 +753,18 @@ def build_solve_result(
             constraint_forces_by_node.setdefault(nid, {})[dof_name] = float(F_c[dof])
 
     # Cargas nodales equivalentes de la carga distribuida (peso propio /
-    # fuerza de cuerpo) por elemento, escaladas por el factor de carga: las
-    # fuerzas internas de extremo son F_int − f_eq, no K·u.
-    equivalent_loads = getattr(assembler, "equivalent_loads", None) or {}
+    # fuerza de cuerpo) por elemento: las fuerzas internas de extremo son
+    # F_int − f_eq, no K·u. Sin ``equivalent_loads`` explícitas, las del
+    # último ensamblaje de carga de cuerpo escaladas por el factor de carga;
+    # en un análisis por etapas las compone ``solidum.run`` (ADR 0026).
+    if equivalent_loads is None:
+        recorded = getattr(assembler, "equivalent_loads", None) or {}
+        equivalent_loads = {eid: load_factor * np.asarray(f, dtype=float)
+                            for eid, f in recorded.items()}
     element_forces: dict[int, ElementForces] = {}
     for elem_id, elem in domain.elements.items():
         f_eq = equivalent_loads.get(elem_id)
-        ef = elem.internal_forces(
-            U, equivalent_load=None if f_eq is None else load_factor * f_eq,
-        )
+        ef = elem.internal_forces(U, equivalent_load=f_eq)
         if ef is not None:
             element_forces[elem_id] = ef
 
@@ -749,4 +780,8 @@ def build_solve_result(
         constraint_forces_by_node=constraint_forces_by_node,
         condition_estimate=condition_estimate,
         termination=None if termination is None else str(termination),
+        load_factor=float(load_factor),
+        F_constant=None if F_constant is None else np.asarray(F_constant, dtype=float),
+        equivalent_loads=equivalent_loads,
+        _equivalent_loads_version=getattr(assembler, "equivalent_loads_version", None),
     )

@@ -151,6 +151,11 @@ class Assembler:
         # ``build_solve_result`` para que ``internal_forces`` devuelva las
         # fuerzas internas de extremo (``F_int − f_eq``) y no ``K·u``.
         self.equivalent_loads: dict[int, np.ndarray] = {}
+        # Versión del registro anterior: aumenta con cada carga de cuerpo
+        # ensamblada. ``solidum.run`` la usa en un análisis por etapas para
+        # saber si las cargas equivalentes registradas son de la etapa nueva
+        # o de la anterior (ADR 0026).
+        self.equivalent_loads_version: int = 0
 
     def _get_element_global_indices(self, element) -> list:
         """Extrae los índices globales de DOFs del elemento en el orden correcto.
@@ -518,6 +523,7 @@ class Assembler:
         F: np.ndarray,
         U_current: np.ndarray | None = None,
         load_factor: float = 1.0,
+        g_start: np.ndarray | None = None,
     ):
         """Reduce ``K, F`` a la subred de DOFs libres (eliminación directa).
 
@@ -532,6 +538,12 @@ class Assembler:
         que en DOFs libres se anula y en DOFs esclavos representa la
         corrección necesaria para satisfacer la restricción.
 
+        En una etapa de carga (ADR 0026) los valores impuestos crecen de los
+        de partida ``g_start`` a los del modelo, ``g(λ) = g_start + λ·(g_indep −
+        g_start)``: ``g_start`` sustituye a cero en la fórmula anterior, y sin
+        ``U_current`` (dirección tangente ``∂U/∂λ``) la parte impuesta es
+        ``load_factor·(g_indep − g_start)``.
+
         Returns
         -------
         K_red, F_red, T, g
@@ -541,12 +553,16 @@ class Assembler:
         cs = self.constraint_set
         T, g_indep = cs.build(self.ndof)
 
+        if g_start is None:
+            g_target = load_factor * g_indep
+        else:
+            g_target = g_start + load_factor * (g_indep - g_start)
         if U_current is None:
-            g = load_factor * g_indep
+            g = g_target if g_start is None else load_factor * (g_indep - g_start)
         else:
             free_dofs = cs.free_dofs(self.ndof)
             u_free = U_current[free_dofs]
-            g = T @ u_free + load_factor * g_indep - U_current
+            g = T @ u_free + g_target - U_current
 
         K_red = T.T @ K @ T
         F_red = T.T @ (F - K @ g)
@@ -796,7 +812,12 @@ class Assembler:
         """Confirma las variables internas de todos los elementos tras la
         convergencia del paso: copia trial → committed por familia (una
         asignación de arreglo) y ``commit_state`` en los elementos del
-        camino por elemento."""
+        camino por elemento.
+
+        Marca el dominio con ``committed_history``: su estado interno ya no es
+        el inicial, y una corrida que empiece en ``U = 0`` sin continuar la
+        anterior lo avisa si ese estado no está en equilibrio (ADR 0026)."""
+        self.domain.committed_history = True
         if not self._topology_built or self._topology_key != self._current_topology_key():
             for elem in self.domain.elements.values():
                 elem.commit_state()
@@ -862,6 +883,7 @@ class Assembler:
             F_body[self._elem_dof_indices[i]] += f_e
             equivalent_loads[element.id] = f_e
         self.equivalent_loads = equivalent_loads
+        self.equivalent_loads_version += 1
         return F_body
 
     def assemble_body_load(self, b) -> np.ndarray:

@@ -16,6 +16,11 @@ compartido (ADR 0015); este módulo aporta lo propio del control de carga
 incremental: el residuo ``λ·F_ext − F_int``, la reducción por Dirichlet
 con el incremento ``λ·g`` del paso, y el paso adaptativo con bisección.
 
+Etapas de carga (ADR 0026): ``solve(F, u0=..., constant_load=...)`` parte del
+estado ``u0`` con la carga constante ``F_c`` ya aplicada; el residuo es
+``F_c + λ·F − F_int`` con λ de 0 a 1, y los valores impuestos crecen de los de
+``u0`` a los del modelo (:mod:`solidum.math.solvers.stages`).
+
 La alternativa —ensamblar en ``U_k`` para resolver y otra vez en
 ``U_k + δU_k`` para evaluar el residuo— duplicaba el coste por iteración
 (auditoría 2026-09-22) para producir la misma secuencia de decisiones,
@@ -37,6 +42,7 @@ from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
 from solidum.math.solvers.diagnostics import Termination
+from solidum.math.solvers.stages import Stage, check_initial_equilibrium, make_stage
 from solidum.math.solvers.model_checks import (
     check_initial_tangent,
     ensure_statically_restrained,
@@ -51,12 +57,17 @@ class _IncrementalProblem:
     """
 
     def __init__(self, assembler, F_ext_step: np.ndarray, F_ext_global: np.ndarray,
-                 load_factor: float, free_dofs: np.ndarray):
+                 load_factor: float, free_dofs: np.ndarray, *,
+                 g_start: np.ndarray | None = None):
         self.assembler = assembler
+        # ``F_ext_step`` es la carga total del paso, constante incluida
+        # (``F_c + λ·F``); ``F_ext_global`` la escala de calibración.
         self.F_ext_step = F_ext_step
         self.F_ext_global = F_ext_global
         self.load_factor = float(load_factor)
         self.free_dofs = free_dofs
+        # Valores impuestos al empezar la etapa (ADR 0026); ``None`` = cero.
+        self.g_start = g_start
         # Operador ``u = T·u_libre + g`` (ADR 0004): el equilibrio reducido es
         # ``TᵀR = 0``. Con una restricción multipunto la fuerza del esclavo
         # pasa a sus maestros y ``R[libres]`` no se anula en la solución.
@@ -86,7 +97,7 @@ class _IncrementalProblem:
         # Reducción con el incremento de Dirichlet ``λ·g`` del paso: en DOF
         # libres se anula y en esclavos corrige la restricción (ADR 0004).
         K_red, R_red, T_op, g_inc = self.assembler.reduce(
-            state[0], R, U_current=U, load_factor=self.load_factor,
+            state[0], R, U_current=U, load_factor=self.load_factor, g_start=self.g_start,
         )
         return self.assembler.expand(solve(K_red, R_red), T_op, g_inc)
 
@@ -162,6 +173,9 @@ class NonlinearSolver:
         self.reached_max_lambda: bool = False
         self.n_bisections: int = 0
         self.U_final: np.ndarray | None = None
+        # Residuo relativo de equilibrio al empezar una etapa (ADR 0026);
+        # ``None`` si no había nada que comprobar.
+        self.initial_residual: float | None = None
 
     @property
     def completed(self) -> bool:
@@ -180,16 +194,41 @@ class NonlinearSolver:
         )
         return error
 
-    def make_problem(self, F_ext_global: np.ndarray, load_factor: float) -> _IncrementalProblem:
+    def make_problem(self, F_ext_global: np.ndarray, load_factor: float,
+                     stage: Stage | None = None) -> _IncrementalProblem:
         """Problema de Newton del paso con factor de carga ``load_factor``
-        (lo usa ``solve``; expuesto para los tests de los internos)."""
+        (lo usa ``solve``; expuesto para los tests de los internos). Con una
+        etapa (ADR 0026), la carga del paso incluye la constante y los valores
+        impuestos parten de los de la etapa."""
         ndof = self.assembler.domain.total_dofs
         free_dofs = self.assembler.constraint_set.free_dofs(ndof)
+        if stage is None or not stage.staged:
+            return _IncrementalProblem(
+                self.assembler, F_ext_global * load_factor, F_ext_global, load_factor, free_dofs,
+            )
         return _IncrementalProblem(
-            self.assembler, F_ext_global * load_factor, F_ext_global, load_factor, free_dofs,
+            self.assembler, stage.F_const + F_ext_global * load_factor,
+            stage.calibration_load(F_ext_global), load_factor, free_dofs,
+            g_start=stage.g_start,
         )
 
-    def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
+    def solve(self, F_ext_global: np.ndarray, step_callback=None, *,
+              u0: np.ndarray | None = None,
+              constant_load: np.ndarray | None = None) -> np.ndarray:
+        """Aplica ``F_ext_global`` de forma incremental (λ de 0 a 1).
+
+        Parameters
+        ----------
+        F_ext_global
+            Carga que crece con λ.
+        step_callback
+            ``callback(step, U, λ)`` tras cada paso convergido.
+        u0, constant_load
+            Etapa de carga (ADR 0026): estado de partida (los desplazamientos
+            de la etapa anterior; el estado interno de los elementos lo guarda
+            el ensamblador) y carga que actúa completa durante toda la etapa
+            (la ya aplicada). El residuo es ``F_c + λ·F − F_int``.
+        """
         # Estado del análisis anterior fuera (ADR 0025), antes de cualquier
         # comprobación que pueda lanzar.
         self.termination = None
@@ -198,9 +237,12 @@ class NonlinearSolver:
         self.reached_max_lambda = False
         self.n_bisections = 0
         self.U_final = None
+        self.initial_residual = None
         domain = self.assembler.domain
-        ndof = domain.total_dofs
-        U_current = np.zeros(ndof)
+        if domain.total_dofs == 0:
+            domain.generate_equation_numbers()
+        stage = make_stage(self.assembler, u0, constant_load, type(self).__name__)
+        U_current = stage.U0.copy()
 
         _log.info("--- INICIANDO SOLVER NO LINEAL (CONTROL DE PASO ADAPTATIVO) ---")
         # Red de seguridad, capa 1 (ADR 0019): un mecanismo rígido no tiene
@@ -212,6 +254,9 @@ class NonlinearSolver:
         # interno aunque la carga no lo active (el Newton lo resolvería en
         # silencio con los pivotes perturbados de Pardiso).
         check_initial_tangent(self.assembler, self.corrector, type(self).__name__)
+        # Etapa (ADR 0026): debe empezar en equilibrio con la carga constante.
+        self.initial_residual = check_initial_equilibrium(
+            self.assembler, stage, self.convergence, F_ext_global, type(self).__name__)
 
         load_factor = 0.0
         target_load = 1.0
@@ -243,7 +288,7 @@ class NonlinearSolver:
             # libres es nulo y el criterio daría convergencia sin haber
             # movido el apoyo. Todo paso hace, por tanto, al menos una
             # resolución.
-            problem = self.make_problem(F_ext_global, next_load_factor)
+            problem = self.make_problem(F_ext_global, next_load_factor, stage)
             res = self.corrector.run(problem, U_current.copy(), check_initial=False)
 
             if res.converged:

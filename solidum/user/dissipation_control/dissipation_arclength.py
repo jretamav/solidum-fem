@@ -284,7 +284,20 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             - dlambda_step * float(F_ref @ U_n)
         )
 
-    def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
+    def solve(self, F_ext_ref: np.ndarray, step_callback=None, *,
+              u0: np.ndarray | None = None,
+              constant_load: np.ndarray | None = None) -> np.ndarray:
+        # Etapas de carga del padre (ADR 0026): no se admiten todavía. La
+        # restricción de disipación usa el trabajo de la carga de referencia,
+        # y con una carga constante la energía disipada del paso cambia: es una
+        # decisión física pendiente, no un detalle de implementación.
+        if u0 is not None or constant_load is not None:
+            raise NotImplementedError(
+                "DissipationArcLengthSolver no admite etapas de carga (u0, "
+                "constant_load): su restricción de disipación supone toda la carga "
+                "proporcional a λ. Para un análisis por etapas use ArcLengthSolver o "
+                "IndirectDisplacementSolver."
+            )
         # Estado del trazado anterior fuera (contrato del padre, ADR 0025).
         self._begin_trace()
         domain = self.assembler.domain

@@ -65,6 +65,12 @@ restricción del paso no tiene solución (raíces imaginarias).
 Registro (ADR 0025): una línea ``INFO`` por paso convergido; el detalle por
 iteración, en ``DEBUG``; una bisección, en ``WARNING`` con su motivo; ``ERROR``
 sólo cuando el análisis se detiene.
+
+Etapas de carga (ADR 0026): ``solve(F_ref, u0=..., constant_load=...)`` parte
+del estado ``u0`` con la carga constante ``F_c`` ya aplicada; el residuo es
+``F_c + λ·F_ref − F_int`` con λ desde 0 y los valores impuestos crecen de los
+de ``u0`` a los del modelo (:mod:`solidum.math.solvers.stages`). Es el empuje
+lateral con la gravedad ya aplicada.
 """
 from __future__ import annotations
 
@@ -92,6 +98,7 @@ from solidum.math.solvers.model_checks import (
     check_initial_tangent,
     ensure_statically_restrained,
 )
+from solidum.math.solvers.stages import Stage, check_initial_equilibrium, make_stage
 from solidum.registry import SolverRegistry
 
 
@@ -115,7 +122,8 @@ class _ArcProblem:
     """
 
     def __init__(self, assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-                 *, mode: str, dl: float, max_lambda: float | None = None):
+                 *, mode: str, dl: float, max_lambda: float | None = None,
+                 stage: Stage | None = None):
         self.assembler = assembler
         self.U_current = U_current
         self.lambda_curr = float(lambda_curr)
@@ -125,6 +133,12 @@ class _ArcProblem:
         self.dl = float(dl)
         self.max_lambda = max_lambda
         self.overshoot = False
+        # Etapa de carga (ADR 0026): carga constante y valores impuestos de
+        # partida. Sin etapa, nulos.
+        staged = stage is not None and stage.staged
+        self.F_const = stage.F_const if staged else None
+        self.g_start = stage.g_start if staged else None
+        self._F_calibration = stage.calibration_load(F_ext_ref) if staged else F_ext_ref
         # Equilibrio reducido ``TᵀR = 0`` (ADR 0004): con una restricción
         # multipunto ``R[libres]`` no se anula en la solución.
         self._T = assembler.constraint_set.build(assembler.domain.total_dofs)[0]
@@ -135,7 +149,8 @@ class _ArcProblem:
         return self.assembler.assemble_non_linear_system(x[0])
 
     def residual(self, x, state):
-        return x[1] * self.F_ext_ref - state[1]
+        R = x[1] * self.F_ext_ref - state[1]
+        return R if self.F_const is None else R + self.F_const
 
     def residual_norm(self, R):
         return float(np.linalg.norm(self._T.T @ R))
@@ -143,11 +158,13 @@ class _ArcProblem:
     def calibration_scales(self, x, state):
         # La carga de referencia es la escala natural del arc-length (λ
         # varía, F_ext_ref es fijo).
-        return default_calibration_scales(self.F_ext_ref, state[1], state[0])
+        return default_calibration_scales(self._F_calibration, state[1], state[0])
 
     def reference_force(self, x, state):
-        return max(float(np.linalg.norm(self.F_ext_ref)) * abs(x[1]),
-                   float(np.linalg.norm(state[1])))
+        F_ext = x[1] * self.F_ext_ref
+        if self.F_const is not None:
+            F_ext = F_ext + self.F_const
+        return max(float(np.linalg.norm(F_ext)), float(np.linalg.norm(state[1])))
 
     def x_norm(self, x):
         return float(np.linalg.norm(x[0]))
@@ -158,9 +175,10 @@ class _ArcProblem:
     def correction(self, x, state, R, solve):
         U_iter, lambda_iter, dU_iter = x
         K_global = state[0]
-        K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, self.F_ext_ref.copy())
+        K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
+            K_global, self.F_ext_ref.copy(), g_start=self.g_start)
         K_red, R_red, T_R, g_R = self.assembler.reduce(
-            K_global, R, U_current=U_iter, load_factor=lambda_iter,
+            K_global, R, U_current=U_iter, load_factor=lambda_iter, g_start=self.g_start,
         )
         du_R = self.assembler.expand(solve(K_red, R_red), T_R, g_R)
         du_t = self.assembler.expand(solve(K_t_red, F_t_red), T_t, g_t)
@@ -299,6 +317,10 @@ class ArcLengthSolver:
         self.steps_done: int = 0
         self.n_bisections: int = 0
         self.U_final: np.ndarray | None = None
+        # Residuo relativo de equilibrio al empezar una etapa (ADR 0026) y la
+        # etapa en curso (la leen el predictor, el paso y la llegada).
+        self.initial_residual: float | None = None
+        self._stage: Stage | None = None
 
     @classmethod
     def _first_step_spec(cls, initial_dl, initial_dlambda):
@@ -338,7 +360,7 @@ class ArcLengthSolver:
         """Problema de Newton del paso con la restricción del solver."""
         return _ArcProblem(
             self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-            mode="cylindrical", dl=dl, max_lambda=self.max_lambda,
+            mode="cylindrical", dl=dl, max_lambda=self.max_lambda, stage=self._stage,
         )
 
     def _on_solve_start(self) -> None:
@@ -382,7 +404,7 @@ class ArcLengthSolver:
         )
         problem = _ArcProblem(
             self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-            mode="newton", dl=0.0,
+            mode="newton", dl=0.0, stage=self._stage,
         )
         return self.corrector.run(
             problem, (U_current + dU0, self.max_lambda, dU0), check_initial=True,
@@ -403,6 +425,8 @@ class ArcLengthSolver:
         self.n_bisections = 0
         self.U_final = None
         self.dl_reference = None
+        self.initial_residual = None
+        self._stage = None
 
     @property
     def completed(self) -> bool:
@@ -483,10 +507,14 @@ class ArcLengthSolver:
         avance (para no regresar por donde se vino). Devuelve ``None`` si la
         tangente es singular (el llamador biseca la longitud de paso)."""
         K_global, F_int_global = self.assembler.assemble_non_linear_system(U_current)
+        stage = self._stage
+        staged = stage is not None and stage.staged
         if not self.convergence.is_calibrated:
-            self.convergence.calibrate(
-                *default_calibration_scales(F_ext_ref, F_int_global, K_global))
-        K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(K_global, F_ext_ref.copy())
+            self.convergence.calibrate(*default_calibration_scales(
+                stage.calibration_load(F_ext_ref) if staged else F_ext_ref,
+                F_int_global, K_global))
+        K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
+            K_global, F_ext_ref.copy(), g_start=stage.g_start if staged else None)
         try:
             du_t_red = self.corrector.solve(K_t_red, F_t_red)
         except IllPosedSystemError:
@@ -501,11 +529,31 @@ class ArcLengthSolver:
             sign = -1.0
         return du_t, sign
 
-    def solve(self, F_ext_ref: np.ndarray, step_callback=None) -> np.ndarray:
+    def solve(self, F_ext_ref: np.ndarray, step_callback=None, *,
+              u0: np.ndarray | None = None,
+              constant_load: np.ndarray | None = None) -> np.ndarray:
+        """Traza la trayectoria de equilibrio con la carga ``λ·F_ext_ref``.
+
+        Parameters
+        ----------
+        F_ext_ref
+            Carga de referencia, la que crece con λ.
+        step_callback
+            ``callback(step, U, λ)`` tras cada paso convergido.
+        u0, constant_load
+            Etapa de carga (ADR 0026): estado de partida (los desplazamientos
+            de la etapa anterior; el estado interno de los elementos lo guarda
+            el ensamblador) y carga que actúa completa durante toda la etapa,
+            p. ej. la gravedad ya aplicada. El residuo es
+            ``F_c + λ·F_ext_ref − F_int``, con λ desde 0.
+        """
         self._begin_trace()
         domain = self.assembler.domain
+        if domain.total_dofs == 0:
+            domain.generate_equation_numbers()
         ndof = domain.total_dofs
-        U_current = np.zeros(ndof)
+        self._stage = make_stage(self.assembler, u0, constant_load, type(self).__name__)
+        U_current = self._stage.U0.copy()
 
         lambda_curr = 0.0
         step = 0
@@ -524,6 +572,9 @@ class ArcLengthSolver:
         # predictor del primer paso factoriza K(U = 0); sus pivotes nulos
         # delatan un mecanismo interno aunque la carga no lo active.
         check_initial_tangent(self.assembler, self.corrector, type(self).__name__)
+        # Etapa (ADR 0026): debe empezar en equilibrio con la carga constante.
+        self.initial_residual = check_initial_equilibrium(
+            self.assembler, self._stage, self.convergence, F_ext_ref, type(self).__name__)
 
         cs = self.assembler.constraint_set
         free_dofs = cs.free_dofs(ndof)

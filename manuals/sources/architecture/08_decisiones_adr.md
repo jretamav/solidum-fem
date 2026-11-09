@@ -296,6 +296,16 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 **Consecuencia.** Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
 
+## ADR 0026 — Etapas de carga en los solvers estáticos
+
+**Fecha**: 9 de noviembre de 2026. **Estado**: aceptado.
+
+**Contexto.** Los solvers estáticos arrancaban siempre en `U = 0` y su residuo no tenía término constante. No se podía aplicar la gravedad y empujar después, y una segunda corrida sobre un modelo plastificado empezaba en `U = 0` con el estado plástico de la primera.
+
+**Decisión.** `solve(F_ref, u0=…, constant_load=…)` en `NonlinearSolver` y la familia del arco, con residuo $\mathbf F_c + \lambda\mathbf F_\text{ref} - \mathbf F_\text{int}$ y λ = 0 al empezar. Los valores impuestos crecen desde los de partida, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$. Cada etapa comprueba su equilibrio inicial, y un modelo con historia que empieza en cero lo avisa. `solidum.run(..., previous=resultado)` continúa la etapa anterior con su carga aplicada como constante y sus cargas equivalentes por elemento; el resultado separa `F_constant` de `F_variable`. `DissipationArcLengthSolver` rechaza las etapas: su restricción de disipación es física por decidir.
+
+**Consecuencia.** Gravedad y empuje, P-Δ con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N–M y la superposición elástica. Quedan las etapas desde el YAML (deuda #36) y dos cargas distribuidas en una misma etapa (deuda #35).
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

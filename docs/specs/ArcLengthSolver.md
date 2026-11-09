@@ -33,6 +33,7 @@ Idénticas a `NonlinearSolver`: Dirichlet (homogéneo / no homogéneo) y MPC ví
 ### 3. Salidas físicas
 
 - $\mathbf U$ final en $\lambda \to \lambda_{\max}$ (o cuando se alcance `max_steps`).
+- **Etapas de carga** (ADR 0026): `solve(F_ref, …, u0=…, constant_load=…)` parte del estado `u0` (desplazamientos de la etapa anterior; el estado interno de los elementos lo guarda el ensamblador) con la carga constante $\mathbf F_c$ ya aplicada. El residuo es $\mathbf F_c + \lambda\,\mathbf F_\text{ref} - \mathbf F_\text{int}(\mathbf U)$ con $\lambda = 0$ al empezar, y los valores impuestos crecen de los de partida a los del modelo, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$ con $\mathbf g_0 = \mathbf U_0 - \mathbf T\,\mathbf U_0[\text{libres}]$. La etapa comprueba que empieza en equilibrio (`initial_residual`) y avisa si no. `solidum.run(..., previous=resultado)` continúa la etapa anterior: `u0 = previous.U`, `constant_load = previous.F_applied`.
 - Estado de terminación (ADR 0025): `termination` ∈ {`max_lambda`, `control_target` (variantes con objetivo), `max_steps`, `diverged`}, `completed`, `lambda_final`, `steps_done`, `n_bisections` y `U_final` (último estado convergido). Se fijan también cuando `solve` termina con una excepción y se reinician al empezar. El fracaso lanza una `SolverDivergedError` tipada: `StepConstraintError` si la restricción del paso no tiene solución (raíces imaginarias), la clasificación del ADR 0011 en el resto.
 - Historia disponible vía `step_callback(step, U, lambda)`.
 - Trazas $\lambda(U_i)$ para visualizar snap-through/snap-back.
@@ -267,6 +268,15 @@ acceptance:
       expect: "Tras el fracaso, lambda_final, steps_done y U_final son los del último paso convergido de esa corrida, no de la anterior; tras el fallo previo, termination = None y contadores a cero"
       ref: "tests/test_trace_termination.py::TestEstadoYExcepcionDelArco"
 
+    - name: etapas_interaccion_n_m
+      setup: "Columna de 20 fibras de acero perfectamente plástico (Frame2DEuler, σ_y = 250 MPa, 0.30 × 0.50 m, L = 3 m) con n = P/P_y = 0.3 en la etapa 1 y empuje con IndirectDisplacementSolver hasta 0.09 m en la etapa 2, con 4, 8 y 16 elementos (ADR 0026)"
+      expect: "La fuerza lateral máxima converge a M_p·(1 − n²)/L: exceso decreciente de primer orden (cociente 2 ± 0.15 al duplicar los elementos) y límite de Richardson a menos de 0.3 % de la carga límite; la reacción vertical suma P durante el empuje. Medido: +11.7 %, +5.9 %, +3.0 % (+1.5 % con 32); Richardson −0.04 %. El criterio inicial, exceso ≤ 2 % con 16 elementos, no se cumple con n = 0.3: es el error de malla del elemento en desplazamientos (decisión pendiente del usuario)"
+      ref: "tests/test_load_stages.py::TestInteraccionNM"
+    - name: etapas_continuacion
+      setup: "Voladizo de 20 fibras de acero con endurecimiento del 1 %: empuje hasta 0.03 m y continuación hasta 0.06 m con previous, frente al empuje directo hasta 0.06 m (ADR 0026)"
+      expect: "La misma curva fuerza-desplazamiento en los desplazamientos comunes; el residuo al empezar la etapa tras plastificar es nulo, y empezar en U = 0 con el estado plástico se avisa"
+      tol_rel: 1.0e-9
+      ref: "tests/test_load_stages.py::TestContinuacion"
     - name: registro_por_omision
       setup: "Empuje de 30 pasos de un voladizo de fibras con IndirectDisplacementSolver (hereda el bucle); tangente singular inyectada en el corrector y en el predictor (ADR 0025)"
       expect: "INFO: una línea por paso y ninguna de iteración (DEBUG las recupera); la tangente singular recuperada es un WARNING con su motivo, sin ERROR; un único ERROR cuando el análisis se detiene"
@@ -277,7 +287,7 @@ references:
   - "Crisfield M.A. (1991). Non-linear Finite Element Analysis of Solids and Structures, Vol. 1. Wiley. §9 (arc-length cilíndrico)."
   - "Riks E. (1979). An incremental approach to the solution of snapping and buckling problems. Int. J. Solids and Structures 15, 529-551."
   - "de Borst R., Sluys L.J. (1999). Computational Methods in Non-linear Solid Mechanics. TU Delft. §3.5."
-  - "ADR 0003, ADR 0007, ADR 0025 (terminación y registro)."
+  - "ADR 0003, ADR 0007, ADR 0025 (terminación y registro), ADR 0026 (etapas de carga)."
 ```
 
 ---
@@ -312,3 +322,4 @@ references:
 - **2026-09-29** · Retirado `_negative_pivots()`, el marcador del diagnóstico por inercia que devolvía `None` y que nadie llamaba; §10 y `out_of_scope` lo recogen: no hay diagnóstico por inercia hasta que exista LDLᵀ (deuda #7). El problema por paso (`_ArcProblem` en el código) se exporta con nombre público, `solidum.math.solvers.ArcProblem`, porque lo extienden `IndirectDisplacementSolver` y `DissipationArcLengthSolver`, este último trasladado hoy al módulo de usuario `dissipation_control`. Sin cambio de formulación ni de resultados.
 - **2026-09-30** · Misma corrección que en `NonlinearSolver` (deuda #31, entrada del mismo día en su spec): el problema por paso mide `‖TᵀR‖` en vez de `‖R[libres]‖`, que con restricciones multipunto no se anulaba en la solución y hacía fallar todos los pasos. La heredan `IndirectDisplacementSolver` y, por `ArcProblem`, el solver del módulo `dissipation_control`. Sin cambio con sólo Dirichlet. La auditoría de las MPC del mismo día documentó en §1 y §2 que la métrica del arco incluye los DOF esclavos y prescritos y que el término `g` de las MPC sigue a λ; no se cambia la métrica, porque alteraría la secuencia de pasos de los modelos existentes sin corregir ningún error.
 - **2026-11-09** · ADR 0025, sin cambio de formulación ni de resultados. Estado de terminación (`termination`, `completed`, `lambda_final`, `steps_done`, `n_bisections`, `U_final`), fijado también tras una excepción y reiniciado en cada `solve`; el fracaso es una `SolverDivergedError` tipada (`StepConstraintError` para las raíces imaginarias; antes, `RuntimeError("Arc-Length fracasó irreparablemente.")` con el diagnóstico sólo en el registro); una tangente singular en el predictor del estado inicial es `SingularTangentError` (antes el bucle repetía el mismo predictor hasta agotar `max_steps`). Registro: una línea `INFO` por paso, iteraciones en `DEBUG`, bisecciones en `WARNING` con su motivo y `ERROR` sólo al detenerse. Puntos de extensión para variantes con objetivo: `_target_reached`, `_limit_step`, `_step_summary`.
+- **2026-11-09** · ADR 0026: etapas de carga, heredadas por `IndirectDisplacementSolver`; el problema del paso, el predictor y la llegada a `max_lambda` llevan la carga constante y los valores impuestos de partida. `DissipationArcLengthSolver` (módulo de usuario) las rechaza. Criterios nuevos: `etapas_interaccion_n_m`, `etapas_continuacion`.

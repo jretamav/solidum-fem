@@ -88,6 +88,28 @@ solver:
 
 **Referencia**: Crisfield, "A fast incremental/iterative solution procedure that handles snap-through" (*Computers & Structures*, 1981).
 
+## Análisis por etapas: gravedad primero, empuje después
+
+Un análisis de empuje lateral aplica primero la gravedad, que se queda, y después empuja con una carga que crece (ADR 0026). Cada etapa es una llamada a `solidum.run` con el mismo `Assembler` —guarda el estado interno de los elementos— y el resultado de la etapa anterior en `previous`:
+
+```python
+asm = Assembler(dom)
+F_g = asm.assemble_self_weight([0.0, -9.81])      # o cargas puntuales de piso
+gravedad = solidum.run(dom, assembler=asm, F_applied=F_g,
+                       solver=NonlinearSolver(asm, num_steps=4))
+empuje = solidum.run(dom, assembler=asm, F_applied=F_lateral, previous=gravedad,
+                     solver=IndirectDisplacementSolver(
+                         asm, control=[(12, "ux", 1.0)], initial_dl=2e-3,
+                         max_lambda=1e9, control_target=0.09))
+```
+
+- La etapa parte de los desplazamientos de la anterior y mantiene **constante** su carga aplicada, también la distribuida. El residuo es $\mathbf F_c + \lambda\,\mathbf F - \mathbf F_\text{int}$, con $\lambda = 0$ al empezar; `max_lambda` y `control_target` se refieren a la etapa (`control_target` es la magnitud controlada total, así que continúa desde donde quedó).
+- Un desplazamiento impuesto que no cambia entre etapas se queda; uno que se cambia antes de la etapa crece con $\lambda$ desde el valor que tenía.
+- El resultado separa `F_constant` (lo ya aplicado) y `F_variable` (lo que creció, `load_factor`·F); las reacciones son las de la carga total.
+- La etapa comprueba que empieza en equilibrio y lo avisa si no. Empezar en $U = 0$ un modelo que conserva el estado plástico de un análisis anterior también se avisa: para continuarlo se usa `previous`; para un análisis nuevo, se construye el modelo de nuevo.
+- Lo admiten `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver`; desde Python también directamente, `solver.solve(F, u0=U_anterior, constant_load=F_anterior)`. Desde el YAML todavía no.
+- Con dos cargas distribuidas ensambladas en una misma etapa (por ejemplo, peso propio más una fuerza de cuerpo), las fuerzas internas de los elementos descuentan sólo la última: hay que ensamblarlas en etapas distintas o sumar su efecto aparte.
+
 ## `IndirectDisplacementSolver` — control indirecto de desplazamiento
 
 Variante de `ArcLengthSolver` que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de **una magnitud elegida**: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los **retrocesos** (snap-back) por localización, que `ArcLengthSolver` no sigue (tampoco el arc-length por disipación del módulo de usuario `dissipation_control`).

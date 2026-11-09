@@ -35,6 +35,10 @@ class Domain:
         # en un grado de libertad de traslación, inercia rotacional [kg·m²]
         # en uno de giro. El Assembler las suma a la diagonal de M.
         self.nodal_masses: dict[tuple[int, str], float] = {}
+        # ``True`` en cuanto un análisis compromete estado interno en los
+        # elementos (``Assembler.commit_all_states``): el modelo ya no está en
+        # su estado inicial (ADR 0026).
+        self.committed_history: bool = False
 
     def add_nodal_mass(self, node_id: int, **masses: float) -> None:
         """Masa concentrada en un nudo (ADR 0024).

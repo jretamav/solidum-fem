@@ -280,7 +280,7 @@ class IndirectDisplacementSolver(ArcLengthSolver):
         return _IndirectProblem(
             self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
             mode="indirect", dl=dl, max_lambda=self.max_lambda,
-            control_vector=self._c,
+            control_vector=self._c, stage=self._stage,
         )
 
     def _first_dl(self, du_t: np.ndarray) -> float:

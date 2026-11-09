@@ -1,6 +1,6 @@
 # ADR 0024 — Masas concentradas en nudos y análisis modal con grados de libertad sin masa
 
-- **Estado**: aceptado (2026-11-09)
+- **Estado**: aceptado (2026-11-09); masas sólo inerciales, decisión del usuario del mismo día
 - **Fecha**: 2026-11-09
 - **Alcance**: `Domain.add_nodal_mass`, YAML (`nodal_masses`), `Assembler.assemble_mass_matrix`, `EigenSolver` (condensación estática de los grados de libertad sin masa), `ModalSolver` (error tipado `MasslessDofsError`) y, por herencia, `ResponseSpectrumSolver`. Cumple lo que el ADR 0008 dejó para «un ADR propio»: masas concentradas que no salen de la densidad del material.
 
@@ -43,7 +43,12 @@ Consecuencias:
 
 La masa de nudo entra en `M`. **No genera peso con `gravity`**, igual que el `mass` de OpenSees. Si su peso actúa, se declara como carga.
 
-Si `gravity` debe generar también el peso de las masas de nudo es una decisión física **pendiente del usuario**, que se tomará al implementar las etapas de carga (gravedad constante antes del empuje).
+**Decisión del usuario (2026-11-09): `gravity` no genera el peso de las masas de nudo.** Razones:
+- en un análisis de empuje, la masa sísmica y la carga de gravedad salen de combinaciones distintas (ASCE 41: gravedad 1.1·(D + 0.25L); masa de la carga muerta y una fracción de la viva), y acoplarlas impondría una igualdad que las normas no piden;
+- coincide con el `mass` de OpenSees;
+- evita contar dos veces el peso de quien declara también las cargas de piso.
+
+La carga de gravedad de los pisos se declara como carga (`point_loads`, o carga constante en un análisis por etapas).
 
 ### 4. YAML
 

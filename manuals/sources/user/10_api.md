@@ -63,6 +63,9 @@ El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`)
 | `element_forces` | `{elemento: ElementForces}` con las fuerzas internas (N, V, M, T) de los elementos estructurales. |
 | `converged`, `num_steps` | Si el análisis llegó al final y cuántos pasos convergidos dio. |
 | `termination` | Por qué se detuvo un solver incremental (ADR 0025): `"max_lambda"`, `"control_target"` o `"max_steps"`. `None` en el `LinearSolver`. |
+| `load_factor` | Factor de carga final λ de la carga que crece en el análisis o en la etapa. |
+| `F_constant`, `F_variable` | En un análisis por etapas (`solidum.run(..., previous=…)`, ADR 0026), la carga ya aplicada que se mantuvo constante y la que creció (`F_applied = F_constant + F_variable`). Fuera de una etapa, `F_constant` es `None`. |
+| `equivalent_loads` | Cargas equivalentes de la carga distribuida restadas, por elemento, para dar `element_forces`; una etapa siguiente las hereda con su carga constante. |
 | `condition_estimate` | Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). `None` en los análisis no lineales y con el solver iterativo. |
 
 Las reacciones y las fuerzas de restricción cumplen `F_int − F_applied = R + constraint_forces`: el equilibrio global es `ΣR + ΣF_applied = 0` por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección `linear_constraints` del capítulo «Archivo de Entrada YAML». En el problema térmico `R` es el flujo de calor nodal en los nodos con temperatura impuesta.

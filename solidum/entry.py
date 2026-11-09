@@ -61,12 +61,26 @@ _KNOWN_PIPELINE_KINDS = frozenset({
 
 
 def _invoke_solve(solver: Any, F_applied: np.ndarray,
-                   step_callback: StepCallback | None) -> np.ndarray:
+                   step_callback: StepCallback | None,
+                   stage_kwargs: dict | None = None) -> np.ndarray:
     """Llama ``solver.solve`` pasando ``step_callback`` solo si el solver lo acepta.
 
     ``LinearSolver.solve`` no lo admite; los no-lineales sí. Detectar por firma
-    en tiempo de llamada evita forzar el callback donde no aplica.
+    en tiempo de llamada evita forzar el callback donde no aplica. Los datos
+    de una etapa (``u0``, ``constant_load``, ADR 0026) se pasan sólo a un
+    solver que los admite; si no, es un error.
     """
+    if stage_kwargs:
+        params = inspect.signature(solver.solve).parameters
+        if not all(k in params for k in stage_kwargs):
+            raise ValueError(
+                f"{type(solver).__name__} no admite etapas de carga (u0, "
+                f"constant_load): continuar un análisis exige un solver incremental "
+                f"(NonlinearSolver, ArcLengthSolver, IndirectDisplacementSolver)."
+            )
+        if step_callback is None:
+            return solver.solve(F_applied, **stage_kwargs)
+        return solver.solve(F_applied, step_callback=step_callback, **stage_kwargs)
     if step_callback is None:
         return solver.solve(F_applied)
     # Por firma, no por ``except TypeError``: un TypeError genuino dentro del
@@ -88,8 +102,16 @@ def run(
     solver: Any | None = None,
     F_applied: np.ndarray | None = None,
     step_callback: StepCallback | None = None,
+    previous: SolveResult | None = None,
 ) -> SolveResult:
     """Ejecuta el pipeline completo y retorna el resultado agregado.
+
+    Con ``previous`` (el resultado de la etapa anterior) el análisis es una
+    **etapa** que continúa aquella (ADR 0026): parte de sus desplazamientos,
+    mantiene constante su carga aplicada (con sus cargas distribuidas) y hace
+    crecer ``F_applied`` con λ desde 0. Use el mismo ``assembler``: guarda el
+    estado interno de los elementos. El resultado separa la carga constante
+    (``F_constant``) de la que creció (``F_variable``).
 
     Parameters
     ----------
@@ -122,7 +144,10 @@ def run(
     if F_applied is None:
         F_applied = np.zeros(domain.total_dofs)
 
-    U = _invoke_solve(solver, F_applied, step_callback)
+    stage_kwargs = None
+    if previous is not None:
+        stage_kwargs = {"u0": previous.U, "constant_load": previous.F_applied}
+    U = _invoke_solve(solver, F_applied, step_callback, stage_kwargs)
 
     # Metadatos que el solver expone tras resolver (ADR 0002). Un solver sin
     # ellos (LinearSolver) es un paso único convergido con λ = 1:
@@ -138,14 +163,31 @@ def run(
     completed = getattr(solver, "completed", None)
     if completed is None:
         completed = getattr(solver, "reached_max_lambda", True)
+    F_total = F_applied * lambda_final
+    F_constant = None
+    equivalent_loads = None
+    if previous is not None:
+        # Etapa (ADR 0026): carga constante = la aplicada en la anterior, con
+        # sus cargas equivalentes por elemento; las de la carga que crece son
+        # las del ensamblador sólo si se ensamblaron después de la anterior.
+        F_constant = np.asarray(previous.F_applied, dtype=float)
+        F_total = F_constant + F_total
+        equivalent_loads = {eid: np.array(f, dtype=float)
+                            for eid, f in previous.equivalent_loads.items()}
+        if getattr(assembler, "equivalent_loads_version", None) != previous._equivalent_loads_version:
+            for eid, f in (assembler.equivalent_loads or {}).items():
+                equivalent_loads[eid] = (equivalent_loads.get(eid, 0.0)
+                                         + lambda_final * np.asarray(f, dtype=float))
     result = build_solve_result(
-        domain, assembler, U, F_applied * lambda_final,
+        domain, assembler, U, F_total,
         converged=bool(completed),
         num_steps=int(getattr(solver, "steps_done", 1)),
         load_factor=lambda_final,
         # Capa 4 del ADR 0019: el LinearSolver estima el condicionamiento.
         condition_estimate=getattr(solver, "condition_estimate", None),
         termination=getattr(solver, "termination", None),
+        F_constant=F_constant,
+        equivalent_loads=equivalent_loads,
     )
     # El estado final de un análisis estático es, por definición, convergido:
     # ``build_solve_result`` acaba de ensamblar en ``U`` (estado trial
