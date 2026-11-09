@@ -88,7 +88,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∥}{{∥}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
+  literate={ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∝}{{∝}}1 {∥}{{∥}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -13068,7 +13068,8 @@ Autovalores $\lambda_n = \omega_n^2 \ge 0$; autovectores $\boldsymbol\phi_n$ son
 \addcontentsline{toc}{subsubsection}{3. Propiedades del par $(\mathbf K, \mathbf M)$}
 \begin{itemize}
   \item $\mathbf K$ simétrica, positiva (semi)definida tras Dirichlet.
-  \item $\mathbf M$ simétrica, \textbf{positiva definida} estrictamente para masa consistente (toda fila/columna tiene aporte de algún elemento con $\rho > 0$).
+  \item $\mathbf M$ simétrica, \textbf{positiva semidefinida}. Es definida cuando todo grado de libertad libre recibe masa (de algún elemento con $\rho > 0$ o de una masa de nudo). Si no, los grados de libertad sin masa se condensan (§6 bis).
+  \item Fuentes de masa: la densidad del material (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}) y las \textbf{masas concentradas en nudos} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}), que se suman a la diagonal de $\mathbf M$ igual con masa consistente que concentrada.
   \item Espectro real no negativo: $\omega_n \in \mathbb R_{\ge 0}$.
 \end{itemize}
 
@@ -13104,6 +13105,21 @@ ARPACK vía \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}e
   \item \textbf{Shift-invert} transforma el problema en $\bigl(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red}\bigr)^{-1}\mathbf M_\text{red}\,\boldsymbol\phi = \mu\,\boldsymbol\phi$ con $\mu = 1/(\omega^2 - \sigma)$. Buscar \texttt{which=\textquotedbl{}LM\textquotedbl{}} (mayor magnitud de $\mu$) equivale a buscar autovalores cercanos al shift $\sigma$.
   \item $\sigma = 0$ por defecto: las frecuencias más bajas, que son las relevantes en ingeniería estructural.
   \item Internamente ARPACK factoriza $(\mathbf K_\text{red} - \sigma\,\mathbf M_\text{red})$ una sola vez y la reusa en cada iteración Lanczos.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{6 bis. Grados de libertad sin masa: condensación estática exacta (ADR 0024)}
+\addcontentsline{toc}{subsubsection}{6 bis. Grados de libertad sin masa: condensación estática exacta (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024})}
+Con masas sólo en algunos nudos o elementos de densidad cero, hay grados de libertad libres con diagonal de $\mathbf M_\text{red}$ nula (cero exacto; en una matriz semidefinida positiva eso implica fila y columna nulas). Con $m$ los grados de libertad con masa y $0$ los demás, la fila $0$ no tiene inercia:
+\[
+\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\,\mathbf K_{0m}\,\boldsymbol\phi_m, \qquad \hat{\mathbf K}\,\boldsymbol\phi_m = \omega^2\,\mathbf M_{mm}\,\boldsymbol\phi_m, \qquad \hat{\mathbf K} = \mathbf K_{mm} - \mathbf K_{m0}\,\mathbf K_{00}^{-1}\,\mathbf K_{0m}.
+\]
+Es exacta, no una reducción de Guyan aproximada: los valores propios de $\hat{\mathbf K}$ son las frecuencias finitas del problema original, tantas como grados de libertad con masa; las demás son infinitas.
+\begin{itemize}
+  \item Con 32 o menos grados de libertad con masa, o pidiendo casi todos los modos: $\hat{\mathbf K}$ densa y \texttt{eigh}.
+  \item Con más: ARPACK sobre el problema condensado sin formar $\hat{\mathbf K}$. Con $\mathbf A = \mathbf K - \sigma\mathbf M$, el bloque $mm$ de $\mathbf A^{-1}$ es $(\hat{\mathbf K} - \sigma\,\mathbf M_{mm})^{-1}$ (complemento de Schur), así que el operador de desplazamiento e inversión usa la factorización dispersa de $\mathbf A$ del modelo completo, con el producto interno de $\mathbf M_{mm}$, que es definida. Con $\sigma = 0$ y $\mathbf K$ singular se reintenta con desplazamiento negativo, como en el camino sin condensar.
+  \item $\boldsymbol\phi_0$ se recupera con la factorización de $\mathbf K_{00}$; los modos expandidos son $\mathbf M$-ortonormales.
+  \item Si no hay solución (más modos que grados de libertad con masa, ninguno con masa, grados de libertad sin masa sin rigidez que los fije, o masa singular más allá de ellos), se lanza \texttt{MasslessDofsError}, que los nombra como (nodo, dof).
 \end{itemize}
 
 \phantomsection
@@ -13150,9 +13166,9 @@ parameters:
   - { name: linear_algebra, type: str, required: false, default: "auto", desc: "Backend para la factorización de (K - σM) interna a shift-invert (ADR 0003)" }
 
 requirements:
-  - "Todos los materiales del modelo declaran `density > 0` (ADR 0008). Densidad cero genera M_red singular → eigsh con sigma=0 falla; el solver propaga el error con mensaje físico."
-  - "Al menos un DOF libre tras Dirichlet."
-  - "n_modes < N_libre (ARPACK exige k < n)."
+  - "Todos los materiales del modelo declaran `density` (ADR 0008); `density = 0.0` es válida para elementos sin masa propia."
+  - "Al menos un DOF libre con masa (de la densidad o de una masa de nudo, ADR 0024)."
+  - "n_modes ≤ número de DOF libres con masa: sólo ellos tienen frecuencia finita. Los DOF sin masa se condensan estáticamente (§6 bis); si no se puede, `MasslessDofsError`."
 
 conventions:
   units:        "heredadas del modelo (ADR 0008); ω en rad/s, f en Hz, T en s consistentes con kg/N/m o equivalentes."
@@ -13188,6 +13204,32 @@ acceptance:
           ω_n = (nπ/L)² · sqrt(E·I / (ρ·A)),    n = 1, 2, 3, …
         Los primeros 3 modos coinciden con la solución analítica.
       tol_rel: 0.02
+    - name: oscilador_un_gdl_masa_de_nudo
+      setup: |
+        Columna en voladizo de Frame2DEuler sin masa propia (density = 0.0),
+        con 1 y 4 elementos; masa m en el ux de la cabeza (ADR 0024).
+        E = 2.0e11 Pa, I = 8.5e-5 m⁴, L = 3.5 m, m = 2.5e4 kg.
+      expect: |
+        T = 2π·√(m/k) con k = 3EI/L³, con masa consistente y concentrada.
+        Los DOF sin masa del modo siguen la elástica de la carga en la punta:
+        v(y)/v(L) = y²(3L − y)/(2L³), θ(L) = −3/(2L)·v(L). Con una inercia J
+        en el rz de la cabeza, T = 2π·√(J/(EI/L)).
+      tol_rel: 1.0e-6
+      ref: "tests/test_nodal_mass.py::TestOsciladorDeUnGradoDeLibertad"
+    - name: edificio_cortante_tres_pisos
+      setup: |
+        Tres niveles, dos columnas biempotradas de Frame2DEuler sin masa por
+        nivel (2 elementos cada una), vigas rígidas impuestas por cinemática
+        (uy = rz = 0 en los nudos de piso y ux del nudo derecho igual al del
+        izquierdo por restricción lineal) y la masa de cada piso repartida
+        por mitades entre sus dos nudos.
+      expect: |
+        Periodos y modos iguales a los del problema 3×3 a mano, rigidez de
+        entrepiso 2·12EI/h³: con pisos iguales, la forma cerrada
+        ω_j = 2·√(k/m)·sin((2j−1)π/14), φ_j(i) ∝ sin(i(2j−1)π/7); con pisos
+        distintos, el 3×3 con sus masas y rigideces.
+      tol_rel: 1.0e-6
+      ref: "tests/test_nodal_mass.py::TestEdificioDeCortante"
   specific:
     - name: ortonormalidad_de_masa
       setup: "Cualquier modelo bien formado tras resolver el problema modal."
@@ -13209,6 +13251,24 @@ acceptance:
     - name: density_faltante_lanza_value_error
       setup: "Material sin density declarada en el modelo."
       expect: "ModalSolver.solve() lanza ValueError listando los materiales afectados (mismo patrón que assemble_self_weight, ADR 0008)."
+    - name: masa_de_nudo_entrada_exacta
+      setup: "Columna en voladizo de Frame2DEuler con densidad; masa m en el ux del nudo de la cabeza (ADR 0024); masa consistente y concentrada"
+      expect: "M_uxux aumenta exactamente en m y ninguna otra entrada cambia; lo mismo con una inercia rotacional en rz"
+      tol_abs: 0.0
+      ref: "tests/test_nodal_mass.py::TestEnsamblajeDeLaMasaDeNudo"
+    - name: dof_sin_masa_marco_de_un_nivel
+      setup: "Marco de acero de un nivel (h = 3 m, L = 5 m, columnas 0.30 × 0.50 m de 20 fibras y viga 0.40 × 0.70 m de 28 fibras, 4 elementos por miembro, 3 puntos de Gauss) con columnas de densidad cero: 18 de 33 DOF libres sin masa"
+      expect: "T₁ = 0.03097 s y T₂ = 0.01295 s, iguales a la solución densa (valores propios de K⁻¹M); residuo relativo de cada modo ‖Kφ − ω²Mφ‖/‖Kφ‖ ≤ 1e-8; con 12 elementos por miembro (39 DOF con masa) el mismo criterio por el camino ARPACK, con masa consistente y concentrada"
+      tol_rel: 1.0e-6
+      ref: "tests/test_modal_massless_dofs.py::TestMarcoDeUnNivelSinMasaEnColumnas"
+    - name: dof_sin_masa_error_tipado
+      setup: "Voladizo sin masa propia con masa sólo en el ux de la cabeza y n_modes = 2; modelo sin ninguna masa; dos barras alineadas cuyo nudo intermedio no tiene masa ni rigidez transversal"
+      expect: "MasslessDofsError (ValueError) con causa too_many_modes, no_mass y massless_mechanism; el mensaje nombra los DOF sin masa como nodo <id> (<dof>)"
+      ref: "tests/test_modal_massless_dofs.py::TestErrorTipado"
+    - name: masa_en_todos_sin_cambios
+      setup: "Modelos con masa en todos los DOF libres (toda la suite modal y dinámica previa)"
+      expect: "Siguen el camino de siempre, sin condensación, y dan los mismos resultados que antes del ADR 0024"
+      ref: "tests/test_modal_massless_dofs.py::TestMarcoDeUnNivelSinMasaEnColumnas::test_con_masa_en_todos_sigue_el_camino_de_siempre"
 
 references:
   - "Bathe K.-J., Finite Element Procedures (2014), cap. 9 (matriz de masa consistente) y cap. 11 (algoritmos de autovalor)."
@@ -13218,6 +13278,9 @@ references:
   - "Lehoucq, Sorensen, Yang — ARPACK Users' Guide (Lanczos con shift-invert)."
   - "ADR 0003 — Capa algebraica (factorización reutilizable de (K − σM))."
   - "ADR 0008 — Material.density."
+  - "ADR 0024 — Masas concentradas en nudos y análisis modal con grados de libertad sin masa."
+  - "Bathe K.-J., Finite Element Procedures (2014), §10.3.1 (condensación estática en problemas de valores propios)."
+  - "Chopra A. K., Dynamics of Structures, §9.3 (condensación estática de los grados de libertad sin masa)."
   - "ADR 0009 — Análisis modal y dinámico (este solver es la fase 1: el análisis modal estricto, problema generalizado K·φ = ω²·M·φ; el análisis dinámico transitorio entra en fases 3-7)."
 
 \end{lstlisting}
@@ -13255,6 +13318,7 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: \texttt{K} singular con \ensuremath{\sigma} = 0 (estructura free-free) fallaba según la malla (\textquotedbl{}Factor is exactly singular\textquotedbl{} con 1, 2 o 4 elementos, éxito por redondeo con 3 o 10): reintento automático con un shift negativo relativo a tr(K)/tr(M). \texttt{ArpackNoConvergence} \ensuremath{\to} \texttt{converged=False} con los modos obtenidos (\texttt{n\_modes} reales); antes el flag estaba cableado a \texttt{True}. Modelos con n\_free \ensuremath{\le} 32 o n\_modes \ensuremath{\ge} n\_free − 1 usan \texttt{scipy.\allowbreak{}linalg.\allowbreak{}eigh} denso (M-ortonormal), así que un modelo de 1 GDL admite análisis modal.
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): las restricciones multipunto entran por \texttt{Assembler.\allowbreak{}reduce\_\allowbreak{}pair} con el mismo \texttt{T} que los apoyos (\texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{M\_red = T\ensuremath{^{\top}}MT}, \texttt{\ensuremath{\Phi} = T\ensuremath{\cdot}\ensuremath{\Phi}\_red}). Primer test con MPC: el oráculo del nodo fundido se cumple hasta el redondeo en frecuencias y modos, y los modos expandidos son M-ortonormales con la masa global (\texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). Nota sobre \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration(M, u0, u0\_\allowbreak{}dot, t)}: proyecta las condiciones iniciales en norma M (\texttt{a = \ensuremath{\Phi}\ensuremath{^{\top}}M\ensuremath{\cdot}u0}), así que su resultado no depende de qué nodo se declaró esclavo; los solvers transitorios, en cambio, conservan las componentes libres y reconstruyen los esclavos como \texttt{T\ensuremath{\cdot}u0[libres] + g}. Con condiciones iniciales coherentes con las MPC ambos caminos coinciden; con incoherentes difieren (los transitorios lo avisan en el log). Unificar las dos proyecciones cambiaría resultados con condiciones iniciales incoherentes: queda como decisión física pendiente del usuario. Sin cambio de código.
   \item \textbf{2026-09-30} \ensuremath{\cdot} Revisión del paquete dinámico de la auditoría de las MPC: el parámetro \texttt{lumping} del contrato aún decía «solo 'consistent' en fase 1», pero \texttt{ModalSolver} admite \texttt{lumping='lumped'} desde el cierre de la fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} (lo ejercitan \texttt{tests/\allowbreak{}test\_\allowbreak{}modal.\allowbreak{}py::test\_\allowbreak{}lumped\_\allowbreak{}runs\_\allowbreak{}after\_\allowbreak{}phase2} y el caso \texttt{mpc\_\allowbreak{}tie\_\allowbreak{}matches\_\allowbreak{}merged\_\allowbreak{}node} con masa concentrada). Corregida la descripción aquí y en el catálogo. Sin cambio de código.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}. Masas concentradas en nudos (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloque YAML \texttt{nodal\_masses}), sumadas a la diagonal de $\mathbf M$ con los dos esquemas de masa. Con grados de libertad libres sin masa, ARPACK lanzaba \texttt{ArpackError -9999} sin causa y el camino denso exigía $\mathbf M$ definida; ahora se condensan estáticamente de forma exacta (§6 bis) y, si el problema no tiene solución, \texttt{MasslessDofsError} los nombra. Criterios nuevos: \texttt{oscilador\_\allowbreak{}un\_\allowbreak{}gdl\_\allowbreak{}masa\_\allowbreak{}de\_\allowbreak{}nudo}, \texttt{edificio\_\allowbreak{}cortante\_\allowbreak{}tres\_\allowbreak{}pisos}, \texttt{masa\_\allowbreak{}de\_\allowbreak{}nudo\_\allowbreak{}entrada\_\allowbreak{}exacta}, \texttt{dof\_\allowbreak{}sin\_\allowbreak{}masa\_\allowbreak{}marco\_\allowbreak{}de\_\allowbreak{}un\_\allowbreak{}nivel}, \texttt{dof\_\allowbreak{}sin\_\allowbreak{}masa\_\allowbreak{}error\_\allowbreak{}tipado}, \texttt{masa\_\allowbreak{}en\_\allowbreak{}todos\_\allowbreak{}sin\_\allowbreak{}cambios}. Medido: error relativo de los periodos de 1e-12 a 1e-14 contra la solución densa, residuos de 1e-11. \texttt{ResponseSpectrumSolver} lo hereda (masa total y masas efectivas con masas de piso en \texttt{tests/\allowbreak{}test\_\allowbreak{}nodal\_\allowbreak{}mass.\allowbreak{}py}).
 \end{itemize}
 
 
@@ -16019,16 +16083,17 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
 \begin{itemize}
   \item \textbf{Propósito}: calcular frecuencias naturales \texttt{\ensuremath{\omega}\_n} y modos \texttt{\ensuremath{\varphi}\_n} de vibración no amortiguados resolviendo \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}.
   \item \textbf{Esquema}:
-  \item Ensamblaje de \texttt{K} (rigidez lineal en \texttt{u = 0}) y \texttt{M} (masa consistente, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} §1) reusando la topología COO cacheada del \texttt{Assembler}.
+  \item Ensamblaje de \texttt{K} (rigidez lineal en \texttt{u = 0}) y \texttt{M} (masa consistente, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} §1) reusando la topología COO cacheada del \texttt{Assembler}. \texttt{M} incluye las \textbf{masas concentradas en nudos} (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloque YAML \texttt{nodal\_masses}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}), sumadas a su diagonal con los dos esquemas.
   \item Reducción simultánea por Dirichlet y restricciones multipunto (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}) \texttt{Assembler.\allowbreak{}reduce\_\allowbreak{}pair(K, M)} \ensuremath{\to} \texttt{K\_\allowbreak{}red = T\ensuremath{^{\top}}KT, M\_\allowbreak{}red = T\ensuremath{^{\top}}MT, T}.
   \item \texttt{EigenSolver} envuelve \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}eigsh} con \textbf{shift-invert} en \texttt{sigma} (\texttt{sigma=0} \ensuremath{\to} frecuencias más bajas) y \texttt{which=\textquotedbl{}LM\textquotedbl{}}. ARPACK factoriza \texttt{(K\_\allowbreak{}red − \ensuremath{\sigma}\ensuremath{\cdot}M\_\allowbreak{}red)} una sola vez y la reusa en todas las iteraciones Lanczos.
+  \item \textbf{Grados de libertad sin masa} (masas sólo en algunos nudos, elementos con \texttt{density = 0}): se condensan estáticamente de forma exacta (\texttt{\ensuremath{\varphi}\ensuremath{_{0}} = −K\ensuremath{_{0}}\ensuremath{_{0}}\ensuremath{^{-}}¹K\ensuremath{_{0}}ₘ\ensuremath{\varphi}ₘ}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}) y sus componentes de los modos se recuperan. Hay tantas frecuencias finitas como grados de libertad con masa; si el problema no tiene solución, \texttt{MasslessDofsError} (\texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}diagnostics}) los nombra como (nodo, dof).
   \item Expansión de modos al espacio completo: \texttt{\ensuremath{\varphi} = T \ensuremath{\cdot} \ensuremath{\varphi}\_red}. En DOFs prescritos por Dirichlet la componente es 0; en el esclavo de una MPC, la combinación de sus maestros (oráculo del nodo fundido en \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration} proyecta las condiciones iniciales en norma M (\texttt{a = \ensuremath{\Phi}\ensuremath{^{\top}}M\ensuremath{\cdot}u0}), a diferencia de los transitorios, que reconstruyen los esclavos como \texttt{T\ensuremath{\cdot}u0[libres] + g}: con condiciones iniciales incoherentes con las MPC ambos caminos difieren.
   \item Salida en \texttt{ModalResult}: \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales), \texttt{n\_modes}, \texttt{converged}.
   \item \textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0), \texttt{which} (default \texttt{\textquotedbl{}LM\textquotedbl{}}), \texttt{tolerance} (default 1.0e-9), \texttt{lumping} (default \texttt{\textquotedbl{}consistent\textquotedbl{}}; también \texttt{\textquotedbl{}lumped\textquotedbl{}}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} fase 2), \texttt{linear\_algebra} (reservado; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003}).
   \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos (no consume \texttt{F\_applied}). El entrypoint público es \texttt{solidum.\allowbreak{}run\_\allowbreak{}modal(domain, n\_\allowbreak{}modes=N)} o YAML con \texttt{solver: type: ModalSolver}. \texttt{solidum.run\_yaml} despacha automáticamente al detectar el tipo.
   \item \textbf{Cuándo usarlo}: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
   \item \textbf{Limitaciones}: lineal (\texttt{K} evaluada en \texttt{u = 0}); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en \texttt{solidum/\allowbreak{}math/\allowbreak{}modal\_\allowbreak{}response.\allowbreak{}py} y los consume \texttt{ResponseSpectrumSolver} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} fase 7 cerrada).
-  \item \textbf{Referencia}: Bathe, \textit{Finite Element Procedures}, cap. 9 (masa) y cap. 11 (algoritmos de autovalor); Hughes, \textit{The Finite Element Method}, cap. 7; ARPACK Users' Guide (Lehoucq--Sorensen--Yang).
+  \item \textbf{Referencia}: Bathe, \textit{Finite Element Procedures}, cap. 9 (masa), §10.3.1 (condensación estática) y cap. 11 (algoritmos de autovalor); Chopra, \textit{Dynamics of Structures}, §9.3; Hughes, \textit{The Finite Element Method}, cap. 7; ARPACK Users' Guide (Lehoucq--Sorensen--Yang).
   \item \textbf{Spec}: \hyperref[spec:ModalSolver]{docs/specs/ModalSolver.md}
   \item \textbf{Archivos}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/solvers/modal.py}{solidum/math/solvers/modal.py} (clase \texttt{ModalSolver}), \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/linalg/eigen.py}{solidum/math/linalg/eigen.py} (clase \texttt{EigenSolver}), \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/results.py}{solidum/results.py} (\texttt{ModalResult}).
 \end{itemize}
@@ -16171,6 +16236,7 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item Combinación SRSS (default) o CQC con coeficientes de correlación de Der Kiureghian.
   \item \textbf{Parámetros}: \texttt{n\_modes}, \texttt{direction} (ndarray o \texttt{\{\textquotedbl{}dof\_\allowbreak{}name\textquotedbl{}: \textquotedbl{}ux\textquotedbl{}\}}), \texttt{spectrum} (callable o dict tabulado/constante), \texttt{combination} (\texttt{\textquotedbl{}SRSS\textquotedbl{}}/\texttt{\textquotedbl{}CQC\textquotedbl{}}), \texttt{damping} (sólo CQC, default 0.05), \texttt{sigma}, \texttt{lumping}.
   \item \textbf{Cuándo usarlo}: diseño sísmico contra espectro normativo; diagnóstico de modos dominantes en una dirección de excitación. Para no-linealidad usar transitorio (Newton-Newmark con acelerograma).
+  \item \textbf{Masas de nudo y grados de libertad sin masa} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}): heredados del \texttt{ModalSolver} interno. Con masas de piso y columnas sin masa propia, \texttt{total\_mass} es la suma de las masas de piso y la suma de las masas efectivas de todos los modos finitos la alcanza (\texttt{tests/\allowbreak{}test\_\allowbreak{}nodal\_\allowbreak{}mass.\allowbreak{}py}). \texttt{n\_modes} no puede pasar del número de grados de libertad con masa.
   \item \textbf{Restricciones multipunto}: heredadas del \texttt{ModalSolver} interno (\texttt{\ensuremath{\varphi} = T\ensuremath{\cdot}\ensuremath{\varphi}\_red}); oráculo del nodo fundido en \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}. Si \texttt{r} no cumple una MPC (apoyo oblicuo excitado en otra dirección), esa parte de \texttt{r\ensuremath{^{\top}}Mr} no participa, igual que la masa de los DOFs apoyados: la suma de masas efectivas no alcanza \texttt{total\_mass}.
   \item \textbf{Caveats}: precisión depende del número de modos incluidos --- verifica \texttt{cumulative\_\allowbreak{}effective\_\allowbreak{}mass\_\allowbreak{}ratio} \ensuremath{\ge} 0.9. CQC requerido con modos cercanos en frecuencia (cociente \textless{} 1.3). Excitación multi-direccional simultánea (CQC3, 100/30/30) requiere combinación adicional fuera del solver.
   \item \textbf{Despacho YAML}: \texttt{solver.\allowbreak{}type: ResponseSpectrumSolver}. Vía atributo \texttt{PIPELINE\_\allowbreak{}KIND=\textquotedbl{}spectrum\textquotedbl{}} \ensuremath{\to} \texttt{run\_\allowbreak{}response\_\allowbreak{}spectrum}. Cuarto valor del literal (después de \texttt{\textquotedbl{}static\textquotedbl{}}, \texttt{\textquotedbl{}modal\textquotedbl{}}, \texttt{\textquotedbl{}transient\textquotedbl{}}, \texttt{\textquotedbl{}harmonic\textquotedbl{}}).

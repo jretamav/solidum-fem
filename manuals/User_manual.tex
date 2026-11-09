@@ -99,7 +99,7 @@
 \renewcommand{\footrulewidth}{0.4pt}
 
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda},
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda},
   keywordstyle=\color{yamlkey}\bfseries,
   ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6},
   ndkeywordstyle=\color{yamlval}\bfseries,
@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -699,6 +699,28 @@ point_loads_by_group:
 Las cargas son \textbf{estrictas}: un \texttt{node\_id} inexistente se rechaza en la validación del archivo, y un nombre de DOF que el nodo no tiene (\texttt{fy} en vez de \texttt{uy}, \texttt{rz} sobre una armadura) o un grupo físico inexistente detienen la lectura con \texttt{ValueError}. Antes se ignoraban en silencio y el análisis corría sin carga.
 
 En los \textbf{solvers transitorios mecánicos} (\texttt{NewmarkSolver}, \texttt{HHTSolver}, \texttt{NewtonNewmarkSolver}, \texttt{NewtonHHTSolver}, \texttt{CentralDifferenceSolver}) las cargas del archivo ---puntuales más peso propio o fuerza de cuerpo--- se aplican como \textbf{escalón constante en el tiempo} desde $t = 0$ (\texttt{F\_func = cte}). Una historia $\mathbf F(t)$ arbitraria requiere construir el solver desde Python con su propio \texttt{F\_func} (§10).
+
+\section{Masas Concentradas en Nudos: \texttt{nodal\_masses}}
+
+La masa que no sale de la densidad de los elementos ---en un edificio, la de la losa, los acabados y la fracción de la carga viva de cada nivel--- se concentra en los nudos (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}):
+
+\begin{lstlisting}[language=yaml]
+nodal_masses:
+  - {node_id: 5, ux: 12.0e3, uy: 12.0e3}            # masa [kg]
+  - {node_id: 9, ux: 12.0e3, uy: 12.0e3, rz: 4.0e3} # rz: inercia rotacional [kg·m²]
+
+\end{lstlisting}
+
+\begin{itemize}
+  \item Cada clave, salvo \texttt{node\_id}, es un grado de libertad mecánico del nodo: \texttt{ux}, \texttt{uy}, \texttt{uz} llevan una masa; \texttt{rx}, \texttt{ry}, \texttt{rz}, una inercia rotacional (masa\ensuremath{\cdot}longitud\ensuremath{^{2}}). Las rotacionales son opcionales.
+  \item Varias entradas sobre el mismo grado de libertad se suman.
+  \item La masa entra en la diagonal de la matriz de masa, igual con \texttt{lumping: consistent} que con \texttt{lumped}, así que la usan el análisis modal, el espectral y los dinámicos.
+  \item Es \textbf{sólo inercia}: \texttt{gravity} no genera su peso. Si su peso actúa, declárelo como carga en \texttt{point\_loads}.
+  \item Los elementos siguen necesitando \texttt{density} en sus materiales (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}). Un elemento sin masa propia se declara con \texttt{density: 0.0}.
+  \item El bloque se valida al leer: valores finitos no negativos, grados de libertad mecánicos que el nodo tenga y nodos existentes. Todos los errores se informan juntos.
+\end{itemize}
+
+Con masas sólo en algunos nudos, casi todos los grados de libertad quedan sin masa. El análisis modal los condensa de forma exacta (capítulo de dinámica).
 
 \section{Fuerzas de Cuerpo}
 
@@ -1752,7 +1774,7 @@ Solidum FEM expone el subsistema modal/dinámico/espectral \textbf{completo} (\h
   \item \textbf{Espectral / sísmico}: combinación modal SRSS/CQC contra espectros normativos (\texttt{ResponseSpectrumSolver}).
 \end{enumerate}
 
-Todos los solvers consumen la masa global que cada elemento devuelve por \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping)} con \texttt{lumping \ensuremath{\in} \{\textquotedbl{}consistent\textquotedbl{}, \textquotedbl{}lumped\textquotedbl{}\}} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}).
+Todos los solvers consumen la masa global que cada elemento devuelve por \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix(lumping)} con \texttt{lumping \ensuremath{\in} \{\textquotedbl{}consistent\textquotedbl{}, \textquotedbl{}lumped\textquotedbl{}\}} y la densidad declarada en el material (\texttt{density}; obligatoria para cualquier análisis dinámico, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}), más las \textbf{masas concentradas en nudos} (\texttt{nodal\_masses} en el YAML, \texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass} en Python, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}), que se suman a su diagonal con los dos esquemas.
 
 \textbf{Restricciones multipunto.} Los ocho solvers admiten las restricciones lineales \texttt{linear\_\allowbreak{}constraints} ($u_s = g_s + \sum_i \alpha_{si}\,u_{m_i}$, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}) por el mismo operador de eliminación directa que los apoyos: $\mathbf M_{\text{red}} = \mathbf T^\top\mathbf M\,\mathbf T$, $\mathbf C_{\text{red}} = \mathbf T^\top\mathbf C\,\mathbf T$, $\mathbf K_{\text{red}} = \mathbf T^\top\mathbf K\,\mathbf T$, y los resultados (historias, modos, amplitudes armónicas, respuesta espectral) se expanden con $\mathbf T$. En el armónico y el espectral el término $g$ no interviene, como el valor de un apoyo. Dos precisiones:
 
@@ -1794,6 +1816,33 @@ solver:
 \begin{infobox}{Nota}
 La densidad es \textit{obligatoria} para todo material involucrado en análisis modal o transitorio. La omisión lanza \texttt{ValueError} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}) listando los materiales afectados por nombre antes de iniciar el cálculo.
 \end{infobox}
+
+\subsection{Masas de nudo y grados de libertad sin masa (ADR 0024)}
+
+En un edificio la masa de cada nivel se concentra en sus nudos y las columnas y vigas pueden no aportar masa propia (\texttt{density: 0.0}). Entonces sólo los grados de libertad de los nudos de piso tienen masa: los nudos intermedios y los giros, no. La matriz de masa es semidefinida y el problema tiene tantas frecuencias finitas como grados de libertad con masa.
+
+\texttt{ModalSolver} condensa estáticamente los grados de libertad sin masa (diagonal de $\mathbf M$ nula). Con $m$ los que tienen masa y $0$ los demás, la ecuación de los grados de libertad sin masa no tiene inercia, y entonces
+
+\[
+\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\,\boldsymbol\phi_m, \qquad \bigl(\mathbf K_{mm} - \mathbf K_{m0}\mathbf K_{00}^{-1}\mathbf K_{0m}\bigr)\boldsymbol\phi_m = \omega^2\,\mathbf M_{mm}\,\boldsymbol\phi_m .
+\]
+
+La condensación es \textbf{exacta}, no una aproximación: da las mismas frecuencias que el problema completo. Los modos se devuelven completos, también en los grados de libertad sin masa, y $\mathbf M$-ortonormales. El registro lo anota en una línea.
+
+\begin{lstlisting}[language=yaml]
+nodal_masses:
+  - {node_id: 3, ux: 40.0e3}
+  - {node_id: 4, ux: 40.0e3}
+
+solver:
+  type: ModalSolver
+  n_modes: 2        # no más que grados de libertad con masa
+
+\end{lstlisting}
+
+\texttt{n\_modes} no puede pasar del número de grados de libertad con masa. Si se piden más, o ninguno tiene masa, o los grados de libertad sin masa forman un mecanismo (pueden moverse sin rigidez ni inercia), el análisis se detiene con \texttt{MasslessDofsError}. El mensaje dice la causa y nombra los grados de libertad sin masa como \texttt{nodo \textless{}id\textgreater{} (\textless{}dof\textgreater{})}. \texttt{ResponseSpectrumSolver} hereda todo esto: con masas de piso, \texttt{total\_mass} es la suma de las masas de piso.
+
+En los \textbf{transitorios} los grados de libertad sin masa todavía no se admiten. Newmark y HHT calculan la aceleración inicial resolviendo $\mathbf M\ddot{\mathbf u}_0 = \ldots$, y con grados de libertad sin masa se detienen con un \texttt{ValueError} que explica la causa. \texttt{CentralDifferenceSolver}, por ser explícito, exige masa en todos.
 
 \section{\texttt{NewmarkSolver} --- transitorio lineal Newmark-$\beta$}
 
@@ -2756,6 +2805,16 @@ grieta = CST_Embedded2D(element_id=1, nodes=[n1, n2, n3], material=bulk,
 
 \texttt{from solidum import CST\_\allowbreak{}Embedded2D} ya no funciona: el elemento, la ley cohesiva (\texttt{CohesiveDamageIsotropic}), su clase base (\texttt{CohesiveMaterial}), su registro (\texttt{CohesiveMaterialRegistry}) y \texttt{DiscontinuityState} se importan de \texttt{solidum.\allowbreak{}user.\allowbreak{}discontinuities}.
 
+\section{Masas concentradas en nudos}
+
+\begin{lstlisting}[language=Python]
+domain.add_nodal_mass(5, ux=12.0e3, uy=12.0e3)   # masa [kg]
+domain.add_nodal_mass(5, rz=4.0e3)               # inercia rotacional [kg·m²]
+
+\end{lstlisting}
+
+Equivale al bloque YAML \texttt{nodal\_masses} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}): un grado de libertad mecánico por argumento, valores finitos no negativos, y varias llamadas sobre el mismo grado de libertad se suman. Las masas quedan en \texttt{domain.\allowbreak{}nodal\_\allowbreak{}masses} (\texttt{\{(nodo, dof): valor\}}) y el \texttt{Assembler} las suma a la diagonal de la matriz de masa. Son sólo inercia: no generan peso con la gravedad.
+
 \section{Errores tipados}
 
 Desde un script conviene capturar los errores por su tipo, porque cada uno indica una causa y una salida distintas:
@@ -2765,6 +2824,7 @@ from solidum.math.solvers.diagnostics import (
     MechanismError,          # el modelo no está suficientemente apoyado (antes de resolver)
     IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
     SolverDivergedError,     # familia del Newton: oscilación, tangente singular, capacidad...
+    MasslessDofsError,       # modal: grados de libertad sin masa que impiden resolver
 )
 from solidum.math.linalg import IterativeNotConvergedError   # sólo con linear_algebra: iterative
 
@@ -2775,7 +2835,7 @@ except MechanismError as err:
 
 \end{lstlisting}
 
-\texttt{MechanismError.\allowbreak{}motions} lista los movimientos libres ya descritos en palabras. Los mensajes completos y cómo corregir cada caso están en el capítulo \textit{Diagnóstico de Problemas}.
+\texttt{MechanismError.\allowbreak{}motions} lista los movimientos libres ya descritos en palabras. \texttt{MasslessDofsError} (análisis modal, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}) lleva la causa en \texttt{cause} (\texttt{too\_many\_modes}, \texttt{no\_mass}, \texttt{massless\_\allowbreak{}mechanism}, \texttt{singular\_mass}, \texttt{indefinite\_mass}), los grados de libertad sin masa en \texttt{massless\_dofs} y cuántos tienen masa en \texttt{n\_mass}. Los mensajes completos y cómo corregir cada caso están en el capítulo \textit{Diagnóstico de Problemas}.
 
 El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. \texttt{LinearSolver(assembler, linear\_\allowbreak{}algebra=\textquotedbl{}iterative\textquotedbl{})}.
 
@@ -2862,8 +2922,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 27 de octubre de 2026, 17:34\\[0.5em]
-Commit Git: \texttt{2267c10}\\[1em]
+Compilado el 09 de noviembre de 2026, 09:28\\[0.5em]
+Commit Git: \texttt{d23a1db}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
