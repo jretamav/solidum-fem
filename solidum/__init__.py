@@ -42,6 +42,8 @@ from solidum.results import (
     build_solve_result,
 )
 from solidum.entry import (
+    YamlModel,
+    load_yaml,
     run,
     run_harmonic,
     run_modal,

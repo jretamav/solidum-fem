@@ -28,7 +28,7 @@ from solidum.core.node import Node
 from solidum.core.section import Section
 from solidum.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimoshenko
 from solidum.elements.frame3d import Frame3D
-from solidum.entry import run_yaml
+from solidum.entry import load_yaml
 from solidum.materials.damage_1d import IsotropicDamage1D
 from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_2d import Elastic2D
@@ -950,21 +950,9 @@ def _escribir(tmp_path, texto):
 
 
 def _resolver_yaml(ruta):
-    """``(dominio, SolveResult)`` del modelo YAML: ``run_yaml`` y el dominio
-    que arma, para leer los DOFs por nodo."""
-    captura = {}
-    original = YamlParser.parse
-
-    def parse(self):
-        captura["dominio"] = original(self)
-        return captura["dominio"]
-
-    YamlParser.parse = parse
-    try:
-        res = run_yaml(ruta)
-    finally:
-        YamlParser.parse = original
-    return captura["dominio"], res
+    """``(dominio, SolveResult)`` del modelo YAML, para leer los DOFs por nodo."""
+    modelo = load_yaml(ruta)
+    return modelo.domain, modelo.solve()
 
 
 _VOLADIZO_2D = """\

@@ -20,6 +20,7 @@ cachean en ``domain.last_result``.
 from __future__ import annotations
 
 import inspect
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -525,6 +526,54 @@ def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
     return staged
 
 
+@dataclass
+class YamlModel:
+    """Modelo leído de un archivo YAML, listo para resolver (:func:`load_yaml`).
+
+    Da acceso al modelo antes y después de resolverlo: los grados de libertad
+    de cada nodo, la matriz de masa, la exportación VTK, el estado interno de
+    los elementos tras el análisis.
+
+    Attributes
+    ----------
+    domain : Domain
+        Nodos, elementos, apoyos, restricciones y masas de nudo, con los
+        grados de libertad ya numerados.
+    assembler : Assembler
+        Ensamblador vinculado a ``domain``; el que usa :meth:`solve`.
+    parser : YamlParser
+        Lector del archivo: cargas (``get_external_forces``, ``get_body_load``,
+        ``get_thermal_loads``), solver (``get_solver``), ``stages``,
+        ``output_config``.
+    """
+
+    domain: Domain
+    assembler: Assembler
+    parser: Any
+
+    def solve(self, *, step_callback: StepCallback | None = None):
+        """Resuelve el análisis declarado en el YAML: el mismo despacho y el
+        mismo resultado que :func:`run_yaml`."""
+        return _solve_yaml_model(self, step_callback)
+
+
+def load_yaml(path: str | Path) -> YamlModel:
+    """Lee un archivo YAML y arma el modelo sin resolverlo.
+
+    ``load_yaml(path).solve()`` equivale a ``run_yaml(path)``; el
+    :class:`YamlModel` conserva el dominio y el ensamblador para consultarlos
+    después.
+    """
+    # Import diferido para evitar costes si el consumidor no usa YAML.
+    from solidum.utils.yaml_parser import YamlParser
+
+    parser = YamlParser(str(path))
+    domain = parser.parse()
+    # Debe numerarse antes de get_external_forces, que indexa por DOF.
+    domain.generate_equation_numbers()
+    return YamlModel(domain=domain, assembler=Assembler(domain), parser=parser)
+
+
 def run_yaml(
     path: str | Path,
     *,
@@ -550,20 +599,21 @@ def run_yaml(
     este archivo: el solver declara su ``PIPELINE_KIND`` y queda
     automáticamente despachado al pipeline correcto.
 
+    Para conservar el modelo (dominio y ensamblador) y consultarlo después
+    de resolver, :func:`load_yaml` y :meth:`YamlModel.solve`.
+
     Returns
     -------
     SolveResult | ModalResult | TransientResult
         Resultado agregado. Inspeccionar el tipo concreto si el consumidor
         necesita distinguir (e.g. ``isinstance(result, TransientResult)``).
     """
-    # Import diferido para evitar costes si el consumidor no usa YAML.
-    from solidum.utils.yaml_parser import YamlParser
+    return load_yaml(path).solve(step_callback=step_callback)
 
-    parser = YamlParser(str(path))
-    domain = parser.parse()
-    # Debe numerarse antes de get_external_forces, que indexa por DOF.
-    domain.generate_equation_numbers()
-    assembler = Assembler(domain)
+
+def _solve_yaml_model(model: YamlModel, step_callback):
+    """Despacho de :meth:`YamlModel.solve` según el ``PIPELINE_KIND`` del solver."""
+    parser, domain, assembler = model.parser, model.domain, model.assembler
     if parser.stages is not None:
         return _run_yaml_stages(parser, domain, assembler, step_callback)
     solver = parser.get_solver(assembler)

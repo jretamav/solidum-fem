@@ -48,6 +48,22 @@ Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo,
 
 El exportador evalúa los esfuerzos en el `U` que recibe (`compute_gauss_state`), así que funciona igual tras `LinearSolver.solve` directo, tras `solidum.run` o en un paso intermedio del `step_callback`. Si el modelo lleva peso propio o fuerza de cuerpo, usar `solidum.run(...)` en vez de `solver.solve(...)` para que `SolveResult.element_forces` reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
 
+## Un modelo YAML desde Python: `load_yaml`
+
+`solidum.run_yaml(path)` lee el archivo, arma el modelo y lo resuelve, y devuelve sólo el resultado. Para conservar el modelo y consultarlo antes o después de resolver —los grados de libertad de cada nodo, la matriz de masa, la exportación VTK, el estado de los elementos— se usa `solidum.load_yaml(path)`:
+
+```python
+import solidum
+
+modelo = solidum.load_yaml("modelo.yaml")   # YamlModel: domain, assembler, parser
+res = modelo.solve()                          # lo mismo que run_yaml("modelo.yaml")
+tope = modelo.domain.nodes[12]
+print(res.U[tope.dofs["ux"]])
+M = modelo.assembler.assemble_mass_matrix()
+```
+
+`modelo.domain` tiene los grados de libertad ya numerados y `modelo.assembler` es el ensamblador con el que `solve()` resuelve el análisis declarado (estático, modal, transitorio, armónico, espectral, térmico o por etapas). `modelo.parser` da las cargas del archivo (`get_external_forces()`, `get_body_load(assembler)`, `get_thermal_loads()`) y el solver declarado (`get_solver(assembler)`).
+
 ## Resultado de un análisis estático: `SolveResult`
 
 `solidum.run(...)` (y `solidum.run_yaml(...)` con un solver estático) devuelve un `SolveResult` inmutable, que queda también en `domain.last_result`:
