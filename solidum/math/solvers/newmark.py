@@ -368,6 +368,19 @@ class NewtonNewmarkSolver(NewmarkSolver):
         Si ``int``, Newton modificado (ADR 0003 fase 2): factoriza fresco las
         primeras N iter de cada paso y reusa la factorización en las siguientes.
         ``None`` ⇒ Newton estándar (re-factoriza cada iteración).
+    max_subdivisions : int, default 6
+        Paso adaptativo (decisión del usuario del 2026-11-09): si el Newton
+        de un paso no converge, el paso se repite desde el último estado
+        convergido en dos mitades, y así hasta ``max_subdivisions`` niveles
+        (``Δt/2⁶ = Δt/64`` por omisión). Superado el paso difícil se vuelve a
+        ``Δt``. El historial queda en la malla del usuario (los subpasos son
+        internos; la carga se evalúa en sus instantes) y cada subdivisión se
+        avisa. Si ni con el mínimo converge, el análisis se detiene como sin
+        subdivisión; el resultado parcial termina entonces en el último
+        subpaso convergido, el estado que guardan los elementos. ``0``
+        desactiva la subdivisión. Tras ``solve``, ``n_subdivisions`` cuenta
+        las subdivisiones hechas. Newmark y HHT son métodos de un paso:
+        cambiar ``Δt`` entre pasos no les quita la estabilidad incondicional.
 
     Notes
     -----
@@ -397,6 +410,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
         linear_algebra: str = "auto",
         lumping: str = "consistent",
         record_internal_forces: bool = False,
+        max_subdivisions: int = 6,
     ):
         super().__init__(
             assembler, t_end, dt,
@@ -405,6 +419,12 @@ class NewtonNewmarkSolver(NewmarkSolver):
             linear_algebra=linear_algebra, lumping=lumping,
             record_internal_forces=record_internal_forces,
         )
+        if int(max_subdivisions) != max_subdivisions or max_subdivisions < 0:
+            raise ValueError(
+                f"{type(self).__name__}: max_subdivisions={max_subdivisions} debe ser un "
+                f"entero ≥ 0 (0 desactiva la subdivisión del paso).")
+        self.max_subdivisions = int(max_subdivisions)
+        self.n_subdivisions = 0
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = int(max_iter)
         self.freeze_tangent_after_iter = freeze_tangent_after_iter
@@ -428,6 +448,51 @@ class NewtonNewmarkSolver(NewmarkSolver):
             verbose=False,
             near_nullspace=assembler.near_nullspace,
         )
+
+    def _begin_trace(self) -> None:
+        super()._begin_trace()
+        self.n_subdivisions = 0
+
+    def _advance(self, attempt, state: dict, t_to: float, level: int = 0):
+        """Avanza de ``state["t"]`` a ``t_to`` con ``attempt(state, t_to)``
+        (un paso de Newton); si no converge, lo repite en dos mitades hasta
+        ``max_subdivisions`` niveles (paso adaptativo).
+
+        Devuelve ``(estado, res, último_bueno)``: el estado en ``t_to`` (o
+        ``None`` si no se llegó), el resultado del último Newton y el último
+        estado convergido (en ``t_to`` si se llegó)."""
+        res, new = attempt(state, t_to)
+        if new is not None:
+            return new, res, new
+        if level >= self.max_subdivisions:
+            return None, res, state
+        if level == 0:
+            _log.warning(
+                f"{type(self).__name__}: el paso hasta t={t_to:.4e} no converge "
+                f"({res.failure_reason()}); se subdivide (hasta Δt/{2 ** self.max_subdivisions}).")
+        self.n_subdivisions += 1
+        t_mid = 0.5 * (state["t"] + t_to)
+        mid, res1, good1 = self._advance(attempt, state, t_mid, level + 1)
+        if mid is None:
+            return None, res1, good1
+        end, res2, good2 = self._advance(attempt, mid, t_to, level + 1)
+        if end is None:
+            return None, res2, good2
+        return end, res2, end
+
+    def _fail_step(self, trace, state, good, res, t_next, message: str):
+        """Excepción tipada de un paso que no convergió ni subdividido; con
+        un subpaso convergido fuera de la malla, el resultado parcial termina
+        en él (el estado que guardan los elementos)."""
+        if good["t"] > state["t"]:
+            trace.store_substep(good["t"], good["u"], good["v"], good["a"],
+                                F_ext=good["F_raw"], F_int=good["F_int"])
+        subdiv = (f" ni subdividido hasta Δt/{2 ** self.max_subdivisions}"
+                  if self.max_subdivisions else "")
+        return trace.fail(res.divergence_error(
+            last_load_factor=t_next,
+            extra_message=f"{message}{subdiv}; último estado convergido en t={good['t']:.4e}.",
+        ), t_next)
 
     def solve(self) -> TransientResult:
         self._begin_trace()
@@ -517,29 +582,20 @@ class NewtonNewmarkSolver(NewmarkSolver):
         trace.converged(0, self.t_start, u_total)
         trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw, F_int=F_int)
 
-        # Coeficientes Newmark precomputados.
-        half_dt2 = 0.5 * dt * dt
-        one_minus_2beta = 1.0 - 2.0 * beta
-        one_minus_gamma = 1.0 - gamma
-        beta_dt2 = beta * dt * dt
-        gamma_dt = gamma * dt
-
-        def residual(F_int_at, udot_at, uddot_at):
-            return F_ext_next - F_int_at - C @ udot_at - M @ uddot_at
-
-        for step in range(n_steps):
-            t_next = t_history[step + 1]
-
+        def attempt(state, t_to):
+            """Un paso de Newton de ``state["t"]`` a ``t_to`` (``h = t_to − t``)."""
+            h = t_to - state["t"]
             # Gancho de inicio de paso (ADR 0020, P5) con el estado
             # convergido del paso anterior. Mismo protocolo que los solvers
             # estáticos.
-            self.assembler.prepare_all_steps(u_total)
-
+            self.assembler.prepare_all_steps(state["u"])
             # Predictores Newmark.
-            u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
-            udot_pred = udot_total + dt * one_minus_gamma * uddot_total
+            u_pred = state["u"] + h * state["v"] + 0.5 * h * h * (1.0 - 2.0 * beta) * state["a"]
+            udot_pred = state["v"] + h * (1.0 - gamma) * state["a"]
+            F_raw, F_next = self._external_load(t_to, ndof)
 
-            F_raw, F_ext_next = self._external_load(t_next, ndof)
+            def residual(F_int_at, udot_at, uddot_at):
+                return F_next - F_int_at - C @ udot_at - M @ uddot_at
 
             # Corrector compartido (ADR 0015): un ensamblaje por iteración,
             # convergencia evaluada ANTES de resolver con el par
@@ -547,32 +603,40 @@ class NewtonNewmarkSolver(NewmarkSolver):
             # convergido. El Newton arranca en ü^(0) = ü_n (continuidad).
             problem = _DynamicNewtonProblem(
                 self.assembler, T_op, free_dofs, M, C, M_red, C_red,
-                u_pred, udot_pred, beta_dt2, gamma_dt, F_ext_next, residual,
+                u_pred, udot_pred, beta * h * h, gamma * h, F_next, residual,
             )
-            res = self.corrector.run(problem, problem.initial_iterate(uddot_free))
-
+            res = self.corrector.run(problem, problem.initial_iterate(state["a_free"]))
             if not res.converged:
-                # Clasificar el modo y lanzar excepción tipada (ADR 0011),
-                # con el historial hasta el último paso convergido (ADR 0025).
-                raise trace.fail(res.divergence_error(
-                    last_load_factor=t_next,
-                    extra_message=(
-                        f"NewtonNewmarkSolver: paso {step+1} (t={t_next:.4e}) no "
-                        f"convergió en {self.max_iter} iteraciones; "
-                        f"line_search={'on' if self.line_search else 'off'}; "
-                        f"último α={res.last_alpha:.3f}."
-                    ),
-                ), t_next)
+                return res, None
+            u_n, v_n, a_n, a_free_n = res.x
+            return res, dict(u=u_n, v=v_n, a=a_n, a_free=a_free_n, t=t_to,
+                             F_int=res.state[1], F_ext=F_next, F_raw=F_raw)
+
+        state = dict(u=u_total, v=udot_total, a=uddot_total, a_free=uddot_free,
+                     t=self.t_start, F_int=F_int, F_ext=F0_global, F_raw=F0_raw)
+        for step in range(n_steps):
+            t_next = t_history[step + 1]
+            before = self.n_subdivisions
+            new, res, good = self._advance(attempt, state, t_next)
+            if new is None:
+                # Excepción tipada (ADR 0011) con el historial hasta el último
+                # estado convergido (ADR 0025).
+                raise self._fail_step(trace, state, good, res, t_next, (
+                    f"NewtonNewmarkSolver: paso {step+1} (t={t_next:.4e}) no "
+                    f"convergió en {self.max_iter} iteraciones; "
+                    f"line_search={'on' if self.line_search else 'off'}; "
+                    f"último α={res.last_alpha:.3f}"))
+            state = new
             _log.info(
                 f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
                 f"iter={res.n_solves} | R/tol_F={res.last_conv.ratio_force:.2e}"
+                + (f" | subdividido ({self.n_subdivisions - before})"
+                   if self.n_subdivisions > before else "")
             )
-
-            u_total, udot_total, uddot_total, uddot_free = res.x
-
+            u_total = state["u"]
             trace.converged(step + 1, t_next, u_total)
-            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw,
-                        F_int=res.state[1])
+            trace.store(step + 1, u_total, state["v"], state["a"], F_ext=state["F_raw"],
+                        F_int=state["F_int"])
 
         _log.info(f"  -> {n_steps} pasos completados (no lineal). "
                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
@@ -884,6 +948,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         linear_algebra: str = "auto",
         lumping: str = "consistent",
         record_internal_forces: bool = False,
+        max_subdivisions: int = 6,
     ):
         if not (-1.0 / 3.0 - 1.0e-12 <= alpha <= 0.0 + 1.0e-12):
             raise ValueError(
@@ -918,6 +983,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             u0=u0, u0_dot=u0_dot, F_func=F_func,
             linear_algebra=linear_algebra, lumping=lumping,
             record_internal_forces=record_internal_forces,
+            max_subdivisions=max_subdivisions,
         )
         self.alpha = float(alpha)
 
@@ -999,70 +1065,66 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         trace.converged(0, self.t_start, u_total)
         trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw, F_int=F_int)
 
-        half_dt2 = 0.5 * dt * dt
-        one_minus_2beta = 1.0 - 2.0 * beta
-        one_minus_gamma = 1.0 - gamma
-        beta_dt2 = beta * dt * dt
-        gamma_dt = gamma * dt
-
-        def residual(F_int_at, udot_at, uddot_at):
-            # Residuo HHT-α no lineal:
-            # R = (1+α)·F_{n+1} − α·F_n
-            #     − [(1+α)·F_int(u_{n+1}) − α·F_int_n]
-            #     − [(1+α)·C·u̇_{n+1} − α·C·u̇_n]
-            #     − M·ü_{n+1}
-            return (one_plus_alpha * F_ext_next - alpha_hht * F_prev_global
-                    - one_plus_alpha * F_int_at + alpha_hht * F_int_prev
-                    - one_plus_alpha * (C @ udot_at) + alpha_hht * (C @ udot_prev)
-                    - M @ uddot_at)
-
-        for step in range(n_steps):
-            t_next = t_history[step + 1]
-
+        def attempt(state, t_to):
+            """Un paso HHT-α de ``state["t"]`` a ``t_to``; los términos α·X_n
+            son los del estado de partida (el inicio del paso o del subpaso)."""
+            h = t_to - state["t"]
             # Gancho de inicio de paso (ADR 0020, P5) con el estado
             # convergido del paso anterior, como en NewtonNewmarkSolver.
-            self.assembler.prepare_all_steps(u_total)
+            self.assembler.prepare_all_steps(state["u"])
+            u_pred = state["u"] + h * state["v"] + 0.5 * h * h * (1.0 - 2.0 * beta) * state["a"]
+            udot_pred = state["v"] + h * (1.0 - gamma) * state["a"]
+            F_raw, F_next = self._external_load(t_to, ndof)
+            F_prev, F_int_n, udot_n = state["F_ext"], state["F_int"], state["v"]
 
-            u_pred = u_total + dt * udot_total + half_dt2 * one_minus_2beta * uddot_total
-            udot_pred = udot_total + dt * one_minus_gamma * uddot_total
-
-            F_raw, F_ext_next = self._external_load(t_next, ndof)
+            def residual(F_int_at, udot_at, uddot_at):
+                # Residuo HHT-α no lineal:
+                # R = (1+α)·F_{n+1} − α·F_n
+                #     − [(1+α)·F_int(u_{n+1}) − α·F_int_n]
+                #     − [(1+α)·C·u̇_{n+1} − α·C·u̇_n]
+                #     − M·ü_{n+1}
+                return (one_plus_alpha * F_next - alpha_hht * F_prev
+                        - one_plus_alpha * F_int_at + alpha_hht * F_int_n
+                        - one_plus_alpha * (C @ udot_at) + alpha_hht * (C @ udot_n)
+                        - M @ uddot_at)
 
             # Corrector compartido (ADR 0015); jacobiano
             # J = M + (1+α)·γΔt·C + (1+α)·βΔt²·K_t.
             problem = _DynamicNewtonProblem(
                 self.assembler, T_op, free_dofs, M, C, M_red, C_red,
-                u_pred, udot_pred, beta_dt2, gamma_dt, F_ext_next, residual,
+                u_pred, udot_pred, beta * h * h, gamma * h, F_next, residual,
                 jac_scale=one_plus_alpha,
             )
-            res = self.corrector.run(problem, problem.initial_iterate(uddot_free))
-
+            res = self.corrector.run(problem, problem.initial_iterate(state["a_free"]))
             if not res.converged:
-                raise trace.fail(res.divergence_error(
-                    last_load_factor=t_next,
-                    extra_message=(
-                        f"NewtonHHTSolver (alpha={alpha_hht:.4f}): "
-                        f"paso {step+1} (t={t_next:.4e}) no convergió en "
-                        f"{self.max_iter} iteraciones; "
-                        f"line_search={'on' if self.line_search else 'off'}."
-                    ),
-                ), t_next)
+                return res, None
+            u_n, v_n, a_n, a_free_n = res.x
+            return res, dict(u=u_n, v=v_n.copy(), a=a_n, a_free=a_free_n, t=t_to,
+                             F_int=res.state[1], F_ext=F_next, F_raw=F_raw)
+
+        state = dict(u=u_total, v=udot_total, a=uddot_total, a_free=uddot_free,
+                     t=self.t_start, F_int=F_int_prev, F_ext=F_prev_global, F_raw=F0_raw)
+        for step in range(n_steps):
+            t_next = t_history[step + 1]
+            before = self.n_subdivisions
+            new, res, good = self._advance(attempt, state, t_next)
+            if new is None:
+                raise self._fail_step(trace, state, good, res, t_next, (
+                    f"NewtonHHTSolver (alpha={alpha_hht:.4f}): "
+                    f"paso {step+1} (t={t_next:.4e}) no convergió en "
+                    f"{self.max_iter} iteraciones; "
+                    f"line_search={'on' if self.line_search else 'off'}"))
+            state = new
             _log.info(
                 f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
                 f"iter={res.n_solves} | R/tol_F={res.last_conv.ratio_force:.2e}"
+                + (f" | subdividido ({self.n_subdivisions - before})"
+                   if self.n_subdivisions > before else "")
             )
-
-            u_total, udot_total, uddot_total, uddot_free = res.x
-
+            u_total = state["u"]
             trace.converged(step + 1, t_next, u_total)
-            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw,
-                        F_int=res.state[1])
-
-            # Cache para el siguiente paso (términos α·X_n). F_int es el del
-            # ensamblaje en u_{n+1} convergido.
-            F_int_prev = res.state[1]
-            udot_prev = udot_total.copy()
-            F_prev_global = F_ext_next
+            trace.store(step + 1, u_total, state["v"], state["a"], F_ext=state["F_raw"],
+                        F_int=state["F_int"])
 
         _log.info(f"  -> {n_steps} pasos completados (HHT-α no lineal). "
                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")

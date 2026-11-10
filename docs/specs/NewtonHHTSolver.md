@@ -117,7 +117,8 @@ parameters:
       desc: "Override del γ autoderivado (no recomendado — emite RuntimeWarning)" }
   # heredados de NewtonNewmarkSolver:
   #   t_end, dt, convergence, max_iter, freeze_tangent_after_iter,
-  #   line_search, rayleigh, u0, u0_dot, F_func, linear_algebra, lumping
+  #   line_search, rayleigh, u0, u0_dot, F_func, linear_algebra, lumping,
+  #   max_subdivisions (paso adaptativo, 2026-11-09)
 
 requirements:
   - "Modelo dinámico con no-linealidad de material o geometría"
@@ -206,3 +207,4 @@ references:
 - **2026-11-09** · Progreso paso a paso: `step_callback(step, U, t)` tras cada paso convergido (`run_transient`/`run_thermal_transient(..., step_callback=)`, también desde `run_yaml` y en las etapas), en `TransientTrace.converged`, común a los integradores. Sin cambio de física. Test: `tests/test_transient_progress.py`.
 - **2026-11-09** · Grados de libertad sin masa (deuda #34, decisión del usuario; ADR 0024 §6 bis): la aceleración inicial se toma consistente, $\ddot{\mathbf u}_m = \mathbf M_{mm}^{-1}\mathbf r_m$ y $\ddot{\mathbf u}_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\ddot{\mathbf u}_m$ (con la tangente en $\mathbf u_0$ en las variantes de Newton), en vez de detenerse con `MasslessDofsError`. Criterio: el edificio de cortante de tres pisos (18 de 21 grados de libertad sin masa) con carga desde $t = 0$ coincide con el problema 3×3 condensado integrado con el mismo esquema a 1e-9, sin y con Rayleigh, y las aceleraciones de los grados de libertad sin masa son las consistentes. Test: `tests/test_transient_massless_dofs.py`.
 - **2026-11-09** · Reacciones de los apoyos ([ADR 0030](../adr/0030-reacciones-en-los-analisis-dinamicos.md), decisión del usuario): `R_history` = $\mathbf F_\text{int} + \mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} - \mathbf F$ en los apoyos en cada instante, con la parte $\mathbf C\dot{\mathbf u}$ en `R_damping_history`; `total_reaction("ux")` es el cortante basal (`damping=False`, sin Rayleigh). Test: `tests/test_dynamic_reactions.py`.
+- **2026-11-09** · Paso adaptativo (decisión del usuario; los términos α·X_n son los del inicio de cada subpaso): si el Newton de un paso no converge, el paso se repite desde el último estado convergido en dos mitades, hasta `max_subdivisions` niveles (6 por omisión, Δt/64), y después se vuelve a Δt. El historial queda en la malla del usuario (los subpasos son internos; la carga se evalúa en sus instantes); cada subdivisión se avisa y `n_subdivisions` las cuenta. Si ni con el mínimo converge, el resultado parcial termina en el último subpaso convergido, el estado de los elementos, para continuarlo de forma coherente (ADR 0029). `0` desactiva la subdivisión. Medido: la columna con plasticidad en fibras bajo un pulso de 350 kN, que con Δt = 2 ms se detenía en t = 0.082 s, termina con 21 subdivisiones y su máximo difiere 0.2 % del de Δt = 1 ms uniforme. Test: `tests/test_adaptive_substepping.py`.

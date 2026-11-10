@@ -290,6 +290,17 @@ res.R_history, res.R_damping_history, res.reaction_labels   # (n_apoyos, n_t) y 
 - **Armónico**: `R_complex` (amplitudes complejas, $(\mathbf K - \omega^2\mathbf M + i\omega\mathbf C)\hat{\mathbf u} - \hat{\mathbf F}$) y `R_damping_complex`; `total_reaction("ux")` para cada frecuencia.
 - **Espectral**: `R_per_mode` (la reacción de cada modo) y `R_combined` (cada apoyo, combinado). El cortante basal es `total_reaction("ux")`, que suma las reacciones en cada modo **antes** de combinar; sumar las reacciones ya combinadas daría una cota superior, no el cortante basal.
 
+## Paso adaptativo en los transitorios no lineales
+
+En `NewtonNewmarkSolver` y `NewtonHHTSolver`, un paso cuyo Newton no converge no detiene el análisis: se repite desde el último estado convergido en dos mitades, y así sucesivamente hasta `max_subdivisions` niveles (6 por omisión, es decir, hasta Δt/64). Superado el paso difícil se vuelve al Δt pedido.
+
+- El historial queda en los instantes que se pidieron: los subpasos son internos, y la carga se evalúa en sus instantes.
+- Cada subdivisión se avisa en el registro; `solver.n_subdivisions` las cuenta.
+- Si ni con el mínimo converge, el análisis se detiene como siempre (`SolverDivergedError`); el resultado parcial termina entonces en el último subpaso convergido, que es el estado de los elementos, así que se puede continuar desde él con otro Δt (`previous=exc.partial_result`).
+- `max_subdivisions: 0` lo desactiva.
+
+Newmark y HHT son métodos de un paso: cambiar Δt entre pasos no les quita la estabilidad incondicional.
+
 ## Progreso paso a paso
 
 `run_transient(..., step_callback=f)` y `run_thermal_transient(..., step_callback=f)` llaman `f(step, U, t)` tras cada paso convergido, con el número de paso, el campo global (desplazamientos o temperaturas) y el instante: la misma forma que el `step_callback(step, U, λ)` de los solvers estáticos, con el instante en lugar del factor de carga. Sirve para mostrar el avance, vigilar una magnitud o exportar mientras se integra. `run_yaml(path, step_callback=f)` lo pasa a los análisis estáticos y en el tiempo, también en las etapas; en el modal, el armónico y el espectral, que no tienen pasos, avisa de que lo ignora.

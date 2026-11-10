@@ -369,13 +369,10 @@ class TransientTrace:
                 self._store_reactions(column, F_ext, F_int)
         self.last = column
 
-    def _store_reactions(self, column: int, F_ext, F_int) -> None:
-        """``R = F_int + M·ü + C·u̇ − F`` y ``C·u̇`` en los apoyos."""
+    def _reactions_of(self, u, udot, uddot, F_ext, F_int):
+        """``(R, C·u̇)`` en los apoyos para un estado: ``R = F_int + M·ü + C·u̇ − F``."""
         from solidum.results import reactions_from_residual
         M, C, K = self.dynamics
-        u = self.histories["u"][:, column]
-        udot = self.histories["udot"][:, column]
-        uddot = self.histories["uddot"][:, column]
         if F_int is None:
             F_int = K @ u
         damping = C @ udot
@@ -384,8 +381,29 @@ class TransientTrace:
             residual = residual - np.asarray(F_ext, dtype=float).reshape(-1)
         asm = self.solver.assembler
         dofs = self.reaction_dofs
-        self.R[:, column] = reactions_from_residual(asm, residual)[dofs]
-        self.R_damping[:, column] = reactions_from_residual(asm, damping)[dofs]
+        return (reactions_from_residual(asm, residual)[dofs],
+                reactions_from_residual(asm, damping)[dofs])
+
+    def _store_reactions(self, column: int, F_ext, F_int) -> None:
+        """``R = F_int + M·ü + C·u̇ − F`` y ``C·u̇`` en los apoyos."""
+        self.R[:, column], self.R_damping[:, column] = self._reactions_of(
+            self.histories["u"][:, column], self.histories["udot"][:, column],
+            self.histories["uddot"][:, column], F_ext, F_int)
+
+    def store_substep(self, t: float, *values, F_ext=None, F_int=None) -> None:
+        """Último subpaso convergido de un paso subdividido que no terminó
+        (paso adaptativo): el estado que guardan los elementos, fuera de la
+        malla de salida. El resultado parcial lo añade como última columna,
+        para que continuarlo (ADR 0029) parta de ese mismo estado."""
+        cols = [np.array(v, dtype=float, copy=True) for v in values]
+        reactions = None
+        if self.dynamics is not None:
+            reactions = self._reactions_of(*cols, F_ext, F_int)
+        if self.fields[0] == "u":
+            self.forces.record(cols[0], F_ext)
+        self._substep = (float(t), cols, reactions)
+        self.solver.t_final = float(t)
+        self._U = cols[0]
 
     def _result(self, termination: Termination):
         n = self.last + 1
@@ -396,6 +414,15 @@ class TransientTrace:
         if self.dynamics is not None:
             cut = (lambda a: a if n == a.shape[1] else a[:, :n].copy())
             reactions = (self.reaction_labels, cut(self.R), cut(self.R_damping))
+        substep = getattr(self, "_substep", None)
+        if substep is not None and termination != Termination.T_END:
+            t_sub, cols, sub_reactions = substep
+            t = np.append(t, t_sub)
+            histories = {f: np.column_stack([h, c]) for (f, h), c in zip(histories.items(), cols)}
+            if reactions is not None:
+                labels, R, R_d = reactions
+                reactions = (labels, np.column_stack([R, sub_reactions[0]]),
+                             np.column_stack([R_d, sub_reactions[1]]))
         return self.build(histories, t, self.step, str(termination), self.forces.result(),
                           reactions)
 
