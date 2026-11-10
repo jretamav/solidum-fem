@@ -439,16 +439,25 @@ class ElementForcesRecorder:
         return {k: list(v) for k, v in self._history.items()}
 
 
+def _dof_index_map(domain) -> dict[int, tuple[int, str]]:
+    """``índice global → (id del nodo, nombre del grado de libertad)``."""
+    if domain is None:
+        return {}
+    return {int(idx): (node.id, dof_name)
+            for node in domain.nodes.values() for dof_name, idx in node.dofs.items()}
+
+
+def _dof_keys(domain, dofs) -> list[tuple[int, str]]:
+    """``(id del nodo, nombre del grado de libertad)`` de los DOFs globales dados."""
+    index = _dof_index_map(domain)
+    return [index[int(d)] for d in dofs]
+
+
 def _dof_labels(domain, dofs) -> list[str]:
     """Etiquetas ``"nodo <id> (<dof>)"`` para los DOFs globales dados."""
-    wanted = {int(d) for d in dofs}
-    names: dict[int, str] = {}
-    if domain is not None:
-        for node in domain.nodes.values():
-            for dof_name, idx in node.dofs.items():
-                if int(idx) in wanted:
-                    names[int(idx)] = f"nodo {node.id} ({dof_name})"
-    return [names.get(int(d), f"DOF {int(d)}") for d in dofs]
+    index = _dof_index_map(domain)
+    return [f"nodo {index[int(d)][0]} ({index[int(d)][1]})" if int(d) in index
+            else f"DOF {int(d)}" for d in dofs]
 
 
 def warn_initial_conditions_off_constraints(

@@ -45,6 +45,7 @@ from solidum.math.modal_response import (
     response_spectrum_cqc,
     response_spectrum_srss,
 )
+from solidum.math.rigid_body import dof_unit_vector
 from solidum.math.solvers._shared import _log
 from solidum.math.solvers.modal import ModalSolver
 from solidum.registry import SolverRegistry
@@ -242,16 +243,10 @@ class ResponseSpectrumSolver:
                     "clave 'dof_name' (e.g. 'ux'). Recibido: "
                     f"{list(raw.keys())}."
                 )
-            r = np.zeros(ndof)
-            for node in self.assembler.domain.nodes.values():
-                if dof_name in node.dofs:
-                    r[node.dofs[dof_name]] = 1.0
-            if np.linalg.norm(r) == 0.0:
-                raise ValueError(
-                    f"ResponseSpectrumSolver.direction: ningún nodo "
-                    f"tiene DOF '{dof_name}'."
-                )
-            return r
+            try:
+                return dof_unit_vector(self.assembler.domain, dof_name, ndof)
+            except ValueError as exc:
+                raise ValueError(f"ResponseSpectrumSolver.direction: {exc}") from None
         r = np.asarray(raw, dtype=float).ravel()
         if r.size != ndof:
             raise ValueError(

@@ -12,8 +12,10 @@ posterior:
   (ADR 0004 §3), fuerzas internas. Producido por ``LinearSolver``,
   ``NonlinearSolver``, ``ArcLengthSolver``.
 - :class:`ModalResult`: frecuencias propias y modos M-ortonormales del problema
-  ``K·φ = ω²·M·φ`` (ADR 0009 fase 1). Expone ``free_vibration`` como wrapper
-  delgado sobre ``solidum.math.modal_response``.
+  ``K·φ = ω²·M·φ`` (ADR 0009 fase 1), con los factores de participación y las
+  masas efectivas de cada traslación y los grados de libertad sin masa
+  condensados. Expone ``free_vibration`` como wrapper delgado sobre
+  ``solidum.math.modal_response``.
 - :class:`TransientResult`: historiales temporales ``(t, u, u̇, ü)`` de un
   análisis dinámico transitorio (ADR 0009 fases 3, 4 y 5). Producido por
   ``NewmarkSolver``, ``NewtonNewmarkSolver``, ``HHTSolver``,
@@ -85,6 +87,23 @@ class ModalResult:
         si el solver fue forzado a parar (max iteraciones); típicamente
         no debe ocurrir si las tolerancias del YAML están en el rango
         razonable por defecto.
+    participation_factors
+        ``{"ux": Γ, "uy": Γ, ...}``: para cada traslación del modelo, los
+        factores de participación ``Γₙ = φₙᵀ·M·r``, shape ``(n_modes,)``, con
+        ``r`` la traslación rígida unitaria en esa dirección (vale 1 también
+        en los apoyos, que se mueven con el suelo; Chopra 2017, §13.1). Con
+        modos M-ortonormales no hace falta dividir entre ``φₙᵀ·M·φₙ``. Su
+        signo sigue el signo arbitrario del modo.
+    effective_masses
+        ``{"ux": Γ², ...}``: masas modales efectivas ``Mₙ* = Γₙ²`` en cada
+        traslación, en unidades de masa. Para otro vector ``r`` (un giro
+        alrededor de un punto, una dirección oblicua), usar
+        :func:`solidum.math.modal_response.participation_factors` con
+        :func:`solidum.math.rigid_body.rigid_body_vector`.
+    condensed_dofs
+        ``((id del nodo, grado de libertad), ...)``: los grados de libertad
+        sin masa condensados estáticamente (ADR 0024); vacío si todos tienen
+        masa.
     """
 
     frequencies_rad: np.ndarray
@@ -93,6 +112,9 @@ class ModalResult:
     modes: np.ndarray
     n_modes: int
     converged: bool = True
+    participation_factors: dict = field(default_factory=dict)
+    effective_masses: dict = field(default_factory=dict)
+    condensed_dofs: tuple = ()
 
     def free_vibration(
         self,

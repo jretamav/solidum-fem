@@ -5,9 +5,12 @@
 import numpy as np
 
 from solidum.constants import MODAL_ARPACK_TOLERANCE, MODAL_EIGENVALUE_ZERO_RTOL
+from solidum.core.dof_names import TRANSLATIONS
 from solidum.math.linalg import EigenSolver
 from solidum.math.linalg.eigen import SemidefiniteMassError
-from solidum.math.solvers._shared import _dof_labels, _log
+from solidum.math.modal_response import participation_factors
+from solidum.math.rigid_body import dof_unit_vector
+from solidum.math.solvers._shared import _dof_keys, _dof_labels, _log
 from solidum.math.solvers.diagnostics import MasslessDofsError
 from solidum.registry import SolverRegistry
 from solidum.results import ModalResult
@@ -30,7 +33,14 @@ class ModalSolver:
     de los modos se recuperan. Hay tantas frecuencias finitas como grados
     de libertad con masa; si el problema no tiene solución, se lanza
     :class:`~solidum.math.solvers.diagnostics.MasslessDofsError`, que los
-    nombra.
+    nombra. El resultado los lista en ``condensed_dofs``.
+
+    Participación modal: el resultado trae, para cada traslación del modelo
+    (``ux``, ``uy``, ``uz``), los factores de participación ``Γₙ = φₙᵀ·M·r``
+    y las masas efectivas ``Γₙ²``, con ``r`` la traslación rígida unitaria
+    (Chopra 2017, §13.1). Para otro vector ``r`` (un giro, una dirección
+    oblicua), :func:`solidum.math.modal_response.participation_factors` con
+    :func:`solidum.math.rigid_body.rigid_body_vector`.
 
     Parameters
     ----------
@@ -130,7 +140,7 @@ class ModalSolver:
                 np.inf,
             )
 
-        modes = T @ phi_red
+        modes = np.asarray(T @ phi_red)
 
         n_found = int(omegas.size)
         if n_found:
@@ -139,6 +149,23 @@ class ModalSolver:
                 f"ω₁={omegas[0]:.4e} rad/s ({frequencies_hz[0]:.4e} Hz)"
             )
 
+        # Participación en cada traslación del modelo: r = traslación rígida
+        # unitaria (los apoyos se mueven con el suelo), Γₙ = φₙᵀ·M·r.
+        domain = self.assembler.domain
+        participation, effective = {}, {}
+        for name in TRANSLATIONS:
+            if not any(name in node.dofs for node in domain.nodes.values()):
+                continue
+            r = dof_unit_vector(domain, name, self.assembler.ndof)
+            gamma = participation_factors(modes, M_global, r)
+            participation[name] = gamma
+            effective[name] = gamma * gamma
+        if effective:
+            _log.info("  -> masa efectiva de los modos calculados: " + ", ".join(
+                f"{name} {float(np.sum(m)):.4e}" for name, m in effective.items()))
+        free = self.assembler.constraint_set.free_dofs(self.assembler.ndof)
+        condensed = tuple(_dof_keys(domain, free[eig.last_massless]))
+
         # ``converged`` refleja lo que reporta ARPACK: ``False`` si se detuvo
         # con menos modos de los pedidos (``n_modes`` es entonces el número
         # realmente devuelto, no el solicitado).
@@ -146,7 +173,10 @@ class ModalSolver:
             frequencies_rad=omegas,
             frequencies_hz=frequencies_hz,
             periods=periods,
-            modes=np.asarray(modes),
+            modes=modes,
             n_modes=n_found,
             converged=bool(eig.last_converged),
+            participation_factors=participation,
+            effective_masses=effective,
+            condensed_dofs=condensed,
         )

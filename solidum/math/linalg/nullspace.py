@@ -50,19 +50,14 @@ import numpy as np
 from solidum.core.dof_names import MECHANICAL as _MECHANICAL
 from solidum.core.dof_names import ROTATIONS as _ROTATIONS
 from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONS
+from solidum.math.rigid_body import (
+    ROTATION_FIELDS,
+    dof_index_arrays,
+    node_coordinates,
+    rotation_column,
+)
 
 _AXES = ("x", "y", "z")
-
-# Rotación alrededor de cada eje: (DOF de giro, [(DOF de traslación, signo,
-# índice de la coordenada que multiplica)]). Sale de u = e_a × r:
-#   e_x × r = ( 0, −z,  y)
-#   e_y × r = ( z,  0, −x)
-#   e_z × r = (−y,  x,  0)
-_ROTATION_FIELDS = {
-    "x": ("rx", (("uy", -1.0, 2), ("uz", +1.0, 1))),
-    "y": ("ry", (("ux", +1.0, 2), ("uz", -1.0, 0))),
-    "z": ("rz", (("ux", -1.0, 1), ("uy", +1.0, 0))),
-}
 
 
 @dataclass(frozen=True)
@@ -88,19 +83,6 @@ class RigidBasis:
     length: float
 
 
-def _dof_arrays(nodes) -> dict:
-    """``{nombre: (índices de ecuación, posición del nodo)}`` en una sola
-    pasada por los nodos."""
-    eq: dict[str, list[int]] = {}
-    idx: dict[str, list[int]] = {}
-    for i, node in enumerate(nodes):
-        for name, k in node.dofs.items():
-            eq.setdefault(name, []).append(k)
-            idx.setdefault(name, []).append(i)
-    return {name: (np.asarray(eq[name], dtype=np.int64), np.asarray(idx[name], dtype=np.int64))
-            for name in eq}
-
-
 def rigid_body_basis(domain) -> RigidBasis:
     """Modos de cuerpo rígido del dominio en el espacio **completo** de DOF,
     con sus etiquetas, centro y escala (ver el docstring del módulo).
@@ -116,17 +98,14 @@ def rigid_body_basis(domain) -> RigidBasis:
     if ndof == 0 or not nodes:
         return RigidBasis(np.zeros((ndof, 0)), (), np.zeros(3), 1.0)
 
-    coords = np.zeros((len(nodes), 3))
-    for i, node in enumerate(nodes):
-        c = np.asarray(node.coordinates, dtype=float).ravel()[:3]
-        coords[i, : c.size] = c
+    coords = node_coordinates(nodes)
     center = coords.mean(axis=0)
     rel = coords - center
     length = float(np.max(np.linalg.norm(rel, axis=1)))
     if length <= 0.0:
         length = 1.0
 
-    arrays = _dof_arrays(nodes)
+    arrays = dof_index_arrays(nodes)
     present = set(arrays)
 
     columns: list[np.ndarray] = []
@@ -139,19 +118,12 @@ def rigid_body_basis(domain) -> RigidBasis:
             columns.append(col)
             labels.append(("translation", axis))
 
-    for axis in _AXES:
-        rot_dof, parts = _ROTATION_FIELDS[axis]
+    for axis, rot_dof in zip(_AXES, _ROTATIONS):
+        parts = ROTATION_FIELDS[rot_dof]
         leaves_trace = rot_dof in present or all(p[0] in present for p in parts)
         if not leaves_trace:
             continue
-        col = np.zeros(ndof)
-        for dof_name, sign, coord_idx in parts:
-            if dof_name in present:
-                eq, idx = arrays[dof_name]
-                col[eq] = sign * rel[idx, coord_idx] / length
-        if rot_dof in present:
-            col[arrays[rot_dof][0]] = 1.0 / length
-        columns.append(col)
+        columns.append(rotation_column(arrays, coords, center, rot_dof, ndof) / length)
         labels.append(("rotation", axis))
 
     for name in sorted(present - _MECHANICAL):

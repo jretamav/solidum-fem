@@ -25,6 +25,19 @@ Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf 
 
 **Salida**: instancia de `ModalResult` con `frequencies_rad`, `frequencies_hz`, `periods`, `modes` (M-ortonormales). El método `ModalResult.free_vibration(M, u0, u0_dot, t)` reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
 
+**Participación modal**: para cada traslación del modelo, `participation_factors["ux"]` da los factores $\Gamma_n = \boldsymbol\phi_n^\top \mathbf M\,\mathbf r$ y `effective_masses["ux"]` las masas efectivas $\Gamma_n^2$ (en unidades de masa), con $\mathbf r$ la traslación rígida unitaria en esa dirección; igual con `"uy"` y, en 3D, `"uz"`. `condensed_dofs` lista los grados de libertad sin masa condensados, como `(nodo, dof)`. Para un giro del modelo alrededor de un punto (torsión de un edificio) o una dirección oblicua:
+
+```python
+from solidum.math.modal_response import participation_factors
+from solidum.math.rigid_body import rigid_body_vector
+
+r = rigid_body_vector(dom, "rz", about=(x_c, y_c, z_c))   # giro unitario alrededor de z
+M = asm.assemble_mass_matrix()
+gamma = participation_factors(res.modes, M, r)              # masas efectivas: gamma**2
+```
+
+La suma de las masas efectivas de los modos calculados se escribe en el registro. La razón de masa acumulada (el criterio del 90 %) todavía no está en `ModalResult`: con qué masa total se compara es una decisión pendiente.
+
 ```yaml
 nodes:
   - {id: 1, coords: [0.0, 0.0]}
