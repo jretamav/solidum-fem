@@ -2,7 +2,7 @@
 
 > Orden de trabajo. El usuario escribe la **especificación física**, la **formulación numérica** y el **contrato**. La IA rellena **implementación** y responde en **diálogo** durante el trabajo.
 >
-> Los materiales cohesivos forman una jerarquía paralela a la de materiales continuos (ADR 0010): operan sobre el salto `[[u]]` y devuelven tracciones `t` sobre `Γ_d`. No tienen `STRAIN_DIM` ni `density` (la inercia es del bulk). En su lugar declaran `JUMP_DIM`. Viven en `solidum/cohesive_materials/`, heredan de `solidum.core.cohesive_material.CohesiveMaterial`, se registran con `@CohesiveMaterialRegistry.register` y se declaran en YAML bajo `cohesive_materials:` (sección separada de `materials:`).
+> Los materiales de interfaz (ADR 0033) relacionan la tracción `t` con el desplazamiento relativo `Δu` entre los dos lados de una interfaz, en su sistema local: una **superficie** de discontinuidad (grieta, junta: `GEOMETRY = "surface"`, componentes `(n, s)` o `(n, s1, s2)`) o la **línea** de una barra embebida en un sólido (`GEOMETRY = "line"`, componentes `(n, s)` o `(n1, n2, s)`). No tienen `STRAIN_DIM` ni `density`. Viven en `solidum/materials/interface/`, heredan de `solidum.core.interface_material.InterfaceMaterial`, se registran con `@InterfaceMaterialRegistry.register` y se declaran en YAML bajo `interface_materials:`.
 
 ---
 
@@ -49,7 +49,7 @@
 *Cómo decide el material carga vs descarga comparando con el estado committed `κ_n`. Si la transición es discontinua, advertirlo y sugerir solver (Newton estándar con line-search, `ArcLengthSolver`).*
 
 ### 12. Caveats numéricos
-*Elección del penalty `K_e` (típicamente `K_e ≈ 10·E_bulk/ℓ_c`). Comportamiento en compresión (¿hay contacto unilateral o se reduce la rigidez?). Cap por `DAMAGE_MAX` para evitar singularidad: dónde y cómo se aplica (recordatorio del patrón en `CohesiveDamageIsotropic` — sólo a la rigidez tangente, no a `ω` ni a `t`). Mesh-objectivity en softening: se aborda a nivel del elemento (longitud característica), no del material.*
+*Elección del penalty `K_e` (típicamente `K_e ≈ 10·E_bulk/ℓ_c`). Comportamiento en compresión (¿hay contacto unilateral o se reduce la rigidez?). Sin tope de daño (`DAMAGE_MAX`) ni en `ω` ni en la tangente: la tangente es la pendiente de la envolvente en toda la rama, y un tope le cambia el signo en el ablandamiento (corregido en `CohesiveDamageIsotropic` el 2026-09-23); verificarla por diferencias finitas en toda la rama. Mesh-objectivity en softening: se aborda a nivel del elemento (longitud característica), no del material.*
 
 ---
 
@@ -57,13 +57,27 @@
 
 ```yaml
 name: <Nombre>
-kind: cohesive_material  # nueva familia ADR 0010
+kind: interface_material  # familia de materiales de interfaz, ADR 0033
 status: draft            # draft → implemented → validated
 
 interface:
-  jump_dim: 2            # 2 en 2D, 3 en 3D
+  geometry: surface      # surface (grieta, junta) | line (barra embebida)
+  jump_dim: 2            # 2 en 2D, 3 en 3D; null si admite las dos
   primary_state_var: ""  # nombre de la variable interna exportada al post
   is_symmetric: true     # tangente algorítmica simétrica? (afecta al despachador algebraico ADR 0003)
+
+admission:
+  # Criterio de admisión al programa principal (Reglas.md §1): un texto de
+  # referencia Y un código general, con los identificadores de las listas
+  # cerradas (solidum/tools/spec.py). Si no se pueden rellenar las dos
+  # listas, la ley no es estándar: va a un módulo de usuario (ADR 0020).
+  #   textbooks:     zienkiewicz_taylor · hughes · bathe · belytschko_liu_moran
+  #                  · de_souza_neto · de_borst_crisfield · chopra · paulay_priestley
+  #   general_codes: abaqus · ansys · diana · code_aster · opensees
+  textbooks:
+    - <id>: ""
+  general_codes:
+    - <id>: ""
 
 parameters:
   - { name: , type: , required: true, desc:  }
@@ -125,14 +139,14 @@ acceptance:
       tol_rel: 1.0e-12
 
   arch:
-    - name: registry_kind_es_cohesive
-      expect: "Registro vía CohesiveMaterialRegistry, no MaterialRegistry; kind='cohesive_material' en YAML"
+    - name: registro_de_interfaz
+      expect: "Registro vía InterfaceMaterialRegistry, no MaterialRegistry; sección YAML interface_materials"
     - name: is_symmetric_attribute
       expect: "<NombreClase>.IS_SYMMETRIC == <true/false>"
 
 references:
   - ""                   # bibliografía primaria; tesis del usuario si aplica
-  - "ADR 0010 — Discontinuidades interiores embebidas (familia CohesiveMaterial, hoja de ruta)."
+  - "ADR 0033 — Familia de materiales de interfaz."
 ```
 
 ---

@@ -263,3 +263,7 @@ El test antiguo `TestLocalRecovery.test_residual_vanishes_after_loading` tambié
 - ADR 0002 — API de resultados (`SolveResult` admite `DiscontinuityState` como campo elemental).
 - ADR 0003 — Despachador algebraico (no afectado en fase 1; KSON fase H podría requerir LU global).
 - ADR 0007 — Convergencia y tolerancias (Newton global hereda sin cambios).
+
+## Actualización (2026-11-10)
+
+La familia cohesiva pasó al programa principal como familia de **materiales de interfaz** (ADR 0033): `InterfaceMaterial`, `InterfaceMaterialRegistry`, sección YAML `interface_materials` (antes `cohesive_materials`). `CohesiveDamageIsotropic` vive en `solidum/materials/interface/`. Lo que este ADR dice de la familia `CohesiveMaterial` vale para ella.

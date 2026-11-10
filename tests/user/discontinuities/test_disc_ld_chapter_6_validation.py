@@ -33,7 +33,7 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
-from solidum.user.discontinuities import CohesiveDamageIsotropic
+from solidum.materials.interface import CohesiveDamageIsotropic
 from solidum.core.node import Node
 from solidum.user.discontinuities.embedded_cst import CST_Embedded2D, _compute_ld
 from solidum.materials.elastic_2d import Elastic2D

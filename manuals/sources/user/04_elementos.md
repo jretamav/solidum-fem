@@ -257,7 +257,7 @@ elements:
 
 Formulación de **fractura computacional** de Retama (2010): el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son **elementales**: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.
 
-No es un elemento finito estándar, así que no forma parte del programa principal: vive en el **módulo de usuario** `discontinuities` (`solidum/user/discontinuities/`), junto con su familia de materiales cohesivos (ADR 0020). `import solidum` no lo carga; el YAML que use `CST_Embedded2D` o la sección `cohesive_materials` debe declararlo:
+No es un elemento finito estándar, así que no forma parte del programa principal: vive en el **módulo de usuario** `discontinuities` (`solidum/user/discontinuities/`), junto con sus seguimientos de grieta (ADR 0020); su ley cohesiva es un material de interfaz del programa principal (ADR 0033). `import solidum` no lo carga; el YAML que use `CST_Embedded2D` debe declararlo:
 
 ```yaml
 user_modules: [discontinuities]
@@ -272,7 +272,7 @@ CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
 - **DOFs/nodo**: `ux, uy` ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
 - **Cuadratura**: 1 punto (hereda del `Tri3`).
 - **Parámetros**: `material` (bulk), `cohesive_material`, `thickness` (opcional, default `1.0`) y `crack_tracker` (opcional).
-- **Dos materiales**: a diferencia del resto del catálogo, requiere **un material de bulk** que gobierna el continuo y **uno cohesivo** que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos: `material` se busca en `materials` y `cohesive_material` en `cohesive_materials`.
+- **Dos materiales**: a diferencia del resto del catálogo, requiere **un material de bulk** que gobierna el continuo y **uno cohesivo** que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos: `material` se busca en `materials` y `cohesive_material` en `interface_materials`.
 - **Estado intacto**: idéntico al `Tri3` hasta que la discontinuidad se activa.
 - **Activación**: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior; es el único criterio y no se declara en el YAML. Es **irreversible**: una vez activada persiste aunque el paso siguiente descargue.
 - **Seguimiento de grieta**: qué elementos se agrietan y qué nodo queda solo a un lado lo decide la trayectoria de la grieta, igual para todos los vecinos. Por omisión, cada región conexa de elementos embebidos lleva un seguimiento global (`GlobalCrackTracking`): las grietas nacen donde $\sigma_I$ supera $\sigma_{t0}$ lejos de otras y crecen desde sus puntas siguiendo las direcciones principales. Si la trayectoria es conocida (grieta prescrita, como en una banda de elementos embebidos), se declara `PrescribedCrackPath` con los vértices de la poligonal. Los dos se definen en la sección `crack_trackers` y el elemento los referencia con `crack_tracker`. La activación ocurre al inicio del paso: conviene que, cerca del pico, cada paso de carga aumente el esfuerzo menos de un 4 % de $\sigma_{t0}$, o se activan de golpe varios elementos.
@@ -282,7 +282,7 @@ CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
 
 ```yaml
 user_modules: [discontinuities]
-cohesive_materials:
+interface_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
 crack_trackers:                    # opcional

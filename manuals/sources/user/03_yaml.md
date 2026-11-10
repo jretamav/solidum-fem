@@ -4,6 +4,7 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
 
 - `nodes` *o* `mesh` — geometría.
 - `materials` — catálogo de leyes constitutivas instanciadas.
+- `interface_materials` — leyes tracción–desplazamiento relativo de una interfaz (leyes cohesivas de grieta, adherencia de barras), sólo si algún elemento o restricción las usa.
 - `sections` — secciones de marco (sección por fibras), sólo si algún marco usa `section`; sus fibras referencian materiales de `materials`.
 - `elements` — conectividad (omisible si se importa malla Gmsh).
 - `boundary_conditions_by_node` / `_by_coord` / `_by_group` — restricciones de Dirichlet.
@@ -94,6 +95,8 @@ materials:
 ```
 
 Los parámetros aceptados dependen del material; consulte el capítulo *Catálogo de Modelos Constitutivos* para el catálogo completo.
+
+Las leyes de una **interfaz** (tracción frente a desplazamiento relativo: la ley cohesiva de una grieta, la adherencia de una barra) no van en `materials` sino en su propia sección, `interface_materials`, con la misma forma (`id`, `type` y parámetros); los elementos y restricciones que las usan las citan por `id`.
 
 ## Secciones de marco: `sections`
 
@@ -222,7 +225,7 @@ Los módulos declarados se cargan al principio de la lectura, antes de validar e
 
 Hoy existen dos módulos de usuario:
 
-- `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D`, su familia de materiales cohesivos, con la sección `cohesive_materials`, y sus seguimientos de grieta, con la sección `crack_trackers` (capítulos *Catálogo de Elementos Finitos* y *Catálogo de Modelos Constitutivos*).
+- `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D` y sus seguimientos de grieta, con la sección `crack_trackers` (capítulo *Catálogo de Elementos Finitos*). Su ley cohesiva es un material de interfaz del programa principal, en `interface_materials`.
 - `dissipation_control`: el solver de arco por disipación de energía `DissipationArcLengthSolver` (capítulo *Esquemas de Solución*).
 
 Un modelo puede declarar varios: `user_modules: [discontinuities, dissipation_control]`.

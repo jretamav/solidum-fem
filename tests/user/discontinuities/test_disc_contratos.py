@@ -33,13 +33,11 @@ from solidum.core.node import Node  # noqa: E402
 from solidum.materials.elastic_2d import Elastic2D  # noqa: E402
 from solidum.math.batch import element_is_batchable  # noqa: E402
 from solidum.registry import ElementRegistry  # noqa: E402
-from solidum.user.discontinuities import (  # noqa: E402
-    CST_Embedded2D,
-    CohesiveDamageIsotropic,
-    CohesiveMaterialRegistry,
-)
+from solidum.materials.interface import CohesiveDamageIsotropic  # noqa: E402,F401
+from solidum.registry import InterfaceMaterialRegistry  # noqa: E402
+from solidum.user.discontinuities import CST_Embedded2D  # noqa: E402
 
-MAT_COHESIVO = CohesiveMaterialRegistry.create(
+MAT_COHESIVO = InterfaceMaterialRegistry.create(
     'CohesiveDamageIsotropic', sigma_t0=3.0e6, G_f=100.0, K_e=1.0e13,
     softening='exponential')
 

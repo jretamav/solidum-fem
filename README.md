@@ -57,10 +57,10 @@ Main program:
 User modules (in `solidum/user/`; `import solidum` loads none of them):
 
 - **`discontinuities`**: constant-strain triangle with an embedded strong
-  discontinuity (CST\_Embedded2D, KOS kinematics, Retama 2010) and a mode I
-  isotropic cohesive damage law, traction–jump, with linear or exponential
-  softening (CohesiveDamageIsotropic, in its own material family
-  `cohesive_materials`). A model loads it with `user_modules: [discontinuities]`
+  discontinuity (CST\_Embedded2D, KOS kinematics, Retama 2010), with global
+  crack tracking. Its traction–jump law is an interface material of the main
+  program (`interface_materials`, e.g. the mode I isotropic cohesive damage
+  law CohesiveDamageIsotropic). A model loads it with `user_modules: [discontinuities]`
   in YAML or `solidum.load_user_module("discontinuities")` in Python; its
   classes are imported from `solidum.user.discontinuities`.
 - **`dissipation_control`**: dissipation arc-length (DissipationArcLengthSolver,

@@ -303,7 +303,7 @@
 
 # Materiales térmicos (Etapa 8)
 
-Familia paralela a los constitutivos mecánicos: relacionan el **flujo de calor** `q` con el **gradiente de temperatura** `∇T`, no `σ` con `ε`. Ni el gradiente ni el flujo son tensores simétricos, así que **no usan notación Voigt**. Viven en `ThermalMaterialRegistry` y sólo los consumen elementos térmicos; se declaran en el bloque `thermal_materials` del YAML (la sección de su familia, paralela a `materials`) con su `type` propio. El programa principal tiene estas dos familias de material, mecánica y térmica; la cohesiva es del módulo de usuario `discontinuities` (al final del catálogo).
+Familia paralela a los constitutivos mecánicos: relacionan el **flujo de calor** `q` con el **gradiente de temperatura** `∇T`, no `σ` con `ε`. Ni el gradiente ni el flujo son tensores simétricos, así que **no usan notación Voigt**. Viven en `ThermalMaterialRegistry` y sólo los consumen elementos térmicos; se declaran en el bloque `thermal_materials` del YAML (la sección de su familia, paralela a `materials`) con su `type` propio. El programa principal tiene tres familias de material: mecánica, térmica y de interfaz (abajo).
 
 ## ThermalConduction — conducción de calor de Fourier con conductividad tensorial
 
@@ -325,6 +325,32 @@ Familia paralela a los constitutivos mecánicos: relacionan el **flujo de calor*
 
 ---
 
+# Materiales de interfaz (ADR 0033)
+
+Familia paralela a los constitutivos mecánicos: relacionan la **tracción** `t` sobre una interfaz con el **desplazamiento relativo** `Δu` entre sus dos lados, en el sistema local de la interfaz; no `σ` con `ε`. Clase base `InterfaceMaterial` ([`solidum/core/interface_material.py`](../solidum/core/interface_material.py)), registro `InterfaceMaterialRegistry`, sección YAML **`interface_materials`**; viven en [`solidum/materials/interface/`](../solidum/materials/interface/).
+
+> **Convenciones de la familia**: `GEOMETRY` = `"surface"` (superficie de discontinuidad: grieta, junta; componentes `(n, s)` en 2D, `(n, s1, s2)` en 3D) o `"line"` (línea de una barra embebida en un sólido; `(n, s)` en 2D, `(n1, n2, s)` en 3D): normales primero, tangenciales después. `JUMP_DIM` = número de componentes que admite (`None` si las de 2D y 3D). `PRIMARY_STATE_VAR` = variable interna que se exporta; `IS_SYMMETRIC` = simetría de la tangente. Unidades: tracción en Pa, rigideces en Pa/m. Sin densidad: la inercia es de los elementos que la rodean. El paso a ejes globales y el ancho sobre el que actúa cada componente son del elemento.
+
+## CohesiveDamageIsotropic — daño cohesivo isótropo Modo-I con softening lineal/exponencial
+
+- **Modelo**: daño escalar `ω ∈ [0, 1]` sobre el salto. Tracción `t_n = (1 − ω)·K_e·[[u_n]]` en dirección normal, `t_s = 0` en tangencial (Modo-I puro). Activación tipo Rankine (`f = ⟨[[u_n]]⟩ − κ`); historial monótono `κ_{n+1} = max(κ_n, ⟨[[u_n]]⟩)` con `κ_0 = σ_t0/K_e`. Energía de fractura `G_f` cierra la curva analíticamente:
+  - **Lineal**: `T_soft(κ) = σ_t0·(w_c − κ)/(w_c − κ_0)` con apertura crítica `w_c = 2·G_f/σ_t0`. `ω(κ) = 1 − σ_t0·(w_c − κ)/[K_e·κ·(w_c − κ_0)]`. `ω = 1` en `κ ≥ w_c`.
+  - **Exponencial**: `T_soft(κ) = σ_t0·exp[−σ_t0·(κ − κ_0)/H]` con `H = G_f − σ_t0·κ_0/2`. `ω(κ) = 1 − T_soft(κ)/(K_e·κ)`. Asintótica a 1.
+- **Tangente**: simétrica por construcción (rank-1 sobre `n⊗n`). Algorítmica consistente en carga activa: `T_tan = K_e·[(1−ω) − [[u_n]]·dω/dκ]·(n⊗n)`. Se evalúa como la pendiente de la envolvente, `dT_soft/dκ`, negativa en todo el ablandamiento y nula con la grieta totalmente abierta; sin tope `DAMAGE_MAX` (hasta el 2026-09-23 el tope le cambiaba el signo en casi toda la rama). Secante reducida `(1−ω)·K_e·(n⊗n)` en descarga y sin daño. En compresión (`[[u_n]] < 0`) se recupera la rigidez inicial: `t_n = K_e·[[u_n]]`, sin daño. `ω` y la tracción usan el valor físico (puede llegar a 1.0 exacto).
+- **GEOMETRY**: `"surface"` · **JUMP_DIM**: 2 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `True`.
+- **Parámetros**: `sigma_t0` (resistencia a tracción, Pa), `G_f` (energía de fractura, N/m), `K_e` (rigidez del salto / penalty, Pa/m; sin default automático, ver §12 de la spec para guía `K_e ≈ 10·E_bulk/ℓ_c`), `softening ∈ {'linear', 'exponential'}`.
+- **Variables internas**: `kappa` (historial del salto equivalente, [m]), `damage` (ω).
+- **Validación energética**: por construcción `∫_0^{w_c} t·d[[u_n]] = G_f` (lineal) o `∫_0^∞ ≈ G_f` (exponencial); cubierto por tests con cuadratura trapezoidal.
+- **Limitaciones declaradas** (`out_of_scope` en la spec): sólo Modo-I (mixto I–II diferido a fase G del ADR 0010), contacto en compresión sólo por la penalización normal `K_e` (sin fricción), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento `CST_Embedded2D`, no del material).
+- **Origen**: modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys (2002, ecs. 8-17), que Retama (2010) adopta en las ecs. 3.2-3.16.
+- **Compatible con**: elementos con una superficie de discontinuidad 2D (`GEOMETRY = "surface"`, dos componentes). Hoy la usa el elemento con discontinuidad embebida del módulo de usuario del ADR 0010, donde está validada hasta la separación completa.
+- **Tests**: [`test_cohesive_damage_isotropic.py`](../tests/test_cohesive_damage_isotropic.py); tangente frente a diferencias finitas, monotonía de κ y ω y validación de la rama lineal en [`test_disc_contratos.py`](../tests/user/discontinuities/test_disc_contratos.py).
+- **Referencia**: ver [`docs/specs/CohesiveDamageIsotropic.md`](specs/CohesiveDamageIsotropic.md). Retama (2010) Cap. 3; Hillerborg, Modéer & Petersson (1976); Simó & Ju (1987).
+- **Archivo**: [solidum/materials/interface/cohesive_damage_isotropic.py](../solidum/materials/interface/cohesive_damage_isotropic.py)
+- **Clasificación**: estándar (de Borst et al. 2012, cap. 6, modelos de zona cohesiva; Abaqus, elementos cohesivos con daño). Hasta el 2026-11-10 vivía en el módulo de usuario `discontinuities`; pasó al programa principal con la familia (ADR 0033).
+
+---
+
 ## Cómo añadir un material nuevo
 
 `/solidum-new material <Name>` — genera archivo en `solidum/materials/`, decorador `@MaterialRegistry.register`, esqueleto de test.
@@ -335,35 +361,4 @@ Para un material **térmico** nuevo: la clase hereda de `ThermalMaterial` (en `s
 
 Un material **no estándar** (una ley de investigación que no es un modelo constitutivo clásico de elementos finitos) no entra en el programa principal: va a un **módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md), Reglas.md §4), con `/solidum-new material <Name> --user <módulo>`. Si no relaciona `σ` con `ε`, el módulo declara su propia familia de material: una subclase de `solidum.registry.Registry` con `YAML_SECTION` en el `registry.py` del módulo, que el lector YAML recorre sin conocerla.
 
-Para un material **cohesivo** nuevo (ley tracción-salto): una ley cohesiva tracción-salto genérica con elementos de interfaz es **estándar** según el criterio de admisión (Reglas.md §1: de Borst, Crisfield, Remmers y Verhoosel 2012; elementos cohesivos de Abaqus). Lo que hace no estándar al módulo es la cinemática de discontinuidad embebida KOS de Retama (2010). Aun así, la familia cohesiva vive hoy en el módulo de usuario `discontinuities` porque su único consumidor es el elemento embebido, y el programa principal sólo gana piezas justificadas por casos reales propios (Reglas.md §1). Si entra al programa principal un elemento de interfaz estándar, la familia (registro y clase base, sin física nueva) pasa al programa principal y el módulo la reutiliza. Mientras tanto, un cohesivo nuevo para el elemento embebido va al módulo: archivo en `solidum/user/discontinuities/` (`--user discontinuities`); la clase hereda de `CohesiveMaterial` (no `Material`) y se registra con `@CohesiveMaterialRegistry.register`, el registro del módulo. Declarar `JUMP_DIM`, `PRIMARY_STATE_VAR` y `IS_SYMMETRIC`. La spec parte de [`docs/user/discontinuities/specs/_template_cohesive_material.md`](user/discontinuities/specs/_template_cohesive_material.md). Añadir la entrada en la sección «Módulos de usuario — discontinuities» de este catálogo.
-
----
-
-# Módulos de usuario — discontinuities
-
-> **Módulo de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)): formulación no estándar, fuera del programa principal, en [`solidum/user/discontinuities/`](../solidum/user/discontinuities/). Formulación: [ADR 0010](adr/0010-discontinuidades-interiores-embebidas.md), Retama (2010). `import solidum` no la carga.
->
-> **Carga**: en YAML, `user_modules: [discontinuities]` en el primer nivel (sin esa clave, y si nada lo ha cargado antes en la sesión, la sección `cohesive_materials` es un error que sugiere declararla); en Python, `solidum.load_user_module("discontinuities")` o `from solidum.user.discontinuities import CohesiveDamageIsotropic`.
->
-> Specs en [`docs/user/discontinuities/specs/`](user/discontinuities/specs/), tests en [`tests/user/discontinuities/`](../tests/user/discontinuities/). El elemento que consume estos materiales, `CST_Embedded2D`, está en el [catálogo de elementos](catalogo_elementos.md), sección «Módulos de usuario — discontinuities».
-
-**Materiales cohesivos (familia propia del módulo).** Los materiales cohesivos son una **jerarquía paralela e independiente** de los materiales continuos: operan sobre el salto de desplazamientos `[[u]]` sobre una superficie de discontinuidad `Γ_d` y devuelven tracciones `t`, no esfuerzos sobre `ε`. Viven en `solidum/user/discontinuities/`, heredan de `CohesiveMaterial` ([`cohesive_material.py`](../solidum/user/discontinuities/cohesive_material.py)), se registran vía `CohesiveMaterialRegistry` (el registro del módulo, en su [`registry.py`](../solidum/user/discontinuities/registry.py): una familia de material con `YAML_SECTION = "cohesive_materials"`, ADR 0020) y se declaran en YAML bajo la sección `cohesive_materials` (separada de `materials`). El bulk del elemento sigue siendo un `Material` continuo del programa principal; el cohesivo entra al sistema sólo cuando el elemento activa una discontinuidad embebida (ver ADR 0010).
-
-> **Convenciones de la familia**: `JUMP_DIM` = dimensión del vector de salto (2 en 2D, 3 en 3D); `PRIMARY_STATE_VAR` = variable interna que se exporta al post-proceso; `IS_SYMMETRIC` = simetría de la contribución a la tangente del elemento. Parámetros físicos típicos: `sigma_t0` (Pa), `G_f` (N/m), `K_e` (Pa/m). No tienen densidad — la inercia es del bulk.
-
-## CohesiveDamageIsotropic — daño cohesivo isótropo Modo-I con softening lineal/exponencial
-
-- **Modelo**: daño escalar `ω ∈ [0, 1]` sobre el salto. Tracción `t_n = (1 − ω)·K_e·[[u_n]]` en dirección normal, `t_s = 0` en tangencial (Modo-I puro). Activación tipo Rankine (`f = ⟨[[u_n]]⟩ − κ`); historial monótono `κ_{n+1} = max(κ_n, ⟨[[u_n]]⟩)` con `κ_0 = σ_t0/K_e`. Energía de fractura `G_f` cierra la curva analíticamente:
-  - **Lineal**: `T_soft(κ) = σ_t0·(w_c − κ)/(w_c − κ_0)` con apertura crítica `w_c = 2·G_f/σ_t0`. `ω(κ) = 1 − σ_t0·(w_c − κ)/[K_e·κ·(w_c − κ_0)]`. `ω = 1` en `κ ≥ w_c`.
-  - **Exponencial**: `T_soft(κ) = σ_t0·exp[−σ_t0·(κ − κ_0)/H]` con `H = G_f − σ_t0·κ_0/2`. `ω(κ) = 1 − T_soft(κ)/(K_e·κ)`. Asintótica a 1.
-- **Tangente**: simétrica por construcción (rank-1 sobre `n⊗n`). Algorítmica consistente en carga activa: `T_tan = K_e·[(1−ω) − [[u_n]]·dω/dκ]·(n⊗n)`. Se evalúa como la pendiente de la envolvente, `dT_soft/dκ`, negativa en todo el ablandamiento y nula con la grieta totalmente abierta; sin tope `DAMAGE_MAX` (hasta el 2026-09-23 el tope le cambiaba el signo en casi toda la rama). Secante reducida `(1−ω)·K_e·(n⊗n)` en descarga y sin daño. En compresión (`[[u_n]] < 0`) se recupera la rigidez inicial: `t_n = K_e·[[u_n]]`, sin daño. `ω` y la tracción usan el valor físico (puede llegar a 1.0 exacto).
-- **JUMP_DIM**: 2 · **PRIMARY_STATE_VAR**: `'damage'` · **IS_SYMMETRIC**: `True`.
-- **Parámetros**: `sigma_t0` (resistencia a tracción, Pa), `G_f` (energía de fractura, N/m), `K_e` (rigidez del salto / penalty, Pa/m; sin default automático, ver §12 de la spec para guía `K_e ≈ 10·E_bulk/ℓ_c`), `softening ∈ {'linear', 'exponential'}`.
-- **Variables internas**: `kappa` (historial del salto equivalente, [m]), `damage` (ω).
-- **Validación energética**: por construcción `∫_0^{w_c} t·d[[u_n]] = G_f` (lineal) o `∫_0^∞ ≈ G_f` (exponencial); cubierto por tests con cuadratura trapezoidal.
-- **Limitaciones declaradas** (`out_of_scope` en la spec): sólo Modo-I (mixto I–II diferido a fase G del ADR 0010), contacto en compresión sólo por la penalización normal `K_e` (sin fricción), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento `CST_Embedded2D`, no del material).
-- **Origen**: modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys (2002, ecs. 8-17), que Retama (2010) adopta en las ecs. 3.2-3.16.
-- **Compatible con**: elemento `CST_Embedded2D` (fase 2 del ADR 0010), del mismo módulo. Validado dentro del elemento hasta la separación completa en [`test_disc_embedded_uniaxial_softening.py`](../tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py).
-- **Tests**: [`test_disc_cohesive_damage_isotropic.py`](../tests/user/discontinuities/test_disc_cohesive_damage_isotropic.py); tangente frente a diferencias finitas, monotonía de κ y ω y validación de la rama lineal en [`test_disc_contratos.py`](../tests/user/discontinuities/test_disc_contratos.py).
-- **Referencia**: ver [`docs/user/discontinuities/specs/CohesiveDamageIsotropic.md`](user/discontinuities/specs/CohesiveDamageIsotropic.md). Retama (2010) Cap. 3; Hillerborg, Modéer & Petersson (1976); Simó & Ju (1987).
-- **Archivo**: [solidum/user/discontinuities/damage_isotropic.py](../solidum/user/discontinuities/damage_isotropic.py)
+Para un material **de interfaz** nuevo (ley tracción–desplazamiento relativo): hereda de `InterfaceMaterial`, se registra con `@InterfaceMaterialRegistry.register`, declara `GEOMETRY`, `JUMP_DIM` (o `None`), `PRIMARY_STATE_VAR` e `IS_SYMMETRIC`, e implementa `compute_traction(Δu, estado) -> (t, ∂t/∂Δu, estado')`. Su spec usa la plantilla [`_template_interface_material.md`](specs/_template_interface_material.md), con el bloque `admission` (una ley tracción-salto genérica es estándar: de Borst et al. 2012; Abaqus, DIANA). Una ley de investigación que no cumpla el criterio va a un módulo de usuario y se registra igualmente en `InterfaceMaterialRegistry`.

@@ -132,7 +132,8 @@ La raíz del paquete sólo reexporta el programa principal. Las formulaciones no
 ```python
 import solidum
 from solidum import Domain, Elastic2D
-from solidum.user.discontinuities import CST_Embedded2D, CohesiveDamageIsotropic
+from solidum.materials.interface import CohesiveDamageIsotropic   # programa principal (ADR 0033)
+from solidum.user.discontinuities import CST_Embedded2D
 
 solidum.available_user_modules()                # ['discontinuities']
 solidum.load_user_module("discontinuities")     # equivalente; cargarlo dos veces no hace nada
@@ -143,7 +144,7 @@ grieta = CST_Embedded2D(element_id=1, nodes=[n1, n2, n3], material=bulk,
                         cohesive_material=cohesivo, thickness=1.0)
 ```
 
-`from solidum import CST_Embedded2D` ya no funciona: el elemento, la ley cohesiva (`CohesiveDamageIsotropic`), su clase base (`CohesiveMaterial`), su registro (`CohesiveMaterialRegistry`) y `DiscontinuityState` se importan de `solidum.user.discontinuities`.
+`from solidum import CST_Embedded2D` ya no funciona: el elemento y `DiscontinuityState` se importan de `solidum.user.discontinuities`. La ley cohesiva es un material de interfaz del programa principal (`solidum.materials.interface`; clase base `solidum.core.interface_material.InterfaceMaterial`, registro `solidum.registry.InterfaceMaterialRegistry`).
 
 ## Masas concentradas en nudos
 

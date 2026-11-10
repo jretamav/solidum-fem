@@ -1,20 +1,21 @@
-# solidum_fem/solidum/user/discontinuities/damage_isotropic.py
-"""``CohesiveDamageIsotropic`` — material cohesivo traction-jump con daño escalar Modo-I.
+"""``CohesiveDamageIsotropic`` — ley cohesiva tracción-salto con daño escalar
+de modo I (material de interfaz de superficie, ADR 0033).
 
-Traducción a código de Retama (2010), Cap. 3: daño escalar isótropo activado
-por tracción (Rankine), softening lineal o exponencial gobernado por la
-energía de fractura ``G_f``. Ver ``docs/user/discontinuities/specs/CohesiveDamageIsotropic.md``.
+Daño escalar isótropo activado por tracción (Rankine), ablandamiento lineal o
+exponencial gobernado por la energía de fractura ``G_f``, con rigidez de
+penalización ``K_e`` (Alfaiate, Wells y Sluys 2002; Retama 2010, cap. 3).
+Spec ``docs/specs/CohesiveDamageIsotropic.md``.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
-from solidum.user.discontinuities.registry import CohesiveMaterialRegistry
+from solidum.core.interface_material import InterfaceMaterial
+from solidum.registry import InterfaceMaterialRegistry
 
 
-@CohesiveMaterialRegistry.register
-class CohesiveDamageIsotropic(CohesiveMaterial):
+@InterfaceMaterialRegistry.register
+class CohesiveDamageIsotropic(InterfaceMaterial):
     """
     Material cohesivo de daño isótropo escalar, Modo-I, traction-jump.
 
@@ -72,8 +73,9 @@ class CohesiveDamageIsotropic(CohesiveMaterial):
     en esa componente.
 
     Para deducción física, condiciones de Kuhn-Tucker, validación energética
-    y benchmarks, ver ``docs/user/discontinuities/specs/CohesiveDamageIsotropic.md``.
+    y benchmarks, ver ``docs/specs/CohesiveDamageIsotropic.md``.
     """
+    GEOMETRY = "surface"
     JUMP_DIM = 2
     PRIMARY_STATE_VAR = 'damage'
     IS_SYMMETRIC = True

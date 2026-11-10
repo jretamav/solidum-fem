@@ -294,11 +294,11 @@ materials:
      equivalent_strain: modified_von_mises, k: 10.0}
 ```
 
-## Módulo de usuario `discontinuities`: materiales cohesivos (salto de desplazamientos)
+## Materiales de interfaz (tracción frente a desplazamiento relativo)
 
-Familia **paralela** al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la **tracción** $\mathbf{t}$ con el **salto de desplazamientos** $\llbracket u \rrbracket$ a través de una discontinuidad. Sólo los consumen elementos con discontinuidad embebida como `CST_Embedded2D`.
+Familia **paralela** al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la **tracción** $\mathbf{t}$ con el **salto de desplazamientos** $\llbracket u \rrbracket$ entre los dos lados de una interfaz: una superficie de discontinuidad (grieta, junta) o la línea de una barra embebida en un sólido (adherencia). Las componentes van en el sistema local de la interfaz, normales primero y tangenciales después.
 
-No pertenecen al programa principal: la familia, su registro (`CohesiveMaterialRegistry`) y su sección YAML `cohesive_materials` los aporta el **módulo de usuario** `discontinuities` (ADR 0020). Se declaran en el bloque `cohesive_materials`, no en `materials`, y el YAML debe cargar antes el módulo con `user_modules: [discontinuities]`; sin él, `cohesive_materials` es una sección desconocida y la lectura se detiene.
+Son una familia del programa principal (ADR 0033): se declaran en el bloque `interface_materials`, no en `materials`, y los citan por `id` los elementos y restricciones que tienen una interfaz. Hasta el 2026-11-10 la ley cohesiva pertenecía al módulo de usuario `discontinuities` y su sección se llamaba `cohesive_materials`.
 
 ### `CohesiveDamageIsotropic` — daño cohesivo Modo-I
 
@@ -309,8 +309,7 @@ Daño escalar $\omega \in [0, 1]$ sobre el salto normal: $t_n = (1-\omega)K_e \l
 - **Variables internas**: `kappa` (historial del salto) y `damage` ($\omega$).
 
 ```yaml
-user_modules: [discontinuities]
-cohesive_materials:
+interface_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
 ```

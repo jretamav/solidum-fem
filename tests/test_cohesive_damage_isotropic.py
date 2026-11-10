@@ -17,10 +17,10 @@ import unittest
 
 import numpy as np
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from solidum.user.discontinuities import CohesiveDamageIsotropic
-from solidum.user.discontinuities import CohesiveMaterialRegistry
+from solidum.materials.interface import CohesiveDamageIsotropic
+from solidum.registry import InterfaceMaterialRegistry
 
 
 # --- Parámetros tipo hormigón para los casos de validación ---------------
@@ -400,9 +400,9 @@ class TestDegenerateToElastic(unittest.TestCase):
 class TestRegistryAndClassAttributes(unittest.TestCase):
     """acceptance.registry_kind_es_cohesive + is_symmetric_attribute"""
 
-    def test_registered_in_cohesive_registry(self):
-        self.assertIn('CohesiveDamageIsotropic', CohesiveMaterialRegistry.names())
-        cls = CohesiveMaterialRegistry.get('CohesiveDamageIsotropic')
+    def test_registered_in_interface_registry(self):
+        self.assertIn('CohesiveDamageIsotropic', InterfaceMaterialRegistry.names())
+        cls = InterfaceMaterialRegistry.get('CohesiveDamageIsotropic')
         self.assertIs(cls, CohesiveDamageIsotropic)
 
     def test_is_symmetric_true(self):

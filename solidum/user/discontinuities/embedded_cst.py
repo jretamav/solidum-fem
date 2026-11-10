@@ -17,8 +17,8 @@ from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.logging import get_logger
 from solidum.elements.solid_2d import compute_integrands, compute_kinematics_tri3
-from solidum.registry import ElementRegistry, MaterialRegistry
-from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
+from solidum.core.interface_material import InterfaceMaterial
+from solidum.registry import ElementRegistry, InterfaceMaterialRegistry, MaterialRegistry
 from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL
 from solidum.user.discontinuities.crack_tracking import (
     GlobalCrackTracking,
@@ -27,7 +27,7 @@ from solidum.user.discontinuities.crack_tracking import (
     root_partition,
 )
 from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
-from solidum.user.discontinuities.registry import CohesiveMaterialRegistry, CrackTrackerRegistry
+from solidum.user.discontinuities.registry import CrackTrackerRegistry
 
 _log = get_logger("user.discontinuities")
 
@@ -65,9 +65,10 @@ class CST_Embedded2D(Element):
         Material elástico del bulk. **Fase 1: solo Elastic2D** (la discrete
         approach de Retama 2010 supone bulk elástico; mezclar plasticidad
         del bulk con cohesivo es out-of-scope).
-    cohesive_material : CohesiveMaterial
-        Material cohesivo *traction-jump* que gobierna :math:`\\Gamma_d` una
-        vez activado. Debe declarar ``JUMP_DIM = 2``.
+    cohesive_material : InterfaceMaterial
+        Ley cohesiva *tracción-salto* que gobierna :math:`\\Gamma_d` una vez
+        activado: un material de interfaz de superficie (ADR 0033) que admita
+        dos componentes ``(n, s)``.
     thickness : float, default 1.0
         Espesor para estado plano.
     crack_tracker : GlobalCrackTracking, optional
@@ -87,12 +88,12 @@ class CST_Embedded2D(Element):
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
     REFERENCE_KWARGS = {"material": MaterialRegistry,
-                        "cohesive_material": CohesiveMaterialRegistry,
+                        "cohesive_material": InterfaceMaterialRegistry,
                         "crack_tracker": CrackTrackerRegistry}
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node],
-                 material: Material, cohesive_material: CohesiveMaterial,
+                 material: Material, cohesive_material: InterfaceMaterial,
                  thickness: float = 1.0,
                  crack_tracker: GlobalCrackTracking | None = None):
         # Validación de bulk (fase 1)
@@ -105,18 +106,20 @@ class CST_Embedded2D(Element):
                 f"en Γ_d). Otros bulks → out-of-scope en esta entrega."
             )
         # Validación de cohesivo
-        if not isinstance(cohesive_material, CohesiveMaterial):
+        if not isinstance(cohesive_material, InterfaceMaterial):
             raise TypeError(
                 f"CST_Embedded2D(id={element_id}): cohesive_material debe ser "
-                f"instancia de CohesiveMaterial; recibido "
+                f"un material de interfaz (InterfaceMaterial); recibido "
                 f"{type(cohesive_material).__name__}."
             )
-        if getattr(cohesive_material, 'JUMP_DIM', None) != 2:
+        if not cohesive_material.accepts("surface", 2):
             raise ValueError(
                 f"CST_Embedded2D(id={element_id}): cohesive_material "
-                f"{type(cohesive_material).__name__} declara JUMP_DIM="
-                f"{getattr(cohesive_material, 'JUMP_DIM', None)}; este elemento "
-                f"2D requiere JUMP_DIM=2."
+                f"{type(cohesive_material).__name__} (GEOMETRY="
+                f"{getattr(cohesive_material, 'GEOMETRY', None)!r}, JUMP_DIM="
+                f"{getattr(cohesive_material, 'JUMP_DIM', None)}) no sirve a una "
+                f"superficie de discontinuidad 2D: se requiere GEOMETRY='surface' "
+                f"con dos componentes (n, s)."
             )
 
         self.thickness = thickness

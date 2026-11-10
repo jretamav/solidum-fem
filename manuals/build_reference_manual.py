@@ -71,8 +71,9 @@ OUT_PDF = OUT_DIR / "Reference_manual.pdf"
 # Los capítulos son los del PROGRAMA PRINCIPAL. Las specs de los módulos de
 # usuario (ADR 0020) no se clasifican aquí: van al apéndice «Módulos de
 # usuario», agrupadas por módulo (``build_user_groups``). Por eso no hay
-# capítulos de discontinuidades embebidas ni de materiales cohesivos: desde el
-# ADR 0020 son del módulo de usuario ``discontinuities``.
+# capítulo de discontinuidades embebidas: desde el ADR 0020 es del módulo de
+# usuario. Las leyes de interfaz (ADR 0033), en cambio, son del programa
+# principal y tienen el suyo.
 # ---------------------------------------------------------------------------
 
 # Orden editorial de los capítulos. Cada entrada es la etiqueta que aparece
@@ -91,6 +92,7 @@ CHAPTER_ORDER: list[str] = [
     "Modelos Constitutivos — 2D",
     "Modelos Constitutivos — 3D",
     "Modelos Constitutivos — Térmicos",
+    "Modelos Constitutivos — Interfaz",
     "Esquemas de Solución — Estáticos",
     "Esquemas de Solución — Modal y dinámicos",
 ]
@@ -103,6 +105,7 @@ KIND_CHAPTERS: dict[str, str] = {
     "thermal_material": "Modelos Constitutivos — Térmicos",
     "section": "Secciones de marco",          # ADR 0021
     "constraint": "Restricciones generadas",  # ADR 0032
+    "interface_material": "Modelos Constitutivos — Interfaz",  # ADR 0033
 }
 
 # Solvers: la partición estático/dinámico sale del contrato declarativo del

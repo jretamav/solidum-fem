@@ -33,9 +33,9 @@ from solidum.elements.solid_2d import Tri3
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import NonlinearSolver
+from solidum.materials.interface import CohesiveDamageIsotropic
 from solidum.user.discontinuities import (
     CST_Embedded2D,
-    CohesiveDamageIsotropic,
     PrescribedCrackPath,
 )
 

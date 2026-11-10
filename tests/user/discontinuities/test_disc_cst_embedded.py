@@ -20,7 +20,7 @@ import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
-from solidum.user.discontinuities import CohesiveDamageIsotropic
+from solidum.materials.interface import CohesiveDamageIsotropic
 from solidum.user.discontinuities import DiscontinuityState
 from solidum.core.element import Element
 from solidum.core.node import Node
@@ -527,9 +527,10 @@ class TestConstructorValidations(unittest.TestCase):
         nodes = _triangle_nodes(coords)
 
         # Cohesivo falso con JUMP_DIM=3 (subclase mínima para el test)
-        from solidum.user.discontinuities import CohesiveMaterial
+        from solidum.core.interface_material import InterfaceMaterial
 
-        class Fake3D(CohesiveMaterial):
+        class Fake3D(InterfaceMaterial):
+            GEOMETRY = "surface"
             JUMP_DIM = 3
             def compute_traction(self, jump, state_vars=None):
                 return np.zeros(3), np.zeros((3, 3)), {}
@@ -654,7 +655,7 @@ materials:
   - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_strain}
 
 user_modules: [discontinuities]
-cohesive_materials:
+interface_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
 
@@ -696,7 +697,7 @@ materials:
   - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_strain}
 
 user_modules: [discontinuities]
-cohesive_materials:
+interface_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
 
@@ -713,7 +714,7 @@ elements:
         try:
             with self.assertRaises(YamlValidationError) as cm:
                 YamlParser(path).parse()
-            self.assertIn('material cohesivo inexistente (cohesive_material=999)',
+            self.assertIn('material de interfaz inexistente (cohesive_material=999)',
                           str(cm.exception))
         finally:
             os.unlink(path)

@@ -348,6 +348,12 @@ Por decisión del usuario, el modal, el armónico y el espectral que continúan 
 
 Un generador de restricciones (`ConstraintRegistry`, tipo de spec `constraint`, bloque YAML `constraints`) crea sobre un dominio ya mallado los nodos, los elementos y las MPC (ADR 0004) que su geometría pide. La localización de puntos (`solidum/mesh/point_location.py`) invierte el mapeo isoparamétrico por Newton con lo que todo sólido declara (`REFERENCE_CELL`, funciones de forma), sin código por tipo de elemento. El primer generador es el refuerzo embebido (`EmbeddedReinforcement`): la barra, con su propia malla cortada en los bordes de los anfitriones, queda atada al campo interpolado del sólido. Sus MPC son de unión, y su fuerza es la adherencia (`EmbeddedBar.bond_forces`). `Domain.generated_nodes` aparta esos nodos de los selectores por coordenada del YAML.
 
+## ADR 0033 — Materiales de interfaz en el programa principal
+
+**Fecha**: 2026-11-10 · **Estado**: aceptado.
+
+Una sola familia de leyes tracción–desplazamiento relativo, `InterfaceMaterial` (`InterfaceMaterialRegistry`, tipo de spec `interface_material`, sección YAML `interface_materials`), para las dos geometrías de interfaz: superficie (grieta, junta: `(n, s)` / `(n, s1, s2)`) y línea (barra embebida: `(n, s)` / `(n1, n2, s)`), normales primero. El paso a ejes globales y el ancho de cada componente son del elemento. La familia cohesiva del módulo `discontinuities` pasa a ella sin cambio de física, como preveía Reglas §4, porque el programa principal tiene ahora un elemento de interfaz propio (la adherencia barra–sólido). La sección YAML `cohesive_materials` pasa a llamarse `interface_materials`, sin alias.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

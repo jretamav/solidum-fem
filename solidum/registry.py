@@ -198,6 +198,17 @@ class ThermalMaterialRegistry(Registry):
     YAML_LABEL = "material térmico"
 
 
+class InterfaceMaterialRegistry(Registry):
+    """Familia de materiales de interfaz (ADR 0033): leyes tracción–
+    desplazamiento relativo sobre una superficie de discontinuidad o sobre la
+    línea de una barra embebida (``solidum.core.interface_material``).
+    Separada de ``MaterialRegistry`` por la misma razón que la térmica: no
+    relacionan σ con ε en Voigt."""
+    SPEC_KIND = "interface_material"
+    YAML_SECTION = "interface_materials"
+    YAML_LABEL = "material de interfaz"
+
+
 class SectionRegistry(Registry):
     """Familia de secciones de marco (ADR 0021).
 

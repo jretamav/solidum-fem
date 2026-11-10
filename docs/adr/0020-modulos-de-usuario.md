@@ -137,3 +137,7 @@ Auditoría de pureza del programa principal, tras fijar el usuario el **criterio
 - **Specs del programa principal con bloque `admission`**: cada spec declara en su contrato los textos (`textbooks`) y códigos (`general_codes`) que la admiten, con los identificadores canónicos de `solidum/tools/spec.py` (`ADMISSION_TEXTBOOKS`, `ADMISSION_GENERAL_CODES`).
 
 Cifras al día, sin reescribir las de arriba (históricas): el gancho P5 lo invocan **cinco** solvers del programa principal (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`) más `DissipationArcLengthSolver` en su módulo; tras una bisección lo repiten los estáticos que bisecan (los tres primeros y el del módulo), mientras que los dos dinámicos abortan el paso que no converge. Programa principal: 22 elementos, 13 materiales mecánicos, 1 material térmico y **13 solvers**. Módulos de usuario: **2**, `discontinuities` (1 elemento, 1 material cohesivo) y `dissipation_control` (1 solver).
+
+## Actualización (2026-11-10)
+
+La familia cohesiva del módulo `discontinuities` volvió al programa principal (ADR 0033), como preveía Reglas.md §4, al entrar el primer elemento de interfaz del programa principal (la adherencia barra–sólido). El módulo conserva el elemento, el estado de la discontinuidad y el seguimiento de grieta.

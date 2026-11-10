@@ -16,7 +16,7 @@ Distinto en dominio de los materiales continuos `Elastic2D`, `VonMises2D`, `Isot
 - **Unidades**: parámetros físicos son `σ_t0` (Pa, resistencia a tracción) y `G_F` (N/m, energía de fractura) — no `E` y `ν`.
 - **Es la primera implementación** de la familia `CohesiveMaterial` introducida por ADR 0010.
 
-Pensado para hormigón, roca, cerámicos en régimen cuasi-frágil bajo tracción dominante. Diseñado específicamente para alimentar el elemento `CST_Embedded2D` (fase 2 del ADR 0010), pero la abstracción es reutilizable por futuros elementos de interfaz cohesiva clásica (CZM) si entran al proyecto.
+Pensado para hormigón, roca, cerámicos en régimen cuasi-frágil bajo tracción dominante. Diseñado para una superficie de discontinuidad embebida (ADR 0010); es una ley tracción-salto genérica, material de interfaz del programa principal desde el ADR 0033, que puede usar cualquier elemento con una superficie de discontinuidad.
 
 ### 1. Descomposición del salto
 
@@ -195,14 +195,21 @@ Dentro de una iteración del Newton global, el material recibe `[[u]]_trial` y d
 
 ```yaml
 name: CohesiveDamageIsotropic
-kind: cohesive_material         # nueva familia, ADR 0010
+kind: interface_material        # familia de materiales de interfaz, ADR 0033
 status: validated
 
 interface:
+  geometry: surface             # superficie de discontinuidad: componentes (n, s)
   jump_dim: 2                   # [[u]] ∈ ℝ² en 2D (componentes n, s en frame local)
   primary_state_var: damage     # ω, escalar exportable al post-proceso
   is_symmetric: true            # tangente simétrica en Modo-I (ver §10)
 
+
+admission:                      # criterio de admisión al programa principal (Reglas.md §1)
+  textbooks:
+    - de_borst_crisfield: "cap. 6, modelos de zona cohesiva (ablandamiento lineal y exponencial)"
+  general_codes:
+    - abaqus: "elementos cohesivos, ley tracción-separación con daño (ablandamiento lineal o exponencial)"
 parameters:
   - { name: sigma_t0,           type: float, required: true,  desc: "Resistencia a tracción [Pa]; iniciación del daño" }
   - { name: G_f,                type: float, required: true,  desc: "Energía de fractura [N/m]; área bajo la curva t–[[u_n]]" }
@@ -338,13 +345,13 @@ references:
 
 ## Implementación
 
-- Archivo: `solidum/user/discontinuities/damage_isotropic.py`
+- Archivo: `solidum/materials/interface/cohesive_damage_isotropic.py` (desde el 2026-11-10, ADR 0033; antes en el módulo de usuario `discontinuities`)
 - Clase: `CohesiveDamageIsotropic` (registrada en `CohesiveMaterialRegistry`)
-- Base abstracta: `solidum/user/discontinuities/cohesive_material.py` (`CohesiveMaterial`)
-- Registry: `solidum/user/discontinuities/registry.py` (`CohesiveMaterialRegistry`, familia de material del módulo de usuario, paralela a `MaterialRegistry`)
+- Base abstracta: `solidum/core/interface_material.py` (`InterfaceMaterial`, `GEOMETRY = "surface"`)
+- Registry: `solidum/registry.py` (`InterfaceMaterialRegistry`, sección YAML `interface_materials`, paralela a `MaterialRegistry`)
 - Carga: explícita, nunca automática (ADR 0020). `user_modules: [discontinuities]` en YAML o `solidum.load_user_module("discontinuities")` en Python importan recursivamente los submódulos del módulo, y sus decoradores registran el material en `CohesiveMaterialRegistry`; la familia declara la sección YAML `cohesive_materials` (`YAML_SECTION`) y la etiqueta de sus mensajes (`YAML_LABEL = "material cohesivo"`). `solidum.autodiscover.initialize()` no la descubre.
 - Tests:
-  - `tests/user/discontinuities/test_disc_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
+  - `tests/test_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
   - `tests/user/discontinuities/test_disc_cst_embedded.py::TestCondensedTangentInSoftening` y `tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py` — el material dentro del elemento: tangente condensada frente a diferencias finitas y tracción uniaxial hasta la separación completa frente a la solución exacta.
 - Notas de traducción:
   - El algoritmo §8 es explícito (sin Newton local); no se usa `is_admissible` en este material.
@@ -367,3 +374,4 @@ references:
 - **2026-09-22** · Auditoría global: el softening lineal exige `w_c > κ₀` (`K_e > σ_t0²/(2·G_F)`), la misma condición que el exponencial; antes sólo validaba el exponencial y con `w_c ≤ κ₀` ω saltaba a 1 en cuanto κ > κ₀, disipando ½·σ_t0·κ₀ > G_F sin aviso.
 - **2026-09-23** · *Revisión contra la tesis* (pedida por el usuario antes de usar la formulación en el manual de ejemplos). La tesis no escribe `K_e`, `κ_0` ni `ω(κ)`: en la ec. 3.2 cita a Alfaiate, Wells y Sluys (2002) y reproduce casi literalmente su modelo de daño isótropo con penalización (ecs. 8-17), que es el implementado. El usuario confirmó mantener la penalización. Dos correcciones, ambas siguiendo esa referencia y validadas por el usuario: (1) se elimina el tope `DAMAGE_MAX` de la tangente, que en carga activa devolvía `+1e-3·K_e` en casi todo el ablandamiento (desde `κ ≈ 0.026·w_c` con `K_e = 1e15`) en lugar de la pendiente negativa, de modo que la tangente condensada del elemento erraba del 26 al 45 %; (2) en compresión se recupera la rigidez inicial `K_e` sin daño, en vez de `(1 − ω)·K_e`, que dejaba atravesarse las caras de una grieta abierta. Tests nuevos: barrido de la tangente en toda la rama, compresión con grieta abierta, tangente condensada frente a diferencias finitas (los tres fallan con el código anterior) y tracción uniaxial hasta la separación completa frente a la solución exacta.
 - **2026-09-29** · Corrección documental (sección Implementación): el material no lo descubre `solidum.autodiscover.initialize()`, sino la carga explícita del módulo de usuario (`user_modules: [discontinuities]` o `solidum.load_user_module("discontinuities")`, ADR 0020). La familia cohesiva sigue en este módulo porque su único consumidor es `CST_Embedded2D`; una ley tracción-salto genérica con elementos de interfaz sería estándar según el criterio de admisión (Reglas.md §1) y pasaría al programa principal con el primer elemento de interfaz que la use. Sin cambio de formulación.
+- **2026-11-10** · **Pasa al programa principal** (ADR 0033) sin cambio de física: la familia de leyes tracción–desplazamiento relativo (`InterfaceMaterial`, sección YAML `interface_materials`) se hizo general cuando el programa principal tuvo un elemento de interfaz propio (la adherencia barra–sólido), como preveía Reglas.md §4. Clasificación estándar: de Borst et al. 2012, cap. 6 (modelos de zona cohesiva); Abaqus, elementos cohesivos con daño. El YAML declara la ley en `interface_materials` (antes `cohesive_materials`).

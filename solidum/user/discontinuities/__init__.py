@@ -10,11 +10,9 @@ programa principal, como un elemento de usuario de FEAP.
 Contenido:
 
 - ``CST_Embedded2D`` — el elemento (``embedded_cst.py``).
-- ``CohesiveMaterial`` — contrato de la familia cohesiva
-  (``cohesive_material.py``); ``CohesiveMaterialRegistry`` — su registro,
-  con la sección YAML ``cohesive_materials`` (``registry.py``).
-- ``CohesiveDamageIsotropic`` — ley cohesiva de daño isótropo con
-  penalización (``damage_isotropic.py``).
+- La ley cohesiva de la superficie es un material de interfaz del programa
+  principal (sección YAML ``interface_materials``; p. ej.
+  ``solidum.materials.interface.CohesiveDamageIsotropic``; ADR 0033).
 - ``DiscontinuityState`` — geometría y estado del salto de un elemento
   agrietado (``discontinuity_state.py``).
 - ``GlobalCrackTracking`` — seguimiento global de la trayectoria de grieta,
@@ -26,10 +24,8 @@ Contenido:
 Uso: en YAML, ``user_modules: [discontinuities]``; en Python,
 ``solidum.load_user_module("discontinuities")`` o importar de aquí.
 """
-from solidum.user.discontinuities.registry import CohesiveMaterialRegistry, CrackTrackerRegistry
-from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
+from solidum.user.discontinuities.registry import CrackTrackerRegistry
 from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
-from solidum.user.discontinuities.damage_isotropic import CohesiveDamageIsotropic
 from solidum.user.discontinuities.crack_tracking import (
     Crack,
     GlobalCrackTracking,
@@ -39,9 +35,6 @@ from solidum.user.discontinuities.embedded_cst import CST_Embedded2D
 
 __all__ = [
     "CST_Embedded2D",
-    "CohesiveDamageIsotropic",
-    "CohesiveMaterial",
-    "CohesiveMaterialRegistry",
     "Crack",
     "CrackTrackerRegistry",
     "DiscontinuityState",

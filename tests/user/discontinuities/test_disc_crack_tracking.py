@@ -31,9 +31,9 @@ from solidum.materials.elastic_2d import Elastic2D
 from solidum.math.solvers import NonlinearSolver
 
 solidum.load_user_module("discontinuities")
+from solidum.materials.interface import CohesiveDamageIsotropic  # noqa: E402
 from solidum.user.discontinuities import (  # noqa: E402
     CST_Embedded2D,
-    CohesiveDamageIsotropic,
     GlobalCrackTracking,
     PrescribedCrackPath,
 )
@@ -623,7 +623,7 @@ def test_yaml_crack_trackers(tmp_path):
           - {id: 4, coords: [1.0, 1.0]}
         materials:
           - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_stress}
-        cohesive_materials:
+        interface_materials:
           - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 3.0e6, G_f: 100.0, K_e: 1.0e15, softening: linear}
         crack_trackers:
           - {id: 1, type: GlobalCrackTracking, epsilon: 1.0e-7}
