@@ -109,6 +109,7 @@ class TransientTerminationMixin:
         use el mismo. Las condiciones iniciales del constructor (``u0``,
         ``u0_dot``, ``T_initial``) y ``previous`` se excluyen.
         """
+        reject_perturbation(previous, f"{type(self).__name__}.continue_from")
         from solidum.results import (
             SolveResult, ThermalTransientResult, TransientResult,
         )
@@ -211,6 +212,16 @@ class TransientTerminationMixin:
                 f"el modelo entre los dos?")
 
 
+def reject_perturbation(previous, where: str) -> None:
+    """Una perturbación lineal (``SolveResult.perturbation``, ADR 0031) no
+    cambia el estado interno de los elementos: no se puede continuar."""
+    if getattr(previous, "perturbation", False):
+        raise ValueError(
+            f"{where}: 'previous' es una perturbación lineal (un LinearSolver sobre "
+            f"una etapa, ADR 0031), que no cambia el estado de los elementos; "
+            f"continúe la etapa sobre la que se calculó.")
+
+
 class LinearizedStateMixin:
     """Análisis lineal alrededor del estado de una etapa (ADR 0031, decisión
     del usuario del 2026-11-09).
@@ -233,6 +244,7 @@ class LinearizedStateMixin:
         ``previous``: un estático (``SolveResult``) o un transitorio
         mecánico (``TransientResult``, su último instante)."""
         from solidum.results import SolveResult, TransientResult
+        reject_perturbation(previous, f"{type(self).__name__}.continue_from")
         if isinstance(previous, SolveResult):
             U = previous.U
         elif isinstance(previous, TransientResult):

@@ -17,6 +17,7 @@
 - **Propósito**: resolver `K · U = F` con una sola factorización.
 - **Esquema**: comprobación de mecanismo rígido (ADR 0019) → ensamblaje único → eliminación directa de DOFs prescritos (ADR 0004) → factorización por el despachador (Cholesky → Pardiso → LU; ADR 0003, 0017) → búsqueda de mecanismos internos por la energía del modo y comprobación de equilibrio (ADR 0019).
 - **Parámetros**: `linear_algebra` (default `auto`; también `lu`, `pardiso`, `cholesky`, `iterative[:amg|jacobi|none]`, ADR 0018).
+- **Como etapa** ([ADR 0031](adr/0031-analisis-lineales-sobre-el-estado-de-una-etapa.md) §5, decisión del usuario): con `previous=` es una perturbación lineal sobre el estado de la etapa, `K_t(u_b)·ΔU = ΔF`, con reacciones y fuerzas internas lineales; no cambia el estado (`SolveResult.perturbation`), así que varios casos sobre la misma etapa son superponibles (los casos de carga lineales sobre el estado P-Δ).
 - **Errores de planteamiento**: `MechanismError` (apoyos insuficientes, con el movimiento libre descrito) e `IllPosedSystemError` (mecanismo interno, matriz singular o factorización imposible), en vez de devolver desplazamientos absurdos. Con `linear_algebra: iterative`, aviso de que un mecanismo interno que la carga no active no se comprueba.
 - **Cuándo usarlo**: problemas estrictamente lineales (todos los materiales con tangente constante, sin grandes desplazamientos, sin contacto).
 - **No converge / no aplica**: cualquier no-linealidad material (daño, plasticidad) o geométrica (corotacional).

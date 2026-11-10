@@ -340,7 +340,7 @@ Extiende el ADR 0004 §3 a los análisis dinámicos. Por decisión del usuario, 
 
 **Fecha**: 2026-11-09 · **Estado**: aceptado.
 
-Por decisión del usuario, el modal, el armónico y el espectral que continúan una etapa (`continue_from`, `previous=`, etapas `stages`) linealizan alrededor de su estado con la rigidez tangente que dan los elementos (P-Δ de los corrotacionales, descarga elástica de la plasticidad, rigidez dañada), sin cambiarlo. La mezcla `LinearizedStateMixin` lo comparte. Los autovalores negativos dejan de recortarse a cero: `ModalResult.eigenvalues` con signo y `unstable_modes`. Queda pendiente el `LinearSolver` como etapa.
+Por decisión del usuario, el modal, el armónico y el espectral que continúan una etapa (`continue_from`, `previous=`, etapas `stages`) linealizan alrededor de su estado con la rigidez tangente que dan los elementos (P-Δ de los corrotacionales, descarga elástica de la plasticidad, rigidez dañada), sin cambiarlo. La mezcla `LinearizedStateMixin` lo comparte. Los autovalores negativos dejan de recortarse a cero: `ModalResult.eigenvalues` con signo y `unstable_modes`. El `LinearSolver` como etapa es una perturbación lineal estática que tampoco cambia el estado (`SolveResult.perturbation`): casos superponibles sobre la etapa, con reacciones y fuerzas internas lineales (`Element.internal_forces_from_nodal`).
 
 ## Evolución de esta lista
 

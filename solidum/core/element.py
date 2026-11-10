@@ -391,6 +391,21 @@ class Element(ABC):
     # API pública de resultados (ADR 0002)
     # ------------------------------------------------------------------
 
+    def internal_forces_from_nodal(self, F_e: np.ndarray, U_global: np.ndarray,
+                                   equivalent_load: np.ndarray | None = None
+                                   ) -> ElementForces | None:
+        """Fuerzas internas a partir de un vector de fuerzas nodales del
+        elemento ``F_e`` dado (ejes globales, layout del elemento), con la
+        geometría de la configuración ``U_global``: la conversión de
+        :meth:`internal_forces` sin evaluar el elemento.
+
+        La usa la perturbación lineal (ADR 0031), cuyas fuerzas son
+        ``f_int(u_b) + K_t·Δu``: lineales en el incremento. ``None`` en los
+        elementos sin fuerzas internas seccionales (sólidos), como
+        :meth:`internal_forces`.
+        """
+        return None
+
     def internal_forces(self, U_global: np.ndarray,
                         equivalent_load: np.ndarray | None = None) -> ElementForces | None:
         """Fuerzas internas en ejes locales — **solo elementos estructurales 1D**.

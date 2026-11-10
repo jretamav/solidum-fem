@@ -123,6 +123,20 @@ empuje = solidum.run(dom, assembler=asm, F_applied=F_lateral, previous=gravedad,
 - Lo admiten `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver`; desde Python también directamente, `solver.solve(F, u0=U_anterior, constant_load=F_anterior)`. Desde el YAML todavía no.
 - Con dos cargas distribuidas ensambladas en una misma etapa (por ejemplo, peso propio más una fuerza de cuerpo), las fuerzas internas de los elementos descuentan sólo la última: hay que ensamblarlas en etapas distintas o sumar su efecto aparte.
 
+### Casos lineales sobre una etapa (ADR 0031)
+
+Un `LinearSolver` con `previous=` no avanza el estado: es una **perturbación lineal** con la rigidez tangente de la etapa, $\mathbf K_t(\mathbf u_b)\,\Delta\mathbf U = \Delta\mathbf F$. Sirve para los casos de carga lineales sobre el estado P-Δ de la gravedad:
+
+```python
+grav = solidum.run(dom, assembler=asm, F_applied=F_g, solver=NonlinearSolver(asm, num_steps=4))
+viento = solidum.run(dom, assembler=asm, F_applied=F_v, solver=LinearSolver(asm), previous=grav)
+sismo  = solidum.run(dom, assembler=asm, F_applied=F_s, solver=LinearSolver(asm), previous=grav)
+```
+
+- El resultado es el estado de la etapa más el incremento lineal; las reacciones y las fuerzas internas también son lineales, así que los casos se pueden **superponer**.
+- No cambia el estado interno de los elementos: lo que sigue continúa `grav`. El resultado lleva `perturbation = True` y no se puede usar como `previous` (es un error).
+- Con elementos corrotacionales incluye el efecto P-Δ; con materiales que fluyeron, la rigidez de descarga (elástica); con daño, la dañada.
+
 ## `IndirectDisplacementSolver` — control indirecto de desplazamiento
 
 Variante de `ArcLengthSolver` que controla, en vez de la longitud de arco de todos los grados de libertad, el incremento de **una magnitud elegida**: el alargamiento de la zona que se ablanda o la apertura de una grieta (CMOD), como se controla en laboratorio un ensayo de fractura. La carga $\lambda$ queda libre y puede bajar, así que sigue los **retrocesos** (snap-back) por localización, que `ArcLengthSolver` no sigue (tampoco el arc-length por disipación del módulo de usuario `dissipation_control`).

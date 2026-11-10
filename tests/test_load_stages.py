@@ -445,12 +445,18 @@ class TestCargaDistribuidaConstante(_Quiet):
 
 class TestErroresClaros(_Quiet):
 
-    def test_linear_solver_no_admite_etapas(self):
+    def test_linear_solver_sobre_una_etapa_es_perturbacion(self):
+        """Antes se rechazaba; desde el 2026-11-09 es una perturbación lineal
+        (ADR 0031 §5): en un modelo elástico, lo mismo que un lineal con las
+        dos cargas."""
         dom, top, F_g, F_h = column(2, Frame2DEuler)
         asm = Assembler(dom)
         r1 = solidum.run(dom, assembler=asm, solver=LinearSolver(asm), F_applied=F_g)
-        with self.assertRaisesRegex(ValueError, "no admite etapas"):
-            solidum.run(dom, assembler=asm, solver=LinearSolver(asm), F_applied=F_h, previous=r1)
+        r2 = solidum.run(dom, assembler=asm, solver=LinearSolver(asm), F_applied=F_h, previous=r1)
+        self.assertTrue(r2.perturbation)
+        dom2, _, F_g2, F_h2 = column(2, Frame2DEuler)
+        ref = solidum.run(dom2, F_applied=F_g2 + F_h2)
+        np.testing.assert_allclose(r2.U, ref.U, rtol=0, atol=1e-12 * np.max(np.abs(ref.U)))
 
     def test_tamano_del_estado_inicial(self):
         dom, top, F_g, F_h = column(2, Frame2DEuler)

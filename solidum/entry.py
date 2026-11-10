@@ -29,6 +29,7 @@ import numpy as np
 from solidum.core.domain import Domain
 from solidum.core.load_vector import LoadVector, as_load_vector
 from solidum.math.assembly import Assembler
+from solidum.math.solvers._shared import reject_perturbation
 from solidum.math.solvers import (  # noqa: F401 — NewmarkSolver default de run_transient
     HarmonicSolver,
     LinearSolver,
@@ -159,6 +160,16 @@ def run(
         solver = LinearSolver(assembler)
     if F_applied is None:
         F_applied = np.zeros(domain.total_dofs)
+
+    if previous is not None:
+        reject_perturbation(previous, "run")
+    if previous is not None and isinstance(solver, LinearSolver):
+        # Perturbación lineal sobre el estado de la etapa (ADR 0031): no lo
+        # cambia ni comitea; reacciones y fuerzas internas lineales.
+        from solidum.math.solvers.perturbation import linear_perturbation
+        result = linear_perturbation(domain, assembler, solver, F_applied, previous)
+        domain.last_result = result
+        return result
 
     stage_kwargs = None
     if previous is not None:
@@ -572,6 +583,12 @@ def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
                  + sp.get_thermal_loads())
             r = run(domain, assembler=assembler, solver=solver, F_applied=F,
                     step_callback=step_callback, previous=previous)
+            if r.perturbation:
+                # LinearSolver sobre la etapa (ADR 0031): no cambia el estado;
+                # la etapa siguiente continúa la anterior.
+                names.append(stage['name'])
+                results.append(r)
+                continue
         elif kind == "transient":
             r = run_transient(domain, assembler=assembler, solver=solver, previous=previous,
                               step_callback=step_callback)

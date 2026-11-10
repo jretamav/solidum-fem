@@ -769,6 +769,12 @@ class SolveResult:
         Carga constante de un análisis por etapas (ADR 0026): la ya aplicada
         al empezar la etapa, que actúa completa durante toda ella. ``None``
         fuera de una etapa. ``F_variable`` da la otra parte, ``λ·F_ref``.
+    perturbation
+        ``True`` si es una perturbación lineal sobre una etapa (``LinearSolver``
+        con ``previous``, ADR 0031): el estado de la etapa más el incremento
+        lineal con su rigidez tangente, con reacciones y fuerzas internas
+        lineales. No cambia el estado interno de los elementos, así que no se
+        puede continuar: las etapas siguientes continúan la etapa base.
     equivalent_loads
         Cargas nodales equivalentes de la carga distribuida (peso propio,
         fuerza de cuerpo) por elemento, ya multiplicadas por su factor, que
@@ -790,6 +796,9 @@ class SolveResult:
     load_factor: float = 1.0
     F_constant: np.ndarray | None = None
     equivalent_loads: dict[int, np.ndarray] = field(default_factory=dict)
+    # Perturbación lineal sobre una etapa (ADR 0031): no cambió el estado
+    # interno de los elementos; una etapa posterior no puede continuarla.
+    perturbation: bool = False
     # Versión del registro de cargas equivalentes del ensamblador con que se
     # construyó el resultado (ADR 0026): una etapa siguiente la compara para
     # saber si las cargas registradas son suyas o de esta etapa.
@@ -970,6 +979,9 @@ def build_solve_result(
     termination: str | None = None,
     F_constant: np.ndarray | None = None,
     equivalent_loads: dict[int, np.ndarray] | None = None,
+    F_int: np.ndarray | None = None,
+    element_forces: dict | None = None,
+    perturbation: bool = False,
 ) -> SolveResult:
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
@@ -997,12 +1009,15 @@ def build_solve_result(
       que implemente el contrato (los que devuelvan ``None`` se omiten).
 
     ``condition_estimate`` se copia tal cual: lo calcula el solver (capa 4
-    del ADR 0019). El llamador (típicamente ``solidum.run``) asigna el
+    del ADR 0019). Una perturbación lineal (ADR 0031) pasa ``F_int`` y
+    ``element_forces`` ya calculados, lineales en el incremento, en vez de
+    evaluar los elementos en ``U``, y marca ``perturbation``. El llamador (típicamente ``solidum.run``) asigna el
     resultado a ``domain.last_result``.
     """
     ndof = U.shape[0]
 
-    _, F_int = assembler.assemble_non_linear_system(U)
+    if F_int is None:
+        _, F_int = assembler.assemble_non_linear_system(U)
 
     cs = assembler.constraint_set
     support_dofs: list[int] = []
@@ -1058,12 +1073,13 @@ def build_solve_result(
             equivalent_loads = {} if carried is None else carried.as_dict()
         else:
             equivalent_loads = legacy_equivalent_loads(assembler, load_factor)
-    element_forces: dict[int, ElementForces] = {}
-    for elem_id, elem in domain.elements.items():
-        f_eq = equivalent_loads.get(elem_id)
-        ef = elem.internal_forces(U, equivalent_load=f_eq)
-        if ef is not None:
-            element_forces[elem_id] = ef
+    if element_forces is None:
+        element_forces = {}
+        for elem_id, elem in domain.elements.items():
+            f_eq = equivalent_loads.get(elem_id)
+            ef = elem.internal_forces(U, equivalent_load=f_eq)
+            if ef is not None:
+                element_forces[elem_id] = ef
 
     if not isinstance(F_applied, LoadVector):
         F_applied = as_load_vector(F_applied, equivalent_loads)
@@ -1084,5 +1100,6 @@ def build_solve_result(
                     F_constant if isinstance(F_constant, LoadVector)
                     else np.asarray(F_constant, dtype=float)),
         equivalent_loads=equivalent_loads,
+        perturbation=bool(perturbation),
         _equivalent_loads_version=getattr(assembler, "equivalent_loads_version", None),
     )

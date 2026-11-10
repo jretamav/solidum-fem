@@ -80,6 +80,7 @@ M = modelo.assembler.assemble_mass_matrix()
 | `converged`, `num_steps` | Si el análisis llegó al final y cuántos pasos convergidos dio. |
 | `termination` | Por qué se detuvo un solver incremental (ADR 0025): `"max_lambda"`, `"control_target"` o `"max_steps"`. `None` en el `LinearSolver`. |
 | `load_factor` | Factor de carga final λ de la carga que crece en el análisis o en la etapa. |
+| `perturbation` | `True` en un `LinearSolver` sobre una etapa (ADR 0031): perturbación lineal que no cambió el estado; no se puede usar como `previous`. |
 | `F_constant`, `F_variable` | En un análisis por etapas (`solidum.run(..., previous=…)`, ADR 0026), la carga ya aplicada que se mantuvo constante y la que creció (`F_applied = F_constant + F_variable`). Fuera de una etapa, `F_constant` es `None`. |
 | `equivalent_loads` | Cargas equivalentes de la carga distribuida restadas, por elemento, para dar `element_forces`: las que lleva la carga aplicada (`LoadVector`, ADR 0027); una etapa siguiente las hereda con su carga constante. |
 | `condition_estimate` | Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). `None` en los análisis no lineales y con el solver iterativo. |

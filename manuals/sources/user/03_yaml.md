@@ -531,7 +531,8 @@ stages:
 - Con `stages`, el `solver` y las cargas van en cada etapa: declararlos también en el nivel raíz es un error.
 - `run_yaml` devuelve un `StagedResult`: `res["empuje"]` o `res[1]` da el resultado de una etapa, `res.final` el de la última y `res.names` los nombres.
 - **Etapa modal, armónica o espectral**: linealiza alrededor del estado de la anterior con su rigidez tangente (P-Δ, agrietamiento; ADR 0031) y no lo cambia: la etapa siguiente continúa la última estática o en el tiempo.
-- Pendientes de una decisión física, y por eso rechazados con un error claro: una etapa estática después de una en el tiempo, y un `LinearSolver` como etapa.
+- **Etapa con `LinearSolver`**: perturbación lineal sobre la anterior (casos de carga superponibles sobre el estado P-Δ, ADR 0031); tampoco cambia el estado.
+- Pendiente de una decisión física, y por eso rechazada con un error claro: una etapa estática después de una en el tiempo.
 
 ## Salida: `output`
 

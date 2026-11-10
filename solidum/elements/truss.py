@@ -125,6 +125,15 @@ class Truss2D(_TrussLine, Element):
             )
         return ElementForces(kind="truss", components={"N": np.array([N_i, N_j])})
 
+    def internal_forces_from_nodal(self, F_e, U_global, equivalent_load=None) -> ElementForces:
+        """N de extremo a partir de unas fuerzas nodales dadas: su proyección
+        sobre el eje en la configuración ``U_global`` (tracción positiva)."""
+        F = np.asarray(F_e, dtype=float)
+        if equivalent_load is not None:
+            F = F - np.asarray(equivalent_load, dtype=float)
+        N_i, N_j = axial_end_forces(F, self._axis_direction(self.get_local_displacements(U_global)))
+        return ElementForces(kind="truss", components={"N": np.array([N_i, N_j])})
+
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con la integral ∫NᵀbA dx (peso propio).
 
@@ -349,6 +358,15 @@ class Truss3D(_TrussLine, Element):
                 F_int - np.asarray(equivalent_load, dtype=float),
                 self._axis_direction(u_e),
             )
+        return ElementForces(kind="truss", components={"N": np.array([N_i, N_j])})
+
+    def internal_forces_from_nodal(self, F_e, U_global, equivalent_load=None) -> ElementForces:
+        """N de extremo a partir de unas fuerzas nodales dadas: su proyección
+        sobre el eje en la configuración ``U_global`` (tracción positiva)."""
+        F = np.asarray(F_e, dtype=float)
+        if equivalent_load is not None:
+            F = F - np.asarray(equivalent_load, dtype=float)
+        N_i, N_j = axial_end_forces(F, self._axis_direction(self.get_local_displacements(U_global)))
         return ElementForces(kind="truss", components={"N": np.array([N_i, N_j])})
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:

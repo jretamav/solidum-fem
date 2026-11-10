@@ -153,11 +153,15 @@ class Frame2DTimoshenko(Frame2DLine, FrameSectionMixin, Element):
         """API pública (ADR 0002): N, V, M en nodos i, j, convención §5."""
         u_e = self.get_local_displacements(U_global)
         _, F_int = self.compute_element_state(u_e)
+        return self.internal_forces_from_nodal(F_int, U_global, equivalent_load)
+
+    def internal_forces_from_nodal(self, F_e, U_global, equivalent_load=None) -> ElementForces:
+        """Conversión de :meth:`internal_forces` para unas fuerzas nodales dadas."""
+        F_int = np.asarray(F_e, dtype=float)
         if equivalent_load is not None:
             # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
             F_int = F_int - np.asarray(equivalent_load, dtype=float)
-        F_local = self.T @ F_int
-        return _frame2d_forces_from_local(F_local)
+        return _frame2d_forces_from_local(self.T @ F_int)
 
     def compute_body_load(self, b: np.ndarray) -> np.ndarray:
         """Vector nodal consistente con una fuerza de cuerpo ``b`` (por unidad

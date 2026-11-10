@@ -370,6 +370,11 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
         """
         u_e = self.get_local_displacements(U_global)
         _, F_int = self._evaluate_without_trace(u_e)
+        return self.internal_forces_from_nodal(F_int, U_global, equivalent_load)
+
+    def internal_forces_from_nodal(self, F_e, U_global, equivalent_load=None) -> ElementForces:
+        """Conversión de :meth:`internal_forces` para unas fuerzas nodales dadas."""
+        F_int = np.asarray(F_e, dtype=float)
         if equivalent_load is not None:
             # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
             F_int = F_int - np.asarray(equivalent_load, dtype=float)

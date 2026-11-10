@@ -25,6 +25,8 @@ El modal, el armónico y el espectral usaban siempre la rigidez elástica inicia
 3. **Autovalores negativos**: no se recortan. Quedan con su signo en `eigenvalues`, con frecuencia y periodo `NaN`, `unstable_modes` y un aviso: el estado es inestable en esos modos. El espectral se rechaza con un error si hay modos inestables.
 4. **El ensamblador de la etapa** guarda el estado interno de los elementos. `previous=` sin el `assembler` de la etapa, ni un `solver` que lo traiga, da un error en lugar de partir del estado virgen.
 
+5. **`LinearSolver` como etapa: perturbación lineal que no cambia el estado** (decisión del usuario, 2026-11-09). `solidum.run(..., solver=LinearSolver, previous=etapa)` resuelve $\mathbf K_t(\mathbf u_b)\,\Delta\mathbf U = \Delta\mathbf F$, con los valores impuestos que cambien respecto de la etapa, y da $\mathbf U = \mathbf u_b + \Delta\mathbf U$. Las reacciones y las fuerzas internas son lineales en $\Delta\mathbf U$: las del estado base más $\mathbf K_t\,\Delta\mathbf U$ (cada elemento 1D convierte sus fuerzas nodales con `internal_forces_from_nodal`). No cambia ni comitea el estado interno: varios casos lineales sobre la misma etapa son **superponibles**, y la etapa siguiente continúa la etapa base. El resultado lleva `perturbation = True` y no se puede continuar (error). Es el caso de carga lineal sobre el estado P-Δ de ETABS y SAP2000 y el paso de perturbación lineal de Abaqus. La alternativa, un paso estático de una sola solución que guarda el estado, dejaría con materiales no lineales un estado sin equilibrio, dependiente del orden de los casos, y no aporta nada que el `NonlinearSolver` no haga. Pruebas: `tests/test_linear_perturbation.py`: igual que un lineal con todas las cargas en un modelo elástico; la carga lateral sobre la columna comprimida da $H/k(P)$ a 1e-3; dos casos superponibles en desplazamientos, reacciones y fuerzas internas sobre fibras que fluyeron, con el estado intacto; guardas; YAML.
+
 ## Medido
 
 `tests/test_linearized_stage.py`:
@@ -36,7 +38,6 @@ El modal, el armónico y el espectral usaban siempre la rigidez elástica inicia
 
 ## Fuera de este ADR
 
-- El `LinearSolver` como etapa (una perturbación estática con la tangente del estado). Falta decidir si la etapa lineal cambia el estado interno de los elementos para la etapa siguiente.
 - Un estático después de un transitorio.
 
 ## Referencias
