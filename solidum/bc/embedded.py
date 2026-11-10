@@ -2,16 +2,20 @@
 ADR 0032).
 
 La barra es una cadena de elementos 1D ordinarios (``Truss2D``,
-``Truss3D``, sus variantes corrotacionales, cables) con su propia malla,
-definida por una polilínea. Cada nodo de la barra queda atado al
-desplazamiento interpolado del elemento de sólido que lo contiene,
+``Truss3D``, sus variantes corrotacionales, cables, y las barras de tres
+nodos ``Truss2D3`` y ``Truss3D3``) con su propia malla, definida por una
+polilínea. Cada nodo de la barra, también el intermedio de las de tres nodos,
+queda atado al desplazamiento interpolado del elemento de sólido que lo
+contiene,
 
     u(X_b) = Σ_i N_i(ξ_b)·u_i,
 
 una restricción afín por traslación (ADR 0004). La polilínea se corta en los
 bordes de los anfitriones para que cada tramo quede dentro de uno solo: con
 anfitriones de interpolación lineal a lo largo de una recta la deformación de
-la barra es la del sólido proyectada sobre su eje.
+la barra es la del sólido proyectada sobre su eje; con anfitriones
+cuadráticos, la barra de tres nodos sigue exactamente su campo cuadrático a lo
+largo de la recta.
 
 El área de concreto que ocupa la barra no se descuenta (decisión del
 usuario, 2026-11-10; de Borst et al. 2012, ec. 6.136): la barra se superpone
@@ -47,10 +51,13 @@ class EmbeddedBar:
     Attributes
     ----------
     node_ids
-        Nodos de la barra, en el orden de la polilínea.
+        Nodos de la barra, en el orden de la polilínea (con los intermedios
+        entre sus extremos en las barras de tres nodos).
     element_ids
-        Elementos 1D de la barra (``element_ids[k]`` une ``node_ids[k]`` y
-        ``node_ids[k + 1]``).
+        Elementos 1D de la barra. Con ``o`` nodos por elemento menos uno
+        (1 en las de dos nodos, 2 en las de tres), ``element_ids[k]`` une
+        ``node_ids[o·k]`` y ``node_ids[o·k + o]``; en las de tres nodos su
+        intermedio es ``node_ids[2k + 1]``.
     host_ids
         Elemento anfitrión al que está atado cada nodo.
     natural_coordinates
@@ -101,8 +108,9 @@ class EmbeddedReinforcement:
         Material 1D de la barra (instancia).
     element
         Nombre del elemento 1D registrado (``Truss2D`` por omisión en 2D,
-        ``Truss3D`` en 3D); cualquier elemento de dos nodos con firma
-        ``(id, nodos, material, A, **element_kwargs)``.
+        ``Truss3D`` en 3D); cualquier elemento de línea de dos nodos o de
+        tres (``REFERENCE_NODES`` con el intermedio, como ``Truss2D3``) con
+        firma ``(id, nodos, material, A, **element_kwargs)``.
     hosts
         Ids de los elementos anfitriones admitidos. Por omisión, todos los
         sólidos isoparamétricos de la dimensión de la barra.
@@ -189,6 +197,24 @@ class EmbeddedReinforcement:
 
         dofs = TRANSLATIONS[:self.ndim]
         element_cls = ElementRegistry.get(self.element)
+        n_el_nodes = _line_node_count(element_cls)
+        if n_el_nodes == 3:
+            # Nodo intermedio en el punto medio de cada tramo: queda dentro del
+            # anfitrión del tramo (o en su borde, donde el campo es continuo).
+            mids = 0.5 * (positions[:-1] + positions[1:])
+            ordered = np.empty((2 * len(positions) - 1, positions.shape[1]))
+            ordered[0::2], ordered[1::2] = positions, mids
+            mid_hits = []
+            for x in mids:
+                hit = locator.locate(x)
+                if hit is None:
+                    raise ValueError(
+                        f"EmbeddedReinforcement: el punto medio {np.round(x, 12).tolist()} "
+                        f"de un tramo no está dentro de ningún anfitrión.")
+                mid_hits.append(hit)
+            hits = [None] * len(ordered)
+            hits[0::2], hits[1::2] = located, mid_hits
+            positions, located = ordered, hits
         next_node = max(domain.nodes, default=0) + 1
         next_element = max(domain.elements, default=0) + 1
         node_ids = []
@@ -196,15 +222,18 @@ class EmbeddedReinforcement:
             node = domain.add_node(next_node, [float(c) for c in x])
             node_ids.append(node.id)
             next_node += 1
+        step = n_el_nodes - 1
         element_ids = []
-        for a, b in zip(node_ids[:-1], node_ids[1:]):
-            el = element_cls(next_element, [domain.nodes[a], domain.nodes[b]], self.material,
+        for k in range(0, len(node_ids) - 1, step):
+            ends = [node_ids[k], node_ids[k + step]]
+            ids = ends if step == 1 else ends + [node_ids[k + 1]]
+            el = element_cls(next_element, [domain.nodes[i] for i in ids], self.material,
                              A=self.area, **self.element_kwargs)
             missing = set(dofs) - set(el.DOF_NAMES)
-            if missing or len(el.nodes) != 2:
+            if missing or len(el.nodes) != n_el_nodes:
                 raise ValueError(
-                    f"EmbeddedReinforcement: {self.element} no es un elemento 1D de dos "
-                    f"nodos con traslaciones {list(dofs)}.")
+                    f"EmbeddedReinforcement: {self.element} no es un elemento 1D de "
+                    f"{n_el_nodes} nodos con traslaciones {list(dofs)}.")
             domain.add_element(el)
             element_ids.append(el.id)
             next_element += 1
@@ -290,6 +319,18 @@ class EmbeddedReinforcement:
             t = t_exit
         params[-1] = 1.0
         return params
+
+
+def _line_node_count(element_cls) -> int:
+    """Nodos de un elemento de línea: los de su ``REFERENCE_NODES`` (2 ó 3);
+    2 si no lo declara (cables)."""
+    ref = getattr(element_cls, "REFERENCE_NODES", None)
+    n = 2 if ref is None else len(ref)
+    if n not in (2, 3):
+        raise ValueError(
+            f"EmbeddedReinforcement: {element_cls.__name__} tiene {n} nodos; la barra "
+            f"admite elementos de línea de dos o tres nodos.")
+    return n
 
 
 def embed_reinforcement(domain, points, area: float, material, *, element: Optional[str] = None,

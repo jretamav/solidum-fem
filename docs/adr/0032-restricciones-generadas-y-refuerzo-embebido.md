@@ -47,3 +47,7 @@ Las MPC del ADR 0004 se declaraban una a una: el usuario escribía cada esclavo,
 - La adherencia-deslizamiento, que es otro componente: sustituye la MPC de cada nodo por una ley τ–s.
 - El acoplamiento viga-sólido, que usará `ConstraintRegistry` y `PointLocator`.
 - `hosts` por grupo físico en el YAML: hoy son ids de elementos.
+
+## Ampliación (2026-11-10)
+
+La barra admite elementos de línea de tres nodos (`Truss2D3`, `Truss3D3`): el número de nodos se lee de `REFERENCE_NODES` y cada tramo recibe un nodo intermedio en su punto medio, atado como los demás. Con anfitriones cuadráticos la barra sigue exactamente su campo a lo largo de la recta. Es la barra que se recomienda para la adherencia-deslizamiento.

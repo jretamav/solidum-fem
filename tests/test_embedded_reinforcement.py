@@ -213,6 +213,99 @@ def test_malla_de_barra_independiente():
     np.testing.assert_allclose(U_sub, U_ref, rtol=0, atol=1e-10 * np.abs(U_ref).max())
 
 
+def _cantilever(host, bar_element, points, divisions=(8, 2)):
+    mesh = _mesh(host, divisions, size=(2.0, 0.4))
+    dom = mesh.domain
+    host_ids = sorted(dom.nodes)
+    bar = embed_reinforcement(dom, points, 4.0e-4, Elastic1D(E=ES), element=bar_element)
+    for n in mesh.nodes_on("xmin"):
+        n.fix_dof("ux"); n.fix_dof("uy")
+    dom.generate_equation_numbers()
+    F = np.zeros(dom.total_dofs)
+    for n in mesh.nodes_on("xmax"):
+        F[n.dofs["uy"]] -= 1.0e4
+    r = run(dom, F_applied=F)
+    U = np.array([[r.U[dom.nodes[i].dofs[d]] for d in ("ux", "uy")] for i in host_ids])
+    return U, bar, r
+
+
+@pytest.mark.parametrize("host,points", [
+    ("Tri3", [[0.0, 0.07], [1.3, 0.21], [2.0, 0.09]]),     # lineal en cualquier recta
+    ("Quad4", [[0.0, 0.07], [2.0, 0.07]]),                  # paralela a un lado
+], ids=["Tri3-inclinada", "Quad4-paralela"])
+def test_barra_de_tres_nodos_donde_el_anfitrion_es_lineal(host, points):
+    """Donde el campo del anfitrión es lineal a lo largo de la barra, el nodo
+    intermedio lo sigue sin añadir nada: misma solución y mismo axial que la
+    barra de dos nodos."""
+    U2, bar2, r2 = _cantilever(host, "Truss2D", points)
+    U3, bar3, r3 = _cantilever(host, "Truss2D3", points)
+    np.testing.assert_allclose(U3, U2, rtol=0, atol=1e-10 * np.abs(U2).max())
+    assert len(bar3.element_ids) == len(bar2.element_ids)
+    assert len(bar3.node_ids) == 2 * len(bar2.node_ids) - 1
+    scale = max(abs(r2.element_forces[e].components["N"][0]) for e in bar2.element_ids)
+    for e2, e3 in zip(bar2.element_ids, bar3.element_ids):
+        N2 = r2.element_forces[e2].components["N"][0]
+        # La deformación sale de restar desplazamientos casi iguales en tramos
+        # cortos: redondeo de 1e-8 relativo.
+        np.testing.assert_allclose(r3.element_forces[e3].components["N"], [N2, N2],
+                                   rtol=0, atol=1e-7 * scale)
+
+
+def _quadratic_field(dim):
+    """Campo de desplazamientos cuadrático y su gradiente."""
+    if dim == 2:
+        A = np.array([[1.0e-4, 0.3e-4], [-0.2e-4, 0.6e-4]])
+        Q = np.array([[[2.0e-4, 0.5e-4], [0.5e-4, -1.0e-4]],
+                      [[-0.7e-4, 0.4e-4], [0.4e-4, 1.5e-4]]])
+    else:
+        rng = np.random.default_rng(5)
+        A = rng.uniform(-1e-4, 1e-4, (3, 3))
+        Q = rng.uniform(-1e-4, 1e-4, (3, 3, 3))
+        Q = 0.5 * (Q + Q.transpose(0, 2, 1))
+    u = lambda x: A @ x + 0.5 * np.einsum("kij,i,j->k", Q, x, x)       # noqa: E731
+    grad = lambda x: A + np.einsum("kij,j->ki", Q, x)                   # noqa: E731
+    return u, grad
+
+
+@pytest.mark.parametrize("host,bar_element,dim", [("Tri6", "Truss2D3", 2),
+                                                  ("Tet10", "Truss3D3", 3)])
+def test_barra_de_tres_nodos_sigue_el_campo_cuadratico(host, bar_element, dim):
+    """Con un anfitrión cuadrático, el campo es cuadrático a lo largo de una
+    recta: la barra de tres nodos con adherencia perfecta lo reproduce y su
+    deformación en cada punto de Gauss es tᵀ·∇u·t; la de dos nodos sólo da su
+    promedio por tramo."""
+    divisions = (4, 3) if dim == 2 else (2, 2, 2)
+    if dim == 2:
+        p, q = np.array([0.13, 0.21]), np.array([0.87, 0.74])
+    else:
+        p, q = np.array([0.12, 0.18, 0.21]), np.array([0.83, 0.77, 0.69])
+    u, grad = _quadratic_field(dim)
+    t = (q - p) / np.linalg.norm(q - p)
+    names = ("ux", "uy", "uz")[:dim]
+    err = {}
+    for el_name in (bar_element, bar_element[:-1]):         # Truss2D3 y Truss2D
+        mesh = _mesh(host, divisions, size=None)
+        dom = mesh.domain
+        bar = embed_reinforcement(dom, [p, q], 3.0e-4, Elastic1D(E=ES), element=el_name)
+        for nid, node in dom.nodes.items():
+            if nid not in dom.generated_nodes:
+                for k, d in enumerate(names):
+                    node.fix_dof(d, float(u(np.asarray(node.coordinates[:dim], float))[k]))
+        r = run(dom)
+        worst = 0.0
+        xis = np.array([0.0, 0.5 - 0.5 / np.sqrt(3), 0.5, 0.5 + 0.5 / np.sqrt(3), 1.0])
+        for eid in bar.element_ids:
+            el = dom.elements[eid]
+            X = el._line_ends()
+            _, eps = el.line_field(el.get_local_displacements(r.U), xis)
+            for e_h, xi in zip(eps[:, 0], xis):
+                exact = t @ grad(X[0] + xi * (X[1] - X[0])) @ t
+                worst = max(worst, abs(e_h - exact))
+        err[el_name] = worst
+    assert err[bar_element] < 1e-10 * 1e-4
+    assert err[bar_element[:-1]] > 1e3 * err[bar_element]
+
+
 def test_barra_fuera_del_solido():
     mesh = _mesh("Quad4", (2, 1), size=(2.0, 1.0))
     with pytest.raises(ValueError, match="sale de los anfitriones|no está dentro"):

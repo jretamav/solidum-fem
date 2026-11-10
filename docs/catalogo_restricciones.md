@@ -6,7 +6,7 @@
 
 ## EmbeddedReinforcement — refuerzo embebido con adherencia perfecta
 
-Barra de refuerzo recta o poligonal dentro de sólidos 2D o 3D. La barra es una cadena de elementos 1D ordinarios (`Truss2D`, `Truss3D`, sus variantes corrotacionales, cables), con cualquier material 1D. Su malla no depende de la del sólido. Spec: [EmbeddedReinforcement](specs/EmbeddedReinforcement.md).
+Barra de refuerzo recta o poligonal dentro de sólidos 2D o 3D. La barra es una cadena de elementos 1D ordinarios (`Truss2D`, `Truss3D`, sus variantes corrotacionales, cables, y las de tres nodos `Truss2D3` y `Truss3D3`), con cualquier material 1D. Su malla no depende de la del sólido. Spec: [EmbeddedReinforcement](specs/EmbeddedReinforcement.md).
 
 ### Formulación
 - Cada nodo de la barra sigue el desplazamiento interpolado del elemento de sólido que lo contiene: `u(X_b) = Σ N_i(ξ_b)·u_i`, una MPC por traslación. Es exacta también con desplazamientos grandes, porque `ξ_b` es un punto material.
@@ -36,7 +36,7 @@ constraints:
 - `points`: polilínea de la barra, con todos sus puntos dentro de los anfitriones.
 - `area`: área `A_s`.
 - `material`: material 1D.
-- `element`: elemento 1D de dos nodos.
+- `element`: elemento 1D de dos nodos o de tres (con el intermedio de cada tramo en su punto medio, atado como los extremos).
 - `hosts`: anfitriones admitidos.
 - `subdivisions`: partes por tramo.
 - `element_kwargs`: argumentos extra del elemento 1D (p. ej. `L0` de un cable).

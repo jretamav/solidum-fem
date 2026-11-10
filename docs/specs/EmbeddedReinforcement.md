@@ -7,7 +7,7 @@
 ## Especificación física
 
 ### 0. Descripción general
-Barras de refuerzo rectas o poligonales dentro de un sólido 2D (esfuerzo o deformación plana) o 3D, con adherencia perfecta. La barra es una cadena de elementos 1D ordinarios de Solidum (`Truss2D`, `Truss3D`, sus variantes corrotacionales y los cables), con cualquier material 1D registrado. Su malla es independiente de la del sólido: la define una polilínea, no los nodos del sólido. La adherencia perfecta se impone con restricciones afines (ADR 0004): cada nodo de la barra sigue el desplazamiento interpolado del elemento de sólido que lo contiene.
+Barras de refuerzo rectas o poligonales dentro de un sólido 2D (esfuerzo o deformación plana) o 3D, con adherencia perfecta. La barra es una cadena de elementos 1D ordinarios de Solidum (`Truss2D`, `Truss3D`, sus variantes corrotacionales, los cables y las barras de tres nodos `Truss2D3` y `Truss3D3`), con cualquier material 1D registrado. Su malla es independiente de la del sólido: la define una polilínea, no los nodos del sólido. La adherencia perfecta se impone con restricciones afines (ADR 0004): cada nodo de la barra sigue el desplazamiento interpolado del elemento de sólido que lo contiene.
 
 Es el concepto de refuerzo embebido de de Borst et al. (2012, §6.8.2): «the reinforcement undergoes the same displacements as the concrete elements in which it is embedded», con dos contribuciones al trabajo interno, la del sólido y la de la barra.
 
@@ -50,7 +50,7 @@ con los desplazamientos virtuales de la barra restringidos por la misma relació
 ## Formulación numérica (FEM)
 
 ### 6. Discretización
-Los tramos son elementos 1D de dos nodos. Los nodos que crea la barra son esclavos (ADR 0004): $\mathbf u = \mathbf T\,\mathbf u_{\text{libre}} + \mathbf g$, donde las filas de $\mathbf T$ son los $N_i^e(\boldsymbol\xi_b)$. El sistema reducido es $\mathbf T^\top\mathbf K\mathbf T$. En un tramo dentro de un anfitrión lineal, $\mathbf T^\top \mathbf k_t \mathbf T$ coincide con la rigidez de la barra embebida de de Borst et al. (2012, ec. 6.140).
+Los tramos son elementos 1D de dos nodos, o de tres con el intermedio en el punto medio del tramo, atado como los extremos. Los nodos que crea la barra son esclavos (ADR 0004): $\mathbf u = \mathbf T\,\mathbf u_{\text{libre}} + \mathbf g$, donde las filas de $\mathbf T$ son los $N_i^e(\boldsymbol\xi_b)$. El sistema reducido es $\mathbf T^\top\mathbf K\mathbf T$. En un tramo dentro de un anfitrión lineal, $\mathbf T^\top \mathbf k_t \mathbf T$ coincide con la rigidez de la barra embebida de de Borst et al. (2012, ec. 6.140).
 
 ### 7. Funciones de forma
 Las del anfitrión, evaluadas en $\boldsymbol\xi_b$, y las lineales del elemento 1D a lo largo del tramo.
@@ -84,7 +84,7 @@ status: validated        # draft → implemented → validated
 interface:
   dof_names: [ux, uy]    # [ux, uy, uz] en 3D; sólo traslaciones
   hosts: "todo elemento de sólido 2D/3D isoparamétrico (Tri3, Tri6, Quad4, Quad8, Quad9, Tet4, Tet10, Hex8, Hex20, Hex27) y los de módulos de usuario que declaren sus funciones de forma"
-  bar_elements: "Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot"
+  bar_elements: "Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Cable2DCorot, Cable3DCorot, Truss2D3, Truss3D3"
 
 admission:
   textbooks:
@@ -99,7 +99,7 @@ parameters:
   - { name: points, type: "lista de puntos", required: true, desc: "Polilínea de la barra en la configuración de referencia" }
   - { name: area, type: float, required: true, desc: "Área de la barra A_s" }
   - { name: material, type: "material 1D", required: true, desc: "Ley de la barra" }
-  - { name: element, type: str, required: false, desc: "Elemento 1D (Truss2D por omisión en 2D, Truss3D en 3D)" }
+  - { name: element, type: str, required: false, desc: "Elemento 1D de dos o tres nodos (Truss2D por omisión en 2D, Truss3D en 3D)" }
   - { name: hosts, type: "grupo o lista de elementos", required: false, desc: "Anfitriones admitidos (todos los sólidos por omisión)" }
   - { name: subdivisions, type: int, required: false, desc: "Partes iguales por tramo (1 por omisión)" }
 
@@ -186,3 +186,4 @@ references:
   - descuento con $E_s - E_c$: tras el agrietamiento resta un esfuerzo que el concreto no lleva, y la fuerza de la barra en fluencia queda ~15 % baja.
 - **2026-11-10** · Validada: los criterios de aceptación pasan, con la viga Q8 20×4 a +0.06 % de la sección transformada sin descuento (§3), lo que confirma también la decisión del área.
 - **2026-11-10** · Clasificación: estándar (programa principal). Texto: de Borst et al. (2012) §6.8.2, leído (ecs. 6.136–6.140). Códigos: Abaqus y OpenSees (variante A), ANSYS y DIANA (variante B).
+- **2026-11-10** · **Barras de tres nodos** (`Truss2D3`, `Truss3D3`; decisión del usuario sobre la adherencia-deslizamiento: barra cuadrática para la adherencia-deslizamiento). Cada tramo recibe un nodo intermedio en su punto medio, atado al campo del anfitrión como los extremos; `EmbeddedBar.node_ids` los intercala en el orden de la polilínea. Medido (`tests/test_embedded_reinforcement.py`): donde el campo del anfitrión es lineal a lo largo de la barra (Tri3 con cualquier inclinación, Quad4 con la barra paralela a un lado) la solución es la de la barra de dos nodos (desplazamientos a 1e-10, axial a 1e-7 por redondeo en tramos cortos); con anfitriones cuadráticos (Tri6, Tet10) y un campo cuadrático impuesto, la deformación de la barra de tres nodos es tᵀ·∇u·t a 1e-14 en todo el tramo, y la de dos nodos sólo en el punto medio de cada tramo. En Quad4 con la barra inclinada el campo bilineal es cuadrático a lo largo de la recta y la barra de tres nodos lo sigue (sin prueba de igualdad).
