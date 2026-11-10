@@ -109,7 +109,8 @@ class YamlParser:
         'boundary_conditions', 'boundary_conditions_by_node',
         'boundary_conditions_by_coord', 'boundary_conditions_by_group',
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
-        'point_loads_by_group', 'linear_constraints', 'nodal_masses', 'body_force', 'gravity',
+        'point_loads_by_group', 'linear_constraints', 'nodal_masses', 'nodal_masses_by_group',
+        'nodal_masses_by_coord', 'body_force', 'gravity',
         'tractions', 'tractions_by_group',
         'thermal_loads', 'solver', 'output', 'user_modules', 'stages',
     })
@@ -440,8 +441,7 @@ class YamlParser:
             data.get('linear_constraints'), known_node_ids))
 
         # --- Masas de nudo (ADR 0024) ---
-        errors.extend(self._validate_nodal_masses_shape(
-            data.get('nodal_masses'), known_node_ids))
+        errors.extend(self._validate_nodal_masses_shape(data, known_node_ids))
 
         # --- Solver ---
         errors.extend(self._validate_solver_cfg(data.get('solver', {}), 'solver', data))
@@ -1000,40 +1000,75 @@ class YamlParser:
                 slave=slave, masters=masters, coefficients=coefficients, g=g,
             )
 
-    @classmethod
-    def _validate_nodal_masses_shape(cls, block, known_node_ids: set) -> list:
-        """Errores de forma, de nombres y de valores del bloque
-        ``nodal_masses`` (ADR 0024). Que cada nodo tenga el grado de libertad
+    # Selectores de nodos de las masas de nudo: bloque → (claves que no son
+    # masas, forma de una entrada).
+    _NODAL_MASS_BLOCKS = {
+        'nodal_masses': (('node_id',),
+                         "'- {node_id: <id>, ux: <masa>, uy: <masa>, rz: <inercia>}'"),
+        'nodal_masses_by_group': (('group_name',),
+                                  "'- {group_name: <grupo>, ux: <masa>, uy: <masa>}'"),
+        'nodal_masses_by_coord': (_COORD_KEYS,
+                                  "'- {loc: y_max, ux: <masa>}' o "
+                                  "'- {coord: y, val: <valor>, ux: <masa>}'"),
+    }
+
+    def _nodal_mass_entries(self, data: dict, block: str) -> list:
+        """Entradas de un bloque de masas de nudo en forma de lista. Las de
+        ``*_by_group`` y ``*_by_coord`` admiten también la forma dict, como
+        las cargas puntuales."""
+        raw = data.get(block)
+        if block == 'nodal_masses_by_group' and isinstance(raw, dict):
+            return [{'group_name': k, **(v if isinstance(v, dict) else {})}
+                    for k, v in raw.items()]
+        if block == 'nodal_masses_by_coord' and isinstance(raw, dict):
+            return self._normalize_coord_specs(raw)
+        return raw
+
+    def _validate_nodal_masses_shape(self, data: dict, known_node_ids: set) -> list:
+        """Errores de forma, de nombres y de valores de los bloques de masas
+        de nudo (ADR 0024): ``nodal_masses`` (por nodo), ``nodal_masses_by_group``
+        (cada nodo de un grupo físico) y ``nodal_masses_by_coord`` (cada nodo
+        que casa con una coordenada). Que los nodos existan, que el grupo o la
+        coordenada seleccione alguno y que cada nodo tenga el grado de libertad
         nombrado lo comprueba :meth:`_parse_nodal_masses` sobre el modelo
         construido."""
-        if block is None:
-            return []
-        forma = "'- {node_id: <id>, ux: <masa>, uy: <masa>, rz: <inercia>}'"
-        if not isinstance(block, list):
-            return [f"'nodal_masses' debe ser una lista de entradas de la forma {forma}; "
-                    f"se encontró {type(block).__name__}."]
         errors = []
-        for i, entry in enumerate(block):
-            ctx = f"nodal_masses[{i}]"
-            if not isinstance(entry, dict):
-                errors.append(f"{ctx}: cada entrada debe ser un diccionario de la forma {forma}.")
+        for block, (selector_keys, forma) in self._NODAL_MASS_BLOCKS.items():
+            entries = self._nodal_mass_entries(data, block)
+            if entries is None:
                 continue
-            if 'node_id' not in entry:
-                errors.append(f"{ctx}: falta el campo obligatorio 'node_id'.")
-            elif known_node_ids and entry['node_id'] not in known_node_ids:
-                errors.append(f"{ctx}: 'node_id={entry['node_id']}' no existe en el bloque 'nodes'.")
-            dofs = {k: v for k, v in entry.items() if k != 'node_id'}
-            if not dofs:
-                errors.append(f"{ctx}: no declara ninguna masa; la forma es {forma}.")
-            for dof, value in dofs.items():
-                if dof not in _MECHANICAL_DOFS:
-                    errors.append(
-                        f"{ctx}: '{dof}' no es un grado de libertad mecánico; admitidos: "
-                        f"ux, uy, uz (masa) y rx, ry, rz (inercia rotacional)."
-                    )
-                elif not cls._is_finite_number(value) or float(value) < 0.0:
-                    errors.append(f"{ctx}.{dof}: debe ser un número finito no negativo, "
-                                  f"se encontró {value!r}.")
+            if not isinstance(entries, list):
+                errors.append(f"'{block}' debe ser una lista de entradas de la forma {forma}; "
+                              f"se encontró {type(entries).__name__}.")
+                continue
+            for i, entry in enumerate(entries):
+                ctx = f"{block}[{i}]"
+                if not isinstance(entry, dict):
+                    errors.append(f"{ctx}: cada entrada debe ser un diccionario de la forma {forma}.")
+                    continue
+                if block == 'nodal_masses':
+                    if 'node_id' not in entry:
+                        errors.append(f"{ctx}: falta el campo obligatorio 'node_id'.")
+                    elif known_node_ids and entry['node_id'] not in known_node_ids:
+                        errors.append(f"{ctx}: 'node_id={entry['node_id']}' no existe en el "
+                                      f"bloque 'nodes'.")
+                elif block == 'nodal_masses_by_group' and 'group_name' not in entry:
+                    errors.append(f"{ctx}: falta el campo obligatorio 'group_name'.")
+                elif (block == 'nodal_masses_by_coord' and 'loc' not in entry
+                      and not ('coord' in entry and 'val' in entry)):
+                    errors.append(f"{ctx}: necesita 'loc' o el par 'coord'/'val'.")
+                dofs = {k: v for k, v in entry.items() if k not in selector_keys}
+                if not dofs:
+                    errors.append(f"{ctx}: no declara ninguna masa; la forma es {forma}.")
+                for dof, value in dofs.items():
+                    if dof not in _MECHANICAL_DOFS:
+                        errors.append(
+                            f"{ctx}: '{dof}' no es un grado de libertad mecánico; admitidos: "
+                            f"ux, uy, uz (masa) y rx, ry, rz (inercia rotacional)."
+                        )
+                    elif not self._is_finite_number(value) or float(value) < 0.0:
+                        errors.append(f"{ctx}.{dof}: debe ser un número finito no negativo, "
+                                      f"se encontró {value!r}.")
         return errors
 
     def _parse_nodal_masses(self, data: dict):
@@ -1044,32 +1079,59 @@ class YamlParser:
             nodal_masses:
               - {node_id: 5, ux: 12.0e3, uy: 12.0e3}       # masa [kg]
               - {node_id: 9, ux: 12.0e3, rz: 4.0e3}        # rz: inercia [kg·m²]
+            nodal_masses_by_group:                          # cada nodo del grupo
+              - {group_name: piso_1, ux: 1.5e3, uy: 1.5e3}
+            nodal_masses_by_coord:                          # cada nodo que casa
+              - {loc: y_max, ux: 800.0}
+              - {coord: y, val: 3.0, ux: 800.0}
+
+        Con ``*_by_group`` y ``*_by_coord``, **cada** nodo seleccionado recibe
+        la masa indicada (como ``point_loads_by_group``), no una parte de
+        ella. Varias entradas sobre el mismo nodo se suman.
 
         Se ejecuta con los elementos ya construidos (también desde una malla
-        gmsh) y comprueba lo que la forma no puede decir: que el nodo exista
-        y tenga cada grado de libertad nombrado. Todos los errores juntos.
+        gmsh) y comprueba lo que la forma no puede decir: que el nodo exista,
+        que el grupo o la coordenada seleccione nodos y que cada nodo tenga el
+        grado de libertad nombrado. Todos los errores juntos.
         """
-        entries = data.get('nodal_masses') or []
-        errors = []
-        for i, entry in enumerate(entries):
-            ctx = f"nodal_masses[{i}]"
-            node = self.domain.get_node(entry['node_id'])
-            if node is None:
-                errors.append(f"{ctx}: no hay ningún nodo {entry['node_id']} en el modelo.")
-                continue
-            for dof in entry:
-                if dof != 'node_id' and dof not in node.dofs:
-                    errors.append(
-                        f"{ctx}: el nodo {node.id} no tiene el grado de libertad '{dof}' "
-                        f"(tiene {sorted(node.dofs)})."
-                    )
+        targets, errors = [], []
+        for block, (selector_keys, _forma) in self._NODAL_MASS_BLOCKS.items():
+            for i, entry in enumerate(self._nodal_mass_entries(data, block) or []):
+                ctx = f"{block}[{i}]"
+                masses = {k: float(v) for k, v in entry.items() if k not in selector_keys}
+                try:
+                    if block == 'nodal_masses':
+                        node = self.domain.get_node(entry['node_id'])
+                        if node is None:
+                            raise ValueError(f"{ctx}: no hay ningún nodo {entry['node_id']} "
+                                             f"en el modelo.")
+                        nodes = [node]
+                    elif block == 'nodal_masses_by_group':
+                        nodes = [self.domain.get_node(nid)
+                                 for nid in self._group_node_ids(entry['group_name'], ctx)]
+                    else:
+                        nodes = self._nodes_by_coord(entry, context=ctx)
+                except ValueError as exc:
+                    errors.append(str(exc))
+                    continue
+                # Un error por entrada, no por nodo: un grupo puede tener cientos.
+                bad = [n for n in nodes if any(dof not in n.dofs for dof in masses)]
+                if bad:
+                    missing = sorted({d for n in bad for d in masses if d not in n.dofs})
+                    names = ", ".join(repr(d) for d in missing)
+                    if len(bad) == 1:
+                        errors.append(f"{ctx}: el nodo {bad[0].id} no tiene el grado de "
+                                      f"libertad {names} (tiene {sorted(bad[0].dofs)}).")
+                    else:
+                        errors.append(f"{ctx}: {len(bad)} nodos no tienen el grado de libertad "
+                                      f"{names} (el nodo {bad[0].id} tiene "
+                                      f"{sorted(bad[0].dofs)}).")
+                    continue
+                targets.extend((node.id, masses) for node in nodes)
         if errors:
             raise YamlValidationError(errors)
-        for entry in entries:
-            self.domain.add_nodal_mass(
-                entry['node_id'],
-                **{dof: float(v) for dof, v in entry.items() if dof != 'node_id'},
-            )
+        for node_id, masses in targets:
+            self.domain.add_nodal_mass(node_id, **masses)
 
     @staticmethod
     def _dof_label(ref: tuple) -> str:

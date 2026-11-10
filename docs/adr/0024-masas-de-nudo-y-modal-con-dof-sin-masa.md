@@ -58,7 +58,7 @@ nodal_masses:
   - {node_id: 9, ux: 12.0e3, uy: 12.0e3, rz: 4.0e3}
 ```
 
-El bloque se valida al leer, con todos los errores juntos: forma, nombres de grados de libertad, valores y existencia de nodos y grados de libertad. Una variante por grupo físico de gmsh (`nodal_masses_by_group`, como `point_loads_by_group`) se añadirá cuando un modelo la necesite; no cambia nada de lo decidido aquí.
+El bloque se valida al leer, con todos los errores juntos: forma, nombres de grados de libertad, valores y existencia de nodos y grados de libertad. Las variantes por grupo físico de gmsh y por coordenada (`nodal_masses_by_group` y `nodal_masses_by_coord`, como `point_loads_by_group` y `point_loads_by_coord`) se añadieron el 2026-11-09: cada nodo seleccionado recibe la masa indicada. No cambian nada de lo decidido aquí.
 
 ### 5. Análisis modal con grados de libertad sin masa: condensación estática exacta
 

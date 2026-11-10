@@ -340,6 +340,18 @@ nodal_masses:
 - Los elementos siguen necesitando `density` en sus materiales (ADR 0008). Un elemento sin masa propia se declara con `density: 0.0`.
 - El bloque se valida al leer: valores finitos no negativos, grados de libertad mecánicos que el nodo tenga y nodos existentes. Todos los errores se informan juntos.
 
+Con una malla gmsh, los nodos se seleccionan también por grupo físico o por coordenada, como las cargas puntuales:
+
+```yaml
+nodal_masses_by_group:
+  - {group_name: Piso_1, ux: 1.5e3, uy: 1.5e3}   # o la forma dict:  Piso_1: {ux: 1.5e3, uy: 1.5e3}
+nodal_masses_by_coord:
+  - {loc: y_max, ux: 800.0}                     # o {coord: y, val: 3.0, ux: 800.0}; forma dict: y_max: {ux: 800.0}
+```
+
+- **Cada** nodo seleccionado recibe la masa indicada, no una parte de ella. Para repartir la masa de un nivel entre sus nodos, divídala entre su número.
+- Un grupo inexistente, una coordenada que no selecciona ningún nodo o un grado de libertad que los nodos no tienen se informan junto con los demás errores.
+
 Con masas sólo en algunos nudos, casi todos los grados de libertad quedan sin masa. El análisis modal los condensa de forma exacta (capítulo de dinámica).
 
 ## Fuerzas de Cuerpo
