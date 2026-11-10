@@ -72,6 +72,29 @@ La del elemento 1D ($\rho_s A_s L$, consistente o concentrada), transmitida al s
 ### 11. Cuadratura
 La del elemento 1D. La restricción no se integra.
 
+### 12. Adherencia-deslizamiento (opción `bond`)
+Decisiones físicas del usuario del 2026-11-10: adherencia distribuida, integración nodal por omisión con Gauss como opción, barra cuadrática recomendada, leyes `BondSlipModelCode` y `BondSlipMultilinear` (normal elástica desacoplada, descarga R1).
+
+Con `bond`, los nodos de la barra **no** se atan al anfitrión. Cada tramo, que está dentro de un solo anfitrión (la barra se corta en sus bordes, §8), se une a él por una **interfaz distribuida** a lo largo del tramo, gobernada por un material de interfaz de línea (ADR 0033).
+
+- **Desplazamiento relativo** (barra menos concreto) en el punto de coordenada $\xi \in [0, 1]$ del tramo:
+$$\Delta\mathbf u(\xi) = \sum_a N^b_a(\xi)\,\mathbf u^b_a - \sum_i N^h_i\big(\boldsymbol\xi_h(\xi)\big)\,\mathbf u^h_i,$$
+  con $N^b$ las funciones de forma del elemento de barra (2 o 3 nodos) y $N^h$ las del anfitrión, evaluadas en las coordenadas naturales del punto, que da la localización de §8.
+- **Sistema local del tramo**: $\mathbf t$ es el eje. En 2D, $\mathbf n = \mathbf e_z \times \mathbf t$. En 3D, $\mathbf n_1, \mathbf n_2$ es una base ortonormal cualquiera del plano normal, porque la ley es isótropa en ese plano. Componentes $\boldsymbol\Delta = \mathbf R\,\Delta\mathbf u$ con $\mathbf R = [\mathbf n\ (\mathbf n_1, \mathbf n_2);\ \mathbf t]$, normales primero.
+- **Fuerza por unidad de longitud** que el concreto ejerce sobre la barra: $\mathbf q = -\mathbf R^\top\mathbf W\,\mathbf t(\boldsymbol\Delta)$, con $\mathbf W = \mathrm{diag}(d_b,\ [d_b],\ p)$. La tracción normal actúa sobre el ancho proyectado $d_b$ y la de adherencia sobre el perímetro $p$. Por omisión $p = \pi d_b$; en un paquete de barras se da su perímetro.
+- **Forma débil**: la interfaz añade $\delta W_{int} = \int_{tramo} \delta\Delta\mathbf u^\top\,\mathbf R^\top\mathbf W\,\mathbf t(\boldsymbol\Delta)\,ds$. La barra recibe $-\mathbf q$ y el concreto $+\mathbf q$ (acción y reacción).
+- **Discretización**, con $\mathbf B_g = [\mathbf N^b(\xi_g)\otimes\mathbf I_d,\ -\mathbf N^h(\boldsymbol\xi_{h,g})\otimes\mathbf I_d]$:
+$$\mathbf F_{int} = \sum_g w_g L\ \mathbf B_g^\top\mathbf R^\top\mathbf W\,\mathbf t_g, \qquad \mathbf K = \sum_g w_g L\ \mathbf B_g^\top\mathbf R^\top\mathbf W\,\mathbf D_g\,\mathbf R\,\mathbf B_g,\qquad \mathbf D_g = \partial\mathbf t/\partial\boldsymbol\Delta.$$
+- **Integración**:
+  - *nodal* (por omisión, Lobatto en los nodos del tramo): pesos $\tfrac12, \tfrac12$ en barras de 2 nodos y $\tfrac16, \tfrac16, \tfrac23$ en las de 3 nodos $[i, j, m]$. La matriz de la interfaz no acopla nodos de la barra y no oscila (de Borst et al. 2012, §13.1, pp. 431–434).
+  - *Gauss* (opción): 2 puntos en barras de 2 nodos y 3 en las de 3. Oscila cuando $\lambda h > \sqrt 6$, con $\lambda = \sqrt{k\,p/(E_s A_s)}$.
+- **Barra recomendada**: `Truss2D3`/`Truss3D3` con integración nodal. Con los mismos nodos de barra da un deslizamiento entre 10 y 50 veces más exacto que la lineal, sin oscilar.
+- **Nodo en un borde común**: un nodo de la barra en el borde de dos anfitriones recibe la contribución de los dos tramos, cada uno con su anfitrión. El campo del sólido es continuo en el borde.
+- **Masa**: la de la barra; la interfaz no tiene masa.
+- **Salida**: en cada punto de integración, posición, $s$, $\tau$, $\Delta u_n$, $t_n$ y la fuerza de adherencia por unidad de longitud $p\,\tau$.
+- **Elementos de interfaz**: los genera el refuerzo, uno por tramo, como genera hoy las MPC. No se registran ni se citan en el YAML por `type`: su nodo es la barra con su anfitrión.
+
+
 ---
 
 ## Contrato de implementación
@@ -102,6 +125,7 @@ parameters:
   - { name: element, type: str, required: false, desc: "Elemento 1D de dos o tres nodos (Truss2D por omisión en 2D, Truss3D en 3D)" }
   - { name: hosts, type: "grupo o lista de elementos", required: false, desc: "Anfitriones admitidos (todos los sólidos por omisión)" }
   - { name: subdivisions, type: int, required: false, desc: "Partes iguales por tramo (1 por omisión)" }
+  - { name: bond, type: "mapping", required: false, desc: "Adherencia-deslizamiento (§12): {law: id en interface_materials (GEOMETRY line), diameter: d_b, perimeter: p (por omisión π·d_b), integration: nodal|gauss (nodal por omisión)}. Sin bond, adherencia perfecta." }
 
 conventions:
   sign: "N > 0 ⇔ tracción en la barra (la del elemento 1D)"
@@ -109,12 +133,12 @@ conventions:
   node_orientation: "la de la polilínea"
 
 validity:
-  - adherencia perfecta (el deslizamiento barra-sólido es otro componente)
+  - adherencia perfecta por omisión; con `bond`, adherencia-deslizamiento con una ley local τ–s (§12)
   - "el área de concreto que ocupa la barra no se descuenta: sobrante ρ/((1−ρ)+nρ) en rigidez elástica (§3)"
   - la barra sigue el campo regular del anfitrión; dentro de un anfitrión con discontinuidad embebida ve la deformación media del elemento, apertura de grieta incluida
 
 out_of_scope:
-  - deslizamiento barra-sólido
+  - degradación cíclica de la adherencia y efecto de la fluencia de la barra sobre τ (leyes de módulo de usuario)
   - barras con rigidez a flexión (elementos de marco embebidos)
   - barras curvas (se aproximan con la polilínea)
   - nodos de la barra fuera del sólido
@@ -158,10 +182,42 @@ acceptance:
       setup: "el mismo modelo en Python y en YAML, 2D y 3D"
       expect: "resultados idénticos"
       tol_rel: 1.0e-12
+    - name: bond_extraccion_lineal
+      setup: "extracción: barra en concreto de rigidez muy alta, ley lineal τ = k·s (BondSlipMultilinear de un tramo), Truss2D3 con integración nodal"
+      expect: "deslizamiento igual a la solución cerrada s(x) = P/(E_s A_s λ)·cosh(λ(ℓ−x))/sinh(λℓ) con error decreciente al refinar la barra (valores medidos en el Diálogo)"
+      tol_rel: 1.0e-3
+    - name: bond_sin_oscilacion
+      setup: "la misma extracción con λh = 3.5"
+      expect: "integración nodal: τ monótona a lo largo de la barra; Gauss: τ cambia de signo (propiedad documentada)"
+    - name: bond_limite_adherencia_perfecta
+      setup: "k0 y k_n multiplicados por 1e4 frente a un valor de servicio, viga con refuerzo"
+      expect: "desplazamientos del sólido → los de la adherencia perfecta (MPC)"
+      tol_rel: 1.0e-4
+    - name: bond_equilibrio
+      setup: "barra con adherencia-deslizamiento bajo carga cualquiera"
+      expect: "Σ fuerzas de la interfaz sobre la barra + fuerzas aplicadas en sus nodos = 0; la reacción sobre el concreto es la opuesta"
+      tol_rel: 1.0e-10
+    - name: bond_traslacion_rigida
+      setup: "traslación rígida de barra y sólido juntos"
+      expect: "sin fuerzas de interfaz"
+      tol_abs: 1.0e-12
+    - name: bond_anclaje_uniforme
+      setup: "barra casi rígida (E_s muy alto) en concreto casi rígido, deslizamiento impuesto uniforme siguiendo el ciclo de la Fig. 5.3b"
+      expect: "fuerza de extracción P = τ(s)·p·ℓ con la τ de la ley en cada instante, envolvente, descarga, fricción y recarga incluidas"
+      tol_rel: 1.0e-8
+    - name: bond_quiebre
+      setup: "barra con un quiebre de la polilínea, en tracción"
+      expect: "resultante de las tracciones normales de la interfaz en torno al quiebre = N·(t1 − t2)"
+      tol_rel: 1.0e-8
+    - name: bond_3d_y_yaml
+      setup: "extracción en un sólido Hex8 y el mismo modelo 2D y 3D en YAML"
+      expect: "equilibrio de la barra y resultados del YAML idénticos a Python"
+      tol_rel: 1.0e-10
 
 references:
   - "de Borst R., Crisfield M. A., Remmers J. J. C., Verhoosel C. V. (2012). Non-linear Finite Element Analysis of Solids and Structures, 2.ª ed., Wiley, §6.8.2. doi:10.1002/9781118375938"
   - "Elwi A. E., Hrudey T. M. (1989). Finite element model for curved embedded reinforcement. J. Eng. Mech. 115(4):740-754. doi:10.1061/(asce)0733-9399(1989)115:4(740)"
+  - "Ngo D., Scordelis A. C. (1967). Finite element analysis of reinforced concrete beams. ACI J. 64(3):152-163 (enlaces de adherencia)."
   - "Barzegar F., Maddipudi S. (1994). Generating reinforcement in FE modeling of concrete structures. J. Struct. Eng. 120(5):1656-1662. doi:10.1061/(asce)0733-9445(1994)120:5(1656)"
 ```
 
@@ -187,3 +243,5 @@ references:
 - **2026-11-10** · Validada: los criterios de aceptación pasan, con la viga Q8 20×4 a +0.06 % de la sección transformada sin descuento (§3), lo que confirma también la decisión del área.
 - **2026-11-10** · Clasificación: estándar (programa principal). Texto: de Borst et al. (2012) §6.8.2, leído (ecs. 6.136–6.140). Códigos: Abaqus y OpenSees (variante A), ANSYS y DIANA (variante B).
 - **2026-11-10** · **Barras de tres nodos** (`Truss2D3`, `Truss3D3`; decisión del usuario sobre la adherencia-deslizamiento: barra cuadrática para la adherencia-deslizamiento). Cada tramo recibe un nodo intermedio en su punto medio, atado al campo del anfitrión como los extremos; `EmbeddedBar.node_ids` los intercala en el orden de la polilínea. Medido (`tests/test_embedded_reinforcement.py`): donde el campo del anfitrión es lineal a lo largo de la barra (Tri3 con cualquier inclinación, Quad4 con la barra paralela a un lado) la solución es la de la barra de dos nodos (desplazamientos a 1e-10, axial a 1e-7 por redondeo en tramos cortos); con anfitriones cuadráticos (Tri6, Tet10) y un campo cuadrático impuesto, la deformación de la barra de tres nodos es tᵀ·∇u·t a 1e-14 en todo el tramo, y la de dos nodos sólo en el punto medio de cada tramo. En Quad4 con la barra inclinada el campo bilineal es cuadrático a lo largo de la recta y la barra de tres nodos lo sigue (sin prueba de igualdad).
+- **2026-11-10** · **Ampliación en BORRADOR (§12): adherencia-deslizamiento**, pendiente de la aprobación del usuario. Las decisiones físicas de la adherencia-deslizamiento son: distribuida, integración nodal con Gauss opcional, barra cuadrática recomendada, leyes `BondSlipModelCode` y `BondSlipMultilinear`. Los elementos de interfaz los genera el refuerzo (uno por tramo) y no se registran, porque su número de nodos es variable (barra + anfitrión) y nadie los cita por `type`. Los casos `bond_*` de `acceptance` son de esta ampliación.
+- **2026-11-10** · §12 y casos `bond_*` **aprobados por el usuario** («si»).
