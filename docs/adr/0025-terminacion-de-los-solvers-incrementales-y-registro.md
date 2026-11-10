@@ -62,6 +62,8 @@ Como `SolverDivergedError` hereda de `RuntimeError`, el código que capturaba `R
 
 El mecanismo vive en la base como puntos de extensión que una variante redefine: `_target_reached`, `_limit_step` y `_step_summary`. No hay casos especiales.
 
+**Ampliación (9 de noviembre de 2026): también en el arco cilíndrico.** `ArcLengthSolver(..., control=[...], control_target=c)` acepta la misma magnitud y el mismo objetivo. Ahí `control` sólo **mide**: la restricción del paso sigue siendo la norma del incremento, y el trazado sigue los puntos límite que el control indirecto no puede seguir si la magnitud retrocede. Como la restricción no fija $\mathbf c^\top\Delta\mathbf U$, el último paso no se puede recortar de antemano: el paso convergido que cruza el objetivo no se consolida y se repite desde el último estado convergido con la restricción del control indirecto, $\mathbf c^\top\Delta\mathbf U$ = lo que falta, partiendo de la interpolación lineal del tramo. Es la misma llegada exacta que la de `max_lambda` (2026-09-23); si un paso cruza los dos, se llega al que está antes en el tramo. La magnitud, el objetivo y su estado (`control_final`, `reached_control_target`) pasan a la base, y `IndirectDisplacementSolver` sólo añade que `control` es además su restricción. Medido: en el arco de von Mises trazado hasta 1.5 veces la altura del vértice (más allá del salto), el último punto coincide con el objetivo a precisión de máquina con tres longitudes de arco y es el mismo punto de equilibrio que da el control indirecto (λ con diferencia relativa < 1e-8). Pruebas: `tests/test_arclength_control_target.py`.
+
 ### 4. Política de niveles del registro (amplía el ADR 0005)
 
 | Nivel | Contenido |

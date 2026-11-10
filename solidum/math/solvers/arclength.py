@@ -45,10 +45,23 @@ decidía con el predictor: si la extrapolación tangente rebasaba
 que convergía por encima de ``max_lambda`` terminaba el trazado ahí (medido:
 arco de von Mises con ``max_lambda = 0.39`` devolvía λ = 0.398).
 
+Parada en el valor de una magnitud (ADR 0025)
+---------------------------------------------
+Con ``control`` (una combinación de grados de libertad, ``cᵀ·U``) y
+``control_target``, el trazado se detiene cuando la magnitud alcanza ese
+valor: el desplazamiento de un nodo, la deriva de un entrepiso. En el arco
+cilíndrico ``control`` sólo **mide**; la restricción del paso sigue siendo
+la norma del incremento. Si un paso convergido cruza el objetivo, su estado
+no se consolida y el paso se repite desde el último estado convergido con
+la restricción del control indirecto, ``cᵀ·ΔU`` = lo que falta, partiendo
+de la interpolación lineal del tramo: el último punto coincide con el
+objetivo a precisión de máquina. Es la misma llegada exacta que la de
+``max_lambda`` (si un paso cruza los dos, se llega al que está antes en el
+tramo). En el control indirecto, ``control`` es además la restricción.
+
 Fin del trazado (ADR 0025)
 --------------------------
-El bucle termina al alcanzar ``max_lambda``, al alcanzar el objetivo de una
-variante que lo tenga (``control_target`` del control indirecto), al agotar
+El bucle termina al alcanzar ``max_lambda``, al alcanzar ``control_target``, al agotar
 ``max_steps`` o cuando un paso no converge ni con la longitud mínima. El
 motivo queda en ``termination`` (:class:`~solidum.math.solvers.diagnostics.Termination`)
 junto con ``lambda_final``, ``steps_done``, ``n_bisections`` y ``U_final``
@@ -73,6 +86,8 @@ de ``u0`` a los del modelo (:mod:`solidum.math.solvers.stages`). Es el empuje
 lateral con la gravedad ya aplicada.
 """
 from __future__ import annotations
+
+import math
 
 import numpy as np
 
@@ -101,6 +116,46 @@ from solidum.math.solvers.model_checks import (
 from solidum.math.solvers.stages import Stage, check_initial_equilibrium, make_stage
 from solidum.registry import SolverRegistry
 
+# |cᵀ·du_t| por debajo de esta fracción de ‖c‖·‖du_t‖: la magnitud
+# controlada no responde a la carga y ``Δλ`` no está determinado.
+_INSENSITIVE_RTOL = 1.0e-12
+# ``control_target`` se da por alcanzado a esta fracción de su valor: la
+# llegada es exacta salvo el redondeo de acumular ``cᵀ·U`` paso a paso.
+_TARGET_RTOL = 1.0e-12
+
+
+def normalize_control(control, name: str) -> list[tuple]:
+    """Lista de ``(nodo, dof, coef)`` validada en forma (no en existencia: los
+    nodos y sus grados de libertad se comprueban al resolver). Cada término es
+    una tupla ``(nodo, dof, coef)`` o un dict ``{node, dof, coef}``."""
+    if isinstance(control, dict) or not control:
+        raise ValueError(
+            f"{name}: 'control' debe ser una lista no vacía de términos "
+            f"(nodo, dof, coef), p. ej. [(b, 'ux', 1.0), (a, 'ux', -1.0)].")
+    terms = []
+    for k, term in enumerate(control):
+        if isinstance(term, dict):
+            unknown = set(term) - {'node', 'dof', 'coef'}
+            if unknown or 'node' not in term or 'dof' not in term:
+                raise ValueError(
+                    f"{name}: el término {k} de 'control' debe tener las claves "
+                    f"'node' y 'dof' (y opcionalmente 'coef'); recibido {term}.")
+            node, dof, coef = term['node'], term['dof'], term.get('coef', 1.0)
+        else:
+            try:
+                node, dof, coef = term
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"{name}: el término {k} de 'control' debe ser (nodo, dof, "
+                    f"coef) o {{node, dof, coef}}; recibido {term!r}.") from None
+        coef = float(coef)
+        if not isinstance(dof, str):
+            raise ValueError(f"{name}: dof {dof!r} del término {k} debe ser un nombre ('ux', …).")
+        if not math.isfinite(coef) or coef == 0.0:
+            raise ValueError(f"{name}: coef={coef} del término {k} debe ser finito y no nulo.")
+        terms.append((node, dof, coef))
+    return terms
+
 
 class _ArcProblem:
     """Paso del arc-length en el protocolo ``NewtonProblem``.
@@ -114,16 +169,21 @@ class _ArcProblem:
     - ``"newton"`` — llegada a ``max_lambda``: ``λ`` fijo, corrección de
       Newton pura;
     - ``"cylindrical"`` — cuadrática de Crisfield ``‖ΔU‖² = dl²`` con
-      selección de raíz por menor ángulo con el incremento previo.
+      selección de raíz por menor ángulo con el incremento previo;
+    - ``"indirect"`` — restricción lineal ``cᵀ·ΔU = dl`` con el vector
+      ``control_vector`` (control indirecto de desplazamiento, y llegada
+      exacta a ``control_target``).
 
     Con ``max_lambda``, un paso con restricción que converge por encima de
     él no consolida el estado y marca ``overshoot``: el solver repite el
-    paso con llegada exacta (``ArcLengthSolver._land``).
+    paso con llegada exacta (``ArcLengthSolver._land``). Lo mismo si
+    ``overshoot_check(U)`` es verdadero (el paso cruzó ``control_target``).
     """
 
     def __init__(self, assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
                  *, mode: str, dl: float, max_lambda: float | None = None,
-                 stage: Stage | None = None):
+                 stage: Stage | None = None, control_vector: np.ndarray | None = None,
+                 overshoot_check=None):
         self.assembler = assembler
         self.U_current = U_current
         self.lambda_curr = float(lambda_curr)
@@ -132,6 +192,8 @@ class _ArcProblem:
         self.mode = mode
         self.dl = float(dl)
         self.max_lambda = max_lambda
+        self.c = control_vector
+        self.overshoot_check = overshoot_check
         self.overshoot = False
         # Etapa de carga (ADR 0026): carga constante y valores impuestos de
         # partida. Sin etapa, nulos.
@@ -195,8 +257,9 @@ class _ArcProblem:
         # Paso con restricción que acaba por encima de max_lambda: no se
         # consolida (el trial queda en U_iter y el siguiente ensamblaje lo
         # recalcula desde el estado consolidado); el solver aterriza.
-        if (self.mode != "newton" and self.max_lambda is not None
-                and x[1] > self.max_lambda + ZERO_TOL):
+        if self.mode != "newton" and (
+                (self.max_lambda is not None and x[1] > self.max_lambda + ZERO_TOL)
+                or (self.overshoot_check is not None and self.overshoot_check(x[0]))):
             self.overshoot = True
             return
         # Estado trial del ensamblaje en U_iter: coherente con lo guardado.
@@ -224,6 +287,14 @@ class _ArcProblem:
             theta2 = np.dot(dU_iter, dU_new + ddl2 * du_t)
             ddlambda = ddl1 if theta1 > theta2 else ddl2
             return du_R + ddlambda * du_t, ddlambda
+        if self.mode == "indirect":
+            denom = float(self.c @ du_t)
+            if abs(denom) <= _INSENSITIVE_RTOL * np.linalg.norm(self.c) * np.linalg.norm(du_t):
+                raise CorrectionAborted(
+                    "cᵀ·du_t ≈ 0: la magnitud controlada no responde a la carga en "
+                    "este estado; el paso no determina Δλ.")
+            ddlambda = (self.dl - float(self.c @ (dU_iter + du_R))) / denom
+            return du_R + ddlambda * du_t, ddlambda
         raise ValueError(f"_ArcProblem: modo desconocido {self.mode!r}.")
 
 
@@ -245,6 +316,25 @@ class ArcLengthSolver:
         Longitud de arco del primer paso, en unidades de desplazamiento.
         Excluyente con ``initial_dlambda``.
 
+    Parada en el valor de una magnitud
+    ----------------------------------
+    control : list, opcional
+        Magnitud vigilada, ``cᵀ·U = Σ coef·u(nodo, dof)``. Cada término es una
+        tupla ``(nodo, dof, coef)`` o un dict ``{node, dof, coef}`` (``coef``
+        vale 1 si se omite); ``nodo`` es un :class:`Node` o su id. La deriva
+        entre los nodos ``a`` y ``b`` en ``x`` es ``[(b, 'ux', 1.0), (a, 'ux',
+        -1.0)]``. Los grados de libertad no pueden estar prescritos. En el arco
+        cilíndrico sólo se mide (la línea ``INFO`` de cada paso la muestra);
+        en :class:`IndirectDisplacementSolver` es además la restricción.
+    control_target : float, opcional
+        Valor **absoluto** de ``cᵀ·U`` en el que se detiene el trazado
+        (requiere ``control``). El paso que lo cruza se repite con llegada
+        exacta (ver el docstring del módulo): deja ``termination =
+        "control_target"`` y ``reached_control_target = True``. Puede
+        combinarse con ``max_lambda``: se detiene en lo que llegue primero
+        (con un objetivo, conviene un ``max_lambda`` holgado). En una etapa
+        (ADR 0026) la magnitud parte de su valor en ``u0``.
+
     Atributos de estado tras ``solve`` (ADR 0025)
     ---------------------------------------------
     ``solve`` los reinicia al empezar y los deja también cuando termina con
@@ -262,6 +352,11 @@ class ArcLengthSolver:
         Factor de carga del último paso convergido.
     reached_max_lambda : bool
         ``True`` si el trazado alcanzó ``max_lambda``.
+    reached_control_target : bool
+        ``True`` si el trazado alcanzó ``control_target``.
+    control_final : float
+        Valor de la magnitud ``cᵀ·U`` en el último paso convergido (0 sin
+        ``control``).
     steps_done : int
         Número de pasos convergidos.
     n_bisections : int
@@ -279,8 +374,32 @@ class ArcLengthSolver:
                  initial_dl: float | None = None, max_steps=100,
                  dl_grow_factor=1.5, dl_max_factor=5.0, dl_shrink_factor=0.6,
                  dl_grow_iter_threshold=4, dl_shrink_iter_threshold=8,
-                 linear_algebra: str = "auto", *, initial_dlambda: float | None = None):
+                 linear_algebra: str = "auto", *, initial_dlambda: float | None = None,
+                 control=None, control_target: float | None = None):
         self.assembler = assembler
+        name = type(self).__name__
+        # Magnitud vigilada y objetivo (ADR 0025). ``_c_raw`` es el vector de
+        # la magnitud tal como se declaró; ``_c``, el mismo orientado hacia el
+        # objetivo (``_direction`` = ±1). Se construyen al resolver, sobre la
+        # numeración de ecuaciones vigente.
+        self.control = None if control is None else normalize_control(control, name)
+        if control_target is not None:
+            if self.control is None:
+                raise ValueError(
+                    f"{name}: control_target necesita 'control', la combinación de "
+                    f"grados de libertad cuyo valor se vigila.")
+            control_target = float(control_target)
+            if not math.isfinite(control_target):
+                raise ValueError(
+                    f"{name}: control_target={control_target} debe ser un número finito.")
+        self.control_target: float | None = control_target
+        self._c: np.ndarray | None = None
+        self._c_raw: np.ndarray | None = None
+        self._direction: float = 1.0
+        self._target_scale: float = 0.0
+        self.reached_control_target: bool = False
+        self.control_final: float = 0.0
+        self._landed_on: str | None = None
         # Política de convergencia (ADR 0007). Compartida con NonlinearSolver:
         # cambiar la política aquí llega automáticamente al arc-length.
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
@@ -361,14 +480,91 @@ class ArcLengthSolver:
         return _ArcProblem(
             self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
             mode="cylindrical", dl=dl, max_lambda=self.max_lambda, stage=self._stage,
+            overshoot_check=(self._crossed_target if self.control_target is not None
+                             else None),
         )
 
     def _on_solve_start(self) -> None:
-        """Preparación dependiente de la numeración de ecuaciones (no-op)."""
+        """Preparación dependiente de la numeración de ecuaciones: el vector
+        de la magnitud vigilada, si hay ``control``."""
+        if self.control is not None:
+            self._setup_control()
+
+    def _setup_control(self) -> None:
+        """Vector ``c`` de la magnitud vigilada sobre la numeración vigente.
+
+        ``c`` actúa sobre el incremento completo ``ΔU = T·Δu_libre + Δλ·g``
+        (ADR 0004), que incluye los esclavos reconstruidos por ``T``: el
+        esclavo de una restricción multipunto con maestros (fila de ``T`` no
+        vacía) se admite, porque su incremento lo fijan sus maestros. Un grado
+        de libertad prescrito (fila de ``T`` vacía: apoyo declarado, o esclavo
+        cuyos maestros están todos prescritos, que hereda el apoyo por el
+        cierre transitivo) se rechaza: su incremento es ``Δλ·g_s``, no depende
+        del equilibrio. También se rechaza una combinación cuya proyección
+        ``Tᵀ·c`` sobre los grados de libertad libres se anula (p. ej.
+        ``u_s − u_m`` con ``u_s = u_m + g``)."""
+        name = type(self).__name__
+        domain = self.assembler.domain
+        ndof = domain.total_dofs
+        T = self.assembler.constraint_set.build(ndof)[0].tocsr()
+        c = np.zeros(ndof)
+        for node, dof, coef in self.control:
+            if not hasattr(node, 'dofs'):
+                node_obj = domain.get_node(node)
+                if node_obj is None:
+                    raise ValueError(
+                        f"{name}: el nodo {node!r} de 'control' no existe en el modelo.")
+                node = node_obj
+            if dof not in node.dofs:
+                raise ValueError(
+                    f"{name}: el nodo {node.id} no tiene el grado de libertad {dof!r}; "
+                    f"tiene {sorted(node.dofs)}.")
+            index = node.dofs[dof]
+            row = T.data[T.indptr[index]:T.indptr[index + 1]]
+            if not np.any(row):
+                raise ValueError(
+                    f"{name}: el grado de libertad {dof!r} del nodo {node.id} está "
+                    f"prescrito (apoyo, o esclavo de una restricción multipunto cuyos "
+                    f"maestros están todos prescritos): su incremento no depende del "
+                    f"equilibrio y no puede formar parte de la magnitud controlada. "
+                    f"Para controlar el desplazamiento de un nodo respecto de un apoyo "
+                    f"fijo basta con el nodo solo.")
+            c[index] += coef
+        # Proyección sobre los grados de libertad libres: cᵀ·ΔU = (Tᵀc)ᵀ·Δu_libre
+        # + Δλ·cᵀg. Sin restricciones multipunto, Tᵀc = 0 sólo si c = 0.
+        c_free = T.T @ c
+        scale = abs(T).T @ np.abs(c)
+        if np.linalg.norm(c_free) <= _INSENSITIVE_RTOL * np.linalg.norm(scale):
+            raise ValueError(
+                f"{name}: los términos de 'control' se anulan entre sí (Tᵀ·c = 0: "
+                f"tras aplicar las restricciones multipunto, la combinación no "
+                f"depende de ningún grado de libertad libre).")
+        self._c_raw = c
+        self._direction = 1.0
+        self._c = c
+        if self.control_target is not None:
+            # Sentido del trazado: del valor de partida (u0 de la etapa, o
+            # cero) hacia el objetivo (ADR 0025, ampliado para etapas).
+            start = float(c @ self._stage.U0)
+            self._target_scale = max(abs(self.control_target), abs(start))
+            gap = self.control_target - start
+            if abs(gap) <= _TARGET_RTOL * self._target_scale:
+                _log.warning(
+                    f"{name}: control_target = {self.control_target:.6e} es el valor "
+                    f"de partida de la magnitud controlada; no hay nada que trazar.")
+            self._direction = 1.0 if gap >= 0.0 else -1.0
+            self._c = self._direction * c
 
     def _first_dl(self, du_t: np.ndarray) -> float:
         """Longitud de arco del primer paso a partir del predictor elástico
         ``du_t = K⁻¹·F_ref`` (misma magnitud que la restricción del paso)."""
+        if self.control_target is not None and self._c is not None:
+            m = float(self._c @ du_t)
+            if np.isfinite(m) and m < 0.0:
+                _log.warning(
+                    f"{type(self).__name__}: la carga de referencia aleja la magnitud "
+                    f"vigilada de control_target; el arco avanza con λ creciente y "
+                    f"puede no alcanzarlo (lo alcanzaría tras un punto límite).")
         if self.initial_dl is not None:
             dl = self.initial_dl
         else:
@@ -388,26 +584,54 @@ class ArcLengthSolver:
         return float(dl)
 
     def _land(self, U_current, lambda_curr, x_over, F_ext_ref, free_dofs):
-        """Llegada exacta a ``max_lambda`` dentro del tramo recién recorrido.
+        """Llegada exacta a ``max_lambda`` o a ``control_target`` dentro del
+        tramo recién recorrido.
 
-        ``x_over`` es el paso con restricción que convergió por encima de
-        ``max_lambda`` (sin consolidar). Newton puro con λ = ``max_lambda``
-        desde el último estado consolidado, arrancando de la interpolación
-        lineal del tramo. Devuelve el ``CorrectorResult``.
+        ``x_over`` es el paso con restricción que convergió más allá (sin
+        consolidar). Si cruzó los dos, se llega al que está antes en el tramo.
+        A ``max_lambda``: Newton puro con λ fijo. A ``control_target``:
+        restricción indirecta ``cᵀ·ΔU`` = lo que falta, con λ libre. En los dos
+        casos desde el último estado consolidado, arrancando de la
+        interpolación lineal del tramo. Devuelve el ``CorrectorResult`` y deja
+        en ``_landed_on`` a cuál se llegó.
         """
         U_over, lambda_over, _ = x_over
-        t = (self.max_lambda - lambda_curr) / (lambda_over - lambda_curr)
-        dU0 = t * (U_over - U_current)
-        _log.debug(
-            f"  λ = {lambda_over:.4f} rebasa max_lambda = {self.max_lambda:.4f}: "
-            f"llegada exacta dentro del tramo recorrido."
-        )
-        problem = _ArcProblem(
-            self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
-            mode="newton", dl=0.0, stage=self._stage,
-        )
+        t_lambda = (math.inf if lambda_over <= self.max_lambda + ZERO_TOL
+                    else (self.max_lambda - lambda_curr) / (lambda_over - lambda_curr))
+        t_target = math.inf
+        if self.control_target is not None and self._crossed_target(U_over):
+            before, after = self._remaining(U_current), self._remaining(U_over)
+            t_target = before / (before - after)
+        if t_target < t_lambda:
+            self._landed_on = "control_target"
+            dU0 = t_target * (U_over - U_current)
+            lambda0 = lambda_curr + t_target * (lambda_over - lambda_curr)
+            _log.debug(
+                f"  {self._step_summary(U_over).strip(' |')} rebasa control_target = "
+                f"{self.control_target:.6e}: llegada exacta dentro del tramo recorrido.")
+            problem = _ArcProblem(
+                self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+                mode="indirect", dl=self._remaining(U_current), stage=self._stage,
+                control_vector=self._c,
+            )
+        else:
+            self._landed_on = "max_lambda"
+            if not math.isfinite(t_lambda):
+                # Llamada sin cruce detectado (una variante que aterriza por su
+                # cuenta): la interpolación de siempre hacia max_lambda.
+                t_lambda = (self.max_lambda - lambda_curr) / (lambda_over - lambda_curr)
+            dU0 = t_lambda * (U_over - U_current)
+            lambda0 = self.max_lambda
+            _log.debug(
+                f"  λ = {lambda_over:.4f} rebasa max_lambda = {self.max_lambda:.4f}: "
+                f"llegada exacta dentro del tramo recorrido."
+            )
+            problem = _ArcProblem(
+                self.assembler, U_current, lambda_curr, F_ext_ref, free_dofs,
+                mode="newton", dl=0.0, stage=self._stage,
+            )
         return self.corrector.run(
-            problem, (U_current + dU0, self.max_lambda, dU0), check_initial=True,
+            problem, (U_current + dU0, lambda0, dU0), check_initial=True,
             initial_delta_norm=float(np.linalg.norm(dU0)),
         )
 
@@ -421,12 +645,15 @@ class ArcLengthSolver:
         self.termination = None
         self.lambda_final = 0.0
         self.reached_max_lambda = False
+        self.reached_control_target = False
+        self.control_final = 0.0
         self.steps_done = 0
         self.n_bisections = 0
         self.U_final = None
         self.dl_reference = None
         self.initial_residual = None
         self._stage = None
+        self._landed_on = None
 
     @property
     def completed(self) -> bool:
@@ -435,26 +662,46 @@ class ArcLengthSolver:
         fracaso o antes de trazar."""
         return self.termination in (Termination.MAX_LAMBDA, Termination.CONTROL_TARGET)
 
+    def _control_value(self, U) -> float:
+        """Magnitud vigilada tal como se declaró, ``cᵀ·U``."""
+        return float(self._c_raw @ U)
+
+    def _remaining(self, U) -> float:
+        """Lo que falta hasta ``control_target``, medido en el sentido del
+        trazado (negativo si se rebasó)."""
+        return self._direction * (self.control_target - self._control_value(U))
+
     def _target_reached(self, U: np.ndarray | None) -> bool:
-        """Objetivo propio de una variante, además de ``max_lambda`` (ninguno
-        aquí; el control indirecto tiene ``control_target``)."""
-        return False
+        """``True`` si ``U`` está en ``control_target`` (a la tolerancia de
+        redondeo); siempre ``False`` sin objetivo."""
+        if self.control_target is None or U is None or self._c_raw is None:
+            return False
+        return self._remaining(U) <= _TARGET_RTOL * self._target_scale
+
+    def _crossed_target(self, U) -> bool:
+        """``True`` si ``U`` rebasó ``control_target`` más allá del redondeo:
+        el paso que llegó a ``U`` debe repetirse con llegada exacta."""
+        return self._remaining(U) < -_TARGET_RTOL * self._target_scale
 
     def _limit_step(self, dl: float, U: np.ndarray) -> float:
-        """Longitud del paso siguiente: una variante con objetivo la recorta
-        para llegar exactamente a él (aquí, sin cambio)."""
+        """Longitud del paso siguiente: una variante con restricción sobre la
+        magnitud vigilada la recorta para llegar exactamente al objetivo
+        (aquí, sin cambio: el cruce se resuelve con ``_land``)."""
         return dl
 
     def _step_summary(self, U: np.ndarray) -> str:
-        """Texto extra de la línea ``INFO`` del paso (la magnitud controlada
-        en el control indirecto)."""
-        return ""
+        """Texto extra de la línea ``INFO`` del paso: la magnitud vigilada."""
+        if self._c_raw is None:
+            return ""
+        return f" | control = {self._control_value(U):.6e}"
 
     def _record(self, lambda_curr: float, steps: int, U: np.ndarray | None) -> None:
         """Hasta dónde llegó el trazado: último paso convergido."""
         self.lambda_final = float(lambda_curr)
         self.steps_done = int(steps)
         self.U_final = None if U is None else np.array(U, dtype=float, copy=True)
+        if U is not None and self._c_raw is not None:
+            self.control_final = self._control_value(U)
 
     def _finish(self, lambda_curr: float, step: int, U: np.ndarray | None = None) -> None:
         """Registra el estado final de un trazado que terminó sin fracaso y
@@ -467,6 +714,7 @@ class ArcLengthSolver:
             self.termination = Termination.MAX_LAMBDA
         else:
             self.termination = Termination.MAX_STEPS
+        self.reached_control_target = self.termination is Termination.CONTROL_TARGET
         name = type(self).__name__
         if self.termination is Termination.MAX_STEPS:
             _log.warning(
@@ -641,7 +889,7 @@ class ArcLengthSolver:
                 _log.info(
                     f"[PASO {step}] λ = {lambda_curr:.4f} | dl = {dl_step:.3e} | "
                     f"{res.n_solves} iter{self._step_summary(U_current)}"
-                    + (" | llegada exacta a max_lambda" if landed else "")
+                    + (f" | llegada exacta a {self._landed_on}" if landed else "")
                 )
                 # Auto-ajuste de longitud de arco
                 if res.n_solves < self.dl_grow_iter_threshold:

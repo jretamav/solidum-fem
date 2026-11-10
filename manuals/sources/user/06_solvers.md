@@ -80,9 +80,22 @@ solver:
 | `termination` | Significado |
 |---|---|
 | `"max_lambda"` | Llegó a `max_lambda`. |
-| `"control_target"` | Llegó al desplazamiento objetivo (`IndirectDisplacementSolver`, `control_target`). |
+| `"control_target"` | Llegó al valor objetivo de la magnitud vigilada (`control_target`). |
 | `"max_steps"` | Agotó `max_steps` antes de terminar. `solve()` devuelve el último paso convergido sin lanzar, pero **no es el análisis pedido**: `completed` es `False` y `SolveResult.converged` también. |
 | `"diverged"` | Un paso no convergió ni reduciendo la longitud al mínimo. `solve()` lanza una `SolverDivergedError` tipada con la causa; `StepConstraintError` si la restricción del paso no tiene solución (raíces imaginarias). |
+
+**Parar en un desplazamiento.** Con `control` (la magnitud vigilada, la misma sintaxis que en `IndirectDisplacementSolver`) y `control_target`, el arco se detiene cuando la magnitud alcanza ese valor:
+
+```yaml
+solver:
+  type: ArcLengthSolver
+  control:
+    - {node: 12, dof: ux, coef: 1.0}   # desplazamiento horizontal del nodo 12
+  control_target: 0.15                # se detiene con 150 mm
+  max_lambda: 1.0e9                   # holgado: la parada la decide el objetivo
+```
+
+En el arco, `control` sólo mide: la restricción del paso sigue siendo la longitud de arco, así que el trazado pasa puntos límite. El paso que cruza el objetivo se repite con llegada exacta: el último punto tiene exactamente el valor pedido. Si `max_lambda` llega antes, se detiene ahí.
 
 `lambda_final`, `steps_done`, `n_bisections` y `U_final` dicen hasta dónde llegó (último paso convergido), también tras una excepción, y `solve()` los reinicia al empezar. `solidum.run` copia el motivo en `SolveResult.termination`. `NonlinearSolver` deja los mismos atributos (`"max_lambda"` al completar la carga, `"diverged"` antes de lanzar).
 
