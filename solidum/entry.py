@@ -270,6 +270,7 @@ def run_transient(
     t_end: float | None = None,
     dt: float | None = None,
     previous: SolveResult | TransientResult | None = None,
+    step_callback: StepCallback | None = None,
     **solver_kwargs,
 ) -> TransientResult:
     """Ejecuta un análisis dinámico transitorio y retorna el resultado.
@@ -295,6 +296,9 @@ def run_transient(
         se mantiene constante) o un transitorio (parte de su estado final en
         su instante final; ``t_end`` es entonces el instante final absoluto).
         Use el mismo ``assembler``: guarda el estado interno de los elementos.
+    step_callback
+        ``callback(step, U, t)`` tras cada paso convergido: el paso, los
+        desplazamientos globales y el instante (progreso, monitoreo).
     **solver_kwargs
         Resto de parámetros del constructor del NewmarkSolver default.
 
@@ -317,9 +321,22 @@ def run_transient(
 
     if previous is not None:
         solver.continue_from(previous)
-    result = solver.solve()
+    result = _solve_with_progress(solver, step_callback)
     domain.last_result = result
     return result
+
+
+def _solve_with_progress(solver, step_callback):
+    """``solver.solve()`` de un análisis en el tiempo con ``step_callback``
+    durante la llamada (el del solver se restituye después)."""
+    if step_callback is None:
+        return solver.solve()
+    before = getattr(solver, "step_callback", None)
+    solver.step_callback = step_callback
+    try:
+        return solver.solve()
+    finally:
+        solver.step_callback = before
 
 
 def run_thermal_transient(
@@ -331,6 +348,7 @@ def run_thermal_transient(
     n_steps: int | None = None,
     T_initial: float | np.ndarray | None = None,
     previous: SolveResult | ThermalTransientResult | None = None,
+    step_callback: StepCallback | None = None,
     **solver_kwargs,
 ) -> ThermalTransientResult:
     """Ejecuta un análisis **térmico transitorio** y retorna el resultado.
@@ -361,6 +379,9 @@ def run_thermal_transient(
         Análisis del que continúa (ADR 0029): un estacionario
         (``SolveResult``; su carga se mantiene) o un transitorio térmico
         (parte de sus temperaturas finales en su instante final).
+    step_callback
+        ``callback(step, T, t)`` tras cada paso convergido: el paso, las
+        temperaturas globales y el instante.
     **solver_kwargs
         Resto de parámetros del constructor del ``ThetaMethodSolver``
         (``theta``, ``lumping``, ``F_func``, ``dirichlet_func``,
@@ -389,7 +410,7 @@ def run_thermal_transient(
 
     if previous is not None:
         solver.continue_from(previous)
-    result = solver.solve()
+    result = _solve_with_progress(solver, step_callback)
     domain.last_result = result
     return result
 
@@ -509,10 +530,11 @@ def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
             r = run(domain, assembler=assembler, solver=solver, F_applied=F,
                     step_callback=step_callback, previous=previous)
         elif kind == "transient":
-            r = run_transient(domain, assembler=assembler, solver=solver, previous=previous)
+            r = run_transient(domain, assembler=assembler, solver=solver, previous=previous,
+                              step_callback=step_callback)
         elif kind == "thermal_transient":
             r = run_thermal_transient(domain, assembler=assembler, solver=solver,
-                                      previous=previous)
+                                      previous=previous, step_callback=step_callback)
         else:
             raise ValueError(
                 f"{where}: las etapas admiten solvers estáticos y en el tiempo; un "
@@ -553,8 +575,15 @@ class YamlModel:
 
     def solve(self, *, step_callback: StepCallback | None = None):
         """Resuelve el análisis declarado en el YAML: el mismo despacho y el
-        mismo resultado que :func:`run_yaml`."""
-        return _solve_yaml_model(self, step_callback)
+        mismo resultado que :func:`run_yaml`. Con ``output.log_level`` en el
+        archivo, el registro usa ese nivel durante el análisis y después
+        vuelve al de antes."""
+        level = (self.parser.output_config or {}).get('log_level')
+        if level is None:
+            return _solve_yaml_model(self, step_callback)
+        from solidum.logging import log_level
+        with log_level(level):
+            return _solve_yaml_model(self, step_callback)
 
 
 def load_yaml(path: str | Path) -> YamlModel:
@@ -626,23 +655,24 @@ def _solve_yaml_model(model: YamlModel, step_callback):
             f"{sorted(_KNOWN_PIPELINE_KINDS)}."
         )
 
-    # Aviso del usuario: ``step_callback`` sólo lo consume el pipeline estático
-    # (``run`` → ``NonlinearSolver.solve(..., step_callback=...)`` o
-    # ``ArcLengthSolver.solve(...)``). Pasarlo a ``run_yaml`` con un solver
-    # modal/transitorio/armónico/espectral es no-op silencioso, lo cual
-    # confunde al usuario que espera ver progreso. Aviso explícito (H-1.8).
-    if step_callback is not None and pipeline_kind != "static":
+    # ``step_callback`` lo consumen los pipelines con pasos: el estático
+    # (``callback(step, U, λ)``) y los en el tiempo (``callback(step, U, t)``).
+    # En el modal, el armónico y el espectral no hay pasos: se avisa en vez de
+    # ignorarlo en silencio (H-1.8).
+    if step_callback is not None and pipeline_kind not in (
+            "static", "transient", "thermal_transient"):
         _log.warning(
             "run_yaml: step_callback ignorado — solver %s declara "
-            "PIPELINE_KIND=%r, no 'static'. step_callback sólo afecta "
-            "al pipeline estático (NonlinearSolver/ArcLengthSolver).",
+            "PIPELINE_KIND=%r, sin pasos. step_callback sólo afecta a los "
+            "análisis estáticos y en el tiempo.",
             type(solver).__name__, pipeline_kind,
         )
 
     if pipeline_kind == "modal":
         return run_modal(domain, assembler=assembler, solver=solver)
     if pipeline_kind == "transient":
-        return run_transient(domain, assembler=assembler, solver=solver)
+        return run_transient(domain, assembler=assembler, solver=solver,
+                             step_callback=step_callback)
     if pipeline_kind == "harmonic":
         return run_harmonic(domain, assembler=assembler, solver=solver)
     if pipeline_kind == "spectrum":
@@ -651,7 +681,7 @@ def _solve_yaml_model(model: YamlModel, step_callback):
         )
     if pipeline_kind == "thermal_transient":
         return run_thermal_transient(
-            domain, assembler=assembler, solver=solver,
+            domain, assembler=assembler, solver=solver, step_callback=step_callback,
         )
 
     # "static" — pipeline genérico con fuerzas externas y peso propio.

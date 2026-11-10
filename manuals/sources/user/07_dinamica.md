@@ -63,6 +63,24 @@ solver:
 La densidad es *obligatoria* para todo material involucrado en análisis modal o transitorio. La omisión lanza `ValueError` (ADR 0008) listando los materiales afectados por nombre antes de iniciar el cálculo.
 ```
 
+### Revisar las masas: masa total y centro de masa
+
+Antes de un análisis dinámico conviene revisar la masa que entra al modelo (densidades y masas de nudo):
+
+```python
+from solidum.math.mass_properties import mass_properties
+
+props = mass_properties(asm)              # o mass_properties(asm, lumping="lumped")
+props.total_mass                          # {"ux": m, "uy": m[, "uz": m]}
+props.center                              # centro de masa (None si la masa depende de la dirección)
+props.center_of_mass["ux"]                # línea de acción de la inercia ante una aceleración en x
+```
+
+- La masa en cada dirección es $m_d = \mathbf r_d^\top\mathbf M\,\mathbf r_d$, con $\mathbf r_d$ la traslación rígida unitaria; incluye la masa de los nudos con apoyo.
+- `center_of_mass["ux"]` es un punto de la línea de acción de la resultante de las fuerzas de inercia ante una aceleración rígida en $x$: da su altura y su posición en planta (la excentricidad respecto del centro de rigidez). La coordenada a lo largo de $x$ no la afecta y queda en `NaN`. Sale de los momentos de esas fuerzas con los giros rígidos del modelo, así que es exacta con masa consistente o concentrada, también en barras inclinadas.
+- Si la masa es la misma en todas las direcciones, `center` es el centro de masa. Una masa de nudo distinta por dirección (sólo en `ux`, por ejemplo) hace que cada dirección tenga su centro, y `center` es `None`.
+- Las masas de nudo se exportan al VTK (`Nodal_Mass`, `Nodal_Inertia`).
+
 ### Masas de nudo y grados de libertad sin masa (ADR 0024)
 
 En un edificio la masa de cada nivel se concentra en sus nudos y las columnas y vigas pueden no aportar masa propia (`density: 0.0`). Entonces sólo los grados de libertad de los nudos de piso tienen masa: los nudos intermedios y los giros, no. La matriz de masa es semidefinida y el problema tiene tantas frecuencias finitas como grados de libertad con masa.
@@ -237,6 +255,10 @@ except SolverDivergedError as exc:
 **Fuerzas internas con carga distribuida.** Con `record_internal_forces=True`, el historial descuenta en cada paso las cargas equivalentes de la carga del instante si `F_func` combina las cargas que devuelven `assemble_self_weight` / `assemble_body_load` (ADR 0027): `F_func=lambda t: F_peso + a(t) * F_viento`.
 
 **Grados de libertad sin masa.** Los integradores implícitos todavía no los admiten (deuda #34) y la diferencia central exige masa en todos: `MasslessDofsError` los nombra.
+
+## Progreso paso a paso
+
+`run_transient(..., step_callback=f)` y `run_thermal_transient(..., step_callback=f)` llaman `f(step, U, t)` tras cada paso convergido, con el número de paso, el campo global (desplazamientos o temperaturas) y el instante: la misma forma que el `step_callback(step, U, λ)` de los solvers estáticos, con el instante en lugar del factor de carga. Sirve para mostrar el avance, vigilar una magnitud o exportar mientras se integra. `run_yaml(path, step_callback=f)` lo pasa a los análisis estáticos y en el tiempo, también en las etapas; en el modal, el armónico y el espectral, que no tienen pasos, avisa de que lo ignora.
 
 ## Continuar un análisis (ADR 0029)
 

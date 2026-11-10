@@ -53,6 +53,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from solidum.core.dof_names import MECHANICAL_ORDER, TEMPERATURE
 from solidum.core.dof_names import TRANSLATIONS as _DOFS
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import LinearSolver
@@ -269,7 +270,7 @@ class ManufacturedConduction(_ManufacturedSolution):
     rho_c : float, opcional
         Capacidad volumétrica ``ρ·c``; obligatoria si ``T*`` depende de ``t``.
     """
-    dofs = ("T",)
+    dofs = (TEMPERATURE,)
     _PRIMARY, _GRADIENT = "temperature", "gradient"
 
     def __init__(self, temperature, k, rho_c: float | None = None):
@@ -510,8 +511,7 @@ class ManufacturedFrame(_ManufacturedSolution):
         """``[u, v, w, θx, θy, θz]`` (o fuerzas y momentos) locales → valores
         en los ``dofs`` globales del elemento."""
         g = np.concatenate([self._axes3.T @ local6[:3], self._axes3.T @ local6[3:]])
-        index = {"ux": 0, "uy": 1, "uz": 2, "rx": 3, "ry": 4, "rz": 5}
-        return np.array([g[index[n]] for n in self.dofs])
+        return np.array([g[MECHANICAL_ORDER.index(n)] for n in self.dofs])
 
     def _dof_values(self, x) -> np.ndarray:
         return self._to_dofs(self._eval("state", x))
@@ -663,9 +663,9 @@ def solve_manufactured_transient(mesh, solution: ManufacturedConduction, t_end: 
     ndof = dom.total_dofs
     nodes = list(dom.nodes.values())
     T0 = np.zeros(ndof)
-    T0[[nd.dofs["T"] for nd in nodes]] = solution.temperature(
+    T0[[nd.dofs[TEMPERATURE] for nd in nodes]] = solution.temperature(
         np.array([nd.coordinates for nd in nodes]), 0.0)
-    fixed_dofs = [nd.dofs["T"] for nd in fixed]
+    fixed_dofs = [nd.dofs[TEMPERATURE] for nd in fixed]
     fixed_x = np.array([nd.coordinates for nd in fixed])
 
     def prescribed(t):

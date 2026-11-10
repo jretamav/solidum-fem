@@ -30,6 +30,7 @@ Detallar un subsistema concreto sin tocar el resto::
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 import unicodedata
@@ -162,6 +163,30 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(f"{_ROOT_NAME}.{name}")
 
 
+def _numeric_level(level: Union[int, str]) -> int:
+    """Nivel numérico de ``level`` (constante de :mod:`logging` o su nombre)."""
+    if isinstance(level, str):
+        numeric = logging.getLevelName(level.upper())
+        if not isinstance(numeric, int):
+            raise ValueError(f"Nivel de log desconocido: {level!r}")
+        return numeric
+    return int(level)
+
+
+@contextlib.contextmanager
+def log_level(level: Union[int, str]):
+    """Nivel del logger ``solidum`` durante un bloque ``with``; al salir se
+    restituye el anterior. Lo usa ``output.log_level`` del YAML para no
+    cambiar el nivel de la aplicación que llama."""
+    root = _configure_root_once()
+    before = root.level
+    root.setLevel(_numeric_level(level))
+    try:
+        yield
+    finally:
+        root.setLevel(before)
+
+
 def set_log_level(level: Union[int, str]) -> None:
     """Ajusta el nivel del logger raíz ``solidum``.
 
@@ -178,10 +203,4 @@ def set_log_level(level: Union[int, str]) -> None:
       - ``"ERROR"``: sólo lo que termina el análisis.
     """
     root = _configure_root_once()
-    if isinstance(level, str):
-        level = level.upper()
-        numeric = logging.getLevelName(level)
-        if not isinstance(numeric, int):
-            raise ValueError(f"Nivel de log desconocido: {level!r}")
-        level = numeric
-    root.setLevel(level)
+    root.setLevel(_numeric_level(level))

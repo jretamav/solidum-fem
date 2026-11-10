@@ -7,8 +7,8 @@ resto del programa los reconoce por ese nombre: los modos de cuerpo rígido
 masas de nudo (ADR 0024). Antes cada uno guardaba su propia copia de estas
 tuplas; aquí viven una sola vez.
 
-Cualquier otro nombre (``T`` en el problema térmico) es un campo escalar sin
-significado mecánico.
+Cualquier otro nombre es un campo escalar sin significado mecánico; el del
+problema térmico es :data:`TEMPERATURE`.
 """
 
 #: Traslaciones según ``x``, ``y``, ``z``.
@@ -17,3 +17,14 @@ TRANSLATIONS: tuple[str, ...] = ("ux", "uy", "uz")
 ROTATIONS: tuple[str, ...] = ("rx", "ry", "rz")
 #: Todos los grados de libertad mecánicos.
 MECHANICAL: frozenset[str] = frozenset(TRANSLATIONS + ROTATIONS)
+#: Orden de las seis componentes de un movimiento (o de una fuerza) en 3D:
+#: traslaciones y giros según x, y, z.
+MECHANICAL_ORDER: tuple[str, ...] = TRANSLATIONS + ROTATIONS
+#: Grado de libertad del problema térmico (Etapa 8).
+TEMPERATURE: str = "T"
+
+
+def translation_dims(nodes) -> int:
+    """Dimensión del espacio de traslaciones de un conjunto de nodos: 3 si
+    alguno tiene ``uz``, 2 en otro caso."""
+    return 3 if any(TRANSLATIONS[2] in n.dofs for n in nodes) else 2

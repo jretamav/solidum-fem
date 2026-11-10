@@ -10,6 +10,7 @@ Mediante `meshio`, Solidum FEM exporta los resultados en archivos `.vtu` compati
 - `External_Forces`: distribución nodal del vector de cargas aplicado en el paso actual.
 - `Supports`: indicador booleano de DOFs restringidos.
 - `Temperature`: temperatura nodal, sólo si algún nodo tiene el DOF `T`.
+- `Nodal_Mass`, `Nodal_Inertia`: masas de nudo $(m_x, m_y, m_z)$ e inercias rotacionales $(J_x, J_y, J_z)$ declaradas (`nodal_masses`, ADR 0024), sólo si el modelo tiene alguna; `Nodal_Inertia`, si tiene giros. Sirven para revisar la entrada de masas en ParaView.
 - `Sigma_XX_nodal` … `Tau_XZ_nodal`, `Von_Mises_nodal`: suavizado nodal de orden 0 de los esfuerzos por celda (media simple sobre las celdas adyacentes a cada nodo). Sólo promedian las celdas de **sólidos mecánicos**: las barras, cables y marcos (celdas `line`) y los elementos térmicos no participan, tampoco cuando un elemento térmico se superpone a un sólido sobre los mismos nodos en un dominio multicampo $(u_x, u_y, T)$. Un modelo sin sólidos mecánicos (sólo térmico o sólo estructural 1D) no exporta estos campos.
 
 #### Restricciones multipunto y suavizado nodal

@@ -103,6 +103,7 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.core.dof_names import ROTATIONS as _ROTATIONAL_DOFS
+from solidum.core.dof_names import TEMPERATURE as _TEMPERATURE_DOF
 from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONAL_DOFS
 from solidum.core.domain import Domain
 from solidum.core.section import Section
@@ -115,8 +116,6 @@ except ImportError:
     meshio = None
 
 _log = get_logger("exporters.vtk")
-
-_TEMPERATURE_DOF = "T"
 
 # Celda VTK por (dimensión espacial, número de nodos). Los elementos de dos
 # nodos se resuelven aparte como ``line``.
@@ -463,6 +462,18 @@ class VtkExporter:
                 if node.dofs[_TEMPERATURE_DOF] < len(U):
                     temperature[idx] = U[node.dofs[_TEMPERATURE_DOF]]
 
+        # Masas de nudo (ADR 0024): masa por traslación e inercia por giro.
+        nodal_masses = getattr(self.domain, "nodal_masses", None) or {}
+        node_mass = np.zeros((n_nodes, 3))
+        node_inertia = np.zeros((n_nodes, 3))
+        for (nid, dof_name), value in nodal_masses.items():
+            if nid not in node_map:
+                continue
+            if dof_name in _TRANSLATIONAL_DOFS:
+                node_mass[node_map[nid], _TRANSLATIONAL_DOFS.index(dof_name)] = value
+            elif dof_name in _ROTATIONAL_DOFS:
+                node_inertia[node_map[nid], _ROTATIONAL_DOFS.index(dof_name)] = value
+
         # --- Celdas agrupadas por tipo -----------------------------------------
         elements = list(self.domain.elements.values())
         conn_by_type: dict[str, list[list[int]]] = {}
@@ -549,6 +560,10 @@ class VtkExporter:
             point_data["Supports_Rot"] = supports_rot
         if want_nodal("External_Forces"):
             point_data["External_Forces"] = forces
+        if nodal_masses and want_nodal("Nodal_Mass"):
+            point_data["Nodal_Mass"] = node_mass
+        if nodal_masses and any_rotational and want_nodal("Nodal_Inertia"):
+            point_data["Nodal_Inertia"] = node_inertia
 
         # Suavizado nodal de orden 0: media simple de los sólidos mecánicos
         # adyacentes.

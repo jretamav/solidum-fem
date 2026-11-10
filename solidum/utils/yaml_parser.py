@@ -5,6 +5,7 @@ import yaml
 import os
 import numpy as np
 from solidum.core.dof_names import MECHANICAL as _MECHANICAL_DOFS
+from solidum.core.dof_names import TEMPERATURE as _TEMPERATURE_DOF
 from solidum.core.domain import Domain
 from solidum.core.element import Element
 from solidum.autodiscover import initialize as _ensure_registries_initialized
@@ -121,6 +122,8 @@ class YamlParser:
     })
     # Claves de una etapa (``stages``, ADR 0026 y 0029).
     _STAGE_KEYS = frozenset({'name', 'loads', 'solver'})
+    # Niveles que admite ``output.log_level`` (política del ADR 0025).
+    _LOG_LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR')
     # Sub-bloques de ``thermal_loads``.
     _THERMAL_LOAD_KEYS = frozenset({'body_source', 'boundary_flux', 'boundary_flux_by_group'})
 
@@ -442,6 +445,16 @@ class YamlParser:
 
         # --- Masas de nudo (ADR 0024) ---
         errors.extend(self._validate_nodal_masses_shape(data, known_node_ids))
+
+        # --- Salida: nivel de registro ---
+        output = data.get('output')
+        if output is not None and not isinstance(output, dict):
+            errors.append("output: debe ser un diccionario.")
+        elif output and 'log_level' in output:
+            level = output['log_level']
+            if not (isinstance(level, str) and level.upper() in self._LOG_LEVELS):
+                errors.append(f"output.log_level: {level!r} no es un nivel de registro; "
+                              f"se admiten {list(self._LOG_LEVELS)}.")
 
         # --- Solver ---
         errors.extend(self._validate_solver_cfg(data.get('solver', {}), 'solver', data))
@@ -1383,12 +1396,12 @@ class YamlParser:
             for elem in elements:
                 f_e = elem.compute_body_source(Q)
                 for a, node in enumerate(elem.nodes):
-                    F[node.dofs["T"]] += f_e[a]
+                    F[node.dofs[_TEMPERATURE_DOF]] += f_e[a]
 
         for load in self.thermal_flux_loads:
             f_e = getattr(load.element, load.method)(load.index, load.value)
             for a, node in enumerate(load.element.nodes):
-                F[node.dofs["T"]] += f_e[a]
+                F[node.dofs[_TEMPERATURE_DOF]] += f_e[a]
 
         return F
 

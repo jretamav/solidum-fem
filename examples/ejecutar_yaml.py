@@ -256,6 +256,8 @@ def main():
 
     # 2. Leer configuración de salida
     out_cfg = parser.output_config
+    if out_cfg.get('log_level'):
+        solidum.set_log_level(out_cfg['log_level'])
     pre_cfg = out_cfg.get('pre_process', {})
     res_cfg = out_cfg.get('results', {})
     text_cfg = out_cfg.get('text_export', {})

@@ -62,7 +62,7 @@ print(res.U[tope.dofs["ux"]])
 M = modelo.assembler.assemble_mass_matrix()
 ```
 
-`modelo.domain` tiene los grados de libertad ya numerados y `modelo.assembler` es el ensamblador con el que `solve()` resuelve el análisis declarado (estático, modal, transitorio, armónico, espectral, térmico o por etapas). `modelo.parser` da las cargas del archivo (`get_external_forces()`, `get_body_load(assembler)`, `get_thermal_loads()`) y el solver declarado (`get_solver(assembler)`).
+`modelo.solve(step_callback=f)` acepta el mismo `step_callback` que `run_yaml`: `f(step, U, λ)` en los estáticos y `f(step, U, t)` en los análisis en el tiempo. `modelo.domain` tiene los grados de libertad ya numerados y `modelo.assembler` es el ensamblador con el que `solve()` resuelve el análisis declarado (estático, modal, transitorio, armónico, espectral, térmico o por etapas). `modelo.parser` da las cargas del archivo (`get_external_forces()`, `get_body_load(assembler)`, `get_thermal_loads()`) y el solver declarado (`get_solver(assembler)`).
 
 ## Resultado de un análisis estático: `SolveResult`
 

@@ -43,6 +43,11 @@ class TransientTerminationMixin:
 
     ``solve`` lo reinicia al empezar con :meth:`_begin_trace`.
 
+    Progreso: si ``step_callback`` no es ``None``, se llama
+    ``step_callback(step, U, t)`` tras cada paso convergido (``step ≥ 1``),
+    con el campo global (desplazamientos o temperaturas) y el instante: la
+    misma forma que el ``callback(step, U, λ)`` de los solvers estáticos.
+
     Continuación (ADR 0029): :meth:`continue_from` hace que el análisis parta
     del estado final de otro —un estático (``SolveResult``) o un transitorio
     del mismo tipo—, con su instante (``t_start``) y su carga constante
@@ -54,6 +59,8 @@ class TransientTerminationMixin:
     t_final: float = 0.0
     U_final: np.ndarray | None = None
     partial_result = None
+    #: ``callback(step, U, t)`` tras cada paso convergido, o ``None``.
+    step_callback = None
 
     def _begin_trace(self) -> None:
         self.termination = None
@@ -259,11 +266,15 @@ class TransientTrace:
         self.store_columns = store_columns
 
     def converged(self, step: int, t: float, U: np.ndarray) -> None:
-        """Marca el paso ``step`` (instante ``t``) como convergido."""
+        """Marca el paso ``step`` (instante ``t``) como convergido y avisa al
+        ``step_callback`` del solver, si lo tiene (no en el estado inicial)."""
         self.step = int(step)
         self.solver.steps_done = int(step)
         self.solver.t_final = float(t)
         self._U = U
+        callback = getattr(self.solver, "step_callback", None)
+        if callback is not None and step > 0:
+            callback(int(step), U, float(t))
 
     def store(self, column: int, *values, F_ext=None) -> None:
         for name, value in zip(self.fields, values):

@@ -21,6 +21,7 @@ from typing import ClassVar, List
 
 import numpy as np
 
+from solidum.core.dof_names import TEMPERATURE
 from solidum.core.element import Element, validate_lumping_kwarg
 from solidum.core.node import Node
 from solidum.core.thermal_material import ThermalMaterial
@@ -55,7 +56,7 @@ class _ThermalSolid(Element):
     en :meth:`_validate_material_compatibility`, que se sobreescribe.
     """
 
-    DOF_NAMES: ClassVar[List[str]] = ["T"]
+    DOF_NAMES: ClassVar[List[str]] = [TEMPERATURE]
     STRAIN_DIM = None            # no aplica: el campo es escalar
     REFERENCE_KWARGS: ClassVar[dict] = {"material": ThermalMaterialRegistry}
     FLUX_DIM: ClassVar[int]

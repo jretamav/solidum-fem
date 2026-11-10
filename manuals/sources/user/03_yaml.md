@@ -539,6 +539,7 @@ Configura qué se exporta y cuándo:
 ```yaml
 output:
   file_name: "resultados_placa"
+  log_level: WARNING              # opcional: DEBUG, INFO (por omisión), WARNING o ERROR
   pre_process: {export: true}     # exporta el modelo sin deformar (paso 0)
   results:
     frequency: "all_steps"        # "last_step" o "all_steps"
@@ -553,3 +554,5 @@ output:
 ```callout Nota
 Cuando `frequency: "all_steps"` y el solver es no lineal, se genera un archivo `.vtu` por paso convergido más un archivo maestro `.pvd` que ParaView interpreta como animación.
 ```
+
+`log_level` fija el nivel del registro durante el análisis (`run_yaml`, `load_yaml(...).solve()` y `examples/ejecutar_yaml.py`): `WARNING` deja sólo avisos y errores. Al terminar, `run_yaml` vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.

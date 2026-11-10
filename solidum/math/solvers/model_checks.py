@@ -80,6 +80,7 @@ from solidum.constants import (
 )
 from solidum.core.dof_names import MECHANICAL as _MECHANICAL
 from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONS
+from solidum.core.dof_names import translation_dims
 from solidum.math.solvers._shared import _log
 from solidum.math.solvers.diagnostics import IllPosedSystemError, MechanismError
 
@@ -364,7 +365,7 @@ def _rigid_motion(nodes, v: np.ndarray):
     """Ajuste por mínimos cuadrados de ``u(x) = t + w × (x − c)`` a las
     traslaciones de ``nodes``. Devuelve ``(t, w, c, L, dims)`` si el
     movimiento es rígido (residuo relativo < ``_RIGID_FIT_RTOL``) o ``None``."""
-    dims = 3 if any("uz" in n.dofs for n in nodes) else 2
+    dims = translation_dims(nodes)
     coords = np.array([np.pad(np.asarray(n.coordinates, dtype=float)[:3],
                               (0, 3 - min(3, len(n.coordinates)))) for n in nodes])
     c = coords.mean(axis=0)
