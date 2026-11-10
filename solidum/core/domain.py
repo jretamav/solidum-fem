@@ -31,6 +31,10 @@ class Domain:
         # y opcional 'g'. El Assembler las traduce a DOFs globales y las
         # acumula en su ConstraintSet.
         self.linear_constraints: list[dict] = []
+        # Nodos que crea Solidum, no el usuario: los de una barra embebida
+        # (ADR 0032). Los selectores por coordenada del YAML no los toman:
+        # una carga o un apoyo por coordenada es del sólido.
+        self.generated_nodes: set[int] = set()
         # Masas concentradas en nudos (ADR 0024): (node_id, dof) → masa [kg]
         # en un grado de libertad de traslación, inercia rotacional [kg·m²]
         # en uno de giro. El Assembler las suma a la diagonal de M.

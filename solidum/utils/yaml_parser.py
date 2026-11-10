@@ -13,6 +13,7 @@ from solidum.logging import get_logger
 from solidum.math.assembly import _constraint_cycles
 from solidum.user import available_user_modules, load_user_module
 from solidum.registry import (
+    ConstraintRegistry,
     ElementRegistry,
     QuadratureRegistry,
     Registry,
@@ -113,7 +114,7 @@ class YamlParser:
         'point_loads_by_group', 'linear_constraints', 'nodal_masses', 'nodal_masses_by_group',
         'nodal_masses_by_coord', 'body_force', 'gravity',
         'tractions', 'tractions_by_group',
-        'thermal_loads', 'solver', 'output', 'user_modules', 'stages',
+        'thermal_loads', 'solver', 'output', 'user_modules', 'stages', 'constraints',
     })
     # Bloques de carga: los del nivel raíz y los de ``loads`` de cada etapa.
     _LOAD_KEYS = frozenset({
@@ -184,6 +185,7 @@ class YamlParser:
         self._parse_nodes(data)
         self._parse_families(data)
         self._parse_mesh_or_elements(data)
+        self._parse_constraints(data)
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
         self._parse_nodal_masses(data)
@@ -442,6 +444,9 @@ class YamlParser:
         # ``_parse_linear_constraints``, que también ve las mallas gmsh.
         errors.extend(self._validate_linear_constraints_shape(
             data.get('linear_constraints'), known_node_ids))
+
+        # --- Generadores de restricciones (ADR 0032) ---
+        errors.extend(self._validate_constraints_shape(data.get('constraints')))
 
         # --- Masas de nudo (ADR 0024) ---
         errors.extend(self._validate_nodal_masses_shape(data, known_node_ids))
@@ -811,7 +816,10 @@ class YamlParser:
         desempaquetaba ``x, y = node.coordinates`` y reventaba con nodos 3D.
         Falla si ninguna coordenada casa (un selector que no selecciona nada
         es casi siempre un error de modelo)."""
-        nodes = [n for n in self.domain.nodes.values() if n.dofs]
+        # Los nodos que crea Solidum (una barra embebida, ADR 0032) no son
+        # seleccionables: un apoyo o una carga por coordenada es del sólido.
+        generated = self.domain.generated_nodes
+        nodes = [n for n in self.domain.nodes.values() if n.dofs and n.id not in generated]
         axes = {'x': 0, 'y': 1, 'z': 2}
 
         def comp(n, ax):
@@ -862,6 +870,48 @@ class YamlParser:
                 f"(DOFs del nodo: {sorted(node.dofs)})."
             )
         F_ext[node.dofs[dof]] += float(value)
+
+    @staticmethod
+    def _validate_constraints_shape(block) -> list:
+        """Forma del bloque ``constraints`` (ADR 0032): lista de entradas
+        ``{type, …}`` con un ``type`` registrado en ``ConstraintRegistry``.
+        Los parámetros de cada tipo los valida su clase al construirse."""
+        if block is None:
+            return []
+        if not isinstance(block, list):
+            return ["constraints: debe ser una lista de entradas {type, ...}."]
+        errors = []
+        names = ConstraintRegistry.names()
+        for i, entry in enumerate(block):
+            ctx = f"constraints[{i}]"
+            if not isinstance(entry, dict):
+                errors.append(f"{ctx}: cada entrada debe ser un diccionario.")
+            elif 'type' not in entry:
+                errors.append(f"{ctx}: falta 'type' (admitidos: {names}).")
+            elif entry['type'] not in names:
+                errors.append(f"{ctx}: tipo {entry['type']!r} no registrado (admitidos: {names}).")
+        return errors
+
+    def _parse_constraints(self, data: dict) -> None:
+        """Aplica los generadores de restricciones del bloque ``constraints``
+        (ADR 0032) sobre los elementos ya creados. Lo que cada uno creó
+        queda en :attr:`applied_constraints`, en el orden del bloque."""
+        self.applied_constraints = []
+        errors = []
+        for i, entry in enumerate(data.get('constraints') or []):
+            where = f"constraints[{i}] ({entry['type']})"
+            cls = ConstraintRegistry.get(entry['type'])
+            kwargs = {k: v for k, v in entry.items() if k != 'type'}
+            try:
+                builder = getattr(cls, 'from_yaml', None)
+                obj = builder(kwargs, self._resolver(where)) if callable(builder) else cls(**kwargs)
+                self.applied_constraints.append(obj.apply(self.domain))
+            except YamlValidationError as exc:
+                errors.extend(exc.errors)
+            except (ValueError, TypeError) as exc:
+                errors.append(f"{where}: {exc}")
+        if errors:
+            raise YamlValidationError(errors)
 
     # Claves de una entrada de ``linear_constraints`` y de sus referencias
     # a grados de libertad. Una clave fuera de estas listas es casi siempre

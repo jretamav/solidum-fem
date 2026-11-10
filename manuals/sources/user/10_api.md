@@ -154,6 +154,20 @@ domain.add_nodal_mass(5, rz=4.0e3)               # inercia rotacional [kg·m²]
 
 Equivale al bloque YAML `nodal_masses` (ADR 0024): un grado de libertad mecánico por argumento, valores finitos no negativos, y varias llamadas sobre el mismo grado de libertad se suman. Las masas quedan en `domain.nodal_masses` (`{(nodo, dof): valor}`) y el `Assembler` las suma a la diagonal de la matriz de masa. Son sólo inercia: no generan peso con la gravedad.
 
+## Refuerzo embebido
+
+`solidum.embed_reinforcement(domain, points, area, material, *, element=None, hosts=None, subdivisions=1, element_kwargs=None)` embebe una barra con adherencia perfecta en los sólidos del dominio (ADR 0032, spec `EmbeddedReinforcement`) y devuelve un `EmbeddedBar`:
+
+```python
+bar = solidum.embed_reinforcement(domain, [[0.0, 0.05], [4.0, 0.05]], 1.6e-3,
+                                  solidum.Elastic1D(E=200e9))
+r = solidum.run(domain, F_applied=F)
+r.element_forces[bar.element_ids[0]].components["N"]   # fuerza axial del primer tramo
+bar.bond_forces(r)    # (n_nodos, ndim): fuerza de adherencia en cada nodo de la barra
+```
+
+`EmbeddedBar` guarda los nodos y elementos de la barra, el anfitrión y las coordenadas naturales de cada nodo, y la longitud. La llamada va después de crear los elementos de sólido; si el dominio ya estaba numerado, se renumera. Los generadores se registran en `ConstraintRegistry`; la localización de puntos en elementos (`solidum.mesh.point_location`: `natural_coordinates`, `PointLocator`) sirve a cualquier sólido que declare `REFERENCE_CELL` y sus funciones de forma.
+
 ## Errores tipados
 
 Desde un script conviene capturar los errores por su tipo, porque cada uno indica una causa y una salida distintas:

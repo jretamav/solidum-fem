@@ -21,6 +21,7 @@ from solidum.registry import (
     SectionRegistry,
     ElementRegistry,
     SolverRegistry,
+    ConstraintRegistry,
     QuadratureRegistry,
 )
 
@@ -72,6 +73,7 @@ from solidum.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimos
 from solidum.elements.frame3d import Frame3D
 from solidum.elements.thermal import Hex8Thermal, Quad4Thermal
 
+from solidum.bc.embedded import EmbeddedBar, EmbeddedReinforcement, embed_reinforcement
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import (
     ArcLengthSolver,

@@ -307,6 +307,28 @@ En los solvers estáticos no lineales (`NonlinearSolver`, `ArcLengthSolver`, `In
 
 Un apoyo con valor prescrito reporta su reacción completa, incluida la fuerza que le llega por los nodos atados a él: atar dos nodos coincidentes con $u_s = u_m$ en todos sus grados de libertad da las mismas reacciones que fundirlos en uno. Con esta convención se cumple el equilibrio global $\sum R + \sum F = 0$ por dirección.
 
+### Refuerzo embebido: `constraints`
+
+El bloque `constraints` declara **generadores de restricciones** (ADR 0032): objetos que, sobre los elementos ya creados, generan a partir de su geometría los nodos, los elementos y las restricciones multipunto que necesitan. Se aplica después de los elementos y antes de los apoyos. Hoy hay un tipo, `EmbeddedReinforcement`: una barra de refuerzo con adherencia perfecta dentro de los sólidos 2D o 3D (spec `EmbeddedReinforcement`).
+
+```yaml
+materials:
+  - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_stress}
+  - {id: 2, type: Elastoplastic1D, E: 200.0e9, sigma_y: 420.0e6}
+constraints:
+  - type: EmbeddedReinforcement
+    points: [[0.0, 0.05], [4.0, 0.05]]   # polilínea de la barra
+    area: 1.6e-3                         # área de la barra
+    material: 2                          # material 1D
+    element: Truss2D                     # opcional (Truss3D por omisión en 3D)
+    hosts: [1, 2, 3]                     # opcional: ids de los anfitriones
+    subdivisions: 1                      # opcional: partes por tramo
+```
+
+La barra tiene su propia malla. Solidum la corta en los bordes de los elementos que atraviesa y ata cada nodo al desplazamiento interpolado del elemento que lo contiene, $u(\mathbf X_b) = \sum_i N_i(\boldsymbol\xi_b)\,u_i$. El área de concreto que ocupa la barra no se descuenta: el sobrante de rigidez elástica es $\rho/[(1-\rho)+n\rho]$, con $n = E_s/E_c$ (+1.8 % con una cuantía del 2 %), y es cero con el concreto agrietado en tracción.
+
+Los nodos de la barra no los toman los selectores por coordenada (`boundary_conditions_by_coord`, `point_loads_by_coord`, `nodal_masses_by_coord`): un apoyo o una carga por coordenada es del sólido. Las fuerzas de esas restricciones salen en `constraint_forces`, no en las reacciones: son las **fuerzas de adherencia** concentradas en los nodos de la barra. Lo que creó cada entrada queda en `model.parser.applied_constraints`, que con `load_yaml` es una lista de `EmbeddedBar`.
+
 ## Cargas Puntuales
 
 Misma estructura que las condiciones de frontera, en bloques `point_loads_by_node`, `point_loads_by_coord` y `point_loads_by_group`. Los valores son fuerzas nodales (en las unidades del modelo, típicamente Newtons):

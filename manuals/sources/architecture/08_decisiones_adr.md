@@ -342,6 +342,12 @@ Extiende el ADR 0004 §3 a los análisis dinámicos. Por decisión del usuario, 
 
 Por decisión del usuario, el modal, el armónico y el espectral que continúan una etapa (`continue_from`, `previous=`, etapas `stages`) linealizan alrededor de su estado con la rigidez tangente que dan los elementos (P-Δ de los corrotacionales, descarga elástica de la plasticidad, rigidez dañada), sin cambiarlo. La mezcla `LinearizedStateMixin` lo comparte. Los autovalores negativos dejan de recortarse a cero: `ModalResult.eigenvalues` con signo y `unstable_modes`. El `LinearSolver` como etapa es una perturbación lineal estática que tampoco cambia el estado (`SolveResult.perturbation`): casos superponibles sobre la etapa, con reacciones y fuerzas internas lineales (`Element.internal_forces_from_nodal`).
 
+## ADR 0032 — Restricciones generadas por geometría y refuerzo embebido
+
+**Fecha**: 2026-11-10 · **Estado**: aceptado.
+
+Un generador de restricciones (`ConstraintRegistry`, tipo de spec `constraint`, bloque YAML `constraints`) crea sobre un dominio ya mallado los nodos, los elementos y las MPC (ADR 0004) que su geometría pide. La localización de puntos (`solidum/mesh/point_location.py`) invierte el mapeo isoparamétrico por Newton con lo que todo sólido declara (`REFERENCE_CELL`, funciones de forma), sin código por tipo de elemento. El primer generador es el refuerzo embebido (`EmbeddedReinforcement`): la barra, con su propia malla cortada en los bordes de los anfitriones, queda atada al campo interpolado del sólido. Sus MPC son de unión, y su fuerza es la adherencia (`EmbeddedBar.bond_forces`). `Domain.generated_nodes` aparta esos nodos de los selectores por coordenada del YAML.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

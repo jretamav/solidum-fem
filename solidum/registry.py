@@ -222,6 +222,21 @@ class SolverRegistry(Registry):
     YAML_LABEL = "solver"
 
 
+class ConstraintRegistry(Registry):
+    """Generadores de restricciones (ADR 0032).
+
+    Un generador, aplicado a un dominio ya mallado con ``apply(domain)``,
+    crea a partir de su geometría los nodos, los elementos y las
+    restricciones afines (ADR 0004) que necesita: el refuerzo embebido, y
+    más adelante los acoplamientos de dimensión mixta. En el YAML se
+    declaran en el bloque ``constraints`` (lista de ``{type, …}``), que el
+    lector aplica después de crear los elementos. Si la clase referencia
+    objetos de las familias (un material), declara
+    ``from_yaml(data, resolve)`` como las secciones (ADR 0021 §2)."""
+    SPEC_KIND = "constraint"
+    YAML_LABEL = "restricción"
+
+
 class QuadratureRegistry:
     """Registry para reglas de integración (puntos, pesos)."""
     _rules: Dict[str, tuple] = {}

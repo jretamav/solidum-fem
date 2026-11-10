@@ -70,3 +70,5 @@ def initialize() -> None:
     _discover_package("solidum.sections")
     _discover_package("solidum.elements")
     _discover_package("solidum.math")
+    # Generadores de restricciones (ADR 0032): refuerzo embebido…
+    _discover_package("solidum.bc")

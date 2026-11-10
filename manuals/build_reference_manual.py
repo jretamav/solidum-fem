@@ -84,6 +84,7 @@ CHAPTER_ORDER: list[str] = [
     "Secciones de marco",
     "Elementos 2D — Sólidos",
     "Elementos 3D — Sólidos",
+    "Restricciones generadas",
     "Elementos Térmicos — 2D",
     "Elementos Térmicos — 3D",
     "Modelos Constitutivos — 1D",
@@ -101,6 +102,7 @@ CHAPTER_ORDER: list[str] = [
 KIND_CHAPTERS: dict[str, str] = {
     "thermal_material": "Modelos Constitutivos — Térmicos",
     "section": "Secciones de marco",          # ADR 0021
+    "constraint": "Restricciones generadas",  # ADR 0032
 }
 
 # Solvers: la partición estático/dinámico sale del contrato declarativo del
@@ -362,6 +364,7 @@ APPENDIX_CHAPTERS: list[tuple[str, str]] = [
     ("Elementos — catálogo", "docs/catalogo_elementos.md"),
     ("Modelos constitutivos — catálogo", "docs/catalogo_materiales.md"),
     ("Solvers — catálogo", "docs/catalogo_solvers.md"),
+    ("Restricciones generadas — catálogo", "docs/catalogo_restricciones.md"),
     ("Anexos técnicos", "manuals/sources/anexo_capa_algebraica.md"),
 ]
 
