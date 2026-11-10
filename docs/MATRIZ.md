@@ -29,6 +29,8 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 | `Truss2DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
 | `Truss3D`                    | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
 | `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
+| `Truss2D3`                   | ✓         | ✓               | ○                 |                 |           |            |                 |                   |               |
+| `Truss3D3`                   | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
 | `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
 | `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
 | `Frame2DEuler`               | ✓         | (a) ✓           | (a) ○             | (a) ○           |           |            |                 |                   |               |

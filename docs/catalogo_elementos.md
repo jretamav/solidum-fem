@@ -162,6 +162,43 @@ F_int = N · d
 
 ---
 
+## Truss2D3 / Truss3D3 — barra axial de segundo orden
+
+Elemento sólido 1D **recto de tres nodos** `[i, j, m]` (extremos y nodo intermedio en el punto medio), en el plano (`Truss2D3`) o en el espacio (`Truss3D3`). Transmite sólo fuerza axial, con desplazamiento axial **cuadrático** y deformación lineal. Linealidad geométrica. Clasificación: **estándar** (Bathe 2014 §6.3.3, fig. 6.3; Abaqus T2D3/T3D3).
+
+Motivo: la barra de refuerzo con adherencia-deslizamiento. Con los mismos nodos de barra, la cuadrática con integración nodal de la interfaz da un deslizamiento entre 10 y 50 veces más exacto que la lineal sin oscilar (datos en la spec). Es un elemento general.
+
+### Formulación
+Con `ξ = s/L ∈ [0, 1]`, `e` = cosenos directores del eje `i → j`:
+
+```
+N     = [(1−ξ)(1−2ξ), ξ(2ξ−1), 4ξ(1−ξ)]          orden [i, j, m]
+B     = (1/L)·[4ξ−3, 4ξ−1, 4−8ξ] ⊗ eᵀ
+K_e   = Σ_g w_g·L·Bᵀ·E_t·A·B   (Gauss 2 puntos)  = (EA/3L)·[[7,1,−8],[1,7,−8],[−8,−8,16]] ⊗ e·eᵀ
+M_e   = (ρAL/30)·[[4,−1,2],[−1,4,2],[2,2,16]] ⊗ I;   concentrada ρAL·(1/6, 1/6, 2/3)
+```
+
+### Convenciones y salida
+- `STRAIN_DIM = 1`, dos puntos de Gauss con su estado y longitud característica `L/2` (ADR 0028).
+- `internal_forces`: `N_i`, `N_j` por **extrapolación lineal** desde los puntos de Gauss (el axial del elemento es lineal); no son las fuerzas nodales de extremo (`F_i·e = −(5N_i + N_j)/6`).
+- VTK: celda `line3`.
+
+### Parámetros
+- `A` — área de la sección transversal.
+
+### Cargas distribuidas
+- `compute_body_load(b)`: uniforme, `b·A·L·(1/6, 1/6, 2/3)` por componente global; campo `b(x)` con Gauss de 4 puntos.
+
+### Régimen de validez
+- Pequeñas deformaciones, desplazamientos y rotaciones. Elemento recto con `m` en el punto medio (`ValueError` si no); las barras curvas y la variante corotacional quedan fuera.
+
+### Validación
+- Tests: [tests/test_truss_quadratic.py](../tests/test_truss_quadratic.py) (matrices cerradas, carga puntual y uniforme, Tong en los extremos y nodo intermedio superconvergente de orden 4, primera frecuencia axial a 1.6e-5 con 4 elementos, fluencia con endurecimiento); [tests/validation/test_mms_frames.py](../tests/validation/test_mms_frames.py) (órdenes 3 en L² y 2 en energía); [tests/test_line_elements.py](../tests/test_line_elements.py); barrido de contrato.
+- Archivo fuente: [solidum/elements/truss_quadratic.py](../solidum/elements/truss_quadratic.py) · clases `Truss2D3`, `Truss3D3`.
+- Specs: [docs/specs/Truss2D3.md](specs/Truss2D3.md), [docs/specs/Truss3D3.md](specs/Truss3D3.md).
+
+---
+
 ## Cable2DCorot — cable 2D corotacional
 
 Elemento 1D inmerso en el plano que modela un cable: dos nodos, transmite sólo fuerza axial de tracción. Cinemática corotacional; la unilateralidad la aporta el material (típicamente `CableMaterial1D`).

@@ -56,6 +56,7 @@ LINEA_2D = (np.array([0.5, -0.3]), np.array([2.1, 0.9]))
 LINEA_3D = (np.array([0.5, -0.3, 0.2]), np.array([1.7, 0.9, 1.0]))
 
 U_P = "1e-3*(1 + s - 0.3*s**2 + 0.1*s**4)"
+U_P3 = "1e-3*(1 + s - 0.3*s**2 + 0.1*s**3)"
 V_P = "1e-3*(0.5 - s + 0.4*s**3 - 0.05*s**6)"
 W_P = "1e-3*(-0.2 + 0.7*s - 0.3*s**2 + 0.04*s**5)"
 PSI_P = "1e-3*(0.5 - s + 0.4*s**3 - 0.02*s**7)"
@@ -71,6 +72,14 @@ CASOS = {
                     ordenes={"L2:u": 2, "energy:eps": 1}),
     "Truss3D": dict(kw=dict(A=2.0), linea=LINEA_3D, poli={"u": U_P}, suave={"u": U_S},
                     ordenes={"L2:u": 2, "energy:eps": 1}),
+    # Cuadráticas: un orden más (spec Truss2D3, Truss3D3). Tong garantiza la
+    # exactitud nodal sólo en los extremos de cada elemento; el nodo
+    # intermedio es exacto con u* de grado ≤ 3 (por eso U_P3) y, en general,
+    # converge con orden 4: lo comprueba tests/test_truss_quadratic.py.
+    "Truss2D3": dict(kw=dict(A=2.0), linea=LINEA_2D, poli={"u": U_P3}, suave={"u": U_S},
+                     ordenes={"L2:u": 3, "energy:eps": 2}, nodo_intermedio=True),
+    "Truss3D3": dict(kw=dict(A=2.0), linea=LINEA_3D, poli={"u": U_P3}, suave={"u": U_S},
+                     ordenes={"L2:u": 3, "energy:eps": 2}, nodo_intermedio=True),
     "Frame2DEuler": dict(
         kw=dict(A=2.0, I=0.3), linea=LINEA_2D, poli={"u": U_P, "v": V_P},
         suave={"u": U_S, "v": V_S},
@@ -152,8 +161,10 @@ class TestOrdenEntreNodos(unittest.TestCase):
                     self.assertGreaterEqual(st.orders(norma)[-1],
                                             st.expected_order(norma) - TOLERANCIA_ORDEN,
                                             st.table())
-                # Los nodos, exactos salvo la cuadratura de la carga.
-                self.assertLess(st.errors["nodal"][-1], 1e-12)
+                # Los nodos, exactos salvo la cuadratura de la carga (en los
+                # cuadráticos, sólo los extremos: el intermedio va aparte).
+                if not caso.get("nodo_intermedio"):
+                    self.assertLess(st.errors["nodal"][-1], 1e-12)
                 for norma in caso.get("exactas", ()):
                     self.assertLess(st.errors[norma][-1], 1e-12, norma)
 

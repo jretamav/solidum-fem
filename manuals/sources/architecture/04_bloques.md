@@ -51,7 +51,7 @@ Elemento articulado que transmite exclusivamente fuerza axial. Material consumid
 [TABLA: Cobertura de la familia armadura — segundo orden.]
 | Régimen | 2D · material lineal | 2D · material no lineal | 3D · material lineal | 3D · material no lineal |
 |---|---|---|---|---|
-| Linealidad geométrica | [PENDIENTE: Armadura 2D de segundo orden con linealidad geométrica.] | [PENDIENTE: Armadura 2D de segundo orden con linealidad geométrica y material no lineal.] | [PENDIENTE: Armadura 3D de segundo orden con linealidad geométrica.] | [PENDIENTE: Armadura 3D de segundo orden con linealidad geométrica y material no lineal.] |
+| Linealidad geométrica | ✓ `Truss2D3` | ✓ `Truss2D3` | ✓ `Truss3D3` | ✓ `Truss3D3` |
 | No linealidad geométrica | [PENDIENTE: Armadura 2D de segundo orden corrotacional.] | [PENDIENTE: Armadura 2D de segundo orden corrotacional con material no lineal.] | [PENDIENTE: Armadura 3D de segundo orden corrotacional.] | [PENDIENTE: Armadura 3D de segundo orden corrotacional con material no lineal.] |
 
 ### Familia cable

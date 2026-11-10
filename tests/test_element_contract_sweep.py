@@ -105,6 +105,9 @@ def nodos(coords):
 
 LINEA_2D = ((0.0, 0.0), (1.0, 0.0))
 LINEA_3D = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+# Línea cuadrática: extremos y nodo intermedio (orden [i, j, m]).
+LINEA3_2D = LINEA_2D + ((0.5, 0.0),)
+LINEA3_3D = LINEA_3D + ((0.5, 0.0, 0.0),)
 TRI = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))
 QUAD = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
 QUAD8 = ((0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0),
@@ -160,6 +163,8 @@ FABRICAS = {
     'Truss2DCorot': (lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA), V_LINEA),
     'Truss3D':      (lambda c: c(1, nodos(LINEA_3D), MAT_1D, A=AREA), V_LINEA),
     'Truss3DCorot': (lambda c: c(1, nodos(LINEA_3D), MAT_1D, A=AREA), V_LINEA),
+    'Truss2D3':     (lambda c: c(1, nodos(LINEA3_2D), MAT_1D, A=AREA), V_LINEA),
+    'Truss3D3':     (lambda c: c(1, nodos(LINEA3_3D), MAT_1D, A=AREA), V_LINEA),
     'Cable2DCorot': (lambda c: c(1, nodos(LINEA_2D), MAT_CABLE, A=AREA), V_LINEA),
     'Cable3DCorot': (lambda c: c(1, nodos(LINEA_3D), MAT_CABLE, A=AREA), V_LINEA),
     'Frame2DEuler': (lambda c: c(1, nodos(LINEA_2D), MAT_1D, A=AREA, I=1.0e-5), V_LINEA),

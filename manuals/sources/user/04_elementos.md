@@ -6,9 +6,9 @@ Las formulaciones no estándar viven fuera del programa principal, en **módulos
 
 ## Elementos 1D
 
-### Armaduras: `Truss2D` / `Truss2DCorot` / `Truss3D` / `Truss3DCorot`
+### Armaduras: `Truss2D` / `Truss2DCorot` / `Truss3D` / `Truss3DCorot` / `Truss2D3` / `Truss3D3`
 
-Barra biarticulada que transmite exclusivamente fuerza axial. Cuatro variantes según dimensión y régimen geométrico:
+Barra biarticulada que transmite exclusivamente fuerza axial. Seis variantes según dimensión, régimen geométrico y orden de interpolación:
 
 [TABLA: Familia de armaduras.]
 | Elemento | DOFs/nodo | Dimensión | Régimen geom. | Uso |
@@ -17,8 +17,12 @@ Barra biarticulada que transmite exclusivamente fuerza axial. Cuatro variantes s
 | `Truss2DCorot` | `ux,uy` | 2D | corotacional | grandes desplazamientos y rotaciones planas |
 | `Truss3D` | `ux,uy,uz` | 3D | lineal | armaduras espaciales en régimen lineal |
 | `Truss3DCorot` | `ux,uy,uz` | 3D | corotacional | grandes rotaciones en el espacio |
+| `Truss2D3` | `ux,uy` | 2D | lineal, 3 nodos | refuerzo con adherencia-deslizamiento; axial cuadrático |
+| `Truss3D3` | `ux,uy,uz` | 3D | lineal, 3 nodos | ídem en el espacio |
 
 **Parámetros**: `A` (área de la sección transversal). Convención de signos: $\sigma > 0 \Leftrightarrow \varepsilon > 0$ (elongación).
+
+Las de **tres nodos** (`Truss2D3`, `Truss3D3`) son rectas, con los nodos en el orden `[i, j, m]` y el intermedio `m` en el punto medio; interpolan el desplazamiento axial con una cuadrática (dos puntos de Gauss) y dan `N_i`, `N_j` extrapolando el axial lineal del elemento.
 
 **Régimen de validez**: $|\varepsilon| \lesssim 10^{-2}$. Las variantes `Corot` aceptan rotaciones de cualquier magnitud entre commits; las versiones lineales asumen rotaciones pequeñas.
 

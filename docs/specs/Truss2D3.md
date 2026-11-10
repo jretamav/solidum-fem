@@ -75,7 +75,7 @@ Uniforme: $\mathbf f = b\,A L\,(\tfrac16, \tfrac16, \tfrac23)$ por componente gl
 ```yaml
 name: Truss2D3
 kind: element
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   dof_names: [ux, uy]
@@ -115,7 +115,7 @@ out_of_scope:
 acceptance:
   - name: soluciones manufacturadas (ADR 0022)
     setup: "línea recta inclinada; solución exacta impuesta en un extremo y su fuerza interna como carga nodal en el otro; carga de línea como fuerza de cuerpo b(x); n = 2, 4, 8, 16 elementos"
-    expect: "con u* polinómica de grado ≤ 2 (carga constante) el campo es exacto en todo punto; con cargas polinómicas de grado ≤ 4, error nodal de redondeo (exactitud nodal, Tong 1969); con u* suave, orden ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía entre los dos últimos niveles, error decreciente"
+    expect: "con u* polinómica de grado ≤ 2 (carga constante) el campo es exacto en todo punto; en los nodos extremos de cada elemento, error de redondeo con cualquier carga polinómica integrada exactamente (Tong 1969); en el nodo intermedio, error de redondeo con u* de grado ≤ 3 y, en general, convergencia de orden ≥ 4 − 0.1; con u* suave, orden ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía entre los dos últimos niveles, error decreciente"
     tol_abs: 0.1
   - name: barra axial bajo carga puntual
     setup: "empotrada en s = 0, carga F axial en s = L, 1 y 3 elementos, barra inclinada"
@@ -134,8 +134,8 @@ acceptance:
     expect: "primera frecuencia axial ω₁ = (π/2)·√(E/ρ)/L con error relativo ≤ 2e-5 (medido 1.64e-5; la barra lineal con los mismos 9 nodos da 4.0e-4)"
     tol_rel: 2.0e-5
   - name: material no lineal
-    setup: "barra elastoplástica perfecta bajo carga en el extremo hasta la fluencia"
-    expect: "fluencia en N = A·σ_y en los dos puntos de Gauss; estado por punto confirmado al converger"
+    setup: "barra elastoplástica con endurecimiento lineal H bajo desplazamiento impuesto δ en el extremo, más allá de la fluencia"
+    expect: "deformación uniforme ε = δ/L y N = A·[σ_y + EH/(E + H)·(ε − σ_y/E)] en los dos puntos de Gauss y en los extremos; estado por punto confirmado al converger"
     tol_rel: 1.0e-8
 
 references:
@@ -147,11 +147,23 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- **Archivo**: [solidum/elements/truss_quadratic.py](../../solidum/elements/truss_quadratic.py)
+- **Clase**: `Truss2D3` (registrada vía `@ElementRegistry.register`), sobre la base común `_QuadraticTruss` que comparte con `Truss3D3`; la dimensión la fija `DOF_NAMES`.
+- **Tests**:
+  - [tests/test_truss_quadratic.py](../../tests/test_truss_quadratic.py): matrices en forma cerrada (rango 2, masa total), igualdad 3D en el plano = 2D, rechazos (2 nodos, nodo intermedio fuera del punto medio, área no positiva), carga puntual con 1 y 3 elementos inclinados, carga axial uniforme exacta con 1 elemento, `internal_forces_from_nodal` = campo, exactitud de Tong en los extremos y superconvergencia de orden 4 en el intermedio, primera frecuencia axial (error ≤ 2e-5 con 4 elementos), fluencia con endurecimiento lineal.
+  - [tests/validation/test_mms_frames.py](../../tests/validation/test_mms_frames.py): soluciones manufacturadas (u* cúbica exacta en todos los nodos con 1 y 3 elementos; órdenes 3 en L² y 2 en energía).
+  - [tests/test_line_elements.py](../../tests/test_line_elements.py) (energía del campo interior = uᵀKu, nodos = DOFs locales, carga constante como campo) y [tests/test_element_contract_sweep.py](../../tests/test_element_contract_sweep.py) (barrido de contrato).
+- **Notas de traducción**:
+  - `REFERENCE_NODES = ((-1,), (1,), (0,))`: el generador de mallas estructuradas crea el nodo intermedio. `VTK_CELL_TYPE = "line3"` (meshio, mismo orden de nodos).
+  - `_line_ends()` devuelve sólo los extremos, que es lo que usan el campo interior y la verificación por soluciones manufacturadas.
+  - `internal_forces` evalúa el material en los puntos de Gauss desde el estado confirmado (como `Truss2D`) y extrapola; `equivalent_load` se acepta por el contrato pero no interviene, porque el axial lineal del elemento ya incluye la carga distribuida.
 
 ---
 
 ## Diálogo
 
-- **2026-11-10** · Origen: decisión del usuario sobre la integración de la interfaz de adherencia (S3.2). Con los mismos nodos de barra (lineal con 2n tramos frente a cuadrática con n elementos), error máximo del deslizamiento en un ensayo de extracción (d_b = 16 mm, ley lineal τ = k_b·s): concreto rígido, k_b = 10¹⁰ Pa/m, 11 nodos: lineal nodal 1.52 %, lineal Gauss 0.52 %, cuadrática nodal (Lobatto 3) 0.04 %, cuadrática Gauss 0.02 %; concreto Tri3 10×3, k_b = 10¹²: 2.36 / 0.56 / 0.08 / 0.28 %. Oscilación de τ: cuadrática nodal ≥ −1 % de τ_máx sin inversiones; Gauss (lineal o cuadrática) hasta −20 %. **Decidido por el usuario (2026-11-10): añadir la barra de 3 nodos; para la adherencia se recomienda barra cuadrática con integración nodal; la barra lineal se conserva y Gauss queda como opción en los dos órdenes.**
+- **2026-11-10** · Origen: decisión del usuario sobre la integración de la interfaz de adherencia. Con los mismos nodos de barra (lineal con 2n tramos frente a cuadrática con n elementos), error máximo del deslizamiento en un ensayo de extracción (d_b = 16 mm, ley lineal τ = k_b·s): concreto rígido, k_b = 10¹⁰ Pa/m, 11 nodos: lineal nodal 1.52 %, lineal Gauss 0.52 %, cuadrática nodal (Lobatto 3) 0.04 %, cuadrática Gauss 0.02 %; concreto Tri3 10×3, k_b = 10¹²: 2.36 / 0.56 / 0.08 / 0.28 %. Oscilación de τ: cuadrática nodal ≥ −1 % de τ_máx sin inversiones; Gauss (lineal o cuadrática) hasta −20 %. **Decidido por el usuario (2026-11-10): añadir la barra de 3 nodos; para la adherencia se recomienda barra cuadrática con integración nodal; la barra lineal se conserva y Gauss queda como opción en los dos órdenes.**
+- **2026-11-10** · **Corrección del criterio de soluciones manufacturadas** (error de la IA al redactar la spec; la formulación no cambia). La exactitud nodal de Tong (1969) vale en los nodos donde la función de Green, lineal a trozos con quiebre en el nodo, pertenece al espacio de elementos finitos: los extremos de cada elemento, no el nodo intermedio, porque una cuadrática no tiene quiebre dentro del elemento. Medido (1 elemento, u* de grado 4): extremos 8.7e-19, intermedio 1.6e-5 (u* ~ 1e-3). En el intermedio, u_h' es la proyección L² de u' sobre las lineales y el residuo de Legendre P₂ integra cero en medio elemento: exacto con u* de grado ≤ 3; con u* suave converge con orden 4 (7.2e-8, 4.6e-9, 2.9e-10, 1.8e-11 con 4/8/16/32 elementos), superconvergente frente al orden 3 en L².
+- **2026-11-10** · Criterio «material no lineal» reformulado (error de la IA al redactar la spec): con plasticidad perfecta y desplazamiento impuesto, la barra totalmente fluida es un mecanismo (tangente nula; el solver lo detecta como tangente singular). Se usa endurecimiento lineal y la solución cerrada de deformación uniforme.
 - **2026-11-10** · Formas cerradas de §9, §10 y §13 deducidas con SymPy (Gauss de 2 puntos = integral exacta de K_e con E_tA constante). Frecuencias axiales de la barra empotrada-libre (consistente, error relativo del primer modo): 3.75e-3 / 2.56e-4 / 1.64e-5 / 1.03e-6 con 1/2/4/8 elementos (orden 4); lineal con los mismos nodos: 6.44e-3 / 1.61e-3 / 4.02e-4.
+- **2026-11-10** · Implementado y validado: todos los casos de `acceptance` en verde. Promovido `status: validated`.

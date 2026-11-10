@@ -36,7 +36,7 @@ X2 = ([0.3, 0.2], [1.5, 1.1])
 X3 = ([0.3, 0.2, -0.4], [1.5, 1.1, 0.6])
 KWARGS = {
     "Truss2D": dict(A=2.0), "Truss2DCorot": dict(A=2.0), "Truss3D": dict(A=2.0),
-    "Truss3DCorot": dict(A=2.0),
+    "Truss3DCorot": dict(A=2.0), "Truss2D3": dict(A=2.0), "Truss3D3": dict(A=2.0),
     "Frame2DEuler": dict(A=2.0, I=0.7), "Frame2DEulerCorot": dict(A=2.0, I=0.7),
     "Frame2DTimoshenko": dict(A=2.0, I=0.7, As=1.6, nu=0.25),
     "Frame3D": dict(A=2.0, Iy=0.7, Iz=0.4, J=0.9, nu=0.25),
@@ -70,9 +70,16 @@ def lineales():
             and c.__name__ in KWARGS]
 
 
+def xi_nodos(cls):
+    """Posición ``ξ ∈ [0, 1]`` de cada nodo del elemento sobre su eje, según
+    ``REFERENCE_NODES`` (extremos y, en los cuadráticos, el intermedio)."""
+    return [(r[0] + 1.0) / 2.0 for r in cls.REFERENCE_NODES]
+
+
 def elemento(cls):
-    X = X3 if "uz" in cls.DOF_NAMES else X2
-    return cls(1, [Node(1, X[0]), Node(2, X[1])], MAT, **KWARGS[cls.__name__])
+    X0, X1 = (np.asarray(x, dtype=float) for x in (X3 if "uz" in cls.DOF_NAMES else X2))
+    nodos = [Node(k + 1, X0 + xi * (X1 - X0)) for k, xi in enumerate(xi_nodos(cls))]
+    return cls(1, nodos, MAT, **KWARGS[cls.__name__])
 
 
 def setUpModule():
@@ -108,7 +115,7 @@ class TestContrato(unittest.TestCase):
         for cls in lineales():
             with self.subTest(elemento=cls.__name__):
                 el = elemento(cls)
-                n = 2 * len(cls.DOF_NAMES)
+                n = len(el.nodes) * len(cls.DOF_NAMES)
                 K, _ = el.compute_element_state(np.zeros(n))
                 D = el.section_rigidities()
                 self.assertEqual(len(D), len(cls.LINE_STRAINS))
@@ -118,13 +125,13 @@ class TestContrato(unittest.TestCase):
                     energia = el.L0 * (wg @ np.einsum("gi,i,gi->g", e, D, e))
                     cerca(energia, u @ K @ u)
 
-    def test_extremos_valen_los_dofs_locales(self):
+    def test_nodos_valen_los_dofs_locales(self):
         rng = np.random.default_rng(8)
         for cls in lineales():
             with self.subTest(elemento=cls.__name__):
                 el = elemento(cls)
-                u = rng.standard_normal(2 * len(cls.DOF_NAMES))
-                campo, _ = el.line_field(u, [0.0, 1.0])
+                u = rng.standard_normal(len(el.nodes) * len(cls.DOF_NAMES))
+                campo, _ = el.line_field(u, xi_nodos(cls))
                 cerca(campo.reshape(-1), el._to_local(u))
 
 

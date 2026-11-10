@@ -170,13 +170,13 @@ class TestCinematicaDeElementos(unittest.TestCase):
     def test_elementos_batchables(self):
         """Todos los sólidos isoparamétricos y los térmicos declaran
         cinemática; los 1D no (quedan en el camino por elemento)."""
-        esperados_no = {'Truss2D', 'Truss2DCorot', 'Truss3D',
-                        'Truss3DCorot', 'Cable2DCorot', 'Cable3DCorot', 'Frame2DEuler',
-                        'Frame2DEulerCorot', 'Frame2DTimoshenko', 'Frame3D'}
+        # Los 1D (deformación escalar: armaduras, cables, marcos) quedan
+        # diferidos en el ADR 0014; se derivan del contrato, no de una lista.
         for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
-                self.assertEqual(element_is_batchable(elem), nombre not in esperados_no)
+                es_1d = getattr(type(elem), "STRAIN_DIM", None) == 1
+                self.assertEqual(element_is_batchable(elem), not es_1d)
 
     def test_cinematica_integra_el_volumen_y_anula_traslaciones(self):
         for nombre in nombres_programa_principal(ElementRegistry):

@@ -28,7 +28,7 @@ Igual que `Truss2D3` (§6–§14) con tres componentes traslacionales por nodo:
 ```yaml
 name: Truss3D3
 kind: element
-status: draft            # draft → implemented → validated
+status: validated        # draft → implemented → validated
 
 interface:
   dof_names: [ux, uy, uz]
@@ -67,7 +67,7 @@ out_of_scope:
 acceptance:
   - name: soluciones manufacturadas (ADR 0022)
     setup: "línea recta oblicua en el espacio; mismas condiciones que Truss2D3; n = 2, 4, 8, 16"
-    expect: "campo exacto con u* de grado ≤ 2; exactitud nodal con cargas de grado ≤ 4; orden ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía"
+    expect: "campo exacto con u* de grado ≤ 2; error de redondeo en los nodos extremos con cualquier carga polinómica integrada exactamente y en el intermedio con u* de grado ≤ 3 (ver la corrección del 2026-11-10 en Truss2D3); orden ≥ 3 − 0.1 en L² y ≥ 2 − 0.1 en energía"
     tol_abs: 0.1
   - name: barra axial bajo carga puntual (3D)
     setup: "barra oblicua empotrada en un extremo, carga F axial en el otro, 1 y 3 elementos"
@@ -87,10 +87,13 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- **Archivo**: [solidum/elements/truss_quadratic.py](../../solidum/elements/truss_quadratic.py)
+- **Clase**: `Truss3D3`, sobre la misma base `_QuadraticTruss` que `Truss2D3`. Acepta nodos con 2 ó 3 coordenadas.
+- **Tests**: los de [`Truss2D3`](Truss2D3.md) parametrizados en 3D en [tests/test_truss_quadratic.py](../../tests/test_truss_quadratic.py) (matrices, carga puntual con 1 y 3 elementos oblicuos, igualdad con `Truss2D3` en el plano z = 0, `internal_forces_from_nodal`), [tests/validation/test_mms_frames.py](../../tests/validation/test_mms_frames.py), [tests/test_line_elements.py](../../tests/test_line_elements.py) y el barrido de contrato.
 
 ---
 
 ## Diálogo
 
 - **2026-11-10** · Abierta junto con [`Truss2D3`](Truss2D3.md) (decisión del usuario del mismo día; motivo y datos allí).
+- **2026-11-10** · Implementado y validado: todos los casos de `acceptance` en verde. Promovido `status: validated`.
