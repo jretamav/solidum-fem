@@ -140,7 +140,10 @@ class TestStepCountAndMassDiagnostics(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             LUSolver().solve(K, np.array([1.0, 1.0]))
 
-    def test_massless_free_dof_raises_value_error(self):
+    def test_massless_free_dof_is_condensed(self):
+        """Antes (deuda #34) un DOF libre sin masa detenía los implícitos con
+        ValueError; desde el 2026-11-09 la aceleración inicial se condensa
+        (ADR 0024 §6 bis): el extremo sin masa ni carga sigue al nodo 2."""
         dom = Domain()
         n1 = dom.add_node(1, [0.0, 0.0]); n2 = dom.add_node(2, [1.0, 0.0])
         n3 = dom.add_node(3, [2.0, 0.0])
@@ -149,10 +152,14 @@ class TestStepCountAndMassDiagnostics(unittest.TestCase):
         n1.fix_dof("ux", 0.0); n1.fix_dof("uy", 0.0)
         n2.fix_dof("uy", 0.0); n3.fix_dof("uy", 0.0)
         dom.generate_equation_numbers(verbose=False)
-        with self.assertRaises(ValueError):
-            NewmarkSolver(Assembler(dom), t_end=0.1, dt=0.01, lumping="lumped").solve()
-        with self.assertRaises(ValueError):
-            NewtonNewmarkSolver(Assembler(dom), t_end=0.1, dt=0.01, lumping="lumped").solve()
+        F = np.zeros(dom.total_dofs)
+        F[n2.dofs["ux"]] = 1.0e3
+        for cls in (NewmarkSolver, NewtonNewmarkSolver):
+            res = cls(Assembler(dom), t_end=0.1, dt=0.01, lumping="lumped",
+                      F_func=lambda t: F).solve()
+            for hist in (res.u_history, res.uddot_history):
+                np.testing.assert_allclose(hist[n3.dofs["ux"]], hist[n2.dofs["ux"]],
+                                           rtol=1e-10, atol=1e-14)
 
 
 class TestModalFreeFree(unittest.TestCase):

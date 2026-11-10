@@ -12,10 +12,10 @@ Mismo contrato que los solvers estáticos incrementales:
   el historial hasta el último paso convergido en ``partial_result`` (también
   en el solver), sin columnas sin calcular. El estado del solver queda en
   ``"diverged"``.
-- Un grado de libertad libre sin masa en un transitorio da
-  ``MasslessDofsError`` que lo nombra (``"nodo 2 (ux)"``), con la causa
-  ``initial_acceleration`` en los implícitos y ``explicit_integration`` en la
-  diferencia central, en vez de un ``ValueError`` genérico.
+- Un grado de libertad libre sin masa: los implícitos lo condensan para la
+  aceleración inicial (deuda #34, ADR 0024 §6 bis) y sólo un mecanismo sin
+  masa da ``MasslessDofsError``; la diferencia central exige masa en todos
+  (causa ``explicit_integration``, que lo nombra: ``"nodo 2 (ux)"``).
 - Los entrypoints de los análisis no estáticos son API pública del paquete.
 """
 import logging
@@ -169,16 +169,34 @@ class TestSinMasa(_Quiet):
         return dom, F
 
     def test_implicitos(self):
+        """Los implícitos condensan el grado de libertad sin masa (deuda #34,
+        decisión del usuario 2026-11-09): el nodo 2, entre el apoyo y la masa
+        con dos barras iguales, sigue cuasiestáticamente a la mitad del
+        extremo, también en aceleración desde t = 0."""
         for cls in (NewmarkSolver, HHTSolver, NewtonNewmarkSolver, NewtonHHTSolver):
             with self.subTest(solver=cls.__name__):
                 dom, F = self._model()
-                solver = cls(Assembler(dom), t_end=1.0e-3, dt=1.0e-4, F_func=lambda t: F)
-                with self.assertRaises(MasslessDofsError) as info:
-                    solver.solve()
-                self.assertEqual(info.exception.cause, "initial_acceleration")
-                self.assertEqual(info.exception.massless_dofs, ["nodo 2 (ux)"])
-                self.assertIn("deuda #34", str(info.exception))
-                self.assertIn("add_nodal_mass", str(info.exception))
+                res = cls(Assembler(dom), t_end=1.0e-3, dt=1.0e-4, F_func=lambda t: F).solve()
+                i2, i3 = dom.nodes[2].dofs["ux"], dom.nodes[3].dofs["ux"]
+                self.assertEqual(res.termination, "t_end")
+                for hist in (res.u_history, res.udot_history, res.uddot_history):
+                    np.testing.assert_allclose(hist[i2], 0.5 * hist[i3], rtol=0.0,
+                                               atol=1e-10 * np.max(np.abs(hist[i3])))
+                self.assertGreater(abs(res.uddot_history[i3, 0]), 0.0)
+
+    def test_mecanismo_sin_masa(self):
+        """Un grado de libertad sin masa y sin rigidez (el uy de una barra
+        recta) no tiene movimiento determinado: error que lo nombra."""
+        dom, F = self._model()
+        dom.nodes[2].boundary_conditions.pop("uy")
+        dom.generate_equation_numbers()
+        F = np.zeros(dom.total_dofs)
+        F[dom.nodes[3].dofs["ux"]] = 1.0e4
+        solver = NewmarkSolver(Assembler(dom), t_end=1.0e-3, dt=1.0e-4, F_func=lambda t: F)
+        with self.assertRaises(MasslessDofsError) as info:
+            solver.solve()
+        self.assertEqual(info.exception.cause, "massless_mechanism")
+        self.assertIn("nodo 2 (uy)", info.exception.massless_dofs)
 
     def test_diferencia_central(self):
         dom, F = self._model()

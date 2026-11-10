@@ -16,6 +16,7 @@
 """
 import numpy as np
 import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 
 from solidum.constants import INITIAL_CONDITION_MPC_RTOL
 from solidum.core.load_vector import LoadVector, as_load_vector, equivalent_loads_of
@@ -563,17 +564,10 @@ def solve_mass_system(M_solver, M_red, rhs, solver_name: str, *, domain=None,
                       free_dofs=None):
     """``M_red · x = rhs`` con diagnóstico accionable si ``M_red`` es singular.
 
-    Un grado de libertad libre sin masa (diagonal nula: sin densidad en los
-    elementos que lo comparten ni masa de nudo, o sin inercia rotacional)
-    deja la aceleración inicial indefinida: se lanza ``MasslessDofsError``
-    (``cause = "initial_acceleration"``) con esos grados de libertad
-    nombrados, en vez de propagar un historial de ``NaN`` en silencio. Una
-    ``M_red`` singular por otra causa da ``ValueError``.
+    Para una ``M_red`` con masa en todos los grados de libertad (los que no
+    la tienen los trata :func:`initial_acceleration`). Una ``M_red`` singular
+    por otra causa da ``ValueError`` en vez de propagar ``NaN`` en silencio.
     """
-    error = massless_error(M_red, solver_name, "initial_acceleration",
-                           domain=domain, free_dofs=free_dofs)
-    if error is not None:
-        raise error
     try:
         x = M_solver.solve(M_red, rhs)
     except RuntimeError as exc:
@@ -591,3 +585,88 @@ def solve_mass_system(M_solver, M_red, rhs, solver_name: str, *, domain=None,
             f"sin inercia rotacional en los elementos que lo comparten."
         )
     return x
+
+
+# Residuo de las filas sin masa en t₀, relativo a la escala de las fuerzas,
+# por encima del cual el estado inicial no las equilibra.
+_MASSLESS_RESIDUAL_RTOL = 1.0e-8
+
+
+def initial_acceleration(M_solver, M_red, K_red, rhs, solver_name: str, *,
+                         domain=None, free_dofs=None, force_scale: float = 0.0):
+    """Aceleración inicial ``ü₀`` de ``M·ü₀ = rhs`` en un integrador implícito,
+    con grados de libertad sin masa (decisión del usuario, 2026-11-09; ADR 0024).
+
+    ``rhs = F(t₀) − F_int(u₀) − C·u̇₀`` reducido. Sin grados de libertad sin
+    masa es ``M⁻¹·rhs``. Con ellos (diagonal nula de ``M``; con ``M``
+    semidefinida, fila y columna nulas), con ``m`` los que tienen masa y ``0``
+    los demás:
+
+    - ``üₘ = Mₘₘ⁻¹·rhsₘ``: las filas con masa la determinan;
+    - ``ü₀ = −K₀₀⁻¹·K₀ₘ·üₘ``: la aceleración **consistente**. Las filas sin
+      masa no tienen inercia, ``K₀·u = F₀`` en todo instante (con Rayleigh,
+      ``C₀ = a₁·K₀`` en esas filas), y derivarla da esa relación: los grados
+      de libertad sin masa siguen de forma cuasiestática a los que la tienen.
+      Es la condensación del análisis modal.
+
+    La elección de ``ü₀`` no cambia los desplazamientos ni las velocidades de
+    la integración (la ecuación algebraica fija ``u₀`` en cada paso); sí la
+    aceleración que se reporta en los grados de libertad sin masa: con
+    ``ü₀ = 0`` arrastraría un error que Newmark no amortigua (medido: 50 % de
+    la aceleración de piso con una carga aplicada desde ``t₀``).
+
+    ``K_red`` es la rigidez (tangente) reducida en ``u₀``. Si el estado inicial
+    no equilibra las filas sin masa (una carga aplicada de golpe en un nudo
+    sin masa), se avisa: esos grados de libertad se ajustan en el primer paso.
+    Se lanza :class:`~solidum.math.solvers.diagnostics.MasslessDofsError` si
+    ningún grado de libertad tiene masa, si los que no la tienen forman un
+    mecanismo (``K₀₀`` singular) o si la masa de los demás es singular.
+    """
+    M_red = sp.csr_matrix(M_red)
+    zero = massless_dofs(M_red)
+    if zero.size == 0:
+        return solve_mass_system(M_solver, M_red, rhs, solver_name,
+                                 domain=domain, free_dofs=free_dofs)
+    n = M_red.shape[0]
+    mass = np.setdiff1d(np.arange(n), zero)
+    global_idx = zero if free_dofs is None else np.asarray(free_dofs)[zero]
+
+    def fail(cause: str) -> MasslessDofsError:
+        return MasslessDofsError(cause=cause, massless=zero,
+                                 massless_dofs=_dof_labels(domain, global_idx),
+                                 n_mass=int(mass.size), solver=solver_name)
+
+    rows = M_red[zero]
+    if rows.nnz and np.any(rows.data != 0.0):
+        raise fail("indefinite_mass")
+    if mass.size == 0:
+        raise fail("no_mass")
+    K_red = sp.csr_matrix(K_red)
+    try:
+        lu_zz = spla.splu(K_red[zero][:, zero].tocsc())
+    except RuntimeError as exc:
+        raise fail("massless_mechanism") from exc
+    try:
+        a_m = M_solver.solve(M_red[mass][:, mass].tocsr(), rhs[mass])
+    except RuntimeError as exc:
+        raise fail("singular_mass") from exc
+    if not np.all(np.isfinite(a_m)):
+        raise fail("singular_mass")
+    a = np.empty(n)
+    a[mass] = a_m
+    a[zero] = -lu_zz.solve(np.asarray(K_red[zero][:, mass] @ a_m).ravel())
+
+    residual = float(np.linalg.norm(rhs[zero]))
+    scale = max(float(force_scale), float(np.linalg.norm(rhs)))
+    if residual > _MASSLESS_RESIDUAL_RTOL * scale and residual > 0.0:
+        bad = zero[np.abs(rhs[zero]) > _MASSLESS_RESIDUAL_RTOL * scale]
+        labels = _dof_labels(domain, bad if free_dofs is None else np.asarray(free_dofs)[bad])
+        muestra = ", ".join(labels[:8]) + (f", … (+{len(labels) - 8})" if len(labels) > 8 else "")
+        _log.warning(
+            "%s: en t₀ la carga sobre grados de libertad sin masa no está "
+            "equilibrada por el estado inicial [%s]. No tienen inercia: se "
+            "ajustan de golpe en el primer paso, y el estado reportado en t₀ "
+            "no es de equilibrio en ellos.", solver_name, muestra)
+    _log.info("  %d grado(s) de libertad sin masa: aceleración inicial consistente "
+              "ü₀ = −K₀₀⁻¹·K₀ₘ·üₘ (ADR 0024).", zero.size)
+    return a

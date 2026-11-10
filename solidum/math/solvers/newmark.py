@@ -21,8 +21,8 @@ from solidum.math.solvers._shared import (
     TransientTerminationMixin,
     _log,
     domain_is_symmetric,
+    initial_acceleration,
     mechanical_trace,
-    solve_mass_system,
     warn_initial_conditions_off_constraints,
 )
 from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
@@ -188,8 +188,11 @@ class NewmarkSolver(TransientTerminationMixin):
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = self._carried_acceleration(free_dofs)
         if uddot_free is None:
-            uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
-                                       domain=self.assembler.domain, free_dofs=free_dofs)
+            uddot_free = initial_acceleration(
+                M_solver, M_red, K_red, rhs0, type(self).__name__,
+                domain=self.assembler.domain, free_dofs=free_dofs,
+                force_scale=float(np.linalg.norm(F0_red - F_dir))
+                + float(np.linalg.norm(K_red @ u_free)))
 
         # Factorización reutilizable de A_eff = M + γΔt·C + βΔt²·K.
         dt = self.dt
@@ -497,8 +500,11 @@ class NewtonNewmarkSolver(NewmarkSolver):
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = self._carried_acceleration(free_dofs)
         if uddot_free is None:
-            uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
-                                       domain=self.assembler.domain, free_dofs=free_dofs)
+            uddot_free = initial_acceleration(
+                M_solver, M_red, T_op.T @ K_0 @ T_op, rhs0, type(self).__name__,
+                domain=self.assembler.domain, free_dofs=free_dofs,
+                force_scale=float(np.linalg.norm(T_op.T @ F0_global))
+                + float(np.linalg.norm(T_op.T @ F_int)))
         uddot_total = np.asarray(T_op @ uddot_free, dtype=float)
 
         # Historiales.
@@ -735,8 +741,11 @@ class HHTSolver(NewmarkSolver):
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = self._carried_acceleration(free_dofs)
         if uddot_free is None:
-            uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
-                                       domain=self.assembler.domain, free_dofs=free_dofs)
+            uddot_free = initial_acceleration(
+                M_solver, M_red, K_red, rhs0, type(self).__name__,
+                domain=self.assembler.domain, free_dofs=free_dofs,
+                force_scale=float(np.linalg.norm(F0_red - F_dir))
+                + float(np.linalg.norm(K_red @ u_free)))
 
         # Sistema efectivo HHT-α: A_eff = M + (1+α)γΔt·C + (1+α)βΔt²·K.
         # Constante en el tiempo → factorización única reutilizable.
@@ -965,8 +974,11 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         M_solver = select_solver(props_M, override=self.linear_algebra)
         uddot_free = self._carried_acceleration(free_dofs)
         if uddot_free is None:
-            uddot_free = solve_mass_system(M_solver, M_red, rhs0, type(self).__name__,
-                                       domain=self.assembler.domain, free_dofs=free_dofs)
+            uddot_free = initial_acceleration(
+                M_solver, M_red, T_op.T @ K_0 @ T_op, rhs0, type(self).__name__,
+                domain=self.assembler.domain, free_dofs=free_dofs,
+                force_scale=float(np.linalg.norm(T_op.T @ F0_global))
+                + float(np.linalg.norm(T_op.T @ F_int)))
         uddot_total = np.asarray(T_op @ uddot_free, dtype=float)
 
         # Estado del paso anterior (al inicio del análisis: instante 0).

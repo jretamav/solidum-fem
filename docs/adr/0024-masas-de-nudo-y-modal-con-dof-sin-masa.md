@@ -87,12 +87,24 @@ El reintento con desplazamiento negativo de las estructuras libres (con `K` sing
 `MasslessDofsError` (`ValueError`, en `solidum.math.solvers.diagnostics`) se lanza en estos casos, y su mensaje nombra los grados de libertad sin masa como (nodo, dof):
 - se piden más modos que grados de libertad con masa (sólo esos tienen frecuencia finita);
 - ningún grado de libertad libre tiene masa;
-- los grados de libertad sin masa forman un mecanismo ($\mathbf K_{00}$ singular): se mueven sin rigidez ni inercia, y su frecuencia está indeterminada;
+- los grados de libertad sin masa forman un mecanismo ($\mathbf K_{00}$ singular): se mueven sin rigidez ni inercia, y su movimiento (en el modal, su frecuencia) está indeterminado; también en los transitorios implícitos (§6 bis);
 - la matriz de masa de los grados de libertad con masa sigue siendo singular.
+
+### 6 bis. Transitorios implícitos: aceleración inicial consistente (decisión del usuario, 2026-11-09)
+
+La integración implícita no necesita $\mathbf M$ definida: $\mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\mathbf K$ es regular aunque haya grados de libertad sin masa. Sólo la aceleración inicial, $\mathbf M\ddot{\mathbf u}_0 = \mathbf r_0 = \mathbf F(t_0) - \mathbf F_\text{int}(\mathbf u_0) - \mathbf C\dot{\mathbf u}_0$, queda indeterminada en ellos. Newmark, HHT y sus variantes de Newton la toman **consistente**:
+
+$$\ddot{\mathbf u}_m = \mathbf M_{mm}^{-1}\,\mathbf r_{0,m}, \qquad \ddot{\mathbf u}_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\,\ddot{\mathbf u}_m ,$$
+
+con $\mathbf K$ la rigidez (tangente) en $\mathbf u_0$. Las filas sin masa no tienen inercia: $\mathbf K_0\mathbf u = \mathbf F_0$ en todo instante (con Rayleigh, $\mathbf C_0 = a_1\mathbf K_0$ en esas filas, y la relación es la misma), y derivarla da esa aceleración. Los grados de libertad sin masa siguen de forma cuasiestática a los que la tienen, como en el análisis modal (§5).
+
+Alternativa descartada: $\ddot{\mathbf u}_0 = \mathbf 0$ en los grados de libertad sin masa (lo que hace OpenSees al arrancar con aceleraciones nulas). Medido en el edificio de cortante de tres pisos (3 grados de libertad con masa y 18 sin masa, Newmark con $\Delta t = T_1/40$): los desplazamientos y las velocidades de todos los nudos son los mismos con las dos opciones (diferencia ≤ 5e-14), porque la ecuación algebraica de las filas sin masa fija $\mathbf u_0$ en cada paso; pero con una carga aplicada desde $t_0$ la aceleración reportada en los grados de libertad sin masa arrastra con $\ddot{\mathbf u}_0 = \mathbf 0$ un error del 50 % de la aceleración de piso que Newmark no amortigua, y con la consistente, de 3e-11. Partiendo del reposo con $\mathbf F(t_0) = \mathbf 0$ las dos coinciden.
+
+Si el estado inicial no equilibra las filas sin masa ($\mathbf r_{0,0} \neq \mathbf 0$: una carga aplicada de golpe en un nudo sin masa), se avisa: esos grados de libertad se ajustan en el primer paso. Un mecanismo sin masa ($\mathbf K_{00}$ singular) da `MasslessDofsError` con causa `massless_mechanism`. Pruebas: `tests/test_transient_massless_dofs.py` (el edificio contra el problema 3×3 condensado integrado con el mismo esquema, Newmark y HHT-α, sin y con Rayleigh, a 1e-9) y `tests/test_transient_termination.py`.
 
 ### 7. Fuera de este ADR
 
-- **Transitorio con grados de libertad sin masa.** Newmark y HHT calculan la aceleración inicial resolviendo $\mathbf M\ddot{\mathbf u}_0 = \ldots$; con grados de libertad sin masa siguen lanzando el `ValueError` con diagnóstico de `solve_mass_system`. Cómo tratar la aceleración inicial de esos grados de libertad (condensarla o imponer su ecuación de equilibrio sin inercia) es una decisión física pendiente.
+- ~~Transitorio con grados de libertad sin masa~~: resuelto en el §6 bis (2026-11-09).
 - Diferencias centrales exige masa en todos los grados de libertad, porque es un método explícito; eso no cambia.
 
 ## Alternativas consideradas

@@ -103,7 +103,7 @@ solver:
 
 `n_modes` no puede pasar del número de grados de libertad con masa. Si se piden más, o ninguno tiene masa, o los grados de libertad sin masa forman un mecanismo (pueden moverse sin rigidez ni inercia), el análisis se detiene con `MasslessDofsError`. El mensaje dice la causa y nombra los grados de libertad sin masa como `nodo <id> (<dof>)`. `ResponseSpectrumSolver` hereda todo esto: con masas de piso, `total_mass` es la suma de las masas de piso.
 
-En los **transitorios** los grados de libertad sin masa todavía no se admiten. Newmark y HHT calculan la aceleración inicial resolviendo $\mathbf M\ddot{\mathbf u}_0 = \ldots$, y con grados de libertad sin masa se detienen con un `ValueError` que explica la causa. `CentralDifferenceSolver`, por ser explícito, exige masa en todos.
+En los **transitorios implícitos** (Newmark, HHT y sus variantes de Newton) los grados de libertad sin masa también se admiten. La integración no necesita $\mathbf M$ definida; sólo la aceleración inicial queda indeterminada en ellos, y se toma **consistente**: $\ddot{\mathbf u}_m = \mathbf M_{mm}^{-1}\mathbf r_m$ en los que tienen masa y $\ddot{\mathbf u}_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\ddot{\mathbf u}_m$ en los demás, que siguen de forma cuasiestática a los primeros (ADR 0024, §6 bis). Así las aceleraciones reportadas son correctas en todo el modelo, también con una carga aplicada desde $t = 0$. Si la carga inicial actúa directamente sobre un nudo sin masa, Solidum avisa: ese nudo no tiene inercia y se ajusta en el primer paso. `CentralDifferenceSolver`, por ser explícito, exige masa en todos.
 
 ## `NewmarkSolver` — transitorio lineal Newmark-$\beta$
 
@@ -254,7 +254,7 @@ except SolverDivergedError as exc:
 
 **Fuerzas internas con carga distribuida.** Con `record_internal_forces=True`, el historial descuenta en cada paso las cargas equivalentes de la carga del instante si `F_func` combina las cargas que devuelven `assemble_self_weight` / `assemble_body_load` (ADR 0027): `F_func=lambda t: F_peso + a(t) * F_viento`.
 
-**Grados de libertad sin masa.** Los integradores implícitos todavía no los admiten (deuda #34) y la diferencia central exige masa en todos: `MasslessDofsError` los nombra.
+**Grados de libertad sin masa.** Los integradores implícitos los admiten con la aceleración inicial consistente (ADR 0024 §6 bis); sólo un mecanismo sin masa (grados de libertad sin masa ni rigidez) da `MasslessDofsError`. La diferencia central exige masa en todos: `MasslessDofsError` los nombra.
 
 ## Progreso paso a paso
 

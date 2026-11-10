@@ -454,17 +454,16 @@ class MasslessDofsError(SemidefiniteMassError):
     """Un análisis dinámico no tiene solución con los grados de libertad sin
     masa del modelo (ADR 0024).
 
-    En el transitorio:
+    En el modal y en los transitorios implícitos (Newmark, HHT y sus
+    variantes no lineales), los grados de libertad sin masa (masas sólo en
+    algunos nudos, elementos con ``density = 0``) se condensan
+    estáticamente, de forma exacta: en el modal, para las frecuencias; en el
+    transitorio, para la aceleración inicial (``ü₀ = −K₀₀⁻¹·K₀ₘ·üₘ``,
+    decisión del usuario del 2026-11-09). Este error se lanza sólo cuando eso
+    no basta:
 
-    - ``initial_acceleration``: los integradores implícitos (Newmark, HHT y
-      sus variantes no lineales) aún no condensan los grados de libertad sin
-      masa para la aceleración inicial (deuda #34);
     - ``explicit_integration``: la diferencia central exige masa en todos
-      los grados de libertad libres.
-
-    En el modal, los grados de libertad sin masa (masas sólo en algunos
-    nudos, elementos con ``density = 0``) se condensan estáticamente, de
-    forma exacta. Este error se lanza sólo cuando eso no basta:
+      los grados de libertad libres;
 
     - ``too_many_modes``: se piden más modos que grados de libertad con
       masa, y sólo ellos tienen frecuencia finita;
@@ -513,13 +512,6 @@ class MasslessDofsError(SemidefiniteMassError):
                 f"ningún grado de libertad libre tiene masa, así que no hay "
                 f"frecuencias finitas. Declara {dar_masa}."
             )
-        elif cause == "initial_acceleration":
-            texto = (
-                f"la aceleración inicial ü₀ = M⁻¹·(F(0) − F_int(u₀) − C·u̇₀) no "
-                f"está definida con grados de libertad libres sin masa: la "
-                f"integración implícita en el tiempo todavía no los condensa "
-                f"(deuda #34 de docs/STATUS.md). Declara {dar_masa}. {sin_masa}"
-            )
         elif cause == "explicit_integration":
             texto = (
                 f"la integración explícita resuelve ü = M⁻¹·(…) en cada paso y "
@@ -530,8 +522,9 @@ class MasslessDofsError(SemidefiniteMassError):
             texto = (
                 f"los grados de libertad sin masa forman un mecanismo: pueden "
                 f"moverse sin rigidez que los fije y sin inercia, así que su "
-                f"frecuencia está indeterminada. Revisa la conectividad y los "
-                f"apoyos de esos grados de libertad, o dales masa. {sin_masa}"
+                f"movimiento (en el modal, su frecuencia) está indeterminado. "
+                f"Revisa la conectividad y los apoyos de esos grados de "
+                f"libertad, o dales masa. {sin_masa}"
             )
         else:
             texto = (
