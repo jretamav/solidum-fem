@@ -349,6 +349,28 @@ Familia paralela a los constitutivos mecánicos: relacionan la **tracción** `t`
 - **Archivo**: [solidum/materials/interface/cohesive_damage_isotropic.py](../solidum/materials/interface/cohesive_damage_isotropic.py)
 - **Clasificación**: estándar (de Borst et al. 2012, cap. 6, modelos de zona cohesiva; Abaqus, elementos cohesivos con daño). Hasta el 2026-11-10 vivía en el módulo de usuario `discontinuities`; pasó al programa principal con la familia (ADR 0033).
 
+## BondSlipModelCode — adherencia-deslizamiento de barras corrugadas (Model Code 2010 / Eligehausen et al. 1983)
+
+- **Modelo**: ley de interfaz de **línea** (`GEOMETRY = "line"`, componentes `(n, s)` / `(n1, n2, s)`). Envolvente τ_env(|s|): tramo lineal `k0·a` hasta `s0 = s1·(k0·s1/τ_max)^(1/(α−1))`, `τ_max·(a/s1)^α` hasta `s1`, meseta hasta `s2`, descenso lineal hasta `τ_f` en `s3` y residual `τ_f`; igual al jalar y al empujar. Normal elástica desacoplada `t_n = k_n·Δu_n`. Descarga y recarga **R1**: geometría de la Fig. 5.3b de Eligehausen, Popov y Bertero (1983) sin degradación, con fricción constante `τ_f` (regla de DIANA).
+- **Parámetros**: `tau_max` (Pa), `s1`, `s2`, `s3` (m), `alpha`, `tau_f` (Pa), `k0` (Pa/m, rigidez inicial y de descarga, `> τ_max/s1`), `k_n` (Pa/m). Función auxiliar `BondSlipModelCode.model_code_2010(fcm, bond, failure, stirrups, clear_rib_spacing, diameter, E_c, k0, k_n)` con las seis columnas de la Tabla 6.1-1 (arrancamiento/hendimiento, buena/otras, con o sin estribos), `k0 = 180 N/mm³` y `k_n = 2·E_c/d_b` por omisión; en YAML, el bloque `model_code_2010`.
+- **Tangente**: diagonal y simétrica; `k0` en descarga y recarga, la pendiente de la envolvente sobre ella, 0 en la fricción.
+- **Variables internas**: `s_pos`, `tau_pos`, `s_neg`, `tau_neg`, `s`, `tau`, `slip_max` (`PRIMARY_STATE_VAR`).
+- **Limitaciones**: sin degradación cíclica (Eligehausen completo, R3: módulo de usuario futuro), sin efecto de la fluencia de la barra ni de la presión transversal sobre τ, sin dilatancia. La Tabla 6.1-1 se leyó por fuentes secundarias (s2 = 2.0 mm adoptado; una fuente da 3.0).
+- **Clasificación**: el criterio de admisión no decide la adherencia por los textos (de Borst et al. 2012 sólo la menciona); está en DIANA (BONDSL 6) y Code_Aster; programa principal por decisión del usuario (2026-11-10).
+- **Compatible con**: `EmbeddedReinforcement` con `bond`.
+- **Tests**: [`test_bond_slip_laws.py`](../tests/test_bond_slip_laws.py) (ciclo de la Fig. 5.3b exacto, tangente por diferencias finitas, disipación no negativa en 1000 historias, Model Code 2010); [`test_embedded_bond_slip.py`](../tests/test_embedded_bond_slip.py).
+- **Referencia**: [`docs/specs/BondSlipModelCode.md`](specs/BondSlipModelCode.md). Eligehausen, Popov y Bertero (1983), UCB/EERC-83/23, §5.3; fib Model Code 2010, §6.1.1.
+- **Archivo**: [solidum/materials/interface/bond_slip.py](../solidum/materials/interface/bond_slip.py)
+
+## BondSlipMultilinear — adherencia-deslizamiento con envolvente por puntos
+
+- **Modelo**: como `BondSlipModelCode` con la envolvente dada por puntos `(s_k, τ_k)` desde el origen y `τ_m` más allá; `k0` = pendiente del primer tramo; `τ_f` por omisión `τ_m`. Para una curva de ensayo o de otro código.
+- **Parámetros**: `points`, `k_n`, `tau_f` (opcional).
+- **Clasificación**: como `BondSlipModelCode` (DIANA, BONDSL 3).
+- **Tests**: [`test_bond_slip_laws.py`](../tests/test_bond_slip_laws.py) (igual a `BondSlipModelCode` con 400 puntos de su rama potencial, a 1e-3).
+- **Referencia**: [`docs/specs/BondSlipMultilinear.md`](specs/BondSlipMultilinear.md).
+- **Archivo**: [solidum/materials/interface/bond_slip.py](../solidum/materials/interface/bond_slip.py)
+
 ---
 
 ## Cómo añadir un material nuevo

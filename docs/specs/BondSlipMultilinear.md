@@ -29,7 +29,7 @@ La de `BondSlipModelCode` (§4 a §6) con esta `τ_env`. La tangente en la envol
 ```yaml
 name: BondSlipMultilinear
 kind: interface_material
-status: draft
+status: validated
 
 interface:
   geometry: line
@@ -76,7 +76,8 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- **Archivo**: [solidum/materials/interface/bond_slip.py](../../solidum/materials/interface/bond_slip.py) · clase `BondSlipMultilinear`, con la misma regla R1 que `BondSlipModelCode`.
+- **Tests**: [tests/test_bond_slip_laws.py](../../tests/test_bond_slip_laws.py): envolvente por puntos y simetría, igualdad con `BondSlipModelCode` con 400 puntos de su rama potencial (≤ 1e-3) a lo largo del ciclo de la Fig. 5.3b, disipación no negativa, tangente inicial, rechazos.
 
 ---
 
@@ -84,3 +85,4 @@ references:
 
 - **2026-11-10** · Aprobada en la decisión 2 del usuario junto con `BondSlipModelCode`.
 - **2026-11-10** · Spec **aprobada por el usuario** («si»).
+- **2026-11-10** · Implementada y validada: todos los casos de `acceptance` en verde. Promovido `status: validated`.

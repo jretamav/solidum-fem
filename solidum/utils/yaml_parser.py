@@ -89,8 +89,13 @@ def _required_kwarg(cls, name: str) -> bool:
 
 def _unknown_kwargs(cls, given: set, reserved: set) -> tuple[list, list]:
     """Claves de ``given`` que el constructor de ``cls`` no acepta, y la lista
-    de admitidas para el mensaje. Vacío si el constructor toma ``**kwargs``."""
+    de admitidas para el mensaje. Vacío si el constructor toma ``**kwargs``.
+
+    Una clase que se construye desde el YAML con ``from_yaml`` puede aceptar
+    claves que su constructor no tiene (un bloque que traduce a parámetros):
+    las declara en ``YAML_KEYS``."""
     accepted, var_kw = _constructor_kwargs(cls)
+    accepted = accepted | set(getattr(cls, "YAML_KEYS", ()))
     if var_kw:
         return [], sorted(accepted - reserved)
     unknown = sorted((given - reserved) - accepted)

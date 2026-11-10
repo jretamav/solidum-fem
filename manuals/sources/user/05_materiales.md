@@ -313,3 +313,20 @@ interface_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
 ```
+
+### `BondSlipModelCode` y `BondSlipMultilinear` — adherencia-deslizamiento barra–concreto
+
+Leyes de interfaz de **línea** para la adherencia de una barra embebida (opción `bond` del refuerzo embebido, capítulo *Archivo de Entrada YAML*). Relacionan el esfuerzo de adherencia $\tau$ con el deslizamiento $s$ de la barra respecto del concreto, y la tracción normal con el desplazamiento normal, $t_n = k_n\,\Delta u_n$ (desacoplada).
+
+- **Envolvente** (`BondSlipModelCode`, Eligehausen, Popov y Bertero 1983 / fib Model Code 2010): tramo lineal $k_0\,s$ hasta $s_0$, $\tau_{max}(s/s_1)^{\alpha}$ hasta $s_1$, meseta hasta $s_2$, descenso lineal hasta $\tau_f$ en $s_3$ y residual $\tau_f$. Con `model_code_2010` los parámetros salen de la Tabla 6.1-1 a partir de $f_{cm}$, la condición de adherencia, el modo de falla (arrancamiento o hendimiento, con o sin estribos) y la separación libre entre corrugas; $k_0 = 180$ N/mm³ y $k_n = 2E_c/d_b$ por omisión.
+- **Envolvente por puntos** (`BondSlipMultilinear`): `points: [[s, τ], ...]`.
+- **Descarga y recarga**: rama rígida con $k_0$ hasta la fricción $\mp\tau_f$, deslizamiento a fricción constante y recarga con $k_0$ hasta la envolvente (Fig. 5.3b de Eligehausen et al.), **sin degradación**: adecuada para carga monótona y pocos ciclos; en ciclos pequeños sobrestima la energía disipada frente a la ley completa de Eligehausen.
+- **Unidades SI**: Pa, m, Pa/m.
+
+```yaml
+interface_materials:
+  - {id: 1, type: BondSlipModelCode, tau_max: 13.5e6, s1: 1.0e-3, s2: 3.0e-3,
+     s3: 10.5e-3, alpha: 0.4, tau_f: 5.0e6, k0: 1.8e11, k_n: 3.0e12}
+  - {id: 2, type: BondSlipMultilinear, points: [[1.0e-4, 6.0e6], [1.0e-3, 12.0e6], [4.0e-3, 3.0e6]],
+     k_n: 3.0e12}
+```

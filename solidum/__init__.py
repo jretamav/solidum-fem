@@ -63,17 +63,23 @@ from solidum.materials.damage_2d import IsotropicDamage2D
 from solidum.materials.cable_1d import CableMaterial1D
 
 from solidum.materials.thermal_conduction import ThermalConduction
+from solidum.materials.interface import (
+    BondSlipModelCode,
+    BondSlipMultilinear,
+    CohesiveDamageIsotropic,
+)
 
 from solidum.sections import FiberSection
 
 from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from solidum.elements.truss import Truss2D, Truss2DCorot, Truss3D, Truss3DCorot
+from solidum.elements.truss_quadratic import Truss2D3, Truss3D3
 from solidum.elements.cable import Cable2DCorot, Cable3DCorot
 from solidum.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimoshenko
 from solidum.elements.frame3d import Frame3D
 from solidum.elements.thermal import Hex8Thermal, Quad4Thermal
 
-from solidum.bc.embedded import EmbeddedBar, EmbeddedReinforcement, embed_reinforcement
+from solidum.bc.embedded import Bond, EmbeddedBar, EmbeddedReinforcement, embed_reinforcement
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import (
     ArcLengthSolver,

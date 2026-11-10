@@ -51,3 +51,7 @@ Las MPC del ADR 0004 se declaraban una a una: el usuario escribía cada esclavo,
 ## Ampliación (2026-11-10)
 
 La barra admite elementos de línea de tres nodos (`Truss2D3`, `Truss3D3`): el número de nodos se lee de `REFERENCE_NODES` y cada tramo recibe un nodo intermedio en su punto medio, atado como los demás. Con anfitriones cuadráticos la barra sigue exactamente su campo a lo largo de la recta. Es la barra que se recomienda para la adherencia-deslizamiento.
+
+## Ampliación 2 (2026-11-10): adherencia-deslizamiento
+
+Con `bond`, el refuerzo no ata los nodos de la barra: genera, uno por tramo, elementos de interfaz `BondSlipInterface` (`solidum/bc/bond_interface.py`) que unen los nodos del elemento de barra con los de su anfitrión y llevan una ley de interfaz de línea (ADR 0033). Esos elementos **no se registran**: su número de nodos es variable (barra más anfitrión) y nadie los cita en el YAML por `type`; los crea el generador, como crea las MPC. La interfaz no tiene masa (su ley declara `density = 0.0`), no tiene celda VTK (`VTK_EXPORT = False`, pieza genérica del exportador) y no tiene carga de cuerpo. El lector YAML admite en una familia las claves que su `from_yaml` traduce (`YAML_KEYS`), para el bloque `model_code_2010` de la ley.

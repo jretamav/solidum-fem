@@ -202,12 +202,12 @@ acceptance:
       expect: "sin fuerzas de interfaz"
       tol_abs: 1.0e-12
     - name: bond_anclaje_uniforme
-      setup: "barra casi rígida (E_s muy alto) en concreto casi rígido, deslizamiento impuesto uniforme siguiendo el ciclo de la Fig. 5.3b"
+      setup: "una interfaz con el anfitrión fijo y la barra desplazada en bloque (deslizamiento uniforme) siguiendo el ciclo de la Fig. 5.3b, confirmando el estado en cada paso"
       expect: "fuerza de extracción P = τ(s)·p·ℓ con la τ de la ley en cada instante, envolvente, descarga, fricción y recarga incluidas"
       tol_rel: 1.0e-8
     - name: bond_quiebre
-      setup: "barra con un quiebre de la polilínea, en tracción"
-      expect: "resultante de las tracciones normales de la interfaz en torno al quiebre = N·(t1 − t2)"
+      setup: "barra de dos tramos con un quiebre de la polilínea, en tracción"
+      expect: "en el nodo del quiebre la fuerza de la interfaz sobre la barra equilibra el cambio de dirección del axial: N1·t1 − N2·t2 (no nula)"
       tol_rel: 1.0e-8
     - name: bond_3d_y_yaml
       setup: "extracción en un sólido Hex8 y el mismo modelo 2D y 3D en YAML"
@@ -231,6 +231,7 @@ references:
 - **Notas de traducción**:
   - El punto donde la recta sale de un anfitrión se busca por bisección (a 1e-12 del anfitrión más pequeño). Los tramos más cortos que 1e-9 de ese tamaño se funden con el vecino.
   - La viga de la aceptación se apoya con $u_y = 0$ en toda la sección extrema: el apoyo en un nodo produce una deformación local singular que crece al refinar (+2.1 % con Q8 40×8) y no es del refuerzo.
+- **Adherencia-deslizamiento (§12)**: [solidum/bc/bond_interface.py](../../solidum/bc/bond_interface.py) · `BondSlipInterface` (elemento generado, sin registro; `VTK_EXPORT = False`, sus resultados se leen con `interface_state` o con `EmbeddedBar.bond_state(domain, U)`); `Bond` (dataclass de `solidum/bc/embedded.py`, también en la raíz del paquete). Tests: [tests/test_embedded_bond_slip.py](../../tests/test_embedded_bond_slip.py) (casos `bond_*`).
 
 ---
 
@@ -245,3 +246,4 @@ references:
 - **2026-11-10** · **Barras de tres nodos** (`Truss2D3`, `Truss3D3`; decisión del usuario sobre la adherencia-deslizamiento: barra cuadrática para la adherencia-deslizamiento). Cada tramo recibe un nodo intermedio en su punto medio, atado al campo del anfitrión como los extremos; `EmbeddedBar.node_ids` los intercala en el orden de la polilínea. Medido (`tests/test_embedded_reinforcement.py`): donde el campo del anfitrión es lineal a lo largo de la barra (Tri3 con cualquier inclinación, Quad4 con la barra paralela a un lado) la solución es la de la barra de dos nodos (desplazamientos a 1e-10, axial a 1e-7 por redondeo en tramos cortos); con anfitriones cuadráticos (Tri6, Tet10) y un campo cuadrático impuesto, la deformación de la barra de tres nodos es tᵀ·∇u·t a 1e-14 en todo el tramo, y la de dos nodos sólo en el punto medio de cada tramo. En Quad4 con la barra inclinada el campo bilineal es cuadrático a lo largo de la recta y la barra de tres nodos lo sigue (sin prueba de igualdad).
 - **2026-11-10** · **Ampliación en BORRADOR (§12): adherencia-deslizamiento**, pendiente de la aprobación del usuario. Las decisiones físicas de la adherencia-deslizamiento son: distribuida, integración nodal con Gauss opcional, barra cuadrática recomendada, leyes `BondSlipModelCode` y `BondSlipMultilinear`. Los elementos de interfaz los genera el refuerzo (uno por tramo) y no se registran, porque su número de nodos es variable (barra + anfitrión) y nadie los cita por `type`. Los casos `bond_*` de `acceptance` son de esta ampliación.
 - **2026-11-10** · §12 y casos `bond_*` **aprobados por el usuario** («si»).
+- **2026-11-10** · **§12 implementada y validada** (casos `bond_*` en verde). Medido (extracción con el concreto fijo, ley lineal k = 1e10 Pa/m, d_b = 16 mm, ℓ = 1 m, error máximo del deslizamiento frente a la solución cerrada, relativo a s(0)): `Truss2D3` nodal 2.7e-5 / 1.7e-6 / 1.1e-7 con 5/10/20 divisiones del concreto (orden 4); `Truss2D` nodal 1.5e-2 / 3.9e-3 / 9.7e-4 (orden 2); con k = 1e11, 2.3e-3 / 1.6e-4 / 1.0e-5 frente a 1.3e-1 / 3.7e-2 / 9.6e-3. Con λh = 3.5 (k = 1e12): nodal τ monótona; Gauss invierte el signo de τ (−10.6 % de τ_máx). En 3D (Hex8 10×2×2, `Truss3D3`) el error es < 1e-4. Con rigideces 1e4 veces las de servicio, el sólido se mueve como con adherencia perfecta (1e-4). Hallazgo al implementar: la ley daba tangente nula en el estado virgen con s = 0 (empate de cotas), lo que la red de seguridad del ADR 0019 detectó como mecanismo; corregido en la ley (ver su spec).

@@ -46,12 +46,15 @@ class InterfaceMaterial(ABC):
         ``True`` si la tangente ``∂t/∂Δu`` es simétrica (ADR 0003).
 
     Unidades: la tracción es fuerza por unidad de área (Pa) y las rigideces de
-    la interfaz, fuerza por unidad de área y de longitud (Pa/m). No tiene
-    densidad: la inercia es de los elementos que la rodean.
+    la interfaz, fuerza por unidad de área y de longitud (Pa/m). ``density``
+    vale 0.0: la inercia es de los elementos que la rodean.
     """
 
     GEOMETRY: ClassVar[str]
     JUMP_DIM: ClassVar[int | None] = None
+    # Sin masa por diseño (ADR 0008: density = 0.0 declarada): la inercia es
+    # de los elementos que rodean la interfaz.
+    density: ClassVar[float] = 0.0
     PRIMARY_STATE_VAR: ClassVar[str | None] = None
     IS_SYMMETRIC: ClassVar[bool] = True
 

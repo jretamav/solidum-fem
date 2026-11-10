@@ -20,6 +20,9 @@ mecánicos, ``FLUX_DIM`` en los térmicos).
 - Un elemento puede forzar su celda declarando ``VTK_CELL_TYPE`` como
   atributo de clase (p. ej. una cuña de 6 nodos en 3D, que la tabla
   confundiría con ``triangle6``).
+- Un elemento sin celda propia por diseño (la interfaz de adherencia, que
+  une los nodos de una barra con los de su anfitrión) declara
+  ``VTK_EXPORT = False`` y se omite sin aviso.
 
 Un dominio sin ninguna celda soportada lanza ``ValueError``: meshio no
 puede releer un archivo sin celdas y fallar aquí es más útil que escribir
@@ -482,6 +485,11 @@ class VtkExporter:
         solid_by_type: dict[str, list[bool]] = {}
         slot: list[tuple[str, int] | None] = []      # (tipo, índice en su bloque)
         for elem in elements:
+            if getattr(elem, "VTK_EXPORT", True) is False:
+                # Elementos sin celda propia por diseño (p. ej. la interfaz de
+                # adherencia): se omiten sin aviso.
+                slot.append(None)
+                continue
             cell_type = cell_type_for(elem)
             if cell_type is None:
                 _log.warning(

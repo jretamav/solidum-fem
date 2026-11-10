@@ -94,7 +94,7 @@ El recorrido de la Fig. 5.3b sale de estas reglas:
 ```yaml
 name: BondSlipModelCode
 kind: interface_material
-status: draft
+status: validated
 
 interface:
   geometry: line                 # barra embebida: (n, s) en 2D, (n1, n2, s) en 3D
@@ -179,7 +179,12 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
+- **Archivo**: [solidum/materials/interface/bond_slip.py](../../solidum/materials/interface/bond_slip.py) · clase `BondSlipModelCode` (registrada en `InterfaceMaterialRegistry`), sobre la base común `_BondSlipLaw`, que implementa la regla R1 (§4); cada ley aporta sólo `envelope(a) → (τ, dτ/da)`.
+- **Función auxiliar**: `BondSlipModelCode.model_code_2010(fcm, bond=, failure=, stirrups=, clear_rib_spacing=, diameter=, E_c=, k0=, k_n=)`, en SI. En el YAML, el bloque `model_code_2010: {...}` (declarado en `YAML_KEYS` y traducido por `from_yaml`).
+- **Tests**: [tests/test_bond_slip_laws.py](../../tests/test_bond_slip_laws.py): envolvente y simetría, ciclo de la Fig. 5.3b con los valores exactos de `acceptance`, tangente por diferencias finitas en todas las ramas (2D y 3D), tangente k0 en el estado virgen, disipación no negativa en 1000 historias aleatorias, normal desacoplada, las seis columnas del Model Code 2010, rechazos, registro y geometría. El uso dentro del refuerzo, en [tests/test_embedded_bond_slip.py](../../tests/test_embedded_bond_slip.py).
+- **Notas de traducción**:
+  - Las cotas `U`, `L` actúan sólo si el predictor las **rebasa**, y la fricción sólo si supera **estrictamente** la envolvente o la recta. En el estado virgen con `s = 0` las dos cotas y la fricción valen cero; con un empate resuelto hacia la fricción, la tangente salía nula y la interfaz no tenía rigidez al empezar. Lo detectó la red de seguridad del ADR 0019 como mecanismo y lo cubre `test_tangente_inicial_es_k0`.
+  - `density = 0.0` (clase base de la familia): las leyes de interfaz no tienen masa (ADR 0008).
 
 ---
 
@@ -193,3 +198,4 @@ references:
 - **2026-11-10** · Clasificación: el criterio de admisión no decide la adherencia por los textos. De Borst et al. 2012 §6.8.2, p. 207, sólo menciona el «bond-slip behaviour», y Paulay–Priestley la trata como criterio de diseño. Los códigos sí la tienen: DIANA y Code_Aster. El usuario decidió ponerla en el programa principal (2026-11-10).
 - **2026-11-10** · Discrepancia de la Tabla 6.1-1 sin resolver: s2 = 2.0 mm (Bastos 2022, `structuralcodes`, Croce et al. 2022) frente a 3.0 mm (Tang y Cheng 2020, que coincide con Eligehausen et al. 1983). Se adopta 2.0 mm. Conviene confirmarlo con el texto del Model Code cuando esté disponible.
 - **2026-11-10** · Spec **aprobada por el usuario** («si»).
+- **2026-11-10** · Implementada y validada: todos los casos de `acceptance` en verde. Promovido `status: validated`.

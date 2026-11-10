@@ -330,6 +330,36 @@ constraints:
 
 La barra tiene su propia malla. Solidum la corta en los bordes de los elementos que atraviesa y ata cada nodo al desplazamiento interpolado del elemento que lo contiene, $u(\mathbf X_b) = \sum_i N_i(\boldsymbol\xi_b)\,u_i$. El área de concreto que ocupa la barra no se descuenta: el sobrante de rigidez elástica es $\rho/[(1-\rho)+n\rho]$, con $n = E_s/E_c$ (+1.8 % con una cuantía del 2 %), y es cero con el concreto agrietado en tracción.
 
+**Adherencia-deslizamiento** (`bond`, spec `EmbeddedReinforcement` §12): en lugar de atar los nodos, cada tramo de la barra se une a su anfitrión con una interfaz distribuida gobernada por una ley τ–s de la sección `interface_materials` (`BondSlipModelCode`, `BondSlipMultilinear`). La tracción de adherencia actúa sobre el perímetro π·d_b y la normal sobre el ancho d_b. Se recomienda la barra de tres nodos con la integración nodal (por omisión):
+
+```yaml
+interface_materials:
+  - id: 1
+    type: BondSlipModelCode
+    model_code_2010:                     # parámetros de la Tabla 6.1-1 del Model Code 2010
+      fcm: 30.0e6                        # Pa
+      bond: good                         # good | other
+      failure: pullout                   # pullout | splitting (con stirrups: true|false)
+      clear_rib_spacing: 0.0105          # c, m
+      diameter: 0.016                    # d_b, m (para k_n = 2·E_c/d_b)
+      E_c: 30.0e9                        # Pa
+      # k0: 1.8e11                       # Pa/m (180 N/mm³ por omisión)
+constraints:
+  - type: EmbeddedReinforcement
+    points: [[0.0, 0.05], [4.0, 0.05]]
+    area: 2.01e-4
+    material: 2
+    element: Truss2D3                    # barra cuadrática (recomendada)
+    bond:
+      law: 1                             # id en interface_materials
+      diameter: 0.016                    # d_b
+      # perimeter: ...                   # por omisión π·d_b (paquetes de barras: el suyo)
+      # integration: nodal               # nodal (por omisión) | gauss
+```
+
+La ley también puede darse con sus parámetros explícitos (`tau_max`, `s1`, `s2`, `s3`, `alpha`, `tau_f`, `k0`, `k_n`) o por puntos (`BondSlipMultilinear`: `points: [[s, τ], ...]`, `k_n`, `tau_f` opcional). Sin `bond`, la adherencia es perfecta.
+
+
 Los nodos de la barra no los toman los selectores por coordenada (`boundary_conditions_by_coord`, `point_loads_by_coord`, `nodal_masses_by_coord`): un apoyo o una carga por coordenada es del sólido. Las fuerzas de esas restricciones salen en `constraint_forces`, no en las reacciones: son las **fuerzas de adherencia** concentradas en los nodos de la barra. Lo que creó cada entrada queda en `model.parser.applied_constraints`, que con `load_yaml` es una lista de `EmbeddedBar`.
 
 ## Cargas Puntuales

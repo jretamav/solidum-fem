@@ -40,9 +40,11 @@ constraints:
 - `hosts`: anfitriones admitidos.
 - `subdivisions`: partes por tramo.
 - `element_kwargs`: argumentos extra del elemento 1D (p. ej. `L0` de un cable).
+- `bond`: adherencia-deslizamiento (spec §12): `{law: id en interface_materials, diameter: d_b, perimeter: (π·d_b), integration: nodal|gauss}`. Cada tramo se une a su anfitrión con una interfaz distribuida (`BondSlipInterface`, generada, una por tramo) en lugar de atarse. Barra recomendada: `Truss2D3`/`Truss3D3` con integración nodal (deslizamiento de orden 4 frente al orden 2 de la lineal, sin oscilación). Leyes: `BondSlipModelCode`, `BondSlipMultilinear` ([catálogo de materiales](catalogo_materiales.md), «Materiales de interfaz»).
 
 ### Resultados
 - Los nodos y elementos de la barra son normales: desplazamientos, fuerza axial `N` en `element_forces` y exportación VTK.
+- Con `bond`: `EmbeddedBar.bond_state(domain, result.U)` da, en cada punto de integración de cada tramo, posición, deslizamiento `s`, `τ`, `Δu_n`, `t_n` y la fuerza de adherencia por unidad de longitud `p·τ`. Las interfaces no se exportan a VTK (no tienen celda propia).
 - Las fuerzas de las MPC de embebido salen en `constraint_forces`, no en las reacciones: son las fuerzas de adherencia concentradas, `EmbeddedBar.bond_forces(result)`.
 - Los nodos de la barra quedan en `Domain.generated_nodes`. Los selectores `*_by_coord` del YAML no los toman.
 

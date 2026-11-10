@@ -20,6 +20,11 @@ largo de la recta.
 El área de concreto que ocupa la barra no se descuenta (decisión del
 usuario, 2026-11-10; de Borst et al. 2012, ec. 6.136): la barra se superpone
 al sólido.
+
+Con ``bond`` (spec §12) los nodos de la barra no se atan: cada tramo se une a
+su anfitrión con una interfaz de adherencia-deslizamiento distribuida
+(:class:`~solidum.bc.bond_interface.BondSlipInterface`), gobernada por un
+material de interfaz de línea (ADR 0033).
 """
 from __future__ import annotations
 
@@ -28,9 +33,16 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
+from solidum.bc.bond_interface import INTEGRATIONS, BondSlipInterface, InterfacePoint
 from solidum.core.dof_names import TRANSLATIONS
+from solidum.core.interface_material import InterfaceMaterial
 from solidum.mesh.point_location import PointLocator, is_locatable, shape_values
-from solidum.registry import ConstraintRegistry, ElementRegistry, MaterialRegistry
+from solidum.registry import (
+    ConstraintRegistry,
+    ElementRegistry,
+    InterfaceMaterialRegistry,
+    MaterialRegistry,
+)
 
 # Elemento 1D por omisión según la dimensión del sólido.
 _DEFAULT_ELEMENT = {2: "Truss2D", 3: "Truss3D"}
@@ -42,6 +54,43 @@ _MIN_PIECE = 1.0e-9
 # Avance, relativo al anfitrión más pequeño, con que se entra en el anfitrión
 # siguiente al salir de uno.
 _PROBE = 1.0e-6
+
+
+@dataclass(frozen=True)
+class Bond:
+    """Adherencia-deslizamiento de una barra embebida (spec §12).
+
+    Attributes
+    ----------
+    law
+        Material de interfaz de línea (``BondSlipModelCode``,
+        ``BondSlipMultilinear``…).
+    diameter
+        ``d_b``: ancho de la tracción normal.
+    perimeter
+        Perímetro de la tracción de adherencia; por omisión ``π·d_b`` (en un
+        paquete de barras, el suyo).
+    integration
+        ``"nodal"`` (por omisión) o ``"gauss"``.
+    """
+    law: InterfaceMaterial
+    diameter: float
+    perimeter: Optional[float] = None
+    integration: str = "nodal"
+
+    def __post_init__(self):
+        if not isinstance(self.law, InterfaceMaterial) or self.law.GEOMETRY != "line":
+            raise ValueError(
+                f"Bond: law debe ser un material de interfaz de línea (GEOMETRY='line'); "
+                f"recibido {type(self.law).__name__}.")
+        if not (isinstance(self.diameter, (int, float)) and self.diameter > 0):
+            raise ValueError(f"Bond: diameter debe ser > 0 (recibido {self.diameter!r}).")
+        if self.perimeter is not None and not self.perimeter > 0:
+            raise ValueError(f"Bond: perimeter debe ser > 0 (recibido {self.perimeter!r}).")
+        if self.integration not in INTEGRATIONS:
+            raise ValueError(
+                f"Bond: integration debe ser uno de {INTEGRATIONS} (recibido "
+                f"{self.integration!r}).")
 
 
 @dataclass(frozen=True)
@@ -66,6 +115,10 @@ class EmbeddedBar:
         Longitud de la barra en la configuración de referencia.
     dofs
         Grados de libertad atados en cada nodo (``("ux", "uy"[, "uz"])``).
+    interface_ids
+        Con adherencia-deslizamiento, las interfaces de cada tramo
+        (``interface_ids[k]`` es la del elemento ``element_ids[k]``); vacío con
+        adherencia perfecta.
     """
 
     node_ids: tuple
@@ -74,6 +127,15 @@ class EmbeddedBar:
     natural_coordinates: np.ndarray
     length: float
     dofs: tuple
+    interface_ids: tuple = ()
+
+    def bond_state(self, domain, U) -> list[list[InterfacePoint]]:
+        """Con adherencia-deslizamiento: deslizamiento, tracciones y fuerza de
+        adherencia en los puntos de integración de cada tramo, para el campo
+        ``U`` (``result.U``)."""
+        if not self.interface_ids:
+            raise ValueError("bond_state: la barra tiene adherencia perfecta (sin bond).")
+        return [domain.elements[i].interface_state(np.asarray(U)) for i in self.interface_ids]
 
     def bond_forces(self, result) -> np.ndarray:
         """Fuerzas de adherencia concentradas que el sólido ejerce sobre la
@@ -83,6 +145,11 @@ class EmbeddedBar:
         barra (``result.constraint_forces_by_node``, ADR 0004 §3): con ellas y
         las cargas aplicadas en sus nodos, la barra está en equilibrio.
         """
+        if self.interface_ids:
+            raise ValueError(
+                "bond_forces: con adherencia-deslizamiento no hay restricciones de "
+                "embebido; las fuerzas de adherencia están en las interfaces "
+                "(EmbeddedBar.bond_state).")
         by_node = getattr(result, "constraint_forces_by_node", None)
         if by_node is None:
             raise ValueError(
@@ -118,11 +185,15 @@ class EmbeddedReinforcement:
         Partes iguales en que se divide cada tramo (1 por omisión).
     element_kwargs
         Argumentos adicionales del elemento 1D (p. ej. ``L0`` de un cable).
+    bond
+        Adherencia-deslizamiento (:class:`Bond` o un mapping con sus campos);
+        sin él, adherencia perfecta.
     """
 
     def __init__(self, points: Sequence[Sequence[float]], area: float, material,
                  element: Optional[str] = None, hosts: Optional[Iterable[int]] = None,
-                 subdivisions: int = 1, element_kwargs: Optional[dict] = None):
+                 subdivisions: int = 1, element_kwargs: Optional[dict] = None,
+                 bond=None):
         pts = np.asarray(points, dtype=float)
         if pts.ndim != 2 or pts.shape[0] < 2 or pts.shape[1] not in (2, 3):
             raise ValueError(
@@ -146,6 +217,16 @@ class EmbeddedReinforcement:
         self.hosts = None if hosts is None else [int(h) for h in hosts]
         self.subdivisions = subdivisions
         self.element_kwargs = dict(element_kwargs or {})
+        if isinstance(bond, dict):
+            bond = Bond(**bond)
+        if bond is not None and not isinstance(bond, Bond):
+            raise ValueError(f"EmbeddedReinforcement: bond debe ser un Bond o un mapping; "
+                             f"recibido {type(bond).__name__}.")
+        if bond is not None and not bond.law.accepts("line", self.ndim):
+            raise ValueError(
+                f"EmbeddedReinforcement: la ley de adherencia {type(bond.law).__name__} no "
+                f"admite {self.ndim} componentes.")
+        self.bond = bond
 
     @classmethod
     def from_yaml(cls, data: dict, resolve) -> "EmbeddedReinforcement":
@@ -159,10 +240,14 @@ class EmbeddedReinforcement:
                 element: Truss2D     # opcional
                 hosts: [1, 2, 3]     # opcional: ids de los anfitriones
                 subdivisions: 1      # opcional
+                bond:                # opcional: adherencia-deslizamiento (§12)
+                  law: 1             # id de un material de 'interface_materials'
+                  diameter: 0.016
+                  integration: nodal # o gauss
         """
         data = dict(data)
         allowed = {"points", "area", "material", "element", "hosts", "subdivisions",
-                   "element_kwargs"}
+                   "element_kwargs", "bond"}
         unknown = sorted(set(data) - allowed)
         if unknown:
             raise ValueError(
@@ -172,6 +257,17 @@ class EmbeddedReinforcement:
             if key not in data:
                 raise ValueError(f"EmbeddedReinforcement: falta '{key}'.")
         data["material"] = resolve(MaterialRegistry, data["material"], "material")
+        if "bond" in data:
+            bond = dict(data["bond"] or {})
+            unknown = sorted(set(bond) - {"law", "diameter", "perimeter", "integration"})
+            if unknown:
+                raise ValueError(f"EmbeddedReinforcement: bond con parámetros no aceptados "
+                                 f"{unknown}.")
+            for key in ("law", "diameter"):
+                if key not in bond:
+                    raise ValueError(f"EmbeddedReinforcement: bond sin '{key}'.")
+            bond["law"] = resolve(InterfaceMaterialRegistry, bond["law"], "law")
+            data["bond"] = bond
         return cls(**data)
 
     # ------------------------------------------------------------------
@@ -241,20 +337,35 @@ class EmbeddedReinforcement:
         host_ids, xis = [], []
         for nid, (index, xi) in zip(node_ids, located):
             host = locator.elements[index]
-            N = shape_values(host, xi)
-            keep = np.abs(N) > _ZERO_COEFF
-            masters = [host.nodes[i].id for i in np.nonzero(keep)[0]]
-            coeffs = [float(c) for c in N[keep]]
-            for d in dofs:
-                domain.add_linear_constraint((nid, d), [(m, d) for m in masters], coeffs)
+            if self.bond is None:
+                N = shape_values(host, xi)
+                keep = np.abs(N) > _ZERO_COEFF
+                masters = [host.nodes[i].id for i in np.nonzero(keep)[0]]
+                coeffs = [float(c) for c in N[keep]]
+                for d in dofs:
+                    domain.add_linear_constraint((nid, d), [(m, d) for m in masters], coeffs)
             host_ids.append(host.id)
             xis.append(xi)
+        interface_ids = []
+        if self.bond is not None:
+            for eid in element_ids:
+                bar_el = domain.elements[eid]
+                X = np.array([np.asarray(n.coordinates[:self.ndim], float)
+                              for n in bar_el.nodes[:2]])
+                hit = locator.locate(0.5 * (X[0] + X[1]))
+                host = locator.elements[hit[0]]
+                iface = BondSlipInterface(next_element, bar_el, host, self.bond.law,
+                                          self.bond.diameter, self.bond.perimeter,
+                                          self.bond.integration)
+                domain.add_element(iface)
+                interface_ids.append(iface.id)
+                next_element += 1
         domain.generated_nodes.update(node_ids)
         if domain.total_dofs:
             domain.generate_equation_numbers()
         length = float(np.sum(np.linalg.norm(np.diff(self.points, axis=0), axis=1)))
         return EmbeddedBar(tuple(node_ids), tuple(element_ids), tuple(host_ids),
-                           np.array(xis), length, dofs)
+                           np.array(xis), length, dofs, tuple(interface_ids))
 
     def _host_elements(self, domain) -> list:
         if self.hosts is None:
@@ -335,11 +446,11 @@ def _line_node_count(element_cls) -> int:
 
 def embed_reinforcement(domain, points, area: float, material, *, element: Optional[str] = None,
                         hosts: Optional[Iterable[int]] = None, subdivisions: int = 1,
-                        element_kwargs: Optional[dict] = None) -> EmbeddedBar:
+                        element_kwargs: Optional[dict] = None, bond=None) -> EmbeddedBar:
     """Embebe una barra de refuerzo con adherencia perfecta en los sólidos de
     ``domain`` (spec ``EmbeddedReinforcement``). Ver
     :class:`EmbeddedReinforcement` para los parámetros; devuelve el
     :class:`EmbeddedBar` con los nodos, elementos y anfitriones creados."""
     return EmbeddedReinforcement(points, area, material, element=element, hosts=hosts,
-                                 subdivisions=subdivisions,
-                                 element_kwargs=element_kwargs).apply(domain)
+                                 subdivisions=subdivisions, element_kwargs=element_kwargs,
+                                 bond=bond).apply(domain)
