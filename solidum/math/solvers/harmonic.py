@@ -45,7 +45,7 @@ import scipy.sparse.linalg as spla
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.solvers._shared import _log
 from solidum.registry import SolverRegistry
-from solidum.results import HarmonicResult
+from solidum.results import HarmonicResult, reaction_dofs, reaction_labels, reactions_from_residual
 
 
 @SolverRegistry.register
@@ -197,10 +197,26 @@ class HarmonicSolver:
             f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}."
         )
 
+        # Reacciones de los apoyos (decisión del usuario del 2026-11-09): la
+        # ecuación de movimiento en esas filas, R̂ = (K − ω²M + iωC)·û − F̂,
+        # y su parte de amortiguamiento iωC·û.
+        dofs = reaction_dofs(self.assembler)
+        R = np.zeros((dofs.size, n_omega), dtype=complex)
+        R_damp = np.zeros((dofs.size, n_omega), dtype=complex)
+        for k, w in enumerate(self.omega):
+            u_k = u_complex[:, k]
+            damping = (1j * w) * (C @ u_k)
+            residual = K @ u_k - (w * w) * (M @ u_k) + damping - F_amplitude
+            R[:, k] = reactions_from_residual(self.assembler, residual)[dofs]
+            R_damp[:, k] = reactions_from_residual(self.assembler, damping)[dofs]
+
         return HarmonicResult(
             omega=self.omega.copy(),
             u_complex=u_complex,
             F_complex=F_amplitude.copy(),
             alpha_rayleigh=alpha_r,
             beta_rayleigh=beta_r,
+            reaction_labels=reaction_labels(self.assembler.domain, dofs),
+            R_complex=R,
+            R_damping_complex=R_damp,
         )

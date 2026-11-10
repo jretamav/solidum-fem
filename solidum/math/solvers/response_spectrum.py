@@ -42,6 +42,7 @@ from typing import Callable
 import numpy as np
 
 from solidum.math.modal_response import (
+    combine_modal,
     response_spectrum_cqc,
     response_spectrum_srss,
 )
@@ -49,7 +50,12 @@ from solidum.math.rigid_body import dof_unit_vector
 from solidum.math.solvers._shared import _log
 from solidum.math.solvers.modal import ModalSolver
 from solidum.registry import SolverRegistry
-from solidum.results import ResponseSpectrumResult
+from solidum.results import (
+    ResponseSpectrumResult,
+    reaction_dofs,
+    reaction_labels,
+    reactions_from_residual,
+)
 
 
 def spectrum_from_sa(spectrum_sa_fn: Callable[[float], float]) -> Callable[[float], float]:
@@ -323,6 +329,19 @@ class ResponseSpectrumSolver:
         effective_masses = gamma * gamma
         total_mass = float(direction @ (M @ direction))
 
+        # Reacciones de los apoyos: las de cada modo, (K − ωₙ²·M)·uₙ en esas
+        # filas (la ecuación del modo; sin amortiguamiento, que está en el
+        # espectro), combinadas como cualquier otra respuesta.
+        K = self.assembler.K_global
+        dofs = reaction_dofs(self.assembler)
+        R_per_mode = np.zeros((dofs.size, u_per_mode.shape[1]))
+        for n, w in enumerate(modal_result.frequencies_rad):
+            u_n = u_per_mode[:, n]
+            residual = K @ u_n - (w * w) * (M @ u_n)
+            R_per_mode[:, n] = reactions_from_residual(self.assembler, residual)[dofs]
+        R_combined = combine_modal(R_per_mode, modal_result.frequencies_rad,
+                                   self.combination, self.damping)
+
         _log.info(
             f"  -> {self.n_modes} modos combinados con {self.combination}. "
             f"ξ={self.damping:.3f}. "
@@ -340,4 +359,7 @@ class ResponseSpectrumSolver:
             damping=self.damping if self.combination == "CQC" else 0.0,
             direction=direction.copy(),
             total_mass=total_mass,
+            reaction_labels=reaction_labels(self.assembler.domain, dofs),
+            R_per_mode=R_per_mode,
+            R_combined=R_combined,
         )

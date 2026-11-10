@@ -256,6 +256,25 @@ except SolverDivergedError as exc:
 
 **Grados de libertad sin masa.** Los integradores implícitos los admiten con la aceleración inicial consistente (ADR 0024 §6 bis); sólo un mecanismo sin masa (grados de libertad sin masa ni rigidez) da `MasslessDofsError`. La diferencia central exige masa en todos: `MasslessDofsError` los nombra.
 
+## Reacciones y cortante basal (ADR 0030)
+
+Los análisis dinámicos dan las reacciones de los apoyos: la ecuación de movimiento en esas filas,
+
+$$\mathbf R = \mathbf F_\text{int}(\mathbf u) + \mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} - \mathbf F ,$$
+
+con la fuerza de los elementos, la inercia de la masa del apoyo (o acoplada a él con masa consistente) y el amortiguamiento. Así cumplen el equilibrio de la estructura entera. La parte de amortiguamiento se da aparte, para quitarla si se quiere la reacción sin Rayleigh (en análisis inelásticos con Rayleigh proporcional a la rigidez inicial puede ser grande).
+
+```python
+res = solidum.run_transient(dom, solver=NewmarkSolver(asm, t_end=10.0, dt=0.01, F_func=F))
+V = res.total_reaction("ux")                       # cortante basal en cada instante
+V_sin_rayleigh = res.total_reaction("ux", damping=False)
+res.reactions_by_node(step=-1)                     # {nodo: {dof: valor}} en el último instante
+res.R_history, res.R_damping_history, res.reaction_labels   # (n_apoyos, n_t) y ((nodo, dof), …)
+```
+
+- **Armónico**: `R_complex` (amplitudes complejas, $(\mathbf K - \omega^2\mathbf M + i\omega\mathbf C)\hat{\mathbf u} - \hat{\mathbf F}$) y `R_damping_complex`; `total_reaction("ux")` para cada frecuencia.
+- **Espectral**: `R_per_mode` (la reacción de cada modo) y `R_combined` (cada apoyo, combinado). El cortante basal es `total_reaction("ux")`, que suma las reacciones en cada modo **antes** de combinar; sumar las reacciones ya combinadas daría una cota superior, no el cortante basal.
+
 ## Progreso paso a paso
 
 `run_transient(..., step_callback=f)` y `run_thermal_transient(..., step_callback=f)` llaman `f(step, U, t)` tras cada paso convergido, con el número de paso, el campo global (desplazamientos o temperaturas) y el instante: la misma forma que el `step_callback(step, U, λ)` de los solvers estáticos, con el instante en lugar del factor de carga. Sirve para mostrar el avance, vigilar una magnitud o exportar mientras se integra. `run_yaml(path, step_callback=f)` lo pasa a los análisis estáticos y en el tiempo, también en las etapas; en el modal, el armónico y el espectral, que no tienen pasos, avisa de que lo ignora.

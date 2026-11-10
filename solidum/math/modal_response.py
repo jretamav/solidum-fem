@@ -244,6 +244,31 @@ def _cqc_correlation_matrix(
     return rho
 
 
+def combine_modal(
+    per_mode: np.ndarray,
+    frequencies_rad: np.ndarray,
+    combination: str,
+    damping: float = 0.0,
+) -> np.ndarray:
+    """Combina respuestas modales máximas (con signo) de cualquier magnitud.
+
+    ``per_mode`` tiene shape ``(n_magnitudes, n_modes)``: una fila por
+    magnitud (un desplazamiento, una reacción, un cortante basal). SRSS:
+    ``√(Σₙ xₙ²)``; CQC: ``√(Σᵢ Σⱼ ρᵢⱼ·xᵢ·xⱼ)`` con los coeficientes de Der
+    Kiureghian (1980). Una magnitud que es suma de otras (el cortante basal,
+    suma de reacciones) se suma en cada modo **antes** de combinar.
+    """
+    per_mode = np.atleast_2d(np.asarray(per_mode, dtype=float))
+    if combination == "SRSS":
+        return np.sqrt(np.sum(per_mode * per_mode, axis=1))
+    if combination == "CQC":
+        rho = _cqc_correlation_matrix(frequencies_rad, damping)
+        quad = np.einsum("ki,ij,kj->k", per_mode, rho, per_mode)
+        return np.sqrt(np.maximum(quad, 0.0))
+    raise ValueError(f"combine_modal: combinación {combination!r} desconocida "
+                     f"('SRSS' o 'CQC').")
+
+
 def response_spectrum_cqc(
     modes: np.ndarray,
     frequencies_rad: np.ndarray,

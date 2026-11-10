@@ -221,11 +221,19 @@ def external_load(F_func, t: float, ndof: int):
     return raw, np.asarray(raw, dtype=float).reshape(ndof)
 
 
-def mechanical_trace(solver, t_history, ndof: int, alpha_r: float, beta_r: float):
-    """:class:`TransientTrace` de un transitorio mecánico (``TransientResult``)."""
+def mechanical_trace(solver, t_history, ndof: int, alpha_r: float, beta_r: float,
+                     *, M=None, C=None, K=None):
+    """:class:`TransientTrace` de un transitorio mecánico (``TransientResult``).
+
+    Con ``M`` y ``C`` globales registra además las reacciones de los apoyos
+    en cada paso guardado, ``R = F_int + M·ü + C·u̇ − F`` y su parte ``C·u̇``
+    (decisión del usuario del 2026-11-09). ``K`` es la rigidez de un
+    integrador lineal (``F_int = K·u``); uno no lineal pasa ``F_int`` a
+    :meth:`TransientTrace.store`."""
     from solidum.results import TransientResult
 
-    def build(h, t, n_steps, termination, forces):
+    def build(h, t, n_steps, termination, forces, reactions):
+        labels, R, R_damp = reactions if reactions is not None else ((), None, None)
         return TransientResult(
             t_history=t, u_history=h["u"], udot_history=h["udot"],
             uddot_history=h["uddot"], n_steps=int(t.size - 1),
@@ -233,11 +241,13 @@ def mechanical_trace(solver, t_history, ndof: int, alpha_r: float, beta_r: float
             converged=termination == Termination.T_END.value,
             termination=termination, element_forces_history=forces,
             F_constant=getattr(solver, "constant_load", None),
+            reaction_labels=labels, R_history=R, R_damping_history=R_damp,
         )
 
     return TransientTrace(solver, t_history=t_history, n_rows=ndof,
                           fields=("u", "udot", "uddot"), build=build,
-                          record_forces=solver.record_internal_forces)
+                          record_forces=solver.record_internal_forces,
+                          dynamics=None if M is None else (M, C, K))
 
 
 class TransientTrace:
@@ -248,11 +258,14 @@ class TransientTrace:
     (:meth:`finish`) o hasta el último paso convergido si el análisis se
     detiene (:meth:`fail`). ``fields`` nombra los historiales (``"u"``,
     ``"udot"``, ``"uddot"`` en mecánica; ``"T"`` en el térmico) y
-    ``build(histories, t, n_steps, termination, forces)`` crea el resultado.
+    ``build(histories, t, n_steps, termination, forces, reactions)`` crea el
+    resultado. Con ``dynamics = (M, C, K)`` registra las reacciones de los
+    apoyos de cada paso guardado (ver :func:`mechanical_trace`).
     """
 
     def __init__(self, solver, *, t_history, n_rows: int, fields: tuple[str, ...],
-                 build, record_forces: bool = False, store_columns=None):
+                 build, record_forces: bool = False, store_columns=None,
+                 dynamics=None):
         self.solver = solver
         self.t = np.asarray(t_history, dtype=float)
         self.fields = fields
@@ -265,6 +278,16 @@ class TransientTrace:
         # Columna de cada paso cuando sólo se guardan algunos (térmico con
         # ``output_every``); ``None`` = una columna por paso.
         self.store_columns = store_columns
+        # Reacciones de los apoyos (decisión del usuario del 2026-11-09).
+        self.dynamics = dynamics
+        if dynamics is not None:
+            from solidum.results import reaction_dofs, reaction_labels
+            asm = solver.assembler
+            self.reaction_dofs = reaction_dofs(asm)
+            self.reaction_labels = reaction_labels(asm.domain, self.reaction_dofs)
+            n_s = self.reaction_dofs.size
+            self.R = np.zeros((n_s, self.t.size))
+            self.R_damping = np.zeros((n_s, self.t.size))
 
     def converged(self, step: int, t: float, U: np.ndarray) -> None:
         """Marca el paso ``step`` (instante ``t``) como convergido y avisa al
@@ -277,19 +300,44 @@ class TransientTrace:
         if callback is not None and step > 0:
             callback(int(step), U, float(t))
 
-    def store(self, column: int, *values, F_ext=None) -> None:
+    def store(self, column: int, *values, F_ext=None, F_int=None) -> None:
         for name, value in zip(self.fields, values):
             self.histories[name][:, column] = value
         if self.fields[0] == "u":
             self.forces.record(self.histories["u"][:, column], F_ext)
+            if self.dynamics is not None:
+                self._store_reactions(column, F_ext, F_int)
         self.last = column
+
+    def _store_reactions(self, column: int, F_ext, F_int) -> None:
+        """``R = F_int + M·ü + C·u̇ − F`` y ``C·u̇`` en los apoyos."""
+        from solidum.results import reactions_from_residual
+        M, C, K = self.dynamics
+        u = self.histories["u"][:, column]
+        udot = self.histories["udot"][:, column]
+        uddot = self.histories["uddot"][:, column]
+        if F_int is None:
+            F_int = K @ u
+        damping = C @ udot
+        residual = np.asarray(F_int, dtype=float) + M @ uddot + damping
+        if F_ext is not None:
+            residual = residual - np.asarray(F_ext, dtype=float).reshape(-1)
+        asm = self.solver.assembler
+        dofs = self.reaction_dofs
+        self.R[:, column] = reactions_from_residual(asm, residual)[dofs]
+        self.R_damping[:, column] = reactions_from_residual(asm, damping)[dofs]
 
     def _result(self, termination: Termination):
         n = self.last + 1
         histories = {f: (h if n == h.shape[1] else h[:, :n].copy())
                      for f, h in self.histories.items()}
         t = self.t if n == self.t.size else self.t[:n].copy()
-        return self.build(histories, t, self.step, str(termination), self.forces.result())
+        reactions = None
+        if self.dynamics is not None:
+            cut = (lambda a: a if n == a.shape[1] else a[:, :n].copy())
+            reactions = (self.reaction_labels, cut(self.R), cut(self.R_damping))
+        return self.build(histories, t, self.step, str(termination), self.forces.result(),
+                          reactions)
 
     def finish(self):
         s = self.solver

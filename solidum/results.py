@@ -192,6 +192,22 @@ class TransientResult:
         Carga que actuó constante durante todo el análisis, además de la de
         ``F_func``: la del análisis estático del que continúa (ADR 0029).
         ``None`` si no continúa uno. Un análisis que continúa éste la hereda.
+    reaction_labels
+        ``((nodo, dof), ...)``: los grados de libertad de apoyo, una fila de
+        ``R_history`` cada uno (los Dirichlet y los de las restricciones
+        multipunto de apoyo, ADR 0004 §3).
+    R_history
+        Reacciones de los apoyos en cada instante, shape ``(n_apoyos,
+        n_steps + 1)``: la ecuación de movimiento en esas filas,
+        ``R = F_int(u) + M·ü + C·u̇ − F`` (decisión del usuario del
+        2026-11-09): la fuerza de los elementos, la inercia de la masa del
+        apoyo o acoplada a él y el amortiguamiento. Cumple el equilibrio de
+        toda la estructura. ``None`` en un resultado construido sin ellas.
+    R_damping_history
+        La parte de amortiguamiento de ``R_history``, ``(C·u̇)`` en los
+        apoyos: restarla da la reacción sin el amortiguamiento de Rayleigh
+        (``damping=False`` en :meth:`total_reaction` y
+        :meth:`reactions_by_node`).
     """
 
     t_history: np.ndarray
@@ -205,6 +221,26 @@ class TransientResult:
     element_forces_history: dict[int, list["ElementForces"]] | None = None
     termination: str | None = None
     F_constant: np.ndarray | None = None
+    reaction_labels: tuple = ()
+    R_history: np.ndarray | None = None
+    R_damping_history: np.ndarray | None = None
+
+    def _reactions(self, damping: bool) -> np.ndarray:
+        if self.R_history is None:
+            raise ValueError("Este resultado no lleva reacciones (R_history = None).")
+        return self.R_history if damping else self.R_history - self.R_damping_history
+
+    def total_reaction(self, dof_name: str, *, damping: bool = True) -> np.ndarray:
+        """Suma de las reacciones de todos los apoyos en ``dof_name`` en cada
+        instante, shape ``(n_steps + 1,)``: el cortante basal con ``"ux"``.
+        Con ``damping=False``, sin la parte de amortiguamiento."""
+        rows = _rows_of(self.reaction_labels, dof_name)
+        return self._reactions(damping)[rows].sum(axis=0)
+
+    def reactions_by_node(self, step: int = -1, *, damping: bool = True) -> dict:
+        """``{nodo: {dof: valor}}`` de las reacciones en el instante ``step``
+        (por omisión, el último)."""
+        return _by_node(self.reaction_labels, self._reactions(damping)[:, step])
 
     def internal_forces_history(
         self, domain: "Domain",
@@ -414,6 +450,15 @@ class HarmonicResult:
         Coeficientes Rayleigh efectivos usados en ``C = α·M + β·K``.
         ``(0.0, 0.0)`` si el análisis fue sin amortiguamiento (caso
         singular en resonancia exacta — pico infinito teórico).
+    reaction_labels
+        ``((nodo, dof), ...)``: los grados de libertad de apoyo, una fila de
+        ``R_complex`` cada uno.
+    R_complex
+        Amplitud compleja de las reacciones, shape ``(n_apoyos, n_omega)``:
+        ``R̂ = (K − ω²·M + iω·C)·û − F̂`` en los apoyos, con las mismas partes
+        que la del transitorio (decisión del usuario del 2026-11-09).
+    R_damping_complex
+        Su parte de amortiguamiento, ``iω·C·û`` en los apoyos.
     """
 
     omega: np.ndarray
@@ -421,6 +466,18 @@ class HarmonicResult:
     F_complex: np.ndarray
     alpha_rayleigh: float = 0.0
     beta_rayleigh: float = 0.0
+    reaction_labels: tuple = ()
+    R_complex: np.ndarray | None = None
+    R_damping_complex: np.ndarray | None = None
+
+    def total_reaction(self, dof_name: str, *, damping: bool = True) -> np.ndarray:
+        """Suma compleja de las reacciones de los apoyos en ``dof_name`` para
+        cada frecuencia, shape ``(n_omega,)``; ``damping=False`` la da sin la
+        parte de amortiguamiento."""
+        if self.R_complex is None:
+            raise ValueError("Este resultado no lleva reacciones (R_complex = None).")
+        R = self.R_complex if damping else self.R_complex - self.R_damping_complex
+        return R[_rows_of(self.reaction_labels, dof_name)].sum(axis=0)
 
     @property
     def frequencies_hz(self) -> np.ndarray:
@@ -484,6 +541,17 @@ class ResponseSpectrumResult:
         Vector de excitación rígida ``r`` aplicado al modelo, shape
         ``(n_dof,)``. Para excitación sísmica unidireccional, sólo los
         DOFs traslacionales en esa dirección son no nulos.
+    reaction_labels
+        ``((nodo, dof), ...)``: los grados de libertad de apoyo, una fila de
+        ``R_per_mode`` y de ``R_combined`` cada uno.
+    R_per_mode
+        Reacción de cada modo, ``(K − ωₙ²·M)·uₙ`` en los apoyos (con signo),
+        shape ``(n_apoyos, n_modes)``.
+    R_combined
+        Reacción máxima de cada apoyo, combinada como los desplazamientos
+        (SRSS o CQC), shape ``(n_apoyos,)``. Para la de varios apoyos juntos
+        (el cortante basal) use :meth:`total_reaction`, que suma antes de
+        combinar.
     """
 
     u_combined: np.ndarray
@@ -498,6 +566,24 @@ class ResponseSpectrumResult:
     # correcto de la razón de masa efectiva; ``None`` sólo en resultados
     # construidos a mano sin masa (se degrada a la suma de los modos).
     total_mass: float | None = None
+    reaction_labels: tuple = ()
+    R_per_mode: np.ndarray | None = None
+    R_combined: np.ndarray | None = None
+
+    def total_reaction(self, dof_name: str) -> float:
+        """Máximo de la suma de las reacciones de todos los apoyos en
+        ``dof_name`` (el cortante basal con ``"ux"``): se suma en cada modo y
+        después se combina (SRSS o CQC), porque la combinación no es lineal."""
+        if self.R_per_mode is None:
+            raise ValueError("Este resultado no lleva reacciones (R_per_mode = None).")
+        from solidum.math.modal_response import combine_modal
+        per_mode = self.R_per_mode[_rows_of(self.reaction_labels, dof_name)].sum(axis=0)
+        return float(combine_modal(per_mode[None, :], self.frequencies_rad,
+                                   self.combination, self.damping)[0])
+
+    def reactions_by_node(self) -> dict:
+        """``{nodo: {dof: valor}}`` de las reacciones máximas combinadas."""
+        return _by_node(self.reaction_labels, self.R_combined)
 
     @property
     def n_modes(self) -> int:
@@ -738,6 +824,60 @@ def _split_constraint_forces(assembler, residual):
         bucket.append(c.slave_dof)
         bucket.extend(c.masters)
     return R, F_c, support_dofs, joint_dofs
+
+
+def reaction_dofs(assembler) -> np.ndarray:
+    """Grados de libertad en los que un análisis reporta reacciones, ordenados:
+    los Dirichlet y los de las restricciones multipunto de apoyo (ADR 0004
+    §3; las de unión no aportan)."""
+    cs = assembler.constraint_set
+    if not cs.has_multipoint:
+        return np.unique(np.asarray(cs.slave_dofs, dtype=np.int64))
+    ndof = assembler.domain.total_dofs
+    _, _, support, _ = _split_constraint_forces(assembler, np.zeros(ndof))
+    dirichlet = [c.slave_dof for c in cs.declared if c.is_dirichlet()]
+    return np.unique(np.asarray(dirichlet + list(support), dtype=np.int64))
+
+
+def reactions_from_residual(assembler, residual: np.ndarray) -> np.ndarray:
+    """Reacciones de los apoyos, vector global, a partir del residuo de la
+    ecuación de equilibrio (o de movimiento) ``r`` en todos los grados de
+    libertad: el mismo reparto entre apoyos y uniones que ``build_solve_result``.
+    Es lineal en ``r``: un residuo complejo se reparte por partes."""
+    residual = np.asarray(residual)
+    if np.iscomplexobj(residual):
+        return (reactions_from_residual(assembler, residual.real)
+                + 1j * reactions_from_residual(assembler, residual.imag))
+    cs = assembler.constraint_set
+    if not cs.has_multipoint:
+        R = np.zeros(residual.shape[0])
+        bc = cs.slave_dofs
+        if len(bc):
+            R[bc] = residual[bc]
+        return R
+    return _split_constraint_forces(assembler, residual)[0]
+
+
+def reaction_labels(domain: "Domain", dofs) -> tuple:
+    """``((nodo, dof), ...)`` de los grados de libertad globales ``dofs``."""
+    index = {int(i): (node.id, name)
+             for node in domain.nodes.values() for name, i in node.dofs.items()}
+    return tuple(index[int(d)] for d in dofs)
+
+
+def _rows_of(labels: tuple, dof_name: str) -> list[int]:
+    rows = [i for i, (_, d) in enumerate(labels) if d == dof_name]
+    if not rows:
+        raise ValueError(f"ningún apoyo tiene reacción en {dof_name!r}; los apoyos "
+                         f"son {sorted({d for _, d in labels})}.")
+    return rows
+
+
+def _by_node(labels: tuple, values) -> dict:
+    out: dict[int, dict[str, float]] = {}
+    for (node_id, dof), value in zip(labels, values):
+        out.setdefault(node_id, {})[dof] = value.item() if hasattr(value, "item") else value
+    return out
 
 
 def legacy_equivalent_loads(assembler, load_factor: float) -> dict[int, np.ndarray]:

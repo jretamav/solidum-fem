@@ -334,10 +334,13 @@ class CentralDifferenceSolver(TransientTerminationMixin):
         # Historiales.
         n_steps = self._number_of_steps(dt)
         t_history = self.t_start + np.linspace(0.0, n_steps * dt, n_steps + 1)
-        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        C = alpha_r * M + beta_r * K
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r, M=M, C=C,
+                                 K=None if self.nonlinear else K)
         u0_total = T @ u_free + g
         trace.converged(0, self.t_start, u0_total)
-        trace.store(0, u0_total, T @ v_free, T @ a_free, F_ext=F0_raw)
+        trace.store(0, u0_total, T @ v_free, T @ a_free, F_ext=F0_raw,
+                    F_int=self._last_F_int)
 
         # Escala inicial para detección de divergencia.
         initial_scale = max(
@@ -387,7 +390,8 @@ class CentralDifferenceSolver(TransientTerminationMixin):
             # registradas son las del instante.
             u_total = T @ u_free + g
             trace.converged(step + 1, t_next, u_total)
-            trace.store(step + 1, u_total, T @ v_free, T @ a_free, F_ext=F_raw)
+            trace.store(step + 1, u_total, T @ v_free, T @ a_free, F_ext=F_raw,
+                        F_int=self._last_F_int)
 
         _log.info(
             f"  -> {n_steps} pasos completados. "
@@ -424,10 +428,12 @@ class CentralDifferenceSolver(TransientTerminationMixin):
           dinámica con apoyos prescritos no nulos saldría corrompida.
         """
         if not self.nonlinear:
+            self._last_F_int = None          # el registro usa K·u
             return K_red @ u_free
         # Reconstruir u_global con apoyos prescritos y recalcular F_int.
         u_global = T @ u_free + g
         _K_t, F_int_global = self.assembler.assemble_non_linear_system(u_global)
+        self._last_F_int = F_int_global     # reacciones de los apoyos
         # En un esquema explícito ``u_global`` es la configuración definitiva
         # del instante (no un iterado tentativo): el estado trial que deja el
         # ensamblaje es el estado convergido y se promueve a committed aquí

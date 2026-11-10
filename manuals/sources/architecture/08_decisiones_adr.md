@@ -330,6 +330,12 @@ Un material con ablandamiento regularizado por energía de fractura necesita la 
 
 Extiende las etapas del ADR 0026 a los análisis en el tiempo. `continue_from(previous)`, común a los seis integradores (mezcla `TransientTerminationMixin`), parte de un estático (sus desplazamientos o temperaturas, en reposo, con su carga constante y sus cargas equivalentes; aviso si el estado no la equilibra) o de un transitorio del mismo tipo (su estado final en su instante final, en tiempo absoluto). Al continuar un transitorio se hereda la aceleración final, no la del equilibrio instantáneo, que con HHT-α no coincide: parar y continuar es igual que no parar. Los resultados guardan `F_constant`. Pendiente de una decisión física: la tangente con que se forma el amortiguamiento de Rayleigh al continuar.
 
+## ADR 0030 — Reacciones de los apoyos en los análisis dinámicos
+
+**Fecha**: 2026-11-09 · **Estado**: aceptado.
+
+Extiende el ADR 0004 §3 a los análisis dinámicos. Por decisión del usuario, la reacción es la ecuación de movimiento en las filas de apoyo, `R = F_int + M·ü + C·u̇ − F`, y la parte de amortiguamiento `C·u̇` se reporta aparte (OpenSees deja elegir entre ambas con `-rayleigh`). `TransientTrace` la registra en cada paso guardado, común a los cinco integradores mecánicos; el armónico la da en amplitudes complejas y el espectral por modo (`(K − ωₙ²M)·uₙ`), combinada con `combine_modal`. `total_reaction(dof)` da el cortante basal; en el espectral suma antes de combinar. Se guardan sólo los grados de libertad de apoyo, con el mismo reparto entre apoyos y uniones que el estático.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

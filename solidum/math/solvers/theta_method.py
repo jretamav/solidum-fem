@@ -512,7 +512,7 @@ class ThetaMethodSolver(TransientTerminationMixin):
         t_history = np.array([self.t_start + k * dt for k in stored], dtype=float)
         col_of = {k: i for i, k in enumerate(stored)}
 
-        def build(h, t, n_done, termination, _forces):
+        def build(h, t, n_done, termination, _forces, _reactions):
             return ThermalTransientResult(
                 t_history=t, T_history=h["T"], n_steps=int(n_done), theta=theta,
                 dt=dt, order=self.order,

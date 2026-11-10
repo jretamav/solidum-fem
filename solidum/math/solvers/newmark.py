@@ -211,7 +211,7 @@ class NewmarkSolver(TransientTerminationMixin):
         # Historiales en globales. n_steps + 1 columnas (incluye t=0).
         n_steps = self._number_of_steps(dt)
         t_history = self.t_start + np.linspace(0.0, n_steps * dt, n_steps + 1)
-        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r, M=M, C=C, K=K)
         # Estado inicial en globales (con apoyos g).
         u0_total = T @ u_free + g
         trace.converged(0, self.t_start, u0_total)
@@ -513,9 +513,9 @@ class NewtonNewmarkSolver(NewmarkSolver):
         gamma = self.gamma
         n_steps = self._number_of_steps(dt)
         t_history = self.t_start + np.linspace(0.0, n_steps * dt, n_steps + 1)
-        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r, M=M, C=C)
         trace.converged(0, self.t_start, u_total)
-        trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw)
+        trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw, F_int=F_int)
 
         # Coeficientes Newmark precomputados.
         half_dt2 = 0.5 * dt * dt
@@ -571,7 +571,8 @@ class NewtonNewmarkSolver(NewmarkSolver):
             u_total, udot_total, uddot_total, uddot_free = res.x
 
             trace.converged(step + 1, t_next, u_total)
-            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw)
+            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw,
+                        F_int=res.state[1])
 
         _log.info(f"  -> {n_steps} pasos completados (no lineal). "
                   f"Rayleigh: α={alpha_r:.4e}, β={beta_r:.4e}.")
@@ -768,7 +769,7 @@ class HHTSolver(NewmarkSolver):
 
         n_steps = self._number_of_steps(dt)
         t_history = self.t_start + np.linspace(0.0, n_steps * dt, n_steps + 1)
-        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r, M=M, C=C, K=K)
         u0_total = T @ u_free + g
         trace.converged(0, self.t_start, u0_total)
         trace.store(0, u0_total, T @ udot_free, T @ uddot_free, F_ext=F0_raw)
@@ -994,9 +995,9 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         one_plus_alpha = 1.0 + alpha_hht
         n_steps = self._number_of_steps(dt)
         t_history = self.t_start + np.linspace(0.0, n_steps * dt, n_steps + 1)
-        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r)
+        trace = mechanical_trace(self, t_history, ndof, alpha_r, beta_r, M=M, C=C)
         trace.converged(0, self.t_start, u_total)
-        trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw)
+        trace.store(0, u_total, udot_total, uddot_total, F_ext=F0_raw, F_int=F_int)
 
         half_dt2 = 0.5 * dt * dt
         one_minus_2beta = 1.0 - 2.0 * beta
@@ -1054,7 +1055,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             u_total, udot_total, uddot_total, uddot_free = res.x
 
             trace.converged(step + 1, t_next, u_total)
-            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw)
+            trace.store(step + 1, u_total, udot_total, uddot_total, F_ext=F_raw,
+                        F_int=res.state[1])
 
             # Cache para el siguiente paso (términos α·X_n). F_int es el del
             # ensamblaje en u_{n+1} convergido.
