@@ -88,7 +88,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∝}{{∝}}1 {∥}{{∥}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∝}{{∝}}1 {∥}{{∥}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -7117,6 +7117,424 @@ references:
 
 \newpage
 
+\section{ManderConcrete1D}
+\label{spec:ManderConcrete1D}
+
+
+
+\textit{Orden de trabajo. La especificación física y la formulación numérica las revisa el usuario con detalle; la IA implementa y rellena las secciones marcadas.}
+
+
+
+\subsection{Especificación física}
+
+\phantomsection
+\subsubsection*{0. Descripción general}
+\addcontentsline{toc}{subsubsection}{0. Descripción general}
+Ley uniaxial de concreto (\texttt{STRAIN\_DIM = 1}) en pequeñas deformaciones, independiente de la velocidad de deformación. Sirve a cualquier elemento que use un material 1D: barras de armadura y fibras de una \texttt{FiberSection} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0021-secciones-de-marco-y-seccion-por-fibras.md}{ADR 0021}) en los elementos de marco. Admite carga monótona, cíclica y dinámica, en análisis estáticos (incluidas las etapas de carga, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}) y en el tiempo, desde Python y desde el YAML.
+
+\textbf{Clase de modelo}: fenomenológico (macroscópico), con estructura teórica de \textbf{daño-plasticidad 1D} y de nivel material. Los datos experimentales vienen de Mander, Priestley y Park (1988): la envolvente de compresión, la deformación plástica y la degradación de la tracción por compresión previa. La forma de la descarga y de la recarga la da el marco de daño-plasticidad, no las reglas curvas de Mander.
+
+Decisiones del usuario (2026-11-09):
+
+\begin{enumerate}
+  \item \textbf{Compresión}: envolvente de Mander con la ecuación de Popovics (§2); el confinamiento se calcula fuera del material (§6).
+  \item \textbf{Descarga y recarga en compresión}: lineales, con rigidez $(1-d)\,E$, hacia la deformación plástica de Mander (punto focal, ecs. 31--34); sin lazos en los ciclos parciales (§3).
+  \item \textbf{Tracción}: lineal hasta $f_t$ y rama descendente lineal hasta cero (§4). Con historia: descarga secante hacia el origen desplazado, recuperación de la rigidez de compresión al cerrarse la grieta, y degradación de la tracción por compresión previa según Mander (ecs. 42--45).
+  \item \textbf{Regularización opcional por energía de fractura} de las ramas descendentes, en tracción y en compresión (§5).
+  \item \textbf{Confinamiento}: ecuación de Mander para presiones laterales iguales y aproximación de Chang y Mander (1994) para presiones distintas (§6).
+\end{enumerate}
+
+\textbf{Diferencias con Mander (1988)}, todas deliberadas:
+\begin{itemize}
+  \item La descarga y la recarga son rectas (decisión 2), no las curvas de las ecs. 35--41 y 46--52.
+  \item La tracción tiene rama descendente; Mander la anula al agrietarse (ec. 30b). Con $\varepsilon_{tu} = \varepsilon_t$ se recupera su caída brusca.
+  \item La condición de la ec. 42 está corregida: el texto dice «si $\varepsilon_{pl} < \varepsilon_{cc}$ entonces $f_t = 0$»; debe ser $\varepsilon_{pl} \ge \varepsilon_{cc}$, como muestra la propia ecuación.
+  \item Donde Mander escribe $\varepsilon_{cc}$ (ecs. 32, 33, 42) se usa la deformación de pico del material, $\varepsilon_c$: $\varepsilon_{cc}$ en el núcleo confinado, $\varepsilon_{c0}$ en el recubrimiento.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{1. Convención de signos}
+\addcontentsline{toc}{subsubsection}{1. Convención de signos}
+$\sigma > 0$ y $\varepsilon > 0$ en tracción (Reglas §5). Los parámetros de compresión se dan como \textbf{magnitudes positivas}. En lo que sigue, $e = -\varepsilon \ge 0$ es la deformación de compresión y $s \ge 0$ el esfuerzo de compresión, con $\sigma = -s$.
+
+\phantomsection
+\subsubsection*{2. Envolvente de compresión}
+\addcontentsline{toc}{subsubsection}{2. Envolvente de compresión}
+Con $x = e/\varepsilon_c$, $E_{sec} = f_c/\varepsilon_c$ y $r = E/(E - E_{sec})$ (Mander 1988, ecs. 3--8):
+
+\[
+s_{env}(e) = \begin{cases} \dfrac{f_c\, x\, r}{r - 1 + x^{r}} & 0 \le e \le \varepsilon_{cu} \\[2mm] s_{env}(\varepsilon_{cu})\,\dfrac{\varepsilon_{sp} - e}{\varepsilon_{sp} - \varepsilon_{cu}} & \varepsilon_{cu} < e \le \varepsilon_{sp} \\[2mm] 0 & e > \varepsilon_{sp} \end{cases}
+\]
+
+\begin{itemize}
+  \item $f_c$ y $\varepsilon_c$ son los del material: $f'_{cc}$ y $\varepsilon_{cc}$ en el núcleo confinado, $f'_{c}$ y $\varepsilon_{c0}$ en el recubrimiento.
+  \item \textbf{Núcleo confinado}: $\varepsilon_{cu}$ es la deformación última (rotura del primer estribo, §6) y, por omisión, $\varepsilon_{sp} = \varepsilon_{cu}$: el esfuerzo cae a cero al alcanzarla.
+  \item \textbf{Recubrimiento} (Mander 1988, p. 1808): la curva de Popovics hasta $\varepsilon_{cu} = 2\varepsilon_{c0}$ y una recta hasta cero en la deformación de desprendimiento $\varepsilon_{sp}$.
+  \item La pendiente inicial es $E$. Se exige $E > E_{sec}$ ($r > 1$). Mander toma $E = 5000\sqrt{f'_{c}}$ MPa (ec. 7); aquí $E$ es un parámetro, y la función auxiliar del §6 da ese valor por omisión.
+  \item La secante $s_{env}(e)/e$ decrece con $e$, así que $s_{env}(e) \le E\,e$ en toda la envolvente. De esto dependen las propiedades del §3.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{3. Deformación plástica, daño y descarga--recarga en compresión}
+\addcontentsline{toc}{subsubsection}{3. Deformación plástica, daño y descarga--recarga en compresión}
+Con $e_m$ la máxima compresión alcanzada y $s_m = s_{env}(e_m)$, la deformación plástica es la del punto focal de Mander (ecs. 31--34, p. 1814):
+
+\[
+\varepsilon_a = a\sqrt{e_m\,\varepsilon_c},\qquad a = \max\!\left(\frac{\varepsilon_c}{\varepsilon_c + e_m},\ \frac{0.09\,e_m}{\varepsilon_c}\right),\qquad e_p = e_m - \frac{(e_m + \varepsilon_a)\,s_m}{s_m + E\,\varepsilon_a},
+\]
+
+con $e_p = 0$ si $e_m = 0$. Mander la calibró con los ensayos de Karsan y Jirsa (1969) y de Sinha et al. (1964) en concreto simple, y con los de Mander et al. (1984) en concreto confinado.
+
+\textbf{Forma de daño-plasticidad.} Entre $e_p$ y $e_m$ el material responde elásticamente con la rigidez dañada:
+
+\[
+s = (1 - d)\,E\,(e - e_p),\qquad 1 - d = \frac{E_r}{E},\qquad E_r = \frac{s_m}{e_m - e_p} = \frac{s_m + E\,\varepsilon_a}{e_m + \varepsilon_a}.
+\]
+
+La descarga y la recarga siguen la misma recta, y al pasar de $e_m$ el material vuelve a la envolvente. $d$ y $e_p$ sólo cambian sobre la envolvente ($e = e_m$, $\dot e > 0$).
+
+\textbf{Propiedades por construcción} (consecuencia de $s_{env} \le E\,e$):
+\begin{itemize}
+  \item $0 \le e_p \le e_m$;
+  \item $E_r \le E$: la descarga nunca es más rígida que la carga inicial, es decir $0 \le d < 1$ mientras $s_m > 0$.
+\end{itemize}
+
+\textbf{Energía.} La energía libre de la parte de compresión es $\psi_c = \tfrac12 (1-d)\,E\,(e - e_p)^2 = \tfrac12\, s\,(e - e_p)$, y la disipación es $D = s\,\dot e_p + \tfrac12 E (e - e_p)^2\,\dot d$. Se comprobó con un prototipo (fuera del repositorio) que el trabajo realizado menos la energía almacenada no baja de cero en 1 200 trayectorias aleatorias de compresión, descarga, tracción, agrietamiento y aplastamiento. La violación mayor fue de $6\cdot10^{-8}\,f_c\varepsilon_c$, del orden del error de integración.
+
+\textbf{Aplastamiento.} Si $s_m = 0$ (más allá de $\varepsilon_{sp}$), $e_p = e_m$ y el factor de tracción del §4 se anula: la fibra no resiste nada en adelante, ni en compresión ni en tracción.
+
+\phantomsection
+\subsubsection*{4. Tracción y cierre de la grieta}
+\addcontentsline{toc}{subsubsection}{4. Tracción y cierre de la grieta}
+La deformación de tracción se mide desde el origen desplazado: $t = \varepsilon + e_p$. Para $t < 0$ la fibra está en compresión (§3); para $t \ge 0$, en tracción.
+
+\textbf{Envolvente sin daño} (decisión del 2026-11-09, como \texttt{Concrete02} de OpenSees), con $\varepsilon_t = f_t/E$:
+
+\[
+\sigma^0_{t}(t) = \begin{cases} E\,t & 0 \le t \le \varepsilon_t \\[1mm] f_t\,\dfrac{\varepsilon_{tu} - t}{\varepsilon_{tu} - \varepsilon_t} & \varepsilon_t < t \le \varepsilon_{tu} \\[2mm] 0 & t > \varepsilon_{tu} \end{cases}
+\]
+
+$f_t = 0$: sin tracción. $\varepsilon_{tu} = \varepsilon_t$: caída brusca (la de Mander, ec. 30b). Para representar el concreto entre grietas de un elemento reforzado, valores típicos de $\varepsilon_{tu}$ van de 5 a 20 veces $\varepsilon_t$. Con energía de fractura, $\varepsilon_{tu}$ sale del §5.
+
+\textbf{Degradación por compresión previa} (Mander 1988, ecs. 42--45, p. 1815, con la errata corregida):
+
+\[
+\phi = \max\!\left(0,\ 1 - \frac{e_p}{\varepsilon_c}\right),\qquad \sigma_{t,env}(t) = \phi\,\sigma^0_t(t).
+\]
+
+Equivale a Mander: resistencia $\phi f_t$, rigidez $E_t = \phi E$ y la misma deformación de agrietamiento $\varepsilon_t = f_t/E$. Valores para concreto sin confinar de 30 MPa:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYYY}
+\hline
+\textbf{$\eta = e_m/\varepsilon_c$} & \textbf{0.5} & \textbf{1.0} & \textbf{1.5} & \textbf{2.0} & \textbf{2.21} \\
+\hline
+$\phi$ & 0.96 & 0.78 & 0.50 & 0.16 & 0 \\
+\hline
+\end{tabularx}
+\end{center}
+\textbf{Historia.} Con $t_m$ la máxima deformación de tracción alcanzada:
+\begin{itemize}
+  \item Mientras $t_m \le \varepsilon_t$ (sin agrietar), la respuesta es elástica: $\sigma = \phi E t$.
+  \item Agrietada ($t_m > \varepsilon_t$): para $0 \le t \le t_m$, \textbf{descarga secante} hacia el origen desplazado, $\sigma = \sigma_{t,env}(t_m)\, t/t_m$; para $t > t_m$, la envolvente.
+  \item \textbf{Cierre de la grieta}: para $t < 0$ rige la compresión del §3, con su rigidez $(1-d)E$, que no depende del daño de tracción. Es la recuperación total de la rigidez de compresión (como el concreto de Abaqus con $w_c = 1$).
+\end{itemize}
+
+\textbf{Por qué no crea energía.} La energía almacenada en tracción es $\psi_t = \tfrac12\,\sigma\,t$. $\phi$ y $e_p$ sólo cambian sobre la envolvente de compresión, donde $t < 0$ y $\psi_t = 0$. $t_m$ conserva su valor cuando el origen se desplaza.
+
+\phantomsection
+\subsubsection*{5. Regularización por energía de fractura (opcional)}
+\addcontentsline{toc}{subsubsection}{5. Regularización por energía de fractura (opcional)}
+Una rama descendente concentra la deformación en un punto de integración, y la energía que disipa es el área bajo la curva por la longitud de ese punto: sin regularizar, el resultado depende de la malla. Para cada rama descendente se da la deformación (§2, §4) \textbf{o} la energía; con la energía, la rama se ajusta a la \textbf{longitud característica $h$} del punto de integración, que proporciona el elemento:
+\begin{itemize}
+  \item barra de armadura: $h = L$;
+  \item elemento de marco con \texttt{FiberSection}: la longitud tributaria del punto de Gauss, $h = w_i\,L$, con $w_i$ el peso en $[0, 1]$ (Coleman y Spacone 2001).
+\end{itemize}
+
+\textbf{Tracción} (Hillerborg et al. 1976; Bažant y Oh 1983). Con ablandamiento lineal, el área bajo $\sigma^0_t$ es $\tfrac12 f_t\,\varepsilon_{tu}$, y se iguala a $G_f/h$:
+
+\[
+\varepsilon_{tu} = \frac{2\,G_f}{f_t\,h}.
+\]
+
+Exige $\varepsilon_{tu} > \varepsilon_t$, es decir $h < 2\,G_f\,E/f_t^2$. Si no se cumple, la rama tendría retroceso (\textit{snap-back}) en el material: Solidum lo rechaza al construir el modelo y pide elementos más cortos. Ejemplo: $f_t = 3$ MPa, $E = 27.4$ GPa, $G_f = 140$ N/m da $h < 0.85$ m. Con la degradación del §4, la energía disipada es $\phi\,G_f$.
+
+\textbf{Compresión} (Coleman y Spacone 2001). La parte de la envolvente posterior al pico se estira en el eje de deformaciones:
+
+\[
+s_{env}(e) = s^{ref}_{env}\!\left(\varepsilon_c + \frac{e - \varepsilon_c}{\lambda}\right)\quad (e > \varepsilon_c),\qquad \lambda = \frac{G_{fc}}{h\,A_{post}},\qquad A_{post} = \int_{\varepsilon_c}^{\varepsilon_{sp}} s^{ref}_{env}\,de,
+\]
+
+donde $s^{ref}_{env}$ es la envolvente del §2 sin regularizar. El área posterior al pico vale entonces $G_{fc}/h$, y $\varepsilon_{cu}$ y $\varepsilon_{sp}$ se escalan como $\varepsilon_c + \lambda(\cdot - \varepsilon_c)$. La rama ascendente no cambia. La deformación plástica del §3 se evalúa con la envolvente regularizada; $s_{env} \le E\,e$ se conserva, y con ella las propiedades del §3 (el prototipo lo comprobó con $\lambda = 0.3$ y $\lambda = 3$).
+
+\textbf{Valor de $G_f$.} Si no se tiene el dato del ensayo, una función auxiliar da el del Model Code 2010: $G_f = 73\, f_{cm}^{0.18}$ N/m, con $f_{cm}$ en MPa. $G_{fc}$ no tiene valor por omisión.
+
+\phantomsection
+\subsubsection*{6. Confinamiento (función auxiliar, fuera del material)}
+\addcontentsline{toc}{subsubsection}{6. Confinamiento (función auxiliar, fuera del material)}
+Calcula $f'_{cc}$, $\varepsilon_{cc}$ y $\varepsilon_{cu}$ del núcleo a partir del concreto sin confinar ($f'_{c}$, $\varepsilon_{c0} = 0.002$ por omisión) y del refuerzo transversal. El material sólo recibe el resultado.
+
+\textbf{Presión lateral efectiva} (Mander 1988, ecs. 9--28): $f'_l = k_e\,f_l$, con
+\begin{itemize}
+  \item sección circular: $f_l = \tfrac12\,\rho_s\,f_{yh}$ (ec. 18), $k_e = (1 - s'/2d_s)^2/(1 - \rho_{cc})$ con aros (ec. 14) o $(1 - s'/2d_s)/(1 - \rho_{cc})$ con espiral (ec. 15);
+  \item sección rectangular: $f_{lx} = \rho_x f_{yh}$ y $f_{ly} = \rho_y f_{yh}$ (ecs. 25--26), con $k_e$ de la ec. 22 (anchos libres $w'_i$ entre barras longitudinales, separación libre $s'$, dimensiones del núcleo $b_c$ y $d_c$).
+\end{itemize}
+
+$k_e$ puede darse directamente o calcularse con esas ecuaciones.
+
+\textbf{Resistencia confinada}, con $K = f'_{cc}/f'_{c}$:
+\begin{itemize}
+  \item \textbf{Presiones iguales} (sección circular): Mander, ec. 29,
+\end{itemize}
+\[
+K = -1.254 + 2.254\sqrt{1 + 7.94\,f'_l/f'_c} - 2\,f'_l/f'_c.
+\]
+\begin{itemize}
+  \item \textbf{Sección rectangular} (presiones $f'_{l1} \le f'_{l2}$, iguales o no): Chang y Mander (1994), ecs. 3-70a--e, p. 3-32, con $q_i = f'_{li}/f'_c$, $\bar x = (q_1 + q_2)/2$ y $r = q_1/q_2$:
+\end{itemize}
+\[
+K = 1 + A\,\bar x\left(0.1 + \frac{0.9}{1 + B\,\bar x}\right),\quad A = 6.8886 - (0.6069 + 17.275\,r)\,e^{-4.989\,r},\quad B = \frac{4.5}{\frac{5}{A}\left(0.9849 - 0.6306\,e^{-3.8939\,r}\right) - 0.1} - 5.
+\]
+  Aproxima el ábaco de Mander (Fig. 4, superficie de cinco parámetros de Willam y Warnke). Con presiones iguales difiere de la ec. 29 en menos de 0.003 en $K$; se usa también en ese caso para que la función no tenga saltos. Reproduce el ejemplo numérico de Mander (p. 1812: $f'_c = 30$ MPa, $f'_{ly} = 2.7$ MPa, $f'_{lx} = 5.1$ MPa): $K = 1.647$, frente a 1.65 leído en el ábaco. Validez: $q_2 \le 0.3$; por encima, aviso.
+
+\textbf{Deformaciones}: $\varepsilon_{cc} = \varepsilon_{c0}\,[1 + 5(K - 1)]$ (ec. 5). Deformación última por balance de energía, en la aproximación de Paulay y Priestley (1992, §3.2.2): $\varepsilon_{cu} = 0.004 + 1.4\,\rho_s\,f_{yh}\,\varepsilon_{su}/f'_{cc}$, con $\rho_s = \rho_x + \rho_y$ en la sección rectangular y $\varepsilon_{su}$ la deformación del acero transversal a la resistencia máxima.
+
+\textbf{Módulo}: $E = 5000\sqrt{f'_c}$ MPa (ec. 7) por omisión.
+
+\phantomsection
+\subsubsection*{7. Variables internas}
+\addcontentsline{toc}{subsubsection}{7. Variables internas}
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Variable} & \textbf{Significado} \\
+\hline
+\texttt{eps\_cmax} & $e_m \ge 0$: máxima deformación de compresión alcanzada (\texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}). \\
+\texttt{eps\_tmax} & $t_m \ge 0$: máxima deformación de tracción alcanzada, medida desde $-e_p$. \\
+\hline
+\end{tabularx}
+\end{center}
+$e_p$, $d$ y $\phi$ se deducen de $e_m$; el aplastamiento, de $s_m = 0$. La longitud característica $h$ no es una variable interna: es un dato fijo del punto de integración.
+
+
+\subsection{Formulación numérica}
+
+\phantomsection
+\subsubsection*{9. Actualización del estado}
+\addcontentsline{toc}{subsubsection}{9. Actualización del estado}
+Explícita, sin ecuación local que resolver. Dado el estado comprometido $(e_m, t_m)$ y la deformación total $\varepsilon_{n+1}$:
+\begin{enumerate}
+  \item $e = -\varepsilon_{n+1}$; si $e > e_m$, la fibra está en la envolvente de compresión y $e_m^{trial} = e$.
+  \item Con $e_m^{trial}$ se calculan $e_p$, $d$ y $\phi$, y $t = \varepsilon_{n+1} + e_p$.
+  \item $t < 0$: compresión (envolvente o recta de daño). $t \ge 0$: tracción (envolvente si $t > t_m$, con $t_m^{trial} = t$; elástica o secante si no).
+\end{enumerate}
+
+\phantomsection
+\subsubsection*{11. Tangente consistente}
+\addcontentsline{toc}{subsubsection}{11. Tangente consistente}
+La derivada de esa función por ramas respecto de $\varepsilon$, con el estado comprometido:
+\begin{itemize}
+  \item envolvente de compresión: $ds_{env}/de$, que en la curva de Popovics es
+\end{itemize}
+\[
+\frac{ds_{env}}{de} = \frac{f_c\, r\,(r-1)\,(1 - x^{r})}{\varepsilon_c\,(r - 1 + x^{r})^2}
+\]
+(negativa tras el pico); $1/\lambda$ veces el valor de referencia en la rama regularizada; $-s_{env}(\varepsilon_{cu})/(\varepsilon_{sp} - \varepsilon_{cu})$ en la rama lineal;
+\begin{itemize}
+  \item recta de daño en compresión: $(1-d)\,E$;
+  \item tracción: $\phi E$ elástica, $-\phi f_t/(\varepsilon_{tu} - \varepsilon_t)$ en la rama descendente, $\sigma_{t,env}(t_m)/t_m$ en la secante;
+  \item $0$ en las zonas sin esfuerzo (aplastada, agrietada por completo).
+\end{itemize}
+
+Sobre la envolvente, $e_p$, $d$ y $\phi$ cambian, pero el esfuerzo sólo depende de $e$, así que la tangente es la de la envolvente. En los quiebres (picos, $\varepsilon_{cu}$, $\varepsilon_{sp}$, inicio de la descarga, cierre de la grieta) se toma el valor lateral de la rama en la que se está. Es simétrica (escalar).
+
+\phantomsection
+\subsubsection*{12. Caveats numéricos}
+\addcontentsline{toc}{subsubsection}{12. Caveats numéricos}
+\begin{itemize}
+  \item \textbf{Ablandamiento sin regularizar}: tras los picos de tracción y de compresión, la deformación se localiza y la respuesta depende de la malla (§5). Con $G_f$ y $G_{fc}$ deja de depender.
+  \item \textbf{Tangente negativa}: en las ramas descendentes. Para seguir la respuesta estructural después del pico hace falta control de desplazamiento o de longitud de arco.
+  \item \textbf{Caídas a cero} en $\varepsilon_{sp}$ (si $\varepsilon_{sp} = \varepsilon_{cu}$) y en $\varepsilon_{tu} = \varepsilon_t$: son discontinuidades del esfuerzo, y el Newton bisecará al cruzarlas.
+  \item \textbf{Quiebre al cerrarse la grieta}: la rigidez salta de la de tracción a $(1-d)E$; es continuo en esfuerzo.
+\end{itemize}
+
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: ManderConcrete1D
+kind: material
+status: validated        # draft → implemented → validated
+
+interface:
+  strain_dim: 1
+  primary_state_var: eps_cmax
+  is_symmetric: true
+  state_schema: {eps_cmax: (), eps_tmax: (), h: ()}   # h: longitud característica del punto, fija (ADR 0028)
+
+admission:                # criterio de admisión (Reglas §1); clasificado estándar por el usuario (2026-11-09)
+  textbooks:
+    - paulay_priestley: "cap. 3, §3.2.2 Confined Concrete, pp. 98–104: f'cc, εcc y εcu de Mander et al. (1988); la forma exacta de la curva, en Mander (1988) y Popovics (1973)"
+  general_codes:
+    - opensees: "uniaxialMaterial Concrete04 (envolvente de Popovics/Mander, descarga y recarga lineales) y Concrete02 (tracción con rama lineal)"
+    - abaqus: "Concrete Damaged Plasticity: daño-plasticidad con recuperación de la rigidez de compresión al cerrarse la grieta (w_c = 1) y regularización de la tracción por energía de fractura"
+
+parameters:
+  - { name: fc,      type: float, required: true,  desc: "Resistencia de pico en compresión, magnitud > 0 (f'cc en el núcleo, f'c en el recubrimiento)" }
+  - { name: eps_c,   type: float, required: true,  desc: "Deformación de pico, magnitud > 0 (εcc o εc0)" }
+  - { name: E,       type: float, required: true,  desc: "Módulo inicial > fc/eps_c (Mander: 5000·√f'c MPa)" }
+  - { name: eps_cu,  type: float, required: true,  desc: "Fin de la curva de Popovics, magnitud ≥ eps_c (εcu en el núcleo, 2·εc0 en el recubrimiento)" }
+  - { name: eps_sp,  type: float, required: false, default: null, desc: "Deformación en que el esfuerzo llega a cero por la rama lineal (≥ eps_cu); por omisión eps_cu: caída a cero en eps_cu" }
+  - { name: ft,      type: float, required: false, default: 0.0,  desc: "Resistencia a tracción ≥ 0; 0 = sin tracción" }
+  - { name: eps_tu,  type: float, required: false, default: null, desc: "Deformación de tracción en que el esfuerzo llega a cero (≥ ft/E). Si ft > 0 se da eps_tu o G_f, no ambos" }
+  - { name: G_f,     type: float, required: false, default: null, desc: "Energía de fractura en tracción (N/m); regulariza la rama descendente con la longitud característica del punto de integración" }
+  - { name: G_fc,    type: float, required: false, default: null, desc: "Energía de fractura en compresión (N/m); regulariza la rama posterior al pico" }
+  - { name: density, type: float, required: false, default: null, desc: "Densidad (kg/m³), ADR 0008" }
+  - { name: confinement, type: dict, required: false, default: null, desc: "Argumentos de mander_confined_concrete (§6); calcula fc, eps_c, eps_cu y E del núcleo. Excluye fc, eps_c y eps_cu" }
+
+state_variables:
+  - { name: eps_cmax, type: float, shape: (), desc: "Máxima deformación de compresión alcanzada, magnitud ≥ 0" }
+  - { name: eps_tmax, type: float, shape: (), desc: "Máxima deformación de tracción alcanzada, medida desde la deformación plástica de compresión" }
+  - { name: h, type: float, shape: (), desc: "Longitud característica del punto de integración, fija; 0 si el elemento no la proporcionó (ADR 0028)" }
+
+conventions:
+  sign: "σ > 0 y ε > 0 en tracción; parámetros de compresión en magnitud positiva"
+  units: "[fc] = [ft] = [E] = Pa; [G_f] = [G_fc] = N/m; deformaciones adimensionales"
+
+validity:
+  - "pequeñas deformaciones; estado uniaxial de esfuerzo; independiente de la velocidad de deformación"
+  - "carga monótona, cíclica y dinámica; análisis estático (con etapas) y en el tiempo"
+  - "confinamiento por aros, espirales y estribos rectangulares con presiones laterales iguales o distintas (f'l/f'c ≤ 0.3)"
+
+out_of_scope:
+  - "curvas de descarga y recarga y lazos de los ciclos parciales (Mander 1988, ecs. 35–41 y 46–52; Chang y Mander 1994): si un caso real los pide, entran como otro modelo completo de la familia uniaxial, sin tocar éste"
+  - "degradación por ciclos repetidos a la misma amplitud"
+  - "efecto de la velocidad de deformación (Mander 1988, último apartado)"
+  - "confinamiento por encamisado de acero o de polímeros reforzados con fibras"
+  - "concreto 2D/3D: futura familia de daño-plasticidad tipo Lee-Fenves, que compartirá los parámetros"
+  - "dependencia de la temperatura"
+
+acceptance:
+  verification:
+    - name: puntos_notables
+      setup: "Núcleo (fc = 34.5 MPa, eps_c = 0.0045, eps_cu = 0.015, E = 25.0 GPa) y recubrimiento (fc = 25 MPa, eps_c = 0.002, eps_cu = 0.004, eps_sp = 0.006, ft = 2.5 MPa, eps_tu = 10·ε_t)"
+      expect: "σ(−eps_c) = −fc; σ(−eps_cu) igual a la fórmula de Popovics; σ(−eps_sp) = 0; σ(ε_t) = ft y σ(eps_tu) = 0; pendiente inicial E"
+      tol_rel: 1.0e-10
+    - name: deformacion_plastica_mander
+      setup: "Descarga desde la envolvente en η = e_m/eps_c ∈ {0.25, 0.5, 1, 2, 3}, en núcleo y recubrimiento"
+      expect: "e_p igual a las ecs. 31–34 de Mander evaluadas de forma independiente; 0 ≤ e_p ≤ e_m; E_r ≤ E"
+      tol_rel: 1.0e-12
+    - name: descarga_recarga_lineal
+      setup: "Compresión hasta e_m en la rama ascendente y en la descendente, descarga hasta e_p, recarga hasta pasar e_m"
+      expect: "Descarga y recarga por la misma recta de pendiente (1 − d)·E; variables internas constantes mientras e < e_m; vuelta a la envolvente en e_m"
+      tol_rel: 1.0e-12
+    - name: traccion_con_historia
+      setup: "Compresión previa hasta η ∈ {0.5, 1, 1.5, 2, 2.5} y después tracción; tracción hasta agrietar, descarga y compresión"
+      expect: "Resistencia φ·ft y rigidez φ·E con φ = max(0, 1 − e_p/eps_c) (0 para e_p ≥ eps_c); descarga secante hacia −e_p; al cerrarse la grieta la rigidez de compresión es (1 − d)·E, igual que sin agrietar"
+      tol_rel: 1.0e-12
+    - name: regularizacion_traccion
+      setup: "Tracción hasta la rotura completa con G_f dado y h ∈ {0.05, 0.1, 0.5} m"
+      expect: "Energía disipada por unidad de volumen = G_f/h; error al construir si h ≥ 2·G_f·E/ft²"
+      tol_rel: 1.0e-10
+    - name: regularizacion_compresion
+      setup: "Compresión hasta eps_sp regularizado con G_fc dado y h ∈ {0.05, 0.1, 0.5} m"
+      expect: "Área de la envolvente posterior al pico = G_fc/h; rama ascendente sin cambio"
+      tol_rel: 1.0e-10
+    - name: confinamiento
+      setup: "Función auxiliar: sección circular y rectangular, con k_e dado y calculado"
+      expect: "Ec. 29 de Mander con presiones iguales; Chang y Mander con presiones distintas, evaluados de forma independiente; diferencia entre ambas < 0.003 en K con presiones iguales y q ≤ 0.3; ejemplo numérico de Mander (p. 1812): K = 1.65 ± 0.01; εcc de la ec. 5"
+      tol_rel: 1.0e-12
+    - name: tangente_consistente
+      setup: "Barridos de deformación por cada rama (envolvente antes y después del pico, regularizada o no, rama lineal, recta de daño, tracción elástica, rama descendente, secante agrietada), salvo en los quiebres"
+      expect: "La tangente coincide con diferencias finitas centradas (patrón de tests/test_material_tangents_fd.py)"
+      tol_rel: 1.0e-6
+    - name: disipacion_no_negativa
+      setup: "Trayectorias aleatorias de deformación que cruzan compresión, descarga, tracción, agrietamiento, cierre y aplastamiento, con y sin regularización"
+      expect: "Trabajo realizado − energía almacenada ≥ 0 en todo instante, integrando el trabajo de forma exacta por tramos"
+  specific:
+    - name: familia_uniaxial
+      setup: "Prueba común aplicada automáticamente a todo material 1D registrado (sin darlo de alta): ciclos cerrados de deformación y tangente por diferencias finitas"
+      expect: "Energía disipada ≥ 0 en ciclos cerrados; tangente consistente fuera de los quiebres"
+  validation:
+    - name: momento_curvatura
+      setup: "Sección rectangular de concreto reforzado (núcleo confinado con la función auxiliar, recubrimiento y barras de Elastoplastic1D en una FiberSection), sin carga axial y con ella"
+      expect: "Momento de primera fluencia del acero, momento máximo y curvatura en εcu iguales a los de una integración independiente de la sección (franjas finas, equilibrio por bisección del eje neutro, sin código de Solidum)"
+      tol_rel: 2.0e-2
+    - name: voladizo_concreto_reforzado
+      setup: "Voladizo de concreto reforzado sin carga axial y con carga axial constante (etapa previa, ADR 0026) y empuje lateral, 16 elementos de Frame2DEuler con la sección anterior"
+      expect: "Hasta el pico, la fuerza a desplazamiento dado coincide con la integración de la curvatura de la solución independiente"
+      tol_rel: 2.0e-2
+    - name: objetividad_de_malla
+      setup: "(a) Barra de concreto simple a tracción con un elemento debilitado, 2, 4, 8 y 16 elementos, con G_f; (b) el voladizo anterior con N = −0.2·f'c·A_g después del pico, con 8 y 16 elementos, eps_tu en tracción y G_fc en compresión"
+      expect: "(a) curva fuerza-desplazamiento analítica de la banda de fisuración y energía disipada A·G_f·(1 − σ/f_t) con cualquier malla (sin regularizar, proporcional al tamaño del elemento); (b) fuerza a desplazamiento dado después del pico con diferencia ≤ 5 % entre 8 y 16 elementos (decisión del usuario, 2026-11-09). Con 4 elementos, documentado y no exigido: la malla es más gruesa que la rótula plástica"
+      tol_rel: 5.0e-2
+    - name: respuesta_ciclica_y_dinamica
+      setup: "El voladizo anterior con desplazamiento lateral cíclico de amplitud creciente (IndirectDisplacementSolver por etapas) y con un pulso de carga lateral seguido de vibración libre (NewmarkSolver)"
+      expect: "Ciclos completos sin pérdida de convergencia, con fuerza residual tras los ciclos plásticos y picos simétricos; en el transitorio, la energía disipada por el material (trabajo de las fuerzas internas, F_ext − M·ü, menos la energía almacenada en las fibras) no negativa y no decreciente"
+      tol_rel: 1.0e-2
+    - name: yaml_equivalente
+      setup: "El voladizo desde el YAML, con el confinamiento calculado por la función auxiliar desde el propio YAML"
+      expect: "Resultados idénticos a los de Python"
+      tol_rel: 1.0e-12
+
+references:
+  - "Mander J. B., Priestley M. J. N., Park R. (1988). Theoretical stress-strain model for confined concrete. J. Struct. Eng. 114(8), 1804-1826. doi:10.1061/(ASCE)0733-9445(1988)114:8(1804)."
+  - "Popovics S. (1973). A numerical approach to the complete stress-strain curve of concrete. Cem. Concr. Res. 3(5), 583-599. doi:10.1016/0008-8846(73)90096-3."
+  - "Chang G. A., Mander J. B. (1994). Seismic energy based fatigue damage analysis of bridge columns: Part I – Evaluation of seismic capacity. Technical Report NCEER-94-0006, National Center for Earthquake Engineering Research, Buffalo. Ecs. 3-70a–e, p. 3-32."
+  - "Karsan I. D., Jirsa J. O. (1969). Behavior of concrete under compressive loadings. J. Struct. Div. ASCE 95(12), 2543-2564. doi:10.1061/JSDEAG.0002424. (Datos de calibración de la deformación plástica de Mander.)"
+  - "Hillerborg A., Modéer M., Petersson P.-E. (1976). Analysis of crack formation and crack growth in concrete by means of fracture mechanics and finite elements. Cem. Concr. Res. 6(6), 773-781. doi:10.1016/0008-8846(76)90007-7."
+  - "Bažant Z. P., Oh B. H. (1983). Crack band theory for fracture of concrete. Matériaux et Constructions 16(3), 155-177. doi:10.1007/BF02486267."
+  - "Coleman J., Spacone E. (2001). Localization issues in force-based frame elements. J. Struct. Eng. 127(11), 1257-1265. doi:10.1061/(ASCE)0733-9445(2001)127:11(1257)."
+  - "Lee J., Fenves G. L. (1998). Plastic-damage model for cyclic loading of concrete structures. J. Eng. Mech. 124(8), 892-900. doi:10.1061/(ASCE)0733-9399(1998)124:8(892). (Marco de daño-plasticidad del concreto de Abaqus.)"
+  - "fib (2013). fib Model Code for Concrete Structures 2010. Ernst & Sohn. doi:10.1002/9783433604090. (G_f = 73·f_cm^0.18.)"
+  - "Paulay T., Priestley M. J. N. (1992). Seismic Design of Reinforced Concrete and Masonry Buildings. Wiley, New York. ISBN 0-471-54915-0. Cap. 3, §3.2.2."
+  - "ADR 0021 (secciones por fibras), ADR 0026 (etapas de carga)."
+
+\end{lstlisting}
+
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}materials/\allowbreak{}concrete\_\allowbreak{}1d.\allowbreak{}py} (material) y \texttt{solidum/\allowbreak{}materials/\allowbreak{}concrete\_\allowbreak{}confinement.\allowbreak{}py} (confinamiento, \texttt{k\_e}, módulo de Mander, energía de fractura del Model Code).
+  \item Clase: \texttt{ManderConcrete1D} (registrada en \texttt{MaterialRegistry}).
+  \item Pieza general nueva: la longitud característica del punto de integración (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0028-longitud-caracteristica-del-punto-de-integracion.md}{ADR 0028}): \texttt{Material.\allowbreak{}uses\_\allowbreak{}characteristic\_\allowbreak{}length}, \texttt{Material.\allowbreak{}initial\_\allowbreak{}point\_\allowbreak{}state(h)}, \texttt{Element.\allowbreak{}\_\allowbreak{}seed\_\allowbreak{}characteristic\_\allowbreak{}lengths}, \texttt{FiberSection.\allowbreak{}initial\_\allowbreak{}states(characteristic\_\allowbreak{}length=h)}; la siembran las barras (\texttt{h = L}) y los marcos con sección (\texttt{h = w\_g\ensuremath{\cdot}L}).
+  \item Tests:
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}mander\_\allowbreak{}concrete\_\allowbreak{}1d.\allowbreak{}py} (verificación: 20 casos).
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}uniaxial\_\allowbreak{}family.\allowbreak{}py} (prueba común de todo material 1D: trabajo desde el estado virgen \ensuremath{\ge} 0, ciclos cerrados con respuesta repetida \ensuremath{\ge} 0 ---postulado de Ilyushin--- y tangente por diferencias finitas fuera de los quiebres).
+  \item \texttt{tests/\allowbreak{}validation/\allowbreak{}test\_\allowbreak{}mander\_\allowbreak{}concrete\_\allowbreak{}validation.\allowbreak{}py} (validación).
+  \item Muestra en \texttt{MUESTRAS} de \texttt{tests/\allowbreak{}test\_\allowbreak{}material\_\allowbreak{}contract\_\allowbreak{}sweep.\allowbreak{}py} (con tracción: sin ella no hay régimen elástico para \ensuremath{\varepsilon} \textgreater{} 0).
+  \item Notas de implementación:
+  \item Actualización explícita, sin ecuación local. \texttt{e\_p}, \texttt{d} y \texttt{\ensuremath{\varphi}} se recalculan de \texttt{eps\_cmax} en cada llamada (no se guardan).
+  \item \texttt{A\_post} (área de la rama posterior al pico sin regularizar) se integra una vez al construir, con 64 puntos de Gauss-Legendre.
+  \item \texttt{compression\_\allowbreak{}envelope(e, h)}, \texttt{plastic\_\allowbreak{}strain(e\_\allowbreak{}m, s\_\allowbreak{}m)} y \texttt{tension\_\allowbreak{}softening\_\allowbreak{}end(h)} son públicos (los usan las pruebas y el post-proceso de energía).
+  \item Notas de las pruebas:
+  \item La disipación no negativa se integra con la regla del trapecio en pasos finos (tolerancia \texttt{1e-6\ensuremath{\cdot}fc\ensuremath{\cdot}eps\_c}), no de forma exacta por tramos.
+  \item El balance de energía del transitorio con \texttt{F\_\allowbreak{}int = F\_\allowbreak{}ext − M\ensuremath{\cdot}ü} se cumple de forma idéntica con la regla del trapecio de Newmark (aceleración media), así que no prueba nada: se sustituyó por la disipación del material, trabajo interno menos energía almacenada en las fibras, en tres instantes.
+\end{itemize}
+
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Spec redactada por la IA con las tres decisiones físicas del usuario (compresión de Mander con la forma de Popovics y confinamiento fuera del material; tracción lineal con rama descendente lineal; descarga de Karsan y Jirsa) y su clasificación como estándar. Pendiente de la revisión del usuario, en particular: (a) la cota $E_r \le E$ de la descarga; (b) la deformación de tracción medida desde $-e_p$ y la descarga en tracción por la secante; (c) el confinamiento uniforme en la función auxiliar; (d) la rama lineal de $e_p$ para $\eta \ge 2$.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Referencias verificadas por el bibliotecario (\texttt{verificacion\_\allowbreak{}bib\_\allowbreak{}2026-11-09.\allowbreak{}md}, fuera de Git). Paulay y Priestley (1992) presenta el modelo de Mander en su §3.2.2 (pp. 98--104): sirve como texto de la lista de admisión. Karsan y Jirsa: páginas 2543--2564. La expresión de $e_p$ se confirmó en el código de \texttt{Concrete04} de OpenSees, que la usa sólo para $\eta < 2$ y una rama lineal para $\eta \ge 2$ (punto (d)).
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Reformulación.} El usuario pidió que el material sea una capacidad general de un programa de elementos finitos (carga monótona, cíclica y dinámica; YAML), no a la medida de un caso, y sin parches: el borrador anterior combinaba Karsan y Jirsa, la rama lineal de Taucer et al. (1991) que usa OpenSees y una cota propia ($E_r \le E$), y creaba energía en $\eta = 2$. Decisiones del usuario: (1) forma de daño-plasticidad 1D con la deformación plástica de Mander (ecs. 31--34), que elimina los puntos (a) y (d); (2) descarga y recarga lineales, sin lazos (las reglas curvas de Mander sólo están definidas para ciclos completos y dieron problemas de convergencia en fibras; Chang y Mander tiene unas 15 variables y errores de energía de hasta 47 \% por ciclo); (3) tracción con descarga secante, recuperación al cerrar la grieta y degradación de Mander (ecs. 42--45, con la errata corregida), que responde al punto (b); (4) regularización opcional por energía de fractura; (5) confinamiento con presiones distintas por Chang y Mander (1994), que responde al punto (c). El módulo $E_c = 5000\sqrt{f'_c}$ MPa sí está en Mander (1988), ec. 7, p. 1808. Puntos para la revisión del usuario: (i) la regularización de la compresión estirando la rama posterior al pico (§5): Coleman y Spacone la hicieron con la rama lineal de Kent y Park; estirarla conserva la forma de Mander; (ii) $h = w_i L$ en los elementos de marco de Solidum, que son en desplazamientos (Coleman y Spacone lo plantean para elementos en fuerzas): lo decide la prueba \texttt{objetividad\_\allowbreak{}de\_\allowbreak{}malla}, y si no se cumple se trae al usuario; (iii) $t_m$ conserva su valor cuando el origen de la tracción se desplaza por compresión posterior (§4).
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Implementación y hallazgos.} Las pruebas de verificación pasan. Hallazgos de la validación:
+  \item \textbf{Momento--curvatura}: coincide con la integración independiente en \textless{} 0.1 \% (con y sin carga axial). Una primera discrepancia era del programa de prueba (Newton sin salvaguarda en \ensuremath{\varepsilon}\ensuremath{_{0}} cuando \ensuremath{\partial}N/\ensuremath{\partial}\ensuremath{\varepsilon}\ensuremath{_{0}} \textless{} 0 por el aplastamiento del recubrimiento), no del material.
+  \item \textbf{Voladizo}: hasta F = 0.92\ensuremath{\cdot}F\_pico, error \ensuremath{\le} 0.8 \% con 8 elementos. Cerca del pico, con carga axial, el error de \ensuremath{\delta} a fuerza dada converge con la malla (23.6 \%, 8 \%, 2.5 \% con 8, 16 y 32 elementos): es del elemento en desplazamientos en la meseta tras la fluencia, no del material. La prueba compara la fuerza a desplazamiento dado, bien condicionada, con 16 elementos (con 8 da 2.2 \%).
+  \item \textbf{Barra a tracción con \texttt{G\_f}}: objetividad exacta (2, 4, 8 y 16 elementos dan la curva analítica de la banda de fisuración a precisión de máquina; energía \texttt{A\ensuremath{\cdot}G\_\allowbreak{}f\ensuremath{\cdot}(1 − \ensuremath{\sigma}/\allowbreak{}f\_\allowbreak{}t)}).
+  \item \textbf{Rama de tracción en concreto reforzado}: con acero de poco endurecimiento (1 \%), la pérdida de la rigidez entre grietas tras la fluencia hace bajar un poco el momento de la sección y la deformación se localiza: con 16 elementos el control de desplazamiento no pasa (retroceso). Corrige la afirmación de la decisión de tracción del 2026-11-09 («en secciones de concreto reforzado no localiza»): también localiza si el acero endurece poco.
+  \item \textbf{\texttt{G\_f} en concreto reforzado}: regularizar con \texttt{G\_f} la rama que representa la rigidez entre grietas hace depender de la malla la respuesta antes del pico (−5.4 \% con 4 elementos frente a 16). Recomendación de uso, en el catálogo: en concreto reforzado, \texttt{eps\_tu} en tracción y \texttt{G\_fc} en compresión; \texttt{G\_f} para el concreto simple.
+  \item \textbf{Objetividad del voladizo después del pico} (punto (ii)), diferencia máxima de la fuerza a desplazamiento dado frente a 16 elementos: sin regularizar, 16 \% con 4 elementos y 7.8 \% con 8 (y 16 elementos no terminan); con \texttt{eps\_tu} en tracción y \texttt{G\_fc} en compresión, 6.6 \% con 4 y 3.1 \% con 8. Con \texttt{h = L} en vez de \texttt{w\_g\ensuremath{\cdot}L}: 5.8 \% y 3.1 \%. La elección de \texttt{h} apenas influye; lo que queda con 4 elementos es error de discretización. \textbf{Pendiente de la decisión del usuario} el criterio de la prueba con 4 elementos.
+  \item \textbf{Transitorio}: el cierre de las grietas es un quiebre de la rigidez y el Newton puro rebota entre ramas (con dt = 5 ms falla en t = 0.63 s); con búsqueda lineal o con dt = 2.5 ms pasa. La prueba usa \texttt{line\_search=True}; recomendado en el catálogo y en el manual.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Decisión del usuario (punto (ii))}: la prueba de objetividad del voladizo exige \ensuremath{\le} 5 \% entre 8 y 16 elementos (medido 1.9 \% en la configuración de la prueba); el caso de 4 elementos queda documentado y no se exige (7.1 \%; 16 \% sin regularizar): es error de discretización del elemento en desplazamientos, más largo que la rótula plástica, no de la regularización. \textbf{El usuario pide anotar el elemento de marco en fuerzas para implementarlo} (ROADMAP, sección por fibras, etapa 3): es el remedio para mallas gruesas y el elemento para el que Coleman y Spacone (2001) plantearon esta regularización. Con todas las pruebas de \texttt{acceptance} verdes, \texttt{status: validated}.
+\end{itemize}
+
+
+\newpage
+
 \chapter{Modelos Constitutivos — 2D}
 
 \section{DruckerPrager2D}
@@ -11211,7 +11629,8 @@ Idénticas a \texttt{NonlinearSolver}: Dirichlet (homogéneo / no homogéneo) y 
 \begin{itemize}
   \item $\mathbf U$ final en $\lambda \to \lambda_{\max}$ (o cuando se alcance \texttt{max\_steps}).
   \item \textbf{Etapas de carga} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}): \texttt{solve(F\_\allowbreak{}ref, \ldots{}, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})} parte del estado \texttt{u0} (desplazamientos de la etapa anterior; el estado interno de los elementos lo guarda el ensamblador) con la carga constante $\mathbf F_c$ ya aplicada. El residuo es $\mathbf F_c + \lambda\,\mathbf F_\text{ref} - \mathbf F_\text{int}(\mathbf U)$ con $\lambda = 0$ al empezar, y los valores impuestos crecen de los de partida a los del modelo, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$ con $\mathbf g_0 = \mathbf U_0 - \mathbf T\,\mathbf U_0[\text{libres}]$. La etapa comprueba que empieza en equilibrio (\texttt{initial\_residual}) y avisa si no. \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)} continúa la etapa anterior: \texttt{u0 = previous.U}, \texttt{constant\_\allowbreak{}load = previous.\allowbreak{}F\_\allowbreak{}applied}.
-  \item Estado de terminación (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): \texttt{termination} \ensuremath{\in} {\texttt{max\_lambda}, \texttt{control\_target} (variantes con objetivo), \texttt{max\_steps}, \texttt{diverged}}, \texttt{completed}, \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections} y \texttt{U\_final} (último estado convergido). Se fijan también cuando \texttt{solve} termina con una excepción y se reinician al empezar. El fracaso lanza una \texttt{SolverDivergedError} tipada: \texttt{StepConstraintError} si la restricción del paso no tiene solución (raíces imaginarias), la clasificación del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0011-robustez-newton-line-search.md}{ADR 0011} en el resto.
+  \item \textbf{Parada en el valor de una magnitud} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, ampliado el 2026-11-09): con \texttt{control} (combinación $\mathbf c^\top\mathbf U$ de grados de libertad) y \texttt{control\_target}, el trazado se detiene cuando la magnitud alcanza ese valor absoluto. \texttt{control} sólo mide; el paso que cruza el objetivo se repite desde el último estado convergido con la restricción $\mathbf c^\top\Delta\mathbf U$ = lo que falta (la del control indirecto), así que el último punto coincide con el objetivo a precisión de máquina. Si un paso cruza también \texttt{max\_lambda}, se llega al que está antes en el tramo.
+  \item Estado de terminación (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): \texttt{termination} \ensuremath{\in} {\texttt{max\_lambda}, \texttt{control\_target}, \texttt{max\_steps}, \texttt{diverged}}, \texttt{completed}, \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections} y \texttt{U\_final} (último estado convergido). Se fijan también cuando \texttt{solve} termina con una excepción y se reinician al empezar. El fracaso lanza una \texttt{SolverDivergedError} tipada: \texttt{StepConstraintError} si la restricción del paso no tiene solución (raíces imaginarias), la clasificación del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0011-robustez-newton-line-search.md}{ADR 0011} en el resto.
   \item Historia disponible vía \texttt{step\_\allowbreak{}callback(step, U, lambda)}.
   \item Trazas $\lambda(U_i)$ para visualizar snap-through/snap-back.
 \end{itemize}
@@ -11376,6 +11795,10 @@ parameters:
   - { name: dl_shrink_iter_threshold, type: int,   required: false, default: 8 }
   - { name: linear_algebra,           type: str,   required: false, default: "auto",
       desc: "'auto' (Pardiso si está instalado, si no LU: el solver declara la tangente potencialmente indefinida y no usa Cholesky), 'cholesky', 'pardiso', 'lu', 'iterative[:amg|jacobi|none]' (CG que pasa a MINRES al detectar curvatura negativa)" }
+  - { name: control,                  type: list,  required: false, default: null,
+      desc: "Magnitud vigilada Σ coef·u(nodo, dof): lista de (nodo, dof, coef) o {node, dof, coef} (keyword-only). Sólo mide; grados de libertad no prescritos" }
+  - { name: control_target,           type: float, required: false, default: null,
+      desc: "Valor absoluto de la magnitud vigilada en el que se detiene el trazado, con llegada exacta (requiere control; ADR 0025)" }
 
 requirements:
   - "Modelo con potencial snap-through/snap-back (geometría inestable, softening del material)"
@@ -11469,7 +11892,7 @@ acceptance:
 
     - name: etapas_interaccion_n_m
       setup: "Columna de 20 fibras de acero perfectamente plástico (Frame2DEuler, σ_y = 250 MPa, 0.30 × 0.50 m, L = 3 m) con n = P/P_y = 0.3 en la etapa 1 y empuje con IndirectDisplacementSolver hasta 0.09 m en la etapa 2, con 4, 8 y 16 elementos (ADR 0026)"
-      expect: "La fuerza lateral máxima converge a M_p·(1 − n²)/L: exceso decreciente de primer orden (cociente 2 ± 0.15 al duplicar los elementos) y límite de Richardson a menos de 0.3 % de la carga límite; la reacción vertical suma P durante el empuje. Medido: +11.7 %, +5.9 %, +3.0 % (+1.5 % con 32); Richardson −0.04 %. El criterio inicial, exceso ≤ 2 % con 16 elementos, no se cumple con n = 0.3: es el error de malla del elemento en desplazamientos (decisión pendiente del usuario)"
+      expect: "La fuerza lateral máxima converge a M_p·(1 − n²)/L: exceso decreciente de primer orden (cociente 2 ± 0.15 al duplicar los elementos) y límite de Richardson a menos de 0.3 % de la carga límite; la reacción vertical suma P durante el empuje. Medido: +11.7 %, +5.9 %, +3.0 % (+1.5 % con 32); Richardson −0.04 %. Criterio decidido por el usuario (2026-11-09) en lugar del exceso ≤ 2 % con 16 elementos, que con n = 0.3 no se cumple por el error de malla del elemento en desplazamientos (el doble que sin carga axial)"
       ref: "tests/test_load_stages.py::TestInteraccionNM"
     - name: etapas_continuacion
       setup: "Voladizo de 20 fibras de acero con endurecimiento del 1 %: empuje hasta 0.03 m y continuación hasta 0.06 m con previous, frente al empuje directo hasta 0.06 m (ADR 0026)"
@@ -11524,6 +11947,9 @@ references:
   \item \textbf{2026-09-30} \ensuremath{\cdot} Misma corrección que en \texttt{NonlinearSolver} (deuda \#31, entrada del mismo día en su spec): el problema por paso mide \texttt{\ensuremath{\|}T\ensuremath{^{\top}}R\ensuremath{\|}} en vez de \texttt{\ensuremath{\|}R[libres]\ensuremath{\|}}, que con restricciones multipunto no se anulaba en la solución y hacía fallar todos los pasos. La heredan \texttt{IndirectDisplacementSolver} y, por \texttt{ArcProblem}, el solver del módulo \texttt{dissipation\_\allowbreak{}control}. Sin cambio con sólo Dirichlet. La auditoría de las MPC del mismo día documentó en §1 y §2 que la métrica del arco incluye los DOF esclavos y prescritos y que el término \texttt{g} de las MPC sigue a \ensuremath{\lambda}; no se cambia la métrica, porque alteraría la secuencia de pasos de los modelos existentes sin corregir ningún error.
   \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, sin cambio de formulación ni de resultados. Estado de terminación (\texttt{termination}, \texttt{completed}, \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections}, \texttt{U\_final}), fijado también tras una excepción y reiniciado en cada \texttt{solve}; el fracaso es una \texttt{SolverDivergedError} tipada (\texttt{StepConstraintError} para las raíces imaginarias; antes, \texttt{RuntimeError(\textquotedbl{}Arc-Length fracasó irreparablemente.\allowbreak{}\textquotedbl{})} con el diagnóstico sólo en el registro); una tangente singular en el predictor del estado inicial es \texttt{SingularTangentError} (antes el bucle repetía el mismo predictor hasta agotar \texttt{max\_steps}). Registro: una línea \texttt{INFO} por paso, iteraciones en \texttt{DEBUG}, bisecciones en \texttt{WARNING} con su motivo y \texttt{ERROR} sólo al detenerse. Puntos de extensión para variantes con objetivo: \texttt{\_target\_reached}, \texttt{\_limit\_step}, \texttt{\_step\_summary}.
   \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}: etapas de carga, heredadas por \texttt{IndirectDisplacementSolver}; el problema del paso, el predictor y la llegada a \texttt{max\_lambda} llevan la carga constante y los valores impuestos de partida. \texttt{DissipationArcLengthSolver} (módulo de usuario) las rechaza. Criterios nuevos: \texttt{etapas\_\allowbreak{}interaccion\_\allowbreak{}n\_\allowbreak{}m}, \texttt{etapas\_\allowbreak{}continuacion}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Decisión del usuario}: el criterio \texttt{etapas\_\allowbreak{}interaccion\_\allowbreak{}n\_\allowbreak{}m} es la convergencia de primer orden a $M_p(1-n^2)/L$ con el límite de Richardson a menos de 0.3 \%, no un exceso \ensuremath{\le} 2 \% con 16 elementos. Con $n = 0.3$ el error de malla del elemento en desplazamientos es el doble que sin carga axial (3.0 \% frente a 1.8 \% con 16 elementos): lo que la etapa debe garantizar es que el empuje con la carga axial ya aplicada converge a la carga límite de interacción correcta. El dato queda como evidencia para la decisión sobre un elemento formulado en fuerzas.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Etapas desde el YAML} (deuda \#36 saldada): bloque \texttt{stages}, cada etapa con sus \texttt{loads} y su \texttt{solver}; la etapa estática continúa la anterior como \texttt{run(previous=\ldots{})} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}yaml\_\allowbreak{}stages.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Parada en el valor de una magnitud (\texttt{control}, \texttt{control\_target}; ampliación del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): el arco cilíndrico se detiene, por ejemplo, en un desplazamiento de nodo, con llegada exacta repitiendo el paso que cruza el objetivo con la restricción del control indirecto. La magnitud y su estado pasan de \texttt{IndirectDisplacementSolver} a la base; \texttt{\_ArcProblem} gana el modo \texttt{\textquotedbl{}indirect\textquotedbl{}} y la comprobación de cruce. Sin cambio en los trazados sin objetivo (lo comprueba la prueba de que \texttt{control} sin objetivo da los mismos pasos). Criterios: arco de von Mises más allá del salto hasta 1.5\ensuremath{\cdot}h (objetivo a 8\ensuremath{\varepsilon}, mismo punto que el control indirecto, \ensuremath{\lambda} a 1e-8), voladizo con plasticidad en fibras (\ensuremath{\lambda} a 1e-7 del control indirecto), \texttt{max\_lambda} antes que el objetivo, objetivo absoluto en una etapa, YAML y errores. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}arclength\_\allowbreak{}control\_\allowbreak{}target.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -11741,6 +12167,9 @@ references:
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las restricciones multipunto (EST-10): el solver rechazaba controlar el esclavo de una restricción multipunto aunque su incremento está determinado, porque exigía grados de libertad libres. Ahora el criterio es la fila de $\mathbf T$ (§1): se admite el esclavo con maestros y se rechaza el grado de libertad prescrito (apoyo, o esclavo que hereda el apoyo de sus maestros por el cierre transitivo); la comprobación de términos que se anulan pasa de $\mathbf c = \mathbf 0$ a $\mathbf T^\top\mathbf c = \mathbf 0$, que sin restricciones multipunto es lo mismo. El mensaje de rechazo dice «prescrito» en lugar de «restringido» y ya no da la pista del apoyo fijo en el caso de la restricción multipunto. La restricción del paso, el predictor y el corrector no cambian: $\mathbf{du}_t$ y $\mathbf{du}_R$ ya incluían los esclavos reconstruidos por $\mathbf T$ ($\mathbf{du}_t = \mathbf T\,(\mathbf T^\top\mathbf K\mathbf T)^{-1}\mathbf T^\top(\mathbf F_\text{ref} - \mathbf K\mathbf g) + \mathbf g$). Los modelos sin restricciones multipunto dan los mismos resultados. Test nuevo \texttt{control\_\allowbreak{}de\_\allowbreak{}un\_\allowbreak{}esclavo\_\allowbreak{}de\_\allowbreak{}mpc} contra el oráculo del nodo fundido.
   \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}. Parámetro \texttt{control\_target}: parada en un valor de la magnitud controlada con llegada exacta (§4), por los puntos de extensión del padre (\texttt{\_target\_reached}, \texttt{\_limit\_step}); la línea \texttt{INFO} de cada paso incluye la magnitud controlada. Hereda el estado de terminación y las excepciones tipadas del padre. Criterio nuevo: \texttt{parada\_\allowbreak{}en\_\allowbreak{}desplazamiento\_\allowbreak{}objetivo}.
   \item \textbf{2026-11-09} \ensuremath{\cdot} Hereda las etapas de carga del padre (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}): el empuje lateral con la gravedad ya aplicada (\texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=gravedad)}). \texttt{control\_target} es un valor absoluto de la magnitud controlada, así que una etapa que continúa un empuje sigue hasta él desde donde quedó.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): \texttt{control\_target} es un valor absoluto y el sentido del trazado lo da el objetivo respecto del valor de partida (en una etapa, el de \texttt{u0}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}). Un objetivo menor descarga: si la carga de referencia aleja la magnitud del objetivo, \ensuremath{\lambda} \textless{} 0. Un objetivo igual al valor de partida no traza nada y lo avisa. Se admite cualquier valor finito (antes sólo positivos). Pruebas: descarga de 0.06 a 0.045 m tras una etapa plástica, con llegada exacta y \ensuremath{\lambda} = −3EI\ensuremath{\cdot}\ensuremath{\Delta}u/L\ensuremath{^{3}} (descarga elástica), y objetivo negativo en un voladizo elástico.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Etapas desde el YAML} (deuda \#36 saldada): bloque \texttt{stages}, cada etapa con sus \texttt{loads} y su \texttt{solver}; la etapa estática continúa la anterior como \texttt{run(previous=\ldots{})} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}yaml\_\allowbreak{}stages.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} La magnitud controlada, \texttt{control\_target} y su estado (\texttt{control\_final}, \texttt{reached\_\allowbreak{}control\_\allowbreak{}target}, la comprobación de que \texttt{control} no use grados de libertad prescritos) pasan a \texttt{ArcLengthSolver}, que ahora también se detiene en el valor de una magnitud (ampliación del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}). Aquí \texttt{control} sigue siendo obligatorio y es además la restricción, así que el último paso se recorta a lo que falta como antes. Sin cambio de resultados: las pruebas del control indirecto pasan sin tocarlas.
 \end{itemize}
 
 
@@ -12284,6 +12713,7 @@ references:
   \item \textbf{2026-09-30} \ensuremath{\cdot} Corrección sin cambio de formulación (deuda \#31): con restricciones multipunto el criterio medía \texttt{\ensuremath{\|}R[libres]\ensuremath{\|}}, que en la solución no se anula en los maestros ---la fuerza del esclavo pasa a ellos---; el Newton, que ya resolvía el sistema reducido del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}, llegaba a la solución sin declarar convergencia y el solver acababa en \texttt{OscillatingNewtonError}. Ahora mide \texttt{\ensuremath{\|}T\ensuremath{^{\top}}R\ensuremath{\|}} (§6), como \texttt{NewtonNewmarkSolver}. Con sólo Dirichlet las dos normas coinciden exactamente: ningún resultado previo cambia. Test \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}nonlinear\_\allowbreak{}static.\allowbreak{}py} (apoyo oblicuo y placas atadas: reproduce \texttt{LinearSolver} y cumple la restricción).
   \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, sin cambio de resultados: estado de terminación como en la familia del arco; registro con una línea \texttt{INFO} por paso convergido (el intento y la aceleración del incremento pasan a \texttt{DEBUG}), bisecciones en \texttt{WARNING} con su motivo y una línea \texttt{ERROR} antes de la excepción tipada.
   \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}: etapas de carga (\texttt{u0}, \texttt{constant\_load}; \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=.\allowbreak{}.\allowbreak{}.\allowbreak{})}), sin cambio en una corrida sin ellas. Valores impuestos que crecen desde los de partida, comprobación del equilibrio inicial y aviso al empezar en U = 0 con estado de un análisis anterior. Criterios nuevos: \texttt{etapas\_p\_delta}, \texttt{etapas\_\allowbreak{}coherencia\_\allowbreak{}elastica}, \texttt{etapas\_\allowbreak{}compatibilidad}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Etapas desde el YAML} (deuda \#36 saldada): bloque \texttt{stages}, cada etapa con sus \texttt{loads} y su \texttt{solver}; la etapa estática continúa la anterior como \texttt{run(previous=\ldots{})} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}yaml\_\allowbreak{}stages.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -12584,6 +13014,9 @@ Notas de traducción: ninguna --- la convención de signos del proyecto (Reglas 
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: con \texttt{nonlinear=True} el estado de los elementos se comitea en cada paso (antes \textbf{nunca}: los materiales con historia se reevaluaban desde el estado virgen y el oscilador elastoplástico conservaba la energía). \texttt{M\_red} ya no se densifica (\texttt{toarray()} costaba O(n\ensuremath{^{2}}) de memoria). Documentado sin corregir: con amortiguamiento Rayleigh la fuerza viscosa se evalúa en v\_{n+1/2} (Belytschko) y el orden observado cae a 1; sin amortiguamiento es 2.
   \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True} (deuda \#15): registra \texttt{elem.\allowbreak{}internal\_\allowbreak{}forces(u\_\allowbreak{}k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.\allowbreak{}element\_\allowbreak{}forces\_\allowbreak{}history}; \texttt{internal\_\allowbreak{}forces\_\allowbreak{}history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}forces\_\allowbreak{}history.\allowbreak{}py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): la spec declaraba las restricciones multipunto «no soportadas», pero el solver las reduce con el \texttt{T} completo y reproduce el oráculo del nodo fundido hasta el redondeo (desplazamientos, velocidades, aceleraciones e historia de N, V, M; \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). Se documentan como admitidas con la condición de diagonalidad de §7. Dos correcciones en la comprobación de \texttt{M\_red} diagonal: (1) el umbral pasa a ser puramente relativo, \texttt{off\_\allowbreak{}max \textgreater{} RTOL\ensuremath{\cdot}diag\_\allowbreak{}max}; antes era \texttt{RTOL\ensuremath{\cdot}max(diag\_\allowbreak{}max, 1)}, absoluto por debajo de 1 kg, y en un modelo a escala de 10 µm (masas nodales \textasciitilde{}1e-13 kg) el acoplamiento de un nodo colgante quedaba por debajo, se descartaba en silencio y la masa del esclavo contaba ¼ en cada maestro en lugar de ½ (\ensuremath{\Sigma}m\ensuremath{\cdot}ü/\ensuremath{\Sigma}F = 1.098 en vez de 1); (2) cuando la causa es una MPC con varios maestros cuyo esclavo tiene masa, el mensaje la nombra con sus DOFs en lugar de culpar a un Frame3D oblicuo, que queda como diagnóstico del resto de casos. Un esclavo multimaestro sin masa no acopla y se sigue admitiendo. Además, si \texttt{u0} o \texttt{u0\_dot} incumplen una MPC con maestros, el solver lo avisa en el log (el valor del esclavo se descarta y se reconstruye como \texttt{T\ensuremath{\cdot}u0[libres] + g}); las filas Dirichlet no avisan. Sin cambio de física en los modelos que ya funcionaban.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): el solver deja \texttt{termination} (\texttt{\textquotedbl{}t\_end\textquotedbl{}} o \texttt{\textquotedbl{}diverged\textquotedbl{}}), \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}, también tras una excepción, y \texttt{TransientResult.\allowbreak{}termination}. La divergencia por la condición CFL lanza \texttt{TimeIntegrationInstabilityError} (subclase de \texttt{SolverDivergedError} y de \texttt{RuntimeError}) con el historial hasta el último paso estable en \texttt{partial\_result}; antes, un \texttt{RuntimeError} genérico. Un grado de libertad libre sin masa da \texttt{MasslessDofsError} que lo nombra (\texttt{explicit\_\allowbreak{}integration}). Con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, el historial de fuerzas internas descuenta las cargas equivalentes que lleva \texttt{F(t)} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}). Sin cambio de resultados numéricos; pruebas en \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}termination.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}load\_\allowbreak{}vector.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} / \texttt{previous=} parte de un estático (en reposo, con su carga constante y sus cargas equivalentes; aviso si no está en equilibrio) o de un transitorio (estado final e instante final, tiempo absoluto, aceleración heredada). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}continuation.\allowbreak{}py} (parar y continuar es igual que no parar, también con plasticidad). Sin cambio de resultados sin \texttt{previous}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Progreso paso a paso: \texttt{step\_\allowbreak{}callback(step, U, t)} tras cada paso convergido (\texttt{run\_transient}/\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=)}, también desde \texttt{run\_yaml} y en las etapas), en \texttt{TransientTrace.\allowbreak{}converged}, común a los integradores. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -12833,6 +13266,9 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: mismos diagnósticos que \texttt{NewmarkSolver} (masa singular, conteo de pasos).
   \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True} (deuda \#15): registra \texttt{elem.\allowbreak{}internal\_\allowbreak{}forces(u\_\allowbreak{}k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.\allowbreak{}element\_\allowbreak{}forces\_\allowbreak{}history}; \texttt{internal\_\allowbreak{}forces\_\allowbreak{}history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}forces\_\allowbreak{}history.\allowbreak{}py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): hereda de \texttt{NewmarkSolver} la reducción con \texttt{T} y la proyección de las condiciones iniciales (esclavos reconstruidos como \texttt{T\ensuremath{\cdot}u0[libres] + g}, con aviso de log si \texttt{u0} o \texttt{u0\_dot} incumplen una MPC con maestros). Primer test con MPC: oráculo del nodo fundido en u, u̇, ü y N, V, M (\texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). Sin cambio de física.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): el solver deja \texttt{termination} (\texttt{\textquotedbl{}t\_end\textquotedbl{}} o \texttt{\textquotedbl{}diverged\textquotedbl{}}), \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}, también tras una excepción, y \texttt{TransientResult.\allowbreak{}termination}. El integrador lineal implícito no se detiene por divergencia. Un grado de libertad libre sin masa da \texttt{MasslessDofsError} que lo nombra (\texttt{initial\_\allowbreak{}acceleration}, deuda \#34). Con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, el historial de fuerzas internas descuenta las cargas equivalentes que lleva \texttt{F(t)} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}). Sin cambio de resultados numéricos; pruebas en \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}termination.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}load\_\allowbreak{}vector.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} / \texttt{previous=} parte de un estático (en reposo, con su carga constante y sus cargas equivalentes; aviso si no está en equilibrio) o de un transitorio (estado final e instante final, tiempo absoluto, aceleración heredada). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}continuation.\allowbreak{}py} (parar y continuar es igual que no parar, también con plasticidad). Sin cambio de resultados sin \texttt{previous}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Progreso paso a paso: \texttt{step\_\allowbreak{}callback(step, U, t)} tras cada paso convergido (\texttt{run\_transient}/\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=)}, también desde \texttt{run\_yaml} y en las etapas), en \texttt{TransientTrace.\allowbreak{}converged}, común a los integradores. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -13153,6 +13589,8 @@ Autovalores $\lambda_n = \omega_n^2 \ge 0$; autovectores $\boldsymbol\phi_n$ son
   \item Frecuencias naturales $\omega_n$ (rad/s), $f_n = \omega_n/(2\pi)$ (Hz), períodos $T_n = 1/f_n$ (s).
   \item Modos $\boldsymbol\phi_n$ M-ortonormales: $\boldsymbol\phi_i^\top \mathbf M\, \boldsymbol\phi_j = \delta_{ij}$.
   \item Ordenación ascendente: $\omega_1 \le \omega_2 \le \ldots \le \omega_{n_\text{modes}}$.
+  \item Participación modal en cada traslación del modelo ($u_x$, $u_y$, $u_z$): factores $\Gamma_n = \boldsymbol\phi_n^\top \mathbf M\,\mathbf r$ y masas efectivas $M_n^* = \Gamma_n^2$, con $\mathbf r$ la traslación rígida unitaria (vale 1 también en los apoyos, que se mueven con el suelo; Chopra 2017, §13.1). Con modos M-ortonormales no hace falta dividir entre $\boldsymbol\phi_n^\top\mathbf M\boldsymbol\phi_n$.
+  \item Los grados de libertad sin masa condensados (§6 bis), como (nodo, grado de libertad).
 \end{itemize}
 
 
@@ -13219,7 +13657,7 @@ status: validated       # draft → implemented → validated
 
 interface:
   yaml_type: modal      # solver: { type: modal }
-  output: ModalResult   # campos: frequencies_hz, frequencies_rad, periods, modes, n_modes
+  output: ModalResult   # campos: frequencies_hz, frequencies_rad, periods, modes, n_modes, participation_factors, effective_masses, condensed_dofs
 
 admission:                # criterio de admisión al programa principal (Reglas.md §1)
   textbooks:
@@ -13392,6 +13830,9 @@ references:
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): las restricciones multipunto entran por \texttt{Assembler.\allowbreak{}reduce\_\allowbreak{}pair} con el mismo \texttt{T} que los apoyos (\texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{M\_red = T\ensuremath{^{\top}}MT}, \texttt{\ensuremath{\Phi} = T\ensuremath{\cdot}\ensuremath{\Phi}\_red}). Primer test con MPC: el oráculo del nodo fundido se cumple hasta el redondeo en frecuencias y modos, y los modos expandidos son M-ortonormales con la masa global (\texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). Nota sobre \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration(M, u0, u0\_\allowbreak{}dot, t)}: proyecta las condiciones iniciales en norma M (\texttt{a = \ensuremath{\Phi}\ensuremath{^{\top}}M\ensuremath{\cdot}u0}), así que su resultado no depende de qué nodo se declaró esclavo; los solvers transitorios, en cambio, conservan las componentes libres y reconstruyen los esclavos como \texttt{T\ensuremath{\cdot}u0[libres] + g}. Con condiciones iniciales coherentes con las MPC ambos caminos coinciden; con incoherentes difieren (los transitorios lo avisan en el log). Unificar las dos proyecciones cambiaría resultados con condiciones iniciales incoherentes: queda como decisión física pendiente del usuario. Sin cambio de código.
   \item \textbf{2026-09-30} \ensuremath{\cdot} Revisión del paquete dinámico de la auditoría de las MPC: el parámetro \texttt{lumping} del contrato aún decía «solo 'consistent' en fase 1», pero \texttt{ModalSolver} admite \texttt{lumping='lumped'} desde el cierre de la fase 2 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} (lo ejercitan \texttt{tests/\allowbreak{}test\_\allowbreak{}modal.\allowbreak{}py::test\_\allowbreak{}lumped\_\allowbreak{}runs\_\allowbreak{}after\_\allowbreak{}phase2} y el caso \texttt{mpc\_\allowbreak{}tie\_\allowbreak{}matches\_\allowbreak{}merged\_\allowbreak{}node} con masa concentrada). Corregida la descripción aquí y en el catálogo. Sin cambio de código.
   \item \textbf{2026-11-09} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}. Masas concentradas en nudos (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloque YAML \texttt{nodal\_masses}), sumadas a la diagonal de $\mathbf M$ con los dos esquemas de masa. Con grados de libertad libres sin masa, ARPACK lanzaba \texttt{ArpackError -9999} sin causa y el camino denso exigía $\mathbf M$ definida; ahora se condensan estáticamente de forma exacta (§6 bis) y, si el problema no tiene solución, \texttt{MasslessDofsError} los nombra. Criterios nuevos: \texttt{oscilador\_\allowbreak{}un\_\allowbreak{}gdl\_\allowbreak{}masa\_\allowbreak{}de\_\allowbreak{}nudo}, \texttt{edificio\_\allowbreak{}cortante\_\allowbreak{}tres\_\allowbreak{}pisos}, \texttt{masa\_\allowbreak{}de\_\allowbreak{}nudo\_\allowbreak{}entrada\_\allowbreak{}exacta}, \texttt{dof\_\allowbreak{}sin\_\allowbreak{}masa\_\allowbreak{}marco\_\allowbreak{}de\_\allowbreak{}un\_\allowbreak{}nivel}, \texttt{dof\_\allowbreak{}sin\_\allowbreak{}masa\_\allowbreak{}error\_\allowbreak{}tipado}, \texttt{masa\_\allowbreak{}en\_\allowbreak{}todos\_\allowbreak{}sin\_\allowbreak{}cambios}. Medido: error relativo de los periodos de 1e-12 a 1e-14 contra la solución densa, residuos de 1e-11. \texttt{ResponseSpectrumSolver} lo hereda (masa total y masas efectivas con masas de piso en \texttt{tests/\allowbreak{}test\_\allowbreak{}nodal\_\allowbreak{}mass.\allowbreak{}py}).
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Participación modal en el resultado. \texttt{ModalResult} trae, para cada traslación del modelo, los factores de participación \texttt{participation\_\allowbreak{}factors[\textquotedbl{}ux\textquotedbl{}]} ($\Gamma_n = \boldsymbol\phi_n^\top\mathbf M\mathbf r$) y las masas efectivas \texttt{effective\_\allowbreak{}masses[\textquotedbl{}ux\textquotedbl{}]} ($\Gamma_n^2$), con la misma definición que ya usaba \texttt{ResponseSpectrumSolver}; y \texttt{condensed\_dofs}, los grados de libertad sin masa condensados. Para un giro alrededor de un punto o una dirección oblicua: \texttt{solidum.\allowbreak{}math.\allowbreak{}rigid\_\allowbreak{}body.\allowbreak{}rigid\_\allowbreak{}body\_\allowbreak{}vector} y \texttt{solidum.\allowbreak{}math.\allowbreak{}modal\_\allowbreak{}response.\allowbreak{}participation\_\allowbreak{}factors}. Sin cambio de física. La razón de masa acumulada no se añade todavía: con qué masa total se compara (la de todo el modelo o sólo la que puede moverse) es una decisión física pendiente, la misma que la del espectral. Criterios: edificio de cortante de tres pisos contra el problema 3\ensuremath{\times}3 (1e-6), suma de las masas efectivas de todos los modos igual a $\mathbf b^\top\mathbf M_{LL}^{-1}\mathbf b$ con masa consistente y concentrada, igual que el espectral, $\mathbf K\mathbf r = \mathbf 0$ para los movimientos rígidos de cinco familias de elementos. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}modal\_\allowbreak{}participation.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Masas de nudo por grupo físico y por coordenada en el YAML (\texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}group}, \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}coord}): cada nodo seleccionado recibe la masa indicada, como las cargas puntuales por grupo. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}nodal\_\allowbreak{}mass\_\allowbreak{}selectors.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de la masa: \texttt{solidum.\allowbreak{}math.\allowbreak{}mass\_\allowbreak{}properties.\allowbreak{}mass\_\allowbreak{}properties(asm, lumping)} da la masa total por traslación ($\mathbf r_d^\top\mathbf M\mathbf r_d$) y el centro de masa, por dirección como línea de acción de la resultante de inercia ($\bar x_j = c_j + \varepsilon_{dkj}\,\mathbf r_d^\top\mathbf M\mathbf r_k(c)/m_d$ con el giro rígido $\mathbf r_k$), exacto con masa consistente y concentrada también en barras inclinadas; un solo punto si la masa no depende de la dirección. Masas de nudo en el VTK. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}mass\_\allowbreak{}properties.\allowbreak{}py} (masas de nudo, marco plano con barra inclinada, marco espacial, placas de densidad distinta, VTK).
 \end{itemize}
 
 
@@ -13658,6 +14099,9 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} Auditoría global: masa reducida singular (DOF libre sin masa, \texttt{density = 0.0}) \ensuremath{\to} \texttt{ValueError} que nombra la causa, en vez de un historial de \texttt{NaN} con un simple warning de scipy. \texttt{number\_of\_steps} evita el paso espurio cuando \texttt{t\_end = n\ensuremath{\cdot}dt} acumula redondeo (t\_final = t\_end + dt en el 5 \% de los pares).
   \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True} (deuda \#15): registra \texttt{elem.\allowbreak{}internal\_\allowbreak{}forces(u\_\allowbreak{}k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.\allowbreak{}element\_\allowbreak{}forces\_\allowbreak{}history}; \texttt{internal\_\allowbreak{}forces\_\allowbreak{}history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}forces\_\allowbreak{}history.\allowbreak{}py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): primer test propio con restricciones multipunto (antes Newmark sólo servía de referencia en el test de periodicidad de los solvers de Newton). El oráculo del nodo fundido ---ménsula de Frame2DEuler inclinada 30\ensuremath{^{\circ}} partida y atada con u\_s = u\_m, esclavo a cada lado, masa consistente y concentrada con Rayleigh--- se cumple hasta el redondeo en u, u̇, ü y en la historia de N, V, M, también con la carga aplicada en el esclavo; con un nodo colgante de dos maestros y masa concentrada se conserva \ensuremath{\Sigma}m\ensuremath{\cdot}ü = \ensuremath{\Sigma}F a escala de 1 m y de 10 µm (\texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). Documentada la proyección de las condiciones iniciales (§1): los esclavos se reconstruyen como \texttt{T\ensuremath{\cdot}u0[libres] + g} y, si el valor dado incumple una MPC con maestros, el solver lo avisa en el log (las filas Dirichlet no avisan; su proyección tiene test propio). Sin cambio de física.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): el solver deja \texttt{termination} (\texttt{\textquotedbl{}t\_end\textquotedbl{}} o \texttt{\textquotedbl{}diverged\textquotedbl{}}), \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}, también tras una excepción, y \texttt{TransientResult.\allowbreak{}termination}. El integrador lineal implícito no se detiene por divergencia. Un grado de libertad libre sin masa da \texttt{MasslessDofsError} que lo nombra (\texttt{initial\_\allowbreak{}acceleration}, deuda \#34). Con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, el historial de fuerzas internas descuenta las cargas equivalentes que lleva \texttt{F(t)} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}). Sin cambio de resultados numéricos; pruebas en \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}termination.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}load\_\allowbreak{}vector.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} / \texttt{previous=} parte de un estático (en reposo, con su carga constante y sus cargas equivalentes; aviso si no está en equilibrio) o de un transitorio (estado final e instante final, tiempo absoluto, aceleración heredada). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}continuation.\allowbreak{}py} (parar y continuar es igual que no parar, también con plasticidad). Sin cambio de resultados sin \texttt{previous}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Progreso paso a paso: \texttt{step\_\allowbreak{}callback(step, U, t)} tras cada paso convergido (\texttt{run\_transient}/\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=)}, también desde \texttt{run\_yaml} y en las etapas), en \texttt{TransientTrace.\allowbreak{}converged}, común a los integradores. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -13891,6 +14335,9 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0015-corrector-de-newton-compartido.md}{ADR 0015}: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_\allowbreak{}DynamicNewtonProblem} con residuo HHT-\ensuremath{\alpha} y factor \texttt{1+\ensuremath{\alpha}} en el jacobiano; \texttt{F\_int\_n} se toma del estado del ensamblaje convergido) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
   \item \textbf{2026-09-23} \ensuremath{\cdot} Revisión documental: las referencias a \texttt{tests/\allowbreak{}test\_\allowbreak{}dynamic\_\allowbreak{}nonlinear\_\allowbreak{}hht.\allowbreak{}py} y a sus dos tests apuntaban a nombres que ya no existen; la cobertura vive en \texttt{tests/\allowbreak{}test\_\allowbreak{}hht.\allowbreak{}py::TestNewtonHHT} (\texttt{test\_\allowbreak{}alpha\_\allowbreak{}zero\_\allowbreak{}recovers\_\allowbreak{}NewtonNewmark}, \texttt{test\_\allowbreak{}linear\_\allowbreak{}material\_\allowbreak{}recovers\_\allowbreak{}HHT\_\allowbreak{}lineal}, \texttt{test\_\allowbreak{}plastic\_\allowbreak{}oscillator\_\allowbreak{}converges\_\allowbreak{}with\_\allowbreak{}alpha\_\allowbreak{}negative}).
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): oráculo del nodo fundido añadido a la cobertura (\texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}) y aviso de log, como en \texttt{NewtonNewmarkSolver}, cuando \texttt{u0} o \texttt{u0\_dot} incumplen una MPC con maestros (el esclavo se reconstruye como \texttt{T\ensuremath{\cdot}u0[libres] + g}). Sin cambio de física.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): el solver deja \texttt{termination} (\texttt{\textquotedbl{}t\_end\textquotedbl{}} o \texttt{\textquotedbl{}diverged\textquotedbl{}}), \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}, también tras una excepción, y \texttt{TransientResult.\allowbreak{}termination}. Si el Newton de un paso no converge, registra una línea \texttt{ERROR} y lanza la \texttt{SolverDivergedError} tipada (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0011-robustez-newton-line-search.md}{ADR 0011}) con el historial hasta el último paso convergido en \texttt{partial\_result}; antes se perdía. Un grado de libertad libre sin masa da \texttt{MasslessDofsError} que lo nombra (\texttt{initial\_\allowbreak{}acceleration}, deuda \#34). Con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, el historial de fuerzas internas descuenta las cargas equivalentes que lleva \texttt{F(t)} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}). Sin cambio de resultados numéricos; pruebas en \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}termination.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}load\_\allowbreak{}vector.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} / \texttt{previous=} parte de un estático (en reposo, con su carga constante y sus cargas equivalentes; aviso si no está en equilibrio) o de un transitorio (estado final e instante final, tiempo absoluto, aceleración heredada). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}continuation.\allowbreak{}py} (parar y continuar es igual que no parar, también con plasticidad). Sin cambio de resultados sin \texttt{previous}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Progreso paso a paso: \texttt{step\_\allowbreak{}callback(step, U, t)} tras cada paso convergido (\texttt{run\_transient}/\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=)}, también desde \texttt{run\_yaml} y en las etapas), en \texttt{TransientTrace.\allowbreak{}converged}, común a los integradores. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -14104,6 +14551,9 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True} (deuda \#15): registra \texttt{elem.\allowbreak{}internal\_\allowbreak{}forces(u\_\allowbreak{}k)} en cada paso con el estado interno de ese paso (\texttt{TransientResult.\allowbreak{}element\_\allowbreak{}forces\_\allowbreak{}history}; \texttt{internal\_\allowbreak{}forces\_\allowbreak{}history(domain)} lo devuelve). Opt-in por coste; sin él, reconstrucción lazy con el estado final y aviso. Verificado contra análisis truncados en \texttt{t\_k} con plasticidad (\texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}forces\_\allowbreak{}history.\allowbreak{}py}). Además \texttt{assemble\_system} ya no deja el estado trial evaluado en \texttt{u = 0} (deuda \#18).
   \item \textbf{2026-09-22} \ensuremath{\cdot} \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0015-corrector-de-newton-compartido.md}{ADR 0015}: el bucle de Newton pasa al corrector compartido \texttt{NewtonCorrector}; este solver aporta su problema por paso (\texttt{\_\allowbreak{}DynamicNewtonProblem}: iterado \texttt{(u, u̇, ü, ü\_\allowbreak{}libre)}, residuo dinámico inyectado, jacobiano \texttt{M + \ensuremath{\gamma}\ensuremath{\Delta}t\ensuremath{\cdot}C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}}\ensuremath{\cdot}K\_\allowbreak{}t}, norma \texttt{\ensuremath{\|}T\ensuremath{^{\top}}R\ensuremath{\|}}; retirado \texttt{\_\allowbreak{}armijo\_\allowbreak{}step\_\allowbreak{}dynamic}) y conserva su control de paso. Sin cambio de formulación ni de resultados (suite completa sin tocar ningún valor esperado).
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las MPC (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md}{ADR 0004}): el oráculo del nodo fundido se añade a la cobertura (u, u̇, ü y N, V, M, esclavo a cada lado; \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}), junto con una MPC con término independiente \texttt{g \ensuremath{\neq} 0} que da la misma historia que \texttt{NewmarkSolver}. Si \texttt{u0} o \texttt{u0\_dot} incumplen una MPC con maestros, el solver lo avisa en el log: el valor del esclavo se descarta y se reconstruye como \texttt{T\ensuremath{\cdot}u0[libres] + g}, lo que ya hacía. Sin cambio de física.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): el solver deja \texttt{termination} (\texttt{\textquotedbl{}t\_end\textquotedbl{}} o \texttt{\textquotedbl{}diverged\textquotedbl{}}), \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}, también tras una excepción, y \texttt{TransientResult.\allowbreak{}termination}. Si el Newton de un paso no converge, registra una línea \texttt{ERROR} y lanza la \texttt{SolverDivergedError} tipada (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0011-robustez-newton-line-search.md}{ADR 0011}) con el historial hasta el último paso convergido en \texttt{partial\_result}; antes se perdía. Un grado de libertad libre sin masa da \texttt{MasslessDofsError} que lo nombra (\texttt{initial\_\allowbreak{}acceleration}, deuda \#34). Con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, el historial de fuerzas internas descuenta las cargas equivalentes que lleva \texttt{F(t)} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}). Sin cambio de resultados numéricos; pruebas en \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}termination.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}load\_\allowbreak{}vector.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} / \texttt{previous=} parte de un estático (en reposo, con su carga constante y sus cargas equivalentes; aviso si no está en equilibrio) o de un transitorio (estado final e instante final, tiempo absoluto, aceleración heredada). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}continuation.\allowbreak{}py} (parar y continuar es igual que no parar, también con plasticidad). Sin cambio de resultados sin \texttt{previous}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Progreso paso a paso: \texttt{step\_\allowbreak{}callback(step, U, t)} tras cada paso convergido (\texttt{run\_transient}/\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=)}, también desde \texttt{run\_yaml} y en las etapas), en \texttt{TransientTrace.\allowbreak{}converged}, común a los integradores. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -14542,7 +14992,7 @@ con $g_{\text{mpc},s}$ la parte propia de las MPC de su cadena y $\alpha_{sd}$ e
 \subsubsection*{9. Resultado}
 \addcontentsline{toc}{subsubsection}{9. Resultado}
 
-Devuelve un \texttt{ThermalTransientResult} con \texttt{t\_history}, \texttt{T\_history}, \texttt{n\_steps} y \texttt{converged}.
+Devuelve un \texttt{ThermalTransientResult} con \texttt{t\_history}, \texttt{T\_history}, \texttt{n\_steps}, \texttt{converged} y \texttt{termination}. Si la integración diverge (\ensuremath{\theta} \textless{} 1/2 fuera de su límite), lanza \texttt{TimeIntegrationInstabilityError} con el historial parcial en \texttt{partial\_result} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6).
 
 \textbf{Decisión de zona gris que se señala}: no se reutiliza \texttt{TransientResult}, cuyos campos \texttt{udot\_history}, \texttt{uddot\_history}, \texttt{alpha\_rayleigh} y \texttt{beta\_rayleigh} no tienen significado térmico. Rellenarlos con \texttt{None} o ceros produciría un objeto que miente sobre su contenido. Se sigue el criterio ya aplicado en el proyecto con \texttt{ModalResult}, \texttt{HarmonicResult} y \texttt{ResponseSpectrumResult}: un tipo de análisis con semántica propia tiene su dataclass propia.
 
@@ -14643,7 +15093,7 @@ acceptance:
     - name: estabilidad_incondicional
       setup: "θ = 1 con Δt tres órdenes de magnitud mayor que h²/α"
       expect: "la solución NO diverge; converge monótonamente al estacionario.
-               Con θ = 0 y el mismo Δt sí diverge (contraste explícito)"
+               Con θ = 0 y el mismo Δt sí diverge (contraste explícito): TimeIntegrationInstabilityError con el historial parcial"
     - name: convergencia_al_estacionario
       setup: "problema de pared plana con Dirichlet fijo en ambos extremos;
              integrar hasta t → ∞"
@@ -14816,6 +15266,9 @@ El mensaje accionable correcto ya existía en \texttt{ThermalMaterial.\allowbrea
   \item \textbf{2026-09-30} \ensuremath{\cdot} Auditoría de las restricciones multipunto (MPC). El solver trataba como Dirichlet todo DOF eliminado del sistema reducido, esclavos de MPC incluidos. Cuatro consecuencias, corregidas: (i) \texttt{dirichlet\_func} sustituía el $\mathbf g$ completo, así que un esclavo atado a un maestro con Dirichlet quedaba a 0 y una MPC con término independiente perdía su salto, sin aviso; ahora \texttt{dirichlet\_func} sólo da los valores de los DOF con Dirichlet declarado y las filas esclavas se reconstruyen con la MPC, $g_s(t) = g_{\text{mpc},s} + \sum_d \alpha_{sd}\bar T_d(t)$ (§8); (ii) el aviso de \texttt{T\_initial} citaba los esclavos como Dirichlet contradichos; (iii) la guarda «sin Dirichlet» dejaba pasar un modelo con sólo MPC, que es tan indeterminado en el estacionario como el fundido; (iv) el instante inicial almacenado y el aviso de \texttt{T\_initial} usaban el valor declarado y no \texttt{dirichlet\_\allowbreak{}func(0)} (esto último también sin MPC). El aviso de choque inicial ya no llama «A-estable» a \ensuremath{\theta} \textless{} 1/2: dice que la estabilidad es condicional. Sin MPC y sin \texttt{dirichlet\_func} los resultados son idénticos; con \texttt{dirichlet\_func} sin MPC también, salvo el instante inicial almacenado cuando \texttt{dirichlet\_\allowbreak{}func(0)} difiere del valor declarado. Blindado por \texttt{tests/\allowbreak{}test\_\allowbreak{}theta\_\allowbreak{}method\_\allowbreak{}mpc.\allowbreak{}py} (oráculo del nodo fundido en 2D y 3D, transitorio y estacionario). \textbf{Pregunta abierta para el usuario}: la guarda se mantiene en el transitorio, donde $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva sin Dirichlet (para $\theta \ge 0$ con $\mathbf C$ definida positiva) y un cuerpo aislado calentado por una fuente es un problema bien planteado (el del criterio \texttt{balance\_\allowbreak{}energetico\_\allowbreak{}transitorio}), que hoy se rechaza. Recomendación de la IA: levantarla en el transitorio y mantenerla en el estacionario, donde $\mathbf K$ sí es singular. ✅ \textbf{Resuelta el 2026-10-20} (entrada siguiente).
   \item \textbf{2026-10-20} \ensuremath{\cdot} \textbf{Guarda «sin Dirichlet» retirada del transitorio, con aprobación del usuario.} El solver ya no rechaza un modelo sin temperatura impuesta: es un cuerpo aislado, bien planteado porque $\mathbf A = \mathbf C + \theta\Delta t\,\mathbf K$ es definida positiva por $\mathbf C$; deja una línea informativa en el registro para quien olvidó fijar una temperatura. El estacionario la mantiene, a cargo de la red de seguridad del \texttt{LinearSolver} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}). Sin cambio de resultados en los modelos con Dirichlet. Esto permite por fin el criterio \texttt{balance\_\allowbreak{}energetico\_\allowbreak{}transitorio}, que la guarda hacía imposible y no tenía test, y añade \texttt{cuerpo\_\allowbreak{}aislado\_\allowbreak{}calentamiento\_\allowbreak{}uniforme}: ambos en \texttt{TestCuerpoAislado} de \texttt{tests/\allowbreak{}test\_\allowbreak{}theta\_\allowbreak{}method.\allowbreak{}py} (2D y 3D, cuatro \ensuremath{\theta}, las dos capacidades); el oráculo del nodo fundido sin Dirichlet en \texttt{tests/\allowbreak{}test\_\allowbreak{}theta\_\allowbreak{}method\_\allowbreak{}mpc.\allowbreak{}py}. Con el código anterior fallan 34 de las 35 pruebas (la que pasa es el rechazo del estacionario).
   \item \textbf{2026-10-27} \ensuremath{\cdot} Verificación por soluciones manufacturadas (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0022-cargas-variables-mallas-estructuradas-y-mms.md}{ADR 0022}, fase 3), sin cambios en el solver. Con fuente, flujo y Dirichlet variables en el tiempo sobre mallas distorsionadas y conductividad anisótropa, el orden temporal medido es el del esquema (1 con \ensuremath{\theta} = 1, 2/3 y 0; 2 con Crank-Nicolson). Con \texttt{T*} lineal en \texttt{x} y en \texttt{t} el esquema es exacto para todo \ensuremath{\theta} («parcela en el tiempo»): se comprobó que esa prueba detecta la falta del término \texttt{C\_\allowbreak{}fp\ensuremath{\cdot}(ḡ\_\allowbreak{}\{n+1\} − ḡ\_\allowbreak{}n)} (error 3.5\ensuremath{\cdot}10\ensuremath{^{-}}\ensuremath{^{2}}) y una carga evaluada sólo al final del paso (5\ensuremath{\cdot}10\ensuremath{^{-}}\ensuremath{^{3}}). Con \ensuremath{\Delta}t = h/2, Crank-Nicolson conserva los órdenes del espacio (2 y 1) con capacidad concentrada y consistente.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Revisión de generalidad (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): con \texttt{\ensuremath{\theta} \textless{} 1/2} y un paso por encima del límite de estabilidad, \texttt{solve} \textbf{lanza} \texttt{TimeIntegrationInstabilityError} con el historial almacenado hasta el último paso estable en \texttt{partial\_result} (y en el solver). Antes registraba \texttt{ERROR} pero devolvía un resultado con \texttt{converged = False}, \texttt{n\_steps} igual al pedido y las columnas sin calcular en cero, que podía usarse sin notar el fallo. El solver deja \texttt{termination}, \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}; \texttt{ThermalTransientResult.\allowbreak{}termination}. El caso de aceptación \texttt{estabilidad\_\allowbreak{}incondicional} (\ensuremath{\theta} = 0 diverge) comprueba ahora la excepción y el historial parcial.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} / \texttt{previous=} parte del estacionario (su carga se mantiene) o de otro transitorio térmico (temperaturas e instante finales, tiempo absoluto); \texttt{T\_initial} pasa a ser opcional (se exige si no hay \texttt{previous}). Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}continuation.\allowbreak{}py}.
+  \item \textbf{2026-11-09} \ensuremath{\cdot} Progreso paso a paso: \texttt{step\_\allowbreak{}callback(step, U, t)} tras cada paso convergido (\texttt{run\_transient}/\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=)}, también desde \texttt{run\_yaml} y en las etapas), en \texttt{TransientTrace.\allowbreak{}converged}, común a los integradores. Sin cambio de física. Test: \texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}.
 \end{itemize}
 
 
@@ -15908,6 +16361,31 @@ Un elemento \textbf{no estándar} (formulación de investigación que no es FEM 
 \end{itemize}
 
 
+\section{ManderConcrete1D --- concreto uniaxial de daño-plasticidad con datos de Mander}
+
+\begin{itemize}
+  \item \textbf{Clase de modelo}: fenomenológico, con estructura de daño-plasticidad 1D; nivel material. Los datos son de Mander, Priestley y Park (1988); la descarga y la recarga las da el marco de daño-plasticidad, no las reglas curvas de Mander.
+  \item \textbf{Compresión}: envolvente de Popovics con la resistencia y la deformación de pico del material (\texttt{fc}, \texttt{eps\_c}), hasta \texttt{eps\_cu}; después, una recta hasta cero en \texttt{eps\_sp} (recubrimiento) o caída a cero (núcleo, \texttt{eps\_sp = eps\_cu}).
+  \item \textbf{Descarga y recarga}: rectas con rigidez \texttt{(1 − d)\ensuremath{\cdot}E} hacia la deformación plástica del punto focal de Mander (ecs. 31--34); sin lazos en los ciclos parciales. Por construcción, \texttt{0 \ensuremath{\le} e\_p \ensuremath{\le} e\_m} y la rigidez de descarga no supera \texttt{E}.
+  \item \textbf{Tracción}: lineal hasta \texttt{ft} y recta hasta cero en \texttt{eps\_tu} (o con \texttt{G\_f}), medida desde la deformación plástica de compresión; descarga secante; al cerrarse la grieta, la rigidez de compresión se recupera por completo; la compresión previa degrada la tracción por el factor de Mander \texttt{\ensuremath{\varphi} = max(0, 1 − e\_\allowbreak{}p/\allowbreak{}eps\_\allowbreak{}c)} (ecs. 42--45, con la errata de la condición corregida).
+  \item \textbf{Regularización opcional} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0028-longitud-caracteristica-del-punto-de-integracion.md}{ADR 0028}): con \texttt{G\_f} (tracción, \texttt{\ensuremath{\varepsilon}\_\allowbreak{}tu = 2\ensuremath{\cdot}G\_\allowbreak{}f/\allowbreak{}(ft\ensuremath{\cdot}h)}) o \texttt{G\_fc} (compresión: la rama posterior al pico se estira para que su área valga \texttt{G\_fc/h}), con la longitud característica \texttt{h} del punto: \texttt{L} en barras, \texttt{w\_g\ensuremath{\cdot}L} en marcos con sección. \texttt{h \ensuremath{\ge} 2\ensuremath{\cdot}G\_f\ensuremath{\cdot}E/ft\ensuremath{^{2}}} se rechaza al construir el elemento.
+  \item \textbf{Confinamiento}: \texttt{solidum.\allowbreak{}materials.\allowbreak{}concrete\_\allowbreak{}confinement} --- \texttt{mander\_\allowbreak{}confined\_\allowbreak{}concrete} (sección circular con la ec. 29 de Mander; rectangular con la aproximación de Chang y Mander 1994, presiones iguales o distintas), \texttt{confinement\_\allowbreak{}effectiveness\_\allowbreak{}circular/\allowbreak{}rectangular} (\texttt{k\_e}, ecs. 14, 15, 22), \texttt{mander\_\allowbreak{}elastic\_\allowbreak{}modulus} (\texttt{5000\ensuremath{\cdot}\ensuremath{\surd}f'c} MPa) y \texttt{fib\_\allowbreak{}fracture\_\allowbreak{}energy} (\texttt{G\_\allowbreak{}F = 73\ensuremath{\cdot}f\_\allowbreak{}cm\textasciicircum{}0.\allowbreak{}18} N/m). El material acepta \texttt{confinement=\{.\allowbreak{}.\allowbreak{}.\allowbreak{}\}} (también en el YAML).
+  \item \textbf{STRAIN\_DIM}: 1 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'eps\_cmax'}.
+  \item \textbf{Parámetros}: \texttt{fc}, \texttt{eps\_c}, \texttt{E}, \texttt{eps\_cu} (o \texttt{confinement}); opcionales \texttt{eps\_sp}, \texttt{ft} (0: sin tracción), \texttt{eps\_tu} o \texttt{G\_f}, \texttt{G\_fc}, \texttt{density}.
+  \item \textbf{Variables internas}: \texttt{eps\_cmax} (máxima compresión), \texttt{eps\_tmax} (máxima tracción desde el origen desplazado), \texttt{h} (longitud característica, fija).
+  \item \textbf{Uso}:
+  \item En concreto reforzado, la rama de tracción representa la rigidez del concreto entre grietas, que fija el refuerzo y no el tamaño del elemento: conviene darla con \texttt{eps\_tu} (de 5 a 20 veces \texttt{ft/E}) y regularizar sólo la compresión con \texttt{G\_fc}. Con \texttt{G\_f} la respuesta antes del pico dependería de la malla (medido: 5 \% con 4 elementos frente a 16).
+  \item \texttt{G\_f} es para concreto simple o con cuantía menor que la mínima: la barra a tracción regularizada da la misma curva con 2, 4, 8 y 16 elementos, a precisión de máquina.
+  \item Con acero de poco endurecimiento, la pérdida de la rigidez entre grietas tras la fluencia puede hacer bajar el momento de la sección y localizar: con elementos cortos, la curva global retrocede y el control de desplazamiento no la sigue.
+  \item En transitorios, \texttt{line\_search=True}: el cierre de una grieta es un quiebre de la rigidez y el Newton puro puede rebotar entre las dos ramas.
+  \item \textbf{Validación}: momento--curvatura contra una integración independiente (\textless{} 0.1 \%); voladizo de concreto reforzado hasta el pico (\ensuremath{\le} 2 \% con 16 elementos); objetividad de malla (barra a tracción con \texttt{G\_f}: exacta; voladizo después del pico con \texttt{eps\_tu} + \texttt{G\_fc}: 1.9 \% entre 8 y 16 elementos, 7.1 \% con 4, malla más gruesa que la rótula plástica); ciclos de amplitud creciente; transitorio con disipación del material no negativa y no decreciente; YAML idéntico a Python. Prueba común de la familia uniaxial (\texttt{tests/\allowbreak{}test\_\allowbreak{}uniaxial\_\allowbreak{}family.\allowbreak{}py}): energía y tangente de todo material 1D.
+  \item \textbf{Compatible con}: \texttt{Truss2D}, \texttt{Truss3D} (y sus corrotacionales) y como material de fibra de \texttt{FiberSection}.
+  \item \textbf{Clasificación (Reglas §1)}: estándar (usuario, 2026-11-09): Paulay y Priestley (1992, §3.2.2); OpenSees \texttt{Concrete04}/\texttt{Concrete02}, Abaqus \textit{Concrete Damaged Plasticity}.
+  \item \textbf{Spec}: \hyperref[spec:ManderConcrete1D]{docs/specs/ManderConcrete1D.md}
+  \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/concrete_1d.py}{solidum/materials/concrete\_1d.py}, \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/concrete_confinement.py}{solidum/materials/concrete\_confinement.py}
+\end{itemize}
+
+
 \section{DruckerPrager3D --- plasticidad friccional cohesivo-friccional 3D}
 
 \begin{itemize}
@@ -16126,7 +16604,8 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item \textbf{Llegada a \texttt{max\_lambda}} (2026-09-23): todos los pasos llevan la restricción; el que converge por encima de \texttt{max\_lambda} no se consolida y se repite desde el estado anterior con \ensuremath{\lambda} = \texttt{max\_lambda} fijo (Newton puro), dentro del tramo recién recorrido. Nunca impone \texttt{max\_lambda} sin haber seguido la curva hasta él (antes el paso final se decidía extrapolando la tangente, en control de carga).
   \item \textbf{Auto-ajuste de \texttt{dl}}: \textless{} 4 iter \ensuremath{\to} ampliar (\ensuremath{\times}1.5, tope \texttt{5\ensuremath{\cdot}\ensuremath{\Delta}l\ensuremath{_{1}}}); \textgreater{} 8 iter \ensuremath{\to} reducir (\ensuremath{\times}0.6); no converge \ensuremath{\to} biseca (÷2).
   \item Convergencia: mismo criterio dual que \texttt{NonlinearSolver}.
-  \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dlambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dl\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{linear\_algebra}.
+  \item \textbf{Parámetros}: \texttt{convergence}, \texttt{max\_iter}, \texttt{max\_lambda}, \texttt{initial\_dlambda}, \texttt{initial\_dl}, \texttt{max\_steps}, \texttt{dl\_grow\_factor}, \texttt{dl\_max\_factor}, \texttt{dl\_shrink\_factor}, \texttt{dl\_\allowbreak{}grow\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{dl\_\allowbreak{}shrink\_\allowbreak{}iter\_\allowbreak{}threshold}, \texttt{linear\_algebra}, \texttt{control}, \texttt{control\_target}.
+  \item \textbf{Parada en el valor de una magnitud} (\texttt{control}, \texttt{control\_target}; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): se detiene cuando $\mathbf c^\top\mathbf U$ (p. ej. el desplazamiento de un nodo) alcanza el objetivo. \texttt{control} sólo mide; el paso que cruza el objetivo se repite con la restricción del control indirecto, con llegada exacta. Más allá de un salto (arco de von Mises) da el mismo punto que \texttt{IndirectDisplacementSolver} (\texttt{tests/\allowbreak{}test\_\allowbreak{}arclength\_\allowbreak{}control\_\allowbreak{}target.\allowbreak{}py}).
   \item \textbf{Cuándo usarlo}: problemas con softening pronunciado (daño, post-pandeo, snap-through de cúpulas), o cuando \texttt{NonlinearSolver} diverge cerca de un punto límite.
   \item \textbf{Limitación}: más caro por paso (dos resoluciones del sistema por iteración). La norma de la restricción mezcla todos los grados de libertad (en marcos, giros y desplazamientos: deuda \#22).
   \item \textbf{Tangente inicial} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}, 2026-09-30): el predictor del primer paso busca mecanismos internos, como \texttt{NonlinearSolver}; lo heredan \texttt{IndirectDisplacementSolver} y \texttt{DissipationArcLengthSolver}.
@@ -16147,7 +16626,7 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item Predictor \texttt{\ensuremath{\Delta}\ensuremath{\lambda} = \ensuremath{\Delta}l/\allowbreak{}(c\ensuremath{^{\top}}\ensuremath{\cdot}du\_\allowbreak{}t)} \textbf{sin regla de signo} (sale negativo en un retroceso) y corrector lineal \texttt{\ensuremath{\delta}\ensuremath{\lambda} = [\ensuremath{\Delta}l − c\ensuremath{^{\top}}(\ensuremath{\Delta}U + du\_\allowbreak{}R)]/\allowbreak{}(c\ensuremath{^{\top}}\ensuremath{\cdot}du\_\allowbreak{}t)}: sin selección de raíz.
   \item Primer paso adimensional (\texttt{initial\_dlambda}, \ensuremath{\Delta}l\ensuremath{_{1}} = \ensuremath{\Delta}\ensuremath{\lambda}\ensuremath{_{1}}\ensuremath{\cdot}c\ensuremath{^{\top}}K\ensuremath{_{0}}\ensuremath{^{-}}¹F\_ref) y \textbf{sin crecimiento del paso por omisión} (\texttt{dl\_\allowbreak{}max\_\allowbreak{}factor = 1.\allowbreak{}0}): con ablandamiento local el problema incremental admite varios equilibrios y un paso grande puede saltar a otro (spec §5).
   \item \textbf{Parámetros}: \texttt{control} (obligatorio; lista de \texttt{(nodo, dof, coef)} o \texttt{\{node, dof, coef\}}), \texttt{control\_target} (opcional, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}), más todos los de \texttt{ArcLengthSolver}.
-  \item \textbf{Parada en un desplazamiento objetivo} (\texttt{control\_target}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): el trazado se detiene cuando \texttt{c\ensuremath{^{\top}}U} alcanza el valor dado, con el último paso recortado a lo que falta: llegada exacta a precisión de máquina con cualquier tamaño de paso. Deja \texttt{termination = \textquotedbl{}control\_\allowbreak{}target\textquotedbl{}}, \texttt{reached\_\allowbreak{}control\_\allowbreak{}target = True} y \texttt{control\_final}. Es la parada de un ensayo controlado o de un análisis de empuje lateral, donde en la meseta plástica \texttt{max\_lambda} no sirve.
+  \item \textbf{Parada en un desplazamiento objetivo} (\texttt{control\_target}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): valor absoluto de la magnitud controlada; el sentido del trazado lo da el objetivo respecto del valor de partida (en una etapa, el de \texttt{u0}), así que también descarga hasta un valor menor, con \ensuremath{\lambda} \textless{} 0 (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6). El trazado se detiene cuando \texttt{c\ensuremath{^{\top}}U} alcanza el valor dado, con el último paso recortado a lo que falta: llegada exacta a precisión de máquina con cualquier tamaño de paso. Deja \texttt{termination = \textquotedbl{}control\_\allowbreak{}target\textquotedbl{}}, \texttt{reached\_\allowbreak{}control\_\allowbreak{}target = True} y \texttt{control\_final}. Es la parada de un ensayo controlado o de un análisis de empuje lateral, donde en la meseta plástica \texttt{max\_lambda} no sirve.
   \item \textbf{Cuándo usarlo}: retrocesos por localización (daño o cohesivo), ensayos controlados por CMOD/CTOD. Exige que la magnitud controlada crezca monótonamente; si decrece con la carga de referencia al empezar, el solver lo rechaza con un error explicativo.
   \item \textbf{Validación}: barra con daño localizado en un elemento, frente a la solución exacta: sigue el retroceso hasta el mínimo exacto (0.616\ensuremath{\cdot}u\_pico) con sólo el elemento débil dañado; el cilíndrico no. El arco por disipación del módulo de usuario \texttt{dissipation\_\allowbreak{}control} lo sigue desde el 2026-09-30, con un primer paso pequeño (antes no, deuda \#27).
   \item \textbf{Referencias}: de Borst (1987), \textit{Computers \& Structures} 25, 211-224; Crisfield (1991) vol. 1 cap. 9.
@@ -16166,11 +16645,12 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item \texttt{EigenSolver} envuelve \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}eigsh} con \textbf{shift-invert} en \texttt{sigma} (\texttt{sigma=0} \ensuremath{\to} frecuencias más bajas) y \texttt{which=\textquotedbl{}LM\textquotedbl{}}. ARPACK factoriza \texttt{(K\_\allowbreak{}red − \ensuremath{\sigma}\ensuremath{\cdot}M\_\allowbreak{}red)} una sola vez y la reusa en todas las iteraciones Lanczos.
   \item \textbf{Grados de libertad sin masa} (masas sólo en algunos nudos, elementos con \texttt{density = 0}): se condensan estáticamente de forma exacta (\texttt{\ensuremath{\varphi}\ensuremath{_{0}} = −K\ensuremath{_{0}}\ensuremath{_{0}}\ensuremath{^{-}}¹K\ensuremath{_{0}}ₘ\ensuremath{\varphi}ₘ}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}) y sus componentes de los modos se recuperan. Hay tantas frecuencias finitas como grados de libertad con masa; si el problema no tiene solución, \texttt{MasslessDofsError} (\texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}diagnostics}) los nombra como (nodo, dof).
   \item Expansión de modos al espacio completo: \texttt{\ensuremath{\varphi} = T \ensuremath{\cdot} \ensuremath{\varphi}\_red}. En DOFs prescritos por Dirichlet la componente es 0; en el esclavo de una MPC, la combinación de sus maestros (oráculo del nodo fundido en \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}). \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration} proyecta las condiciones iniciales en norma M (\texttt{a = \ensuremath{\Phi}\ensuremath{^{\top}}M\ensuremath{\cdot}u0}), a diferencia de los transitorios, que reconstruyen los esclavos como \texttt{T\ensuremath{\cdot}u0[libres] + g}: con condiciones iniciales incoherentes con las MPC ambos caminos difieren.
-  \item Salida en \texttt{ModalResult}: \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales), \texttt{n\_modes}, \texttt{converged}.
+  \item Revisión de la masa del modelo: \texttt{solidum.\allowbreak{}math.\allowbreak{}mass\_\allowbreak{}properties.\allowbreak{}mass\_\allowbreak{}properties(asm)} da la masa total por traslación (\texttt{r\ensuremath{^{\top}}Mr}) y el centro de masa (por dirección, la línea de acción de la resultante de inercia, exacta con los giros rígidos; \texttt{tests/\allowbreak{}test\_\allowbreak{}mass\_\allowbreak{}properties.\allowbreak{}py}). Las masas de nudo se exportan al VTK (\texttt{Nodal\_Mass}, \texttt{Nodal\_Inertia}).
+  \item Salida en \texttt{ModalResult}: \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales), \texttt{n\_modes}, \texttt{converged}; \texttt{participation\_\allowbreak{}factors} y \texttt{effective\_masses}, diccionarios por traslación del modelo (\texttt{\textquotedbl{}ux\textquotedbl{}}, \texttt{\textquotedbl{}uy\textquotedbl{}}, \texttt{\textquotedbl{}uz\textquotedbl{}}) con \texttt{Γ\ensuremath{_{n}} = \ensuremath{\varphi}\ensuremath{_{n}}\ensuremath{^{\top}}\ensuremath{\cdot}M\ensuremath{\cdot}r} y \texttt{Γ\ensuremath{_{n}}\ensuremath{^{2}}} para la traslación rígida unitaria \texttt{r} (la misma definición que el espectral); \texttt{condensed\_dofs}, los grados de libertad sin masa condensados como (nodo, dof). Para un giro alrededor de un punto, \texttt{solidum.\allowbreak{}math.\allowbreak{}rigid\_\allowbreak{}body.\allowbreak{}rigid\_\allowbreak{}body\_\allowbreak{}vector(domain, \textquotedbl{}rz\textquotedbl{}, about=(x, y))} con \texttt{solidum.\allowbreak{}math.\allowbreak{}modal\_\allowbreak{}response.\allowbreak{}participation\_\allowbreak{}factors} (\texttt{tests/\allowbreak{}test\_\allowbreak{}modal\_\allowbreak{}participation.\allowbreak{}py}).
   \item \textbf{Parámetros}: \texttt{n\_modes} (obligatorio), \texttt{sigma} (default 0.0), \texttt{which} (default \texttt{\textquotedbl{}LM\textquotedbl{}}), \texttt{tolerance} (default 1.0e-9), \texttt{lumping} (default \texttt{\textquotedbl{}consistent\textquotedbl{}}; también \texttt{\textquotedbl{}lumped\textquotedbl{}}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} fase 2), \texttt{linear\_algebra} (reservado; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003}).
   \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos (no consume \texttt{F\_applied}). El entrypoint público es \texttt{solidum.\allowbreak{}run\_\allowbreak{}modal(domain, n\_\allowbreak{}modes=N)} o YAML con \texttt{solver: type: ModalSolver}. \texttt{solidum.run\_yaml} despacha automáticamente al detectar el tipo.
   \item \textbf{Cuándo usarlo}: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
-  \item \textbf{Limitaciones}: lineal (\texttt{K} evaluada en \texttt{u = 0}); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en \texttt{solidum/\allowbreak{}math/\allowbreak{}modal\_\allowbreak{}response.\allowbreak{}py} y los consume \texttt{ResponseSpectrumSolver} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} fase 7 cerrada).
+  \item \textbf{Limitaciones}: lineal (\texttt{K} evaluada en \texttt{u = 0}); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en \texttt{solidum/\allowbreak{}math/\allowbreak{}modal\_\allowbreak{}response.\allowbreak{}py} y los consumen \texttt{ModalSolver} y \texttt{ResponseSpectrumSolver} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009} fase 7 cerrada). La razón de masa acumulada no está en \texttt{ModalResult}: con qué masa total se compara es una decisión física pendiente.
   \item \textbf{Referencia}: Bathe, \textit{Finite Element Procedures}, cap. 9 (masa), §10.3.1 (condensación estática) y cap. 11 (algoritmos de autovalor); Chopra, \textit{Dynamics of Structures}, §9.3; Hughes, \textit{The Finite Element Method}, cap. 7; ARPACK Users' Guide (Lehoucq--Sorensen--Yang).
   \item \textbf{Spec}: \hyperref[spec:ModalSolver]{docs/specs/ModalSolver.md}
   \item \textbf{Archivos}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/solvers/modal.py}{solidum/math/solvers/modal.py} (clase \texttt{ModalSolver}), \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/math/linalg/eigen.py}{solidum/math/linalg/eigen.py} (clase \texttt{EigenSolver}), \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/results.py}{solidum/results.py} (\texttt{ModalResult}).
@@ -16191,6 +16671,10 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item Aceleración inicial consistente con la ecuación de movimiento en \texttt{t=0}.
   \item \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt} (obligatorios), \texttt{beta} (default 0.25), \texttt{gamma} (default 0.5), \texttt{rayleigh} (None | \texttt{\{alpha, beta\}} directos | \texttt{\{xi1, omega1, xi2, omega2\}} para calibración modal), \texttt{u0}, \texttt{u0\_dot} (default ceros), \texttt{F\_func} (callback Python \texttt{t \ensuremath{\to} F(t)}; default vibración libre), \texttt{linear\_algebra}, \texttt{lumping}.
   \item \textbf{Firma del solver}: \texttt{solve()} sin argumentos, retorna \texttt{TransientResult} con historiales \texttt{t\_history}, \texttt{u\_history}, \texttt{udot\_history}, \texttt{uddot\_history} (shape \texttt{(n\_\allowbreak{}dof, n\_\allowbreak{}steps + 1)}).
+  \item \textbf{Terminación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): tras \texttt{solve()}, \texttt{termination} (\texttt{\textquotedbl{}t\_end\textquotedbl{}} al llegar al instante final; \texttt{\textquotedbl{}diverged\textquotedbl{}} si se detiene), \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final} y \texttt{U\_final}, fijados también tras una excepción y reiniciados en cada \texttt{solve}; \texttt{TransientResult.\allowbreak{}termination}. Un análisis que se detiene registra una línea \texttt{ERROR} y lanza una \texttt{SolverDivergedError} tipada cuyo \texttt{partial\_result} es el \texttt{TransientResult} hasta el último paso convergido. Grados de libertad libres sin masa: \texttt{MasslessDofsError} que los nombra (deuda \#34). Lo heredan \texttt{HHTSolver}, \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}.
+  \item \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} o \texttt{run\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=)} parte de un estático (\texttt{SolveResult}: sus desplazamientos en reposo, su carga constante con sus cargas equivalentes, aviso si el estado no la equilibra) o de un transitorio (su estado final \texttt{u}, \texttt{u̇}, \texttt{ü} en su instante final; \texttt{t\_end} absoluto). Parar y continuar es igual que no parar en los cinco integradores mecánicos. \texttt{TransientResult.\allowbreak{}F\_\allowbreak{}constant} guarda la carga constante. Lo heredan \texttt{HHTSolver}, \texttt{NewtonNewmarkSolver}, \texttt{NewtonHHTSolver} y \texttt{CentralDifferenceSolver}.
+  \item \textbf{Progreso}: \texttt{run\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=f)} llama \texttt{f(step, U, t)} tras cada paso convergido (\texttt{tests/\allowbreak{}test\_\allowbreak{}transient\_\allowbreak{}progress.\allowbreak{}py}). Lo heredan los cinco integradores mecánicos y el \ensuremath{\theta}-método.
+  \item \textbf{Cargas distribuidas en el historial de fuerzas internas} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}): con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, los extremos descuentan en cada paso las cargas equivalentes que lleva \texttt{F(t)} cuando se construye combinando las cargas de \texttt{assemble\_\allowbreak{}self\_\allowbreak{}weight} / \texttt{assemble\_\allowbreak{}body\_\allowbreak{}load} (\texttt{F(t) = F\_\allowbreak{}peso + a(t)\ensuremath{\cdot}F\_\allowbreak{}viento}).
   \item \textbf{Cuándo usarlo}: respuesta a cargas dependientes del tiempo (sísmica time-history, impacto, vibración forzada), evolución transitoria desde condiciones iniciales arbitrarias, validación de respuesta libre/forzada de estructuras lineales.
   \item \textbf{Limitaciones}:
   \item Solo lineal (\texttt{K}, \texttt{M} constantes). La extensión a no-linealidad (Newton dentro de cada paso) es fase 4 del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0009-analisis-modal-y-dinamico.md}{ADR 0009}.
@@ -16276,7 +16760,7 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item Inicialización: \texttt{a\_\allowbreak{}0 = M\ensuremath{^{-}}¹\ensuremath{\cdot}(F(0) − F\_\allowbreak{}int(u\_\allowbreak{}0) − C\ensuremath{\cdot}v\_\allowbreak{}0 − F\_\allowbreak{}dir)}, \texttt{v\_\allowbreak{}\{1/\allowbreak{}2\} = v\_\allowbreak{}0 + (\ensuremath{\Delta}t/\allowbreak{}2)\ensuremath{\cdot}a\_\allowbreak{}0}.
   \item Paso \texttt{n \ensuremath{\to} n+1}: \texttt{u\_\allowbreak{}\{n+1\} = u\_\allowbreak{}n + \ensuremath{\Delta}t\ensuremath{\cdot}v\_\allowbreak{}\{n+1/\allowbreak{}2\}}; reevaluar \texttt{F\_int(u\_\{n+1\})}; \texttt{a\_\allowbreak{}\{n+1\} = M\ensuremath{^{-}}¹\ensuremath{\cdot}(F\_\allowbreak{}\{n+1\} − F\_\allowbreak{}int − C\ensuremath{\cdot}v\_\allowbreak{}\{n+1/\allowbreak{}2\} − F\_\allowbreak{}dir)}; \texttt{v\_\allowbreak{}\{n+1\} = v\_\allowbreak{}\{n+1/\allowbreak{}2\} + (\ensuremath{\Delta}t/\allowbreak{}2)\ensuremath{\cdot}a\_\allowbreak{}\{n+1\}}.
   \item Modo lineal: \texttt{F\_int = K\ensuremath{\cdot}u} (K constante, ensamblada una vez). Modo no lineal: \texttt{Assembler.\allowbreak{}assemble\_\allowbreak{}non\_\allowbreak{}linear\_\allowbreak{}system(u)} cada paso (descarta la tangente).
-  \item \textbf{Estabilidad condicional CFL}: \texttt{\ensuremath{\Delta}t \textless{} 2/\ensuremath{\omega}\_max}. Para barras: \texttt{\ensuremath{\Delta}t \textless{} L\_\allowbreak{}el/\allowbreak{}c\_\allowbreak{}p = L\_\allowbreak{}el\ensuremath{\cdot}\ensuremath{\surd}(\ensuremath{\rho}/\allowbreak{}E)}. Si se excede, el solver detecta la explosión exponencial a posteriori y aborta con \texttt{RuntimeError} informativo. \textbf{El solver no calcula \texttt{\ensuremath{\Delta}t\_crit} automáticamente} --- responsabilidad del usuario en esta versión inicial (power iteration sobre \texttt{M\ensuremath{^{-}}¹K} queda diferida).
+  \item \textbf{Estabilidad condicional CFL}: \texttt{\ensuremath{\Delta}t \textless{} 2/\ensuremath{\omega}\_max}. Para barras: \texttt{\ensuremath{\Delta}t \textless{} L\_\allowbreak{}el/\allowbreak{}c\_\allowbreak{}p = L\_\allowbreak{}el\ensuremath{\cdot}\ensuremath{\surd}(\ensuremath{\rho}/\allowbreak{}E)}. Si se excede, el solver detecta la explosión exponencial a posteriori y lanza \texttt{TimeIntegrationInstabilityError} (subclase de \texttt{SolverDivergedError} y de \texttt{RuntimeError}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025} §6) con el historial hasta el último paso estable en \texttt{partial\_result}. \textbf{El solver no calcula \texttt{\ensuremath{\Delta}t\_crit} automáticamente} --- responsabilidad del usuario en esta versión inicial (power iteration sobre \texttt{M\ensuremath{^{-}}¹K} queda diferida).
   \item \textbf{Parámetros}: \texttt{t\_end}, \texttt{dt}, \texttt{nonlinear} (default \texttt{False}), \texttt{rayleigh}, \texttt{u0}, \texttt{u0\_dot}, \texttt{F\_func}, \texttt{lumping} (default \texttt{\textquotedbl{}lumped\textquotedbl{}}; \texttt{\textquotedbl{}consistent\textquotedbl{}} rechazado), \texttt{divergence\_\allowbreak{}threshold} (default \texttt{1e8}).
   \item \textbf{Cuándo usarlo}: wave propagation, impacto, dinámica de respuesta rápida --- situaciones donde el \texttt{\ensuremath{\Delta}t} natural del problema cae por debajo del paso de estabilidad incondicional de Newmark. Para problemas con plasticidad transitoria de respuesta moderadamente rápida, sigue siendo competitivo frente a Newton-Newmark por evitar la factorización de la tangente cada iteración.
   \item \textbf{Restricciones multipunto}: admitidas mientras \texttt{M\_red = T\ensuremath{^{\top}}MT} siga siendo diagonal, es decir, con un solo maestro por esclavo tras el cierre transitivo (atado de nodos, periodicidad, apoyo oblicuo \texttt{u\_y = tan\ensuremath{\theta}\ensuremath{\cdot}u\_x}) o con esclavo sin masa. Oráculo del nodo fundido en \texttt{tests/\allowbreak{}test\_\allowbreak{}mpc\_\allowbreak{}dynamic.\allowbreak{}py}.
@@ -16349,12 +16833,14 @@ Para un material \textbf{cohesivo} nuevo (ley tracción-salto): una ley cohesiva
   \item \textbf{Estabilidad no es ausencia de oscilaciones} (la razón del default): Crank-Nicolson es el más preciso, pero A-estable y \textbf{no} L-estable --- su factor de amplificación tiende a \texttt{−1} para los modos altos en vez de a \texttt{0}. Ante un escalón de temperatura en la frontera produce oscilación amortiguada con temperaturas \textbf{fuera del rango de los datos}, violando el principio del máximo de la ecuación de difusión: un resultado cualitativamente imposible, no sólo impreciso. Medido: \texttt{T\_max = 151.27} con \texttt{T\_pared = 100}. Euler implícito nunca oscila. El default protege a quien no eligió; Crank-Nicolson queda a un parámetro de distancia. Mismo criterio que fijó \texttt{lumped} como default de la capacidad, aplicado al eje temporal en vez del espacial.
   \item \textbf{Reporte del orden efectivo}: contrapartida honesta del default robusto. \texttt{solver.order} (antes de correr) y \texttt{result.order} (después) devuelven \texttt{2} sólo con \texttt{\ensuremath{\theta} = 1/2}, \texttt{1} en el resto --- el coste en precisión es consultable, no una penalización silenciosa. También \texttt{is\_\allowbreak{}unconditionally\_\allowbreak{}stable} e \texttt{is\_l\_stable}.
   \item \textbf{Parámetros}: \texttt{dt}, \texttt{n\_steps}, \texttt{T\_initial} (escalar \ensuremath{\Rightarrow} campo uniforme; vector \ensuremath{\Rightarrow} por nodo --- \textbf{no hay velocidad inicial}, la ecuación es de primer orden y \texttt{T\_0} la determina por completo); \texttt{theta} (default \texttt{1.0}), \texttt{lumping} (default \texttt{\textquotedbl{}lumped\textquotedbl{}}), \texttt{F\_func}, \texttt{dirichlet\_func}, \texttt{output\_every}, \texttt{linear\_algebra}. \textbf{Sin \texttt{rayleigh}}: es un modelo de disipación de la ecuación de segundo orden; en conducción la disipación es la conducción misma, ya contenida en \texttt{K}.
+  \item \textbf{Continuación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}): \texttt{continue\_\allowbreak{}from(previous)} o \texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=)} parte del estacionario (\texttt{SolveResult}, su carga se mantiene) o de otro transitorio térmico (sus temperaturas finales en su instante final; \texttt{F\_func} y \texttt{dirichlet\_func} en tiempo absoluto); entonces \texttt{T\_initial} no se da. Parar y continuar es igual que no parar.
   \item \textbf{Dirichlet variable en el tiempo}: \texttt{dirichlet\_\allowbreak{}func(t)} da los valores prescritos en el instante \texttt{t} y permite un ciclo térmico sobre una superficie. Sólo se leen los DOF con Dirichlet declarado; las filas de los esclavos de las restricciones multipunto se reconstruyen con la propia restricción (\texttt{ConstraintSet.\allowbreak{}build\_\allowbreak{}g}: un esclavo atado a un maestro apoyado sigue su valor y el salto \texttt{g} de la MPC se conserva), y un valor no nulo en un DOF libre se rechaza. El acoplamiento \texttt{K\_fp\ensuremath{\cdot}ḡ} \textbf{y} el término de capacidad \texttt{C\_\allowbreak{}fp\ensuremath{\cdot}(ḡ\_\allowbreak{}\{n+1\} − ḡ\_\allowbreak{}n)} se recalculan cada paso; la factorización de \texttt{A\_ff} \textbf{no} (verificado por contador).
   \item \textbf{Diagnóstico de \texttt{\ensuremath{\Delta}t}}: reporta el paso característico \texttt{h\ensuremath{^{2}}/\ensuremath{\alpha}} con \texttt{\ensuremath{\alpha} = k/(\ensuremath{\rho}c)} --- el tiempo que tarda el frente térmico en cruzar un elemento. Es \textbf{información, no restricción}: con \texttt{\ensuremath{\theta} \ensuremath{\ge} 1/2} ningún \texttt{\ensuremath{\Delta}t} diverge, pero uno \texttt{≫ h\ensuremath{^{2}}/\ensuremath{\alpha}} se salta el transitorio que se quiere observar. Avisa si la razón supera 10. Análogamente, el transitorio no ha \textit{terminado} hasta \texttt{t ≫ L\ensuremath{^{2}}/\ensuremath{\alpha}}.
   \item \textbf{Cuándo usarlo}: arranque y enfriamiento de piezas, choque térmico, ciclos térmicos impuestos, calor de hidratación. Para el régimen permanente, \texttt{LinearSolver}.
   \item \textbf{Cuerpo aislado} (desde el 2026-10-20): \textbf{no exige Dirichlet}. Sin temperatura impuesta, \texttt{A = C + \ensuremath{\theta}\ensuremath{\Delta}t\ensuremath{\cdot}K} sigue siendo definida positiva por \texttt{C}; el nivel de temperatura lo fijan \texttt{T\_initial} y el calor aportado, y la energía almacenada \texttt{1\ensuremath{^{\top}}\ensuremath{\cdot}C\ensuremath{\cdot}T} crece exactamente \texttt{Q\ensuremath{\cdot}V\ensuremath{\cdot}t} (validado contra \texttt{T = T\_\allowbreak{}0 + Q\ensuremath{\cdot}t/\allowbreak{}(\ensuremath{\rho}c)} a precisión de máquina, 2D y 3D, cuatro \ensuremath{\theta}). El \textbf{estacionario} sí lo exige: \texttt{K} es singular por el modo de temperatura uniforme (análogo térmico del sólido rígido) y el \texttt{LinearSolver} lo rechaza nombrándolo.
   \item \textbf{Caveats}: \texttt{T\_initial} incompatible con un Dirichlet impuesto \textbf{avisa sin abortar}: un choque térmico es modelización legítima. \texttt{\ensuremath{\theta} \textless{} 1/2} con capacidad consistente es prácticamente inutilizable (\texttt{\ensuremath{\lambda}\_max} grande) --- se avisa. Requiere \texttt{density} y \texttt{c} declaradas en el material.
   \item \textbf{Despacho YAML}: \texttt{solver.\allowbreak{}type: ThetaMethodSolver}. Vía atributo \texttt{PIPELINE\_\allowbreak{}KIND=\textquotedbl{}thermal\_\allowbreak{}transient\textquotedbl{}} \ensuremath{\to} \texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient}. Quinto valor del literal (tras \texttt{\textquotedbl{}static\textquotedbl{}}, \texttt{\textquotedbl{}modal\textquotedbl{}}, \texttt{\textquotedbl{}transient\textquotedbl{}}, \texttt{\textquotedbl{}harmonic\textquotedbl{}}, \texttt{\textquotedbl{}spectrum\textquotedbl{}}).
+  \item \textbf{Terminación} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}, §6): \texttt{termination}, \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final}, \texttt{U\_final} y \texttt{ThermalTransientResult.\allowbreak{}termination}. Con \texttt{\ensuremath{\theta} \textless{} 1/2} y un paso por encima del límite de estabilidad, \texttt{solve} lanza \texttt{TimeIntegrationInstabilityError} con el historial almacenado hasta el último paso estable en \texttt{partial\_result} (antes devolvía \texttt{converged = False} con las columnas sin calcular en cero).
   \item \textbf{Resultado}: \texttt{ThermalTransientResult} --- \texttt{t\_history}, \texttt{T\_history}, \texttt{theta}, \texttt{dt}, \texttt{order}, más \texttt{T\_final}, \texttt{temperature\_\allowbreak{}at(dof)} y \texttt{extremes()} (diagnóstico del principio del máximo). Dataclass propia y no \texttt{TransientResult}: sus campos \texttt{udot\_history}, \texttt{uddot\_history} y los coeficientes de Rayleigh no tienen significado térmico, y rellenarlos con ceros produciría un objeto que miente sobre su contenido.
   \item \textbf{Validación}: orden temporal medido \textbf{0.9944} (\ensuremath{\theta}=1) y \textbf{2.0001} (\ensuremath{\theta}=1/2); convergencia al estacionario del \texttt{LinearSolver} con error \textbf{7.1e-14}; sólido semi-infinito de Carslaw-Jaeger con error \textbf{3.0e-3}; cross-check 2D\ensuremath{\leftrightarrow}3D paso a paso. \textbf{Soluciones manufacturadas} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0022-cargas-variables-mallas-estructuradas-y-mms.md}{ADR 0022}, 2026-10-27), con fuente, flujo y Dirichlet variables en el tiempo sobre mallas distorsionadas y conductividad anisótropa: orden en el tiempo 0.98 (\ensuremath{\theta}=1), 1.03 (\ensuremath{\theta}=2/3), 1.00 (\ensuremath{\theta}=0, dentro de su límite) y 2.00 (\ensuremath{\theta}=1/2); con \texttt{T*} lineal en \texttt{x} y en \texttt{t}, exacto a redondeo para todo \ensuremath{\theta}, prueba que detecta la falta del término \texttt{C\_\allowbreak{}fp\ensuremath{\cdot}(ḡ\_\allowbreak{}\{n+1\} − ḡ\_\allowbreak{}n)}.
   \item \textbf{Spec}: \hyperref[spec:ThetaMethodSolver]{docs/specs/ThetaMethodSolver.md}.

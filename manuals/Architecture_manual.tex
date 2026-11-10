@@ -101,7 +101,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -348,7 +348,7 @@ Esta sección describe, paso a paso, la secuencia de operaciones que se ejecuta 
 \section*{1. Arranque}
 \addcontentsline{toc}{section}{1. Arranque}
 
-El caso se lanza desde un \textit{script} de usuario o desde la interfaz pública de entrada (\texttt{solidum.run} / \texttt{solidum.run\_yaml}). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete \texttt{solidum}. Dicha importación dispara el procedimiento de descubrimiento automático (\textit{autodiscover}), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador \texttt{@register} correspondiente, los registros quedan poblados sin enumeración manual.
+El caso se lanza desde un \textit{script} de usuario o desde la interfaz pública de entrada (\texttt{solidum.run} / \texttt{solidum.run\_yaml}, o \texttt{solidum.\allowbreak{}load\_\allowbreak{}yaml(path).\allowbreak{}solve()} para conservar el modelo). Antes de que se abra el archivo YAML, se ejecuta la importación del paquete \texttt{solidum}. Dicha importación dispara el procedimiento de descubrimiento automático (\textit{autodiscover}), que recorre las carpetas canónicas del proyecto e importa todos los módulos. Como cada material, elemento y solver lleva el decorador \texttt{@register} correspondiente, los registros quedan poblados sin enumeración manual.
 
 \phantomsection
 \section*{2. Lectura del caso}
@@ -1377,7 +1377,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Contexto.} La única fuente de masa era la densidad del material (\hyperref[adr:0008]{ADR 0008}), pero en un edificio la masa de cada nivel viene de la losa, los acabados y la carga viva, y la práctica estándar la concentra en los nudos. Con masas sólo en algunos nudos, o elementos de densidad cero, la matriz de masa es semidefinida y el análisis modal fallaba: ARPACK lanzaba un error sin causa y el camino denso exigía masa definida.
 
-\textbf{Decisión.} La masa de nudo es un dato del dominio (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloque YAML \texttt{nodal\_masses}), por grado de libertad mecánico, traslacional o rotacional. Se suma a la diagonal de la matriz de masa con los dos esquemas, sobre el patrón ya cacheado, así que la ven todos los consumidores de la masa. Es sólo inercia: \texttt{gravity} no genera su peso, y si debe generarlo queda para decisión del usuario con las etapas de carga. En el análisis modal, los grados de libertad sin masa se condensan estáticamente de forma exacta ($\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\boldsymbol\phi_m$), sin formar la matriz condensada en los modelos grandes: el operador de desplazamiento e inversión del problema condensado es el bloque de $(\mathbf K - \sigma\mathbf M)^{-1}$ del modelo completo. Si el problema no tiene solución, \texttt{MasslessDofsError} nombra los grados de libertad. Se descartaron un elemento de masa puntual (material, rigidez nula y catálogo para una entrada diagonal), la masa ficticia pequeña (frecuencias espurias) y el problema inverso con $\mathbf K$ definida (falla en estructuras libres).
+\textbf{Decisión.} La masa de nudo es un dato del dominio (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloques YAML \texttt{nodal\_masses}, \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}group} y \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}coord}), por grado de libertad mecánico, traslacional o rotacional. Se suma a la diagonal de la matriz de masa con los dos esquemas, sobre el patrón ya cacheado, así que la ven todos los consumidores de la masa. Es sólo inercia: \texttt{gravity} no genera su peso, y si debe generarlo queda para decisión del usuario con las etapas de carga. En el análisis modal, los grados de libertad sin masa se condensan estáticamente de forma exacta ($\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\boldsymbol\phi_m$), sin formar la matriz condensada en los modelos grandes: el operador de desplazamiento e inversión del problema condensado es el bloque de $(\mathbf K - \sigma\mathbf M)^{-1}$ del modelo completo. Si el problema no tiene solución, \texttt{MasslessDofsError} nombra los grados de libertad. Se descartaron un elemento de masa puntual (material, rigidez nula y catálogo para una entrada diagonal), la masa ficticia pequeña (frecuencias espurias) y el problema inverso con $\mathbf K$ definida (falla en estructuras libres).
 
 \textbf{Consecuencia.} Análisis modal y espectral de edificios con masas de piso, con frecuencias exactas para el modelo discreto; los modelos con masa en todos los grados de libertad no cambian. El transitorio con grados de libertad sin masa queda fuera: la aceleración inicial de esos grados de libertad es una decisión física pendiente.
 
@@ -1392,6 +1392,8 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Consecuencia.} Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
 
+\textbf{Ampliación (9 de noviembre de 2026).} Una auditoría de generalidad del mismo día extendió el contrato a los análisis en el tiempo: \texttt{termination = \textquotedbl{}t\_\allowbreak{}end\textquotedbl{}} o \texttt{\textquotedbl{}diverged\textquotedbl{}}, \texttt{completed}, \texttt{steps\_done}, \texttt{t\_final}, \texttt{U\_final} y \texttt{partial\_result}; una línea \texttt{ERROR} y una excepción tipada al detenerse (\texttt{TimeIntegrationInstabilityError} para la integración inestable), con el historial parcial. El \ensuremath{\theta}-método dejó de devolver un resultado con columnas en cero al divergir. \texttt{control\_target} toma el sentido del objetivo, así que una etapa también descarga.
+
 \section{ADR 0026 --- Etapas de carga en los solvers estáticos}
 \label{adr:0026}
 
@@ -1401,7 +1403,32 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Decisión.} \texttt{solve(F\_\allowbreak{}ref, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})} en \texttt{NonlinearSolver} y la familia del arco, con residuo $\mathbf F_c + \lambda\mathbf F_\text{ref} - \mathbf F_\text{int}$ y \ensuremath{\lambda} = 0 al empezar. Los valores impuestos crecen desde los de partida, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$. Cada etapa comprueba su equilibrio inicial, y un modelo con historia que empieza en cero lo avisa. \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)} continúa la etapa anterior con su carga aplicada como constante y sus cargas equivalentes por elemento; el resultado separa \texttt{F\_constant} de \texttt{F\_variable}. \texttt{DissipationArcLengthSolver} rechaza las etapas: su restricción de disipación es física por decidir.
 
-\textbf{Consecuencia.} Gravedad y empuje, P-\ensuremath{\Delta} con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N--M y la superposición elástica. Quedan las etapas desde el YAML (deuda \#36) y dos cargas distribuidas en una misma etapa (deuda \#35).
+\textbf{Consecuencia.} Gravedad y empuje, P-\ensuremath{\Delta} con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N--M y la superposición elástica. Quedan las etapas desde el YAML (deuda \#36). Las dos cargas distribuidas en una misma etapa (deuda \#35) las resolvió el \hyperref[adr:0027]{ADR 0027}.
+
+\section{ADR 0027 --- Cargas que llevan sus cargas equivalentes}
+\label{adr:0027}
+
+\textbf{Fecha}: 9 de noviembre de 2026. \textbf{Estado}: aceptado; sustituye el §5 del \hyperref[adr:0026]{ADR 0026}.
+
+\textbf{Contexto.} Las fuerzas internas de extremo con carga distribuida son $\mathbf F_\text{int} - \mathbf f_\text{eq}$, y el ensamblador recordaba sólo las cargas equivalentes de la última carga de cuerpo ensamblada: dos cargas de cuerpo en una corrida, dos casos de carga con el mismo ensamblador y el historial de los transitorios daban fuerzas internas erróneas sin aviso (deuda \#35).
+
+\textbf{Decisión.} La carga lleva su propia información: \texttt{LoadVector}, un \texttt{np.ndarray} con las cargas equivalentes por elemento de su parte distribuida, que la aritmética de las cargas combina linealmente (\texttt{F1 \ensuremath{\pm} F2}, \texttt{a\ensuremath{\cdot}F}, \texttt{F/a}; cualquier otra operación da un \texttt{np.ndarray} simple). Se guardan concatenadas con una disposición compartida por las cargas del mismo ensamblador, así que combinar es una operación vectorizada. Un \texttt{np.ndarray} simple que las perdió recurre al registro anterior y avisa si es ambiguo.
+
+\textbf{Consecuencia.} La deuda \#35 queda cerrada en estático, por etapas y en el tiempo, sin cambiar la API de las cargas.
+
+\section{ADR 0028 --- Longitud característica del punto de integración}
+\label{adr:0028}
+
+\textbf{Fecha}: 2026-11-09 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Un material con ablandamiento regularizado por energía de fractura necesita la longitud \texttt{h} de cada punto de integración, que sólo conoce el elemento. \texttt{h} viaja en el estado del punto: el material declara si la usa (\texttt{uses\_\allowbreak{}characteristic\_\allowbreak{}length}) y construye el estado inicial con \texttt{initial\_\allowbreak{}point\_\allowbreak{}state(h)}, donde la valida; el elemento, al terminar de construirse, siembra una longitud por punto con \texttt{\_\allowbreak{}seed\_\allowbreak{}characteristic\_\allowbreak{}lengths} (\texttt{L} en las barras, \texttt{w\_g\ensuremath{\cdot}L} en los marcos con sección, que la reparte a sus fibras con \texttt{initial\_\allowbreak{}states(characteristic\_\allowbreak{}length=h)}). Un \texttt{h} inadmisible se rechaza al construir el elemento. Se descartó pasar \texttt{h} en cada \texttt{compute\_state} (más de treinta llamadas y validación tardía) y guardarlo en el material (lo comparten puntos de longitudes distintas). Primer consumidor: \texttt{ManderConcrete1D}; regularizar los materiales de daño de los sólidos sólo exigirá que sus elementos siembren las longitudes.
+
+\section{ADR 0029 --- Continuidad de los análisis en el tiempo}
+\label{adr:0029}
+
+\textbf{Fecha}: 2026-11-09 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Extiende las etapas del \hyperref[adr:0026]{ADR 0026} a los análisis en el tiempo. \texttt{continue\_\allowbreak{}from(previous)}, común a los seis integradores (mezcla \texttt{TransientTerminationMixin}), parte de un estático (sus desplazamientos o temperaturas, en reposo, con su carga constante y sus cargas equivalentes; aviso si el estado no la equilibra) o de un transitorio del mismo tipo (su estado final en su instante final, en tiempo absoluto). Al continuar un transitorio se hereda la aceleración final, no la del equilibrio instantáneo, que con HHT-\ensuremath{\alpha} no coincide: parar y continuar es igual que no parar. Los resultados guardan \texttt{F\_constant}. Pendiente de una decisión física: la tangente con que se forma el amortiguamiento de Rayleigh al continuar.
 
 \section{Evolución de esta lista}
 
@@ -1983,8 +2010,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 09 de noviembre de 2026, 11:34\\[0.5em]
-Commit Git: \texttt{860825b}\\[1em]
+Compilado el 09 de noviembre de 2026, 18:28\\[0.5em]
+Commit Git: \texttt{1c01d75} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

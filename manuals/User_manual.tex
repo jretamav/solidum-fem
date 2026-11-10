@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -720,6 +720,21 @@ nodal_masses:
   \item El bloque se valida al leer: valores finitos no negativos, grados de libertad mecánicos que el nodo tenga y nodos existentes. Todos los errores se informan juntos.
 \end{itemize}
 
+Con una malla gmsh, los nodos se seleccionan también por grupo físico o por coordenada, como las cargas puntuales:
+
+\begin{lstlisting}[language=yaml]
+nodal_masses_by_group:
+  - {group_name: Piso_1, ux: 1.5e3, uy: 1.5e3}   # o la forma dict:  Piso_1: {ux: 1.5e3, uy: 1.5e3}
+nodal_masses_by_coord:
+  - {loc: y_max, ux: 800.0}                     # o {coord: y, val: 3.0, ux: 800.0}; forma dict: y_max: {ux: 800.0}
+
+\end{lstlisting}
+
+\begin{itemize}
+  \item \textbf{Cada} nodo seleccionado recibe la masa indicada, no una parte de ella. Para repartir la masa de un nivel entre sus nodos, divídala entre su número.
+  \item Un grupo inexistente, una coordenada que no selecciona ningún nodo o un grado de libertad que los nodos no tienen se informan junto con los demás errores.
+\end{itemize}
+
 Con masas sólo en algunos nudos, casi todos los grados de libertad quedan sin masa. El análisis modal los condensa de forma exacta (capítulo de dinámica).
 
 \section{Fuerzas de Cuerpo}
@@ -887,6 +902,38 @@ Ambos criterios deben cumplirse \textbf{simultáneamente} (semántica AND) para 
 
 \textbf{Nota sobre el solver algebraico interno.} El sistema lineal $\mathbf{K}\,\delta\mathbf{U}=\mathbf{R}$ que aparece dentro de cada iteración se resuelve con un backend algebraico (Cholesky, LU\ldots{}) seleccionado \textit{automáticamente} según las propiedades de $\mathbf{K}$. Esta elección \textbf{no} es decisión de modelado y no requiere configuración. Si por motivos de diagnóstico necesitas forzar un backend específico, consulta el capítulo \textit{Anexos técnicos --- Capa algebraica} del Manual de Referencia.
 
+\section{Etapas: \texttt{stages}}
+
+Un análisis por etapas encadena análisis que continúan el anterior: la gravedad y después un empuje, una secuencia de cargas, un estático y después una carga dinámica. Cada etapa declara sus cargas (\texttt{loads}, con los mismos bloques del nivel raíz: \texttt{point\_loads\ldots{}}, \texttt{gravity}, \texttt{body\_force}, \texttt{tractions\ldots{}}, \texttt{thermal\_loads}) y su \texttt{solver}:
+
+\begin{lstlisting}[language=yaml]
+stages:
+  - name: gravedad
+    loads:
+      gravity: [0.0, -9.81]
+    solver: {type: NonlinearSolver, num_steps: 4}
+  - name: empuje
+    loads:
+      point_loads:
+        - {node_id: 4, ux: 1.0e5}
+    solver:
+      type: IndirectDisplacementSolver
+      control:
+        - {node: 4, dof: ux, coef: 1.0}
+      control_target: 0.06
+      initial_dl: 0.004
+      max_lambda: 1.0e9
+
+\end{lstlisting}
+
+\begin{itemize}
+  \item \textbf{Etapa estática}: parte de los desplazamientos y del estado interno de la anterior; la carga ya aplicada se mantiene constante y la de la etapa crece con \ensuremath{\lambda} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}).
+  \item \textbf{Etapa en el tiempo} (\texttt{NewmarkSolver}, \texttt{NewtonNewmarkSolver}, HHT, diferencia central, \texttt{ThetaMethodSolver}): parte del estado final de la anterior (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}); sus cargas se aplican como escalón desde su instante inicial, sobre la carga constante de las anteriores. Tras otra etapa en el tiempo, \texttt{t\_end} es el instante final absoluto.
+  \item Con \texttt{stages}, el \texttt{solver} y las cargas van en cada etapa: declararlos también en el nivel raíz es un error.
+  \item \texttt{run\_yaml} devuelve un \texttt{StagedResult}: \texttt{res[\textquotedbl{}empuje\textquotedbl{}]} o \texttt{res[1]} da el resultado de una etapa, \texttt{res.final} el de la última y \texttt{res.names} los nombres.
+  \item Pendientes de una decisión física, y por eso rechazados con un error claro: una etapa estática después de una en el tiempo, y una etapa modal, armónica o espectral sobre el estado de las anteriores.
+\end{itemize}
+
 \section{Salida: \texttt{output}}
 
 Configura qué se exporta y cuándo:
@@ -894,6 +941,7 @@ Configura qué se exporta y cuándo:
 \begin{lstlisting}[language=yaml]
 output:
   file_name: "resultados_placa"
+  log_level: WARNING              # opcional: DEBUG, INFO (por omisión), WARNING o ERROR
   pre_process: {export: true}     # exporta el modelo sin deformar (paso 0)
   results:
     frequency: "all_steps"        # "last_step" o "all_steps"
@@ -909,6 +957,8 @@ output:
 \begin{infobox}{Nota}
 Cuando \texttt{frequency: \textquotedbl{}all\_\allowbreak{}steps\textquotedbl{}} y el solver es no lineal, se genera un archivo \texttt{.vtu} por paso convergido más un archivo maestro \texttt{.pvd} que ParaView interpreta como animación.
 \end{infobox}
+
+\texttt{log\_level} fija el nivel del registro durante el análisis (\texttt{run\_yaml}, \texttt{load\_\allowbreak{}yaml(.\allowbreak{}.\allowbreak{}.\allowbreak{}).\allowbreak{}solve()} y \texttt{examples/\allowbreak{}ejecutar\_\allowbreak{}yaml.\allowbreak{}py}): \texttt{WARNING} deja sólo avisos y errores. Al terminar, \texttt{run\_yaml} vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.
 
 
 \newpage
@@ -1487,6 +1537,44 @@ materials:
 
 \end{lstlisting}
 
+\section{Concreto}
+
+\subsection{\texttt{ManderConcrete1D} --- concreto uniaxial con la envolvente de Mander}
+
+Material de fibra y de barra para el concreto, simple o confinado. La envolvente de compresión es la de Mander, Priestley y Park (1988) con la ecuación de Popovics; la descarga y la recarga son rectas con la rigidez dañada $(1-d)E$ hacia la deformación plástica de Mander, de modo que el material no puede crear energía. En tracción: lineal hasta $f_t$ y una recta hasta cero, descarga hacia el origen desplazado, recuperación de la rigidez de compresión al cerrarse la grieta y pérdida de resistencia a tracción por la compresión previa (factor de Mander $1 - e_p/\varepsilon_c$). No reproduce los lazos de los ciclos parciales.
+
+\begin{itemize}
+  \item \textbf{Parámetros}: \texttt{fc}, \texttt{eps\_c} (resistencia y deformación de pico, en magnitud), \texttt{E} (módulo inicial; Mander: $5000\sqrt{f'_c}$ MPa), \texttt{eps\_cu} (fin de la curva de Popovics); opcionales \texttt{eps\_sp} (recta hasta cero, desprendimiento del recubrimiento), \texttt{ft} (0: sin tracción), \texttt{eps\_tu} o \texttt{G\_f} (rama descendente de tracción en deformación o en energía de fractura), \texttt{G\_fc} (energía de la rama de compresión posterior al pico), \texttt{density}.
+  \item \textbf{Confinamiento}: \texttt{confinement} calcula \texttt{fc}, \texttt{eps\_c}, \texttt{eps\_cu} y \texttt{E} del núcleo a partir del concreto sin confinar y de los estribos (Mander 1988; Chang y Mander 1994 para presiones distintas en x e y). \texttt{k\_e} se da o se calcula con la geometría (\texttt{\{b\_\allowbreak{}c, d\_\allowbreak{}c, s\_\allowbreak{}clear, w\_\allowbreak{}clear, rho\_\allowbreak{}cc\}} en la rectangular; \texttt{\{s\_\allowbreak{}clear, d\_\allowbreak{}s, rho\_\allowbreak{}cc, spiral\}} en la circular).
+  \item \textbf{Regularización}: con \texttt{G\_f} o \texttt{G\_fc}, la rama descendente se ajusta a la longitud del punto de integración (la de la barra, o la tributaria del punto de Gauss del marco) y el resultado deja de depender de la malla.
+  \item \textbf{Uso}:
+  \item En concreto reforzado, dar la tracción con \texttt{eps\_tu} (de 5 a 20 veces $f_t/E$, la rigidez del concreto entre grietas) y regularizar sólo la compresión con \texttt{G\_fc}.
+  \item \texttt{G\_f}, para el concreto simple.
+  \item En transitorios, \texttt{line\_\allowbreak{}search: true}.
+  \item \textbf{Compatible con}: armaduras y fibras de una sección por fibras.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+materials:
+  - id: 1            # núcleo confinado
+    type: ManderConcrete1D
+    confinement: {fc0: 30.0e6, f_yh: 420.0e6, eps_su: 0.09, k_e: 0.75, rho_x: 0.01, rho_y: 0.01}
+    ft: 3.0e6
+    eps_tu: 1.1e-3
+    density: 2400.0
+  - id: 2            # recubrimiento
+    type: ManderConcrete1D
+    fc: 30.0e6
+    eps_c: 0.002
+    E: 27.4e9
+    eps_cu: 0.004
+    eps_sp: 0.006
+    ft: 3.0e6
+    eps_tu: 1.1e-3
+    density: 2400.0
+
+\end{lstlisting}
+
 \section{Materiales 3D}
 
 Los materiales 3D operan sobre la convención \textbf{Voigt 6D} del proyecto (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0012-solidos-3d-y-voigt-6d.md}{ADR 0012}):
@@ -1685,12 +1773,26 @@ solver:
 \textbf{\texttt{termination}} & \textbf{Significado} \\
 \hline
 \texttt{\textquotedbl{}max\_lambda\textquotedbl{}} & Llegó a \texttt{max\_lambda}. \\
-\texttt{\textquotedbl{}control\_target\textquotedbl{}} & Llegó al desplazamiento objetivo (\texttt{IndirectDisplacementSolver}, \texttt{control\_target}). \\
+\texttt{\textquotedbl{}control\_target\textquotedbl{}} & Llegó al valor objetivo de la magnitud vigilada (\texttt{control\_target}). \\
 \texttt{\textquotedbl{}max\_steps\textquotedbl{}} & Agotó \texttt{max\_steps} antes de terminar. \texttt{solve()} devuelve el último paso convergido sin lanzar, pero \textbf{no es el análisis pedido}: \texttt{completed} es \texttt{False} y \texttt{SolveResult.\allowbreak{}converged} también. \\
 \texttt{\textquotedbl{}diverged\textquotedbl{}} & Un paso no convergió ni reduciendo la longitud al mínimo. \texttt{solve()} lanza una \texttt{SolverDivergedError} tipada con la causa; \texttt{StepConstraintError} si la restricción del paso no tiene solución (raíces imaginarias). \\
 \hline
 \end{tabularx}
 \end{center}
+\textbf{Parar en un desplazamiento.} Con \texttt{control} (la magnitud vigilada, la misma sintaxis que en \texttt{IndirectDisplacementSolver}) y \texttt{control\_target}, el arco se detiene cuando la magnitud alcanza ese valor:
+
+\begin{lstlisting}[language=yaml]
+solver:
+  type: ArcLengthSolver
+  control:
+    - {node: 12, dof: ux, coef: 1.0}   # desplazamiento horizontal del nodo 12
+  control_target: 0.15                # se detiene con 150 mm
+  max_lambda: 1.0e9                   # holgado: la parada la decide el objetivo
+
+\end{lstlisting}
+
+En el arco, \texttt{control} sólo mide: la restricción del paso sigue siendo la longitud de arco, así que el trazado pasa puntos límite. El paso que cruza el objetivo se repite con llegada exacta: el último punto tiene exactamente el valor pedido. Si \texttt{max\_lambda} llega antes, se detiene ahí.
+
 \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections} y \texttt{U\_final} dicen hasta dónde llegó (último paso convergido), también tras una excepción, y \texttt{solve()} los reinicia al empezar. \texttt{solidum.run} copia el motivo en \texttt{SolveResult.\allowbreak{}termination}. \texttt{NonlinearSolver} deja los mismos atributos (\texttt{\textquotedbl{}max\_lambda\textquotedbl{}} al completar la carga, \texttt{\textquotedbl{}diverged\textquotedbl{}} antes de lanzar).
 
 \textbf{Referencia}: Crisfield, \textquotedbl{}A fast incremental/iterative solution procedure that handles snap-through\textquotedbl{} (\textit{Computers \& Structures}, 1981).
@@ -1845,6 +1947,20 @@ Resuelve el problema generalizado $\mathbf K \boldsymbol\phi = \omega^2 \mathbf 
 
 \textbf{Salida}: instancia de \texttt{ModalResult} con \texttt{frequencies\_rad}, \texttt{frequencies\_hz}, \texttt{periods}, \texttt{modes} (M-ortonormales). El método \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration(M, u0, u0\_\allowbreak{}dot, t)} reconstruye analíticamente la respuesta libre no amortiguada por superposición modal.
 
+\textbf{Participación modal}: para cada traslación del modelo, \texttt{participation\_\allowbreak{}factors[\textquotedbl{}ux\textquotedbl{}]} da los factores $\Gamma_n = \boldsymbol\phi_n^\top \mathbf M\,\mathbf r$ y \texttt{effective\_\allowbreak{}masses[\textquotedbl{}ux\textquotedbl{}]} las masas efectivas $\Gamma_n^2$ (en unidades de masa), con $\mathbf r$ la traslación rígida unitaria en esa dirección; igual con \texttt{\textquotedbl{}uy\textquotedbl{}} y, en 3D, \texttt{\textquotedbl{}uz\textquotedbl{}}. \texttt{condensed\_dofs} lista los grados de libertad sin masa condensados, como \texttt{(nodo, dof)}. Para un giro del modelo alrededor de un punto (torsión de un edificio) o una dirección oblicua:
+
+\begin{lstlisting}[language=Python]
+from solidum.math.modal_response import participation_factors
+from solidum.math.rigid_body import rigid_body_vector
+
+r = rigid_body_vector(dom, "rz", about=(x_c, y_c, z_c))   # giro unitario alrededor de z
+M = asm.assemble_mass_matrix()
+gamma = participation_factors(res.modes, M, r)              # masas efectivas: gamma**2
+
+\end{lstlisting}
+
+La suma de las masas efectivas de los modos calculados se escribe en el registro. La razón de masa acumulada (el criterio del 90 \%) todavía no está en \texttt{ModalResult}: con qué masa total se compara es una decisión pendiente.
+
 \begin{lstlisting}[language=yaml]
 nodes:
   - {id: 1, coords: [0.0, 0.0]}
@@ -1870,6 +1986,27 @@ solver:
 \begin{infobox}{Nota}
 La densidad es \textit{obligatoria} para todo material involucrado en análisis modal o transitorio. La omisión lanza \texttt{ValueError} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0008-densidad-propiedad-del-material.md}{ADR 0008}) listando los materiales afectados por nombre antes de iniciar el cálculo.
 \end{infobox}
+
+\subsection{Revisar las masas: masa total y centro de masa}
+
+Antes de un análisis dinámico conviene revisar la masa que entra al modelo (densidades y masas de nudo):
+
+\begin{lstlisting}[language=Python]
+from solidum.math.mass_properties import mass_properties
+
+props = mass_properties(asm)              # o mass_properties(asm, lumping="lumped")
+props.total_mass                          # {"ux": m, "uy": m[, "uz": m]}
+props.center                              # centro de masa (None si la masa depende de la dirección)
+props.center_of_mass["ux"]                # línea de acción de la inercia ante una aceleración en x
+
+\end{lstlisting}
+
+\begin{itemize}
+  \item La masa en cada dirección es $m_d = \mathbf r_d^\top\mathbf M\,\mathbf r_d$, con $\mathbf r_d$ la traslación rígida unitaria; incluye la masa de los nudos con apoyo.
+  \item \texttt{center\_\allowbreak{}of\_\allowbreak{}mass[\textquotedbl{}ux\textquotedbl{}]} es un punto de la línea de acción de la resultante de las fuerzas de inercia ante una aceleración rígida en $x$: da su altura y su posición en planta (la excentricidad respecto del centro de rigidez). La coordenada a lo largo de $x$ no la afecta y queda en \texttt{NaN}. Sale de los momentos de esas fuerzas con los giros rígidos del modelo, así que es exacta con masa consistente o concentrada, también en barras inclinadas.
+  \item Si la masa es la misma en todas las direcciones, \texttt{center} es el centro de masa. Una masa de nudo distinta por dirección (sólo en \texttt{ux}, por ejemplo) hace que cada dirección tenga su centro, y \texttt{center} es \texttt{None}.
+  \item Las masas de nudo se exportan al VTK (\texttt{Nodal\_Mass}, \texttt{Nodal\_Inertia}).
+\end{itemize}
 
 \subsection{Masas de nudo y grados de libertad sin masa (ADR 0024)}
 
@@ -2027,7 +2164,7 @@ Paso $n \to n+1$:
 
 Una sola clase cubre lineal y no lineal con parámetro \texttt{nonlinear}: con \texttt{False} usa $\mathbf F_{\text{int}} = \mathbf K\mathbf u$ con $\mathbf K$ constante; con \texttt{True} recalcula $\mathbf F_{\text{int}}$ cada paso vía \texttt{Assembler.\allowbreak{}assemble\_\allowbreak{}non\_\allowbreak{}linear\_\allowbreak{}system}.
 
-\textbf{Condición de estabilidad CFL}: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta divergencia exponencial a posteriori y aborta con \texttt{RuntimeError} informativo si la condición se viola.
+\textbf{Condición de estabilidad CFL}: $\Delta t < 2/\omega_{\max}$. Para barras: $\Delta t < L_{el}\sqrt{\rho/E}$. El solver detecta la divergencia exponencial a posteriori y, si la condición se viola, lanza \texttt{TimeIntegrationInstabilityError} (una \texttt{SolverDivergedError}, y por tanto \texttt{RuntimeError}) con el historial hasta el último paso estable en \texttt{partial\_result}.
 
 \textbf{Requisitos}: \texttt{lumping=\textquotedbl{}lumped\textquotedbl{}} obligatorio (\texttt{\textquotedbl{}consistent\textquotedbl{}} rechazado con \texttt{ValueError} --- el coste de invertir $\mathbf M$ consistente cada paso anula la ventaja del explícito). La masa reducida $\mathbf T^\top\mathbf M\,\mathbf T$ debe ser estrictamente diagonal (umbral relativo a su mayor término diagonal, independiente de las unidades); se rechazan con \texttt{ValueError} dos casos: Frame3D con eje oblicuo a los ejes globales (la rotación rompe la diagonalidad estricta --- limitación documentada estándar, Cook-Malkus-Plesha §11.4) y una restricción multipunto con varios maestros cuyo esclavo tiene masa (el nodo colgante $u_h = \tfrac12 u_a + \tfrac12 u_b$ acopla a sus maestros; usar \texttt{NewmarkSolver} o \texttt{HHTSolver} con \texttt{lumping: lumped}).
 
@@ -2041,6 +2178,65 @@ solver:
   u0: [0.0, 0.0, 1.0, 0.0]
 
 \end{lstlisting}
+
+\section{Cómo termina un análisis en el tiempo (ADR 0025)}
+
+Todos los integradores (\texttt{NewmarkSolver}, \texttt{HHTSolver}, sus variantes de Newton, \texttt{CentralDifferenceSolver} y el \texttt{ThetaMethodSolver} térmico) dejan tras \texttt{solve()}:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Atributo} & \textbf{Significado} \\
+\hline
+\texttt{termination} & \texttt{\textquotedbl{}t\_end\textquotedbl{}} si llegó al instante final; \texttt{\textquotedbl{}diverged\textquotedbl{}} si se detuvo \\
+\texttt{completed} & \texttt{True} si llegó al instante final \\
+\texttt{steps\_done}, \texttt{t\_final}, \texttt{U\_final} & último paso convergido, su instante y su campo \\
+\texttt{partial\_result} & si se detuvo, el resultado hasta el último paso convergido \\
+\hline
+\end{tabularx}
+\end{center}
+Un análisis que se detiene registra una línea \texttt{ERROR} y lanza una \texttt{SolverDivergedError} tipada: la clasificación del Newton (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0011-robustez-newton-line-search.md}{ADR 0011}) en los no lineales, o \texttt{TimeIntegrationInstabilityError} si el paso supera el límite de estabilidad (diferencia central, \ensuremath{\theta} \textless{} 1/2). El historial calculado no se pierde:
+
+\begin{lstlisting}[language=Python]
+try:
+    res = solver.solve()
+except SolverDivergedError as exc:
+    res = exc.partial_result          # hasta el último paso convergido
+    print(solver.t_final, res.termination)   # ..., 'diverged'
+
+\end{lstlisting}
+
+\textbf{Fuerzas internas con carga distribuida.} Con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}, el historial descuenta en cada paso las cargas equivalentes de la carga del instante si \texttt{F\_func} combina las cargas que devuelven \texttt{assemble\_\allowbreak{}self\_\allowbreak{}weight} / \texttt{assemble\_\allowbreak{}body\_\allowbreak{}load} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}): \texttt{F\_\allowbreak{}func=lambda t: F\_\allowbreak{}peso + a(t) * F\_\allowbreak{}viento}.
+
+\textbf{Grados de libertad sin masa.} Los integradores implícitos todavía no los admiten (deuda \#34) y la diferencia central exige masa en todos: \texttt{MasslessDofsError} los nombra.
+
+\section{Progreso paso a paso}
+
+\texttt{run\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=f)} y \texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, step\_\allowbreak{}callback=f)} llaman \texttt{f(step, U, t)} tras cada paso convergido, con el número de paso, el campo global (desplazamientos o temperaturas) y el instante: la misma forma que el \texttt{step\_\allowbreak{}callback(step, U, \ensuremath{\lambda})} de los solvers estáticos, con el instante en lugar del factor de carga. Sirve para mostrar el avance, vigilar una magnitud o exportar mientras se integra. \texttt{run\_\allowbreak{}yaml(path, step\_\allowbreak{}callback=f)} lo pasa a los análisis estáticos y en el tiempo, también en las etapas; en el modal, el armónico y el espectral, que no tienen pasos, avisa de que lo ignora.
+
+\section{Continuar un análisis (ADR 0029)}
+
+Un análisis en el tiempo puede partir del estado final de otro, con el mismo \texttt{assembler} (guarda el estado interno de los elementos):
+
+\begin{itemize}
+  \item \textbf{Desde un estático} (\texttt{SolveResult}): parte en reposo de sus desplazamientos, en $t = 0$, y su carga se mantiene constante, con sus cargas distribuidas; \texttt{F\_func} añade la que varía. Es el caso de la gravedad aplicada de forma estática y, después, una excitación dinámica. Si el estado no equilibra esa carga (el estático no convergió, o el modelo cambió), Solidum avisa: la diferencia actuaría como una fuerza súbita.
+  \item \textbf{Desde un transitorio}: parte de su estado final (desplazamientos, velocidades y aceleraciones) en su instante final. \texttt{F\_func} se evalúa en tiempo absoluto y \texttt{t\_end} es el instante final absoluto. Sirve para cambiar el paso de tiempo o para seguir desde el último paso convergido de un análisis que se detuvo (\texttt{exc.\allowbreak{}partial\_\allowbreak{}result}).
+\end{itemize}
+
+Parar y continuar da lo mismo que no parar.
+
+\begin{lstlisting}[language=Python]
+from solidum.math.solvers import NewtonNewmarkSolver
+
+asm = solidum.Assembler(dom)
+F_g = asm.assemble_self_weight(np.array([0.0, -9.81]))
+r0 = solidum.run(dom, assembler=asm, F_applied=F_g)              # gravedad estática
+solver = NewtonNewmarkSolver(asm, t_end=10.0, dt=0.01, F_func=F_dinamica)
+r1 = solidum.run_transient(dom, assembler=asm, solver=solver, previous=r0)
+
+\end{lstlisting}
+
+\texttt{u0}, \texttt{u0\_dot} y \texttt{previous} se excluyen. Con amortiguamiento de Rayleigh proporcional a la rigidez, $\mathbf C$ se forma con la tangente del instante inicial de cada análisis.
 
 \section{\texttt{HarmonicSolver} --- respuesta forzada armónica en frecuencia (ADR 0009 fase 6)}
 
@@ -2391,6 +2587,10 @@ solver:
 \end{table}
 \textbf{No hay condición inicial de velocidad}: la ecuación es de primer orden y $\mathbf T_0$ determina la evolución por completo. Tampoco existe el parámetro \texttt{rayleigh}: el amortiguamiento de Rayleigh modela disipación en la ecuación de segundo orden, y aquí la disipación es la propia conducción, ya contenida en $\mathbf K$.
 
+\subsection{Continuar un análisis}
+
+\texttt{run\_\allowbreak{}thermal\_\allowbreak{}transient(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=r)} parte del estacionario (\texttt{r = solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{})}; su carga se mantiene) o de otro transitorio térmico (sus temperaturas finales en su instante final; \texttt{F\_func} y \texttt{dirichlet\_func} en tiempo absoluto). Entonces no se da \texttt{T\_initial}. Parar y continuar da lo mismo que no parar (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0029-continuidad-de-los-analisis-en-el-tiempo.md}{ADR 0029}).
+
 \subsection{Elección de $\theta$}
 
 \begin{table}[h]
@@ -2450,10 +2650,13 @@ A diferencia del análisis dinámico estructural, donde el default es \texttt{co
 \texttt{temperature\_\allowbreak{}at(dof)} & Historia temporal de un DOF concreto \\
 \texttt{extremes()} & \texttt{(T\_min, T\_max)} sobre todos los nodos e instantes \\
 \texttt{n\_steps}, \texttt{theta}, \texttt{dt}, \texttt{order} & Parámetros efectivos del análisis \\
+\texttt{converged}, \texttt{termination} & Si llegó al instante final (\texttt{\textquotedbl{}t\_end\textquotedbl{}}) \\
 \hline
 \end{tabularx}
 \end{table}
 \texttt{extremes()} es la herramienta de diagnóstico del principio del máximo: en un problema sin fuente, cualquier valor fuera del rango de los datos señala oscilación espuria del esquema, no un fenómeno físico.
+
+Con $\theta < 0.5$ y un paso por encima del límite de estabilidad, \texttt{solve()} \textbf{se detiene} con \texttt{TimeIntegrationInstabilityError} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): una línea \texttt{ERROR} y la excepción, cuyo \texttt{partial\_result} es el \texttt{ThermalTransientResult} hasta el último paso estable. No devuelve un resultado con instantes sin calcular.
 
 \section{Ejemplo completo: pared plana en régimen transitorio}
 
@@ -2522,6 +2725,7 @@ Mediante \texttt{meshio}, Solidum FEM exporta los resultados en archivos \texttt
   \item \texttt{External\_Forces}: distribución nodal del vector de cargas aplicado en el paso actual.
   \item \texttt{Supports}: indicador booleano de DOFs restringidos.
   \item \texttt{Temperature}: temperatura nodal, sólo si algún nodo tiene el DOF \texttt{T}.
+  \item \texttt{Nodal\_Mass}, \texttt{Nodal\_Inertia}: masas de nudo $(m_x, m_y, m_z)$ e inercias rotacionales $(J_x, J_y, J_z)$ declaradas (\texttt{nodal\_masses}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}), sólo si el modelo tiene alguna; \texttt{Nodal\_Inertia}, si tiene giros. Sirven para revisar la entrada de masas en ParaView.
   \item \texttt{Sigma\_XX\_nodal} \ldots{} \texttt{Tau\_XZ\_nodal}, \texttt{Von\_Mises\_nodal}: suavizado nodal de orden 0 de los esfuerzos por celda (media simple sobre las celdas adyacentes a cada nodo). Sólo promedian las celdas de \textbf{sólidos mecánicos}: las barras, cables y marcos (celdas \texttt{line}) y los elementos térmicos no participan, tampoco cuando un elemento térmico se superpone a un sólido sobre los mismos nodos en un dominio multicampo $(u_x, u_y, T)$. Un modelo sin sólidos mecánicos (sólo térmico o sólo estructural 1D) no exporta estos campos.
 \end{itemize}
 
@@ -2789,6 +2993,23 @@ Para obtener deformaciones y esfuerzos en los puntos de Gauss de todo el modelo,
 
 El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state}), así que funciona igual tras \texttt{LinearSolver.\allowbreak{}solve} directo, tras \texttt{solidum.run} o en un paso intermedio del \texttt{step\_callback}. Si el modelo lleva peso propio o fuerza de cuerpo, usar \texttt{solidum.run(...)} en vez de \texttt{solver.\allowbreak{}solve(.\allowbreak{}.\allowbreak{}.\allowbreak{})} para que \texttt{SolveResult.\allowbreak{}element\_\allowbreak{}forces} reste la carga nodal equivalente y devuelva fuerzas internas de extremo coherentes con las reacciones.
 
+\section{Un modelo YAML desde Python: \texttt{load\_yaml}}
+
+\texttt{solidum.\allowbreak{}run\_\allowbreak{}yaml(path)} lee el archivo, arma el modelo y lo resuelve, y devuelve sólo el resultado. Para conservar el modelo y consultarlo antes o después de resolver ---los grados de libertad de cada nodo, la matriz de masa, la exportación VTK, el estado de los elementos--- se usa \texttt{solidum.\allowbreak{}load\_\allowbreak{}yaml(path)}:
+
+\begin{lstlisting}[language=Python]
+import solidum
+
+modelo = solidum.load_yaml("modelo.yaml")   # YamlModel: domain, assembler, parser
+res = modelo.solve()                          # lo mismo que run_yaml("modelo.yaml")
+tope = modelo.domain.nodes[12]
+print(res.U[tope.dofs["ux"]])
+M = modelo.assembler.assemble_mass_matrix()
+
+\end{lstlisting}
+
+\texttt{modelo.\allowbreak{}solve(step\_\allowbreak{}callback=f)} acepta el mismo \texttt{step\_callback} que \texttt{run\_yaml}: \texttt{f(step, U, \ensuremath{\lambda})} en los estáticos y \texttt{f(step, U, t)} en los análisis en el tiempo. \texttt{modelo.domain} tiene los grados de libertad ya numerados y \texttt{modelo.assembler} es el ensamblador con el que \texttt{solve()} resuelve el análisis declarado (estático, modal, transitorio, armónico, espectral, térmico o por etapas). \texttt{modelo.parser} da las cargas del archivo (\texttt{get\_\allowbreak{}external\_\allowbreak{}forces()}, \texttt{get\_\allowbreak{}body\_\allowbreak{}load(assembler)}, \texttt{get\_\allowbreak{}thermal\_\allowbreak{}loads()}) y el solver declarado (\texttt{get\_\allowbreak{}solver(assembler)}).
+
 \section{Resultado de un análisis estático: \texttt{SolveResult}}
 
 \texttt{solidum.run(...)} (y \texttt{solidum.\allowbreak{}run\_\allowbreak{}yaml(.\allowbreak{}.\allowbreak{}.\allowbreak{})} con un solver estático) devuelve un \texttt{SolveResult} inmutable, que queda también en \texttt{domain.\allowbreak{}last\_\allowbreak{}result}:
@@ -2809,12 +3030,26 @@ El exportador evalúa los esfuerzos en el \texttt{U} que recibe (\texttt{compute
 \texttt{termination} & Por qué se detuvo un solver incremental (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}): \texttt{\textquotedbl{}max\_lambda\textquotedbl{}}, \texttt{\textquotedbl{}control\_target\textquotedbl{}} o \texttt{\textquotedbl{}max\_steps\textquotedbl{}}. \texttt{None} en el \texttt{LinearSolver}. \\
 \texttt{load\_factor} & Factor de carga final \ensuremath{\lambda} de la carga que crece en el análisis o en la etapa. \\
 \texttt{F\_constant}, \texttt{F\_variable} & En un análisis por etapas (\texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=\ldots{})}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0026-etapas-de-carga-en-los-solvers-estaticos.md}{ADR 0026}), la carga ya aplicada que se mantuvo constante y la que creció (\texttt{F\_\allowbreak{}applied = F\_\allowbreak{}constant + F\_\allowbreak{}variable}). Fuera de una etapa, \texttt{F\_constant} es \texttt{None}. \\
-\texttt{equivalent\_loads} & Cargas equivalentes de la carga distribuida restadas, por elemento, para dar \texttt{element\_forces}; una etapa siguiente las hereda con su carga constante. \\
+\texttt{equivalent\_loads} & Cargas equivalentes de la carga distribuida restadas, por elemento, para dar \texttt{element\_forces}: las que lleva la carga aplicada (\texttt{LoadVector}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}); una etapa siguiente las hereda con su carga constante. \\
 \texttt{condition\_\allowbreak{}estimate} & Número de condición estimado de la rigidez (escalada por la diagonal) en el análisis lineal: $\log_{10}$ de este valor acota las cifras que la solución puede haber perdido de unas 16; por encima de $10^{12}$ Solidum avisa (capítulo «Diagnóstico de Problemas»). \texttt{None} en los análisis no lineales y con el solver iterativo. \\
 \hline
 \end{tabularx}
 \end{center}
 Las reacciones y las fuerzas de restricción cumplen \texttt{F\_\allowbreak{}int − F\_\allowbreak{}applied = R + constraint\_\allowbreak{}forces}: el equilibrio global es \texttt{\ensuremath{\Sigma}R + \ensuremath{\Sigma}F\_\allowbreak{}applied = 0} por dirección, y las fuerzas de restricción suman cero porque sólo transmiten fuerza entre partes de la estructura. El criterio que separa una restricción multipunto de apoyo de una de unión se explica en la sección \texttt{linear\_\allowbreak{}constraints} del capítulo «Archivo de Entrada YAML». En el problema térmico \texttt{R} es el flujo de calor nodal en los nodos con temperatura impuesta.
+
+\section{Cargas distribuidas y sus cargas equivalentes}
+
+\texttt{assemble\_\allowbreak{}self\_\allowbreak{}weight} y \texttt{assemble\_\allowbreak{}body\_\allowbreak{}load} devuelven un \texttt{LoadVector} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0027-cargas-con-sus-cargas-equivalentes.md}{ADR 0027}): un vector de cargas que se usa como cualquier \texttt{np.ndarray}, pero que lleva las cargas nodales equivalentes de su parte distribuida en cada elemento. Las fuerzas internas de extremo descuentan las de la carga aplicada, y la aritmética de las cargas las combina:
+
+\begin{lstlisting}[language=Python]
+F_peso = asm.assemble_self_weight([0.0, -9.81])
+F_viento = asm.assemble_body_load([2.0e3, 0.0])
+F = 1.2 * F_peso + 1.6 * F_viento + F_puntual     # lleva 1.2·f_eq,peso + 1.6·f_eq,viento
+res = solidum.run(dom, assembler=asm, F_applied=F)
+
+\end{lstlisting}
+
+Vale igual para dos casos de carga con el mismo ensamblador, para la carga de una etapa y para la función de carga de un transitorio (\texttt{F\_\allowbreak{}func=lambda t: F\_\allowbreak{}peso + a(t) * F\_\allowbreak{}viento}, con \texttt{record\_\allowbreak{}internal\_\allowbreak{}forces=True}). Las cargas puntuales en un \texttt{np.ndarray} simple no aportan cargas equivalentes. Lo que \textbf{pierde} la información es convertir la carga con \texttt{np.asarray}/\texttt{np.array} o sumarla con \texttt{+=} sobre un arreglo de ceros: entonces Solidum supone, como antes, que contiene la última carga de cuerpo ensamblada, y avisa si se ensambló más de una.
 
 \section{Secciones por fibras}
 
@@ -2881,9 +3116,10 @@ Desde un script conviene capturar los errores por su tipo, porque cada uno indic
 from solidum.math.solvers.diagnostics import (
     MechanismError,          # el modelo no está suficientemente apoyado (antes de resolver)
     IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
-    SolverDivergedError,     # Newton y arco: oscilación, tangente singular, capacidad...
+    SolverDivergedError,     # Newton, arco y transitorios: el análisis se detuvo
     StepConstraintError,     # arco: la restricción del paso no tiene solución
-    MasslessDofsError,       # modal: grados de libertad sin masa que impiden resolver
+    TimeIntegrationInstabilityError,  # diferencia central o θ < 1/2: paso inestable
+    MasslessDofsError,       # modal o transitorio: grados de libertad sin masa
     Termination,             # motivos de parada: solver.termination == Termination.MAX_STEPS
 )
 from solidum.math.linalg import IterativeNotConvergedError   # sólo con linear_algebra: iterative
@@ -2895,7 +3131,7 @@ except MechanismError as err:
 
 \end{lstlisting}
 
-\texttt{MechanismError.\allowbreak{}motions} lista los movimientos libres ya descritos en palabras. Para el fracaso de un trazado (Newton o arco) se captura \texttt{SolverDivergedError}, no \texttt{RuntimeError}: \texttt{IllPosedSystemError}, el veredicto de la red de seguridad, también es un \texttt{RuntimeError}. Tras la excepción, \texttt{solver.\allowbreak{}termination == \textquotedbl{}diverged\textquotedbl{}} y \texttt{solver.U\_final}, \texttt{lambda\_final} y \texttt{steps\_done} dicen hasta dónde llegó (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}). \texttt{MasslessDofsError} (análisis modal, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}) lleva la causa en \texttt{cause} (\texttt{too\_many\_modes}, \texttt{no\_mass}, \texttt{massless\_\allowbreak{}mechanism}, \texttt{singular\_mass}, \texttt{indefinite\_mass}), los grados de libertad sin masa en \texttt{massless\_dofs} y cuántos tienen masa en \texttt{n\_mass}. Los mensajes completos y cómo corregir cada caso están en el capítulo \textit{Diagnóstico de Problemas}.
+\texttt{MechanismError.\allowbreak{}motions} lista los movimientos libres ya descritos en palabras. Para el fracaso de un trazado (Newton o arco) se captura \texttt{SolverDivergedError}, no \texttt{RuntimeError}: \texttt{IllPosedSystemError}, el veredicto de la red de seguridad, también es un \texttt{RuntimeError}. Tras la excepción, \texttt{solver.\allowbreak{}termination == \textquotedbl{}diverged\textquotedbl{}} y \texttt{solver.U\_final}, \texttt{lambda\_final} y \texttt{steps\_done} dicen hasta dónde llegó (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0025-terminacion-de-los-solvers-incrementales-y-registro.md}{ADR 0025}). En un análisis en el tiempo, \texttt{exc.\allowbreak{}partial\_\allowbreak{}result} (también \texttt{solver.\allowbreak{}partial\_\allowbreak{}result}) es el resultado hasta el último paso convergido, y \texttt{solver.t\_final} su instante; un transitorio que llega al final deja \texttt{solver.\allowbreak{}termination == \textquotedbl{}t\_\allowbreak{}end\textquotedbl{}} y \texttt{result.\allowbreak{}termination == \textquotedbl{}t\_\allowbreak{}end\textquotedbl{}}. \texttt{MasslessDofsError} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0024-masas-de-nudo-y-modal-con-dof-sin-masa.md}{ADR 0024}) lleva la causa en \texttt{cause} (en el modal, \texttt{too\_many\_modes}, \texttt{no\_mass}, \texttt{massless\_\allowbreak{}mechanism}, \texttt{singular\_mass}, \texttt{indefinite\_mass}; en el transitorio, \texttt{initial\_\allowbreak{}acceleration} o \texttt{explicit\_\allowbreak{}integration}), los grados de libertad sin masa en \texttt{massless\_dofs} y cuántos tienen masa en \texttt{n\_mass}. Los mensajes completos y cómo corregir cada caso están en el capítulo \textit{Diagnóstico de Problemas}.
 
 El solver del sistema lineal se puede fijar también desde Python con el mismo parámetro que en el YAML, p. ej. \texttt{LinearSolver(assembler, linear\_\allowbreak{}algebra=\textquotedbl{}iterative\textquotedbl{})}.
 
@@ -2958,6 +3194,36 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
   El trazado no terminó: el resultado es el del último paso convergido y \texttt{solver.\allowbreak{}termination} vale \texttt{\textquotedbl{}max\_steps\textquotedbl{}} (\texttt{SolveResult.\allowbreak{}converged} es \texttt{False}). Aumentar \texttt{max\_steps} o el tamaño del paso.
 
 \begin{itemize}
+  \item \textbf{\texttt{TimeIntegrationInstabilityError} en un análisis en el tiempo}
+\end{itemize}
+  El paso de tiempo supera el límite de estabilidad del esquema: diferencia central por encima de la condición CFL ($\Delta t < 2/\omega_{\max}$) o \ensuremath{\theta}-método con $\theta < 1/2$. La solución crece sin límite y el análisis se detiene. Reducir \texttt{dt} o usar un esquema incondicionalmente estable (Newmark con $\beta = 1/4$, $\gamma = 1/2$; HHT-\ensuremath{\alpha}; $\theta \ge 1/2$). El historial hasta el último paso estable está en \texttt{exc.\allowbreak{}partial\_\allowbreak{}result}.
+
+\begin{itemize}
+  \item \textbf{\texttt{MasslessDofsError} en un transitorio (\texttt{initial\_\allowbreak{}acceleration} o \texttt{explicit\_\allowbreak{}integration})}
+\end{itemize}
+  Hay grados de libertad libres sin masa: sin densidad en los elementos que los comparten ni masa de nudo, o sin inercia rotacional. El mensaje los nombra («nodo 2 (ux)»). Los integradores implícitos todavía no los condensan (deuda \#34), y la diferencia central exige masa en todos. Dar masa a esos grados de libertad (\texttt{density} o \texttt{add\_nodal\_mass}); el análisis modal sí los admite.
+
+\begin{itemize}
+  \item \textbf{Aviso:} \textit{la carga aplicada es un np.ndarray simple, sin sus cargas equivalentes por elemento\ldots{}}
+\end{itemize}
+  Las fuerzas internas de los elementos con carga distribuida pueden salir mal: la carga perdió sus cargas equivalentes al convertirla con \texttt{np.asarray}/\texttt{np.array} o al sumarla con \texttt{+=} sobre un arreglo de ceros, y se ensambló más de una carga de cuerpo. Combinar las cargas que devuelven \texttt{assemble\_\allowbreak{}self\_\allowbreak{}weight} y \texttt{assemble\_\allowbreak{}body\_\allowbreak{}load} con \texttt{+} y escalares (\texttt{F = F1 + \ensuremath{\lambda}\ensuremath{\cdot}F2}). Lo mismo avisa el historial de fuerzas internas de un transitorio cuyo \texttt{F\_func} devuelve un \texttt{np.ndarray} simple.
+
+\begin{itemize}
+  \item **\texttt{ValueError}: *la longitud característica h = \ldots{} supera el límite 2\ensuremath{\cdot}G\_f\ensuremath{\cdot}E/ft\ensuremath{^{2}}***
+\end{itemize}
+  Con la energía de fractura \texttt{G\_f}, la rama de ablandamiento en tracción termina en $\varepsilon_{tu} = 2G_f/(f_t h)$. Si el punto de integración es tan largo que $\varepsilon_{tu}$ quedaría por debajo de la deformación de agrietamiento $f_t/E$, la rama tendría retroceso en el propio material. El elemento lo rechaza al construirse y dice cuál es. Usar elementos más cortos.
+
+\begin{itemize}
+  \item **\texttt{ValueError}: *ManderConcrete1D con G\_f necesita la longitud característica del punto de integración***
+\end{itemize}
+  El material regularizado se usa en un elemento que no le entrega la longitud de sus puntos. La entregan las barras y los marcos con sección por fibras. Con otro elemento, dar la rama descendente en deformaciones (\texttt{eps\_tu}, \texttt{eps\_cu}, \texttt{eps\_sp}).
+
+\begin{itemize}
+  \item \textbf{Un transitorio con concreto deja de converger en la vibración libre.}
+\end{itemize}
+  El cierre de una grieta cambia bruscamente la rigidez de la fibra (de la secante agrietada a la de compresión) y el Newton puede rebotar entre las dos ramas. Activar \texttt{line\_\allowbreak{}search: true} en el solver, o reducir \texttt{dt}.
+
+\begin{itemize}
   \item \textbf{Niveles del registro.}
 \end{itemize}
   Con el nivel por omisión (\texttt{INFO}) cada solver incremental escribe una línea por paso convergido. El detalle por iteración de Newton sale con \texttt{solidum.\allowbreak{}set\_\allowbreak{}log\_\allowbreak{}level(\textquotedbl{}DEBUG\textquotedbl{})}. Un \texttt{WARNING} de bisección («sin convergencia (tangente singular); bisección\ldots{}») es un evento que el solver resolvió solo; un \texttt{ERROR} significa siempre que el análisis se detuvo.
@@ -3002,8 +3268,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 09 de noviembre de 2026, 11:34\\[0.5em]
-Commit Git: \texttt{860825b}\\[1em]
+Compilado el 09 de noviembre de 2026, 18:28\\[0.5em]
+Commit Git: \texttt{1c01d75} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
