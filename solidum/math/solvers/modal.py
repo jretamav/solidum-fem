@@ -8,7 +8,7 @@ from solidum.constants import MODAL_ARPACK_TOLERANCE, MODAL_EIGENVALUE_ZERO_RTOL
 from solidum.core.dof_names import TRANSLATIONS
 from solidum.math.linalg import EigenSolver
 from solidum.math.linalg.eigen import SemidefiniteMassError
-from solidum.math.modal_response import participation_factors
+from solidum.math.modal_response import participating_mass, participation_factors
 from solidum.math.rigid_body import dof_unit_vector
 from solidum.math.solvers._shared import _dof_keys, _dof_labels, _log
 from solidum.math.solvers.diagnostics import MasslessDofsError
@@ -151,18 +151,25 @@ class ModalSolver:
 
         # Participación en cada traslación del modelo: r = traslación rígida
         # unitaria (los apoyos se mueven con el suelo), Γₙ = φₙᵀ·M·r.
+        # Masa de referencia de la razón acumulada: la que puede participar,
+        # bᵀ·M_LL⁻¹·b (decisión del usuario del 2026-11-09, ADR 0009 §8).
         domain = self.assembler.domain
-        participation, effective = {}, {}
+        participation, effective, total, participating = {}, {}, {}, {}
         for name in TRANSLATIONS:
             if not any(name in node.dofs for node in domain.nodes.values()):
                 continue
             r = dof_unit_vector(domain, name, self.assembler.ndof)
+            Mr = M_global @ r
             gamma = participation_factors(modes, M_global, r)
             participation[name] = gamma
             effective[name] = gamma * gamma
+            total[name] = float(r @ Mr)
+            participating[name] = participating_mass(M_red, T.T @ Mr)
         if effective:
-            _log.info("  -> masa efectiva de los modos calculados: " + ", ".join(
-                f"{name} {float(np.sum(m)):.4e}" for name, m in effective.items()))
+            _log.info("  -> masa efectiva acumulada: " + ", ".join(
+                f"{name} {100.0 * float(np.sum(m)) / participating[name]:.1f} %"
+                if participating[name] > 0.0 else f"{name} —"
+                for name, m in effective.items()))
         free = self.assembler.constraint_set.free_dofs(self.assembler.ndof)
         condensed = tuple(_dof_keys(domain, free[eig.last_massless]))
 
@@ -179,4 +186,6 @@ class ModalSolver:
             participation_factors=participation,
             effective_masses=effective,
             condensed_dofs=condensed,
+            total_mass=total,
+            participating_mass=participating,
         )

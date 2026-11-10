@@ -195,6 +195,18 @@ Para Frame3D con eje del elemento desalineado de los ejes globales, el bloque ro
 - `tests/test_mass_lumping.py` (19 tests): contrato del helper HRZ, diagonalidad estricta por elemento, masa total preservada, entradas positivas, invariancia a la orientación del elemento (frames 2D), bloque-diagonalidad en Frame3D oblicuo, recuperación de la fundamental modal con masa lumped dentro de tolerancia.
 - `tests/test_modal.py::TestModalSolverContract::test_lumped_runs_after_phase2`: cableado modal con `lumping="lumped"`.
 
+## 8. Masa de referencia de la razón de masa efectiva acumulada (decisión del usuario, 2026-11-09)
+
+La razón acumulada $\sum_{n\le k} M_n^*/M_\text{ref}$ dice si los modos calculados bastan (criterio usual: $\geq 0.9$). Hasta ahora el espectral usaba $M_\text{ref} = \mathbf r^\top\mathbf M\mathbf r$, la masa total del modelo, que incluye la de los nudos con apoyo: esa masa no participa en ningún modo y la razón no llegaba a 1 ni con todos los modos (0.875 en un marco de un nivel con dos elementos por barra y masa concentrada; 0.333 con dos tercios de la masa en un apoyo).
+
+**Decisión**: la referencia es la masa que puede participar, la suma de las masas efectivas de **todos** los modos,
+
+$$M_\text{part} = \mathbf b^\top\mathbf M_{LL}^{-1}\mathbf b, \qquad \mathbf b = \mathbf T^\top\mathbf M\mathbf r, \quad \mathbf M_{LL} = \mathbf T^\top\mathbf M\mathbf T ,$$
+
+con los grados de libertad sin masa omitidos (su fila de $\mathbf M_{LL}$ y su componente de $\mathbf b$ son nulas). Con todos los modos la razón vale 1 exactamente, con masa consistente o concentrada, masas de nudo, grados de libertad sin masa y restricciones multipunto; con masa concentrada es la masa de los grados de libertad libres. La alternativa de la masa de los grados de libertad libres, $\mathbf r_L^\top\mathbf M_{LL}\mathbf r_L$, pasa de 1 con masa consistente (1.098 con dos elementos por barra) por el acoplamiento con los apoyos.
+
+`ModalResult` da `participating_mass` y `total_mass` por traslación y `cumulative_effective_mass_ratio(direction)`; `ResponseSpectrumResult`, `participating_mass` (la referencia) y `total_mass` (la masa del modelo, para revisar la entrada de masas). Función matricial: `solidum.math.modal_response.participating_mass`. Pruebas: `tests/test_participating_mass.py`.
+
 ## Consecuencias
 
 **Positivas**

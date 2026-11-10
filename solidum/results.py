@@ -104,6 +104,15 @@ class ModalResult:
         ``((id del nodo, grado de libertad), ...)``: los grados de libertad
         sin masa condensados estáticamente (ADR 0024); vacío si todos tienen
         masa.
+    total_mass
+        ``{"ux": rᵀ·M·r, ...}``: masa total del modelo en cada traslación,
+        incluida la de los nudos con apoyo (para revisar la entrada de
+        masas).
+    participating_mass
+        ``{"ux": bᵀ·M_LL⁻¹·b, ...}``: la masa que puede participar, suma de
+        las masas efectivas de todos los modos; la referencia de
+        :meth:`cumulative_effective_mass_ratio` (decisión del usuario del
+        2026-11-09, ADR 0009 §8).
     """
 
     frequencies_rad: np.ndarray
@@ -115,6 +124,21 @@ class ModalResult:
     participation_factors: dict = field(default_factory=dict)
     effective_masses: dict = field(default_factory=dict)
     condensed_dofs: tuple = ()
+    total_mass: dict = field(default_factory=dict)
+    participating_mass: dict = field(default_factory=dict)
+
+    def cumulative_effective_mass_ratio(self, direction: str) -> np.ndarray:
+        """Razón de masa efectiva acumulada en ``direction`` (``"ux"``…), shape
+        ``(n_modes,)``: ``Σ_{n≤k} Mₙ* / M_part`` con ``M_part`` la masa que
+        puede participar. Vale 1 con todos los modos; el criterio usual pide
+        ≥ 0.9 con los calculados."""
+        if direction not in self.effective_masses:
+            raise ValueError(f"cumulative_effective_mass_ratio: dirección {direction!r} "
+                             f"sin masas efectivas; hay {sorted(self.effective_masses)}.")
+        reference = self.participating_mass.get(direction, 0.0)
+        if reference <= 0.0:
+            return np.zeros_like(self.effective_masses[direction])
+        return np.cumsum(self.effective_masses[direction]) / reference
 
     def free_vibration(
         self,
@@ -562,10 +586,14 @@ class ResponseSpectrumResult:
     combination: str
     damping: float
     direction: np.ndarray
-    # Masa total en la dirección de excitación, ``rᵀ·M·r``. Denominador
-    # correcto de la razón de masa efectiva; ``None`` sólo en resultados
-    # construidos a mano sin masa (se degrada a la suma de los modos).
+    # Masa total en la dirección de excitación, ``rᵀ·M·r``, incluida la de
+    # los nudos con apoyo (para revisar la entrada de masas).
     total_mass: float | None = None
+    # Masa que puede participar, ``bᵀ·M_LL⁻¹·b`` (suma de las masas efectivas
+    # de todos los modos): la referencia de la razón acumulada (decisión del
+    # usuario del 2026-11-09, ADR 0009 §8). ``None`` sólo en resultados
+    # construidos a mano (se degrada a ``total_mass``).
+    participating_mass: float | None = None
     reaction_labels: tuple = ()
     R_per_mode: np.ndarray | None = None
     R_combined: np.ndarray | None = None
@@ -596,13 +624,18 @@ class ResponseSpectrumResult:
     def cumulative_effective_mass_ratio(self) -> np.ndarray:
         """Razón de masa efectiva acumulada por modo, shape ``(n_modes,)``.
 
-        ``Σ_{n≤k} Γ_n² / (rᵀ·M·r)``: la fracción de la masa total en la
-        dirección de excitación que capturan los primeros ``k`` modos.
-        Criterio normativo típico: ≥ 0.9 con los ``n_modes`` incluidos.
-        Normalizar por la suma de los modos calculados (versión anterior)
-        daba siempre 1.0 en el último modo y volvía el criterio trivial.
+        ``Σ_{n≤k} Γ_n² / M_part``: la fracción de la masa que puede
+        participar en la dirección de excitación (``participating_mass``,
+        la suma de las masas efectivas de todos los modos) que capturan los
+        primeros ``k`` modos; vale 1 con todos. Criterio normativo típico:
+        ≥ 0.9 con los ``n_modes`` incluidos. Antes del 2026-11-09 se dividía
+        entre ``rᵀ·M·r``, que incluye la masa de los apoyos y no se alcanzaba
+        ni con todos los modos (0.875 en un marco con dos elementos por
+        barra); antes del 2026-09-22, entre la suma de los modos calculados,
+        que daba siempre 1.0.
         """
-        total = (float(self.total_mass) if self.total_mass is not None
+        total = (float(self.participating_mass) if self.participating_mass is not None
+                 else float(self.total_mass) if self.total_mass is not None
                  else float(np.sum(self.effective_masses)))
         if total <= 0.0:
             return np.zeros_like(self.effective_masses)

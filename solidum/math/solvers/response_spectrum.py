@@ -43,6 +43,7 @@ import numpy as np
 
 from solidum.math.modal_response import (
     combine_modal,
+    participating_mass,
     response_spectrum_cqc,
     response_spectrum_srss,
 )
@@ -327,7 +328,12 @@ class ResponseSpectrumSolver:
             )
 
         effective_masses = gamma * gamma
-        total_mass = float(direction @ (M @ direction))
+        Mr = M @ direction
+        total_mass = float(direction @ Mr)
+        # Referencia de la razón acumulada: la masa que puede participar,
+        # bᵀ·M_LL⁻¹·b (decisión del usuario del 2026-11-09, ADR 0009 §8).
+        T = self.assembler.constraint_set.build(self.assembler.ndof)[0]
+        part_mass = participating_mass((T.T @ M @ T).tocsr(), T.T @ Mr)
 
         # Reacciones de los apoyos: las de cada modo, (K − ωₙ²·M)·uₙ en esas
         # filas (la ecuación del modo; sin amortiguamiento, que está en el
@@ -346,7 +352,11 @@ class ResponseSpectrumSolver:
             f"  -> {self.n_modes} modos combinados con {self.combination}. "
             f"ξ={self.damping:.3f}. "
             f"Masa efectiva acumulada: "
-            f"{float(np.sum(effective_masses)):.3e}."
+            f"{100.0 * float(np.sum(effective_masses)) / part_mass:.1f} % de la que puede "
+            f"participar ({part_mass:.4e}; total del modelo {total_mass:.4e})."
+            if part_mass > 0.0 else
+            f"  -> {self.n_modes} modos combinados con {self.combination}: sin masa en la "
+            f"dirección de excitación."
         )
 
         return ResponseSpectrumResult(
@@ -359,6 +369,7 @@ class ResponseSpectrumSolver:
             damping=self.damping if self.combination == "CQC" else 0.0,
             direction=direction.copy(),
             total_mass=total_mass,
+            participating_mass=part_mass,
             reaction_labels=reaction_labels(self.assembler.domain, dofs),
             R_per_mode=R_per_mode,
             R_combined=R_combined,

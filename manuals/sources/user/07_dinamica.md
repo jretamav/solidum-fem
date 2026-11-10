@@ -36,7 +36,7 @@ M = asm.assemble_mass_matrix()
 gamma = participation_factors(res.modes, M, r)              # masas efectivas: gamma**2
 ```
 
-La suma de las masas efectivas de los modos calculados se escribe en el registro. La razón de masa acumulada (el criterio del 90 %) todavía no está en `ModalResult`: con qué masa total se compara es una decisión pendiente.
+**Masa efectiva acumulada** (el criterio del 90 %): `res.cumulative_effective_mass_ratio("ux")` da $\sum_{n\le k} M_n^*/M_\text{part}$ para cada modo, y el registro escribe el porcentaje alcanzado. La referencia es la masa que puede participar, $M_\text{part} = \mathbf b^\top\mathbf M_{LL}^{-1}\mathbf b$ con $\mathbf b = \mathbf T^\top\mathbf M\mathbf r$ (`res.participating_mass["ux"]`), la suma de las masas efectivas de todos los modos: la razón llega a 1 con todos ellos. Con masa concentrada es la masa de los nudos libres; la de los apoyos no participa en ningún modo y no cuenta (ADR 0009 §8). `res.total_mass["ux"]` es la masa total del modelo, apoyos incluidos, para revisar la entrada.
 
 ```yaml
 nodes:
@@ -384,7 +384,7 @@ solver:
   damping: 0.05              # ξ — sólo usado por CQC
 ```
 
-**Salida**: `ResponseSpectrumResult` con `u_combined` (envolvente, positiva), `u_per_mode` (contribución modal con signo), `participation_factors` ($\Gamma_n$), `effective_masses` ($\Gamma_n^2$), `frequencies_rad`, `combination`, `damping`, `direction`. Método `.cumulative_effective_mass_ratio()` para verificar que la masa modal acumulada alcanza el objetivo normativo ($\geq 0.9$).
+**Salida**: `ResponseSpectrumResult` con `u_combined` (envolvente, positiva), `u_per_mode` (contribución modal con signo), `participation_factors` ($\Gamma_n$), `effective_masses` ($\Gamma_n^2$), `frequencies_rad`, `combination`, `damping`, `direction`, `total_mass` (masa total del modelo en la dirección, apoyos incluidos) y `participating_mass` (la que puede participar). Método `.cumulative_effective_mass_ratio()` para verificar que la masa modal acumulada alcanza el objetivo normativo ($\geq 0.9$): se divide entre `participating_mass`, así que vale 1 con todos los modos (ADR 0009 §8).
 
 **Cuándo usarlo**: diseño sísmico contra espectros normativos (ASCE 7, Eurocódigo 8, NCh 433, NTC-DS México). Diagnóstico de qué modos dominan la respuesta en una dirección de excitación.
 

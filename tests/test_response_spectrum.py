@@ -565,11 +565,12 @@ class TestCumulativeMassRatio(unittest.TestCase):
         cum = result.cumulative_effective_mass_ratio()
         self.assertEqual(cum.size, 2)
         self.assertGreater(cum[1], cum[0])
-        # Normalizada por la masa total r^T M r (auditoria 2026-09-22): con
-        # 2 de 3 modos no alcanza 1.0, y coincide con la formula explicita.
+        # Normalizada por la masa que puede participar (bᵀ·M_LL⁻¹·b, decisión
+        # del usuario del 2026-11-09): con 2 de 3 modos no alcanza 1.0, y
+        # coincide con la fórmula explícita.
         self.assertLess(cum[-1], 1.0)
         self.assertGreater(cum[-1], 0.5)
-        expected = np.cumsum(result.effective_masses) / result.total_mass
+        expected = np.cumsum(result.effective_masses) / result.participating_mass
         np.testing.assert_allclose(cum, expected, rtol=1e-12)
 
 

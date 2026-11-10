@@ -148,6 +148,32 @@ def participation_factors(
     return modes.T @ (M @ direction)
 
 
+def participating_mass(M_red, b_red: np.ndarray) -> float:
+    """Masa que puede participar en la dirección ``r``: la suma de las masas
+    efectivas de **todos** los modos, ``bᵀ·M_LL⁻¹·b`` con ``b = Tᵀ·M·r`` y
+    ``M_LL = Tᵀ·M·T`` reducidas a los grados de libertad libres.
+
+    Es la masa de referencia de la razón de masa efectiva acumulada
+    (decisión del usuario del 2026-11-09, ADR 0009 §8): con todos los modos
+    la razón vale 1 exactamente, con masa consistente o concentrada, masas
+    de nudo, grados de libertad sin masa (su fila de ``M`` y su componente
+    de ``b`` son nulas: se omiten) y restricciones multipunto. Con masa
+    concentrada es la masa de los grados de libertad libres; no incluye la de
+    los apoyos, que no participa en ningún modo.
+    """
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as spla
+
+    M_red = sp.csr_matrix(M_red)
+    b = np.asarray(b_red, dtype=float).ravel()
+    mass = np.flatnonzero(M_red.diagonal() != 0.0)
+    if mass.size == 0:
+        return 0.0
+    b_m = b[mass]
+    x = spla.splu(M_red[mass][:, mass].tocsc()).solve(b_m)
+    return float(b_m @ x)
+
+
 def response_spectrum_srss(
     modes: np.ndarray,
     frequencies_rad: np.ndarray,

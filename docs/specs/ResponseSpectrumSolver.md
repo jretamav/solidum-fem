@@ -48,11 +48,11 @@ Cuando $\xi \to 0$ o $r \to 0$: $\rho_{ij} \to \delta_{ij}$ y CQC degenera a SRS
 - `u_per_mode[ndof, n_modes]` contribución modal individual con signo.
 - `frequencies_rad[n_modes]` frecuencias naturales empleadas.
 - `participation_factors[n_modes]` ($\Gamma_n$).
-- `effective_masses[n_modes]` ($\Gamma_n^2$). Suma converge a la masa total proyectada en la dirección al incluir suficientes modos.
+- `effective_masses[n_modes]` ($\Gamma_n^2$). Su suma sobre todos los modos es `participating_mass` $= \mathbf b^\top\mathbf M_{LL}^{-1}\mathbf b$ (la masa que puede participar); `total_mass` $= \mathbf r^\top\mathbf M\mathbf r$ incluye además la de los apoyos.
 - `combination` (`"SRSS"` o `"CQC"`).
 - `damping` (ξ usado para CQC; 0.0 si SRSS).
 - `direction[ndof]` vector de excitación.
-- Método `.cumulative_effective_mass_ratio()` para verificar el porcentaje de masa modal capturado.
+- Método `.cumulative_effective_mass_ratio()` para verificar el porcentaje de masa modal capturado, dividido entre `participating_mass` (ADR 0009 §8): vale 1 con todos los modos.
 
 ---
 
@@ -231,3 +231,4 @@ references:
 - **2026-09-22** · Auditoría global: `cumulative_effective_mass_ratio` normaliza por la masa total en la dirección de excitación `rᵀ·M·r` (nuevo campo `total_mass` del resultado); antes dividía por la suma de los modos calculados, que vale siempre 1.0 en el último modo y volvía trivial el criterio del 90 %.
 - **2026-09-30** · Auditoría de las MPC (ADR 0004): la spec declaraba las restricciones multipunto fuera de alcance, pero el `ModalSolver` interno ya las reduce con `T` y la combinación reproduce el oráculo del nodo fundido hasta el redondeo (SRSS y CQC, dirección ux y uy: `u_combined`, `u_per_mode`, `Γ`, masas efectivas y `total_mass`; `tests/test_mpc_dynamic.py`). Se documentan como admitidas, con la nota de §7 sobre la masa efectiva cuando `r` no cumple las restricciones. Sin cambio de código ni de física.
 - **2026-11-09** · Reacciones de los apoyos ([ADR 0030](../adr/0030-reacciones-en-los-analisis-dinamicos.md)): la de cada modo, $(\mathbf K - \omega_n^2\mathbf M)\mathbf u_n$ en los apoyos (`R_per_mode`), combinada como los desplazamientos (`R_combined`); `total_reaction("ux")` suma en cada modo antes de combinar (cortante basal). El de cada modo es $-M_n^*S_a$ a 1e-9. Combinación genérica `combine_modal`. Test: `tests/test_dynamic_reactions.py`.
+- **2026-11-09** · Masa de referencia de la razón acumulada (decisión del usuario, ADR 0009 §8): $M_\text{part} = \mathbf b^\top\mathbf M_{LL}^{-1}\mathbf b$, la suma de las masas efectivas de todos los modos, en vez de $\mathbf r^\top\mathbf M\mathbf r$, que incluye la masa de los apoyos y no se alcanzaba ni con todos los modos (0.875 con dos elementos por barra y masa concentrada). Criterio: con todos los modos la razón vale 1 a 1e-10 con masa consistente y concentrada, con masa en un apoyo y en el edificio de cortante. Test: `tests/test_participating_mass.py`.
