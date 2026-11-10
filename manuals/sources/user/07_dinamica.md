@@ -63,6 +63,21 @@ solver:
 La densidad es *obligatoria* para todo material involucrado en análisis modal o transitorio. La omisión lanza `ValueError` (ADR 0008) listando los materiales afectados por nombre antes de iniciar el cálculo.
 ```
 
+### Modal sobre el estado de una etapa (ADR 0031)
+
+Después de la gravedad o de un empuje, los periodos dependen del estado: la carga axial reduce la rigidez lateral (P-Δ) y el agrietamiento la reduce aún más. `run_modal` con `previous=` usa la **rigidez tangente del estado** de esa etapa:
+
+```python
+grav = solidum.run(dom, assembler=asm, solver=NonlinearSolver(asm, num_steps=4), F_applied=F_g)
+modos = solidum.run_modal(dom, assembler=asm, n_modes=6, previous=grav)   # mismo assembler
+```
+
+- Incluye la rigidez geométrica de los elementos corrotacionales (`Frame2DEulerCorot`…), la rigidez dañada del daño y del concreto agrietado y, en la plasticidad, la de descarga, que es elástica (como la perturbación lineal de Abaqus). Con elementos de cinemática lineal (`Frame2DEuler`) no hay efecto P-Δ.
+- No cambia el estado: lo que sigue continúa la etapa anterior.
+- Un autovalor negativo indica que el estado es inestable en ese modo (por ejemplo, una carga axial por encima de la de pandeo): se reporta con su signo en `eigenvalues`, con frecuencia y periodo `NaN`, en `unstable_modes`, y con un aviso.
+- `run_harmonic` y `run_response_spectrum` aceptan `previous=` con la misma regla; el espectral se rechaza si hay modos inestables.
+- Hace falta el `assembler` de la etapa (guarda el estado interno de los elementos).
+
 ### Revisar las masas: masa total y centro de masa
 
 Antes de un análisis dinámico conviene revisar la masa que entra al modelo (densidades y masas de nudo):

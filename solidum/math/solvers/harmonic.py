@@ -43,13 +43,13 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from solidum.math.damping import resolve_rayleigh_config
-from solidum.math.solvers._shared import _log
+from solidum.math.solvers._shared import LinearizedStateMixin, _log
 from solidum.registry import SolverRegistry
 from solidum.results import HarmonicResult, reaction_dofs, reaction_labels, reactions_from_residual
 
 
 @SolverRegistry.register
-class HarmonicSolver:
+class HarmonicSolver(LinearizedStateMixin):
     """Análisis de respuesta forzada armónica (ADR 0009 fase 6).
 
     Parameters
@@ -145,10 +145,9 @@ class HarmonicSolver:
     def solve(self) -> HarmonicResult:
         _log.info("--- INICIANDO SOLVER HARMONIC ---")
 
-        # Ensamblar K y M (lineal). Para la respuesta armónica K es la
-        # rigidez en u=0 (tangente inicial); el análisis es lineal.
-        self.assembler.assemble_system()
-        K = self.assembler.K_global
+        # K: la rigidez en u = 0, o la tangente del estado de la etapa que
+        # continúa (ADR 0031); el análisis es lineal alrededor de ese estado.
+        K = self._state_stiffness()
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
         alpha_r, beta_r = resolve_rayleigh_config(

@@ -48,7 +48,7 @@ from solidum.math.modal_response import (
     response_spectrum_srss,
 )
 from solidum.math.rigid_body import dof_unit_vector
-from solidum.math.solvers._shared import _log
+from solidum.math.solvers._shared import LinearizedStateMixin, _log
 from solidum.math.solvers.modal import ModalSolver
 from solidum.registry import SolverRegistry
 from solidum.results import (
@@ -158,7 +158,7 @@ def spectrum_tabulated(
 
 
 @SolverRegistry.register
-class ResponseSpectrumSolver:
+class ResponseSpectrumSolver(LinearizedStateMixin):
     """Análisis de respuesta espectral por combinación modal (ADR 0009
     fase 7).
 
@@ -299,7 +299,16 @@ class ResponseSpectrumSolver:
             sigma=self.sigma,
             lumping=self.lumping,
         )
+        # Sobre el estado de una etapa (ADR 0031): el modal interno linealiza
+        # alrededor de él.
+        modal._base_U = self._base_U
         modal_result = modal.solve()
+        if modal_result.unstable_modes.size:
+            raise ValueError(
+                "ResponseSpectrumSolver: el estado sobre el que se calcula tiene modos "
+                f"inestables (autovalores negativos en los modos "
+                f"{[int(i) + 1 for i in modal_result.unstable_modes]}): no hay respuesta "
+                "espectral. Revise la carga de la etapa (¿por encima de la de pandeo?).")
 
         # Necesitamos M para los factores de participación y la
         # combinación. La masa ya está cacheada en el assembler tras
@@ -338,7 +347,7 @@ class ResponseSpectrumSolver:
         # Reacciones de los apoyos: las de cada modo, (K − ωₙ²·M)·uₙ en esas
         # filas (la ecuación del modo; sin amortiguamiento, que está en el
         # espectro), combinadas como cualquier otra respuesta.
-        K = self.assembler.K_global
+        K = modal.K_used
         dofs = reaction_dofs(self.assembler)
         R_per_mode = np.zeros((dofs.size, u_per_mode.shape[1]))
         for n, w in enumerate(modal_result.frequencies_rad):

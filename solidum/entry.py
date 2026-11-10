@@ -216,12 +216,23 @@ def run(
     return result
 
 
+def _require_stage_assembler(previous, assembler_given: bool, where: str) -> None:
+    """Un análisis sobre el estado de una etapa necesita el ensamblador de esa
+    etapa: guarda el estado interno de los elementos (ADR 0026, 0031)."""
+    if not assembler_given:
+        raise ValueError(
+            f"{where}: con 'previous' pase también el 'assembler' de la etapa "
+            f"anterior; guarda el estado interno de los elementos y uno nuevo "
+            f"partiría del estado virgen.")
+
+
 def run_modal(
     domain: Domain,
     *,
     assembler: Assembler | None = None,
     solver: ModalSolver | None = None,
     n_modes: int | None = None,
+    previous: SolveResult | TransientResult | None = None,
 ) -> ModalResult:
     """Ejecuta un análisis modal y retorna el resultado.
 
@@ -240,12 +251,19 @@ def run_modal(
     n_modes
         Número de modos a calcular cuando ``solver is None``. Requerido en
         ese caso; ignorado si ``solver`` se pasa explícitamente.
+    previous
+        Etapa de la que continúa (ADR 0031): el análisis linealiza alrededor
+        de su estado final con la rigidez tangente (P-Δ, daño), sin
+        cambiarlo. Requiere el ``assembler`` de esa etapa, que guarda el
+        estado interno de los elementos.
 
     Returns
     -------
     ModalResult
         Resultado inmutable. Queda también en ``domain.last_result``.
     """
+    # El solver dado trae su ensamblador.
+    assembler_given = assembler is not None or solver is not None
     if domain.total_dofs == 0:
         domain.generate_equation_numbers()
     if assembler is None:
@@ -257,6 +275,9 @@ def run_modal(
             )
         solver = ModalSolver(assembler, n_modes=n_modes)
 
+    if previous is not None:
+        _require_stage_assembler(previous, assembler_given, 'run_modal')
+        solver.continue_from(previous)
     result = solver.solve()
     domain.last_result = result
     return result
@@ -420,6 +441,7 @@ def run_harmonic(
     *,
     assembler: Assembler | None = None,
     solver: HarmonicSolver | None = None,
+    previous: SolveResult | TransientResult | None = None,
     **solver_kwargs,
 ) -> HarmonicResult:
     """Ejecuta un análisis de respuesta armónica y retorna el resultado.
@@ -441,6 +463,11 @@ def run_harmonic(
         Parámetros del constructor de :class:`HarmonicSolver`
         (``omega`` / ``omega_min`` / ``omega_max`` / ``n_omega`` /
         ``scale`` / ``F_amplitude`` / ``rayleigh`` / ``lumping``).
+    previous
+        Etapa de la que continúa (ADR 0031): el análisis linealiza alrededor
+        de su estado final con la rigidez tangente (P-Δ, daño), sin
+        cambiarlo. Requiere el ``assembler`` de esa etapa, que guarda el
+        estado interno de los elementos.
 
     Returns
     -------
@@ -448,6 +475,8 @@ def run_harmonic(
         Amplitud compleja del desplazamiento para cada frecuencia del
         barrido. Queda también en ``domain.last_result``.
     """
+    # El solver dado trae su ensamblador.
+    assembler_given = assembler is not None or solver is not None
     if domain.total_dofs == 0:
         domain.generate_equation_numbers()
     if assembler is None:
@@ -455,6 +484,9 @@ def run_harmonic(
     if solver is None:
         solver = HarmonicSolver(assembler, **solver_kwargs)
 
+    if previous is not None:
+        _require_stage_assembler(previous, assembler_given, 'run_harmonic')
+        solver.continue_from(previous)
     result = solver.solve()
     domain.last_result = result
     return result
@@ -465,6 +497,7 @@ def run_response_spectrum(
     *,
     assembler: Assembler | None = None,
     solver: ResponseSpectrumSolver | None = None,
+    previous: SolveResult | TransientResult | None = None,
     **solver_kwargs,
 ) -> ResponseSpectrumResult:
     """Ejecuta un análisis de respuesta espectral y retorna el resultado.
@@ -487,6 +520,11 @@ def run_response_spectrum(
         Parámetros del constructor de :class:`ResponseSpectrumSolver`
         (``n_modes``, ``direction``, ``spectrum``, ``combination``,
         ``damping``, ``sigma``, ``lumping``).
+    previous
+        Etapa de la que continúa (ADR 0031): el análisis linealiza alrededor
+        de su estado final con la rigidez tangente (P-Δ, daño), sin
+        cambiarlo. Requiere el ``assembler`` de esa etapa, que guarda el
+        estado interno de los elementos.
 
     Returns
     -------
@@ -494,6 +532,8 @@ def run_response_spectrum(
         Respuesta máxima envolvente. Queda también en
         ``domain.last_result``.
     """
+    # El solver dado trae su ensamblador.
+    assembler_given = assembler is not None or solver is not None
     if domain.total_dofs == 0:
         domain.generate_equation_numbers()
     if assembler is None:
@@ -501,6 +541,9 @@ def run_response_spectrum(
     if solver is None:
         solver = ResponseSpectrumSolver(assembler, **solver_kwargs)
 
+    if previous is not None:
+        _require_stage_assembler(previous, assembler_given, 'run_response_spectrum')
+        solver.continue_from(previous)
     result = solver.solve()
     domain.last_result = result
     return result
@@ -535,11 +578,23 @@ def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
         elif kind == "thermal_transient":
             r = run_thermal_transient(domain, assembler=assembler, solver=solver,
                                       previous=previous, step_callback=step_callback)
+        elif kind in ("modal", "harmonic", "spectrum"):
+            # Perturbación lineal alrededor del estado de la etapa anterior
+            # (ADR 0031): no lo cambia, así que la etapa siguiente continúa la
+            # última que sí lo cambió.
+            if previous is not None and not isinstance(previous, (SolveResult, TransientResult)):
+                raise ValueError(
+                    f"{where}: un análisis {kind!r} linealiza alrededor de un estado "
+                    f"mecánico; la etapa anterior es {type(previous).__name__}.")
+            run_fn = {"modal": run_modal, "harmonic": run_harmonic,
+                      "spectrum": run_response_spectrum}[kind]
+            r = run_fn(domain, assembler=assembler, solver=solver, previous=previous)
+            names.append(stage['name'])
+            results.append(r)
+            continue
         else:
             raise ValueError(
-                f"{where}: las etapas admiten solvers estáticos y en el tiempo; un "
-                f"análisis {kind!r} sobre el estado de una etapa está pendiente de una "
-                f"decisión física (qué rigidez usa).")
+                f"{where}: tipo de análisis {kind!r} no admitido en una etapa.")
         names.append(stage['name'])
         results.append(r)
         previous = r

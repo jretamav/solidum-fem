@@ -113,6 +113,11 @@ class ModalResult:
         las masas efectivas de todos los modos; la referencia de
         :meth:`cumulative_effective_mass_ratio` (decisión del usuario del
         2026-11-09, ADR 0009 §8).
+    eigenvalues
+        Autovalores ``λₙ = ωₙ²`` con su signo, shape ``(n_modes,)``. Uno
+        negativo indica que el estado sobre el que se calculó el modal (la
+        rigidez tangente de una etapa, ADR 0031) es inestable en ese modo:
+        su frecuencia y su periodo son ``NaN`` (:attr:`unstable_modes`).
     """
 
     frequencies_rad: np.ndarray
@@ -126,6 +131,15 @@ class ModalResult:
     condensed_dofs: tuple = ()
     total_mass: dict = field(default_factory=dict)
     participating_mass: dict = field(default_factory=dict)
+    eigenvalues: np.ndarray | None = None
+
+    @property
+    def unstable_modes(self) -> np.ndarray:
+        """Índices (desde 0) de los modos con autovalor negativo: el estado
+        sobre el que se calculó (ADR 0031) es inestable en ellos."""
+        if self.eigenvalues is None:
+            return np.empty(0, dtype=np.int64)
+        return np.flatnonzero(np.asarray(self.eigenvalues) < 0.0)
 
     def cumulative_effective_mass_ratio(self, direction: str) -> np.ndarray:
         """Razón de masa efectiva acumulada en ``direction`` (``"ux"``…), shape

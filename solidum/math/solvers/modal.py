@@ -10,14 +10,14 @@ from solidum.math.linalg import EigenSolver
 from solidum.math.linalg.eigen import SemidefiniteMassError
 from solidum.math.modal_response import participating_mass, participation_factors
 from solidum.math.rigid_body import dof_unit_vector
-from solidum.math.solvers._shared import _dof_keys, _dof_labels, _log
+from solidum.math.solvers._shared import LinearizedStateMixin, _dof_keys, _dof_labels, _log
 from solidum.math.solvers.diagnostics import MasslessDofsError
 from solidum.registry import SolverRegistry
 from solidum.results import ModalResult
 
 
 @SolverRegistry.register
-class ModalSolver:
+class ModalSolver(LinearizedStateMixin):
     """Análisis modal: frecuencias propias y modos de vibración (ADR 0009 fase 1).
 
     PIPELINE_KIND = "modal" — ``run_yaml`` despacha a ``run_modal``.
@@ -34,6 +34,13 @@ class ModalSolver:
     de libertad con masa; si el problema no tiene solución, se lanza
     :class:`~solidum.math.solvers.diagnostics.MasslessDofsError`, que los
     nombra. El resultado los lista en ``condensed_dofs``.
+
+    Sobre el estado de una etapa (ADR 0031): con ``continue_from(previous)``
+    (o ``run_modal(..., previous=...)``) usa la rigidez tangente del estado
+    que dejó la etapa, no la elástica: los periodos con P-Δ tras la gravedad,
+    o los de la estructura agrietada tras un empuje. Un autovalor negativo
+    (estado inestable en ese modo) se reporta con su signo en
+    ``eigenvalues``, con frecuencia y periodo ``NaN`` y un aviso.
 
     Participación modal: el resultado trae, para cada traslación del modelo
     (``ux``, ``uy``, ``uz``), los factores de participación ``Γₙ = φₙᵀ·M·r``
@@ -95,8 +102,8 @@ class ModalSolver:
     def solve(self) -> ModalResult:
         _log.info("--- INICIANDO SOLVER MODAL ---")
 
-        self.assembler.assemble_system()
-        K_global = self.assembler.K_global
+        K_global = self._state_stiffness()
+        self.K_used = K_global
         M_global = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
         K_red, M_red, T = self.assembler.reduce_pair(K_global, M_global)
@@ -122,22 +129,33 @@ class ModalSolver:
                 f"{K_red.shape[0] - eig.last_massless.size} con masa."
             )
 
-        # Clip de autovalores ligeramente negativos por ruido numérico
-        # (modos de cuerpo rígido o casi). El cero exacto produce T = ∞,
-        # que se reporta tal cual.
+        # Autovalores casi nulos por ruido numérico (modos de cuerpo rígido o
+        # casi): cero, con T = ∞. Uno negativo de verdad (rigidez tangente
+        # indefinida: el estado de la etapa es inestable en ese modo) no se
+        # recorta (ADR 0031): queda con su signo en ``eigenvalues`` y con
+        # frecuencia y periodo NaN.
         lam_max = float(np.max(np.abs(lambdas))) if lambdas.size else 0.0
         lambdas = np.where(
             np.abs(lambdas) < MODAL_EIGENVALUE_ZERO_RTOL * lam_max, 0.0, lambdas,
         )
-        lambdas = np.clip(lambdas, 0.0, None)
+        unstable = np.flatnonzero(lambdas < 0.0)
+        if unstable.size:
+            _log.warning(
+                "ModalSolver: %d autovalor(es) negativo(s) (modos %s, λ = %s): la "
+                "rigidez es indefinida y el estado es inestable en esos modos (p. ej. "
+                "una carga axial por encima de la de pandeo). Se reportan con su signo "
+                "en `eigenvalues`; su frecuencia y su periodo son NaN.",
+                unstable.size, ", ".join(str(i + 1) for i in unstable[:6]),
+                ", ".join(f"{lambdas[i]:.3e}" for i in unstable[:6]))
 
-        omegas = np.sqrt(lambdas)
+        with np.errstate(invalid="ignore"):
+            omegas = np.where(lambdas >= 0.0, np.sqrt(np.abs(lambdas)), np.nan)
         frequencies_hz = omegas / (2.0 * np.pi)
         with np.errstate(divide="ignore", invalid="ignore"):
             periods = np.where(
                 frequencies_hz > 0.0,
                 1.0 / frequencies_hz,
-                np.inf,
+                np.where(np.isnan(frequencies_hz), np.nan, np.inf),
             )
 
         modes = np.asarray(T @ phi_red)
@@ -188,4 +206,5 @@ class ModalSolver:
             condensed_dofs=condensed,
             total_mass=total,
             participating_mass=participating,
+            eigenvalues=np.asarray(lambdas, dtype=float),
         )

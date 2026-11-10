@@ -196,19 +196,42 @@ class TestErrores(_Quiet):
         self.assertIn("stages[2]: falta el bloque 'solver'", msg)
 
     def test_modal_en_una_etapa(self):
+        """Un modal en una etapa linealiza alrededor del estado de la anterior
+        (ADR 0031) sin cambiarlo: el empuje siguiente continúa la gravedad."""
         text = _MODEL + textwrap.dedent("""\
             stages:
               - name: gravedad
                 loads:
                   point_loads:
-                    - {node_id: 4, uy: -1.0e5}
-                solver: {type: LinearSolver}
+                    - {node_id: 4, uy: -1.0e6}
+                solver: {type: NonlinearSolver, num_steps: 4}
               - name: modos
                 solver: {type: ModalSolver, n_modes: 2}
+              - name: empuje
+                loads:
+                  point_loads:
+                    - {node_id: 4, ux: 1.0e5}
+                solver:
+                  type: IndirectDisplacementSolver
+                  control:
+                    - {node: 4, dof: ux, coef: 1.0}
+                  initial_dl: 0.004
+                  control_target: 0.06
+                  max_lambda: 1.0e9
+                  max_steps: 500
             """)
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "decisión física"):
-                run_yaml(_write(tmp, text))
+            res = run_yaml(_write(tmp, text))
+            ref = run_yaml(_write(tmp, _STATIC_STAGES))
+        self.assertEqual(res.names, ("gravedad", "modos", "empuje"))
+        np.testing.assert_allclose(res["empuje"].U, ref["empuje"].U, rtol=0, atol=1e-12)
+        dom, top = _python_model()
+        asm = Assembler(dom)
+        r1 = solidum.run(dom, assembler=asm, solver=NonlinearSolver(asm, num_steps=4),
+                         F_applied=_load(dom, top, "uy", -1.0e6))
+        modal = solidum.run_modal(dom, assembler=asm, n_modes=2, previous=r1)
+        np.testing.assert_allclose(res["modos"].frequencies_rad, modal.frequencies_rad,
+                                   rtol=1e-12)
 
     def test_estatico_tras_transitorio(self):
         text = _MODEL + textwrap.dedent("""\

@@ -211,6 +211,54 @@ class TransientTerminationMixin:
                 f"el modelo entre los dos?")
 
 
+class LinearizedStateMixin:
+    """Análisis lineal alrededor del estado de una etapa (ADR 0031, decisión
+    del usuario del 2026-11-09).
+
+    Modal, armónico y espectral (``ModalSolver``, ``HarmonicSolver``,
+    ``ResponseSpectrumSolver``) son perturbaciones lineales. Sin etapa usan la
+    rigidez elástica ``K(0)``. Con :meth:`continue_from` usan la **rigidez
+    tangente del estado** que dejó la etapa: la que dan los elementos en sus
+    desplazamientos con su estado interno y sin incremento adicional, que
+    incluye la rigidez geométrica de los elementos corrotacionales (P-Δ), la
+    de descarga de la plasticidad (elástica, como la perturbación lineal de
+    Abaqus) y la dañada del daño o del concreto agrietado. El estado interno
+    lo guarda el ensamblador: use el mismo de la etapa. No cambia el estado.
+    """
+
+    _base_U = None
+
+    def continue_from(self, previous) -> None:
+        """Hace que el análisis linealice alrededor del estado final de
+        ``previous``: un estático (``SolveResult``) o un transitorio
+        mecánico (``TransientResult``, su último instante)."""
+        from solidum.results import SolveResult, TransientResult
+        if isinstance(previous, SolveResult):
+            U = previous.U
+        elif isinstance(previous, TransientResult):
+            U = previous.u_history[:, -1]
+        else:
+            raise TypeError(
+                f"{type(self).__name__}.continue_from: se esperaba un resultado "
+                f"estático (SolveResult) o un transitorio mecánico "
+                f"(TransientResult); se recibió {type(previous).__name__}.")
+        U = np.asarray(U, dtype=float).ravel()
+        if U.size != self.assembler.ndof:
+            raise ValueError(
+                f"{type(self).__name__}.continue_from: el estado tiene {U.size} grados "
+                f"de libertad y el modelo {self.assembler.ndof}; ¿otro modelo?")
+        self._base_U = U.copy()
+
+    def _state_stiffness(self):
+        """``K(0)`` sin etapa; la tangente del estado de la etapa con ella."""
+        if self._base_U is None:
+            self.assembler.assemble_system()
+            return self.assembler.K_global
+        K_t, _ = self.assembler.assemble_non_linear_system(self._base_U)
+        _log.info("  Rigidez tangente del estado de la etapa anterior (ADR 0031).")
+        return K_t
+
+
 def external_load(F_func, t: float, ndof: int):
     """``(F_crudo, F)``: lo que devuelve ``F_func(t)`` (un ``LoadVector`` lleva
     sus cargas equivalentes, ADR 0027) y su vector global ``(ndof,)``;

@@ -336,6 +336,12 @@ Extiende las etapas del ADR 0026 a los análisis en el tiempo. `continue_from(pr
 
 Extiende el ADR 0004 §3 a los análisis dinámicos. Por decisión del usuario, la reacción es la ecuación de movimiento en las filas de apoyo, `R = F_int + M·ü + C·u̇ − F`, y la parte de amortiguamiento `C·u̇` se reporta aparte (OpenSees deja elegir entre ambas con `-rayleigh`). `TransientTrace` la registra en cada paso guardado, común a los cinco integradores mecánicos; el armónico la da en amplitudes complejas y el espectral por modo (`(K − ωₙ²M)·uₙ`), combinada con `combine_modal`. `total_reaction(dof)` da el cortante basal; en el espectral suma antes de combinar. Se guardan sólo los grados de libertad de apoyo, con el mismo reparto entre apoyos y uniones que el estático.
 
+## ADR 0031 — Análisis lineales sobre el estado de una etapa
+
+**Fecha**: 2026-11-09 · **Estado**: aceptado.
+
+Por decisión del usuario, el modal, el armónico y el espectral que continúan una etapa (`continue_from`, `previous=`, etapas `stages`) linealizan alrededor de su estado con la rigidez tangente que dan los elementos (P-Δ de los corrotacionales, descarga elástica de la plasticidad, rigidez dañada), sin cambiarlo. La mezcla `LinearizedStateMixin` lo comparte. Los autovalores negativos dejan de recortarse a cero: `ModalResult.eigenvalues` con signo y `unstable_modes`. Queda pendiente el `LinearSolver` como etapa.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

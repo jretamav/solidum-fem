@@ -530,7 +530,8 @@ stages:
 - **Etapa en el tiempo** (`NewmarkSolver`, `NewtonNewmarkSolver`, HHT, diferencia central, `ThetaMethodSolver`): parte del estado final de la anterior (ADR 0029); sus cargas se aplican como escalón desde su instante inicial, sobre la carga constante de las anteriores. Tras otra etapa en el tiempo, `t_end` es el instante final absoluto.
 - Con `stages`, el `solver` y las cargas van en cada etapa: declararlos también en el nivel raíz es un error.
 - `run_yaml` devuelve un `StagedResult`: `res["empuje"]` o `res[1]` da el resultado de una etapa, `res.final` el de la última y `res.names` los nombres.
-- Pendientes de una decisión física, y por eso rechazados con un error claro: una etapa estática después de una en el tiempo, y una etapa modal, armónica o espectral sobre el estado de las anteriores.
+- **Etapa modal, armónica o espectral**: linealiza alrededor del estado de la anterior con su rigidez tangente (P-Δ, agrietamiento; ADR 0031) y no lo cambia: la etapa siguiente continúa la última estática o en el tiempo.
+- Pendientes de una decisión física, y por eso rechazados con un error claro: una etapa estática después de una en el tiempo, y un `LinearSolver` como etapa.
 
 ## Salida: `output`
 
