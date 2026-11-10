@@ -476,7 +476,8 @@ def test_tres_triangulos_traccion_hasta_separacion(nombre):
     compresión espuria. Con ψ grande la formulación KOS con ley de modo I
     bloquea (el teórico, 2026-11-10: esfuerzo residual creciente con ψ): el
     obtuso (ψ = 73°) no se separa y el agudo (ψ = 24°) disipa 0.2 % de más.
-    Es la decisión pendiente del modo mixto; la prueba lo deja medido."""
+    Es un elemento aislado, que no puede redistribuir; en una malla no aparece
+    y la formulación se mantiene (decisión 4 del usuario, 2026-11-10)."""
     tri, psi_deg, tol = _TRIANGULOS[nombre]
     coords = tri[_ccw(tri, np.array([[0, 1, 2]]))[0]]
     dom = Domain()
