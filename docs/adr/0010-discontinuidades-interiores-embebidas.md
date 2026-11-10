@@ -131,6 +131,8 @@ A partir de esa activación, el elemento contribuye con su `K_cond` enriquecida.
 
 **El elemento no cambia de clase** — sigue siendo `CST_Embedded2D` antes y después. Lo que cambia es su estado interno (`discontinuity_state: None → instancia`). Esto evita "elementos que mutan de tipo" como concepto arquitectural (que rompería invariantes de assembly, registry, post-proceso).
 
+**Seguimiento de grieta (2026-11-10, decisiones del usuario).** El esquema de arriba elegía el nodo solitario elemento a elemento (recta por el centroide) y en mallas no alineadas daba particiones contradictorias entre vecinos: la grieta se bloqueaba. Desde el 2026-11-10 **el nodo solitario lo dicta la trayectoria** (decisión 1) mediante un **seguimiento global** (decisión 2): un campo escalar por grieta, solución de una conducción anisótropa con conductividad `t⊗t + εI` y condiciones de Dirichlet en la grieta ya formada (Oliver et al. 2004; Riccardi et al. 2017). La trayectoria es su isolínea cero y el lado de cada nodo es su signo, el mismo para todos los vecinos. Si el nodo aislado da `cos ψ ≤ 0`, cambia de lado y la trayectoria pasa por ese vértice (decisión 3, *regla del vértice*). Se implementa en el módulo (`crack_tracking.py`, specs `GlobalCrackTracking` y `PrescribedCrackPath`) sin pieza nueva en el programa principal. Lo dispara el gancho P5: el primer `prepare_step` de cada ronda actualiza toda la región. El elemento sólo recibe la partición (`activate`).
+
 La verificación de activación se ejecuta **al principio del paso, no dentro del Newton local**. Razón: dentro del Newton, σ_I oscila por el predictor lineal y puede cruzar y descruzar el umbral varias veces antes de converger; activar dentro del Newton lleva a chattering. Al principio del paso, σ_I se evalúa con el estado convergido del paso anterior — decisión estable.
 
 ### 6. `l_d = (A/h)·cos(θ−α)` — aportación del Cap. 6, decisión cerrada
@@ -141,7 +143,7 @@ La longitud de la discontinuidad se calcula con la fórmula de Retama (2010) §6
 l_d = (A / h) · cos(θ − α)
 ```
 
-donde `A` es el área del CST, `h` la altura desde el nodo solitario, `θ` el ángulo de la grieta con respecto a `x` global, `α` el ángulo del lado opuesto al nodo solitario. La derivación geométrica está en la tesis: con `l_d` así, el equilibrio del nodo solitario (ec. 6.16) impone `t_n = σ_I` sobre `Γ_d` cuando `n` es la dirección principal. **Corrección (2026-09-29):** sólo se impone la componente normal; la tangencial queda `t_s = σ_II·tan(α − θ)`, nula sólo si `θ = α`, así que la continuidad de tracción no es «fuerte» en sentido completo. El código usa `|cos(θ − α)|`; en un triángulo con ángulo obtuso junto al lado opuesto al nodo solitario, `cos(θ − α) ≤ 0` y ese valor absoluto invierte el signo de `t_n` (grieta que se abre en compresión). Es un punto abierto de la fase 2 del plan de 2026-09-24.
+donde `A` es el área del CST, `h` la altura desde el nodo solitario, `θ` el ángulo de la grieta con respecto a `x` global, `α` el ángulo del lado opuesto al nodo solitario. La derivación geométrica está en la tesis: con `l_d` así, el equilibrio del nodo solitario (ec. 6.16) impone `t_n = σ_I` sobre `Γ_d` cuando `n` es la dirección principal. **Corrección (2026-09-29):** sólo se impone la componente normal; la tangencial queda `t_s = σ_II·tan(α − θ)`, nula sólo si `θ = α`, así que la continuidad de tracción no es «fuerte» en sentido completo. El código usaba `|cos(θ − α)|`; en un triángulo con ángulo obtuso junto al lado opuesto al nodo solitario, `cos(θ − α) ≤ 0` y ese valor absoluto invierte el signo de `t_n` (grieta que se abre en compresión). **Resuelto el 2026-11-10**: `l_d = (A/h)·cos ψ` con su signo (ψ entre la normal de la grieta y la normal al lado opuesto, hacia el nodo solitario). Es válida para todo θ (verificado simbólicamente) y la regla del vértice garantiza `cos ψ > 0`. La forma débil KOS no impone `σ·n = t` punto a punto: `t_n − σ_nn = tanψ·σ_ns`, `t_s − σ_ns = tanψ·σ_ss` (spec del elemento, §4).
 
 Esta fórmula es **decisión cerrada en el ADR** — no se relitiga en specs ni en fases posteriores. La alternativa ingenua `l_d = A/h` (paralela al lado opuesto) sólo coincide cuando la grieta cae exactamente paralela a un lado; en cualquier otra orientación introduce stress locking. Esto se verifica numéricamente en la fase 3 (ver hoja de ruta) como test de aceptación del elemento — el experimento que la tesis no incluyó.
 
@@ -163,6 +165,16 @@ elements:
      cohesive_material: 10, thickness: 0.1}   # activación: Rankine, fija
 ```
 
+Desde el 2026-11-10, un seguimiento de grieta opcional (sin él, uno global por región conexa de elementos embebidos):
+
+```yaml
+crack_trackers:
+  - {id: 1, type: GlobalCrackTracking, epsilon: 1.0e-6}
+  - {id: 2, type: PrescribedCrackPath, points: [[-0.2, 0.0], [0.2, 0.0]]}   # grieta prescrita
+elements:
+  - {id: 1, type: CST_Embedded2D, nodes: [...], material: 1, cohesive_material: 10, crack_tracker: 1}
+```
+
 Decisión: `material` (el bulk) y `cohesive_material` se declaran por separado en el elemento. El bulk se evalúa siempre; el cohesivo entra al sistema sólo tras activación. El parser YAML acepta una sección nueva `cohesive_materials` para no mezclar con la lista de continuos (consecuencia directa de la decisión 1).
 
 ## Hoja de ruta — fases
@@ -175,7 +187,8 @@ Decisión: `material` (el bulk) y `cohesive_material` se declaran por separado e
 | 3b | Bring-up de integración end-to-end + caza del bug dimensional `thickness` en términos cohesivos | 4 tests de cableado + 4 tests de regresión dimensional (`TestThicknessDimensionalConsistency`); ADR §"Caveats y lecciones aprendidas" | Completado (commit `e54b5ce`, 2026-05-18) |
 | 4 | Benchmark Van Vliet faithful (Retama 2010 §8.1) — comparativa con la curva experimental | Test end-to-end, ambas leyes de softening, rama de descarga completa contra experimental | **Validada con grieta prescrita (2026-09-29)**, `tests/user/discontinuities/test_disc_van_vliet.py`: `NonlinearSolver` con control por desplazamiento atraviesa el pico y el ablandamiento (el bloqueo que se atribuía al solver venía de la tangente cohesiva, corregida el 2026-09-23). Pico, deformación en el pico y carga a 20, 50 y 100 µm dentro de la lectura de la fig. 8.3 para las dos leyes. Abierto: más allá de ~100 µm la carga queda por encima de la tesis (pivote comprimido en el borde de la banda). Figura en `docs/user/discontinuities/validacion/`. |
 | 5 | Catálogos + manuales | Entradas en `catalogo_elementos.md` y `catalogo_materiales.md` añadidas en fases 1 y 2; manuales auto-regeneran del MD existente | Cubierto parcialmente; regeneración explícita de manuales con la sección "Materiales cohesivos / Elementos embedded" diferida con la fase 4. |
-| F | Cracking-elements-style sin crack tracking (Brank 2021, Zhang 2018+) | Variante del elemento que elimina la necesidad de tracking trivial | Diferida |
+| E | Seguimiento de grieta (decisiones del usuario del 2026-11-10: nodo solitario por la trayectoria, seguimiento global, regla del vértice; `l_d` con signo) | `GlobalCrackTracking`, `PrescribedCrackPath` (Van Vliet), `tests/user/discontinuities/test_disc_crack_tracking.py`: franjas no alineadas sin conflictos que se separan, astillas, dos grietas | **Completado (2026-11-10).** Pendiente del usuario: modo mixto (bloqueo KOS con ψ grande) y normal de Rankine o de la trayectoria (Σl_d/W hasta 1.009 en Delaunay). |
+| F | Cracking-elements-style sin crack tracking (Brank 2021, Zhang 2018+) | Variante del elemento que elimina la necesidad de tracking trivial | Diferida (alternativa a la fase E) |
 | G | Modo mixto I-II | Extensión del material cohesivo con componente tangencial | Diferida |
 | H | KSON nonsymmetric | Implementación de la variante no simétrica para comparativa académica con KOS | Diferida |
 | I | 3D embedded discontinuity (Tet4_Embedded, etc.) | Cuando entren sólidos 3D al proyecto | Diferida |

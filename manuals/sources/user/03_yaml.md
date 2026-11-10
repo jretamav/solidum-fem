@@ -222,7 +222,7 @@ Los módulos declarados se cargan al principio de la lectura, antes de validar e
 
 Hoy existen dos módulos de usuario:
 
-- `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D` y su familia de materiales cohesivos, con la sección `cohesive_materials` (capítulos *Catálogo de Elementos Finitos* y *Catálogo de Modelos Constitutivos*).
+- `discontinuities`: el elemento con discontinuidad embebida `CST_Embedded2D`, su familia de materiales cohesivos, con la sección `cohesive_materials`, y sus seguimientos de grieta, con la sección `crack_trackers` (capítulos *Catálogo de Elementos Finitos* y *Catálogo de Modelos Constitutivos*).
 - `dissipation_control`: el solver de arco por disipación de energía `DissipationArcLengthSolver` (capítulo *Esquemas de Solución*).
 
 Un modelo puede declarar varios: `user_modules: [discontinuities, dissipation_control]`.

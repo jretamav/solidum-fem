@@ -23,19 +23,25 @@ class DiscontinuityState:
     ----------
     normal : np.ndarray (2,)
         Normal unitaria a ``Γ_d``, fijada al activar (perpendicular a ``σ_I``
-        en criterio Rankine). Apunta hacia el nodo solitario (``Ω⁺``).
+        en criterio Rankine). Apunta hacia el lado del nodo solitario
+        (``Ω⁺``) respecto de la trayectoria.
     tangent : np.ndarray (2,)
         Tangente ``s = (−n_y, n_x)`` (regla de la mano derecha con ``+z``
         saliendo del plano, consistente con Reglas.md §5).
     centroid : np.ndarray (2,)
-        Punto por el que pasa ``Γ_d`` (en CST, el centroide del triángulo).
+        Punto de ``Γ_d`` en el elemento, sólo para posproceso (la posición no
+        entra en las ecuaciones): el centroide en la raíz de una grieta y el
+        punto medio de los cruces de la trayectoria con los lados en el resto.
     solitary_node : int
-        Índice (0, 1 o 2 en CST) del nodo que queda en ``Ω⁺``. Los otros dos
-        forman ``Ω⁻``. La función de soporte ``φ`` vale 1 en este nodo y 0
-        en los otros.
+        Índice (0, 1 o 2 en CST) del nodo que queda en ``Ω⁺``, dictado por la
+        trayectoria. Los otros dos forman ``Ω⁻``. La función de soporte ``φ``
+        vale 1 en este nodo y 0 en los otros.
     l_d : float
         Longitud efectiva de ``Γ_d`` dentro del elemento. Para CST KOS,
-        ``l_d = (A_e/h)·cos(θ − α)`` por el Cap. 6 de Retama (2010).
+        ``l_d = (A_e/h)·cos ψ`` por el Cap. 6 de Retama (2010), positiva por
+        la regla del vértice.
+    crack : int or None
+        Índice de la grieta en el seguimiento que activó el elemento.
     jump_committed : np.ndarray (2,)
         Salto ``[[u]] = ([[u_n]], [[u_s]])`` en frame local, al cierre del
         último paso convergido. Inicializado a cero al activar.
@@ -64,6 +70,7 @@ class DiscontinuityState:
     jump_trial: np.ndarray = field(default_factory=lambda: np.zeros(2))
     cohesive_state_committed: dict = field(default_factory=dict)
     cohesive_state_trial: dict = field(default_factory=dict)
+    crack: int | None = None
 
     def commit(self) -> None:
         """Fija el estado trial (jump + cohesivo) como nuevo committed.

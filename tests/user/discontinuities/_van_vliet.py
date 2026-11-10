@@ -11,7 +11,8 @@ la figura de ``docs/user/discontinuities/validacion/``. Datos de la tesis
 - Dos placas de acero de dos capas de elementos; carga puntual con
   excentricidad e = D/50 y giro libre de las placas.
 - Grieta prescrita: una banda horizontal de elementos embebidos a media
-  altura; el resto, CST estándar.
+  altura, con la trayectoria y = 0 dada (``PrescribedCrackPath``); el resto,
+  CST estándar.
 - Deformación δ: desplazamiento vertical relativo entre dos puntos del eje
   separados L_s = 0.6 D.
 
@@ -32,7 +33,11 @@ from solidum.elements.solid_2d import Tri3
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import NonlinearSolver
-from solidum.user.discontinuities import CST_Embedded2D, CohesiveDamageIsotropic
+from solidum.user.discontinuities import (
+    CST_Embedded2D,
+    CohesiveDamageIsotropic,
+    PrescribedCrackPath,
+)
 
 D, RADIO, PROFUNDIDAD, ESPESOR = 0.200, 0.145, 0.040, 0.100      # [m]
 E_C, NU_C = 39.8e9, 0.2
@@ -69,6 +74,7 @@ def modelo(softening: str, n_lado: int = 7):
     concreto = Elastic2D(E=E_C, nu=NU_C, hypothesis="plane_stress")
     acero = Elastic2D(E=E_ACERO, nu=NU_ACERO, hypothesis="plane_stress")
     cohesivo = CohesiveDamageIsotropic(sigma_t0=SIGMA_T0, G_f=G_F, K_e=K_E, softening=softening)
+    trayectoria = PrescribedCrackPath([[-D, 0.0], [D, 0.0]])
     nodos: dict = {}
 
     def nodo(x, y):
@@ -80,7 +86,8 @@ def modelo(softening: str, n_lado: int = 7):
     def triangulo(a, b, c, tipo):
         eid = len(dom.elements) + 1
         if tipo == "banda":
-            dom.add_element(CST_Embedded2D(eid, [a, b, c], concreto, cohesivo, thickness=ESPESOR))
+            dom.add_element(CST_Embedded2D(eid, [a, b, c], concreto, cohesivo, thickness=ESPESOR,
+                                           crack_tracker=trayectoria))
         else:
             dom.add_element(Tri3(eid, [a, b, c], acero if tipo == "placa" else concreto,
                                  thickness=ESPESOR))

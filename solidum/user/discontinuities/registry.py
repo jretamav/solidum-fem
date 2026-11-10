@@ -23,3 +23,17 @@ class CohesiveMaterialRegistry(Registry):
     SPEC_KIND = "cohesive_material"
     YAML_SECTION = "cohesive_materials"
     YAML_LABEL = "material cohesivo"
+
+
+class CrackTrackerRegistry(Registry):
+    """Algoritmos de seguimiento de grieta: deciden qué elementos embebidos se
+    agrietan y con qué partición (spec ``GlobalCrackTracking``).
+
+    Familia con sección YAML propia (``crack_trackers``) para que un modelo
+    pueda fijar sus parámetros y referenciarlo desde los elementos
+    (``crack_tracker: <id>``, ADR 0020, P3). Sin referencia, cada región
+    conexa de elementos embebidos recibe uno con los valores por omisión.
+    """
+    SPEC_KIND = "crack_tracker"
+    YAML_SECTION = "crack_trackers"
+    YAML_LABEL = "seguimiento de grieta"

@@ -34,7 +34,8 @@ _INTERFAZ_COHESIVA = (
 
 
 def test_hay_specs():
-    assert {p.stem for p in SPEC_PATHS} == {"CST_Embedded2D", "CohesiveDamageIsotropic"}
+    assert {p.stem for p in SPEC_PATHS} == {"CST_Embedded2D", "CohesiveDamageIsotropic",
+                                            "GlobalCrackTracking", "PrescribedCrackPath"}
 
 
 @pytest.mark.parametrize("spec_path", SPEC_PATHS, ids=[p.name for p in SPEC_PATHS])

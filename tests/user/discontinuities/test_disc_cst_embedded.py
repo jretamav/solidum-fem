@@ -300,10 +300,11 @@ class TestLdFormula(unittest.TestCase):
 
     def test_axis_aligned_normal_perpendicular_to_opposite_edge(self):
         # Triángulo (0,0)-(1,0)-(0,1); nodo solitario = 0; lado opuesto entre 1 y 2
-        # de longitud √2 con α = 135°. Si Γ_d tiene tangente s a lo largo del
-        # eje y (θ = 90°), entonces |cos(θ − α)| = |cos(−45°)| = √2/2.
+        # de longitud √2, con normal hacia el nodo 0 n_e = (−1, −1)/√2. Con Γ_d
+        # vertical y n = (−1, 0) hacia el nodo solitario (tangente (0, −1)),
+        # cos ψ = n·n_e = √2/2.
         coords = _ref_triangle_coords()
-        tangent = np.array([0.0, 1.0])
+        tangent = np.array([0.0, -1.0])
         l_d = _compute_ld(coords, tangent, solitary=0)
         A_e = 0.5
         h = math.sqrt(2.0) / 2.0  # altura desde (0,0) al lado entre (1,0)-(0,1)
@@ -311,18 +312,33 @@ class TestLdFormula(unittest.TestCase):
         L_opp = math.sqrt(2.0)
         h_check = 2.0 * A_e / L_opp
         self.assertAlmostEqual(h, h_check, places=14)
-        # cos(θ − α) = cos(π/2 − 3π/4) = cos(−π/4) = √2/2
         expected = (A_e / h) * math.sqrt(2.0) / 2.0
         self.assertAlmostEqual(l_d, expected, places=14)
 
-    def test_invariant_under_n_flip(self):
-        # acceptance.ld_invariante_bajo_reflejo_de_n
+    def test_signo_de_l_d(self):
+        # l_d lleva su signo (desde 2026-11-10): con n apuntando lejos del nodo
+        # solitario, cos ψ < 0 y l_d < 0.
         coords = np.array([[0.0, 0.0], [2.0, 0.0], [0.5, 1.5]])
         tangent = np.array([1.0, 0.5])
         tangent = tangent / np.linalg.norm(tangent)
         l_a = _compute_ld(coords, tangent, solitary=2)
         l_b = _compute_ld(coords, -tangent, solitary=2)
-        self.assertAlmostEqual(l_a, l_b, places=14)
+        self.assertAlmostEqual(l_a, -l_b, places=14)
+
+    def test_invariant_under_n_flip(self):
+        # acceptance.ld_invariante_bajo_reflejo_de_n: la activación orienta n
+        # hacia el nodo solitario, así que n y −n dan el mismo estado.
+        coords = np.array([[0.0, 0.0], [2.0, 0.0], [0.5, 1.5]])
+        n = np.array([0.5, -1.0]) / np.linalg.norm([0.5, -1.0])
+        states = []
+        for sign in (1.0, -1.0):
+            _, emb = _make_pair(coords)
+            emb._activate(sign * n, coords)
+            states.append(emb.discontinuity_state)
+        self.assertEqual(states[0].solitary_node, states[1].solitary_node)
+        self.assertAlmostEqual(states[0].l_d, states[1].l_d, places=14)
+        np.testing.assert_allclose(states[0].normal, states[1].normal, atol=1e-15)
+        self.assertGreater(states[0].l_d, 0.0)
 
 
 # =========================================================================

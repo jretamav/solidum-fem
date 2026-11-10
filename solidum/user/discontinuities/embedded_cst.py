@@ -1,7 +1,9 @@
 """``CST_Embedded2D`` — triángulo CST con discontinuidad interior embebida (KOS).
 
 Fase 2 del ADR 0010. Cinemática enriquecida fiel al Cap. 2, 5, 7 de Retama
-(2010); longitud efectiva ``l_d = (A_e/h)·cos(θ−α)`` del Cap. 6. Ver
+(2010); longitud efectiva ``l_d = (A_e/h)·cos ψ`` del Cap. 6, con su signo. El
+nodo solitario lo dicta la trayectoria (seguimiento global, spec
+``GlobalCrackTracking``). Ver
 ``docs/user/discontinuities/specs/CST_Embedded2D.md`` para la formulación completa.
 """
 from __future__ import annotations
@@ -18,8 +20,14 @@ from solidum.elements.solid_2d import compute_integrands, compute_kinematics_tri
 from solidum.registry import ElementRegistry, MaterialRegistry
 from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
 from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL
+from solidum.user.discontinuities.crack_tracking import (
+    GlobalCrackTracking,
+    default_tracker,
+    register_default,
+    root_partition,
+)
 from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
-from solidum.user.discontinuities.registry import CohesiveMaterialRegistry
+from solidum.user.discontinuities.registry import CohesiveMaterialRegistry, CrackTrackerRegistry
 
 _log = get_logger("user.discontinuities")
 
@@ -62,23 +70,31 @@ class CST_Embedded2D(Element):
         vez activado. Debe declarar ``JUMP_DIM = 2``.
     thickness : float, default 1.0
         Espesor para estado plano.
+    crack_tracker : GlobalCrackTracking, optional
+        Seguimiento de grieta compartido por los elementos de la región. Sin
+        él, cada región conexa de elementos embebidos recibe uno con los
+        valores por omisión.
 
     Notes
     -----
     La activación se evalúa en :meth:`prepare_step`, **al inicio de cada
     paso** del solver no lineal (ADR 0010 §5; evita chattering dentro del
-    Newton). Una vez activada, la discontinuidad es irreversible.
+    Newton), y la decide el seguimiento de grieta: qué elementos se agrietan
+    y con qué nodo solitario. Una vez activada, la discontinuidad es
+    irreversible.
     """
 
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
     REFERENCE_KWARGS = {"material": MaterialRegistry,
-                        "cohesive_material": CohesiveMaterialRegistry}
+                        "cohesive_material": CohesiveMaterialRegistry,
+                        "crack_tracker": CrackTrackerRegistry}
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material, cohesive_material: CohesiveMaterial,
-                 thickness: float = 1.0):
+                 thickness: float = 1.0,
+                 crack_tracker: GlobalCrackTracking | None = None):
         # Validación de bulk (fase 1)
         bulk_name = type(material).__name__
         if bulk_name not in _ACCEPTED_BULKS:
@@ -111,76 +127,90 @@ class CST_Embedded2D(Element):
         self.local_newton_failures = 0
         self._local_newton_warned = False
         super().__init__(element_id, nodes, material)
+        self.crack_tracker = crack_tracker
+        if crack_tracker is None:
+            register_default(self)
+        else:
+            crack_tracker.add(self)
 
     # ------------------------------------------------------------------
     # Hook de activación (ADR 0010 §5)
     # ------------------------------------------------------------------
 
     def prepare_step(self, U_committed: np.ndarray) -> None:
-        """Chequea activación Rankine al inicio del paso con el estado convergido.
+        """Activación al inicio del paso con el estado convergido.
 
-        Solo activa elementos intactos; una vez activado, nunca revierte.
-        Usa el estado committed (no trial) para evitar chattering por el
-        predictor lineal dentro del Newton (ADR 0010 §5).
+        La decide el seguimiento de grieta de la región (spec
+        ``GlobalCrackTracking``): criterio de Rankine, partición dictada por
+        la trayectoria y regla del vértice. El primer elemento de cada ronda
+        la dispara para toda la región; el resto no hace nada. Usa el estado
+        committed (no trial) para evitar chattering por el predictor lineal
+        dentro del Newton (ADR 0010 §5). Una vez activado, nunca revierte.
         """
-        if self.discontinuity_state is not None:
-            return  # ya agrietado, irreversible
+        tracker = self.crack_tracker or default_tracker(self)
+        tracker.prepare_step(self, U_committed)
 
+    def principal_stress(self, U_committed: np.ndarray):
+        """``(σ_I, n)`` del bulk intacto con el campo ``U_committed``: esfuerzo
+        principal mayor y su dirección unitaria (criterio de Rankine)."""
         u_e = self.get_local_displacements(U_committed)
-        coords = self.get_coordinate_matrix(ndim=2)
-        B, _ = compute_kinematics_tri3(coords)
-        strain = B @ u_e
-        sigma, _, _ = self.material.compute_state(strain, self.state.vars[0])
+        B, _ = compute_kinematics_tri3(self.get_coordinate_matrix(ndim=2))
+        sigma, _, _ = self.material.compute_state(B @ u_e, self.state.vars[0])
+        return _max_principal_stress_2d(sigma)
 
-        sigma_I, n_dir = _max_principal_stress_2d(sigma)
-        sigma_t0 = getattr(self.cohesive_material, 'sigma_t0', None)
-        if sigma_t0 is None:
-            return  # cohesivo sin umbral declarado: no activable por Rankine
+    def activate(self, normal: np.ndarray, solitary_node: int, point: np.ndarray,
+                 crack: int | None = None) -> None:
+        """Crea la discontinuidad con la partición dada.
 
-        if sigma_I > sigma_t0:
-            self._activate(n_dir, coords)
+        Parameters
+        ----------
+        normal : (2,)
+            Normal a ``Γ_d`` (Rankine), orientada hacia el nodo solitario.
+        solitary_node : int
+            Índice local (0, 1, 2) del nodo aislado por la trayectoria.
+        point : (2,)
+            Punto de ``Γ_d`` en el elemento (sólo posproceso: la posición no
+            entra en las ecuaciones).
+        crack : int, optional
+            Índice de la grieta en su seguimiento.
 
-    def _activate(self, n_dir: np.ndarray, coords: np.ndarray) -> None:
-        """Materializa la DiscontinuityState al cruzar el umbral.
-
-        Identifica el nodo solitario, orienta `n` hacia él, computa
-        ``l_d = (A_e/h)·cos(θ−α)`` y crea el estado de la discontinuidad.
+        Raises
+        ------
+        ValueError
+            Si ``cos ψ ≤ 0`` (``l_d ≤ 0``): la regla del vértice lo impide en
+            el seguimiento, así que llegar aquí es un error de quien llama.
         """
-        centroid = coords.mean(axis=0)
-
-        # Productos escalares (x_i − centroid) · n para cada nodo
-        rel = coords - centroid
-        signs = rel @ n_dir
-        n_positive = int(np.sum(signs > 0.0))
-
-        # Convención: n apunta hacia el lado donde hay UN nodo (solitario).
-        # Si la dirección elegida deja 2 nodos en lado positivo, invertirla.
-        if n_positive == 2:
-            n_dir = -n_dir
-            signs = -signs
-            n_positive = 1
-        elif n_positive != 1:
-            # Casos degenerados: línea perpendicular pasa exactamente por un nodo,
-            # o todos los nodos están a un solo lado (geometría imposible si el
-            # centroide es el promedio). Defensivo.
-            raise RuntimeError(
-                f"CST_Embedded2D(id={self.id}): activación degenerada — "
-                f"{n_positive} nodos en lado positivo de Γ_d (esperado 1)."
+        coords = self.get_coordinate_matrix(ndim=2)
+        n = np.asarray(normal, dtype=np.float64)
+        n = n / np.linalg.norm(n)
+        tangent = np.array([-n[1], n[0]])
+        l_d = _compute_ld(coords, tangent, solitary_node)
+        if not l_d > 0.0:
+            raise ValueError(
+                f"CST_Embedded2D(id={self.id}): partición con cos ψ ≤ 0 (l_d = {l_d:.3e}); "
+                f"la regla del vértice exige que el nodo solitario cambie de lado."
             )
-
-        solitary = int(np.argmax(signs))
-        tangent = np.array([-n_dir[1], n_dir[0]])
-        l_d = _compute_ld(coords, tangent, solitary)
-
         # Estado committed = jump cero, cohesivo virgen (se llenará en commit
         # tras la primera convergencia post-activación).
         self.discontinuity_state = DiscontinuityState(
-            normal=np.asarray(n_dir, dtype=np.float64),
-            tangent=np.asarray(tangent, dtype=np.float64),
-            centroid=np.asarray(centroid, dtype=np.float64),
-            solitary_node=solitary,
+            normal=n,
+            tangent=tangent,
+            centroid=np.asarray(point, dtype=np.float64).copy(),
+            solitary_node=int(solitary_node),
             l_d=l_d,
+            crack=crack,
         )
+
+    def _activate(self, n_dir: np.ndarray, coords: np.ndarray) -> None:
+        """Activa el elemento como raíz de una grieta con normal ``n_dir``.
+
+        Partición de la raíz (spec ``GlobalCrackTracking`` §4.2): la recta por
+        el centroide, o la del otro lado del nodo intermedio si aquella da
+        ``cos ψ ≤ 0``. El seguimiento incorpora después el elemento a una
+        grieta. Útil para preparar estados agrietados en pruebas.
+        """
+        solitary, n, point = root_partition(np.asarray(coords, dtype=float)[:, :2], n_dir)
+        self.activate(n, solitary, point)
 
     # ------------------------------------------------------------------
     # API principal: rigidez + fuerzas internas (estado intacto o agrietado)
@@ -402,23 +432,23 @@ def _max_principal_stress_2d(sigma: np.ndarray):
 
 
 def _compute_ld(coords: np.ndarray, tangent: np.ndarray, solitary: int) -> float:
-    """Longitud efectiva de Γ_d en el CST: ``l_d = (A_e/h)·|cos(θ − α)|``.
+    """Longitud efectiva de Γ_d en el CST: ``l_d = (A_e/h)·cos ψ``, con su signo.
 
-    Implementa la fórmula del Cap. 6 de Retama (2010). ``θ`` es el ángulo de
-    la tangente a ``Γ_d`` y ``α`` el del lado opuesto al nodo solitario,
-    ambos respecto a ``x`` global. ``A_e`` y ``h`` se calculan a partir de
-    las coordenadas. El valor absoluto del coseno absorbe la convención de
-    sentido (la longitud es positiva).
+    Implementa la fórmula del Cap. 6 de Retama (2010) (ec. 6.24), válida para
+    todo ángulo. ``ψ`` es el ángulo entre la normal ``n = (t_y, −t_x)`` de
+    ``Γ_d`` y la normal ``n_e`` al lado opuesto al nodo solitario, orientada
+    hacia él; ``A_e/h`` es la mitad de la longitud de ese lado. Equivale a
+    ``(A_e/h)·cos(θ − α)`` con el lado recorrido de modo que su normal derecha
+    sea ``n_e``. Hasta el 2026-11-10 se tomaba ``|cos|``; desde entonces la
+    regla del vértice garantiza ``cos ψ > 0`` en todo elemento activado.
     """
-    x0, x1, x2 = coords[0], coords[1], coords[2]
-    A_e = 0.5 * abs((x1[0] - x0[0]) * (x2[1] - x0[1])
-                    - (x2[0] - x0[0]) * (x1[1] - x0[1]))
-
+    coords = np.asarray(coords, dtype=float)[:, :2]
     others = [i for i in range(3) if i != solitary]
     edge = coords[others[1]] - coords[others[0]]
     L_opp = float(np.hypot(edge[0], edge[1]))
-    h = 2.0 * A_e / L_opp
-
-    alpha = float(np.arctan2(edge[1], edge[0]))
-    theta = float(np.arctan2(tangent[1], tangent[0]))
-    return float((A_e / h) * abs(np.cos(theta - alpha)))
+    n_e = np.array([-edge[1], edge[0]]) / L_opp
+    if n_e @ (coords[solitary] - coords[others[0]]) < 0.0:
+        n_e = -n_e
+    normal = np.array([tangent[1], -tangent[0]], dtype=float)
+    normal = normal / np.linalg.norm(normal)
+    return float(0.5 * L_opp * (normal @ n_e))

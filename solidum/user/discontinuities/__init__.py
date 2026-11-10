@@ -17,14 +17,24 @@ Contenido:
   penalización (``damage_isotropic.py``).
 - ``DiscontinuityState`` — geometría y estado del salto de un elemento
   agrietado (``discontinuity_state.py``).
+- ``GlobalCrackTracking`` — seguimiento global de la trayectoria de grieta,
+  que decide qué elementos se agrietan y su nodo solitario
+  (``crack_tracking.py``); ``CrackTrackerRegistry`` — su registro, con la
+  sección YAML ``crack_trackers``. ``PrescribedCrackPath`` — variante con la
+  trayectoria dada (grieta prescrita).
 
 Uso: en YAML, ``user_modules: [discontinuities]``; en Python,
 ``solidum.load_user_module("discontinuities")`` o importar de aquí.
 """
-from solidum.user.discontinuities.registry import CohesiveMaterialRegistry
+from solidum.user.discontinuities.registry import CohesiveMaterialRegistry, CrackTrackerRegistry
 from solidum.user.discontinuities.cohesive_material import CohesiveMaterial
 from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
 from solidum.user.discontinuities.damage_isotropic import CohesiveDamageIsotropic
+from solidum.user.discontinuities.crack_tracking import (
+    Crack,
+    GlobalCrackTracking,
+    PrescribedCrackPath,
+)
 from solidum.user.discontinuities.embedded_cst import CST_Embedded2D
 
 __all__ = [
@@ -32,5 +42,9 @@ __all__ = [
     "CohesiveDamageIsotropic",
     "CohesiveMaterial",
     "CohesiveMaterialRegistry",
+    "Crack",
+    "CrackTrackerRegistry",
     "DiscontinuityState",
+    "GlobalCrackTracking",
+    "PrescribedCrackPath",
 ]

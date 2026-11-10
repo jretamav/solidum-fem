@@ -267,10 +267,11 @@ CST de 3 nodos con cinemática KOS enriquecida (Retama 2010, Caps. 2, 5, 6 y 7).
 
 - **DOFs/nodo**: `ux, uy` ($\texttt{STRAIN\_DIM} = 3$). Los 2 DOFs del salto son elementales, no globales.
 - **Cuadratura**: 1 punto (hereda del `Tri3`).
-- **Parámetros**: `material` (bulk), `cohesive_material` y `thickness` (opcional, default `1.0`).
+- **Parámetros**: `material` (bulk), `cohesive_material`, `thickness` (opcional, default `1.0`) y `crack_tracker` (opcional).
 - **Dos materiales**: a diferencia del resto del catálogo, requiere **un material de bulk** que gobierna el continuo y **uno cohesivo** que gobierna el salto en $\Gamma_d$. En YAML son dos campos distintos: `material` se busca en `materials` y `cohesive_material` en `cohesive_materials`.
 - **Estado intacto**: idéntico al `Tri3` hasta que la discontinuidad se activa.
 - **Activación**: criterio de Rankine ($\sigma_I > \sigma_{t0}$ del cohesivo) evaluado en el centroide con el estado convergido del paso anterior; es el único criterio y no se declara en el YAML. Es **irreversible**: una vez activada persiste aunque el paso siguiente descargue.
+- **Seguimiento de grieta**: qué elementos se agrietan y qué nodo queda solo a un lado lo decide la trayectoria de la grieta, igual para todos los vecinos. Por omisión, cada región conexa de elementos embebidos lleva un seguimiento global (`GlobalCrackTracking`): las grietas nacen donde $\sigma_I$ supera $\sigma_{t0}$ lejos de otras y crecen desde sus puntas siguiendo las direcciones principales. Si la trayectoria es conocida (grieta prescrita, como en una banda de elementos embebidos), se declara `PrescribedCrackPath` con los vértices de la poligonal. Los dos se definen en la sección `crack_trackers` y el elemento los referencia con `crack_tracker`. La activación ocurre al inicio del paso: conviene que, cerca del pico, cada paso de carga aumente el esfuerzo menos de un 4 % de $\sigma_{t0}$, o se activan de golpe varios elementos.
 - **Bulk aceptado**: sólo `Elastic2D` en la fase actual — la *discrete approach* presupone bulk elástico (ADR 0010).
 - **Post-proceso**: `compute_gauss_state(U)` añade la clave `'discontinuity'` con normal, tangente, centroide, $l_d$, salto, tracción y daño cuando el elemento está agrietado.
 - **Solver para la rama post-pico**: con desplazamiento impuesto, `NonlinearSolver` recorre el ablandamiento hasta la separación completa con penalización cohesiva rígida (tracción uniaxial frente a la solución exacta y ensayo de Van Vliet con grieta prescrita, en `tests/user/discontinuities/`). Las limitaciones registradas de `ArcLengthSolver` y de `DissipationArcLengthSolver` (módulo de usuario `dissipation_control`, al final del capítulo «Esquemas de Solución») con esa penalización son anteriores a la corrección de la tangente cohesiva del 2026-09-23 y no se han vuelto a comprobar.
@@ -280,9 +281,11 @@ user_modules: [discontinuities]
 cohesive_materials:
   - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 2.5e6, G_f: 100.0,
      K_e: 1.0e13, softening: linear}
+crack_trackers:                    # opcional
+  - {id: 1, type: PrescribedCrackPath, points: [[0.0, 0.05], [0.2, 0.05]]}
 elements:
   - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3],
-     material: 1, cohesive_material: 1}
+     material: 1, cohesive_material: 1, crack_tracker: 1}
 ```
 
 La formulación completa (cinemática KOS, condensación, longitud $l_d$) está en la spec del elemento, en el apéndice «Módulos de usuario» del Manual de Referencia.

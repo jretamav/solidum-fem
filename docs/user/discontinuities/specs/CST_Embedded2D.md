@@ -15,7 +15,7 @@ Estructura del elemento:
 - **Estado intacto** (`discontinuity_state is None`): se comporta exactamente como un [`Tri3`](../../../specs/Tri3.md) estándar — CST con un único punto de Gauss, B constante, integración exacta del bulk con peso `A_e·t`.
 - **Estado agrietado** (`discontinuity_state is not None`): el campo de desplazamientos del bulk se enriquece con un salto `[[u]] ∈ ℝ²` localizado en `Γ_d`. El bulk vecino descarga elásticamente; la disipación se concentra en `Γ_d` y la gobierna un material cohesivo (`CohesiveMaterial`, ADR 0010 §1).
 
-Aproximación adoptada: **discrete approach** (Retama 2010), **KOS** (Kinematically Optimal Symmetric) según la clasificación de Jirásek (2000). Tracking trivial: la normal `n` y la posición de `Γ_d` se fijan al activar el elemento (perpendicular a `σ_I` por criterio Rankine; `Γ_d` pasa por el centroide) y no se reorientan después. Modo-I puro (consistente con `CohesiveDamageIsotropic` fase 1); modo mixto y KSON quedan diferidos (fases G y H del ADR 0010).
+Aproximación adoptada: **discrete approach** (Retama 2010), **KOS** (Kinematically Optimal Symmetric) según la clasificación de Jirásek (2000). La normal `n` se fija al activar el elemento (perpendicular a `σ_I`, criterio de Rankine) y no se reorienta después. **El nodo solitario lo dicta la trayectoria de la grieta**, coherente entre vecinos, mediante el seguimiento global de la spec [`GlobalCrackTracking`](GlobalCrackTracking.md) (decisiones del usuario, 2026-11-10). Antes lo elegía cada elemento con la recta por su centroide, y en mallas no alineadas eso bloqueaba la grieta. Modo-I puro (consistente con `CohesiveDamageIsotropic` fase 1); modo mixto y KSON quedan diferidos (fases G y H del ADR 0010).
 
 Régimen: pequeños desplazamientos y deformaciones, cuasi-estático. Pensado para hormigón, roca, cerámicos cuasi-frágiles. Bulk **elástico** por construcción de la formulación (la disipación está localizada en `Γ_d`); materiales no lineales del bulk quedan `out_of_scope` en fase 1.
 
@@ -68,9 +68,15 @@ con `T_coh` el operador del material cohesivo (en frame local; ver spec [`Cohesi
 
 ### 4. Equilibrio — forma fuerte
 
-Balance estático en cada subdominio (`Ω⁻`, `Ω⁺`) más continuidad de tracciones a través de `Γ_d`:
+Balance estático en cada subdominio (`Ω⁻`, `Ω⁺`):
 
-$$\nabla\cdot\boldsymbol\sigma + \mathbf b = \mathbf 0 \quad \text{en } \Omega \setminus \Gamma_d, \qquad \boldsymbol\sigma\cdot\mathbf n = \mathbf t \quad \text{en } \Gamma_d.$$
+$$\nabla\cdot\boldsymbol\sigma + \mathbf b = \mathbf 0 \quad \text{en } \Omega \setminus \Gamma_d .$$
+
+**La forma débil KOS (§5) no impone la continuidad de tracción $\boldsymbol\sigma\cdot\mathbf n = \mathbf t$ punto a punto** (corrección del 2026-11-10, verificada simbólicamente por el `formulador` y el `teorico_fem`). Con $\psi$ el ángulo entre $\mathbf n$ y la normal $\mathbf n_e$ al lado opuesto al nodo solitario, la ecuación del salto da
+
+$$t_n = \frac{A}{h\,l_d}\,(\cos\psi\,\sigma_{nn} + \sin\psi\,\sigma_{ns}), \qquad t_s = \frac{A}{h\,l_d}\,(\cos\psi\,\sigma_{ns} + \sin\psi\,\sigma_{ss}),$$
+
+y con $l_d = (A/h)\cos\psi$ (§11): $t_n - \sigma_{nn} = \tan\psi\,\sigma_{ns}$ y $t_s - \sigma_{ns} = \tan\psi\,\sigma_{ss}$. En la activación, con $\mathbf n$ principal, $t_n = \sigma_I$ y $t_s = \sigma_{II}\tan\psi$. Sólo con $\psi = 0$ la continuidad es completa.
 
 ### 5. Equilibrio — forma débil (residuales acoplados)
 
@@ -90,7 +96,7 @@ con `l_d` la longitud efectiva de `Γ_d` dentro del elemento (ver §11). El prim
 
 Idéntica a [`Tri3`](../../../specs/Tri3.md): tres nodos en orden antihorario, mapeo isoparamétrico desde el triángulo de referencia con vértices `(0,0)`, `(1,0)`, `(0,1)`. Jacobiano constante; aborta con error si `det J ≤ tol`.
 
-**Identificación del nodo solitario.** Cuando `Γ_d` corta dos lados del triángulo, exactamente un nodo queda aislado en `Ω⁺` (lado al que apunta `n`); los otros dos quedan en `Ω⁻`. El nodo solitario es el **único** que tiene `φ = 1`; los otros dos tienen `φ = 0`. La identificación se hace al activar el elemento, comparando el producto `(x_i − x_c)·n` para cada nodo (`x_c` = centroide), donde el signo del producto determina el lado.
+**Identificación del nodo solitario.** Cuando `Γ_d` corta dos lados del triángulo, exactamente un nodo queda aislado en `Ω⁺` (lado al que apunta `n`); los otros dos quedan en `Ω⁻`. El nodo solitario es el **único** que tiene `φ = 1`; los otros dos tienen `φ = 0`. **El lado de cada nodo lo da la trayectoria** (signo del campo de seguimiento de [`GlobalCrackTracking`](GlobalCrackTracking.md)), igual para todos los elementos que comparten el nodo. La regla anterior (signo de `(x_i − x_c)·n` respecto del centroide de cada elemento) sólo sobrevive para la raíz de una grieta nueva.
 
 ### 7. Funciones de forma + función `φ`
 
@@ -153,8 +159,8 @@ Si `σ_I > σ_t0` (resistencia a tracción del material cohesivo), se activa:
 
 - `n` = autovector unitario de `σ_I` (perpendicular a la dirección de tracción máxima, criterio Rankine).
 - `s` = ortogonal a `n` orientada por regla de la mano derecha con `+z` saliendo del plano (consistente con Reglas.md §5).
-- `Γ_d` pasa por el centroide del CST (decisión cerrada: la posición no es DOF; se fija en el activación, igual que `n`).
-- Identificación del nodo solitario `i*` (§6).
+- El nodo solitario `i*` lo da la trayectoria (§6). La posición de `Γ_d` dentro del elemento no entra en las ecuaciones: sólo `i*` y `l_d` (informes del 2026-11-10). La «superficie de equilibrio» de la ec. (8) de la deducción del usuario (la recta de normal `n` cuya cuerda mide `l_d`) queda como indicador de posproceso; existe en todo triángulo con ángulo mínimo ≥ arcsin(1/3) ≈ 19.47°.
+- **Regla del vértice** (decisión del usuario, 2026-11-10): si el nodo aislado por la trayectoria da `cos ψ ≤ 0`, cambia de lado y la trayectoria pasa por ese vértice ([`GlobalCrackTracking`](GlobalCrackTracking.md) §5). Así todo elemento cortado tiene `cos ψ > 0` y `l_d > 0`.
 
 **Longitud efectiva `l_d` — Cap. 6 de Retama (2010)**. Fórmula cerrada:
 
@@ -166,7 +172,7 @@ donde:
 - `θ` es el ángulo de `Γ_d` respecto a `x` global (i.e. `θ = atan2(s_y, s_x)` con `s = (s_x, s_y)` la tangente a `Γ_d`).
 - `α` es el ángulo del lado opuesto al nodo solitario respecto a `x` global.
 
-Esta fórmula es **decisión cerrada en el ADR 0010** (§6); no se relitiga aquí. La alternativa ingenua `l_d = A_e/h` (independiente de `θ`) produce stress locking cuando la grieta no es paralela al lado opuesto; ver fase 3 del ADR 0010 para test numérico.
+Esta fórmula es **decisión cerrada en el ADR 0010** (§6); no se relitiga aquí. **Se toma con su signo** (ya no `|cos(θ−α)|`): la regla del vértice garantiza `cos ψ > 0`. Es válida para todo θ: la identidad (6.21) de la tesis sólo vale con `cos 2θ > 0`, pero su error de signo se compensa con el de la expresión de `σ_I` con raíz, y (6.24) es correcta en general (verificado simbólicamente, 2026-11-10). La alternativa ingenua `l_d = A_e/h` (independiente de `θ`) produce stress locking cuando la grieta no es paralela al lado opuesto; ver fase 3 del ADR 0010 para test numérico.
 
 ### 12. Estado de la discontinuidad — `DiscontinuityState`
 
@@ -209,6 +215,7 @@ ADR 0010 §5 fija que la activación se evalúa **al inicio de cada paso de carg
 - **Bulk descarga elástica**. Por la cinemática KOS, el bulk evalúa `ε^bulk = B_std·d − B^φ·G·[[u]]` — descarga conforme `[[u]]` crece. Esto es físicamente correcto (la disipación va a `Γ_d`) y consistente con la discrete approach de Retama 2010. El bulk **no acumula daño** propio (out_of_scope fase 1).
 - **`Γ_d` paralelo a un lado**. Caso degenerado: `cos(θ−α) = 1`, `l_d = A_e/h`. La fórmula del Cap. 6 sigue siendo correcta, pero numéricamente el nodo solitario debe identificarse con tolerancia para evitar oscilación entre dos nodos casi en el mismo plano.
 - **`Γ_d` casi vertical en CST con jacobiano malacondicionado**. Sin patología nueva: hereda los caveats del CST padre. El test `det J > tol` de `Tri3` cubre el caso.
+- **Errores de la tracción KOS y bloqueo de esfuerzos con estados biaxiales oblicuos** (2026-11-10). Por §4, la tracción difiere de `σ·n` en `tanψ·σ_ns` (normal) y `tanψ·σ_ss` (tangencial). Con la ley de modo I puro (`t_s = 0`) la segunda ecuación del salto impone `σ_ns = −tanψ·σ_ss` en el bulk, aparece un deslizamiento espurio (`ũ_s/ũ_n → sinψ cosψ/(1 + sin²ψ)`) y, en un elemento aislado con `ε_yy = 0.5·ε_xx`, al abrir del todo quedan esfuerzos de bulk `σ_xx/σ_t0` = 0.89, 3.9 y 9.4 para `ψ` = 15°, 30° y 45°. El tratamiento de la componente tangencial es la decisión pendiente del modo mixto.
 - **Stress locking**. La fase 3 del ADR 0010 valida numéricamente que `l_d = (A_e/h)·cos(θ−α)` evita el locking que aparece con `l_d = A_e/h` ingenuo. Test cubierto en `tests/user/discontinuities/test_disc_ld_chapter_6_validation.py`: con `Γ_d` oblicua respecto al lado opuesto al nodo solitario (`cos(θ−α) = √3/2` en el setup), la versión correcta produce una apertura `[[u_n]]` ≈ 5.45 % mayor que la versión ingenua para una misma carga, en rama de softening exponencial activo. La versión ingenua "infla" la rigidez cohesiva (`l_d · T_coh`) por un factor `1/cos(θ−α) > 1`, restringe la apertura y el elemento se comporta como si fuera más rígido — eso es el *stress locking*. Cuando `Γ_d` es paralela al lado opuesto (`cos(θ−α) = ±1`), las dos fórmulas coinciden exactamente y no hay locking.
 
 ---
@@ -231,6 +238,8 @@ parameters:
       desc: "Espesor para estado plano (idéntico a Tri3)." }
   - { name: cohesive_material, type: str,   required: true,
       desc: "Nombre (en CohesiveMaterialRegistry) del material cohesivo que gobierna Γ_d cuando se activa." }
+  - { name: crack_tracker,     type: str,   required: false,
+      desc: "Seguimiento de grieta (CrackTrackerRegistry: GlobalCrackTracking o PrescribedCrackPath) compartido por la región. Sin él, uno global por región conexa de elementos embebidos." }
 
 material_contract:
   bulk:
@@ -257,7 +266,8 @@ validity:
 out_of_scope:
   - "Bulk no lineal (J2, daño continuo, Drucker-Prager): la disipación debe localizarse en Γ_d, no co-existir con disipación de bulk."
   - "Modo mixto I-II en el cohesivo (fase G del ADR 0010)."
-  - "Reorientación de n tras la activación (tracking no trivial, fase F)."
+  - "Reorientación de n tras la activación."
+  - "Unión y ramificación de grietas (una discontinuidad por elemento; ver GlobalCrackTracking)."
   - "Múltiples discontinuidades por elemento."
   - "Contacto con fricción en la grieta cerrada (el cohesivo sólo recupera la penalización normal K_e en compresión)."
   - "Elementos de orden superior con discontinuidad embebida (Tri6_Embedded, Quad8_Embedded; fase J)."
@@ -322,6 +332,10 @@ acceptance:
       expect: "l_d, K_cond, F_int^cond idénticos (la convención de n positivo está bien definida — apunta hacia el nodo solitario)."
       tol_rel: 1.0e-14
 
+    - name: tres_triangulos_traccion_hasta_separacion
+      setup: "rectángulo (ψ = 0°), agudo (ψ = 24°) y obtuso (ángulo mínimo 17°, ψ = 73°), ε_xx impuesta creciente (ε_yy = γ_xy = 0), partición de la raíz con la regla del vértice"
+      expect: "t_n ≥ −1e-6·σ_t0 en todo el proceso (la regla anterior con |cos| daba −400·σ_t0 en el obtuso); l_d > 0; 0 fallos del Newton local; rectángulo y agudo se separan con disipación = G_F·l_d·t (error ≤ 1e-3 y ≤ 3e-3); el obtuso se bloquea (t_n final 0.88·σ_t0): bloqueo de esfuerzos KOS con ψ grande, pendiente de la decisión del modo mixto"
+
   arch:
     - name: registro_en_ElementRegistry
       expect: "CST_Embedded2D registrado con kind='element'."
@@ -359,8 +373,8 @@ references:
   - Estado intacto (`discontinuity_state is None`) → bit-exact con `Tri3` (mismo `B`, mismo `compute_integrands`). La cinemática del CST se importa de la API pública del programa principal, `solidum.elements.solid_2d` (`compute_kinematics_tri3`, `compute_integrands`; ADR 0020, P6), no del módulo interno `_shared`.
   - Estado agrietado: Newton local sobre `[[u]]` hasta `R^{[[u]]} = 0`, después condensación estática local cerrada (`K_jj` es 2×2). Tolerancia interna: `_LOCAL_JUMP_RTOL = 1e-10`, `_LOCAL_JUMP_MAX_ITER = 30`.
   - `B^φ` se obtiene como la submatriz `B_std[:, 2·i*:2·i*+2]` correspondiente al nodo solitario (consistente con `φ = N_{i*}`).
-  - Activación: `n` apunta hacia el nodo solitario (convención fija); si el autovector de `σ_I` deja 2 nodos en lado positivo, se invierte el signo de `n`.
-  - `_compute_ld` usa `|cos(θ − α)|` (valor absoluto): la longitud es positiva y simétrica bajo `n → −n` (test `ld_invariante_bajo_reflejo_de_n`).
+  - Activación: la decide el seguimiento de grieta (`crack_tracker`, spec [`GlobalCrackTracking`](GlobalCrackTracking.md)); el elemento expone `activate(normal, solitary_node, point, crack)`, que rechaza `l_d ≤ 0`, y `principal_stress(U)`. `n` apunta hacia el nodo solitario. `_activate(n, coords)` aplica la partición de una raíz (recta por el centroide, o la del otro lado del nodo intermedio si aquella da `cos ψ ≤ 0`).
+  - `_compute_ld` usaba `|cos(θ − α)|` hasta el 2026-11-10; desde entonces `l_d` lleva su signo, positivo por la regla del vértice. La invariancia bajo `n → −n` se mantiene porque `n` apunta siempre hacia el nodo solitario.
   - `compute_gauss_state` extendido: en estado agrietado añade clave `'discontinuity': {normal, tangent, centroid, solitary_node, l_d, jump, traction, damage}` para post-proceso VTK.
   - Bulks aceptados en fase 1: `_ACCEPTED_BULKS = ('Elastic2D',)`. Restricción declarativa, ampliación futura es aditiva.
 
@@ -383,3 +397,5 @@ references:
 - **2026-09-29** · Correcciones documentales: §10 y §12 describían una recuperación del salto en `commit_state()` que el código no hace (Newton local de la §7.2); §14 ya no es punto abierto; se retira el parámetro `activation_criterion` del contrato, que el constructor no acepta (la activación es siempre Rankine).
 - **2026-09-29** · **Validación: ensayo de Van Vliet con grieta prescrita** (Retama 2010, §8.1), `tests/user/discontinuities/test_disc_van_vliet.py`, figura en `docs/user/discontinuities/validacion/van_vliet_fase1.png`. Probeta en hueso de perro con carga excéntrica; banda de `CST_Embedded2D` a media altura; `NonlinearSolver` con desplazamiento impuesto en pasos de 0.5 µm (convergidos: 0.25 y 0.125 µm cambian el pico < 0.1 kN). Frente a la fig. 8.3 de la tesis (valores leídos): exponencial, pico 26.6 kN (tesis 27.0) a 7.1 µm, P(20/50/100 µm) = 17.8 / 8.3 / 3.3 kN (19.1 / 8.3 / 3.1); lineal, pico 27.4 kN (27.4), 22.0 / 8.5 / 3.0 kN (22.4 / 8.5 / 2.4). Criterio de aceptación validado por el usuario: pico ±0.8 kN, δ en el pico entre 5 y 9 µm, P(20) ±1.5, P(50) ±1.0, P(100) ±0.7 kN. `K_e` = 1e13 o 1e14 da lo mismo. Diferencias abiertas: (a) más allá de ~100 µm la carga queda alta (exponencial 1.5 kN a 200 µm frente a 0.8): las mitades giran sobre el borde de la banda opuesto a la carga, ese elemento queda comprimido (σ_yy ≈ −31 MPa) y nunca se activa, y la cola depende de la malla (1.19 kN con banda más fina); (b) con pasos de 1 µm el pico sube ~0.9 kN por el sobrepaso de la activación con el estado del paso anterior (fase 2 del plan de 2026-09-24). Supuestos no fijados por la tesis: acero E = 210 GPa, rótulas sin desplazamiento lateral (reacción horizontal nula).
 - **2026-09-29** · Correcciones documentales tras endurecer la frontera del programa principal (ADR 0020): (1) la entrada del 2026-09-22 sobre la deuda #18 cita `tests/test_trial_isolation.py`; el aislamiento del trial del salto se prueba ahora en `tests/user/discontinuities/test_disc_contratos.py::TestTrialIsolation` (sección Implementación). (2) La cinemática que reutiliza el estado intacto es la API pública P6 del programa principal, `solidum.elements.solid_2d` (`compute_kinematics_tri3`, `compute_integrands`, sin guion bajo). (3) Nuevo caveat con lo que sigue siendo cierto de la limitación retirada de la spec de `NonlinearSolver`: este solver, con control por desplazamiento, atraviesa el ablandamiento hasta la separación; el fallo de `ArcLengthSolver` con penalización rígida es anterior a `597f3d9` y no se ha vuelto a comprobar. Sin cambio de formulación.
+- **2026-11-10** · **Revisión de la formulación** con dos informes independientes (`formulador` y `teorico_fem`, excluidos de Git). El código implementaba exactamente la KOS de la tesis; los defectos estaban en la regla del nodo solitario (elemental e incoherente entre vecinos: bloqueo en mallas no alineadas) y en el `|cos|` (grieta que abre en compresión). **Decisiones del usuario**: (1) el nodo solitario lo dicta la trayectoria; (2) seguimiento global ([`GlobalCrackTracking`](GlobalCrackTracking.md)); (3) regla del vértice con `cos ψ ≤ 0`; `l_d` con su signo. §4 corregida: KOS no impone `σ·n = t` punto a punto. Pendiente del usuario: la componente tangencial (modo mixto).
+- **2026-11-10** · Implementado el seguimiento (`crack_tracking.py`). `l_d` con su signo y `activate` lo exige positivo. Aceptación `tres_triangulos_traccion_hasta_separacion` medida: el rectángulo (ψ = 0°) disipa exactamente G_F·l_d·t, el agudo (ψ = 24°) 0.18 % de más, y el obtuso (ψ = 73°, la única partición con cos ψ > 0) se bloquea con t_n final 0.88·σ_t0, sin compresión espuria. Es el bloqueo de esfuerzos KOS con ψ grande que señaló el `teorico_fem` y entra en la decisión pendiente del modo mixto. En una malla la regla del vértice evita estas particiones cuando hay vecinos que puedan repartirse el corte (5/5 mallas con astillas se separan).
