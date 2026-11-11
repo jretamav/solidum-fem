@@ -11,7 +11,7 @@ con la fuente oficial donde obtenerla.
 - **Institución**: Universidad Nacional Autónoma de México (UNAM), Programa de Maestría y Doctorado en Ingeniería
 - **Año**: 2010
 - **Contenido relevante para Solidum**: formulación KOS / KSON, modelos cohesivos $t$–$[[u]]$, condensación estática del salto, expresión `l_d = (A_e/h)·cos(θ−α)` (Cap. 6), criterio de activación Rankine.
-- **Vinculado a**: ADR 0010 (discontinuidades interiores embebidas) y ADR 0020 (módulos de usuario): la formulación es el módulo de usuario `discontinuities`, fuera del programa principal — [`solidum/user/discontinuities/embedded_cst.py`](../../solidum/user/discontinuities/embedded_cst.py) (`CST_Embedded2D`), [`solidum/user/discontinuities/damage_isotropic.py`](../../solidum/user/discontinuities/damage_isotropic.py) (`CohesiveDamageIsotropic`) y sus specs en [`docs/user/discontinuities/specs/`](../user/discontinuities/specs/).
+- **Vinculado a**: ADR 0010 (discontinuidades interiores embebidas) y ADR 0020 (módulos de usuario): la formulación es el módulo de usuario `discontinuities`, fuera del programa principal — [`solidum/user/discontinuities/embedded_cst.py`](../../solidum/user/discontinuities/embedded_cst.py) (`CST_Embedded2D`), sus specs en [`docs/user/discontinuities/specs/`](../user/discontinuities/specs/); la ley cohesiva `CohesiveDamageIsotropic` pasó el 2026-11-10 al programa principal ([`solidum/materials/interface/cohesive_damage_isotropic.py`](../../solidum/materials/interface/cohesive_damage_isotropic.py), ADR 0033).
 - **Fuente oficial**: Repositorio de Tesis Digitales UNAM, [tesiunam.dgb.unam.mx](https://tesiunam.dgb.unam.mx/) (búsqueda por autor).
 
 ## de Borst & Sluys (1999) — Métodos computacionales en mecánica de sólidos no lineal
