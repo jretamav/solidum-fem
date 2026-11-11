@@ -362,8 +362,10 @@ class NewtonNewmarkSolver(NewmarkSolver):
         Política de convergencia (ADR 0007). Default: ``ConvergenceCriterion()``
         con tolerancias por defecto del proyecto.
     max_iter : int, default 20
-        Máximo iteraciones Newton por paso temporal. Si se agota se lanza
-        ``RuntimeError``; el estado trial no se commitea.
+        Máximo iteraciones Newton por paso temporal. Si se agota, el paso se
+        subdivide (``max_subdivisions``); si ni así converge, el análisis se
+        detiene con ``SolverDivergedError`` y el resultado parcial termina en
+        el último estado convergido. El estado trial no se commitea.
     freeze_tangent_after_iter : int or None, default None
         Si ``int``, Newton modificado (ADR 0003 fase 2): factoriza fresco las
         primeras N iter de cada paso y reusa la factorización en las siguientes.

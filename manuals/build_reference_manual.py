@@ -1230,8 +1230,9 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 \usepackage{amssymb}
 \usepackage{amsfonts}
 % Corchetes dobles \llbracket ⟦u⟧ \rrbracket: notación del salto de
-% desplazamientos en las specs de discontinuidad embebida y material cohesivo
-% (ADR 0010; apéndice del módulo de usuario discontinuities, ADR 0020). No
+% desplazamientos en las specs de los materiales de interfaz (capítulo
+% «Modelos Constitutivos — Interfaz», ADR 0033) y de la discontinuidad
+% embebida (apéndice del módulo de usuario discontinuities, ADR 0020). No
 % están en amssymb; sin stmaryrd la compilación aborta con "Undefined control
 % sequence".
 \usepackage{stmaryrd}
@@ -1359,7 +1360,7 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 
 \chapter*{Sobre este Manual}
 \addcontentsline{toc}{chapter}{Sobre este Manual}
-\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Solidum FEM: cada elemento finito y cada modelo constitutivo se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración) y su contrato YAML.
+\noindent Este manual contiene la \textbf{referencia formal} de los componentes de Solidum FEM: cada elemento finito, modelo constitutivo (mecánico, térmico y de interfaz), sección de marco, solver y restricción generada se documenta con su especificación física (ecuaciones), su formulación numérica (matrices $\mathbf B$, rigidez tangente, integración, algoritmo) y su contrato YAML.
 
 El contenido se genera automáticamente desde los archivos \texttt{docs/specs/*.md} del repositorio, que constituyen la \emph{fuente única de verdad} de cada componente. El cuerpo del manual describe el \textbf{programa principal}; las specs de los \textbf{módulos de usuario} (formulaciones no estándar, en \texttt{docs/user/*/specs/*.md}) y sus entradas de los catálogos se recogen en el apéndice \emph{Módulos de usuario}, un capítulo por módulo. No editar este PDF manualmente; cualquier corrección debe hacerse sobre la spec correspondiente y regenerar el manual mediante:
 \begin{center}\texttt{python manuals/build\_reference\_manual.py}\end{center}

@@ -10,11 +10,14 @@ Un material en Solidum FEM es una ley constitutiva: dada una deformación (escal
 
 Familias actualmente implementadas:
 
-- *Elásticos lineales*: `Elastic1D` para deformación axial escalar; `Elastic2D` para problemas planos (esfuerzo plano o deformación plana) en notación de Voigt 3.
+- *Elásticos lineales*: `Elastic1D` para deformación axial escalar; `Elastic2D` para problemas planos (esfuerzo plano o deformación plana) en notación de Voigt 3; `Elastic3D` en notación de Voigt 6 (ADR 0012).
+- *Anisótropo*: `Orthotropic2D`, elasticidad ortótropa plana con el ángulo de fibra en el material (ADR 0013).
 - *Plásticos 1D*: `Elastoplastic1D` con criterio J2 axial, endurecimiento isótropo lineal y tangente algorítmica consistente.
 - *Plásticos 2D — J2*: `VonMises2D` con criterio de fluencia J2 y algoritmo de retorno radial (*return mapping*) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y esfuerzo plano (*plane stress projected algorithm*, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
 - *Plásticos 2D — friccional*: `DruckerPrager2D` con criterio cohesivo-friccional (cono circular suave de Mohr-Coulomb), plasticidad no asociada por defecto y dos ramas cerradas de return (regular sobre el cono y al ápice). Tres calibraciones con Mohr-Coulomb (`plane_strain_matched`, `outer_cone`, `inner_cone`). `IS_SYMMETRIC = False` cuando `ψ ≠ φ`; el despachador algebraico (ADR 0003) degrada Cholesky→LU automáticamente.
 - *Daño isótropo*: `IsotropicDamage1D` y `IsotropicDamage2D`, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa: negativa en 1D durante softening; en 2D y 3D es `(1−d)·C_e − (∂d/∂κ)·(C_e·ε) ⊗ ∂ε_eq/∂ε`, simétrica con la deformación equivalente energética (por defecto) y asimétrica con Mazars o von Mises modificado. Secante en descarga.
+- *Sólidos 3D con historia*: `VonMises3D`, `DruckerPrager3D` e `IsotropicDamage3D`, extensiones tridimensionales de los anteriores con tangente algorítmica consistente.
+- *Concreto uniaxial*: `ManderConcrete1D` (ADR 0028), daño-plasticidad 1D con la envolvente de Mander en compresión, tracción con rama descendente, descarga de Karsan y Jirsa y regularización opcional por energía de fractura con la longitud característica del punto; para barras y fibras de sección.
 - *Cables*: `CableMaterial1D`, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
 
 Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse como una función `(strain, state) → (stress, tangent)` se incorpora sin modificación del resto del programa. Candidatos directos:
@@ -28,6 +31,17 @@ Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse c
 
 En todos los casos basta declarar el `STRAIN_DIM` apropiado y el atributo `PRIMARY_STATE_VAR` para visualización.
 
+## Materiales de interfaz
+
+Una familia paralela a los materiales (ADR 0033), con registro propio (`InterfaceMaterialRegistry`) y sección YAML `interface_materials`: relaciona la **tracción** sobre una interfaz con el **desplazamiento relativo** entre sus dos lados, en el sistema local de la interfaz, con la interfaz `compute_traction(jump, state_vars)` que devuelve `(t, tangente, estado nuevo)`. Cada ley declara su geometría (`GEOMETRY`: `"surface"` para grietas y juntas, componentes `(n, s)` o `(n, s1, s2)`; `"line"` para una barra embebida, `(n, s)` o `(n1, n2, s)`; normales primero) y cuántas componentes admite (`JUMP_DIM`, `None` si las de 2D y 3D). No tiene densidad: la inercia es de los elementos que la rodean. El paso a ejes globales y el ancho sobre el que actúa cada componente son del elemento que la consume.
+
+Leyes implementadas:
+
+- *Cohesivas de superficie*: `CohesiveDamageIsotropic` (modo I, daño escalar con ablandamiento lineal o exponencial) y `CohesiveDamageMixedMode` (modo mixto I–II con la apertura efectiva de Camacho y Ortiz, energía independiente del modo y ablandamiento lineal, exponencial o bilineal del fib Model Code 2010). Comparten la envolvente de ablandamiento.
+- *Adherencia-deslizamiento de línea*: `BondSlipModelCode` (envolvente de Eligehausen, Popov y Bertero / fib Model Code 2010, descarga y recarga sin degradación) y `BondSlipMultilinear` (envolvente por puntos).
+
+Consumidores: la interfaz de adherencia que genera el refuerzo embebido (`BondSlipInterface`, línea) y la discontinuidad embebida del módulo de usuario `discontinuities` (superficie).
+
 ## Elementos
 
 Un elemento finito en Solidum FEM es una entidad geométrica que construye su matriz de gradientes `B`, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su `DOF_NAMES`, su `STRAIN_DIM` y el número de puntos de integración mediante `N_INTEGRATION_POINTS`. La clase base concentra la lógica común (registro de DOF, ensamblaje local→global, validación material↔elemento, gestión del `ElementState`) y cada subclase aporta exclusivamente lo físicamente específico (matriz `B`, esquema de integración, invocación al material).
@@ -36,7 +50,7 @@ El estado del programa por familia se presenta a continuación en forma de **mat
 
 ### Familia armadura (truss)
 
-Elemento articulado que transmite exclusivamente fuerza axial. Material consumido: 1D escalar (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`).
+Elemento articulado que transmite exclusivamente fuerza axial. Material consumido: 1D escalar (`Elastic1D`, `Elastoplastic1D`, `IsotropicDamage1D`, `ManderConcrete1D`).
 
 **Primer orden (interpolación lineal, dos nodos)**
 
@@ -190,11 +204,17 @@ La familia expone `compute_gauss_state(T)`, que devuelve el gradiente y el flujo
 
 - [PENDIENTE: Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).]
 - [PENDIENTE: Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.]
-- [PENDIENTE: Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.]
+- [PENDIENTE: Elementos de interfaz de espesor nulo entre superficies, para juntas y grietas cohesivas de trayectoria conocida y para contacto con fricción. La familia de leyes ya existe (materiales de interfaz, ADR 0033); hoy la consumen la interfaz de adherencia barra–sólido, que genera el refuerzo embebido, y la discontinuidad embebida del módulo de usuario.]
 
 ### Contrato común y convención de signos
 
 Todos los elementos tipo armadura, cable o marco implementan el contrato `internal_forces(U)` y devuelven las fuerzas internas (N, V, M, T) en la convención de signos del proyecto (ADR 0002), también con sección por fibras.
+
+## Restricciones generadas
+
+Un generador de restricciones (ADR 0032; registro `ConstraintRegistry`, bloque YAML `constraints`, carpeta `solidum/bc/`) crea sobre un dominio ya mallado los nodos, los elementos y las restricciones multipunto que su geometría pide, antes de numerar las ecuaciones. Localiza los puntos dentro de los sólidos invirtiendo su mapeo isoparamétrico por Newton con lo que todo sólido declara (`REFERENCE_CELL`, funciones de forma), sin código por tipo de elemento.
+
+Implementado: `EmbeddedReinforcement`, el refuerzo embebido. La barra, con su propia malla de elementos de dos o tres nodos (`Truss2D`/`Truss3D`, `Truss2D3`/`Truss3D3`) cortada en los bordes de los anfitriones, queda atada al campo interpolado del sólido por MPC (adherencia perfecta) o, con `bond`, unida a él por interfaces de adherencia-deslizamiento `BondSlipInterface` generadas por tramo, con una ley de interfaz de línea. Las interfaces generadas no se registran, no tienen masa ni celda VTK. `Domain.generated_nodes` aparta los nodos generados de los selectores por coordenada del YAML.
 
 ## Solvers no lineales
 
@@ -204,16 +224,19 @@ Disponibles en la versión actual:
 
 - `LinearSolver` — un único paso, una única resolución del sistema `K · U = F`. Aplicable a problemas estrictamente lineales (rigidez constante, sin actualización de geometría, sin no linealidad material).
 - `NonlinearSolver` — método de Newton-Raphson incremental con control de carga. Aplica fracciones crecientes de la carga total y, en cada paso, itera hasta la convergencia. Criterio de parada dual (desplazamiento y fuerza).
-- `ArcLengthSolver` — método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con *snap-back* o *snap-through*.
+- `ArcLengthSolver` — método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, λ), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con *snap-back* o *snap-through*. Con `control` y `control_target` se detiene exactamente en el valor de una magnitud (ADR 0025).
+- `IndirectDisplacementSolver` — variante del arco con la restricción del control indirecto por desplazamiento (de Borst 1987): el paso fija el incremento de una combinación de desplazamientos, como la abertura de una entalla; con `control_target` se detiene en su valor.
 - `ModalSolver` (ADR 0009 fase 1) — análisis modal: problema generalizado de valores y vectores característicos `K · φ = ω² · M · φ`. No es análisis dinámico propiamente dicho (no hay paso de tiempo ni evolución temporal); sus soluciones admiten interpretación como frecuencias propias y formas de vibración libre no amortiguada. Internamente delega en `EigenSolver` (ARPACK Lanczos con shift-invert) sobre el sistema reducido por Dirichlet. Devuelve `ModalResult` con frecuencias, períodos y modos M-ortonormales; expone además `free_vibration(M, u0, u0_dot, t)` para reconstruir analíticamente la respuesta libre por superposición modal.
 - `NewmarkSolver` (ADR 0009 fase 3) — análisis dinámico transitorio lineal: integración temporal directa de `M · ü + C · u̇ + K · u = F(t)` por el método de Newmark-β con `(β, γ)` parametrizables (default 1/4, 1/2 — *average acceleration*, incondicionalmente estable, error `O(Δt²)`). Amortiguamiento Rayleigh `C = α · M + β · K` con coeficientes directos o calibrados modalmente a partir de dos pares `(ξ, ω)`. Cargas dependientes del tiempo por callback Python. Devuelve `TransientResult` con historiales `(t, u, u̇, ü)`. La matriz efectiva `A_eff = M + γΔt · C + βΔt² · K` se factoriza una sola vez al inicio y se reutiliza en todos los pasos.
-- `NewtonNewmarkSolver` (ADR 0009 fase 4) — análisis dinámico transitorio no lineal. **Variante** de `NewmarkSolver` (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico `R = F_ext − F_int(u) − C · u̇ − M · ü` con jacobiano `J = M + γΔt · C + βΔt² · K_t` (rigidez tangente corriente). Convergencia dual (ADR 0007). Amortiguamiento Rayleigh constante en el tiempo, calibrado con `K_0` (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (`freeze_tangent_after_iter`, ADR 0003 fase 2).
+- `NewtonNewmarkSolver` (ADR 0009 fase 4) — análisis dinámico transitorio no lineal. **Variante** de `NewmarkSolver` (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico `R = F_ext − F_int(u) − C · u̇ − M · ü` con jacobiano `J = M + γΔt · C + βΔt² · K_t` (rigidez tangente corriente). Convergencia dual (ADR 0007). Amortiguamiento Rayleigh constante en el tiempo, calibrado con `K_0` (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (`freeze_tangent_after_iter`, ADR 0003 fase 2). Paso adaptativo: el paso cuyo Newton no converge se repite en dos mitades, hasta `max_subdivisions` niveles (6 por omisión), con el historial en la malla de tiempos del usuario.
 - `HHTSolver` y `NewtonHHTSolver` (ADR 0009, variantes HHT-α) — disipación numérica controlada en altas frecuencias (Hilber-Hughes-Taylor 1977) con parámetro `α ∈ [−1/3, 0]` y `(β, γ)` auto-derivados. Subclases de `NewmarkSolver` y `NewtonNewmarkSolver` respectivamente (Reglas §4 — variantes).
 - `CentralDifferenceSolver` (ADR 0009 fase 5) — integración explícita por diferencias centradas (leapfrog Belytschko-Liu-Moran). `M⁻¹` trivial sobre masa lumped diagonal. Lineal y no lineal en una sola clase con parámetro `nonlinear`. Estabilidad condicional CFL con detección a posteriori de divergencia.
 - `HarmonicSolver` (ADR 0009 fase 6) — respuesta forzada armónica en el dominio de la frecuencia. Aritmética compleja con `scipy.sparse.linalg.spsolve` complejo; factorización LU compleja por frecuencia (no se cachea). Barrido lineal/logarítmico/explícito. Devuelve `HarmonicResult` con métodos `.amplitude()` y `.phase()`.
 - `ResponseSpectrumSolver` (ADR 0009 fase 7) — análisis sísmico por combinación modal SRSS/CQC contra espectro de respuesta. Orquesta `ModalSolver` interno y delega los algoritmos en `solidum.math.modal_response` (centralización por regla D de auditoría). Devuelve `ResponseSpectrumResult` con respuesta envolvente, factores de participación y masas efectivas.
 
 Los cinco solvers iterativos del programa principal (`NonlinearSolver`, `ArcLengthSolver` y su variante `IndirectDisplacementSolver`, `NewtonNewmarkSolver` y `NewtonHHTSolver`) no escriben su propio bucle de Newton: lo ejecuta el corrector compartido `NewtonCorrector` (`solidum/math/solvers/corrector.py`, ADR 0015), que posee el backend algebraico con su degradación a LU, el Newton modificado, el line search y el historial que alimenta las excepciones tipadas. Cada solver construye por paso un objeto `NewtonProblem` con lo que le es propio —cómo ensambla, cómo forma el residuo, cómo reduce y resuelve el sistema tangente, cómo aplica la corrección y qué comitea— y conserva su control de paso (bisección de la carga, longitud de arco y su restricción, predictores de Newmark). Un solver iterativo nuevo aporta su problema y su control de paso y hereda todo lo demás.
+
+**Terminación, etapas y continuidad.** Todos los solvers incrementales y los integradores en el tiempo informan cómo terminaron (`termination`, `completed`, último estado convergido) y fallan con una excepción tipada que conserva el resultado parcial (ADR 0025). Los estáticos incrementales arrancan de un estado y una carga constante (`solve(F, u0=…, constant_load=…)`, ADR 0026), los transitorios continúan un estático u otro transitorio (`continue_from`, ADR 0029), y el modal, el armónico, el espectral y el lineal pueden linealizar alrededor del estado de una etapa sin cambiarlo (ADR 0031). Desde Python se encadenan con `solidum.run(..., previous=resultado)`; desde el YAML, con el bloque `stages`.
 
 Espacio natural de extensión:
 
@@ -222,7 +245,7 @@ Espacio natural de extensión:
 - [PENDIENTE: Generalized-α, Bossak-α — esquemas adicionales de la familia con disipación numérica.]
 - [PENDIENTE: Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.]
 - [PENDIENTE: Excitación sísmica multi-direccional simultánea (CQC3, regla 100/30/30) y multi-support seismic excitation.]
-- [PENDIENTE: Δt adaptativo para transitorios.]
+- [PENDIENTE: Control del Δt por estimación del error local en los transitorios. Hoy el paso sólo se subdivide cuando el Newton de Newton-Newmark o Newton-HHT no converge.]
 
 La incorporación de un solver nuevo se realiza en `solidum/math/solvers/<nombre>.py` mediante el decorador `@SolverRegistry.register`. El **dispatch a entrypoints** en `solidum.entry.run_yaml` es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase `PIPELINE_KIND ∈ {"static", "modal", "transient", "harmonic", "spectrum"}` y `run_yaml` despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
 
@@ -254,11 +277,12 @@ Implementados en la versión actual:
 
 - *Estática lineal*. Desplazamientos pequeños, rigidez constante, una resolución directa. Combinación: `LinearSolver` con materiales lineales y elementos en formulación lineal.
 - *Estática no lineal incremental*. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: `NonlinearSolver` o `ArcLengthSolver` con materiales no lineales y/o elementos corrotacionales.
-- *Análisis modal* (ADR 0009 fase 1). Problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ`. Combinación: `ModalSolver` con materiales que declaren `density` y elementos que implementen `compute_mass_matrix`.
+- *Análisis modal* (ADR 0009 fase 1). Problema algebraico de valores y vectores característicos generalizado `K · φ = ω² · M · φ`. Combinación: `ModalSolver` con materiales que declaren `density` y elementos que implementen `compute_mass_matrix`, o con masas concentradas en los nudos (ADR 0024); los grados de libertad sin masa se condensan de forma exacta.
 - *Dinámica estructural transitoria lineal* (ADR 0009 fase 3). Integración temporal directa de la ecuación de movimiento por Newmark-β, con amortiguamiento Rayleigh proporcional y cargas dependientes del tiempo por callback Python. Combinación: `NewmarkSolver` con material lineal, elementos en formulación lineal y `density` declarada.
 - *Dinámica estructural transitoria no lineal* (ADR 0009 fase 4). Integración Newmark con Newton-Raphson dentro de cada paso sobre el residuo dinámico `R = F_ext − F_int(u) − C·u̇ − M·ü`. Combinación: `NewtonNewmarkSolver` con cualquier material con historia (`Elastoplastic1D`, `VonMises2D` en ambas hipótesis, `DruckerPrager2D`, `IsotropicDamage1D/2D`) y `density` declarada. Habilita sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo y vibraciones de marcos elastoplásticos.
 - *Dinámica estructural transitoria con disipación HHT-α* (ADR 0009, variante de fases 3 y 4). Mismas combinaciones que Newmark, con la familia HHT-α que controla la disipación numérica de modos altos espurios.
 - *Dinámica estructural transitoria explícita* (ADR 0009 fase 5). Integración explícita por diferencias centradas. Combinación: `CentralDifferenceSolver` con masa lumped (`lumping="lumped"`) y la condición de estabilidad CFL `Δt < L_el · √(ρ/E)` respetada por el usuario. Apropiado para *wave propagation*, impacto y dinámica de respuesta rápida.
+- *Análisis por etapas* (ADR 0026, 0029 y 0031). Una secuencia de análisis en la que cada uno parte del estado que dejó el anterior: gravedad y después empuje lateral, un transitorio tras un estático, o el modal y el espectral sobre una estructura cargada o plastificada. Combinación: cualquier solver estático incremental, transitorio o lineal con `previous=` o el bloque YAML `stages`.
 - *Respuesta forzada armónica en el dominio de la frecuencia* (ADR 0009 fase 6). Resolución directa del sistema complejo `(−ω²M + iωC + K)·û = F̂` por barrido en `ω`. Combinación: `HarmonicSolver` con amortiguamiento Rayleigh y excitación armónica.
 - *Análisis sísmico por combinación modal espectral* (ADR 0009 fase 7). Cálculo modal interno + factores de participación + combinación SRSS o CQC contra un espectro de respuesta tabulado o callable. Combinación: `ResponseSpectrumSolver` con materiales lineales, `density` declarada y un espectro normativo o equivalente.
 

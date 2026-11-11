@@ -8,10 +8,15 @@ La interacción exclusiva con el motor de Solidum FEM se realiza mediante el arc
 - `sections` — secciones de marco (sección por fibras), sólo si algún marco usa `section`; sus fibras referencian materiales de `materials`.
 - `elements` — conectividad (omisible si se importa malla Gmsh).
 - `boundary_conditions_by_node` / `_by_coord` / `_by_group` — restricciones de Dirichlet.
+- `linear_constraints` — restricciones multipunto (MPC) escritas a mano.
+- `constraints` — generadores de restricciones (refuerzo embebido, ADR 0032).
 - `point_loads_by_node` / `_by_coord` / `_by_group` — cargas de Neumann puntuales.
+- `nodal_masses` / `nodal_masses_by_group` / `nodal_masses_by_coord` — masas concentradas en nudos (ADR 0024).
+- `gravity`, `body_force`, `tractions` / `tractions_by_group`, `thermal_loads` — cargas distribuidas y térmicas.
 - `solver` — tipo de solver y sus parámetros.
+- `stages` — análisis por etapas (ADR 0026, 0029 y 0031); con etapas, el `solver` y las cargas van dentro de cada etapa y no en el nivel raíz.
 - `output` — frecuencia y formato de exportación de resultados.
-- `user_modules` — módulos de usuario que el modelo necesita (sólo si usa una formulación no estándar).
+- `user_modules` — módulos de usuario que el modelo necesita (sólo si usa una formulación no estándar). Un módulo puede añadir su propia sección (`crack_trackers` del módulo `discontinuities`).
 
 Una sección de primer nivel que el lector no conoce es un error, no se ignora: una errata en el nombre de un bloque detiene la lectura en vez de dejar el modelo sin ese bloque.
 
@@ -312,7 +317,7 @@ Un apoyo con valor prescrito reporta su reacción completa, incluida la fuerza q
 
 ### Refuerzo embebido: `constraints`
 
-El bloque `constraints` declara **generadores de restricciones** (ADR 0032): objetos que, sobre los elementos ya creados, generan a partir de su geometría los nodos, los elementos y las restricciones multipunto que necesitan. Se aplica después de los elementos y antes de los apoyos. Hoy hay un tipo, `EmbeddedReinforcement`: una barra de refuerzo con adherencia perfecta dentro de los sólidos 2D o 3D (spec `EmbeddedReinforcement`).
+El bloque `constraints` declara **generadores de restricciones** (ADR 0032): objetos que, sobre los elementos ya creados, generan a partir de su geometría los nodos, los elementos y las restricciones multipunto que necesitan. Se aplica después de los elementos y antes de los apoyos. Hoy hay un tipo, `EmbeddedReinforcement`: una barra de refuerzo dentro de los sólidos 2D o 3D, con adherencia perfecta o, con la opción `bond`, con adherencia-deslizamiento (spec `EmbeddedReinforcement`).
 
 ```yaml
 materials:

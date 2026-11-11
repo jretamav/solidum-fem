@@ -46,3 +46,11 @@ Relación 2D ↔ 3D en la interfaz pública:
 - `V_2D` y `Vy_3D` difieren en signo en la interfaz pública por la razón anterior.
 
 Los valores se exponen siempre en ejes locales del elemento; la transformación a ejes globales constituye una capa separada.
+
+## Interfaces: orden de las componentes
+
+Los materiales de interfaz (ADR 0033) reciben el desplazamiento relativo y devuelven la tracción en el sistema local de la interfaz, con las componentes **normales primero y las tangenciales después**: `(n, s)` o `(n, s1, s2)` en una superficie (grieta, junta) y `(n, s)` o `(n1, n2, s)` en la línea de una barra embebida. El desplazamiento relativo es el del lado positivo menos el del negativo (en una grieta, apertura normal positiva; en una barra, la barra menos el sólido que la rodea), y la tracción tangencial lleva el signo del deslizamiento. El paso a ejes globales es del elemento que consume la ley.
+
+## Reacciones en los análisis dinámicos
+
+La reacción de un apoyo sigue la convención del estático (ADR 0004 §3), extendida a la ecuación de movimiento en las filas de apoyo (ADR 0030): $\mathbf R = \mathbf F_\text{int}(\mathbf u) + \mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} - \mathbf F$, de modo que la suma de las reacciones equilibra la carga y las fuerzas de inercia y de amortiguamiento de la estructura entera. La parte $\mathbf C\dot{\mathbf u}$ se reporta por separado; en el armónico, la misma regla en amplitudes complejas, y en el espectral, la ecuación de cada modo antes de combinar.

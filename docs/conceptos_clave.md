@@ -9,10 +9,10 @@
 ## Plumbing de software (idioms Python que estructuran el proyecto)
 
 ### 1. Registry + decorador `@register`
-Diccionario global por categoría (materiales, materiales térmicos, elementos, solvers) que mapea nombre → clase. Cada clase, al definirse, se autorregistra mediante un decorador que la añade al diccionario sin tocar listas centrales. Permite que el `YamlParser` instancie cualquier clase por su nombre sin conocerla en compile-time. Un registro que declara su sección YAML (`YAML_SECTION`) es una **familia de material** (`Registry.families()`, ADR 0020): el parser recorre todas las familias con el mismo código.
+Diccionario global por categoría (materiales mecánicos, térmicos y de interfaz, secciones, elementos, restricciones generadas, solvers) que mapea nombre → clase. Cada clase, al definirse, se autorregistra mediante un decorador que la añade al diccionario sin tocar listas centrales. Permite que el `YamlParser` instancie cualquier clase por su nombre sin conocerla en compile-time. Un registro que declara su sección YAML (`YAML_SECTION`) es una **familia de material** (`Registry.families()`, ADR 0020): el parser recorre todas las familias con el mismo código.
 
 ### 2. Autodiscover (`solidum/autodiscover.py`)
-Al hacer `import solidum`, un solo recorrido (`pkgutil.iter_modules`) importa todos los módulos de `solidum/materials`, `solidum/elements`, `solidum/math`. Como los decoradores se ejecutan al importar el módulo, esto basta para poblar los Registry. Equivalente conceptual al `INCLUDE` automático en Fortran moderno, pero en runtime. No recorre `solidum/user/`: los módulos de usuario sólo se cargan cuando un modelo los pide (entrada 10d).
+Al hacer `import solidum`, un solo recorrido (`pkgutil.iter_modules`) importa todos los módulos de `solidum/materials`, `solidum/sections`, `solidum/elements`, `solidum/math` y `solidum/bc` (restricciones generadas). Como los decoradores se ejecutan al importar el módulo, esto basta para poblar los Registry. Equivalente conceptual al `INCLUDE` automático en Fortran moderno, pero en runtime. No recorre `solidum/user/`: los módulos de usuario sólo se cargan cuando un modelo los pide (entrada 10d).
 
 ### 3. Contrato declarativo vía `ClassVar` (`STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `PRIMARY_STATE_VAR`)
 Cada elemento y material declara como atributos de clase qué espera y qué produce. La base abstracta los lee y se autoconfigura: registra DOFs, valida compatibilidad material↔elemento (mismo `STRAIN_DIM`), inicializa el `ElementState` con la forma correcta. Sustituye métodos `setup()` repetitivos en cada subclase.
@@ -103,6 +103,21 @@ Los movimientos que un modelo sin apoyos puede hacer sin deformarse —traslacio
 
 ### 23. Red de seguridad del análisis estático (ADR 0019)
 Un solver directo ante una matriz singular devuelve resultados absurdos sin avisar. Por eso el análisis estático comprueba, antes de resolver, que los apoyos impiden todo movimiento de sólido rígido —y si no, dice cuál queda libre en términos del modelo—, y después, en el caso lineal, que el modelo no tiene un mecanismo interno y que el solver resolvió el sistema que se le dio (error hacia atrás normado, que no depende de las unidades ni de lo desproporcionadas que sean las rigideces). Un mecanismo interno se reconoce por su energía, no por el tamaño de un pivote (2026-10-20): un pivote pequeño frente a la diagonal sólo dispara el cálculo del modo de menor energía con la factorización ya hecha, y es un mecanismo si ese modo no deforma ninguno de los elementos que mueve, que el mensaje nombra. Dentro de un Newton no rechaza nada a lo largo del trazado: cerca de un punto límite resolver un sistema casi singular es legítimo. La excepción es la tangente inicial (2026-09-30): si tiene un mecanismo interno y ningún componente puede ganar rigidez al deformarse (contrato `Element.GEOMETRICALLY_NONLINEAR`, y `Material.IS_UNILATERAL`), el mecanismo es permanente y el análisis se rechaza; si alguno puede, se avisa. El solver iterativo, que no tiene pivotes, lo dice en vez de fingir la comprobación.
+
+### 24. Masas de nudo y grados de libertad sin masa (ADR 0024)
+Una masa concentrada en un nudo se suma a la diagonal de la matriz de masa: sólo inercia, sin peso con `gravity` (decisión del usuario). Si algunos grados de libertad quedan sin masa (los giros de un marco con masas de piso), el modal los condensa de forma exacta y los transitorios implícitos los resuelven con la rigidez; si no hay solución, el error los nombra.
+
+### 25. Etapas de carga y continuidad (ADR 0025, 0026, 0029, 0031)
+Un análisis puede partir del estado de otro: una etapa estática mantiene la carga de la anterior y añade la suya escalada por λ desde 0 (`u0`, `constant_load`, `previous=`, bloque YAML `stages`); un transitorio continúa un estático o un transitorio; modal, armónico, espectral y `LinearSolver` linealizan alrededor del estado de una etapa sin cambiarlo. Cada solver incremental termina con un estado legible (`termination`) y puede detenerse exactamente en un desplazamiento objetivo (`control_target`).
+
+### 26. Cargas que llevan sus cargas equivalentes (`LoadVector`, ADR 0027)
+Un vector de cargas nodales de una carga distribuida (peso propio, carga de cuerpo, presión) viaja con las cargas equivalentes de empotramiento de cada elemento, y las combina con la misma aritmética que las cargas (`F_a + λ·F_b`). Así las fuerzas internas de los elementos descuentan exactamente la carga que se aplicó, también por etapas y en los transitorios.
+
+### 27. Longitud característica del punto de integración (ADR 0028)
+Un material con ablandamiento disipa por unidad de volumen, pero la energía de fractura es por unidad de área: hace falta una longitud que las relacione. Cada elemento siembra en el estado de cada punto su longitud característica (`L` en barras, `w_g·L` en marcos con sección) y el material que la declara la usa para regularizar el ablandamiento (hoy `ManderConcrete1D`).
+
+### 28. Restricciones generadas y localización de puntos (ADR 0032)
+Algunas restricciones no se escriben una a una sino que las genera una geometría sobre un dominio ya mallado: el refuerzo embebido localiza cada nodo de la barra en el sólido que lo contiene (inversa del mapeo isoparamétrico) y lo ata al campo interpolado con una MPC, o, con adherencia-deslizamiento, genera interfaces entre barra y sólido. El generador se registra (`ConstraintRegistry`, bloque YAML `constraints`) y crea los nodos, elementos y restricciones que necesita.
 
 ---
 

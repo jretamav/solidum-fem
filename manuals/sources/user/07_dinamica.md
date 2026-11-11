@@ -153,7 +153,7 @@ solver:
     omega2: 200.0
 ```
 
-**Limitaciones**: lineal ($\mathbf K, \mathbf M$ constantes; para no-linealidad material o geométrica → `NewtonNewmarkSolver`). Apoyos Dirichlet constantes en el tiempo. Paso $\Delta t$ fijo (adaptativo diferido). HHT-$\alpha$ y generalized-$\alpha$ (con amortiguamiento numérico controlado) no incluidos.
+**Limitaciones**: lineal ($\mathbf K, \mathbf M$ constantes; para no-linealidad material o geométrica → `NewtonNewmarkSolver`). Apoyos Dirichlet constantes en el tiempo. Paso $\Delta t$ fijo (el paso adaptativo es de las variantes no lineales: sección «Paso adaptativo en los transitorios no lineales»). La disipación numérica controlada está en `HHTSolver` (sección «`HHTSolver` y `NewtonHHTSolver`»); generalized-$\alpha$ no está incluido.
 
 ## `NewtonNewmarkSolver` — transitorio no lineal Newton-Newmark
 
@@ -161,7 +161,7 @@ Subclase de `NewmarkSolver` (Reglas §4 — variante de componente existente) qu
 
 $$\mathbf R = \mathbf F_{\text{ext}}(t) - \mathbf F_{\text{int}}(\mathbf u) - \mathbf C\dot{\mathbf u} - \mathbf M\ddot{\mathbf u}, \quad \mathbf J = \mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\,\mathbf K_t$$
 
-**Convergencia dual** (ADR 0007): mismas tolerancias `rtol_force` / `rtol_disp` y factores `atol_*_factor` que los solvers no lineales estáticos. Tras converger cada paso se invoca `assembler.commit_all_states()` (trial → committed en todos los elementos); si agota `max_iter` se lanza `RuntimeError` y se descarta el estado trial.
+**Convergencia dual** (ADR 0007): mismas tolerancias `rtol_force` / `rtol_disp` y factores `atol_*_factor` que los solvers no lineales estáticos. Tras converger cada paso se invoca `assembler.commit_all_states()` (trial → committed en todos los elementos); si agota `max_iter`, el paso se repite subdividido desde el último estado convergido (sección «Paso adaptativo en los transitorios no lineales») y, si ni así converge, el análisis se detiene con `SolverDivergedError` y un resultado parcial hasta el último estado convergido.
 
 **Amortiguamiento Rayleigh constante en el tiempo**, calibrado con la rigidez elástica de referencia $\mathbf K_0$ al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees) que evita acoplamiento ad-hoc entre disipación viscosa y plástica.
 
@@ -169,7 +169,7 @@ $$\mathbf R = \mathbf F_{\text{ext}}(t) - \mathbf F_{\text{int}}(\mathbf u) - \m
 
 **Recuperación del caso lineal**: con materiales sin historia o no plastificados, el residuo se anula en 1 iter y el resultado coincide *a paridad de bits* con `NewmarkSolver`. Validado en tests.
 
-**Parámetros**: heredados de `NewmarkSolver` más `max_iter` (default 20), bloque `convergence` (`rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`; ADR 0007) y `freeze_tangent_after_iter` (default `None`). El despacho YAML es automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `solidum.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient`.
+**Parámetros**: heredados de `NewmarkSolver` más `max_iter` (default 20), bloque `convergence` (`rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`; ADR 0007), `freeze_tangent_after_iter` (default `None`), `line_search` (búsqueda lineal en el Newton de cada paso, ADR 0011; default `false`) y `max_subdivisions` (niveles de subdivisión del paso, default 6; `0` la desactiva). El despacho YAML es automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `solidum.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient`.
 
 ```yaml
 materials:
@@ -194,7 +194,7 @@ solver:
 
 **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria (sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo), vibraciones de marcos elastoplásticos. Materiales con historia disponibles en dinámica: `Elastoplastic1D`, `VonMises2D` (*plane strain* y *plane stress*), `DruckerPrager2D`, `IsotropicDamage1D/2D`.
 
-**Limitaciones**: igual que `NewmarkSolver` en lo lineal (apoyos constantes, paso fijo). No resuelve *snap-back* dinámico con softening severo — combinar con `ArcLengthSolver` si emerge.
+**Limitaciones**: apoyos Dirichlet constantes en el tiempo, como `NewmarkSolver`; el paso es el pedido salvo donde el Newton no converge, que se subdivide. No resuelve *snap-back* dinámico con softening severo — combinar con `ArcLengthSolver` si emerge.
 
 ## `HHTSolver` y `NewtonHHTSolver` — variantes Hilber-Hughes-Taylor
 
@@ -421,7 +421,8 @@ solver:
 Independiente de cualquier solver: todos los elementos del catálogo soportan `compute_mass_matrix(lumping="lumped")`. El esquema se elige por familia:
 
 - **Sólidos isoparamétricos** (Tri3, Quad4, Tri6, Quad8, Quad9): **HRZ canónico** (Hinton-Rock-Zienkiewicz 1976) centralizado en `solidum.math.mass_lumping.lump_hrz`. Preserva masa total y proporcionalidad diagonal; evita masas negativas en elementos de orden superior.
-- **Barras y cables** (Truss, Cable): $\rho AL/2$ por grado de libertad traslacional y nodo.
+- **Barras y cables de dos nodos** (Truss, Cable): $\rho AL/2$ por grado de libertad traslacional y nodo.
+- **Barras de tres nodos** (`Truss2D3`, `Truss3D3`): $\rho AL\cdot(1/6,\ 1/6,\ 2/3)$ en los extremos y el nodo intermedio, por componente (la cuadratura de Lobatto de 3 puntos y HRZ coinciden).
 - **Marcos Euler-Bernoulli** (`Frame2DEuler`, `Frame2DEulerCorot`, `Frame3D`): **HRZ** de la masa consistente — $\rho AL/2$ traslacional y $\rho AL^3/78$ en cada giro de flexión por nodo; en `Frame3D`, además, $\rho J_p L/2$ en el giro de torsión ($J_p = I_y + I_z$). Como la hipótesis de Euler-Bernoulli desprecia la inercia rotatoria de la sección, ni la masa consistente ni la concentrada dependen de $I$ (salvo la torsión de `Frame3D`).
 - **`Frame2DTimoshenko`**: $\rho AL/2$ traslacional y $\rho I L/2$ rotacional por nodo — conserva la inercia rotatoria, porque en Timoshenko el giro es independiente de la pendiente.
 

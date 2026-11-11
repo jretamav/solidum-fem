@@ -147,7 +147,7 @@ Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo `mass_lumping.py`
 
 Ninguna de las dos primeras resultó necesaria. La suposición que se temía no estaba en el código: el ensamblador, la imposición de restricciones por eliminación y el despacho algebraico operan sobre índices de grado de libertad y sobre propiedades de la matriz, sin consultar en ningún punto el significado físico del campo. Las condiciones de frontera y las cargas nodales se aplican por *nombre* de grado de libertad, de modo que `T` funcionó por el mismo mecanismo genérico que `ux`. El régimen estacionario, en consecuencia, no requirió solver alguno: el solver lineal existente resolvió el problema de conducción sin una sola línea de modificación.
 
-La tercera predicción sí se confirmó: **el exportador VTK escribe únicamente campos mecánicos** —desplazamientos y rotaciones— y no exporta el campo de temperatura. Es hoy la limitación práctica más visible del subsistema térmico, y queda registrada como tal.
+La tercera predicción sí se confirmó al cerrar la etapa: **el exportador VTK escribía únicamente campos mecánicos** —desplazamientos y rotaciones— y no exportaba el campo de temperatura. Era la limitación práctica más visible del subsistema térmico; desde el 22 de septiembre de 2026 el exportador escribe el campo nodal `Temperature` cuando algún nodo tiene el grado de libertad `T`.
 
 La lección de arquitectura que deja la fase es que el coste real de la extensión no se concentró donde la previsión lo situaba. Lo caro no fue generalizar la infraestructura —que ya era agnóstica al campo, aunque nadie lo hubiera comprobado— sino la física propia del problema: la elección de los esquemas por defecto contra el principio del máximo de la ecuación de difusión, y la constatación de que la ecuación de conducción, al ser de primer orden en el tiempo, no admite reutilizar la familia de integradores de Newmark. La interfaz del material tampoco fue la anticipada `compute_flux_and_tangent(grad_T, state)`, sino `compute_flux(grad_T)` sin argumento de estado, porque la conducción de Fourier carece de variables internas con historia.
 
@@ -162,7 +162,7 @@ La lección de arquitectura que deja la fase es que el coste real de la extensi�
 ```
 
 ```callout Riesgo de arquitectura
-Resultó **bajo**, frente al riesgo medio estimado. La infraestructura existente absorbió el campo escalar sin generalización previa, lo que constituye una verificación empírica de las decisiones de despacho algebraico e imposición de restricciones frente a un campo físico que no existía cuando se tomaron. La deuda pendiente es de salida, no de arquitectura: la exportación del campo de temperatura a formato VTK.
+Resultó **bajo**, frente al riesgo medio estimado. La infraestructura existente absorbió el campo escalar sin generalización previa, lo que constituye una verificación empírica de las decisiones de despacho algebraico e imposición de restricciones frente a un campo físico que no existía cuando se tomaron. La deuda que quedó era de salida, no de arquitectura (la exportación del campo de temperatura a VTK), y se saldó el 22 de septiembre de 2026.
 ```
 
 ## Fase 6 — Acoplamiento termo-mecánico
@@ -182,6 +182,98 @@ Resultó **bajo**, frente al riesgo medio estimado. La infraestructura existente
 
 ```callout Riesgo de arquitectura
 Bajo, tras la verificación del ADR 0016. El cambio de contrato se limita a un canal aditivo para `ε₀` con valor por defecto cero, que deja los materiales existentes intactos.
+```
+
+## Fase 7 — Rendimiento y robustez de la capa numérica
+
+**Estado**: implementado (ADR 0014, 0015, 0017, 0018 y 0019, 22 y 23 de septiembre de 2026; capa 4 de la red de seguridad, 27 de octubre de 2026).
+
+Ninguna de estas piezas añade un tipo de análisis: cambian cómo se ensambla, cómo se resuelve y qué se comprueba, sin cambiar un resultado.
+
+- **Ensamblaje por lotes** (ADR 0014): la familia de elementos se deriva de los contratos declarativos y se evalúa en un kernel compilado, serie o paralelo, con el camino por elemento como referencia obligatoria; el estado interno se declara (`STATE_SCHEMA`) y se guarda en arreglos.
+- **Corrector de Newton compartido** (ADR 0015): un solo bucle de corrección para todos los solvers iterativos; cada solver aporta su problema por paso y su control de paso.
+- **Backends algebraicos** (ADR 0017 y 0018): Pardiso multihilo opcional, y un iterativo (CG/MINRES con multimalla algebraica sembrada con los modos de cuerpo rígido) sólo a petición.
+- **Red de seguridad del análisis estático** (ADR 0019): mecanismos rígidos detectados antes de resolver y descritos en términos del modelo; mecanismos internos, solución del sistema y pérdida de cifras por mal condicionamiento comprobados después.
+
+```
+[Numerica] = [Ensamblaje por familias (Numba)] + [NewtonCorrector] + [Despacho: Cholesky | Pardiso | LU | iterativo] + [Red de seguridad]
+```
+
+```callout Riesgo de arquitectura
+Bajo. Todo es interno a la capa numérica y se verificó contra el camino anterior a precisión de máquina; el contrato que gana un componente nuevo es opcional (`BATCH_KINEMATICS`, `BATCH_KERNEL`) salvo `STATE_SCHEMA`, una línea.
+```
+
+## Fase 8 — Módulos de usuario y frontera del programa principal
+
+**Estado**: implementado (ADR 0020, 24 de septiembre de 2026; revisión del 29 de septiembre con el criterio de admisión de `Reglas.md` §1).
+
+Las formulaciones no estándar salen del programa principal a módulos de usuario (`solidum/user/<nombre>/`), con carga explícita (`user_modules` en el YAML o `solidum.load_user_module`). El programa principal sólo ofrece piezas genéricas: registros con metadatos de familia, un lector YAML con un solo bucle sobre las familias, referencias declaradas por el elemento (`REFERENCE_KWARGS`), el gancho `prepare_step` y la cinemática pública. Dos módulos: `discontinuities` (discontinuidades interiores embebidas, ADR 0010) y `dissipation_control` (arco por disipación). Un test de pureza vigila que el programa principal no los nombre.
+
+```
+[Programa principal: solidum/]  <-- piezas genéricas --  [Modulos de usuario: solidum/user/<nombre>/]
+```
+
+```callout Riesgo de arquitectura
+Bajo. La frontera es aditiva y la vigilan tres controles automáticos (estructural, léxico y en ejecución). Una pieza estándar que hoy sólo usa un módulo sigue en él hasta que la necesite el programa principal; así volvió la familia cohesiva el 10 de noviembre de 2026 (fase 12).
+```
+
+## Fase 9 — Secciones de marco
+
+**Estado**: implementado (ADR 0021, 29 de septiembre de 2026).
+
+Una cuarta familia de objetos con sección YAML propia, `SectionRegistry` (`sections`), sin estado: el estado de cada fibra vive en el elemento. `FiberSection` da a los marcos Euler-Bernoulli plasticidad distribuida con cualquier material 1D; los marcos aceptan un material elástico con propiedades geométricas o una sección con `n_ip` puntos de Gauss-Legendre.
+
+```callout Riesgo de arquitectura
+Bajo para la arquitectura, alto para los modelos existentes: un marco con material inelástico sin sección deja de construirse, porque antes daba flectores incorrectos en silencio.
+```
+
+## Fase 10 — Cargas variables y verificación por soluciones manufacturadas
+
+**Estado**: implementado (ADR 0022 y 0023, 27 de octubre de 2026).
+
+Las cargas distribuidas aceptan campos de la posición integrados sobre la geometría real, también desde el YAML con expresiones compiladas por un intérprete con lista blanca. El contrato declarativo de la celda de referencia (`REFERENCE_CELL`, `REFERENCE_NODES`) habilita un generador de mallas estructuradas (`solidum.mesh`) y la verificación por soluciones manufacturadas (`solidum.verification`), que recorre el registro: un elemento nuevo queda verificado sin escribir pruebas.
+
+```callout Riesgo de arquitectura
+Bajo. Extensiones aditivas de las cargas y de la entrada; la verificación es una herramienta, no una capa.
+```
+
+## Fase 11 — Análisis por etapas y continuidad
+
+**Estado**: implementado (ADR 0024 a 0031, 9 de noviembre de 2026).
+
+Hasta aquí cada análisis empezaba en `U = 0` y terminaba en sí mismo. Esta fase encadena análisis y hace legible cómo terminó cada uno:
+
+- **Masas de nudo y grados de libertad sin masa** (ADR 0024): la masa de nudo es un dato del dominio; el modal condensa de forma exacta los grados de libertad sin masa y los transitorios implícitos los admiten con aceleración inicial consistente.
+- **Terminación y registro** (ADR 0025): `termination` legible en todos los solvers incrementales y en el tiempo, excepciones tipadas, parada en un valor objetivo de la magnitud controlada (`control_target`) y una política de niveles del registro.
+- **Etapas de carga** (ADR 0026): `solve(F, u0=…, constant_load=…)`, `solidum.run(..., previous=…)` y el bloque YAML `stages`.
+- **Cargas con sus cargas equivalentes** (ADR 0027): `LoadVector` combina linealmente las cargas equivalentes por elemento con la carga.
+- **Longitud característica del punto** (ADR 0028): viaja en el estado del punto de integración para regularizar el ablandamiento (`ManderConcrete1D`).
+- **Continuidad en el tiempo** (ADR 0029), **reacciones dinámicas** (ADR 0030) y **análisis lineales sobre el estado de una etapa** (ADR 0031): un transitorio continúa un estático u otro transitorio; el modal, el armónico, el espectral y el lineal linealizan alrededor del estado de la etapa sin cambiarlo.
+
+```
+[Etapa 1: estatico] --previous--> [Etapa 2: estatico | transitorio | modal | armonico | espectral | lineal] --previous--> ...
+                         (estado de los elementos + carga constante + cargas equivalentes)
+```
+
+```callout Riesgo de arquitectura
+Medio, ya cerrado. Una etapa hereda el estado que guardan los elementos, así que cada solver debía arrancar de un estado ajeno; se resolvió con mezclas comunes (`TransientTerminationMixin`, `LinearizedStateMixin`) y con comprobación de equilibrio al empezar, sin tocar el contrato de elemento ni de material.
+```
+
+## Fase 12 — Interfaces, refuerzo embebido y restricciones generadas
+
+**Estado**: implementado (ADR 0032 y 0033, 10 de noviembre de 2026).
+
+- **Restricciones generadas** (ADR 0032): una familia de generadores (`ConstraintRegistry`, bloque YAML `constraints`) crea sobre el dominio mallado los nodos, elementos y MPC que su geometría pide; la localización de puntos invierte el mapeo isoparamétrico con lo que todo sólido declara. Primer generador: el refuerzo embebido, con barras de dos o tres nodos (`Truss2D3`, `Truss3D3`).
+- **Materiales de interfaz** (ADR 0033): una quinta familia, `InterfaceMaterialRegistry` (`interface_materials`), de leyes tracción–desplazamiento relativo para superficies (grietas) y líneas (barras embebidas). Con `bond`, el refuerzo genera interfaces de adherencia-deslizamiento no registradas; la familia cohesiva del módulo `discontinuities` volvió al programa principal y se amplió con la ley de modo mixto.
+- En el módulo `discontinuities`, el seguimiento de grieta (ADR 0010, fase E).
+
+```
+[Dominio mallado] -- generador de restricciones --> [nodos + elementos de barra + MPC | interfaces de adherencia]
+[Materiales de interfaz] --> [interfaces de adherencia (linea)] + [discontinuidades embebidas (superficie)]
+```
+
+```callout Riesgo de arquitectura
+Bajo. Los generadores producen objetos que el resto del programa ya sabía tratar (nodos, elementos, MPC); las interfaces generadas no se registran ni se exportan a VTK, y sólo exigieron dos piezas genéricas (`VTK_EXPORT` en el exportador y `YAML_KEYS` en el lector).
 ```
 
 ## Mantenimiento de este capítulo

@@ -32,9 +32,9 @@ Procedería si se adopta MPI (compromiso anterior) y, simultáneamente, los prob
 
 **Decisión**: rechazada.
 
-**Contexto**. Una arquitectura cliente-servidor expondría Solidum FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
+**Contexto**. Una arquitectura cliente-servidor expondría Solidum FEM como un servicio remoto al que la GUI externa (SolidumBAR, antes FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
 
-**Razones del rechazo**. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el ADR 0002 con `SolveResult`, `solidum.run` y `solidum.run_yaml` en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
+**Razones del rechazo**. El consumidor actual (SolidumBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el ADR 0002 con `SolveResult`, `solidum.run` y `solidum.run_yaml` en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
 
 ```callout Reapertura de la decisión
 Procedería si Solidum FEM se ofreciera como servicio público a múltiples consumidores no relacionados con el desarrollo, o si la GUI se desacoplara hasta el punto de ejecutarse en máquinas distintas.
@@ -46,7 +46,7 @@ Procedería si Solidum FEM se ofreciera como servicio público a múltiples cons
 
 **Contexto**. La interfaz pública del programa (`solidum.run`, `solidum.run_yaml`, `SolveResult`) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
 
-**Razones del rechazo**. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Solidum FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (`py.solidum.run_yaml(path)`), sin necesidad de modificar Solidum FEM.
+**Razones del rechazo**. El consumidor identificado (SolidumBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Solidum FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (`py.solidum.run_yaml(path)`), sin necesidad de modificar Solidum FEM.
 
 ```callout Reapertura de la decisión
 Procedería si surgiera un consumidor estable escrito en un lenguaje distinto de Python y la solución *vía* el puente nativo de cada lenguaje no fuera viable.

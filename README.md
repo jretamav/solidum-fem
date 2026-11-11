@@ -21,20 +21,36 @@ discontinuity model and the dissipation-based arc-length control.
 
 Main program:
 
-- **22 elements**: 1D structural (truss, cable, frame 2D Euler/Timoshenko/corotational,
-  frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9, Tri6), 3D solids linear (Hex8,
-  Tet4) and quadratic (Hex20, Hex27, Tet10), and thermal conduction elements
-  (Quad4Thermal, Hex8Thermal).
-- **14 materials** in two families: 13 mechanical (elastic 1D/2D/3D, orthotropic
-  2D elasticity, unilateral cable, J2 plasticity (1D, plane strain, plane stress,
-  3D), Drucker-Prager (2D and 3D), isotropic continuum damage 1D/2D/3D) and
-  Fourier thermal conduction with tensor conductivity.
+- **24 elements**: 1D structural (2- and 3-node truss, cable, frame 2D
+  Euler/Timoshenko/corotational, frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9,
+  Tri6), 3D solids linear (Hex8, Tet4) and quadratic (Hex20, Hex27, Tet10), and
+  thermal conduction elements (Quad4Thermal, Hex8Thermal).
+- **19 materials** in three families: 14 mechanical (elastic 1D/2D/3D,
+  orthotropic 2D elasticity, unilateral cable, J2 plasticity (1D, plane strain,
+  plane stress, 3D), Drucker-Prager (2D and 3D), isotropic continuum damage
+  1D/2D/3D, and uniaxial concrete with Mander's confined/unconfined envelope,
+  tension softening and optional fracture-energy regularization); 4 interface
+  laws relating traction to relative displacement (mode I and mixed-mode
+  cohesive damage with linear, exponential or fib Model Code 2010 bilinear
+  softening; bar–concrete bond-slip after Eligehausen, Popov and Bertero 1983 /
+  fib Model Code 2010, and a multilinear bond-slip law); and Fourier thermal
+  conduction with tensor conductivity.
+- **Fiber section** for frame elements (any 1D material as fiber material).
+- **Embedded reinforcement**: 2- or 3-node bars embedded in 2D or 3D solid
+  meshes without matching nodes, with perfect bond or with distributed
+  bond-slip interfaces.
 - **13 solvers**: linear and nonlinear static, cylindrical arc-length (Crisfield)
   and indirect displacement control (de Borst 1987), modal via shift-invert
   ARPACK, linear and
   nonlinear Newmark/HHT time integration, central difference, harmonic response,
   response spectrum (SRSS, CQC), and θ-method integration for transient heat
   conduction.
+- **Staged analyses**: load stages (constant load plus continuation, from Python
+  or from the YAML `stages` block), stopping at a target displacement, time
+  continuity between transient analyses, and modal, harmonic, spectral or linear
+  perturbation analyses about the state of a previous stage. Lumped nodal masses,
+  modal analysis with massless degrees of freedom, adaptive time stepping in the
+  implicit nonlinear integrators, and support reactions in dynamic analyses.
 - **Thermal analysis** (uncoupled): steady-state and transient heat conduction
   in 2D and 3D, with Dirichlet and Neumann boundary conditions. The steady-state
   regime needs no dedicated solver — the existing linear solver handles it
@@ -50,9 +66,11 @@ Main program:
   solver is chosen automatically, and a static analysis checks, before solving,
   that the model is sufficiently supported — reporting the free rigid-body motion
   in plain terms, e.g. *"rotation about the z axis through (0, 0.5)"* — and,
-  after solving, that the solution satisfies equilibrium and the matrix has no
-  zero pivots. An ill-posed model stops with an explanation instead of returning
-  meaningless displacements.
+  after solving, that the linear system was solved accurately (normwise backward
+  error), that no internal mechanism is present (zero-energy mode of the
+  factorized matrix, located element by element) and that the system is not
+  ill-conditioned. An ill-posed model stops with an explanation instead of
+  returning meaningless displacements.
 
 User modules (in `solidum/user/`; `import solidum` loads none of them):
 
@@ -82,12 +100,12 @@ User modules (in `solidum/user/`; `import solidum` loads none of them):
 
 Documentation and tests:
 
-- **20 accepted ADRs** documenting architectural decisions.
-- **51 validated specs** with quantitative acceptance criteria (49 for the main
-  program, 2 for the `discontinuities` user module; the spec of the
+- **33 accepted ADRs** documenting architectural decisions.
+- **61 validated specs** with quantitative acceptance criteria (58 for the main
+  program, 3 for the `discontinuities` user module; the spec of the
   `dissipation_control` module is implemented and partially validated).
-- **1756 tests** green (110 of them for the `discontinuities` user module and
-  19 for `dissipation_control`),
+- **3243 tests** green (120 of them for the `discontinuities` user module and
+  36 for `dissipation_control`),
   including 8 published canonical benchmarks (Lamé 2D and 3D, NAFEMS LE1 and
   LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation, Hill 1950,
   Carslaw-Jaeger semi-infinite solid).
@@ -221,6 +239,7 @@ Component catalogs (short navigational entries):
 - [docs/catalogo\_elementos.md](docs/catalogo_elementos.md) (elements)
 - [docs/catalogo\_materiales.md](docs/catalogo_materiales.md) (materials)
 - [docs/catalogo\_solvers.md](docs/catalogo_solvers.md) (solvers)
+- [docs/catalogo\_restricciones.md](docs/catalogo_restricciones.md) (generated constraints)
 
 ADRs live in [docs/adr/](docs/adr/); [ADR 0020](docs/adr/0020-modulos-de-usuario.md)
 defines the split between main program and user modules. Per-component specs in

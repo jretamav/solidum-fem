@@ -269,9 +269,11 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 \node[layer, below=of entrada] (init) {
   {\title Capa de inicialización} \hfill \texttt{solidum/\_\_init\_\_.py}\\
   Al importar el paquete se invoca \texttt{autodiscover.initialize()};
-  los decoradores \texttt{@*Registry} pueblan
-  \texttt{MaterialRegistry}, \texttt{ElementRegistry} y
-  \texttt{SolverRegistry}.
+  los decoradores \texttt{@*Registry} pueblan los registros:
+  familias de material (\texttt{MaterialRegistry},
+  \texttt{ThermalMaterialRegistry}, \texttt{InterfaceMaterialRegistry}),
+  \texttt{SectionRegistry}, \texttt{ElementRegistry},
+  \texttt{SolverRegistry} y \texttt{ConstraintRegistry}.
 };
 \node[layer, below=of init] (parse) {
   {\title Capa de interpretación del caso} \hfill \texttt{solidum/utils/yaml\_parser.py}\\
@@ -283,25 +285,32 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   \texttt{Domain} -- \texttt{Node} -- DOF (numeración global). Bases
   \texttt{Element} (con \texttt{DOF\_NAMES}, \texttt{STRAIN\_DIM},
   \texttt{N\_INTEGRATION\_POINTS}, \texttt{ElementState} en estados
-  \emph{trial} y comprometido) y \texttt{Material} (con
-  \texttt{STRAIN\_DIM}, \texttt{PRIMARY\_STATE\_VAR}).
+  \emph{trial} y comprometido), \texttt{Material} (con
+  \texttt{STRAIN\_DIM}, \texttt{PRIMARY\_STATE\_VAR}),
+  \texttt{InterfaceMaterial} (tracción--desplazamiento relativo) y
+  \texttt{Section}; restricciones multipunto y generadores de
+  restricciones (\texttt{solidum/bc/}).
 };
 \node[layer, below=of dominio] (numerica) {
   {\title Capa numérica} \hfill \texttt{solidum/math/}\\
   \texttt{assembly.py} (ensamblaje disperso con caché COO),
   \texttt{integration.py} (cuadraturas de Gauss),
-  paquete \texttt{solvers/} con un módulo por solver
-  (\texttt{LinearSolver}, \texttt{NonlinearSolver},
-  \texttt{ArcLengthSolver}, \texttt{ModalSolver},
-  \texttt{NewmarkSolver}, \texttt{NewtonNewmarkSolver}) y subsistema algebraico
-  \texttt{linalg/} (\texttt{LUSolver}, \texttt{CholeskySolver},
-  \texttt{LDLTSolver} reservado, despachador
-  \texttt{select\_solver}, \texttt{EigenSolver}).
+  paquete \texttt{solvers/} con los trece solvers (estáticos
+  \texttt{LinearSolver}, \texttt{NonlinearSolver},
+  \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver};
+  \texttt{ModalSolver}; transitorios \texttt{NewmarkSolver},
+  \texttt{HHTSolver}, \texttt{NewtonNewmarkSolver},
+  \texttt{NewtonHHTSolver}, \texttt{CentralDifferenceSolver};
+  \texttt{HarmonicSolver}, \texttt{ResponseSpectrumSolver} y el térmico
+  \texttt{ThetaMethodSolver}), el corrector de Newton compartido y el
+  subsistema algebraico \texttt{linalg/} (Cholesky, LU, Pardiso
+  opcional, iterativo a petición, \texttt{LDLTSolver} reservado,
+  despachador \texttt{select\_solver}, \texttt{EigenSolver}).
 };
 \node[layer, below=of numerica] (salida) {
   {\title Capa de salida} \hfill \texttt{solidum/utils/vtk\_exporter.py} + \texttt{solidum.results}\\
-  Exporta $\mathbf U$, $\sigma$ y \texttt{PRIMARY\_STATE\_VAR} en
-  formato VTK. \texttt{SolveResult} expone $\mathbf U$,
+  Exporta $\mathbf U$ (y la temperatura), $\sigma$ y
+  \texttt{PRIMARY\_STATE\_VAR} en formato VTK. \texttt{SolveResult} expone $\mathbf U$,
   $\mathbf F_\text{aplicada}$ y las fuerzas internas por elemento
   como interfaz pública para consumidores externos.
 };
@@ -320,7 +329,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 \textbf{Entrada del usuario.} Un caso de Solidum FEM se describe de forma declarativa en un archivo en formato YAML (acrónimo recursivo de \textit{YAML Ain't Markup Language}): nodos, materiales, elementos, condiciones de contorno, cargas y solver. La malla puede embeberse en el YAML o leerse desde un archivo \texttt{.msh} generado por Gmsh. El YAML constituye contrato público; cualquier consumidor externo (Interfaz Gráfica de Usuario o GUI, \textit{scripts} de automatización) opera contra él.
 
-\textbf{Capa de inicialización.} Su única responsabilidad consiste en poblar los registros (\texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas; los decoradores \texttt{@register} se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente. Los módulos de usuario (\texttt{solidum/user/}) no se importan aquí: pertenecen a formulaciones no estándar que el programa principal sólo carga cuando un caso las pide (\hyperref[adr:0020]{ADR 0020}).
+\textbf{Capa de inicialización.} Su única responsabilidad consiste en poblar los registros (\texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{InterfaceMaterialRegistry}, \texttt{SectionRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}, \texttt{ConstraintRegistry}) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas (\texttt{solidum/\allowbreak{}materials}, \texttt{solidum/sections}, \texttt{solidum/elements}, \texttt{solidum/math}, \texttt{solidum/bc}); los decoradores \texttt{@register} se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente. Los módulos de usuario (\texttt{solidum/user/}) no se importan aquí: pertenecen a formulaciones no estándar que el programa principal sólo carga cuando un caso las pide (\hyperref[adr:0020]{ADR 0020}).
 
 \textbf{Capa de interpretación del caso.} Traduce el archivo YAML en objetos. No contiene ramificaciones del tipo \texttt{if material\_\allowbreak{}type == \textquotedbl{}Elastic1D\textquotedbl{}} por cada material: introspecciona los argumentos formales del constructor de la clase recuperada del registro y le transmite los campos del YAML. Tampoco conoce las familias de material por nombre: recorre las que declaran los registros (\texttt{Registry.\allowbreak{}families()}). Antes de validar, carga los módulos de usuario que el caso declara en \texttt{user\_modules}. La incorporación de un material nuevo no requiere modificación del intérprete.
 
@@ -328,7 +337,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 \textbf{Capa numérica.} Concentra los componentes propios de la mecánica computacional: ensamblaje de matrices dispersas, cuadraturas de integración, estrategia de paso (lineal, no lineal incremental, longitud de arco) y el subsistema algebraico que resuelve los sistemas lineales que aparecen dentro de cada iteración.
 
-\textbf{Capa de salida.} Provee dos productos. Por un lado, \texttt{VtkExporter} para visualización en programas compatibles con VTK (ParaView). Por otro, \texttt{SolveResult} con los desplazamientos, las cargas aplicadas, las reacciones y las fuerzas internas por elemento, concebido para consumidores externos como FenixBAR (\hyperref[adr:0002]{ADR 0002}).
+\textbf{Capa de salida.} Provee dos productos. Por un lado, \texttt{VtkExporter} para visualización en programas compatibles con VTK (ParaView). Por otro, \texttt{SolveResult} con los desplazamientos, las cargas aplicadas, las reacciones y las fuerzas internas por elemento, concebido para consumidores externos como SolidumBAR (llamado FenixBAR hasta el 2026-09-30; \hyperref[adr:0002]{ADR 0002}).
 
 \section{Justificación de la separación}
 
@@ -354,7 +363,7 @@ El caso se lanza desde un \textit{script} de usuario o desde la interfaz públic
 \section*{2. Lectura del caso}
 \addcontentsline{toc}{section}{2. Lectura del caso}
 
-El intérprete del caso abre el archivo YAML y, si el caso declara módulos de usuario (\texttt{user\_modules}), los carga antes de validar nada: sus elementos, materiales y familias quedan inscritos en los registros como los del programa principal (\hyperref[adr:0020]{ADR 0020}). Después construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado.
+El intérprete del caso abre el archivo YAML y, si el caso declara módulos de usuario (\texttt{user\_modules}), los carga antes de validar nada: sus elementos, materiales y familias quedan inscritos en los registros como los del programa principal (\hyperref[adr:0020]{ADR 0020}). Después construye los objetos del problema. Para cada material, elemento o solver mencionado en el archivo, se localiza su nombre en el registro correspondiente, se recupera la clase, se introspeccionan los argumentos requeridos por su constructor y se le transmiten los campos del YAML. El resultado es un grafo de objetos: nodos, materiales, elementos asociados a sus materiales, condiciones de contorno, cargas y un solver seleccionado. Si el caso declara generadores de restricciones (bloque \texttt{constraints}, \hyperref[adr:0032]{ADR 0032}), éstos crean a continuación, sobre el dominio ya mallado, sus nodos, elementos y restricciones multipunto; un refuerzo embebido, por ejemplo, genera la malla de la barra y la ata al campo del sólido.
 
 En esta etapa se ejecuta la primera comprobación de consistencia: cuando un elemento se construye, su clase base verifica que el material recibido sea dimensionalmente compatible. Un elemento \texttt{Truss2D} con material \texttt{Elastic2D} produce un error en la fase de construcción del caso, no doscientas iteraciones después en forma de fallo opaco durante la solución.
 
@@ -374,7 +383,7 @@ El solver toma el control. Su comportamiento depende del tipo seleccionado (line
   \item Se solicita a cada elemento su matriz de rigidez tangente local \texttt{K\_local} y su vector de fuerzas internas \texttt{f\_internal}. El elemento las obtiene a partir del estado \textit{trial} de sus puntos de Gauss y mediante una llamada al material con la deformación correspondiente.
   \item El ensamblador construye la matriz global \texttt{K\_global} y el vector global utilizando topología COO en caché: en la primera invocación se calculan los pares de índices; en las invocaciones siguientes se reescribe únicamente el vector de datos sobre la misma topología.
   \item Se imponen las condiciones de Dirichlet por eliminación directa (\hyperref[adr:0004]{ADR 0004}). Toda restricción se expresa en forma afín \texttt{u\_\allowbreak{}s = g\_\allowbreak{}s + \ensuremath{\Sigma} \ensuremath{\alpha}\_\allowbreak{}si \ensuremath{\cdot} u\_\allowbreak{}mi} y se acumula en un \texttt{ConstraintSet}; el ensamblador produce el par \texttt{(T, g)} tal que \texttt{u = T \ensuremath{\cdot} u\_\allowbreak{}libre + g} y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_\allowbreak{}red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad de la matriz original.
-  \item El subsistema algebraico resuelve el sistema reducido \texttt{K\_\allowbreak{}red \ensuremath{\cdot} \ensuremath{\delta}U\_\allowbreak{}libre = F\_\allowbreak{}red}. Aquí interviene el despachador (\hyperref[adr:0003]{ADR 0003}): se inspeccionan las propiedades de \texttt{K\_red} (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, factorización LU en el caso general). El ensamblador reconstruye después el incremento completo mediante \texttt{expand}.
+  \item El subsistema algebraico resuelve el sistema reducido \texttt{K\_\allowbreak{}red \ensuremath{\cdot} \ensuremath{\delta}U\_\allowbreak{}libre = F\_\allowbreak{}red}. Aquí interviene el despachador (\hyperref[adr:0003]{ADR 0003}): se inspeccionan las propiedades de \texttt{K\_red} (simetría, posible definición positiva) y se selecciona el algoritmo numérico adecuado (factorización de Cholesky cuando aplica, Pardiso multihilo si está instalado y LU en el caso general; el solver iterativo sólo a petición). El ensamblador reconstruye después el incremento completo mediante \texttt{expand}.
   \item Se evalúa la convergencia mediante un criterio dual: norma del residuo de fuerza y norma del incremento de desplazamientos, ambas comparadas contra una tolerancia de la forma \texttt{atol + rtol \ensuremath{\cdot} escala(estado)} con la escala adaptativa al estado corriente del problema (\hyperref[adr:0007]{ADR 0007}). Los términos absolutos \texttt{atol} se autoderivan de las escalas del primer ensamblaje, lo que garantiza invariancia bajo cambio de unidades: el mismo problema planteado en N/m, kN/mm o MN/m converge en el mismo número de iteraciones hasta paridad de bits. El residuo de fuerza se evalúa únicamente sobre los DOF libres, dado que en los DOF prescritos el residuo contiene la reacción física, no un fallo de equilibrio. La convergencia del paso requiere que ambos criterios se cumplan simultáneamente (semántica AND, no OR).
 \end{enumerate}
 
@@ -390,7 +399,9 @@ Tras la convergencia de un paso, el solver invoca \texttt{commit\_state()} sobre
 \section*{6. Salida}
 \addcontentsline{toc}{section}{6. Salida}
 
-A la finalización del solver, el objeto \texttt{Domain} construye un \texttt{SolveResult} inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y las fuerzas internas por elemento en la convención de signos del proyecto. Este \texttt{SolveResult} constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, \textit{scripts} de post-proceso). De forma paralela, el módulo \texttt{VtkExporter} escribe un archivo VTK con los desplazamientos, los esfuerzos y la variable principal del material declarada por cada material mediante el atributo \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}.
+A la finalización del solver, el objeto \texttt{Domain} construye un \texttt{SolveResult} inmutable que contiene los desplazamientos finales, las cargas aplicadas, las reacciones y las fuerzas internas por elemento en la convención de signos del proyecto. Este \texttt{SolveResult} constituye la interfaz pública (Application Programming Interface, API) que consume cualquier herramienta externa (GUI, \textit{scripts} de post-proceso). De forma paralela, el módulo \texttt{VtkExporter} escribe un archivo VTK con los desplazamientos (y la temperatura), los esfuerzos y la variable principal del material declarada por cada material mediante el atributo \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}. El resultado y el solver dicen además cómo terminó el análisis (\texttt{termination}: completo, detenido en un valor objetivo, sin pasos o divergido, \hyperref[adr:0025]{ADR 0025}).
+
+Un \textbf{análisis por etapas} repite este flujo a partir del estado que dejó la etapa anterior (\hyperref[adr:0026]{ADR 0026}, 0029 y 0031): los desplazamientos, lo que guardan los elementos y la carga ya aplicada, que pasa como carga constante. Desde Python, \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)}; desde el YAML, el bloque \texttt{stages}.
 
 \section{Visión sintética}
 
@@ -415,11 +426,14 @@ Un material en Solidum FEM es una ley constitutiva: dada una deformación (escal
 Familias actualmente implementadas:
 
 \begin{itemize}
-  \item \textit{Elásticos lineales}: \texttt{Elastic1D} para deformación axial escalar; \texttt{Elastic2D} para problemas planos (esfuerzo plano o deformación plana) en notación de Voigt 3.
+  \item \textit{Elásticos lineales}: \texttt{Elastic1D} para deformación axial escalar; \texttt{Elastic2D} para problemas planos (esfuerzo plano o deformación plana) en notación de Voigt 3; \texttt{Elastic3D} en notación de Voigt 6 (\hyperref[adr:0012]{ADR 0012}).
+  \item \textit{Anisótropo}: \texttt{Orthotropic2D}, elasticidad ortótropa plana con el ángulo de fibra en el material (\hyperref[adr:0013]{ADR 0013}).
   \item \textit{Plásticos 1D}: \texttt{Elastoplastic1D} con criterio J2 axial, endurecimiento isótropo lineal y tangente algorítmica consistente.
   \item \textit{Plásticos 2D --- J2}: \texttt{VonMises2D} con criterio de fluencia J2 y algoritmo de retorno radial (\textit{return mapping}) en notación de Voigt 3. Soporta dos hipótesis cinemáticas mutuamente excluyentes: deformación plana (Simó-Hughes §3.3) y esfuerzo plano (\textit{plane stress projected algorithm}, Simó-Hughes §3.4.1). Tangente algorítmica consistente cerrada en ambas.
   \item \textit{Plásticos 2D --- friccional}: \texttt{DruckerPrager2D} con criterio cohesivo-friccional (cono circular suave de Mohr-Coulomb), plasticidad no asociada por defecto y dos ramas cerradas de return (regular sobre el cono y al ápice). Tres calibraciones con Mohr-Coulomb (\texttt{plane\_\allowbreak{}strain\_\allowbreak{}matched}, \texttt{outer\_cone}, \texttt{inner\_cone}). \texttt{IS\_\allowbreak{}SYMMETRIC = False} cuando \texttt{\ensuremath{\psi} \ensuremath{\neq} \ensuremath{\varphi}}; el despachador algebraico (\hyperref[adr:0003]{ADR 0003}) degrada Cholesky\ensuremath{\to}LU automáticamente.
   \item \textit{Daño isótropo}: \texttt{IsotropicDamage1D} y \texttt{IsotropicDamage2D}, daño escalar con softening exponencial. Tangente algorítmica consistente cerrada en carga activa: negativa en 1D durante softening; en 2D y 3D es \texttt{(1−d)\ensuremath{\cdot}C\_\allowbreak{}e − (\ensuremath{\partial}d/\allowbreak{}\ensuremath{\partial}\ensuremath{\kappa})\ensuremath{\cdot}(C\_\allowbreak{}e\ensuremath{\cdot}\ensuremath{\varepsilon}) ⊗ \ensuremath{\partial}\ensuremath{\varepsilon}\_\allowbreak{}eq/\allowbreak{}\ensuremath{\partial}\ensuremath{\varepsilon}}, simétrica con la deformación equivalente energética (por defecto) y asimétrica con Mazars o von Mises modificado. Secante en descarga.
+  \item \textit{Sólidos 3D con historia}: \texttt{VonMises3D}, \texttt{DruckerPrager3D} e \texttt{IsotropicDamage3D}, extensiones tridimensionales de los anteriores con tangente algorítmica consistente.
+  \item \textit{Concreto uniaxial}: \texttt{ManderConcrete1D} (\hyperref[adr:0028]{ADR 0028}), daño-plasticidad 1D con la envolvente de Mander en compresión, tracción con rama descendente, descarga de Karsan y Jirsa y regularización opcional por energía de fractura con la longitud característica del punto; para barras y fibras de sección.
   \item \textit{Cables}: \texttt{CableMaterial1D}, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
 \end{itemize}
 
@@ -436,6 +450,19 @@ Espacio natural de extensión: cualquier ley constitutiva que pueda expresarse c
 
 En todos los casos basta declarar el \texttt{STRAIN\_DIM} apropiado y el atributo \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR} para visualización.
 
+\section{Materiales de interfaz}
+
+Una familia paralela a los materiales (\hyperref[adr:0033]{ADR 0033}), con registro propio (\texttt{InterfaceMaterialRegistry}) y sección YAML \texttt{interface\_\allowbreak{}materials}: relaciona la \textbf{tracción} sobre una interfaz con el \textbf{desplazamiento relativo} entre sus dos lados, en el sistema local de la interfaz, con la interfaz \texttt{compute\_\allowbreak{}traction(jump, state\_\allowbreak{}vars)} que devuelve \texttt{(t, tangente, estado nuevo)}. Cada ley declara su geometría (\texttt{GEOMETRY}: \texttt{\textquotedbl{}surface\textquotedbl{}} para grietas y juntas, componentes \texttt{(n, s)} o \texttt{(n, s1, s2)}; \texttt{\textquotedbl{}line\textquotedbl{}} para una barra embebida, \texttt{(n, s)} o \texttt{(n1, n2, s)}; normales primero) y cuántas componentes admite (\texttt{JUMP\_DIM}, \texttt{None} si las de 2D y 3D). No tiene densidad: la inercia es de los elementos que la rodean. El paso a ejes globales y el ancho sobre el que actúa cada componente son del elemento que la consume.
+
+Leyes implementadas:
+
+\begin{itemize}
+  \item \textit{Cohesivas de superficie}: \texttt{CohesiveDamageIsotropic} (modo I, daño escalar con ablandamiento lineal o exponencial) y \texttt{CohesiveDamageMixedMode} (modo mixto I--II con la apertura efectiva de Camacho y Ortiz, energía independiente del modo y ablandamiento lineal, exponencial o bilineal del fib Model Code 2010). Comparten la envolvente de ablandamiento.
+  \item \textit{Adherencia-deslizamiento de línea}: \texttt{BondSlipModelCode} (envolvente de Eligehausen, Popov y Bertero / fib Model Code 2010, descarga y recarga sin degradación) y \texttt{BondSlipMultilinear} (envolvente por puntos).
+\end{itemize}
+
+Consumidores: la interfaz de adherencia que genera el refuerzo embebido (\texttt{BondSlipInterface}, línea) y la discontinuidad embebida del módulo de usuario \texttt{discontinuities} (superficie).
+
 \section{Elementos}
 
 Un elemento finito en Solidum FEM es una entidad geométrica que construye su matriz de gradientes \texttt{B}, su matriz de rigidez tangente y su vector de fuerzas internas a partir de los desplazamientos nodales y del material asociado. Cada elemento declara su \texttt{DOF\_NAMES}, su \texttt{STRAIN\_DIM} y el número de puntos de integración mediante \texttt{N\_\allowbreak{}INTEGRATION\_\allowbreak{}POINTS}. La clase base concentra la lógica común (registro de DOF, ensamblaje local\ensuremath{\to}global, validación material\ensuremath{\leftrightarrow}elemento, gestión del \texttt{ElementState}) y cada subclase aporta exclusivamente lo físicamente específico (matriz \texttt{B}, esquema de integración, invocación al material).
@@ -444,7 +471,7 @@ El estado del programa por familia se presenta a continuación en forma de \text
 
 \subsection{Familia armadura (truss)}
 
-Elemento articulado que transmite exclusivamente fuerza axial. Material consumido: 1D escalar (\texttt{Elastic1D}, \texttt{Elastoplastic1D}, \texttt{IsotropicDamage1D}).
+Elemento articulado que transmite exclusivamente fuerza axial. Material consumido: 1D escalar (\texttt{Elastic1D}, \texttt{Elastoplastic1D}, \texttt{IsotropicDamage1D}, \texttt{ManderConcrete1D}).
 
 \textbf{Primer orden (interpolación lineal, dos nodos)}
 
@@ -469,7 +496,7 @@ No linealidad geométrica & \ensuremath{\checkmark} \texttt{Truss2DCorot} & \ens
 \hline
 \textbf{Régimen} & \textbf{2D \ensuremath{\cdot} material lineal} & \textbf{2D \ensuremath{\cdot} material no lineal} & \textbf{3D \ensuremath{\cdot} material lineal} & \textbf{3D \ensuremath{\cdot} material no lineal} \\
 \hline
-Linealidad geométrica & \pendiente{Armadura 2D de segundo orden con linealidad geométrica.} & \pendiente{Armadura 2D de segundo orden con linealidad geométrica y material no lineal.} & \pendiente{Armadura 3D de segundo orden con linealidad geométrica.} & \pendiente{Armadura 3D de segundo orden con linealidad geométrica y material no lineal.} \\
+Linealidad geométrica & \ensuremath{\checkmark} \texttt{Truss2D3} & \ensuremath{\checkmark} \texttt{Truss2D3} & \ensuremath{\checkmark} \texttt{Truss3D3} & \ensuremath{\checkmark} \texttt{Truss3D3} \\
 No linealidad geométrica & \pendiente{Armadura 2D de segundo orden corrotacional.} & \pendiente{Armadura 2D de segundo orden corrotacional con material no lineal.} & \pendiente{Armadura 3D de segundo orden corrotacional.} & \pendiente{Armadura 3D de segundo orden corrotacional con material no lineal.} \\
 \hline
 \end{tabularx}
@@ -677,12 +704,18 @@ La familia expone \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state(T)}, q
 \begin{itemize}
   \item \pendiente{Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).}
   \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
-  \item \pendiente{Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.}
+  \item \pendiente{Elementos de interfaz de espesor nulo entre superficies, para juntas y grietas cohesivas de trayectoria conocida y para contacto con fricción. La familia de leyes ya existe (materiales de interfaz, \hyperref[adr:0033]{ADR 0033}); hoy la consumen la interfaz de adherencia barra--sólido, que genera el refuerzo embebido, y la discontinuidad embebida del módulo de usuario.}
 \end{itemize}
 
 \subsection{Contrato común y convención de signos}
 
 Todos los elementos tipo armadura, cable o marco implementan el contrato \texttt{internal\_\allowbreak{}forces(U)} y devuelven las fuerzas internas (N, V, M, T) en la convención de signos del proyecto (\hyperref[adr:0002]{ADR 0002}), también con sección por fibras.
+
+\section{Restricciones generadas}
+
+Un generador de restricciones (\hyperref[adr:0032]{ADR 0032}; registro \texttt{ConstraintRegistry}, bloque YAML \texttt{constraints}, carpeta \texttt{solidum/bc/}) crea sobre un dominio ya mallado los nodos, los elementos y las restricciones multipunto que su geometría pide, antes de numerar las ecuaciones. Localiza los puntos dentro de los sólidos invirtiendo su mapeo isoparamétrico por Newton con lo que todo sólido declara (\texttt{REFERENCE\_CELL}, funciones de forma), sin código por tipo de elemento.
+
+Implementado: \texttt{EmbeddedReinforcement}, el refuerzo embebido. La barra, con su propia malla de elementos de dos o tres nodos (\texttt{Truss2D}/\texttt{Truss3D}, \texttt{Truss2D3}/\texttt{Truss3D3}) cortada en los bordes de los anfitriones, queda atada al campo interpolado del sólido por MPC (adherencia perfecta) o, con \texttt{bond}, unida a él por interfaces de adherencia-deslizamiento \texttt{BondSlipInterface} generadas por tramo, con una ley de interfaz de línea. Las interfaces generadas no se registran, no tienen masa ni celda VTK. \texttt{Domain.\allowbreak{}generated\_\allowbreak{}nodes} aparta los nodos generados de los selectores por coordenada del YAML.
 
 \section{Solvers no lineales}
 
@@ -693,10 +726,11 @@ Disponibles en la versión actual:
 \begin{itemize}
   \item \texttt{LinearSolver} --- un único paso, una única resolución del sistema \texttt{K \ensuremath{\cdot} U = F}. Aplicable a problemas estrictamente lineales (rigidez constante, sin actualización de geometría, sin no linealidad material).
   \item \texttt{NonlinearSolver} --- método de Newton-Raphson incremental con control de carga. Aplica fracciones crecientes de la carga total y, en cada paso, itera hasta la convergencia. Criterio de parada dual (desplazamiento y fuerza).
-  \item \texttt{ArcLengthSolver} --- método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
+  \item \texttt{ArcLengthSolver} --- método de Crisfield. Introduce una incógnita adicional (el factor de carga) y una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}), lo que permite recorrer ramas con derivada infinita o negativa. Imprescindible para problemas con \textit{snap-back} o \textit{snap-through}. Con \texttt{control} y \texttt{control\_target} se detiene exactamente en el valor de una magnitud (\hyperref[adr:0025]{ADR 0025}).
+  \item \texttt{IndirectDisplacementSolver} --- variante del arco con la restricción del control indirecto por desplazamiento (de Borst 1987): el paso fija el incremento de una combinación de desplazamientos, como la abertura de una entalla; con \texttt{control\_target} se detiene en su valor.
   \item \texttt{ModalSolver} (\hyperref[adr:0009]{ADR 0009} fase 1) --- análisis modal: problema generalizado de valores y vectores característicos \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. No es análisis dinámico propiamente dicho (no hay paso de tiempo ni evolución temporal); sus soluciones admiten interpretación como frecuencias propias y formas de vibración libre no amortiguada. Internamente delega en \texttt{EigenSolver} (ARPACK Lanczos con shift-invert) sobre el sistema reducido por Dirichlet. Devuelve \texttt{ModalResult} con frecuencias, períodos y modos M-ortonormales; expone además \texttt{free\_\allowbreak{}vibration(M, u0, u0\_\allowbreak{}dot, t)} para reconstruir analíticamente la respuesta libre por superposición modal.
   \item \texttt{NewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 3) --- análisis dinámico transitorio lineal: integración temporal directa de \texttt{M \ensuremath{\cdot} ü + C \ensuremath{\cdot} u̇ + K \ensuremath{\cdot} u = F(t)} por el método de Newmark-\ensuremath{\beta} con \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} parametrizables (default 1/4, 1/2 --- \textit{average acceleration}, incondicionalmente estable, error \texttt{O(\ensuremath{\Delta}t\ensuremath{^{2}})}). Amortiguamiento Rayleigh \texttt{C = \ensuremath{\alpha} \ensuremath{\cdot} M + \ensuremath{\beta} \ensuremath{\cdot} K} con coeficientes directos o calibrados modalmente a partir de dos pares \texttt{(\ensuremath{\xi}, \ensuremath{\omega})}. Cargas dependientes del tiempo por callback Python. Devuelve \texttt{TransientResult} con historiales \texttt{(t, u, u̇, ü)}. La matriz efectiva \texttt{A\_\allowbreak{}eff = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K} se factoriza una sola vez al inicio y se reutiliza en todos los pasos.
-  \item \texttt{NewtonNewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 4) --- análisis dinámico transitorio no lineal. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico \texttt{R = F\_\allowbreak{}ext − F\_\allowbreak{}int(u) − C \ensuremath{\cdot} u̇ − M \ensuremath{\cdot} ü} con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K\_\allowbreak{}t} (rigidez tangente corriente). Convergencia dual (\hyperref[adr:0007]{ADR 0007}). Amortiguamiento Rayleigh constante en el tiempo, calibrado con \texttt{K\_0} (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (\texttt{freeze\_\allowbreak{}tangent\_\allowbreak{}after\_\allowbreak{}iter}, \hyperref[adr:0003]{ADR 0003} fase 2).
+  \item \texttt{NewtonNewmarkSolver} (\hyperref[adr:0009]{ADR 0009} fase 4) --- análisis dinámico transitorio no lineal. \textbf{Variante} de \texttt{NewmarkSolver} (Reglas §4): hereda predictores, correctores y reducción de Dirichlet; añade un bucle Newton-Raphson dentro de cada paso temporal sobre el residuo dinámico \texttt{R = F\_\allowbreak{}ext − F\_\allowbreak{}int(u) − C \ensuremath{\cdot} u̇ − M \ensuremath{\cdot} ü} con jacobiano \texttt{J = M + \ensuremath{\gamma}\ensuremath{\Delta}t \ensuremath{\cdot} C + \ensuremath{\beta}\ensuremath{\Delta}t\ensuremath{^{2}} \ensuremath{\cdot} K\_\allowbreak{}t} (rigidez tangente corriente). Convergencia dual (\hyperref[adr:0007]{ADR 0007}). Amortiguamiento Rayleigh constante en el tiempo, calibrado con \texttt{K\_0} (rigidez elástica de referencia; convención estándar Abaqus/ANSYS/OpenSees). Recupera el caso lineal a paridad de bits cuando los materiales no tienen historia activa. Newton modificado opcional (\texttt{freeze\_\allowbreak{}tangent\_\allowbreak{}after\_\allowbreak{}iter}, \hyperref[adr:0003]{ADR 0003} fase 2). Paso adaptativo: el paso cuyo Newton no converge se repite en dos mitades, hasta \texttt{max\_subdivisions} niveles (6 por omisión), con el historial en la malla de tiempos del usuario.
   \item \texttt{HHTSolver} y \texttt{NewtonHHTSolver} (\hyperref[adr:0009]{ADR 0009}, variantes HHT-\ensuremath{\alpha}) --- disipación numérica controlada en altas frecuencias (Hilber-Hughes-Taylor 1977) con parámetro \texttt{\ensuremath{\alpha} \ensuremath{\in} [−1/3, 0]} y \texttt{(\ensuremath{\beta}, \ensuremath{\gamma})} auto-derivados. Subclases de \texttt{NewmarkSolver} y \texttt{NewtonNewmarkSolver} respectivamente (Reglas §4 --- variantes).
   \item \texttt{CentralDifferenceSolver} (\hyperref[adr:0009]{ADR 0009} fase 5) --- integración explícita por diferencias centradas (leapfrog Belytschko-Liu-Moran). \texttt{M\ensuremath{^{-}}¹} trivial sobre masa lumped diagonal. Lineal y no lineal en una sola clase con parámetro \texttt{nonlinear}. Estabilidad condicional CFL con detección a posteriori de divergencia.
   \item \texttt{HarmonicSolver} (\hyperref[adr:0009]{ADR 0009} fase 6) --- respuesta forzada armónica en el dominio de la frecuencia. Aritmética compleja con \texttt{scipy.\allowbreak{}sparse.\allowbreak{}linalg.\allowbreak{}spsolve} complejo; factorización LU compleja por frecuencia (no se cachea). Barrido lineal/logarítmico/explícito. Devuelve \texttt{HarmonicResult} con métodos \texttt{.amplitude()} y \texttt{.phase()}.
@@ -704,6 +738,8 @@ Disponibles en la versión actual:
 \end{itemize}
 
 Los cinco solvers iterativos del programa principal (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver} y su variante \texttt{IndirectDisplacementSolver}, \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}) no escriben su propio bucle de Newton: lo ejecuta el corrector compartido \texttt{NewtonCorrector} (\texttt{solidum/\allowbreak{}math/\allowbreak{}solvers/\allowbreak{}corrector.\allowbreak{}py}, \hyperref[adr:0015]{ADR 0015}), que posee el backend algebraico con su degradación a LU, el Newton modificado, el line search y el historial que alimenta las excepciones tipadas. Cada solver construye por paso un objeto \texttt{NewtonProblem} con lo que le es propio ---cómo ensambla, cómo forma el residuo, cómo reduce y resuelve el sistema tangente, cómo aplica la corrección y qué comitea--- y conserva su control de paso (bisección de la carga, longitud de arco y su restricción, predictores de Newmark). Un solver iterativo nuevo aporta su problema y su control de paso y hereda todo lo demás.
+
+\textbf{Terminación, etapas y continuidad.} Todos los solvers incrementales y los integradores en el tiempo informan cómo terminaron (\texttt{termination}, \texttt{completed}, último estado convergido) y fallan con una excepción tipada que conserva el resultado parcial (\hyperref[adr:0025]{ADR 0025}). Los estáticos incrementales arrancan de un estado y una carga constante (\texttt{solve(F, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})}, \hyperref[adr:0026]{ADR 0026}), los transitorios continúan un estático u otro transitorio (\texttt{continue\_from}, \hyperref[adr:0029]{ADR 0029}), y el modal, el armónico, el espectral y el lineal pueden linealizar alrededor del estado de una etapa sin cambiarlo (\hyperref[adr:0031]{ADR 0031}). Desde Python se encadenan con \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)}; desde el YAML, con el bloque \texttt{stages}.
 
 Espacio natural de extensión:
 
@@ -713,7 +749,7 @@ Espacio natural de extensión:
   \item \pendiente{Generalized-\ensuremath{\alpha}, Bossak-\ensuremath{\alpha} --- esquemas adicionales de la familia con disipación numérica.}
   \item \pendiente{Solver de relajación dinámica para búsqueda de configuraciones de equilibrio en estructuras flexibles.}
   \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, regla 100/30/30) y multi-support seismic excitation.}
-  \item \pendiente{\ensuremath{\Delta}t adaptativo para transitorios.}
+  \item \pendiente{Control del \ensuremath{\Delta}t por estimación del error local en los transitorios. Hoy el paso sólo se subdivide cuando el Newton de Newton-Newmark o Newton-HHT no converge.}
 \end{itemize}
 
 La incorporación de un solver nuevo se realiza en \texttt{solidum/\allowbreak{}math/\allowbreak{}solvers/\allowbreak{}\textless{}nombre\textgreater{}.\allowbreak{}py} mediante el decorador \texttt{@SolverRegistry.\allowbreak{}register}. El \textbf{dispatch a entrypoints} en \texttt{solidum.\allowbreak{}entry.\allowbreak{}run\_\allowbreak{}yaml} es declarativo (regla C de auditoría aplicada 2026-05-18): cada solver expone un atributo de clase \texttt{PIPELINE\_\allowbreak{}KIND \ensuremath{\in} \{\textquotedbl{}static\textquotedbl{}, \textquotedbl{}modal\textquotedbl{}, \textquotedbl{}transient\textquotedbl{}, \textquotedbl{}harmonic\textquotedbl{}, \textquotedbl{}spectrum\textquotedbl{}\}} y \texttt{run\_yaml} despacha por valor, sin tocarse cuando entran solvers nuevos no clásicos.
@@ -749,11 +785,12 @@ Implementados en la versión actual:
 \begin{itemize}
   \item \textit{Estática lineal}. Desplazamientos pequeños, rigidez constante, una resolución directa. Combinación: \texttt{LinearSolver} con materiales lineales y elementos en formulación lineal.
   \item \textit{Estática no lineal incremental}. No linealidad geométrica (corrotacional), material (plasticidad, daño) o ambas. Combinación: \texttt{NonlinearSolver} o \texttt{ArcLengthSolver} con materiales no lineales y/o elementos corrotacionales.
-  \item \textit{Análisis modal} (\hyperref[adr:0009]{ADR 0009} fase 1). Problema algebraico de valores y vectores característicos generalizado \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Combinación: \texttt{ModalSolver} con materiales que declaren \texttt{density} y elementos que implementen \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix}.
+  \item \textit{Análisis modal} (\hyperref[adr:0009]{ADR 0009} fase 1). Problema algebraico de valores y vectores característicos generalizado \texttt{K \ensuremath{\cdot} \ensuremath{\varphi} = \ensuremath{\omega}\ensuremath{^{2}} \ensuremath{\cdot} M \ensuremath{\cdot} \ensuremath{\varphi}}. Combinación: \texttt{ModalSolver} con materiales que declaren \texttt{density} y elementos que implementen \texttt{compute\_\allowbreak{}mass\_\allowbreak{}matrix}, o con masas concentradas en los nudos (\hyperref[adr:0024]{ADR 0024}); los grados de libertad sin masa se condensan de forma exacta.
   \item \textit{Dinámica estructural transitoria lineal} (\hyperref[adr:0009]{ADR 0009} fase 3). Integración temporal directa de la ecuación de movimiento por Newmark-\ensuremath{\beta}, con amortiguamiento Rayleigh proporcional y cargas dependientes del tiempo por callback Python. Combinación: \texttt{NewmarkSolver} con material lineal, elementos en formulación lineal y \texttt{density} declarada.
   \item \textit{Dinámica estructural transitoria no lineal} (\hyperref[adr:0009]{ADR 0009} fase 4). Integración Newmark con Newton-Raphson dentro de cada paso sobre el residuo dinámico \texttt{R = F\_\allowbreak{}ext − F\_\allowbreak{}int(u) − C\ensuremath{\cdot}u̇ − M\ensuremath{\cdot}ü}. Combinación: \texttt{NewtonNewmarkSolver} con cualquier material con historia (\texttt{Elastoplastic1D}, \texttt{VonMises2D} en ambas hipótesis, \texttt{DruckerPrager2D}, \texttt{IsotropicDamage1D/\allowbreak{}2D}) y \texttt{density} declarada. Habilita sísmica con disipación plástica, impacto en hormigón friccional, fatiga de bajo ciclo y vibraciones de marcos elastoplásticos.
   \item \textit{Dinámica estructural transitoria con disipación HHT-\ensuremath{\alpha}} (\hyperref[adr:0009]{ADR 0009}, variante de fases 3 y 4). Mismas combinaciones que Newmark, con la familia HHT-\ensuremath{\alpha} que controla la disipación numérica de modos altos espurios.
   \item \textit{Dinámica estructural transitoria explícita} (\hyperref[adr:0009]{ADR 0009} fase 5). Integración explícita por diferencias centradas. Combinación: \texttt{CentralDifferenceSolver} con masa lumped (\texttt{lumping=\textquotedbl{}lumped\textquotedbl{}}) y la condición de estabilidad CFL \texttt{\ensuremath{\Delta}t \textless{} L\_\allowbreak{}el \ensuremath{\cdot} \ensuremath{\surd}(\ensuremath{\rho}/\allowbreak{}E)} respetada por el usuario. Apropiado para \textit{wave propagation}, impacto y dinámica de respuesta rápida.
+  \item \textit{Análisis por etapas} (\hyperref[adr:0026]{ADR 0026}, 0029 y 0031). Una secuencia de análisis en la que cada uno parte del estado que dejó el anterior: gravedad y después empuje lateral, un transitorio tras un estático, o el modal y el espectral sobre una estructura cargada o plastificada. Combinación: cualquier solver estático incremental, transitorio o lineal con \texttt{previous=} o el bloque YAML \texttt{stages}.
   \item \textit{Respuesta forzada armónica en el dominio de la frecuencia} (\hyperref[adr:0009]{ADR 0009} fase 6). Resolución directa del sistema complejo \texttt{(−\ensuremath{\omega}\ensuremath{^{2}}M + i\ensuremath{\omega}C + K)\ensuremath{\cdot}û = F̂} por barrido en \texttt{\ensuremath{\omega}}. Combinación: \texttt{HarmonicSolver} con amortiguamiento Rayleigh y excitación armónica.
   \item \textit{Análisis sísmico por combinación modal espectral} (\hyperref[adr:0009]{ADR 0009} fase 7). Cálculo modal interno + factores de participación + combinación SRSS o CQC contra un espectro de respuesta tabulado o callable. Combinación: \texttt{ResponseSpectrumSolver} con materiales lineales, \texttt{density} declarada y un espectro normativo o equivalente.
 \end{itemize}
@@ -789,13 +826,13 @@ Los patrones que se describen a continuación estructuran el código de Solidum 
 
 \section{Registros con auto-registro}
 
-Cada categoría de componente dispone de su propio registro: \texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{SectionRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}, todos subclases de la clase genérica \texttt{Registry} (\texttt{solidum/\allowbreak{}registry.\allowbreak{}py}). Cada clase concreta se inscribe en su registro mediante un decorador (\texttt{@MaterialRegistry.\allowbreak{}register} y análogos) que se ejecuta en el momento de definición de la clase. El intérprete del archivo YAML no requiere conocimiento \textit{a priori} de los materiales o elementos existentes: consulta el registro por el nombre que aparece en el archivo. La incorporación de un componente nuevo no exige la modificación de listas centrales.
+Cada categoría de componente dispone de su propio registro: \texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{InterfaceMaterialRegistry}, \texttt{SectionRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}, \texttt{ConstraintRegistry}, todos subclases de la clase genérica \texttt{Registry} (\texttt{solidum/\allowbreak{}registry.\allowbreak{}py}). Cada clase concreta se inscribe en su registro mediante un decorador (\texttt{@MaterialRegistry.\allowbreak{}register} y análogos) que se ejecuta en el momento de definición de la clase. El intérprete del archivo YAML no requiere conocimiento \textit{a priori} de los materiales o elementos existentes: consulta el registro por el nombre que aparece en el archivo. La incorporación de un componente nuevo no exige la modificación de listas centrales.
 
 \section{Familias declaradas por el registro}
 
-Un registro declara sus metadatos con tres atributos públicos de clase (\hyperref[adr:0020]{ADR 0020}), que son todo lo que necesita un módulo de usuario para definir el suyo: \texttt{YAML\_LABEL}, el nombre de un objeto del registro en los mensajes de error, tanto del lector YAML como del propio registro (\texttt{\textquotedbl{}elemento\textquotedbl{}}, \texttt{\textquotedbl{}solver\textquotedbl{}}, \texttt{\textquotedbl{}material térmico\textquotedbl{}}, \texttt{\textquotedbl{}sección\textquotedbl{}}); todo registro lo tiene, sea o no una familia, y sustituye al antiguo atributo privado \texttt{\_kind}, que ya no existe. \texttt{SPEC\_KIND} es el \texttt{kind} de las specs cuyos componentes viven en él. \texttt{YAML\_SECTION}, sólo en las familias, es la sección de primer nivel del YAML que contiene sus objetos (\texttt{materials}, \texttt{thermal\_\allowbreak{}materials}, \texttt{sections}). Un registro con \texttt{YAML\_SECTION} es una \textbf{familia}: un conjunto de objetos que se declaran una vez en el YAML, con \texttt{id} y \texttt{type}, y que los elementos referencian por \texttt{id}. \texttt{Registry.\allowbreak{}families()} las enumera en su orden de definición. Las dos primeras familias fueron de materiales; la tercera, \texttt{SectionRegistry} (\hyperref[adr:0021]{ADR 0021}), agrupa las \textbf{secciones de marco}, leyes constitutivas a nivel de sección transversal con un contrato propio (reciben \texttt{[\ensuremath{\varepsilon}\ensuremath{_{0}}, \ensuremath{\kappa}]} y devuelven fuerzas internas), que no son materiales. El intérprete del YAML recorre esa lista en un solo bucle, sin conocer ninguna familia por nombre; la herramienta de specs (\texttt{solidum/\allowbreak{}tools/\allowbreak{}spec.\allowbreak{}py}) localiza el registro de cada spec por su \texttt{SPEC\_KIND}. Una familia nueva, del programa principal o de un módulo de usuario, se declara con una subclase de \texttt{Registry} y no toca el intérprete. Cada subclase recibe su propio diccionario de clases (heredarlo compartiría en silencio el de la base) y declarar una sección o un tipo de spec que otro registro ya declaró es un error.
+Un registro declara sus metadatos con tres atributos públicos de clase (\hyperref[adr:0020]{ADR 0020}), que son todo lo que necesita un módulo de usuario para definir el suyo: \texttt{YAML\_LABEL}, el nombre de un objeto del registro en los mensajes de error, tanto del lector YAML como del propio registro (\texttt{\textquotedbl{}elemento\textquotedbl{}}, \texttt{\textquotedbl{}solver\textquotedbl{}}, \texttt{\textquotedbl{}material térmico\textquotedbl{}}, \texttt{\textquotedbl{}material de interfaz\textquotedbl{}}, \texttt{\textquotedbl{}sección\textquotedbl{}}, \texttt{\textquotedbl{}restricción\textquotedbl{}}); todo registro lo tiene, sea o no una familia, y sustituye al antiguo atributo privado \texttt{\_kind}, que ya no existe. \texttt{SPEC\_KIND} es el \texttt{kind} de las specs cuyos componentes viven en él. \texttt{YAML\_SECTION}, sólo en las familias, es la sección de primer nivel del YAML que contiene sus objetos (\texttt{materials}, \texttt{thermal\_\allowbreak{}materials}, \texttt{interface\_\allowbreak{}materials}, \texttt{sections}). Un registro con \texttt{YAML\_SECTION} es una \textbf{familia}: un conjunto de objetos que se declaran una vez en el YAML, con \texttt{id} y \texttt{type}, y que los elementos referencian por \texttt{id}. \texttt{Registry.\allowbreak{}families()} las enumera en su orden de definición. Las dos primeras familias fueron de materiales; la tercera, \texttt{SectionRegistry} (\hyperref[adr:0021]{ADR 0021}), agrupa las \textbf{secciones de marco}, leyes constitutivas a nivel de sección transversal con un contrato propio (reciben \texttt{[\ensuremath{\varepsilon}\ensuremath{_{0}}, \ensuremath{\kappa}]} y devuelven fuerzas internas), que no son materiales. La cuarta, \texttt{InterfaceMaterialRegistry} (\hyperref[adr:0033]{ADR 0033}), definida antes que las secciones, agrupa las leyes tracción--desplazamiento relativo de las interfaces (grietas y barras embebidas). \texttt{ConstraintRegistry} (\hyperref[adr:0032]{ADR 0032}) no es una familia: sus generadores se declaran en el bloque \texttt{constraints}, con \texttt{type}, y se aplican sobre el dominio ya mallado; ningún otro objeto los referencia por \texttt{id}. El intérprete del YAML recorre esa lista en un solo bucle, sin conocer ninguna familia por nombre; la herramienta de specs (\texttt{solidum/\allowbreak{}tools/\allowbreak{}spec.\allowbreak{}py}) localiza el registro de cada spec por su \texttt{SPEC\_KIND}. Una familia nueva, del programa principal o de un módulo de usuario, se declara con una subclase de \texttt{Registry} y no toca el intérprete. Cada subclase recibe su propio diccionario de clases (heredarlo compartiría en silencio el de la base) y declarar una sección o un tipo de spec que otro registro ya declaró es un error.
 
-Los elementos declaran a qué familia pertenecen sus materiales con \texttt{Element.\allowbreak{}REFERENCE\_\allowbreak{}KWARGS}: qué parámetros del constructor son, en el YAML, el \texttt{id} de un objeto de otra familia, y de cuál. El valor por defecto es \texttt{\{\textquotedbl{}material\textquotedbl{}: MaterialRegistry\}}; los elementos térmicos declaran \texttt{\{\textquotedbl{}material\textquotedbl{}: ThermalMaterialRegistry\}}, y un elemento con dos materiales declara las dos referencias. Los marcos Euler-Bernoulli declaran \texttt{\{\textquotedbl{}material\textquotedbl{}: MaterialRegistry, \textquotedbl{}section\textquotedbl{}: SectionRegistry\}}, las dos opcionales: es la primera referencia del programa principal con nombre distinto de \texttt{material}, y el constructor exige exactamente una de las dos. El intérprete valida que cada \texttt{id} exista en la sección de su familia y pasa al constructor el objeto ya construido, sin heurística sobre el tipo de elemento.
+Los elementos declaran a qué familia pertenecen sus materiales con \texttt{Element.\allowbreak{}REFERENCE\_\allowbreak{}KWARGS}: qué parámetros del constructor son, en el YAML, el \texttt{id} de un objeto de otra familia, y de cuál. El valor por defecto es \texttt{\{\textquotedbl{}material\textquotedbl{}: MaterialRegistry\}}; los elementos térmicos declaran \texttt{\{\textquotedbl{}material\textquotedbl{}: ThermalMaterialRegistry\}}, y un elemento con dos materiales declara las dos referencias. Los marcos Euler-Bernoulli declaran \texttt{\{\textquotedbl{}material\textquotedbl{}: MaterialRegistry, \textquotedbl{}section\textquotedbl{}: SectionRegistry\}}, las dos opcionales: es la primera referencia del programa principal con nombre distinto de \texttt{material}, y el constructor exige exactamente una de las dos. El elemento con discontinuidad embebida del módulo \texttt{discontinuities} declara además \texttt{cohesive\_\allowbreak{}material} contra \texttt{InterfaceMaterialRegistry}, y comprueba al construirse que la ley admite su geometría (\texttt{accepts(\textquotedbl{}surface\textquotedbl{}, 2)}). El intérprete valida que cada \texttt{id} exista en la sección de su familia y pasa al constructor el objeto ya construido, sin heurística sobre el tipo de elemento.
 
 \subsection{Referencias anidadas entre familias: el gancho \texttt{from\_yaml}}
 
@@ -803,11 +840,11 @@ Un objeto de familia puede referenciar a su vez objetos de otra familia: una sec
 
 \section{Descubrimiento automático}
 
-El módulo \texttt{solidum/\allowbreak{}autodiscover.\allowbreak{}py} se invoca una sola vez durante la importación del paquete. Recorre de forma recursiva, mediante \texttt{pkgutil.\allowbreak{}walk\_\allowbreak{}packages}, las carpetas canónicas (\texttt{solidum/\allowbreak{}materials}, \texttt{solidum/sections}, \texttt{solidum/elements}, \texttt{solidum/math}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución. La carpeta \texttt{solidum/user/} queda fuera a propósito: un módulo de usuario sólo se carga cuando un modelo lo pide.
+El módulo \texttt{solidum/\allowbreak{}autodiscover.\allowbreak{}py} se invoca una sola vez durante la importación del paquete. Recorre de forma recursiva, mediante \texttt{pkgutil.\allowbreak{}walk\_\allowbreak{}packages}, las carpetas canónicas (\texttt{solidum/\allowbreak{}materials}, \texttt{solidum/sections}, \texttt{solidum/elements}, \texttt{solidum/math}, \texttt{solidum/bc}) e importa cada módulo. Como los decoradores \texttt{@register} se ejecutan en el momento de la importación, esta operación basta para poblar todos los registros sin enumeración manual. Este mecanismo es el equivalente conceptual al \texttt{INCLUDE} automático de Fortran moderno, ejecutado a tiempo de ejecución. La carpeta \texttt{solidum/user/} queda fuera a propósito: un módulo de usuario sólo se carga cuando un modelo lo pide.
 
 \section{Programa principal y módulos de usuario}
 
-Solidum distingue dos partes, con los términos de FEAP (\hyperref[adr:0020]{ADR 0020}). El \textbf{programa principal} es Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo \texttt{solidum/} salvo \texttt{solidum/user/}. Un \textbf{módulo de usuario} es una formulación no estándar en su propia carpeta, \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, análoga a los elementos (\texttt{elmtNN}), materiales (\texttt{umati}) y macros (\texttt{umacr}) de usuario de FEAP. El primero es \texttt{discontinuities}, la discontinuidad interior embebida del \hyperref[adr:0010]{ADR 0010}: el elemento \texttt{CST\_Embedded2D}, la familia de materiales cohesivos con su sección \texttt{cohesive\_\allowbreak{}materials} y el estado de la discontinuidad. El segundo, \texttt{dissipation\_\allowbreak{}control}, es un solver: el arco por disipación de energía de Gutiérrez (2004), \texttt{DissipationArcLengthSolver}, que salió del programa principal el 2026-09-29 porque ningún código general establecido lo implementa de forma nativa (criterio de admisión, Reglas.md §1).
+Solidum distingue dos partes, con los términos de FEAP (\hyperref[adr:0020]{ADR 0020}). El \textbf{programa principal} es Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo \texttt{solidum/} salvo \texttt{solidum/user/}. Un \textbf{módulo de usuario} es una formulación no estándar en su propia carpeta, \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, análoga a los elementos (\texttt{elmtNN}), materiales (\texttt{umati}) y macros (\texttt{umacr}) de usuario de FEAP. El primero es \texttt{discontinuities}, la discontinuidad interior embebida del \hyperref[adr:0010]{ADR 0010}: el elemento \texttt{CST\_Embedded2D}, el estado de la discontinuidad y el seguimiento de grieta; su ley cohesiva, que nació en él, pasó al programa principal con la familia de materiales de interfaz (\hyperref[adr:0033]{ADR 0033}) cuando el programa principal tuvo un elemento de interfaz propio. El segundo, \texttt{dissipation\_\allowbreak{}control}, es un solver: el arco por disipación de energía de Gutiérrez (2004), \texttt{DissipationArcLengthSolver}, que salió del programa principal el 2026-09-29 porque ningún código general establecido lo implementa de forma nativa (criterio de admisión, Reglas.md §1).
 
 El programa principal no conoce los módulos de usuario hasta que un modelo los pide: \texttt{import solidum} no los importa. La carga es explícita, con la clave \texttt{user\_\allowbreak{}modules: [\textless{}nombre\textgreater{}]} del YAML, procesada al principio de la lectura y antes de validar, o con \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module(\textquotedbl{}\textless{}nombre\textgreater{}\textquotedbl{})} en Python; \texttt{solidum.\allowbreak{}available\_\allowbreak{}user\_\allowbreak{}modules()} lista los instalados. Cargar un módulo importa sus submódulos con el mismo recorrido del descubrimiento automático, de modo que sus decoradores inscriben elementos, materiales, solvers y familias en los registros del programa principal.
 
@@ -837,6 +874,8 @@ Un módulo nuevo no se da de alta en el test, y todas las pruebas pasan también
 \section{Contratos declarativos mediante atributos de clase}
 
 En lugar de imponer métodos abstractos cuando el comportamiento puede inferirse del dato, Solidum FEM declara los contratos como atributos de clase: \texttt{STRAIN\_DIM} (1, 3 o 6), \texttt{DOF\_NAMES} (lista de nombres de DOF por nodo), \texttt{N\_\allowbreak{}INTEGRATION\_\allowbreak{}POINTS}, \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}, \texttt{IS\_\allowbreak{}LINEAR\_\allowbreak{}ELASTIC}. La clase base los lee y se autoconfigura: registra los DOF, valida la compatibilidad material\ensuremath{\leftrightarrow}elemento e inicializa el \texttt{ElementState} con la forma correcta. Este mecanismo sustituye los métodos \texttt{setup()} repetitivos que cada subclase tendría que implementar.
+
+El mismo criterio rige los contratos que llegaron después: \texttt{REFERENCE\_CELL} y \texttt{REFERENCE\_NODES} (celda y nodos de referencia del elemento, \hyperref[adr:0022]{ADR 0022}), que usan el generador de mallas estructuradas, la verificación por soluciones manufacturadas, la localización de puntos y el refuerzo embebido para saber cuántos nodos tiene una barra; \texttt{GEOMETRICALLY\_\allowbreak{}NONLINEAR} (\hyperref[adr:0019]{ADR 0019}); \texttt{GEOMETRY} y \texttt{JUMP\_DIM} de los materiales de interfaz (\hyperref[adr:0033]{ADR 0033}: superficie o línea, y número de componentes admitidas, \texttt{None} si las de 2D y 3D), que el consumidor comprueba con \texttt{accepts(geometría, n)}; \texttt{VTK\_\allowbreak{}EXPORT = False} en un elemento que el exportador debe omitir sin aviso (las interfaces de adherencia generadas, que no tienen celda VTK); y \texttt{YAML\_KEYS} en una clase de familia, las claves adicionales que su \texttt{from\_yaml} traduce y que el lector no debe rechazar como desconocidas.
 
 Un atributo de clase puede sobrescribirse por instancia cuando el dato depende de la construcción, no de la clase: un marco con sección fija \texttt{N\_\allowbreak{}INTEGRATION\_\allowbreak{}POINTS = n\_\allowbreak{}ip} en la instancia antes de construir su \texttt{ElementState}, mientras la clase conserva el valor de su camino por defecto (\hyperref[adr:0021]{ADR 0021}). \texttt{Material.\allowbreak{}IS\_\allowbreak{}LINEAR\_\allowbreak{}ELASTIC} (por defecto \texttt{False}; \texttt{True} en \texttt{Elastic1D}, \texttt{Elastic2D}, \texttt{Elastic3D} y \texttt{Orthotropic2D}) declara que la respuesta del material es lineal y sin historia; el barrido de contrato de materiales lo recorre, y los marcos lo exigen en su camino de forma cerrada.
 
@@ -875,6 +914,26 @@ Las condiciones de frontera, tanto Dirichlet nodales como restricciones multipun
 La forma afín cubre con la misma maquinaria los casos de empotramiento, asentamiento prescrito, apoyo en plano oblicuo, periodicidad de celda unitaria y unión rígida master-slave entre nodos. Las restricciones declaradas como cadenas (un esclavo cuyo maestro es a su vez esclavo de otra restricción) se resuelven por cierre transitivo en el momento de construir \texttt{T}; los ciclos y las redeclaraciones inconsistentes se detectan en validación temprana. La declaración se hace mediante \texttt{Domain.\allowbreak{}add\_\allowbreak{}linear\_\allowbreak{}constraint} o desde el bloque \texttt{linear\_\allowbreak{}constraints} del archivo YAML.
 
 El cierre parte siempre de las restricciones tal como se declararon, que el \texttt{ConstraintSet} conserva, y ofrece dos inspecciones independientes de él: \texttt{dirichlet\_dofs}, los grados de libertad con valor prescrito declarado (sin los esclavos de las MPC, aunque el cierre deje sin maestros a un esclavo atado a un apoyo), y \texttt{build\_g}, el vector \texttt{g} para unos valores de Dirichlet dados con la composición del cierre (\texttt{g\_\allowbreak{}s = g\_\allowbreak{}mpc,s + \ensuremath{\Sigma} \ensuremath{\alpha}\ensuremath{\cdot}ḡ\_\allowbreak{}d}), que usa el transitorio térmico con temperatura impuesta variable en el tiempo. Los problemas de Newton de los solvers iterativos miden la convergencia con el equilibrio reducido \texttt{\ensuremath{\|}T\ensuremath{^{\top}}R\ensuremath{\|}}: con una MPC, el residuo no se anula en los grados de libertad libres por separado, porque la fuerza de cada esclavo pasa a sus maestros. En el post-proceso, \texttt{ConstraintSet.\allowbreak{}multipliers} recupera los multiplicadores de las restricciones declaradas sin cerrar (\texttt{C\ensuremath{^{\top}}\ensuremath{\mu} = F\_\allowbreak{}int − F\_\allowbreak{}applied}, por sustitución en orden de dependencia), y \texttt{build\_\allowbreak{}solve\_\allowbreak{}result} reparte su fuerza entre las reacciones de los apoyos (Dirichlet y MPC que impiden un movimiento de sólido rígido, clasificadas con la base rígida del dominio) y las fuerzas de restricción de las uniones (\texttt{SolveResult.\allowbreak{}constraint\_\allowbreak{}forces}), con la convención que decidió el usuario (\hyperref[adr:0004]{ADR 0004} §3).
+
+\section{Restricciones generadas y localización de puntos}
+
+Algunas restricciones no se declaran nudo a nudo sino que las pide una geometría: una barra de refuerzo que atraviesa una malla de sólidos sin coincidir con sus nodos. Un \textbf{generador de restricciones} (\hyperref[adr:0032]{ADR 0032}; \texttt{ConstraintRegistry}, carpeta \texttt{solidum/bc/}, bloque YAML \texttt{constraints}) recibe el dominio ya mallado y crea, antes de numerar las ecuaciones, los nodos, los elementos y las MPC que su geometría pide; el resto del programa los trata como si se hubieran declarado. Para atar un punto al campo de un sólido hay que saber en qué elemento cae y con qué coordenadas naturales: \texttt{solidum/\allowbreak{}mesh/\allowbreak{}point\_\allowbreak{}location.\allowbreak{}py} lo resuelve invirtiendo el mapeo isoparamétrico por Newton (\texttt{natural\_\allowbreak{}coordinates}) con lo que todo sólido declara (\texttt{REFERENCE\_CELL} y sus funciones de forma), sin código por tipo de elemento, y \texttt{PointLocator} filtra los candidatos por su caja envolvente. Los nodos generados se registran en \texttt{Domain.\allowbreak{}generated\_\allowbreak{}nodes}, que los aparta de los selectores por coordenada del YAML. Un generador puede crear también elementos no registrados cuando nadie los cita por \texttt{type} (las interfaces de adherencia del refuerzo embebido, \hyperref[adr:0032]{ADR 0032} ampliación 2).
+
+\section{Etapas y continuidad de los análisis}
+
+Un análisis puede partir del estado que dejó otro (\hyperref[adr:0026]{ADR 0026}, 0029 y 0031). El estado son los desplazamientos (o temperaturas) y lo que guardan los elementos (variables internas, estado propio), más la carga que ya actúa. Los estáticos incrementales lo reciben con \texttt{solve(F\_\allowbreak{}ref, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})}: el residuo es $\mathbf F_c + \lambda\mathbf F_\text{ref} - \mathbf F_\text{int}$ con \ensuremath{\lambda} = 0 al empezar, los valores impuestos crecen desde los de partida y se comprueba el equilibrio inicial. Los integradores en el tiempo lo reciben con \texttt{continue\_\allowbreak{}from(previous)} (mezcla \texttt{TransientTerminationMixin}), desde un estático en reposo o desde un transitorio del mismo tipo con su aceleración final. El modal, el armónico, el espectral y el lineal linealizan alrededor del estado con la rigidez tangente de los elementos sin cambiarlo (mezcla \texttt{LinearizedStateMixin}). Desde Python las etapas se encadenan con \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)}, que pasa como constante la carga de la etapa anterior y sus cargas equivalentes; desde el YAML, con el bloque \texttt{stages}, que devuelve un \texttt{StagedResult}.
+
+\section{Terminación y política del registro}
+
+Todo solver incremental y todo integrador en el tiempo deja cómo terminó en atributos que no exigen leer el registro (\hyperref[adr:0025]{ADR 0025}): \texttt{termination} (\texttt{max\_lambda}, \texttt{control\_target}, \texttt{max\_steps}, \texttt{t\_end} o \texttt{diverged}), \texttt{completed}, el número de pasos y el último estado convergido; se fijan también tras una excepción y se reinician en cada \texttt{solve}. Un fracaso llega como excepción tipada (\texttt{SolverDivergedError}, \texttt{StepConstraintError}, \texttt{TimeIntegrationInstabilityError}, \ldots{}) con el resultado parcial. El registro (\texttt{solidum.logging}) sigue una política de niveles única: una línea \texttt{INFO} por paso, las iteraciones en \texttt{DEBUG}, lo que el solver recupera (una bisección, una subdivisión del paso) en \texttt{WARNING} con su motivo, y \texttt{ERROR} sólo al detenerse. El manejador de consola adapta los mensajes a la codificación del flujo (translitera lo que no cabe, por ejemplo en una consola cp1252), y el nivel se fija con \texttt{solidum.\allowbreak{}logging.\allowbreak{}set\_\allowbreak{}log\_\allowbreak{}level} o con \texttt{output.log\_level} en el YAML.
+
+\section{Cargas que llevan sus cargas equivalentes}
+
+Las fuerzas internas de un elemento con carga distribuida son $\mathbf F_\text{int} - \mathbf f_\text{eq}$, así que el post-proceso necesita las cargas equivalentes de \textbf{la carga que actúa}, no de la última ensamblada. La carga las lleva consigo (\hyperref[adr:0027]{ADR 0027}): \texttt{LoadVector} (\texttt{solidum/\allowbreak{}core/\allowbreak{}load\_\allowbreak{}vector.\allowbreak{}py}) es un \texttt{np.ndarray} con las cargas equivalentes por elemento de su parte distribuida, y la aritmética de las cargas las combina linealmente (\texttt{F\_a \ensuremath{\pm} F\_b}, \texttt{a\ensuremath{\cdot}F}, \texttt{F/a}); cualquier otra operación devuelve un arreglo simple. Así una corrida con varias cargas de cuerpo, varios casos con el mismo ensamblador, las etapas y los historiales de los transitorios dan fuerzas internas correctas sin cambiar la API de las cargas.
+
+\section{Longitud característica del punto de integración}
+
+Un material con ablandamiento regularizado por energía de fractura necesita la longitud $h$ de cada punto de integración, que sólo conoce el elemento (\hyperref[adr:0028]{ADR 0028}). La longitud viaja en el estado del punto: el material declara si la usa (la propiedad \texttt{uses\_\allowbreak{}characteristic\_\allowbreak{}length}, que depende de la instancia) y construye el estado inicial con \texttt{initial\_\allowbreak{}point\_\allowbreak{}state(h)}, donde la valida; el elemento, al terminar de construirse, siembra una longitud por punto con \texttt{\_\allowbreak{}seed\_\allowbreak{}characteristic\_\allowbreak{}lengths} (\texttt{L} en las barras de dos nodos; \texttt{w\_g\ensuremath{\cdot}L} por punto de Gauss, con los pesos normalizados a la unidad, en las barras de tres nodos y en los marcos con sección, que la entregan a sus fibras). Un $h$ inadmisible se rechaza al construir el elemento, no durante el cálculo. Primer consumidor: \texttt{ManderConcrete1D}.
 
 \section{Compilación Just-In-Time mediante Numba}
 
@@ -991,6 +1050,14 @@ Relación 2D \ensuremath{\leftrightarrow} 3D en la interfaz pública:
 
 Los valores se exponen siempre en ejes locales del elemento; la transformación a ejes globales constituye una capa separada.
 
+\section{Interfaces: orden de las componentes}
+
+Los materiales de interfaz (\hyperref[adr:0033]{ADR 0033}) reciben el desplazamiento relativo y devuelven la tracción en el sistema local de la interfaz, con las componentes \textbf{normales primero y las tangenciales después}: \texttt{(n, s)} o \texttt{(n, s1, s2)} en una superficie (grieta, junta) y \texttt{(n, s)} o \texttt{(n1, n2, s)} en la línea de una barra embebida. El desplazamiento relativo es el del lado positivo menos el del negativo (en una grieta, apertura normal positiva; en una barra, la barra menos el sólido que la rodea), y la tracción tangencial lleva el signo del deslizamiento. El paso a ejes globales es del elemento que consume la ley.
+
+\section{Reacciones en los análisis dinámicos}
+
+La reacción de un apoyo sigue la convención del estático (\hyperref[adr:0004]{ADR 0004} §3), extendida a la ecuación de movimiento en las filas de apoyo (\hyperref[adr:0030]{ADR 0030}): $\mathbf R = \mathbf F_\text{int}(\mathbf u) + \mathbf M\ddot{\mathbf u} + \mathbf C\dot{\mathbf u} - \mathbf F$, de modo que la suma de las reacciones equilibra la carga y las fuerzas de inercia y de amortiguamiento de la estructura entera. La parte $\mathbf C\dot{\mathbf u}$ se reporta por separado; en el armónico, la misma regla en amplitudes complejas, y en el espectral, la ecuación de cada modo antes de combinar.
+
 
 \newpage
 
@@ -1001,7 +1068,7 @@ Los valores se exponen siempre en ejes locales del elemento; la transformación 
 
 Los capítulos anteriores describen el estado actual del programa. Este capítulo describe el procedimiento por el que se incorporan piezas nuevas --- el aspecto del proyecto que la arquitectura optimiza explícitamente.
 
-\section{Tres puntos de extensión canónicos}
+\section{Puntos de extensión canónicos}
 
 \begin{center}
 \begin{tabularx}{\textwidth}{YYYY}
@@ -1009,11 +1076,17 @@ Los capítulos anteriores describen el estado actual del programa. Este capítul
 \textbf{Componente a incorporar} & \textbf{Ubicación} & \textbf{Mecanismo de registro} & \textbf{Modifica otros archivos} \\
 \hline
 Material & \texttt{solidum/\allowbreak{}materials/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@MaterialRegistry.\allowbreak{}register} & No \\
-Elemento & \texttt{solidum/\allowbreak{}elements/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@ElementRegistry.\allowbreak{}register} & No \\
+Material térmico & \texttt{solidum/\allowbreak{}materials/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@ThermalMaterialRegistry.\allowbreak{}register} & No \\
+Material de interfaz & \texttt{solidum/\allowbreak{}materials/\allowbreak{}interface/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@InterfaceMaterialRegistry.\allowbreak{}register} & No \\
+Sección de marco & \texttt{solidum/\allowbreak{}sections/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@SectionRegistry.\allowbreak{}register} & No \\
+Elemento & \texttt{solidum/\allowbreak{}elements/\allowbreak{}\textless{}familia\textgreater{}/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@ElementRegistry.\allowbreak{}register} & No \\
 Solver & \texttt{solidum/\allowbreak{}math/\allowbreak{}solvers/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@SolverRegistry.\allowbreak{}register} & No \\
+Generador de restricciones & \texttt{solidum/\allowbreak{}bc/\allowbreak{}\textless{}snake\textgreater{}.\allowbreak{}py} & \texttt{@ConstraintRegistry.\allowbreak{}register} & No \\
 \hline
 \end{tabularx}
 \end{center}
+Los tres primeros más frecuentes son el material, el elemento y el solver, los que cubre la \textit{skill} de plantillas; los demás siguen el mismo patrón con su propia clase base (\texttt{InterfaceMaterial}, \texttt{Section}, el generador de restricciones del \hyperref[adr:0032]{ADR 0032}) y su tipo de spec.
+
 La columna \textquotedbl{}modifica otros archivos\textquotedbl{} es deliberadamente \textquotedbl{}No\textquotedbl{}. Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
 
 La tabla vale para los componentes \textbf{estándar}, que van al programa principal. El \textbf{criterio de admisión} (Reglas.md §1) decide la frontera: una formulación es estándar si aparece en los textos de referencia del área y está implementada en al menos un código general establecido; la spec lo declara en su bloque \texttt{admission} (\texttt{textbooks}, \texttt{general\_codes}, con los identificadores canónicos de \texttt{solidum/\allowbreak{}tools/\allowbreak{}spec.\allowbreak{}py}). Un componente \textbf{no estándar} (una formulación de investigación que no cumple el criterio: la discontinuidad embebida con cinemática KOS de Retama (2010), el seguimiento de trayectoria de grieta, el control del paso por liberación de energía de Gutiérrez (2004)) va a un \textbf{módulo de usuario} (\hyperref[adr:0020]{ADR 0020}). XFEM y las leyes cohesivas tracción-salto genéricas con elementos de interfaz, en cambio, son estándar según el criterio. El módulo tiene su código en \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}, con los mismos decoradores y, si lo necesita, una familia de material propia declarada con una subclase de \texttt{Registry}; specs en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}specs/\allowbreak{}} y pruebas en \texttt{tests/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}. No modifica ningún archivo del programa principal ni se carga solo: el caso lo pide con \texttt{user\_\allowbreak{}modules: [\textless{}nombre\textgreater{}]}. Sólo añade entradas a los registros: si reasigna una existente, la carga falla y se deshace. Si le hace falta una pieza que el programa principal no ofrece, esa pieza entra en el programa principal como mecanismo genérico, justificado por casos reales ajenos al módulo, nunca como un caso especial que lo nombre. Lo vigilan el test de pureza (\texttt{tests/\allowbreak{}test\_\allowbreak{}main\_\allowbreak{}program\_\allowbreak{}purity.\allowbreak{}py}, con sus controles estructural, léxico y en ejecución; el módulo nuevo no se da de alta en él) y, en sentido inverso, \texttt{tests/\allowbreak{}test\_\allowbreak{}user\_\allowbreak{}module\_\allowbreak{}public\_\allowbreak{}imports.\allowbreak{}py}, que exige al módulo usar sólo el contrato público del programa principal (ver «Programa principal y módulos de usuario»).
@@ -1038,7 +1111,7 @@ Cuando el componente a incorporar es físico (no infraestructura), el flujo es:
   \item \textit{Apertura de la especificación.} El usuario abre una especificación en \texttt{docs/\allowbreak{}specs/\allowbreak{}\textless{}Nombre\textgreater{}.\allowbreak{}md} a partir de la plantilla \texttt{\_\allowbreak{}template\_\allowbreak{}\textless{}kind\textgreater{}.\allowbreak{}md}. La especificación contiene: especificación física, formulación numérica y contrato YAML (\texttt{interface}, \texttt{parameters}, \texttt{acceptance}, \texttt{references}).
   \item \textit{Bloqueo en ausencia de especificación completa.} El asistente no escribe código hasta que la especificación esté completa. Si falta información, formula consultas en la sección \textit{Diálogo} de la propia especificación. Esto convierte la especificación, sucesivamente, en orden de trabajo y en referencia detallada del componente.
   \item \textit{Implementación.} El asistente implementa el componente y añade pruebas conforme a los criterios de \texttt{acceptance}.
-  \item \textit{Cierre.} Tras la validación (todas las pruebas verdes contra los criterios), el asistente actualiza \texttt{status: validated} en la especificación e inserta una entrada en el catálogo correspondiente (\texttt{docs/\allowbreak{}catalogo\_\allowbreak{}\textless{}elementos|materiales|solvers\textgreater{}.\allowbreak{}md}).
+  \item \textit{Cierre.} Tras la validación (todas las pruebas verdes contra los criterios), el asistente actualiza \texttt{status: validated} en la especificación e inserta una entrada en el catálogo correspondiente (\texttt{docs/\allowbreak{}catalogo\_\allowbreak{}\textless{}elementos|materiales|solvers|restricciones\textgreater{}.\allowbreak{}md}; los materiales térmicos y de interfaz tienen su apartado en el de materiales, y las secciones de marco en el de elementos).
 \end{enumerate}
 
 La relación es: la especificación constituye la orden de trabajo y la referencia detallada por componente; el catálogo constituye el índice navegable del conjunto. El manual de referencia (\texttt{Reference\_\allowbreak{}manual.\allowbreak{}pdf}) se genera de forma automática a partir de las especificaciones. Un componente de un módulo de usuario sigue el mismo ciclo con su spec en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}specs/\allowbreak{}}, su entrada en la sección «Módulos de usuario» del catálogo y su capítulo en el apéndice «Módulos de usuario» del manual de referencia.
@@ -1083,7 +1156,7 @@ Los Architecture Decision Records (ADR) son el registro persistente de las decis
 
 \textbf{Fecha}: 22 de abril de 2026. \textbf{Estado}: aceptado.
 
-\textbf{Contexto.} Solidum FEM se consume desde una GUI externa (FenixBAR, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de fuerzas internas sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y las fuerzas internas carecían de método público homogéneo.
+\textbf{Contexto.} Solidum FEM se consume desde una GUI externa (SolidumBAR, llamado FenixBAR hasta el 2026-09-30, programa de análisis estructural con elementos barra). Tras una solución, el consumidor requiere información suficiente para visualizar el post-proceso estándar de Computer-Aided Engineering (CAE): deformada escalada, reacciones en apoyos y diagramas de fuerzas internas sobre cada barra. Esta información no se exponía de forma uniforme: el componente \texttt{VtkExporter} cubría únicamente algunos elementos y las fuerzas internas carecían de método público homogéneo.
 
 \textbf{Decisión.} Interfaz pública estructurada en tres niveles:
 
@@ -1134,7 +1207,7 @@ El despachador \texttt{select\_\allowbreak{}solver(props, override)} recibe un o
 
 \textbf{Decisión.} Se introduce un \textit{logger} configurable basado en el módulo estándar \texttt{logging} de Python, expuesto al resto del proyecto vía \texttt{solidum.\allowbreak{}logging.\allowbreak{}get\_\allowbreak{}logger(name)}. Todos los componentes consumen este \textit{logger} en lugar de \texttt{print}. El nivel y el formato se configuran de forma centralizada y pueden sobreescribirse desde el archivo YAML del caso o programáticamente.
 
-\textbf{Consecuencia.} Tests automatizados pueden silenciar la traza sin perder la información de errores. La integración con herramientas externas (GUI FenixBAR, batería de tests, pipelines CI) se hace mediante la API estándar de \texttt{logging}, sin acoplamiento a \texttt{sys.stdout}. Las advertencias internas relevantes (degradación de Cholesky a LU, bisección de incremento) quedan marcadas con su nivel adecuado.
+\textbf{Consecuencia.} Tests automatizados pueden silenciar la traza sin perder la información de errores. La integración con herramientas externas (GUI SolidumBAR, batería de tests, pipelines CI) se hace mediante la API estándar de \texttt{logging}, sin acoplamiento a \texttt{sys.stdout}. Las advertencias internas relevantes (degradación de Cholesky a LU, bisección de incremento) quedan marcadas con su nivel adecuado.
 
 \section{ADR 0006 --- Tolerancias del criterio de admisibilidad constitutiva}
 \label{adr:0006}
@@ -1208,12 +1281,14 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
   \item \textbf{Regla D} (auditoría 2026-05-13). Disparada por \texttt{ResponseSpectrumSolver} como segundo método de cómputo sobre \texttt{ModalResult}. El algoritmo de \texttt{free\_vibration} migra a \texttt{solidum/\allowbreak{}math/\allowbreak{}modal\_\allowbreak{}response.\allowbreak{}py} junto con los nuevos \texttt{participation\_\allowbreak{}factors}, \texttt{response\_\allowbreak{}spectrum\_\allowbreak{}srss}, \texttt{response\_\allowbreak{}spectrum\_\allowbreak{}cqc}, \texttt{spectrum\_from\_sa}, \texttt{spectrum\_\allowbreak{}tabulated}. \texttt{ModalResult.\allowbreak{}free\_\allowbreak{}vibration} queda como wrapper delgado, preservando la API histórica.
 \end{itemize}
 
-\textbf{Consecuencia.} El subsistema modal/dinámico/espectral queda \textbf{completo en su totalidad}. Las únicas extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, \ensuremath{\Delta}t adaptativo, generalized-\ensuremath{\alpha}) requieren caso de uso específico --- no son piezas del ADR pendientes. La clase \texttt{Node} conserva su semántica original.
+\textbf{Consecuencia.} El subsistema modal/dinámico/espectral queda \textbf{completo en su totalidad}. Las extensiones futuras (excitación sísmica multi-direccional simultánea CQC3, multi-support seismic, generalized-\ensuremath{\alpha}) requieren caso de uso específico --- no son piezas del ADR pendientes. La clase \texttt{Node} conserva su semántica original.
+
+\textbf{Ampliaciones (9 de noviembre de 2026).} (1) §8, decisión del usuario: la razón de masa efectiva acumulada se mide contra la masa que puede participar, $M_\text{part} = \mathbf b^\top\mathbf M_{LL}^{-1}\mathbf b$, la suma de las masas efectivas de todos los modos, de modo que con todos los modos vale 1 exactamente (con masas de nudo, grados de libertad sin masa y restricciones multipunto); \texttt{ModalResult.\allowbreak{}participating\_\allowbreak{}mass} y \texttt{cumulative\_\allowbreak{}effective\_\allowbreak{}mass\_\allowbreak{}ratio}. (2) Paso adaptativo en \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}, decisión del usuario: el paso cuyo Newton no converge se repite desde el último estado convergido en dos mitades, hasta \texttt{max\_subdivisions} niveles (6 por omisión, \ensuremath{\Delta}t/64); el historial queda en la malla de tiempos del usuario. (3) Los transitorios implícitos admiten grados de libertad sin masa (\hyperref[adr:0024]{ADR 0024}, §6 bis).
 
 \section{ADR 0010 --- Discontinuidades interiores embebidas}
 \label{adr:0010}
 
-\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; fases 1, 2, 3 y 3b implementadas, fases 4 (curva de Van Vliet) y 5 diferidas con justificación.
+\textbf{Fecha}: 13 de mayo de 2026. \textbf{Estado}: aceptado; fases 1, 2, 3 y 3b implementadas; fase 4 (curva de Van Vliet) validada con grieta prescrita el 29 de septiembre de 2026; fase E (seguimiento de grieta) completada el 10 de noviembre de 2026; las demás, diferidas con justificación.
 
 \textbf{Contexto.} Abrir la línea de fractura computacional. Entre las alternativas (fisura difusa, elementos cohesivos de interfaz, XFEM, discontinuidades embebidas) se elige la que el autor domina a nivel doctoral: discontinuidades interiores embebidas en aproximación discreta (Retama, 2010).
 
@@ -1221,7 +1296,9 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Consecuencia.} Fractura computacional sin tocar el ensamblador, el despachador algebraico, el Newton ni el parser. Las cuatro abstracciones son reutilizables para modelos cohesivos clásicos, modos incompatibles o EAS. El límite conocido es el solver para ablandamiento severo con penalización cohesiva rígida (deuda técnica). \textit{(Nota 2026-09-29: ese límite se diagnosticó antes de corregir la tangente cohesiva el 2026-09-23; con la tangente corregida, \texttt{NonlinearSolver} con control por desplazamiento recorre el ablandamiento hasta la separación, y el fallo de \texttt{ArcLengthSolver} no se ha vuelto a comprobar.)}
 
-\textbf{Ubicación.} Desde el \hyperref[adr:0020]{ADR 0020} la formulación completa vive fuera del programa principal, en el módulo de usuario \texttt{discontinuities} (\texttt{solidum/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}}), y un modelo la carga con \texttt{user\_\allowbreak{}modules: [discontinuities]}. El ADR se conserva como registro de la formulación.
+\textbf{Ubicación.} Desde el \hyperref[adr:0020]{ADR 0020} la formulación vive fuera del programa principal, en el módulo de usuario \texttt{discontinuities} (\texttt{solidum/\allowbreak{}user/\allowbreak{}discontinuities/\allowbreak{}}), y un modelo la carga con \texttt{user\_\allowbreak{}modules: [discontinuities]}. El ADR se conserva como registro de la formulación.
+
+\textbf{Actualizaciones (10 de noviembre de 2026).} \textit{Seguimiento de grieta} (fase E, decisiones del usuario): el nodo solitario se elige por la trayectoria de la grieta y no elemento a elemento, con un seguimiento global por región conexa (\texttt{GlobalCrackTracking}) o una trayectoria prescrita (\texttt{PrescribedCrackPath}), y \texttt{l\_d} lleva signo. \textit{Familia cohesiva}: pasó al programa principal como familia de materiales de interfaz (\hyperref[adr:0033]{ADR 0033}); lo que aquí se dice de \texttt{CohesiveMaterial} vale para \texttt{InterfaceMaterial}. El elemento acepta también la ley de modo mixto \texttt{CohesiveDamageMixedMode}, que transmite cortante por la grieta; la cinemática sigue siendo KOS. El módulo conserva el elemento, el estado de la discontinuidad y el seguimiento.
 
 \section{ADR 0011 --- Robustez del Newton: line search y diagnóstico de divergencia}
 \label{adr:0011}
@@ -1337,6 +1414,8 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Revisión del 2026-09-29.} El criterio de admisión de Reglas.md §1 (textos de referencia y código general establecido) fija la frontera, y cada spec del programa principal lo declara en su bloque \texttt{admission}. Por él sale del programa principal un segundo módulo, \texttt{dissipation\_\allowbreak{}control}, con \texttt{DissipationArcLengthSolver}; el programa principal gana una sola pieza genérica, el nombre público \texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}ArcProblem} para el problema por paso del arco, que ya extendía \texttt{IndirectDisplacementSolver}, y el lector YAML da la pista de \texttt{user\_modules} también ante un tipo de solver desconocido. La frontera se endurece en los dos sentidos: el test de pureza pasa a tres controles (estructural por \texttt{ast}, léxico con los nombres derivados de lo que registra cada módulo, sin lista a mano, y en ejecución), \texttt{load\_user\_module} es atómica y sólo admite añadir entradas a los registros, y \texttt{tests/\allowbreak{}test\_\allowbreak{}user\_\allowbreak{}module\_\allowbreak{}public\_\allowbreak{}imports.\allowbreak{}py} exige a los módulos el contrato público: la cinemática se importa de \texttt{solidum.\allowbreak{}elements.\allowbreak{}solid\_\allowbreak{}2d} (\texttt{compute\_\allowbreak{}kinematics\_\allowbreak{}tri3}, \texttt{compute\_\allowbreak{}integrands}, sin guion bajo) y \texttt{YAML\_LABEL} es la etiqueta de todo registro, en lugar del atributo privado \texttt{\_kind}, retirado.
 
+\textbf{Actualización del 10 de noviembre de 2026.} La familia cohesiva del módulo \texttt{discontinuities} volvió al programa principal (\hyperref[adr:0033]{ADR 0033}), como preveía Reglas.md §4, al entrar el primer elemento de interfaz del programa principal (la adherencia barra--sólido). El módulo conserva el elemento, el estado de la discontinuidad y el seguimiento de grieta.
+
 \section{ADR 0021 --- Secciones de marco: familia de secciones y sección por fibras}
 \label{adr:0021}
 
@@ -1377,9 +1456,11 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Contexto.} La única fuente de masa era la densidad del material (\hyperref[adr:0008]{ADR 0008}), pero en un edificio la masa de cada nivel viene de la losa, los acabados y la carga viva, y la práctica estándar la concentra en los nudos. Con masas sólo en algunos nudos, o elementos de densidad cero, la matriz de masa es semidefinida y el análisis modal fallaba: ARPACK lanzaba un error sin causa y el camino denso exigía masa definida.
 
-\textbf{Decisión.} La masa de nudo es un dato del dominio (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloques YAML \texttt{nodal\_masses}, \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}group} y \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}coord}), por grado de libertad mecánico, traslacional o rotacional. Se suma a la diagonal de la matriz de masa con los dos esquemas, sobre el patrón ya cacheado, así que la ven todos los consumidores de la masa. Es sólo inercia: \texttt{gravity} no genera su peso, y si debe generarlo queda para decisión del usuario con las etapas de carga. En el análisis modal, los grados de libertad sin masa se condensan estáticamente de forma exacta ($\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\boldsymbol\phi_m$), sin formar la matriz condensada en los modelos grandes: el operador de desplazamiento e inversión del problema condensado es el bloque de $(\mathbf K - \sigma\mathbf M)^{-1}$ del modelo completo. Si el problema no tiene solución, \texttt{MasslessDofsError} nombra los grados de libertad. Se descartaron un elemento de masa puntual (material, rigidez nula y catálogo para una entrada diagonal), la masa ficticia pequeña (frecuencias espurias) y el problema inverso con $\mathbf K$ definida (falla en estructuras libres).
+\textbf{Decisión.} La masa de nudo es un dato del dominio (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloques YAML \texttt{nodal\_masses}, \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}group} y \texttt{nodal\_\allowbreak{}masses\_\allowbreak{}by\_\allowbreak{}coord}), por grado de libertad mecánico, traslacional o rotacional. Se suma a la diagonal de la matriz de masa con los dos esquemas, sobre el patrón ya cacheado, así que la ven todos los consumidores de la masa. Es sólo inercia: \texttt{gravity} no genera su peso (decisión del usuario, como el \texttt{mass} de OpenSees: la masa sísmica y la carga de gravedad salen de combinaciones distintas), y el peso de los pisos se declara como carga. En el análisis modal, los grados de libertad sin masa se condensan estáticamente de forma exacta ($\boldsymbol\phi_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\boldsymbol\phi_m$), sin formar la matriz condensada en los modelos grandes: el operador de desplazamiento e inversión del problema condensado es el bloque de $(\mathbf K - \sigma\mathbf M)^{-1}$ del modelo completo. Si el problema no tiene solución, \texttt{MasslessDofsError} nombra los grados de libertad. Se descartaron un elemento de masa puntual (material, rigidez nula y catálogo para una entrada diagonal), la masa ficticia pequeña (frecuencias espurias) y el problema inverso con $\mathbf K$ definida (falla en estructuras libres).
 
-\textbf{Consecuencia.} Análisis modal y espectral de edificios con masas de piso, con frecuencias exactas para el modelo discreto; los modelos con masa en todos los grados de libertad no cambian. El transitorio con grados de libertad sin masa queda fuera: la aceleración inicial de esos grados de libertad es una decisión física pendiente.
+\textbf{Consecuencia.} Análisis modal y espectral de edificios con masas de piso, con frecuencias exactas para el modelo discreto; los modelos con masa en todos los grados de libertad no cambian.
+
+\textbf{Ampliación (9 de noviembre de 2026, §6 bis, decisión del usuario).} Los transitorios implícitos (Newmark, HHT-\ensuremath{\alpha} y sus variantes de Newton) admiten grados de libertad sin masa: la matriz efectiva $\mathbf M + \gamma\Delta t\,\mathbf C + \beta\Delta t^2\mathbf K$ es regular, y la aceleración inicial se toma consistente, $\ddot{\mathbf u}_0 = -\mathbf K_{00}^{-1}\mathbf K_{0m}\ddot{\mathbf u}_m$ en los grados de libertad sin masa. Un mecanismo sin masa da \texttt{MasslessDofsError}.
 
 \section{ADR 0025 --- Terminación de los solvers estáticos incrementales y registro por omisión}
 \label{adr:0025}
@@ -1388,7 +1469,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Contexto.} Quien usaba los solvers de trayectoria desde Python no sabía, sin leer el registro, si el análisis terminó ni por qué se detuvo. Un trazado que agotaba \texttt{max\_steps} regresaba con normalidad. El fracaso del arco era un \texttt{RuntimeError} genérico con el diagnóstico sólo en el registro, y un solver reutilizado conservaba el estado de la corrida anterior. El control indirecto no podía detenerse en un desplazamiento. El registro escribía las iteraciones en \texttt{INFO}, registraba como \texttt{ERROR} eventos que el solver recuperaba y producía trazas con una consola en cp1252.
 
-\textbf{Decisión.} Atributo \texttt{termination} (\texttt{max\_lambda}, \texttt{control\_target}, \texttt{max\_steps} o \texttt{diverged}) con \texttt{completed}, \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections} y \texttt{U\_final}. Se fijan también tras una excepción, se reinician en cada \texttt{solve} y llegan a \texttt{SolveResult.\allowbreak{}termination}. El fracaso es una \texttt{SolverDivergedError} tipada: \texttt{StepConstraintError} si la restricción del paso no tiene solución. \texttt{IndirectDisplacementSolver} admite \texttt{control\_target}: el último paso se recorta y la llegada es exacta. La base ofrece los puntos de extensión \texttt{\_target\_reached}, \texttt{\_limit\_step} y \texttt{\_step\_summary}. Registro: una línea \texttt{INFO} por paso, iteraciones en \texttt{DEBUG}, lo recuperado en \texttt{WARNING} con su motivo y \texttt{ERROR} sólo al detenerse; un manejador de consola adapta los mensajes a la codificación del flujo.
+\textbf{Decisión.} Atributo \texttt{termination} (\texttt{max\_lambda}, \texttt{control\_target}, \texttt{max\_steps} o \texttt{diverged}) con \texttt{completed}, \texttt{lambda\_final}, \texttt{steps\_done}, \texttt{n\_bisections} y \texttt{U\_final}. Se fijan también tras una excepción, se reinician en cada \texttt{solve} y llegan a \texttt{SolveResult.\allowbreak{}termination}. El fracaso es una \texttt{SolverDivergedError} tipada: \texttt{StepConstraintError} si la restricción del paso no tiene solución. \texttt{IndirectDisplacementSolver} admite \texttt{control\_target}: el último paso se recorta y la llegada es exacta. Ampliado el mismo día al arco cilíndrico: \texttt{ArcLengthSolver(.\allowbreak{}.\allowbreak{}.\allowbreak{}, control=[.\allowbreak{}.\allowbreak{}.\allowbreak{}], control\_\allowbreak{}target=c)}, donde \texttt{control} sólo mide; el paso que cruza el objetivo se repite con la restricción del control indirecto y la llegada también es exacta. La base ofrece los puntos de extensión \texttt{\_target\_reached}, \texttt{\_limit\_step} y \texttt{\_step\_summary}. Registro: una línea \texttt{INFO} por paso, iteraciones en \texttt{DEBUG}, lo recuperado en \texttt{WARNING} con su motivo y \texttt{ERROR} sólo al detenerse; un manejador de consola adapta los mensajes a la codificación del flujo.
 
 \textbf{Consecuencia.} Cómo terminó un análisis se lee en un atributo y un fracaso llega con su causa. Un análisis de empuje lateral se detiene en el desplazamiento pedido. Ningún resultado numérico cambia.
 
@@ -1403,7 +1484,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Decisión.} \texttt{solve(F\_\allowbreak{}ref, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})} en \texttt{NonlinearSolver} y la familia del arco, con residuo $\mathbf F_c + \lambda\mathbf F_\text{ref} - \mathbf F_\text{int}$ y \ensuremath{\lambda} = 0 al empezar. Los valores impuestos crecen desde los de partida, $\mathbf g(\lambda) = \mathbf g_0 + \lambda(\mathbf g - \mathbf g_0)$. Cada etapa comprueba su equilibrio inicial, y un modelo con historia que empieza en cero lo avisa. \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)} continúa la etapa anterior con su carga aplicada como constante y sus cargas equivalentes por elemento; el resultado separa \texttt{F\_constant} de \texttt{F\_variable}. \texttt{DissipationArcLengthSolver} rechaza las etapas: su restricción de disipación es física por decidir.
 
-\textbf{Consecuencia.} Gravedad y empuje, P-\ensuremath{\Delta} con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N--M y la superposición elástica. Quedan las etapas desde el YAML (deuda \#36). Las dos cargas distribuidas en una misma etapa (deuda \#35) las resolvió el \hyperref[adr:0027]{ADR 0027}.
+\textbf{Consecuencia.} Gravedad y empuje, P-\ensuremath{\Delta} con la carga vertical y continuación de un análisis, verificados contra la viga-columna con acortamiento, la interacción N--M y la superposición elástica. Las etapas desde el YAML se añadieron el mismo día: bloque \texttt{stages}, una etapa por entrada con sus cargas y su solver, y \texttt{run\_yaml} devuelve un \texttt{StagedResult} (deuda \#36 saldada). Las dos cargas distribuidas en una misma etapa (deuda \#35) las resolvió el \hyperref[adr:0027]{ADR 0027}.
 
 \section{ADR 0027 --- Cargas que llevan sus cargas equivalentes}
 \label{adr:0027}
@@ -1412,7 +1493,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Contexto.} Las fuerzas internas de extremo con carga distribuida son $\mathbf F_\text{int} - \mathbf f_\text{eq}$, y el ensamblador recordaba sólo las cargas equivalentes de la última carga de cuerpo ensamblada: dos cargas de cuerpo en una corrida, dos casos de carga con el mismo ensamblador y el historial de los transitorios daban fuerzas internas erróneas sin aviso (deuda \#35).
 
-\textbf{Decisión.} La carga lleva su propia información: \texttt{LoadVector}, un \texttt{np.ndarray} con las cargas equivalentes por elemento de su parte distribuida, que la aritmética de las cargas combina linealmente (\texttt{F1 \ensuremath{\pm} F2}, \texttt{a\ensuremath{\cdot}F}, \texttt{F/a}; cualquier otra operación da un \texttt{np.ndarray} simple). Se guardan concatenadas con una disposición compartida por las cargas del mismo ensamblador, así que combinar es una operación vectorizada. Un \texttt{np.ndarray} simple que las perdió recurre al registro anterior y avisa si es ambiguo.
+\textbf{Decisión.} La carga lleva su propia información: \texttt{LoadVector}, un \texttt{np.ndarray} con las cargas equivalentes por elemento de su parte distribuida, que la aritmética de las cargas combina linealmente (\texttt{F\_a \ensuremath{\pm} F\_b}, \texttt{a\ensuremath{\cdot}F}, \texttt{F/a}; cualquier otra operación da un \texttt{np.ndarray} simple). Se guardan concatenadas con una disposición compartida por las cargas del mismo ensamblador, así que combinar es una operación vectorizada. Un \texttt{np.ndarray} simple que las perdió recurre al registro anterior y avisa si es ambiguo.
 
 \textbf{Consecuencia.} La deuda \#35 queda cerrada en estático, por etapas y en el tiempo, sin cambiar la API de las cargas.
 
@@ -1429,6 +1510,36 @@ Un material con ablandamiento regularizado por energía de fractura necesita la 
 \textbf{Fecha}: 2026-11-09 \ensuremath{\cdot} \textbf{Estado}: aceptado.
 
 Extiende las etapas del \hyperref[adr:0026]{ADR 0026} a los análisis en el tiempo. \texttt{continue\_\allowbreak{}from(previous)}, común a los seis integradores (mezcla \texttt{TransientTerminationMixin}), parte de un estático (sus desplazamientos o temperaturas, en reposo, con su carga constante y sus cargas equivalentes; aviso si el estado no la equilibra) o de un transitorio del mismo tipo (su estado final en su instante final, en tiempo absoluto). Al continuar un transitorio se hereda la aceleración final, no la del equilibrio instantáneo, que con HHT-\ensuremath{\alpha} no coincide: parar y continuar es igual que no parar. Los resultados guardan \texttt{F\_constant}. Pendiente de una decisión física: la tangente con que se forma el amortiguamiento de Rayleigh al continuar.
+
+\section{ADR 0030 --- Reacciones de los apoyos en los análisis dinámicos}
+\label{adr:0030}
+
+\textbf{Fecha}: 2026-11-09 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Extiende el \hyperref[adr:0004]{ADR 0004} §3 a los análisis dinámicos. Por decisión del usuario, la reacción es la ecuación de movimiento en las filas de apoyo, \texttt{R = F\_\allowbreak{}int + M\ensuremath{\cdot}ü + C\ensuremath{\cdot}u̇ − F}, y la parte de amortiguamiento \texttt{C\ensuremath{\cdot}u̇} se reporta aparte (OpenSees deja elegir entre ambas con \texttt{-rayleigh}). \texttt{TransientTrace} la registra en cada paso guardado, común a los cinco integradores mecánicos; el armónico la da en amplitudes complejas y el espectral por modo (\texttt{(K − \ensuremath{\omega}\ensuremath{_{n}}\ensuremath{^{2}}M)\ensuremath{\cdot}u\ensuremath{_{n}}}), combinada con \texttt{combine\_modal}. \texttt{total\_\allowbreak{}reaction(dof)} da el cortante basal; en el espectral suma antes de combinar. Se guardan sólo los grados de libertad de apoyo, con el mismo reparto entre apoyos y uniones que el estático.
+
+\section{ADR 0031 --- Análisis lineales sobre el estado de una etapa}
+\label{adr:0031}
+
+\textbf{Fecha}: 2026-11-09 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Por decisión del usuario, el modal, el armónico y el espectral que continúan una etapa (\texttt{continue\_from}, \texttt{previous=}, etapas \texttt{stages}) linealizan alrededor de su estado con la rigidez tangente que dan los elementos (P-\ensuremath{\Delta} de los corrotacionales, descarga elástica de la plasticidad, rigidez dañada), sin cambiarlo. La mezcla \texttt{LinearizedStateMixin} lo comparte. Los autovalores negativos dejan de recortarse a cero: \texttt{ModalResult.\allowbreak{}eigenvalues} con signo y \texttt{unstable\_modes}. El \texttt{LinearSolver} como etapa es una perturbación lineal estática que tampoco cambia el estado (\texttt{SolveResult.\allowbreak{}perturbation}): casos superponibles sobre la etapa, con reacciones y fuerzas internas lineales (\texttt{Element.\allowbreak{}internal\_\allowbreak{}forces\_\allowbreak{}from\_\allowbreak{}nodal}).
+
+\section{ADR 0032 --- Restricciones generadas por geometría y refuerzo embebido}
+\label{adr:0032}
+
+\textbf{Fecha}: 2026-11-10 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Un generador de restricciones (\texttt{ConstraintRegistry}, tipo de spec \texttt{constraint}, bloque YAML \texttt{constraints}) crea sobre un dominio ya mallado los nodos, los elementos y las MPC (\hyperref[adr:0004]{ADR 0004}) que su geometría pide. La localización de puntos (\texttt{solidum/\allowbreak{}mesh/\allowbreak{}point\_\allowbreak{}location.\allowbreak{}py}) invierte el mapeo isoparamétrico por Newton con lo que todo sólido declara (\texttt{REFERENCE\_CELL}, funciones de forma), sin código por tipo de elemento. El primer generador es el refuerzo embebido (\texttt{EmbeddedReinforcement}): la barra, con su propia malla cortada en los bordes de los anfitriones, queda atada al campo interpolado del sólido. Sus MPC son de unión, y su fuerza es la adherencia (\texttt{EmbeddedBar.\allowbreak{}bond\_\allowbreak{}forces}). \texttt{Domain.\allowbreak{}generated\_\allowbreak{}nodes} aparta esos nodos de los selectores por coordenada del YAML.
+
+\textbf{Ampliaciones (10 de noviembre de 2026).} (1) La barra admite elementos de tres nodos (\texttt{Truss2D3}, \texttt{Truss3D3}): el número de nodos se lee de \texttt{REFERENCE\_NODES} y cada tramo recibe su nodo intermedio, atado como los demás. (2) Adherencia-deslizamiento: con \texttt{bond} el refuerzo no ata los nodos de la barra, sino que genera, uno por tramo, elementos de interfaz \texttt{BondSlipInterface} que unen la barra con su anfitrión y llevan una ley de interfaz de línea (\hyperref[adr:0033]{ADR 0033}). Esos elementos no se registran (los crea el generador, como crea las MPC), no tienen masa ni celda VTK (\texttt{VTK\_\allowbreak{}EXPORT = False}, pieza genérica del exportador), y el lector YAML admite en una familia las claves que traduce su \texttt{from\_yaml} (\texttt{YAML\_KEYS}).
+
+\section{ADR 0033 --- Materiales de interfaz en el programa principal}
+\label{adr:0033}
+
+\textbf{Fecha}: 2026-11-10 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Una sola familia de leyes tracción--desplazamiento relativo, \texttt{InterfaceMaterial} (\texttt{InterfaceMaterialRegistry}, tipo de spec \texttt{interface\_\allowbreak{}material}, sección YAML \texttt{interface\_\allowbreak{}materials}), para las dos geometrías de interfaz: superficie (grieta, junta: \texttt{(n, s)} / \texttt{(n, s1, s2)}) y línea (barra embebida: \texttt{(n, s)} / \texttt{(n1, n2, s)}), normales primero. El paso a ejes globales y el ancho de cada componente son del elemento. La familia cohesiva del módulo \texttt{discontinuities} pasa a ella sin cambio de física, como preveía Reglas §4, porque el programa principal tiene ahora un elemento de interfaz propio (la adherencia barra--sólido). La sección YAML \texttt{cohesive\_\allowbreak{}materials} pasa a llamarse \texttt{interface\_\allowbreak{}materials}, sin alias. Leyes de la familia: \texttt{CohesiveDamageIsotropic} (modo I) y \texttt{CohesiveDamageMixedMode} (modo mixto con apertura efectiva de Camacho--Ortiz, energía independiente del modo, ablandamiento lineal, exponencial o bilineal del fib Model Code 2010), de superficie; \texttt{BondSlipModelCode} y \texttt{BondSlipMultilinear} (adherencia-deslizamiento), de línea. Las dos leyes cohesivas comparten la envolvente de ablandamiento.
 
 \section{Evolución de esta lista}
 
@@ -1610,7 +1721,7 @@ Bajo. Las cinco piezas son extensiones aditivas: nuevo módulo \texttt{mass\_lum
 
 Ninguna de las dos primeras resultó necesaria. La suposición que se temía no estaba en el código: el ensamblador, la imposición de restricciones por eliminación y el despacho algebraico operan sobre índices de grado de libertad y sobre propiedades de la matriz, sin consultar en ningún punto el significado físico del campo. Las condiciones de frontera y las cargas nodales se aplican por \textit{nombre} de grado de libertad, de modo que \texttt{T} funcionó por el mismo mecanismo genérico que \texttt{ux}. El régimen estacionario, en consecuencia, no requirió solver alguno: el solver lineal existente resolvió el problema de conducción sin una sola línea de modificación.
 
-La tercera predicción sí se confirmó: \textbf{el exportador VTK escribe únicamente campos mecánicos} ---desplazamientos y rotaciones--- y no exporta el campo de temperatura. Es hoy la limitación práctica más visible del subsistema térmico, y queda registrada como tal.
+La tercera predicción sí se confirmó al cerrar la etapa: \textbf{el exportador VTK escribía únicamente campos mecánicos} ---desplazamientos y rotaciones--- y no exportaba el campo de temperatura. Era la limitación práctica más visible del subsistema térmico; desde el 22 de septiembre de 2026 el exportador escribe el campo nodal \texttt{Temperature} cuando algún nodo tiene el grado de libertad \texttt{T}.
 
 La lección de arquitectura que deja la fase es que el coste real de la extensión no se concentró donde la previsión lo situaba. Lo caro no fue generalizar la infraestructura ---que ya era agnóstica al campo, aunque nadie lo hubiera comprobado--- sino la física propia del problema: la elección de los esquemas por defecto contra el principio del máximo de la ecuación de difusión, y la constatación de que la ecuación de conducción, al ser de primer orden en el tiempo, no admite reutilizar la familia de integradores de Newmark. La interfaz del material tampoco fue la anticipada \texttt{compute\_\allowbreak{}flux\_\allowbreak{}and\_\allowbreak{}tangent(grad\_\allowbreak{}T, state)}, sino \texttt{compute\_\allowbreak{}flux(grad\_\allowbreak{}T)} sin argumento de estado, porque la conducción de Fourier carece de variables internas con historia.
 
@@ -1626,7 +1737,7 @@ La lección de arquitectura que deja la fase es que el coste real de la extensi�
 \end{lstlisting}
 
 \begin{infobox}{Riesgo de arquitectura}
-Resultó \textbf{bajo}, frente al riesgo medio estimado. La infraestructura existente absorbió el campo escalar sin generalización previa, lo que constituye una verificación empírica de las decisiones de despacho algebraico e imposición de restricciones frente a un campo físico que no existía cuando se tomaron. La deuda pendiente es de salida, no de arquitectura: la exportación del campo de temperatura a formato VTK.
+Resultó \textbf{bajo}, frente al riesgo medio estimado. La infraestructura existente absorbió el campo escalar sin generalización previa, lo que constituye una verificación empírica de las decisiones de despacho algebraico e imposición de restricciones frente a un campo físico que no existía cuando se tomaron. La deuda que quedó era de salida, no de arquitectura (la exportación del campo de temperatura a VTK), y se saldó el 22 de septiembre de 2026.
 \end{infobox}
 
 \section{Fase 6 --- Acoplamiento termo-mecánico}
@@ -1648,6 +1759,108 @@ Resultó \textbf{bajo}, frente al riesgo medio estimado. La infraestructura exis
 
 \begin{infobox}{Riesgo de arquitectura}
 Bajo, tras la verificación del \hyperref[adr:0016]{ADR 0016}. El cambio de contrato se limita a un canal aditivo para \texttt{\ensuremath{\varepsilon}\ensuremath{_{0}}} con valor por defecto cero, que deja los materiales existentes intactos.
+\end{infobox}
+
+\section{Fase 7 --- Rendimiento y robustez de la capa numérica}
+
+\textbf{Estado}: implementado (\hyperref[adr:0014]{ADR 0014}, 0015, 0017, 0018 y 0019, 22 y 23 de septiembre de 2026; capa 4 de la red de seguridad, 27 de octubre de 2026).
+
+Ninguna de estas piezas añade un tipo de análisis: cambian cómo se ensambla, cómo se resuelve y qué se comprueba, sin cambiar un resultado.
+
+\begin{itemize}
+  \item \textbf{Ensamblaje por lotes} (\hyperref[adr:0014]{ADR 0014}): la familia de elementos se deriva de los contratos declarativos y se evalúa en un kernel compilado, serie o paralelo, con el camino por elemento como referencia obligatoria; el estado interno se declara (\texttt{STATE\_SCHEMA}) y se guarda en arreglos.
+  \item \textbf{Corrector de Newton compartido} (\hyperref[adr:0015]{ADR 0015}): un solo bucle de corrección para todos los solvers iterativos; cada solver aporta su problema por paso y su control de paso.
+  \item \textbf{Backends algebraicos} (\hyperref[adr:0017]{ADR 0017} y 0018): Pardiso multihilo opcional, y un iterativo (CG/MINRES con multimalla algebraica sembrada con los modos de cuerpo rígido) sólo a petición.
+  \item \textbf{Red de seguridad del análisis estático} (\hyperref[adr:0019]{ADR 0019}): mecanismos rígidos detectados antes de resolver y descritos en términos del modelo; mecanismos internos, solución del sistema y pérdida de cifras por mal condicionamiento comprobados después.
+\end{itemize}
+
+\begin{lstlisting}
+[Numerica] = [Ensamblaje por familias (Numba)] + [NewtonCorrector] + [Despacho: Cholesky | Pardiso | LU | iterativo] + [Red de seguridad]
+
+\end{lstlisting}
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. Todo es interno a la capa numérica y se verificó contra el camino anterior a precisión de máquina; el contrato que gana un componente nuevo es opcional (\texttt{BATCH\_KINEMATICS}, \texttt{BATCH\_KERNEL}) salvo \texttt{STATE\_SCHEMA}, una línea.
+\end{infobox}
+
+\section{Fase 8 --- Módulos de usuario y frontera del programa principal}
+
+\textbf{Estado}: implementado (\hyperref[adr:0020]{ADR 0020}, 24 de septiembre de 2026; revisión del 29 de septiembre con el criterio de admisión de \texttt{Reglas.md} §1).
+
+Las formulaciones no estándar salen del programa principal a módulos de usuario (\texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}nombre\textgreater{}/\allowbreak{}}), con carga explícita (\texttt{user\_modules} en el YAML o \texttt{solidum.\allowbreak{}load\_\allowbreak{}user\_\allowbreak{}module}). El programa principal sólo ofrece piezas genéricas: registros con metadatos de familia, un lector YAML con un solo bucle sobre las familias, referencias declaradas por el elemento (\texttt{REFERENCE\_KWARGS}), el gancho \texttt{prepare\_step} y la cinemática pública. Dos módulos: \texttt{discontinuities} (discontinuidades interiores embebidas, \hyperref[adr:0010]{ADR 0010}) y \texttt{dissipation\_\allowbreak{}control} (arco por disipación). Un test de pureza vigila que el programa principal no los nombre.
+
+\begin{lstlisting}
+[Programa principal: solidum/]  <-- piezas genéricas --  [Modulos de usuario: solidum/user/<nombre>/]
+
+\end{lstlisting}
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. La frontera es aditiva y la vigilan tres controles automáticos (estructural, léxico y en ejecución). Una pieza estándar que hoy sólo usa un módulo sigue en él hasta que la necesite el programa principal; así volvió la familia cohesiva el 10 de noviembre de 2026 (fase 12).
+\end{infobox}
+
+\section{Fase 9 --- Secciones de marco}
+
+\textbf{Estado}: implementado (\hyperref[adr:0021]{ADR 0021}, 29 de septiembre de 2026).
+
+Una cuarta familia de objetos con sección YAML propia, \texttt{SectionRegistry} (\texttt{sections}), sin estado: el estado de cada fibra vive en el elemento. \texttt{FiberSection} da a los marcos Euler-Bernoulli plasticidad distribuida con cualquier material 1D; los marcos aceptan un material elástico con propiedades geométricas o una sección con \texttt{n\_ip} puntos de Gauss-Legendre.
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo para la arquitectura, alto para los modelos existentes: un marco con material inelástico sin sección deja de construirse, porque antes daba flectores incorrectos en silencio.
+\end{infobox}
+
+\section{Fase 10 --- Cargas variables y verificación por soluciones manufacturadas}
+
+\textbf{Estado}: implementado (\hyperref[adr:0022]{ADR 0022} y 0023, 27 de octubre de 2026).
+
+Las cargas distribuidas aceptan campos de la posición integrados sobre la geometría real, también desde el YAML con expresiones compiladas por un intérprete con lista blanca. El contrato declarativo de la celda de referencia (\texttt{REFERENCE\_CELL}, \texttt{REFERENCE\_NODES}) habilita un generador de mallas estructuradas (\texttt{solidum.mesh}) y la verificación por soluciones manufacturadas (\texttt{solidum.\allowbreak{}verification}), que recorre el registro: un elemento nuevo queda verificado sin escribir pruebas.
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. Extensiones aditivas de las cargas y de la entrada; la verificación es una herramienta, no una capa.
+\end{infobox}
+
+\section{Fase 11 --- Análisis por etapas y continuidad}
+
+\textbf{Estado}: implementado (\hyperref[adr:0024]{ADR 0024} a 0031, 9 de noviembre de 2026).
+
+Hasta aquí cada análisis empezaba en \texttt{U = 0} y terminaba en sí mismo. Esta fase encadena análisis y hace legible cómo terminó cada uno:
+
+\begin{itemize}
+  \item \textbf{Masas de nudo y grados de libertad sin masa} (\hyperref[adr:0024]{ADR 0024}): la masa de nudo es un dato del dominio; el modal condensa de forma exacta los grados de libertad sin masa y los transitorios implícitos los admiten con aceleración inicial consistente.
+  \item \textbf{Terminación y registro} (\hyperref[adr:0025]{ADR 0025}): \texttt{termination} legible en todos los solvers incrementales y en el tiempo, excepciones tipadas, parada en un valor objetivo de la magnitud controlada (\texttt{control\_target}) y una política de niveles del registro.
+  \item \textbf{Etapas de carga} (\hyperref[adr:0026]{ADR 0026}): \texttt{solve(F, u0=\ldots{}, constant\_\allowbreak{}load=\ldots{})}, \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=\ldots{})} y el bloque YAML \texttt{stages}.
+  \item \textbf{Cargas con sus cargas equivalentes} (\hyperref[adr:0027]{ADR 0027}): \texttt{LoadVector} combina linealmente las cargas equivalentes por elemento con la carga.
+  \item \textbf{Longitud característica del punto} (\hyperref[adr:0028]{ADR 0028}): viaja en el estado del punto de integración para regularizar el ablandamiento (\texttt{ManderConcrete1D}).
+  \item \textbf{Continuidad en el tiempo} (\hyperref[adr:0029]{ADR 0029}), \textbf{reacciones dinámicas} (\hyperref[adr:0030]{ADR 0030}) y \textbf{análisis lineales sobre el estado de una etapa} (\hyperref[adr:0031]{ADR 0031}): un transitorio continúa un estático u otro transitorio; el modal, el armónico, el espectral y el lineal linealizan alrededor del estado de la etapa sin cambiarlo.
+\end{itemize}
+
+\begin{lstlisting}
+[Etapa 1: estatico] --previous--> [Etapa 2: estatico | transitorio | modal | armonico | espectral | lineal] --previous--> ...
+                         (estado de los elementos + carga constante + cargas equivalentes)
+
+\end{lstlisting}
+
+\begin{infobox}{Riesgo de arquitectura}
+Medio, ya cerrado. Una etapa hereda el estado que guardan los elementos, así que cada solver debía arrancar de un estado ajeno; se resolvió con mezclas comunes (\texttt{TransientTerminationMixin}, \texttt{LinearizedStateMixin}) y con comprobación de equilibrio al empezar, sin tocar el contrato de elemento ni de material.
+\end{infobox}
+
+\section{Fase 12 --- Interfaces, refuerzo embebido y restricciones generadas}
+
+\textbf{Estado}: implementado (\hyperref[adr:0032]{ADR 0032} y 0033, 10 de noviembre de 2026).
+
+\begin{itemize}
+  \item \textbf{Restricciones generadas} (\hyperref[adr:0032]{ADR 0032}): una familia de generadores (\texttt{ConstraintRegistry}, bloque YAML \texttt{constraints}) crea sobre el dominio mallado los nodos, elementos y MPC que su geometría pide; la localización de puntos invierte el mapeo isoparamétrico con lo que todo sólido declara. Primer generador: el refuerzo embebido, con barras de dos o tres nodos (\texttt{Truss2D3}, \texttt{Truss3D3}).
+  \item \textbf{Materiales de interfaz} (\hyperref[adr:0033]{ADR 0033}): una quinta familia, \texttt{InterfaceMaterialRegistry} (\texttt{interface\_\allowbreak{}materials}), de leyes tracción--desplazamiento relativo para superficies (grietas) y líneas (barras embebidas). Con \texttt{bond}, el refuerzo genera interfaces de adherencia-deslizamiento no registradas; la familia cohesiva del módulo \texttt{discontinuities} volvió al programa principal y se amplió con la ley de modo mixto.
+  \item En el módulo \texttt{discontinuities}, el seguimiento de grieta (\hyperref[adr:0010]{ADR 0010}, fase E).
+\end{itemize}
+
+\begin{lstlisting}
+[Dominio mallado] -- generador de restricciones --> [nodos + elementos de barra + MPC | interfaces de adherencia]
+[Materiales de interfaz] --> [interfaces de adherencia (linea)] + [discontinuidades embebidas (superficie)]
+
+\end{lstlisting}
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. Los generadores producen objetos que el resto del programa ya sabía tratar (nodos, elementos, MPC); las interfaces generadas no se registran ni se exportan a VTK, y sólo exigieron dos piezas genéricas (\texttt{VTK\_EXPORT} en el exportador y \texttt{YAML\_KEYS} en el lector).
 \end{infobox}
 
 \section{Mantenimiento de este capítulo}
@@ -1703,9 +1916,9 @@ Procedería si se adopta MPI (compromiso anterior) y, simultáneamente, los prob
 
 \textbf{Decisión}: rechazada.
 
-\textbf{Contexto}. Una arquitectura cliente-servidor expondría Solidum FEM como un servicio remoto al que la GUI externa (FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
+\textbf{Contexto}. Una arquitectura cliente-servidor expondría Solidum FEM como un servicio remoto al que la GUI externa (SolidumBAR, antes FenixBAR) y otros consumidores se conectarían vía protocolo HTTP, gRPC o similar. Es el modelo dominante en simulación industrial moderna como servicio.
 
-\textbf{Razones del rechazo}. El consumidor actual (FenixBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con \texttt{SolveResult}, \texttt{solidum.run} y \texttt{solidum.run\_yaml} en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
+\textbf{Razones del rechazo}. El consumidor actual (SolidumBAR) es local, está bajo control del mismo desarrollador y no tiene requisitos de concurrencia ni de despliegue distribuido. La interfaz pública se ha estabilizado mediante el \hyperref[adr:0002]{ADR 0002} con \texttt{SolveResult}, \texttt{solidum.run} y \texttt{solidum.run\_yaml} en proceso, lo que cubre el caso de uso de consumidor externo sin la sobrecarga de un protocolo de red. La introducción de un servidor exigiría serialización de mallas y resultados, gestión de sesiones, autenticación si el servicio fuera multiusuario, y un ciclo de despliegue paralelo al del programa. Ninguna de estas necesidades existe hoy.
 
 \begin{infobox}{Reapertura de la decisión}
 Procedería si Solidum FEM se ofreciera como servicio público a múltiples consumidores no relacionados con el desarrollo, o si la GUI se desacoplara hasta el punto de ejecutarse en máquinas distintas.
@@ -1717,7 +1930,7 @@ Procedería si Solidum FEM se ofreciera como servicio público a múltiples cons
 
 \textbf{Contexto}. La interfaz pública del programa (\texttt{solidum.run}, \texttt{solidum.run\_yaml}, \texttt{SolveResult}) es accesible exclusivamente desde Python. Una alternativa sería exponer la misma interfaz en C, C++ o como biblioteca compartida llamable desde Fortran y MATLAB, lo que ampliaría el espectro de consumidores potenciales.
 
-\textbf{Razones del rechazo}. El consumidor identificado (FenixBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Solidum FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (\texttt{py.\allowbreak{}solidum.\allowbreak{}run\_\allowbreak{}yaml(path)}), sin necesidad de modificar Solidum FEM.
+\textbf{Razones del rechazo}. El consumidor identificado (SolidumBAR) está escrito en Python; el ecosistema de programas docentes y de investigación al que se dirige Solidum FEM utiliza Python como lenguaje dominante. Ofrecer un binding multilingüe duplicaría el esfuerzo de mantenimiento de la interfaz pública sin un caso de uso concreto que lo justifique. La integración con MATLAB, si fuera necesaria en algún momento, se realizaría mediante el mecanismo nativo de MATLAB para llamar a Python (\texttt{py.\allowbreak{}solidum.\allowbreak{}run\_\allowbreak{}yaml(path)}), sin necesidad de modificar Solidum FEM.
 
 \begin{infobox}{Reapertura de la decisión}
 Procedería si surgiera un consumidor estable escrito en un lenguaje distinto de Python y la solución \textit{vía} el puente nativo de cada lenguaje no fuera viable.
@@ -1761,6 +1974,8 @@ Cada vez que se reabra una decisión y se modifique su estado (de \textquotedbl{
 
 Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada entrada da una definición breve (de una a tres frases) y, cuando procede, remite al capítulo donde el concepto se desarrolla.
 
+\textbf{Adherencia-deslizamiento}. Transmisión de fuerza entre una barra de refuerzo y el sólido que la rodea a través de una ley entre el esfuerzo de adherencia y el deslizamiento relativo de la barra, en lugar de la unión perfecta. En Solidum la genera el refuerzo embebido con \texttt{bond}: una interfaz \texttt{BondSlipInterface} por tramo de barra, con una ley de interfaz de línea (\texttt{BondSlipModelCode}, \texttt{BondSlipMultilinear}). \hyperref[adr:0032]{ADR 0032} y 0033.
+
 \textbf{Ajuste de paso (incremento de carga)}. División de la carga total en fracciones que se aplican sucesivamente en problemas no lineales. Permite que el método de Newton-Raphson converja a partir de una aproximación cercana a la solución del paso anterior.
 
 \textbf{Corrotacional (formulación)}. Descomposición del movimiento de un elemento en una rotación de cuerpo rígido más una deformación local pequeña. La ley constitutiva trabaja en la configuración local; la cinemática del elemento absorbe las grandes rotaciones. Aplicable a armaduras, cables y marcos en régimen geométricamente no lineal con deformación pequeña.
@@ -1775,15 +1990,17 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Corrector de Newton}. Bucle de corrección compartido por los solvers iterativos (\texttt{NewtonCorrector}, \hyperref[adr:0015]{ADR 0015}): ensambla una vez en el iterado, evalúa el criterio dual con el residuo de ese ensamblaje y el incremento previo, resuelve con el backend algebraico (degradación a LU, factorización congelada opcional), aplica el line search opcional y comitea al converger. Cada solver le entrega un \texttt{NewtonProblem} con su residuo, su sistema tangente y su actualización, y conserva su propio control de paso. Ver capítulos 3 y 4.
 
-\textbf{Catálogo}. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers) con sus parámetros, validez y referencias. Reside en \texttt{docs/\allowbreak{}catalogo\_\allowbreak{}\textless{}categoría\textgreater{}.\allowbreak{}md}. Es índice y resumen; el detalle vive en las especificaciones.
+\textbf{Catálogo}. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers, restricciones generadas) con sus parámetros, validez y referencias. Reside en \texttt{docs/\allowbreak{}catalogo\_\allowbreak{}\textless{}categoría\textgreater{}.\allowbreak{}md}. Es índice y resumen; el detalle vive en las especificaciones.
 
 \textbf{Contrato declarativo}. Mecanismo por el cual una clase declara, mediante atributos de clase como \texttt{STRAIN\_DIM}, \texttt{DOF\_NAMES}, \texttt{N\_\allowbreak{}INTEGRATION\_\allowbreak{}POINTS}, \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR} o \texttt{IS\_\allowbreak{}LINEAR\_\allowbreak{}ELASTIC}, las propiedades fijas que el sistema necesita conocer de ella. La clase base lee estos atributos y se autoconfigura, sustituyendo métodos de inicialización repetitivos en cada subclase. Ver \hyperref[cap:5]{capítulo 5}.
 
-\textbf{Despachador algebraico}. Función \texttt{select\_\allowbreak{}solver(props, override)} que recibe las propiedades de la matriz de rigidez (simetría, definición positiva) y devuelve el algoritmo de factorización adecuado: Cholesky cuando aplica, LU en caso contrario. Ver \hyperref[adr:0003]{ADR 0003}.
+\textbf{Despachador algebraico}. Función \texttt{select\_\allowbreak{}solver(props, override)} que recibe las propiedades de la matriz de rigidez (simetría, definición positiva) y devuelve el algoritmo adecuado: Cholesky cuando la matriz es simétrica definida positiva y CHOLMOD está instalado, Pardiso si está instalado (\hyperref[adr:0017]{ADR 0017}) y LU en otro caso; el iterativo sólo se usa a petición (\hyperref[adr:0018]{ADR 0018}). Ver \hyperref[adr:0003]{ADR 0003}.
 
 \textbf{\texttt{DOF\_NAMES}}. Atributo de clase de cada elemento que enumera los nombres de los grados de libertad activos en cada uno de sus nodos. La clase base lo lee para registrar los grados de libertad globales en el \texttt{Domain}.
 
 \textbf{\texttt{Domain}}. Objeto central de la capa de dominio que mantiene la lista de nodos, la conectividad de los elementos, la numeración global de los grados de libertad y, tras la solución, el agregado \texttt{SolveResult}.
+
+\textbf{Etapa (de análisis)}. Análisis que parte del estado que dejó otro: los desplazamientos, lo que guardan los elementos y la carga que ya actúa, que pasa como carga constante. Así se aplican la gravedad y después el empuje lateral, un transitorio tras un estático o un modal sobre una estructura cargada. Desde Python, \texttt{solidum.\allowbreak{}run(.\allowbreak{}.\allowbreak{}.\allowbreak{}, previous=resultado)}; desde el YAML, el bloque \texttt{stages}. \hyperref[adr:0026]{ADR 0026}, 0029 y 0031.
 
 \textbf{Eliminación directa (de condiciones de Dirichlet)}. Estrategia de imposición de condiciones esenciales que retira los grados de libertad prescritos del sistema antes de resolverlo, en oposición a la penalización (que añade un valor grande a la diagonal) y a los multiplicadores de Lagrange (que amplían el sistema). Toda restricción se expresa en forma afín \texttt{u\_\allowbreak{}s = g\_\allowbreak{}s + \ensuremath{\Sigma} \ensuremath{\alpha}\_\allowbreak{}si \ensuremath{\cdot} u\_\allowbreak{}mi} y se acumula en un \texttt{ConstraintSet} (\texttt{solidum/bc/}). El ensamblador construye un operador disperso \texttt{T} y un vector \texttt{g} tales que \texttt{u = T \ensuremath{\cdot} u\_\allowbreak{}libre + g}, y entrega al solver el sistema reducido \texttt{K\_red = T\ensuremath{^{\top}}KT}, \texttt{F\_\allowbreak{}red = T\ensuremath{^{\top}}(F − K \ensuremath{\cdot} g)}. La imposición es exacta a redondeo y preserva la simetría y la positividad definida de la matriz original. Ver \hyperref[adr:0004]{ADR 0004}.
 
@@ -1805,19 +2022,33 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Familia de lote}. Conjunto de elementos de un dominio que comparten clase de elemento, instancia de material, regla de cuadratura y número de nodos, y que el ensamblador evalúa juntos en un kernel compilado. Su estado interno vive en un \texttt{FamilyState} (arreglos por punto de Gauss) del que \texttt{elem.state} es una vista (\texttt{BatchedElementState}). Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0014]{ADR 0014}.
 
-\textbf{Familia de material}. Registro que declara la sección de primer nivel del YAML con sus objetos (\texttt{YAML\_SECTION}): \texttt{materials} para los mecánicos, \texttt{thermal\_\allowbreak{}materials} para los térmicos y, con el módulo de usuario \texttt{discontinuities} cargado, \texttt{cohesive\_\allowbreak{}materials}. \texttt{Registry.\allowbreak{}families()} las enumera, en su orden de definición, junto con las familias que no son de materiales (hoy, la de secciones de marco, \texttt{sections}), y el intérprete del YAML las recorre sin conocerlas por nombre; un elemento declara a qué familia pertenecen sus materiales o su sección con \texttt{REFERENCE\_KWARGS}. Ver \hyperref[cap:5]{capítulo 5}, \hyperref[adr:0020]{ADR 0020} y \hyperref[adr:0021]{ADR 0021}.
+\textbf{Familia de material}. Registro que declara la sección de primer nivel del YAML con sus objetos (\texttt{YAML\_SECTION}): \texttt{materials} para los mecánicos, \texttt{thermal\_\allowbreak{}materials} para los térmicos e \texttt{interface\_\allowbreak{}materials} para las leyes tracción--desplazamiento relativo de una interfaz (\hyperref[adr:0033]{ADR 0033}). \texttt{Registry.\allowbreak{}families()} las enumera, en su orden de definición, junto con las familias que no son de materiales (hoy, la de secciones de marco, \texttt{sections}), y el intérprete del YAML las recorre sin conocerlas por nombre; un elemento declara a qué familia pertenecen sus materiales o su sección con \texttt{REFERENCE\_KWARGS}. Ver \hyperref[cap:5]{capítulo 5}, \hyperref[adr:0020]{ADR 0020} y \hyperref[adr:0021]{ADR 0021}.
 
 \textbf{\texttt{from\_yaml} (gancho)}. Método de clase opcional \texttt{from\_\allowbreak{}yaml(data, resolve)} de una clase de familia con referencias anidadas a otras familias (una sección por fibras referencia materiales dentro de sus parches). El intérprete del YAML lo llama en lugar de \texttt{cls(**datos)} y le pasa \texttt{resolve(registro, id, contexto)}, que devuelve el objeto de una familia ya construida o lanza un error con el contexto de la referencia. Las familias se construyen en orden de definición. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0021]{ADR 0021}.
 
 \textbf{Gradiente conjugado (CG) y MINRES}. Métodos iterativos de Krylov para sistemas lineales simétricos: CG para matrices definidas positivas, MINRES para indefinidas. El solver iterativo de Solidum pasa de uno a otro de forma automática al detectar curvatura negativa. Capítulo 4, \hyperref[adr:0018]{ADR 0018}.
 
+\textbf{Generador de restricciones (restricción generada)}. Objeto que, sobre un dominio ya mallado, crea los nodos, los elementos y las restricciones multipunto que pide una geometría, antes de numerar las ecuaciones (\texttt{ConstraintRegistry}, bloque YAML \texttt{constraints}, \texttt{solidum/bc/}). El primero es el refuerzo embebido. \hyperref[adr:0032]{ADR 0032}.
+
 \textbf{Grado de libertad (DOF)}. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el \texttt{Domain}.
+
+\textbf{Grado de libertad sin masa}. Grado de libertad en el que la matriz de masa es nula (masas sólo en algunos nudos, elementos sin densidad, giros sin inercia rotacional). El análisis modal los condensa estáticamente de forma exacta y los transitorios implícitos los admiten con una aceleración inicial consistente. \hyperref[adr:0024]{ADR 0024}.
 
 \textbf{\texttt{IS\_\allowbreak{}LINEAR\_\allowbreak{}ELASTIC}}. Atributo de clase de cada material (\texttt{False} por defecto) que declara que su respuesta es lineal y sin historia: \texttt{True} en \texttt{Elastic1D}, \texttt{Elastic2D}, \texttt{Elastic3D} y \texttt{Orthotropic2D}. Los marcos lo exigen en su camino de forma cerrada (\texttt{material} + propiedades geométricas) y rechazan al construir cualquier otro material; la no linealidad material de un marco entra por su sección. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0021]{ADR 0021}.
 
+\textbf{\texttt{LoadVector}}. Vector de cargas que lleva consigo las cargas equivalentes por elemento de su parte distribuida y las combina linealmente con la carga (\texttt{F\_a \ensuremath{\pm} F\_b}, \texttt{a\ensuremath{\cdot}F}). Así las fuerzas internas de los elementos cargados son correctas con varias cargas, casos o etapas. \hyperref[adr:0027]{ADR 0027}.
+
+\textbf{Localización de puntos}. Búsqueda del elemento sólido que contiene un punto y de sus coordenadas naturales, por inversión del mapeo isoparamétrico con Newton a partir de lo que el elemento declara (\texttt{REFERENCE\_CELL}, funciones de forma), sin código por tipo de elemento (\texttt{solidum/\allowbreak{}mesh/\allowbreak{}point\_\allowbreak{}location.\allowbreak{}py}). La usan los generadores de restricciones. \hyperref[adr:0032]{ADR 0032}.
+
+\textbf{Longitud característica (del punto de integración)}. Longitud \texttt{h} asociada a cada punto de integración con la que un material con ablandamiento regularizado por energía de fractura ajusta su rama descendente para disipar \texttt{G\_f/h} por unidad de volumen. La siembra el elemento al construirse y viaja en el estado del punto; el material declara si la usa (\texttt{uses\_\allowbreak{}characteristic\_\allowbreak{}length}). \hyperref[adr:0028]{ADR 0028}.
+
 \textbf{Longitud de arco (método de Crisfield)}. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, \ensuremath{\lambda}). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con \textit{snap-back} o \textit{snap-through}.
 
+\textbf{Masa de nudo}. Masa concentrada declarada como dato del dominio en grados de libertad de nudos, traslacionales o rotacionales (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloques YAML \texttt{nodal\_masses*}). Es sólo inercia: no genera peso con \texttt{gravity}. \hyperref[adr:0024]{ADR 0024}.
+
 \textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve el esfuerzo y el módulo tangente consistente. Su contrato declarativo está en \texttt{solidum/\allowbreak{}materials/\allowbreak{}}. Ver \hyperref[cap:4]{capítulo 4}.
+
+\textbf{Material de interfaz}. Ley entre la tracción sobre una interfaz y el desplazamiento relativo entre sus dos lados, en el sistema local de la interfaz (normales primero): de superficie para grietas y juntas, de línea para barras embebidas. Familia propia (\texttt{InterfaceMaterialRegistry}, sección YAML \texttt{interface\_\allowbreak{}materials}, base \texttt{InterfaceMaterial}). \hyperref[adr:0033]{ADR 0033}.
 
 \textbf{Mecanismo}. Modelo cuyos apoyos o cuya conectividad permiten un movimiento sin deformación: la matriz de rigidez es singular y el problema estático no tiene solución única. Si el movimiento es de sólido rígido del conjunto, Solidum lo detecta antes de resolver y lo describe; si es interno (una rótula de más), lo detecta tras resolver. Capítulo 5, \hyperref[adr:0019]{ADR 0019}.
 
@@ -1835,19 +2066,25 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Numba (compilación Just-In-Time, JIT)}. Decorador \texttt{@njit} que compila a código nativo, en la primera invocación, las funciones a las que se aplica. La primera ejecución asume el coste de compilación; las siguientes corren a velocidad cercana a Fortran. Restringido a tipos primitivos y arreglos NumPy.
 
-\textbf{Pivote nulo}. Valor de la diagonal de la factorización numéricamente igual a cero: indica una matriz singular. Solidum lo considera nulo por debajo de 10\ensuremath{^{-}}¹\ensuremath{^{3}} veces la mayor entrada de la matriz, el mismo criterio con que MKL Pardiso los perturba. \hyperref[adr:0019]{ADR 0019}.
+\textbf{Pivote pequeño}. Valor de la diagonal de la factorización pequeño frente a la diagonal de la matriz (\texttt{|U\_\allowbreak{}ii|/\allowbreak{}\ensuremath{\surd}(|K\_\allowbreak{}rr|\ensuremath{\cdot}|K\_\allowbreak{}cc|) \textless{} 10\ensuremath{^{-}}⁸}): puede delatar una matriz singular, pero su tamaño también depende del contraste de rigideces y del tamaño del modelo. Desde el 20 de octubre de 2026 Solidum lo usa sólo como filtro: el veredicto sobre un mecanismo interno lo da la energía por elemento del modo de menor energía. \hyperref[adr:0019]{ADR 0019}.
+
+\textbf{Perturbación lineal}. Análisis lineal estático (\texttt{LinearSolver}) sobre el estado de una etapa, con la rigidez tangente de los elementos y sin cambiar ese estado: da casos superponibles sobre la estructura cargada (\texttt{SolveResult.\allowbreak{}perturbation}). \hyperref[adr:0031]{ADR 0031}.
 
 \textbf{\texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}}. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
 \textbf{Programa principal}. Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo \texttt{solidum/} salvo \texttt{solidum/user/}. Admite un componente según el criterio de admisión de Reglas.md §1 (textos de referencia y código general establecido). No conoce los módulos de usuario; el test de pureza (\texttt{tests/\allowbreak{}test\_\allowbreak{}main\_\allowbreak{}program\_\allowbreak{}purity.\allowbreak{}py}) lo vigila con tres controles: estructural (ningún import de un módulo de usuario), léxico (ninguna mención de lo que un módulo registra, con los nombres derivados automáticamente) y en ejecución (\texttt{import solidum} no carga ningún módulo). Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0020]{ADR 0020}.
 
-\textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{SectionRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica \texttt{Registry} y declaran sus metadatos con atributos públicos de clase: \texttt{YAML\_LABEL}, la etiqueta de un objeto del registro en los mensajes de error, que tiene todo registro (\texttt{\textquotedbl{}elemento\textquotedbl{}}, \texttt{\textquotedbl{}solver\textquotedbl{}}, \texttt{\textquotedbl{}material térmico\textquotedbl{}}) y sustituye al antiguo atributo privado \texttt{\_kind}, ya retirado; \texttt{SPEC\_KIND}, el tipo de spec de sus componentes; y, sólo en las familias (de material o de secciones), \texttt{YAML\_SECTION}. Cada clase se inscribe automáticamente en su registro mediante un decorador. Un módulo de usuario sólo puede añadir entradas: reasignar una existente hace fallar y deshacer su carga. Ver \hyperref[cap:5]{capítulo 5}.
+\textbf{Registro (registry)}. Diccionario global por categoría (\texttt{MaterialRegistry}, \texttt{ThermalMaterialRegistry}, \texttt{InterfaceMaterialRegistry}, \texttt{SectionRegistry}, \texttt{ElementRegistry}, \texttt{SolverRegistry}, \texttt{ConstraintRegistry}) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica \texttt{Registry} y declaran sus metadatos con atributos públicos de clase: \texttt{YAML\_LABEL}, la etiqueta de un objeto del registro en los mensajes de error, que tiene todo registro (\texttt{\textquotedbl{}elemento\textquotedbl{}}, \texttt{\textquotedbl{}solver\textquotedbl{}}, \texttt{\textquotedbl{}material térmico\textquotedbl{}}, \texttt{\textquotedbl{}material de interfaz\textquotedbl{}}, \texttt{\textquotedbl{}restricción\textquotedbl{}}) y sustituye al antiguo atributo privado \texttt{\_kind}, ya retirado; \texttt{SPEC\_KIND}, el tipo de spec de sus componentes; y, sólo en las familias (de material o de secciones), \texttt{YAML\_SECTION}. Cada clase se inscribe automáticamente en su registro mediante un decorador. Un módulo de usuario sólo puede añadir entradas: reasignar una existente hace fallar y deshacer su carga. Ver \hyperref[cap:5]{capítulo 5}.
+
+\textbf{Refuerzo embebido}. Barra de refuerzo con su propia malla de elementos de línea que atraviesa una malla de sólidos sin coincidir con sus nodos y queda atada al campo interpolado del sólido (adherencia perfecta) o unida a él por interfaces de adherencia-deslizamiento (\texttt{EmbeddedReinforcement}). \hyperref[adr:0032]{ADR 0032}.
 
 \textbf{Regla de la mano derecha (RHR)}. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver \hyperref[cap:6]{capítulo 6}.
 
 \textbf{Relleno (fill-in)}. Entradas no nulas que aparecen en los factores de una factorización directa donde la matriz tenía ceros. Crece con el tamaño del modelo y domina el tiempo y la memoria de un solver directo: de \ensuremath{\times}10 a \ensuremath{\times}42 la matriz original entre 4 000 y 53 000 grados de libertad. \hyperref[adr:0017]{ADR 0017}.
 
 \textbf{Retorno radial (return mapping)}. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si el esfuerzo predictor lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
+
+\textbf{Seguimiento de grieta}. Procedimiento del módulo de usuario \texttt{discontinuities} que decide, entre pasos, por dónde continúa una grieta embebida de un elemento al siguiente, para que las particiones de elementos vecinos sean coherentes: global por región conexa (\texttt{GlobalCrackTracking}) o con una trayectoria prescrita (\texttt{PrescribedCrackPath}). \hyperref[adr:0010]{ADR 0010}, fase E.
 
 \textbf{Sección de marco}. Ley constitutiva de un marco a nivel de sección transversal (\hyperref[adr:0021]{ADR 0021}): recibe las deformaciones generalizadas del eje en un punto de Gauss, \texttt{[\ensuremath{\varepsilon}\ensuremath{_{0}}, \ensuremath{\kappa}\_z]} o \texttt{[\ensuremath{\varepsilon}\ensuremath{_{0}}, \ensuremath{\kappa}\_y, \ensuremath{\kappa}\_z]}, y devuelve las fuerzas internas \texttt{[N, M\_z]} o \texttt{[N, M\_y, M\_z]} y su tangente. Familia propia (\texttt{SectionRegistry}, sección YAML \texttt{sections}, \texttt{kind: section}), con la base abstracta \texttt{Section} en \texttt{solidum/\allowbreak{}core/\allowbreak{}section.\allowbreak{}py}. No guarda estado: la historia de sus puntos materiales en cada punto de Gauss vive en el elemento. La consumen los marcos Euler-Bernoulli con su parámetro \texttt{section}. Ver \hyperref[cap:4]{capítulo 4}.
 
@@ -1860,6 +2097,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \textbf{Solver no lineal}. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En el programa principal de Solidum FEM, los estáticos no lineales son \texttt{NonlinearSolver}, \texttt{ArcLengthSolver} e \texttt{IndirectDisplacementSolver}, y los transitorios no lineales \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}; el módulo de usuario \texttt{dissipation\_\allowbreak{}control} añade \texttt{DissipationArcLengthSolver}. Es nivel estratégico, distinto del subsistema algebraico. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{\texttt{STRAIN\_DIM}}. Atributo de clase de cada material y elemento que declara la dimensión del vector de deformación que manejan: 1 (escalar axial), 3 (Voigt-3 bidimensional), 6 (Voigt-6 tridimensional). El sistema lo usa para validar la compatibilidad material\ensuremath{\leftrightarrow}elemento en el momento de construcción.
+
+\textbf{Terminación}. Cómo terminó un análisis, legible en atributos y no sólo en el registro: \texttt{termination} (\texttt{max\_lambda}, \texttt{control\_target}, \texttt{max\_steps}, \texttt{t\_end} o \texttt{diverged}), \texttt{completed}, el número de pasos y el último estado convergido, también tras una excepción. \hyperref[adr:0025]{ADR 0025}.
 
 \textbf{Validación temprana en construcción}. Comprobación que la clase base de elemento ejecuta cuando se le asigna un material: verifica que la dimensión de deformación del material coincida con la del elemento. Errores físicos de combinación se detectan en la construcción del caso, no doscientas iteraciones después.
 
@@ -1894,14 +2133,6 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
   \item \pendiente{Hiperelasticidad incompresible con tratamiento mixto desplazamiento-presión.}
 
   \item \pendiente{Drucker-Prager en esfuerzo plano (la proyección con \texttt{\ensuremath{\sigma}\_zz=0} acoplada a flujo dilatante queda fuera del alcance de la versión actual).}
-
-  \item \pendiente{Armadura 2D de segundo orden con linealidad geométrica.}
-
-  \item \pendiente{Armadura 2D de segundo orden con linealidad geométrica y material no lineal.}
-
-  \item \pendiente{Armadura 3D de segundo orden con linealidad geométrica.}
-
-  \item \pendiente{Armadura 3D de segundo orden con linealidad geométrica y material no lineal.}
 
   \item \pendiente{Armadura 2D de segundo orden corrotacional.}
 
@@ -1959,7 +2190,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
   \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
 
-  \item \pendiente{Elementos de interfaz para modelado de fricción y contacto cohesivo entre superficies.}
+  \item \pendiente{Elementos de interfaz de espesor nulo entre superficies, para juntas y grietas cohesivas de trayectoria conocida y para contacto con fricción. La familia de leyes ya existe (materiales de interfaz, \hyperref[adr:0033]{ADR 0033}); hoy la consumen la interfaz de adherencia barra--sólido, que genera el refuerzo embebido, y la discontinuidad embebida del módulo de usuario.}
 
   \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia. \textbf{Parcialmente entregado por \hyperref[adr:0011]{ADR 0011}} --- line search disponible como opt-in (\texttt{line\_search=True}); default \texttt{False} por la justificación bibliográfica de Borst \& Sluys 1999.}
 
@@ -1971,7 +2202,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
   \item \pendiente{Excitación sísmica multi-direccional simultánea (CQC3, regla 100/30/30) y multi-support seismic excitation.}
 
-  \item \pendiente{\ensuremath{\Delta}t adaptativo para transitorios.}
+  \item \pendiente{Control del \ensuremath{\Delta}t por estimación del error local en los transitorios. Hoy el paso sólo se subdivide cuando el Newton de Newton-Newmark o Newton-HHT no converge.}
 
   \item \pendiente{\texttt{LDLTSolver} --- factorización LDL\ensuremath{^{\top}} con conteo de inercia para el caso simétrico indefinido (deuda técnica \#7). Pardiso puede aportarla, pero exige el triángulo superior de la matriz.}
 
@@ -2010,8 +2241,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 09 de noviembre de 2026, 18:28\\[0.5em]
-Commit Git: \texttt{1c01d75} (con cambios sin confirmar)\\[1em]
+Compilado el 10 de noviembre de 2026, 20:09\\[0.5em]
+Commit Git: \texttt{7440e60} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

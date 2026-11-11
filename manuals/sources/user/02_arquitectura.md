@@ -19,7 +19,7 @@ Un material declara igualmente su `STRAIN_DIM`; el dominio rechaza al construir 
 
 ## Auto-Registro de Componentes
 
-Elementos, materiales, secciones de marco y solvers se registran automáticamente al arrancar el programa mediante decoradores:
+Elementos, materiales (mecánicos, térmicos y de interfaz), secciones de marco, solvers y generadores de restricciones se registran automáticamente al arrancar el programa mediante decoradores:
 
 ```python
 @ElementRegistry.register
@@ -29,13 +29,13 @@ class Truss2D(Element):
     ...
 ```
 
-Esto permite que el archivo YAML los referencie por nombre (`type: Truss2D`) sin que el usuario tenga que importar nada manualmente. El módulo `solidum.autodiscover` recorre los paquetes `elements/`, `materials/`, `sections/` y `math/solvers/` en la primera importación y puebla los registries. Los módulos de usuario (`solidum/user/<nombre>/`, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con `user_modules` (capítulo *Archivo de Entrada YAML*).
+Esto permite que el archivo YAML los referencie por nombre (`type: Truss2D`) sin que el usuario tenga que importar nada manualmente. El módulo `solidum.autodiscover` recorre los paquetes `elements/`, `materials/` (incluidas las leyes de interfaz de `materials/interface/`), `sections/`, `math/` y `bc/` (generadores de restricciones, ADR 0032) en la primera importación y puebla los registries. Los módulos de usuario (`solidum/user/<nombre>/`, formulaciones no estándar) quedan fuera de ese recorrido: se cargan sólo cuando un modelo los pide con `user_modules` (capítulo *Archivo de Entrada YAML*).
 
 ## Validación Temprana del Input
 
 El parser YAML acumula todos los errores detectados en una sola pasada (no aborta al primero) y los presenta juntos. Comprueba:
 
-- Ausencia de bloques obligatorios (`nodes`, `materials`, `elements`, `solver`).
+- Ausencia de bloques obligatorios: la geometría (`nodes` o `mesh`) y, si hay `elements`, un bloque de materiales. El `solver` del nivel raíz es `LinearSolver` si se omite; con `stages`, cada etapa declara el suyo y el del nivel raíz no se admite.
 - IDs duplicados de nodo, material o elemento.
 - Referencias a materiales o nodos inexistentes desde `elements` y `boundary_conditions`.
 - Tipos de elemento, material y solver no registrados.

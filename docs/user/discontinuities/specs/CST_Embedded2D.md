@@ -13,7 +13,7 @@ Elemento finito sólido 2D triangular de tres nodos (CST padre) **enriquecido** 
 Estructura del elemento:
 
 - **Estado intacto** (`discontinuity_state is None`): se comporta exactamente como un [`Tri3`](../../../specs/Tri3.md) estándar — CST con un único punto de Gauss, B constante, integración exacta del bulk con peso `A_e·t`.
-- **Estado agrietado** (`discontinuity_state is not None`): el campo de desplazamientos del bulk se enriquece con un salto `[[u]] ∈ ℝ²` localizado en `Γ_d`. El bulk vecino descarga elásticamente; la disipación se concentra en `Γ_d` y la gobierna un material cohesivo (`CohesiveMaterial`, ADR 0010 §1).
+- **Estado agrietado** (`discontinuity_state is not None`): el campo de desplazamientos del bulk se enriquece con un salto `[[u]] ∈ ℝ²` localizado en `Γ_d`. El bulk vecino descarga elásticamente; la disipación se concentra en `Γ_d` y la gobierna un material cohesivo (material de interfaz de superficie del programa principal, `InterfaceMaterial`, ADR 0033; antes `CohesiveMaterial`, ADR 0010 §1).
 
 Aproximación adoptada: **discrete approach** (Retama 2010), **KOS** (Kinematically Optimal Symmetric) según la clasificación de Jirásek (2000). La normal `n` se fija al activar el elemento (perpendicular a `σ_I`, criterio de Rankine) y no se reorienta después. **El nodo solitario lo dicta la trayectoria de la grieta**, coherente entre vecinos, mediante el seguimiento global de la spec [`GlobalCrackTracking`](GlobalCrackTracking.md) (decisiones del usuario, 2026-11-10). Antes lo elegía cada elemento con la recta por su centroide, y en mallas no alineadas eso bloqueaba la grieta. Modo-I puro (consistente con `CohesiveDamageIsotropic` fase 1); modo mixto y KSON quedan diferidos (fases G y H del ADR 0010).
 
@@ -64,7 +64,7 @@ con `C_e` la matriz constitutiva elástica isótropa (parámetros `E`, `ν`, hip
 
 **Discontinuidad** (sobre `Γ_d`):
 $$\mathbf t(\mathbf x_{\Gamma_d}) = \mathbf T_{\text{coh}}\bigl(\llbracket\mathbf u\rrbracket, \text{estado cohesivo}\bigr)$$
-con `T_coh` el operador del material cohesivo (en frame local; ver spec [`CohesiveDamageIsotropic`](CohesiveDamageIsotropic.md)).
+con `T_coh` el operador del material cohesivo (en frame local; ver las specs [`CohesiveDamageIsotropic`](../../../specs/CohesiveDamageIsotropic.md) y [`CohesiveDamageMixedMode`](../../../specs/CohesiveDamageMixedMode.md)).
 
 ### 4. Equilibrio — forma fuerte
 
@@ -188,8 +188,8 @@ class DiscontinuityState:
     l_d: float                # (A_e/h)·cos(θ − α)
     jump_committed: np.ndarray   # [[u]] al cierre del último paso convergido
     jump_trial: np.ndarray       # [[u]] dentro de la iteración Newton
-    cohesive_state_committed: dict  # estado interno del CohesiveMaterial (committed)
-    cohesive_state_trial: dict      # estado interno del CohesiveMaterial (trial)
+    cohesive_state_committed: dict  # estado interno del material de interfaz (committed)
+    cohesive_state_trial: dict      # estado interno del material de interfaz (trial)
 ```
 
 Semántica **trial / commit** consistente con `ElementState`: `jump_trial` y `cohesive_state_trial` evolucionan en cada iteración del Newton global; al converger el paso, `commit_state()` copia `trial → committed` (el salto ya lo resolvió el Newton local, §10).
@@ -237,7 +237,7 @@ parameters:
   - { name: thickness,         type: float, required: false, default: 1.0,
       desc: "Espesor para estado plano (idéntico a Tri3)." }
   - { name: cohesive_material, type: str,   required: true,
-      desc: "Nombre (en CohesiveMaterialRegistry) del material cohesivo que gobierna Γ_d cuando se activa." }
+      desc: "Id (en interface_materials, InterfaceMaterialRegistry) del material de interfaz de superficie que gobierna Γ_d cuando se activa." }
   - { name: crack_tracker,     type: str,   required: false,
       desc: "Seguimiento de grieta (CrackTrackerRegistry: GlobalCrackTracking o PrescribedCrackPath) compartido por la región. Sin él, uno global por región conexa de elementos embebidos." }
 
@@ -260,12 +260,12 @@ conventions:
 
 validity:
   - "Pequeños desplazamientos y deformaciones (no large strain)."
-  - "Bulk elástico (Elastic2D) y cohesivo Modo-I (JUMP_DIM = 2)."
+  - "Bulk elástico (Elastic2D) y material de interfaz de superficie con dos componentes (modo I, CohesiveDamageIsotropic, o modo mixto, CohesiveDamageMixedMode)."
   - "Γ_d cortando exactamente dos lados del triángulo (configuración geométrica estándar)."
 
 out_of_scope:
   - "Bulk no lineal (J2, daño continuo, Drucker-Prager): la disipación debe localizarse en Γ_d, no co-existir con disipación de bulk."
-  - "Modo mixto I-II en el cohesivo (fase G del ADR 0010)."
+  - "Cinemática que transmita cortante sin bloqueo de esfuerzos con la ley de modo mixto (SKON, no simétrica): con CohesiveDamageMixedMode el elemento sigue siendo KOS, que puede bloquear esfuerzos con la grieta muy abierta y esfuerzo paralelo grande; la elección se decide con un ensayo de referencia de modo mixto (decisión del usuario del 2026-11-10)."
   - "Reorientación de n tras la activación."
   - "Unión y ramificación de grietas (una discontinuidad por elemento; ver GlobalCrackTracking)."
   - "Múltiples discontinuidades por elemento."
@@ -352,7 +352,7 @@ references:
   - "Oliver, J., Huespe, A.E., Sánchez, P.J. (2006). A comparative study on finite elements for capturing strong discontinuities. CMAME 195, 4732-4752."
   - "Linder, C., Armero, F. (2007). Finite elements with embedded strong discontinuities. IJNME 72, 1391-1433."
   - "ADR 0010 — Discontinuidades interiores embebidas (hoja de ruta; fase 2 = este elemento)."
-  - "Spec [CohesiveDamageIsotropic](CohesiveDamageIsotropic.md) — material cohesivo consumido en Γ_d."
+  - "Specs [CohesiveDamageIsotropic](../../../specs/CohesiveDamageIsotropic.md) y [CohesiveDamageMixedMode](../../../specs/CohesiveDamageMixedMode.md) — materiales de interfaz consumidos en Γ_d."
   - "Spec [Tri3](../../../specs/Tri3.md) — CST padre del elemento; mismo bulk en estado intacto."
 ```
 
@@ -367,7 +367,7 @@ references:
 - Integración en solvers:
   - `NonlinearSolver`: invoca `self.assembler.prepare_all_steps(U_current)` al inicio de cada paso, antes del Newton.
   - `ArcLengthSolver`: idem, antes del predictor.
-- Parser YAML: nueva sección `cohesive_materials:` + campo `cohesive_material:` por elemento.
+- Parser YAML: el material se declara en la sección `interface_materials:` del programa principal (hasta el 2026-11-10, `cohesive_materials:` del módulo) + campo `cohesive_material:` por elemento.
 - Tests: `tests/user/discontinuities/test_disc_cst_embedded.py` — 24 tests cubriendo `acceptance` completo (verification, specific, arch) + integración end-to-end del YAML. El aislamiento del trial del salto frente a `compute_global_stiffness` (deuda #18) se prueba en `tests/user/discontinuities/test_disc_contratos.py::TestTrialIsolation`.
 - Notas de traducción:
   - Estado intacto (`discontinuity_state is None`) → bit-exact con `Tri3` (mismo `B`, mismo `compute_integrands`). La cinemática del CST se importa de la API pública del programa principal, `solidum.elements.solid_2d` (`compute_kinematics_tri3`, `compute_integrands`; ADR 0020, P6), no del módulo interno `_shared`.

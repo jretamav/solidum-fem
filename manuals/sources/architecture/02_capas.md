@@ -25,9 +25,11 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 \node[layer, below=of entrada] (init) {
   {\title Capa de inicialización} \hfill \texttt{solidum/\_\_init\_\_.py}\\
   Al importar el paquete se invoca \texttt{autodiscover.initialize()};
-  los decoradores \texttt{@*Registry} pueblan
-  \texttt{MaterialRegistry}, \texttt{ElementRegistry} y
-  \texttt{SolverRegistry}.
+  los decoradores \texttt{@*Registry} pueblan los registros:
+  familias de material (\texttt{MaterialRegistry},
+  \texttt{ThermalMaterialRegistry}, \texttt{InterfaceMaterialRegistry}),
+  \texttt{SectionRegistry}, \texttt{ElementRegistry},
+  \texttt{SolverRegistry} y \texttt{ConstraintRegistry}.
 };
 \node[layer, below=of init] (parse) {
   {\title Capa de interpretación del caso} \hfill \texttt{solidum/utils/yaml\_parser.py}\\
@@ -39,25 +41,32 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
   \texttt{Domain} -- \texttt{Node} -- DOF (numeración global). Bases
   \texttt{Element} (con \texttt{DOF\_NAMES}, \texttt{STRAIN\_DIM},
   \texttt{N\_INTEGRATION\_POINTS}, \texttt{ElementState} en estados
-  \emph{trial} y comprometido) y \texttt{Material} (con
-  \texttt{STRAIN\_DIM}, \texttt{PRIMARY\_STATE\_VAR}).
+  \emph{trial} y comprometido), \texttt{Material} (con
+  \texttt{STRAIN\_DIM}, \texttt{PRIMARY\_STATE\_VAR}),
+  \texttt{InterfaceMaterial} (tracción--desplazamiento relativo) y
+  \texttt{Section}; restricciones multipunto y generadores de
+  restricciones (\texttt{solidum/bc/}).
 };
 \node[layer, below=of dominio] (numerica) {
   {\title Capa numérica} \hfill \texttt{solidum/math/}\\
   \texttt{assembly.py} (ensamblaje disperso con caché COO),
   \texttt{integration.py} (cuadraturas de Gauss),
-  paquete \texttt{solvers/} con un módulo por solver
-  (\texttt{LinearSolver}, \texttt{NonlinearSolver},
-  \texttt{ArcLengthSolver}, \texttt{ModalSolver},
-  \texttt{NewmarkSolver}, \texttt{NewtonNewmarkSolver}) y subsistema algebraico
-  \texttt{linalg/} (\texttt{LUSolver}, \texttt{CholeskySolver},
-  \texttt{LDLTSolver} reservado, despachador
-  \texttt{select\_solver}, \texttt{EigenSolver}).
+  paquete \texttt{solvers/} con los trece solvers (estáticos
+  \texttt{LinearSolver}, \texttt{NonlinearSolver},
+  \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver};
+  \texttt{ModalSolver}; transitorios \texttt{NewmarkSolver},
+  \texttt{HHTSolver}, \texttt{NewtonNewmarkSolver},
+  \texttt{NewtonHHTSolver}, \texttt{CentralDifferenceSolver};
+  \texttt{HarmonicSolver}, \texttt{ResponseSpectrumSolver} y el térmico
+  \texttt{ThetaMethodSolver}), el corrector de Newton compartido y el
+  subsistema algebraico \texttt{linalg/} (Cholesky, LU, Pardiso
+  opcional, iterativo a petición, \texttt{LDLTSolver} reservado,
+  despachador \texttt{select\_solver}, \texttt{EigenSolver}).
 };
 \node[layer, below=of numerica] (salida) {
   {\title Capa de salida} \hfill \texttt{solidum/utils/vtk\_exporter.py} + \texttt{solidum.results}\\
-  Exporta $\mathbf U$, $\sigma$ y \texttt{PRIMARY\_STATE\_VAR} en
-  formato VTK. \texttt{SolveResult} expone $\mathbf U$,
+  Exporta $\mathbf U$ (y la temperatura), $\sigma$ y
+  \texttt{PRIMARY\_STATE\_VAR} en formato VTK. \texttt{SolveResult} expone $\mathbf U$,
   $\mathbf F_\text{aplicada}$ y las fuerzas internas por elemento
   como interfaz pública para consumidores externos.
 };
@@ -76,7 +85,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 **Entrada del usuario.** Un caso de Solidum FEM se describe de forma declarativa en un archivo en formato YAML (acrónimo recursivo de *YAML Ain't Markup Language*): nodos, materiales, elementos, condiciones de contorno, cargas y solver. La malla puede embeberse en el YAML o leerse desde un archivo `.msh` generado por Gmsh. El YAML constituye contrato público; cualquier consumidor externo (Interfaz Gráfica de Usuario o GUI, *scripts* de automatización) opera contra él.
 
-**Capa de inicialización.** Su única responsabilidad consiste en poblar los registros (`MaterialRegistry`, `ThermalMaterialRegistry`, `ElementRegistry`, `SolverRegistry`) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas; los decoradores `@register` se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente. Los módulos de usuario (`solidum/user/`) no se importan aquí: pertenecen a formulaciones no estándar que el programa principal sólo carga cuando un caso las pide (ADR 0020).
+**Capa de inicialización.** Su única responsabilidad consiste en poblar los registros (`MaterialRegistry`, `ThermalMaterialRegistry`, `InterfaceMaterialRegistry`, `SectionRegistry`, `ElementRegistry`, `SolverRegistry`, `ConstraintRegistry`) sin que el resto del programa enumere manualmente las clases existentes. Esta tarea se ejecuta importando todos los módulos bajo carpetas canónicas (`solidum/materials`, `solidum/sections`, `solidum/elements`, `solidum/math`, `solidum/bc`); los decoradores `@register` se ejecutan en el momento de la importación e insertan cada clase en el registro correspondiente. Los módulos de usuario (`solidum/user/`) no se importan aquí: pertenecen a formulaciones no estándar que el programa principal sólo carga cuando un caso las pide (ADR 0020).
 
 **Capa de interpretación del caso.** Traduce el archivo YAML en objetos. No contiene ramificaciones del tipo `if material_type == "Elastic1D"` por cada material: introspecciona los argumentos formales del constructor de la clase recuperada del registro y le transmite los campos del YAML. Tampoco conoce las familias de material por nombre: recorre las que declaran los registros (`Registry.families()`). Antes de validar, carga los módulos de usuario que el caso declara en `user_modules`. La incorporación de un material nuevo no requiere modificación del intérprete.
 
@@ -84,7 +93,7 @@ El programa se organiza en seis capas con responsabilidades disjuntas. Cada capa
 
 **Capa numérica.** Concentra los componentes propios de la mecánica computacional: ensamblaje de matrices dispersas, cuadraturas de integración, estrategia de paso (lineal, no lineal incremental, longitud de arco) y el subsistema algebraico que resuelve los sistemas lineales que aparecen dentro de cada iteración.
 
-**Capa de salida.** Provee dos productos. Por un lado, `VtkExporter` para visualización en programas compatibles con VTK (ParaView). Por otro, `SolveResult` con los desplazamientos, las cargas aplicadas, las reacciones y las fuerzas internas por elemento, concebido para consumidores externos como FenixBAR (ADR 0002).
+**Capa de salida.** Provee dos productos. Por un lado, `VtkExporter` para visualización en programas compatibles con VTK (ParaView). Por otro, `SolveResult` con los desplazamientos, las cargas aplicadas, las reacciones y las fuerzas internas por elemento, concebido para consumidores externos como SolidumBAR (llamado FenixBAR hasta el 2026-09-30; ADR 0002).
 
 ## Justificación de la separación
 

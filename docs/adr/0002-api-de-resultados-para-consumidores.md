@@ -3,6 +3,8 @@
 **Fecha**: 2026-04-22
 **Estado**: Aceptado (2026-04-22)
 
+> Nota (2026-11-10): el consumidor que aquí se llama FenixBAR es **SolidumBAR**, su nombre desde el 2026-09-30.
+
 ## Contexto
 
 Solidum FEM se empieza a consumir desde una GUI externa (FenixBAR, análisis estructural con elementos barra). FenixBAR necesita, tras una solución, información suficiente para visualizar posproceso estándar de CAE: deformada escalada, reacciones en apoyos y diagramas de fuerzas internas (N, V, M, y en 3D también T, My, Mz) sobre cada barra.

@@ -135,7 +135,7 @@ from solidum import Domain, Elastic2D
 from solidum.materials.interface import CohesiveDamageIsotropic   # programa principal (ADR 0033)
 from solidum.user.discontinuities import CST_Embedded2D
 
-solidum.available_user_modules()                # ['discontinuities']
+solidum.available_user_modules()                # ['discontinuities', 'dissipation_control']
 solidum.load_user_module("discontinuities")     # equivalente; cargarlo dos veces no hace nada
 
 bulk = Elastic2D(E=30e9, nu=0.2, hypothesis="plane_strain")
@@ -157,7 +157,7 @@ Equivale al bloque YAML `nodal_masses` (ADR 0024): un grado de libertad mecánic
 
 ## Refuerzo embebido
 
-`solidum.embed_reinforcement(domain, points, area, material, *, element=None, hosts=None, subdivisions=1, element_kwargs=None)` embebe una barra con adherencia perfecta en los sólidos del dominio (ADR 0032, spec `EmbeddedReinforcement`) y devuelve un `EmbeddedBar`:
+`solidum.embed_reinforcement(domain, points, area, material, *, element=None, hosts=None, subdivisions=1, element_kwargs=None, bond=None)` embebe una barra en los sólidos del dominio (ADR 0032, spec `EmbeddedReinforcement`), con adherencia perfecta si `bond` es `None`, y devuelve un `EmbeddedBar`:
 
 ```python
 bar = solidum.embed_reinforcement(domain, [[0.0, 0.05], [4.0, 0.05]], 1.6e-3,
@@ -165,6 +165,19 @@ bar = solidum.embed_reinforcement(domain, [[0.0, 0.05], [4.0, 0.05]], 1.6e-3,
 r = solidum.run(domain, F_applied=F)
 r.element_forces[bar.element_ids[0]].components["N"]   # fuerza axial del primer tramo
 bar.bond_forces(r)    # (n_nodos, ndim): fuerza de adherencia en cada nodo de la barra
+```
+
+**Adherencia-deslizamiento** (spec `EmbeddedReinforcement` §12): `bond=solidum.Bond(law, diameter, perimeter=None, integration="nodal")` (o el diccionario equivalente) une cada tramo de la barra a su anfitrión con una interfaz distribuida gobernada por una ley de interfaz de línea (`BondSlipModelCode`, `BondSlipMultilinear`); `perimeter` es π·d_b por omisión e `integration` es `"nodal"` (recomendada) o `"gauss"`. Las interfaces generadas quedan en `bar.interface_ids`, y `bar.bond_state(domain, r.U)` devuelve, por tramo, los puntos de integración con el deslizamiento `slip`, el esfuerzo de adherencia `bond_stress`, la apertura y tracción normales y la fuerza de adherencia por unidad de longitud `bond_force`. Con `bond`, `bond_forces` no aplica (no hay restricciones de embebido) y lanza `ValueError`:
+
+```python
+ley = solidum.BondSlipModelCode.model_code_2010(30e6, clear_rib_spacing=0.0105,
+                                                 diameter=0.016, E_c=30e9)
+bar = solidum.embed_reinforcement(domain, [[0.0, 0.05], [4.0, 0.05]], 2.01e-4,
+                                  solidum.Elastic1D(E=200e9), element="Truss2D3",
+                                  bond=solidum.Bond(ley, diameter=0.016))
+r = solidum.run(domain, F_applied=F)
+puntos = bar.bond_state(domain, r.U)          # [[InterfacePoint, ...] por tramo]
+s_max = max(abs(p.slip) for tramo in puntos for p in tramo)
 ```
 
 `EmbeddedBar` guarda los nodos y elementos de la barra, el anfitrión y las coordenadas naturales de cada nodo, y la longitud. La llamada va después de crear los elementos de sólido; si el dominio ya estaba numerado, se renumera. Los generadores se registran en `ConstraintRegistry`; la localización de puntos en elementos (`solidum.mesh.point_location`: `natural_coordinates`, `PointLocator`) sirve a cualquier sólido que declare `REFERENCE_CELL` y sus funciones de forma.

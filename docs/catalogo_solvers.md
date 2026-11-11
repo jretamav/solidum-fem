@@ -107,7 +107,7 @@
 - **Parámetros**: `n_modes` (obligatorio), `sigma` (default 0.0), `which` (default `"LM"`), `tolerance` (default 1.0e-9), `lumping` (default `"consistent"`; también `"lumped"`, ADR 0009 fase 2), `linear_algebra` (reservado; ADR 0003).
 - **Firma del solver**: `solve()` sin argumentos (no consume `F_applied`). El entrypoint público es `solidum.run_modal(domain, n_modes=N)` o YAML con `solver: type: ModalSolver`. `solidum.run_yaml` despacha automáticamente al detectar el tipo.
 - **Cuándo usarlo**: caracterización dinámica de la estructura (frecuencias naturales, formas modales) antes de pasar a análisis transitorio o sísmico. Validación de la matriz de masa contra fórmulas analíticas (barra empotrada-libre, viga Bernoulli-Euler).
-- **Limitaciones**: lineal (`K` evaluada en `u = 0`); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en `solidum/math/modal_response.py` y los consumen `ModalSolver` y `ResponseSpectrumSolver` (ADR 0009 fase 7 cerrada). `ModalResult.cumulative_effective_mass_ratio("ux")` da la razón de masa acumulada contra la masa que puede participar (`participating_mass`, `bᵀM_LL⁻¹b`; ADR 0009 §8).
+- **Limitaciones**: lineal: `K` evaluada en `u = 0` o, con `previous=`, la rigidez tangente del estado de una etapa sin cambiarlo ([ADR 0031](adr/0031-analisis-lineales-sobre-el-estado-de-una-etapa.md)); sin amortiguamiento; modos complejos no soportados. Cómputos derivados (factores de participación, masas efectivas, combinación espectral SRSS/CQC) viven en `solidum/math/modal_response.py` y los consumen `ModalSolver` y `ResponseSpectrumSolver` (ADR 0009 fase 7 cerrada). `ModalResult.cumulative_effective_mass_ratio("ux")` da la razón de masa acumulada contra la masa que puede participar (`participating_mass`, `bᵀM_LL⁻¹b`; ADR 0009 §8).
 - **Referencia**: Bathe, *Finite Element Procedures*, cap. 9 (masa), §10.3.1 (condensación estática) y cap. 11 (algoritmos de autovalor); Chopra, *Dynamics of Structures*, §9.3; Hughes, *The Finite Element Method*, cap. 7; ARPACK Users' Guide (Lehoucq–Sorensen–Yang).
 - **Spec**: [docs/specs/ModalSolver.md](specs/ModalSolver.md)
 - **Archivos**: [solidum/math/solvers/modal.py](../solidum/math/solvers/modal.py) (clase `ModalSolver`), [solidum/math/linalg/eigen.py](../solidum/math/linalg/eigen.py) (clase `EigenSolver`), [solidum/results.py](../solidum/results.py) (`ModalResult`).
@@ -136,10 +136,10 @@
 - **Cargas distribuidas en el historial de fuerzas internas** (ADR 0027): con `record_internal_forces=True`, los extremos descuentan en cada paso las cargas equivalentes que lleva `F(t)` cuando se construye combinando las cargas de `assemble_self_weight` / `assemble_body_load` (`F(t) = F_peso + a(t)·F_viento`).
 - **Cuándo usarlo**: respuesta a cargas dependientes del tiempo (sísmica time-history, impacto, vibración forzada), evolución transitoria desde condiciones iniciales arbitrarias, validación de respuesta libre/forzada de estructuras lineales.
 - **Limitaciones**:
-  - Solo lineal (`K`, `M` constantes). La extensión a no-linealidad (Newton dentro de cada paso) es fase 4 del ADR 0009.
+  - Solo lineal (`K`, `M` constantes); la variante no lineal, con Newton dentro de cada paso, es `NewtonNewmarkSolver` (fase 4 del ADR 0009).
   - Apoyos Dirichlet constantes en el tiempo. Multi-support excitation sísmica diferida.
-  - Paso `Δt` fijo. Adaptativo diferido.
-  - HHT-α y generalized-α (con amortiguamiento numérico controlado) no incluidos.
+  - Paso `Δt` fijo (el paso adaptativo es de las variantes no lineales, Newton-Newmark y Newton-HHT).
+  - HHT-α está en `HHTSolver`; generalized-α no incluido.
 - **Referencia**: Newmark (1959), J. Eng. Mech. Div. ASCE; Bathe, *FEP* cap. 9.4; Hughes, *FEM* cap. 9; Chopra, *Dynamics of Structures* cap. 5 y 15.
 - **Spec**: [docs/specs/NewmarkSolver.md](specs/NewmarkSolver.md)
 - **Archivos**: [solidum/math/solvers/newmark.py](../solidum/math/solvers/newmark.py) (clase `NewmarkSolver`), [solidum/math/damping.py](../solidum/math/damping.py) (Rayleigh), [solidum/results.py](../solidum/results.py) (`TransientResult`).
@@ -155,15 +155,15 @@
     `R(ü_{n+1}) = F_ext(t_{n+1}) − F_int(u_{n+1}) − C·u̇_{n+1} − M·ü_{n+1}`,
     con jacobiano `J = M + γΔt·C + βΔt²·K_t` y `K_t` la rigidez tangente corriente.
   - **Convergencia dual** (ADR 0007): `R/(atol + rtol·F_ref) ≤ 1` y `δu/(atol + rtol·‖u‖) ≤ 1`.
-  - **Commit de estado**: tras converger cada paso, `assembler.commit_all_states()` (trial → committed). Si no converge en `max_iter`, lanza `RuntimeError` y se descarta el state trial.
+  - **Commit de estado**: tras converger cada paso, `assembler.commit_all_states()` (trial → committed). Si no converge en `max_iter`, el paso se repite en dos mitades (paso adaptativo, hasta `max_subdivisions` niveles); si ni así converge, se descarta el trial y el análisis se detiene con una `SolverDivergedError` tipada cuyo `partial_result` llega al último subpaso convergido (ADR 0025 §6).
   - **Amortiguamiento Rayleigh constante en el tiempo**, calibrado con la **rigidez elástica de referencia** `K_0` (al inicio del análisis, `u = 0`). Convención estándar (Abaqus, ANSYS, OpenSees); evita acoplamiento ad-hoc entre disipación viscosa y plástica.
   - **Newton modificado opcional** (`freeze_tangent_after_iter`, ADR 0003 fase 2): factoriza fresco las primeras N iter de cada paso y reusa la factorización en las siguientes.
   - **Recuperación del caso lineal**: con materiales lineales (`K_t ≡ K_0`), el residuo se anula en 1 iter y el resultado coincide exactamente con `NewmarkSolver`. Validado en tests.
-- **Parámetros**: heredados de `NewmarkSolver` (`t_end`, `dt`, `beta`, `gamma`, `rayleigh`, `u0`, `u0_dot`, `F_func`, `linear_algebra`, `lumping`) más `convergence` (`ConvergenceCriterion`, ADR 0007), `max_iter` (default 20), `freeze_tangent_after_iter` (default `None`), **`line_search`** (default `False`, ADR 0011 — mismo criterio que `NonlinearSolver`).
+- **Parámetros**: heredados de `NewmarkSolver` (`t_end`, `dt`, `beta`, `gamma`, `rayleigh`, `u0`, `u0_dot`, `F_func`, `linear_algebra`, `lumping`) más `convergence` (`ConvergenceCriterion`, ADR 0007), `max_iter` (default 20), `freeze_tangent_after_iter` (default `None`), **`line_search`** (default `False`, ADR 0011 — mismo criterio que `NonlinearSolver`), **`max_subdivisions`** (default 6: bisecciones del paso que no converge, hasta Δt/64).
 - **Diagnóstico al diverger**: lanza una subclase tipada de `RuntimeError` con métricas y `hint` (mismo patrón que `NonlinearSolver`, ADR 0011).
 - **Firma del solver**: `solve()` sin argumentos, retorna `TransientResult` (mismo formato que `NewmarkSolver`).
 - **Cuándo usarlo**: respuesta dinámica de estructuras con plasticidad transitoria, fatiga de bajo ciclo, impacto en hormigón friccional, vibraciones de marcos con disipación plástica.
-- **Limitaciones**: igual que `NewmarkSolver` en lo lineal (apoyos constantes, paso fijo). Además: no resuelve snap-back en problemas con softening severo — combinar con `ArcLengthSolver` si emerge.
+- **Limitaciones**: igual que `NewmarkSolver` en lo lineal (apoyos constantes); el paso sólo se adapta bisecando el que no converge, sin control del error de integración. Además: no resuelve snap-back en problemas con softening severo — combinar con `ArcLengthSolver` si emerge.
 - **Despacho YAML**: `solver.type: NewtonNewmarkSolver`. Hereda `PIPELINE_KIND = "transient"` de `NewmarkSolver`; `entry.run_yaml` despacha por ese atributo declarativo (regla C del ADR 0009, aplicada 2026-05-18) — sin `isinstance` ni cadenas hardcoded.
 - **Referencia**: ADR 0009 §Fase 4; Hughes, *FEM* cap. 7-9 (Newton dentro de paso temporal); Crisfield vol. 2 cap. 24 (dinámica no lineal).
 - **Spec**: [docs/specs/NewtonNewmarkSolver.md](specs/NewtonNewmarkSolver.md)

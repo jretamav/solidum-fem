@@ -19,29 +19,29 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 > Los **elementos y materiales térmicos** (Etapa 8) no aparecen en esta tabla: forman una familia paralela cuya compatibilidad la fija `FLUX_DIM`, no `STRAIN_DIM`. Ver §1.b.
 >
-> Tampoco los componentes de los **módulos de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)), que no forman parte del programa principal: `CST_Embedded2D` y la ley cohesiva `CohesiveDamageIsotropic` (módulo `discontinuities`) están en §1.c.
+> Tampoco los componentes de los **módulos de usuario** ([ADR 0020](adr/0020-modulos-de-usuario.md)), que no forman parte del programa principal: `CST_Embedded2D` y su seguimiento de grieta (módulo `discontinuities`) están en §1.c. Los **materiales de interfaz** ([ADR 0033](adr/0033-materiales-de-interfaz.md); entre ellos las leyes cohesivas que consume ese elemento) y la **restricción generada** `EmbeddedReinforcement` ([ADR 0032](adr/0032-restricciones-generadas-y-refuerzo-embebido.md)) están en §1.d.
 
 **Materiales 1D y 2D**:
 
-| Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | Orthotropic2D |
-|------------------------------|:---------:|:---------------:|:-----------------:|:---------------:|:---------:|:----------:|:---------------:|:-----------------:|:-------------:|
-| `Truss2D`                    | ✓         | ✓               | ○                 |                 |           |            |                 |                   |               |
-| `Truss2DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
-| `Truss3D`                    | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
-| `Truss3DCorot`               | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
-| `Truss2D3`                   | ✓         | ✓               | ○                 |                 |           |            |                 |                   |               |
-| `Truss3D3`                   | ✓         | ○               | ○                 |                 |           |            |                 |                   |               |
-| `Cable2DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
-| `Cable3DCorot`               |           |                 |                   | ✓               |           |            |                 |                   |               |
-| `Frame2DEuler`               | ✓         | (a) ✓           | (a) ○             | (a) ○           |           |            |                 |                   |               |
-| `Frame2DTimoshenko`          | ✓         |                 |                   |                 |           |            |                 |                   |               |
-| `Frame2DEulerCorot`          | ✓         | (a) ○           | (a) ○             | (a) ○           |           |            |                 |                   |               |
-| `Frame3D`                    | ✓         | (a) ○           | (a) ○             | (a) ○           |           |            |                 |                   |               |
-| `Quad4`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
-| `Tri3`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
-| `Quad8`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
-| `Quad9`                      |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
-| `Tri6`                       |           |                 |                   |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| Elemento \ Material 1D/2D     | Elastic1D | Elastoplastic1D | IsotropicDamage1D | ManderConcrete1D | CableMaterial1D | Elastic2D | VonMises2D | DruckerPrager2D | IsotropicDamage2D | Orthotropic2D |
+|------------------------------|:---------:|:---------------:|:-----------------:|:----------------:|:---------------:|:---------:|:----------:|:---------------:|:-----------------:|:-------------:|
+| `Truss2D`                    | ✓         | ✓               | ○                 | ✓                |                 |           |            |                 |                   |               |
+| `Truss2DCorot`               | ✓         | ○               | ○                 | ○                |                 |           |            |                 |                   |               |
+| `Truss3D`                    | ✓         | ○               | ○                 | ○                |                 |           |            |                 |                   |               |
+| `Truss3DCorot`               | ✓         | ○               | ○                 | ○                |                 |           |            |                 |                   |               |
+| `Truss2D3`                   | ✓         | ✓               | ○                 | ○                |                 |           |            |                 |                   |               |
+| `Truss3D3`                   | ✓         | ○               | ○                 | ○                |                 |           |            |                 |                   |               |
+| `Cable2DCorot`               |           |                 |                   |                  | ✓               |           |            |                 |                   |               |
+| `Cable3DCorot`               |           |                 |                   |                  | ✓               |           |            |                 |                   |               |
+| `Frame2DEuler`               | ✓         | (a) ✓           | (a) ○             | (a) ✓            | (a) ○           |           |            |                 |                   |               |
+| `Frame2DTimoshenko`          | ✓         |                 |                   |                  |                 |           |            |                 |                   |               |
+| `Frame2DEulerCorot`          | ✓         | (a) ○           | (a) ○             | (a) ○            | (a) ○           |           |            |                 |                   |               |
+| `Frame3D`                    | ✓         | (a) ○           | (a) ○             | (a) ○            | (a) ○           |           |            |                 |                   |               |
+| `Quad4`                      |           |                 |                   |                  |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Tri3`                       |           |                 |                   |                  |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Quad8`                      |           |                 |                   |                  |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Quad9`                      |           |                 |                   |                  |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
+| `Tri6`                       |           |                 |                   |                  |                 | ✓         | ✓          | (b) ✓           | ✓                 | (e) ✓         |
 
 **Materiales 3D** (sub-etapa A.bis + Etapa 7):
 
@@ -65,6 +65,26 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 ---
 
+### 1.d Materiales de interfaz y restricciones generadas
+
+Los **materiales de interfaz** ([ADR 0033](adr/0033-materiales-de-interfaz.md), sección YAML `interface_materials`) no se asignan a un elemento de sólido o de barra: los consume un elemento o una restricción que tiene una interfaz, según la geometría que declaran (`GEOMETRY`) y el número de componentes del salto.
+
+| Material de interfaz | `GEOMETRY` | Componentes | Consumidor |
+|---|---|---|---|
+| `CohesiveDamageIsotropic` | `surface` | 2 | `CST_Embedded2D` (módulo `discontinuities`, §1.c) ✓ |
+| `CohesiveDamageMixedMode` | `surface` | 2 o 3 | `CST_Embedded2D` (2 componentes) ✓ |
+| `BondSlipModelCode`, `BondSlipMultilinear` | `line` | 2 o 3 | `EmbeddedReinforcement` con `bond` (interfaces `BondSlipInterface` generadas, una por tramo) ✓ |
+
+**Restricción generada `EmbeddedReinforcement`** ([ADR 0032](adr/0032-restricciones-generadas-y-refuerzo-embebido.md), [catálogo de restricciones](catalogo_restricciones.md)):
+
+| | Admitidos | Probados |
+|---|---|---|
+| Anfitrión | Cualquier sólido isoparamétrico con celda de referencia y funciones de forma, 2D o 3D | Los cinco sólidos 2D (`Quad4`, `Tri3`, `Quad8`, `Quad9`, `Tri6`) y los cinco 3D (`Hex8`, `Hex20`, `Hex27`, `Tet4`, `Tet10`) |
+| Barra | Elementos 1D de dos o tres nodos con cualquier material 1D (barras, sus variantes corrotacionales, cables) | `Truss2D`, `Truss3D`, `Truss2D3`, `Truss3D3` |
+| Adherencia | Perfecta (MPC) o con `bond` (ley de interfaz de línea) | Ambas, con integración nodal y de Gauss |
+
+---
+
 ## 2. Solver × Tipo de problema
 
 La elección del solver es **ortogonal al elemento**: depende de la linealidad del problema y del régimen de análisis.
@@ -72,17 +92,19 @@ La elección del solver es **ortogonal al elemento**: depende de la linealidad d
 | Solver                       | Pipeline kind  | Tipo de problema                                                  | Pre-condición sobre materiales/elementos                              |
 |------------------------------|----------------|-------------------------------------------------------------------|------------------------------------------------------------------------|
 | `LinearSolver`               | `static`       | Estático lineal (`K·U = F` en un paso).                           | Todos los materiales con tangente constante; sin corotacional; sin cable. |
-| `NonlinearSolver`            | `static`       | Estático no lineal con control de carga (Newton-Raphson).         | Cualquier no-linealidad material o geométrica suave (sin snap-back).  |
-| `ArcLengthSolver`            | `static`       | Estático no lineal con snap-through / snap-back / softening.      | Igual que `NonlinearSolver`, además captura puntos límite.            |
+| `NonlinearSolver`            | `static`       | Estático no lineal con control de carga (Newton-Raphson).         | Cualquier no-linealidad material o geométrica suave (sin snap-back). Etapas de carga (`u0`, `constant_load`, bloque YAML `stages`; ADR 0026). |
+| `ArcLengthSolver`            | `static`       | Estático no lineal con snap-through / snap-back / softening.      | Igual que `NonlinearSolver`, además captura puntos límite; etapas y parada en el valor de una magnitud (`control`, `control_target`; ADR 0025). |
 | `IndirectDisplacementSolver` | `static`       | Estático no lineal con retroceso (*snap-back*) por localización, controlando el incremento de una combinación de desplazamientos elegida (control indirecto de desplazamiento, de Borst 1987). | Igual que `ArcLengthSolver` (es subclase); parámetro `control` obligatorio; la magnitud controlada debe crecer monótonamente. Parada exacta en un desplazamiento objetivo con `control_target` (ADR 0025). |
-| `ModalSolver`                | `modal`        | Autovalor generalizado `K·φ = ω²M·φ` (frecuencias y modos).       | Todos los materiales (lineales en `u = 0`); `density` declarada (`0.0` admitida); `compute_mass_matrix`. Masas de nudo (`nodal_masses`) y grados de libertad sin masa, condensados de forma exacta (ADR 0024); `n_modes` ≤ grados de libertad con masa. |
-| `NewmarkSolver`              | `transient`    | Transitorio lineal `M·ü + C·u̇ + K·u = F(t)`.                      | Mismas restricciones que `LinearSolver` + `density` declarada.        |
+| `ModalSolver`                | `modal`        | Autovalor generalizado `K·φ = ω²M·φ` (frecuencias y modos).       | Todos los materiales (lineales en `u = 0`, o con `previous=` la rigidez tangente del estado de una etapa, ADR 0031); `density` declarada (`0.0` admitida); `compute_mass_matrix`. Masas de nudo (`nodal_masses`) y grados de libertad sin masa, condensados de forma exacta (ADR 0024); `n_modes` ≤ grados de libertad con masa. |
+| `NewmarkSolver`              | `transient`    | Transitorio lineal `M·ü + C·u̇ + K·u = F(t)`.                      | Mismas restricciones que `LinearSolver` + `density` declarada; continúa un estático o un transitorio (ADR 0029). |
 | `HHTSolver`                  | `transient`    | Variante de Newmark con disipación numérica controlada (HHT-α).   | Idénticas a `NewmarkSolver` (es subclase).                            |
-| `NewtonNewmarkSolver`        | `transient`    | Transitorio no lineal (Newton dentro de cada paso temporal).      | Cualquier material con historia + `density` declarada.                |
+| `NewtonNewmarkSolver`        | `transient`    | Transitorio no lineal (Newton dentro de cada paso temporal).      | Cualquier material con historia + `density` declarada. Paso adaptativo (`max_subdivisions`); continúa un estático o un transitorio (ADR 0029). |
 | `NewtonHHTSolver`            | `transient`    | Variante no lineal con disipación numérica HHT-α + Newton interno.| Idénticas a `NewtonNewmarkSolver` (es subclase).                      |
 | `CentralDifferenceSolver`    | `transient`    | Transitorio explícito por diferencias centradas (leapfrog).       | Masa lumped (`lumping="lumped"`); CFL `Δt < 2/ω_max`; Frame3D oblicuo rechazado. |
-| `HarmonicSolver`             | `harmonic`     | Respuesta forzada armónica `(-ω²M + iωC + K)·û = F̂` con barrido en `ω`. | Lineal; `density` declarada.                                          |
+| `HarmonicSolver`             | `harmonic`     | Respuesta forzada armónica `(-ω²M + iωC + K)·û = F̂` con barrido en `ω`. | Lineal, o sobre el estado de una etapa con `previous=` (ADR 0031); `density` declarada. |
 | `ResponseSpectrumSolver`     | `spectrum`     | Análisis sísmico por combinación modal SRSS/CQC contra espectro.  | Lineal; `density` declarada; suficientes modos (verificar `cumulative_effective_mass_ratio`). Hereda las masas de nudo y la condensación del `ModalSolver` (ADR 0024). |
+
+**Etapas y continuidad**: un estático sigue a otro estático (etapas de carga, ADR 0026); un transitorio sigue a un estático o a otro transitorio (ADR 0029); modal, armónico, espectral y `LinearSolver` (perturbación lineal) se evalúan sobre el estado de una etapa sin cambiarlo (ADR 0031). Un estático después de un transitorio **se rechaza**: qué carga se mantiene y qué pasa con la velocidad son decisiones físicas pendientes. Las masas de nudo (`nodal_masses`, ADR 0024) entran en todos los solvers con masa, y las reacciones de los apoyos se dan también en transitorio, armónico y espectral (ADR 0030).
 
 **Compatibilidad cruzada solver → elementos**: todos los elementos del catálogo implementan `compute_mass_matrix(lumping)` con `lumping ∈ {"consistent", "lumped"}` (ADR 0009 fases 1 y 2, cerradas 2026-05-18). Cualquier elemento **mecánico** es compatible con los 12 solvers anteriores siempre que el material declare `density` (y con el `DissipationArcLengthSolver` del módulo de usuario `dissipation_control`, §2.d). Los elementos térmicos van por su propia vía (§2.b). **Excepción**: `CentralDifferenceSolver` requiere `lumping="lumped"` y rechaza Frame3D con eje oblicuo a los ejes globales (el bloque rotacional 3×3 del lumping no es estrictamente diagonal cuando `ρJp ≠ ρIy ≠ ρIz` — limitación documentada estándar) y las restricciones multipunto con varios maestros cuyo esclavo tiene masa (con masa concentrada, `TᵀMT` deja de ser diagonal). **Restricciones multipunto**: los ocho solvers dinámicos, modal y espectrales las admiten, verificado con el oráculo del nodo fundido en [`test_mpc_dynamic.py`](../tests/test_mpc_dynamic.py) (auditoría de las MPC, 2026-09-30).
 
@@ -280,7 +302,9 @@ Casillas **○** (válidas no testeadas) que el barrido sistemático revela. Pri
 
 ---
 
-*Última actualización: 2026-09-29 — **Sección por fibras de los marcos, etapa 1 ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md))**: las filas de los marcos distinguen el camino constitutivo (nota (a) reescrita). Con `material` + propiedades geométricas, sólo `Elastic1D`; los materiales 1D inelásticos entran como fibras de una `FiberSection` en los tres marcos Euler-Bernoulli (✓ `Frame2DEuler` + `Elastoplastic1D`, resto ○); `Frame2DTimoshenko` queda sólo elástico hasta la etapa 2. Hueco 5 cerrado; nuevos no-huecos para las combinaciones vetadas.*
+*Última actualización: 2026-11-10 — columna `ManderConcrete1D` (ADR 0028), §1.d nueva (materiales de interfaz × consumidor y restricción generada × anfitrión / barra, ADR 0032 y 0033), §1.c con la ley de modo mixto, y en la tabla de solvers las etapas, la continuidad, el paso adaptativo y los análisis lineales sobre el estado de una etapa (ADR 0025, 0026, 0029, 0031).*
+
+*Anterior 2026-09-29 — **Sección por fibras de los marcos, etapa 1 ([ADR 0021](adr/0021-secciones-de-marco-y-seccion-por-fibras.md))**: las filas de los marcos distinguen el camino constitutivo (nota (a) reescrita). Con `material` + propiedades geométricas, sólo `Elastic1D`; los materiales 1D inelásticos entran como fibras de una `FiberSection` en los tres marcos Euler-Bernoulli (✓ `Frame2DEuler` + `Elastoplastic1D`, resto ○); `Frame2DTimoshenko` queda sólo elástico hasta la etapa 2. Hueco 5 cerrado; nuevos no-huecos para las combinaciones vetadas.*
 
 *Anterior 2026-09-29 — **`DissipationArcLengthSolver` al módulo de usuario `dissipation_control`** (criterio de admisión, Reglas.md §1): sale de la tabla de solvers del programa principal de §2 (12 solvers mecánicos + `ThetaMethodSolver` = 13 en el programa principal) a §2.d; §1.c y §2.b lo citan como solver del módulo.*
 

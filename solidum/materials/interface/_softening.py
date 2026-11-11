@@ -13,6 +13,12 @@ formas (spec ``CohesiveDamageMixedMode`` §5):
 - ``bilinear``: quiebre en ``(w_1, r·σ_t0)`` y fin en ``w_c' = c·H/σ_t0``, con
   ``w_1 = (2 − r·c)·H/σ_t0`` (fib Model Code 2010, §5.1.5.2: ``r = 0.2``,
   ``c = 5``; Petersson 1981: ``r = 1/3``, ``c = 3.6``).
+
+No confundir con ``solidum/materials/_softening.py``: aquél da el daño
+``ω(κ)`` de los materiales continuos de daño escalar (``IsotropicDamage*``),
+con tope ``DAMAGE_MAX``; aquí la envolvente se evalúa como tracción, sin tope,
+porque con ``K_e`` de penalización ``1 − ω ~ κ_0/κ`` y truncar ``ω`` cambiaría
+la energía disipada (spec ``CohesiveDamageIsotropic`` §12).
 """
 from __future__ import annotations
 

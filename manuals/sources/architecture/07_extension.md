@@ -2,13 +2,19 @@
 
 Los capítulos anteriores describen el estado actual del programa. Este capítulo describe el procedimiento por el que se incorporan piezas nuevas — el aspecto del proyecto que la arquitectura optimiza explícitamente.
 
-## Tres puntos de extensión canónicos
+## Puntos de extensión canónicos
 
 | Componente a incorporar | Ubicación | Mecanismo de registro | Modifica otros archivos |
 |---|---|---|---|
 | Material | `solidum/materials/<snake>.py` | `@MaterialRegistry.register` | No |
-| Elemento | `solidum/elements/<snake>.py` | `@ElementRegistry.register` | No |
+| Material térmico | `solidum/materials/<snake>.py` | `@ThermalMaterialRegistry.register` | No |
+| Material de interfaz | `solidum/materials/interface/<snake>.py` | `@InterfaceMaterialRegistry.register` | No |
+| Sección de marco | `solidum/sections/<snake>.py` | `@SectionRegistry.register` | No |
+| Elemento | `solidum/elements/<familia>/<snake>.py` | `@ElementRegistry.register` | No |
 | Solver | `solidum/math/solvers/<snake>.py` | `@SolverRegistry.register` | No |
+| Generador de restricciones | `solidum/bc/<snake>.py` | `@ConstraintRegistry.register` | No |
+
+Los tres primeros más frecuentes son el material, el elemento y el solver, los que cubre la *skill* de plantillas; los demás siguen el mismo patrón con su propia clase base (`InterfaceMaterial`, `Section`, el generador de restricciones del ADR 0032) y su tipo de spec.
 
 La columna "modifica otros archivos" es deliberadamente "No". Si la incorporación de un componente exigiera la modificación del intérprete, el ensamblador o la inicialización, dicha situación constituiría un síntoma de degradación de la arquitectura y procedería un refactor con su correspondiente Architecture Decision Record (ADR).
 
@@ -31,7 +37,7 @@ Cuando el componente a incorporar es físico (no infraestructura), el flujo es:
 1. *Apertura de la especificación.* El usuario abre una especificación en `docs/specs/<Nombre>.md` a partir de la plantilla `_template_<kind>.md`. La especificación contiene: especificación física, formulación numérica y contrato YAML (`interface`, `parameters`, `acceptance`, `references`).
 2. *Bloqueo en ausencia de especificación completa.* El asistente no escribe código hasta que la especificación esté completa. Si falta información, formula consultas en la sección *Diálogo* de la propia especificación. Esto convierte la especificación, sucesivamente, en orden de trabajo y en referencia detallada del componente.
 3. *Implementación.* El asistente implementa el componente y añade pruebas conforme a los criterios de `acceptance`.
-4. *Cierre.* Tras la validación (todas las pruebas verdes contra los criterios), el asistente actualiza `status: validated` en la especificación e inserta una entrada en el catálogo correspondiente (`docs/catalogo_<elementos|materiales|solvers>.md`).
+4. *Cierre.* Tras la validación (todas las pruebas verdes contra los criterios), el asistente actualiza `status: validated` en la especificación e inserta una entrada en el catálogo correspondiente (`docs/catalogo_<elementos|materiales|solvers|restricciones>.md`; los materiales térmicos y de interfaz tienen su apartado en el de materiales, y las secciones de marco en el de elementos).
 
 La relación es: la especificación constituye la orden de trabajo y la referencia detallada por componente; el catálogo constituye el índice navegable del conjunto. El manual de referencia (`Reference_manual.pdf`) se genera de forma automática a partir de las especificaciones. Un componente de un módulo de usuario sigue el mismo ciclo con su spec en `docs/user/<nombre>/specs/`, su entrada en la sección «Módulos de usuario» del catálogo y su capítulo en el apéndice «Módulos de usuario» del manual de referencia.
 

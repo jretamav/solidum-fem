@@ -14,7 +14,7 @@ Distinto en dominio de los materiales continuos `Elastic2D`, `VonMises2D`, `Isot
 
 - **No opera sobre puntos de Gauss del bulk.** Opera sobre el salto `[[u]] ∈ ℝ²` definido sobre `Γ_d` y devuelve tracciones `t ∈ ℝ²` definidas sobre la misma superficie.
 - **Unidades**: parámetros físicos son `σ_t0` (Pa, resistencia a tracción) y `G_F` (N/m, energía de fractura) — no `E` y `ν`.
-- **Es la primera implementación** de la familia `CohesiveMaterial` introducida por ADR 0010.
+- **Es la primera implementación** de la familia `CohesiveMaterial` introducida por ADR 0010, hoy la familia de materiales de interfaz del programa principal (`InterfaceMaterial`, ADR 0033).
 
 Pensado para hormigón, roca, cerámicos en régimen cuasi-frágil bajo tracción dominante. Diseñado para una superficie de discontinuidad embebida (ADR 0010); es una ley tracción-salto genérica, material de interfaz del programa principal desde el ADR 0033, que puede usar cualquier elemento con una superficie de discontinuidad.
 
@@ -326,7 +326,7 @@ acceptance:
 
   arch:
     - name: registry_kind_es_cohesive
-      expect: "Registro vía CohesiveMaterialRegistry, no MaterialRegistry; kind='cohesive_material' en YAML"
+      expect: "Registro vía InterfaceMaterialRegistry, no MaterialRegistry; sección YAML interface_materials (kind de spec interface_material; hasta el 2026-11-10, CohesiveMaterialRegistry y cohesive_materials del módulo de usuario)"
 
     - name: is_symmetric_attribute
       expect: "CohesiveDamageIsotropic.IS_SYMMETRIC == True"
@@ -338,7 +338,7 @@ references:
   - "Barenblatt, G.I. (1962). The mathematical theory of equilibrium cracks in brittle fracture. *Advances in Applied Mechanics* 7, 55-129."
   - "Simó, J.C., Ju, J.W. (1987). Strain- and stress-based continuum damage models — I. Formulation. *Int. J. Solids Struct.* 23, 821-840."
   - "ADR 0010 — Discontinuidades interiores embebidas (familia CohesiveMaterial, hoja de ruta)."
-  - "Spec [IsotropicDamage2D](../../../specs/IsotropicDamage2D.md) — patrón análogo de daño isótropo escalar para el caso continuo."
+  - "Spec [IsotropicDamage2D](IsotropicDamage2D.md) — patrón análogo de daño isótropo escalar para el caso continuo."
 ```
 
 ---
@@ -346,10 +346,10 @@ references:
 ## Implementación
 
 - Archivo: `solidum/materials/interface/cohesive_damage_isotropic.py` (desde el 2026-11-10, ADR 0033; antes en el módulo de usuario `discontinuities`)
-- Clase: `CohesiveDamageIsotropic` (registrada en `CohesiveMaterialRegistry`)
+- Clase: `CohesiveDamageIsotropic` (registrada en `InterfaceMaterialRegistry`)
 - Base abstracta: `solidum/core/interface_material.py` (`InterfaceMaterial`, `GEOMETRY = "surface"`)
 - Registry: `solidum/registry.py` (`InterfaceMaterialRegistry`, sección YAML `interface_materials`, paralela a `MaterialRegistry`)
-- Carga: explícita, nunca automática (ADR 0020). `user_modules: [discontinuities]` en YAML o `solidum.load_user_module("discontinuities")` en Python importan recursivamente los submódulos del módulo, y sus decoradores registran el material en `CohesiveMaterialRegistry`; la familia declara la sección YAML `cohesive_materials` (`YAML_SECTION`) y la etiqueta de sus mensajes (`YAML_LABEL = "material cohesivo"`). `solidum.autodiscover.initialize()` no la descubre.
+- Carga: automática, como todo el programa principal: `solidum.autodiscover.initialize()` (al hacer `import solidum`) importa `solidum/materials/interface/` y el decorador la registra en `InterfaceMaterialRegistry`, cuya sección YAML es `interface_materials` y cuya etiqueta de mensajes es `YAML_LABEL = "material de interfaz"`. No hace falta cargar ningún módulo de usuario para declararla; sí para usar el elemento que hoy la consume (`user_modules: [discontinuities]`). *Hasta el 2026-11-10 la cargaba el módulo de usuario `discontinuities` (familia `CohesiveMaterialRegistry`, sección `cohesive_materials`).*
 - Tests:
   - `tests/test_cohesive_damage_isotropic.py` — todos los casos de `acceptance` (verification + specific + arch).
   - `tests/user/discontinuities/test_disc_cst_embedded.py::TestCondensedTangentInSoftening` y `tests/user/discontinuities/test_disc_embedded_uniaxial_softening.py` — el material dentro del elemento: tangente condensada frente a diferencias finitas y tracción uniaxial hasta la separación completa frente a la solución exacta.

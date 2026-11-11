@@ -1,5 +1,5 @@
-"""Refuerzo embebido con adherencia perfecta (spec ``EmbeddedReinforcement``,
-ADR 0032).
+"""Refuerzo embebido, con adherencia perfecta o con adherencia-deslizamiento
+(spec ``EmbeddedReinforcement``, ADR 0032).
 
 La barra es una cadena de elementos 1D ordinarios (``Truss2D``,
 ``Truss3D``, sus variantes corrotacionales, cables, y las barras de tres
@@ -447,8 +447,9 @@ def _line_node_count(element_cls) -> int:
 def embed_reinforcement(domain, points, area: float, material, *, element: Optional[str] = None,
                         hosts: Optional[Iterable[int]] = None, subdivisions: int = 1,
                         element_kwargs: Optional[dict] = None, bond=None) -> EmbeddedBar:
-    """Embebe una barra de refuerzo con adherencia perfecta en los sólidos de
-    ``domain`` (spec ``EmbeddedReinforcement``). Ver
+    """Embebe una barra de refuerzo en los sólidos de ``domain``, con
+    adherencia perfecta o, con ``bond``, con adherencia-deslizamiento (spec
+    ``EmbeddedReinforcement``). Ver
     :class:`EmbeddedReinforcement` para los parámetros; devuelve el
     :class:`EmbeddedBar` con los nodos, elementos y anfitriones creados."""
     return EmbeddedReinforcement(points, area, material, element=element, hosts=hosts,

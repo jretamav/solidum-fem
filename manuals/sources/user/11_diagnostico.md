@@ -37,7 +37,7 @@
   Hay grados de libertad libres sin masa (sin densidad en los elementos que los comparten ni masa de nudo, o sin inercia rotacional), y el mensaje los nombra («nodo 2 (ux)»). Los integradores implícitos los admiten (aceleración inicial consistente, ADR 0024 §6 bis): el error sólo aparece si además forman un mecanismo (`massless_mechanism`: sin masa y sin rigidez que los fije), y se corrige revisando la conectividad y los apoyos. La diferencia central (`explicit_integration`) exige masa en todos: dar masa a esos grados de libertad (`density` o `add_nodal_mass`) o usar un integrador implícito.
 
 - **Aviso:** *la carga aplicada es un np.ndarray simple, sin sus cargas equivalentes por elemento…*
-  Las fuerzas internas de los elementos con carga distribuida pueden salir mal: la carga perdió sus cargas equivalentes al convertirla con `np.asarray`/`np.array` o al sumarla con `+=` sobre un arreglo de ceros, y se ensambló más de una carga de cuerpo. Combinar las cargas que devuelven `assemble_self_weight` y `assemble_body_load` con `+` y escalares (`F = F1 + λ·F2`). Lo mismo avisa el historial de fuerzas internas de un transitorio cuyo `F_func` devuelve un `np.ndarray` simple.
+  Las fuerzas internas de los elementos con carga distribuida pueden salir mal: la carga perdió sus cargas equivalentes al convertirla con `np.asarray`/`np.array` o al sumarla con `+=` sobre un arreglo de ceros, y se ensambló más de una carga de cuerpo. Combinar las cargas que devuelven `assemble_self_weight` y `assemble_body_load` con `+` y escalares (`F = F_a + λ·F_b`). Lo mismo avisa el historial de fuerzas internas de un transitorio cuyo `F_func` devuelve un `np.ndarray` simple.
 
 - **`ValueError`: *la longitud característica h = … supera el límite 2·G_f·E/ft²***
   Con la energía de fractura `G_f`, la rama de ablandamiento en tracción termina en $\varepsilon_{tu} = 2G_f/(f_t h)$. Si el punto de integración es tan largo que $\varepsilon_{tu}$ quedaría por debajo de la deformación de agrietamiento $f_t/E$, la rama tendría retroceso en el propio material. El elemento lo rechaza al construirse y dice cuál es. Usar elementos más cortos.
@@ -47,6 +47,37 @@
 
 - **Un transitorio con concreto deja de converger en la vibración libre.**
   El cierre de una grieta cambia bruscamente la rigidez de la fibra (de la secante agrietada a la de compresión) y el Newton puede rebotar entre las dos ramas. Activar `line_search: true` en el solver, o reducir `dt`.
+
+- **Aviso:** *la etapa empieza fuera de equilibrio (‖F_c − F_int(u0)‖/‖F‖ = …)*
+  Una etapa (`solidum.run(..., previous=…)` o `solve(F, u0=…, constant_load=…)`) no parte del estado convergido de la anterior: otro `u0`, otra carga constante o un `Assembler` distinto, que no guarda el estado interno de los elementos. Continuar con `previous=resultado` y el mismo `Assembler`. La variante *el modelo conserva el estado interno de un análisis anterior, pero esta corrida empieza en U = 0* avisa de un análisis nuevo sobre un modelo ya cargado: para continuarlo, `previous`; para empezar de cero, construir el modelo de nuevo.
+
+- **`ValueError`: *con 'previous' pase también el 'assembler' de la etapa anterior…***
+  El `Assembler` guarda el estado interno de los elementos (plasticidad, daño, grietas); uno nuevo partiría del estado virgen. Pasar a cada etapa el mismo `assembler`.
+
+- **`ValueError`: *… no admite etapas de carga (u0, constant_load)…***
+  Sólo los solvers incrementales estáticos (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`) continúan una etapa con carga constante. Un `LinearSolver` sobre una etapa es una perturbación lineal (ADR 0031) y los transitorios continúan el estado en el tiempo (ADR 0029).
+
+- **`ValueError`: *'previous' es una perturbación lineal…***
+  El resultado de un `LinearSolver` sobre una etapa no cambia el estado de los elementos, así que no se puede continuar desde él: la etapa siguiente debe tomar como `previous` la etapa sobre la que se calculó la perturbación.
+
+- **`ValueError`: *una etapa estática no puede continuar un análisis en el tiempo…***
+  Con `stages`, una etapa estática sólo puede seguir a otra estática: qué carga se mantiene y qué pasa con la velocidad al pasar de un análisis en el tiempo a uno estático son decisiones físicas todavía pendientes. Las etapas modal, armónica y espectral sí pueden seguir a cualquiera (linealizan alrededor de su estado).
+
+- **`YamlValidationError` en `stages`** (*stages: con etapas, el solver y las cargas se declaran en cada etapa…*, *stages[i]: falta el bloque 'solver'*)
+  Con `stages`, el `solver` y las cargas (`point_loads…`, `gravity`, `body_force`, `tractions…`, `thermal_loads`) van dentro de cada etapa (`loads` y `solver`); declararlos además en el nivel raíz es un error. Cada etapa admite sólo `name`, `loads` y `solver`.
+
+- **Aviso:** *ModalSolver: N autovalor(es) negativo(s)… el estado es inestable en esos modos*
+  Un modal sobre el estado de una etapa (ADR 0031) usa su rigidez tangente; un autovalor negativo indica que ese estado es inestable en ese modo (por ejemplo, una carga axial por encima de la de pandeo). Los modos quedan en `ModalResult.unstable_modes`, con su autovalor en `eigenvalues` y frecuencia y periodo `NaN`. Un `ResponseSpectrumSolver` sobre ese estado se detiene con `ValueError` (*el estado sobre el que se calcula tiene modos inestables*): revisar la carga de la etapa.
+
+- **`ValueError` de `EmbeddedReinforcement`** (refuerzo embebido, bloque `constraints` o `solidum.embed_reinforcement`)
+  - *el punto … de la barra no está dentro de ningún elemento anfitrión* / *la barra sale de los anfitriones cerca de …* / *el punto medio … de un tramo no está dentro de ningún anfitrión*: la barra debe quedar entera dentro de los sólidos anfitriones (o de los `hosts` indicados); revisar sus `points` o ampliar `hosts`.
+  - *el dominio no tiene elementos de sólido 2D/3D donde embeber la barra* / *los elementos … no son sólidos isoparamétricos*: la barra se embebe en sólidos con funciones de forma (Tri3, Quad4, Hex8…); la llamada va después de crear esos elementos.
+  - *… no es un elemento 1D de N nodos con traslaciones …* / *… tiene N nodos; la barra admite elementos de línea de dos o tres nodos*: `element` debe ser una barra (`Truss2D`, `Truss3D`, `Truss2D3`, `Truss3D3`…), de la dimensión del sólido.
+  - *Bond: law debe ser un material de interfaz de línea (GEOMETRY='line')*, *Bond: diameter debe ser > 0*, *bond sin 'law'* o *la ley de adherencia … no admite N componentes*: la ley de `bond` debe ser una ley de interfaz de **línea** (`BondSlipModelCode`, `BondSlipMultilinear`) declarada en `interface_materials`, con `diameter` > 0; una ley de grieta (de superficie) no sirve.
+  - *bond_forces: con adherencia-deslizamiento no hay restricciones de embebido…* / *bond_state: la barra tiene adherencia perfecta*: con `bond` las fuerzas de adherencia se leen con `EmbeddedBar.bond_state`; sin `bond`, con `bond_forces`.
+
+- **Aviso:** *CST_Embedded2D: el Newton local del salto no convergió en N iteraciones…*
+  El salto de un elemento con discontinuidad embebida no se pudo despejar en el paso: el cálculo sigue con el residuo local, que el Newton global ve como desequilibrio. Si se repite, reducir el paso. Con la ley de modo mixto `CohesiveDamageMixedMode`, la causa típica es un elemento demasiado grande para el ablandamiento en cortante: el sistema local sólo tiene solución única si $\beta^2 |T'|\,h < G$ (sección «Materiales de interfaz» del capítulo «Catálogo de Modelos Constitutivos»); refinar la malla en la zona de la grieta.
 
 - **Niveles del registro.**
   Con el nivel por omisión (`INFO`) cada solver incremental escribe una línea por paso convergido. El detalle por iteración de Newton sale con `solidum.set_log_level("DEBUG")`. Un `WARNING` de bisección («sin convergencia (tangente singular); bisección…») es un evento que el solver resolvió solo; un `ERROR` significa siempre que el análisis se detuvo.

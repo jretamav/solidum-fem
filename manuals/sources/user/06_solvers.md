@@ -120,8 +120,8 @@ empuje = solidum.run(dom, assembler=asm, F_applied=F_lateral, previous=gravedad,
 - Un desplazamiento impuesto que no cambia entre etapas se queda; uno que se cambia antes de la etapa crece con $\lambda$ desde el valor que tenía.
 - El resultado separa `F_constant` (lo ya aplicado) y `F_variable` (lo que creció, `load_factor`·F); las reacciones son las de la carga total.
 - La etapa comprueba que empieza en equilibrio y lo avisa si no. Empezar en $U = 0$ un modelo que conserva el estado plástico de un análisis anterior también se avisa: para continuarlo se usa `previous`; para un análisis nuevo, se construye el modelo de nuevo.
-- Lo admiten `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver`; desde Python también directamente, `solver.solve(F, u0=U_anterior, constant_load=F_anterior)`. Desde el YAML todavía no.
-- Con dos cargas distribuidas ensambladas en una misma etapa (por ejemplo, peso propio más una fuerza de cuerpo), las fuerzas internas de los elementos descuentan sólo la última: hay que ensamblarlas en etapas distintas o sumar su efecto aparte.
+- Lo admiten `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver`; desde Python también directamente, `solver.solve(F, u0=U_anterior, constant_load=F_anterior)`. Desde el YAML, con el bloque `stages` (capítulo «Archivo de Entrada YAML»).
+- Las cargas distribuidas de cada etapa (peso propio, fuerzas de cuerpo) llevan sus cargas equivalentes por elemento (`LoadVector`, ADR 0027), así que las fuerzas internas de extremo descuentan todas las que actúan, también combinadas en una misma etapa (sección «Cargas distribuidas y sus cargas equivalentes» del capítulo «Uso Avanzado: API Programática»).
 
 ### Casos lineales sobre una etapa (ADR 0031)
 

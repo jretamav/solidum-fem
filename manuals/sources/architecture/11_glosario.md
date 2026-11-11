@@ -2,6 +2,8 @@
 
 Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada entrada da una definición breve (de una a tres frases) y, cuando procede, remite al capítulo donde el concepto se desarrolla.
 
+**Adherencia-deslizamiento**. Transmisión de fuerza entre una barra de refuerzo y el sólido que la rodea a través de una ley entre el esfuerzo de adherencia y el deslizamiento relativo de la barra, en lugar de la unión perfecta. En Solidum la genera el refuerzo embebido con `bond`: una interfaz `BondSlipInterface` por tramo de barra, con una ley de interfaz de línea (`BondSlipModelCode`, `BondSlipMultilinear`). ADR 0032 y 0033.
+
 **Ajuste de paso (incremento de carga)**. División de la carga total en fracciones que se aplican sucesivamente en problemas no lineales. Permite que el método de Newton-Raphson converja a partir de una aproximación cercana a la solución del paso anterior.
 
 **Corrotacional (formulación)**. Descomposición del movimiento de un elemento en una rotación de cuerpo rígido más una deformación local pequeña. La ley constitutiva trabaja en la configuración local; la cinemática del elemento absorbe las grandes rotaciones. Aplicable a armaduras, cables y marcos en régimen geométricamente no lineal con deformación pequeña.
@@ -16,15 +18,17 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Corrector de Newton**. Bucle de corrección compartido por los solvers iterativos (`NewtonCorrector`, ADR 0015): ensambla una vez en el iterado, evalúa el criterio dual con el residuo de ese ensamblaje y el incremento previo, resuelve con el backend algebraico (degradación a LU, factorización congelada opcional), aplica el line search opcional y comitea al converger. Cada solver le entrega un `NewtonProblem` con su residuo, su sistema tangente y su actualización, y conserva su propio control de paso. Ver capítulos 3 y 4.
 
-**Catálogo**. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers) con sus parámetros, validez y referencias. Reside en `docs/catalogo_<categoría>.md`. Es índice y resumen; el detalle vive en las especificaciones.
+**Catálogo**. Documento navegable que enumera todos los componentes implementados de una categoría (elementos, materiales, solvers, restricciones generadas) con sus parámetros, validez y referencias. Reside en `docs/catalogo_<categoría>.md`. Es índice y resumen; el detalle vive en las especificaciones.
 
 **Contrato declarativo**. Mecanismo por el cual una clase declara, mediante atributos de clase como `STRAIN_DIM`, `DOF_NAMES`, `N_INTEGRATION_POINTS`, `PRIMARY_STATE_VAR` o `IS_LINEAR_ELASTIC`, las propiedades fijas que el sistema necesita conocer de ella. La clase base lee estos atributos y se autoconfigura, sustituyendo métodos de inicialización repetitivos en cada subclase. Ver capítulo 5.
 
-**Despachador algebraico**. Función `select_solver(props, override)` que recibe las propiedades de la matriz de rigidez (simetría, definición positiva) y devuelve el algoritmo de factorización adecuado: Cholesky cuando aplica, LU en caso contrario. Ver ADR 0003.
+**Despachador algebraico**. Función `select_solver(props, override)` que recibe las propiedades de la matriz de rigidez (simetría, definición positiva) y devuelve el algoritmo adecuado: Cholesky cuando la matriz es simétrica definida positiva y CHOLMOD está instalado, Pardiso si está instalado (ADR 0017) y LU en otro caso; el iterativo sólo se usa a petición (ADR 0018). Ver ADR 0003.
 
 **`DOF_NAMES`**. Atributo de clase de cada elemento que enumera los nombres de los grados de libertad activos en cada uno de sus nodos. La clase base lo lee para registrar los grados de libertad globales en el `Domain`.
 
 **`Domain`**. Objeto central de la capa de dominio que mantiene la lista de nodos, la conectividad de los elementos, la numeración global de los grados de libertad y, tras la solución, el agregado `SolveResult`.
+
+**Etapa (de análisis)**. Análisis que parte del estado que dejó otro: los desplazamientos, lo que guardan los elementos y la carga que ya actúa, que pasa como carga constante. Así se aplican la gravedad y después el empuje lateral, un transitorio tras un estático o un modal sobre una estructura cargada. Desde Python, `solidum.run(..., previous=resultado)`; desde el YAML, el bloque `stages`. ADR 0026, 0029 y 0031.
 
 **Eliminación directa (de condiciones de Dirichlet)**. Estrategia de imposición de condiciones esenciales que retira los grados de libertad prescritos del sistema antes de resolverlo, en oposición a la penalización (que añade un valor grande a la diagonal) y a los multiplicadores de Lagrange (que amplían el sistema). Toda restricción se expresa en forma afín `u_s = g_s + Σ α_si · u_mi` y se acumula en un `ConstraintSet` (`solidum/bc/`). El ensamblador construye un operador disperso `T` y un vector `g` tales que `u = T · u_libre + g`, y entrega al solver el sistema reducido `K_red = TᵀKT`, `F_red = Tᵀ(F − K · g)`. La imposición es exacta a redondeo y preserva la simetría y la positividad definida de la matriz original. Ver ADR 0004.
 
@@ -52,13 +56,27 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Gradiente conjugado (CG) y MINRES**. Métodos iterativos de Krylov para sistemas lineales simétricos: CG para matrices definidas positivas, MINRES para indefinidas. El solver iterativo de Solidum pasa de uno a otro de forma automática al detectar curvatura negativa. Capítulo 4, ADR 0018.
 
+**Generador de restricciones (restricción generada)**. Objeto que, sobre un dominio ya mallado, crea los nodos, los elementos y las restricciones multipunto que pide una geometría, antes de numerar las ecuaciones (`ConstraintRegistry`, bloque YAML `constraints`, `solidum/bc/`). El primero es el refuerzo embebido. ADR 0032.
+
 **Grado de libertad (DOF)**. Cada incógnita escalar del problema discreto. En estática mecánica, los grados de libertad son los desplazamientos nodales y, en su caso, las rotaciones nodales. La numeración global se establece en el `Domain`.
+
+**Grado de libertad sin masa**. Grado de libertad en el que la matriz de masa es nula (masas sólo en algunos nudos, elementos sin densidad, giros sin inercia rotacional). El análisis modal los condensa estáticamente de forma exacta y los transitorios implícitos los admiten con una aceleración inicial consistente. ADR 0024.
 
 **`IS_LINEAR_ELASTIC`**. Atributo de clase de cada material (`False` por defecto) que declara que su respuesta es lineal y sin historia: `True` en `Elastic1D`, `Elastic2D`, `Elastic3D` y `Orthotropic2D`. Los marcos lo exigen en su camino de forma cerrada (`material` + propiedades geométricas) y rechazan al construir cualquier otro material; la no linealidad material de un marco entra por su sección. Ver capítulo 5 y ADR 0021.
 
+**`LoadVector`**. Vector de cargas que lleva consigo las cargas equivalentes por elemento de su parte distribuida y las combina linealmente con la carga (`F_a ± F_b`, `a·F`). Así las fuerzas internas de los elementos cargados son correctas con varias cargas, casos o etapas. ADR 0027.
+
+**Localización de puntos**. Búsqueda del elemento sólido que contiene un punto y de sus coordenadas naturales, por inversión del mapeo isoparamétrico con Newton a partir de lo que el elemento declara (`REFERENCE_CELL`, funciones de forma), sin código por tipo de elemento (`solidum/mesh/point_location.py`). La usan los generadores de restricciones. ADR 0032.
+
+**Longitud característica (del punto de integración)**. Longitud `h` asociada a cada punto de integración con la que un material con ablandamiento regularizado por energía de fractura ajusta su rama descendente para disipar `G_f/h` por unidad de volumen. La siembra el elemento al construirse y viaja en el estado del punto; el material declara si la usa (`uses_characteristic_length`). ADR 0028.
+
 **Longitud de arco (método de Crisfield)**. Estrategia de solución no lineal que introduce el factor de carga como incógnita adicional y añade una restricción geométrica sobre la trayectoria en el espacio (U, λ). Permite recorrer ramas con derivada infinita o negativa, imprescindible para problemas con *snap-back* o *snap-through*.
 
+**Masa de nudo**. Masa concentrada declarada como dato del dominio en grados de libertad de nudos, traslacionales o rotacionales (`Domain.add_nodal_mass`, bloques YAML `nodal_masses*`). Es sólo inercia: no genera peso con `gravity`. ADR 0024.
+
 **Material**. Ley constitutiva que, dada una deformación y un estado interno, devuelve el esfuerzo y el módulo tangente consistente. Su contrato declarativo está en `solidum/materials/`. Ver capítulo 4.
+
+**Material de interfaz**. Ley entre la tracción sobre una interfaz y el desplazamiento relativo entre sus dos lados, en el sistema local de la interfaz (normales primero): de superficie para grietas y juntas, de línea para barras embebidas. Familia propia (`InterfaceMaterialRegistry`, sección YAML `interface_materials`, base `InterfaceMaterial`). ADR 0033.
 
 **Mecanismo**. Modelo cuyos apoyos o cuya conectividad permiten un movimiento sin deformación: la matriz de rigidez es singular y el problema estático no tiene solución única. Si el movimiento es de sólido rígido del conjunto, Solidum lo detecta antes de resolver y lo describe; si es interno (una rótula de más), lo detecta tras resolver. Capítulo 5, ADR 0019.
 
@@ -76,19 +94,25 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Numba (compilación Just-In-Time, JIT)**. Decorador `@njit` que compila a código nativo, en la primera invocación, las funciones a las que se aplica. La primera ejecución asume el coste de compilación; las siguientes corren a velocidad cercana a Fortran. Restringido a tipos primitivos y arreglos NumPy.
 
-**Pivote nulo**. Valor de la diagonal de la factorización numéricamente igual a cero: indica una matriz singular. Solidum lo considera nulo por debajo de 10⁻¹³ veces la mayor entrada de la matriz, el mismo criterio con que MKL Pardiso los perturba. ADR 0019.
+**Pivote pequeño**. Valor de la diagonal de la factorización pequeño frente a la diagonal de la matriz (`|U_ii|/√(|K_rr|·|K_cc|) < 10⁻⁸`): puede delatar una matriz singular, pero su tamaño también depende del contraste de rigideces y del tamaño del modelo. Desde el 20 de octubre de 2026 Solidum lo usa sólo como filtro: el veredicto sobre un mecanismo interno lo da la energía por elemento del modo de menor energía. ADR 0019.
+
+**Perturbación lineal**. Análisis lineal estático (`LinearSolver`) sobre el estado de una etapa, con la rigidez tangente de los elementos y sin cambiar ese estado: da casos superponibles sobre la estructura cargada (`SolveResult.perturbation`). ADR 0031.
 
 **`PRIMARY_STATE_VAR`**. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
 **Programa principal**. Solidum estándar: los elementos, materiales y solvers de elementos finitos clásicos, es decir, todo `solidum/` salvo `solidum/user/`. Admite un componente según el criterio de admisión de Reglas.md §1 (textos de referencia y código general establecido). No conoce los módulos de usuario; el test de pureza (`tests/test_main_program_purity.py`) lo vigila con tres controles: estructural (ningún import de un módulo de usuario), léxico (ninguna mención de lo que un módulo registra, con los nombres derivados automáticamente) y en ejecución (`import solidum` no carga ningún módulo). Ver capítulo 5 y ADR 0020.
 
-**Registro (registry)**. Diccionario global por categoría (`MaterialRegistry`, `ThermalMaterialRegistry`, `SectionRegistry`, `ElementRegistry`, `SolverRegistry`) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica `Registry` y declaran sus metadatos con atributos públicos de clase: `YAML_LABEL`, la etiqueta de un objeto del registro en los mensajes de error, que tiene todo registro (`"elemento"`, `"solver"`, `"material térmico"`) y sustituye al antiguo atributo privado `_kind`, ya retirado; `SPEC_KIND`, el tipo de spec de sus componentes; y, sólo en las familias (de material o de secciones), `YAML_SECTION`. Cada clase se inscribe automáticamente en su registro mediante un decorador. Un módulo de usuario sólo puede añadir entradas: reasignar una existente hace fallar y deshacer su carga. Ver capítulo 5.
+**Registro (registry)**. Diccionario global por categoría (`MaterialRegistry`, `ThermalMaterialRegistry`, `InterfaceMaterialRegistry`, `SectionRegistry`, `ElementRegistry`, `SolverRegistry`, `ConstraintRegistry`) que mapea el nombre de cada componente con su clase. Todos son subclases de la clase genérica `Registry` y declaran sus metadatos con atributos públicos de clase: `YAML_LABEL`, la etiqueta de un objeto del registro en los mensajes de error, que tiene todo registro (`"elemento"`, `"solver"`, `"material térmico"`, `"material de interfaz"`, `"restricción"`) y sustituye al antiguo atributo privado `_kind`, ya retirado; `SPEC_KIND`, el tipo de spec de sus componentes; y, sólo en las familias (de material o de secciones), `YAML_SECTION`. Cada clase se inscribe automáticamente en su registro mediante un decorador. Un módulo de usuario sólo puede añadir entradas: reasignar una existente hace fallar y deshacer su carga. Ver capítulo 5.
+
+**Refuerzo embebido**. Barra de refuerzo con su propia malla de elementos de línea que atraviesa una malla de sólidos sin coincidir con sus nodos y queda atada al campo interpolado del sólido (adherencia perfecta) o unida a él por interfaces de adherencia-deslizamiento (`EmbeddedReinforcement`). ADR 0032.
 
 **Regla de la mano derecha (RHR)**. Convención de orientación tridimensional para ejes y vectores momento, adoptada universalmente en Solidum FEM para convenciones de signos de magnitudes vectoriales en 3D. Ver capítulo 6.
 
 **Relleno (fill-in)**. Entradas no nulas que aparecen en los factores de una factorización directa donde la matriz tenía ceros. Crece con el tamaño del modelo y domina el tiempo y la memoria de un solver directo: de ×10 a ×42 la matriz original entre 4 000 y 53 000 grados de libertad. ADR 0017.
 
 **Retorno radial (return mapping)**. Algoritmo predictor-corrector para integrar la ecuación constitutiva de plasticidad J2: se asume un paso elástico (predictor), se evalúa el criterio de fluencia y, si el esfuerzo predictor lo viola, se proyecta de vuelta a la superficie de fluencia (corrector). El módulo tangente consistente se obtiene linealizando el algoritmo discreto.
+
+**Seguimiento de grieta**. Procedimiento del módulo de usuario `discontinuities` que decide, entre pasos, por dónde continúa una grieta embebida de un elemento al siguiente, para que las particiones de elementos vecinos sean coherentes: global por región conexa (`GlobalCrackTracking`) o con una trayectoria prescrita (`PrescribedCrackPath`). ADR 0010, fase E.
 
 **Sección de marco**. Ley constitutiva de un marco a nivel de sección transversal (ADR 0021): recibe las deformaciones generalizadas del eje en un punto de Gauss, `[ε₀, κ_z]` o `[ε₀, κ_y, κ_z]`, y devuelve las fuerzas internas `[N, M_z]` o `[N, M_y, M_z]` y su tangente. Familia propia (`SectionRegistry`, sección YAML `sections`, `kind: section`), con la base abstracta `Section` en `solidum/core/section.py`. No guarda estado: la historia de sus puntos materiales en cada punto de Gauss vive en el elemento. La consumen los marcos Euler-Bernoulli con su parámetro `section`. Ver capítulo 4.
 
@@ -101,6 +125,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 **Solver no lineal**. Componente que orquesta la solución de un problema no lineal: subdivisión en pasos, iteraciones internas, criterio de convergencia. En el programa principal de Solidum FEM, los estáticos no lineales son `NonlinearSolver`, `ArcLengthSolver` e `IndirectDisplacementSolver`, y los transitorios no lineales `NewtonNewmarkSolver` y `NewtonHHTSolver`; el módulo de usuario `dissipation_control` añade `DissipationArcLengthSolver`. Es nivel estratégico, distinto del subsistema algebraico. Ver capítulo 4.
 
 **`STRAIN_DIM`**. Atributo de clase de cada material y elemento que declara la dimensión del vector de deformación que manejan: 1 (escalar axial), 3 (Voigt-3 bidimensional), 6 (Voigt-6 tridimensional). El sistema lo usa para validar la compatibilidad material↔elemento en el momento de construcción.
+
+**Terminación**. Cómo terminó un análisis, legible en atributos y no sólo en el registro: `termination` (`max_lambda`, `control_target`, `max_steps`, `t_end` o `diverged`), `completed`, el número de pasos y el último estado convergido, también tras una excepción. ADR 0025.
 
 **Validación temprana en construcción**. Comprobación que la clase base de elemento ejecuta cuando se le asigna un material: verifica que la dimensión de deformación del material coincida con la del elemento. Errores físicos de combinación se detectan en la construcción del caso, no doscientas iteraciones después.
 
