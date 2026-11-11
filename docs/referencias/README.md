@@ -24,6 +24,14 @@ con la fuente oficial donde obtenerla.
 - **Vinculado a**: ADR 0011 (robustez de solvers no lineales), `solidum/math/solvers/`, varios materiales.
 - **Fuente oficial**: distribuido por TU Delft como material académico; existen versiones publicadas posteriores por los mismos autores como referencia académica equivalente (p. ej. de Borst, Crisfield, Remmers, Verhoosel, *Nonlinear Finite Element Analysis of Solids and Structures*, 2nd ed., Wiley, 2012, ISBN 978-0-470-66644-9, que retoma y extiende el contenido).
 
+## Oliver, Huespe & Cante (2008) — Integración IMPL-EX
+
+- **Autores**: J. Oliver, A. E. Huespe, J. C. Cante
+- **Tipo**: artículo, *Computer Methods in Applied Mechanics and Engineering* 197(21–24), 1865–1889, DOI [10.1016/j.cma.2007.11.027](https://doi.org/10.1016/j.cma.2007.11.027)
+- **Contenido relevante para Solidum**: esquema implícito-explícito para modelos de daño y plasticidad (Tabla 3: extrapolación de la variable interna, ec. 35; esfuerzo y tangente secante, ecs. 38–39), análisis del error (§3.5) y control adaptativo del paso (§3.6, ec. 78).
+- **Vinculado a**: specs `IsotropicDamageCrackBand2D/3D` (§8 y Diálogo, con las dos diferencias de la implementación de Solidum aprobadas por el usuario) y ADR 0034 (pseudo-tiempo de los solvers incrementales).
+- **Copia local**: `Oliver_Huespe_Cante_2008_CMAME_IMPLEX.pdf` (no versionada).
+
 ## Otras referencias citadas en ADRs y specs
 
 Los ADRs (`docs/adr/000N-titulo.md`) y las specs (`docs/specs/` en el programa principal, `docs/user/<módulo>/specs/` en los módulos de usuario) citan referencias bibliográficas adicionales en línea. Cada cita lleva información suficiente (autor, año, revista o editorial) para localizar la fuente original a través de buscadores académicos (Google Scholar, Scopus, Web of Science) o catálogos institucionales. No se mantiene un listado consolidado de todas ellas para evitar duplicación con las citas en contexto.
