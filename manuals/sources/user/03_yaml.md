@@ -43,7 +43,7 @@ Las coordenadas pueden ser de 2 o 3 componentes; los elementos 1D 3D (`Truss3D`,
 
 ## Importación de Malla Gmsh: `mesh`
 
-Para problemas continuos 2D, se sustituye el bloque `nodes`/`elements` por una referencia al archivo `.msh`:
+Para problemas continuos 2D o 3D, se sustituye el bloque `nodes`/`elements` por una referencia al archivo `.msh`:
 
 ```yaml
 mesh: "geometria_placa.msh"
@@ -57,10 +57,38 @@ mesh_quadrature: "2x2"
 | `mesh` | Ruta al archivo `.msh` de Gmsh, relativa al YAML. |
 | `mesh_material` | ID del material por defecto que se asocia a toda la malla. |
 | `mesh_thickness` | Espesor por defecto (estado plano 2D). |
-| `mesh_quadrature` | Regla de Gauss: `"2x2"` (completa, recomendada) o `"1x1"` (reducida; produce *hourglassing*). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de `K`. Los elementos sin cuadratura (`Tri3`) la ignoran. |
-| `mesh_element` | Opcional. Tipo de elemento de toda la malla, p. ej. `Quad4Thermal` para un modelo térmico. Sin él, cada celda gmsh da el elemento estándar: `quad` → `Quad4`, `triangle` → `Tri3`. El número de nodos del elemento debe coincidir con el de la celda. |
+| `mesh_quadrature` | Opcional. Regla de Gauss de toda la malla, p. ej. `"2x2"` o `"1x1"` (reducida; produce *hourglassing*) para `Quad4`. Sin ella, cada elemento usa su regla por omisión (`Quad4` 2x2, `Quad8`/`Quad9` 3x3, `Tri6` `tri_3`, los sólidos 3D la suya). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de `K`. Los elementos sin cuadratura (`Tri3`) la ignoran. |
+| `mesh_element` | Opcional. Tipo de elemento de toda la malla, p. ej. `Quad4Thermal` para un modelo térmico. Sin él, cada celda gmsh da el elemento estándar (tabla siguiente). El número de nodos del elemento debe coincidir con el de la celda. |
+
+Celdas de Gmsh que se importan y elemento por omisión:
+
+| Celda | Elemento | Celda | Elemento |
+|---|---|---|---|
+| `triangle` | `Tri3` | `tetra` | `Tet4` |
+| `triangle6` | `Tri6` | `tetra10` | `Tet10` |
+| `quad` | `Quad4` | `hexahedron` | `Hex8` |
+| `quad8` | `Quad8` | `hexahedron20` | `Hex20` |
+| `quad9` | `Quad9` | `hexahedron27` | `Hex27` |
+
+Las celdas de la dimensión de la malla (superficies en 2D, volúmenes en 3D) son los elementos; con ellas, los nodos tienen dos o tres coordenadas. Las de dimensión menor (líneas en 2D, caras en 3D) son contorno: sirven para las cargas y condiciones por grupo físico. Para obtener elementos de orden 2 en Gmsh se usa `Mesh.ElementOrder = 2` (con `Mesh.SecondOrderIncomplete = 1`, cuadriláteros de 8 nodos). Solidum lleva los nodos de cada celda al orden de su elemento y, si una celda viene en sentido horario (2D) o invertida (3D), la reorienta.
 
 `mesh_material` se busca en la familia de material del elemento: en `materials` para los mecánicos, en `thermal_materials` para los térmicos.
+
+### Mallar desde la geometría: `mesh.geometry`
+
+En lugar del `.msh`, el YAML puede declarar la geometría de Gmsh (`.geo`) y las opciones de la malla; Solidum llama a Gmsh, escribe el `.msh` junto al YAML y lo lee:
+
+```yaml
+mesh:
+  geometry: viga.geo        # archivo de geometría de Gmsh, relativo al YAML
+  parameters: {h: 2.5}      # valores de los parámetros del .geo
+  order: 2                  # 1 (por omisión) o 2
+  element_shape: quad       # tri (por omisión) o quad
+  serendipity: true         # con order 2: Quad8/Hex20 (true, por omisión) o Quad9/Hex27
+  output: viga_h2.5.msh     # opcional; por omisión, el nombre del .geo con .msh
+```
+
+`mesh: viga.geo` (sólo la ruta) malla con los valores por omisión. Cada parámetro se declara en el `.geo` con su valor por omisión, `DefineConstant[ h = 10 ];`, y se usa como cualquier variable de Gmsh (`Point(1) = {0, 0, 0, h};`). Un parámetro del YAML que no aparece en el `.geo` es un error. Un estudio de malla consiste en repetir el análisis cambiando `parameters`, y el paso a elementos cuadráticos, en `order: 2`. Los hexaedros 3D los define el propio `.geo` (mallas transfinitas con `Recombine`). Requiere Gmsh (`pip install gmsh`); sin él, se genera el `.msh` aparte y se declara con `mesh: archivo.msh`.
 
 ### Mapeo Avanzado: `mesh_physical_groups`
 
@@ -78,6 +106,18 @@ mesh_physical_groups:
 ```
 
 Un grupo también puede elegir su propio `element`, con cualquier parámetro que acepte ese elemento. Sin `element`, un grupo sólo admite `material`, `thickness` y `quadrature`: cualquier otra clave es un error, no se ignora.
+
+Un grupo de **líneas** (o de caras en 3D) con `element` escrito en el propio grupo se convierte en elementos que comparten los nodos del sólido; así entran, por ejemplo, barras de refuerzo incrustadas en la malla (en Gmsh, la línea se incrusta en la superficie con `Line{...} In Surface{...}`):
+
+```yaml
+mesh_physical_groups:
+  "Barra":
+    element: Truss2D
+    material: 2
+    A: 2.0e-4
+```
+
+El `element` heredado de `mesh_element` no convierte el contorno en elementos.
 
 ## Materiales
 

@@ -50,6 +50,11 @@ dev = [
     "pytest>=7.0",
     "sympy>=1.12",
 ]
+# Mallado desde la geometría (ADR 0035): 'mesh: archivo.geo' o el bloque con
+# 'geometry' llaman a Gmsh. Sin él, la malla se declara como '.msh'.
+mesh = [
+    "gmsh>=4.11",
+]
 # Verificación por soluciones manufacturadas (solidum.verification, ADR
 # 0022): SymPy deriva la fuerza de cuerpo y las tracciones de la solución.
 verification = [

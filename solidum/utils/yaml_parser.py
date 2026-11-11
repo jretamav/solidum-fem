@@ -415,6 +415,15 @@ class YamlParser:
                             f"Admitidos: {advertised}."
                         )
 
+        # --- Malla desde la geometría (ADR 0035) ---
+        mesh_decl = data.get('mesh')
+        if isinstance(mesh_decl, dict):
+            from solidum.mesh.gmsh_geometry import validate_geometry_block
+            errors.extend(validate_geometry_block(mesh_decl))
+        elif mesh_decl is not None and not isinstance(mesh_decl, str):
+            errors.append("'mesh': se esperaba la ruta de un archivo .msh o .geo, o un bloque "
+                          "con 'geometry' (ADR 0035).")
+
         # --- Malla externa + bloques inline: ambigüedad ---
         if has_mesh and (has_nodes or has_elements):
             errors.append(
@@ -656,18 +665,26 @@ class YamlParser:
         if mesh_file:
             from solidum.utils.gmsh_parser import GmshParser
             base_dir = os.path.dirname(self.filepath)
-            mesh_path = os.path.join(base_dir, mesh_file)
-            
-            if not os.path.exists(mesh_path):
-                mesh_path_sin_ext = os.path.join(base_dir, mesh_file.replace('.msh', ''))
-                if os.path.exists(mesh_path_sin_ext):
-                    mesh_path = mesh_path_sin_ext
-            
+            if isinstance(mesh_file, dict) or str(mesh_file).lower().endswith('.geo'):
+                # Malla generada con Gmsh desde la geometría (ADR 0035).
+                from pathlib import Path as _Path
+                from solidum.mesh.gmsh_geometry import mesh_from_geometry, options_from_block
+                block = mesh_file if isinstance(mesh_file, dict) else {'geometry': mesh_file}
+                mesh_path = str(mesh_from_geometry(options_from_block(block, _Path(base_dir or "."))))
+            else:
+                mesh_path = os.path.join(base_dir, mesh_file)
+                if not os.path.exists(mesh_path):
+                    mesh_path_sin_ext = os.path.join(base_dir, mesh_file.replace('.msh', ''))
+                    if os.path.exists(mesh_path_sin_ext):
+                        mesh_path = mesh_path_sin_ext
+
             defaults = {
                 'element': data.get('mesh_element'),
                 'material': data.get('mesh_material', 1),
                 'thickness': data.get('mesh_thickness', 1.0),
-                'quadrature': data.get('mesh_quadrature', '2x2'),
+                # Sin 'mesh_quadrature', cada elemento usa su regla por omisión
+                # (Quad4 2x2, Quad8/Quad9 3x3, Tri6 tri_3, sólidos 3D la suya).
+                'quadrature': data.get('mesh_quadrature'),
             }
             errors = []
             default_spec = self._mesh_spec({}, defaults, 'mesh', errors)
@@ -761,10 +778,15 @@ class YamlParser:
         kwargs.update(strict)
 
         quadrature = props.get('quadrature', defaults['quadrature'])
-        self._get_quadrature(quadrature)            # valida la clave y avisa del 1x1
+        if quadrature is not None:
+            self._get_quadrature(quadrature)        # valida la clave y avisa del 1x1
         optional = {'thickness': float(props.get('thickness', defaults['thickness'])),
                     'quadrature': quadrature}
-        return {'element': element, 'kwargs': kwargs, 'optional': optional}
+        # Sólo un 'element' escrito en el propio grupo convierte en elementos
+        # sus celdas de contorno (p. ej. barras de línea dentro de un sólido);
+        # el heredado de 'mesh_element' no.
+        return {'element': element, 'kwargs': kwargs, 'optional': optional,
+                'explicit_element': 'element' in props}
 
     def _parse_boundary_conditions(self, data: dict):
         bcs_data = data.get('boundary_conditions', []) or []

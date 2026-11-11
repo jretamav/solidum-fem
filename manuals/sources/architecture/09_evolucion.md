@@ -293,6 +293,22 @@ Bajo. Los generadores producen objetos que el resto del programa ya sabía trata
 Bajo. La longitud característica reutiliza la pieza del ADR 0028; el pseudo-tiempo es un dato más que el ensamblador pasa a los materiales que lo piden, sin cambiar la firma de `compute_state` ni la del kernel compilado. Un solver nuevo que avance por pasos debe declarar su pseudo-tiempo para admitir materiales IMPL-EX.
 ```
 
+## Fase 14 — Mallas de Gmsh completas y mallado desde la geometría
+
+**Estado**: implementado (ADR 0035, 11 de noviembre de 2026).
+
+- **Lector de Gmsh** para todas las celdas de los sólidos 2D y 3D, de primer y segundo orden, con el orden de los nodos deducido de las coordenadas de referencia y la orientación corregida.
+- **Mallado desde la geometría** en el YAML: el `.geo` con sus parámetros (tamaño de elemento), el orden y la forma de los elementos; Solidum llama a Gmsh y lee la malla. Un estudio de malla es cambiar un dato del YAML.
+- **Barras incrustadas** desde un grupo físico de líneas con `element`.
+
+```
+[YAML: mesh.geometry + parameters] --> [Gmsh (opcional)] --> [.msh] --> [GmshParser: celda → REFERENCE_NODES del elemento] --> [Domain]
+```
+
+```callout Riesgo de arquitectura
+Bajo. El lector reutiliza el contrato de la celda de referencia del ADR 0022 y la receta por grupo del ADR 0020; las mallas de primer orden existentes se leen igual.
+```
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

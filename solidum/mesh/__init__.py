@@ -2,7 +2,9 @@
 
 :func:`structured_mesh` malla un bloque transformado con cualquier elemento
 que declare ``REFERENCE_CELL`` y ``REFERENCE_NODES``. Las geometrías reales se
-mallan con Gmsh y se leen con ``solidum.utils.gmsh_parser``.
+mallan con Gmsh y se leen con ``solidum.utils.gmsh_parser``; desde el YAML,
+``mesh: {geometry: archivo.geo, ...}`` llama a Gmsh con
+:mod:`solidum.mesh.gmsh_geometry` (ADR 0035).
 """
 from solidum.mesh.structured import (
     SIDES_1D,
