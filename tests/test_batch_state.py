@@ -25,7 +25,7 @@ from solidum.core.element_state import ElementState
 from solidum.math.batch import BatchedElementState, FamilyState, StateSchema
 from solidum.registry import MaterialRegistry, ThermalMaterialRegistry
 
-from test_material_contract_sweep import MUESTRAS
+from test_material_contract_sweep import MUESTRAS, estado_inicial
 
 
 def _strain_that_evolves(material):
@@ -63,7 +63,7 @@ class TestEsquemaObligatorio(unittest.TestCase):
                 material = MaterialRegistry.create(nombre, **MUESTRAS[nombre])
                 schema = StateSchema(material.STATE_SCHEMA)
                 eps = _strain_that_evolves(material)
-                _, _, estado = material.compute_state(eps, None)
+                _, _, estado = material.compute_state(eps, estado_inicial(material))
                 schema.validate(estado)
                 _, _, estado2 = material.compute_state(eps, estado)
                 schema.validate(estado2)
@@ -88,6 +88,12 @@ class TestEsquemaObligatorio(unittest.TestCase):
                 inicial = material.initial_state()
                 schema.validate(inicial)
                 eps = _strain_that_evolves(material)
+                if getattr(material, "uses_characteristic_length", False):
+                    # Sin h sembrada sólo vale el régimen elástico (ADR 0028);
+                    # el estado sembrado también respeta el esquema.
+                    schema.validate(estado_inicial(material))
+                    eps = np.zeros_like(eps)
+                    eps[0] = 1.0e-8
                 s_none, C_none, st_none = material.compute_state(eps, None)
                 s_ini, C_ini, st_ini = material.compute_state(eps, inicial)
                 np.testing.assert_array_equal(np.asarray(s_none, float), np.asarray(s_ini, float))

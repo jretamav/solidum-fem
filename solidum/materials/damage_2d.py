@@ -37,7 +37,14 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap, c_zz,
     equivalente (``_equivalent_strain``) y ``k = f_c/f_t`` el parámetro de
     von Mises modificado (sin uso en las otras medidas). Es el único sitio
     donde vive la física del modelo: lo llaman ``compute_state`` (camino por
-    elemento) y el adaptador por lotes ``_damage_2d_batch`` (ADR 0014).
+    elemento) y el adaptador por lotes ``_damage_2d_batch`` (ADR 0014), y
+    también la variante con banda de grieta ``IsotropicDamageCrackBand2D``,
+    con ``α(h)`` del punto, su tope y la medida de Rankine (código que este
+    material no admite: ``parse_equivalent_strain``).
+
+    Caché de Numba: este núcleo se compila con ``equivalent_strain_2d``
+    dentro; un cambio en ``_equivalent_strain.py`` no invalida la caché de
+    este archivo, así que al cambiar las medidas hay que tocar también éste.
     """
     # Esfuerzo efectivo del medio intacto y deformación equivalente, con
     # ∂ε_eq/∂ε = s·v. El 2D es la restricción exacta de IsotropicDamage3D

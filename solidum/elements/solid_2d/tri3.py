@@ -33,6 +33,9 @@ class Tri3(_PlaneSolidLoads, Element):
     BATCH_SCALE = "thickness"
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_tri3)
     REFERENCE_CELL = "tri"
+    # Banda de grieta: √(2A) (Rots 1988), no el √A de Abaqus: con √A la prueba de
+    # objetividad disipaba 1.41·G_f·A (decisión del usuario 2026-11-11, Q2).
+    CHARACTERISTIC_LENGTH_FACTOR = 2.0 ** 0.5
     REFERENCE_NODES = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0))
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,

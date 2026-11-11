@@ -113,7 +113,7 @@
 - **Variables internas**: `kappa`, `damage`. **Sin variables tensoriales** (a diferencia de los modelos plásticos): el daño es escalar, el historial es escalar.
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D/2D, constante respecto al estado.
 - **Validación**: curva σ-ε analítica bajo confinamiento con las tres medidas ([`tests/validation/test_uniaxial_softening_damage_3d.py`](../tests/validation/test_uniaxial_softening_damage_3d.py)); valores de `ε_eq` frente a una referencia independiente, tangente por diferencias finitas y camino por lotes bit a bit ([`test_damage_equivalent_strain.py`](../tests/test_damage_equivalent_strain.py)).
-- **Limitaciones**: un único daño escalar (el modelo de Mazars completo, con daños de tracción y compresión ponderados, queda fuera; aquí sólo su medida); sin restitución de rigidez al cerrar fisuras; sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (localización en una banda de elementos). Locking volumétrico en `Hex8`/`Tet4` con `ν` cercano a 0.5 → mismo régimen ya documentado para los demás materiales 3D, blindado por test del elemento.
+- **Limitaciones**: un único daño escalar (el modelo de Mazars completo, con daños de tracción y compresión ponderados, queda fuera; aquí sólo su medida); sin restitución de rigidez al cerrar fisuras; sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (localización en una banda de elementos); la regularizada es `IsotropicDamageCrackBand3D`. Locking volumétrico en `Hex8`/`Tet4` con `ν` cercano a 0.5 → mismo régimen ya documentado para los demás materiales 3D, blindado por test del elemento.
 - **Compatible con**: `Hex8`, `Tet4`.
 - **Referencia**: ver `docs/specs/IsotropicDamage3D.md`. Simó & Ju (1987, IJSS 23) medida energética y tangente consistente; Mazars (1986, Eng. Fract. Mech. 25); de Vree, Brekelmans & van Gils (1995, Comput. Struct. 55); Lemaitre & Chaboche (1990); de Souza Neto, Perić & Owen (2008) §12.
 - **Archivo**: [solidum/materials/damage_3d.py](../solidum/materials/damage_3d.py) (medidas en [solidum/materials/_equivalent_strain.py](../solidum/materials/_equivalent_strain.py))
@@ -136,10 +136,28 @@
 - **Parámetros**: `E`, `nu`, `kappa_0`, `alpha`, `hypothesis ∈ {'plane_stress' (default), 'plane_strain'}`, `equivalent_strain` ∈ {`energy` (default), `mazars`, `modified_von_mises`}, `k` (>0, sólo y obligatorio con `modified_von_mises`), `density` (opcional, ADR 0008).
 - **Variables internas**: `kappa`, `damage`.
 - **Admisibilidad (ADR 0006)**: `admissibility_scale = E · κ_0` — idéntica al caso 1D, el criterio de daño tiene el mismo umbral característico independientemente de la dimensión.
-- **Limitación**: un único daño escalar (sin los daños separados de tracción y compresión del modelo de Mazars completo) y sin restitución de rigidez al cerrar fisuras. Sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos).
+- **Limitación**: un único daño escalar (sin los daños separados de tracción y compresión del modelo de Mazars completo) y sin restitución de rigidez al cerrar fisuras. Sin regularización por longitud característica → mesh-dependency en régimen de ablandamiento (banda localizada en una fila de elementos); la regularizada es `IsotropicDamageCrackBand2D`.
 - **Compatible con**: `Quad4`, `Tri3`, `Tri6`, `Quad8`, `Quad9`.
 - **Referencia**: ver `docs/specs/IsotropicDamage2D.md`. Simó & Ju (1987, IJSS 23) medida energética y tangente consistente; Mazars (1986); de Vree, Brekelmans & van Gils (1995); Lemaitre & Chaboche (1990).
 - **Archivo**: [solidum/materials/damage_2d.py](../solidum/materials/damage_2d.py) (medidas en [solidum/materials/_equivalent_strain.py](../solidum/materials/_equivalent_strain.py))
+
+---
+
+## IsotropicDamageCrackBand2D / IsotropicDamageCrackBand3D — daño isótropo con banda de grieta (fisuración distribuida del concreto)
+
+- **Modelo**: variantes de `IsotropicDamage2D` e `IsotropicDamage3D` (que no cambian) para agrietamiento de concreto con fisuración distribuida. La velocidad de ablandamiento no es un dato: en cada punto de integración $\alpha(h) = 1/\bigl(G_f/(h\,f_t) - \kappa_0/2\bigr)$, con $\kappa_0 = f_t/E$ y $h$ la longitud característica que siembra el elemento, para que el punto disipe $G_f/h$ por unidad de volumen y la energía por unidad de área de grieta sea $G_f$ con cualquier malla (banda de grieta, Bažant y Oh 1983). Límite $h < h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual); por encima, `ValueError` al construir el elemento.
+- **Deformación equivalente**: `rankine` por omisión (nueva, $\varepsilon_\text{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo; nunca daña en compresión) o las tres del padre (`energy`, `mazars`, `modified_von_mises`, que con banda de grieta dañan en compresión con la $G_f$ de tracción). Los padres no admiten `rankine`.
+- **Tope del daño**: `damage_max` propio, $1 - 10^{-6}$ por omisión (con el `DAMAGE_MAX = 0.999` del padre se perdía hasta el 27 % de $G_f$ en elementos de 5 mm).
+- **Longitud característica**: la siembra el elemento sólido al construirse (`CHARACTERISTIC_LENGTH_FACTOR`): $h = c\,\Omega_e^{1/d}$ con $\Omega_e$ el área o el volumen; $c = 1$ en `Quad4` y `Hex8`, $\sqrt2$ en `Tri3` (Rots 1988), $6^{1/3}$ en `Tet4`, ½ en los cuadráticos (`Tri6`, `Quad8`, `Quad9`, `Hex20`, `Hex27`, `Tet10`). Un elemento que no la proporciona rechaza el material.
+- **Integración**: implícita con la tangente consistente del padre (simétrica sólo con `energy`). IMPL-EX, en preparación (bloque 2).
+- **STRAIN_DIM**: 3 / 6 · **PRIMARY_STATE_VAR**: `'damage'` · **STATE_SCHEMA**: `{kappa, damage, h}` · kernel por lotes con $h$ en la fila de estado.
+- **Parámetros**: `E`, `nu`, `f_t`, `G_f`, `hypothesis` (2D), `equivalent_strain`, `k` (sólo con `modified_von_mises`), `damage_max`, `density`.
+- **Clasificación (Reglas §1)**: estándar (variante de un material admitido; Abaqus *Concrete Damaged Plasticity* y *Brittle Cracking*, DIANA *Total Strain Crack Model*, Code_Aster `ENDO_ISOT_BETON`, OpenSees `ASDConcrete3D`, todos con regularización por energía de fractura y la longitud del elemento). Spec aprobada por el usuario el 2026-11-11.
+- **Validación**: energía exacta en el punto material; barra en tracción con una columna debilitada: $D/(G_fA) = 0.996$–$0.999$ con 5 a 40 elementos (`Quad4`, `Tri3`, `Hex8`, `Tet4`) y la misma rama posterior al pico. Con $\nu = 0.2$ la banda, confinada lateralmente por los vecinos que se descargan, disipa $(1-\nu^2)G_fA$ en todas las mallas.
+- **Limitaciones**: daño escalar (al agrietarse pierde rigidez también en compresión); sin cierre unilateral; la banda tiende a seguir las líneas de la malla; con integración implícita el Newton puede detenerse en el ablandamiento (Van Vliet: se detiene con el 75 % de $G_f$ disipado), que es lo que resolverá IMPL-EX.
+- **Compatible con**: `Tri3`, `Quad4`, `Tri6`, `Quad8`, `Quad9` (2D); `Hex8`, `Tet4`, `Hex20`, `Hex27`, `Tet10` (3D).
+- **Referencia**: `docs/specs/IsotropicDamageCrackBand2D.md` y `IsotropicDamageCrackBand3D.md`. Bažant y Oh (1983); Hillerborg, Modéer y Petersson (1976); Rots (1988); Oliver (1989).
+- **Archivo**: [solidum/materials/damage_crack_band_2d.py](../solidum/materials/damage_crack_band_2d.py), [solidum/materials/damage_crack_band_3d.py](../solidum/materials/damage_crack_band_3d.py) (común en [solidum/materials/_crack_band.py](../solidum/materials/_crack_band.py))
 
 ---
 

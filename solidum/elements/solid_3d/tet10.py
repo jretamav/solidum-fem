@@ -69,6 +69,7 @@ class Tet10(_HigherOrderSolid3D):
     _LOAD_QUADRATURE = "tet_15"
 
     REFERENCE_CELL = "tet"
+    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·∛V (convenio de Abaqus)
     REFERENCE_NODES = (
         (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0),
         (0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),

@@ -55,6 +55,7 @@ class Truss2D(_TrussLine, Element):
     """
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 1
+    SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,
@@ -282,6 +283,7 @@ class Truss3D(_TrussLine, Element):
     """
     DOF_NAMES = ['ux', 'uy', 'uz']
     STRAIN_DIM = 1
+    SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 1
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float):

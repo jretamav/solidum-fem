@@ -17,6 +17,11 @@ permite un ajuste fino global para problemas de convergencia.
 JACOBIAN_RTOL = 1e-10
 ZERO_JACOBIAN_TOL = JACOBIAN_RTOL  # alias histórico (mismo valor, ahora relativo)
 DAMAGE_MAX = 0.999         # Límite máximo para el daño escalar (evita singularidad en la rigidez)
+# Tope del daño de las variantes con banda de grieta (IsotropicDamageCrackBand2D/3D,
+# decisión del usuario 2026-11-11, Q5 de su spec): con DAMAGE_MAX el tope se alcanza
+# a media rama de ablandamiento en elementos pequeños y se pierde hasta el 27 % de
+# G_f (h = 5 mm); con 1 − 1e-6 la pérdida es < 0.25 % para h ≥ 5 mm.
+CRACK_BAND_DAMAGE_MAX = 1.0 - 1.0e-6
 ZERO_TOL = 1e-12           # Pequeñas operaciones numéricas (normalizaciones, comparaciones de cierre de paso)
 
 # --- Tolerancias del criterio de admisibilidad constitutiva (ADR 0006) ---

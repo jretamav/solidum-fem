@@ -37,3 +37,12 @@ Un `h` inadmisible se rechaza **al construir el elemento**, con el nombre del el
 - El estado del punto lleva una constante más (`h`), declarada en el `STATE_SCHEMA` del material que la usa.
 - Añadir la regularización a otro material (los de daño 2D/3D, con `h` del área o del volumen del elemento sólido) sólo exige que su elemento siembre las longitudes: la pieza ya es general.
 - En los elementos de marco en desplazamientos, `h = w_g·L` es la elección de Coleman y Spacone para elementos en fuerzas. La prueba de objetividad de malla de la spec `ManderConcrete1D` mide su efecto; usar `h = L` da prácticamente la misma respuesta.
+
+## Ampliación (2026-11-11): sólidos 2D y 3D
+
+Segundo consumidor: `IsotropicDamageCrackBand2D` e `IsotropicDamageCrackBand3D` (specs del mismo nombre, aprobadas por el usuario). La pieza se completa con dos atributos declarativos del elemento, sin código por tipo:
+
+- `CHARACTERISTIC_LENGTH_FACTOR = c` en los sólidos: la base calcula al construir el elemento $h = c\,\Omega_e^{1/d}$, con $\Omega_e = \sum_g w_g \det J_g$ (área o volumen) evaluado con la cinemática compilada del propio elemento (`BATCH_KINEMATICS`), y siembra el mismo $h$ en todos sus puntos. $c = 1$ en `Quad4` y `Hex8`, $\sqrt2$ en `Tri3` (Rots 1988), $6^{1/3}$ en `Tet4` y ½ en los cuadráticos; los valores de `Tri3` y `Tet4` los fijó la prueba de objetividad de malla (con el $\sqrt{A}$ / $\sqrt[3]{V}$ de Abaqus disipaban 1.41 y 1.81 veces $G_f A$).
+- `SEEDS_CHARACTERISTIC_LENGTH = True` en las barras y los marcos, que siembran ellos mismos.
+
+Un elemento sin ninguno de los dos rechaza al construirse un material que necesita $h$ (antes el error salía en el primer paso con daño). El estado del punto lleva $h$, así que el camino por lotes (ADR 0014) no cambia.

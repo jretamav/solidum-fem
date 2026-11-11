@@ -82,6 +82,8 @@ MUESTRAS = {
     'IsotropicDamage1D': dict(E=2.0e10, kappa_0=1.0e-4, alpha=0.99),
     'IsotropicDamage2D': dict(E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=0.99),
     'IsotropicDamage3D': dict(E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=0.99),
+    'IsotropicDamageCrackBand2D': dict(E=2.0e10, nu=0.2, f_t=2.0e6, G_f=100.0),
+    'IsotropicDamageCrackBand3D': dict(E=2.0e10, nu=0.2, f_t=2.0e6, G_f=100.0),
     # Con tracción: con ft = 0 (sin tracción, el default) el material no tiene
     # rigidez para ε > 0, y la sonda del régimen elástico, que usa ε > 0, no
     # estaría en régimen elástico. El caso ft = 0 lo cubren sus tests propios.
@@ -91,6 +93,21 @@ MUESTRAS = {
     'VonMises2D':        dict(E=2.0e11, nu=0.3, sigma_y=2.5e8),
     'VonMises3D':        dict(E=2.0e11, nu=0.3, sigma_y=2.5e8),
 }
+
+# Longitud característica de muestra para los materiales que la exigen en cuanto
+# hay daño (banda de grieta, ADR 0028): en un análisis el elemento la siembra al
+# construirse, antes del primer ``compute_state``.
+H_MUESTRA = 0.01
+
+
+def estado_inicial(material):
+    """Estado con el que el material recibe su primer ``compute_state`` en un
+    análisis: ``None`` (sin historia) o, si usa longitud característica, el
+    que siembra el elemento con ``initial_point_state(h)``."""
+    if getattr(material, "uses_characteristic_length", False):
+        return material.initial_point_state(H_MUESTRA)
+    return None
+
 
 # Dimensiones de deformación admitidas por el contrato (docstring de Material).
 STRAIN_DIMS_VALIDAS = (1, 3, 6)

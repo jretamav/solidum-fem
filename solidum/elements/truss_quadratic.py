@@ -60,6 +60,7 @@ class _QuadraticTruss(LineElementMixin, Element):
     """Base de las armaduras de tres nodos: la dimensión la fija
     ``DOF_NAMES``."""
     STRAIN_DIM = 1
+    SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 2
     REFERENCE_NODES: ClassVar[tuple] = ((-1.0,), (1.0,), (0.0,))
     VTK_CELL_TYPE: ClassVar[str] = "line3"

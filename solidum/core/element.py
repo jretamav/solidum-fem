@@ -112,6 +112,23 @@ class Element(ABC):
         coordenadas de área ``ξ, η ≥ 0``, ``ξ + η ≤ 1``), ``"hex"`` o
         ``"tet"``. ``None`` en los elementos sin celda de referencia
         (estructurales 1D).
+    CHARACTERISTIC_LENGTH_FACTOR : ClassVar[float | None], default=None
+        Longitud característica geométrica de los sólidos para materiales
+        con banda de grieta (``Material.uses_characteristic_length``):
+        ``h = factor·Ω_e^(1/d)``, con ``Ω_e`` el área (``d = 2``) o el
+        volumen (``d = 3``) del elemento, la misma en todos sus puntos de
+        integración. Convenio de Abaqus («línea típica a través del
+        elemento»): 1 en elementos lineales y ½ en cuadráticos; √2 en
+        ``Tri3`` (Rots 1988) por la prueba de objetividad (decisión del
+        usuario 2026-11-11). Con un valor, la base siembra ``h`` al
+        construir el elemento (necesita ``points``, ``weights`` y
+        ``BATCH_KINEMATICS``). ``None``: el elemento no la calcula así.
+    SEEDS_CHARACTERISTIC_LENGTH : ClassVar[bool], default=False
+        El elemento siembra él mismo ``h`` con
+        :meth:`_seed_characteristic_lengths` al terminar de construirse
+        (barras y marcos). Un material que necesita ``h`` en un elemento
+        sin este dato ni ``CHARACTERISTIC_LENGTH_FACTOR`` se rechaza al
+        construirlo.
     REFERENCE_NODES : ClassVar[tuple | None], default=None
         Coordenadas naturales de los nodos en ese orden local, una tupla por
         nodo. Las funciones de forma valen ``N_i(ξ_j) = δ_ij`` en ellos (lo
@@ -167,6 +184,8 @@ class Element(ABC):
     BATCH_SHAPE_FUNCTIONS: ClassVar = None
     REFERENCE_CELL: ClassVar[str | None] = None
     REFERENCE_NODES: ClassVar[tuple | None] = None
+    CHARACTERISTIC_LENGTH_FACTOR: ClassVar[float | None] = None
+    SEEDS_CHARACTERISTIC_LENGTH: ClassVar[bool] = False
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material | None = None):
@@ -177,6 +196,7 @@ class Element(ABC):
         self._validate_material_compatibility()
         self._register_dofs()
         self._init_state()
+        self._seed_geometric_characteristic_length()
 
     # ------------------------------------------------------------------
     # Inicialización compartida
@@ -200,6 +220,18 @@ class Element(ABC):
                 f"{type(self.material).__name__} declara STRAIN_DIM={mat_dim}. "
                 f"Use un material 1D con elementos Truss/Frame, 2D con Quad/Tri, etc."
             )
+        cls = type(self)
+        if (getattr(self.material, "uses_characteristic_length", False)
+                and cls.CHARACTERISTIC_LENGTH_FACTOR is None
+                and not cls.SEEDS_CHARACTERISTIC_LENGTH):
+            raise ValueError(
+                f"{cls.__name__}(id={self.id}): el material "
+                f"{type(self.material).__name__} necesita la longitud característica "
+                f"h de cada punto de integración (banda de grieta) y este elemento no "
+                f"la proporciona. La proporcionan las barras, los marcos y los "
+                f"sólidos 2D y 3D (Tri3, Quad4, Tri6, Quad8, Quad9, Hex8, Tet4, Hex20, "
+                f"Hex27, Tet10)."
+            )
         if getattr(self.material, "IS_UNILATERAL", False) and not self.ACCEPTS_UNILATERAL:
             raise ValueError(
                 f"{type(self).__name__}(id={self.id}): material unilateral "
@@ -217,6 +249,33 @@ class Element(ABC):
     def _init_state(self) -> None:
         init_stress = 0.0 if self.STRAIN_DIM == 1 else np.zeros(self.STRAIN_DIM)
         self.state = ElementState(self.N_INTEGRATION_POINTS, init_stress=init_stress)
+
+    def _seed_geometric_characteristic_length(self) -> None:
+        """Siembra ``h = factor·Ω_e^(1/d)`` en todos los puntos de un sólido
+        (``CHARACTERISTIC_LENGTH_FACTOR``), sólo si el material la usa.
+
+        ``Ω_e = Σ_g w_g·det J_g`` con la cuadratura y la cinemática del propio
+        elemento (``BATCH_KINEMATICS``): exacta para el área o el volumen de
+        un elemento isoparamétrico con la regla de integración del elemento.
+        """
+        factor = type(self).CHARACTERISTIC_LENGTH_FACTOR
+        if factor is None or not getattr(self.material, "uses_characteristic_length", False):
+            return
+        points = np.asarray(getattr(self, "points"), dtype=np.float64)
+        weights = np.asarray(getattr(self, "weights"), dtype=np.float64)
+        dim = points.shape[1]
+        coords = np.ascontiguousarray(self.get_coordinate_matrix(ndim=dim))
+        kin = type(self).BATCH_KINEMATICS
+        B = np.zeros((self.STRAIN_DIM, len(self.nodes) * len(self.DOF_NAMES)))
+        measure = 0.0
+        for pt, w in zip(points, weights):
+            measure += w * kin(np.ascontiguousarray(pt), coords, B)
+        if not measure > 0.0:
+            raise ValueError(
+                f"{type(self).__name__}(id={self.id}): medida del elemento "
+                f"{measure:.4g} ≤ 0; no se puede calcular su longitud característica.")
+        h = factor * measure ** (1.0 / dim)
+        self._seed_characteristic_lengths(np.full(self.state.num_ip, h))
 
     def _seed_characteristic_lengths(self, lengths) -> None:
         """Entrega a cada punto de integración su longitud característica.

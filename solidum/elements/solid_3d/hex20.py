@@ -63,6 +63,7 @@ class Hex20(_HigherOrderSolid3D):
     _LOAD_QUADRATURE = "hex_3x3x3"
 
     REFERENCE_CELL = "hex"
+    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·∛V (convenio de Abaqus)
     REFERENCE_NODES = (
         (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
         (-1.0, -1.0, 1.0), (1.0, -1.0, 1.0), (1.0, 1.0, 1.0), (-1.0, 1.0, 1.0),

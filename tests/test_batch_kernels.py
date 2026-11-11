@@ -30,7 +30,7 @@ from solidum.registry import ElementRegistry, MaterialRegistry, ThermalMaterialR
 from test_element_contract_sweep import (
     ARNES_PROGRAMA_PRINCIPAL, ESPESOR, FABRICAS, TERMICOS, nombres_programa_principal,
 )
-from test_material_contract_sweep import MUESTRAS
+from test_material_contract_sweep import MUESTRAS, estado_inicial
 
 RNG = np.random.default_rng(20260922)
 
@@ -96,8 +96,8 @@ class TestKernelesDeMaterial(unittest.TestCase):
         schema = StateSchema(material.STATE_SCHEMA)
         dim = material.STRAIN_DIM
         S = np.zeros(schema.n_state)
-        schema.pack(material.initial_state(), S)
-        state = None
+        state = estado_inicial(material)
+        schema.pack(material.initial_state() if state is None else state, S)
         for eps in self._strains(dim):
             sig_ref, C_ref, state = material.compute_state(eps.copy(), state)
             sig, Ct, S_new, _flag = _run_kernel(material, kernel, eps, S)

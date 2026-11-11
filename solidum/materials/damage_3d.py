@@ -34,8 +34,13 @@ def _compute_damage_3d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap,
     Devuelve ``(σ, C_tan, κ_new, d)``. ``measure`` es el código de la
     deformación equivalente (``_equivalent_strain``) y ``k = f_c/f_t`` el
     parámetro de von Mises modificado (sin uso en las otras medidas). Único
-    sitio donde vive la física: lo llaman ``compute_state`` y el adaptador
-    por lotes (ADR 0014).
+    sitio donde vive la física: lo llaman ``compute_state``, el adaptador
+    por lotes (ADR 0014) y la variante ``IsotropicDamageCrackBand3D``, con
+    ``α(h)`` del punto, su tope y la medida de Rankine.
+
+    Caché de Numba: este núcleo se compila con ``equivalent_strain_3d``
+    dentro; un cambio en ``_equivalent_strain.py`` no invalida la caché de
+    este archivo, así que al cambiar las medidas hay que tocar también éste.
     """
     # Esfuerzo efectivo del medio intacto y deformación equivalente, con
     # ∂ε_eq/∂ε = s·v en Voigt 6D engineering.

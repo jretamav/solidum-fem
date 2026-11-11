@@ -66,6 +66,7 @@ class Frame2DEuler(Frame2DLine, FrameSectionMixin, Element):
 
     DOF_NAMES = ['ux', 'uy', 'rz']
     STRAIN_DIM = 1
+    SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 1
     REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}
     SECTION_DIM = 2

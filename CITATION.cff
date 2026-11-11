@@ -16,7 +16,8 @@ abstract: >-
   optimized for extension via AI-assisted development. The main program
   provides 1D structural elements (2- and 3-node truss, cable, frame with an
   optional fiber section), 2D and 3D solid elements, elastic (isotropic and
-  orthotropic), J2 and Drucker-Prager plasticity, continuum damage and
+  orthotropic), J2 and Drucker-Prager plasticity, continuum damage (also
+  regularized by the crack band for smeared cracking of concrete) and
   uniaxial confined concrete materials, interface laws (mode I and
   mixed-mode cohesive damage, bar-concrete bond-slip), embedded
   reinforcement with perfect bond or bond-slip, linear and nonlinear static

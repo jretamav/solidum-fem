@@ -39,6 +39,7 @@ class Tri6(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "tri_6"
 
     REFERENCE_CELL = "tri"
+    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·√A (convenio de Abaqus)
     REFERENCE_NODES = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0),
                        (0.5, 0.0), (0.5, 0.5), (0.0, 0.5))
 

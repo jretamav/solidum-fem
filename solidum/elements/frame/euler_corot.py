@@ -68,6 +68,7 @@ class Frame2DEulerCorot(Frame2DLine, FrameSectionMixin, Element):
 
     DOF_NAMES = ['ux', 'uy', 'rz']
     STRAIN_DIM = 1
+    SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 1
     GEOMETRICALLY_NONLINEAR = True
     REFERENCE_KWARGS = {"material": MaterialRegistry, "section": SectionRegistry}

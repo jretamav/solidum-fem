@@ -33,6 +33,10 @@ class Tet4(_SolidLoads3D, Element):
     BATCH_KINEMATICS = _batch_kin_tet4
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_tet4)
     REFERENCE_CELL = "tet"
+    # Banda de grieta: ∛(6V), el análogo 3D del √(2A) de Rots en Tri3 (el cubo
+    # que forman seis tetraedros), no el ∛V de Abaqus: con ∛V la prueba de
+    # objetividad disipaba 1.81·G_f·A (spec IsotropicDamageCrackBand3D §2).
+    CHARACTERISTIC_LENGTH_FACTOR = 6.0 ** (1.0 / 3.0)
     REFERENCE_NODES = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
 
     # ADR 0012 — 4 caras con normal saliente. Cara i opuesta al nodo i.

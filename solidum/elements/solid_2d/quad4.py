@@ -51,6 +51,7 @@ class Quad4(_PlaneSolidLoads, Element):
     BATCH_SCALE = "thickness"
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_quad4)
     REFERENCE_CELL = "quad"
+    CHARACTERISTIC_LENGTH_FACTOR = 1.0  # banda de grieta, lineal: √A (convenio de Abaqus)
     REFERENCE_NODES = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0))
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material,

@@ -16,6 +16,12 @@ que ``κ₀ = f_t/E``:
 - ``"modified_von_mises"`` (de Vree, Brekelmans y van Gils 1995): función
   de ``I₁`` y ``J₂`` de la deformación con ``k = f_c/f_t``; en compresión
   uniaxial de esfuerzo ``ε_eq = |ε|/k``.
+- ``"rankine"`` (desde el 2026-11-11, aprobada por el usuario para la
+  fisuración distribuida): ``ε_eq = ⟨σ̄_I⟩₊/E`` con ``σ̄_I`` el mayor esfuerzo
+  principal **efectivo** (``σ̄ = C_e·ε``) del estado 3D asociado. Nunca daña
+  en compresión. Sólo la admiten las variantes con banda de grieta
+  (``IsotropicDamageCrackBand2D/3D``): los padres conservan sus tres
+  medidas (parámetro ``allowed`` de :func:`parse_equivalent_strain`).
 
 Por qué un módulo propio: las tres medidas son las mismas en 2D y en 3D (el
 2D es la restricción del 3D con ``ε_zz = c_zz·(ε_xx + ε_yy)`` y
@@ -36,11 +42,18 @@ derivada no existe y se devuelve ``s = 0``; el material no la usa, porque
 la rama consistente exige ``ε_eq > κ ≥ κ₀ > 0``.
 
 El código numérico de la medida (``ENERGY``, ``MAZARS``,
-``MODIFIED_VON_MISES``) se valida al construir el material
+``MODIFIED_VON_MISES``, ``RANKINE``) se valida al construir el material
 (:func:`parse_equivalent_strain`); los núcleos compilados no lanzan
 excepciones (una excepción dentro del kernel por lotes paralelo se
-perdería, ADR 0014) y tratan cualquier código distinto de los dos primeros
-como von Mises modificado.
+perdería, ADR 0014) y tratan cualquier código distinto de ``ENERGY``,
+``MAZARS`` y ``RANKINE`` como von Mises modificado.
+
+Rankine: ``ε_eq = p·σ̄/E`` con ``p`` la dirección principal mayor en Voigt
+de esfuerzo (``[n_x², n_y², n_z², 2n_xn_y, 2n_yn_z, 2n_xn_z]``), así que
+``∂ε_eq/∂ε = C_eᵀ·p/E = C_e·p/E``; con ``C_e`` isótropa,
+``C_e·p = 2μ·[n_x², n_y², n_z², n_xn_y, n_yn_z, n_xn_z] + λ·[1, 1, 1, 0, 0, 0]``
+(se devuelve ``v = C_e·p`` y ``s = 1/E``). Con valores principales repetidos
+se toma uno de los vectores propios (subgradiente).
 """
 from __future__ import annotations
 
@@ -53,26 +66,33 @@ from numba import njit
 ENERGY = 0
 MAZARS = 1
 MODIFIED_VON_MISES = 2
+RANKINE = 3
 
 EQUIVALENT_STRAIN_CODES = {
     "energy": ENERGY,
     "mazars": MAZARS,
     "modified_von_mises": MODIFIED_VON_MISES,
+    "rankine": RANKINE,
 }
 DEFAULT_EQUIVALENT_STRAIN = "energy"
+# Medidas de los materiales de daño padre (IsotropicDamage2D/3D); Rankine
+# sólo la admiten las variantes con banda de grieta.
+DAMAGE_EQUIVALENT_STRAINS = ("energy", "mazars", "modified_von_mises")
 
 
-def parse_equivalent_strain(owner: str, equivalent_strain, k) -> tuple[str, int, float | None]:
+def parse_equivalent_strain(owner: str, equivalent_strain, k,
+                            allowed=DAMAGE_EQUIVALENT_STRAINS) -> tuple[str, int, float | None]:
     """Valida la pareja ``(equivalent_strain, k)`` al construir el material.
 
     Devuelve ``(nombre, código, k)``, con ``k = None`` salvo en
-    ``"modified_von_mises"``. Lanza ``ValueError`` con el nombre del material
-    (``owner``) y del parámetro si la medida es desconocida, si falta ``k``
+    ``"modified_von_mises"``. ``allowed`` son los nombres que admite el
+    material. Lanza ``ValueError`` con el nombre del material (``owner``) y
+    del parámetro si la medida es desconocida o no admitida, si falta ``k``
     con von Mises modificado, si se da ``k`` con otra medida o si ``k`` no es
     un número finito positivo.
     """
-    validas = sorted(EQUIVALENT_STRAIN_CODES)
-    if not isinstance(equivalent_strain, str) or equivalent_strain not in EQUIVALENT_STRAIN_CODES:
+    validas = sorted(allowed)
+    if not isinstance(equivalent_strain, str) or equivalent_strain not in allowed:
         raise ValueError(
             f"{owner}: equivalent_strain={equivalent_strain!r} no reconocida. "
             f"Valores válidos: {validas}."
@@ -209,12 +229,52 @@ def _mazars_3d(e):
 
 
 @njit(cache=True)
+def _rankine_3d(sigma_eff, E, nu):
+    """Rankine sobre el esfuerzo efectivo 3D (Voigt 6D de esfuerzo).
+
+    ``ε_eq = ⟨σ̄_I⟩₊/E``; ``v = C_e·p`` con ``p`` la dirección principal mayor
+    en Voigt de esfuerzo (docstring del módulo).
+    """
+    v = np.zeros(6)
+    T = np.empty((3, 3))
+    T[0, 0] = sigma_eff[0]
+    T[1, 1] = sigma_eff[1]
+    T[2, 2] = sigma_eff[2]
+    T[0, 1] = sigma_eff[3]
+    T[1, 0] = sigma_eff[3]
+    T[1, 2] = sigma_eff[4]
+    T[2, 1] = sigma_eff[4]
+    T[0, 2] = sigma_eff[5]
+    T[2, 0] = sigma_eff[5]
+    w, V = np.linalg.eigh(T)          # autovalores en orden ascendente
+    s1 = w[2]
+    if s1 <= 0.0:
+        return 0.0, v
+    n0 = V[0, 2]
+    n1 = V[1, 2]
+    n2 = V[2, 2]
+    two_mu = E / (1.0 + nu)
+    lam = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
+    v[0] = two_mu * n0 * n0 + lam
+    v[1] = two_mu * n1 * n1 + lam
+    v[2] = two_mu * n2 * n2 + lam
+    v[3] = two_mu * n0 * n1
+    v[4] = two_mu * n1 * n2
+    v[5] = two_mu * n0 * n2
+    return s1 / E, v
+
+
+@njit(cache=True)
 def equivalent_strain_3d(strain, sigma_eff, E, nu, measure, k):
     """``(ε_eq, v, s)`` del estado 3D, con ``∂ε_eq/∂ε = s·v`` (Voigt 6D).
 
-    ``sigma_eff = C_e·ε`` es el esfuerzo efectivo (lo usa la medida
-    energética); ``nu`` y ``k`` los usa von Mises modificado.
+    ``sigma_eff = C_e·ε`` es el esfuerzo efectivo (lo usan las medidas
+    energética y de Rankine); ``nu`` y ``k`` los usa von Mises modificado.
     """
+    if measure == RANKINE:
+        eps_eq, v = _rankine_3d(sigma_eff, E, nu)
+        s = 1.0 / E if eps_eq > 0.0 else 0.0
+        return eps_eq, v, s
     if measure == ENERGY:
         w = 0.0
         for a in range(6):
@@ -248,6 +308,10 @@ def equivalent_strain_2d(strain, sigma_eff, E, nu, c_zz, measure, k):
     - Mazars: forma cerrada; ``z`` es dirección principal (``γ_xz = γ_yz = 0``)
       y las otras dos salen del bloque ``2×2`` del plano.
     - von Mises modificado: sobre el estado 3D asociado y regla de la cadena.
+    - Rankine: forma cerrada sobre ``σ̄`` plano; en deformación plana compite
+      ``σ̄_zz = ν·(σ̄_xx + σ̄_yy)`` (en tensión plana ``σ̄_zz = 0``). Es la
+      restricción exacta de la medida 3D: con ``n`` en el plano,
+      ``λ·(1 + c_zz)`` es la ``λ`` plana (``E·ν/(1−ν²)`` en tensión plana).
     """
     if measure == ENERGY:
         w = strain[0] * sigma_eff[0] + strain[1] * sigma_eff[1] + strain[2] * sigma_eff[2]
@@ -255,6 +319,42 @@ def equivalent_strain_2d(strain, sigma_eff, E, nu, c_zz, measure, k):
         v = sigma_eff.copy()
         s = 1.0 / (E * eps_eq) if eps_eq > 0.0 else 0.0
         return eps_eq, v, s
+
+    if measure == RANKINE:
+        v = np.zeros(3)
+        sx = sigma_eff[0]
+        sy = sigma_eff[1]
+        sxy = sigma_eff[2]
+        h2 = 0.5 * (sx - sy)
+        r2 = math.sqrt(h2 * h2 + sxy * sxy)
+        s1 = 0.5 * (sx + sy) + r2
+        lam3 = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
+        # σ̄_zz del estado 3D asociado: 0 en tensión plana (c_zz ≠ 0, o ν = 0,
+        # donde las dos hipótesis coinciden) y ν·(σ̄_xx + σ̄_yy) en deformación plana.
+        szz = nu * (sx + sy) if c_zz == 0.0 else 0.0
+        if szz > s1:
+            if szz <= 0.0:
+                return 0.0, v, 0.0
+            v[0] = lam3
+            v[1] = lam3
+            return szz / E, v, 1.0 / E
+        if s1 <= 0.0:
+            return 0.0, v, 0.0
+        if r2 > 0.0:
+            c2 = h2 / r2                # cos 2θ
+            s2 = sxy / r2               # sin 2θ
+        else:
+            c2 = 1.0                    # arista: cualquier dirección (subgradiente)
+            s2 = 0.0
+        nxx = 0.5 * (1.0 + c2)
+        nyy = 0.5 * (1.0 - c2)
+        nxy = 0.5 * s2
+        two_mu = E / (1.0 + nu)
+        lam_p = lam3 * (1.0 + c_zz)     # λ plana
+        v[0] = two_mu * nxx + lam_p
+        v[1] = two_mu * nyy + lam_p
+        v[2] = two_mu * nxy
+        return s1 / E, v, 1.0 / E
 
     x = strain[0]
     y = strain[1]

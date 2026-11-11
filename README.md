@@ -25,10 +25,12 @@ Main program:
   Euler/Timoshenko/corotational, frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9,
   Tri6), 3D solids linear (Hex8, Tet4) and quadratic (Hex20, Hex27, Tet10), and
   thermal conduction elements (Quad4Thermal, Hex8Thermal).
-- **19 materials** in three families: 14 mechanical (elastic 1D/2D/3D,
+- **21 materials** in three families: 16 mechanical (elastic 1D/2D/3D,
   orthotropic 2D elasticity, unilateral cable, J2 plasticity (1D, plane strain,
   plane stress, 3D), Drucker-Prager (2D and 3D), isotropic continuum damage
-  1D/2D/3D, and uniaxial concrete with Mander's confined/unconfined envelope,
+  1D/2D/3D, smeared cracking of concrete in 2D and 3D (isotropic damage
+  regularized by the crack band, with a Rankine equivalent strain and the
+  characteristic length seeded by the solid elements), and uniaxial concrete with Mander's confined/unconfined envelope,
   tension softening and optional fracture-energy regularization); 4 interface
   laws relating traction to relative displacement (mode I and mixed-mode
   cohesive damage with linear, exponential or fib Model Code 2010 bilinear
@@ -104,7 +106,7 @@ Documentation and tests:
 - **61 validated specs** with quantitative acceptance criteria (58 for the main
   program, 3 for the `discontinuities` user module; the spec of the
   `dissipation_control` module is implemented and partially validated).
-- **3243 tests** green (120 of them for the `discontinuities` user module and
+- **3326 tests** green (120 of them for the `discontinuities` user module and
   36 for `dissipation_control`),
   including 8 published canonical benchmarks (Lamé 2D and 3D, NAFEMS LE1 and
   LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation, Hill 1950,

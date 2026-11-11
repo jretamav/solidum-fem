@@ -24,13 +24,14 @@ con cifras citables contra referencias externas.
 | 13 | **Sección por fibras de los marcos** — M–κ, interacción N–M y colapsos de Neal (1977), sección circular a 45°, corrotacional | `test_fiber_section_validation.py` | Frame2DEuler, Frame2DEulerCorot, Frame3D + FiberSection (Elastic1D, Elastoplastic1D) + NonlinearSolver | 43/43 |
 | 14 | **Cilindro hueco térmico** — perfil logarítmico de Carslaw-Jaeger | `test_thermal_hollow_cylinder.py` | Quad4Thermal, Hex8Thermal + ThermalConduction + LinearSolver | 2/2 |
 | 15 | **Concreto de Mander** — M–κ de una sección de concreto reforzado frente a una integración independiente, voladizo hasta el pico, objetividad de malla (barra a tracción con banda de fisuración; voladizo después del pico), ciclos, transitorio con disipación, YAML | `test_mander_concrete_validation.py` | Frame2DEuler, Truss2D + FiberSection (ManderConcrete1D, Elastoplastic1D) + IndirectDisplacementSolver, NewtonNewmarkSolver | 8/8 |
+| 16 | **Banda de grieta** — objetividad de malla de la energía disipada (barra a tracción con una columna debilitada; 2D con ν = 0 y ν = 0.2, 3D) | `test_crack_band_objectivity.py` | Quad4, Tri3, Hex8, Tet4 + IsotropicDamageCrackBand2D/3D (Rankine) + NonlinearSolver | 5/5 |
 
 La verificación por soluciones manufacturadas (ADR 0022) vive en el mismo
 directorio (`test_mms_solid_2d.py`, `test_mms_solid_3d.py`,
 `test_mms_thermal.py`) pero no es un benchmark externo: mide el orden de
 convergencia contra soluciones inventadas, y no entra en el total.
 
-**Total: 314/314 tests verde**. Última actualización: 2026-11-09 (benchmark 15 nuevo, concreto de Mander). Antes, 2026-10-27 (benchmark 14 nuevo, cilindro hueco térmico). Antes, 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
+**Total: 319/319 tests verde**. Última actualización: 2026-11-11 (benchmark 16 nuevo, banda de grieta: D/(G_f·A) = 0.996–0.999 con 5 a 20 elementos; con ν = 0.2, (1−ν²)·G_f·A). Antes, 2026-11-09 (benchmark 15 nuevo, concreto de Mander). Antes, 2026-10-27 (benchmark 14 nuevo, cilindro hueco térmico). Antes, 2026-09-29 (benchmark 13 nuevo, los ocho casos de aceptación de la spec `FiberSection`; antes, el mismo día: benchmark 12 nuevo, medidas de deformación equivalente del daño 2D/3D contra formas cerradas; benchmark 9 ejecutado con las tres medidas de deformación equivalente del daño; antes, 2026-09-10: benchmark 11 ampliado a los cinco elementos sólidos 2D y a las tres constantes aparentes de Jones, medidas sobre modelo FEM completo).
 
 ## Resultados cuantitativos por benchmark
 

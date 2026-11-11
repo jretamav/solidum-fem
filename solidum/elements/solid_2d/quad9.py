@@ -20,6 +20,7 @@ class Quad9(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "3x3"
 
     REFERENCE_CELL = "quad"
+    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·√A (convenio de Abaqus)
     REFERENCE_NODES = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0),
                        (0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0),
                        (0.0, 0.0))

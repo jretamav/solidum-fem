@@ -52,6 +52,7 @@ class Hex8(_SolidLoads3D, Element):
     BATCH_KINEMATICS = _batch_kin_hex8
     BATCH_SHAPE_FUNCTIONS = staticmethod(_shape_functions_hex8)
     REFERENCE_CELL = "hex"
+    CHARACTERISTIC_LENGTH_FACTOR = 1.0  # banda de grieta, lineal: ∛V (convenio de Abaqus)
     REFERENCE_NODES = (
         (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
         (-1.0, -1.0, 1.0), (1.0, -1.0, 1.0), (1.0, 1.0, 1.0), (-1.0, 1.0, 1.0),

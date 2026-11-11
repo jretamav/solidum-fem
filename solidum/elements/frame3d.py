@@ -87,6 +87,7 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
 
     DOF_NAMES = ['ux', 'uy', 'uz', 'rx', 'ry', 'rz']
     STRAIN_DIM = 1
+    SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 1
     # Campo interior en ejes locales (ADR 0022, fase 4).
     LINE_FIELDS = ("u", "v", "w", "theta_x", "theta_y", "theta_z")
