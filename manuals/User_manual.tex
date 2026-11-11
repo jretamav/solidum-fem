@@ -1593,9 +1593,13 @@ Variante de \texttt{IsotropicDamage2D} para el agrietamiento del concreto con fi
 para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en \texttt{Quad4}, $\sqrt{2A}$ en \texttt{Tri3}, $\tfrac12\sqrt{A}$ en \texttt{Tri6}, \texttt{Quad8} y \texttt{Quad9}); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
 
 \begin{itemize}
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f} (energía por unidad de área, N/m en SI), \texttt{hypothesis}, \texttt{equivalent\_\allowbreak{}strain} (\texttt{rankine} por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también \texttt{energy}, \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} con \texttt{k}), \texttt{damage\_max} (tope del daño, $1 - 10^{-6}$ por omisión), \texttt{density}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f} (energía por unidad de área, N/m en SI), \texttt{hypothesis}, \texttt{equivalent\_\allowbreak{}strain} (\texttt{rankine} por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también \texttt{energy}, \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} con \texttt{k}), \texttt{damage\_max} (tope del daño, $1 - 10^{-6}$ por omisión), \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{density}.
   \item \textbf{Con qué medida}: con banda de grieta todo daño ablanda con la $G_f$ de tracción. \texttt{rankine} es la adecuada para agrietamiento dominado por tracción; las otras dañan también en compresión (la energética a $f_t$, Mazars a $\approx 3.5 f_t$, von Mises modificado a $f_c$ pero con una compresión demasiado frágil).
-  \item \textbf{Integración}: implícita. En el ablandamiento el Newton puede detenerse cuando varias zonas se dañan a la vez; la integración IMPL-EX, más robusta, está en preparación.
+  \item \textbf{Integración} (\texttt{integration}):
+  \item \texttt{implicit} (por omisión): el daño de cada paso se calcula con la deformación del mismo paso y la tangente es la consistente. En el ablandamiento el Newton puede necesitar bisecciones o detenerse cuando varias zonas se dañan a la vez.
+  \item \texttt{impl-ex} (Oliver, Huespe y Cante 2008): el daño del paso se \textbf{extrapola} de los dos pasos anteriores y queda fijo durante el paso; el material es lineal dentro del paso, con tangente secante simétrica y definida positiva, y el Newton converge en una iteración (más la de comprobación). Al confirmar el paso se calcula el daño real, que sirve para la extrapolación siguiente. Es la opción robusta para estructuras grandes o con varias grietas.
+  \item \textbf{Tamaño del paso con \texttt{impl-ex}}: el daño va un paso atrasado y el error es proporcional al paso; donde el daño arranca (cerca del pico) hacen falta pasos pequeños. En el ensayo de tracción de Van Vliet el pico se pasa un 7.7 \% con pasos de 0.5 µm y un 0.8 \% con 0.0625 µm. Compare dos tamaños de paso antes de dar un resultado por bueno; la variable de estado \texttt{damage\_error} (diferencia entre el daño real y el extrapolado) indica dónde y cuándo el paso es grueso.
+  \item \textbf{Solvers}: \texttt{impl-ex} funciona con los solvers que avanzan por pasos y declaran su pseudo-tiempo (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver}, \texttt{NewtonNewmarkSolver}, \texttt{NewtonHHTSolver}, \texttt{CentralDifferenceSolver}; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}). En los análisis lineales y en el post-proceso el material usa el daño confirmado.
   \item \textbf{Limitaciones}: daño escalar (al agrietarse el punto pierde rigidez también en compresión), sin cierre de grietas; la banda tiende a seguir las líneas de la malla. En una banda que sus vecinos impiden contraerse lateralmente, la energía disipada es $(1-\nu^2)\,G_f$ por unidad de área.
 \end{itemize}
 
@@ -1610,6 +1614,14 @@ materials:
     G_f: 100.0
     hypothesis: plane_stress
     density: 2400.0
+  # La misma ley con integración IMPL-EX (pasos pequeños cerca del pico).
+  - id: 7
+    type: IsotropicDamageCrackBand2D
+    E: 30.0e9
+    nu: 0.2
+    f_t: 3.0e6
+    G_f: 100.0
+    integration: impl-ex
 
 \end{lstlisting}
 
@@ -3569,8 +3581,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 10:12\\[0.5em]
-Commit Git: \texttt{bfff90e}\\[1em]
+Compilado el 11 de noviembre de 2026, 11:00\\[0.5em]
+Commit Git: \texttt{6e4fd14}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

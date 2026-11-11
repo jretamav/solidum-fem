@@ -938,6 +938,10 @@ Las fuerzas internas de un elemento con carga distribuida son $\mathbf F_\text{i
 
 Un material con ablandamiento regularizado por energía de fractura necesita la longitud $h$ de cada punto de integración, que sólo conoce el elemento (\hyperref[adr:0028]{ADR 0028}). La longitud viaja en el estado del punto: el material declara si la usa (la propiedad \texttt{uses\_\allowbreak{}characteristic\_\allowbreak{}length}, que depende de la instancia) y construye el estado inicial con \texttt{initial\_\allowbreak{}point\_\allowbreak{}state(h)}, donde la valida; el elemento, al terminar de construirse, siembra una longitud por punto con \texttt{\_\allowbreak{}seed\_\allowbreak{}characteristic\_\allowbreak{}lengths} (\texttt{L} en las barras de dos nodos; \texttt{w\_g\ensuremath{\cdot}L} por punto de Gauss, con los pesos normalizados a la unidad, en las barras de tres nodos y en los marcos con sección, que la entregan a sus fibras). Un $h$ inadmisible se rechaza al construir el elemento, no durante el cálculo. Primer consumidor: \texttt{ManderConcrete1D}.
 
+\section{Pseudo-tiempo del paso}
+
+Un material integrado con IMPL-EX (Oliver, Huespe y Cante 2008) extrapola su variable histórica con los dos últimos pasos confirmados y necesita la razón $r = \Delta\tau_{n+1}/\Delta\tau_n$ entre el incremento del parámetro de control del paso en curso y el del último confirmado (\hyperref[adr:0034]{ADR 0034}). Ese dato es del solver, no del punto, así que lo lleva el ensamblador. Cada intento de paso se abre con \texttt{prepare\_\allowbreak{}all\_\allowbreak{}steps(U, pseudo\_\allowbreak{}time\_\allowbreak{}increment=\ensuremath{\Delta}\ensuremath{\tau})}; un solver que conoce el incremento después, como la longitud de arco tras el predictor, lo declara con \texttt{set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}increment(\ensuremath{\Delta}\ensuremath{\tau})} antes del corrector. El ensamblador calcula $r$ y la entrega con \texttt{set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}ratio(r)} a los materiales que declaran \texttt{uses\_pseudo\_time}, y refresca en sitio los \texttt{batch\_params} de sus familias por lotes, donde la razón viaja como un parámetro más. \texttt{commit\_\allowbreak{}all\_\allowbreak{}states} cierra el intento: el incremento confirmado pasa a ser la referencia y los materiales vuelven a «sin paso», en el que congelan su daño en el confirmado; así el post-proceso, los análisis lineales sobre el estado de una etapa y el commit final de \texttt{solidum.run} reproducen el esfuerzo del paso. La razón vive en la instancia del material, no en su estado: no es historia. Si un solver abre un intento sin declarar su pseudo-tiempo y el modelo tiene materiales que lo usan, el primer commit lo rechaza con un mensaje que nombra los solvers que sí lo declaran. El pseudo-tiempo de cada solver: $\Delta\lambda$ en \texttt{NonlinearSolver}, la longitud de arco del paso en \texttt{ArcLengthSolver} e \texttt{IndirectDisplacementSolver}, el paso de tiempo del intento en \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}, $\Delta t$ en \texttt{CentralDifferenceSolver} y la magnitud del modo activo en el solver del módulo \texttt{dissipation\_\allowbreak{}control}.
+
 \section{Compilación Just-In-Time mediante Numba}
 
 Las funciones críticas (cinemática de los elementos, núcleos de los algoritmos de retorno, el kernel de familia del ensamblaje por lotes) se decoran con \texttt{@njit(cache=True)} y se compilan a código nativo en su primera invocación; el binario se guarda en \texttt{\_\_pycache\_\_} y las ejecuciones siguientes lo cargan en centésimas de segundo. Lo que se compila es el procedimiento, no los datos: la configuración deformada, los parámetros y las variables internas entran como argumentos en cada llamada, así que un cambio de geometría o de estado nunca exige recompilar. La restricción consiste en que el código compilado solo admite tipos primitivos y arreglos NumPy, no objetos arbitrarios de Python; por eso los materiales exponen su estado como filas de arreglo (\texttt{STATE\_SCHEMA}) y sus constantes como un vector de parámetros (\texttt{batch\_params}).
@@ -1544,6 +1548,13 @@ Un generador de restricciones (\texttt{ConstraintRegistry}, tipo de spec \texttt
 
 Una sola familia de leyes tracción--desplazamiento relativo, \texttt{InterfaceMaterial} (\texttt{InterfaceMaterialRegistry}, tipo de spec \texttt{interface\_\allowbreak{}material}, sección YAML \texttt{interface\_\allowbreak{}materials}), para las dos geometrías de interfaz: superficie (grieta, junta: \texttt{(n, s)} / \texttt{(n, s1, s2)}) y línea (barra embebida: \texttt{(n, s)} / \texttt{(n1, n2, s)}), normales primero. El paso a ejes globales y el ancho de cada componente son del elemento. La familia cohesiva del módulo \texttt{discontinuities} pasa a ella sin cambio de física, como preveía Reglas §4, porque el programa principal tiene ahora un elemento de interfaz propio (la adherencia barra--sólido). La sección YAML \texttt{cohesive\_\allowbreak{}materials} pasa a llamarse \texttt{interface\_\allowbreak{}materials}, sin alias. Leyes de la familia: \texttt{CohesiveDamageIsotropic} (modo I) y \texttt{CohesiveDamageMixedMode} (modo mixto con apertura efectiva de Camacho--Ortiz, energía independiente del modo, ablandamiento lineal, exponencial o bilineal del fib Model Code 2010), de superficie; \texttt{BondSlipModelCode} y \texttt{BondSlipMultilinear} (adherencia-deslizamiento), de línea. Las dos leyes cohesivas comparten la envolvente de ablandamiento.
 
+\section{ADR 0034 --- Pseudo-tiempo de los solvers incrementales}
+\label{adr:0034}
+
+\textbf{Fecha}: 2026-11-11 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+El ensamblador lleva el intento de paso y su pseudo-tiempo para los materiales integrados con IMPL-EX. Los solvers que avanzan por pasos declaran en cada intento el incremento de su parámetro de control ($\Delta\lambda$, longitud de arco, $\Delta t$), en \texttt{prepare\_\allowbreak{}all\_\allowbreak{}steps(U, pseudo\_\allowbreak{}time\_\allowbreak{}increment=\ensuremath{\Delta}\ensuremath{\tau})} o, si lo conocen tras el predictor, con \texttt{set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}increment(\ensuremath{\Delta}\ensuremath{\tau})}. El ensamblador entrega a los materiales con \texttt{uses\_pseudo\_time} la razón $r = \Delta\tau_{n+1}/\Delta\tau_n$ respecto del último paso confirmado (\texttt{set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}ratio}) y refresca sus \texttt{batch\_params}; al confirmar, la referencia se actualiza y los materiales quedan «sin paso», con el daño congelado en el confirmado. Repetir un intento tras una bisección sólo cambia $r$. Un solver que abre un intento sin declarar su pseudo-tiempo se rechaza en el primer commit si el modelo tiene materiales que lo usan. Se descartaron la razón en el estado de cada punto (no es historia), un argumento más en \texttt{compute\_state} y en la firma compilada (rompería el contrato de todos los materiales) y una variable global. Primer consumidor: \texttt{IsotropicDamageCrackBand2D/\allowbreak{}3D} con \texttt{integration: impl-ex}.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -1866,6 +1877,26 @@ Medio, ya cerrado. Una etapa hereda el estado que guardan los elementos, así qu
 Bajo. Los generadores producen objetos que el resto del programa ya sabía tratar (nodos, elementos, MPC); las interfaces generadas no se registran ni se exportan a VTK, y sólo exigieron dos piezas genéricas (\texttt{VTK\_EXPORT} en el exportador y \texttt{YAML\_KEYS} en el lector).
 \end{infobox}
 
+\section{Fase 13 --- Fisuración distribuida del concreto}
+
+\textbf{Estado}: implementado (ampliación del \hyperref[adr:0028]{ADR 0028} y \hyperref[adr:0034]{ADR 0034}, 11 de noviembre de 2026).
+
+\begin{itemize}
+  \item \textbf{Banda de grieta} (\texttt{IsotropicDamageCrackBand2D/\allowbreak{}3D}): el daño isótropo regularizado por energía de fractura, con la medida de Rankine y un tope de daño propio. Los diez sólidos 2D y 3D siembran la longitud característica de cada punto (ampliación del \hyperref[adr:0028]{ADR 0028}, \texttt{CHARACTERISTIC\_\allowbreak{}LENGTH\_\allowbreak{}FACTOR}); un elemento que no la proporciona rechaza el material al construirse.
+  \item \textbf{IMPL-EX y pseudo-tiempo} (\hyperref[adr:0034]{ADR 0034}): la integración implícita-explícita del daño, con tangente secante simétrica y definida positiva, y la pieza genérica por la que los solvers incrementales informan el incremento de su parámetro de control.
+  \item Es el primer modelo de la familia de modelos de concreto; los siguientes (daño de tracción y compresión, grieta rotante, daño-plasticidad) reutilizarán la banda de grieta, la longitud característica y el pseudo-tiempo.
+\end{itemize}
+
+\begin{lstlisting}
+[Solver incremental] -- Δτ del intento --> [Ensamblador] -- r = Δτ(n+1)/Δτ(n) --> [Material IMPL-EX | batch_params]
+[Elemento sólido] -- h por punto de Gauss --> [estado del punto] --> [Material con banda de grieta]
+
+\end{lstlisting}
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. La longitud característica reutiliza la pieza del \hyperref[adr:0028]{ADR 0028}; el pseudo-tiempo es un dato más que el ensamblador pasa a los materiales que lo piden, sin cambiar la firma de \texttt{compute\_state} ni la del kernel compilado. Un solver nuevo que avance por pasos debe declarar su pseudo-tiempo para admitir materiales IMPL-EX.
+\end{infobox}
+
 \section{Mantenimiento de este capítulo}
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:
@@ -2037,6 +2068,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Grado de libertad sin masa}. Grado de libertad en el que la matriz de masa es nula (masas sólo en algunos nudos, elementos sin densidad, giros sin inercia rotacional). El análisis modal los condensa estáticamente de forma exacta y los transitorios implícitos los admiten con una aceleración inicial consistente. \hyperref[adr:0024]{ADR 0024}.
 
+\textbf{IMPL-EX (integración implícita-explícita)}. Forma de integrar un modelo de daño (Oliver, Huespe y Cante 2008): la variable histórica se extrapola de los dos últimos pasos confirmados para calcular el esfuerzo del paso, de modo que el material es lineal dentro del paso (tangente secante, simétrica y definida positiva), y se actualiza de forma implícita al confirmar el paso. Robusta en el ablandamiento a cambio de un error proporcional al paso. \hyperref[adr:0034]{ADR 0034}.
+
 \textbf{\texttt{IS\_\allowbreak{}LINEAR\_\allowbreak{}ELASTIC}}. Atributo de clase de cada material (\texttt{False} por defecto) que declara que su respuesta es lineal y sin historia: \texttt{True} en \texttt{Elastic1D}, \texttt{Elastic2D}, \texttt{Elastic3D} y \texttt{Orthotropic2D}. Los marcos lo exigen en su camino de forma cerrada (\texttt{material} + propiedades geométricas) y rechazan al construir cualquier otro material; la no linealidad material de un marco entra por su sección. Ver \hyperref[cap:5]{capítulo 5} y \hyperref[adr:0021]{ADR 0021}.
 
 \textbf{\texttt{LoadVector}}. Vector de cargas que lleva consigo las cargas equivalentes por elemento de su parte distribuida y las combina linealmente con la carga (\texttt{F\_a \ensuremath{\pm} F\_b}, \texttt{a\ensuremath{\cdot}F}). Así las fuerzas internas de los elementos cargados son correctas con varias cargas, casos o etapas. \hyperref[adr:0027]{ADR 0027}.
@@ -2072,6 +2105,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \textbf{Pivote pequeño}. Valor de la diagonal de la factorización pequeño frente a la diagonal de la matriz (\texttt{|U\_\allowbreak{}ii|/\allowbreak{}\ensuremath{\surd}(|K\_\allowbreak{}rr|\ensuremath{\cdot}|K\_\allowbreak{}cc|) \textless{} 10\ensuremath{^{-}}⁸}): puede delatar una matriz singular, pero su tamaño también depende del contraste de rigideces y del tamaño del modelo. Desde el 20 de octubre de 2026 Solidum lo usa sólo como filtro: el veredicto sobre un mecanismo interno lo da la energía por elemento del modo de menor energía. \hyperref[adr:0019]{ADR 0019}.
 
 \textbf{Perturbación lineal}. Análisis lineal estático (\texttt{LinearSolver}) sobre el estado de una etapa, con la rigidez tangente de los elementos y sin cambiar ese estado: da casos superponibles sobre la estructura cargada (\texttt{SolveResult.\allowbreak{}perturbation}). \hyperref[adr:0031]{ADR 0031}.
+
+\textbf{Pseudo-tiempo}. Parámetro de control de un solver que avanza por pasos (factor de carga, longitud de arco, magnitud del control indirecto, tiempo). El solver declara su incremento en cada intento de paso y el ensamblador entrega a los materiales IMPL-EX la razón con el incremento del último paso confirmado. \hyperref[adr:0034]{ADR 0034}.
 
 \textbf{\texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}}. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
@@ -2244,8 +2279,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 10:12\\[0.5em]
-Commit Git: \texttt{bfff90e}\\[1em]
+Compilado el 11 de noviembre de 2026, 11:02\\[0.5em]
+Commit Git: \texttt{6e4fd14}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}

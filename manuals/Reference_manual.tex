@@ -9339,7 +9339,7 @@ references:
 \textit{Uso previsto: agrietamiento de estructuras de concreto con fisuración distribuida, en 2D y 3D (la variante 3D está en \hyperref[spec:IsotropicDamageCrackBand3D]{IsotropicDamageCrackBand3D}).}
 
 
-\textit{\textbf{Estado: aprobada por el usuario (2026-11-11, «si», con las cinco recomendaciones Q1--Q5). Bloque 1 implementado} (banda de grieta, medida de Rankine, tope propio y siembra de $h$ en los sólidos 2D y 3D). \textbf{IMPL-EX (§8) entra en el bloque 2}, con su ADR y la prueba estructural de Van Vliet; hasta entonces el material sólo se integra de forma implícita y no admite el parámetro \texttt{integration}.}
+\textit{\textbf{Estado: aprobada por el usuario (2026-11-11, «si», con las cinco recomendaciones Q1--Q5) y validada.} Bloque 1 (banda de grieta, medida de Rankine, tope propio y siembra de $h$ en los sólidos 2D y 3D) y bloque 2 (integración IMPL-EX, §8, con la pieza genérica del pseudo-tiempo, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}, y la prueba estructural de Van Vliet) implementados el mismo día.}
 
 
 
@@ -9497,7 +9497,7 @@ No es simétrica en general ($\bar{\boldsymbol\sigma}$ y $\mathbf C_e\mathbf p$ 
 
 \begin{enumerate}
   \item \textbf{Longitud característica por punto de integración.} La pieza genérica ya existe (\texttt{Material.\allowbreak{}uses\_\allowbreak{}characteristic\_\allowbreak{}length}, \texttt{Material.\allowbreak{}initial\_\allowbreak{}point\_\allowbreak{}state(h)}, \texttt{Element.\allowbreak{}\_\allowbreak{}seed\_\allowbreak{}characteristic\_\allowbreak{}lengths}), pero hoy sólo la usan las barras y los marcos (con \texttt{ManderConcrete1D}). Los elementos sólidos 2D \texttt{Tri3}, \texttt{Quad4}, \texttt{Tri6}, \texttt{Quad8} y \texttt{Quad9} deben sembrar $h$ en cada punto de integración según §4. El material guarda $h$ en su estado (variable \texttt{h}) y calcula $\alpha(h)$ en cada llamada. Un elemento que no siembre $h$ con este material produce un error claro al construir el modelo, no un resultado silencioso.
-  \item \textbf{Razón de incrementos de pseudo-tiempo para IMPL-EX} (§8): $r = \Delta\tau_{n+1}/\Delta\tau_n$, que hoy no llega al material. El solver la da al inicio de cada intento de paso (junto al gancho \texttt{prepare\_\allowbreak{}all\_\allowbreak{}steps} del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}, P5), con $\Delta\tau_n$ el incremento del último paso convergido. Un solver que no declare su pseudo-tiempo no admite materiales IMPL-EX: error al empezar el análisis.
+  \item \textbf{Razón de incrementos de pseudo-tiempo para IMPL-EX} (§8): $r = \Delta\tau_{n+1}/\Delta\tau_n$. Pieza genérica del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}: el solver declara el incremento de su parámetro de control en cada intento de paso (\texttt{Assembler.\allowbreak{}prepare\_\allowbreak{}all\_\allowbreak{}steps(U, pseudo\_\allowbreak{}time\_\allowbreak{}increment=\ensuremath{\Delta}\ensuremath{\tau})} o, si lo conoce tras el predictor, \texttt{Assembler.\allowbreak{}set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}increment(\ensuremath{\Delta}\ensuremath{\tau})}); el ensamblador calcula $r$ respecto del último paso confirmado y la entrega al material (\texttt{set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}ratio}) y a los parámetros de su familia por lotes. Fuera de un paso (análisis lineales, post-proceso, commit final) el material recibe «sin paso» y congela su daño en el confirmado. Un solver que abre un intento sin declarar su pseudo-tiempo se rechaza al confirmar el primer paso, con un error que nombra los solvers que sí lo declaran.
 \end{enumerate}
 
 
@@ -9510,8 +9510,8 @@ No es simétrica en general ($\bar{\boldsymbol\sigma}$ y $\mathbf C_e\mathbf p$ 
 La del padre (§6--§9 de su spec) con $\alpha = \alpha(h)$ del punto, el tope \texttt{damage\_max} de la variante y la medida elegida (incluida Rankine, §5). Tangente consistente; se pasa a la secante en descarga, sin daño y al llegar al tope.
 
 \phantomsection
-\subsubsection*{8. Integración IMPL-EX (\texttt{integration = 'impl-ex'}) --- bloque 2, pendiente}
-\addcontentsline{toc}{subsubsection}{8. Integración IMPL-EX (\texttt{integration = 'impl-ex'}) --- bloque 2, pendiente}
+\subsubsection*{8. Integración IMPL-EX (\texttt{integration = 'impl-ex'})}
+\addcontentsline{toc}{subsubsection}{8. Integración IMPL-EX (\texttt{integration = 'impl-ex'})}
 
 Oliver, Huespe y Cante (2008): la variable histórica se \textbf{extrapola} con los dos últimos pasos convergidos para calcular el esfuerzo, y se \textbf{actualiza implícitamente} para la extrapolación siguiente. Dentro del paso el material es lineal (daño congelado), así que la tangente es la secante, simétrica y definida positiva.
 
@@ -9531,9 +9531,11 @@ Consecuencias:
 \begin{itemize}
   \item Si no hay otras no linealidades, el problema global de cada paso es lineal y el Newton converge en una iteración (más la de comprobación).
   \item \textbf{Disipación no negativa}: $\mathcal D_{n+1} = \psi_0(\boldsymbol\varepsilon_{n+1})\,(\tilde d_{n+1} - \tilde d_n) \ge 0$ por el paso 2. El $\max$ del paso 2 evita una «curación» espuria cuando una extrapolación anterior se pasó y el punto descarga; en Oliver et al. (2008) la monotonía se razona sobre la variable extrapolada (por confirmar con el artículo si la imponen de la misma forma).
-  \item \textbf{Retraso de un paso}: el daño entra un paso después de que $\varepsilon_\text{eq}$ supere $\kappa_0$ (al inicio $\kappa_n = \kappa_{n-1} = \kappa_0$). El error de la extrapolación es de primer orden en $\Delta\tau$; cerca del pico hacen falta pasos pequeños.
+  \item \textbf{Retraso de un paso}: el daño entra un paso después de que $\varepsilon_\text{eq}$ supere $\kappa_0$ (al inicio $\kappa_n = \kappa_{n-1} = \kappa_0$). \textbf{Orden}: la extrapolación lineal es exacta si $\kappa(\tau)$ es lineal y su error local es $O(\Delta\tau^2)$ donde $\kappa(\tau)$ es suave; en un quiebre de $\kappa(\tau)$ (inicio del daño, descarga, recarga) el error es $O(\Delta\tau)$. Como $\kappa$ se actualiza de forma implícita, el error no se acumula. En la práctica manda el quiebre del inicio del daño: cerca del pico hacen falta pasos pequeños (prueba de Van Vliet: el pico se pasa un 7.7 \% con 0.5 µm y un 0.8 \% con 0.0625 µm).
   \item \textbf{Bisección}: repetir un paso con otro $\Delta\tau_{n+1}$ sólo cambia $r$; el estado convergido no cambia, así que el resultado es idempotente para el mismo intento.
-  \item \textbf{Indicador de error} por punto: $e_{n+1} = \lvert d(\kappa_{n+1}) - \tilde d_{n+1}\rvert$, el máximo del modelo se informa por paso. El control adaptativo del paso con este indicador (Oliver et al. 2008, §5) queda fuera de alcance.
+  \item \textbf{Fuera de un paso} ($r$ «sin paso»): $\tilde d = \tilde d_n$ y el estado no cambia. Reevaluar el estado confirmado en el desplazamiento convergido reproduce el esfuerzo del paso (post-proceso, análisis lineales sobre el estado de una etapa, commit final de \texttt{solidum.run}).
+  \item \textbf{Indicador de error} por punto: $e_{n+1} = \lvert d(\kappa_{n+1}) - \tilde d_{n+1}\rvert$, en la variable de estado \texttt{damage\_error} (post-proceso por punto o promedio por elemento). El control adaptativo del paso con este indicador (Oliver et al. 2008, §5) queda fuera de alcance.
+  \item \textbf{Newton}: sin otras no linealidades el problema de cada paso es lineal; el corrector hace una resolución y la de comprobación (corrección nula), dos por paso.
 \end{itemize}
 
 \phantomsection
@@ -9563,13 +9565,14 @@ Consecuencias:
 \begin{lstlisting}[language=yaml]
 name: IsotropicDamageCrackBand2D
 kind: material
-status: implemented        # bloque 1; validated al cerrar el bloque 2 (IMPL-EX y Van Vliet)
+status: validated          # bloques 1 y 2 (2026-11-11)
 
 interface:
   strain_dim: 3
   primary_state_var: damage
-  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' (y, en el bloque 2, con integration='impl-ex')
-  batch_kernel: true       # h viaja en la fila de estado [κ, d, h]
+  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' o con integration='impl-ex'
+  batch_kernel: true       # estado [κ, d, h, κ_prev, e]; integración y razón de pseudo-tiempo en batch_params
+  uses_pseudo_time: "true con integration='impl-ex' (ADR 0034)"
 
 admission:                # Reglas §1; variante de un material admitido (IsotropicDamage2D)
   textbooks:
@@ -9589,7 +9592,7 @@ parameters:
   - { name: hypothesis, type: str,   required: false, default: "plane_stress", desc: "plane_stress | plane_strain (como el padre)" }
   - { name: equivalent_strain, type: str, required: false, default: "rankine", desc: "rankine (nueva) | energy | mazars | modified_von_mises (Q1)" }
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises (como el padre)" }
-  # integration: "implicit | impl-ex" entra en el bloque 2 (§8); hoy, sólo implícita.
+  - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (Oliver, Huespe y Cante 2008, §8); impl-ex requiere un solver que declare su pseudo-tiempo (ADR 0034) y pasos pequeños cerca del pico" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante, en (0, 1); ver §3 y Q5" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
@@ -9602,7 +9605,8 @@ state_schema:
   kappa:      "float ≥ κ_0 — máxima deformación equivalente histórica"
   damage:     "float ∈ [0, damage_max] — daño con que se calcula el esfuerzo"
   h:          "float > 0 — longitud característica del punto de integración, fijada por el elemento (0 sin sembrar: sólo admitido en régimen elástico)"
-  # kappa_prev (κ del paso convergido anterior) entra con IMPL-EX en el bloque 2.
+  kappa_prev: "float — κ del paso confirmado anterior (extrapolación de IMPL-EX; en la implícita, el κ confirmado)"
+  damage_error: "float ≥ 0 — indicador |d(κ) − d̃| de IMPL-EX; 0 en la implícita"
 
 conventions:
   sign: "σ > 0 ⇔ tracción"
@@ -9614,7 +9618,7 @@ validity:
   - "E > 0, f_t > 0, G_f > 0, ν ∈ (−1, 0.5)"
   - "0 < h < 2·E·G_f/f_t² en cada punto (se comprueba al recibir h)"
   - "damage_max ∈ (0, 1)"
-  - "bloque 2: integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (§6.2)"
+  - "integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (§6.2, ADR 0034)"
   - "pequeñas deformaciones; agrietamiento dominado por tracción"
   - "sólo en elementos que proporcionan h (sólidos 2D y 3D, barras, marcos); otro elemento lo rechaza al construirse"
 
@@ -9628,7 +9632,7 @@ out_of_scope:
 
 numerical_caveats:
   - "Implícita: tangente indefinida en ablandamiento; posibles fallos del Newton cerca del pico."
-  - "IMPL-EX: error de primer orden en el paso; el daño entra un paso tarde."
+  - "IMPL-EX: error de primer orden en los quiebres de κ(τ) (inicio del daño) y de segundo donde κ(τ) es suave; el daño entra un paso tarde; pico sobrepasado si el paso es grueso."
   - "Sesgo de la banda por la malla y transferencia espuria de esfuerzos (§10)."
   - "Rankine: arista con esfuerzos principales efectivos iguales; subgradiente."
 
@@ -9668,8 +9672,8 @@ acceptance:
       expect: "C_tan = (1 − d̃)·C_e exacta, simétrica y definida positiva"
       tol_rel: 1.0e-14
     - name: first_order_convergence
-      setup: "camino monótono de tracción uniaxial con pasos Δ, Δ/2, Δ/4, Δ/8"
-      expect: "el error máximo de σ frente a la implícita se reduce a la mitad al reducir el paso a la mitad (razón entre 1.7 y 2.3)"
+      setup: "camino monótono de tracción uniaxial desde κ_0 con pasos Δ, Δ/2, Δ/4, Δ/8: lineal en el pseudo-tiempo (quiebre en el inicio del daño) y cuadrático (κ(τ) suave)"
+      expect: "el error máximo de σ frente a la implícita se reduce a la mitad al reducir el paso a la mitad en el lineal (razón 2 ± 15 %) y a la cuarta parte en el cuadrático (4 ± 15 %)"
     - name: no_negative_dissipation
       setup: "carga, descarga parcial y recarga con extrapolación que se pasa"
       expect: "d̃ nunca decrece; disipación por paso ≥ 0"
@@ -9746,6 +9750,12 @@ references:
   \item \textbf{Objetividad}: con $\nu = 0$, $D/(G_fA) = 0.9992$, 0.9985, 0.9974 y 0.9955 con 5, 10, 20 y 40 elementos a lo largo de la barra (\texttt{Quad4}; idéntico en \texttt{Tri3}, \texttt{Hex8} y \texttt{Tet4}), y la carga en $u = 0.05$ mm difiere menos del 0.4 \% entre mallas.
   \item \textbf{Con $\nu = 0.2$ la barra disipa $(1-\nu^2)\,G_fA = 0.96\,G_fA$ en todas las mallas.} No es error de discretización: las columnas vecinas se descargan e impiden la contracción lateral de la banda ($\varepsilon_{yy} \approx 0$ en ella), Rankine ve $\varepsilon_\text{eq} = \varepsilon_{xx}/(1-\nu^2)$ y el trabajo de $\sigma_{xx}$ en la banda es $(1-\nu^2)\,G_f/h$. La calibración de §2 supone tracción uniaxial de esfuerzo; una banda confinada lateralmente disipa ese 4 \% menos. Queda como dato; corregirlo (p. ej. calibrar con la banda en deformación plana) sería una decisión física del usuario.
   \item \textbf{Van Vliet con integración implícita}: con la malla de la tesis en \texttt{Tri3} (1200 elementos, paso de 1 µm) el Newton se detiene a \ensuremath{\lambda} \ensuremath{\approx} 0.16 (desplazamiento de la rótula 93 µm), con $D \approx 0.75\,G_fA$ disipado: es justo la falta de robustez de la implícita en ablandamiento que motiva IMPL-EX. La prueba estructural \texttt{van\_\allowbreak{}vliet\_\allowbreak{}tension} pasa al bloque 2.
+  \item \textbf{2026-11-11} \ensuremath{\cdot} \textbf{Usuario: «si»} a dejar el efecto de Poisson documentado y sin corregir: con $\nu = 0.2$ la banda confinada lateralmente disipa $(1-\nu^2)\,G_f = 0.96\,G_f$ por unidad de área en todas las mallas (la objetividad se conserva). Una corrección de la calibración sólo sería exacta para un estado de esfuerzos de la banda, y el 4 \% está muy por debajo de la incertidumbre usual de $G_F$. El efecto es propio del daño isótropo; la grieta rotante (modelo 3 de la familia de concreto) no lo tiene.
+  \item \textbf{2026-11-11} \ensuremath{\cdot} \textbf{Bloque 2 implementado: IMPL-EX} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}). Resultados:
+  \item \textbf{Punto material}: tangente $(1-\tilde d)\,\mathbf C_e$ exacta, simétrica y definida positiva; disipación $\psi_0\,\Delta\tilde d \ge 0$ con carga, descarga y recarga; kernel por lotes bit a bit con la implícita y con IMPL-EX, con razón variable y «sin paso». \textbf{Orden}: con un camino lineal en el pseudo-tiempo que arranca en $\kappa_0$ la razón de errores al dividir el paso es 2.0 (primer orden, por el quiebre del inicio del daño); con un camino cuadrático (suave) es 4.0 (segundo orden). Lo de la spec («primer orden») vale en los quiebres; se corrigió §8 y el caso de aceptación.
+  \item \textbf{Global} (barra de la prueba de objetividad, $\nu = 0$): con IMPL-EX el corrector hace dos resoluciones por paso (una y la de comprobación) en los 400 pasos; la implícita, hasta 26 ensamblajes en el pico (bisecciones). Con paso de 0.125 µm la energía disipada es $0.9989$--$0.9996\,G_fA$ con 5, 10 y 20 elementos y la carga en $u = 0.05$ mm coincide con la implícita a 0.3 \%; con 0.5 µm la extrapolación pasa el pico y disipa $1.01$--$1.03\,G_fA$.
+  \item \textbf{Van Vliet} (todo el concreto agrietable, \texttt{Tri3}, dos mallas de 1200 y 4396 elementos): implícita, pico 26.49 / 26.95 kN (1.7 \%) y energía en $u = 0.12$ mm 0.966 / 0.956 J (1.1 \%); al final ($u = 1.2$ mm, carga 0.36 \% del pico) $D = 1.378$ J $= 0.981\,(1-\nu^2)\,G_fA$. IMPL-EX con 0.0625 µm: pico 26.72 kN (+0.9 \%), energía +0.2 \%; con 0.5 µm, pico +7.7 \%. La implícita ya no se detiene: con las placas de la prueba de la embebida (dos capas de 8 mm) la carga puntual las flexionaba y el concreto junto a ellas llegaba a $\sigma_I$ 1.7 veces mayor que en el cuello, así que la probeta se rompía junto a las placas y el Newton fallaba ahí (el «\ensuremath{\lambda} \ensuremath{\approx} 0.16» del bloque 1). Con placas de dos capas de 25 mm (supuesto propio, la tesis no da el espesor) la grieta se forma en el cuello. Prueba: \texttt{tests/\allowbreak{}validation/\allowbreak{}test\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}van\_\allowbreak{}vliet.\allowbreak{}py}.
+  \item \textbf{Salvaguarda $\tilde d = \max(\tilde d_n, d(\tilde\kappa))$}: implementada como en §8; que Oliver, Huespe y Cante (2008) la impongan con esa forma sigue por confirmar con el artículo (no se tuvo acceso al texto).
 \end{itemize}
 
 
@@ -11818,7 +11828,7 @@ references:
 \textit{\textbf{Variante de componente existente} (Reglas §4): subclase de \texttt{IsotropicDamage3D} (\hyperref[spec:IsotropicDamage3D]{spec}, validada), que no se modifica. Es la versión 3D de \hyperref[spec:IsotropicDamageCrackBand2D]{IsotropicDamageCrackBand2D}: \textbf{toda la física, las ecuaciones, los requisitos de interfaz y las preguntas al usuario (Q1--Q5) están allí}. Aquí sólo lo que difiere.}
 
 
-\textit{\textbf{Estado: aprobada por el usuario (2026-11-11, junto con la 2D). Bloque 1 implementado; IMPL-EX en el bloque 2} (ver la spec 2D).}
+\textit{\textbf{Estado: aprobada por el usuario (2026-11-11, junto con la 2D) y validada}: bloque 1 (banda de grieta) y bloque 2 (IMPL-EX, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}); ver la spec 2D.}
 
 
 
@@ -11871,13 +11881,14 @@ Con la variante 2D como restricción exacta de ésta en tensión plana y deforma
 \begin{lstlisting}[language=yaml]
 name: IsotropicDamageCrackBand3D
 kind: material
-status: implemented        # bloque 1; validated al cerrar el bloque 2
+status: validated          # bloques 1 y 2 (2026-11-11)
 
 interface:
   strain_dim: 6
   primary_state_var: damage
-  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' (y, en el bloque 2, con integration='impl-ex')
-  batch_kernel: true
+  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' o con integration='impl-ex'
+  batch_kernel: true       # estado [κ, d, h, κ_prev, e]
+  uses_pseudo_time: "true con integration='impl-ex' (ADR 0034)"
 
 admission:                # Reglas §1; variante de un material admitido (IsotropicDamage3D); ver la spec 2D
   textbooks:
@@ -11896,7 +11907,7 @@ parameters:
   - { name: G_f,        type: float, required: true,  desc: "Energía de fractura en modo I [N/m]" }
   - { name: equivalent_strain, type: str, required: false, default: "rankine", desc: "rankine | energy | mazars | modified_von_mises (Q1 de la spec 2D)" }
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises" }
-  # integration: "implicit | impl-ex" entra en el bloque 2; hoy, sólo implícita.
+  - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (§8 de la spec 2D; ADR 0034)" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante (Q5 de la spec 2D)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
@@ -11909,6 +11920,8 @@ state_schema:
   kappa:      "float ≥ κ_0 — máxima deformación equivalente histórica"
   damage:     "float ∈ [0, damage_max] — daño con que se calcula el esfuerzo"
   h:          "float > 0 — longitud característica del punto de integración"
+  kappa_prev: "float — κ del paso confirmado anterior (IMPL-EX)"
+  damage_error: "float ≥ 0 — indicador |d(κ) − d̃| de IMPL-EX; 0 en la implícita"
 
 conventions:
   sign: "σ > 0 ⇔ tracción"
@@ -11919,7 +11932,7 @@ validity:
   - "E > 0, f_t > 0, G_f > 0, ν ∈ (−1, 0.5)"
   - "0 < h < 2·E·G_f/f_t² en cada punto"
   - "damage_max ∈ (0, 1)"
-  - "bloque 2: integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo"
+  - "integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (ADR 0034)"
 
 out_of_scope:
   - "lo mismo que la variante 2D"
@@ -11971,6 +11984,7 @@ references:
 \begin{itemize}
   \item \textbf{2026-11-11} \ensuremath{\cdot} Spec creada por la IA junto con \hyperref[spec:IsotropicDamageCrackBand2D]{IsotropicDamageCrackBand2D}; las preguntas al usuario (Q1--Q5) están en esa spec y valen para las dos.
   \item \textbf{2026-11-11} \ensuremath{\cdot} Aprobada por el usuario con la 2D («si»). Bloque 1 implementado (sin IMPL-EX); \texttt{Tet4} con $\sqrt[3]{6V_e}$ por la prueba de objetividad (§2). Hallazgos en el Diálogo de la spec 2D.
+  \item \textbf{2026-11-11} \ensuremath{\cdot} Bloque 2: IMPL-EX con la misma formulación que la 2D (§8 de esa spec; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}). Pruebas en 3D: tangente secante exacta y simétrica definida positiva, kernel por lotes bit a bit (implícita e IMPL-EX, razón variable y «sin paso») en \texttt{tests/\allowbreak{}test\_\allowbreak{}damage\_\allowbreak{}crack\_\allowbreak{}band.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}damage\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}implex.\allowbreak{}py}. La prueba estructural (Van Vliet) es 2D.
 \end{itemize}
 
 
@@ -18855,14 +18869,14 @@ Un elemento \textbf{no estándar} (formulación de investigación que no es FEM 
   \item \textbf{Deformación equivalente}: \texttt{rankine} por omisión (nueva, $\varepsilon_\text{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo; nunca daña en compresión) o las tres del padre (\texttt{energy}, \texttt{mazars}, \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}, que con banda de grieta dañan en compresión con la $G_f$ de tracción). Los padres no admiten \texttt{rankine}.
   \item \textbf{Tope del daño}: \texttt{damage\_max} propio, $1 - 10^{-6}$ por omisión (con el \texttt{DAMAGE\_\allowbreak{}MAX = 0.\allowbreak{}999} del padre se perdía hasta el 27 \% de $G_f$ en elementos de 5 mm).
   \item \textbf{Longitud característica}: la siembra el elemento sólido al construirse (\texttt{CHARACTERISTIC\_\allowbreak{}LENGTH\_\allowbreak{}FACTOR}): $h = c\,\Omega_e^{1/d}$ con $\Omega_e$ el área o el volumen; $c = 1$ en \texttt{Quad4} y \texttt{Hex8}, $\sqrt2$ en \texttt{Tri3} (Rots 1988), $6^{1/3}$ en \texttt{Tet4}, ½ en los cuadráticos (\texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9}, \texttt{Hex20}, \texttt{Hex27}, \texttt{Tet10}). Un elemento que no la proporciona rechaza el material.
-  \item \textbf{Integración}: implícita con la tangente consistente del padre (simétrica sólo con \texttt{energy}). IMPL-EX, en preparación (bloque 2).
-  \item \textbf{STRAIN\_DIM}: 3 / 6 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'} \ensuremath{\cdot} \textbf{STATE\_SCHEMA}: \texttt{\{kappa, damage, h\}} \ensuremath{\cdot} kernel por lotes con $h$ en la fila de estado.
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f}, \texttt{hypothesis} (2D), \texttt{equivalent\_\allowbreak{}strain}, \texttt{k} (sólo con \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}), \texttt{damage\_max}, \texttt{density}.
-  \item \textbf{Clasificación (Reglas §1)}: estándar (variante de un material admitido; Abaqus \textit{Concrete Damaged Plasticity} y \textit{Brittle Cracking}, DIANA \textit{Total Strain Crack Model}, Code\_Aster \texttt{ENDO\_ISOT\_BETON}, OpenSees \texttt{ASDConcrete3D}, todos con regularización por energía de fractura y la longitud del elemento). Spec aprobada por el usuario el 2026-11-11.
-  \item \textbf{Validación}: energía exacta en el punto material; barra en tracción con una columna debilitada: $D/(G_fA) = 0.996$--$0.999$ con 5 a 40 elementos (\texttt{Quad4}, \texttt{Tri3}, \texttt{Hex8}, \texttt{Tet4}) y la misma rama posterior al pico. Con $\nu = 0.2$ la banda, confinada lateralmente por los vecinos que se descargan, disipa $(1-\nu^2)G_fA$ en todas las mallas.
-  \item \textbf{Limitaciones}: daño escalar (al agrietarse pierde rigidez también en compresión); sin cierre unilateral; la banda tiende a seguir las líneas de la malla; con integración implícita el Newton puede detenerse en el ablandamiento (Van Vliet: se detiene con el 75 \% de $G_f$ disipado), que es lo que resolverá IMPL-EX.
+  \item \textbf{Integración} (\texttt{integration}): \texttt{implicit} (por omisión), con la tangente consistente del padre (simétrica sólo con \texttt{energy}), o \texttt{impl-ex} (Oliver, Huespe y Cante 2008): el daño del paso se extrapola de los dos últimos pasos confirmados, $\tilde\kappa = \kappa_n + r(\kappa_n - \kappa_{n-1})$ y $\tilde d = \max(\tilde d_n, d(\tilde\kappa))$, con tangente secante $(1-\tilde d)\mathbf C_e$, simétrica y definida positiva: el Newton converge en una iteración (más la de comprobación) y no se detiene en el ablandamiento. $r = \Delta\tau_{n+1}/\Delta\tau_n$ lo da el ensamblador con el pseudo-tiempo que declara el solver (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}); fuera de un paso el daño queda congelado. Precio: el daño entra un paso tarde y el pico se sobrepasa si el paso es grueso (Van Vliet: +7.7 \% con 0.5 µm, +0.8 \% con 0.0625 µm).
+  \item \textbf{STRAIN\_DIM}: 3 / 6 \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'damage'} \ensuremath{\cdot} \textbf{STATE\_SCHEMA}: \texttt{\{kappa, damage, h, kappa\_\allowbreak{}prev, damage\_\allowbreak{}error\}} (\texttt{damage\_error} = indicador $|d(\kappa) - \tilde d|$ de IMPL-EX) \ensuremath{\cdot} kernel por lotes con $h$ en la fila de estado y la razón de pseudo-tiempo en \texttt{batch\_params} \ensuremath{\cdot} \texttt{IS\_SYMMETRIC} de la instancia: \texttt{True} con \texttt{energy} o con \texttt{impl-ex} \ensuremath{\cdot} \texttt{uses\_pseudo\_time} con \texttt{impl-ex}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f}, \texttt{hypothesis} (2D), \texttt{equivalent\_\allowbreak{}strain}, \texttt{k} (sólo con \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises}), \texttt{damage\_max}, \texttt{integration}, \texttt{density}.
+  \item \textbf{Clasificación (Reglas §1)}: estándar (variante de un material admitido; Abaqus \textit{Concrete Damaged Plasticity} y \textit{Brittle Cracking}, DIANA \textit{Total Strain Crack Model}, Code\_Aster \texttt{ENDO\_ISOT\_BETON}, OpenSees \texttt{ASDConcrete3D}, todos con regularización por energía de fractura y la longitud del elemento). Spec aprobada por el usuario el 2026-11-11; IMPL-EX en el programa principal por decisión del usuario (Code\_Aster \texttt{METHODE='IMPLEX'}, OpenSees \texttt{ASDConcrete3D -implex}; no consta en los textos de la lista).
+  \item \textbf{Validación}: energía exacta en el punto material; barra en tracción con una columna debilitada: $D/(G_fA) = 0.996$--$0.999$ con 5 a 40 elementos (\texttt{Quad4}, \texttt{Tri3}, \texttt{Hex8}, \texttt{Tet4}) y la misma rama posterior al pico, también con IMPL-EX y paso de 0.125 µm. Con $\nu = 0.2$ la banda, confinada lateralmente por los vecinos que se descargan, disipa $(1-\nu^2)G_fA$ en todas las mallas. IMPL-EX: primer orden en el paso en el quiebre del inicio del daño y segundo donde $\kappa$ es suave (\href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_damage_crack_band_implex.py}{\texttt{test\_\allowbreak{}damage\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}implex.\allowbreak{}py}}). Ensayo de tracción de Van Vliet con todo el concreto agrietable (\href{https://github.com/jretamav/solidum-fem/blob/main/tests/validation/test_crack_band_van_vliet.py}{\texttt{test\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}van\_\allowbreak{}vliet.\allowbreak{}py}}): pico 26.5 / 26.9 kN con dos mallas, energía final $0.98\,(1-\nu^2)G_fA$, IMPL-EX a 0.9 \% de la implícita con paso fino.
+  \item \textbf{Limitaciones}: daño escalar (al agrietarse pierde rigidez también en compresión); sin cierre unilateral; la banda tiende a seguir las líneas de la malla; la banda confinada lateralmente por sus vecinos disipa $(1-\nu^2)\,G_f$ por unidad de área (0.96 con \ensuremath{\nu} = 0.2, igual en todas las mallas), aceptado y documentado sin corregir por decisión del usuario (spec, Diálogo 2026-11-11); con integración implícita el Newton puede necesitar bisecciones o detenerse en el ablandamiento (IMPL-EX lo evita a cambio de pasos pequeños cerca del pico); el control adaptativo del paso con el indicador de IMPL-EX queda fuera.
   \item \textbf{Compatible con}: \texttt{Tri3}, \texttt{Quad4}, \texttt{Tri6}, \texttt{Quad8}, \texttt{Quad9} (2D); \texttt{Hex8}, \texttt{Tet4}, \texttt{Hex20}, \texttt{Hex27}, \texttt{Tet10} (3D).
-  \item \textbf{Referencia}: \texttt{docs/\allowbreak{}specs/\allowbreak{}IsotropicDamageCrackBand2D.\allowbreak{}md} y \texttt{IsotropicDamageCrackBand3D.\allowbreak{}md}. Bažant y Oh (1983); Hillerborg, Modéer y Petersson (1976); Rots (1988); Oliver (1989).
+  \item \textbf{Referencia}: \texttt{docs/\allowbreak{}specs/\allowbreak{}IsotropicDamageCrackBand2D.\allowbreak{}md} y \texttt{IsotropicDamageCrackBand3D.\allowbreak{}md}. Bažant y Oh (1983); Hillerborg, Modéer y Petersson (1976); Rots (1988); Oliver (1989); Oliver, Huespe y Cante (2008, IMPL-EX).
   \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/damage_crack_band_2d.py}{solidum/materials/damage\_crack\_band\_2d.py}, \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/damage_crack_band_3d.py}{solidum/materials/damage\_crack\_band\_3d.py} (común en \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/_crack_band.py}{solidum/materials/\_crack\_band.py})
 \end{itemize}
 
@@ -19153,6 +19167,9 @@ Para un material \textbf{de interfaz} nuevo (ley tracción--desplazamiento relat
 
 
 \textit{\textbf{Red de seguridad de los solvers estáticos} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}): los cuatro estáticos (\texttt{LinearSolver}, \texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver}, y \texttt{DissipationArcLengthSolver} en su módulo) rechazan un mecanismo rígido antes de resolver (\texttt{MechanismError}). \texttt{LinearSolver} busca además \textbf{mecanismos internos} tras factorizar y comprueba tras resolver que la solución resuelve el sistema (error hacia atrás normado, desde el 2026-10-20; antes el residuo relativo, que rechazaba contrastes de rigidez legítimos). Desde el 2026-09-30 los no lineales buscan los mecanismos internos de la \textbf{tangente inicial} (\texttt{U = 0}), reutilizando su primera factorización: con el modelo geométricamente lineal un mecanismo interno es \texttt{IllPosedSystemError}; con elementos geométricamente no lineales (\texttt{Element.\allowbreak{}GEOMETRICALLY\_\allowbreak{}NONLINEAR}) o materiales unilaterales, sólo un aviso. Desde el 2026-10-20 (decisión del usuario) un mecanismo interno no se declara por el tamaño de un pivote: un pivote pequeño frente a la diagonal (SuperLU, Pardiso y Cholesky) sólo dispara la búsqueda del modo de menor energía con la factorización existente, y es un mecanismo si ese modo no deforma ninguno de los elementos que mueve; el mensaje dice qué elementos son y, si se mueven como un sólido rígido, cómo. Con \texttt{linear\_\allowbreak{}algebra: iterative}, que no tiene pivotes, se avisa una vez por análisis de que la comprobación no se hace. Los solvers dinámicos y el modal no comprueban nada de esto: ahí un modelo libre es legítimo.}
+
+
+\textit{\textbf{Pseudo-tiempo del paso (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}, 2026-11-11)}: los solvers que avanzan por pasos declaran en cada intento el incremento de su parámetro de control, para los materiales integrados con IMPL-EX (\texttt{IsotropicDamageCrackBand2D/\allowbreak{}3D} con \texttt{integration: impl-ex}), que extrapolan su daño con la razón $r = \Delta\tau_{n+1}/\Delta\tau_n$ respecto del último paso confirmado: \texttt{NonlinearSolver}, $\Delta\lambda$; \texttt{ArcLengthSolver} e \texttt{IndirectDisplacementSolver}, la longitud de arco del paso (en el control indirecto, el incremento de la magnitud controlada), tras el predictor; \texttt{NewtonNewmarkSolver} y \texttt{NewtonHHTSolver}, el paso de tiempo del intento; \texttt{CentralDifferenceSolver}, $\Delta t$; \texttt{DissipationArcLengthSolver}, $dl$ o $\tau$ según el modo. Lo hacen con \texttt{assembler.\allowbreak{}prepare\_\allowbreak{}all\_\allowbreak{}steps(U, pseudo\_\allowbreak{}time\_\allowbreak{}increment=\ensuremath{\Delta}\ensuremath{\tau})} o \texttt{assembler.\allowbreak{}set\_\allowbreak{}pseudo\_\allowbreak{}time\_\allowbreak{}increment(\ensuremath{\Delta}\ensuremath{\tau})}. Un solver que abre un intento sin declararlo se rechaza al confirmar el primer paso si el modelo tiene materiales IMPL-EX. \texttt{LinearSolver}, \texttt{ModalSolver}, \texttt{NewmarkSolver}, \texttt{HHTSolver} y los análisis de frecuencia no avanzan por pasos: el material ve su daño confirmado, congelado. Lo prueba \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_damage_crack_band_implex.py}{\texttt{test\_\allowbreak{}damage\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}implex.\allowbreak{}py}}.}
 
 
 \textit{\textbf{Solvers de los módulos de usuario} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}): van en la sección «Módulos de usuario --- \textless{}módulo\textgreater{}» al final del catálogo. Hoy, \texttt{DissipationArcLengthSolver} (módulo \texttt{dissipation\_\allowbreak{}control}).}
@@ -19481,7 +19498,7 @@ El \textbf{dispatch en \texttt{run\_yaml}} se hace por el atributo de clase \tex
 
 Tras implementar, \textbf{añadir una entrada a este catálogo} siguiendo el formato de arriba y promover la spec a \texttt{status: validated}.
 
-Un solver \textbf{no estándar} (una formulación que no cumple el criterio de admisión de Reglas.md §1: no aparece en los textos de referencia del área o ningún código general establecido la implementa) no entra en el programa principal: va a un \textbf{módulo de usuario} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}, Reglas.md §4), con código en \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}módulo\textgreater{}/\allowbreak{}} (scaffolding con \texttt{/\allowbreak{}solidum-new solver \textless{}Nombre\textgreater{} --user \textless{}módulo\textgreater{}}), spec en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}módulo\textgreater{}/\allowbreak{}specs/\allowbreak{}}, tests en \texttt{tests/\allowbreak{}user/\allowbreak{}\textless{}módulo\textgreater{}/\allowbreak{}} y entrada en una sección «Módulos de usuario --- \textless{}módulo\textgreater{}» al final de este catálogo. Se conecta por la parte pública del programa principal: \texttt{@SolverRegistry.\allowbreak{}register}, \texttt{PIPELINE\_KIND} y, si es una variante de arco que sólo cambia la restricción del paso, \texttt{ArcLengthSolver} y \texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}ArcProblem} (modelo: \texttt{DissipationArcLengthSolver}). Si avanza por pasos, invoca el gancho \texttt{assembler.\allowbreak{}prepare\_\allowbreak{}all\_\allowbreak{}steps(U\_\allowbreak{}committed)} al empezar cada intento de paso.
+Un solver \textbf{no estándar} (una formulación que no cumple el criterio de admisión de Reglas.md §1: no aparece en los textos de referencia del área o ningún código general establecido la implementa) no entra en el programa principal: va a un \textbf{módulo de usuario} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}, Reglas.md §4), con código en \texttt{solidum/\allowbreak{}user/\allowbreak{}\textless{}módulo\textgreater{}/\allowbreak{}} (scaffolding con \texttt{/\allowbreak{}solidum-new solver \textless{}Nombre\textgreater{} --user \textless{}módulo\textgreater{}}), spec en \texttt{docs/\allowbreak{}user/\allowbreak{}\textless{}módulo\textgreater{}/\allowbreak{}specs/\allowbreak{}}, tests en \texttt{tests/\allowbreak{}user/\allowbreak{}\textless{}módulo\textgreater{}/\allowbreak{}} y entrada en una sección «Módulos de usuario --- \textless{}módulo\textgreater{}» al final de este catálogo. Se conecta por la parte pública del programa principal: \texttt{@SolverRegistry.\allowbreak{}register}, \texttt{PIPELINE\_KIND} y, si es una variante de arco que sólo cambia la restricción del paso, \texttt{ArcLengthSolver} y \texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}ArcProblem} (modelo: \texttt{DissipationArcLengthSolver}). Si avanza por pasos, invoca el gancho \texttt{assembler.\allowbreak{}prepare\_\allowbreak{}all\_\allowbreak{}steps(U\_\allowbreak{}committed)} al empezar cada intento de paso. y declara el incremento de su pseudo-tiempo (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}).
 
 
 
