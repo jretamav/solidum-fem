@@ -192,7 +192,10 @@ class Material(BatchMaterialHooks, ABC):
         Las llamadas a ``compute_state`` deben ser puras respecto al estado
         que el material guarda internamente — toda la historia entra por
         ``state_vars`` y sale por ``new_state_vars``. La instancia ``self``
-        sólo contiene parámetros constantes del modelo (E, ν, σ_y, ...).
+        sólo contiene parámetros constantes del modelo (E, ν, σ_y, ...) y,
+        en los materiales con :attr:`uses_pseudo_time`, la razón de
+        incrementos de pseudo-tiempo del intento de paso en curso, que fija
+        el ensamblador (ADR 0034); no es historia.
 
         Returns
         -------
@@ -227,6 +230,30 @@ class Material(BatchMaterialHooks, ABC):
         de ablandamiento que tendría retroceso en el propio material). Por
         omisión, el estado inicial ordinario."""
         return self.initial_state()
+
+    # ------------------------------------------------------------------
+    # Pseudo-tiempo del paso (ADR 0034)
+    # ------------------------------------------------------------------
+
+    @property
+    def uses_pseudo_time(self) -> bool:
+        """``True`` si la respuesta del punto depende de la razón de
+        incrementos de pseudo-tiempo ``r = Δτ_{n+1}/Δτ_n`` del paso: un
+        material integrado con IMPL-EX (Oliver, Huespe y Cante 2008), que
+        extrapola su variable histórica con los dos últimos pasos
+        convergidos. Depende de la instancia. Por omisión, ``False``."""
+        return False
+
+    def set_pseudo_time_ratio(self, ratio: float | None) -> None:
+        """Razón ``r = Δτ_{n+1}/Δτ_n`` del intento de paso en curso, o
+        ``None`` fuera de un paso (antes del primero, entre el commit y el
+        siguiente intento, y en los análisis lineales y el post-proceso).
+
+        La llama el ensamblador (``Assembler.set_pseudo_time_increment`` y
+        ``commit_all_states``) en los materiales con :attr:`uses_pseudo_time`;
+        tras cambiarla, refresca los ``batch_params`` de sus familias. Por
+        omisión no hace nada."""
+        return None
 
     # ------------------------------------------------------------------
     # Política de tolerancias del criterio de admisibilidad (ADR 0006)

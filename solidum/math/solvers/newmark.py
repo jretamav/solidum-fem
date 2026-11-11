@@ -590,7 +590,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             # Gancho de inicio de paso (ADR 0020, P5) con el estado
             # convergido del paso anterior. Mismo protocolo que los solvers
             # estáticos.
-            self.assembler.prepare_all_steps(state["u"])
+            self.assembler.prepare_all_steps(state["u"], pseudo_time_increment=h)
             # Predictores Newmark.
             u_pred = state["u"] + h * state["v"] + 0.5 * h * h * (1.0 - 2.0 * beta) * state["a"]
             udot_pred = state["v"] + h * (1.0 - gamma) * state["a"]
@@ -1073,7 +1073,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             h = t_to - state["t"]
             # Gancho de inicio de paso (ADR 0020, P5) con el estado
             # convergido del paso anterior, como en NewtonNewmarkSolver.
-            self.assembler.prepare_all_steps(state["u"])
+            self.assembler.prepare_all_steps(state["u"], pseudo_time_increment=h)
             u_pred = state["u"] + h * state["v"] + 0.5 * h * h * (1.0 - 2.0 * beta) * state["a"]
             udot_pred = state["v"] + h * (1.0 - gamma) * state["a"]
             F_raw, F_next = self._external_load(t_to, ndof)

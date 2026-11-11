@@ -276,6 +276,23 @@ Medio, ya cerrado. Una etapa hereda el estado que guardan los elementos, así qu
 Bajo. Los generadores producen objetos que el resto del programa ya sabía tratar (nodos, elementos, MPC); las interfaces generadas no se registran ni se exportan a VTK, y sólo exigieron dos piezas genéricas (`VTK_EXPORT` en el exportador y `YAML_KEYS` en el lector).
 ```
 
+## Fase 13 — Fisuración distribuida del concreto
+
+**Estado**: implementado (ampliación del ADR 0028 y ADR 0034, 11 de noviembre de 2026).
+
+- **Banda de grieta** (`IsotropicDamageCrackBand2D/3D`): el daño isótropo regularizado por energía de fractura, con la medida de Rankine y un tope de daño propio. Los diez sólidos 2D y 3D siembran la longitud característica de cada punto (ampliación del ADR 0028, `CHARACTERISTIC_LENGTH_FACTOR`); un elemento que no la proporciona rechaza el material al construirse.
+- **IMPL-EX y pseudo-tiempo** (ADR 0034): la integración implícita-explícita del daño, con tangente secante simétrica y definida positiva, y la pieza genérica por la que los solvers incrementales informan el incremento de su parámetro de control.
+- Es el primer modelo de la familia de modelos de concreto; los siguientes (daño de tracción y compresión, grieta rotante, daño-plasticidad) reutilizarán la banda de grieta, la longitud característica y el pseudo-tiempo.
+
+```
+[Solver incremental] -- Δτ del intento --> [Ensamblador] -- r = Δτ(n+1)/Δτ(n) --> [Material IMPL-EX | batch_params]
+[Elemento sólido] -- h por punto de Gauss --> [estado del punto] --> [Material con banda de grieta]
+```
+
+```callout Riesgo de arquitectura
+Bajo. La longitud característica reutiliza la pieza del ADR 0028; el pseudo-tiempo es un dato más que el ensamblador pasa a los materiales que lo piden, sin cambiar la firma de `compute_state` ni la del kernel compilado. Un solver nuevo que avance por pasos debe declarar su pseudo-tiempo para admitir materiales IMPL-EX.
+```
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

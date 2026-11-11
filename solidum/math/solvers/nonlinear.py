@@ -278,7 +278,8 @@ class NonlinearSolver:
             # convergido del paso anterior para evitar chattering por
             # predictores lineales dentro del Newton. No-op para elementos
             # estándar; lo usan los que toman decisiones discretas entre pasos.
-            self.assembler.prepare_all_steps(U_current)
+            # Pseudo-tiempo del paso = Δλ (ADR 0034: materiales IMPL-EX).
+            self.assembler.prepare_all_steps(U_current, pseudo_time_increment=delta_lambda)
 
             # Corrector del paso. No se evalúa la convergencia en la
             # iteración 0: el iterado inicial es el convergido del paso

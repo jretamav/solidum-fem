@@ -439,6 +439,13 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             dU_iter = dlambda * du_pred
             x0 = (U_current + dU_iter, lambda_curr + dlambda, dU_iter)
 
+            # Pseudo-tiempo del paso (ADR 0034, materiales IMPL-EX): la
+            # magnitud que controla el modo activo, dl en el arco cilíndrico y
+            # τ en el de disipación. En el primer paso tras un cambio de modo
+            # la razón entre incrementos no compara magnitudes iguales.
+            self.assembler.set_pseudo_time_increment(
+                dl if mode_predictor == "cylindrical" else abs(self._tau))
+
             # --- 2. CORRECTOR ITERATIVO ---
             # Mismo corrector compartido que el padre; sólo cambia la
             # restricción del modo activo.

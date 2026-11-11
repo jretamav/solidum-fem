@@ -25,6 +25,7 @@ con cifras citables contra referencias externas.
 | 14 | **Cilindro hueco térmico** — perfil logarítmico de Carslaw-Jaeger | `test_thermal_hollow_cylinder.py` | Quad4Thermal, Hex8Thermal + ThermalConduction + LinearSolver | 2/2 |
 | 15 | **Concreto de Mander** — M–κ de una sección de concreto reforzado frente a una integración independiente, voladizo hasta el pico, objetividad de malla (barra a tracción con banda de fisuración; voladizo después del pico), ciclos, transitorio con disipación, YAML | `test_mander_concrete_validation.py` | Frame2DEuler, Truss2D + FiberSection (ManderConcrete1D, Elastoplastic1D) + IndirectDisplacementSolver, NewtonNewmarkSolver | 8/8 |
 | 16 | **Banda de grieta** — objetividad de malla de la energía disipada (barra a tracción con una columna debilitada; 2D con ν = 0 y ν = 0.2, 3D) | `test_crack_band_objectivity.py` | Quad4, Tri3, Hex8, Tet4 + IsotropicDamageCrackBand2D/3D (Rankine) + NonlinearSolver | 5/5 |
+| 17 | **Banda de grieta, Van Vliet** — ensayo de tracción de la tesis (Retama 2010, §8.1) con todo el concreto agrietable: carga máxima y energía entre dos mallas, energía final = (1−ν²)·G_f·A, IMPL-EX con paso fino frente a la implícita | `test_crack_band_van_vliet.py` | Tri3 + IsotropicDamageCrackBand2D (Rankine; implícita e IMPL-EX) + Elastic2D (placas) + NonlinearSolver | 3/3 |
 
 La verificación por soluciones manufacturadas (ADR 0022) vive en el mismo
 directorio (`test_mms_solid_2d.py`, `test_mms_solid_3d.py`,

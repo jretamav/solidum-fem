@@ -60,7 +60,8 @@ def test_alpha_forma_cerrada(h):
     for m in (mat2(), mat3()):
         expected = 1.0 / (GF / (h * FT) - K0 / 2.0)
         assert m.alpha_for(h) == pytest.approx(expected, rel=1e-14)
-        assert m.initial_point_state(h) == {"kappa": K0, "damage": 0.0, "h": h}
+        assert m.initial_point_state(h) == {"kappa": K0, "damage": 0.0, "h": h,
+                                            "kappa_prev": K0, "damage_error": 0.0}
 
 
 @pytest.mark.parametrize("h", [2.0 * E * GF / FT**2, 1.01 * 2.0 * E * GF / FT**2])
@@ -276,23 +277,29 @@ def test_restriccion_exacta_del_3d(measure, hypothesis):
         np.testing.assert_allclose(sig2, sig3[[0, 1, 3]], rtol=1e-10, atol=1e-6)
 
 
+@pytest.mark.parametrize("integration", ["implicit", "impl-ex"])
 @pytest.mark.parametrize("dim", [2, 3])
-def test_kernel_por_lotes_reproduce_compute_state(dim):
-    m = mat2() if dim == 2 else mat3()
+def test_kernel_por_lotes_reproduce_compute_state(dim, integration):
+    m = mat2(integration=integration) if dim == 2 else mat3(integration=integration)
     n = m.STRAIN_DIM
+    names = list(m.STATE_SCHEMA)
     kernel = m.batch_kernel()
-    params, C = m.batch_params(), m.batch_matrix()
+    C = m.batch_matrix()
     st = m.initial_point_state(0.025)
     rng = np.random.default_rng(3)
-    for _ in range(20):
+    for i in range(20):
+        # IMPL-EX: razón variable por paso y, cada cinco, «fuera de un paso».
+        m.set_pseudo_time_ratio(None if i % 5 == 4 else 0.5 + 0.1 * i)
+        params = m.batch_params()
         eps = (rng.standard_normal(n) + np.r_[2.0, np.zeros(n - 1)]) * 1.5e-4
         sig_ref, C_ref, st_new = m.compute_state(eps, st)
-        S_old = np.array([st["kappa"], st["damage"], st["h"]])
-        S_new, sig, C_out, flag = np.zeros(3), np.zeros(n), np.zeros((n, n)), np.zeros(1, np.int64)
+        S_old = np.array([st[k] for k in names])
+        S_new, sig, C_out, flag = (np.zeros(len(names)), np.zeros(n), np.zeros((n, n)),
+                                   np.zeros(1, np.int64))
         C_t = kernel(eps, S_old, S_new, params, C, sig, C_out, flag)
         np.testing.assert_array_equal(sig, sig_ref)
         np.testing.assert_array_equal(C_t, C_ref)
-        np.testing.assert_array_equal(S_new, [st_new["kappa"], st_new["damage"], st_new["h"]])
+        np.testing.assert_array_equal(S_new, [st_new[k] for k in names])
         assert flag[0] == 0
         st = st_new
 

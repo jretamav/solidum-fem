@@ -186,9 +186,13 @@ $$\alpha(h) = \frac{1}{\dfrac{G_f}{h\,f_t} - \dfrac{\kappa_0}{2}}, \qquad \kappa
 
 para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en `Quad4`, $\sqrt{2A}$ en `Tri3`, $\tfrac12\sqrt{A}$ en `Tri6`, `Quad8` y `Quad9`); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
 
-- **Parámetros**: `E`, `nu`, `f_t`, `G_f` (energía por unidad de área, N/m en SI), `hypothesis`, `equivalent_strain` (`rankine` por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también `energy`, `mazars` y `modified_von_mises` con `k`), `damage_max` (tope del daño, $1 - 10^{-6}$ por omisión), `density`.
+- **Parámetros**: `E`, `nu`, `f_t`, `G_f` (energía por unidad de área, N/m en SI), `hypothesis`, `equivalent_strain` (`rankine` por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también `energy`, `mazars` y `modified_von_mises` con `k`), `damage_max` (tope del daño, $1 - 10^{-6}$ por omisión), `integration` (`implicit` por omisión o `impl-ex`), `density`.
 - **Con qué medida**: con banda de grieta todo daño ablanda con la $G_f$ de tracción. `rankine` es la adecuada para agrietamiento dominado por tracción; las otras dañan también en compresión (la energética a $f_t$, Mazars a $\approx 3.5 f_t$, von Mises modificado a $f_c$ pero con una compresión demasiado frágil).
-- **Integración**: implícita. En el ablandamiento el Newton puede detenerse cuando varias zonas se dañan a la vez; la integración IMPL-EX, más robusta, está en preparación.
+- **Integración** (`integration`):
+  - `implicit` (por omisión): el daño de cada paso se calcula con la deformación del mismo paso y la tangente es la consistente. En el ablandamiento el Newton puede necesitar bisecciones o detenerse cuando varias zonas se dañan a la vez.
+  - `impl-ex` (Oliver, Huespe y Cante 2008): el daño del paso se **extrapola** de los dos pasos anteriores y queda fijo durante el paso; el material es lineal dentro del paso, con tangente secante simétrica y definida positiva, y el Newton converge en una iteración (más la de comprobación). Al confirmar el paso se calcula el daño real, que sirve para la extrapolación siguiente. Es la opción robusta para estructuras grandes o con varias grietas.
+  - **Tamaño del paso con `impl-ex`**: el daño va un paso atrasado y el error es proporcional al paso; donde el daño arranca (cerca del pico) hacen falta pasos pequeños. En el ensayo de tracción de Van Vliet el pico se pasa un 7.7 % con pasos de 0.5 µm y un 0.8 % con 0.0625 µm. Compare dos tamaños de paso antes de dar un resultado por bueno; la variable de estado `damage_error` (diferencia entre el daño real y el extrapolado) indica dónde y cuándo el paso es grueso.
+  - **Solvers**: `impl-ex` funciona con los solvers que avanzan por pasos y declaran su pseudo-tiempo (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`; ADR 0034). En los análisis lineales y en el post-proceso el material usa el daño confirmado.
 - **Limitaciones**: daño escalar (al agrietarse el punto pierde rigidez también en compresión), sin cierre de grietas; la banda tiende a seguir las líneas de la malla. En una banda que sus vecinos impiden contraerse lateralmente, la energía disipada es $(1-\nu^2)\,G_f$ por unidad de área.
 
 ```yaml
@@ -202,6 +206,14 @@ materials:
     G_f: 100.0
     hypothesis: plane_stress
     density: 2400.0
+  # La misma ley con integración IMPL-EX (pasos pequeños cerca del pico).
+  - id: 7
+    type: IsotropicDamageCrackBand2D
+    E: 30.0e9
+    nu: 0.2
+    f_t: 3.0e6
+    G_f: 100.0
+    integration: impl-ex
 ```
 
 ## Elasticidad Unilateral (Cable)

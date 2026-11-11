@@ -4,7 +4,7 @@
 >
 > **Variante de componente existente** (Reglas §4): subclase de `IsotropicDamage3D` ([spec](IsotropicDamage3D.md), validada), que no se modifica. Es la versión 3D de [IsotropicDamageCrackBand2D](IsotropicDamageCrackBand2D.md): **toda la física, las ecuaciones, los requisitos de interfaz y las preguntas al usuario (Q1–Q5) están allí**. Aquí sólo lo que difiere.
 >
-> **Estado: aprobada por el usuario (2026-11-11, junto con la 2D). Bloque 1 implementado; IMPL-EX en el bloque 2** (ver la spec 2D).
+> **Estado: aprobada por el usuario (2026-11-11, junto con la 2D) y validada**: bloque 1 (banda de grieta) y bloque 2 (IMPL-EX, [ADR 0034](../adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md)); ver la spec 2D.
 
 ---
 
@@ -44,13 +44,14 @@ Con la variante 2D como restricción exacta de ésta en tensión plana y deforma
 ```yaml
 name: IsotropicDamageCrackBand3D
 kind: material
-status: implemented        # bloque 1; validated al cerrar el bloque 2
+status: validated          # bloques 1 y 2 (2026-11-11)
 
 interface:
   strain_dim: 6
   primary_state_var: damage
-  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' (y, en el bloque 2, con integration='impl-ex')
-  batch_kernel: true
+  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' o con integration='impl-ex'
+  batch_kernel: true       # estado [κ, d, h, κ_prev, e]
+  uses_pseudo_time: "true con integration='impl-ex' (ADR 0034)"
 
 admission:                # Reglas §1; variante de un material admitido (IsotropicDamage3D); ver la spec 2D
   textbooks:
@@ -69,7 +70,7 @@ parameters:
   - { name: G_f,        type: float, required: true,  desc: "Energía de fractura en modo I [N/m]" }
   - { name: equivalent_strain, type: str, required: false, default: "rankine", desc: "rankine | energy | mazars | modified_von_mises (Q1 de la spec 2D)" }
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises" }
-  # integration: "implicit | impl-ex" entra en el bloque 2; hoy, sólo implícita.
+  - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (§8 de la spec 2D; ADR 0034)" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante (Q5 de la spec 2D)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
@@ -82,6 +83,8 @@ state_schema:
   kappa:      "float ≥ κ_0 — máxima deformación equivalente histórica"
   damage:     "float ∈ [0, damage_max] — daño con que se calcula el esfuerzo"
   h:          "float > 0 — longitud característica del punto de integración"
+  kappa_prev: "float — κ del paso confirmado anterior (IMPL-EX)"
+  damage_error: "float ≥ 0 — indicador |d(κ) − d̃| de IMPL-EX; 0 en la implícita"
 
 conventions:
   sign: "σ > 0 ⇔ tracción"
@@ -92,7 +95,7 @@ validity:
   - "E > 0, f_t > 0, G_f > 0, ν ∈ (−1, 0.5)"
   - "0 < h < 2·E·G_f/f_t² en cada punto"
   - "damage_max ∈ (0, 1)"
-  - "bloque 2: integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo"
+  - "integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (ADR 0034)"
 
 out_of_scope:
   - "lo mismo que la variante 2D"
@@ -142,3 +145,4 @@ references:
 
 - **2026-11-11** · Spec creada por la IA junto con [IsotropicDamageCrackBand2D](IsotropicDamageCrackBand2D.md); las preguntas al usuario (Q1–Q5) están en esa spec y valen para las dos.
 - **2026-11-11** · Aprobada por el usuario con la 2D («si»). Bloque 1 implementado (sin IMPL-EX); `Tet4` con $\sqrt[3]{6V_e}$ por la prueba de objetividad (§2). Hallazgos en el Diálogo de la spec 2D.
+- **2026-11-11** · Bloque 2: IMPL-EX con la misma formulación que la 2D (§8 de esa spec; ADR 0034). Pruebas en 3D: tangente secante exacta y simétrica definida positiva, kernel por lotes bit a bit (implícita e IMPL-EX, razón variable y «sin paso») en `tests/test_damage_crack_band.py` y `tests/test_damage_crack_band_implex.py`. La prueba estructural (Van Vliet) es 2D.

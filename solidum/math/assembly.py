@@ -120,6 +120,14 @@ class Assembler:
         self._families: list[Family] = []
         self._loose: list[int] = []
 
+        # Pseudo-tiempo de los solvers incrementales (ADR 0034): incremento
+        # del intento de paso en curso, el del último paso confirmado y si
+        # hay un intento abierto (``prepare_all_steps`` sin commit todavía).
+        self._pseudo_time_increment: float | None = None
+        self._pseudo_time_last_increment: float | None = None
+        self._step_attempt_open = False
+        self._pt_cache = None
+
         # Caché del ConstraintSet (ADR 0004 fase 1).
         self._constraint_set: ConstraintSet | None = None
 
@@ -322,6 +330,7 @@ class Assembler:
         self._M_global = None
         self._M_lumping = None
         self._M_nodal_key = None
+        self._pt_cache = None
 
     def _elements(self) -> list:
         return list(self.domain.elements.values())
@@ -818,7 +827,34 @@ class Assembler:
 
         Marca el dominio con ``committed_history``: su estado interno ya no es
         el inicial, y una corrida que empiece en ``U = 0`` sin continuar la
-        anterior lo avisa si ese estado no está en equilibrio (ADR 0026)."""
+        anterior lo avisa si ese estado no está en equilibrio (ADR 0026).
+
+        Pseudo-tiempo (ADR 0034): si el modelo tiene materiales que lo usan
+        y se confirma un intento de paso abierto con ``prepare_all_steps``
+        sin que el solver haya declarado su incremento, lanza ``ValueError``
+        (el solver no admite IMPL-EX). Al confirmar, el incremento del paso
+        pasa a ser la referencia ``Δτ_n`` del siguiente y los materiales
+        vuelven a «fuera de un paso»."""
+        pt_materials = self._pseudo_time_materials()
+        if pt_materials and self._step_attempt_open and self._pseudo_time_increment is None:
+            names = sorted({type(m).__name__ for m in pt_materials})
+            raise ValueError(
+                f"El modelo tiene materiales integrados con IMPL-EX ({', '.join(names)}) "
+                f"y el solver no declaró el incremento de su pseudo-tiempo "
+                f"(Assembler.set_pseudo_time_increment o prepare_all_steps(..., "
+                f"pseudo_time_increment=Δτ); ADR 0034). Use un solver incremental que "
+                f"lo declare (NonlinearSolver, ArcLengthSolver y sus variantes, "
+                f"NewtonNewmarkSolver, NewtonHHTSolver, CentralDifferenceSolver) o integre "
+                f"el material de forma implícita (integration='implicit').")
+        self._commit_states()
+        if self._pseudo_time_increment is not None:
+            self._pseudo_time_last_increment = self._pseudo_time_increment
+        self._pseudo_time_increment = None
+        self._step_attempt_open = False
+        if pt_materials:
+            self._push_pseudo_time_ratio(pt_materials, None)
+
+    def _commit_states(self) -> None:
         self.domain.committed_history = True
         if not self._topology_built or self._topology_key != self._current_topology_key():
             for elem in self.domain.elements.values():
@@ -830,7 +866,8 @@ class Assembler:
         for pos in self._loose:
             elements[pos].commit_state()
 
-    def prepare_all_steps(self, U_committed: np.ndarray) -> None:
+    def prepare_all_steps(self, U_committed: np.ndarray,
+                          pseudo_time_increment: float | None = None) -> None:
         """Invoca ``prepare_step(U_committed)`` en todos los elementos del dominio.
 
         Gancho de inicio de paso (ADR 0020, P5). Lo llaman los solvers que
@@ -839,9 +876,79 @@ class Assembler:
         Newton. La implementación base de ``Element.prepare_step`` es no-op;
         la sobreescriben los elementos que toman decisiones discretas entre
         pasos.
+
+        Abre un intento de paso (ADR 0034). Si el solver ya conoce el
+        incremento de su parámetro de control (factor de carga, tiempo), lo
+        pasa en ``pseudo_time_increment``; si lo conoce después (longitud
+        de arco tras el predictor), llama a :meth:`set_pseudo_time_increment`
+        antes del corrector.
         """
+        self._step_attempt_open = True
+        self._pseudo_time_increment = None
         for elem in self.domain.elements.values():
             elem.prepare_step(U_committed)
+        if pseudo_time_increment is not None:
+            self.set_pseudo_time_increment(pseudo_time_increment)
+
+    # ------------------------------------------------------------------
+    # Pseudo-tiempo de los solvers incrementales (ADR 0034)
+    # ------------------------------------------------------------------
+
+    def set_pseudo_time_increment(self, increment: float) -> None:
+        """Declara el incremento ``Δτ_{n+1} > 0`` del parámetro de control
+        del intento de paso en curso (factor de carga, desplazamiento
+        prescrito, longitud de arco, magnitud del control indirecto,
+        tiempo) y entrega a los materiales que lo usan la razón
+        ``r = Δτ_{n+1}/Δτ_n`` respecto del último paso confirmado (``r = 1``
+        en el primer paso). Repetir el intento con otro incremento
+        (bisección) sólo cambia ``r``: el estado confirmado no cambia."""
+        dtau = float(increment)
+        if not (np.isfinite(dtau) and dtau > 0.0):
+            raise ValueError(
+                f"set_pseudo_time_increment: el incremento de pseudo-tiempo debe ser un "
+                f"número finito > 0 (recibido {increment!r}).")
+        self._step_attempt_open = True
+        self._pseudo_time_increment = dtau
+        pt_materials = self._pseudo_time_materials()
+        if not pt_materials:
+            return
+        last = self._pseudo_time_last_increment
+        self._push_pseudo_time_ratio(pt_materials, 1.0 if last is None else dtau / last)
+
+    @property
+    def pseudo_time_increment(self) -> float | None:
+        """Incremento de pseudo-tiempo del intento de paso en curso (o
+        ``None`` fuera de un paso o si el solver no lo declaró)."""
+        return self._pseudo_time_increment
+
+    def _pseudo_time_materials(self) -> list:
+        """Materiales distintos de los elementos del dominio con
+        ``uses_pseudo_time``. Se guarda con la huella de topología: lo
+        consultan cada intento de paso y cada commit (en dinámica explícita,
+        miles de veces)."""
+        key = self._current_topology_key()
+        cached = self._pt_cache
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        found: dict = {}
+        for elem in self.domain.elements.values():
+            mat = getattr(elem, "material", None)
+            if mat is not None and getattr(mat, "uses_pseudo_time", False):
+                found[id(mat)] = mat
+        self._pt_cache = (key, list(found.values()))
+        return self._pt_cache[1]
+
+    def _push_pseudo_time_ratio(self, materials: list, ratio: float | None) -> None:
+        """Entrega ``ratio`` a los materiales y refresca, en sitio, los
+        parámetros por lotes de sus familias (el kernel compilado los lee de
+        ``Family.mat_params``)."""
+        ids = {id(m) for m in materials}
+        for mat in materials:
+            mat.set_pseudo_time_ratio(ratio)
+        for fam in self._families:
+            if id(fam.material) in ids:
+                np.copyto(fam.mat_params, np.asarray(
+                    fam.material.batch_params(), dtype=np.float64).reshape(-1))
 
     def apply_point_load(self, node_id: int, dof_name: str, value: float):
         node = self.domain.get_node(node_id)

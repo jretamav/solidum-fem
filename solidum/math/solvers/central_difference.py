@@ -432,6 +432,8 @@ class CentralDifferenceSolver(TransientTerminationMixin):
             return K_red @ u_free
         # Reconstruir u_global con apoyos prescritos y recalcular F_int.
         u_global = T @ u_free + g
+        # Pseudo-tiempo del instante = Δt (ADR 0034: materiales IMPL-EX).
+        self.assembler.set_pseudo_time_increment(self.dt)
         _K_t, F_int_global = self.assembler.assemble_non_linear_system(u_global)
         self._last_F_int = F_int_global     # reacciones de los apoyos
         # En un esquema explícito ``u_global`` es la configuración definitiva

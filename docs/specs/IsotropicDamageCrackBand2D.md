@@ -6,7 +6,7 @@
 >
 > Uso previsto: agrietamiento de estructuras de concreto con fisuración distribuida, en 2D y 3D (la variante 3D está en [IsotropicDamageCrackBand3D](IsotropicDamageCrackBand3D.md)).
 >
-> **Estado: aprobada por el usuario (2026-11-11, «si», con las cinco recomendaciones Q1–Q5). Bloque 1 implementado** (banda de grieta, medida de Rankine, tope propio y siembra de $h$ en los sólidos 2D y 3D). **IMPL-EX (§8) entra en el bloque 2**, con su ADR y la prueba estructural de Van Vliet; hasta entonces el material sólo se integra de forma implícita y no admite el parámetro `integration`.
+> **Estado: aprobada por el usuario (2026-11-11, «si», con las cinco recomendaciones Q1–Q5) y validada.** Bloque 1 (banda de grieta, medida de Rankine, tope propio y siembra de $h$ en los sólidos 2D y 3D) y bloque 2 (integración IMPL-EX, §8, con la pieza genérica del pseudo-tiempo, [ADR 0034](../adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md), y la prueba estructural de Van Vliet) implementados el mismo día.
 
 ---
 
@@ -115,7 +115,7 @@ No es simétrica en general ($\bar{\boldsymbol\sigma}$ y $\mathbf C_e\mathbf p$ 
 ### 6. Requisitos de interfaz (arquitectura; la decide la IA, ADR nuevo para la pieza de IMPL-EX)
 
 1. **Longitud característica por punto de integración.** La pieza genérica ya existe (`Material.uses_characteristic_length`, `Material.initial_point_state(h)`, `Element._seed_characteristic_lengths`), pero hoy sólo la usan las barras y los marcos (con `ManderConcrete1D`). Los elementos sólidos 2D `Tri3`, `Quad4`, `Tri6`, `Quad8` y `Quad9` deben sembrar $h$ en cada punto de integración según §4. El material guarda $h$ en su estado (variable `h`) y calcula $\alpha(h)$ en cada llamada. Un elemento que no siembre $h$ con este material produce un error claro al construir el modelo, no un resultado silencioso.
-2. **Razón de incrementos de pseudo-tiempo para IMPL-EX** (§8): $r = \Delta\tau_{n+1}/\Delta\tau_n$, que hoy no llega al material. El solver la da al inicio de cada intento de paso (junto al gancho `prepare_all_steps` del ADR 0020, P5), con $\Delta\tau_n$ el incremento del último paso convergido. Un solver que no declare su pseudo-tiempo no admite materiales IMPL-EX: error al empezar el análisis.
+2. **Razón de incrementos de pseudo-tiempo para IMPL-EX** (§8): $r = \Delta\tau_{n+1}/\Delta\tau_n$. Pieza genérica del [ADR 0034](../adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md): el solver declara el incremento de su parámetro de control en cada intento de paso (`Assembler.prepare_all_steps(U, pseudo_time_increment=Δτ)` o, si lo conoce tras el predictor, `Assembler.set_pseudo_time_increment(Δτ)`); el ensamblador calcula $r$ respecto del último paso confirmado y la entrega al material (`set_pseudo_time_ratio`) y a los parámetros de su familia por lotes. Fuera de un paso (análisis lineales, post-proceso, commit final) el material recibe «sin paso» y congela su daño en el confirmado. Un solver que abre un intento sin declarar su pseudo-tiempo se rechaza al confirmar el primer paso, con un error que nombra los solvers que sí lo declaran.
 
 ---
 
@@ -125,7 +125,7 @@ No es simétrica en general ($\bar{\boldsymbol\sigma}$ y $\mathbf C_e\mathbf p$ 
 
 La del padre (§6–§9 de su spec) con $\alpha = \alpha(h)$ del punto, el tope `damage_max` de la variante y la medida elegida (incluida Rankine, §5). Tangente consistente; se pasa a la secante en descarga, sin daño y al llegar al tope.
 
-### 8. Integración IMPL-EX (`integration = 'impl-ex'`) — bloque 2, pendiente
+### 8. Integración IMPL-EX (`integration = 'impl-ex'`)
 
 Oliver, Huespe y Cante (2008): la variable histórica se **extrapola** con los dos últimos pasos convergidos para calcular el esfuerzo, y se **actualiza implícitamente** para la extrapolación siguiente. Dentro del paso el material es lineal (daño congelado), así que la tangente es la secante, simétrica y definida positiva.
 
@@ -142,9 +142,11 @@ Consecuencias:
 
 - Si no hay otras no linealidades, el problema global de cada paso es lineal y el Newton converge en una iteración (más la de comprobación).
 - **Disipación no negativa**: $\mathcal D_{n+1} = \psi_0(\boldsymbol\varepsilon_{n+1})\,(\tilde d_{n+1} - \tilde d_n) \ge 0$ por el paso 2. El $\max$ del paso 2 evita una «curación» espuria cuando una extrapolación anterior se pasó y el punto descarga; en Oliver et al. (2008) la monotonía se razona sobre la variable extrapolada (por confirmar con el artículo si la imponen de la misma forma).
-- **Retraso de un paso**: el daño entra un paso después de que $\varepsilon_\text{eq}$ supere $\kappa_0$ (al inicio $\kappa_n = \kappa_{n-1} = \kappa_0$). El error de la extrapolación es de primer orden en $\Delta\tau$; cerca del pico hacen falta pasos pequeños.
+- **Retraso de un paso**: el daño entra un paso después de que $\varepsilon_\text{eq}$ supere $\kappa_0$ (al inicio $\kappa_n = \kappa_{n-1} = \kappa_0$). **Orden**: la extrapolación lineal es exacta si $\kappa(\tau)$ es lineal y su error local es $O(\Delta\tau^2)$ donde $\kappa(\tau)$ es suave; en un quiebre de $\kappa(\tau)$ (inicio del daño, descarga, recarga) el error es $O(\Delta\tau)$. Como $\kappa$ se actualiza de forma implícita, el error no se acumula. En la práctica manda el quiebre del inicio del daño: cerca del pico hacen falta pasos pequeños (prueba de Van Vliet: el pico se pasa un 7.7 % con 0.5 µm y un 0.8 % con 0.0625 µm).
 - **Bisección**: repetir un paso con otro $\Delta\tau_{n+1}$ sólo cambia $r$; el estado convergido no cambia, así que el resultado es idempotente para el mismo intento.
-- **Indicador de error** por punto: $e_{n+1} = \lvert d(\kappa_{n+1}) - \tilde d_{n+1}\rvert$, el máximo del modelo se informa por paso. El control adaptativo del paso con este indicador (Oliver et al. 2008, §5) queda fuera de alcance.
+- **Fuera de un paso** ($r$ «sin paso»): $\tilde d = \tilde d_n$ y el estado no cambia. Reevaluar el estado confirmado en el desplazamiento convergido reproduce el esfuerzo del paso (post-proceso, análisis lineales sobre el estado de una etapa, commit final de `solidum.run`).
+- **Indicador de error** por punto: $e_{n+1} = \lvert d(\kappa_{n+1}) - \tilde d_{n+1}\rvert$, en la variable de estado `damage_error` (post-proceso por punto o promedio por elemento). El control adaptativo del paso con este indicador (Oliver et al. 2008, §5) queda fuera de alcance.
+- **Newton**: sin otras no linealidades el problema de cada paso es lineal; el corrector hace una resolución y la de comprobación (corrección nula), dos por paso.
 
 ### 9. Simetría
 
@@ -166,13 +168,14 @@ Consecuencias:
 ```yaml
 name: IsotropicDamageCrackBand2D
 kind: material
-status: implemented        # bloque 1; validated al cerrar el bloque 2 (IMPL-EX y Van Vliet)
+status: validated          # bloques 1 y 2 (2026-11-11)
 
 interface:
   strain_dim: 3
   primary_state_var: damage
-  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' (y, en el bloque 2, con integration='impl-ex')
-  batch_kernel: true       # h viaja en la fila de estado [κ, d, h]
+  is_symmetric: false      # cota de clase; la instancia es true con equivalent_strain='energy' o con integration='impl-ex'
+  batch_kernel: true       # estado [κ, d, h, κ_prev, e]; integración y razón de pseudo-tiempo en batch_params
+  uses_pseudo_time: "true con integration='impl-ex' (ADR 0034)"
 
 admission:                # Reglas §1; variante de un material admitido (IsotropicDamage2D)
   textbooks:
@@ -192,7 +195,7 @@ parameters:
   - { name: hypothesis, type: str,   required: false, default: "plane_stress", desc: "plane_stress | plane_strain (como el padre)" }
   - { name: equivalent_strain, type: str, required: false, default: "rankine", desc: "rankine (nueva) | energy | mazars | modified_von_mises (Q1)" }
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises (como el padre)" }
-  # integration: "implicit | impl-ex" entra en el bloque 2 (§8); hoy, sólo implícita.
+  - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (Oliver, Huespe y Cante 2008, §8); impl-ex requiere un solver que declare su pseudo-tiempo (ADR 0034) y pasos pequeños cerca del pico" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante, en (0, 1); ver §3 y Q5" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
@@ -205,7 +208,8 @@ state_schema:
   kappa:      "float ≥ κ_0 — máxima deformación equivalente histórica"
   damage:     "float ∈ [0, damage_max] — daño con que se calcula el esfuerzo"
   h:          "float > 0 — longitud característica del punto de integración, fijada por el elemento (0 sin sembrar: sólo admitido en régimen elástico)"
-  # kappa_prev (κ del paso convergido anterior) entra con IMPL-EX en el bloque 2.
+  kappa_prev: "float — κ del paso confirmado anterior (extrapolación de IMPL-EX; en la implícita, el κ confirmado)"
+  damage_error: "float ≥ 0 — indicador |d(κ) − d̃| de IMPL-EX; 0 en la implícita"
 
 conventions:
   sign: "σ > 0 ⇔ tracción"
@@ -217,7 +221,7 @@ validity:
   - "E > 0, f_t > 0, G_f > 0, ν ∈ (−1, 0.5)"
   - "0 < h < 2·E·G_f/f_t² en cada punto (se comprueba al recibir h)"
   - "damage_max ∈ (0, 1)"
-  - "bloque 2: integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (§6.2)"
+  - "integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (§6.2, ADR 0034)"
   - "pequeñas deformaciones; agrietamiento dominado por tracción"
   - "sólo en elementos que proporcionan h (sólidos 2D y 3D, barras, marcos); otro elemento lo rechaza al construirse"
 
@@ -231,7 +235,7 @@ out_of_scope:
 
 numerical_caveats:
   - "Implícita: tangente indefinida en ablandamiento; posibles fallos del Newton cerca del pico."
-  - "IMPL-EX: error de primer orden en el paso; el daño entra un paso tarde."
+  - "IMPL-EX: error de primer orden en los quiebres de κ(τ) (inicio del daño) y de segundo donde κ(τ) es suave; el daño entra un paso tarde; pico sobrepasado si el paso es grueso."
   - "Sesgo de la banda por la malla y transferencia espuria de esfuerzos (§10)."
   - "Rankine: arista con esfuerzos principales efectivos iguales; subgradiente."
 
@@ -271,8 +275,8 @@ acceptance:
       expect: "C_tan = (1 − d̃)·C_e exacta, simétrica y definida positiva"
       tol_rel: 1.0e-14
     - name: first_order_convergence
-      setup: "camino monótono de tracción uniaxial con pasos Δ, Δ/2, Δ/4, Δ/8"
-      expect: "el error máximo de σ frente a la implícita se reduce a la mitad al reducir el paso a la mitad (razón entre 1.7 y 2.3)"
+      setup: "camino monótono de tracción uniaxial desde κ_0 con pasos Δ, Δ/2, Δ/4, Δ/8: lineal en el pseudo-tiempo (quiebre en el inicio del daño) y cuadrático (κ(τ) suave)"
+      expect: "el error máximo de σ frente a la implícita se reduce a la mitad al reducir el paso a la mitad en el lineal (razón 2 ± 15 %) y a la cuarta parte en el cuadrático (4 ± 15 %)"
     - name: no_negative_dissipation
       setup: "carga, descarga parcial y recarga con extrapolación que se pasa"
       expect: "d̃ nunca decrece; disipación por paso ≥ 0"
@@ -344,3 +348,8 @@ references:
   - **Con $\nu = 0.2$ la barra disipa $(1-\nu^2)\,G_fA = 0.96\,G_fA$ en todas las mallas.** No es error de discretización: las columnas vecinas se descargan e impiden la contracción lateral de la banda ($\varepsilon_{yy} \approx 0$ en ella), Rankine ve $\varepsilon_\text{eq} = \varepsilon_{xx}/(1-\nu^2)$ y el trabajo de $\sigma_{xx}$ en la banda es $(1-\nu^2)\,G_f/h$. La calibración de §2 supone tracción uniaxial de esfuerzo; una banda confinada lateralmente disipa ese 4 % menos. Queda como dato; corregirlo (p. ej. calibrar con la banda en deformación plana) sería una decisión física del usuario.
   - **Van Vliet con integración implícita**: con la malla de la tesis en `Tri3` (1200 elementos, paso de 1 µm) el Newton se detiene a λ ≈ 0.16 (desplazamiento de la rótula 93 µm), con $D \approx 0.75\,G_fA$ disipado: es justo la falta de robustez de la implícita en ablandamiento que motiva IMPL-EX. La prueba estructural `van_vliet_tension` pasa al bloque 2.
 - **2026-11-11** · **Usuario: «si»** a dejar el efecto de Poisson documentado y sin corregir: con $\nu = 0.2$ la banda confinada lateralmente disipa $(1-\nu^2)\,G_f = 0.96\,G_f$ por unidad de área en todas las mallas (la objetividad se conserva). Una corrección de la calibración sólo sería exacta para un estado de esfuerzos de la banda, y el 4 % está muy por debajo de la incertidumbre usual de $G_F$. El efecto es propio del daño isótropo; la grieta rotante (modelo 3 de la familia de concreto) no lo tiene.
+- **2026-11-11** · **Bloque 2 implementado: IMPL-EX** (ADR 0034). Resultados:
+  - **Punto material**: tangente $(1-\tilde d)\,\mathbf C_e$ exacta, simétrica y definida positiva; disipación $\psi_0\,\Delta\tilde d \ge 0$ con carga, descarga y recarga; kernel por lotes bit a bit con la implícita y con IMPL-EX, con razón variable y «sin paso». **Orden**: con un camino lineal en el pseudo-tiempo que arranca en $\kappa_0$ la razón de errores al dividir el paso es 2.0 (primer orden, por el quiebre del inicio del daño); con un camino cuadrático (suave) es 4.0 (segundo orden). Lo de la spec («primer orden») vale en los quiebres; se corrigió §8 y el caso de aceptación.
+  - **Global** (barra de la prueba de objetividad, $\nu = 0$): con IMPL-EX el corrector hace dos resoluciones por paso (una y la de comprobación) en los 400 pasos; la implícita, hasta 26 ensamblajes en el pico (bisecciones). Con paso de 0.125 µm la energía disipada es $0.9989$–$0.9996\,G_fA$ con 5, 10 y 20 elementos y la carga en $u = 0.05$ mm coincide con la implícita a 0.3 %; con 0.5 µm la extrapolación pasa el pico y disipa $1.01$–$1.03\,G_fA$.
+  - **Van Vliet** (todo el concreto agrietable, `Tri3`, dos mallas de 1200 y 4396 elementos): implícita, pico 26.49 / 26.95 kN (1.7 %) y energía en $u = 0.12$ mm 0.966 / 0.956 J (1.1 %); al final ($u = 1.2$ mm, carga 0.36 % del pico) $D = 1.378$ J $= 0.981\,(1-\nu^2)\,G_fA$. IMPL-EX con 0.0625 µm: pico 26.72 kN (+0.9 %), energía +0.2 %; con 0.5 µm, pico +7.7 %. La implícita ya no se detiene: con las placas de la prueba de la embebida (dos capas de 8 mm) la carga puntual las flexionaba y el concreto junto a ellas llegaba a $\sigma_I$ 1.7 veces mayor que en el cuello, así que la probeta se rompía junto a las placas y el Newton fallaba ahí (el «λ ≈ 0.16» del bloque 1). Con placas de dos capas de 25 mm (supuesto propio, la tesis no da el espesor) la grieta se forma en el cuello. Prueba: `tests/validation/test_crack_band_van_vliet.py`.
+  - **Salvaguarda $\tilde d = \max(\tilde d_n, d(\tilde\kappa))$**: implementada como en §8; que Oliver, Huespe y Cante (2008) la impongan con esa forma sigue por confirmar con el artículo (no se tuvo acceso al texto).

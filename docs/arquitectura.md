@@ -103,7 +103,7 @@
 3. **`YamlParser`** lee el YAML: primero carga los módulos de usuario que declare `user_modules`, después valida e instancia materiales (cada familia desde su sección), elementos, BCs, solver; los generadores de restricciones (`constraints`) crean sus nodos, elementos y MPC sobre el dominio ya mallado (ADR 0032).
 4. **`Domain`** numera DOFs globalmente recorriendo nodos y elementos.
 5. **`Solver`** (en cada iteración Newton-Raphson o paso de arc-length):
-   - Al empezar cada paso, los solvers que avanzan por pasos llaman a `Assembler.prepare_all_steps(U_committed)`, que invoca el gancho `Element.prepare_step` en cada elemento (no-op salvo en los que toman decisiones discretas entre pasos, como activar una grieta; ADR 0020, P5).
+   - Al empezar cada paso, los solvers que avanzan por pasos llaman a `Assembler.prepare_all_steps(U_committed)`, que invoca el gancho `Element.prepare_step` en cada elemento (no-op salvo en los que toman decisiones discretas entre pasos, como activar una grieta; ADR 0020, P5). En esa llamada, o con `Assembler.set_pseudo_time_increment(Δτ)` si lo conocen después del predictor, declaran el incremento de su parámetro de control (pseudo-tiempo); el ensamblador entrega a los materiales integrados con IMPL-EX la razón con el del último paso confirmado (ADR 0034).
    - Pide a cada elemento su `K_local` y `f_internal` (vía `ElementState` trial).
    - **`Assembler`** ensambla `K_global` sparse usando topología COO cacheada.
    - **`Assembler.reduce(K, F, ...)`** elimina los DOFs prescritos del sistema

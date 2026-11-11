@@ -865,6 +865,9 @@ class ArcLengthSolver:
             if dl is None:
                 dl = dl_ref = self._first_dl(du_t)
             dl_step = self._limit_step(dl, U_current)
+            # Pseudo-tiempo del paso = longitud de arco (o incremento de la
+            # magnitud controlada), conocida tras el predictor (ADR 0034).
+            self.assembler.set_pseudo_time_increment(dl_step)
             _log.debug(f"[PASO {step}] longitud de paso dl = {dl_step:.4e}")
 
             dlambda = self._predictor_dlambda(du_t, sign, dl_step)

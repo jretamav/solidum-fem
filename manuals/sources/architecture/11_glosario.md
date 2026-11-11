@@ -62,6 +62,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Grado de libertad sin masa**. Grado de libertad en el que la matriz de masa es nula (masas sólo en algunos nudos, elementos sin densidad, giros sin inercia rotacional). El análisis modal los condensa estáticamente de forma exacta y los transitorios implícitos los admiten con una aceleración inicial consistente. ADR 0024.
 
+**IMPL-EX (integración implícita-explícita)**. Forma de integrar un modelo de daño (Oliver, Huespe y Cante 2008): la variable histórica se extrapola de los dos últimos pasos confirmados para calcular el esfuerzo del paso, de modo que el material es lineal dentro del paso (tangente secante, simétrica y definida positiva), y se actualiza de forma implícita al confirmar el paso. Robusta en el ablandamiento a cambio de un error proporcional al paso. ADR 0034.
+
 **`IS_LINEAR_ELASTIC`**. Atributo de clase de cada material (`False` por defecto) que declara que su respuesta es lineal y sin historia: `True` en `Elastic1D`, `Elastic2D`, `Elastic3D` y `Orthotropic2D`. Los marcos lo exigen en su camino de forma cerrada (`material` + propiedades geométricas) y rechazan al construir cualquier otro material; la no linealidad material de un marco entra por su sección. Ver capítulo 5 y ADR 0021.
 
 **`LoadVector`**. Vector de cargas que lleva consigo las cargas equivalentes por elemento de su parte distribuida y las combina linealmente con la carga (`F_a ± F_b`, `a·F`). Así las fuerzas internas de los elementos cargados son correctas con varias cargas, casos o etapas. ADR 0027.
@@ -97,6 +99,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 **Pivote pequeño**. Valor de la diagonal de la factorización pequeño frente a la diagonal de la matriz (`|U_ii|/√(|K_rr|·|K_cc|) < 10⁻⁸`): puede delatar una matriz singular, pero su tamaño también depende del contraste de rigideces y del tamaño del modelo. Desde el 20 de octubre de 2026 Solidum lo usa sólo como filtro: el veredicto sobre un mecanismo interno lo da la energía por elemento del modo de menor energía. ADR 0019.
 
 **Perturbación lineal**. Análisis lineal estático (`LinearSolver`) sobre el estado de una etapa, con la rigidez tangente de los elementos y sin cambiar ese estado: da casos superponibles sobre la estructura cargada (`SolveResult.perturbation`). ADR 0031.
+
+**Pseudo-tiempo**. Parámetro de control de un solver que avanza por pasos (factor de carga, longitud de arco, magnitud del control indirecto, tiempo). El solver declara su incremento en cada intento de paso y el ensamblador entrega a los materiales IMPL-EX la razón con el incremento del último paso confirmado. ADR 0034.
 
 **`PRIMARY_STATE_VAR`**. Atributo de clase de cada material que declara cuál de sus variables internas es la principal a efectos de visualización. El exportador VTK la lee genéricamente sin conocimiento del material que la origina.
 
