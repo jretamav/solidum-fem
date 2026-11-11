@@ -1590,7 +1590,7 @@ Variante de \texttt{IsotropicDamage2D} para el agrietamiento del concreto con fi
 \alpha(h) = \frac{1}{\dfrac{G_f}{h\,f_t} - \dfrac{\kappa_0}{2}}, \qquad \kappa_0 = \frac{f_t}{E},
 \]
 
-para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en \texttt{Quad4}, $\sqrt{2A}$ en \texttt{Tri3}, $\tfrac12\sqrt{A}$ en \texttt{Tri6}, \texttt{Quad8} y \texttt{Quad9}); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
+para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en \texttt{Quad4}, \texttt{Quad8} y \texttt{Quad9}; $\sqrt{2A}$ en \texttt{Tri3} y \texttt{Tri6}); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
 
 \begin{itemize}
   \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f} (energía por unidad de área, N/m en SI), \texttt{hypothesis}, \texttt{equivalent\_\allowbreak{}strain} (\texttt{rankine} por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también \texttt{energy}, \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} con \texttt{k}), \texttt{damage\_max} (tope del daño, $1 - 10^{-6}$ por omisión), \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{density}.
@@ -1764,7 +1764,7 @@ materials:
 
 \end{lstlisting}
 
-\texttt{IsotropicDamageCrackBand3D} es la versión 3D de \texttt{IsotropicDamageCrackBand2D} (mismos parámetros salvo \texttt{hypothesis}). La longitud característica la siembran \texttt{Hex8} ($\sqrt[3]{V}$), \texttt{Tet4} ($\sqrt[3]{6V}$) y los cuadráticos \texttt{Hex20}, \texttt{Hex27} y \texttt{Tet10} ($\tfrac12\sqrt[3]{V}$).
+\texttt{IsotropicDamageCrackBand3D} es la versión 3D de \texttt{IsotropicDamageCrackBand2D} (mismos parámetros salvo \texttt{hypothesis}). La longitud característica la siembran \texttt{Hex8}, \texttt{Hex20} y \texttt{Hex27} ($\sqrt[3]{V}$) y \texttt{Tet4} y \texttt{Tet10} ($\sqrt[3]{6V}$).
 
 \section{Materiales de interfaz (tracción frente a desplazamiento relativo)}
 
@@ -3581,8 +3581,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 11:00\\[0.5em]
-Commit Git: \texttt{6e4fd14}\\[1em]
+Compilado el 11 de noviembre de 2026, 14:07\\[0.5em]
+Commit Git: \texttt{e440a45}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
