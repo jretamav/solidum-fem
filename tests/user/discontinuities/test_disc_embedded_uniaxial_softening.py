@@ -90,14 +90,15 @@ def exact_force(delta: float, softening: str) -> float:
     return envelope(0.5 * (lo + hi), softening) * W * TH
 
 
-def run(softening: str):
+def run(softening: str, cohesive=None):
     dom = Domain()
     n1 = dom.add_node(1, [0.0, 0.0])
     n2 = dom.add_node(2, [L, 0.0])
     n3 = dom.add_node(3, [L, W])
     n4 = dom.add_node(4, [0.0, W])
     bulk = Elastic2D(E=E, nu=NU, hypothesis='plane_stress')
-    coh = CohesiveDamageIsotropic(sigma_t0=SIGMA_T0, G_f=G_F, K_e=K_E, softening=softening)
+    coh = cohesive if cohesive is not None else CohesiveDamageIsotropic(
+        sigma_t0=SIGMA_T0, G_f=G_F, K_e=K_E, softening=softening)
     dom.add_element(CST_Embedded2D(1, [n1, n2, n3], bulk, coh, thickness=TH))
     dom.add_element(CST_Embedded2D(2, [n1, n3, n4], bulk, coh, thickness=TH))
     # Rigidez de modo II nula (Retama 2010, p. 67): con la grieta cruzando

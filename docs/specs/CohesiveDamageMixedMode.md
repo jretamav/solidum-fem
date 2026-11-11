@@ -134,6 +134,7 @@ Como la ley de modo I: carga o descarga se deciden con `κ_n` confirmado del pas
 - **Penalización.** `K_e` en normal y `β²·K_e` en tangencial; con `β` pequeño la rigidez tangencial inicial es pequeña. Misma guía que la ley de modo I; sin valor por omisión.
 - **Sin fricción.** Con la grieta cerrada y comprimida, el cortante se degrada con el deslizamiento igual que con la grieta abierta, y la resistencia a cortante no crece con la compresión. En problemas gobernados por cortante con compresión (interfaces, ensayos de empuje directo, cortante en vigas con trabazón) la ley **subestima** el cortante transmitido; para eso es la ley elastoplástica normal–tangencial con fricción y dilatancia (siguiente bloque).
 - **Acoplamiento por el daño.** El deslizamiento bajo compresión hace crecer `κ`, y al reabrirse la grieta la resistencia a tracción ya está reducida: es la consecuencia de un daño escalar único (Camacho–Ortiz), no un error.
+- **Condición de tamaño en cortante (elemento embebido).** El salto se despeja elemento a elemento, y su sistema local `K_jj` es definido positivo sólo si el ablandamiento de la ley no supera la rigidez del volumen en ninguna dirección. Con la grieta paralela al lado opuesto al nodo solitario, a distancia `h`, el volumen aporta `E'/h` en la dirección normal y `G/h` en la tangencial (por unidad de `l_d·t`), y la ley `|T'|` y `β²·|T'|`. La condición en cortante, `β²·|T'|·h < G`, es `β²·2(1+ν)` veces más estricta que la de tracción. Con la bilineal del Model Code 2010 (`|T'| = 0.8·σ_t0²/G_F` en la primera rama) queda `h < ℓ_ch/(1.6·β²·(1+ν))`, con `ℓ_ch = E·G_F/σ_t0²` la longitud característica de Hillerborg; con la lineal (`|T'| = σ_t0²/(2G_F)`), `h < ℓ_ch/(β²·(1+ν))`. Para concreto con `ℓ_ch ≈ 0.33 m`, `β = 1.5` y `ν = 0.2`: `h < 7.7 cm` con la bilineal y `h < 12 cm` con la lineal. Si se viola, el Newton local del salto puede ciclar sin converger (medido el 2026-11-10 con `h = 10 cm`).
 - **Elemento embebido con cinemática KOS.** La ley transmite cortante; con la cinemática KOS el elemento puede presentar bloqueo de esfuerzos con la grieta muy abierta y esfuerzo paralelo grande (medido el 2026-11-10). Es una propiedad del elemento, no del material; la decisión KOS frente a SKON se toma con el ensayo de referencia de modo mixto.
 - **Objetividad de malla** en el ablandamiento: a nivel del elemento, como la ley de modo I.
 
@@ -144,7 +145,7 @@ Como la ley de modo I: carga o descarga se deciden con `κ_n` confirmado del pas
 ```yaml
 name: CohesiveDamageMixedMode
 kind: interface_material        # familia de materiales de interfaz, ADR 0033
-status: draft
+status: validated
 
 interface:
   geometry: surface             # superficie de discontinuidad: componentes (n, s) o (n, s1, s2)
@@ -201,6 +202,7 @@ numerical_caveats:
   - "Secante evaluada como T(κ)/κ, sin pasar por 1 − ω (cancelación con K_e de penalización)"
   - "Sin tope de daño ni rigidez residual; tangente consistente en toda la rama"
   - "Sin fricción: subestima el cortante transmitido con la grieta comprimida (§12)"
+  - "Elemento embebido: condición de tamaño en cortante β²·|T'|·h < G, más estricta que la de tracción por β²·2(1+ν) (§12)"
 
 acceptance:
   verification:
@@ -290,12 +292,14 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
-
-- Archivo: —
-- Clase: —
-- Tests: —
-- Notas de traducción: —
+- Archivo: [`solidum/materials/interface/cohesive_damage_mixed_mode.py`](../../solidum/materials/interface/cohesive_damage_mixed_mode.py); la envolvente `T(κ)` de las tres formas, en [`solidum/materials/interface/_softening.py`](../../solidum/materials/interface/_softening.py), compartida con `CohesiveDamageIsotropic` (que la usa para la lineal y la exponencial sin cambio de física).
+- Clase: `CohesiveDamageMixedMode` (`InterfaceMaterialRegistry`, `GEOMETRY = "surface"`, `JUMP_DIM = None`: saltos de 2 o 3 componentes).
+- Tests:
+  - [`tests/test_cohesive_damage_mixed_mode.py`](../../tests/test_cohesive_damage_mixed_mode.py) — los casos `verification`, `specific` (salvo los dos del elemento) y `arch`.
+  - [`tests/user/discontinuities/test_disc_mixed_mode.py`](../../tests/user/discontinuities/test_disc_mixed_mode.py) — `elemento_embebido_tangente_condensada` (las tres formas, dos geometrías), `elemento_embebido_limite_modo_I`, YAML = Python y la condición de tamaño en cortante (§12).
+- Notas de traducción:
+  - La tangente en carga se escribe `D = S·(W − u⊗u) + T'·u⊗u` con `u = (⟨δ_n⟩, β²δ_s)/δ_eff`, equivalente a la de §9; así, en modo I puro, `D_nn = T'` sin restar números casi iguales, y con `β = 0` la ley coincide bit a bit en la tangente con `CohesiveDamageIsotropic`.
+  - `shear_strength` (propiedad) devuelve `β·σ_t0`; `envelope(κ)` devuelve `(T, T')`.
 
 ---
 
@@ -303,3 +307,4 @@ references:
 
 - **2026-11-10** · Spec pre-redactada por la IA con las decisiones físicas del usuario del mismo día: ley de Camacho–Ortiz con energía independiente del modo («tu recomendación») y tres formas de ablandamiento, lineal, exponencial y bilineal del Model Code 2010 («si»). Propuesta de la IA incluida para aprobación: `β` obligatorio, sin valor por omisión.
 - **2026-11-10** · Spec aprobada por el usuario («si»), con `β` obligatorio. La IA arranca la implementación.
+- **2026-11-10** · Implementada y validada (todos los casos de `acceptance` en verde; status → `validated`). **Hallazgo** al probar la tangente condensada del elemento embebido: con la bilineal, `β = 1.5` y el triángulo de 10 cm de los ensayos de modo I, el Newton local del salto cicló (periodo 4) sin converger. No es un error de la ley: `K_jj` dejaba de ser definida positiva en la dirección del deslizamiento porque `β²·|T'|·h = 1.6e10 Pa > G = 1.25e10 Pa`. Medido en el elemento: la rigidez del volumen por unidad de `l_d·t` es exactamente `E'/h` en la normal y `G/h` en la tangencial. Se añadió la condición de tamaño en cortante a §12 con su prueba (`test_condicion_de_tamano_en_cortante`), y la prueba de la tangente condensada usa triángulos de 5 cm.

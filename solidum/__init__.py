@@ -67,6 +67,7 @@ from solidum.materials.interface import (
     BondSlipModelCode,
     BondSlipMultilinear,
     CohesiveDamageIsotropic,
+    CohesiveDamageMixedMode,
 )
 
 from solidum.sections import FiberSection

@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.core.interface_material import InterfaceMaterial
+from solidum.materials.interface._softening import SofteningCurve
 from solidum.registry import InterfaceMaterialRegistry
 
 
@@ -97,42 +98,23 @@ class CohesiveDamageIsotropic(InterfaceMaterial):
             raise ValueError(
                 f"CohesiveDamageIsotropic: K_e debe ser > 0 (recibido {K_e})."
             )
-        if softening not in self._VALID_SOFTENING:
-            raise ValueError(
-                f"CohesiveDamageIsotropic: softening debe ser uno de "
-                f"{self._VALID_SOFTENING}, recibido {softening!r}."
-            )
-
         self.sigma_t0 = sigma_t0
         self.G_f = G_f
         self.K_e = K_e
         self.softening = softening
 
-        # Magnitudes derivadas
-        self.kappa_0 = sigma_t0 / K_e           # umbral del salto equivalente
-
-        if softening == self.SOFTENING_LINEAR:
-            self.w_c = 2.0 * G_f / sigma_t0     # apertura crítica
-            self.H = None
-            if self.w_c <= self.kappa_0:
-                # Misma condición que el exponencial: K_e > σ_t0²/(2·G_F).
-                # Si no se cumple, ω salta a 1 en cuanto κ > κ_0 y la energía
-                # disipada (½·σ_t0·κ_0) supera G_F sin aviso.
-                raise ValueError(
-                    f"CohesiveDamageIsotropic: softening lineal requiere "
-                    f"w_c = 2·G_F/σ_t0 > κ_0 = σ_t0/K_e, es decir K_e > σ_t0²/(2·G_F). "
-                    f"Con los parámetros recibidos w_c = {self.w_c:.3e} ≤ κ_0 = "
-                    f"{self.kappa_0:.3e}."
-                )
-        else:  # exponential
-            self.H = G_f - 0.5 * sigma_t0 * self.kappa_0
-            if self.H <= 0.0:
-                raise ValueError(
-                    f"CohesiveDamageIsotropic: softening exponencial requiere "
-                    f"K_e > σ_t0² / (2·G_F)  (H = G_F − σ_t0·κ_0/2 > 0). "
-                    f"Con los parámetros recibidos, H = {self.H:.3e} ≤ 0."
-                )
-            self.w_c = None
+        # Envolvente compartida con CohesiveDamageMixedMode (_softening.py);
+        # valida la forma y K_e > σ_t0²/(2·G_F): si no se cumple, la rama
+        # elástica consumiría toda la energía y ω saltaría a 1 en cuanto
+        # κ > κ_0, disipando más que G_F sin aviso.
+        self._curve = SofteningCurve(sigma_t0, G_f, K_e, softening,
+                                     shapes=self._VALID_SOFTENING,
+                                     owner="CohesiveDamageIsotropic")
+        self.kappa_0 = self._curve.kappa_0       # umbral del salto equivalente
+        # Magnitudes de la spec de esta ley: apertura crítica (lineal) y
+        # energía del ablandamiento (exponencial).
+        self.w_c = 2.0 * G_f / sigma_t0 if softening == self.SOFTENING_LINEAR else None
+        self.H = self._curve.H if softening == self.SOFTENING_EXPONENTIAL else None
 
     def compute_traction(self, jump: np.ndarray, state_vars=None):
         # Estado committed (κ histórico). Si no hay estado previo, el material
@@ -191,13 +173,4 @@ class CohesiveDamageIsotropic(InterfaceMaterial):
         por ``1 − ω``: con ``K_e`` de penalización, ``ω`` está a ``~κ_0/κ``
         de 1 y la resta perdería cifras.
         """
-        s, k0 = self.sigma_t0, self.kappa_0
-        if kappa <= k0:
-            return self.K_e * kappa, self.K_e
-        if self.softening == self.SOFTENING_LINEAR:
-            if kappa >= self.w_c:
-                return 0.0, 0.0          # grieta totalmente abierta
-            slope = -s / (self.w_c - k0)
-            return s + slope * (kappa - k0), slope
-        T_soft = s * np.exp(-s * (kappa - k0) / self.H)
-        return T_soft, -(s / self.H) * T_soft
+        return self._curve(kappa)

@@ -314,6 +314,21 @@ interface_materials:
      K_e: 1.0e13, softening: linear}
 ```
 
+### `CohesiveDamageMixedMode` — daño cohesivo de modo mixto I–II
+
+Generaliza la ley anterior a la apertura y el deslizamiento de la grieta con una **apertura efectiva** $\delta_{eff} = \sqrt{\langle\delta_n\rangle^2 + \beta^2\delta_s^2}$ (Camacho y Ortiz 1996): $t_n = S\,\delta_n$, $t_s = \beta^2 S\,\delta_s$, con $S = T(\kappa)/\kappa$ y $\kappa$ la máxima apertura efectiva alcanzada. La grieta inicia cuando $(t_n/\sigma_{t0})^2 + (t_s/\beta\sigma_{t0})^2 = 1$, así que la resistencia a cortante es $\beta\,\sigma_{t0}$, y la energía de fractura es la misma, $G_f$, en tracción, en cortante y en cualquier combinación proporcional. Con $\beta = 0$ es `CohesiveDamageIsotropic`.
+
+- **Parámetros**: `sigma_t0`, `G_f`, `K_e` (como en la ley de modo I; la rigidez tangencial es $\beta^2 K_e$), `beta` (obligatorio; las calibraciones publicadas para concreto dan $\tau_c/\sigma_{t0}$ entre 1.0 y 2.6) y `softening` $\in$ {`linear`, `exponential`, `bilinear`}.
+- **Bilineal del fib Model Code 2010**: $\sigma = \sigma_{t0}(1 - 0.8\,w/w_1)$ hasta $w_1 = G_f/\sigma_{t0}$ y $\sigma = \sigma_{t0}(0.25 - 0.05\,w/w_1)$ hasta $5G_f/\sigma_{t0}$. Otra calibración con `knee_stress_ratio` (esfuerzo en el quiebre entre $\sigma_{t0}$, 0.2 por omisión) y `final_opening_factor` (apertura final por $\sigma_{t0}/G_f$, 5 por omisión); Petersson (1981): 1/3 y 3.6.
+- **Sin fricción**: con la grieta cerrada y comprimida el deslizamiento también daña y el cortante no crece con la compresión.
+- **Tamaño de los elementos embebidos**: en cortante la condición de tamaño es $\beta^2 |T'|\,h < G$, más estricta que la de tracción; con la bilineal, $h < \ell_{ch}/(1.6\,\beta^2(1+\nu))$ con $\ell_{ch} = E\,G_f/\sigma_{t0}^2$ (unos 8 cm para un concreto usual con $\beta = 1.5$). Si se viola, el Newton local del salto puede no converger.
+
+```yaml
+interface_materials:
+  - {id: 2, type: CohesiveDamageMixedMode, sigma_t0: 3.0e6, G_f: 100.0,
+     K_e: 1.0e15, beta: 1.5, softening: bilinear}
+```
+
 ### `BondSlipModelCode` y `BondSlipMultilinear` — adherencia-deslizamiento barra–concreto
 
 Leyes de interfaz de **línea** para la adherencia de una barra embebida (opción `bond` del refuerzo embebido, capítulo *Archivo de Entrada YAML*). Relacionan el esfuerzo de adherencia $\tau$ con el deslizamiento $s$ de la barra respecto del concreto, y la tracción normal con el desplazamiento normal, $t_n = k_n\,\Delta u_n$ (desacoplada).

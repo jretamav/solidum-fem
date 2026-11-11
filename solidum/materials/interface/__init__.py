@@ -3,5 +3,7 @@ de la familia ``InterfaceMaterialRegistry`` (sección YAML
 ``interface_materials``)."""
 from solidum.materials.interface.bond_slip import BondSlipModelCode, BondSlipMultilinear
 from solidum.materials.interface.cohesive_damage_isotropic import CohesiveDamageIsotropic
+from solidum.materials.interface.cohesive_damage_mixed_mode import CohesiveDamageMixedMode
 
-__all__ = ["BondSlipModelCode", "BondSlipMultilinear", "CohesiveDamageIsotropic"]
+__all__ = ["BondSlipModelCode", "BondSlipMultilinear", "CohesiveDamageIsotropic",
+           "CohesiveDamageMixedMode"]
