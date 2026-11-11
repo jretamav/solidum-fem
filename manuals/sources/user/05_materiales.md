@@ -184,7 +184,7 @@ Variante de `IsotropicDamage2D` para el agrietamiento del concreto con fisuraci�
 
 $$\alpha(h) = \frac{1}{\dfrac{G_f}{h\,f_t} - \dfrac{\kappa_0}{2}}, \qquad \kappa_0 = \frac{f_t}{E},$$
 
-para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en `Quad4`, $\sqrt{2A}$ en `Tri3`, $\tfrac12\sqrt{A}$ en `Tri6`, `Quad8` y `Quad9`); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
+para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en `Quad4`, `Quad8` y `Quad9`; $\sqrt{2A}$ en `Tri3` y `Tri6`); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
 
 - **Parámetros**: `E`, `nu`, `f_t`, `G_f` (energía por unidad de área, N/m en SI), `hypothesis`, `equivalent_strain` (`rankine` por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también `energy`, `mazars` y `modified_von_mises` con `k`), `damage_max` (tope del daño, $1 - 10^{-6}$ por omisión), `integration` (`implicit` por omisión o `impl-ex`), `density`.
 - **Con qué medida**: con banda de grieta todo daño ablanda con la $G_f$ de tracción. `rankine` es la adecuada para agrietamiento dominado por tracción; las otras dañan también en compresión (la energética a $f_t$, Mazars a $\approx 3.5 f_t$, von Mises modificado a $f_c$ pero con una compresión demasiado frágil).
@@ -334,7 +334,7 @@ materials:
   - {id: 6, type: IsotropicDamageCrackBand3D, E: 30.0e9, nu: 0.2, f_t: 3.0e6, G_f: 100.0}
 ```
 
-`IsotropicDamageCrackBand3D` es la versión 3D de `IsotropicDamageCrackBand2D` (mismos parámetros salvo `hypothesis`). La longitud característica la siembran `Hex8` ($\sqrt[3]{V}$), `Tet4` ($\sqrt[3]{6V}$) y los cuadráticos `Hex20`, `Hex27` y `Tet10` ($\tfrac12\sqrt[3]{V}$).
+`IsotropicDamageCrackBand3D` es la versión 3D de `IsotropicDamageCrackBand2D` (mismos parámetros salvo `hypothesis`). La longitud característica la siembran `Hex8`, `Hex20` y `Hex27` ($\sqrt[3]{V}$) y `Tet4` y `Tet10` ($\sqrt[3]{6V}$).
 
 ## Materiales de interfaz (tracción frente a desplazamiento relativo)
 

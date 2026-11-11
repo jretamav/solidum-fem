@@ -63,7 +63,10 @@ class Hex20(_HigherOrderSolid3D):
     _LOAD_QUADRATURE = "hex_3x3x3"
 
     REFERENCE_CELL = "hex"
-    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·∛V (convenio de Abaqus)
+    # Banda de grieta: ∛V, como Hex8, no el ½·∛V de Abaqus para cuadráticos:
+    # la deformación se localiza en el elemento entero y con ½·∛V la prueba de
+    # objetividad disipaba 1.97·G_f·A (usuario, 2026-11-11, regla Q2).
+    CHARACTERISTIC_LENGTH_FACTOR = 1.0
     REFERENCE_NODES = (
         (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
         (-1.0, -1.0, 1.0), (1.0, -1.0, 1.0), (1.0, 1.0, 1.0), (-1.0, 1.0, 1.0),

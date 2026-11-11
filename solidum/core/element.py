@@ -117,10 +117,12 @@ class Element(ABC):
         con banda de grieta (``Material.uses_characteristic_length``):
         ``h = factor·Ω_e^(1/d)``, con ``Ω_e`` el área (``d = 2``) o el
         volumen (``d = 3``) del elemento, la misma en todos sus puntos de
-        integración. Convenio de Abaqus («línea típica a través del
-        elemento»): 1 en elementos lineales y ½ en cuadráticos; √2 en
-        ``Tri3`` (Rots 1988) por la prueba de objetividad (decisión del
-        usuario 2026-11-11). Con un valor, la base siembra ``h`` al
+        integración. 1 en cuadriláteros y hexaedros, √2 en triángulos
+        (Rots 1988) y ∛6 en tetraedros, lineales o cuadráticos, fijados por la
+        prueba de objetividad (decisiones del usuario 2026-11-11): con el √A
+        de Abaqus los triángulos disipaban 1.41·G_f·A, y con su ½ los
+        cuadráticos, entre 1.97 y 3.23·G_f·A, porque la deformación se
+        localiza en el elemento entero. Con un valor, la base siembra ``h`` al
         construir el elemento (necesita ``points``, ``weights`` y
         ``BATCH_KINEMATICS``). ``None``: el elemento no la calcula así.
     SEEDS_CHARACTERISTIC_LENGTH : ClassVar[bool], default=False

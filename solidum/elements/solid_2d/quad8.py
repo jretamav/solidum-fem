@@ -24,7 +24,10 @@ class Quad8(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "3x3"
 
     REFERENCE_CELL = "quad"
-    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·√A (convenio de Abaqus)
+    # Banda de grieta: √A, como Quad4, no el ½·√A de Abaqus para cuadráticos:
+    # la deformación se localiza en el elemento entero y con ½·√A la prueba de
+    # objetividad disipaba 1.97·G_f·A (usuario, 2026-11-11, regla Q2).
+    CHARACTERISTIC_LENGTH_FACTOR = 1.0
     REFERENCE_NODES = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0),
                        (0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0))
 

@@ -25,7 +25,9 @@ Daño isótropo escalar 3D con ablandamiento exponencial regularizado por banda 
 
 Convenio de Abaqus en 3D: $h = \sqrt[3]{V_e}$ en elementos lineales (`Hex8`, `Tet4`) y $h = \tfrac12\sqrt[3]{V_e}$ en cuadráticos (`Hex20`, `Hex27`, `Tet10`), con $V_e$ el volumen del elemento; el mismo $h$ en todos sus puntos de integración. Esos cinco elementos deben sembrarlo. Si la prueba de objetividad con `Tet4` se aparta más de un 5 % de $G_f\,A$, se decide su corrección igual que para `Tri3` en 2D.
 
-**Resultado (2026-11-11)**: con $\sqrt[3]{V_e}$ la barra de `Tet4` (seis tetraedros por cubo) disipaba $1.81\,G_fA$; `Tet4` usa $h = \sqrt[3]{6V_e}$, el análogo del $\sqrt{2A_e}$ de Rots (el cubo que forman seis tetraedros), y disipa $0.999\,G_fA$, igual que `Hex8`. Los demás, convenio de Abaqus.
+**Resultado (2026-11-11)**: con $\sqrt[3]{V_e}$ la barra de `Tet4` (seis tetraedros por cubo) disipaba $1.81\,G_fA$; `Tet4` usa $h = \sqrt[3]{6V_e}$, el análogo del $\sqrt{2A_e}$ de Rots (el cubo que forman seis tetraedros), y disipa $0.999\,G_fA$, igual que `Hex8`.
+
+**Cuadráticos (2026-11-11)**: con $\tfrac12\sqrt[3]{V_e}$ la barra disipaba $1.97\,G_fA$ (`Hex20`, `Hex27`) y $3.23\,G_fA$ (`Tet10`): la deformación se localiza en el elemento entero. Con la regla del 5 % (usuario, «si»; spec 2D §4) usan el factor del lineal de su celda, $\sqrt[3]{V_e}$ (`Hex20`, `Hex27`) y $\sqrt[3]{6V_e}$ (`Tet10`), y disipan $0.998$–$0.999\,G_fA$.
 
 ### 3. Medida de Rankine (2D, §5 y Q1)
 
@@ -116,7 +118,7 @@ acceptance:
   elements:
     - name: characteristic_length_seeded
       setup: "Hex8, Tet4, Hex20, Hex27, Tet10, malla regular y distorsionada"
-      expect: "h de cada punto = ∛V_e (Hex8), ∛(6V_e) (Tet4) o ½·∛V_e (cuadráticos)"
+      expect: "h de cada punto = ∛V_e (Hex8, Hex20, Hex27) o ∛(6V_e) (Tet4, Tet10)"
       tol_rel: 1.0e-12
   mesh_objectivity:
     - name: bar_in_tension_3d
@@ -146,3 +148,4 @@ references:
 - **2026-11-11** · Spec creada por la IA junto con [IsotropicDamageCrackBand2D](IsotropicDamageCrackBand2D.md); las preguntas al usuario (Q1–Q5) están en esa spec y valen para las dos.
 - **2026-11-11** · Aprobada por el usuario con la 2D («si»). Bloque 1 implementado (sin IMPL-EX); `Tet4` con $\sqrt[3]{6V_e}$ por la prueba de objetividad (§2). Hallazgos en el Diálogo de la spec 2D.
 - **2026-11-11** · Bloque 2: IMPL-EX con la misma formulación que la 2D (§8 de esa spec; ADR 0034). Pruebas en 3D: tangente secante exacta y simétrica definida positiva, kernel por lotes bit a bit (implícita e IMPL-EX, razón variable y «sin paso») en `tests/test_damage_crack_band.py` y `tests/test_damage_crack_band_implex.py`. La prueba estructural (Van Vliet) es 2D.
+- **2026-11-11** · Factor de $h$ de los cuadráticos corregido con la prueba de objetividad (§2; Diálogo de la spec 2D).

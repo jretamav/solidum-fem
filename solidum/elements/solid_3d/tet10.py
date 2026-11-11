@@ -69,7 +69,10 @@ class Tet10(_HigherOrderSolid3D):
     _LOAD_QUADRATURE = "tet_15"
 
     REFERENCE_CELL = "tet"
-    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·∛V (convenio de Abaqus)
+    # Banda de grieta: ∛(6V), como Tet4, no el ½·∛V de Abaqus para cuadráticos:
+    # la deformación se localiza en el elemento entero y con ½·∛V la prueba de
+    # objetividad disipaba 3.23·G_f·A (usuario, 2026-11-11, regla Q2).
+    CHARACTERISTIC_LENGTH_FACTOR = 6.0 ** (1.0 / 3.0)
     REFERENCE_NODES = (
         (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0),
         (0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),

@@ -310,8 +310,8 @@ def test_kernel_por_lotes_reproduce_compute_state(dim, integration):
 
 REF_MEASURE = {"quad": 4.0, "tri": 0.5, "hex": 8.0, "tet": 1.0 / 6.0}
 SOLIDS = [
-    (Tri3, 2.0 ** 0.5), (Quad4, 1.0), (Tri6, 0.5), (Quad8, 0.5), (Quad9, 0.5),
-    (Hex8, 1.0), (Tet4, 6.0 ** (1.0 / 3.0)), (Hex20, 0.5), (Hex27, 0.5), (Tet10, 0.5),
+    (Tri3, 2.0 ** 0.5), (Quad4, 1.0), (Tri6, 2.0 ** 0.5), (Quad8, 1.0), (Quad9, 1.0),
+    (Hex8, 1.0), (Tet4, 6.0 ** (1.0 / 3.0)), (Hex20, 1.0), (Hex27, 1.0), (Tet10, 6.0 ** (1.0 / 3.0)),
 ]
 A2 = np.array([[0.031, 0.007], [-0.004, 0.022]])                  # afín, distorsionada
 A3 = np.array([[0.031, 0.007, 0.002], [-0.004, 0.022, 0.003], [0.001, -0.002, 0.027]])

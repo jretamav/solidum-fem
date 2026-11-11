@@ -39,7 +39,10 @@ class Tri6(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "tri_6"
 
     REFERENCE_CELL = "tri"
-    CHARACTERISTIC_LENGTH_FACTOR = 0.5  # banda de grieta, cuadrático: ½·√A (convenio de Abaqus)
+    # Banda de grieta: √(2A), como Tri3, no el ½·√A de Abaqus para cuadráticos:
+    # la deformación se localiza en el elemento entero y con ½·√A la prueba de
+    # objetividad disipaba 2.68·G_f·A (usuario, 2026-11-11, regla Q2).
+    CHARACTERISTIC_LENGTH_FACTOR = 2.0 ** 0.5
     REFERENCE_NODES = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0),
                        (0.5, 0.0), (0.5, 0.5), (0.0, 0.5))
 
