@@ -99,7 +99,7 @@
 \renewcommand{\footrulewidth}{0.4pt}
 
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, mesh_element, geometry, parameters, order, element_shape, serendipity, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
   keywordstyle=\color{yamlkey}\bfseries,
   ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Truss2D3, Truss3D3, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6, IndirectDisplacementSolver, HHTSolver, NewtonHHTSolver, ManderConcrete1D, EmbeddedReinforcement, BondSlipModelCode, BondSlipMultilinear, CohesiveDamageIsotropic, CohesiveDamageMixedMode, CST_Embedded2D, GlobalCrackTracking, PrescribedCrackPath, nodal, gauss, pullout, splitting},
   ndkeywordstyle=\color{yamlval}\bfseries,
@@ -121,7 +121,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -391,7 +391,7 @@ Las coordenadas pueden ser de 2 o 3 componentes; los elementos 1D 3D (\texttt{Tr
 
 \section{Importación de Malla Gmsh: \texttt{mesh}}
 
-Para problemas continuos 2D, se sustituye el bloque \texttt{nodes}/\texttt{elements} por una referencia al archivo \texttt{.msh}:
+Para problemas continuos 2D o 3D, se sustituye el bloque \texttt{nodes}/\texttt{elements} por una referencia al archivo \texttt{.msh}:
 
 \begin{lstlisting}[language=yaml]
 mesh: "geometria_placa.msh"
@@ -409,12 +409,46 @@ mesh_quadrature: "2x2"
 \texttt{mesh} & Ruta al archivo \texttt{.msh} de Gmsh, relativa al YAML. \\
 \texttt{mesh\_material} & ID del material por defecto que se asocia a toda la malla. \\
 \texttt{mesh\_thickness} & Espesor por defecto (estado plano 2D). \\
-\texttt{mesh\_quadrature} & Regla de Gauss: \texttt{\textquotedbl{}2x2\textquotedbl{}} (completa, recomendada) o \texttt{\textquotedbl{}1x1\textquotedbl{}} (reducida; produce \textit{hourglassing}). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de \texttt{K}. Los elementos sin cuadratura (\texttt{Tri3}) la ignoran. \\
-\texttt{mesh\_element} & Opcional. Tipo de elemento de toda la malla, p. ej. \texttt{Quad4Thermal} para un modelo térmico. Sin él, cada celda gmsh da el elemento estándar: \texttt{quad} \ensuremath{\to} \texttt{Quad4}, \texttt{triangle} \ensuremath{\to} \texttt{Tri3}. El número de nodos del elemento debe coincidir con el de la celda. \\
+\texttt{mesh\_quadrature} & Opcional. Regla de Gauss de toda la malla, p. ej. \texttt{\textquotedbl{}2x2\textquotedbl{}} o \texttt{\textquotedbl{}1x1\textquotedbl{}} (reducida; produce \textit{hourglassing}) para \texttt{Quad4}. Sin ella, cada elemento usa su regla por omisión (\texttt{Quad4} 2x2, \texttt{Quad8}/\texttt{Quad9} 3x3, \texttt{Tri6} \texttt{tri\_3}, los sólidos 3D la suya). La masa consistente y la capacidad térmica se integran siempre con la regla completa, con independencia de la de \texttt{K}. Los elementos sin cuadratura (\texttt{Tri3}) la ignoran. \\
+\texttt{mesh\_element} & Opcional. Tipo de elemento de toda la malla, p. ej. \texttt{Quad4Thermal} para un modelo térmico. Sin él, cada celda gmsh da el elemento estándar (tabla siguiente). El número de nodos del elemento debe coincidir con el de la celda. \\
 \hline
 \end{tabularx}
 \end{center}
+Celdas de Gmsh que se importan y elemento por omisión:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYY}
+\hline
+\textbf{Celda} & \textbf{Elemento} & \textbf{Celda} & \textbf{Elemento} \\
+\hline
+\texttt{triangle} & \texttt{Tri3} & \texttt{tetra} & \texttt{Tet4} \\
+\texttt{triangle6} & \texttt{Tri6} & \texttt{tetra10} & \texttt{Tet10} \\
+\texttt{quad} & \texttt{Quad4} & \texttt{hexahedron} & \texttt{Hex8} \\
+\texttt{quad8} & \texttt{Quad8} & \texttt{hexahedron20} & \texttt{Hex20} \\
+\texttt{quad9} & \texttt{Quad9} & \texttt{hexahedron27} & \texttt{Hex27} \\
+\hline
+\end{tabularx}
+\end{center}
+Las celdas de la dimensión de la malla (superficies en 2D, volúmenes en 3D) son los elementos; con ellas, los nodos tienen dos o tres coordenadas. Las de dimensión menor (líneas en 2D, caras en 3D) son contorno: sirven para las cargas y condiciones por grupo físico. Para obtener elementos de orden 2 en Gmsh se usa \texttt{Mesh.\allowbreak{}ElementOrder = 2} (con \texttt{Mesh.\allowbreak{}SecondOrderIncomplete = 1}, cuadriláteros de 8 nodos). Solidum lleva los nodos de cada celda al orden de su elemento y, si una celda viene en sentido horario (2D) o invertida (3D), la reorienta.
+
 \texttt{mesh\_material} se busca en la familia de material del elemento: en \texttt{materials} para los mecánicos, en \texttt{thermal\_\allowbreak{}materials} para los térmicos.
+
+\subsection{Mallar desde la geometría: \texttt{mesh.geometry}}
+
+En lugar del \texttt{.msh}, el YAML puede declarar la geometría de Gmsh (\texttt{.geo}) y las opciones de la malla; Solidum llama a Gmsh, escribe el \texttt{.msh} junto al YAML y lo lee:
+
+\begin{lstlisting}[language=yaml]
+mesh:
+  geometry: viga.geo        # archivo de geometría de Gmsh, relativo al YAML
+  parameters: {h: 2.5}      # valores de los parámetros del .geo
+  order: 2                  # 1 (por omisión) o 2
+  element_shape: quad       # tri (por omisión) o quad
+  serendipity: true         # con order 2: Quad8/Hex20 (true, por omisión) o Quad9/Hex27
+  output: viga_h2.5.msh     # opcional; por omisión, el nombre del .geo con .msh
+
+\end{lstlisting}
+
+\texttt{mesh: viga.geo} (sólo la ruta) malla con los valores por omisión. Cada parámetro se declara en el \texttt{.geo} con su valor por omisión, \texttt{DefineConstant[ h = 10 ];}, y se usa como cualquier variable de Gmsh (\texttt{Point(1) = \{0, 0, 0, h\};}). Un parámetro del YAML que no aparece en el \texttt{.geo} es un error. Un estudio de malla consiste en repetir el análisis cambiando \texttt{parameters}, y el paso a elementos cuadráticos, en \texttt{order: 2}. Los hexaedros 3D los define el propio \texttt{.geo} (mallas transfinitas con \texttt{Recombine}). Requiere Gmsh (\texttt{pip install gmsh}); sin él, se genera el \texttt{.msh} aparte y se declara con \texttt{mesh: archivo.\allowbreak{}msh}.
 
 \subsection{Mapeo Avanzado: \texttt{mesh\_\allowbreak{}physical\_\allowbreak{}groups}}
 
@@ -433,6 +467,19 @@ mesh_physical_groups:
 \end{lstlisting}
 
 Un grupo también puede elegir su propio \texttt{element}, con cualquier parámetro que acepte ese elemento. Sin \texttt{element}, un grupo sólo admite \texttt{material}, \texttt{thickness} y \texttt{quadrature}: cualquier otra clave es un error, no se ignora.
+
+Un grupo de \textbf{líneas} (o de caras en 3D) con \texttt{element} escrito en el propio grupo se convierte en elementos que comparten los nodos del sólido; así entran, por ejemplo, barras de refuerzo incrustadas en la malla (en Gmsh, la línea se incrusta en la superficie con \texttt{Line\{.\allowbreak{}.\allowbreak{}.\allowbreak{}\} In Surface\{.\allowbreak{}.\allowbreak{}.\allowbreak{}\}}):
+
+\begin{lstlisting}[language=yaml]
+mesh_physical_groups:
+  "Barra":
+    element: Truss2D
+    material: 2
+    A: 2.0e-4
+
+\end{lstlisting}
+
+El \texttt{element} heredado de \texttt{mesh\_element} no convierte el contorno en elementos.
 
 \section{Materiales}
 
@@ -3581,8 +3628,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 14:07\\[0.5em]
-Commit Git: \texttt{e440a45}\\[1em]
+Compilado el 11 de noviembre de 2026, 17:55\\[0.5em]
+Commit Git: \texttt{f8bccb0} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
