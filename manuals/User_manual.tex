@@ -99,7 +99,7 @@
 \renewcommand{\footrulewidth}{0.4pt}
 
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, mesh_element, geometry, parameters, order, element_shape, serendipity, history, columns, displacement, reaction, reduce, scale, every, at, group, file, structured, blocks, length, ratio, origin, exclude, diagonal, mapping, groups, merge_tol, near, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, mesh_element, geometry, parameters, order, element_shape, serendipity, history, columns, displacement, reaction, reduce, scale, every, at, group, file, structured, blocks, length, ratio, origin, exclude, diagonal, mapping, groups, merge_tol, near, energy, external_work, elastic, dissipated, element, var, component, end, where, ids, mises, max_principal, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
   keywordstyle=\color{yamlkey}\bfseries,
   ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Truss2D3, Truss3D3, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6, IndirectDisplacementSolver, HHTSolver, NewtonHHTSolver, ManderConcrete1D, EmbeddedReinforcement, BondSlipModelCode, BondSlipMultilinear, CohesiveDamageIsotropic, CohesiveDamageMixedMode, CST_Embedded2D, GlobalCrackTracking, PrescribedCrackPath, nodal, gauss, pullout, splitting},
   ndkeywordstyle=\color{yamlval}\bfseries,
@@ -1182,10 +1182,47 @@ output:
 \hline
 \texttt{displacement} & el desplazamiento \texttt{dof} de los nodos del selector; \texttt{reduce}: \texttt{mean} (por omisión), \texttt{min} o \texttt{max} \\
 \texttt{reaction} & la suma de las reacciones \texttt{dof} de los nodos del selector, que deben tener ese grado de libertad prescrito (apoyo o desplazamiento impuesto); sólo en análisis estáticos sin etapas \\
+\texttt{energy} & \texttt{external\_work}, \texttt{elastic} o \texttt{dissipated} (abajo); sólo en análisis estáticos sin etapas \\
+\texttt{element} & esfuerzo, deformación, variable interna o fuerza interna de un elemento o conjunto de elementos (abajo) \\
 \hline
 \end{tabularx}
 \end{center}
 El selector de nodos es uno de \texttt{node: id}, \texttt{nodes: [ids]}, \texttt{group: nombre} (grupo físico de Gmsh) o \texttt{at: [x, y]} (los nodos a una distancia \ensuremath{\le} \texttt{tol}, 1e-6 por omisión). \texttt{scale} multiplica el valor (p. ej. −1 para dar positiva una carga hacia abajo). El archivo se escribe fila a fila: un análisis interrumpido conserva lo calculado.
+
+\textbf{Energías.} En equilibrio, la fuerza que las cargas y los apoyos ejercen sobre la estructura es la fuerza interna $\mathbf F_{int}(\mathbf U)$, así que:
+
+\begin{itemize}
+  \item trabajo externo, \texttt{external\_work}: $W_n = W_{n-1} + \tfrac12(\mathbf F_{int,n} + \mathbf F_{int,n-1})\cdot(\mathbf U_n - \mathbf U_{n-1})$, por la regla del trapecio entre pasos convergidos. Incluye el trabajo de los desplazamientos impuestos;
+  \item energía elástica recuperable, \texttt{elastic}: $E_n = \tfrac12\,\mathbf U_n\cdot\mathbf F_{int,n}$;
+  \item energía disipada, \texttt{dissipated}: $D_n = W_n - E_n$.
+\end{itemize}
+
+$E = \tfrac12\,\mathbf U\cdot\mathbf F_{int}$ es la energía que se recupera al descargar hasta el origen sólo si todos los materiales descargan por la secante: los elásticos, los de daño (también la banda de grieta) y las cohesivas de daño. Con plasticidad, concreto con deformación residual o secciones por fibras, \texttt{elastic} y \texttt{dissipated} son un error; \texttt{external\_work} sí está disponible. En la banda de grieta, $D$ al final de la separación es $G_f$ por el área de la grieta: es la comprobación de su objetividad.
+
+\textbf{Magnitudes de elemento.} \texttt{element} declara la magnitud en \texttt{var} y, opcionalmente, un selector:
+
+\begin{lstlisting}[language=yaml]
+history:
+  columns:
+    - {name: D, energy: dissipated}
+    - {name: d_max, element: {where: "abs(x - 1000) < 50", var: damage, reduce: max}}
+    - {name: sxx, element: {id: 1234, var: stress, component: xx}}
+    - {name: M_emp, element: {id: 1, var: M, end: i}}
+
+\end{lstlisting}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{\texttt{var}} & \textbf{Qué registra} \\
+\hline
+\texttt{stress}, \texttt{strain} & con \texttt{component}: \texttt{xx}, \texttt{yy}, \texttt{zz}, \texttt{xy}, \texttt{yz}, \texttt{xz} (Voigt del proyecto; la deformación angular es $\gamma$), \texttt{mises} (sólo esfuerzo) o \texttt{max\_principal}; en cada punto de integración. En 2D, \texttt{zz} del esfuerzo es el fuera del plano (no nulo en deformación plana) \\
+una variable interna & una variable escalar del material (\texttt{damage}, \texttt{kappa}, \texttt{alpha}...), en cada punto de integración \\
+\texttt{N}, \texttt{V}, \texttt{M} (2D); \texttt{N}, \texttt{Vy}, \texttt{Vz}, \texttt{T}, \texttt{My}, \texttt{Mz} (3D) & la fuerza interna de un elemento de marco o barra en el extremo \texttt{end: i} o \texttt{j}, con la convención de signos de las fuerzas internas y descontada la carga distribuida \\
+\hline
+\end{tabularx}
+\end{center}
+El selector es \texttt{id}, \texttt{ids: [...]}, \texttt{group} (los elementos con todos sus nodos en el grupo físico) o \texttt{where} (una condición sobre el centro del elemento, como las de las mallas por bloques); sin selector, todos los elementos que tienen esa magnitud. \texttt{reduce} combina los valores de todos los puntos de integración (o elementos) seleccionados: \texttt{mean} (por omisión), \texttt{min} o \texttt{max}. Los valores son los del estado con que el análisis equilibró el paso.
 
 \texttt{log\_level} fija el nivel del registro durante el análisis (\texttt{run\_yaml}, \texttt{load\_\allowbreak{}yaml(.\allowbreak{}.\allowbreak{}.\allowbreak{}).\allowbreak{}solve()} y \texttt{examples/\allowbreak{}ejecutar\_\allowbreak{}yaml.\allowbreak{}py}): \texttt{WARNING} deja sólo avisos y errores. Al terminar, \texttt{run\_yaml} vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.
 
@@ -3746,8 +3783,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 18:43\\[0.5em]
-Commit Git: \texttt{6690dc5}\\[1em]
+Compilado el 11 de noviembre de 2026, 19:16\\[0.5em]
+Commit Git: \texttt{8c4809c}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
