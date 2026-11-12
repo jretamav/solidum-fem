@@ -70,10 +70,10 @@ class Hex27(_HigherOrderSolid3D):
     _LOAD_QUADRATURE = "hex_3x3x3"
 
     REFERENCE_CELL = "hex"
-    # Banda de grieta: ∛V, como Hex8, no el ½·∛V de Abaqus para cuadráticos:
-    # la deformación se localiza en el elemento entero y con ½·∛V la prueba de
-    # objetividad disipaba 1.97·G_f·A (usuario, 2026-11-11, regla Q2).
+    # Banda de grieta: ∛V, como Hex20; sin factor de localización establecido
+    # en 3D: α = 1 con aviso (usuario, 2026-11-12).
     CHARACTERISTIC_LENGTH_FACTOR = 1.0
+    CRACK_BAND_LOCALIZATION: dict = {}
     REFERENCE_NODES = (
         (-1.0, -1.0, -1.0), (1.0, -1.0, -1.0), (1.0, 1.0, -1.0), (-1.0, 1.0, -1.0),
         (-1.0, -1.0, 1.0), (1.0, -1.0, 1.0), (1.0, 1.0, 1.0), (-1.0, 1.0, 1.0),

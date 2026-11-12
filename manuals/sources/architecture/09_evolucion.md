@@ -280,7 +280,7 @@ Bajo. Los generadores producen objetos que el resto del programa ya sabía trata
 
 **Estado**: implementado (ampliación del ADR 0028 y ADR 0034, 11 de noviembre de 2026).
 
-- **Banda de grieta** (`IsotropicDamageCrackBand2D/3D`): el daño isótropo regularizado por energía de fractura, con la medida de Rankine y un tope de daño propio. Los diez sólidos 2D y 3D siembran la longitud característica de cada punto (ampliación del ADR 0028, `CHARACTERISTIC_LENGTH_FACTOR`); un elemento que no la proporciona rechaza el material al construirse.
+- **Banda de grieta** (`IsotropicDamageCrackBand2D/3D`): el daño isótropo regularizado por energía de fractura, con la medida de Rankine y un tope de daño propio. Los diez sólidos 2D y 3D siembran la longitud característica de cada punto (ampliación del ADR 0028, `CHARACTERISTIC_LENGTH_FACTOR`); un elemento que no la proporciona rechaza el material al construirse. Desde el 2026-11-12 los cuadráticos declaran además la fracción del elemento que se ablanda (`CRACK_BAND_LOCALIZATION`): en flexión `Quad8` sólo ablanda dos de sus tres filas de puntos de Gauss y disipaba un 28 % menos.
 - **IMPL-EX y pseudo-tiempo** (ADR 0034): la integración implícita-explícita del daño, con tangente secante simétrica y definida positiva, y la pieza genérica por la que los solvers incrementales informan el incremento de su parámetro de control.
 - Es el primer modelo de la familia de modelos de concreto; los siguientes (daño de tracción y compresión, grieta rotante, daño-plasticidad) reutilizarán la banda de grieta, la longitud característica y el pseudo-tiempo.
 

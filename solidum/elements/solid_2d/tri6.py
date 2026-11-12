@@ -39,10 +39,15 @@ class Tri6(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "tri_6"
 
     REFERENCE_CELL = "tri"
-    # Banda de grieta: √(2A), como Tri3, no el ½·√A de Abaqus para cuadráticos:
-    # la deformación se localiza en el elemento entero y con ½·√A la prueba de
-    # objetividad disipaba 2.68·G_f·A (usuario, 2026-11-11, regla Q2).
+    # Banda de grieta: √(2A), el ancho de una banda de un elemento, como en
+    # Tri3. Sin factor de localización (α = 1, con aviso): con gradiente unos
+    # triángulos de la banda se ablandan en dos de sus tres puntos y otros
+    # enteros, así que la fracción no es constante. El ⅔ de la literatura
+    # (Slobbe, Hendriks y Rots 2013; DIANA 10.5 §93.1.7.4) disipaba 1.17-1.28
+    # veces G_f·A en una viga entallada a flexión; sin él, 0.79-0.87 (del lado
+    # seguro). Decisión del usuario, 2026-11-12.
     CHARACTERISTIC_LENGTH_FACTOR = 2.0 ** 0.5
+    CRACK_BAND_LOCALIZATION: dict = {}
     REFERENCE_NODES = ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0),
                        (0.5, 0.0), (0.5, 0.5), (0.0, 0.5))
 

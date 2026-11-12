@@ -22,10 +22,20 @@ misma.
     cuadrado o cubo forman la banda); con √(2A) (Rots 1988) y ∛(6V), 1.00
     (decisión del usuario 2026-11-11, Q2);
   - cuadráticos: con el ½ de Abaqus disipaban 1.97 (``Quad8``, ``Quad9``,
-    ``Hex20``, ``Hex27``), 2.68 (``Tri6``) y 3.23 (``Tet10``)·G_f·A: la
-    deformación se localiza en el elemento entero, no en media fila de puntos
-    de integración. Usan el factor del elemento lineal de su celda y dan 1.00
-    (usuario, 2026-11-11, tras el diagnóstico de la viga SEN).
+    ``Hex20``, ``Hex27``), 2.68 (``Tri6``) y 3.23 (``Tet10``)·G_f·A: con el
+    esfuerzo uniforme de la barra la deformación se localiza en el elemento
+    entero. Usan el ancho del elemento lineal de su celda (usuario,
+    2026-11-11).
+- Factor de localización ``α`` (``CRACK_BAND_LOCALIZATION``, usuario,
+  2026-11-12): con gradiente, en ``Quad8`` y ``Quad9`` sólo se ablandan dos
+  de sus tres filas de puntos de Gauss 3×3 (Jirásek y Bauer 2012, §4; medido
+  0.72 en la viga de Petersson) y ``h = (13/18)·√A``. En esta barra, de
+  esfuerzo uniforme, el elemento se ablanda entero y disipa ``G_f·A/α =
+  1.385·G_f·A``: el caso en que ``α`` sobrestima la energía, documentado aquí
+  a propósito. El caso que ``α`` corrige es el de flexión: viga entallada
+  (``test_viga_entallada_*``), donde ``Quad8`` disipa lo mismo que ``Quad4``.
+  ``Tri6`` y los cuadráticos 3D, sin factor establecido (``α = 1``), siguen
+  dando 1.00 en la barra.
 
 Unidades: N, mm, MPa. E = 30 000 MPa, f_t = 3 MPa, G_f = 0.1 N/mm.
 """
@@ -115,9 +125,16 @@ def _check(results, expected_ratio):
     assert max(p05) / min(p05) - 1.0 < 1e-2
 
 
-@pytest.mark.parametrize("cls", [Quad4, Tri3, Quad8, Quad9, Tri6], ids=lambda c: c.__name__)
+@pytest.mark.parametrize("cls", [Quad4, Tri3, Tri6], ids=lambda c: c.__name__)
 def test_barra_2d_energia_objetiva(cls):
     _check({nx: bar(cls, nx) for nx in (5, 10, 20)}, 1.0)
+
+
+@pytest.mark.parametrize("cls", [Quad8, Quad9], ids=lambda c: c.__name__)
+def test_barra_2d_cuadraticos_con_factor_disipan_1_sobre_alfa(cls):
+    """Esfuerzo uniforme: el elemento se ablanda entero y α = 13/18 da
+    G_f·A/α (objetivo entre mallas, pero 1.385 veces G_f·A)."""
+    _check({nx: bar(cls, nx) for nx in (5, 10, 20)}, 18.0 / 13.0)
 
 
 def test_barra_2d_con_poisson_disipa_1_menos_nu2():
@@ -128,3 +145,89 @@ def test_barra_2d_con_poisson_disipa_1_menos_nu2():
 @pytest.mark.parametrize("cls", [Hex8, Tet4, Hex20, Hex27, Tet10], ids=lambda c: c.__name__)
 def test_barra_3d_energia_objetiva(cls):
     _check({nx: bar(cls, nx) for nx in (5, 10)}, 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Viga entallada a flexión: el caso con gradiente que corrige α
+# ---------------------------------------------------------------------------
+#
+# Flexión en cuatro puntos, H = 100, espesor 50, malla estructurada de celdas
+# de 10 mm con un número impar de columnas (41): la entalla es la celda
+# central (ancho 10, profundidad 50) y la banda sube por la columna central,
+# alineada con la malla. Cargas por desplazamiento impuesto en dos nodos de
+# la cara superior a 55 mm del eje; IMPL-EX con 1000 pasos hasta δ = 2 mm
+# (carga final ≈ 1 % del pico). Concreto de Petersson (E 30 000, ν 0.2,
+# f_t 3.33, G_f 0.124). Medido el 2026-11-12 (D/G_f·A en δ = 2 mm):
+# Quad4 1.015, Quad8 sin α 0.773, con α 1.029; Tri3 1.038, Tri6 sin α 0.790,
+# con ⅔ 1.168 (la fracción de Tri6 varía de un triángulo a otro: sin factor).
+
+BEAM_E, BEAM_NU, BEAM_FT, BEAM_GF = 30000.0, 0.2, 3.33, 0.124
+BEAM_H, BEAM_T, BEAM_DX = 100.0, 50.0, 10.0
+_beams: dict = {}
+
+
+def notched_beam(cls):
+    """(curva [(δ, P)], D/(G_f·A_ligamento)) de la viga entallada; en caché."""
+    if cls in _beams:
+        return _beams[cls]
+    dx = BEAM_DX
+    nx, ny = 41, int(round(BEAM_H / dx))
+    Lb = nx * dx
+    xc = 0.5 * Lb
+    mat = IsotropicDamageCrackBand2D(BEAM_E, BEAM_NU, BEAM_FT, BEAM_GF, integration="impl-ex")
+    kw = {"diagonal": "right"} if cls.REFERENCE_CELL == "tri" else {}
+    mesh = structured_mesh(cls, (nx, ny), size=(Lb, BEAM_H), material=mat, thickness=BEAM_T,
+                           exclude=lambda x: abs(x[0] - xc) < 0.5 * dx and x[1] < 0.5 * BEAM_H,
+                           **kw)
+    dom = mesh.domain
+    pts = {tuple(np.round(nd.coordinates[:2], 6)): nd for nd in dom.nodes.values()}
+    pts[(0.0, 0.0)].fix_dof("ux", 0.0)
+    pts[(0.0, 0.0)].fix_dof("uy", 0.0)
+    pts[(round(Lb, 6), 0.0)].fix_dof("uy", 0.0)
+    loads = [pts[(round(xc - 5.5 * dx, 6), BEAM_H)], pts[(round(xc + 5.5 * dx, 6), BEAM_H)]]
+    for nd in loads:
+        nd.fix_dof("uy", -2.0)
+    dom.generate_equation_numbers(verbose=False)
+    asm = Assembler(dom)
+    dofs = [nd.dofs["uy"] for nd in loads]
+    curve = [(0.0, 0.0)]
+
+    def cb(step, U, lam):
+        _, F = asm.assemble_non_linear_system(U)
+        curve.append((-U[dofs[0]], -F[dofs].sum()))
+
+    level = logging.getLogger("solidum").level
+    logging.getLogger("solidum").setLevel(logging.ERROR)
+    try:
+        NonlinearSolver(asm, num_steps=1000, freeze_tangent_after_iter=1).solve(
+            np.zeros(dom.total_dofs), step_callback=cb)
+    finally:
+        logging.getLogger("solidum").setLevel(level)
+    c = np.array(curve)
+    D = np.trapezoid(c[:, 1], c[:, 0]) - 0.5 * c[-1, 1] * c[-1, 0]
+    _beams[cls] = (c, D / (BEAM_GF * 0.5 * BEAM_H * BEAM_T))
+    return _beams[cls]
+
+
+def test_viga_entallada_lineales_disipan_G_f():
+    for cls in (Quad4, Tri3):
+        curve, ratio = notched_beam(cls)
+        assert ratio == pytest.approx(1.0, abs=0.06), cls.__name__
+        assert curve[-1, 1] < 0.02 * curve[:, 1].max()      # ensayo casi completo
+
+
+def test_viga_entallada_quad8_con_alfa_disipa_como_quad4():
+    """α = 13/18: Quad8 disipa lo mismo que Quad4 (sin α, un 24 % menos) y su
+    pico queda dentro de un 8 %."""
+    c4, r4 = notched_beam(Quad4)
+    c8, r8 = notched_beam(Quad8)
+    assert r8 == pytest.approx(r4, rel=0.05)
+    assert c8[:, 1].max() == pytest.approx(c4[:, 1].max(), rel=0.08)
+
+
+def test_viga_entallada_tri6_sin_factor_disipa_de_menos():
+    """Tri6 sin factor (decisión del usuario 2026-11-12): disipa menos que Tri3
+    (0.76 de su energía), del lado seguro; con ⅔ disiparía de más (1.13)."""
+    _, r3 = notched_beam(Tri3)
+    _, r6 = notched_beam(Tri6)
+    assert 0.65 < r6 / r3 < 0.9

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 from abc import ABC, abstractmethod
+from fractions import Fraction
 from typing import ClassVar, List, Tuple
 
 import numpy as np
@@ -11,7 +12,13 @@ from solidum.core.element_forces import ElementForces
 from solidum.core.element_state import ElementState
 from solidum.core.material import Material
 from solidum.core.node import Node
+from solidum.logging import get_logger
 from solidum.registry import MaterialRegistry
+
+_log = get_logger("core.element")
+# Aviso de la banda de grieta con elementos cuadráticos: una vez por proceso
+# y por (elemento, regla de cuadratura), no una por elemento de la malla.
+_crack_band_warned: set = set()
 
 
 # Valores válidos del kwarg ``lumping`` de :meth:`Element.compute_mass_matrix`
@@ -115,16 +122,32 @@ class Element(ABC):
     CHARACTERISTIC_LENGTH_FACTOR : ClassVar[float | None], default=None
         Longitud característica geométrica de los sólidos para materiales
         con banda de grieta (``Material.uses_characteristic_length``):
-        ``h = factor·Ω_e^(1/d)``, con ``Ω_e`` el área (``d = 2``) o el
+        ``h = α·factor·Ω_e^(1/d)``, con ``Ω_e`` el área (``d = 2``) o el
         volumen (``d = 3``) del elemento, la misma en todos sus puntos de
-        integración. 1 en cuadriláteros y hexaedros, √2 en triángulos
-        (Rots 1988) y ∛6 en tetraedros, lineales o cuadráticos, fijados por la
-        prueba de objetividad (decisiones del usuario 2026-11-11): con el √A
-        de Abaqus los triángulos disipaban 1.41·G_f·A, y con su ½ los
-        cuadráticos, entre 1.97 y 3.23·G_f·A, porque la deformación se
-        localiza en el elemento entero. Con un valor, la base siembra ``h`` al
-        construir el elemento (necesita ``points``, ``weights`` y
-        ``BATCH_KINEMATICS``). ``None``: el elemento no la calcula así.
+        integración, y ``α`` el de ``CRACK_BAND_LOCALIZATION``. ``factor`` es
+        el ancho de una banda de un elemento: 1 en cuadriláteros y hexaedros,
+        √2 en triángulos (Rots 1988) y ∛6 en tetraedros, lineales o
+        cuadráticos (con el √A de Abaqus los triángulos disipaban
+        1.41·G_f·A; decisiones del usuario 2026-11-11). Con un valor, la base
+        siembra ``h`` al construir el elemento (necesita ``points``,
+        ``weights`` y ``BATCH_KINEMATICS``). ``None``: el elemento no la
+        calcula así.
+    CRACK_BAND_LOCALIZATION : ClassVar[dict | None], default=None
+        Fracción ``α`` del elemento que se ablanda cuando una banda de grieta
+        se localiza en él, por clave de la regla de cuadratura. ``None``:
+        elemento de deformación lineal a través de la banda (Tri3, Quad4,
+        Tet4, Hex8), que se ablanda entero: ``α = 1``. En los cuadráticos la
+        deformación varía dentro del elemento y, con gradiente, el
+        ablandamiento se localiza en una parte de las filas de puntos de
+        Gauss (Jirásek y Bauer 2012, §4; Slobbe, Hendriks y Rots 2013): en
+        Quad8 y Quad9, dos de tres con Gauss 3×3 (``α = 13/18``, medido 0.72
+        en la viga de Petersson) y una de dos con 2×2 (½). Un cuadrático con
+        diccionario sin la regla usada (vacío en Tri6, Hex20, Hex27 y Tet10:
+        en Tri6 la fracción varía entre ⅔ y 1 de un triángulo a otro; en 3D no
+        está medida) conserva ``α = 1`` y se avisa: no hay un factor
+        establecido. Con esfuerzo uniforme el cuadrático se ablanda entero y
+        ``α < 1`` sobrestima la energía (1/α). Decisión del usuario
+        2026-11-12.
     SEEDS_CHARACTERISTIC_LENGTH : ClassVar[bool], default=False
         El elemento siembra él mismo ``h`` con
         :meth:`_seed_characteristic_lengths` al terminar de construirse
@@ -187,6 +210,7 @@ class Element(ABC):
     REFERENCE_CELL: ClassVar[str | None] = None
     REFERENCE_NODES: ClassVar[tuple | None] = None
     CHARACTERISTIC_LENGTH_FACTOR: ClassVar[float | None] = None
+    CRACK_BAND_LOCALIZATION: ClassVar[dict | None] = None
     SEEDS_CHARACTERISTIC_LENGTH: ClassVar[bool] = False
 
     def __init__(self, element_id: int, nodes: List[Node],
@@ -253,8 +277,9 @@ class Element(ABC):
         self.state = ElementState(self.N_INTEGRATION_POINTS, init_stress=init_stress)
 
     def _seed_geometric_characteristic_length(self) -> None:
-        """Siembra ``h = factor·Ω_e^(1/d)`` en todos los puntos de un sólido
-        (``CHARACTERISTIC_LENGTH_FACTOR``), sólo si el material la usa.
+        """Siembra ``h = α·factor·Ω_e^(1/d)`` en todos los puntos de un sólido
+        (``CHARACTERISTIC_LENGTH_FACTOR``, ``CRACK_BAND_LOCALIZATION``), sólo
+        si el material la usa.
 
         ``Ω_e = Σ_g w_g·det J_g`` con la cuadratura y la cinemática del propio
         elemento (``BATCH_KINEMATICS``): exacta para el área o el volumen de
@@ -263,6 +288,7 @@ class Element(ABC):
         factor = type(self).CHARACTERISTIC_LENGTH_FACTOR
         if factor is None or not getattr(self.material, "uses_characteristic_length", False):
             return
+        factor = factor * self._crack_band_localization()
         points = np.asarray(getattr(self, "points"), dtype=np.float64)
         weights = np.asarray(getattr(self, "weights"), dtype=np.float64)
         dim = points.shape[1]
@@ -278,6 +304,42 @@ class Element(ABC):
                 f"{measure:.4g} ≤ 0; no se puede calcular su longitud característica.")
         h = factor * measure ** (1.0 / dim)
         self._seed_characteristic_lengths(np.full(self.state.num_ip, h))
+
+    def _crack_band_localization(self) -> float:
+        """``α`` de ``CRACK_BAND_LOCALIZATION`` para la regla de este
+        elemento, con un aviso único por proceso y por (elemento, regla) en
+        los cuadráticos: la corrección sólo es fiable con la banda alineada
+        con la malla (Jirásek y Bauer 2012), o no hay factor establecido."""
+        table = type(self).CRACK_BAND_LOCALIZATION
+        if table is None:
+            return 1.0
+        key = getattr(self, "quadrature_key", None)
+        alpha = table.get(key) if key is not None else None
+        tag = (type(self).__name__, key)
+        if tag not in _crack_band_warned:
+            _crack_band_warned.add(tag)
+            name = f"{type(self).__name__} (cuadratura {key or 'dada por puntos'})"
+            if alpha is None:
+                _log.warning(
+                    f"Banda de grieta con {name}: no hay un factor de localización "
+                    f"establecido para este elemento y esta regla; h es el ancho del "
+                    f"elemento. En un elemento cuadrático la banda puede localizarse "
+                    f"en una parte de sus puntos de Gauss y disipar menos que G_f "
+                    f"(un 25-30 % menos en Quad8 y Tri6 sin corrección, viga de "
+                    f"Petersson). Para la banda de grieta se recomiendan elementos "
+                    f"lineales (Jirásek y Bauer 2012).")
+            else:
+                frac = Fraction(alpha).limit_denominator(100)
+                _log.warning(
+                    f"Banda de grieta con {name}: h multiplicada por α = {frac} "
+                    f"({alpha:.4f}), la fracción del elemento que se ablanda cuando "
+                    f"la banda se localiza en una parte de sus puntos de Gauss "
+                    f"(Jirásek y Bauer 2012). La corrección es fiable con la banda "
+                    f"alineada con la malla; con la banda inclinada, o con esfuerzo "
+                    f"uniforme en el elemento (que se ablanda entero), la energía "
+                    f"disipada se aparta de G_f. Para la banda de grieta se "
+                    f"recomiendan elementos lineales.")
+        return 1.0 if alpha is None else float(alpha)
 
     def _seed_characteristic_lengths(self, lengths) -> None:
         """Entrega a cada punto de integración su longitud característica.

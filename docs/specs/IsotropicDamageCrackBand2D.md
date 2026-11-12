@@ -79,7 +79,20 @@ $h$ es el ancho de la banda en que se localiza la deformación cuando la grieta 
 
 **Decisión y resultado (2026-11-11).** Aprobada (a) con la regla de los triángulos. La prueba de objetividad (barra con una columna de cuadrados debilitada, partidos en dos triángulos) dio con $\sqrt{A_e}$ en `Tri3` $D/(G_f A) = 1.41$ (la banda la forman los dos triángulos de cada cuadrado: su ancho es $\sqrt{2A_e}$), así que `Tri3` usa **(b) $h = \sqrt{2A_e}$** y da 1.00, igual que `Quad4`. En 3D lo mismo con `Tet4` (seis tetraedros por cubo): $\sqrt[3]{V_e}$ daba 1.81 y $\sqrt[3]{6V_e}$ da 1.00. Los demás elementos usaban el convenio de Abaqus.
 
-**Cuadráticos (2026-11-11, tras el diagnóstico de la viga SEN).** La misma prueba ampliada a los cuadráticos, con el ½ de Abaqus, disipaba $1.97\,G_fA$ (`Quad8`, `Quad9`, `Hex20`, `Hex27`), $2.68\,G_fA$ (`Tri6`) y $3.23\,G_fA$ (`Tet10`), igual con todas las mallas: la deformación se localiza en el elemento entero, no en media fila de puntos de integración como supone el convenio. Aplicada la regla del 5 % (usuario, «si»): cada cuadrático usa el factor del elemento lineal de su celda y disipa $0.997$–$0.999\,G_fA$. Factor $h = c\,\Omega_e^{1/d}$ declarado por cada elemento (`CHARACTERISTIC_LENGTH_FACTOR`): `Quad4`/`Quad8`/`Quad9` 1, `Tri3`/`Tri6` $\sqrt2$; `Hex8`/`Hex20`/`Hex27` 1, `Tet4`/`Tet10` $6^{1/3}$.
+**Cuadráticos (2026-11-11, tras el diagnóstico de la viga SEN).** La misma prueba ampliada a los cuadráticos, con el ½ de Abaqus, disipaba $1.97\,G_fA$ (`Quad8`, `Quad9`, `Hex20`, `Hex27`), $2.68\,G_fA$ (`Tri6`) y $3.23\,G_fA$ (`Tet10`), igual con todas las mallas: con el esfuerzo uniforme de la barra la deformación se localiza en el elemento entero. Aplicada la regla del 5 % (usuario, «si»): cada cuadrático usa el ancho del elemento lineal de su celda, $c\,\Omega_e^{1/d}$ (`CHARACTERISTIC_LENGTH_FACTOR`): `Quad4`/`Quad8`/`Quad9` 1, `Tri3`/`Tri6` $\sqrt2$; `Hex8`/`Hex20`/`Hex27` 1, `Tet4`/`Tet10` $6^{1/3}$.
+
+**Factor de localización de los cuadráticos (2026-11-12).** En flexión los cuadráticos disipaban sólo $0.69$–$0.80\,G_fA$ (viga de Petersson, objetivos entre mallas; `Quad4` 0.94). Diagnóstico por punto de Gauss: el elemento lineal tiene deformación constante a través de la banda y se ablanda entero; el cuadrático, más flexible, tiene deformación lineal dentro del elemento y, con gradiente, el ablandamiento se localiza en una parte de sus puntos: en `Quad8` en dos de sus tres filas de Gauss $3\times3$ en todos los elementos de la banda (fracción $13/18 = 0.72$), en `Tri6` en dos de sus tres puntos o en los tres (fracción $2/3$ o 1, según el triángulo). Es el resultado de Jirásek y Bauer (2012, §4: en 1D, una fila de dos con 2 puntos, dos (a veces una) de tres con 3 puntos) y de Slobbe, Hendriks y Rots (2013). Por eso
+$$h = \alpha\,c\,\Omega_e^{1/d},$$
+con $\alpha$ la fracción del elemento que se ablanda, declarada por el elemento según su regla (`CRACK_BAND_LOCALIZATION`):
+
+| Elemento | Regla | $\alpha$ |
+|---|---|---|
+| `Tri3`, `Quad4`, `Tet4`, `Hex8` | cualquiera | 1 |
+| `Quad8`, `Quad9` | Gauss $3\times3$ | $13/18$ |
+| `Quad8`, `Quad9` | Gauss $2\times2$ | $1/2$ |
+| `Tri6`, `Hex20`, `Hex27`, `Tet10` | cualquiera | 1, sin factor establecido |
+
+Comprobación en una viga entallada a flexión con malla estructurada alineada ($D/G_fA$ en $\delta = 2$ mm): `Quad4` 1.015; `Quad8` 0.773 sin $\alpha$ y 1.029 con $13/18$. En `Tri6` la fracción varía de un triángulo a otro: sin factor 0.79–0.87 (disipa de menos, del lado seguro) y con el $2/3$ de la literatura 1.17–1.28 (de más); queda con $\alpha = 1$ (usuario). En 3D no hay un factor medido ni publicado: $\alpha = 1$. Con un cuadrático Solidum avisa una vez: la corrección sólo es fiable con la banda alineada con la malla (Jirásek y Bauer: con la malla inclinada $13/18$ da una respuesta demasiado dúctil), y para la banda de grieta se recomiendan elementos lineales. Con esfuerzo uniforme en el elemento (la barra de la prueba de objetividad) el cuadrático se ablanda entero y $\alpha < 1$ sobrestima la energía: $G_fA/\alpha = 1.385\,G_fA$ en `Quad8` y `Quad9`.
 
 ### 5. Medida de Rankine (pregunta Q1)
 
@@ -288,15 +301,21 @@ acceptance:
   elements:
     - name: characteristic_length_seeded
       setup: "Tri3, Quad4, Tri6, Quad8, Quad9 con una malla regular y otra distorsionada"
-      expect: "h de cada punto = √A_e (Quad4, Quad8, Quad9) o √(2A_e) (Tri3, Tri6), decisiones de §4"
+      expect: "h de cada punto = α·√A_e (Quad4; Quad8 y Quad9 con α = 13/18 en Gauss 3×3 y ½ en 2×2) o √(2A_e) (Tri3, Tri6), decisiones de §4"
       tol_rel: 1.0e-12
+    - name: localization_warning
+      expect: "un aviso por elemento y regla con los cuadráticos: con factor (Quad8, Quad9) o sin factor establecido (Tri6); ninguno con los lineales"
     - name: missing_seed_error
       expect: "un elemento que no siembre h con este material produce un error claro al construir el modelo"
   mesh_objectivity:
     - name: bar_in_tension
       setup: "barra o placa en tracción con un debilitamiento en una fila; 1, 2, 4 y 8 elementos por unidad de longitud en la dirección de la carga; Quad4 y Tri3 estructurados; implícita e IMPL-EX"
-      expect: "energía disipada al final = G_f·A_grieta y la curva fuerza–alargamiento posterior al pico igual en todas las mallas, ±1 % (Quad4); en Tri3 se informa D/(G_f·A_grieta) para decidir Q2"
+      expect: "energía disipada al final = G_f·A_grieta y la curva fuerza–alargamiento posterior al pico igual en todas las mallas, ±1 % (Quad4, Tri3, Tri6); Quad8 y Quad9 con α = 13/18, G_f·A/α (esfuerzo uniforme: el elemento se ablanda entero), objetivo entre mallas"
       tol_rel: 1.0e-2
+    - name: notched_beam_bending
+      setup: "viga entallada a flexión en cuatro puntos, H = 100 mm, malla estructurada alineada de celdas de 10 mm, entalla de la celda central hasta H/2; IMPL-EX, 1000 pasos hasta δ = 2 mm; Quad4, Quad8, Tri3, Tri6"
+      expect: "D/(G_f·A_ligamento) = 1 ± 6 % con Quad4 y Tri3; Quad8 (α = 13/18) disipa lo mismo que Quad4 ±5 % y su pico ±8 %; Tri6 sin factor disipa entre 0.65 y 0.9 veces lo de Tri3"
+      tol_rel: 5.0e-2
   structural:
     - name: van_vliet_tension
       setup: "ensayo de tracción de Van Vliet de la tesis (§8.1; modelo de tests/user/discontinuities/_van_vliet.py) con fisuración distribuida, dos mallas; implícita e IMPL-EX con dos tamaños de paso"
@@ -311,6 +330,8 @@ references:
   - "Hillerborg A., Modéer M., Petersson P.-E. (1976). Analysis of crack formation and crack growth in concrete by means of fracture mechanics and finite elements. Cem. Concr. Res. 6, 773–781."
   - "Rots J.G. (1988). Computational modeling of concrete fracture. Tesis doctoral, TU Delft."
   - "Oliver J. (1989). A consistent characteristic length for smeared cracking models. IJNME 28, 461–474."
+  - "Jirásek M., Bauer M. (2012). Numerical aspects of the crack band approach. Computers & Structures 110–111, 60–78. doi:10.1016/j.compstruc.2012.06.006"
+  - "Slobbe A.T., Hendriks M.A.N., Rots J.G. (2013). Systematic assessment of directional mesh bias with periodic boundary conditions: Applied to the crack band model. Eng. Fract. Mech. 109, 186–208. doi:10.1016/j.engfracmech.2013.06.005"
   - "Oliver J., Huespe A.E., Cante J.C. (2008). An implicit/explicit integration scheme to increase computability of non-linear material and contact/friction problems. CMAME 197, 1865–1889."
   - "Code_Aster, doc. R5.03.81, méthode IMPLEX: https://ericca.uqtr.ca/fr14.4/man_r/r5/r5.03.81.pdf"
   - "OpenSees, ASDConcrete3D: https://opensees.github.io/OpenSeesDocumentation/user/manual/material/ndMaterials/ASDConcrete3D.html"
@@ -323,10 +344,10 @@ references:
 
 - Archivo: `solidum/materials/damage_crack_band_2d.py` (lo común con la 3D en `solidum/materials/_crack_band.py`; Rankine en `solidum/materials/_equivalent_strain.py`, código `RANKINE`, que los padres no admiten).
 - Clase: `IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D)`; reutiliza el núcleo compilado del padre (`_compute_damage_2d`) con $\alpha(h)$ del punto y el tope `damage_max`.
-- Siembra de $h$: pieza genérica del elemento base (`Element.CHARACTERISTIC_LENGTH_FACTOR`, `Element._seed_geometric_characteristic_length`): $h = c\,\Omega_e^{1/d}$ con $\Omega_e = \sum_g w_g \det J_g$ de la propia cinemática compilada del elemento; un elemento sin `CHARACTERISTIC_LENGTH_FACTOR` ni `SEEDS_CHARACTERISTIC_LENGTH` rechaza el material al construirse.
+- Siembra de $h$: pieza genérica del elemento base (`Element.CHARACTERISTIC_LENGTH_FACTOR`, `Element.CRACK_BAND_LOCALIZATION`, `Element._seed_geometric_characteristic_length`): $h = \alpha\,c\,\Omega_e^{1/d}$ con $\Omega_e = \sum_g w_g \det J_g$ de la propia cinemática compilada del elemento y $\alpha$ según la regla de cuadratura del elemento (§4), con un aviso único por elemento y regla en los cuadráticos; un elemento sin `CHARACTERISTIC_LENGTH_FACTOR` ni `SEEDS_CHARACTERISTIC_LENGTH` rechaza el material al construirse.
 - Tests:
-  - `tests/test_damage_crack_band.py` (punto material 2D y 3D: α(h), h_max, pico, energía $D(\kappa)$, tope, Rankine, tangente por diferencias finitas, restricción exacta del 3D, kernel por lotes bit a bit; siembra de $h$ en los diez sólidos, mallas regulares y distorsionadas; elemento sin $h$).
-  - `tests/validation/test_crack_band_objectivity.py` (barra en tracción con los diez sólidos, mallas del generador estructurado).
+  - `tests/test_damage_crack_band.py` (punto material 2D y 3D: α(h), h_max, pico, energía $D(\kappa)$, tope, Rankine, tangente por diferencias finitas, restricción exacta del 3D, kernel por lotes bit a bit; siembra de $h$ en los diez sólidos, mallas regulares y distorsionadas, con el factor de localización por regla y su aviso; elemento sin $h$).
+  - `tests/validation/test_crack_band_objectivity.py` (barra en tracción con los diez sólidos, mallas del generador estructurado; viga entallada a flexión con `Quad4`, `Quad8`, `Tri3` y `Tri6`).
 - Notas de traducción: la energía de fractura se da por unidad de área ($N/m$ en SI); con unidades N–mm, $G_f$ en N/mm.
 
 ---
@@ -357,3 +378,4 @@ references:
   - **Salvaguarda $\tilde d = \max(\tilde d_n, d(\tilde\kappa))$**: implementada como en §8; el artículo de Oliver, Huespe y Cante (2008) no la impone; se conserva por decisión del usuario (ver la entrada siguiente del Diálogo).
 - **2026-11-11** · **Contraste con Oliver, Huespe y Cante (2008), CMAME 197:1865–1889, Tabla 3 y §3.6** (artículo conseguido por el usuario; copia local en `docs/referencias/`, no versionada). Coinciden: la extrapolación $\tilde\alpha_{n+1} = \alpha_n + (\Delta t_{n+1}/\Delta t_n)\,\Delta\alpha_n$ (ec. 35), el esfuerzo $\tilde{\boldsymbol\sigma} = (1-\tilde d)\,\mathbf C^e:\boldsymbol\varepsilon$ y la tangente secante (ecs. 38–39), y el inicio del daño con un paso de retraso (error en los puntos no suaves de $\alpha(t)$, §3.6). Difieren en dos detalles: (1) el artículo linealiza la ley con la pendiente del paso anterior, $\tilde q = q_n + H_n\,\Delta\tilde\alpha$ y $\tilde d = 1 - \tilde q/\tilde\alpha$ (ec. 37), mientras Solidum evalúa la ley exponencial exacta en $\tilde\kappa$ (ambas de primer orden; con la exponencial convexa la linealización daña algo más y con pasos grandes puede dar $\tilde q < 0$); (2) el artículo no impone $\tilde d \ge \tilde d_n$ (en ablandamiento su $\tilde d \ge d_n$ implícito, pero puede bajar del extrapolado anterior); Solidum conserva la salvaguarda $\max(\tilde d_n, d(\tilde\kappa))$, que evita la «curación» aparente entre pasos. **Usuario: «si» a conservar la versión de Solidum y documentar las diferencias.** Para el futuro control adaptativo del paso: estimador de la ec. 78, $\Delta t_{n+1}^2 = \xi\,\alpha_\text{ref}\,\Delta t_n^2\,\min_x 1/|\Delta\lambda_n(x) - \Delta\lambda_{n-1}(x)|$.
 - **2026-11-11** · **Longitud característica de los cuadráticos corregida** (usuario, «si», tras el diagnóstico de la viga SEN, `informes/` no versionado). El diagnóstico (Tri6, Tri3 no estructurada y un prototipo de daño sólo de tracción) mostró que la banda vertical de las mallas finas la causa el daño isótropo, que degrada también la biela comprimida en la zona de cortante, y no el elemento ni la orientación de la malla; de paso halló que `Tri6` con el $\tfrac12\sqrt{A_e}$ de Abaqus disipaba $2.68\,G_fA$ en la barra. La prueba de objetividad ampliada a los seis cuadráticos dio con ½: $1.97\,G_fA$ (`Quad8`, `Quad9`, `Hex20`, `Hex27`), $2.68$ (`Tri6`) y $3.23$ (`Tet10`), en todas las mallas. La regla Q2 del 5 % da a cada cuadrático el factor del elemento lineal de su celda (1, $\sqrt2$ o $6^{1/3}$) y la barra disipa $0.997$–$0.999\,G_fA$ con todos (§4). Sin cambio en el material. Siguiente: spec del modelo 2 (daño de tracción y compresión) antes del bloque 3.
+- **2026-11-12** · **Factor de localización de los cuadráticos** (usuario: «aplícalo»; Tri6 sin factor: «SI»). La viga de Petersson con `Quad8` y `Tri6` (`informes/reporte_viga_petersson_segundo_orden_2026-11-12.pdf`, no versionado) fue objetiva entre mallas pero disipó sólo $0.69$–$0.80\,G_fA$ en $\delta = 8$ mm (`Quad4` 0.94). El usuario lo atribuyó a la regularización, no al elemento: la formulación en desplazamientos gana flexibilidad al subir el orden, y la rigidez del primer orden es la que obliga a su banda a ablandarse entera. El diagnóstico por punto de Gauss lo confirmó (`Quad8`: dos de tres filas de Gauss en todos los elementos de la banda, $13/18$; `Tri6`: $2/3$ o 1) y coincide con Jirásek y Bauer (2012, §4) y Slobbe, Hendriks y Rots (2013) (búsqueda del bibliotecario en `informes/busqueda_banda_cuadraticos_2026-11-12.md`; PDFs en `docs/referencias/`). Aplicado $h = \alpha\,c\,\Omega_e^{1/d}$ (§4) con $\alpha = 13/18$ en `Quad8`/`Quad9` 3×3 y ½ en 2×2. En `Tri6` el $2/3$ de la literatura sobrecorregía en la viga entallada (1.17–1.28 frente a 0.79–0.87 sin él): el usuario eligió dejarlo sin factor, del lado seguro. Limitaciones documentadas: $\alpha$ sólo es fiable con la banda alineada con la malla, y con esfuerzo uniforme en el elemento sobrestima la energía ($1/\alpha$). Siguiente: la $h$ por proyección del segundo método de Oliver (1989), $h = A_e/l_d$, para la orientación en todos los elementos (bloque 3).

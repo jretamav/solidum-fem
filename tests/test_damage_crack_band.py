@@ -313,15 +313,19 @@ SOLIDS = [
     (Tri3, 2.0 ** 0.5), (Quad4, 1.0), (Tri6, 2.0 ** 0.5), (Quad8, 1.0), (Quad9, 1.0),
     (Hex8, 1.0), (Tet4, 6.0 ** (1.0 / 3.0)), (Hex20, 1.0), (Hex27, 1.0), (Tet10, 6.0 ** (1.0 / 3.0)),
 ]
+# Fracción α del elemento que se ablanda con la regla por omisión (usuario,
+# 2026-11-12): 13/18 en Quad8 y Quad9 (dos de tres filas de Gauss 3×3); 1 en
+# los lineales y en los cuadráticos sin factor establecido (Tri6, 3D).
+ALPHA = {Quad8: 13.0 / 18.0, Quad9: 13.0 / 18.0}
 A2 = np.array([[0.031, 0.007], [-0.004, 0.022]])                  # afín, distorsionada
 A3 = np.array([[0.031, 0.007, 0.002], [-0.004, 0.022, 0.003], [0.001, -0.002, 0.027]])
 
 
-def _element(cls, A, material):
+def _element(cls, A, material, **kw):
     ref = np.array(cls.REFERENCE_NODES, dtype=float)
     X = ref @ A.T + 0.1
     nodes = [Node(i + 1, list(x)) for i, x in enumerate(X)]
-    return cls(1, nodes, material)
+    return cls(1, nodes, material, **kw)
 
 
 @pytest.mark.parametrize("cls,factor", SOLIDS)
@@ -336,10 +340,64 @@ def test_h_sembrada_en_los_solidos(cls, factor, shape):
     el = _element(cls, A, material)
     assert cls.CHARACTERISTIC_LENGTH_FACTOR == pytest.approx(factor, rel=1e-15)
     measure = abs(np.linalg.det(A)) * REF_MEASURE[cls.REFERENCE_CELL]
-    expected = factor * measure ** (1.0 / dim)
+    expected = ALPHA.get(cls, 1.0) * factor * measure ** (1.0 / dim)
     hs = [v["h"] for v in el.state.vars]
     assert len(hs) == el.state.num_ip
     np.testing.assert_allclose(hs, expected, rtol=1e-12)
+
+
+@pytest.mark.parametrize("cls,quadrature,alpha", [
+    (Quad8, "3x3", 13.0 / 18.0), (Quad8, "2x2", 0.5), (Quad9, "3x3", 13.0 / 18.0),
+    (Quad9, "2x2", 0.5), (Tri6, "tri_3", 1.0), (Tri6, "tri_6", 1.0),
+])
+def test_factor_de_localizacion_por_regla(cls, quadrature, alpha):
+    """α depende de la regla de cuadratura: dos de tres filas de Gauss 3×3,
+    una de dos con 2×2 (Jirásek y Bauer 2012, §4); Tri6 sin factor."""
+    A = 0.025 * np.eye(2)
+    el = _element(cls, A, mat2(), quadrature=quadrature)
+    measure = 0.025**2 * REF_MEASURE[cls.REFERENCE_CELL]
+    expected = alpha * cls.CHARACTERISTIC_LENGTH_FACTOR * math.sqrt(measure)
+    np.testing.assert_allclose([v["h"] for v in el.state.vars], expected, rtol=1e-12)
+
+
+@pytest.fixture
+def avisos_limpios(monkeypatch):
+    """El aviso es único por proceso y por (elemento, regla): se vacía el
+    registro para que la prueba lo vea aunque otra prueba ya lo emitiera."""
+    import solidum.core.element as element_module
+    monkeypatch.setattr(element_module, "_crack_band_warned", set())
+
+
+def test_aviso_unico_con_factor(avisos_limpios, caplog):
+    import logging
+    A = 0.025 * np.eye(2)
+    with caplog.at_level(logging.WARNING, logger="solidum"):
+        for _ in range(3):
+            _element(Quad8, A, mat2())
+    avisos = [r for r in caplog.records if "Banda de grieta con Quad8" in r.getMessage()]
+    assert len(avisos) == 1
+    assert "13/18" in avisos[0].getMessage() and "alineada" in avisos[0].getMessage()
+
+
+@pytest.mark.parametrize("cls", [Tri6, Hex20, Hex27, Tet10], ids=lambda c: c.__name__)
+def test_aviso_sin_factor_establecido(avisos_limpios, caplog, cls):
+    import logging
+    dim = len(cls.REFERENCE_NODES[0])
+    material = mat2() if dim == 2 else mat3()
+    with caplog.at_level(logging.WARNING, logger="solidum"):
+        _element(cls, 0.025 * np.eye(dim), material)
+    assert f"Banda de grieta con {cls.__name__}" in caplog.text
+    assert "no hay un factor de localización establecido" in caplog.text
+
+
+@pytest.mark.parametrize("cls", [Tri3, Quad4, Hex8, Tet4], ids=lambda c: c.__name__)
+def test_lineales_sin_aviso(avisos_limpios, caplog, cls):
+    import logging
+    dim = len(cls.REFERENCE_NODES[0])
+    material = mat2() if dim == 2 else mat3()
+    with caplog.at_level(logging.WARNING, logger="solidum"):
+        _element(cls, 0.025 * np.eye(dim), material)
+    assert "Banda de grieta" not in caplog.text
 
 
 def test_h_sembrada_en_un_cuadrilatero_no_afin():

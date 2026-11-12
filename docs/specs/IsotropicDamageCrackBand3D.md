@@ -29,6 +29,8 @@ Convenio de Abaqus en 3D: $h = \sqrt[3]{V_e}$ en elementos lineales (`Hex8`, `Te
 
 **Cuadráticos (2026-11-11)**: con $\tfrac12\sqrt[3]{V_e}$ la barra disipaba $1.97\,G_fA$ (`Hex20`, `Hex27`) y $3.23\,G_fA$ (`Tet10`): la deformación se localiza en el elemento entero. Con la regla del 5 % (usuario, «si»; spec 2D §4) usan el factor del lineal de su celda, $\sqrt[3]{V_e}$ (`Hex20`, `Hex27`) y $\sqrt[3]{6V_e}$ (`Tet10`), y disipan $0.998$–$0.999\,G_fA$.
 
+**Factor de localización (2026-11-12; spec 2D §4).** En flexión los cuadráticos 2D sólo ablandan una parte de sus puntos de Gauss y la energía se corrige con $h = \alpha\,c\,\Omega_e^{1/d}$ (`Quad8`/`Quad9`, $\alpha = 13/18$). En 3D no hay un factor medido ni publicado: `Hex20`, `Hex27` y `Tet10` conservan $\alpha = 1$ y Solidum avisa una vez que la energía puede quedar por debajo de $G_f$ y que se recomiendan elementos lineales.
+
 ### 3. Medida de Rankine (2D, §5 y Q1)
 
 $$\varepsilon_\text{eq} = \frac{\langle\bar\sigma_I\rangle_+}{E}, \qquad \bar{\boldsymbol\sigma} = \mathbf C_e\,\boldsymbol\varepsilon,$$
@@ -118,7 +120,7 @@ acceptance:
   elements:
     - name: characteristic_length_seeded
       setup: "Hex8, Tet4, Hex20, Hex27, Tet10, malla regular y distorsionada"
-      expect: "h de cada punto = ∛V_e (Hex8, Hex20, Hex27) o ∛(6V_e) (Tet4, Tet10)"
+      expect: "h de cada punto = ∛V_e (Hex8, Hex20, Hex27) o ∛(6V_e) (Tet4, Tet10); los cuadráticos con α = 1 y el aviso de factor no establecido"
       tol_rel: 1.0e-12
   mesh_objectivity:
     - name: bar_in_tension_3d
@@ -149,3 +151,4 @@ references:
 - **2026-11-11** · Aprobada por el usuario con la 2D («si»). Bloque 1 implementado (sin IMPL-EX); `Tet4` con $\sqrt[3]{6V_e}$ por la prueba de objetividad (§2). Hallazgos en el Diálogo de la spec 2D.
 - **2026-11-11** · Bloque 2: IMPL-EX con la misma formulación que la 2D (§8 de esa spec; ADR 0034). Pruebas en 3D: tangente secante exacta y simétrica definida positiva, kernel por lotes bit a bit (implícita e IMPL-EX, razón variable y «sin paso») en `tests/test_damage_crack_band.py` y `tests/test_damage_crack_band_implex.py`. La prueba estructural (Van Vliet) es 2D.
 - **2026-11-11** · Factor de $h$ de los cuadráticos corregido con la prueba de objetividad (§2; Diálogo de la spec 2D).
+- **2026-11-12** · Factor de localización de los cuadráticos (spec 2D §4 y su Diálogo): en 3D sin factor establecido, $\alpha = 1$ con aviso (usuario).

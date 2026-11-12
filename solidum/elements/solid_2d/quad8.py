@@ -24,10 +24,14 @@ class Quad8(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "3x3"
 
     REFERENCE_CELL = "quad"
-    # Banda de grieta: √A, como Quad4, no el ½·√A de Abaqus para cuadráticos:
-    # la deformación se localiza en el elemento entero y con ½·√A la prueba de
-    # objetividad disipaba 1.97·G_f·A (usuario, 2026-11-11, regla Q2).
+    # Banda de grieta: h = α·√A. √A es el ancho de una banda de un elemento,
+    # como en Quad4. α es la fracción del elemento que se ablanda: con
+    # gradiente, la banda se localiza en dos de las tres filas de puntos de
+    # Gauss 3×3 (13/18; una de dos con 2×2, ½). Jirásek y Bauer 2012, §4;
+    # medido en la viga de Petersson (0.72); usuario, 2026-11-12. Con esfuerzo
+    # uniforme el elemento se ablanda entero y α sobrestima la energía (1/α).
     CHARACTERISTIC_LENGTH_FACTOR = 1.0
+    CRACK_BAND_LOCALIZATION = {"3x3": 13.0 / 18.0, "2x2": 0.5}
     REFERENCE_NODES = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0),
                        (0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0))
 

@@ -20,10 +20,11 @@ class Quad9(_HigherOrderSolid2D):
     _LOAD_QUADRATURE = "3x3"
 
     REFERENCE_CELL = "quad"
-    # Banda de grieta: √A, como Quad4, no el ½·√A de Abaqus para cuadráticos:
-    # la deformación se localiza en el elemento entero y con ½·√A la prueba de
-    # objetividad disipaba 1.97·G_f·A (usuario, 2026-11-11, regla Q2).
+    # Banda de grieta: h = α·√A, como Quad8 (misma deformación lineal a través
+    # de la banda y misma cuadratura): α = 13/18 con Gauss 3×3, ½ con 2×2
+    # (Jirásek y Bauer 2012, §4; usuario, 2026-11-12).
     CHARACTERISTIC_LENGTH_FACTOR = 1.0
+    CRACK_BAND_LOCALIZATION = {"3x3": 13.0 / 18.0, "2x2": 0.5}
     REFERENCE_NODES = ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0),
                        (0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0),
                        (0.0, 0.0))
