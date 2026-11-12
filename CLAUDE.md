@@ -7,6 +7,7 @@ Lee siempre el contrato del proyecto antes de actuar:
 **Memoria del agente del proyecto** vive en `.claude/memory/` dentro del repo (sincronizada por Drive, excluida de git por `.gitignore`). Al iniciar sesión léela siguiendo el índice `@.claude/memory/MEMORY.md`. No crees memoria del agente en `~/.claude/projects/.../memory/` (el usuario trabaja en varias PCs vía Drive; la memoria fuera del repo no se sincroniza).
 
 Resumen operativo:
+- **Preguntas al usuario** (pedido del usuario, 2026-11-12): cada pregunta debe entenderse sola, aunque repita lo dicho antes. En 3-4 líneas de lenguaje llano: qué se decide, por qué importa y la recomendación con su razón. Nunca depender de un mensaje largo anterior («¿apruebas el paso 1?» sin decir qué es el paso 1). Una sola pregunta por mensaje.
 - **Modelo de colaboración**: la IA decide y escribe la arquitectura y el código (delegación total desde 2026-09-29); el usuario decide la física y valida los resultados. No presentarle decisiones de software. Ver Reglas.md §2.
 - **División de dominios**: ver Reglas.md §3 para qué se discute con detalle (modelos físicos/matemáticos) y qué se reporta brevemente (plumbing).
 - **Cambios arquitecturales grandes**: registrar un ADR en `docs/adr/000N-titulo.md`. Ver Reglas.md §4.
