@@ -46,10 +46,12 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 
 ## Ejecución de un Análisis
 
-El runner principal vive en `examples/ejecutar_yaml.py`. Para ejecutar un modelo:
+Para ejecutar un modelo y escribir sus resultados:
 
 ```bash
-python examples/ejecutar_yaml.py ruta/al/modelo.yaml
+python -m solidum ruta/al/modelo.yaml
 ```
+
+(`python examples/ejecutar_yaml.py ruta/al/modelo.yaml` hace lo mismo.) Desde Python, `solidum.run_yaml(ruta, write_output=True)`; sin `write_output`, `run_yaml` resuelve y devuelve el resultado sin escribir archivos.
 
 El script carga el YAML, valida su contenido (acumulando *todos* los errores en una sola pasada antes de abortar), construye el dominio, ensambla el solver pedido, ejecuta el análisis y exporta los resultados según el bloque `output`.

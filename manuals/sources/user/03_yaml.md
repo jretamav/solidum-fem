@@ -653,8 +653,37 @@ output:
     elements: all
 ```
 
-```callout Nota
-Cuando `frequency: "all_steps"` y el solver es no lineal, se genera un archivo `.vtu` por paso convergido más un archivo maestro `.pvd` que ParaView interpreta como animación.
+`frequency` admite:
+
+| Valor | VTK que se escriben |
+|---|---|
+| `"last_step"` (por omisión) | sólo `<file_name>_final.vtu` |
+| `"all_steps"` | uno por paso convergido |
+| `{every: N}` | cada N pasos convergidos |
+| `{at: [f1, f2, ...]}` | el primer paso convergido con factor de carga (o tiempo) ≥ cada valor |
+
+Con más de un paso escrito se genera además un archivo maestro `.pvd` que ParaView interpreta como animación; `<file_name>_final.vtu` se escribe siempre.
+
+### Historia de la respuesta: `history`
+
+Registra, en cada paso convergido, las magnitudes que se declaran, en un archivo CSV (`<file_name>_historia.csv`, o el de `file`) con las columnas `step`, `factor` y las declaradas. Sirve para la curva carga–desplazamiento de un análisis no lineal:
+
+```yaml
+output:
+  file_name: viga
+  results:
+    frequency: {at: [0.05, 0.125, 0.25, 1.0]}
+  history:
+    columns:
+      - {name: flecha, displacement: {group: Carga, dof: uy}, scale: -1}
+      - {name: P, reaction: {group: Carga, dof: uy}, scale: -1}
 ```
+
+| Magnitud | Qué registra |
+|---|---|
+| `displacement` | el desplazamiento `dof` de los nodos del selector; `reduce`: `mean` (por omisión), `min` o `max` |
+| `reaction` | la suma de las reacciones `dof` de los nodos del selector, que deben tener ese grado de libertad prescrito (apoyo o desplazamiento impuesto); sólo en análisis estáticos sin etapas |
+
+El selector de nodos es uno de `node: id`, `nodes: [ids]`, `group: nombre` (grupo físico de Gmsh) o `at: [x, y]` (los nodos a una distancia ≤ `tol`, 1e-6 por omisión). `scale` multiplica el valor (p. ej. −1 para dar positiva una carga hacia abajo). El archivo se escribe fila a fila: un análisis interrumpido conserva lo calculado.
 
 `log_level` fija el nivel del registro durante el análisis (`run_yaml`, `load_yaml(...).solve()` y `examples/ejecutar_yaml.py`): `WARNING` deja sólo avisos y errores. Al terminar, `run_yaml` vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.

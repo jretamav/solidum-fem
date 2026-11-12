@@ -376,6 +376,12 @@ El ensamblador lleva el intento de paso y su pseudo-tiempo para los materiales i
 
 El lector de Gmsh importa todas las celdas de los sólidos de Solidum en 2D y 3D (`triangle`, `triangle6`, `quad`, `quad8`, `quad9`, `tetra`, `tetra10`, `hexahedron`, `hexahedron20`, `hexahedron27`). El orden de los nodos no sale de tablas de permutación por tipo: una tabla única da las coordenadas de referencia de los nodos de cada celda (las de Gmsh con la permutación de meshio) y el lector las casa con las `REFERENCE_NODES` del elemento destino (ADR 0022); un elemento con jacobiano negativo se reorienta reflejando su celda de referencia. Las líneas (2D) y caras (3D) son contorno, salvo que su grupo físico nombre un elemento (barras incrustadas). La clave `mesh` del YAML admite además un `.geo` o un bloque con `geometry`, `parameters`, `order`, `element_shape`, `serendipity` y `output`: Solidum llama a Gmsh, fija los parámetros del `.geo` (`DefineConstant`), malla, eleva a orden 2 si se pide y lee el `.msh`. Gmsh es una dependencia opcional (grupo `mesh`). Se descartaron las tablas de permutación a mano (fuente clásica de errores en Hex20 y Tet10) y leer el `.msh` con la API de Gmsh (haría obligatoria la dependencia). Salda la deuda #18.
 
+## ADR 0036 — Salida de resultados del YAML: historia de la respuesta y frecuencia de VTK
+
+**Fecha**: 2026-11-11 · **Estado**: aceptado.
+
+La escritura de resultados pasa del script `examples/ejecutar_yaml.py` al paquete: `OutputWriter` se engancha al callback de paso del despacho completo de `run_yaml` (etapas, peso propio y cargas térmicas incluidos) y escribe, sólo si se pide (`run_yaml(..., write_output=True)` o `python -m solidum modelo.yaml`), el modelo sin deformar, los VTK por paso (`last_step`, `all_steps`, `{every: N}` o `{at: [factores]}`) con su `.pvd`, la historia de la respuesta en CSV (desplazamientos y reacciones por nodo, grupo físico o coordenada, fila a fila) y la salida de texto estilo FEAP. La reacción de un paso es `F_int(U) − factor·F` en los grados de libertad prescritos. Se descartaron guardar la historia en `SolveResult` (depende de lo que el usuario observa), escribir siempre que haya `output` (las pruebas ensuciarían `examples/`) y mantener la escritura en el script (despacho duplicado y reducido).
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

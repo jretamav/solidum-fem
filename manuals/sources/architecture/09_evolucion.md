@@ -300,6 +300,7 @@ Bajo. La longitud característica reutiliza la pieza del ADR 0028; el pseudo-tie
 - **Lector de Gmsh** para todas las celdas de los sólidos 2D y 3D, de primer y segundo orden, con el orden de los nodos deducido de las coordenadas de referencia y la orientación corregida.
 - **Mallado desde la geometría** en el YAML: el `.geo` con sus parámetros (tamaño de elemento), el orden y la forma de los elementos; Solidum llama a Gmsh y lee la malla. Un estudio de malla es cambiar un dato del YAML.
 - **Barras incrustadas** desde un grupo físico de líneas con `element`.
+- **Salida de resultados en el paquete** (ADR 0036): `python -m solidum modelo.yaml` escribe la historia de la respuesta en CSV y los VTK en los instantes elegidos.
 
 ```
 [YAML: mesh.geometry + parameters] --> [Gmsh (opcional)] --> [.msh] --> [GmshParser: celda → REFERENCE_NODES del elemento] --> [Domain]

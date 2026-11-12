@@ -645,17 +645,18 @@ class YamlModel:
     assembler: Assembler
     parser: Any
 
-    def solve(self, *, step_callback: StepCallback | None = None):
+    def solve(self, *, step_callback: StepCallback | None = None, write_output: bool = False):
         """Resuelve el análisis declarado en el YAML: el mismo despacho y el
         mismo resultado que :func:`run_yaml`. Con ``output.log_level`` en el
         archivo, el registro usa ese nivel durante el análisis y después
-        vuelve al de antes."""
+        vuelve al de antes. Con ``write_output=True`` escribe junto al YAML
+        los resultados que declara su bloque ``output`` (ADR 0036)."""
         level = (self.parser.output_config or {}).get('log_level')
         if level is None:
-            return _solve_yaml_model(self, step_callback)
+            return _solve_yaml_model(self, step_callback, write_output)
         from solidum.logging import log_level
         with log_level(level):
-            return _solve_yaml_model(self, step_callback)
+            return _solve_yaml_model(self, step_callback, write_output)
 
 
 def load_yaml(path: str | Path) -> YamlModel:
@@ -679,8 +680,14 @@ def run_yaml(
     path: str | Path,
     *,
     step_callback: StepCallback | None = None,
+    write_output: bool = False,
 ) -> SolveResult | ModalResult | TransientResult | HarmonicResult | ResponseSpectrumResult:
     """Parsea un archivo YAML, arma el modelo completo y lo resuelve.
+
+    Con ``write_output=True`` escribe junto al YAML los resultados de su
+    bloque ``output`` (ADR 0036): VTK según ``results.frequency``, la historia
+    ``history`` en CSV y la salida de texto; ``python -m solidum modelo.yaml``
+    lo hace desde la terminal. Por omisión no escribe archivos.
 
     Despacha según el atributo de clase ``PIPELINE_KIND`` del solver
     declarado en el YAML:
@@ -709,13 +716,48 @@ def run_yaml(
         Resultado agregado. Inspeccionar el tipo concreto si el consumidor
         necesita distinguir (e.g. ``isinstance(result, TransientResult)``).
     """
-    return load_yaml(path).solve(step_callback=step_callback)
+    return load_yaml(path).solve(step_callback=step_callback, write_output=write_output)
 
 
-def _solve_yaml_model(model: YamlModel, step_callback):
-    """Despacho de :meth:`YamlModel.solve` según el ``PIPELINE_KIND`` del solver."""
+def _solve_yaml_model(model: YamlModel, step_callback, write_output: bool = False):
+    """Despacho de :meth:`YamlModel.solve` según el ``PIPELINE_KIND`` del
+    solver; con ``write_output``, el escritor de resultados (ADR 0036) se
+    engancha al callback de paso y cierra la salida al terminar."""
+    if not write_output:
+        return _dispatch_yaml_model(model, step_callback)
+    from solidum.utils.output_writer import OutputWriter
+
+    holder = {}
+
+    def make_writer(F_ext, static):
+        holder["w"] = OutputWriter(model.domain, model.assembler, model.parser.output_config,
+                                   model.parser.filepath, F_ext, static=static)
+        holder["w"].start()
+
+        def cb(step, U, factor):
+            holder["w"].step(step, U, factor)
+            if step_callback is not None:
+                step_callback(step, U, factor)
+        return cb
+
+    result = _dispatch_yaml_model(model, step_callback, make_writer)
+    final = getattr(result, "final", result)
+    U = getattr(final, "U", None)
+    if U is not None and np.ndim(U) == 2:
+        U = U[-1]
+    if "w" in holder:
+        holder["w"].finish(U)
+    return result
+
+
+def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
+    """Despacho según el ``PIPELINE_KIND`` del solver. ``make_writer(F, static)``
+    (opcional) crea el escritor de resultados y devuelve el callback de paso
+    que lo alimenta."""
     parser, domain, assembler = model.parser, model.domain, model.assembler
     if parser.stages is not None:
+        if make_writer is not None:
+            step_callback = make_writer(parser.get_external_forces(), False)
         return _run_yaml_stages(parser, domain, assembler, step_callback)
     solver = parser.get_solver(assembler)
 
@@ -739,6 +781,9 @@ def _solve_yaml_model(model: YamlModel, step_callback):
             "análisis estáticos y en el tiempo.",
             type(solver).__name__, pipeline_kind,
         )
+
+    if make_writer is not None and pipeline_kind != "static":
+        step_callback = make_writer(parser.get_external_forces(), False)
 
     if pipeline_kind == "modal":
         return run_modal(domain, assembler=assembler, solver=solver)
@@ -764,6 +809,8 @@ def _solve_yaml_model(model: YamlModel, step_callback):
     F_ext = (parser.get_external_forces()
              + parser.get_body_load(assembler)
              + parser.get_thermal_loads())
+    if make_writer is not None:
+        step_callback = make_writer(np.asarray(F_ext, dtype=float), True)
     return run(
         domain,
         assembler=assembler,

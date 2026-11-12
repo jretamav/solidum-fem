@@ -474,6 +474,10 @@ class YamlParser:
             if not (isinstance(level, str) and level.upper() in self._LOG_LEVELS):
                 errors.append(f"output.log_level: {level!r} no es un nivel de registro; "
                               f"se admiten {list(self._LOG_LEVELS)}.")
+        if isinstance(output, dict):
+            # Frecuencia de VTK e historia de la respuesta (ADR 0036).
+            from solidum.utils.output_writer import validate_output_block
+            errors.extend(validate_output_block(output))
 
         # --- Solver ---
         errors.extend(self._validate_solver_cfg(data.get('solver', {}), 'solver', data))
