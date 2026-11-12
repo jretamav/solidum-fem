@@ -123,6 +123,11 @@ Justificación: sale directamente de la forma débil, donde el término de front
 
 - **Tests blindan física no obvia.** Toda formulación nueva entra acompañada de un test de validación contra solución analítica o benchmark conocido. La IA puede equivocarse en sutilezas físicas (signos en Voigt, factores de ½, hipótesis plane stress vs plane strain) que no rompen la compilación; los tests son la red de seguridad.
 - **El usuario revisa la física.** Lee las ecuaciones, los cambios de formulación y los resultados frente a la solución analítica o el benchmark. Es la salvaguarda primaria contra errores numéricos sutiles. El plumbing y la arquitectura no le llegan a revisión: su salvaguarda son los tests, incluidos los que comprueban propiedades de la arquitectura (p. ej. la pureza del programa principal).
+- **Verificación y validación independientes** (decisión del usuario, 2026-11-12). Quien programa no se califica a sí mismo; tres agentes del proyecto cubren los papeles que en un desarrollo grande son de equipos distintos:
+  - *Verificación* (¿se resuelven bien las ecuaciones?): **antes de hacer commit de cualquier cambio de física** (componente nuevo o formulación modificada), un agente verificador deduce la formulación desde cero, sin mirar el código, la compara con la implementación y ejecuta las pruebas de calidad numérica.
+  - *Validación* (¿son las ecuaciones correctas para el fenómeno?): después de implementar, un agente validador corre como usuario los casos de la escalera de validación (analíticos, benchmarks, ensayos) y los juzga con el criterio del usuario: respuesta global, objetividad entre mallas, energía disipada y robustez, sin perseguir curvas experimentales.
+  - *Literatura*: un bibliotecario reúne el respaldo bibliográfico de las decisiones y la evidencia del criterio de admisión (§1).
+  Sus informes se guardan fuera del repositorio; la decisión física sigue siendo del usuario.
 - **ADRs preservan memoria arquitectural** para el yo futuro del usuario y para revisores externos.
 - **Idioma**: política híbrida por capa de visibilidad (decidida 2026-05-20 al preparar la publicación pública del repo):
 
