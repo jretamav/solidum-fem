@@ -99,7 +99,7 @@
 \renewcommand{\footrulewidth}{0.4pt}
 
 \lstdefinelanguage{yaml}{
-  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, mesh_element, geometry, parameters, order, element_shape, serendipity, history, columns, displacement, reaction, reduce, scale, every, at, group, file, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
+  keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, mesh_element, geometry, parameters, order, element_shape, serendipity, history, columns, displacement, reaction, reduce, scale, every, at, group, file, structured, blocks, length, ratio, origin, exclude, diagonal, mapping, groups, merge_tol, near, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
   keywordstyle=\color{yamlkey}\bfseries,
   ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Truss2D3, Truss3D3, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6, IndirectDisplacementSolver, HHTSolver, NewtonHHTSolver, ManderConcrete1D, EmbeddedReinforcement, BondSlipModelCode, BondSlipMultilinear, CohesiveDamageIsotropic, CohesiveDamageMixedMode, CST_Embedded2D, GlobalCrackTracking, PrescribedCrackPath, nodal, gauss, pullout, splitting},
   ndkeywordstyle=\color{yamlval}\bfseries,
@@ -482,6 +482,82 @@ mesh_physical_groups:
 \end{lstlisting}
 
 El \texttt{element} heredado de \texttt{mesh\_element} no convierte el contorno en elementos.
+
+\subsection{Malla estructurada por bloques: \texttt{mesh.structured}}
+
+Para geometrías de bloques rectos (vigas, paneles, probetas con entalla), Solidum genera la malla sin Gmsh. Cada eje se describe por tramos consecutivos, cada uno con su longitud \texttt{length}, su número de celdas \texttt{n} y, opcionalmente, una gradación \texttt{ratio}: el último elemento del tramo mide \texttt{ratio} veces el primero (progresión geométrica; \texttt{ratio \textless{} 1} afina hacia el final del tramo, \texttt{ratio \textgreater{} 1} hacia el principio). La viga de tres puntos con una ranura central de 2 mm \ensuremath{\times} 100 mm, afinada hacia el centro:
+
+\begin{lstlisting}[language=yaml]
+mesh_element: Quad4
+mesh:
+  structured:
+    x: [{length: 950, n: 19, ratio: 0.1}, {length: 49, n: 20},
+        {length: 2, n: 2}, {length: 49, n: 20}, {length: 950, n: 19, ratio: 10}]
+    y: [{length: 100, n: 40}, {length: 100, n: 20, ratio: 4}]
+    exclude: "x > 999 and x < 1001 and y < 100"
+    groups:
+      ApoyoIzq: "near(x, 0) and near(y, 0)"
+      ApoyoDer: "near(x, 2000) and near(y, 0)"
+      Carga: "near(x, 1000) and near(y, 200)"
+
+\end{lstlisting}
+
+Los tramos se eligen para que haya una línea de la malla en cada borde de la ranura, en su punta y en el punto de carga. Las claves de un bloque:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Clave} & \textbf{Descripción} \\
+\hline
+\texttt{x}, \texttt{y}, \texttt{z} & Tramos de cada eje: \texttt{\{length, n[, ratio]\}} o una lista de ellos. Tantos ejes como dimensiones tenga el elemento (1, 2 ó 3). \\
+\texttt{origin} & Coordenadas del primer vértice; por omisión, el origen. \\
+\texttt{exclude} & Condición sobre el centro de cada celda: si se cumple, la celda no se malla (entallas, ranuras, huecos). \\
+\texttt{diagonal} & Sólo triángulos: \texttt{right} (por omisión, de abajo a la izquierda a arriba a la derecha), \texttt{left}, \texttt{alternate} (una y otra en tablero de ajedrez) o \texttt{crossed} (cuatro triángulos por celda alrededor de su centro). \\
+\texttt{mapping} & Transformación del bloque: una expresión de \texttt{x}, \texttt{y}, \texttt{z} por coordenada, p. ej. \texttt{[\textquotedbl{}(1 + x)\textit{cos(pi/\allowbreak{}2}y)\textquotedbl{}, \textquotedbl{}(1 + x)\textit{sin(pi/\allowbreak{}2}y)\textquotedbl{}]} para un cuarto de corona. \\
+\texttt{name} & Nombre del bloque, para sus grupos de lado. \\
+\texttt{element}, \texttt{material}, \texttt{thickness}, \texttt{quadrature}, ... & Receta del elemento, como en \texttt{mesh\_\allowbreak{}physical\_\allowbreak{}groups}; por omisión, \texttt{mesh\_element}, \texttt{mesh\_material}, \texttt{mesh\_thickness} y \texttt{mesh\_quadrature}. \\
+\hline
+\end{tabularx}
+\end{center}
+Con varios bloques, se listan en \texttt{blocks}, y \texttt{groups} y \texttt{merge\_tol} van al nivel de \texttt{structured}. Los nodos de dos bloques que coinciden (a menos de \texttt{merge\_tol}, por omisión 10\ensuremath{^{-}}⁶ veces la celda más pequeña) se funden; para que la malla sea conforme, los bloques deben tener los mismos tramos en su lado común:
+
+\begin{lstlisting}[language=yaml]
+mesh:
+  structured:
+    blocks:
+      - {name: alma, element: Quad8, material: 1, x: {length: 1.0, n: 10},
+         y: {length: 0.4, n: 8}}
+      - {name: ala, element: Quad8, material: 2, origin: [0.0, 0.4],
+         x: {length: 1.0, n: 10}, y: {length: 0.1, n: 2}}
+
+\end{lstlisting}
+
+\textbf{Grupos.} La malla trae los mismos grupos que una de Gmsh, así que sirven para \texttt{boundary\_\allowbreak{}conditions\_\allowbreak{}by\_\allowbreak{}group}, \texttt{point\_\allowbreak{}loads\_\allowbreak{}by\_\allowbreak{}group}, \texttt{tractions\_\allowbreak{}by\_\allowbreak{}group} y la historia de la salida:
+
+\begin{itemize}
+  \item los lados de cada bloque: \texttt{xmin}, \texttt{xmax}, \texttt{ymin}, \texttt{ymax} (\texttt{zmin}, \texttt{zmax} en 3D) con un solo bloque sin nombre, \texttt{alma.xmin}... con nombre, \texttt{block1.xmin}... si hay varios bloques sin nombre;
+  \item los de \texttt{groups}: los nodos cuya posición cumple la condición y los bordes (caras en 3D) del contorno con todos sus nodos en el grupo; con ellos se aplica, p. ej., una presión sobre parte de un lado.
+\end{itemize}
+
+Las condiciones de \texttt{exclude} y \texttt{groups} son expresiones como las de las cargas (sección \textit{Valores variables}) más las comparaciones \texttt{\textless{}}, \texttt{\textless{}=}, \texttt{\textgreater{}}, \texttt{\textgreater{}=} y \texttt{and}, \texttt{or}, \texttt{not}. La igualdad exacta entre reales no se admite: \texttt{near(a, b)} es verdadera si \texttt{|a − b|} no pasa de 10\ensuremath{^{-}}⁶ veces la diagonal de la caja que envuelve la malla, y \texttt{near(a, b, tol)} usa la tolerancia dada. Un grupo sin nodos es un error.
+
+\subsection{Calidad de la malla}
+
+Al leer una malla de Gmsh o generar una por bloques, el registro resume su calidad y avisa de los elementos fuera de los límites habituales (los de aviso de ANSYS):
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Medida} & \textbf{Qué es} & \textbf{Aviso} \\
+\hline
+Razón de jacobianos & \texttt{det J} máximo entre mínimo en los nodos del elemento: 1 en un paralelogramo o un paralelepípedo, crece con la distorsión y con los nodos intermedios fuera del centro de sus bordes & \textit{30} \\
+Razón de aspecto & Arista más larga entre la más corta & \textit{20} \\
+Ángulos (2D) & Ángulos de los vértices & \textit{165\ensuremath{^{\circ}} en triángulos, \textgreater{} 155\ensuremath{^{\circ}} en cuadriláteros} \\
+Invertidos & \texttt{det J \ensuremath{\le} 0} en algún nodo & siempre \\
+\hline
+\end{tabularx}
+\end{center}
+Es un diagnóstico: no detiene el análisis. Desde Python, \texttt{solidum.\allowbreak{}mesh.\allowbreak{}mesh\_\allowbreak{}quality(dominio)} devuelve las medidas por elemento.
 
 \section{Materiales}
 
@@ -949,7 +1025,7 @@ tractions_by_group:
 
 \end{lstlisting}
 
-Se admiten números, \texttt{+ - * / **}, paréntesis, la constante \texttt{pi} y las funciones \texttt{sin}, \texttt{cos}, \texttt{tan}, \texttt{asin}, \texttt{acos}, \texttt{atan}, \texttt{atan2}, \texttt{sinh}, \texttt{cosh}, \texttt{tanh}, \texttt{exp}, \texttt{log}, \texttt{log10}, \texttt{sqrt}, \texttt{abs}, \texttt{min} y \texttt{max}. Nada más: la expresión no se ejecuta como código Python, así que un archivo ajeno no puede hacer otra cosa que calcular una carga, y una errata (\texttt{w} en lugar de \texttt{y}, una función que no existe) se detecta al leer el archivo, con la entrada y lo que no se admite. Una expresión que no se puede evaluar en algún punto (\texttt{log} de un negativo) se informa con el punto. Las cargas que varían en el tiempo no se declaran en el YAML (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0023-cargas-distribuidas-y-expresiones-en-el-yaml.md}{ADR 0023}).
+Se admiten números, \texttt{+ - * / **}, paréntesis, la constante \texttt{pi} y las funciones \texttt{sin}, \texttt{cos}, \texttt{tan}, \texttt{asin}, \texttt{acos}, \texttt{atan}, \texttt{atan2}, \texttt{sinh}, \texttt{cosh}, \texttt{tanh}, \texttt{exp}, \texttt{log}, \texttt{log10}, \texttt{sqrt}, \texttt{abs}, \texttt{min} y \texttt{max}. Nada más: la expresión no se ejecuta como código Python, así que un archivo ajeno no puede hacer otra cosa que calcular una carga, y una errata (\texttt{w} en lugar de \texttt{y}, una función que no existe) se detecta al leer el archivo, con la entrada y lo que no se admite. Una expresión que no se puede evaluar en algún punto (\texttt{log} de un negativo) se informa con el punto. Las cargas que varían en el tiempo no se declaran en el YAML (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0023-cargas-distribuidas-y-expresiones-en-el-yaml.md}{ADR 0023}). Las condiciones de una malla por bloques (\texttt{exclude}, \texttt{groups}) admiten además comparaciones, \texttt{and}, \texttt{or}, \texttt{not} y \texttt{near} (sección \textit{Malla estructurada por bloques}).
 
 \section{Solver}
 
@@ -3670,8 +3746,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 18:16\\[0.5em]
-Commit Git: \texttt{efbce3c}\\[1em]
+Compilado el 11 de noviembre de 2026, 18:43\\[0.5em]
+Commit Git: \texttt{6690dc5}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
