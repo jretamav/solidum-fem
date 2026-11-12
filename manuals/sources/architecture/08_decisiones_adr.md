@@ -382,6 +382,12 @@ El lector de Gmsh importa todas las celdas de los sólidos de Solidum en 2D y 3D
 
 La escritura de resultados pasa del script `examples/ejecutar_yaml.py` al paquete: `OutputWriter` se engancha al callback de paso del despacho completo de `run_yaml` (etapas, peso propio y cargas térmicas incluidos) y escribe, sólo si se pide (`run_yaml(..., write_output=True)` o `python -m solidum modelo.yaml`), el modelo sin deformar, los VTK por paso (`last_step`, `all_steps`, `{every: N}` o `{at: [factores]}`) con su `.pvd`, la historia de la respuesta en CSV (desplazamientos y reacciones por nodo, grupo físico o coordenada, fila a fila) y la salida de texto estilo FEAP. La reacción de un paso es `F_int(U) − factor·F` en los grados de libertad prescritos. Se descartaron guardar la historia en `SolveResult` (depende de lo que el usuario observa), escribir siempre que haya `output` (las pruebas ensuciarían `examples/`) y mantener la escritura en el script (despacho duplicado y reducido).
 
+## ADR 0037 — Mallas estructuradas por bloques y calidad de la malla
+
+**Fecha**: 2026-11-11 · **Estado**: aceptado.
+
+El generador de mallas estructuradas (ADR 0022) admite líneas de la rejilla por tramos con gradación geométrica (`axis_lines`), celdas excluidas por una condición sobre su centro (entallas y ranuras alineadas con la rejilla), cuatro particiones en triángulos (`right`, `left`, `alternate`, `crossed`) y la fusión por posición con los nodos de bloques anteriores. Desde el YAML, `mesh: {structured: ...}` malla uno o varios bloques, cada uno con su receta de elemento, y crea los mismos grupos que una malla de Gmsh: los lados de cada bloque y los definidos por una condición sobre la posición (nodos y bordes o caras del contorno libre). Las condiciones usan el compilador seguro de expresiones (ADR 0023) ampliado con comparaciones, `and`, `or`, `not` y `near`. `mesh_quality` mide la razón de jacobianos en los nodos (con la cinemática compilada del elemento), la razón de aspecto y los ángulos 2D; al leer o generar una malla, el registro la resume y avisa con los límites de aviso de ANSYS. Se descartaron la gradación como función de mapeo (no alinea líneas con la entalla), la conectividad declarada entre bloques, las entallas de ancho nulo y las comparaciones en las cargas.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

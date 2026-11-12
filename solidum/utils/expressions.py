@@ -19,6 +19,12 @@ y una errata (``w`` por ``y``) se detecta antes de resolver.
 Las constantes enteras se convierten a reales: ``9**9**9`` desborda de
 inmediato (``OverflowError``) en vez de colgar el programa calculando un
 entero enorme.
+
+Las **condiciones** (:func:`compile_predicate`; p. ej., las celdas que se
+excluyen de una malla estructurada, ADR 0037) admiten además las
+comparaciones ``< <= > >=``, ``and``, ``or`` y ``not``, con la misma lista
+blanca; la igualdad exacta entre reales no se admite: para eso está la
+función ``near(a, b[, tol])`` que el llamador puede añadir.
 """
 from __future__ import annotations
 
@@ -44,6 +50,9 @@ NORMAL = ("nx", "ny", "nz")
 
 _BINARY = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)
 _UNARY = (ast.UAdd, ast.USub)
+# Sólo en las condiciones (compile_predicate).
+_COMPARE = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+_BOOL = (ast.And, ast.Or)
 
 
 class ExpressionError(ValueError):
@@ -55,15 +64,20 @@ class _AsFloat(ast.NodeTransformer):
         return ast.copy_location(ast.Constant(float(node.value)), node)
 
 
-def _check(node, allowed: set, text: str) -> None:
+def _check(node, allowed: set, text: str, functions: dict = FUNCTIONS,
+           logical: bool = False) -> None:
     """Recorre el árbol y rechaza todo lo que no esté en la lista blanca."""
     def bad(what):
+        ops = "+ - * / **" + (", < <= > >=, and, or, not" if logical else "")
         raise ExpressionError(f"Expresión {text!r}: no se admite {what}. Se admiten números, "
-                              f"{', '.join(sorted(allowed))}, + - * / **, pi y las funciones "
-                              f"{', '.join(sorted(FUNCTIONS))}.")
+                              f"{', '.join(sorted(allowed))}, {ops}, pi y las funciones "
+                              f"{', '.join(sorted(functions))}.")
+
+    def check(child):
+        _check(child, allowed, text, functions, logical)
 
     if isinstance(node, ast.Expression):
-        _check(node.body, allowed, text)
+        check(node.body)
     elif isinstance(node, ast.Constant):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
             bad(f"la constante {node.value!r}")
@@ -73,14 +87,28 @@ def _check(node, allowed: set, text: str) -> None:
     elif isinstance(node, ast.BinOp):
         if not isinstance(node.op, _BINARY):
             bad(f"el operador {type(node.op).__name__}")
-        _check(node.left, allowed, text)
-        _check(node.right, allowed, text)
+        check(node.left)
+        check(node.right)
     elif isinstance(node, ast.UnaryOp):
-        if not isinstance(node.op, _UNARY):
+        if not (isinstance(node.op, _UNARY) or (logical and isinstance(node.op, ast.Not))):
             bad(f"el operador {type(node.op).__name__}")
-        _check(node.operand, allowed, text)
+        check(node.operand)
+    elif logical and isinstance(node, ast.Compare):
+        for op in node.ops:
+            if not isinstance(op, _COMPARE):
+                bad(f"la comparación {type(op).__name__}"
+                    + (" (la igualdad entre reales no es fiable: use near(a, b))"
+                       if isinstance(op, (ast.Eq, ast.NotEq)) else ""))
+        check(node.left)
+        for c in node.comparators:
+            check(c)
+    elif logical and isinstance(node, ast.BoolOp):
+        if not isinstance(node.op, _BOOL):
+            bad(f"el operador {type(node.op).__name__}")
+        for v in node.values:
+            check(v)
     elif isinstance(node, ast.Call):
-        if not isinstance(node.func, ast.Name) or node.func.id not in FUNCTIONS:
+        if not isinstance(node.func, ast.Name) or node.func.id not in functions:
             bad("la llamada a " + (repr(node.func.id) if isinstance(node.func, ast.Name)
                                    else "una función que no es de la lista"))
         if node.keywords or not node.args:
@@ -88,9 +116,25 @@ def _check(node, allowed: set, text: str) -> None:
         for arg in node.args:
             if isinstance(arg, ast.Starred):
                 bad("el argumento *")
-            _check(arg, allowed, text)
+            check(arg)
     else:
         bad(f"la construcción {type(node).__name__}")
+
+
+def _compile(text, variables, functions: dict, logical: bool):
+    if not isinstance(text, str):
+        raise ExpressionError(f"Se esperaba una expresión de texto; se recibió {text!r}.")
+    try:
+        tree = ast.parse(text.strip(), mode="eval")
+    except SyntaxError as exc:
+        raise ExpressionError(f"Expresión {text!r}: sintaxis no válida ({exc.msg}).") from None
+    _check(tree, set(variables), text, functions, logical)
+    body = _AsFloat().visit(tree).body
+    args = ast.arguments(posonlyargs=[], args=[ast.arg(arg=v) for v in variables],
+                         kwonlyargs=[], kw_defaults=[], defaults=[])
+    lam = ast.fix_missing_locations(ast.Expression(ast.Lambda(args=args, body=body)))
+    return eval(compile(lam, "<expresión YAML>", "eval"),  # noqa: S307 — árbol ya validado
+                {"__builtins__": {}, **functions, **CONSTANTS})
 
 
 def compile_expression(text: str, variables=POSITION) -> Callable[..., float]:
@@ -98,20 +142,18 @@ def compile_expression(text: str, variables=POSITION) -> Callable[..., float]:
 
     Lanza :class:`ExpressionError` si la expresión no es sintácticamente
     válida o usa algo que no está en la lista blanca."""
-    if not isinstance(text, str):
-        raise ExpressionError(f"Se esperaba una expresión de texto; se recibió {text!r}.")
-    try:
-        tree = ast.parse(text.strip(), mode="eval")
-    except SyntaxError as exc:
-        raise ExpressionError(f"Expresión {text!r}: sintaxis no válida ({exc.msg}).") from None
-    _check(tree, set(variables), text)
-    body = _AsFloat().visit(tree).body
-    args = ast.arguments(posonlyargs=[], args=[ast.arg(arg=v) for v in variables],
-                         kwonlyargs=[], kw_defaults=[], defaults=[])
-    lam = ast.fix_missing_locations(ast.Expression(ast.Lambda(args=args, body=body)))
-    fn = eval(compile(lam, "<expresión YAML>", "eval"),  # noqa: S307 — árbol ya validado
-              {"__builtins__": {}, **FUNCTIONS, **CONSTANTS})
-    return fn
+    return _compile(text, variables, FUNCTIONS, logical=False)
+
+
+def compile_predicate(text: str, variables=POSITION,
+                      functions: dict | None = None) -> Callable[..., bool]:
+    """Función ``f(*variables) -> bool`` de la condición ``text``.
+
+    Como :func:`compile_expression`, más las comparaciones ``< <= > >=``,
+    ``and``, ``or`` y ``not``. ``functions`` añade funciones a la lista
+    blanca (p. ej. ``near``)."""
+    fn = _compile(text, variables, {**FUNCTIONS, **(functions or {})}, logical=True)
+    return lambda *args: bool(fn(*args))
 
 
 def _padded(v, n: int = 3) -> tuple:

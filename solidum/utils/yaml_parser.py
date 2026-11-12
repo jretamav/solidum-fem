@@ -415,14 +415,23 @@ class YamlParser:
                             f"Admitidos: {advertised}."
                         )
 
-        # --- Malla desde la geometría (ADR 0035) ---
+        # --- Malla desde la geometría (ADR 0035) o por bloques (ADR 0037) ---
         mesh_decl = data.get('mesh')
-        if isinstance(mesh_decl, dict):
+        if isinstance(mesh_decl, dict) and 'structured' in mesh_decl:
+            from solidum.mesh.structured_blocks import validate_structured_block
+            extra = sorted(set(mesh_decl) - {'structured'})
+            if extra:
+                errors.append(f"'mesh': con 'structured' no se admiten {extra}.")
+            if data.get('mesh_physical_groups'):
+                errors.append("'mesh_physical_groups' es de las mallas de Gmsh; en una malla "
+                              "'structured', la receta del elemento va en cada bloque.")
+            errors.extend(validate_structured_block(mesh_decl['structured']))
+        elif isinstance(mesh_decl, dict):
             from solidum.mesh.gmsh_geometry import validate_geometry_block
             errors.extend(validate_geometry_block(mesh_decl))
         elif mesh_decl is not None and not isinstance(mesh_decl, str):
             errors.append("'mesh': se esperaba la ruta de un archivo .msh o .geo, o un bloque "
-                          "con 'geometry' (ADR 0035).")
+                          "con 'geometry' (ADR 0035) o 'structured' (ADR 0037).")
 
         # --- Malla externa + bloques inline: ambigüedad ---
         if has_mesh and (has_nodes or has_elements):
@@ -666,7 +675,9 @@ class YamlParser:
 
     def _parse_mesh_or_elements(self, data: dict):
         mesh_file = data.get('mesh', None)
-        if mesh_file:
+        if isinstance(mesh_file, dict) and 'structured' in mesh_file:
+            self._parse_structured_mesh(mesh_file['structured'], data)
+        elif mesh_file:
             from solidum.utils.gmsh_parser import GmshParser
             base_dir = os.path.dirname(self.filepath)
             if isinstance(mesh_file, dict) or str(mesh_file).lower().endswith('.geo'):
@@ -702,6 +713,8 @@ class YamlParser:
 
             gmsh_parser = GmshParser(mesh_path)
             self.domain = gmsh_parser.parse(default_spec, group_specs)
+            from solidum.mesh.quality import log_mesh_quality
+            log_mesh_quality(self.domain)
         else:
             elements_data = data.get('elements', [])
             if isinstance(elements_data, list):
@@ -723,6 +736,41 @@ class YamlParser:
                         e_type, element_id=elem_dict['id'], nodes=nodes, **kwargs))
             elif elements_data:
                 raise ValueError("El bloque 'elements' debe ser una lista de diccionarios.")
+
+    def _mesh_defaults(self, data: dict) -> dict:
+        return {
+            'element': data.get('mesh_element'),
+            'material': data.get('mesh_material', 1),
+            'thickness': data.get('mesh_thickness', 1.0),
+            # Sin 'mesh_quadrature', cada elemento usa su regla por omisión.
+            'quadrature': data.get('mesh_quadrature'),
+        }
+
+    def _parse_structured_mesh(self, structured: dict, data: dict) -> None:
+        """Malla estructurada por bloques (ADR 0037)."""
+        from solidum.mesh.structured_blocks import build_structured_mesh
+        defaults = self._mesh_defaults(data)
+        errors: list = []
+
+        def recipe(props, ctx):
+            spec = self._mesh_spec(props, defaults, ctx, errors)
+            if not spec:
+                return None
+            if spec['element'] is None:
+                errors.append(f"{ctx}: falta 'element' (en el bloque o 'mesh_element').")
+                return None
+            accepted, var_kw = _constructor_kwargs(ElementRegistry.get(spec['element']))
+            kwargs = dict(spec['kwargs'])
+            kwargs.update({k: v for k, v in spec['optional'].items()
+                           if v is not None and (var_kw or k in accepted)})
+            return spec['element'], kwargs
+
+        domain = build_structured_mesh(structured, recipe, errors)
+        if errors:
+            raise YamlValidationError(errors)
+        self.domain = domain
+        from solidum.mesh.quality import log_mesh_quality
+        log_mesh_quality(self.domain)
 
     # Claves de un grupo físico que no son argumentos estrictos del elemento.
     _MESH_OPTIONAL = ('thickness', 'quadrature')

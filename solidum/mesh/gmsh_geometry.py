@@ -132,7 +132,7 @@ def mesh_from_geometry(opts: GeometryMeshOptions) -> Path:
             gmsh.model.mesh.setOrder(2)
         opts.output.parent.mkdir(parents=True, exist_ok=True)
         gmsh.write(str(opts.output))
-        used = {k: gmsh.parser.getNumber(k) for k in opts.parameters}
+        used = {k: float(gmsh.parser.getNumber(k)[0]) for k in opts.parameters}
         _log.info(f"Malla generada con Gmsh {gmsh.__version__} desde {opts.geometry.name} "
                   f"(orden {opts.order}, {opts.element_shape}, parámetros {used}) -> {opts.output}")
     finally:

@@ -119,6 +119,68 @@ mesh_physical_groups:
 
 El `element` heredado de `mesh_element` no convierte el contorno en elementos.
 
+### Malla estructurada por bloques: `mesh.structured`
+
+Para geometrías de bloques rectos (vigas, paneles, probetas con entalla), Solidum genera la malla sin Gmsh. Cada eje se describe por tramos consecutivos, cada uno con su longitud `length`, su número de celdas `n` y, opcionalmente, una gradación `ratio`: el último elemento del tramo mide `ratio` veces el primero (progresión geométrica; `ratio < 1` afina hacia el final del tramo, `ratio > 1` hacia el principio). La viga de tres puntos con una ranura central de 2 mm × 100 mm, afinada hacia el centro:
+
+```yaml
+mesh_element: Quad4
+mesh:
+  structured:
+    x: [{length: 950, n: 19, ratio: 0.1}, {length: 49, n: 20},
+        {length: 2, n: 2}, {length: 49, n: 20}, {length: 950, n: 19, ratio: 10}]
+    y: [{length: 100, n: 40}, {length: 100, n: 20, ratio: 4}]
+    exclude: "x > 999 and x < 1001 and y < 100"
+    groups:
+      ApoyoIzq: "near(x, 0) and near(y, 0)"
+      ApoyoDer: "near(x, 2000) and near(y, 0)"
+      Carga: "near(x, 1000) and near(y, 200)"
+```
+
+Los tramos se eligen para que haya una línea de la malla en cada borde de la ranura, en su punta y en el punto de carga. Las claves de un bloque:
+
+| Clave | Descripción |
+|---|---|
+| `x`, `y`, `z` | Tramos de cada eje: `{length, n[, ratio]}` o una lista de ellos. Tantos ejes como dimensiones tenga el elemento (1, 2 ó 3). |
+| `origin` | Coordenadas del primer vértice; por omisión, el origen. |
+| `exclude` | Condición sobre el centro de cada celda: si se cumple, la celda no se malla (entallas, ranuras, huecos). |
+| `diagonal` | Sólo triángulos: `right` (por omisión, de abajo a la izquierda a arriba a la derecha), `left`, `alternate` (una y otra en tablero de ajedrez) o `crossed` (cuatro triángulos por celda alrededor de su centro). |
+| `mapping` | Transformación del bloque: una expresión de `x`, `y`, `z` por coordenada, p. ej. `["(1 + x)*cos(pi/2*y)", "(1 + x)*sin(pi/2*y)"]` para un cuarto de corona. |
+| `name` | Nombre del bloque, para sus grupos de lado. |
+| `element`, `material`, `thickness`, `quadrature`, ... | Receta del elemento, como en `mesh_physical_groups`; por omisión, `mesh_element`, `mesh_material`, `mesh_thickness` y `mesh_quadrature`. |
+
+Con varios bloques, se listan en `blocks`, y `groups` y `merge_tol` van al nivel de `structured`. Los nodos de dos bloques que coinciden (a menos de `merge_tol`, por omisión 10⁻⁶ veces la celda más pequeña) se funden; para que la malla sea conforme, los bloques deben tener los mismos tramos en su lado común:
+
+```yaml
+mesh:
+  structured:
+    blocks:
+      - {name: alma, element: Quad8, material: 1, x: {length: 1.0, n: 10},
+         y: {length: 0.4, n: 8}}
+      - {name: ala, element: Quad8, material: 2, origin: [0.0, 0.4],
+         x: {length: 1.0, n: 10}, y: {length: 0.1, n: 2}}
+```
+
+**Grupos.** La malla trae los mismos grupos que una de Gmsh, así que sirven para `boundary_conditions_by_group`, `point_loads_by_group`, `tractions_by_group` y la historia de la salida:
+
+- los lados de cada bloque: `xmin`, `xmax`, `ymin`, `ymax` (`zmin`, `zmax` en 3D) con un solo bloque sin nombre, `alma.xmin`... con nombre, `block1.xmin`... si hay varios bloques sin nombre;
+- los de `groups`: los nodos cuya posición cumple la condición y los bordes (caras en 3D) del contorno con todos sus nodos en el grupo; con ellos se aplica, p. ej., una presión sobre parte de un lado.
+
+Las condiciones de `exclude` y `groups` son expresiones como las de las cargas (sección *Valores variables*) más las comparaciones `<`, `<=`, `>`, `>=` y `and`, `or`, `not`. La igualdad exacta entre reales no se admite: `near(a, b)` es verdadera si `|a − b|` no pasa de 10⁻⁶ veces la diagonal de la caja que envuelve la malla, y `near(a, b, tol)` usa la tolerancia dada. Un grupo sin nodos es un error.
+
+### Calidad de la malla
+
+Al leer una malla de Gmsh o generar una por bloques, el registro resume su calidad y avisa de los elementos fuera de los límites habituales (los de aviso de ANSYS):
+
+| Medida | Qué es | Aviso |
+|---|---|---|
+| Razón de jacobianos | `det J` máximo entre mínimo en los nodos del elemento: 1 en un paralelogramo o un paralelepípedo, crece con la distorsión y con los nodos intermedios fuera del centro de sus bordes | > 30 |
+| Razón de aspecto | Arista más larga entre la más corta | > 20 |
+| Ángulos (2D) | Ángulos de los vértices | > 165° en triángulos, > 155° en cuadriláteros |
+| Invertidos | `det J ≤ 0` en algún nodo | siempre |
+
+Es un diagnóstico: no detiene el análisis. Desde Python, `solidum.mesh.mesh_quality(dominio)` devuelve las medidas por elemento.
+
 ## Materiales
 
 Cada material se declara con un `id` único y un `type` registrado en el catálogo:
@@ -546,7 +608,7 @@ tractions_by_group:
   Borde:   {t: ["1.0e6*nx", 0.0]}                  # con la normal
 ```
 
-Se admiten números, `+ - * / **`, paréntesis, la constante `pi` y las funciones `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, `abs`, `min` y `max`. Nada más: la expresión no se ejecuta como código Python, así que un archivo ajeno no puede hacer otra cosa que calcular una carga, y una errata (`w` en lugar de `y`, una función que no existe) se detecta al leer el archivo, con la entrada y lo que no se admite. Una expresión que no se puede evaluar en algún punto (`log` de un negativo) se informa con el punto. Las cargas que varían en el tiempo no se declaran en el YAML (ADR 0023).
+Se admiten números, `+ - * / **`, paréntesis, la constante `pi` y las funciones `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `exp`, `log`, `log10`, `sqrt`, `abs`, `min` y `max`. Nada más: la expresión no se ejecuta como código Python, así que un archivo ajeno no puede hacer otra cosa que calcular una carga, y una errata (`w` en lugar de `y`, una función que no existe) se detecta al leer el archivo, con la entrada y lo que no se admite. Una expresión que no se puede evaluar en algún punto (`log` de un negativo) se informa con el punto. Las cargas que varían en el tiempo no se declaran en el YAML (ADR 0023). Las condiciones de una malla por bloques (`exclude`, `groups`) admiten además comparaciones, `and`, `or`, `not` y `near` (sección *Malla estructurada por bloques*).
 
 ## Solver
 
