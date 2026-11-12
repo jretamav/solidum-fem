@@ -1583,6 +1583,13 @@ El generador de mallas estructuradas (\hyperref[adr:0022]{ADR 0022}) admite lín
 
 La historia de la salida (\hyperref[adr:0036]{ADR 0036}) registra energías y magnitudes de elemento. Energías, en análisis estáticos sin etapas: trabajo externo por el trapecio de \texttt{F\_int\ensuremath{\cdot}\ensuremath{\Delta}U} (en equilibrio, \texttt{F\_int} es la fuerza de cargas y apoyos), energía elástica \texttt{½\ensuremath{\cdot}U\ensuremath{\cdot}F\_int} y disipada \texttt{W − E}. La elástica sólo es la recuperable si todos los materiales descargan por la secante, lo que declaran con el contrato nuevo \texttt{SECANT\_UNLOADING} (elásticos, daño, cohesivas de daño); si no, o con fuerzas internas en \texttt{U = 0}, es un error. Magnitudes de elemento: esfuerzo, deformación (componente Voigt, von Mises, principal máxima), variable interna escalar o fuerza interna de un marco en un extremo, sobre un elemento, una lista, un grupo físico o una condición sobre el centro, reducidas con media, mínimo o máximo. El esfuerzo y las variables internas se leen del estado confirmado, sin reevaluar el material (con IMPL-EX, reevaluar extrapolaría de nuevo). Se descartaron la energía por punto de integración con la deformación elástica de cada material (se adoptará cuando una validación con plasticidad la pida) y las variables por número de punto de integración.
 
+\section{ADR 0039 --- Figuras de los resultados desde el YAML}
+\label{adr:0039}
+
+\textbf{Fecha}: 2026-11-11 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+\texttt{output.plots} declara figuras ---la malla con apoyos, desplazamientos impuestos y cargas; la deformada en varios instantes coloreada por un campo; curvas de la historia, también de otros modelos--- que \texttt{solidum.post} dibuja con los archivos que escribe Solidum (el \texttt{.pvd} como índice factor \ensuremath{\to} VTK, \texttt{\_final.vtu} y la historia), no con el estado en memoria: salen al terminar \texttt{python -m solidum} o, sin volver a calcular, con \texttt{python -m solidum.\allowbreak{}post}. Colores de la guía de visualización (paleta categórica en orden fijo; rampa de un tono para campos positivos y divergente centrada en cero para campos con signo). Un fallo al dibujar no invalida el análisis. Mallas 2D. Se descartaron dibujar desde la memoria (obliga a recalcular), delegar en ParaView (el usuario no lo maneja) y dibujar en cada paso.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -1934,6 +1941,7 @@ Bajo. La longitud característica reutiliza la pieza del \hyperref[adr:0028]{ADR
   \item \textbf{Mallado desde la geometría} en el YAML: el \texttt{.geo} con sus parámetros (tamaño de elemento), el orden y la forma de los elementos; Solidum llama a Gmsh y lee la malla. Un estudio de malla es cambiar un dato del YAML.
   \item \textbf{Barras incrustadas} desde un grupo físico de líneas con \texttt{element}.
   \item \textbf{Salida de resultados en el paquete} (\hyperref[adr:0036]{ADR 0036}): \texttt{python -m solidum modelo.\allowbreak{}yaml} escribe la historia de la respuesta en CSV y los VTK en los instantes elegidos.
+  \item \textbf{Figuras de los resultados} (\hyperref[adr:0039]{ADR 0039}): \texttt{output.plots} y \texttt{python -m solidum.\allowbreak{}post} dibujan la malla, las deformadas y las curvas con los archivos de la salida.
   \item \textbf{Energías y magnitudes de elemento en la historia} (\hyperref[adr:0038]{ADR 0038}): trabajo externo, energía elástica y disipada; esfuerzo, deformación, variables internas y fuerzas internas de marcos por elemento o conjunto de elementos.
   \item \textbf{Mallas estructuradas por bloques y calidad de la malla} (\hyperref[adr:0037]{ADR 0037}): tramos con gradación, celdas excluidas, diagonales de los triángulos y fusión de bloques, desde el YAML con grupos por lado y por condición; resumen y avisos de calidad al leer o generar una malla.
 \end{itemize}
@@ -2329,8 +2337,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 19:16\\[0.5em]
-Commit Git: \texttt{8c4809c}\\[1em]
+Compilado el 11 de noviembre de 2026, 19:40\\[0.5em]
+Commit Git: \texttt{2417bc3}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
