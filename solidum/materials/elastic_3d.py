@@ -27,6 +27,9 @@ class Elastic3D(Material):
         Densidad (kg/m³). Opcional al construir; obligatoria solo si se
         ensambla peso propio o matriz de masa (ADR 0008).
     """
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
 
     STRAIN_DIM = 6
     IS_LINEAR_ELASTIC = True

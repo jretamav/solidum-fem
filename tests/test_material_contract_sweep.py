@@ -279,6 +279,32 @@ class TestContratoDeclarativo(unittest.TestCase):
                         err_msg=f"{nombre}: σ ≠ C·ε pese a declarar "
                                 f"IS_LINEAR_ELASTIC")
 
+    def test_secant_unloading_es_veraz(self):
+        """`SECANT_UNLOADING = True` es la promesa de la que depende la energía
+        elástica de la historia, `½·U·F_int` (ADR 0038): tras cargar más allá
+        del umbral de daño, la descarga va por la recta al origen (a media
+        deformación, medio esfuerzo; en cero, esfuerzo nulo)."""
+        for nombre in nombres_programa_principal(MaterialRegistry):
+            material = _construir(nombre)
+            if not material.SECANT_UNLOADING:
+                continue
+            with self.subTest(material=nombre):
+                dim = material.STRAIN_DIM
+                eps1 = np.zeros(dim)
+                eps1[0] = 5.0e-4          # > κ₀, f_t/E de las muestras: con daño
+                if dim > 1:
+                    eps1[1] = -1.0e-4
+                arg = (lambda e: e[0]) if dim == 1 else (lambda e: e)
+                sig1, _, st1 = material.compute_state(arg(eps1), estado_inicial(material))
+                sig1 = np.atleast_1d(np.asarray(sig1, dtype=float))
+                for frac in (0.5, 0.0):
+                    sig, _, _ = material.compute_state(arg(frac * eps1), st1)
+                    np.testing.assert_allclose(
+                        np.atleast_1d(np.asarray(sig, dtype=float)), frac * sig1,
+                        rtol=1e-9, atol=1e-12 * np.abs(sig1).max(),
+                        err_msg=f"{nombre}: la descarga no es secante pese a declarar "
+                                f"SECANT_UNLOADING")
+
     def test_los_elasticos_del_catalogo_declaran_is_linear_elastic(self):
         """Los cuatro elásticos lineales del catálogo lo declaran (ADR 0021
         §4): si uno lo perdiera, dejaría de poder usarse en los marcos con

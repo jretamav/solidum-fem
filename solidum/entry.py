@@ -810,7 +810,9 @@ def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
              + parser.get_body_load(assembler)
              + parser.get_thermal_loads())
     if make_writer is not None:
-        step_callback = make_writer(np.asarray(F_ext, dtype=float), True)
+        # Sin convertir: un LoadVector lleva las cargas equivalentes por
+        # elemento que descuentan las fuerzas internas de la historia.
+        step_callback = make_writer(F_ext, True)
     return run(
         domain,
         assembler=assembler,

@@ -76,6 +76,9 @@ class CohesiveDamageIsotropic(InterfaceMaterial):
     Para deducción física, condiciones de Kuhn-Tucker, validación energética
     y benchmarks, ver ``docs/specs/CohesiveDamageIsotropic.md``.
     """
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
     GEOMETRY = "surface"
     JUMP_DIM = 2
     PRIMARY_STATE_VAR = 'damage'

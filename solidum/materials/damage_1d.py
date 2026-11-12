@@ -50,6 +50,9 @@ class IsotropicDamage1D(Material):
     Compatible con ``Truss2D`` y ``Truss3D``. Para seguir la rama post-pico de
     softening en problemas globales se requiere ``ArcLengthSolver``.
     """
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
     STRAIN_DIM = 1
     PRIMARY_STATE_VAR = 'damage'
     STATE_SCHEMA = {'kappa': (), 'damage': ()}

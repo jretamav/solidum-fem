@@ -69,6 +69,9 @@ class CohesiveDamageMixedMode(InterfaceMaterial):
     y ``D_nn = K_e``, ``D_ns = 0`` con ``δ_n < 0``. Escrita así, en modo I
     puro ``D_nn = T'`` sin restar números casi iguales.
     """
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
     GEOMETRY = "surface"
     JUMP_DIM = None
     PRIMARY_STATE_VAR = "damage"

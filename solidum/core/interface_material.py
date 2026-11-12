@@ -44,6 +44,10 @@ class InterfaceMaterial(ABC):
         ``'slip_max'``…); ``None`` sin variables internas.
     IS_SYMMETRIC : ClassVar[bool]
         ``True`` si la tangente ``∂t/∂Δu`` es simétrica (ADR 0003).
+    SECANT_UNLOADING : ClassVar[bool]
+        ``True`` si la ley descarga por la secante hasta el origen (cohesivas
+        de daño): ``½·t·Δu`` es la energía elástica recuperable (ADR 0038).
+        Default ``False``.
 
     Unidades: la tracción es fuerza por unidad de área (Pa) y las rigideces de
     la interfaz, fuerza por unidad de área y de longitud (Pa/m). ``density``
@@ -57,6 +61,7 @@ class InterfaceMaterial(ABC):
     density: ClassVar[float] = 0.0
     PRIMARY_STATE_VAR: ClassVar[str | None] = None
     IS_SYMMETRIC: ClassVar[bool] = True
+    SECANT_UNLOADING: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)

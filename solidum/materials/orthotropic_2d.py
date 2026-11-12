@@ -58,6 +58,9 @@ class Orthotropic2D(Material):
     density : float, optional
         Densidad del medio (ADR 0008). Sólo la exigen peso propio y masa.
     """
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
 
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = None

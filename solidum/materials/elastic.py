@@ -5,6 +5,9 @@ from solidum.registry import MaterialRegistry
 
 @MaterialRegistry.register
 class Elastic1D(Material):
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
     STRAIN_DIM = 1
     IS_LINEAR_ELASTIC = True
     STATE_SCHEMA = {}

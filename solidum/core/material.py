@@ -141,6 +141,14 @@ class Material(BatchMaterialHooks, ABC):
         hasta que lo declara expresamente. El barrido de contrato de
         materiales comprueba que la declaración es veraz.
 
+    SECANT_UNLOADING : ClassVar[bool]
+        ``True`` si el material descarga por la secante hasta el origen
+        (elásticos, daño): la energía elástica recuperable es ``½·σ·ε`` y la
+        de toda la estructura, ``½·U·F_int(U)``. La usan las energías de la
+        historia de la salida (ADR 0038). Default ``False`` (plasticidad,
+        concreto con deformación residual): un material nuevo no la
+        declara hasta que es cierta.
+
     STATE_SCHEMA : ClassVar[dict]
         Variables internas como ``{nombre: forma}`` (ADR 0014). Obligatorio;
         ``{}`` si el material no tiene historia. Ver
@@ -154,6 +162,7 @@ class Material(BatchMaterialHooks, ABC):
     IS_SYMMETRIC: ClassVar[bool] = True
     IS_UNILATERAL: ClassVar[bool] = False
     IS_LINEAR_ELASTIC: ClassVar[bool] = False
+    SECANT_UNLOADING: ClassVar[bool] = False
 
     # Densidad física del medio continuo (kg/m³, en las unidades del usuario).
     # Opcional al construir: análisis que no invocan peso propio o matriz de

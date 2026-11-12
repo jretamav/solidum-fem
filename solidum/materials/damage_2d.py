@@ -168,6 +168,9 @@ class IsotropicDamage2D(Material):
     Cap ``DAMAGE_MAX`` aplica al daño escalar ``d`` y al esfuerzo nominal
     ``σ = (1-d)·C_e·ε`` — semántica de daño **continuo**.
     """
+    # Descarga por la secante hasta el origen: ½·σ·ε es la energía elástica
+    # recuperable (energías de la historia de la salida, ADR 0038).
+    SECANT_UNLOADING = True
     STRAIN_DIM = 3
     PRIMARY_STATE_VAR = 'damage'
     # Cota conservadora de clase; la instancia la sobreescribe con 'energy'.

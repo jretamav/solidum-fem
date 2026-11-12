@@ -745,7 +745,36 @@ output:
 |---|---|
 | `displacement` | el desplazamiento `dof` de los nodos del selector; `reduce`: `mean` (por omisión), `min` o `max` |
 | `reaction` | la suma de las reacciones `dof` de los nodos del selector, que deben tener ese grado de libertad prescrito (apoyo o desplazamiento impuesto); sólo en análisis estáticos sin etapas |
+| `energy` | `external_work`, `elastic` o `dissipated` (abajo); sólo en análisis estáticos sin etapas |
+| `element` | esfuerzo, deformación, variable interna o fuerza interna de un elemento o conjunto de elementos (abajo) |
 
 El selector de nodos es uno de `node: id`, `nodes: [ids]`, `group: nombre` (grupo físico de Gmsh) o `at: [x, y]` (los nodos a una distancia ≤ `tol`, 1e-6 por omisión). `scale` multiplica el valor (p. ej. −1 para dar positiva una carga hacia abajo). El archivo se escribe fila a fila: un análisis interrumpido conserva lo calculado.
+
+**Energías.** En equilibrio, la fuerza que las cargas y los apoyos ejercen sobre la estructura es la fuerza interna $\mathbf F_{int}(\mathbf U)$, así que:
+
+- trabajo externo, `external_work`: $W_n = W_{n-1} + \tfrac12(\mathbf F_{int,n} + \mathbf F_{int,n-1})\cdot(\mathbf U_n - \mathbf U_{n-1})$, por la regla del trapecio entre pasos convergidos. Incluye el trabajo de los desplazamientos impuestos;
+- energía elástica recuperable, `elastic`: $E_n = \tfrac12\,\mathbf U_n\cdot\mathbf F_{int,n}$;
+- energía disipada, `dissipated`: $D_n = W_n - E_n$.
+
+$E = \tfrac12\,\mathbf U\cdot\mathbf F_{int}$ es la energía que se recupera al descargar hasta el origen sólo si todos los materiales descargan por la secante: los elásticos, los de daño (también la banda de grieta) y las cohesivas de daño. Con plasticidad, concreto con deformación residual o secciones por fibras, `elastic` y `dissipated` son un error; `external_work` sí está disponible. En la banda de grieta, $D$ al final de la separación es $G_f$ por el área de la grieta: es la comprobación de su objetividad.
+
+**Magnitudes de elemento.** `element` declara la magnitud en `var` y, opcionalmente, un selector:
+
+```yaml
+history:
+  columns:
+    - {name: D, energy: dissipated}
+    - {name: d_max, element: {where: "abs(x - 1000) < 50", var: damage, reduce: max}}
+    - {name: sxx, element: {id: 1234, var: stress, component: xx}}
+    - {name: M_emp, element: {id: 1, var: M, end: i}}
+```
+
+| `var` | Qué registra |
+|---|---|
+| `stress`, `strain` | con `component`: `xx`, `yy`, `zz`, `xy`, `yz`, `xz` (Voigt del proyecto; la deformación angular es $\gamma$), `mises` (sólo esfuerzo) o `max_principal`; en cada punto de integración. En 2D, `zz` del esfuerzo es el fuera del plano (no nulo en deformación plana) |
+| una variable interna | una variable escalar del material (`damage`, `kappa`, `alpha`...), en cada punto de integración |
+| `N`, `V`, `M` (2D); `N`, `Vy`, `Vz`, `T`, `My`, `Mz` (3D) | la fuerza interna de un elemento de marco o barra en el extremo `end: i` o `j`, con la convención de signos de las fuerzas internas y descontada la carga distribuida |
+
+El selector es `id`, `ids: [...]`, `group` (los elementos con todos sus nodos en el grupo físico) o `where` (una condición sobre el centro del elemento, como las de las mallas por bloques); sin selector, todos los elementos que tienen esa magnitud. `reduce` combina los valores de todos los puntos de integración (o elementos) seleccionados: `mean` (por omisión), `min` o `max`. Los valores son los del estado con que el análisis equilibró el paso.
 
 `log_level` fija el nivel del registro durante el análisis (`run_yaml`, `load_yaml(...).solve()` y `examples/ejecutar_yaml.py`): `WARNING` deja sólo avisos y errores. Al terminar, `run_yaml` vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.
