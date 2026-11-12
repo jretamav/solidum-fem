@@ -6,7 +6,7 @@
 
 ## Contexto
 
-El proyecto entra en **Etapa 7 — Sólidos 3D** con un alcance acotado decidido en sesión: `Hex8` (hexaedro trilineal isoparamétrico), `Tet4` (tetraedro lineal) y `Elastic3D` (elástico isótropo, sin variantes plane stress/plane strain — en 3D no aplican). Los materiales no lineales 3D (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`) quedan para una sub-etapa posterior; los elementos cuadráticos 3D (`Hex20`, `Hex27`, `Tet10`) también. La justificación del alcance está en el chat: arrancar con el espejo natural de `Quad4 + Tri3 + Elastic2D`, validar arquitectura, y dejar las extensiones para iteraciones incrementales sobre maquinaria ya probada (regla de dos casos reales para centralizar — ver `feedback_consistencia_arquitectural` en memoria).
+El proyecto entra en **Etapa 7 — Sólidos 3D** con un alcance acotado decidido en sesión: `Hex8` (hexaedro trilineal isoparamétrico), `Tet4` (tetraedro lineal) y `Elastic3D` (elástico isótropo, sin variantes plane stress/plane strain — en 3D no aplican). Los materiales no lineales 3D (`VonMises3D`, `DruckerPrager3D`, `IsotropicDamage3D`) quedan para una sub-etapa posterior; los elementos cuadráticos 3D (`Hex20`, `Hex27`, `Tet10`) también. La justificación del alcance está en el chat: arrancar con el espejo natural de `Quad4 + Tri3 + Elastic2D`, validar arquitectura, y dejar las extensiones para iteraciones incrementales sobre maquinaria ya probada (regla de dos casos reales para centralizar, `Reglas.md` §1).
 
 Tres decisiones arquitecturales que no son evidentes de la mera "réplica del 2D" exigen registro persistente:
 

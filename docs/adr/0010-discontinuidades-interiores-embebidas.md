@@ -242,7 +242,7 @@ K_jj   = G.T @ (B_phi.T @ C_tan_bulk @ B_phi) @ G * vol + ds.l_d * T_coh * self.
 
 **Por qué fue invisible**: todos los tests existentes del subsistema (fases 1–3 + bring-up de integración + 24 tests del elemento) usaban `thickness = 1.0`. Con espesor unitario, el factor faltante es la identidad y el bug no se manifiesta. El primer caso real con `thickness ≠ 1.0` fue Van Vliet (`thickness = 0.1 m`).
 
-**Blindaje**: cuatro tests nuevos en `tests/test_cst_embedded.py::TestThicknessDimensionalConsistency`, todos ejercitan `thickness = 0.1`:
+**Blindaje**: cuatro tests nuevos en `tests/user/discontinuities/test_disc_cst_embedded.py::TestThicknessDimensionalConsistency`, todos ejercitan `thickness = 0.1`:
 1. `test_cohesive_engages_with_non_unit_thickness` — verifica que `damage > 0` cuando la carga rebasa el umbral.
 2. `test_traction_balances_bulk_stress` — verifica continuidad `t_n ≈ σ·n` con tolerancia `1e-3 · σ_t0`.
 3. `test_residual_with_correct_formula_vanishes` — reconstruye `R^{[[u]]}` con el factor `thickness` correcto y confirma anulación.

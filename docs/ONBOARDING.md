@@ -30,7 +30,8 @@ Lo que **no** resuelve aún: placas/láminas, contacto, Mohr-Coulomb, la **secci
 
 El repo es **público en GitHub** bajo `https://github.com/jretamav/solidum-fem` con licencia **LGPL-3.0** (ver `LICENSE` y `LICENSE.GPL`). Apertura efectiva: primer commit el **2026-04-08**.
 
-- **Papers**: los manuscritos (JOSS, SoftwareX y posteriores) viven **sólo en local**, en `paper/`, fuera de git (`.gitignore`); nunca se suben al repositorio público. Plan de publicaciones y estado de cada paper en la memoria local del agente (`[[project_estrategia_publicaciones]]`, `[[project_paper_joss_estado]]`).
+- **Papers**: los manuscritos (JOSS, SoftwareX y posteriores) viven **sólo en local**, en `paper/`, fuera de git (`.gitignore`); nunca se suben al repositorio público. Plan de publicaciones y estado de cada paper en la memoria local del agente (`[[project-estrategia-publicaciones]]`).
+- **Licencia y apertura**: decisiones cerradas. Dependencias nuevas: compatibles con LGPL-3.0 (nada GPL-only sin excepción de enlace ni propietario); avisar al usuario antes de añadirlas.
 
 ---
 
@@ -105,7 +106,7 @@ solidum_fem/
 
 ```bash
 # Tests
-python -m pytest tests/ -q                # suite completa, incluidos tests/user/ (~3 min en Windows, ver STATUS.md)
+python -m pytest tests/ -q                # suite completa, incluidos tests/user/ (~11 min en Windows, ver STATUS.md)
 python -m pytest tests/test_modal.py -q   # un solo módulo
 
 # Manuales (regenerar tras cambios en sources/)
@@ -125,7 +126,7 @@ python -c "import solidum; print(solidum.run_yaml('examples/<archivo>.yaml'))"
 
 Hay dos memorias que persisten entre sesiones:
 
-- **`.claude/memory/MEMORY.md`** (dentro del repo) y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque siguiendo el índice**. Tipos: `user`, `feedback`, `project`, `reference`. Vive en el repo —sincronizada por Drive entre las varias PCs del usuario— y está excluida de git por `.gitignore`. **No crear memoria del agente en `~/.claude/projects/.../memory/`**: ese directorio existe pero está vacío y no se sincroniza. Protocolo en [CLAUDE.md](../CLAUDE.md).
+- **`.claude/memory/MEMORY.md`** (dentro del repo) y los `*.md` que indexa: feedback del usuario, estado de proyecto, referencias externas. **Cárgalas al arranque siguiendo el índice**. Tipos: `user`, `feedback`, `project`, `reference`. Vive en el repo —sincronizada por OneDrive entre las varias PCs del usuario— y está excluida de git por `.gitignore`. **No crear memoria del agente en `~/.claude/projects/.../memory/`**: ese directorio existe pero está vacío y no se sincroniza. Protocolo en [CLAUDE.md](../CLAUDE.md).
 - **`docs/specs/<Nombre>.md`** (y `docs/user/<módulo>/specs/<Nombre>.md` en los módulos de usuario): memoria *física* y *numérica* de cada componente. Donde se guarda la formulación rigurosa.
 
 **Antes de actuar**: si la memoria menciona una decisión, **verificar que sigue vigente** consultando el código (los memos envejecen).
@@ -162,7 +163,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 ## 7. Convenciones críticas a no olvidar
 
 - **Signos**: convención única del proyecto (Reglas.md §5). 2D interno = stress-resultant; 2D público (`internal_forces`) = sagging-positivo de vigas. La traducción B↔A vive dentro de `internal_forces()` de cada elemento 2D.
-- **Idioma**: política híbrida por capa (Reglas.md §6 — política revisada 2026-05-20 al abrir el repo al público). Externa pública (README, CITATION, CONTRIBUTING, paper.md, manuscritos) en **inglés**; manuales **bilingües ES+EN** (español canónico, inglés generado por la IA con glosario terminológico — glosario pendiente en `manuals/glossary.md`); documental navegacional (STATUS, ROADMAP, ONBOARDING, MATRIZ, catálogos) en **español**; interna técnica (specs, ADRs, docstrings, commits) en **español**; identificadores de código en **inglés**. Ver `[[project_politica_idioma]]` para el detalle.
+- **Idioma**: política híbrida por capa (Reglas.md §6 — política revisada 2026-05-20 al abrir el repo al público). Externa pública (README, CITATION, CONTRIBUTING, paper.md, manuscritos) en **inglés**; manuales **bilingües ES+EN** (español canónico, inglés generado por la IA con glosario terminológico — glosario pendiente en `manuals/glossary.md`); documental navegacional (STATUS, ROADMAP, ONBOARDING, MATRIZ, catálogos) en **español**; interna técnica (specs, ADRs, docstrings, commits) en **español**; identificadores de código en **inglés**. Detalle en `Reglas.md` §6.
 - **Térmico** (Reglas.md §5): `q̄ > 0` ⇔ flujo **saliente** del dominio (enfriamiento); borde sin condición ⇒ adiabático. El problema térmico **no usa notación Voigt** — `∇T` es un vector genuino, así que la matriz `B` es el gradiente crudo `∂N/∂x` y los elementos declaran `FLUX_DIM`, no `STRAIN_DIM`. Defaults **invertidos** respecto a la dinámica estructural: capacidad `lumped` y `θ = 1`, ambos por el principio del máximo de la ecuación de difusión.
 - **Unidades**: el sistema no convierte. El usuario es responsable de la consistencia (Reglas.md §5 + ADR 0008).
 - **Tolerancias**: patrón `f ≤ atol + rtol · escala` con escala adimensional autoderivada (ADR 0006 / 0007). No introducir constantes hardcoded.
@@ -183,7 +184,7 @@ Resumen ágil de Reglas.md §4 (la fuente es ese párrafo).
 
 - **Falta contexto sobre un componente**: ir a su spec, no a chat con el usuario.
 - **Falta contexto histórico sobre una decisión**: buscar en `docs/adr/`. Si no está, es señal de que la decisión no se ha tomado formalmente: si es de arquitectura, tomarla y registrarla; si toca física, preguntar al usuario.
-- **El usuario delega "decide tú"**: **responsabilidad amplificada, no descarga**. Aplicar reglas + memoria + juicio arquitectural. Saltarse cualquiera produce decisiones plausibles pero mal alineadas. Ver memoria `feedback-rol-experto-arquitectura`.
+- **El usuario delega "decide tú"**: **responsabilidad amplificada, no descarga**. Aplicar reglas + memoria + juicio arquitectural. Saltarse cualquiera produce decisiones plausibles pero mal alineadas. Ver `Reglas.md` §2-§3.
 - **Una decisión sale del catálogo de los tipos del §6**: aplicar la prueba del §5 (¿cambia alguna ecuación o algún resultado físico?). Si no, decidir, documentar y reportar en una frase, salvo que sea una clasificación estándar / no estándar que el criterio de admisión no resuelve: esa la decide el usuario.
 
 ---

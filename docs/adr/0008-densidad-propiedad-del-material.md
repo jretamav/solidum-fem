@@ -19,7 +19,7 @@ Sin densidad declarada por material, ninguno de estos subsistemas puede construi
 
 ## Decisión
 
-**La densidad es propiedad del material**, no del elemento. Se introduce como atributo `density` en la clase base `Material` con default `0.0`, y se acepta como parámetro opcional en el constructor de todas las subclases existentes. Físicamente, la densidad es una propiedad intrínseca del medio continuo (kg/m³), no de su discretización; vive en el mismo nivel jerárquico que `E`, `ν`, `σ_y`, `κ_0`, etc. — todas propiedades del material.
+**La densidad es propiedad del material**, no del elemento. Se introduce como atributo `density` en la clase base `Material` con default `None` ("no declarada"; véase «Contrato `Material.density`»), y se acepta como parámetro opcional en el constructor de todas las subclases existentes. Físicamente, la densidad es una propiedad intrínseca del medio continuo (kg/m³), no de su discretización; vive en el mismo nivel jerárquico que `E`, `ν`, `σ_y`, `κ_0`, etc. — todas propiedades del material.
 
 ### YAML
 

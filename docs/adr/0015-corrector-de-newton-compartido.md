@@ -10,7 +10,7 @@ Los cinco solvers no lineales ejecutaban el mismo bucle de corrección escrito c
 
 La auditoría global de esta mañana lo hizo visible: la corrección "un ensamblaje por iteración, convergencia evaluada con `(‖R(x_k)‖, ‖δ_{k−1}‖)`" hubo que aplicarla en los cinco, y la coherencia del estado committed con el iterado guardado también. Cada solver nuevo (ADR 0009 añadió dos) volvía a copiar el bucle, y cada cambio de semántica exigía cinco diffs y cinco oportunidades de divergir. Lo que viene después —modelo de cargas con historia, acoplamiento termomecánico, un backend algebraico multihilo— tocaría de nuevo los cinco.
 
-La restricción (`Reglas.md` §1, memoria `feedback_consistencia_arquitectural`): centralizar cuando hay dos casos reales; aquí había cinco.
+La restricción (`Reglas.md` §1): centralizar cuando hay dos casos reales; aquí había cinco.
 
 ## Decisión
 

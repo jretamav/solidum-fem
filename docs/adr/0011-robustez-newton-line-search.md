@@ -254,7 +254,7 @@ commit del ADR para reflejar:
 - de Borst, R. & Sluys, L. J. (1999). *Computational Methods in
   Non-linear Solid Mechanics*, TU Delft, §3.3-3.5 (Newton-Raphson,
   line-search, criterios de convergencia) y §3.7 (ejemplo del shallow
-  truss von Mises). En [`docs/referencias/`](../referencias/). Tabla 3.1
+  truss von Mises). Ficha en [`docs/referencias/README.md`](../referencias/README.md) (el PDF no se redistribuye). Tabla 3.1
   documenta la inutilidad del line-search con full Newton-Raphson y
   tangente consistente — respalda la enmienda del default.
 

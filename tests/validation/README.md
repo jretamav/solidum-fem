@@ -124,7 +124,7 @@ Velocidad de onda medida vs analítica (Δt = 0.5·CFL crítico):
 - **Velocidad inferida de 3 estaciones (x=0.25L, 0.5L, 0.75L)**: error <5%.
 - **Convergencia O(h)** del error de dispersión verificada.
 
-Este benchmark cierra el hueco identificado en `[[project_validacion_fase_b]]`
+Este benchmark cierra el hueco identificado en la campaña de validación de la Fase B (`docs/validacion_matriz.md`)
 sobre validación de wave propagation en central difference — ningún test
 anterior medía la velocidad de propagación.
 

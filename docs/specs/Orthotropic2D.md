@@ -1,6 +1,6 @@
 # Orthotropic2D — Elasticidad lineal ortótropa 2D (plane stress)
 
-> Spec **pre-redactada por la IA** a partir de la sesión 2026-09-09, según `Reglas.md §4` y el criterio de [[feedback-filtrar-puntos-abiertos]]: el plumbing arquitectural lo decide la IA con razón documentada; los puntos abiertos que quedan son **físicos y de alcance**, y los valida el usuario en §Diálogo.
+> Spec **pre-redactada por la IA** a partir de la sesión 2026-09-09, según `Reglas.md §4` y el criterio de `Reglas.md` §3: el plumbing arquitectural lo decide la IA con razón documentada; los puntos abiertos que quedan son **físicos y de alcance**, y los valida el usuario en §Diálogo.
 >
 > Decisión arquitectural de fondo en [ADR 0013](../adr/0013-orientacion-material-y-ortotropia.md) — dónde vive la orientación material.
 

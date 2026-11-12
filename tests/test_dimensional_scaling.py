@@ -3,9 +3,8 @@
 La auditoría 2026-05-18 destacó que ~27 ocurrencias de ``thickness=1.0`` en
 los tests dejaban un agujero: el factor ``thickness`` dentro de
 ``compute_integrands`` se cancela contra 1.0 y una omisión accidental
-pasaría inadvertida. Memoria del proyecto:
-``feedback_tests_con_coeficientes_unitarios.md`` — *los coeficientes
-unitarios esconden bugs dimensionales*. El bug histórico del ``thickness``
+pasaría inadvertida. ``Reglas.md`` §6 (coeficientes no unitarios):
+*los coeficientes unitarios esconden bugs dimensionales*. El bug histórico del ``thickness``
 del elemento embebido (hoy en el módulo de usuario ``discontinuities``) se
 descubrió precisamente por un benchmark con ``thickness=0.1``.
 

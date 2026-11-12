@@ -10,7 +10,7 @@ La mayor parte del coste de un programa de MEF de investigación no reside en la
 
 ## Modelo de colaboración
 
-El desarrollo de Solidum FEM se rige por un contrato explícito entre el usuario (investigador con dominio profundo en MEF) y un asistente de inteligencia artificial responsable de la escritura del código. El flujo es: usuario → asistente → código → resultados → usuario. El asistente produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos y las decisiones de arquitectura.
+El desarrollo de Solidum FEM se rige por un contrato explícito entre el usuario (investigador con dominio profundo en MEF) y un asistente de inteligencia artificial responsable de la escritura del código. El flujo es: usuario → asistente → código → resultados → usuario. El asistente produce y modifica el código; el usuario cierra el lazo de validación sobre los resultados físicos; la arquitectura y la programación las decide el asistente (delegación total desde el 2026-09-29, `Reglas.md` §2).
 
 La analogía operativa es la de una calculadora científica: se conoce qué representa la función seno, sus propiedades y el orden de magnitud esperado de su resultado, pero no se memoriza el algoritmo CORDIC interno; sí se detectan resultados absurdos. Trasladado al proyecto: la escritura del código (sintaxis, infraestructura, patrones de software) se delega; la comprensión conceptual no. El usuario mantiene un modelo mental completo del *qué* y del *por qué* de cada pieza de la arquitectura sin necesidad de escribir su implementación.
 

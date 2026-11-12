@@ -136,7 +136,7 @@ admission:                # criterio de admisión al programa principal (Reglas.
 parameters:
   - { name: quadrature, type: str, required: false, default: "hex_3x3x3",
       desc: "Regla de cuadratura desde QuadratureRegistry; hex_2x2x2
-             reducida con 1 modo de hourglass espurio (bubble) por
+             reducida con 27 modos de hourglass espurios por
              elemento aislado, sin estabilización" }
 
 material_contract:
