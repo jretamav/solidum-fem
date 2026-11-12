@@ -49,6 +49,11 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "sympy>=1.12",
+    "matplotlib>=3.7",
+]
+# Figuras de los resultados (output.plots, python -m solidum.post; ADR 0039).
+plot = [
+    "matplotlib>=3.7",
 ]
 # Mallado desde la geometría (ADR 0035): 'mesh: archivo.geo' o el bloque con
 # 'geometry' llaman a Gmsh. Sin él, la malla se declara como '.msh'.

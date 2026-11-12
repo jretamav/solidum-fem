@@ -301,6 +301,7 @@ Bajo. La longitud característica reutiliza la pieza del ADR 0028; el pseudo-tie
 - **Mallado desde la geometría** en el YAML: el `.geo` con sus parámetros (tamaño de elemento), el orden y la forma de los elementos; Solidum llama a Gmsh y lee la malla. Un estudio de malla es cambiar un dato del YAML.
 - **Barras incrustadas** desde un grupo físico de líneas con `element`.
 - **Salida de resultados en el paquete** (ADR 0036): `python -m solidum modelo.yaml` escribe la historia de la respuesta en CSV y los VTK en los instantes elegidos.
+- **Figuras de los resultados** (ADR 0039): `output.plots` y `python -m solidum.post` dibujan la malla, las deformadas y las curvas con los archivos de la salida.
 - **Energías y magnitudes de elemento en la historia** (ADR 0038): trabajo externo, energía elástica y disipada; esfuerzo, deformación, variables internas y fuerzas internas de marcos por elemento o conjunto de elementos.
 - **Mallas estructuradas por bloques y calidad de la malla** (ADR 0037): tramos con gradación, celdas excluidas, diagonales de los triángulos y fusión de bloques, desde el YAML con grupos por lado y por condición; resumen y avisos de calidad al leer o generar una malla.
 

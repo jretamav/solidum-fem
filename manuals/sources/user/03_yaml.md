@@ -724,7 +724,7 @@ output:
 | `{every: N}` | cada N pasos convergidos |
 | `{at: [f1, f2, ...]}` | el primer paso convergido con factor de carga (o tiempo) ≥ cada valor |
 
-Con más de un paso escrito se genera además un archivo maestro `.pvd` que ParaView interpreta como animación; `<file_name>_final.vtu` se escribe siempre.
+Con al menos un instante escrito se genera además un archivo maestro `.pvd` (el índice de factores e instantes, que ParaView interpreta como animación y que usan las figuras); `<file_name>_final.vtu` se escribe siempre.
 
 ### Historia de la respuesta: `history`
 
@@ -776,5 +776,40 @@ history:
 | `N`, `V`, `M` (2D); `N`, `Vy`, `Vz`, `T`, `My`, `Mz` (3D) | la fuerza interna de un elemento de marco o barra en el extremo `end: i` o `j`, con la convención de signos de las fuerzas internas y descontada la carga distribuida |
 
 El selector es `id`, `ids: [...]`, `group` (los elementos con todos sus nodos en el grupo físico) o `where` (una condición sobre el centro del elemento, como las de las mallas por bloques); sin selector, todos los elementos que tienen esa magnitud. `reduce` combina los valores de todos los puntos de integración (o elementos) seleccionados: `mean` (por omisión), `min` o `max`. Los valores son los del estado con que el análisis equilibró el paso.
+
+### Figuras: `plots`
+
+Solidum dibuja las figuras de un reporte con los resultados que acaba de escribir: la malla, las deformadas coloreadas por un campo y las curvas de la historia. Se declaran en `output.plots` y se escriben al terminar el análisis, junto al YAML:
+
+```yaml
+output:
+  file_name: viga
+  results:
+    frequency: {at: [0.1, 0.25, 1.0]}
+  history:
+    columns:
+      - {name: flecha_mm, displacement: {group: Carga, dof: uy}, scale: -1}
+      - {name: P_N, reaction: {group: Carga, dof: uy}, scale: -1}
+  plots:
+    - {type: mesh, file: viga_malla}
+    - {type: mesh, file: viga_entalla, zoom: [900, 1100, 0, 200]}
+    - {type: deformed, file: viga_deformada, at: [0.1, 0.25, 1.0], field: Internal_State,
+       field_label: daño, label_column: flecha_mm}
+    - {type: curve, file: viga_curva, x: flecha_mm, y: P_N,
+       xlabel: "flecha (mm)", ylabel: "carga (N)"}
+```
+
+| `type` | Figura | Claves |
+|---|---|---|
+| `mesh` | la malla sin deformar, con los apoyos, los desplazamientos impuestos y las cargas nodales | `zoom`, `markers` (por omisión `true`) |
+| `deformed` | la deformada, un panel por instante | `at` (factores de carga, o `final`; por omisión `[final]`), `field`, `field_label`, `scale` (`auto` o un número), `limits` ([mín, máx] de la escala de color), `edges` (`auto`, `true` o `false`), `zoom`, `label_column`, `show_undeformed` |
+| `curve` | columnas de la historia | `x`, `y` (una columna o una lista), `compare` (otros YAML), `labels`, `xlabel`, `ylabel` |
+
+Todas admiten `file` (`.png` por omisión, `.pdf` o `.svg`) y `title`. Detalles:
+
+- `deformed` toma, para cada factor de `at`, el instante escrito más cercano: los instantes se piden en `results.frequency`. `field` es un campo del VTK por celda (`Internal_State`, la variable interna principal del material —el daño en los de daño—; `Von_Mises`; `Sigma_XX`...) o `displacement` (magnitud del desplazamiento); los campos con signo usan una escala de color divergente centrada en cero. `scale: auto` dibuja el mayor desplazamiento como el 5 % del tamaño del modelo. `label_column` rotula cada panel con el valor de esa columna de la historia en ese instante (p. ej. la flecha). `edges: auto` dibuja los bordes de los elementos hasta 3000 elementos.
+- `curve` con `compare` añade las mismas columnas de otros modelos ya resueltos (sus historias se buscan con su propio `output.file_name`): es la figura de un estudio de malla.
+- Las figuras se regeneran sin volver a calcular con `python -m solidum.post modelo.yaml` (por ejemplo, tras cambiar una ventana o un rótulo). Si una figura falla al terminar el análisis, el error se registra y los resultados quedan escritos.
+- Mallas 2D; las 3D, todavía no. Requiere matplotlib (`pip install matplotlib`).
 
 `log_level` fija el nivel del registro durante el análisis (`run_yaml`, `load_yaml(...).solve()` y `examples/ejecutar_yaml.py`): `WARNING` deja sólo avisos y errores. Al terminar, `run_yaml` vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.

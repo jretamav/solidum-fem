@@ -16,7 +16,9 @@ junto al YAML:
   variable interna o fuerza interna de un elemento o de un conjunto de
   elementos). Se escribe fila a fila, así que un análisis interrumpido
   conserva lo calculado;
-- la salida en texto estilo FEAP (``text_export``).
+- la salida en texto estilo FEAP (``text_export``);
+- las figuras de ``plots`` (ADR 0039), dibujadas al terminar con los archivos
+  anteriores (:mod:`solidum.post`).
 
 La reacción de un paso es ``F_int(U) − factor·F`` en los grados de libertad
 prescritos (sin restricciones multipunto de apoyo), la del ADR 0004 §3; sólo
@@ -87,6 +89,9 @@ def validate_output_block(output) -> list[str]:
         else:
             errors.append("output.results.frequency: se admite 'last_step', 'all_steps', "
                           "{every: N} o {at: [f1, f2, ...]}.")
+    if "plots" in output:
+        from solidum.post.plots import validate_plots_block
+        errors.extend(validate_plots_block(output["plots"]))
     hist = output.get("history")
     if hist is None:
         return errors
@@ -220,6 +225,8 @@ class OutputWriter:
         self.pre = bool((cfg.get("pre_process") or {}).get("export", False))
         self.text_cfg = cfg.get("text_export") or {}
         self.export_text = bool(self.text_cfg.get("export", False))
+        self.plots = cfg.get("plots") or []
+        self.history_file = (cfg.get("history") or {}).get("file")
         self.n_steps = 0
         self.last = None
         self.pvd: list = []
@@ -394,7 +401,9 @@ class OutputWriter:
         if self.last is None:
             return
         _, U, factor = self.last
-        if len(self.pvd) > 1:
+        if self.pvd:
+            # También con un solo instante: el .pvd es el índice factor → archivo
+            # que usan las figuras (ADR 0039).
             with open(self.base + ".pvd", "w", encoding="utf-8") as f:
                 f.write('<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1" '
                         'byte_order="LittleEndian">\n<Collection>\n')
@@ -405,6 +414,17 @@ class OutputWriter:
         if self.export_text:
             self._write_text()
         _log.info(f"Resultados escritos en {self.base_dir} ({self.base_name}*)")
+        if self.plots:
+            from solidum.post.plots import ResultFiles, make_plots
+            try:
+                make_plots(ResultFiles(self.base_dir, self.base_name, self.history_file), self.plots)
+            except (FileNotFoundError, ValueError, ImportError) as exc:
+                # Los resultados ya están escritos: un fallo de una figura no
+                # invalida el análisis; se corrige el YAML y se regeneran con
+                # python -m solidum.post.
+                _log.error(f"No se pudieron dibujar las figuras: {exc} Los resultados están "
+                           f"escritos; corrija output.plots y regenérelas con "
+                           f"'python -m solidum.post'.")
 
     # ------------------------------------------------------------------
     # Salida de texto estilo FEAP (trasladada de examples/ejecutar_yaml.py)

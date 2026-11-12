@@ -52,6 +52,8 @@ Para ejecutar un modelo y escribir sus resultados:
 python -m solidum ruta/al/modelo.yaml
 ```
 
+Las figuras declaradas en `output.plots` se escriben al terminar; para redibujarlas sin volver a calcular, `python -m solidum.post ruta/al/modelo.yaml`.
+
 (`python examples/ejecutar_yaml.py ruta/al/modelo.yaml` hace lo mismo.) Desde Python, `solidum.run_yaml(ruta, write_output=True)`; sin `write_output`, `run_yaml` resuelve y devuelve el resultado sin escribir archivos.
 
 El script carga el YAML, valida su contenido (acumulando *todos* los errores en una sola pasada antes de abortar), construye el dominio, ensambla el solver pedido, ejecuta el análisis y exporta los resultados según el bloque `output`.

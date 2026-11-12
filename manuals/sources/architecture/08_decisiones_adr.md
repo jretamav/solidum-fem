@@ -394,6 +394,12 @@ El generador de mallas estructuradas (ADR 0022) admite líneas de la rejilla por
 
 La historia de la salida (ADR 0036) registra energías y magnitudes de elemento. Energías, en análisis estáticos sin etapas: trabajo externo por el trapecio de `F_int·ΔU` (en equilibrio, `F_int` es la fuerza de cargas y apoyos), energía elástica `½·U·F_int` y disipada `W − E`. La elástica sólo es la recuperable si todos los materiales descargan por la secante, lo que declaran con el contrato nuevo `SECANT_UNLOADING` (elásticos, daño, cohesivas de daño); si no, o con fuerzas internas en `U = 0`, es un error. Magnitudes de elemento: esfuerzo, deformación (componente Voigt, von Mises, principal máxima), variable interna escalar o fuerza interna de un marco en un extremo, sobre un elemento, una lista, un grupo físico o una condición sobre el centro, reducidas con media, mínimo o máximo. El esfuerzo y las variables internas se leen del estado confirmado, sin reevaluar el material (con IMPL-EX, reevaluar extrapolaría de nuevo). Se descartaron la energía por punto de integración con la deformación elástica de cada material (se adoptará cuando una validación con plasticidad la pida) y las variables por número de punto de integración.
 
+## ADR 0039 — Figuras de los resultados desde el YAML
+
+**Fecha**: 2026-11-11 · **Estado**: aceptado.
+
+`output.plots` declara figuras —la malla con apoyos, desplazamientos impuestos y cargas; la deformada en varios instantes coloreada por un campo; curvas de la historia, también de otros modelos— que `solidum.post` dibuja con los archivos que escribe Solidum (el `.pvd` como índice factor → VTK, `_final.vtu` y la historia), no con el estado en memoria: salen al terminar `python -m solidum` o, sin volver a calcular, con `python -m solidum.post`. Colores de la guía de visualización (paleta categórica en orden fijo; rampa de un tono para campos positivos y divergente centrada en cero para campos con signo). Un fallo al dibujar no invalida el análisis. Mallas 2D. Se descartaron dibujar desde la memoria (obliga a recalcular), delegar en ParaView (el usuario no lo maneja) y dibujar en cada paso.
+
 ## Evolución de esta lista
 
 Cada decisión de arquitectura de gran calado — refactor transversal, subsistema nuevo, ruptura de contratos — produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:

@@ -97,7 +97,7 @@ def test_frecuencia_de_vtk(tmp_path, freq, pasos):
     escritos = sorted(int(p.stem.split("_")[-1]) for p in tmp_path.glob("barra_[0-9]*.vtu"))
     assert escritos == pasos
     assert (tmp_path / "barra_final.vtu").is_file()
-    assert (tmp_path / "barra.pvd").is_file() == (len(pasos) > 1)
+    assert (tmp_path / "barra.pvd").is_file() == (len(pasos) >= 1)
 
 
 def test_solver_lineal_escribe_una_fila(tmp_path):
