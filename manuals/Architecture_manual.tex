@@ -101,7 +101,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁶}{{⁶}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -1562,6 +1562,13 @@ El ensamblador lleva el intento de paso y su pseudo-tiempo para los materiales i
 
 El lector de Gmsh importa todas las celdas de los sólidos de Solidum en 2D y 3D (\texttt{triangle}, \texttt{triangle6}, \texttt{quad}, \texttt{quad8}, \texttt{quad9}, \texttt{tetra}, \texttt{tetra10}, \texttt{hexahedron}, \texttt{hexahedron20}, \texttt{hexahedron27}). El orden de los nodos no sale de tablas de permutación por tipo: una tabla única da las coordenadas de referencia de los nodos de cada celda (las de Gmsh con la permutación de meshio) y el lector las casa con las \texttt{REFERENCE\_NODES} del elemento destino (\hyperref[adr:0022]{ADR 0022}); un elemento con jacobiano negativo se reorienta reflejando su celda de referencia. Las líneas (2D) y caras (3D) son contorno, salvo que su grupo físico nombre un elemento (barras incrustadas). La clave \texttt{mesh} del YAML admite además un \texttt{.geo} o un bloque con \texttt{geometry}, \texttt{parameters}, \texttt{order}, \texttt{element\_shape}, \texttt{serendipity} y \texttt{output}: Solidum llama a Gmsh, fija los parámetros del \texttt{.geo} (\texttt{DefineConstant}), malla, eleva a orden 2 si se pide y lee el \texttt{.msh}. Gmsh es una dependencia opcional (grupo \texttt{mesh}). Se descartaron las tablas de permutación a mano (fuente clásica de errores en Hex20 y Tet10) y leer el \texttt{.msh} con la API de Gmsh (haría obligatoria la dependencia). Salda la deuda \#18.
 
+\section{ADR 0036 --- Salida de resultados del YAML: historia de la respuesta y frecuencia de VTK}
+\label{adr:0036}
+
+\textbf{Fecha}: 2026-11-11 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+La escritura de resultados pasa del script \texttt{examples/\allowbreak{}ejecutar\_\allowbreak{}yaml.\allowbreak{}py} al paquete: \texttt{OutputWriter} se engancha al callback de paso del despacho completo de \texttt{run\_yaml} (etapas, peso propio y cargas térmicas incluidos) y escribe, sólo si se pide (\texttt{run\_\allowbreak{}yaml(.\allowbreak{}.\allowbreak{}.\allowbreak{}, write\_\allowbreak{}output=True)} o \texttt{python -m solidum modelo.\allowbreak{}yaml}), el modelo sin deformar, los VTK por paso (\texttt{last\_step}, \texttt{all\_steps}, \texttt{\{every: N\}} o \texttt{\{at: [factores]\}}) con su \texttt{.pvd}, la historia de la respuesta en CSV (desplazamientos y reacciones por nodo, grupo físico o coordenada, fila a fila) y la salida de texto estilo FEAP. La reacción de un paso es \texttt{F\_\allowbreak{}int(U) − factor\ensuremath{\cdot}F} en los grados de libertad prescritos. Se descartaron guardar la historia en \texttt{SolveResult} (depende de lo que el usuario observa), escribir siempre que haya \texttt{output} (las pruebas ensuciarían \texttt{examples/}) y mantener la escritura en el script (despacho duplicado y reducido).
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -1912,6 +1919,7 @@ Bajo. La longitud característica reutiliza la pieza del \hyperref[adr:0028]{ADR
   \item \textbf{Lector de Gmsh} para todas las celdas de los sólidos 2D y 3D, de primer y segundo orden, con el orden de los nodos deducido de las coordenadas de referencia y la orientación corregida.
   \item \textbf{Mallado desde la geometría} en el YAML: el \texttt{.geo} con sus parámetros (tamaño de elemento), el orden y la forma de los elementos; Solidum llama a Gmsh y lee la malla. Un estudio de malla es cambiar un dato del YAML.
   \item \textbf{Barras incrustadas} desde un grupo físico de líneas con \texttt{element}.
+  \item \textbf{Salida de resultados en el paquete} (\hyperref[adr:0036]{ADR 0036}): \texttt{python -m solidum modelo.\allowbreak{}yaml} escribe la historia de la respuesta en CSV y los VTK en los instantes elegidos.
 \end{itemize}
 
 \begin{lstlisting}
@@ -2305,8 +2313,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 11 de noviembre de 2026, 17:52\\[0.5em]
-Commit Git: \texttt{f8bccb0} (con cambios sin confirmar)\\[1em]
+Compilado el 11 de noviembre de 2026, 18:17\\[0.5em]
+Commit Git: \texttt{efbce3c}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
