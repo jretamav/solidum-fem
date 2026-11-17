@@ -400,6 +400,23 @@ def test_lineales_sin_aviso(avisos_limpios, caplog, cls):
     assert "Banda de grieta" not in caplog.text
 
 
+@pytest.mark.parametrize("cls", [Quad8, Quad9, Tri6, Hex20, Hex27, Tet10],
+                         ids=lambda c: c.__name__)
+def test_aviso_describe_la_limitacion_sin_recomendar_un_orden(avisos_limpios, caplog, cls):
+    """Lo que Solidum recomienda a quien lo usa lo decide el usuario (Reglas
+    §3): el aviso de los cuadráticos describe la limitación de la banda de
+    grieta y no recomienda elementos lineales (usuario, 2026-11-12)."""
+    import logging
+    dim = len(cls.REFERENCE_NODES[0])
+    material = mat2() if dim == 2 else mat3()
+    with caplog.at_level(logging.WARNING, logger="solidum"):
+        _element(cls, 0.025 * np.eye(dim), material)
+    texto = caplog.text.lower()
+    assert "banda de grieta con" in texto
+    assert "flexión" in texto and "g_f" in texto
+    assert "recomiend" not in texto and "lineal" not in texto
+
+
 def test_h_sembrada_en_un_cuadrilatero_no_afin():
     """Quad4 bilineal: el área es la del polígono (fórmula del área de Gauss)."""
     X = np.array([[0.0, 0.0], [0.04, 0.005], [0.035, 0.03], [-0.003, 0.025]])

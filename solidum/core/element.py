@@ -319,26 +319,30 @@ class Element(ABC):
         if tag not in _crack_band_warned:
             _crack_band_warned.add(tag)
             name = f"{type(self).__name__} (cuadratura {key or 'dada por puntos'})"
+            # El aviso describe la limitación y no recomienda un orden de
+            # elemento: lo que Solidum recomienda lo decide el usuario
+            # (Reglas §3; 2026-11-12).
             if alpha is None:
                 _log.warning(
                     f"Banda de grieta con {name}: no hay un factor de localización "
                     f"establecido para este elemento y esta regla; h es el ancho del "
-                    f"elemento. En un elemento cuadrático la banda puede localizarse "
-                    f"en una parte de sus puntos de Gauss y disipar menos que G_f "
-                    f"(un 25-30 % menos en Quad8 y Tri6 sin corrección, viga de "
-                    f"Petersson). Para la banda de grieta se recomiendan elementos "
-                    f"lineales (Jirásek y Bauer 2012).")
+                    f"elemento (α = 1). En flexión la banda de un elemento cuadrático "
+                    f"puede ablandarse sólo en una parte de sus puntos de Gauss y "
+                    f"disipar menos que G_f (Jirásek y Bauer 2012): sin corrección, "
+                    f"Quad8 y Tri6 disiparon un 20-30 % menos en la viga de "
+                    f"Petersson. Con esfuerzo uniforme en el elemento, que se ablanda "
+                    f"entero, disipa G_f.")
             else:
                 frac = Fraction(alpha).limit_denominator(100)
                 _log.warning(
                     f"Banda de grieta con {name}: h multiplicada por α = {frac} "
-                    f"({alpha:.4f}), la fracción del elemento que se ablanda cuando "
-                    f"la banda se localiza en una parte de sus puntos de Gauss "
-                    f"(Jirásek y Bauer 2012). La corrección es fiable con la banda "
-                    f"alineada con la malla; con la banda inclinada, o con esfuerzo "
-                    f"uniforme en el elemento (que se ablanda entero), la energía "
-                    f"disipada se aparta de G_f. Para la banda de grieta se "
-                    f"recomiendan elementos lineales.")
+                    f"({alpha:.4f}), la fracción del elemento que se ablanda cuando, "
+                    f"en flexión, la banda se localiza en una parte de sus puntos de "
+                    f"Gauss (Jirásek y Bauer 2012). La corrección es fiable con la "
+                    f"banda alineada con la malla. Con la banda inclinada respecto de "
+                    f"la malla la respuesta resulta demasiado dúctil, y con esfuerzo "
+                    f"uniforme en el elemento, que se ablanda entero, la energía "
+                    f"disipada es G_f/α = {1.0 / alpha:.4g}·G_f.")
         return 1.0 if alpha is None else float(alpha)
 
     def _seed_characteristic_lengths(self, lengths) -> None:

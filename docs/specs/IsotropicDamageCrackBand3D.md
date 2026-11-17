@@ -29,7 +29,7 @@ Convenio de Abaqus en 3D: $h = \sqrt[3]{V_e}$ en elementos lineales (`Hex8`, `Te
 
 **Cuadráticos (2026-11-11)**: con $\tfrac12\sqrt[3]{V_e}$ la barra disipaba $1.97\,G_fA$ (`Hex20`, `Hex27`) y $3.23\,G_fA$ (`Tet10`): la deformación se localiza en el elemento entero. Con la regla del 5 % (usuario, «si»; spec 2D §4) usan el factor del lineal de su celda, $\sqrt[3]{V_e}$ (`Hex20`, `Hex27`) y $\sqrt[3]{6V_e}$ (`Tet10`), y disipan $0.998$–$0.999\,G_fA$.
 
-**Factor de localización (2026-11-12; spec 2D §4).** En flexión los cuadráticos 2D sólo ablandan una parte de sus puntos de Gauss y la energía se corrige con $h = \alpha\,c\,\Omega_e^{1/d}$ (`Quad8`/`Quad9`, $\alpha = 13/18$). En 3D no hay un factor medido ni publicado: `Hex20`, `Hex27` y `Tet10` conservan $\alpha = 1$ y Solidum avisa una vez que la energía puede quedar por debajo de $G_f$ y que se recomiendan elementos lineales.
+**Factor de localización (2026-11-12; spec 2D §4).** En flexión los cuadráticos 2D sólo ablandan una parte de sus puntos de Gauss y la energía se corrige con $h = \alpha\,c\,\Omega_e^{1/d}$ (`Quad8`/`Quad9`, $\alpha = 13/18$). En 3D no hay un factor medido ni publicado: `Hex20`, `Hex27` y `Tet10` conservan $\alpha = 1$ y Solidum avisa una vez que, en flexión, la energía puede quedar por debajo de $G_f$; describe la limitación sin recomendar un orden de elemento (usuario, 2026-11-12).
 
 ### 3. Medida de Rankine (2D, §5 y Q1)
 
