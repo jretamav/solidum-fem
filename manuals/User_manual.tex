@@ -1840,7 +1840,7 @@ Variante de \texttt{IsotropicDamage2D} para el agrietamiento del concreto con fi
 para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza en una fila de elementos, la energía disipada por unidad de área de grieta es $G_f$ con cualquier malla. El elemento siembra $h$ al construirse ($\sqrt{A}$ en \texttt{Quad4}; $\tfrac{13}{18}\sqrt{A}$ en \texttt{Quad8} y \texttt{Quad9}; $\sqrt{2A}$ en \texttt{Tri3} y \texttt{Tri6}); con elementos mayores que $h_\text{max} = 2EG_f/f_t^2$ (0.67 m en concreto usual) el modelo se rechaza al construirse.
 
 \begin{itemize}
-  \item \textbf{Elementos: use lineales} (\texttt{Quad4} de preferencia, o \texttt{Tri3}). En los cuadráticos, cuando la banda avanza con gradiente (flexión), sólo se ablanda una parte de los puntos de Gauss de cada elemento. \texttt{Quad8} y \texttt{Quad9} lo corrigen con el factor $13/18$, fiable sólo si la banda va alineada con la malla; \texttt{Tri6} no tiene corrección fiable y disipa de menos (un 13--25 \% en una viga entallada). Solidum avisa una vez al leer el modelo. En la viga de Petersson, sin corrección, \texttt{Quad8} y \texttt{Tri6} disipaban $0.69$--$0.80\,G_fA$ frente a 0.94 de \texttt{Quad4}.
+  \item \textbf{Elementos cuadráticos.} Los elementos lineales (\texttt{Quad4}, \texttt{Tri3}) tienen deformación constante a través de la banda y se ablandan enteros. En los cuadráticos, cuando la banda avanza con gradiente (flexión), sólo se ablanda una parte de los puntos de Gauss de cada elemento. \texttt{Quad8} y \texttt{Quad9} lo corrigen con el factor $\alpha = 13/18$ (Gauss 3\ensuremath{\times}3; ½ con 2\ensuremath{\times}2), fiable si la banda va alineada con la malla: con la banda inclinada la respuesta resulta demasiado dúctil, y con esfuerzo uniforme en el elemento, que se ablanda entero, la energía disipada es $G_f/\alpha = 1.385\,G_f$. \texttt{Tri6} no tiene corrección fiable y en flexión disipa de menos (un 13--25 \% en una viga entallada). En la viga de Petersson, sin corrección, \texttt{Quad8} y \texttt{Tri6} disipaban $0.69$--$0.80\,G_fA$ frente a 0.94 de \texttt{Quad4}; con la corrección, \texttt{Quad8} disipa lo mismo que \texttt{Quad4}. Solidum avisa una vez al leer el modelo.
 \end{itemize}
 
 \begin{itemize}
@@ -3832,8 +3832,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 17 de noviembre de 2026, 08:35\\[0.5em]
-Commit Git: \texttt{84069f3} (con cambios sin confirmar)\\[1em]
+Compilado el 17 de noviembre de 2026, 09:03\\[0.5em]
+Commit Git: \texttt{1ff4651} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
