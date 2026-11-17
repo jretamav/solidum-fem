@@ -30,7 +30,7 @@ Lo que **no** resuelve aún: placas/láminas, contacto, Mohr-Coulomb, la **secci
 
 El repo es **público en GitHub** bajo `https://github.com/jretamav/solidum-fem` con licencia **LGPL-3.0** (ver `LICENSE` y `LICENSE.GPL`). Apertura efectiva: primer commit el **2026-04-08**.
 
-- **Papers**: los manuscritos (JOSS, SoftwareX y posteriores) viven **sólo en local**, en `paper/`, fuera de git (`.gitignore`); nunca se suben al repositorio público. Plan de publicaciones y estado de cada paper en la memoria local del agente (`[[project-estrategia-publicaciones]]`).
+- **Papers**: los manuscritos (JOSS, SoftwareX y posteriores) viven **fuera de este repositorio**, cada uno en un proyecto local propio; nunca se suben aquí (`paper/` sigue en `.gitignore` y el candado de Git lo bloquea, como salvaguarda). Plan de publicaciones y ubicación de cada manuscrito en la memoria local del agente (`[[project-estrategia-publicaciones]]`).
 - **Licencia y apertura**: decisiones cerradas. Dependencias nuevas: compatibles con LGPL-3.0 (nada GPL-only sin excepción de enlace ni propietario); avisar al usuario antes de añadirlas.
 
 ---
