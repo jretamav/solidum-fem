@@ -84,6 +84,8 @@ Construir un `PyPardisoSolver` localiza la DLL de la MKL recorriendo el sistema 
 
 Eso introduce un riesgo que se blinda explícitamente: el handle guarda **una sola** factorización, así que factorizar de nuevo invalida la anterior. Si alguien mantiene dos vivas a la vez (p. ej. `M` y `A` en un solver dinámico) y resuelve con la vieja, obtendría **la solución del otro sistema, sin error**. `PardisoFactorized` lleva un testigo y lanza `RuntimeError` en ese caso, nombrando la salida (refactorizar, o usar `lu`). Un fallo ruidoso es preferible a un resultado silenciosamente equivocado.
 
+**Actualización (ADR 0040, 2026-11-17).** Solidum llama a la MKL directamente; `pypardiso` sólo localiza la biblioteca. El testigo sube también ante cualquier error de la MKL (el handle queda en un estado indefinido), y la factorización puede reutilizar el análisis simbólico de la anterior de su cadena. Ver el ADR 0040.
+
 ### 4. El sistema vacío `0×0` se atiende en el backend
 
 Un modelo de un elemento controlado por desplazamiento deja el sistema reducido sin incógnitas. SuperLU acepta el caso y devuelve un vector vacío; la MKL lo rechaza como singular. Lo destapó la suite: **13 tests de Drucker-Prager y daño** empezaron a fallar con `SingularTangentError` al activar el backend, y el diagnóstico —matriz `0×0`, no materiales rotos— exigió capturar la matriz que llegaba al backend. Se resuelve devolviendo una factorización vacía, para que Pardiso sea sustituto equivalente de LU también en el borde.

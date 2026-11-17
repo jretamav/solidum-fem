@@ -41,6 +41,7 @@ from typing import Callable
 
 import numpy as np
 
+from solidum.bc.constraints import reduce_matrix
 from solidum.math.modal_response import (
     combine_modal,
     participating_mass,
@@ -342,7 +343,7 @@ class ResponseSpectrumSolver(LinearizedStateMixin):
         # Referencia de la razón acumulada: la masa que puede participar,
         # bᵀ·M_LL⁻¹·b (decisión del usuario del 2026-11-09, ADR 0009 §8).
         T = self.assembler.constraint_set.build(self.assembler.ndof)[0]
-        part_mass = participating_mass((T.T @ M @ T).tocsr(), T.T @ Mr)
+        part_mass = participating_mass(reduce_matrix(M, T), T.T @ Mr)
 
         # Reacciones de los apoyos: las de cada modo, (K − ωₙ²·M)·uₙ en esas
         # filas (la ecuación del modo; sin amortiguamiento, que está en el

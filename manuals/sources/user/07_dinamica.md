@@ -165,7 +165,7 @@ $$\mathbf R = \mathbf F_{\text{ext}}(t) - \mathbf F_{\text{int}}(\mathbf u) - \m
 
 **Amortiguamiento Rayleigh constante en el tiempo**, calibrado con la rigidez elástica de referencia $\mathbf K_0$ al inicio del análisis. Convención estándar (Abaqus, ANSYS, OpenSees) que evita acoplamiento ad-hoc entre disipación viscosa y plástica.
 
-**Newton modificado opcional** (`freeze_tangent_after_iter`, ADR 0003 fase 2): factoriza fresco las primeras $N$ iter y reusa la factorización en las siguientes para abaratar pasos largos.
+**Newton modificado opcional** (`freeze_tangent_after_iter`, ADR 0003 fase 2): factoriza fresco las primeras $N$ iter y reusa la factorización en las siguientes para abaratar pasos largos. Sin él, la factorización también se reutiliza sola cuando el jacobiano es idéntico al anterior (materiales sin historia o sin plastificar, ADR 0040): un análisis lineal con este solver factoriza una sola vez.
 
 **Recuperación del caso lineal**: con materiales sin historia o no plastificados, el residuo se anula en 1 iter y el resultado coincide *a paridad de bits* con `NewmarkSolver`. Validado en tests.
 

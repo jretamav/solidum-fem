@@ -216,10 +216,11 @@ def run(
         equivalent_loads=equivalent_loads,
     )
     # El estado final de un análisis estático es, por definición, convergido:
-    # ``build_solve_result`` acaba de ensamblar en ``U`` (estado trial
-    # coherente con la solución) y aquí se promueve a committed. Para los
-    # solvers incrementales es un no-op en valor (ya comitearon al converger
-    # el último paso); para ``LinearSolver``, que no comitea, deja
+    # tras ``build_solve_result`` el estado trial es coherente con ``U`` —o
+    # acaba de ensamblarse en ``U`` o, si ``U`` es el paso confirmado, no ha
+    # cambiado desde el commit (ADR 0040)— y aquí se promueve a committed.
+    # Para los solvers incrementales es un no-op en valor (ya comitearon al
+    # converger el último paso); para ``LinearSolver``, que no comitea, deja
     # ``state.stresses`` y ``state.vars`` consistentes con ``U`` para todo
     # consumidor de post-proceso.
     assembler.commit_all_states()

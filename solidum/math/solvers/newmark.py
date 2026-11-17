@@ -14,6 +14,7 @@ from typing import Callable
 import numpy as np
 import scipy.sparse as sp
 
+from solidum.bc.constraints import reduce_matrix
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.linalg import StiffnessProperties, select_solver
@@ -25,7 +26,11 @@ from solidum.math.solvers._shared import (
     mechanical_trace,
     warn_initial_conditions_off_constraints,
 )
-from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
+from solidum.math.solvers.corrector import (
+    NewtonCorrector,
+    default_calibration_scales,
+    releases_corrector,
+)
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
 
@@ -150,9 +155,9 @@ class NewmarkSolver(TransientTerminationMixin):
         T, g = cs.build(self.assembler.ndof)
         free_dofs = cs.free_dofs(self.assembler.ndof)
 
-        K_red = (T.T @ K @ T).tocsr()
-        M_red = (T.T @ M @ T).tocsr()
-        C_red = (T.T @ C @ T).tocsr() if (alpha_r != 0.0 or beta_r != 0.0) \
+        K_red = reduce_matrix(K, T)
+        M_red = reduce_matrix(M, T)
+        C_red = reduce_matrix(C, T) if (alpha_r != 0.0 or beta_r != 0.0) \
                 else sp.csr_matrix(K_red.shape)
         # Término constante por apoyos prescritos no nulos.
         F_dir = T.T @ (K @ g)
@@ -323,7 +328,7 @@ class _DynamicNewtonProblem:
         T_op = self.T_op
         J = (self.M_red
              + self.jac_scale * self.gamma_dt * self.C_red
-             + self.jac_scale * self.beta_dt2 * (T_op.T @ state[0] @ T_op)).tocsr()
+             + self.jac_scale * self.beta_dt2 * reduce_matrix(state[0], T_op)).tocsr()
         return solve(J, T_op.T @ R)
 
     def apply(self, x, delta_uddot_red, alpha):
@@ -496,6 +501,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
             extra_message=f"{message}{subdiv}; último estado convergido en t={good['t']:.4e}.",
         ), t_next)
 
+    @releases_corrector
     def solve(self) -> TransientResult:
         self._begin_trace()
         _log.info("--- INICIANDO SOLVER NEWMARK NO LINEAL (Newton dentro de Newmark) ---")
@@ -549,9 +555,9 @@ class NewtonNewmarkSolver(NewmarkSolver):
         C = alpha_r * M + beta_r * K_0
 
         # Reducción de las matrices invariantes en el tiempo.
-        M_red = (T_op.T @ M @ T_op).tocsr()
+        M_red = reduce_matrix(M, T_op)
         if alpha_r != 0.0 or beta_r != 0.0:
-            C_red = (T_op.T @ C @ T_op).tocsr()
+            C_red = reduce_matrix(C, T_op)
         else:
             C_red = sp.csr_matrix(M_red.shape)
 
@@ -568,7 +574,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
         uddot_free = self._carried_acceleration(free_dofs)
         if uddot_free is None:
             uddot_free = initial_acceleration(
-                M_solver, M_red, T_op.T @ K_0 @ T_op, rhs0, type(self).__name__,
+                M_solver, M_red, reduce_matrix(K_0, T_op), rhs0, type(self).__name__,
                 domain=self.assembler.domain, free_dofs=free_dofs,
                 force_scale=float(np.linalg.norm(T_op.T @ F0_global))
                 + float(np.linalg.norm(T_op.T @ F_int)))
@@ -772,9 +778,9 @@ class HHTSolver(NewmarkSolver):
         T, g = cs.build(self.assembler.ndof)
         free_dofs = cs.free_dofs(self.assembler.ndof)
 
-        K_red = (T.T @ K @ T).tocsr()
-        M_red = (T.T @ M @ T).tocsr()
-        C_red = (T.T @ C @ T).tocsr() if (alpha_r != 0.0 or beta_r != 0.0) \
+        K_red = reduce_matrix(K, T)
+        M_red = reduce_matrix(M, T)
+        C_red = reduce_matrix(C, T) if (alpha_r != 0.0 or beta_r != 0.0) \
                 else sp.csr_matrix(K_red.shape)
         F_dir = T.T @ (K @ g)
 
@@ -989,6 +995,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         )
         self.alpha = float(alpha)
 
+    @releases_corrector
     def solve(self) -> TransientResult:
         self._begin_trace()
         _log.info(f"--- INICIANDO SOLVER HHT-α NO LINEAL (alpha={self.alpha:.4f}) ---")
@@ -1026,9 +1033,9 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         )
         C = alpha_r * M + beta_r * K_0
 
-        M_red = (T_op.T @ M @ T_op).tocsr()
+        M_red = reduce_matrix(M, T_op)
         if alpha_r != 0.0 or beta_r != 0.0:
-            C_red = (T_op.T @ C @ T_op).tocsr()
+            C_red = reduce_matrix(C, T_op)
         else:
             C_red = sp.csr_matrix(M_red.shape)
 
@@ -1044,7 +1051,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         uddot_free = self._carried_acceleration(free_dofs)
         if uddot_free is None:
             uddot_free = initial_acceleration(
-                M_solver, M_red, T_op.T @ K_0 @ T_op, rhs0, type(self).__name__,
+                M_solver, M_red, reduce_matrix(K_0, T_op), rhs0, type(self).__name__,
                 domain=self.assembler.domain, free_dofs=free_dofs,
                 force_scale=float(np.linalg.norm(T_op.T @ F0_global))
                 + float(np.linalg.norm(T_op.T @ F_int)))

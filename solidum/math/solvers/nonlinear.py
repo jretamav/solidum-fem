@@ -40,7 +40,11 @@ from solidum.constants import (
 )
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
-from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
+from solidum.math.solvers.corrector import (
+    NewtonCorrector,
+    default_calibration_scales,
+    releases_corrector,
+)
 from solidum.math.solvers.diagnostics import Termination
 from solidum.math.solvers.stages import Stage, check_initial_equilibrium, make_stage
 from solidum.math.solvers.model_checks import (
@@ -212,6 +216,7 @@ class NonlinearSolver:
             g_start=stage.g_start,
         )
 
+    @releases_corrector
     def solve(self, F_ext_global: np.ndarray, step_callback=None, *,
               u0: np.ndarray | None = None,
               constant_load: np.ndarray | None = None) -> np.ndarray:

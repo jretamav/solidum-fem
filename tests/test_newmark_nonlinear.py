@@ -269,30 +269,33 @@ class TestSingularTangentDiagnostic(unittest.TestCase):
 
     @staticmethod
     def _fail_after_first_call():
-        """Side-effect que deja pasar la 1ª llamada (cálculo de aceleración
-        inicial con `M_red`) y lanza `RuntimeError("singular")` desde la 2ª
-        en adelante (primera resolución de `J` dentro del Newton del paso 1)."""
-        real_solve = LUSolver.solve
+        """Side-effect de ``LUSolver.factorize`` que deja pasar la 1ª
+        factorización (aceleración inicial con `M_red`) y lanza
+        `RuntimeError("singular")` desde la 2ª en adelante (la de `J` dentro
+        del Newton del paso 1). El corrector factoriza y resuelve por separado
+        para poder reutilizar la factorización (ADR 0040), así que el fallo se
+        simula en ``factorize``."""
+        real_factorize = LUSolver.factorize
         state = {"n": 0}
 
-        def side_effect(self_mock, K, b):
+        def side_effect(self_mock, K, **kwargs):
             state["n"] += 1
             if state["n"] == 1:
-                return real_solve(self_mock, K, b)
+                return real_factorize(self_mock, K, **kwargs)
             raise RuntimeError("singular factor")
 
         return side_effect
 
     def test_newton_newmark_raises_singular_tangent_on_lu_failure(self):
         sol = NewtonNewmarkSolver(**self._make_solver_args())
-        with patch.object(LUSolver, "solve", autospec=True,
+        with patch.object(LUSolver, "factorize", autospec=True,
                            side_effect=self._fail_after_first_call()):
             with self.assertRaises(SingularTangentError):
                 sol.solve()
 
     def test_newton_hht_raises_singular_tangent_on_lu_failure(self):
         sol = NewtonHHTSolver(**self._make_solver_args())
-        with patch.object(LUSolver, "solve", autospec=True,
+        with patch.object(LUSolver, "factorize", autospec=True,
                            side_effect=self._fail_after_first_call()):
             with self.assertRaises(SingularTangentError):
                 sol.solve()

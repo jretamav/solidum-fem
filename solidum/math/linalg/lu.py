@@ -79,7 +79,9 @@ class LUSolver:
             )
         return x
 
-    def factorize(self, K: sp.spmatrix) -> LUFactorized:
+    def factorize(self, K: sp.spmatrix, *, reuse_analysis_of=None) -> LUFactorized:
+        # ``reuse_analysis_of`` (ADR 0040): SuperLU no separa el análisis
+        # simbólico; se ignora.
         K_csc = K.tocsc() if not sp.isspmatrix_csc(K) else K
         try:
             return LUFactorized(spla.splu(K_csc), diag=K_csc.diagonal())

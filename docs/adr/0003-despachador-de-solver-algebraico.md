@@ -160,7 +160,7 @@ Cada fase es un commit cerrado con tests, no bloquea las siguientes y deja Solid
 ### Fase 2 — Factorización reusable + LDLᵀ
 
 8. Implementar `FactorizedSolver` para `LUSolver` (vía `scipy.sparse.linalg.splu`) y para `CholeskySolver` (CHOLMOD ya lo soporta nativo).
-9. Flag `freeze_tangent_after_iter` en `NonlinearSolver` (Newton modificado).
+9. Flag `freeze_tangent_after_iter` en `NonlinearSolver` (Newton modificado). *Actualización (ADR 0040, 2026-11-17)*: el corrector de Newton reutiliza además, sin flag, la factorización de una matriz idéntica a la anterior, y `factorize(K, *, reuse_analysis_of=...)` permite a los backends que lo declaran (`reuses_analysis = True`, Pardiso) reutilizar el análisis simbólico de la factorización anterior de la misma cadena.
 10. `LDLTSolver`: envoltorio sobre `pypardiso` o sobre LDLᵀ propio basado en la factorización simbólica de CHOLMOD. Decisión deferida al inicio de fase 2 — ver alternativas en el último apartado.
 11. Sturm sequence: tras factorizar con LDLᵀ, exponer `n_negative_pivots` en el resultado del solver. `ArcLengthSolver` lo registra en `SolveResult.diagnostics` para detectar bifurcaciones automáticamente.
 

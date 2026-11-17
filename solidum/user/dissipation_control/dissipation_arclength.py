@@ -43,7 +43,7 @@ from solidum.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
 from solidum.logging import get_logger
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers import ArcLengthSolver, ArcProblem
-from solidum.math.solvers.corrector import CorrectionAborted
+from solidum.math.solvers.corrector import CorrectionAborted, releases_corrector
 from solidum.math.solvers.model_checks import (
     check_initial_tangent,
     ensure_statically_restrained,
@@ -284,6 +284,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
             - dlambda_step * float(F_ref @ U_n)
         )
 
+    @releases_corrector
     def solve(self, F_ext_ref: np.ndarray, step_callback=None, *,
               u0: np.ndarray | None = None,
               constant_load: np.ndarray | None = None) -> np.ndarray:

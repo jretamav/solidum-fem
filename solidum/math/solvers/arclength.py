@@ -102,6 +102,7 @@ from solidum.math.solvers.corrector import (
     CorrectionAborted,
     NewtonCorrector,
     default_calibration_scales,
+    releases_corrector,
 )
 from solidum.math.solvers.diagnostics import (
     IllPosedSystemError,
@@ -777,6 +778,7 @@ class ArcLengthSolver:
             sign = -1.0
         return du_t, sign
 
+    @releases_corrector
     def solve(self, F_ext_ref: np.ndarray, step_callback=None, *,
               u0: np.ndarray | None = None,
               constant_load: np.ndarray | None = None) -> np.ndarray:

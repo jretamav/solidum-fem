@@ -443,7 +443,8 @@ class IterativeSolver:
     def solve(self, K: sp.spmatrix, b: np.ndarray) -> np.ndarray:
         return self.factorize(K).solve(b)
 
-    def factorize(self, K: sp.spmatrix):
+    def factorize(self, K: sp.spmatrix, *, reuse_analysis_of=None):
+        # ``reuse_analysis_of`` (ADR 0040): sin análisis simbólico; se ignora.
         K = K.tocsr() if not sp.isspmatrix_csr(K) else K
         if K.dtype != np.float64:
             K = K.astype(np.float64)

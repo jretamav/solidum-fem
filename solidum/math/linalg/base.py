@@ -57,6 +57,14 @@ class FactorizedSolver(Protocol):
       (zonas rígidas, ν cerca de 1/2) también da pivotes pequeños. Lo
       exponen SuperLU, Pardiso y Cholesky; ``None`` si el backend no tiene
       pivotes que inspeccionar (el iterativo).
+    - ``is_current`` (``bool``): ``False`` si la factorización ya no se puede
+      usar porque otra la reemplazó (Pardiso guarda una sola por proceso).
+      Quien retiene un factor para reutilizarlo lo consulta antes de cada uso
+      (ADR 0040); ausente equivale a ``True``.
+
+    Quien obtiene un factor no debe modificar después la matriz que
+    factorizó: el backend puede conservar una referencia a ella (Pardiso la
+    usa en el refinamiento iterativo de cada resolución).
     """
 
     n_negative_pivots: int | None
@@ -81,11 +89,20 @@ class LinearAlgebraSolver(Protocol):
         """
         ...
 
-    def factorize(self, K: sp.spmatrix) -> FactorizedSolver:
+    def factorize(self, K: sp.spmatrix, *,
+                  reuse_analysis_of: FactorizedSolver | None = None) -> FactorizedSolver:
         """Factoriza ``K`` y retorna un objeto reutilizable para ``solve(b)``.
 
         Separar la fase cara (factorización) de la barata (sustitución
         triangular) habilita Newton modificado y reuso entre pasos.
+
+        ``reuse_analysis_of`` (ADR 0040): factor anterior de la misma cadena
+        de factorizaciones del consumidor (típicamente, el corrector de
+        Newton). Sólo lo reciben los backends que declaran el atributo de
+        clase ``reuses_analysis = True`` (hoy Pardiso, cuyo análisis simbólico
+        va aparte y se reutiliza si el patrón de ``K`` es el mismo); a los
+        demás el corrector los llama sin él, así que un backend nuevo sólo
+        tiene que aceptarlo si lo declara.
         """
         ...
 

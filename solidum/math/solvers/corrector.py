@@ -35,11 +35,13 @@ salvo donde se indique en el ADR.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 import numpy as np
+import scipy.sparse as sp
 
 from solidum.constants import EQUILIBRIUM_RTOL, LINE_SEARCH_MAX_BACKTRACKS, LINE_SEARCH_RHO
 from solidum.math.convergence import ConvergenceCriterion, ConvergenceState
@@ -53,6 +55,58 @@ from solidum.math.solvers.diagnostics import (
 )
 
 SolveFn = Callable[[Any, np.ndarray], np.ndarray]
+
+
+@dataclass
+class _Retained:
+    """Factorización retenida por el corrector y una copia de la matriz que
+    factorizó (ADR 0040): la copia sirve para reconocer una matriz idéntica y
+    para factorizarla otra vez si el backend perdió el factor."""
+
+    factor: Any
+    matrix: Any
+
+
+def _copy_matrix(A):
+    """Copia de ``A`` (datos, índices y punteros si es dispersa): quien la
+    pasó puede modificarla después en sitio."""
+    return A.copy() if sp.issparse(A) else np.array(A, copy=True)
+
+
+def _same_matrix(A, B) -> bool:
+    """``True`` si ``A`` y ``B`` son la misma matriz bit a bit: misma forma y
+    formato y, si son CSR/CSC, mismos punteros, índices y valores (un cero
+    explícito no equivale a una entrada ausente; un NaN nunca coincide)."""
+    if B is None or A.shape != B.shape:
+        return False
+    if sp.issparse(A) and sp.issparse(B):
+        if A.format != B.format or A.format not in ("csr", "csc") or A.nnz != B.nnz:
+            return False
+        return (np.array_equal(A.indptr, B.indptr) and np.array_equal(A.indices, B.indices)
+                and np.array_equal(A.data, B.data))
+    if isinstance(A, np.ndarray) and isinstance(B, np.ndarray):
+        return np.array_equal(A, B)
+    return False
+
+
+def _relative_residual(A, b: np.ndarray, x: np.ndarray) -> float:
+    """``‖b − A·x‖/‖b‖`` (``inf`` si no es finito; 0 con ``b`` nulo)."""
+    b_norm = float(np.linalg.norm(b))
+    if b_norm == 0.0:
+        return 0.0
+    rel = float(np.linalg.norm(b - A @ x)) / b_norm
+    return rel if np.isfinite(rel) else np.inf
+
+
+def _finite(x: np.ndarray) -> np.ndarray:
+    """Vigilancia única de la solución de toda resolución del corrector
+    (fresca, reutilizada o congelada): una no finita delata una tangente
+    singular o casi singular (ADR 0011)."""
+    if not np.all(np.isfinite(x)):
+        raise RuntimeError(
+            "La solución del sistema tangente no es finita (matriz singular o "
+            "casi singular).")
+    return x
 
 
 class CorrectionAborted(Exception):
@@ -243,7 +297,14 @@ class NewtonCorrector:
         self.near_nullspace = near_nullspace
         self._linalg = None
         self._linalg_size: int | None = None
-        self._frozen_factor = None
+        # Factorizaciones retenidas (ADR 0040): la última fresca, que sobrevive
+        # al paso y se reutiliza si la matriz es idéntica, y la congelada del
+        # Newton modificado, por paso.
+        self._last: _Retained | None = None
+        self._frozen: _Retained | None = None
+        # La cadena de análisis simbólicos (ADR 0040) se rompe hasta el
+        # próximo ``release`` en cuanto una factorización perturba pivotes.
+        self._chain_ok = True
         self._max_linear_residual = 0.0
         self._factor_inspector: Callable[[Any], None] | None = None
 
@@ -259,7 +320,7 @@ class NewtonCorrector:
     @property
     def frozen_factor(self):
         """Factorización congelada vigente (Newton modificado) o ``None``."""
-        return self._frozen_factor
+        return None if self._frozen is None else self._frozen.factor
 
     def _backend(self, n: int):
         if self._linalg is None or self._linalg_size != n:
@@ -277,7 +338,8 @@ class NewtonCorrector:
         _log.warning("Cholesky reportó no-positividad. Degradando a LU para el resto del análisis.")
         self._is_pd = False
         self._linalg = None
-        self._frozen_factor = None
+        self._last = None
+        self._frozen = None
         return self._backend(n)
 
     def inspect_next_factorization(self, inspector: Callable[[Any, Any], None]) -> None:
@@ -296,75 +358,166 @@ class NewtonCorrector:
         usuario."""
         self._factor_inspector = inspector
 
-    def _factorize(self, linalg, A, n: int):
-        """``linalg.factorize(A)`` con el fallback Cholesky → LU."""
+    def _factorize(self, linalg, A, n: int, previous=None):
+        """``linalg.factorize(A)`` con el fallback Cholesky → LU.
+        ``previous``: factor anterior de la cadena cuyo análisis simbólico
+        puede reutilizar el backend (ADR 0040); sólo llega a los backends que
+        lo declaran (``reuses_analysis``), así que los demás no tienen que
+        aceptar el argumento."""
         try:
+            if previous is not None:
+                return linalg.factorize(A, reuse_analysis_of=previous)
             return linalg.factorize(A)
         except CholeskyNotPositiveDefiniteError:
             return self._degrade_to_lu(n).factorize(A)
 
-    def _inspected_factorize(self, linalg, A, n: int):
+    def _inspected_factorize(self, linalg, A, n: int, previous=None):
         """Factoriza y entrega el factor al inspector pendiente (ver
         :meth:`inspect_next_factorization`)."""
         inspector, self._factor_inspector = self._factor_inspector, None
         try:
-            factor = self._factorize(linalg, A, n)
+            factor = self._factorize(linalg, A, n, previous)
         except RuntimeError:
             inspector(None, A)       # pivote exactamente nulo
             raise
         inspector(factor, A)
         return factor
 
+    def _current(self, entry: _Retained, linalg, n: int):
+        """El factor de ``entry`` listo para resolver: si otra factorización
+        lo reemplazó en el backend (``is_current`` falso), se factoriza otra
+        vez **su** matriz, lo que conserva la semántica del Newton
+        modificado (ADR 0040)."""
+        if not getattr(entry.factor, "is_current", True):
+            entry.factor = self._factorize(linalg, entry.matrix, n)
+        return entry.factor
+
+    def _fresh_factor(self, linalg, A, n: int):
+        """Factorización de ``A``: la última, si ``A`` es idéntica a la matriz
+        que factorizó (forma, formato, patrón y valores, bit a bit); si no,
+        una nueva, que pasa a ser la última (ADR 0040).
+
+        Con IMPL-EX o con material elástico la tangente no depende del
+        iterado y se reutiliza dentro del paso (y entre pasos elásticos); con
+        daño implícito, plasticidad, contacto o no linealidad geométrica la
+        matriz cambia y se factoriza como siempre. La comparación no pide
+        nada a materiales ni elementos."""
+        last = self._last
+        if last is not None and _same_matrix(A, last.matrix):
+            factor = self._current(last, linalg, n)
+            if self._factor_inspector is not None:
+                inspector, self._factor_inspector = self._factor_inspector, None
+                inspector(factor, last.matrix)
+            # Un inspector puede factorizar otra matriz en el mismo backend
+            # (Pardiso guarda una sola): se comprueba otra vez.
+            return self._current(last, linalg, n)
+        # Matriz nueva. La factorización anterior se suelta antes de calcular
+        # la nueva, para no tener dos vivas a la vez (memoria pico); sólo se
+        # conserva si el backend puede reutilizar su análisis simbólico, y
+        # entonces la memoria del factor ya es la del handle (Pardiso).
+        previous = None
+        if last is not None and self._chain_ok and getattr(linalg, "reuses_analysis", False):
+            previous = last.factor
+        self._last = last = None
+        # Se factoriza la copia, que sólo posee el corrector: el backend puede
+        # conservar la matriz (Pardiso la usa en el refinamiento de cada
+        # resolución), y quien pasó ``A`` puede modificarla después en sitio.
+        matrix = _copy_matrix(A)
+        if self._factor_inspector is not None:
+            factor = self._inspected_factorize(linalg, matrix, n, previous)
+        else:
+            factor = self._factorize(linalg, matrix, n, previous)
+        self._last = _Retained(factor, matrix)
+        self._watch_chain(factor)
+        return self._current(self._last, linalg, n)
+
+    def _watch_chain(self, factor) -> None:
+        """Rompe la cadena de análisis simbólicos (ADR 0040) para el resto
+        del análisis si la factorización perturbó pivotes: la matriz es
+        singular o casi (un mecanismo), y entonces la solución depende de la
+        escala de la factorización aunque su residuo sea pequeño. Medido: una
+        armadura corrotacional con mecanismo «convergía» a un colapso con el
+        análisis reutilizado en vez de dar tangente singular. Sin cadena, cada
+        factorización hace su propio análisis, como antes del ADR 0040. Un
+        análisis bien planteado no perturba pivotes y no pierde nada."""
+        if getattr(factor, "n_perturbed_pivots", 0):
+            self._chain_ok = False
+
     def solve(self, A, b: np.ndarray, iteration: int = 0) -> np.ndarray:
-        """``A·x = b`` con la política del corrector: fallback Cholesky → LU
-        y, con ``freeze_tangent_after_iter``, factorización congelada a
-        partir de la iteración indicada. Propaga ``RuntimeError`` del
-        backend (tangente singular)."""
+        """``A·x = b`` con la política del corrector: fallback Cholesky → LU,
+        factorización reutilizada si ``A`` es idéntica a la última
+        factorizada (ADR 0040) y, con ``freeze_tangent_after_iter``,
+        factorización congelada a partir de la iteración indicada. Propaga
+        ``RuntimeError`` del backend (tangente singular) y lo lanza si la
+        solución no es finita."""
         n = A.shape[0]
         linalg = self._backend(n)
-        if self.freeze_tangent_after_iter is None:
-            if self._factor_inspector is not None:
-                # Misma operación que ``linalg.solve`` (factorizar y resolver),
-                # con el factor a la vista del inspector. La vigilancia de una
-                # solución no finita es la de ``LUSolver.solve``.
-                x = self._inspected_factorize(linalg, A, n).solve(b)
-                if not np.all(np.isfinite(x)):
-                    raise RuntimeError(
-                        "La solución del sistema tangente no es finita (matriz "
-                        "singular o casi singular).")
-            else:
-                try:
-                    x = linalg.solve(A, b)
-                except CholeskyNotPositiveDefiniteError:
-                    x = self._degrade_to_lu(n).solve(A, b)
-            self._record_linear_residual(A, b, x)
-            return x
-        if iteration < self.freeze_tangent_after_iter or self._frozen_factor is None:
-            if self._factor_inspector is not None:
-                self._frozen_factor = self._inspected_factorize(linalg, A, n)
-            else:
-                self._frozen_factor = self._factorize(linalg, A, n)
-            x = self._frozen_factor.solve(b)
-            self._record_linear_residual(A, b, x)
-            return x
-        # Tangente congelada: se resuelve con la matriz de una iteración
-        # anterior a propósito, así que el residuo frente a A no significa nada.
-        return self._frozen_factor.solve(b)
+        if (self.freeze_tangent_after_iter is not None and self._frozen is not None
+                and iteration >= self.freeze_tangent_after_iter
+                and self._frozen.matrix.shape == A.shape):
+            # Tangente congelada: se resuelve con la matriz de una iteración
+            # anterior a propósito, así que el residuo frente a A no significa
+            # nada. Si las restricciones cambiaron el número de incógnitas
+            # entre iteraciones (contacto), la congelada no sirve y se
+            # factoriza la matriz nueva.
+            return _finite(self._current(self._frozen, linalg, n).solve(b))
+        factor = self._fresh_factor(linalg, A, n)
+        if self.freeze_tangent_after_iter is not None:
+            self._frozen = self._last
+        x = self._solve_with_reference_fallback(factor, linalg, A, b, n)
+        self._record_linear_residual(A, b, x)
+        return x
+
+    def _solve_with_reference_fallback(self, factor, linalg, A, b: np.ndarray, n: int):
+        """``factor.solve(b)``; si el factor reutilizó el análisis simbólico de
+        otra matriz (``shares_analysis``) y la resolución no es exacta —residuo
+        relativo por encima de ``EQUILIBRIUM_RTOL``, el umbral con el que la
+        red de seguridad declara casi singular una resolución (ADR 0019), o
+        solución no finita—, se repite con la factorización de referencia, de
+        análisis propio (ADR 0040).
+
+        En un sistema bien condicionado el análisis reutilizado sólo cambia el
+        redondeo; en uno casi singular (un mecanismo) el redondeo se amplifica
+        con el condicionamiento y la solución depende de la escala de la
+        factorización: medido, una armadura corrotacional con mecanismo
+        «convergía» a un colapso en lugar de dar tangente singular. Con la
+        de referencia, el diagnóstico es el de siempre."""
+        try:
+            x = factor.solve(b)
+        except RuntimeError:
+            if not getattr(factor, "shares_analysis", False):
+                raise
+            x = None
+        if getattr(factor, "shares_analysis", False):
+            if x is None or not (_relative_residual(A, b, x) <= EQUILIBRIUM_RTOL):
+                entry = self._last
+                entry.factor = None
+                entry.factor = factor = self._factorize(linalg, entry.matrix, n)
+                self._watch_chain(factor)
+                x = factor.solve(b)
+        return _finite(x)
 
     def _record_linear_residual(self, A, b: np.ndarray, x: np.ndarray) -> None:
         """Telemetría del ADR 0019: residuo relativo de la resolución (un
         producto matriz-vector). No interviene en el algoritmo."""
-        b_norm = float(np.linalg.norm(b))
-        if b_norm > 0.0:
-            rel = float(np.linalg.norm(b - A @ x)) / b_norm
-            if not np.isfinite(rel):
-                rel = np.inf
-            self._max_linear_residual = max(self._max_linear_residual, rel)
+        if float(np.linalg.norm(b)) > 0.0:
+            self._max_linear_residual = max(self._max_linear_residual,
+                                            _relative_residual(A, b, x))
 
     def reset_step(self) -> None:
         """Descarta la factorización congelada: la tangente cambia con el
-        iterado convergido, así que no vale para el paso siguiente."""
-        self._frozen_factor = None
+        iterado convergido, así que no vale para el paso siguiente. La última
+        factorización se conserva: sólo se reutiliza con una matriz idéntica."""
+        self._frozen = None
+
+    def release(self) -> None:
+        """Suelta las factorizaciones retenidas. Lo llama cada solver al
+        terminar su ``solve()``: con LU, Cholesky o el iterativo el factor
+        ocupa memoria propia, y la primera factorización del análisis
+        siguiente hace su propio análisis simbólico (ADR 0040)."""
+        self._last = None
+        self._frozen = None
+        self._chain_ok = True
 
     # ------------------------------------------------------------------
     # Bucle de corrección
@@ -502,6 +655,33 @@ class NewtonCorrector:
                 return alpha, x_trial, state, delta_norm
             alpha *= LINE_SEARCH_RHO
         return alpha, x_trial, state, delta_norm
+
+
+def releases_corrector(solve):
+    """Decorador del ``solve()`` de todo solver con uno o más
+    :class:`NewtonCorrector` como atributos (ADR 0040): suelta sus
+    factorizaciones retenidas al empezar —la primera factorización del
+    análisis hace su propio análisis simbólico, sin depender de un análisis
+    anterior— y al terminar —con LU, Cholesky o el iterativo el factor ocupa
+    memoria propia—. Una prueba exige el decorador en todo solver registrado
+    que tenga corrector."""
+    @functools.wraps(solve)
+    def wrapper(self, *args, **kwargs):
+        _release_correctors(self)
+        try:
+            return solve(self, *args, **kwargs)
+        finally:
+            _release_correctors(self)
+    wrapper.__releases_corrector__ = True
+    return wrapper
+
+
+def _release_correctors(solver) -> None:
+    """Suelta todo :class:`NewtonCorrector` que el solver guarde como
+    atributo (un esquema escalonado puede tener uno por campo)."""
+    for value in vars(solver).values():
+        if isinstance(value, NewtonCorrector):
+            value.release()
 
 
 def default_calibration_scales(F_ext: np.ndarray, F_int: np.ndarray, K) -> tuple[float, float]:

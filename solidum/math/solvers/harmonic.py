@@ -42,6 +42,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
+from solidum.bc.constraints import reduce_matrix
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.solvers._shared import LinearizedStateMixin, _log
 from solidum.registry import SolverRegistry
@@ -161,9 +162,9 @@ class HarmonicSolver(LinearizedStateMixin):
         cs = self.assembler.constraint_set
         T, _g = cs.build(self.assembler.ndof)
 
-        K_red = (T.T @ K @ T).tocsr()
-        M_red = (T.T @ M @ T).tocsr()
-        C_red = (T.T @ C @ T).tocsr() if (alpha_r != 0.0 or beta_r != 0.0) \
+        K_red = reduce_matrix(K, T)
+        M_red = reduce_matrix(M, T)
+        C_red = reduce_matrix(C, T) if (alpha_r != 0.0 or beta_r != 0.0) \
                 else sp.csr_matrix(K_red.shape, dtype=K_red.dtype)
 
         ndof = self.assembler.ndof

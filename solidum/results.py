@@ -1017,7 +1017,9 @@ def build_solve_result(
     ndof = U.shape[0]
 
     if F_int is None:
-        _, F_int = assembler.assemble_non_linear_system(U)
+        # La del paso confirmado si U es ese estado (la misma que la última
+        # fila de la historia); si no, ensambla en U (ADR 0040, punto 4).
+        F_int = assembler.internal_forces_at(U)
 
     cs = assembler.constraint_set
     support_dofs: list[int] = []

@@ -9,6 +9,6 @@ transitivo entrarán en la fase 2 cuando aparezca el primer caso de uso (ver
 ``docs/adr/0004-imposicion-de-condiciones-de-dirichlet.md``).
 """
 
-from solidum.bc.constraints import AffineConstraint, ConstraintSet
+from solidum.bc.constraints import AffineConstraint, ConstraintSet, reduce_matrix
 
-__all__ = ["AffineConstraint", "ConstraintSet"]
+__all__ = ["AffineConstraint", "ConstraintSet", "reduce_matrix"]

@@ -62,6 +62,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from solidum.constants import LUMPED_MASS_OFF_DIAGONAL_RTOL
+from solidum.bc.constraints import reduce_matrix
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.solvers._shared import (
     TransientTerminationMixin,
@@ -290,8 +291,8 @@ class CentralDifferenceSolver(TransientTerminationMixin):
         T, g = cs.build(self.assembler.ndof)
         free_dofs = cs.free_dofs(self.assembler.ndof)
 
-        K_red = (T.T @ K @ T).tocsr()
-        M_red = (T.T @ M @ T).tocsr()
+        K_red = reduce_matrix(K, T)
+        M_red = reduce_matrix(M, T)
         C_red = alpha_r * M_red + beta_r * K_red
         F_dir = T.T @ (K @ g)
 

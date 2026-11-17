@@ -364,8 +364,14 @@ class OutputWriter:
         if self.columns:
             row = [n, factor]
             F_int = None
-            if self._read_trial or any(c["kind"] in ("reaction", "energy") for c in self.columns):
+            if self._read_trial:
+                # Análisis sin estado confirmado (lineal): las magnitudes de
+                # elemento se leen del estado de prueba, que deja este
+                # ensamblaje en U.
                 _, F_int = self.assembler.assemble_non_linear_system(U)
+            elif any(c["kind"] in ("reaction", "energy") for c in self.columns):
+                # La F_int del paso confirmado, sin reensamblar (ADR 0040).
+                F_int = self.assembler.internal_forces_at(U)
             energies = self._energies(U, F_int) if self._F_prev is not None else None
             for c in self.columns:
                 if c["kind"] == "displacement":

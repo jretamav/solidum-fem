@@ -63,7 +63,7 @@ class LDLTSolver:
             "LDLTSolver no implementado. Use LUSolver mientras tanto."
         )
 
-    def factorize(self, K: sp.spmatrix):  # pragma: no cover
+    def factorize(self, K: sp.spmatrix, *, reuse_analysis_of=None):  # pragma: no cover
         raise LDLTNotAvailableError(
             "LDLTSolver.factorize no implementado. Use LUSolver.factorize mientras tanto."
         )

@@ -164,7 +164,9 @@ class CholeskySolver:
     def solve(self, K: sp.spmatrix, b: np.ndarray) -> np.ndarray:
         return self.factorize(K).solve(b)
 
-    def factorize(self, K: sp.spmatrix) -> CholeskyFactorized:
+    def factorize(self, K: sp.spmatrix, *, reuse_analysis_of=None) -> CholeskyFactorized:
+        # ``reuse_analysis_of`` (ADR 0040): se ignora; cada factorización
+        # hace su propio análisis, como hasta ahora.
         K_csc = K.tocsc() if not sp.isspmatrix_csc(K) else K
         n = K_csc.shape[0]
         if n == 0:

@@ -194,7 +194,11 @@ import scipy.sparse.linalg as spla
 from solidum.constants import ZERO_TOL
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers._shared import _log, domain_is_symmetric
-from solidum.math.solvers.corrector import NewtonCorrector, default_calibration_scales
+from solidum.math.solvers.corrector import (
+    NewtonCorrector,
+    default_calibration_scales,
+    releases_corrector,
+)
 from solidum.math.solvers.model_checks import ensure_statically_restrained
 from solidum.registry import SolverRegistry
 
@@ -222,7 +226,13 @@ class {{Name}}:
         # TODO: parámetros adicionales. Imposición de Dirichlet: usa
         # assembler.reduce(K, F, U_current=..., load_factor=...) y
         # assembler.expand(u_red, T, g) — eliminación directa (ADR 0004).
+        # Una matriz propia (masa, amortiguamiento) se reduce con
+        # solidum.bc.constraints.reduce_matrix(M, T), nunca con T.T @ M @ T
+        # (ADR 0040; una prueba lo vigila).
 
+    # Suelta las factorizaciones que el corrector retiene para reutilizarlas
+    # (ADR 0040); obligatorio en todo solver con corrector (lo exige una prueba).
+    @releases_corrector
     def solve(self, F_ext_global: np.ndarray, step_callback=None) -> np.ndarray:
         domain = self.assembler.domain
         ndof = domain.total_dofs

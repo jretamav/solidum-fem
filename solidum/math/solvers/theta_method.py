@@ -23,6 +23,7 @@ from typing import Callable
 
 import numpy as np
 
+from solidum.bc.constraints import reduce_matrix
 from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import (
     CholeskyNotPositiveDefiniteError,
@@ -477,8 +478,8 @@ class ThetaMethodSolver(TransientTerminationMixin):
         T_free = T_full[free_dofs].copy()
 
         # --- Matrices reducidas y factorización única ---
-        K_ff = (T_op.T @ K @ T_op).tocsr()
-        C_ff = (T_op.T @ C @ T_op).tocsr()
+        K_ff = reduce_matrix(K, T_op)
+        C_ff = reduce_matrix(C, T_op)
 
         A = (C_ff + (theta * dt) * K_ff).tocsr()
         B = (C_ff - ((1.0 - theta) * dt) * K_ff).tocsr()

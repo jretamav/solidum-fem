@@ -5,7 +5,7 @@ from typing import Callable
 import numpy as np
 import scipy.sparse as sp
 
-from solidum.bc.constraints import ConstraintSet
+from solidum.bc.constraints import ConstraintSet, reduce_matrix
 from solidum.constants import BATCH_ASSEMBLY_DEFAULT, BATCH_PARALLEL_DEFAULT
 from solidum.core.domain import Domain
 from solidum.core.element import Element
@@ -131,6 +131,12 @@ class Assembler:
         # Caché del ConstraintSet (ADR 0004 fase 1).
         self._constraint_set: ConstraintSet | None = None
 
+        # Fuerzas internas del paso confirmado (ADR 0040, punto 4): ``(U, F_int)``
+        # de la última evaluación (``assemble_non_linear_system``) y, tras el
+        # commit, las del estado confirmado. Ver :meth:`internal_forces_at`.
+        self._last_evaluation: tuple[np.ndarray, np.ndarray] | None = None
+        self._converged_forces: tuple[np.ndarray, np.ndarray] | None = None
+
         # Casi-núcleo del sistema reducido para el precondicionador AMG
         # (ADR 0018), con la huella (topología, restricciones) con que se
         # calculó.
@@ -189,6 +195,7 @@ class Assembler:
         if self.domain.total_dofs == 0:
             self.domain.generate_equation_numbers()
 
+        self.forget_converged_forces()
         self.ndof = self.domain.total_dofs
         elements = list(self.domain.elements.values())
         self._elem_dof_indices = [self._get_element_global_indices(e) for e in elements]
@@ -323,6 +330,7 @@ class Assembler:
         existente, ...). El estado interno de las familias vuelve a los
         elementos, así que no se pierde historia."""
         self._release_families()
+        self.forget_converged_forces()
         self._topology_built = False
         self._topology_key = None
         self._constraint_set = None
@@ -365,6 +373,10 @@ class Assembler:
     def assemble_non_linear_system(self, U_current: np.ndarray):
         """Construye la matriz tangente global y el vector de fuerzas internas a máxima velocidad."""
         self._ensure_topology()
+        # La evaluación cambia el estado de prueba (ADR 0040, punto 4): las
+        # fuerzas del paso confirmado dejan de describirlo, también si la
+        # evaluación falla a medias.
+        self.forget_converged_forces()
 
         F_int_global = np.zeros(self.ndof)
         data = self._data
@@ -387,7 +399,44 @@ class Assembler:
             p0 = self._elem_ptr[pos]
             data[p0:p0 + n_idx ** 2] = K_e.ravel()
 
+        self._last_evaluation = (U_current.copy(), F_int_global.copy())
         return self._to_csr(data), F_int_global
+
+    def internal_forces_at(self, U: np.ndarray) -> np.ndarray:
+        """Fuerzas internas ``F_int(U)`` con el estado interno vigente (ADR 0040).
+
+        Si ``U`` es, bit a bit, el estado que acaba de confirmarse
+        (``commit_all_states``) y nada lo ha cambiado después, devuelve la
+        ``F_int`` de la evaluación que se confirmó, sin ensamblar: es la que
+        aceptó el criterio de convergencia (con daño, idéntica a la de un
+        reensamblaje; con *return mapping*, igual salvo el redondeo). Si no,
+        ensambla en ``U``, lo que deja el estado de prueba en ``U`` (lo
+        necesita, p. ej., el análisis lineal, que no confirma estado).
+
+        Devuelve un arreglo de sólo lectura en el primer caso.
+        """
+        U = np.asarray(U, dtype=np.float64)
+        self._ensure_topology()     # un elemento añadido olvida el registro
+        record = self._converged_forces
+        if record is not None and record[0].shape == U.shape and np.array_equal(record[0], U):
+            F_int = record[1].view()
+            F_int.flags.writeable = False
+            return F_int
+        return self.assemble_non_linear_system(U)[1]
+
+    def forget_converged_forces(self) -> None:
+        """Olvida las fuerzas del paso confirmado (ADR 0040, punto 4).
+
+        Punto único de invalidación, público: lo llama todo lo que pueda
+        cambiar ``F_int`` sin cambiar ``U``. En el ensamblador, el intento de
+        paso nuevo, el pseudo-tiempo, la topología, ``invalidate`` y toda
+        evaluación. Fuera de él —un solver o un módulo de usuario que
+        actualice un campo acoplado (la temperatura de un esquema
+        termomecánico escalonado), active o elimine elementos o cambie el
+        contacto tras el commit— debe llamarlo también; si no, la historia y
+        las reacciones tomarían la ``F_int`` anterior con la misma ``U``."""
+        self._converged_forces = None
+        self._last_evaluation = None
 
     # ------------------------------------------------------------------
     # Imposición de Dirichlet por eliminación directa (ADR 0004 fase 1).
@@ -555,11 +604,16 @@ class Assembler:
         ``U_current`` (dirección tangente ``∂U/∂λ``) la parte impuesta es
         ``load_factor·(g_indep − g_start)``.
 
+        Las restricciones se leen en cada llamada (``constraint_set``, con
+        su huella): un cambio entre dos iteraciones surte efecto en la
+        siguiente reducción. ``K_red`` sale de :func:`reduce_matrix`, que con
+        sólo apoyos extrae la submatriz de los DOF libres (ADR 0040).
+
         Returns
         -------
         K_red, F_red, T, g
-            ``K_red = TᵀKT``, ``F_red = Tᵀ(F − K·g)``, el operador ``T`` y
-            el vector ``g``. La reconstrucción se hace con :meth:`expand`.
+            ``K_red = TᵀKT`` (CSR), ``F_red = Tᵀ(F − K·g)``, el operador ``T``
+            y el vector ``g``. La reconstrucción se hace con :meth:`expand`.
         """
         cs = self.constraint_set
         T, g_indep = cs.build(self.ndof)
@@ -575,7 +629,7 @@ class Assembler:
             u_free = U_current[free_dofs]
             g = T @ u_free + g_target - U_current
 
-        K_red = T.T @ K @ T
+        K_red = reduce_matrix(K, T)
         F_red = T.T @ (F - K @ g)
         return K_red, F_red, T, g
 
@@ -815,8 +869,8 @@ class Assembler:
         """
         cs = self.constraint_set
         T, _g_indep = cs.build(self.ndof)
-        K_red = T.T @ K @ T
-        M_red = T.T @ M @ T
+        K_red = reduce_matrix(K, T)
+        M_red = reduce_matrix(M, T)
         return K_red, M_red, T
 
     def commit_all_states(self):
@@ -847,6 +901,9 @@ class Assembler:
                 f"NewtonNewmarkSolver, NewtonHHTSolver, CentralDifferenceSolver) o integre "
                 f"el material de forma implícita (integration='implicit').")
         self._commit_states()
+        # La última evaluación es la del estado que se confirma (ADR 0040,
+        # punto 4); sin evaluación desde el commit anterior, no hay registro.
+        self._converged_forces, self._last_evaluation = self._last_evaluation, None
         if self._pseudo_time_increment is not None:
             self._pseudo_time_last_increment = self._pseudo_time_increment
         self._pseudo_time_increment = None
@@ -885,6 +942,7 @@ class Assembler:
         """
         self._step_attempt_open = True
         self._pseudo_time_increment = None
+        self.forget_converged_forces()
         for elem in self.domain.elements.values():
             elem.prepare_step(U_committed)
         if pseudo_time_increment is not None:
@@ -909,6 +967,7 @@ class Assembler:
                 f"número finito > 0 (recibido {increment!r}).")
         self._step_attempt_open = True
         self._pseudo_time_increment = dtau
+        self.forget_converged_forces()
         pt_materials = self._pseudo_time_materials()
         if not pt_materials:
             return

@@ -313,6 +313,20 @@ Bajo. La longitud característica reutiliza la pieza del ADR 0028; el pseudo-tie
 Bajo. El lector reutiliza el contrato de la celda de referencia del ADR 0022 y la receta por grupo del ADR 0020; las mallas de primer orden existentes se leen igual.
 ```
 
+## Fase 15 — Rendimiento de los pasos incrementales
+
+**Estado**: implementado (ADR 0040, 17 de noviembre de 2026).
+
+- **Pardiso por llamada directa a la MKL**, con análisis simbólico reutilizado dentro de la cadena de factorizaciones de un análisis y patrón de la cadena estable frente a las entradas que se anulan.
+- **Factorización reutilizada con la matriz idéntica** en el corrector de Newton compartido, sin contratos que declarar.
+- **Una sola reducción de matrices**, `reduce_matrix`, que con sólo apoyos extrae la submatriz de los libres.
+- **Fuerzas internas del paso confirmado** para la historia y las reacciones, sin reensamblar.
+- Viga de Petersson con Quad8 (25 108 incógnitas, IMPL-EX): 200 pasos de 52 a 15,5 s.
+
+```callout Riesgo de arquitectura
+Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con ella cambian en el redondeo (≤ 4·10⁻¹⁵ relativo, sin acumularse), lo que el usuario aceptó. Pruebas que fallan si una de las optimizaciones deja de actuar.
+```
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

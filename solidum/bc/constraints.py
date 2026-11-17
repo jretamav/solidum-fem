@@ -35,6 +35,56 @@ import numpy as np
 import scipy.sparse as sp
 
 
+def reduce_matrix(K, T):
+    """Matriz reducida ``Tᵀ·K·T`` en CSR (ADR 0040, punto 3).
+
+    Es la única implementación de la reducción de una matriz por el operador
+    ``u = T·u_libre + g`` (ADR 0004): la usan ``Assembler.reduce`` y
+    ``reduce_pair`` y los solvers que reducen su propia rigidez, masa o
+    amortiguamiento. Decide en cada llamada con el ``T`` que recibe, es decir,
+    con las restricciones vigentes (el contacto las cambiará entre
+    iteraciones):
+
+    - si ``T`` es una selección de columnas (sólo apoyos; también el esclavo
+      que el cierre deja sin maestros, cuya fila es nula), ``Tᵀ·K·T`` es la
+      submatriz ``K[libres][:, libres]``, que se extrae sin productos;
+    - si no (restricciones multipunto), el producto disperso.
+
+    Las dos ramas dan la misma matriz entrada por entrada y con el mismo
+    patrón: el producto disperso de SciPy descarta las entradas que suman
+    exactamente cero, y la submatriz descarta igual los ceros explícitos de
+    ``K``. Una ``K`` densa se reduce con el producto y devuelve lo que este
+    devuelva.
+    """
+    if not (sp.issparse(K) and sp.issparse(T)):
+        return T.T @ K @ T
+    rows = _selected_rows(T)
+    if rows is None:
+        return sp.csr_matrix(T.T @ K @ T)
+    K_csr = sp.csr_matrix(K) if K.format != "csr" else K
+    K_red = K_csr[rows][:, rows]
+    K_red.sum_duplicates()          # forma canónica: índices ordenados y únicos
+    K_red.eliminate_zeros()
+    return K_red
+
+
+def _selected_rows(T) -> np.ndarray | None:
+    """Filas de ``T`` si es una selección de columnas: cada columna ``k`` tiene
+    un único 1 en la fila ``rows[k]`` y las filas van en orden ascendente
+    (``Tᵀ·K·T = K[rows][:, rows]``); ``None`` si no. Cuesta un recorrido de
+    ``T``, sin productos."""
+    if T.format != "csr":
+        return None
+    n_cols = T.shape[1]
+    if T.nnz != n_cols:
+        return None
+    rows = np.flatnonzero(np.diff(T.indptr))
+    if (rows.size != n_cols or not np.array_equal(T.indices, np.arange(n_cols))
+            or not np.all(T.data == 1.0)):
+        return None
+    return rows
+
+
 @dataclass(frozen=True)
 class AffineConstraint:
     """Restricción afín ``u_s = g + Σ α_i · u_mi``.
@@ -79,6 +129,8 @@ class ConstraintSet:
         self._closed: bool = False
         self._cache: tuple[sp.csr_matrix, np.ndarray, int] | None = None
         self._g_cache: tuple[sp.csr_matrix, np.ndarray, int] | None = None
+        # DOF libres y su ``ndof`` (ver :meth:`free_dofs`).
+        self._free_cache: tuple[np.ndarray, int] | None = None
 
     # ------------------------------------------------------------------
     # API de declaración
@@ -137,6 +189,15 @@ class ConstraintSet:
         coefficients: tuple[float, ...],
         g: float,
     ) -> None:
+        # Un número de ecuación negativo es el de un DOF sin numerar (centinela
+        # −1 de ``Node.add_dof``): marcaría en silencio otro DOF como
+        # restringido (validación temprana, Reglas §1).
+        negativos = [d for d in (slave_dof, *masters) if int(d) < 0]
+        if negativos:
+            raise ValueError(
+                f"Restricción con DOF de número negativo {negativos} (esclavo {slave_dof}, "
+                f"maestros {list(masters)}): los grados de libertad deben estar numerados "
+                f"(Domain.generate_equation_numbers) antes de declarar restricciones.")
         # Se compara con lo declarado, no con lo cerrado: redeclarar la misma
         # restricción tras un ``build`` sigue siendo idempotente.
         existing = self._declared.get(slave_dof)
@@ -163,6 +224,7 @@ class ConstraintSet:
         self._closed = False
         self._cache = None
         self._g_cache = None
+        self._free_cache = None
 
     # ------------------------------------------------------------------
     # Cierre transitivo y construcción de T
@@ -266,8 +328,8 @@ class ConstraintSet:
         if self._cache is not None and self._cache[2] == ndof:
             return self._cache[0], self._cache[1]
 
-        slave_set = set(self._constraints.keys())
-        free_dofs = [i for i in range(ndof) if i not in slave_set]
+        free_array = self._free_dofs_array(ndof)
+        free_dofs = free_array.tolist()
         free_idx = {dof: k for k, dof in enumerate(free_dofs)}
         n_free = len(free_dofs)
 
@@ -299,6 +361,7 @@ class ConstraintSet:
             shape=(ndof, n_free),
         )
         self._cache = (T, g_indep, ndof)
+        self._free_cache = (free_array, ndof)
         return T, g_indep
 
     def build_g(self, ndof: int, dirichlet_values: np.ndarray) -> np.ndarray:
@@ -496,9 +559,26 @@ class ConstraintSet:
         )
 
     def free_dofs(self, ndof: int) -> np.ndarray:
-        """DOFs libres (no esclavos), ordenados."""
-        slave_set = set(self._constraints.keys())
-        return np.array([i for i in range(ndof) if i not in slave_set], dtype=np.int64)
+        """DOFs libres (no esclavos), ordenados. Arreglo de sólo lectura,
+        calculado una vez por conjunto de restricciones y ``ndof`` (ADR 0040):
+        añadir una restricción lo invalida."""
+        if self._free_cache is not None and self._free_cache[1] == ndof:
+            return self._free_cache[0]
+        free = self._free_dofs_array(ndof)
+        self._free_cache = (free, ndof)
+        return free
+
+    def _free_dofs_array(self, ndof: int) -> np.ndarray:
+        """Los DOF que no son esclavos de ninguna restricción, en orden
+        ascendente (sólo lectura). Las claves de ``_constraints`` son las
+        mismas antes y después del cierre."""
+        mask = np.ones(int(ndof), dtype=bool)
+        slaves = np.fromiter(self._constraints.keys(), dtype=np.int64,
+                             count=len(self._constraints))
+        mask[slaves[slaves < ndof]] = False
+        free = np.flatnonzero(mask).astype(np.int64, copy=False)
+        free.flags.writeable = False
+        return free
 
     def __len__(self) -> int:
         return len(self._constraints)

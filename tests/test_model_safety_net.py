@@ -430,13 +430,14 @@ class TestOutOfMemoryMessage(unittest.TestCase):
 
     @unittest.skipUnless(_HAS_PARDISO, "pypardiso no instalado")
     def test_pardiso_out_of_memory_suggests_iterative(self):
-        from pypardiso.pardiso_wrapper import PyPardisoError
-        from solidum.math.linalg import PardisoSolver  # type: ignore[attr-defined]
+        """El código −2 de la MKL (memoria insuficiente) en la fase de
+        factorización da el ``MemoryError`` con la salida para el usuario."""
+        from solidum.math.linalg.pardiso import PardisoError, PardisoSolver
         d, _ = plate(clamp)
         a = Assembler(d); a.assemble_system()
         K, _, _, _ = a.reduce(a.K_global.tocsr(), np.zeros(d.total_dofs))
         handle = PardisoSolver._handle()
-        with mock.patch.object(handle, "factorize", side_effect=PyPardisoError(-2)):
+        with mock.patch.object(handle, "call", side_effect=PardisoError(-2, 12)):
             with self.assertRaises(MemoryError) as cm:
                 PardisoSolver().factorize(K)
         self.assertIn("linear_algebra: iterative", str(cm.exception))
