@@ -349,8 +349,35 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
     return errors
 
 
-def collect_specs(specs_dir: Path) -> List[Path]:
-    """Lista specs reales (excluye plantillas `_template_*.md`)."""
-    return sorted(
+def collect_specs(specs_dir: Path, committed_only: bool = False) -> List[Path]:
+    """Lista specs reales (excluye plantillas `_template_*.md`).
+
+    Con ``committed_only=True`` devuelve sólo las que Git conoce (en el índice
+    o en un commit): los manuales reflejan el estado guardado del repositorio,
+    y una spec en borrador que espera la decisión del usuario, todavía sin
+    guardar, no debe publicarse. Fuera de un repositorio Git (o sin el
+    ejecutable ``git``) no filtra nada.
+    """
+    paths = sorted(
         p for p in Path(specs_dir).glob("*.md") if not p.name.startswith("_template")
     )
+    if committed_only:
+        tracked = _git_tracked_files(Path(specs_dir))
+        if tracked is not None:
+            paths = [p for p in paths if p.resolve() in tracked]
+    return paths
+
+
+def _git_tracked_files(directory: Path) -> Optional[set]:
+    """Rutas absolutas que Git conoce dentro de ``directory``, o ``None`` si
+    ``directory`` no está en un repositorio Git o no hay ``git``."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "-z", "--", "."],
+            cwd=directory, capture_output=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return {(directory / f).resolve() for f in out.decode("utf-8").split("\0") if f}

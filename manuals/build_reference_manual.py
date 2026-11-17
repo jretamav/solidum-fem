@@ -204,7 +204,15 @@ def build_groups() -> list[tuple[str, list[str]]]:
     unclassified: list[str] = []
     parsed: dict[str, object] = {}
 
-    for path in collect_specs(SPECS_DIR):
+    # Sólo lo guardado en Git: un borrador sin guardar (spec que espera la
+    # decisión del usuario) no se publica, y el manual refleja el commit que
+    # estampa su colofón.
+    omitidas = sorted(set(collect_specs(SPECS_DIR)) - set(collect_specs(SPECS_DIR, committed_only=True)))
+    if omitidas:
+        print("  Specs sin guardar en Git (no entran al manual): "
+              + ", ".join(p.name for p in omitidas))
+
+    for path in collect_specs(SPECS_DIR, committed_only=True):
         spec = parse_spec(path)
         parsed[spec.name] = spec
         try:
@@ -269,14 +277,14 @@ def build_user_groups() -> list[tuple[str, list[str]]]:
     import solidum
     from solidum.tools.spec import SpecError, collect_specs, parse_spec, validate_schema
 
-    main_names = {parse_spec(p).name for p in collect_specs(SPECS_DIR)}
+    main_names = {parse_spec(p).name for p in collect_specs(SPECS_DIR, committed_only=True)}
     available = solidum.available_user_modules()
     groups: list[tuple[str, list[str]]] = []
     problems: list[str] = []
 
     for specs_dir in sorted(p for p in USER_DOCS_DIR.glob("*/specs") if p.is_dir()):
         module = specs_dir.parent.name
-        paths = collect_specs(specs_dir)
+        paths = collect_specs(specs_dir, committed_only=True)
         if not paths:
             continue
         if module not in available:

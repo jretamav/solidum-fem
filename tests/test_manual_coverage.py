@@ -52,7 +52,7 @@ def _grouped_names() -> list[str]:
 def test_toda_spec_entra_en_algun_capitulo():
     """Cada spec de ``docs/specs/`` aparece exactamente una vez en el manual."""
     grouped = _grouped_names()
-    expected = {parse_spec(p).name for p in collect_specs(SPECS_DIR)}
+    expected = {parse_spec(p).name for p in collect_specs(SPECS_DIR, committed_only=True)}
 
     faltantes = expected - set(grouped)
     assert not faltantes, (
@@ -109,7 +109,7 @@ def _user_specs_on_disk() -> set[tuple[str, str]]:
     """(módulo, nombre) de toda spec de ``docs/user/*/specs/``."""
     return {(d.parent.name, parse_spec(p).name)
             for d in USER_DOCS_DIR.glob("*/specs") if d.is_dir()
-            for p in collect_specs(d)}
+            for p in collect_specs(d, committed_only=True)}
 
 
 def _modulos_de_usuario() -> list[str]:
@@ -347,3 +347,25 @@ def test_ningun_componente_de_modulo_de_usuario_en_el_cuerpo_del_manual(manual_t
                        for t in _encabezados_md(md)
                        if _primer_termino(t) not in en_el_apendice})
     assert not perdidos, f"Entradas de catálogo de módulos de usuario perdidas: {perdidos}"
+
+
+def test_spec_sin_guardar_en_git_no_entra_al_manual(tmp_path):
+    """Una spec que Git no conoce (borrador que espera la decisión del usuario)
+    no entra en los manuales; fuera de un repositorio no se filtra nada.
+
+    Antes había que apartar a mano los borradores en cada compilación."""
+    import subprocess
+
+    if shutil.which("git") is None:
+        pytest.skip("Sin el ejecutable git.")
+    fuente = collect_specs(SPECS_DIR, committed_only=True)[0]
+    for nombre in ("Guardada.md", "Borrador.md"):
+        shutil.copy(fuente, tmp_path / nombre)
+    todas = ["Borrador.md", "Guardada.md"]
+
+    assert [p.name for p in collect_specs(tmp_path, committed_only=True)] == todas
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "Guardada.md"], cwd=tmp_path, check=True)
+    assert [p.name for p in collect_specs(tmp_path, committed_only=True)] == ["Guardada.md"]
+    assert [p.name for p in collect_specs(tmp_path)] == todas

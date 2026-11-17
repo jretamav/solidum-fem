@@ -48,6 +48,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-xdist>=3.5",
     "sympy>=1.12",
     "matplotlib>=3.7",
 ]
@@ -97,3 +98,10 @@ Issues = "https://github.com/jretamav/solidum-fem/issues"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["solidum*"]
+
+[tool.pytest.ini_options]
+# Pruebas repartidas entre los núcleos (pytest-xdist, extra `dev`): la suite
+# completa pasó de 9 min 39 s a 2 min 45 s en la estación de 24 núcleos
+# (2026-11-17). Para una sola prueba con depurador: `-n 0`. Los hilos internos
+# de cada proceso se limitan en conftest.py.
+addopts = "-n auto --dist worksteal"
