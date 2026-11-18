@@ -59,7 +59,7 @@ parameters:
   - { name: G_f,        type: float, required: true,  desc: "Energía de fractura en tracción [N/m]" }
   - { name: f_c,        type: float, required: false, default: null, desc: "Resistencia a compresión uniaxial [Pa]; sin ella d⁻ ≡ 0" }
   - { name: G_c,        type: float, required: false, default: null, desc: "Energía de aplastamiento [N/m]; obligatoria con f_c" }
-  - { name: beta,       type: float, required: false, default: 1.16, desc: "f_bc/f_c" }
+  - { name: beta,       type: float, required: false, default: 1.16, desc: "f_bc/f_c, β ≥ 1 (como la 2D)" }
   - { name: integration, type: str,  required: false, default: "implicit", desc: "implicit | impl-ex" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope de los dos daños" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
@@ -119,7 +119,9 @@ references:
 
 ## Implementación
 
-Bloque 1 (2026-11-18): `solidum/materials/damage_tension_compression_3d.py`, con la partición espectral 3×3 de `_spectral_split.py` y el daño de tracción de `_tension_compression.py`; detalle y pendientes en la §Implementación de la 2D.
+Bloque 1 (2026-11-18): `solidum/materials/damage_tension_compression_3d.py`, con la partición espectral 3×3 de `_spectral_split.py` y el daño de tracción de `_tension_compression.py`; detalle en la §Implementación de la 2D.
+
+Bloque 2 (2026-11-18): daño de compresión con las mismas piezas de `_tension_compression.py` que la 2D (medida de Drucker-Prager sobre $\bar{\boldsymbol\sigma}^-$ 3×3, parábola de Feenstra, tangente con $(\mathbb I - \mathbf Q^+)$); detalle y cifras en la §Implementación de la 2D. `tangent_fd_3d`: el triple negativo no se prueba con $d^-$ en carga porque nunca la tiene (estado hidrostático: $\varepsilon^-_\text{eq} < 0$ con $\beta \ge 1$; lo cubre `hydrostatic_compression_no_damage`); el doble negativo sí, con el tercer autovalor de los dos signos, en las ramas ascendente y descendente. `bar_in_compression_3d` con Hex8, Tet4, Hex20 y Tet10 (5 y 10 capas); Hex27 da lo mismo pero tarda 80 s y queda fuera de la suite. Verificado por `teorico-solidum` el 2026-11-18 junto con la 2D.
 
 ---
 

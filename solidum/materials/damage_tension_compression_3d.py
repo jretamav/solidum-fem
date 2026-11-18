@@ -22,6 +22,7 @@ from solidum.materials._crack_band import (
 from solidum.materials._spectral_split import spectral_split_3d
 from solidum.materials._tension_compression import (
     DC,
+    DEFAULT_BETA,
     DT,
     ERR,
     H,
@@ -31,6 +32,9 @@ from solidum.materials._tension_compression import (
     KT_PREV,
     STATE_SCHEMA_TC,
     TensionCompressionMixin,
+    compression_damage_update,
+    compression_measure,
+    compression_ultimate,
     tension_damage_update,
 )
 from solidum.materials.elastic_3d import Elastic3D
@@ -38,14 +42,16 @@ from solidum.registry import MaterialRegistry
 
 
 @njit(cache=True)
-def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ratio):
-    """Un punto de integración, implícito o IMPL-EX (spec 2D §6–§8 con la
-    descomposición 3×3). Devuelve ``(σ, C_tan, fila de estado nueva)``.
+def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ratio,
+                 f_c, G_c, K, tol_c):
+    """Un punto de integración, implícito o IMPL-EX (spec 2D §3, §6–§8 con la
+    descomposición 3×3). ``f_c > 0`` activa el daño de compresión. Devuelve
+    ``(σ, C_tan, fila de estado nueva)``.
 
-    Caché de Numba: se compila con ``spectral_split_3d`` y
-    ``tension_damage_update`` dentro; un cambio en ``_spectral_split.py`` o
-    en ``_tension_compression.py`` no invalida la caché de este archivo, así
-    que al cambiarlos hay que tocar también éste (y el 2D).
+    Caché de Numba: se compila con ``spectral_split_3d`` y las funciones de
+    ``_tension_compression`` dentro; un cambio en ``_spectral_split.py`` o en
+    ``_tension_compression.py`` no invalida la caché de este archivo, así que
+    al cambiarlos hay que tocar también éste (y el 2D).
     """
     sig_eff = Ce @ strain
     sp, Q, s1, m1 = spectral_split_3d(sig_eff)
@@ -54,6 +60,19 @@ def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
         eps_eq, S_old[KT], S_old[KT_PREV], S_old[DT], S_old[ERR], E, kappa_0, alpha,
         tol, cap, integration, ratio)
     d_c = S_old[DC]
+    kc = S_old[KC]
+    kc_prev = S_old[KC_PREV]
+    ddc = 0.0
+    sm = sig_eff - sp
+    g = np.zeros(6)
+    if f_c > 0.0:
+        eps_c, g = compression_measure(sm[0], sm[1], sm[2], sm[3], sm[4], sm[5], E, K)
+        kappa_u = compression_ultimate(S_old[H], E, f_c, G_c)
+        d_c, kc, kc_prev, err_c, ddc = compression_damage_update(
+            eps_c, S_old[KC], S_old[KC_PREV], S_old[DC], S_old[ERR], E, f_c, kappa_u,
+            tol_c, cap, integration, ratio)
+        if err_c > err:
+            err = err_c
     sigma = (1.0 - d_c) * sig_eff - (d_t - d_c) * sp
     C_tan = (1.0 - d_c) * Ce - (d_t - d_c) * (Q @ Ce)
     if dd > 0.0:
@@ -64,14 +83,23 @@ def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
         p[5] *= 2.0
         v = Ce @ p
         C_tan = C_tan - (dd / E) * np.outer(sp, v)
+    if ddc > 0.0:
+        # − σ̄⁻ ⊗ ∂d⁻/∂ε, ∂d⁻/∂ε = d⁻'·(∂ε⁻_eq/∂σ̄⁻)·(I − Q⁺)·C_e (spec §7), con el
+        # factor 2 de Voigt en el cortante del gradiente.
+        gv = g.copy()
+        gv[3] *= 2.0
+        gv[4] *= 2.0
+        gv[5] *= 2.0
+        v = (gv - gv @ Q) @ Ce
+        C_tan = C_tan - ddc * np.outer(sm, v)
     row = np.empty(8)
     row[KT] = kt
-    row[KC] = S_old[KC]
+    row[KC] = kc
     row[DT] = d_t
     row[DC] = d_c
     row[H] = S_old[H]
     row[KT_PREV] = kt_prev
-    row[KC_PREV] = S_old[KC_PREV]
+    row[KC_PREV] = kc_prev
     row[ERR] = err
     return sigma, C_tan, row
 
@@ -79,16 +107,20 @@ def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
 @njit(cache=True)
 def _tc_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, f_t, G_f, tol_abs,
-    tol_rel, damage_max, integración, r]``; ``C`` = ``C_e``; estado de
-    ``_tension_compression``. Daño sin ``h`` sembrada → ``flag``."""
+    tol_rel, damage_max, integración, r, f_c, G_c, K]`` (``f_c = 0`` sin
+    aplastamiento); ``C`` = ``C_e``; estado de ``_tension_compression``. Daño
+    sin ``h`` sembrada → ``flag``."""
     E = params[0]
     kappa_0 = params[1]
     h = S_old[H]
     alpha = crack_band_alpha(h, E, params[2], params[3])
     tol = params[4] + params[5] * (E * kappa_0)
+    f_c = params[9]
+    tol_c = params[4] + params[5] * (f_c / 3.0)
     sig, C_tan, row = _tc_3d_point(strain, S_old, E, kappa_0, alpha, C, tol, params[6],
-                                   int(params[7]), params[8])
-    if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0):
+                                   int(params[7]), params[8], f_c, params[10], params[11],
+                                   tol_c)
+    if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0 or (f_c > 0.0 and row[DC] > 0.0)):
         flag[0] = 1
     for i in range(6):
         sigma[i] = sig[i]
@@ -111,6 +143,11 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
     G_f : float
         Energía de fractura en tracción; el punto disipa ``G_f/h`` por
         unidad de volumen en tracción uniaxial.
+    f_c, G_c : float, optional
+        Resistencia a compresión uniaxial y energía de aplastamiento; juntas
+        activan el daño de compresión (ver :class:`TensionCompressionDamage2D`).
+    beta : float
+        ``f_bc/f_c`` (``β ≥ 1``); 1.16 por omisión.
     damage_max : float
         Tope de los daños, en (0, 1); por omisión ``1 − 10⁻⁶``.
     integration : str
@@ -131,6 +168,8 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
     STATE_SCHEMA = STATE_SCHEMA_TC
 
     def __init__(self, E: float, nu: float, f_t: float, G_f: float,
+                 f_c: float | None = None, G_c: float | None = None,
+                 beta: float = DEFAULT_BETA,
                  damage_max: float = CRACK_BAND_DAMAGE_MAX,
                  integration: str = DEFAULT_INTEGRATION,
                  density: float | None = None):
@@ -148,6 +187,7 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
         self.G_f = float(G_f)
         self.kappa_0 = self.f_t / self.E
         self.damage_max = float(damage_max)
+        self._set_compression(f_c, G_c, beta)
         self.elastic_base = Elastic3D(E=self.E, nu=self.nu)
         self.density = density
 
@@ -156,20 +196,22 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
         h = S_old[H]
         strain = np.ascontiguousarray(strain, dtype=np.float64)
         alpha = crack_band_alpha(h, self.E, self.f_t, self.G_f)
+        f_c, G_c, K, tol_c = self._compression_params()
         sigma, C_tan, row = _tc_3d_point(
             strain, S_old, self.E, self.kappa_0, alpha, self.elastic_base.C,
             self.admissibility_tol(state_vars), self.damage_max,
-            self._integration_code, self._ratio)
-        if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0):
+            self._integration_code, self._ratio, f_c, G_c, K, tol_c)
+        if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0 or (f_c > 0.0 and row[DC] > 0.0)):
             raise self._missing_h()
         return sigma, C_tan, self._row_to_state(row)
 
     BATCH_KERNEL = _tc_3d_batch
 
     def batch_params(self) -> np.ndarray:
+        f_c, G_c, K, _ = self._compression_params()
         return np.array([self.E, self.kappa_0, self.f_t, self.G_f,
                          ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, self.damage_max,
-                         float(self._integration_code), self._ratio],
+                         float(self._integration_code), self._ratio, f_c, G_c, K],
                         dtype=np.float64)
 
     def batch_matrix(self) -> np.ndarray:

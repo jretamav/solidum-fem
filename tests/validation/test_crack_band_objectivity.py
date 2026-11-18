@@ -213,8 +213,123 @@ def test_modelo2_barra_impl_ex_igual_al_modelo_1():
 
 
 # ---------------------------------------------------------------------------
-# Viga entallada a flexión: el caso con gradiente que corrige α
+# Modelo 2 en compresión (bar_in_compression de su spec)
 # ---------------------------------------------------------------------------
+#
+# Barra de longitud fija L = 200 mm y sección cuadrada de 40 mm (celdas
+# cuadradas de 40, 20 y 10 mm), ν = 0, columna central con f_c·0.95,
+# acortamiento impuesto. Con ν = 0 el esfuerzo es uniforme a lo largo de la
+# barra, σ = F/A, así que el trabajo sobre la columna de la banda es
+# ∫F·dδ_banda, con δ_banda el acortamiento de la columna. Desde el pico, la
+# columna recorre la rama descendente de la parábola de Feenstra, de área
+# G_c/h: el trabajo debe ser G_c·A con cualquier malla. Sin retroceso: con
+# h ≤ 40 mm la pendiente de la rama, a lo sumo 2·f_c/(κ_u − κ_c) = 80·h
+# (MPa), cumple (L − h)·80·h/E < h. El trabajo externo TOTAL no es objetivo
+# (1.116, 1.081, 1.064·G_c·A con h = 40, 20, 10 mm): incluye la energía de la
+# banda antes del pico, proporcional a h (spec §10, verificación 2026-11-18).
+
+FC, GC = 30.0, 15.0                    # MPa, N/mm
+LC, HC = 200.0, 40.0
+UC_MAX, STEPS_C = 1.0, 1000
+
+
+def bar_compression(cls, nx, integration="implicit", steps=STEPS_C, u_max=UC_MAX):
+    """(curva [(acortamiento, fuerza)], trabajo sobre la banda desde su pico, G_c·A)."""
+    dim = len(cls.REFERENCE_NODES[0])
+    dx = LC / nx
+    n = int(round(HC / dx))
+    if dim == 2:
+        mat, weak = (TensionCompressionDamage2D(E, 0.0, FT, GF, f_c=f, G_c=GC,
+                                                integration=integration)
+                     for f in (FC, 0.95 * FC))
+        kw = {"thickness": T}
+        mesh = structured_mesh(cls, (nx, n), size=(LC, HC), material=mat, **kw)
+        A = HC * T
+    else:
+        mat, weak = (TensionCompressionDamage3D(E, 0.0, FT, GF, f_c=f, G_c=GC,
+                                                integration=integration)
+                     for f in (FC, 0.95 * FC))
+        kw = {}
+        mesh = structured_mesh(cls, (nx, n, n), size=(LC, HC, HC), material=mat)
+        A = HC * HC
+    dom = mesh.domain
+    x_weak = (nx // 2 + 0.5) * dx
+    for eid, el in list(dom.elements.items()):
+        xc = np.mean([nd.coordinates[0] for nd in el.nodes])
+        if abs(xc - x_weak) < 0.5 * dx:
+            dom.elements[eid] = cls(eid, el.nodes, weak, **kw)
+    for nd in mesh.nodes_on("xmin"):
+        nd.fix_dof("ux", 0.0)
+    right = mesh.nodes_on("xmax")
+    for nd in right:
+        nd.fix_dof("ux", -u_max)
+    corners = {tuple(np.round(nd.coordinates, 9)): nd for nd in mesh.nodes_on("xmin")}
+    origin = corners[(0.0,) * dim]
+    origin.fix_dof("uy", 0.0)
+    if dim == 3:
+        origin.fix_dof("uz", 0.0)
+        corners[(0.0, HC, 0.0)].fix_dof("uz", 0.0)
+    dom.generate_equation_numbers(verbose=False)
+    faces = [[nd for nd in dom.nodes.values() if abs(nd.coordinates[0] - x) < 1e-9]
+             for x in (x_weak - 0.5 * dx, x_weak + 0.5 * dx)]
+    dofs_r = [nd.dofs["ux"] for nd in right]
+    dofs_faces = [[nd.dofs["ux"] for nd in f] for f in faces]
+    asm = Assembler(dom)
+    rows = [(0.0, 0.0, 0.0)]
+
+    def cb(step, U, lam):
+        _, F = asm.assemble_non_linear_system(U)
+        band = np.mean(U[dofs_faces[0]]) - np.mean(U[dofs_faces[1]])   # acortamiento > 0
+        rows.append((-U[dofs_r[0]], -F[dofs_r].sum(), band))
+
+    level = logging.getLogger("solidum").level
+    logging.getLogger("solidum").setLevel(logging.ERROR)
+    try:
+        NonlinearSolver(asm, num_steps=steps).solve(np.zeros(dom.total_dofs), step_callback=cb)
+    finally:
+        logging.getLogger("solidum").setLevel(level)
+    c = np.array(rows)
+    k = int(np.argmax(c[:, 1]))
+    W_band = np.trapezoid(c[k:, 1], c[k:, 2])
+    return c, W_band, GC * A
+
+
+def _check_compression(cls, nxs, expected_ratio, **kw):
+    W = []
+    for nx in nxs:
+        c, Wb, GA = bar_compression(cls, nx, **kw)
+        assert Wb / GA == pytest.approx(expected_ratio, rel=0.02), nx
+        A = GA / GC
+        assert c[:, 1].max() == pytest.approx(0.95 * FC * A, rel=1e-3), nx
+        assert c[-1, 1] < 1e-3 * c[:, 1].max(), nx
+        W.append(Wb)
+    assert max(W) / min(W) - 1.0 < 0.02
+
+
+@pytest.mark.parametrize("cls", [Quad4, Tri3, Tri6, Hex8, Tet4], ids=lambda c: c.__name__)
+def test_modelo2_barra_en_compresion_objetiva(cls):
+    """Trabajo sobre la banda desde su pico = G_c·A a ±2 % e igual entre
+    mallas a ±2 %; pico 0.95·f_c·A y carga final ≈ 0 (rama completa)."""
+    dim = len(cls.REFERENCE_NODES[0])
+    _check_compression(cls, (5, 10, 20) if dim == 2 else (5, 10), 1.0)
+
+
+@pytest.mark.parametrize("cls", [Hex20, Tet10], ids=lambda c: c.__name__)
+def test_modelo2_barra_en_compresion_3d_cuadraticos(cls):
+    """Sólidos 3D cuadráticos, sin factor de localización (α = 1): G_c·A.
+    Hex27 da lo mismo (medido el 2026-11-18) pero tarda 80 s; queda fuera de
+    la suite por tiempo, cubierto por Hex20 (misma h y el mismo α)."""
+    _check_compression(cls, (5, 10), 1.0)
+
+
+@pytest.mark.parametrize("cls", [Quad8, Quad9], ids=lambda c: c.__name__)
+def test_modelo2_barra_en_compresion_cuadraticos_con_factor_disipan_1_sobre_alfa(cls):
+    """Quad8/Quad9 siembran h = (13/18)·√A, y el material la usa también en
+    κ_u: con el esfuerzo uniforme de la barra el elemento se ablanda entero y
+    la banda entrega G_c·A/α = 1.385·G_c·A, objetivo entre mallas. Es el
+    mismo comportamiento que en tracción (arriba), documentado sin decidir
+    para la compresión (verificación del 2026-11-18, H1)."""
+    _check_compression(cls, (5, 10, 20), 18.0 / 13.0, steps=1500, u_max=1.5)
 #
 # Flexión en cuatro puntos, H = 100, espesor 50, malla estructurada de celdas
 # de 10 mm con un número impar de columnas (41): la entalla es la celda
