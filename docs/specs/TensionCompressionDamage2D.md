@@ -170,7 +170,7 @@ No simétrica en las dos integraciones (`IS_SYMMETRIC = False`), también con IM
 
 - **Sin potencial con $\nu \ne 0$** (§1): trabajo de los dos signos en ciclos cerrados con daño fijo; pequeño en carga monótona. Documentado y medido por `closed_cycle_work`.
 - Contracción lateral $\varepsilon_\perp = -\nu\,\varepsilon$ con la grieta abierta, y su reverso: la compresión paralela a una grieta abierta se pierde con un umbral que depende de $h$ (§1). Registrado por `parallel_compression_open_crack`.
-- Esfuerzos principales efectivos iguales: límite de $c_{ij}$ con una tolerancia relativa; $H(0) = 0$. La función no es diferenciable en la arista de Rankine (doble autovalor máximo positivo con $d^+$ activo; error de 24 % frente a diferencias finitas) ni con un esfuerzo principal efectivo exactamente nulo en $\mathbf C^d$ (75 %); las barras a tracción uniaxial trabajan sobre ese quiebre ($\bar\sigma_\text{lateral} = 0$ ± redondeo), lo que no afecta al esfuerzo y puede costar iteraciones.
+- Esfuerzos principales efectivos iguales: con $H_i = H_j$ el cociente $c_{ij}$ vale exactamente $H_i$ y se toma así, sin tolerancia (§Implementación); $H(0) = 0$. La función no es diferenciable en la arista de Rankine (doble autovalor máximo positivo con $d^+$ activo; error de 24 % frente a diferencias finitas) ni con un esfuerzo principal efectivo exactamente nulo en $\mathbf C^d$ (75 %); las barras a tracción uniaxial trabajan sobre ese quiebre ($\bar\sigma_\text{lateral} = 0$ ± redondeo), lo que no afecta al esfuerzo y puede costar iteraciones.
 - Energía de tracción en deformación plana: $(1-\nu^2)\,G_f/h$ (§1), como el modelo 1.
 - Con daños altos, el tope `damage_max` mantiene la rigidez positiva en tracción.
 - Compresión con $h$ grande: $\kappa_u - \kappa_c$ pequeño (rama descendente casi vertical); retroceso a nivel de la estructura posible; sin límite, por decisión del usuario (§3).
@@ -334,8 +334,8 @@ acceptance:
       expect: "κ± y d̃± sin cambio, como el modelo 1"
   mesh_objectivity:
     - name: bar_in_tension
-      setup: "barra con una columna debilitada (la de la banda de grieta), los diez sólidos, 5–20 elementos; los 2D en esfuerzo plano"
-      expect: "D/(G_f·A) = 1 ± 1 % y curva posterior al pico igual entre mallas ± 1 %"
+      setup: "barra con una columna debilitada (la de la banda de grieta), los diez sólidos, 5–20 elementos; los 2D en esfuerzo plano; como el modelo 1: ν = 0, y además ν = 0.2 con Quad4; IMPL-EX con paso de 0.125 µm"
+      expect: "D/(G_f·A) = 1 ± 1 % (Quad8 y Quad9: G_f·A/α = 18/13, factor de localización del modelo 1; con ν = 0.2: 1 − ν²) y carga posterior al pico (u = 0.05 mm) igual entre mallas ± 1 %"
       tol_rel: 1.0e-2
     - name: bar_in_compression
       setup: "la misma barra en compresión con f_c y G_c, de longitud fija L = 0.2 m con 5–20 elementos (h ≤ 40 mm: sin retroceso, du/dκ > 0 en toda la rama), control por desplazamiento"
@@ -371,7 +371,19 @@ references:
 
 ## Implementación
 
-*Pendiente de la aprobación de la spec.* Plan de la IA: bloque 1, ley de §1 con $d^+$ (Rankine y banda de grieta), §6–§9 en 2D y 3D, implícita e IMPL-EX, pruebas del punto material, barra y viga SEN; bloque 2, daño de compresión de §3 con la barra en compresión. Piezas compartidas con el modelo 1 en `solidum/materials/_crack_band.py`.
+Plan: bloque 1, ley de §1 con $d^+$ (Rankine y banda de grieta), §6–§9 en 2D y 3D, implícita e IMPL-EX, pruebas del punto material y barra en tracción; bloque 2, daño de compresión de §3 con la barra en compresión; después, validación (viga SEN, Van Vliet) y `status: validated`.
+
+**Bloque 1 (2026-11-18).** Archivos:
+
+- `solidum/materials/_spectral_split.py`: $\bar{\boldsymbol\sigma}^+$ y $\mathbf Q^+$ (§7) en forma cerrada en 2D y con `eigh` en 3D; devuelve también $\bar\sigma_I$ y $\mathbf n_I\otimes\mathbf n_I$ para Rankine, sin una segunda descomposición. Esfuerzos principales iguales (§10): con $H_i = H_j$ se toma $c_{ij} = H_i$, que es el valor exacto del cociente, así que no hace falta tolerancia; con $H_i \ne H_j$ los dos esfuerzos tienen signo distinto y $\bar\sigma_i - \bar\sigma_j > 0$. Con todos los esfuerzos principales positivos (o no positivos), $\bar{\boldsymbol\sigma}^+ = \bar{\boldsymbol\sigma}$ y $\mathbf Q^+ = \mathbb I$ (o cero) exactamente.
+- `solidum/materials/_tension_compression.py`: estado por punto y actualización de $d^+$ (implícita e IMPL-EX), común a 2D y 3D; reutiliza de `_crack_band.py` $\alpha(h)$, la ley exponencial con el tope, `implex_update`, la validación y la siembra de $h$ (`CrackBandMixin`).
+- `solidum/materials/damage_tension_compression_2d.py` y `_3d.py`: núcleo por punto (§6–§8), adaptador por lotes (ADR 0014) y clase. En deformación plana el núcleo sólo necesita el plano (§6); $\sigma_{zz}$ para el post-proceso (`out_of_plane_stress`) se recupera de $\boldsymbol\sigma$ y de los daños, porque $\boldsymbol\sigma$ y $\bar{\boldsymbol\sigma}$ son coaxiales con $\sigma_i = (1-d^\pm)\,\bar\sigma_i$.
+- Sólo evoluciona $d^+$: $d^-$ se arrastra del estado sin cambio (0 en un análisis) y la compresión es elástica. Los parámetros `f_c`, `G_c` y `beta` entran con el bloque 2.
+- Caché de Numba: los núcleos de los dos materiales se compilan con `_spectral_split` y `_tension_compression` dentro; un cambio en esos módulos no invalida su caché (mismo caveat que el modelo 1 con `_equivalent_strain`).
+
+Pruebas: `tests/test_tension_compression_damage.py` (aceptación `material_point` e `impl_ex` sin compresión; el trabajo en ciclos con $\nu = 0.2$ se compara ciclo a ciclo con el prototipo independiente, `informes/prototipos_2026-11-18/modelo2_bloque1/ref_ciclos.py`) y `tests/validation/test_crack_band_objectivity.py` (`bar_in_tension` con los diez sólidos, implícita e IMPL-EX). Mutaciones detectadas por las pruebas: `informes/prototipos_2026-11-18/modelo2_bloque1/mutaciones.py`.
+
+Pendiente del bloque 2: §3 (parámetros, medida de Drucker-Prager, parábola de Feenstra, $\partial d^-/\partial\boldsymbol\varepsilon$ con $(\mathbb I - \mathbf Q^+)$ y el término de $\bar\sigma_{zz}$ en deformación plana) y las pruebas `compression_curve`, `biaxial_compression_peak`, `hydrostatic_compression_no_damage`, `bar_in_compression` y las de IMPL-EX en compresión.
 
 ---
 
@@ -392,6 +404,8 @@ references:
 - **2026-11-18** · **Q5: el usuario clasifica el modelo en el programa principal** (opción recomendada). El criterio (ii) se cumple con la misma partición (OpenSees `ASDConcrete3D`) y el (i) por la familia (de Souza Neto et al. 2008, §12.6); la nota va al catálogo al validar. La lectura de pp. 504–512 del libro queda como refuerzo opcional, no como condición. Spec completa; la implementación empieza por el bloque 1 (§Implementación).
 
 - **2026-11-18** · **de Souza Neto et al. (2008), §12.6, leído** (el PDF está en la biblioteca digital del usuario, `Mi_Biblioteca_Digital/Books/Constitutive models/Computational methods for plasticity. 9780470694527.pdf`; pp. 504–512 del libro = pp. 529–537 del PDF). Confirma lo que el bibliotecario había deducido del código HYPLAS: §12.6.1 presenta el modelo de Ladevèze (1983), Ladevèze y Lemaitre (1984) y Lemaitre (1996), con un solo daño $D$ y un factor de cierre $h \in [0, 1]$ ($h \approx 0.2$ típico; $h = 0$, cierre completo; $h = 1$, sin cierre). La deformación se expresa en función del esfuerzo nominal partido espectralmente en tracción y compresión, $\boldsymbol\sigma = \boldsymbol\sigma^+ + \boldsymbol\sigma^-$ (ecs. 12.93–12.97, la misma partición que §1 aplica al esfuerzo efectivo), con la traza también partida (ec. 12.99); el esfuerzo se obtiene por Newton en esfuerzos principales (Box 12.7). Es la forma (c) de la tabla de §1 con $d^+ = D$ y $d^- = hD$. §12.6.2 extiende el cierre a la evolución del daño dúctil de Lemaitre (tasa de liberación $Y$ partida, ec. 12.118), con plasticidad, fuera del alcance del concreto. No cita a Faria et al. ni a Mazars. Conclusión: el criterio (i) se cumple por la familia (daño unilateral con partición espectral del esfuerzo), no por la forma (a); la clasificación de Q5 no cambia.
+
+- **2026-11-18** · **Bloque 1 implementado y verificado por `teorico-solidum`** (`informes/verificacion_teorica_2026-11-18_modelo2_bloque1.md`): deducción independiente y código coinciden al redondeo; sin errores de formulación ni de implementación; listo para commit. La IA aplicó sus hallazgos, todos de pruebas o de redacción: pruebas nuevas de la tangente implícita con $d^- \ne 0$ (H1), de $H(0) = 0$ (H2), de la tangente global ensamblada con partición de signo mixto, implícita e IMPL-EX (H3), de autovalores dobles girados (H4), tolerancia absoluta de `damage_error` (H5) y deformación plana en simetría y unidades (P4); `math.hypot` en la forma cerrada 2D (P2); la frase de §10 sobre la tolerancia de $c_{ij}$ (P1). **Aclaración de la aceptación `bar_in_tension` (H6)**: el texto aprobado decía «los diez sólidos… 1 ± 1 %»; las pruebas siguen, como el modelo 1, las decisiones del usuario del 2026-11-11 y 2026-11-12 (ν = 0; Quad8/Quad9 disipan $G_f A/\alpha$ = 18/13 en la barra de esfuerzo uniforme; con ν = 0.2, $1-\nu^2$), y con IMPL-EX el paso de 0.125 µm del modelo 1 (con 1 µm IMPL-EX disipa 1.04·$G_f A$, igual en los dos modelos). Se reescribió el `setup`/`expect` para decirlo; no cambia ningún criterio ni tolerancia.
 
 **Preguntas al usuario** (una decisión física por pregunta; cada una con recomendación):
 

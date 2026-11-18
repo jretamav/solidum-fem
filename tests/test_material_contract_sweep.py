@@ -84,6 +84,8 @@ MUESTRAS = {
     'IsotropicDamage3D': dict(E=2.0e10, nu=0.2, kappa_0=1.0e-4, alpha=0.99),
     'IsotropicDamageCrackBand2D': dict(E=2.0e10, nu=0.2, f_t=2.0e6, G_f=100.0),
     'IsotropicDamageCrackBand3D': dict(E=2.0e10, nu=0.2, f_t=2.0e6, G_f=100.0),
+    'TensionCompressionDamage2D': dict(E=2.0e10, nu=0.2, f_t=2.0e6, G_f=100.0),
+    'TensionCompressionDamage3D': dict(E=2.0e10, nu=0.2, f_t=2.0e6, G_f=100.0),
     # Con tracción: con ft = 0 (sin tracción, el default) el material no tiene
     # rigidez para ε > 0, y la sonda del régimen elástico, que usa ε > 0, no
     # estaría en régimen elástico. El caso ft = 0 lo cubren sus tests propios.

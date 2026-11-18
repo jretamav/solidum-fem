@@ -119,7 +119,7 @@ references:
 
 ## Implementación
 
-*Pendiente de la aprobación de la spec (con la 2D).*
+Bloque 1 (2026-11-18): `solidum/materials/damage_tension_compression_3d.py`, con la partición espectral 3×3 de `_spectral_split.py` y el daño de tracción de `_tension_compression.py`; detalle y pendientes en la §Implementación de la 2D.
 
 ---
 

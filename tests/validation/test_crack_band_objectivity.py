@@ -37,6 +37,13 @@ misma.
   ``Tri6`` y los cuadráticos 3D, sin factor establecido (``α = 1``), siguen
   dando 1.00 en la barra.
 
+Modelo 2, ``TensionCompressionDamage2D/3D`` (aceptación ``bar_in_tension`` de
+su spec): la misma barra con los diez sólidos. En tracción uniaxial su ley es
+exacta, ``σ = (1 − d⁺)·E·ε`` (spec §1), y en la banda con Poisson los dos
+esfuerzos principales efectivos son de tracción, así que las energías son las
+del modelo 1: ``G_f·A``, ``G_f·A/α`` en ``Quad8``/``Quad9`` y ``(1 − ν²)·G_f·A``
+con ν = 0.2; también con IMPL-EX.
+
 Unidades: N, mm, MPa. E = 30 000 MPa, f_t = 3 MPa, G_f = 0.1 N/mm.
 """
 import logging
@@ -49,6 +56,8 @@ from solidum.elements.solid_2d import Quad4, Quad8, Quad9, Tri3, Tri6
 from solidum.elements.solid_3d import Hex8, Hex20, Hex27, Tet4, Tet10
 from solidum.materials.damage_crack_band_2d import IsotropicDamageCrackBand2D
 from solidum.materials.damage_crack_band_3d import IsotropicDamageCrackBand3D
+from solidum.materials.damage_tension_compression_2d import TensionCompressionDamage2D
+from solidum.materials.damage_tension_compression_3d import TensionCompressionDamage3D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import NonlinearSolver
 from solidum.mesh import structured_mesh
@@ -56,6 +65,9 @@ from solidum.mesh import structured_mesh
 E, FT, GF = 30000.0, 3.0, 0.1
 L, H, T = 100.0, 20.0, 10.0
 U_MAX, STEPS = 0.4, 400
+# Materiales (2D, 3D) de cada modelo con banda de grieta.
+MODELO_1 = (IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D)
+MODELO_2 = (TensionCompressionDamage2D, TensionCompressionDamage3D)
 
 
 def _solve(dom, right_nodes, u_max=U_MAX, steps=STEPS):
@@ -79,18 +91,18 @@ def _solve(dom, right_nodes, u_max=U_MAX, steps=STEPS):
     return c, W - 0.5 * c[-1, 1] * c[-1, 0]
 
 
-def bar(cls, nx, nu=0.0):
+def bar(cls, nx, nu=0.0, modelo=MODELO_1, integration="implicit", steps=STEPS):
     """Barra de L × H (× H) con la columna central de celdas debilitada."""
     dim = len(cls.REFERENCE_NODES[0])
     dx = L / nx
     n = int(round(H / dx))
     if dim == 2:
-        mat, weak = (IsotropicDamageCrackBand2D(E, nu, f, GF) for f in (FT, 0.95 * FT))
+        mat, weak = (modelo[0](E, nu, f, GF, integration=integration) for f in (FT, 0.95 * FT))
         kw = {"thickness": T}
         mesh = structured_mesh(cls, (nx, n), size=(L, H), material=mat, **kw)
         GA = GF * H * T
     else:
-        mat, weak = (IsotropicDamageCrackBand3D(E, nu, f, GF) for f in (FT, 0.95 * FT))
+        mat, weak = (modelo[1](E, nu, f, GF, integration=integration) for f in (FT, 0.95 * FT))
         kw = {}
         mesh = structured_mesh(cls, (nx, n, n), size=(L, H, H), material=mat)
         GA = GF * H * H
@@ -111,7 +123,7 @@ def bar(cls, nx, nu=0.0):
     if dim == 3:
         origin.fix_dof("uz", 0.0)
         corners[(0.0, H, 0.0)].fix_dof("uz", 0.0)
-    return _solve(dom, right), GA
+    return _solve(dom, right, steps=steps), GA
 
 
 def _check(results, expected_ratio):
@@ -145,6 +157,54 @@ def test_barra_2d_con_poisson_disipa_1_menos_nu2():
 @pytest.mark.parametrize("cls", [Hex8, Tet4, Hex20, Hex27, Tet10], ids=lambda c: c.__name__)
 def test_barra_3d_energia_objetiva(cls):
     _check({nx: bar(cls, nx) for nx in (5, 10)}, 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Modelo 2: TensionCompressionDamage2D/3D (bar_in_tension de su spec)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("cls", [Quad4, Tri3, Tri6], ids=lambda c: c.__name__)
+def test_modelo2_barra_2d_energia_objetiva(cls):
+    _check({nx: bar(cls, nx, modelo=MODELO_2) for nx in (5, 10, 20)}, 1.0)
+
+
+@pytest.mark.parametrize("cls", [Quad8, Quad9], ids=lambda c: c.__name__)
+def test_modelo2_barra_2d_cuadraticos_con_factor_disipan_1_sobre_alfa(cls):
+    _check({nx: bar(cls, nx, modelo=MODELO_2) for nx in (5, 10, 20)}, 18.0 / 13.0)
+
+
+def test_modelo2_barra_2d_con_poisson_disipa_1_menos_nu2():
+    nu = 0.2
+    _check({nx: bar(Quad4, nx, nu, modelo=MODELO_2) for nx in (5, 10, 20)}, 1.0 - nu**2)
+
+
+@pytest.mark.parametrize("cls", [Hex8, Tet4, Hex20, Hex27, Tet10], ids=lambda c: c.__name__)
+def test_modelo2_barra_3d_energia_objetiva(cls):
+    _check({nx: bar(cls, nx, modelo=MODELO_2) for nx in (5, 10)}, 1.0)
+
+
+def test_modelo2_barra_impl_ex():
+    """IMPL-EX con Newton completo dentro del paso (spec §8), con los criterios
+    y el paso de 0.125 µm de la prueba del modelo 1
+    (``test_damage_crack_band_implex``): D = G_f·A a ±1 % y la carga en
+    u = 0.05 mm igual a la implícita a ±0.5 %. El pico no se compara con
+    f_t·A: la extrapolación retrasa el daño un paso y lo rebasa un poco. Con
+    pasos más gruesos disipa de más, igual en los dos modelos (abajo)."""
+    for nx in (5, 10, 20):
+        (c, D), GA = bar(Quad4, nx, modelo=MODELO_2, integration="impl-ex", steps=3200)
+        assert D / GA == pytest.approx(1.0, abs=0.01), nx
+        (ci, _), _ = bar(Quad4, nx, modelo=MODELO_2)
+        assert np.interp(0.05, c[:, 0], c[:, 1]) == pytest.approx(
+            np.interp(0.05, ci[:, 0], ci[:, 1]), rel=5e-3), nx
+
+
+def test_modelo2_barra_impl_ex_igual_al_modelo_1():
+    """Con ν = 0 la barra es uniaxial: los dos modelos dan la misma curva
+    también con el paso grueso (1 µm), donde IMPL-EX disipa ≈ 1.04·G_f·A."""
+    (c1, D1), _ = bar(Quad4, 5, modelo=MODELO_1, integration="impl-ex")
+    (c2, D2), _ = bar(Quad4, 5, modelo=MODELO_2, integration="impl-ex")
+    np.testing.assert_allclose(c2, c1, rtol=1e-9, atol=1e-9 * np.abs(c1).max())
+    assert D2 == pytest.approx(D1, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
