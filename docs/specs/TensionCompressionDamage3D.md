@@ -46,7 +46,7 @@ interface:
 
 admission:                # la de la 2D (Q5: programa principal, usuario, 2026-11-18)
   textbooks:
-    - de_souza_neto: "cap. 12, §12.6.1–12.6.2, cierre de grieta: la familia, con otra forma (2D, Q5)"
+    - de_souza_neto: "cap. 12, §12.6.1–12.6.2, cierre de grieta con partición espectral del esfuerzo: la familia, con otra forma (un solo D y hD; texto leído el 2026-11-18; 2D, Q5)"
   general_codes:
     - opensees: "ASDConcrete3D (la misma partición del esfuerzo efectivo; criterios de daño distintos)"
     - code_aster: "ENDO_ORTH_BETON; ENDO_ISOT_BETON"
