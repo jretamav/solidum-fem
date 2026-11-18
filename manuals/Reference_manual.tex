@@ -26,9 +26,14 @@
 % desplazamientos en las specs de los materiales de interfaz (capítulo
 % «Modelos Constitutivos — Interfaz», ADR 0033) y de la discontinuidad
 % embebida (apéndice del módulo de usuario discontinuities, ADR 0020). No
-% están en amssymb; sin stmaryrd la compilación aborta con "Undefined control
-% sequence".
-\usepackage{stmaryrd}
+% están en amssymb; sin definirlas la compilación aborta con "Undefined
+% control sequence".
+% Con LuaLaTeX la fuente stmary10 no da los glifos de \llbracket y
+% \rrbracket (el registro decía «Missing character: There is no J/K in font
+% stmary10» y la ecuación salía sin corchetes; corregido el 2026-11-18): se
+% definen con dos corchetes superpuestos, sin stmaryrd.
+\providecommand{\llbracket}{\mathopen{[\mkern-3.2mu[}}
+\providecommand{\rrbracket}{\mathclose{]\mkern-3.2mu]}}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
@@ -89,7 +94,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∥}{{∥}}1 {∮}{{∮}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∥}{{∥}}1 {∮}{{∮}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -9342,6 +9347,9 @@ references:
 \textit{\textbf{Estado: aprobada por el usuario (2026-11-11, «si», con las cinco recomendaciones Q1--Q5) y validada.} Bloque 1 (banda de grieta, medida de Rankine, tope propio y siembra de $h$ en los sólidos 2D y 3D) y bloque 2 (integración IMPL-EX, §8, con la pieza genérica del pseudo-tiempo, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}, y la prueba estructural de Van Vliet) implementados el mismo día.}
 
 
+\textit{\textbf{Bloque 3 (2026-11-17): ancho de banda según la orientación de la grieta --- propuesta en revisión} (§4, «Ancho según la orientación»; preguntas Q6--Q11 del Diálogo). No se programa hasta que el usuario decida Q6--Q11.}
+
+
 
 \subsection{Especificación física}
 
@@ -9464,6 +9472,85 @@ con $\alpha$ la fracción del elemento que se ablanda, declarada por el elemento
 \end{tabularx}
 \end{center}
 Comprobación en una viga entallada a flexión con malla estructurada alineada ($D/G_fA$ en $\delta = 2$ mm): \texttt{Quad4} 1.015; \texttt{Quad8} 0.773 sin $\alpha$ y 1.029 con $13/18$. En \texttt{Tri6} la fracción varía de un triángulo a otro: sin factor 0.79--0.87 (disipa de menos, del lado seguro) y con el $2/3$ de la literatura 1.17--1.28 (de más); queda con $\alpha = 1$ (usuario). En 3D no hay un factor medido ni publicado: $\alpha = 1$. Con un cuadrático Solidum avisa una vez y describe la limitación, sin recomendar un orden de elemento (usuario, 2026-11-12): la corrección sólo es fiable con la banda alineada con la malla (Jirásek y Bauer: con la malla inclinada $13/18$ da una respuesta demasiado dúctil). Con esfuerzo uniforme en el elemento (la barra de la prueba de objetividad) el cuadrático se ablanda entero y $\alpha < 1$ sobrestima la energía: $G_fA/\alpha = 1.385\,G_fA$ en \texttt{Quad8} y \texttt{Quad9}.
+
+\paragraph{Ancho según la orientación de la grieta (bloque 3; propuesta en revisión, 2026-11-17; preguntas Q6--Q11)}
+
+\textbf{Problema.} $h = \alpha\,c\,\Omega_e^{1/d}$ es el ancho de la banda sólo cuando la banda sigue las líneas de la malla. Una grieta inclinada respecto de la malla cruza una \textbf{escalera} de elementos: la banda mínima que separa el cuerpo son los elementos que la grieta corta (dos elementos que sólo comparten un nodo no separan nada), y su área por unidad de longitud de grieta es mayor que el lado del elemento. Con $h$ fijo la energía disipada depende del ángulo entre la grieta y la malla. Jirásek y Bauer (2012, §5.3 y §7) lo cuantifican: el criterio de la raíz del área puede equivaler a equivocar $G_f$ en un 50 \% o más.
+
+\textbf{Candidatos.} Los dos usan la dirección $\mathbf n_c$ normal a la grieta (Q7) y dan un solo $h$ por elemento; los dos reproducen el $h$ actual cuando la grieta sigue los lados de los elementos en mallas estructuradas. No cuando sigue las diagonales de una malla de triángulos: ahí $h_P = \Delta/\sqrt2$ y el actual es $\Delta$ (el 0.682 de \texttt{Tri3} a 45\ensuremath{^{\circ}} en la tabla).
+
+\begin{itemize}
+  \item \textbf{(P) Proyección}, la «Pm» de Jirásek y Bauer (2012, §5.3.2) cuando la dirección se toma en el centro del elemento; ellos la atribuyen a Červenka y Pukl (1994), Červenka, Pukl y Eligehausen (1995) y Bažant y Planas (1998), y la fórmula del rectángulo a Bažant (1985) (atribuciones por verificar con el bibliotecario). El ancho del elemento medido en la dirección $\mathbf n_c$,
+\end{itemize}
+  \[
+h_P = \max_a\,(\mathbf x_a\cdot\mathbf n_c) - \min_a\,(\mathbf x_a\cdot\mathbf n_c),
+\]
+  sobre los nodos de vértice $\mathbf x_a$. Sentido geométrico: el área de la escalera de elementos que cruza una grieta recta, por unidad de longitud de grieta, es el ancho proyectado de un elemento. En un cuadrado de lado $\Delta$ con la grieta a un ángulo $a$ de sus lados, $h_P = \Delta\,(\cos a + \sin a)$.
+\begin{itemize}
+  \item \textbf{(O2) Segundo método de Oliver} (Oliver 1989; Jirásek y Bauer 2012, ec. 26):
+\end{itemize}
+  \[
+h_{O2} = \frac{A_e}{l_d}, \qquad l_d = \oint_{\Gamma_e} \varphi\,(\mathbf n_c\cdot\mathbf n_e)\,ds = \int_{\Omega_e} \nabla\varphi\cdot\mathbf n_c\,d\Omega,
+\]
+  con $\varphi = 1$ en los vértices de un lado de la recta que pasa por el centro del elemento perpendicular a $\mathbf n_c$, $\varphi = 0$ en los del otro, interpolada con las funciones de forma de los vértices. $l_d$ es la cuerda de la grieta que pasa por el centro, proyectada. En la CST es el $l_d = (A_e/h_s)\cos(\theta - \alpha)$ de la tesis (cap. 6; el de \texttt{CST\_Embedded2D}). En el cuadrado, $h_{O2} = \Delta/\cos a$.
+
+Coinciden a 0\ensuremath{^{\circ}} y a 45\ensuremath{^{\circ}} en cuadrados; entre medias $h_{O2} < h_P$ (a 22.5\ensuremath{^{\circ}}, $1.082\,\Delta$ frente a $1.307\,\Delta$).
+
+\textbf{Geometría (agente teórico, 2026-11-17, \texttt{informes/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-17\_\allowbreak{}banda\_\allowbreak{}orientacion.\allowbreak{}md}).} Una recta con normal $\mathbf n$ corta un elemento convexo si y sólo si su posición cae en un intervalo de longitud $h_P$; promediando sobre la posición de la recta, el área de los elementos cortados por unidad de longitud de grieta es el promedio de $h_P$ (pesado por el área). Por eso, si cada elemento cortado se ablanda entero y disipa $(G_f/h)\,A_e$, \textbf{con $h = h_P$ la energía por unidad de longitud de grieta es exactamente $G_f$}, en cualquier malla de elementos convexos, 2D o 3D: $h_P$ es el área del elemento entre la cuerda \textbf{media} de las rectas que lo cortan. En O2, $l_d = \Delta\cos a$ (la distancia proyectada entre los puntos medios de los dos lados que cruza la recta por el centro) es mayor que la cuerda media, $\Delta/(\cos a + \sin a)$, y $h_{O2}$ resulta menor que el ancho real de la banda. Con rectas aleatorias en mallas estructuradas, $\sum (A_e/h)/\ell$: P 0.9997--1.0003; O2 en cuadrados 1.141, 1.207 y 1.183 a 10\ensuremath{^{\circ}}, 22.5\ensuremath{^{\circ}} y 30\ensuremath{^{\circ}}.
+
+\textbf{Contrapeso: sensibilidad a la dirección.} P depende de $\mathbf n_c$ a primer orden cerca de la alineación y O2 a segundo orden: con la banda alineada con la malla y $\mathbf n_c$ desviada 10\ensuremath{^{\circ}} (por ejemplo, por el cortante de los \texttt{Quad4} que se agrietan en flexión, Jirásek y Bauer Fig. 20b), $h_P = 1.158\,\Delta$ (energía −14 \%) y $h_{O2} = 1.015\,\Delta$ (−1.5 \%). Jirásek y Bauer lo observan en sus corridas (§6.1 con la dirección por punto de Gauss; §6.4, banda en el eje de simetría: P y Pm son los que más se apartan y O2 = O1m el que menos). Con la dirección exacta y la malla de cuadrados sólo probaron 0\ensuremath{^{\circ}} y 45\ensuremath{^{\circ}}, donde coinciden. Jirásek y Bauer descartan además el factor de orientación de Červenka et al. (1995), $\gamma = 1$ a 1.5, que reduciría la energía hasta un 33 \% (§6.3, §7).
+
+\textbf{Medición (prototipo, 2026-11-17; \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}banda\_\allowbreak{}orientacion/\allowbreak{}}, no versionado).} Barra en tracción de 200 \ensuremath{\times} 100 mm, espesor 10, celdas de 5 mm, malla estructurada girada un ángulo $a$ respecto de la barra; $E = 30\,000$ MPa, $\nu = 0$, $f_t = 3$ MPa, $G_f = 0.1$ N/mm, integración implícita, 800 pasos hasta 0.4 mm (carga final \textless{} 0.4 \% del pico). La grieta se fuerza perpendicular a la carga: sólo los elementos que corta la recta $x = 102.5$ mm pueden dañarse (los demás son elásticos, para que la grieta no empiece en los bordes escalonados), y $\mathbf n_c = \mathbf e_x$ se impone. $D$ es la energía disipada al final; $\ell$, la longitud exacta de la recta dentro de la malla. Valores de $D/(G_f\,t\,\ell)$; el exacto es 1:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYYYY}
+\hline
+\textbf{$a$} & \textbf{\texttt{Quad4} actual} & \textbf{\texttt{Quad4} P} & \textbf{\texttt{Quad4} O2} & \textbf{\texttt{Tri3} actual} & \textbf{\texttt{Tri3} P} & \textbf{\texttt{Tri3} O2} \\
+\hline
+0\ensuremath{^{\circ}} & 0.998 & 0.998 & 0.998 & 0.998 & 0.998 & 0.998 \\
+10\ensuremath{^{\circ}} & 1.141 & 0.989 & 1.124 & 0.959 & 0.974 & 0.945 \\
+22.5\ensuremath{^{\circ}} & 1.264 & 0.977 & 1.172 & 0.900 & 0.974 & 0.831 \\
+30\ensuremath{^{\circ}} & 1.364 & 1.009 & 1.188 & 0.868 & 1.002 & 1.185 \\
+45\ensuremath{^{\circ}} & 1.341 & 0.962 & 0.962 & 0.682 & 0.964 & 0.964 \\
+\hline
+\end{tabularx}
+\end{center}
+En todos los casos se rompieron todos o casi todos los elementos cortados (por ejemplo, 26 de 27 en \texttt{Quad4} a 22.5\ensuremath{^{\circ}}) y ninguno fuera de ellos. \textbf{Lectura: la prueba es casi circular.} Con la banda forzada a los elementos cortados y la dirección impuesta, $D$ es la identidad geométrica del párrafo anterior ($\sum A_e/h_e$ sobre los elementos rotos entre $\ell$: 0.968 frente a 0.977 medido en \texttt{Quad4} 22.5\ensuremath{^{\circ}} P); la corrida sólo añade que cada elemento cortado se ablanda entero. La dispersión de \ensuremath{\pm}4 \% es de los bordes. \textbf{Con la banda libre} (franja debilitada de \ensuremath{\pm}30 mm, dirección impuesta; corridas del agente teórico, sólo indicativas): \texttt{Quad4} P 0.907 y 0.869 a 10\ensuremath{^{\circ}} y 22.5\ensuremath{^{\circ}}, O2 1.032 y 1.044, actual 1.048 y 1.128; a 30\ensuremath{^{\circ}}, con P se formaron dos bandas (1.69). La banda libre rompe menos elementos que la escalera recta, y P disipa de menos. 
+
+\textbf{Viga entallada con la grieta libre y la dirección estimada (prototipo, 2026-11-17; \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}banda\_\allowbreak{}orientacion/\allowbreak{}viga\_\allowbreak{}entallada.\allowbreak{}py}).} La viga de \texttt{notched\_\allowbreak{}beam\_\allowbreak{}bending} (flexión en cuatro puntos, 410 \ensuremath{\times} 100 \ensuremath{\times} 50 mm, entalla de 10 \ensuremath{\times} 50 mm, concreto de Petersson, IMPL-EX con 1000 pasos hasta \ensuremath{\delta} = 2 mm) con la dirección estimada como propone Q7 (deformación principal en el centro del elemento con el último paso confirmado sin daño, fija desde que el elemento se daña). Mallas: \texttt{S} estructurada alineada (la de la prueba existente) y cuatro no estructuradas de gmsh: \texttt{U} (10 mm, Frontal-Delaunay), \texttt{Ua} (10 mm, otro algoritmo), \texttt{U75} (7.5 mm) y \texttt{U5} (5 mm). $D/(G_f\,A_\text{lig})$ en \ensuremath{\delta} = 2 mm (carga final \textless{} 5 \% del pico):
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYYYY}
+\hline
+\textbf{Malla} & \textbf{\texttt{Quad4} actual} & \textbf{\texttt{Quad4} P} & \textbf{\texttt{Quad4} O2} & \textbf{\texttt{Tri3} actual} & \textbf{\texttt{Tri3} P} & \textbf{\texttt{Tri3} O2} \\
+\hline
+\texttt{S} & 1.015 & 1.015 & 1.015 & 1.038 & 1.004 & 1.074 \\
+\texttt{U} & 1.110 & 1.011 & 1.091 & 1.277 & 1.222 & 1.260 \\
+\texttt{Ua} & 1.454 & 1.207 & 1.419 & 1.240 & 1.145 & 1.217 \\
+\texttt{U75} & 1.079 & 0.945 & 1.046 & 1.285 & 1.248 & 1.321 \\
+\texttt{U5} & 1.019 & 0.904 & 1.003 & 0.924 & 0.886 & 0.943 \\
+error medio / máximo & 16 \% / 45 \% & \textbf{11 \% / 25 \%} & 15 \% / 42 \% &  &  &  \\
+\hline
+\end{tabularx}
+\end{center}
+(Error medio y máximo de $|D/G_fA - 1|$ sobre las diez mallas de primer orden.) Segundo orden, serie aparte: \texttt{Quad8} \texttt{S} 1.029 / 1.028 / 1.026 y \texttt{U} 1.220 / 1.069 / 1.038; \texttt{Tri6} 0.79--0.82 con los tres (sin factor $\alpha$, como se sabía).
+
+Lectura: (1) la proyección tiene el menor error medio y la menor dispersión entre mallas, y siempre da la menor energía de las tres; (2) \textbf{ningún método quita la dependencia de la malla}: la dispersión entre mallas (0.89--1.25 con P) la causan la grieta que se desvía o se ensancha a dos elementos, el daño parcial de los vecinos y daño espurio bajo un punto de carga (mapas \texttt{dano\_viga\_*.png}), que no dependen del $h$ de los elementos rotos; lo mismo hallan Slobbe, Hendriks y Rots (2013) con la proyección en mallas giradas (0.5--1.9 de $G_f$); (3) \textbf{la proyección falla donde avisó el agente teórico}: en \texttt{U5} (gmsh dio una malla casi regular) la grieta sube por una columna fuera del eje de simetría, la dirección estimada se tuerce por el cortante y P quita un 10 \% de energía (O2 y el actual, \ensuremath{\approx} 1.0).
+
+\textbf{Literatura y códigos} (\texttt{informes/\allowbreak{}busqueda\_\allowbreak{}banda\_\allowbreak{}orientacion\_\allowbreak{}2026-11-17.\allowbreak{}md}). La proyección es la opción «Govindjee» de DIANA (Theory Manual §37.12.1; también ATENA, multiplicada por el factor $\gamma$ de Červenka); Abaqus, ANSYS, Code\_Aster y OpenSees usan un $h$ geométrico sin orientación. El segundo método de Oliver no está en ningún código de la lista. Ninguno de los ocho textos de Reglas §1 trata un ancho según la orientación (no verificado del todo: de Borst et al. 2012, cap. 6, no se pudo leer). Criterio de admisión: la proyección cumple (ii) y no (i), así que el criterio no decide y decide el usuario; O2 no cumple ninguna de las dos, así que iría a un módulo de usuario. Oliver (1989) no se pudo leer; su antecedente (Oliver y Fernández Roure 1987) confirma la fórmula de la longitud equivalente.
+
+\textbf{Propuesta} (cada punto, una pregunta del Diálogo):
+
+\begin{itemize}
+  \item \textbf{Q6. Método}: P, en el programa principal (cumple la condición de los códigos: DIANA), y descartar O2 (no está en ningún código y en la viga no mejoró al $h$ actual). Con su límite declarado: no quita la dependencia de la malla y puede quitar \textasciitilde{}10 \% de energía cuando la banda sigue las líneas de la malla fuera de un eje de simetría.
+  \item \textbf{Q7. Dirección y momento}: $\mathbf n_c$ = dirección de la deformación principal mayor \textbf{en el plano} ($\tan 2\theta = \gamma_{xy}/(\varepsilon_{xx} - \varepsilon_{yy})$, con $\gamma$ de Voigt), evaluada en el centro del elemento ($\boldsymbol\xi = \mathbf 0$ en cuadriláteros; baricentro en triángulos), con la deformación del último paso confirmado sin daño en el elemento, y fija desde el paso en que el primero de sus puntos pasa el umbral (se confirma con el paso: un paso repetido tras una bisección da el mismo $h$); el mismo $h$ en todos los puntos del elemento. Con daño isótropo el esfuerzo efectivo es coaxial con la deformación (en el plano, $\sigma_1 - \sigma_2 = E(\varepsilon_1 - \varepsilon_2)/(1+\nu)$), así que da igual tomar la dirección del esfuerzo principal. Jirásek y Bauer: tomar la dirección en cada punto de Gauss por separado da peores resultados que tomarla en el centro (§6.1). Oliver (1989) la obtiene de un análisis de localización; con daño isótropo y Rankine coincide con la deformación principal mayor \textbf{en tracción biaxial con $\sigma_2/\sigma_1 \ge \nu$} (Jirásek y Bauer §5.3.3, con Jirásek y Horák 2010); fuera de ese caso (tracción uniaxial con $\nu > 0$, u otras medidas de deformación equivalente) la regla es una aproximación. \textbf{Falta una regla para deformaciones principales iguales}, donde la dirección no está definida y $h_P$ de un cuadrado va de $\Delta$ a $\sqrt2\,\Delta$ (decisión del usuario; propuesta: con diferencia relativa de las principales menor que un umbral, el ancho medio del elemento, perímetro/\ensuremath{\pi} en 2D, 1.273 \ensuremath{\Delta} en el cuadrado).
+  \item \textbf{Q8. Por omisión}: el método de Q6 para todos los sólidos, con un parámetro \texttt{crack\_\allowbreak{}band\_\allowbreak{}width = \textquotedbl{}projection\textquotedbl{}} u \texttt{\textquotedbl{}oliver\textquotedbl{}} (por omisión, según Q6) | \texttt{\textquotedbl{}element\textquotedbl{}} (el $h$ actual, para comparar con códigos que usan el tamaño del elemento). Cambian los resultados de las mallas en que la grieta no sigue la malla (Van Vliet con \texttt{Tri3} no estructurada); con mallas estructuradas y la grieta alineada, no.
+  \item \textbf{Q9. Cuadráticos}: $h = \alpha\,h_P$ con la proyección de los nodos de vértice y el $\alpha$ actual. La limitación de los cuadráticos con la banda inclinada (Jirásek y Bauer, §6.5) no la resuelve la orientación; el aviso sigue igual.
+  \item \textbf{Q10. Límite $h_{\max}$}: hoy se comprueba al construir. Con $h$ según la orientación se comprueba al construir con el mayor ancho posible del elemento (la mayor distancia entre dos vértices), que es una cota exacta de $h_P$ en cualquier dirección (con $\alpha$, $\alpha$ por esa distancia): una malla que pasa esa comprobación nunca falla a mitad del análisis. Efecto (decisión del usuario, Reglas §3): el tamaño de elemento admisible baja por $\sqrt2$ en \texttt{Quad4} y \texttt{Tri3} estructurados y por $\sqrt3$ en \texttt{Hex8} y \texttt{Tet4} (con $h_{\max} = 667$ mm, $\Delta < 471$ y $< 385$ mm), y un elemento alargado se rechaza por su diagonal aunque la grieta corra a lo largo. Con O2 la cota es otra.
+  \item \textbf{Q11. Aceptación}: (i) verificación geométrica: la barra girada de la tabla con la banda forzada y $\nu = 0$, \texttt{Quad4} y \texttt{Tri3} con las dos diagonales, \texttt{Hex8}/\texttt{Tet4} girados alrededor de $z$ en los dos sentidos y con una normal genérica, p. ej. $(1, -1, 1)/\sqrt3$: $D/(G_f\,A) = 1 \pm 0.05$; (ii) $h$ y $\mathbf n_c$ contra fórmulas cerradas en elementos girados y distorsionados, y una prueba de cortante puro (dirección a 45\ensuremath{^{\circ}}) que blinda el factor $\gamma = 2\varepsilon$; (iii) validación (agente validador): viga entallada con la malla girada y con malla no estructurada frente a la malla alineada, energía a \ensuremath{\pm}5 \%; con el método por omisión, volver a correr \texttt{notched\_\allowbreak{}beam\_\allowbreak{}bending} y \texttt{van\_\allowbreak{}vliet\_\allowbreak{}tension}.
+\end{itemize}
+
+\textbf{3D.} P vale tal cual en 3D: el ancho del elemento en la dirección $\mathbf n_c$ (de la deformación principal mayor), con los vértices del hexaedro o del tetraedro. Con la malla alineada da el $h$ actual (\texttt{Hex8} $\sqrt[3]{V_e}$, \texttt{Tet4} de la partición en seis tetraedros $\sqrt[3]{6V_e}$). Ver \hyperref[spec:IsotropicDamageCrackBand3D]{IsotropicDamageCrackBand3D}, §2.
 
 \phantomsection
 \subsubsection*{5. Medida de Rankine (pregunta Q1)}
@@ -9616,6 +9703,7 @@ parameters:
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises (como el padre)" }
   - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (Oliver, Huespe y Cante 2008, §8); impl-ex requiere un solver que declare su pseudo-tiempo (ADR 0034) y pasos pequeños cerca del pico" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante, en (0, 1); ver §3 y Q5" }
+  - { name: crack_band_width, type: str, required: false, default: "según Q6", desc: "PROPUESTA bloque 3 (Q6, Q8): projection (ancho del elemento en la dirección normal a la grieta) | oliver (A_e/l_d, segundo método de Oliver 1989), los dos fijados al empezar el daño en el elemento (§4) | element (h = α·c·Ω_e^(1/d), el actual)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
 signature:
@@ -9647,7 +9735,7 @@ validity:
 out_of_scope:
   - "daño separado de tracción y compresión; energía de fractura en compresión"
   - "cierre de grietas con recuperación de la rigidez (efecto unilateral)"
-  - "longitud proyectada de Oliver (1989) y cualquier h que dependa de la dirección de la grieta"
+  - "(bloques 1 y 2) h según la dirección de la grieta: PROPUESTA del bloque 3 en §4, preguntas Q6–Q11"
   - "control adaptativo del paso con el indicador de error de IMPL-EX"
   - "anisotropía del daño; grieta fija o rotante (siguiente paso posible: grieta rotante de deformación total)"
   - "regularización no local o de gradiente"
@@ -9716,6 +9804,10 @@ acceptance:
       setup: "barra o placa en tracción con un debilitamiento en una fila; 1, 2, 4 y 8 elementos por unidad de longitud en la dirección de la carga; Quad4 y Tri3 estructurados; implícita e IMPL-EX"
       expect: "energía disipada al final = G_f·A_grieta y la curva fuerza–alargamiento posterior al pico igual en todas las mallas, ±1 % (Quad4, Tri3, Tri6); Quad8 y Quad9 con α = 13/18, G_f·A/α (esfuerzo uniforme: el elemento se ablanda entero), objetivo entre mallas"
       tol_rel: 1.0e-2
+    - name: rotated_mesh_bar          # PROPUESTA bloque 3 (Q11)
+      setup: "verificación geométrica: barra en tracción, ν = 0, malla estructurada girada a ∈ {0, 10, 22.5, 30, 45}° respecto de la carga, banda forzada a los elementos que corta la grieta; Quad4, Tri3 (diagonales right y left), Hex8 y Tet4 girados alrededor de z en los dos sentidos y con normal (1, −1, 1)/√3; método de Q6"
+      expect: "D/(G_f·A_grieta) = 1 ± 5 % en todos los ángulos con P (con element, hasta +36 % en Quad4 y −32 % en Tri3: prototipo del 2026-11-17); con O2, lo que dé la identidad geométrica. El ±5 % con la banda libre es de la validación"
+      tol_rel: 5.0e-2
     - name: notched_beam_bending
       setup: "viga entallada a flexión en cuatro puntos, H = 100 mm, malla estructurada alineada de celdas de 10 mm, entalla de la celda central hasta H/2; IMPL-EX, 1000 pasos hasta δ = 2 mm; Quad4, Quad8, Tri3, Tri6"
       expect: "D/(G_f·A_ligamento) = 1 ± 6 % con Quad4 y Tri3; Quad8 (α = 13/18) disipa lo mismo que Quad4 ±5 % y su pico ±8 %; Tri6 sin factor disipa entre 0.65 y 0.9 veces lo de Tri3"
@@ -9733,7 +9825,11 @@ references:
   - "Bažant Z.P., Oh B.H. (1983). Crack band theory for fracture of concrete. Matériaux et Constructions 16, 155–177."
   - "Hillerborg A., Modéer M., Petersson P.-E. (1976). Analysis of crack formation and crack growth in concrete by means of fracture mechanics and finite elements. Cem. Concr. Res. 6, 773–781."
   - "Rots J.G. (1988). Computational modeling of concrete fracture. Tesis doctoral, TU Delft."
-  - "Oliver J. (1989). A consistent characteristic length for smeared cracking models. IJNME 28, 461–474."
+  - "Oliver J. (1989). A consistent characteristic length for smeared cracking models. IJNME 28, 461–474. doi:10.1002/nme.1620280214 (no leído; bloque 3)"
+  - "Oliver J., Fernández Roure M. (1987). Rev. Int. Métodos Numéricos para Cálculo y Diseño en Ingeniería 3(4), 343–368 (longitud característica y longitud equivalente de grieta; antecedente de Oliver 1989)."
+  - "Govindjee S., Kay G.J., Simo J.C. (1995). Anisotropic modelling and numerical simulation of brittle damage in concrete. IJNME 38, 3611–3633. doi:10.1002/nme.1620382105 (proyección; informe UCB/SEMM-94/18 leído)"
+  - "Červenka V., Pukl R., Eligehausen R. (1995). Mesh sensitivity effects in smeared finite element analysis of concrete fracture. FraMCoS-2, 1387–1396 (proyección con factor de orientación γ)."
+  - "DIANA FEA, Theory Manual, cap. 37, §37.12.1 Crack Bandwidth (Rots; Govindjee): https://manuals.dianafea.com/d102/Theory/Theorych37.html"
   - "Jirásek M., Bauer M. (2012). Numerical aspects of the crack band approach. Computers & Structures 110–111, 60–78. doi:10.1016/j.compstruc.2012.06.006"
   - "Slobbe A.T., Hendriks M.A.N., Rots J.G. (2013). Systematic assessment of directional mesh bias with periodic boundary conditions: Applied to the crack band model. Eng. Fract. Mech. 109, 186–208. doi:10.1016/j.engfracmech.2013.06.005"
   - "Oliver J., Huespe A.E., Cante J.C. (2008). An implicit/explicit integration scheme to increase computability of non-linear material and contact/friction problems. CMAME 197, 1865–1889."
@@ -9790,6 +9886,16 @@ references:
   \item \textbf{2026-11-11} \ensuremath{\cdot} \textbf{Longitud característica de los cuadráticos corregida} (usuario, «si», tras el diagnóstico de la viga SEN, \texttt{informes/} no versionado). El diagnóstico (Tri6, Tri3 no estructurada y un prototipo de daño sólo de tracción) mostró que la banda vertical de las mallas finas la causa el daño isótropo, que degrada también la biela comprimida en la zona de cortante, y no el elemento ni la orientación de la malla; de paso halló que \texttt{Tri6} con el $\tfrac12\sqrt{A_e}$ de Abaqus disipaba $2.68\,G_fA$ en la barra. La prueba de objetividad ampliada a los seis cuadráticos dio con ½: $1.97\,G_fA$ (\texttt{Quad8}, \texttt{Quad9}, \texttt{Hex20}, \texttt{Hex27}), $2.68$ (\texttt{Tri6}) y $3.23$ (\texttt{Tet10}), en todas las mallas. La regla Q2 del 5 \% da a cada cuadrático el factor del elemento lineal de su celda (1, $\sqrt2$ o $6^{1/3}$) y la barra disipa $0.997$--$0.999\,G_fA$ con todos (§4). Sin cambio en el material. Siguiente: spec del modelo 2 (daño de tracción y compresión) antes del bloque 3.
   \item \textbf{2026-11-12} \ensuremath{\cdot} \textbf{Factor de localización de los cuadráticos} (usuario: «aplícalo»; Tri6 sin factor: «SI»). La viga de Petersson con \texttt{Quad8} y \texttt{Tri6} (\texttt{informes/\allowbreak{}reporte\_\allowbreak{}viga\_\allowbreak{}petersson\_\allowbreak{}segundo\_\allowbreak{}orden\_\allowbreak{}2026-11-12.\allowbreak{}pdf}, no versionado) fue objetiva entre mallas pero disipó sólo $0.69$--$0.80\,G_fA$ en $\delta = 8$ mm (\texttt{Quad4} 0.94). El usuario lo atribuyó a la regularización, no al elemento: la formulación en desplazamientos gana flexibilidad al subir el orden, y la rigidez del primer orden es la que obliga a su banda a ablandarse entera. El diagnóstico por punto de Gauss lo confirmó (\texttt{Quad8}: dos de tres filas de Gauss en todos los elementos de la banda, $13/18$; \texttt{Tri6}: $2/3$ o 1) y coincide con Jirásek y Bauer (2012, §4) y Slobbe, Hendriks y Rots (2013) (búsqueda del bibliotecario en \texttt{informes/\allowbreak{}busqueda\_\allowbreak{}banda\_\allowbreak{}cuadraticos\_\allowbreak{}2026-11-12.\allowbreak{}md}; PDFs en \texttt{docs/\allowbreak{}referencias/\allowbreak{}}). Aplicado $h = \alpha\,c\,\Omega_e^{1/d}$ (§4) con $\alpha = 13/18$ en \texttt{Quad8}/\texttt{Quad9} 3\ensuremath{\times}3 y ½ en 2\ensuremath{\times}2. En \texttt{Tri6} el $2/3$ de la literatura sobrecorregía en la viga entallada (1.17--1.28 frente a 0.79--0.87 sin él): el usuario eligió dejarlo sin factor, del lado seguro. Limitaciones documentadas: $\alpha$ sólo es fiable con la banda alineada con la malla, y con esfuerzo uniforme en el elemento sobrestima la energía ($1/\alpha$). Siguiente: la $h$ por proyección del segundo método de Oliver (1989), $h = A_e/l_d$, para la orientación en todos los elementos (bloque 3).
   \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{El aviso de los cuadráticos ya no recomienda elementos lineales} (usuario, 2026-11-12: el aviso se había escrito sin consultarlo y no estaba de acuerdo; lo que Solidum recomienda a quien lo usa es decisión del usuario, Reglas §3). El aviso, el manual de usuario, el catálogo, la spec 3D y el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0028-longitud-caracteristica-del-punto-de-integracion.md}{ADR 0028} describen la limitación sin recomendar un orden: con \texttt{Quad8}/\texttt{Quad9} la corrección es fiable con la banda alineada con la malla, con la banda inclinada da una respuesta demasiado dúctil y con esfuerzo uniforme disipa $G_f/\alpha$; \texttt{Tri6} y los cuadráticos 3D, sin factor, disipan de menos en flexión. Prueba: \texttt{test\_\allowbreak{}aviso\_\allowbreak{}describe\_\allowbreak{}la\_\allowbreak{}limitacion\_\allowbreak{}sin\_\allowbreak{}recomendar\_\allowbreak{}un\_\allowbreak{}orden} (falla con el aviso anterior). Sin cambio en la física ni en los resultados.
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Bloque 3: ancho de banda según la orientación de la grieta (propuesta de la IA, en revisión; §4, «Ancho según la orientación»).} El plan aprobado el 2026-11-11 era el segundo método de Oliver (1989), $h = A_e/l_d$. Al preparar la spec, la IA midió con un prototipo (barra con la malla girada) los dos candidatos que recomiendan Jirásek y Bauer (2012), que sólo los compararon a 0\ensuremath{^{\circ}} y 45\ensuremath{^{\circ}}, donde coinciden en cuadrados. En ángulos intermedios, con la banda y la dirección impuestas, la proyección disipa $G_f$ a \ensuremath{\pm}4 \% y el segundo método de Oliver se aparta hasta +19 \% (\texttt{Quad4}) y −17 \% (\texttt{Tri3}) (tabla de §4). La revisión del agente teórico (\texttt{informes/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-17\_\allowbreak{}banda\_\allowbreak{}orientacion.\allowbreak{}md}) mostró que esa medición es casi una identidad geométrica, que con la banda libre la proyección disipa de menos (0.87--0.91) y que es más sensible que O2 al error de dirección (−14 \% frente a −1.5 \% con 10\ensuremath{^{\circ}} de error cerca de la alineación); corregidas la §4 y las preguntas. Preguntas, en este orden (una por vez):
+  \item \textbf{Q6. Método.} P (exacta en la geometría) u O2 (aprobada el 2026-11-11; menos sensible al error de dirección). El usuario aprobó (2026-11-17) un prototipo de la viga entallada con grieta libre y dirección estimada, en primer orden y, aparte, segundo orden: P tuvo el menor error medio (11 \% frente a 16 \% del actual y 15 \% de O2) y la menor dispersión, pero ninguno quita la dependencia de la malla, y P quitó 10 \% de energía con una malla casi regular y la banda fuera del eje. Literatura: P es la opción «Govindjee» de DIANA; O2 no está en ningún código (criterio de admisión: P lo decide el usuario; O2 iría a un módulo de usuario). \textbf{Recomendación: P en el programa principal y descartar O2}; el valor por omisión, en Q8.
+  \item \textbf{Q7. Dirección y momento.} \textbf{Recomendación}: deformación principal mayor en el centro del elemento, en el paso en que empieza su daño, fija después; un $h$ por elemento.
+  \item \textbf{Q8. Por omisión.} \textbf{Recomendación}: \texttt{crack\_\allowbreak{}band\_\allowbreak{}width = \textquotedbl{}projection\textquotedbl{}} por omisión en todos los sólidos; \texttt{\textquotedbl{}element\textquotedbl{}} disponible.
+  \item \textbf{Q9. Cuadráticos.} \textbf{Recomendación}: $\alpha\,h_P$ con los vértices; el aviso sigue igual.
+  \item \textbf{Q10. Límite $h_{\max}$.} \textbf{Recomendación}: comprobarlo al construir con la mayor distancia entre vértices, para que nunca falle a mitad del análisis.
+  \item \textbf{Q11. Aceptación.} \textbf{Recomendación}: la barra girada \ensuremath{\pm}5 \% (\texttt{Quad4}, \texttt{Tri3}, \texttt{Hex8}, \texttt{Tet4}), $h_P$ y $\mathbf n_c$ contra fórmulas cerradas, y la validación con la viga entallada en malla girada y no estructurada.
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Q6 en espera; línea de investigación abierta} (usuario: «hasta el momento sólo hemos probado lo que proponen otros autores\ldots{} ¿qué propones?»). Propuesta de la IA, fuera del programa principal (no estándar, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}): \textbf{banda de grieta con trayectoria seguida y cuerda exacta}. El seguimiento global del módulo \texttt{discontinuities} traza la grieta; sólo se ablandan los elementos que cruza; cada uno usa $h_e = A_e/\ell_e$, con $\ell_e$ la longitud del segmento real de la grieta dentro del elemento, de modo que $D = G_f\sum_e \ell_e = G_f\,L$ por construcción (generaliza el $l_d$ de la tesis, la cuerda por el centro, a la cuerda de la grieta real). Motivo: en la viga entallada el error restante viene de dónde se forma la banda (desvío, ensanchamiento, vecinos parcialmente dañados, dirección), que ninguna estimación local de $h$ corrige. Primer paso aprobado: búsqueda de novedad (\texttt{bibliotecario-solidum}); si es nueva, spec propia en un módulo de usuario.
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Prototipo de la banda con trayectoria prescrita} (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}banda\_\allowbreak{}orientacion/\allowbreak{}viga\_\allowbreak{}trayectoria.\allowbreak{}py}; el usuario: «hazlo»). Viga entallada, 10 mallas (Quad4 y Tri3; alineadas y no estructuradas), grieta prescrita vertical desde la entalla, daño sólo en los elementos que cruza; cuatro anchos: actual, P, O2 y cuerda exacta $h = \sum A/\sum\ell$ (elementos de cuerda muy corta agrupados con un vecino de banda para que la banda quede conectada por lados, el caso «crossover» de Burnett y Schreyer). Error medio / máximo de $D/(G_f A)$: actual 14 \% / 36 \%, P 11 \% / 33 \%, O2 11 \% / 32 \%, \textbf{cuerda 9 \% / 23 \%}. La cuerda es la mejor, pero lejos del «exacto por construcción», porque fallan sus dos premisas: (a) no todos los elementos cruzados se rompen (la grieta encuentra cómo separarse sin alguno: disipa de menos, Quad4 \texttt{Ua} 0.84); (b) en los triángulos de una banda en zigzag la grieta abre con deformación mixta y el daño isótropo disipa también la energía de cortante (Tri3 \texttt{Ua} 1.15 con todos los cruzados rotos; no es error de IMPL-EX: con 4000 pasos, 1.145). \textbf{Lectura: en mallas no estructuradas el error restante es cinemático y constitutivo, no de la fórmula de $h$.}
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Banda restringida con cuerda exacta y daño sólo de tracción} (usuario: «si»; \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}banda\_\allowbreak{}orientacion/\allowbreak{}viga\_\allowbreak{}trayectoria\_\allowbreak{}m2.\allowbreak{}py}, \texttt{resultados\_\allowbreak{}viga\_\allowbreak{}trayectoria\_\allowbreak{}m2.\allowbreak{}csv}). Mismas 10 mallas, trayectoria y anchos que el prototipo anterior, con dos materiales en la banda: el daño isótropo de Solidum y la partición de Faria, Oliver y Cervera (1998) con $d^- = 0$ (modelo 2, opción (a) de su Q1), mismo criterio de Rankine, misma ley y la misma banda de grieta. Nuevo: balance de energía por punto de integración ($D_g = \sum\tfrac12(\sigma_n+\sigma_{n+1})\Delta\varepsilon\,dV - \tfrac12\sigma\varepsilon\,dV$; su suma coincide con la $D$ global hasta el redondeo) frente a la energía nominal $G_f\,dV/h_g$, que separa el \textbf{déficit} de los puntos no rotos del \textbf{exceso} de los rotos. Error medio / máximo de $D/(G_f A)$ con la cuerda: isótropo 9.0 \% / 22.7 \%, \textbf{tracción 6.1 \% / 14.9 \%}. (1) \textbf{El exceso de los triángulos lo causa el daño isótropo} (medido): con daño isótropo, los Tri3 rotos disipan 1.07--1.62 veces su energía nominal (\texttt{U}, \texttt{Ua}, \texttt{U75}) y el indicador del estado de esfuerzos al dañarse, $r = \sum\psi_0\,\Delta d / \sum(\bar\sigma_1^2/2E)\,\Delta d$ (1 en tracción uniaxial, $2(1+\nu)$ en cortante puro con Rankine), lo explica (1.11--1.51); con daño sólo de tracción el exceso desaparece (rotos 0.92--1.03 de su nominal; Tri3 \texttt{U} 1.227 \ensuremath{\to} 0.995). (2) \textbf{El déficit de los elementos cruzados que no se rompen no depende del material} (medido): Quad4 \texttt{Ua} 0.135 con los dos, Tri3 \texttt{Ua} 0.072, Quad4 \texttt{U75} 0.053, Tri3 \texttt{U5} 0.038 con tracción; es cinemático. (3) Con daño de tracción, P y O2 tienen menor error medio que la cuerda (4.5 y 4.4 \%) porque en varias mallas asignan más energía nominal que $G_f L$ (hasta +24 \% P y +36 \% O2) y así compensan el déficit; la cuerda da el objetivo exacto y su error es sólo el déficit cinemático más 1--8 \% de energía que los rotos aún no han disipado al final del ensayo (\textit{hipótesis}: la carga se detiene en $\delta = 2$ mm con 1--3 \% del pico). El daño de tracción necesita Newton completo (la partición espectral hace el paso no lineal aun con IMPL-EX); con la tangente congelada se detuvo en el paso 377.
 \end{itemize}
 
 
@@ -10132,6 +10238,520 @@ Queda una cuestión \textbf{física} que la campaña experimental del PAPIIT res
   \item \textbf{Bring-up end-to-end} con \texttt{Quad4} + \texttt{LinearSolver}: \texttt{E\_aparente} = 15.10 GPa (\ensuremath{\theta}=0\ensuremath{^{\circ}}), 4.82 GPa (\ensuremath{\theta}=45\ensuremath{^{\circ}}), 0.805 GPa (\ensuremath{\theta}=90\ensuremath{^{\circ}}), con \texttt{\ensuremath{\sigma}\_xy \ensuremath{\neq} 0} sólo fuera de ejes principales y \texttt{K} simétrica en los tres casos.
   \item \textbf{Notas de traducción}: ninguna --- la formulación de Jones se implementa en la convención del proyecto sin cambio de signos.
   \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014}): \texttt{STATE\_\allowbreak{}SCHEMA = \{\}} y kernel lineal compartido (\texttt{materials/\allowbreak{}\_\allowbreak{}batch.\allowbreak{}linear\_\allowbreak{}material\_\allowbreak{}kernel}, \texttt{\ensuremath{\sigma} = C\ensuremath{\cdot}\ensuremath{\varepsilon}}); \texttt{batch\_matrix()} devuelve la \texttt{C} precalculada.
+\end{itemize}
+
+
+\newpage
+
+\section{TensionCompressionDamage2D}
+\label{spec:TensionCompressionDamage2D}
+
+
+
+\textit{Orden de trabajo. El usuario revisa \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+\textit{\textbf{Componente nuevo} (modelo 2 de la familia de modelos de concreto): dos daños escalares, $d^+$ de tracción y $d^-$ de compresión, con \textbf{efecto unilateral}: una grieta cerrada recupera la rigidez en compresión. Cambia la ley de esfuerzo respecto al daño isótropo, así que no es una variante de \hyperref[spec:IsotropicDamageCrackBand2D]{IsotropicDamageCrackBand2D}; reutiliza sus piezas: banda de grieta $\alpha(h)$ (§2 de esa spec), medida de Rankine (§5), tope del daño (§3), siembra de $h$ en los sólidos (§4) e integración IMPL-EX con el pseudo-tiempo de los solvers (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}).}
+
+
+\textit{\textbf{Motivación (diagnóstico de la viga SEN, 2026-11-11).} Con \texttt{IsotropicDamageCrackBand2D} la viga SEN de Schlangen no es objetiva con mallas finas: la banda baja casi vertical desde la entalla y disipa 1.5--2 veces $G_f$. El diagnóstico descartó el elemento (\texttt{Tri6}) y la orientación de la malla (malla no estructurada) y lo atribuyó al daño isótropo: en la zona de cortante el elemento dañado pierde también la rigidez de la biela comprimida que cruza la banda. Un prototipo que daña sólo la parte de tracción dio, con las mismas mallas, la grieta diagonal, la misma energía en $h/4$ y $h/8$ ($0.85\,G_f t L$) y diferencias entre mallas de 1.2 kN.}
+
+
+\textit{Uso previsto: estructuras de concreto con agrietamiento por tracción y, si se dan $f_c$ y $G_c$, aplastamiento en compresión, en 2D (esta spec) y 3D (\hyperref[spec:TensionCompressionDamage3D]{TensionCompressionDamage3D}).}
+
+
+\textit{\textbf{Estado: borrador para revisión del usuario. Q1 (ley (a) de Faria, Oliver y Cervera), Q2 (aplastamiento opcional), Q3 (sin deformaciones plásticas), Q4 (sólo Rankine) y Q6 (aceptación) decididas el 2026-11-17; el límite de DIANA en compresión, no adoptado. Q5 (clasificación) decidida el 2026-11-18: programa principal, con el criterio (i) cumplido por la familia y no por la forma. Spec completa.}}
+
+
+
+\subsection{Especificación física}
+
+\phantomsection
+\subsubsection*{0. Descripción general}
+\addcontentsline{toc}{subsubsection}{0. Descripción general}
+
+Daño escalar doble en pequeñas deformaciones para sólidos 2D (esfuerzo plano o deformación plana): $d^+ \in [0, 1)$ degrada la parte de tracción del esfuerzo y $d^- \in [0, 1)$ la de compresión. Sin deformaciones plásticas: la descarga es secante hacia el origen. Cada daño ablanda con su propia energía regularizada por banda de grieta: $G_f/h$ en tracción y, si se activa la compresión, $G_c/h$ en la rama descendente de compresión.
+
+\texttt{STRAIN\_DIM = 3}, Voigt del proyecto $[\varepsilon_{xx}, \varepsilon_{yy}, \gamma_{xy}]$ con $\gamma_{xy} = 2\varepsilon_{xy}$. Convención: $\sigma > 0$ \ensuremath{\Leftrightarrow} tracción.
+
+\phantomsection
+\subsubsection*{1. Ley de esfuerzo (Q1, decidida por el usuario el 2026-11-17: (a))}
+\addcontentsline{toc}{subsubsection}{1. Ley de esfuerzo (Q1, decidida por el usuario el 2026-11-17: (a))}
+
+Partición espectral del esfuerzo efectivo de Faria, Oliver y Cervera (1998), la misma partición que usa OpenSees \texttt{ASDConcrete3D} (sus criterios de daño son otros: superficies con $I_1$, $\sqrt{J_2}$ y $\sigma_\text{max}$ de Petracca et al. 2022):
+
+\[
+\boxed{\;\boldsymbol\sigma = (1-d^+)\,\bar{\boldsymbol\sigma}^+ + (1-d^-)\,\bar{\boldsymbol\sigma}^- = (1-d^-)\,\bar{\boldsymbol\sigma} - (d^+-d^-)\,\bar{\boldsymbol\sigma}^+\;}
+\]
+
+\[
+\bar{\boldsymbol\sigma} = \mathbf C_e:\boldsymbol\varepsilon, \qquad \bar{\boldsymbol\sigma}^+ = \sum_i\langle\bar\sigma_i\rangle_+\,\mathbf n_i\otimes\mathbf n_i, \qquad \bar{\boldsymbol\sigma}^- = \bar{\boldsymbol\sigma} - \bar{\boldsymbol\sigma}^+,
+\]
+
+con $\bar\sigma_i$, $\mathbf n_i$ los esfuerzos y las direcciones principales del esfuerzo efectivo \textbf{del estado 3D asociado}:
+
+\begin{itemize}
+  \item \textbf{Esfuerzo plano}: $\bar\sigma_{zz} = 0$, es decir $\bar{\boldsymbol\sigma} = \mathbf C_\text{ep}:\boldsymbol\varepsilon$ con la elasticidad de esfuerzo plano y $\varepsilon_{zz} = -\tfrac{\nu}{1-\nu}(\varepsilon_{xx}+\varepsilon_{yy})$; la partición es la de 2\ensuremath{\times}2 del plano y el esfuerzo nominal cumple también $\sigma_{zz} = 0$.
+  \item \textbf{Deformación plana}: $\varepsilon_{zz} = 0$; $\bar\sigma_{zz} = \lambda(\varepsilon_{xx}+\varepsilon_{yy})$ es un esfuerzo principal (eje $z$) y entra en la partición, de modo que $\sigma_{zz} = (1-d^\pm)\,\bar\sigma_{zz}$ según su signo.
+\end{itemize}
+
+Los dos casos son la restricción exacta de la ley 3D (§11).
+
+\textbf{Comportamiento uniaxial} (calculado, §11):
+
+\begin{itemize}
+  \item Tracción (esfuerzo plano y 3D): $\sigma = (1-d^+)\,E\,\varepsilon$ \textbf{exacto}, igual que el daño isótropo, así que la calibración de la banda de grieta del modelo 1 sirve tal cual. La contracción lateral es $\varepsilon_\perp = -\nu\,\varepsilon$: la deformación de apertura de la grieta también contrae lateralmente, rasgo de los modelos formulados en el esfuerzo efectivo. En deformación plana con el lateral libre, $\sigma_{xx} = (1-d^+)\,E\,\varepsilon/(1-\nu^2)$, $\sigma_{zz} = \nu\,\sigma_{xx}$, y la energía disipada es $(1-\nu^2)\,G_f/h$ con el pico en $f_t$: el mismo rasgo del modelo 1 con Rankine, documentado allí sin corregir (2026-11-11).
+  \item Compresión con la grieta cerrada ($d^+ \to 1$, $d^- = 0$): rigidez $E$ y Poisson $\nu$, \textbf{recuperación completa}.
+\end{itemize}
+
+\textbf{Energía.} Con los daños fijos, $\boldsymbol\sigma(\boldsymbol\varepsilon)$ es continua, lineal a trozos y positivamente homogénea de grado 1: la descarga es secante hacia el origen y devuelve $\tfrac12\boldsymbol\sigma:\boldsymbol\varepsilon$. Con $\nu = 0$ ($\bar{\boldsymbol\sigma} = E\,\boldsymbol\varepsilon$) la ley deriva del potencial $\psi = \tfrac E2\bigl[(1-d^+)\,\boldsymbol\varepsilon^+:\boldsymbol\varepsilon^+ + (1-d^-)\,\boldsymbol\varepsilon^-:\boldsymbol\varepsilon^-\bigr]$. \textbf{Con $\nu \ne 0$ no deriva de ningún potencial.} Faria, Oliver y Cervera la presentan como derivada de $\psi = (1-d^+)\psi_0^+ + (1-d^-)\psi_0^-$, $\psi_0^\pm = \tfrac12\bar{\boldsymbol\sigma}^\pm:\mathbf C_e^{-1}:\bar{\boldsymbol\sigma}$ (sus ecs. 3--41), pero el paso de su ec. (38) a la (39) usa $(\partial\bar{\boldsymbol\sigma}^+/\partial\boldsymbol\varepsilon):\boldsymbol\varepsilon = \bar{\boldsymbol\sigma}^+$ con la simetría mayor de $\partial\bar{\boldsymbol\sigma}^+/\partial\boldsymbol\varepsilon$, que sólo se cumple con $\nu = 0$; su Remark 2.7 admite que la tangente no es simétrica (leído en la fuente; calculado: $\partial\psi/\partial\boldsymbol\varepsilon$ difiere de $\boldsymbol\sigma$ hasta 135 \% con $\nu = 0.2$). Carol y Willam (1996) tratan el problema en la clase general de los modelos de recuperación de rigidez. La tangente con daño fijo no es simétrica y en un ciclo cerrado de deformación con los daños fijos y direcciones principales que giran el trabajo neto no es nulo, de los dos signos. Medido con $\nu = 0.2$ (400 ciclos al azar por caso, $d^+ \in \{0.5, 0.9\}$, $d^- \in \{0, 0.3\}$, 3D y esfuerzo plano): mediana de 2--6 \% de la energía elástica máxima del ciclo, percentil 90 de 6--19 \%, máximo de 15--48 \%, y la mitad de los ciclos crea energía. En carga monótona el efecto es pequeño: residuo del balance de energía de 0.6--0.9 \% en la viga SEN (tabla de abajo). Es un caveat documentado: el modelo no está pensado para ciclos sobre material dañado (no tiene deformaciones plásticas, §5), y la prueba \texttt{closed\_\allowbreak{}cycle\_\allowbreak{}work} lo mide. Los daños nunca decrecen (§2, §3) y en tracción uniaxial monótona (esfuerzo plano y 3D) el material disipa exactamente $G_f/h$ por unidad de volumen.
+
+\textbf{Compresión paralela a una grieta abierta} (calculado por el teórico, \texttt{informes/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-17\_\allowbreak{}modelo2\_\allowbreak{}spec.\allowbreak{}md}, H1). Con $d^+ \to 1$, el esfuerzo paralelo a la grieta es $\sigma_{tt} = \tfrac{E}{1-\nu^2}(\varepsilon_t + \nu\,\varepsilon_n)$ mientras sea negativo: la deformación de apertura $\varepsilon_n$ entra por Poisson en el esfuerzo efectivo y anula la compresión paralela cuando $\varepsilon_n \ge |\varepsilon_t|/\nu$ (esfuerzo plano; $(1-\nu)|\varepsilon_t|/\nu$ en deformación plana). Como $\varepsilon_n = w/h$, el umbral depende de la malla: con una apertura $w = 0.05$ mm, $h = 10$ mm borra una compresión paralela de hasta $|\varepsilon_t| = 10^{-3}$ (\ensuremath{\approx} 32 MPa) y $h = 100$ mm sólo hasta $10^{-4}$ (\ensuremath{\approx} 3 MPa); además $\bar{\boldsymbol\sigma}^-$ se reduce y $d^-$ se retrasa en esas zonas. Es el mismo mecanismo que evita el bloqueo de esfuerzos en la viga SEN, visto del otro lado: una biela comprimida paralela a grietas abiertas pierde capacidad, más cuanto más fina la malla. Caveat documentado; la prueba \texttt{parallel\_\allowbreak{}compression\_\allowbreak{}open\_\allowbreak{}crack} lo registra.
+
+\paragraph{Alternativas estudiadas (Q1)}
+
+Cálculo con daño fijo, 3D, $\nu = 0.2$, $d^+ = 0.9$ (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-11/\allowbreak{}modelo2/\allowbreak{}} y \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}modelo2\_\allowbreak{}ley\_\allowbreak{}a/\allowbreak{}}):
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYY}
+\hline
+\textbf{Partición} & \textbf{Tracción uniaxial $\sigma/(E\varepsilon)$ (exacto 0.100)} & \textbf{Grieta cerrada en compresión (perfecto 1)} & \textbf{¿Deriva de un potencial?} & \textbf{Códigos} \\
+\hline
+\textbf{(a) Esfuerzo efectivo (adoptada)}: $\boldsymbol\sigma = (1-d^+)\bar{\boldsymbol\sigma}^+ + (1-d^-)\bar{\boldsymbol\sigma}^-$, $\bar{\boldsymbol\sigma} = \mathbf C_e:\boldsymbol\varepsilon$ (Faria, Oliver y Cervera 1998) & 0.100 & 1.000 & \textbf{No}, con $\nu \ne 0$: tangente con daño fijo asimétrica (hasta 30 \% del mayor coeficiente); trabajo en ciclos cerrados con daño fijo de los dos signos (mediana 2--6 \%, máximo 15--48 \% de la energía elástica; Carol y Willam 1996). Con $\nu = 0$, sí & OpenSees \texttt{ASDConcrete3D} \\
+(b) Deformación: $\psi = (1-d^+)\psi_0^+(\boldsymbol\varepsilon) + (1-d^-)\psi_0^-(\boldsymbol\varepsilon)$ (Ju 1989) & 0.109 (descalibra la banda) & 0.834 & Sí & Code\_Aster \texttt{ENDO\_ISOT\_BETON} (un daño) \\
+(c) Complementaria con la traza dañada (Ladevèze y Lemaitre 1984) & 0.100 & 1.000 & Sí, pero \textbf{no convexa} con daño alto: con $d^+ = 0.9$ hay dos esfuerzos para la misma deformación & HYPLAS (de Souza Neto et al. 2008, §12.6.1, ec. 12.99: un solo $D$ y $d^- = hD$) \\
+(d) Complementaria con Poisson intacto (descartada, ver abajo) & 0.100 & 1.000 & Sí, convexa; ciclos con trabajo nulo & --- \\
+\hline
+\end{tabularx}
+\end{center}
+\textbf{Viga SEN con (a) y (d)} (malla de FEAP del usuario subdividida, Tri3, IMPL-EX con paso de CMSD de 0.125 µm, carga del ensayo, sólo $d^+$; prototipos en \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-11/\allowbreak{}modelo2/\allowbreak{}} y \texttt{feap\_\allowbreak{}tesis/\allowbreak{}diagnostico/\allowbreak{}}; la fila del daño isótropo es la del modelo 1):
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYYYYYY}
+\hline
+\textbf{Ley} & \textbf{Malla} & \textbf{$P_\text{max}$ [kN]} & \textbf{$P$ en CMSD 0.05 / 0.10 / 0.20 mm [kN]} & \textbf{$D/(G_f t L)$} & \textbf{$x_{40}$ [mm]} & \textbf{Residuo del balance} \\
+\hline
+Isótropo (modelo 1) & $h/4$ \ensuremath{\cdot} $h/8$ & 37.6 \ensuremath{\cdot} 36.5 & 25.3 / 2.2 / 1.0 \ensuremath{\cdot} 24.8 / 4.1 / 1.2 & 1.54 \ensuremath{\cdot} 1.98 & 226 \ensuremath{\cdot} 225 (vertical) & 0.14 \% \\
+(a) Faria et al. & $h/4$ \ensuremath{\cdot} $h/8$ & 39.8 \ensuremath{\cdot} 39.2 & 17.0 / 3.7 / 1.5 \ensuremath{\cdot} 15.8 / 3.7 / 1.4 & 0.85 \ensuremath{\cdot} 0.86 & 248 \ensuremath{\cdot} 246 (diagonal) & 0.9 \% \ensuremath{\cdot} 0.6 \% \\
+(d) Complementaria & $h/2$ \ensuremath{\cdot} $h/4$ \ensuremath{\cdot} $h/8$ & 40.8 \ensuremath{\cdot} 39.7 \ensuremath{\cdot} 39.4 & 22.5 / 8.3 / 2.8 \ensuremath{\cdot} 25.0 / 12.4 / 7.5 \ensuremath{\cdot} 16.6 / 8.0 / 5.2 & 0.84 \ensuremath{\cdot} 1.01 \ensuremath{\cdot} 0.86 & 249 \ensuremath{\cdot} 244 \ensuremath{\cdot} 243 (diagonal) & 0.01 \% \ensuremath{\cdot} 0.01 \% \ensuremath{\cdot} 0.07 \% \\
+\hline
+\end{tabularx}
+\end{center}
+($x_{40}$: posición de la banda a media altura; la grieta física va en diagonal hacia la placa de carga, 240--250 mm. Residuo: máximo de $(W_\text{ext} - E_\text{el} - D)/W_\text{ext}$.)
+
+\begin{itemize}
+  \item Las dos forman la grieta diagonal y llegan al mismo pico (39--41 kN), que es lo que el daño isótropo no lograba.
+  \item \textbf{(a) es objetiva}: entre $h/4$ y $h/8$ la curva entera difiere a lo sumo 1.2 kN y la energía por unidad de longitud de grieta es la misma. Su balance de energía no cierra exactamente (0.6--0.9 \%), por la parte del esfuerzo que no deriva del potencial.
+  \item \textbf{(d) cierra el balance de energía} (\ensuremath{\le} 0.07 \%), pero \textbf{no es objetiva} después del pico: entre mallas la carga difiere hasta 8 kN en CMSD = 0.05 mm, la cola no tiende a cero (2.8 a 7.5 kN en 0.2 mm, sin orden con la malla) y aparecen ramas de daño secundarias. Causa: \textbf{bloqueo de esfuerzos} (\textit{stress locking}, Rots 1988). En los puntos ya totalmente dañados de $h/4$ el esfuerzo paralelo a la grieta es de −8.4 MPa en promedio (mínimo −33 MPa): la banda inclinada de triángulos de deformación constante no reproduce una apertura pura, aparecen deformaciones paralelas a la grieta espurias y (d), que conserva intacta la rigidez paralela a una grieta abierta (físicamente correcto), las convierte en esfuerzo. En (a) el mismo dato es −0.05 MPa: la apertura de la grieta entra en el esfuerzo efectivo como $\lambda\,\varepsilon_\text{apertura}$ y anula la compresión paralela. \textbf{Es justo la parte de (a) que no deriva de un potencial la que evita el bloqueo.}
+\end{itemize}
+
+En resumen: con triángulos lineales, la ley consistente (d) deja ver el bloqueo que (a) disimula. Los remedios del bloqueo son cinemáticos (seguimiento de la grieta, Cervera y Chiumenti 2006; elementos mixtos deformación--desplazamiento, Cervera, Chiumenti y Codina 2010; discontinuidades embebidas) o una transición a daño escalar con la apertura (Jirásek y Zimmermann 1998), y ninguno es objeto de esta spec.
+
+\paragraph{Forma complementaria (d), descartada}
+
+Energía complementaria a daño fijo, con $\boldsymbol\sigma^\pm$ la partición espectral del esfuerzo \textbf{nominal} (Mazars, Berthaud y Ramtani 1990; es la parte elástica del modelo de La Borderie 1991):
+
+\[
+\chi(\boldsymbol\sigma, d^+, d^-) = \frac{\boldsymbol\sigma^+:\boldsymbol\sigma^+}{2E\,(1-d^+)} + \frac{\boldsymbol\sigma^-:\boldsymbol\sigma^-}{2E\,(1-d^-)} + \frac{\nu}{2E}\Bigl(\boldsymbol\sigma:\boldsymbol\sigma - (\operatorname{tr}\boldsymbol\sigma)^2\Bigr), \qquad \boldsymbol\varepsilon = \frac{\partial\chi}{\partial\boldsymbol\sigma}.
+\]
+
+Es convexa con $\nu < 0.5$ y $d^\pm < 1$, así que la relación $\boldsymbol\varepsilon \mapsto \boldsymbol\sigma$ es única, $\psi = \tfrac12\boldsymbol\sigma:\boldsymbol\varepsilon$ y $\boldsymbol\sigma = \partial\psi/\partial\boldsymbol\varepsilon$ exactamente; disipación $Y^+\dot d^+ + Y^-\dot d^- \ge 0$ con $Y^\pm = \boldsymbol\sigma^\pm:\boldsymbol\sigma^\pm/(2E(1-d^\pm)^2)$; trabajo nulo en ciclos cerrados y tangente con daño fijo simétrica y definida positiva. El esfuerzo sale en ejes principales de $\boldsymbol\varepsilon$ probando los patrones de signo de los esfuerzos principales (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-11/\allowbreak{}modelo2/\allowbreak{}run\_\allowbreak{}compl.\allowbreak{}py}). Tracción uniaxial exacta con $\varepsilon_\perp = -\nu(1-d^+)\,\varepsilon$; cierre completo. \textbf{Se descartó} porque con triángulos lineales no es objetiva (bloqueo de esfuerzos, tabla de la viga SEN); usarla exigiría un remedio cinemático (elementos mixtos de Cervera, Chiumenti y Codina 2010; discontinuidad embebida) o la transición a daño escalar de Jirásek y Zimmermann (1998).
+
+\phantomsection
+\subsubsection*{2. Daño de tracción $d^+$}
+\addcontentsline{toc}{subsubsection}{2. Daño de tracción $d^+$}
+
+Igual que el modelo 1 con la medida de Rankine sobre el esfuerzo \textbf{efectivo} $\bar{\boldsymbol\sigma} = \mathbf C_e:\boldsymbol\varepsilon$ del estado 3D asociado (\hyperref[spec:IsotropicDamageCrackBand2D]{IsotropicDamageCrackBand2D} §5) (Q4, decidida por el usuario el 2026-11-17):
+
+\[
+\varepsilon^+_\text{eq} = \frac{\langle\bar\sigma_I\rangle_+}{E}, \qquad \kappa^+_{n+1} = \max(\kappa^+_n,\ \varepsilon^+_\text{eq}), \qquad
+d^+(\kappa^+) = 1 - \frac{\kappa_0}{\kappa^+}\,e^{-\alpha(h)\,(\kappa^+-\kappa_0)}\ \ (\kappa^+ > \kappa_0),
+\]
+
+con $\kappa_0 = f_t/E$, $\alpha(h) = 1/(G_f/(h f_t) - \kappa_0/2)$, $h < h_\text{max} = 2EG_f/f_t^2$ y el tope \texttt{damage\_max} (modelo 1, §2--§3). Como la tracción uniaxial es exacta (§1), el material disipa $G_f/h$ por unidad de volumen y la prueba de objetividad de la barra vale sin cambios. En compresión $\varepsilon^+_\text{eq} = 0$: la compresión nunca hace crecer $d^+$.
+
+\phantomsection
+\subsubsection*{3. Daño de compresión $d^-$ (Q2, decidida por el usuario el 2026-11-17)}
+\addcontentsline{toc}{subsubsection}{3. Daño de compresión $d^-$ (Q2, decidida por el usuario el 2026-11-17)}
+
+Opcional: con $f_c$ y $G_c$ dados se activa; sin ellos $d^- \equiv 0$ (compresión elástica, como el prototipo de la viga).
+
+\textbf{Medida equivalente} (Drucker-Prager sobre la parte negativa del esfuerzo efectivo, Faria, Oliver y Cervera 1998), normalizada para que en compresión uniaxial valga $|\bar\sigma|/E$:
+
+\[
+\varepsilon^-_\text{eq} = \frac{3\,\bigl(K\,\bar\sigma^-_\text{oct} + \bar\tau^-_\text{oct}\bigr)}{(\sqrt2 - K)\,E}, \qquad K = \frac{\sqrt2\,(\beta - 1)}{2\beta - 1},
+\]
+
+con $\bar\sigma^-_\text{oct} = \tfrac13\operatorname{tr}\bar{\boldsymbol\sigma}^-$, $\bar\tau^-_\text{oct} = \sqrt{\tfrac23 J_2(\bar{\boldsymbol\sigma}^-)}$ y $\beta = f_{bc}/f_c$ la razón entre las resistencias biaxial y uniaxial (1.16 por omisión, Kupfer). $J_2$ es siempre el del tensor 3D de $\bar{\boldsymbol\sigma}^-$, también en esfuerzo plano ($\bar\sigma_{zz} = 0$ cuenta en el desviador) y en deformación plana ($\bar\sigma^-_{zz}$ cuenta en la traza y en $J_2$). Compresión biaxial igual: el pico es $\beta f_c$. Compresión hidrostática: $\varepsilon^-_\text{eq}\,E/|\bar\sigma| = -3K/(\sqrt2-K) < 0$ (−0.414 con $\beta = 1.16$), así que nunca daña, rasgo de Drucker-Prager.
+
+Faria et al. escriben la medida como $\bar\tau^- = \sqrt{\sqrt3\,(K\bar\sigma^-_\text{oct} + \bar\tau^-_\text{oct})}$ (su ec. 14b, con el mismo $K$, ec. 18); la forma lineal de arriba es una renormalización monótona con el mismo umbral y la misma superficie (leído en la fuente por el teórico). Su medida de tracción es la norma energética (ec. 14a); aquí se usa Rankine (Q4).
+
+\textbf{Ley uniaxial} (parabólica de Feenstra 1993, la de DIANA, con la energía de aplastamiento $G_c$ regularizada por $h$), en la variable histórica $\kappa^- = \max \varepsilon^-_\text{eq}$:
+
+\[
+\sigma_c(\kappa) = \begin{cases}
+E\kappa & \kappa \le \kappa_{c/3} = \dfrac{f_c}{3E} \\[6pt]
+\dfrac{f_c}{3}\Bigl(1 + 4\,\xi - 2\,\xi^2\Bigr),\ \ \xi = \dfrac{\kappa-\kappa_{c/3}}{\kappa_c-\kappa_{c/3}} & \kappa_{c/3} < \kappa \le \kappa_c = \dfrac{5f_c}{3E} \\[6pt]
+f_c\Bigl(1 - \Bigl(\dfrac{\kappa-\kappa_c}{\kappa_u-\kappa_c}\Bigr)^2\Bigr) & \kappa_c < \kappa \le \kappa_u = \kappa_c + \dfrac{3\,G_c}{2\,h\,f_c} \\[6pt]
+0 & \kappa > \kappa_u
+\end{cases}
+\qquad d^-(\kappa) = 1 - \frac{\sigma_c(\kappa)}{E\,\kappa},
+\]
+
+con el mismo tope \texttt{damage\_max}. La rama ascendente empieza con pendiente $E$ y llega a $f_c$ con pendiente nula; el área de la rama descendente es $\tfrac23 f_c(\kappa_u - \kappa_c) = G_c/h$, la regularización por banda de grieta de la compresión. La rama ascendente no se regulariza (es comportamiento del continuo antes del pico). $d^-$ crece con $\kappa^-$ en todo el intervalo, porque la secante $\sigma_c/\kappa$ decrece (calculado: $d(\sigma_c/E\kappa)/d\kappa = -3E\xi(2\xi+1)/(f_c(4\xi+1)^2) < 0$ en la rama ascendente).
+
+\textbf{Elementos grandes (decidido por el usuario el 2026-11-17: sin límite).} DIANA limita la rama descendente: $\kappa_u = \max\bigl(\kappa_c + \tfrac{3G_c}{2hf_c},\ 2.5\,\kappa_c\bigr)$ (manual de teoría de DIANA 10.3, ecs. 42.111--42.115, en valor absoluto; leído por el teórico). El límite actúa cuando $h > 0.6\,E\,G_c/f_c^2$ (\ensuremath{\approx} 0.30 m con $E$ = 30 GPa, $f_c$ = 30 MPa, $G_c$ = 15 kN/m); por encima, el elemento disipa más que $G_c/h$. \textbf{No se adopta ese límite ni se rechaza $h$ grande}: con la fórmula de arriba la energía de aplastamiento es exactamente $G_c/h$ para cualquier $h$, a costa de una rama descendente casi vertical con $h$ grande (más pasos o retroceso de la estructura). Descartados: el límite de DIANA (los elementos grandes disiparían más que $G_c$ y la energía volvería a depender de la malla) y rechazar $h$ por encima del límite (obligaría a refinar).
+
+\phantomsection
+\subsubsection*{4. Variables internas}
+\addcontentsline{toc}{subsubsection}{4. Variables internas}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YY}
+\hline
+\textbf{Variable} & \textbf{Significado} \\
+\hline
+\texttt{kappa\_t}, \texttt{kappa\_c} & máxima deformación equivalente histórica de tracción y de compresión \\
+\texttt{damage\_t}, \texttt{damage\_c} & daños $d^+$, $d^-$ con que se calcula el esfuerzo (\texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR = damage\_\allowbreak{}t}) \\
+\texttt{h} & longitud característica del punto, sembrada por el elemento \\
+\texttt{kappa\_t\_prev}, \texttt{kappa\_c\_prev} & $\kappa$ del paso confirmado anterior (extrapolación de IMPL-EX) \\
+\texttt{damage\_error} & indicador de IMPL-EX, $\max_\pm \lvert d^\pm(\kappa^\pm) - \tilde d^\pm\rvert$ \\
+\hline
+\end{tabularx}
+\end{center}
+\phantomsection
+\subsubsection*{5. Fuera de alcance (Q3, decidida por el usuario el 2026-11-17)}
+\addcontentsline{toc}{subsubsection}{5. Fuera de alcance (Q3, decidida por el usuario el 2026-11-17)}
+
+Sin deformaciones plásticas (descarga secante): la deformación residual del concreto aplastado y la histéresis en ciclos quedan para el modelo 4 (daño-plasticidad). Sin acoplamiento entre los dos daños (un concreto aplastado conserva su rigidez a tracción si $d^+ = 0$, como en Faria, Oliver y Cervera 1998; Abaqus CDP, por omisión, hace lo contrario: con $w_t = 0$ la tracción no se recupera tras aplastar). Sin recuperación parcial de la rigidez a cortante al cerrar la grieta (Cervera y Tesei 2017). Sin efectos de velocidad.
+
+
+\subsection{Formulación numérica}
+
+\phantomsection
+\subsubsection*{6. Esfuerzo a partir de la deformación (forma explícita)}
+\addcontentsline{toc}{subsubsection}{6. Esfuerzo a partir de la deformación (forma explícita)}
+
+\begin{enumerate}
+  \item Esfuerzo efectivo del estado asociado (§1): $\bar{\boldsymbol\sigma} = \mathbf C_\text{ep}:\boldsymbol\varepsilon$ en esfuerzo plano; en deformación plana, $\bar{\boldsymbol\sigma}$ del plano con la elasticidad de deformación plana y $\bar\sigma_{zz} = \lambda(\varepsilon_{xx}+\varepsilon_{yy})$.
+  \item Esfuerzos y direcciones principales del plano en forma cerrada: $\bar\sigma_{1,2} = \tfrac12(\bar\sigma_{xx}+\bar\sigma_{yy}) \pm \sqrt{\tfrac14(\bar\sigma_{xx}-\bar\sigma_{yy})^2 + \bar\sigma_{xy}^2}$, $\theta = \tfrac12\operatorname{atan2}(2\bar\sigma_{xy},\ \bar\sigma_{xx}-\bar\sigma_{yy})$; en deformación plana, además $\bar\sigma_{zz}$ (eje $z$).
+  \item $\bar{\boldsymbol\sigma}^+ = \sum_i\langle\bar\sigma_i\rangle_+\,\mathbf n_i\otimes\mathbf n_i$.
+  \item $\boldsymbol\sigma = (1-d^-)\,\bar{\boldsymbol\sigma} - (d^+-d^-)\,\bar{\boldsymbol\sigma}^+$.
+\end{enumerate}
+
+Sin iteración local. La medida de Rankine (§2) usa $\bar\sigma_I = \max(\bar\sigma_1, \bar\sigma_2)$: en deformación plana $\bar\sigma_{zz} = \nu(\bar\sigma_1+\bar\sigma_2)$ no lo supera cuando $\bar\sigma_I > 0$ (con $\nu \le 0.5$; comprobado, §11).
+
+\phantomsection
+\subsubsection*{7. Tangente}
+\addcontentsline{toc}{subsubsection}{7. Tangente}
+
+\textbf{Con daño fijo} (IMPL-EX y descarga):
+
+\[
+\mathbf C^{d} = (1-d^-)\,\mathbf C_e - (d^+-d^-)\,\mathbf Q^+:\mathbf C_e, \qquad
+\mathbf Q^+ = \frac{\partial\bar{\boldsymbol\sigma}^+}{\partial\bar{\boldsymbol\sigma}} = \sum_i H(\bar\sigma_i)\,\mathbf M_{ii}\otimes\mathbf M_{ii} + \sum_{i<j}\tfrac12\,c_{ij}\,\mathbf S_{ij}\otimes\mathbf S_{ij},
+\]
+
+con $\mathbf M_{ij} = \mathbf n_i\otimes\mathbf n_j$, $\mathbf S_{ij} = \mathbf M_{ij} + \mathbf M_{ji}$, $H$ la función escalón y $c_{ij} = (\langle\bar\sigma_i\rangle_+ - \langle\bar\sigma_j\rangle_+)/(\bar\sigma_i - \bar\sigma_j)$, con el límite $\tfrac12(H_i + H_j)$ si $\bar\sigma_i = \bar\sigma_j$, y $H(0) = 0$ de forma determinista (un esfuerzo principal efectivo nulo cuenta como no positivo; el esfuerzo no cambia, sólo evita que la tangente alterne entre iteraciones). En Voigt, las columnas de cortante de $\mathbf Q^+$ llevan el factor 2 (la variación de $\bar\sigma_{ij}$ y $\bar\sigma_{ji}$ a la vez). En deformación plana, para $\mathbf Q^+$ y $\mathbf C^d$ basta el bloque del plano: $\mathbf Q^+$ no acopla $\bar\sigma_{zz}$ con las componentes del plano. \textbf{No es simétrica} con $\nu \ne 0$, porque $\mathbf Q^+$ y $\mathbf C_e$ no conmutan; con $\nu = 0$ sí lo es. Igual a diferencias finitas a $1.2\times10^{-8}$ (§11).
+
+\textbf{Implícita} (carga activa): se añaden los términos del daño,
+
+\[
+\mathbf C^\text{alg} = \mathbf C^{d} - \bar{\boldsymbol\sigma}^+\otimes\frac{\partial d^+}{\partial\boldsymbol\varepsilon} - \bar{\boldsymbol\sigma}^-\otimes\frac{\partial d^-}{\partial\boldsymbol\varepsilon},
+\qquad \frac{\partial d^+}{\partial\boldsymbol\varepsilon} = \frac{d^{+\prime}(\kappa^+)}{E}\,\mathbf C_e:(\mathbf n_I\otimes\mathbf n_I),
+\qquad \frac{\partial d^-}{\partial\boldsymbol\varepsilon} = d^{-\prime}(\kappa^-)\,\frac{\partial\varepsilon^-_\text{eq}}{\partial\bar{\boldsymbol\sigma}^-}:(\mathbb I - \mathbf Q^+):\mathbf C_e,
+\]
+
+la de $d^+$ como en el modelo 1 (§5 de su spec, Rankine) y la de $d^-$ con la medida de §3. No simétrica. \textbf{En deformación plana, $\partial d^-/\partial\boldsymbol\varepsilon$ no se reduce al bloque del plano}: $\varepsilon^-_\text{eq}$ depende de $\bar\sigma^-_{zz}$ (traza y $J_2$ del tensor 3D) y $\partial\bar\sigma_{zz}/\partial\boldsymbol\varepsilon = \lambda\,[1, 1, 0]$, así que se suma $\dfrac{\partial\varepsilon^-_\text{eq}}{\partial\bar\sigma^-_{zz}}\,\bigl(1 - H(\bar\sigma_{zz})\bigr)\,\lambda\,[1, 1, 0]$ (sin ese término, error del 8.6 \% frente a diferencias finitas; con él, $2.8\times10^{-9}$; calculado por el teórico).
+
+\phantomsection
+\subsubsection*{8. Integración implícita e IMPL-EX}
+\addcontentsline{toc}{subsubsection}{8. Integración implícita e IMPL-EX}
+
+Parámetro \texttt{integration} como en el modelo 1 (§7--§8 de su spec), aplicado a los dos daños: en IMPL-EX, $\tilde\kappa^\pm_{n+1} = \kappa^\pm_n + r\,(\kappa^\pm_n - \kappa^\pm_{n-1})$, $\tilde d^\pm_{n+1} = \max(\tilde d^\pm_n, d^\pm(\tilde\kappa^\pm_{n+1}))$, esfuerzo por §6 con los daños congelados y actualización implícita de $\kappa^\pm$ para el paso siguiente. A diferencia del daño isótropo, dentro del paso el material \textbf{no} es lineal (la partición cambia con la deformación), así que el Newton itera con $\mathbf C^{d}$: hasta tres resoluciones por paso en la viga SEN. Congelar la tangente después de la primera iteración no basta: en la viga a flexión con la banda restringida se detuvo en el paso 377 de 1000, y con Newton completo terminó (medido, §11).
+
+\phantomsection
+\subsubsection*{9. Simetría}
+\addcontentsline{toc}{subsubsection}{9. Simetría}
+
+No simétrica en las dos integraciones (\texttt{IS\_\allowbreak{}SYMMETRIC = False}), también con IMPL-EX: la tangente con daño fijo ya es asimétrica con $\nu \ne 0$ (§7).
+
+\phantomsection
+\subsubsection*{10. Caveats numéricos}
+\addcontentsline{toc}{subsubsection}{10. Caveats numéricos}
+
+\begin{itemize}
+  \item \textbf{Sin potencial con $\nu \ne 0$} (§1): trabajo de los dos signos en ciclos cerrados con daño fijo; pequeño en carga monótona. Documentado y medido por \texttt{closed\_\allowbreak{}cycle\_\allowbreak{}work}.
+  \item Contracción lateral $\varepsilon_\perp = -\nu\,\varepsilon$ con la grieta abierta, y su reverso: la compresión paralela a una grieta abierta se pierde con un umbral que depende de $h$ (§1). Registrado por \texttt{parallel\_\allowbreak{}compression\_\allowbreak{}open\_\allowbreak{}crack}.
+  \item Esfuerzos principales efectivos iguales: con $H_i = H_j$ el cociente $c_{ij}$ vale exactamente $H_i$ y se toma así, sin tolerancia (§Implementación); $H(0) = 0$. La función no es diferenciable en la arista de Rankine (doble autovalor máximo positivo con $d^+$ activo; error de 24 \% frente a diferencias finitas) ni con un esfuerzo principal efectivo exactamente nulo en $\mathbf C^d$ (75 \%); las barras a tracción uniaxial trabajan sobre ese quiebre ($\bar\sigma_\text{lateral} = 0$ \ensuremath{\pm} redondeo), lo que no afecta al esfuerzo y puede costar iteraciones.
+  \item Energía de tracción en deformación plana: $(1-\nu^2)\,G_f/h$ (§1), como el modelo 1.
+  \item Con daños altos, el tope \texttt{damage\_max} mantiene la rigidez positiva en tracción.
+  \item Compresión con $h$ grande: $\kappa_u - \kappa_c$ pequeño (rama descendente casi vertical); retroceso a nivel de la estructura posible; sin límite, por decisión del usuario (§3).
+  \item IMPL-EX: error de primer orden en el inicio del daño (modelo 1); pasos finos cerca del pico; Newton completo dentro del paso (§8).
+  \item Bloqueo de esfuerzos con triángulos: (a) lo atenúa (esfuerzo paralelo a la grieta en los puntos rotos de la viga SEN: −0.05 MPa frente a −8.4 MPa con (d)), porque la apertura entra en el esfuerzo efectivo y anula la compresión paralela (§1).
+  \item Aviso de la literatura, sin comprobar: He et al. (2019, \texttt{docs/\allowbreak{}referencias/\allowbreak{}}) sostienen que la partición espectral puede no converger con cargas biaxiales o de inversión por el conflicto entre las superficies de tracción y de compresión, y usan el signo de la traza; vigilarlo en la validación.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{11. Prototipos}
+\addcontentsline{toc}{subsubsection}{11. Prototipos}
+
+\begin{itemize}
+  \item \textbf{Ley (a), punto material}: \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}modelo2\_\allowbreak{}ley\_\allowbreak{}a/\allowbreak{}check\_\allowbreak{}ley\_\allowbreak{}a.\allowbreak{}py} (3D, esfuerzo plano y deformación plana). Tangente con daño fijo frente a diferencias finitas: $1.2\times10^{-8}$ en 2000 estados, asimetría hasta 30 \%, nula con $\nu = 0$; tracción uniaxial $\sigma/(E\varepsilon) = 1 - d^+$ a $10^{-12}$ con $\varepsilon_\perp = -\nu\varepsilon$; cierre completo; ciclo radial: trabajo $= \tfrac12\boldsymbol\sigma:\boldsymbol\varepsilon$ exacto; ciclos cerrados con $\nu = 0$: $5.5\times10^{-8}$ (error de la cuadratura del trabajo); esfuerzo plano $=$ 3D con $\bar\sigma_{zz} = 0$ a $2.7\times10^{-14}$; deformación plana: $\bar\sigma_{zz} \le \bar\sigma_I$ cuando $\bar\sigma_I > 0$. Ciclos con $\nu = 0.2$: \texttt{ciclos.py} y \texttt{resultados\_\allowbreak{}ciclos.\allowbreak{}txt}.
+  \item \textbf{Ley (a), estructuras} (sólo $d^+$, esfuerzo plano, IMPL-EX): viga SEN, \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-11/\allowbreak{}feap\_\allowbreak{}tesis/\allowbreak{}diagnostico/\allowbreak{}run\_\allowbreak{}diag.\allowbreak{}py} (casos \texttt{tc\_L2}, \texttt{tc\_L3}); viga a flexión en cuatro puntos con la banda restringida a una trayectoria prescrita, \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}banda\_\allowbreak{}orientacion/\allowbreak{}viga\_\allowbreak{}trayectoria\_\allowbreak{}m2.\allowbreak{}py} (los elementos rotos disipan 0.92--1.03 veces su energía nominal; con el daño isótropo, hasta 1.62).
+  \item \textbf{Forma (d), descartada}: \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-11/\allowbreak{}modelo2/\allowbreak{}run\_\allowbreak{}compl.\allowbreak{}py}.
+  \item \textbf{Verificación teórica independiente de la spec} (\texttt{teorico-solidum}, 2026-11-17): \texttt{informes/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-17\_\allowbreak{}modelo2\_\allowbreak{}spec.\allowbreak{}md}, guiones en \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}modelo2\_\allowbreak{}teorico/\allowbreak{}}. Ley en esfuerzo plano y deformación plana, $\mathbf C^d$, tangente implícita, medida de compresión con numerador 3, parábola de Feenstra y monotonía de $d^-$, $\bar\sigma_{zz} \le \bar\sigma_I$ y cifras de los ciclos deducidas por separado: coinciden. Las pruebas detectan las roturas a propósito (factor 2 de cortante, $(\mathbb I - \mathbf Q^+)$, término de $\bar\sigma_{zz}$, numerador $\sqrt3$).
+\end{itemize}
+
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: TensionCompressionDamage2D
+kind: material
+status: draft
+
+interface:
+  strain_dim: 3
+  primary_state_var: damage_t
+  is_symmetric: false      # siempre, también con IMPL-EX (ley (a), §9)
+  state_schema: {kappa_t: [], kappa_c: [], damage_t: [], damage_c: [], h: [], kappa_t_prev: [], kappa_c_prev: [], damage_error: []}
+  batch_kernel: true
+  uses_pseudo_time: "true con integration='impl-ex' (ADR 0034)"
+
+admission:                # Reglas §1 (Q5: el criterio no decide por la forma; el usuario clasifica: programa principal, 2026-11-18)
+  textbooks:
+    - de_souza_neto: "cap. 12, §12.6.1 (pp. 504–510, ecs. 12.83–12.117, Box 12.7) y §12.6.2 (pp. 510–511): cierre de grieta con la partición espectral tracción/compresión del tensor de esfuerzos (ecs. 12.93–12.97). La familia, con otra forma: la de Ladevèze y Lemaitre (forma (c) de §1), un solo daño D con la compresión dañada por hD (0 ≤ h ≤ 1), en flexibilidad y con la traza también partida (ec. 12.99). Texto leído el 2026-11-18"
+  general_codes:
+    - opensees: "ASDConcrete3D: la misma partición espectral del esfuerzo efectivo (ley (a)), daños de tracción y compresión con regularización por energía de fractura e IMPL-EX; sus criterios de daño son otros (Petracca et al. 2022)"
+    - code_aster: "ENDO_ORTH_BETON: daño de tracción (tensor) y de compresión (escalar) con cierre de grieta, partición en deformación y potencial; ENDO_ISOT_BETON: un daño con partición de la deformación (MAZARS no recupera la rigidez al cerrar en 3D)"
+    - abaqus: "Concrete Damaged Plasticity: un solo daño sobre el esfuerzo efectivo con recuperación de la rigidez al cerrar la grieta (pesos w_t, w_c), sin partición espectral"
+    - diana: "Total Strain Crack Model: compresión parabólica de Feenstra con energía G_c y ancho de banda h"
+
+parameters:
+  - { name: E,          type: float, required: true,  desc: "Módulo de Young intacto [Pa]" }
+  - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson, en [0, 0.5)" }
+  - { name: f_t,        type: float, required: true,  desc: "Resistencia a tracción [Pa]; κ_0 = f_t/E" }
+  - { name: G_f,        type: float, required: true,  desc: "Energía de fractura en tracción [N/m]" }
+  - { name: f_c,        type: float, required: false, default: null, desc: "Resistencia a compresión uniaxial [Pa], positiva; sin ella d⁻ ≡ 0" }
+  - { name: G_c,        type: float, required: false, default: null, desc: "Energía de aplastamiento [N/m] (rama descendente de compresión); obligatoria con f_c" }
+  - { name: beta,       type: float, required: false, default: 1.16, desc: "f_bc/f_c, razón de resistencias biaxial y uniaxial en compresión" }
+  - { name: hypothesis, type: str,   required: false, default: "plane_stress", desc: "plane_stress | plane_strain" }
+  - { name: integration, type: str,  required: false, default: "implicit", desc: "implicit | impl-ex (modelo 1, §8)" }
+  - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope de los dos daños, en (0, 1)" }
+  - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
+
+state_variables:
+  - { name: kappa_t,      type: float, shape: [], desc: "máxima ε⁺_eq histórica (Rankine)" }
+  - { name: kappa_c,      type: float, shape: [], desc: "máxima ε⁻_eq histórica (Drucker-Prager sobre σ̄⁻)" }
+  - { name: damage_t,     type: float, shape: [], desc: "d⁺ ∈ [0, damage_max]" }
+  - { name: damage_c,     type: float, shape: [], desc: "d⁻ ∈ [0, damage_max]" }
+  - { name: h,            type: float, shape: [], desc: "longitud característica del punto, sembrada por el elemento" }
+  - { name: kappa_t_prev, type: float, shape: [], desc: "κ⁺ del paso confirmado anterior (IMPL-EX)" }
+  - { name: kappa_c_prev, type: float, shape: [], desc: "κ⁻ del paso confirmado anterior (IMPL-EX)" }
+  - { name: damage_error, type: float, shape: [], desc: "indicador de IMPL-EX; 0 en la implícita" }
+
+conventions:
+  voigt: "[ε_xx, ε_yy, γ_xy], γ_xy = 2·ε_xy; σ = [σ_xx, σ_yy, σ_xy]"
+  units: "E, f_t, f_c en Pa; G_f, G_c en N/m; h en m (cualquier sistema coherente)"
+  sign: "σ > 0 ⇔ tracción; f_c > 0"
+
+validity:
+  - "pequeñas deformaciones; E > 0, 0 ≤ ν < 0.5, f_t > 0, G_f > 0; con compresión, f_c > f_t y G_c > 0"
+  - "0 < h < 2·E·G_f/f_t² en cada punto (como el modelo 1)"
+  - "sólo en elementos que proporcionan h (sólidos 2D y 3D)"
+
+out_of_scope:
+  - "deformaciones plásticas, histéresis y deformación residual (modelo 4)"
+  - "acoplamiento entre d⁺ y d⁻; recuperación parcial del cortante al cerrar la grieta"
+  - "anisotropía del daño (grieta fija o rotante: modelo 3)"
+  - "control adaptativo del paso de IMPL-EX"
+
+acceptance:
+  material_point:
+    - name: uniaxial_tension_exact
+      setup: "tracción uniaxial de esfuerzo en esfuerzo plano (y en 3D), d⁺ ∈ {0, 0.5, 0.9}"
+      expect: "σ = (1 − d⁺)·E·ε; ε_⊥ = −ν·ε; las demás componentes del esfuerzo nulas"
+      tol_rel: 1.0e-12
+    - name: plane_strain_uniaxial
+      setup: "deformación plana, tracción con σ_yy = 0, d⁺ ∈ {0, 0.5, 0.9} (valor independiente del 3D)"
+      expect: "σ_xx = (1 − d⁺)·E·ε/(1 − ν²); σ_zz = ν·σ_xx"
+      tol_rel: 1.0e-12
+    - name: pure_shear_closed_form
+      setup: "cortante puro γ en esfuerzo plano con daños fijos, p. ej. (d⁺, d⁻) = (0.8, 0.25), y con daño activo"
+      expect: "σ = G·γ·[−(d⁺ − d⁻)/2, −(d⁺ − d⁻)/2, 1 − (d⁺ + d⁻)/2]; d⁺ empieza en τ = f_t (blinda γ = 2ε en el esfuerzo)"
+      tol_rel: 1.0e-12
+    - name: crack_closure
+      setup: "tracción hasta d⁺ = 0.9 y después compresión uniaxial"
+      expect: "rigidez en compresión E y Poisson ν (recuperación completa)"
+      tol_rel: 1.0e-12
+    - name: parallel_compression_open_crack
+      setup: "esfuerzo plano, d⁺ = damage_max, d⁻ = 0, ε_t = −10⁻³ paralela a la grieta y apertura ε_n ∈ {0, 1, 2, 4, 5}·10⁻³"
+      expect: "registra el caveat de §1: σ_tt = E/(1 − ν²)·(ε_t + ν·ε_n) mientras sea negativa y ≈ 0 (orden 1 − damage_max) desde ε_n = |ε_t|/ν"
+      tol_rel: 1.0e-5
+    - name: radial_unloading_secant
+      setup: "deformaciones al azar con daños fijos; carga y descarga por la misma recta"
+      expect: "σ(s·ε) = s·σ(ε) para s > 0; el trabajo devuelto en la descarga es ½·σ:ε"
+      tol_rel: 1.0e-12
+    - name: potential_when_nu_zero
+      setup: "ν = 0, ciclos cerrados genéricos de deformación con daños fijos (d⁺, d⁻) ∈ {(0.9, 0), (0.9, 0.3)}; ≥ 16001 puntos de cuadratura por ciclo, o ψ de §1 evaluado en forma cerrada"
+      expect: "∮σ:dε = 0 frente a la energía elástica máxima del ciclo (con ν = 0 la ley deriva de un potencial)"
+      tol_rel: 1.0e-6
+    - name: closed_cycle_work
+      setup: "ν = 0.2, conjunto fijo (semilla) de ciclos cerrados genéricos con daños fijos, esfuerzo plano y 3D"
+      expect: "registra el defecto documentado en §1: trabajo de los dos signos, mediana de |∮σ:dε|/ψ_max entre 1 y 10 %; los valores del conjunto, iguales a los de referencia"
+      tol_rel: 1.0e-8
+    - name: tension_energy
+      setup: "tracción uniaxial monótona hasta d⁺ = damage_max en esfuerzo plano y 3D; h ∈ {5, 25, 100, 400} mm; en deformación plana con el lateral libre se espera (1 − ν²)·G_f/h (§1)"
+      expect: "energía disipada = D(κ) del modelo 1 (§2); al final > 0.997·G_f/h"
+      tol_rel: 1.0e-6
+    - name: compression_curve
+      setup: "compresión uniaxial monótona con f_c y G_c; h ∈ {10, 50, 100} mm"
+      expect: "σ = −σ_c(κ) de §3 con |σ + σ_c(κ)| ≤ tol·f_c (escala f_c: σ → 0 cerca de κ_u); pico f_c en κ_c = 5f_c/(3E); área de la rama descendente G_c/h, descontado analíticamente el efecto del tope damage_max"
+      tol_rel: 1.0e-8
+    - name: biaxial_compression_peak
+      setup: "compresión biaxial igual"
+      expect: "pico β·f_c"
+      tol_rel: 1.0e-8
+    - name: hydrostatic_compression_no_damage
+      setup: "compresión hidrostática creciente (3D) con f_c y G_c"
+      expect: "ε⁻_eq < 0 y d⁻ = 0 en toda la historia (rasgo de Drucker-Prager, §3)"
+    - name: damage_irreversible
+      setup: "historias de carga, descarga, cierre y reapertura"
+      expect: "d± nunca decrecen; la compresión no hace crecer d⁺"
+    - name: tangent_fd
+      setup: "daño fijo con esfuerzos principales efectivos distintos y dobles del mismo signo; implícita en carga activa con d⁺ o d⁻ (distintos; doble negativo con d⁻); esfuerzo plano y deformación plana, ésta con d⁻ activo y σ̄_zz de los dos signos; se excluyen la arista de Rankine y los esfuerzos principales efectivos nulos (§10)"
+      expect: "|C_FD − C_tan| ≤ 1e-6·max|C_FD|; con ν = 0 y daño fijo, simétrica"
+      tol_rel: 1.0e-6
+    - name: restriction_of_3d
+      setup: "historias con d⁺ y d⁻ activos y σ̄_zz de los dos signos, en esfuerzo plano (estado 3D con σ̄_zz = 0) y deformación plana (ε_zz = 0)"
+      expect: "σ y variables internas iguales a TensionCompressionDamage3D con el estado 3D asociado"
+      tol_rel: 1.0e-12
+    - name: units_invariance
+      setup: "el mismo caso en Pa–m y en MPa–mm, con todos los parámetros físicos ≠ 1 (E, ν, f_t, G_f, f_c, G_c, β, h)"
+      expect: "esfuerzos, daños y energías iguales tras convertir unidades (Reglas §6)"
+      tol_rel: 1.0e-12
+    - name: batch_kernel_matches
+      expect: "el kernel por lotes reproduce bit a bit σ, C_tan y la fila de estado de compute_state, implícita e IMPL-EX"
+  impl_ex:
+    - name: fixed_damage_tangent
+      expect: "C_tan = C^d(d̃⁺, d̃⁻) de §7, igual a diferencias finitas con los daños extrapolados congelados"
+      tol_rel: 1.0e-6
+    - name: first_order_convergence
+      setup: "como el modelo 1, en tracción (d⁺) y en compresión (d⁻), con pasos Δ, Δ/2, Δ/4, Δ/8"
+      expect: "el error máximo de σ frente a la implícita se reduce a la mitad al reducir el paso a la mitad en el camino lineal (razón 2 ± 15 %) y a la cuarta parte en el cuadrático (4 ± 15 %)"
+    - name: damage_monotone
+      setup: "carga, descarga parcial y recarga con extrapolación que se pasa, en tracción y en compresión"
+      expect: "d̃⁺ y d̃⁻ nunca decrecen"
+    - name: bisection_idempotent
+      setup: "mismo intento de paso dos veces tras una bisección"
+      expect: "estado de prueba idéntico"
+    - name: outside_step_frozen
+      setup: "compute_state fuera de un paso (sin pseudo-tiempo)"
+      expect: "κ± y d̃± sin cambio, como el modelo 1"
+  mesh_objectivity:
+    - name: bar_in_tension
+      setup: "barra con una columna debilitada (la de la banda de grieta), los diez sólidos, 5–20 elementos; los 2D en esfuerzo plano; como el modelo 1: ν = 0, y además ν = 0.2 con Quad4; IMPL-EX con paso de 0.125 µm"
+      expect: "D/(G_f·A) = 1 ± 1 % (Quad8 y Quad9: G_f·A/α = 18/13, factor de localización del modelo 1; con ν = 0.2: 1 − ν²) y carga posterior al pico (u = 0.05 mm) igual entre mallas ± 1 %"
+      tol_rel: 1.0e-2
+    - name: bar_in_compression
+      setup: "la misma barra en compresión con f_c y G_c, de longitud fija L = 0.2 m con 5–20 elementos (h ≤ 40 mm: sin retroceso, du/dκ > 0 en toda la rama), control por desplazamiento"
+      expect: "trabajo sobre los elementos de la banda desde su pico (∫σ dε en la banda) = G_c·A ± 2 % e igual entre mallas"
+      tol_rel: 2.0e-2
+  structural:
+    - name: sen_beam
+      setup: "viga SEN de Schlangen sobre la malla de FEAP del usuario y sus subdivisiones h/2, h/4, h/8 (Tri3), carga del ensayo, control indirecto del CMSD, IMPL-EX"
+      expect: "banda diagonal hacia la placa de carga; D/(G_f·t·L) igual entre mallas ± 5 %; carga máxima entre mallas ± 3 %; residuo del balance de energía ≤ 1 % (caveat de la ley (a), §1; medido 0.6–0.9 % con sólo d⁺); sin comparación punto a punto con la curva experimental"
+      tol_rel: 5.0e-2
+    - name: van_vliet_tension
+      setup: "el ensayo de Van Vliet del modelo 1"
+      expect: "mismos criterios que el modelo 1 (energía frente a G_f·A ± 3 %)"
+      tol_rel: 3.0e-2
+
+references:
+  - "Mazars J., Berthaud Y., Ramtani S. (1990). The unilateral behaviour of damaged concrete. Engineering Fracture Mechanics 35(4–5), 629–635. DOI 10.1016/0013-7944(90)90145-7"
+  - "La Borderie C. (1991). Phénomènes unilatéraux dans un matériau endommageable : modélisation et application à l'analyse de structures en béton. Tesis doctoral, Université Paris 6."
+  - "Ladevèze P., Lemaitre J. (1984). Damage effective stress in quasi unilateral conditions. 16th IUTAM Congress, Lyngby."
+  - "Faria R., Oliver J., Cervera M. (1998). A strain-based plastic viscous-damage model for massive concrete structures. IJSS 35(14), 1533–1558. DOI 10.1016/S0020-7683(97)00119-4"
+  - "Cervera M., Oliver J., Faria R. (1995). Seismic evaluation of concrete dams via continuum damage models. EESD 24(9), 1225–1245. DOI 10.1002/eqe.4290240905"
+  - "Wu J.Y., Li J., Faria R. (2006). An energy release rate-based plastic-damage model for concrete. IJSS 43(3–4), 583–612. DOI 10.1016/j.ijsolstr.2005.05.038"
+  - "Carol I., Willam K. (1996). Spurious energy dissipation/generation in stiffness recovery models for elastic degradation and damage. IJSS 33(20–22), 2939–2957. DOI 10.1016/0020-7683(95)00254-5"
+  - "Ju J.W. (1989). On energy-based coupled elastoplastic damage theories: constitutive modeling and computational aspects. IJSS 25(7), 803–833. DOI 10.1016/0020-7683(89)90015-2"
+  - "Cervera M., Tesei C. (2017). An energy-equivalent d+/d− damage model with enhanced microcrack closure-reopening capabilities for cohesive-frictional materials. Materials 10(4), 433. DOI 10.3390/ma10040433"
+  - "Feenstra P.H. (1993). Computational aspects of biaxial stress in plain and reinforced concrete. Tesis doctoral, TU Delft."
+  - "Code_Aster, doc. R7.01.04, loi ENDO_ISOT_BETON."
+  - "OpenSees, ASDConcrete3D: https://opensees.github.io/OpenSeesDocumentation/user/manual/material/ndMaterials/ASDConcrete3D.html"
+  - "Las del modelo 1 (Bažant y Oh 1983; Hillerborg et al. 1976; Rots 1988; Oliver, Huespe y Cante 2008)."
+
+\end{lstlisting}
+
+
+\subsection{Implementación}
+
+Plan: bloque 1, ley de §1 con $d^+$ (Rankine y banda de grieta), §6--§9 en 2D y 3D, implícita e IMPL-EX, pruebas del punto material y barra en tracción; bloque 2, daño de compresión de §3 con la barra en compresión; después, validación (viga SEN, Van Vliet) y \texttt{status: validated}.
+
+\textbf{Bloque 1 (2026-11-18).} Archivos:
+
+\begin{itemize}
+  \item \texttt{solidum/\allowbreak{}materials/\allowbreak{}\_\allowbreak{}spectral\_\allowbreak{}split.\allowbreak{}py}: $\bar{\boldsymbol\sigma}^+$ y $\mathbf Q^+$ (§7) en forma cerrada en 2D y con \texttt{eigh} en 3D; devuelve también $\bar\sigma_I$ y $\mathbf n_I\otimes\mathbf n_I$ para Rankine, sin una segunda descomposición. Esfuerzos principales iguales (§10): con $H_i = H_j$ se toma $c_{ij} = H_i$, que es el valor exacto del cociente, así que no hace falta tolerancia; con $H_i \ne H_j$ los dos esfuerzos tienen signo distinto y $\bar\sigma_i - \bar\sigma_j > 0$. Con todos los esfuerzos principales positivos (o no positivos), $\bar{\boldsymbol\sigma}^+ = \bar{\boldsymbol\sigma}$ y $\mathbf Q^+ = \mathbb I$ (o cero) exactamente.
+  \item \texttt{solidum/\allowbreak{}materials/\allowbreak{}\_\allowbreak{}tension\_\allowbreak{}compression.\allowbreak{}py}: estado por punto y actualización de $d^+$ (implícita e IMPL-EX), común a 2D y 3D; reutiliza de \texttt{\_crack\_band.py} $\alpha(h)$, la ley exponencial con el tope, \texttt{implex\_update}, la validación y la siembra de $h$ (\texttt{CrackBandMixin}).
+  \item \texttt{solidum/\allowbreak{}materials/\allowbreak{}damage\_\allowbreak{}tension\_\allowbreak{}compression\_\allowbreak{}2d.\allowbreak{}py} y \texttt{\_3d.py}: núcleo por punto (§6--§8), adaptador por lotes (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014}) y clase. En deformación plana el núcleo sólo necesita el plano (§6); $\sigma_{zz}$ para el post-proceso (\texttt{out\_\allowbreak{}of\_\allowbreak{}plane\_\allowbreak{}stress}) se recupera de $\boldsymbol\sigma$ y de los daños, porque $\boldsymbol\sigma$ y $\bar{\boldsymbol\sigma}$ son coaxiales con $\sigma_i = (1-d^\pm)\,\bar\sigma_i$.
+  \item Sólo evoluciona $d^+$: $d^-$ se arrastra del estado sin cambio (0 en un análisis) y la compresión es elástica. Los parámetros \texttt{f\_c}, \texttt{G\_c} y \texttt{beta} entran con el bloque 2.
+  \item Caché de Numba: los núcleos de los dos materiales se compilan con \texttt{\_spectral\_split} y \texttt{\_\allowbreak{}tension\_\allowbreak{}compression} dentro; un cambio en esos módulos no invalida su caché (mismo caveat que el modelo 1 con \texttt{\_\allowbreak{}equivalent\_\allowbreak{}strain}).
+\end{itemize}
+
+Pruebas: \texttt{tests/\allowbreak{}test\_\allowbreak{}tension\_\allowbreak{}compression\_\allowbreak{}damage.\allowbreak{}py} (aceptación \texttt{material\_point} e \texttt{impl\_ex} sin compresión; el trabajo en ciclos con $\nu = 0.2$ se compara ciclo a ciclo con el prototipo independiente, \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-18/\allowbreak{}modelo2\_\allowbreak{}bloque1/\allowbreak{}ref\_\allowbreak{}ciclos.\allowbreak{}py}) y \texttt{tests/\allowbreak{}validation/\allowbreak{}test\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}objectivity.\allowbreak{}py} (\texttt{bar\_in\_tension} con los diez sólidos, implícita e IMPL-EX). Mutaciones detectadas por las pruebas: \texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-18/\allowbreak{}modelo2\_\allowbreak{}bloque1/\allowbreak{}mutaciones.\allowbreak{}py}.
+
+Pendiente del bloque 2: §3 (parámetros, medida de Drucker-Prager, parábola de Feenstra, $\partial d^-/\partial\boldsymbol\varepsilon$ con $(\mathbb I - \mathbf Q^+)$ y el término de $\bar\sigma_{zz}$ en deformación plana) y las pruebas \texttt{compression\_\allowbreak{}curve}, \texttt{biaxial\_\allowbreak{}compression\_\allowbreak{}peak}, \texttt{hydrostatic\_\allowbreak{}compression\_\allowbreak{}no\_\allowbreak{}damage}, \texttt{bar\_\allowbreak{}in\_\allowbreak{}compression} y las de IMPL-EX en compresión.
+
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-11-11} \ensuremath{\cdot} Spec creada por la IA tras el «si» del usuario a «corregir $h$ de los cuadráticos y después la spec del modelo 2 antes del bloque 3». La hoja de ruta aprobada nombraba Faria, Oliver y Cervera (1998) / Mazars. Al preparar la spec la IA midió que la partición del esfuerzo efectivo de Faria et al. (a) no deriva de un potencial con $\nu \ne 0$, buscó una forma termodinámicamente consistente con tracción exacta y cierre completo, halló que la complementaria de Ladevèze y Lemaitre con la traza dañada (c) no es convexa y que la de Mazars, Berthaud y Ramtani (1990) (d) sí lo es, y probó (d) en la viga SEN con tres mallas: cierra el balance de energía, pero el bloqueo de esfuerzos la hace no objetiva (§1). Por eso la recomendación de Q1 es (a), con su caveat documentado.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Dato nuevo para Q1} (prototipo de la banda de grieta con trayectoria prescrita y cuerda exacta, viga entallada a flexión en cuatro puntos, 10 mallas Quad4/Tri3; detalle en el Diálogo de \hyperref[spec:IsotropicDamageCrackBand2D]{IsotropicDamageCrackBand2D} de la misma fecha). Con la partición (a) y $d^- = 0$, los elementos rotos disipan 0.92--1.03 veces la energía de la calibración uniaxial; con el daño isótropo, hasta 1.62 en las bandas de triángulos, por el daño que crece con estados mixtos de cortante y compresión. Error medio de la energía con la cuerda: 9.0 \% (isótropo) \ensuremath{\to} 6.1 \% (a). Lo que queda es cinemático (elementos cruzados que no se rompen) e igual con los dos materiales.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Q1: el usuario aprueba (a)} («sigamos con lo que tú recomiendas, sobre el modelo 2»). Al preparar la reescritura de la spec para (a), la IA comprobó la ley (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-17/\allowbreak{}modelo2\_\allowbreak{}ley\_\allowbreak{}a/\allowbreak{}}): tracción uniaxial exacta y lateral $\varepsilon_\perp = -\nu\varepsilon$ (no $-\nu(1-d^+)\varepsilon$ como en (d)); cierre completo; descarga secante exacta; tangente con daño fijo $(1-d^-)\mathbf C_e - (d^+-d^-)\,\mathbf Q^+\mathbf C_e$ igual a diferencias finitas a $10^{-8}$, asimétrica hasta 30 \%; con $\nu = 0$ deriva de un potencial (trabajo nulo en ciclos); esfuerzo plano = restricción exacta del 3D. \textbf{Pero el trabajo en ciclos cerrados de deformación con daño fijo es mayor que el \ensuremath{\pm}6 \% citado en Q1}: con $\nu = 0.2$ y 400 ciclos al azar por caso, mediana 2--6 \% de la energía elástica máxima del ciclo, percentil 90 de 6--19 \% y máximo de 15--48 \%, la mitad de las veces creando energía. En carga monótona sigue siendo pequeño (residuo de 0.6--0.9 \% en la viga SEN). La cifra corregida no cambia la recomendación (el defecto aparece en ciclos con daño fijo, fuera del uso de este modelo sin deformaciones plásticas; (d) no es objetiva con triángulos): se informó al usuario y \textbf{(a) queda adoptada}; el defecto se documenta con estas cifras y una prueba de aceptación lo mide.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-17} \ensuremath{\cdot} Q2, Q3, Q4 y Q6 decididas por el usuario con la recomendación (lista de abajo); Q5 la decide la IA con el criterio de admisión, con la evidencia que reúne \texttt{bibliotecario-solidum}. Al repasar §3 la IA halló y corrigió un error de la spec: la medida de compresión llevaba $\sqrt3$ en el numerador y debe llevar 3; con $\sqrt3$ la compresión uniaxial daba $\varepsilon^-_\text{eq} = |\bar\sigma|/(\sqrt3E)$ y el pico habría salido en $\sqrt3 f_c$ (calculado; el pico biaxial $\beta f_c$ sale bien con las dos).
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Revisión de la spec por \texttt{teorico-solidum}} (\texttt{informes/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-17\_\allowbreak{}modelo2\_\allowbreak{}spec.\allowbreak{}md}): consistente, sin errores de fórmula que cambien resultados. La IA aplicó sus correcciones de precisión: §7, en deformación plana $\partial d^-/\partial\boldsymbol\varepsilon$ lleva el término de $\bar\sigma_{zz}$ (H3); §3, $J_2$ del tensor 3D, compresión hidrostática sin daño y la forma original de Faria (H7, H11); §1, la deducción de Faria et al. desde $\psi$ sólo vale con $\nu = 0$ y OpenSees comparte la partición, no los criterios de daño (H6, H7); §1 y §10, energía $(1-\nu^2)G_f/h$ en deformación plana (H12) y compresión paralela a una grieta abierta con umbral que depende de $h$ (H1, documentada como caveat con la prueba \texttt{parallel\_\allowbreak{}compression\_\allowbreak{}open\_\allowbreak{}crack}); §7 y §10, $H(0) = 0$ y los puntos no diferenciables (H5); \texttt{acceptance}: definiciones precisas de \texttt{bar\_\allowbreak{}in\_\allowbreak{}compression} (trabajo sobre la banda desde su pico, $L$ = 0.2 m), \texttt{tangent\_fd}, \texttt{potential\_\allowbreak{}when\_\allowbreak{}nu\_\allowbreak{}zero} y \texttt{compression\_\allowbreak{}curve}, y pruebas nuevas (deformación plana con valor independiente, cortante puro, hidrostática, invariancia de unidades, bloque \texttt{impl\_ex}) sin cambiar ninguna tolerancia aprobada (H4, H5, H8--H11). H2 (límite de DIANA para la rama descendente con elementos grandes): \textbf{el usuario decide no adoptarlo} (energía exacta con cualquier $h$; §3).
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-17} \ensuremath{\cdot} \textbf{Evidencia del criterio de admisión} (\texttt{bibliotecario-solidum}, \texttt{informes/\allowbreak{}busqueda\_\allowbreak{}admision\_\allowbreak{}modelo2\_\allowbreak{}2026-11-17.\allowbreak{}md}): (ii) se cumple con la misma partición (OpenSees \texttt{ASDConcrete3D}, leído; sus criterios de daño son otros); (i) sólo por familia (de Souza Neto et al. 2008, §12.6, otra forma, por índice y código HYPLAS); la forma (a) no está en los ocho textos. El criterio no decide: Q5 pasa al usuario, con recomendación. La IA corrigió el bloque \texttt{admission} (Code\_Aster: \texttt{ENDO\_ORTH\_BETON} en lugar de \texttt{MAZARS}, que no recupera la rigidez en 3D; Abaqus CDP: un solo daño sin partición espectral) y anotó dos datos: Abaqus CDP acopla por omisión la tracción al aplastamiento (§5) y He et al. (2019) advierten de problemas de convergencia de la partición espectral (§10). DOI de las referencias de la spec verificados en Crossref.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-18} \ensuremath{\cdot} \textbf{Q5: el usuario clasifica el modelo en el programa principal} (opción recomendada). El criterio (ii) se cumple con la misma partición (OpenSees \texttt{ASDConcrete3D}) y el (i) por la familia (de Souza Neto et al. 2008, §12.6); la nota va al catálogo al validar. La lectura de pp. 504--512 del libro queda como refuerzo opcional, no como condición. Spec completa; la implementación empieza por el bloque 1 (§Implementación).
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-18} \ensuremath{\cdot} \textbf{de Souza Neto et al. (2008), §12.6, leído} (el PDF está en la biblioteca digital del usuario, \texttt{Mi\_\allowbreak{}Biblioteca\_\allowbreak{}Digital/\allowbreak{}Books/\allowbreak{}Constitutive models/\allowbreak{}Computational methods for plasticity.\allowbreak{} 9780470694527.\allowbreak{}pdf}; pp. 504--512 del libro = pp. 529--537 del PDF). Confirma lo que el bibliotecario había deducido del código HYPLAS: §12.6.1 presenta el modelo de Ladevèze (1983), Ladevèze y Lemaitre (1984) y Lemaitre (1996), con un solo daño $D$ y un factor de cierre $h \in [0, 1]$ ($h \approx 0.2$ típico; $h = 0$, cierre completo; $h = 1$, sin cierre). La deformación se expresa en función del esfuerzo nominal partido espectralmente en tracción y compresión, $\boldsymbol\sigma = \boldsymbol\sigma^+ + \boldsymbol\sigma^-$ (ecs. 12.93--12.97, la misma partición que §1 aplica al esfuerzo efectivo), con la traza también partida (ec. 12.99); el esfuerzo se obtiene por Newton en esfuerzos principales (Box 12.7). Es la forma (c) de la tabla de §1 con $d^+ = D$ y $d^- = hD$. §12.6.2 extiende el cierre a la evolución del daño dúctil de Lemaitre (tasa de liberación $Y$ partida, ec. 12.118), con plasticidad, fuera del alcance del concreto. No cita a Faria et al. ni a Mazars. Conclusión: el criterio (i) se cumple por la familia (daño unilateral con partición espectral del esfuerzo), no por la forma (a); la clasificación de Q5 no cambia.
+\end{itemize}
+
+\begin{itemize}
+  \item \textbf{2026-11-18} \ensuremath{\cdot} \textbf{Bloque 1 implementado y verificado por \texttt{teorico-solidum}} (\texttt{informes/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-18\_\allowbreak{}modelo2\_\allowbreak{}bloque1.\allowbreak{}md}): deducción independiente y código coinciden al redondeo; sin errores de formulación ni de implementación; listo para commit. La IA aplicó sus hallazgos, todos de pruebas o de redacción: pruebas nuevas de la tangente implícita con $d^- \ne 0$ (H1), de $H(0) = 0$ (H2), de la tangente global ensamblada con partición de signo mixto, implícita e IMPL-EX (H3), de autovalores dobles girados (H4), tolerancia absoluta de \texttt{damage\_error} (H5) y deformación plana en simetría y unidades (P4); \texttt{math.hypot} en la forma cerrada 2D (P2); la frase de §10 sobre la tolerancia de $c_{ij}$ (P1). \textbf{Aclaración de la aceptación \texttt{bar\_in\_tension} (H6)}: el texto aprobado decía «los diez sólidos\ldots{} 1 \ensuremath{\pm} 1 \%»; las pruebas siguen, como el modelo 1, las decisiones del usuario del 2026-11-11 y 2026-11-12 (\ensuremath{\nu} = 0; Quad8/Quad9 disipan $G_f A/\alpha$ = 18/13 en la barra de esfuerzo uniforme; con \ensuremath{\nu} = 0.2, $1-\nu^2$), y con IMPL-EX el paso de 0.125 µm del modelo 1 (con 1 µm IMPL-EX disipa 1.04\ensuremath{\cdot}$G_f A$, igual en los dos modelos). Se reescribió el \texttt{setup}/\texttt{expect} para decirlo; no cambia ningún criterio ni tolerancia.
+\end{itemize}
+
+\textbf{Preguntas al usuario} (una decisión física por pregunta; cada una con recomendación):
+
+\begin{itemize}
+  \item \textbf{Q1. Ley de esfuerzo (partición tracción/compresión). Decidida: (a), Faria, Oliver y Cervera (1998)} (usuario, 2026-11-17; entradas del Diálogo de esa fecha). Razones: la única objetiva en la viga SEN con mallas finas, la ley estándar de la familia (OpenSees \texttt{ASDConcrete3D}) y la que suprime el exceso de energía de las bandas de triángulos; su defecto (no deriva de un potencial con $\nu \ne 0$) se documenta en §1 y lo mide \texttt{closed\_\allowbreak{}cycle\_\allowbreak{}work}. (d) es exacta en energía pero no es objetiva con triángulos lineales (bloqueo de esfuerzos); (b) descalibra la banda y cierra mal la grieta; (c) no es convexa.
+  \item \textbf{Q2. Compresión. Decidida: aplastamiento opcional} (usuario, 2026-11-17): Drucker-Prager sobre la parte negativa del esfuerzo efectivo (Faria et al. 1998, con $\beta = f_{bc}/f_c$) y ley parabólica de Feenstra (DIANA) con $G_c/h$; sin $f_c$ y $G_c$ la compresión es elástica. Descartadas: compresión siempre elástica (no representa el aplastamiento) y la ley exponencial de Faria et al. (parámetros de ajuste, sin regularización por $G_c$: dependería de la malla).
+  \item \textbf{Q3. Deformaciones plásticas. Decidida: no en este modelo} (usuario, 2026-11-17): descarga secante, sin deformación residual en descargas ni ciclos; la plasticidad del concreto aplastado va al modelo 4.
+  \item \textbf{Q4. Criterio de tracción. Decidida: sólo Rankine sobre el esfuerzo efectivo, como el modelo 1} (usuario, 2026-11-17): la compresión no hace crecer $d^+$ (de ella se encarga $d^-$) y la calibración de la banda es exacta. Descartado ofrecer las otras medidas del modelo 1 (energía, Mazars, von Mises modificado): hacen crecer $d^+$ también con compresión y duplicarían el efecto de $d^-$.
+  \item \textbf{Q5. Clasificación. Decidida: programa principal} (usuario, 2026-11-18, con la recomendación). En el catálogo, la nota «criterio (i) cumplido por la familia (de Souza Neto et al. 2008, §12.6), no por la forma (a)». Evidencia de \texttt{bibliotecario-solidum} (\texttt{informes/\allowbreak{}busqueda\_\allowbreak{}admision\_\allowbreak{}modelo2\_\allowbreak{}2026-11-17.\allowbreak{}md}): el criterio (ii) se cumple con la misma partición del esfuerzo (OpenSees \texttt{ASDConcrete3D}, leído); el (i) sólo \textbf{por familia}: de Souza Neto et al. (2008), §12.6.1--12.6.2, trata el cierre de grieta en daño elástico, pero con otra forma (un solo daño y un factor de cierre $h$); la forma (a) no aparece en ninguno de los ocho textos (está en artículos: Faria et al. 1998, Cervera y Chiumenti 2006, Saloustros et al. 2018). \textbf{Recomendación: programa principal}, con la nota en el catálogo de que (i) se cumple por la familia y no por la forma; es el modelo estándar de concreto de la familia y el paso natural del modelo 1. La alternativa es un módulo de usuario. Afianzada el 2026-11-18 con la lectura de §12.6 de de Souza Neto (Diálogo de esa fecha); sigue sin leer §7.7 de de Borst et al. (2012).
+  \item \textbf{Q6. Aceptación.} Casos y tolerancias del bloque \texttt{acceptance} (punto material exacto, descarga secante, potencial con $\nu = 0$, registro del trabajo en ciclos con $\nu = 0.2$, objetividad en barras de tracción y compresión, viga SEN entre mallas \ensuremath{\pm}5 \% en energía y \ensuremath{\pm}3 \% en carga máxima con residuo del balance \ensuremath{\le} 1 \%, Van Vliet como el modelo 1; sin comparación punto a punto con curvas experimentales). \textbf{Decidida: aprobada así} (usuario, 2026-11-17).
 \end{itemize}
 
 
@@ -11897,6 +12517,8 @@ Convenio de Abaqus en 3D: $h = \sqrt[3]{V_e}$ en elementos lineales (\texttt{Hex
 
 \textbf{Factor de localización (2026-11-12; spec 2D §4).} En flexión los cuadráticos 2D sólo ablandan una parte de sus puntos de Gauss y la energía se corrige con $h = \alpha\,c\,\Omega_e^{1/d}$ (\texttt{Quad8}/\texttt{Quad9}, $\alpha = 13/18$). En 3D no hay un factor medido ni publicado: \texttt{Hex20}, \texttt{Hex27} y \texttt{Tet10} conservan $\alpha = 1$ y Solidum avisa una vez que, en flexión, la energía puede quedar por debajo de $G_f$; describe la limitación sin recomendar un orden de elemento (usuario, 2026-11-12).
 
+\textbf{Ancho según la orientación de la grieta (bloque 3; propuesta en revisión, 2026-11-17; spec 2D §4 y Q6--Q11).} La proyección vale tal cual en 3D: $h_P = \max_a(\mathbf x_a\cdot\mathbf n_c) - \min_a(\mathbf x_a\cdot\mathbf n_c)$ sobre los vértices del hexaedro o del tetraedro, con $\mathbf n_c$ la dirección de la deformación principal mayor en el centro del elemento al empezar su daño. Con la malla estructurada y la grieta alineada da el $h$ actual (\texttt{Hex8} $\sqrt[3]{V_e}$; \texttt{Tet4} de la partición del cubo en seis tetraedros, $\sqrt[3]{6V_e}$). La prueba de aceptación gira \texttt{Hex8} y \texttt{Tet4} alrededor de $z$ en los dos sentidos (en la partición de Kuhn que usa el generador estructurado, a 22.5\ensuremath{^{\circ}} los seis tetraedros dan $0.924\,\Delta$ o $1.307\,\Delta$ según el sentido) y usa una normal genérica, $(1, -1, 1)/\sqrt3$, con la que los seis difieren (spec 2D, \texttt{rotated\_mesh\_bar}). El método (proyección o segundo método de Oliver, $V_e$ entre el área equivalente de la grieta) sigue abierto (Q6 de la spec 2D).
+
 \phantomsection
 \subsubsection*{3. Medida de Rankine (2D, §5 y Q1)}
 \addcontentsline{toc}{subsubsection}{3. Medida de Rankine (2D, §5 y Q1)}
@@ -12025,6 +12647,155 @@ references:
   \item \textbf{2026-11-11} \ensuremath{\cdot} Bloque 2: IMPL-EX con la misma formulación que la 2D (§8 de esa spec; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}). Pruebas en 3D: tangente secante exacta y simétrica definida positiva, kernel por lotes bit a bit (implícita e IMPL-EX, razón variable y «sin paso») en \texttt{tests/\allowbreak{}test\_\allowbreak{}damage\_\allowbreak{}crack\_\allowbreak{}band.\allowbreak{}py} y \texttt{tests/\allowbreak{}test\_\allowbreak{}damage\_\allowbreak{}crack\_\allowbreak{}band\_\allowbreak{}implex.\allowbreak{}py}. La prueba estructural (Van Vliet) es 2D.
   \item \textbf{2026-11-11} \ensuremath{\cdot} Factor de $h$ de los cuadráticos corregido con la prueba de objetividad (§2; Diálogo de la spec 2D).
   \item \textbf{2026-11-12} \ensuremath{\cdot} Factor de localización de los cuadráticos (spec 2D §4 y su Diálogo): en 3D sin factor establecido, $\alpha = 1$ con aviso (usuario).
+\end{itemize}
+
+
+\newpage
+
+\section{TensionCompressionDamage3D}
+\label{spec:TensionCompressionDamage3D}
+
+
+
+\textit{Orden de trabajo. El usuario revisa \textbf{especificación física}, \textbf{formulación numérica} y \textbf{contrato}; la IA rellena \textbf{implementación} y responde en \textbf{diálogo}.}
+
+
+\textit{Versión 3D de \hyperref[spec:TensionCompressionDamage2D]{TensionCompressionDamage2D}: \textbf{toda la física, las ecuaciones y las preguntas al usuario (Q1--Q6) están allí}. Aquí sólo lo que difiere.}
+
+
+\textit{\textbf{Estado: spec completa, junto con la 2D: Q1--Q4 y Q6 decididas el 2026-11-17 (ley (a) de Faria, Oliver y Cervera); Q5 el 2026-11-18 (programa principal).}}
+
+
+
+\subsection{Especificación física}
+
+\phantomsection
+\subsubsection*{0. Descripción general}
+\addcontentsline{toc}{subsubsection}{0. Descripción general}
+
+Dos daños escalares, $d^+$ de tracción y $d^-$ de compresión, con cierre de grieta, en 3D. \texttt{STRAIN\_DIM = 6}, Voigt del proyecto $[\varepsilon_{xx}, \varepsilon_{yy}, \varepsilon_{zz}, \gamma_{xy}, \gamma_{yz}, \gamma_{xz}]$ con $\gamma_{ij} = 2\varepsilon_{ij}$ (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0012-solidos-3d-y-voigt-6d.md}{ADR 0012}). Sin variantes de hipótesis.
+
+\phantomsection
+\subsubsection*{1. Lo que es igual a la 2D}
+\addcontentsline{toc}{subsubsection}{1. Lo que es igual a la 2D}
+
+\begin{itemize}
+  \item Ley de esfuerzo (a), $\boldsymbol\sigma = (1-d^-)\,\bar{\boldsymbol\sigma} - (d^+-d^-)\,\bar{\boldsymbol\sigma}^+$, comportamiento uniaxial y caveat de energía (2D, §1: con $\nu \ne 0$ no deriva de un potencial; los ciclos se midieron también en 3D).
+  \item Daño de tracción con Rankine sobre el esfuerzo efectivo y banda de grieta (2D, §2); daño de compresión opcional con Drucker-Prager y la ley parabólica de Feenstra (2D, §3).
+  \item Variables internas (2D, §4), tangente (2D, §7, ya escrita en forma tensorial), integración implícita e IMPL-EX (2D, §8), simetría y caveats (2D, §9--§10).
+\end{itemize}
+
+\phantomsection
+\subsubsection*{2. Lo que difiere}
+\addcontentsline{toc}{subsubsection}{2. Lo que difiere}
+
+\begin{itemize}
+  \item \textbf{Esfuerzo} (2D, §6): $\bar{\boldsymbol\sigma} = \mathbf C_e:\boldsymbol\varepsilon$ con la elasticidad 3D y descomposición espectral 3\ensuremath{\times}3 de $\bar{\boldsymbol\sigma}$; $\bar{\boldsymbol\sigma}^+ = \sum_i\langle\bar\sigma_i\rangle_+\,\mathbf n_i\otimes\mathbf n_i$ con los tres autovalores.
+  \item \textbf{Tangente con daño fijo} (2D, §7): $\mathbf Q^+$ con los tres términos $H(\bar\sigma_i)\,\mathbf M_{ii}\otimes\mathbf M_{ii}$ y los tres pares $\tfrac12 c_{ij}\,\mathbf S_{ij}\otimes\mathbf S_{ij}$, con su límite en autovalores iguales (dobles y triples); en Voigt 3D, factor 2 en las tres columnas de cortante.
+  \item \textbf{Rankine}: $\bar\sigma_I$, el mayor autovalor del esfuerzo efectivo 3D.
+  \item \textbf{Longitud característica}: la siembran los sólidos 3D (\texttt{Hex8}, \texttt{Hex20}, \texttt{Hex27}: $\sqrt[3]{V}$; \texttt{Tet4}, \texttt{Tet10}: $\sqrt[3]{6V}$).
+\end{itemize}
+
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: TensionCompressionDamage3D
+kind: material
+status: draft
+
+interface:
+  strain_dim: 6
+  primary_state_var: damage_t
+  is_symmetric: false      # siempre, también con IMPL-EX (ley (a), 2D §9)
+  state_schema: {kappa_t: [], kappa_c: [], damage_t: [], damage_c: [], h: [], kappa_t_prev: [], kappa_c_prev: [], damage_error: []}
+  batch_kernel: true
+  uses_pseudo_time: "true con integration='impl-ex' (ADR 0034)"
+
+admission:                # la de la 2D (Q5: programa principal, usuario, 2026-11-18)
+  textbooks:
+    - de_souza_neto: "cap. 12, §12.6.1–12.6.2, cierre de grieta con partición espectral del esfuerzo: la familia, con otra forma (un solo D y hD; texto leído el 2026-11-18; 2D, Q5)"
+  general_codes:
+    - opensees: "ASDConcrete3D (la misma partición del esfuerzo efectivo; criterios de daño distintos)"
+    - code_aster: "ENDO_ORTH_BETON; ENDO_ISOT_BETON"
+    - abaqus: "Concrete Damaged Plasticity (un solo daño, sin partición espectral)"
+
+parameters:
+  - { name: E,          type: float, required: true,  desc: "Módulo de Young intacto [Pa]" }
+  - { name: nu,         type: float, required: true,  desc: "Coeficiente de Poisson, en [0, 0.5)" }
+  - { name: f_t,        type: float, required: true,  desc: "Resistencia a tracción [Pa]" }
+  - { name: G_f,        type: float, required: true,  desc: "Energía de fractura en tracción [N/m]" }
+  - { name: f_c,        type: float, required: false, default: null, desc: "Resistencia a compresión uniaxial [Pa]; sin ella d⁻ ≡ 0" }
+  - { name: G_c,        type: float, required: false, default: null, desc: "Energía de aplastamiento [N/m]; obligatoria con f_c" }
+  - { name: beta,       type: float, required: false, default: 1.16, desc: "f_bc/f_c" }
+  - { name: integration, type: str,  required: false, default: "implicit", desc: "implicit | impl-ex" }
+  - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope de los dos daños" }
+  - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
+
+state_variables:
+  - { name: kappa_t,      type: float, shape: [], desc: "como la 2D" }
+  - { name: kappa_c,      type: float, shape: [], desc: "como la 2D" }
+  - { name: damage_t,     type: float, shape: [], desc: "como la 2D" }
+  - { name: damage_c,     type: float, shape: [], desc: "como la 2D" }
+  - { name: h,            type: float, shape: [], desc: "como la 2D" }
+  - { name: kappa_t_prev, type: float, shape: [], desc: "como la 2D" }
+  - { name: kappa_c_prev, type: float, shape: [], desc: "como la 2D" }
+  - { name: damage_error, type: float, shape: [], desc: "como la 2D" }
+
+conventions:
+  voigt: "[ε_xx, ε_yy, ε_zz, γ_xy, γ_yz, γ_xz], γ_ij = 2·ε_ij (ADR 0012)"
+  units: "como la 2D"
+  sign: "σ > 0 ⇔ tracción; f_c > 0"
+
+validity:
+  - "como la 2D: pequeñas deformaciones; E > 0, 0 ≤ ν < 0.5, f_t > 0, G_f > 0; con compresión, f_c > f_t y G_c > 0"
+  - "0 < h < 2·E·G_f/f_t² en cada punto"
+  - "sólo en sólidos 3D que proporcionan h"
+
+out_of_scope:
+  - "los de la 2D"
+
+acceptance:
+  material_point:
+    - name: same_as_2d
+      setup: "los casos de punto material de la 2D en 3D (los de esfuerzo plano, con el estado uniaxial 3D)"
+      expect: "mismos resultados y tolerancias"
+    - name: tangent_fd_3d
+      setup: "daño fijo con autovalores distintos, dobles y triples del mismo signo; implícita en carga activa con autovalores distintos (doble o triple negativo con d⁻); se excluyen la arista de Rankine y los autovalores nulos (2D, §10)"
+      expect: "|C_FD − C_tan| ≤ 1e-6·max|C_FD|; con ν = 0 y daño fijo, simétrica"
+      tol_rel: 1.0e-6
+    - name: batch_kernel_matches
+      expect: "kernel por lotes bit a bit con compute_state"
+  impl_ex:
+    - name: same_as_2d
+      expect: "el bloque impl_ex de la 2D en 3D"
+  mesh_objectivity:
+    - name: bar_in_tension_3d
+      setup: "barra con una capa debilitada, Hex8, Tet4, Hex20, Hex27, Tet10"
+      expect: "D/(G_f·A) = 1 ± 1 %"
+      tol_rel: 1.0e-2
+    - name: bar_in_compression_3d
+      setup: "la barra de compresión de la 2D (L = 0.2 m, h ≤ 40 mm) con los sólidos 3D"
+      expect: "trabajo sobre los elementos de la banda desde su pico = G_c·A ± 2 % e igual entre mallas"
+      tol_rel: 2.0e-2
+
+references:
+  - "Las de la 2D."
+
+\end{lstlisting}
+
+
+\subsection{Implementación}
+
+Bloque 1 (2026-11-18): \texttt{solidum/\allowbreak{}materials/\allowbreak{}damage\_\allowbreak{}tension\_\allowbreak{}compression\_\allowbreak{}3d.\allowbreak{}py}, con la partición espectral 3\ensuremath{\times}3 de \texttt{\_\allowbreak{}spectral\_\allowbreak{}split.\allowbreak{}py} y el daño de tracción de \texttt{\_\allowbreak{}tension\_\allowbreak{}compression.\allowbreak{}py}; detalle y pendientes en la §Implementación de la 2D.
+
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-11-11} \ensuremath{\cdot} Spec creada por la IA junto con \hyperref[spec:TensionCompressionDamage2D]{TensionCompressionDamage2D}; las preguntas al usuario (Q1--Q6) están en esa spec y valen para las dos.
+  \item \textbf{2026-11-17} \ensuremath{\cdot} Q1 decidida por el usuario: ley (a) de Faria, Oliver y Cervera. §1--§2 y el contrato reescritos para (a) junto con la 2D (la versión anterior describía la forma complementaria (d), descartada). Después de la revisión de \texttt{teorico-solidum} (H13): \texttt{state\_variables}, \texttt{validity} y \texttt{out\_of\_scope} explícitos, \texttt{bar\_\allowbreak{}in\_\allowbreak{}compression\_\allowbreak{}3d}, bloque \texttt{impl\_ex} y \texttt{tangent\_fd\_3d} sin los puntos no diferenciables.
+  \item \textbf{2026-11-18} \ensuremath{\cdot} Q5 decidida por el usuario: programa principal, como la 2D (Diálogo de esa spec).
 \end{itemize}
 
 
