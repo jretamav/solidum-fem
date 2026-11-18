@@ -56,7 +56,12 @@ PREAMBLE_TEMPLATE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 % Corchetes dobles \llbracket [[u]] \rrbracket: notación del salto de
 % desplazamientos en discontinuidades embebidas y materiales cohesivos
 % (ADR 0010; módulo de usuario discontinuities, ADR 0020). No están en amssymb.
-\usepackage{stmaryrd}
+% Con LuaLaTeX la fuente stmary10 no da los glifos de \llbracket y
+% \rrbracket (el registro decía «Missing character: There is no J/K in font
+% stmary10» y la ecuación salía sin corchetes; corregido el 2026-11-18): se
+% definen con dos corchetes superpuestos, sin stmaryrd.
+\providecommand{\llbracket}{\mathopen{[\mkern-3.2mu[}}
+\providecommand{\rrbracket}{\mathclose{]\mkern-3.2mu]}}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}

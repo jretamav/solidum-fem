@@ -1241,9 +1241,14 @@ PREAMBLE = r"""\documentclass[11pt,letterpaper,oneside]{report}
 % desplazamientos en las specs de los materiales de interfaz (capítulo
 % «Modelos Constitutivos — Interfaz», ADR 0033) y de la discontinuidad
 % embebida (apéndice del módulo de usuario discontinuities, ADR 0020). No
-% están en amssymb; sin stmaryrd la compilación aborta con "Undefined control
-% sequence".
-\usepackage{stmaryrd}
+% están en amssymb; sin definirlas la compilación aborta con "Undefined
+% control sequence".
+% Con LuaLaTeX la fuente stmary10 no da los glifos de \llbracket y
+% \rrbracket (el registro decía «Missing character: There is no J/K in font
+% stmary10» y la ecuación salía sin corchetes; corregido el 2026-11-18): se
+% definen con dos corchetes superpuestos, sin stmaryrd.
+\providecommand{\llbracket}{\mathopen{[\mkern-3.2mu[}}
+\providecommand{\rrbracket}{\mathclose{]\mkern-3.2mu]}}
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{array}
