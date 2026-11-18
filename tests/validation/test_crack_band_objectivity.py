@@ -42,7 +42,8 @@ su spec): la misma barra con los diez sólidos. En tracción uniaxial su ley es
 exacta, ``σ = (1 − d⁺)·E·ε`` (spec §1), y en la banda con Poisson los dos
 esfuerzos principales efectivos son de tracción, así que las energías son las
 del modelo 1: ``G_f·A``, ``G_f·A/α`` en ``Quad8``/``Quad9`` y ``(1 − ν²)·G_f·A``
-con ν = 0.2; también con IMPL-EX.
+con ν = 0.2; también con IMPL-EX y pasos de 0.125 µm (con 1 µm IMPL-EX disipa
+de más, 1.04–1.09·G_f·A según la malla, igual en los dos modelos).
 
 Unidades: N, mm, MPa. E = 30 000 MPa, f_t = 3 MPa, G_f = 0.1 N/mm.
 """
@@ -200,7 +201,11 @@ def test_modelo2_barra_impl_ex():
 
 def test_modelo2_barra_impl_ex_igual_al_modelo_1():
     """Con ν = 0 la barra es uniaxial: los dos modelos dan la misma curva
-    también con el paso grueso (1 µm), donde IMPL-EX disipa ≈ 1.04·G_f·A."""
+    también con el paso grueso (1 µm). Con ese paso IMPL-EX rebasa el pico un
+    13–15 % y disipa 1.036, 1.062 y 1.094·G_f·A con 5, 10 y 20 columnas: el
+    exceso crece al refinar (reporte de validación del 2026-11-18,
+    ``informes/reporte_modelo2_barra_2026-11-18.pdf``; hipótesis: el error
+    depende de Δu/h, no de Δu)."""
     (c1, D1), _ = bar(Quad4, 5, modelo=MODELO_1, integration="impl-ex")
     (c2, D2), _ = bar(Quad4, 5, modelo=MODELO_2, integration="impl-ex")
     np.testing.assert_allclose(c2, c1, rtol=1e-9, atol=1e-9 * np.abs(c1).max())
