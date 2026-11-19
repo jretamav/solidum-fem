@@ -101,8 +101,8 @@ def test_los_solvers_estaticos_por_pasos_llaman_al_gancho(nombre):
 def test_tras_una_biseccion_el_gancho_se_repite_con_el_mismo_campo(nombre):
     """La razón de exigir idempotencia al gancho: tras un intento fallido el
     solver reduce el paso y vuelve a llamarlo con el mismo ``U_committed``.
-    Los dinámicos no bisecan (un paso que no converge aborta el análisis), así
-    que no tienen repetición que probar."""
+    Los dinámicos no bisecan: subdividen el paso que no converge, y esa
+    repetición no se prueba aquí."""
     dom, barra, n2, F = _barra(_BarraQueFallaUnIntento)
     U = _estaticos()[nombre](Assembler(dom), n2).solve(F)
     assert len(barra.llamadas) >= 3, f"{nombre}: {len(barra.llamadas)} llamadas"

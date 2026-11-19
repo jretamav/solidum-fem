@@ -323,6 +323,19 @@ Bajo. El lector reutiliza el contrato de la celda de referencia del ADR 0022 y l
 - **Fuerzas internas del paso confirmado** para la historia y las reacciones, sin reensamblar.
 - Viga de Petersson con Quad8 (25 108 incógnitas, IMPL-EX): 200 pasos de 52 a 15,5 s.
 
+## Fase 16 — Revisión del paso convergido
+
+**Estado**: implementado (ADR 0041, 18 de noviembre de 2026).
+
+- **Gancho de revisión** `Element.revise_step(U_converged)`, pieza P9 del contrato con los módulos de usuario: el corrector compartido lo consulta al converger cada intento de paso, sólo en puntos que se van a confirmar, y antes de confirmarlos.
+- **Repetición en cascada** desde el iterado inicial del intento si algún elemento cambió una decisión discreta, con tope y error tipado (`StepRevisionError`).
+- **Guardas**: una revisión no puede cambiar restricciones ni topología; confirmar sin revisión cuando hay elementos que la piden es un error; un elemento con ganchos de paso no va por lotes; el intento que un trazado deja abierto se cierra al terminar.
+- Primer consumidor: la discontinuidad embebida activa la grieta en el paso en que el campo convergido supera la resistencia, sin el sobrepaso de un paso de la activación al inicio del paso siguiente.
+
+```callout Riesgo de arquitectura
+Bajo. Sin elementos que redefinan el gancho, el resultado y el número de ensamblajes son los de antes (prueba bit a bit). Pendiente del usuario: si las decisiones de un intento que se abandona persisten (hoy) o se revocan.
+```
+
 ```callout Riesgo de arquitectura
 Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con ella cambian en el redondeo (≤ 4·10⁻¹⁵ relativo, sin acumularse), lo que el usuario aceptó. Pruebas que fallan si una de las optimizaciones deja de actuar.
 ```

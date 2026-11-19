@@ -166,5 +166,32 @@ class TestUniaxialSofteningThroughSeparation(unittest.TestCase):
         self._check('exponential', rtol=1e-3)
 
 
+class TestActivationWithinTheStep(unittest.TestCase):
+    """acceptance.activacion_dentro_del_paso_sin_sobrepaso (spec §14, ADR 0041).
+
+    Con 75 pasos, el paso 10 lleva el alargamiento 16/15 del de pico: con el
+    elemento intacto, σ = 1.067·σ_t0. La activación con el campo convergido
+    del propio paso lo repite ya agrietado. Las fuerzas de referencia del
+    paso 10 las calculó `teorico-solidum` con un modelo 1D propio de la ley
+    penalizada (informes/verificacion_teorica_2026-11-18_activacion_dentro_
+    del_paso.md); con la activación al inicio del paso siguiente, ese estado
+    se confirmaba intacto con F = 16/15·F_pico y la prueba falla."""
+
+    F_STEP_10 = {'linear': 0.98828762, 'exponential': 0.97212103}
+
+    def test_no_confirmed_state_above_the_peak(self):
+        F_peak = SIGMA_T0 * W * TH
+        for softening, ratio in self.F_STEP_10.items():
+            with self.subTest(softening=softening):
+                history, _ = run(softening)
+                forces = np.array([F for _, F, _ in history])
+                self.assertLessEqual(forces.max(), F_peak * (1.0 + 1e-12))
+                k = 9                                       # paso 10
+                self.assertAlmostEqual(history[k][0] / (SIGMA_T0 * L / E), 16.0 / 15.0, places=12)
+                self.assertTrue(history[k][2], "el paso 10 debe confirmarse agrietado")
+                self.assertFalse(history[k - 1][2])
+                self.assertAlmostEqual(forces[k] / F_peak, ratio, delta=1e-6 * ratio)
+
+
 if __name__ == '__main__':
     unittest.main()

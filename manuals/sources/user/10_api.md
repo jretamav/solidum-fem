@@ -192,6 +192,7 @@ from solidum.math.solvers.diagnostics import (
     IllPosedSystemError,     # solución no fiable: mecanismo interno o matriz singular
     SolverDivergedError,     # Newton, arco y transitorios: el análisis se detuvo
     StepConstraintError,     # arco: la restricción del paso no tiene solución
+    StepRevisionError,       # la revisión del paso convergido no termina (ADR 0041)
     TimeIntegrationInstabilityError,  # diferencia central o θ < 1/2: paso inestable
     MasslessDofsError,       # modal o transitorio: grados de libertad sin masa
     Termination,             # motivos de parada: solver.termination == Termination.MAX_STEPS

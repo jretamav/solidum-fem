@@ -128,6 +128,13 @@ class Assembler:
         self._step_attempt_open = False
         self._pt_cache = None
 
+        # Elementos cuya clase redefine cada gancho de paso (``prepare_step``,
+        # ``revise_step``; ADR 0020 P5 y ADR 0041 P9), por nombre, con la
+        # huella de topología con que se calcularon; y si la última evaluación
+        # pasó por la revisión del paso convergido (guarda del commit).
+        self._hook_cache: dict = {}
+        self._evaluation_revised = False
+
         # Caché del ConstraintSet (ADR 0004 fase 1).
         self._constraint_set: ConstraintSet | None = None
 
@@ -339,6 +346,7 @@ class Assembler:
         self._M_lumping = None
         self._M_nodal_key = None
         self._pt_cache = None
+        self._hook_cache = {}
 
     def _elements(self) -> list:
         return list(self.domain.elements.values())
@@ -377,6 +385,8 @@ class Assembler:
         # fuerzas del paso confirmado dejan de describirlo, también si la
         # evaluación falla a medias.
         self.forget_converged_forces()
+        # Evaluación nueva: todavía no revisada (ADR 0041, guarda del commit).
+        self._evaluation_revised = False
 
         F_int_global = np.zeros(self.ndof)
         data = self._data
@@ -900,6 +910,17 @@ class Assembler:
                 f"lo declare (NonlinearSolver, ArcLengthSolver y sus variantes, "
                 f"NewtonNewmarkSolver, NewtonHHTSolver, CentralDifferenceSolver) o integre "
                 f"el material de forma implícita (integration='implicit').")
+        revisers = self._hook_elements("revise_step")
+        if revisers and self._step_attempt_open and not self._evaluation_revised:
+            names = sorted({type(e).__name__ for e in revisers})
+            raise ValueError(
+                f"El modelo tiene elementos que revisan el paso convergido antes de "
+                f"confirmarlo ({', '.join(names)}; ADR 0041) y el solver confirmó un paso "
+                f"sin esa revisión: sus decisiones discretas (p. ej. activar una grieta) "
+                f"llegarían un paso tarde o nunca. Use un solver incremental cuyo corrector "
+                f"revise el paso (NonlinearSolver, ArcLengthSolver y sus variantes, "
+                f"NewtonNewmarkSolver, NewtonHHTSolver) o, si escribe un solver, dé a su "
+                f"problema de paso el método revise(x) → assembler.revise_all_steps(U).")
         self._commit_states()
         # La última evaluación es la del estado que se confirma (ADR 0040,
         # punto 4); sin evaluación desde el commit anterior, no hay registro.
@@ -943,10 +964,88 @@ class Assembler:
         self._step_attempt_open = True
         self._pseudo_time_increment = None
         self.forget_converged_forces()
-        for elem in self.domain.elements.values():
+        for elem in self._hook_elements("prepare_step"):
             elem.prepare_step(U_committed)
         if pseudo_time_increment is not None:
             self.set_pseudo_time_increment(pseudo_time_increment)
+
+    def close_step_attempt(self) -> None:
+        """Cierra sin confirmar el intento de paso abierto, si lo hay.
+
+        Lo llama el decorador ``releases_corrector`` al terminar el ``solve``
+        de un solver (ADR 0041): un trazado que acaba tras un intento fallido
+        deja el intento abierto, y el commit de posproceso de
+        ``solidum.run`` lo tomaría por un paso confirmado sin revisión (o sin
+        pseudo-tiempo, ADR 0034). Los materiales vuelven a «fuera de un
+        paso». Tras un commit normal no hace nada."""
+        if not self._step_attempt_open:
+            return
+        self._step_attempt_open = False
+        self._pseudo_time_increment = None
+        pt_materials = self._pseudo_time_materials()
+        if pt_materials:
+            self._push_pseudo_time_ratio(pt_materials, None)
+
+    def revise_all_steps(self, U_converged: np.ndarray) -> bool:
+        """Invoca ``revise_step(U_converged)`` en los elementos que lo
+        redefinen y devuelve si alguno cambió una decisión discreta.
+
+        Gancho de revisión del paso convergido (ADR 0041, P9). Lo llama el
+        corrector compartido al converger un intento de paso, sólo en puntos
+        que el solver va a confirmar y antes de confirmarlos; si devuelve
+        ``True``, el corrector repite el intento. Se llama a todos los
+        elementos que lo redefinen (no se corta en el primero que cambia: cada
+        uno decide con el mismo campo). En un modelo sin elementos que lo
+        redefinan no recorre el dominio.
+
+        Raises
+        ------
+        ValueError
+            Si una revisión cambia las restricciones o la topología del modelo:
+            el problema de paso las guarda para todo el intento (operador
+            ``T`` del criterio de convergencia), y repetirlo con otras sería
+            incoherente. Un consumidor que lo necesite (contacto) pasará el
+            reinicio al problema (ADR 0041, «Diferido»).
+        """
+        elements = self._hook_elements("revise_step")
+        if not elements:
+            self._evaluation_revised = True
+            return False
+        fingerprint = (self._constraint_fingerprint(), self._current_topology_key())
+        # Vista de sólo lectura: el campo es el iterado vivo del corrector.
+        U_view = np.asarray(U_converged).view()
+        U_view.flags.writeable = False
+        changed_ids = [elem.id for elem in elements if elem.revise_step(U_view)]
+        if (self._constraint_fingerprint(), self._current_topology_key()) != fingerprint:
+            raise ValueError(
+                "Assembler.revise_all_steps: la revisión del paso convergido de los "
+                f"elementos {changed_ids[:10]} cambió las restricciones o la topología del "
+                "modelo. revise_step sólo puede cambiar decisiones internas del elemento "
+                "(ADR 0041); un cambio de restricciones dentro del paso no está admitido.")
+        if changed_ids:
+            # La decisión cambia F_int sin cambiar U (ADR 0040, punto 4).
+            self.forget_converged_forces()
+            # Un elemento que decide por una región (el seguimiento de grieta)
+            # devuelve True sólo en la primera llamada de la ronda: la lista
+            # dice qué llamadas avisaron, no qué elementos cambiaron.
+            _log.debug(f"Revisión del paso convergido: avisaron de un cambio los elementos "
+                       f"{changed_ids[:20]}" + (" …" if len(changed_ids) > 20 else ""))
+            return True
+        self._evaluation_revised = True
+        return False
+
+    def _hook_elements(self, name: str) -> list:
+        """Elementos cuya clase redefine el gancho de paso ``name`` de
+        :class:`Element` (en caché por huella de topología; ``invalidate`` la
+        borra). Los ganchos de la base son no-op: no hace falta llamarlos."""
+        key = self._current_topology_key()
+        cached = self._hook_cache.get(name)
+        if cached is None or cached[0] != key:
+            base = getattr(Element, name)
+            cached = (key, [e for e in self.domain.elements.values()
+                            if getattr(type(e), name, base) is not base])
+            self._hook_cache[name] = cached
+        return cached[1]
 
     # ------------------------------------------------------------------
     # Pseudo-tiempo de los solvers incrementales (ADR 0034)

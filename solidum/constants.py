@@ -60,6 +60,14 @@ NEWTON_ADAPTIVE_GROWTH_ITER_THRESHOLD = 4
 NEWTON_DEFAULT_MIN_DELTA_LAMBDA = 1.0e-5
 NEWTON_LOAD_FACTOR_EPSILON = 1.0e-9
 
+# --- Revisión del paso convergido (ADR 0041) ---
+# Tope de repeticiones de un intento de paso porque un elemento cambió una
+# decisión discreta con el campo convergido (``Element.revise_step``). La
+# terminación la garantiza este tope; con decisiones irreversibles (activar
+# grietas) la cascada termina sola mucho antes (máximo medido en la viga SEN:
+# 4 rondas en un paso). Agotado, el intento fracasa (bisección donde la hay).
+MAX_STEP_REVISIONS = 50
+
 # --- Tolerancia mínima de longitud de arco antes de declarar fracaso ---
 # Factor adimensional sobre la longitud de arco del primer paso (Δl₁, la
 # declarada con `initial_dl` o la derivada de `initial_dlambda`): si la

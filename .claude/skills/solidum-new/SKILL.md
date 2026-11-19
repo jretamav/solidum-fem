@@ -67,7 +67,7 @@ Si faltan `kind` o `Name`, dedúcelos de la petición o de la spec; pregunta só
 - Material: hereda de `solidum.core.material.Material`. Decora con `@MaterialRegistry.register`. Implementa `compute_state(strain, state_vars=None) -> (stress, tangent, new_state_vars)` y declara `STATE_SCHEMA` (el barrido de contratos comprueba que coincide con el estado devuelto). El kernel por lotes (`BATCH_KERNEL`, `batch_params`, `batch_matrix`) es opcional; ver ADR 0014.
 - Element: hereda de `solidum.core.element.Element`. Decora con `@ElementRegistry.register`. Implementa `compute_element_state(u_e) -> (K_e, F_int_e)`. La base se encarga de `state_vars`, validación STRAIN_DIM, registro de DOFs, creación de `ElementState` y del `commit_state` **de lo que vive en `ElementState`** (variables internas y esfuerzos por punto de Gauss).
   - **Elemento con estado propio** (historia fuera de `ElementState`: un salto, una grieta, un contacto; ADR 0020, P8): la base no lo conoce. El elemento sobrescribe `commit_state` (llama a `super().commit_state()` y confirma su propio estado) y `compute_global_stiffness` (la evaluación auxiliar en `u = 0` no debe dejar huella en su trial propio: lo guarda y lo restaura al salir). No va por el camino por lotes: `element_is_batchable` lo excluye si la clase redefine `compute_element_state` o `commit_state` por debajo de la que declaró `BATCH_KINEMATICS`, así que **no declares `BATCH_KINEMATICS` en la propia clase con estado propio** (la protección dejaría de verla). Modelo: `solidum/user/discontinuities/embedded_cst.py`.
-  - **Decisiones discretas entre pasos** (activar una grieta o un contacto): sobrescribe `prepare_step(U_committed)` en vez de decidir dentro del Newton; debe ser idempotente para el mismo `U_committed` (tras una bisección, los solvers estáticos que bisecan repiten la llamada con el mismo campo). ADR 0020, P5.
+  - **Decisiones discretas entre pasos** (activar una grieta o un contacto): sobrescribe `prepare_step(U_committed)` en vez de decidir dentro del Newton; debe ser idempotente para el mismo `U_committed` (tras una bisección, los solvers estáticos que bisecan repiten la llamada con el mismo campo). ADR 0020, P5. Para decidir con el campo convergido del **propio** paso (sin llegar un paso tarde), sobrescribe además `revise_step(U_converged) -> bool`: el corrector lo consulta antes de confirmar y, si devuelve `True`, repite el intento; idempotente, sin cambiar restricciones ni topología (ADR 0041, P9). Con cualquiera de los dos ganchos el elemento no va por lotes (P8).
   - **Referencias a otras familias**: `REFERENCE_KWARGS` declara qué parámetros del constructor son el `id` de un objeto de una familia de material (por omisión `{"material": MaterialRegistry}`; un elemento térmico declara `ThermalMaterialRegistry`; uno con dos materiales declara las dos). El lector YAML valida y resuelve la referencia. ADR 0020, P3.
 - Solver: clase normal (no abstracta). Decora con `@SolverRegistry.register`. Constructor recibe `assembler` como primer arg. Implementa `solve(F_ext_global, step_callback=None) -> U_global`.
   - Si avanza por pasos, invoca `self.assembler.prepare_all_steps(U_committed)` al empezar cada intento de paso, con el campo convergido del paso anterior y antes del primer ensamblaje, también al repetir un paso tras una bisección (ADR 0020, P5).
@@ -180,6 +180,9 @@ class {{Name}}(Element):
     #
     # Sólo si toma decisiones discretas entre pasos (ADR 0020, P5):
     # def prepare_step(self, U_committed: np.ndarray) -> None:
+    # Y/o, para decidir con el campo convergido del propio paso (ADR 0041, P9):
+    # def revise_step(self, U_converged: np.ndarray) -> bool:
+    #     # TODO: True sólo si cambió una decisión; idempotente; sin tocar restricciones.
     #     # TODO: decidir con el estado convergido; idempotente para el mismo U_committed.
 ```
 
@@ -244,7 +247,10 @@ class {{Name}}:
         ensure_statically_restrained(self.assembler, type(self).__name__)
         # Por paso: construir un objeto con el protocolo NewtonProblem
         # (assemble, residual, residual_norm, calibration_scales,
-        # reference_force, x_norm, correction, apply, on_converged) y
+        # reference_force, x_norm, correction, apply, on_converged y
+        # revise(x) -> self.assembler.revise_all_steps(U): revisión del paso
+        # convergido, ADR 0041; sin ella el ensamblador rechaza el commit si
+        # hay elementos que la piden) y
         #   res = self.corrector.run(problem, U, check_initial=False)
         #   if not res.converged: raise res.divergence_error(last_load_factor=...)
         #   U = res.x

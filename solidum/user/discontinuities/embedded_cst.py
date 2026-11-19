@@ -78,10 +78,12 @@ class CST_Embedded2D(Element):
 
     Notes
     -----
-    La activación se evalúa en :meth:`prepare_step`, **al inicio de cada
-    paso** del solver no lineal (ADR 0010 §5; evita chattering dentro del
-    Newton), y la decide el seguimiento de grieta: qué elementos se agrietan
-    y con qué nodo solitario. Una vez activada, la discontinuidad es
+    La activación se evalúa con cada campo convergido, nunca dentro de las
+    iteraciones del Newton (chattering, ADR 0010 §5): en :meth:`revise_step`,
+    al final de cada paso y antes de confirmarlo (si activa, el paso se
+    repite con las grietas nuevas; ADR 0041), y en :meth:`prepare_step`, al
+    inicio del paso. La decide el seguimiento de grieta: qué elementos se
+    agrietan y con qué nodo solitario. Una vez activada, la discontinuidad es
     irreversible.
     """
 
@@ -152,6 +154,19 @@ class CST_Embedded2D(Element):
         """
         tracker = self.crack_tracker or default_tracker(self)
         tracker.prepare_step(self, U_committed)
+
+    def revise_step(self, U_converged: np.ndarray) -> bool:
+        """Activación con el campo convergido del paso, antes de confirmarlo
+        (gancho P9, ADR 0041; spec §14).
+
+        Delega en el seguimiento de grieta de la región, como
+        :meth:`prepare_step`. Devuelve ``True`` si se activó algún elemento de
+        la región: el corrector repite entonces el paso desde el estado
+        confirmado anterior, con las grietas nuevas (salto inicial nulo),
+        hasta que no entra ninguna.
+        """
+        tracker = self.crack_tracker or default_tracker(self)
+        return bool(tracker.revise_step(self, U_converged))
 
     def principal_stress(self, U_committed: np.ndarray):
         """``(σ_I, n)`` del bulk intacto con el campo ``U_committed``: esfuerzo

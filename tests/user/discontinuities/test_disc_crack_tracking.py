@@ -453,6 +453,30 @@ class TestDosGrietas:
         assert tracker.side_conflicts() == []
         assert fails == 0
 
+    def test_una_sola_grieta_con_max_cracks_1(self):
+        """acceptance.una_sola_grieta: el mismo modelo con max_cracks = 1 da
+        una grieta con raíz en uno de los dos planos; ningún elemento del otro
+        se agrieta, aunque sin el límite nace allí la segunda."""
+        pts, tris = _structured(L, W, 20, 8)
+        planes = (0.03, 0.07)
+
+        def sigma_t0(c):
+            d = min(abs(c[0] - x0) for x0 in planes)
+            return ST0 * (0.85 + 2.0 * c[1] / W + 3.0 * d / L)
+        tracker = GlobalCrackTracking(max_cracks=1)
+        els, tracker, curve, fails = _strip(
+            pts, tris, sigma_t0=sigma_t0, tracker=tracker, delta=1.1e-5, nsteps=44,
+            embed=lambda t, c: min(abs(c[0] - x0) for x0 in planes) <= 0.012)
+        assert len(tracker.cracks) == 1
+        by_id = {e.id: e for e in els}
+        x_root = np.mean([n.coordinates[0] for n in by_id[tracker.cracks[0].root].nodes])
+        assert round(x_root, 2) in planes
+        other = planes[1] if round(x_root, 2) == planes[0] else planes[0]
+        cerca_del_otro = [e for e in els
+                          if abs(np.mean([n.coordinates[0] for n in e.nodes]) - other) <= 0.012]
+        assert cerca_del_otro and all(e.discontinuity_state is None for e in cerca_del_otro)
+        assert fails == 0
+
 
 # =========================================================================
 # Un triángulo aislado hasta la separación (aceptación de CST_Embedded2D)
@@ -567,6 +591,35 @@ def test_seguimiento_explicito_compartido():
         PrescribedCrackPath([[0.0, 0.0]])
 
 
+@pytest.mark.parametrize("valor", [0, -1, 1.5, True, "1"])
+def test_max_cracks_invalido(valor):
+    """acceptance.max_cracks_invalido"""
+    with pytest.raises(ValueError, match="max_cracks"):
+        GlobalCrackTracking(max_cracks=valor)
+
+
+def test_revise_step_avisa_solo_si_aumentan_los_agrietados():
+    """La señal que repite el paso (ADR 0041) es el aumento del número de
+    agrietados, no cualquier cambio del seguimiento; con el mismo campo, la
+    segunda ronda no activa nada y devuelve False (la cascada termina)."""
+    pts, tris = _structured(L, W, 4, 2)
+    dom = Domain()
+    nodes = [dom.add_node(i + 1, list(c)) for i, c in enumerate(pts)]
+    tracker = GlobalCrackTracking()
+    els = [_emb(e + 1, [nodes[k] for k in t], crack_tracker=tracker) for e, t in enumerate(tris)]
+    for el in els:
+        dom.add_element(el)
+    dom.generate_equation_numbers(verbose=False)
+    U = np.zeros(dom.total_dofs)
+    assert not any(el.revise_step(U) for el in els)       # nada supera σ_t0
+    for nd in nodes:
+        U[nd.dofs["ux"]] = 2.0 * ST0 / E * nd.coordinates[0]
+    senales = [el.revise_step(U) for el in els]
+    assert senales[0] is True and not any(senales[1:])   # una evaluación por ronda
+    assert any(e.discontinuity_state is not None for e in els)
+    assert not any(el.revise_step(U.copy()) for el in els)   # mismo campo: nada nuevo
+
+
 def test_una_actualizacion_por_ronda_e_idempotente():
     pts, tris = _structured(L, W, 4, 2)
     dom = Domain()
@@ -626,7 +679,7 @@ def test_yaml_crack_trackers(tmp_path):
         interface_materials:
           - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 3.0e6, G_f: 100.0, K_e: 1.0e15, softening: linear}
         crack_trackers:
-          - {id: 1, type: GlobalCrackTracking, epsilon: 1.0e-7}
+          - {id: 1, type: GlobalCrackTracking, epsilon: 1.0e-7, max_cracks: 1}
           - {id: 2, type: PrescribedCrackPath, points: [[0.5, 0.0], [0.5, 1.0]]}
         elements:
           - {id: 1, type: CST_Embedded2D, nodes: [1, 2, 3], material: 1, cohesive_material: 1, crack_tracker: 1}
@@ -637,5 +690,6 @@ def test_yaml_crack_trackers(tmp_path):
     dom = YamlParser(str(ruta)).parse()
     e1, e2 = dom.elements[1], dom.elements[2]
     assert isinstance(e1.crack_tracker, GlobalCrackTracking) and e1.crack_tracker.epsilon == 1.0e-7
+    assert e1.crack_tracker.max_cracks == 1
     assert isinstance(e2.crack_tracker, PrescribedCrackPath)
     np.testing.assert_allclose(e2.crack_tracker.points, [[0.5, 0.0], [0.5, 1.0]])

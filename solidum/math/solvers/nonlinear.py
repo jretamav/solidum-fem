@@ -109,6 +109,10 @@ class _IncrementalProblem:
         step = alpha * dU
         return U + step, float(np.linalg.norm(step))
 
+    def revise(self, U):
+        # Revisión del paso convergido antes de confirmarlo (ADR 0041).
+        return self.assembler.revise_all_steps(U)
+
     def on_converged(self, U, state):
         # El estado trial es el del ensamblaje en U: coherente.
         self.assembler.commit_all_states()
@@ -176,6 +180,8 @@ class NonlinearSolver:
         self.lambda_final: float = 0.0
         self.reached_max_lambda: bool = False
         self.n_bisections: int = 0
+        # Repeticiones de paso por la revisión del paso convergido (ADR 0041).
+        self.n_revisions: int = 0
         self.U_final: np.ndarray | None = None
         # Residuo relativo de equilibrio al empezar una etapa (ADR 0026);
         # ``None`` si no había nada que comprobar.
@@ -241,6 +247,7 @@ class NonlinearSolver:
         self.lambda_final = 0.0
         self.reached_max_lambda = False
         self.n_bisections = 0
+        self.n_revisions = 0
         self.U_final = None
         self.initial_residual = None
         domain = self.assembler.domain
@@ -296,10 +303,11 @@ class NonlinearSolver:
             # resolución.
             problem = self.make_problem(F_ext_global, next_load_factor, stage)
             res = self.corrector.run(problem, U_current.copy(), check_initial=False)
+            self.n_revisions += res.n_revisions
 
             if res.converged:
                 _log.info(f"[PASO {step}] λ = {next_load_factor:.4f} | "
-                          f"Δλ = {delta_lambda:.4f} | {res.n_solves} iter")
+                          f"Δλ = {delta_lambda:.4f} | {res.n_solves} iter{res.revision_note()}")
                 U_current = res.x
                 load_factor = next_load_factor
                 self.steps_done += 1

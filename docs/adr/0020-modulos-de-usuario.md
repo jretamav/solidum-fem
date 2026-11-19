@@ -141,3 +141,11 @@ Cifras al día, sin reescribir las de arriba (históricas): el gancho P5 lo invo
 ## Actualización (2026-11-10)
 
 La familia cohesiva del módulo `discontinuities` volvió al programa principal (ADR 0033), como preveía Reglas.md §4, al entrar el primer elemento de interfaz del programa principal (la adherencia barra–sólido). El módulo conserva el elemento, el estado de la discontinuidad y el seguimiento de grieta.
+
+## Actualización (2026-11-18): pieza P9
+
+| # | Pieza | Casos reales que la justifican |
+|---|---|---|
+| P9 | Gancho de **revisión del paso convergido** `Element.revise_step(U_converged) -> bool` ([ADR 0041](0041-revision-del-paso-convergido.md)): tras converger un intento de paso y antes de confirmarlo, el elemento puede cambiar una decisión discreta con el campo del propio paso; si alguno cambia, el corrector compartido repite el intento desde su iterado inicial, en cascada, con el tope `MAX_STEP_REVISIONS`. Idempotente; no cambia restricciones ni topología (el ensamblador lo comprueba). Lo invocan, a través del corrector, los mismos solvers que P5; un solver que confirme sin revisión lo rechaza `commit_all_states`. Con P5 y P9 el elemento no va por lotes (P8) | La comprobación de fin de paso de un elemento de usuario de FEAP. Primer consumidor: la activación dentro del paso de la embebida (decisión del usuario del 2026-11-18); segundo previsto: el contacto |
+
+El servicio a nivel de modelo para el seguimiento (arriba, «Queda fuera») sigue fuera: el seguimiento de grieta se cuelga ahora de P5 y P9 con «la primera llamada de cada ronda decide»; se revisará con el contacto (ADR 0041, Alternativas).

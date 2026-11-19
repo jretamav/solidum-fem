@@ -30,6 +30,7 @@ from solidum.math.solvers.corrector import (
     NewtonCorrector,
     default_calibration_scales,
     releases_corrector,
+    revision_note,
 )
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
@@ -336,6 +337,10 @@ class _DynamicNewtonProblem:
         # δu corresponde a βΔt² · α · δü (cambio en desplazamiento por la iter).
         return self._iterate(x[3] + step), self.beta_dt2 * float(np.linalg.norm(step))
 
+    def revise(self, x):
+        # Revisión del paso convergido antes de confirmarlo (ADR 0041).
+        return self.assembler.revise_all_steps(x[0])
+
     def on_converged(self, x, state):
         self.assembler.commit_all_states()
 
@@ -432,6 +437,8 @@ class NewtonNewmarkSolver(NewmarkSolver):
                 f"entero ≥ 0 (0 desactiva la subdivisión del paso).")
         self.max_subdivisions = int(max_subdivisions)
         self.n_subdivisions = 0
+        # Repeticiones de paso por la revisión del paso convergido (ADR 0041).
+        self.n_revisions = 0
         self.convergence = convergence if convergence is not None else ConvergenceCriterion()
         self.max_iter = int(max_iter)
         self.freeze_tangent_after_iter = freeze_tangent_after_iter
@@ -459,6 +466,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
     def _begin_trace(self) -> None:
         super()._begin_trace()
         self.n_subdivisions = 0
+        self.n_revisions = 0
 
     def _advance(self, attempt, state: dict, t_to: float, level: int = 0):
         """Avanza de ``state["t"]`` a ``t_to`` con ``attempt(state, t_to)``
@@ -614,6 +622,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
                 u_pred, udot_pred, beta * h * h, gamma * h, F_next, residual,
             )
             res = self.corrector.run(problem, problem.initial_iterate(state["a_free"]))
+            self.n_revisions += res.n_revisions
             if not res.converged:
                 return res, None
             u_n, v_n, a_n, a_free_n = res.x
@@ -625,6 +634,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
         for step in range(n_steps):
             t_next = t_history[step + 1]
             before = self.n_subdivisions
+            rev_before = self.n_revisions
             new, res, good = self._advance(attempt, state, t_next)
             if new is None:
                 # Excepción tipada (ADR 0011) con el historial hasta el último
@@ -637,7 +647,8 @@ class NewtonNewmarkSolver(NewmarkSolver):
             state = new
             _log.info(
                 f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
-                f"iter={res.n_solves} | R/tol_F={res.last_conv.ratio_force:.2e}"
+                f"iter={res.n_solves}{revision_note(self.n_revisions - rev_before)} | "
+                f"R/tol_F={res.last_conv.ratio_force:.2e}"
                 + (f" | subdividido ({self.n_subdivisions - before})"
                    if self.n_subdivisions > before else "")
             )
@@ -1105,6 +1116,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
                 jac_scale=one_plus_alpha,
             )
             res = self.corrector.run(problem, problem.initial_iterate(state["a_free"]))
+            self.n_revisions += res.n_revisions
             if not res.converged:
                 return res, None
             u_n, v_n, a_n, a_free_n = res.x
@@ -1116,6 +1128,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         for step in range(n_steps):
             t_next = t_history[step + 1]
             before = self.n_subdivisions
+            rev_before = self.n_revisions
             new, res, good = self._advance(attempt, state, t_next)
             if new is None:
                 raise self._fail_step(trace, state, good, res, t_next, (
@@ -1126,7 +1139,8 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
             state = new
             _log.info(
                 f"  [PASO {step+1}/{n_steps}] t={t_next:.4e} | "
-                f"iter={res.n_solves} | R/tol_F={res.last_conv.ratio_force:.2e}"
+                f"iter={res.n_solves}{revision_note(self.n_revisions - rev_before)} | "
+                f"R/tol_F={res.last_conv.ratio_force:.2e}"
                 + (f" | subdividido ({self.n_subdivisions - before})"
                    if self.n_subdivisions > before else "")
             )

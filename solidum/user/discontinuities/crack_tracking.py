@@ -1,6 +1,7 @@
 """Seguimiento global de la trayectoria de grieta (spec ``GlobalCrackTracking``).
 
-Decide, al inicio de cada paso y con el estado convergido, qué elementos
+Decide, con cada campo convergido (al final de cada paso, antes de
+confirmarlo, y al inicio del siguiente), qué elementos
 ``CST_Embedded2D`` se agrietan y con qué partición (el nodo solitario). La
 partición la dicta la trayectoria (decisión del usuario del 2026-11-10): cada
 grieta ``k`` tiene un campo escalar ``θ_k``, lineal por elemento, que minimiza
@@ -232,21 +233,34 @@ class GlobalCrackTracking:
     ----------
     epsilon : float, default 1e-6
         Regularización adimensional del problema auxiliar (§2).
+    max_cracks : int, optional
+        Número máximo de grietas que pueden nacer (≥ 1); sin límite si se
+        omite. Con 1, una sola grieta que sólo se propaga por sus puntas
+        (§4.2).
 
     Notes
     -----
     Los elementos se dan de alta al construirse (``crack_tracker=`` en el
-    elemento o, sin él, un seguimiento por omisión por región conexa). El
-    solver llama a ``prepare_step`` de cada elemento al inicio de cada paso;
-    el primero de cada ronda dispara :meth:`update`, que es idempotente para
-    el mismo campo convergido (se itera hasta que no cambia nada).
+    elemento o, sin él, un seguimiento por omisión por región conexa). La
+    activación se evalúa con cada campo convergido (§4): al final de cada
+    paso, antes de confirmarlo, desde ``revise_step`` de los elementos
+    (gancho P9, ADR 0041; si activa, el paso se repite), y al inicio del
+    paso desde ``prepare_step`` (gancho P5). En cada ronda, la primera
+    llamada dispara :meth:`update`, que es idempotente para el mismo campo
+    (se itera hasta que no cambia nada).
     """
 
-    def __init__(self, epsilon: float = TRACKING_EPSILON):
+    def __init__(self, epsilon: float = TRACKING_EPSILON, max_cracks: int | None = None):
         epsilon = float(epsilon)
         if not epsilon > 0.0:
             raise ValueError(f"GlobalCrackTracking: epsilon debe ser > 0 (recibido {epsilon}).")
+        if max_cracks is not None and (
+                isinstance(max_cracks, bool) or not isinstance(max_cracks, (int, np.integer))
+                or max_cracks < 1):
+            raise ValueError(f"GlobalCrackTracking: max_cracks debe ser un entero ≥ 1 o "
+                             f"omitirse (sin límite); recibido {max_cracks!r}.")
         self.epsilon = epsilon
+        self.max_cracks = None if max_cracks is None else int(max_cracks)
         self.cracks: list[Crack] = []
         self.unactivated_warnings = 0
         self.side_conflict_warnings = 0
@@ -274,23 +288,46 @@ class GlobalCrackTracking:
         self._built = False
 
     def prepare_step(self, element, U_committed: np.ndarray) -> None:
-        """Gancho de inicio de paso de un elemento de la región.
+        """Gancho de inicio de paso de un elemento de la región (P5).
 
         La primera llamada de cada ronda (o una con otro campo) ejecuta
         :meth:`update`; las demás de la misma ronda no hacen nada.
         """
-        U = np.asarray(U_committed)
+        self._evaluate(element, U_committed)
+
+    def revise_step(self, element, U_converged: np.ndarray) -> bool:
+        """Gancho de revisión del paso convergido de un elemento de la región
+        (P9, ADR 0041), antes de confirmar el paso.
+
+        Como :meth:`prepare_step`, la primera llamada de cada ronda evalúa la
+        activación con el campo convergido. Devuelve ``True`` sólo si esa
+        evaluación aumentó el número de elementos agrietados de la región (un
+        nodo que cambia de lado sin activación no cuenta): el corrector repite
+        entonces el paso con las grietas nuevas. Como la activación es
+        irreversible y la región finita, la repetición termina.
+        """
+        return self._evaluate(element, U_converged)
+
+    def _evaluate(self, element, U: np.ndarray) -> bool:
+        """Dispara :meth:`update` en la primera llamada de cada ronda (o con
+        otro campo) y devuelve si se activó algún elemento."""
+        U = np.asarray(U)
         same = (U is self._last_U
                 or (self._last_copy is not None and U.shape == self._last_copy.shape
                     and np.array_equal(U, self._last_copy)))
         key = id(element)
         if same and key not in self._called:
             self._called.add(key)
-            return
+            return False
+        before = self._n_cracked()
         self.update(U)
         self._last_U = U
         self._last_copy = U.copy()
         self._called = {key}
+        return self._n_cracked() > before
+
+    def _n_cracked(self) -> int:
+        return sum(e.discontinuity_state is not None for e in self._members)
 
     # ------------------------------------------------------------------
     # Topología de la región
@@ -524,6 +561,8 @@ class GlobalCrackTracking:
         """Grietas que deben existir antes de activar (ninguna en el global)."""
 
     def _can_nucleate(self, p: int) -> bool:
+        if self.max_cracks is not None and len(self.cracks) >= self.max_cracks:
+            return False
         return not self._cracked_count[self._conn[p]].any()
 
     def _fixed_values(self, p: int, n: np.ndarray, x_m: np.ndarray, th: np.ndarray) -> np.ndarray:
@@ -638,7 +677,7 @@ class GlobalCrackTracking:
                     f"GlobalCrackTracking: el elemento {self._els[p].id} está en la punta "
                     f"de la grieta {k} con σ_I > σ_t0, pero su partición da cos ψ = "
                     f"{cos_psi:.3f} ≤ 0 y ningún nodo libre puede cambiar de lado; no se "
-                    f"activa en este paso."
+                    f"activa con este campo."
                 )
             return False
         self._activate(k, p, lone, n, x_m, th)

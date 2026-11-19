@@ -27,6 +27,9 @@
 - **`StepConstraintError` en `ArcLengthSolver` (o en las variantes del arco)**
   La restricción del paso no tiene solución aunque se reduzca la longitud del paso: con el arco cilíndrico, las raíces de su ecuación son imaginarias («Raíces imaginarias» en el detalle) porque el arco no corta la trayectoria de equilibrio. Ocurre en un retroceso (snap-back) por localización o tras un punto límite agudo. Usar `IndirectDisplacementSolver`, con una magnitud que crezca de forma monótona (el alargamiento de la zona que se ablanda, la apertura de la grieta), o un primer paso menor. El detalle del mensaje dice también el último paso convergido; el mismo dato queda en `solver.lambda_final` y `solver.U_final`.
 
+- **`StepRevisionError`**
+  El Newton del paso convergía, pero cada vez que el paso convergido se revisaba algún elemento cambiaba una decisión discreta (por ejemplo, activar una grieta) y el paso se repitió más de 50 veces (`MAX_STEP_REVISIONS`, ADR 0041). Con decisiones irreversibles cada repetición añade al menos un elemento: indica que en un mismo paso entran muchísimos elementos o un elemento de usuario cuyo `revise_step` no es idempotente. La línea de cada paso en el registro dice cuántas revisiones tuvo (`| n revisión(es)`).
+
 - **Aviso:** *trazado detenido en λ=… < max_lambda=… tras agotar max_steps*
   El trazado no terminó: el resultado es el del último paso convergido y `solver.termination` vale `"max_steps"` (`SolveResult.converged` es `False`). Aumentar `max_steps` o el tamaño del paso.
 

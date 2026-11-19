@@ -103,6 +103,7 @@ from solidum.math.solvers.corrector import (
     NewtonCorrector,
     default_calibration_scales,
     releases_corrector,
+    revision_note,
 )
 from solidum.math.solvers.diagnostics import (
     IllPosedSystemError,
@@ -254,13 +255,26 @@ class _ArcProblem:
         return ((self.U_current + dU_new, lambda_iter + alpha * ddlambda, dU_new),
                 float(np.linalg.norm(alpha * dU_update)))
 
+    def _overshoots(self, x) -> bool:
+        """Paso con restricción que acaba por encima de ``max_lambda`` o
+        cruza ``control_target``: no se consolida, el solver aterriza."""
+        return self.mode != "newton" and (
+            (self.max_lambda is not None and x[1] > self.max_lambda + ZERO_TOL)
+            or (self.overshoot_check is not None and self.overshoot_check(x[0])))
+
+    def revise(self, x):
+        # Revisión del paso convergido antes de confirmarlo (ADR 0041). Un
+        # paso que rebasa el final no se confirma: decide la llegada exacta,
+        # que pasa por este mismo corrector.
+        if self._overshoots(x):
+            return False
+        return self.assembler.revise_all_steps(x[0])
+
     def on_converged(self, x, state):
         # Paso con restricción que acaba por encima de max_lambda: no se
         # consolida (el trial queda en U_iter y el siguiente ensamblaje lo
         # recalcula desde el estado consolidado); el solver aterriza.
-        if self.mode != "newton" and (
-                (self.max_lambda is not None and x[1] > self.max_lambda + ZERO_TOL)
-                or (self.overshoot_check is not None and self.overshoot_check(x[0]))):
+        if self._overshoots(x):
             self.overshoot = True
             return
         # Estado trial del ensamblaje en U_iter: coherente con lo guardado.
@@ -436,6 +450,8 @@ class ArcLengthSolver:
         self.reached_max_lambda: bool = False
         self.steps_done: int = 0
         self.n_bisections: int = 0
+        # Repeticiones de paso por la revisión del paso convergido (ADR 0041).
+        self.n_revisions: int = 0
         self.U_final: np.ndarray | None = None
         # Residuo relativo de equilibrio al empezar una etapa (ADR 0026) y la
         # etapa en curso (la leen el predictor, el paso y la llegada).
@@ -650,6 +666,7 @@ class ArcLengthSolver:
         self.control_final = 0.0
         self.steps_done = 0
         self.n_bisections = 0
+        self.n_revisions = 0
         self.U_final = None
         self.dl_reference = None
         self.initial_residual = None
@@ -884,8 +901,12 @@ class ArcLengthSolver:
             )
             # Paso que cruza max_lambda: llegada exacta dentro del tramo.
             landed = False
+            step_revisions = res.n_revisions
+            self.n_revisions += res.n_revisions
             if res.converged and problem.overshoot:
                 res = self._land(U_current, lambda_curr, res.x, F_ext_ref, free_dofs)
+                step_revisions += res.n_revisions
+                self.n_revisions += res.n_revisions
                 landed = True
 
             if res.converged:
@@ -893,7 +914,7 @@ class ArcLengthSolver:
                 steps_done += 1
                 _log.info(
                     f"[PASO {step}] λ = {lambda_curr:.4f} | dl = {dl_step:.3e} | "
-                    f"{res.n_solves} iter{self._step_summary(U_current)}"
+                    f"{res.n_solves} iter{revision_note(step_revisions)}{self._step_summary(U_current)}"
                     + (f" | llegada exacta a {self._landed_on}" if landed else "")
                 )
                 # Auto-ajuste de longitud de arco

@@ -216,6 +216,62 @@ class TestDctlGanchoDeInicioDePaso(unittest.TestCase):
 
 
 # =========================================================================
+# Revisión del paso convergido (ADR 0041, P9)
+# =========================================================================
+
+class _BarraFragil(Truss2D):
+    """Al revisarse con ``ε > EPS``, conserva un cuarto de su rigidez (para
+    siempre). Anota revisiones, commits y la deformación confirmada."""
+
+    EPS = 2.5e-6
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rota = False
+        self.revisiones = 0
+        self.commits = 0
+
+    def _strain(self, U):
+        u = self.get_local_displacements(U)
+        return (u[2] - u[0]) / 1.0
+
+    def compute_element_state(self, u_e):
+        K_e, F_int_e = super().compute_element_state(u_e)
+        return (0.25 * K_e, 0.25 * F_int_e) if self.rota else (K_e, F_int_e)
+
+    def revise_step(self, U_converged):
+        self.revisiones += 1
+        if not self.rota and self._strain(U_converged) > self.EPS:
+            self.rota = True
+            return True
+        return False
+
+    def commit_state(self):
+        super().commit_state()
+        self.commits += 1
+
+
+class TestDctlRevisionDelPasoConvergido(unittest.TestCase):
+
+    def test_revisa_antes_de_confirmar_y_cuenta_las_revisiones(self):
+        """El solver del módulo hereda la revisión del corrector compartido
+        (su problema de paso deriva de ``ArcProblem``): ningún estado
+        confirmado con la barra intacta supera su umbral, y ``n_revisions``
+        cuenta las repeticiones."""
+        dom, barra, n2, F = _barra(_BarraFragil)       # ε final = 5e-6 = 2·EPS
+        confirmados = []
+        solver = _solver(Assembler(dom))
+        solver.solve(F, step_callback=lambda s, U, lam: confirmados.append(
+            (barra._strain(U), barra.rota)))
+        self.assertTrue(barra.rota)
+        self.assertGreaterEqual(solver.n_revisions, 1)
+        self.assertGreater(barra.revisiones, barra.commits)
+        for eps, rota in confirmados:
+            if not rota:
+                self.assertLessEqual(eps, _BarraFragil.EPS * (1.0 + 1e-12))
+
+
+# =========================================================================
 # Carga desde YAML
 # =========================================================================
 

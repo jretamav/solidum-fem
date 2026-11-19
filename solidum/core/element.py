@@ -461,6 +461,55 @@ class Element(ABC):
         # No-op por defecto. Subclases pueden sobreescribir.
 
     # ------------------------------------------------------------------
+    # Gancho de revisión del paso convergido (ADR 0041, P9)
+    # ------------------------------------------------------------------
+
+    def revise_step(self, U_converged: np.ndarray) -> bool:
+        """Revisa una decisión discreta con el campo convergido del propio
+        paso, antes de confirmarlo.
+
+        Parte del contrato genérico de un elemento (ADR 0041, P9), como la
+        comprobación de fin de paso de un elemento de usuario de FEAP. El
+        corrector compartido lo invoca al converger cada intento de paso y
+        antes de confirmar el estado. Si algún elemento devuelve ``True``, el
+        intento no se confirma: se repite desde su iterado inicial, con la
+        decisión nueva, hasta que ninguno cambia (cascada). Así la decisión no
+        llega un paso tarde, y tampoco se toma dentro de las iteraciones, donde
+        el predictor oscila sobre el umbral (chattering).
+
+        Contrato:
+
+        - devolver ``True`` sólo si cambió una decisión que obliga a repetir
+          el intento; la repetición la acota ``MAX_STEP_REVISIONS`` (agotado,
+          el intento fracasa), así que conviene que los cambios sean finitos
+          (con decisiones irreversibles, como activar una grieta, lo son);
+        - **idempotente**: con el mismo campo y sin cambios intermedios,
+          devuelve ``False``;
+        - no tocar el estado confirmado ni las restricciones o la topología
+          del modelo (el ensamblador lo comprueba): el intento repetido parte
+          del mismo estado confirmado; lo que cambia es la decisión discreta,
+          que el elemento conserva.
+        - El ensamblador sólo lo llama en puntos que el solver va a confirmar
+          (no en uno que rebasa el final de un trazado).
+
+        La implementación base devuelve ``False``. :meth:`prepare_step` (P5)
+        sigue disponible; un elemento puede usar los dos.
+
+        Parameters
+        ----------
+        U_converged : np.ndarray
+            Campo global de desplazamientos convergido del intento, todavía
+            sin confirmar.
+
+        Returns
+        -------
+        bool
+            ``True`` si el elemento cambió una decisión discreta y el intento
+            debe repetirse.
+        """
+        return False
+
+    # ------------------------------------------------------------------
     # Contrato opcional para análisis modal y dinámico (ADR 0009)
     # ------------------------------------------------------------------
 

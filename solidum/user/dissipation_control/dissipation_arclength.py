@@ -43,7 +43,7 @@ from solidum.constants import ARCLENGTH_MIN_DL_FACTOR, ZERO_TOL
 from solidum.logging import get_logger
 from solidum.math.convergence import ConvergenceCriterion
 from solidum.math.solvers import ArcLengthSolver, ArcProblem
-from solidum.math.solvers.corrector import CorrectionAborted, releases_corrector
+from solidum.math.solvers.corrector import CorrectionAborted, releases_corrector, revision_note
 from solidum.math.solvers.model_checks import (
     check_initial_tangent,
     ensure_statically_restrained,
@@ -458,13 +458,18 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 problem, x0, check_initial=True,
                 initial_delta_norm=float(np.linalg.norm(dU_iter)),
             )
+            step_revisions = res.n_revisions
+            self.n_revisions += res.n_revisions
 
             if res.converged and problem.overshoot:
                 landed = self._land(U_current, lambda_curr, res.x, F_ext_ref, free_dofs)
+                step_revisions += landed.n_revisions
+                self.n_revisions += landed.n_revisions
                 if landed.converged:
                     U_current, lambda_curr, delta_U_step = landed.x
                     _log.info(f"[PASO {step}] λ = {lambda_curr:.4f} | modo = "
-                              f"{mode_predictor} | llegada exacta a max_lambda")
+                              f"{mode_predictor}{revision_note(step_revisions)} | "
+                              f"llegada exacta a max_lambda")
                     steps_done += 1
                     if step_callback is not None:
                         step_callback(step, U_current, lambda_curr)
@@ -482,7 +487,7 @@ class DissipationArcLengthSolver(ArcLengthSolver):
                 )
                 _log.info(
                     f"[PASO {step}] λ = {lambda_iter:.4f} | modo = {mode_predictor} | "
-                    f"{res.n_solves} iter | ΔE_d = {dE_d:.4e}"
+                    f"{res.n_solves} iter{revision_note(step_revisions)} | ΔE_d = {dE_d:.4e}"
                 )
 
                 # Tangente de carga del paso siguiente: la del ensamblaje en el

@@ -46,7 +46,10 @@ def material_is_batchable(material) -> bool:
     return callable(kernel) and kernel() is not None
 
 
-_OWN_STATE_METHODS = ("compute_element_state", "commit_state")
+# Los ganchos de paso (``prepare_step``, P5; ``revise_step``, P9 del ADR 0041)
+# también cuentan: un elemento que toma decisiones discretas guarda estado que
+# el núcleo compilado no ve.
+_OWN_STATE_METHODS = ("compute_element_state", "commit_state", "prepare_step", "revise_step")
 
 
 def _has_own_state(cls) -> bool:

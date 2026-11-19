@@ -43,7 +43,12 @@ from typing import Any, Callable, Protocol
 import numpy as np
 import scipy.sparse as sp
 
-from solidum.constants import EQUILIBRIUM_RTOL, LINE_SEARCH_MAX_BACKTRACKS, LINE_SEARCH_RHO
+from solidum.constants import (
+    EQUILIBRIUM_RTOL,
+    LINE_SEARCH_MAX_BACKTRACKS,
+    LINE_SEARCH_RHO,
+    MAX_STEP_REVISIONS,
+)
 from solidum.math.convergence import ConvergenceCriterion, ConvergenceState
 from solidum.math.linalg import IterativeNotConvergedError, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import CholeskyNotPositiveDefiniteError, _log
@@ -51,6 +56,7 @@ from solidum.math.solvers.diagnostics import (
     IllPosedSystemError,
     SolverDivergedError,
     StepConstraintError,
+    StepRevisionError,
     classify_divergence,
 )
 
@@ -168,6 +174,13 @@ class NewtonProblem(Protocol):
         """Se llama con el iterado convergido y el estado de su ensamblaje
         (típicamente: comitear)."""
 
+    # Opcional (ADR 0041):
+    # def revise(self, x) -> bool:
+    #     """Revisión del paso convergido, antes de ``on_converged``: ``True``
+    #     si algún elemento cambió una decisión discreta con el campo de
+    #     ``x`` (``assembler.revise_all_steps``). El corrector no confirma y
+    #     repite la corrección desde el iterado inicial del intento."""
+
 
 @dataclass
 class CorrectorResult:
@@ -199,10 +212,26 @@ class CorrectorResult:
     last_residual: float = float("inf")
     last_delta: float = 0.0
     last_conv: ConvergenceState | None = None
+    # Revisión del paso convergido (ADR 0041): veces que el intento se repitió
+    # porque un elemento cambió una decisión discreta, resoluciones de las
+    # rondas descartadas (``n_solves`` cuenta sólo la última) y si se agotó
+    # el tope ``MAX_STEP_REVISIONS``.
+    n_revisions: int = 0
+    revision_solves: int = 0
+    revisions_exhausted: bool = False
+
+    def revision_note(self) -> str:
+        """Fragmento para la línea INFO del paso del solver (ADR 0025): las
+        revisiones del paso convergido que lo repitieron (ADR 0041)."""
+        return revision_note(self.n_revisions)
 
     def failure_reason(self) -> str:
         """Motivo breve de un paso que no convergió, para el registro del
         solver que lo reintenta (ADR 0025)."""
+        if self.revisions_exhausted:
+            return (f"el estado discreto de los elementos siguió cambiando tras "
+                    f"{MAX_STEP_REVISIONS} revisiones del paso convergido (ADR 0041): "
+                    f"las decisiones de revise_step no se estabilizaron en el paso")
         if self.aborted:
             return self.abort_reason or "la restricción del paso no tiene solución"
         if self.linear_solver_note:
@@ -216,7 +245,17 @@ class CorrectorResult:
         """Excepción tipada del modo de divergencia observado (ADR 0011),
         lista para lanzar. Si el problema abortó porque la restricción del
         paso no tiene solución, :class:`StepConstraintError` con el motivo
-        (ADR 0025)."""
+        (ADR 0025). Si se agotaron las revisiones del paso convergido (ADR
+        0041), :class:`StepRevisionError`: el Newton convergía, lo que no
+        termina es el estado discreto."""
+        if self.revisions_exhausted:
+            return StepRevisionError(
+                last_residual=self.last_residual,
+                last_delta=self.last_delta,
+                last_load_factor=last_load_factor,
+                n_bisections=n_bisections,
+                extra_message=(f"{extra_message}; " if extra_message else "") + self.failure_reason(),
+            )
         if self.aborted:
             reason = self.failure_reason()
             return StepConstraintError(
@@ -539,6 +578,12 @@ class NewtonCorrector:
         initial_delta_norm
             Norma del incremento que produjo ``x0`` (el predictor), para el
             criterio en desplazamiento de la iteración 0.
+
+        Revisión del paso convergido (ADR 0041): si el problema tiene
+        ``revise(x)`` y devuelve ``True`` al converger, el intento no se
+        confirma y la corrección se repite desde ``x0`` con la decisión
+        discreta nueva, hasta que una revisión no cambia nada o se agota
+        ``MAX_STEP_REVISIONS`` (entonces el intento fracasa).
         """
         x = x0
         state = problem.assemble(x)
@@ -546,8 +591,10 @@ class NewtonCorrector:
         self._max_linear_residual = 0.0
         delta_norm = float(initial_delta_norm)
         R_norm = float("inf")
+        revise = getattr(problem, "revise", None)
 
-        for iteration in range(self.max_iter + 1):
+        iteration = 0
+        while True:
             R = problem.residual(x, state)
             R_norm = problem.residual_norm(R)
 
@@ -581,8 +628,39 @@ class NewtonCorrector:
                     )
 
             if conv is not None and conv.converged:
+                if revise is not None and revise(x):
+                    # Un elemento cambió una decisión discreta con el campo
+                    # convergido: el intento se repite desde ``x0`` sin
+                    # confirmar (el trial se recalcula desde el estado
+                    # confirmado en el primer ensamblaje).
+                    result.n_revisions += 1
+                    result.revision_solves += result.n_solves
+                    if result.n_revisions > MAX_STEP_REVISIONS:
+                        result.revisions_exhausted = True
+                        _log.debug(result.failure_reason())
+                        break
+                    _log.debug(f"  Revisión {result.n_revisions} del paso convergido: "
+                               f"cambió el estado discreto; se repite el intento.")
+                    self.reset_step()
+                    self._max_linear_residual = 0.0
+                    x = x0
+                    state = problem.assemble(x)
+                    delta_norm = float(initial_delta_norm)
+                    result.n_solves = 0
+                    result.residual_history = []
+                    result.delta_history = []
+                    result.last_alpha = 1.0
+                    result.last_residual = float("inf")
+                    result.last_delta = 0.0
+                    result.last_conv = None
+                    iteration = 0
+                    continue
                 problem.on_converged(x, state)
                 result.converged = True
+                if result.n_revisions:
+                    _log.debug(f"  Paso repetido {result.n_revisions} vez/veces: el campo "
+                               f"convergido cambió el estado discreto de algún elemento "
+                               f"({result.revision_solves} resoluciones descartadas; ADR 0041).")
                 break
 
             if iteration == self.max_iter:
@@ -621,6 +699,7 @@ class NewtonCorrector:
 
             alpha, x, state, delta_norm = self.line_search_step(problem, x, dx, R_norm)
             result.last_alpha = alpha
+            iteration += 1
 
         self.reset_step()
         result.x = x
@@ -657,6 +736,12 @@ class NewtonCorrector:
         return alpha, x_trial, state, delta_norm
 
 
+def revision_note(n_revisions: int) -> str:
+    """Fragmento de la línea INFO de un paso con ``n_revisions`` revisiones
+    del paso convergido (ADR 0041, ADR 0025); vacío si no hubo."""
+    return f" | {n_revisions} revisión(es)" if n_revisions else ""
+
+
 def releases_corrector(solve):
     """Decorador del ``solve()`` de todo solver con uno o más
     :class:`NewtonCorrector` como atributos (ADR 0040): suelta sus
@@ -664,7 +749,13 @@ def releases_corrector(solve):
     análisis hace su propio análisis simbólico, sin depender de un análisis
     anterior— y al terminar —con LU, Cholesky o el iterativo el factor ocupa
     memoria propia—. Una prueba exige el decorador en todo solver registrado
-    que tenga corrector."""
+    que tenga corrector.
+
+    Al terminar también cierra, sin confirmarlo, el intento de paso que haya
+    quedado abierto (ADR 0034, ADR 0041): un trazado que acaba tras un intento
+    fallido (``max_steps`` agotado después de una bisección, predictor
+    singular en el último paso) no deja un intento abierto que el commit de
+    posproceso de ``solidum.run`` tomaría por un paso sin confirmar."""
     @functools.wraps(solve)
     def wrapper(self, *args, **kwargs):
         _release_correctors(self)
@@ -672,6 +763,10 @@ def releases_corrector(solve):
             return solve(self, *args, **kwargs)
         finally:
             _release_correctors(self)
+            assembler = getattr(self, "assembler", None)
+            close = getattr(assembler, "close_step_attempt", None)
+            if close is not None:
+                close()
     wrapper.__releases_corrector__ = True
     return wrapper
 

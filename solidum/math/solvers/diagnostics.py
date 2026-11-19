@@ -197,6 +197,25 @@ class StepConstraintError(SolverDivergedError):
     )
 
 
+class StepRevisionError(SolverDivergedError):
+    """El estado discreto de los elementos siguió cambiando al revisar el paso
+    convergido (ADR 0041): el Newton convergía, pero cada revisión volvía a
+    cambiar alguna decisión (activar una grieta, un contacto) y el intento se
+    repitió más de ``MAX_STEP_REVISIONS`` veces. El solver reduce el paso
+    donde puede; esta excepción se lanza cuando ni así termina.
+    """
+
+    mode = "step_revisions"
+    hint = (
+        "La revisión del paso convergido no termina. Con decisiones "
+        "irreversibles (activar grietas) cada revisión añade al menos una: un "
+        "número tan grande de repeticiones indica que en un mismo paso entran "
+        "muchísimos elementos, o un elemento cuyo revise_step devuelve True sin "
+        "un cambio real (el contrato pide idempotencia: con el mismo campo y "
+        "sin cambios, False)."
+    )
+
+
 class TimeIntegrationInstabilityError(SolverDivergedError):
     """La integración en el tiempo se volvió inestable (ADR 0025).
 

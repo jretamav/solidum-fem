@@ -8,7 +8,7 @@
 
 ### 0. Descripción general
 
-Al inicio de cada paso, el algoritmo decide qué elementos `CST_Embedded2D` se agrietan y con qué partición, es decir, qué nodo queda solo a un lado de la grieta. El objetivo es que las grietas elementales formen trayectorias continuas y coherentes entre vecinos. El enriquecimiento sigue siendo elemental (KOS): cada elemento conserva su propio salto. Lo que se impone es que dos vecinos asignen siempre el mismo lado a cada nodo que comparten. Sin esa coherencia, una grieta recta en una malla no alineada se bloquea: la fuerza queda en 1.2 a 4.3 veces el pico, o en 3–24 % del pico con la ley de modo I, en vez de caer a cero (informes del 2026-11-10).
+Con cada campo convergido (al final de cada paso, antes de confirmarlo, y al inicio del siguiente; §4), el algoritmo decide qué elementos `CST_Embedded2D` se agrietan y con qué partición, es decir, qué nodo queda solo a un lado de la grieta. El objetivo es que las grietas elementales formen trayectorias continuas y coherentes entre vecinos. El enriquecimiento sigue siendo elemental (KOS): cada elemento conserva su propio salto. Lo que se impone es que dos vecinos asignen siempre el mismo lado a cada nodo que comparten. Sin esa coherencia, una grieta recta en una malla no alineada se bloquea: la fuerza queda en 1.2 a 4.3 veces el pico, o en 3–24 % del pico con la ley de modo I, en vez de caer a cero (informes del 2026-11-10).
 
 Decisiones del usuario que fija esta spec (2026-11-10):
 1. El nodo solitario lo dicta la trayectoria, no una regla elemental.
@@ -39,21 +39,29 @@ El primer término hace a $\theta_k$ constante a lo largo de las líneas del cam
 
 La trayectoria de $k$ es la isolínea $\theta_k = 0$, y el lado de cada nodo respecto de $k$ es el signo de $\theta_k$. Un elemento está cortado por $k$ si sus nodos tienen los dos signos. La partición es coherente por construcción, porque el lado de cada nodo es único. La posición de la recta dentro del elemento no entra en las ecuaciones: solo cuentan el nodo solitario y $l_d$ (informes del 2026-11-10). Se guarda para el posproceso.
 
-### 4. Activación (al inicio del paso, con el estado convergido)
+### 4. Activación (con el campo convergido, dentro del paso)
 
-Los elementos intactos con $\sigma_I > \sigma_{t0}$ se recorren en orden de $\sigma_I/\sigma_{t0}$ decreciente:
+**Cuándo.** El seguimiento evalúa la activación con dos campos convergidos (spec `CST_Embedded2D` §14; decisión del usuario del 2026-11-18):
+- **al final de cada paso, antes de confirmarlo** (gancho P9, ADR 0041): si activa algún elemento, el paso se repite desde el estado confirmado anterior con las grietas nuevas, y se vuelve a evaluar con el nuevo campo convergido hasta que no se activa ninguno (cascada);
+- **al inicio de cada paso**, con el campo confirmado (gancho P5): sólo encuentra algo nuevo en el primer paso de un análisis o de una etapa.
+
+La evaluación es la misma en los dos casos e idempotente: con el mismo campo, una segunda evaluación no activa nada.
+
+**Qué.** Los elementos intactos con $\sigma_I > \sigma_{t0}$ se recorren en orden de $\sigma_I/\sigma_{t0}$ decreciente:
 
 1. **Propagación.** Si el elemento está en una punta de una grieta $k$, se activa en $k$. Está en una punta si $\theta_k$ cambia de signo en él y comparte con un elemento agrietado de $k$ un lado que la isolínea cruza. La partición sale de $\theta_k$. $\mathbf n$ es la normal de Rankine, orientada hacia el nodo solitario. Si $\cos\psi \le 0$, se aplica la regla del vértice (§5).
-2. **Nucleación.** Si el elemento no comparte ningún nodo con un elemento agrietado, nace una grieta nueva. La normal es la de Rankine y la partición la de la recta por el centroide. Si el nodo que esa recta aísla da $\cos\psi \le 0$, la recta pasa al otro lado del nodo intermedio y aísla el del extremo opuesto: de las dos particiones con esa normal, al menos una tiene $\cos\psi > 0$ (comprobado en 200 000 triángulos al azar). Es la regla del vértice aplicada a la raíz, donde no hay vecinos que puedan repartirse el corte.
+2. **Nucleación.** Si el elemento no comparte ningún nodo con un elemento agrietado y el seguimiento no ha llegado a su número máximo de grietas (`max_cracks`; sin límite por omisión), nace una grieta nueva. Con `max_cracks: 1` (una sola grieta, la del ensayo de la viga SEN de la tesis) nace la primera y después sólo se propaga por sus puntas; un elemento que supera $\sigma_{t0}$ fuera de su trayectoria queda intacto. La normal es la de Rankine y la partición la de la recta por el centroide. Si el nodo que esa recta aísla da $\cos\psi \le 0$, la recta pasa al otro lado del nodo intermedio y aísla el del extremo opuesto: de las dos particiones con esa normal, al menos una tiene $\cos\psi > 0$ (comprobado en 200 000 triángulos al azar). Es la regla del vértice aplicada a la raíz, donde no hay vecinos que puedan repartirse el corte.
 3. **Exclusión.** Si comparte un nodo con un elemento agrietado pero no está en una punta, no se activa en ese paso. Dos grietas distintas no nacen en elementos contiguos: la separación mínima es de un anillo de elementos.
 
 Tras cada activación se resuelve de nuevo el campo de la grieta afectada y se sigue con la lista. Una grieta puede avanzar varios elementos en un paso. **La propagación tiene prioridad sobre la nucleación**: se recorren primero las puntas hasta que ninguna puede avanzar; sólo entonces nace una grieta (la del elemento más solicitado que pueda nacer) y se vuelve a propagar. Sin esta prioridad, un elemento dos posiciones por delante de la punta, también por encima de $\sigma_{t0}$ en el mismo paso, hacía nacer otra grieta sobre la misma trayectoria (Diálogo, 2026-11-10). Crece desde la raíz en los dos sentidos y termina en el contorno. Un elemento en las puntas de dos grietas se asigna a la de menor índice: la unión de grietas y las dos discontinuidades por elemento quedan fuera de alcance.
 
-La actualización al inicio del paso es la estándar. Parvaneh y Foster (2016) muestran que con pasos pequeños rinde como la actualización dentro de las iteraciones, más cara.
+Hasta el 2026-11-18 la actualización era sólo al inicio del paso siguiente, la habitual en la bibliografía: Parvaneh y Foster (2016) la llaman *end-of-step* (evaluar al converger y seguir, sin repetir) y la comparan con la actualización dentro de las iteraciones; según su resumen, la primera da errores en la resistencia de pico y en la energía con pasos grandes (texto completo sin leer). Con ella la grieta llega un paso tarde: el paso que cruza $\sigma_{t0}$ se confirma con el elemento intacto. El esquema de Solidum, evaluar al converger y **repetir** el paso, no es ninguno de los dos que ellos comparan: es el del programa de la tesis (FEAP, que activa un elemento por punta en cada evaluación; aquí, todos los que el seguimiento admite) y el que dio en la viga SEN una respuesta que no depende de la malla desde h/2 (prototipo del 2026-11-11, variante D).
+
+**Señal de cambio.** La evaluación al final del paso informa que algo cambió sólo si aumentó el número de elementos agrietados de la región; un nodo que cambia de lado sin que se active ningún elemento no cuenta. Como la activación es irreversible y la región es finita, la cascada termina.
 
 ### 5. Regla del vértice (decisión 3)
 
-Si el nodo aislado $i^*$ de un elemento cortado por $k$ da $\cos\psi = \mathbf n\cdot\mathbf n_e \le 0$, se cambia el signo de $\theta_k$ en $i^*$: pasa a ser una condición de Dirichlet de magnitud $10^{-3}h_e$. Después se recalcula la partición de todos los elementos que comparten $i^*$. La regla se aplica a toda la trayectoria prevista de $k$ (los elementos intactos cortados por la isolínea y unidos a la grieta por lados cruzados), no sólo a la punta: así la trayectoria queda corregida antes de que la grieta llegue. **En un elemento de la punta el nodo aislado está siempre en el lado por el que entra la grieta, ya fijado por ella, y no puede cambiar de lado**; cambia entonces el nodo libre del elemento que deje $\cos\psi > 0$, y la trayectoria pasa al otro lado de ese vértice. La normal $\mathbf n$ se orienta hacia el nodo aislado respecto del punto medio de los dos cruces de la isolínea con los lados del elemento. La trayectoria pasa entonces por ese vértice, la astilla deja de estar cortada y los vecinos se reparten de forma coherente. La desviación es, como mucho, la altura de la astilla (mediana: 10 % del elemento). Cada nodo cambia de lado como mucho una vez por paso, para evitar el ciclo observado en un caso con la regla ingenua. Si después queda algún $\cos\psi \le 0$, ese elemento no se activa en el paso y se emite un aviso.
+Si el nodo aislado $i^*$ de un elemento cortado por $k$ da $\cos\psi = \mathbf n\cdot\mathbf n_e \le 0$, se cambia el signo de $\theta_k$ en $i^*$: pasa a ser una condición de Dirichlet de magnitud $10^{-3}h_e$. Después se recalcula la partición de todos los elementos que comparten $i^*$. La regla se aplica a toda la trayectoria prevista de $k$ (los elementos intactos cortados por la isolínea y unidos a la grieta por lados cruzados), no sólo a la punta: así la trayectoria queda corregida antes de que la grieta llegue. **En un elemento de la punta el nodo aislado está siempre en el lado por el que entra la grieta, ya fijado por ella, y no puede cambiar de lado**; cambia entonces el nodo libre del elemento que deje $\cos\psi > 0$, y la trayectoria pasa al otro lado de ese vértice. La normal $\mathbf n$ se orienta hacia el nodo aislado respecto del punto medio de los dos cruces de la isolínea con los lados del elemento. La trayectoria pasa entonces por ese vértice, la astilla deja de estar cortada y los vecinos se reparten de forma coherente. La desviación es, como mucho, la altura de la astilla (mediana: 10 % del elemento). Cada nodo cambia de lado como mucho una vez por evaluación (§4: cada revisión del paso y su inicio), para evitar el ciclo observado en un caso con la regla ingenua. Si después queda algún $\cos\psi \le 0$, ese elemento no se activa en esa evaluación y se emite un aviso (el contador `unactivated_warnings` cuenta evaluaciones, no pasos).
 
 Datos (2026-11-10, elemento real, 5 mallas Delaunay con $\cos\psi < 0$ y 3 con $\cos\psi = 0$):
 
@@ -87,15 +95,16 @@ status: validated
 
 interface:
   region: "todos los CST_Embedded2D del dominio (por omisión) o los ids dados"
-  hook: "una vez por paso, desde prepare_step de los elementos de la región (gancho P5 del ADR 0020), antes de su propia activación"
+  hook: "con cada campo convergido: desde revise_step de los elementos de la región al final de cada paso, antes de confirmarlo (gancho P9 del ADR 0041; si activa, el paso se repite), y desde prepare_step al inicio del paso (gancho P5 del ADR 0020)"
 
 parameters:
   - { name: epsilon, type: float, required: false, default: 1.0e-6, desc: "Regularización adimensional del problema auxiliar" }
+  - { name: max_cracks, type: int, required: false, default: null, desc: "Número máximo de grietas que pueden nacer (≥ 1); sin límite si se omite. Con 1, una sola grieta que sólo se propaga por sus puntas." }
 
 validity:
   - una discontinuidad por elemento
   - grietas en 2D con elementos CST_Embedded2D
-  - actualización al inicio del paso (pasos de carga moderados cerca de la propagación)
+  - actualización con el campo convergido de cada paso (los elementos que superan σ_t0 con el mismo campo convergido entran juntos en esa revisión; los que lo superan tras ella, en la siguiente: pasos de carga moderados cerca de la propagación)
 
 out_of_scope:
   - unión y ramificación de grietas (dos grietas que se encuentran sin ser colineales reparten de forma distinta su lado común: el seguimiento lo avisa, side_conflicts)
@@ -123,6 +132,12 @@ acceptance:
     - name: dos_grietas
       setup: "franja con dos planos débiles (x = 0.03 y 0.07) y resistencia creciente con la altura, cargada hasta poco después de la nucleación"
       expect: "dos grietas con raíces en los dos planos, 0 conflictos de lado"
+    - name: una_sola_grieta
+      setup: "la franja de dos_grietas con max_cracks = 1"
+      expect: "una sola grieta, con raíz en uno de los dos planos; ningún elemento del otro plano se agrieta (sin el límite nace allí la segunda: dos_grietas)"
+    - name: max_cracks_invalido
+      setup: "max_cracks = 0, −1 o no entero"
+      expect: "ValueError al construir, con el valor recibido"
 
 references:
   - "Oliver J., Huespe A. E., Samaniego E., Chaves E. W. V. (2004). Continuum approach to the numerical simulation of material failure in concrete. Int. J. Numer. Anal. Meth. Geomech. 28(7-8):609-632. doi:10.1002/nag.365"
@@ -140,7 +155,7 @@ references:
 - Archivo: `solidum/user/discontinuities/crack_tracking.py`
 - Clase: `GlobalCrackTracking` (registrada en `CrackTrackerRegistry`, `SPEC_KIND = "crack_tracker"`, sección YAML `crack_trackers`); variante `PrescribedCrackPath` (spec propia).
 - Funciones puras del problema auxiliar: `triangle_gradients`, `tracking_matrix`, `solve_tracking_field`, `partition`, `root_partition`, `isoline_segments`, `polyline_signed_distance`.
-- Conexión con el elemento: `CST_Embedded2D(..., crack_tracker=None)` (referencia YAML `crack_tracker: <id>`). Sin referencia, cada región conexa de elementos embebidos recibe un `GlobalCrackTracking` con los valores por omisión (`default_tracker`, agrupación por nodos compartidos). `CST_Embedded2D.prepare_step` delega en `tracker.prepare_step(elemento, U)`: la primera llamada de cada ronda (o con otro campo) ejecuta `update`, que es idempotente (itera hasta que nada cambia). El elemento activa con `activate(normal, solitary_node, point, crack)`, que rechaza `l_d ≤ 0`.
+- Conexión con el elemento: `CST_Embedded2D(..., crack_tracker=None)` (referencia YAML `crack_tracker: <id>`). Sin referencia, cada región conexa de elementos embebidos recibe un `GlobalCrackTracking` con los valores por omisión (`default_tracker`, agrupación por nodos compartidos). `CST_Embedded2D.prepare_step` delega en `tracker.prepare_step(elemento, U)` y `CST_Embedded2D.revise_step` en `tracker.revise_step(elemento, U)` (P9, ADR 0041): la primera llamada de cada ronda (o con otro campo) ejecuta `update`, que es idempotente (itera hasta que nada cambia); `revise_step` devuelve `True` sólo si aumentó el número de agrietados de la región. `max_cracks` se aplica en `_can_nucleate`. El elemento activa con `activate(normal, solitary_node, point, crack)`, que rechaza `l_d ≤ 0`.
 - Esfuerzos principales vectorizados con la `B` del CST y `batch_matrix()` del bulk (iguales a `CST_Embedded2D.principal_stress`, prueba); si ningún intacto supera σ_t0, el paso no resuelve nada.
 - Diagnóstico: `unactivated_warnings` (punta con cos ψ ≤ 0 sin nodo libre), `side_conflict_warnings` y `side_conflicts()` (grietas que se encuentran), `cracks` (`Crack`: raíz, elementos, valores de Dirichlet por nodo, `side(nodo)`), `field(k)`.
 - Constantes en `constants.py`: `TRACKING_EPSILON = 1e-6`, `TRACKING_MIN_DISTANCE = 1e-3` (relativa a $h_e = \sqrt{2A_e}$).
@@ -165,3 +180,5 @@ references:
   - **Unión de grietas** (fuera de alcance): dos grietas nacidas en los dos bordes del mismo plano se unen bien si son colineales (malla estructurada, energía 1.0006). Si no lo son (Delaunay), pasan una junto a otra y reparten de forma distinta su lado común; el seguimiento lo avisa.
   - **Banda delgada de grieta prescrita.** En el ensayo de Van Vliet de la tesis, la banda de un solo elemento de espesor no deja seguir la isolínea cuando las direcciones principales giran cerca de la entalla. La grieta se detenía y nacían otras. Ese modelo prescribe la grieta, así que usa la variante [`PrescribedCrackPath`](PrescribedCrackPath.md), que reproduce exactamente el resultado anterior.
 - **2026-11-10** · Decisión 4 del usuario: **se mantiene la normal de Rankine** (la de la tesis). Con compresión lateral y deslizamiento, la normal de la trayectoria cambia la energía ≤ 0.3 % (spec `CST_Embedded2D`, Diálogo).
+- **2026-11-18** · **Decisión del usuario** (paso 1 del plan para la viga SEN): la activación se evalúa también al final de cada paso, antes de confirmarlo, y el paso se repite con las grietas nuevas hasta que no entra ninguna (§4; gancho P9 del ADR 0041); y una sola grieta cuando el modelo lo pide (`max_cracks`, §4.2), como en la variante D del prototipo del 2026-11-11 (allí, una subclase que impedía nacer a la segunda grieta). Sin `max_cracks` el comportamiento de nucleación no cambia.
+- **2026-11-18** · **Defecto encontrado en la validación de la viga SEN** (`validador-solidum`, malla libre de Gmsh h = 5 mm, casi regular): la trayectoria corre casi sobre una línea de la malla (nodos a menos de 1.2 mm de ella, cada elemento con su propia recta de Rankine) y un nodo queda del lado contrario al de sus vecinos; la grieta da la vuelta alrededor de ese nodo (cinco elementos seguidos lo aíslan) y la punta deja de avanzar, aunque los elementos del camino real superan σ_t0 hasta 6.8 veces sin quedar cortados por la trayectoria. *Medido*: también con la activación al inicio del paso; no lo causa el cambio de este día. Pendiente: análisis de la causa y corrección (cambio de la regla de trayectoria: decide el usuario). Reproducción en 95 s: `informes/embebida_sen_yaml/sen_h05.yaml`; diagnóstico: `informes/prototipos_2026-11-18/embebida_paso1/diag_h05.py`.
