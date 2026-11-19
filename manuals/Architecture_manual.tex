@@ -859,10 +859,11 @@ Un módulo de usuario se conecta sólo a través de piezas genéricas del progra
 \begin{itemize}
   \item los registros con metadatos de familia, \texttt{Registry.\allowbreak{}families()}, las referencias \texttt{REFERENCE\_KWARGS} de los elementos y el gancho \texttt{from\_\allowbreak{}yaml(data, resolve)} para objetos de familia con referencias anidadas (ver «Familias declaradas por el registro»);
   \item el gancho de inicio de paso \texttt{Element.\allowbreak{}prepare\_\allowbreak{}step(U\_\allowbreak{}committed)}, no-op por defecto, que los solvers que avanzan por pasos invocan con el campo convergido del paso anterior; debe ser idempotente, porque tras una bisección se repite;
+  \item el gancho de revisión del paso convergido \texttt{Element.\allowbreak{}revise\_\allowbreak{}step(U\_\allowbreak{}converged) -\textgreater{} bool} (\hyperref[adr:0041]{ADR 0041}), \texttt{False} por defecto: el corrector compartido lo invoca al converger cada intento, antes de confirmarlo, y si algún elemento cambió una decisión discreta (activar una grieta) repite el intento desde su iterado inicial, en cascada, con un tope; así la decisión no llega un paso tarde ni se toma dentro de las iteraciones. Debe ser idempotente y no cambiar restricciones ni topología; un solver que confirme sin revisar lo rechaza el ensamblador;
   \item las funciones de cinemática públicas (\texttt{compute\_\allowbreak{}kinematics\_\allowbreak{}tri3}, \texttt{compute\_\allowbreak{}integrands}), las mismas que usan \texttt{Tri3} y \texttt{Quad4}, que un elemento de usuario importa de su ruta pública, \texttt{solidum.\allowbreak{}elements.\allowbreak{}solid\_\allowbreak{}2d}, y no del módulo interno \texttt{\_shared};
   \item el problema de Newton por paso del arc-length, exportado con nombre público como \texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}ArcProblem}: una variante de arco que sólo cambia la restricción del paso hereda de \texttt{ArcLengthSolver} y de ese problema y redefine su método \texttt{constraint}, como hacen \texttt{IndirectDisplacementSolver} en el programa principal y \texttt{DissipationArcLengthSolver} en el módulo \texttt{dissipation\_\allowbreak{}control};
   \item la receta de elemento por grupo físico de gmsh (\texttt{mesh\_element}, y \texttt{element} dentro de \texttt{mesh\_\allowbreak{}physical\_\allowbreak{}groups});
-  \item el contrato del elemento con estado propio, fuera de \texttt{ElementState}: \texttt{element\_\allowbreak{}is\_\allowbreak{}batchable} lo excluye del camino por lotes si la clase redefine \texttt{compute\_\allowbreak{}element\_\allowbreak{}state} o \texttt{commit\_state} por debajo de la que declaró \texttt{BATCH\_KINEMATICS}, para que el kernel de familia no calcule ni consolide en silencio sin sus redefiniciones.
+  \item el contrato del elemento con estado propio, fuera de \texttt{ElementState}: \texttt{element\_\allowbreak{}is\_\allowbreak{}batchable} lo excluye del camino por lotes si la clase redefine \texttt{compute\_\allowbreak{}element\_\allowbreak{}state}, \texttt{commit\_state} o uno de los ganchos de paso (\texttt{prepare\_step}, \texttt{revise\_step}) por debajo de la que declaró \texttt{BATCH\_KINEMATICS}, para que el kernel de familia no calcule ni consolide en silencio sin sus redefiniciones.
 \end{itemize}
 
 Un módulo de usuario sólo \textbf{añade} entradas a los registros; nunca sustituye una existente. \texttt{load\_user\_module} es atómica: toma una instantánea de los registros antes de cargar y, si el módulo reasigna una entrada ya registrada (por ejemplo, inscribe otra clase como \texttt{Elastic2D}), lanza \texttt{ValueError} y deshace la carga, registros y \texttt{sys.modules} incluidos; lo mismo si la carga falla por un error del propio módulo. Así un módulo no puede cambiar en silencio el comportamiento del programa principal para los modelos posteriores de la sesión.
@@ -1608,6 +1609,13 @@ La historia de la salida (\hyperref[adr:0036]{ADR 0036}) registra energías y ma
 
 Cinco medidas, sin suponer condiciones de frontera fijas (el contacto las cambiará entre iteraciones). (1) Pardiso por llamada directa a la MKL, con las comprobaciones previas de antes (una fila vacía es una matriz singular), y el análisis simbólico reutilizado dentro de la cadena de factorizaciones de un mismo análisis mientras el patrón no cambie: factorizar pasa de 73 a 6 ms; como el análisis reescala la matriz según sus valores, la solución cambia en el redondeo (\ensuremath{\le} 4\ensuremath{\cdot}10\ensuremath{^{-}}¹⁵ relativo, sin acumularse con los pasos, medido en 4000 pasos de Petersson, J2 estático y dinámico y daño implícito), aceptado por el usuario; los pivotes de la red de seguridad se leen siempre de un análisis propio, y en cuanto una factorización perturba pivotes (matriz singular o casi, un mecanismo) el análisis deja de reutilizar el análisis simbólico, porque ahí el redondeo se amplifica y cambiaría el diagnóstico. (2) El corrector de Newton reutiliza la factorización si la matriz es idéntica bit a bit: sin contratos que declarar, cubre la tangente IMPL-EX o elástica y cualquier análisis futuro. (3) Una sola función de reducción, \texttt{reduce\_matrix}, que con sólo apoyos extrae la submatriz de los libres. (4) La historia y las reacciones toman la \texttt{F\_int} con la que el criterio aceptó el paso, sin reensamblar. (5) \texttt{free\_dofs} calculado una vez por conjunto de restricciones. Viga de Petersson con Quad8 (25 108 incógnitas, IMPL-EX): 200 pasos de 52 a 15,5 s con Newton estándar. Se descartaron cachear la huella de las restricciones y quitar la segunda resolución (decisiones del usuario), un contrato declarativo para la reutilización y el análisis de Pardiso reutilizado de forma global en el proceso.
 
+\section{ADR 0041 --- Revisión del paso convergido}
+\label{adr:0041}
+
+\textbf{Fecha}: 2026-11-18 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+Un elemento que toma decisiones discretas (activar una grieta) las tomaba al inicio del paso siguiente (\hyperref[adr:0010]{ADR 0010} §5, gancho P5): el paso que cruzaba el umbral se confirmaba con el elemento intacto, por encima de su resistencia. \textbf{Decisión}: un gancho genérico nuevo, \texttt{Element.\allowbreak{}revise\_\allowbreak{}step(U\_\allowbreak{}converged) -\textgreater{} bool} (pieza P9 del contrato con los módulos de usuario). El corrector compartido lo consulta al converger cada intento, sólo en puntos que el solver va a confirmar (en el arco, no en un paso que rebasa el final), y antes de confirmar; si algún elemento cambió, repite el intento desde su iterado inicial, en cascada, hasta que ninguno cambia o se agota \texttt{MAX\_\allowbreak{}STEP\_\allowbreak{}REVISIONS} (\texttt{StepRevisionError}). Cada ronda empieza como una ejecución nueva del corrector desde el mismo iterado inicial; en el Newton incremental, con un elemento sin iteraciones locales, el paso repetido es bit a bit el de la decisión tomada antes de empezarlo (la discontinuidad embebida arranca el Newton local de su salto desde el valor de la ronda descartada). Guardas: una revisión no puede cambiar restricciones ni topología, y \texttt{commit\_\allowbreak{}all\_\allowbreak{}states} rechaza confirmar sin revisión si hay elementos que la piden. Un elemento con ganchos de paso no va por lotes. \textbf{Pendiente del usuario}: si las decisiones de un intento que se abandona (bisección) persisten, como hoy, o se revocan, y qué cuenta de resoluciones alimenta la adaptación del paso. Primer consumidor: la activación dentro del paso de la discontinuidad embebida.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -1984,6 +1992,21 @@ Bajo. El lector reutiliza el contrato de la celda de referencia del \hyperref[ad
   \item \textbf{Fuerzas internas del paso confirmado} para la historia y las reacciones, sin reensamblar.
   \item Viga de Petersson con Quad8 (25 108 incógnitas, IMPL-EX): 200 pasos de 52 a 15,5 s.
 \end{itemize}
+
+\section{Fase 16 --- Revisión del paso convergido}
+
+\textbf{Estado}: implementado (\hyperref[adr:0041]{ADR 0041}, 18 de noviembre de 2026).
+
+\begin{itemize}
+  \item \textbf{Gancho de revisión} \texttt{Element.\allowbreak{}revise\_\allowbreak{}step(U\_\allowbreak{}converged)}, pieza P9 del contrato con los módulos de usuario: el corrector compartido lo consulta al converger cada intento de paso, sólo en puntos que se van a confirmar, y antes de confirmarlos.
+  \item \textbf{Repetición en cascada} desde el iterado inicial del intento si algún elemento cambió una decisión discreta, con tope y error tipado (\texttt{StepRevisionError}).
+  \item \textbf{Guardas}: una revisión no puede cambiar restricciones ni topología; confirmar sin revisión cuando hay elementos que la piden es un error; un elemento con ganchos de paso no va por lotes; el intento que un trazado deja abierto se cierra al terminar.
+  \item Primer consumidor: la discontinuidad embebida activa la grieta en el paso en que el campo convergido supera la resistencia, sin el sobrepaso de un paso de la activación al inicio del paso siguiente.
+\end{itemize}
+
+\begin{infobox}{Riesgo de arquitectura}
+Bajo. Sin elementos que redefinan el gancho, el resultado y el número de ensamblajes son los de antes (prueba bit a bit). Pendiente del usuario: si las decisiones de un intento que se abandona persisten (hoy) o se revocan.
+\end{infobox}
 
 \begin{infobox}{Riesgo de arquitectura}
 Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con ella cambian en el redondeo (\ensuremath{\le} 4\ensuremath{\cdot}10\ensuremath{^{-}}¹⁵ relativo, sin acumularse), lo que el usuario aceptó. Pruebas que fallan si una de las optimizaciones deja de actuar.
@@ -2371,8 +2394,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 18 de noviembre de 2026, 09:49\\[0.5em]
-Commit Git: \texttt{f7a26ac} (con cambios sin confirmar)\\[1em]
+Compilado el 18 de noviembre de 2026, 20:46\\[0.5em]
+Commit Git: \texttt{fe7525b} (con cambios sin confirmar)\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
