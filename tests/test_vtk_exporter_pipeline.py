@@ -189,7 +189,7 @@ class TestVtkExporterPipeline(unittest.TestCase):
             dom.add_node(i, [float(x), float(y)])
         elem = Quad4(1, [dom.nodes[i] for i in (1, 2, 3, 4)], Elastic2D(E=1.0, nu=0.3))
         elem.nodes = [dom.nodes[i] for i in (1, 2, 3, 4, 5)]   # 5 nodos 2D: sin celda
-        dom.elements[1] = elem
+        dom.add_element(elem)
         dom.generate_equation_numbers()
         with self.assertRaises(ValueError):
             VtkExporter(dom).export(self._tmp_path("_test_vtk_vacio.vtu"), U=None)

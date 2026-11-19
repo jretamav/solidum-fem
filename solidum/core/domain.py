@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import weakref
 from numbers import Real
 from typing import Dict, TYPE_CHECKING
 
@@ -19,6 +20,7 @@ class Domain:
     def __init__(self):
         self.nodes: Dict[int, Node] = {}
         self.elements = {}
+        self._topology_version = 0
         self.total_dofs: int = 0
         # Resultado agregado de la última solución (ADR 0002). Para análisis
         # estáticos lo asigna ``solidum.run`` vía ``build_solve_result``
@@ -145,9 +147,70 @@ class Domain:
         return self.nodes.get(node_id)
 
     def add_element(self, element) -> None:
+        """Añade un elemento y lo enlaza con este dominio (``element.domain``,
+        pieza P10, ADR 0042). Es, con :meth:`replace_element`, el único camino
+        para cambiar ``elements``.
+
+        Raises
+        ------
+        ValueError
+            Si ya hay un elemento con ese id, o si el elemento pertenece a otro
+            dominio vivo.
+        """
         if element.id in self.elements:
             raise ValueError(f"El elemento {element.id} ya existe.")
+        self._check_not_in_other_domain(element)
         self.elements[element.id] = element
+        element._domain_ref = weakref.ref(self)
+        self._topology_version += 1
+
+    def replace_element(self, element) -> None:
+        """Sustituye el elemento que tiene el mismo id (p. ej. para cambiar su
+        material o su tipo). El nuevo queda enlazado con este dominio y el
+        anterior, desenlazado (``domain`` = ``None``).
+
+        Raises
+        ------
+        ValueError
+            Si no hay ningún elemento con ese id, o si el nuevo pertenece a
+            otro dominio vivo.
+        """
+        old = self.elements.get(element.id)
+        if old is None:
+            raise ValueError(f"replace_element: no hay ningún elemento {element.id} que sustituir.")
+        self._check_not_in_other_domain(element)
+        self.elements[element.id] = element
+        if old is not element:
+            old._domain_ref = None
+        element._domain_ref = weakref.ref(self)
+        self._topology_version += 1
+
+    @property
+    def topology_version(self) -> int:
+        """Contador que aumenta con cada ``add_element`` y ``replace_element``
+        (ADR 0042): huella barata para los datos que un componente deriva de
+        los elementos del dominio (p. ej. el contorno libre) y guarda."""
+        return self._topology_version
+
+    def _check_not_in_other_domain(self, element) -> None:
+        other = element.domain
+        if other is not None and other is not self:
+            raise ValueError(
+                f"El elemento {element.id} ya pertenece a otro dominio; un elemento sólo puede "
+                f"estar en un dominio (cree uno nuevo, o use copy.deepcopy del dominio entero).")
+
+    def __setstate__(self, state):
+        """Al deserializar o copiar con ``copy.deepcopy``, los elementos vuelven
+        a enlazarse con este dominio (no se serializa la referencia, P10).
+
+        Sólo los que no tienen dominio vivo: una copia superficial
+        (``copy.copy``) comparte los elementos con el original, que los
+        conserva."""
+        self.__dict__.update(state)
+        ref = weakref.ref(self)
+        for element in self.elements.values():
+            if element.domain is None:
+                element._domain_ref = ref
 
     def generate_equation_numbers(self, verbose: bool = False):
         eq_number = 0

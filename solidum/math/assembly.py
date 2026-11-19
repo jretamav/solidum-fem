@@ -319,11 +319,15 @@ class Assembler:
         return list(self._families)
 
     def _current_topology_key(self) -> tuple:
-        return (len(self.domain.elements), self.domain.total_dofs, self.batch, self.parallel)
+        # ``topology_version`` (ADR 0042) cambia con cada add_element y
+        # replace_element: un elemento sustituido no cambia ``len``.
+        return (len(self.domain.elements), getattr(self.domain, "topology_version", None),
+                self.domain.total_dofs, self.batch, self.parallel)
 
     def _ensure_topology(self) -> None:
         """Construye la topología COO si falta o si el modelo cambió de
-        tamaño (elementos añadidos, renumeración) desde la última vez."""
+        topología (elementos añadidos o sustituidos con ``Domain.replace_element``,
+        renumeración) desde la última vez."""
         if not self._topology_built or self._topology_key != self._current_topology_key():
             self._build_topology()
 
@@ -331,10 +335,10 @@ class Assembler:
         """Descarta todas las cachés (topología, familias, restricciones, masa).
 
         Las huellas de topología y de restricciones ya detectan por sí solas
-        elementos nuevos y apoyos/MPC añadidos o cambiados; este método es
-        el punto explícito para cambios que no dejan huella (densidad de un
-        material, un material o un espesor sustituidos en un elemento
-        existente, ...). El estado interno de las familias vuelve a los
+        elementos nuevos o sustituidos (``Domain.replace_element``, ADR 0042) y
+        apoyos/MPC añadidos o cambiados; este método es el punto explícito para
+        cambios que no dejan huella (densidad de un material, un material o un
+        espesor cambiados dentro de un elemento existente, ...). El estado interno de las familias vuelve a los
         elementos, así que no se pierde historia."""
         self._release_families()
         self.forget_converged_forces()

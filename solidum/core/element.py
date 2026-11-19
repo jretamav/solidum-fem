@@ -212,6 +212,32 @@ class Element(ABC):
     CHARACTERISTIC_LENGTH_FACTOR: ClassVar[float | None] = None
     CRACK_BAND_LOCALIZATION: ClassVar[dict | None] = None
     SEEDS_CHARACTERISTIC_LENGTH: ClassVar[bool] = False
+    # Referencia débil al dominio que contiene el elemento (pieza P10, ADR
+    # 0042). La ponen sólo ``Domain.add_element`` y ``Domain.replace_element``;
+    # se lee con :attr:`domain`. No se copia ni se serializa (``__getstate__``):
+    # ``Domain.__setstate__`` vuelve a enlazar sus elementos.
+    _domain_ref = None
+
+    @property
+    def domain(self):
+        """Dominio que contiene el elemento, o ``None`` (pieza P10, ADR 0042).
+
+        Es el dominio al que lo añadió ``Domain.add_element`` (o
+        ``replace_element``) mientras siga vivo y el elemento siga siendo el
+        suyo con ese id; si no, ``None``. Para componentes que necesitan ver
+        el modelo entero desde un elemento (p. ej. el contorno libre de todo
+        el dominio), no para recorrerlo en el ensamblaje.
+        """
+        ref = self._domain_ref
+        dom = ref() if ref is not None else None
+        if dom is None or dom.elements.get(self.id) is not self:
+            return None
+        return dom
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_domain_ref", None)
+        return state
 
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material | None = None):

@@ -15,9 +15,9 @@ Contenido:
   ``solidum.materials.interface.CohesiveDamageIsotropic``; ADR 0033).
 - ``DiscontinuityState`` — geometría y estado del salto de un elemento
   agrietado (``discontinuity_state.py``).
-- ``GlobalCrackTracking`` — seguimiento global de la trayectoria de grieta,
-  que decide qué elementos se agrietan y su nodo solitario
-  (``crack_tracking.py``); ``CrackTrackerRegistry`` — su registro, con la
+- ``CrackTracking`` — seguimiento de la trayectoria de grieta (prolongación
+  recta del último tramo), que decide qué elementos se agrietan y su nodo
+  solitario (``crack_tracking.py``); ``CrackTrackerRegistry`` — su registro, con la
   sección YAML ``crack_trackers``. ``PrescribedCrackPath`` — variante con la
   trayectoria dada (grieta prescrita).
 
@@ -28,7 +28,7 @@ from solidum.user.discontinuities.registry import CrackTrackerRegistry
 from solidum.user.discontinuities.discontinuity_state import DiscontinuityState
 from solidum.user.discontinuities.crack_tracking import (
     Crack,
-    GlobalCrackTracking,
+    CrackTracking,
     PrescribedCrackPath,
 )
 from solidum.user.discontinuities.embedded_cst import CST_Embedded2D
@@ -36,8 +36,8 @@ from solidum.user.discontinuities.embedded_cst import CST_Embedded2D
 __all__ = [
     "CST_Embedded2D",
     "Crack",
+    "CrackTracking",
     "CrackTrackerRegistry",
     "DiscontinuityState",
-    "GlobalCrackTracking",
     "PrescribedCrackPath",
 ]

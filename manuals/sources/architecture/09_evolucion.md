@@ -340,6 +340,18 @@ Bajo. Sin elementos que redefinan el gancho, el resultado y el número de ensamb
 Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con ella cambian en el redondeo (≤ 4·10⁻¹⁵ relativo, sin acumularse), lo que el usuario aceptó. Pruebas que fallan si una de las optimizaciones deja de actuar.
 ```
 
+## Fase 17 — Seguimiento de grieta por prolongación recta
+
+**Estado**: implementado (ADR 0042, 19 de noviembre de 2026).
+
+- **El elemento conoce su dominio** (`Element.domain`, pieza P10): un solo camino de mutación de `domain.elements` (`add_element`, `replace_element`), vigilado por una prueba sintáctica; la referencia se rehace tras `pickle` y `deepcopy`.
+- **Contorno libre público** (`solidum.mesh.free_boundary`), que comparten las mallas estructuradas y el seguimiento de grieta; `Domain.topology_version` como huella de los datos derivados de los elementos.
+- **Seguimiento de grieta sin problema auxiliar** (`CrackTracking`, decisión del usuario): la punta sigue la prolongación recta del último tramo y sale por el borde libre del dominio cuando puede. Equivalente al prototipo aprobado: bit a bit en 26 casos de aceptación y en la viga SEN de 10 y 5 mm; con 2.5 mm, las mismas decisiones con 6·10⁻¹⁴ de redondeo.
+
+```callout Riesgo de arquitectura
+Bajo. Las ocho escrituras directas en `domain.elements` de las pruebas pasaron a `add_element` y `replace_element`; la suite completa queda igual. La limitación conocida de la regla (mallas Delaunay con elementos obtusos, trayectorias curvas) es física y está en su spec.
+```
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

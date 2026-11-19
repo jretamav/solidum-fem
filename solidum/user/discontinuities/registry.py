@@ -16,7 +16,7 @@ from solidum.registry import Registry
 
 class CrackTrackerRegistry(Registry):
     """Algoritmos de seguimiento de grieta: deciden qué elementos embebidos se
-    agrietan y con qué partición (spec ``GlobalCrackTracking``).
+    agrietan y con qué partición (spec ``CrackTracking``).
 
     Familia con sección YAML propia (``crack_trackers``) para que un modelo
     pueda fijar sus parámetros y referenciarlo desde los elementos

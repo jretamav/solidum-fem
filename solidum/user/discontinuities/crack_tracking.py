@@ -1,31 +1,32 @@
-"""Seguimiento global de la trayectoria de grieta (spec ``GlobalCrackTracking``).
+"""Seguimiento de la trayectoria de grieta (spec ``CrackTracking``).
 
 Decide, con cada campo convergido (al final de cada paso, antes de
-confirmarlo, y al inicio del siguiente), qué elementos
-``CST_Embedded2D`` se agrietan y con qué partición (el nodo solitario). La
-partición la dicta la trayectoria (decisión del usuario del 2026-11-10): cada
-grieta ``k`` tiene un campo escalar ``θ_k``, lineal por elemento, que minimiza
+confirmarlo, y al inicio del siguiente), qué elementos ``CST_Embedded2D`` se
+agrietan y con qué partición (el nodo solitario). La partición la dicta la
+trayectoria (decisión del usuario del 2026-11-10) y la trayectoria, la
+**prolongación recta** del último tramo de la grieta (decisión del usuario del
+2026-11-19, que sustituye al seguimiento global con un problema auxiliar):
 
-    Π(θ) = ½∫(t·∇θ)² dΩ + ½ε∫|∇θ|² dΩ ,
+- cada grieta ``k`` guarda en los nodos de sus elementos agrietados un **valor
+  nodal**: distancia con signo a la recta de la grieta en el elemento que fijó
+  el nodo. El signo es el lado; la magnitud fija los puntos de cruce de la
+  grieta con los lados (interpolación lineal), y con ellos la dirección del
+  último tramo. Un valor guardado no cambia;
+- un elemento intacto es una **punta** de ``k`` si comparte con un agrietado
+  de ``k`` un lado cruzado. El lado de su tercer nodo lo decide la recta que
+  prolonga el último tramo desde el punto de entrada (siempre entra en la
+  punta); si la grieta puede salir por un lado del borde libre del dominio,
+  sale por él;
+- la normal de cada elemento es la de Rankine del propio elemento.
 
-con ``t`` el campo de direcciones (tangente fijada en los elementos
-agrietados; perpendicular a ``σ_I`` en los intactos) y condiciones de
-Dirichlet en los nodos de la grieta ya formada (distancia con signo a su
-recta). La trayectoria es la isolínea ``θ_k = 0`` y el lado de cada nodo es
-el signo de ``θ_k``, el mismo para todos los elementos que lo comparten, de
-modo que la partición es coherente por construcción.
+Regla del vértice (decisión del usuario), sólo en la punta: un elemento de la
+punta cuyo nodo aislado dé ``cos ψ ≤ 0`` no se activa así; cambia de lado el
+tercer nodo, la trayectoria pasa por el vértice. Cada nodo cambia de lado como
+mucho una vez por evaluación.
 
-Regla del vértice (decisión del usuario): un elemento cortado cuyo nodo
-aislado dé ``cos ψ ≤ 0`` no se activa así; ese nodo cambia de lado y la
-trayectoria pasa por el vértice. Si el nodo ya pertenece a la grieta formada
-(no puede cambiar), cambia de lado otro nodo libre del elemento, el que deje
-``cos ψ > 0``. Cada nodo cambia de lado como mucho una vez por paso.
-
-Referencias: Oliver et al. (2004, 2008) para el problema auxiliar; Riccardi
-et al. (2017) para la regularización y las condiciones de Dirichlet en la
-grieta formada; Parvaneh y Foster (2016) para la actualización al inicio del
-paso. Formulación completa en
-``docs/user/discontinuities/specs/GlobalCrackTracking.md``.
+Formulación completa en ``docs/user/discontinuities/specs/CrackTracking.md``.
+Para reproducir resultados anteriores al 2026-11-19 (seguimiento global
+``GlobalCrackTracking``): commit ``4f1b58a``.
 """
 from __future__ import annotations
 
@@ -33,23 +34,23 @@ import weakref
 from dataclasses import dataclass, field
 
 import numpy as np
-import scipy.sparse as sp
-from scipy.sparse.linalg import spsolve
 
 from solidum.logging import get_logger
-from solidum.user.discontinuities.constants import (
-    TRACKING_EPSILON,
-    TRACKING_MIN_DISTANCE,
-)
+from solidum.mesh import free_boundary
+from solidum.user.discontinuities.constants import TRACKING_MIN_DISTANCE
 from solidum.user.discontinuities.registry import CrackTrackerRegistry
 
 _log = get_logger("user.discontinuities")
 
 _EDGES = ((0, 1), (1, 2), (2, 0))
+# Grados de libertad de los elementos que cuentan para el borde libre: los del
+# sólido en el plano. Los elementos térmicos sobre los mismos nodos no tapan un
+# lado libre.
+_FREE_BOUNDARY_DOFS = ("ux", "uy")
 
 
 # =========================================================================
-# Geometría del triángulo y problema auxiliar (funciones puras)
+# Geometría del triángulo (funciones puras)
 # =========================================================================
 
 
@@ -75,46 +76,12 @@ def triangle_gradients(X: np.ndarray, conn: np.ndarray):
     return grads, 0.5 * np.abs(two_a)
 
 
-def tracking_matrix(grads: np.ndarray, area: np.ndarray, tangents: np.ndarray,
-                    n_nodes: int, conn: np.ndarray, epsilon: float) -> sp.csr_matrix:
-    """Matriz ``K = Σ_e A_e ∇Nᵀ(t_e t_eᵀ + ε I)∇N`` del problema auxiliar (§6).
-
-    ``tangents`` (ne, 2) unitarias; su signo no importa (campo de líneas).
-    """
-    t = tangents / np.linalg.norm(tangents, axis=1, keepdims=True)
-    D = np.einsum("ei,ej->eij", t, t) + epsilon * np.eye(2)[None]
-    ke = np.einsum("e,eai,eij,ebj->eab", area, grads, D, grads)
-    rows = np.repeat(conn, 3, axis=1).ravel()
-    cols = np.tile(conn, (1, 3)).ravel()
-    return sp.csr_matrix((ke.ravel(), (rows, cols)), shape=(n_nodes, n_nodes))
-
-
-def solve_tracking_field(K: sp.csr_matrix, nodes: np.ndarray, fixed: dict) -> np.ndarray:
-    """Resuelve ``θ`` en ``nodes`` (índices) con Dirichlet ``fixed`` {índice: valor}.
-
-    Los nodos fuera de ``nodes`` quedan en 0. Los de ``nodes`` deben formar
-    una región conexa con al menos un valor prescrito (si no, ``K`` restringida
-    es singular: el regularizador sólo fija ``θ`` salvo una constante).
-    """
-    theta = np.zeros(K.shape[0])
-    if not fixed:
-        raise ValueError("el campo de seguimiento necesita al menos un valor prescrito")
-    d = np.fromiter(fixed.keys(), dtype=np.int64)
-    vals = np.fromiter(fixed.values(), dtype=float)
-    theta[d] = vals
-    free = np.setdiff1d(nodes, d, assume_unique=False)
-    if free.size:
-        Kf = K[free]
-        theta[free] = spsolve(Kf[:, free].tocsc(), -(Kf[:, d] @ vals))
-    return theta
-
-
 def partition(xs: np.ndarray, th: np.ndarray, normal: np.ndarray, inward: np.ndarray):
-    """Partición de un triángulo por el signo de ``θ`` en sus nodos.
+    """Partición de un triángulo por el signo de los valores en sus nodos.
 
     Parameters
     ----------
-    xs : (3, 2) coordenadas; th : (3,) valores de ``θ``;
+    xs : (3, 2) coordenadas; th : (3,) valores nodales (distancias con signo);
     normal : (2,) normal de Rankine (cualquier signo);
     inward : (3, 2) normal unitaria de cada lado opuesto, hacia su nodo.
 
@@ -122,7 +89,8 @@ def partition(xs: np.ndarray, th: np.ndarray, normal: np.ndarray, inward: np.nda
     -------
     ``None`` si el elemento no está cortado; si no, ``(lone, n, x_m, cos ψ)``:
     el nodo solitario, la normal orientada hacia él (respecto del punto medio
-    ``x_m`` de los dos cruces de la isolínea con sus lados) y ``cos ψ = n·n_e``.
+    ``x_m`` de los dos cruces, interpolados con los valores) y
+    ``cos ψ = n·n_e``.
     """
     s = th >= 0.0
     count = int(s.sum())
@@ -139,7 +107,7 @@ def partition(xs: np.ndarray, th: np.ndarray, normal: np.ndarray, inward: np.nda
 
 
 def root_partition(xs: np.ndarray, normal: np.ndarray):
-    """Partición de la raíz de una grieta (§4.2 y §5).
+    """Partición de la raíz de una grieta (spec §3).
 
     La recta de normal ``normal`` por el centroide aísla un nodo. Si ese nodo
     da ``cos ψ ≤ 0``, la recta pasa al otro lado del nodo intermedio y aísla
@@ -171,23 +139,8 @@ def root_partition(xs: np.ndarray, normal: np.ndarray):
     raise RuntimeError("partición de raíz sin cos ψ > 0 (triángulo degenerado)")
 
 
-def isoline_segments(X: np.ndarray, conn: np.ndarray, theta: np.ndarray,
-                     elements=None) -> list:
-    """Segmentos de la isolínea ``θ = 0`` por elemento: ``[(e, p, q)]``."""
-    out = []
-    for e in (range(len(conn)) if elements is None else elements):
-        idx = conn[e]
-        th = theta[idx]
-        s = th >= 0.0
-        if s.all() or not s.any():
-            continue
-        pts = []
-        for a, b in _EDGES:
-            if s[a] != s[b]:
-                w = th[a] / (th[a] - th[b])
-                pts.append(X[idx[a]] + w * (X[idx[b]] - X[idx[a]]))
-        out.append((e, pts[0], pts[1]))
-    return out
+def _cross(u: np.ndarray, v: np.ndarray) -> float:
+    return u[0] * v[1] - u[1] * v[0]
 
 
 # =========================================================================
@@ -197,7 +150,7 @@ def isoline_segments(X: np.ndarray, conn: np.ndarray, theta: np.ndarray,
 
 @dataclass
 class Crack:
-    """Una grieta del seguimiento global.
+    """Una grieta del seguimiento.
 
     Attributes
     ----------
@@ -209,9 +162,11 @@ class Crack:
     elements : list[int]
         Ids de sus elementos agrietados, en orden de activación.
     fixed : dict[int, float]
-        Valores de Dirichlet de su campo de seguimiento por id de nodo: la
-        distancia con signo a la recta de la grieta en el elemento que fijó
-        el nodo (mínimo ``TRACKING_MIN_DISTANCE·h_e``). El signo es el lado.
+        Valores nodales por id de nodo (spec §1): distancia con signo del nodo
+        a la recta de la grieta en el elemento que lo fijó (mínimo
+        ``TRACKING_MIN_DISTANCE·h_e``). El signo es el lado del nodo; la
+        magnitud fija los cruces de la grieta con los lados y la dirección de
+        su último tramo, así que forma parte de la regla: no se normaliza.
     """
     index: int
     root: int | None
@@ -225,14 +180,11 @@ class Crack:
 
 
 @CrackTrackerRegistry.register
-class GlobalCrackTracking:
-    """Seguimiento global de grietas para ``CST_Embedded2D`` (spec
-    ``GlobalCrackTracking``).
+class CrackTracking:
+    """Seguimiento de grietas para ``CST_Embedded2D`` (spec ``CrackTracking``).
 
     Parameters
     ----------
-    epsilon : float, default 1e-6
-        Regularización adimensional del problema auxiliar (§2).
     max_cracks : int, optional
         Número máximo de grietas que pueden nacer (≥ 1); sin límite si se
         omite. Con 1, una sola grieta que sólo se propaga por sus puntas
@@ -248,18 +200,33 @@ class GlobalCrackTracking:
     paso desde ``prepare_step`` (gancho P5). En cada ronda, la primera
     llamada dispara :meth:`update`, que es idempotente para el mismo campo
     (se itera hasta que no cambia nada).
+
+    Para la salida por el borde libre, el seguimiento mira el dominio del
+    modelo a través de ``element.domain`` (pieza P10, ADR 0042), y sólo
+    cuando una punta toca un lado que no comparte con otro elemento de su
+    región.
+
+    Puntos de extensión (los redefine :class:`PrescribedCrackPath`; el resto
+    del algoritmo es común):
+
+    - :meth:`_build` — topología de la región; una variante lo extiende para
+      precalcular lo suyo (la distancia de cada nodo a la poligonal);
+    - :meth:`_refresh` — valores nodales vigentes de la grieta ``k`` y sus
+      puntas (aquí, la prolongación recta; en la trayectoria prescrita, la
+      distancia a la poligonal y todo elemento cortado);
+    - política de grietas: :meth:`_prepare_cracks` (grietas que existen antes
+      de activar), :meth:`_adoption_crack` (grieta de un elemento agrietado
+      fuera del seguimiento) y :meth:`_can_nucleate`;
+    - :meth:`_fixed_values` — valores que guardan los nodos de un elemento
+      recién activado.
     """
 
-    def __init__(self, epsilon: float = TRACKING_EPSILON, max_cracks: int | None = None):
-        epsilon = float(epsilon)
-        if not epsilon > 0.0:
-            raise ValueError(f"GlobalCrackTracking: epsilon debe ser > 0 (recibido {epsilon}).")
+    def __init__(self, max_cracks: int | None = None):
         if max_cracks is not None and (
                 isinstance(max_cracks, bool) or not isinstance(max_cracks, (int, np.integer))
                 or max_cracks < 1):
-            raise ValueError(f"GlobalCrackTracking: max_cracks debe ser un entero ≥ 1 o "
+            raise ValueError(f"CrackTracking: max_cracks debe ser un entero ≥ 1 o "
                              f"omitirse (sin límite); recibido {max_cracks!r}.")
-        self.epsilon = epsilon
         self.max_cracks = None if max_cracks is None else int(max_cracks)
         self.cracks: list[Crack] = []
         self.unactivated_warnings = 0
@@ -270,6 +237,14 @@ class GlobalCrackTracking:
         self._called: set = set()
         self._last_U = None
         self._last_copy = None
+        self._free_cache = None
+
+    def __getstate__(self):
+        # La caché del borde libre guarda una referencia débil al dominio: no
+        # se serializa (se recalcula al primer uso).
+        state = self.__dict__.copy()
+        state["_free_cache"] = None
+        return state
 
     # ------------------------------------------------------------------
     # Alta de elementos y disparo por ronda
@@ -280,9 +255,15 @@ class GlobalCrackTracking:
         return tuple(self._members)
 
     def add(self, element) -> None:
-        """Da de alta un elemento en la región de seguimiento."""
+        """Da de alta un elemento en la región de seguimiento. Uno con el id
+        de un miembro anterior lo sustituye (``Domain.replace_element``)."""
         if id(element) in self._member_keys:
             return
+        for i, old in enumerate(self._members):
+            if old.id == element.id:
+                self._member_keys.discard(id(old))
+                del self._members[i]
+                break
         self._members.append(element)
         self._member_keys.add(id(element))
         self._built = False
@@ -349,15 +330,15 @@ class GlobalCrackTracking:
         self._X = np.array([coords[nid] for nid in node_ids]).reshape(-1, 2)
         self._conn = np.array([[self._nidx[nd.id] for nd in e.nodes] for e in els],
                               dtype=np.int64).reshape(-1, 3)
-        self._grads, self._area = triangle_gradients(self._X, self._conn)
-        self._inward = self._grads / np.linalg.norm(self._grads, axis=2, keepdims=True)
+        grads, self._area = triangle_gradients(self._X, self._conn)
+        self._inward = grads / np.linalg.norm(grads, axis=2, keepdims=True)
         self._delta = TRACKING_MIN_DISTANCE * np.sqrt(2.0 * self._area)
         # Matriz B del CST en Voigt [ε_xx, ε_yy, γ_xy] y umbral de cada elemento.
         B = np.zeros((len(els), 3, 6))
-        B[:, 0, 0::2] = self._grads[:, :, 0]
-        B[:, 1, 1::2] = self._grads[:, :, 1]
-        B[:, 2, 0::2] = self._grads[:, :, 1]
-        B[:, 2, 1::2] = self._grads[:, :, 0]
+        B[:, 0, 0::2] = grads[:, :, 0]
+        B[:, 1, 1::2] = grads[:, :, 1]
+        B[:, 2, 0::2] = grads[:, :, 1]
+        B[:, 2, 1::2] = grads[:, :, 0]
         self._B = B
         self._sigma_t0 = np.array([float(getattr(e.cohesive_material, "sigma_t0", None) or 0.0)
                                    for e in els])
@@ -368,25 +349,6 @@ class GlobalCrackTracking:
                 key = (min(tri[a], tri[b]), max(tri[a], tri[b]))
                 self._edge_elems.setdefault(key, []).append(p)
 
-        # Componentes conexas por nodos compartidos (el problema auxiliar de
-        # cada grieta se resuelve en la suya).
-        parent = list(range(len(node_ids)))
-
-        def find(i):
-            while parent[i] != i:
-                parent[i] = parent[parent[i]]
-                i = parent[i]
-            return i
-        for tri in self._conn:
-            r0 = find(tri[0])
-            for j in tri[1:]:
-                rj = find(j)
-                if rj != r0:
-                    parent[rj] = r0
-        roots = np.array([find(i) for i in range(len(node_ids))])
-        self._comp_nodes = {r: np.nonzero(roots == r)[0] for r in np.unique(roots)}
-        self._node_comp = roots
-
         # Estado derivado de las grietas existentes (los ids son la verdad).
         self._fixed_idx = [{self._nidx[nid]: v for nid, v in c.fixed.items() if nid in self._nidx}
                            for c in self.cracks]
@@ -396,6 +358,32 @@ class GlobalCrackTracking:
             for p in pos:
                 self._cracked_count[self._conn[p]] += 1
         self._built = True
+
+    def _free_edges(self, q: int) -> set:
+        """Lados del borde libre del dominio de ``q`` (pares de ids de nodo),
+        de todos sus elementos con ``ux, uy`` (spec §3). Se calcula una vez por
+        topología del dominio (``Domain.topology_version``)."""
+        dom = self._els[q].domain
+        if dom is None:
+            raise RuntimeError(
+                f"CrackTracking: el elemento {self._els[q].id} no pertenece a ningún dominio "
+                f"(añádalo con Domain.add_element). El seguimiento necesita el dominio para saber "
+                f"si la grieta puede salir por un borde libre.")
+        cache = self._free_cache
+        if cache is not None and cache[0]() is dom and cache[1] == dom.topology_version:
+            return cache[2]
+        free = {frozenset(c) for c in free_boundary(dom.elements.values(), 2,
+                                                    dofs=_FREE_BOUNDARY_DOFS)}
+        self._free_cache = (weakref.ref(dom), dom.topology_version, free)
+        return free
+
+    def _is_free_edge(self, q: int, i: int, j: int) -> bool:
+        """¿El lado ``(i, j)`` (índices de nodo de la región) del elemento ``q``
+        es del borde libre? Un lado que comparten dos elementos de la región no
+        lo es (sin mirar el dominio)."""
+        if len(self._edge_elems[(min(i, j), max(i, j))]) > 1:
+            return False
+        return frozenset((int(self._node_ids[i]), int(self._node_ids[j]))) in self._free_edges(q)
 
     def _adopt_external(self) -> None:
         """Incorpora a una grieta los elementos agrietados fuera del
@@ -420,8 +408,8 @@ class GlobalCrackTracking:
 
     def _adoption_crack(self, p: int, th: np.ndarray):
         """Grieta a la que se une un elemento agrietado fuera del seguimiento:
-        la primera con la que comparte nodos (con ``θ`` orientado como ella) o
-        una nueva con raíz en él."""
+        la primera con la que comparte nodos (con los valores orientados como
+        ella) o una nueva con raíz en él."""
         for k, fixed in enumerate(self._fixed_idx):
             shared = [j for j in range(3) if self._conn[p][j] in fixed]
             if shared:
@@ -437,8 +425,7 @@ class GlobalCrackTracking:
         self._fixed_idx.append({})
         self._crack_pos.append(set())
         self._flips.append({})
-        self._theta.append(None)
-        self._chain.append(set())
+        self._values.append(None)
         self._tips.append(set())
         return k
 
@@ -467,10 +454,8 @@ class GlobalCrackTracking:
         if not self._built:
             self._build()
         els = self._els
-        ne = len(els)
         self._flips = [{} for _ in self.cracks]
-        self._theta = [None for _ in self.cracks]
-        self._chain = [set() for _ in self.cracks]
+        self._values = [None for _ in self.cracks]
         self._tips = [set() for _ in self.cracks]
         self._adopt_external()
 
@@ -479,24 +464,20 @@ class GlobalCrackTracking:
         ratio = np.where(intact & (self._sigma_t0 > 0.0),
                          sigma_I / np.where(self._sigma_t0 > 0.0, self._sigma_t0, 1.0), -np.inf)
         if not np.any(ratio > 1.0):
-            return                  # nada que activar: no hace falta el campo
-        tangents = np.column_stack([-self._nrank[:, 1], self._nrank[:, 0]])
-        for p in np.nonzero(~intact)[0]:
-            tangents[p] = els[p].discontinuity_state.tangent
-        self._assemble_field(tangents)
+            return                  # nada que activar
         self._prepare_cracks()
 
         for k in range(len(self.cracks)):
-            self._solve(k)
+            self._refresh(k)
             self._vertex_pass(k)
 
         # La propagación tiene prioridad: una grieta que avanza reclama los
         # elementos de su trayectoria antes de que nazca otra delante de su
         # punta. Sólo cuando ninguna punta puede avanzar nace una grieta (la
-        # del elemento más solicitado que no comparte nodos con una grieta) y
+        # del elemento de mayor σ_I/σ_t0 que no comparte nodos con una grieta) y
         # se vuelve a propagar. Un elemento que comparte un nodo con un
-        # elemento agrietado sin estar en una punta no se activa en este paso
-        # (exclusión, §4.3).
+        # elemento agrietado sin estar en una punta no se activa en esta
+        # evaluación (exclusión, §4).
         order = [int(p) for p in np.argsort(-ratio, kind="stable") if ratio[p] > 1.0]
         warned: set = set()
         changed = True
@@ -551,14 +532,12 @@ class GlobalCrackTracking:
         normals[idx] = np.column_stack([np.cos(theta_p), np.sin(theta_p)])
         return sigma_I, normals
 
-    # Ganchos que redefine una trayectoria prescrita.
-
-    def _assemble_field(self, tangents: np.ndarray) -> None:
-        self._K = tracking_matrix(self._grads, self._area, tangents, len(self._node_ids),
-                                  self._conn, self.epsilon)
+    # ------------------------------------------------------------------
+    # Puntos de extensión
+    # ------------------------------------------------------------------
 
     def _prepare_cracks(self) -> None:
-        """Grietas que deben existir antes de activar (ninguna en el global)."""
+        """Grietas que deben existir antes de activar (ninguna aquí)."""
 
     def _can_nucleate(self, p: int) -> bool:
         if self.max_cracks is not None and len(self.cracks) >= self.max_cracks:
@@ -566,52 +545,91 @@ class GlobalCrackTracking:
         return not self._cracked_count[self._conn[p]].any()
 
     def _fixed_values(self, p: int, n: np.ndarray, x_m: np.ndarray, th: np.ndarray) -> np.ndarray:
-        """Valores de Dirichlet de los nodos de un elemento recién activado:
-        distancia con signo a la recta de la grieta en él (§2)."""
+        """Valores nodales de un elemento recién activado: distancia con signo
+        a la recta de su grieta (normal ``n`` por ``x_m``), mínimo δ (§1, §3)."""
         xs = self._X[self._conn[p]]
         return np.where(th >= 0.0, 1.0, -1.0) * np.maximum(np.abs((xs - x_m) @ n), self._delta[p])
 
-    def _solve(self, k: int) -> None:
-        fixed = dict(self._fixed_idx[k])
-        fixed.update(self._flips[k])
-        any_node = next(iter(self._fixed_idx[k]))
-        nodes = self._comp_nodes[self._node_comp[any_node]]
-        self._theta[k] = solve_tracking_field(self._K, nodes, fixed)
-        self._update_chain(k)
-
-    def _update_chain(self, k: int) -> None:
-        """Elementos intactos cortados por la trayectoria de ``k`` conectados a
-        la grieta a través de lados cruzados, y las puntas entre ellos."""
-        s = self._theta[k] >= 0.0
-        cracked = self._crack_pos[k]
-        chain: set = set()
-        tips: set = set()
-        queue = list(cracked)
-        visited = set(queue)
-        while queue:
-            p = queue.pop()
-            tri = self._conn[p]
-            for a, b in _EDGES:
-                if s[tri[a]] == s[tri[b]]:
-                    continue
-                key = (min(tri[a], tri[b]), max(tri[a], tri[b]))
-                for q in self._edge_elems[key]:
-                    if q in visited or self._els[q].discontinuity_state is not None:
-                        continue
-                    visited.add(q)
-                    chain.add(q)
-                    queue.append(q)
-        for q in chain:
-            tri = self._conn[q]
-            for a, b in _EDGES:
-                if s[tri[a]] == s[tri[b]]:
-                    continue
-                key = (min(tri[a], tri[b]), max(tri[a], tri[b]))
-                if any(r in cracked for r in self._edge_elems[key]):
-                    tips.add(q)
-                    break
-        self._chain[k] = chain
+    def _refresh(self, k: int) -> None:
+        """Valores nodales vigentes de la grieta ``k`` (guardados, de punta y
+        cambios de lado) y sus puntas (§1–§3, §5)."""
+        values = np.full(len(self._node_ids), np.nan)
+        for li, v in self._fixed_idx[k].items():
+            values[li] = v
+        tips, tip_values = self._tips_and_values(k)
+        for li, v in tip_values.items():
+            values[li] = v
+        for li, v in self._flips[k].items():
+            values[li] = v
+        self._values[k] = values
         self._tips[k] = tips
+
+    # ------------------------------------------------------------------
+    # Prolongación recta (§2–§3)
+    # ------------------------------------------------------------------
+
+    def _tips_and_values(self, k: int):
+        """Puntas de ``k`` y valor de punta del tercer nodo de cada una.
+
+        Recorre los agrietados de ``k`` en orden de activación y sus lados
+        cruzados en orden local; si un tercer nodo es de dos puntas, vale la
+        primera decisión (§2).
+        """
+        fixed = self._fixed_idx[k]
+        X = self._X
+        tips: set = set()
+        values: dict = {}
+        for eid in self.cracks[k].elements:
+            p = self._pos.get(eid)
+            if p is None:
+                continue
+            tri = self._conn[p]
+            th = np.array([fixed[i] for i in tri])
+            s = th >= 0.0
+            crossed = [(a, b) for a, b in _EDGES if s[a] != s[b]]
+            if len(crossed) != 2:
+                continue
+            pts = []
+            for a, b in crossed:
+                na, nb = tri[a], tri[b]
+                w = fixed[na] / (fixed[na] - fixed[nb])
+                pts.append(X[na] + w * (X[nb] - X[na]))
+            for i_edge, (a, b) in enumerate(crossed):
+                na, nb = tri[a], tri[b]
+                for q in self._edge_elems[(min(na, nb), max(na, nb))]:
+                    if q == p or self._els[q].discontinuity_state is not None:
+                        continue
+                    tips.add(q)
+                    c = next(i for i in self._conn[q] if i not in (na, nb))
+                    if c in fixed or c in values:
+                        continue
+                    values[c] = self._tip_value(q, na, nb, c, pts[i_edge], pts[1 - i_edge], fixed)
+        return tips, values
+
+    def _tip_value(self, q: int, na: int, nb: int, c: int,
+                   P: np.ndarray, Q: np.ndarray, fixed: dict) -> float:
+        """Valor de punta del tercer nodo ``c`` de la punta ``q``: la grieta
+        entra por el lado ``(na, nb)`` en ``P`` y su último tramo va de ``Q`` a
+        ``P`` (§2–§3)."""
+        X = self._X
+        # P ≠ Q: están en lados distintos de p con w ∈ (0, 1). La prolongación
+        # entra siempre en q (Q está del lado de p de la recta del lado de
+        # entrada; spec §2), así que basta con el lado de c respecto de la recta.
+        d = (P - Q) / np.linalg.norm(P - Q)
+        sc = _cross(d, X[c] - P)
+        sa = _cross(d, X[na] - P)
+        partner = na if (sc >= 0.0) == (sa >= 0.0) else nb
+        # Salida por el borde libre: si exactamente uno de los lados de salida
+        # posibles es libre, la grieta sale por él.
+        exit_a = self._is_free_edge(q, na, c)       # sale por a–c si c va con b
+        exit_b = self._is_free_edge(q, nb, c)       # sale por b–c si c va con a
+        if exit_a != exit_b:
+            partner = nb if exit_a else na
+        return float(np.sign(fixed[partner]) * max(abs(sc), self._delta[q]))
+
+    # ------------------------------------------------------------------
+    # Regla del vértice (§5), propagación y nucleación
+    # ------------------------------------------------------------------
 
     def _partition(self, p: int, th: np.ndarray):
         return partition(self._X[self._conn[p]], th, self._nrank[p], self._inward[p])
@@ -638,27 +656,27 @@ class GlobalCrackTracking:
         return None if best is None else best[:2]
 
     def _vertex_pass(self, k: int) -> None:
-        """Aplica la regla del vértice a los elementos de la trayectoria
-        prevista de ``k`` con ``cos ψ ≤ 0``, y vuelve a resolver."""
+        """Aplica la regla del vértice a las puntas de ``k`` con
+        ``cos ψ ≤ 0`` y recalcula sus valores."""
         for _ in range(len(self._node_ids) + 1):
-            theta = self._theta[k].copy()
+            values = self._values[k].copy()
             flipped = False
-            for p in sorted(self._chain[k]):
-                th = theta[self._conn[p]]
+            for p in sorted(self._tips[k]):
+                th = values[self._conn[p]]
                 part = self._partition(p, th)
                 if part is None or part[3] > 0.0:
                     continue
                 choice = self._choose_flip(k, p, th, part[0])
                 if choice is not None:
                     self._flips[k][choice[0]] = choice[1]
-                    theta[choice[0]] = choice[1]
+                    values[choice[0]] = choice[1]
                     flipped = True
             if not flipped:
                 return
-            self._solve(k)
+            self._refresh(k)
 
     def _propagate(self, k: int, p: int, warned: set) -> bool:
-        th = self._theta[k][self._conn[p]]
+        th = self._values[k][self._conn[p]]
         part = self._partition(p, th)
         if part is None:
             return False
@@ -667,14 +685,14 @@ class GlobalCrackTracking:
             choice = self._choose_flip(k, p, th, lone)
             if choice is not None:
                 self._flips[k][choice[0]] = choice[1]
-                self._solve(k)
+                self._refresh(k)
                 self._vertex_pass(k)
                 return True
             if p not in warned:
                 warned.add(p)
                 self.unactivated_warnings += 1
                 _log.warning(
-                    f"GlobalCrackTracking: el elemento {self._els[p].id} está en la punta "
+                    f"CrackTracking: el elemento {self._els[p].id} está en la punta "
                     f"de la grieta {k} con σ_I > σ_t0, pero su partición da cos ψ = "
                     f"{cos_psi:.3f} ≤ 0 y ningún nodo libre puede cambiar de lado; no se "
                     f"activa con este campo."
@@ -690,12 +708,12 @@ class GlobalCrackTracking:
         for q in self._edge_conflicts(p):
             self.side_conflict_warnings += 1
             _log.warning(
-                f"GlobalCrackTracking: el elemento {self._els[p].id} (grieta {k}) y su vecino "
+                f"CrackTracking: el elemento {self._els[p].id} (grieta {k}) y su vecino "
                 f"{self._els[q].id} (grieta {self._els[q].discontinuity_state.crack}) reparten "
                 f"de forma distinta los nodos de su lado común: las grietas se encontraron y su "
                 f"unión está fuera de alcance."
             )
-        self._solve(k)
+        self._refresh(k)
         self._vertex_pass(k)
 
     def _edge_conflicts(self, p: int) -> list:
@@ -734,18 +752,6 @@ class GlobalCrackTracking:
         th = (xs - point) @ n
         self._activate(k, p, lone, n, point, th)
 
-    # ------------------------------------------------------------------
-    # Consulta (posproceso y pruebas)
-    # ------------------------------------------------------------------
-
-    def field(self, k: int) -> dict:
-        """Último campo ``θ_k`` calculado, por id de nodo (vacío si aún no hay)."""
-        thetas = getattr(self, "_theta", [])
-        theta = thetas[k] if k < len(thetas) else None
-        if theta is None:
-            return {}
-        return {int(nid): float(theta[i]) for i, nid in enumerate(self._node_ids)}
-
 
 def polyline_signed_distance(points: np.ndarray, X: np.ndarray) -> np.ndarray:
     """Distancia con signo de los puntos ``X`` a la poligonal ``points``,
@@ -768,16 +774,16 @@ def polyline_signed_distance(points: np.ndarray, X: np.ndarray) -> np.ndarray:
 
 
 @CrackTrackerRegistry.register
-class PrescribedCrackPath(GlobalCrackTracking):
+class PrescribedCrackPath(CrackTracking):
     """Trayectoria de grieta prescrita (spec ``PrescribedCrackPath``).
 
-    Variante de :class:`GlobalCrackTracking` para los modelos en que la
-    trayectoria es un dato, como la banda de elementos embebidos de la grieta
-    prescrita de la tesis (ensayo de Van Vliet, Retama 2010 §8.1): ``θ`` es la
-    distancia con signo a la poligonal ``points`` en lugar de la solución del
-    problema auxiliar. Una sola grieta; se activa todo elemento cortado por la
-    trayectoria con ``σ_I > σ_t0`` (criterio y normal de Rankine), sin
-    propagación ni nucleación. La regla del vértice es la misma.
+    Variante de :class:`CrackTracking` para los modelos en que la trayectoria
+    es un dato, como la banda de elementos embebidos de la grieta prescrita
+    de la tesis (ensayo de Van Vliet, Retama 2010 §8.1): los valores nodales
+    son la distancia con signo a la poligonal ``points``. Una sola grieta; se
+    activa todo elemento cortado por la trayectoria con ``σ_I > σ_t0``
+    (criterio y normal de Rankine), sin propagación desde una punta ni
+    nucleación. La regla del vértice es la misma.
 
     Parameters
     ----------
@@ -797,10 +803,7 @@ class PrescribedCrackPath(GlobalCrackTracking):
 
     def _build(self) -> None:
         super()._build()
-        self._theta_path = polyline_signed_distance(self.points, self._X)
-
-    def _assemble_field(self, tangents: np.ndarray) -> None:
-        """``θ`` es dato: no hay problema auxiliar que ensamblar."""
+        self._path_values = polyline_signed_distance(self.points, self._X)
 
     def _prepare_cracks(self) -> None:
         if not self.cracks:
@@ -808,29 +811,25 @@ class PrescribedCrackPath(GlobalCrackTracking):
 
     def _adoption_crack(self, p: int, th: np.ndarray):
         self._prepare_cracks()
-        path = self._theta_path[self._conn[p]]
+        path = self._path_values[self._conn[p]]
         j = int(np.argmax(np.abs(path)))
         return 0, (th if np.sign(path[j]) == np.sign(th[j]) else -th)
 
     def _can_nucleate(self, p: int) -> bool:
         return False
 
-    def _solve(self, k: int) -> None:
-        theta = self._theta_path.copy()
+    def _refresh(self, k: int) -> None:
+        """Valores: la distancia a la poligonal, salvo los guardados y los
+        cambios de lado; puntas: todo elemento intacto cortado."""
+        values = self._path_values.copy()
         for li, v in self._fixed_idx[k].items():
-            theta[li] = v
+            values[li] = v
         for li, v in self._flips[k].items():
-            theta[li] = v
-        self._theta[k] = theta
-        self._update_chain(k)
-
-    def _update_chain(self, k: int) -> None:
-        """Todo elemento intacto cortado por la trayectoria puede activarse."""
-        s = self._theta[k] >= 0.0
-        cut = {p for p, tri in enumerate(self._conn)
-               if self._els[p].discontinuity_state is None and 0 < int(s[tri].sum()) < 3}
-        self._chain[k] = cut
-        self._tips[k] = set(cut)
+            values[li] = v
+        self._values[k] = values
+        s = values >= 0.0
+        self._tips[k] = {p for p, tri in enumerate(self._conn)
+                         if self._els[p].discontinuity_state is None and 0 < int(s[tri].sum()) < 3}
 
     def _fixed_values(self, p: int, n: np.ndarray, x_m: np.ndarray, th: np.ndarray) -> np.ndarray:
         return np.where(th >= 0.0, 1.0, -1.0) * np.maximum(np.abs(th), self._delta[p])
@@ -849,12 +848,12 @@ def register_default(element) -> None:
     _PENDING.add(element)
 
 
-def default_tracker(element) -> GlobalCrackTracking:
+def default_tracker(element) -> CrackTracking:
     """Seguimiento por omisión del elemento.
 
     Agrupa los elementos pendientes por nodos compartidos (identidad del
-    objeto nodo): cada región conexa recibe un ``GlobalCrackTracking`` con
-    los valores por omisión, o se une al de una región ya creada con la que
+    objeto nodo): cada región conexa recibe un ``CrackTracking`` con los
+    valores por omisión, o se une al de una región ya creada con la que
     comparta nodos.
     """
     pending = sorted(_PENDING, key=lambda e: e.id)
@@ -873,7 +872,7 @@ def default_tracker(element) -> GlobalCrackTracking:
             if tr is not None and all(tr is not f for f in found):
                 found.append(tr)
         if not found:
-            tracker = GlobalCrackTracking()
+            tracker = CrackTracking()
             _DEFAULTS.add(tracker)
         else:
             tracker = found[0]

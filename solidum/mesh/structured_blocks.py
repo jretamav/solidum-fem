@@ -42,6 +42,7 @@ import numpy as np
 
 from solidum.core.domain import Domain
 from solidum.logging import get_logger
+from solidum.mesh.boundary import free_boundary
 from solidum.mesh.structured import DIAGONALS, axis_lines, structured_mesh
 from solidum.registry import ElementRegistry
 from solidum.utils.expressions import (POSITION, ExpressionError, compile_expression,
@@ -295,13 +296,9 @@ def _predicate_groups(dom: Domain, groups: dict, errors: list) -> None:
     pts = np.array(list(coords.values()))
     near = _make_near(_REL_TOL * float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))))
     # Bordes o caras del contorno libre: los de un solo elemento.
-    count: dict[frozenset, list] = {}
-    for el in dom.elements.values():
-        attr = "FACE_NODES" if len(el.nodes[0].coordinates) == 3 else "EDGE_NODES"
-        for local in getattr(el, attr, None) or ():
-            ids = tuple(el.nodes[j].id for j in local)
-            count.setdefault(frozenset(ids), []).append(ids)
-    free = [v[0] for v in count.values() if len(v) == 1]
+    first = next(iter(dom.elements.values()), None)
+    dim = len(first.nodes[0].coordinates) if first is not None else 0
+    free = free_boundary(dom.elements.values(), dim) if dim in (2, 3) else []
     for name, cond in groups.items():
         if name in dom.physical_groups:
             errors.append(f"mesh.structured.groups[{name!r}]: el nombre ya es el de un lado de "

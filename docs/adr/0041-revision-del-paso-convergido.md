@@ -9,7 +9,7 @@
   - `solidum/math/solvers/diagnostics.py`: `StepRevisionError`; `solidum/constants.py`: `MAX_STEP_REVISIONS = 50`;
   - los problemas de paso: `_IncrementalProblem` (`NonlinearSolver`), `_ArcProblem` (`ArcLengthSolver`, `IndirectDisplacementSolver`, la llegada exacta `_land` y `DissipationArcLengthSolver` del módulo `dissipation_control`, que lo hereda) y `_DynamicNewtonProblem` (`NewtonNewmarkSolver`, `NewtonHHTSolver`, también en sus subpasos); `n_revisions` en `NonlinearSolver` y `ArcLengthSolver` como `n_bisections`;
   - `solidum/math/batch/family.py`: `prepare_step` y `revise_step` cuentan como estado propio (P8);
-  - primer consumidor: `CST_Embedded2D` y `GlobalCrackTracking` del módulo `discontinuities` (activación dentro del paso, decisión del usuario del 2026-11-18).
+  - primer consumidor: `CST_Embedded2D` y `GlobalCrackTracking` del módulo `discontinuities` (activación dentro del paso, decisión del usuario del 2026-11-18); desde el 2026-11-19, `CrackTracking` (prolongación recta, ADR 0042).
 - **Extiende**: el ADR 0020 (pieza nueva **P9** del contrato con los módulos de usuario, junto a P5), el ADR 0015 (corrector compartido) y el ADR 0025 (línea INFO por paso). **Modifica** el ADR 0010 §5 (la activación ya no espera al paso siguiente).
 
 ## Contexto

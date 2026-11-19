@@ -1,6 +1,6 @@
 # PrescribedCrackPath — trayectoria de grieta prescrita
 
-> Spec corta de variante (Reglas.md §4): documenta sólo lo que cambia respecto de [`GlobalCrackTracking`](GlobalCrackTracking.md). Redactada e implementada por la IA el 2026-11-10 para los modelos con grieta prescrita de la tesis.
+> Spec corta de variante (Reglas.md §4): documenta sólo lo que cambia respecto de [`CrackTracking`](CrackTracking.md). Redactada e implementada por la IA el 2026-11-10 para los modelos con grieta prescrita de la tesis, como variante del seguimiento global de entonces (`GlobalCrackTracking`); el 2026-11-19 su padre pasó a ser `CrackTracking` (prolongación recta) sin cambio de comportamiento: la variante reproduce bit a bit su secuencia de activaciones anterior (astillas; banda de Van Vliet en las pruebas).
 
 ---
 
@@ -8,18 +8,18 @@
 
 La trayectoria de la grieta es un dato: una poligonal dada, prolongada por sus extremos. Es el modelo de **grieta prescrita** de Retama (2010) §8.1 (ensayo de Van Vliet): una banda de elementos embebidos a lo largo de la trayectoria conocida.
 
-Lo que cambia respecto del seguimiento global:
-- $\theta$ es la **distancia con signo** a la poligonal, positiva a su izquierda, en lugar de la solución del problema auxiliar.
-- Hay una sola grieta. Se activa todo elemento cortado por la trayectoria con $\sigma_I > \sigma_{t0}$: no hay propagación desde una punta ni nucleación.
+Lo que cambia respecto de `CrackTracking`:
+- Los valores nodales son la **distancia con signo** a la poligonal, positiva a su izquierda, en lugar de los de la prolongación recta; los nodos de los elementos ya agrietados guardan esa misma distancia (con el mínimo $\delta$), no la distancia a la recta de su elemento.
+- Hay una sola grieta. Todo elemento intacto cortado por la trayectoria es punta y se activa si $\sigma_I > \sigma_{t0}$: no hay propagación desde una punta ni nucleación, ni salida por el borde libre.
 
 No cambian:
 - el criterio de Rankine;
 - la normal de Rankine orientada hacia el nodo aislado;
 - $l_d = (A/h)\cos\psi$;
 - la irreversibilidad;
-- la regla del vértice: si el nodo aislado da $\cos\psi \le 0$, cambia de lado y la trayectoria pasa por ese vértice; si ya está fijado, cambia el nodo libre.
+- la regla del vértice: si el nodo aislado da $\cos\psi \le 0$, cambia de lado y la trayectoria pasa por ese vértice; si ya está fijado, cambia el nodo libre que deje $\cos\psi > 0$ (en esta variante el aislado puede estar libre, porque todo elemento cortado es punta).
 
-Con una banda de un solo elemento de espesor, el seguimiento global no es aplicable: la isolínea sale de la banda en cuanto las direcciones principales giran. La variante reproduce exactamente la partición elemental anterior (arriba/abajo en la banda) y el ensayo de Van Vliet.
+Con una banda de un solo elemento de espesor, el seguimiento no es aplicable: la grieta sale de la banda en cuanto las direcciones principales giran (medido el 2026-11-10 con el seguimiento global de entonces). La variante reproduce exactamente la partición elemental anterior (arriba/abajo en la banda) y el ensayo de Van Vliet.
 
 ---
 
@@ -31,7 +31,7 @@ kind: crack_tracker
 status: validated
 
 interface:
-  parent: GlobalCrackTracking
+  parent: CrackTracking
   region: "los CST_Embedded2D que lo referencian"
 
 parameters:
@@ -50,7 +50,7 @@ acceptance:
       setup: "ensayo de Van Vliet de la tesis (§8.1) con la trayectoria y = 0"
       expect: "pico, deformación en el pico y carga a 20, 50 y 100 µm dentro de la lectura de la fig. 8.3 (las mismas tolerancias que antes del seguimiento)"
     - name: astillas
-      setup: "acceptance.astillas de GlobalCrackTracking (5 mallas Delaunay con cos ψ < 0)"
+      setup: "acceptance.astillas de CrackTracking (5 mallas Delaunay con cos ψ < 0)"
       expect: "todas se separan, 0 conflictos, 0 avisos, 0 fallos del Newton local"
 
 references:
@@ -62,8 +62,8 @@ references:
 ## Implementación
 
 - Archivo: `solidum/user/discontinuities/crack_tracking.py`
-- Clase: `PrescribedCrackPath(GlobalCrackTracking)` (registrada en `CrackTrackerRegistry`); distancia con signo en `polyline_signed_distance`.
-- Redefine sólo los ganchos del padre: `_solve` (θ = distancia, con los valores fijados y los cambios de lado del paso), `_update_chain` (todo intacto cortado es punta), `_can_nucleate` (nunca), `_prepare_cracks` (una grieta), `_assemble_field` (nada que ensamblar), `_fixed_values`.
+- Clase: `PrescribedCrackPath(CrackTracking)` (registrada en `CrackTrackerRegistry`); distancia con signo en `polyline_signed_distance`.
+- Redefine sólo los puntos de extensión del padre: `_refresh` (valores = distancia a la poligonal, con los guardados y los cambios de lado de la evaluación; puntas = todo intacto cortado), `_can_nucleate` (nunca), `_prepare_cracks` (una grieta), `_adoption_crack` (la grieta 0, orientada como la poligonal) y `_fixed_values` (la distancia a la poligonal).
 - Uso: `tests/user/discontinuities/_van_vliet.py` (banda con `crack_tracker=PrescribedCrackPath([[-D, 0], [D, 0]])`), `test_disc_crack_tracking.py::TestAstillas`. YAML: `crack_trackers: [{id: 1, type: PrescribedCrackPath, points: [[x0, y0], [x1, y1]]}]`.
 
 ---

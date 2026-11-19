@@ -112,7 +112,7 @@ def bar(cls, nx, nu=0.0, modelo=MODELO_1, integration="implicit", steps=STEPS):
     for eid, el in list(dom.elements.items()):
         xc = np.mean([nd.coordinates[0] for nd in el.nodes])
         if abs(xc - x_weak) < 0.5 * dx:
-            dom.elements[eid] = cls(eid, el.nodes, weak, **kw)
+            dom.replace_element(cls(eid, el.nodes, weak, **kw))
     for nd in mesh.nodes_on("xmin"):
         nd.fix_dof("ux", 0.0)
     right = mesh.nodes_on("xmax")
@@ -257,7 +257,7 @@ def bar_compression(cls, nx, integration="implicit", steps=STEPS_C, u_max=UC_MAX
     for eid, el in list(dom.elements.items()):
         xc = np.mean([nd.coordinates[0] for nd in el.nodes])
         if abs(xc - x_weak) < 0.5 * dx:
-            dom.elements[eid] = cls(eid, el.nodes, weak, **kw)
+            dom.replace_element(cls(eid, el.nodes, weak, **kw))
     for nd in mesh.nodes_on("xmin"):
         nd.fix_dof("ux", 0.0)
     right = mesh.nodes_on("xmax")

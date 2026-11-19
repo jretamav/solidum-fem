@@ -66,7 +66,7 @@ class _Elastic1D(Material):
 def _add_element_to_domain(domain, elem):
     for nd in elem.nodes:
         domain.nodes.setdefault(nd.id, nd)
-    domain.elements[elem.id] = elem
+    domain.add_element(elem)
 
 
 def _assign_global_dofs(domain):
@@ -295,7 +295,7 @@ class TestVtkExporterCoverage(unittest.TestCase):
             pass
         # pero el VtkExporter espera elementos en domain.elements
         from solidum.elements.solid_2d import Quad4 as Q
-        domain.elements[1] = Q(1, [n1, n2, n3, n4], mat)
+        domain.add_element(Q(1, [n1, n2, n3, n4], mat))
         _assign_global_dofs(domain)
         path = self._tmp_path("_test_vtk_pre.vtu")
         VtkExporter(domain).export(path, U=None, F_ext=None)

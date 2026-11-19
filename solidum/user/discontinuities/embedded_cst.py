@@ -2,8 +2,8 @@
 
 Fase 2 del ADR 0010. Cinemática enriquecida fiel al Cap. 2, 5, 7 de Retama
 (2010); longitud efectiva ``l_d = (A_e/h)·cos ψ`` del Cap. 6, con su signo. El
-nodo solitario lo dicta la trayectoria (seguimiento global, spec
-``GlobalCrackTracking``). Ver
+nodo solitario lo dicta la trayectoria (seguimiento de grieta, spec
+``CrackTracking``). Ver
 ``docs/user/discontinuities/specs/CST_Embedded2D.md`` para la formulación completa.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from solidum.core.interface_material import InterfaceMaterial
 from solidum.registry import ElementRegistry, InterfaceMaterialRegistry, MaterialRegistry
 from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL
 from solidum.user.discontinuities.crack_tracking import (
-    GlobalCrackTracking,
+    CrackTracking,
     default_tracker,
     register_default,
     root_partition,
@@ -71,7 +71,7 @@ class CST_Embedded2D(Element):
         dos componentes ``(n, s)``.
     thickness : float, default 1.0
         Espesor para estado plano.
-    crack_tracker : GlobalCrackTracking, optional
+    crack_tracker : CrackTracking, optional
         Seguimiento de grieta compartido por los elementos de la región. Sin
         él, cada región conexa de elementos embebidos recibe uno con los
         valores por omisión.
@@ -89,6 +89,12 @@ class CST_Embedded2D(Element):
 
     DOF_NAMES = ['ux', 'uy']
     STRAIN_DIM = 3
+    # Lados del triángulo, antihorarios (como Tri3): el contorno libre del
+    # dominio (``solidum.mesh.free_boundary``) los cuenta para que el lado
+    # común de dos regiones embebidas, o de una región embebida y un sólido,
+    # no parezca libre. No activa cargas por lado: el elemento no tiene
+    # ``compute_edge_traction``.
+    EDGE_NODES = ((0, 1), (1, 2), (2, 0))
     REFERENCE_KWARGS = {"material": MaterialRegistry,
                         "cohesive_material": InterfaceMaterialRegistry,
                         "crack_tracker": CrackTrackerRegistry}
@@ -97,7 +103,7 @@ class CST_Embedded2D(Element):
     def __init__(self, element_id: int, nodes: List[Node],
                  material: Material, cohesive_material: InterfaceMaterial,
                  thickness: float = 1.0,
-                 crack_tracker: GlobalCrackTracking | None = None):
+                 crack_tracker: CrackTracking | None = None):
         # Validación de bulk (fase 1)
         bulk_name = type(material).__name__
         if bulk_name not in _ACCEPTED_BULKS:
@@ -146,7 +152,7 @@ class CST_Embedded2D(Element):
         """Activación al inicio del paso con el estado convergido.
 
         La decide el seguimiento de grieta de la región (spec
-        ``GlobalCrackTracking``): criterio de Rankine, partición dictada por
+        ``CrackTracking``): criterio de Rankine, partición dictada por
         la trayectoria y regla del vértice. El primer elemento de cada ronda
         la dispara para toda la región; el resto no hace nada. Usa el estado
         committed (no trial) para evitar chattering por el predictor lineal
@@ -222,7 +228,7 @@ class CST_Embedded2D(Element):
     def _activate(self, n_dir: np.ndarray, coords: np.ndarray) -> None:
         """Activa el elemento como raíz de una grieta con normal ``n_dir``.
 
-        Partición de la raíz (spec ``GlobalCrackTracking`` §4.2): la recta por
+        Partición de la raíz (spec ``CrackTracking`` §3): la recta por
         el centroide, o la del otro lado del nodo intermedio si aquella da
         ``cos ψ ≤ 0``. El seguimiento incorpora después el elemento a una
         grieta. Útil para preparar estados agrietados en pruebas.

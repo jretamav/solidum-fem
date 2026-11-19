@@ -1,0 +1,48 @@
+# Viga SEN de Schlangen con la discontinuidad embebida (CST_Embedded2D), malla
+# libre de Gmsh con h = 5 mm y placas de reparto pegadas: el modelo del
+# validador del 2026-11-18 (informes/embebida_sen_yaml/sen_h05.yaml), con el
+# seguimiento CrackTracking y 300 pasos. Con el seguimiento global anterior la
+# grieta rodeaba un nodo y se detenía (prueba de regresión de la spec
+# CrackTracking, sen_malla_5mm_sin_rodeo). Unidades SI (m, N, Pa).
+user_modules: [discontinuities]
+
+mesh:
+  geometry: viga_sen.geo
+  parameters: {h: 0.005}
+  output: sen_h05.msh
+mesh_material: 1
+mesh_thickness: 0.1
+mesh_physical_groups:
+  Concreto: {element: CST_Embedded2D, material: 1, cohesive_material: 1,
+             crack_tracker: 1, thickness: 0.1}
+  Placas: {material: 1, thickness: 0.1}
+
+materials:
+  - {id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_stress}
+
+interface_materials:
+  - {id: 1, type: CohesiveDamageIsotropic, sigma_t0: 3.0e6, G_f: 100.0,
+     K_e: 1.0e14, softening: exponential}
+
+crack_trackers:
+  - {id: 1, type: CrackTracking, max_cracks: 1}
+
+boundary_conditions_by_group:
+  ApoyoIzq: {uy: 0.0}
+  ApoyoDer: {ux: 0.0, uy: 0.0}
+
+# Viga de reparto del ensayo: P/11 y 10P/11 hacia arriba; el factor de carga es P [N].
+point_loads_by_group:
+  CargaIzq: {uy: 0.09090909090909091}
+  CargaDer: {uy: 0.9090909090909091}
+
+solver:
+  type: IndirectDisplacementSolver
+  initial_dl: 2.5e-7            # 0.00025 mm de CMSD por paso
+  control_target: 0.0002
+  max_lambda: 1.0e9
+  max_steps: 300
+  max_iter: 50
+  control:                      # CMSD = uy(boca derecha) - uy(boca izquierda)
+    - {node: 8, dof: uy, coef: 1.0}
+    - {node: 11, dof: uy, coef: -1.0}

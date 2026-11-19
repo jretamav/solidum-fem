@@ -25,7 +25,7 @@ SPEC_PATHS = collect_specs(SPECS_DIR)
 
 
 def test_hay_specs():
-    assert {p.stem for p in SPEC_PATHS} == {"CST_Embedded2D", "GlobalCrackTracking",
+    assert {p.stem for p in SPEC_PATHS} == {"CST_Embedded2D", "CrackTracking",
                                             "PrescribedCrackPath"}
 
 

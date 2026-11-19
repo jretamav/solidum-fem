@@ -639,7 +639,7 @@ class TestMarcosConSeccion:
         dom = Domain()
         for nd in el.nodes:
             dom.nodes[nd.id] = nd
-        dom.elements[el.id] = el
+        dom.add_element(el)
         dom.generate_equation_numbers(verbose=False)
         U = np.zeros(dom.total_dofs)
         el.compute_global_stiffness()
@@ -676,7 +676,7 @@ class TestMarcosConSeccion:
         dom = Domain()
         for nd in el.nodes:
             dom.nodes[nd.id] = nd
-        dom.elements[1] = el
+        dom.add_element(el)
         dom.generate_equation_numbers(verbose=False)
         U = np.zeros(dom.total_dofs)
         U[el.nodes[1].dofs["rz"]] = 1.0e-3
@@ -790,7 +790,7 @@ def _dominio(*elementos):
     for el in elementos:
         for nd in el.nodes:
             dom.nodes.setdefault(nd.id, nd)
-        dom.elements[el.id] = el
+        dom.add_element(el)
     dom.generate_equation_numbers(verbose=False)
     return dom
 
