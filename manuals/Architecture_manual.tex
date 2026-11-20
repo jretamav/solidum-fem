@@ -1320,7 +1320,7 @@ Las siete fases quedan implementadas y validadas con tests contra solución anal
 
 \textbf{Actualizaciones (10 de noviembre de 2026).} \textit{Seguimiento de grieta} (fase E, decisiones del usuario): el nodo solitario se elige por la trayectoria de la grieta y no elemento a elemento, con un seguimiento global por región conexa (\texttt{GlobalCrackTracking}) o una trayectoria prescrita (\texttt{PrescribedCrackPath}), y \texttt{l\_d} lleva signo. \textit{Familia cohesiva}: pasó al programa principal como familia de materiales de interfaz (\hyperref[adr:0033]{ADR 0033}); lo que aquí se dice de \texttt{CohesiveMaterial} vale para \texttt{InterfaceMaterial}. El elemento acepta también la ley de modo mixto \texttt{CohesiveDamageMixedMode}, que transmite cortante por la grieta; la cinemática sigue siendo KOS. El módulo conserva el elemento, el estado de la discontinuidad y el seguimiento.
 
-\textbf{Actualización (19 de noviembre de 2026).} \textit{Seguimiento de grieta}: el seguimiento global se atascaba cuando los lados de la malla eran casi paralelos a la grieta (viga SEN de 5 mm). Decisión del usuario: el lado del nodo de la punta lo decide la prolongación recta del último tramo, y la grieta sale por el borde libre del dominio cuando puede; la normal sigue siendo la de Rankine de cada elemento. La clase pasa a llamarse \texttt{CrackTracking} y desaparece el problema auxiliar (ver \hyperref[adr:0042]{ADR 0042}).
+\textbf{Actualización (19 de noviembre de 2026).} \textit{Seguimiento de grieta}: el seguimiento global se atascaba cuando los lados de la malla eran casi paralelos a la grieta (viga SEN de 5 mm). Decisión del usuario: el lado del nodo de la punta lo decide la prolongación recta del último tramo, y la grieta sale por el borde libre del dominio cuando puede (desde el 20 de noviembre, sólo si la prolongación se dirige a ese borde con más de unos 3\ensuremath{^{\circ}} de inclinación); la normal sigue siendo la de Rankine de cada elemento. La clase pasa a llamarse \texttt{CrackTracking} y desaparece el problema auxiliar (ver \hyperref[adr:0042]{ADR 0042}).
 
 \section{ADR 0011 --- Robustez del Newton: line search y diagnóstico de divergencia}
 \label{adr:0011}
@@ -2029,7 +2029,7 @@ Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con e
 \begin{itemize}
   \item \textbf{El elemento conoce su dominio} (\texttt{Element.domain}, pieza P10): un solo camino de mutación de \texttt{domain.elements} (\texttt{add\_element}, \texttt{replace\_element}), vigilado por una prueba sintáctica; la referencia se rehace tras \texttt{pickle} y \texttt{deepcopy}.
   \item \textbf{Contorno libre público} (\texttt{solidum.\allowbreak{}mesh.\allowbreak{}free\_\allowbreak{}boundary}), que comparten las mallas estructuradas y el seguimiento de grieta; \texttt{Domain.\allowbreak{}topology\_\allowbreak{}version} como huella de los datos derivados de los elementos.
-  \item \textbf{Seguimiento de grieta sin problema auxiliar} (\texttt{CrackTracking}, decisión del usuario): la punta sigue la prolongación recta del último tramo y sale por el borde libre del dominio cuando puede. Equivalente al prototipo aprobado: bit a bit en 26 casos de aceptación y en la viga SEN de 10 y 5 mm; con 2.5 mm, las mismas decisiones con 6\ensuremath{\cdot}10\ensuremath{^{-}}¹⁴ de redondeo.
+  \item \textbf{Seguimiento de grieta sin problema auxiliar} (\texttt{CrackTracking}, decisión del usuario): la punta sigue la prolongación recta del último tramo y sale por el borde libre del dominio cuando puede y se dirige a él (la dirección, con un umbral de unos 3\ensuremath{^{\circ}}, desde el 2026-11-20: sin ella, una grieta que nacía en un borde y entraba oblicua volvía a él, y sin el umbral una grieta casi paralela a un borde salía a él). Equivalente al prototipo aprobado: bit a bit en 26 casos de aceptación y en la viga SEN de 10 y 5 mm; con 2.5 mm, las mismas decisiones con 6\ensuremath{\cdot}10\ensuremath{^{-}}¹⁴ de redondeo.
 \end{itemize}
 
 \begin{infobox}{Riesgo de arquitectura}
@@ -2420,8 +2420,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 19 de noviembre de 2026, 14:04\\[0.5em]
-Commit Git: \texttt{1154f90}\\[1em]
+Compilado el 20 de noviembre de 2026, 13:50\\[0.5em]
+Commit Git: \texttt{b12b73c}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
