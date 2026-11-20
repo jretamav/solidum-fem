@@ -346,7 +346,7 @@ Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con e
 
 - **El elemento conoce su dominio** (`Element.domain`, pieza P10): un solo camino de mutación de `domain.elements` (`add_element`, `replace_element`), vigilado por una prueba sintáctica; la referencia se rehace tras `pickle` y `deepcopy`.
 - **Contorno libre público** (`solidum.mesh.free_boundary`), que comparten las mallas estructuradas y el seguimiento de grieta; `Domain.topology_version` como huella de los datos derivados de los elementos.
-- **Seguimiento de grieta sin problema auxiliar** (`CrackTracking`, decisión del usuario): la punta sigue la prolongación recta del último tramo y sale por el borde libre del dominio cuando puede. Equivalente al prototipo aprobado: bit a bit en 26 casos de aceptación y en la viga SEN de 10 y 5 mm; con 2.5 mm, las mismas decisiones con 6·10⁻¹⁴ de redondeo.
+- **Seguimiento de grieta sin problema auxiliar** (`CrackTracking`, decisión del usuario): la punta sigue la prolongación recta del último tramo y sale por el borde libre del dominio cuando puede y se dirige a él (la dirección, con un umbral de unos 3°, desde el 2026-11-20: sin ella, una grieta que nacía en un borde y entraba oblicua volvía a él, y sin el umbral una grieta casi paralela a un borde salía a él). Equivalente al prototipo aprobado: bit a bit en 26 casos de aceptación y en la viga SEN de 10 y 5 mm; con 2.5 mm, las mismas decisiones con 6·10⁻¹⁴ de redondeo.
 
 ```callout Riesgo de arquitectura
 Bajo. Las ocho escrituras directas en `domain.elements` de las pruebas pasaron a `add_element` y `replace_element`; la suite completa queda igual. La limitación conocida de la regla (mallas Delaunay con elementos obtusos, trayectorias curvas) es física y está en su spec.

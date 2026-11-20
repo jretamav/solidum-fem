@@ -15,8 +15,10 @@ trayectoria (decisión del usuario del 2026-11-10) y la trayectoria, la
 - un elemento intacto es una **punta** de ``k`` si comparte con un agrietado
   de ``k`` un lado cruzado. El lado de su tercer nodo lo decide la recta que
   prolonga el último tramo desde el punto de entrada (siempre entra en la
-  punta); si la grieta puede salir por un lado del borde libre del dominio,
-  sale por él;
+  punta); si la grieta puede salir por un lado del borde libre del dominio y
+  la prolongación se dirige a él con una inclinación mínima (``d·n_ext >
+  FREE_EDGE_MIN_APPROACH``, ≈ 2.9°; decisión del usuario del 2026-11-20), sale
+  por él;
 - la normal de cada elemento es la de Rankine del propio elemento.
 
 Regla del vértice (decisión del usuario), sólo en la punta: un elemento de la
@@ -37,7 +39,7 @@ import numpy as np
 
 from solidum.logging import get_logger
 from solidum.mesh import free_boundary
-from solidum.user.discontinuities.constants import TRACKING_MIN_DISTANCE
+from solidum.user.discontinuities.constants import FREE_EDGE_MIN_APPROACH, TRACKING_MIN_DISTANCE
 from solidum.user.discontinuities.registry import CrackTrackerRegistry
 
 _log = get_logger("user.discontinuities")
@@ -619,12 +621,21 @@ class CrackTracking:
         sc = _cross(d, X[c] - P)
         sa = _cross(d, X[na] - P)
         partner = na if (sc >= 0.0) == (sa >= 0.0) else nb
-        # Salida por el borde libre: si exactamente uno de los lados de salida
-        # posibles es libre, la grieta sale por él.
+        # Salida por el borde libre (§3): si exactamente uno de los lados de
+        # salida posibles es libre y la prolongación se dirige a él con una
+        # inclinación mínima (d·n_ext > FREE_EDGE_MIN_APPROACH, n_ext la
+        # normal exterior unitaria del lado, que se aleja del tercer vértice
+        # de q), la grieta sale por él: c va con ese vértice.
         exit_a = self._is_free_edge(q, na, c)       # sale por a–c si c va con b
         exit_b = self._is_free_edge(q, nb, c)       # sale por b–c si c va con a
         if exit_a != exit_b:
-            partner = nb if exit_a else na
+            f, other = (na, nb) if exit_a else (nb, na)
+            e = X[c] - X[f]
+            # n_ext = ±(−e_y, e_x)/|e|, con el signo que la aleja de «other»;
+            # (−e_y, e_x)·w = e × w.
+            d_n = -np.copysign(1.0, _cross(e, X[other] - X[f])) * _cross(e, d) / np.linalg.norm(e)
+            if d_n > FREE_EDGE_MIN_APPROACH:
+                partner = other
         return float(np.sign(fixed[partner]) * max(abs(sc), self._delta[q]))
 
     # ------------------------------------------------------------------

@@ -115,13 +115,14 @@ def _coh(sigma_t0=ST0):
 _A, _B, _R = (1.0, 0.0), (1.0, 1.0), (0.0, 0.5)
 
 
-def _tip(y_c, extra=None, values=None):
+def _tip(y_c, extra=None, values=None, x_c=2.0):
     """Seguimiento con p agrietado y la punta q; devuelve (seguimiento,
     dominio, valor de punta de c). ``extra(dom, n)`` añade elementos (n: dict
-    de nodos por nombre); ``values`` sustituye los valores nodales de p."""
+    de nodos por nombre); ``values`` sustituye los valores nodales de p;
+    ``x_c`` mueve c en x (lados de salida de otra longitud)."""
     dom = Domain()
     n = {k: dom.add_node(i, list(x)) for i, (k, x) in
-         enumerate((("a", _A), ("b", _B), ("r", _R), ("c", (2.0, y_c))), 1)}
+         enumerate((("a", _A), ("b", _B), ("r", _R), ("c", (x_c, y_c))), 1)}
     tracker = CrackTracking()
     bulk = Elastic2D(E=E, nu=0.2, hypothesis="plane_stress")
     p = CST_Embedded2D(1, [n["a"], n["b"], n["r"]], bulk, _coh(), crack_tracker=tracker)
@@ -428,8 +429,58 @@ def test_sin_lados_libres_distintos_decide_la_prolongacion():
 
 
 def test_sale_por_el_unico_lado_libre():
+    """La prolongación horizontal se dirige al lado libre a–c, que sube hacia
+    c = (2, 0.3) (d·n_ext = 0.29 > 0.05): sale por él aunque la recta lo dejara
+    del lado de a."""
     _, _, v = _tip(0.3, _plate_on_bc)
     assert v == pytest.approx(-0.15, abs=1e-12)         # c con b: sale por a–c
+
+
+@pytest.mark.parametrize("y_c,esperado", [(-0.3, +0.75), (0.0, +0.45)], ids=["se_aleja", "paralela"])
+def test_no_sale_por_un_lado_libre_al_que_no_se_dirige(y_c, esperado):
+    """Decisión del usuario del 2026-11-20: la grieta sale por el lado libre
+    sólo si la prolongación se dirige a él (d·n_ext > 0.05). Con c debajo de a,
+    el lado libre a–c baja: la prolongación horizontal se aleja de él
+    (d·n_ext < 0) o le es paralela (= 0), y decide la prolongación (c con a,
+    +). La regla anterior sacaba la grieta por a–c (−0.75 y −0.45)."""
+    _, _, v = _tip(y_c, _plate_on_bc)
+    assert v == pytest.approx(esperado, abs=1e-12)
+
+
+@pytest.mark.parametrize("y_c,esperado", [(0.03, +0.42), (0.07, -0.38)],
+                         ids=["por_debajo_del_umbral", "por_encima_del_umbral"])
+def test_inclinacion_minima_hacia_el_lado_libre(y_c, esperado):
+    """Umbral FREE_EDGE_MIN_APPROACH = 0.05 (≈ 2.9°; decisión del usuario del
+    2026-11-20): con a–c libre, d·n_ext = y_c/√(1 + y_c²). Con 0.030 la
+    prolongación casi le es paralela y decide ella (c con a); con 0.070 sale
+    por a–c (c con b)."""
+    _, _, v = _tip(y_c, _plate_on_bc)
+    assert v == pytest.approx(esperado, abs=1e-12)
+
+
+@pytest.mark.parametrize("x_c,y_c,esperado", [(5.0, 0.12, +0.33), (1.25, 0.0175, -0.4325)],
+                         ids=["lado_largo", "lado_corto"])
+def test_el_umbral_usa_la_normal_unitaria(x_c, y_c, esperado):
+    """El umbral compara el seno del ángulo entre la prolongación y el lado
+    libre, no |e × d| (revisión del teórico del 2026-11-20; Reglas §6, valores
+    ≠ 1). Lado a–c de longitud 4.0: d·n_ext = 0.030 (|e × d| = 0.12), decide
+    la prolongación (c con a). Lado de 0.25: d·n_ext = 0.070 (|e × d| =
+    0.0175), sale por a–c (c con b)."""
+    _, _, v = _tip(y_c, _plate_on_bc, x_c=x_c)
+    assert v == pytest.approx(esperado, abs=1e-12)
+
+
+@pytest.mark.parametrize("y_c,esperado", [(0.6, +0.15), (1.3, -0.85), (1.0, -0.55)],
+                         ids=["se_dirige", "se_aleja", "paralela"])
+def test_lado_libre_b_c_la_misma_regla(y_c, esperado):
+    """Espejo con el lado libre b–c (placa en a–c; revisión del teórico del
+    2026-11-20). c = (2, 0.6): b–c baja hacia c y la prolongación se dirige a
+    él (d·n_ext = 0.37): sale por b–c, c con a (+0.15; la recta lo dejaba con
+    b). c = (2, 1.3): b–c sube, la prolongación se aleja (−0.29); c = (2, 1):
+    b–c horizontal, paralela (0): decide la prolongación, c con b. La regla
+    anterior daba +0.85 y +0.55."""
+    _, _, v = _tip(y_c, lambda dom, n, tracker: _quad_on_ac(dom, n))
+    assert v == pytest.approx(esperado, abs=1e-12)
 
 
 def test_una_placa_pegada_tapa_el_lado():
@@ -610,15 +661,16 @@ def _chord(point, t):
     return max(s) - min(s)
 
 
-def _straight(n, seed, phi_deg):
+def _straight(n, seed, phi_deg, root=(0.5, 0.5)):
     """Recta en campo uniforme: tracción uniaxial según φ, raíz en el centro
-    (revisión del teórico del 2026-11-19, e6.py). Devuelve (fracción de la
-    cuerda recorrida, desviación máxima / h)."""
+    o en ``root`` (revisión del teórico del 2026-11-19, e6.py y e8.py; σ_t0
+    crece con la distancia a la raíz). Devuelve (fracción de la cuerda
+    recorrida, desviación máxima / h)."""
     pts, tris = _delaunay(1.0, 1.0, n, n, seed)
     phi = np.radians(phi_deg)
     nrm = np.array([np.cos(phi), np.sin(phi)])
     t = np.array([-nrm[1], nrm[0]])
-    eps, root = 1.0e-4, np.array([0.5, 0.5])
+    eps, root = 1.0e-4, np.asarray(root, dtype=float)
     tracker = CrackTracking(max_cracks=1)
     dom, nodes = _region(pts, tris, lambda x: 0.5 * E * eps * (1.0 + 0.5 * np.hypot(*(x - root))), tracker)
     U = np.zeros(dom.total_dofs)
@@ -651,6 +703,33 @@ def test_recta_en_campo_uniforme_fija_la_limitacion_conocida(n):
             if frac < 0.98 or dev > 1.0:
                 fails.add((phi, seed))
     assert fails == _STRAIGHT_FAIL[n]
+
+
+@pytest.mark.parametrize("n,phi", [(16, 30.0), (16, 45.0), (32, 30.0), (32, 45.0)])
+def test_grieta_que_nace_en_el_borde_y_entra_oblicua_no_vuelve_a_el(n, phi):
+    """acceptance.salida_por_el_borde_libre (decisión del usuario del
+    2026-11-20): raíz en el borde inferior, 20 semillas. Con la regla anterior
+    (salir por cualquier lado libre) cinco grietas volvían al borde de origen
+    a los pocos elementos: 0.37 y 0.07 de la cuerda (n = 16, 45°, semillas 0
+    y 3), 0.14 (n = 16, 45°, semilla 10), 0.03 (n = 32, 30°, semilla 17) y
+    0.07 (n = 32, 45°, semilla 17). Con la dirección (d·n_ext > 0.05) todas
+    recorren al menos el 88 % (mínimo 0.885): lo que falta es la salida al borde
+    opuesto uno o dos elementos antes, casi igual con las dos reglas (medido el 2026-11-20,
+    informes/prototipos_2026-11-20/borde_libre/campanas.py)."""
+    fracs = [_straight(n, seed, phi, root=(0.5, 0.0))[0] for seed in range(20)]
+    assert min(fracs) >= 0.85, [round(f, 2) for f in fracs]
+
+
+@pytest.mark.parametrize("phi", [0.0, 0.5, -0.5, 1.0, -1.0, 2.0, -2.0])
+def test_grieta_casi_paralela_al_borde_en_la_primera_fila_lo_recorre(phi):
+    """Grieta paralela, o inclinada hasta 2°, a un borde libre dentro de la
+    primera fila de elementos (raíz en x = 0.3·h, n = 16, 20 semillas): con la
+    inclinación mínima de 2.9° (d·n_ext > 0.05) recorre toda la cuerda en las
+    20 mallas. Con d·n_ext > 0 salía al borde: 0 de 20 completas con ±0.5° a
+    ±2°, y con 0° decidía el redondeo de d·n_ext ≈ 0 (4 de 20); sin dirección,
+    0 de 20 (revisión del teórico del 2026-11-20)."""
+    fracs = [_straight(16, seed, phi, root=(0.3 / 16, 0.5))[0] for seed in range(20)]
+    assert min(fracs) >= 0.98, [round(f, 2) for f in fracs]
 
 
 def test_la_parte_formada_no_cambia_y_la_nueva_sigue_la_direccion():
