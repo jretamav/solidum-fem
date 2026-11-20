@@ -17,6 +17,7 @@ from solidum.core.material import Material
 from solidum.core.node import Node
 from solidum.logging import get_logger
 from solidum.elements.solid_2d import compute_integrands, compute_kinematics_tri3
+from solidum.math.distributed_loads import edge_load
 from solidum.core.interface_material import InterfaceMaterial
 from solidum.registry import ElementRegistry, InterfaceMaterialRegistry, MaterialRegistry
 from solidum.user.discontinuities.constants import LOCAL_JUMP_MAX_ITER, LOCAL_JUMP_RTOL
@@ -92,8 +93,8 @@ class CST_Embedded2D(Element):
     # Lados del triángulo, antihorarios (como Tri3): el contorno libre del
     # dominio (``solidum.mesh.free_boundary``) los cuenta para que el lado
     # común de dos regiones embebidas, o de una región embebida y un sólido,
-    # no parezca libre. No activa cargas por lado: el elemento no tiene
-    # ``compute_edge_traction``.
+    # no parezca libre; ``compute_edge_traction`` carga cada lado por su
+    # índice (``tractions`` y ``tractions_by_group`` del YAML).
     EDGE_NODES = ((0, 1), (1, 2), (2, 0))
     REFERENCE_KWARGS = {"material": MaterialRegistry,
                         "cohesive_material": InterfaceMaterialRegistry,
@@ -372,6 +373,45 @@ class CST_Embedded2D(Element):
             return super().compute_global_stiffness()
         finally:
             ds.jump_trial, ds.cohesive_state_trial = saved
+
+    # ------------------------------------------------------------------
+    # Cargas de borde
+    # ------------------------------------------------------------------
+
+    def compute_edge_traction(self, edge: int, t) -> np.ndarray:
+        """Vector nodal consistente ``∫_Γ Nᵀ t · espesor ds`` sobre un lado.
+
+        Es el de :class:`Tri3` (mismas funciones de forma del CST padre y la
+        misma integración sobre el lado, :func:`edge_load`): la tracción de
+        borde entra en ``f_ext_d``, el residual de los DOFs regulares; el
+        salto, condensado dentro del elemento, no recibe carga exterior
+        (spec §5). Es independiente del estado del elemento: la carga es
+        muerta y no depende de que el lado esté cruzado por ``Γ_d``.
+
+        Parameters
+        ----------
+        edge : int
+            Índice del lado en ``EDGE_NODES``: 0=(n0,n1), 1=(n1,n2), 2=(n2,n0).
+        t : array (2,) o callable
+            Tracción en ejes globales: constante o campo ``t(x, n)`` de la
+            posición y de la normal exterior unitaria del lado. Una presión
+            ``p`` (positiva hacia el interior) es ``lambda x, n: -p * n``.
+
+        Returns
+        -------
+        ndarray (6,)
+            Cargas equivalentes en los DOFs locales del elemento.
+        """
+        if not 0 <= edge < len(self.EDGE_NODES):
+            raise ValueError(f"edge={edge} fuera de rango para {type(self).__name__} "
+                             f"(0..{len(self.EDGE_NODES) - 1}).")
+        local = self.EDGE_NODES[edge]
+        X = self.get_coordinate_matrix(ndim=2)[list(local)]
+        f_edge = edge_load(X, t) * self.thickness
+        f = np.zeros(2 * len(self.nodes))
+        for k, i in enumerate(local):
+            f[2 * i:2 * i + 2] = f_edge[2 * k:2 * k + 2]
+        return f
 
     # ------------------------------------------------------------------
     # Post-procesamiento (compute_gauss_state extendido)

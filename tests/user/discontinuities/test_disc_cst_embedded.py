@@ -720,5 +720,125 @@ elements:
             os.unlink(path)
 
 
+# =========================================================================
+# Tracción de borde (presión sobre un lado; spec §5: entra en f_ext_d)
+# =========================================================================
+
+
+def _make_pair_thick(coords, thickness):
+    """(Tri3, CST_Embedded2D) con la misma geometría, bulk y espesor."""
+    bulk = _make_bulk()
+    tri = Tri3(1, _triangle_nodes(coords), bulk, thickness=thickness)
+    emb = CST_Embedded2D(2, _triangle_nodes(coords), bulk, _make_cohesive(),
+                         thickness=thickness)
+    return tri, emb
+
+
+class TestEdgeTraction(unittest.TestCase):
+    """La tracción de borde del elemento embebido es la del CST padre."""
+
+    COORDS = np.array([[0.1, 0.2], [1.3, 0.05], [0.4, 1.5]])   # triángulo distorsionado
+    THICKNESS = 0.37                                            # ≠ 1: un espesor olvidado se nota
+
+    def test_igual_que_tri3_en_los_tres_lados_constante_presion_y_campo(self):
+        tri, emb = _make_pair_thick(self.COORDS, self.THICKNESS)
+        loads = [np.array([2.0e5, -7.0e5]),
+                 lambda x, n: -3.0e6 * np.asarray(n),                       # presión
+                 lambda x, n: np.array([1.0e6 * x[1], -4.0e5 * (1.0 + x[0]) * n[1]])]
+        for edge in range(3):
+            for t in loads:
+                np.testing.assert_array_equal(emb.compute_edge_traction(edge, t),
+                                              tri.compute_edge_traction(edge, t))
+
+    def test_presion_uniforme_da_p_por_longitud_por_espesor_mitad_en_cada_nodo(self):
+        _, emb = _make_pair_thick(self.COORDS, self.THICKNESS)
+        p = 2.5e6
+        for edge, (a, b) in enumerate(CST_Embedded2D.EDGE_NODES):
+            d = self.COORDS[b] - self.COORDS[a]
+            L = float(np.hypot(*d))
+            n_ext = np.array([d[1], -d[0]]) / L          # antihorario: normal exterior
+            f = emb.compute_edge_traction(edge, lambda x, n: -p * np.asarray(n))
+            expected_node = -p * n_ext * L * self.THICKNESS / 2.0
+            np.testing.assert_allclose(f[2 * a:2 * a + 2], expected_node, rtol=1e-14)
+            np.testing.assert_allclose(f[2 * b:2 * b + 2], expected_node, rtol=1e-14)
+            c = 3 - a - b
+            np.testing.assert_array_equal(f[2 * c:2 * c + 2], np.zeros(2))
+
+    def test_no_depende_de_que_el_elemento_este_agrietado(self):
+        _, emb = _make_pair_thick(self.COORDS, self.THICKNESS)
+        t = lambda x, n: -3.0e6 * np.asarray(n)                             # noqa: E731
+        before = [emb.compute_edge_traction(edge, t) for edge in range(3)]
+        emb.activate(np.array([1.0, 0.0]), 1, self.COORDS.mean(axis=0))
+        self.assertIsNotNone(emb.discontinuity_state)
+        for edge in range(3):
+            np.testing.assert_array_equal(emb.compute_edge_traction(edge, t), before[edge])
+
+    def test_lado_fuera_de_rango(self):
+        _, emb = _make_pair_thick(self.COORDS, self.THICKNESS)
+        with self.assertRaisesRegex(ValueError, "fuera de rango"):
+            emb.compute_edge_traction(3, np.zeros(2))
+
+
+def test_presion_por_grupo_en_la_viga_sen(tmp_path):
+    """``tractions_by_group`` con ``pressure`` sobre la cara x = 0.23–0.25 de la
+    viga SEN (sin placa inferior): las fuerzas nodales son p·t·L/2 por extremo
+    de cada lado, las que sumaba a mano el prototipo del 2026-11-19
+    (``informes/prototipos_2026-11-19``, carga como presión), y su resultante
+    es 10/11 de la carga, hacia arriba (p > 0 comprime: empuja hacia el
+    interior de la viga por su cara inferior)."""
+    import shutil
+
+    import pytest
+
+    from solidum.utils.yaml_parser import YamlParser
+
+    pytest.importorskip("gmsh")
+    data = os.path.join(os.path.dirname(__file__), "data", "viga_sen")
+    shutil.copy(os.path.join(data, "viga_sen_presion.geo"), tmp_path / "viga_sen_presion.geo")
+    thickness = 0.1
+    p_ref = (10.0 / 11.0) / (0.02 * thickness)          # presión por unidad de P [Pa/N]
+    (tmp_path / "sen.yaml").write_text(f"""
+user_modules: [discontinuities]
+mesh:
+  geometry: viga_sen_presion.geo
+  parameters: {{h: 0.01}}
+  output: sen.msh
+mesh_material: 1
+mesh_thickness: {thickness}
+mesh_physical_groups:
+  Concreto: {{element: CST_Embedded2D, material: 1, cohesive_material: 1, thickness: {thickness}}}
+  Placas: {{material: 1, thickness: {thickness}}}
+materials:
+  - {{id: 1, type: Elastic2D, E: 30.0e9, nu: 0.2, hypothesis: plane_stress}}
+interface_materials:
+  - {{id: 1, type: CohesiveDamageIsotropic, sigma_t0: 3.0e6, G_f: 100.0, K_e: 1.0e14,
+     softening: exponential}}
+tractions_by_group:
+  CaraCarga: {{pressure: {p_ref!r}}}
+""", encoding="utf-8")
+    parser = YamlParser(str(tmp_path / "sen.yaml"))
+    parser.parse()
+    dom = parser.domain
+    dom.generate_equation_numbers()
+    F = parser.get_external_forces()
+
+    face = sorted((n for n in dom.nodes.values()
+                   if abs(n.coordinates[1]) < 1e-12 and 0.23 - 1e-12 <= n.coordinates[0] <= 0.25 + 1e-12),
+                  key=lambda n: n.coordinates[0])
+    assert len(face) >= 3
+    expected = {n.id: 0.0 for n in face}
+    for a, b in zip(face[:-1], face[1:]):
+        half = p_ref * thickness * (b.coordinates[0] - a.coordinates[0]) / 2.0
+        expected[a.id] += half
+        expected[b.id] += half
+    for n in face:
+        assert F[n.dofs["uy"]] == pytest.approx(expected[n.id], rel=1e-12)
+        assert F[n.dofs["ux"]] == pytest.approx(0.0, abs=1e-12 * p_ref)
+    ux = [n.dofs["ux"] for n in dom.nodes.values()]
+    uy = [n.dofs["uy"] for n in dom.nodes.values()]
+    assert F[uy].sum() == pytest.approx(10.0 / 11.0, rel=1e-12)
+    assert abs(F[ux].sum()) < 1e-12
+
+
 if __name__ == '__main__':
     unittest.main()
