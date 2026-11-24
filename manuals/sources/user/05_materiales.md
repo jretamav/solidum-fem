@@ -195,7 +195,11 @@ para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza e
   - `impl-ex` (Oliver, Huespe y Cante 2008): el daño del paso se **extrapola** de los dos pasos anteriores y queda fijo durante el paso; el material es lineal dentro del paso, con tangente secante simétrica y definida positiva, y el Newton converge en una iteración (más la de comprobación). Al confirmar el paso se calcula el daño real, que sirve para la extrapolación siguiente. Es la opción robusta para estructuras grandes o con varias grietas.
   - **Tamaño del paso con `impl-ex`**: el daño va un paso atrasado y el error es proporcional al paso; donde el daño arranca (cerca del pico) hacen falta pasos pequeños. En el ensayo de tracción de Van Vliet el pico se pasa un 7.7 % con pasos de 0.5 µm y un 0.8 % con 0.0625 µm. Compare dos tamaños de paso antes de dar un resultado por bueno; la variable de estado `damage_error` (diferencia entre el daño real y el extrapolado) indica dónde y cuándo el paso es grueso.
   - **Solvers**: `impl-ex` funciona con los solvers que avanzan por pasos y declaran su pseudo-tiempo (`NonlinearSolver`, `ArcLengthSolver`, `IndirectDisplacementSolver`, `NewtonNewmarkSolver`, `NewtonHHTSolver`, `CentralDifferenceSolver`; ADR 0034). En los análisis lineales y en el post-proceso el material usa el daño confirmado.
-- **Limitaciones**: daño escalar (al agrietarse el punto pierde rigidez también en compresión), sin cierre de grietas; la banda tiende a seguir las líneas de la malla. En una banda que sus vecinos impiden contraerse lateralmente, la energía disipada es $(1-\nu^2)\,G_f$ por unidad de área.
+- **Limitaciones** (medidas; cifras en la spec, §10):
+  - Daño escalar: al agrietarse, el punto pierde rigidez también en compresión, y una grieta que se cierra no la recupera. En estructuras con cortante la banda degrada la biela comprimida que la cruza: en la viga SEN de Schlangen, con mallas finas, la banda baja vertical desde la entalla en lugar de ir en diagonal hacia la carga y disipa 1.5–2 veces $G_f$; el resultado depende de la malla. `TensionCompressionDamage2D` conserva esa biela (con su propia limitación en modo mixto).
+  - La banda tiende a seguir las líneas de la malla. Con mallas no estructuradas la energía disipada se aparta de $G_f$: en una viga entallada a flexión, 16 % en promedio y hasta 45 %, frente a 1.5–4 % con la malla alineada. El ancho $h$ es el del elemento y no depende de la dirección de la grieta.
+  - En modo mixto (panel en L) el pico no depende de la malla, pero en el ablandamiento la carga difiere hasta 26 % entre mallas.
+  - En una banda que sus vecinos impiden contraerse lateralmente, la energía disipada es $(1-\nu^2)\,G_f$ por unidad de área.
 
 ```yaml
 materials:
@@ -215,6 +219,45 @@ materials:
     nu: 0.2
     f_t: 3.0e6
     G_f: 100.0
+    integration: impl-ex
+```
+
+### `TensionCompressionDamage2D` — daño de tracción y de compresión con cierre de grieta
+
+Modelo de concreto con dos daños escalares (Faria, Oliver y Cervera 1998): $d^+$ degrada la parte de tracción del esfuerzo efectivo y $d^-$ la de compresión,
+
+$$\boldsymbol\sigma = (1-d^+)\,\bar{\boldsymbol\sigma}^+ + (1-d^-)\,\bar{\boldsymbol\sigma}^-, \qquad \bar{\boldsymbol\sigma} = \mathbf C_e:\boldsymbol\varepsilon,$$
+
+con $\bar{\boldsymbol\sigma}^+$ la parte positiva de la descomposición espectral de $\bar{\boldsymbol\sigma}$ y $\bar{\boldsymbol\sigma}^- = \bar{\boldsymbol\sigma} - \bar{\boldsymbol\sigma}^+$. A diferencia de `IsotropicDamageCrackBand2D`, una grieta que se cierra recupera toda la rigidez en compresión, y la compresión que cruza una banda agrietada sigue transmitiéndose.
+
+- **Tracción**: la de `IsotropicDamageCrackBand2D` con `rankine`: misma banda de grieta, misma $h$ sembrada por el elemento (con el factor de los cuadráticos) y mismo límite $h_\text{max}$. En tracción uniaxial la respuesta es idéntica.
+- **Compresión (opcional)**: con `f_c` y `G_c`, $d^-$ crece con un criterio de Drucker-Prager sobre la parte negativa del esfuerzo efectivo y la ley parabólica de Feenstra (la de DIANA): pico $f_c$ en compresión uniaxial y $\beta f_c$ en compresión biaxial igual; la rama descendente disipa $G_c/h$ por unidad de volumen. La compresión hidrostática no daña. Sin `f_c` ni `G_c`, la compresión es elástica.
+- **Parámetros**: `E`, `nu` ($0 \le \nu < 0.5$), `f_t`, `G_f`, `f_c` y `G_c` (opcionales, van juntos; $f_c > f_t$; `G_c` en N/m como `G_f`), `beta` ($f_{bc}/f_c$, 1.16 por omisión, $\ge 1$), `hypothesis`, `integration` (`implicit` por omisión o `impl-ex`), `damage_max`, `density`.
+- **Variables de estado**: `damage_t` ($d^+$, la principal: es la que lleva el VTK como `Internal_State`), `damage_c` ($d^-$), `kappa_t`, `kappa_c`, `h` y `damage_error` (indicador de `impl-ex`).
+- **Integración**: como en `IsotropicDamageCrackBand2D`, con dos diferencias. La tangente no es simétrica, tampoco con `impl-ex`. Con `impl-ex` el material no es lineal dentro del paso (la partición cambia con la deformación) y el Newton itera: 2 o 3 resoluciones por paso. El tamaño del paso pide el mismo cuidado que en `IsotropicDamageCrackBand2D`.
+- **Limitaciones** (medidas; cifras en la spec, §10):
+  - Modo mixto: el pico no depende de la malla, pero el ablandamiento sí. Un elemento roto cuya grieta desliza más de $2\sqrt\nu/(1-\nu)$ veces lo que abre (1.12 con $\nu = 0.2$; cero con $\nu = 0$) sigue transmitiendo cortante y compresión a través de la grieta (bloqueo de esfuerzos). En el panel en L la carga del ablandamiento difiere 76 % entre mallas (`IsotropicDamageCrackBand2D`, 26 %). En modo I (viga de Petersson) no depende de la malla.
+  - En la viga SEN de Schlangen (cortante con grieta curva) la grieta sale en diagonal y el resultado no depende de la malla fina, pero después del pico la carga queda por debajo del ensayo: 3.7 kN frente a 9–15 kN en una apertura de la boca de la entalla de 0.10 mm. Les pasa lo mismo a las simulaciones publicadas cuya grieta no transmite cortante; la literatura atribuye la diferencia a ese cortante, que este modelo no representa.
+  - Sin deformaciones plásticas: la descarga es secante hacia el origen, sin deformación residual ni histéresis.
+  - Con $\nu \ne 0$ la ley no deriva de un potencial: en ciclos de carga sobre material ya dañado el trabajo no se conserva (2–6 % de la energía elástica, en mediana); en carga monótona el balance de energía cierra a menos de 1 %.
+  - La compresión paralela a una grieta abierta se pierde cuando la deformación de apertura supera $|\varepsilon_t|/\nu$. Como esa deformación es la apertura entre $h$, el umbral depende del tamaño del elemento.
+  - En compresión, la banda disipa $G_c$ por unidad de área desde su pico; el trabajo total incluye además el daño antes del pico (en una barra, 6–12 % más de $G_c A$, menos con elementos pequeños).
+  - Con $\nu = 0.2$ y mallas finas, el aplastamiento de una barra en compresión no se concentra en una banda y el resultado depende de la malla.
+  - Con `Quad8` y `Quad9` el factor 13/18 se aplica también en compresión: con esfuerzo uniforme el elemento disipa $G_c/\alpha$.
+  - En deformación plana con el lateral libre, la energía de tracción es $(1-\nu^2)\,G_f$, como en `IsotropicDamageCrackBand2D`.
+
+```yaml
+materials:
+  # Concreto con aplastamiento: f_c = 30 MPa, G_c = 15 kN/m; IMPL-EX.
+  - id: 8
+    type: TensionCompressionDamage2D
+    E: 30.0e9
+    nu: 0.2
+    f_t: 3.0e6
+    G_f: 100.0
+    f_c: 30.0e6
+    G_c: 15000.0
+    hypothesis: plane_stress
     integration: impl-ex
 ```
 
@@ -337,6 +380,8 @@ materials:
 ```
 
 `IsotropicDamageCrackBand3D` es la versión 3D de `IsotropicDamageCrackBand2D` (mismos parámetros salvo `hypothesis`). La longitud característica la siembran `Hex8`, `Hex20` y `Hex27` ($\sqrt[3]{V}$) y `Tet4` y `Tet10` ($\sqrt[3]{6V}$).
+
+`TensionCompressionDamage3D` es la versión 3D de `TensionCompressionDamage2D` (mismos parámetros salvo `hypothesis`, mismas limitaciones), con la misma siembra de la longitud característica.
 
 ## Materiales de interfaz (tracción frente a desplazamiento relativo)
 

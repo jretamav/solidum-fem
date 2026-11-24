@@ -4,7 +4,7 @@
 >
 > Versión 3D de [TensionCompressionDamage2D](TensionCompressionDamage2D.md): **toda la física, las ecuaciones y las preguntas al usuario (Q1–Q6) están allí**. Aquí sólo lo que difiere.
 >
-> **Estado: spec completa, junto con la 2D: Q1–Q4 y Q6 decididas el 2026-11-17 (ley (a) de Faria, Oliver y Cervera); Q5 el 2026-11-18 (programa principal).**
+> **Estado: validada (2026-11-23), junto con la 2D.** Q1–Q4 y Q6 decididas el 2026-11-17 (ley (a) de Faria, Oliver y Cervera); Q5 el 2026-11-18 (programa principal). La validación estructural (Petersson, panel en L, Van Vliet, viga SEN) se hizo en 2D, que es la restricción exacta de esta ley (prueba `restriction_of_3d`); en 3D, punto material, barra en tracción y en compresión (`Hex8`, `Tet4`, `Hex20`, `Tet10`). Límites medidos: spec 2D, §10.
 
 ---
 
@@ -34,7 +34,7 @@ Dos daños escalares, $d^+$ de tracción y $d^-$ de compresión, con cierre de g
 ```yaml
 name: TensionCompressionDamage3D
 kind: material
-status: draft
+status: validated          # 2026-11-23, con la 2D
 
 interface:
   strain_dim: 6
@@ -119,6 +119,9 @@ references:
 
 ## Implementación
 
+- Archivo: `solidum/materials/damage_tension_compression_3d.py` (común con la 2D en `solidum/materials/_tension_compression.py` y `solidum/materials/_spectral_split.py`).
+- Clase: `TensionCompressionDamage3D(TensionCompressionMixin, Material)`.
+
 Bloque 1 (2026-11-18): `solidum/materials/damage_tension_compression_3d.py`, con la partición espectral 3×3 de `_spectral_split.py` y el daño de tracción de `_tension_compression.py`; detalle en la §Implementación de la 2D.
 
 Bloque 2 (2026-11-18): daño de compresión con las mismas piezas de `_tension_compression.py` que la 2D (medida de Drucker-Prager sobre $\bar{\boldsymbol\sigma}^-$ 3×3, parábola de Feenstra, tangente con $(\mathbb I - \mathbf Q^+)$); detalle y cifras en la §Implementación de la 2D. `tangent_fd_3d`: el triple negativo no se prueba con $d^-$ en carga porque nunca la tiene (estado hidrostático: $\varepsilon^-_\text{eq} < 0$ con $\beta \ge 1$; lo cubre `hydrostatic_compression_no_damage`); el doble negativo sí, con el tercer autovalor de los dos signos, en las ramas ascendente y descendente. `bar_in_compression_3d` con Hex8, Tet4, Hex20 y Tet10 (5 y 10 capas); Hex27 da lo mismo pero tarda 80 s y queda fuera de la suite. Verificado por `teorico-solidum` el 2026-11-18 junto con la 2D.
@@ -130,3 +133,4 @@ Bloque 2 (2026-11-18): daño de compresión con las mismas piezas de `_tension_c
 - **2026-11-11** · Spec creada por la IA junto con [TensionCompressionDamage2D](TensionCompressionDamage2D.md); las preguntas al usuario (Q1–Q6) están en esa spec y valen para las dos.
 - **2026-11-17** · Q1 decidida por el usuario: ley (a) de Faria, Oliver y Cervera. §1–§2 y el contrato reescritos para (a) junto con la 2D (la versión anterior describía la forma complementaria (d), descartada). Después de la revisión de `teorico-solidum` (H13): `state_variables`, `validity` y `out_of_scope` explícitos, `bar_in_compression_3d`, bloque `impl_ex` y `tangent_fd_3d` sin los puntos no diferenciables.
 - **2026-11-18** · Q5 decidida por el usuario: programa principal, como la 2D (Diálogo de esa spec).
+- **2026-11-23** · `status: validated` con la 2D (Diálogo de esa spec): la escalera estructural se corrió en 2D; esta ley es su extensión exacta.

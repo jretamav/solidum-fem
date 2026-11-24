@@ -1,11 +1,13 @@
 """Ensayo de tracción de Van Vliet con fisuración distribuida (banda de grieta).
 
-Aceptación ``structural: van_vliet_tension`` de la spec
-``IsotropicDamageCrackBand2D``: la probeta en hueso de perro de la tesis
-(Retama 2010, §8.1; geometría y datos como en
-``tests/user/discontinuities/_van_vliet.py``), ahora con TODO el concreto de
-``IsotropicDamageCrackBand2D`` (Rankine, ``Tri3``): la grieta no se prescribe,
-se forma donde el esfuerzo alcanza ``f_t``.
+Aceptación ``structural: van_vliet_tension`` de las specs
+``IsotropicDamageCrackBand2D`` (modelo 1) y ``TensionCompressionDamage2D``
+(modelo 2, «mismos criterios que el modelo 1»): la probeta en hueso de perro
+de la tesis (Retama 2010, §8.1; geometría y datos como en
+``tests/user/discontinuities/_van_vliet.py``), con TODO el concreto agrietable
+(Rankine, ``Tri3``): la grieta no se prescribe, se forma donde el esfuerzo
+alcanza ``f_t``. Cada prueba corre con los dos materiales; el modelo 2 va sin
+``f_c`` (compresión elástica: el ensayo es de tracción).
 
 - Dos mallas (filas de 8 y 4 mm junto al cuello). Carga máxima y energía
   disipada en ``u = 0.12 mm`` iguales entre mallas a ±3 %.
@@ -38,6 +40,7 @@ import solidum  # noqa: F401
 from solidum.core.domain import Domain
 from solidum.elements.solid_2d import Tri3
 from solidum.materials.damage_crack_band_2d import IsotropicDamageCrackBand2D
+from solidum.materials.damage_tension_compression_2d import TensionCompressionDamage2D
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import NonlinearSolver
@@ -51,16 +54,18 @@ EXCENTRICIDAD = D / 50
 CUELLO = 0.120
 GFA = G_F * CUELLO * ESPESOR
 _XC = D / 2 - PROFUNDIDAD + RADIO
+MATERIALES = {"modelo1": IsotropicDamageCrackBand2D,
+              "modelo2": TensionCompressionDamage2D}
 
 
 def semiancho(y: float) -> float:
     return _XC - np.sqrt(RADIO**2 - y**2) if abs(y) <= D / 2 else D / 2
 
 
-def modelo(fino: bool, integration: str):
+def modelo(fino: bool, integration: str, material: str):
     """Malla estructurada mapeada al contorno de las entallas, con una fila
-    de elementos centrada en el cuello. Devuelve el dominio y las rótulas
-    superior e inferior."""
+    de elementos centrada en el cuello, y el concreto de ``MATERIALES``.
+    Devuelve el dominio y las rótulas superior e inferior."""
     if fino:
         hb = 0.004
         pos = ([hb / 2 + hb * k for k in range(15)] + [0.060, 0.065]
@@ -76,7 +81,7 @@ def modelo(fino: bool, integration: str):
     xis = sorted([-x for x in xi_pos] + [0.0] + xi_pos)
 
     dom = Domain()
-    concreto = IsotropicDamageCrackBand2D(E_C, NU_C, F_T, G_F, integration=integration)
+    concreto = MATERIALES[material](E_C, NU_C, F_T, G_F, integration=integration)
     acero = Elastic2D(E=E_ACERO, nu=NU_ACERO, hypothesis="plane_stress")
     nodos: dict = {}
 
@@ -113,10 +118,11 @@ def modelo(fino: bool, integration: str):
     return dom, nodo(-EXCENTRICIDAD, tope), nodo(-EXCENTRICIDAD, -tope)
 
 
-def ensayo(fino: bool, integration: str, u_max: float, paso: float) -> dict:
+def ensayo(fino: bool, integration: str, u_max: float, paso: float,
+           material: str) -> dict:
     """Desplazamiento impuesto en la rótula superior; devuelve la carga
     máxima [kN] y la energía disipada [J] = W − ½·F·u (descarga secante)."""
-    dom, arriba, abajo = modelo(fino, integration)
+    dom, arriba, abajo = modelo(fino, integration, material)
     abajo.fix_dof("ux", 0.0)
     abajo.fix_dof("uy", 0.0)
     arriba.fix_dof("ux", 0.0)
@@ -142,9 +148,14 @@ def ensayo(fino: bool, integration: str, u_max: float, paso: float) -> dict:
             "D": W - 0.5 * c[-1, 1] * c[-1, 0]}
 
 
+@pytest.fixture(scope="module", params=list(MATERIALES))
+def material(request):
+    return request.param
+
+
 @pytest.fixture(scope="module")
-def implicita():
-    return {fino: ensayo(fino, "implicit", 0.12e-3, 1.0e-6) for fino in (False, True)}
+def implicita(material):
+    return {fino: ensayo(fino, "implicit", 0.12e-3, 1.0e-6, material) for fino in (False, True)}
 
 
 def test_carga_maxima_y_energia_entre_mallas(implicita):
@@ -154,14 +165,14 @@ def test_carga_maxima_y_energia_entre_mallas(implicita):
     assert 25.0 < g["P_max"] < 28.5          # tesis (embebida): 27.0 kN, sólo referencia
 
 
-def test_energia_al_final_igual_a_la_del_ligamento():
-    r = ensayo(False, "implicit", 1.2e-3, 2.0e-6)
+def test_energia_al_final_igual_a_la_del_ligamento(material):
+    r = ensayo(False, "implicit", 1.2e-3, 2.0e-6, material)
     assert r["P_fin"] < 0.005 * r["P_max"]
     assert r["D"] / ((1.0 - NU_C**2) * GFA) == pytest.approx(1.0, abs=0.03)
 
 
-def test_impl_ex_con_paso_fino_igual_a_la_implicita(implicita):
-    r = ensayo(False, "impl-ex", 0.12e-3, 0.0625e-6)
+def test_impl_ex_con_paso_fino_igual_a_la_implicita(implicita, material):
+    r = ensayo(False, "impl-ex", 0.12e-3, 0.0625e-6, material)
     ref = implicita[False]
     assert r["P_max"] == pytest.approx(ref["P_max"], rel=0.02)
     assert r["D"] == pytest.approx(ref["D"], rel=0.02)

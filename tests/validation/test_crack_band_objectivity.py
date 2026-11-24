@@ -225,8 +225,11 @@ def test_modelo2_barra_impl_ex_igual_al_modelo_1():
 # G_c/h: el trabajo debe ser G_c·A con cualquier malla. Sin retroceso: con
 # h ≤ 40 mm la pendiente de la rama, a lo sumo 2·f_c/(κ_u − κ_c) = 80·h
 # (MPa), cumple (L − h)·80·h/E < h. El trabajo externo TOTAL no es objetivo
-# (1.116, 1.081, 1.064·G_c·A con h = 40, 20, 10 mm): incluye la energía de la
-# banda antes del pico, proporcional a h (spec §10, verificación 2026-11-18).
+# (1.116, 1.081, 1.064·G_c·A con h = 40, 20, 10 mm): además de G_c·A tiene
+# dos partes, la energía de la banda antes del pico (0.079, 0.039, 0.020·G_c·A,
+# proporcional a h) y el daño de la rama ascendente en el resto de la barra
+# (0.037, 0.042, 0.044·G_c·A, proporcional a L − h); con h → 0 el total
+# tiende a 1.046·G_c·A (spec §10; verificación y validación del 2026-11-18).
 
 FC, GC = 30.0, 15.0                    # MPa, N/mm
 LC, HC = 200.0, 40.0

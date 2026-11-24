@@ -31,6 +31,8 @@ Convenio de Abaqus en 3D: $h = \sqrt[3]{V_e}$ en elementos lineales (`Hex8`, `Te
 
 **Factor de localización (2026-11-12; spec 2D §4).** En flexión los cuadráticos 2D sólo ablandan una parte de sus puntos de Gauss y la energía se corrige con $h = \alpha\,c\,\Omega_e^{1/d}$ (`Quad8`/`Quad9`, $\alpha = 13/18$). En 3D no hay un factor medido ni publicado: `Hex20`, `Hex27` y `Tet10` conservan $\alpha = 1$ y Solidum avisa una vez que, en flexión, la energía puede quedar por debajo de $G_f$; describe la limitación sin recomendar un orden de elemento (usuario, 2026-11-12).
 
+**Ancho según la orientación de la grieta (bloque 3, 2026-11-17; estudio cerrado sin programar el 2026-11-23; spec 2D §4 y Q6–Q11).** La proyección vale tal cual en 3D: $h_P = \max_a(\mathbf x_a\cdot\mathbf n_c) - \min_a(\mathbf x_a\cdot\mathbf n_c)$ sobre los vértices del hexaedro o del tetraedro, con $\mathbf n_c$ la dirección de la deformación principal mayor en el centro del elemento al empezar su daño. Con la malla estructurada y la grieta alineada da el $h$ actual (`Hex8` $\sqrt[3]{V_e}$; `Tet4` de la partición del cubo en seis tetraedros, $\sqrt[3]{6V_e}$). La aceptación propuesta giraba `Hex8` y `Tet4` alrededor de $z$ en los dos sentidos (en la partición de Kuhn que usa el generador estructurado, a 22.5° los seis tetraedros dan $0.924\,\Delta$ o $1.307\,\Delta$ según el sentido) y usaba una normal genérica, $(1, -1, 1)/\sqrt3$, con la que los seis difieren. No se implementa: Solidum conserva el $h$ de arriba (spec 2D, Diálogo del 2026-11-23).
+
 ### 3. Medida de Rankine (2D, §5 y Q1)
 
 $$\varepsilon_\text{eq} = \frac{\langle\bar\sigma_I\rangle_+}{E}, \qquad \bar{\boldsymbol\sigma} = \mathbf C_e\,\boldsymbol\varepsilon,$$
