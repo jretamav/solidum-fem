@@ -427,10 +427,10 @@ class OutputWriter:
             except (FileNotFoundError, ValueError, ImportError) as exc:
                 # Los resultados ya están escritos: un fallo de una figura no
                 # invalida el análisis; se corrige el YAML y se regeneran con
-                # python -m solidum.post.
+                # solidum-post (= python -m solidum.post).
                 _log.error(f"No se pudieron dibujar las figuras: {exc} Los resultados están "
                            f"escritos; corrija output.plots y regenérelas con "
-                           f"'python -m solidum.post'.")
+                           f"'solidum-post modelo.yaml' (o 'python -m solidum.post modelo.yaml').")
 
     # ------------------------------------------------------------------
     # Salida de texto estilo FEAP (trasladada de examples/ejecutar_yaml.py)

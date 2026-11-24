@@ -1,4 +1,5 @@
-"""Ejecuta un modelo YAML y escribe sus resultados: ``python -m solidum modelo.yaml``.
+"""Ejecuta un modelo YAML y escribe sus resultados: ``solidum modelo.yaml``
+(comando que crea la instalación) o, lo mismo, ``python -m solidum modelo.yaml``.
 
 Lee y valida el archivo (todos los errores juntos), resuelve el análisis
 declarado y escribe junto al YAML lo que pide su bloque ``output`` (ADR 0036):
@@ -13,7 +14,7 @@ from pathlib import Path
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m solidum",
+    ap = argparse.ArgumentParser(prog="solidum",
                                  description="Resuelve un modelo YAML de Solidum FEM y escribe sus resultados.")
     ap.add_argument("modelo", help="archivo YAML del modelo")
     args = ap.parse_args(argv)

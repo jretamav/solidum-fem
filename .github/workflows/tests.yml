@@ -6,13 +6,108 @@ on:
   pull_request:
     branches: [main]
 
+# Plataformas (decisión del usuario, 2026-11-24): Windows es el sistema
+# principal —el de los alumnos y usuarios a quienes se da a conocer Solidum—,
+# Linux va después y macOS no se prueba. Versión de Python del proyecto: 3.14
+# (la más reciente en la que todo Solidum, opcionales incluidos, pasa al
+# 100 %; en 3.15 pyamg no trae binarios para Windows). Linux conserva además
+# la versión mínima declarada en pyproject (3.10).
+
 jobs:
-  test:
+  # ---------------------------------------------------------------- Windows
+  # Suite completa en Windows: «base» sólo con lo obligatorio (el camino de
+  # SciPy puro) y «completo» con todos los extras que se instalan con pip en
+  # Windows (CHOLMOD no: allí sólo existe por conda).
+  test-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variante: base
+            extras: dev
+          - variante: completo
+            extras: dev,plot,mesh,fast,iterative,verification
+    name: test-windows (${{ matrix.variante }})
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package with ${{ matrix.extras }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[${{ matrix.extras }}]"
+
+      # Si un extra no se instalara bien, sus pruebas se saltarían
+      # (skipUnless) y el job saldría verde sin probarlo.
+      - name: Verify optional components are active
+        if: matrix.variante == 'completo'
+        run: |
+          python -c "from solidum.math.linalg.dispatcher import _HAS_PARDISO; from solidum.math.linalg.iterative import HAS_PYAMG; import gmsh, matplotlib, sympy; assert _HAS_PARDISO and HAS_PYAMG, ('pardiso', _HAS_PARDISO, 'pyamg', HAS_PYAMG); print('gmsh', gmsh.__version__)"
+
+      - name: Run test suite
+        run: pytest -q --tb=short
+
+  # Instalación como la haría un alumno: sin Git y sin modo editable, desde
+  # el zip del repositorio (git archive da el mismo contenido que el zip de
+  # GitHub), con el pip del Python recién instalado. Después, el comando
+  # `solidum` resuelve un ejemplo en una carpeta fuera del repositorio, para
+  # que Solidum se importe de lo instalado y no del código fuente.
+  install-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Package the repository as a zip
+        run: git archive --format=zip --prefix=solidum-fem/ -o "$RUNNER_TEMP/solidum-fem.zip" HEAD
+
+      - name: Install as a student (pip, no Git, not editable)
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "./solidum-fem.zip[plot]"
+
+      - name: Run an example with the installed commands
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir alumno
+          cp "$GITHUB_WORKSPACE/examples/modelo_marco.yaml" alumno/
+          cd alumno
+          python -c "import solidum, sys; p = solidum.__file__; print(p); sys.exit('site-packages' not in p)"
+          solidum --help
+          solidum-post --help
+          solidum modelo_marco.yaml
+          ls
+          test -n "$(ls viga_voladizo_marco* 2>/dev/null)"
+
+  # ------------------------------------------------------------------ Linux
+  # Camino base (SciPy puro) en la versión del proyecto y en la mínima
+  # declarada en pyproject.
+  test-linux:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.14"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -32,21 +127,19 @@ jobs:
       - name: Run test suite
         run: pytest -q --tb=short
 
-  # Backends algebraicos opcionales (ADR 0017, ADR 0018). El job anterior
-  # corre sin ellos a propósito —garantiza que el camino base, SciPy puro,
-  # sigue siendo correcto—, así que sin este job Pardiso y AMG nunca se
-  # ejecutarían en Linux. Con Pardiso instalado el despachador lo usa por
-  # defecto, de modo que la suite completa pasa por él.
-  test-optional-backends:
+  # Backends algebraicos opcionales (ADR 0017, ADR 0018) en Linux. Con
+  # Pardiso instalado el despachador lo usa por defecto, de modo que la suite
+  # completa pasa por él.
+  test-linux-optional-backends:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
 
@@ -71,16 +164,16 @@ jobs:
   # suite. Aquí la suite pasa por CHOLMOD en los sistemas SPD y por SuperLU en
   # el resto. scikit-sparse sólo se distribuye como fuente: se compila contra
   # la SuiteSparse del sistema (la 0.5 exige SuiteSparse >= 7.4).
-  test-cholmod:
+  test-linux-cholmod:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
 

@@ -1,8 +1,9 @@
 """Regenera las figuras de un modelo sin volver a calcular:
+``solidum-post modelo.yaml`` (comando que crea la instalación) o, lo mismo,
 ``python -m solidum.post modelo.yaml``.
 
 Lee ``output.plots`` del YAML y dibuja con los resultados que escribió
-``python -m solidum modelo.yaml`` (ADR 0039).
+``solidum modelo.yaml`` (ADR 0039).
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from pathlib import Path
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m solidum.post",
+    ap = argparse.ArgumentParser(prog="solidum-post",
                                  description="Dibuja las figuras de output.plots con los resultados "
                                              "ya escritos de un modelo YAML.")
     ap.add_argument("modelo", help="archivo YAML del modelo (ya resuelto)")

@@ -36,7 +36,7 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 ```
 
 - **`pypardiso`** (`[fast]`): con él, el solver del sistema lineal —que en un análisis grande se lleva la mayor parte del tiempo— pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML.
-- **`pyamg`** (`[iterative]`): sólo lo usa el solver iterativo, que se pide expresamente (`linear_algebra: iterative`) para modelos demasiado grandes para la memoria. En Python 3.14 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
+- **`pyamg`** (`[iterative]`): sólo lo usa el solver iterativo, que se pide expresamente (`linear_algebra: iterative`) para modelos demasiado grandes para la memoria. En Python 3.15 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
 - **`scikit-sparse`** (`[cholmod]`): factorización de Cholesky; en Windows se instala con `conda`, no con `pip`.
 
 ## Herramientas Externas Recomendadas
@@ -49,10 +49,10 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 Para ejecutar un modelo y escribir sus resultados:
 
 ```bash
-python -m solidum ruta/al/modelo.yaml
+solidum ruta/al/modelo.yaml
 ```
 
-Las figuras declaradas en `output.plots` se escriben al terminar; para redibujarlas sin volver a calcular, `python -m solidum.post ruta/al/modelo.yaml`.
+La instalación crea el comando `solidum`; `python -m solidum ruta/al/modelo.yaml` hace lo mismo. Las figuras declaradas en `output.plots` se escriben al terminar; para redibujarlas sin volver a calcular, `solidum-post ruta/al/modelo.yaml` (o `python -m solidum.post ruta/al/modelo.yaml`).
 
 (`python examples/ejecutar_yaml.py ruta/al/modelo.yaml` hace lo mismo.) Desde Python, `solidum.run_yaml(ruta, write_output=True)`; sin `write_output`, `run_yaml` resuelve y devuelve el resultado sin escribir archivos.
 

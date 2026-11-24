@@ -115,6 +115,22 @@ def test_python_m_solidum(tmp_path):
     assert (tmp_path / "barra_historia.csv").is_file()
 
 
+def test_los_comandos_solidum_y_solidum_post_apuntan_a_sus_main():
+    """pyproject declara los comandos que crea la instalación (``solidum``,
+    ``solidum-post``) y apuntan a las funciones ``main`` que ejercitan
+    test_python_m_solidum y test_post_plots. Que el comando instalado corra
+    lo comprueba el CI con una instalación limpia (job install-windows)."""
+    import importlib
+    tomllib = pytest.importorskip("tomllib")
+    with open(Path(__file__).resolve().parents[1] / "pyproject.toml", "rb") as f:
+        scripts = tomllib.load(f)["project"]["scripts"]
+    assert scripts == {"solidum": "solidum.__main__:main",
+                       "solidum-post": "solidum.post.__main__:main"}
+    for destino in scripts.values():
+        modulo, funcion = destino.split(":")
+        assert callable(getattr(importlib.import_module(modulo), funcion))
+
+
 @pytest.mark.parametrize("bloque,mensaje", [
     ({"results": {"frequency": "a_veces"}}, "no admitido"),
     ({"results": {"frequency": {"every": 0}}}, "entero ≥ 1"),

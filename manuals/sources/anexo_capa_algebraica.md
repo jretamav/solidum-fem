@@ -167,7 +167,7 @@ solver:
 pip install solidum-fem[iterative]
 ```
 
-Trae binarios para Python 3.10–3.12. En **Python 3.14 sobre Windows** no hay binarios y pip lo compila, lo que requiere Visual Studio con el toolset de C++. Si aun teniéndolo pip responde *"Unable to find a compatible Visual Studio installation"*, la causa suele ser que la carpeta del instalador de Visual Studio no está en el `PATH`; añadirla durante la instalación lo resuelve:
+Trae binarios para Python 3.10–3.14 (pyamg 5.4.1). En **Python 3.15 sobre Windows** todavía no hay binarios y pip lo compila, lo que requiere Visual Studio con el toolset de C++. Si aun teniéndolo pip responde *"Unable to find a compatible Visual Studio installation"*, la causa suele ser que la carpeta del instalador de Visual Studio no está en el `PATH`; añadirla durante la instalación lo resuelve:
 
 ```bash
 PATH="/c/Program Files (x86)/Microsoft Visual Studio/Installer:$PATH" pip install pyamg

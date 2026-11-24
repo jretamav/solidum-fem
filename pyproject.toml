@@ -32,6 +32,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Physics",
@@ -76,8 +78,8 @@ fast = [
     "pypardiso>=0.4",
 ]
 # Precondicionador AMG para el solver iterativo (ADR 0018). Wheels para
-# Linux/macOS/Windows hasta Python 3.12; en Python 3.14/Windows se compila
-# (necesita Visual Studio con C++; ver anexo de la capa algebraica).
+# Linux/Windows hasta Python 3.14 (pyamg 5.4.1); en Python 3.15/Windows se
+# compila (necesita Visual Studio con C++; ver anexo de la capa algebraica).
 iterative = [
     "pyamg>=5.0",
 ]
@@ -89,6 +91,13 @@ iterative = [
 cholmod = [
     "scikit-sparse>=0.4",
 ]
+
+# Comandos que crea la instalación: `solidum modelo.yaml` resuelve y escribe
+# los resultados (= python -m solidum); `solidum-post modelo.yaml` redibuja
+# las figuras sin volver a calcular (= python -m solidum.post).
+[project.scripts]
+solidum = "solidum.__main__:main"
+solidum-post = "solidum.post.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/jretamav/solidum-fem"
