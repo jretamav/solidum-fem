@@ -265,7 +265,7 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 
 \begin{itemize}
   \item \textbf{\texttt{pypardiso}} (\texttt{[fast]}): con él, el solver del sistema lineal ---que en un análisis grande se lleva la mayor parte del tiempo--- pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML.
-  \item \textbf{\texttt{pyamg}} (\texttt{[iterative]}): sólo lo usa el solver iterativo, que se pide expresamente (\texttt{linear\_\allowbreak{}algebra: iterative}) para modelos demasiado grandes para la memoria. En Python 3.14 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
+  \item \textbf{\texttt{pyamg}} (\texttt{[iterative]}): sólo lo usa el solver iterativo, que se pide expresamente (\texttt{linear\_\allowbreak{}algebra: iterative}) para modelos demasiado grandes para la memoria. En Python 3.15 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
   \item \textbf{\texttt{scikit-sparse}} (\texttt{[cholmod]}): factorización de Cholesky; en Windows se instala con \texttt{conda}, no con \texttt{pip}.
 \end{itemize}
 
@@ -281,11 +281,11 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 Para ejecutar un modelo y escribir sus resultados:
 
 \begin{lstlisting}[language=bash]
-python -m solidum ruta/al/modelo.yaml
+solidum ruta/al/modelo.yaml
 
 \end{lstlisting}
 
-Las figuras declaradas en \texttt{output.plots} se escriben al terminar; para redibujarlas sin volver a calcular, \texttt{python -m solidum.\allowbreak{}post ruta/\allowbreak{}al/\allowbreak{}modelo.\allowbreak{}yaml}.
+La instalación crea el comando \texttt{solidum}; \texttt{python -m solidum ruta/\allowbreak{}al/\allowbreak{}modelo.\allowbreak{}yaml} hace lo mismo. Las figuras declaradas en \texttt{output.plots} se escriben al terminar; para redibujarlas sin volver a calcular, \texttt{solidum-post ruta/\allowbreak{}al/\allowbreak{}modelo.\allowbreak{}yaml} (o \texttt{python -m solidum.\allowbreak{}post ruta/\allowbreak{}al/\allowbreak{}modelo.\allowbreak{}yaml}).
 
 (\texttt{python examples/\allowbreak{}ejecutar\_\allowbreak{}yaml.\allowbreak{}py ruta/\allowbreak{}al/\allowbreak{}modelo.\allowbreak{}yaml} hace lo mismo.) Desde Python, \texttt{solidum.\allowbreak{}run\_\allowbreak{}yaml(ruta, write\_\allowbreak{}output=True)}; sin \texttt{write\_output}, \texttt{run\_yaml} resuelve y devuelve el resultado sin escribir archivos.
 
@@ -1270,7 +1270,7 @@ Todas admiten \texttt{file} (\texttt{.png} por omisión, \texttt{.pdf} o \texttt
 \begin{itemize}
   \item \texttt{deformed} toma, para cada factor de \texttt{at}, el instante escrito más cercano: los instantes se piden en \texttt{results.\allowbreak{}frequency}. \texttt{field} es un campo del VTK por celda (\texttt{Internal\_State}, la variable interna principal del material ---el daño en los de daño---; \texttt{Von\_Mises}; \texttt{Sigma\_XX}...) o \texttt{displacement} (magnitud del desplazamiento); los campos con signo usan una escala de color divergente centrada en cero. \texttt{scale: auto} dibuja el mayor desplazamiento como el 5 \% del tamaño del modelo. \texttt{label\_column} rotula cada panel con el valor de esa columna de la historia en ese instante (p. ej. la flecha). \texttt{edges: auto} dibuja los bordes de los elementos hasta 3000 elementos.
   \item \texttt{curve} con \texttt{compare} añade las mismas columnas de otros modelos ya resueltos (sus historias se buscan con su propio \texttt{output.file\_name}): es la figura de un estudio de malla.
-  \item Las figuras se regeneran sin volver a calcular con \texttt{python -m solidum.\allowbreak{}post modelo.\allowbreak{}yaml} (por ejemplo, tras cambiar una ventana o un rótulo). Si una figura falla al terminar el análisis, el error se registra y los resultados quedan escritos.
+  \item Las figuras se regeneran sin volver a calcular con \texttt{solidum-post modelo.\allowbreak{}yaml} (o \texttt{python -m solidum.\allowbreak{}post modelo.\allowbreak{}yaml}; por ejemplo, tras cambiar una ventana o un rótulo). Si una figura falla al terminar el análisis, el error se registra y los resultados quedan escritos.
   \item Mallas 2D; las 3D, todavía no. Requiere matplotlib (\texttt{pip install matplotlib}).
 \end{itemize}
 
@@ -3912,8 +3912,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 24 de noviembre de 2026, 13:29\\[0.5em]
-Commit Git: \texttt{7909aad}\\[1em]
+Compilado el 24 de noviembre de 2026, 16:11\\[0.5em]
+Commit Git: \texttt{90d6d56}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
