@@ -264,7 +264,7 @@ pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 \end{lstlisting}
 
 \begin{itemize}
-  \item \textbf{\texttt{pypardiso}} (\texttt{[fast]}): con él, el solver del sistema lineal ---que en un análisis grande se lleva la mayor parte del tiempo--- pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML.
+  \item \textbf{\texttt{pypardiso}} (\texttt{[fast]}): con él, el solver del sistema lineal ---que en un análisis grande se lleva la mayor parte del tiempo--- pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML. Sin él, si una factorización tarda más de 1 s, Solidum lo recomienda una vez (\texttt{pip install pypardiso}); en modelos pequeños no dice nada.
   \item \textbf{\texttt{pyamg}} (\texttt{[iterative]}): sólo lo usa el solver iterativo, que se pide expresamente (\texttt{linear\_\allowbreak{}algebra: iterative}) para modelos demasiado grandes para la memoria. En Python 3.15 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
   \item \textbf{\texttt{scikit-sparse}} (\texttt{[cholmod]}): factorización de Cholesky; en Windows se instala con \texttt{conda}, no con \texttt{pip}.
 \end{itemize}
@@ -3912,8 +3912,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 24 de noviembre de 2026, 16:11\\[0.5em]
-Commit Git: \texttt{90d6d56}\\[1em]
+Compilado el 24 de noviembre de 2026, 17:09\\[0.5em]
+Commit Git: \texttt{4ace8c4}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
