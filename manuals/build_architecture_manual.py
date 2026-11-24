@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import datetime
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +28,7 @@ OUT_PDF = OUT_DIR / "Architecture_manual.pdf"
 
 # Reutilizar md_to_latex del builder de referencia.
 sys.path.insert(0, str(OUT_DIR))
+from _latex import compile_pdf  # noqa: E402
 from build_reference_manual import (  # noqa: E402
     md_to_latex,
     report_broken_links,
@@ -495,34 +495,6 @@ def build_appendix_pendientes(items: list[tuple[str, str]]) -> str:
 
     out.append("\\newpage\n")
     return "\n".join(out)
-
-
-def compile_pdf(tex_path: Path) -> bool:
-    lualatex = shutil.which("lualatex")
-    if lualatex is None:
-        print("[!] lualatex no encontrado en PATH. Genera el .tex pero no compila.")
-        return False
-    cwd = tex_path.parent
-    for i in range(2):
-        result = subprocess.run(
-            [lualatex, "-interaction=nonstopmode", "-halt-on-error", tex_path.name],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if result.returncode != 0:
-            print(f"[!] lualatex (pasada {i+1}) fallo:")
-            tail = result.stdout[-3000:]
-            try:
-                print(tail)
-            except UnicodeEncodeError:
-                # Console encoding (cp1252 en Windows) puede no aceptar
-                # algunos glifos Unicode del log; degradamos a ASCII.
-                print(tail.encode("ascii", errors="replace").decode("ascii"))
-            return False
-    return True
 
 
 def main() -> int:

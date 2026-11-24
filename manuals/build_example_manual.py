@@ -47,6 +47,7 @@ OUT_TEX = OUT_DIR / "Example_manual.tex"
 OUT_PDF = OUT_DIR / "Example_manual.pdf"
 
 sys.path.insert(0, str(OUT_DIR))
+from _latex import compile_pdf  # noqa: E402
 from build_reference_manual import (  # noqa: E402
     md_to_latex,
     report_broken_links,
@@ -55,7 +56,6 @@ from build_reference_manual import (  # noqa: E402
 from build_user_manual import (  # noqa: E402
     build_colofon,
     build_preamble,
-    compile_pdf,
     reroute_advertencia_boxes,
 )
 

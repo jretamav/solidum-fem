@@ -1,6 +1,6 @@
 # ADR 0041 — Revisión del paso convergido: decisiones discretas con el campo del propio paso
 
-- **Estado**: aceptado (2026-11-18), tras la revisión del plan por `arquitecto-solidum` (aprobado con cambios, `informes/revision_arquitectura_2026-11-18_adr0041.md`) y de las specs por `teorico-solidum` (`informes/verificacion_teorica_2026-11-18_activacion_dentro_del_paso.md`).
+- **Estado**: aceptado (2026-11-18), tras la revisión del plan por `arquitecto-solidum` (aprobado con cambios, `informes/arquitecto/revision_arquitectura_2026-11-18_adr0041.md`) y de las specs por `teorico-solidum` (`informes/teorico/verificacion_teorica_2026-11-18_activacion_dentro_del_paso.md`).
 - **Fecha**: 2026-11-18
 - **Alcance**:
   - `solidum/core/element.py`: gancho nuevo `Element.revise_step(U_converged) -> bool`, `False` por omisión;

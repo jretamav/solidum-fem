@@ -9,7 +9,7 @@ prototipo independiente), energía disipada, irreversibilidad, tangentes por
 diferencias finitas (también la global ensamblada con partición de signo
 mixto), restricción del 3D, invariancia de unidades, kernel por lotes y la
 integración IMPL-EX. Los hallazgos H1–H5 y P4 de la verificación del
-2026-11-18 (``informes/verificacion_teorica_2026-11-18_modelo2_bloque1.md``)
+2026-11-18 (``informes/teorico/verificacion_teorica_2026-11-18_modelo2_bloque1.md``)
 están cubiertos.
 
 Bloque 2 (con ``f_c`` y ``G_c``, spec §3; sección final): parámetros y estado

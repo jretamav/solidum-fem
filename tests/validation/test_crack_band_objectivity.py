@@ -204,7 +204,7 @@ def test_modelo2_barra_impl_ex_igual_al_modelo_1():
     también con el paso grueso (1 µm). Con ese paso IMPL-EX rebasa el pico un
     13–15 % y disipa 1.036, 1.062 y 1.094·G_f·A con 5, 10 y 20 columnas: el
     exceso crece al refinar (reporte de validación del 2026-11-18,
-    ``informes/reporte_modelo2_barra_2026-11-18.pdf``; hipótesis: el error
+    ``informes/reportes/reporte_modelo2_barra_2026-11-18.pdf``; hipótesis: el error
     depende de Δu/h, no de Δu)."""
     (c1, D1), _ = bar(Quad4, 5, modelo=MODELO_1, integration="impl-ex")
     (c2, D2), _ = bar(Quad4, 5, modelo=MODELO_2, integration="impl-ex")

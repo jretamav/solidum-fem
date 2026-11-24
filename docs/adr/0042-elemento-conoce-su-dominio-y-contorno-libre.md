@@ -1,6 +1,6 @@
 # ADR 0042 — El elemento conoce su dominio (P10) y el contorno libre es una función del programa principal
 
-- **Estado**: aceptado (2026-11-19), tras la revisión del plan por `arquitecto-solidum` (cambios antes de programar, aplicados; `informes/revision_arquitectura_2026-11-19_paso_b.md`).
+- **Estado**: aceptado (2026-11-19), tras la revisión del plan por `arquitecto-solidum` (cambios antes de programar, aplicados; `informes/arquitecto/revision_arquitectura_2026-11-19_paso_b.md`).
 - **Fecha**: 2026-11-19
 - **Alcance**:
   - `solidum/core/element.py`: propiedad `Element.domain` (referencia débil `_domain_ref`, atributo de clase `None` por omisión) y `Element.__getstate__`, que no serializa la referencia;

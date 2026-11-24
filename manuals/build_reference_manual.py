@@ -24,8 +24,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
-import subprocess
 import sys
 import unicodedata
 from pathlib import Path
@@ -38,6 +36,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # —del que ahora se deriva la agrupación de capítulos— no sería importable.
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from _latex import compile_pdf  # noqa: E402
 
 SPECS_DIR = ROOT / "docs" / "specs"
 # Specs de los módulos de usuario: una carpeta ``<módulo>/specs/`` por módulo.
@@ -1472,34 +1472,6 @@ def assemble() -> str:
     parts.append(POSTAMBLE)
     report_broken_links()
     return "\n".join(parts)
-
-
-def compile_pdf(tex_path: Path) -> bool:
-    lualatex = shutil.which("lualatex")
-    if lualatex is None:
-        print("[!] lualatex no encontrado en PATH. Genera el .tex pero no compila.")
-        return False
-    cwd = tex_path.parent
-    for i in range(2):  # dos pasadas para resolver TOC
-        result = subprocess.run(
-            [lualatex, "-interaction=nonstopmode", "-halt-on-error", tex_path.name],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if result.returncode != 0:
-            print(f"[!] lualatex (pasada {i+1}) fallo:")
-            tail = result.stdout[-3000:]
-            try:
-                print(tail)
-            except UnicodeEncodeError:
-                # Console encoding (cp1252 en Windows) puede no aceptar
-                # algunos glifos Unicode del log; degradamos a ASCII.
-                print(tail.encode("ascii", errors="replace").decode("ascii"))
-            return False
-    return True
 
 
 def main() -> int:
