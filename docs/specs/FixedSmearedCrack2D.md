@@ -366,8 +366,6 @@ references:
 
 ## Implementación
 
-*Rellena la IA tras programar.*
-
 Bloque 1 (tracción y cortante, sin aplastamiento), 2026-11-24.
 
 - Archivo: `solidum/materials/fixed_smeared_crack_2d.py` (núcleo Numba por punto y adaptador por lotes, como los modelos 1 y 2; reutiliza `_softening.py` y `CrackBandMixin`).
