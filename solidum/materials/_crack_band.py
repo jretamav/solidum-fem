@@ -20,6 +20,12 @@ la extrapolación siguiente. ``r = Δτ_{n+1}/Δτ_n`` lo fija el ensamblador po
 intento de paso; fuera de un paso (``r`` negativo en el kernel) el daño queda
 congelado en ``d̃_n`` y el estado no cambia.
 
+Ley de Hordijk en la apertura (spec §2b, bloque 3b): con
+``softening='hordijk'`` el daño es el de ``_softening.evaluate_hordijk_damage``
+con la apertura crítica ``w_c = k_w·G_f/f_t`` y la ``h`` del punto, y el límite
+de ``h`` pasa a ``h_max = 0.7382·E·G_f/f_t²`` (continuidad en el pico). La
+exponencial no cambia.
+
 Por qué un módulo propio: las variantes 2D y 3D comparten la validación de
 los parámetros, ``α(h)``, el límite ``h_max`` y el estado inicial por punto
 (Reglas.md §1: dos casos reales); cada una conserva su núcleo compilado.
@@ -33,7 +39,14 @@ from numba import njit
 
 from solidum.constants import CRACK_BAND_DAMAGE_MAX
 from solidum.materials._equivalent_strain import EQUIVALENT_STRAIN_CODES
-from solidum.materials._softening import evaluate_exponential_damage
+from solidum.materials._softening import (
+    EXPONENTIAL,
+    HORDIJK,
+    HORDIJK_H_MAX_FACTOR,
+    HORDIJK_KW,
+    evaluate_damage_law,
+    parse_softening,
+)
 
 # Medidas que admiten las variantes; Rankine por omisión (decisión del
 # usuario, 2026-11-11, Q1 de la spec).
@@ -46,6 +59,9 @@ IMPLICIT, IMPL_EX = 0, 1
 DEFAULT_INTEGRATION = "implicit"
 # Razón de pseudo-tiempo en el kernel cuando no hay un paso en curso.
 NO_STEP_RATIO = -1.0
+# Ley de ablandamiento por omisión (usuario, 2026-11-24, Q13 de la spec):
+# ningún resultado existente cambia; Hordijk se pide explícitamente.
+DEFAULT_SOFTENING = "exponential"
 
 
 @njit(cache=True)
@@ -62,17 +78,33 @@ def crack_band_alpha(h, E, f_t, G_f):
 
 
 @njit(cache=True)
-def crack_band_damage(kappa, E, kappa_0, alpha, tol, cap):
-    """Daño ``d(κ)`` de la ley exponencial con el umbral de admisibilidad
-    del padre (``E·(κ − κ_0) ≤ tol`` ⇒ 0) y el tope ``cap``."""
+def hordijk_critical_opening(f_t, G_f):
+    """``w_c = k_w·G_f/f_t`` de la ley de Hordijk (spec §2b, Q12)."""
+    return HORDIJK_KW * G_f / f_t
+
+
+@njit(cache=True)
+def crack_band_damage_slope(kappa, E, kappa_0, tol, cap, law, alpha, w_c, h):
+    """Daño ``d(κ)`` de la ley elegida y su pendiente ``dd/dκ``, con el
+    umbral de admisibilidad del padre (``E·(κ − κ_0) ≤ tol`` ⇒ ``(0, 0)``) y
+    el tope ``cap`` (la pendiente no cuenta en el tope: el llamador pasa a la
+    secante)."""
     if E * (kappa - kappa_0) <= tol:
-        return 0.0
-    d, _ = evaluate_exponential_damage(kappa, kappa_0, alpha, cap)
+        return 0.0, 0.0
+    d, dd, _ = evaluate_damage_law(kappa, kappa_0, law, alpha, w_c, h, cap)
+    return d, dd
+
+
+@njit(cache=True)
+def crack_band_damage(kappa, E, kappa_0, tol, cap, law, alpha, w_c, h):
+    """Daño ``d(κ)`` de :func:`crack_band_damage_slope`."""
+    d, _ = crack_band_damage_slope(kappa, E, kappa_0, tol, cap, law, alpha, w_c, h)
     return d
 
 
 @njit(cache=True)
-def implex_update(eps_eq, kappa_n, kappa_prev, d_n, err_n, ratio, E, kappa_0, alpha, tol, cap):
+def implex_update(eps_eq, kappa_n, kappa_prev, d_n, err_n, ratio, E, kappa_0, tol, cap,
+                  law, alpha, w_c, h):
     """Paso IMPL-EX de un punto (spec §8). Devuelve
     ``(d̃, κ_{n+1}, κ_prev', e)``: el daño con el que se calcula el
     esfuerzo, la variable histórica implícita, la del paso anterior para la
@@ -85,11 +117,11 @@ def implex_update(eps_eq, kappa_n, kappa_prev, d_n, err_n, ratio, E, kappa_0, al
     if ratio < 0.0:
         return d_n, kappa_n, kappa_prev, err_n
     kappa_tilde = kappa_n + ratio * (kappa_n - kappa_prev)
-    d_tilde = crack_band_damage(kappa_tilde, E, kappa_0, alpha, tol, cap)
+    d_tilde = crack_band_damage(kappa_tilde, E, kappa_0, tol, cap, law, alpha, w_c, h)
     if d_tilde < d_n:
         d_tilde = d_n
     kappa_new = eps_eq if eps_eq > kappa_n else kappa_n
-    d_impl = crack_band_damage(kappa_new, E, kappa_0, alpha, tol, cap)
+    d_impl = crack_band_damage(kappa_new, E, kappa_0, tol, cap, law, alpha, w_c, h)
     return d_tilde, kappa_new, kappa_n, abs(d_impl - d_tilde)
 
 
@@ -122,20 +154,40 @@ def validate_crack_band_parameters(owner: str, E, nu, f_t, G_f, damage_max, dens
 
 
 class CrackBandMixin:
-    """Lo común a las variantes 2D y 3D: ``h`` por punto y ``α(h)``.
+    """Lo común a las variantes 2D y 3D: ``h`` por punto, ``α(h)`` y la ley
+    de ablandamiento.
 
     La subclase define ``E``, ``f_t``, ``G_f``, ``kappa_0`` y
-    ``damage_max`` antes de usar estos métodos.
+    ``damage_max`` y llama a :meth:`_set_softening` antes de usar estos
+    métodos.
     """
+
+    def _set_softening(self, owner: str, softening) -> None:
+        self._softening_code = parse_softening(owner, softening)
+        self.w_c = (float(hordijk_critical_opening(self.f_t, self.G_f))
+                    if self._softening_code == HORDIJK else 0.0)
+
+    @property
+    def softening(self) -> str:
+        return "hordijk" if self._softening_code == HORDIJK else "exponential"
 
     @property
     def uses_characteristic_length(self) -> bool:
         return True
 
     @property
+    def characteristic_length(self) -> float:
+        """``ℓ_ch = E·G_f/f_t²`` (Hillerborg, Modéer y Petersson 1976)."""
+        return self.E * self.G_f / self.f_t ** 2
+
+    @property
     def characteristic_length_limit(self) -> float:
-        """``h_max = 2·E·G_f/f_t²`` (= 2·ℓ_ch de Hillerborg)."""
-        return 2.0 * self.E * self.G_f / self.f_t ** 2
+        """``h_max``: ``2·ℓ_ch`` con la exponencial (α > 0) y
+        ``E·w_c/(f_t·|g'(0)|) = 0.7382·ℓ_ch`` con Hordijk (sin retroceso en el
+        pico, spec §2b)."""
+        if self._softening_code == HORDIJK:
+            return HORDIJK_H_MAX_FACTOR * self.characteristic_length
+        return 2.0 * self.characteristic_length
 
     def alpha_for(self, h: float) -> float:
         """``α(h) = 1/(G_f/(h·f_t) − κ₀/2)``."""
@@ -184,12 +236,19 @@ class CrackBandMixin:
             raise ValueError(f"{name}: longitud característica h = {h} no válida (> 0).")
         h_max = self.characteristic_length_limit
         if h >= h_max:
+            params = (f"E = {self.E:.4g}, G_f = {self.G_f:.4g}, f_t = {self.f_t:.4g}, "
+                      f"ℓ_ch = E·G_f/f_t² = {self.characteristic_length:.4g}")
+            if self._softening_code == HORDIJK:
+                raise ValueError(
+                    f"{name}: la longitud característica h = {h:.4g} supera el límite de la "
+                    f"ley de Hordijk h_max = {HORDIJK_H_MAX_FACTOR:.4f}·ℓ_ch = {h_max:.4g} "
+                    f"({params}): la respuesta tendría retroceso en el pico (el daño saltaría "
+                    f"y la energía disipada superaría G_f/h). Use elementos más pequeños.")
             raise ValueError(
                 f"{name}: la longitud característica h = {h:.4g} supera el límite "
-                f"h_max = 2·E·G_f/f_t² = {h_max:.4g} (E = {self.E:.4g}, G_f = {self.G_f:.4g}, "
-                f"f_t = {self.f_t:.4g}): la rama de ablandamiento tendría retroceso en el "
-                f"propio material (la energía elástica en el pico ya supera G_f/h). "
-                f"Use elementos más pequeños.")
+                f"h_max = 2·E·G_f/f_t² = {h_max:.4g} ({params}): la rama de ablandamiento "
+                f"tendría retroceso en el propio material (la energía elástica en el pico ya "
+                f"supera G_f/h). Use elementos más pequeños.")
         return self._point_state(h)
 
     def _missing_h(self) -> ValueError:
@@ -206,6 +265,11 @@ class CrackBandMixin:
 
 __all__ = [
     "DEFAULT_INTEGRATION",
+    "DEFAULT_SOFTENING",
+    "EXPONENTIAL",
+    "HORDIJK",
+    "crack_band_damage_slope",
+    "hordijk_critical_opening",
     "IMPLICIT",
     "IMPL_EX",
     "INTEGRATION_CODES",

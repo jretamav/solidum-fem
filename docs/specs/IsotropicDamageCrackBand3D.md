@@ -77,6 +77,7 @@ parameters:
   - { name: equivalent_strain, type: str, required: false, default: "rankine", desc: "rankine | energy | mazars | modified_von_mises (Q1 de la spec 2D)" }
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises" }
   - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (§8 de la spec 2D; ADR 0034)" }
+  - { name: softening,  type: str,   required: false, default: "exponential", desc: "exponential | hordijk (§2b de la spec 2D; bloque 3b)" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante (Q5 de la spec 2D)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 

@@ -9,6 +9,8 @@
 > **Estado: aprobada por el usuario (2026-11-11, «si», con las cinco recomendaciones Q1–Q5) y validada.** Bloque 1 (banda de grieta, medida de Rankine, tope propio y siembra de $h$ en los sólidos 2D y 3D) y bloque 2 (integración IMPL-EX, §8, con la pieza genérica del pseudo-tiempo, [ADR 0034](../adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md), y la prueba estructural de Van Vliet) implementados el mismo día.
 >
 > **Bloque 3 (2026-11-17): ancho de banda según la orientación de la grieta — estudiado y cerrado sin programar** (usuario, 2026-11-23; §4, «Ancho según la orientación»; Q6–Q11 del Diálogo). El estudio se conserva: con la grieta libre ningún ancho quita la dependencia de la malla, porque lo que queda viene de la cinemática de la banda, no de la fórmula de $h$. Límites medidos del modelo en §10.
+>
+> **Bloque 3b (2026-11-24): ley de ablandamiento de Hordijk en la apertura — aprobada por el usuario, implementada, verificada y validada con la viga de Petersson** (§2b; Q12–Q16 del Diálogo). Opción `softening = 'hordijk'` del modelo 1 y del daño de tracción del modelo 2, 2D y 3D; la exponencial no cambia.
 
 ---
 
@@ -53,6 +55,66 @@ Con $h \ge h_\text{max}$ la rama de ablandamiento tendría retroceso en el propi
 $$D(\kappa) = \tfrac12 f_t\kappa_0 + \frac{f_t}{\alpha}\Bigl(1 - e^{-\alpha(\kappa-\kappa_0)}\Bigr) - \tfrac12\,f_t\,e^{-\alpha(\kappa-\kappa_0)}\,\kappa, \qquad D(\infty) = g = \frac{G_f}{h}.$$
 
 Es la fórmula de referencia de las pruebas de energía en el punto material.
+
+### 2b. Ley de Hordijk en la apertura (bloque 3b, `softening = 'hordijk'`; aprobada por el usuario el 2026-11-24)
+
+Opción aprobada por el usuario el 2026-11-11 (ATENA, ec. 2.13) y aplazada hasta ahora. La exponencial de §1–§2 sigue igual; esta es una segunda ley, elegible con el parámetro `softening`. Llega también al daño de tracción $d^+$ del modelo 2 ([TensionCompressionDamage2D](TensionCompressionDamage2D.md) §2), que usa la misma ley que el modelo 1, y a las variantes 3D.
+
+**Ley** (Cornelissen, Hordijk y Reinhardt 1986; Hordijk 1991; manual de teoría de ATENA, ec. 2.13): el esfuerzo que transmite la grieta en función de su apertura $w$ es
+
+$$\frac{\sigma}{f_t} = g\!\left(\frac{w}{w_c}\right), \qquad g(x) = \bigl(1 + c_1^3 x^3\bigr)\,e^{-c_2 x} - x\,\bigl(1 + c_1^3\bigr)\,e^{-c_2}, \qquad c_1 = 3,\ \ c_2 = 6.93,$$
+
+para $0 \le w \le w_c$, y $\sigma = 0$ para $w > w_c$. Propiedades (*calculado*, `informes/prototipos_2026-11-24/hordijk/constantes.py`): $g(0) = 1$, $g(1) = 0$; $g$ es convexa en $[0, 1]$ ($g''(x)\,e^{c_2x} \ge 10.4 > 0$), así que la pendiente más pronunciada está en el origen, $g'(0) = -\bigl(c_2 + (1 + c_1^3)\,e^{-c_2}\bigr) = -6.9574$; al final llega a cero con pendiente $g'(1) = -0.1379$. $c_1$ y $c_2$ son constantes del ajuste de Hordijk, no parámetros del material.
+
+**Apertura crítica** (Q12, decidida por el usuario el 2026-11-24: valor exacto). El área bajo la curva es la energía de fractura:
+
+$$G_f = f_t\,w_c\int_0^1 g\,dx = 0.194702\,f_t\,w_c \quad\Longrightarrow\quad w_c = k_w\,\frac{G_f}{f_t}, \qquad k_w = \Bigl(\int_0^1 g\,dx\Bigr)^{-1} = 5.13606.$$
+
+Es el valor de DIANA (manual de teoría 11.1, grieta fija multidireccional, ec. 53, y discontinuidades discretas, ec. 7), de Jirásek (2011, p. 17: «el factor 5.136 da área unitaria») y de Slobbe (2015, ec. 3.9); ATENA lo redondea a 5.14, que encierra $1.00077\,G_f$ (*leído* por `bibliotecario-solidum`, `informes/bibliotecario/busqueda_hordijk_2026-11-24.md`). En la fuente primaria (Cornelissen, Hordijk y Reinhardt 1986, ec. 1, p. 50; Hordijk 1991, ecs. 6.1–6.2) $w_c = 160$ µm es un parámetro de ajuste de los ensayos y $G_F$ se obtiene como el área bajo la curva (99.7 N/m con $f_t = 3.2$ MPa, que es $f_t w_c/5.136$); los códigos invierten la relación: fijan $G_f$ y derivan $w_c$.
+
+**Banda de grieta en la apertura** (Rots 1988; ATENA, ec. 2.18). En tracción uniaxial la deformación de la banda es la elástica más la de la grieta repartida en el ancho $h$: $\varepsilon = \sigma/E + w/h$. Con el daño escalar, $\sigma = (1-d)\,E\,\kappa$ y $\kappa = \varepsilon$ (§1), así que
+
+$$w = h\,(\kappa - \sigma/E) = h\,d\,\kappa .$$
+
+Para cada $\kappa > \kappa_0$ la apertura es la raíz de
+
+$$\varphi(w) = \frac{w}{h} + \frac{f_t}{E}\,g\!\left(\frac{w}{w_c}\right) - \kappa = 0, \qquad 0 < w < w_c,$$
+
+y el daño es
+
+$$\boxed{\;d(\kappa) = \frac{w}{h\,\kappa} = 1 - \frac{f_t\,g(w/w_c)}{E\,\kappa}\;}$$
+
+Si $\kappa \ge w_c/h$, la grieta está abierta del todo ($w \ge w_c$, $\sigma = 0$) y $d$ es el tope `damage_max` (§3). Igual que con la exponencial, $d$ depende sólo de $\kappa$ y de $h$, y la medida equivalente elegida (§5) lo extiende a cualquier estado: la ley de Hordijk se cumple exactamente en tracción uniaxial. Fuera de ella, $w = h\,d\,\kappa$ es una variable auxiliar de la ley, no la apertura física, y no se expone como «apertura» en la salida. En una banda confinada lateralmente ($\nu \ne 0$; Diálogo, 2026-11-11) el material disipa $(1-\nu^2)\,G_f/h$, como con la exponencial, y la apertura física es $(1-\nu^2)\,w$: el esfuerzo se anula a $(1-\nu^2)\,w_c$ ($0.96\,w_c$ con $\nu = 0.2$; *calculado* por `teorico-solidum`).
+
+**Diferencia con la exponencial de §1.** La exponencial está escrita en la deformación total, $\sigma = f_t\,e^{-\alpha(\kappa-\kappa_0)}$, con $\alpha(h)$ ajustada para que el área sea $G_f/h$; su curva $\sigma$–$w$ no es exactamente exponencial en $w$. La de Hordijk está escrita en la apertura: su curva $\sigma$–$w$ es la de Hordijk con cualquier $h$. Las dos disipan $G_f/h$.
+
+**Unicidad y límite de $h$** (pregunta Q14). $\varphi(0) = \kappa_0 - \kappa < 0$, $\varphi(w_c) = w_c/h - \kappa > 0$ y $\varphi'(w) = 1/h + f_t\,g'(w/w_c)/(E\,w_c)$. Como $\varphi$ es convexa, la raíz en $(0, w_c)$ es única con cualquier $h$. Lo que exige un límite es la continuidad de la respuesta en el pico: $\varphi' > 0$ en todo $[0, w_c]$ si y sólo si $\varphi'(0) > 0$, es decir,
+
+$$\boxed{\;h < h_\text{max}^\text{H} = \frac{E\,w_c}{f_t\,\lvert g'(0)\rvert} = \frac{k_w}{\lvert g'(0)\rvert}\,\ell_\text{ch} = 0.7382\,\ell_\text{ch}\;}$$
+
+Con eso $w(\kappa)$ es continua, $d$ parte de 0 en $\kappa_0$ y crece con $\kappa$ ($dd/d\kappa > 0$ porque $g' < 0$ da $1/(h\varphi') > 1 > d$): no hay retroceso en el propio material. Con $h \ge h_\text{max}^\text{H}$ el daño salta en el pico y el esfuerzo cae en vertical: con $h$ = 1.2, 1.8 y 3 veces $h_\text{max}^\text{H}$, $d$ salta a 0.30, 0.66 y 0.82, $\sigma$ cae a 0.70, 0.35 y 0.18 $f_t$ y el material disipa 1.003, 1.064 y 1.319 $G_f/h$ (*calculado* por `teorico-solidum`). Es la condición de ATENA (ec. 2.43), donde sólo se advierte. Para el concreto usual de §2 ($E = 30$ GPa, $f_t = 3$ MPa, $G_f = 100$ N/m): $w_c = 0.171$ mm y $h_\text{max}^\text{H} = 246$ mm (exponencial: 667 mm). Con $h \ge h_\text{max}^\text{H}$ el material lo rechaza con `ValueError` al recibir $h$, como con la exponencial (usuario, 2026-11-24, Q14).
+
+**Energía.** En tracción uniaxial monótona hasta la separación, $\int\sigma\,d\varepsilon = \int\sigma\,d(\sigma/E) + \frac1h\int\sigma\,dw = 0 + G_f/h$: la parte elástica vuelve a cero y la de la grieta es el área de Hordijk. En un estado intermedio, con descarga secante al origen,
+
+$$D(w) = \frac1h\Bigl(\int_0^w \sigma\,dw' - \tfrac12\,\sigma\,w\Bigr), \qquad D(w_c) = \frac{G_f}{h}.$$
+
+El tope $d_\text{max}$ se alcanza en $w_\text{tope}$, a menos de 0.3 % de $w_c$ con $h \ge 5$ mm (donde $g < 4\cdot10^{-4}$); a partir de ahí el daño queda fijo y la energía disipada final es $D(w_\text{tope})$. La pérdida exacta es
+
+$$\frac{G_f}{h} - D(w_\text{tope}) = \tfrac12(1-d_\text{max})\,d_\text{max}\,E\,\kappa_\text{tope}^2 + \frac1h\int_{w_\text{tope}}^{w_c}\sigma\,dw \;\approx\; \tfrac12(1-d_\text{max})\,k_w^2\,\frac{\ell_\text{ch}}{h}\cdot\frac{G_f}{h},$$
+
+dominada por la energía elástica de la rigidez residual: con $d_\text{max} = 1 - 10^{-6}$ y el concreto usual, 0.09 % de $G_f$ con $h = 5$ mm y 0.004 % con $h = 100$ mm (*calculado*, `punto_material.py`; la exponencial pierde 0.2 % con 5 mm, §3).
+
+**Tangente (integración implícita).** Derivando $\varphi(w(\kappa), \kappa) = 0$:
+
+$$\frac{dw}{d\kappa} = \frac{1}{\varphi'(w)}, \qquad \frac{dd}{d\kappa} = \frac{1}{\kappa}\Bigl(\frac{1}{h\,\varphi'(w)} - d\Bigr),$$
+
+y la tangente es la del padre con esta $dd/d\kappa$ en lugar de la exponencial; secante en descarga, sin daño y en el tope. Comprobación en tracción uniaxial: $d\sigma/d\varepsilon = E\,(1 - 1/(h\varphi'))$, que es la rigidez de dos resortes en serie, el elástico $E$ y el de la grieta $h\,f_t\,g'/w_c$.
+
+**Solución local.** $\varphi$ es creciente y convexa en $[0, w_c]$, así que la recta tangente en el origen queda por debajo de $\varphi$ y su raíz, $(\kappa-\kappa_0)/\varphi'(0)$, a la derecha de la raíz buscada. El método de Newton que arranca en $\min\bigl(w_c,\ (\kappa-\kappa_0)/\varphi'(0)\bigr)$ baja de forma monótona a la raíz sin salir del intervalo, con convergencia cuadrática: como mucho 5 iteraciones con $h = 0.02\,h_\text{max}^\text{H}$, 8 con $0.9\,h_\text{max}^\text{H}$ y 12 con $0.999\,h_\text{max}^\text{H}$ (*medido*, `informes/prototipos_2026-11-24/hordijk/arranque_newton.py` y `teorico/p2_punto.py`). **Criterio de parada**: iterar hasta que el iterado deje de decrecer ($w_\text{nuevo} \ge w$), con un tope de 50 iteraciones; es determinista, sin tolerancia, y termina en el redondeo ($\lvert d - d_\text{ref}\rvert \le 4\cdot10^{-16}$ hasta $0.4\,h_\text{max}^\text{H}$, $2\cdot10^{-15}$ con $0.9\,h_\text{max}^\text{H}$ y $\sim10^{-13}$ con $0.999\,h_\text{max}^\text{H}$, por el condicionamiento $1/(1 - h/h_\text{max}^\text{H})$; *calculado* por `teorico-solidum`; una tolerancia floja metería ruido en la tangente). El daño se calcula como $d = w/(h\kappa)$, que no cancela con daño pequeño. Si $\kappa \ge w_c/h$, el tope directamente, sin Newton. Una sola función compilada de la ley para el cálculo punto a punto y el kernel por lotes.
+
+**IMPL-EX** (§8) sin cambios, con $d(\tilde\kappa)$ de esta ley: disipación por paso $\ge 0$ y el mismo orden (razones 2.02–2.10 con el quiebre del inicio del daño y 4.00 en un camino suave; *calculado* por `teorico-solidum`). Diferencia con la exponencial: la pendiente del daño en el pico es mayor, $\kappa_0\,dd/d\kappa(\kappa_0^+) = 1/(1 - h/h_\text{max}^\text{H})$ frente a $1 + \alpha\kappa_0$ (1.04 frente a 1.03 con $h$ = 10 mm; 1.69 frente a 1.35 con 100 mm), así que con elementos grandes el sobrepaso del pico con pasos gruesos puede ser mayor (*hipótesis*; lo mide la validación). Una extrapolación $\tilde\kappa \ge w_c/h$ lleva $\tilde d$ al tope sin retorno, como hoy.
+
+**Fuera de alcance.** Hordijk en las leyes cohesivas de interfaz (`CohesiveDamageIsotropic`, `CohesiveDamageMixedMode`); la exponencial escrita en la apertura; $c_1$, $c_2$ como parámetros; carga cíclica y fatiga (el tema de la tesis de Hordijk).
 
 ### 3. Tope del daño (pregunta Q5)
 
@@ -276,12 +338,13 @@ parameters:
   - { name: equivalent_strain, type: str, required: false, default: "rankine", desc: "rankine (nueva) | energy | mazars | modified_von_mises (Q1)" }
   - { name: k,          type: float, required: false, default: null, desc: "f_c/f_t, sólo y obligatorio con modified_von_mises (como el padre)" }
   - { name: integration, type: str, required: false, default: "implicit", desc: "implicit | impl-ex (Oliver, Huespe y Cante 2008, §8); impl-ex requiere un solver que declare su pseudo-tiempo (ADR 0034) y pasos pequeños cerca del pico" }
+  - { name: softening,  type: str,   required: false, default: "exponential", desc: "Ley de ablandamiento: exponential (§1–§2, en la deformación total) | hordijk (§2b, en la apertura; bloque 3b); por omisión exponential (usuario, 2026-11-24, Q13)" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope del daño de la variante, en (0, 1); ver §3 y Q5" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 
 signature:
   compute_state: "(ε: ndarray(3,), state_vars) -> (σ: ndarray(3,), C_tan: ndarray(3,3), state_vars')"
-  initial_point_state: "(h: float) -> state_vars; ValueError si h no es finito y positivo o si h ≥ h_max = 2·E·G_f/f_t²"
+  initial_point_state: "(h: float) -> state_vars; ValueError si h no es finito y positivo o si h ≥ h_max (exponencial: 2·E·G_f/f_t²; Hordijk: 0.7382·E·G_f/f_t², §2b)"
   strain_kind: "plano Voigt — [ε_xx, ε_yy, γ_xy] con γ_xy = 2·ε_xy"
 
 state_schema:
@@ -295,11 +358,12 @@ conventions:
   sign: "σ > 0 ⇔ tracción"
   voigt: "γ_xy = 2·ε_xy; ε_eq sobre el estado 3D asociado (padre §3)"
   units: "E, f_t en Pa; G_f en N/m; h en m (cualquier sistema coherente)"
-  regularization: "α(h) = 1/(G_f/(h·f_t) − κ_0/2), h < h_max = 2·E·G_f/f_t²"
+  regularization: "exponencial: α(h) = 1/(G_f/(h·f_t) − κ_0/2), h < h_max = 2·E·G_f/f_t²; Hordijk: w = h·d·κ, σ = f_t·g(w/w_c), w_c = k_w·G_f/f_t, h < h_max^H = E·w_c/(f_t·|g'(0)|) (§2b)"
 
 validity:
   - "E > 0, f_t > 0, G_f > 0, ν ∈ (−1, 0.5)"
-  - "0 < h < 2·E·G_f/f_t² en cada punto (se comprueba al recibir h)"
+  - "0 < h < h_max en cada punto (se comprueba al recibir h): 2·E·G_f/f_t² con la exponencial, 0.7382·E·G_f/f_t² con Hordijk"
+  - "softening ∈ {exponential, hordijk}"
   - "damage_max ∈ (0, 1)"
   - "integration = 'impl-ex' sólo con un solver que declare su pseudo-tiempo (§6.2, ADR 0034)"
   - "pequeñas deformaciones; agrietamiento dominado por tracción"
@@ -389,6 +453,47 @@ acceptance:
     - name: schlangen_demo
       setup: "opcional, demostración: viga de Schlangen sobre la malla de FEAP del usuario"
       expect: "sin criterio cuantitativo; respuesta global, trayectoria de la banda y robustez del cálculo"
+  hordijk:                 # bloque 3b (§2b), propuesta; Q15. Valen para el modelo 1 y el modelo 2 (d⁺), 2D y 3D; corregidos con la revisión de teorico-solidum (2026-11-24)
+    - name: hordijk_constants
+      expect: "k_w = 5.1360552952511618 (exacto; Q12) y |g'(0)| = 6.957384024315071, con 16 cifras o su forma cerrada (no por cuadratura); h_max^H = E·w_c/(f_t·|g'(0)|)"
+      tol_rel: 1.0e-12
+    - name: hordijk_uniaxial_curve
+      setup: "tracción uniaxial de esfuerzo monótona; h/h_max^H ∈ {0.02, 0.1, 0.4, 0.9}; dos juegos de parámetros: E = 30 GPa, f_t = 3 MPa, G_f = 100 N/m y E = 25 GPa, f_t = 4.5 MPa, G_f = 60 N/m (valores ≠ 1, Reglas §6: w_c ∝ G_f/f_t)"
+      expect: "|σ − f_t·g(w/w_c)| ≤ 1e-12·f_t (absoluto respecto a f_t) con w = h·(ε − σ/E) en todo el ablandamiento; inicio en κ_0 = f_t/E y pico f_t; d = damage_max para κ ≥ w_c/h"
+      tol_rel: 1.0e-12
+    - name: hordijk_dissipated_energy
+      setup: "la misma carga hasta κ = 1.5·w_c/h, pasos finos (≥ 4·10⁵)"
+      expect: "∫σ dε − ½σε = D(w) de §2b en estados intermedios; al final D(w_tope), con la primitiva cerrada de g (la pérdida del tope de §2b es exacta en esa forma, no en la aproximada)"
+      tol_rel: 1.0e-6
+    - name: hordijk_h_max_rejected
+      setup: "initial_point_state con h = h_max^H y 1.01·h_max^H, en el modelo 1 y en el modelo 2, 2D y 3D; h = 0.999·h_max^H se acepta"
+      expect: "ValueError al construir el modelo con h, h_max^H, ℓ_ch y los parámetros en el mensaje (Q14); con 0.999·h_max^H, d continua en κ_0 (d → 0⁺), creciente con κ, y el Newton local converge en ≤ 50 iteraciones"
+    - name: hordijk_scaling
+      setup: "dos materiales con distintos E, f_t, G_f (y unidades N–mm frente a N–m) e igual h/ℓ_ch"
+      expect: "d(κ/κ_0) idéntica: d depende sólo de κ/κ_0 y h/ℓ_ch (detecta un factor olvidado en w_c ∝ G_f/f_t o en h)"
+      tol_rel: 1.0e-12
+    - name: hordijk_consistent_tangent_fd
+      setup: "carga activa con cada medida equivalente, esfuerzo plano y deformación plana, 2D y 3D, modelo 1 y d⁺ del modelo 2; diferencia centrada con paso 5·10⁻⁷·|ε| (o Richardson); estados lejos de κ_0, del tope y de la arista de Rankine; h ≤ 0.9·h_max^H"
+      expect: "|C_FD − C_tan| ≤ 5e-6·max|C_FD| (implícita); en tracción uniaxial dσ/dε = rigidez en serie de E y h·f_t·g'/w_c; control negativo: con la dd/dκ de la exponencial la prueba falla"
+      tol_rel: 5.0e-6
+    - name: hordijk_unload_reload
+      setup: "carga hasta el ablandamiento, descarga parcial y recarga; repetir un intento de paso (trial/commit)"
+      expect: "descarga secante al origen con d fijo y tangente = secante; disipación ≥ 0 en el ciclo; repetir el intento da el mismo estado"
+      tol_rel: 1.0e-12
+    - name: hordijk_batch_and_3d
+      expect: "kernel por lotes bit a bit con compute_state (implícita e IMPL-EX); restricción del 3D exacta; el modelo 2 en tracción uniaxial reproduce al modelo 1"
+      tol_rel: 1.0e-12
+    - name: exponential_unchanged
+      expect: "con softening = 'exponential' (o sin el parámetro) todos los resultados son idénticos bit a bit a los de antes del bloque 3b; verificado una vez, sin prueba permanente: 162 series (informes/prototipos_2026-11-24/hordijk/referencia_exponencial.py) y, por teorico-solidum, SHA-256 idéntico de 14 760 pasos entre HEAD y el árbol de trabajo; la prueba permanente protege Q13 (por omisión = 'exponential' explícito)"
+    - name: hordijk_impl_ex
+      expect: "secante exacta, disipación por paso ≥ 0, primer orden en el inicio del daño (las de impl_ex con esta ley); una extrapolación κ̃ ≥ w_c/h da el tope sin entrar al Newton"
+    - name: hordijk_bar_objectivity
+      setup: "barra de bar_in_tension con Quad4, Tri3, Hex8 y Tet4; implícita e IMPL-EX; ν = 0 y ν = 0.2"
+      expect: "energía final = G_f·A (ν = 0) y (1 − ν²)·G_f·A (ν = 0.2) ±1 %; curva posterior al pico igual en todas las mallas ±1 %"
+      tol_rel: 1.0e-2
+    - name: hordijk_petersson
+      setup: "validación (validador-solidum): viga de Petersson, Quad4 en tres mallas, IMPL-EX, modelo 2 y modelo 1; misma corrida con la exponencial"
+      expect: "pico y curva objetivos entre mallas (como la exponencial, ±2 %); D(8 mm) ≈ G_F·A (cota inferior); diferencia de pico y de cola frente a la exponencial reportada, sin criterio contra el ensayo"
 
 references:
   - "Bažant Z.P., Oh B.H. (1983). Crack band theory for fracture of concrete. Matériaux et Constructions 16, 155–177."
@@ -405,6 +510,11 @@ references:
   - "Code_Aster, doc. R5.03.81, méthode IMPLEX: https://ericca.uqtr.ca/fr14.4/man_r/r5/r5.03.81.pdf"
   - "OpenSees, ASDConcrete3D: https://opensees.github.io/OpenSeesDocumentation/user/manual/material/ndMaterials/ASDConcrete3D.html"
   - "Las del padre (Simó y Ju 1987; Mazars 1986; de Vree et al. 1995; de Borst et al. 2012; de Souza Neto et al. 2008)."
+  - "Cornelissen H.A.W., Hordijk D.A., Reinhardt H.W. (1986). Experimental determination of crack softening characteristics of normalweight and lightweight concrete. HERON 31(2), 45–56 (§2b; ec. 1, p. 50; acceso abierto, copia en docs/referencias/)."
+  - "Hordijk D.A. (1991). Local approach to fatigue of concrete. Tesis doctoral, TU Delft. ISBN 90-9004519-8 (§2b; ecs. 6.1–6.2, pp. 69–71)."
+  - "DIANA FEA, Theory Manual 11.1: Multi-Directional Fixed Crack Model, «Nonlinear Tension Softening (Hordijk et al.)», ecs. 51–56; Discrete Cracking, ecs. 6–7: https://manuals.dianafea.com/d111 (§2b)."
+  - "Jirásek M. (2011). Damage and smeared crack models. En: Numerical Modeling of Concrete Cracking, CISM, Springer, 1–49. doi:10.1007/978-3-7091-0897-0_1 (§2b, ec. 45 y el factor 5.136)."
+  - "Červenka V., Jendele L., Červenka J. ATENA Program Documentation, Part 1: Theory (2025), ecs. 2.13, 2.18 y 2.43 (§2b; leído por el bibliotecario el 2026-11-11)."
 ```
 
 ---
@@ -417,6 +527,7 @@ references:
 - Tests:
   - `tests/test_damage_crack_band.py` (punto material 2D y 3D: α(h), h_max, pico, energía $D(\kappa)$, tope, Rankine, tangente por diferencias finitas, restricción exacta del 3D, kernel por lotes bit a bit; siembra de $h$ en los diez sólidos, mallas regulares y distorsionadas, con el factor de localización por regla y su aviso; elemento sin $h$).
   - `tests/validation/test_crack_band_objectivity.py` (barra en tracción con los diez sólidos, mallas del generador estructurado; viga entallada a flexión con `Quad4`, `Quad8`, `Tri3` y `Tri6`).
+- Ley de Hordijk (bloque 3b, §2b): `solidum/materials/_softening.py` (`evaluate_hordijk_damage`, `evaluate_damage_law`, constantes `HORDIJK_*` con $k_w$ en forma cerrada); `_crack_band.py` (`crack_band_damage_slope`, `hordijk_critical_opening`, `CrackBandMixin._set_softening`, $h_\text{max}$ y su mensaje según la ley); los núcleos de los padres (`_compute_damage_2d/3d`) reciben la ley con la exponencial por omisión, operación por operación igual que antes; el modelo 2 la recibe en `tension_damage_update`. El código de la ley viaja en `batch_params` (modelo 1: antes de la razón de IMPL-EX, que sigue siendo la última). Pruebas: `tests/test_crack_band_hordijk.py` (96 casos: constantes, curva exacta con dos materiales y cuatro $h/h_\text{max}$, energía $D(w)$ y $D(w_\text{tope})$, $h_\text{max}$, continuidad cerca del límite, escalado N–mm/SI, tangente por diferencias finitas en los cuatro materiales y todas las medidas, resortes en serie, descarga y recarga, por lotes bit a bit, restricción del 3D, modelo 2 = modelo 1 en tracción uniaxial, IMPL-EX) y los casos `test_hordijk_*` de `tests/validation/test_crack_band_objectivity.py` (barra: $D/(G_fA)$ = 0.9985–0.9993 con 5, 10 y 20 columnas, carga en $u$ = 0.05 mm igual entre mallas). Mutaciones: 6/6 detectadas (`informes/prototipos_2026-11-24/hordijk/mutaciones.py`). Exponencial sin cambio: 162 series bit a bit antes y después (`referencia_exponencial.py`).
 - Notas de traducción: la energía de fractura se da por unidad de área ($N/m$ en SI); con unidades N–mm, $G_f$ en N/mm.
 
 ---
@@ -460,3 +571,21 @@ references:
 - **2026-11-17** · **Prototipo de la banda con trayectoria prescrita** (`informes/prototipos_2026-11-17/banda_orientacion/viga_trayectoria.py`; el usuario: «hazlo»). Viga entallada, 10 mallas (Quad4 y Tri3; alineadas y no estructuradas), grieta prescrita vertical desde la entalla, daño sólo en los elementos que cruza; cuatro anchos: actual, P, O2 y cuerda exacta $h = \sum A/\sum\ell$ (elementos de cuerda muy corta agrupados con un vecino de banda para que la banda quede conectada por lados, el caso «crossover» de Burnett y Schreyer). Error medio / máximo de $D/(G_f A)$: actual 14 % / 36 %, P 11 % / 33 %, O2 11 % / 32 %, **cuerda 9 % / 23 %**. La cuerda es la mejor, pero lejos del «exacto por construcción», porque fallan sus dos premisas: (a) no todos los elementos cruzados se rompen (la grieta encuentra cómo separarse sin alguno: disipa de menos, Quad4 `Ua` 0.84); (b) en los triángulos de una banda en zigzag la grieta abre con deformación mixta y el daño isótropo disipa también la energía de cortante (Tri3 `Ua` 1.15 con todos los cruzados rotos; no es error de IMPL-EX: con 4000 pasos, 1.145). **Lectura: en mallas no estructuradas el error restante es cinemático y constitutivo, no de la fórmula de $h$.**
 - **2026-11-17** · **Banda restringida con cuerda exacta y daño sólo de tracción** (usuario: «si»; `informes/prototipos_2026-11-17/banda_orientacion/viga_trayectoria_m2.py`, `resultados_viga_trayectoria_m2.csv`). Mismas 10 mallas, trayectoria y anchos que el prototipo anterior, con dos materiales en la banda: el daño isótropo de Solidum y la partición de Faria, Oliver y Cervera (1998) con $d^- = 0$ (modelo 2, opción (a) de su Q1), mismo criterio de Rankine, misma ley y la misma banda de grieta. Nuevo: balance de energía por punto de integración ($D_g = \sum\tfrac12(\sigma_n+\sigma_{n+1})\Delta\varepsilon\,dV - \tfrac12\sigma\varepsilon\,dV$; su suma coincide con la $D$ global hasta el redondeo) frente a la energía nominal $G_f\,dV/h_g$, que separa el **déficit** de los puntos no rotos del **exceso** de los rotos. Error medio / máximo de $D/(G_f A)$ con la cuerda: isótropo 9.0 % / 22.7 %, **tracción 6.1 % / 14.9 %**. (1) **El exceso de los triángulos lo causa el daño isótropo** (medido): con daño isótropo, los Tri3 rotos disipan 1.07–1.62 veces su energía nominal (`U`, `Ua`, `U75`) y el indicador del estado de esfuerzos al dañarse, $r = \sum\psi_0\,\Delta d / \sum(\bar\sigma_1^2/2E)\,\Delta d$ (1 en tracción uniaxial, $2(1+\nu)$ en cortante puro con Rankine), lo explica (1.11–1.51); con daño sólo de tracción el exceso desaparece (rotos 0.92–1.03 de su nominal; Tri3 `U` 1.227 → 0.995). (2) **El déficit de los elementos cruzados que no se rompen no depende del material** (medido): Quad4 `Ua` 0.135 con los dos, Tri3 `Ua` 0.072, Quad4 `U75` 0.053, Tri3 `U5` 0.038 con tracción; es cinemático. (3) Con daño de tracción, P y O2 tienen menor error medio que la cuerda (4.5 y 4.4 %) porque en varias mallas asignan más energía nominal que $G_f L$ (hasta +24 % P y +36 % O2) y así compensan el déficit; la cuerda da el objetivo exacto y su error es sólo el déficit cinemático más 1–8 % de energía que los rotos aún no han disipado al final del ensayo (*hipótesis*: la carga se detiene en $\delta = 2$ mm con 1–3 % del pico). El daño de tracción necesita Newton completo (la partición espectral hace el paso no lineal aun con IMPL-EX); con la tangente congelada se detuvo en el paso 377.
 - **2026-11-23** · **Bloque 3 cerrado sin programar; límites medidos del modelo** (usuario: «la 1» al elegir el siguiente frente, cerrar la banda y el modelo 2 tal como están con sus límites escritos, y «si» al plan). Q6–Q11 quedan sin decidir y el estudio de §4 se conserva como tal; el `h` de Solidum sigue siendo $\alpha\,c\,\Omega_e^{1/d}$. Razón (medida en §4 y en las entradas del 2026-11-17): con la grieta libre ningún ancho quita la dependencia de la malla (error medio 16 % actual, 11 % proyección, 15 % O2); con la trayectoria prescrita y la cuerda exacta queda un 9 % (6 % con daño sólo de tracción), y lo que queda es cinemático. Jirásek y Zimmermann (1998, p. 277; leído) atribuyen la transferencia espuria a que la interpolación continua no reproduce el salto de una grieta que se abre, y dan como remedio de fondo la discontinuidad dentro del elemento. Se cierra también la línea de la banda con trayectoria seguida y cuerda exacta (módulo de usuario, 2026-11-17). Del contrato se quitan el parámetro `crack_band_width` y la aceptación `rotated_mesh_bar`, que eran propuesta. En §10 se añaden los límites medidos: sesgo de malla con cifras, la viga SEN (biela comprimida degradada, no objetiva) y el panel en L (ablandamiento a 26 % entre mallas). Sin cambio de código ni de resultados.
+- **2026-11-24** · **Bloque 3b: ley de Hordijk en la apertura (spec por la IA; §2b y casos `hordijk` del contrato).** Opción aprobada por el usuario el 2026-11-11 y retomada con su «si» del 2026-11-24. Decisiones de la IA: es un cambio de física sobre componentes existentes (Reglas §4), no un componente nuevo, así que se documenta aquí, en la spec canónica de la banda de grieta, y las otras tres specs remiten a §2b; llega al modelo 1 y al daño de tracción $d^+$ del modelo 2, 2D y 3D, con una sola función de la ley compartida por los cuatro materiales; la exponencial queda intacta. Lo que se le dijo al usuario: no promete arreglar la cola de la viga SEN (eso es el cortante a través de la grieta, modelo 3). Criterio de admisión: en curso con `bibliotecario-solidum` (ATENA, el código de referencia de la ley, no está en la lista cerrada de Reglas §1).
+
+**Preguntas al usuario** (una por vez; cada una con recomendación):
+
+- **Q12. Apertura crítica $w_c$.** Con $c_1 = 3$ y $c_2 = 6.93$, el área exacta bajo la curva da $w_c = 5.13606\,G_f/f_t$; la literatura y ATENA usan 5.14, que disipa $1.00077\,G_f$ (0.08 % de más). **Recomendación: el valor exacto**, para que el material disipe exactamente $G_f$, que es la propiedad que define la banda de grieta en Solidum y la que comprueban las pruebas; la diferencia con 5.14 está muy por debajo de la incertidumbre de $G_F$.
+- **Q13. Valor por omisión de `softening`.** **Recomendación: `exponential`**, para que ningún resultado existente cambie (reportes de Petersson, Van Vliet, panel en L y SEN); Hordijk se pide explícitamente.
+- **Q14. Elementos con $h \ge h_\text{max}^\text{H} = 0.738\,\ell_\text{ch}$** (246 mm con el concreto usual). ATENA sólo advierte y sobrestima la energía (*medido* en el prototipo: con $h$ = 1.8 $h_\text{max}^\text{H}$ disipa $1.07\,G_f/h$). **Recomendación: rechazarlo con `ValueError`, como hoy con la exponencial**, para que la energía nunca deje de ser $G_f$ sin que el usuario lo sepa.
+- **Q15. Aceptación.** Casos `hordijk` del contrato: curva de Hordijk exacta en el punto material con dos juegos de parámetros, energía $G_f/h$, $h_\text{max}^\text{H}$ rechazado, tangente por diferencias finitas, la exponencial sin cambio bit a bit, objetividad de la barra ±1 % y validación con la viga de Petersson (modelo 2 y modelo 1, tres mallas, comparada con la exponencial; sin criterio contra el ensayo). **Recomendación: aprobarla así.**
+- **2026-11-24** · **Usuario: «si» a Q13**: sin `softening` en la entrada, la ley es la exponencial; Hordijk sólo cuando se pide. Ningún resultado existente cambia.
+- **2026-11-24** · **Usuario: «si» a Q14**: con `softening = 'hordijk'` y $h \ge h_\text{max}^\text{H}$, el material lo rechaza con `ValueError` al recibir $h$ (mensaje con $h$, $h_\text{max}^\text{H}$ y los parámetros), como con la exponencial; no hay modo de sólo advertir.
+- **2026-11-24** · **Revisión de la spec por `teorico-solidum`** (`informes/teorico/verificacion_teorica_2026-11-24_hordijk_spec.md`; guiones en `informes/prototipos_2026-11-24/hordijk/teorico/`). Veredicto: se puede programar con cambios; la formulación de §2b coincide con su deducción independiente (SymPy y mpmath). Aplicado en §2b y en los casos `hordijk`: (H1) un caso pedía $h$ = 100 mm con un material cuyo $h_\text{max}^\text{H}$ es 54.7 mm, ahora $h$ como fracción de $h_\text{max}^\text{H}$; (H2) la pérdida por el tope tenía un término omitido, ahora exacta y la prueba compara con $D(w_\text{tope})$; (H3) tolerancia de la tangente por diferencias finitas 5·10⁻⁶ con paso 5·10⁻⁷, lejos de $\kappa_0$, del tope y de la arista de Rankine; (H4) criterio de parada del Newton sin tolerancia (hasta que el iterado deja de decrecer), $d = w/(h\kappa)$, una sola función compilada; (H5) la raíz es única con cualquier $h$, el límite da la continuidad en el pico; (H6) casos nuevos de escalado, descarga y recarga, trial/commit y $\nu = 0.2$; (H7) $w$ es variable auxiliar fuera de la tracción uniaxial y la banda confinada se anula en $(1-\nu^2)\,w_c$; (H8) IMPL-EX sin cambios de propiedades, pendiente del daño en el pico mayor que la exponencial con elementos grandes. Ningún hallazgo cambia la física propuesta.
+- **2026-11-24** · **Usuario: «si» a Q15**: aceptación aprobada con los casos `hordijk` corregidos tras la revisión del teórico. Queda Q12 ($w_c$ exacto o 5.14), que espera la fuente primaria (bibliotecario).
+- **2026-11-24** · **Criterio de admisión y fuente primaria** (`bibliotecario-solidum`, `informes/bibliotecario/busqueda_hordijk_2026-11-24.md`; fuentes primarias copiadas a `docs/referencias/`). (ii) Códigos: **sí, por DIANA**, con nombre propio (`HORDYK`) en tres implementaciones (grieta fija multidireccional, Total Strain Crack, interfaces), con $w_c = 5.136\,G_f/f_t$; Abaqus, ANSYS, OpenSees y Code_Aster sólo admiten una curva tabular. (i) Textos: **no en sentido literal**; ninguno de la lista trae la ecuación; de Borst et al. (2012) muestra la curva cuasi-frágil de Reinhardt y Cornelissen sin fórmula (p. 187, Fig. 6.11c) y el marco de la banda de grieta con una ley $\sigma$–$w$ cualquiera (pp. 188–189). El criterio no decide: **la clasificación es del usuario (Q16)**. Fuente primaria confirmada: misma ecuación y constantes; $w$ es la apertura física; el 5.136 de DIANA, Jirásek (2011) y Slobbe (2015) es el inverso exacto del área y el 5.14 de ATENA un redondeo. Dato, sin cambiar Q14: para elementos grandes DIANA propone reducir $f_t$ (ecs. 30 y 56) o limitar $h$, con avisos.
+- **Q16. Clasificación de la ley de Hordijk** (Reglas §1 y §3). **Recomendación: programa principal**, como opción de forma de una regularización ya estándar (la banda de grieta), igual que Reglas §4 trata como estándar las leyes cohesivas genéricas; la implementa DIANA, el único código de la lista con leyes de concreto por nombre. La alternativa es un módulo de usuario con su propia carga explícita.
+- **2026-11-24** · **Usuario: «si» a Q16**: la ley de Hordijk entra al programa principal, como opción de forma de la banda de grieta. Justificación para el catálogo: criterio (ii) por DIANA (`HORDYK`, tres implementaciones); criterio (i) sólo a nivel de familia (de Borst et al. 2012, pp. 187–189: banda de grieta con una ley σ–w cualquiera y la curva cuasi-frágil de Reinhardt y Cornelissen); clasificación del usuario.
+- **2026-11-24** · **Usuario: «si» a Q12**: $w_c = k_w\,G_f/f_t$ con el valor exacto $k_w = 1/\int_0^1 g = 5.13606$ (el de DIANA, Jirásek y Slobbe); el manual anotará que frente a ATENA (5.14) $w_c$ sale 0.08 % menor. **Spec completa** (Q12–Q16 decididas): se programa.
+- **2026-11-24** · **Bloque 3b implementado y verificado** (`informes/teorico/verificacion_teorica_2026-11-24_hordijk_codigo.md`; guiones en `informes/prototipos_2026-11-24/hordijk/teorico/codigo/`). Veredicto del teórico: se puede hacer commit; el código coincide con su deducción independiente (constantes a 1 ulp, $d$ a $\le 4\cdot10^{-16}$ hasta $0.4\,h_\text{max}^\text{H}$, tangente de los cuatro materiales por diferencias finitas con Richardson $\le 4\cdot10^{-8}$, Newton sin fallos en 383 550 puntos con a lo sumo 13 iteraciones, kernel por lotes bit a bit en 12 720 pasos, exponencial idéntica a `HEAD` por SHA-256). Observaciones aplicadas: la prueba de la tangente afirma la rama consistente; la de descarga comprueba la tangente secante; el tope de IMPL-EX se prueba en los cuatro materiales; la precisión de §2b se acota por $h/h_\text{max}^\text{H}$; el contrato anota cómo se verificó `exponential_unchanged`. Validación con la viga de Petersson: en curso (`validador-solidum`).
+- **2026-11-24** · **`hordijk_petersson`: validado** (`validador-solidum`, `informes/reportes/reporte_hordijk_petersson_2026-11-24.pdf`, corridas en `informes/hordijk_petersson_yaml/`). Quad4, $h$ = 10, 5 y 2.5 mm, IMPL-EX de 2 µm, modelos 1 y 2 (*medido*): pico 697.8 / 694.9 / 699.5 N (dispersión 0.66 %; exponencial 0.70 %), curva entera a ≤ 1.3 % del pico entre mallas; $D(8\text{ mm})/(G_FA)$ = 0.933–0.947 (cota inferior: la viga lleva aún 6–10 N) y $W(8)/(G_FA)$ = 0.97–1.00; 2 iteraciones por paso, sin bisecciones; mismo tiempo que la exponencial. Frente a la exponencial, igual en las tres mallas y los dos modelos: pico 6.5–6.7 % más bajo, carga mayor desde $\delta \approx 0.76$ mm (+12 a +16 % en 1 mm, +9 a +14 % en 4 mm), coherente con la forma de la ley (más empinada al principio, más esfuerzo entre 0.06 y 0.19 mm de apertura; la causa en la viga es *hipótesis*). Con 1 µm el pico baja 0.23 % (exponencial 0.13 %). La exponencial repetida hoy coincide con la del 2026-11-18 a $10^{-9}$ (el redondeo multihilo de dos corridas iguales). Sin la envolvente del ensayo (no digitalizada en el proyecto).

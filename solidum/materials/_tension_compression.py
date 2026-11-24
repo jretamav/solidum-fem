@@ -51,7 +51,7 @@ from solidum.constants import ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL
 from solidum.materials._crack_band import (
     IMPL_EX,
     CrackBandMixin,
-    crack_band_damage,
+    crack_band_damage_slope,
     implex_update,
 )
 
@@ -71,8 +71,10 @@ def drucker_prager_k(beta: float) -> float:
 
 @njit(cache=True)
 def tension_damage_update(eps_eq, kappa_n, kappa_prev_n, d_n, err_n, E, kappa_0, alpha,
-                          tol, cap, integration, ratio):
-    """Daño de tracción ``d⁺`` de un punto (spec §2 y §8).
+                          tol, cap, integration, ratio, law, w_c, h):
+    """Daño de tracción ``d⁺`` de un punto (spec §2 y §8), con la ley de
+    ablandamiento ``law`` del modelo 1 (exponencial con ``alpha`` o Hordijk
+    con ``w_c`` y ``h``; ``_softening``).
 
     ``eps_eq = ⟨σ̄_I⟩₊/E`` es la medida de Rankine. Devuelve
     ``(d⁺, κ⁺, κ⁺_prev, e, dd/dκ)``, con ``dd/dκ > 0`` sólo en carga activa
@@ -88,14 +90,15 @@ def tension_damage_update(eps_eq, kappa_n, kappa_prev_n, d_n, err_n, E, kappa_0,
     """
     if integration == IMPL_EX:
         d, kappa_new, kappa_prev, err = implex_update(
-            eps_eq, kappa_n, kappa_prev_n, d_n, err_n, ratio, E, kappa_0, alpha, tol, cap)
+            eps_eq, kappa_n, kappa_prev_n, d_n, err_n, ratio, E, kappa_0, tol, cap,
+            law, alpha, w_c, h)
         return d, kappa_new, kappa_prev, err, 0.0
     loading = eps_eq > kappa_n
     kappa_new = eps_eq if loading else kappa_n
-    d = crack_band_damage(kappa_new, E, kappa_0, alpha, tol, cap)
+    d, dd_law = crack_band_damage_slope(kappa_new, E, kappa_0, tol, cap, law, alpha, w_c, h)
     dd = 0.0
     if loading and d > 0.0 and d < cap and eps_eq > 0.0:
-        dd = (1.0 - d) * (1.0 / kappa_new + alpha)
+        dd = dd_law
     return d, kappa_new, kappa_n, 0.0, dd
 
 

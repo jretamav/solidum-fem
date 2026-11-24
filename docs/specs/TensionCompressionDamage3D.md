@@ -61,6 +61,7 @@ parameters:
   - { name: G_c,        type: float, required: false, default: null, desc: "Energía de aplastamiento [N/m]; obligatoria con f_c" }
   - { name: beta,       type: float, required: false, default: 1.16, desc: "f_bc/f_c, β ≥ 1 (como la 2D)" }
   - { name: integration, type: str,  required: false, default: "implicit", desc: "implicit | impl-ex" }
+  - { name: softening,  type: str,   required: false, default: "exponential", desc: "Ley de d⁺: exponential | hordijk (modelo 1, §2b de la spec 2D; bloque 3b)" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope de los dos daños" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 

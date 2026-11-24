@@ -88,6 +88,8 @@ d^+(\kappa^+) = 1 - \frac{\kappa_0}{\kappa^+}\,e^{-\alpha(h)\,(\kappa^+-\kappa_0
 
 con $\kappa_0 = f_t/E$, $\alpha(h) = 1/(G_f/(h f_t) - \kappa_0/2)$, $h < h_\text{max} = 2EG_f/f_t^2$ y el tope `damage_max` (modelo 1, §2–§3). Como la tracción uniaxial es exacta (§1), el material disipa $G_f/h$ por unidad de volumen y la prueba de objetividad de la barra vale sin cambios. En compresión $\varepsilon^+_\text{eq} = 0$: la compresión nunca hace crecer $d^+$.
 
+**Ley de Hordijk** (bloque 3b, aprobada por el usuario el 2026-11-24): con `softening = 'hordijk'`, $d^+(\kappa^+)$ es la ley de Hordijk en la apertura del modelo 1 ([IsotropicDamageCrackBand2D](IsotropicDamageCrackBand2D.md) §2b), con $w = h\,d^+\kappa^+$, su tangente y su límite $h < h_\text{max}^\text{H} = 0.7382\,EG_f/f_t^2$; el daño de compresión no cambia.
+
 ### 3. Daño de compresión $d^-$ (Q2, decidida por el usuario el 2026-11-17)
 
 Opcional: con $f_c$ y $G_c$ dados se activa; sin ellos $d^- \equiv 0$ (compresión elástica, como el prototipo de la viga).
@@ -228,6 +230,7 @@ parameters:
   - { name: beta,       type: float, required: false, default: 1.16, desc: "f_bc/f_c, razón de resistencias biaxial y uniaxial en compresión; β ≥ 1 (con β < 1 la compresión hidrostática dañaría)" }
   - { name: hypothesis, type: str,   required: false, default: "plane_stress", desc: "plane_stress | plane_strain" }
   - { name: integration, type: str,  required: false, default: "implicit", desc: "implicit | impl-ex (modelo 1, §8)" }
+  - { name: softening,  type: str,   required: false, default: "exponential", desc: "Ley de d⁺: exponential | hordijk (modelo 1, §2b; bloque 3b)" }
   - { name: damage_max, type: float, required: false, default: 0.999999, desc: "Tope de los dos daños, en (0, 1)" }
   - { name: density,    type: float, required: false, default: null, desc: "Densidad (ADR 0008)" }
 

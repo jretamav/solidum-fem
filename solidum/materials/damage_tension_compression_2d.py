@@ -19,8 +19,10 @@ from solidum.core.material import Material
 from solidum.materials._crack_band import (
     CRACK_BAND_DAMAGE_MAX,
     DEFAULT_INTEGRATION,
+    DEFAULT_SOFTENING,
     NO_STEP_RATIO,
     crack_band_alpha,
+    hordijk_critical_opening,
     parse_integration,
     validate_crack_band_parameters,
 )
@@ -48,8 +50,11 @@ from solidum.registry import MaterialRegistry
 
 @njit(cache=True)
 def _tc_2d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ratio,
-                 f_c, G_c, K, nu, plane_strain, tol_c):
+                 f_c, G_c, K, nu, plane_strain, tol_c, law, w_c):
     """Un punto de integración, implícito o IMPL-EX (spec §3, §6–§8).
+
+    ``law`` es la ley de ablandamiento de ``d⁺`` (``_softening``): la
+    exponencial usa ``alpha``; la de Hordijk, ``w_c`` y la ``h`` del estado.
 
     ``Ce`` es la elasticidad plana de la hipótesis (esfuerzo plano o
     deformación plana). ``f_c > 0`` activa el daño de compresión (``G_c``,
@@ -75,7 +80,7 @@ def _tc_2d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
     eps_eq = s1 / E if s1 > 0.0 else 0.0
     d_t, kt, kt_prev, err, dd = tension_damage_update(
         eps_eq, S_old[KT], S_old[KT_PREV], S_old[DT], S_old[ERR], E, kappa_0, alpha,
-        tol, cap, integration, ratio)
+        tol, cap, integration, ratio, law, w_c, S_old[H])
     d_c = S_old[DC]
     kc = S_old[KC]
     kc_prev = S_old[KC_PREV]
@@ -135,7 +140,8 @@ def _tc_2d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
 @njit(cache=True)
 def _tc_2d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, f_t, G_f, tol_abs,
-    tol_rel, damage_max, integración, r, f_c, G_c, K, ν, deformación plana]``
+    tol_rel, damage_max, integración, r, f_c, G_c, K, ν, deformación plana,
+    ley de ablandamiento]``
     (``f_c = 0`` sin aplastamiento); ``C`` = ``C_e`` plana; estado de
     ``_tension_compression``. Daño sin ``h`` sembrada → ``flag``
     (``batch_report``)."""
@@ -148,7 +154,8 @@ def _tc_2d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     tol_c = params[4] + params[5] * (f_c / 3.0)
     sig, C_tan, row = _tc_2d_point(strain, S_old, E, kappa_0, alpha, C, tol, params[6],
                                    int(params[7]), params[8], f_c, params[10], params[11],
-                                   params[12], params[13] > 0.0, tol_c)
+                                   params[12], params[13] > 0.0, tol_c, int(params[14]),
+                                   hordijk_critical_opening(params[2], params[3]))
     if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0 or (f_c > 0.0 and row[DC] > 0.0)):
         flag[0] = 1
     for i in range(3):
@@ -180,6 +187,9 @@ class TensionCompressionDamage2D(TensionCompressionMixin, Material):
         compresión ``d⁻`` (Drucker-Prager sobre la parte negativa del
         esfuerzo efectivo y parábola de Feenstra, con ``G_c/h`` en la rama
         descendente). Sin ellas la compresión es elástica.
+    softening : str
+        Ley de ablandamiento de ``d⁺``: ``'exponential'`` (default) o
+        ``'hordijk'`` (en la apertura de grieta; modelo 1, spec §2b).
     beta : float
         ``f_bc/f_c``, razón entre las resistencias biaxial y uniaxial en
         compresión, ``β ≥ 1``; 1.16 por omisión (Kupfer).
@@ -202,7 +212,8 @@ class TensionCompressionDamage2D(TensionCompressionMixin, Material):
     según su signo). Tracción uniaxial exacta, ``σ = (1 − d⁺)·E·ε``; una
     grieta cerrada recupera ``E`` y ``ν``. ``d⁺`` con Rankine sobre ``σ̄`` y
     ley exponencial regularizada por la longitud característica ``h`` del
-    punto, ``h < 2·E·G_f/f_t²`` (modelo 1). ``d⁻`` (con ``f_c`` y ``G_c``)
+    punto, ``h < 2·E·G_f/f_t²`` (modelo 1); con ``softening='hordijk'``, la ley
+    de Hordijk en la apertura y ``h < 0.7382·E·G_f/f_t²`` (modelo 1, §2b). ``d⁻`` (con ``f_c`` y ``G_c``)
     con la medida de Drucker-Prager sobre ``σ̄⁻`` del estado 3D asociado y la
     parábola de Feenstra: pico ``f_c`` en compresión uniaxial, ``β·f_c`` en
     la biaxial igual, sin daño en la hidrostática y ``G_c/h`` en la rama
@@ -226,7 +237,8 @@ class TensionCompressionDamage2D(TensionCompressionMixin, Material):
                  beta: float = DEFAULT_BETA,
                  damage_max: float = CRACK_BAND_DAMAGE_MAX,
                  integration: str = DEFAULT_INTEGRATION,
-                 density: float | None = None):
+                 density: float | None = None,
+                 softening: str = DEFAULT_SOFTENING):
         owner = type(self).__name__
         validate_crack_band_parameters(owner, E, nu, f_t, G_f, damage_max, density)
         if float(nu) < 0.0:
@@ -242,6 +254,7 @@ class TensionCompressionDamage2D(TensionCompressionMixin, Material):
         self.f_t = float(f_t)
         self.G_f = float(G_f)
         self.kappa_0 = self.f_t / self.E
+        self._set_softening(owner, softening)
         self.damage_max = float(damage_max)
         self._set_compression(f_c, G_c, beta)
         self.elastic_base = Elastic2D(E, nu, hypothesis=hypothesis)
@@ -261,7 +274,7 @@ class TensionCompressionDamage2D(TensionCompressionMixin, Material):
             strain, S_old, self.E, self.kappa_0, alpha, self.elastic_base.C,
             self.admissibility_tol(state_vars), self.damage_max,
             self._integration_code, self._ratio, f_c, G_c, K, self.nu,
-            self.hypothesis == 'plane_strain', tol_c)
+            self.hypothesis == 'plane_strain', tol_c, self._softening_code, self.w_c)
         if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0 or (f_c > 0.0 and row[DC] > 0.0)):
             raise self._missing_h()
         return sigma, C_tan, self._row_to_state(row)
@@ -273,7 +286,8 @@ class TensionCompressionDamage2D(TensionCompressionMixin, Material):
         return np.array([self.E, self.kappa_0, self.f_t, self.G_f,
                          ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, self.damage_max,
                          float(self._integration_code), self._ratio, f_c, G_c, K, self.nu,
-                         1.0 if self.hypothesis == 'plane_strain' else 0.0],
+                         1.0 if self.hypothesis == 'plane_strain' else 0.0,
+                         float(self._softening_code)],
                         dtype=np.float64)
 
     def batch_matrix(self) -> np.ndarray:

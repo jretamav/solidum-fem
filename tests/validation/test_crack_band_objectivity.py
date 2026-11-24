@@ -92,18 +92,20 @@ def _solve(dom, right_nodes, u_max=U_MAX, steps=STEPS):
     return c, W - 0.5 * c[-1, 1] * c[-1, 0]
 
 
-def bar(cls, nx, nu=0.0, modelo=MODELO_1, integration="implicit", steps=STEPS):
+def bar(cls, nx, nu=0.0, modelo=MODELO_1, integration="implicit", steps=STEPS,
+        softening="exponential"):
     """Barra de L × H (× H) con la columna central de celdas debilitada."""
     dim = len(cls.REFERENCE_NODES[0])
     dx = L / nx
     n = int(round(H / dx))
+    mkw = {"integration": integration, "softening": softening}
     if dim == 2:
-        mat, weak = (modelo[0](E, nu, f, GF, integration=integration) for f in (FT, 0.95 * FT))
+        mat, weak = (modelo[0](E, nu, f, GF, **mkw) for f in (FT, 0.95 * FT))
         kw = {"thickness": T}
         mesh = structured_mesh(cls, (nx, n), size=(L, H), material=mat, **kw)
         GA = GF * H * T
     else:
-        mat, weak = (modelo[1](E, nu, f, GF, integration=integration) for f in (FT, 0.95 * FT))
+        mat, weak = (modelo[1](E, nu, f, GF, **mkw) for f in (FT, 0.95 * FT))
         kw = {}
         mesh = structured_mesh(cls, (nx, n, n), size=(L, H, H), material=mat)
         GA = GF * H * H
@@ -210,6 +212,52 @@ def test_modelo2_barra_impl_ex_igual_al_modelo_1():
     (c2, D2), _ = bar(Quad4, 5, modelo=MODELO_2, integration="impl-ex")
     np.testing.assert_allclose(c2, c1, rtol=1e-9, atol=1e-9 * np.abs(c1).max())
     assert D2 == pytest.approx(D1, rel=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Ley de Hordijk (bloque 3b; caso hordijk_bar_objectivity de la spec 2D)
+# ---------------------------------------------------------------------------
+#
+# Misma barra con softening='hordijk' (h = 20, 10, 5 mm, muy por debajo de
+# h_max = 0.738·ℓ_ch = 246 mm): la columna debilitada recorre la curva de
+# Hordijk en la apertura y disipa G_f·A con cualquier malla.
+
+@pytest.mark.parametrize("cls", [Quad4, Tri3], ids=lambda c: c.__name__)
+def test_hordijk_barra_2d_energia_objetiva(cls):
+    _check({nx: bar(cls, nx, softening="hordijk") for nx in (5, 10, 20)}, 1.0)
+
+
+@pytest.mark.parametrize("cls", [Hex8, Tet4], ids=lambda c: c.__name__)
+def test_hordijk_barra_3d_energia_objetiva(cls):
+    _check({nx: bar(cls, nx, softening="hordijk") for nx in (5, 10)}, 1.0)
+
+
+def test_hordijk_barra_con_poisson_disipa_1_menos_nu2():
+    """Con pasos de 0.5 µm: la caída tras el pico es más empinada que con la
+    exponencial y con 1 µm la curva muestrea el pico en 0.9699·P_pico (medido),
+    justo bajo el 0.97 de ``_check``; la energía ya cumplía con 1 µm."""
+    nu = 0.2
+    _check({nx: bar(Quad4, nx, nu, softening="hordijk", steps=2 * STEPS) for nx in (5, 10, 20)},
+           1.0 - nu**2)
+
+
+def test_hordijk_modelo2_barra_igual_al_modelo_1():
+    for nx in (5, 10, 20):
+        (c1, D1), GA = bar(Quad4, nx, softening="hordijk")
+        (c2, D2), _ = bar(Quad4, nx, modelo=MODELO_2, softening="hordijk")
+        np.testing.assert_allclose(c2, c1, rtol=1e-9, atol=1e-9 * np.abs(c1).max())
+        assert D1 / GA == pytest.approx(1.0, rel=1e-2), nx
+
+
+def test_hordijk_barra_impl_ex():
+    """IMPL-EX con el paso fino de la exponencial (0.125 µm): D = G_f·A a ±1 %
+    y la carga en u = 0.05 mm igual a la implícita a ±0.5 %."""
+    for nx in (5, 10, 20):
+        (c, D), GA = bar(Quad4, nx, integration="impl-ex", steps=3200, softening="hordijk")
+        assert D / GA == pytest.approx(1.0, abs=0.01), nx
+        (ci, _), _ = bar(Quad4, nx, softening="hordijk")
+        assert np.interp(0.05, c[:, 0], c[:, 1]) == pytest.approx(
+            np.interp(0.05, ci[:, 0], ci[:, 1]), rel=5e-3), nx
 
 
 # ---------------------------------------------------------------------------

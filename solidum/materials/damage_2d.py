@@ -19,14 +19,14 @@ from solidum.materials._equivalent_strain import (
     equivalent_strain_2d,
     parse_equivalent_strain,
 )
-from solidum.materials._softening import evaluate_exponential_damage
+from solidum.materials._softening import EXPONENTIAL, evaluate_damage_law
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.registry import MaterialRegistry
 
 
 @njit(cache=True)
 def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap, c_zz,
-                       nu, measure, k):
+                       nu, measure, k, law=EXPONENTIAL, w_c=0.0, h=0.0):
     """Actualización del daño isótropo 2D en un punto de Gauss.
 
     Devuelve ``(σ, C_tan, κ_new, d)``. ``tol`` es la tolerancia de
@@ -41,6 +41,11 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap, c_zz,
     también la variante con banda de grieta ``IsotropicDamageCrackBand2D``,
     con ``α(h)`` del punto, su tope y la medida de Rankine (código que este
     material no admite: ``parse_equivalent_strain``).
+
+    ``law``, ``w_c`` y ``h`` eligen la ley de ablandamiento
+    (``_softening.evaluate_damage_law``): la exponencial con ``alpha``
+    por omisión (este material) o la de Hordijk de la variante con banda
+    de grieta.
 
     Caché de Numba: este núcleo se compila con ``equivalent_strain_2d``
     dentro; un cambio en ``_equivalent_strain.py`` no invalida la caché de
@@ -62,10 +67,11 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap, c_zz,
 
     # Check de admisibilidad en esfuerzo (ADR 0006): f = E·(κ − κ_0)
     f_stress = E * (kappa_new - kappa_0)
+    dd_dkappa = 0.0
     if f_stress <= tol:
         d = 0.0
     else:
-        d, _ = evaluate_exponential_damage(kappa_new, kappa_0, alpha, cap)
+        d, dd_dkappa, _ = evaluate_damage_law(kappa_new, kappa_0, law, alpha, w_c, h, cap)
     # Flag de saturación consistente al final del bloque.
     saturated = (d >= cap) and f_stress > 0.0
 
@@ -77,10 +83,10 @@ def _compute_damage_2d(strain, kappa_old, E, kappa_0, alpha, Ce, tol, cap, c_zz,
     consistent_branch = loading and (d > 0.0) and (not saturated) and (eps_eq > 0.0)
     if consistent_branch:
         # C_alg = (1-d)·C_e − (∂d/∂κ)·(C_e·ε) ⊗ (∂ε_eq/∂ε)
-        # ∂d/∂κ = (1-d)·(1/κ + α);  ∂ε_eq/∂ε = s·v
+        # ∂d/∂κ de la ley (exponencial: (1-d)·(1/κ + α); Hordijk: spec
+        # IsotropicDamageCrackBand2D §2b);  ∂ε_eq/∂ε = s·v
         # Con la medida energética v = C_e·ε: el producto externo es
         # simétrico bit a bit.
-        dd_dkappa = (1.0 - d) * (1.0 / kappa_new + alpha)
         C_tan = C_sec - (dd_dkappa * s) * np.outer(sigma_eff, v)
     else:
         C_tan = C_sec

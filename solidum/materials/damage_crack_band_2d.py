@@ -18,10 +18,12 @@ from solidum.materials._crack_band import (
     CRACK_BAND_EQUIVALENT_STRAINS,
     DEFAULT_CRACK_BAND_EQUIVALENT_STRAIN,
     DEFAULT_INTEGRATION,
+    DEFAULT_SOFTENING,
     IMPL_EX,
     NO_STEP_RATIO,
     CrackBandMixin,
     crack_band_alpha,
+    hordijk_critical_opening,
     implex_update,
     parse_integration,
     validate_crack_band_parameters,
@@ -38,9 +40,11 @@ from solidum.registry import MaterialRegistry
 
 @njit(cache=True)
 def _crack_band_2d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, c_zz, nu,
-                         measure, k, integration, ratio):
+                         measure, k, integration, ratio, law, w_c):
     """Un punto de integración, implícito o IMPL-EX. Estado
-    ``[κ, d, h, κ_prev, e]``. Devuelve ``(σ, C_tan, κ, d, κ_prev, e)``."""
+    ``[κ, d, h, κ_prev, e]``. Devuelve ``(σ, C_tan, κ, d, κ_prev, e)``.
+    ``law`` es la ley de ablandamiento (``_softening``): la exponencial usa
+    ``alpha``; la de Hordijk, ``w_c`` y la ``h`` del estado."""
     if integration == IMPL_EX:
         sigma_eff = Ce @ strain
         if ratio < 0.0:
@@ -49,17 +53,19 @@ def _crack_band_2d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, c_zz, n
             eps_eq, _, _ = equivalent_strain_2d(strain, sigma_eff, E, nu, c_zz, measure, k)
         d, kappa_new, kappa_prev, err = implex_update(
             eps_eq, S_old[0], S_old[3], S_old[1], S_old[4], ratio,
-            E, kappa_0, alpha, tol, cap)
+            E, kappa_0, tol, cap, law, alpha, w_c, S_old[2])
         return (1.0 - d) * sigma_eff, (1.0 - d) * Ce, kappa_new, d, kappa_prev, err
     sigma, C_tan, kappa_new, d = _compute_damage_2d(
-        strain, S_old[0], E, kappa_0, alpha, Ce, tol, cap, c_zz, nu, measure, k)
+        strain, S_old[0], E, kappa_0, alpha, Ce, tol, cap, c_zz, nu, measure, k,
+        law, w_c, S_old[2])
     return sigma, C_tan, kappa_new, d, S_old[0], 0.0
 
 
 @njit(cache=True)
 def _crack_band_2d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, f_t, G_f, tol_abs,
-    tol_rel, damage_max, c_zz, ν, código de la medida, k, integración, r]``;
+    tol_rel, damage_max, c_zz, ν, código de la medida, k, integración, ley de
+    ablandamiento, r]`` (la razón ``r`` de IMPL-EX, la última);
     estado ``[κ, d, h, κ_prev, e]``. Daño sin ``h`` sembrada → ``flag``
     (``batch_report``)."""
     E = params[0]
@@ -69,7 +75,8 @@ def _crack_band_2d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     tol = params[4] + params[5] * (E * kappa_0)
     sig, C_tan, kappa_new, d, kappa_prev, err = _crack_band_2d_point(
         strain, S_old, E, kappa_0, alpha, C, tol, params[6], params[7],
-        params[8], int(params[9]), params[10], int(params[11]), params[12],
+        params[8], int(params[9]), params[10], int(params[11]), params[13],
+        int(params[12]), hordijk_critical_opening(params[2], params[3]),
     )
     if h <= 0.0 and (d > 0.0 or err > 0.0):
         flag[0] = 1
@@ -111,6 +118,10 @@ class IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D):
         2008): daño extrapolado de los dos últimos pasos y tangente secante,
         simétrica y definida positiva; requiere un solver que declare su
         pseudo-tiempo (ADR 0034) y pasos pequeños cerca del pico.
+    softening : str
+        Ley de ablandamiento: ``'exponential'`` (default, en la deformación
+        total, con ``α(h)``) o ``'hordijk'`` (en la apertura de grieta,
+        ``w = h·d·κ``, ``w_c = 5.136·G_f/f_t``; spec §2b).
     density : float, optional
         Densidad (ADR 0008).
 
@@ -118,7 +129,7 @@ class IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D):
     -----
     ``α(h) = 1/(G_f/(h·f_t) − κ_0/2)`` con ``h`` la longitud característica
     del punto (``initial_point_state``), que debe cumplir
-    ``h < 2·E·G_f/f_t²``. Con la integración implícita, el resto del modelo
+    ``h < 2·E·G_f/f_t²`` (con Hordijk, ``h < 0.7382·E·G_f/f_t²``). Con la integración implícita, el resto del modelo
     (esfuerzo efectivo, estado 3D asociado, Kuhn-Tucker, ley exponencial,
     tangente consistente) es el de ``IsotropicDamage2D``; la tangente es
     simétrica sólo con ``'energy'``. Con IMPL-EX es siempre simétrica. Estado:
@@ -137,7 +148,8 @@ class IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D):
                  k: float | None = None,
                  damage_max: float = CRACK_BAND_DAMAGE_MAX,
                  integration: str = DEFAULT_INTEGRATION,
-                 density: float | None = None):
+                 density: float | None = None,
+                 softening: str = DEFAULT_SOFTENING):
         owner = type(self).__name__
         validate_crack_band_parameters(owner, E, nu, f_t, G_f, damage_max, density)
         self.equivalent_strain, self._measure_code, self.k = parse_equivalent_strain(
@@ -148,6 +160,7 @@ class IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D):
         self.f_t = float(f_t)
         self.G_f = float(G_f)
         self.kappa_0 = self.f_t / self.E
+        self._set_softening(owner, softening)
         self.damage_max = float(damage_max)
         self.elastic_base = Elastic2D(E, nu, hypothesis=hypothesis)
         self.density = density
@@ -167,7 +180,7 @@ class IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D):
             strain, S_old, self.E, self.kappa_0, alpha,
             self.elastic_base.C, self.admissibility_tol(state_vars), self.damage_max,
             self.c_zz, self.elastic_base.nu, self._measure_code, self._k_param(),
-            self._integration_code, self._ratio,
+            self._integration_code, self._ratio, self._softening_code, self.w_c,
         )
         if h <= 0.0 and (d > 0.0 or err > 0.0):
             raise self._missing_h()
@@ -181,5 +194,6 @@ class IsotropicDamageCrackBand2D(CrackBandMixin, IsotropicDamage2D):
                          ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, self.damage_max,
                          self.c_zz, self.elastic_base.nu,
                          float(self._measure_code), self._k_param(),
-                         float(self._integration_code), self._ratio],
+                         float(self._integration_code), float(self._softening_code),
+                         self._ratio],
                         dtype=np.float64)

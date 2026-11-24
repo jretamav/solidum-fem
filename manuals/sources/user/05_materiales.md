@@ -188,7 +188,12 @@ para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza e
 
 - **Elementos cuadráticos.** Los elementos lineales (`Quad4`, `Tri3`) tienen deformación constante a través de la banda y se ablandan enteros. En los cuadráticos, cuando la banda avanza con gradiente (flexión), sólo se ablanda una parte de los puntos de Gauss de cada elemento. `Quad8` y `Quad9` lo corrigen con el factor $\alpha = 13/18$ (Gauss 3×3; ½ con 2×2), fiable si la banda va alineada con la malla: con la banda inclinada la respuesta resulta demasiado dúctil, y con esfuerzo uniforme en el elemento, que se ablanda entero, la energía disipada es $G_f/\alpha = 1.385\,G_f$. `Tri6` no tiene corrección fiable y en flexión disipa de menos (un 13–25 % en una viga entallada). En la viga de Petersson, sin corrección, `Quad8` y `Tri6` disipaban $0.69$–$0.80\,G_fA$ frente a 0.94 de `Quad4`; con la corrección, `Quad8` disipa lo mismo que `Quad4`. Solidum avisa una vez al leer el modelo.
 
-- **Parámetros**: `E`, `nu`, `f_t`, `G_f` (energía por unidad de área, N/m en SI), `hypothesis`, `equivalent_strain` (`rankine` por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también `energy`, `mazars` y `modified_von_mises` con `k`), `damage_max` (tope del daño, $1 - 10^{-6}$ por omisión), `integration` (`implicit` por omisión o `impl-ex`), `density`.
+- **Parámetros**: `E`, `nu`, `f_t`, `G_f` (energía por unidad de área, N/m en SI), `hypothesis`, `equivalent_strain` (`rankine` por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también `energy`, `mazars` y `modified_von_mises` con `k`), `damage_max` (tope del daño, $1 - 10^{-6}$ por omisión), `integration` (`implicit` por omisión o `impl-ex`), `softening` (`exponential` por omisión o `hordijk`), `density`.
+- **Ley de ablandamiento** (`softening`):
+  - `exponential` (por omisión): la de arriba, escrita en la deformación total, $\sigma = f_t\,e^{-\alpha(h)(\kappa-\kappa_0)}$ en tracción uniaxial.
+  - `hordijk`: la ley de Cornelissen, Hordijk y Reinhardt (1986), escrita en la apertura de grieta $w$, que en la banda es $w = h\,d\,\kappa$:
+    $$\frac{\sigma}{f_t} = \Bigl[1 + \Bigl(3\,\frac{w}{w_c}\Bigr)^3\Bigr]e^{-6.93\,w/w_c} - 28\,\frac{w}{w_c}\,e^{-6.93}, \qquad w_c = 5.136\,\frac{G_f}{f_t}.$$
+    La curva esfuerzo–apertura es la de Hordijk con cualquier $h$; el esfuerzo llega a cero en $w_c$ (0.17 mm en concreto usual) y la energía disipada es $G_f$ por unidad de área. El 5.136 es el valor exacto del área bajo la curva (el de DIANA); ATENA usa 5.14, así que su $w_c$ es 0.08 % mayor. El límite del tamaño de elemento es más estricto: $h < 0.738\,EG_f/f_t^2$ (0.25 m en concreto usual); con un elemento mayor el modelo se rechaza al construirse.
 - **Con qué medida**: con banda de grieta todo daño ablanda con la $G_f$ de tracción. `rankine` es la adecuada para agrietamiento dominado por tracción; las otras dañan también en compresión (la energética a $f_t$, Mazars a $\approx 3.5 f_t$, von Mises modificado a $f_c$ pero con una compresión demasiado frágil).
 - **Integración** (`integration`):
   - `implicit` (por omisión): el daño de cada paso se calcula con la deformación del mismo paso y la tangente es la consistente. En el ablandamiento el Newton puede necesitar bisecciones o detenerse cuando varias zonas se dañan a la vez.
@@ -220,6 +225,14 @@ materials:
     f_t: 3.0e6
     G_f: 100.0
     integration: impl-ex
+  # Ley de Hordijk en la apertura de grieta.
+  - id: 8
+    type: IsotropicDamageCrackBand2D
+    E: 30.0e9
+    nu: 0.2
+    f_t: 3.0e6
+    G_f: 100.0
+    softening: hordijk
 ```
 
 ### `TensionCompressionDamage2D` — daño de tracción y de compresión con cierre de grieta
@@ -230,9 +243,9 @@ $$\boldsymbol\sigma = (1-d^+)\,\bar{\boldsymbol\sigma}^+ + (1-d^-)\,\bar{\boldsy
 
 con $\bar{\boldsymbol\sigma}^+$ la parte positiva de la descomposición espectral de $\bar{\boldsymbol\sigma}$ y $\bar{\boldsymbol\sigma}^- = \bar{\boldsymbol\sigma} - \bar{\boldsymbol\sigma}^+$. A diferencia de `IsotropicDamageCrackBand2D`, una grieta que se cierra recupera toda la rigidez en compresión, y la compresión que cruza una banda agrietada sigue transmitiéndose.
 
-- **Tracción**: la de `IsotropicDamageCrackBand2D` con `rankine`: misma banda de grieta, misma $h$ sembrada por el elemento (con el factor de los cuadráticos) y mismo límite $h_\text{max}$. En tracción uniaxial la respuesta es idéntica.
+- **Tracción**: la de `IsotropicDamageCrackBand2D` con `rankine`: misma banda de grieta, misma $h$ sembrada por el elemento (con el factor de los cuadráticos) y mismo límite $h_\text{max}$. En tracción uniaxial la respuesta es idéntica. También admite la ley de Hordijk (`softening: hordijk`), con su límite de $h$.
 - **Compresión (opcional)**: con `f_c` y `G_c`, $d^-$ crece con un criterio de Drucker-Prager sobre la parte negativa del esfuerzo efectivo y la ley parabólica de Feenstra (la de DIANA): pico $f_c$ en compresión uniaxial y $\beta f_c$ en compresión biaxial igual; la rama descendente disipa $G_c/h$ por unidad de volumen. La compresión hidrostática no daña. Sin `f_c` ni `G_c`, la compresión es elástica.
-- **Parámetros**: `E`, `nu` ($0 \le \nu < 0.5$), `f_t`, `G_f`, `f_c` y `G_c` (opcionales, van juntos; $f_c > f_t$; `G_c` en N/m como `G_f`), `beta` ($f_{bc}/f_c$, 1.16 por omisión, $\ge 1$), `hypothesis`, `integration` (`implicit` por omisión o `impl-ex`), `damage_max`, `density`.
+- **Parámetros**: `E`, `nu` ($0 \le \nu < 0.5$), `f_t`, `G_f`, `f_c` y `G_c` (opcionales, van juntos; $f_c > f_t$; `G_c` en N/m como `G_f`), `beta` ($f_{bc}/f_c$, 1.16 por omisión, $\ge 1$), `hypothesis`, `integration` (`implicit` por omisión o `impl-ex`), `softening` (`exponential` por omisión o `hordijk`, como en `IsotropicDamageCrackBand2D`), `damage_max`, `density`.
 - **Variables de estado**: `damage_t` ($d^+$, la principal: es la que lleva el VTK como `Internal_State`), `damage_c` ($d^-$), `kappa_t`, `kappa_c`, `h` y `damage_error` (indicador de `impl-ex`).
 - **Integración**: como en `IsotropicDamageCrackBand2D`, con dos diferencias. La tangente no es simétrica, tampoco con `impl-ex`. Con `impl-ex` el material no es lineal dentro del paso (la partición cambia con la deformación) y el Newton itera: 2 o 3 resoluciones por paso. El tamaño del paso pide el mismo cuidado que en `IsotropicDamageCrackBand2D`.
 - **Limitaciones** (medidas; cifras en la spec, §10):

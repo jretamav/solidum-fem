@@ -14,8 +14,10 @@ from solidum.core.material import Material
 from solidum.materials._crack_band import (
     CRACK_BAND_DAMAGE_MAX,
     DEFAULT_INTEGRATION,
+    DEFAULT_SOFTENING,
     NO_STEP_RATIO,
     crack_band_alpha,
+    hordijk_critical_opening,
     parse_integration,
     validate_crack_band_parameters,
 )
@@ -43,9 +45,10 @@ from solidum.registry import MaterialRegistry
 
 @njit(cache=True)
 def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ratio,
-                 f_c, G_c, K, tol_c):
+                 f_c, G_c, K, tol_c, law, w_c):
     """Un punto de integración, implícito o IMPL-EX (spec 2D §3, §6–§8 con la
-    descomposición 3×3). ``f_c > 0`` activa el daño de compresión. Devuelve
+    descomposición 3×3). ``f_c > 0`` activa el daño de compresión; ``law`` es
+    la ley de ablandamiento de ``d⁺`` (``_softening``). Devuelve
     ``(σ, C_tan, fila de estado nueva)``.
 
     Caché de Numba: se compila con ``spectral_split_3d`` y las funciones de
@@ -58,7 +61,7 @@ def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
     eps_eq = s1 / E if s1 > 0.0 else 0.0
     d_t, kt, kt_prev, err, dd = tension_damage_update(
         eps_eq, S_old[KT], S_old[KT_PREV], S_old[DT], S_old[ERR], E, kappa_0, alpha,
-        tol, cap, integration, ratio)
+        tol, cap, integration, ratio, law, w_c, S_old[H])
     d_c = S_old[DC]
     kc = S_old[KC]
     kc_prev = S_old[KC_PREV]
@@ -107,8 +110,8 @@ def _tc_3d_point(strain, S_old, E, kappa_0, alpha, Ce, tol, cap, integration, ra
 @njit(cache=True)
 def _tc_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     """Adaptador por lotes (ADR 0014). ``params = [E, κ_0, f_t, G_f, tol_abs,
-    tol_rel, damage_max, integración, r, f_c, G_c, K]`` (``f_c = 0`` sin
-    aplastamiento); ``C`` = ``C_e``; estado de ``_tension_compression``. Daño
+    tol_rel, damage_max, integración, r, f_c, G_c, K, ley de ablandamiento]``
+    (``f_c = 0`` sin aplastamiento); ``C`` = ``C_e``; estado de ``_tension_compression``. Daño
     sin ``h`` sembrada → ``flag``."""
     E = params[0]
     kappa_0 = params[1]
@@ -119,7 +122,8 @@ def _tc_3d_batch(strain, S_old, S_new, params, C, sigma, C_out, flag):
     tol_c = params[4] + params[5] * (f_c / 3.0)
     sig, C_tan, row = _tc_3d_point(strain, S_old, E, kappa_0, alpha, C, tol, params[6],
                                    int(params[7]), params[8], f_c, params[10], params[11],
-                                   tol_c)
+                                   tol_c, int(params[12]),
+                                   hordijk_critical_opening(params[2], params[3]))
     if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0 or (f_c > 0.0 and row[DC] > 0.0)):
         flag[0] = 1
     for i in range(6):
@@ -153,6 +157,9 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
     integration : str
         ``'implicit'`` (default) o ``'impl-ex'`` (ver
         :class:`TensionCompressionDamage2D`; ADR 0034).
+    softening : str
+        Ley de ``d⁺``: ``'exponential'`` (default) o ``'hordijk'`` (ver
+        :class:`TensionCompressionDamage2D`).
     density : float, optional
         Densidad (ADR 0008).
 
@@ -172,7 +179,8 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
                  beta: float = DEFAULT_BETA,
                  damage_max: float = CRACK_BAND_DAMAGE_MAX,
                  integration: str = DEFAULT_INTEGRATION,
-                 density: float | None = None):
+                 density: float | None = None,
+                 softening: str = DEFAULT_SOFTENING):
         owner = type(self).__name__
         validate_crack_band_parameters(owner, E, nu, f_t, G_f, damage_max, density)
         if float(nu) < 0.0:
@@ -186,6 +194,7 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
         self.f_t = float(f_t)
         self.G_f = float(G_f)
         self.kappa_0 = self.f_t / self.E
+        self._set_softening(owner, softening)
         self.damage_max = float(damage_max)
         self._set_compression(f_c, G_c, beta)
         self.elastic_base = Elastic3D(E=self.E, nu=self.nu)
@@ -200,7 +209,8 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
         sigma, C_tan, row = _tc_3d_point(
             strain, S_old, self.E, self.kappa_0, alpha, self.elastic_base.C,
             self.admissibility_tol(state_vars), self.damage_max,
-            self._integration_code, self._ratio, f_c, G_c, K, tol_c)
+            self._integration_code, self._ratio, f_c, G_c, K, tol_c,
+            self._softening_code, self.w_c)
         if h <= 0.0 and (row[DT] > 0.0 or row[ERR] > 0.0 or (f_c > 0.0 and row[DC] > 0.0)):
             raise self._missing_h()
         return sigma, C_tan, self._row_to_state(row)
@@ -211,7 +221,8 @@ class TensionCompressionDamage3D(TensionCompressionMixin, Material):
         f_c, G_c, K, _ = self._compression_params()
         return np.array([self.E, self.kappa_0, self.f_t, self.G_f,
                          ADMISSIBILITY_TOL_ABS, ADMISSIBILITY_TOL_REL, self.damage_max,
-                         float(self._integration_code), self._ratio, f_c, G_c, K],
+                         float(self._integration_code), self._ratio, f_c, G_c, K,
+                         float(self._softening_code)],
                         dtype=np.float64)
 
     def batch_matrix(self) -> np.ndarray:
