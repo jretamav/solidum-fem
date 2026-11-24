@@ -14,6 +14,8 @@ from pathlib import Path
 
 
 def main(argv=None) -> int:
+    from solidum.logging import utf8_output_when_redirected
+    utf8_output_when_redirected()
     ap = argparse.ArgumentParser(prog="solidum",
                                  description="Resuelve un modelo YAML de Solidum FEM y escribe sus resultados.")
     ap.add_argument("modelo", help="archivo YAML del modelo")

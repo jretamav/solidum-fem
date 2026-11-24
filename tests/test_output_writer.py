@@ -131,6 +131,27 @@ def test_los_comandos_solidum_y_solidum_post_apuntan_a_sus_main():
         assert callable(getattr(importlib.import_module(modulo), funcion))
 
 
+def test_los_comandos_escriben_utf8_cuando_la_salida_no_es_una_consola(tmp_path):
+    """Con la salida encauzada —así la lee el asistente de IA que corre el
+    comando, o un archivo con ``>``— los acentos llegan en UTF-8. En Windows,
+    sin el ajuste, Python escribía en cp1252 y se leía «An�lisis» (2026-11-24).
+    Sin PYTHONIOENCODING ni PYTHONUTF8, que lo ocultarían."""
+    import os
+    import subprocess
+    import sys
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "PYTHONLEGACYWINDOWSSTDIO")}
+    ruta = _modelo(tmp_path, _HIST)
+    r = subprocess.run([sys.executable, "-m", "solidum", ruta.name], cwd=tmp_path, env=env,
+                       capture_output=True, timeout=300)
+    assert r.returncode == 0, r.stderr.decode("utf-8", errors="replace")
+    assert "Análisis completado" in r.stdout.decode("utf-8")   # estricto: falla con cp1252
+    r = subprocess.run([sys.executable, "-m", "solidum.post", "no_existe.yaml"], cwd=tmp_path,
+                       env=env, capture_output=True, timeout=300)
+    assert r.returncode == 1
+    assert "No se encontró el archivo" in r.stderr.decode("utf-8")
+
+
 @pytest.mark.parametrize("bloque,mensaje", [
     ({"results": {"frequency": "a_veces"}}, "no admitido"),
     ({"results": {"frequency": {"every": 0}}}, "entero ≥ 1"),

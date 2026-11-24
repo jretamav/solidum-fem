@@ -13,6 +13,8 @@ from pathlib import Path
 
 
 def main(argv=None) -> int:
+    from solidum.logging import utf8_output_when_redirected
+    utf8_output_when_redirected()
     ap = argparse.ArgumentParser(prog="solidum-post",
                                  description="Dibuja las figuras de output.plots con los resultados "
                                              "ya escritos de un modelo YAML.")

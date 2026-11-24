@@ -127,6 +127,25 @@ class _ConsoleHandler(logging.StreamHandler):
             self.handleError(record)
 
 
+def utf8_output_when_redirected() -> None:
+    """Salida en UTF-8 cuando stdout o stderr no son una consola.
+
+    La llaman sólo los comandos ``solidum`` y ``solidum-post``: una biblioteca
+    no cambia los flujos del programa que la usa. En una consola de Windows
+    Python escribe Unicode directamente (PEP 528) y los acentos se ven bien.
+    Encauzada —el asistente de IA que corre el comando y lee su salida, un
+    archivo con ``>``, Git Bash— usa la codificación ANSI del sistema (cp1252)
+    y quien lee en UTF-8 ve «An�lisis» (medido el 2026-11-24). ``reconfigure``
+    cambia el flujo en su sitio, así que el manejador de :func:`get_logger`,
+    creado con ``sys.stdout``, escribe también en UTF-8."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream is not None and not stream.isatty():
+                stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def _configure_root_once() -> logging.Logger:
     """Configura el logger raíz ``solidum`` una sola vez por proceso.
 
