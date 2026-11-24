@@ -59,7 +59,7 @@ def test_factorizacion_lenta_sin_pardiso_recomienda_pip_install_pypardiso_una_ve
 
 
 def test_factorizacion_rapida_no_avisa(avisos):
-    """Con el umbral real, un modelo pequeño (como los del curso) no dice nada."""
+    """Con el umbral real, un modelo pequeño no dice nada."""
     LUSolver(suggest_faster_backend=True).factorize(_K())
     assert avisos == []
 

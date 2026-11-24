@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 # Plataformas (decisión del usuario, 2026-11-24): Windows es el sistema
-# principal —el de los alumnos y usuarios a quienes se da a conocer Solidum—,
+# principal,
 # Linux va después y macOS no se prueba. Versión de Python del proyecto: 3.14
 # (la más reciente en la que todo Solidum, opcionales incluidos, pasa al
 # 100 %; en 3.15 pyamg no trae binarios para Windows). Linux conserva además
@@ -58,7 +58,7 @@ jobs:
       - name: Run test suite
         run: pytest -q --tb=short
 
-  # Instalación como la haría un alumno: sin Git y sin modo editable, desde
+  # Instalación limpia como la haría un usuario: sin Git y sin modo editable, desde
   # el zip del repositorio (git archive da el mismo contenido que el zip de
   # GitHub), con el pip del Python recién instalado. Después, el comando
   # `solidum` resuelve un ejemplo en una carpeta fuera del repositorio, para
@@ -89,9 +89,9 @@ jobs:
       - name: Run an example with the installed commands
         working-directory: ${{ runner.temp }}
         run: |
-          mkdir alumno
-          cp "$GITHUB_WORKSPACE/examples/modelo_marco.yaml" alumno/
-          cd alumno
+          mkdir usuario
+          cp "$GITHUB_WORKSPACE/examples/modelo_marco.yaml" usuario/
+          cd usuario
           python -c "import solidum, sys; p = solidum.__file__; print(p); sys.exit('site-packages' not in p)"
           solidum --help
           solidum-post --help
