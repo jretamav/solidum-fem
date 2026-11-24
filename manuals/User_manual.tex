@@ -126,7 +126,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={§}{{§}}1 {ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={§}{{§}}1 {ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {Φ}{{Φ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵀ}{{ᵀ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {⁺}{{⁺}}1 {⁻}{{⁻}}1 {₀}{{₀}}1 {₁}{{₁}}1 {₂}{{₂}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {↔}{{↔}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {−}{{−}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -1851,7 +1851,16 @@ para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza e
 \end{itemize}
 
 \begin{itemize}
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f} (energía por unidad de área, N/m en SI), \texttt{hypothesis}, \texttt{equivalent\_\allowbreak{}strain} (\texttt{rankine} por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también \texttt{energy}, \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} con \texttt{k}), \texttt{damage\_max} (tope del daño, $1 - 10^{-6}$ por omisión), \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{density}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu}, \texttt{f\_t}, \texttt{G\_f} (energía por unidad de área, N/m en SI), \texttt{hypothesis}, \texttt{equivalent\_\allowbreak{}strain} (\texttt{rankine} por omisión: $\varepsilon_{eq} = \langle\bar\sigma_I\rangle_+/E$ con el esfuerzo efectivo, nunca daña en compresión; también \texttt{energy}, \texttt{mazars} y \texttt{modified\_\allowbreak{}von\_\allowbreak{}mises} con \texttt{k}), \texttt{damage\_max} (tope del daño, $1 - 10^{-6}$ por omisión), \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{softening} (\texttt{exponential} por omisión o \texttt{hordijk}), \texttt{density}.
+  \item \textbf{Ley de ablandamiento} (\texttt{softening}):
+  \item \texttt{exponential} (por omisión): la de arriba, escrita en la deformación total, $\sigma = f_t\,e^{-\alpha(h)(\kappa-\kappa_0)}$ en tracción uniaxial.
+  \item \texttt{hordijk}: la ley de Cornelissen, Hordijk y Reinhardt (1986), escrita en la apertura de grieta $w$, que en la banda es $w = h\,d\,\kappa$:
+\end{itemize}
+    \[
+\frac{\sigma}{f_t} = \Bigl[1 + \Bigl(3\,\frac{w}{w_c}\Bigr)^3\Bigr]e^{-6.93\,w/w_c} - 28\,\frac{w}{w_c}\,e^{-6.93}, \qquad w_c = 5.136\,\frac{G_f}{f_t}.
+\]
+    La curva esfuerzo--apertura es la de Hordijk con cualquier $h$; el esfuerzo llega a cero en $w_c$ (0.17 mm en concreto usual) y la energía disipada es $G_f$ por unidad de área. El 5.136 es el valor exacto del área bajo la curva (el de DIANA); ATENA usa 5.14, así que su $w_c$ es 0.08 \% mayor. El límite del tamaño de elemento es más estricto: $h < 0.738\,EG_f/f_t^2$ (0.25 m en concreto usual); con un elemento mayor el modelo se rechaza al construirse.
+\begin{itemize}
   \item \textbf{Con qué medida}: con banda de grieta todo daño ablanda con la $G_f$ de tracción. \texttt{rankine} es la adecuada para agrietamiento dominado por tracción; las otras dañan también en compresión (la energética a $f_t$, Mazars a $\approx 3.5 f_t$, von Mises modificado a $f_c$ pero con una compresión demasiado frágil).
   \item \textbf{Integración} (\texttt{integration}):
   \item \texttt{implicit} (por omisión): el daño de cada paso se calcula con la deformación del mismo paso y la tangente es la consistente. En el ablandamiento el Newton puede necesitar bisecciones o detenerse cuando varias zonas se dañan a la vez.
@@ -1884,6 +1893,14 @@ materials:
     f_t: 3.0e6
     G_f: 100.0
     integration: impl-ex
+  # Ley de Hordijk en la apertura de grieta.
+  - id: 8
+    type: IsotropicDamageCrackBand2D
+    E: 30.0e9
+    nu: 0.2
+    f_t: 3.0e6
+    G_f: 100.0
+    softening: hordijk
 
 \end{lstlisting}
 
@@ -1898,9 +1915,9 @@ Modelo de concreto con dos daños escalares (Faria, Oliver y Cervera 1998): $d^+
 con $\bar{\boldsymbol\sigma}^+$ la parte positiva de la descomposición espectral de $\bar{\boldsymbol\sigma}$ y $\bar{\boldsymbol\sigma}^- = \bar{\boldsymbol\sigma} - \bar{\boldsymbol\sigma}^+$. A diferencia de \texttt{IsotropicDamageCrackBand2D}, una grieta que se cierra recupera toda la rigidez en compresión, y la compresión que cruza una banda agrietada sigue transmitiéndose.
 
 \begin{itemize}
-  \item \textbf{Tracción}: la de \texttt{IsotropicDamageCrackBand2D} con \texttt{rankine}: misma banda de grieta, misma $h$ sembrada por el elemento (con el factor de los cuadráticos) y mismo límite $h_\text{max}$. En tracción uniaxial la respuesta es idéntica.
+  \item \textbf{Tracción}: la de \texttt{IsotropicDamageCrackBand2D} con \texttt{rankine}: misma banda de grieta, misma $h$ sembrada por el elemento (con el factor de los cuadráticos) y mismo límite $h_\text{max}$. En tracción uniaxial la respuesta es idéntica. También admite la ley de Hordijk (\texttt{softening: hordijk}), con su límite de $h$.
   \item \textbf{Compresión (opcional)}: con \texttt{f\_c} y \texttt{G\_c}, $d^-$ crece con un criterio de Drucker-Prager sobre la parte negativa del esfuerzo efectivo y la ley parabólica de Feenstra (la de DIANA): pico $f_c$ en compresión uniaxial y $\beta f_c$ en compresión biaxial igual; la rama descendente disipa $G_c/h$ por unidad de volumen. La compresión hidrostática no daña. Sin \texttt{f\_c} ni \texttt{G\_c}, la compresión es elástica.
-  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu} ($0 \le \nu < 0.5$), \texttt{f\_t}, \texttt{G\_f}, \texttt{f\_c} y \texttt{G\_c} (opcionales, van juntos; $f_c > f_t$; \texttt{G\_c} en N/m como \texttt{G\_f}), \texttt{beta} ($f_{bc}/f_c$, 1.16 por omisión, $\ge 1$), \texttt{hypothesis}, \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{damage\_max}, \texttt{density}.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu} ($0 \le \nu < 0.5$), \texttt{f\_t}, \texttt{G\_f}, \texttt{f\_c} y \texttt{G\_c} (opcionales, van juntos; $f_c > f_t$; \texttt{G\_c} en N/m como \texttt{G\_f}), \texttt{beta} ($f_{bc}/f_c$, 1.16 por omisión, $\ge 1$), \texttt{hypothesis}, \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{softening} (\texttt{exponential} por omisión o \texttt{hordijk}, como en \texttt{IsotropicDamageCrackBand2D}), \texttt{damage\_max}, \texttt{density}.
   \item \textbf{Variables de estado}: \texttt{damage\_t} ($d^+$, la principal: es la que lleva el VTK como \texttt{Internal\_State}), \texttt{damage\_c} ($d^-$), \texttt{kappa\_t}, \texttt{kappa\_c}, \texttt{h} y \texttt{damage\_error} (indicador de \texttt{impl-ex}).
   \item \textbf{Integración}: como en \texttt{IsotropicDamageCrackBand2D}, con dos diferencias. La tangente no es simétrica, tampoco con \texttt{impl-ex}. Con \texttt{impl-ex} el material no es lineal dentro del paso (la partición cambia con la deformación) y el Newton itera: 2 o 3 resoluciones por paso. El tamaño del paso pide el mismo cuidado que en \texttt{IsotropicDamageCrackBand2D}.
   \item \textbf{Limitaciones} (medidas; cifras en la spec, §10):
@@ -3895,8 +3912,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 24 de noviembre de 2026, 06:32\\[0.5em]
-Commit Git: \texttt{9a9f9d6}\\[1em]
+Compilado el 24 de noviembre de 2026, 09:19\\[0.5em]
+Commit Git: \texttt{4cbdc5d}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
