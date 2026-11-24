@@ -106,7 +106,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {χ}{{χ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -440,6 +440,7 @@ Familias actualmente implementadas:
   \item \textit{Sólidos 3D con historia}: \texttt{VonMises3D}, \texttt{DruckerPrager3D} e \texttt{IsotropicDamage3D}, extensiones tridimensionales de los anteriores con tangente algorítmica consistente.
   \item \textit{Fisuración distribuida del concreto}: \texttt{IsotropicDamageCrackBand2D} e \texttt{IsotropicDamageCrackBand3D} (2026-11-11), variantes del daño isótropo con banda de grieta: la velocidad de ablandamiento sale de la energía de fractura y de la longitud característica que siembra el sólido, para que la energía disipada por unidad de área de grieta no dependa de la malla; medida de Rankine por omisión y tope de daño propio.
   \item \textit{Daño de tracción y compresión del concreto}: \texttt{TensionCompressionDamage2D} y \texttt{TensionCompressionDamage3D} (2026-11-18, validados el 2026-11-23), dos daños escalares sobre la partición espectral del esfuerzo efectivo (Faria, Oliver y Cervera 1998): cierre de grieta con recuperación de la rigidez y aplastamiento opcional. Reutilizan la banda de grieta, la siembra de la longitud característica y el pseudo-tiempo de IMPL-EX de los anteriores; la partición espectral y su derivada viven en un módulo común (\texttt{\_\allowbreak{}spectral\_\allowbreak{}split.\allowbreak{}py}).
+  \item \textit{Grieta distribuida fija del concreto}: \texttt{FixedSmearedCrack2D} (2026-11-24, bloque 1 de 2: tracción y cortante), descomposición de la deformación del concreto entre grietas y de la grieta (Rots 1988): grieta fija con segunda grieta perpendicular y retención de cortante ligada a la apertura, sin parámetro. El problema local de las dos aperturas se resuelve anidado, con un problema escalar monótono en cada nivel, y la rama de cada dirección se decide en los quiebres con la tolerancia de admisibilidad (\hyperref[adr:0006]{ADR 0006}); reutiliza las leyes de ablandamiento, la banda de grieta y el pseudo-tiempo de IMPL-EX de los anteriores.
   \item \textit{Concreto uniaxial}: \texttt{ManderConcrete1D} (\hyperref[adr:0028]{ADR 0028}), daño-plasticidad 1D con la envolvente de Mander en compresión, tracción con rama descendente, descarga de Karsan y Jirsa y regularización opcional por energía de fractura con la longitud característica del punto; para barras y fibras de sección.
   \item \textit{Cables}: \texttt{CableMaterial1D}, ley axial con condición de tracción exclusiva (sin respuesta a compresión).
 \end{itemize}
@@ -1961,6 +1962,9 @@ Bajo. Los generadores producen objetos que el resto del programa ya sabía trata
   \item \textbf{Daño de tracción y compresión} (\texttt{TensionCompressionDamage2D/\allowbreak{}3D}, 18 de noviembre de 2026; validado el 23 de noviembre): el segundo modelo de la familia, sin piezas nuevas en el programa principal. Toma de la banda de grieta la regularización, la siembra de $h$ y la integración IMPL-EX, y añade un módulo común de partición espectral del esfuerzo efectivo con su derivada en forma cerrada (2D) y por autovalores (3D). Su tangente no es simétrica, también con IMPL-EX, así que el Newton itera dentro del paso. El ancho de banda según la orientación de la grieta se estudió para los dos modelos y se cerró sin programar (no quitaba la dependencia de la malla, que es cinemática).
 \end{itemize}
 
+\begin{itemize}
+  \item \textbf{Grieta distribuida fija} (\texttt{FixedSmearedCrack2D}, 24 de noviembre de 2026; bloque 1, tracción y cortante): el tercer modelo de la familia, sin piezas nuevas en el programa principal. A diferencia de los dos anteriores no es un daño escalar sobre el esfuerzo efectivo: el punto resuelve un problema local (las aperturas de dos grietas fijas, con el cortante en forma cerrada), anidado en dos problemas escalares monótonos. Al programarlo apareció una trampa que los modelos de daño no tienen: al empezar cada paso el estado confirmado se vuelve a resolver, y la decisión carga/descarga en el quiebre dependía del redondeo; en una barra de \texttt{Quad8}, cuya solución uniforme es inestable dentro del elemento, eso rompía la simetría del predictor. La decisión se toma con la tolerancia de admisibilidad del \hyperref[adr:0006]{ADR 0006}, como cualquier criterio de Kuhn--Tucker del programa.
+\end{itemize}
 \begin{lstlisting}
 [Solver incremental] -- Δτ del intento --> [Ensamblador] -- r = Δτ(n+1)/Δτ(n) --> [Material IMPL-EX | batch_params]
 [Elemento sólido] -- h por punto de Gauss --> [estado del punto] --> [Material con banda de grieta]
@@ -2423,8 +2427,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 24 de noviembre de 2026, 09:19\\[0.5em]
-Commit Git: \texttt{4cbdc5d}\\[1em]
+Compilado el 24 de noviembre de 2026, 13:29\\[0.5em]
+Commit Git: \texttt{7909aad}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
