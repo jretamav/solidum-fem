@@ -128,6 +128,8 @@ Sólo aplica a matrices simétricas y positivas definidas, pero ahí explota la 
 
 Instalado cualquiera de los dos, el despachador empieza a usarlo automáticamente — sin tocar YAML, sin recompilar, sin reescribir specs.
 
+Sin ninguno, el despachador usa SuperLU y sólo avisa cuando cuesta: si una factorización tarda más de 1 s (`SLOW_FACTORIZATION_SECONDS`, decisión del usuario del 2026-11-24), recomienda una vez por proceso `pip install pypardiso`. Si el usuario pidió `linear_algebra: lu`, no. Antes avisaba en toda matriz simétrica definida positiva, también en un modelo de pocos nudos, y recomendaba CHOLMOD con `conda`.
+
 ## Solver iterativo — a petición (ADR 0018)
 
 Los tres backends anteriores son **directos**: factorizan la matriz y resuelven por sustitución. El cuarto es **iterativo**: no factoriza, sino que aproxima la solución por iteraciones de Krylov hasta una tolerancia. Es la misma división que ofrecen ANSYS (`SPARSE` frente a `PCG`) y Abaqus (*direct* frente a *iterative*), y con el mismo criterio de uso: el directo por defecto, el iterativo como opción que se pide expresamente.

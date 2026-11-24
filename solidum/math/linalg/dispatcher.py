@@ -135,14 +135,6 @@ def select_solver(
     if props.is_symmetric and props.is_positive_definite and _HAS_CHOLESKY:
         return _REGISTRY["cholesky"]()
 
-    # Si la dependencia opcional falta y el caso era ideal para Cholesky,
-    # avisamos una sola vez por sesión para que el usuario sepa por qué no
-    # está obteniendo el speedup esperado. Con Pardiso instalado el aviso
-    # sobra: hay un backend mejor que LU disponible justo debajo.
-    if (props.is_symmetric and props.is_positive_definite
-            and not _HAS_CHOLESKY and not _HAS_PARDISO):
-        _warn_cholesky_unavailable_once()
-
     # Pardiso ocupa el lugar de LU: mismo dominio de aplicación (real, sin
     # hipótesis de simetría ni positividad) y misma solución, pero multihilo
     # y con disección anidada. La ventaja crece con la talla — de ×7 a 4 000
@@ -157,25 +149,11 @@ def select_solver(
     # diagnóstico, así que NO emitimos warning automático aquí (haría ruido
     # en cada ejecución de ArcLengthSolver). El usuario que pida el
     # diagnóstico vía override ``linear_algebra: ldlt`` sí ve el aviso.
-
-    return _REGISTRY["lu"]()
-
-
-_cholesky_warning_emitted = False
-
-
-def _warn_cholesky_unavailable_once() -> None:
-    global _cholesky_warning_emitted
-    if _cholesky_warning_emitted:
-        return
-    _cholesky_warning_emitted = True
-    warnings.warn(
-        "scikit-sparse no está instalado: el despachador degrada a LU para una "
-        "matriz que sería ideal para Cholesky. Para activar Cholesky:\n"
-        "    conda install -c conda-forge scikit-sparse",
-        RuntimeWarning,
-        stacklevel=3,
-    )
+    #
+    # Sin Pardiso, LU recomienda instalarlo sólo si una factorización tarda
+    # más de SLOW_FACTORIZATION_SECONDS (decisión del usuario, 2026-11-24);
+    # antes se avisaba en toda matriz SPD sin CHOLMOD, con conda.
+    return _REGISTRY["lu"](suggest_faster_backend=True)
 
 
 _iterative_nonsym_warned = False

@@ -208,6 +208,14 @@ MECHANISM_RANK_RTOL = 1.0e-8
 # filtro holgado sólo cuesta la comprobación en los modelos con contrastes
 # de rigidez extremos, que la pasan.
 SUSPECT_PIVOT_RTOL = 1.0e-8
+# Aviso de resolvedor lento (decisión del usuario, 2026-11-24): si una
+# factorización con SuperLU que eligió el despachador por falta de Pardiso
+# tarda más que esto, Solidum recomienda una vez por proceso
+# `pip install pypardiso` (de ×4,7 a ×56 más rápido entre 4 000 y 53 000
+# grados de libertad, ADR 0017). En modelos pequeños no dice nada: antes, el
+# aviso salía en cualquier matriz simétrica definida positiva y recomendaba
+# CHOLMOD con conda, que en Windows no se usa.
+SLOW_FACTORIZATION_SECONDS = 1.0
 # Un modo es un mecanismo si todos los elementos que mueve quedan sin
 # deformar: energía relativa v_eᵀ·K_e·v_e / v_eᵀ·D_e·v_e < MECHANISM_ENERGY_RTOL
 # en cada uno (D_e: diagonal de la K ensamblada en los DOF del elemento).

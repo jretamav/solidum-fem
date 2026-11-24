@@ -1,12 +1,31 @@
 """Backend LU disperso (SuperLU vía ``scipy.sparse.linalg``)."""
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from solidum.constants import SUSPECT_PIVOT_RTOL
+from solidum.constants import SLOW_FACTORIZATION_SECONDS, SUSPECT_PIVOT_RTOL
+from solidum.logging import get_logger
 from solidum.math.linalg.base import out_of_memory_error, pivot_ratios
+
+_log = get_logger("linalg")
+_slow_warning_emitted = False
+
+
+def _suggest_pardiso_if_slow(seconds: float, n: int) -> None:
+    """Una vez por proceso, si la factorización fue lenta, recomienda Pardiso
+    (``SLOW_FACTORIZATION_SECONDS``, decisión del usuario del 2026-11-24)."""
+    global _slow_warning_emitted
+    if _slow_warning_emitted or seconds <= SLOW_FACTORIZATION_SECONDS:
+        return
+    _slow_warning_emitted = True
+    _log.warning(
+        f"La factorización del sistema de ecuaciones ({n} incógnitas) tardó {seconds:.1f} s "
+        f"con el resolvedor básico (SuperLU). Con Pardiso suele ser varias veces más "
+        f"rápida, y Solidum lo usa solo en cuanto está instalado: pip install pypardiso")
 
 
 class LUFactorized:
@@ -64,6 +83,12 @@ class LUSolver:
 
     name = "lu"
 
+    def __init__(self, suggest_faster_backend: bool = False):
+        # True cuando lo elige el despachador porque falta Pardiso: entonces
+        # una factorización lenta recomienda instalarlo. Con ``lu`` pedido
+        # desde el YAML (diagnóstico) o como respaldo de otro backend, no.
+        self.suggest_faster_backend = suggest_faster_backend
+
     def solve(self, K: sp.spmatrix, b: np.ndarray) -> np.ndarray:
         # ``spsolve`` ante una matriz singular emite ``MatrixRankWarning`` y
         # devuelve ``NaN`` sin lanzar; ``splu`` sí lanza ``RuntimeError``
@@ -83,11 +108,15 @@ class LUSolver:
         # ``reuse_analysis_of`` (ADR 0040): SuperLU no separa el análisis
         # simbólico; se ignora.
         K_csc = K.tocsc() if not sp.isspmatrix_csc(K) else K
+        t0 = time.perf_counter()
         try:
-            return LUFactorized(spla.splu(K_csc), diag=K_csc.diagonal())
+            lu = spla.splu(K_csc)
         except MemoryError:
             raise out_of_memory_error(K_csc.shape[0], "SuperLU") from None
         except RuntimeError as exc:
             if "memory" in str(exc).lower():
                 raise out_of_memory_error(K_csc.shape[0], "SuperLU") from exc
             raise
+        if self.suggest_faster_backend:
+            _suggest_pardiso_if_slow(time.perf_counter() - t0, K_csc.shape[0])
+        return LUFactorized(lu, diag=K_csc.diagonal())

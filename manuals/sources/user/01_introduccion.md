@@ -35,7 +35,7 @@ pip install -e .[fast]         # Intel MKL Pardiso: solver directo multihilo (re
 pip install -e .[iterative]    # pyamg: precondicionador del solver iterativo
 ```
 
-- **`pypardiso`** (`[fast]`): con él, el solver del sistema lineal —que en un análisis grande se lleva la mayor parte del tiempo— pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML.
+- **`pypardiso`** (`[fast]`): con él, el solver del sistema lineal —que en un análisis grande se lleva la mayor parte del tiempo— pasa a ser multihilo; entre 5 y 56 veces más rápido según el tamaño del modelo. Se usa automáticamente, sin tocar el YAML. Sin él, si una factorización tarda más de 1 s, Solidum lo recomienda una vez (`pip install pypardiso`); en modelos pequeños no dice nada.
 - **`pyamg`** (`[iterative]`): sólo lo usa el solver iterativo, que se pide expresamente (`linear_algebra: iterative`) para modelos demasiado grandes para la memoria. En Python 3.15 sobre Windows no trae binarios y hay que compilarlo; ver el anexo de la capa algebraica del manual de referencia.
 - **`scikit-sparse`** (`[cholmod]`): factorización de Cholesky; en Windows se instala con `conda`, no con `pip`.
 
