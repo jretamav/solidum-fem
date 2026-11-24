@@ -62,6 +62,7 @@ from solidum.materials.damage_1d import IsotropicDamage1D
 from solidum.materials.damage_2d import IsotropicDamage2D
 from solidum.materials.damage_crack_band_2d import IsotropicDamageCrackBand2D
 from solidum.materials.damage_tension_compression_2d import TensionCompressionDamage2D
+from solidum.materials.fixed_smeared_crack_2d import FixedSmearedCrack2D
 from solidum.materials.cable_1d import CableMaterial1D
 
 from solidum.materials.thermal_conduction import ThermalConduction

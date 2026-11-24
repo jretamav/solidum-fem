@@ -25,7 +25,8 @@ Compiladas con Numba (ADR 0014) para que los kernels 2D/3D de daño, que
 también son ``@njit``, las llamen directamente; desde Python (daño 1D) se
 invocan igual. Caché de Numba: un cambio aquí no invalida la caché de los
 núcleos que las llaman (``damage_2d``, ``damage_3d``, ``_crack_band``,
-``_tension_compression`` y los cuatro materiales de banda de grieta); al
+``_tension_compression``, los cuatro materiales de banda de grieta y
+``fixed_smeared_crack_2d``); al
 cambiar este módulo hay que tocar también ésos.
 """
 from __future__ import annotations

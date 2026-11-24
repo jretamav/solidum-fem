@@ -45,6 +45,14 @@ del modelo 1: ``G_f·A``, ``G_f·A/α`` en ``Quad8``/``Quad9`` y ``(1 − ν²)�
 con ν = 0.2; también con IMPL-EX y pasos de 0.125 µm (con 1 µm IMPL-EX disipa
 de más, 1.04–1.09·G_f·A según la malla, igual en los dos modelos).
 
+Modelo 3, ``FixedSmearedCrack2D`` (aceptación ``bar_in_tension`` de su spec,
+bloque 1): la misma barra con los cinco sólidos 2D. La grieta se forma en la
+columna debilitada con la normal en x y sigue σ = f(w) con w = h·e_nn; el
+concreto entre grietas conserva su Poisson, así que la banda trabaja en
+tracción uniaxial también con ν = 0.2 y las columnas vecinas no la
+confinan: G_f·A en esfuerzo plano y en deformación plana, sin el factor
+1 − ν² del modelo 1 (spec §1). Quad8/Quad9, G_f·A/α como los modelos 1 y 2.
+
 Unidades: N, mm, MPa. E = 30 000 MPa, f_t = 3 MPa, G_f = 0.1 N/mm.
 """
 import logging
@@ -59,6 +67,7 @@ from solidum.materials.damage_crack_band_2d import IsotropicDamageCrackBand2D
 from solidum.materials.damage_crack_band_3d import IsotropicDamageCrackBand3D
 from solidum.materials.damage_tension_compression_2d import TensionCompressionDamage2D
 from solidum.materials.damage_tension_compression_3d import TensionCompressionDamage3D
+from solidum.materials.fixed_smeared_crack_2d import FixedSmearedCrack2D
 from solidum.math.assembly import Assembler
 from solidum.math.solvers import NonlinearSolver
 from solidum.mesh import structured_mesh
@@ -69,6 +78,7 @@ U_MAX, STEPS = 0.4, 400
 # Materiales (2D, 3D) de cada modelo con banda de grieta.
 MODELO_1 = (IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D)
 MODELO_2 = (TensionCompressionDamage2D, TensionCompressionDamage3D)
+MODELO_3 = (FixedSmearedCrack2D, None)          # 3D: spec aparte
 
 
 def _solve(dom, right_nodes, u_max=U_MAX, steps=STEPS):
@@ -93,12 +103,14 @@ def _solve(dom, right_nodes, u_max=U_MAX, steps=STEPS):
 
 
 def bar(cls, nx, nu=0.0, modelo=MODELO_1, integration="implicit", steps=STEPS,
-        softening="exponential"):
+        softening="exponential", hypothesis=None):
     """Barra de L × H (× H) con la columna central de celdas debilitada."""
     dim = len(cls.REFERENCE_NODES[0])
     dx = L / nx
     n = int(round(H / dx))
     mkw = {"integration": integration, "softening": softening}
+    if hypothesis is not None:
+        mkw["hypothesis"] = hypothesis
     if dim == 2:
         mat, weak = (modelo[0](E, nu, f, GF, **mkw) for f in (FT, 0.95 * FT))
         kw = {"thickness": T}
@@ -212,6 +224,50 @@ def test_modelo2_barra_impl_ex_igual_al_modelo_1():
     (c2, D2), _ = bar(Quad4, 5, modelo=MODELO_2, integration="impl-ex")
     np.testing.assert_allclose(c2, c1, rtol=1e-9, atol=1e-9 * np.abs(c1).max())
     assert D2 == pytest.approx(D1, rel=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Modelo 3: FixedSmearedCrack2D (bar_in_tension de su spec, bloque 1)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("cls", [Quad4, Tri3, Tri6], ids=lambda c: c.__name__)
+def test_modelo3_barra_2d_energia_objetiva(cls):
+    _check({nx: bar(cls, nx, modelo=MODELO_3) for nx in (5, 10, 20)}, 1.0)
+
+
+@pytest.mark.parametrize("cls", [Quad8, Quad9], ids=lambda c: c.__name__)
+def test_modelo3_barra_2d_cuadraticos_con_factor_disipan_1_sobre_alfa(cls):
+    _check({nx: bar(cls, nx, modelo=MODELO_3) for nx in (5, 10, 20)}, 18.0 / 13.0)
+
+
+@pytest.mark.parametrize("cls,hypothesis", [
+    (Quad4, "plane_stress"), (Quad4, "plane_strain"), (Tri3, "plane_strain"),
+    (Tri6, "plane_strain"), (Quad8, "plane_strain"), (Quad9, "plane_strain")],
+    ids=lambda v: v if isinstance(v, str) else v.__name__)
+def test_modelo3_barra_con_poisson_disipa_G_f_sin_factor(cls, hypothesis):
+    """ν = 0.2: G_f·A en las dos hipótesis y con los cinco sólidos (G_f·A/α
+    en Quad8 y Quad9); el modelo 1 da (1 − ν²)·G_f·A."""
+    ratio = 18.0 / 13.0 if cls in (Quad8, Quad9) else 1.0
+    _check({nx: bar(cls, nx, 0.2, modelo=MODELO_3, hypothesis=hypothesis)
+            for nx in (5, 10, 20)}, ratio)
+
+
+@pytest.mark.parametrize("softening,hypothesis,nu", [
+    ("exponential", "plane_stress", 0.0), ("hordijk", "plane_stress", 0.0),
+    ("exponential", "plane_strain", 0.2)])
+def test_modelo3_barra_impl_ex(softening, hypothesis, nu):
+    """IMPL-EX con el paso fino de los modelos 1 y 2 (0.125 µm), Quad4: D =
+    G_f·A a ±1 % y la carga en u = 0.05 mm igual a la implícita a ±0.5 %; la
+    implícita también disipa G_f·A a ±1 % (también con Hordijk)."""
+    for nx in (5, 10, 20):
+        (c, D), GA = bar(Quad4, nx, nu, modelo=MODELO_3, integration="impl-ex", steps=3200,
+                         softening=softening, hypothesis=hypothesis)
+        assert D / GA == pytest.approx(1.0, abs=0.01), nx
+        (ci, Di), _ = bar(Quad4, nx, nu, modelo=MODELO_3, softening=softening,
+                          hypothesis=hypothesis)
+        assert Di / GA == pytest.approx(1.0, rel=1e-2), nx
+        assert np.interp(0.05, c[:, 0], c[:, 1]) == pytest.approx(
+            np.interp(0.05, ci[:, 0], ci[:, 1]), rel=5e-3), nx
 
 
 # ---------------------------------------------------------------------------
