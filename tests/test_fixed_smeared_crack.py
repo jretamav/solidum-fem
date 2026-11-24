@@ -246,7 +246,7 @@ def test_elastico_antes_de_agrietarse(hyp):
             eps *= 0.98 * FT / principal(C @ eps)
         sig, Ct, st1 = m.compute_state(eps, st)
         np.testing.assert_allclose(sig, C @ eps, rtol=1e-12, atol=1e-12 * FT)
-        np.testing.assert_allclose(Ct, C, rtol=1e-12)
+        np.testing.assert_allclose(Ct, C, rtol=1e-12, atol=1e-12 * np.abs(C).max())
         assert st1 == st
         checked += 1
     assert checked == 60
@@ -461,8 +461,14 @@ def test_cortante_objetivo_la_ley_tau_s_no_depende_de_h():
             sig, _, st1 = m.compute_state(eps, st)
             curva.append((st1["slip"], local(0.2, sig)[2]))
         curvas.append(np.array(curva))
+    # Cada columna con su escala: deslizamiento (m) y cortante (Pa). Con s = 0 el
+    # cortante es ruido de redondeo del orden de 1e-17·FT, distinto en cada
+    # plataforma; la tolerancia absoluta es rtol·max|esperado| de su columna.
+    ref = curvas[0]
     for c in curvas[1:]:
-        np.testing.assert_allclose(c, curvas[0], rtol=1e-12, atol=1e-12 * FT * 1e-6)
+        for col in (0, 1):
+            np.testing.assert_allclose(c[:, col], ref[:, col], rtol=1e-12,
+                                       atol=1e-12 * np.abs(ref[:, col]).max())
     np.testing.assert_allclose(curvas[0][:, 1], f_law(wmax) / (2 * wmax) * curvas[0][:, 0],
                                rtol=1e-12, atol=1e-6)
 
@@ -1228,7 +1234,8 @@ def test_implex_grieta_nueva_entra_en_el_paso_siguiente():
     st = m.initial_point_state(H)
     eps = np.array([1.5 * K0, 0.0, 0.0])
     sig, C, st1 = m.compute_state(eps, st)
-    np.testing.assert_allclose(sig, Ce(PS) @ eps, rtol=1e-14)
+    ref = Ce(PS) @ eps
+    np.testing.assert_allclose(sig, ref, rtol=1e-14, atol=1e-14 * np.abs(ref).max())
     assert st1["cracked"] == 1.0 and st1["w_max_n"] > 0.0 and st1["damage_n"] == 0.0
     assert st1["damage_error"] > 0.0
     sig2, _, st2 = m.compute_state(1.6 * eps, st1)
