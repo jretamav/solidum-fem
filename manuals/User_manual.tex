@@ -106,7 +106,7 @@
 \lstdefinelanguage{yaml}{
   keywords={nodes, materials, elements, mesh, mesh_material, mesh_thickness, mesh_quadrature, mesh_physical_groups, mesh_element, geometry, parameters, order, element_shape, serendipity, history, columns, displacement, reaction, reduce, scale, every, at, group, file, structured, blocks, length, ratio, origin, exclude, diagonal, mapping, groups, merge_tol, near, energy, external_work, elastic, dissipated, element, var, component, end, where, ids, mises, max_principal, plots, deformed, curve, field, field_label, limits, edges, label_column, show_undeformed, compare, labels, xlabel, ylabel, zoom, markers, title, final, quadrature, boundary_conditions, boundary_conditions_by_node, boundary_conditions_by_coord, boundary_conditions_by_group, point_loads, point_loads_by_node, point_loads_by_coord, point_loads_by_group, body_force, gravity, density, nodal_masses, node_id, linear_constraints, slave, masters, coefficients, g, dof, node, solver, output, file_name, pre_process, export, results, text_export, frequency, nodal_results, element_results, format, id, type, coords, ref_vector, A, I, Iy, Iz, J, As, E, nu, sigma_y, H, hypothesis, ux, uy, uz, rx, ry, rz, tol, coord, val, num_steps, max_iter, adaptive, tol_iter, max_lambda, initial_dl, initial_dlambda, initial_tau,max_steps, material, thickness, kappa_0, alpha, cohesion, phi_deg, psi_deg, variant, n_modes, sigma, which, tolerance, lumping, t_end, dt, beta, gamma, rayleigh, alpha_rayleigh, beta_rayleigh, xi1, omega1, xi2, omega2, u0, u0_dot, F_func, freeze_tangent_after_iter, convergence, rtol_force, rtol_disp, atol_force_factor, atol_disp_factor, caption, linear_algebra, min_delta_lambda, control, control_target, stages, name, loads, constraints, interface_materials, sections, crack_trackers, crack_tracker, max_cracks, cohesive_material, user_modules, log_level, nodal_masses_by_group, nodal_masses_by_coord, tractions, tractions_by_group, thermal_loads, bond, law, diameter, perimeter, integration, points, area, hosts, subdivisions, max_subdivisions, line_search, softening, sigma_t0, G_f, K_e, model_code_2010},
   keywordstyle=\color{yamlkey}\bfseries,
-  ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Truss2D3, Truss3D3, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6, IndirectDisplacementSolver, HHTSolver, NewtonHHTSolver, ManderConcrete1D, EmbeddedReinforcement, BondSlipModelCode, BondSlipMultilinear, CohesiveDamageIsotropic, CohesiveDamageMixedMode, CST_Embedded2D, CrackTracking, PrescribedCrackPath, nodal, gauss, pullout, splitting},
+  ndkeywords={true, false, null, all, all_steps, last_step, plane_stress, plane_strain, plane_strain_matched, outer_cone, inner_cone, consistent, lumped, LinearSolver, NonlinearSolver, ArcLengthSolver, ModalSolver, NewmarkSolver, NewtonNewmarkSolver, Elastic1D, Elastic2D, Elastoplastic1D, VonMises2D, IsotropicDamage1D, IsotropicDamage2D, IsotropicDamageCrackBand2D, IsotropicDamageCrackBand3D, TensionCompressionDamage2D, TensionCompressionDamage3D, DruckerPrager2D, CableMaterial1D, Truss2D, Truss2DCorot, Truss3D, Truss3DCorot, Truss2D3, Truss3D3, Cable2DCorot, Cable3DCorot, Frame2DEuler, Frame2DTimoshenko, Frame2DEulerCorot, Frame3D, Quad4, Quad8, Quad9, Tri3, Tri6, IndirectDisplacementSolver, HHTSolver, NewtonHHTSolver, ManderConcrete1D, EmbeddedReinforcement, BondSlipModelCode, BondSlipMultilinear, CohesiveDamageIsotropic, CohesiveDamageMixedMode, CST_Embedded2D, CrackTracking, PrescribedCrackPath, nodal, gauss, pullout, splitting},
   ndkeywordstyle=\color{yamlval}\bfseries,
   identifierstyle=\color{black},
   sensitive=false,
@@ -1858,7 +1858,11 @@ para disipar $G_f/h$ por unidad de volumen: cuando la deformación se localiza e
   \item \texttt{impl-ex} (Oliver, Huespe y Cante 2008): el daño del paso se \textbf{extrapola} de los dos pasos anteriores y queda fijo durante el paso; el material es lineal dentro del paso, con tangente secante simétrica y definida positiva, y el Newton converge en una iteración (más la de comprobación). Al confirmar el paso se calcula el daño real, que sirve para la extrapolación siguiente. Es la opción robusta para estructuras grandes o con varias grietas.
   \item \textbf{Tamaño del paso con \texttt{impl-ex}}: el daño va un paso atrasado y el error es proporcional al paso; donde el daño arranca (cerca del pico) hacen falta pasos pequeños. En el ensayo de tracción de Van Vliet el pico se pasa un 7.7 \% con pasos de 0.5 µm y un 0.8 \% con 0.0625 µm. Compare dos tamaños de paso antes de dar un resultado por bueno; la variable de estado \texttt{damage\_error} (diferencia entre el daño real y el extrapolado) indica dónde y cuándo el paso es grueso.
   \item \textbf{Solvers}: \texttt{impl-ex} funciona con los solvers que avanzan por pasos y declaran su pseudo-tiempo (\texttt{NonlinearSolver}, \texttt{ArcLengthSolver}, \texttt{IndirectDisplacementSolver}, \texttt{NewtonNewmarkSolver}, \texttt{NewtonHHTSolver}, \texttt{CentralDifferenceSolver}; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0034-pseudo-tiempo-de-los-solvers-incrementales.md}{ADR 0034}). En los análisis lineales y en el post-proceso el material usa el daño confirmado.
-  \item \textbf{Limitaciones}: daño escalar (al agrietarse el punto pierde rigidez también en compresión), sin cierre de grietas; la banda tiende a seguir las líneas de la malla. En una banda que sus vecinos impiden contraerse lateralmente, la energía disipada es $(1-\nu^2)\,G_f$ por unidad de área.
+  \item \textbf{Limitaciones} (medidas; cifras en la spec, §10):
+  \item Daño escalar: al agrietarse, el punto pierde rigidez también en compresión, y una grieta que se cierra no la recupera. En estructuras con cortante la banda degrada la biela comprimida que la cruza: en la viga SEN de Schlangen, con mallas finas, la banda baja vertical desde la entalla en lugar de ir en diagonal hacia la carga y disipa 1.5--2 veces $G_f$; el resultado depende de la malla. \texttt{TensionCompressionDamage2D} conserva esa biela (con su propia limitación en modo mixto).
+  \item La banda tiende a seguir las líneas de la malla. Con mallas no estructuradas la energía disipada se aparta de $G_f$: en una viga entallada a flexión, 16 \% en promedio y hasta 45 \%, frente a 1.5--4 \% con la malla alineada. El ancho $h$ es el del elemento y no depende de la dirección de la grieta.
+  \item En modo mixto (panel en L) el pico no depende de la malla, pero en el ablandamiento la carga difiere hasta 26 \% entre mallas.
+  \item En una banda que sus vecinos impiden contraerse lateralmente, la energía disipada es $(1-\nu^2)\,G_f$ por unidad de área.
 \end{itemize}
 
 \begin{lstlisting}[language=yaml]
@@ -1879,6 +1883,50 @@ materials:
     nu: 0.2
     f_t: 3.0e6
     G_f: 100.0
+    integration: impl-ex
+
+\end{lstlisting}
+
+\subsection{\texttt{TensionCompressionDamage2D} --- daño de tracción y de compresión con cierre de grieta}
+
+Modelo de concreto con dos daños escalares (Faria, Oliver y Cervera 1998): $d^+$ degrada la parte de tracción del esfuerzo efectivo y $d^-$ la de compresión,
+
+\[
+\boldsymbol\sigma = (1-d^+)\,\bar{\boldsymbol\sigma}^+ + (1-d^-)\,\bar{\boldsymbol\sigma}^-, \qquad \bar{\boldsymbol\sigma} = \mathbf C_e:\boldsymbol\varepsilon,
+\]
+
+con $\bar{\boldsymbol\sigma}^+$ la parte positiva de la descomposición espectral de $\bar{\boldsymbol\sigma}$ y $\bar{\boldsymbol\sigma}^- = \bar{\boldsymbol\sigma} - \bar{\boldsymbol\sigma}^+$. A diferencia de \texttt{IsotropicDamageCrackBand2D}, una grieta que se cierra recupera toda la rigidez en compresión, y la compresión que cruza una banda agrietada sigue transmitiéndose.
+
+\begin{itemize}
+  \item \textbf{Tracción}: la de \texttt{IsotropicDamageCrackBand2D} con \texttt{rankine}: misma banda de grieta, misma $h$ sembrada por el elemento (con el factor de los cuadráticos) y mismo límite $h_\text{max}$. En tracción uniaxial la respuesta es idéntica.
+  \item \textbf{Compresión (opcional)}: con \texttt{f\_c} y \texttt{G\_c}, $d^-$ crece con un criterio de Drucker-Prager sobre la parte negativa del esfuerzo efectivo y la ley parabólica de Feenstra (la de DIANA): pico $f_c$ en compresión uniaxial y $\beta f_c$ en compresión biaxial igual; la rama descendente disipa $G_c/h$ por unidad de volumen. La compresión hidrostática no daña. Sin \texttt{f\_c} ni \texttt{G\_c}, la compresión es elástica.
+  \item \textbf{Parámetros}: \texttt{E}, \texttt{nu} ($0 \le \nu < 0.5$), \texttt{f\_t}, \texttt{G\_f}, \texttt{f\_c} y \texttt{G\_c} (opcionales, van juntos; $f_c > f_t$; \texttt{G\_c} en N/m como \texttt{G\_f}), \texttt{beta} ($f_{bc}/f_c$, 1.16 por omisión, $\ge 1$), \texttt{hypothesis}, \texttt{integration} (\texttt{implicit} por omisión o \texttt{impl-ex}), \texttt{damage\_max}, \texttt{density}.
+  \item \textbf{Variables de estado}: \texttt{damage\_t} ($d^+$, la principal: es la que lleva el VTK como \texttt{Internal\_State}), \texttt{damage\_c} ($d^-$), \texttt{kappa\_t}, \texttt{kappa\_c}, \texttt{h} y \texttt{damage\_error} (indicador de \texttt{impl-ex}).
+  \item \textbf{Integración}: como en \texttt{IsotropicDamageCrackBand2D}, con dos diferencias. La tangente no es simétrica, tampoco con \texttt{impl-ex}. Con \texttt{impl-ex} el material no es lineal dentro del paso (la partición cambia con la deformación) y el Newton itera: 2 o 3 resoluciones por paso. El tamaño del paso pide el mismo cuidado que en \texttt{IsotropicDamageCrackBand2D}.
+  \item \textbf{Limitaciones} (medidas; cifras en la spec, §10):
+  \item Modo mixto: el pico no depende de la malla, pero el ablandamiento sí. Un elemento roto cuya grieta desliza más de $2\sqrt\nu/(1-\nu)$ veces lo que abre (1.12 con $\nu = 0.2$; cero con $\nu = 0$) sigue transmitiendo cortante y compresión a través de la grieta (bloqueo de esfuerzos). En el panel en L la carga del ablandamiento difiere 76 \% entre mallas (\texttt{IsotropicDamageCrackBand2D}, 26 \%). En modo I (viga de Petersson) no depende de la malla.
+  \item En la viga SEN de Schlangen (cortante con grieta curva) la grieta sale en diagonal y el resultado no depende de la malla fina, pero después del pico la carga queda por debajo del ensayo: 3.7 kN frente a 9--15 kN en una apertura de la boca de la entalla de 0.10 mm. Les pasa lo mismo a las simulaciones publicadas cuya grieta no transmite cortante; la literatura atribuye la diferencia a ese cortante, que este modelo no representa.
+  \item Sin deformaciones plásticas: la descarga es secante hacia el origen, sin deformación residual ni histéresis.
+  \item Con $\nu \ne 0$ la ley no deriva de un potencial: en ciclos de carga sobre material ya dañado el trabajo no se conserva (2--6 \% de la energía elástica, en mediana); en carga monótona el balance de energía cierra a menos de 1 \%.
+  \item La compresión paralela a una grieta abierta se pierde cuando la deformación de apertura supera $|\varepsilon_t|/\nu$. Como esa deformación es la apertura entre $h$, el umbral depende del tamaño del elemento.
+  \item En compresión, la banda disipa $G_c$ por unidad de área desde su pico; el trabajo total incluye además el daño antes del pico (en una barra, 6--12 \% más de $G_c A$, menos con elementos pequeños).
+  \item Con $\nu = 0.2$ y mallas finas, el aplastamiento de una barra en compresión no se concentra en una banda y el resultado depende de la malla.
+  \item Con \texttt{Quad8} y \texttt{Quad9} el factor 13/18 se aplica también en compresión: con esfuerzo uniforme el elemento disipa $G_c/\alpha$.
+  \item En deformación plana con el lateral libre, la energía de tracción es $(1-\nu^2)\,G_f$, como en \texttt{IsotropicDamageCrackBand2D}.
+\end{itemize}
+
+\begin{lstlisting}[language=yaml]
+materials:
+  # Concreto con aplastamiento: f_c = 30 MPa, G_c = 15 kN/m; IMPL-EX.
+  - id: 8
+    type: TensionCompressionDamage2D
+    E: 30.0e9
+    nu: 0.2
+    f_t: 3.0e6
+    G_f: 100.0
+    f_c: 30.0e6
+    G_c: 15000.0
+    hypothesis: plane_stress
     integration: impl-ex
 
 \end{lstlisting}
@@ -2023,6 +2071,8 @@ materials:
 \end{lstlisting}
 
 \texttt{IsotropicDamageCrackBand3D} es la versión 3D de \texttt{IsotropicDamageCrackBand2D} (mismos parámetros salvo \texttt{hypothesis}). La longitud característica la siembran \texttt{Hex8}, \texttt{Hex20} y \texttt{Hex27} ($\sqrt[3]{V}$) y \texttt{Tet4} y \texttt{Tet10} ($\sqrt[3]{6V}$).
+
+\texttt{TensionCompressionDamage3D} es la versión 3D de \texttt{TensionCompressionDamage2D} (mismos parámetros salvo \texttt{hypothesis}, mismas limitaciones), con la misma siembra de la longitud característica.
 
 \section{Materiales de interfaz (tracción frente a desplazamiento relativo)}
 
@@ -3845,8 +3895,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 23 de noviembre de 2026, 11:10\\[0.5em]
-Commit Git: \texttt{0df9d87} (con cambios sin confirmar)\\[1em]
+Compilado el 23 de noviembre de 2026, 19:13\\[0.5em]
+Commit Git: \texttt{5b68357}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
