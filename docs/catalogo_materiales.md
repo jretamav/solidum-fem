@@ -179,6 +179,27 @@
 
 ---
 
+## FixedSmearedCrack2D — grieta distribuida fija con retención de cortante (modelo 3 del concreto)
+
+> **No validado: sobrestima vigas con entalla en modo I** (limitación documentada por decisión del usuario, 2026-11-25; abajo).
+
+- **Modelo**: descomposición de la deformación en la del concreto entre grietas (elástico isótropo, Poisson entero) y la de la grieta, $\boldsymbol\varepsilon = \boldsymbol\varepsilon^{co} + \mathbf N\,\mathbf e^{cr}$ (Rots 1988; de Borst et al. 2012, §6.8.1). La grieta se forma cuando el esfuerzo principal mayor alcanza $f_t$ y su dirección queda **fija**; después puede formarse una segunda grieta perpendicular. Banda de grieta: apertura $w = h\,e_{nn}$ y deslizamiento $s = h\,\gamma_{nt}$ con la $h$ sembrada por el elemento (la de los modelos 1 y 2).
+- **Ley normal**: exponencial en $w$ (por omisión) o Hordijk (`softening`); descarga secante hacia el origen; grieta cerrada con $w = 0$. Límite de $h$: $h < \ell_{ch}/(1+\nu)$ (exponencial) o $0.738\,\ell_{ch}/(1+\nu)$ (Hordijk), `ValueError` por encima.
+- **Cortante de la grieta**: $\tau_{nt} = k_s\,s$ con $k_s = f(w_\text{max})/(2\,w_\text{max})$, ligada a la apertura y sin parámetro; con una grieta es exactamente la retención «por daño» de DIANA (Slobbe 2015, ec. 2.14); objetiva por construcción. Dos grietas: flexibilidades en serie.
+- **Compresión (opcional, `f_c` y `G_c`)**: el daño de compresión del modelo 2 sobre el concreto entre grietas (Drucker-Prager, parábola de Feenstra con $G_c/h$); la compresión paralela a una grieta abierta se conserva completa. Sin `f_c`, compresión elástica.
+- **Integración** (`integration`): `implicit` (tangente consistente no simétrica) o `impl-ex` (aperturas máximas y $\kappa^-$ extrapolados, ADR 0034; tangente secante, simétrica sin aplastamiento).
+- **STRAIN_DIM**: 3 · **PRIMARY_STATE_VAR**: `'damage_n'` · **STATE_SCHEMA**: `{cracked, theta, w_max_n, w_max_t, w_n, w_t, slip, damage_n, damage_t, kappa_c, damage_c, h, w_max_n_prev, w_max_t_prev, kappa_c_prev, damage_error}` · kernel por lotes · `uses_pseudo_time` con `impl-ex`.
+- **Parámetros**: `E`, `nu`, `f_t`, `G_f`, `hypothesis` (`plane_stress` por omisión o `plane_strain`), `softening`, `f_c`, `G_c`, `beta`, `damage_max`, `integration`, `density`.
+- **Clasificación (Reglas §1)**: programa principal. Criterio (i): de Borst, Crisfield, Remmers y Verhoosel (2012), §6.8.1. Criterio (ii): DIANA (Total Strain Crack Model fijo), Abaqus (concrete smeared cracking, brittle cracking), ANSYS (SOLID65).
+- **Verificación**: `teorico-solidum`, bloques 1 y 2 (sí al commit): σ y tangente al redondeo frente a un prototipo independiente; mutaciones 20/20 y 34/37 (las 3 restantes, cubiertas por pruebas nuevas). Barra en tracción en los cinco sólidos 2D: $D = G_f A$ a ±1 %, también con $\nu = 0.2$ en deformación plana (sin el factor $1-\nu^2$ del modelo 1); barra en compresión igual al modelo 2.
+- **Limitación medida — sobrestimación en modo I** (spec §10, 2026-11-25): junto a la punta de la banda el estado de esfuerzos al nacer la grieta es casi equibiaxial y la dirección principal está mal condicionada; las grietas fijas nacen inclinadas (|θ| medio 17–33°), y con la retención de cortante y la segunda grieta disipan de más. No depende del elemento ni de la integración y no se quita al refinar. Viga de Petersson: pico 868.6 / 928.4 / 908.0 N (6.6 % entre mallas) frente a 746–750 N de los modelos 1 y 2; $D(8\text{ mm}) = 2.4$–$2.9\,G_F A$. Viga de Slobbe (2015): +11.5 % (Quad8 3×3) y +15 % (Quad4) en el pico, +39 % en la carga a 0.3 mm con Quad8; el modelo 1 coincide con Slobbe. Van Vliet: objetivo entre mallas, $D = 1.14\,G_f A$ a 1.2 mm. Publicado: Rots et al. 1985 (misma viga; usan β ≈ 0), Rots 1988 p. 81, Rots y Blaauwendraad 1989 §5.2. Panel en L y viga SEN sin correr.
+- **Otras limitaciones** (spec §10): reconstrucción del esfuerzo en direcciones inclinadas sin grieta nueva; bloqueo por compatibilidad entre elementos; sesgo direccional de la malla; con aplastamiento, sin unicidad garantizada del problema local sobre concreto aplastado con grietas inclinadas; heredadas del modelo 2 en compresión.
+- **Compatible con**: `Tri3`, `Quad4`, `Tri6`, `Quad8`, `Quad9`.
+- **Referencia**: `docs/specs/FixedSmearedCrack2D.md`. Rots (1988); Rots, Nauta, Kusters y Blaauwendraad (1985); de Borst y Nauta (1985); de Borst et al. (2012, §6.8.1); Slobbe (2015); DIANA Theory 10.4 §46.5.
+- **Archivo**: [solidum/materials/fixed_smeared_crack_2d.py](../solidum/materials/fixed_smeared_crack_2d.py)
+
+---
+
 ## Elastoplastic1D — plasticidad J2 1D con endurecimiento isótropo lineal
 
 - **Modelo**: plasticidad asociativa con criterio `f = |σ_trial| − (σ_y + H·α) ≤ 0`.
