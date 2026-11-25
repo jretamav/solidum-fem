@@ -133,3 +133,18 @@ def test_el_resultado_normal_no_cambia(tmp_path):
     h = _historia(tmp_path / "det_historia.csv")
     assert h["factor"][-1] == pytest.approx(1.0)
     assert (tmp_path / "det_final.vtu").is_file()
+
+
+def test_la_nota_tambien_se_anota_sin_add_note(tmp_path):
+    """Python 3.10 no tiene ``BaseException.add_note`` (PEP 678 es de 3.11): la
+    nota va a ``__notes__``, que lee ``python -m solidum``."""
+    from solidum.utils.output_writer import OutputWriter
+
+    class SinAddNote:                     # el error de un Python 3.10
+        pass
+    w = OutputWriter.__new__(OutputWriter)
+    w.last, w.base_dir = (7, None, 0.5), tmp_path
+    w.finish = lambda U_final=None: None
+    exc = SinAddNote()
+    OutputWriter.finish_stopped(w, exc)
+    assert len(exc.__notes__) == 1 and "paso 7" in exc.__notes__[0]

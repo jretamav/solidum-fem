@@ -480,8 +480,12 @@ class OutputWriter:
         except Exception as err:  # noqa: BLE001 — no tapar el error del análisis
             _log.error(f"No se pudieron cerrar los resultados del análisis detenido: {err}")
             return
-        exc.add_note(f"Resultados escritos hasta el último paso convergido (paso {n}, factor "
-                     f"{factor:.6g}): historia, VTK final y figuras en {self.base_dir}.")
+        note = (f"Resultados escritos hasta el último paso convergido (paso {n}, factor "
+                f"{factor:.6g}): historia, VTK final y figuras en {self.base_dir}.")
+        if hasattr(exc, "add_note"):
+            exc.add_note(note)
+        else:  # Python 3.10: PEP 678 llega en 3.11; la lista la lee python -m solidum
+            exc.__notes__ = [*getattr(exc, "__notes__", ()), note]
 
     def finish(self, U_final=None):
         """Cierra la salida: resultado final, archivo PVD y texto."""
