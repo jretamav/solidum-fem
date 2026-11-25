@@ -1143,6 +1143,7 @@ output:
     frequency: "all_steps"        # "last_step" o "all_steps"
     nodal_results: ["Displacements"]
     element_results: ["Von_Mises", "Internal_State", "Sigma_XX"]
+    integration_points: true      # opcional: archivo con los valores en cada punto
   text_export:                     # opcional: salida estilo FEAP en .txt
     export: true
     nodes: all
@@ -1165,6 +1166,12 @@ output:
 \end{tabularx}
 \end{center}
 Con al menos un instante escrito se genera además un archivo maestro \texttt{.pvd} (el índice de factores e instantes, que ParaView interpreta como animación y que usan las figuras); \texttt{\textless{}file\_\allowbreak{}name\textgreater{}\_\allowbreak{}final.\allowbreak{}vtu} se escribe siempre.
+
+\texttt{nodal\_results} y \texttt{element\_results} filtran los campos del VTK (sin ellos, se escriben todos). Los campos por celda incluyen, además de los esfuerzos y \texttt{Internal\_State}, \textbf{todas las variables internas escalares} de los materiales con su nombre (\texttt{damage\_c}, \texttt{w\_max\_n}, \texttt{cracked}...; capítulo «Post-Procesamiento»). Un nombre que no es un campo del modelo es un error que lista los disponibles.
+
+\texttt{integration\_\allowbreak{}points: true} escribe también, en los mismos instantes, \texttt{\textless{}file\_\allowbreak{}name\textgreater{}\_\allowbreak{}puntos\_\allowbreak{}NNNN.\allowbreak{}vtu}, \texttt{\textless{}file\_\allowbreak{}name\textgreater{}\_\allowbreak{}puntos\_\allowbreak{}final.\allowbreak{}vtu} y \texttt{\textless{}file\_\allowbreak{}name\textgreater{}\_\allowbreak{}puntos.\allowbreak{}pvd}: los valores en cada punto de integración, sin promediar (incluido el ángulo de una grieta fija).
+
+\textbf{Análisis detenido.} Si el análisis se detiene (no converge, mecanismo) después de algún paso convergido, Solidum escribe igualmente el VTK final, el \texttt{.pvd}, la salida de texto y las figuras con el último paso convergido (la historia ya está escrita fila a fila), explica la causa y termina con error: \texttt{python -m solidum} devuelve el código 3.
 
 \subsection{Historia de la respuesta: \texttt{history}}
 
@@ -1205,6 +1212,19 @@ El selector de nodos es uno de \texttt{node: id}, \texttt{nodes: [ids]}, \texttt
 \end{itemize}
 
 $E = \tfrac12\,\mathbf U\cdot\mathbf F_{int}$ es la energía que se recupera al descargar hasta el origen sólo si todos los materiales descargan por la secante: los elásticos, los de daño (también la banda de grieta) y las cohesivas de daño. Con plasticidad, concreto con deformación residual o secciones por fibras, \texttt{elastic} y \texttt{dissipated} son un error; \texttt{external\_work} sí está disponible. En la banda de grieta, $D$ al final de la separación es $G_f$ por el área de la grieta: es la comprobación de su objetividad.
+
+\textbf{Energías por zona.} Con \texttt{elements} (un selector de elementos como los de abajo: \texttt{id}, \texttt{ids}, \texttt{group} o \texttt{where}), la energía se restringe a esos elementos:
+
+\begin{lstlisting}[language=yaml]
+history:
+  columns:
+    - {name: D, energy: dissipated}
+    - {name: D_banda, energy: dissipated, elements: {where: "abs(x - 250) < 20"}}
+    - {name: D_carga, energy: dissipated, elements: {group: Apoyo_carga}}
+
+\end{lstlisting}
+
+Con la fuerza interna de cada elemento $\mathbf f_e = \int_{\Omega_e}\mathbf B^\top\boldsymbol\sigma\,d\Omega$, $W$ suma $\tfrac12(\mathbf f_{e,n} + \mathbf f_{e,n-1})\cdot(\mathbf u_{e,n} - \mathbf u_{e,n-1})$ sobre los elementos de la zona (el trabajo que recibe su material, $\int\!\!\int\boldsymbol\sigma : d\boldsymbol\varepsilon\,dV$), $E = \tfrac12\sum_e \mathbf u_e\cdot\mathbf f_e$ y $D = W - E$. Las zonas de una partición del modelo suman sus energías. Sirve para comprobar la energía de la banda ($G_f$ por el área) por separado de la disipada bajo la carga. Sólo sólidos isoparamétricos; con \texttt{elastic} y \texttt{dissipated}, materiales que descargan por la secante. Separa por zona, no por mecanismo dentro de un mismo punto (agrietamiento frente a aplastamiento).
 
 \textbf{Magnitudes de elemento.} \texttt{element} declara la magnitud en \texttt{var} y, opcionalmente, un selector:
 
@@ -1261,7 +1281,7 @@ output:
 \hline
 \texttt{mesh} & la malla sin deformar, con los apoyos, los desplazamientos impuestos y las cargas nodales & \texttt{zoom}, \texttt{markers} (por omisión \texttt{true}) \\
 \texttt{deformed} & la deformada, un panel por instante & \texttt{at} (factores de carga, o \texttt{final}; por omisión \texttt{[final]}), \texttt{field}, \texttt{field\_label}, \texttt{scale} (\texttt{auto} o un número), \texttt{limits} ([mín, máx] de la escala de color), \texttt{edges} (\texttt{auto}, \texttt{true} o \texttt{false}), \texttt{zoom}, \texttt{label\_column}, \texttt{show\_undeformed} \\
-\texttt{curve} & columnas de la historia & \texttt{x}, \texttt{y} (una columna o una lista), \texttt{compare} (otros YAML), \texttt{labels}, \texttt{xlabel}, \texttt{ylabel} \\
+\texttt{curve} & columnas de la historia & \texttt{x}, \texttt{y} (una columna o una lista), \texttt{compare} (otros YAML), \texttt{labels}, \texttt{xlabel}, \texttt{ylabel}, \texttt{reference} (curvas o bandas externas), \texttt{xlim}, \texttt{ylim} ([mín, máx]), \texttt{xscale}, \texttt{yscale} (\texttt{linear} o \texttt{log}) \\
 \hline
 \end{tabularx}
 \end{center}
@@ -1270,9 +1290,27 @@ Todas admiten \texttt{file} (\texttt{.png} por omisión, \texttt{.pdf} o \texttt
 \begin{itemize}
   \item \texttt{deformed} toma, para cada factor de \texttt{at}, el instante escrito más cercano: los instantes se piden en \texttt{results.\allowbreak{}frequency}. \texttt{field} es un campo del VTK por celda (\texttt{Internal\_State}, la variable interna principal del material ---el daño en los de daño---; \texttt{Von\_Mises}; \texttt{Sigma\_XX}...) o \texttt{displacement} (magnitud del desplazamiento); los campos con signo usan una escala de color divergente centrada en cero. \texttt{scale: auto} dibuja el mayor desplazamiento como el 5 \% del tamaño del modelo. \texttt{label\_column} rotula cada panel con el valor de esa columna de la historia en ese instante (p. ej. la flecha). \texttt{edges: auto} dibuja los bordes de los elementos hasta 3000 elementos.
   \item \texttt{curve} con \texttt{compare} añade las mismas columnas de otros modelos ya resueltos (sus historias se buscan con su propio \texttt{output.file\_name}): es la figura de un estudio de malla.
+  \item \texttt{curve} con \texttt{reference} superpone datos externos (abajo).
+  \item En \texttt{deformed}, las celdas cuyo material no tiene el campo (p. ej. el acero elástico en un campo de daño) se dibujan en gris.
   \item Las figuras se regeneran sin volver a calcular con \texttt{solidum-post modelo.\allowbreak{}yaml} (o \texttt{python -m solidum.\allowbreak{}post modelo.\allowbreak{}yaml}; por ejemplo, tras cambiar una ventana o un rótulo). Si una figura falla al terminar el análisis, el error se registra y los resultados quedan escritos.
   \item Mallas 2D; las 3D, todavía no. Requiere matplotlib (\texttt{pip install matplotlib}).
 \end{itemize}
+
+\textbf{Referencias externas en \texttt{curve}.} \texttt{reference} superpone datos que no salen de Solidum (un ensayo, la curva de otra publicación) en tinta neutra, debajo de las curvas de Solidum, que conservan sus colores:
+
+\begin{lstlisting}[language=yaml]
+- type: curve
+  x: delta_mm
+  y: P_N
+  xlim: [0, 1.0]
+  reference:
+    - {file: petersson_ensayo.csv, x: d, y: P, scale: [1, 1000], label: "Ensayo", style: markers}
+    - {file: envolvente.csv, x: d, y: [P_min, P_max], label: "Envolvente experimental"}
+    - {points: [[0.0, 0.0], [0.05, 750.0]], label: "Pico publicado"}
+
+\end{lstlisting}
+
+\texttt{file} es un CSV con encabezado (separador coma, punto y coma o tabulador; ruta relativa al YAML; una celda vacía deja un hueco). \texttt{y} es una columna (curva) o \texttt{[mínimo, máximo]} (banda gris). \texttt{points} da los puntos en el propio YAML: \texttt{[x, y]} para una curva, \texttt{[x, y\_\allowbreak{}min, y\_\allowbreak{}max]} para una banda. \texttt{scale: [sx, sy]} convierte las unidades (en el ejemplo, kN a N); \texttt{style} es \texttt{line} (por omisión) o \texttt{markers}.
 
 \texttt{log\_level} fija el nivel del registro durante el análisis (\texttt{run\_yaml}, \texttt{load\_\allowbreak{}yaml(.\allowbreak{}.\allowbreak{}.\allowbreak{}).\allowbreak{}solve()} y \texttt{examples/\allowbreak{}ejecutar\_\allowbreak{}yaml.\allowbreak{}py}): \texttt{WARNING} deja sólo avisos y errores. Al terminar, \texttt{run\_yaml} vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.
 
@@ -3293,11 +3331,25 @@ Con restricciones multipunto (bloque \texttt{linear\_\allowbreak{}constraints} e
 \begin{itemize}
   \item \texttt{Von\_Mises}: esfuerzo equivalente J2, calculado como invariante 3D con las seis componentes; en plane strain incluye $\sigma_{zz}$ (que aporta el material vía \texttt{out\_\allowbreak{}of\_\allowbreak{}plane\_\allowbreak{}stress}), en plane stress $\sigma_{zz} = 0$.
   \item \texttt{Internal\_State}: variable principal del material según su \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR} (acumulada equivalente $\alpha$ en plasticidad, $d$ en daño, etc.).
+  \item \textbf{Todas las variables internas escalares} de los materiales, con su nombre (\texttt{damage\_t}, \texttt{damage\_c}, \texttt{kappa\_t} del modelo de tracción y compresión; \texttt{cracked}, \texttt{w\_max\_n}, \texttt{damage\_n}, \texttt{slip} de la grieta fija...), promediadas sobre los puntos de integración de la celda. \texttt{NaN} en las celdas cuyo material no tiene esa variable (en las figuras, gris). Si dos materiales usan el mismo nombre, cada celda lleva el valor del suyo, con el significado de su material. Los ángulos (la dirección $\theta$ de una grieta fija) no se promedian: la media de direcciones de puntos distintos, o de un punto sin grieta, no es una dirección; se leen en el archivo por puntos.
   \item \texttt{N\_i}, \texttt{N\_j}, \texttt{V\_i}, \texttt{M\_i}\ldots{} (en 3D, \texttt{Vy}, \texttt{Vz}, \texttt{T}, \texttt{My}, \texttt{Mz}): \textbf{fuerzas internas de extremo} de barras, cables y marcos (\texttt{internal\_forces}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0002-api-de-resultados-para-consumidores.md}{ADR 0002}), en ejes locales del elemento, en el nodo i y el nodo j, con la convención de signos del proyecto; \texttt{NaN} en las celdas que no tienen esa componente. Con carga distribuida, \texttt{VtkExporter.\allowbreak{}export(.\allowbreak{}.\allowbreak{}.\allowbreak{}, element\_\allowbreak{}forces=resultado.\allowbreak{}element\_\allowbreak{}forces)} descuenta la carga equivalente.
   \item \texttt{Sigma\_XX}, \texttt{Sigma\_YY}, \texttt{Sigma\_ZZ}, \texttt{Tau\_XY}, \texttt{Tau\_YZ}, \texttt{Tau\_XZ}: las seis componentes del tensor de esfuerzos (en 2D las tres últimas son $\sigma_{zz}$ del material y ceros). Se evalúan en el campo \texttt{U} exportado vía \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state} y se promedian por elemento: el exportador no depende de qué solver produjo \texttt{U} ni de que el estado esté comiteado. Cubre sólidos 2D y 3D (\texttt{quad}, \texttt{triangle}, \texttt{quad8}, \texttt{quad9}, \texttt{triangle6}, \texttt{hexahedron}, \texttt{tetra}, \texttt{hexahedron20}, \texttt{hexahedron27}, \texttt{tetra10}), elementos térmicos (campo nodal \texttt{Temperature} y \texttt{Flux} por celda) y los elementos de los módulos de usuario, como el \texttt{CST\_Embedded2D} del módulo \texttt{discontinuities}: el exportador deriva la celda VTK del número de nodos (o de \texttt{VTK\_CELL\_TYPE}, si el elemento lo declara), sin conocer la clase. Las barras y cables de dos nodos y los marcos son celdas \texttt{line}; las barras de tres nodos \texttt{Truss2D3} y \texttt{Truss3D3}, celdas \texttt{line3} (segmento cuadrático, con el nodo intermedio).
 \end{itemize}
 
 Las interfaces de adherencia que genera el refuerzo embebido con \texttt{bond} (\texttt{BondSlipInterface}) no tienen celda propia y no se exportan: unen los nodos de la barra con los de su anfitrión. Su estado (deslizamiento, esfuerzo de adherencia) se consulta con \texttt{EmbeddedBar.\allowbreak{}bond\_\allowbreak{}state} (capítulo «Uso Avanzado: API Programática»).
+
+\section{Valores en los puntos de integración}
+
+Con \texttt{output.\allowbreak{}results.\allowbreak{}integration\_\allowbreak{}points: true}, Solidum escribe en los mismos instantes que el VTK por celda \texttt{\textless{}nombre\textgreater{}\_\allowbreak{}puntos\_\allowbreak{}NNNN.\allowbreak{}vtu}, \texttt{\textless{}nombre\textgreater{}\_\allowbreak{}puntos\_\allowbreak{}final.\allowbreak{}vtu} y su índice \texttt{\textless{}nombre\textgreater{}\_\allowbreak{}puntos.\allowbreak{}pvd}: una nube de puntos (celdas \texttt{vertex}) en la posición de cada punto de integración de los sólidos, sin promediar. Por punto:
+
+\begin{itemize}
+  \item \texttt{Displacements}: el desplazamiento interpolado $\mathbf u(\boldsymbol\xi_g) = \sum_a N_a(\boldsymbol\xi_g)\,\mathbf u_a$ (para deformar la nube con \textit{Warp By Vector});
+  \item \texttt{Element\_Id} y \texttt{Point} (número del punto en su elemento, desde 1);
+  \item \texttt{Sigma\_XX} \ldots{} \texttt{Tau\_XZ} y \texttt{Von\_Mises};
+  \item todas las variables internas escalares del material, también los ángulos; \texttt{NaN} donde el material no la tiene.
+\end{itemize}
+
+Los valores son los del estado con que el análisis equilibró el paso, los mismos que registra la historia, sin volver a evaluar el material. Sirve para leer lo que el promedio por celda esconde: el ángulo de cada grieta fija, qué puntos de un elemento se agrietaron, el daño punto a punto.
 
 \section{Animación con Archivo PVD}
 
@@ -3912,8 +3964,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 25 de noviembre de 2026, 07:49\\[0.5em]
-Commit Git: \texttt{506f401}\\[1em]
+Compilado el 25 de noviembre de 2026, 08:56\\[0.5em]
+Commit Git: \texttt{ce14b2e}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
