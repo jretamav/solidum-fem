@@ -69,7 +69,7 @@ def modelo(fino: bool, integration: str, material: str):
     if fino:
         hb = 0.004
         pos = ([hb / 2 + hb * k for k in range(15)] + [0.060, 0.065]
-               + [0.070 + 0.005 * k for k in range(18)])
+               + [0.070 + 0.005 * k for k in range(17)])   # hasta 0.150, el borde de la placa
         n_lado = 14
     else:
         hb = 0.008
