@@ -33,3 +33,8 @@ Con los ADR 0035 a 0038, un estudio de validación se declara entero en el YAML:
 - Un reporte de validación sale de Solidum: geometría, malla, deformadas, curvas y comparación entre mallas. Fuera de Solidum queda redactar e interpretar.
 - matplotlib pasa a ser dependencia opcional (`plot`) y de desarrollo; sin ella, `output.plots` da un error claro y el análisis no se ve afectado.
 - Pendiente: figuras 3D, campos nodales suavizados (hoy cada celda lleva un valor) y figuras por etapa.
+
+## Ampliación (2026-11-25): referencias externas y ejes de las curvas
+
+6. **`curve` con `reference`**: curvas o bandas externas (un ensayo, otra publicación) superpuestas a la historia, de un CSV con encabezado (`file`, `x`, `y`: una columna para una curva o `[mínimo, máximo]` para una banda; separador `,`, `;` o tabulador; celda vacía = hueco) o en línea (`points: [[x, y], ...]` o `[[x, y_min, y_max], ...]`), con `label`, `style` (`line` o `markers`) y `scale: [sx, sy]` para las unidades. Se dibujan debajo y en tinta neutra (trazos distintos; bandas en gris claro): la paleta categórica queda para las curvas de Solidum y su orden no cambia. Ejes: `xlim`, `ylim` y `xscale`, `yscale` (`linear` o `log`).
+7. **Celdas sin el campo** (`NaN` en el VTK: un campo que sólo tiene un material, ADR 0036 §7) en gris, distinto del cero de la rampa.

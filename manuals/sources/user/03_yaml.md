@@ -709,6 +709,7 @@ output:
     frequency: "all_steps"        # "last_step" o "all_steps"
     nodal_results: ["Displacements"]
     element_results: ["Von_Mises", "Internal_State", "Sigma_XX"]
+    integration_points: true      # opcional: archivo con los valores en cada punto
   text_export:                     # opcional: salida estilo FEAP en .txt
     export: true
     nodes: all
@@ -725,6 +726,12 @@ output:
 | `{at: [f1, f2, ...]}` | el primer paso convergido con factor de carga (o tiempo) ≥ cada valor |
 
 Con al menos un instante escrito se genera además un archivo maestro `.pvd` (el índice de factores e instantes, que ParaView interpreta como animación y que usan las figuras); `<file_name>_final.vtu` se escribe siempre.
+
+`nodal_results` y `element_results` filtran los campos del VTK (sin ellos, se escriben todos). Los campos por celda incluyen, además de los esfuerzos y `Internal_State`, **todas las variables internas escalares** de los materiales con su nombre (`damage_c`, `w_max_n`, `cracked`...; capítulo «Post-Procesamiento»). Un nombre que no es un campo del modelo es un error que lista los disponibles.
+
+`integration_points: true` escribe también, en los mismos instantes, `<file_name>_puntos_NNNN.vtu`, `<file_name>_puntos_final.vtu` y `<file_name>_puntos.pvd`: los valores en cada punto de integración, sin promediar (incluido el ángulo de una grieta fija).
+
+**Análisis detenido.** Si el análisis se detiene (no converge, mecanismo) después de algún paso convergido, Solidum escribe igualmente el VTK final, el `.pvd`, la salida de texto y las figuras con el último paso convergido (la historia ya está escrita fila a fila), explica la causa y termina con error: `python -m solidum` devuelve el código 3.
 
 ### Historia de la respuesta: `history`
 
@@ -757,6 +764,18 @@ El selector de nodos es uno de `node: id`, `nodes: [ids]`, `group: nombre` (grup
 - energía disipada, `dissipated`: $D_n = W_n - E_n$.
 
 $E = \tfrac12\,\mathbf U\cdot\mathbf F_{int}$ es la energía que se recupera al descargar hasta el origen sólo si todos los materiales descargan por la secante: los elásticos, los de daño (también la banda de grieta) y las cohesivas de daño. Con plasticidad, concreto con deformación residual o secciones por fibras, `elastic` y `dissipated` son un error; `external_work` sí está disponible. En la banda de grieta, $D$ al final de la separación es $G_f$ por el área de la grieta: es la comprobación de su objetividad.
+
+**Energías por zona.** Con `elements` (un selector de elementos como los de abajo: `id`, `ids`, `group` o `where`), la energía se restringe a esos elementos:
+
+```yaml
+history:
+  columns:
+    - {name: D, energy: dissipated}
+    - {name: D_banda, energy: dissipated, elements: {where: "abs(x - 250) < 20"}}
+    - {name: D_carga, energy: dissipated, elements: {group: Apoyo_carga}}
+```
+
+Con la fuerza interna de cada elemento $\mathbf f_e = \int_{\Omega_e}\mathbf B^\top\boldsymbol\sigma\,d\Omega$, $W$ suma $\tfrac12(\mathbf f_{e,n} + \mathbf f_{e,n-1})\cdot(\mathbf u_{e,n} - \mathbf u_{e,n-1})$ sobre los elementos de la zona (el trabajo que recibe su material, $\int\!\!\int\boldsymbol\sigma : d\boldsymbol\varepsilon\,dV$), $E = \tfrac12\sum_e \mathbf u_e\cdot\mathbf f_e$ y $D = W - E$. Las zonas de una partición del modelo suman sus energías. Sirve para comprobar la energía de la banda ($G_f$ por el área) por separado de la disipada bajo la carga. Sólo sólidos isoparamétricos; con `elastic` y `dissipated`, materiales que descargan por la secante. Separa por zona, no por mecanismo dentro de un mismo punto (agrietamiento frente a aplastamiento).
 
 **Magnitudes de elemento.** `element` declara la magnitud en `var` y, opcionalmente, un selector:
 
@@ -803,13 +822,30 @@ output:
 |---|---|---|
 | `mesh` | la malla sin deformar, con los apoyos, los desplazamientos impuestos y las cargas nodales | `zoom`, `markers` (por omisión `true`) |
 | `deformed` | la deformada, un panel por instante | `at` (factores de carga, o `final`; por omisión `[final]`), `field`, `field_label`, `scale` (`auto` o un número), `limits` ([mín, máx] de la escala de color), `edges` (`auto`, `true` o `false`), `zoom`, `label_column`, `show_undeformed` |
-| `curve` | columnas de la historia | `x`, `y` (una columna o una lista), `compare` (otros YAML), `labels`, `xlabel`, `ylabel` |
+| `curve` | columnas de la historia | `x`, `y` (una columna o una lista), `compare` (otros YAML), `labels`, `xlabel`, `ylabel`, `reference` (curvas o bandas externas), `xlim`, `ylim` ([mín, máx]), `xscale`, `yscale` (`linear` o `log`) |
 
 Todas admiten `file` (`.png` por omisión, `.pdf` o `.svg`) y `title`. Detalles:
 
 - `deformed` toma, para cada factor de `at`, el instante escrito más cercano: los instantes se piden en `results.frequency`. `field` es un campo del VTK por celda (`Internal_State`, la variable interna principal del material —el daño en los de daño—; `Von_Mises`; `Sigma_XX`...) o `displacement` (magnitud del desplazamiento); los campos con signo usan una escala de color divergente centrada en cero. `scale: auto` dibuja el mayor desplazamiento como el 5 % del tamaño del modelo. `label_column` rotula cada panel con el valor de esa columna de la historia en ese instante (p. ej. la flecha). `edges: auto` dibuja los bordes de los elementos hasta 3000 elementos.
 - `curve` con `compare` añade las mismas columnas de otros modelos ya resueltos (sus historias se buscan con su propio `output.file_name`): es la figura de un estudio de malla.
+- `curve` con `reference` superpone datos externos (abajo).
+- En `deformed`, las celdas cuyo material no tiene el campo (p. ej. el acero elástico en un campo de daño) se dibujan en gris.
 - Las figuras se regeneran sin volver a calcular con `solidum-post modelo.yaml` (o `python -m solidum.post modelo.yaml`; por ejemplo, tras cambiar una ventana o un rótulo). Si una figura falla al terminar el análisis, el error se registra y los resultados quedan escritos.
 - Mallas 2D; las 3D, todavía no. Requiere matplotlib (`pip install matplotlib`).
+
+**Referencias externas en `curve`.** `reference` superpone datos que no salen de Solidum (un ensayo, la curva de otra publicación) en tinta neutra, debajo de las curvas de Solidum, que conservan sus colores:
+
+```yaml
+- type: curve
+  x: delta_mm
+  y: P_N
+  xlim: [0, 1.0]
+  reference:
+    - {file: petersson_ensayo.csv, x: d, y: P, scale: [1, 1000], label: "Ensayo", style: markers}
+    - {file: envolvente.csv, x: d, y: [P_min, P_max], label: "Envolvente experimental"}
+    - {points: [[0.0, 0.0], [0.05, 750.0]], label: "Pico publicado"}
+```
+
+`file` es un CSV con encabezado (separador coma, punto y coma o tabulador; ruta relativa al YAML; una celda vacía deja un hueco). `y` es una columna (curva) o `[mínimo, máximo]` (banda gris). `points` da los puntos en el propio YAML: `[x, y]` para una curva, `[x, y_min, y_max]` para una banda. `scale: [sx, sy]` convierte las unidades (en el ejemplo, kN a N); `style` es `line` (por omisión) o `markers`.
 
 `log_level` fija el nivel del registro durante el análisis (`run_yaml`, `load_yaml(...).solve()` y `examples/ejecutar_yaml.py`): `WARNING` deja sólo avisos y errores. Al terminar, `run_yaml` vuelve al nivel que tenía la aplicación. Un nivel desconocido es un error de validación.

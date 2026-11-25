@@ -67,6 +67,14 @@ output:
       - {{name: sxx_w, element: {{where: "x > 50 and x < 60", var: stress, component: xx}}}}
       - {{name: exx_a, element: {{where: "x < 50", var: strain, component: xx}}}}
       - {{name: mises_w, element: {{where: "x > 50 and x < 60", var: stress, component: mises}}}}
+      - {{name: Wa, energy: external_work, elements: {{where: "x < 50"}}}}
+      - {{name: Ww, energy: external_work, elements: {{where: "x > 50 and x < 60"}}}}
+      - {{name: Wb, energy: external_work, elements: {{where: "x > 60"}}}}
+      - {{name: Ea, energy: elastic, elements: {{where: "x < 50"}}}}
+      - {{name: Ewb, energy: elastic, elements: {{where: "x > 50"}}}}
+      - {{name: Da, energy: dissipated, elements: {{where: "x < 50"}}}}
+      - {{name: Dw, energy: dissipated, elements: {{where: "x > 50 and x < 60"}}}}
+      - {{name: Dwb, energy: dissipated, elements: {{where: "x > 50"}}}}
 """
 
 
@@ -108,6 +116,41 @@ def test_esfuerzo_y_deformacion_de_elemento(barra):
     # Tracción uniaxial (ν = 0, esfuerzo plano): von Mises = |σ_xx|.
     np.testing.assert_allclose(barra["mises_w"], np.abs(barra["sxx_w"]), rtol=1e-9, atol=1e-12)
     assert barra["d_max"][-1] > 0.99
+
+
+def test_las_energias_por_zona_suman_las_del_modelo(barra):
+    """Con una partición del modelo (espesor 10 ≠ 1), la suma de las energías
+    de las zonas es la del modelo completo en cada paso (hasta el redondeo
+    del CSV, 10 cifras)."""
+    tol = dict(rtol=1e-8, atol=1e-8 * GF * A)
+    np.testing.assert_allclose(barra["Wa"] + barra["Ww"] + barra["Wb"], barra["W"], **tol)
+    np.testing.assert_allclose(barra["Ea"] + barra["Ewb"], barra["Ee"], **tol)
+    np.testing.assert_allclose(barra["Da"] + barra["Dwb"], barra["D"], **tol)
+
+
+def test_la_disipacion_esta_en_la_columna_que_se_agrieta(barra):
+    """La columna debilitada disipa G_f·A; los bloques que descargan
+    elásticamente, nada."""
+    assert barra["Dw"][-1] / (GF * A) == pytest.approx(1.0, abs=0.01)
+    assert np.max(np.abs(barra["Da"])) < 1e-6 * GF * A
+    np.testing.assert_allclose(barra["Dwb"], barra["Dw"], rtol=1e-6, atol=1e-6 * GF * A)
+
+
+def test_energia_por_zona_en_un_analisis_lineal(tmp_path):
+    """El análisis lineal no confirma estado: la zona lee el de prueba."""
+    ruta = _placa(tmp_path, ["{name: W, energy: external_work}",
+                             "{name: W1, energy: external_work, elements: {where: \"x < 0.5\"}}",
+                             "{name: W2, energy: external_work, elements: {where: \"x > 0.5\"}}",
+                             "{name: E2, energy: elastic, elements: {where: \"x > 0.5\"}}"],
+                  material="{id: 1, type: Elastic2D, E: 200000.0, nu: 0.3}")
+    ruta.write_text(ruta.read_text(encoding="utf-8").replace(
+        "solver: {type: NonlinearSolver, num_steps: 2}", "solver: {type: LinearSolver}"),
+        encoding="utf-8")
+    solidum.run_yaml(ruta, write_output=True)
+    h = _leer(tmp_path / "placa_historia.csv")
+    assert h["W"][0] > 0.0
+    np.testing.assert_allclose(h["W1"] + h["W2"], h["W"], rtol=1e-8)
+    np.testing.assert_allclose(h["E2"], h["W2"], rtol=1e-8)    # elástico: E = W
 
 
 # ----------------------------------------------------------------------------
@@ -161,6 +204,19 @@ def test_fuerzas_internas_del_marco(tmp_path, solver, pasos):
     np.testing.assert_allclose(h["Mfin"], 0.0, atol=1e-9 * Q * LV ** 2)
     # Elástico lineal con carga proporcional: W = E (trapecio exacto).
     np.testing.assert_allclose(h["W"], h["Ee"], rtol=1e-9)
+
+
+def test_energia_por_zona_con_marcos_es_un_error(tmp_path):
+    ruta = tmp_path / "voladizo.yaml"
+    ruta.write_text(VOLADIZO + "solver: {type: LinearSolver}\n" + textwrap.dedent("""\
+        output:
+          file_name: voladizo
+          history:
+            columns:
+              - {name: W, energy: external_work, elements: {ids: [1, 2]}}
+        """), encoding="utf-8")
+    with pytest.raises(ValueError, match="sólidos isoparamétricos"):
+        solidum.run_yaml(ruta, write_output=True)
 
 
 # ----------------------------------------------------------------------------
@@ -226,6 +282,12 @@ def test_trabajo_externo_y_deformacion_plastica_si(tmp_path):
     assert np.all(np.isfinite(h["s"]))
 
 
+def test_energia_disipada_por_zona_con_plasticidad_es_un_error(tmp_path):
+    with pytest.raises(ValueError, match="VonMises2D"):
+        solidum.run_yaml(_placa(tmp_path, ["{name: D, energy: dissipated, elements: {id: 1}}"]),
+                         write_output=True)
+
+
 @pytest.mark.parametrize("columna,mensaje", [
     ("{name: x, element: {var: damage}}", "variable interna escalar 'damage'"),
     ("{name: x, element: {id: 1, var: eps_p}}", "variable interna escalar 'eps_p'"),
@@ -251,6 +313,14 @@ def test_errores_al_resolver(tmp_path, columna, mensaje):
      "near"),
     ({"history": {"columns": [{"name": "s", "element": {"var": "damage", "component": "xx"}}]}},
      "sólo con var: stress o strain"),
+    ({"history": {"columns": [{"name": "D", "energy": "dissipated", "elements": "banda"}]}},
+     "un diccionario con uno de"),
+    ({"history": {"columns": [{"name": "D", "energy": "dissipated",
+                               "elements": {"id": 1, "group": "g"}}]}}, "exactamente uno de"),
+    ({"history": {"columns": [{"name": "D", "energy": "dissipated",
+                               "elements": {"where": "x == 1"}}]}}, "near"),
+    ({"history": {"columns": [{"name": "u", "displacement": {"node": 1, "dof": "ux"},
+                               "elements": {"id": 1}}]}}, "no admitidas"),
 ])
 def test_validacion(bloque, mensaje):
     errores = validate_output_block(bloque)
@@ -280,3 +350,31 @@ def test_energia_en_un_transitorio_es_un_error(tmp_path):
         """), encoding="utf-8")
     with pytest.raises(ValueError, match="estáticos"):
         solidum.run_yaml(ruta, write_output=True)
+
+
+def test_la_zona_usa_la_regla_de_integracion_de_cada_elemento():
+    """Dos Quad4 con reglas distintas del mismo número de puntos (Gauss 2×2 y
+    Newton–Cotes en las esquinas): ``G_e·σ_e`` de la zona es la fuerza
+    interna de cada elemento con su propia regla."""
+    from solidum.core.domain import Domain
+    from solidum.registry import ElementRegistry, MaterialRegistry
+    from solidum.utils.output_writer import _ZoneGroup
+    mat = MaterialRegistry.create("Elastic2D", E=1000.0, nu=0.25)
+    dom = Domain()
+    coords = [(0, 0), (1, 0), (2, 0), (0, 1), (1.1, 1.2), (2, 1)]
+    for k, c in enumerate(coords, start=1):
+        dom.add_node(k, list(map(float, c)))
+    Q4 = ElementRegistry.get("Quad4")
+    esquinas = (np.array([[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]), np.ones(4))
+    n = dom.nodes
+    e1 = Q4(1, [n[1], n[2], n[5], n[4]], mat, thickness=3.0)
+    e2 = Q4(2, [n[2], n[3], n[6], n[5]], mat, thickness=3.0, quadrature=esquinas)
+    dom.add_element(e1)
+    dom.add_element(e2)
+    dom.generate_equation_numbers()
+    U = np.random.default_rng(0).normal(size=dom.total_dofs) * 1e-3
+    f_ref = [el.compute_element_state(U[el.get_global_dof_indices()])[1] for el in (e1, e2)]
+    grupo = _ZoneGroup([e1, e2])
+    f = np.einsum("mij,mj->mi", grupo.G, grupo.stresses(trial=True))
+    for m in range(2):
+        np.testing.assert_allclose(f[m], f_ref[m], rtol=1e-12, atol=1e-12 * np.abs(f_ref[m]).max())

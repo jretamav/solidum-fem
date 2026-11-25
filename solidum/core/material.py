@@ -155,6 +155,13 @@ class Material(BatchMaterialHooks, ABC):
         :class:`BatchMaterialHooks` para el resto del contrato por lotes
         (``BATCH_KERNEL``, ``batch_params``, ``batch_matrix``,
         ``initial_state``), todo opcional.
+
+    STATE_ANGLES : ClassVar[tuple[str, ...]]
+        Variables internas escalares que son el ángulo de una dirección
+        (la de una grieta fija, en radianes). El VTK por celda no las
+        promedia —la media de direcciones de puntos distintos, o de un
+        punto sin grieta, no es una dirección—; se leen en el archivo por
+        puntos de integración (ADR 0036). Default ``()``.
     """
 
     STRAIN_DIM: ClassVar[int]
@@ -163,6 +170,7 @@ class Material(BatchMaterialHooks, ABC):
     IS_UNILATERAL: ClassVar[bool] = False
     IS_LINEAR_ELASTIC: ClassVar[bool] = False
     SECANT_UNLOADING: ClassVar[bool] = False
+    STATE_ANGLES: ClassVar[tuple[str, ...]] = ()
 
     # Densidad física del medio continuo (kg/m³, en las unidades del usuario).
     # Opcional al construir: análisis que no invocan peso propio o matriz de

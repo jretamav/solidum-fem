@@ -195,7 +195,10 @@ class TestExportadorPorLotes(unittest.TestCase):
                                        rtol=0.0, atol=1e-12 * escala, err_msg=name)
         for name in ref.cell_data:
             for a, b in zip(lot.cell_data[name], ref.cell_data[name]):
-                escala = max(np.abs(b).max(), 1e-300)
+                # NaN: celdas cuyo material no tiene la variable (las mismas en
+                # los dos caminos; assert_allclose compara los NaN por posición).
+                finitos = np.abs(b[np.isfinite(b)])
+                escala = max(finitos.max() if finitos.size else 0.0, 1e-300)
                 np.testing.assert_allclose(a, b, rtol=0.0, atol=1e-12 * escala, err_msg=name)
 
     def test_plane_strain_j2_sigma_zz_e_internal_state(self):

@@ -1358,6 +1358,8 @@ class FixedSmearedCrack2D(CrackBandMixin, Material):
     PRIMARY_STATE_VAR = 'damage_n'
     IS_SYMMETRIC = False
     STATE_SCHEMA = STATE_SCHEMA_FSC
+    # θ es una dirección (sin grieta vale 0): no se promedia por celda.
+    STATE_ANGLES = ('theta',)
 
     def __init__(self, E: float, nu: float, f_t: float, G_f: float,
                  hypothesis: str = 'plane_stress',

@@ -182,6 +182,26 @@ def test_malla_3d_no_disponible(tmp_path):
     ([{"type": "curve", "y": "P"}], "eje x"),
     ([{"type": "curve", "x": "u", "y": 3}], "lista de columnas"),
     ([{"type": "curve", "x": "u", "y": "P", "compare": "b.yaml"}], "lista de archivos"),
+    ([{"type": "curve", "x": "u", "y": "P", "xlim": [1, 0]}], "mínimo < máximo"),
+    ([{"type": "curve", "x": "u", "y": "P", "yscale": "logaritmica"}], "'linear' o 'log'"),
+    ([{"type": "curve", "x": "u", "y": "P", "reference": {"file": "a.csv"}}],
+     "lista de curvas o bandas"),
+    ([{"type": "curve", "x": "u", "y": "P", "reference": [{"label": "ensayo"}]}],
+     "'file' (un CSV con encabezado) o 'points'"),
+    ([{"type": "curve", "x": "u", "y": "P", "reference": [{"file": "a.csv", "y": "P"}]}],
+     "columna del eje x"),
+    ([{"type": "curve", "x": "u", "y": "P",
+       "reference": [{"file": "a.csv", "x": "d", "y": ["a", "b", "c"]}]}], "[mínimo, máximo]"),
+    ([{"type": "curve", "x": "u", "y": "P", "reference": [{"points": [[0, 0]]}]}],
+     "al menos dos puntos"),
+    ([{"type": "curve", "x": "u", "y": "P", "reference": [{"points": [[0, 0], [1, 2, 3]]}]}],
+     "[x, y_min, y_max]"),
+    ([{"type": "curve", "x": "u", "y": "P", "reference": [{"points": [[0, 0], [1, 1], 5]}]}],
+     "[x, y_min, y_max]"),
+    ([{"type": "curve", "x": "u", "y": "P",
+       "reference": [{"points": [[0, 0], [1, 1]], "style": "puntos"}]}], "'line' o 'markers'"),
+    ([{"type": "curve", "x": "u", "y": "P",
+       "reference": [{"points": [[0, 0], [1, 1]], "scale": 2}]}], "[factor x, factor y]"),
 ])
 def test_validacion(plots, mensaje):
     errores = validate_plots_block(plots)
@@ -218,3 +238,101 @@ def test_paleta_de_curvas_en_orden_fijo(resuelto):
     colors = [matplotlib.colors.to_hex(line.get_color()) for line in created[0].get_lines()]
     assert colors == [P._SERIES[0], P._SERIES[1]]
     np.testing.assert_equal(len(created[0].get_legend().get_texts()), 2)
+
+
+# ----------------------------------------------------------------------------
+# Referencias externas de las curvas (ensayo, otra publicación)
+# ----------------------------------------------------------------------------
+
+def _ejes_de(spec, files, out):
+    """Dibuja ``spec`` y devuelve sus ejes (espía de ``plt.subplots``)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from solidum.post import plots as P
+    created = []
+    real = plt.subplots
+
+    def spy(*a, **k):
+        fig, ax = real(*a, **k)
+        created.append(ax)
+        return fig, ax
+    try:
+        plt.subplots = spy
+        P.plot_curve(files, spec, out)
+    finally:
+        plt.subplots = real
+    return created[0]
+
+
+def test_curva_con_referencias_de_un_csv_y_en_linea(resuelto):
+    """Curva y banda de un CSV (separador ';', unidades convertidas con
+    ``scale``) y una curva en línea: en tinta neutra, debajo de las de
+    Solidum, que conservan la paleta; límites y escala de los ejes."""
+    import matplotlib
+    from solidum.post import plots as P
+    d, ruta = resuelto
+    (d / "ensayo.csv").write_text("d_mm;P_kN;Pmin_kN;Pmax_kN\n0;0;0;0\n0.01;0.5;0.45;0.55\n"
+                                  "0.2;0.1;;0.2\n", encoding="utf-8")
+    spec = {"type": "curve", "x": "u", "y": "P", "xlim": [0.0, 0.3], "yscale": "log",
+            "reference": [
+                {"file": "ensayo.csv", "x": "d_mm", "y": "P_kN", "scale": [1, 1000],
+                 "label": "ensayo", "style": "markers"},
+                {"file": "ensayo.csv", "x": "d_mm", "y": ["Pmin_kN", "Pmax_kN"],
+                 "scale": [1, 1000], "label": "envolvente"},
+                {"points": [[0.0, 1.0], [0.3, 500.0]], "label": "otra"}]}
+    ax = _ejes_de(spec, ResultFiles.of_yaml(ruta), d / "referencias.png")
+    lines = ax.get_lines()
+    assert [ln.get_label() for ln in lines] == ["ensayo", "otra", "barra"]
+    np.testing.assert_allclose(lines[0].get_ydata(), [0.0, 500.0, 100.0])   # kN → N
+    assert matplotlib.colors.to_hex(lines[-1].get_color()) == P._SERIES[0]
+    assert all(matplotlib.colors.to_hex(ln.get_color()) == P._INK_2 for ln in lines[:-1])
+    assert all(ln.get_zorder() < lines[-1].get_zorder() for ln in lines[:-1])
+    assert len(ax.collections) == 1                      # la banda
+    assert ax.get_xlim() == (0.0, 0.3) and ax.get_yscale() == "log"
+    assert len(ax.get_legend().get_texts()) == 4
+
+
+def test_errores_de_las_referencias(resuelto):
+    d, ruta = resuelto
+    files = ResultFiles.of_yaml(ruta)
+    (d / "malo.csv").write_text("d,P\n0,0\n0.1,mucho\n", encoding="utf-8")
+    (d / "bueno.csv").write_text("d,P\n0,0\n0.1,5\n", encoding="utf-8")
+    base = {"type": "curve", "x": "u", "y": "P"}
+    with pytest.raises(FileNotFoundError, match="no_existe.csv"):
+        make_plots(files, [{**base, "reference": [{"file": "no_existe.csv", "x": "d", "y": "P"}]}])
+    with pytest.raises(ValueError, match="no tiene las columnas"):
+        make_plots(files, [{**base, "reference": [{"file": "bueno.csv", "x": "d", "y": "Q"}]}])
+    with pytest.raises(ValueError, match="línea 3"):
+        make_plots(files, [{**base, "reference": [{"file": "malo.csv", "x": "d", "y": "P"}]}])
+
+
+def test_celdas_sin_el_campo_en_gris(tmp_path):
+    """Un campo que sólo tiene un material (NaN en las demás celdas) se dibuja
+    con esas celdas en gris, no transparentes."""
+    texto = MODELO.format(name="mixto", element="Quad4", plots="    - {type: mesh}")
+    texto = texto.replace("{id: 1, type: IsotropicDamageCrackBand2D, E: 30000.0, nu: 0.0, "
+                          "f_t: 3.0, G_f: 0.1}", "{id: 1, type: Elastic2D, E: 30000.0, nu: 0.0}")
+    ruta = tmp_path / "mixto.yaml"
+    ruta.write_text(texto, encoding="utf-8")
+    solidum.run_yaml(ruta, write_output=True)
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from solidum.post import plots as P
+    created = []
+    real = plt.subplots
+
+    def spy(*a, **k):
+        fig, axes = real(*a, **k)
+        created.append(axes)
+        return fig, axes
+    try:
+        plt.subplots = spy
+        P.plot_deformed(ResultFiles.of_yaml(ruta), {"type": "deformed", "field": "damage"},
+                        tmp_path / "d.png")
+    finally:
+        plt.subplots = real
+    pc = created[0][0, 0].collections[0]
+    assert np.isnan(np.asarray(pc.get_array(), dtype=float)).sum() == 18   # 18 elásticas
+    assert matplotlib.colors.to_hex(pc.get_cmap().get_bad()) == P._NO_FIELD

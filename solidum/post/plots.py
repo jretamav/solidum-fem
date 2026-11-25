@@ -15,7 +15,10 @@ volver a calcular, con ``python -m solidum.post modelo.yaml``.
   ``displacement``: la magnitud del desplazamiento), un panel por instante con
   la misma escala de color;
 - ``{type: curve, x: columna, y: columna | [columnas], compare: [otros.yaml]}``:
-  columnas de la historia, también de otros modelos (estudios de malla).
+  columnas de la historia, también de otros modelos (estudios de malla), con
+  curvas o bandas externas (``reference``: un ensayo, otra publicación) en
+  tinta neutra, y ejes con límites (``xlim``, ``ylim``) o logarítmicos
+  (``xscale``, ``yscale``).
 
 Mallas 2D (sólidos planos y elementos de línea en el plano); las 3D, todavía
 no. Colores (guía de visualización del proyecto): curvas con la paleta
@@ -39,8 +42,11 @@ _KEYS = {
     "mesh": {"type", "file", "title", "zoom", "markers"},
     "deformed": {"type", "file", "title", "zoom", "at", "field", "field_label", "scale", "limits",
                  "edges", "label_column", "show_undeformed"},
-    "curve": {"type", "file", "title", "x", "y", "compare", "labels", "xlabel", "ylabel"},
+    "curve": {"type", "file", "title", "x", "y", "compare", "labels", "xlabel", "ylabel",
+              "reference", "xlim", "ylim", "xscale", "yscale"},
 }
+_REFERENCE_KEYS = {"file", "points", "x", "y", "label", "style", "scale"}
+_AXIS_SCALES = ("linear", "log")
 _FORMATS = (".png", ".pdf", ".svg")
 
 # Paleta de referencia de la guía de visualización (modo claro, impresión).
@@ -52,6 +58,13 @@ _EDGES_AUTO_MAX = 3000
 _DIVERGING = ("#184f95", "#3987e5", "#9ec5f4", "#f0efec", "#f3b0ad", "#e66767", "#b8302f")
 _INK, _INK_2, _GRID = "#0b0b0b", "#52514e", "#d9d8d4"
 _EDGE = "#3b3a37"
+# Referencias externas de las curvas (ensayos, otras publicaciones): tinta
+# neutra, distinguidas por el trazo; las bandas, en gris claro.
+_BAND = "#d9d8d4"
+_REF_LINESTYLES = ("--", ":", "-.", (0, (5, 1, 1, 1)))
+_REF_MARKERS = ("o", "s", "^", "D")
+# Celdas sin el campo (p. ej. el acero elástico en un campo de daño).
+_NO_FIELD = "#dddcd8"
 
 # Contorno de cada celda VTK de 2D en el orden de sus nodos (vértices y nodos
 # intermedios alternados).
@@ -124,6 +137,60 @@ def validate_plots_block(plots) -> list[str]:
             if labels is not None and not (isinstance(labels, list)
                                            and all(isinstance(v, str) for v in labels)):
                 errors.append(f"{ctx}.labels: se esperaba una lista de nombres.")
+            for key in ("xlim", "ylim"):
+                if key in p and not (_numbers(p[key], 2) and p[key][0] < p[key][1]):
+                    errors.append(f"{ctx}.{key}: se esperaba [mínimo, máximo] con mínimo < máximo.")
+            for key in ("xscale", "yscale"):
+                if key in p and p[key] not in _AXIS_SCALES:
+                    errors.append(f"{ctx}.{key}: se esperaba 'linear' o 'log'.")
+            if "reference" in p:
+                errors.extend(_validate_references(p["reference"], f"{ctx}.reference"))
+    return errors
+
+
+def _validate_references(refs, ctx: str) -> list[str]:
+    """Errores de forma de ``reference`` de una curva: datos externos
+    (ensayo, otra publicación) que se superponen a la historia."""
+    if not isinstance(refs, list) or not refs:
+        return [f"{ctx}: se esperaba una lista de curvas o bandas de referencia."]
+    errors = []
+    for i, r in enumerate(refs):
+        c = f"{ctx}[{i}]"
+        if not isinstance(r, dict):
+            errors.append(f"{c}: se esperaba un diccionario con 'file' (y 'x', 'y') o 'points'.")
+            continue
+        extra = set(r) - _REFERENCE_KEYS
+        if extra:
+            errors.append(f"{c}: claves no admitidas {sorted(extra)}; se admiten "
+                          f"{sorted(_REFERENCE_KEYS)}.")
+        if ("file" in r) == ("points" in r):
+            errors.append(f"{c}: declare 'file' (un CSV con encabezado) o 'points', uno de los dos.")
+        if "file" in r:
+            if not isinstance(r["file"], str) or not r["file"]:
+                errors.append(f"{c}.file: se esperaba la ruta de un CSV.")
+            if not isinstance(r.get("x"), str):
+                errors.append(f"{c}.x: falta la columna del eje x del CSV.")
+            y = r.get("y")
+            if not (isinstance(y, str) or (isinstance(y, list) and len(y) == 2
+                                           and all(isinstance(v, str) for v in y))):
+                errors.append(f"{c}.y: se esperaba una columna (curva) o [mínimo, máximo] "
+                              "(banda).")
+        elif "points" in r:
+            pts = r["points"]
+            widths = {len(q) for q in pts if isinstance(q, list)} if isinstance(pts, list) else set()
+            if not (isinstance(pts, list) and len(pts) >= 2 and len(widths) == 1
+                    and widths <= {2, 3}
+                    and all(isinstance(q, list) and _numbers(q, len(q)) for q in pts)):
+                errors.append(f"{c}.points: se esperaba una lista de [x, y] (curva) o de "
+                              "[x, y_min, y_max] (banda), con al menos dos puntos.")
+            if "x" in r or "y" in r:
+                errors.append(f"{c}: 'x' e 'y' sólo con 'file'.")
+        if "style" in r and r["style"] not in ("line", "markers"):
+            errors.append(f"{c}.style: se esperaba 'line' o 'markers'.")
+        if "scale" in r and not _numbers(r["scale"], 2):
+            errors.append(f"{c}.scale: se esperaba [factor x, factor y].")
+        if "label" in r and not isinstance(r["label"], str):
+            errors.append(f"{c}.label: se esperaba un texto.")
     return errors
 
 
@@ -369,6 +436,8 @@ def plot_deformed(files: ResultFiles, spec: dict, out: Path) -> Path:
         else:
             cmap = LinearSegmentedColormap.from_list("seq", _BLUE_RAMP)
             norm = Normalize(vmin=lo, vmax=hi if hi > lo else lo + 1.0)
+        # Celdas cuyo material no tiene el campo (NaN en el VTK): gris claro.
+        cmap = cmap.with_extremes(bad=_NO_FIELD)
     hist = None
     col = spec.get("label_column")
     if col:
@@ -457,7 +526,24 @@ def plot_curve(files: ResultFiles, spec: dict, out: Path) -> Path:
     if len(series) > len(_SERIES):
         raise ValueError(f"{len(series)} curvas en una figura; como mucho {len(_SERIES)} "
                          "(divida la figura).")
+    refs = [_reference_data(files, r, i) for i, r in enumerate(spec.get("reference") or [])]
     fig, ax = plt.subplots(figsize=(6.0, 3.8))
+    # Referencias externas debajo y en tinta neutra: la paleta queda para las
+    # curvas de Solidum.
+    n_lines = 0
+    for r in refs:
+        if r["band"]:
+            ax.fill_between(r["x"], r["y"][0], r["y"][1], color=_BAND, alpha=0.75, lw=0.0,
+                            zorder=1, label=r["label"])
+            continue
+        ls = _REF_LINESTYLES[n_lines % len(_REF_LINESTYLES)]
+        mk = _REF_MARKERS[n_lines % len(_REF_MARKERS)]
+        n_lines += 1
+        if r["style"] == "markers":
+            ax.plot(r["x"], r["y"], ls="none", marker=mk, ms=4, mfc="none", color=_INK_2,
+                    mew=0.9, zorder=1.5, label=r["label"])
+        else:
+            ax.plot(r["x"], r["y"], ls=ls, color=_INK_2, lw=1.1, zorder=1.5, label=r["label"])
     for k, (name, run, y) in enumerate(series):
         h = run.history()
         for c in (x, y):
@@ -466,18 +552,79 @@ def plot_curve(files: ResultFiles, spec: dict, out: Path) -> Path:
                                  f"({sorted(h)}).")
         label = labels[k] if labels else (name if len(ys) == 1 else
                                           (y if len(runs) == 1 else f"{name}: {y}"))
-        ax.plot(h[x], h[y], color=_SERIES[k], lw=1.6, label=label)
+        ax.plot(h[x], h[y], color=_SERIES[k], lw=1.6, label=label, zorder=2)
     ax.set_xlabel(spec.get("xlabel") or x)
     ax.set_ylabel(spec.get("ylabel") or (ys[0] if len(ys) == 1 else ""))
+    ax.set_xscale(spec.get("xscale", "linear"))
+    ax.set_yscale(spec.get("yscale", "linear"))
+    if spec.get("xlim"):
+        ax.set_xlim(*spec["xlim"])
+    if spec.get("ylim"):
+        ax.set_ylim(*spec["ylim"])
     ax.grid(True, color=_GRID, lw=0.6)
     ax.set_axisbelow(True)
-    if len(series) > 1:
+    if len(series) + len(refs) > 1:
         ax.legend(frameon=False)
     if spec.get("title"):
         ax.set_title(spec["title"])
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
     return out
+
+
+def _reference_data(files: ResultFiles, ref: dict, index: int) -> dict:
+    """Datos de una referencia externa de ``curve``: ``{x, y, band, label,
+    style}``, con ``y`` un arreglo (curva) o el par ``(mínimo, máximo)``
+    (banda), ya escalados con ``scale: [sx, sy]``."""
+    sx, sy = ref.get("scale", [1.0, 1.0])
+    if "points" in ref:
+        data = np.asarray(ref["points"], dtype=float)
+        x, cols = data[:, 0], [data[:, k] for k in range(1, data.shape[1])]
+        default = f"referencia {index + 1}"
+    else:
+        path = Path(ref["file"])
+        if not path.is_absolute():
+            path = files.base_dir / path
+        table = _read_csv_columns(path)
+        wanted = [ref["x"], *([ref["y"]] if isinstance(ref["y"], str) else ref["y"])]
+        missing = [c for c in wanted if c not in table]
+        if missing:
+            raise ValueError(f"{path.name}: no tiene las columnas {missing} ({sorted(table)}).")
+        x, cols = table[wanted[0]], [table[c] for c in wanted[1:]]
+        default = path.stem
+    band = len(cols) == 2
+    y = (sy * cols[0], sy * cols[1]) if band else sy * cols[0]
+    return {"x": sx * x, "y": y, "band": band, "label": ref.get("label", default),
+            "style": ref.get("style", "line")}
+
+
+def _read_csv_columns(path: Path) -> dict[str, np.ndarray]:
+    """Columnas numéricas de un CSV con encabezado (separador ``,``, ``;`` o
+    tabulador). Una celda vacía es ``NaN`` (hueco en la curva)."""
+    if not path.is_file():
+        raise FileNotFoundError(f"No existe el archivo de referencia {path}.")
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        text = f.read()
+    try:
+        dialect = csv.Sniffer().sniff(text.splitlines()[0] if text else "", delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    rows = [r for r in csv.reader(text.splitlines(), dialect) if any(c.strip() for c in r)]
+    if len(rows) < 3:
+        raise ValueError(f"{path.name}: se esperaba un encabezado y al menos dos filas de datos.")
+    header = [h.strip() for h in rows[0]]
+    values = np.full((len(rows) - 1, len(header)), np.nan)
+    for i, row in enumerate(rows[1:]):
+        for j, cell in enumerate(row[:len(header)]):
+            cell = cell.strip()
+            if not cell:
+                continue
+            try:
+                values[i, j] = float(cell)
+            except ValueError:
+                raise ValueError(f"{path.name}, línea {i + 2}, columna {header[j]!r}: "
+                                 f"{cell!r} no es un número.") from None
+    return {name: values[:, j] for j, name in enumerate(header)}
 
 
 _DRAW = {"mesh": plot_mesh, "deformed": plot_deformed, "curve": plot_curve}

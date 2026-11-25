@@ -741,7 +741,16 @@ def _solve_yaml_model(model: YamlModel, step_callback, write_output: bool = Fals
                 step_callback(step, U, factor)
         return cb
 
-    result = _dispatch_yaml_model(model, step_callback, make_writer)
+    try:
+        result = _dispatch_yaml_model(model, step_callback, make_writer)
+    except Exception as exc:
+        # Un análisis detenido (no converge, mecanismo...) conserva lo
+        # calculado: VTK final, .pvd, texto y figuras con el último paso
+        # convergido. El error original sigue su curso.
+        writer = holder.get("w")
+        if writer is not None:
+            writer.finish_stopped(exc)
+        raise
     final = getattr(result, "final", result)
     U = getattr(final, "U", None)
     if U is not None and np.ndim(U) == 2:

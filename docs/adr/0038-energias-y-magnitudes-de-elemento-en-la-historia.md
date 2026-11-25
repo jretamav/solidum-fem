@@ -38,3 +38,9 @@ La historia de la respuesta (ADR 0036) registraba desplazamientos y reacciones. 
 - La comprobación `D/(G_f·A)` de la banda de grieta sale de la salida estándar: en la barra de objetividad por el YAML (Quad4, Δ = 10 mm), `D/(G_f·A) = 0.998`.
 - Un material nuevo que descargue por la secante debe declarar `SECANT_UNLOADING = True` para admitir las energías elástica y disipada; por omisión no las admite.
 - Las energías en etapas y en dinámica (cinética, amortiguamiento) quedan para cuando se necesiten.
+
+## Ampliación (2026-11-25): energías por zona
+
+4. **`energy` con `elements: {id | ids | group | where}`**: las mismas tres energías restringidas a un conjunto de elementos, con la fuerza interna de cada elemento `f_e = Σ_g w_g·detJ_g·s·B_gᵀσ_g` (`s`, el espesor en 2D) evaluada con los esfuerzos del estado que equilibró el paso (§3): `W_n = W_{n−1} + ½ Σ_e (f_e,n + f_e,n−1)·(u_e,n − u_e,n−1)` (el trabajo que recibe el material de la zona, `∫∫σ:dε dV`; para todo el modelo, el trabajo externo), `E_n = ½ Σ_e u_e,n·f_e,n` y `D_n = W_n − E_n`. Las energías de las zonas de una partición suman las del modelo (prueba con espesor ≠ 1). Sólo sólidos isoparamétricos (cinemática compilada, fuerza interna `∫Bᵀσ`; los marcos y los elementos con estado propio son un error) y, para `elastic` y `dissipated`, materiales de la zona con `SECANT_UNLOADING`.
+
+Separa la energía por **zona** (la banda de grieta frente al concreto bajo la carga), no por **mecanismo** en un mismo punto (agrietamiento frente a aplastamiento con d⁺ y d⁻ a la vez): esa separación exige definir la disipación de cada mecanismo en cada material, que es una decisión física (con ν ≠ 0 el modelo 2 no deriva de un potencial; Reglas §3) y queda para el usuario.

@@ -129,6 +129,11 @@ _CELL_3D = {4: "tetra", 8: "hexahedron", 10: "tetra10",
 # Nombres y orden de las seis componentes de esfuerzo exportadas.
 STRESS_COMPONENT_NAMES = ("Sigma_XX", "Sigma_YY", "Sigma_ZZ",
                           "Tau_XY", "Tau_YZ", "Tau_XZ")
+#: Campos nodales que puede escribir el exportador (los de un modelo concreto
+#: son un subconjunto: sin giros no hay ``Rotations``...).
+NODAL_FIELD_NAMES = ("Displacements", "Rotations", "Temperature", "Supports", "Supports_Rot",
+                     "External_Forces", "Nodal_Mass", "Nodal_Inertia",
+                     *(f"{c}_nodal" for c in STRESS_COMPONENT_NAMES), "Von_Mises_nodal")
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +303,106 @@ def _state_var_avg(elem) -> float:
     if not vals:
         return 0.0
     return sum(vals) / len(vals)
+
+
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float, np.floating, np.integer)) and not isinstance(v, bool)
+
+
+def _material_point_states(elem, trial: bool = False) -> list:
+    """Estados (dicts) de los puntos materiales del elemento, committed o
+    trial: uno por punto de Gauss en un sólido; en un marco con sección, sus
+    fibras físicas (sin las de compensación)."""
+    st = getattr(elem, "state", None)
+    entries = getattr(st, "vars_trial" if trial else "vars", None)
+    if entries is None:
+        return []
+    section = getattr(elem, "section", None)
+    if isinstance(section, Section):
+        entries = [section.material_point_states(sv) for sv in entries]
+    return list(_flatten_states(entries))
+
+
+def _angle_names(elem) -> set:
+    """Variables internas que son ángulos (``STATE_ANGLES``) en los
+    materiales del elemento."""
+    materials = elem.materials() if hasattr(elem, "materials") else []
+    return {n for m in materials for n in getattr(m, "STATE_ANGLES", ())}
+
+
+def state_variable_names(elements) -> tuple[list[str], set]:
+    """Variables internas escalares de los materiales de ``elements``, en el
+    orden en que aparecen, y cuáles de ellas son ángulos (``STATE_ANGLES``).
+
+    Las escalares del ``STATE_SCHEMA`` de cada material (válidas antes del
+    primer paso, cuando el estado de muchos materiales aún no existe) y,
+    para los materiales sin esquema (interfaces), las que ya tenga el
+    estado del elemento."""
+    names: dict[str, None] = {}
+    angles: set = set()
+    seen: set = set()
+    for elem in elements:
+        if getattr(elem, "VTK_EXPORT", True) is False:
+            continue
+        materials = elem.materials() if hasattr(elem, "materials") else []
+        key = (type(elem), tuple(id(m) for m in materials))
+        if key in seen:
+            continue
+        seen.add(key)
+        for m in materials:
+            for k, shape in (getattr(m, "STATE_SCHEMA", None) or {}).items():
+                if tuple(shape) == ():
+                    names.setdefault(k, None)
+        for sv in _material_point_states(elem):
+            for k, v in sv.items():
+                if _is_number(v):
+                    names.setdefault(k, None)
+        angles |= _angle_names(elem)
+    return list(names), angles
+
+
+def _state_cell_fields(elements, slot, conn_by_type: dict, groups: dict, loose: list,
+                       names: list[str], angles: set) -> dict:
+    """Promedio sobre los puntos materiales de cada variable interna escalar,
+    por celda: ``{nombre: {tipo_de_celda: (n_celdas,)}}``. ``NaN`` en las
+    celdas cuyo material no tiene esa variable; los ángulos no se promedian
+    (no figuran)."""
+    wanted = [n for n in names if n not in angles]
+    if not wanted:
+        return {}
+    fields = {n: {ct: np.full(len(conn), np.nan) for ct, conn in conn_by_type.items()}
+              for n in wanted}
+    for fam, positions in groups.items():
+        positions = [p for p in positions if slot[p] is not None]
+        if not positions or fam.is_thermal:
+            continue
+        rows = {id(e): r for r, e in enumerate(fam.elements)}
+        fam_rows = np.array([rows[id(elements[p])] for p in positions], dtype=np.int64)
+        cell_type = slot[positions[0]][0]
+        idx = np.array([slot[p][1] for p in positions], dtype=np.int64)
+        fam_angles = set(getattr(fam.material, "STATE_ANGLES", ()))
+        schema = fam.schema
+        S = fam.state.S_committed.reshape(fam.n_elements, fam.n_gp, -1)
+        for k, (name, shape) in enumerate(zip(schema.names, schema.shapes)):
+            if shape != () or name not in fields or name in fam_angles:
+                continue
+            fields[name][cell_type][idx] = S[fam_rows, :, schema.offsets[k]].mean(axis=1)
+    for p in loose:
+        if slot[p] is None:
+            continue
+        elem = elements[p]
+        states = _material_point_states(elem)
+        if not states:
+            continue
+        cell_type, idx = slot[p]
+        skip = _angle_names(elem)
+        for name in wanted:
+            if name in skip:
+                continue
+            vals = [float(sv[name]) for sv in states if name in sv and _is_number(sv[name])]
+            if vals:
+                fields[name][cell_type][idx] = sum(vals) / len(vals)
+    return fields
 
 
 def _internal_force_fields(elements, slot, conn_by_type: dict,
@@ -603,11 +708,164 @@ class VtkExporter:
                     per_type.get(ct, np.full(len(conn), np.nan))
                     for ct, conn in conn_by_type.items()
                 ]
+        # Variables internas escalares de los materiales, por su nombre.
+        state_names, angle_names = state_variable_names(elements)
+        if any(want_cell(n) for n in state_names):
+            state_fields = _state_cell_fields(elements, slot, conn_by_type, groups, loose,
+                                              state_names, angle_names)
+            for name, per_type in state_fields.items():
+                if want_cell(name) and name not in cell_data:
+                    cell_data[name] = [per_type[ct] for ct in conn_by_type]
         if not cell_data:
             cell_data = None
 
         mesh = meshio.Mesh(points, cells, point_data=point_data, cell_data=cell_data)
         mesh.write(filepath)
+
+    def export_integration_points(self, filepath: str, U: np.ndarray,
+                                  trial: bool = False) -> int:
+        """Escribe los valores en cada punto de integración de los sólidos
+        mecánicos como una nube de puntos (celdas ``vertex``).
+
+        Por punto: ``Displacements`` (``N(ξ)·u_e``, para deformar la nube en
+        ParaView), ``Element_Id``, ``Point`` (número del punto en su
+        elemento, desde 1), las seis componentes de esfuerzo y ``Von_Mises``
+        y **todas** las variables internas escalares del material, también
+        los ángulos (``STATE_ANGLES``), con su nombre; ``NaN`` donde el
+        material no tiene esa variable. Las posiciones son las de la
+        geometría de referencia. Los valores son los del estado con que el
+        análisis equilibró el paso: el confirmado (``trial=True``: el de
+        prueba, en un análisis lineal que no confirma estado), los mismos
+        que lee la historia (ADR 0038).
+
+        Devuelve el número de puntos escritos (0: no escribe el archivo).
+        """
+        if meshio is None:
+            _log.warning("La librería 'meshio' no está instalada. Omitiendo exportación VTK.")
+            return 0
+        U = np.asarray(U, dtype=float)
+        elements = [e for e in self.domain.elements.values()
+                    if getattr(e, "VTK_EXPORT", True) is not False and _is_mechanical_solid(e)]
+        names, _ = state_variable_names(elements)
+        blocks = []   # (posiciones, desplazamientos, σ (n, 6), ids, punto, {var: (n,)})
+        groups, loose = group_by_family(elements)
+        for fam, positions in groups.items():
+            if fam.is_thermal:
+                continue
+            blk = _family_points(fam, [elements[p] for p in positions], U, trial, names)
+            if blk is not None:
+                blocks.append(blk)
+        for p in loose:
+            blk = _element_points(elements[p], U, trial, names)
+            if blk is not None:
+                blocks.append(blk)
+        if not blocks:
+            return 0
+        pos = np.vstack([b[0] for b in blocks])
+        n = pos.shape[0]
+        points = np.zeros((n, 3))
+        points[:, :pos.shape[1]] = pos
+        disp = np.zeros((n, 3))
+        d = np.vstack([b[1] for b in blocks])
+        disp[:, :d.shape[1]] = d
+        sig = np.vstack([b[2] for b in blocks])
+        point_data = {"Displacements": disp,
+                      "Element_Id": np.concatenate([b[3] for b in blocks]).astype(float),
+                      "Point": np.concatenate([b[4] for b in blocks]).astype(float)}
+        for k, comp in enumerate(STRESS_COMPONENT_NAMES):
+            point_data[comp] = sig[:, k]
+        point_data["Von_Mises"] = von_mises_rows(sig)
+        for name in names:
+            point_data.setdefault(name, np.concatenate([b[5][name] for b in blocks]))
+        cells = [("vertex", np.arange(n, dtype=int).reshape(-1, 1))]
+        meshio.Mesh(points, cells, point_data=point_data).write(filepath)
+        return n
+
+
+def _gauss_displacements(Nf: np.ndarray, u_nodes: np.ndarray) -> np.ndarray:
+    """``u(ξ_g) = Σ_a N_a(ξ_g)·u_a``: ``(…, n_gp, n_dof_nodo)``."""
+    return np.einsum("gn,...nd->...gd", Nf, u_nodes)
+
+
+def _family_points(fam, members: list, U: np.ndarray, trial: bool, names: list[str]):
+    """Bloque de la nube de puntos con los elementos ``members`` de una
+    familia, por arreglos."""
+    Nf = fam.gauss_shape_functions()
+    if Nf is None:
+        return None
+    index = {id(e): i for i, e in enumerate(fam.elements)}
+    rows_e = np.array([index[id(e)] for e in members], dtype=np.int64)
+    n_gp = fam.n_gp
+    X = fam.gauss_points_global()[rows_e].reshape(-1, fam.spatial_dim)
+    dof_names = tuple(fam.element_class.DOF_NAMES)
+    n_per_node = len(dof_names)
+    # Sólo las traslaciones (un elemento multicampo lleva también T).
+    trans = [k for k, d in enumerate(dof_names) if d in _TRANSLATIONAL_DOFS]
+    u_nodes = U[fam.dof_indices[rows_e]].reshape(len(rows_e), fam.n_nodes, n_per_node)
+    disp = _gauss_displacements(Nf, u_nodes[:, :, trans]).reshape(-1, len(trans))
+    st = fam.state
+    rows = (rows_e[:, None] * n_gp + np.arange(n_gp)[None, :]).reshape(-1)
+    S = (st.S_trial if trial else st.S_committed)[rows]
+    sig_v = (st.sig_trial if trial else st.sig_committed)[rows]
+    szz = None
+    if sig_v.shape[1] == 3:
+        szz = np.asarray(fam.material.batch_out_of_plane_stress(sig_v, S), dtype=float)
+    sig = _six_components(sig_v, szz)
+    ids = np.repeat([e.id for e in members], n_gp)
+    point = np.tile(np.arange(1, n_gp + 1), len(members))
+    schema = fam.schema
+    values = {}
+    for name in names:
+        col = np.full(len(rows), np.nan)
+        if name in schema.names:
+            k = schema.names.index(name)
+            if schema.shapes[k] == ():
+                col = S[:, schema.offsets[k]].astype(float)
+        values[name] = col
+    return X, disp, sig, ids, point, values
+
+
+def _element_points(elem, U: np.ndarray, trial: bool, names: list[str]):
+    """Bloque de la nube de puntos de un elemento sin familia."""
+    pts = getattr(elem, "points", None)
+    if pts is None:
+        return None
+    pts = np.asarray(pts, dtype=float)
+    pts = pts.reshape(pts.shape[0], -1)
+    Nf = elem.batch_shape_functions(pts)
+    st = getattr(elem, "state", None)
+    if Nf is None or st is None:
+        return None
+    stresses = st.stresses_trial if trial else st.stresses
+    states = st.vars_trial if trial else st.vars
+    n_gp = len(stresses)
+    if n_gp != Nf.shape[0]:
+        return None
+    dim = pts.shape[1]
+    coords = np.asarray(elem.get_coordinate_matrix(ndim=dim), dtype=float)
+    X = Nf @ coords
+    trans = [d for d in _TRANSLATIONAL_DOFS[:dim]]
+    u_nodes = np.array([[U[nd.dofs[d]] if d in nd.dofs else 0.0 for d in trans]
+                        for nd in elem.nodes])
+    disp = Nf @ u_nodes
+    sig = np.zeros((n_gp, 6))
+    for g in range(n_gp):
+        s = np.atleast_1d(np.asarray(stresses[g], dtype=float))
+        if s.size == 3:
+            sv = states[g] if states is not None else None
+            szz = float(elem.material.out_of_plane_stress(s, sv))
+            sig[g] = _six_components(s.reshape(1, 3), np.array([szz]))[0]
+        elif s.size == 6:
+            sig[g] = s
+    values = {}
+    for name in names:
+        col = np.full(n_gp, np.nan)
+        for g in range(n_gp):
+            sv = states[g] if states is not None else None
+            if isinstance(sv, dict) and name in sv and _is_number(sv[name]):
+                col[g] = float(sv[name])
+        values[name] = col
+    return X, disp, sig, np.full(n_gp, elem.id), np.arange(1, n_gp + 1), values
 
 
 def _smooth_stress_to_nodes(n_nodes: int, conn_by_type: dict, stress_by_type: dict,

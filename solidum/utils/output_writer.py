@@ -71,6 +71,14 @@ def validate_output_block(output) -> list[str]:
     if not isinstance(output, dict):
         return errors
     res = output.get("results") or {}
+    if isinstance(res, dict) and not isinstance(res.get("integration_points", False), bool):
+        errors.append("output.results.integration_points: se esperaba true o false.")
+    if isinstance(res, dict):
+        for key in ("nodal_results", "element_results"):
+            names = res.get(key)
+            if names is not None and not (isinstance(names, list)
+                                          and all(isinstance(v, str) for v in names)):
+                errors.append(f"output.results.{key}: se esperaba una lista de nombres de campos.")
     if isinstance(res, dict) and "frequency" in res:
         freq = res["frequency"]
         if isinstance(freq, str):
@@ -115,7 +123,8 @@ def validate_output_block(output) -> list[str]:
         if len(kinds) != 1:
             errors.append(f"{ctx}: declare exactamente una magnitud: {list(_COLUMN_KINDS)}.")
             continue
-        extra = set(col) - {"name", "scale", kinds[0]}
+        extra = set(col) - {"name", "scale", kinds[0]} - ({"elements"} if kinds[0] == "energy"
+                                                          else set())
         if extra:
             errors.append(f"{ctx}: claves no admitidas {sorted(extra)}.")
         if "scale" in col and (isinstance(col["scale"], bool) or not isinstance(col["scale"], (int, float))):
@@ -123,6 +132,8 @@ def validate_output_block(output) -> list[str]:
         if kinds[0] == "energy":
             if col["energy"] not in ENERGIES:
                 errors.append(f"{ctx}.energy: {col['energy']!r} no admitida; una de {list(ENERGIES)}.")
+            if "elements" in col:
+                errors.extend(_validate_zone(col["elements"], f"{ctx}.elements"))
             continue
         if kinds[0] == "element":
             errors.extend(_validate_element_column(col["element"], f"{ctx}.element"))
@@ -141,6 +152,24 @@ def validate_output_block(output) -> list[str]:
             errors.append(f"{ctx}.{kinds[0]}: claves no admitidas {sorted(set(sel) - allowed)}.")
         if "reduce" in sel and sel["reduce"] not in ("mean", "min", "max"):
             errors.append(f"{ctx}.{kinds[0]}.reduce: se admite 'mean', 'min' o 'max'.")
+    return errors
+
+
+def _validate_zone(sel, ctx: str) -> list[str]:
+    """Selector de elementos de una energía por zona: exactamente uno de
+    ``id``, ``ids``, ``group`` o ``where``."""
+    if not isinstance(sel, dict):
+        return [f"{ctx}: se esperaba un diccionario con uno de {list(_ELEMENT_SELECTORS)}."]
+    errors = []
+    found = [k for k in _ELEMENT_SELECTORS if k in sel]
+    if len(found) != 1 or set(sel) - set(_ELEMENT_SELECTORS):
+        errors.append(f"{ctx}: declare exactamente uno de {list(_ELEMENT_SELECTORS)}.")
+    if "where" in sel:
+        from solidum.utils.expressions import POSITION, ExpressionError, compile_predicate
+        try:
+            compile_predicate(sel["where"], POSITION, {"near": lambda a, b, tol=None: True})
+        except ExpressionError as exc:
+            errors.append(f"{ctx}.where: {exc}")
     return errors
 
 
@@ -222,6 +251,9 @@ class OutputWriter:
         self.freq = res.get("frequency", "last_step")
         self.n_vars = res.get("nodal_results")
         self.e_vars = res.get("element_results")
+        self._check_field_names()
+        self.integration_points = bool(res.get("integration_points", False))
+        self.pvd_points: list = []
         self.pre = bool((cfg.get("pre_process") or {}).get("export", False))
         self.text_cfg = cfg.get("text_export") or {}
         self.export_text = bool(self.text_cfg.get("export", False))
@@ -241,6 +273,30 @@ class OutputWriter:
                 csv.writer(f).writerow(["step", "factor", *[c["name"] for c in self.columns]])
 
     # ------------------------------------------------------------------
+    def _check_field_names(self) -> None:
+        """Un nombre de ``nodal_results`` o ``element_results`` que no es un
+        campo del VTK de este modelo es un error con la lista de los que hay
+        (antes se ignoraba en silencio)."""
+        from solidum.utils.vtk_exporter import (NODAL_FIELD_NAMES, STRESS_COMPONENT_NAMES,
+                                                state_variable_names)
+        if self.n_vars is not None:
+            unknown = [v for v in self.n_vars if v not in NODAL_FIELD_NAMES]
+            if unknown:
+                raise ValueError(f"output.results.nodal_results: campos inexistentes {unknown}; "
+                                 f"se admiten {list(NODAL_FIELD_NAMES)}.")
+        if self.e_vars is not None:
+            states, angles = state_variable_names(list(self.domain.elements.values()))
+            known = ["Internal_State", *STRESS_COMPONENT_NAMES, "Von_Mises", "Flux",
+                     *(f"{c}_{e}" for c in FORCE_COMPONENTS for e in ("i", "j")),
+                     *(s for s in states if s not in angles)]
+            unknown = [v for v in self.e_vars if v not in known]
+            if unknown:
+                hint = (f" {sorted(angles & set(unknown))} son ángulos: no se promedian por "
+                        f"celda; se leen en el archivo por puntos de integración "
+                        f"(results.integration_points: true)." if angles & set(unknown) else "")
+                raise ValueError(f"output.results.element_results: campos inexistentes en este "
+                                 f"modelo {unknown}; se admiten {known}.{hint}")
+
     def _nodes_of(self, sel: dict, ctx: str):
         dom = self.domain
         if "node" in sel:
@@ -304,6 +360,10 @@ class OutputWriter:
         which = col["energy"]
         if not static:
             raise ValueError(f"{ctx}: las energías sólo se registran en análisis estáticos sin etapas.")
+        if "elements" in col:
+            return {"name": col["name"], "kind": "zone_energy",
+                    "zone": _ZoneEnergy(self, col["elements"], ctx, which),
+                    "scale": float(col.get("scale", 1.0))}
         if self._F_prev is None:
             K0, F0 = self.assembler.assemble_non_linear_system(np.zeros(self.domain.total_dofs))
             self._F_prev = np.array(F0, dtype=float)
@@ -361,6 +421,11 @@ class OutputWriter:
             VtkExporter(self.domain).export(str(self.base_dir / name), U, self.F_ext * factor,
                                             self.n_vars, self.e_vars)
             self.pvd.append((factor, name))
+            if self.integration_points:
+                name = f"{self.base_name}_puntos_{n:04d}.vtu"
+                if VtkExporter(self.domain).export_integration_points(
+                        str(self.base_dir / name), U, trial=self._read_trial):
+                    self.pvd_points.append((factor, name))
         if self.columns:
             row = [n, factor]
             F_int = None
@@ -380,6 +445,8 @@ class OutputWriter:
                     val = np.sum(F_int[c["dofs"]] - factor * self.F_ext[c["dofs"]])
                 elif c["kind"] == "energy":
                     val = energies[c["energy"]]
+                elif c["kind"] == "zone_energy":
+                    val = c["zone"].value(U, self._read_trial)
                 else:
                     val = c["reduce"](c["probe"].values(U, factor, self._read_trial))
                 row.append(f"{c['scale'] * float(val):.10g}")
@@ -394,6 +461,27 @@ class OutputWriter:
         self._U_prev, self._F_prev = U.copy(), np.array(F_int, dtype=float)
         E = 0.5 * float(U @ F_int)
         return {"external_work": self._W, "elastic": E, "dissipated": self._W - E}
+
+    def finish_stopped(self, exc: BaseException) -> None:
+        """Cierra la salida de un análisis detenido (``exc``) con el último
+        paso convergido: VTK final, ``.pvd``, texto y figuras. La historia ya
+        está escrita fila a fila. Si escribe, lo anota en ``exc`` (nota de
+        PEP 678, que muestran la traza y ``python -m solidum``). No lanza: un
+        fallo aquí se registra y no tapa el error que detuvo el análisis."""
+        if self.last is None:
+            _log.warning("El análisis se detuvo antes del primer paso convergido: no hay "
+                         "resultados que escribir (salvo el pre-proceso).")
+            return
+        n, _, factor = self.last
+        _log.warning(f"El análisis se detuvo ({type(exc).__name__}); se escriben los resultados "
+                     f"del último paso convergido: paso {n}, factor {factor:.6g}.")
+        try:
+            self.finish()
+        except Exception as err:  # noqa: BLE001 — no tapar el error del análisis
+            _log.error(f"No se pudieron cerrar los resultados del análisis detenido: {err}")
+            return
+        exc.add_note(f"Resultados escritos hasta el último paso convergido (paso {n}, factor "
+                     f"{factor:.6g}): historia, VTK final y figuras en {self.base_dir}.")
 
     def finish(self, U_final=None):
         """Cierra la salida: resultado final, archivo PVD y texto."""
@@ -410,13 +498,13 @@ class OutputWriter:
         if self.pvd:
             # También con un solo instante: el .pvd es el índice factor → archivo
             # que usan las figuras (ADR 0039).
-            with open(self.base + ".pvd", "w", encoding="utf-8") as f:
-                f.write('<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1" '
-                        'byte_order="LittleEndian">\n<Collection>\n')
-                for fac, name in self.pvd:
-                    f.write(f'  <DataSet timestep="{fac:.6f}" group="" part="0" file="{name}"/>\n')
-                f.write("</Collection>\n</VTKFile>\n")
+            _write_pvd(self.base + ".pvd", self.pvd)
+        if self.pvd_points:
+            _write_pvd(self.base + "_puntos.pvd", self.pvd_points)
         VtkExporter(self.domain).export(self.base + "_final.vtu", U, self.F_ext * factor, self.n_vars, self.e_vars)
+        if self.integration_points:
+            VtkExporter(self.domain).export_integration_points(
+                self.base + "_puntos_final.vtu", U, trial=self._read_trial)
         if self.export_text:
             self._write_text()
         _log.info(f"Resultados escritos en {self.base_dir} ({self.base_name}*)")
@@ -517,6 +605,16 @@ class OutputWriter:
         _log.info(f"Salida de texto (estilo FEAP) escrita en {ruta}")
 
 
+def _write_pvd(path: str, entries: list) -> None:
+    """Índice ``factor → archivo`` de ParaView (y de las figuras, ADR 0039)."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1" '
+                'byte_order="LittleEndian">\n<Collection>\n')
+        for fac, name in entries:
+            f.write(f'  <DataSet timestep="{fac:.6f}" group="" part="0" file="{name}"/>\n')
+        f.write("</Collection>\n</VTKFile>\n")
+
+
 def _non_secant(el) -> list[str]:
     """Nombres de los materiales del elemento que no descargan por la secante
     (``SECANT_UNLOADING``); el propio elemento si no se le encuentra material."""
@@ -568,40 +666,7 @@ class _ElementProbe:
 
     # -- selección ---------------------------------------------------------
     def _select(self, sel):
-        dom = self.writer.domain
-        if "id" in sel:
-            ids = [sel["id"]]
-        elif "ids" in sel:
-            ids = list(sel["ids"])
-        elif "group" in sel:
-            groups = getattr(dom, "physical_groups", None) or {}
-            if sel["group"] not in groups:
-                raise ValueError(f"{self.ctx}: grupo físico {sel['group']!r} inexistente. "
-                                 f"Disponibles: {sorted(groups)}.")
-            inside = set(groups[sel["group"]])
-            ids = [eid for eid, el in dom.elements.items()
-                   if all(nd.id in inside for nd in el.nodes)]
-            if not ids:
-                raise ValueError(f"{self.ctx}: ningún elemento tiene todos sus nodos en el grupo "
-                                 f"{sel['group']!r}.")
-        elif "where" in sel:
-            from solidum.utils.expressions import POSITION, compile_predicate
-            pts = np.array([_pad3(nd.coordinates) for nd in dom.nodes.values()])
-            scale = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
-
-            def near(a, b, tol=None):
-                return abs(a - b) <= (1e-6 * scale if tol is None else tol)
-            pred = compile_predicate(sel["where"], POSITION, {"near": near})
-            ids = [eid for eid, el in dom.elements.items()
-                   if pred(*np.mean([_pad3(nd.coordinates) for nd in el.nodes], axis=0))]
-            if not ids:
-                raise ValueError(f"{self.ctx}: ningún elemento tiene el centro donde {sel['where']!r}.")
-        else:
-            ids = list(dom.elements)
-        missing = [i for i in ids if i not in dom.elements]
-        if missing:
-            raise ValueError(f"{self.ctx}: elementos inexistentes {missing[:10]}.")
-        return [dom.elements[i] for i in ids]
+        return _select_elements(self.writer.domain, sel, self.ctx)
 
     def _what(self) -> str:
         if self.var in FORCE_COMPONENTS:
@@ -711,6 +776,181 @@ class _ElementProbe:
         plan.append((None, loose))
         self._plan = plan
         return plan
+
+
+def _select_elements(dom, sel: dict, ctx: str) -> list:
+    """Elementos de un selector ``id`` | ``ids`` | ``group`` (todos sus nodos
+    en el grupo físico) | ``where`` (condición sobre el centro); sin
+    selector, todos."""
+    if "id" in sel:
+        ids = [sel["id"]]
+    elif "ids" in sel:
+        ids = list(sel["ids"])
+    elif "group" in sel:
+        groups = getattr(dom, "physical_groups", None) or {}
+        if sel["group"] not in groups:
+            raise ValueError(f"{ctx}: grupo físico {sel['group']!r} inexistente. "
+                             f"Disponibles: {sorted(groups)}.")
+        inside = set(groups[sel["group"]])
+        ids = [eid for eid, el in dom.elements.items()
+               if all(nd.id in inside for nd in el.nodes)]
+        if not ids:
+            raise ValueError(f"{ctx}: ningún elemento tiene todos sus nodos en el grupo "
+                             f"{sel['group']!r}.")
+    elif "where" in sel:
+        from solidum.utils.expressions import POSITION, compile_predicate
+        pts = np.array([_pad3(nd.coordinates) for nd in dom.nodes.values()])
+        scale = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
+
+        def near(a, b, tol=None):
+            return abs(a - b) <= (1e-6 * scale if tol is None else tol)
+        pred = compile_predicate(sel["where"], POSITION, {"near": near})
+        ids = [eid for eid, el in dom.elements.items()
+               if pred(*np.mean([_pad3(nd.coordinates) for nd in el.nodes], axis=0))]
+        if not ids:
+            raise ValueError(f"{ctx}: ningún elemento tiene el centro donde {sel['where']!r}.")
+    else:
+        ids = list(dom.elements)
+    missing = [i for i in ids if i not in dom.elements]
+    if missing:
+        raise ValueError(f"{ctx}: elementos inexistentes {missing[:10]}.")
+    return [dom.elements[i] for i in ids]
+
+
+class _ZoneEnergy:
+    """Energías de un conjunto de elementos (``energy`` con ``elements``).
+
+    Con la fuerza interna de cada elemento ``f_e = Σ_g w_g·detJ_g·s·B_gᵀσ_g``
+    (``s``: espesor en 2D) evaluada con los esfuerzos del estado con que el
+    análisis equilibró el paso, las mismas fórmulas que las del modelo
+    completo restringidas a la zona:
+
+    - trabajo ``W_n = W_{n−1} + ½ Σ_e (f_e,n + f_e,n−1)·(u_e,n − u_e,n−1)``:
+      el que recibe el material de la zona, ``∫∫σ:dε dV``; para todo el
+      modelo es el trabajo externo;
+    - energía elástica ``E_n = ½ Σ_e u_e,n·f_e,n`` (materiales que descargan
+      por la secante);
+    - energía disipada ``D_n = W_n − E_n``.
+
+    La suma sobre una partición del modelo da las energías del modelo
+    completo (hasta el redondeo). Sólo elementos cuya fuerza interna es
+    ``∫Bᵀσ`` con la cinemática compilada (``BATCH_KINEMATICS``): los sólidos
+    isoparamétricos.
+    """
+
+    def __init__(self, writer, sel: dict, ctx: str, which: str):
+        from solidum.math.batch.family import _has_own_state
+        self.which = which
+        elements = _select_elements(writer.domain, sel, ctx)
+        bad = [el.id for el in elements
+               if getattr(type(el), "BATCH_KINEMATICS", None) is None
+               or getattr(el, "points", None) is None or _has_own_state(type(el))
+               or {"rx", "ry", "rz", "T"} & set(getattr(el, "DOF_NAMES", ()))]
+        if bad:
+            raise ValueError(f"{ctx}: la energía por zona necesita sólidos isoparamétricos (fuerza "
+                             f"interna ∫Bᵀσ); no lo son los elementos {bad[:10]}.")
+        if which != "external_work":
+            not_secant = sorted({name for el in elements for name in _non_secant(el)})
+            if not_secant:
+                raise ValueError(
+                    f"{ctx}: la energía {which!r} usa E = ½·u·f_int, que sólo es la energía "
+                    f"elástica recuperable si los materiales descargan por la secante; no lo "
+                    f"hacen {not_secant[:6]}. El trabajo ('external_work') sí está disponible.")
+        groups: dict = {}
+        for el in elements:
+            pts, w = el.batch_quadrature()
+            key = (type(el), pts.shape, len(el.get_global_dof_indices()))
+            groups.setdefault(key, []).append(el)
+        self.groups = [_ZoneGroup(members) for members in groups.values()]
+        for g in self.groups:
+            if np.any(g.stresses(trial=False) != 0.0):
+                raise ValueError(f"{ctx}: la zona tiene esfuerzos iniciales: sus energías no se "
+                                 f"pueden obtener de ½·u·f_int.")
+        self.W = 0.0
+
+    def value(self, U: np.ndarray, trial: bool) -> float:
+        E = 0.0
+        for g in self.groups:
+            f = np.einsum("mij,mj->mi", g.G, g.stresses(trial))
+            u = U[g.dofs]
+            self.W += 0.5 * float(np.sum((f + g.f_prev) * (u - g.u_prev)))
+            E += 0.5 * float(np.sum(u * f))
+            g.f_prev, g.u_prev = f, u
+        return {"external_work": self.W, "elastic": E, "dissipated": self.W - E}[self.which]
+
+
+class _ZoneGroup:
+    """Elementos de una zona con la misma clase y regla de integración:
+    ``f_e = G_e·σ_e`` con ``G_e = [w_g·detJ_g·s·B_gᵀ]`` fijo (desplazamientos
+    pequeños) y ``σ_e`` los esfuerzos de sus puntos en fila."""
+
+    def __init__(self, members: list):
+        from solidum.math.batch.postprocess import family_of
+        self.members = members
+        el0 = members[0]
+        cls = type(el0)
+        pts, w = el0.batch_quadrature()
+        dim = pts.shape[1]
+        n_sig = int(el0.STRAIN_DIM)
+        self.dofs = np.array([el.get_global_dof_indices() for el in members], dtype=np.int64)
+        n_dof = self.dofs.shape[1]
+        scale_attr = getattr(cls, "BATCH_SCALE", None)
+        B = np.zeros((n_sig, n_dof))
+        G = np.zeros((len(members), n_dof, len(pts) * n_sig))
+        for m, el in enumerate(members):
+            coords = np.ascontiguousarray(el.get_coordinate_matrix(ndim=dim), dtype=np.float64)
+            s = 1.0 if scale_attr is None else float(getattr(el, scale_attr))
+            # La regla de cada elemento (dos de la misma clase pueden tener
+            # reglas distintas con el mismo número de puntos).
+            pts_e, w_e = el.batch_quadrature()
+            for g, (pt, wg) in enumerate(zip(pts_e, w_e)):
+                detJ = cls.BATCH_KINEMATICS(np.ascontiguousarray(pt), coords, B)
+                G[m, :, g * n_sig:(g + 1) * n_sig] = (wg * detJ * s) * B.T
+        self.G = G
+        self.n_flat = len(pts) * n_sig
+        self.f_prev = np.zeros((len(members), n_dof))
+        self.u_prev = np.zeros((len(members), n_dof))
+        self._family_of = family_of
+        self._plan = None
+
+    def _gather_plan(self):
+        """``[(familia, índices en la zona, filas de la familia)]`` y los
+        elementos sueltos; se rehace si una familia dejó de estar adoptada."""
+        plan = self._plan
+        # Las familias se crean con el primer ensamblaje: un elemento suelto
+        # al construir la zona puede pertenecer después a una.
+        if (plan is not None and all(f.adopted for f, _, _ in plan[0])
+                and all(self._family_of(self.members[m]) is None for m in plan[1])):
+            return plan
+        fams: dict = {}
+        loose = []
+        for m, el in enumerate(self.members):
+            fam = self._family_of(el)
+            if fam is None:
+                loose.append(m)
+            else:
+                fams.setdefault(fam, []).append(m)
+        fam_plan = []
+        for fam, idx in fams.items():
+            index = {id(e): i for i, e in enumerate(fam.elements)}
+            rows = np.concatenate([np.arange(fam.state.rows(index[id(self.members[m])]).start,
+                                             fam.state.rows(index[id(self.members[m])]).stop)
+                                   for m in idx])
+            fam_plan.append((fam, np.array(idx, dtype=np.int64), rows))
+        self._plan = (fam_plan, loose)
+        return self._plan
+
+    def stresses(self, trial: bool) -> np.ndarray:
+        fam_plan, loose = self._gather_plan()
+        out = np.zeros((len(self.members), self.n_flat))
+        for fam, idx, rows in fam_plan:
+            sig = fam.state.sig_trial if trial else fam.state.sig_committed
+            out[idx] = sig[rows].reshape(len(idx), self.n_flat)
+        for m in loose:
+            st = self.members[m].state
+            s = st.stresses_trial if trial else st.stresses
+            out[m] = np.concatenate([np.atleast_1d(np.asarray(x, dtype=float)) for x in s])
+        return out
 
 
 def _pad3(c) -> list:

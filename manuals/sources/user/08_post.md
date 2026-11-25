@@ -22,10 +22,22 @@ Con restricciones multipunto (bloque `linear_constraints` en YAML, `add_linear_c
 
 - `Von_Mises`: esfuerzo equivalente J2, calculado como invariante 3D con las seis componentes; en plane strain incluye $\sigma_{zz}$ (que aporta el material vía `out_of_plane_stress`), en plane stress $\sigma_{zz} = 0$.
 - `Internal_State`: variable principal del material según su `PRIMARY_STATE_VAR` (acumulada equivalente $\alpha$ en plasticidad, $d$ en daño, etc.).
+- **Todas las variables internas escalares** de los materiales, con su nombre (`damage_t`, `damage_c`, `kappa_t` del modelo de tracción y compresión; `cracked`, `w_max_n`, `damage_n`, `slip` de la grieta fija...), promediadas sobre los puntos de integración de la celda. `NaN` en las celdas cuyo material no tiene esa variable (en las figuras, gris). Si dos materiales usan el mismo nombre, cada celda lleva el valor del suyo, con el significado de su material. Los ángulos (la dirección $\theta$ de una grieta fija) no se promedian: la media de direcciones de puntos distintos, o de un punto sin grieta, no es una dirección; se leen en el archivo por puntos.
 - `N_i`, `N_j`, `V_i`, `M_i`… (en 3D, `Vy`, `Vz`, `T`, `My`, `Mz`): **fuerzas internas de extremo** de barras, cables y marcos (`internal_forces`, ADR 0002), en ejes locales del elemento, en el nodo i y el nodo j, con la convención de signos del proyecto; `NaN` en las celdas que no tienen esa componente. Con carga distribuida, `VtkExporter.export(..., element_forces=resultado.element_forces)` descuenta la carga equivalente.
 - `Sigma_XX`, `Sigma_YY`, `Sigma_ZZ`, `Tau_XY`, `Tau_YZ`, `Tau_XZ`: las seis componentes del tensor de esfuerzos (en 2D las tres últimas son $\sigma_{zz}$ del material y ceros). Se evalúan en el campo `U` exportado vía `compute_gauss_state` y se promedian por elemento: el exportador no depende de qué solver produjo `U` ni de que el estado esté comiteado. Cubre sólidos 2D y 3D (`quad`, `triangle`, `quad8`, `quad9`, `triangle6`, `hexahedron`, `tetra`, `hexahedron20`, `hexahedron27`, `tetra10`), elementos térmicos (campo nodal `Temperature` y `Flux` por celda) y los elementos de los módulos de usuario, como el `CST_Embedded2D` del módulo `discontinuities`: el exportador deriva la celda VTK del número de nodos (o de `VTK_CELL_TYPE`, si el elemento lo declara), sin conocer la clase. Las barras y cables de dos nodos y los marcos son celdas `line`; las barras de tres nodos `Truss2D3` y `Truss3D3`, celdas `line3` (segmento cuadrático, con el nodo intermedio).
 
 Las interfaces de adherencia que genera el refuerzo embebido con `bond` (`BondSlipInterface`) no tienen celda propia y no se exportan: unen los nodos de la barra con los de su anfitrión. Su estado (deslizamiento, esfuerzo de adherencia) se consulta con `EmbeddedBar.bond_state` (capítulo «Uso Avanzado: API Programática»).
+
+## Valores en los puntos de integración
+
+Con `output.results.integration_points: true`, Solidum escribe en los mismos instantes que el VTK por celda `<nombre>_puntos_NNNN.vtu`, `<nombre>_puntos_final.vtu` y su índice `<nombre>_puntos.pvd`: una nube de puntos (celdas `vertex`) en la posición de cada punto de integración de los sólidos, sin promediar. Por punto:
+
+- `Displacements`: el desplazamiento interpolado $\mathbf u(\boldsymbol\xi_g) = \sum_a N_a(\boldsymbol\xi_g)\,\mathbf u_a$ (para deformar la nube con *Warp By Vector*);
+- `Element_Id` y `Point` (número del punto en su elemento, desde 1);
+- `Sigma_XX` … `Tau_XZ` y `Von_Mises`;
+- todas las variables internas escalares del material, también los ángulos; `NaN` donde el material no la tiene.
+
+Los valores son los del estado con que el análisis equilibró el paso, los mismos que registra la historia, sin volver a evaluar el material. Sirve para leer lo que el promedio por celda esconde: el ángulo de cada grieta fija, qué puntos de un elemento se agrietaron, el daño punto a punto.
 
 ## Animación con Archivo PVD
 
