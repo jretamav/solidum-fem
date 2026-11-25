@@ -1,8 +1,9 @@
 """``FixedSmearedCrack2D`` (modelo 3), bloque 1: punto material, IMPL-EX y tangente global.
 
 Aceptación ``material_point`` e ``impl_ex`` de la spec ``FixedSmearedCrack2D``
-(§1–§3, §6–§9) sin aplastamiento (el bloque 2, §4, no está programado). Cada
-prueba lleva en su nombre el invariante que protege.
+(§1–§3, §6–§9) sin aplastamiento; el bloque 2 (§4, §8b) está en
+``test_fixed_smeared_crack_crushing.py``. Cada prueba lleva en su nombre el
+invariante que protege.
 
 Las referencias se escriben aquí, aparte del código: la matriz ``N`` de la
 spec §1 (el código usa su inversa ``T``), la ley de ablandamiento (la de
@@ -192,9 +193,16 @@ def test_parametros_invalidos_se_rechazan_al_construir():
         mat(softening="linear")
     with pytest.raises(ValueError):
         mat("plane_strian")
-    for kw in (dict(f_c=30e6, G_c=15e3), dict(beta=1.16)):
-        with pytest.raises(ValueError, match="bloque 2"):
-            mat(**kw)
+    # Aplastamiento (bloque 2, §4): la validación del modelo 2.
+    with pytest.raises(ValueError, match="van juntos"):
+        mat(f_c=30e6)
+    with pytest.raises(ValueError, match="mayor que f_t"):
+        mat(f_c=0.5 * FT, G_c=15e3)
+    with pytest.raises(ValueError, match="beta"):
+        mat(f_c=30e6, G_c=15e3, beta=0.9)
+    mat(beta=1.2)                                   # β sin f_c: compresión elástica
+    m = mat(f_c=30e6, G_c=15e3)
+    assert m.has_compression_damage and m.beta == 1.16 and not mat().has_compression_damage
 
 
 @pytest.mark.parametrize("hyp", [PS, PE])

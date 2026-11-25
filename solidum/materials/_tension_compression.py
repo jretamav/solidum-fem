@@ -222,6 +222,57 @@ def compression_measure(sm_xx, sm_yy, sm_zz, sm_xy, sm_yz, sm_xz, E, K):
     return eps, g
 
 
+def parse_compression(owner: str, f_c, G_c, beta, f_t: float, E: float):
+    """Valida ``f_c``, ``G_c`` y ``β`` del aplastamiento (spec del modelo 2,
+    §3 y ``validity``) y devuelve ``(β, f_c, G_c, κ⁻_0)``.
+
+    Sin ``f_c`` ni ``G_c`` la compresión es elástica: ``(β, None, None, 0)``.
+    ``κ⁻_0 = f_c/(3E)`` es el fin del tramo elástico de la parábola de
+    Feenstra. Lo usan el modelo 2 y el concreto entre grietas del modelo 3.
+    """
+    try:
+        beta = float(beta)
+    except (TypeError, ValueError):
+        beta = math.nan
+    if not (math.isfinite(beta) and beta >= 1.0):
+        raise ValueError(
+            f"{owner}: beta = f_bc/f_c debe ser un número finito ≥ 1 (recibido {beta!r}); "
+            f"1.16 por omisión (Kupfer). Con β < 1 la compresión hidrostática dañaría "
+            f"el material, contra la superficie de Drucker-Prager de la spec §3.")
+    if f_c is None and G_c is None:
+        return beta, None, None, 0.0
+    if f_c is None or G_c is None:
+        raise ValueError(
+            f"{owner}: f_c y G_c van juntos (aplastamiento en compresión, spec §3); "
+            f"recibido f_c = {f_c!r}, G_c = {G_c!r}. Sin los dos, la compresión es "
+            f"elástica.")
+    for name, value in (("f_c", f_c), ("G_c", G_c)):
+        try:
+            ok = math.isfinite(float(value)) and float(value) > 0.0
+        except (TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise ValueError(
+                f"{owner}: {name} debe ser un número finito > 0 (recibido {value!r}); "
+                f"f_c es la resistencia a compresión uniaxial en valor absoluto.")
+    if float(f_c) <= f_t:
+        raise ValueError(
+            f"{owner}: f_c = {f_c} debe ser mayor que f_t = {f_t} "
+            f"(spec, validity).")
+    return beta, float(f_c), float(G_c), float(f_c) / (3.0 * E)
+
+
+def compression_kernel_params(f_c, G_c, beta: float):
+    """``(f_c, G_c, K, tol_c)`` para los núcleos; ``f_c = 0`` si no hay
+    aplastamiento. ``tol_c`` es la tolerancia de admisibilidad del ADR 0006
+    con la escala ``f_c/3`` (fin del tramo elástico), con la misma expresión
+    que los adaptadores por lotes para que coincidan bit a bit."""
+    if f_c is None:
+        return 0.0, 0.0, 0.0, 0.0
+    return (f_c, G_c, drucker_prager_k(beta),
+            ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL * (f_c / 3.0))
+
+
 class TensionCompressionMixin(CrackBandMixin):
     """Estado por punto del modelo 2 sobre las piezas de la banda de grieta.
 
@@ -235,43 +286,8 @@ class TensionCompressionMixin(CrackBandMixin):
 
         Sin ``f_c`` ni ``G_c`` la compresión es elástica (``d⁻ ≡ 0``).
         """
-        owner = type(self).__name__
-        try:
-            beta = float(beta)
-        except (TypeError, ValueError):
-            beta = math.nan
-        if not (math.isfinite(beta) and beta >= 1.0):
-            raise ValueError(
-                f"{owner}: beta = f_bc/f_c debe ser un número finito ≥ 1 (recibido {beta!r}); "
-                f"1.16 por omisión (Kupfer). Con β < 1 la compresión hidrostática dañaría "
-                f"el material, contra la superficie de Drucker-Prager de la spec §3.")
-        self.beta = beta
-        if f_c is None and G_c is None:
-            self.f_c = None
-            self.G_c = None
-            self._kappa_c0 = 0.0
-            return
-        if f_c is None or G_c is None:
-            raise ValueError(
-                f"{owner}: f_c y G_c van juntos (aplastamiento en compresión, spec §3); "
-                f"recibido f_c = {f_c!r}, G_c = {G_c!r}. Sin los dos, la compresión es "
-                f"elástica.")
-        for name, value in (("f_c", f_c), ("G_c", G_c)):
-            try:
-                ok = math.isfinite(float(value)) and float(value) > 0.0
-            except (TypeError, ValueError):
-                ok = False
-            if not ok:
-                raise ValueError(
-                    f"{owner}: {name} debe ser un número finito > 0 (recibido {value!r}); "
-                    f"f_c es la resistencia a compresión uniaxial en valor absoluto.")
-        if float(f_c) <= self.f_t:
-            raise ValueError(
-                f"{owner}: f_c = {f_c} debe ser mayor que f_t = {self.f_t} "
-                f"(spec, validity).")
-        self.f_c = float(f_c)
-        self.G_c = float(G_c)
-        self._kappa_c0 = self.f_c / (3.0 * self.E)
+        self.beta, self.f_c, self.G_c, self._kappa_c0 = parse_compression(
+            type(self).__name__, f_c, G_c, beta, self.f_t, self.E)
 
     @property
     def has_compression_damage(self) -> bool:
@@ -279,14 +295,8 @@ class TensionCompressionMixin(CrackBandMixin):
         return self.f_c is not None
 
     def _compression_params(self):
-        """``(f_c, G_c, K, tol_c)`` para el núcleo; ``f_c = 0`` si no hay
-        aplastamiento. ``tol_c`` es la tolerancia de admisibilidad del ADR
-        0006 con la escala ``f_c/3`` (fin del tramo elástico), con la misma
-        expresión que los adaptadores por lotes para que coincidan bit a bit."""
-        if self.f_c is None:
-            return 0.0, 0.0, 0.0, 0.0
-        return (self.f_c, self.G_c, drucker_prager_k(self.beta),
-                ADMISSIBILITY_TOL_ABS + ADMISSIBILITY_TOL_REL * (self.f_c / 3.0))
+        """``(f_c, G_c, K, tol_c)`` para el núcleo (:func:`compression_kernel_params`)."""
+        return compression_kernel_params(self.f_c, self.G_c, self.beta)
 
     def admissibility_scale(self, state_vars=None) -> float:
         """Esfuerzo umbral de tracción ``E·κ_0 = f_t`` (ADR 0006)."""
@@ -334,8 +344,10 @@ __all__ = [
     "TensionCompressionMixin",
     "compression_damage",
     "compression_damage_update",
+    "compression_kernel_params",
     "compression_measure",
     "compression_ultimate",
     "drucker_prager_k",
+    "parse_compression",
     "tension_damage_update",
 ]

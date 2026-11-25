@@ -219,6 +219,10 @@ class CorrectorResult:
     n_revisions: int = 0
     revision_solves: int = 0
     revisions_exhausted: bool = False
+    # El residuo del iterado no es finito: algún punto material no devolvió
+    # un esfuerzo válido (p. ej. su problema local no convergió, spec de
+    # FixedSmearedCrack2D §8b). El intento se abandona sin resolver con él.
+    nonfinite_residual: bool = False
 
     def revision_note(self) -> str:
         """Fragmento para la línea INFO del paso del solver (ADR 0025): las
@@ -234,6 +238,9 @@ class CorrectorResult:
                     f"las decisiones de revise_step no se estabilizaron en el paso")
         if self.aborted:
             return self.abort_reason or "la restricción del paso no tiene solución"
+        if self.nonfinite_residual:
+            return ("el residuo no es finito: algún punto material no devolvió un "
+                    "esfuerzo válido (su problema local no convergió)")
         if self.linear_solver_note:
             return self.linear_solver_note
         if self.singular_tangent:
@@ -271,6 +278,8 @@ class CorrectorResult:
             singular_tangent_detected=self.singular_tangent or bad_linear,
         )
         note = self.linear_solver_note
+        if self.nonfinite_residual and not note:
+            note = self.failure_reason()
         if bad_linear and not note:
             note = (f"el sistema tangente no se pudo resolver con precisión "
                     f"(residuo lineal relativo {self.max_linear_residual:.1e}): "
@@ -597,6 +606,17 @@ class NewtonCorrector:
         while True:
             R = problem.residual(x, state)
             R_norm = problem.residual_norm(R)
+            if not (np.isfinite(R_norm) and np.all(np.isfinite(R))):
+                # Un punto material sin esfuerzo válido: resolver con este
+                # residuo daría una corrección no finita, que se confundiría
+                # con una tangente singular. El solver que llama repite el
+                # paso más corto (bisección). Se mira el residuo completo y
+                # no sólo ‖TᵀR‖: el punto puede estar en un elemento con
+                # todos sus grados de libertad prescritos (H2 de la
+                # verificación del bloque 2 del modelo 3).
+                result.nonfinite_residual = True
+                _log.debug(result.failure_reason())
+                break
 
             if not self.convergence.is_calibrated:
                 force_scale, disp_scale = problem.calibration_scales(x, state)

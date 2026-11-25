@@ -340,14 +340,14 @@ LC, HC = 200.0, 40.0
 UC_MAX, STEPS_C = 1.0, 1000
 
 
-def bar_compression(cls, nx, integration="implicit", steps=STEPS_C, u_max=UC_MAX):
+def bar_compression(cls, nx, integration="implicit", steps=STEPS_C, u_max=UC_MAX,
+                    modelo=MODELO_2):
     """(curva [(acortamiento, fuerza)], trabajo sobre la banda desde su pico, G_c·A)."""
     dim = len(cls.REFERENCE_NODES[0])
     dx = LC / nx
     n = int(round(HC / dx))
     if dim == 2:
-        mat, weak = (TensionCompressionDamage2D(E, 0.0, FT, GF, f_c=f, G_c=GC,
-                                                integration=integration)
+        mat, weak = (modelo[0](E, 0.0, FT, GF, f_c=f, G_c=GC, integration=integration)
                      for f in (FC, 0.95 * FC))
         kw = {"thickness": T}
         mesh = structured_mesh(cls, (nx, n), size=(LC, HC), material=mat, **kw)
@@ -437,6 +437,38 @@ def test_modelo2_barra_en_compresion_cuadraticos_con_factor_disipan_1_sobre_alfa
     mismo comportamiento que en tracción (arriba), documentado sin decidir
     para la compresión (verificación del 2026-11-18, H1)."""
     _check_compression(cls, (5, 10, 20), 18.0 / 13.0, steps=1500, u_max=1.5)
+
+
+@pytest.mark.parametrize("cls", [Quad4, Tri3, Tri6], ids=lambda c: c.__name__)
+def test_modelo3_barra_en_compresion_objetiva(cls):
+    """bar_in_compression del modelo 3 (spec §4): sin grieta, el concreto entre
+    grietas es el modelo 2 con d⁺ = 0, así que la barra disipa G_c·A desde su
+    pico a ±2 % e igual entre mallas."""
+    _check_compression(cls, (5, 10, 20), 1.0, modelo=MODELO_3)
+
+
+@pytest.mark.parametrize("cls", [Quad4, Tri3], ids=lambda c: c.__name__)
+@pytest.mark.parametrize("integration", ["implicit", "impl-ex"])
+def test_modelo3_barra_en_compresion_igual_al_modelo_2(cls, integration):
+    """Sin grieta, la barra del modelo 3 reproduce la del modelo 2 paso a paso,
+    implícita e IMPL-EX. Con IMPL-EX y 1000 pasos ninguno de los dos cumple
+    los criterios de objetividad de la implícita (pico 0.15–0.36 % alto y,
+    con Tri3, energía 0.63·G_c·A en la malla de 5 columnas; medido el
+    2026-11-24): es error del método en la estructura, no del modelo 3, y
+    queda para la validación (pasos finos cerca del pico, spec §10)."""
+    for nx in (5, 10):
+        c3, W3, _ = bar_compression(cls, nx, integration=integration, modelo=MODELO_3)
+        c2, W2, _ = bar_compression(cls, nx, integration=integration, modelo=MODELO_2)
+        np.testing.assert_allclose(c3, c2, rtol=1e-9, atol=1e-9 * np.abs(c2).max())
+        assert W3 == pytest.approx(W2, rel=1e-9)
+
+
+@pytest.mark.parametrize("cls", [Quad8, Quad9], ids=lambda c: c.__name__)
+def test_modelo3_barra_en_compresion_cuadraticos_con_factor_disipan_1_sobre_alfa(cls):
+    """Como el modelo 2: la h de Quad8/Quad9 lleva el factor 13/18 también en
+    κ_u (pendiente del usuario en el modelo 2, H1)."""
+    _check_compression(cls, (5, 10, 20), 18.0 / 13.0, steps=1500, u_max=1.5,
+                       modelo=MODELO_3)
 #
 # Flexión en cuatro puntos, H = 100, espesor 50, malla estructurada de celdas
 # de 10 mm con un número impar de columnas (41): la entalla es la celda
