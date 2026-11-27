@@ -242,7 +242,11 @@ class ResultFiles:
                                     "output.history y resuelva el modelo.")
         with open(self.history_path, newline="", encoding="utf-8") as f:
             rows = list(csv.reader(f))
-        data = np.array(rows[1:], dtype=float) if len(rows) > 1 else np.zeros((0, len(rows[0])))
+        # Celda vacía = «no aplica» (la reacción de un apoyo que una etapa
+        # posterior impone, ADR 0036): NaN, un hueco en la curva.
+        data = (np.array([[float(c) if c.strip() else np.nan for c in r] for r in rows[1:]],
+                         dtype=float)
+                if len(rows) > 1 else np.zeros((0, len(rows[0]))))
         return {name: data[:, k] for k, name in enumerate(rows[0])}
 
 

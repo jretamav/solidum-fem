@@ -261,6 +261,23 @@ def test_reaccion_con_la_carga_constante_de_la_etapa(barra):
     np.testing.assert_allclose(h["R"][-1], -P_B, rtol=1e-12)
 
 
+def test_las_figuras_leen_la_celda_vacia_de_la_reaccion_como_hueco(tmp_path):
+    """La reacción de un apoyo que impone una etapa posterior deja celdas
+    vacías; las curvas se dibujan igual (NaN, un hueco), también la que usa
+    esa columna. Hallazgo del validador, 2026-11-27: antes no salía ninguna."""
+    pytest.importorskip("matplotlib")
+    from solidum.post.plots import ResultFiles
+    ruta = _write(tmp_path, BARRA_ETAPAS + HISTORIA_BARRA + """\
+  plots:
+    - {type: curve, file: curva_R, x: u, y: R}
+    - {type: curve, file: curva_W, x: step, y: [W, E]}
+""")
+    solidum.run_yaml(ruta, write_output=True)
+    assert (tmp_path / "curva_R.png").is_file() and (tmp_path / "curva_W.png").is_file()
+    h = ResultFiles(tmp_path, "m", None).history()
+    assert np.isnan(h["R"][0]) and np.isfinite(h["R"][-1])
+
+
 def test_carga_y_descarga_elastica_no_disipa(barra):
     h = barra
     np.testing.assert_allclose(h["E"], 0.5 * K_B * h["u"] ** 2, rtol=1e-12, atol=1e-14)
