@@ -37,7 +37,7 @@ class TestConvergenceCriterionUnit(unittest.TestCase):
     def test_evaluate_requires_calibration(self):
         c = ConvergenceCriterion()
         with self.assertRaisesRegex(RuntimeError, "calibrate"):
-            c.evaluate(1.0, 1.0, 1.0, 1.0, roundoff_force=0.0)
+            c.evaluate(1.0, 1.0, 1.0, 1.0, roundoff_force=0.0, roundoff_anchor=1.0)
 
     def test_calibration_sets_atol_proportional_to_scale(self):
         c = ConvergenceCriterion(atol_force_factor=1e-9, atol_disp_factor=1e-9)
@@ -51,7 +51,7 @@ class TestConvergenceCriterionUnit(unittest.TestCase):
         c.calibrate(1.0, 1.0)
         # δU cumple holgadamente; R excede tol_force.
         state = c.evaluate(residual_norm=1.0, ref_force=1.0,
-                           delta_u_norm=1e-12, u_norm=1.0, roundoff_force=0.0)
+                           delta_u_norm=1e-12, u_norm=1.0, roundoff_force=0.0, roundoff_anchor=1.0)
         self.assertFalse(state.converged)
         self.assertGreater(state.ratio_force, 1.0)
         self.assertLess(state.ratio_disp, 1.0)
@@ -62,7 +62,7 @@ class TestConvergenceCriterionUnit(unittest.TestCase):
         c.calibrate(1.0, 1.0)
         # R cumple; δU excede tol_disp.
         state = c.evaluate(residual_norm=1e-12, ref_force=1.0,
-                           delta_u_norm=1.0, u_norm=1.0, roundoff_force=0.0)
+                           delta_u_norm=1.0, u_norm=1.0, roundoff_force=0.0, roundoff_anchor=1.0)
         self.assertFalse(state.converged)
         self.assertLess(state.ratio_force, 1.0)
         self.assertGreater(state.ratio_disp, 1.0)
@@ -72,7 +72,7 @@ class TestConvergenceCriterionUnit(unittest.TestCase):
                                  atol_force_factor=0.0, atol_disp_factor=0.0)
         c.calibrate(1.0, 1.0)
         state = c.evaluate(residual_norm=1e-7, ref_force=1.0,
-                           delta_u_norm=1e-7, u_norm=1.0, roundoff_force=0.0)
+                           delta_u_norm=1e-7, u_norm=1.0, roundoff_force=0.0, roundoff_anchor=1.0)
         self.assertTrue(state.converged)
 
     def test_atol_acts_as_floor_when_ref_collapses(self):
@@ -81,14 +81,14 @@ class TestConvergenceCriterionUnit(unittest.TestCase):
         c.calibrate(force_scale=1.0e6, disp_scale=1.0)  # atol_force = 1e-3
         # ref colapsa a cero (transitorio); residuo numérico minúsculo.
         state = c.evaluate(residual_norm=1e-6, ref_force=0.0,
-                           delta_u_norm=0.0, u_norm=1.0, roundoff_force=0.0)
+                           delta_u_norm=0.0, u_norm=1.0, roundoff_force=0.0, roundoff_anchor=1.0)
         # tol_force ≈ atol_force = 1e-3, holgadamente sobre el residuo.
         self.assertTrue(state.converged)
 
     def test_state_is_frozen_dataclass(self):
         c = ConvergenceCriterion()
         c.calibrate(1.0, 1.0)
-        state = c.evaluate(1e-10, 1.0, 1e-10, 1.0, roundoff_force=0.0)
+        state = c.evaluate(1e-10, 1.0, 1e-10, 1.0, roundoff_force=0.0, roundoff_anchor=1.0)
         self.assertIsInstance(state, ConvergenceState)
         with self.assertRaises(Exception):
             state.converged = False  # frozen
@@ -191,21 +191,21 @@ class TestRoundoffFloorUnit(unittest.TestCase):
         c = ConvergenceCriterion(rtol_force=1e-5, atol_force_factor=0.0, roundoff_factor=7.0)
         c.calibrate(0.0, 0.0)
         state = c.evaluate(residual_norm=0.0, ref_force=2.0, delta_u_norm=0.0,
-                           u_norm=1.0, roundoff_force=3.0e-8)
+                           u_norm=1.0, roundoff_force=3.0e-8, roundoff_anchor=1.0)
         self.assertEqual(state.tol_force, 1e-5 * 2.0 + 7.0 * 3.0e-8)
         self.assertEqual(state.floor_force, 7.0 * 3.0e-8)
 
     def test_zero_scales_are_valid_and_an_all_zero_state_converges(self):
         c = ConvergenceCriterion()
         c.calibrate(0.0, 0.0)
-        state = c.evaluate(0.0, 0.0, 0.0, 0.0, roundoff_force=0.0)
+        state = c.evaluate(0.0, 0.0, 0.0, 0.0, roundoff_force=0.0, roundoff_anchor=1.0)
         self.assertTrue(state.converged)
         self.assertEqual((state.ratio_force, state.ratio_disp), (0.0, 0.0))
 
     def test_nonzero_residual_with_zero_tolerance_does_not_converge(self):
         c = ConvergenceCriterion()
         c.calibrate(0.0, 0.0)
-        state = c.evaluate(1e-30, 0.0, 0.0, 0.0, roundoff_force=0.0)
+        state = c.evaluate(1e-30, 0.0, 0.0, 0.0, roundoff_force=0.0, roundoff_anchor=1.0)
         self.assertFalse(state.converged)
         self.assertEqual(state.ratio_force, float("inf"))
 
@@ -547,6 +547,226 @@ class TestForceFreeConvergence(unittest.TestCase):
         tip = asm.domain.nodes[3001]
         self.assertAlmostEqual(U[tip.dofs["uy"]], 0.01, places=12)
         self.assertAlmostEqual(U[tip.dofs["rz"]] / (1.5 * 0.01), 1.0, places=6)
+
+
+# ---------------------------------------------------------------------------
+# Ancla del piso de redondeo (ADR 0007, segunda enmienda del 2026-11-27)
+# ---------------------------------------------------------------------------
+
+def _plastic_cantilever(n_el: int = 4):
+    """Voladizo vertical de 3 m con sección de 20 fibras de acero
+    perfectamente plástico (σ_y = 250 MPa) y carga de referencia lateral de
+    1 MN en la punta. La capacidad lateral medida es ≈ 1.68 MN."""
+    from solidum import Frame2DEuler
+    from solidum.materials.plastic_1d import Elastoplastic1D
+    from solidum.sections import FiberSection, RectangularPatch
+    L, B, H = 3.0, 0.30, 0.50
+    d = Domain()
+    nodes = [d.add_node(i + 1, [0.0, i * L / n_el]) for i in range(n_el + 1)]
+    for k in range(n_el):
+        steel = Elastoplastic1D(E=2.0e11, sigma_y=250.0e6, H=0.0)
+        section = FiberSection(patches=[RectangularPatch(
+            steel, y=(-H / 2, H / 2), z=(-B / 2, B / 2), ny=20, nz=1)])
+        d.add_element(Frame2DEuler(k + 1, [nodes[k], nodes[k + 1]], section=section, n_ip=3))
+    for dof in ("ux", "uy", "rz"):
+        nodes[0].fix_dof(dof, 0.0)
+    d.generate_equation_numbers(verbose=False)
+    F = np.zeros(d.total_dofs)
+    F[nodes[-1].dofs["ux"]] = 1.0e6
+    return d, F, nodes[-1]
+
+
+class _GuidedToMechanism:
+    """Problema de un paso cuyo Newton recorre una secuencia fija de
+    iterados, sin depender del redondeo de ninguna factorización: (1) la
+    corrección de Newton real; (2) un salto al mecanismo de colapso, con la
+    rótula en la base y el resto en movimiento de sólido rígido (giro
+    ``2**50``, representable exactamente); (3) una corrección de 1 m en la
+    punta, despreciable frente a ``rtol_disp·‖U‖``."""
+
+    def __init__(self, problem, U_mechanism, tip_dof):
+        self._problem = problem
+        self._U_mechanism = U_mechanism
+        self._tip_dof = tip_dof
+        self._k = 0
+
+    def __getattr__(self, name):
+        return getattr(self._problem, name)
+
+    def correction(self, U, state, R, solve):
+        self._k += 1
+        if self._k == 1:
+            return self._problem.correction(U, state, R, solve)
+        if self._k == 2:
+            return self._U_mechanism - U
+        dU = np.zeros_like(U)
+        dU[self._tip_dof] = 1.0
+        return dU
+
+
+class _ScriptedProblem:
+    """Problema de dos grados de libertad cuyo Newton aplica una lista fija
+    de correcciones; residuo constante ``residual`` y piso nulo. Con
+    ``revise_once``, la primera convergencia se revisa y el intento se repite
+    desde ``x0`` (ADR 0041)."""
+
+    def __init__(self, corrections, residual=1.0, revise_once=False):
+        self._corrections = [np.asarray(c, dtype=float) for c in corrections]
+        self._k = 0
+        self._residual = float(residual)
+        self._pending_revision = revise_once
+
+    def assemble(self, x):
+        return None
+
+    def residual(self, x, state):
+        return np.array([self._residual, 0.0])
+
+    def residual_norm(self, R):
+        return float(np.linalg.norm(R))
+
+    def calibration_scales(self, x, state):
+        return 1.0, 1.0
+
+    def reference_force(self, x, state):
+        return 1.0
+
+    def roundoff_force(self, x, state):
+        return 0.0
+
+    def x_norm(self, x):
+        return float(np.linalg.norm(x))
+
+    def correction(self, x, state, R, solve):
+        dx = self._corrections[self._k]
+        self._k += 1
+        return dx
+
+    def apply(self, x, dx, alpha):
+        return x + alpha * dx, float(np.linalg.norm(alpha * dx))
+
+    def on_converged(self, x, state):
+        pass
+
+    def revise(self, x):
+        changed, self._pending_revision = self._pending_revision, False
+        return changed
+
+
+class _AnchorRecorder(ConvergenceCriterion):
+    """Criterio que guarda ``(u_norm, delta_u_norm, roundoff_anchor)`` de
+    cada evaluación."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.calls: list[tuple[float, float, float]] = []
+
+    def evaluate(self, residual_norm, ref_force, delta_u_norm, u_norm, **kwargs):
+        self.calls.append((float(u_norm), float(delta_u_norm), kwargs["roundoff_anchor"]))
+        return super().evaluate(residual_norm, ref_force, delta_u_norm, u_norm, **kwargs)
+
+
+class TestRoundoffFloorAnchor(unittest.TestCase):
+    """El piso de redondeo no crece con un iterado que se aleja más de ``G``
+    veces del ancla del intento: un Newton que diverge no puede ganar
+    tolerancia con el tamaño de su propio iterado."""
+
+    def test_a_newton_driven_into_a_plastic_mechanism_is_not_accepted_by_the_roundoff_floor(self):
+        """Carga de 2.0 MN, por encima de la capacidad: no hay equilibrio. En
+        el mecanismo ‖U‖ ~ 5e15 m, el residuo (acotado por σ_y) es ~3e7 N y
+        el piso sin ancla ~6e9 N: el criterio sin ancla lo aceptaba (medido;
+        en el CI, la misma aceptación en el colapso de una corrida real)."""
+        d, F, tip = _plastic_cantilever()
+        solver = NonlinearSolver(Assembler(d), num_steps=10, max_iter=3)
+        problem = solver.make_problem(5.0 * F, 0.40)
+        theta = 2.0 ** 50
+        U_mechanism = np.zeros(d.total_dofs)
+        for node in d.nodes.values():
+            y = node.coordinates[1]
+            if y > 0.0:
+                U_mechanism[node.dofs["ux"]] = theta * y
+                U_mechanism[node.dofs["rz"]] = -theta
+        guided = _GuidedToMechanism(problem, U_mechanism, tip.dofs["ux"])
+        res = solver.corrector.run(guided, np.zeros(d.total_dofs), check_initial=False)
+        self.assertFalse(res.converged)
+        # La prueba actúa: sin ancla, el piso de ese iterado cubriría el
+        # residuo y el criterio de desplazamiento ya se cumple.
+        conv = res.last_conv
+        unanchored_floor = solver.convergence.roundoff_factor * problem.roundoff_force(
+            res.x, res.state)
+        self.assertGreater(unanchored_floor, 100.0 * res.last_residual)
+        self.assertLess(conv.ratio_disp, 1.0)
+        self.assertGreater(conv.ratio_force, 1.0e4)
+
+    def test_the_floor_of_an_iterate_beyond_G_times_the_anchor_is_that_of_norm_G_a(self):
+        c = ConvergenceCriterion(rtol_force=0.0, atol_force_factor=0.0, roundoff_factor=10.0,
+                                 roundoff_anchor_factor=3.0)
+        c.calibrate(0.0, 0.0)
+        rf, a = 2.0e-6, 0.5
+        for u, s in ((0.0, 1.0), (1.0, 1.0), (1.5, 1.0), (15.0, 0.1), (1.5e12, 1.0e-12)):
+            with self.subTest(u_norm=u):
+                state = c.evaluate(0.0, 0.0, 0.0, u, roundoff_force=rf, roundoff_anchor=a)
+                self.assertAlmostEqual(state.floor_force / (10.0 * rf * s), 1.0, places=12)
+                self.assertEqual(state.tol_force, state.floor_force)
+        # G = 0 quita el piso en cuanto el iterado no es nulo.
+        c0 = ConvergenceCriterion(roundoff_anchor_factor=0.0)
+        c0.calibrate(0.0, 0.0)
+        self.assertEqual(c0.evaluate(0.0, 0.0, 0.0, 1.0, roundoff_force=rf,
+                                     roundoff_anchor=a).floor_force, 0.0)
+        self.assertEqual(c0.evaluate(0.0, 0.0, 0.0, 0.0, roundoff_force=rf,
+                                     roundoff_anchor=a).floor_force, 10.0 * rf)
+
+    def test_by_default_the_anchor_factor_is_the_newton_kantorovich_bound_3(self):
+        self.assertEqual(ConvergenceCriterion().roundoff_anchor_factor, 3.0)
+
+    def test_the_anchor_factor_is_validated_and_read_from_yaml(self):
+        for value in (-1.0, float("nan"), float("inf"), "tres", True):
+            with self.subTest(value=value), \
+                    self.assertRaisesRegex(ValueError, "roundoff_anchor_factor"):
+                ConvergenceCriterion(roundoff_anchor_factor=value)
+        c = make_convergence_from_config({"roundoff_anchor_factor": 10.0})
+        self.assertEqual(c.roundoff_anchor_factor, 10.0)
+
+    def test_the_corrector_anchors_each_attempt_at_its_first_corrected_iterate(self):
+        """``a = ‖x_1‖ + ‖δx_0‖``, fijo en el resto del intento aunque el
+        iterado se dispare; el iterado 0 (predictor) se evalúa sin tope."""
+        from solidum.math.solvers.corrector import NewtonCorrector
+        crit = _AnchorRecorder()
+        corrector = NewtonCorrector(crit, max_iter=3, is_symmetric=True)
+        corrector.run(_ScriptedProblem([[3.0, 4.0], [0.0, 100.0], [0.0, 1.0e6]]),
+                      np.zeros(2), check_initial=False)
+        self.assertEqual([call[2] for call in crit.calls], [10.0, 10.0, 10.0])
+        # Otro intento, otra ancla: con predictor, el iterado 0 va sin ancla
+        # y la primera corrección fija la del intento.
+        crit.calls.clear()
+        corrector.run(_ScriptedProblem([[0.0, 2.0], [0.0, 1.0e6], [0.0, 1.0e6]]),
+                      np.array([1.0, 0.0]), check_initial=True, initial_delta_norm=2.0)
+        a = float(np.hypot(1.0, 2.0)) + 2.0
+        self.assertEqual([call[2] for call in crit.calls], [None, a, a, a])
+
+    def test_an_evaluation_without_anchor_keeps_the_full_floor_with_any_G(self):
+        """El predictor y el estado inicial de una etapa no tienen iterados
+        de Newton que anclar: ``roundoff_anchor=None`` no recorta el piso,
+        ni con ``G < 1``."""
+        for G in (0.0, 0.5, 3.0):
+            c = ConvergenceCriterion(rtol_force=0.0, atol_force_factor=0.0, roundoff_factor=10.0,
+                                     roundoff_anchor_factor=G)
+            c.calibrate(0.0, 0.0)
+            with self.subTest(G=G):
+                state = c.evaluate(0.0, 0.0, 0.0, 1.0e12, roundoff_force=2.0e-6,
+                                   roundoff_anchor=None)
+                self.assertEqual(state.floor_force, 10.0 * 2.0e-6)
+
+    def test_a_revision_of_the_converged_step_anchors_the_repeated_attempt_afresh(self):
+        from solidum.math.solvers.corrector import NewtonCorrector
+        crit = _AnchorRecorder(rtol_disp=10.0)
+        corrector = NewtonCorrector(crit, max_iter=3, is_symmetric=True)
+        res = corrector.run(_ScriptedProblem([[3.0, 4.0], [0.0, 7.0]], residual=0.0,
+                                             revise_once=True),
+                            np.zeros(2), check_initial=False)
+        self.assertTrue(res.converged)
+        self.assertEqual(res.n_revisions, 1)
+        self.assertEqual([call[2] for call in crit.calls], [10.0, 14.0])
 
 
 if __name__ == '__main__':

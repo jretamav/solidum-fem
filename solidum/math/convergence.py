@@ -21,6 +21,7 @@ from solidum.constants import (
     CONVERGENCE_ATOL_FORCE_FACTOR,
     CONVERGENCE_ATOL_DISP_FACTOR,
     CONVERGENCE_ROUNDOFF_FACTOR,
+    CONVERGENCE_ROUNDOFF_ANCHOR_FACTOR,
 )
 
 #: Épsilon de máquina de los cálculos en doble precisión.
@@ -49,8 +50,8 @@ class ConvergenceState:
         de redondeo en la de fuerza).
     floor_force : float
         Parte de ``tol_force`` que aporta el piso de redondeo,
-        ``roundoff_factor · roundoff_force``: si domina, el paso se acepta
-        en el límite de la doble precisión.
+        ``roundoff_factor · s · roundoff_force`` con ``s`` el factor del ancla
+        (≤ 1): si domina, el paso se acepta en el límite de la doble precisión.
     """
     converged: bool
     ratio_force: float
@@ -100,6 +101,17 @@ class ConvergenceCriterion:
         precisión pueda resolver. Default ``10``, empírico: el ruido medido
         no pasa de 0.5 veces la escala en los elementos de cinemática
         lineal; no es una cota rigurosa.
+    roundoff_anchor_factor : float
+        Factor ``G`` del ancla del piso (ADR 0007, segunda enmienda del
+        2026-11-27): el piso de un iterado de norma ``‖x_k‖`` se multiplica
+        por ``s = min(1, G·a/‖x_k‖)``, con ``a`` el ancla del intento
+        (``roundoff_anchor`` de :meth:`evaluate`). Default ``3``, la cota de
+        Newton–Kantorovich: un Newton que converge cuadráticamente desde el
+        arranque no sale de ``3·a`` y el ancla no actúa; uno que diverge deja
+        de ganar tolerancia con el tamaño de su iterado. Con plasticidad o
+        daño un Newton que converge puede salir de ``3·a``; el piso se reduce
+        entonces sin efecto medido. ``0`` quita el piso en cuanto el iterado
+        no es nulo (salvo en las evaluaciones sin ancla).
 
     Notes
     -----
@@ -108,8 +120,9 @@ class ConvergenceCriterion:
     .. code-block:: text
 
         ‖TᵀR‖ ≤ atol_force + rtol_force · max(‖F_ext‖, ‖F_int‖)
-                + roundoff_factor · ε·‖|T|ᵀ·|K|·|U|‖
+                + roundoff_factor · s · ε·‖|T|ᵀ·|K|·|U|‖
         ‖δU‖  ≤ atol_disp  + rtol_disp  · ‖U_iter‖
+        s     = min(1, roundoff_anchor_factor · a / ‖U_iter‖)
 
     con semántica AND (ambos criterios simultáneamente) y ``TᵀR`` el
     residuo reducido (ADR 0004), que con sólo condiciones de Dirichlet es
@@ -122,11 +135,12 @@ class ConvergenceCriterion:
                  rtol_disp: float = CONVERGENCE_RTOL_DISP,
                  atol_force_factor: float = CONVERGENCE_ATOL_FORCE_FACTOR,
                  atol_disp_factor: float = CONVERGENCE_ATOL_DISP_FACTOR,
-                 roundoff_factor: float = CONVERGENCE_ROUNDOFF_FACTOR):
+                 roundoff_factor: float = CONVERGENCE_ROUNDOFF_FACTOR,
+                 roundoff_anchor_factor: float = CONVERGENCE_ROUNDOFF_ANCHOR_FACTOR):
         values = {
             "rtol_force": rtol_force, "rtol_disp": rtol_disp,
             "atol_force_factor": atol_force_factor, "atol_disp_factor": atol_disp_factor,
-            "roundoff_factor": roundoff_factor,
+            "roundoff_factor": roundoff_factor, "roundoff_anchor_factor": roundoff_anchor_factor,
         }
         for name, value in values.items():
             _check_factor(name, value)
@@ -135,6 +149,7 @@ class ConvergenceCriterion:
         self.atol_force_factor = float(atol_force_factor)
         self.atol_disp_factor = float(atol_disp_factor)
         self.roundoff_factor = float(roundoff_factor)
+        self.roundoff_anchor_factor = float(roundoff_anchor_factor)
         self._atol_force: float | None = None
         self._atol_disp: float | None = None
 
@@ -191,7 +206,8 @@ class ConvergenceCriterion:
                  delta_u_norm: float,
                  u_norm: float,
                  *,
-                 roundoff_force: float) -> ConvergenceState:
+                 roundoff_force: float,
+                 roundoff_anchor: float | None) -> ConvergenceState:
         """Aplica el criterio ``atol + rtol·escala + piso`` y devuelve el estado.
 
         Parameters
@@ -214,6 +230,17 @@ class ConvergenceCriterion:
             :func:`roundoff_scale` (en unidades de fuerza). Obligatoria: un
             solver que la omitiera volvería a un piso que depende de las
             unidades.
+        roundoff_anchor : float or None
+            Ancla ``a`` del piso en el intento de paso, en las unidades de
+            ``u_norm`` (segunda enmienda del 2026-11-27): ``‖x_1‖ + ‖δx_0‖``,
+            la norma del primer iterado corregido del intento más la de su
+            corrección, que fija :class:`~solidum.math.solvers.corrector.NewtonCorrector`.
+            El piso se multiplica por ``min(1, G·a/u_norm)``. Obligatoria: sin
+            ella, un Newton que diverge infla el piso con su propio iterado y
+            acepta estados sin equilibrio (colapso plástico, medido). ``None``
+            declara una evaluación sin iterados de Newton que anclar (el
+            predictor, el estado inicial de una etapa): el piso va sin tope,
+            con cualquier ``G``.
 
         Returns
         -------
@@ -228,6 +255,13 @@ class ConvergenceCriterion:
             )
 
         floor_force = self.roundoff_factor * float(roundoff_force)
+        u_norm = float(u_norm)
+        if roundoff_anchor is not None:
+            reach = self.roundoff_anchor_factor * float(roundoff_anchor)
+            if u_norm > reach:
+                # El iterado salió de la bola de Newton–Kantorovich: el piso
+                # es el de un iterado de norma ``G·a``.
+                floor_force *= reach / u_norm
         tol_force = self._atol_force + self.rtol_force * float(ref_force) + floor_force
         tol_disp = self._atol_disp + self.rtol_disp * float(u_norm)
 
@@ -249,13 +283,14 @@ def make_convergence_from_config(cfg: dict | None) -> ConvergenceCriterion:
     """Construye un ``ConvergenceCriterion`` desde un dict YAML.
 
     El dict acepta cualquier subconjunto de ``rtol_force``, ``rtol_disp``,
-    ``atol_force_factor``, ``atol_disp_factor`` y ``roundoff_factor``. Claves
+    ``atol_force_factor``, ``atol_disp_factor``, ``roundoff_factor`` y
+    ``roundoff_anchor_factor``. Claves
     desconocidas lanzan ``ValueError`` para detectar typos pronto.
     """
     if cfg is None:
         return ConvergenceCriterion()
     allowed = {"rtol_force", "rtol_disp", "atol_force_factor", "atol_disp_factor",
-               "roundoff_factor"}
+               "roundoff_factor", "roundoff_anchor_factor"}
     unknown = set(cfg.keys()) - allowed
     if unknown:
         raise ValueError(

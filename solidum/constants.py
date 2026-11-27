@@ -54,6 +54,17 @@ CONVERGENCE_ATOL_DISP_FACTOR = 1.0e-9
 # un orden por encima del ruido y muy por debajo de ``rtol · fuerza`` en los
 # problemas habituales.
 CONVERGENCE_ROUNDOFF_FACTOR = 10.0
+# Ancla del piso de redondeo (ADR 0007, segunda enmienda del 2026-11-27;
+# decisión del usuario, G = 3): el piso se evalúa con el iterado, pero no
+# crece más allá del que tendría un iterado de norma ``G·a``, con ``a`` la
+# norma del primer iterado corregido del intento más la de su corrección.
+# Sin ancla, un Newton que diverge (colapso plástico, ‖U‖ ~ 1e12 m) infla
+# el piso hasta aceptar estados sin equilibrio. 3 es la cota de
+# Newton–Kantorovich: un Newton que converge cuadráticamente desde el
+# arranque no pasa de ``3·a``. Con plasticidad o daño un Newton que converge
+# sí puede pasarla; el piso se reduce entonces sin efecto medido (tolerancia
+# ≤ 8e-4 relativa, ningún resultado distinto en la suite).
+CONVERGENCE_ROUNDOFF_ANCHOR_FACTOR = 3.0
 
 # --- Heurísticos del paso adaptativo del Newton-Raphson incremental ---
 # Aplican en ``NonlinearSolver.solve`` con ``adaptive=True`` (default).

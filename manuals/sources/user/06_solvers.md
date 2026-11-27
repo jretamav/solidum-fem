@@ -44,7 +44,7 @@ solver:
     rtol_disp: 1.0e-5
 ```
 
-**Parámetros**: `convergence` (bloque con `rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`, `roundoff_factor`; ver ADR 0007), `max_iter`, `num_steps`, `adaptive`, `min_delta_lambda`, `linear_algebra`, `freeze_tangent_after_iter`.
+**Parámetros**: `convergence` (bloque con `rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`, `roundoff_factor`, `roundoff_anchor_factor`; ver ADR 0007), `max_iter`, `num_steps`, `adaptive`, `min_delta_lambda`, `linear_algebra`, `freeze_tangent_after_iter`.
 
 **Limitación**: no puede atravesar puntos límite (snap-through) ni recorrer ramas con derivada negativa de la curva carga-desplazamiento. Para esos casos → `ArcLengthSolver`.
 

@@ -610,6 +610,12 @@ class NewtonCorrector:
         delta_norm = float(initial_delta_norm)
         R_norm = float("inf")
         revise = getattr(problem, "revise", None)
+        # Ancla del piso de redondeo en este intento (ADR 0007, segunda
+        # enmienda del 2026-11-27): ‖x_1‖ + ‖δx_0‖, fijada en la primera
+        # evaluación tras una corrección de Newton (con line search, la
+        # corrección aplicada ‖α·δx_0‖). El iterado 0 (predictor) se evalúa
+        # sin ancla: aún no hay Newton que pueda divergir.
+        anchor = None
 
         iteration = 0
         while True:
@@ -633,12 +639,20 @@ class NewtonCorrector:
 
             conv = None
             if iteration > 0 or check_initial:
+                x_norm = problem.x_norm(x)
+                if iteration == 0:
+                    current_anchor = None      # predictor: sin tope
+                else:
+                    if anchor is None:
+                        anchor = x_norm + delta_norm
+                    current_anchor = anchor
                 conv = self.convergence.evaluate(
                     residual_norm=R_norm,
                     ref_force=problem.reference_force(x, state),
                     delta_u_norm=delta_norm,
-                    u_norm=problem.x_norm(x),
+                    u_norm=x_norm,
                     roundoff_force=problem.roundoff_force(x, state),
+                    roundoff_anchor=current_anchor,
                 )
                 result.residual_history.append(R_norm)
                 result.delta_history.append(delta_norm)
@@ -683,6 +697,7 @@ class NewtonCorrector:
                     result.last_residual = float("inf")
                     result.last_delta = 0.0
                     result.last_conv = None
+                    anchor = None
                     iteration = 0
                     continue
                 problem.on_converged(x, state)

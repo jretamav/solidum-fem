@@ -106,9 +106,11 @@ def check_initial_equilibrium(assembler, stage: Stage, convergence, F_ref: np.nd
     T = assembler.constraint_set.build(assembler.domain.total_dofs)[0]
     residual = float(np.linalg.norm(T.T @ (stage.F_const - F_int)))
     ref = max(float(np.linalg.norm(stage.F_const)), float(np.linalg.norm(F_int)))
+    # Sin iterados de Newton no hay divergencia que anclar: piso sin tope.
     state = criterion.evaluate(residual_norm=residual, ref_force=ref, delta_u_norm=0.0,
                                u_norm=float(np.linalg.norm(stage.U0)),
-                               roundoff_force=roundoff_scale((K, stage.U0), T=T))
+                               roundoff_force=roundoff_scale((K, stage.U0), T=T),
+                               roundoff_anchor=None)
     ratio = residual / ref if ref > 0.0 else 0.0
     if state.ratio_force > 1.0:
         if stage.staged:
