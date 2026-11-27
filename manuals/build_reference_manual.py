@@ -85,6 +85,7 @@ CHAPTER_ORDER: list[str] = [
     "Secciones de marco",
     "Elementos 2D — Sólidos",
     "Elementos 3D — Sólidos",
+    "Elementos de interfaz",
     "Restricciones generadas",
     "Elementos Térmicos — 2D",
     "Elementos Térmicos — 3D",
@@ -170,6 +171,16 @@ def _classify(spec) -> str:
             raise SpecError(
                 f"{name}: elemento térmico con flux_dim={flux_dim!r} no "
                 f"clasificable. Esperado uno de {sorted(by_flux)}."
+            )
+
+        # Interfaces de espesor nulo (ADR 0043): un capítulo para la familia,
+        # 2D y 3D; la dimensión la da `jump_dim`.
+        if iface.get("field") == "interface":
+            if iface.get("jump_dim") in (2, 3):
+                return "Elementos de interfaz"
+            raise SpecError(
+                f"{name}: elemento de interfaz con jump_dim={iface.get('jump_dim')!r} no "
+                f"clasificable. Esperado 2 o 3."
             )
 
         # Sólidos: la dimensión del tensor de deformaciones separa 2D de 3D.
