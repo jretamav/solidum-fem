@@ -80,7 +80,7 @@ jobs:
       - name: Package the repository as a zip
         run: git archive --format=zip --prefix=solidum-fem/ -o "$RUNNER_TEMP/solidum-fem.zip" HEAD
 
-      - name: Install as a student (pip, no Git, not editable)
+      - name: Install as an end user (pip, no Git, not editable)
         working-directory: ${{ runner.temp }}
         run: |
           python -m pip install --upgrade pip
