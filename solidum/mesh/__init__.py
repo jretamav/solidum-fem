@@ -6,12 +6,16 @@ por tramos y gradación (:func:`axis_lines`), celdas excluidas, partición de
 triángulos y fusión con bloques anteriores; desde el YAML,
 ``mesh: {structured: ...}`` (:mod:`solidum.mesh.structured_blocks`).
 :func:`mesh_quality` mide la calidad de los elementos y :func:`free_boundary`
-da el contorno libre (lados o caras de un solo elemento; ADR 0042). Las geometrías reales
+da el contorno libre (lados o caras de un solo elemento; ADR 0042).
+:func:`pair_interfaces` y :func:`split_interfaces` crean elementos de interfaz
+de espesor nulo entre dos caras de contorno o en lados interiores (ADR 0043);
+desde el YAML, el bloque ``interfaces``. Las geometrías reales
 se mallan con Gmsh y se leen con ``solidum.utils.gmsh_parser``; desde el YAML,
 ``mesh: {geometry: archivo.geo, ...}`` llama a Gmsh con
 :mod:`solidum.mesh.gmsh_geometry` (ADR 0035).
 """
 from solidum.mesh.boundary import free_boundary
+from solidum.mesh.interfaces import InterfaceInsertion, pair_interfaces, split_interfaces
 from solidum.mesh.quality import MeshQuality, mesh_quality
 from solidum.mesh.structured import (
     DIAGONALS,
@@ -23,5 +27,6 @@ from solidum.mesh.structured import (
     structured_mesh,
 )
 
-__all__ = ["DIAGONALS", "MeshQuality", "SIDES_1D", "SIDES_2D", "SIDES_3D", "StructuredMesh",
-           "axis_lines", "free_boundary", "mesh_quality", "structured_mesh"]
+__all__ = ["DIAGONALS", "InterfaceInsertion", "MeshQuality", "SIDES_1D", "SIDES_2D", "SIDES_3D",
+           "StructuredMesh", "axis_lines", "free_boundary", "mesh_quality", "pair_interfaces",
+           "split_interfaces", "structured_mesh"]

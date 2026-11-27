@@ -26,16 +26,25 @@ Con restricciones multipunto (bloque `linear_constraints` en YAML, `add_linear_c
 - `N_i`, `N_j`, `V_i`, `M_i`… (en 3D, `Vy`, `Vz`, `T`, `My`, `Mz`): **fuerzas internas de extremo** de barras, cables y marcos (`internal_forces`, ADR 0002), en ejes locales del elemento, en el nodo i y el nodo j, con la convención de signos del proyecto; `NaN` en las celdas que no tienen esa componente. Con carga distribuida, `VtkExporter.export(..., element_forces=resultado.element_forces)` descuenta la carga equivalente.
 - `Sigma_XX`, `Sigma_YY`, `Sigma_ZZ`, `Tau_XY`, `Tau_YZ`, `Tau_XZ`: las seis componentes del tensor de esfuerzos (en 2D las tres últimas son $\sigma_{zz}$ del material y ceros). Se evalúan en el campo `U` exportado vía `compute_gauss_state` y se promedian por elemento: el exportador no depende de qué solver produjo `U` ni de que el estado esté comiteado. Cubre sólidos 2D y 3D (`quad`, `triangle`, `quad8`, `quad9`, `triangle6`, `hexahedron`, `tetra`, `hexahedron20`, `hexahedron27`, `tetra10`), elementos térmicos (campo nodal `Temperature` y `Flux` por celda) y los elementos de los módulos de usuario, como el `CST_Embedded2D` del módulo `discontinuities`: el exportador deriva la celda VTK del número de nodos (o de `VTK_CELL_TYPE`, si el elemento lo declara), sin conocer la clase. Las barras y cables de dos nodos y los marcos son celdas `line`; las barras de tres nodos `Truss2D3` y `Truss3D3`, celdas `line3` (segmento cuadrático, con el nodo intermedio).
 
-Las interfaces de adherencia que genera el refuerzo embebido con `bond` (`BondSlipInterface`) no tienen celda propia y no se exportan: unen los nodos de la barra con los de su anfitrión. Su estado (deslizamiento, esfuerzo de adherencia) se consulta con `EmbeddedBar.bond_state` (capítulo «Uso Avanzado: API Programática»).
+**Elementos de interfaz** (bloque `interfaces`): cada uno es una celda con los nodos de sus dos caras, `quad` (`Interface2D4`), celda 30 de VTK, cuadrilátero de 6 nodos (`Interface2D6`), `wedge` (`Interface3D6`) o `hexahedron` (`Interface3D8`). Con los nodos coincidentes la celda tiene volumen nulo; en ParaView se ve al deformar con *Warp By Vector* o al separar las caras. Sus campos por celda son la media de sus puntos de integración:
+
+- `Jump_n`, `Jump_s` (en 3D `Jump_s1`, `Jump_s2`): desplazamiento relativo en ejes locales; `Jump_n` es la holgura actual (en el pre-proceso, la holgura inicial).
+- `Traction_n`, `Traction_s` (`Traction_s1`, `Traction_s2`): tracción sobre la cara A en ejes locales; en contacto, `Traction_n` = $-p_N$.
+- Las variables internas escalares de la ley (`contact_pressure`, `slip_accumulated`, `damage`…), salvo los códigos: el régimen `status` de `ContactPenalty` (0 abierta, 1 adherida, 2 deslizando) no se promedia y se lee en el archivo por puntos.
+
+Son componentes escalares, no un vector, porque un vector en ParaView se lee en ejes globales. En las celdas de interfaz los esfuerzos de sólido (`Sigma_*`, `Von_Mises`) valen `NaN` y en las de sólido los `Jump_*` y `Traction_*` también; las interfaces no entran en el suavizado nodal.
+
+Las interfaces de adherencia que genera el refuerzo embebido con `bond` (`BondSlipInterface`) no tienen celda propia y no se exportan al VTK: unen los nodos de la barra con los de su anfitrión. Su estado (deslizamiento, esfuerzo de adherencia) se registra en la historia (`var: jump` o `traction` con `component: s`, y sus variables) o se consulta con `EmbeddedBar.bond_state` (capítulo «Uso Avanzado: API Programática»).
 
 ## Valores en los puntos de integración
 
-Con `output.results.integration_points: true`, Solidum escribe en los mismos instantes que el VTK por celda `<nombre>_puntos_NNNN.vtu`, `<nombre>_puntos_final.vtu` y su índice `<nombre>_puntos.pvd`: una nube de puntos (celdas `vertex`) en la posición de cada punto de integración de los sólidos, sin promediar. Por punto:
+Con `output.results.integration_points: true`, Solidum escribe en los mismos instantes que el VTK por celda `<nombre>_puntos_NNNN.vtu`, `<nombre>_puntos_final.vtu` y su índice `<nombre>_puntos.pvd`: una nube de puntos (celdas `vertex`) en la posición de cada punto de integración de los sólidos y de las interfaces, sin promediar. Por punto:
 
 - `Displacements`: el desplazamiento interpolado $\mathbf u(\boldsymbol\xi_g) = \sum_a N_a(\boldsymbol\xi_g)\,\mathbf u_a$ (para deformar la nube con *Warp By Vector*);
 - `Element_Id` y `Point` (número del punto en su elemento, desde 1);
 - `Sigma_XX` … `Tau_XZ` y `Von_Mises`;
-- todas las variables internas escalares del material, también los ángulos; `NaN` donde el material no la tiene.
+- todas las variables internas escalares del material, también los ángulos; `NaN` donde el material no la tiene;
+- en los puntos de los elementos de interfaz (sobre la cara A): `Jump_*`, `Traction_*` y todas las variables escalares de la ley, también `status`; los esfuerzos de sólido valen `NaN`.
 
 Los valores son los del estado con que el análisis equilibró el paso, los mismos que registra la historia, sin volver a evaluar el material. Sirve para leer lo que el promedio por celda esconde: el ángulo de cada grieta fija, qué puntos de un elemento se agrietaron, el daño punto a punto.
 

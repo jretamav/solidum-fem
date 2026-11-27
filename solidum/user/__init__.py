@@ -31,6 +31,17 @@ def available_user_modules() -> list:
                   if ispkg and not name.startswith("_"))
 
 
+def user_module_of(obj) -> str | None:
+    """Nombre del módulo de usuario al que pertenece ``obj`` (una clase o una
+    función, por su ``__module__``), o ``None`` si es del programa principal.
+    Parte del cargador genérico: con ella el programa principal distingue lo
+    suyo de lo que aportó un módulo (p. ej. para elegir por omisión un
+    elemento del programa principal) sin nombrar ningún módulo."""
+    module = getattr(obj, "__module__", None) or ""
+    prefix = __name__ + "."
+    return module[len(prefix):].split(".")[0] if module.startswith(prefix) else None
+
+
 def load_user_module(name: str):
     """Carga el módulo de usuario ``name`` y lo devuelve.
 

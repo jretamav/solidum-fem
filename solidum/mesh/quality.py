@@ -24,6 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 from numba import njit, types
 
+from solidum.core.point_quantity import FLUX, STRAIN, point_quantity
 from solidum.logging import get_logger
 from solidum.math.batch.signatures import F64_2, F64_3, KIN_SIG
 
@@ -131,7 +132,8 @@ def _corner_angles(P: np.ndarray) -> np.ndarray:
 
 def _detj_ratio(cls, X: np.ndarray) -> np.ndarray:
     kin = getattr(cls, "BATCH_KINEMATICS", None)
-    rows = getattr(cls, "STRAIN_DIM", None) or getattr(cls, "FLUX_DIM", None)
+    q = point_quantity(cls)
+    rows = q.dim if q.kind in (STRAIN, FLUX) else None
     if kin is None or rows is None:
         return np.full(X.shape[0], np.nan)
     pts = np.ascontiguousarray(cls.REFERENCE_NODES, dtype=np.float64)

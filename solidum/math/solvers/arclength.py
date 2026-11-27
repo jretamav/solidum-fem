@@ -384,6 +384,10 @@ class ArcLengthSolver:
     """
 
     PIPELINE_KIND = "static"
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = False
 
     def __init__(self, assembler, convergence: ConvergenceCriterion | None = None, max_iter=20, max_lambda=1.0,
                  initial_dl: float | None = None, max_steps=100,

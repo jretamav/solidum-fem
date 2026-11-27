@@ -371,7 +371,7 @@ Los colapsos convergen por arriba y en primer orden del tamaño del elemento: es
 Lo que el proyecto **previsiblemente** abrirá tras la Etapa 8, sin orden cerrado:
 
 - **Análisis termomecánico acoplado** — **desbloqueado** por la Etapa 8, que entregó el campo térmico sin acoplar, y con **estrategia ya decidida** en el [ADR 0016](adr/0016-acoplamiento-termomecanico.md): débil unidireccional primero, deformación propia genérica `ε₀` por punto de Gauss, sin elementos acoplados nuevos. Deja de ser una decisión pendiente y pasa a ser una etapa de trabajo acotada (pasos 1–3 del ADR: canal `ε₀` en el contrato `Material` con default cero, proveedor térmico, validación analítica).
-- **Contacto mecánico** (penalización / Lagrangiano aumentado / mortar).
+- **Contacto mecánico**: el contacto con pares fijos y desplazamientos pequeños por penalización, con fricción de Coulomb opcional, existe desde el 2026-11-26 ([ADR 0043](adr/0043-elementos-de-interfaz-de-espesor-nulo.md), validación pendiente); faltan el Lagrangiano aumentado, los multiplicadores de Lagrange y el deslizamiento grande (segmento a segmento, *mortar*).
 - **Grandes deformaciones** (lagrangiano total / actualizado en sólidos; corotacional 3D para frames; viscoplasticidad).
 - **Materiales avanzados**: hiperelasticidad (Neo-Hooke, Mooney-Rivlin), plasticidad anisótropa, daño con regularización (gradient damage, phase-field), modelos para hormigón (Mazars, concrete damaged plasticity).
 - **Optimización topológica y de forma** (SIMP, level-set).

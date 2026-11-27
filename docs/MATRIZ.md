@@ -70,12 +70,13 @@ Compatibilidad determinada por `STRAIN_DIM` (1 = axial escalar, 3 = 2D Voigt `[�
 
 ### 1.d Materiales de interfaz y restricciones generadas
 
-Los **materiales de interfaz** ([ADR 0033](adr/0033-materiales-de-interfaz.md), sección YAML `interface_materials`) no se asignan a un elemento de sólido o de barra: los consume un elemento o una restricción que tiene una interfaz, según la geometría que declaran (`GEOMETRY`) y el número de componentes del salto.
+Los **materiales de interfaz** ([ADR 0033](adr/0033-materiales-de-interfaz.md), sección YAML `interface_materials`) no se asignan a un elemento de sólido o de barra (un sólido que la recibe la rechaza al construirse): los consume un elemento o una restricción que tiene una interfaz, según la geometría que declaran (`GEOMETRY`) y el número de componentes del salto.
 
 | Material de interfaz | `GEOMETRY` | Componentes | Consumidor |
 |---|---|---|---|
-| `CohesiveDamageIsotropic` | `surface` | 2 | `CST_Embedded2D` (módulo `discontinuities`, §1.c) ✓ |
-| `CohesiveDamageMixedMode` | `surface` | 2 o 3 | `CST_Embedded2D` (2 componentes) ✓ |
+| `CohesiveDamageIsotropic` | `surface` | 2 | `CST_Embedded2D` (módulo `discontinuities`, §1.c) ✓; `Interface2D4`, `Interface2D6` (bloque `interfaces`, caras coincidentes) ✓ |
+| `CohesiveDamageMixedMode` | `surface` | 2 o 3 | `CST_Embedded2D` (2 componentes) ✓; `Interface2D4`, `Interface2D6`, `Interface3D6`, `Interface3D8` (caras coincidentes) ✓ |
+| `ContactPenalty` | `surface` | 2 o 3 | `Interface2D4`, `Interface2D6`, `Interface3D6`, `Interface3D8` (bloque `interfaces`, con holgura inicial o sin ella; sólo análisis no lineales) ✓ |
 | `BondSlipModelCode`, `BondSlipMultilinear` | `line` | 2 o 3 | `EmbeddedReinforcement` con `bond` (interfaces `BondSlipInterface` generadas, una por tramo) ✓ |
 
 **Restricción generada `EmbeddedReinforcement`** ([ADR 0032](adr/0032-restricciones-generadas-y-refuerzo-embebido.md), [catálogo de restricciones](catalogo_restricciones.md)):

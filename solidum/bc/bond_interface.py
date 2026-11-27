@@ -16,6 +16,10 @@ sobre el ancho ``d_b`` y la de adherencia sobre el perímetro ``p``:
 
 con ``B_g = [N^b ⊗ I, −N^h ⊗ I]`` y ``W = diag(d_b, [d_b], p)``.
 Integración nodal (Lobatto en los nodos del tramo) o de Gauss.
+
+El bucle por punto, la masa nula y el registro genérico por punto son los de
+la base común con los elementos de interfaz de espesor nulo
+(:class:`~solidum.elements.interface.LocalJumpElement`, ADR 0043 §2).
 """
 from __future__ import annotations
 
@@ -24,13 +28,12 @@ from typing import ClassVar
 
 import numpy as np
 
-from solidum.core.element import Element, validate_lumping_kwarg
+from solidum.core.element import Element
 from solidum.core.interface_material import InterfaceMaterial
 from solidum.core.dof_names import TRANSLATIONS
+from solidum.elements.interface import INTEGRATIONS, LocalJumpElement
 from solidum.elements.truss_quadratic import quadratic_shape_functions
 from solidum.mesh.point_location import natural_coordinates, shape_values
-
-INTEGRATIONS = ("nodal", "gauss")
 
 # Reglas sobre el tramo, ξ ∈ [0, 1], en el orden de nodos de la barra.
 _RULES = {
@@ -74,7 +77,7 @@ class InterfacePoint:
     bond_force: float           # p·τ, fuerza de adherencia por unidad de longitud [N/m]
 
 
-class BondSlipInterface(Element):
+class BondSlipInterface(LocalJumpElement):
     """Interfaz distribuida barra–sólido de un tramo (ver el módulo).
 
     Parameters
@@ -119,7 +122,7 @@ class BondSlipInterface(Element):
             raise ValueError(f"{name}(id={element_id}): perimeter debe ser > 0.")
 
         self.DOF_NAMES = list(TRANSLATIONS[:dim])
-        self.STRAIN_DIM = dim
+        self.JUMP_DIM = dim
         xi, w = _RULES[(n_bar, integration)]
         self.N_INTEGRATION_POINTS = len(xi)
         self.bar_element_id, self.host_element_id = bar.id, host.id
@@ -133,14 +136,14 @@ class BondSlipInterface(Element):
                       for n in bar.nodes[:2]])
         axis = X[1] - X[0]
         self.length = float(np.linalg.norm(axis))
-        self.R = local_axes(axis / self.length)
+        R = local_axes(axis / self.length)
         self.W = np.array([self.diameter] * (dim - 1) + [self.perimeter])
-        self.points = X[0] + xi[:, None] * axis
+        points = X[0] + xi[:, None] * axis
         self.weights = w * self.length
         Nb = bar_shape_functions(n_bar, xi)
         I = np.eye(dim)
         B = []
-        for g, x in enumerate(self.points):
+        for g, x in enumerate(points):
             xi_h = natural_coordinates(host, x)
             if xi_h is None:
                 raise ValueError(
@@ -149,45 +152,27 @@ class BondSlipInterface(Element):
             Nh = shape_values(host, xi_h)
             B.append(np.hstack([np.kron(Nb[g], I), -np.kron(Nh, I)]))
         self._B = np.array(B)                       # (n_g, d, ndof)
-        self._RB = np.einsum("ij,gjk->gik", self.R, self._B)
+        # Los mismos ejes en todos los puntos: el tramo es recto.
+        self._set_point_geometry(np.repeat(R[None], len(xi), axis=0),
+                                 np.einsum("ij,gjk->gik", R, self._B),
+                                 self.weights, points, widths=self.W)
 
     # --- formulación ----------------------------------------------------------
 
-    def compute_element_state(self, u_e: np.ndarray):
-        u_e = np.asarray(u_e, dtype=np.float64)
-        ndof = u_e.size
-        K = np.zeros((ndof, ndof))
-        F = np.zeros(ndof)
-        for g in range(self.N_INTEGRATION_POINTS):
-            RB = self._RB[g]
-            t, D, new_state = self.material.compute_traction(RB @ u_e, self.state.vars[g])
-            self.state.vars_trial[g] = new_state
-            self.state.stresses_trial[g] = t
-            WRB = self.W[:, None] * RB
-            F += self.weights[g] * (WRB.T @ t)
-            K += self.weights[g] * (WRB.T @ D @ RB)
-        return K, F
-
-    def compute_mass_matrix(self, lumping: str = "consistent") -> np.ndarray:
-        """La interfaz no tiene masa: la de la barra y la del sólido están en
-        sus elementos."""
-        validate_lumping_kwarg(lumping, type(self).__name__)
-        n = len(self.nodes) * len(self.DOF_NAMES)
-        return np.zeros((n, n))
+    def jumps(self, u_e: np.ndarray) -> np.ndarray:
+        """Desplazamiento relativo local ``Δ = R·B·u_e`` ``(n_g, d)``: normales
+        y, al final, el deslizamiento ``s`` (barra respecto del concreto)."""
+        return np.array([RB @ u_e for RB in self._RB])
 
     # --- resultados ---------------------------------------------------------
 
     def interface_state(self, U_global: np.ndarray) -> list[InterfacePoint]:
         """Deslizamiento, tracciones y fuerza de adherencia en cada punto de
-        integración para ``U_global``, desde el estado confirmado de la ley."""
-        u_e = np.asarray(self.get_local_displacements(U_global), dtype=np.float64)
-        out = []
-        for g in range(self.N_INTEGRATION_POINTS):
-            delta = self._RB[g] @ u_e
-            t, _, _ = self.material.compute_traction(delta, self.state.vars[g])
-            out.append(InterfacePoint(position=self.points[g].copy(), slip=float(delta[-1]),
-                                      bond_stress=float(t[-1]),
-                                      normal_opening=delta[:-1].copy(),
-                                      normal_traction=t[:-1].copy(),
-                                      bond_force=float(self.perimeter * t[-1])))
-        return out
+        integración para ``U_global``, desde el estado confirmado de la ley
+        (derivado del registro genérico :meth:`interface_points`)."""
+        return [InterfacePoint(position=p.position, slip=float(p.jump[-1]),
+                               bond_stress=float(p.traction[-1]),
+                               normal_opening=p.jump[:-1].copy(),
+                               normal_traction=p.traction[:-1].copy(),
+                               bond_force=float(self.perimeter * p.traction[-1]))
+                for p in self.interface_points(U_global)]

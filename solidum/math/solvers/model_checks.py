@@ -66,6 +66,8 @@ y explica cómo comprobarlo.
 """
 from __future__ import annotations
 
+import inspect
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -750,6 +752,80 @@ def warn_if_ill_conditioned(kappa: float | None, solver: str = "") -> bool:
         f"número de elementos). κ̃ se estima sobre la matriz escalada por su "
         f"diagonal: no depende de las unidades.")
     return True
+
+
+def nonlinear_alternatives(kind: str | None) -> str | None:
+    """Análisis no lineales del programa principal que admiten contacto, para
+    el mensaje de :func:`ensure_no_unilateral_interfaces`: los solvers
+    registrados de la familia ``kind`` (``PIPELINE_KIND``) con
+    ``FIXED_STIFFNESS = False``, o los que la deciden por instancia con la
+    opción ``nonlinear`` (diferencias centrales). Derivado del registro, como
+    el contrato que vigila el barrido de solvers. Supuesto: una propiedad
+    ``FIXED_STIFFNESS`` depende de la opción ``nonlinear`` (hoy, la única);
+    un solver que la haga depender de otra opción debe cambiar este texto."""
+    if kind is None:
+        return None
+    from solidum.registry import SolverRegistry
+    from solidum.user import user_module_of
+    names = []
+    for name in SolverRegistry.names():
+        cls = SolverRegistry.get(name)
+        if user_module_of(cls) is not None or getattr(cls, "PIPELINE_KIND", None) != kind:
+            continue
+        flag = inspect.getattr_static(cls, "FIXED_STIFFNESS", None)
+        if isinstance(flag, property):
+            names.append(f"{name} con nonlinear: true")
+        elif flag is False:
+            names.append(name)
+    if not names:
+        return None
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " o " + names[-1]
+
+
+def ensure_no_unilateral_interfaces(domain, solver: str, kind: str | None = None) -> None:
+    """Un análisis de rigidez fija —el estático lineal y su perturbación sobre
+    una etapa, el modal, el armónico, el espectral y los transitorios
+    lineales— no admite leyes de interfaz unilaterales
+    (``InterfaceMaterial.IS_UNILATERAL``: el contacto). Decisión del usuario
+    del 2026-11-26 (Diálogo Q4 de la spec ``Interface2D4``, ADR 0043): su
+    rigidez depende de si la interfaz está abierta o cerrada, y con la de
+    ``U = 0`` (o la del estado de una etapa) una interfaz cerrada resistiría
+    también tracciones sin avisar. Nunca un resultado falso en silencio:
+    permitirlo después (estado congelado con aviso en el modal) no cambiaría
+    modelos que hoy funcionan.
+
+    Los materiales unilaterales de sólidos y barras (``Material.IS_UNILATERAL``:
+    los cables) no entran: esta regla es de las interfaces.
+
+    ``kind`` (``"static"`` o ``"transient"``) añade al mensaje los análisis no
+    lineales de esa familia; sin él (modal, armónico, espectral) no hay
+    alternativa que nombrar.
+
+    Raises
+    ------
+    ValueError
+        Con las leyes y los primeros elementos que las usan.
+    """
+    from solidum.core.interface_material import InterfaceMaterial
+    laws: set[str] = set()
+    ids: list[int] = []
+    for el in domain.elements.values():
+        found = [type(m).__name__ for m in el.materials()
+                 if isinstance(m, InterfaceMaterial) and getattr(m, "IS_UNILATERAL", False)]
+        if found:
+            laws.update(found)
+            ids.append(el.id)
+    if not ids:
+        return
+    shown = ", ".join(str(i) for i in ids[:5]) + (", …" if len(ids) > 5 else "")
+    alternatives = nonlinear_alternatives(kind)
+    raise ValueError(
+        f"{solver}: el contacto requiere un análisis no lineal. La ley de interfaz "
+        f"{', '.join(sorted(laws))} de {len(ids)} elemento(s) (ids {shown}) es unilateral: "
+        f"su rigidez depende de si la interfaz está abierta o cerrada, y este análisis usa "
+        f"una rigidez fija (la de U = 0, o la del estado de una etapa), con la que una "
+        f"interfaz cerrada resistiría también tracciones."
+        + (f" Análisis no lineales de Solidum: {alternatives}." if alternatives else ""))
 
 
 def _stiffening_components(domain) -> list[str]:

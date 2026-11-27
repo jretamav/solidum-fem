@@ -355,6 +355,22 @@ Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con e
 Bajo. Las ocho escrituras directas en `domain.elements` de las pruebas pasaron a `add_element` y `replace_element`; la suite completa queda igual. La limitación conocida de la regla (mallas Delaunay con elementos obtusos, trayectorias curvas) es física y está en su spec.
 ```
 
+## Fase 18 — Contacto acotado y elementos de interfaz
+
+**Estado**: implementado (ADR 0043, 26 de noviembre de 2026); validación pendiente.
+
+- **Ley de contacto** `ContactPenalty` en la familia de interfaz: penalización normal unilateral y Coulomb opcional con retorno radial; tangente no simétrica con fricción, que el despachador del ADR 0003 ya sabía atender.
+- **Elementos de interfaz de espesor nulo** (`Interface2D4`, `Interface2D6`, `Interface3D6`, `Interface3D8`) sobre una base común con la adherencia barra–sólido (`LocalJumpElement`, segundo caso real): la adherencia, bit a bit en 26 casos tras centralizar.
+- **Clasificación única de la magnitud por punto** (`point_quantity`), que sustituye cinco deducciones por presencia de atributos.
+- **Energía almacenada por elemento** (`Element.stored_energy`) en la historia y en las zonas.
+- **Generación desde la malla** (`pair`, `split`) con reasignación de nodos sólo por el `Domain` (control sintáctico extendido a `.nodes`) y errores por id sobre nodos duplicados.
+- **Salida**: celda VTK propia (con la celda 30 que meshio no sabía escribir), historia con `jump`/`traction` y selector por nombre de interfaz.
+- **Análisis de rigidez fija** con una ley unilateral: error con mensaje que nombra la ley y los análisis no lineales.
+
+```callout Riesgo de arquitectura
+Medio. El bloque toca el `Domain` (nodos duplicados), la clasificación que usan seis subsistemas y la contabilidad de la energía. Sin interfaces los resultados son los de antes; la adherencia, bit a bit. Lo cubren pruebas de invariantes de la generación, del contrato de la familia y de la pureza del programa principal, cada una comprobada con mutaciones.
+```
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

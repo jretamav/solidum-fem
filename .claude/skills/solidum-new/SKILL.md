@@ -187,6 +187,30 @@ class {{Name}}(Element):
     #     # TODO: decidir con el estado convergido; idempotente para el mismo U_committed.
 ```
 
+### element de interfaz de espesor nulo — `solidum/elements/interface/<snake>.py`
+
+Un elemento que une dos caras por pares de nodos y entrega a una ley de `interface_materials` el salto en ejes locales (ADR 0043). **No escribe `compute_element_state`**: hereda la base pública `InterfaceElement` (bucle por punto, ejes, holgura inicial, reglas `nodal`/`gauss`, salida, energía almacenada) y declara sólo su cara y sus nodos. El tipo de cara debe estar en `FACE_CELLS` de `solidum/elements/interface/_shared.py` (`line`, `line3`, `tri`, `quad`); una cara nueva es una fila de esa tabla (`FaceCell`: funciones de forma, reglas de Gauss y nodal, dónde se evalúan ejes y medidas nodales) y es física: spec y `teorico-solidum`. `__init_subclass__` comprueba al definir la clase que los nodos casan con la cara y que `N_INTEGRATION_POINTS` es el de las dos reglas. El generador (`pair`/`split`) la encuentra en el registro por `(JUMP_DIM, N_FACE_NODES)`; si hay más de una para la misma cara, se elige con `element:`.
+
+```python
+from solidum.elements.interface import InterfaceElement
+from solidum.registry import ElementRegistry
+
+
+@ElementRegistry.register
+class {{Name}}(InterfaceElement):
+    """{{Descripción}}: cara A = (...), cara B = (...), con ... frente a ...."""
+    DOF_NAMES = {{['ux', 'uy'] | ['ux', 'uy', 'uz']}}
+    JUMP_DIM = {{2|3}}                 # componentes del salto (n, s) o (n, s1, s2)
+    FACE_CELL = "{{line|line3|tri|quad}}"
+    N_FACE_NODES = {{n}}
+    A_NODES = ({{posiciones de la cara A en el orden de sus funciones de forma}})
+    B_NODES = ({{posición del par en B de cada nodo de A}})
+    N_INTEGRATION_POINTS = {{n_g}}     # el de las dos reglas de la cara
+    VTK_CELL_TYPE = "{{quad|quad6|wedge|hexahedron|...}}"
+```
+
+En la spec: `interface.field: interface` y `jump_dim`. En `tests/test_element_contract_sweep.py`: su fábrica en `FABRICAS` (geometría de caras coincidentes, `MAT_INTERFAZ`). Un módulo de usuario la hereda por la misma ruta pública (modelo: `tests/test_user_module_interface_element.py`).
+
 ### solver — `solidum/math/solvers/<snake>.py`
 
 ```python

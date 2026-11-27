@@ -24,6 +24,7 @@ from typing import Callable
 import numpy as np
 
 from solidum.bc.constraints import reduce_matrix
+from solidum.core.point_quantity import FLUX, point_quantity
 from solidum.math.linalg import LUSolver, StiffnessProperties, select_solver
 from solidum.math.solvers._shared import (
     CholeskyNotPositiveDefiniteError,
@@ -176,6 +177,9 @@ class ThetaMethodSolver(TransientTerminationMixin):
     """
 
     PIPELINE_KIND = "thermal_transient"
+    #: Rigidez fija (ADR 0043): no aplica, el análisis es térmico (las leyes de
+    #: interfaz son mecánicas).
+    FIXED_STIFFNESS = None
 
     def __init__(
         self,
@@ -305,9 +309,10 @@ class ThetaMethodSolver(TransientTerminationMixin):
         órdenes de magnitud que separan un ``Δt`` razonable de uno que se
         salta el transitorio.
         """
-        ndim = getattr(elem, "FLUX_DIM", None)
-        if ndim is None:
+        q = point_quantity(elem)
+        if q.kind != FLUX:
             return None
+        ndim = q.dim
         try:
             coords = elem.get_coordinate_matrix(ndim=ndim)
         except (AttributeError, TypeError, ValueError):

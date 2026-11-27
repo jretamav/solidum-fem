@@ -51,6 +51,7 @@ from solidum.math.modal_response import (
 from solidum.math.rigid_body import dof_unit_vector
 from solidum.math.solvers._shared import LinearizedStateMixin, _log
 from solidum.math.solvers.modal import ModalSolver
+from solidum.math.solvers.model_checks import ensure_no_unilateral_interfaces
 from solidum.registry import SolverRegistry
 from solidum.results import (
     ResponseSpectrumResult,
@@ -201,6 +202,10 @@ class ResponseSpectrumSolver(LinearizedStateMixin):
     """
 
     PIPELINE_KIND = "spectrum"
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = True
 
     def __init__(
         self,
@@ -292,6 +297,9 @@ class ResponseSpectrumSolver(LinearizedStateMixin):
 
     def solve(self) -> ResponseSpectrumResult:
         _log.info("--- INICIANDO SOLVER RESPONSE SPECTRUM ---")
+        # El contacto requiere un análisis no lineal (ADR 0043); antes del
+        # modal interno, para que el mensaje nombre este análisis.
+        ensure_no_unilateral_interfaces(self.assembler.domain, type(self).__name__)
 
         # Análisis modal interno.
         modal = ModalSolver(

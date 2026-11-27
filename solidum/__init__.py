@@ -71,6 +71,7 @@ from solidum.materials.interface import (
     BondSlipMultilinear,
     CohesiveDamageIsotropic,
     CohesiveDamageMixedMode,
+    ContactPenalty,
 )
 
 from solidum.sections import FiberSection
@@ -82,6 +83,7 @@ from solidum.elements.cable import Cable2DCorot, Cable3DCorot
 from solidum.elements.frame import Frame2DEuler, Frame2DEulerCorot, Frame2DTimoshenko
 from solidum.elements.frame3d import Frame3D
 from solidum.elements.thermal import Hex8Thermal, Quad4Thermal
+from solidum.elements.interface import Interface2D4, Interface2D6, Interface3D6, Interface3D8
 
 from solidum.bc.embedded import Bond, EmbeddedBar, EmbeddedReinforcement, embed_reinforcement
 from solidum.math.assembly import Assembler

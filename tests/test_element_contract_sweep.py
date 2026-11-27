@@ -51,6 +51,13 @@ aplica: tienen `FLUX_DIM` en vez de `STRAIN_DIM` y su "masa" es la matriz de
 capacidad, con unidades distintas. Se les exime de las comprobaciones que
 presuponen DOFs de desplazamiento, no de las estructurales.
 
+Los elementos de interfaz (`Interface2D4`, `Interface3D6`, `Interface3D8`)
+tienen su rama, no una exención (ADR 0043): declaran `JUMP_DIM` y no
+`STRAIN_DIM`, no tienen masa, y rechazan al construirse una ley que no sea de
+interfaz de superficie. El tipo de cada elemento (deformación, flujo o salto)
+sale de la clasificación única de `solidum.core.point_quantity`, la misma que
+usan la salida, la calidad de malla y la herramienta de specs.
+
 Arnés público para módulos de usuario
 -------------------------------------
 La batería recorre sólo las clases del programa principal; cada módulo de
@@ -73,10 +80,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import solidum  # noqa: F401  — dispara el autodiscover que puebla el registro
 from solidum.core.element import SUPPORTED_LUMPING, Element
 from solidum.core.node import Node
+from solidum.core.point_quantity import FLUX, JUMP, point_quantity
 from solidum.materials.cable_1d import CableMaterial1D
 from solidum.materials.elastic import Elastic1D
 from solidum.materials.elastic_2d import Elastic2D
 from solidum.materials.elastic_3d import Elastic3D
+from solidum.materials.interface import BondSlipMultilinear, CohesiveDamageMixedMode
 from solidum.materials.thermal_conduction import ThermalConduction
 from solidum.registry import ElementRegistry
 
@@ -89,6 +98,13 @@ MAT_3D = Elastic3D(E=2.0e11, nu=0.3, density=RHO)
 MAT_CABLE = CableMaterial1D(E=2.0e11, density=RHO)
 MAT_TERM_2D = ThermalConduction(k=50.0, c=460.0, density=RHO, dim=2)
 MAT_TERM_3D = ThermalConduction(k=50.0, c=460.0, density=RHO, dim=3)
+# Ley de interfaz de superficie, elástica mientras el salto no pase el umbral
+# (las comprobaciones usan saltos nulos o de 1e-6): tangente diag(K_e, β²K_e
+# [, β²K_e]) simétrica y de rango completo, en 2D y en 3D.
+MAT_INTERFAZ = CohesiveDamageMixedMode(sigma_t0=3.0e6, G_f=100.0, K_e=1.0e13, beta=1.0,
+                                       softening="linear")
+# Ley de interfaz de línea (barra–sólido): un elemento de superficie la rechaza.
+MAT_INTERFAZ_LINEA = BondSlipMultilinear(points=[[1.0e-3, 5.0e6]], k_n=1.0e12)
 
 ESPESOR = 0.01
 AREA = 0.01
@@ -132,6 +148,17 @@ HEX27 = HEX20 + HEX_CARAS + ((0.5, 0.5, 0.5),)
 TET = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
 TET10 = TET + ((0.5, 0.0, 0.0), (0.5, 0.5, 0.0), (0.0, 0.5, 0.0),
                (0.0, 0.0, 0.5), (0.5, 0.0, 0.5), (0.0, 0.5, 0.5))
+
+# Interfaces de espesor nulo con nodos coincidentes (holgura inicial nula),
+# en el orden de los cohesivos de Abaqus: cara A y después cara B, cada nodo
+# de B frente a su par de A (en 2D, 4 frente a 1 y 3 frente a 2).
+INTERFAZ_2D = ((0.0, 0.0), (1.0, 0.0), (1.0, 0.0), (0.0, 0.0))
+# Cuadrática: esquinas primero (las de Interface2D4) y después los intermedios.
+INTERFAZ_2D6 = INTERFAZ_2D + ((0.5, 0.0), (0.5, 0.0))
+_CARA_TRI = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+_CARA_QUAD = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0))
+INTERFAZ_3D6 = _CARA_TRI + _CARA_TRI
+INTERFAZ_3D8 = _CARA_QUAD + _CARA_QUAD
 
 # Volumen (o área×espesor, o longitud×área) de cada geometría, para contrastar
 # la masa total contra ρ·V sin depender de la implementación del elemento.
@@ -178,11 +205,12 @@ FABRICAS = {
     'Quad4Thermal': (lambda c: c(1, nodos(QUAD), MAT_TERM_2D,
                                  thickness=ESPESOR), None),
     'Hex8Thermal':  (lambda c: c(1, nodos(HEX_VERTICES), MAT_TERM_3D), None),
+    # Interfaces: sin masa (volumen None).
+    'Interface2D4': (lambda c: c(1, nodos(INTERFAZ_2D), MAT_INTERFAZ, thickness=ESPESOR), None),
+    'Interface2D6': (lambda c: c(1, nodos(INTERFAZ_2D6), MAT_INTERFAZ, thickness=ESPESOR), None),
+    'Interface3D6': (lambda c: c(1, nodos(INTERFAZ_3D6), MAT_INTERFAZ), None),
+    'Interface3D8': (lambda c: c(1, nodos(INTERFAZ_3D8), MAT_INTERFAZ), None),
 }
-
-# Elementos térmicos: sus DOFs son temperaturas, no desplazamientos. Las
-# comprobaciones de sólido rígido y de masa mecánica no les aplican.
-TERMICOS = frozenset({'Quad4Thermal', 'Hex8Thermal'})
 
 
 # --- Arnés de la batería --------------------------------------------------
@@ -201,8 +229,14 @@ def rechazo_dimensional(mensaje: str, material) -> bool:
     return 'STRAIN_DIM' in mensaje
 
 
-def arnes(nombres, fabricas, termicos=frozenset(), minimo=1,
-          rechazo_de_material=rechazo_dimensional):
+def rechazo_de_interfaz(mensaje: str, material) -> bool:
+    """El ``ValueError`` viene de la validación de la ley de un elemento de
+    interfaz (``InterfaceElement``), que exige un material de interfaz de
+    superficie con ``JUMP_DIM`` componentes."""
+    return 'material de interfaz de superficie' in mensaje
+
+
+def arnes(nombres, fabricas, minimo=1, rechazo_de_material=rechazo_dimensional):
     """Mixin que fija qué elementos recorre la batería de contrato y cómo los
     construye.
 
@@ -227,9 +261,6 @@ def arnes(nombres, fabricas, termicos=frozenset(), minimo=1,
         constructor recibe la clase y le pasa el material como tercer
         argumento posicional; ``volumen`` es ``None`` si la comprobación de
         masa total no aplica.
-    termicos : conjunto de nombres
-        Elementos cuyos DOFs son temperaturas (``FLUX_DIM`` en vez de
-        ``STRAIN_DIM``).
     minimo : int
         Número mínimo de nombres; protege contra un barrido que pase por
         vacuidad si el registro no se poblara.
@@ -237,6 +268,10 @@ def arnes(nombres, fabricas, termicos=frozenset(), minimo=1,
         Reconoce el ``ValueError`` legítimo al construir con un material de
         dimensión incompatible. Por omisión, el de la validación dimensional
         de la base.
+
+    El tipo de cada elemento (térmico, de interfaz o de desplazamientos) no se
+    declara en el arnés: lo da la clasificación única
+    :func:`solidum.core.point_quantity.point_quantity` (ADR 0043 §3).
     """
     class Arnes:
         def nombres_barrido(self):
@@ -249,7 +284,12 @@ def arnes(nombres, fabricas, termicos=frozenset(), minimo=1,
             return minimo
 
         def es_termico(self, nombre):
-            return nombre in termicos
+            """DOFs de temperatura (``FLUX_DIM``)."""
+            return point_quantity(ElementRegistry.get(nombre)).kind == FLUX
+
+        def es_interfaz(self, nombre):
+            """Salto en ejes locales (``JUMP_DIM``)."""
+            return point_quantity(ElementRegistry.get(nombre)).kind == JUMP
 
         def construir(self, nombre, clase=None):
             fabrica, _ = fabricas[nombre]
@@ -265,8 +305,7 @@ def arnes(nombres, fabricas, termicos=frozenset(), minimo=1,
 
 
 ARNES_PROGRAMA_PRINCIPAL = arnes(
-    lambda: nombres_programa_principal(ElementRegistry), FABRICAS, TERMICOS,
-    minimo=22)
+    lambda: nombres_programa_principal(ElementRegistry), FABRICAS, minimo=25)
 
 
 def _rigidez(elemento):
@@ -338,21 +377,32 @@ class TestContratoDeclarativo(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
                     self.assertIsInstance(d, str)
 
     def test_dimension_del_material_declarada(self):
-        """Mecánicos declaran `STRAIN_DIM`; térmicos, `FLUX_DIM`.
+        """De desplazamientos declaran `STRAIN_DIM`; térmicos, `FLUX_DIM`; de
+        interfaz, `JUMP_DIM`, y ninguno declara dos.
 
         La distinción es física (Reglas.md §5): el gradiente de temperatura es
         un vector genuino, no un tensor simétrico comprimido en Voigt, así que
-        el elemento térmico no tiene `STRAIN_DIM` que declarar.
+        el elemento térmico no tiene `STRAIN_DIM` que declarar; el salto de una
+        interfaz tampoco es una deformación. Un `STRAIN_DIM` en una interfaz la
+        haría pasar por sólido en la salida y en la validación de materiales
+        (ADR 0043 §3).
         """
         for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 strain = getattr(clase, 'STRAIN_DIM', None)
                 flux = getattr(clase, 'FLUX_DIM', None)
+                jump = getattr(clase, 'JUMP_DIM', None)
 
                 if self.es_termico(nombre):
                     self.assertIn(flux, (2, 3),
                                   f"{nombre}: FLUX_DIM debe ser 2 ó 3")
+                    self.assertIsNone(strain, f"{nombre}: térmico con STRAIN_DIM")
+                elif self.es_interfaz(nombre):
+                    self.assertIn(jump, (2, 3),
+                                  f"{nombre}: JUMP_DIM debe ser 2 ó 3")
+                    self.assertIsNone(strain, f"{nombre}: interfaz con STRAIN_DIM")
+                    self.assertIsNone(flux, f"{nombre}: interfaz con FLUX_DIM")
                 else:
                     self.assertIn(strain, (1, 3, 6),
                                   f"{nombre}: STRAIN_DIM inválido")
@@ -609,6 +659,18 @@ class TestMasa(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
                     np.abs(fuera).max(), 1e-12 * escala,
                     f"{nombre}: la masa lumped no es diagonal")
 
+    def test_las_interfaces_no_tienen_masa(self):
+        """La inercia es de los sólidos de cada lado (ADR 0043): una masa no
+        nula en la interfaz la contaría dos veces."""
+        for nombre in self.nombres_barrido():
+            if not self.es_interfaz(nombre):
+                continue
+            with self.subTest(elemento=nombre):
+                elemento = self.construir(nombre)
+                for esquema in sorted(SUPPORTED_LUMPING):
+                    M = np.asarray(elemento.compute_mass_matrix(esquema), dtype=float)
+                    self.assertFalse(np.any(M), f"{nombre}: masa {esquema} no nula")
+
     def test_masa_simetrica_y_definida_no_negativa(self):
         for nombre in self.nombres_barrido():
             with self.subTest(elemento=nombre):
@@ -618,6 +680,8 @@ class TestMasa(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
                                    dtype=float)
                 except NotImplementedError:
                     continue
+                if not np.any(M):
+                    continue    # sin masa por diseño (interfaces): nada que comprobar
 
                 escala = np.abs(M).max()
                 np.testing.assert_allclose(
@@ -671,8 +735,8 @@ class TestValidacionDefensiva(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
         propia base cita al documentar `_validate_material_compatibility`.
         """
         for nombre in self.nombres_barrido():
-            if self.es_termico(nombre):
-                continue    # los térmicos validan contra FLUX_DIM, no STRAIN_DIM
+            if self.es_termico(nombre) or self.es_interfaz(nombre):
+                continue    # validan contra FLUX_DIM o la ley de interfaz (prueba siguiente)
             with self.subTest(elemento=nombre):
                 clase = ElementRegistry.get(nombre)
                 dim = getattr(clase, 'STRAIN_DIM', None)
@@ -695,6 +759,22 @@ class TestValidacionDefensiva(ARNES_PROGRAMA_PRINCIPAL, unittest.TestCase):
                     self.rechaza_por_el_material(mensaje, incompatible),
                     f"{nombre}: el ValueError no viene de la validación del "
                     f"material incompatible: {mensaje}")
+
+    def test_interfaz_rechaza_una_ley_que_no_es_de_superficie(self):
+        """Un elemento de interfaz sólo admite una ley de interfaz de
+        superficie con ``JUMP_DIM`` componentes: un material de sólido (Voigt)
+        o una ley de línea (barra–sólido) se rechazan al construir, con un
+        mensaje que lo dice (ADR 0043 §1)."""
+        for nombre in self.nombres_barrido():
+            if not self.es_interfaz(nombre):
+                continue
+            for incompatible in (MAT_2D, MAT_3D, MAT_INTERFAZ_LINEA):
+                with self.subTest(elemento=nombre, material=type(incompatible).__name__):
+                    with self.assertRaises(ValueError) as ctx:
+                        self._reconstruir_con_material(nombre, incompatible)
+                    self.assertTrue(rechazo_de_interfaz(str(ctx.exception), incompatible),
+                                    f"{nombre}: el ValueError no viene de la validación de la "
+                                    f"ley: {ctx.exception}")
 
     def _reconstruir_con_material(self, nombre, material):
         """Reconstruye el elemento cambiando sólo el material.

@@ -44,6 +44,12 @@ class _BondSlipLaw(InterfaceMaterial):
     JUMP_DIM = None
     PRIMARY_STATE_VAR = "slip_max"
     IS_SYMMETRIC = True
+    STATE_SCHEMA = {
+        "s_pos": (), "tau_pos": (),     # extremo histórico positivo (s, τ)
+        "s_neg": (), "tau_neg": (),     # extremo histórico negativo (s, τ)
+        "s": (), "tau": (),             # punto confirmado (s, τ)
+        "slip_max": (),                 # máx(s_pos, −s_neg)
+    }
 
     k0: float
     tau_f: float

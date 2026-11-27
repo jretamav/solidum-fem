@@ -73,6 +73,7 @@ from solidum.math.solvers._shared import (
     warn_initial_conditions_off_constraints,
 )
 from solidum.math.solvers.diagnostics import TimeIntegrationInstabilityError
+from solidum.math.solvers.model_checks import ensure_no_unilateral_interfaces
 from solidum.registry import SolverRegistry
 from solidum.results import TransientResult
 
@@ -145,6 +146,12 @@ class CentralDifferenceSolver(TransientTerminationMixin):
     """
 
     PIPELINE_KIND = "transient"
+
+    @property
+    def FIXED_STIFFNESS(self) -> bool:  # noqa: N802 — contrato declarativo
+        """Rigidez fija (ADR 0043): la versión lineal usa la de ``U = 0``; con
+        ``nonlinear=True`` se reevalúan las fuerzas internas en cada paso."""
+        return not self.nonlinear
 
     def __init__(
         self,
@@ -276,6 +283,10 @@ class CentralDifferenceSolver(TransientTerminationMixin):
         self._begin_trace()
         _log.info("--- INICIANDO SOLVER CENTRAL DIFFERENCES ---")
 
+        if not self.nonlinear:
+            # El contacto requiere un análisis no lineal (ADR 0043).
+            ensure_no_unilateral_interfaces(self.assembler.domain, type(self).__name__,
+                                            "transient")
         # Ensamblar K (lineal) y M (lumped por construcción de este solver).
         self.assembler.assemble_system()
         K = self.assembler.K_global

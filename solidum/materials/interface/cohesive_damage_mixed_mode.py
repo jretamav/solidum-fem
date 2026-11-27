@@ -76,6 +76,10 @@ class CohesiveDamageMixedMode(InterfaceMaterial):
     JUMP_DIM = None
     PRIMARY_STATE_VAR = "damage"
     IS_SYMMETRIC = True
+    STATE_SCHEMA = {
+        "kappa": (),        # máximo histórico del salto efectivo δ_eff [m]
+        "damage": (),       # ω
+    }
 
     def __init__(self, sigma_t0: float, G_f: float, K_e: float, beta: float, softening: str,
                  knee_stress_ratio: Optional[float] = None,

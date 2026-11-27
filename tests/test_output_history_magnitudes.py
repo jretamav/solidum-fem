@@ -312,7 +312,7 @@ def test_errores_al_resolver(tmp_path, columna, mensaje):
     ({"history": {"columns": [{"name": "s", "element": {"var": "damage", "where": "x == 1"}}]}},
      "near"),
     ({"history": {"columns": [{"name": "s", "element": {"var": "damage", "component": "xx"}}]}},
-     "sólo con var: stress o strain"),
+     "sólo con var: stress, strain, jump o traction"),
     ({"history": {"columns": [{"name": "D", "energy": "dissipated", "elements": "banda"}]}},
      "un diccionario con uno de"),
     ({"history": {"columns": [{"name": "D", "energy": "dissipated",

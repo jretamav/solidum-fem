@@ -150,6 +150,64 @@ def test_solo_domain_cambia_el_diccionario_de_elementos():
                        f"Domain.replace_element (ADR 0042): {found}")
 
 
+def _mutaciones_de_nodes(path: Path) -> list[str]:
+    """Cambios de la lista de nodos de un elemento (ADR 0043 §6):
+    ``<algo>.nodes[...] = …``, ``del <algo>.nodes[...]``, llamadas que cambian
+    la lista o el diccionario (``append``, ``insert``, ``extend``, ``remove``,
+    ``pop``, ``clear``, ``sort``, ``reverse``, ``update``, ``setdefault``,
+    ``popitem``, ``__setitem__``, ``__delitem__``) y ``<x>.nodes = …`` con
+    ``x`` distinto de ``self`` (un constructor fija sus propios nodos)."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    out = []
+
+    def es_nodes(node):
+        return isinstance(node, ast.Attribute) and node.attr == "nodes"
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
+            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+            for t in targets:
+                if isinstance(t, ast.Subscript) and es_nodes(t.value):
+                    out.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+                elif (es_nodes(t) and not (isinstance(t.value, ast.Name)
+                                            and t.value.id == "self")):
+                    out.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"append", "insert", "extend", "remove", "pop", "clear",
+                                       "sort", "reverse", "update", "setdefault", "popitem",
+                                       "__setitem__", "__delitem__"}
+                and es_nodes(node.func.value)):
+            out.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    return out
+
+
+def test_solo_domain_cambia_los_nodos_de_un_elemento():
+    """La conectividad de un elemento del dominio (y el diccionario de nodos
+    del dominio) sólo los cambia ``Domain`` (``add_node``,
+    ``reassign_element_nodes``): si no, ``topology_version`` y los grados de
+    libertad de los nodos dejarían de ser fiables (ADR 0042 y 0043 §6)."""
+    domain_py = ROOT / "solidum" / "core" / "domain.py"
+    found = []
+    for path in sorted((ROOT / "solidum").rglob("*.py")):
+        if path != domain_py:
+            found += _mutaciones_de_nodes(path)
+    assert not found, ("Cambios directos de la lista de nodos de un elemento o del "
+                       "diccionario de nodos; use Domain.reassign_element_nodes o "
+                       f"Domain.add_node (ADR 0043): {found}")
+
+
+def test_el_detector_de_cambios_de_nodos_los_ve(tmp_path):
+    src = tmp_path / "x.py"
+    src.write_text("e.nodes[0] = n\ndel e.nodes[1]\ne.nodes.append(n)\ne.nodes = []\n"
+                   "d.nodes.pop(3)\nself.nodes = nodes\nx = e.nodes[0]\n", encoding="utf-8")
+    global ROOT
+    old = ROOT
+    ROOT = tmp_path
+    try:
+        assert len(_mutaciones_de_nodes(src)) == 5
+    finally:
+        ROOT = old
+
+
 def test_el_detector_de_mutaciones_las_ve(tmp_path):
     """El control anterior no es vacuo: detecta las formas prohibidas."""
     src = tmp_path / "x.py"

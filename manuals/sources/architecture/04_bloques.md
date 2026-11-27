@@ -2,7 +2,7 @@
 
 Este capítulo describe los grandes bloques del programa desde el punto de vista funcional: la responsabilidad de cada uno, los componentes disponibles en la versión actual y el espacio de extensión natural. No se trata de un manual de referencia: para la formulación detallada de cada componente debe consultarse `manuals/Reference_manual.pdf` y los catálogos en `docs/`.
 
-A lo largo del capítulo se utilizan las denominaciones abreviadas habituales para las dimensiones del espacio físico: una dimensión (1D), dos dimensiones (2D) y tres dimensiones (3D). En el contexto de los materiales, la **notación de Voigt** representa el tensor simétrico de deformación o tensión como un vector: con tres componentes para el caso bidimensional (Voigt-3) y con seis componentes para el caso tridimensional (Voigt-6). El atributo `STRAIN_DIM` de cada material indica el tamaño de ese vector y, por tanto, la dimensión geométrica del problema sobre el que opera.
+A lo largo del capítulo se utilizan las denominaciones abreviadas habituales para las dimensiones del espacio físico: una dimensión (1D), dos dimensiones (2D) y tres dimensiones (3D). En el contexto de los materiales, la **notación de Voigt** representa el tensor simétrico de deformaciones o de esfuerzos como un vector: con tres componentes para el caso bidimensional (Voigt-3) y con seis componentes para el caso tridimensional (Voigt-6). El atributo `STRAIN_DIM` de cada material indica el tamaño de ese vector y, por tanto, la dimensión geométrica del problema sobre el que opera.
 
 ## Materiales
 
@@ -203,11 +203,15 @@ La familia expone `compute_gauss_state(T)`, que devuelve el gradiente y el flujo
 
 **Convención de signo del flujo de frontera** (Reglas.md §5): un flujo prescrito positivo, $\bar q > 0$, representa flujo **saliente** del dominio, es decir enfriamiento. El signo procede de la forma débil, donde el término de frontera aparece como $-\int_\Gamma w\,\bar q\,d\Gamma$. Un borde o cara sobre el que no se declara condición alguna es **adiabático**, por analogía directa con el borde libre de tracción del problema mecánico.
 
+### Elementos de interfaz de espesor nulo (ADR 0043)
+
+Unen dos caras A y B de sólidos vecinos por pares de nodos y entregan a un material de interfaz de superficie el desplazamiento relativo en los ejes locales de la cara A: `Interface2D4` y `Interface2D6` (lados de 2 y 3 nodos), `Interface3D6` e `Interface3D8` (caras triangulares y cuadriláteras). Comparten la base `LocalJumpElement` con la interfaz de adherencia barra–sólido: bucle por punto, masa nula, registro por punto y energía almacenada. La base `InterfaceElement` añade los ejes, la holgura inicial y las reglas nodal y de Gauss de cada tipo de cara (tabla `FACE_CELLS`); un elemento nuevo con un tipo de cara existente sólo declara su cara y sus nodos, y se comprueba al definir la clase. No se declaran a mano: el bloque `interfaces` los crea desde dos grupos de contorno (`pair`) o duplicando los nodos de un grupo interior (`split`), con el elemento elegido desde el registro y sin tocar el dominio si algo falla. Sus consumidores (historia, VTK, energías) los reconocen sólo por la clasificación de la magnitud por punto (`JUMP`). Usos: el contacto con pares fijos por penalización (`ContactPenalty`, sólo análisis no lineales) y las grietas cohesivas de trayectoria conocida.
+
 ### Familias adicionales no implementadas
 
 - [PENDIENTE: Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).]
 - [PENDIENTE: Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.]
-- [PENDIENTE: Elementos de interfaz de espesor nulo entre superficies, para juntas y grietas cohesivas de trayectoria conocida y para contacto con fricción. La familia de leyes ya existe (materiales de interfaz, ADR 0033); hoy la consumen la interfaz de adherencia barra–sólido, que genera el refuerzo embebido, y la discontinuidad embebida del módulo de usuario.]
+- [PENDIENTE: Contacto con deslizamiento grande (segmento a segmento, *mortar*) y por multiplicadores de Lagrange o Lagrangiano aumentado. El contacto con pares fijos por penalización y los elementos de interfaz de espesor nulo ya existen (ADR 0043).]
 
 ### Contrato común y convención de signos
 

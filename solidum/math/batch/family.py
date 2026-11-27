@@ -22,6 +22,7 @@ from __future__ import annotations
 import numpy as np
 
 from solidum.constants import BATCH_MEMORY_BUDGET_BYTES, BATCH_PARALLEL_DEFAULT
+from solidum.core.point_quantity import FLUX, point_quantity
 from solidum.logging import get_logger
 from solidum.math.batch.kernels import (
     FLAG_BAD_JACOBIAN,
@@ -109,7 +110,8 @@ class Family:
                              else solid_family_gauss_kernel)
         elem0 = elements[0]
         # Familia térmica: el "esfuerzo" del kernel es k·∇T = −q.
-        self.is_thermal = hasattr(elem0, "FLUX_DIM")
+        quantity = point_quantity(elem0)
+        self.is_thermal = quantity.kind == FLUX
         self.element_class = type(elem0)
         self.material = elem0.material
         N = len(elements)
@@ -121,8 +123,7 @@ class Family:
         self.spatial_dim = int(self.gp_points.shape[1])
         self.n_nodes = len(elem0.nodes)
         self.n_dof = len(elem0.DOF_NAMES) * self.n_nodes
-        strain_dim = getattr(elem0, "STRAIN_DIM", None)
-        self.n_sigma = int(strain_dim if strain_dim is not None else elem0.FLUX_DIM)
+        self.n_sigma = int(quantity.dim)
 
         self.kin_fn = self.element_class.BATCH_KINEMATICS
         self.mat_fn = self.material.batch_kernel()

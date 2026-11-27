@@ -262,7 +262,11 @@ class LinearizedStateMixin:
         self._base_U = U.copy()
 
     def _state_stiffness(self):
-        """``K(0)`` sin etapa; la tangente del estado de la etapa con ella."""
+        """``K(0)`` sin etapa; la tangente del estado de la etapa con ella.
+        Una ley de interfaz unilateral (contacto) es error: su rigidez depende
+        de si la interfaz está abierta o cerrada (ADR 0043)."""
+        from solidum.math.solvers.model_checks import ensure_no_unilateral_interfaces
+        ensure_no_unilateral_interfaces(self.assembler.domain, type(self).__name__)
         if self._base_U is None:
             self.assembler.assemble_system()
             return self.assembler.K_global

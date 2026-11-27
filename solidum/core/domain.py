@@ -37,6 +37,15 @@ class Domain:
         # (ADR 0032). Los selectores por coordenada del YAML no los toman:
         # una carga o un apoyo por coordenada es del sólido.
         self.generated_nodes: set[int] = set()
+        # Nodos duplicados al separar caras interiores (``split``, ADR 0043
+        # §6): id original → ids de todas sus copias, el original primero.
+        # Una referencia por id a cualquiera de ellos es ambigua (¿qué lado?)
+        # y el lector del YAML la rechaza nombrando las copias.
+        self.split_nodes: dict[int, tuple[int, ...]] = {}
+        # Interfaces creadas desde la malla (``pair``/``split``, ADR 0043 §6):
+        # nombre → ids de sus elementos. Las selecciona la salida por nombre
+        # (``interface: <nombre>`` en la historia y en las energías por zona).
+        self.interfaces: dict[str, tuple[int, ...]] = {}
         # Masas concentradas en nudos (ADR 0024): (node_id, dof) → masa [kg]
         # en un grado de libertad de traslación, inercia rotacional [kg·m²]
         # en uno de giro. El Assembler las suma a la diagonal de M.
@@ -185,11 +194,85 @@ class Domain:
         element._domain_ref = weakref.ref(self)
         self._topology_version += 1
 
+    def reassign_element_nodes(self, element_id: int, mapping: dict[int, int]) -> None:
+        """Sustituye nodos de un elemento por otros nodos del dominio en la
+        **misma posición** (ADR 0043 §6): ``mapping`` lleva id viejo → id
+        nuevo. Es, con :meth:`add_element` y :meth:`replace_element`, el único
+        camino para cambiar la conectividad de un elemento del dominio.
+
+        Lo usa la separación de caras interiores (``split``): las copias de un
+        nodo están donde el original, así que la geometría que el elemento
+        calculó al construirse sigue valiendo y su rigidez no cambia. Registra
+        en los nodos nuevos los grados de libertad del elemento y aumenta
+        :attr:`topology_version`.
+
+        Raises
+        ------
+        ValueError
+            Si no hay ningún elemento ``element_id``, si el elemento no tiene
+            alguno de los nodos viejos, si algún nodo nuevo no existe o si no
+            está en la misma posición que el viejo. No cambia nada si falla.
+        """
+        el = self.elements.get(element_id)
+        if el is None:
+            raise ValueError(f"reassign_element_nodes: no hay ningún elemento {element_id}.")
+        ids = [n.id for n in el.nodes]
+        for old_id, new_id in mapping.items():
+            if old_id not in ids:
+                raise ValueError(f"reassign_element_nodes: el elemento {element_id} no tiene el "
+                                 f"nodo {old_id} (tiene {ids}).")
+            new = self.nodes.get(new_id)
+            if new is None:
+                raise ValueError(f"reassign_element_nodes: no hay ningún nodo {new_id}.")
+            old = el.nodes[ids.index(old_id)]
+            if tuple(map(float, new.coordinates)) != tuple(map(float, old.coordinates)):
+                raise ValueError(
+                    f"reassign_element_nodes: el nodo {new_id} {list(new.coordinates)} no está "
+                    f"en la posición del nodo {old_id} {list(old.coordinates)}; el elemento "
+                    f"{element_id} guarda la geometría que calculó al construirse.")
+        new_ids = list(mapping.values())
+        if len(set(new_ids)) != len(new_ids):
+            raise ValueError(f"reassign_element_nodes: el mapa {mapping} lleva dos nodos viejos "
+                             f"al mismo nuevo; el elemento {element_id} quedaría con un nodo "
+                             f"repetido.")
+        repeated = sorted(set(new_ids) & (set(ids) - set(mapping)))
+        if repeated:
+            raise ValueError(f"reassign_element_nodes: el elemento {element_id} ya tiene los "
+                             f"nodos {repeated}; quedarían repetidos.")
+        nodes = [self.nodes[mapping[n.id]] if n.id in mapping else n for n in el.nodes]
+        for node in nodes:
+            for dof_name in el.DOF_NAMES:
+                node.add_dof(dof_name)
+        el.nodes = nodes
+        self._topology_version += 1
+
+    def record_split_nodes(self, copies: dict[int, tuple[int, ...]]) -> None:
+        """Anota los nodos que duplicó ``split`` (ADR 0043 §6): id original →
+        ids de todas sus copias, con el original primero."""
+        self.split_nodes.update(copies)
+        origin = self.__dict__.setdefault("_split_origin", {})
+        for p, ids in copies.items():
+            for c in ids:
+                origin[c] = p
+
+    def split_copies(self, node_id: int) -> tuple[int, ...] | None:
+        """Ids de todas las copias si ``node_id`` es uno de los nodos que
+        duplicó ``split`` (el original o una copia); si no, ``None``."""
+        origin = self.__dict__.get("_split_origin", {})
+        if len(origin) != sum(len(ids) for ids in self.split_nodes.values()):
+            # split_nodes es público: si se escribió sin record_split_nodes,
+            # el mapa inverso se rehace desde él (la fuente es split_nodes).
+            origin = {c: p for p, ids in self.split_nodes.items() for c in ids}
+            self.__dict__["_split_origin"] = origin
+        p = origin.get(node_id)
+        return None if p is None else self.split_nodes[p]
+
     @property
     def topology_version(self) -> int:
-        """Contador que aumenta con cada ``add_element`` y ``replace_element``
-        (ADR 0042): huella barata para los datos que un componente deriva de
-        los elementos del dominio (p. ej. el contorno libre) y guarda."""
+        """Contador que aumenta con cada ``add_element``, ``replace_element`` y
+        ``reassign_element_nodes`` (ADR 0042 y 0043): huella barata para los
+        datos que un componente deriva de los elementos del dominio (p. ej. el
+        contorno libre) y guarda."""
         return self._topology_version
 
     def _check_not_in_other_domain(self, element) -> None:
@@ -221,3 +304,11 @@ class Domain:
         self.total_dofs = eq_number
         if verbose:
             _log.info(f"Numeración completada. Grados de libertad totales: {self.total_dofs}")
+
+    def renumber_if_numbered(self) -> None:
+        """Rehace la numeración si el dominio ya estaba numerado. La llaman los
+        generadores que añaden nodos o reasignan elementos sobre un dominio ya
+        construido (refuerzo embebido, ADR 0032; ``split``, ADR 0043 §6): sin
+        ella, los grados de libertad nuevos quedarían con ecuación −1."""
+        if self.total_dofs:
+            self.generate_equation_numbers()

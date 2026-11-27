@@ -27,9 +27,14 @@ import solidum  # noqa: F401
 from solidum.math.batch import StateSchema, element_is_batchable, material_is_batchable
 from solidum.registry import ElementRegistry, MaterialRegistry, ThermalMaterialRegistry
 
+from solidum.core.point_quantity import FLUX, STRAIN, point_quantity
 from test_element_contract_sweep import (
-    ARNES_PROGRAMA_PRINCIPAL, ESPESOR, FABRICAS, TERMICOS, nombres_programa_principal,
+    ARNES_PROGRAMA_PRINCIPAL, ESPESOR, FABRICAS, nombres_programa_principal,
 )
+
+
+def _es_termico(nombre):
+    return point_quantity(ElementRegistry.get(nombre)).kind == FLUX
 from test_material_contract_sweep import MUESTRAS, estado_inicial
 
 RNG = np.random.default_rng(20260922)
@@ -169,14 +174,18 @@ class TestCinematicaDeElementos(unittest.TestCase):
 
     def test_elementos_batchables(self):
         """Todos los sólidos isoparamétricos y los térmicos declaran
-        cinemática; los 1D no (quedan en el camino por elemento)."""
+        cinemática; los 1D y las interfaces no (quedan en el camino por
+        elemento)."""
         # Los 1D (deformación escalar: armaduras, cables, marcos) quedan
-        # diferidos en el ADR 0014; se derivan del contrato, no de una lista.
+        # diferidos en el ADR 0014, y las interfaces no tienen camino por
+        # lotes (ADR 0043, «Rendimiento»); se derivan del contrato, no de una
+        # lista.
         for nombre in nombres_programa_principal(ElementRegistry):
             with self.subTest(elemento=nombre):
                 elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
-                es_1d = getattr(type(elem), "STRAIN_DIM", None) == 1
-                self.assertEqual(element_is_batchable(elem), not es_1d)
+                q = point_quantity(type(elem))
+                esperado = (q.kind == STRAIN and q.dim in (3, 6)) or q.kind == FLUX
+                self.assertEqual(element_is_batchable(elem), esperado)
 
     def test_cinematica_integra_el_volumen_y_anula_traslaciones(self):
         for nombre in nombres_programa_principal(ElementRegistry):
@@ -204,7 +213,7 @@ class TestCinematicaDeElementos(unittest.TestCase):
                         self.assertLess(np.abs(B @ t).max(), 1e-12 * max(np.abs(B).max(), 1.0))
                     volumen += detJ * w[g]
                 esperado = FABRICAS[nombre][1]
-                if nombre in TERMICOS:
+                if _es_termico(nombre):
                     esperado = 1.0 * (ESPESOR if d == 2 else 1.0)
                 if esperado is not None:
                     escala = getattr(elem, type(elem).BATCH_SCALE) if type(elem).BATCH_SCALE else 1.0
@@ -214,7 +223,7 @@ class TestCinematicaDeElementos(unittest.TestCase):
         """Deformación por punto de Gauss: ``B_batch · u_e`` == la que reporta
         ``compute_gauss_state`` (camino por elemento), en geometría perturbada."""
         for nombre in nombres_programa_principal(ElementRegistry):
-            if nombre in TERMICOS:
+            if _es_termico(nombre):
                 continue
             elem = ARNES_PROGRAMA_PRINCIPAL().construir(nombre)
             if not element_is_batchable(elem):

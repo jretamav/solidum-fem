@@ -177,6 +177,26 @@ class TestContratoDeclarativo(unittest.TestCase):
                     f"{nombre} se declara `static` pero exige {sorted(intrusos)}")
 
 
+class TestRigidezFija(unittest.TestCase):
+    """``FIXED_STIFFNESS`` (ADR 0043, «Consecuencias»): todo solver declara si
+    usa una rigidez fija. Los de rigidez fija rechazan el contacto
+    (``tests/test_contact_requires_nonlinear.py`` los recorre todos); un
+    solver nuevo que no lo declare falla aquí, en vez de aceptar el contacto
+    en silencio."""
+
+    def test_todo_solver_declara_si_su_rigidez_es_fija(self):
+        for nombre in nombres_programa_principal(SolverRegistry):
+            cls = SolverRegistry.get(nombre)
+            with self.subTest(solver=nombre):
+                flag = inspect.getattr_static(cls, "FIXED_STIFFNESS", "falta")
+                self.assertNotEqual(flag, "falta", f"{nombre} no declara FIXED_STIFFNESS")
+                if flag is None:
+                    self.assertEqual(cls.PIPELINE_KIND, "thermal_transient",
+                                     "sólo un análisis térmico puede declarar que no aplica")
+                else:
+                    self.assertTrue(isinstance(flag, (bool, property)))
+
+
 class TestContratoDeSolve(unittest.TestCase):
     """`solve` es el método que todos los entrypoints invocan."""
 

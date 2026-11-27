@@ -65,7 +65,7 @@ def _archivos_del_programa_principal():
 
 _PAQUETE = "solidum.user"
 # Única API de ``solidum.user`` que el programa principal puede importar.
-_CARGADOR = {"load_user_module", "available_user_modules"}
+_CARGADOR = {"load_user_module", "available_user_modules", "user_module_of"}
 # Funciones que importan un módulo a partir de su nombre.
 _IMPORTADORES = {"import_module", "__import__", "_discover_package",
                  "find_spec", "run_module"}

@@ -337,6 +337,47 @@ Hoy existen dos módulos de usuario:
 
 Un modelo puede declarar varios: `user_modules: [discontinuities, dissipation_control]`.
 
+## Interfaces entre sólidos: `interfaces`
+
+El bloque `interfaces` crea **elementos de interfaz de espesor nulo** entre dos superficies de la malla (ADR 0043; elementos en el capítulo *Catálogo de Elementos Finitos*): el contacto entre dos cuerpos con una ley `ContactPenalty`, o una grieta con trayectoria conocida con una ley cohesiva. Cada elemento une los nodos de una cara del lado A con los de su par en el lado B y entrega a la ley de `interface_materials` el desplazamiento relativo en ejes locales: normal primero, tangencial después. Hay dos maneras de crearlos:
+
+```yaml
+interface_materials:
+  - {id: 1, type: ContactPenalty, K_n: 3.0e12, mu: 0.4, K_t: 3.0e12}
+  - {id: 2, type: CohesiveDamageMixedMode, sigma_t0: 3.0e6, G_f: 100.0,
+     K_e: 1.0e15, beta: 1.5, softening: bilinear}
+interfaces:
+  # Contacto entre dos cuerpos: dos grupos de contorno, coincidentes o separados.
+  - {name: apoyo, pair: [Bloque_cara_inf, Base_cara_sup], material: 1}
+  # Grieta con trayectoria conocida: un grupo interior; Solidum duplica sus nodos.
+  - {name: grieta, split: Linea_grieta, material: 2, integration: gauss}
+```
+
+- `pair: [a, b]`: dos grupos físicos del contorno de dos cuerpos, frente a frente. Pueden coincidir (nodos en la misma posición) o estar separados (holgura inicial, sólo con `ContactPenalty`). Cada nodo de `b` debe estar sobre la normal de la cara de `a` de su nodo par, a 10⁻⁶·h, y el emparejamiento debe ser uno a uno. La normal $\mathbf n$ apunta de `a` hacia `b`. Con caras separadas, `a` debe ser la plana o la más regular (en un cilindro sobre un plano, el plano): si `a` fuera la cara curva facetada, el par no quedaría sobre su normal y Solidum lo rechaza.
+- `split: grupo` (o una lista de grupos): una curva (2D) o superficie (3D) **interior** de la malla. Solidum duplica sus nodos y pone un elemento en cada lado del grupo. La punta de una grieta que termina dentro del sólido no se duplica, y en la unión de varias ramas cada rama recibe su copia; las grietas que se cruzan se declaran juntas en una lista. Como lado A se toma el sólido cuya normal exterior tiene positiva su componente mayor; el salto y la tracción locales son los mismos con cualquier elección. En Gmsh, la curva debe estar incrustada en la superficie (`Curve{…} In Surface{…}`).
+- `name` (obligatorio): nombre de la interfaz. Crea los grupos de nodos `<name>_a` y `<name>_b` (los dos lados) y sirve para elegir sus elementos en la historia y en las energías por zona.
+- `material`: id de una ley **de superficie** de `interface_materials`.
+- `integration`: `nodal` (por omisión) o `gauss`. La nodal pone los puntos en los nodos: cada punto ve un solo par (contacto nodo a nodo) y la tracción no oscila con rigideces grandes. Sus pesos son el área tributaria de cada nodo, $\int N_i\,J$; en un lado curvo de 3 nodos, $e\,w_i\,J(\xi_i)$ con $w = (1/3, 1/3, 4/3)$; en una cara de 4 nodos alabeada, la normal y el área del nodo son las de su vector de área tributaria $\int N_i\,\mathbf n\,J$, de modo que una presión uniforme se transmite sin error. La de Gauss integra exactamente la rigidez elástica, pero con una penalización grande la tracción oscila entre puntos.
+
+- `element` (opcional): el elemento de interfaz, por su nombre. Sólo hace falta para uno de un módulo de usuario o si hay varios para el mismo tipo de cara; por omisión, Solidum elige el del programa principal.
+
+El tipo de elemento sale de la malla: en 2D, `Interface2D4` en lados de 2 nodos y `Interface2D6` en lados de 3 nodos (sólidos `Quad8`, `Quad9`, `Tri6`); en 3D, `Interface3D6` en caras triangulares y `Interface3D8` en cuadriláteras. Las caras cuadráticas 3D no tienen elemento de interfaz todavía. En 2D el espesor es el de los sólidos vecinos, que deben tener el mismo a los dos lados.
+
+**Holgura inicial.** El elemento mide en cada punto la holgura $g_0 = \mathbf n\cdot(\mathbf x_B - \mathbf x_A)$ sobre la geometría. Por debajo de 10⁻⁶·h se toma como 0; una interpenetración mayor es un error. Una holgura distinta de cero sólo se admite con `ContactPenalty`.
+
+**Cargas, apoyos y referencias a nodos duplicados.** El bloque se aplica justo después de la malla y antes de `constraints`, de modo que un refuerzo embebido ata sus restricciones a los nodos ya separados. Tras `split`:
+
+- un apoyo por grupo o por coordenada toma todas las copias de un nodo;
+- un apoyo, una carga, una masa, una restricción multipunto o una columna de la historia **por id** de un nodo duplicado es un error que nombra las copias;
+- una carga o una masa por grupo o por coordenada que tomaría dos copias del mismo nodo también es un error (cada copia la recibiría entera);
+- una presión sobre el grupo de la grieta actúa sobre los dos labios.
+
+Una barra o un marco que toca un nodo que se duplicaría es un error, y también lo es `split` con elementos térmicos sobre los mismos nodos (el contacto térmico no está implementado). Los elementos de interfaz no se declaran como `element:` de un grupo de la malla: sólo los crea este bloque.
+
+**Análisis.** Con `ContactPenalty`, sólo los análisis no lineales (capítulo *Catálogo de Materiales*); con las cohesivas, cualquiera. Una interfaz abierta no aporta rigidez: un cuerpo sostenido sólo por contactos abiertos es un mecanismo.
+
+Con la API de Python: `solidum.mesh.pair_interfaces(domain, a, b, ley, name=..., integration=...)` y `solidum.mesh.split_interfaces(domain, grupo, ley, ...)`, que devuelven los elementos y las copias creadas (`InterfaceInsertion`). Lo creado con el YAML queda en `model.parser.applied_interfaces`.
+
 ## Condiciones de Frontera
 
 Solidum FEM ofrece tres mecanismos para imponer restricciones cinemáticas (Dirichlet), elegibles según la facilidad operativa:
@@ -765,6 +806,10 @@ El selector de nodos es uno de `node: id`, `nodes: [ids]`, `group: nombre` (grup
 
 $E = \tfrac12\,\mathbf U\cdot\mathbf F_{int}$ es la energía que se recupera al descargar hasta el origen sólo si todos los materiales descargan por la secante: los elásticos, los de daño (también la banda de grieta) y las cohesivas de daño. Con plasticidad, concreto con deformación residual o secciones por fibras, `elastic` y `dissipated` son un error; `external_work` sí está disponible. En la banda de grieta, $D$ al final de la separación es $G_f$ por el área de la grieta: es la comprobación de su objetividad.
 
+Los elementos de interfaz del bloque `interfaces` entregan su propia energía almacenada, la de su ley integrada sobre la cara ($\sum_g w_g\,\psi_g$), en lugar de $\tfrac12\,\mathbf u_e\cdot\mathbf f_e$: con contacto, la holgura inicial y la fricción no cumplen la condición de la secante. Así $E$ es la energía de penalización y de adherencia, y $D$ incluye la disipada por fricción.
+
+**Error del trapecio en un cambio brusco.** $W$ se integra con la regla del trapecio entre pasos convergidos. Un paso en el que la rigidez cambia de golpe (una interfaz que se cierra o empieza a deslizar dentro del paso) añade a $W$ un error que aparece como disipación, aunque no la haya: si un contacto sin fricción se cierra a mitad del paso, el paso entero cuenta la rigidez del contacto. El error baja con el tamaño del paso y es nulo si el cambio cae justo en un paso. Para leer $D$ cerca de esos cambios, use pasos pequeños.
+
 **Energías por zona.** Con `elements` (un selector de elementos como los de abajo: `id`, `ids`, `group` o `where`), la energía se restringe a esos elementos:
 
 ```yaml
@@ -775,7 +820,7 @@ history:
     - {name: D_carga, energy: dissipated, elements: {group: Apoyo_carga}}
 ```
 
-Con la fuerza interna de cada elemento $\mathbf f_e = \int_{\Omega_e}\mathbf B^\top\boldsymbol\sigma\,d\Omega$, $W$ suma $\tfrac12(\mathbf f_{e,n} + \mathbf f_{e,n-1})\cdot(\mathbf u_{e,n} - \mathbf u_{e,n-1})$ sobre los elementos de la zona (el trabajo que recibe su material, $\int\!\!\int\boldsymbol\sigma : d\boldsymbol\varepsilon\,dV$), $E = \tfrac12\sum_e \mathbf u_e\cdot\mathbf f_e$ y $D = W - E$. Las zonas de una partición del modelo suman sus energías. Sirve para comprobar la energía de la banda ($G_f$ por el área) por separado de la disipada bajo la carga. Sólo sólidos isoparamétricos; con `elastic` y `dissipated`, materiales que descargan por la secante. Separa por zona, no por mecanismo dentro de un mismo punto (agrietamiento frente a aplastamiento).
+Con la fuerza interna de cada elemento $\mathbf f_e = \int_{\Omega_e}\mathbf B^\top\boldsymbol\sigma\,d\Omega$, $W$ suma $\tfrac12(\mathbf f_{e,n} + \mathbf f_{e,n-1})\cdot(\mathbf u_{e,n} - \mathbf u_{e,n-1})$ sobre los elementos de la zona (el trabajo que recibe su material, $\int\!\!\int\boldsymbol\sigma : d\boldsymbol\varepsilon\,dV$), $E = \tfrac12\sum_e \mathbf u_e\cdot\mathbf f_e$ y $D = W - E$. Las zonas de una partición del modelo suman sus energías. Sirve para comprobar la energía de la banda ($G_f$ por el área) por separado de la disipada bajo la carga. Sólo sólidos isoparamétricos y elementos de interfaz (con `elements: {interface: <nombre>}`, la energía de una interfaz: la disipada por fricción en un contacto, la de fractura en una grieta cohesiva); con `elastic` y `dissipated`, materiales que descargan por la secante o interfaces. Separa por zona, no por mecanismo dentro de un mismo punto (agrietamiento frente a aplastamiento).
 
 **Magnitudes de elemento.** `element` declara la magnitud en `var` y, opcionalmente, un selector:
 
@@ -793,8 +838,18 @@ history:
 | `stress`, `strain` | con `component`: `xx`, `yy`, `zz`, `xy`, `yz`, `xz` (Voigt del proyecto; la deformación angular es $\gamma$), `mises` (sólo esfuerzo) o `max_principal`; en cada punto de integración. En 2D, `zz` del esfuerzo es el fuera del plano (no nulo en deformación plana) |
 | una variable interna | una variable escalar del material (`damage`, `kappa`, `alpha`...), en cada punto de integración |
 | `N`, `V`, `M` (2D); `N`, `Vy`, `Vz`, `T`, `My`, `Mz` (3D) | la fuerza interna de un elemento de marco o barra en el extremo `end: i` o `j`, con la convención de signos de las fuerzas internas y descontada la carga distribuida |
+| `jump`, `traction` | el desplazamiento relativo o la tracción de un elemento de interfaz, en ejes locales, con `component`: `n`, `s` (2D) o `n`, `s1`, `s2` (3D); en la adherencia de una barra, `s` (deslizamiento y esfuerzo de adherencia). `jump` con `component: n` es la holgura actual, $g_0 + \Delta u_n$ (positiva abierta). La tracción es la que actúa sobre la cara A: en contacto, $t_n = -p_N \le 0$ |
 
-El selector es `id`, `ids: [...]`, `group` (los elementos con todos sus nodos en el grupo físico) o `where` (una condición sobre el centro del elemento, como las de las mallas por bloques); sin selector, todos los elementos que tienen esa magnitud. `reduce` combina los valores de todos los puntos de integración (o elementos) seleccionados: `mean` (por omisión), `min` o `max`. Los valores son los del estado con que el análisis equilibró el paso.
+Las variables internas de una ley de interfaz (`contact_pressure`, `slip_accumulated`, `status`, `damage`…) se piden con su nombre, como las de un material.
+
+```yaml
+history:
+  columns:
+    - {name: p_max, element: {interface: apoyo, var: contact_pressure, reduce: max}}
+    - {name: abre, element: {interface: grieta, var: jump, component: n, reduce: max}}
+```
+
+El selector es `id`, `ids: [...]`, `group` (los elementos con todos sus nodos en el grupo físico), `where` (una condición sobre el centro del elemento, como las de las mallas por bloques) o `interface: <nombre>` (los elementos de una interfaz del bloque `interfaces`); sin selector, todos los elementos que tienen esa magnitud. `reduce` combina los valores de todos los puntos de integración (o elementos) seleccionados: `mean` (por omisión), `min` o `max`. Los valores son los del estado con que el análisis equilibró el paso.
 
 ### Figuras: `plots`
 

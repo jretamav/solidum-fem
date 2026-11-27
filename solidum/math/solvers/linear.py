@@ -26,6 +26,7 @@ from solidum.math.solvers.model_checks import (
     check_linear_solution,
     condition_estimate,
     ensure_no_internal_mechanisms,
+    ensure_no_unilateral_interfaces,
     ensure_statically_restrained,
     find_internal_mechanisms,
     warn_if_ill_conditioned,
@@ -39,6 +40,10 @@ class LinearSolver:
     """Solucionador de sistemas algebraicos lineales en un solo paso."""
 
     PIPELINE_KIND = "static"
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = True
 
     def __init__(self, assembler, linear_algebra: str = "auto"):
         self.assembler = assembler
@@ -79,6 +84,9 @@ class LinearSolver:
         Cholesky → LU (ADR 0003 §5) si la matriz no es PD efectiva.
         """
         _log.info("--- LINEARSOLVER · ensamblando y factorizando (1ª llamada) ---")
+        # El contacto requiere un análisis no lineal (decisión del usuario del
+        # 2026-11-26, ADR 0043).
+        ensure_no_unilateral_interfaces(self.assembler.domain, type(self).__name__, "static")
         self.assembler.assemble_system()
         # Red de seguridad, capa 1 (ADR 0019): un mecanismo rígido se
         # rechaza antes de factorizar, con el movimiento libre en palabras.

@@ -26,6 +26,7 @@ from solidum.math.solvers._shared import (
     mechanical_trace,
     warn_initial_conditions_off_constraints,
 )
+from solidum.math.solvers.model_checks import ensure_no_unilateral_interfaces
 from solidum.math.solvers.corrector import (
     NewtonCorrector,
     default_calibration_scales,
@@ -97,6 +98,10 @@ class NewmarkSolver(TransientTerminationMixin):
     """
 
     PIPELINE_KIND = "transient"
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = True
 
     def __init__(
         self,
@@ -138,6 +143,8 @@ class NewmarkSolver(TransientTerminationMixin):
         self._begin_trace()
         _log.info("--- INICIANDO SOLVER NEWMARK ---")
 
+        # El contacto requiere un análisis no lineal (ADR 0043).
+        ensure_no_unilateral_interfaces(self.assembler.domain, type(self).__name__, "transient")
         # Ensamblar K (lineal en u=0) y M (consistente, cacheada).
         self.assembler.assemble_system()
         K = self.assembler.K_global
@@ -402,6 +409,11 @@ class NewtonNewmarkSolver(NewmarkSolver):
 
     Ver ``docs/specs/NewtonNewmarkSolver.md``.
     """
+
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = False
 
     def __init__(
         self,
@@ -719,6 +731,11 @@ class HHTSolver(NewmarkSolver):
     Ver ``docs/specs/HHTSolver.md``.
     """
 
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = True
+
     def __init__(
         self,
         assembler,
@@ -776,6 +793,8 @@ class HHTSolver(NewmarkSolver):
         self._begin_trace()
         _log.info(f"--- INICIANDO SOLVER HHT-α (alpha={self.alpha:.4f}) ---")
 
+        # El contacto requiere un análisis no lineal (ADR 0043).
+        ensure_no_unilateral_interfaces(self.assembler.domain, type(self).__name__, "transient")
         self.assembler.assemble_system()
         K = self.assembler.K_global
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
@@ -946,6 +965,11 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
 
     Ver ``docs/specs/HHTSolver.md``.
     """
+
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = False
 
     def __init__(
         self,

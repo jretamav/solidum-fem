@@ -29,6 +29,14 @@ Ese componente es la interfaz de adherencia-deslizamiento entre una barra embebi
 - **El manual de referencia** tiene un capítulo nuevo, «Modelos Constitutivos — Interfaz».
 - **La ley de adherencia** y, más adelante, la de modo mixto de las grietas son materiales de esta familia. La segunda servirá también al elemento del módulo, que usa la geometría de superficie.
 
+## Ampliación (2026-11-26): contrato de la familia (ADR 0043 §4)
+
+El ADR 0043 amplía este contrato al entrar el contacto y los elementos de interfaz de espesor nulo; un agente que lea sólo este ADR debe saberlo:
+
+- **Semántica del salto normal**: la primera componente que recibe la ley es la **holgura normal actual** `g_n = g_0 + Δu_n`, con `g_0` la holgura inicial del par que mide el elemento (0 con nodos coincidentes). Las tangenciales siguen siendo el desplazamiento relativo desde la referencia.
+- **Atributos nuevos**: `ACCEPTS_INITIAL_GAP` (por omisión `False`: la ley sólo se admite con `g_0 = 0`), `IS_UNILATERAL` (sin rigidez abierta: los análisis de rigidez fija la rechazan), `STATE_SCHEMA` (variables internas y su forma; lo leen la historia y la salida por punto), `STATE_CODES` (variables que son un código y no se promedian) y `stored_energy(jump, state)` (energía almacenada por unidad de área; por omisión `½·t·g`, válida sólo con `SECANT_UNLOADING`).
+- Lo vigila `tests/test_interface_material_contract.py` sobre todo el registro (esquema, `IS_UNILATERAL` por comportamiento, cada ley con cada elemento de interfaz).
+
 ## Alternativas descartadas
 
 - **Una familia nueva para la adherencia, junto a la cohesiva del módulo.** Habría dos familias para el mismo tipo de ley, y el programa principal dependería de un módulo de usuario o duplicaría su contrato (Reglas §1: centralizar cuando aparece el segundo caso real).

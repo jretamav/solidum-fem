@@ -4,7 +4,8 @@ Cobertura
 ---------
 La celda VTK de cada elemento se **deriva de su contrato**, sin listas de
 clases: número de nodos y dimensión espacial (``'uz' in DOF_NAMES`` en los
-mecánicos, ``FLUX_DIM`` en los térmicos).
+mecánicos, ``FLUX_DIM`` en los térmicos, ``JUMP_DIM`` en las interfaces; la
+clasificación es la de ``solidum.core.point_quantity``, ADR 0043 §3).
 
 - 2D: 3 → ``triangle``, 4 → ``quad``, 6 → ``triangle6``, 8 → ``quad8``,
   9 → ``quad9``. Cubre Tri3, Quad4, Tri6, Quad8, Quad9 y ``Quad4Thermal``
@@ -59,6 +60,21 @@ Campos por celda (térmicos)
 ``Flux``: vector ``q`` [W/m²] promediado sobre los puntos de Gauss,
 completado con ceros a 3 componentes.
 
+Campos por celda (interfaces, ADR 0043 §7)
+------------------------------------------
+Los elementos de interfaz de espesor nulo tienen celda propia (``quad``,
+``quad6``, ``wedge`` o ``hexahedron`` por ``VTK_CELL_TYPE``, degenerada si
+las caras coinciden) con ``Jump_<c>`` y ``Traction_<c>``: el salto y la
+tracción en los ejes locales de la interfaz, ``<c>`` en ``n``, ``s`` (2D) o
+``n``, ``s1``, ``s2`` (3D), media de los puntos de integración de la celda.
+``Jump_n`` es la holgura normal actual (con la inicial; en el pre-proceso,
+la holgura inicial). Las variables internas escalares de la ley (presión de
+contacto, daño…) van por su nombre, salvo los códigos (``STATE_CODES``,
+p. ej. el régimen del contacto), que se leen por punto. Los campos de
+esfuerzo de sólido valen ``NaN`` en estas celdas y las interfaces no entran
+en el suavizado nodal. La adherencia barra–sólido no tiene celda
+(``VTK_EXPORT = False``).
+
 Fuerzas internas por celda (estructurales 1D)
 ---------------------------------------------
 ``N_i``, ``N_j``, ``V_i``, ``M_i``… (``Vy``, ``Vz``, ``T``, ``My``, ``Mz`` en
@@ -81,7 +97,7 @@ Campos nodales
 - ``Sigma_XX_nodal`` … ``Von_Mises_nodal``: suavizado nodal de orden 0
   (media simple sobre las celdas adyacentes) de los campos anteriores.
   Sólo promedia las celdas de **sólidos mecánicos**: ni las líneas ni los
-  elementos térmicos, tampoco cuando un térmico se superpone a un sólido con
+  elementos térmicos ni las interfaces, tampoco cuando un térmico se superpone a un sólido con
   los mismos nodos (dominio multicampo ``(ux, uy, T)``, ADR 0016). Un modelo
   sin ningún sólido mecánico (sólo térmico, sólo estructural 1D) no exporta
   estos campos.
@@ -109,6 +125,7 @@ from solidum.core.dof_names import ROTATIONS as _ROTATIONAL_DOFS
 from solidum.core.dof_names import TEMPERATURE as _TEMPERATURE_DOF
 from solidum.core.dof_names import TRANSLATIONS as _TRANSLATIONAL_DOFS
 from solidum.core.domain import Domain
+from solidum.core.point_quantity import FLUX, JUMP, STRAIN, point_quantity
 from solidum.core.section import Section
 from solidum.logging import get_logger
 from solidum.math.batch.postprocess import group_by_family
@@ -119,6 +136,53 @@ except ImportError:
     meshio = None
 
 _log = get_logger("exporters.vtk")
+
+# Celdas que la tabla de tipos VTK de meshio conoce y sus tablas de dimensión
+# topológica y de número de nodos no (meshio 5.3.5): sin ellas, meshio no
+# crea el bloque al escribir ni al leer. VTK 30 (cuadrilátero
+# cuadrático–lineal: 4 vértices y los intermedios de los lados 1-2 y 3-4) es
+# la celda de Interface2D6. Celda → (dimensión, nodos).
+_MESHIO_MISSING_CELLS = {"quad6": (2, 6)}
+
+
+def ensure_meshio_cells() -> None:
+    """Completa las tablas de meshio con las celdas que usa Solidum y le
+    faltan (:data:`_MESHIO_MISSING_CELLS`). Idempotente; no cambia una
+    entrada que meshio ya tenga. La llaman el exportador al importarse y el
+    lector de las figuras."""
+    if meshio is None:
+        return
+    try:
+        from meshio._common import num_nodes_per_cell
+        from meshio._mesh import topological_dimension
+    except ImportError:         # otra versión de meshio, con otra organización
+        return
+    for cell, (dim, n_nodes) in _MESHIO_MISSING_CELLS.items():
+        topological_dimension.setdefault(cell, dim)
+        num_nodes_per_cell.setdefault(cell, n_nodes)
+
+
+def _check_meshio_cells(cell_types) -> None:
+    """Error claro si una celda de :data:`_MESHIO_MISSING_CELLS` no quedó en
+    las tablas de meshio (otra versión con otra organización interna): sin
+    esto, meshio fallaría con un ``KeyError`` sin explicación."""
+    needed = [c for c in cell_types if c in _MESHIO_MISSING_CELLS]
+    if not needed:
+        return
+    try:
+        from meshio._common import num_nodes_per_cell
+        from meshio._mesh import topological_dimension
+        ok = all(c in num_nodes_per_cell and c in topological_dimension for c in needed)
+    except ImportError:
+        ok = False
+    if not ok:
+        raise RuntimeError(
+            f"VtkExporter: esta versión de meshio ({getattr(meshio, '__version__', '?')}) no sabe "
+            f"escribir las celdas {needed} (Interface2D6: celda VTK 30) y Solidum no pudo "
+            f"completarle las tablas (solidum.utils.vtk_exporter.ensure_meshio_cells).")
+
+
+ensure_meshio_cells()
 
 # Celda VTK por (dimensión espacial, número de nodos). Los elementos de dos
 # nodos se resuelven aparte como ``line``.
@@ -141,12 +205,13 @@ NODAL_FIELD_NAMES = ("Displacements", "Rotations", "Temperature", "Supports", "S
 # ---------------------------------------------------------------------------
 
 def _is_thermal(elem) -> bool:
-    return hasattr(elem, "FLUX_DIM")
+    return point_quantity(elem).kind == FLUX
 
 
 def _spatial_dim(elem) -> int:
-    if _is_thermal(elem):
-        return int(elem.FLUX_DIM)
+    q = point_quantity(elem)
+    if q.kind in (FLUX, JUMP):
+        return int(q.dim)
     return 3 if "uz" in elem.DOF_NAMES else 2
 
 
@@ -163,8 +228,14 @@ def cell_type_for(elem) -> str | None:
 
 
 def _is_mechanical_solid(elem) -> bool:
-    return (not _is_thermal(elem)) and len(elem.nodes) > 2 \
+    return point_quantity(elem).kind == STRAIN and len(elem.nodes) > 2 \
         and hasattr(elem, "compute_gauss_state")
+
+
+def _is_interface_cell(elem) -> bool:
+    """Elemento de salto local con su registro por punto (ADR 0043 §2):
+    ``JUMP`` implica ``LocalJumpElement`` (lo exige el barrido de elementos)."""
+    return point_quantity(elem).kind == JUMP
 
 
 # ---------------------------------------------------------------------------
@@ -323,16 +394,23 @@ def _material_point_states(elem, trial: bool = False) -> list:
     return list(_flatten_states(entries))
 
 
+def _unaveraged(material) -> set:
+    """Variables internas escalares de ``material`` que el VTK por celda no
+    promedia: ángulos (``STATE_ANGLES``) y códigos (``STATE_CODES``)."""
+    return set(getattr(material, "STATE_ANGLES", ())) | set(getattr(material, "STATE_CODES", ()))
+
+
 def _angle_names(elem) -> set:
-    """Variables internas que son ángulos (``STATE_ANGLES``) en los
-    materiales del elemento."""
+    """Variables internas que el VTK por celda no promedia (ángulos y
+    códigos) en los materiales del elemento."""
     materials = elem.materials() if hasattr(elem, "materials") else []
-    return {n for m in materials for n in getattr(m, "STATE_ANGLES", ())}
+    return {n for m in materials for n in _unaveraged(m)}
 
 
 def state_variable_names(elements) -> tuple[list[str], set]:
     """Variables internas escalares de los materiales de ``elements``, en el
-    orden en que aparecen, y cuáles de ellas son ángulos (``STATE_ANGLES``).
+    orden en que aparecen, y cuáles de ellas no se promedian por celda: los
+    ángulos (``STATE_ANGLES``) y los códigos (``STATE_CODES``).
 
     Las escalares del ``STATE_SCHEMA`` de cada material (válidas antes del
     primer paso, cuando el estado de muchos materiales aún no existe) y,
@@ -365,8 +443,8 @@ def _state_cell_fields(elements, slot, conn_by_type: dict, groups: dict, loose: 
                        names: list[str], angles: set) -> dict:
     """Promedio sobre los puntos materiales de cada variable interna escalar,
     por celda: ``{nombre: {tipo_de_celda: (n_celdas,)}}``. ``NaN`` en las
-    celdas cuyo material no tiene esa variable; los ángulos no se promedian
-    (no figuran)."""
+    celdas cuyo material no tiene esa variable; los ángulos y los códigos no
+    se promedian (no figuran)."""
     wanted = [n for n in names if n not in angles]
     if not wanted:
         return {}
@@ -380,7 +458,7 @@ def _state_cell_fields(elements, slot, conn_by_type: dict, groups: dict, loose: 
         fam_rows = np.array([rows[id(elements[p])] for p in positions], dtype=np.int64)
         cell_type = slot[positions[0]][0]
         idx = np.array([slot[p][1] for p in positions], dtype=np.int64)
-        fam_angles = set(getattr(fam.material, "STATE_ANGLES", ()))
+        fam_angles = _unaveraged(fam.material)
         schema = fam.schema
         S = fam.state.S_committed.reshape(fam.n_elements, fam.n_gp, -1)
         for k, (name, shape) in enumerate(zip(schema.names, schema.shapes)):
@@ -450,6 +528,33 @@ def _internal_force_fields(elements, slot, conn_by_type: dict,
                     per_type[cell_type] = np.full(len(conn_by_type[cell_type]), np.nan)
                 per_type[cell_type][idx] = values[k]
     return fields
+
+
+def _interface_cell_fields(elements, slot, conn_by_type: dict, U: np.ndarray) -> dict:
+    """Salto y tracción locales de los elementos de interfaz como campos por
+    celda (ADR 0043 §7): ``{nombre: {tipo_de_celda: (n_celdas,)}}`` con los
+    nombres ``Jump_<c>`` y ``Traction_<c>`` y ``<c>`` las componentes del
+    elemento (``n``, ``s``; ``n``, ``s1``, ``s2``). Valor de la celda: la
+    media de sus puntos de integración, del registro por punto
+    (``interface_points``: salto de ``U``, tracción de la ley con el estado
+    confirmado). ``NaN`` en las celdas que no son de interfaz."""
+    jump_fields: dict[str, dict[str, np.ndarray]] = {}
+    traction_fields: dict[str, dict[str, np.ndarray]] = {}
+    for p, elem in enumerate(elements):
+        if slot[p] is None or not _is_interface_cell(elem):
+            continue
+        cell_type, idx = slot[p]
+        pts = elem.interface_points(U)
+        jump = np.mean([q.jump for q in pts], axis=0)
+        traction = np.mean([q.traction for q in pts], axis=0)
+        for k, comp in enumerate(elem.jump_components()):
+            for fields, prefix, v in ((jump_fields, "Jump", jump),
+                                      (traction_fields, "Traction", traction)):
+                per_type = fields.setdefault(f"{prefix}_{comp}", {})
+                if cell_type not in per_type:
+                    per_type[cell_type] = np.full(len(conn_by_type[cell_type]), np.nan)
+                per_type[cell_type][idx] = v[k]
+    return {**jump_fields, **traction_fields}
 
 
 def _family_cell_fields(fam, U: np.ndarray | None):
@@ -616,6 +721,7 @@ class VtkExporter:
                 "soportada; no se escribe el archivo (meshio no puede releer "
                 "una malla sin celdas)."
             )
+        _check_meshio_cells(conn_by_type)
 
         state_by_type = {ct: np.zeros(len(c)) for ct, c in conn_by_type.items()}
         stress_by_type = {ct: np.zeros((len(c), 6)) for ct, c in conn_by_type.items()}
@@ -643,6 +749,10 @@ class VtkExporter:
             state_by_type[cell_type][idx] = _state_var_avg(elem)
             if _is_thermal(elem):
                 flux_by_type[cell_type][idx] = _element_average_flux(elem, U_eval)
+            elif _is_interface_cell(elem):
+                # Una interfaz no tiene esfuerzo de sólido: «no aplica», no
+                # «vale cero» (comparte el tipo de celda con los sólidos).
+                stress_by_type[cell_type][idx] = np.nan
             else:
                 stress_by_type[cell_type][idx] = element_average_stress(elem, U_eval)
 
@@ -702,7 +812,10 @@ class VtkExporter:
             cell_data["Flux"] = flux_arrays
         force_fields = _internal_force_fields(elements, slot, conn_by_type,
                                               U_eval, element_forces)
-        for name, per_type in force_fields.items():
+        # Salto y tracción de las interfaces; sin U (pre-proceso), los de
+        # U = 0: el salto normal es la holgura inicial.
+        interface_fields = _interface_cell_fields(elements, slot, conn_by_type, U)
+        for name, per_type in {**force_fields, **interface_fields}.items():
             if want_cell(name):
                 cell_data[name] = [
                     per_type.get(ct, np.full(len(conn), np.nan))
@@ -725,18 +838,22 @@ class VtkExporter:
     def export_integration_points(self, filepath: str, U: np.ndarray,
                                   trial: bool = False) -> int:
         """Escribe los valores en cada punto de integración de los sólidos
-        mecánicos como una nube de puntos (celdas ``vertex``).
+        mecánicos y de las interfaces como una nube de puntos (celdas
+        ``vertex``).
 
         Por punto: ``Displacements`` (``N(ξ)·u_e``, para deformar la nube en
-        ParaView), ``Element_Id``, ``Point`` (número del punto en su
-        elemento, desde 1), las seis componentes de esfuerzo y ``Von_Mises``
-        y **todas** las variables internas escalares del material, también
-        los ángulos (``STATE_ANGLES``), con su nombre; ``NaN`` donde el
-        material no tiene esa variable. Las posiciones son las de la
-        geometría de referencia. Los valores son los del estado con que el
-        análisis equilibró el paso: el confirmado (``trial=True``: el de
-        prueba, en un análisis lineal que no confirma estado), los mismos
-        que lee la historia (ADR 0038).
+        ParaView; en una interfaz, el de la cara A, donde está el punto),
+        ``Element_Id``, ``Point`` (número del punto en su elemento, desde 1),
+        las seis componentes de esfuerzo y ``Von_Mises`` (sólidos), el salto
+        y la tracción locales ``Jump_<c>`` y ``Traction_<c>`` (interfaces,
+        ADR 0043 §7) y **todas** las variables internas escalares del
+        material, también los ángulos (``STATE_ANGLES``) y los códigos
+        (``STATE_CODES``), con su nombre; ``NaN`` donde el elemento no tiene
+        esa magnitud. Las posiciones son las de la geometría de referencia.
+        Los valores son los del estado con que el análisis equilibró el paso:
+        el confirmado (``trial=True``: el de prueba, en un análisis lineal que
+        no confirma estado), los mismos que lee la historia (ADR 0038); el
+        salto sale de ``U``.
 
         Devuelve el número de puntos escritos (0: no escribe el archivo).
         """
@@ -744,42 +861,83 @@ class VtkExporter:
             _log.warning("La librería 'meshio' no está instalada. Omitiendo exportación VTK.")
             return 0
         U = np.asarray(U, dtype=float)
-        elements = [e for e in self.domain.elements.values()
-                    if getattr(e, "VTK_EXPORT", True) is not False and _is_mechanical_solid(e)]
-        names, _ = state_variable_names(elements)
-        blocks = []   # (posiciones, desplazamientos, σ (n, 6), ids, punto, {var: (n,)})
+        exported = [e for e in self.domain.elements.values()
+                    if getattr(e, "VTK_EXPORT", True) is not False]
+        elements = [e for e in exported if _is_mechanical_solid(e)]
+        interfaces = [e for e in exported if _is_interface_cell(e)]
+        names, _ = state_variable_names(elements + interfaces)
+        blocks = []   # (posiciones, desplazamientos, σ (n, 6), ids, punto, {var: (n,)}, {campo: (n,)})
         groups, loose = group_by_family(elements)
         for fam, positions in groups.items():
             if fam.is_thermal:
                 continue
             blk = _family_points(fam, [elements[p] for p in positions], U, trial, names)
             if blk is not None:
-                blocks.append(blk)
+                blocks.append((*blk, {}))
         for p in loose:
             blk = _element_points(elements[p], U, trial, names)
             if blk is not None:
-                blocks.append(blk)
+                blocks.append((*blk, {}))
+        blocks.extend(_interface_points(el, U, trial, names) for el in interfaces)
         if not blocks:
             return 0
-        pos = np.vstack([b[0] for b in blocks])
+        pos = np.vstack([_pad_columns(b[0]) for b in blocks])
         n = pos.shape[0]
-        points = np.zeros((n, 3))
-        points[:, :pos.shape[1]] = pos
-        disp = np.zeros((n, 3))
-        d = np.vstack([b[1] for b in blocks])
-        disp[:, :d.shape[1]] = d
         sig = np.vstack([b[2] for b in blocks])
-        point_data = {"Displacements": disp,
+        point_data = {"Displacements": np.vstack([_pad_columns(b[1]) for b in blocks]),
                       "Element_Id": np.concatenate([b[3] for b in blocks]).astype(float),
                       "Point": np.concatenate([b[4] for b in blocks]).astype(float)}
         for k, comp in enumerate(STRESS_COMPONENT_NAMES):
             point_data[comp] = sig[:, k]
         point_data["Von_Mises"] = von_mises_rows(sig)
+        extra = list(dict.fromkeys(f for b in blocks for f in b[6]))
+        for field in extra:
+            point_data[field] = np.concatenate([b[6].get(field, np.full(len(b[3]), np.nan))
+                                                for b in blocks])
         for name in names:
             point_data.setdefault(name, np.concatenate([b[5][name] for b in blocks]))
         cells = [("vertex", np.arange(n, dtype=int).reshape(-1, 1))]
-        meshio.Mesh(points, cells, point_data=point_data).write(filepath)
+        meshio.Mesh(pos, cells, point_data=point_data).write(filepath)
         return n
+
+
+def _pad_columns(a: np.ndarray) -> np.ndarray:
+    """``(n, d)`` → ``(n, 3)`` con ceros."""
+    a = np.asarray(a, dtype=float)
+    out = np.zeros((a.shape[0], 3))
+    out[:, :a.shape[1]] = a
+    return out
+
+
+def _interface_points(elem, U: np.ndarray, trial: bool, names: list[str]):
+    """Bloque de la nube de puntos de un elemento de interfaz: salto de
+    ``U``, tracción y variables de la ley del estado confirmado (o de
+    prueba), sin esfuerzo de sólido (``NaN``)."""
+    u_e = np.asarray(elem.get_local_displacements(U), dtype=float)
+    X = np.asarray(elem.positions, dtype=float)
+    n_gp = X.shape[0]
+    side_a = getattr(elem, "side_a_displacements", None)
+    disp = side_a(u_e) if side_a is not None else np.zeros_like(X)
+    st = elem.state
+    jumps = np.asarray(elem.jumps(u_e), dtype=float)
+    tractions = np.array([np.atleast_1d(np.asarray(t, dtype=float))
+                          for t in (st.stresses_trial if trial else st.stresses)])
+    states = st.vars_trial if trial else st.vars
+    fields = {}
+    comps = elem.jump_components()
+    for prefix, v in (("Jump", jumps), ("Traction", tractions)):
+        for k, comp in enumerate(comps):
+            fields[f"{prefix}_{comp}"] = v[:, k]
+    values = {}
+    for name in names:
+        col = np.full(n_gp, np.nan)
+        for g in range(n_gp):
+            sv = states[g] if states is not None else None
+            if isinstance(sv, dict) and name in sv and _is_number(sv[name]):
+                col[g] = float(sv[name])
+        values[name] = col
+    return (X, disp, np.full((n_gp, 6), np.nan), np.full(n_gp, elem.id),
+            np.arange(1, n_gp + 1), values, fields)
 
 
 def _gauss_displacements(Nf: np.ndarray, u_nodes: np.ndarray) -> np.ndarray:

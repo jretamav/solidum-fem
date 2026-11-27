@@ -400,7 +400,9 @@ materials:
 
 Familia **paralela** al resto del catálogo: no relacionan $\boldsymbol\sigma$ con $\boldsymbol\varepsilon$ sino la **tracción** $\mathbf{t}$ con el **salto de desplazamientos** $\llbracket u \rrbracket$ entre los dos lados de una interfaz: una superficie de discontinuidad (grieta, junta) o la línea de una barra embebida en un sólido (adherencia). Las componentes van en el sistema local de la interfaz, normales primero y tangenciales después.
 
-Son una familia del programa principal (ADR 0033): se declaran en el bloque `interface_materials`, no en `materials`, y los citan por `id` los elementos y restricciones que tienen una interfaz. Hasta el 2026-11-10 la ley cohesiva pertenecía al módulo de usuario `discontinuities` y su sección se llamaba `cohesive_materials`.
+Son una familia del programa principal (ADR 0033): se declaran en el bloque `interface_materials`, no en `materials`, y los citan por `id` los elementos y restricciones que tienen una interfaz: el bloque `interfaces` (elementos de interfaz de espesor nulo entre dos sólidos), la adherencia del refuerzo embebido y el elemento embebido del módulo `discontinuities`. Hasta el 2026-11-10 la ley cohesiva pertenecía al módulo de usuario `discontinuities` y su sección se llamaba `cohesive_materials`.
+
+Las leyes **de superficie** (`ContactPenalty`, `CohesiveDamageIsotropic`, `CohesiveDamageMixedMode`) sirven en el bloque `interfaces`; las **de línea** (`BondSlipModelCode`, `BondSlipMultilinear`), en la adherencia de una barra. Sólo `ContactPenalty` admite caras separadas al inicio (holgura $g_0 > 0$): con una cohesiva, la grieta estaría abierta sin carga, y Solidum lo rechaza.
 
 ### `CohesiveDamageIsotropic` — daño cohesivo Modo-I
 
@@ -429,6 +431,25 @@ Generaliza la ley anterior a la apertura y el deslizamiento de la grieta con una
 interface_materials:
   - {id: 2, type: CohesiveDamageMixedMode, sigma_t0: 3.0e6, G_f: 100.0,
      K_e: 1.0e15, beta: 1.5, softening: bilinear}
+```
+
+### `ContactPenalty` — contacto unilateral por penalización, con fricción de Coulomb opcional
+
+Contacto entre dos superficies unidas por pares de puntos conocidos, con desplazamientos pequeños. Lo usan los elementos de interfaz del bloque `interfaces` (capítulo *Archivo de Entrada YAML*). El elemento entrega a la ley la **holgura normal actual** $g_n = g_0 + \Delta u_n$, con $g_0$ la holgura inicial del par medida sobre la geometría (0 si los nodos coinciden), y el desplazamiento relativo tangencial $\mathbf g_s$.
+
+- **Normal** (condición de Signorini por penalización): $t_n = K_n \min(g_n, 0)$. La presión de contacto $p_N = -t_n \ge 0$ sólo es de compresión, sin adhesión; una superficie separada ($g_n > 0$) no transmite nada. Con $K_n$ finito las caras se interpenetran $p_N/K_n$: es el error de la penalización.
+- **Tangencial**: sin `mu`, sin fricción ($t_s = 0$, la superficie desliza libre). Con `mu` > 0, fricción de Coulomb con una adherencia elástica de rigidez $K_t$: $\mathbf t_s = K_t(\mathbf g_s - \mathbf g_s^p)$ mientras $\|\mathbf t_s\| < \mu\,p_N$; al llegar al límite desliza con $\|\mathbf t_s\| = \mu\,p_N$ (retorno radial, Euler implícito). Sin dilatancia. En 3D es isótropa en el plano tangente.
+- **Parámetros**: `K_n` (obligatorio, Pa/m), `mu` (opcional, ≥ 0) y `K_t` (Pa/m; obligatorio con `mu` > 0 y rechazado sin fricción). No tienen valor por omisión. **Guía**: $K_n \approx 10\,E/h$, con $E$ y $h$ el módulo y el tamaño de los elementos del sólido vecino, y $K_t = K_n$ para empezar; el deslizamiento antes del umbral es $\mu\,p_N/K_t$ y debe quedar pequeño frente al esperado. Con $K_n$ fijo, el error de la penalización no baja al refinar la malla.
+- **Tangente**: con fricción no es simétrica (la ley no deriva de un potencial: el límite $\mu\,p_N$ depende de la holgura). Solidum resuelve entonces con un solver no simétrico, sin que haya que declararlo.
+- **Holgura nula** ($g_n = 0$, el inicio de una interfaz de nodos coincidentes): la primera iteración toma la rama cerrada, con rigidez $K_n$ y $K_t$, para que un cuerpo que sólo se apoya en el contacto no sea un mecanismo; la fuerza es 0 en las dos ramas y el resultado convergido no cambia.
+- **Sólo análisis no lineales**: con esta ley, el análisis lineal, el modal, el armónico, el espectral y los transitorios lineales (Newmark, HHT y diferencias centrales lineales) son un error, porque una interfaz cerrada resistiría tracciones. Se usa con `NonlinearSolver`, el arco, el control por desplazamiento o los transitorios no lineales.
+- **Variables internas**: `contact_pressure` ($p_N$, la principal), `slip_accumulated` (longitud recorrida deslizando con la superficie cerrada), `status` (0 abierta, 1 cerrada sin deslizar, 2 deslizando con fricción) y `slip` (deslizamiento por fricción $\mathbf g_s^p$, vector; no va al VTK ni a la historia).
+- **Energía**: almacenada $\psi = \tfrac12 K_n \min(g_n,0)^2 + \tfrac12 K_t\|\mathbf g_s - \mathbf g_s^p\|^2$; la fricción disipa $\mu\,p_N\,\|\dot{\mathbf g}_s^p\|$. La historia la usa para `elastic` y `dissipated` (capítulo *Archivo de Entrada YAML*, «Energías»).
+
+```yaml
+interface_materials:
+  - {id: 1, type: ContactPenalty, K_n: 3.0e12}                         # sin fricción
+  - {id: 2, type: ContactPenalty, K_n: 3.0e12, mu: 0.4, K_t: 3.0e12}   # Coulomb
 ```
 
 ### `BondSlipModelCode` y `BondSlipMultilinear` — adherencia-deslizamiento barra–concreto

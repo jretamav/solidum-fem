@@ -14,8 +14,11 @@ junto al YAML:
   o máximo de un nodo, grupo físico o coordenada; reacción sumada de un grupo
   de apoyos o de desplazamiento impuesto; energías; esfuerzo, deformación,
   variable interna o fuerza interna de un elemento o de un conjunto de
-  elementos). Se escribe fila a fila, así que un análisis interrumpido
-  conserva lo calculado;
+  elementos; salto o tracción locales de una interfaz, ``var: jump |
+  traction`` con ``component: n | s | s1 | s2`` (``n1``, ``n2`` en la
+  adherencia 3D), y los elementos de una interfaz por su nombre,
+  ``interface: <nombre>``, ADR 0043 §7). Se escribe fila a fila, así que un
+  análisis interrumpido conserva lo calculado;
 - la salida en texto estilo FEAP (``text_export``);
 - las figuras de ``plots`` (ADR 0039), dibujadas al terminar con los archivos
   anteriores (:mod:`solidum.post`).
@@ -31,10 +34,17 @@ que el exterior (cargas y apoyos) ejerce sobre la estructura es
 - trabajo externo ``W_n = W_{n−1} + ½ (F_int,n + F_int,n−1)·(U_n − U_{n−1})``
   (regla del trapecio entre pasos convergidos; incluye el trabajo de los
   desplazamientos impuestos);
-- energía elástica ``E_n = ½ U_n·F_int,n``: la que se recupera descargando
-  hasta el origen, válida si todos los materiales descargan por la secante
-  (elásticos y de daño: ``SECANT_UNLOADING``) y no hay esfuerzos iniciales;
-- energía disipada ``D_n = W_n − E_n``.
+- energía elástica (almacenada) ``E_n = Σ_e E_e``: ``½ u_e·f_e`` en cada
+  elemento, la que se recupera descargando hasta el origen, válida si sus
+  materiales descargan por la secante (elásticos y de daño:
+  ``SECANT_UNLOADING``) y no hay esfuerzos iniciales; los elementos que
+  conocen su energía almacenada la entregan (``Element.stored_energy``: las
+  interfaces, ``Σ_g m_g·ψ_g`` de su ley, que cubre la fricción y la holgura
+  inicial; ADR 0043 §5). Sin interfaces, ``E_n = ½ U_n·F_int,n``;
+- energía disipada ``D_n = W_n − E_n``. Con la regla del trapecio, un paso
+  que cruza un cambio brusco de rigidez (una interfaz que se cierra o empieza
+  a deslizar dentro del paso) añade a ``W`` un error que aparece como
+  disipación y baja con el tamaño del paso.
 
 Las magnitudes de elemento se leen del estado confirmado del paso (el mismo
 que el análisis usó), sin volver a evaluar el material; la deformación, de
@@ -47,6 +57,8 @@ from pathlib import Path
 
 import numpy as np
 
+from solidum.core.interface_material import all_component_names
+from solidum.core.point_quantity import JUMP, STRAIN, point_quantity
 from solidum.logging import get_logger
 
 _log = get_logger("output")
@@ -57,12 +69,18 @@ _COLUMN_KINDS = ("displacement", "reaction", "energy", "element")
 _SELECTORS = ("node", "nodes", "group", "at")
 #: Energías de la historia.
 ENERGIES = ("external_work", "elastic", "dissipated")
-_ELEMENT_SELECTORS = ("id", "ids", "group", "where")
+_ELEMENT_SELECTORS = ("id", "ids", "group", "where", "interface")
 _ELEMENT_KEYS = {"var", "component", "end", "reduce", *_ELEMENT_SELECTORS}
 #: Fuerzas internas de los elementos estructurales 1D (ElementForces).
 FORCE_COMPONENTS = ("N", "V", "M", "Vy", "Vz", "T", "My", "Mz")
 _VOIGT = {1: ("xx",), 3: ("xx", "yy", "xy"), 6: ("xx", "yy", "zz", "xy", "yz", "xz")}
 _DERIVED = {"stress": ("mises", "max_principal"), "strain": ("max_principal",)}
+#: Magnitudes por punto de los elementos de interfaz (ADR 0043 §7), en ejes locales.
+INTERFACE_VARS = ("jump", "traction")
+#: Componentes locales de una interfaz: de superficie (n, s / n, s1, s2) o de
+#: la adherencia de una barra (n, s / n1, n2, s); de la fuente única de la
+#: familia (``solidum.core.interface_material``).
+INTERFACE_COMPONENTS = all_component_names()
 
 
 def validate_output_block(output) -> list[str]:
@@ -187,16 +205,21 @@ def _validate_element_column(sel, ctx: str) -> list[str]:
                       "todos los elementos).")
     var = sel.get("var")
     if not isinstance(var, str) or not var:
-        errors.append(f"{ctx}.var: falta la magnitud ('stress', 'strain', una variable interna "
-                      f"como 'damage', o una fuerza interna {list(FORCE_COMPONENTS)}).")
+        errors.append(f"{ctx}.var: falta la magnitud ('stress', 'strain', 'jump', 'traction', una "
+                      f"variable interna como 'damage', o una fuerza interna "
+                      f"{list(FORCE_COMPONENTS)}).")
         return errors
     comp = sel.get("component")
     if var in ("stress", "strain"):
         valid = sorted({c for cs in _VOIGT.values() for c in cs} | {"zz"} | set(_DERIVED[var]))
         if comp not in valid:
             errors.append(f"{ctx}.component: con var: {var} se requiere uno de {valid}.")
+    elif var in INTERFACE_VARS:
+        if comp not in INTERFACE_COMPONENTS:
+            errors.append(f"{ctx}.component: con var: {var} se requiere una componente local "
+                          f"{list(INTERFACE_COMPONENTS)}.")
     elif comp is not None:
-        errors.append(f"{ctx}.component: sólo con var: stress o strain.")
+        errors.append(f"{ctx}.component: sólo con var: stress, strain, jump o traction.")
     if var in FORCE_COMPONENTS:
         if sel.get("end") not in ("i", "j"):
             errors.append(f"{ctx}.end: con una fuerza interna se requiere el extremo 'i' o 'j'.")
@@ -246,6 +269,9 @@ class OutputWriter:
         self._W = 0.0
         self._U_prev = None
         self._F_prev = None
+        # Elementos que entregan su energía almacenada; None mientras ninguna
+        # columna pida 'elastic' o 'dissipated' (ADR 0043 §5).
+        self._stored_elements = None
         self._read_trial = False
         res = cfg.get("results") or {}
         self.freq = res.get("frequency", "last_step")
@@ -285,14 +311,20 @@ class OutputWriter:
                 raise ValueError(f"output.results.nodal_results: campos inexistentes {unknown}; "
                                  f"se admiten {list(NODAL_FIELD_NAMES)}.")
         if self.e_vars is not None:
-            states, angles = state_variable_names(list(self.domain.elements.values()))
+            elements = list(self.domain.elements.values())
+            states, angles = state_variable_names(elements)
+            # Salto y tracción de las interfaces con celda (ADR 0043 §7).
+            local = dict.fromkeys(
+                f"{p}_{c}" for el in elements
+                if point_quantity(el).kind == JUMP and getattr(el, "VTK_EXPORT", True) is not False
+                for p in ("Jump", "Traction") for c in el.jump_components())
             known = ["Internal_State", *STRESS_COMPONENT_NAMES, "Von_Mises", "Flux",
                      *(f"{c}_{e}" for c in FORCE_COMPONENTS for e in ("i", "j")),
-                     *(s for s in states if s not in angles)]
+                     *local, *(s for s in states if s not in angles)]
             unknown = [v for v in self.e_vars if v not in known]
             if unknown:
-                hint = (f" {sorted(angles & set(unknown))} son ángulos: no se promedian por "
-                        f"celda; se leen en el archivo por puntos de integración "
+                hint = (f" {sorted(angles & set(unknown))} son ángulos o códigos: no se promedian "
+                        f"por celda; se leen en el archivo por puntos de integración "
                         f"(results.integration_points: true)." if angles & set(unknown) else "")
                 raise ValueError(f"output.results.element_results: campos inexistentes en este "
                                  f"modelo {unknown}; se admiten {known}.{hint}")
@@ -319,6 +351,15 @@ class OutputWriter:
         missing = [i for i in ids if i not in dom.nodes]
         if missing:
             raise ValueError(f"{ctx}: nodos inexistentes {missing}.")
+        if "node" in sel or "nodes" in sel:
+            # Un nodo duplicado por ``split`` (ADR 0043 §6): el id no dice de qué lado.
+            for i in ids:
+                copies = dom.split_copies(i)
+                if copies is not None:
+                    raise ValueError(
+                        f"{ctx}: el nodo {i} se duplicó al separar una interfaz (nodos "
+                        f"{list(copies)}, uno por lado); el id no dice de qué lado se lee. Use "
+                        f"'group' (los grupos <nombre>_a y <nombre>_b de la interfaz) o 'at'.")
         return [dom.nodes[i] for i in ids]
 
     def _resolve_columns(self, hist, static):
@@ -370,14 +411,16 @@ class OutputWriter:
             self._U_prev = np.zeros(self.domain.total_dofs)
             self._K0_scale = float(np.max(np.abs(K0.diagonal()))) if K0.shape[0] else 0.0
         if which != "external_work":
-            not_secant = sorted({name for el in self.domain.elements.values()
-                                 for name in _non_secant(el)})
-            if not_secant:
+            known, unknown = _stored_energy_split(self.domain.elements.values(),
+                                                  self.domain.total_dofs)
+            if unknown:
                 raise ValueError(
-                    f"{ctx}: la energía {which!r} usa E = ½·U·F_int(U), que sólo es la energía "
-                    f"elástica recuperable si todos los materiales descargan por la secante hasta "
-                    f"el origen (elásticos y de daño); no lo hacen {not_secant[:6]}. El trabajo "
-                    f"externo ('external_work') sí está disponible.")
+                    f"{ctx}: la energía {which!r} necesita la energía almacenada de cada elemento. "
+                    f"Los de interfaz la toman de su ley; los demás usan ½·u_e·f_e, que sólo es la "
+                    f"energía elástica recuperable si sus materiales descargan por la secante "
+                    f"hasta el origen (elásticos y de daño). No se conoce para {unknown[:6]}. El "
+                    f"trabajo externo ('external_work') sí está disponible.")
+            self._stored_elements = known
             coords = np.array([list(n.coordinates) + [0.0] * (3 - len(n.coordinates))
                                for n in self.domain.nodes.values()])
             size = float(np.linalg.norm(coords.max(axis=0) - coords.min(axis=0))) if len(coords) else 0.0
@@ -459,8 +502,15 @@ class OutputWriter:
         U = np.asarray(U, dtype=float)
         self._W += 0.5 * float((F_int + self._F_prev) @ (U - self._U_prev))
         self._U_prev, self._F_prev = U.copy(), np.array(F_int, dtype=float)
-        E = 0.5 * float(U @ F_int)
-        return {"external_work": self._W, "elastic": E, "dissipated": self._W - E}
+        E = None
+        if self._stored_elements is not None:
+            # E = Σ_e E_e: ½·u_e·f_e salvo en los elementos que entregan su
+            # energía almacenada (interfaces; ADR 0043 §5).
+            E = 0.5 * float(U @ F_int)
+            if self._stored_elements:
+                E += _stored_energy_correction(self._stored_elements, U, self._read_trial)
+        return {"external_work": self._W, "elastic": E,
+                "dissipated": None if E is None else self._W - E}
 
     def finish_stopped(self, exc: BaseException) -> None:
         """Cierra la salida de un análisis detenido (``exc``) con el último
@@ -629,6 +679,48 @@ def _non_secant(el) -> list[str]:
     return [type(r).__name__ for r in refs if not getattr(r, "SECANT_UNLOADING", False)]
 
 
+def _stored_energy_split(elements, n_dofs: int) -> tuple[list, list[str]]:
+    """Elementos que entregan su energía almacenada (``Element.stored_energy``,
+    ADR 0043 §5) y nombres de los materiales cuya energía no se conoce: los de
+    esos elementos que no la definen y, en los demás, los que no descargan por
+    la secante (su término es ``½·u_e·f_e``, ADR 0038)."""
+    U0 = np.zeros(n_dofs)
+    known, unknown = [], set()
+    for el in elements:
+        try:
+            energy = el.stored_energy(U0)
+        except NotImplementedError:
+            unknown.update(type(m).__name__ for m in el.materials())
+            continue
+        if energy is None:
+            unknown.update(_non_secant(el))
+            continue
+        # Contrato de la pareja (ADR 0043 §5): quien entrega su energía da
+        # también el f_e del mismo estado; y G_e (force_matrix) es fija, de
+        # desplazamientos pequeños. Se comprueba aquí, al crear la columna, y
+        # no en el primer paso.
+        if not callable(getattr(el, "nodal_forces", None)):
+            raise TypeError(f"{type(el).__name__}(id={el.id}) define stored_energy sin "
+                            f"nodal_forces (ADR 0043 §5).")
+        if getattr(el, "GEOMETRICALLY_NONLINEAR", False) and _is_interface(el):
+            raise ValueError(
+                f"{type(el).__name__}(id={el.id}): las energías de la historia usan la matriz "
+                f"G_e de desplazamientos pequeños de las interfaces; con desplazamientos "
+                f"grandes no están disponibles.")
+        known.append(el)
+    return known, sorted(unknown)
+
+
+def _stored_energy_correction(elements, U: np.ndarray, trial: bool) -> float:
+    """``Σ_e (E_e − ½·u_e·f_e)`` de los elementos que entregan su energía: lo
+    que hay que sumar a ``½·U·F_int`` para tener ``Σ_e E_e``."""
+    total = 0.0
+    for el in elements:
+        u_e = U[el.get_global_dof_indices()]
+        total += el.stored_energy(U, trial) - 0.5 * float(u_e @ el.nodal_forces(trial))
+    return total
+
+
 class _ElementProbe:
     """Valores de una magnitud de elemento en los elementos de un selector:
     por punto de integración (esfuerzo, deformación, variable interna) o por
@@ -657,7 +749,7 @@ class _ElementProbe:
                                  "registran en análisis estáticos.")
             return
         if self.var in ("stress", "strain"):
-            dims = {el.STRAIN_DIM for el in ok}
+            dims = {point_quantity(el).dim for el in ok}
             if len(dims) != 1:
                 raise ValueError(f"{ctx}: elementos con distinto número de componentes {sorted(dims)}.")
             self.n_sigma = dims.pop()
@@ -677,6 +769,11 @@ class _ElementProbe:
             return f"la fuerza interna {self.var!r}"
         if self.var in ("stress", "strain"):
             return f"{'esfuerzos' if self.var == 'stress' else 'deformaciones'} por punto de integración"
+        if self.var in INTERFACE_VARS:
+            word = "el salto" if self.var == "jump" else "la tracción"
+            return (f"{word} de interfaz con la componente {self.component!r} (las interfaces de "
+                    f"superficie tienen n, s en 2D y n, s1, s2 en 3D; la adherencia de una "
+                    f"barra, n, s en 2D y n1, n2, s en 3D)")
         return f"la variable interna escalar {self.var!r}"
 
     def _supports(self, el) -> bool:
@@ -686,10 +783,21 @@ class _ElementProbe:
             except Exception:  # noqa: BLE001 — un elemento sin el contrato no lo admite
                 return False
             return ef is not None and self.var in ef.components
-        # Sólo elementos mecánicos con esfuerzos por punto de integración
-        # (sólidos y barras): no los térmicos (flujo) ni los marcos
-        # (resultantes de sección).
-        mechanical = (isinstance(getattr(el, "STRAIN_DIM", None), int)
+        if point_quantity(el).kind == JUMP:
+            # Interfaces (ADR 0043 §7): salto y tracción locales por punto y
+            # las variables escalares de su ley. JUMP implica LocalJumpElement
+            # (lo exige el barrido de elementos).
+            if self.var in INTERFACE_VARS:
+                return self.component in el.jump_components()
+            schema = getattr(getattr(el, "material", None), "STATE_SCHEMA", None) or {}
+            return tuple(schema.get(self.var, (None,))) == ()
+        if self.var in INTERFACE_VARS:
+            return False
+        # Sólo elementos de desplazamientos con esfuerzos por punto de integración
+        # (sólidos y barras): no los térmicos (flujo), ni las interfaces
+        # (salto y tracción en ejes locales), ni los marcos (resultantes de
+        # sección). Clasificación única: solidum.core.point_quantity.
+        mechanical = (point_quantity(el).kind == STRAIN
                       and not {"rx", "ry", "rz"} & set(getattr(el, "DOF_NAMES", ())))
         state = getattr(el, "state", None)
         if not mechanical or state is None or not len(getattr(state, "stresses", None) or ()):
@@ -714,6 +822,19 @@ class _ElementProbe:
             eps = np.vstack([np.atleast_2d(el.compute_gauss_state(U)["strain"])
                              for el in self.elements])
             return _component(eps, self.component, strain=True)
+        if self.var in INTERFACE_VARS:
+            # El salto, de U (cinemática, como la deformación); la tracción,
+            # del estado con que el análisis equilibró el paso.
+            out = []
+            for el in self.elements:
+                k = el.jump_components().index(self.component)
+                if self.var == "jump":
+                    out.append(np.asarray(el.jumps(el.get_local_displacements(U)))[:, k])
+                else:
+                    st = el.state
+                    out.append([float(np.atleast_1d(t)[k])
+                                for t in (st.stresses_trial if trial else st.stresses)])
+            return np.concatenate([np.asarray(v, dtype=float).reshape(-1) for v in out])
         # Elementos de una familia del ensamblaje por lotes: lectura directa de
         # sus arreglos de estado; el resto, elemento a elemento.
         parts_sig, parts_out, loose = [], [], []
@@ -784,12 +905,19 @@ class _ElementProbe:
 
 def _select_elements(dom, sel: dict, ctx: str) -> list:
     """Elementos de un selector ``id`` | ``ids`` | ``group`` (todos sus nodos
-    en el grupo físico) | ``where`` (condición sobre el centro); sin
-    selector, todos."""
+    en el grupo físico) | ``where`` (condición sobre el centro) |
+    ``interface`` (los elementos de la interfaz de ese nombre, ADR 0043 §7);
+    sin selector, todos."""
     if "id" in sel:
         ids = [sel["id"]]
     elif "ids" in sel:
         ids = list(sel["ids"])
+    elif "interface" in sel:
+        interfaces = getattr(dom, "interfaces", None) or {}
+        if sel["interface"] not in interfaces:
+            raise ValueError(f"{ctx}: interfaz {sel['interface']!r} inexistente. Disponibles (bloque "
+                             f"'interfaces'): {sorted(interfaces)}.")
+        ids = list(interfaces[sel["interface"]])
     elif "group" in sel:
         groups = getattr(dom, "physical_groups", None) or {}
         if sel["group"] not in groups:
@@ -838,34 +966,50 @@ class _ZoneEnergy:
 
     La suma sobre una partición del modelo da las energías del modelo
     completo (hasta el redondeo). Sólo elementos cuya fuerza interna es
-    ``∫Bᵀσ`` con la cinemática compilada (``BATCH_KINEMATICS``): los sólidos
-    isoparamétricos.
+    ``∫Bᵀσ`` con la cinemática compilada (``BATCH_KINEMATICS``), los sólidos
+    isoparamétricos, y los de interfaz, cuya fuerza es ``f_e = G_e·t_e``
+    (``LocalJumpElement.force_matrix``) y cuya energía almacenada la da la
+    ley (``stored_energy``, ADR 0043 §5) en vez de ``½·u_e·f_e``.
     """
 
     def __init__(self, writer, sel: dict, ctx: str, which: str):
         from solidum.math.batch.family import _has_own_state
         self.which = which
         elements = _select_elements(writer.domain, sel, ctx)
-        bad = [el.id for el in elements
-               if getattr(type(el), "BATCH_KINEMATICS", None) is None
+        bad = [el.id for el in elements if not _is_interface(el) and (
+               getattr(type(el), "BATCH_KINEMATICS", None) is None
                or getattr(el, "points", None) is None or _has_own_state(type(el))
-               or {"rx", "ry", "rz", "T"} & set(getattr(el, "DOF_NAMES", ()))]
+               or {"rx", "ry", "rz", "T"} & set(getattr(el, "DOF_NAMES", ())))]
+        large = [el.id for el in elements
+                 if _is_interface(el) and getattr(el, "GEOMETRICALLY_NONLINEAR", False)]
+        if large:
+            raise ValueError(f"{ctx}: las energías por zona usan la matriz G_e de "
+                             f"desplazamientos pequeños de las interfaces; con desplazamientos "
+                             f"grandes no están disponibles (elementos {large[:10]}).")
         if bad:
             raise ValueError(f"{ctx}: la energía por zona necesita sólidos isoparamétricos (fuerza "
-                             f"interna ∫Bᵀσ); no lo son los elementos {bad[:10]}.")
+                             f"interna ∫Bᵀσ) o elementos de interfaz; no lo son los elementos "
+                             f"{bad[:10]}.")
+        known = []
         if which != "external_work":
-            not_secant = sorted({name for el in elements for name in _non_secant(el)})
-            if not_secant:
+            known, unknown = _stored_energy_split(elements, writer.domain.total_dofs)
+            if unknown:
                 raise ValueError(
-                    f"{ctx}: la energía {which!r} usa E = ½·u·f_int, que sólo es la energía "
-                    f"elástica recuperable si los materiales descargan por la secante; no lo "
-                    f"hacen {not_secant[:6]}. El trabajo ('external_work') sí está disponible.")
+                    f"{ctx}: la energía {which!r} necesita la energía almacenada de cada elemento "
+                    f"de la zona. Los de interfaz la toman de su ley; los sólidos usan ½·u·f_int, "
+                    f"que sólo es la energía elástica recuperable si sus materiales descargan por "
+                    f"la secante. No se conoce para {unknown[:6]}. El trabajo ('external_work') "
+                    f"sí está disponible.")
         groups: dict = {}
         for el in elements:
-            pts, w = el.batch_quadrature()
-            key = (type(el), pts.shape, len(el.get_global_dof_indices()))
+            if _is_interface(el):
+                key = (type(el), el.force_matrix().shape)
+            else:
+                pts, w = el.batch_quadrature()
+                key = (type(el), pts.shape, len(el.get_global_dof_indices()))
             groups.setdefault(key, []).append(el)
-        self.groups = [_ZoneGroup(members) for members in groups.values()]
+        known_ids = {id(el) for el in known}
+        self.groups = [_ZoneGroup(members, known_ids) for members in groups.values()]
         for g in self.groups:
             if np.any(g.stresses(trial=False) != 0.0):
                 raise ValueError(f"{ctx}: la zona tiene esfuerzos iniciales: sus energías no se "
@@ -878,40 +1022,58 @@ class _ZoneEnergy:
             f = np.einsum("mij,mj->mi", g.G, g.stresses(trial))
             u = U[g.dofs]
             self.W += 0.5 * float(np.sum((f + g.f_prev) * (u - g.u_prev)))
-            E += 0.5 * float(np.sum(u * f))
+            if g.stored.any():
+                # Los que entregan su energía almacenada (ADR 0043 §5).
+                E += 0.5 * float(np.sum(u[~g.stored] * f[~g.stored]))
+                E += sum(el.stored_energy(U, trial)
+                         for el, s in zip(g.members, g.stored) if s)
+            else:
+                E += 0.5 * float(np.sum(u * f))
             g.f_prev, g.u_prev = f, u
         return {"external_work": self.W, "elastic": E, "dissipated": self.W - E}[self.which]
+
+
+def _is_interface(el) -> bool:
+    """Elemento de salto local con ``f_e = G_e·t_e`` (ADR 0043): ``JUMP``
+    implica ``LocalJumpElement`` (lo exige el barrido de elementos)."""
+    return point_quantity(el).kind == JUMP
 
 
 class _ZoneGroup:
     """Elementos de una zona con la misma clase y regla de integración:
     ``f_e = G_e·σ_e`` con ``G_e = [w_g·detJ_g·s·B_gᵀ]`` fijo (desplazamientos
-    pequeños) y ``σ_e`` los esfuerzos de sus puntos en fila."""
+    pequeños) y ``σ_e`` los esfuerzos de sus puntos en fila; en una interfaz,
+    ``G_e = [m_g·(W·R·B)_gᵀ]`` y ``σ_e`` las tracciones. ``stored[m]``: el
+    miembro ``m`` entrega su energía almacenada."""
 
-    def __init__(self, members: list):
+    def __init__(self, members: list, stored_ids=frozenset()):
         from solidum.math.batch.postprocess import family_of
         self.members = members
+        self.stored = np.array([id(el) in stored_ids for el in members], dtype=bool)
         el0 = members[0]
         cls = type(el0)
-        pts, w = el0.batch_quadrature()
-        dim = pts.shape[1]
-        n_sig = int(el0.STRAIN_DIM)
         self.dofs = np.array([el.get_global_dof_indices() for el in members], dtype=np.int64)
         n_dof = self.dofs.shape[1]
-        scale_attr = getattr(cls, "BATCH_SCALE", None)
-        B = np.zeros((n_sig, n_dof))
-        G = np.zeros((len(members), n_dof, len(pts) * n_sig))
-        for m, el in enumerate(members):
-            coords = np.ascontiguousarray(el.get_coordinate_matrix(ndim=dim), dtype=np.float64)
-            s = 1.0 if scale_attr is None else float(getattr(el, scale_attr))
-            # La regla de cada elemento (dos de la misma clase pueden tener
-            # reglas distintas con el mismo número de puntos).
-            pts_e, w_e = el.batch_quadrature()
-            for g, (pt, wg) in enumerate(zip(pts_e, w_e)):
-                detJ = cls.BATCH_KINEMATICS(np.ascontiguousarray(pt), coords, B)
-                G[m, :, g * n_sig:(g + 1) * n_sig] = (wg * detJ * s) * B.T
+        if _is_interface(el0):
+            G = np.array([el.force_matrix() for el in members])
+        else:
+            pts, w = el0.batch_quadrature()
+            dim = pts.shape[1]
+            n_sig = int(el0.STRAIN_DIM)
+            scale_attr = getattr(cls, "BATCH_SCALE", None)
+            B = np.zeros((n_sig, n_dof))
+            G = np.zeros((len(members), n_dof, len(pts) * n_sig))
+            for m, el in enumerate(members):
+                coords = np.ascontiguousarray(el.get_coordinate_matrix(ndim=dim), dtype=np.float64)
+                s = 1.0 if scale_attr is None else float(getattr(el, scale_attr))
+                # La regla de cada elemento (dos de la misma clase pueden tener
+                # reglas distintas con el mismo número de puntos).
+                pts_e, w_e = el.batch_quadrature()
+                for g, (pt, wg) in enumerate(zip(pts_e, w_e)):
+                    detJ = cls.BATCH_KINEMATICS(np.ascontiguousarray(pt), coords, B)
+                    G[m, :, g * n_sig:(g + 1) * n_sig] = (wg * detJ * s) * B.T
         self.G = G
-        self.n_flat = len(pts) * n_sig
+        self.n_flat = G.shape[2]
         self.f_prev = np.zeros((len(members), n_dof))
         self.u_prev = np.zeros((len(members), n_dof))
         self._family_of = family_of

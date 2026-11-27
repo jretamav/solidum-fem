@@ -79,6 +79,10 @@ class ModalSolver(LinearizedStateMixin):
     """
 
     PIPELINE_KIND = "modal"
+    #: Rigidez fija (ADR 0043, «Consecuencias»): ``True`` si el análisis usa una
+    #: rigidez que no se actualiza con el estado; entonces rechaza las leyes de
+    #: interfaz unilaterales (el contacto). Lo exige el barrido de solvers.
+    FIXED_STIFFNESS = True
 
     def __init__(
         self,

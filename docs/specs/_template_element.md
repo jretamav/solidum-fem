@@ -56,6 +56,8 @@ kind: element
 status: draft            # draft → implemented → validated
 
 interface:
+  # field: displacement  # por omisión; 'temperature' (térmico, declara flux_dim)
+  #                      # o 'interface' (salto en ejes locales, declara jump_dim)
   dof_names: [ux, uy]    # DOFs por nodo
   n_nodes: 0
   strain_dim: 0          # 1 axial · 3 plano (ε_xx, ε_yy, γ_xy) · 6 3D

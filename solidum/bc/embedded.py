@@ -361,8 +361,7 @@ class EmbeddedReinforcement:
                 interface_ids.append(iface.id)
                 next_element += 1
         domain.generated_nodes.update(node_ids)
-        if domain.total_dofs:
-            domain.generate_equation_numbers()
+        domain.renumber_if_numbered()
         length = float(np.sum(np.linalg.norm(np.diff(self.points, axis=0), axis=1)))
         return EmbeddedBar(tuple(node_ids), tuple(element_ids), tuple(host_ids),
                            np.array(xis), length, dofs, tuple(interface_ids))

@@ -76,6 +76,10 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 **Masa de nudo**. Masa concentrada declarada como dato del dominio en grados de libertad de nudos, traslacionales o rotacionales (`Domain.add_nodal_mass`, bloques YAML `nodal_masses*`). Es sólo inercia: no genera peso con `gravity`. ADR 0024.
 
+**Elemento de interfaz de espesor nulo**. Elemento sin volumen que une dos caras A y B de sólidos vecinos por pares de nodos (coincidentes o separados por una holgura inicial) y transmite entre ellas la tracción de un material de interfaz de superficie, en los ejes locales de la cara A: `Interface2D4`, `Interface2D6`, `Interface3D6`, `Interface3D8`. Lo crea el bloque YAML `interfaces` (`pair` o `split`). Lo usan el contacto con pares fijos y las grietas cohesivas de trayectoria conocida (ADR 0043).
+
+**Holgura inicial**. Distancia normal `g_0 = n·(x_B − x_A)` entre las dos caras de un par de un elemento de interfaz en la geometría de referencia. El elemento la mide y la ley recibe la holgura actual `g_0 + Δu_n`; sólo la admiten las leyes que declaran `ACCEPTS_INITIAL_GAP` (el contacto). Por debajo de `10⁻⁶·h` se toma como 0 (ADR 0043).
+
 **Material**. Ley constitutiva que, dada una deformación y un estado interno, devuelve el esfuerzo y el módulo tangente consistente. Su contrato declarativo está en `solidum/materials/`. Ver capítulo 4.
 
 **Material de interfaz**. Ley entre la tracción sobre una interfaz y el desplazamiento relativo entre sus dos lados, en el sistema local de la interfaz (normales primero): de superficie para grietas y juntas, de línea para barras embebidas. Familia propia (`InterfaceMaterialRegistry`, sección YAML `interface_materials`, base `InterfaceMaterial`). ADR 0033.

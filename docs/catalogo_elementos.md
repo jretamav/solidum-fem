@@ -794,6 +794,47 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la `B` té
 
 ---
 
+# Elementos de interfaz de espesor nulo ([ADR 0043](adr/0043-elementos-de-interfaz-de-espesor-nulo.md))
+
+Familia que une dos caras A y B de sólidos vecinos por pares de nodos y entrega a un **material de interfaz de superficie** ([ADR 0033](adr/0033-materiales-de-interfaz.md); [catálogo de materiales](catalogo_materiales.md)) el desplazamiento relativo en ejes locales. Usos: contacto con pares conocidos y desplazamientos pequeños (`ContactPenalty`) y grietas discretas con trayectoria conocida (`CohesiveDamageIsotropic`, `CohesiveDamageMixedMode`). No se declaran a mano: los crea el bloque YAML `interfaces` (`pair` entre dos grupos de contorno, `split` sobre un grupo interior cuyos nodos se duplican) o `solidum.mesh.pair_interfaces` / `split_interfaces`, con el tipo que corresponde a las caras.
+
+**Admisión (Reglas §1)**: estándar. Zienkiewicz-Taylor-Fox vol. 2 §4.11.2 y cap. 8, Belytschko-Liu-Moran cap. 10, de Borst et al. §7.1 y §13.1 (p. 434, interfaz cuadrática); Abaqus COH2D4/COH3D6/COH3D8, ANSYS CONTA178/INTER202/INTER203, DIANA cap. 33 (CL12I), Code_Aster (PLAN_JOINT), OpenSees `zeroLength`. Evidencia: `informes/bibliotecario/busqueda_contacto_2026-11-26.md` y `busqueda_interfaz_cuadratica_2026-11-26.md` (fuera del repositorio).
+
+**Contrato común** (base pública `InterfaceElement` en [solidum/elements/interface/_shared.py](../solidum/elements/interface/_shared.py), sobre `LocalJumpElement`, compartida con `BondSlipInterface`):
+
+- `STRAIN_DIM = None` y `JUMP_DIM` (2 o 3): la clasificación por punto (`solidum.core.point_quantity`) los trata como salto de interfaz, no como sólido. DOFs `ux, uy` (2D) o `ux, uy, uz` (3D). Sin masa ni rigidez propias.
+- Salto `g = g_0·e₁ + R·[−N ⊗ I | N ⊗ I]·u_e`, con `R` los ejes locales de la cara A en la referencia (`n, s` en 2D con `n` de A hacia B; `n, s1, s2` dextrógiros en 3D) y `g_0 = n·(x_B − x_A)` la holgura inicial (|g_0| ≤ 10⁻⁶·h → 0; interpenetración mayor, error; `g_0 ≠ 0` sólo con leyes `ACCEPTS_INITIAL_GAP`).
+- `f_e = Σ w_g J_g e Bᵀ t`, `K_e = Σ w_g J_g e Bᵀ T B`; `e` el espesor de los sólidos vecinos en 2D (iguales a los dos lados), 1 en 3D. Simétrica si la ley lo es.
+- Integración `nodal` (por omisión; pesos = área tributaria consistente `∫N_i J`, no acopla pares: contacto nodo a nodo, sin oscilación de la tracción, Schellekens y de Borst 1993) o `gauss`.
+- Energía almacenada `E_e = Σ w_g J_g e ψ_g` de la ley (`stored_energy`, ADR 0043 §5): la historia la usa en lugar de `½u_e·f_e`.
+- Salida: celda VTK propia, `Jump_<c>` / `Traction_<c>` y variables escalares de la ley por celda (media de los puntos; los códigos `STATE_CODES` no se promedian) y por punto; historia `var: jump | traction`, selector `interface: <nombre>`.
+- Con una ley unilateral (`IS_UNILATERAL`), sólo análisis no lineales: los de rigidez fija lo rechazan (`ensure_no_unilateral_interfaces`).
+- **Limitaciones**: desplazamientos y deslizamientos pequeños (pares, normal y ejes fijos); con holgura y fricción, un giro rígido `ω` da un deslizamiento espurio `−ω·g_0` de primer orden; con caras separadas, cara cuadrilátera muy alabeada (el par deja de estar sobre la normal); sin camino por lotes (18.7 µs por `BondSlipInterface`, medido en el plan); caras cuadráticas 3D sin elemento (sus pesos nodales consistentes en las esquinas son ≤ 0).
+- **Estado**: implementado y verificado (`teorico-solidum`, 2026-11-26: sin errores de física; ley, medidas, `g_0`, `f_e`, `K_e` y energía frente a una referencia independiente ≤ 1.2e-15). Validación con la escalera de la spec `Interface2D4` §7b (parcela de contacto, despegue, fricción, Hertz) pendiente.
+
+## Interface2D4 — interfaz 2D lineal (4 nodos)
+
+- Caras de 2 nodos: A = (1, 2), B = (3, 4), 4 frente a 1 y 3 frente a 2 (orden de COH2D4; celda VTK `quad`). Lados de `Quad4` y `Tri3`.
+- Nodal: `ξ = ±1`, pesos `L/2`; Gauss: 2 puntos.
+- Tests: [test_interface_elements.py](../tests/test_interface_elements.py) (parcela de contacto 2D con dos materiales, `g_0 = 0` y `g_0 > 0`, nodal y Gauss), [test_interface_generation.py](../tests/test_interface_generation.py), [test_interface_output.py](../tests/test_interface_output.py), [test_interface_energy.py](../tests/test_interface_energy.py).
+- Spec: [docs/specs/Interface2D4.md](specs/Interface2D4.md) (formulación de la familia). Archivo: [solidum/elements/interface/interface_2d.py](../solidum/elements/interface/interface_2d.py).
+
+## Interface2D6 — interfaz 2D cuadrática (6 nodos)
+
+- Caras de 3 nodos, rectas o curvas, con el orden «esquinas primero» de ANSYS INTER203 y Code_Aster: A = (1, 2, 5), B = (3, 4, 6); celda VTK 30 (`quad6`, que meshio 5.3.5 no escribe por sí solo: `ensure_meshio_cells`). Lados de `Quad8`, `Quad9` y `Tri6`.
+- Nodal: Simpson con el jacobiano del nodo, `e·w_i·J(ξ_i)` con `w = (1/3, 1/3, 4/3)` (en un lado recto, igual a `∫N_i J`; decisión del usuario del 2026-11-26); Gauss: 3 puntos. Cara degenerada (tangente invertida o peso nulo): error.
+- Tests: [test_interface_2d6.py](../tests/test_interface_2d6.py) (parcela exacta a 1e-9 con `Quad8`, `Quad9` y `Tri6`, nodal y Gauss, desde el YAML y con `pair`); [test_interface_patch.py](../tests/test_interface_patch.py) (interfaz parabólica bajo presión hidrostática: error ∝ 1/K_n).
+- Spec: [docs/specs/Interface2D6.md](specs/Interface2D6.md). Archivo: [solidum/elements/interface/interface_2d.py](../solidum/elements/interface/interface_2d.py).
+
+## Interface3D6 / Interface3D8 — interfaces 3D lineales (6 y 8 nodos)
+
+- `Interface3D6`: caras triangulares, A = (1, 2, 3), B = (4, 5, 6) (COH3D6, celda `wedge`); nodal en los vértices con `A/3` por nodo, Gauss de 3 puntos. Caras de `Tet4`.
+- `Interface3D8`: caras cuadriláteras, A = (1…4), B = (5…8) (COH3D8, celda `hexahedron`); nodal en las esquinas con el vector de área tributaria consistente `∫N_i n J = (a_ξ × a_η)(ξ_i/3, η_i/3)` como normal y medida de cada nodo (en cara plana, el área `∫N_i J`, exacta en caras no paralelogramo, a diferencia de Newton–Cotes; en cara alabeada, la normal que equilibra a los sólidos: decisión del usuario del 2026-11-26), Gauss 2×2 con los ejes en cada punto. Caras de `Hex8`.
+- Tests: [test_interface_patch.py](../tests/test_interface_patch.py) (parcela de contacto 3D con Hex8 y Tet4, nodal y Gauss, con y sin holgura; presión hidrostática a través de una cara alabeada de 7.2°), [test_interface_elements.py](../tests/test_interface_elements.py), [test_interface_generation.py](../tests/test_interface_generation.py).
+- Specs: [docs/specs/Interface3D6.md](specs/Interface3D6.md), [docs/specs/Interface3D8.md](specs/Interface3D8.md). Archivo: [solidum/elements/interface/interface_3d.py](../solidum/elements/interface/interface_3d.py).
+
+---
+
 ## Cómo añadir un elemento nuevo
 
 1. **Spec primero** — el usuario crea `docs/specs/<Nombre>.md` a partir de `docs/specs/_template_element.md` (especificación física + formulación + contrato YAML). Sin spec, la IA no escribe código.

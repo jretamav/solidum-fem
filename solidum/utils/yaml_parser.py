@@ -120,6 +120,7 @@ class YamlParser:
         'nodal_masses_by_coord', 'body_force', 'gravity',
         'tractions', 'tractions_by_group',
         'thermal_loads', 'solver', 'output', 'user_modules', 'stages', 'constraints',
+        'interfaces',
     })
     # Bloques de carga: los del nivel raíz y los de ``loads`` de cada etapa.
     _LOAD_KEYS = frozenset({
@@ -190,6 +191,7 @@ class YamlParser:
         self._parse_nodes(data)
         self._parse_families(data)
         self._parse_mesh_or_elements(data)
+        self._parse_interfaces(data)
         self._parse_constraints(data)
         self._parse_boundary_conditions(data)
         self._parse_linear_constraints(data)
@@ -470,6 +472,10 @@ class YamlParser:
 
         # --- Generadores de restricciones (ADR 0032) ---
         errors.extend(self._validate_constraints_shape(data.get('constraints')))
+
+        # --- Interfaces de espesor nulo (ADR 0043 §6) ---
+        errors.extend(self._validate_interfaces_shape(
+            data.get('interfaces'), known_ids.get('interface_materials', set()), has_mesh))
 
         # --- Masas de nudo (ADR 0024) ---
         errors.extend(self._validate_nodal_masses_shape(data, known_node_ids))
@@ -795,6 +801,13 @@ class YamlParser:
                 )
                 return {}
             cls = ElementRegistry.get(element)
+            from solidum.core.point_quantity import JUMP, point_quantity
+            if point_quantity(cls).kind == JUMP:
+                errors.append(
+                    f"{ctx}: '{element}' es un elemento de interfaz: lo crea el bloque "
+                    f"'interfaces' (pair o split) entre lados de los sólidos, no un grupo de la "
+                    f"malla.")
+                return {}
         refs = cls.REFERENCE_KWARGS if cls is not None else Element.REFERENCE_KWARGS
 
         kwargs = {}
@@ -851,6 +864,9 @@ class YamlParser:
             node = self.domain.get_node(node_id)
             if not node: 
                 raise ValueError(f"Nodo {node_id} no existe en la malla para aplicar condición de frontera.")
+            split_error = self._split_node_error(node_id, "boundary_conditions")
+            if split_error:
+                raise YamlValidationError([split_error])
             for dof, value in bc.items():
                 if dof != 'node_id':
                     node.fix_dof(dof, float(value))
@@ -970,6 +986,133 @@ class YamlParser:
             elif entry['type'] not in names:
                 errors.append(f"{ctx}: tipo {entry['type']!r} no registrado (admitidos: {names}).")
         return errors
+
+    # Claves de una entrada de ``interfaces`` (ADR 0043 §6).
+    _INTERFACE_KEYS = ('name', 'pair', 'split', 'material', 'integration', 'element')
+
+    @classmethod
+    def _validate_interfaces_shape(cls, block, material_ids: set, has_mesh: bool) -> list:
+        """Forma del bloque ``interfaces``: lista de entradas ``{name, pair |
+        split, material, integration}``. Lo que depende de la malla (grupos,
+        pares, lados interiores) lo comprueba la creación de las interfaces."""
+        if block is None:
+            return []
+        if not isinstance(block, list):
+            return ["interfaces: debe ser una lista de entradas {name, pair o split, material}."]
+        from solidum.elements.interface import INTEGRATIONS
+        errors = []
+        if block and not has_mesh:
+            errors.append("interfaces: necesitan una malla con grupos ('mesh'); los bloques "
+                          "'nodes'/'elements' no tienen grupos.")
+        names = set()
+        for i, entry in enumerate(block):
+            ctx = f"interfaces[{i}]"
+            if not isinstance(entry, dict):
+                errors.append(f"{ctx}: cada entrada debe ser un diccionario.")
+                continue
+            unknown = sorted(str(k) for k in entry if k not in cls._INTERFACE_KEYS)
+            if unknown:
+                errors.append(f"{ctx}: claves desconocidas {unknown}; se admiten "
+                              f"{list(cls._INTERFACE_KEYS)}.")
+            name = entry.get('name')
+            if not isinstance(name, str) or not name:
+                errors.append(f"{ctx}: falta 'name' (nombre de la interfaz; da los grupos "
+                              f"<name>_a y <name>_b).")
+            elif name in names:
+                errors.append(f"{ctx}: nombre repetido ({name!r}).")
+            else:
+                names.add(name)
+            ctx = f"interfaces[{i}] ({name})" if isinstance(name, str) else ctx
+            kinds = [k for k in ('pair', 'split') if k in entry]
+            if len(kinds) != 1:
+                errors.append(f"{ctx}: declare exactamente uno de 'pair: [grupo_a, grupo_b]' (dos "
+                              f"caras de contorno) o 'split: grupo' (lados interiores).")
+            elif kinds[0] == 'pair':
+                pair = entry['pair']
+                if (not isinstance(pair, list) or len(pair) != 2
+                        or not all(isinstance(g, str) for g in pair)):
+                    errors.append(f"{ctx}: 'pair' debe ser una lista de dos nombres de grupo "
+                                  f"[grupo_a, grupo_b]; se encontró {pair!r}.")
+            else:
+                split = entry['split']
+                if not (isinstance(split, str) or (isinstance(split, list) and split
+                                                   and all(isinstance(g, str) for g in split))):
+                    errors.append(f"{ctx}: 'split' debe ser un nombre de grupo o una lista de "
+                                  f"nombres; se encontró {split!r}.")
+            if 'material' not in entry:
+                errors.append(f"{ctx}: falta 'material' (id de 'interface_materials').")
+            elif isinstance(entry['material'], bool) or entry['material'] not in material_ids:
+                errors.append(f"{ctx}: material={entry['material']!r} no está declarado en "
+                              f"'interface_materials' (ids: {sorted(material_ids, key=str)}).")
+            integration = entry.get('integration', 'nodal')
+            if integration not in INTEGRATIONS:
+                errors.append(f"{ctx}: integration={integration!r}; se admite uno de "
+                              f"{list(INTEGRATIONS)}.")
+            if 'element' in entry:
+                from solidum.registry import ElementRegistry
+                from solidum.elements.interface import InterfaceElement
+                el = entry['element']
+                cls = ElementRegistry._items.get(el) if isinstance(el, str) else None
+                if not (isinstance(cls, type) and issubclass(cls, InterfaceElement)):
+                    errors.append(f"{ctx}: element={el!r} no es un elemento de interfaz "
+                                  f"registrado (opcional; por omisión, el de las caras).")
+        return errors
+
+    def _parse_interfaces(self, data: dict) -> None:
+        """Crea los elementos de interfaz del bloque ``interfaces`` (ADR 0043
+        §6), justo después de la malla y antes de ``constraints``: una barra
+        embebida debe atar sus restricciones a los nodos ya separados. Lo
+        creado queda en :attr:`applied_interfaces`, en el orden del bloque."""
+        from solidum.mesh.interfaces import pair_interfaces, split_interfaces
+        self.applied_interfaces = []
+        errors = []
+        for i, entry in enumerate(data.get('interfaces') or []):
+            where = f"interfaces[{i}] ({entry['name']})"
+            kwargs = dict(name=entry['name'], integration=entry.get('integration', 'nodal'),
+                          element=entry.get('element'))
+            law = self.family_objects['interface_materials'][entry['material']]
+            try:
+                if 'pair' in entry:
+                    made = pair_interfaces(self.domain, *entry['pair'], law, **kwargs)
+                else:
+                    made = split_interfaces(self.domain, entry['split'], law, **kwargs)
+            except ValueError as exc:
+                errors.append(f"{where}: {exc}")
+                continue
+            self.applied_interfaces.append(made)
+        if errors:
+            raise YamlValidationError(errors)
+
+    def _split_copies(self, node_id):
+        """Ids de todas las copias si ``node_id`` es uno de los nodos que
+        duplicó ``split`` (ADR 0043 §6); si no, ``None``."""
+        return self.domain.split_copies(node_id)
+
+    def _split_node_error(self, node_id, ctx: str) -> str | None:
+        """Error de una referencia por id a un nodo duplicado por ``split``:
+        no dice de qué lado es."""
+        ids = self._split_copies(node_id)
+        if ids is None:
+            return None
+        return (f"{ctx}: el nodo {node_id} se duplicó al separar una interfaz (nodos {list(ids)} "
+                f"en la misma posición, uno por lado); una referencia por id no dice a qué lado "
+                f"se aplica. Los grupos <nombre>_a y <nombre>_b de la interfaz tienen los nodos "
+                f"de cada lado.")
+
+    def _split_selection_error(self, node_ids, ctx: str, what: str) -> str | None:
+        """Error de una carga o una masa por grupo o por coordenada que toma
+        varias copias de un nodo duplicado: cada copia la recibiría entera y
+        en ese punto el modelo tendría el doble (o más) de lo declarado."""
+        if not getattr(self.domain, 'split_nodes', None):
+            return None
+        chosen = set(node_ids)
+        for original, ids in sorted(self.domain.split_nodes.items()):
+            if len(chosen & set(ids)) > 1:
+                return (f"{ctx}: selecciona {len(chosen & set(ids))} copias del nodo {original} "
+                        f"(nodos {list(ids)}, duplicado al separar una interfaz) y cada una "
+                        f"recibiría {what} entera. Los grupos <nombre>_a y <nombre>_b de la "
+                        f"interfaz tienen los nodos de cada lado.")
+        return None
 
     def _parse_constraints(self, data: dict) -> None:
         """Aplica los generadores de restricciones del bloque ``constraints``
@@ -1256,6 +1399,12 @@ class YamlParser:
                 except ValueError as exc:
                     errors.append(str(exc))
                     continue
+                split_error = (self._split_node_error(entry['node_id'], ctx)
+                               if block == 'nodal_masses' else
+                               self._split_selection_error([n.id for n in nodes], ctx, "la masa"))
+                if split_error:
+                    errors.append(split_error)
+                    continue
                 # Un error por entrada, no por nodo: un grupo puede tener cientos.
                 bad = [n for n in nodes if any(dof not in n.dofs for dof in masses)]
                 if bad:
@@ -1285,7 +1434,10 @@ class YamlParser:
         errors = []
         for role, ref in [('esclavo', slave)] + [('maestro', m) for m in masters]:
             node = self.domain.get_node(ref[0])
-            if node is None:
+            split_error = self._split_node_error(ref[0], f"{ctx}: el {role} {self._dof_label(ref)}")
+            if split_error:
+                errors.append(split_error)
+            elif node is None:
                 errors.append(f"{ctx}: el {role} {self._dof_label(ref)} no existe: "
                               f"no hay ningún nodo {ref[0]} en el modelo.")
             elif ref[1] not in node.dofs:
@@ -1382,6 +1534,38 @@ class YamlParser:
             self.point_loads_by_group = [{'group_name': k, **v} for k, v in p_loads_group.items()]
         else:
             self.point_loads_by_group = p_loads_group
+        if getattr(self.domain, 'split_nodes', None):
+            self._check_split_point_loads()
+
+    def _check_split_point_loads(self) -> None:
+        """Cargas puntuales sobre nodos duplicados por ``split`` (ADR 0043
+        §6): por id, ambiguas; por grupo o por coordenada, cada copia
+        recibiría la carga entera."""
+        errors = []
+        for i, load in enumerate((self.point_loads or []) + (self.point_loads_by_node or [])):
+            error = self._split_node_error(load.get('node_id'), f"point_loads[{i}]")
+            if error:
+                errors.append(error)
+        for i, spec in enumerate(self.point_loads_by_coord or []):
+            ctx = f"point_loads_by_coord[{i}]"
+            try:
+                ids = [n.id for n in self._nodes_by_coord(spec, context=ctx)]
+            except ValueError:
+                continue                    # el error de siempre, al construir F_ext
+            error = self._split_selection_error(ids, ctx, "la carga")
+            if error:
+                errors.append(error)
+        for i, loads in enumerate(self.point_loads_by_group or []):
+            ctx = f"point_loads_by_group[{i}]"
+            try:
+                ids = self._group_node_ids(loads.get('group_name'), ctx)
+            except ValueError:
+                continue
+            error = self._split_selection_error(ids, ctx, "la carga")
+            if error:
+                errors.append(error)
+        if errors:
+            raise YamlValidationError(errors)
 
     def _parse_body_force(self, data: dict):
         """Lee `body_force` y/o `gravity` del YAML (ADR 0008).

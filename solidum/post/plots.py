@@ -248,6 +248,9 @@ class ResultFiles:
 
 def _read_vtu(path: Path):
     import meshio
+
+    from solidum.utils.vtk_exporter import ensure_meshio_cells
+    ensure_meshio_cells()       # celdas de Solidum que meshio no sabe leer (Interface2D6)
     if not path.is_file():
         raise FileNotFoundError(f"No existe {path}: resuelva el modelo con write_output.")
     m = meshio.read(str(path))

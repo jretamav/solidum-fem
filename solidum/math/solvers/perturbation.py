@@ -22,6 +22,7 @@ import numpy as np
 from solidum.core.load_vector import as_load_vector, equivalent_loads_of
 from solidum.math.linalg import StiffnessProperties, select_solver
 from solidum.math.solvers._shared import _log, domain_is_symmetric
+from solidum.math.solvers.model_checks import ensure_no_unilateral_interfaces
 from solidum.math.solvers.stages import make_stage
 
 
@@ -44,6 +45,9 @@ def linear_perturbation(domain, assembler, solver, F_applied, previous):
     from solidum.results import build_solve_result
 
     name = type(solver).__name__
+    # El contacto requiere un análisis no lineal (ADR 0043): también sobre el
+    # estado de una etapa.
+    ensure_no_unilateral_interfaces(domain, name, "static")
     stage = make_stage(assembler, previous.U, previous.F_applied, name)
     u_b = stage.U0
     K_t, F_int_b = assembler.assemble_non_linear_system(u_b)

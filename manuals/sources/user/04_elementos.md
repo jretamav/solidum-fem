@@ -253,6 +253,23 @@ elements:
   - {id: 4, type: Tet10, material: 1, nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
 ```
 
+## Elementos de interfaz de espesor nulo
+
+Unen dos caras A y B por pares de nodos y transmiten entre ellas la tracción de un **material de interfaz de superficie** (`interface_materials`): contacto (`ContactPenalty`) o grieta cohesiva con trayectoria conocida (`CohesiveDamageIsotropic`, `CohesiveDamageMixedMode`). Goodman, Taylor y Brekke (1968); como los elementos cohesivos de Abaqus (COH2D4, COH3D6, COH3D8) y los de interfaz de ANSYS (INTER202, INTER203) y DIANA. No se declaran a mano: los crea el bloque `interfaces` a partir de dos grupos de contorno (`pair`) o de un grupo interior cuyos nodos se duplican (`split`), con el tipo que corresponde a las caras de la malla (capítulo *Archivo de Entrada YAML*).
+
+| Elemento | Caras | Nodos | Sólidos vecinos |
+|---|---|---|---|
+| `Interface2D4` | lado de 2 nodos | 4: A = (1, 2), B = (3, 4), 4 frente a 1 | `Quad4`, `Tri3` |
+| `Interface2D6` | lado de 3 nodos, recto o curvo | 6: esquinas primero, A = (1, 2, 5), B = (3, 4, 6) | `Quad8`, `Quad9`, `Tri6` |
+| `Interface3D6` | triángulo | 6: A = (1, 2, 3), B = (4, 5, 6) | `Tet4`, cara triangular |
+| `Interface3D8` | cuadrilátero | 8: A = (1…4), B = (5…8) | `Hex8` |
+
+- **Cinemática**: desplazamiento relativo $\Delta\mathbf u = \mathbf u_B - \mathbf u_A$ con las mismas funciones de forma en las dos caras, en ejes locales de la cara A en la geometría de referencia: $(n, s)$ en 2D, con $\mathbf n$ de A hacia B; $(n, s_1, s_2)$ dextrógiros en 3D. La ley recibe $g_n = g_0 + \mathbf n\cdot\Delta\mathbf u$ (con la holgura inicial $g_0$ medida en la geometría) y las componentes tangenciales. Desplazamientos pequeños: normal, ejes y pares no cambian durante el análisis.
+- **Sin masa ni rigidez propias**: todo lo pone la ley. $\mathbf f_e = \sum_g w_g J_g\,e\,\mathbf B_g^\top\mathbf t_g$ y $\mathbf K_e = \sum_g w_g J_g\,e\,\mathbf B_g^\top\mathbf T_g\mathbf B_g$, con $e$ el espesor en 2D (el de los sólidos vecinos) y 1 en 3D. La rigidez es simétrica si la ley lo es.
+- **Integración**: `nodal` por omisión (contacto nodo a nodo, peso de cada nodo igual a su área tributaria $\int N_i J$; en el lado curvo del `Interface2D6`, $e\,w_i\,J(\xi_i)$ con $w = (1/3, 1/3, 4/3)$; en la cara alabeada del `Interface3D8`, normal y área del vector $\int N_i\,\mathbf n\,J$, es decir, de $\mathbf a_\xi \times \mathbf a_\eta$ en $(\xi_i/3, \eta_i/3)$) o `gauss` (2, 3 o 2×2 puntos; en el `Interface2D6`, 3).
+- **Límites**: con holgura inicial y fricción, un giro rígido del conjunto produce un deslizamiento tangencial $-\omega\,g_0$, de primer orden (desplazamientos pequeños); con caras separadas, una cara cuadrilátera muy alabeada deja de tener el par sobre su normal; una interfaz abierta no aporta rigidez. Las caras cuadráticas 3D no tienen elemento todavía.
+- **Salida**: celda propia en el VTK con `Jump_*`, `Traction_*` y las variables de la ley (capítulo *Post-Procesamiento*); en la historia, `var: jump | traction` y el selector `interface: <nombre>`.
+
 ## Módulo de usuario `discontinuities`: elemento con discontinuidad embebida
 
 Formulación de **fractura computacional** de Retama (2010): el elemento materializa una discontinuidad interna $\Gamma_d$ cuando se cumple un criterio de activación, y enriquece su cinemática con un salto de desplazamientos $\llbracket u \rrbracket$ gobernado por un material cohesivo. Los grados de libertad del salto son **elementales**: se condensan dentro del elemento y nunca llegan al ensamblador, de modo que el tamaño del sistema global no cambia.

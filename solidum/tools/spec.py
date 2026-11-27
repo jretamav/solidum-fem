@@ -68,11 +68,25 @@ def valid_kinds() -> set:
     return set(Registry.spec_kinds())
 
 # Campo físico que gobierna un elemento. Determina qué declara su interfaz:
-# un elemento mecánico tiene `strain_dim` (dimensión Voigt de la deformación
-# que entrega al material); uno térmico no tiene deformación alguna, sino un
-# gradiente escalar. Declararlo explícitamente evita que la validación
-# presuponga que todo elemento es mecánico.
-VALID_FIELDS = {"displacement", "temperature"}
+# un elemento de desplazamientos tiene `strain_dim` (dimensión Voigt de la
+# deformación que entrega al material); uno térmico no tiene deformación
+# alguna, sino un gradiente escalar (`flux_dim`); uno de interfaz entrega el
+# salto en ejes locales (`jump_dim`, ADR 0043). Declararlo explícitamente
+# evita que la validación presuponga que todo elemento es de sólido.
+# Campo → (atributo de la clase, clave de la spec); el atributo es el de la
+# clasificación única de solidum.core.point_quantity.
+def _field_dimension() -> Dict[str, Tuple[str, str]]:
+    from solidum.core.point_quantity import FLUX, JUMP, STRAIN, PointQuantity
+    kinds = {"displacement": STRAIN, "temperature": FLUX, "interface": JUMP}
+    out = {}
+    for field, kind in kinds.items():
+        attr = PointQuantity(kind, None).attribute
+        out[field] = (attr, attr.lower())
+    return out
+
+
+FIELD_DIMENSION: Dict[str, Tuple[str, str]] = _field_dimension()
+VALID_FIELDS = set(FIELD_DIMENSION)
 DEFAULT_FIELD = "displacement"
 
 _YAML_BLOCK_RE = re.compile(r"```yaml\s*\n(.*?)\n```", re.DOTALL)
@@ -251,8 +265,10 @@ def _validate_element_interface(spec: Spec) -> None:
     Lo común a todo elemento —nodos, DOFs, puntos de integración— se exige
     siempre. Lo que depende de la física se pide por campo: un elemento de
     desplazamientos declara `strain_dim` (dimensión Voigt de la deformación
-    que entrega al material), mientras que uno térmico no tiene deformación
-    y declara `flux_dim` (dimensión del gradiente de temperatura, 2 ó 3).
+    que entrega al material), uno térmico no tiene deformación y declara
+    `flux_dim` (dimensión del gradiente de temperatura, 2 ó 3), y uno de
+    interfaz declara `jump_dim` (componentes del salto en ejes locales, 2 ó
+    3).
     """
     iface = spec.contract.get("interface") or {}
 
@@ -270,7 +286,7 @@ def _validate_element_interface(spec: Spec) -> None:
         "n_integration_points": int,
     }
     # Campo dimensional propio de cada física.
-    dim_key = {"displacement": "strain_dim", "temperature": "flux_dim"}[field]
+    dim_key = FIELD_DIMENSION[field][1]
     required[dim_key] = int
 
     for key, typ in required.items():
@@ -318,15 +334,21 @@ def cross_check_with_registry(spec: Spec) -> List[str]:
         return errors
 
     if spec.kind == "element":
+        from solidum.core.point_quantity import point_quantity
+
         cls = registry._items[spec.name]
         iface = spec.contract["interface"]
         # El atributo dimensional depende del campo físico: los elementos de
-        # desplazamientos declaran STRAIN_DIM; los térmicos, FLUX_DIM.
+        # desplazamientos declaran STRAIN_DIM; los térmicos, FLUX_DIM; los de
+        # interfaz, JUMP_DIM. La clase debe clasificarse en el mismo campo
+        # que declara la spec (clasificación única, ADR 0043 §3).
         field = iface.get("field", DEFAULT_FIELD)
-        dim_attr, dim_key = {
-            "displacement": ("STRAIN_DIM", "strain_dim"),
-            "temperature": ("FLUX_DIM", "flux_dim"),
-        }[field]
+        dim_attr, dim_key = FIELD_DIMENSION[field]
+        declared = point_quantity(cls).attribute
+        if declared != dim_attr:
+            errors.append(
+                f"{spec.path}: interface.field={field!r} pide {dim_attr}, pero "
+                f"{cls.__name__} declara {declared or 'ninguna magnitud por punto'}")
         for attr, key in (
             ("DOF_NAMES", "dof_names"),
             ("N_NODES", "n_nodes"),

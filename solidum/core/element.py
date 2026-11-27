@@ -54,7 +54,10 @@ class Element(ABC):
             1  → 1D (Truss, Frame; epsilon escalar)
             3  → Voigt 2D plano
             6  → Voigt 3D
-        Validado contra `material.STRAIN_DIM` al construir.
+        Validado contra `material.STRAIN_DIM` al construir. Los elementos
+        térmicos declaran ``FLUX_DIM`` y los de interfaz ``JUMP_DIM`` en su
+        lugar, con ``STRAIN_DIM = None``; el tipo de cada elemento lo da
+        :func:`solidum.core.point_quantity.point_quantity` (ADR 0043 §3).
     N_INTEGRATION_POINTS : ClassVar[int], default=1
         Puntos de Gauss del elemento. Determina el tamaño del ElementState.
     PRESERVES_SYMMETRY : ClassVar[bool], default=True
@@ -264,6 +267,12 @@ class Element(ABC):
             return
         mat_dim = getattr(self.material, "STRAIN_DIM", None)
         if mat_dim is None:
+            from solidum.core.interface_material import InterfaceMaterial
+            if isinstance(self.material, InterfaceMaterial) and isinstance(self.STRAIN_DIM, int):
+                raise ValueError(
+                    f"{type(self).__name__}(id={self.id}): {type(self.material).__name__} es una "
+                    f"ley de interfaz (tracción frente a salto), no un material de sólido; la "
+                    f"usan los elementos de interfaz y las restricciones que la declaran.")
             return
         if mat_dim != self.STRAIN_DIM:
             raise ValueError(
@@ -570,6 +579,27 @@ class Element(ABC):
             f"de masa elemental. Implementa el método en la subclase o "
             f"retira este elemento del modelo."
         )
+
+    # ------------------------------------------------------------------
+    # Energía almacenada (ADR 0038 y ADR 0043 §5)
+    # ------------------------------------------------------------------
+
+    def stored_energy(self, U_global: np.ndarray, trial: bool = False) -> float | None:
+        """Energía almacenada del elemento con el estado confirmado (o de
+        prueba, con ``trial``), o ``None`` si el elemento no la conoce por sí
+        mismo.
+
+        Con ``None`` (todos los elementos salvo los de interfaz), las energías
+        de la historia toman ``½·u_e·f_e``, que es la energía elástica
+        recuperable sólo si los materiales del elemento descargan por la
+        secante hasta el origen (``SECANT_UNLOADING``, ADR 0038). Un elemento
+        cuya energía no es ``½·u_e·f_e`` (fricción, holgura inicial) la
+        devuelve aquí y define además ``nodal_forces(trial)``, el ``f_e`` del
+        mismo estado, para que la salida pueda sustituir su término ``½·u_e·f_e``
+        (ADR 0043 §5). Si su material no la conoce, lanza
+        ``NotImplementedError``.
+        """
+        return None
 
     # ------------------------------------------------------------------
     # Peso propio (ADR 0008)

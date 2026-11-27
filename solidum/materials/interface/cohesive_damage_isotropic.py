@@ -83,6 +83,10 @@ class CohesiveDamageIsotropic(InterfaceMaterial):
     JUMP_DIM = 2
     PRIMARY_STATE_VAR = 'damage'
     IS_SYMMETRIC = True
+    STATE_SCHEMA = {
+        'kappa': (),        # máximo histórico del salto normal [m]
+        'damage': (),       # ω = 1 − T(κ)/(K_e·κ)
+    }
 
     SOFTENING_LINEAR = 'linear'
     SOFTENING_EXPONENTIAL = 'exponential'

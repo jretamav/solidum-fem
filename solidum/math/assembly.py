@@ -206,6 +206,14 @@ class Assembler:
         self.ndof = self.domain.total_dofs
         elements = list(self.domain.elements.values())
         self._elem_dof_indices = [self._get_element_global_indices(e) for e in elements]
+        for e, idx in zip(elements, self._elem_dof_indices):
+            if idx and min(idx) < 0:
+                # Un índice −1 leería en silencio el último grado de libertad.
+                raise ValueError(
+                    f"el elemento {e.id} tiene grados de libertad sin numerar (nodos "
+                    f"{[n.id for n in e.nodes if any(v < 0 for v in n.dofs.values())]}): el "
+                    f"modelo cambió después de numerarlo; llame a "
+                    f"domain.generate_equation_numbers() antes de ensamblar.")
         self._total_entries = sum(len(idx) ** 2 for idx in self._elem_dof_indices)
 
         self._release_families()
