@@ -1144,7 +1144,7 @@ Ambos criterios deben cumplirse \textbf{simultáneamente} (semántica AND) para 
 
 \textbf{Sin fuerzas.} Con control en desplazamiento desde el reposo no hay fuerzas en el primer ensamblaje: entonces la escala de fuerza es nula y el piso lo pone sólo el término de redondeo, que también se calcula con el modelo. Así converge en cualquier unidad un cuerpo que se mueve sin fuerza hasta tocar otro, como en un contacto con holgura (enmienda del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0007-tolerancias-convergencia-solvers.md}{ADR 0007}).
 
-\textbf{Límites del piso.} En un modelo muy mal condicionado ---una viga muy esbelta con cientos de elementos--- el redondeo supera a \texttt{rtol\_force} por la fuerza, y el paso se acepta en el límite de la doble precisión; el criterio de desplazamiento sigue exigiendo \texttt{rtol\_disp}. Los elementos corotacionales (\texttt{Truss2DCorot}, \texttt{Frame2DEulerCorot}) arrastran un redondeo que crece con las coordenadas del modelo, que el piso todavía no cubre: un análisis sin fuerzas con ellos, o un modelo con coordenadas muy grandes (UTM), puede detenerse.
+\textbf{Límites del piso.} En un modelo muy mal condicionado ---una viga muy esbelta con cientos de elementos--- el redondeo supera a \texttt{rtol\_force} por la fuerza, y el paso se acepta en el límite de la doble precisión; el criterio de desplazamiento sigue exigiendo \texttt{rtol\_disp}. El resultado no pierde precisión por ello: es el menor residuo que puede dejar un desplazamiento escrito en doble precisión. En un voladizo de 10 000 elementos el residuo aceptado vale el 4 \% de la carga, menos que el de la solución exacta redondeada (5.7 \%), y la flecha sale con un error de 4e-6. Los elementos corotacionales (\texttt{Truss2DCorot}, \texttt{Frame2DEulerCorot}) arrastran un redondeo que crece con las coordenadas del modelo, que el piso todavía no cubre: un análisis sin fuerzas con ellos, o un modelo con coordenadas muy grandes (UTM), puede detenerse.
 
 \textbf{Cuándo afinar}. Para la inmensa mayoría de análisis los defaults son suficientes. Considera ajustar:
 
@@ -4098,8 +4098,8 @@ El solver del sistema lineal se puede fijar también desde Python con el mismo p
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Usuario}\\[0.5em]
 Sigla del manual: \texttt{FF-MU}\\[0.5em]
-Compilado el 27 de noviembre de 2026, 12:16\\[0.5em]
-Commit Git: \texttt{d951c80}\\[1em]
+Compilado el 27 de noviembre de 2026, 12:48\\[0.5em]
+Commit Git: \texttt{61f9a0a}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/user/} mediante \texttt{python manuals/build\_user\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
