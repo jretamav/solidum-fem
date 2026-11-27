@@ -127,8 +127,12 @@ class YamlParser:
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord', 'point_loads_by_group',
         'body_force', 'gravity', 'tractions', 'tractions_by_group', 'thermal_loads',
     })
+    # Bloques de apoyos y desplazamientos impuestos: los del nivel raíz y los
+    # de cada etapa estática (ADR 0026 §7).
+    _BC_KEYS = ('boundary_conditions', 'boundary_conditions_by_node',
+                'boundary_conditions_by_coord', 'boundary_conditions_by_group')
     # Claves de una etapa (``stages``, ADR 0026 y 0029).
-    _STAGE_KEYS = frozenset({'name', 'loads', 'solver'})
+    _STAGE_KEYS = frozenset({'name', 'loads', 'solver', *_BC_KEYS})
     # Niveles que admite ``output.log_level`` (política del ADR 0025).
     _LOG_LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR')
     # Sub-bloques de ``thermal_loads``.
@@ -208,9 +212,20 @@ class YamlParser:
             self.stages = [
                 {'name': str(st.get('name', f"etapa {i + 1}")),
                  'loads': dict(st.get('loads') or {}),
+                 'boundary_conditions': {k: st[k] for k in self._BC_KEYS if st.get(k)},
                  'solver': dict(st['solver'])}
                 for i, st in enumerate(data['stages'])
             ]
+            # Al leer, no a media corrida: grupo, nodo o DOF inexistente en
+            # los apoyos de una etapa, etapa que no los admite, esclavo de una
+            # restricción lineal.
+            errors = self._stage_boundary_condition_errors()
+            if errors:
+                raise YamlValidationError(errors)
+        # Apoyos del nivel raíz: cada análisis por etapas empieza con ellos
+        # (las etapas los cambian en el dominio, ADR 0026 §7).
+        self._root_boundary_conditions = {nid: dict(n.boundary_conditions)
+                                          for nid, n in self.domain.nodes.items()}
         return self.domain
 
     def for_stage(self, stage: dict) -> "YamlParser":
@@ -227,6 +242,99 @@ class YamlParser:
         sp.solver_config = stage['solver']
         sp.stages = None
         return sp
+
+    def apply_stage_boundary_conditions(self, stage: dict, where: str) -> None:
+        """Aplica al dominio los apoyos y desplazamientos impuestos de una etapa
+        (ADR 0026 §7). El valor es el total al final de la etapa: el solver lo
+        hace crecer desde el que había al empezarla. Lo no declarado sigue como
+        estaba, así que lo que impone una etapa sigue en las siguientes."""
+        for node, dof, value in self._boundary_condition_targets(
+                stage.get('boundary_conditions') or {}, f"{where}."):
+            node.fix_dof(dof, value)
+
+    def restore_root_boundary_conditions(self) -> None:
+        """Devuelve el dominio a los apoyos del nivel raíz: cada análisis por
+        etapas empieza con ellos. Al terminar, el dominio queda con los de la
+        última etapa, los del estado final."""
+        root = self.__dict__.get('_root_boundary_conditions')
+        if root is None:            # lector sin parse(): nada que restaurar
+            return
+        for nid, node in self.domain.nodes.items():
+            node.boundary_conditions.clear()
+            node.boundary_conditions.update(root.get(nid, {}))
+
+    def stage_plan(self) -> list:
+        """Por etapa, ``(clase del solver, PIPELINE_KIND, perturbación)``, sin
+        construir el solver. Perturbación: un ``LinearSolver`` estático después
+        de una etapa que cambió el estado (ADR 0031); las modal, armónica y
+        espectral tampoco lo cambian."""
+        from solidum.math.solvers import LinearSolver
+        plan, has_state = [], False
+        for st in self.stages or []:
+            cls = SolverRegistry.get(st['solver'].get('type', 'LinearSolver'))
+            kind = getattr(cls, 'PIPELINE_KIND', 'static')
+            perturbation = kind == 'static' and has_state and issubclass(cls, LinearSolver)
+            plan.append((cls, kind, perturbation))
+            if kind in ('static', 'transient', 'thermal_transient') and not perturbation:
+                has_state = True
+        return plan
+
+    def stages_with_distributed_loads(self) -> list:
+        """Índices de las etapas con carga distribuida (de cuerpo o de
+        contorno), que da cargas equivalentes en los marcos (ADR 0027)."""
+        distributed = ('body_force', 'gravity', 'tractions', 'tractions_by_group')
+        return [i for i, st in enumerate(self.stages or [])
+                if any(st['loads'].get(k) for k in distributed)]
+
+    def _stage_boundary_condition_errors(self) -> list:
+        """Errores de los apoyos de las etapas, al leer: selector, nodo o DOF
+        inexistente; una etapa que no cambia el estado estático (en el tiempo,
+        modal, armónica, espectral o perturbación lineal: decisión física
+        pendiente); un grado de libertad esclavo de una restricción lineal."""
+        errors = []
+        slaves = {(s['slave'][0], s['slave'][1])
+                  for s in getattr(self.domain, 'linear_constraints', [])}
+        for i, (stage, (cls, kind, perturbation)) in enumerate(zip(self.stages, self.stage_plan())):
+            if not stage['boundary_conditions']:
+                continue
+            where = f"stages[{i}] ({stage['name']!r}, {cls.__name__})"
+            if kind != 'static' or perturbation:
+                what = "una perturbación lineal" if perturbation else f"un análisis {kind!r}"
+                errors.append(
+                    f"{where}: los apoyos y desplazamientos impuestos de una etapa sólo se "
+                    f"admiten en una etapa estática que cambia el estado; ésta es {what}. "
+                    f"Cambiarlos en ella es una decisión física pendiente (cómo varía el "
+                    f"valor impuesto en el tiempo, o sobre qué estado se linealiza). "
+                    f"Declárelos en el nivel raíz o en una etapa estática anterior.")
+            try:
+                targets = list(self._boundary_condition_targets(
+                    stage['boundary_conditions'], f"stages[{i}]."))
+            except (ValueError, YamlValidationError) as exc:
+                errors.append(str(exc))
+                continue
+            tied = sorted({(n.id, d) for n, d, _ in targets if (n.id, d) in slaves})
+            if tied:
+                errors.append(
+                    f"{where}: {tied[:6]} son esclavos de restricciones lineales "
+                    f"(linear_constraints o constraints); su valor lo dan sus maestros y no "
+                    f"pueden prescribirse además en la etapa.")
+        return errors
+
+    def stage_solver_classes(self) -> list:
+        """Clase del solver de cada etapa, sin construirlo (su ``PIPELINE_KIND``
+        dice el tipo de análisis)."""
+        return [cls for cls, _, _ in self.stage_plan()]
+
+    def stage_prescribed_dofs(self) -> set:
+        """Pares ``(nodo, dof)`` que alguna etapa prescribe (ADR 0026 §7), sin
+        aplicarlos: la historia admite su reacción aunque en el nivel raíz el
+        grado de libertad esté libre."""
+        pairs = set()
+        for i, stage in enumerate(self.stages or []):
+            for node, dof, _ in self._boundary_condition_targets(
+                    stage.get('boundary_conditions') or {}, f"stages[{i}]."):
+                pairs.add((node.id, dof))
+        return pairs
 
     @staticmethod
     def _load_user_modules(data: dict) -> list:
@@ -443,14 +551,7 @@ class YamlParser:
             )
 
         # --- Boundary conditions (por nodo) ---
-        for bc in (data.get('boundary_conditions', []) or []) + (data.get('boundary_conditions_by_node', []) or []):
-            if not isinstance(bc, dict):
-                continue
-            nid = bc.get('node_id')
-            if nid is None:
-                errors.append("boundary_conditions: una entrada no tiene 'node_id'.")
-            elif known_node_ids and nid not in known_node_ids:
-                errors.append(f"boundary_conditions: 'node_id={nid}' no existe en el bloque 'nodes'.")
+        errors.extend(self._validate_bc_node_refs(data, known_node_ids))
 
         # --- Cargas puntuales (por nodo) ---
         for load in (data.get('point_loads', []) or []) + (data.get('point_loads_by_node', []) or []):
@@ -498,11 +599,33 @@ class YamlParser:
         errors.extend(self._validate_solver_cfg(data.get('solver', {}), 'solver', data))
 
         # --- Etapas (ADR 0026 y 0029) ---
-        errors.extend(self._validate_stages(data))
+        errors.extend(self._validate_stages(data, known_node_ids))
 
         return errors
 
-    def _validate_stages(self, data: dict) -> list:
+    @staticmethod
+    def _validate_bc_node_refs(data: dict, known_node_ids: set, prefix: str = "") -> list:
+        """Forma de los apoyos por nodo del nivel raíz o de una etapa: cada
+        entrada con un ``node_id`` del bloque ``nodes`` (con malla externa los
+        ids se comprueban al aplicarlos)."""
+        errors = []
+        for key in ('boundary_conditions', 'boundary_conditions_by_node'):
+            block = data.get(key) or []
+            if not isinstance(block, list):
+                errors.append(f"{prefix}{key}: debe ser una lista de entradas "
+                              f"{{node_id, <dof>: valor}}.")
+                continue
+            for bc in block:
+                if not isinstance(bc, dict):
+                    continue
+                nid = bc.get('node_id')
+                if nid is None:
+                    errors.append(f"{prefix}{key}: una entrada no tiene 'node_id'.")
+                elif known_node_ids and nid not in known_node_ids:
+                    errors.append(f"{prefix}{key}: 'node_id={nid}' no existe en el bloque 'nodes'.")
+        return errors
+
+    def _validate_stages(self, data: dict, known_node_ids: set) -> list:
         """``stages``: lista de etapas ``{name, loads, solver}``. Con etapas, el
         solver y las cargas van en cada una: un ``solver`` o un bloque de
         cargas en el nivel raíz sería ambiguo."""
@@ -536,10 +659,17 @@ class YamlParser:
             if not isinstance(loads, dict):
                 errors.append(f"{ctx}.loads: debe ser un diccionario de bloques de carga.")
             else:
-                bad = sorted(str(k) for k in loads if k not in self._LOAD_KEYS)
+                bc_in_loads = sorted(str(k) for k in loads if k in self._BC_KEYS)
+                if bc_in_loads:
+                    errors.append(f"{ctx}.loads: {bc_in_loads} no son cargas; los apoyos y "
+                                  f"desplazamientos impuestos de la etapa van en la etapa, al "
+                                  f"nivel de 'loads' y 'solver'.")
+                bad = sorted(str(k) for k in loads
+                             if k not in self._LOAD_KEYS and k not in self._BC_KEYS)
                 if bad:
                     errors.append(f"{ctx}.loads: bloques desconocidos {bad}; se admiten "
                                   f"{sorted(self._LOAD_KEYS)}.")
+            errors.extend(self._validate_bc_node_refs(st, known_node_ids, f"{ctx}."))
             if not st.get('solver'):
                 errors.append(f"{ctx}: falta el bloque 'solver'.")
             else:
@@ -854,39 +984,55 @@ class YamlParser:
                 'explicit_element': 'element' in props}
 
     def _parse_boundary_conditions(self, data: dict):
+        for node, dof, value in self._boundary_condition_targets(data):
+            node.fix_dof(dof, value)
+
+    def _boundary_condition_targets(self, data: dict, prefix: str = ""):
+        """Ternas ``(nodo, dof, valor)`` de los bloques ``boundary_conditions*``
+        de ``data`` (el nivel raíz o una etapa, con ``prefix`` = ``stages[i].``
+        en los mensajes), sin aplicarlas."""
         bcs_data = data.get('boundary_conditions', []) or []
         bcs_by_node = data.get('boundary_conditions_by_node', []) or []
-        
+
+        def checked(node, dof, value, ctx):
+            if dof not in node.dofs:
+                raise ValueError(f"{ctx}: el DOF '{dof}' no existe en el nodo {node.id} "
+                                 f"(DOFs del nodo: {sorted(node.dofs)}).")
+            return node, dof, float(value)
+
         for bc in bcs_data + bcs_by_node:
+            ctx = f"{prefix}boundary_conditions"
             node_id = bc.get('node_id')
             if node_id is None:
-                raise ValueError("Falta 'node_id' en una condición de frontera.")
+                raise ValueError(f"{ctx}: falta 'node_id' en una condición de frontera.")
             node = self.domain.get_node(node_id)
-            if not node: 
-                raise ValueError(f"Nodo {node_id} no existe en la malla para aplicar condición de frontera.")
-            split_error = self._split_node_error(node_id, "boundary_conditions")
+            if not node:
+                raise ValueError(f"{ctx}: el nodo {node_id} no existe en la malla.")
+            split_error = self._split_node_error(node_id, ctx)
             if split_error:
                 raise YamlValidationError([split_error])
             for dof, value in bc.items():
                 if dof != 'node_id':
-                    node.fix_dof(dof, float(value))
+                    yield checked(node, dof, value, ctx)
 
+        ctx = f"{prefix}boundary_conditions_by_coord"
         for spec in self._normalize_coord_specs(data.get('boundary_conditions_by_coord', [])):
-            for node in self._nodes_by_coord(spec, context='boundary_conditions_by_coord'):
+            for node in self._nodes_by_coord(spec, context=ctx):
                 for dof, value in spec.items():
                     if dof not in self._COORD_KEYS:
-                        node.fix_dof(dof, float(value))
+                        yield checked(node, dof, value, ctx)
 
         bcs_group = data.get('boundary_conditions_by_group', [])
         if isinstance(bcs_group, dict):
             bcs_group = [{'group_name': k, **v} for k, v in bcs_group.items()]
-            
+
+        ctx = f"{prefix}boundary_conditions_by_group"
         for bcs in bcs_group or []:
-            for node_id in self._group_node_ids(bcs.get('group_name'), 'boundary_conditions_by_group'):
+            for node_id in self._group_node_ids(bcs.get('group_name'), ctx):
                 node = self.domain.get_node(node_id)
                 for dof, value in bcs.items():
                     if dof != 'group_name':
-                        node.fix_dof(dof, float(value))
+                        yield checked(node, dof, value, ctx)
 
     # ------------------------------------------------------------------
     # Selección de nodos por coordenada y por grupo físico

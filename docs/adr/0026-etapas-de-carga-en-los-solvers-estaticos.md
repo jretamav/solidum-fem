@@ -87,6 +87,21 @@ $$\mathbf f_\text{eq} = \mathbf f_\text{eq}^{\,c} + \lambda\,\mathbf f_\text{eq}
 - **Objetivo de la magnitud controlada dentro de una etapa.** Ampliado el 2026-11-09 (ADR 0025, §6): el sentido lo da el objetivo, así que una etapa también puede descargar hasta un valor menor que el de partida.
 - **Etapas en los análisis en el tiempo, en el lineal y en el térmico**: las de los análisis en el tiempo (mecánicos y térmico) las resuelve el ADR 0029 (2026-11-09). El `LinearSolver` sobre el estado de una etapa es una perturbación lineal pendiente de una decisión física (qué rigidez usa).
 
+### 7. Apoyos y desplazamientos impuestos de una etapa desde el YAML (ampliación del 2026-11-27)
+
+Hueco del reporte de validación del contacto (`informes/reportes/reporte_contacto_2026-11-27.pdf`): una etapa del YAML no podía cambiar un desplazamiento impuesto, así que la carga y descarga con desplazamiento impuesto se armaba con una carga puntual, control indirecto, ataduras y un resorte en paralelo, y la trayectoria en L de la fricción 3D no se podía imponer. El §2 ya lo resolvía desde Python; faltaba la sintaxis.
+
+- Una etapa estática admite los bloques `boundary_conditions_by_node`, `boundary_conditions_by_coord` y `boundary_conditions_by_group` (y `boundary_conditions`), con la sintaxis del nivel raíz, al nivel de `loads` y `solver`. Dentro de `loads` son un error explicativo: no son cargas.
+- **El valor es el total** al final de la etapa (decisión del usuario, 2026-11-27): se aplica al dominio antes de la etapa y el §2 lo hace crecer con λ desde el valor de partida, también en un grado de libertad que estaba libre (parte de su valor actual, sin salto). Es lo de Abaqus (total, rampa lineal en un paso estático «from the value at the end of the previous step»), ANSYS (`D` total, `KBC,0` en rampa), OpenSees y Code_Aster por omisión (*leído*, `informes/bibliotecario/busqueda_apoyos_entre_etapas_2026-11-27.md`). Diferencia: ANSYS hace crecer desde cero una restricción nueva sobre un grado de libertad que se movía, lo que puede dar un salto; Solidum parte del valor actual. Se descartó el valor como incremento sobre el anterior (sólo Code_Aster lo ofrece, como opción `DIDI`): un error en una etapa se arrastraría a todas las siguientes y la API de Python ya usaba el total.
+- **Lo que impone una etapa sigue** en las siguientes mientras otra no lo cambie (el dominio conserva el valor), como en Abaqus y ANSYS.
+- Se aplican **antes de construir el solver** de la etapa: lo que éste valide sobre los grados de libertad libres (el control indirecto) ve los de la etapa.
+- En una etapa en el tiempo, modal, armónica, espectral o de perturbación lineal (ADR 0031) es un error: cómo varía el valor impuesto en el tiempo, o sobre qué estado se linealiza con otros apoyos, son decisiones físicas pendientes.
+- Errores **al leer el YAML**, antes de correr ninguna etapa y con la etapa en el mensaje: los apoyos en una etapa que no los admite, un nodo, grupo o grado de libertad inexistente y un grado de libertad esclavo de una restricción lineal. `YamlParser.stage_plan()` da por etapa la clase del solver, su tipo y si es perturbación; lo usan la validación y el despacho, así que la regla vive en un solo lugar.
+- **Cada análisis empieza con los apoyos del nivel raíz** (`restore_root_boundary_conditions`, con los guardados al leer) y termina con los de la última etapa, los del estado final: un segundo `solve()` del mismo modelo da lo mismo que el primero.
+- **Liberar un apoyo** en una etapa (qué pasa con su reacción) no se admite todavía: es una decisión física pendiente. Los códigos no coinciden (*leído*): Abaqus sustituye la reacción por una fuerza igual que baja a cero en línea recta a lo largo del paso estático; ANSYS la quita de golpe por omisión (`DDELE`), y en rampa sólo con `DDELE,…,FORCE`; Code_Aster y OpenSees no lo documentan.
+
+La historia de la salida con etapas (reacciones y energías) la amplía el ADR 0036 («Ampliación del 2026-11-27»).
+
 ## Verificación (criterios de aceptación)
 
 - **P-Δ por etapas.** Voladizo corrotacional de 20 fibras con P = 0.3·P_cr y H = 1e4 N:

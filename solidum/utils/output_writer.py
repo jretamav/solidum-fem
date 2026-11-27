@@ -23,11 +23,18 @@ junto al YAML:
 - las figuras de ``plots`` (ADR 0039), dibujadas al terminar con los archivos
   anteriores (:mod:`solidum.post`).
 
-La reacción de un paso es ``F_int(U) − factor·F`` en los grados de libertad
-prescritos (sin restricciones multipunto de apoyo), la del ADR 0004 §3; sólo
-en los análisis estáticos.
+La reacción de un paso es ``F_int(U) − F`` en los grados de libertad
+prescritos (sin restricciones multipunto de apoyo), la del ADR 0004 §3, con
+``F`` la carga aplicada del paso: ``factor·F_ref`` o, en una etapa,
+``F_c + λ·F_ref`` (ADR 0026); sólo en los análisis estáticos.
 
-Energías (análisis estáticos sin etapas; ADR 0038). En equilibrio, la fuerza
+Con etapas (``stages``) la historia lleva además la columna ``stage``, el
+número de la etapa (desde 1); ``factor`` es el λ de la etapa, que vuelve a
+empezar en 0 en cada una. Las reacciones y las energías se registran si
+ninguna etapa es en el tiempo; la reacción de un grado de libertad que en esa
+etapa todavía está libre es una celda vacía («no aplica»).
+
+Energías (análisis estáticos, también por etapas; ADR 0038). En equilibrio, la fuerza
 que el exterior (cargas y apoyos) ejerce sobre la estructura es
 ``F_int(U)``, así que:
 
@@ -134,8 +141,8 @@ def validate_output_block(output) -> list[str]:
             errors.append(f"{ctx}: se esperaba un diccionario.")
             continue
         name = col.get("name")
-        if not isinstance(name, str) or not name or name in ("step", "factor") or name in names:
-            errors.append(f"{ctx}.name: se esperaba un nombre único (no 'step' ni 'factor').")
+        if not isinstance(name, str) or not name or name in ("step", "stage", "factor") or name in names:
+            errors.append(f"{ctx}.name: se esperaba un nombre único (no 'step', 'stage' ni 'factor').")
         names.add(name)
         kinds = [k for k in _COLUMN_KINDS if k in col]
         if len(kinds) != 1:
@@ -252,10 +259,23 @@ class OutputWriter:
         Carga de referencia del análisis (la que escala el factor de carga).
     static : bool
         ``True`` si el análisis es estático (las reacciones de la historia
-        sólo se definen ahí).
+        sólo se definen ahí); con etapas, si ninguna es en el tiempo.
+    staged : bool
+        ``True`` en un análisis por etapas: la historia lleva la columna
+        ``stage`` (número de la etapa, desde 1) y la carga de cada etapa la da
+        :meth:`begin_stage`.
+    stage_prescribed : set, optional
+        Pares ``(nodo, dof)`` que prescribe alguna etapa (ADR 0026 §7): su
+        reacción se admite aunque estén libres en el nivel raíz.
+    stage_distributed_loads : bool
+        ``True`` si alguna etapa tiene carga distribuida: con una etapa en el
+        tiempo, las fuerzas internas de marco de la historia serían sin su
+        carga equivalente, y se rechazan.
     """
 
-    def __init__(self, domain, assembler, output_config: dict, yaml_path, F_ext, *, static: bool = True):
+    def __init__(self, domain, assembler, output_config: dict, yaml_path, F_ext, *,
+                 static: bool = True, staged: bool = False, stage_prescribed: set | None = None,
+                 stage_distributed_loads: bool = False):
         self.domain, self.assembler = domain, assembler
         cfg = output_config or {}
         yaml_path = Path(yaml_path)
@@ -265,7 +285,17 @@ class OutputWriter:
         from solidum.core.load_vector import equivalent_loads_of
         self.equivalent_loads = equivalent_loads_of(F_ext)
         self.F_ext = np.zeros(domain.total_dofs) if F_ext is None else np.asarray(F_ext, dtype=float)
+        # Carga aplicada de un paso: F_const + factor·F_ext (ADR 0026); sin
+        # etapas, F_const = 0. Cargas equivalentes por elemento de cada parte
+        # (ADR 0027), para las fuerzas internas de la historia.
+        self.F_const = np.zeros(domain.total_dofs)
+        self._eq_const = None
+        self._eq_ref = self.equivalent_loads
         self.static = bool(static)
+        self.staged = bool(staged)
+        self.stage = None
+        self._stage_prescribed = set(stage_prescribed or ())
+        self._stage_distributed_loads = bool(stage_distributed_loads)
         self._W = 0.0
         self._U_prev = None
         self._F_prev = None
@@ -296,7 +326,41 @@ class OutputWriter:
             hist = cfg["history"]
             self.history_path = self.base_dir / (hist.get("file") or f"{self.base_name}_historia.csv")
             with open(self.history_path, "w", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow(["step", "factor", *[c["name"] for c in self.columns]])
+                csv.writer(f).writerow(["step", *(["stage"] if self.staged else []), "factor",
+                                        *[c["name"] for c in self.columns]])
+
+    def begin_stage(self, number: int, F_constant=None, F_reference=None) -> None:
+        """Empieza la etapa ``number`` (desde 1) de un análisis por etapas.
+
+        En una etapa estática la carga aplicada de un paso es ``F_constant +
+        λ·F_reference`` (ADR 0026): la de las etapas anteriores, constante, y
+        la de ésta, que crece con λ; con ella se calculan las reacciones y las
+        fuerzas internas con carga distribuida. En una etapa en el tiempo,
+        ``None, None``. El trabajo externo y las energías siguen acumulándose
+        de una etapa a otra: la regla del trapecio usa ``F_int``, que no
+        depende de cómo se reparta la carga."""
+        from solidum.core.load_vector import equivalent_loads_of
+        n = self.domain.total_dofs
+        self.stage = int(number)
+        self.F_const = np.zeros(n) if F_constant is None else np.asarray(F_constant, dtype=float)
+        self.F_ext = np.zeros(n) if F_reference is None else np.asarray(F_reference, dtype=float)
+        self._eq_const = equivalent_loads_of(F_constant)
+        self._eq_ref = equivalent_loads_of(F_reference)
+
+    def _applied(self, factor: float) -> np.ndarray:
+        """Carga aplicada del paso: ``F_const + factor·F_ext``."""
+        return self.F_const + factor * self.F_ext
+
+    def element_equivalent_load(self, element_id: int, factor: float):
+        """Carga equivalente de la carga distribuida del elemento en el paso
+        (ADR 0027): la constante más ``factor`` veces la de referencia;
+        ``None`` si el elemento no tiene."""
+        parts = []
+        if self._eq_const is not None and (c := self._eq_const.get(element_id)) is not None:
+            parts.append(np.asarray(c, dtype=float))
+        if self._eq_ref is not None and (r := self._eq_ref.get(element_id)) is not None:
+            parts.append(factor * np.asarray(r, dtype=float))
+        return sum(parts) if parts else None
 
     # ------------------------------------------------------------------
     def _check_field_names(self) -> None:
@@ -379,7 +443,8 @@ class OutputWriter:
                              "scale": float(col.get("scale", 1.0))})
                 continue
             if kind == "reaction" and not static:
-                raise ValueError(f"{ctx}: la reacción sólo se registra en análisis estáticos.")
+                raise ValueError(f"{ctx}: la reacción sólo se registra en análisis estáticos "
+                                 f"(con etapas, si ninguna es en el tiempo).")
             sel = col[kind]
             nodes = self._nodes_of(sel, ctx)
             dof = sel["dof"]
@@ -388,19 +453,38 @@ class OutputWriter:
                 raise ValueError(f"{ctx}: los nodos {lacking[:10]} no tienen el grado de libertad {dof!r}.")
             dofs = np.array([n.dofs[dof] for n in nodes], dtype=int)
             if kind == "reaction":
-                free = [n.id for n in nodes if dof not in n.boundary_conditions]
+                # Con etapas basta que alguna lo prescriba (ADR 0026 §7): donde
+                # está libre, F_int − F es el residuo de equilibrio (≈ 0).
+                free = [n.id for n in nodes if dof not in n.boundary_conditions
+                        and (n.id, dof) not in self._stage_prescribed]
                 if free:
+                    where = " (en el nivel raíz o en alguna etapa)" if self.staged else ""
                     raise ValueError(f"{ctx}: la reacción necesita '{dof}' prescrito en todos los nodos "
-                                     f"del selector; libres: {free[:10]}.")
-            cols.append({"name": col["name"], "kind": kind, "dofs": dofs,
+                                     f"del selector{where}; libres: {free[:10]}.")
+            cols.append({"name": col["name"], "kind": kind, "dofs": dofs, "nodes": nodes,
+                         "dof": dof,
                          "reduce": _REDUCE[sel.get("reduce", "mean") if kind == "displacement" else "sum"],
                          "scale": float(col.get("scale", 1.0))})
         return cols
 
+    @staticmethod
+    def _reaction(c, F_int, F_applied):
+        """Reacción sumada de la columna ``c`` en los nodos donde el grado de
+        libertad está prescrito ahora; ``None`` si en ninguno (una etapa
+        anterior a la que lo prescribe: no hay apoyo, y ``F_int − F`` sería
+        sólo el residuo del equilibrio)."""
+        on = np.array([c["dof"] in n.boundary_conditions for n in c["nodes"]], dtype=bool)
+        if not on.any():
+            return None
+        dofs = c["dofs"][on]
+        return np.sum(F_int[dofs] - F_applied[dofs])
+
     def _energy_column(self, col, ctx, static):
         which = col["energy"]
         if not static:
-            raise ValueError(f"{ctx}: las energías sólo se registran en análisis estáticos sin etapas.")
+            raise ValueError(f"{ctx}: las energías sólo se registran en análisis estáticos (con "
+                             f"etapas, si ninguna es en el tiempo: la energía cinética y la "
+                             f"amortiguada no entran en la cuenta).")
         if "elements" in col:
             return {"name": col["name"], "kind": "zone_energy",
                     "zone": _ZoneEnergy(self, col["elements"], ctx, which),
@@ -461,7 +545,7 @@ class OutputWriter:
         if self._want_vtk(n, factor):
             from solidum.utils.vtk_exporter import VtkExporter
             name = f"{self.base_name}_{n:04d}.vtu"
-            VtkExporter(self.domain).export(str(self.base_dir / name), U, self.F_ext * factor,
+            VtkExporter(self.domain).export(str(self.base_dir / name), U, self._applied(factor),
                                             self.n_vars, self.e_vars)
             self.pvd.append((factor, name))
             if self.integration_points:
@@ -470,7 +554,7 @@ class OutputWriter:
                         str(self.base_dir / name), U, trial=self._read_trial):
                     self.pvd_points.append((factor, name))
         if self.columns:
-            row = [n, factor]
+            row = [n, *([self.stage] if self.staged else []), factor]
             F_int = None
             if self._read_trial:
                 # Análisis sin estado confirmado (lineal): las magnitudes de
@@ -481,18 +565,20 @@ class OutputWriter:
                 # La F_int del paso confirmado, sin reensamblar (ADR 0040).
                 F_int = self.assembler.internal_forces_at(U)
             energies = self._energies(U, F_int) if self._F_prev is not None else None
+            F_applied = self._applied(factor)
             for c in self.columns:
                 if c["kind"] == "displacement":
                     val = c["reduce"](U[c["dofs"]])
                 elif c["kind"] == "reaction":
-                    val = np.sum(F_int[c["dofs"]] - factor * self.F_ext[c["dofs"]])
+                    val = self._reaction(c, F_int, F_applied)
                 elif c["kind"] == "energy":
                     val = energies[c["energy"]]
                 elif c["kind"] == "zone_energy":
                     val = c["zone"].value(U, self._read_trial)
                 else:
                     val = c["reduce"](c["probe"].values(U, factor, self._read_trial))
-                row.append(f"{c['scale'] * float(val):.10g}")
+                # Celda vacía: «no aplica» (las figuras la leen como NaN, un hueco).
+                row.append("" if val is None else f"{c['scale'] * float(val):.10g}")
             with open(self.history_path, "a", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(row)
         if self.export_text:
@@ -555,7 +641,8 @@ class OutputWriter:
             _write_pvd(self.base + ".pvd", self.pvd)
         if self.pvd_points:
             _write_pvd(self.base + "_puntos.pvd", self.pvd_points)
-        VtkExporter(self.domain).export(self.base + "_final.vtu", U, self.F_ext * factor, self.n_vars, self.e_vars)
+        VtkExporter(self.domain).export(self.base + "_final.vtu", U, self._applied(factor),
+                                        self.n_vars, self.e_vars)
         if self.integration_points:
             VtkExporter(self.domain).export_integration_points(
                 self.base + "_puntos_final.vtu", U, trial=self._read_trial)
@@ -584,6 +671,7 @@ class OutputWriter:
         from solidum.utils.vtk_exporter import element_average_stress, von_mises
         n_vars = self.text_cfg.get("nodal_results", [])
         e_vars = self.text_cfg.get("element_results", [])
+        F = self._applied(factor)
         nodes = {}
         for nid in self._sel("nodes", self.domain.nodes):
             node = self.domain.nodes.get(nid)
@@ -593,7 +681,7 @@ class OutputWriter:
             if not n_vars or "Displacements" in n_vars:
                 entry["U"] = tuple(U[node.dofs[d]] if d in node.dofs else 0.0 for d in ("ux", "uy"))
             if not n_vars or "External_Forces" in n_vars:
-                entry["F"] = tuple(self.F_ext[node.dofs[d]] * factor if d in node.dofs else 0.0
+                entry["F"] = tuple(F[node.dofs[d]] if d in node.dofs else 0.0
                                    for d in ("ux", "uy"))
             nodes[nid] = entry
         elems = {}
@@ -744,9 +832,14 @@ class _ElementProbe:
         if self.var in FORCE_COMPONENTS:
             loads = writer.equivalent_loads
             self.f_eq = {el.id: (None if loads is None else loads.get(el.id)) for el in ok}
-            if not static and any(v is not None for v in self.f_eq.values()):
+            if not static and (any(v is not None for v in self.f_eq.values())
+                               or writer._stage_distributed_loads):
+                # Con etapas, las cargas de cada una no se conocen aquí: basta
+                # que alguna tenga carga distribuida (la constante de una etapa
+                # estática sigue en la etapa en el tiempo).
                 raise ValueError(f"{ctx}: las fuerzas internas con carga distribuida sólo se "
-                                 "registran en análisis estáticos.")
+                                 "registran en análisis estáticos (con etapas, si ninguna es en "
+                                 "el tiempo).")
             return
         if self.var in ("stress", "strain"):
             dims = {point_quantity(el).dim for el in ok}
@@ -814,8 +907,10 @@ class _ElementProbe:
         if self.var in FORCE_COMPONENTS:
             out = []
             for el in self.elements:
-                f_eq = self.f_eq[el.id]
-                ef = el.internal_forces(U, equivalent_load=None if f_eq is None else factor * f_eq)
+                # La del paso: constante de las etapas anteriores más factor
+                # veces la que crece (ADR 0026 §5, 0027).
+                ef = el.internal_forces(
+                    U, equivalent_load=self.writer.element_equivalent_load(el.id, factor))
                 out.append(float(ef.components[self.var][self.end]))
             return np.array(out)
         if self.var == "strain":

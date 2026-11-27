@@ -561,27 +561,46 @@ def run_response_spectrum(
     return result
 
 
-def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
+def _run_yaml_stages(parser, domain, assembler, step_callback, on_stage=None) -> StagedResult:
     """Etapas del YAML (``stages``): cada una continúa la anterior (ADR 0026
     para las estáticas, ADR 0029 para las en el tiempo). Una etapa estática
-    hace crecer sus cargas con λ manteniendo constantes las ya aplicadas; una
-    etapa en el tiempo aplica sus cargas como escalón desde su instante
-    inicial, sobre la carga constante de las anteriores."""
+    hace crecer sus cargas con λ manteniendo constantes las ya aplicadas, y
+    sus desplazamientos impuestos, desde el valor que tenían hasta el que
+    declara (ADR 0026 §7); una etapa en el tiempo aplica sus cargas como
+    escalón desde su instante inicial, sobre la carga constante de las
+    anteriores.
+
+    ``on_stage(número, F_constante, F_referencia)`` (opcional) se llama antes
+    de cada etapa con pasos: la estática que cambia el estado, con su carga
+    constante (``None`` en la primera) y la que crece con λ; la en el tiempo,
+    con ``None, None``. Lo usa la historia de la salida (ADR 0036).
+
+    Empieza con los apoyos del nivel raíz y termina con los de la última
+    etapa (los del estado final); que una etapa los admita lo comprobó el
+    lector al leer el archivo."""
     names, results = [], []
     previous = None
-    for i, stage in enumerate(parser.stages):
+    parser.restore_root_boundary_conditions()
+    for i, (stage, (cls, kind, perturbation)) in enumerate(zip(parser.stages, parser.stage_plan())):
+        where = f"stages[{i}] ({stage['name']!r}, {cls.__name__})"
+        if kind == "static" and previous is not None and not isinstance(previous, SolveResult):
+            raise ValueError(
+                f"{where}: una etapa estática no puede continuar un análisis en el "
+                f"tiempo (qué carga se mantiene y qué pasa con la velocidad son "
+                f"decisiones físicas pendientes); sólo continúa otra estática.")
+        if stage.get("boundary_conditions"):
+            # Antes de construir el solver: lo que valide sobre los grados de
+            # libertad libres (p. ej. el control indirecto) ve los de la etapa.
+            parser.apply_stage_boundary_conditions(stage, f"stages[{i}]")
         sp = parser.for_stage(stage)
         solver = sp.get_solver(assembler)
-        kind = getattr(solver, "PIPELINE_KIND", "static")
-        where = f"stages[{i}] ({stage['name']!r}, {type(solver).__name__})"
         if kind == "static":
-            if previous is not None and not isinstance(previous, SolveResult):
-                raise ValueError(
-                    f"{where}: una etapa estática no puede continuar un análisis en el "
-                    f"tiempo (qué carga se mantiene y qué pasa con la velocidad son "
-                    f"decisiones físicas pendientes); sólo continúa otra estática.")
             F = (sp.get_external_forces() + sp.get_body_load(assembler)
                  + sp.get_thermal_loads())
+            if on_stage is not None and not perturbation:
+                F_const = (None if previous is None
+                           else as_load_vector(previous.F_applied, previous.equivalent_loads))
+                on_stage(i + 1, F_const, F)
             r = run(domain, assembler=assembler, solver=solver, F_applied=F,
                     step_callback=step_callback, previous=previous)
             if r.perturbation:
@@ -591,9 +610,13 @@ def _run_yaml_stages(parser, domain, assembler, step_callback) -> StagedResult:
                 results.append(r)
                 continue
         elif kind == "transient":
+            if on_stage is not None:
+                on_stage(i + 1, None, None)
             r = run_transient(domain, assembler=assembler, solver=solver, previous=previous,
                               step_callback=step_callback)
         elif kind == "thermal_transient":
+            if on_stage is not None:
+                on_stage(i + 1, None, None)
             r = run_thermal_transient(domain, assembler=assembler, solver=solver,
                                       previous=previous, step_callback=step_callback)
         elif kind in ("modal", "harmonic", "spectrum"):
@@ -730,16 +753,16 @@ def _solve_yaml_model(model: YamlModel, step_callback, write_output: bool = Fals
 
     holder = {}
 
-    def make_writer(F_ext, static):
+    def make_writer(F_ext, static, **stage_info):
         holder["w"] = OutputWriter(model.domain, model.assembler, model.parser.output_config,
-                                   model.parser.filepath, F_ext, static=static)
+                                   model.parser.filepath, F_ext, static=static, **stage_info)
         holder["w"].start()
 
         def cb(step, U, factor):
             holder["w"].step(step, U, factor)
             if step_callback is not None:
                 step_callback(step, U, factor)
-        return cb
+        return cb, holder["w"]
 
     try:
         result = _dispatch_yaml_model(model, step_callback, make_writer)
@@ -763,12 +786,22 @@ def _solve_yaml_model(model: YamlModel, step_callback, write_output: bool = Fals
 def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
     """Despacho según el ``PIPELINE_KIND`` del solver. ``make_writer(F, static)``
     (opcional) crea el escritor de resultados y devuelve el callback de paso
-    que lo alimenta."""
+    que lo alimenta y el escritor."""
     parser, domain, assembler = model.parser, model.domain, model.assembler
     if parser.stages is not None:
+        on_stage = None
         if make_writer is not None:
-            step_callback = make_writer(parser.get_external_forces(), False)
-        return _run_yaml_stages(parser, domain, assembler, step_callback)
+            # Reacciones y energías de la historia: en las etapas estáticas,
+            # con la carga de cada una (ADR 0036, 0038); no si alguna etapa
+            # es en el tiempo.
+            in_time = ("transient", "thermal_transient")
+            static = not any(kind in in_time for _, kind, _ in parser.stage_plan())
+            step_callback, writer = make_writer(
+                parser.get_external_forces(), static, staged=True,
+                stage_prescribed=parser.stage_prescribed_dofs(),
+                stage_distributed_loads=bool(parser.stages_with_distributed_loads()))
+            on_stage = writer.begin_stage
+        return _run_yaml_stages(parser, domain, assembler, step_callback, on_stage)
     solver = parser.get_solver(assembler)
 
     pipeline_kind = getattr(solver, "PIPELINE_KIND", "static")
@@ -793,7 +826,7 @@ def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
         )
 
     if make_writer is not None and pipeline_kind != "static":
-        step_callback = make_writer(parser.get_external_forces(), False)
+        step_callback, _ = make_writer(parser.get_external_forces(), False)
 
     if pipeline_kind == "modal":
         return run_modal(domain, assembler=assembler, solver=solver)
@@ -822,7 +855,7 @@ def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
     if make_writer is not None:
         # Sin convertir: un LoadVector lleva las cargas equivalentes por
         # elemento que descuentan las fuerzas internas de la historia.
-        step_callback = make_writer(F_ext, True)
+        step_callback, _ = make_writer(F_ext, True)
     return run(
         domain,
         assembler=assembler,

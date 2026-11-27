@@ -67,7 +67,10 @@
   Con `stages`, una etapa estática sólo puede seguir a otra estática: qué carga se mantiene y qué pasa con la velocidad al pasar de un análisis en el tiempo a uno estático son decisiones físicas todavía pendientes. Las etapas modal, armónica y espectral sí pueden seguir a cualquiera (linealizan alrededor de su estado).
 
 - **`YamlValidationError` en `stages`** (*stages: con etapas, el solver y las cargas se declaran en cada etapa…*, *stages[i]: falta el bloque 'solver'*)
-  Con `stages`, el `solver` y las cargas (`point_loads…`, `gravity`, `body_force`, `tractions…`, `thermal_loads`) van dentro de cada etapa (`loads` y `solver`); declararlos además en el nivel raíz es un error. Cada etapa admite sólo `name`, `loads` y `solver`.
+  Con `stages`, el `solver` y las cargas (`point_loads…`, `gravity`, `body_force`, `tractions…`, `thermal_loads`) van dentro de cada etapa (`loads` y `solver`); declararlos además en el nivel raíz es un error. Cada etapa admite sólo `name`, `loads`, `solver` y los bloques de apoyos `boundary_conditions_by_node`, `_by_coord` y `_by_group`. Éstos van en la etapa, no dentro de `loads` (*stages[i].loads: [...] no son cargas*); un nodo, grupo o grado de libertad inexistente en ellos se informa al leer, con la etapa en el mensaje.
+
+- **`YamlValidationError`: *stages[i] (...): los apoyos y desplazamientos impuestos de una etapa sólo se admiten en una etapa estática que cambia el estado…***
+  Una etapa en el tiempo, modal, armónica, espectral o de perturbación lineal (`LinearSolver` sobre una etapa) no puede cambiar los apoyos: cómo varía el valor impuesto en el tiempo, o sobre qué estado se linealiza con otros apoyos, son decisiones físicas pendientes. Declárelos en el nivel raíz o en una etapa estática anterior.
 
 - **Aviso:** *ModalSolver: N autovalor(es) negativo(s)… el estado es inestable en esos modos*
   Un modal sobre el estado de una etapa (ADR 0031) usa su rigidez tangente; un autovalor negativo indica que ese estado es inestable en ese modo (por ejemplo, una carga axial por encima de la de pandeo). Los modos quedan en `ModalResult.unstable_modes`, con su autovalor en `eigenvalues` y frecuencia y periodo `NaN`. Un `ResponseSpectrumSolver` sobre ese estado se detiene con `ValueError` (*el estado sobre el que se calcula tiene modos inestables*): revisar la carga de la etapa.

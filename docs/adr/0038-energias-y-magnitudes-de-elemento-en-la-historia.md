@@ -13,7 +13,7 @@ La historia de la respuesta (ADR 0036) registraba desplazamientos y reacciones. 
 
 ## Decisión
 
-1. **Energías** (`energy: external_work | elastic | dissipated`), sólo en análisis estáticos sin etapas (los mismos en que se registra la reacción). En equilibrio, la fuerza que el exterior (cargas y apoyos) ejerce sobre la estructura es `F_int(U)`, así que:
+1. **Energías** (`energy: external_work | elastic | dissipated`), sólo en análisis estáticos sin etapas (los mismos en que se registra la reacción). *Ampliado el 2026-11-27 (ADR 0036, «Ampliación del 2026-11-27»): también por etapas si ninguna es en el tiempo; el trabajo externo se acumula de una etapa a otra.* En equilibrio, la fuerza que el exterior (cargas y apoyos) ejerce sobre la estructura es `F_int(U)`, así que:
    - trabajo externo `W_n = W_{n−1} + ½ (F_int,n + F_int,n−1)·(U_n − U_{n−1})` (trapecio entre pasos convergidos; incluye el trabajo de los desplazamientos impuestos);
    - energía elástica recuperable `E_n = ½ U_n·F_int,n`; *ampliado por el ADR 0043 §5 (2026-11-26)*: `E_n = Σ_e E_e`, con `½ u_e·f_e` salvo en los elementos que entregan su energía almacenada (`Element.stored_energy`: las interfaces, `Σ_g m_g·ψ_g` de su ley, que cubre la fricción y la holgura inicial); sin interfaces es la misma cifra;
    - energía disipada `D_n = W_n − E_n`.
@@ -37,7 +37,7 @@ La historia de la respuesta (ADR 0036) registraba desplazamientos y reacciones. 
 
 - La comprobación `D/(G_f·A)` de la banda de grieta sale de la salida estándar: en la barra de objetividad por el YAML (Quad4, Δ = 10 mm), `D/(G_f·A) = 0.998`.
 - Un material nuevo que descargue por la secante debe declarar `SECANT_UNLOADING = True` para admitir las energías elástica y disipada; por omisión no las admite.
-- Las energías en etapas y en dinámica (cinética, amortiguamiento) quedan para cuando se necesiten.
+- Las energías en etapas y en dinámica (cinética, amortiguamiento) quedan para cuando se necesiten. *Las de las etapas estáticas, hechas el 2026-11-27 (ADR 0036); las de dinámica siguen pendientes.*
 
 ## Ampliación (2026-11-25): energías por zona
 

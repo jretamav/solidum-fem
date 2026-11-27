@@ -742,6 +742,24 @@ stages:
 ```
 
 - **Etapa estática**: parte de los desplazamientos y del estado interno de la anterior; la carga ya aplicada se mantiene constante y la de la etapa crece con λ (ADR 0026).
+- **Apoyos y desplazamientos impuestos de una etapa estática**: los bloques `boundary_conditions_by_node`, `boundary_conditions_by_coord` y `boundary_conditions_by_group` (con la sintaxis del nivel raíz) van en la etapa, al nivel de `loads` y `solver`. El valor es el **total** al final de la etapa: crece en línea recta con λ desde el que tenía al empezarla, y un grado de libertad libre que la etapa prescribe parte de su valor actual, sin salto. Lo que impone una etapa sigue en las siguientes mientras otra no lo cambie. Así se escriben la carga y la descarga con desplazamiento impuesto, o una trayectoria en L:
+
+  ```yaml
+  boundary_conditions_by_group:
+    "Placa_sup": {ux: 0.0, uy: 0.0}
+  stages:
+    - name: baja                       # uy de 0 a −2 mm; ux sigue en 0
+      boundary_conditions_by_group: {"Placa_sup": {uy: -0.002}}
+      solver: {type: NonlinearSolver, num_steps: 20}
+    - name: empuja                     # ux de 0 a 1 mm; uy sigue en −2 mm
+      boundary_conditions_by_group: {"Placa_sup": {ux: 0.001}}
+      solver: {type: NonlinearSolver, num_steps: 20}
+    - name: sube                       # uy de −2 mm a 0
+      boundary_conditions_by_group: {"Placa_sup": {uy: 0.0}}
+      solver: {type: NonlinearSolver, num_steps: 20}
+  ```
+
+  En una etapa en el tiempo, modal, armónica, espectral o de perturbación lineal (`LinearSolver` sobre una etapa) cambiar los apoyos es una decisión física pendiente y se rechaza al leer el archivo, como un nodo, grupo o grado de libertad inexistente o un grado de libertad esclavo de una restricción lineal. Cada `solve()` empieza con los apoyos del nivel raíz; al terminar, el modelo queda con los de la última etapa. Liberar un apoyo en una etapa aún no se admite.
 - **Etapa en el tiempo** (`NewmarkSolver`, `NewtonNewmarkSolver`, HHT, diferencia central, `ThetaMethodSolver`): parte del estado final de la anterior (ADR 0029); sus cargas se aplican como escalón desde su instante inicial, sobre la carga constante de las anteriores. Tras otra etapa en el tiempo, `t_end` es el instante final absoluto.
 - Con `stages`, el `solver` y las cargas van en cada etapa: declararlos también en el nivel raíz es un error.
 - `run_yaml` devuelve un `StagedResult`: `res["empuje"]` o `res[1]` da el resultado de una etapa, `res.final` el de la última y `res.names` los nombres.
@@ -804,11 +822,13 @@ output:
 | Magnitud | Qué registra |
 |---|---|
 | `displacement` | el desplazamiento `dof` de los nodos del selector; `reduce`: `mean` (por omisión), `min` o `max` |
-| `reaction` | la suma de las reacciones `dof` de los nodos del selector, que deben tener ese grado de libertad prescrito (apoyo o desplazamiento impuesto); sólo en análisis estáticos sin etapas |
-| `energy` | `external_work`, `elastic` o `dissipated` (abajo); sólo en análisis estáticos sin etapas |
+| `reaction` | la suma de las reacciones `dof` de los nodos del selector, que deben tener ese grado de libertad prescrito (apoyo o desplazamiento impuesto; con etapas, en el nivel raíz o en alguna etapa); sólo en análisis estáticos, también por etapas si ninguna es en el tiempo |
+| `energy` | `external_work`, `elastic` o `dissipated` (abajo); sólo en análisis estáticos, también por etapas si ninguna es en el tiempo |
 | `element` | esfuerzo, deformación, variable interna o fuerza interna de un elemento o conjunto de elementos (abajo) |
 
 El selector de nodos es uno de `node: id`, `nodes: [ids]`, `group: nombre` (grupo físico de Gmsh) o `at: [x, y]` (los nodos a una distancia ≤ `tol`, 1e-6 por omisión). `scale` multiplica el valor (p. ej. −1 para dar positiva una carga hacia abajo). El archivo se escribe fila a fila: un análisis interrumpido conserva lo calculado.
+
+**Con etapas** (`stages`), la historia lleva además la columna `stage`, el número de la etapa (desde 1), y `factor` es el λ de cada etapa, que vuelve a empezar en 0. La reacción usa la carga aplicada del paso, la constante de las etapas anteriores más λ veces la de la etapa; en una etapa en la que el grado de libertad todavía está libre, la celda queda vacía (no hay apoyo; las figuras dejan un hueco). El trabajo externo se acumula de una etapa a otra. Si alguna etapa es en el tiempo, las reacciones, las energías y las fuerzas internas de marco con carga distribuida en alguna etapa son un error al crear la salida. `step`, `stage` y `factor` no pueden ser nombres de columna.
 
 **Energías.** En equilibrio, la fuerza que las cargas y los apoyos ejercen sobre la estructura es la fuerza interna $\mathbf F_{int}(\mathbf U)$, así que:
 
