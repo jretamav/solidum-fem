@@ -94,7 +94,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∥}{{∥}}1 {∮}{{∮}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ġ}{{ġ}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {∉}{{∉}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∥}{{∥}}1 {∮}{{∮}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -5919,6 +5919,688 @@ references:
   \item \textbf{2026-09-22} \ensuremath{\cdot} Ensamblaje por lotes (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014}): la cinemática del elemento pasa a un núcleo compilado compartido (\texttt{\_kin3d\_from\_dN}) y se expone como \texttt{BATCH\_KINEMATICS}; \texttt{compute\_\allowbreak{}element\_\allowbreak{}state} no cambia de formulación. El \texttt{Assembler} agrupa los elementos en familias y los evalúa en un kernel único; equivalencia con el camino por elemento verificada a 1e-14 en \texttt{K} y \texttt{F\_int} sobre todos los materiales compatibles (\texttt{tests/\allowbreak{}test\_\allowbreak{}batch\_\allowbreak{}assembly.\allowbreak{}py}).
   \item \textbf{2026-09-22} \ensuremath{\cdot} Cierre del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0014-vectorizacion-por-lotes.md}{ADR 0014} (§9): la cinemática por lotes (\texttt{BATCH\_KINEMATICS}) ya \textbf{no lanza} con jacobiano degenerado ---devuelve \texttt{det J \ensuremath{\le} 0} y el ensamblador lanza el \texttt{ValueError} con el id del elemento---, porque el kernel de familia tiene ahora variante paralela (\texttt{prange}, bit a bit igual a la serie) y una excepción dentro de la región paralela se pierde; el camino por elemento sigue lanzando como siempre. Declara las funciones de forma para el post-proceso por familia (\texttt{Family.\allowbreak{}gauss\_\allowbreak{}state}, mismo resultado que \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state}, verificado en \texttt{tests/\allowbreak{}test\_\allowbreak{}batch\_\allowbreak{}postprocess.\allowbreak{}py}). Formulación sin cambios.
   \item \textbf{2026-10-27} \ensuremath{\cdot} Cargas variables y verificación por soluciones manufacturadas (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0022-cargas-variables-mallas-estructuradas-y-mms.md}{ADR 0022}, fase 2). \texttt{compute\_\allowbreak{}body\_\allowbreak{}load} acepta un campo \texttt{b(x)} y \texttt{compute\_\allowbreak{}face\_\allowbreak{}traction} un campo \texttt{t(x, n)}, con \texttt{n} la normal exterior unitaria de la cara (una presión es \texttt{−p\ensuremath{\cdot}n}); implementación común en \texttt{\_SolidLoads3D}. La fuerza de cuerpo se integra con la regla de la masa (3\ensuremath{\times}3\ensuremath{\times}3); la de cara, sobre la geometría real con las funciones de forma de la cara. Declara \texttt{REFERENCE\_CELL} y \texttt{REFERENCE\_NODES}. Nueva aceptación «soluciones manufacturadas»: orden 3 en L\ensuremath{^{2}} y 2 en energía en el cubo distorsionado y en el cilindro hueco.
+\end{itemize}
+
+
+\newpage
+
+\chapter{Elementos de interfaz}
+
+\section{Interface2D4}
+\label{spec:Interface2D4}
+
+
+
+\textit{Orden de trabajo pre-redactada por la IA el 2026-11-26 dentro del bloque de \textbf{contacto acotado} aprobado por el usuario el mismo día. Esta spec contiene la formulación de toda la familia (\texttt{Interface2D4}, \texttt{Interface3D6}, \texttt{Interface3D8}); las specs de los elementos 3D sólo documentan lo que cambia. La arquitectura (paquete, contrato, generación desde la malla, salida) está en el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}. El usuario revisa la física y aprueba antes de que la IA escriba código; las decisiones abiertas están en el \textbf{Diálogo}.}
+
+
+
+\subsection{Especificación física}
+
+\phantomsection
+\subsubsection*{0. Descripción general}
+\addcontentsline{toc}{subsubsection}{0. Descripción general}
+
+Elemento de interfaz de \textbf{espesor nulo} (Goodman, Taylor y Brekke 1968; de Borst et al. 2012 §13.1, Zienkiewicz-Taylor-Fox §4.11.2, confirmados por el bibliotecario) que une dos caras A y B por pares de nodos conocidos y transmite entre ellas la tracción de un \textbf{material de interfaz de superficie} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0033-materiales-de-interfaz.md}{ADR 0033}): contacto (\texttt{ContactPenalty}), grieta cohesiva con trayectoria conocida (\texttt{CohesiveDamageIsotropic}, \texttt{CohesiveDamageMixedMode}) o cualquier otra ley de superficie registrada.
+
+\begin{itemize}
+  \item \texttt{Interface2D4}: 2D (deformación plana o esfuerzo plano: la interfaz no distingue), caras lineales de 2 nodos, 4 nodos, DOF \texttt{(ux, uy)}.
+  \item \texttt{Interface3D6} / \texttt{Interface3D8}: 3D, caras triangulares de 3 nodos o cuadriláteras de 4 nodos, DOF \texttt{(ux, uy, uz)}.
+\end{itemize}
+
+Desplazamientos pequeños: la geometría, la normal, los ejes tangentes y los pares son los de la configuración de referencia. El elemento no tiene masa ni rigidez propia: todo lo pone la ley.
+
+\phantomsection
+\subsubsection*{1. Nodos y caras}
+\addcontentsline{toc}{subsubsection}{1. Nodos y caras}
+
+Orden de los elementos cohesivos de Abaqus (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §1):
+
+\begin{itemize}
+  \item \texttt{Interface2D4}: cara A = nodos (1, 2); cara B = nodos (3, 4), con \textbf{4 frente a 1 y 3 frente a 2} (los cuatro nodos recorren el contorno en sentido antihorario cuando B está del lado de \texttt{n}).
+  \item \texttt{Interface3D6}: cara A = (1, 2, 3); cara B = (4, 5, 6), con 4 frente a 1, 5 frente a 2 y 6 frente a 3.
+  \item \texttt{Interface3D8}: cara A = (1, 2, 3, 4); cara B = (5, 6, 7, 8), con 5 frente a 1, etc.
+\end{itemize}
+
+Con nodos coincidentes (interfaz de espesor nulo) las dos caras tienen las mismas coordenadas; en un emparejamiento con holgura (\texttt{pair}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §6) cada nodo de B está frente a su par de A a lo largo de la normal de A.
+
+\phantomsection
+\subsubsection*{2. Ejes locales}
+\addcontentsline{toc}{subsubsection}{2. Ejes locales}
+
+Sobre la \textbf{cara A} en la configuración de referencia, en cada punto de integración \texttt{\ensuremath{\xi}}:
+
+\begin{itemize}
+  \item 2D: \texttt{s = (x\_\allowbreak{}2 − x\_\allowbreak{}1)/\allowbreak{}\ensuremath{\|}x\_\allowbreak{}2 − x\_\allowbreak{}1\ensuremath{\|}} y \texttt{n = e\_z \ensuremath{\times} s} (\texttt{s} girado +90\ensuremath{^{\circ}}). Ejes \texttt{(n, s)}.
+  \item 3D: \texttt{a\_\ensuremath{\xi} = \ensuremath{\partial}x\_A/\ensuremath{\partial}\ensuremath{\xi}}, \texttt{a\_\ensuremath{\eta} = \ensuremath{\partial}x\_A/\ensuremath{\partial}\ensuremath{\eta}}; \texttt{n = a\_\allowbreak{}\ensuremath{\xi} \ensuremath{\times} a\_\allowbreak{}\ensuremath{\eta} /\allowbreak{} \ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}}; \texttt{s1 = a\_\ensuremath{\xi}/\ensuremath{\|}a\_\ensuremath{\xi}\ensuremath{\|}}; \texttt{s2 = n \ensuremath{\times} s1}. Ejes \texttt{(n, s1, s2)}, dextrógiros. En la cara triangular (plana) son constantes; en la cuadrilátera, que puede estar alabeada, se evalúan en cada punto de Gauss y, con la regla nodal, los del nodo \texttt{i} en \texttt{(\ensuremath{\xi}\_i/3, \ensuremath{\eta}\_i/3)}, donde \texttt{a\_\ensuremath{\xi} \ensuremath{\times} a\_\ensuremath{\eta}} es el vector de área tributaria consistente \texttt{\ensuremath{\int}N\_i (a\_\ensuremath{\xi} \ensuremath{\times} a\_\ensuremath{\eta})} (spec \texttt{Interface3D8}, decisión del usuario del 2026-11-26).
+\end{itemize}
+
+\textbf{\texttt{n} apunta de A hacia B.} Con nodos coincidentes no hay geometría que lo diga: lo fija el orden de los nodos, y el generador (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §6) ordena la cara A de modo que \texttt{n} sea la normal exterior del sólido del lado A. En 2D eso significa recorrer la cara A \textbf{en sentido contrario} al de esa arista en el contorno antihorario del sólido A, que es el sentido de la misma arista en el sólido B (\textit{calculado} por el teórico).
+
+\textbf{Qué cara es A.} Con pares a distancia, A es la cara \textbf{plana o la más regular} (en Hertz, el plano: \texttt{n = e\_y}). Si A fuera la cara curva facetada, el par no quedaría sobre su normal (desfase tangencial \texttt{g\_0\ensuremath{\cdot}tan \ensuremath{\theta}}) y el generador lo rechazaría.
+
+\phantomsection
+\subsubsection*{3. Desplazamiento relativo y holgura}
+\addcontentsline{toc}{subsubsection}{3. Desplazamiento relativo y holgura}
+
+Con \texttt{N\_i(\ensuremath{\xi})} las funciones de forma de la cara (lineales en 2D; de área en el triángulo; bilineales en el cuadrilátero), iguales en las dos caras:
+
+\[
+\mathbf u_A(\xi) = \sum_i N_i(\xi)\,\mathbf u_{A,i}, \qquad \mathbf u_B(\xi) = \sum_i N_i(\xi)\,\mathbf u_{B,i}, \qquad \Delta\mathbf u = \mathbf u_B - \mathbf u_A
+\]
+
+\textbf{Holgura inicial} en el punto de integración:
+
+\[
+g_0(\xi) = \mathbf n(\xi)\cdot\bigl(\mathbf x_B(\xi) - \mathbf x_A(\xi)\bigr)
+\]
+
+con \texttt{x\_A}, \texttt{x\_B} interpoladas con las mismas \texttt{N\_i}. Es 0 con nodos coincidentes. El desfase tangencial inicial \texttt{(x\_B − x\_A)\ensuremath{\cdot}s} debe ser nulo salvo redondeo (el generador lo comprueba); no cuenta como deslizamiento.
+
+Vector que recibe la ley, en ejes locales (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §4):
+
+\[
+\mathbf g = \begin{bmatrix} g_0 + \mathbf n\cdot\Delta\mathbf u \\ \mathbf s\cdot\Delta\mathbf u\end{bmatrix} \ \ \text{(2D)}, \qquad \mathbf g = \begin{bmatrix} g_0 + \mathbf n\cdot\Delta\mathbf u \\ \mathbf s_1\cdot\Delta\mathbf u \\ \mathbf s_2\cdot\Delta\mathbf u\end{bmatrix} \ \ \text{(3D)}
+\]
+
+Una ley que no declara \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP} (cohesivas, adherencia) sólo se admite si \texttt{g\_0 = 0} en todos los puntos (error al construir).
+
+\phantomsection
+\subsubsection*{4. Equilibrio}
+\addcontentsline{toc}{subsubsection}{4. Equilibrio}
+
+Trabajo virtual de la interfaz, sumado al de los sólidos:
+
+\[
+\delta W_\Gamma = \int_{\Gamma} \delta\mathbf g\cdot\mathbf t(\mathbf g)\; d\Gamma
+\]
+
+con \texttt{Γ} medida sobre la cara A en la referencia (en 2D, \texttt{dΓ = e\ensuremath{\cdot}dl}, con \texttt{e} el espesor fuera del plano de los sólidos adyacentes). Con pares a distancia (cilindro sobre plano), la medida es la de la cara A.
+
+
+\subsection{Formulación numérica (FEM)}
+
+\phantomsection
+\subsubsection*{5. Matriz de salto}
+\addcontentsline{toc}{subsubsection}{5. Matriz de salto}
+
+\[
+\mathbf g = g_0\,\mathbf e_1 + \mathbf B(\xi)\,\mathbf u_e, \qquad \mathbf B(\xi) = \mathbf R(\xi)\,\bigl[\,-\mathbf N(\xi)\otimes\mathbf I_d \ \big|\ \mathbf N(\xi)\otimes\mathbf I_d\,\bigr]
+\]
+
+con \texttt{R} la matriz de filas \texttt{n, s} (2D) o \texttt{n, s1, s2} (3D), \texttt{u\_e} ordenado según los nodos de §1 (cara A, cara B), y la cara B con sus \texttt{N\_i} asignadas a los nodos frente a cada nodo de A.
+
+\phantomsection
+\subsubsection*{6. Fuerzas internas y rigidez}
+\addcontentsline{toc}{subsubsection}{6. Fuerzas internas y rigidez}
+
+\[
+\mathbf f_e = \sum_g w_g\,J_g\,e\;\mathbf B_g^{\top}\,\mathbf t_g, \qquad \mathbf K_e = \sum_g w_g\,J_g\,e\;\mathbf B_g^{\top}\,\mathbf T_g\,\mathbf B_g
+\]
+
+con \texttt{J\_g} el jacobiano de la cara A (longitud/2 en 2D; \ensuremath{\|}a\_\ensuremath{\xi} \ensuremath{\times} a\_\ensuremath{\eta}\ensuremath{\|} en 3D), \texttt{e} el espesor en 2D (1 en 3D) y \texttt{T\_g = \ensuremath{\partial}t/\ensuremath{\partial}g} la tangente de la ley. \texttt{K\_e} es simétrica si la ley lo es.
+
+\textbf{Espesor en 2D}: el de los sólidos adyacentes; el generador lo toma de ellos y rechaza una cara cuyos dos lados tengan espesores distintos.
+
+\phantomsection
+\subsubsection*{7. Integración}
+\addcontentsline{toc}{subsubsection}{7. Integración}
+
+\begin{itemize}
+  \item \textbf{Nodal} (Newton--Cotes / Lobatto, puntos en los nodos): 2D, \texttt{\ensuremath{\xi} = \ensuremath{\pm}1}, pesos 1, 1; triángulo, los tres vértices con peso 1/6; cuadrilátero, las cuatro esquinas con el área tributaria consistente \texttt{\ensuremath{\int}N\_i J} (abajo, decisión Q3). Cada punto ve un solo par de nodos: la matriz no acopla pares distintos, es el \textbf{contacto nodo a nodo}, y no hay oscilación espuria de la tracción con rigideces grandes (Schellekens y de Borst 1993, pp. 57--58, \textit{leído} por el bibliotecario; \texttt{docs/\allowbreak{}referencias/\allowbreak{}Schellekens\_\allowbreak{}deBorst\_\allowbreak{}1993\_\allowbreak{}integracion\_\allowbreak{}interfaces.\allowbreak{}pdf}).
+  \item \textbf{Gauss}: 2D, 2 puntos; triángulo, 3 puntos interiores; cuadrilátero, 2\ensuremath{\times}2. Integra exactamente la rigidez elástica, pero con penalización grande la tracción oscila entre puntos.
+\end{itemize}
+
+El mismo número de puntos en las dos reglas (2, 3 y 4).
+
+\textbf{Pesos nodales del cuadrilátero} (hallazgo 1 del teórico, \textit{calculado}): con peso 1 en cada esquina y el \texttt{J} de la esquina, el área que recibe cada nodo no es la consistente \texttt{\ensuremath{\int}N\_i J d\ensuremath{\xi}d\ensuremath{\eta}} si la cara no es un paralelogramo. En una cara trapezoidal plana el cociente va de 0.675 a 1.245 (el área total sí coincide); en una malla de 3\ensuremath{\times}3 caras con los nodos perturbados, de 0.78 a 1.13. Bajo esfuerzo uniforme la presión de contacto de cada par se desviaría lo mismo. En la línea y en el triángulo la regla nodal ya da el área consistente (\texttt{L/2}, \texttt{A/3}). Opciones: (a) pesos nodales iguales al área tributaria consistente \texttt{w\_i = \ensuremath{\int}N\_i J} (conserva el desacople por pares y pasa la parcela en cualquier cara plana); (b) Newton--Cotes, exacta sólo en paralelogramos. \textbf{Decidido (a)} por el usuario (Diálogo Q3).
+
+Precedente: en la adherencia barra--sólido el usuario eligió integración \textbf{nodal por omisión con Gauss como opción} (2026-11-10, spec \texttt{EmbeddedReinforcement}). \textbf{Decidido igual aquí} (Diálogo Q1).
+
+\subsubsection{7b. Escalera de validación (la corre \texttt{validador-solidum})}
+
+\begin{enumerate}
+  \item Punto material (pruebas de la ley).
+  \item \textbf{Parcela de contacto por pares}: dos bloques apilados en deformación plana, de alturas \texttt{H\ensuremath{_{1}}}, \texttt{H\ensuremath{_{2}}} y materiales distintos, presión \texttt{p} arriba. Apoyos que dejan libre el efecto de Poisson: \texttt{u\_y = 0} en toda la base y \texttt{u\_x = 0} en un solo nodo de cada bloque (sin fricción el bloque superior tiene un modo rígido en \texttt{x}). Exacto: \texttt{t\_n = −p} en todos los pares, interpenetración \texttt{p/K\_n}, desplazamiento de la cara superior \texttt{−p\ensuremath{\cdot}[(1−\ensuremath{\nu}\ensuremath{_{1}}\ensuremath{^{2}})H\ensuremath{_{1}}/\allowbreak{}E\ensuremath{_{1}} + (1−\ensuremath{\nu}\ensuremath{_{2}}\ensuremath{^{2}})H\ensuremath{_{2}}/\allowbreak{}E\ensuremath{_{2}}] − p/\allowbreak{}K\_\allowbreak{}n − g\_\allowbreak{}0} (corrección del signo de \texttt{g\_0} por el teórico).
+  \item \textbf{Despegue}: un par en serie con una barra; \texttt{F = 0} hasta cerrar la holgura y \texttt{F = K\_\allowbreak{}eff\ensuremath{\cdot}(u − g\_\allowbreak{}0)} después, \texttt{1/\allowbreak{}K\_\allowbreak{}eff = L/\allowbreak{}(EA) + 1/\allowbreak{}(K\_\allowbreak{}n\ensuremath{\cdot}A)}.
+  \item \textbf{Bloque con fricción}: presión prescrita y rampa tangencial; umbral \texttt{\ensuremath{\mu}\ensuremath{\cdot}p} exacto, descarga elástica, deslizamiento residual; en 3D, trayectoria no colineal.
+  \item \textbf{Hertz, cilindro sobre plano rígido en deformación plana} (Wriggers 2006, §14.6.1): \texttt{E = 7000}, \texttt{\ensuremath{\nu} = 0.3}, \texttt{R = 1}, \texttt{P = 100} por unidad de espesor; \texttt{a = \ensuremath{\surd}(4PR/\allowbreak{}(\ensuremath{\pi}E*)) = 0.\allowbreak{}128655}, \texttt{p\ensuremath{_{0}} = 2P/\allowbreak{}(\ensuremath{\pi}a) = 494.\allowbreak{}83}, \texttt{p(x) = p\ensuremath{_{0}}\ensuremath{\surd}(1−(x/\allowbreak{}a)\ensuremath{^{2}})}. Se comparan \texttt{a}, \texttt{p\ensuremath{_{0}}}, \texttt{p(x)} y la reacción, no el acercamiento (indefinido en deformación plana). Pares con paso \texttt{h \ensuremath{\lesssim} a/10} en la zona de contacto; la cara A es el plano; holguras desde la geometría del círculo (la parábola \texttt{x\ensuremath{^{2}}/(2R)} difiere 0.4 \% en \texttt{x = a}); con media simetría, \texttt{P/2}. Con \texttt{K\_n = 10E/h} y \texttt{h = a/10}, la interpenetración \texttt{p\ensuremath{_{0}}/K\_n} es el 1.1 \% de \texttt{g\_0(a)} (\textit{calculado} por el teórico). Criterio: convergencia al refinar a pocos \% de \texttt{a} y \texttt{p\ensuremath{_{0}}}.
+  \item Viga SEN con la placa apoyada, como observación.
+\end{enumerate}
+
+Fuentes de pago para ampliar (que el usuario puede bajar en la UNAM): Taylor y Papadopoulos 1991 (parcela de contacto) y NAFEMS R0081 (Prinja y Feng 2001; parcela, Hertz y cuña con fricción).
+
+\phantomsection
+\subsubsection*{8. Energía almacenada}
+\addcontentsline{toc}{subsubsection}{8. Energía almacenada}
+
+\[
+E_e = \sum_g w_g\,J_g\,e\;\psi\bigl(\mathbf g_g, \text{estado}_g\bigr)
+\]
+
+con \texttt{\ensuremath{\psi}} la de la ley (\texttt{stored\_energy}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §4--§5). En la historia, \texttt{E = \ensuremath{\Sigma}\_e E\_e} y \texttt{D = W − E}.
+
+\phantomsection
+\subsubsection*{9. Advertencias y límites}
+\addcontentsline{toc}{subsubsection}{9. Advertencias y límites}
+
+\begin{itemize}
+  \item \textbf{Giro rígido con holgura}: con \texttt{g\_0 \ensuremath{\neq} 0}, un giro rígido pequeño \texttt{\ensuremath{\omega}} de todo el conjunto desplaza la cara B respecto de la A en \texttt{g\_s = −\ensuremath{\omega}\ensuremath{\cdot}g\_0} tangencialmente (\textit{calculado}: lineal en \texttt{\ensuremath{\omega}}, no de segundo orden). Su dual: con fricción, las fuerzas tangenciales \texttt{\ensuremath{\pm}t\_s} de las dos caras forman un par espurio \texttt{t\_s\ensuremath{\cdot}g\_0} por unidad de área en la geometría de referencia. Es inocuo con la interfaz abierta (el deslizamiento se olvida) o sin fricción; con nodos coincidentes no aparece. Propio de los desplazamientos pequeños.
+  \item \textbf{Cara cuadrilátera alabeada}: la normal varía dentro de la cara. Con la regla nodal, cada nodo toma la normal y la medida de su vector de área tributaria consistente, y la cara transmite una presión uniforme con el error de la penalización (spec \texttt{Interface3D8}; con la normal de la esquina el error era de 3 \% en los esfuerzos con 2.4\ensuremath{^{\circ}} de alabeo, \textit{medido}). Con torsión y curvatura a la vez, en un nodo se juntan caras de normales distintas y queda un residuo de segundo orden en la tracción nodal, que converge al refinar (1.49e-3, 3.75e-4, 9.4e-5 con 3, 6 y 12 divisiones; Gauss no lo tiene; \textit{medido} por el teórico). \textbf{Con holgura, la cara A debe ser plana} (§2): sobre una cara alabeada el par deja de estar sobre la normal del nodo y Solidum lo rechaza en cuanto \texttt{g\_\allowbreak{}0\ensuremath{\cdot}sen \ensuremath{\theta}\_\allowbreak{}i \textgreater{} 10\ensuremath{^{-}}⁶\ensuremath{\cdot}h} (con 2.4\ensuremath{^{\circ}} de alabeo, toda holgura mayor que 1.4e-4\ensuremath{\cdot}h).
+  \item \textbf{Interfaz abierta}: sin rigidez; un cuerpo sostenido sólo por interfaces abiertas es un mecanismo.
+  \item \textbf{Análisis de rigidez fija} (lineal, modal, armónico, espectral, transitorios lineales) con una ley unilateral: error, «el contacto requiere un análisis no lineal» (decisión Q4; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} «Consecuencias»). Con cohesivas, admitidos.
+\end{itemize}
+
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Interface2D4
+kind: element
+status: implemented
+
+interface:
+  field: interface              # campo de interfaz: salto en ejes locales, JUMP_DIM (ADR 0043 §3)
+  dof_names: [ux, uy]
+  n_nodes: 4
+  jump_dim: 2                   # (n, s)
+  n_integration_points: 2       # nodal o Gauss, los dos con 2 puntos
+
+admission:                      # criterio de admisión al programa principal (Reglas.md §1); evidencia en informes/bibliotecario/busqueda_contacto_2026-11-26.md
+  textbooks:
+    - de_borst_crisfield: "§13.1 Interface Elements (pp. 428–436): cinemática, matriz B_d, rigidez, integración (p. 432)"
+    - zienkiewicz_taylor: "vol. 2, 7.ª ed., §4.11.2 elementos de junta (pp. 127–128)"
+  general_codes:
+    - abaqus: "COH2D4 (cohesivo de 4 nodos, ley tracción-separación)"
+    - ansys: "INTER202 (interfaz lineal de 4 nodos)"
+    - diana: "cap. 33, Structural Interface Elements"
+
+parameters:
+  - { name: material,    type: int,   required: true,  desc: "Id en interface_materials; ley de superficie con 2 componentes" }
+  - { name: integration, type: str,   required: false, desc: "'nodal' (por omisión, Diálogo Q1) | 'gauss'" }
+  - { name: thickness,   type: float, required: false, desc: "Espesor fuera del plano; lo pone el generador desde los sólidos adyacentes" }
+
+material_contract:
+  signature: "compute_traction(g, estado) -> (t, T, estado')"
+  strain_kind: "salto local (g_n con holgura inicial, g_s)"
+
+conventions:
+  sign: "g_n > 0 separación (n de A hacia B); t en ejes locales con la convención de la ley"
+  node_orientation: "A = (1, 2), B = (3, 4) con 4 frente a 1 y 3 frente a 2 (antihorario si B está del lado de n)"
+
+validity:
+  - "desplazamientos y deslizamientos pequeños"
+  - "pares alineados según la normal de A (desfase tangencial nulo salvo redondeo)"
+  - "g_0 = 0 con leyes sin ACCEPTS_INITIAL_GAP"
+
+out_of_scope:
+  - "Caras cuadráticas 3D (Interface3D15/20): después (la 2D, Interface2D6, entró en el bloque de contacto)"
+  - "Desplazamientos grandes, deslizamiento grande, búsqueda de pares"
+  - "Interfaces térmicas (conductancia de contacto)"
+  - "Inserción de interfaces durante el análisis"
+
+acceptance:
+  verification:
+    - name: parcela_de_contacto
+      setup: "dos bloques con mallas coincidentes en la interfaz, presión uniforme p sobre el superior, ContactPenalty sin fricción; nodal y Gauss; espesor ≠ 1"
+      expect: "presión de contacto p en todos los puntos; esfuerzo σ_yy = −p uniforme en los dos bloques; interpenetración p/K_n"
+      tol_rel: 1.0e-10
+    - name: salto_uniforme
+      setup: "una interfaz aislada; cara A fija, cara B con desplazamiento uniforme (traslación); ley lineal de prueba (t = K·g)"
+      expect: "t uniforme; fuerzas nodales = t·J·w·e en cada nodo (nodal) y suma = t·área en las dos reglas"
+      tol_rel: 1.0e-12
+  specific:
+    - name: cuerpo_rigido
+      setup: "traslación y giro rígido pequeño de las dos caras juntas con nodos coincidentes"
+      expect: "g = 0 y f_e = 0"
+      tol_rel: 1.0e-12
+    - name: holgura_inicial
+      setup: "pares separados g_0 a lo largo de n; ContactPenalty; cerrar la holgura con desplazamiento impuesto"
+      expect: "t = 0 mientras Δu_n > −g_0; contacto exactamente al cerrarse"
+      tol_rel: 1.0e-12
+    - name: tangente_del_elemento
+      setup: "K_e frente a diferencias centradas de f_e en estados abiertos, cerrados, en adherencia y en deslizamiento"
+      expect: "coinciden"
+      tol_rel: 1.0e-6
+    - name: orientacion_invertida
+      setup: "nodos coincidentes; intercambiar las caras A y B (normal opuesta)"
+      expect: "mismas fuerzas nodales (con holgura variable no vale: J_A ≠ J_B y n_A ≠ −n_B)"
+      tol_rel: 1.0e-12
+    - name: escalado_con_el_espesor
+      setup: "espesor e ≠ 1"
+      expect: "K_e, f_e y E_e proporcionales a e"
+      tol_rel: 1.0e-12
+    - name: holgura_variable_en_el_elemento
+      setup: "cara B inclinada respecto de A; nodal y Gauss"
+      expect: "g_0 en cada punto = n·(x_B − x_A) interpolado"
+      tol_rel: 1.0e-12
+    - name: simetria_de_la_rigidez
+      setup: "ContactPenalty en deslizamiento con μ > 0, y con μ = 0"
+      expect: "K_e no simétrica con fricción en deslizamiento; simétrica con μ = 0"
+      tol_rel: 1.0e-14
+    - name: giro_rigido_con_holgura
+      setup: "giro rígido pequeño ω con g_0 ≠ 0"
+      expect: "g_s = −ω·g_0 (límite documentado de §9)"
+      tol_rel: 1.0e-10
+    - name: energia_al_cerrar_la_holgura
+      setup: "cerrar una holgura en 1 paso y en N pasos con ContactPenalty sin fricción; energía de la historia"
+      expect: "E = Σ w·ψ exacta; D = W − E tiende a 0 al refinar, acotada por ½·|t_{n+1}|·g_n·área en el paso del cierre (trapecio del ADR 0038)"
+      tol_rel: 1.0e-12
+    - name: nodal_desacopla_pares
+      setup: "integración nodal"
+      expect: "K_e no acopla nodos de pares distintos"
+      tol_rel: 0.0
+    - name: cohesiva_con_holgura_rechazada
+      setup: "CohesiveDamageIsotropic con g_0 ≠ 0"
+      expect: "error al construir"
+
+references:
+  - "Goodman, R. E., Taylor, R. L., Brekke, T. L. (1968). A model for the mechanics of jointed rock. J. Soil Mech. Found. Div. 94(3), 637–659. DOI 10.1061/JSFEAQ.0001133"
+  - "Schellekens, J. C. J., de Borst, R. (1993). On the numerical integration of interface elements. IJNME 36(1), 43–66. DOI 10.1002/nme.1620360104"
+  - "de Borst, R., Crisfield, M. A., Remmers, J. J. C., Verhoosel, C. V. (2012). Non-Linear Finite Element Analysis of Solids and Structures, 2.ª ed., §13.1. Wiley. DOI 10.1002/9781118375938"
+  - "Zienkiewicz, O. C., Taylor, R. L., Fox, D. D. (2014). The Finite Element Method for Solid and Structural Mechanics, 7.ª ed., §4.11.2 y cap. 8. DOI 10.1016/B978-1-85617-634-7.00008-9"
+  - "Wriggers, P. (2006). Computational Contact Mechanics, 2.ª ed., §14.6.1 (Hertz en deformación plana: E = 7000, ν = 0.3, R = 1, P = 100, p_max = 494.83). Springer. DOI 10.1007/978-3-540-32609-0"
+  - "ADR 0033 — Familia de materiales de interfaz."
+  - "ADR 0043 — Elementos de interfaz de espesor nulo."
+
+\end{lstlisting}
+
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}interface\_\allowbreak{}2d.\allowbreak{}py} (clase); lo común de la familia en \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}\_\allowbreak{}shared.\allowbreak{}py} (\texttt{InterfaceElement} sobre \texttt{LocalJumpElement}, compartida con \texttt{BondSlipInterface}: ejes, holgura inicial, reglas \texttt{nodal}/\texttt{gauss}, áreas tributarias consistentes, \texttt{stored\_energy}, \texttt{interface\_points}). Generación en \texttt{solidum/\allowbreak{}mesh/\allowbreak{}interfaces.\allowbreak{}py}; salida en \texttt{solidum/\allowbreak{}utils/\allowbreak{}vtk\_\allowbreak{}exporter.\allowbreak{}py} y \texttt{output\_writer.py} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §6--§7).
+  \item Clase: \texttt{Interface2D4} (\texttt{FACE\_\allowbreak{}CELL = \textquotedbl{}line\textquotedbl{}}, \texttt{A\_NODES = (0, 1)}, \texttt{B\_NODES = (3, 2)}, \texttt{VTK\_\allowbreak{}CELL\_\allowbreak{}TYPE = \textquotedbl{}quad\textquotedbl{}}).
+  \item Tests:
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}elements.\allowbreak{}py}: casos de \texttt{acceptance} de la familia y parcela de contacto 2D (dos materiales, \texttt{g\_0 = 0} con presión y \texttt{g\_0 \textgreater{} 0} con bajada impuesta, nodal y Gauss).
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}generation.\allowbreak{}py} (\texttt{pair}/\texttt{split}, parcela desde el YAML con espesor 3), \texttt{test\_\allowbreak{}interface\_\allowbreak{}output.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}energy.\allowbreak{}py}, \texttt{test\_\allowbreak{}point\_\allowbreak{}quantity.\allowbreak{}py}, barrido de contrato.
+  \item Verificación: \texttt{informes/\allowbreak{}teorico/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-26\_\allowbreak{}contacto.\allowbreak{}md} (medidas, \texttt{g\_0}, \texttt{f\_e}, \texttt{K\_e}, \texttt{E\_e} frente a una referencia independiente \ensuremath{\le} 1.2e-15; Newton con la tangente ensamblada en 2--4 iteraciones; \textit{calculado}).
+  \item Notas de traducción: orden de nodos de COH2D4 (Abaqus).
+\end{itemize}
+
+
+\subsection{Diálogo}
+
+\textit{Preguntas, aclaraciones y hallazgos. Entradas fechadas.}
+
+\begin{itemize}
+  \item \textbf{2026-11-26 --- Decisiones abiertas para el usuario} (una a la vez, después de la revisión de \texttt{teorico-solidum}):
+  \item \textbf{Q1 --- DECIDIDO por el usuario el 2026-11-26 («si»): integración nodal por omisión, Gauss como opción.} Pregunta: integración por omisión: ¿nodal con Gauss como opción, como en la adherencia? Datos (\textit{leído}, informe del bibliotecario): de Borst et al. (p. 432) y Schellekens y de Borst (1993) recomiendan Newton--Cotes / Lobatto (en elementos lineales, la nodal) porque eliminan la oscilación de la tracción; ANSYS (INTER202) y DIANA (§33.4) usan Gauss por omisión, y DIANA advierte de esas oscilaciones con rigidez alta. Con contacto unilateral, la nodal da un estado abierto o cerrado por par de nodos (contacto nodo a nodo de Zienkiewicz §8.2). Recomendación de la IA: nodal por omisión, Gauss como opción. \textit{Corrección posterior del bibliotecario} (2026-11-26, \texttt{informes/\allowbreak{}bibliotecario/\allowbreak{}busqueda\_\allowbreak{}interfaz\_\allowbreak{}cuadratica\_\allowbreak{}2026-11-26.\allowbreak{}md}, \textit{leído}): DIANA declara \textbf{Newton--Cotes por omisión en cada elemento de interfaz} (§33.7: L8IF 2 puntos, CL12I 3, Q24IF 2\ensuremath{\times}2, CQ48I 3\ensuremath{\times}3); el «Gauss por omisión» de §33.4 es una ambigüedad del manual. Refuerza la decisión; no la cambia.
+  \item \textbf{Q2 --- DECIDIDO por el usuario el 2026-11-26 («1»): normal, ejes y medida de la cara A, la que se declara como \texttt{a} en el YAML, que debe ser la plana o la más regular; \texttt{g\_\allowbreak{}0 = n\ensuremath{\cdot}(x\_\allowbreak{}B − x\_\allowbreak{}A)} en cada punto.} Pregunta: definición de \texttt{g\_0} y de la normal con pares a distancia: normal y medida de la \textbf{cara A}, \texttt{g\_\allowbreak{}0 = n\ensuremath{\cdot}(x\_\allowbreak{}B − x\_\allowbreak{}A)} en cada punto (§2--§3), con A la cara plana o la más regular. La alternativa sería la superficie media; el teórico: no aporta nada en desplazamientos pequeños.
+  \item \textbf{Q3 --- DECIDIDO por el usuario el 2026-11-26 («si»): pesos nodales = área tributaria consistente \texttt{w\_\allowbreak{}i = \ensuremath{\int}N\_\allowbreak{}i J d\ensuremath{\xi}d\ensuremath{\eta}}} (en línea y triángulo coincide con Newton--Cotes; cambia sólo el cuadrilátero). Pregunta: pesos nodales del cuadrilátero: área tributaria consistente o Newton--Cotes (§7).
+  \item \textbf{Q4 --- DECIDIDO por el usuario el 2026-11-26 («tu recomendación»): en el análisis lineal y en el modal, un modelo con leyes de interfaz unilaterales es error («el contacto requiere un análisis no lineal»).} Razón: nunca un resultado falso en silencio; permitirlo después (estado congelado con aviso en el modal) no cambia modelos existentes. Pregunta y opinión del teórico: análisis lineal y modal con interfaces: el teórico recomienda error en el estático lineal con leyes unilaterales (con la rama cerrada en \texttt{g\_0 = 0} sería un resorte bilateral que admite tracción sin avisar), o comprobar después \texttt{g\_n \ensuremath{\le} 0} en todos los puntos; en el modal, estado congelado del paso base (cerrado: \texttt{K\_n}, y \texttt{K\_t} con fricción; abierto: 0) con aviso.
+  \item \textbf{Q5 --- DECIDIDO por el usuario el 2026-11-26 («si»): tolerancia \texttt{10\ensuremath{^{-}}⁶\ensuremath{\cdot}h} (h, tamaño de la cara). Una holgura inicial \texttt{g\_0} con \texttt{−10\ensuremath{^{-}}⁶\ensuremath{\cdot}h \ensuremath{\le} g\_\allowbreak{}0 \textless{} 0} se lleva a 0; por debajo de \texttt{−10\ensuremath{^{-}}⁶\ensuremath{\cdot}h}, error «las caras se interpenetran al inicio».} Las interferencias intencionales (ajustes a presión) quedan fuera de este bloque. \textbf{Precisión DECIDIDA por el usuario el 2026-11-26 («ok 1», hallazgo 2 de la verificación de \texttt{teorico-solidum}): la tolerancia es simétrica, \texttt{|g\_0| \ensuremath{\le} 10\ensuremath{^{-}}⁶\ensuremath{\cdot}h} se lleva a 0} (también las holguras positivas pequeñas): sin ello, dos caras coincidentes salvo redondeo se rechazarían con una ley cohesiva («las caras están separadas»); el contacto se cierra como mucho \texttt{10\ensuremath{^{-}}⁶\ensuremath{\cdot}h} antes (\texttt{10\ensuremath{^{-}}⁵\ensuremath{\cdot}E} de tracción con \texttt{K\_n = 10E/h}, \textit{calculado}). Es lo que ya hacía el código (\texttt{\_shared.py}, \texttt{GAP\_TOLERANCE}). Pregunta y datos: interpenetración inicial (\texttt{g\_0 \textless{} 0} da tracción en \texttt{U = 0}: con \texttt{K\_n = 10E/h}, \texttt{10\ensuremath{^{-}}⁶\ensuremath{\cdot}h} produce \texttt{10\ensuremath{^{-}}⁵\ensuremath{\cdot}E}, 0.3 MPa con E = 30 GPa, \textit{calculado}): el teórico recomienda llevar a 0 lo que esté bajo una tolerancia geométrica relativa al tamaño de la cara y dar error por encima; el valor de la tolerancia es del usuario.
+  \item \textbf{Q6 --- DECIDIDO por el usuario el 2026-11-26 («si»): nota en el manual de usuario} (sección de energías y de interfaces) que explique la disipación espuria del trapecio cuando un paso cruza un quiebre de la ley y que se reduce con pasos más pequeños. Pregunta: ¿el manual advierte que \texttt{D = W − E} da una disipación espuria cuando un paso cruza un quiebre de la ley (cierre de una holgura, paso de adherencia a deslizamiento)? Se reduce al refinar el paso (1 paso: \texttt{D/\ensuremath{\psi} = 0.50}; 10 pasos: 5e-3). \textit{Precisión de la verificación} (\texttt{teorico-solidum}, 2026-11-26, \textit{calculado}): el signo depende del quiebre: positiva al cerrar una holgura (el trapecio sobrestima \texttt{W}), negativa al pasar de adherencia a deslizamiento bajo presión constante (el trapecio subestima \texttt{W} en \texttt{½\ensuremath{\cdot}\ensuremath{\mu}p\ensuremath{\cdot}(g − g\_y)}: la disipación de ese paso sale la mitad de la real). La nota del manual es neutra.
+  \item Decididos por la IA, con el acuerdo del teórico (rechazos de casos no soportados, sin recomendación física): una ley sin \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP} con \texttt{g\_0 \ensuremath{\neq} 0} es error (si algún día se admite, lo correcto sería pasarle sólo \texttt{\ensuremath{\Delta}u}); \texttt{split} con elementos térmicos sobre los mismos nodos es error (conductancia perfecta y adiabático son los dos límites y ninguno es correcto en general).
+  \item \textbf{2026-11-26 --- Revisión de la spec por \texttt{teorico-solidum}} (\texttt{informes/\allowbreak{}teorico/\allowbreak{}revision\_\allowbreak{}spec\_\allowbreak{}contacto\_\allowbreak{}2026-11-26.\allowbreak{}md}, «cambios antes de programar»): B, orientación, pesos de línea y triángulo, despegue y Hertz correctos (\textit{calculado}). Aplicado: orientación de la cara A para el generador y cara A plana con pares a distancia (§2), signo de \texttt{g\_0} y apoyos de la parcela (§7b.2), giro rígido de primer orden y par espurio con fricción (§9), datos de Hertz (§7b.5), pruebas nuevas; \texttt{orientacion\_\allowbreak{}invertida} sólo con nodos coincidentes. Pendiente de comprobar al programar (\textit{hipótesis} del teórico, de memoria): la celda \texttt{wedge} de VTK podría tener la base con la normal al revés que este orden (sólo visualización).
+  \item \textbf{2026-11-26 --- Revisión del plan por \texttt{arquitecto-solidum}} (\texttt{informes/\allowbreak{}arquitecto/\allowbreak{}revision\_\allowbreak{}plan\_\allowbreak{}contacto\_\allowbreak{}2026-11-26.\allowbreak{}md}): orden de nodos de Abaqus, \texttt{JUMP\_DIM} en lugar de \texttt{STRAIN\_DIM}, celda VTK propia, generación con \texttt{pair}/\texttt{split}, energía almacenada por elemento: \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}.
+\end{itemize}
+
+
+\newpage
+
+\section{Interface2D6}
+\label{spec:Interface2D6}
+
+
+
+\textit{Spec corta tipo extensión (Reglas §4): la formulación de la familia está en \hyperref[spec:Interface2D4]{\texttt{Interface2D4}} y la arquitectura en el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}. Aquí sólo lo que cambia. Incorporada al bloque de contacto por decisión del usuario del 2026-11-26 («si la 1»): sin ella, \texttt{pair} y \texttt{split} no se pueden usar con sólidos cuadráticos (Quad8, Quad9, Tri6), que el usuario usa en sus validaciones de fractura.}
+
+
+\subsection{Lo que cambia respecto de \texttt{Interface2D4}}
+
+\phantomsection
+\subsubsection*{1. Caras y orden de los nodos}
+\addcontentsline{toc}{subsubsection}{1. Caras y orden de los nodos}
+
+Caras de \textbf{3 nodos} (dos extremos y uno intermedio), isoparamétricas: pueden ser curvas, como los lados de los sólidos cuadráticos que unen.
+
+Orden: \textbf{primero las esquinas, después los intermedios}, como los sólidos cuadráticos de Solidum (Quad8: esquinas y después nodos de lado):
+
+\begin{itemize}
+  \item nodos 1, 2: extremos de la cara A; nodos 3, 4: extremos de la cara B, con \textbf{4 frente a 1 y 3 frente a 2} (los cuatro primeros, igual que \texttt{Interface2D4});
+  \item nodo 5: intermedio de la cara A (entre 1 y 2); nodo 6: intermedio de la cara B, frente a 5.
+\end{itemize}
+
+Es el orden de la celda VTK \texttt{VTK\_\allowbreak{}QUADRATIC\_\allowbreak{}LINEAR\_\allowbreak{}QUAD} (\textbf{tipo 30}, \texttt{quad6} en meshio: cuatro esquinas antihorarias, el intermedio del lado 1--2 y el del lado 3--4), así que la celda se escribe sin permutar (paso de salida, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §7). Corregido por el teórico: la 26 es la cuña cuadrática de 15 nodos.
+
+\phantomsection
+\subsubsection*{2. Funciones de forma, ejes y medida}
+\addcontentsline{toc}{subsubsection}{2. Funciones de forma, ejes y medida}
+
+En la cara A, con \texttt{\ensuremath{\xi} \ensuremath{\in} [−1, 1]} (nodo 1 en \texttt{\ensuremath{\xi} = −1}, nodo 2 en \texttt{\ensuremath{\xi} = +1}, nodo 5 en \texttt{\ensuremath{\xi} = 0}):
+
+\[
+N_1 = \tfrac12\,\xi(\xi-1), \qquad N_2 = \tfrac12\,\xi(\xi+1), \qquad N_5 = 1-\xi^2
+\]
+
+y las mismas en la cara B, asignadas a los nodos frente a cada nodo de A (4, 3, 6).
+
+\begin{itemize}
+  \item \texttt{a(\ensuremath{\xi}) = \ensuremath{\partial}x\_\allowbreak{}A/\allowbreak{}\ensuremath{\partial}\ensuremath{\xi} = \ensuremath{\Sigma}\_\allowbreak{}i (\ensuremath{\partial}N\_\allowbreak{}i/\allowbreak{}\ensuremath{\partial}\ensuremath{\xi})\ensuremath{\cdot}x\_\allowbreak{}i}; \texttt{J(\ensuremath{\xi}) = \ensuremath{\|}a(\ensuremath{\xi})\ensuremath{\|}}; \texttt{s = a/J}, \texttt{n = e\_z \ensuremath{\times} s}. En una cara curva los ejes \textbf{varían de punto a punto} y se evalúan en cada punto de integración (como en el cuadrilátero alabeado 3D).
+  \item Holgura inicial \texttt{g\_\allowbreak{}0(\ensuremath{\xi}) = n(\ensuremath{\xi})\ensuremath{\cdot}(x\_\allowbreak{}B(\ensuremath{\xi}) − x\_\allowbreak{}A(\ensuremath{\xi}))}, con \texttt{x\_A}, \texttt{x\_B} interpoladas con las \texttt{N\_i} (familia §3). Con nodos coincidentes, 0.
+  \item Medida \texttt{dΓ = J\ensuremath{\cdot}e\ensuremath{\cdot}d\ensuremath{\xi}}, con \texttt{e} el espesor de los sólidos adyacentes (familia §4 y §6).
+\end{itemize}
+
+\phantomsection
+\subsubsection*{3. Salto, fuerzas y rigidez}
+\addcontentsline{toc}{subsubsection}{3. Salto, fuerzas y rigidez}
+
+Sin cambios de fórmula (familia §5--§6): \texttt{g = g\_\allowbreak{}0\ensuremath{\cdot}e\_\allowbreak{}1 + R(\ensuremath{\xi})\ensuremath{\cdot}\ensuremath{\Sigma}\_\allowbreak{}i N\_\allowbreak{}i(\ensuremath{\xi})\ensuremath{\cdot}(u\_\allowbreak{}B,par(i) − u\_\allowbreak{}A,i)}, \texttt{f\_\allowbreak{}e = \ensuremath{\Sigma}\_\allowbreak{}g m\_\allowbreak{}g\ensuremath{\cdot}B\_\allowbreak{}g\ensuremath{^{\top}}\ensuremath{\cdot}t\_\allowbreak{}g}, \texttt{K\_\allowbreak{}e = \ensuremath{\Sigma}\_\allowbreak{}g m\_\allowbreak{}g\ensuremath{\cdot}B\_\allowbreak{}g\ensuremath{^{\top}}\ensuremath{\cdot}T\_\allowbreak{}g\ensuremath{\cdot}B\_\allowbreak{}g}, con \texttt{m\_g} la medida del punto.
+
+\phantomsection
+\subsubsection*{4. Integración (3 puntos en las dos reglas)}
+\addcontentsline{toc}{subsubsection}{4. Integración (3 puntos en las dos reglas)}
+
+\begin{itemize}
+  \item \textbf{Nodal} (Newton--Cotes / Lobatto de 3 puntos, en los nodos \texttt{\ensuremath{\xi} = −1, +1, 0}): cada punto ve un solo par de nodos (contacto nodo a nodo). En un lado recto, con el intermedio centrado o no, el peso de cada nodo es el área tributaria consistente \texttt{m\_\allowbreak{}i = e\ensuremath{\cdot}\ensuremath{\int}N\_\allowbreak{}i J d\ensuremath{\xi}} (decisión del usuario del 2026-11-26 para la familia, Diálogo Q3 de \texttt{Interface2D4}); con el intermedio en el centro, \texttt{m = e\ensuremath{\cdot}L\ensuremath{\cdot}(1/\allowbreak{}6, 1/\allowbreak{}6, 2/\allowbreak{}3)} para los nodos (1, 2, 5) (\textit{calculado}): la regla de Simpson. \textbf{En cualquier lado, recto o curvo: Simpson con el jacobiano del nodo}, \texttt{m\_\allowbreak{}i = e\ensuremath{\cdot}w\_\allowbreak{}i\ensuremath{\cdot}J(\ensuremath{\xi}\_\allowbreak{}i)} con \texttt{w = (1/\allowbreak{}3, 1/\allowbreak{}3, 4/\allowbreak{}3)} (decisión del usuario del 2026-11-26, Diálogo Q1). En un lado recto es lo mismo que \texttt{\ensuremath{\int}N\_i J}; en uno curvo es la norma del vector de área tributaria \texttt{\ensuremath{\int}N\_i n J d\ensuremath{\xi}} y reproduce una presión uniforme.
+  \item \textbf{Gauss}: 3 puntos (\texttt{\ensuremath{\xi} = 0, \ensuremath{\pm}\ensuremath{\surd}(3/5)}, pesos 8/9, 5/9, 5/9). En un lado recto el integrando de \texttt{K\_e} con ley lineal es de grado 4 en \texttt{\ensuremath{\xi}} y la regla es exacta hasta grado 5.
+\end{itemize}
+
+Por omisión, \texttt{nodal} (decisión del usuario del 2026-11-26 para la familia).
+
+Literatura (\textit{leído en la fuente} por el bibliotecario): con Gauss, un gradiente grande de tracción dentro del elemento y rigidez alta hacen oscilar la tracción entre puntos; Newton--Cotes/Lobatto de 3 puntos no acopla los pares y lo evita (Schellekens y de Borst 1993, pp. 57--58; de Borst et al. 2012, p. 432). En la línea cuadrática Newton--Cotes, Lobatto y la integración concentrada (\textit{lumping}) dan los mismos pesos 1/6, 2/3, 1/6 de la longitud (Schellekens y de Borst 1993, Fig. 2(b)). DIANA (CL12I) integra con Newton--Cotes de 3 puntos por omisión; ANSYS (INTER203), con 2 puntos de Gauss.
+
+\phantomsection
+\subsubsection*{5. Generación desde la malla (ADR 0043 §6)}
+\addcontentsline{toc}{subsubsection}{5. Generación desde la malla (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §6)}
+
+\texttt{pair} y \texttt{split} crean un \texttt{Interface2D6} en cada lado de 3 nodos de un sólido cuadrático (Quad8, Quad9, Tri6; \texttt{EDGE\_NODES} = extremo, intermedio, extremo). La cara A se recorre en sentido contrario al del lado en el contorno antihorario del sólido A (familia §2), con el intermedio en la posición 5. En \texttt{pair}, cada nodo intermedio de A se empareja como los extremos (sobre la normal de A en ese nodo). Con la integración nodal, la cara A debe ser recta o casi: con pares a distancia sobre una cara curva el par no queda sobre la normal (familia §2, «qué cara es A»).
+
+\subsection{Advertencias y límites (además de los de la familia)}
+
+\begin{itemize}
+  \item \textbf{Cara A curva con holgura}: igual que en la familia, la cara A con pares a distancia debe ser la recta.
+  \item \textbf{Intermedio descentrado}: si el nodo 5 no está en el centro del lado, \texttt{J} varía y los pesos nodales dejan de ser 1/6, 1/6, 2/3 (en lado recto, \texttt{m = (L/\allowbreak{}6 + 2\ensuremath{\delta}/\allowbreak{}3, L/\allowbreak{}6 − 2\ensuremath{\delta}/\allowbreak{}3, 2L/\allowbreak{}3)} con el descentramiento \texttt{\ensuremath{\delta}}, \textit{calculado} por el teórico). \textbf{Cara degenerada} (corregido por el teórico: \texttt{J = \ensuremath{\|}a\ensuremath{\|}} nunca es negativo, así que «\texttt{J \ensuremath{\le} 0}» no sirve): es error al construir si algún peso nodal no es positivo o si la tangente de la cara se invierte (\texttt{a(\ensuremath{\pm}1)\ensuremath{\cdot}a(0) \ensuremath{\le} 0}). El nodo a un cuarto del elemento singular de Barsoum da peso nulo en el extremo (\texttt{m = (0, 1/\allowbreak{}3, 2/\allowbreak{}3)\ensuremath{\cdot}L}) y también es error.
+  \item \textbf{3D cuadrático} (caras de 6 y 8 nodos): fuera de este bloque. En la cara serendípita de 8 nodos la fracción consistente de una presión uniforme es −1/12 en las esquinas, y 0 en las esquinas del triángulo de 6 nodos (\textit{calculado}); con integración nodal esos nodos no transmitirían el contacto. Necesita una decisión del usuario sobre la integración.
+\end{itemize}
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Interface2D6
+kind: element
+status: implemented
+
+interface:
+  field: interface
+  dof_names: [ux, uy]
+  n_nodes: 6
+  jump_dim: 2
+  n_integration_points: 3       # nodal o Gauss, los dos con 3 puntos
+
+admission:                      # evidencia en informes/bibliotecario/busqueda_interfaz_cuadratica_2026-11-26.md
+  textbooks:
+    - de_borst_crisfield: "§13.1 Interface Elements (pp. 428–436): formulación para n pares de nodos (ecs. 13.1–13.10); interpolación cuadrática y Newton–Cotes (pp. 432–433); ejemplo con interfaces de seis nodos y Newton–Cotes de 3 puntos (p. 434)"
+    - zienkiewicz_taylor: "vol. 2, 7.ª ed., §4.11.2 elementos de junta isoparamétricos (p. 128) [genérico]"
+  general_codes:
+    - diana: "CL12I (línea 2D, 3+3 nodos, 2.º orden; Newton–Cotes de 3 puntos por omisión), Theory §33.7.5"
+    - ansys: "INTER203 (interfaz 2D de 6 nodos, cuadrática; 2 puntos, Gauss), Element Reference y Theory Reference"
+    - code_aster: "PLAN_JOINT con malla QUAD8 (V6.03.162); R3.06.09 §1.2; PLAN_INTERFACE QUAD8 (U3.13.14, R3.06.13)"
+
+parameters:
+  - { name: material,    type: int,   required: true,  desc: "Id en interface_materials; ley de superficie con 2 componentes" }
+  - { name: integration, type: str,   required: false, desc: "'nodal' (por omisión) | 'gauss'" }
+  - { name: thickness,   type: float, required: false, desc: "Espesor fuera del plano; lo pone el generador desde los sólidos adyacentes" }
+
+conventions:
+  node_orientation: "A = (1, 2, 5), B = (3, 4, 6) con 4 frente a 1, 3 frente a 2 y 6 frente a 5; esquinas primero (VTK 30, quad6)"
+
+out_of_scope:
+  - "Caras cuadráticas 3D (6 y 8 nodos): decisión de integración pendiente"
+
+acceptance:
+  verification:
+    - name: parcela_de_contacto_cuadratica
+      setup: "dos bloques de Quad8 (y de Quad9 y Tri6) con mallas coincidentes en la interfaz, materiales distintos, presión uniforme p, ContactPenalty real (unilateral: hace visible el signo de la normal) sin fricción, K_n de 10 a 100·E/h, espesor ≠ 1; nodal y Gauss; creados con pair y con split"
+      expect: "t_n = −p en todos los puntos; σ_yy = −p uniforme; interpenetración p/K_n"
+      tol_rel: 1.0e-9
+    - name: salto_uniforme_cuadratico
+      setup: "una interfaz aislada recta e inclinada de longitud L; cara A fija, cara B trasladada; ley lineal con K_n ≠ K_s"
+      expect: "fuerzas nodales e·L·(1/6, 1/6, 2/3)·t en (1, 2, 5) con nodal y con Gauss (detecta pesos de Gauss desordenados)"
+      tol_rel: 1.0e-12
+  specific:
+    - name: cuerpo_rigido_cara_curva
+      setup: "cara curva (intermedio fuera de la cuerda), giro rígido pequeño (obligatorio: la traslación sola no detecta pares mal asignados) con nodos coincidentes"
+      expect: "g = 0 y f_e = 0"
+      tol_rel: 1.0e-12
+    - name: ejes_en_cara_curva
+      setup: "cara parabólica conocida"
+      expect: "n y s en los tres puntos iguales a los de a(ξ) = Σ N_i'·x_i, con signo (detecta la normal de la cuerda y el signo cambiado)"
+      tol_rel: 1.0e-12
+    - name: pesos_en_cara_curva
+      setup: "cara en arco y con intermedio descentrado; salto normal local uniforme"
+      expect: "pesos y fuerzas nodales según la decisión Q1 (con Simpson: e·t·e_z × (a(−1)/3, a(+1)/3, 4a(0)/3)); con ∫N_i J, cuadratura fina de 24 puntos"
+      tol_rel: 1.0e-12
+    - name: cara_degenerada
+      setup: "intermedio que da un peso nodal no positivo, o la tangente invertida; nodo a un cuarto"
+      expect: "error al construir"
+    - name: rango_de_la_rigidez
+      setup: "ley lineal, cara curva, nodal y Gauss"
+      expect: "6 valores propios no nulos (detecta una regla de 2 puntos)"
+      tol_rel: 1.0e-10
+    - name: pruebas_de_la_familia
+      setup: "las de Interface2D4 repetidas para este elemento: nodal desacopla pares, escalado con el espesor, simetría de la rigidez, orientación invertida (también en cara curva), cohesiva con holgura rechazada"
+      expect: "como en la familia"
+    - name: holgura_inicial_cuadratica
+      setup: "cara A recta y cara B paralela a distancia g_0 (los tres pares sobre la normal); ContactPenalty"
+      expect: "g_0 en los tres puntos; cierre con desplazamiento impuesto como en la familia"
+      tol_rel: 1.0e-12
+    - name: tangente_del_elemento_cuadratico
+      setup: "diferencias centradas con ContactPenalty con fricción (adherencia y deslizamiento) en una cara curva"
+      expect: "coinciden"
+      tol_rel: 1.0e-6
+
+references:
+  - "Spec Interface2D4 (formulación de la familia); ADR 0043."
+  - "Schellekens, J. C. J., de Borst, R. (1993). On the numerical integration of interface elements. IJNME 36(1), 43–66. DOI 10.1002/nme.1620360104 (docs/referencias/Schellekens_deBorst_1993_integracion_interfaces.pdf). Línea cuadrática: Newton–Cotes = Lobatto = lumping = 1/6, 2/3, 1/6 de la longitud (Fig. 2(b), p. 49); sin acople entre pares, a diferencia de Gauss (Fig. 13, p. 58)."
+  - "de Borst, R., Crisfield, M. A., Remmers, J. J. C., Verhoosel, C. V. (2012). Nonlinear Finite Element Analysis of Solids and Structures, 2.ª ed., §13.1. Wiley."
+
+\end{lstlisting}
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}interface\_\allowbreak{}2d.\allowbreak{}py} (clase); lo común en \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}\_\allowbreak{}shared.\allowbreak{}py} (funciones de forma \texttt{line3}, reglas de 3 puntos, rechazo de la cara degenerada). La base de la familia pasó de \texttt{B\_PARTNERS} a \texttt{A\_NODES}/\texttt{B\_NODES} (posiciones de la cara A en el orden de sus funciones de forma y de su par en B) para admitir el orden «esquinas primero»; los tres elementos lineales dan lo mismo (pruebas de la familia y barrido verdes).
+  \item Clase: \texttt{Interface2D6} (\texttt{FACE\_\allowbreak{}CELL = \textquotedbl{}line3\textquotedbl{}}, \texttt{A\_\allowbreak{}NODES = (0, 1, 4)}, \texttt{B\_\allowbreak{}NODES = (3, 2, 5)}, \texttt{VTK\_\allowbreak{}CELL\_\allowbreak{}TYPE = \textquotedbl{}quad6\textquotedbl{}}).
+  \item Salida (paso 5, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §7): meshio 5.3.5 conoce el tipo 30 pero no su dimensión ni su número de nodos y no puede escribir ni leer la celda; \texttt{ensure\_\allowbreak{}meshio\_\allowbreak{}cells()} de \texttt{solidum/\allowbreak{}utils/\allowbreak{}vtk\_\allowbreak{}exporter.\allowbreak{}py} le añade las dos entradas. Ida y vuelta con el orden del elemento en \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}output.\allowbreak{}py}.
+  \item Generador (\texttt{solidum/\allowbreak{}mesh/\allowbreak{}interfaces.\allowbreak{}py}): los lados de 3 nodos de Quad8, Quad9 y Tri6 dan \texttt{Interface2D6}, con el intermedio al final de la cara.
+  \item Tests:
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}2d6.\allowbreak{}py} (30): todos los casos de \texttt{acceptance}, con el convenio de nodos escrito a mano en la prueba (no leído de la clase); parcela exacta desde el YAML con \texttt{split} para Quad8, Quad9 y Tri6, nodal y Gauss (tolerancia 1e-9), y con \texttt{pair} en Python.
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}generation.\allowbreak{}py}: \texttt{split} con sólidos cuadráticos y el error de las caras cuadráticas 3D.
+  \item Barrido de contrato con la fábrica de \texttt{Interface2D6}.
+  \item Mutaciones: 11/11 detectadas (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-26/\allowbreak{}contacto/\allowbreak{}mutar\_\allowbreak{}interface2d6.\allowbreak{}py}), con los errores típicos de la tabla del teórico.
+\end{itemize}
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item \textbf{2026-11-26 --- Origen}: el mensaje de error de \texttt{split} con Quad8 recomendaba «use elementos sólidos lineales»; el usuario lo objetó («a mayor grado del elemento es mejor su solución»). La recomendación se quitó (Reglas §3: elegir el elemento es del usuario) y el usuario decidió añadir la interfaz cuadrática 2D a este bloque (opción 1, «si la 1»); la 3D cuadrática queda para cuando haya un caso, por la pregunta de integración de §«Advertencias».
+  \item Integración nodal por omisión: heredada de la familia (Diálogo Q1 de \texttt{Interface2D4}).
+  \item \textbf{2026-11-26 --- Admisión} (\texttt{bibliotecario-solidum}, \texttt{informes/\allowbreak{}bibliotecario/\allowbreak{}busqueda\_\allowbreak{}interfaz\_\allowbreak{}cuadratica\_\allowbreak{}2026-11-26.\allowbreak{}md}): \textbf{estándar} (de Borst et al. 2012 §13.1; DIANA CL12I, ANSYS INTER203, Code\_Aster PLAN\_JOINT QUAD8; Abaqus no tiene cohesivo cuadrático). El orden «esquinas primero» coincide con ANSYS y Code\_Aster; DIANA numera cara por cara. Dato sobre Q1 (\textit{leído}): Schellekens y de Borst (1993, p. 65) observan, con elementos planos lineales distorsionados, que Newton--Cotes calcula mal \texttt{det J} en los puntos y el \textit{lumping} \texttt{\ensuremath{\int}N\_i dA} no; trata superficies lineales, no líneas cuadráticas curvas, y no contradice el cálculo del teórico para este elemento (en lado recto las dos reglas coinciden).
+  \item \textbf{2026-11-26 --- Revisión de la spec por \texttt{teorico-solidum}} (\texttt{informes/\allowbreak{}teorico/\allowbreak{}revision\_\allowbreak{}spec\_\allowbreak{}interface2d6\_\allowbreak{}2026-11-26.\allowbreak{}md}, «cambios antes de programar»): formulación, orden de nodos y las dos reglas en lado recto correctos; parcela exacta con Quad8, Quad9 y Tri6 (\ensuremath{\le} 1.4e-14, \textit{calculado}). Aplicado: tipo VTK 30, criterio de cara degenerada por peso no positivo o tangente invertida (y nodo a un cuarto), pruebas nuevas y ajustadas. Hallazgo \ensuremath{\to} Q1.
+  \item \textbf{Q1 --- DECIDIDO por el usuario el 2026-11-26 («tu recomendación»): opción (b), Simpson con el jacobiano del nodo.} Pregunta: pesos nodales en un lado curvo. En lado recto las dos opciones coinciden con la decisión Q3 de la familia. En lado curvo: (a) \texttt{e\ensuremath{\cdot}\ensuremath{\int}N\_i J d\ensuremath{\xi}} (la letra de Q3): bajo presión uniforme la tracción nodal se desvía +1.3 \% en los extremos y −0.7 \% en el intermedio con arcos de 30\ensuremath{^{\circ}} por elemento (+0.15 \% / −0.08 \% con 10\ensuremath{^{\circ}}), no baja al subir \texttt{K\_n} y desaparece al refinar; (b) Simpson con el jacobiano del nodo \texttt{e\ensuremath{\cdot}w\_i\ensuremath{\cdot}J(\ensuremath{\xi}\_i)}, \texttt{w = (1/\allowbreak{}3, 1/\allowbreak{}3, 4/\allowbreak{}3)}: reproduce la presión uniforme (2e-8 con \texttt{K\_n} grande), porque es la norma del vector de área tributaria \texttt{\ensuremath{\int}N\_i n J d\ensuremath{\xi}} que equilibra a los sólidos (\textit{calculado} por el teórico). Recomendación del teórico y de la IA: (b).
+\end{itemize}
+
+
+\newpage
+
+\section{Interface3D6}
+\label{spec:Interface3D6}
+
+
+
+\textit{Spec corta tipo extensión (Reglas §4): la formulación de la familia está en \hyperref[spec:Interface2D4]{\texttt{Interface2D4}} y la arquitectura en el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}. Aquí sólo lo que cambia.}
+
+
+\subsection{Lo que cambia respecto de \texttt{Interface2D4}}
+
+\begin{itemize}
+  \item \textbf{Caras}: triángulos lineales de 3 nodos. Cara A = (1, 2, 3), cara B = (4, 5, 6), con 4 frente a 1, 5 frente a 2 y 6 frente a 3 (orden de COH3D6 de Abaqus; celda VTK \texttt{wedge}).
+  \item \textbf{Ejes} (§2 de la familia): \texttt{n = (x\_\allowbreak{}2 − x\_\allowbreak{}1) \ensuremath{\times} (x\_\allowbreak{}3 − x\_\allowbreak{}1)/\allowbreak{}\ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}} sobre la cara A, \texttt{s1 = (x\_\allowbreak{}2 − x\_\allowbreak{}1)/\allowbreak{}\ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}}, \texttt{s2 = n \ensuremath{\times} s1}; constantes en la cara.
+  \item \textbf{Salto}: 3 componentes \texttt{(g\_\allowbreak{}n, g\_\allowbreak{}s1, g\_\allowbreak{}s2)}; la ley debe aceptar \texttt{(\textquotedbl{}surface\textquotedbl{}, 3)}.
+  \item \textbf{Integración}: nodal, los tres vértices con peso 1/6 (área del triángulo de referencia 1/2); Gauss, 3 puntos interiores \texttt{(1/\allowbreak{}6, 1/\allowbreak{}6), (2/\allowbreak{}3, 1/\allowbreak{}6), (1/\allowbreak{}6, 2/\allowbreak{}3)} con peso 1/6.
+  \item \textbf{Medida}: \texttt{J = \ensuremath{\|}(x\_\allowbreak{}2 − x\_\allowbreak{}1) \ensuremath{\times} (x\_\allowbreak{}3 − x\_\allowbreak{}1)\ensuremath{\|}} de la cara A; sin espesor.
+\end{itemize}
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Interface3D6
+kind: element
+status: implemented
+
+interface:
+  field: interface
+  dof_names: [ux, uy, uz]
+  n_nodes: 6
+  jump_dim: 3
+  n_integration_points: 3
+
+admission:
+  # Variante 3D de la familia admitida en Interface2D4 (informes/bibliotecario/busqueda_contacto_2026-11-26.md).
+  # COH3D6 de Abaqus: de memoria del bibliotecario, sin abrir el manual; confirmar antes de status: validated.
+  textbooks:
+    - de_borst_crisfield: "§13.1 Interface Elements (formulación general de la familia)"
+  general_codes:
+    - abaqus: "COH3D6 (cohesivo de 6 nodos; por confirmar en el manual)"
+
+parameters:
+  - { name: material,    type: int, required: true,  desc: "Id en interface_materials; ley de superficie con 3 componentes" }
+  - { name: integration, type: str, required: false, desc: "'nodal' | 'gauss' (Diálogo Q1 de Interface2D4)" }
+
+acceptance:
+  verification:
+    - name: parcela_de_contacto_3d
+      setup: "dos bloques de Tet4 con mallas coincidentes en la interfaz, presión uniforme, ContactPenalty sin fricción; nodal y Gauss"
+      expect: "presión de contacto p en todos los puntos; σ_zz = −p uniforme"
+      tol_rel: 1.0e-10
+  specific:
+    - name: cuerpo_rigido_3d
+      setup: "traslación y giro rígido pequeño con nodos coincidentes"
+      expect: "g = 0 y f_e = 0"
+      tol_rel: 1.0e-12
+    - name: tangente_del_elemento_3d
+      setup: "diferencias centradas en adherencia y deslizamiento 3D"
+      expect: "coinciden"
+      tol_rel: 1.0e-6
+
+references:
+  - "Spec Interface2D4 (formulación de la familia); ADR 0043."
+
+\end{lstlisting}
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}interface\_\allowbreak{}3d.\allowbreak{}py}; base común en \texttt{\_shared.py} (ver \texttt{Interface2D4}).
+  \item Clase: \texttt{Interface3D6} (\texttt{FACE\_\allowbreak{}CELL = \textquotedbl{}tri\textquotedbl{}}, celda VTK \texttt{wedge}).
+  \item Tests: \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}elements.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}generation.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}output.\allowbreak{}py}, barrido de contrato.
+  \item Verificación: \texttt{informes/\allowbreak{}teorico/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-26\_\allowbreak{}contacto.\allowbreak{}md} (parcela 3D con Tet4, nodal y Gauss, \texttt{g\_0 = 0} y \texttt{\textgreater{} 0}: \ensuremath{\le} 1.6e-14; \textit{medido} por el teórico).
+  \item Notas de traducción: orden de nodos de COH3D6 (Abaqus). Sin comprobar: si la base de la celda \texttt{wedge} de VTK tiene la normal al revés que este orden (sólo visualización).
+\end{itemize}
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item \textit{(vacío; las decisiones de la familia están en el Diálogo de \texttt{Interface2D4})}
+\end{itemize}
+
+
+\newpage
+
+\section{Interface3D8}
+\label{spec:Interface3D8}
+
+
+
+\textit{Spec corta tipo extensión (Reglas §4): la formulación de la familia está en \hyperref[spec:Interface2D4]{\texttt{Interface2D4}} y la arquitectura en el \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}. Aquí sólo lo que cambia.}
+
+
+\subsection{Lo que cambia respecto de \texttt{Interface2D4}}
+
+\begin{itemize}
+  \item \textbf{Caras}: cuadriláteros bilineales de 4 nodos. Cara A = (1, 2, 3, 4), cara B = (5, 6, 7, 8), con 5 frente a 1, 6 frente a 2, etc. (orden de COH3D8 de Abaqus; celda VTK \texttt{hexahedron}).
+  \item \textbf{Ejes} (§2 de la familia): \texttt{a\_\ensuremath{\xi} = \ensuremath{\partial}x\_A/\ensuremath{\partial}\ensuremath{\xi}}, \texttt{a\_\ensuremath{\eta} = \ensuremath{\partial}x\_A/\ensuremath{\partial}\ensuremath{\eta}}, \texttt{n = a\_\allowbreak{}\ensuremath{\xi} \ensuremath{\times} a\_\allowbreak{}\ensuremath{\eta}/\allowbreak{}\ensuremath{\|}\ensuremath{\cdot}\ensuremath{\|}}, \texttt{s1 = a\_\ensuremath{\xi}/\ensuremath{\|}a\_\ensuremath{\xi}\ensuremath{\|}}, \texttt{s2 = n \ensuremath{\times} s1}, evaluados en cada punto de Gauss; con la regla nodal, los del nodo \texttt{i} se evalúan en \texttt{(\ensuremath{\xi}\_i/3, \ensuremath{\eta}\_i/3)} (abajo). Varían dentro de una cara alabeada.
+  \item \textbf{Salto}: 3 componentes \texttt{(g\_\allowbreak{}n, g\_\allowbreak{}s1, g\_\allowbreak{}s2)}; la ley debe aceptar \texttt{(\textquotedbl{}surface\textquotedbl{}, 3)}.
+  \item \textbf{Integración}: nodal, en las cuatro esquinas, con el \textbf{vector de área tributaria consistente} de cada nodo, \texttt{m\_\allowbreak{}i n\_\allowbreak{}i = \ensuremath{\int}N\_\allowbreak{}i (a\_\allowbreak{}\ensuremath{\xi} \ensuremath{\times} a\_\allowbreak{}\ensuremath{\eta}) d\ensuremath{\xi}d\ensuremath{\eta}}, que en la cara bilineal es exactamente \texttt{(a\_\ensuremath{\xi} \ensuremath{\times} a\_\ensuremath{\eta})} en \texttt{(\ensuremath{\xi}\_i/3, \ensuremath{\eta}\_i/3)} (identidad comprobada con SymPy por el teórico): la medida del nodo es su norma y la normal del nodo, su dirección (decisión del usuario del 2026-11-26, Diálogo). En una cara plana \texttt{J} es lineal y la medida es el área tributaria \texttt{\ensuremath{\int}N\_i J d\ensuremath{\xi}d\ensuremath{\eta}} de la decisión Q3 de \texttt{Interface2D4} (Newton--Cotes reparte mal el área en caras que no son paralelogramos); en una alabeada, además, la normal es la que equilibra a los sólidos. El salto del nodo sigue siendo el de su par: la regla no acopla pares. Gauss, 2\ensuremath{\times}2.
+  \item \textbf{Medida}: \texttt{J = \ensuremath{\|}a\_\ensuremath{\xi} \ensuremath{\times} a\_\ensuremath{\eta}\ensuremath{\|}} de la cara A; sin espesor.
+\end{itemize}
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: Interface3D8
+kind: element
+status: implemented
+
+interface:
+  field: interface
+  dof_names: [ux, uy, uz]
+  n_nodes: 8
+  jump_dim: 3
+  n_integration_points: 4
+
+admission:
+  # Variante 3D de la familia admitida en Interface2D4 (informes/bibliotecario/busqueda_contacto_2026-11-26.md).
+  # COH3D8 de Abaqus: de memoria del bibliotecario, sin abrir el manual; confirmar antes de status: validated.
+  textbooks:
+    - de_borst_crisfield: "§13.1 Interface Elements (formulación general de la familia)"
+  general_codes:
+    - abaqus: "COH3D8 (cohesivo de 8 nodos; por confirmar en el manual)"
+
+parameters:
+  - { name: material,    type: int, required: true,  desc: "Id en interface_materials; ley de superficie con 3 componentes" }
+  - { name: integration, type: str, required: false, desc: "'nodal' (por omisión) | 'gauss' (Diálogo Q1 de Interface2D4)" }
+
+acceptance:
+  verification:
+    - name: parcela_de_contacto_3d
+      setup: "dos bloques de Hex8 con mallas coincidentes (distorsionadas, caras planas) en la interfaz, presión uniforme, ContactPenalty sin fricción; nodal y Gauss"
+      expect: "presión de contacto p en todos los puntos; σ_zz = −p uniforme"
+      tol_rel: 1.0e-10
+  specific:
+    - name: cuerpo_rigido_3d
+      setup: "traslación y giro rígido pequeño con nodos coincidentes"
+      expect: "g = 0 y f_e = 0"
+      tol_rel: 1.0e-12
+    - name: tangente_del_elemento_3d
+      setup: "diferencias centradas en adherencia y deslizamiento 3D, cara alabeada"
+      expect: "coinciden"
+      tol_rel: 1.0e-6
+    - name: area_tributaria_en_cara_trapezoidal
+      setup: "tracción uniforme sobre la cara plana trapezoidal (0,0), (2,0), (1.6,1.1), (0.2,0.7) del teórico; integración nodal"
+      expect: "fuerzas nodales = ∫N_i J (0.375, 0.4417, 0.400, 0.3333 por unidad de tracción)"
+      tol_rel: 1.0e-12
+    - name: cara_alabeada
+      setup: "cara de 4 nodos no coplanares"
+      expect: "n(ξ) normal unitaria de a_ξ × a_η en cada punto; ejes dextrógiros"
+      tol_rel: 1.0e-12
+    - name: parcela_hidrostatica_con_cara_alabeada
+      setup: "dos bloques de Hex8 del mismo material separados por un paraboloide hiperbólico (7.2° de alabeo por cara), presión hidrostática p, K_n grande; nodal y Gauss"
+      expect: "t_n = −p y σ = −p·I (error de la penalización); con la normal de la esquina la regla nodal daba 1.8e-2 y 8.7e-2"
+      tol_rel: 1.0e-4
+
+references:
+  - "Spec Interface2D4 (formulación de la familia); ADR 0043."
+
+\end{lstlisting}
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}interface\_\allowbreak{}3d.\allowbreak{}py}; base común en \texttt{\_shared.py} (ver \texttt{Interface2D4}).
+  \item Clase: \texttt{Interface3D8} (\texttt{FACE\_\allowbreak{}CELL = \textquotedbl{}quad\textquotedbl{}}, celda VTK \texttt{hexahedron}; ejes evaluados en cada punto de Gauss o, con la regla nodal, en \texttt{(\ensuremath{\xi}\_i/3, \ensuremath{\eta}\_i/3)}: \texttt{axes\_pts} en \texttt{InterfaceElement.\allowbreak{}\_\allowbreak{}build\_\allowbreak{}geometry}).
+  \item Tests: \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}patch.\allowbreak{}py} (parcela de contacto 3D con caras planas no paralelogramo, \texttt{g\_0 = 0} y \texttt{\textgreater{} 0}, nodal y Gauss; parcela hidrostática con cara alabeada; medida nodal = \texttt{\ensuremath{\int}N\_i J} en cara plana), \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}elements.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}generation.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}output.\allowbreak{}py}, barrido de contrato. Mutaciones del paso 7: 7/7 detectadas (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-26/\allowbreak{}contacto/\allowbreak{}mutar\_\allowbreak{}paso7.\allowbreak{}py}).
+  \item Verificación: \texttt{informes/\allowbreak{}teorico/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-26\_\allowbreak{}contacto.\allowbreak{}md} (parcela 3D con Hex8 de caras planas no paralelogramo, nodal y Gauss: \ensuremath{\le} 2.6e-14; la regla de Newton--Cotes la rompe, 4.3e-2; cara alabeada con la regla nodal de la esquina: hallazgo 1, corregido).
+  \item Notas de traducción: orden de nodos de COH3D8 (Abaqus).
+\end{itemize}
+
+\subsection{Diálogo}
+
+\begin{itemize}
+  \item Las decisiones de la familia están en el Diálogo de \texttt{Interface2D4}.
+  \item \textbf{2026-11-26 --- Normal y medida nodales en la cara alabeada. DECIDIDO por el usuario («ok la 1»): opción 1, el vector de área tributaria consistente.} Hallazgo de la verificación de \texttt{teorico-solidum} (\texttt{informes/\allowbreak{}teorico/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-26\_\allowbreak{}contacto.\allowbreak{}md}, hallazgo 1): con la normal de la esquina y la medida \texttt{\ensuremath{\int}N\_i J}, una cara alabeada no transmite una presión uniforme (error en los esfuerzos de los sólidos de 3 \% con 2.4\ensuremath{^{\circ}} de alabeo y 8.7 \% con 7.2\ensuremath{^{\circ}}, que no baja con \texttt{K\_n}; con torsión y curvatura, 17--18 \% en la tracción puntual, que no baja al refinar; \textit{medido}), porque el vector que equilibra a los sólidos es \texttt{\ensuremath{\int}N\_i n J}, no \texttt{n(\ensuremath{\xi}\_i)\ensuremath{\cdot}\ensuremath{\int}N\_i J}. Opciones: (1) normal y medida del nodo \texttt{i} en \texttt{(\ensuremath{\xi}\_i/3, \ensuremath{\eta}\_i/3)}, idéntica en caras planas, error de la penalización en la alabeada (2.3e-6 en \texttt{t\_n}, 1.5e-8 en \ensuremath{\sigma}; en la superficie con torsión y curvatura, residuo de segundo orden que converge: 1.5e-3 con 3 divisiones, 3.8e-4 con 6); (2) mantenerla y documentar el límite, con Gauss para caras alabeadas. Recomendación de la IA y del teórico: (1), análogo 3D de la decisión Q1 de \texttt{Interface2D6}. No se buscó si algún código general la usa así. Implementado el mismo día (\texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}patch.\allowbreak{}py}: alabeada 7.2\ensuremath{^{\circ}} con error \textless{} 1e-4 en \texttt{t\_n} y \textless{} 1e-6 en \ensuremath{\sigma}, \textit{medido}).
 \end{itemize}
 
 
@@ -15675,6 +16357,379 @@ references:
 
 \newpage
 
+\section{ContactPenalty}
+\label{spec:ContactPenalty}
+
+
+
+\textit{Orden de trabajo pre-redactada por la IA el 2026-11-26 dentro del bloque de \textbf{contacto acotado} aprobado por el usuario el mismo día: superficies con pares conocidos y desplazamientos pequeños, ley de interfaz unilateral sin fricción con Coulomb opcional, sobre la familia de materiales de interfaz (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0033-materiales-de-interfaz.md}{ADR 0033}). La consume el elemento de interfaz de espesor nulo (spec \texttt{Interface2D} / \texttt{Interface3D}, bloque hermano). El usuario revisa la física y aprueba antes de que la IA escriba código; las decisiones abiertas están en el \textbf{Diálogo}.}
+
+
+
+\subsection{Especificación física}
+
+\phantomsection
+\subsubsection*{0. Descripción general}
+\addcontentsline{toc}{subsubsection}{0. Descripción general}
+
+Ley tracción--holgura para el \textbf{contacto entre dos superficies} con pares de puntos conocidos y desplazamientos pequeños. Material de interfaz de superficie (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0033-materiales-de-interfaz.md}{ADR 0033}, \texttt{GEOMETRY = \textquotedbl{}surface\textquotedbl{}}), en 2D \texttt{(n, s)} y en 3D \texttt{(n, s1, s2)} (\texttt{JUMP\_DIM = None}).
+
+\begin{itemize}
+  \item \textbf{Normal}: condición unilateral de Signorini (no interpenetración, presión de contacto sólo de compresión, sin adhesión), impuesta por \textbf{penalización} con rigidez \texttt{K\_n}.
+  \item \textbf{Tangencial}: sin fricción (\texttt{\ensuremath{\mu} = 0}, la superficie desliza libre) o \textbf{fricción de Coulomb} con coeficiente \texttt{\ensuremath{\mu}}, regularizada con una adherencia elástica de rigidez \texttt{K\_t} (formulación elastoplástica de la fricción: la adherencia es la «parte elástica» del deslizamiento y el deslizamiento por fricción la «parte plástica»).
+\end{itemize}
+
+No hay daño, ni cohesión, ni dilatancia: una superficie que se separa no transmite nada.
+
+\phantomsection
+\subsubsection*{1. Holgura y desplazamiento relativo}
+\addcontentsline{toc}{subsubsection}{1. Holgura y desplazamiento relativo}
+
+En el sistema local de la interfaz, el elemento entrega a la ley
+
+\[
+\mathbf g = \begin{bmatrix} g_n \\ \mathbf g_s\end{bmatrix}, \qquad g_n = g_0 + \Delta u_n, \qquad \mathbf g_s = \Delta\mathbf u_s
+\]
+
+\begin{itemize}
+  \item \texttt{g\_n}: \textbf{holgura normal actual}; \texttt{g\_0} es la holgura inicial del par, que mide el elemento sobre la geometría de referencia (0 en una interfaz de espesor nulo con nodos coincidentes; definición en la spec del elemento). \texttt{g\_n \textgreater{} 0} separación; \texttt{g\_n \textless{} 0} interpenetración. La ley declara \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP = True} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §4): las leyes que no lo declaran (cohesivas, adherencia) sólo se admiten con \texttt{g\_0 = 0}.
+  \item \texttt{g\_s}: desplazamiento relativo tangencial (1 componente en 2D, 2 en 3D), medido desde la configuración de referencia.
+\end{itemize}
+
+El deslizamiento se descompone en una parte de adherencia (elástica, recuperable) y una de deslizamiento por fricción (irreversible):
+
+\[
+\mathbf g_s = \mathbf g_s^{e} + \mathbf g_s^{p}
+\]
+
+\phantomsection
+\subsubsection*{2. Ley normal: contacto unilateral por penalización}
+\addcontentsline{toc}{subsubsection}{2. Ley normal: contacto unilateral por penalización}
+
+\[
+t_n = K_n\,\langle g_n\rangle_-, \qquad \langle x\rangle_- = \min(x,\,0), \qquad p_N = -t_n = K_n\,\langle -g_n\rangle_+ \ \ge 0
+\]
+
+con \texttt{p\_N} la \textbf{presión de contacto}. En el límite \texttt{K\_n \ensuremath{\to} \ensuremath{\infty}} se recuperan las condiciones de Signorini (Kuhn--Tucker del contacto):
+
+\[
+g_n \ge 0, \qquad p_N \ge 0, \qquad p_N\, g_n = 0
+\]
+
+Con \texttt{K\_n} finito la condición \texttt{g\_n \ensuremath{\ge} 0} se viola en \texttt{g\_n = −p\_N/K\_n}: la interpenetración es el error de la penalización, inversamente proporcional a \texttt{K\_n}.
+
+\phantomsection
+\subsubsection*{3. Ley tangencial: fricción de Coulomb regularizada}
+\addcontentsline{toc}{subsubsection}{3. Ley tangencial: fricción de Coulomb regularizada}
+
+\[
+\mathbf t_s = K_t\,(\mathbf g_s - \mathbf g_s^{p})
+\]
+
+\[
+\Phi(\mathbf t_s, p_N) = \|\mathbf t_s\| - \mu\,p_N \le 0
+\]
+
+\[
+\dot{\mathbf g}_s^{p} = \dot\lambda\,\frac{\mathbf t_s}{\|\mathbf t_s\|}, \qquad \dot\lambda \ge 0,\quad \Phi \le 0,\quad \dot\lambda\,\Phi = 0
+\]
+
+\begin{itemize}
+  \item \textbf{Adherencia} (\texttt{\ensuremath{\Phi} \textless{} 0}): la superficie se deforma elásticamente en el plano tangente con rigidez \texttt{K\_t}; \texttt{K\_t \ensuremath{\to} \ensuremath{\infty}} es la adherencia perfecta de Coulomb.
+  \item \textbf{Deslizamiento} (\texttt{\ensuremath{\Phi} = 0}): \texttt{\ensuremath{\|}t\_s\ensuremath{\|} = \ensuremath{\mu}\ensuremath{\cdot}p\_N}, en la dirección del deslizamiento.
+  \item La regla de flujo no tiene componente normal: \textbf{sin dilatancia}. Como el límite \texttt{\ensuremath{\mu}\ensuremath{\cdot}p\_N} depende de la holgura normal, la ley no deriva de un potencial: es \textbf{no asociada} y su tangente no es simétrica (§10).
+  \item En 3D la ley es isótropa en el plano tangente: sólo depende de \texttt{\ensuremath{\|}t\_s\ensuremath{\|}}.
+  \item Con \texttt{\ensuremath{\mu} = 0}: \texttt{t\_s = 0} siempre, \texttt{K\_t} no interviene.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{4. Separación y recontacto}
+\addcontentsline{toc}{subsubsection}{4. Separación y recontacto}
+
+Con la superficie abierta (\texttt{g\_n \textgreater{} 0}), \texttt{p\_N = 0} y el límite de fricción es nulo: \texttt{t\_s = 0} y todo el desplazamiento tangencial es deslizamiento, \texttt{g\_s\textasciicircum{}p = g\_s}. Al volver a cerrarse, la adherencia empieza desde la posición de recontacto (el «punto de adherencia» se reinicia). No es una regla aparte: sale del algoritmo de §8 con \texttt{\ensuremath{\mu}\ensuremath{\cdot}p\_N = 0}.
+
+Como la presión baja de forma continua hasta cero antes de abrirse, la tracción tangencial también llega a cero de forma continua (desliza mientras la presión cae): no hay saltos en \texttt{t}.
+
+\phantomsection
+\subsubsection*{5. Energía}
+\addcontentsline{toc}{subsubsection}{5. Energía}
+
+\[
+\psi = \tfrac12\,K_n\,\langle g_n\rangle_-^2 + \tfrac12\,K_t\,\|\mathbf g_s - \mathbf g_s^{p}\|^2, \qquad \mathcal D = \mathbf t_s\cdot\dot{\mathbf g}_s^{p} = \mu\,p_N\,\|\dot{\mathbf g}_s^{p}\| \ \ge 0
+\]
+
+\texttt{\ensuremath{\psi}} es la energía almacenada en la penalización y la adherencia (recuperable); \texttt{𝒟} la potencia disipada por la fricción. En un ciclo tangencial de amplitud \texttt{\ensuremath{\pm}a} bajo presión constante, la energía disipada es \texttt{4\ensuremath{\cdot}\ensuremath{\mu}\ensuremath{\cdot}p\_\allowbreak{}N\ensuremath{\cdot}(a − \ensuremath{\mu}\ensuremath{\cdot}p\_\allowbreak{}N/\allowbreak{}K\_\allowbreak{}t)}.
+
+\phantomsection
+\subsubsection*{6. Variables internas}
+\addcontentsline{toc}{subsubsection}{6. Variables internas}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{YYY}
+\hline
+\textbf{Variable} & \textbf{Tipo} & \textbf{Significado} \\
+\hline
+\texttt{slip} & vector, 1 (2D) o 2 (3D) componentes & deslizamiento por fricción \texttt{g\_s\textasciicircum{}p} (confirmado) \\
+\texttt{slip\_accumulated} & escalar \ensuremath{\ge} 0 & \texttt{\ensuremath{\int}\ensuremath{\|}ġ\_s\textasciicircum{}p\ensuremath{\|} dt} con la superficie cerrada: longitud recorrida deslizando en contacto (lo que se mueve abierta no cuenta) \\
+\texttt{contact\_pressure} & escalar \ensuremath{\ge} 0 & \texttt{p\_N} (informativa) \\
+\texttt{status} & entero (guardado como real) & 0 abierta, 1 cerrada sin deslizar (adherencia; sin fricción, cerrada), 2 cerrada deslizando con fricción (informativa). Es un código (\texttt{STATE\_CODES}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §7): el VTK por celda no lo promedia; se lee por punto y en la historia \\
+\hline
+\end{tabularx}
+\end{center}
+\texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR = 'contact\_\allowbreak{}pressure'}.
+
+\phantomsection
+\subsubsection*{7. Sistema local y notación}
+\addcontentsline{toc}{subsubsection}{7. Sistema local y notación}
+
+\texttt{g} y \texttt{t} en los ejes locales \texttt{(n, s)} o \texttt{(n, s1, s2)} de la interfaz, normales primero (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0033-materiales-de-interfaz.md}{ADR 0033}); el paso a globales es del elemento. \texttt{n} apunta del lado A al lado B del par, de modo que \texttt{g\_n \textgreater{} 0} es separación.
+
+\texttt{t} es la \textbf{tracción sobre la cara A} (cuya normal exterior es \texttt{n}), conjugada de \texttt{g} en \texttt{\ensuremath{\delta}W = \ensuremath{\int}\ensuremath{\delta}g\ensuremath{\cdot}t dΓ}. Signos: \texttt{t\_n \textgreater{} 0} sería tracción (nunca ocurre: \texttt{t\_n \ensuremath{\le} 0}); en compresión \texttt{t = −p\_N\ensuremath{\cdot}n} sobre A, que coincide con la convención de la presión del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0023-cargas-distribuidas-y-expresiones-en-el-yaml.md}{ADR 0023} (\texttt{p \textgreater{} 0} compresión). \texttt{t\_\allowbreak{}s = K\_\allowbreak{}t(g\_\allowbreak{}s − g\_\allowbreak{}s\textasciicircum{}p)} tiene el \textbf{mismo sentido que el deslizamiento de B respecto de A} (B arrastra a A); la tracción sobre B es \texttt{−t} y es la que se opone a ese deslizamiento (revisión del teórico, 2026-11-26).
+
+
+\subsection{Formulación numérica}
+
+\phantomsection
+\subsubsection*{8. Algoritmo (retorno radial cerrado, sin Newton local)}
+\addcontentsline{toc}{subsubsection}{8. Algoritmo (retorno radial cerrado, sin Newton local)}
+
+Dado \texttt{g\_\{n+1\}} y el estado confirmado \texttt{g\textasciicircum{}p\_\{s,n\}}:
+
+\begin{enumerate}
+  \item Presión: \texttt{p\_\allowbreak{}N = K\_\allowbreak{}n\ensuremath{\cdot}max(−g\_\allowbreak{}n, 0)}.
+  \item Prueba elástica: \texttt{t\_\allowbreak{}s\textasciicircum{}tr = K\_\allowbreak{}t\ensuremath{\cdot}(g\_\allowbreak{}s − g\textasciicircum{}p\_\allowbreak{}\{s,n\})}, \texttt{\ensuremath{\Phi}\textasciicircum{}tr = \ensuremath{\|}t\_\allowbreak{}s\textasciicircum{}tr\ensuremath{\|} − \ensuremath{\mu}\ensuremath{\cdot}p\_\allowbreak{}N}.
+  \item Si \texttt{\ensuremath{\Phi}\textasciicircum{}tr \ensuremath{\le} 0} \ensuremath{\to} \textbf{adherencia}: \texttt{t\_s = t\_s\textasciicircum{}tr}, \texttt{g\textasciicircum{}p\_\allowbreak{}s = g\textasciicircum{}p\_\allowbreak{}\{s,n\}}.
+  \item Si \texttt{\ensuremath{\Phi}\textasciicircum{}tr \textgreater{} 0} \ensuremath{\to} \textbf{deslizamiento}: \texttt{m = t\_\allowbreak{}s\textasciicircum{}tr/\allowbreak{}\ensuremath{\|}t\_\allowbreak{}s\textasciicircum{}tr\ensuremath{\|}}, \texttt{t\_s = \ensuremath{\mu}\ensuremath{\cdot}p\_N\ensuremath{\cdot}m}, \texttt{g\textasciicircum{}p\_\allowbreak{}s = g\textasciicircum{}p\_\allowbreak{}\{s,n\} + (\ensuremath{\Phi}\textasciicircum{}tr/\allowbreak{}K\_\allowbreak{}t)\ensuremath{\cdot}m}.
+\end{enumerate}
+
+Euler implícito con el límite \texttt{\ensuremath{\mu}\ensuremath{\cdot}p\_N} evaluado en \texttt{n+1}. Las ecuaciones discretas de Euler implícito tienen \textbf{solución cerrada} porque el límite no depende del deslizamiento (Coulomb sin endurecimiento ni dilatancia): no hace falta Newton local. Lo exacto es esa solución discreta, no la integración de la ley en tasas: con trayectoria recta desde el reposo coincide con la integración fina (\ensuremath{\le} 1e-15), pero si la dirección del deslizamiento gira dentro del paso (3D) o la presión varía, el error es de primer orden en el paso (\textit{calculado} por el teórico: un giro de 90\ensuremath{^{\circ}} en un paso da 8.7 \% en \texttt{t}; con presión variable en 2D, 38 \% en la disipación \texttt{\ensuremath{\mu}\ensuremath{\cdot}p\_N\ensuremath{\cdot}\ensuremath{\Delta}\ensuremath{\lambda}} del paso).
+
+\phantomsection
+\subsubsection*{9. Tangente algorítmica consistente}
+\addcontentsline{toc}{subsubsection}{9. Tangente algorítmica consistente}
+
+\texttt{T = \ensuremath{\partial}t\_\allowbreak{}\{n+1\}/\allowbreak{}\ensuremath{\partial}g\_\allowbreak{}\{n+1\}}, por ramas (\texttt{c = 1} si la superficie está cerrada, 0 si abierta; ver §11 para \texttt{g\_n = 0}):
+
+\begin{itemize}
+  \item \textbf{Abierta}: \texttt{T = 0}.
+  \item \textbf{Cerrada, adherencia}: \texttt{T = diag(K\_\allowbreak{}n, K\_\allowbreak{}t\ensuremath{\cdot}I)}.
+  \item \textbf{Cerrada, deslizamiento, 3D}:
+\end{itemize}
+
+\[
+\frac{\partial t_n}{\partial g_n} = K_n, \qquad \frac{\partial \mathbf t_s}{\partial g_n} = -\mu K_n\,\mathbf m, \qquad \frac{\partial \mathbf t_s}{\partial \mathbf g_s} = \frac{\mu\,p_N\,K_t}{\|\mathbf t_s^{tr}\|}\,(\mathbf I - \mathbf m\otimes\mathbf m), \qquad \frac{\partial t_n}{\partial\mathbf g_s} = \mathbf 0
+\]
+
+\begin{itemize}
+  \item \textbf{Cerrada, deslizamiento, 2D} (\texttt{m = \ensuremath{\pm}1}): \texttt{\ensuremath{\partial}t\_\allowbreak{}s/\allowbreak{}\ensuremath{\partial}g\_\allowbreak{}n = −\ensuremath{\mu} K\_\allowbreak{}n m}, \texttt{\ensuremath{\partial}t\_s/\ensuremath{\partial}g\_s = 0}.
+\end{itemize}
+
+\phantomsection
+\subsubsection*{10. Simetría}
+\addcontentsline{toc}{subsubsection}{10. Simetría}
+
+\begin{itemize}
+  \item \texttt{\ensuremath{\mu} = 0}: \texttt{T = diag(c\ensuremath{\cdot}K\_\allowbreak{}n, 0)}, simétrica.
+  \item \texttt{\ensuremath{\mu} \textgreater{} 0}: en deslizamiento, \texttt{\ensuremath{\partial}t\_\allowbreak{}s/\allowbreak{}\ensuremath{\partial}g\_\allowbreak{}n = −\ensuremath{\mu}K\_\allowbreak{}n m \ensuremath{\neq} \ensuremath{\partial}t\_\allowbreak{}n/\allowbreak{}\ensuremath{\partial}g\_\allowbreak{}s = 0}: \textbf{no simétrica} (ley no asociada). \texttt{IS\_SYMMETRIC} se declara por instancia: \texttt{True} sólo si \texttt{\ensuremath{\mu} = 0} (como \texttt{IsotropicDamage2D}, que la fija según la medida de deformación). El despachador del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} elige entonces LU. Simetrizar la tangente perdería la convergencia cuadrática del Newton: \textbf{decidido} usar la consistente no simétrica siempre que \texttt{\ensuremath{\mu} \textgreater{} 0} (Diálogo Q3).
+\end{itemize}
+
+\phantomsection
+\subsubsection*{11. Decisión de régimen durante el Newton global}
+\addcontentsline{toc}{subsubsection}{11. Decisión de régimen durante el Newton global}
+
+Abierta/cerrada y adherencia/deslizamiento se deciden en cada iteración desde la prueba (no desde el estado confirmado), como en la plasticidad. Las transiciones son no suaves: el Newton puede oscilar entre dos estados cerca de un cambio (abrir/cerrar, adherir/deslizar). Remedios estándar: búsqueda lineal, pasos más pequeños (bisección automática del paso).
+
+\textbf{Holgura nula} (\texttt{g\_n = 0}, el caso de partida de una interfaz de espesor nulo): \texttt{t\_n = 0} en las dos ramas, pero la tangente no está definida. Se toma la rama \textbf{cerrada} (\texttt{g\_n \ensuremath{\le} 0} \ensuremath{\Rightarrow} \texttt{c = 1}) para que la primera iteración tenga rigidez normal; con la rama abierta, un cuerpo que sólo se apoya en el contacto sería un mecanismo en la primera iteración y la matriz sería singular (decidido por la IA, Diálogo Q4: no cambia ningún resultado convergido). Con \texttt{g\textasciicircum{}p} sin cambios y \texttt{t\_s\textasciicircum{}tr = 0} se toma adherencia (\texttt{\ensuremath{\Phi}\textasciicircum{}tr = 0 \ensuremath{\le} 0}): rigidez lateral \texttt{K\_t} en la primera iteración. Es una \textbf{rigidez de arranque}, no la derivada (con \texttt{p\_N = 0} la derivada tangencial real es 0; la normal por la izquierda es \texttt{[K\_n, −\ensuremath{\mu}K\_n m]} y por la derecha 0, así que la rama cerrada es una elección lateral legítima); el Newton la corrige en la iteración siguiente.
+
+\phantomsection
+\subsubsection*{12. Advertencias numéricas y límites del modelo}
+\addcontentsline{toc}{subsubsection}{12. Advertencias numéricas y límites del modelo}
+
+\begin{itemize}
+  \item \textbf{Penalización \texttt{K\_n}}: la interpenetración es \texttt{p\_N/K\_n}; demasiado grande degrada el condicionamiento. Obligatorio, sin valor por omisión; guía del manual \texttt{K\_n \ensuremath{\approx} 10\ensuremath{\cdot}E/h} (E y h del sólido vecino); con \texttt{K\_n} fijo el error de la penalización no baja al refinar (Diálogo Q1, con los valores de los códigos generales).
+  \item \textbf{Adherencia \texttt{K\_t}}: el deslizamiento antes del umbral es \texttt{\ensuremath{\mu}\ensuremath{\cdot}p\_N/K\_t}. Obligatoria con \texttt{\ensuremath{\mu} \textgreater{} 0}, constante, sin valor por omisión; guía del manual «empezar con \texttt{K\_t = K\_n}» (Diálogo Q2).
+  \item Una superficie abierta no aporta rigidez: un cuerpo sostenido sólo por contactos que se abren es un mecanismo (el solver lo diagnostica como siempre).
+  \item \textbf{Energías de la historia}: con fricción o con holgura inicial, \texttt{½U\ensuremath{\cdot}F\_int} deja de ser la energía almacenada (\textit{medido} por el arquitecto: disipación de −0.5 en un resorte unilateral con \texttt{g\_0 = 1}). La ley entrega \texttt{\ensuremath{\psi}} de §5 por \texttt{stored\_\allowbreak{}energy(g, estado)} y el elemento suma \texttt{\ensuremath{\Sigma} w\ensuremath{\cdot}\ensuremath{\psi}} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §4--§5); \texttt{D = W − E} es entonces la energía disipada por fricción. \texttt{SECANT\_\allowbreak{}UNLOADING = False}.
+  \item \textbf{Ley unilateral} (\texttt{IS\_\allowbreak{}UNILATERAL = True}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019}): una interfaz abierta en \texttt{U = 0} (holgura inicial positiva) no aporta rigidez; la red de seguridad avisa en lugar de rechazar el modelo, como con los cables (Diálogo Q6).
+  \item \textbf{Sólo análisis no lineales}: en el análisis lineal y en el modal, un modelo con esta ley es error (decisión del usuario, Diálogo Q4 de \texttt{Interface2D4}). Implementado en todos los análisis de rigidez fija (también la perturbación sobre una etapa, el armónico, el espectral y los transitorios lineales): \texttt{ensure\_\allowbreak{}no\_\allowbreak{}unilateral\_\allowbreak{}interfaces}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} «Consecuencias».
+  \item Desplazamientos pequeños: los pares, la normal y los ejes tangentes son los de la configuración de referencia y no cambian durante el análisis. Válido mientras el deslizamiento sea pequeño frente al tamaño de los elementos de la interfaz.
+\end{itemize}
+
+
+\subsection{Contrato de implementación}
+
+\begin{lstlisting}[language=yaml]
+name: ContactPenalty
+kind: interface_material        # familia de materiales de interfaz, ADR 0033
+status: implemented
+
+interface:
+  geometry: surface             # superficie de contacto: componentes (n, s) o (n, s1, s2)
+  jump_dim: null                # 2 (2D) o 3 (3D)
+  primary_state_var: contact_pressure
+  is_symmetric: false           # por instancia: True sólo con mu = 0 (§10)
+  accepts_initial_gap: true     # g_n = g_0 + Δu_n (ADR 0043 §4)
+  is_unilateral: true           # sin rigidez abierta (ADR 0019)
+  secant_unloading: false       # energía almacenada por stored_energy (§5, ADR 0043 §5)
+
+admission:                      # criterio de admisión al programa principal (Reglas.md §1); evidencia en informes/bibliotecario/busqueda_contacto_2026-11-26.md
+  textbooks:
+    - zienkiewicz_taylor: "vol. 2, 7.ª ed., cap. 8: contacto nodo a nodo en desplazamientos pequeños §8.2 (pp. 237–242), penalización §8.2.2.3 (ec. 8.16), fricción de Coulomb §8.4.3 (pp. 257–263); juntas con Coulomb §4.11.2"
+    - belytschko_liu_moran: "2.ª ed., cap. 10: Coulomb §10.3.2, adherencia elástica de asperezas (Curnier) §10.3.3, penalización en elastostática §10.5.6"
+    - de_borst_crisfield: "§7.1, bloque con Coulomb y tangente no simétrica (ecs. 7.14–7.21)"
+  general_codes:
+    - abaqus: "GAPUNI (holgura inicial, contacto «hard»); fricción de Coulomb por penalización con deslizamiento elástico"
+    - ansys: "CONTA178: nodo a nodo por penalización (FKN, FKS), holgura inicial GAP, Coulomb"
+    - code_aster: "DEFI_CONTACT, método PENALISATION (E_N, E_T), U4.44.11 §3.5.1.1"
+    - opensees: "zeroLengthContact2D/3D (Kn, Kt, μ)"
+
+parameters:
+  - { name: K_n, type: float, required: true,  desc: "Rigidez de penalización normal [Pa/m]. Guía en el Diálogo Q1" }
+  - { name: mu,  type: float, required: false, desc: "Coeficiente de fricción de Coulomb (≥ 0). Sin él, contacto sin fricción (Diálogo Q5)" }
+  - { name: K_t, type: float, required: false, desc: "Rigidez de adherencia tangencial [Pa/m]; obligatoria si mu > 0, se rechaza si mu = 0. Guía en el Diálogo Q2" }
+
+signature:
+  compute_traction: "(g: ndarray(2,) o (3,), state_vars=None) -> (t, T: ndarray(n,n), state_vars')"
+  jump_kind: "sistema local: (g_n, g_s) o (g_n, g_s1, g_s2); g_n incluye la holgura inicial g_0 (la aporta el elemento)"
+
+state_schema:
+  slip: "ndarray(d−1) — deslizamiento por fricción g_s^p"
+  slip_accumulated: "float ≥ 0 — ∫‖ġ_s^p‖"
+  contact_pressure: "float ≥ 0 — p_N"
+  status: "int — 0 abierto, 1 adherencia, 2 deslizamiento"
+
+conventions:
+  sign: "g_n > 0 separación, g_n < 0 interpenetración; t_n ≤ 0 (compresión); p_N = −t_n ≥ 0"
+  frame: "ejes locales de la interfaz, n del lado A al lado B; transformación a globales por el elemento"
+  units: "[K_n] = [K_t] = Pa/m, μ adimensional"
+
+validity:
+  - "K_n > 0; mu ≥ 0; K_t > 0 si mu > 0"
+  - "salto de 2 o 3 componentes"
+  - "desplazamientos y deslizamientos pequeños frente al tamaño de los elementos de la interfaz"
+
+out_of_scope:
+  - "Multiplicadores de Lagrange y Lagrangiano aumentado (imposición exacta): cambian el conjunto de restricciones entre iteraciones (pendientes del ADR 0040)"
+  - "Deslizamiento grande, búsqueda de pares, contacto segmento a segmento o mortar"
+  - "Fricción con coeficientes estático y dinámico distintos, dependiente de la velocidad o de la presión; fricción anisótropa"
+  - "Dilatancia, adhesión, cohesión (para eso, las leyes cohesivas)"
+  - "Contacto térmico (conductancia de la interfaz)"
+
+numerical_caveats:
+  - "Penalización K_n: interpenetración p_N/K_n; condicionamiento"
+  - "Adherencia K_t: deslizamiento previo al umbral μ·p_N/K_t"
+  - "Tangente no simétrica con fricción (LU)"
+  - "Transiciones no suaves: posible oscilación del Newton entre estados"
+  - "Holgura nula: rama cerrada (§11)"
+
+acceptance:
+  verification:
+    - name: unilateral_normal
+      setup: "g_n ∈ {−2, −1e-6, 0, 1e-6, 3}·(escala) con g_s = 0, K_n ≠ 1"
+      expect: "t_n = K_n·g_n si g_n < 0; t = 0 si g_n > 0; t_n = 0 y T_nn = K_n en g_n = 0"
+      tol_rel: 1.0e-14
+    - name: adherencia_y_umbral_de_coulomb
+      setup: "presión constante p_N (g_n < 0 fijo) y g_s monótono creciente; K_n, K_t, μ ≠ 1"
+      expect: "t_s = K_t·g_s hasta ‖t_s‖ = μ·p_N; después ‖t_s‖ = μ·p_N y slip = g_s − μ·p_N/K_t"
+      tol_rel: 1.0e-12
+    - name: ciclo_de_friccion
+      setup: "presión constante, g_s cíclico de amplitud ±a > μ·p_N/K_t, varios ciclos; medir desde el segundo ciclo (el primer cuarto disipa μ·p_N·(a − μ·p_N/K_t)); trabajo integrado con pasos que caen en los quiebres de la ley"
+      expect: "energía disipada por ciclo estacionario 4·μ·p_N·(a − μ·p_N/K_t); trabajo = ψ + D; D ≥ 0"
+      tol_rel: 1.0e-10
+    - name: paso_unico_que_cruza_ramas
+      setup: "un solo paso de adherencia a deslizamiento y de abierta a cerrada"
+      expect: "t y estado iguales a la solución cerrada de §8"
+      tol_rel: 1.0e-12
+    - name: presion_decreciente_hasta_abrir
+      setup: "deslizamiento sostenido mientras g_n crece hasta abrir"
+      expect: "‖t_s‖ = μ·p_N baja de forma continua a 0; abierta, t = 0 y slip = g_s"
+      tol_rel: 1.0e-12
+    - name: energia_almacenada
+      setup: "stored_energy frente al trabajo integrado exactamente en trayectorias sin deslizamiento; holgura g_0 > 0 en U = 0"
+      expect: "ψ = trabajo; ψ(g_0 > 0, U = 0) = 0"
+      tol_rel: 1.0e-12
+    - name: separacion_y_recontacto
+      setup: "cerrar con deslizamiento, abrir (g_n > 0), desplazar tangencialmente, volver a cerrar"
+      expect: "t = 0 abierta; al cerrar, t_s = 0 en la posición de recontacto (punto de adherencia reiniciado)"
+      tol_rel: 1.0e-12
+  specific:
+    - name: isotropia_tangencial_3d
+      setup: "trayectoria circular de g_s bajo presión constante; rotación de los ejes (s1, s2) del plano tangente"
+      expect: "‖t_s‖ = μ·p_N en deslizamiento con t_s paralelo a la prueba; resultado invariante ante la rotación de (s1, s2)"
+      tol_rel: 1.0e-12
+    - name: sin_friccion
+      setup: "mu = 0 (o ausente), g_s arbitrario"
+      expect: "t_s = 0, T = diag(c·K_n, 0); IS_SYMMETRIC True; K_t rechazado"
+      tol_rel: 1.0e-14
+    - name: tangente_diferencia_finita_consistente
+      setup: "puntos en cada rama (abierta, adherencia, deslizamiento) en 2D y 3D, lejos de las transiciones"
+      expect: "T = diferencias centradas de t"
+      tol_rel: 1.0e-6
+    - name: cambio_de_direccion_3d
+      setup: "3D: deslizar en s1 y después en s2 (90°); subdividir el segundo tramo en 1, 2, 4… pasos"
+      expect: "la solución converge a la integración fina con orden 1"
+      tol_rel: 1.0e-2
+    - name: prueba_y_confirmacion
+      setup: "repetir la misma llamada desde el mismo estado confirmado"
+      expect: "mismo t, misma tangente, mismo estado de prueba (status, slip_accumulated incluidos)"
+      tol_rel: 0.0
+    - name: escalado_con_los_parametros
+      setup: "multiplicar K_n, K_t por α y las holguras por 1/α; multiplicar μ por β"
+      expect: "t invariante con α; t_s en deslizamiento escala con β (Reglas §6: parámetros ≠ 1)"
+      tol_rel: 1.0e-12
+  arch:
+    - name: registro_de_interfaz
+      expect: "Registro vía InterfaceMaterialRegistry; sección YAML interface_materials"
+    - name: is_symmetric_por_instancia
+      expect: "ContactPenalty(K_n=…).IS_SYMMETRIC is True; con mu > 0, False"
+
+references:
+  - "Zienkiewicz, O. C., Taylor, R. L., Fox, D. D. (2014). The Finite Element Method for Solid and Structural Mechanics, 7.ª ed., cap. 8 (Treatment of Constraints: Contact and Tied Interfaces). Butterworth-Heinemann. DOI 10.1016/B978-1-85617-634-7.00008-9"
+  - "Belytschko, T., Liu, W. K., Moran, B., Elkhodary, K. I. (2014). Nonlinear Finite Elements for Continua and Structures, 2.ª ed., cap. 10. Wiley."
+  - "de Borst, R., Crisfield, M. A., Remmers, J. J. C., Verhoosel, C. V. (2012). Non-Linear Finite Element Analysis of Solids and Structures, 2.ª ed., §7.1. Wiley. DOI 10.1002/9781118375938"
+  - "Wriggers, P. (2006). Computational Contact Mechanics, 2.ª ed. Springer. DOI 10.1007/978-3-540-32609-0"
+  - "Curnier, A. (1984). A theory of friction. Int. J. Solids Struct. 20(7), 637–647. DOI 10.1016/0020-7683(84)90021-0"
+  - "Laursen, T. A., Simo, J. C. (1993). Algorithmic symmetrization of Coulomb frictional problems using augmented Lagrangians. CMAME 108, 133–146. DOI 10.1016/0045-7825(93)90157-S"
+  - "ADR 0033 — Familia de materiales de interfaz; ADR 0043 — Elementos de interfaz de espesor nulo."
+
+\end{lstlisting}
+
+
+\subsection{Implementación}
+
+\begin{itemize}
+  \item Archivo: \texttt{solidum/\allowbreak{}materials/\allowbreak{}interface/\allowbreak{}contact\_\allowbreak{}penalty.\allowbreak{}py}; contrato de la familia ampliado en \texttt{solidum/\allowbreak{}core/\allowbreak{}interface\_\allowbreak{}material.\allowbreak{}py} (\texttt{IS\_UNILATERAL}, \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP}, \texttt{STATE\_SCHEMA}, \texttt{STATE\_CODES}, \texttt{stored\_energy}; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §4).
+  \item Clase: \texttt{ContactPenalty} (\texttt{IS\_SYMMETRIC} por instancia, \texttt{True} sólo con \texttt{mu = 0}; \texttt{STATE\_\allowbreak{}CODES = (\textquotedbl{}status\textquotedbl{},)}).
+  \item Tests:
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}contact\_\allowbreak{}penalty.\allowbreak{}py}: todos los casos de \texttt{acceptance}; 12/12 mutaciones detectadas (\texttt{informes/\allowbreak{}prototipos\_\allowbreak{}2026-11-26/\allowbreak{}contacto/\allowbreak{}mutar\_\allowbreak{}contacto.\allowbreak{}py}).
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}material\_\allowbreak{}contract.\allowbreak{}py}: \texttt{STATE\_SCHEMA} de cada ley de interfaz frente al estado que crea.
+  \item \texttt{tests/\allowbreak{}test\_\allowbreak{}contact\_\allowbreak{}requires\_\allowbreak{}nonlinear.\allowbreak{}py}: los análisis de rigidez fija rechazan la ley.
+  \item Elemento y energía: \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}elements.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}energy.\allowbreak{}py}, \texttt{test\_\allowbreak{}interface\_\allowbreak{}output.\allowbreak{}py}.
+  \item Verificación: \texttt{informes/\allowbreak{}teorico/\allowbreak{}verificacion\_\allowbreak{}teorica\_\allowbreak{}2026-11-26\_\allowbreak{}contacto.\allowbreak{}md} (ley y tangente frente a una referencia independiente en 16 000 puntos, diferencia 0; \textit{calculado}).
+  \item Notas de traducción: ninguna; la convención es la del proyecto (\texttt{t} sobre la cara A, \texttt{p \textgreater{} 0} compresión, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0023-cargas-distribuidas-y-expresiones-en-el-yaml.md}{ADR 0023}).
+\end{itemize}
+
+
+\subsection{Diálogo}
+
+\textit{Preguntas, aclaraciones y hallazgos. Entradas fechadas.}
+
+\begin{itemize}
+  \item \textbf{2026-11-26 --- Decisiones abiertas para el usuario} (se preguntan una a la vez, después de la revisión de \texttt{teorico-solidum}):
+  \item \textbf{Q1 --- DECIDIDO por el usuario el 2026-11-26 («si»): \texttt{K\_n} obligatorio, sin valor por omisión, con la guía \texttt{K\_n \ensuremath{\approx} 10\ensuremath{\cdot}E/h} (E y h del sólido vecino) en el manual.} Razón dada: igual que \texttt{K\_e} de las cohesivas, el valor que fija el error queda a la vista, no exige reglas nuevas (qué E con dos materiales, con daño o con un lado casi rígido) y deja abierto añadir después un cálculo automático cuando no se declare, sin cambiar modelos existentes. Con K\_n fijo, el error de la penalización no baja al refinar (en Hertz \ensuremath{\approx} 1 \% con h = a/10). Pregunta: \texttt{K\_n}: ¿obligatorio sin valor por omisión (como \texttt{K\_e} de las cohesivas), con una guía en el manual? Lo que hacen los códigos (\textit{leído}, informe del bibliotecario): ANSYS, factor FKN = 1 (rango 0.1--10) sobre una rigidez que calcula del módulo y del tamaño del elemento; Abaqus (v2025), 10 veces la rigidez representativa del elemento subyacente; Code\_Aster, sin valor por omisión («del orden del mayor módulo de Young» por una longitud, y subir hasta resultados estables; en juntas \texttt{E/e}); OpenSees y DIANA, lo da el usuario. Recomendación de la IA: obligatorio, con la guía \texttt{K\_n \ensuremath{\approx} 10\ensuremath{\cdot}E/h} (E y h del sólido adyacente), como \texttt{K\_e}.
+  \item \textbf{Q2 --- DECIDIDO por el usuario el 2026-11-26 («1»): \texttt{K\_t} obligatorio con \texttt{\ensuremath{\mu} \textgreater{} 0}, constante, sin valor por omisión; guía en el manual «empezar con \texttt{K\_t = K\_n}»} (que \texttt{\ensuremath{\mu}\ensuremath{\cdot}p/K\_t} sea pequeño frente al deslizamiento esperado). Pregunta y datos: Abaqus fija el deslizamiento elástico admisible (0.005 de una longitud característica), con lo que su \texttt{K\_t} efectivo crece con la presión; ANSYS lo hace proporcional a \texttt{\ensuremath{\mu}\ensuremath{\cdot}K\_n}; Code\_Aster (juntas), \texttt{K\_t = K\_n} por omisión; OpenSees, del usuario. Recomendación de la IA: obligatorio con \texttt{\ensuremath{\mu} \textgreater{} 0}, constante (Code\_Aster, OpenSees, Goodman), con una guía en el manual.
+  \item \textbf{Q3 --- DECIDIDO por el usuario el 2026-11-26 («si»): tangente consistente no simétrica siempre que \texttt{\ensuremath{\mu} \textgreater{} 0}.} Pregunta: tangente con fricción: ¿consistente no simétrica (convergencia cuadrática, LU) o simetrizada? Abaqus usa la no simétrica automáticamente con \texttt{\ensuremath{\mu} \textgreater{} 0.2}; ANSYS la recomienda (a veces obligatoria) con \texttt{\ensuremath{\mu} \textgreater{} 0.2}; OpenSees y DIANA, no simétrica. Recomendación de la IA: consistente no simétrica siempre que \texttt{\ensuremath{\mu} \textgreater{} 0}.
+  \item \textbf{Q4 --- Decidido por la IA (2026-11-26): rama cerrada en \texttt{g\_n = 0}.} No cambia ningún resultado convergido (la fuerza es 0 en las dos ramas), sólo la rigidez de arranque: es numérica (Reglas §3), se le dijo al usuario en una línea. Pregunta original: holgura nula: ¿rama cerrada o abierta?
+  \item \textbf{Q5 --- DECIDIDO por el usuario el 2026-11-26 («1»): sin \texttt{mu} declarado, contacto sin fricción (\texttt{\ensuremath{\mu} = 0})}, como Abaqus y ANSYS. Pregunta: sin \texttt{mu} declarado, ¿contacto sin fricción o \texttt{mu} obligatorio?
+  \item \textbf{Q6 --- Resuelto por la regla existente (2026-11-26): aviso.} El \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0019-red-de-seguridad-analisis-estatico.md}{ADR 0019} ya fija que con materiales unilaterales un pivote nulo en la tangente inicial es aviso (si no se estabiliza, el Newton falla después como tangente singular); la ley declara \texttt{IS\_UNILATERAL} y se aplica esa regla, como con los cables. Se le dijo al usuario en una línea.
+  \item Integración del elemento (nodal o de Gauss), definición de \texttt{g\_0} y de la normal: en la spec del elemento.
+  \item \textbf{2026-11-26 --- Revisión de la spec por \texttt{teorico-solidum}} (\texttt{informes/\allowbreak{}teorico/\allowbreak{}revision\_\allowbreak{}spec\_\allowbreak{}contacto\_\allowbreak{}2026-11-26.\allowbreak{}md}, veredicto «cambios antes de programar»): ley, tangente (diferencias centradas en las seis ramas, \ensuremath{\le} 2.7e-12), energía y disipación por ciclo correctas (\textit{calculado}). Aplicado: sentido de \texttt{t\_s} (§7), «solución cerrada de Euler implícito» en lugar de «exacto» (§8), rigidez de arranque en \texttt{g\_n = 0} (§11), pruebas nuevas y ajuste de \texttt{ciclo\_\allowbreak{}de\_\allowbreak{}friccion}. Opinión del teórico en las decisiones abiertas: coincide con las recomendaciones de la IA en Q1--Q6. Hallazgo para el elemento y la salida: \texttt{D = W − E} con el trapecio del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0038-energias-y-magnitudes-de-elemento-en-la-historia.md}{ADR 0038} da una disipación espuria cuando un paso cruza un quiebre de la ley (cierre de holgura en un paso: \texttt{D/\ensuremath{\psi} = 0.50}; en 10 pasos, 5e-3; \textit{calculado}); es del integrador del trabajo, no de la ley. Su signo depende del quiebre (verificación del 2026-11-26): positiva al cerrar una holgura, negativa al pasar de adherencia a deslizamiento (la disipación de ese paso sale la mitad de la real).
+  \item \textbf{2026-11-26 --- Revisión del plan por \texttt{arquitecto-solidum}} (\texttt{informes/\allowbreak{}arquitecto/\allowbreak{}revision\_\allowbreak{}plan\_\allowbreak{}contacto\_\allowbreak{}2026-11-26.\allowbreak{}md}): la holgura inicial la calcula el elemento y la ley la recibe dentro de \texttt{g\_n}; contrato ampliado de la familia (\texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP}, \texttt{IS\_UNILATERAL}, \texttt{STATE\_SCHEMA}, \texttt{stored\_energy}) y energía almacenada por elemento: \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}. La historia sólo exporta variables escalares: \texttt{slip} (vector) queda en el estado y se exportan \texttt{contact\_pressure}, \texttt{slip\_accumulated} y \texttt{status}.
+\end{itemize}
+
+
+\newpage
+
 \chapter{Esquemas de Solución — Estáticos}
 
 \section{ArcLengthSolver}
@@ -20319,6 +21374,52 @@ Comparten los kernels de forma y jacobiano de sus gemelos mecánicos: la \texttt
 \end{itemize}
 
 
+Familia que une dos caras A y B de sólidos vecinos por pares de nodos y entrega a un \textbf{material de interfaz de superficie} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0033-materiales-de-interfaz.md}{ADR 0033}; \href{https://github.com/jretamav/solidum-fem/blob/main/docs/catalogo_materiales.md}{catálogo de materiales}) el desplazamiento relativo en ejes locales. Usos: contacto con pares conocidos y desplazamientos pequeños (\texttt{ContactPenalty}) y grietas discretas con trayectoria conocida (\texttt{CohesiveDamageIsotropic}, \texttt{CohesiveDamageMixedMode}). No se declaran a mano: los crea el bloque YAML \texttt{interfaces} (\texttt{pair} entre dos grupos de contorno, \texttt{split} sobre un grupo interior cuyos nodos se duplican) o \texttt{solidum.\allowbreak{}mesh.\allowbreak{}pair\_\allowbreak{}interfaces} / \texttt{split\_interfaces}, con el tipo que corresponde a las caras.
+
+\textbf{Admisión (Reglas §1)}: estándar. Zienkiewicz-Taylor-Fox vol. 2 §4.11.2 y cap. 8, Belytschko-Liu-Moran cap. 10, de Borst et al. §7.1 y §13.1 (p. 434, interfaz cuadrática); Abaqus COH2D4/COH3D6/COH3D8, ANSYS CONTA178/INTER202/INTER203, DIANA cap. 33 (CL12I), Code\_Aster (PLAN\_JOINT), OpenSees \texttt{zeroLength}. Evidencia: \texttt{informes/\allowbreak{}bibliotecario/\allowbreak{}busqueda\_\allowbreak{}contacto\_\allowbreak{}2026-11-26.\allowbreak{}md} y \texttt{busqueda\_\allowbreak{}interfaz\_\allowbreak{}cuadratica\_\allowbreak{}2026-11-26.\allowbreak{}md} (fuera del repositorio).
+
+\textbf{Contrato común} (base pública \texttt{InterfaceElement} en \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/elements/interface/_shared.py}{solidum/elements/interface/\_shared.py}, sobre \texttt{LocalJumpElement}, compartida con \texttt{BondSlipInterface}):
+
+\begin{itemize}
+  \item \texttt{STRAIN\_\allowbreak{}DIM = None} y \texttt{JUMP\_DIM} (2 o 3): la clasificación por punto (\texttt{solidum.\allowbreak{}core.\allowbreak{}point\_\allowbreak{}quantity}) los trata como salto de interfaz, no como sólido. DOFs \texttt{ux, uy} (2D) o \texttt{ux, uy, uz} (3D). Sin masa ni rigidez propias.
+  \item Salto \texttt{g = g\_\allowbreak{}0\ensuremath{\cdot}e\ensuremath{_{1}} + R\ensuremath{\cdot}[−N ⊗ I | N ⊗ I]\ensuremath{\cdot}u\_\allowbreak{}e}, con \texttt{R} los ejes locales de la cara A en la referencia (\texttt{n, s} en 2D con \texttt{n} de A hacia B; \texttt{n, s1, s2} dextrógiros en 3D) y \texttt{g\_\allowbreak{}0 = n\ensuremath{\cdot}(x\_\allowbreak{}B − x\_\allowbreak{}A)} la holgura inicial (|g\_0| \ensuremath{\le} 10\ensuremath{^{-}}⁶\ensuremath{\cdot}h \ensuremath{\to} 0; interpenetración mayor, error; \texttt{g\_0 \ensuremath{\neq} 0} sólo con leyes \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP}).
+  \item \texttt{f\_\allowbreak{}e = \ensuremath{\Sigma} w\_\allowbreak{}g J\_\allowbreak{}g e B\ensuremath{^{\top}} t}, \texttt{K\_\allowbreak{}e = \ensuremath{\Sigma} w\_\allowbreak{}g J\_\allowbreak{}g e B\ensuremath{^{\top}} T B}; \texttt{e} el espesor de los sólidos vecinos en 2D (iguales a los dos lados), 1 en 3D. Simétrica si la ley lo es.
+  \item Integración \texttt{nodal} (por omisión; pesos = área tributaria consistente \texttt{\ensuremath{\int}N\_i J}, no acopla pares: contacto nodo a nodo, sin oscilación de la tracción, Schellekens y de Borst 1993) o \texttt{gauss}.
+  \item Energía almacenada \texttt{E\_\allowbreak{}e = \ensuremath{\Sigma} w\_\allowbreak{}g J\_\allowbreak{}g e \ensuremath{\psi}\_\allowbreak{}g} de la ley (\texttt{stored\_energy}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §5): la historia la usa en lugar de \texttt{½u\_e\ensuremath{\cdot}f\_e}.
+  \item Salida: celda VTK propia, \texttt{Jump\_\textless{}c\textgreater{}} / \texttt{Traction\_\textless{}c\textgreater{}} y variables escalares de la ley por celda (media de los puntos; los códigos \texttt{STATE\_CODES} no se promedian) y por punto; historia \texttt{var: jump | traction}, selector \texttt{interface: \textless{}nombre\textgreater{}}.
+  \item Con una ley unilateral (\texttt{IS\_UNILATERAL}), sólo análisis no lineales: los de rigidez fija lo rechazan (\texttt{ensure\_\allowbreak{}no\_\allowbreak{}unilateral\_\allowbreak{}interfaces}).
+  \item \textbf{Limitaciones}: desplazamientos y deslizamientos pequeños (pares, normal y ejes fijos); con holgura y fricción, un giro rígido \texttt{\ensuremath{\omega}} da un deslizamiento espurio \texttt{−\ensuremath{\omega}\ensuremath{\cdot}g\_0} de primer orden; con caras separadas, cara cuadrilátera muy alabeada (el par deja de estar sobre la normal); sin camino por lotes (18.7 µs por \texttt{BondSlipInterface}, medido en el plan); caras cuadráticas 3D sin elemento (sus pesos nodales consistentes en las esquinas son \ensuremath{\le} 0).
+  \item \textbf{Estado}: implementado y verificado (\texttt{teorico-solidum}, 2026-11-26: sin errores de física; ley, medidas, \texttt{g\_0}, \texttt{f\_e}, \texttt{K\_e} y energía frente a una referencia independiente \ensuremath{\le} 1.2e-15). Validación con la escalera de la spec \texttt{Interface2D4} §7b (parcela de contacto, despegue, fricción, Hertz) pendiente.
+\end{itemize}
+
+\section{Interface2D4 --- interfaz 2D lineal (4 nodos)}
+
+\begin{itemize}
+  \item Caras de 2 nodos: A = (1, 2), B = (3, 4), 4 frente a 1 y 3 frente a 2 (orden de COH2D4; celda VTK \texttt{quad}). Lados de \texttt{Quad4} y \texttt{Tri3}.
+  \item Nodal: \texttt{\ensuremath{\xi} = \ensuremath{\pm}1}, pesos \texttt{L/2}; Gauss: 2 puntos.
+  \item Tests: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_elements.py}{test\_interface\_elements.py} (parcela de contacto 2D con dos materiales, \texttt{g\_0 = 0} y \texttt{g\_0 \textgreater{} 0}, nodal y Gauss), \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_generation.py}{test\_interface\_generation.py}, \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_output.py}{test\_interface\_output.py}, \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_energy.py}{test\_interface\_energy.py}.
+  \item Spec: \hyperref[spec:Interface2D4]{docs/specs/Interface2D4.md} (formulación de la familia). Archivo: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/elements/interface/interface_2d.py}{solidum/elements/interface/interface\_2d.py}.
+\end{itemize}
+
+\section{Interface2D6 --- interfaz 2D cuadrática (6 nodos)}
+
+\begin{itemize}
+  \item Caras de 3 nodos, rectas o curvas, con el orden «esquinas primero» de ANSYS INTER203 y Code\_Aster: A = (1, 2, 5), B = (3, 4, 6); celda VTK 30 (\texttt{quad6}, que meshio 5.3.5 no escribe por sí solo: \texttt{ensure\_\allowbreak{}meshio\_\allowbreak{}cells}). Lados de \texttt{Quad8}, \texttt{Quad9} y \texttt{Tri6}.
+  \item Nodal: Simpson con el jacobiano del nodo, \texttt{e\ensuremath{\cdot}w\_i\ensuremath{\cdot}J(\ensuremath{\xi}\_i)} con \texttt{w = (1/\allowbreak{}3, 1/\allowbreak{}3, 4/\allowbreak{}3)} (en un lado recto, igual a \texttt{\ensuremath{\int}N\_i J}; decisión del usuario del 2026-11-26); Gauss: 3 puntos. Cara degenerada (tangente invertida o peso nulo): error.
+  \item Tests: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_2d6.py}{test\_interface\_2d6.py} (parcela exacta a 1e-9 con \texttt{Quad8}, \texttt{Quad9} y \texttt{Tri6}, nodal y Gauss, desde el YAML y con \texttt{pair}); \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_patch.py}{test\_interface\_patch.py} (interfaz parabólica bajo presión hidrostática: error ∝ 1/K\_n).
+  \item Spec: \hyperref[spec:Interface2D6]{docs/specs/Interface2D6.md}. Archivo: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/elements/interface/interface_2d.py}{solidum/elements/interface/interface\_2d.py}.
+\end{itemize}
+
+\section{Interface3D6 / Interface3D8 --- interfaces 3D lineales (6 y 8 nodos)}
+
+\begin{itemize}
+  \item \texttt{Interface3D6}: caras triangulares, A = (1, 2, 3), B = (4, 5, 6) (COH3D6, celda \texttt{wedge}); nodal en los vértices con \texttt{A/3} por nodo, Gauss de 3 puntos. Caras de \texttt{Tet4}.
+  \item \texttt{Interface3D8}: caras cuadriláteras, A = (1\ldots{}4), B = (5\ldots{}8) (COH3D8, celda \texttt{hexahedron}); nodal en las esquinas con el vector de área tributaria consistente \texttt{\ensuremath{\int}N\_\allowbreak{}i n J = (a\_\allowbreak{}\ensuremath{\xi} \ensuremath{\times} a\_\allowbreak{}\ensuremath{\eta})(\ensuremath{\xi}\_\allowbreak{}i/\allowbreak{}3, \ensuremath{\eta}\_\allowbreak{}i/\allowbreak{}3)} como normal y medida de cada nodo (en cara plana, el área \texttt{\ensuremath{\int}N\_i J}, exacta en caras no paralelogramo, a diferencia de Newton--Cotes; en cara alabeada, la normal que equilibra a los sólidos: decisión del usuario del 2026-11-26), Gauss 2\ensuremath{\times}2 con los ejes en cada punto. Caras de \texttt{Hex8}.
+  \item Tests: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_patch.py}{test\_interface\_patch.py} (parcela de contacto 3D con Hex8 y Tet4, nodal y Gauss, con y sin holgura; presión hidrostática a través de una cara alabeada de 7.2\ensuremath{^{\circ}}), \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_elements.py}{test\_interface\_elements.py}, \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_generation.py}{test\_interface\_generation.py}.
+  \item Specs: \hyperref[spec:Interface3D6]{docs/specs/Interface3D6.md}, \hyperref[spec:Interface3D8]{docs/specs/Interface3D8.md}. Archivo: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/elements/interface/interface_3d.py}{solidum/elements/interface/interface\_3d.py}.
+\end{itemize}
+
+
 \section{Cómo añadir un elemento nuevo}
 
 \begin{enumerate}
@@ -20761,7 +21862,7 @@ Familia paralela a los constitutivos mecánicos: relacionan la \textbf{tracción
   \item \textbf{Validación energética}: por construcción \texttt{\ensuremath{\int}\_\allowbreak{}0\textasciicircum{}\{w\_\allowbreak{}c\} t\ensuremath{\cdot}d[[u\_\allowbreak{}n]] = G\_\allowbreak{}f} (lineal) o \texttt{\ensuremath{\int}\_0\textasciicircum{}\ensuremath{\infty} \ensuremath{\approx} G\_f} (exponencial); cubierto por tests con cuadratura trapezoidal.
   \item \textbf{Limitaciones declaradas} (\texttt{out\_of\_scope} en la spec): sólo Modo-I (mixto I--II diferido a fase G del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}), contacto en compresión sólo por la penalización normal \texttt{K\_e} (sin fricción), sin anisotropía del daño, sin acoplamiento viscoso/cíclico, sin regularización para mesh-objectivity (se aborda a nivel del elemento \texttt{CST\_Embedded2D}, no del material).
   \item \textbf{Origen}: modelo de daño isótropo con penalización de Alfaiate, Wells y Sluys (2002, ecs. 8-17), que Retama (2010) adopta en las ecs. 3.2-3.16.
-  \item \textbf{Compatible con}: elementos con una superficie de discontinuidad 2D (\texttt{GEOMETRY = \textquotedbl{}surface\textquotedbl{}}, dos componentes). Hoy la usa el elemento con discontinuidad embebida del módulo de usuario del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}, donde está validada hasta la separación completa.
+  \item \textbf{Compatible con}: elementos con una superficie de discontinuidad 2D (\texttt{GEOMETRY = \textquotedbl{}surface\textquotedbl{}}, dos componentes): el elemento con discontinuidad embebida del módulo de usuario del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0010-discontinuidades-interiores-embebidas.md}{ADR 0010}, donde está validada hasta la separación completa, y \texttt{Interface2D4}/\texttt{Interface2D6} del bloque \texttt{interfaces} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}; sólo con caras coincidentes, \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP = False}).
   \item \textbf{Tests}: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_cohesive_damage_isotropic.py}{\texttt{test\_\allowbreak{}cohesive\_\allowbreak{}damage\_\allowbreak{}isotropic.\allowbreak{}py}}; tangente frente a diferencias finitas, monotonía de \ensuremath{\kappa} y \ensuremath{\omega} y validación de la rama lineal en \href{https://github.com/jretamav/solidum-fem/blob/main/tests/user/discontinuities/test_disc_contratos.py}{\texttt{test\_\allowbreak{}disc\_\allowbreak{}contratos.\allowbreak{}py}}.
   \item \textbf{Referencia}: ver \hyperref[spec:CohesiveDamageIsotropic]{\texttt{docs/\allowbreak{}specs/\allowbreak{}CohesiveDamageIsotropic.\allowbreak{}md}}. Retama (2010) Cap. 3; Hillerborg, Modéer \& Petersson (1976); Simó \& Ju (1987).
   \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/interface/cohesive_damage_isotropic.py}{solidum/materials/interface/cohesive\_damage\_isotropic.py}
@@ -20778,11 +21879,28 @@ Familia paralela a los constitutivos mecánicos: relacionan la \textbf{tracción
   \item \textbf{Parámetros}: \texttt{sigma\_t0} (Pa), \texttt{G\_f} (N/m), \texttt{K\_e} (Pa/m, penalización normal; la tangencial es \texttt{\ensuremath{\beta}\ensuremath{^{2}}\ensuremath{\cdot}K\_e}), \texttt{beta} (obligatorio, sin valor por omisión; las calibraciones publicadas para concreto dan \texttt{\ensuremath{\tau}\_c/\ensuremath{\sigma}\_t0} entre 1.0 y 2.6), \texttt{softening}, y con la bilineal \texttt{knee\_\allowbreak{}stress\_\allowbreak{}ratio} (0.2) y \texttt{final\_\allowbreak{}opening\_\allowbreak{}factor} (5.0).
   \item \textbf{Variables internas}: \texttt{kappa}, \texttt{damage} (las mismas que la ley de modo I).
   \item \textbf{Limitaciones}: sin fricción ni dilatancia (con la grieta comprimida subestima el cortante transmitido); \texttt{G\_II = G\_I} (sin criterio BK ni ley de potencia). \textbf{Condición de tamaño en cortante} en el elemento embebido: \texttt{\ensuremath{\beta}\ensuremath{^{2}}\ensuremath{\cdot}|T'|\ensuremath{\cdot}h \textless{} G}, \texttt{\ensuremath{\beta}\ensuremath{^{2}}\ensuremath{\cdot}2(1+\ensuremath{\nu})} veces más estricta que la de tracción (con la bilineal, \texttt{h \textless{} ℓ\_\allowbreak{}ch/\allowbreak{}(1.\allowbreak{}6\ensuremath{\cdot}\ensuremath{\beta}\ensuremath{^{2}}\ensuremath{\cdot}(1+\ensuremath{\nu}))}; spec §12).
-  \item \textbf{Compatible con}: elementos con una superficie de discontinuidad (hoy, el elemento embebido del módulo de usuario \texttt{discontinuities}).
+  \item \textbf{Compatible con}: elementos con una superficie de discontinuidad: el elemento embebido del módulo de usuario \texttt{discontinuities} y los elementos de interfaz del bloque \texttt{interfaces} en 2D y 3D (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}; sólo con caras coincidentes).
   \item \textbf{Tests}: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_cohesive_damage_mixed_mode.py}{\texttt{test\_\allowbreak{}cohesive\_\allowbreak{}damage\_\allowbreak{}mixed\_\allowbreak{}mode.\allowbreak{}py}} (superficie de iniciación, energía \texttt{G\_f} en cuatro direcciones y las tres formas en 2D y 3D, valores del Model Code 2010 y de Petersson, límite \texttt{\ensuremath{\beta} = 0} frente a la ley de modo I en 200 historias, tangente por diferencias finitas con \texttt{K\_e = 1e15}, disipación no negativa en 1000 historias); \href{https://github.com/jretamav/solidum-fem/blob/main/tests/user/discontinuities/test_disc_mixed_mode.py}{\texttt{test\_\allowbreak{}disc\_\allowbreak{}mixed\_\allowbreak{}mode.\allowbreak{}py}} (tangente condensada del elemento embebido, límite de modo I en la probeta uniaxial, YAML, condición de tamaño).
   \item \textbf{Referencia}: \hyperref[spec:CohesiveDamageMixedMode]{\texttt{docs/\allowbreak{}specs/\allowbreak{}CohesiveDamageMixedMode.\allowbreak{}md}}. Camacho y Ortiz (1996); Ortiz y Pandolfi (1999); Camanho y Dávila (2002); fib Model Code 2010 §5.1.5.2; Gálvez, Cendón y Planas (2002).
   \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/interface/cohesive_damage_mixed_mode.py}{solidum/materials/interface/cohesive\_damage\_mixed\_mode.py}
   \item \textbf{Clasificación}: estándar (de Borst et al. 2012, caps. 6 y 13; Abaqus, elementos cohesivos con desplazamiento efectivo y energía independiente del modo; ANSYS, CZM de modo mixto con salto efectivo ponderado por \ensuremath{\beta}; Code\_Aster, CZM\_TAC\_MIX).
+\end{itemize}
+
+\section{ContactPenalty --- contacto unilateral por penalización con fricción de Coulomb opcional}
+
+\begin{itemize}
+  \item \textbf{Modelo}: ley de \textbf{superficie} para el contacto con pares conocidos y desplazamientos pequeños. Recibe la holgura normal actual \texttt{g\_n = g\_0 + \ensuremath{\Delta}u\_n} (la holgura inicial \texttt{g\_0} la mide el elemento; \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP = True}). Normal de Signorini por penalización: \texttt{t\_\allowbreak{}n = K\_\allowbreak{}n\ensuremath{\cdot}min(g\_\allowbreak{}n, 0)}, presión \texttt{p\_N = −t\_n \ensuremath{\ge} 0}, sin adhesión. Tangencial: sin \texttt{mu}, sin fricción (\texttt{t\_s = 0}); con \texttt{mu \textgreater{} 0}, Coulomb con adherencia elástica \texttt{t\_\allowbreak{}s = K\_\allowbreak{}t\ensuremath{\cdot}(g\_\allowbreak{}s − g\_\allowbreak{}s\textasciicircum{}p)}, \texttt{\ensuremath{\|}t\_s\ensuremath{\|} \ensuremath{\le} \ensuremath{\mu}\ensuremath{\cdot}p\_N}, sin dilatancia, isótropa en 3D. Retorno radial de Euler implícito con solución cerrada (sin Newton local). Al abrir, \texttt{g\_s\textasciicircum{}p = g\_s} (el punto de adherencia se reinicia al volver a cerrar).
+  \item \textbf{Tangente}: consistente por ramas: abierta 0; adherida \texttt{diag(K\_n, K\_t\ensuremath{\cdot}I)}; deslizando \texttt{\ensuremath{\partial}t\_\allowbreak{}s/\allowbreak{}\ensuremath{\partial}g\_\allowbreak{}n = −\ensuremath{\mu}K\_\allowbreak{}n\ensuremath{\cdot}m}, \texttt{\ensuremath{\partial}t\_\allowbreak{}s/\allowbreak{}\ensuremath{\partial}g\_\allowbreak{}s = \ensuremath{\mu}\ensuremath{\cdot}p\_\allowbreak{}N\ensuremath{\cdot}K\_\allowbreak{}t/\allowbreak{}\ensuremath{\|}t\_\allowbreak{}s\textasciicircum{}tr\ensuremath{\|}\ensuremath{\cdot}(I − m⊗m)}. \textbf{No simétrica con \texttt{\ensuremath{\mu} \textgreater{} 0}} (ley no asociada; \texttt{IS\_SYMMETRIC} por instancia: el despachador del \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0003-despachador-de-solver-algebraico.md}{ADR 0003} elige LU). En \texttt{g\_n = 0}, rama cerrada (rigidez de arranque).
+  \item \textbf{GEOMETRY}: \texttt{\textquotedbl{}surface\textquotedbl{}} \ensuremath{\cdot} \textbf{JUMP\_DIM}: \texttt{None} (2 o 3) \ensuremath{\cdot} \textbf{PRIMARY\_STATE\_VAR}: \texttt{'contact\_\allowbreak{}pressure'} \ensuremath{\cdot} \textbf{IS\_UNILATERAL}: \texttt{True} (sólo análisis no lineales; los de rigidez fija lo rechazan) \ensuremath{\cdot} \textbf{STATE\_CODES}: \texttt{status}.
+  \item \textbf{Parámetros}: \texttt{K\_n} (Pa/m, obligatorio), \texttt{mu} (opcional, \ensuremath{\ge} 0), \texttt{K\_t} (Pa/m; obligatorio con \texttt{mu \textgreater{} 0}, rechazado con \texttt{mu = 0}). Sin valores por omisión; guía del manual: \texttt{K\_n \ensuremath{\approx} 10\ensuremath{\cdot}E/h}, \texttt{K\_t = K\_n} para empezar (decisiones del usuario del 2026-11-26, Diálogo Q1--Q5 de la spec).
+  \item \textbf{Variables internas}: \texttt{slip} (vector \texttt{g\_s\textasciicircum{}p}), \texttt{slip\_accumulated}, \texttt{contact\_pressure}, \texttt{status} (0 abierta, 1 adherida, 2 deslizando).
+  \item \textbf{Energía}: \texttt{stored\_\allowbreak{}energy = ½K\_\allowbreak{}n\ensuremath{\cdot}min(g\_\allowbreak{}n,0)\ensuremath{^{2}} + ½K\_\allowbreak{}t\ensuremath{\|}g\_\allowbreak{}s − g\_\allowbreak{}s\textasciicircum{}p\ensuremath{\|}\ensuremath{^{2}}}; disipación por fricción \texttt{\ensuremath{\mu}\ensuremath{\cdot}p\_N\ensuremath{\cdot}\ensuremath{\|}ġ\_s\textasciicircum{}p\ensuremath{\|}} (\texttt{D = W − E} en la historia).
+  \item \textbf{Limitaciones}: penalización (interpenetración \texttt{p\_N/K\_n}, que no baja al refinar con \texttt{K\_n} fijo); un solo coeficiente de fricción, sin dependencia de la velocidad ni de la presión; desplazamientos pequeños; sin Lagrange ni Lagrangiano aumentado; sin contacto térmico.
+  \item \textbf{Compatible con}: \texttt{Interface2D4}, \texttt{Interface2D6}, \texttt{Interface3D6}, \texttt{Interface3D8} (bloque \texttt{interfaces}, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043}).
+  \item \textbf{Tests}: \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_contact_penalty.py}{\texttt{test\_\allowbreak{}contact\_\allowbreak{}penalty.\allowbreak{}py}} (las pruebas de \texttt{acceptance} de la spec: unilateral, umbral de Coulomb, ciclo de fricción \texttt{4\ensuremath{\mu}p\_\allowbreak{}N(a − \ensuremath{\mu}p\_\allowbreak{}N/\allowbreak{}K\_\allowbreak{}t)}, paso que cruza ramas, presión que baja hasta abrir, energía, recontacto, isotropía 3D, sin fricción, tangente por diferencias finitas, cambio de dirección de orden 1, prueba y confirmación, escalado); \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_contact_requires_nonlinear.py}{\texttt{test\_\allowbreak{}contact\_\allowbreak{}requires\_\allowbreak{}nonlinear.\allowbreak{}py}}; \href{https://github.com/jretamav/solidum-fem/blob/main/tests/test_interface_material_contract.py}{\texttt{test\_\allowbreak{}interface\_\allowbreak{}material\_\allowbreak{}contract.\allowbreak{}py}}.
+  \item \textbf{Referencia}: \hyperref[spec:ContactPenalty]{\texttt{docs/\allowbreak{}specs/\allowbreak{}ContactPenalty.\allowbreak{}md}}. Zienkiewicz-Taylor-Fox vol. 2 cap. 8; Belytschko-Liu-Moran cap. 10; de Borst et al. §7.1; Wriggers (2006); Curnier (1984).
+  \item \textbf{Archivo}: \href{https://github.com/jretamav/solidum-fem/blob/main/solidum/materials/interface/contact_penalty.py}{solidum/materials/interface/contact\_penalty.py}
+  \item \textbf{Clasificación}: estándar (los tres textos citados; Abaqus GAPUNI, ANSYS CONTA178, Code\_Aster DEFI\_CONTACT por penalización, OpenSees \texttt{zeroLengthContact}). \textbf{Estado}: implementado y verificado (\texttt{teorico-solidum}, 2026-11-26: frente a una referencia independiente en 16 000 puntos, diferencia 0); validación pendiente (escalera de la spec \texttt{Interface2D4} §7b).
 \end{itemize}
 
 \section{BondSlipModelCode --- adherencia-deslizamiento de barras corrugadas (Model Code 2010 / Eligehausen et al. 1983)}
@@ -20822,7 +21940,7 @@ Para un material \textbf{térmico} nuevo: la clase hereda de \texttt{ThermalMate
 
 Un material \textbf{no estándar} (una ley de investigación que no es un modelo constitutivo clásico de elementos finitos) no entra en el programa principal: va a un \textbf{módulo de usuario} (\href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0020-modulos-de-usuario.md}{ADR 0020}, Reglas.md §4), con \texttt{/\allowbreak{}solidum-new material \textless{}Name\textgreater{} --user \textless{}módulo\textgreater{}}. Si no relaciona \texttt{\ensuremath{\sigma}} con \texttt{\ensuremath{\varepsilon}}, el módulo declara su propia familia de material: una subclase de \texttt{solidum.\allowbreak{}registry.\allowbreak{}Registry} con \texttt{YAML\_SECTION} en el \texttt{registry.py} del módulo, que el lector YAML recorre sin conocerla.
 
-Para un material \textbf{de interfaz} nuevo (ley tracción--desplazamiento relativo): hereda de \texttt{InterfaceMaterial}, se registra con \texttt{@InterfaceMaterialRegistry.\allowbreak{}register}, declara \texttt{GEOMETRY}, \texttt{JUMP\_DIM} (o \texttt{None}), \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR} e \texttt{IS\_SYMMETRIC}, e implementa \texttt{compute\_\allowbreak{}traction(\ensuremath{\Delta}u, estado) -\textgreater{} (t, \ensuremath{\partial}t/\allowbreak{}\ensuremath{\partial}\ensuremath{\Delta}u, estado')}. Su spec usa la plantilla \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/_template_interface_material.md}{\texttt{\_\allowbreak{}template\_\allowbreak{}interface\_\allowbreak{}material.\allowbreak{}md}}, con el bloque \texttt{admission} (una ley tracción-salto genérica es estándar: de Borst et al. 2012; Abaqus, DIANA). Una ley de investigación que no cumpla el criterio va a un módulo de usuario y se registra igualmente en \texttt{InterfaceMaterialRegistry}.
+Para un material \textbf{de interfaz} nuevo (ley tracción--desplazamiento relativo): hereda de \texttt{InterfaceMaterial}, se registra con \texttt{@InterfaceMaterialRegistry.\allowbreak{}register}, declara \texttt{GEOMETRY}, \texttt{JUMP\_DIM} (o \texttt{None}), \texttt{PRIMARY\_\allowbreak{}STATE\_\allowbreak{}VAR}, \texttt{IS\_SYMMETRIC} y \texttt{STATE\_SCHEMA} (variables internas; \texttt{STATE\_CODES} para las que son un código), y si aplica \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP} (admite caras separadas al inicio), \texttt{IS\_UNILATERAL} (sin rigidez abierta) y \texttt{stored\_\allowbreak{}energy(\ensuremath{\Delta}u, estado)} (obligatoria si no descarga por la secante, \href{https://github.com/jretamav/solidum-fem/blob/main/docs/adr/0043-elementos-de-interfaz-de-espesor-nulo.md}{ADR 0043} §4); implementa \texttt{compute\_\allowbreak{}traction(\ensuremath{\Delta}u, estado) -\textgreater{} (t, \ensuremath{\partial}t/\allowbreak{}\ensuremath{\partial}\ensuremath{\Delta}u, estado')}. \texttt{tests/\allowbreak{}test\_\allowbreak{}interface\_\allowbreak{}material\_\allowbreak{}contract.\allowbreak{}py} exige una fábrica para cada ley registrada y comprueba su \texttt{STATE\_SCHEMA} frente al estado que crea. Su spec usa la plantilla \href{https://github.com/jretamav/solidum-fem/blob/main/docs/specs/_template_interface_material.md}{\texttt{\_\allowbreak{}template\_\allowbreak{}interface\_\allowbreak{}material.\allowbreak{}md}}, con el bloque \texttt{admission} (una ley tracción-salto genérica es estándar: de Borst et al. 2012; Abaqus, DIANA). Una ley de investigación que no cumpla el criterio va a un módulo de usuario y se registra igualmente en \texttt{InterfaceMaterialRegistry}.
 
 
 \newpage

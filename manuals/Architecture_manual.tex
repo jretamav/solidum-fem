@@ -106,7 +106,7 @@
   showstringspaces=false,
   extendedchars=true,
   captionpos=b,
-  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {χ}{{χ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
+  literate={ª}{{ª}}1 {«}{{«}}1 {µ}{{µ}}1 {¹}{{¹}}1 {º}{{º}}1 {»}{{»}}1 {½}{{½}}1 {¿}{{¿}}1 {à}{{à}}1 {è}{{è}}1 {ê}{{ê}}1 {û}{{û}}1 {ć}{{ć}}1 {Č}{{Č}}1 {ġ}{{ġ}}1 {ž}{{ž}}1 {Γ}{{Γ}}1 {Σ}{{Σ}}1 {ζ}{{ζ}}1 {η}{{η}}1 {ξ}{{ξ}}1 {χ}{{χ}}1 {ψ}{{ψ}}1 {ᵖ}{{ᵖ}}1 {Ṫ}{{Ṫ}}1 {‖}{{‖}}1 {…}{{…}}1 {⁴}{{⁴}}1 {⁵}{{⁵}}1 {⁶}{{⁶}}1 {⁷}{{⁷}}1 {₃}{{₃}}1 {₆}{{₆}}1 {₊}{{₊}}1 {ₓ}{{ₓ}}1 {ℓ}{{ℓ}}1 {ℝ}{{ℝ}}1 {∂}{{∂}}1 {∇}{{∇}}1 {∈}{{∈}}1 {∉}{{∉}}1 {√}{{√}}1 {∛}{{∛}}1 {∝}{{∝}}1 {∞}{{∞}}1 {∥}{{∥}}1 {∫}{{∫}}1 {∮}{{∮}}1 {≈}{{≈}}1 {≡}{{≡}}1 {≪}{{≪}}1 {≫}{{≫}}1 {≲}{{≲}}1 {≳}{{≳}}1 {⊗}{{⊗}}1 {⊥}{{⊥}}1 {⟨}{{⟨}}1 {⟩}{{⟩}}1
            {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
            {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
            {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {ü}{{\"u}}1 {Ü}{{\"U}}1
@@ -422,7 +422,7 @@ A grandes rasgos, la secuencia es: importación \ensuremath{\to} descubrimiento 
 
 Este capítulo describe los grandes bloques del programa desde el punto de vista funcional: la responsabilidad de cada uno, los componentes disponibles en la versión actual y el espacio de extensión natural. No se trata de un manual de referencia: para la formulación detallada de cada componente debe consultarse \texttt{manuals/\allowbreak{}Reference\_\allowbreak{}manual.\allowbreak{}pdf} y los catálogos en \texttt{docs/}.
 
-A lo largo del capítulo se utilizan las denominaciones abreviadas habituales para las dimensiones del espacio físico: una dimensión (1D), dos dimensiones (2D) y tres dimensiones (3D). En el contexto de los materiales, la \textbf{notación de Voigt} representa el tensor simétrico de deformación o tensión como un vector: con tres componentes para el caso bidimensional (Voigt-3) y con seis componentes para el caso tridimensional (Voigt-6). El atributo \texttt{STRAIN\_DIM} de cada material indica el tamaño de ese vector y, por tanto, la dimensión geométrica del problema sobre el que opera.
+A lo largo del capítulo se utilizan las denominaciones abreviadas habituales para las dimensiones del espacio físico: una dimensión (1D), dos dimensiones (2D) y tres dimensiones (3D). En el contexto de los materiales, la \textbf{notación de Voigt} representa el tensor simétrico de deformaciones o de esfuerzos como un vector: con tres componentes para el caso bidimensional (Voigt-3) y con seis componentes para el caso tridimensional (Voigt-6). El atributo \texttt{STRAIN\_DIM} de cada material indica el tamaño de ese vector y, por tanto, la dimensión geométrica del problema sobre el que opera.
 
 \section{Materiales}
 
@@ -707,12 +707,16 @@ La familia expone \texttt{compute\_\allowbreak{}gauss\_\allowbreak{}state(T)}, q
 
 \textbf{Convención de signo del flujo de frontera} (Reglas.md §5): un flujo prescrito positivo, $\bar q > 0$, representa flujo \textbf{saliente} del dominio, es decir enfriamiento. El signo procede de la forma débil, donde el término de frontera aparece como $-\int_\Gamma w\,\bar q\,d\Gamma$. Un borde o cara sobre el que no se declara condición alguna es \textbf{adiabático}, por analogía directa con el borde libre de tracción del problema mecánico.
 
+\subsection{Elementos de interfaz de espesor nulo (ADR 0043)}
+
+Unen dos caras A y B de sólidos vecinos por pares de nodos y entregan a un material de interfaz de superficie el desplazamiento relativo en los ejes locales de la cara A: \texttt{Interface2D4} y \texttt{Interface2D6} (lados de 2 y 3 nodos), \texttt{Interface3D6} e \texttt{Interface3D8} (caras triangulares y cuadriláteras). Comparten la base \texttt{LocalJumpElement} con la interfaz de adherencia barra--sólido: bucle por punto, masa nula, registro por punto y energía almacenada. La base \texttt{InterfaceElement} añade los ejes, la holgura inicial y las reglas nodal y de Gauss de cada tipo de cara (tabla \texttt{FACE\_CELLS}); un elemento nuevo con un tipo de cara existente sólo declara su cara y sus nodos, y se comprueba al definir la clase. No se declaran a mano: el bloque \texttt{interfaces} los crea desde dos grupos de contorno (\texttt{pair}) o duplicando los nodos de un grupo interior (\texttt{split}), con el elemento elegido desde el registro y sin tocar el dominio si algo falla. Sus consumidores (historia, VTK, energías) los reconocen sólo por la clasificación de la magnitud por punto (\texttt{JUMP}). Usos: el contacto con pares fijos por penalización (\texttt{ContactPenalty}, sólo análisis no lineales) y las grietas cohesivas de trayectoria conocida.
+
 \subsection{Familias adicionales no implementadas}
 
 \begin{itemize}
   \item \pendiente{Elementos de cáscara y lámina (formulación de Mindlin-Reissner para cáscaras gruesas; formulación de Kirchhoff-Love para cáscaras delgadas).}
   \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
-  \item \pendiente{Elementos de interfaz de espesor nulo entre superficies, para juntas y grietas cohesivas de trayectoria conocida y para contacto con fricción. La familia de leyes ya existe (materiales de interfaz, \hyperref[adr:0033]{ADR 0033}); hoy la consumen la interfaz de adherencia barra--sólido, que genera el refuerzo embebido, y la discontinuidad embebida del módulo de usuario.}
+  \item \pendiente{Contacto con deslizamiento grande (segmento a segmento, \textit{mortar}) y por multiplicadores de Lagrange o Lagrangiano aumentado. El contacto con pares fijos por penalización y los elementos de interfaz de espesor nulo ya existen (\hyperref[adr:0043]{ADR 0043}).}
 \end{itemize}
 
 \subsection{Contrato común y convención de signos}
@@ -863,6 +867,8 @@ Un módulo de usuario se conecta sólo a través de piezas genéricas del progra
   \item el gancho de inicio de paso \texttt{Element.\allowbreak{}prepare\_\allowbreak{}step(U\_\allowbreak{}committed)}, no-op por defecto, que los solvers que avanzan por pasos invocan con el campo convergido del paso anterior; debe ser idempotente, porque tras una bisección se repite;
   \item el gancho de revisión del paso convergido \texttt{Element.\allowbreak{}revise\_\allowbreak{}step(U\_\allowbreak{}converged) -\textgreater{} bool} (\hyperref[adr:0041]{ADR 0041}), \texttt{False} por defecto: el corrector compartido lo invoca al converger cada intento, antes de confirmarlo, y si algún elemento cambió una decisión discreta (activar una grieta) repite el intento desde su iterado inicial, en cascada, con un tope; así la decisión no llega un paso tarde ni se toma dentro de las iteraciones. Debe ser idempotente y no cambiar restricciones ni topología; un solver que confirme sin revisar lo rechaza el ensamblador;
   \item la vista del modelo desde un elemento, \texttt{Element.domain} (\hyperref[adr:0042]{ADR 0042}): el dominio que contiene el elemento, o \texttt{None}; la pone \texttt{Domain.\allowbreak{}add\_\allowbreak{}element} (o \texttt{replace\_element}), que es el único camino para cambiar \texttt{domain.elements}, y sobrevive a \texttt{pickle} y \texttt{copy.deepcopy}. Con ella y \texttt{solidum.\allowbreak{}mesh.\allowbreak{}free\_\allowbreak{}boundary} (contorno libre, filtrado por grados de libertad), un componente de usuario ve el borde libre del modelo entero; \texttt{Domain.\allowbreak{}topology\_\allowbreak{}version} le sirve de huella para guardarlo;
+  \item las bases públicas de los elementos de salto, \texttt{InterfaceElement} y \texttt{LocalJumpElement} (\texttt{solidum.\allowbreak{}elements.\allowbreak{}interface}, \hyperref[adr:0043]{ADR 0043}): un elemento de interfaz de usuario hereda de ellas el bucle por punto, los ejes locales, la holgura inicial, la masa nula, la salida y la energía almacenada, y declara sólo su cara y sus nodos (\texttt{FACE\_CELL} entre las que la base conoce, \texttt{line}, \texttt{line3}, \texttt{tri} y \texttt{quad}; \texttt{A\_NODES}, \texttt{B\_NODES}, \texttt{JUMP\_DIM} y la celda VTK); la clasificación de la magnitud por punto (\texttt{solidum.\allowbreak{}core.\allowbreak{}point\_\allowbreak{}quantity}) lo reconoce por \texttt{JUMP\_DIM}, y el generador de interfaces (\texttt{pair}, \texttt{split}) lo crea si el modelo lo pide con \texttt{element:};
+  \item la energía almacenada de un elemento, \texttt{Element.\allowbreak{}stored\_\allowbreak{}energy(U, trial) -\textgreater{} float | None} (\texttt{None} por omisión: la historia usa \texttt{½\ensuremath{\cdot}u\_e\ensuremath{\cdot}f\_e}), con \texttt{nodal\_\allowbreak{}forces(trial)}: un elemento cuyo material no descarga por la secante (fricción, holgura inicial) la entrega para que la energía disipada de la historia sea correcta;
   \item las funciones de cinemática públicas (\texttt{compute\_\allowbreak{}kinematics\_\allowbreak{}tri3}, \texttt{compute\_\allowbreak{}integrands}), las mismas que usan \texttt{Tri3} y \texttt{Quad4}, que un elemento de usuario importa de su ruta pública, \texttt{solidum.\allowbreak{}elements.\allowbreak{}solid\_\allowbreak{}2d}, y no del módulo interno \texttt{\_shared};
   \item el problema de Newton por paso del arc-length, exportado con nombre público como \texttt{solidum.\allowbreak{}math.\allowbreak{}solvers.\allowbreak{}ArcProblem}: una variante de arco que sólo cambia la restricción del paso hereda de \texttt{ArcLengthSolver} y de ese problema y redefine su método \texttt{constraint}, como hacen \texttt{IndirectDisplacementSolver} en el programa principal y \texttt{DissipationArcLengthSolver} en el módulo \texttt{dissipation\_\allowbreak{}control};
   \item la receta de elemento por grupo físico de gmsh (\texttt{mesh\_element}, y \texttt{element} dentro de \texttt{mesh\_\allowbreak{}physical\_\allowbreak{}groups});
@@ -1628,6 +1634,13 @@ Un elemento que toma decisiones discretas (activar una grieta) las tomaba al ini
 
 El seguimiento de grieta necesita saber si un lado está en el borde libre del modelo entero (el lado entre el concreto y una placa no lo está), pero sólo conocía los elementos de su región. \textbf{Decisión}: pieza P10 del contrato con los módulos de usuario, \texttt{Element.domain}, una referencia débil que ponen sólo \texttt{Domain.\allowbreak{}add\_\allowbreak{}element} y \texttt{Domain.\allowbreak{}replace\_\allowbreak{}element} (un solo camino de mutación de \texttt{domain.elements}, vigilado por una prueba sintáctica); devuelve \texttt{None} si el dominio ya no existe o el elemento ya no es el suyo con ese id. La referencia no se serializa: \texttt{Domain.\allowbreak{}\_\allowbreak{}\_\allowbreak{}setstate\_\allowbreak{}\_\allowbreak{}} vuelve a enlazar los elementos tras \texttt{pickle} o \texttt{copy.deepcopy}. El contorno libre pasa a ser una función pública, \texttt{solidum.\allowbreak{}mesh.\allowbreak{}free\_\allowbreak{}boundary(elements, dim, dofs)}, que ya usaban las mallas estructuradas, con un filtro por grados de libertad para que los elementos térmicos no tapen el contorno mecánico; \texttt{Domain.\allowbreak{}topology\_\allowbreak{}version} sirve de huella para guardar resultados derivados de los elementos. \texttt{CST\_Embedded2D} declara sus lados (\texttt{EDGE\_NODES}) para que dos regiones embebidas vecinas no vean libre su lado común; eso no activa cargas por lado.
 
+\section{ADR 0043 --- Elementos de interfaz de espesor nulo y su generación desde la malla}
+\label{adr:0043}
+
+\textbf{Fecha}: 2026-11-26 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+El contacto con pares conocidos y las grietas discretas con trayectoria conocida necesitan un elemento que una dos caras y entregue a una ley de interfaz (\hyperref[adr:0033]{ADR 0033}) el desplazamiento relativo en ejes locales; el programa principal no tenía ninguno. \textbf{Decisión}: (1) paquete \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}} con la base pública \texttt{InterfaceElement} y \texttt{Interface2D4}, \texttt{Interface2D6}, \texttt{Interface3D6}, \texttt{Interface3D8} (orden de nodos de los cohesivos de Abaqus; el cuadrático 2D, «esquinas primero»), sobre una base común con la adherencia barra--sólido, \texttt{LocalJumpElement}, que daba lo mismo bit a bit tras centralizar. (2) Una sola clasificación de la magnitud por punto, \texttt{point\_quantity} (deformación de Voigt, flujo térmico o salto de interfaz), que usan el VTK, la historia, la calidad de malla, la herramienta de specs, el camino por lotes, el \ensuremath{\theta}-método y el barrido de contratos, en vez de cinco deducciones por presencia de atributos. (3) Contrato de la familia ampliado: la ley recibe la holgura normal actual \texttt{g\_0 + \ensuremath{\Delta}u\_n} (la holgura inicial es geometría del par, la mide el elemento); \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP}, \texttt{IS\_UNILATERAL}, \texttt{STATE\_SCHEMA}, \texttt{STATE\_CODES} y \texttt{stored\_energy}. (4) Energía almacenada por elemento, \texttt{Element.\allowbreak{}stored\_\allowbreak{}energy}, para que \texttt{D = W − E} no dé disipación espuria con holgura (−0,5 medido con la fórmula anterior) ni pierda la de fricción. (5) Generación en Solidum, no con el \textit{plugin} de Gmsh: \texttt{pair} entre dos grupos de contorno y \texttt{split} de un grupo interior, con duplicación de nodos por componentes conexas (la punta no se duplica); la reasignación de nodos sólo la hace el \texttt{Domain}, que sube \texttt{topology\_version}; las referencias por id a un nodo duplicado son error. Bloque YAML \texttt{interfaces}, aplicado antes de \texttt{constraints}. (6) Salida con celda VTK propia, \texttt{Jump\_*}/\texttt{Traction\_*} y selector \texttt{interface:} en la historia. (7) Penalización en la ley: los solvers no cambian; cada solver declara si su rigidez es fija (\texttt{FIXED\_STIFFNESS}) y los de rigidez fija rechazan una ley unilateral, con las alternativas del mensaje derivadas del registro. La revisión del diff hizo \texttt{split} atómica, llevó la elección del elemento al registro (con \texttt{element:} para uno de un módulo de usuario) y fijó que todo elemento de salto hereda la base común, con una tabla única por tipo de cara. Pendiente: el deslizamiento grande (segmento a segmento, \textit{mortar}) cambiará el emparejamiento y el elemento, no la ley.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -2043,6 +2056,24 @@ Bajo. Sin la cadena de Pardiso los resultados son los de antes, bit a bit; con e
 Bajo. Las ocho escrituras directas en \texttt{domain.elements} de las pruebas pasaron a \texttt{add\_element} y \texttt{replace\_element}; la suite completa queda igual. La limitación conocida de la regla (mallas Delaunay con elementos obtusos, trayectorias curvas) es física y está en su spec.
 \end{infobox}
 
+\section{Fase 18 --- Contacto acotado y elementos de interfaz}
+
+\textbf{Estado}: implementado (\hyperref[adr:0043]{ADR 0043}, 26 de noviembre de 2026); validación pendiente.
+
+\begin{itemize}
+  \item \textbf{Ley de contacto} \texttt{ContactPenalty} en la familia de interfaz: penalización normal unilateral y Coulomb opcional con retorno radial; tangente no simétrica con fricción, que el despachador del \hyperref[adr:0003]{ADR 0003} ya sabía atender.
+  \item \textbf{Elementos de interfaz de espesor nulo} (\texttt{Interface2D4}, \texttt{Interface2D6}, \texttt{Interface3D6}, \texttt{Interface3D8}) sobre una base común con la adherencia barra--sólido (\texttt{LocalJumpElement}, segundo caso real): la adherencia, bit a bit en 26 casos tras centralizar.
+  \item \textbf{Clasificación única de la magnitud por punto} (\texttt{point\_quantity}), que sustituye cinco deducciones por presencia de atributos.
+  \item \textbf{Energía almacenada por elemento} (\texttt{Element.\allowbreak{}stored\_\allowbreak{}energy}) en la historia y en las zonas.
+  \item \textbf{Generación desde la malla} (\texttt{pair}, \texttt{split}) con reasignación de nodos sólo por el \texttt{Domain} (control sintáctico extendido a \texttt{.nodes}) y errores por id sobre nodos duplicados.
+  \item \textbf{Salida}: celda VTK propia (con la celda 30 que meshio no sabía escribir), historia con \texttt{jump}/\texttt{traction} y selector por nombre de interfaz.
+  \item \textbf{Análisis de rigidez fija} con una ley unilateral: error con mensaje que nombra la ley y los análisis no lineales.
+\end{itemize}
+
+\begin{infobox}{Riesgo de arquitectura}
+Medio. El bloque toca el \texttt{Domain} (nodos duplicados), la clasificación que usan seis subsistemas y la contabilidad de la energía. Sin interfaces los resultados son los de antes; la adherencia, bit a bit. Lo cubren pruebas de invariantes de la generación, del contrato de la familia y de la pureza del programa principal, cada una comprobada con mutaciones.
+\end{infobox}
+
 \section{Mantenimiento de este capítulo}
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:
@@ -2228,6 +2259,10 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
 \textbf{Masa de nudo}. Masa concentrada declarada como dato del dominio en grados de libertad de nudos, traslacionales o rotacionales (\texttt{Domain.\allowbreak{}add\_\allowbreak{}nodal\_\allowbreak{}mass}, bloques YAML \texttt{nodal\_masses*}). Es sólo inercia: no genera peso con \texttt{gravity}. \hyperref[adr:0024]{ADR 0024}.
 
+\textbf{Elemento de interfaz de espesor nulo}. Elemento sin volumen que une dos caras A y B de sólidos vecinos por pares de nodos (coincidentes o separados por una holgura inicial) y transmite entre ellas la tracción de un material de interfaz de superficie, en los ejes locales de la cara A: \texttt{Interface2D4}, \texttt{Interface2D6}, \texttt{Interface3D6}, \texttt{Interface3D8}. Lo crea el bloque YAML \texttt{interfaces} (\texttt{pair} o \texttt{split}). Lo usan el contacto con pares fijos y las grietas cohesivas de trayectoria conocida (\hyperref[adr:0043]{ADR 0043}).
+
+\textbf{Holgura inicial}. Distancia normal \texttt{g\_\allowbreak{}0 = n\ensuremath{\cdot}(x\_\allowbreak{}B − x\_\allowbreak{}A)} entre las dos caras de un par de un elemento de interfaz en la geometría de referencia. El elemento la mide y la ley recibe la holgura actual \texttt{g\_0 + \ensuremath{\Delta}u\_n}; sólo la admiten las leyes que declaran \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP} (el contacto). Por debajo de \texttt{10\ensuremath{^{-}}⁶\ensuremath{\cdot}h} se toma como 0 (\hyperref[adr:0043]{ADR 0043}).
+
 \textbf{Material}. Ley constitutiva que, dada una deformación y un estado interno, devuelve el esfuerzo y el módulo tangente consistente. Su contrato declarativo está en \texttt{solidum/\allowbreak{}materials/\allowbreak{}}. Ver \hyperref[cap:4]{capítulo 4}.
 
 \textbf{Material de interfaz}. Ley entre la tracción sobre una interfaz y el desplazamiento relativo entre sus dos lados, en el sistema local de la interfaz (normales primero): de superficie para grietas y juntas, de línea para barras embebidas. Familia propia (\texttt{InterfaceMaterialRegistry}, sección YAML \texttt{interface\_\allowbreak{}materials}, base \texttt{InterfaceMaterial}). \hyperref[adr:0033]{ADR 0033}.
@@ -2376,7 +2411,7 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 
   \item \pendiente{Elementos mixtos desplazamiento-presión (Q1-P0, Taylor-Hood) para problemas casi incompresibles.}
 
-  \item \pendiente{Elementos de interfaz de espesor nulo entre superficies, para juntas y grietas cohesivas de trayectoria conocida y para contacto con fricción. La familia de leyes ya existe (materiales de interfaz, \hyperref[adr:0033]{ADR 0033}); hoy la consumen la interfaz de adherencia barra--sólido, que genera el refuerzo embebido, y la discontinuidad embebida del módulo de usuario.}
+  \item \pendiente{Contacto con deslizamiento grande (segmento a segmento, \textit{mortar}) y por multiplicadores de Lagrange o Lagrangiano aumentado. El contacto con pares fijos por penalización y los elementos de interfaz de espesor nulo ya existen (\hyperref[adr:0043]{ADR 0043}).}
 
   \item \pendiente{Newton-Raphson con búsqueda lineal (line-search) para mejorar la robustez ante no convergencia. \textbf{Parcialmente entregado por \hyperref[adr:0011]{ADR 0011}} --- line search disponible como opt-in (\texttt{line\_search=True}); default \texttt{False} por la justificación bibliográfica de Borst \& Sluys 1999.}
 
@@ -2427,8 +2462,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 25 de noviembre de 2026, 09:47\\[0.5em]
-Commit Git: \texttt{a9f3cc8}\\[1em]
+Compilado el 26 de noviembre de 2026, 19:47\\[0.5em]
+Commit Git: \texttt{a292070}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
