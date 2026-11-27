@@ -86,6 +86,8 @@ El despachador `select_solver(props, override)` recibe un objeto `StiffnessPrope
 
 **Consecuencia.** Invariancia bit-paritaria bajo cambio de unidades (el mismo problema en N/m, kN/mm o MN/m converge en el mismo número de iteraciones). Régimen degenerado (carga inicial nula, control en desplazamiento puro) deja de oscilar espuriamente: el piso absoluto `atol_force` autoderivado define cuándo se da por convergido un residuo numéricamente cero. Problemas casi-rígidos y plásticos perfectos se afinan independientemente vía `rtol_disp` vs `rtol_force` sin compromisos. La política vive en un único punto del código; un solver no lineal futuro la consume sin replicarla.
 
+**Enmienda (27 de noviembre de 2026, decisión del usuario).** Con control en desplazamiento desde el reposo la escala de fuerza de la calibración caía a una unidad de fuerza, y la invariancia no se cumplía: un bloque que baja sin fuerza por una holgura de contacto se detenía en N y convergía en kN. Ahora la escala nula es válida y a la tolerancia de fuerza se suma un piso de redondeo, `roundoff_factor · ε · ‖|T|ᵀ Σ|A||x|‖` sobre los operadores del residuo, con valores absolutos entrada a entrada (`roundoff_factor = 10`), calculado con el modelo en cada iteración: tiene las unidades de cada componente del residuo, giros incluidos. Cada problema de Newton del corrector compartido (ADR 0015) declara ese piso con su método `roundoff_force`, que el corrector pasa a `evaluate()` como argumento obligatorio, y el corrector rechaza al entrar un problema al que le falte algún método del protocolo.
+
 ## ADR 0008 — Densidad como propiedad del material
 
 **Fecha**: 13 de mayo de 2026. **Estado**: aceptado.

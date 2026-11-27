@@ -480,6 +480,14 @@ class Assembler:
         )
         return hash((dirichlet, linear, self.domain.total_dofs))
 
+    def imposed_values(self) -> np.ndarray:
+        """Valores impuestos del modelo: el término independiente ``g`` de
+        ``u = T·u_libre + g`` (ADR 0004), desplazamientos prescritos y términos
+        independientes de las restricciones lineales. Es la escala de
+        desplazamiento con que se calibra el criterio de convergencia cuando no
+        hay fuerzas (ADR 0007, enmienda del 2026-11-27)."""
+        return self.constraint_set.build(self.ndof)[1]
+
     @property
     def constraint_set(self) -> ConstraintSet:
         """ConstraintSet derivado de ``Node.boundary_conditions`` y de las

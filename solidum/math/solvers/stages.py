@@ -26,6 +26,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from solidum.math.solvers._shared import _log
+from solidum.math.convergence import roundoff_scale
 from solidum.math.solvers.corrector import default_calibration_scales
 
 
@@ -100,12 +101,14 @@ def check_initial_equilibrium(assembler, stage: Stage, convergence, F_ref: np.nd
     K, F_int = assembler.assemble_non_linear_system(stage.U0)
     criterion = copy.deepcopy(convergence)
     if not criterion.is_calibrated:
-        criterion.calibrate(*default_calibration_scales(stage.calibration_load(F_ref), F_int, K))
+        criterion.calibrate(*default_calibration_scales(
+            stage.calibration_load(F_ref), F_int, K, assembler))
     T = assembler.constraint_set.build(assembler.domain.total_dofs)[0]
     residual = float(np.linalg.norm(T.T @ (stage.F_const - F_int)))
     ref = max(float(np.linalg.norm(stage.F_const)), float(np.linalg.norm(F_int)))
     state = criterion.evaluate(residual_norm=residual, ref_force=ref, delta_u_norm=0.0,
-                               u_norm=float(np.linalg.norm(stage.U0)))
+                               u_norm=float(np.linalg.norm(stage.U0)),
+                               roundoff_force=roundoff_scale((K, stage.U0), T=T))
     ratio = residual / ref if ref > 0.0 else 0.0
     if state.ratio_force > 1.0:
         if stage.staged:

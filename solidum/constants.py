@@ -37,7 +37,7 @@ ADMISSIBILITY_TOL_ABS = 1.0e-14
 
 # --- Tolerancias de convergencia en solvers no lineales (ADR 0007) ---
 # Patrón atol + rtol · escala separado por criterio (fuerza y desplazamiento):
-#     ‖R‖   ≤ atol_force + rtol_force · max(‖F_ext‖, ‖F_int‖)
+#     ‖R‖   ≤ atol_force + rtol_force · max(‖F_ext‖, ‖F_int‖) + piso de redondeo
 #     ‖δU‖  ≤ atol_disp  + rtol_disp  · ‖U_iter‖
 # Los atol efectivos se autoderivan de la escala del problema durante
 # ConvergenceCriterion.calibrate(), de modo que estas constantes son todas
@@ -46,6 +46,14 @@ CONVERGENCE_RTOL_FORCE = 1.0e-5
 CONVERGENCE_RTOL_DISP = 1.0e-5
 CONVERGENCE_ATOL_FORCE_FACTOR = 1.0e-9
 CONVERGENCE_ATOL_DISP_FACTOR = 1.0e-9
+# Piso de redondeo del criterio de fuerza (ADR 0007, enmienda del
+# 2026-11-27; decisión del usuario): a la tolerancia de fuerza se suma
+# ``factor · ε·‖|T|ᵀ|K||U|‖``, la escala del error de redondeo con que se
+# calcula el residuo. Empírico, no una cota: el residuo de un sistema
+# resuelto no pasa de 0.5 veces esa escala (medido); con 10 el piso queda
+# un orden por encima del ruido y muy por debajo de ``rtol · fuerza`` en los
+# problemas habituales.
+CONVERGENCE_ROUNDOFF_FACTOR = 10.0
 
 # --- Heurísticos del paso adaptativo del Newton-Raphson incremental ---
 # Aplican en ``NonlinearSolver.solve`` con ``adaptive=True`` (default).

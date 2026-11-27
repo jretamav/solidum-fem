@@ -31,10 +31,10 @@
 ### 6. Criterio de convergencia
 *Si el solver es iterativo: norma del residuo, norma del incremento, criterio dual fuerza+desplazamiento. Patrón canónico del proyecto (ADR 0007):*
 
-$$\lVert\mathbf T^\top\mathbf R\rVert \le \texttt{atol\_force} + \texttt{rtol\_force} \cdot \max(\lVert\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert)$$
+$$\lVert\mathbf T^\top\mathbf R\rVert \le \texttt{atol\_force} + \texttt{rtol\_force} \cdot \max(\lVert\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert) + \texttt{roundoff\_factor}\cdot\varepsilon_m\,\bigl\lVert\,|\mathbf T|^\top\textstyle\sum|\mathbf A|\,|\mathbf x|\,\bigr\rVert$$
 $$\lVert\Delta\mathbf U\rVert \le \texttt{atol\_disp} + \texttt{rtol\_disp} \cdot \lVert\mathbf U\rVert$$
 
-*$\mathbf T^\top\mathbf R$ es el residuo reducido del ADR 0004: con sólo Dirichlet, $\mathbf R$ en los DOF libres; con restricciones multipunto el residuo de cada esclavo pasa a sus maestros multiplicado por su coeficiente, y $\mathbf R$ en los DOF libres no se anula en la solución (deuda #31). Semántica AND (ambos simultáneamente). `atol` autoderivada de escala característica para invariancia bajo cambio de unidades.*
+*$\mathbf T^\top\mathbf R$ es el residuo reducido del ADR 0004: con sólo Dirichlet, $\mathbf R$ en los DOF libres; con restricciones multipunto el residuo de cada esclavo pasa a sus maestros multiplicado por su coeficiente, y $\mathbf R$ en los DOF libres no se anula en la solución (deuda #31). Semántica AND (ambos simultáneamente). `atol` autoderivada de escala característica para invariancia bajo cambio de unidades. El último término es el piso de redondeo (enmienda del ADR 0007, 2026-11-27): la suma recorre los operadores del residuo y el vector al que se aplica cada uno, $(\mathbf K, \mathbf U)$ en estática y además $(\mathbf C, \dot{\mathbf u})$, $(\mathbf M, \ddot{\mathbf u})$ en dinámica; decir cuáles lleva este solver.*
 
 ### 7. Imposición de Dirichlet y MPC
 *Mecanismo de imposición: eliminación directa (ADR 0004 fase 1) para apoyos rígidos; transformación $\mathbf T$ + offset $\mathbf g$ para restricciones lineales multipunto (ADR 0004 fase 2). Proyección a DOFs libres del sistema efectivo del solver.*

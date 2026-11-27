@@ -272,7 +272,8 @@ class {{Name}}:
         ensure_statically_restrained(self.assembler, type(self).__name__)
         # Por paso: construir un objeto con el protocolo NewtonProblem
         # (assemble, residual, residual_norm, calibration_scales,
-        # reference_force, x_norm, correction, apply, on_converged y
+        # reference_force, roundoff_force, x_norm, correction, apply,
+        # on_converged y
         # revise(x) -> self.assembler.revise_all_steps(U): revisión del paso
         # convergido, ADR 0041; sin ella el ensamblador rechaza el commit si
         # hay elementos que la piden) y
@@ -281,7 +282,12 @@ class {{Name}}:
         #   U = res.x
         # Ver solidum/math/solvers/nonlinear.py (_IncrementalProblem) como
         # caso minimo; el corrector calibra el criterio (ADR 0007) con
-        # calibration_scales -> default_calibration_scales(F_ext, F_int, K).
+        # calibration_scales -> default_calibration_scales(F_ext, F_int, K,
+        # self.assembler), y su piso de redondeo con roundoff_force ->
+        # roundoff_scale((K, U), T=T) de solidum.math.convergence: un par
+        # (operador, vector) por termino del residuo, (C, u_dot) y
+        # (M, u_ddot) ademas si es dinamico (enmienda del ADR 0007). El
+        # corrector rechaza al entrar en run un problema incompleto.
         # TODO: implementar el control de paso
         raise NotImplementedError
 ```

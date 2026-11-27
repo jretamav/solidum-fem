@@ -67,10 +67,10 @@ referencia (Abaqus, ANSYS, OpenSees) realiza por defecto.
 Criterio dual fuerza + desplazamiento, calibrado al primer paso temporal con
 la escala del ensamblaje inicial:
 
-- $\|\mathbf R\|/(\text{atol} + \text{rtol}\,\|\mathbf F\|)\,\leq 1$
+- $\|\mathbf T^\top\mathbf R\|/(\text{atol} + \text{rtol}\,\|\mathbf F\| + c_r\,\varepsilon_m\,\|\,|\mathbf T|^\top(|\mathbf K||\mathbf u| + |\mathbf C||\dot{\mathbf u}| + |\mathbf M||\ddot{\mathbf u}|)\|)\,\leq 1$
 - $\|\delta \mathbf u\|/(\text{atol} + \text{rtol}\,\|\mathbf u\|)\,\leq 1$
 
-Idéntico al `NonlinearSolver` estático. La calibración se hace una vez al
+Idéntico al `NonlinearSolver` estático, con el piso de redondeo de los tres términos del residuo dinámico $\mathbf F - \mathbf F_{\text{int}} - \mathbf C\dot{\mathbf u} - \mathbf M\ddot{\mathbf u}$ (enmienda del ADR 0007, 2026-11-27). En HHT-α los pesos del paso $n$ y del $n+1$ suman 1 para $\alpha\in[-1/3, 0]$, así que basta la suma sin pesos en $n+1$ (verificación teórica del 2026-11-27). La calibración se hace una vez al
 inicio del análisis; las tolerancias son adimensionales (invariantes bajo
 cambio de unidades) gracias a la calibración con `force_scale`/`disp_scale`.
 

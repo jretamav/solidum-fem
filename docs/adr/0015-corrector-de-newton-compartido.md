@@ -23,6 +23,7 @@ La restricción (`Reglas.md` §1): centralizar cuando hay dos casos reales; aqu�
 | `assemble(x)` | el único ensamblaje de la iteración; devuelve el estado (`(K, F_int)`) |
 | `residual(x, state)`, `residual_norm(R)` | forma del residuo y norma que entra al criterio: `‖TᵀR‖`, equilibrio reducido del ADR 0004 (con sólo Dirichlet coincide con `‖R[libres]‖`; con restricciones multipunto ésta no se anula en la solución: deuda #31, 2026-09-30) |
 | `calibration_scales`, `reference_force`, `x_norm` | escalas del criterio dual (ADR 0007) |
+| `roundoff_force(x, state)` | escala del error de redondeo de `‖TᵀR‖` con los operadores del residuo, `roundoff_scale((K, U), T=T)` en estática y `(K, u), (C, u̇), (M, ü)` en dinámica: el piso del criterio de fuerza (enmienda del ADR 0007, 2026-11-27). El corrector rechaza al entrar en `run` un problema al que le falte algún método del protocolo |
 | `correction(x, state, R, solve)` | reducción, sistema tangente y corrección `dx`, resolviendo con el `solve` del corrector |
 | `apply(x, dx, α)` | iterado avanzado y norma del incremento |
 | `on_converged(x, state)` | commit del estado trial del ensamblaje convergido |

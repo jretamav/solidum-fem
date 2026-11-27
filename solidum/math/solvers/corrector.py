@@ -156,6 +156,14 @@ class NewtonProblem(Protocol):
     def reference_force(self, x, state) -> float:
         """Escala de fuerza corriente del criterio (``max(‖F_ext‖, ‖F_int‖)``)."""
 
+    def roundoff_force(self, x, state) -> float:
+        """Escala del error de redondeo de ``‖TᵀR‖`` en ``x``, en unidades de
+        fuerza: :func:`solidum.math.convergence.roundoff_scale` con los
+        operadores del residuo y el operador ``T`` de la reducción
+        (``(K, U)`` en estática; ``(K, u)``, ``(C, u̇)``, ``(M, ü)`` en
+        dinámica). Es el piso del criterio de fuerza (ADR 0007, enmienda del
+        2026-11-27)."""
+
     def x_norm(self, x) -> float:
         """Norma del iterado para el criterio en desplazamiento."""
 
@@ -594,6 +602,7 @@ class NewtonCorrector:
         discreta nueva, hasta que una revisión no cambia nada o se agota
         ``MAX_STEP_REVISIONS`` (entonces el intento fracasa).
         """
+        _check_protocol(problem)
         x = x0
         state = problem.assemble(x)
         result = CorrectorResult(converged=False, x=x, state=state, n_solves=0)
@@ -629,6 +638,7 @@ class NewtonCorrector:
                     ref_force=problem.reference_force(x, state),
                     delta_u_norm=delta_norm,
                     u_norm=problem.x_norm(x),
+                    roundoff_force=problem.roundoff_force(x, state),
                 )
                 result.residual_history.append(R_norm)
                 result.delta_history.append(delta_norm)
@@ -799,9 +809,41 @@ def _release_correctors(solver) -> None:
             value.release()
 
 
-def default_calibration_scales(F_ext: np.ndarray, F_int: np.ndarray, K) -> tuple[float, float]:
+#: Métodos obligatorios del protocolo :class:`NewtonProblem` (``revise`` y
+#: ``log_context`` son opcionales).
+_PROTOCOL = ("assemble", "residual", "residual_norm", "calibration_scales",
+             "reference_force", "roundoff_force", "x_norm", "correction", "apply",
+             "on_converged")
+
+
+def _check_protocol(problem) -> None:
+    """Validación temprana (Reglas §1): un problema de Newton incompleto se
+    rechaza antes del primer ensamblaje, con los métodos que le faltan."""
+    missing = [name for name in _PROTOCOL if not callable(getattr(problem, name, None))]
+    if missing:
+        raise TypeError(
+            f"{type(problem).__name__} no cumple el protocolo NewtonProblem del "
+            f"corrector compartido (ADR 0015): le faltan {missing}. roundoff_force(x, "
+            f"state) es la escala del error de redondeo del residuo (ADR 0007, "
+            f"enmienda del 2026-11-27): solidum.math.convergence.roundoff_scale con "
+            f"los operadores de su residuo.")
+
+
+def default_calibration_scales(F_ext: np.ndarray, F_int: np.ndarray, K,
+                               assembler) -> tuple[float, float]:
     """Escalas de calibración comunes a todos los solvers (ADR 0007):
-    ``force = max(‖F_ext‖, ‖F_int‖, 1)`` y ``disp = force / max|diag K|``."""
+    ``force = max(‖F_ext‖, ‖F_int‖)`` y ``disp = force / max|diag K|``.
+
+    Sin fuerzas (control en desplazamiento desde el reposo) la escala de
+    fuerza es nula y la de desplazamiento, ``‖g‖``: el piso del
+    criterio de fuerza lo da el término de redondeo, calculado con el
+    modelo, y no una unidad de fuerza, que hacía depender la convergencia de
+    las unidades (enmienda del 2026-11-27: un bloque que bajaba sin fuerza por
+    una holgura se detenía en N y convergía en kN). La escala de desplazamiento es
+    entonces la norma de los valores impuestos del modelo
+    (:meth:`Assembler.imposed_values`)."""
     from solidum.math.convergence import stiffness_diag_scale
-    force_scale = max(float(np.linalg.norm(F_ext)), float(np.linalg.norm(F_int)), 1.0)
-    return force_scale, force_scale / stiffness_diag_scale(K)
+    force_scale = max(float(np.linalg.norm(F_ext)), float(np.linalg.norm(F_int)))
+    if force_scale > 0.0:
+        return force_scale, force_scale / stiffness_diag_scale(K)
+    return 0.0, float(np.linalg.norm(assembler.imposed_values()))

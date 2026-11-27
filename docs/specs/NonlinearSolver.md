@@ -70,11 +70,11 @@ mientras λ < 1:
 
 Patrón dual fuerza + desplazamiento, con escalas autoderivadas:
 
-$$\lVert\mathbf T^\top\mathbf R\rVert \le \text{atol}_F + \text{rtol}_F \cdot \max(\lVert\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert)$$
+$$\lVert\mathbf T^\top\mathbf R\rVert \le \text{atol}_F + \text{rtol}_F \cdot \max(\lVert\mathbf F_{\text{ext}}\rVert, \lVert\mathbf F_{\text{int}}\rVert) + c_r\,\varepsilon_m\,\bigl\lVert\,|\mathbf T|^\top|\mathbf K|\,|\mathbf U|\,\bigr\rVert$$
 
 $$\lVert\Delta\mathbf U\rVert \le \text{atol}_d + \text{rtol}_d \cdot \lVert\mathbf U\rVert$$
 
-con $\mathbf T$ el operador de restricciones $\mathbf u = \mathbf T\,\mathbf u_{\text{libre}} + \mathbf g$ (ADR 0004): $\mathbf T^\top\mathbf R = \mathbf 0$ es el equilibrio reducido que resuelve el corrector. Con sólo condiciones de Dirichlet, $\mathbf T^\top\mathbf R = \mathbf R[\text{libres}]$; con restricciones multipunto la fuerza de cada esclavo pasa a sus maestros. Semántica **AND** (ambos simultáneamente). Calibración: en el primer ensamblaje del solve, `force_scale = max(‖F_ext‖, ‖F_int‖, 1)` y `disp_scale = force_scale / max(|diag(K)|)`.
+con $\mathbf T$ el operador de restricciones $\mathbf u = \mathbf T\,\mathbf u_{\text{libre}} + \mathbf g$ (ADR 0004): $\mathbf T^\top\mathbf R = \mathbf 0$ es el equilibrio reducido que resuelve el corrector. Con sólo condiciones de Dirichlet, $\mathbf T^\top\mathbf R = \mathbf R[\text{libres}]$; con restricciones multipunto la fuerza de cada esclavo pasa a sus maestros. Semántica **AND** (ambos simultáneamente). El último término es el **piso de redondeo** (enmienda del ADR 0007, 2026-11-27, decisión del usuario): $\varepsilon_m$ es el épsilon de máquina, los valores absolutos se toman entrada a entrada y $c_r$ = `roundoff_factor` = 10. Calcular $\mathbf F_{\text{int}}$ en doble precisión deja en cada componente un error del orden de $\varepsilon_m(|\mathbf K||\mathbf U|)_i$ que ninguna iteración reduce (medido: el residuo no pasa de 0.5 veces la escala), así que un residuo por debajo del piso cuenta como cero. Calibración: en el primer ensamblaje del solve, `force_scale = max(‖F_ext‖, ‖F_int‖)` y `disp_scale = force_scale / max(|diag(K)|)`. Sin fuerzas (control en desplazamiento desde el reposo) `force_scale = 0` (`atol_F = 0`, el piso lo da el término de redondeo) y `disp_scale = ‖g‖`, la norma de los valores impuestos; hasta la enmienda se usaba `max(…, 1)`, una unidad de fuerza, y un bloque que bajaba sin fuerza por una holgura de contacto se detenía en N y convergía en kN.
 
 ### 7. Imposición de Dirichlet y MPC
 

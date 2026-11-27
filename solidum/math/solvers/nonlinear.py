@@ -38,7 +38,7 @@ from solidum.constants import (
     NEWTON_DEFAULT_MIN_DELTA_LAMBDA,
     NEWTON_LOAD_FACTOR_EPSILON,
 )
-from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.convergence import ConvergenceCriterion, roundoff_scale
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import (
     NewtonCorrector,
@@ -89,10 +89,14 @@ class _IncrementalProblem:
     def calibration_scales(self, U, state):
         # La escala de fuerza es la carga total de la corrida, no la del
         # paso: así las tolerancias no dependen del número de pasos.
-        return default_calibration_scales(self.F_ext_global, state[1], state[0])
+        return default_calibration_scales(self.F_ext_global, state[1], state[0],
+                                          self.assembler)
 
     def reference_force(self, U, state):
         return max(float(np.linalg.norm(self.F_ext_step)), float(np.linalg.norm(state[1])))
+
+    def roundoff_force(self, U, state):
+        return roundoff_scale((state[0], U), T=self._T)
 
     def x_norm(self, U):
         return float(np.linalg.norm(U))

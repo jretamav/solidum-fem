@@ -682,8 +682,11 @@ Los solvers no lineales (`NonlinearSolver`, `ArcLengthSolver`) aceptan un bloque
 
 ```
 ||R_red|| <= atol_force + rtol_force * max(||F_ext||, ||F_int||)
+             + roundoff_factor * eps * || |K| |U| ||
 ||dU||    <= atol_disp  + rtol_disp  * ||U||
 ```
+
+El último término es el **piso de redondeo**: `eps` es el épsilon de máquina ($2.2\times10^{-16}$), `|K| |U|` es el producto de la rigidez por los desplazamientos con los valores absolutos de cada entrada (en los grados de libertad libres) y `eps * || |K| |U| ||` es el error con que la computadora calcula las fuerzas internas en doble precisión. Ninguna iteración de Newton baja el residuo de ese nivel, así que un residuo menor cuenta como cero. Cada componente tiene las unidades de la suya en el residuo (fuerza o momento), así que el piso no depende de las unidades. En los análisis dinámicos se suman además los términos de la masa y del amortiguamiento.
 
 `R_red` es el residuo de equilibrio en los grados de libertad libres: las reacciones de los apoyos no cuentan y, con restricciones multipunto, el residuo de cada grado de libertad esclavo se suma a sus maestros multiplicado por su coeficiente ($\mathbf T^\top\mathbf R$, ADR 0004).
 
@@ -695,8 +698,13 @@ Ambos criterios deben cumplirse **simultáneamente** (semántica AND) para dar e
 - `rtol_disp` (default `1.0e-5`): tolerancia relativa de la corrección de desplazamiento. En problemas casi-rígidos puede afinarse independientemente del de fuerza.
 - `atol_force_factor` (default `1.0e-9`): factor adimensional que define el piso absoluto de fuerza. La tolerancia absoluta efectiva se autoderiva como `atol_force_factor · escala_inicial`, donde la escala se calcula en el primer ensamblaje. Solo conviene ajustarlo si el análisis tiene tramos donde la carga característica colapsa transitoriamente y aparece falsa no-convergencia.
 - `atol_disp_factor` (default `1.0e-9`): análogo para desplazamiento.
+- `roundoff_factor` (default `10`): cuántas veces el error de redondeo del residuo se da por cero. El residuo de un sistema resuelto no pasa de 0.5 veces esa escala (medido), así que 10 deja margen sin aflojar el criterio: en los problemas cuyas fuerzas se resuelven bien, el piso es una fracción despreciable de la tolerancia. Con `0` no hay piso, y un análisis sin fuerzas sólo converge si el residuo es exactamente nulo.
 
 **Por qué los `atol` se autoderivan.** El término absoluto vive en las unidades del problema (newtons para fuerza, metros para desplazamiento). Codificarlo como constante global obligaría a ajustarlo al cambiar de unidades (N/m, kN/mm, MPa/mm…). En su lugar, Solidum calcula la escala característica del problema en el primer ensamblaje y multiplica por el factor adimensional. El resultado: **el mismo análisis planteado en distintos sistemas de unidades converge en el mismo número de iteraciones hasta paridad de bits**, sin tocar las tolerancias. La justificación arquitectural está en el ADR 0007.
+
+**Sin fuerzas.** Con control en desplazamiento desde el reposo no hay fuerzas en el primer ensamblaje: entonces la escala de fuerza es nula y el piso lo pone sólo el término de redondeo, que también se calcula con el modelo. Así converge en cualquier unidad un cuerpo que se mueve sin fuerza hasta tocar otro, como en un contacto con holgura (enmienda del ADR 0007).
+
+**Límites del piso.** En un modelo muy mal condicionado —una viga muy esbelta con cientos de elementos— el redondeo supera a `rtol_force` por la fuerza, y el paso se acepta en el límite de la doble precisión; el criterio de desplazamiento sigue exigiendo `rtol_disp`. Los elementos corotacionales (`Truss2DCorot`, `Frame2DEulerCorot`) arrastran un redondeo que crece con las coordenadas del modelo, que el piso todavía no cubre: un análisis sin fuerzas con ellos, o un modelo con coordenadas muy grandes (UTM), puede detenerse.
 
 **Cuándo afinar**. Para la inmensa mayoría de análisis los defaults son suficientes. Considera ajustar:
 

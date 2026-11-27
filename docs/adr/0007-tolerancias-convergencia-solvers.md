@@ -1,8 +1,8 @@
 # ADR 0007 — Tolerancias de convergencia en solvers no lineales
 
-- **Estado**: aceptado
+- **Estado**: aceptado; enmendado el 2026-11-27 (piso de redondeo y calibración sin fuerzas, ver «Enmienda» al final)
 - **Fecha**: 2026-05-13
-- **Alcance**: `NonlinearSolver` y `ArcLengthSolver` en `solidum/math/solvers.py`; constantes en `solidum/constants.py`; tests de convergencia en `tests/`.
+- **Alcance**: `NonlinearSolver` y `ArcLengthSolver` en `solidum/math/solvers.py` (hoy `solidum/math/solvers/`, con Newmark, HHT y el corrector compartido del ADR 0015); constantes en `solidum/constants.py`; tests de convergencia en `tests/`.
 
 ## Contexto
 
@@ -78,6 +78,8 @@ atol_disp  = CONVERGENCE_ATOL_DISP_FACTOR  · escala_disp_inicial
 ```
 
 Ventaja: el código es **completamente invariante bajo cambio de unidades**, no solo en el término relativo. El usuario no tiene que ajustar nada al pasar de N/m a kN/mm.
+
+> **Enmienda 2026-11-27.** La invariancia no se cumplía con control en desplazamiento desde el reposo: en el primer ensamblaje aún no se ha impuesto el desplazamiento, `F_int` es nula y la implementación usaba una unidad de fuerza (`max(‖F_ext‖, ‖F_int‖, 1)`). Ver «Enmienda» al final: la escala nula es ahora válida y el piso lo da un término de redondeo calculado con el modelo.
 
 ### Semántica de convergencia: AND, no OR
 
@@ -163,7 +165,45 @@ Razón para no crear `NonlinearSolverBase`: los dos solvers comparten *solo* el 
 ## Deuda heredada
 
 - **Sin enforcement** de que un solver no lineal futuro consuma `ConvergenceCriterion`. Si alguien escribe su propio criterio en un `RiksSolver` o variante, la convención no se puede imponer en construcción (idéntico a la deuda del ADR 0006).
-- **`escala_disp_inicial` depende de `‖K_initial‖_∞`**, que requiere una norma matricial del primer ensamblaje. Para mallas grandes con `K` sparse esto es barato (norma del máximo absoluto por fila), pero queda como deuda evaluarlo cuidadosamente cuando lleguen problemas de varios millones de DOFs. Una aproximación más rápida si fuera necesario: tomar la diagonal máxima de `K_initial`.
+- **`escala_disp_inicial` depende de `‖K_initial‖_∞`**, que requiere una norma matricial del primer ensamblaje. Para mallas grandes con `K` sparse esto es barato (norma del máximo absoluto por fila), pero queda como deuda evaluarlo cuidadosamente cuando lleguen problemas de varios millones de DOFs. Una aproximación más rápida si fuera necesario: tomar la diagonal máxima de `K_initial`. (2026-11-27: es lo que se hace, `stiffness_diag_scale`; el coste por iteración del piso de redondeo, medido, está en la enmienda.)
+
+## Enmienda 2026-11-27 — piso de redondeo y calibración sin fuerzas
+
+**Decisión del usuario** (Reglas §3: criterio de convergencia), tomada sobre la medición siguiente: un residuo del orden del error de redondeo cuenta como cero, en cualquier unidad. Verificación de `teorico-solidum` y revisión de `arquitecto-solidum` del 2026-11-27 (informes fuera del repositorio).
+
+**Hallazgo** (al programar el contacto, ADR 0043). La escala de fuerza de la calibración era `max(‖F_ext‖, ‖F_int(U₀)‖, 1)`. Con control en desplazamiento desde el reposo las dos normas son nulas —el desplazamiento impuesto todavía no se ha aplicado en el primer ensamblaje— y el piso absoluto quedaba en `1e-9` *unidades de fuerza* del modelo. Medido:
+
+- Un bloque que baja por una holgura de contacto (sin ninguna fuerza hasta tocar) se detiene en N con 30 y 100 pasos: su residuo de redondeo (1e-10 a 2e-9 N) no baja de 1e-9 N. Con el mismo problema en kN o en MN converge.
+- Un voladizo con flecha impuesta acepta en MN un residuo 13 veces mayor que en N (tolerancia/fuerza en la punta: 2.2e-4 frente a 1.7e-5).
+- Un voladizo de 3000 elementos se detiene en N: el residuo no baja del redondeo.
+- Al continuar un estático con desplazamiento impuesto con un dinámico, la comprobación de equilibrio inicial avisaba de un desequilibrio inexistente (residuo relativo 1.0: el propio ruido frente a sí mismo).
+
+**Decisión.** El criterio de fuerza queda
+
+```
+‖TᵀR‖ ≤ atol_force + rtol_force · max(‖F_ext‖, ‖F_int‖) + c_r · ε · ‖ |T|ᵀ · Σ |A|·|x| ‖
+```
+
+con los términos `(A, x)` del residuo de cada solver: `(K, U)` en Newton y en longitud de arco; `(K, u)`, `(C, u̇)` y `(M, ü)` en Newmark y HHT. Los valores absolutos se toman entrada a entrada, `T` es el operador de la reducción `u = T·u_libre + g` (ADR 0004), `ε` el épsilon de máquina y `c_r = roundoff_factor = 10` (`CONVERGENCE_ROUNDOFF_FACTOR`; clave YAML `convergence.roundoff_factor`). Calcular `A·x` en doble precisión deja en cada componente un error del orden de `ε·(|A||x|)_i` que ninguna iteración de Newton reduce (la resolución lineal sólo afecta a la velocidad de convergencia: el residuo se reevalúa en cada iteración); un residuo por debajo de ese piso no es un desequilibrio que el cálculo pueda resolver. Cada componente de la escala tiene las unidades de la componente del residuo —fuerza o momento—, así que el piso es tan invariante ante las unidades como el propio residuo, giros incluidos. En HHT-α los pesos de los términos del paso `n` y del `n+1` suman 1 para `α ∈ [−1/3, 0]`: basta la suma sin pesos en `n+1`. En la calibración se quita el `1`: sin fuerzas, `atol_force = 0` y la escala de desplazamiento es la norma de los valores impuestos `‖g‖` (`Assembler.imposed_values`). Las escalas nulas son válidas; con tolerancia nula (problema sin fuerzas ni desplazamientos) el paso converge si la magnitud es exactamente nula. La comprobación de equilibrio al continuar un estático con un dinámico descuenta el mismo piso, componente a componente, sin cambiar su umbral relativo (1e-6).
+
+**Ruido medido** (`‖R‖` tras converger, iteraciones forzadas, frente a la escala; dos muestreos independientes, del autor y del teórico): 0.2–0.5 en voladizos y marcos con giros en m, mm y km (máximo 0.48), 0.07–0.13 en Hex8 elástico y plástico, hasta 0.31 en Newton-Newmark y Newton-HHT, 0.13–0.33 en contacto y hasta 0.45 en el bloque con holgura; en pasos sin fuerza cuyo residuo sale casi exacto, mucho menos. Con `ε·max|diag K|·‖U‖` (la primera versión de esta enmienda) el cociente bajaba a 1e-3 en m y a 1e-6 en km en el voladizo: la diagonal mayor mezcla rigideces de giro y de traslación, y el piso sobrestimaba el ruido hasta un millón de veces.
+
+**Por qué `c_r = 10`.** Es empírico, no una cota rigurosa: el peor caso teórico es `c·m·ε·max|diag K|·‖U‖`, con `m` las entradas por fila (18 en Quad4, 81 en Hex8). Queda unas 20 veces por encima del mayor ruido medido (0.48). En los problemas cuyas fuerzas se resuelven bien es despreciable: en un voladizo de 10 elementos vale 3e-6 de la tolerancia, que es la misma relativa a la fuerza en N y en MN (1.7e-5).
+
+**Coste del piso** (medido): un producto `|A|·|x|` por término y por iteración, sin copiar la matriz (núcleo de Numba sobre CSR): 29 ms con 31 millones de entradas, frente a 15 ms de leer la diagonal y 24 ms de un producto `K·x` de SciPy. Es del orden del 3 % de una iteración que reutiliza la factorización a 4e5 grados de libertad, y del 0.1 % de una que factoriza. En dinámica son hasta tres productos (`C` no tiene entradas sin amortiguamiento de Rayleigh).
+
+**Contrato** (ruptura limpia, como en la decisión original; versión 0.1.0). El protocolo `NewtonProblem` (ADR 0015) gana el método obligatorio `roundoff_force(x, state)`, que el corrector pasa a `ConvergenceCriterion.evaluate(..., roundoff_force=)`, argumento de palabra clave también obligatorio, para que ningún solver vuelva en silencio a un piso que dependa de las unidades. `default_calibration_scales(F_ext, F_int, K, assembler)` recibe el ensamblador. Quién se rompe y cómo, todo ruidoso: un `NewtonProblem` externo sin el método → `TypeError` al entrar en `NewtonCorrector.run`, antes del primer ensamblaje, con los métodos que faltan; una subclase de `ConvergenceCriterion` con la firma anterior de `evaluate` → `TypeError`; quien llame a `default_calibration_scales` sin el ensamblador → `TypeError`. Las subclases de `ArcProblem` (módulos de usuario) heredan el método y no se rompen. `ConvergenceCriterion` valida que los cinco factores sean números finitos no negativos (el mensaje nombra la clave) y `ConvergenceState.floor_force` dice qué parte de la tolerancia aporta el piso.
+
+**Alternativas descartadas.** (1) Escala de fuerza `‖K·g‖` (hipótesis inicial de la IA), la reacción de los desplazamientos impuestos con los nodos libres quietos: afloja 330 veces el criterio de un voladizo esbelto de 100 elementos (tolerancia/fuerza 5.7e-3 frente a 1.7e-5), porque la rigidez local del elemento de la punta es mucho mayor que la de la estructura. (2) `ε·max|diag K|·‖U‖`: barata, pero no invariante con giros (arriba). (3) `ε·‖diag(K)∘U‖`: el ruido llega a 10 veces esa escala en mm.
+
+**Limitaciones.**
+
+- *Límite de la doble precisión.* En un problema muy mal condicionado el piso supera a `rtol·fuerza` y se acepta el residuo en ese límite; el criterio de desplazamiento (AND) sigue exigiendo `rtol_disp`. En el voladizo de acero de 1 m y sección 10 × 10 mm con flecha impuesta (N-m): piso/(atol + rtol·ref) = 0.01 con 100 elementos, 0.47 con 300, 31 con 1000 y 1470 con 3000; con 3000 la tolerancia vale el 2.6 % de la fuerza en la punta y el residuo que queda, el 0.05 %. Es coherente con la cota `c_r·ε·max|diag K|/λ_min(K)` del error relativo en desplazamiento que el piso admite (2.9e-3 con 1000 elementos y 0.23 con 3000, *calculado*): con 1000 elementos o más la propia resolución lineal ya no da 1e-5.
+- *Norma con unidades mezcladas.* El piso sigue al ruido en cualquier unidad, pero la tolerancia `rtol·max(‖F_ext‖, ‖F_int‖)` con la que se compara mezcla fuerzas y momentos en una sola norma (ver «Tolerancias por DOF» en las alternativas): en el voladizo, el cociente piso/tolerancia cambia 17 veces entre m y mm con 10 elementos y 206 veces con 100, porque en mm domina el momento del empotramiento (tolerancia/fuerza en la punta 1.0e-2 en mm frente a 1.7e-5 en m con 100 elementos).
+- *Elementos geométricamente no lineales.* Los corotacionales (`Truss2DCorot`, `Frame2DEulerCorot`; previsiblemente `Truss3DCorot` y los cables) forman `x = X + u` y luego `x₂ − x₁`: su error de redondeo escala con las coordenadas `‖X‖`, no con `‖U‖`, y el piso no lo cubre. Medido por el teórico: ruido de 64 a 2.8e3 veces la escala en el origen (m, mm y km) y hasta 2.3e7 a 1e5 m de él; una armadura corotacional trasladada sin fuerzas se detiene (con este criterio y con el anterior: no es una regresión), y un marco con cargas reales se detiene a 1e5–1e6 m del origen (coordenadas UTM). Pendiente aparte: formar `(X₂ − X₁) + (u₂ − u₁)` y añadir al piso el término propio de estos elementos.
+- Los umbrales de detección de divergencia del θ-método y de las diferencias centrales también tienen un `max(…, 1.0)`, pero no son criterios de convergencia y quedan fuera de esta enmienda.
+
+**Pruebas.** `tests/test_convergence_criterion.py` (`TestRoundoffFloorUnit`, `TestForceFreeConvergence`): el bloque con holgura en N, kN y MN, la tolerancia del voladizo igual en N y en MN, el ruido frente a la escala en m, mm y km con giros, el voladizo de 3000 elementos, la etapa que parte de una traslación sin fuerzas, la continuación dinámica sin aviso falso, la fórmula del piso de cada problema de Newton, el rechazo de un problema incompleto y la validación de los factores. Las mutaciones están en `informes/prototipos_2026-11-27/convergencia/mutar_convergencia.py` (fuera del repositorio).
 
 ## Referencias
 

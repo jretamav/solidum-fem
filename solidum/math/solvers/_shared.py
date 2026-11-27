@@ -18,9 +18,10 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from solidum.constants import INITIAL_CONDITION_MPC_RTOL
+from solidum.constants import CONVERGENCE_ROUNDOFF_FACTOR, INITIAL_CONDITION_MPC_RTOL
 from solidum.core.load_vector import LoadVector, as_load_vector, equivalent_loads_of
 from solidum.logging import get_logger
+from solidum.math.convergence import roundoff_vector
 from solidum.math.linalg.eigen import massless_dofs
 from solidum.math.solvers.diagnostics import MasslessDofsError, Termination
 
@@ -190,19 +191,28 @@ class TransientTerminationMixin:
                 f"Al continuar un transitorio, t_end es el instante final absoluto.")
         return number_of_steps(self.t_end - self.t_start, dt)
 
-    def _check_initial_equilibrium(self, T_op, F_int_red) -> None:
+    def _check_initial_equilibrium(self, T_op, F_int_red, K, u0) -> None:
         """Al continuar un estático, el estado inicial debe equilibrar la carga
         constante: ``Tᵀ·F_c − F_int,red(u₀) ≈ 0`` (fuerzas internas reducidas,
         apoyos prescritos incluidos). Si no, avisa: la diferencia se convierte
-        en una aceleración inicial espuria."""
+        en una aceleración inicial espuria.
+
+        Un residuo del orden del error de redondeo con que se calculan las
+        fuerzas internas, ``roundoff_factor · ε·(|T|ᵀ|K||u₀|)_i`` componente a
+        componente, cuenta como cero (ADR 0007, enmienda del 2026-11-27): sin
+        él, un estático con desplazamiento impuesto y sin fuerzas avisaba de un
+        desequilibrio inexistente (residuo relativo 1.0, el propio ruido)."""
         if not self._continues_static or self.constant_load is None:
             return
         Fc = T_op.T @ np.asarray(self.constant_load, dtype=float).ravel()
         Fi = np.asarray(F_int_red, dtype=float).ravel()
-        r = Fc - Fi
+        r = np.abs(Fc - Fi)
         scale = max(float(np.max(np.abs(Fc), initial=0.0)),
                     float(np.max(np.abs(Fi), initial=0.0)), 1e-300)
-        rel = float(np.max(np.abs(r), initial=0.0)) / scale
+        floor = roundoff_vector((K, u0), T=T_op)
+        if floor is not None:
+            r = np.maximum(r - CONVERGENCE_ROUNDOFF_FACTOR * floor, 0.0)
+        rel = float(np.max(r, initial=0.0)) / scale
         if rel > 1e-6:
             _log.warning(
                 f"{type(self).__name__}: el estado inicial no está en equilibrio con "

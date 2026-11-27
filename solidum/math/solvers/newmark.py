@@ -15,7 +15,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from solidum.bc.constraints import reduce_matrix
-from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.convergence import ConvergenceCriterion, roundoff_scale
 from solidum.math.damping import resolve_rayleigh_config
 from solidum.math.linalg import StiffnessProperties, select_solver
 from solidum.math.solvers._shared import (
@@ -188,7 +188,7 @@ class NewmarkSolver(TransientTerminationMixin):
         # F(0) reducido.
         F0_raw, F0_global = self._external_load(self.t_start, ndof)
         F0_red = T.T @ F0_global
-        self._check_initial_equilibrium(T, K_red @ u_free + F_dir)
+        self._check_initial_equilibrium(T, K_red @ u_free + F_dir, K, T @ u_free + g)
 
         # Aceleración inicial: M_red · ü₀ = F₀ − F_dir − C_red·u̇₀ − K_red·u₀.
         rhs0 = F0_red - F_dir - C_red @ udot_free - K_red @ u_free
@@ -321,10 +321,18 @@ class _DynamicNewtonProblem:
         return float(np.linalg.norm(self.T_op.T @ R))
 
     def calibration_scales(self, x, state):
-        return default_calibration_scales(self.F_ext_next, state[1], state[0])
+        return default_calibration_scales(self.F_ext_next, state[1], state[0],
+                                          self.assembler)
 
     def reference_force(self, x, state):
         return max(float(np.linalg.norm(self.F_ext_next)), float(np.linalg.norm(state[1])))
+
+    def roundoff_force(self, x, state):
+        # Residuo dinámico F − F_int − C·u̇ − M·ü: redondeo de los tres términos.
+        # En HHT los pesos del paso n y del n+1 suman 1 para α ∈ [−1/3, 0]:
+        # basta la suma sin pesos en n+1 (verificación teórica 2026-11-27).
+        return roundoff_scale((state[0], x[0]), (self.C, x[1]), (self.M, x[2]),
+                              T=self.T_op)
 
     def x_norm(self, x):
         return float(np.linalg.norm(x[0][self.free_dofs]))
@@ -567,7 +575,7 @@ class NewtonNewmarkSolver(NewmarkSolver):
 
         # Sistema no lineal en u_0 para obtener K_0 (Rayleigh) y F_int(u_0).
         K_0, F_int = self.assembler.assemble_non_linear_system(u_total)
-        self._check_initial_equilibrium(T_op, T_op.T @ F_int)
+        self._check_initial_equilibrium(T_op, T_op.T @ F_int, K_0, u_total)
 
         alpha_r, beta_r = resolve_rayleigh_config(
             self.rayleigh_cfg, source=type(self).__name__,
@@ -830,7 +838,7 @@ class HHTSolver(NewmarkSolver):
 
         F0_raw, F0_global = self._external_load(self.t_start, ndof)
         F0_red = T.T @ F0_global
-        self._check_initial_equilibrium(T, K_red @ u_free + F_dir)
+        self._check_initial_equilibrium(T, K_red @ u_free + F_dir, K, T @ u_free + g)
 
         # Aceleración inicial consistente con la ecuación de movimiento en t=0
         # (idéntica a Newmark: no involucra α porque no hay paso anterior).
@@ -1061,7 +1069,7 @@ class NewtonHHTSolver(NewtonNewmarkSolver):
         M = self.assembler.assemble_mass_matrix(lumping=self.lumping)
 
         K_0, F_int = self.assembler.assemble_non_linear_system(u_total)
-        self._check_initial_equilibrium(T_op, T_op.T @ F_int)
+        self._check_initial_equilibrium(T_op, T_op.T @ F_int, K_0, u_total)
 
         alpha_r, beta_r = resolve_rayleigh_config(
             self.rayleigh_cfg, source=type(self).__name__,

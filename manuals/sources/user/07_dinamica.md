@@ -169,7 +169,7 @@ $$\mathbf R = \mathbf F_{\text{ext}}(t) - \mathbf F_{\text{int}}(\mathbf u) - \m
 
 **Recuperación del caso lineal**: con materiales sin historia o no plastificados, el residuo se anula en 1 iter y el resultado coincide *a paridad de bits* con `NewmarkSolver`. Validado en tests.
 
-**Parámetros**: heredados de `NewmarkSolver` más `max_iter` (default 20), bloque `convergence` (`rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`; ADR 0007), `freeze_tangent_after_iter` (default `None`), `line_search` (búsqueda lineal en el Newton de cada paso, ADR 0011; default `false`) y `max_subdivisions` (niveles de subdivisión del paso, default 6; `0` la desactiva). El despacho YAML es automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `solidum.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient`.
+**Parámetros**: heredados de `NewmarkSolver` más `max_iter` (default 20), bloque `convergence` (`rtol_force`, `rtol_disp`, `atol_force_factor`, `atol_disp_factor`, `roundoff_factor`; ADR 0007), `freeze_tangent_after_iter` (default `None`), `line_search` (búsqueda lineal en el Newton de cada paso, ADR 0011; default `false`) y `max_subdivisions` (niveles de subdivisión del paso, default 6; `0` la desactiva). El despacho YAML es automático: como `NewtonNewmarkSolver` es subclase de `NewmarkSolver`, `solidum.run_yaml` lo detecta vía `isinstance` y enruta a `run_transient`.
 
 ```yaml
 materials:

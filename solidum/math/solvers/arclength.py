@@ -96,7 +96,7 @@ from solidum.constants import (
     ARCLENGTH_MIN_DL_FACTOR,
     ZERO_TOL,
 )
-from solidum.math.convergence import ConvergenceCriterion
+from solidum.math.convergence import ConvergenceCriterion, roundoff_scale
 from solidum.math.solvers._shared import _log, domain_is_symmetric
 from solidum.math.solvers.corrector import (
     CorrectionAborted,
@@ -222,13 +222,17 @@ class _ArcProblem:
     def calibration_scales(self, x, state):
         # La carga de referencia es la escala natural del arc-length (λ
         # varía, F_ext_ref es fijo).
-        return default_calibration_scales(self._F_calibration, state[1], state[0])
+        return default_calibration_scales(self._F_calibration, state[1], state[0],
+                                          self.assembler)
 
     def reference_force(self, x, state):
         F_ext = x[1] * self.F_ext_ref
         if self.F_const is not None:
             F_ext = F_ext + self.F_const
         return max(float(np.linalg.norm(F_ext)), float(np.linalg.norm(state[1])))
+
+    def roundoff_force(self, x, state):
+        return roundoff_scale((state[0], x[0]), T=self._T)
 
     def x_norm(self, x):
         return float(np.linalg.norm(x[0]))
@@ -782,7 +786,7 @@ class ArcLengthSolver:
         if not self.convergence.is_calibrated:
             self.convergence.calibrate(*default_calibration_scales(
                 stage.calibration_load(F_ext_ref) if staged else F_ext_ref,
-                F_int_global, K_global))
+                F_int_global, K_global, self.assembler))
         K_t_red, F_t_red, T_t, g_t = self.assembler.reduce(
             K_global, F_ext_ref.copy(), g_start=stage.g_start if staged else None)
         try:

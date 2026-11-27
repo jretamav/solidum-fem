@@ -371,6 +371,10 @@ Bajo. Las ocho escrituras directas en `domain.elements` de las pruebas pasaron a
 Medio. El bloque toca el `Domain` (nodos duplicados), la clasificación que usan seis subsistemas y la contabilidad de la energía. Sin interfaces los resultados son los de antes; la adherencia, bit a bit. Lo cubren pruebas de invariantes de la generación, del contrato de la familia y de la pureza del programa principal, cada una comprobada con mutaciones.
 ```
 
+### Lecciones de la fase 18
+
+- **El criterio de convergencia dependía de la unidad de fuerza** cuando no había fuerzas (enmienda del ADR 0007, 27 de noviembre de 2026, decisión del usuario). Un bloque que baja sin fuerza por una holgura de contacto se detenía trabajando en N y convergía en kN: la calibración caía a una unidad de fuerza. Ahora la escala nula es válida y a la tolerancia de fuerza se suma un piso de redondeo calculado con el modelo. El contrato del corrector compartido (ADR 0015) ganó el método obligatorio `roundoff_force` y una validación al entrar; la comprobación de equilibrio al continuar un estático con un dinámico descuenta el mismo piso. Queda fuera de este piso el redondeo de los elementos corotacionales, que crece con las coordenadas del modelo.
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

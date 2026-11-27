@@ -332,7 +332,7 @@ class CentralDifferenceSolver(TransientTerminationMixin):
         F0_red = T.T @ F0_global
 
         F_int_red = self._compute_internal_forces_reduced(u_free, T, g, K_red, F_dir)
-        self._check_initial_equilibrium(T, F_int_red + F_dir)
+        self._check_initial_equilibrium(T, F_int_red + F_dir, K, T @ u_free + g)
 
         a_free = self._carried_acceleration(free_dofs)
         if a_free is None:

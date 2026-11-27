@@ -72,8 +72,9 @@ class _ResidualRecorder:
     def calibrate(self, *args, **kwargs):
         return self._inner.calibrate(*args, **kwargs)
 
-    def evaluate(self, residual_norm, ref_force, delta_u_norm, u_norm):
-        state = self._inner.evaluate(residual_norm, ref_force, delta_u_norm, u_norm)
+    def evaluate(self, residual_norm, ref_force, delta_u_norm, u_norm, *, roundoff_force):
+        state = self._inner.evaluate(residual_norm, ref_force, delta_u_norm, u_norm,
+                                     roundoff_force=roundoff_force)
         self.residuals.append(float(residual_norm))
         self.deltas.append(float(delta_u_norm))
         return state
