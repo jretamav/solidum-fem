@@ -136,7 +136,7 @@ Abierta/cerrada y adherencia/deslizamiento se deciden en cada iteración desde l
 ```yaml
 name: ContactPenalty
 kind: interface_material        # familia de materiales de interfaz, ADR 0033
-status: implemented
+status: validated
 
 interface:
   geometry: surface             # superficie de contacto: componentes (n, s) o (n, s1, s2)
@@ -298,3 +298,4 @@ references:
   - Integración del elemento (nodal o de Gauss), definición de `g_0` y de la normal: en la spec del elemento.
 - **2026-11-26 — Revisión de la spec por `teorico-solidum`** (`informes/teorico/revision_spec_contacto_2026-11-26.md`, veredicto «cambios antes de programar»): ley, tangente (diferencias centradas en las seis ramas, ≤ 2.7e-12), energía y disipación por ciclo correctas (*calculado*). Aplicado: sentido de `t_s` (§7), «solución cerrada de Euler implícito» en lugar de «exacto» (§8), rigidez de arranque en `g_n = 0` (§11), pruebas nuevas y ajuste de `ciclo_de_friccion`. Opinión del teórico en las decisiones abiertas: coincide con las recomendaciones de la IA en Q1–Q6. Hallazgo para el elemento y la salida: `D = W − E` con el trapecio del ADR 0038 da una disipación espuria cuando un paso cruza un quiebre de la ley (cierre de holgura en un paso: `D/ψ = 0.50`; en 10 pasos, 5e-3; *calculado*); es del integrador del trabajo, no de la ley. Su signo depende del quiebre (verificación del 2026-11-26): positiva al cerrar una holgura, negativa al pasar de adherencia a deslizamiento (la disipación de ese paso sale la mitad de la real).
 - **2026-11-26 — Revisión del plan por `arquitecto-solidum`** (`informes/arquitecto/revision_plan_contacto_2026-11-26.md`): la holgura inicial la calcula el elemento y la ley la recibe dentro de `g_n`; contrato ampliado de la familia (`ACCEPTS_INITIAL_GAP`, `IS_UNILATERAL`, `STATE_SCHEMA`, `stored_energy`) y energía almacenada por elemento: ADR 0043. La historia sólo exporta variables escalares: `slip` (vector) queda en el estado y se exportan `contact_pressure`, `slip_accumulated` y `status`.
+- **2026-11-27 — Validación (`validador-solidum`)**: escalera de la spec `Interface2D4` §7b en 2D (parcela, despegue, fricción, Hertz) y con etapas (despegue, fricción 2D de ida y vuelta, fricción 3D con trayectoria en L, con `Interface3D8`); resultados en `Interface2D4` §7b; `status: validated`. Viga SEN con la placa apoyada: funciona sin fricción; con μ = 0.5 y la placa libre en horizontal, el análisis se detiene en la cola. Es un problema de cómo se representa la placa, no de la ley (*hipótesis*); queda abierto en el Diálogo de `Interface2D4`.
