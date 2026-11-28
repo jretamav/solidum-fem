@@ -746,36 +746,49 @@ def plot_diagram(files: ResultFiles, spec: dict, out: Path) -> Path:
             fills.append(np.vstack([P, Q[::-1]]))
             drawn.append(Q)
             # Candidatos a rótulo: los extremos del elemento y sus extremos
-            # interiores (máximos locales del valor absoluto).
-            a = np.abs(v)
-            ends = max(a[0], a[-1])
-            keep = [0, len(v) - 1] + [m for m in range(1, len(v) - 1)
-                                      if a[m] > a[m - 1] and a[m] >= a[m + 1]
-                                      and a[m] > ends * (1.0 + 1e-6)]
+            # interiores (máximos o mínimos locales del valor, p. ej. el
+            # flector donde el cortante se anula), aunque su valor absoluto no
+            # supere al de los extremos: el máximo del claro de una viga
+            # continua es menor que el flector del apoyo, y en una columna con
+            # viento el extremo puede ser el menor valor absoluto del tramo.
+            # La tolerancia descarta el redondeo de un valor constante (N, o V
+            # sin carga).
+            tol = 1e-6 * float(np.max(np.abs(v)))
+            keep = [0, len(v) - 1] + [
+                m for m in range(1, len(v) - 1)
+                if (v[m] - v[m - 1]) * (v[m] - v[m + 1]) > 0.0
+                and max(abs(v[m] - v[m - 1]), abs(v[m] - v[m + 1])) > tol]
             extremes.extend((v[m], Q[m]) for m in keep)
         ax.add_collection(PolyCollection(fills, facecolors=_BLUE_RAMP[2], edgecolors=_SERIES[0],
                                          linewidths=0.8, alpha=0.85))
         ax.add_collection(LineCollection(segs, colors=_INK, linewidths=1.6))
+        _frame(ax, np.vstack(drawn), spec.get("zoom"))
         # Rótulos: el valor en los extremos de cada elemento y en sus extremos
-        # interiores, una vez por lugar (como un diagrama a mano); con muchos
-        # elementos, sólo los tres mayores en lugares distintos. El flector,
-        # sin signo (el lado del dibujo es la fibra en tracción y su signo
-        # depende de la numeración); N y V, con su signo.
+        # interiores, de mayor a menor, sin encimarse (un rótulo que tocaría a
+        # uno ya puesto se omite: una vez por lugar, como un diagrama a mano);
+        # con muchos elementos, sólo los tres mayores en lugares distintos. El
+        # flector, sin signo (el lado del dibujo es la fibra en tracción y su
+        # signo depende de la numeración); N y V, con su signo.
+        ax.apply_aspect()
+        renderer = fig.canvas.get_renderer()
         many = len(extremes) > 60
-        order = np.argsort([-abs(e[0]) for e in extremes])
-        placed = []
+        order = np.argsort([-abs(e[0]) for e in extremes], kind="stable")
+        placed, boxes = [], []
         for k in order:
             v, q = extremes[k]
-            text = _fmt(abs(v) if var == "M" else v)
             if abs(v) <= 1e-9 * peak or (many and len(placed) == 3):
                 continue
-            near = 0.08 * size if many else 0.03 * size
-            if any(np.linalg.norm(q - p) < near for p, _ in placed):
+            if many and any(np.linalg.norm(q - p) < 0.08 * size for p in placed):
                 continue
-            placed.append((q, text))
-            ax.annotate(text, q, fontsize=7 if not many else 8, color=_INK,
-                        ha="center", va="bottom", xytext=(0, 2), textcoords="offset points")
-        _frame(ax, np.vstack(drawn), spec.get("zoom"))
+            ann = ax.annotate(_fmt(abs(v) if var == "M" else v), q, fontsize=7 if not many else 8,
+                              color=_INK, ha="center", va="bottom", xytext=(0, 2),
+                              textcoords="offset points")
+            box = ann.get_window_extent(renderer)
+            if any(box.overlaps(b) for b in boxes):
+                ann.remove()
+                continue
+            placed.append(q)
+            boxes.append(box)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         side = " (del lado de la fibra en tracción)" if var == "M" else ""

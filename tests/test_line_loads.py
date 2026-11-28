@@ -253,8 +253,157 @@ class TestArchivoDeDiagramas:
         assert abs(d["V"][k]) < 1e-6 * Q0 * L
         np.testing.assert_allclose(d["x"], d["xi"] * L, atol=1e-12)
 
+    def test_cero_del_cortante_en_una_estacion_uniforme_sin_fila_repetida(self, tmp_path):
+        """Con carga uniforme y estaciones impares el cero del cortante cae
+        en ξ = 1/2, que ya es estación: una fila, no dos (validación del
+        2026-11-27). Y el axil nulo de la viga horizontal se escribe 0, no
+        «-0»."""
+        p = write(tmp_path, YAML_APOYADA.format(
+            L=L, loads=f"line_loads:\n  - {{elements: {{id: 1}}, q: [0.0, -{W}]}}",
+            output="output:\n  results: {diagrams: {stations: 5}}\n"))
+        load_yaml(p).solve(write_output=True)
+        text = (tmp_path / "m_diagramas_final.csv").read_text(encoding="utf-8")
+        d = np.genfromtxt(tmp_path / "m_diagramas_final.csv", delimiter=",", names=True)
+        assert len(d) == 5
+        np.testing.assert_allclose(d["xi"], np.linspace(0.0, 1.0, 5), atol=1e-12)
+        assert d["M"][2] == pytest.approx(W * L**2 / 8, rel=1e-10)
+        assert ",-0," not in text and not any(line.endswith(",-0") for line in text.splitlines())
+
+
+YAML_CONTINUA = """
+nodes:
+  - {{id: 1, coords: [0.0, 0.0]}}
+  - {{id: 2, coords: [5.0, 0.0]}}
+  - {{id: 3, coords: [12.0, 0.0]}}
+{extra_nodes}
+materials:
+  - {{id: 1, type: Elastic1D, E: 2.1e8}}
+elements:
+{elements}
+boundary_conditions_by_node:
+  - {{node_id: 1, ux: 0.0, uy: 0.0}}
+  - {{node_id: 2, uy: 0.0}}
+  - {{node_id: 3, uy: 0.0}}
+line_loads:
+  - {{elements: {{ids: {ids}}}, q: [0.0, -10.0e3]}}
+solver:
+  type: LinearSolver
+output:
+  results: {{diagrams: true}}
+"""
+
+
+def continua(tmp_path, n_por_metro=False):
+    """Viga continua de 5 + 7 m con 10 kN/m (caso v1/v2 de la validación del
+    2026-11-27): M_B = −q(L1³ + L2³)/[8(L1 + L2)] = −48750, máximos de claro
+    11628.125 y 39300.064 (ecuación de los tres momentos)."""
+    if not n_por_metro:
+        extra, ids = "", [1, 2]
+        elements = ("  - {id: 1, type: Frame2DEuler, material: 1, nodes: [1, 2], A: 0.013, I: 2.1e-4}\n"
+                    "  - {id: 2, type: Frame2DEuler, material: 1, nodes: [2, 3], A: 0.013, I: 2.1e-4}")
+    else:
+        xs = [x for x in range(13) if x not in (0, 5, 12)]
+        extra = "\n".join(f"  - {{id: {10 + x}, coords: [{float(x)}, 0.0]}}" for x in xs)
+        nid = {0: 1, 5: 2, 12: 3, **{x: 10 + x for x in xs}}
+        ids = list(range(1, 13))
+        elements = "\n".join(
+            f"  - {{id: {x + 1}, type: Frame2DEuler, material: 1, nodes: [{nid[x]}, {nid[x + 1]}],"
+            " A: 0.013, I: 2.1e-4}" for x in range(12))
+    p = write(tmp_path, YAML_CONTINUA.format(extra_nodes=extra, elements=elements, ids=ids))
+    load_yaml(p).solve(write_output=True)
+    return p
+
+
+def labels_of_diagram(p, var):
+    """Dibuja la figura ``diagram`` de ``var`` y devuelve sus rótulos (texto y
+    caja en pantalla)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from solidum.post import plots as P
+    from solidum.post import ResultFiles
+    created = []
+    real = plt.subplots
+
+    def spy(*a, **k):
+        fig, axes = real(*a, **k)
+        created.append(axes)
+        return fig, axes
+    try:
+        plt.subplots = spy
+        P.plot_diagram(ResultFiles.of_yaml(p), {"type": "diagram", "var": var},
+                       p.parent / f"d_{var}.png")
+    finally:
+        plt.subplots = real
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    ax = created[0][0, 0]
+    canvas = FigureCanvasAgg(ax.figure)   # la figura cerrada perdió su lienzo
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    return [(t.get_text(), t.get_window_extent(renderer)) for t in ax.texts]
+
 
 class TestFiguraDiagram:
+
+    def test_rotula_el_maximo_del_claro_aunque_sea_menor_que_el_del_apoyo(self, tmp_path):
+        """Manual de usuario (figura ``diagram``): se rotula el flector máximo
+        del claro, donde el cortante se anula. Con un elemento por claro de la
+        viga continua, los máximos 11628 y 39300 son menores que el flector
+        del apoyo (48750) y antes no se rotulaban (validación 2026-11-27)."""
+        values = [float(t) for t, _ in labels_of_diagram(continua(tmp_path), "M")]
+        for expected in (48750.0, 11628.125, 39300.064):
+            assert any(v == pytest.approx(expected, rel=1e-4) for v in values), (expected, values)
+
+    def test_rotula_el_extremo_de_menor_valor_absoluto(self, tmp_path):
+        """Marco portal de la validación del 2026-11-27: en la columna con
+        viento el flector es negativo en todo el tramo y su extremo donde el
+        cortante se anula (−334.64 en s = 0.632 m) es el menor valor absoluto
+        del tramo: también se rotula (extremo del flector, no de |M|)."""
+        text = textwrap.dedent("""
+            nodes:
+              - {id: 1, coords: [0.0, 0.0]}
+              - {id: 2, coords: [0.0, 4.0]}
+              - {id: 3, coords: [3.0, 4.0]}
+              - {id: 4, coords: [6.0, 4.0]}
+              - {id: 5, coords: [6.0, 0.0]}
+            materials:
+              - {id: 1, type: Elastic1D, E: 25.0e9}
+            elements:
+              - {id: 1, type: Frame2DEuler, material: 1, nodes: [1, 2], A: 0.09, I: 6.75e-4}
+              - {id: 2, type: Frame2DEuler, material: 1, nodes: [2, 3], A: 0.12, I: 1.6e-3}
+              - {id: 3, type: Frame2DEuler, material: 1, nodes: [4, 3], A: 0.12, I: 1.6e-3}
+              - {id: 4, type: Frame2DEuler, material: 1, nodes: [5, 4], A: 0.09, I: 6.75e-4}
+            boundary_conditions_by_node:
+              - {node_id: 1, ux: 0.0, uy: 0.0, rz: 0.0}
+              - {node_id: 5, ux: 0.0, uy: 0.0, rz: 0.0}
+            line_loads:
+              - {elements: {ids: [2, 3]}, q: [0.0, -12.0e3]}
+              - {elements: {id: 1}, q: [3.0e3, 0.0]}
+            solver:
+              type: LinearSolver
+            output:
+              results: {diagrams: true}
+            """)
+        p = write(tmp_path, text)
+        load_yaml(p).solve(write_output=True)
+        values = [float(t) for t, _ in labels_of_diagram(p, "M")]
+        for expected in (334.641, 933.879, 33095.640):
+            assert any(v == pytest.approx(expected, rel=1e-3) for v in values), (expected, values)
+
+    def test_rotulos_sin_encimarse(self, tmp_path):
+        """Con doce elementos de 1 m los rótulos de nudos vecinos y del máximo
+        del claro se encimaban (validación 2026-11-27): ninguna caja toca a
+        otra, y el máximo del claro, el mayor de su zona, queda."""
+        for var in ("M", "V"):
+            labels = labels_of_diagram(continua(tmp_path, n_por_metro=True), var)
+            assert len(labels) >= 3
+            boxes = [b for _, b in labels]
+            for i in range(len(boxes)):
+                for j in range(i + 1, len(boxes)):
+                    assert not boxes[i].overlaps(boxes[j]), (labels[i][0], labels[j][0])
+            if var == "M":
+                values = [float(t) for t, _ in labels]
+                assert any(v == pytest.approx(11628.125, rel=1e-4) for v in values), values
 
     def test_flector_del_lado_de_la_traccion_sin_importar_la_numeracion(self):
         """Q1 del usuario (2026-11-27): el flector se dibuja hacia la fibra

@@ -498,6 +498,11 @@ class OutputWriter:
             for e, (el, _, _, _, _) in enumerate(items):
                 zeros = shear_zeros(kind, {c: v[e] for c, v in ends.items()}, coeffs[e], L0[e])
                 extra = np.unique(np.concatenate([np.empty(0), *zeros.values()]))
+                # Un cero que cae en una estación uniforme ya está: sin fila
+                # repetida. Más cerca que 1e-7 en ξ, la estación da el extremo
+                # a la precisión impresa (error de orden 1e-14) y dos filas casi
+                # iguales harían indistinguible el extremo en la figura.
+                extra = extra[np.min(np.abs(extra[:, None] - xi_u[None, :]), axis=1) > 1e-7]
                 xi_e, vals = xi_u, {c: v[e] for c, v in uniform.items()}
                 if extra.size:
                     more = forces_along_batch(kind, {c: v[e:e + 1] for c, v in ends.items()},
@@ -512,7 +517,8 @@ class OutputWriter:
                     p = X[0] + x * (X[1] - X[0])
                     rows.append([el.id, f"{l[e] * x:.10g}", f"{x:.10g}",
                                  *(f"{v:.10g}" for v in p),
-                                 *(f"{vals[c][m]:.10g}" if c in vals else "" for c in present)])
+                                 *(f"{vals[c][m] + 0.0:.10g}" if c in vals else ""
+                                   for c in present)])  # + 0.0: sin «-0»
         path = self.base_dir / name
         with open(path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
