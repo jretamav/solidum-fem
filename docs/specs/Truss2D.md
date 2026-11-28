@@ -53,6 +53,9 @@ $$\mathbf F_{\text{int}} = \sigma A\, \mathbf d.$$
 ### 11. Cuadratura
 No aplica (forma cerrada).
 
+### 12. Carga por unidad de longitud y fuerza axial a lo largo del elemento
+Carga muerta $\mathbf q(s)$ en ejes globales, locales o global proyectada, como en [Frame2DEuler](Frame2DEuler.md) §14 ([ADR 0044](../adr/0044-cargas-de-linea-y-diagramas-de-fuerzas-internas.md)). Se reparte como la fuerza de cuerpo: cada componente global con las funciones lineales, $\mathbf f_a = \int_0^L N_a\,\mathbf q\,ds$. La armadura sólo transmite fuerza axial; la componente transversal pasa a los nodos como fuerza nodal y la equilibra el resto del modelo. A lo largo del elemento sólo hay fuerza axial, por equilibrio del tramo en la dirección del eje: $N(s) = -P_1 - Q_{x'}(s)$, con $P_1 = \mathbf t\cdot(\mathbf F_{\text{int}} - \mathbf f)_i$ y $Q_{x'}$ la integral de la componente axial de $\tilde{\mathbf q}$. Lo mismo vale para `Truss3D` y las corotacionales (con el eje corriente, como `internal_forces`). El reparto lineal de la carga transversal da las reacciones de la barra biarticulada (uniforme: $qL/2$; triangular de $0$ a $q_0$: $q_0L/6$ y $q_0L/3$), estáticamente exacto, pero la flexión local de la barra bajo esa carga (la de una viga biarticulada entre nodos, $q_\perp L^2/8$ con carga uniforme) no se calcula; si importa, se modela con un marco.
+
 ---
 
 ## Contrato de implementación

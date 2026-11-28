@@ -17,12 +17,36 @@ class _TrussLine(LineElementMixin):
     tiene rigidez transversal."""
     LINE_FIELDS = ("u",)
     LINE_STRAINS = ("eps",)
+    # La armadura reparte cada componente global de la carga con sus funciones
+    # axiales (la perpendicular al eje es fuerza nodal pura, spec Truss2D §12).
+    LINE_LOAD_BY_COMPONENT = True
 
     def _line_interpolation(self, xi):
         n, L = len(xi), self.L0
         N = np.column_stack([1.0 - xi, xi]).reshape(n, 1, 2)
         B = np.broadcast_to(np.array([[[-1.0 / L, 1.0 / L]]]), (n, 1, 2))
         return N, B
+
+    def _load_axes(self):
+        """Ejes locales de la carga en 2D: ``x'`` de i a j e ``y'`` girado 90°
+        antihorario (Reglas §5). En 3D no hay ejes transversales
+        (``LINE_LOAD_LOCAL_AXES = False``)."""
+        e = self._reference_axis()
+        if len(e) != 2:
+            raise ValueError(f"{type(self).__name__}(id={self.id}): la armadura 3D no define "
+                             "ejes transversales.")
+        return np.array([[e[0], e[1]], [-e[1], e[0]]])
+
+    def internal_force_axes(self, U_global):
+        """Sólo el eje (la fuerza interna es axial): el corriente en las
+        corotacionales, como ``internal_forces``, con su longitud corriente
+        (la distancia ``s`` del archivo de diagramas, como en el marco
+        corrotacional)."""
+        u_e = self.get_local_displacements(U_global)
+        e = np.asarray(self._axis_direction(u_e), dtype=np.float64)
+        current = getattr(self, "_current_geometry", None)
+        l = float(current(u_e)[0]) if current is not None else float(self.L0)
+        return e[None, :], float(self.L0), l
 
     def _to_local(self, u_e):
         X = self._line_ends()
@@ -285,6 +309,8 @@ class Truss3D(_TrussLine, Element):
     STRAIN_DIM = 1
     SEEDS_CHARACTERISTIC_LENGTH = True  # siembra h con _seed_characteristic_lengths
     N_INTEGRATION_POINTS = 1
+    # Sin sección orientada no hay ejes transversales (spec Truss3D §12).
+    LINE_LOAD_LOCAL_AXES = False
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float):
         if len(nodes) != 2:

@@ -118,14 +118,19 @@ class YamlParser:
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord',
         'point_loads_by_group', 'linear_constraints', 'nodal_masses', 'nodal_masses_by_group',
         'nodal_masses_by_coord', 'body_force', 'gravity',
-        'tractions', 'tractions_by_group',
+        'tractions', 'tractions_by_group', 'line_loads',
         'thermal_loads', 'solver', 'output', 'user_modules', 'stages', 'constraints',
         'interfaces',
     })
+    # Cargas distribuidas mecánicas: las que dan cargas equivalentes en los
+    # marcos (ADR 0027) y, las de línea y de cuerpo, carga a lo largo de los
+    # elementos de línea (ADR 0044). Una sola declaración.
+    _DISTRIBUTED_LOAD_KEYS = ('body_force', 'gravity', 'tractions', 'tractions_by_group',
+                              'line_loads')
     # Bloques de carga: los del nivel raíz y los de ``loads`` de cada etapa.
     _LOAD_KEYS = frozenset({
         'point_loads', 'point_loads_by_node', 'point_loads_by_coord', 'point_loads_by_group',
-        'body_force', 'gravity', 'tractions', 'tractions_by_group', 'thermal_loads',
+        *_DISTRIBUTED_LOAD_KEYS, 'thermal_loads',
     })
     # Bloques de apoyos y desplazamientos impuestos: los del nivel raíz y los
     # de cada etapa estática (ADR 0026 §7).
@@ -157,6 +162,10 @@ class YamlParser:
         # Cargas distribuidas resueltas tras construir la malla (ADR 0023):
         # tracciones y presiones, fuentes y flujos térmicos.
         self.surface_loads = []
+        # Cargas por unidad de longitud de barras y marcos (ADR 0044):
+        # [(elemento, q, local, projected)].
+        self.line_loads = []
+        self._stage_parsers = None
         self.thermal_source_loads = []
         self.thermal_flux_loads = []
         self.output_config = {}
@@ -222,6 +231,16 @@ class YamlParser:
             errors = self._stage_boundary_condition_errors()
             if errors:
                 raise YamlValidationError(errors)
+            # Las cargas distribuidas de cada etapa, también al leer (ADR 0044
+            # §4), con el prefijo de su etapa en los mensajes.
+            self._stage_parsers, errors = [], []
+            for i, st in enumerate(self.stages):
+                try:
+                    self._stage_parsers.append(self._build_stage_parser(st, f"stages[{i}].loads."))
+                except YamlValidationError as exc:
+                    errors.extend(exc.errors)
+            if errors:
+                raise YamlValidationError(errors)
         # Apoyos del nivel raíz: cada análisis por etapas empieza con ellos
         # (las etapas los cambian en el dominio, ADR 0026 §7).
         self._root_boundary_conditions = {nid: dict(n.boundary_conditions)
@@ -231,16 +250,24 @@ class YamlParser:
     def for_stage(self, stage: dict) -> "YamlParser":
         """Lector de una etapa: el mismo modelo, con las cargas y el solver de
         la etapa (``stages``, ADR 0026 y 0029). Las cargas se resuelven con los
-        mismos lectores que las del nivel raíz."""
+        mismos lectores que las del nivel raíz, al leer el archivo
+        (:meth:`parse`); aquí se devuelve el de esa lectura."""
+        for st, sp in zip(self.stages or [], self.__dict__.get('_stage_parsers') or []):
+            if st is stage:
+                return sp
+        return self._build_stage_parser(stage, "")
+
+    def _build_stage_parser(self, stage: dict, prefix: str) -> "YamlParser":
         import copy
         sp = copy.copy(self)
         loads = stage['loads']
         sp._parse_point_loads_config(loads)
         sp._parse_thermal_loads_config(loads)
         sp._parse_body_force(loads)
-        sp._parse_distributed_loads(loads)
+        sp._parse_distributed_loads(loads, prefix)
         sp.solver_config = stage['solver']
         sp.stages = None
+        sp._stage_parsers = None
         return sp
 
     def apply_stage_boundary_conditions(self, stage: dict, where: str) -> None:
@@ -282,9 +309,16 @@ class YamlParser:
     def stages_with_distributed_loads(self) -> list:
         """Índices de las etapas con carga distribuida (de cuerpo o de
         contorno), que da cargas equivalentes en los marcos (ADR 0027)."""
-        distributed = ('body_force', 'gravity', 'tractions', 'tractions_by_group')
         return [i for i, st in enumerate(self.stages or [])
-                if any(st['loads'].get(k) for k in distributed)]
+                if any(st['loads'].get(k) for k in self._DISTRIBUTED_LOAD_KEYS)]
+
+    def has_distributed_loads(self) -> bool:
+        """¿Declara el archivo carga distribuida mecánica en el nivel raíz o en
+        alguna etapa? Con ella, las fuerzas internas de marco de un análisis en
+        el tiempo se rechazan en la salida (ADR 0036, 0044 §5)."""
+        # Las tracciones actúan sobre sólidos: no dan carga a los marcos.
+        root = any(getattr(self, a, None) is not None for a in ('body_force', 'gravity'))
+        return bool(root or self.line_loads or self.stages_with_distributed_loads())
 
     def _stage_boundary_condition_errors(self) -> list:
         """Errores de los apoyos de las etapas, al leer: selector, nodo o DOF
@@ -1639,27 +1673,34 @@ class YamlParser:
         self.thermal_boundary_fluxes_by_group = cfg.get('boundary_flux_by_group') or {}
         self._thermal_load_keys = set(cfg) if isinstance(cfg, dict) else set()
 
-    def _parse_distributed_loads(self, data: dict):
+    def _parse_distributed_loads(self, data: dict, prefix: str = ""):
         """Resuelve las cargas distribuidas sobre la malla construida (ADR
         0023): ``tractions`` y ``tractions_by_group`` (tracción ``t`` o presión
-        ``pressure``, ``t = −p·n`` con ``p > 0`` de compresión) y, en
+        ``pressure``, ``t = −p·n`` con ``p > 0`` de compresión), ``line_loads``
+        (carga por unidad de longitud de barras y marcos, ADR 0044) y, en
         ``thermal_loads``, ``body_source``, ``boundary_flux`` y
         ``boundary_flux_by_group``. Los valores son números o expresiones de
         ``x``, ``y``, ``z`` (y de la normal ``nx``, ``ny``, ``nz`` en las de
-        contorno). Todos los errores se informan juntos."""
-        from solidum.utils.yaml_loads import resolve_body_sources, resolve_boundary_loads
+        contorno). Todos los errores se informan juntos, con ``prefix`` (el de
+        una etapa) delante de su bloque."""
+        from solidum.utils.yaml_loads import (resolve_body_sources, resolve_boundary_loads,
+                                              resolve_line_loads)
         errors = []
         unknown = self._thermal_load_keys - self._THERMAL_LOAD_KEYS
         if unknown:
-            errors.append(f"thermal_loads: sub-bloques desconocidos {sorted(unknown)}; se "
+            errors.append(f"{prefix}thermal_loads: sub-bloques desconocidos {sorted(unknown)}; se "
                           f"admiten {sorted(self._THERMAL_LOAD_KEYS)}.")
         self.surface_loads, e = resolve_boundary_loads(
             self.domain, data.get('tractions'), data.get('tractions_by_group'),
-            "mechanical", ("tractions", "tractions_by_group"))
+            "mechanical", (f"{prefix}tractions", f"{prefix}tractions_by_group"))
+        errors += e
+        self.line_loads, e = resolve_line_loads(self.domain, data.get('line_loads'),
+                                                f"{prefix}line_loads")
         errors += e
         self.thermal_flux_loads, e = resolve_boundary_loads(
             self.domain, self.thermal_boundary_fluxes, self.thermal_boundary_fluxes_by_group,
-            "thermal", ("thermal_loads.boundary_flux", "thermal_loads.boundary_flux_by_group"))
+            "thermal", (f"{prefix}thermal_loads.boundary_flux",
+                        f"{prefix}thermal_loads.boundary_flux_by_group"))
         errors += e
         self.thermal_source_loads, e = resolve_body_sources(self.domain,
                                                             self.thermal_body_sources)
@@ -1825,6 +1866,24 @@ class YamlParser:
             return assembler.assemble_body_load(self.body_force)
         return np.zeros(self.domain.total_dofs)
 
+    def get_line_loads(self, assembler) -> np.ndarray:
+        """Vector global de las cargas por unidad de longitud (``line_loads``,
+        ADR 0044): un ``LoadVector`` con sus cargas equivalentes y sus muestras
+        a lo largo de cada elemento."""
+        if not self.line_loads:
+            return np.zeros(self.domain.total_dofs)
+        return assembler.assemble_line_loads(self.line_loads)
+
+    def get_distributed_loads(self, assembler) -> np.ndarray:
+        """Cargas distribuidas mecánicas que crecen con la carga: fuerza de
+        cuerpo o peso propio más cargas de línea. Lo usan el estático, las
+        etapas y los transitorios (ADR 0044 §4). Las tracciones van con las
+        cargas nodales (:meth:`get_external_forces`)."""
+        body = self.get_body_load(assembler)
+        if not self.line_loads:
+            return body
+        return self.get_line_loads(assembler) + body
+
     def get_thermal_loads(self) -> np.ndarray:
         """Vector global de cargas térmicas ``F`` [W] declaradas en el YAML.
 
@@ -1894,7 +1953,7 @@ class YamlParser:
         # arbitraria, construir el solver desde Python con su propio `F_func`.
         if (getattr(solver_cls, 'PIPELINE_KIND', None) == 'transient'
                 and 'F_func' in accepted and 'F_func' not in kwargs):
-            F_const = self.get_external_forces() + self.get_body_load(assembler)
+            F_const = self.get_external_forces() + self.get_distributed_loads(assembler)
             if np.any(F_const):
                 _log.info(
                     f"solver {s_type}: las cargas del YAML se aplican como escalón "

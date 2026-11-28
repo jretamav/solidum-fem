@@ -595,7 +595,7 @@ def _run_yaml_stages(parser, domain, assembler, step_callback, on_stage=None) ->
         sp = parser.for_stage(stage)
         solver = sp.get_solver(assembler)
         if kind == "static":
-            F = (sp.get_external_forces() + sp.get_body_load(assembler)
+            F = (sp.get_external_forces() + sp.get_distributed_loads(assembler)
                  + sp.get_thermal_loads())
             if on_stage is not None and not perturbation:
                 F_const = (None if previous is None
@@ -826,7 +826,11 @@ def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
         )
 
     if make_writer is not None and pipeline_kind != "static":
-        step_callback, _ = make_writer(parser.get_external_forces(), False)
+        # Sólo las cargas nodales: el escritor sabe aparte si hay carga
+        # distribuida, para rechazar las fuerzas de marco que no la descuentan
+        # (ADR 0036, 0044 §5).
+        step_callback, _ = make_writer(parser.get_external_forces(), False,
+                                       distributed_loads=parser.has_distributed_loads())
 
     if pipeline_kind == "modal":
         return run_modal(domain, assembler=assembler, solver=solver)
@@ -850,7 +854,7 @@ def _dispatch_yaml_model(model: YamlModel, step_callback, make_writer=None):
     # térmico es `K·T = F` y lo resuelve el LinearSolver sin distinción. En un
     # modelo mecánico el bloque no existe y el término es cero.
     F_ext = (parser.get_external_forces()
-             + parser.get_body_load(assembler)
+             + parser.get_distributed_loads(assembler)
              + parser.get_thermal_loads())
     if make_writer is not None:
         # Sin convertir: un LoadVector lleva las cargas equivalentes por

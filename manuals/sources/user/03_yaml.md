@@ -638,9 +638,36 @@ Cada entrada lleva **una** de dos formas:
 
 La carga es **muerta**: actúa sobre la geometría de referencia y no sigue la deformación. Un grupo que no sea de contorno (por ejemplo, una superficie de la malla) o un borde compartido por dos elementos se rechazan al leer el archivo.
 
+## Cargas por Unidad de Longitud en Barras y Marcos: `line_loads`
+
+Una carga repartida sobre una viga, una columna o una barra se declara por unidad de longitud (N/m en SI), sobre el eje del elemento (ADR 0044):
+
+```yaml
+line_loads:
+  - {elements: {group: Viga}, q: [0.0, -20.0e3]}                    # ejes globales
+  - {elements: {group: Faldon}, q: [0.0, -1.5e3], projected: true}  # por proyección
+  - {elements: {ids: [4, 5]}, q_local: [0.0, "-0.6e3*(1 + 0.1*y)"]} # ejes locales
+```
+
+- `elements` (obligatorio): los elementos cargados. Con `id` o `ids`, por número; con `where`, los que tienen el centro donde se cumple una condición, como en la historia; con `group`, los elementos que coinciden con las celdas de un grupo físico de la malla (las líneas de Gmsh de una barra).
+- `q`: la carga en **ejes globales**, por unidad de longitud del elemento, positiva en `+x`, `+y` (`+z`).
+- `q_local`: la carga en los **ejes locales** del elemento. `x'` va del nodo i al j. En 2D, `y'` es `x'` girado 90° en sentido antihorario: en una viga horizontal con i a la izquierda, una carga hacia abajo es `q_local: [0, -q]`. En 3D, `y'` y `z'` son los ejes de la sección.
+- `projected: true` (sólo con `q`): cada componente se da por unidad de longitud **proyectada** sobre el plano perpendicular a su dirección. La nieve sobre un faldón inclinado se da por metro de proyección horizontal: actúa `q_y·cos α` por metro de faldón. Un elemento paralelo a la carga no recibe esa componente.
+- Cada componente es un número o una expresión de `x`, `y`, `z` (sección «Valores Variables»): una carga trapecial es una expresión lineal de la posición.
+
+Solidum reparte la carga a los nodos con las funciones de forma del elemento: en una viga uniforme, $qL/2$ en cada nodo y $\pm qL^2/12$ de momento; en `Frame2DTimoshenko`, con las funciones que dan su rigidez, que dependen de $\Phi$ cuando la carga no es uniforme. Las fuerzas internas de extremo descuentan esa carga, y las fuerzas internas **a lo largo del elemento** (historia con `at`, archivo de diagramas) salen por equilibrio del tramo, exactas también dentro del claro: en una viga simplemente apoyada de un solo elemento, el flector máximo $qL^2/8$ en el centro.
+
+Detalles:
+
+- La admiten los marcos (`Frame2DEuler`, `Frame2DTimoshenko`, `Frame2DEulerCorot`, `Frame3D`) y las armaduras. Una armadura sólo transmite fuerza axial: la componente perpendicular a su eje pasa a los nodos, y la flexión local de la barra entre sus nodos no se calcula. `Truss3D` y `Truss3D3` no admiten `q_local` (no tienen ejes de sección). Los cables y los sólidos no admiten cargas de línea.
+- La carga es **muerta**, también en los elementos corotacionales: sus ejes locales son los de la geometría inicial y no giran con el elemento.
+- La carga entra en el elemento por sus valores en 4 puntos: es exacta si su variación a lo largo del elemento es un polinomio de grado ≤ 3 (uniforme, trapecial, parabólica). Una carga con un salto o un quiebre dentro de un elemento se integra con error: el cambio debe caer en un nodo, y un tramo cargado en parte se declara como un grupo propio en el `.geo`.
+- Se aplica como la fuerza de cuerpo: crece con el factor de carga en los análisis estáticos, se declara en `stages[i].loads` en las etapas y actúa como escalón desde $t = 0$ en los dinámicos. El armónico, el modal y el espectral no la toman.
+- Los errores se informan todos juntos al leer el archivo, también los de las etapas: elementos que no la admiten, `q` y `q_local` a la vez, `projected` con `q_local`, número de componentes distinto de la dimensión.
+
 ## Valores Variables: Expresiones
 
-Cualquier valor de `body_force`, `tractions`, `tractions_by_group` y de las cargas térmicas (`body_source`, `boundary_flux`, `boundary_flux_by_group`) puede ser, en vez de un número, una expresión entre comillas de la posición `x`, `y`, `z`; en las cargas de contorno, también de la normal exterior `nx`, `ny`, `nz`:
+Cualquier valor de `body_force`, `tractions`, `tractions_by_group`, `line_loads` y de las cargas térmicas (`body_source`, `boundary_flux`, `boundary_flux_by_group`) puede ser, en vez de un número, una expresión entre comillas de la posición `x`, `y`, `z`; en las cargas de contorno, también de la normal exterior `nx`, `ny`, `nz`:
 
 ```yaml
 body_force: [0.0, "-78.5e3*(1 + 0.1*y)"]          # campo b(x)
@@ -869,7 +896,7 @@ history:
 |---|---|
 | `stress`, `strain` | con `component`: `xx`, `yy`, `zz`, `xy`, `yz`, `xz` (Voigt del proyecto; la deformación angular es $\gamma$), `mises` (sólo esfuerzo) o `max_principal`; en cada punto de integración. En 2D, `zz` del esfuerzo es el fuera del plano (no nulo en deformación plana) |
 | una variable interna | una variable escalar del material (`damage`, `kappa`, `alpha`...), en cada punto de integración |
-| `N`, `V`, `M` (2D); `N`, `Vy`, `Vz`, `T`, `My`, `Mz` (3D) | la fuerza interna de un elemento de marco o barra en el extremo `end: i` o `j`, con la convención de signos de las fuerzas internas y descontada la carga distribuida |
+| `N`, `V`, `M` (2D); `N`, `Vy`, `Vz`, `T`, `My`, `Mz` (3D) | la fuerza interna de un elemento de marco o barra en el extremo `end: i` o `j`, o en un punto del elemento `at:` (fracción de la longitud desde el nodo i, entre 0 y 1; por equilibrio del tramo con la carga a lo largo del elemento), con la convención de signos de las fuerzas internas y descontada la carga distribuida. `at` sólo en análisis estáticos y no en las armaduras cuadráticas |
 | `jump`, `traction` | el desplazamiento relativo o la tracción de un elemento de interfaz, en ejes locales, con `component`: `n`, `s` (2D) o `n`, `s1`, `s2` (3D); en la adherencia de una barra, `s` (deslizamiento y esfuerzo de adherencia). `jump` con `component: n` es la holgura actual, $g_0 + \Delta u_n$ (positiva abierta). La tracción es la que actúa sobre la cara A: en contacto, $t_n = -p_N \le 0$ |
 
 Las variables internas de una ley de interfaz (`contact_pressure`, `slip_accumulated`, `status`, `damage`…) se piden con su nombre, como las de un material.
@@ -910,9 +937,11 @@ output:
 | `mesh` | la malla sin deformar, con los apoyos, los desplazamientos impuestos y las cargas nodales | `zoom`, `markers` (por omisión `true`) |
 | `deformed` | la deformada, un panel por instante | `at` (factores de carga, o `final`; por omisión `[final]`), `field`, `field_label`, `scale` (`auto` o un número), `limits` ([mín, máx] de la escala de color), `edges` (`auto`, `true` o `false`), `zoom`, `label_column`, `show_undeformed` |
 | `curve` | columnas de la historia | `x`, `y` (una columna o una lista), `compare` (otros YAML), `labels`, `xlabel`, `ylabel`, `reference` (curvas o bandas externas), `xlim`, `ylim` ([mín, máx]), `xscale`, `yscale` (`linear` o `log`) |
+| `diagram` | el diagrama de una fuerza interna de barras y marcos 2D sobre la estructura sin deformar, un panel por instante | `var` (`M`, `V` o `N`, obligatorio), `at` (factores de carga, o `final`; por omisión `[final]`), `scale` (`auto` o la longitud del dibujo por unidad de la fuerza interna), `zoom` |
 
 Todas admiten `file` (`.png` por omisión, `.pdf` o `.svg`) y `title`. Detalles:
 
+- `diagram` dibuja cada elemento con su diagrama perpendicular al eje, a partir del archivo de diagramas (capítulo de post-proceso), que Solidum escribe en los instantes que pide la figura aunque `results.diagrams` no lo declare; sólo en análisis estáticos. El **flector se dibuja del lado de la fibra en tracción** (decisión del usuario del 2026-11-27): en una viga apoyada con carga hacia abajo, la parábola queda debajo de la viga; en un marco, por fuera de los nudos que se traccionan por fuera. Por eso sus valores se rotulan sin signo: el lado lo da. `N` y `V` se rotulan con su signo y sus positivos se dibujan hacia arriba en las barras horizontales y hacia la izquierda en las verticales. Nada depende de cómo se numeren los nodos de cada elemento. Se rotulan los valores en los extremos de cada elemento y sus extremos interiores (el flector máximo del claro, donde el cortante se anula), una vez por lugar; con muchos elementos, sólo los tres mayores. `scale: auto` dibuja el mayor valor como el 12 % del tamaño del modelo.
 - `deformed` toma, para cada factor de `at`, el instante escrito más cercano: los instantes se piden en `results.frequency`. `field` es un campo del VTK por celda (`Internal_State`, la variable interna principal del material —el daño en los de daño—; `Von_Mises`; `Sigma_XX`...) o `displacement` (magnitud del desplazamiento); los campos con signo usan una escala de color divergente centrada en cero. `scale: auto` dibuja el mayor desplazamiento como el 5 % del tamaño del modelo. `label_column` rotula cada panel con el valor de esa columna de la historia en ese instante (p. ej. la flecha). `edges: auto` dibuja los bordes de los elementos hasta 3000 elementos.
 - `curve` con `compare` añade las mismas columnas de otros modelos ya resueltos (sus historias se buscan con su propio `output.file_name`): es la figura de un estudio de malla.
 - `curve` con `reference` superpone datos externos (abajo).

@@ -56,7 +56,7 @@ class ElementForces:
 - 3D: stress-resultant / RHR pura.
 - `M_2D` ≡ `Mz_3D`; `V_2D` y `Vy_3D` difieren en signo en el API público (deliberado, ver §5).
 
-**Muestreo interno para diagramas (fase 2, no bloqueante)**: los elementos frame admitirán opcionalmente `sample_internal(U, n_points) -> dict[str, np.ndarray]` que evalúa `N(x), V(x), M(x)` usando las funciones de forma del propio elemento (cúbico en Euler, lineal a trozos en Timoshenko reducido, etc.). Evita que la GUI asuma la forma del diagrama. Se deja fuera del alcance inicial; la API se diseña para admitirlo sin ruptura.
+**Muestreo interno para diagramas (fase 2, no bloqueante)**: los elementos frame admitirán opcionalmente `sample_internal(U, n_points) -> dict[str, np.ndarray]` que evalúa `N(x), V(x), M(x)` usando las funciones de forma del propio elemento (cúbico en Euler, lineal a trozos en Timoshenko reducido, etc.). Evita que la GUI asuma la forma del diagrama. Se deja fuera del alcance inicial; la API se diseña para admitirlo sin ruptura. **Sustituida el 2026-11-27 por el ADR 0044 §2**: las fuerzas internas a lo largo del elemento salen por estática del tramo a partir de las fuerzas de extremo y de la carga (`internal_forces_along`), no de las funciones de forma, que no ven la carga dentro del elemento.
 
 ### 2. Agregado en `Domain` — `SolveResult`
 

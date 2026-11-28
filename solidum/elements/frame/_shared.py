@@ -100,6 +100,11 @@ class Frame2DLine(LineElementMixin):
     def _load_axes(self):
         return self._line_transform()[0:2, 0:2]
 
+    def _load_area(self) -> float:
+        """Área de la fuerza de cuerpo: ``A`` con material, ``Σ A_i`` con
+        sección (la de ``compute_body_load``)."""
+        return float(self._axial_area())
+
     def _line_interpolation(self, xi):
         L = self.L0
         n = len(xi)

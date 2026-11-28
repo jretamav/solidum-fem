@@ -231,12 +231,12 @@ class Frame2DEulerCorot(Frame2DLine, FrameSectionMixin, Element):
     def internal_forces_from_nodal(self, F_e, U_global, equivalent_load=None) -> ElementForces:
         """Conversión de :meth:`internal_forces` para unas fuerzas nodales
         dadas, con los cosenos directores de la configuración ``U_global``."""
-        _, c, s, _ = self._current_geometry(self.get_local_displacements(U_global))
+        # Los ejes de la cuerda corriente, en un solo lugar (ADR 0044 §1).
+        lam2, _, _ = self.internal_force_axes(U_global)
         F_int = np.asarray(F_e, dtype=float)
         if equivalent_load is not None:
             # Fuerzas internas de extremo = fuerzas nodales − carga equivalente.
             F_int = F_int - np.asarray(equivalent_load, dtype=float)
-        lam2 = np.array([[c, s], [-s, c]])
         F_local = np.empty(6)
         F_local[0:2] = lam2 @ F_int[0:2]
         F_local[2]   = F_int[2]
@@ -272,6 +272,12 @@ class Frame2DEulerCorot(Frame2DLine, FrameSectionMixin, Element):
         """El campo interior y la carga como campo usan la geometría de
         referencia (ADR 0022)."""
         return self._reference_transform()
+
+    def internal_force_axes(self, U_global):
+        """Ejes de la cuerda corriente y su longitud ``l`` (spec §11): los de
+        ``internal_forces_from_nodal``."""
+        l, c, s, _ = self._current_geometry(self.get_local_displacements(U_global))
+        return np.array([[c, s], [-s, c]]), float(self.L0), float(l)
 
     def _reference_transform(self) -> np.ndarray:
         """Matriz de transformación 6×6 en la configuración de referencia."""

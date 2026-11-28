@@ -64,8 +64,10 @@ from pathlib import Path
 
 import numpy as np
 
+from solidum.core.element_forces import ElementForces
 from solidum.core.interface_material import all_component_names
 from solidum.core.point_quantity import JUMP, STRAIN, point_quantity
+from solidum.utils.element_selection import pad3, select_elements
 from solidum.logging import get_logger
 
 _log = get_logger("output")
@@ -77,7 +79,7 @@ _SELECTORS = ("node", "nodes", "group", "at")
 #: Energías de la historia.
 ENERGIES = ("external_work", "elastic", "dissipated")
 _ELEMENT_SELECTORS = ("id", "ids", "group", "where", "interface")
-_ELEMENT_KEYS = {"var", "component", "end", "reduce", *_ELEMENT_SELECTORS}
+_ELEMENT_KEYS = {"var", "component", "end", "at", "reduce", *_ELEMENT_SELECTORS}
 #: Fuerzas internas de los elementos estructurales 1D (ElementForces).
 FORCE_COMPONENTS = ("N", "V", "M", "Vy", "Vz", "T", "My", "Mz")
 _VOIGT = {1: ("xx",), 3: ("xx", "yy", "xy"), 6: ("xx", "yy", "zz", "xy", "yz", "xz")}
@@ -88,6 +90,34 @@ INTERFACE_VARS = ("jump", "traction")
 #: la adherencia de una barra (n, s / n1, n2, s); de la fuente única de la
 #: familia (``solidum.core.interface_material``).
 INTERFACE_COMPONENTS = all_component_names()
+
+
+#: Estaciones uniformes por elemento del archivo de diagramas, por omisión.
+DIAGRAM_STATIONS = 11
+#: Orden de las columnas de fuerzas internas en el archivo de diagramas.
+_DIAGRAM_COMPONENTS = ("N", "V", "M", "Vy", "Vz", "T", "My", "Mz")
+
+
+def _validate_diagrams(spec) -> list[str]:
+    """``output.results.diagrams``: ``true`` o ``{at: [factores] | final,
+    stations: n}`` (ADR 0044 §5)."""
+    ctx = "output.results.diagrams"
+    if isinstance(spec, bool):
+        return []
+    if not isinstance(spec, dict):
+        return [f"{ctx}: se esperaba true o {{at: [factores], stations: n}}."]
+    errors = []
+    extra = set(spec) - {"at", "stations"}
+    if extra:
+        errors.append(f"{ctx}: claves no admitidas {sorted(extra)}; se admiten 'at' y 'stations'.")
+    at = spec.get("at", ["final"])
+    if not isinstance(at, list) or not at or not all(
+            v == "final" or (isinstance(v, (int, float)) and not isinstance(v, bool)) for v in at):
+        errors.append(f"{ctx}.at: se esperaba una lista de factores de carga (o 'final').")
+    n = spec.get("stations", DIAGRAM_STATIONS)
+    if isinstance(n, bool) or not isinstance(n, int) or n < 2:
+        errors.append(f"{ctx}.stations: se esperaba un entero ≥ 2.")
+    return errors
 
 
 def validate_output_block(output) -> list[str]:
@@ -104,6 +134,8 @@ def validate_output_block(output) -> list[str]:
             if names is not None and not (isinstance(names, list)
                                           and all(isinstance(v, str) for v in names)):
                 errors.append(f"output.results.{key}: se esperaba una lista de nombres de campos.")
+    if isinstance(res, dict) and "diagrams" in res:
+        errors.extend(_validate_diagrams(res["diagrams"]))
     if isinstance(res, dict) and "frequency" in res:
         freq = res["frequency"]
         if isinstance(freq, str):
@@ -228,10 +260,20 @@ def _validate_element_column(sel, ctx: str) -> list[str]:
     elif comp is not None:
         errors.append(f"{ctx}.component: sólo con var: stress, strain, jump o traction.")
     if var in FORCE_COMPONENTS:
-        if sel.get("end") not in ("i", "j"):
-            errors.append(f"{ctx}.end: con una fuerza interna se requiere el extremo 'i' o 'j'.")
-    elif "end" in sel:
-        errors.append(f"{ctx}.end: sólo con una fuerza interna {list(FORCE_COMPONENTS)}.")
+        if ("end" in sel) == ("at" in sel):
+            errors.append(f"{ctx}: con una fuerza interna se requiere el extremo (end: i | j) o "
+                          "un punto del elemento (at: fracción de la longitud desde el nodo i, "
+                          "entre 0 y 1), uno de los dos.")
+        elif "end" in sel and sel["end"] not in ("i", "j"):
+            errors.append(f"{ctx}.end: se admite 'i' o 'j'.")
+        elif "at" in sel and not (isinstance(sel["at"], (int, float))
+                                  and not isinstance(sel["at"], bool) and 0.0 <= sel["at"] <= 1.0):
+            errors.append(f"{ctx}.at: se esperaba la fracción de la longitud desde el nodo i, "
+                          "un número entre 0 y 1.")
+    else:
+        for key in ("end", "at"):
+            if key in sel:
+                errors.append(f"{ctx}.{key}: sólo con una fuerza interna {list(FORCE_COMPONENTS)}.")
     if "reduce" in sel and sel["reduce"] not in ("mean", "min", "max"):
         errors.append(f"{ctx}.reduce: se admite 'mean', 'min' o 'max'.")
     if "where" in sel:
@@ -275,7 +317,7 @@ class OutputWriter:
 
     def __init__(self, domain, assembler, output_config: dict, yaml_path, F_ext, *,
                  static: bool = True, staged: bool = False, stage_prescribed: set | None = None,
-                 stage_distributed_loads: bool = False):
+                 stage_distributed_loads: bool = False, distributed_loads: bool = False):
         self.domain, self.assembler = domain, assembler
         cfg = output_config or {}
         yaml_path = Path(yaml_path)
@@ -295,7 +337,20 @@ class OutputWriter:
         self.staged = bool(staged)
         self.stage = None
         self._stage_prescribed = set(stage_prescribed or ())
-        self._stage_distributed_loads = bool(stage_distributed_loads)
+        # ¿Tiene el análisis carga distribuida mecánica (en el nivel raíz o en
+        # alguna etapa)? En un análisis en el tiempo, las fuerzas internas de
+        # marco se rechazan con ella (ADR 0036, 0044 §5): el escritor de un
+        # transitorio recibe sólo las cargas nodales.
+        self._stage_distributed_loads = bool(stage_distributed_loads or distributed_loads)
+        # Fuerzas internas de los elementos estructurales 1D del instante en
+        # curso, una vez por instante (VTK, historia, diagramas; ADR 0044 §5).
+        from solidum.core.element import Element
+        self._force_elements = [el for el in domain.elements.values()
+                                if type(el).internal_forces is not Element.internal_forces]
+        self._forces_now = None
+        self._samples_const = None
+        self._samples_ref = equivalent_loads_of(F_ext)
+        self._samples_ref = None if self._samples_ref is None else self._samples_ref.samples
         self._W = 0.0
         self._U_prev = None
         self._F_prev = None
@@ -309,6 +364,27 @@ class OutputWriter:
         self.e_vars = res.get("element_results")
         self._check_field_names()
         self.integration_points = bool(res.get("integration_points", False))
+        # Archivo de diagramas (ADR 0044 §5): instantes propios, por omisión
+        # sólo el final; también los que pidan las figuras 'diagram'.
+        diag = res.get("diagrams", False)
+        wanted = [p for p in (cfg.get("plots") or []) if isinstance(p, dict)
+                  and p.get("type") == "diagram"]
+        self.diagram_at: list = []
+        self.diagram_stations = DIAGRAM_STATIONS
+        if diag or wanted:
+            spec = diag if isinstance(diag, dict) else {}
+            at = list(spec.get("at", ["final"]) if diag else [])
+            for p in wanted:
+                at.extend(p.get("at", ["final"]))
+            self.diagram_at = at
+            self.diagram_stations = int(spec.get("stations", DIAGRAM_STATIONS))
+            if not static:
+                raise ValueError("output.results.diagrams: los diagramas de fuerzas internas "
+                                 "sólo se escriben en análisis estáticos (con etapas, si ninguna "
+                                 "es en el tiempo): en el tiempo faltarían la inercia y el "
+                                 "amortiguamiento repartidos sobre el elemento.")
+        self._diagram_pending = sorted({float(v) for v in self.diagram_at if v != "final"})
+        self.diagram_files: list = []
         self.pvd_points: list = []
         self.pre = bool((cfg.get("pre_process") or {}).get("export", False))
         self.text_cfg = cfg.get("text_export") or {}
@@ -346,6 +422,125 @@ class OutputWriter:
         self.F_ext = np.zeros(n) if F_reference is None else np.asarray(F_reference, dtype=float)
         self._eq_const = equivalent_loads_of(F_constant)
         self._eq_ref = equivalent_loads_of(F_reference)
+        self._samples_const = None if self._eq_const is None else self._eq_const.samples
+        self._samples_ref = None if self._eq_ref is None else self._eq_ref.samples
+        # Una etapa estática recibe su carga de referencia; una en el tiempo, no.
+        self._stage_static = F_reference is not None
+
+    def element_line_samples(self, element_id: int, factor: float):
+        """Muestras de la carga a lo largo del elemento en el paso (ADR 0044
+        §3): las de la carga constante más ``factor`` veces las de la de
+        referencia; ``None`` si no tiene."""
+        parts = []
+        if self._samples_const is not None and (c := self._samples_const.get(element_id)) is not None:
+            parts.append(np.asarray(c, dtype=float))
+        if self._samples_ref is not None and (r := self._samples_ref.get(element_id)) is not None:
+            parts.append(factor * np.asarray(r, dtype=float))
+        return sum(parts) if parts else None
+
+    def line_samples_checked(self, element_id: int, factor: float):
+        """:meth:`element_line_samples`, con error si el elemento tiene carga
+        equivalente pero no su carga a lo largo de él (nunca un diagrama sin
+        la carga)."""
+        samples = self.element_line_samples(element_id, factor)
+        if samples is None:
+            f_eq = self.element_equivalent_load(element_id, factor)
+            if f_eq is not None and np.any(f_eq):
+                raise ValueError(f"El elemento {element_id} tiene carga distribuida pero la "
+                                 "carga no lleva sus valores a lo largo del elemento.")
+        return samples
+
+    def step_forces(self, U, factor) -> dict:
+        """Fuerzas internas de extremo de los elementos estructurales 1D en el
+        instante (con su carga equivalente), calculadas una vez y compartidas
+        por el VTK, la historia y los diagramas (ADR 0044 §5)."""
+        if self._forces_now is None:
+            out = {}
+            for el in self._force_elements:
+                ef = el.internal_forces(U, equivalent_load=self.element_equivalent_load(el.id, factor))
+                if ef is not None:
+                    out[el.id] = ef
+            self._forces_now = out
+        return self._forces_now
+
+    def _write_diagrams(self, name: str, U, factor) -> None:
+        """Archivo de diagramas del instante (ADR 0044 §5): una fila por
+        estación de cada elemento con fuerzas internas a lo largo de él
+        (``n`` uniformes más los ceros de cada cortante, donde su flector es
+        extremo), con ``element, s, xi, x, y, z`` (posición sobre la geometría
+        de referencia) y las componentes, vacías donde no aplican."""
+        from solidum.core.element_forces import (ALONG_LOAD_AXES, forces_along_batch,
+                                                 load_polynomials, shear_zeros)
+        forces = self.step_forces(U, factor)
+        groups: dict = {}
+        for el in self._force_elements:
+            if not getattr(el, "INTERNAL_FORCES_ALONG", False) or el.id not in forces:
+                continue
+            ef = forces[el.id]
+            R, L0, l = el.internal_force_axes(U)
+            k = ALONG_LOAD_AXES[ef.kind]
+            pts = tuple(el.LINE_LOAD_POINTS)
+            samples = self.line_samples_checked(el.id, factor)
+            local = (np.zeros((len(pts), k)) if samples is None
+                     else (np.asarray(samples, dtype=float) @ R.T)[:, :k])
+            groups.setdefault((ef.kind, pts), []).append((el, ef, local, L0, l))
+        xi_u = np.linspace(0.0, 1.0, self.diagram_stations)
+        present = [c for c in _DIAGRAM_COMPONENTS
+                   if any(c in it[1].components for items in groups.values() for it in items)]
+        rows = []
+        for (kind, pts), items in groups.items():
+            coeffs = load_polynomials(pts, np.stack([it[2] for it in items]))
+            ends = {c: np.array([it[1].components[c][0] for it in items])
+                    for c in items[0][1].components}
+            L0 = np.array([it[3] for it in items])
+            l = np.array([it[4] for it in items])
+            uniform = forces_along_batch(kind, ends, coeffs, L0, l, xi_u)
+            for e, (el, _, _, _, _) in enumerate(items):
+                zeros = shear_zeros(kind, {c: v[e] for c, v in ends.items()}, coeffs[e], L0[e])
+                extra = np.unique(np.concatenate([np.empty(0), *zeros.values()]))
+                xi_e, vals = xi_u, {c: v[e] for c, v in uniform.items()}
+                if extra.size:
+                    more = forces_along_batch(kind, {c: v[e:e + 1] for c, v in ends.items()},
+                                              coeffs[e:e + 1], L0[e:e + 1], l[e:e + 1], extra)
+                    xi_e = np.concatenate([xi_u, extra])
+                    vals = {c: np.concatenate([vals[c], more[c][0]]) for c in vals}
+                    order = np.argsort(xi_e, kind="stable")
+                    xi_e = xi_e[order]
+                    vals = {c: v[order] for c, v in vals.items()}
+                X = np.array([pad3(nd.coordinates) for nd in el.nodes[:2]])
+                for m, x in enumerate(xi_e):
+                    p = X[0] + x * (X[1] - X[0])
+                    rows.append([el.id, f"{l[e] * x:.10g}", f"{x:.10g}",
+                                 *(f"{v:.10g}" for v in p),
+                                 *(f"{vals[c][m]:.10g}" if c in vals else "" for c in present)])
+        path = self.base_dir / name
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["element", "s", "xi", "x", "y", "z", *present])
+            w.writerows(rows)
+        self.diagram_files.append((factor, name))
+
+    def _vtk_forces(self, U, factor):
+        """Fuerzas de extremo del VTK: las del instante con su carga
+        equivalente (antes, las fuerzas nodales ``K·u``), también en las
+        etapas estáticas de un análisis con alguna etapa en el tiempo. En un
+        instante en el tiempo con carga distribuida no se conoce la carga del
+        instante (ni entra la inercia repartida): ``NaN``, «no aplica», como
+        la historia, que las rechaza (ADR 0036, 0044 §5); sin carga
+        distribuida, ``internal_forces(U)``, exactas."""
+        if not self._force_elements:
+            return None
+        if self.static or (self.staged and getattr(self, "_stage_static", False)):
+            return self.step_forces(U, factor)
+        if not self._stage_distributed_loads:
+            return None
+        out = {}
+        for el in self._force_elements:
+            ef = el.internal_forces(U)
+            if ef is not None:
+                out[el.id] = ElementForces(kind=ef.kind, components={
+                    c: np.full(2, np.nan) for c in ef.components})
+        return out
 
     def _applied(self, factor: float) -> np.ndarray:
         """Carga aplicada del paso: ``F_const + factor·F_ext``."""
@@ -542,17 +737,24 @@ class OutputWriter:
         n = self.n_steps
         factor = float(factor)
         self.last = (n, np.array(U, copy=True), factor)
+        self._forces_now = None            # las del instante se calculan una vez
         if self._want_vtk(n, factor):
             from solidum.utils.vtk_exporter import VtkExporter
             name = f"{self.base_name}_{n:04d}.vtu"
             VtkExporter(self.domain).export(str(self.base_dir / name), U, self._applied(factor),
-                                            self.n_vars, self.e_vars)
+                                            self.n_vars, self.e_vars,
+                                            element_forces=self._vtk_forces(U, factor))
             self.pvd.append((factor, name))
             if self.integration_points:
                 name = f"{self.base_name}_puntos_{n:04d}.vtu"
                 if VtkExporter(self.domain).export_integration_points(
                         str(self.base_dir / name), U, trial=self._read_trial):
                     self.pvd_points.append((factor, name))
+        if self._diagram_pending and factor >= self._diagram_pending[0] - 1e-12 * max(1.0, abs(factor)):
+            while self._diagram_pending and factor >= (self._diagram_pending[0]
+                                                       - 1e-12 * max(1.0, abs(factor))):
+                self._diagram_pending.pop(0)
+            self._write_diagrams(f"{self.base_name}_diagramas_{n:04d}.csv", U, factor)
         if self.columns:
             row = [n, *([self.stage] if self.staged else []), factor]
             F_int = None
@@ -642,10 +844,19 @@ class OutputWriter:
         if self.pvd_points:
             _write_pvd(self.base + "_puntos.pvd", self.pvd_points)
         VtkExporter(self.domain).export(self.base + "_final.vtu", U, self._applied(factor),
-                                        self.n_vars, self.e_vars)
+                                        self.n_vars, self.e_vars,
+                                        element_forces=self._vtk_forces(U, factor))
         if self.integration_points:
             VtkExporter(self.domain).export_integration_points(
                 self.base + "_puntos_final.vtu", U, trial=self._read_trial)
+        if "final" in self.diagram_at:
+            self._write_diagrams(f"{self.base_name}_diagramas_final.csv", U, factor)
+        if self.diagram_files:
+            # Índice factor → archivo, el que lee la figura 'diagram' (ADR 0039, 0044).
+            with open(self.base + "_diagramas_indice.csv", "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["factor", "file"])
+                w.writerows((f"{fac:.10g}", name) for fac, name in self.diagram_files)
         if self.export_text:
             self._write_text()
         _log.info(f"Resultados escritos en {self.base_dir} ({self.base_name}*)")
@@ -819,6 +1030,8 @@ class _ElementProbe:
         self.var = sel["var"]
         self.component = sel.get("component")
         self.end = 0 if sel.get("end", "i") == "i" else 1
+        # Punto del elemento (fracción desde el nodo i, ADR 0044 §5).
+        self.at = None if sel.get("at") is None else float(sel["at"])
         self.ctx = ctx
         elements = self._select(sel)
         explicit = any(k in sel for k in _ELEMENT_SELECTORS)
@@ -834,12 +1047,22 @@ class _ElementProbe:
             self.f_eq = {el.id: (None if loads is None else loads.get(el.id)) for el in ok}
             if not static and (any(v is not None for v in self.f_eq.values())
                                or writer._stage_distributed_loads):
-                # Con etapas, las cargas de cada una no se conocen aquí: basta
-                # que alguna tenga carga distribuida (la constante de una etapa
-                # estática sigue en la etapa en el tiempo).
+                # El escritor de un análisis en el tiempo recibe sólo las
+                # cargas nodales; basta que el archivo declare carga
+                # distribuida (ADR 0044 §5), también en una etapa estática
+                # anterior, cuya constante sigue en la etapa en el tiempo.
                 raise ValueError(f"{ctx}: las fuerzas internas con carga distribuida sólo se "
                                  "registran en análisis estáticos (con etapas, si ninguna es en "
                                  "el tiempo).")
+            if self.at is not None:
+                lacking = [el.id for el in ok if not getattr(el, "INTERNAL_FORCES_ALONG", False)]
+                if lacking:
+                    raise ValueError(f"{ctx}: los elementos {lacking[:10]} no dan fuerzas internas "
+                                     "a lo largo del elemento ('at').")
+                if not static:
+                    raise ValueError(f"{ctx}: las fuerzas internas a lo largo del elemento ('at') "
+                                     "sólo se registran en análisis estáticos: en el tiempo "
+                                     "faltarían la inercia y el amortiguamiento repartidos.")
             return
         if self.var in ("stress", "strain"):
             dims = {point_quantity(el).dim for el in ok}
@@ -855,7 +1078,7 @@ class _ElementProbe:
 
     # -- selección ---------------------------------------------------------
     def _select(self, sel):
-        return _select_elements(self.writer.domain, sel, self.ctx)
+        return select_elements(self.writer.domain, sel, self.ctx)
 
     def _what(self) -> str:
         if self.var in FORCE_COMPONENTS:
@@ -905,13 +1128,19 @@ class _ElementProbe:
     # -- valores -------------------------------------------------------------
     def values(self, U, factor, trial: bool) -> np.ndarray:
         if self.var in FORCE_COMPONENTS:
+            # Las del instante, con la carga del paso: constante de las etapas
+            # anteriores más factor veces la que crece (ADR 0026 §5, 0027); las
+            # mismas que escribe el VTK (ADR 0044 §5).
+            forces = self.writer.step_forces(U, factor)
             out = []
             for el in self.elements:
-                # La del paso: constante de las etapas anteriores más factor
-                # veces la que crece (ADR 0026 §5, 0027).
-                ef = el.internal_forces(
-                    U, equivalent_load=self.writer.element_equivalent_load(el.id, factor))
-                out.append(float(ef.components[self.var][self.end]))
+                ef = forces[el.id]
+                if self.at is None:
+                    out.append(float(ef.components[self.var][self.end]))
+                else:
+                    along = el.internal_forces_along(
+                        ef, U, self.at, self.writer.line_samples_checked(el.id, factor))
+                    out.append(float(along.components[self.var][0]))
             return np.array(out)
         if self.var == "strain":
             eps = np.vstack([np.atleast_2d(el.compute_gauss_state(U)["strain"])
@@ -998,50 +1227,6 @@ class _ElementProbe:
         return plan
 
 
-def _select_elements(dom, sel: dict, ctx: str) -> list:
-    """Elementos de un selector ``id`` | ``ids`` | ``group`` (todos sus nodos
-    en el grupo físico) | ``where`` (condición sobre el centro) |
-    ``interface`` (los elementos de la interfaz de ese nombre, ADR 0043 §7);
-    sin selector, todos."""
-    if "id" in sel:
-        ids = [sel["id"]]
-    elif "ids" in sel:
-        ids = list(sel["ids"])
-    elif "interface" in sel:
-        interfaces = getattr(dom, "interfaces", None) or {}
-        if sel["interface"] not in interfaces:
-            raise ValueError(f"{ctx}: interfaz {sel['interface']!r} inexistente. Disponibles (bloque "
-                             f"'interfaces'): {sorted(interfaces)}.")
-        ids = list(interfaces[sel["interface"]])
-    elif "group" in sel:
-        groups = getattr(dom, "physical_groups", None) or {}
-        if sel["group"] not in groups:
-            raise ValueError(f"{ctx}: grupo físico {sel['group']!r} inexistente. "
-                             f"Disponibles: {sorted(groups)}.")
-        inside = set(groups[sel["group"]])
-        ids = [eid for eid, el in dom.elements.items()
-               if all(nd.id in inside for nd in el.nodes)]
-        if not ids:
-            raise ValueError(f"{ctx}: ningún elemento tiene todos sus nodos en el grupo "
-                             f"{sel['group']!r}.")
-    elif "where" in sel:
-        from solidum.utils.expressions import POSITION, compile_predicate
-        pts = np.array([_pad3(nd.coordinates) for nd in dom.nodes.values()])
-        scale = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
-
-        def near(a, b, tol=None):
-            return abs(a - b) <= (1e-6 * scale if tol is None else tol)
-        pred = compile_predicate(sel["where"], POSITION, {"near": near})
-        ids = [eid for eid, el in dom.elements.items()
-               if pred(*np.mean([_pad3(nd.coordinates) for nd in el.nodes], axis=0))]
-        if not ids:
-            raise ValueError(f"{ctx}: ningún elemento tiene el centro donde {sel['where']!r}.")
-    else:
-        ids = list(dom.elements)
-    missing = [i for i in ids if i not in dom.elements]
-    if missing:
-        raise ValueError(f"{ctx}: elementos inexistentes {missing[:10]}.")
-    return [dom.elements[i] for i in ids]
 
 
 class _ZoneEnergy:
@@ -1070,7 +1255,7 @@ class _ZoneEnergy:
     def __init__(self, writer, sel: dict, ctx: str, which: str):
         from solidum.math.batch.family import _has_own_state
         self.which = which
-        elements = _select_elements(writer.domain, sel, ctx)
+        elements = select_elements(writer.domain, sel, ctx)
         bad = [el.id for el in elements if not _is_interface(el) and (
                getattr(type(el), "BATCH_KINEMATICS", None) is None
                or getattr(el, "points", None) is None or _has_own_state(type(el))
@@ -1214,9 +1399,6 @@ class _ZoneGroup:
         return out
 
 
-def _pad3(c) -> list:
-    c = [float(v) for v in c]
-    return c + [0.0] * (3 - len(c))
 
 
 def _component(v: np.ndarray, component: str, *, strain: bool = False,

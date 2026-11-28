@@ -187,6 +187,41 @@ class {{Name}}(Element):
     #     # TODO: decidir con el estado convergido; idempotente para el mismo U_committed.
 ```
 
+### element de línea (barra o marco) — `solidum/elements/<snake>.py` o `solidum/elements/frame/<snake>.py`
+
+Una barra o un marco de dos nodos hereda `LineElementMixin` (`solidum/elements/_line.py`; ADR 0022 fase 4 y ADR 0044) antes de `Element`: con eso recibe la fuerza de cuerpo como campo, el bloque YAML `line_loads` y las fuerzas internas a lo largo del elemento (historia con `at`, archivo de diagramas, figura `diagram`) **sin tocar el lector ni la salida**. Lo que declara:
+
+```python
+from solidum.elements._line import LineElementMixin
+
+
+@ElementRegistry.register
+class {{Name}}(LineElementMixin, Element):
+    DOF_NAMES = [...]
+    LINE_FIELDS = (...)            # "u", "v", "w", "theta_x", ... (desplazamientos primero)
+    LINE_STRAINS = (...)           # "eps", "twist", "kappa_y", "kappa_z", "gamma_y"
+    # Capacidades (ADR 0044 §1), las lee el lector y la salida; por omisión True, True, True, False:
+    LINE_LOADS = True              # recibe line_loads
+    LINE_LOAD_LOCAL_AXES = True    # False si no hay ejes de sección (armadura 3D)
+    INTERNAL_FORCES_ALONG = True   # False si un nodo interior aplica fuerza dentro del tramo
+    LINE_LOAD_BY_COMPONENT = False # True en las armaduras (reparto por componente global)
+
+    def _line_interpolation(self, xi):   # (N (n,k,m), B (n,s,m)) en ejes locales, ξ ∈ [0, 1]
+        ...
+    def _to_local(self, u_e): ...        # DOF globales → locales
+    def _to_global(self, f_local): ...   # (marcos) fuerzas locales → globales
+    def _load_axes(self): ...            # ejes locales (filas, en globales) de la geometría de referencia
+    def _load_area(self) -> float: ...   # área de la fuerza de cuerpo (Σ A_i con sección)
+    def _linear_density(self) -> float: ...  # ρA del peso propio
+    def internal_force_axes(self, U):    # sólo si es corrotacional: ejes de la cuerda corriente y su l
+        ...
+```
+
+- `compute_body_load` y `compute_self_weight` siguen con su forma cerrada; las muestras (`body_load_samples`, `self_weight_samples`) salen de `_load_area` y `_linear_density` en el mixin y **no se redefinen**. La prueba de `tests/test_line_loads.py` exige `compute_body_load(b) = line_load_vector(body_load_samples(b))`.
+- `internal_forces` devuelve un `ElementForces` de una familia de `_ALONG_TERMS` (`truss`, `frame2d`, `frame3d`, en `solidum/core/element_forces.py`): ahí viven los signos de las fuerzas internas a lo largo del elemento; una familia nueva es una fila de esa tabla y es física (spec y `teorico-solidum`).
+- `internal_forces_from_nodal` usa los ejes de `internal_force_axes` (un solo lugar para los ejes).
+- Hoy el mixin es capacidad del programa principal (ruta privada): un elemento de línea en un módulo de usuario necesita antes publicarlo como pieza del ADR 0020 (ADR 0044 §1).
+
 ### element de interfaz de espesor nulo — `solidum/elements/interface/<snake>.py`
 
 Un elemento que une dos caras por pares de nodos y entrega a una ley de `interface_materials` el salto en ejes locales (ADR 0043). **No escribe `compute_element_state`**: hereda la base pública `InterfaceElement` (bucle por punto, ejes, holgura inicial, reglas `nodal`/`gauss`, salida, energía almacenada) y declara sólo su cara y sus nodos. El tipo de cara debe estar en `FACE_CELLS` de `solidum/elements/interface/_shared.py` (`line`, `line3`, `tri`, `quad`); una cara nueva es una fila de esa tabla (`FaceCell`: funciones de forma, reglas de Gauss y nodal, dónde se evalúan ejes y medidas nodales) y es física: spec y `teorico-solidum`. `__init_subclass__` comprueba al definir la clase que los nodos casan con la cara y que `N_INTEGRATION_POINTS` es el de las dos reglas. El generador (`pair`/`split`) la encuentra en el registro por `(JUMP_DIM, N_FACE_NODES)`; si hay más de una para la misma cara, se elige con `element:`.

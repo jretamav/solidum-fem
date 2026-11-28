@@ -98,6 +98,11 @@ No aplica (forma cerrada).
 
 Se conserva hasta la etapa 2 de la sección por fibras ([ADR 0021](../adr/0021-secciones-de-marco-y-seccion-por-fibras.md)).
 
+### 14. Carga por unidad de longitud y fuerzas internas a lo largo del elemento
+Las de [Frame2DEuler](Frame2DEuler.md) §14–§15 ([ADR 0044](../adr/0044-cargas-de-linea-y-diagramas-de-fuerzas-internas.md)), con una diferencia: el vector consistente reparte la carga con las funciones de interdependencia del elemento (Friedman y Kosmatka 1993), las que dan su rigidez con la corrección $\Phi$, y así se conserva la exactitud nodal. Con carga uniforme coinciden con Hermite ($qL/2$, $\pm qL^2/12$, independientes de $\Phi$). Con carga triangular, de $0$ en i a $q_0$ en j, dependen de $\Phi$ y son el empotramiento exacto de la viga de Timoshenko (verificado por el teórico el 2026-11-27):
+$$F_i = \frac{q_0L\,(9 + 10\Phi)}{60\,(1 + \Phi)}, \quad M_i = \frac{q_0L^2\,(4 + 5\Phi)}{120\,(1 + \Phi)}, \quad F_j = \frac{q_0L\,(21 + 20\Phi)}{60\,(1 + \Phi)}, \quad M_j = -\frac{q_0L^2\,(6 + 5\Phi)}{120\,(1 + \Phi)};$$
+con $\Phi \to 0$, las de Euler-Bernoulli. La resultante y su momento no dependen de $\Phi$, así que el diagrama cierra. Los diagramas son los mismos, por estática del tramo: no dependen de la cinemática; lo que cambia con $\Phi$ son las fuerzas de extremo de una viga hiperestática, que ya vienen en ellas.
+
 ---
 
 ## Contrato de implementación

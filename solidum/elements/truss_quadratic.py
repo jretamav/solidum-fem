@@ -66,6 +66,20 @@ class _QuadraticTruss(LineElementMixin, Element):
     VTK_CELL_TYPE: ClassVar[str] = "line3"
     LINE_FIELDS = ("u",)
     LINE_STRAINS = ("eps",)
+    # Carga de línea por componente global con las funciones cuadráticas
+    # (ADR 0044). Sin fuerzas internas a lo largo del elemento: el nodo
+    # intermedio aplica una fuerza dentro del tramo (pendiente).
+    LINE_LOAD_BY_COMPONENT = True
+    INTERNAL_FORCES_ALONG = False
+
+    def _load_axes(self):
+        """Ejes locales de la carga en 2D (``y'`` = ``x'`` girado 90°
+        antihorario); en 3D no hay ejes transversales."""
+        e = self.e
+        if len(e) != 2:
+            raise ValueError(f"{type(self).__name__}(id={self.id}): la armadura 3D no define "
+                             "ejes transversales.")
+        return np.array([[e[0], e[1]], [-e[1], e[0]]])
 
     def __init__(self, element_id: int, nodes: List[Node], material: Material, A: float):
         name = type(self).__name__
@@ -182,11 +196,7 @@ class _QuadraticTruss(LineElementMixin, Element):
         de dos nodos (ADR 0022)."""
         d = len(self.e)
         if callable(b):
-            X = self._line_ends()
-            x = X[0] + _LINE_XI[:, None] * (X[1] - X[0])
-            values = field_values(b, x, d, "de cuerpo")
-            N, _ = quadratic_shape_functions(_LINE_XI)
-            return (self.A * self.L0 * (N * _LINE_W[:, None]).T @ values).reshape(-1)
+            return self._field_load_by_component(b, self.A)
         b = np.asarray(b, dtype=np.float64).reshape(d)
         return np.kron(self.A * self.L0 * _MASS_LUMPED, b)
 
@@ -226,3 +236,5 @@ class Truss3D3(_QuadraticTruss):
     desplazamientos. Spec ``docs/specs/Truss3D3.md``. Acepta nodos con 2 ó 3
     coordenadas (``z = 0`` si falta)."""
     DOF_NAMES = ['ux', 'uy', 'uz']
+    # Sin sección orientada no hay ejes transversales (spec Truss3D §12).
+    LINE_LOAD_LOCAL_AXES = False

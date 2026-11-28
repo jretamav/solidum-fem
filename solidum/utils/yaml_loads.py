@@ -210,6 +210,89 @@ def resolve_boundary_loads(domain, entries, by_group, family: str, names: tuple)
     return loads, errors
 
 
+_LINE_LOAD_KEYS = frozenset({"elements", "q", "q_local", "projected"})
+_LINE_SELECTORS = ("id", "ids", "group", "where")
+
+
+def resolve_line_loads(domain, entries, name: str = "line_loads") -> tuple:
+    """Cargas por unidad de longitud de barras y marcos (ADR 0044 §4):
+    ``[{elements: selector, q | q_local: [...], projected?}]`` →
+    ``[(elemento, q, local, projected)]`` con ``q`` constante o campo
+    ``q(x)``. Devuelve ``(cargas, errores)``."""
+    from solidum.utils.element_selection import select_by_cells, select_elements
+    if not entries:
+        return [], []
+    if not isinstance(entries, list):
+        return [], [f"{name}: se esperaba una lista de entradas "
+                    "({elements: {...}, q: [...]} o q_local)."]
+    loads: list = []
+    errors: list = []
+    for i, spec in enumerate(entries):
+        ctx = f"{name}[{i}]"
+        if not isinstance(spec, dict):
+            errors.append(f"{ctx}: cada entrada debe ser un diccionario.")
+            continue
+        unknown = set(spec) - _LINE_LOAD_KEYS
+        if unknown:
+            errors.append(f"{ctx}: claves no admitidas {sorted(unknown)}; se admiten "
+                          f"{sorted(_LINE_LOAD_KEYS)}.")
+            continue
+        sel = spec.get("elements")
+        if (not isinstance(sel, dict) or set(sel) - set(_LINE_SELECTORS)
+                or sum(k in sel for k in _LINE_SELECTORS) != 1):
+            errors.append(f"{ctx}.elements: se esperaba un selector con una sola de las claves "
+                          f"{list(_LINE_SELECTORS)} (obligatorio).")
+            continue
+        present = [k for k in ("q", "q_local") if k in spec]
+        if len(present) != 1:
+            errors.append(f"{ctx}: declare exactamente uno de 'q' (ejes globales) o 'q_local' "
+                          "(ejes locales del elemento).")
+            continue
+        key = present[0]
+        local = key == "q_local"
+        projected = spec.get("projected", False)
+        if not isinstance(projected, bool):
+            errors.append(f"{ctx}.projected: se esperaba true o false.")
+            continue
+        if projected and local:
+            errors.append(f"{ctx}: 'projected' sólo se admite con 'q' (ejes globales).")
+            continue
+        try:
+            if "group" in sel:
+                elements = select_by_cells(domain, sel["group"],
+                                           lambda el: getattr(el, "LINE_LOADS", False),
+                                           f"{ctx}.elements")
+            else:
+                elements = select_elements(domain, sel, f"{ctx}.elements")
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        bad = [el for el in elements if not getattr(el, "LINE_LOADS", False)]
+        if bad:
+            kinds = sorted({type(el).__name__ for el in bad})
+            errors.append(f"{ctx}: los elementos {[el.id for el in bad][:10]} ({', '.join(kinds)}) "
+                          "no admiten cargas de línea.")
+            continue
+        if local:
+            bad = [el for el in elements if not el.LINE_LOAD_LOCAL_AXES]
+            if bad:
+                kinds = sorted({type(el).__name__ for el in bad})
+                errors.append(f"{ctx}: los elementos {[el.id for el in bad][:10]} "
+                              f"({', '.join(kinds)}) no admiten la carga en ejes locales: no "
+                              "definen ejes transversales.")
+                continue
+        fields: dict = {}
+        try:
+            for el in elements:
+                d = _dimension(el)
+                if d not in fields:
+                    fields[d] = load_field(spec[key], d, normal=False, context=f"{ctx}.{key}")
+                loads.append((el, fields[d], local, projected))
+        except (ExpressionError, ValueError) as exc:
+            errors.append(str(exc))
+    return loads, errors
+
+
 def resolve_body_sources(domain, sources) -> tuple:
     """Fuentes térmicas ``[{Q | value, elements?}]`` → ``[(elementos, Q)]``,
     con ``Q`` constante o campo ``Q(x)``. Devuelve ``(fuentes, errores)``."""

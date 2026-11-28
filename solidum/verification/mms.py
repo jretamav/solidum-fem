@@ -567,7 +567,9 @@ class ManufacturedFrame(_ManufacturedSolution):
 def _element_axes(element) -> np.ndarray:
     """Ejes locales del elemento por filas: los de su carga en los marcos; en
     una armadura, ``e_x`` y una base ortonormal cualquiera que lo complete."""
-    if hasattr(element, "_load_axes"):
+    # Marcos: los ejes de su carga. Las armaduras reparten por componente
+    # (LINE_LOAD_BY_COMPONENT, ADR 0044) y la 3D no tiene ejes transversales.
+    if not getattr(element, "LINE_LOAD_BY_COMPONENT", False) and hasattr(element, "_load_axes"):
         return np.asarray(element._load_axes(), dtype=np.float64)
     X = element._line_ends()
     e = (X[1] - X[0]) / element.L0

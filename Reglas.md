@@ -119,6 +119,12 @@ Justificación: sale directamente de la forma débil, donde el término de front
 - **Presión** $p > 0$ ⇔ **compresión**: empuja hacia el interior del cuerpo, $\mathbf t = -p\,\mathbf n$ con $\mathbf n$ la normal exterior. Una succión se declara con $p < 0$. Es el convenio de Abaqus y ANSYS.
 - En el API de Python, una presión es la tracción `t(x, n) = -p * n`; en el YAML, `pressure: p` en `tractions` o `tractions_by_group`. Es carga muerta: actúa sobre la geometría de referencia.
 
+**Convención de la carga de línea en barras y marcos** (plan aprobado por el usuario, 2026-11-27, ADR 0044)
+
+- `q` en ejes globales, positiva en `+x`, `+y` (`+z`). En ejes locales (`q_local`): `x'` del nodo i al j; en 2D, `y'` es `x'` girado 90° antihorario; en 3D, `y'` y `z'` son los ejes de la sección. En una viga horizontal con i a la izquierda, una carga hacia abajo es `q_y' < 0`.
+- Proyectada (`projected: true`): cada componente global por unidad de longitud proyectada sobre el plano perpendicular a su dirección (la nieve, por metro de proyección horizontal).
+- Carga muerta: ejes y posiciones de la geometría de referencia, también en los elementos corotacionales.
+
 **Sin notación Voigt en el problema térmico.** El gradiente $\nabla T$ es un vector genuino (2 ó 3 componentes), no un tensor simétrico comprimido: la matriz $\mathbf B$ térmica es el gradiente crudo $\partial N/\partial x$, sin el reordenamiento ni los factores $\gamma = 2\varepsilon$ de Voigt. La distinción es física — no hay componentes cortantes que duplicar. Los elementos térmicos declaran `FLUX_DIM` (2 ó 3) en vez de `STRAIN_DIM`.
 
 

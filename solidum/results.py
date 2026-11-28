@@ -46,8 +46,8 @@ import numpy as np
 # ElementForces vive en ``solidum.core`` (parte del contrato de Element,
 # ADR 0002). Re-exportado aquí para que la API pública
 # ``from solidum.results import ElementForces`` siga funcionando.
-from solidum.core.element_forces import ElementForces, ElementKind  # noqa: F401
-from solidum.core.load_vector import LoadVector, as_load_vector, equivalent_loads_of
+from solidum.core.element_forces import ElementForces, ElementForcesAlong, ElementKind  # noqa: F401
+from solidum.core.load_vector import LineLoadSamples, LoadVector, as_load_vector, equivalent_loads_of  # noqa: F401
 
 if TYPE_CHECKING:
     from solidum.core.domain import Domain
@@ -780,6 +780,12 @@ class SolveResult:
         fuerza de cuerpo) por elemento, ya multiplicadas por su factor, que
         se restaron a las fuerzas nodales para dar ``element_forces``. Una
         etapa siguiente las hereda como parte de su carga constante.
+    line_load_samples
+        Muestras ``(n, d)`` de la carga distribuida a lo largo de cada
+        elemento de línea (carga de línea, peso propio, fuerza de cuerpo), en
+        ejes globales en los ``LINE_LOAD_POINTS`` del elemento y ya
+        multiplicadas por su factor (ADR 0044 §3). Las usa
+        :meth:`internal_forces_along`.
     """
 
     U: np.ndarray
@@ -796,6 +802,7 @@ class SolveResult:
     load_factor: float = 1.0
     F_constant: np.ndarray | None = None
     equivalent_loads: dict[int, np.ndarray] = field(default_factory=dict)
+    line_load_samples: dict[int, "LineLoadSamples"] = field(default_factory=dict)
     # Perturbación lineal sobre una etapa (ADR 0031): no cambió el estado
     # interno de los elementos; una etapa posterior no puede continuarla.
     perturbation: bool = False
@@ -810,6 +817,30 @@ class SolveResult:
         if self.F_constant is None:
             return self.F_applied
         return self.F_applied - self.F_constant
+
+    def internal_forces_along(self, element, xi) -> "ElementForcesAlong":
+        """Fuerzas internas del elemento en ``xi ∈ [0, 1]`` (fracción de la
+        longitud desde el nodo i) por estática del tramo (ADR 0044 §2), con
+        sus fuerzas de extremo de este resultado (``element_forces``, no se
+        reevalúa el elemento) y la carga a lo largo de él
+        (``line_load_samples``). Sólo en análisis estáticos: en el tiempo
+        faltarían la inercia y el amortiguamiento repartidos."""
+        eid = element.id
+        if not getattr(element, "INTERNAL_FORCES_ALONG", False):
+            raise ValueError(f"internal_forces_along: el elemento {eid} "
+                             f"({type(element).__name__}) no da fuerzas internas a lo largo "
+                             "del elemento.")
+        if eid not in self.element_forces:
+            raise ValueError(f"internal_forces_along: el elemento {eid} no tiene fuerzas "
+                             "internas en este resultado.")
+        samples = self.line_load_samples.get(eid)
+        if samples is None and eid in self.equivalent_loads and np.any(self.equivalent_loads[eid]):
+            raise ValueError(
+                f"internal_forces_along: el elemento {eid} tiene carga distribuida pero el "
+                "resultado no lleva su carga a lo largo del elemento (la carga perdió sus "
+                "muestras, p. ej. al convertirla con np.asarray).")
+        values = None if samples is None else samples.values
+        return element.internal_forces_along(self.element_forces[eid], self.U, xi, values)
 
 
 # Tolerancia relativa del criterio de unión: |C_k·b| ≤ tol·Σ_j |C_kj·b_j|.
@@ -1085,6 +1116,14 @@ def build_solve_result(
 
     if not isinstance(F_applied, LoadVector):
         F_applied = as_load_vector(F_applied, equivalent_loads)
+    # Muestras de la carga a lo largo de los elementos de línea (ADR 0044 §3):
+    # siempre de la carga aplicada.
+    carried = equivalent_loads_of(F_applied)
+    line_load_samples = {}
+    for eid, values in ({} if carried is None else carried.samples_dict()).items():
+        el = domain.elements.get(eid)
+        if el is not None:
+            line_load_samples[eid] = LineLoadSamples(el.LINE_LOAD_POINTS, values)
     return SolveResult(
         U=U,
         F_applied=F_applied,
@@ -1102,6 +1141,7 @@ def build_solve_result(
                     F_constant if isinstance(F_constant, LoadVector)
                     else np.asarray(F_constant, dtype=float)),
         equivalent_loads=equivalent_loads,
+        line_load_samples=line_load_samples,
         perturbation=bool(perturbation),
         _equivalent_loads_version=getattr(assembler, "equivalent_loads_version", None),
     )

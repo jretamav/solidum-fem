@@ -129,6 +129,27 @@ Reproduce exactamente la energía cinética de un giro rígido de velocidad angu
 
 En globales, $\mathbf M_{\text{global}} = \mathbf T^\top\,\mathbf M_{\text{local}}\,\mathbf T$. Hasta el 2026-09-29 la flexión sumaba la inercia rotatoria $\tfrac{\rho I L}{6}\left[\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\right]$ en $\theta_y$ ($I_y$) y $\theta_z$ ($I_z$), y la concentrada usaba $\rho I_y L/2$ y $\rho I_z L/2$ (ver *Diálogo*); la torsión no cambia.
 
+### 13. Carga por unidad de longitud
+La de [Frame2DEuler](Frame2DEuler.md) §14 en el espacio ([ADR 0044](../adr/0044-cargas-de-linea-y-diagramas-de-fuerzas-internas.md)). Carga muerta $\mathbf q(s)$ sobre el eje, sin excentricidad: no produce torsión.
+
+- **Global**: $\mathbf q = (q_x, q_y, q_z)$; en locales, $\mathbf q' = \boldsymbol\lambda\,\mathbf q$ (§7).
+- **Local**: $\mathbf q' = (q_{x'}, q_{y'}, q_{z'})$ en los ejes del §6 ($x'$ de i a j; $y'$, $z'$ los de la sección).
+- **Global proyectada**: $q_k$ por unidad de longitud proyectada sobre el plano perpendicular a $\mathbf e_k$; por unidad de longitud del elemento, $q_k\sqrt{1 - t_k^2}$ con $\mathbf t = \hat{\mathbf x}$.
+
+Vector consistente $\mathbf f_{\text{local}} = \int_0^L \mathbf N^\top\mathbf q'\,ds$ con las funciones de la rigidez: axial lineal; flexión de Hermite en el plano $xy$ con $(v, \theta_z)$, $v' = \theta_z$, y en el $xz$ con $(w, -\theta_y)$, $w' = -\theta_y$. Gauss-Legendre de 4 puntos, con la misma representación $\tilde{\mathbf q}$ de Frame2DEuler §14. Uniforme: $F_{y'} = q_{y'}L/2$, $M_{z,i} = +q_{y'}L^2/12$, $M_{z,j} = -q_{y'}L^2/12$; $F_{z'} = q_{z'}L/2$, $M_{y,i} = -q_{z'}L^2/12$, $M_{y,j} = +q_{z'}L^2/12$.
+
+### 14. Fuerzas internas a lo largo del elemento
+Con $\mathbf P = \mathbf T\,(\mathbf F_{\text{int}} - \mathbf f)$, de orden $[\mathbf F_i, \mathbf M_i, \mathbf F_j, \mathbf M_j]$ en ejes locales, y
+$$\mathbf Q(s) = \int_0^s \tilde{\mathbf q}'\,d\sigma, \qquad \mathbf R(s) = \int_0^s (s - \sigma)\,\tilde{\mathbf q}'(\sigma)\,d\sigma,$$
+el equilibrio del tramo $[0, s]$ da, en la convención stress-resultant del API público (Reglas §5), en la cara $+x'$ del corte:
+$$N = -P_1 - Q_{x'}, \quad V_y = -P_2 - Q_{y'}, \quad V_z = -P_3 - Q_{z'}, \quad T = -P_4,$$
+$$M_y = -P_5 - s\,P_3 - R_{z'}, \qquad M_z = -P_6 + s\,P_2 + R_{y'}.$$
+
+- En $s = 0$ son las fuerzas de extremo del nodo i (§9 y `internal_forces`); en $s = L$, las del nodo j, por el equilibrio del elemento.
+- $dM_z/ds = -V_y$ y $dM_y/ds = V_z$: los flectores son extremos donde se anula el cortante de su plano.
+- Comprobación: voladizo empotrado en i con $q_{z'} = -q$: $M_y(s) = q(L - s)^2/2 > 0$, tracción en $z' > 0$ (la fibra superior), como corresponde.
+- Escritas con las fuerzas de extremo del nodo i del API público ($N_i = -P_1$, $V_{y,i} = -P_2$, $V_{z,i} = -P_3$, $T_i = -P_4$, $M_{y,i} = -P_5$, $M_{z,i} = -P_6$): $N = N_i - Q_{x'}$, $V_y = V_{y,i} - Q_{y'}$, $V_z = V_{z,i} - Q_{z'}$, $T = T_i$, $M_y = M_{y,i} + s\,V_{z,i} - R_{z'}$, $M_z = M_{z,i} - s\,V_{y,i} + R_{y'}$. La relación con el 2D de Reglas §5 se cumple en todo $s$: $M_{2D} = M_z$ y $V_{2D} = -V_y$.
+
 ---
 
 ## Contrato de implementación
@@ -195,6 +216,10 @@ numerical_caveats:
   - "Para barras verticales (eje casi paralelo a z global) con ref_vector default, el constructor usa [1, 0, 0] como fallback y emite advertencia por consola."
 
 acceptance:
+  - name: carga de línea y diagramas (ADR 0044)                  # 2026-11-27
+    setup: "elemento orientado al azar con ref_vector; carga uniforme y triangular en q_y' y q_z' locales, la misma en globales y como fuerza de cuerpo; voladizo y viga apoyada de un elemento con carga en z' y en y'"
+    expect: "f_local con las formas cerradas del §13 (signos de My opuestos a los de Mz); global = local = fuerza de cuerpo; My(s) = q(L − s)²/2 en el voladizo con q_z' = −q; Mz y Vy, My y Vz con dMz/ds = −Vy, dMy/ds = Vz; cierre en s = L. Viga apoyada: q_y' = −q da Mz(L/2) = +qL²/8, Vy(0) = −qL/2; q_z' = −q da My(L/2) = −qL²/8, Vz(0) = −qL/2; en todo s, Mz = M_2D y Vy = −V_2D. Proyectada con t ∝ (1.1, 2.0, 0.7): resultante de q_z = q_z·L·√(1.1² + 2.0²)/‖(1.1, 2.0, 0.7)‖; elemento paralelo a z: 0"
+    tol_rel: 1.0e-10
   - name: soluciones manufacturadas (ADR 0022)                   # 2026-10-27
     setup: "línea recta inclinada; solución exacta impuesta en un extremo y sus fuerzas internas como cargas nodales en el otro; carga de línea como fuerza de cuerpo b(x); línea orientada al azar; u*, v*, w* y θx* lineal (no hay torsor distribuido); n = 4, 8, 16, 32"
     expect: "con campos polinómicos (carga de grado ≤ 4), error nodal de redondeo con 1 y 3 elementos (exactitud nodal, Tong 1969); con campos suaves, orden ≥ teórico − 0.1 por componente: u 2, v y w 4, θy y θz 3 en L²; ε 1, κy y κz 2 en energía; torsión exacta"
@@ -278,6 +303,7 @@ references:
 
 ## Diálogo
 
+- **2026-11-27** · Carga por unidad de longitud y fuerzas internas a lo largo del elemento (§13–§14, [ADR 0044](../adr/0044-cargas-de-linea-y-diagramas-de-fuerzas-internas.md)); la formulación común está en [Frame2DEuler](Frame2DEuler.md) §14–§15. La figura `diagram` es sólo 2D, como las demás figuras; en 3D los diagramas salen en el archivo de diagramas y en la historia.
 - **2026-04-21** · Elemento creado como componente totalmente autónomo: no hereda de `Frame2DEuler` ni de ninguna otra viga. La maquinaria cinemática 3D se implementa íntegra dentro de `frame3d.py`, coherente con la filosofía aplicada a cables.
 - **2026-04-21** · Decisión sobre `ref_vector` vs "tercer nodo de orientación". Se optó por `ref_vector` (vector 3D proyectado al plano perpendicular al eje) por ser más compacto en YAML y no requerir nodos fantasma en la malla. El default `[0, 0, 1]` cubre la mayoría de casos de ingeniería estructural (estructuras terrestres con gravedad en $-z$); el fallback para barras verticales usa `[1, 0, 0]` con advertencia explícita.
 - **2026-04-21** · Verificación cruzada con `Frame2DEuler`: el criterio 2 aplica una viga alineada con el eje $x$ global bajo carga en $y$; los desplazamientos resultantes deben coincidir con la solución 2D clásica $v = PL^3/(3EI_z)$, $\theta = PL^2/(2EI_z)$. El test lo verifica a 8 decimales. Esto blinda la coherencia dimensional: el 3D se reduce al 2D sin error acumulado cuando el problema es efectivamente plano.

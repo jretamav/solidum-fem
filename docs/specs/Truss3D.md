@@ -59,6 +59,9 @@ $$\mathbf F_{\text{int}} = \sigma A\,\mathbf d = N\,\mathbf d.$$
 ### 11. Cuadratura
 No aplica (forma cerrada, $\mathbf B$ y $\sigma$ uniformes por elemento). El campo `n_integration_points: 1` se refiere al número de estados materiales conceptuales (uno por elemento), no a puntos de Gauss.
 
+### 12. Carga por unidad de longitud y fuerza axial a lo largo del elemento
+La de [Truss2D](Truss2D.md) §12 en el espacio ([ADR 0044](../adr/0044-cargas-de-linea-y-diagramas-de-fuerzas-internas.md)), en ejes globales o global proyectada. En ejes locales no se admite: la armadura 3D no define ejes transversales (no tiene sección orientada), y una carga perpendicular al eje se da en ejes globales.
+
 ---
 
 ## Contrato de implementación

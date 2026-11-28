@@ -18,7 +18,10 @@ volver a calcular, con ``python -m solidum.post modelo.yaml``.
   columnas de la historia, también de otros modelos (estudios de malla), con
   curvas o bandas externas (``reference``: un ensayo, otra publicación) en
   tinta neutra, y ejes con límites (``xlim``, ``ylim``) o logarítmicos
-  (``xscale``, ``yscale``).
+  (``xscale``, ``yscale``);
+- ``{type: diagram, var: M | V | N, at: [final]}``: el diagrama de una fuerza
+  interna de barras y marcos 2D (ADR 0044 §5), del archivo de diagramas; el
+  flector del lado de la fibra en tracción.
 
 Mallas 2D (sólidos planos y elementos de línea en el plano); las 3D, todavía
 no. Colores (guía de visualización del proyecto): curvas con la paleta
@@ -37,8 +40,11 @@ from solidum.logging import get_logger
 
 _log = get_logger("post")
 
-PLOT_TYPES = ("mesh", "deformed", "curve")
+PLOT_TYPES = ("mesh", "deformed", "curve", "diagram")
+#: Fuerzas internas que dibuja la figura 'diagram' (ADR 0044 §5).
+_DIAGRAM_VARS = ("N", "V", "M")
 _KEYS = {
+    "diagram": {"type", "file", "title", "zoom", "at", "var", "scale"},
     "mesh": {"type", "file", "title", "zoom", "markers"},
     "deformed": {"type", "file", "title", "zoom", "at", "field", "field_label", "scale", "limits",
                  "edges", "label_column", "show_undeformed"},
@@ -123,6 +129,18 @@ def validate_plots_block(plots) -> list[str]:
                 errors.append(f"{ctx}.limits: se esperaba [mínimo, máximo].")
             if "field" in p and not isinstance(p["field"], str):
                 errors.append(f"{ctx}.field: se esperaba el nombre de un campo.")
+        if kind == "diagram":
+            if p.get("var") not in _DIAGRAM_VARS:
+                errors.append(f"{ctx}.var: se esperaba una fuerza interna de marco 2D "
+                              f"{list(_DIAGRAM_VARS)}.")
+            at = p.get("at", ["final"])
+            if not isinstance(at, list) or not at or not all(
+                    v == "final" or _is_number(v) for v in at):
+                errors.append(f"{ctx}.at: se esperaba una lista de factores de carga (o 'final').")
+            sc = p.get("scale", "auto")
+            if not (sc == "auto" or (_is_number(sc) and sc > 0)):
+                errors.append(f"{ctx}.scale: se esperaba 'auto' o un número > 0 (longitud del "
+                              "dibujo por unidad de la fuerza interna).")
         if kind == "curve":
             if not isinstance(p.get("x"), str):
                 errors.append(f"{ctx}.x: falta la columna del eje x.")
@@ -634,7 +652,141 @@ def _read_csv_columns(path: Path) -> dict[str, np.ndarray]:
     return {name: values[:, j] for j, name in enumerate(header)}
 
 
-_DRAW = {"mesh": plot_mesh, "deformed": plot_deformed, "curve": plot_curve}
+def _diagram_file(files: ResultFiles, at) -> tuple[str, Path]:
+    """Archivo de diagramas del instante ``at`` (``final`` o el factor más
+    cercano del índice que escribe la salida)."""
+    if at == "final":
+        return "final", files.base_dir / f"{files.base_name}_diagramas_final.csv"
+    index = files.base_dir / f"{files.base_name}_diagramas_indice.csv"
+    if not index.is_file():
+        raise FileNotFoundError(f"No existe {index.name}: resuelva el modelo con write_output.")
+    with open(index, newline="", encoding="utf-8") as f:
+        rows = list(csv.reader(f))[1:]
+    factors = np.array([float(r[0]) for r in rows])
+    k = int(np.argmin(np.abs(factors - float(at))))
+    return f"factor {factors[k]:.4g}", files.base_dir / rows[k][1]
+
+
+def _read_diagrams(path: Path):
+    if not path.is_file():
+        raise FileNotFoundError(f"No existe {path.name}: declare output.results.diagrams o una "
+                                "figura 'diagram' y resuelva el modelo con write_output.")
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.reader(f))
+    head = rows[0]
+    out = {name: [] for name in head}
+    for r in rows[1:]:
+        for name, v in zip(head, r):
+            out[name].append(float(v) if v.strip() else np.nan)
+    return {k: np.asarray(v, dtype=float) for k, v in out.items()}
+
+
+def _fmt(v: float) -> str:
+    """Número legible con unas 4 cifras significativas, sin notación
+    exponencial entre 1e-3 y 1e9."""
+    a = abs(v)
+    if a == 0.0 or not (1e-3 <= a < 1e9):
+        return f"{v:.4g}"
+    digits = max(0, 3 - int(np.floor(np.log10(a))))
+    return f"{v:.{digits}f}"
+
+
+def _drawing_normal(t: np.ndarray, var: str) -> np.ndarray:
+    """Dirección en que se dibuja el valor positivo de ``var`` sobre un
+    elemento de eje ``t`` (``i → j``). Flector: hacia la fibra en tracción,
+    ``−y'`` (``M > 0`` tracciona ``y' < 0``; decisión del usuario del
+    2026-11-27, Q1 de la spec Frame2DEuler): no depende de la numeración,
+    porque al permutar los nodos cambian a la vez el signo de ``M`` y ``y'``.
+    ``N`` y ``V``: hacia ``+y'`` de unos ejes de dibujo con ``x'`` hacia
+    ``+x`` (o hacia ``+y`` en una barra vertical), los mismos en todas las
+    barras sin importar la numeración."""
+    y = np.array([-t[1], t[0]])
+    if var == "M":
+        return -y
+    flip = t[0] < -1e-9 or (abs(t[0]) <= 1e-9 and t[1] < 0.0)
+    return -y if flip else y
+
+
+def plot_diagram(files: ResultFiles, spec: dict, out: Path) -> Path:
+    """Diagrama de una fuerza interna sobre la estructura sin deformar (ADR
+    0044 §5): un panel por instante, cada elemento con su diagrama
+    perpendicular al eje y los extremos rotulados."""
+    plt = _pyplot()
+    from matplotlib.collections import LineCollection, PolyCollection
+    var = spec["var"]
+    panels = [(label, _read_diagrams(path))
+              for label, path in (_diagram_file(files, a) for a in spec.get("at", ["final"]))]
+    _, first = panels[0]
+    if np.any(np.abs(first["z"]) > 0.0):
+        raise ValueError("La figura 'diagram' es 2D; en 3D use el archivo de diagramas.")
+    if var not in first:
+        raise ValueError(f"El archivo de diagramas no tiene {var!r}; tiene "
+                         f"{[c for c in first if c not in ('element', 's', 'xi', 'x', 'y', 'z')]}.")
+    pts = np.column_stack([first["x"], first["y"]])
+    size = float(np.max(pts.max(axis=0) - pts.min(axis=0))) or 1.0
+    peak = max(float(np.nanmax(np.abs(d[var]))) if np.any(np.isfinite(d[var])) else 0.0
+               for _, d in panels)
+    sc = spec.get("scale", "auto")
+    scale = (0.12 * size / peak if peak > 0 else 0.0) if sc == "auto" else float(sc)
+    width, height = _panel_size(pts, spec.get("zoom"), len(panels))
+    fig, axes = plt.subplots(len(panels), 1, figsize=(width, height), squeeze=False)
+    for ax, (label, d) in zip(axes[:, 0], panels):
+        segs, fills, drawn = [], [], [pts]
+        extremes = []
+        for eid in np.unique(d["element"]):
+            sel = d["element"] == eid
+            P = np.column_stack([d["x"][sel], d["y"][sel]])
+            v = d[var][sel]
+            segs.append([P[0], P[-1]])
+            if not np.all(np.isfinite(v)):
+                continue
+            t = P[-1] - P[0]
+            t = t / np.linalg.norm(t)
+            Q = P + scale * v[:, None] * _drawing_normal(t, var)[None, :]
+            fills.append(np.vstack([P, Q[::-1]]))
+            drawn.append(Q)
+            # Candidatos a rótulo: los extremos del elemento y sus extremos
+            # interiores (máximos locales del valor absoluto).
+            a = np.abs(v)
+            ends = max(a[0], a[-1])
+            keep = [0, len(v) - 1] + [m for m in range(1, len(v) - 1)
+                                      if a[m] > a[m - 1] and a[m] >= a[m + 1]
+                                      and a[m] > ends * (1.0 + 1e-6)]
+            extremes.extend((v[m], Q[m]) for m in keep)
+        ax.add_collection(PolyCollection(fills, facecolors=_BLUE_RAMP[2], edgecolors=_SERIES[0],
+                                         linewidths=0.8, alpha=0.85))
+        ax.add_collection(LineCollection(segs, colors=_INK, linewidths=1.6))
+        # Rótulos: el valor en los extremos de cada elemento y en sus extremos
+        # interiores, una vez por lugar (como un diagrama a mano); con muchos
+        # elementos, sólo los tres mayores en lugares distintos. El flector,
+        # sin signo (el lado del dibujo es la fibra en tracción y su signo
+        # depende de la numeración); N y V, con su signo.
+        many = len(extremes) > 60
+        order = np.argsort([-abs(e[0]) for e in extremes])
+        placed = []
+        for k in order:
+            v, q = extremes[k]
+            text = _fmt(abs(v) if var == "M" else v)
+            if abs(v) <= 1e-9 * peak or (many and len(placed) == 3):
+                continue
+            near = 0.08 * size if many else 0.03 * size
+            if any(np.linalg.norm(q - p) < near for p, _ in placed):
+                continue
+            placed.append((q, text))
+            ax.annotate(text, q, fontsize=7 if not many else 8, color=_INK,
+                        ha="center", va="bottom", xytext=(0, 2), textcoords="offset points")
+        _frame(ax, np.vstack(drawn), spec.get("zoom"))
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        side = " (del lado de la fibra en tracción)" if var == "M" else ""
+        ax.set_title(spec.get("title") or f"{var}{side}, {label}")
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+_DRAW = {"mesh": plot_mesh, "deformed": plot_deformed, "curve": plot_curve,
+         "diagram": plot_diagram}
 
 
 def make_plots(files: ResultFiles, plots: list) -> list[Path]:

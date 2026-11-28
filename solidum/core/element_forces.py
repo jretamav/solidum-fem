@@ -30,6 +30,7 @@ Convenciones de signo: ``Reglas.md §5``.
 """
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 from typing import Literal
 
@@ -101,6 +102,153 @@ class ElementForces:
     def at_node_j(self) -> dict[str, float]:
         """Valores en el nodo j como escalares."""
         return {k: float(v[1]) for k, v in self.components.items()}
+
+
+# ---------------------------------------------------------------------------
+# Fuerzas internas a lo largo del elemento (ADR 0044 §2)
+# ---------------------------------------------------------------------------
+
+#: Por familia, cada componente en ``ξ`` a partir de su valor en el nodo i
+#: (convención pública) más términos de la carga: ``("Q", k, signo)`` suma
+#: ``signo·Q_k(ξ)``, la integral de la componente local ``k`` de la carga;
+#: ``("R", k, signo)``, ``signo·R_k(ξ)``, su momento respecto del corte; y
+#: ``("s", c, signo)``, ``signo·s·c_i`` con ``s = ξ·l`` el brazo sobre la cuerda.
+#: Specs Frame2DEuler §15, Frame3D §14, Truss2D §12 (verificadas por el
+#: teórico el 2026-11-27).
+_ALONG_TERMS: dict[ElementKind, dict[str, tuple]] = {
+    "truss": {"N": (("Q", 0, -1.0),)},
+    "frame2d": {"N": (("Q", 0, -1.0),),
+                "V": (("Q", 1, 1.0),),
+                "M": (("s", "V", 1.0), ("R", 1, 1.0))},
+    "frame3d": {"N": (("Q", 0, -1.0),),
+                "Vy": (("Q", 1, -1.0),),
+                "Vz": (("Q", 2, -1.0),),
+                "T": (),
+                "My": (("s", "Vz", 1.0), ("R", 2, -1.0)),
+                "Mz": (("s", "Vy", -1.0), ("R", 1, 1.0))},
+}
+#: Componentes locales de la carga que usa cada familia.
+ALONG_LOAD_AXES: dict[ElementKind, int] = {"truss": 1, "frame2d": 2, "frame3d": 3}
+#: Cortante cuyo cero da el extremo de cada flector (``dM/ds ∝ V``).
+SHEAR_OF_MOMENT: dict[ElementKind, dict[str, str]] = {
+    "truss": {}, "frame2d": {"M": "V"}, "frame3d": {"Mz": "Vy", "My": "Vz"}}
+
+
+@dataclass(frozen=True)
+class ElementForcesAlong:
+    """Fuerzas internas en los puntos ``xi ∈ [0, 1]`` de un elemento de línea
+    (``xi = 0`` en el nodo i), en ejes locales y la convención de
+    :class:`ElementForces`. ``s = xi·l``: distancia sobre la cuerda (``l`` la
+    longitud corriente, la de referencia en los elementos lineales)."""
+
+    kind: ElementKind
+    xi: np.ndarray
+    s: np.ndarray
+    components: dict[str, np.ndarray]
+
+
+def load_polynomials(points, samples_local) -> np.ndarray:
+    """Coeficientes ``(..., n, k)`` en potencias de ``ξ`` del polinomio que
+    interpola las muestras ``(..., n, k)`` de la carga en las abscisas
+    ``points`` (``n``): la carga representada ``q̃`` (spec Frame2DEuler §14)."""
+    V_inv = _vandermonde_inverse(tuple(float(p) for p in np.asarray(points).ravel()))
+    return np.einsum("pn,...nk->...pk", V_inv, np.asarray(samples_local, dtype=np.float64))
+
+
+@functools.lru_cache(maxsize=16)
+def _vandermonde_inverse(points: tuple) -> np.ndarray:
+    """Inversa de la matriz de Vandermonde de las abscisas (en caché: son las
+    mismas de todos los elementos de una clase)."""
+    V_inv = np.linalg.inv(np.vander(np.asarray(points), len(points), increasing=True))
+    V_inv.setflags(write=False)
+    return V_inv
+
+
+def forces_along_batch(kind: ElementKind, ends_i: dict, coeffs: np.ndarray, L0: np.ndarray,
+                       l: np.ndarray, xi: np.ndarray) -> dict[str, np.ndarray]:
+    """Fuerzas internas ``(E, m)`` de ``E`` elementos de una familia en las
+    ``m`` abscisas ``xi``, por estática del tramo (ADR 0044 §2).
+
+    ``ends_i``: ``{componente: (E,)}`` en el nodo i; ``coeffs``: ``(E, n, k)``
+    de :func:`load_polynomials` con la carga en los ejes de las fuerzas
+    internas; ``L0``, ``l``: longitudes de referencia y corriente ``(E,)``.
+    La carga se integra por unidad de longitud de referencia,
+    ``Q(ξ) = L0·∫₀^ξ q̃``, y su momento con los brazos sobre la cuerda,
+    ``R(ξ) = L0·l·∫₀^ξ (ξ − ξ')·q̃``."""
+    xi = np.asarray(xi, dtype=np.float64)
+    coeffs = np.asarray(coeffs, dtype=np.float64)
+    L0 = np.asarray(L0, dtype=np.float64)[:, None]
+    l = np.asarray(l, dtype=np.float64)[:, None]
+    n = coeffs.shape[1]
+    p = np.arange(n, dtype=np.float64)
+    # ∫₀^ξ ξ'^p = ξ^(p+1)/(p+1);  ∫₀^ξ (ξ − ξ')ξ'^p = ξ^(p+2)/((p+1)(p+2)).
+    q_basis = xi[:, None] ** (p + 1.0) / (p + 1.0)                  # (m, n)
+    r_basis = xi[:, None] ** (p + 2.0) / ((p + 1.0) * (p + 2.0))    # (m, n)
+    Q = L0[:, :, None] * np.einsum("mn,enk->emk", q_basis, coeffs)  # (E, m, k)
+    R = (L0 * l)[:, :, None] * np.einsum("mn,enk->emk", r_basis, coeffs)
+    s = l * xi[None, :]
+    out = {}
+    for comp, terms in _ALONG_TERMS[kind].items():
+        value = np.repeat(np.asarray(ends_i[comp], dtype=np.float64)[:, None], len(xi), axis=1)
+        for what, key, sign in terms:
+            if what == "Q":
+                value = value + sign * Q[:, :, key]
+            elif what == "R":
+                value = value + sign * R[:, :, key]
+            else:
+                value = value + sign * s * np.asarray(ends_i[key], dtype=np.float64)[:, None]
+        out[comp] = value
+    return out
+
+
+def shear_zeros(kind: ElementKind, ends_i: dict, coeffs: np.ndarray, L0: float) -> dict[str, np.ndarray]:
+    """Abscisas ``ξ ∈ (0, 1)`` donde se anula cada cortante de un elemento
+    (donde su flector es extremo): ``{flector: ξ}``. ``coeffs`` ``(n, k)``."""
+    out = {}
+    for moment, shear in SHEAR_OF_MOMENT[kind].items():
+        (_, key, sign), = _ALONG_TERMS[kind][shear]
+        c = np.asarray(coeffs, dtype=np.float64)[:, key]
+        # V(ξ) = V_i + sign·L0·Σ c_p ξ^(p+1)/(p+1).
+        poly = np.concatenate([[float(ends_i[shear])],
+                               sign * L0 * c / np.arange(1, len(c) + 1)])
+        scale = np.max(np.abs(poly))
+        if scale == 0.0:
+            out[moment] = np.empty(0)
+            continue
+        trimmed = np.trim_zeros(np.where(np.abs(poly) > 1e-14 * scale, poly, 0.0), "b")
+        if len(trimmed) < 2:
+            out[moment] = np.empty(0)
+            continue
+        roots = np.polynomial.polynomial.polyroots(trimmed)
+        real = roots[np.abs(roots.imag) <= 1e-10].real
+        out[moment] = np.sort(real[(real > 1e-12) & (real < 1.0 - 1e-12)])
+    return out
+
+
+def forces_along(forces: "ElementForces", points, samples_local, L0: float, l: float,
+                 xi) -> ElementForcesAlong:
+    """Fuerzas internas de un elemento en ``xi`` a partir de sus fuerzas de
+    extremo ``forces`` (las del nodo i), las muestras de la carga en los ejes
+    de las fuerzas internas (``(n, k)`` en ``points``; ``None`` sin carga) y
+    las longitudes ``L0``, ``l``."""
+    kind = forces.kind
+    if kind not in _ALONG_TERMS:
+        raise ValueError(f"forces_along: la familia {kind!r} no da fuerzas internas a lo "
+                         "largo del elemento.")
+    xi = np.atleast_1d(np.asarray(xi, dtype=np.float64))
+    if np.any((xi < 0.0) | (xi > 1.0)):
+        raise ValueError("forces_along: xi debe estar en [0, 1] (fracción de la longitud "
+                         "desde el nodo i).")
+    k = ALONG_LOAD_AXES[kind]
+    n = len(points)
+    if samples_local is None:
+        coeffs = np.zeros((1, n, k))
+    else:
+        coeffs = load_polynomials(points, np.asarray(samples_local)[:, :k])[None]
+    ends_i = {c: np.array([v[0]]) for c, v in forces.components.items()}
+    comps = forces_along_batch(kind, ends_i, coeffs, np.array([L0]), np.array([l]), xi)
+    return ElementForcesAlong(kind=kind, xi=xi, s=float(l) * xi,
+                              components={c: v[0] for c, v in comps.items()})
 
 
 def axial_end_forces(F_net: np.ndarray, direction: np.ndarray) -> tuple[float, float]:

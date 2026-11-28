@@ -179,6 +179,10 @@ class Frame2DTimoshenko(Frame2DLine, FrameSectionMixin, Element):
             return self._field_line_load(b, self.A)
         return _frame2d_consistent_body_load(b, self.A, self.L0, self.T)
 
+    def _load_area(self) -> float:
+        """Área de la fuerza de cuerpo: ``A`` (sin camino con sección)."""
+        return float(self.A)
+
     def _phi(self) -> float:
         """``Φ = 12·EI/(G·A_s·L²) = 24(1 + ν)·I/(A_s·L²)``."""
         return 24.0 * (1.0 + self.nu) * self.I / (self.As * self.L0**2)

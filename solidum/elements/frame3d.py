@@ -521,7 +521,7 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
 
         La carga distribuida por unidad de longitud ``q = A · b`` (``A`` el
         área bruta: ``Σ A_i`` con sección) se reparte con
-        :meth:`_line_load_vector` si es constante. Un campo ``b(x)`` (ADR
+        :meth:`_uniform_line_load_vector` si es constante. Un campo ``b(x)`` (ADR
         0022) se proyecta a ejes locales en 4 puntos de Gauss y se reparte
         con las funciones de la rigidez (axial lineal, flexión de Hermite en
         los dos planos); centrado en el eje, no produce torsión.
@@ -542,7 +542,7 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
         if callable(b):
             return self._field_line_load(b, self._axial_area())
         b = np.asarray(b, dtype=float).reshape(3)
-        return self._line_load_vector(self._axial_area() * b)
+        return self._uniform_line_load_vector(self._axial_area() * b)
 
     # ------------------------------------------------------------------
     # Campo interior (ADR 0022, fase 4)
@@ -556,6 +556,15 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
 
     def _load_axes(self):
         return self.lam
+
+    def _load_area(self) -> float:
+        """Área de la fuerza de cuerpo: ``A`` con material, ``Σ A_i`` con
+        sección (la de ``compute_body_load``)."""
+        return float(self._axial_area())
+
+    def _linear_density(self) -> float:
+        """``ρA`` del peso propio (la de ``compute_self_weight``)."""
+        return float(self._mass_properties()[0])
 
     def _line_interpolation(self, xi):
         """Axial y torsión lineales; flexión de Hermite en los dos planos:
@@ -597,9 +606,9 @@ class Frame3D(LineElementMixin, FrameSectionMixin, Element):
         if self.section is None:
             return super().compute_self_weight(g)
         g = np.asarray(g, dtype=float).reshape(3)
-        return self._line_load_vector(self.section.mass_properties()["rhoA"] * g)
+        return self._uniform_line_load_vector(self.section.mass_properties()["rhoA"] * g)
 
-    def _line_load_vector(self, q_global: np.ndarray) -> np.ndarray:
+    def _uniform_line_load_vector(self, q_global: np.ndarray) -> np.ndarray:
         """Vector nodal consistente de una carga uniforme por unidad de
         longitud ``q_global`` (ejes globales).
 

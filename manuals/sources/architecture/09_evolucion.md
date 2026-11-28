@@ -376,6 +376,25 @@ Medio. El bloque toca el `Domain` (nodos duplicados), la clasificación que usan
 - **El criterio de convergencia dependía de la unidad de fuerza** cuando no había fuerzas (enmienda del ADR 0007, 27 de noviembre de 2026, decisión del usuario). Un bloque que baja sin fuerza por una holgura de contacto se detenía trabajando en N y convergía en kN: la calibración caía a una unidad de fuerza. Ahora la escala nula es válida y a la tolerancia de fuerza se suma un piso de redondeo calculado con el modelo. El contrato del corrector compartido (ADR 0015) ganó el método obligatorio `roundoff_force` y una validación al entrar; la comprobación de equilibrio al continuar un estático con un dinámico descuenta el mismo piso. Queda fuera de este piso el redondeo de los elementos corotacionales, que crece con las coordenadas del modelo. El mismo día, el CI mostró que el piso, evaluado en el iterado, crecía con un Newton que diverge y aceptaba estados sin equilibrio pasado el colapso de una estructura perfectamente plástica (segunda enmienda): ahora está anclado al tamaño del primer iterado corregido del paso.
 - **La validación del contacto mostró dos huecos de las etapas** (ADR 0026 §7 y ADR 0036, 27 de noviembre de 2026). Una etapa del YAML no podía cambiar un desplazamiento impuesto, aunque la API de Python sí lo hacía, y la historia con etapas no daba reacciones ni energías. La carga y descarga se armaba con control indirecto, ataduras y un resorte. Ahora una etapa estática declara sus apoyos; el valor es el total y crece desde el anterior (decisión del usuario). La regla de qué etapa los admite vive en un solo plan de etapas del lector, que usan la validación al leer y el despacho. La historia recibe la carga de cada etapa. Al darle la carga de cada etapa apareció un error que nadie había visto: las fuerzas internas de un marco con carga distribuida en una etapa se escribían sin descontar su carga equivalente.
 
+## Fase 19 — Cargas de línea y diagramas de fuerzas internas
+
+**Estado**: implementado (ADR 0044, 27 de noviembre de 2026); validación pendiente.
+
+- **Carga por unidad de longitud** en barras y marcos (`line_loads`: ejes globales, locales o proyectada), repartida con las funciones de forma de cada elemento.
+- **Fuerzas internas a lo largo del elemento** por estática del tramo, con las fuerzas de extremo ya calculadas y la carga que viaja con la carga (segundo canal de `EquivalentLoads`), sin reevaluar el elemento: exactas con cualquier material en los análisis estáticos.
+- **Capacidades declaradas** en `LineElementMixin` en vez de sondeos, y los ejes de las fuerzas internas en un solo lugar (`internal_force_axes`).
+- **Salida**: una sola fuente de fuerzas por instante (VTK, historia, diagramas), historia con `at`, archivo de diagramas con los ceros del cortante y figura `diagram`.
+- **Cargas de las etapas resueltas al leer**, con el prefijo de su etapa en los mensajes.
+
+```callout Riesgo de arquitectura
+Medio. El bloque toca el álgebra de las cargas (ADR 0027), el ensamblador, el lector y el escritor. Sin cargas de línea los resultados son los de antes, salvo el VTK de los marcos con carga distribuida, que estaba mal. Lo cubren un barrido sobre todas las clases de línea (vector ↔ muestras, cierre en los extremos, derivadas) y 30 mutaciones.
+```
+
+### Lecciones de la fase 19
+
+- **La salida tenía dos números falsos sin aviso** que el plan daba por resueltos: el VTK de los marcos con carga distribuida (fuerzas nodales $K\,u$ en vez de fuerzas internas) y la historia de un transitorio sin etapas (el escritor recibía sólo las cargas nodales y no sabía que había carga distribuida). Los midió el arquitecto al revisar el plan, antes de programar.
+- **Una revisión del diff encontró tres más en el código nuevo**: una carga que perdía sus equivalentes con `np.asarray` daba un diagrama sin la carga; el VTK de una etapa estática seguida de un dinámico seguía sin descontarla; la caché de la fusión no soltaba sus entradas. Cada uno quedó con una prueba que falla con el error (comprobado con mutaciones).
+
 ## Mantenimiento de este capítulo
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:

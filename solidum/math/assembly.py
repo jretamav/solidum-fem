@@ -9,7 +9,7 @@ from solidum.bc.constraints import ConstraintSet, reduce_matrix
 from solidum.constants import BATCH_ASSEMBLY_DEFAULT, BATCH_PARALLEL_DEFAULT
 from solidum.core.domain import Domain
 from solidum.core.element import Element
-from solidum.core.load_vector import EquivalentLoadLayout, EquivalentLoads, LoadVector
+from solidum.core.load_vector import EquivalentLoadLayout, EquivalentLoads, LoadSamples, LoadVector
 from solidum.logging import get_logger
 from solidum.math.batch.family import Family, build_families
 from solidum.math.batch.kernels import coo_to_csr_reduce, coo_to_csr_reduce_parallel
@@ -179,6 +179,9 @@ class Assembler:
         # Disposición compartida de las cargas equivalentes de este
         # ensamblador: combinar dos cargas suyas es una suma vectorizada.
         self._equivalent_layout: EquivalentLoadLayout | None = None
+        # Ídem para las muestras de la carga a lo largo de los elementos de
+        # línea (ADR 0044 §3).
+        self._sample_layout: EquivalentLoadLayout | None = None
 
     def _get_element_global_indices(self, element) -> list:
         """Extrae los índices globales de DOFs del elemento en el orden correcto.
@@ -1152,20 +1155,24 @@ class Assembler:
         elemento (``'uz' in DOF_NAMES`` ⇒ 3D)."""
         return v3 if 'uz' in element.DOF_NAMES else v3[:2]
 
-    def _iterate_body_force(self, load_for_element: Callable) -> LoadVector:
+    def _iterate_body_force(self, load_for_element: Callable,
+                            samples_for_element: Callable | None = None) -> LoadVector:
         """Recorrido interno común a `assemble_body_load` y `assemble_self_weight`.
 
         Itera sobre todos los elementos que declaran `compute_body_load` y
         delega en `load_for_element(element) -> np.ndarray` el vector nodal
         consistente de cada uno (fuerza de cuerpo o peso propio). Devuelve un
         :class:`~solidum.core.load_vector.LoadVector` que lleva esos vectores
-        como sus cargas equivalentes por elemento (ADR 0027).
+        como sus cargas equivalentes por elemento (ADR 0027) y, con
+        ``samples_for_element``, las muestras de la carga a lo largo de los
+        elementos de línea (ADR 0044 §3).
         """
         self._ensure_topology()
 
         F_body = np.zeros(self.ndof)
         ids: list[int] = []
         blocks: list[np.ndarray] = []
+        samples: dict[int, np.ndarray] = {}
         for i, element in enumerate(self.domain.elements.values()):
             if getattr(element, "compute_body_load", None) is None:
                 continue
@@ -1173,16 +1180,79 @@ class Assembler:
             F_body[self._elem_dof_indices[i]] += f_e
             ids.append(element.id)
             blocks.append(f_e)
+            if samples_for_element is not None and hasattr(element, "body_load_samples"):
+                samples[element.id] = np.asarray(samples_for_element(element), dtype=float)
+        return self._load_vector(F_body, ids, blocks, samples)
+
+    def _load_vector(self, F, ids, blocks, samples: dict) -> LoadVector:
+        """``LoadVector`` con sus cargas equivalentes y sus muestras, con las
+        disposiciones compartidas de este ensamblador."""
         layout = self._equivalent_layout
         if layout is None or not layout.same_as(
                 EquivalentLoadLayout(ids, [b.size for b in blocks])):
             layout = self._equivalent_layout = EquivalentLoadLayout(
                 ids, [b.size for b in blocks])
-        equivalent = (EquivalentLoads(layout, np.concatenate(blocks)) if blocks else None)
+        sample_channel = None
+        if samples:
+            s_ids = list(samples)
+            s_blocks = [samples[e] for e in s_ids]
+            candidate = EquivalentLoadLayout(s_ids, [b.size for b in s_blocks],
+                                             [b.shape[1] for b in s_blocks])
+            s_layout = self._sample_layout
+            if s_layout is None or not (s_layout.same_as(candidate)
+                                        and np.array_equal(s_layout.cols, candidate.cols)):
+                s_layout = self._sample_layout = candidate
+            sample_channel = LoadSamples(s_layout, np.concatenate([b.ravel() for b in s_blocks]))
+        equivalent = (EquivalentLoads(layout, np.concatenate(blocks), sample_channel)
+                      if blocks else None)
         # Registro heredado (ver __init__).
         self.equivalent_loads = dict(zip(ids, blocks))
         self.equivalent_loads_version += 1
-        return LoadVector(F_body, equivalent)
+        return LoadVector(F, equivalent)
+
+    def assemble_line_loads(self, loads) -> LoadVector:
+        """Cargas por unidad de longitud de barras y marcos (ADR 0044).
+
+        ``loads``: iterable de ``(elemento, q, local, projected)`` con ``q``
+        constante o campo ``q(x)``; cada elemento calcula sus muestras
+        (``line_load_samples``) y su vector consistente
+        (``line_load_vector``). Varias entradas sobre un elemento se suman.
+        Devuelve un ``LoadVector`` con las cargas equivalentes y las muestras
+        de los elementos cargados."""
+        self._ensure_topology()
+        position = {el.id: i for i, el in enumerate(self.domain.elements.values())}
+        F = np.zeros(self.ndof)
+        per_element: dict[int, list] = {}
+        for element, q, local, projected in loads:
+            s = np.asarray(element.line_load_samples(q, local=local, projected=projected),
+                           dtype=float)
+            acc = per_element.get(element.id)
+            per_element[element.id] = [element, s if acc is None else acc[1] + s]
+        ids, blocks, samples = [], [], {}
+        for el in self.domain.elements.values():          # orden del dominio
+            if el.id not in per_element:
+                continue
+            _, s = per_element[el.id]
+            f_e = np.asarray(el.line_load_vector(s), dtype=float).ravel()
+            F[self._elem_dof_indices[position[el.id]]] += f_e
+            ids.append(el.id)
+            blocks.append(f_e)
+            samples[el.id] = s
+        if not ids:
+            return LoadVector(F, None)
+        # Disposición propia (no la del peso propio, que abarca todos los
+        # elementos): no se guarda como la compartida del ensamblador.
+        layout = EquivalentLoadLayout(ids, [b.size for b in blocks])
+        s_layout = EquivalentLoadLayout(ids, [samples[e].size for e in ids],
+                                        [samples[e].shape[1] for e in ids])
+        channel = LoadSamples(s_layout, np.concatenate([samples[e].ravel() for e in ids]))
+        # Registro heredado (ver __init__), como las cargas de cuerpo: si la
+        # carga pierde sus equivalentes (np.asarray), el resultado las recupera
+        # o avisa de la ambigüedad, y las fuerzas a lo largo del elemento dan
+        # error en vez de un diagrama sin la carga (ADR 0044 §3).
+        self.equivalent_loads = dict(zip(ids, blocks))
+        self.equivalent_loads_version += 1
+        return LoadVector(F, EquivalentLoads(layout, np.concatenate(blocks), channel))
 
     def assemble_body_load(self, b) -> np.ndarray:
         """Acumula la integral consistente de fuerza de cuerpo uniforme.
@@ -1219,10 +1289,12 @@ class Assembler:
             Vector global de fuerzas nodales consistentes con `∫NᵀbA dx`.
         """
         if callable(b):
-            return self._iterate_body_force(lambda element: element.compute_body_load(b))
+            return self._iterate_body_force(lambda element: element.compute_body_load(b),
+                                            lambda element: element.body_load_samples(b))
         b3 = self._promote_to_3d(b, "assemble_body_load")
         return self._iterate_body_force(
-            lambda element: element.compute_body_load(self._vector_for_element(element, b3)))
+            lambda element: element.compute_body_load(self._vector_for_element(element, b3)),
+            lambda element: element.body_load_samples(self._vector_for_element(element, b3)))
 
     def assemble_self_weight(self, g) -> np.ndarray:
         """Acumula peso propio usando la `density` de los materiales de cada
@@ -1294,4 +1366,5 @@ class Assembler:
                 "explícitamente para silenciar este error."
             )
         return self._iterate_body_force(
-            lambda element: element.compute_self_weight(self._vector_for_element(element, g3)))
+            lambda element: element.compute_self_weight(self._vector_for_element(element, g3)),
+            lambda element: element.self_weight_samples(self._vector_for_element(element, g3)))
