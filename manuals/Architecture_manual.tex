@@ -1643,6 +1643,17 @@ El seguimiento de grieta necesita saber si un lado está en el borde libre del m
 
 El contacto con pares conocidos y las grietas discretas con trayectoria conocida necesitan un elemento que una dos caras y entregue a una ley de interfaz (\hyperref[adr:0033]{ADR 0033}) el desplazamiento relativo en ejes locales; el programa principal no tenía ninguno. \textbf{Decisión}: (1) paquete \texttt{solidum/\allowbreak{}elements/\allowbreak{}interface/\allowbreak{}} con la base pública \texttt{InterfaceElement} y \texttt{Interface2D4}, \texttt{Interface2D6}, \texttt{Interface3D6}, \texttt{Interface3D8} (orden de nodos de los cohesivos de Abaqus; el cuadrático 2D, «esquinas primero»), sobre una base común con la adherencia barra--sólido, \texttt{LocalJumpElement}, que daba lo mismo bit a bit tras centralizar. (2) Una sola clasificación de la magnitud por punto, \texttt{point\_quantity} (deformación de Voigt, flujo térmico o salto de interfaz), que usan el VTK, la historia, la calidad de malla, la herramienta de specs, el camino por lotes, el \ensuremath{\theta}-método y el barrido de contratos, en vez de cinco deducciones por presencia de atributos. (3) Contrato de la familia ampliado: la ley recibe la holgura normal actual \texttt{g\_0 + \ensuremath{\Delta}u\_n} (la holgura inicial es geometría del par, la mide el elemento); \texttt{ACCEPTS\_\allowbreak{}INITIAL\_\allowbreak{}GAP}, \texttt{IS\_UNILATERAL}, \texttt{STATE\_SCHEMA}, \texttt{STATE\_CODES} y \texttt{stored\_energy}. (4) Energía almacenada por elemento, \texttt{Element.\allowbreak{}stored\_\allowbreak{}energy}, para que \texttt{D = W − E} no dé disipación espuria con holgura (−0,5 medido con la fórmula anterior) ni pierda la de fricción. (5) Generación en Solidum, no con el \textit{plugin} de Gmsh: \texttt{pair} entre dos grupos de contorno y \texttt{split} de un grupo interior, con duplicación de nodos por componentes conexas (la punta no se duplica); la reasignación de nodos sólo la hace el \texttt{Domain}, que sube \texttt{topology\_version}; las referencias por id a un nodo duplicado son error. Bloque YAML \texttt{interfaces}, aplicado antes de \texttt{constraints}. (6) Salida con celda VTK propia, \texttt{Jump\_*}/\texttt{Traction\_*} y selector \texttt{interface:} en la historia. (7) Penalización en la ley: los solvers no cambian; cada solver declara si su rigidez es fija (\texttt{FIXED\_STIFFNESS}) y los de rigidez fija rechazan una ley unilateral, con las alternativas del mensaje derivadas del registro. La revisión del diff hizo \texttt{split} atómica, llevó la elección del elemento al registro (con \texttt{element:} para uno de un módulo de usuario) y fijó que todo elemento de salto hereda la base común, con una tabla única por tipo de cara. Pendiente: el deslizamiento grande (segmento a segmento, \textit{mortar}) cambiará el emparejamiento y el elemento, no la ley.
 
+\section{ADR 0044 --- Cargas de línea en barras y marcos y fuerzas internas a lo largo del elemento}
+\label{adr:0044}
+
+\textbf{Fecha}: 2026-11-27 \ensuremath{\cdot} \textbf{Estado}: aceptado.
+
+\textbf{Contexto.} Los marcos y las barras sólo recibían una carga repartida como fuerza de cuerpo (el peso propio); el YAML no tenía una carga en kN/m, en ejes locales o proyectada, y las fuerzas internas salían sólo en los extremos: el flector máximo dentro del claro no se veía. Para calcularlo por estática del tramo hace falta la carga misma a lo largo del elemento, con el factor con que actúa en el paso. Al revisar el plan, el arquitecto midió además que el VTK escribía las fuerzas de extremo sin descontar la carga y que la historia de un transitorio no rechazaba las fuerzas de marco con carga distribuida.
+
+\textbf{Decisión.} (1) \texttt{LineElementMixin} declara capacidades (\texttt{LINE\_LOADS}, \texttt{LINE\_\allowbreak{}LOAD\_\allowbreak{}LOCAL\_\allowbreak{}AXES}, \texttt{INTERNAL\_\allowbreak{}FORCES\_\allowbreak{}ALONG}, \texttt{LINE\_\allowbreak{}LOAD\_\allowbreak{}BY\_\allowbreak{}COMPONENT}, \texttt{LINE\_LOAD\_POINTS}), el área y la densidad lineal una sola vez (\texttt{\_load\_area}, \texttt{\_linear\_density}), las muestras de la carga en los puntos de Gauss en ejes globales y su vector consistente, y los ejes de las fuerzas internas (\texttt{internal\_\allowbreak{}force\_\allowbreak{}axes}), que comparten el corrotacional y los diagramas. (2) \texttt{EquivalentLoads} lleva un segundo canal con las muestras, con la misma álgebra y fusión vectorizada de disposiciones distintas en caché débil; \texttt{SolveResult.\allowbreak{}line\_\allowbreak{}load\_\allowbreak{}samples} las expone con sus abscisas. (3) Las fuerzas a lo largo del elemento se construyen con las fuerzas de extremo ya calculadas y una tabla de signos por familia (\texttt{\_ALONG\_TERMS}), sin reevaluar el elemento. (4) Bloque YAML \texttt{line\_loads} (\texttt{q}, \texttt{q\_local}, \texttt{projected}; selector de elementos con \texttt{group} por celdas exactas), cargas de las etapas resueltas al leer. (5) Salida: fuerzas internas una vez por instante para el VTK, la historia (\texttt{end}, \texttt{at}) y el archivo de diagramas; rechazo en el tiempo; figura \texttt{diagram} con el flector del lado de la fibra en tracción (decisión del usuario).
+
+\textbf{Consecuencia.} Un elemento de línea nuevo recibe la carga y los diagramas sin tocar el lector ni la salida. El VTK de los marcos con carga distribuida pasa a dar las fuerzas internas de extremo. Límites: sin cargas puntuales en el vano, carga muerta, sin diagramas en las armaduras cuadráticas ni en el tiempo.
+
 \section{Evolución de esta lista}
 
 Cada decisión de arquitectura de gran calado --- refactor transversal, subsistema nuevo, ruptura de contratos --- produce un ADR adicional. Los siguientes ADR se prevén en las fases de diseño futuras:
@@ -2083,6 +2094,29 @@ Medio. El bloque toca el \texttt{Domain} (nodos duplicados), la clasificación q
   \item \textbf{La validación del contacto mostró dos huecos de las etapas} (\hyperref[adr:0026]{ADR 0026} §7 y \hyperref[adr:0036]{ADR 0036}, 27 de noviembre de 2026). Una etapa del YAML no podía cambiar un desplazamiento impuesto, aunque la API de Python sí lo hacía, y la historia con etapas no daba reacciones ni energías. La carga y descarga se armaba con control indirecto, ataduras y un resorte. Ahora una etapa estática declara sus apoyos; el valor es el total y crece desde el anterior (decisión del usuario). La regla de qué etapa los admite vive en un solo plan de etapas del lector, que usan la validación al leer y el despacho. La historia recibe la carga de cada etapa. Al darle la carga de cada etapa apareció un error que nadie había visto: las fuerzas internas de un marco con carga distribuida en una etapa se escribían sin descontar su carga equivalente.
 \end{itemize}
 
+\section{Fase 19 --- Cargas de línea y diagramas de fuerzas internas}
+
+\textbf{Estado}: implementado (\hyperref[adr:0044]{ADR 0044}, 27 de noviembre de 2026); validación pendiente.
+
+\begin{itemize}
+  \item \textbf{Carga por unidad de longitud} en barras y marcos (\texttt{line\_loads}: ejes globales, locales o proyectada), repartida con las funciones de forma de cada elemento.
+  \item \textbf{Fuerzas internas a lo largo del elemento} por estática del tramo, con las fuerzas de extremo ya calculadas y la carga que viaja con la carga (segundo canal de \texttt{EquivalentLoads}), sin reevaluar el elemento: exactas con cualquier material en los análisis estáticos.
+  \item \textbf{Capacidades declaradas} en \texttt{LineElementMixin} en vez de sondeos, y los ejes de las fuerzas internas en un solo lugar (\texttt{internal\_\allowbreak{}force\_\allowbreak{}axes}).
+  \item \textbf{Salida}: una sola fuente de fuerzas por instante (VTK, historia, diagramas), historia con \texttt{at}, archivo de diagramas con los ceros del cortante y figura \texttt{diagram}.
+  \item \textbf{Cargas de las etapas resueltas al leer}, con el prefijo de su etapa en los mensajes.
+\end{itemize}
+
+\begin{infobox}{Riesgo de arquitectura}
+Medio. El bloque toca el álgebra de las cargas (\hyperref[adr:0027]{ADR 0027}), el ensamblador, el lector y el escritor. Sin cargas de línea los resultados son los de antes, salvo el VTK de los marcos con carga distribuida, que estaba mal. Lo cubren un barrido sobre todas las clases de línea (vector \ensuremath{\leftrightarrow} muestras, cierre en los extremos, derivadas) y 30 mutaciones.
+\end{infobox}
+
+\subsection{Lecciones de la fase 19}
+
+\begin{itemize}
+  \item \textbf{La salida tenía dos números falsos sin aviso} que el plan daba por resueltos: el VTK de los marcos con carga distribuida (fuerzas nodales $K\,u$ en vez de fuerzas internas) y la historia de un transitorio sin etapas (el escritor recibía sólo las cargas nodales y no sabía que había carga distribuida). Los midió el arquitecto al revisar el plan, antes de programar.
+  \item \textbf{Una revisión del diff encontró tres más en el código nuevo}: una carga que perdía sus equivalentes con \texttt{np.asarray} daba un diagrama sin la carga; el VTK de una etapa estática seguida de un dinámico seguía sin descontarla; la caché de la fusión no soltaba sus entradas. Cada uno quedó con una prueba que falla con el error (comprobado con mutaciones).
+\end{itemize}
+
 \section{Mantenimiento de este capítulo}
 
 Cada vez que se cierre la implementación de una fase y se acepte su ADR de apertura, esta sección se actualiza:
@@ -2471,8 +2505,8 @@ Términos técnicos centrales de Solidum FEM, ordenados alfabéticamente. Cada e
 \rule{0.4\textwidth}{0.4pt}\\[1em]
 {\bfseries\color{yamlkey} Solidum FEM --- Manual de Arquitectura}\\[0.5em]
 Sigla del manual: \texttt{FF-MA}\\[0.5em]
-Compilado el 27 de noviembre de 2026, 15:08\\[0.5em]
-Commit Git: \texttt{a1c0f60}\\[1em]
+Compilado el 27 de noviembre de 2026, 18:23\\[0.5em]
+Commit Git: \texttt{1ad948d}\\[1em]
 \rule{0.4\textwidth}{0.4pt}\\[2em]
 \parbox{0.75\textwidth}{\small\itshape\centering
 Documento generado automáticamente desde los archivos fuente en \texttt{manuals/sources/architecture/} mediante \texttt{python manuals/build\_architecture\_manual.py}. No editar directamente el PDF: cualquier corrección debe realizarse sobre el archivo fuente correspondiente y regenerar el manual.}
