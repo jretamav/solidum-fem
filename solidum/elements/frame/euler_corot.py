@@ -279,6 +279,32 @@ class Frame2DEulerCorot(Frame2DLine, FrameSectionMixin, Element):
         l, c, s, _ = self._current_geometry(self.get_local_displacements(U_global))
         return np.array([[c, s], [-s, c]]), float(self.L0), float(l)
 
+    def _perturbation_geometric_terms(self, base_forces, U_base, dU, xi, base_samples) -> dict:
+        """``ΔM_geo(ξ)`` del diagrama de una perturbación lineal (spec §11):
+        alargamiento de los brazos y efecto P-Δ del tramo,
+
+            ΔM_geo = Δl·[ξ·V_i,b + L0·∫(ξ−ξ')q̃_y',b] + l_b·Δα·[ξ·N_i,b − L0·∫(ξ−ξ')q̃_x',b],
+
+        con ``Δl = e_x'·Δd``, ``Δα = e_y'·Δd / l_b`` y ``Δd = Δu_j − Δu_i``,
+        todo en los ejes de la cuerda del estado base."""
+        from solidum.core.element_forces import load_moment_integral
+        R, L0, l_b = self.internal_force_axes(U_base)
+        du = self.get_local_displacements(dU)
+        dd = np.array([du[3] - du[0], du[4] - du[1]])
+        dl = float(R[0] @ dd)
+        dalpha = float(R[1] @ dd) / l_b
+        xi = np.asarray(xi, dtype=np.float64)
+        N_i = float(base_forces.components["N"][0])
+        V_i = float(base_forces.components["V"][0])
+        if base_samples is None:
+            r_x = r_y = np.zeros_like(xi)
+        else:
+            local = np.asarray(base_samples, dtype=np.float64) @ R.T
+            r = load_moment_integral(self.LINE_LOAD_POINTS, local[:, :2], xi)
+            r_x, r_y = r[:, 0], r[:, 1]
+        dM = dl * (xi * V_i + L0 * r_y) + l_b * dalpha * (xi * N_i - L0 * r_x)
+        return {"M": dM}
+
     def _reference_transform(self) -> np.ndarray:
         """Matriz de transformación 6×6 en la configuración de referencia."""
         c, s = math.cos(self.alpha0), math.sin(self.alpha0)

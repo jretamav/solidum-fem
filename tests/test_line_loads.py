@@ -1245,3 +1245,164 @@ class TestArmonicoAvisaDeLasCargasDistribuidas:
                 solver: {ARMONICO}
             """)
         assert len(avisos) == 1 and "line_loads" in avisos[0]
+
+
+# ---------------------------------------------------------------------------
+# Diagramas de una perturbación lineal (ADR 0031, ADR 0044 §2; spec
+# Frame2DEulerCorot §11, decisión del usuario del 2026-11-27, opción (a))
+# ---------------------------------------------------------------------------
+
+def _perturbacion(cls_name, X, loads_base, nodal_base, loads_dq, nodal_dq, fixed, scale=1.0,
+                  conn=None, **section):
+    """Etapa no lineal con cargas de línea y nodales y una perturbación
+    lineal ``scale·(Δq, ΔP)`` sobre ella: ``(r_base, r_pert, elementos)``.
+    ``conn``: pares de nodos (por omisión, la cadena ``k → k+1``)."""
+    import solidum
+    from solidum.core.load_vector import as_load_vector
+    from solidum.elements.frame import Frame2DEulerCorot
+    from solidum.elements.truss import Truss2DCorot, Truss3DCorot
+    from solidum.math.solvers import LinearSolver, NonlinearSolver
+    cls = {"Frame2DEulerCorot": Frame2DEulerCorot, "Truss2DCorot": Truss2DCorot,
+           "Truss3DCorot": Truss3DCorot, "Frame2DEuler": Frame2DEuler}[cls_name]
+    dom = Domain()
+    n = [dom.add_node(k + 1, list(x)) for k, x in enumerate(X)]
+    mat = Elastic1D(E=E)
+    conn = conn or [(k, k + 1) for k in range(len(X) - 1)]
+    for e, (a, b) in enumerate(conn):
+        dom.add_element(cls(e + 1, [n[a], n[b]], mat, **section))
+    els = list(dom.elements.values())
+    for k, dofs in fixed.items():
+        for d in dofs:
+            n[k].fix_dof(d, 0.0)
+    dom.generate_equation_numbers()
+    asm = Assembler(dom)
+
+    def nodal(spec, factor):
+        F = np.zeros(dom.total_dofs)
+        for (k, d), v in spec.items():
+            F[n[k].dofs[d]] = factor * v
+        return as_load_vector(F, {})
+
+    def loads(lines, nodes, factor):
+        F = nodal(nodes, factor)
+        if lines:
+            F = asm.assemble_line_loads([(els[k], list(factor * np.asarray(q)), False, False)
+                                         for k, q in lines.items()]) + F
+        return F
+
+    r1 = solidum.run(dom, assembler=asm, solver=NonlinearSolver(asm, num_steps=10),
+                     F_applied=loads(loads_base, nodal_base, 1.0))
+    r2 = solidum.run(dom, assembler=asm, solver=LinearSolver(asm),
+                     F_applied=loads(loads_dq, nodal_dq, scale), previous=r1)
+    return r1, r2, els
+
+
+# Marco en L empotrado (columna inclinada + viga) del teórico: Δα ≈ −0.014 y
+# −0.031 con scale = 1 (informes/teorico/consulta_perturbacion_corot_2026-11-27.md).
+_MARCO_L = dict(
+    cls_name="Frame2DEulerCorot", X=[[0.0, 0.0], [0.4, 3.0], [4.1, 3.6]],
+    loads_base={0: [0.5, -1.0], 1: [0.7, -6.0]}, nodal_base={(1, "uy"): -40.0},
+    loads_dq={1: [0.0, -2.0]}, nodal_dq={(1, "ux"): 4.0, (2, "ux"): 3.0, (2, "uy"): -2.0},
+    fixed={0: ("ux", "uy", "rz")}, A=0.013, I=2.1e-5)
+# Armadura en V invertida con peso repartido y carga lateral de perturbación.
+_ARMADURA_V = dict(
+    cls_name="Truss2DCorot", X=[[0.0, 0.0], [2.0, 1.1], [4.3, 0.0]],
+    loads_base={0: [0.0, -5.0], 1: [0.0, -5.0]}, nodal_base={(1, "uy"): -60.0},
+    loads_dq={}, nodal_dq={(1, "ux"): 30.0, (1, "uy"): -20.0},
+    fixed={0: ("ux", "uy"), 2: ("ux", "uy")}, A=3.0e-5)
+# El marco en L sin carga de línea en el estado base (la perturbación la trae).
+_MARCO_L_BASE_SIN_LINEA = dict(_MARCO_L, loads_base={},
+                               loads_dq={0: [0.3, -1.5], 1: [0.0, -2.0]})
+# Trípode de armaduras 3D con peso repartido (carga transversal a las barras).
+_TRIPODE = dict(
+    cls_name="Truss3DCorot",
+    X=[[0.0, 0.0, 2.0], [1.5, 0.0, 0.0], [-0.75, 1.3, 0.0], [-0.75, -1.3, 0.0]],
+    conn=[(1, 0), (2, 0), (3, 0)],
+    loads_base={0: [0.0, 0.0, -5.0], 1: [0.0, 0.0, -5.0], 2: [0.0, 0.0, -5.0]},
+    nodal_base={(0, "uz"): -60.0}, loads_dq={1: [2.0, 0.0, 0.0]},
+    nodal_dq={(0, "ux"): 30.0, (0, "uy"): -20.0},
+    fixed={k: ("ux", "uy", "uz") for k in (1, 2, 3)}, A=3.0e-5)
+_XI = np.linspace(0.0, 1.0, 11)
+
+
+class TestDiagramaDePerturbacion:
+    """El diagrama de una perturbación lineal es la linealización de la
+    estática del tramo alrededor del estado base: ejes y longitud de la cuerda
+    del estado base y, en el marco corrotacional, el término geométrico
+    ΔM_geo. Antes usaba los ejes de u_b + ΔU y le faltaba ΔM_geo: no cerraba
+    (M en el extremo j de la columna: −67.82 frente a −65.07, *medido* por el
+    teórico)."""
+
+    @pytest.mark.parametrize("caso", [_MARCO_L, _MARCO_L_BASE_SIN_LINEA, _ARMADURA_V, _TRIPODE],
+                             ids=["marco", "marco_base_sin_linea", "armadura", "tripode_3d"])
+    def test_el_diagrama_cierra_con_las_fuerzas_de_extremo(self, caso):
+        _, r, els = _perturbacion(**caso)
+        for el in els:
+            along = r.internal_forces_along(el, [0.0, 1.0]).components
+            ends = r.element_forces[el.id].components
+            for c, v in ends.items():
+                scale = np.max(np.abs(v))
+                assert along[c][0] == pytest.approx(v[0], abs=1e-12 * scale)
+                assert along[c][1] == pytest.approx(v[1], abs=1e-9 * scale), (el.id, c)
+
+    @pytest.mark.parametrize("A,epsilons", [(0.013, (0.4, 0.2, 0.1)), (2.0e-5, (0.1, 0.05, 0.025))],
+                             ids=["rigido", "axialmente_blando"])
+    def test_el_flector_difiere_del_no_lineal_en_segundo_orden(self, A, epsilons):
+        """Con la perturbación ``ε·(Δq, ΔP)``, frente al diagrama no lineal del
+        elemento en ``u_b + ΔU_ε`` con la carga ``q_b + ε·Δq`` (ejes de la cuerda
+        corriente): el error de M baja con ε² (sin ΔM_geo, con ε). La barra
+        axialmente blanda protege la forma interior del alargamiento de los
+        brazos: con ``ξ²·V_i`` en vez de ``ξ·V_i`` (cierra en los extremos) el
+        orden cae a 1.24 y 1.08 (*medido* por el teórico y el agente principal,
+        2026-11-28); en la rígida su efecto queda bajo el error de segundo orden."""
+        errores = []
+        for eps in epsilons:
+            _, r, els = _perturbacion(**dict(_MARCO_L, A=A), scale=eps)
+            err = 0.0
+            for el in els:
+                M = r.internal_forces_along(el, _XI).components["M"]
+                ef = el.internal_forces(r.U, equivalent_load=r.equivalent_loads.get(el.id))
+                M_nl = el.internal_forces_along(ef, r.U, _XI,
+                                                r.line_load_samples[el.id].values).components["M"]
+                err = max(err, np.max(np.abs(M - M_nl)) / np.max(np.abs(M_nl)))
+            errores.append(err)
+        orden = np.log2(np.array(errores[:-1]) / np.array(errores[1:]))
+        assert np.all(orden > 1.8), (errores, orden)
+        assert errores[-1] < 1e-3
+
+    def test_es_lineal_en_el_incremento(self):
+        """Superponible (ADR 0031): el incremento del diagrama con ``2·ΔF`` es
+        el doble del de ``ΔF``."""
+        r_b, r1, els = _perturbacion(**_MARCO_L, scale=1.0)
+        _, r2, els2 = _perturbacion(**_MARCO_L, scale=2.0)
+        for el, el2 in zip(els, els2):
+            b = r_b.internal_forces_along(el, _XI).components
+            d1 = r1.internal_forces_along(el, _XI).components
+            d2 = r2.internal_forces_along(el2, _XI).components
+            for c in b:
+                inc1, inc2 = d1[c] - b[c], d2[c] - b[c]
+                assert np.max(np.abs(inc2 - 2.0 * inc1)) <= 1e-9 * np.max(np.abs(inc1)), c
+
+    def test_sin_la_carga_del_estado_base_es_un_error_no_un_diagrama_incompleto(self):
+        """El término geométrico necesita la carga del estado base: si ese
+        resultado la perdió (muestras ausentes con carga equivalente), error en
+        vez de omitirla en silencio (hallazgo 4 del teórico, 2026-11-28)."""
+        import dataclasses
+        r_b, r, els = _perturbacion(**_MARCO_L)
+        sin_muestras = dataclasses.replace(r_b, line_load_samples={})
+        r_mal = dataclasses.replace(r, perturbation_base=sin_muestras)
+        with pytest.raises(ValueError, match="estado base"):
+            r_mal.internal_forces_along(els[0], _XI)
+
+    def test_un_marco_lineal_da_el_diagrama_de_siempre(self):
+        """Sin término geométrico y con ejes que no dependen del estado: el
+        diagrama de una perturbación de ``Frame2DEuler`` es la estática del
+        tramo de sus fuerzas de extremo, bit a bit."""
+        caso = dict(_MARCO_L, cls_name="Frame2DEuler")
+        _, r, els = _perturbacion(**caso)
+        for el in els:
+            nuevo = r.internal_forces_along(el, _XI).components
+            antes = el.internal_forces_along(r.element_forces[el.id], r.U, _XI,
+                                             r.line_load_samples[el.id].values).components
+            for c in antes:
+                np.testing.assert_array_equal(nuevo[c], antes[c])

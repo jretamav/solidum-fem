@@ -88,7 +88,7 @@ def linear_perturbation(domain, assembler, solver, F_applied, previous):
         domain, assembler, U, F_total,
         F_constant=F_constant, equivalent_loads=eq_loads,
         F_int=F_int_lin, element_forces=element_forces, perturbation=True,
-        condition_estimate=None,
+        perturbation_base=previous, condition_estimate=None,
     )
 
 

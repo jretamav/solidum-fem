@@ -201,6 +201,19 @@ def forces_along_batch(kind: ElementKind, ends_i: dict, coeffs: np.ndarray, L0: 
     return out
 
 
+def load_moment_integral(points, samples_local, xi) -> np.ndarray:
+    """``(m, k)``: ``∫₀^ξ (ξ − ξ')·q̃(ξ') dξ'`` en las abscisas ``xi`` para cada
+    componente local de la carga representada ``q̃`` (las muestras ``(n, k)``
+    en ``points``), sin los factores de longitud. Lo usa el término
+    geométrico de los diagramas de una perturbación (spec Frame2DEulerCorot
+    §11)."""
+    xi = np.asarray(xi, dtype=np.float64)
+    coeffs = load_polynomials(points, samples_local)                 # (n, k)
+    p = np.arange(coeffs.shape[0], dtype=np.float64)
+    r_basis = xi[:, None] ** (p + 2.0) / ((p + 1.0) * (p + 2.0))    # (m, n)
+    return r_basis @ coeffs
+
+
 def shear_zeros(kind: ElementKind, ends_i: dict, coeffs: np.ndarray, L0: float) -> dict[str, np.ndarray]:
     """Abscisas ``ξ ∈ (0, 1)`` donde se anula cada cortante de un elemento
     (donde su flector es extremo): ``{flector: ξ}``. ``coeffs`` ``(n, k)``."""

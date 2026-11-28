@@ -806,6 +806,10 @@ class SolveResult:
     # Perturbación lineal sobre una etapa (ADR 0031): no cambió el estado
     # interno de los elementos; una etapa posterior no puede continuarla.
     perturbation: bool = False
+    # Resultado de la etapa alrededor de la cual se linealizó (perturbación,
+    # ADR 0031): lo usan los diagramas, que son la linealización de la
+    # estática del tramo (ADR 0044 §2). ``None`` fuera de una perturbación.
+    perturbation_base: "SolveResult | None" = field(default=None, repr=False)
     # Versión del registro de cargas equivalentes del ensamblador con que se
     # construyó el resultado (ADR 0026): una etapa siguiente la compara para
     # saber si las cargas registradas son suyas o de esta etapa.
@@ -840,7 +844,24 @@ class SolveResult:
                 "resultado no lleva su carga a lo largo del elemento (la carga perdió sus "
                 "muestras, p. ej. al convertirla con np.asarray).")
         values = None if samples is None else samples.values
-        return element.internal_forces_along(self.element_forces[eid], self.U, xi, values)
+        base = self.perturbation_base
+        if base is None:
+            return element.internal_forces_along(self.element_forces[eid], self.U, xi, values)
+        # Perturbación lineal (ADR 0031): linealización de la estática del
+        # tramo alrededor del estado base, con sus ejes (ADR 0044 §2).
+        if eid not in base.element_forces:
+            raise ValueError(f"internal_forces_along: el elemento {eid} no tiene fuerzas "
+                             "internas en el estado base de la perturbación.")
+        base_samples = base.line_load_samples.get(eid)
+        if (base_samples is None and eid in base.equivalent_loads
+                and np.any(base.equivalent_loads[eid])):
+            raise ValueError(
+                f"internal_forces_along: el elemento {eid} tiene carga distribuida en el estado "
+                "base de la perturbación, pero ese resultado no lleva su carga a lo largo del "
+                "elemento (el término geométrico del diagrama la necesita).")
+        return element.perturbation_forces_along(
+            self.element_forces[eid], base.element_forces[eid], base.U, self.U - base.U, xi,
+            values, None if base_samples is None else base_samples.values)
 
 
 # Tolerancia relativa del criterio de unión: |C_k·b| ≤ tol·Σ_j |C_kj·b_j|.
@@ -1013,6 +1034,7 @@ def build_solve_result(
     F_int: np.ndarray | None = None,
     element_forces: dict | None = None,
     perturbation: bool = False,
+    perturbation_base: SolveResult | None = None,
 ) -> SolveResult:
     """Post-procesa una solución ``U`` para construir un ``SolveResult`` completo.
 
@@ -1042,7 +1064,9 @@ def build_solve_result(
     ``condition_estimate`` se copia tal cual: lo calcula el solver (capa 4
     del ADR 0019). Una perturbación lineal (ADR 0031) pasa ``F_int`` y
     ``element_forces`` ya calculados, lineales en el incremento, en vez de
-    evaluar los elementos en ``U``, y marca ``perturbation``. El llamador (típicamente ``solidum.run``) asigna el
+    evaluar los elementos en ``U``, marca ``perturbation`` y guarda en
+    ``perturbation_base`` el resultado de la etapa (para los diagramas, ADR
+    0044 §2). El llamador (típicamente ``solidum.run``) asigna el
     resultado a ``domain.last_result``.
     """
     ndof = U.shape[0]
@@ -1143,5 +1167,6 @@ def build_solve_result(
         equivalent_loads=equivalent_loads,
         line_load_samples=line_load_samples,
         perturbation=bool(perturbation),
+        perturbation_base=perturbation_base,
         _equivalent_loads_version=getattr(assembler, "equivalent_loads_version", None),
     )

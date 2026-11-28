@@ -256,3 +256,27 @@ class LineElementMixin:
         R, L0, l = self.internal_force_axes(U_global)
         local = None if samples is None else np.asarray(samples, dtype=np.float64) @ R.T
         return forces_along(forces, self.LINE_LOAD_POINTS, local, L0, l, xi)
+
+    def perturbation_forces_along(self, forces, base_forces, U_base, dU, xi,
+                                  samples=None, base_samples=None):
+        """Fuerzas internas en ``xi`` del resultado de una perturbación lineal
+        (ADR 0031, ADR 0044 §2): la linealización de la estática del tramo
+        alrededor del estado base ``U_base``. ``forces``: las fuerzas de
+        extremo de la perturbación (totales, en los ejes del estado base);
+        ``samples``: la carga total; ``base_forces`` y ``base_samples``: las
+        del estado base; ``dU``: el incremento. Ejes y longitud del estado
+        base, más :meth:`_perturbation_geometric_terms`."""
+        along = self.internal_forces_along(forces, U_base, xi, samples)
+        terms = self._perturbation_geometric_terms(base_forces, U_base, dU, along.xi, base_samples)
+        if not terms:
+            return along
+        comps = {c: v + terms[c] if c in terms else v for c, v in along.components.items()}
+        return type(along)(kind=along.kind, xi=along.xi, s=along.s, components=comps)
+
+    def _perturbation_geometric_terms(self, base_forces, U_base, dU, xi, base_samples) -> dict:
+        """Términos geométricos de primer orden del diagrama de una
+        perturbación, ``{componente: (m,)}``. Ninguno por omisión: en un
+        elemento geométricamente lineal los ejes no dependen del estado, y la
+        ``N`` de una armadura corrotacional, componente sobre la cuerda del
+        estado base, no lleva término geométrico (spec Frame2DEulerCorot §11)."""
+        return {}
