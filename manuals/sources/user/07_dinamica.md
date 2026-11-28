@@ -342,7 +342,7 @@ Aritmética compleja directa con `scipy.sparse.linalg.spsolve`. Factorización L
 - Lineal: `omega_min`, `omega_max`, `n_omega`, `scale: linear`.
 - Logarítmico: `scale: log` con `np.geomspace`.
 
-**Cargas**: las `point_loads` del bloque YAML estándar se inyectan automáticamente como `F_amplitude` real con fase cero. Cargas con fase compleja requieren construcción desde código Python (YAML no soporta tipos complejos nativos).
+**Cargas**: las `point_loads` del bloque YAML estándar se inyectan automáticamente como `F_amplitude` real con fase cero. Las cargas distribuidas (`body_force`, `gravity`, `tractions`, `line_loads`) no entran en la excitación: si el archivo, o la etapa del armónico, las declara, Solidum avisa de que no se aplican (decisión del usuario del 2026-11-27). Cargas con fase compleja requieren construcción desde código Python (YAML no soporta tipos complejos nativos).
 
 **Salida**: `HarmonicResult` con `omega`, `u_complex` (shape $(n_{\text{dof}}, n_\omega)$), `F_complex`, y métodos `.amplitude()` ($|\hat{\mathbf u}|$) y `.phase()` ($\arg \hat{\mathbf u}$). Propiedad derivada `frequencies_hz`.
 

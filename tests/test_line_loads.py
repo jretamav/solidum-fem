@@ -1160,3 +1160,88 @@ class TestYamlErrores:
         p = write(tmp_path, text)
         with pytest.raises(ValueError, match="sólo se registran en análisis estáticos"):
             load_yaml(p).solve(write_output=True)
+
+
+YAML_ARMONICO = """
+nodes:
+  - {{id: 1, coords: [0.0, 0.0]}}
+  - {{id: 2, coords: [3.0, 0.0]}}
+  - {{id: 3, coords: [6.0, 0.0]}}
+materials:
+  - {{id: 1, type: Elastic1D, E: 2.1e11, density: 7850.0}}
+elements:
+  - {{id: 1, type: Frame2DEuler, material: 1, nodes: [1, 2], A: 0.01, I: 1.0e-4}}
+  - {{id: 2, type: Frame2DEuler, material: 1, nodes: [2, 3], A: 0.01, I: 1.0e-4}}
+boundary_conditions_by_node:
+  - {{node_id: 1, ux: 0.0, uy: 0.0}}
+  - {{node_id: 3, uy: 0.0}}
+{body}
+"""
+
+ARMONICO = ("{type: HarmonicSolver, omega_min: 1.0, omega_max: 10.0, n_omega: 3, "
+            "rayleigh: {alpha: 0.5, beta: 0.0}}")
+
+
+class TestArmonicoAvisaDeLasCargasDistribuidas:
+    """Q3 del usuario (2026-11-27, spec HarmonicSolver): el armónico toma como
+    excitación sólo las cargas nodales; si el archivo (o su etapa) declara
+    cargas distribuidas, avisa de que no se aplican. Sin el aviso, un armónico
+    con sólo ``line_loads`` daba respuesta nula en silencio (*medido*)."""
+
+    def _avisos(self, caplog, tmp_path, body):
+        import logging
+        p = write(tmp_path, YAML_ARMONICO.format(body=textwrap.dedent(body)))
+        with caplog.at_level(logging.WARNING):
+            r = load_yaml(p).solve()
+        return r, [rec.getMessage() for rec in caplog.records
+                   if "análisis armónico" in rec.getMessage()]
+
+    def test_avisa_con_carga_de_linea_y_peso_propio(self, caplog, tmp_path):
+        r, avisos = self._avisos(caplog, tmp_path, f"""
+            gravity: [0.0, -9.81]
+            line_loads:
+              - {{elements: {{ids: [1, 2]}}, q: [0.0, -1.0e3]}}
+            solver: {ARMONICO}
+            """)
+        assert len(avisos) == 1
+        assert "line_loads" in avisos[0] and "gravity" in avisos[0]
+        assert np.max(np.abs(r.u_complex)) == 0.0   # sigue sin aplicarlas
+
+    def test_sin_cargas_distribuidas_no_avisa(self, caplog, tmp_path):
+        r, avisos = self._avisos(caplog, tmp_path, f"""
+            point_loads_by_node:
+              - {{node_id: 2, uy: -1.0e3}}
+            solver: {ARMONICO}
+            """)
+        assert avisos == []
+        assert np.max(np.abs(r.u_complex)) > 0.0
+
+    def test_en_una_etapa_avisa_por_sus_cargas_y_no_por_las_de_la_estatica(self, caplog,
+                                                                            tmp_path):
+        """La carga repartida de la etapa estática es suya: el armónico que la
+        sigue no avisa por ella; sí por la que declara su propia etapa."""
+        _, avisos = self._avisos(caplog, tmp_path, f"""
+            stages:
+              - name: peso
+                loads:
+                  line_loads:
+                    - {{elements: {{ids: [1, 2]}}, q: [0.0, -1.0e3]}}
+                solver: {{type: LinearSolver}}
+              - name: vibra
+                loads:
+                  point_loads_by_node:
+                    - {{node_id: 2, uy: -1.0e3}}
+                solver: {ARMONICO}
+            """)
+        assert avisos == []
+        _, avisos = self._avisos(caplog, tmp_path, f"""
+            stages:
+              - name: peso
+                solver: {{type: LinearSolver}}
+              - name: vibra
+                loads:
+                  line_loads:
+                    - {{elements: {{id: 1}}, q: [0.0, -1.0e3]}}
+                solver: {ARMONICO}
+            """)
+        assert len(avisos) == 1 and "line_loads" in avisos[0]

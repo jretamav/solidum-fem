@@ -312,6 +312,17 @@ class YamlParser:
         return [i for i, st in enumerate(self.stages or [])
                 if any(st['loads'].get(k) for k in self._DISTRIBUTED_LOAD_KEYS)]
 
+    def declared_distributed_loads(self) -> list:
+        """Bloques de carga distribuida mecánica que declara este lector: los
+        del nivel raíz o, en el lector de una etapa (:meth:`for_stage`), los de
+        esa etapa."""
+        names = [k for k in ('body_force', 'gravity') if getattr(self, k, None) is not None]
+        if getattr(self, 'surface_loads', None):
+            names.append('tractions')
+        if getattr(self, 'line_loads', None):
+            names.append('line_loads')
+        return names
+
     def has_distributed_loads(self) -> bool:
         """¿Declara el archivo carga distribuida mecánica en el nivel raíz o en
         alguna etapa? Con ella, las fuerzas internas de marco de un análisis en
@@ -1969,6 +1980,18 @@ class YamlParser:
         # soporta tipos complejos nativos).
         if s_type == 'HarmonicSolver' and 'F_amplitude' not in kwargs:
             kwargs['F_amplitude'] = self.get_external_forces()
+            # Las cargas distribuidas no entran en la amplitud: avisarlo, porque
+            # sin él la respuesta sale de las nodales (o nula) y quien declaró
+            # una carga repartida cree que excita la estructura. Decisión del
+            # usuario del 2026-11-27 (Q3, spec HarmonicSolver): avisa sólo el
+            # armónico; en el modal y el espectral las cargas no forman parte
+            # del análisis, y en una etapa tras una estática son de ésa.
+            ignored = self.declared_distributed_loads()
+            if ignored:
+                _log.warning(
+                    f"solver {s_type}: el análisis armónico toma como excitación sólo las "
+                    f"cargas nodales (point_loads); las cargas distribuidas del archivo "
+                    f"({', '.join(ignored)}) no se aplican.")
 
         # Solver térmico transitorio: `F_func` es un callable y el YAML no
         # puede expresarlo. Se deriva el vector de carga térmica constante del
