@@ -90,7 +90,7 @@ $$\mathbf z = [-s,\; c,\;0,\; s,\;-c,\;0]^\top \quad \text{(perpendicular)}.$$
 
 El signo **menos** del término de momentos va con este $\mathbf z$ (con $\mathbf z \to -\mathbf z$, como en Crisfield, el término cambia de signo y $\mathbf z\mathbf z^\top$ no). Errata corregida el 2026-11-27: la spec decía «+»; el código (`euler_corot.py`) siempre usó «−», y la tangente frente a diferencias finitas de $\mathbf F_{\text{int}}$ lo confirma (1.8e-10 con «−», 1.1e-3 con «+»; `teorico-solidum`, `informes/teorico/consulta_perturbacion_corot_2026-11-27.md`).
 
-La parte $(N/l)\mathbf z\mathbf z^\top$ es análoga al $\mathbf K_G$ de `Truss2DCorot`: captura la rigidización por tensión (y el ablandamiento precrítico por compresión, base del pandeo). La parte con momentos acopla rotaciones con traslaciones — crítica para problemas de flexión con desplazamientos significativos.
+La parte $(N/l)\mathbf z\mathbf z^\top$ es análoga al $\mathbf K_G$ de `Truss2DCorot`: captura la rigidización por tracción (y el ablandamiento precrítico por compresión, base del pandeo). La parte con momentos acopla rotaciones con traslaciones — crítica para problemas de flexión con desplazamientos significativos.
 
 ### 9. Cuadratura
 Camino con material: no aplica (forma cerrada con Hermite cúbicos). Camino con sección: Gauss-Legendre de `n_ip` puntos (3 por defecto, mínimo 2), con `N_INTEGRATION_POINTS = n_ip` como atributo de instancia.

@@ -211,9 +211,10 @@ command; `python -m solidum` is equivalent):
 solidum minimal.yaml
 ```
 
-It solves the model and writes the results declared in the YAML `output`
-block (VTK, histories, tables, figures); `solidum-post minimal.yaml` redraws
-the figures without solving again.
+It solves the model and writes the final state as a VTK file for ParaView
+(`minimal_final.vtu`); the YAML `output` block adds histories, tables and
+figures. `solidum-post minimal.yaml` redraws the figures without solving
+again.
 
 Execution from Python:
 
