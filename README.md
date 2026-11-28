@@ -9,6 +9,11 @@
 A displacement-based finite element framework for research in solid mechanics,
 with an architecture optimized for extension via AI-assisted development.
 
+**Version 0.1.0** — first public release (November 2026). Solidum is under
+active development: models written for this version should keep working, but
+the YAML syntax and the Python API may still change between 0.x versions. To
+reproduce a result, note the version you used (see [How to cite](#how-to-cite)).
+
 The main program contains standard finite element formulations. Non-standard
 formulations are written as user modules, as with FEAP's user elements and
 materials: each one lives in `solidum/user/<name>/` and is loaded explicitly by
@@ -21,23 +26,38 @@ discontinuity model and the dissipation-based arc-length control.
 
 Main program:
 
-- **24 elements**: 1D structural (2- and 3-node truss, cable, frame 2D
+- **28 elements**: 1D structural (2- and 3-node truss, cable, frame 2D
   Euler/Timoshenko/corotational, frame 3D), 2D solids (Quad4, Tri3, Quad8, Quad9,
-  Tri6), 3D solids linear (Hex8, Tet4) and quadratic (Hex20, Hex27, Tet10), and
-  thermal conduction elements (Quad4Thermal, Hex8Thermal).
-- **21 materials** in three families: 16 mechanical (elastic 1D/2D/3D,
+  Tri6), 3D solids linear (Hex8, Tet4) and quadratic (Hex20, Hex27, Tet10),
+  zero-thickness interface elements (Interface2D4, Interface2D6, Interface3D6,
+  Interface3D8), and thermal conduction elements (Quad4Thermal, Hex8Thermal).
+- **25 materials** in three families: 19 mechanical (elastic 1D/2D/3D,
   orthotropic 2D elasticity, unilateral cable, J2 plasticity (1D, plane strain,
   plane stress, 3D), Drucker-Prager (2D and 3D), isotropic continuum damage
   1D/2D/3D, smeared cracking of concrete in 2D and 3D (isotropic damage
-  regularized by the crack band, with a Rankine equivalent strain and the
-  characteristic length seeded by the solid elements, integrated implicitly or
-  with IMPL-EX), and uniaxial concrete with Mander's confined/unconfined envelope,
-  tension softening and optional fracture-energy regularization); 4 interface
-  laws relating traction to relative displacement (mode I and mixed-mode
-  cohesive damage with linear, exponential or fib Model Code 2010 bilinear
-  softening; bar–concrete bond-slip after Eligehausen, Popov and Bertero 1983 /
-  fib Model Code 2010, and a multilinear bond-slip law); and Fourier thermal
-  conduction with tensor conductivity.
+  regularized by the crack band, with a Rankine equivalent strain,
+  exponential or Hordijk softening and the characteristic length seeded by the
+  solid elements, integrated implicitly or with IMPL-EX), tension–compression
+  damage of concrete in 2D and 3D (spectral split of the effective stress after
+  Faria, Oliver and Cervera 1998, with crack closure and optional compressive
+  damage), a fixed smeared crack model in 2D with shear retention (implemented,
+  with a documented limitation in notched beams), and uniaxial concrete with
+  Mander's confined/unconfined envelope, tension softening and optional
+  fracture-energy regularization); 5 interface laws relating traction to
+  relative displacement (mode I and mixed-mode cohesive damage with linear,
+  exponential or fib Model Code 2010 bilinear softening; bar–concrete bond-slip
+  after Eligehausen, Popov and Bertero 1983 / fib Model Code 2010, and a
+  multilinear bond-slip law; unilateral contact by penalty with optional
+  Coulomb friction); and Fourier thermal conduction with tensor conductivity.
+- **Contact and discrete cracks**: the interface elements are generated from
+  the mesh (`interfaces` block in YAML) either between two facing surfaces or
+  by splitting the nodes along a crack path, with an initial gap taken from
+  the geometry.
+- **Line loads on trusses and frames**: distributed loads in global or local
+  axes, per unit length or per unit projected length (snow), uniform or
+  varying along the element; internal force diagrams (N, V, M in 2D; N, Vy, Vz,
+  T, My, Mz in 3D) exact along each element, written to a file and drawn as a
+  figure in 2D.
 - **Fiber section** for frame elements (any 1D material as fiber material).
 - **Embedded reinforcement**: 2- or 3-node bars embedded in 2D or 3D solid
   meshes without matching nodes, with perfect bond or with distributed
@@ -65,6 +85,10 @@ Main program:
   depending on size); optional iterative solver (CG/MINRES with algebraic
   multigrid seeded with the rigid-body modes) for models too large for a direct
   factorization.
+- **Output**: VTK files for ParaView (with a `.pvd` time series), CSV
+  histories, plain-text tables and standard figures (mesh, deformed shape,
+  curves, internal force diagrams), all declared in the YAML. An analysis that
+  stops early still writes the results of its last converged step.
 - **Safety net for users who are not numerical specialists**: the algebraic
   solver is chosen automatically, and a static analysis checks, before solving,
   that the model is sufficiently supported — reporting the free rigid-body motion
@@ -103,39 +127,47 @@ User modules (in `solidum/user/`; `import solidum` loads none of them):
 
 Documentation and tests:
 
-- **34 accepted ADRs** documenting architectural decisions.
-- **63 validated specs** with quantitative acceptance criteria (60 for the main
-  program, 3 for the `discontinuities` user module; the spec of the
-  `dissipation_control` module is implemented and partially validated).
-- **3351 tests** green (120 of them for the `discontinuities` user module and
-  36 for `dissipation_control`),
-  including 8 published canonical benchmarks (Lamé 2D and 3D, NAFEMS LE1 and
-  LE10, MacNeal-Harder 2D and 3D, Bathe wave propagation, Hill 1950,
-  Carslaw-Jaeger semi-infinite solid).
+- **44 accepted ADRs** documenting architectural decisions.
+- **67 validated specs** with quantitative acceptance criteria (64 for the main
+  program, 3 for the `discontinuities` user module). Five more are implemented
+  and partially validated: the fixed smeared crack model, the quadratic 2D and
+  the 3D interface elements, and the `dissipation_control` user module.
+- **About 4800 tests** green (193 of them for the `discontinuities` user module
+  and 37 for `dissipation_control`), including 8 published canonical
+  benchmarks (Lamé 2D and 3D, NAFEMS LE1 and LE10, MacNeal-Harder 2D and 3D,
+  Bathe wave propagation, Hill 1950, Carslaw-Jaeger semi-infinite solid).
 
 Project status in [docs/STATUS.md](docs/STATUS.md) (in Spanish; see the
 [Documentation](#documentation) section for the language policy).
 
 ## Installation
 
+Requires Python ≥ 3.10 (tested on Windows and Linux with Python 3.10 and 3.14).
+Dependencies, installed automatically: `numpy`, `scipy`, `numba`, `pyyaml`,
+`meshio`.
+
+Install the released version 0.1.0:
+
 ```bash
-git clone https://github.com/jretamav/solidum-fem.git
+git clone --branch v0.1.0 https://github.com/jretamav/solidum-fem.git
 cd solidum-fem
 pip install -e .
 ```
 
-Requires Python ≥ 3.10. Dependencies: `numpy`, `scipy`, `numba`, `pyyaml`,
-`meshio`.
+Without Git, download the source archive of v0.1.0 from the
+[Releases page](https://github.com/jretamav/solidum-fem/releases), unpack it,
+and run `pip install .` inside the unpacked folder. Omitting `--branch v0.1.0`
+gives the development version, which changes almost daily.
 
-Optional extras, which the solver uses automatically when present:
+Optional extras, which Solidum uses automatically when present:
 
 ```bash
 pip install -e .[fast]        # Intel MKL Pardiso: multithreaded direct solver (recommended)
 pip install -e .[iterative]   # pyamg: preconditioner for the iterative solver
+pip install -e .[plot,mesh]   # matplotlib figures and gmsh meshing
 ```
 
-Solidum runs fully without them. `pyamg` has no Windows wheels for Python 3.14
-yet and is then built from source, which needs Visual Studio with the C++ tools.
+Solidum runs fully without them.
 
 To run the test suite:
 
@@ -171,6 +203,17 @@ boundary_conditions:
 solver:
   type: LinearSolver
 ```
+
+Execution from the command line (the installation creates the `solidum`
+command; `python -m solidum` is equivalent):
+
+```bash
+solidum minimal.yaml
+```
+
+It solves the model and writes the results declared in the YAML `output`
+block (VTK, histories, tables, figures); `solidum-post minimal.yaml` redraws
+the figures without solving again.
 
 Execution from Python:
 
@@ -223,7 +266,8 @@ The project documentation follows a layered language policy:
 | Internal / technical | **Spanish** | Component specs, ADRs, docstrings, code comments, governance docs |
 | Code identifiers | **English** | Classes, functions, variables, file names |
 
-The four manuals (in `manuals/`):
+The four manuals, in Spanish, are PDF files in [manuals/](manuals/) and are
+also attached to each release:
 
 - **Reference manual** — formal specification of each component: equations,
   $\mathbf{B}$ matrices, YAML contracts, acceptance criteria.
@@ -279,6 +323,13 @@ not mask the temporal rate.
 
 Details in [tests/validation/README.md](tests/validation/README.md).
 
+Some components are also validated by running Solidum as a user on published
+cases outside the automated suite, with the results recorded in their specs.
+For example, Hertz contact of a cylinder on a rigid plane in plane strain
+(Wriggers 2006, §14.6.1), with the zero-thickness interface elements and the
+penalty contact law: contact half-width and peak pressure within 1.4 % on three
+meshes ([Interface2D4](docs/specs/Interface2D4.md), §7b).
+
 ## Project conventions
 
 Documented in [Reglas.md](Reglas.md) (in Spanish). Highlights:
@@ -295,9 +346,15 @@ Documented in [Reglas.md](Reglas.md) (in Spanish). Highlights:
 
 ## How to cite
 
-Pending: once the paper is published in the *Journal of Open Source Software*
-and the `v1.0.0` release is archived on Zenodo, this section will point to
-[CITATION.cff](CITATION.cff) and the permanent DOI.
+If you use Solidum FEM in academic work, please cite the version you used.
+GitHub's "Cite this repository" button (built from [CITATION.cff](CITATION.cff))
+gives the reference in APA and BibTeX formats:
+
+> Retama-Velasco, J. (2026). *Solidum FEM* (Version 0.1.0) [Computer software].
+> https://github.com/jretamav/solidum-fem
+
+A permanent DOI and a paper in the *Journal of Open Source Software* are
+planned; this section will point to them when they exist.
 
 ## License
 

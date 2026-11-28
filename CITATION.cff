@@ -15,12 +15,15 @@ abstract: >-
   is currently uncoupled from the mechanical field), with an architecture
   optimized for extension via AI-assisted development. The main program
   provides 1D structural elements (2- and 3-node truss, cable, frame with an
-  optional fiber section), 2D and 3D solid elements, elastic (isotropic and
-  orthotropic), J2 and Drucker-Prager plasticity, continuum damage (also
-  regularized by the crack band for smeared cracking of concrete) and
+  optional fiber section and line loads with internal force diagrams), 2D
+  and 3D solid elements, zero-thickness interface elements generated from
+  the mesh, elastic (isotropic and orthotropic), J2 and Drucker-Prager
+  plasticity, continuum damage (also regularized by the crack band for
+  smeared cracking of concrete, and with a tension-compression split) and
   uniaxial confined concrete materials, interface laws (mode I and
-  mixed-mode cohesive damage, bar-concrete bond-slip), embedded
-  reinforcement with perfect bond or bond-slip, linear and nonlinear static
+  mixed-mode cohesive damage, bar-concrete bond-slip, penalty contact with
+  Coulomb friction), embedded reinforcement with perfect bond or
+  bond-slip, linear and nonlinear static
   solvers with load stages, cylindrical arc-length, indirect displacement
   control, modal analysis, Newmark and HHT time integration, central
   difference, harmonic response, and response spectrum analysis. Heat
@@ -40,6 +43,7 @@ authors:
       Universidad Nacional Autónoma de México (UNAM)
 
 version: 0.1.0
+date-released: 2026-11-27
 license: LGPL-3.0-or-later
 repository-code: "https://github.com/jretamav/solidum-fem"
 url: "https://github.com/jretamav/solidum-fem"
@@ -53,10 +57,10 @@ keywords:
   - embedded discontinuity
   - plasticity
   - damage mechanics
+  - contact mechanics
 
-# Fields to fill at first official release:
-#   date-released: YYYY-MM-DD
-#   doi: 10.5281/zenodo.XXXXXXX   # Zenodo DOI assigned via GitHub release archival
+# Field to fill when the release is archived on Zenodo:
+#   doi: 10.5281/zenodo.XXXXXXX
 #
 # Once the JOSS paper is published, prefer citing the JOSS paper directly
 # (use the JOSS DOI). CITATION.cff can then be extended with a
